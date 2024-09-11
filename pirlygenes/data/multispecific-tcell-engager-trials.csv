@@ -1,0 +1,60 @@
+﻿Drug_Name,Target,Tumor_Target_Symbols,Tumor_Target_Gene_IDs,Tumor_Target_Is_Specific_Isoform,Tcell_Target_Symbols,Tcell_Target_Gene_IDs,Costim_Target_Symbols,Costim_Target_Gene_IDs,Valency,Format,Company,Disease_Area,Clinical_Developmental_Phase
+Runimotamab (RG-6194),Her2 × CD3,ERBB2,ENSG00000141736,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc,Roch,Cancer (breast),I
+M-02,Her2 × CD3,ERBB2,ENSG00000141736,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc × scFv-Fc,Wuhan YZY Biopharma,"Cancer (breast, gastrointestinal, stomach, ovarian)",I
+SAR-446309 (AMX-818),Her2 × CD3,ERBB2,ENSG00000141736,0,CD3E,ENSG00000198851,,,1 + 1,Tandem scFV (XPAT),Sanofi/Amunix,Cancer (solid),I
+SAR-443216,Her2 × CD28 × CD3,ERBB2,ENSG00000141736,0,CD3E,ENSG00000198851,CD28,ENSG00000178562,1 + 1 + 1,Tandem domain-exchanged Fv × Fab-Fc (CODV-Ig),Sanofi,"Cancer (gastrointestinal, stomach)",I
+EX-101,Her2 × CD3,ERBB2,ENSG00000141736,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc (ExMab),Excelmab,"Cancer (breast, gastrointestinal, stomach)",I
+BC-004,Her2 × CD3,ERBB2,ENSG00000141736,0,CD3E,ENSG00000198851,,,Undisclosed,Undisclosed,Buchang Shenzhou Pharmaceutical,Cancer (solid),I
+BI-764532 (OBT-620),DLL3 × CD3,DLL3,ENSG00000090932,0,CD3E,ENSG00000198851,,,1 + 1,Hetero scFab-Fc,Boehringer Ingelheim/ Oxford BioTherapeutics,"Cancer (SCLC, Neuroendocrine)",II
+HPN-328,DLL3 × CD3,DLL3,ENSG00000090932,0,CD3E,ENSG00000198851,,,1 + 1,Tandem sdAb-sdAb-scFv (TriTAC),Harpoon Therapeutics,"Cancer (SCLC, Neuroendocrine)",II
+ZG-006,DLL3 × CD3,DLL3,ENSG00000090932,0,CD3E,ENSG00000198851,,,2 + 1,Tandem scFv-Fc × Fab-Fc,Suzhou Zelgen Biopharmaceuticals,"Cancer (SCLC, Neuroendocrine)",II
+RG-6524,DLL3 × 4-1BB × CD3,DLL3,ENSG00000090932,0,CD3E,ENSG00000198851,TNFRSF9,ENSG00000049249,1 + 2,Tandem scFab-Fc × Fab-Fc (Dual/LINC-Ig),Roche,"Cancer (SCLC, Neuroendocrine, solid)",I
+QLS-31904,DLL3 × CD3,DLL3,ENSG00000090932,0,CD3E,ENSG00000198851,,,1 + 1,Tandem Fab-scFv,Qilu Pharmaceutical,Cancer (solid),I
+REGN-4336,PSMA × CD3,FOLH1,ENSG00000086205,0,CD3E,ENSG00000198851,,,1 + 1,"Hetero Fab-Fc, (Common LC)",Regeneron,"Cancer (prostate, renal)",II
+JNJ-80038114,PSMA × CD3,FOLH1,ENSG00000086205,0,CD3E,ENSG00000198851,,,Undisclosed,Undisclosed,Johnson & Johnson,Cancer (prostate),I
+JANX007,PSMA × CD3,FOLH1,ENSG00000086205,0,CD3E,ENSG00000198851,,,1 + 1,Tandem Fab-scFv-sdAb (TRACTr),Janux Therapeutics,Cancer (prostate),I
+CC-1,PSMA × CD3,FOLH1,ENSG00000086205,0,CD3E,ENSG00000198851,,,2 + 2,IgG-[L]-scFv,German Cancer Research Center,Cancer (prostate),I
+HBM-7022 (AZD-5863),Claudin 18.2 × CD3,CLDN18,ENSG00000066405,1,CD3E,ENSG00000198851,,,2 + 1,Tandem saAb-Fc × Fab-Fc (HBICE),AstraZeneca/Harbour Biomed,Cancer (solid),II
+IBI-389,Claudin 18.2 × CD3,CLDN18,ENSG00000066405,1,CD3E,ENSG00000198851,,,Undisclosed,Undisclosed,Innovent Biologics,Cancer (solid),I
+ASP-2138,Claudin 18.2 × CD3,CLDN18,ENSG00000066405,1,CD3E,ENSG00000198851,,,2 + 1,Tandem Fab-scFv-Fc × Fab-Fc (XmAb),Astellas Pharma/Xencor,"Cancer (Esophageal, Gastric, Pancreas)",I
+QLS-31905,Claudin 18.2 × CD3,CLDN18,ENSG00000066405,1,CD3E,ENSG00000198851,,,2 + 1,Tandem Fab-Fc-scFv × Fab-Fc,Qilu Pharmaceuticals,Cancer (solid),II
+Catumaxomab,EpCAM × CD3,EPCAM,ENSG00000119888,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc,LintonPharm/ Fresenius,"Cancer (bladder, breast, colorectal)",III
+M-01,EpCAM × CD3,EPCAM,ENSG00000119888,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc × scFv-Fc,Wuhan YZY Biopharma,"Cancer (breast, colorectal, stomach)",III
+BA-3182,EpCAM × CD3,EPCAM,ENSG00000119888,0,CD3E,ENSG00000198851,,,2 + 2,IgG-[L]-scFv (CAB technology),BioAtla,"Cancer (breast, colorectal)",I
+A-337,EpCAM × CD3,EPCAM,ENSG00000119888,0,CD3E,ENSG00000198851,,,2 + 1,Tandem ScFv-Fab (iTAb),ITabMed/Yifan Pharmaceutical,Cancer (solid),I
+SMET-12,EGFR × CD3,EGFR,ENSG00000146648,0,CD3E,ENSG00000198851,,,1 + 1,Tandem Fab-Fc (HbiAb),Zhejiang Shimai Pharmaceutical,Cancer (solid),II
+TAK-186 (MVC-101),EGFR × CD3,EGFR,ENSG00000146648,0,CD3E,ENSG00000198851,,,4 + 2,Tandem sdAb-scFv (COBRA),Takeda/Maverick Therapeutics,"Cancer (colorectal, head and neck)",II
+JANX008,EGFR × CD3,EGFR,ENSG00000146648,0,CD3E,ENSG00000198851,,,1 + 1,Tandem Fab-scFv-sdAb,Janux Therapeutics,"Cancer (colorectal, head and neck, SCLC)",I
+CX-904,EGFR × CD3,EGFR,ENSG00000146648,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc (Probody),Amgen/CytomX Therapeutics,"Cancer (colorectal, solid)",I
+EMB-07,ROR1 × CD3,ROR1,ENSG00000185483,0,CD3E,ENSG00000198851,,,1 + 1,Tandem Fab-Fc (MAT-Fab),EpimAb,Cancer (solid),I
+GNC-035,ROR1 × PD-L1 × 4-1BB × CD3,ROR1,ENSG00000185483,0,CD3E,ENSG00000198851,CD274;TNFRSF9,ENSG00000120217;ENSG00000049249,2 + 2 + 2 + 2,Tandem scFv-Fab-Fc-scFv (GNC),SystImmune,"Cancer (breast, stomach)",II
+NVG-111,ROR1 × CD3,ROR1,ENSG00000185483,0,CD3E,ENSG00000198851,,,1 + 1,Tandem scFv,NovalGen,Cancer (SCLC),I
+NM32-2668,ROR1 × CD3,ROR1,ENSG00000185483,0,CD3E,ENSG00000198851,,,1 + 1,Tandem scFv (scMATCH3),Numab,Cancer (solid),I
+CM-350,GPC3 × CD3,GPC3,ENSG00000147257,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc,Chengdu KeyMed Biosciences,Cancer (solid),II
+CMD-011,GPC3 × CD3,GPC3,ENSG00000147257,0,CD3E,ENSG00000198851,,,1 + 1,Tandem Fab-Fc (HbiAb),Zhejiang Shimai Pharmaceutical,Cancer (liver),II
+SAR-444200,GPC3 × CD3,GPC3,ENSG00000147257,0,CD3E,ENSG00000198851,,,Undisclosed,Tandem sdAb (Nanobody),Sanofi,Cancer (solid),II
+ERY-974,GPC3 × CD3,GPC3,ENSG00000147257,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc (TRAB),Chugai (Roche),"Cancer (gastrointestinal, stomach, liver)",I
+JNJ-79032421,MSLN × CD3,MSLN,ENSG00000102854,0,CD3E,ENSG00000198851,,,Undisclosed,Undisclosed,Johnson & Johnson,Cancer (solid),I
+AMG-305,MSLN × CDH3 × CD3,MSLN;CDH3,ENSG00000102854;ENSG00000062038,0,CD3E,ENSG00000198851,,,1 + 1 + 2,Tandem scFv-Fc-scFv,Amgen,Cancer (solid),I
+JNJ-87890387,ENPP3 × CD3,ENPP3,ENSG00000154269,0,CD3E,ENSG00000198851,,,Undisclosed,Undisclosed,Johnson & Johnson,Cancer (solid),I
+XmAb-819,ENPP3 × CD3,ENPP3,ENSG00000154269,0,CD3E,ENSG00000198851,,,2 + 1,Tandem Fab-scFv-Fc × Fab-Fc (XmAb),Xencor,Cancer (renal),I
+AMG-794,Claudin 6 × CD3,CLDN6,ENSG00000184697,0,CD3E,ENSG00000198851,,,1 + 1,Tandem scFv-scFc (HLE-BiTE),Amgen,"Cancer (SCLC, ovarian)",I
+Xmab-541,Claudin 6 × CD3,CLDN6,ENSG00000184697,0,CD3E,ENSG00000198851,,,2 + 1,Tandem Fab-scFv-Fc × Fab-Fc (XmAb),Xencor,Cancer (ovarian; unspecified Solid Tumor),I
+Ubamatamab,MUC16 × CD3,MUC16,ENSG00000181143,0,CD3E,ENSG00000198851,,,1 + 1,"Hetero Fab-Fc, (Common LC)",Regeneron,"Cancer (fallopian tube, ovarian, peritoneal)",II
+LBL-033,MUC16 × CD3,MUC16,ENSG00000181143,0,CD3E,ENSG00000198851,,,2 + 1,Tandem Fab −scFv − Fc × Fab − Fc,Leads Biolabs,Cancer (solid),II
+Umizortamig (GNC-039),EGFRvIII × PD-L1 × 4-1BB × CD3,EGFR,ENSG00000146648,1,CD3E,ENSG00000198851,CD274;TNFRSF9,ENSG00000120217;ENSG00000049249,2 + 2 + 2 + 2,Tandem scFv-Fab-Fc-scFv (GNC),Biokin Pharmaceutical,"Cancer (brain, solid)",I
+BA-1202,CEA × CD3,CEACAM5,ENSG00000105388,0,CD3E,ENSG00000198851,,,2 + 2,IgG-[L]-scFv,Luye Pharma Group,Cancer (solid),I
+TAK-280 (MVC-280),B7-H3 × CD3,CD276,ENSG00000103855,0,CD3E,ENSG00000198851,,,4 + 2,Tandem sdAb-scFv (COBRA),Takeda/Maverick Therapeutics,Cancer (solid),II
+GEN-1047,B7-H4 × CD3,VTCN1,ENSG00000134258,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc (Duobody),Genmab,Cancer (solid),II
+BI-765049,B7-H6 × CD3,NCR3LG1,ENSG00000188211,0,CD3E,ENSG00000198851,,,1 + 1,Hetero scFab-Fc,Boehringer Ingelheim,Cancer (solid),I
+JNJ-78278343,KLK2 × CD3,KLK2,ENSG00000167751,0,CD3E,ENSG00000198851,,,Undisclosed,Undisclosed,Johnson & Johnson/Zymeworks,Cancer (prostate),I
+QL-335,LY6G6D × CD3,LY6G6D,ENSG00000244355,0,CD3E,ENSG00000198851,,,2 + 1,Tandem Fab-scFv-Fc × Fab-Fc,QLSF Biotherapeutics,Cancer (colorectal),I
+CBA-1535,5 T4 × CD3,TPBG,ENSG00000146242,0,CD3E,ENSG00000198851,,,2 + 1,Tandem scFv-Fab (Tribody),Chiome Bioscience,Cancer (lung),I
+ANJ-564 (TTX-564),CD33 × CD3,CD33,ENSG00000105383,0,CD3E,ENSG00000198851,,,Undisclosed,Undisclosed,Anji Pharmaceuticals,Cancer (solid),I
+Cabotamig (ARB-202),CDH17 × CD3,CDH17,ENSG00000079112,0,CD3E,ENSG00000198851,,,2 + 2,IgG-[H]-scFv,Arbele,Cancer (gastrointestinal),II
+ASP-2074,TSPAN8 × CD3,TSPAN8,ENSG00000127324,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc × scFv-Fc,Astellas,Cancer (solid),I
+JNJ-70218902,TMEFF2 × CD3,TMEFF2,?,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc (Duobody),Johnson & Johnson/Genmab,Cancer (solid),I
+AMG-509 (Xaluritamig),STEAP1 × CD3,STEAP1,ENSG00000157214,0,CD3E,ENSG00000198851,,,2 + 1,Tandem Fab-scFv-Fc × Fab-Fc (XmAb),Amgen/Xencor,Cancer (prostate),I
+IMA-401,MAGE-A4/A8 × CD3,MAGEA4;MAGEA8,ENSG00000147381;ENSG00000156009,0,CD3E,ENSG00000198851,,,1 + 1,Hetero scFv-Fc × TCR-Fc,Immatics Biotechnologies,Cancer (solid),I
+IMA-402,PRAME × CD3,PRAME,ENSG00000185686,0,CD3E,ENSG00000198851,,,1 + 1,Hetero scFv-Fc × TCR-Fc,Immatics Biotechnologies,Cancer (solid),II
+IMC-F106C,PRAME × CD3,PRAME,ENSG00000185686,0,CD3E,ENSG00000198851,,,1 + 1,Tandem TCR-scFv,Immunocore,"Cancer (melanoma, NSCLC)",III
