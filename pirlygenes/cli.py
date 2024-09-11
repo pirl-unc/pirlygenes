@@ -17,6 +17,7 @@ from .load import load_all_dataframes
 
 def main():
     print_name_and_version()
+    print("---")
     for csv_file, df in load_all_dataframes():
         print("%s: %d rows" % (csv_file, len(df)))
 
