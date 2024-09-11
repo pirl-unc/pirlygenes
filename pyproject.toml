@@ -22,8 +22,8 @@ dependencies = {file = ["requirements.txt"]}
 packages = ["variform"]
 
 [project.urls]
-"Homepage" = "https://github.com/pirl-unc/variform"
-"Bug Tracker" = "https://github.com/pirl-unc/variform"
+"Homepage" = "https://github.com/pirl-unc/pirlygenes"
+"Bug Tracker" = "https://github.com/pirl-unc/pirlygenes"
 
 [project.scripts]
-variform = "variform.cli:main"
+pirlygenes = "pirlygenes.cli:main"
