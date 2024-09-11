@@ -53,7 +53,7 @@ CBA-1535,5 T4 × CD3,TPBG,ENSG00000146242,0,CD3E,ENSG00000198851,,,2 + 1,Ta
 ANJ-564 (TTX-564),CD33 × CD3,CD33,ENSG00000105383,0,CD3E,ENSG00000198851,,,Undisclosed,Undisclosed,Anji Pharmaceuticals,Cancer (solid),I
 Cabotamig (ARB-202),CDH17 × CD3,CDH17,ENSG00000079112,0,CD3E,ENSG00000198851,,,2 + 2,IgG-[H]-scFv,Arbele,Cancer (gastrointestinal),II
 ASP-2074,TSPAN8 × CD3,TSPAN8,ENSG00000127324,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc × scFv-Fc,Astellas,Cancer (solid),I
-JNJ-70218902,TMEFF2 × CD3,TMEFF2,?,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc (Duobody),Johnson & Johnson/Genmab,Cancer (solid),I
+JNJ-70218902,TMEFF2 × CD3,TMEFF2,ENSG00000144339,0,CD3E,ENSG00000198851,,,1 + 1,Hetero Fab-Fc (Duobody),Johnson & Johnson/Genmab,Cancer (solid),I
 AMG-509 (Xaluritamig),STEAP1 × CD3,STEAP1,ENSG00000157214,0,CD3E,ENSG00000198851,,,2 + 1,Tandem Fab-scFv-Fc × Fab-Fc (XmAb),Amgen/Xencor,Cancer (prostate),I
 IMA-401,MAGE-A4/A8 × CD3,MAGEA4;MAGEA8,ENSG00000147381;ENSG00000156009,0,CD3E,ENSG00000198851,,,1 + 1,Hetero scFv-Fc × TCR-Fc,Immatics Biotechnologies,Cancer (solid),I
 IMA-402,PRAME × CD3,PRAME,ENSG00000185686,0,CD3E,ENSG00000198851,,,1 + 1,Hetero scFv-Fc × TCR-Fc,Immatics Biotechnologies,Cancer (solid),II
