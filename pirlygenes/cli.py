@@ -11,6 +11,12 @@
 # limitations under the License.
 
 
-from .load import load_all_dataframes, load_all_dataframes_dict
+from .version import print_name_and_version
+from .load import load_all_dataframes
 
-__all__ = ["load_all_dataframes", "load_all_dataframes_dict"]
+
+def main():
+    print_name_and_version()
+    for csv_file, df in load_all_dataframes():
+        print("%s: %d rows" % (csv_file, len(df)))
+

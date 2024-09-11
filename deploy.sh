@@ -6,5 +6,5 @@ rm -rf dist && \
 python3 -m build && \
 git --version && \
 python3 -m twine upload dist/* && \
-git tag "$(python3 variform/version.py)" &&  \
+git tag "$(python3 pirlygenes/version.py)" &&  \
 git push --tags

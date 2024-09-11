@@ -1,2 +1,2 @@
-pytest --cov=variform/ --cov-report=term-missing tests
+pytest --cov=pirlygenes/ --cov-report=term-missing tests
 

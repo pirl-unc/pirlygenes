@@ -7,13 +7,13 @@ set -o errexit
 # - https://bitbucket.org/logilab/pylint/issues/701/false-positives-with-not-an-iterable-and
 # - https://bitbucket.org/logilab/pylint/issues/58
 
-find variform/ -name '*.py' \
+find pirlygenes/ -name '*.py' \
   | xargs pylint \
   --errors-only \
   --disable=unsubscriptable-object,not-an-iterable,no-member,invalid-unary-operand-type \
 && \
 echo 'Passes pylint check' \
 && \
-ruff check variform/ \
+ruff check pirlygenes/ \
 && \
 echo "Passes ruff check" 

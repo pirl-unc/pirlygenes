@@ -1,8 +1,8 @@
 [project]
-name = "variform"
+name = "pirlygenes"
 requires-python = ">=3.7"
 authors = [ {name="Alex Rubinsteyn", email="alex.rubinsteyn@unc.edu" } ]
-description = "Variant isoform identification from long-read RNA sequencing"
+description = "Gene lists for cancer immunotherapy expression analysis"
 classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     'Environment :: Console',
@@ -15,11 +15,13 @@ readme = "README.md"
 dynamic = ["version", "dependencies"]
 
 [tool.setuptools.dynamic]
-version = {attr = "variform.version.__version__"}
+version = {attr = "pirlygenes.version.__version__"}
 dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools]
-packages = ["variform"]
+packages = ["pirlygenes"]
+
+
 
 [project.urls]
 "Homepage" = "https://github.com/pirl-unc/pirlygenes"
@@ -27,3 +29,13 @@ packages = ["variform"]
 
 [project.scripts]
 pirlygenes = "pirlygenes.cli:main"
+
+
+[build-system]
+requires = [
+    "setuptools>=60",
+    "setuptools-scm>=8.0"]
+
+[tool.setuptools.package-data]
+pirlygenes = ["data/*.csv"]
+

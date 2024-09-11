@@ -1,2 +1,2 @@
-ruff format variform
+ruff format pirlygenes
 ruff format tests
