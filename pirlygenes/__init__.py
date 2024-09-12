@@ -11,6 +11,6 @@
 # limitations under the License.
 
 
-from .load import load_all_dataframes, load_all_dataframes_dict
+from .load import load_all_dataframes, load_all_dataframes_dict, get_data
 
-__all__ = ["load_all_dataframes", "load_all_dataframes_dict"]
+__all__ = ["load_all_dataframes", "load_all_dataframes_dict", "get_data"]

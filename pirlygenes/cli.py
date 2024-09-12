@@ -14,6 +14,7 @@
 from .version import print_name_and_version
 from .load import load_all_dataframes
 
+import argh
 
 def main():
     print_name_and_version()
