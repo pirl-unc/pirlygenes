@@ -12,5 +12,5 @@
 
 
 from .load import load_all_dataframes, load_all_dataframes_dict, get_data
-
-__all__ = ["load_all_dataframes", "load_all_dataframes_dict", "get_data"]
+from .plot import plot 
+__all__ = ["load_all_dataframes", "load_all_dataframes_dict", "get_data", "plot"]

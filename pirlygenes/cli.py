@@ -14,11 +14,25 @@
 from .version import print_name_and_version
 from .load import load_all_dataframes
 
-import argh
+from argh import named, dispatch_commands
+
+@named("data")
+def print_dataset_sizes():
+    for csv_file, df in load_all_dataframes():
+        print("%s: %d rows" % (csv_file, len(df)))
+
+@named("plot-expression")
+def plot_expression(csv : str):
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    df = pd.read_csv(csv)
+    df.plot()
+    plt.show()
 
 def main():
     print_name_and_version()
     print("---")
-    for csv_file, df in load_all_dataframes():
-        print("%s: %d rows" % (csv_file, len(df)))
-
+    dispatch_commands([print_dataset_sizes, plot_expression])
+ 
+if __name__ == "__main__":
+    main()
