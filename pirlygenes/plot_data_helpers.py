@@ -26,7 +26,6 @@ def check_gene_names_in_gene_sets(df_gene_expr, gene_sets):
             print(f"Gene {g} not found in expression data")
 
 def normalize_categories(gene_sets, priority_category=None):
-    check_gene_names_in_gene_sets(gene_sets)
     for cat, genes in list(gene_sets.items()):
         if priority_category and cat != priority_category:
             gene_sets[cat] = sorted(set(genes).difference(gene_sets[priority_category]))
@@ -49,13 +48,13 @@ def prepare_gene_expr_df(
         df_gene_expr,
         gene_sets, 
         priority_category=None, 
-        annotate_drug_targets=False, 
         TPM_offset=10.0**-4):
     
     df_gene_expr_annot = df_gene_expr.copy()
     
     df_gene_expr_annot["gene_alias"] = [aliases.get(g, g) for g in df_gene_expr_annot.gene]
 
+    check_gene_names_in_gene_sets(df_gene_expr, gene_sets)
     gene_sets = normalize_categories(gene_sets, priority_category=priority_category)
     gene_to_category = _create_gene_to_category_mapping(gene_sets)
     

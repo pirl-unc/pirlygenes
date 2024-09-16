@@ -1,0 +1,7 @@
+﻿Drug_Name,Commercial_Name,Company,Tumor_Target_Symbol,Tumor_Target_Alias,Ensembl_Gene_ID,Cell_Origin,Disease_Area,Approvals
+Tisagenlecleucel,Kymriah,Novartis,CD19,,ENSG00000177455,Autologous,B-ALL;DLBCL;FL;HGBL,FDA 2017; EMA 2018
+Axicabtagene ciloleucel,Yescarta,Gilead,CD19,,ENSG00000177455,Autologous,PMBCL;DLBCL;HGBL;FL,FDA 2017; EMA 2018
+Brexucabtagene autoleucel,Tecartus,Gilead,CD19,,ENSG00000177455,Autologous,Mantle Cell Lymphoma;B-ALL,FDA 2020;EMA 2020
+Idecabtagene vicleucel,Abecma,Bristol-Meyers Squibb,BCMA,TNFRSF17,ENSG00000048462,Autologous,Multiple Myeloma,FDA 2021;EMA 2021
+Lisocabtagene maraleucel,Breyanzi,Bristol-Meyers Squibb,CD19,,ENSG00000177455,Autologous,FL3B;PMBCL;DLBCL;HGBL,FDA 2021;EMA 2022
+Ciltacabtagene autoleucel,Carvykti,Janssen-Cilag international,BCMA,TNFRSF17,ENSG00000048462,Autologous,Multiple Myeloma,FDA 2022;EMA 2022

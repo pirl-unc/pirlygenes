@@ -11,6 +11,12 @@
 # limitations under the License.
 
 
-from .load import load_all_dataframes, load_all_dataframes_dict, get_data
-from .plot import plot 
-__all__ = ["load_all_dataframes", "load_all_dataframes_dict", "get_data", "plot"]
+from .load_dataset import load_all_dataframes, load_all_dataframes_dict, get_data
+from .plot import plot_gene_expression
+
+__all__ = [
+    "load_all_dataframes", 
+    "load_all_dataframes_dict", 
+    "get_data", 
+    "plot_gene_expression"
+]
