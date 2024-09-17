@@ -10,11 +10,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from argh import named, dispatch_commands, arg
+from argh import named, dispatch_commands
 import pandas as pd
 
 from .version import print_name_and_version
-from .load_dataset import load_all_dataframes, get_data
+from .load_dataset import load_all_dataframes
+from .cancer_data import (
+    get_ADC_gene_targets,
+    get_CAR_T_gene_targets,
+    get_multispecific_tcell_engager_trial_targets,
+    get_bispecific_antibody_targets,
+)
 from .load_expression import load_expression_data
 from .plot import plot_gene_expression, default_gene_sets
 from .gene_expression import aggregate_gene_expression as tx2gene
@@ -36,21 +42,15 @@ def plot_expression(
         input_path, aggregate_gene_expression=aggregate_gene_expression
     )
 
-    df_mite_trials = get_data("multispecific-tcell-engager-trials")
-    df_approved_bispecifics = get_data("approved-bispecific-antibodies")
-    df_adc_trials = get_data("ADC-trials.csv")
-    print(df_mite_trials.head())
-    print(df_approved_bispecifics.head())
-    print(df_adc_trials.head())
-
     for name, gene_sets in [
         ("summary", default_gene_sets),
         (
             "treatments",
             {
-                "bispecific-approved": set(df_approved_bispecifics.Symbol_1),
-                "MiTE-trials": set(df_mite_trials.Tumor_Target_Symbols),
-                "ADC-trials": set(df_adc_trials.Symbols),
+                "approved CAR-T": get_CAR_T_gene_targets(),
+                "approved bispecifics": get_bispecific_antibody_targets(),
+                "MiTEs": get_multispecific_tcell_engager_trial_targets(),
+                "ADCs": get_ADC_gene_targets(),
             },
         ),
     ]:

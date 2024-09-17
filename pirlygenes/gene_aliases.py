@@ -12,16 +12,16 @@
 
 
 # -----------------------------------------------------------
-# Let's rewrite the Ensembl gene names as the more 
-# commonly used names in the literature for the 
-# proteins they produce 
+# Let's rewrite the Ensembl gene names as the more
+# commonly used names in the literature for the
+# proteins they produce
 
 
 aliases = {
     "PMEL": "gp100",
-    "CD276": "B7-H3", 
-    "VTCN1": "B7-H4", 
-    "PDCD1LG2": "PD-L2", 
+    "CD276": "B7-H3",
+    "VTCN1": "B7-H4",
+    "PDCD1LG2": "PD-L2",
     "CD274": "PD-L1",
     "MS4A1": "CD20",
     "FLT1": "VEGFR-1",
@@ -40,24 +40,23 @@ aliases = {
     "VSIR": "VISTA",
     "POU1F1": "POUF1",
     "ATP5F1E": "ATP5E",
+    "PVRL4": "NECTIN4",
 }
 
 reverse_aliases = {}
-for (k, v) in aliases.items():
+for k, v in aliases.items():
     reverse_aliases[v] = k
-    
 
 
-def get_alias_as_list(name : str) -> list[str]:
+def get_alias_as_list(name: str) -> list[str]:
     if name in aliases:
         return [aliases[name]]
-    else: 
+    else:
         return []
-    
 
-def get_reverse_alias_as_list(name : str) -> list[str]:
+
+def get_reverse_alias_as_list(name: str) -> list[str]:
     if name in reverse_aliases:
         return [reverse_aliases[name]]
-    else: 
+    else:
         return []
-

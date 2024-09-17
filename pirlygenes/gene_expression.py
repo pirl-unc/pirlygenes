@@ -1,5 +1,3 @@
-
-
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -26,8 +24,8 @@ from .gene_names import find_gene_and_ensembl_release_by_name, find_name_from_en
 
 
 extra_tx_mappings = {
-    "ENST00000662584": "STRA8", 
-    "ENST00000275764": "STRA8", 
+    "ENST00000662584": "STRA8",
+    "ENST00000275764": "STRA8",
     "ENST00000667288": "STRA8",
     "ENST00000415311": "KIR2DP1",
     "ENST00000635730": "CYP2D8P",
@@ -217,7 +215,7 @@ extra_tx_mappings = {
     "ENST00000645608": "VPS28",
     "ENST00000635910": "CYP2D6",
     "ENST00000642865": "DEFB1",
-    "ENST00000642428": "RPS3AP35", 
+    "ENST00000642428": "RPS3AP35",
     "ENST00000639633": "HLA-B",
     "ENST00000639127": "NPIPB11",
     "ENST00000638624": "AC092824.3",
@@ -238,7 +236,9 @@ extra_tx_mappings = {
 }
 
 
-def aggregate_gene_expression(df : pd.DataFrame, tx_to_gene_name : dict[str, str] = extra_tx_mappings) -> pd.DataFrame:
+def aggregate_gene_expression(
+    df: pd.DataFrame, tx_to_gene_name: dict[str, str] = extra_tx_mappings
+) -> pd.DataFrame:
     c = Counter()
     unknown_genes_tpm = 0
     n_unknown = 0
@@ -246,23 +246,23 @@ def aggregate_gene_expression(df : pd.DataFrame, tx_to_gene_name : dict[str, str
         gene_name = None
         if t in tx_to_gene_name:
             gene_name = tx_to_gene_name[t]
-        
+
         else:
             t = t.split(".")[0]
             if t in tx_to_gene_name:
                 gene_name = tx_to_gene_name[t]
             else:
                 gene_name = find_name_from_ensembl(t, verbose=False)
-            
+
             if not gene_name:
                 gene_name = extra_tx_mappings.get(t)
-            
+
         if gene_name:
             c[gene_name] += tpm
         else:
             if tpm > 1:
                 n_unknown += 1
-            
+
                 print("? ", n_unknown, t, tpm)
 
             unknown_genes_tpm += tpm
@@ -270,12 +270,13 @@ def aggregate_gene_expression(df : pd.DataFrame, tx_to_gene_name : dict[str, str
     known_genes_tpm = sum(c.values())
 
     print(
-        f"Assigned {known_genes_tpm:.2f} TPM to known genes, {unknown_genes_tpm:.2f} to unknown gene names; {known_genes_tpm * 100 / (known_genes_tpm + unknown_genes_tpm):.4f}% known")
+        f"Assigned {known_genes_tpm:.2f} TPM to known genes, {unknown_genes_tpm:.2f} to unknown gene names; {known_genes_tpm * 100 / (known_genes_tpm + unknown_genes_tpm):.4f}% known"
+    )
 
     df_gene_expr = pd.DataFrame({"gene": c.keys(), "TPM": c.values()})
 
     df_gene_expr = df_gene_expr.sort_values("TPM")
-    
+
     gene_ids = []
     ensembl_versions = []
     for gene_name in df_gene_expr.gene:
@@ -290,5 +291,7 @@ def aggregate_gene_expression(df : pd.DataFrame, tx_to_gene_name : dict[str, str
         ensembl_versions.append(ensembl_release)
     df_gene_expr["gene_id"] = gene_ids
     df_gene_expr["ensembl_release"] = ensembl_versions
-    df_gene_expr["ensembl_release"] = df_gene_expr["ensembl_release"].fillna(-1).astype(int)
+    df_gene_expr["ensembl_release"] = (
+        df_gene_expr["ensembl_release"].fillna(-1).astype(int)
+    )
     return df_gene_expr
