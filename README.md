@@ -34,6 +34,15 @@ Sources:
 
 ## Antibody-drug conjugates (ADCs)
 
+### Approved
+
+Last updated: September 19th, 2024
+
+Sources:
+
+- [Development of antibody-drug conjugates in cancer: Overview and prospects](https://onlinelibrary.wiley.com/doi/full/10.1002/cac2.12517)
+
+
 ### Clinical trials 
 Last updated: September 11th, 2024
 

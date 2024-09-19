@@ -18,6 +18,14 @@
 
 
 aliases = {
+    "MAGEA1": "MAGE-A1",
+    "MAGEA2": "MAGE-A2",
+    "MAGEA3": "MAGE-A3",
+    "MAGEA4": "MAGE-A4",
+    "MAGEA5": "MAGE-A5",
+    "MAGEA6": "MAGE-A6",
+    "MAGEA10": "MAGE-A10",
+    "MAGEA12": "MAGE-A12",
     "PMEL": "gp100",
     "CD276": "B7-H3",
     "VTCN1": "B7-H4",
@@ -41,6 +49,9 @@ aliases = {
     "POU1F1": "POUF1",
     "ATP5F1E": "ATP5E",
     "PVRL4": "NECTIN4",
+    "CTAG1B": "NY-ESO-1",
+    "TP53": "p53",
+    "FOLR1": "FRα",
 }
 
 reverse_aliases = {}

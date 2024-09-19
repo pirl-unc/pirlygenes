@@ -1,0 +1,4 @@
+Drug_Name,Commercial_name,Approvals,Withdrawals,Company,Target_Target_Symbol,Antibody_Type,Linker_Type,Payload,DAR,Disease_Area
+Gemtuzumab ozogamicin,Mylotarg,FDA 2000; FDA 2017, FDA 2010,Wyeth/Pfizer,CD33,IgG4,Acetyl Butyrate,Ozoganmicin (DNA-targeting),4.0,R/R CD33+ AML
+Moxetumomab pasudotox,Lumoxiti,FDA 2018,FDA 2023,AstraZeneca,CD22,IgG1,mc-val-cit-PABC,PE38 (Pseudomonas exotoxin),1.0,R/R Hairy cell leukemia
+Belantamab mafodotin,Blenrep,FDA 2020,FDA 2022,GlaxoSmithKline (GSK),BCMA,IgG1,Mc linker,MMAF (tubulin binder),4.0,R/R multiple myeloma

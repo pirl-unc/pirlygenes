@@ -294,4 +294,5 @@ def aggregate_gene_expression(
     df_gene_expr["ensembl_release"] = (
         df_gene_expr["ensembl_release"].fillna(-1).astype(int)
     )
+
     return df_gene_expr

@@ -26,21 +26,45 @@ def get_target_gene_set(
     return genes
 
 
-def get_ADC_gene_targets():
+def get_ADC_trial_targets():
     return get_target_gene_set("ADC-trials")
 
 
-def get_TCR_T_gene_targets():
+def get_ADC_approved_targets():
+    return get_target_gene_set("ADC-approved")
+
+
+def get_ADC_targets():
+    return get_ADC_trial_targets().uniun(get_ADC_approved_targets())
+
+
+def get_TCR_T_trial_targets():
     return get_target_gene_set("TCR-T-trials")
 
 
-def get_CAR_T_gene_targets():
+def get_TCR_T_targets():
+    return get_TCR_T_trial_targets()
+
+
+def get_CAR_T_approved_targets():
     return get_target_gene_set("CAR-T-approved")
+
+
+def get_CAR_T_targets():
+    return get_CAR_T_approved_targets()
 
 
 def get_multispecific_tcell_engager_trial_targets():
     return get_target_gene_set("multispecific-tcell-engager-trials")
 
 
-def get_bispecific_antibody_targets():
+def get_multispecific_tcell_engager_targets():
+    return get_multispecific_tcell_engager_trial_targets()
+
+
+def get_bispecific_antibody_approved_targets():
     return get_target_gene_set("bispecific-antibodies-approved")
+
+
+def get_bispecific_antibody_targets():
+    return get_bispecific_antibody_approved_targets()

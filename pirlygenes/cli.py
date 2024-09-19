@@ -16,14 +16,14 @@ import pandas as pd
 from .version import print_name_and_version
 from .load_dataset import load_all_dataframes
 from .cancer_data import (
-    get_ADC_gene_targets,
-    get_CAR_T_gene_targets,
-    get_multispecific_tcell_engager_trial_targets,
+    get_ADC_targets,
+    get_CAR_T_targets,
+    get_multispecific_tcell_engager_targets,
     get_bispecific_antibody_targets,
+    get_TCR_T_targets,
 )
 from .load_expression import load_expression_data
 from .plot import plot_gene_expression, default_gene_sets
-from .gene_expression import aggregate_gene_expression as tx2gene
 
 
 @named("data")
@@ -47,10 +47,11 @@ def plot_expression(
         (
             "treatments",
             {
-                "approved CAR-T": get_CAR_T_gene_targets(),
-                "approved bispecifics": get_bispecific_antibody_targets(),
-                "MiTEs": get_multispecific_tcell_engager_trial_targets(),
-                "ADCs": get_ADC_gene_targets(),
+                "TCR-T": get_TCR_T_targets(),
+                "CAR-T": get_CAR_T_targets(),
+                "bispecifics": get_bispecific_antibody_targets(),
+                "MuTEs": get_multispecific_tcell_engager_targets(),
+                "ADCs": get_ADC_targets(),
             },
         ),
     ]:

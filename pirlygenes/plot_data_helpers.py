@@ -57,7 +57,7 @@ def _create_gene_to_category_list_mapping(gene_sets):
 
 
 def prepare_gene_expr_df(
-    df_gene_expr, gene_sets, priority_category=None, TPM_offset=10.0**-4
+    df_gene_expr, gene_sets, priority_category=None, TPM_offset=10.0**-2
 ):
 
     check_gene_names_in_gene_sets(df_gene_expr, gene_sets)
@@ -76,8 +76,8 @@ def prepare_gene_expr_df(
     new_cats = []
     new_genes = []
     gene_to_categories = _create_gene_to_category_list_mapping(gene_sets)
-    for g, cats in gene_to_categories.items():
-        for cat in cats:
+    for g in original_genes:
+        for cat in gene_to_categories[g]:
             new_genes.append(g)
             new_cats.append(cat)
     return pd.DataFrame(
