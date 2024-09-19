@@ -35,7 +35,7 @@ def get_ADC_approved_targets():
 
 
 def get_ADC_targets():
-    return get_ADC_trial_targets().uniun(get_ADC_approved_targets())
+    return get_ADC_trial_targets().union(get_ADC_approved_targets())
 
 
 def get_TCR_T_trial_targets():

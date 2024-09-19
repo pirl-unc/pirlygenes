@@ -15,7 +15,8 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 
-from .gene_aliases import aliases
+from .gene_display_names import aliases
+from .gene_ids import find_canonical_names
 
 
 def check_gene_names_in_gene_sets(df_gene_expr, gene_sets):
@@ -29,6 +30,8 @@ def check_gene_names_in_gene_sets(df_gene_expr, gene_sets):
 
 def normalize_categories(gene_sets, priority_category=None):
     for cat, genes in list(gene_sets.items()):
+        # rename genes to canonical gene names
+        genes = find_canonical_names(genes)
         if priority_category and cat != priority_category:
             gene_sets[cat] = sorted(set(genes).difference(gene_sets[priority_category]))
         else:
@@ -53,6 +56,8 @@ def _create_gene_to_category_list_mapping(gene_sets):
     for category, genes in gene_sets.items():
         for g in genes:
             gene_to_categories[g].append(category)
+    if not gene_to_categories[g]:
+        gene_to_categories[g].append("other")
     return gene_to_categories
 
 
@@ -62,9 +67,8 @@ def prepare_gene_expr_df(
 
     check_gene_names_in_gene_sets(df_gene_expr, gene_sets)
     gene_sets = normalize_categories(gene_sets, priority_category=priority_category)
-    original_genes = df_gene_expr.gene
+    original_genes = df_gene_expr["canonical_gene_name"]
 
-    gene_to_alias = {g: aliases.get(g, g) for g in original_genes}
     tpm_values = df_gene_expr["TPM"].copy()
     if TPM_offset:
         tpm_values += TPM_offset
@@ -86,6 +90,6 @@ def prepare_gene_expr_df(
             category=new_cats,
             TPM=[gene_to_tpm_values[g] for g in new_genes],
             log_TPM=[gene_to_log_tpm_values[g] for g in new_genes],
-            gene_alias=[gene_to_alias[g] for g in new_genes],
+            gene_display_name=[aliases.get(g, g) for g in new_genes],
         )
     )

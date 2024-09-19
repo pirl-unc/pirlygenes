@@ -10,10 +10,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Sequence
 
 import pyensembl.shell
 from pyensembl.shell import collect_all_installed_ensembl_releases
-from .gene_aliases import get_alias_as_list, get_reverse_alias_as_list
+from .gene_display_names import get_alias_as_list, get_reverse_alias_as_list
 
 genomes = [
     g
@@ -81,3 +82,31 @@ def find_gene_id_by_name_from_ensembl(name: str, verbose: bool = False) -> str |
     gene = find_gene_by_name_from_ensembl(name, verbose=verbose)
     if gene is not None:
         return gene.id
+
+
+def find_canonical_gene_id_and_name(gene_name: str) -> tuple[str | None, str | None]:
+    gene = find_gene_by_name_from_ensembl(gene_name)
+    if gene:
+        return gene.id, gene.name
+    else:
+        return None, None
+
+
+def find_canonical_gene_ids_and_names(
+    gene_names: Sequence[str],
+) -> list[tuple[str | None, str | None]]:
+
+    gene_ids = []
+    canonical_gene_names = []
+
+    for gene_name in gene_names:
+        gene_id, canonical_name = find_canonical_gene_id_and_name(gene_name)
+        gene_ids.append(gene_id)
+        canonical_gene_names.append(canonical_name)
+    return gene_ids, canonical_gene_names
+
+
+def find_canonical_names(
+    gene_names: Sequence[str],
+) -> list[str]:
+    return [x[1] for x in find_canonical_gene_ids_and_names(gene_names)]

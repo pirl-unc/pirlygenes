@@ -58,19 +58,3 @@ def get_data(name, _dataframes_dict=None):
         if candidate in _dataframes_dict:
             return _dataframes_dict[candidate]
     raise ValueError(f"Dataset {name} not found")
-
-
-def get_target_gene_set(
-    name, columns=["Tumor_Target_Symbol", "Tumor_Target_Symbols", "Symbols"]
-):
-    df = get_data(name)
-    genes = set()
-    for column in columns:
-        if column in df.columns:
-            for x in df[column]:
-                genes.update([xi.strip() for xi in x.split(";")])
-    return genes
-
-
-def get_ADC_gene_targets():
-    return get_target_gene_set("ADC-trials")

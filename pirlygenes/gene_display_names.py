@@ -71,3 +71,7 @@ def get_reverse_alias_as_list(name: str) -> list[str]:
         return [reverse_aliases[name]]
     else:
         return []
+
+
+def display_name(name: str) -> str:
+    return aliases.get(name, name)
