@@ -14,7 +14,7 @@ from typing import Sequence
 
 import pyensembl.shell
 from pyensembl.shell import collect_all_installed_ensembl_releases
-from .gene_display_names import get_alias_as_list, get_reverse_alias_as_list
+from .gene_aliases import get_alias_as_list, get_reverse_alias_as_list
 
 genomes = [
     g
@@ -42,8 +42,10 @@ def find_name_from_ensembl(t_id: str, verbose: bool = True) -> str | None:
 
 
 def find_gene_and_ensembl_release_by_name(
-    name, verbose=False
+    name: str,
+    verbose: bool = False,
 ) -> tuple[pyensembl.Genome, pyensembl.Gene] | None:
+
     for genome in genomes:
         candidates = set(
             [name] + get_alias_as_list(name) + get_reverse_alias_as_list(name)

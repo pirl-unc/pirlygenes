@@ -15,7 +15,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 
-from .gene_display_names import aliases
+from .gene_aliases import aliases
 from .gene_ids import find_canonical_names
 
 

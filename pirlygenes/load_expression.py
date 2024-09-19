@@ -14,7 +14,7 @@ import pandas as pd
 
 from .aggregate_gene_expression import aggregate_gene_expression as tx2gene
 from .gene_ids import find_canonical_gene_ids_and_names
-from .gene_display_names import get_gene_display_name
+from .gene_aliases import display_name
 
 
 def load_expression_data(input_path, aggregate_gene_expression=False):
@@ -49,9 +49,10 @@ def load_expression_data(input_path, aggregate_gene_expression=False):
 
     if "ensembl_gene_id" not in columns:
         gene_ids, canonical_gene_names = find_canonical_gene_ids_and_names(df.gene)
+
         df["ensembl_gene_id"] = gene_ids
         df["canonical_gene_name"] = canonical_gene_names
         df["gene_display_name"] = [
-            get_gene_display_name[gene_name] for gene_name in canonical_gene_names
+            display_name(gene_name) for gene_name in canonical_gene_names
         ]
     return df
