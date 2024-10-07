@@ -21,6 +21,8 @@ def load_expression_data(input_path, aggregate_gene_expression=False):
 
     if ".csv" in input_path:
         df = pd.read_csv(input_path)
+    elif ".tsv" in input_path:
+        df = pd.read_csv(input_path, sep="\t")
     elif ".xlsx" in input_path:
         df = pd.read_excel(input_path)
     else:

@@ -22,15 +22,34 @@ import pandas as pd
 
 from .gene_ids import find_gene_and_ensembl_release_by_name, find_name_from_ensembl
 from .transcript_to_gene import extra_tx_mappings
+from .common import find_column
 
 
 def aggregate_gene_expression(
-    df: pd.DataFrame, tx_to_gene_name: dict[str, str] = extra_tx_mappings
+    df: pd.DataFrame,
+    tx_to_gene_name: dict[str, str] = extra_tx_mappings,
+    transcript_id_column_candidates: list[str] = [
+        "transcript",
+        "transcript_id",
+        "transcriptid",
+        "target",
+        "target_id",
+        "targetid",
+        "name",
+    ],
+    tpm_column_candidates: list[str] = [
+        "tpm",
+    ],
 ) -> pd.DataFrame:
+    transcript_id_column = find_column(
+        df, transcript_id_column_candidates, "transcript ID"
+    )
+    tpm_column = find_column(df, tpm_column_candidates, "TPM")
+
     c = Counter()
     unknown_genes_tpm = 0
     n_unknown = 0
-    for t, tpm in zip(df.Name, df.TPM):
+    for t, tpm in zip(df[transcript_id_column], df[tpm_column]):
         gene_name = None
         if t in tx_to_gene_name:
             gene_name = tx_to_gene_name[t]
