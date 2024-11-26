@@ -20,7 +20,10 @@ from collections import Counter
 
 import pandas as pd
 
-from .gene_ids import find_gene_and_ensembl_release_by_name, find_name_from_ensembl
+from .gene_ids import (
+    find_gene_and_ensembl_release_by_name,
+    find_gene_name_from_ensembl_transcript_id,
+)
 from .transcript_to_gene import extra_tx_mappings
 from .common import find_column
 
@@ -59,7 +62,7 @@ def aggregate_gene_expression(
             if t in tx_to_gene_name:
                 gene_name = tx_to_gene_name[t]
             else:
-                gene_name = find_name_from_ensembl(t, verbose=False)
+                gene_name = find_gene_name_from_ensembl_transcript_id(t, verbose=False)
 
             if not gene_name:
                 gene_name = extra_tx_mappings.get(t)

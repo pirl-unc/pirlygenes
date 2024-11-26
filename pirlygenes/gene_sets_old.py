@@ -10,6 +10,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# TODO: move these all to CSVs
+
 cytokine_receptors = [
     "IL2RA",
     "IL4R",

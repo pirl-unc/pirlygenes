@@ -15,7 +15,7 @@ import pandas as pd
 
 from .version import print_name_and_version
 from .load_dataset import load_all_dataframes
-from .cancer_data import (
+from .gene_sets_cancer import (
     get_ADC_targets,
     get_CAR_T_targets,
     get_multispecific_tcell_engager_targets,

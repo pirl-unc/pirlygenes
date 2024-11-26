@@ -15,13 +15,14 @@ import matplotlib.pyplot as plt
 from adjustText import adjust_text
 
 from .plot_data_helpers import prepare_gene_expr_df
-from .gene_sets import (
+from .gene_sets_old import (
     APM_genes,
     MHC1_genes,
     TLR_signaling,
     growth_receptor_genes,
     oncogenes,
 )
+from .gene_sets_cancer import get_CTAs
 
 
 def pick_genes_to_annotate(df, num_per_category=10, verbose=False):
@@ -44,6 +45,7 @@ default_gene_sets = dict(
     TLR=TLR_signaling,
     Growth_receptors=growth_receptor_genes,
     Oncogenes=oncogenes,
+    CTAs=get_CTAs(),
 )
 
 

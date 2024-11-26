@@ -16,16 +16,48 @@ import pyensembl.shell
 from pyensembl.shell import collect_all_installed_ensembl_releases
 from .gene_aliases import get_alias_as_list, get_reverse_alias_as_list
 
-genomes = [
-    g
-    for g in collect_all_installed_ensembl_releases()
-    if g.species.latin_name == "homo_sapiens"
-]
+genomes = sorted(
+    [
+        g
+        for g in collect_all_installed_ensembl_releases()
+        if g.species.latin_name == "homo_sapiens"
+    ],
+    reverse=True,
+    key=lambda g: g.release,
+)
+print("Installed genomes:", genomes)
 
 
-def find_name_from_ensembl(t_id: str, verbose: bool = True) -> str | None:
+def find_gene_name_from_ensembl_gene_id(
+    gene_id: str, verbose: bool = True
+) -> str | None:
+    gene_name = None
+    gene = None
+
+    for genome in genomes:
+
+        try:
+            gene = genome.gene_by_id(gene_id)
+        except:
+            pass
+        if gene:
+            gene_name = gene.gene_name
+        if gene_name:
+            if verbose:
+                print(
+                    "Found %s -> %s in Ensembl v%d"
+                    % (gene_id, gene_name, genome.release)
+                )
+            break
+    return gene_name
+
+
+def find_gene_name_from_ensembl_transcript_id(
+    t_id: str, verbose: bool = True
+) -> str | None:
     gene_name = None
     t = None
+
     for g in genomes:
 
         try:
@@ -111,4 +143,5 @@ def find_canonical_gene_ids_and_names(
 def find_canonical_names(
     gene_names: Sequence[str],
 ) -> list[str]:
+    print(gene_names)
     return [x[1] for x in find_canonical_gene_ids_and_names(gene_names)]

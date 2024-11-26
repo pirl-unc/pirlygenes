@@ -14,7 +14,7 @@ from .load_dataset import get_data
 
 
 def get_target_gene_set(
-    name, columns=["Tumor_Target_Symbol", "Tumor_Target_Symbols", "Symbols"]
+    name, columns=["Tumor_Target_Symbol", "Tumor_Target_Symbols", "Symbols", "Symbol"]
 ):
     df = get_data(name)
     genes = set()
@@ -68,3 +68,7 @@ def get_bispecific_antibody_approved_targets():
 
 def get_bispecific_antibody_targets():
     return get_bispecific_antibody_approved_targets()
+
+
+def get_CTAs():
+    return get_target_gene_set("cancer-testis-antigens")

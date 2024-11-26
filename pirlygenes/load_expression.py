@@ -13,8 +13,18 @@
 import pandas as pd
 
 from .aggregate_gene_expression import aggregate_gene_expression as tx2gene
-from .gene_ids import find_canonical_gene_ids_and_names
+from .gene_ids import (
+    find_canonical_gene_ids_and_names,
+    find_gene_name_from_ensembl_gene_id,
+)
 from .gene_aliases import display_name
+
+
+def get_canonical_gene_name_from_gene_ids_string(gene_ids_string):
+    gene_ids = gene_ids_string.split(";")
+    gene_names = [find_gene_name_from_ensembl_gene_id(gene_id) for gene_id in gene_ids]
+    not_none_gene_names = [name for name in gene_names if name is not None]
+    return ";".join(not_none_gene_names)
 
 
 def load_expression_data(input_path, aggregate_gene_expression=False):
@@ -31,7 +41,7 @@ def load_expression_data(input_path, aggregate_gene_expression=False):
     if aggregate_gene_expression:
         df = tx2gene(df)
 
-    df = df.rename(columns={"Gene Symbol": "gene", "Gene": "gene"})
+    df = df.rename(columns={"Gene Symbol": "gene", "Gene": "gene", "Gene Name": "gene"})
 
     df = df.rename(
         columns={
@@ -41,20 +51,28 @@ def load_expression_data(input_path, aggregate_gene_expression=False):
             "Ensembl_Gene_ID": "ensembl_gene_id",
         }
     )
+    df["gene"] = df["gene"].str.replace("-", "")
 
-    columns = sorted(set(df.columns))
-
-    if "gene" not in columns:
+    if "gene" not in set(df.columns):
         raise ValueError(
-            f"Gene column not found in {input_path}, available columns: {columns}"
+            f"Gene column not found in {input_path}, available columns: {sorted(set(df.columns))}"
         )
 
-    if "ensembl_gene_id" not in columns:
+    if "ensembl_gene_id" not in set(df.columns):
         gene_ids, canonical_gene_names = find_canonical_gene_ids_and_names(df.gene)
 
         df["ensembl_gene_id"] = gene_ids
-        df["canonical_gene_name"] = canonical_gene_names
+        df["canonical_gene_name"] = ";".join(canonical_gene_names)
+
+    if "canonical_gene_name" not in set(df.columns):
+        df["canonical_gene_name"] = df["ensembl_gene_id"].apply(
+            get_canonical_gene_name_from_gene_ids_string
+        )
+
+    if "gene_display_name" not in set(df.columns):
         df["gene_display_name"] = [
-            display_name(gene_name) for gene_name in canonical_gene_names
+            ";".join([display_name(gene_name) for gene_name in gene_names.split(";")])
+            for gene_names in df.canonical_gene_name
         ]
+    df.to_csv("debug-expression_data.csv", index=False)
     return df
