@@ -13,8 +13,10 @@
 
 from .load_dataset import load_all_dataframes, load_all_dataframes_dict, get_data
 from .plot import plot_gene_expression
+from .version import __version__
 
 __all__ = [
+    "__version__",
     "load_all_dataframes", 
     "load_all_dataframes_dict", 
     "get_data", 
