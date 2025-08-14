@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import defaultdict
 
 # -----------------------------------------------------------
 # Let's rewrite the Ensembl gene names as the more
@@ -54,9 +55,10 @@ aliases = {
     "FOLR1": "FRα",
 }
 
-reverse_aliases = {}
+
+reverse_aliases = defaultdict(list)
 for k, v in aliases.items():
-    reverse_aliases[v] = k
+    reverse_aliases[v].append(k)
 
 
 def get_alias_as_list(name: str) -> list[str]:
@@ -67,11 +69,17 @@ def get_alias_as_list(name: str) -> list[str]:
 
 
 def get_reverse_alias_as_list(name: str) -> list[str]:
-    if name in reverse_aliases:
-        return [reverse_aliases[name]]
-    else:
-        return []
+    return reverse_aliases.get(name, [])
 
 
 def display_name(name: str) -> str:
     return aliases.get(name, name)
+
+
+def short_gene_name(name: str) -> str:
+    """
+    Normalize gene names to their aliases.
+    """
+    return sorted(reverse_aliases.get(name, [name.upper().replace("-", "")]), key=len)[
+        0
+    ]

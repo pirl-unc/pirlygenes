@@ -17,9 +17,9 @@ def find_column(
     df: pd.DataFrame, candidates: list[str], column_name: str
 ) -> str | None:
     result = None
-    for candidate in df.columns:
-        if candidate.lower() in candidates:
-            result = candidate
+    for col in df.columns:
+        if col.lower() in candidates:
+            result = col
             break
     if result is None:
         raise ValueError(

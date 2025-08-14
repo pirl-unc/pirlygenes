@@ -12,9 +12,11 @@
 
 from typing import Sequence
 
-import pyensembl.shell
+from tqdm import tqdm
+import pyensembl
 from pyensembl.shell import collect_all_installed_ensembl_releases
-from .gene_aliases import get_alias_as_list, get_reverse_alias_as_list
+
+from .gene_names import get_alias_as_list, get_reverse_alias_as_list, short_gene_name
 
 genomes = sorted(
     [
@@ -25,7 +27,8 @@ genomes = sorted(
     reverse=True,
     key=lambda g: g.release,
 )
-print("Installed genomes:", genomes)
+
+print("Installed Ensembl genomes: %s" % " ".join([str(g.release) for g in genomes]))
 
 
 def find_gene_name_from_ensembl_gene_id(
@@ -80,7 +83,9 @@ def find_gene_and_ensembl_release_by_name(
 
     for genome in genomes:
         candidates = set(
-            [name] + get_alias_as_list(name) + get_reverse_alias_as_list(name)
+            [name, short_gene_name(name)]
+            + get_alias_as_list(name)
+            + get_reverse_alias_as_list(name)
         )
         for n in list(candidates):
             candidates.add(n.lower())
@@ -133,7 +138,7 @@ def find_canonical_gene_ids_and_names(
     gene_ids = []
     canonical_gene_names = []
 
-    for gene_name in gene_names:
+    for gene_name in tqdm(gene_names, "Finding canonical gene IDs and names"):
         gene_id, canonical_name = find_canonical_gene_id_and_name(gene_name)
         gene_ids.append(gene_id)
         canonical_gene_names.append(canonical_name)
@@ -143,5 +148,4 @@ def find_canonical_gene_ids_and_names(
 def find_canonical_names(
     gene_names: Sequence[str],
 ) -> list[str]:
-    print(gene_names)
     return [x[1] for x in find_canonical_gene_ids_and_names(gene_names)]

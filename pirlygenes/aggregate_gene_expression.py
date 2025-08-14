@@ -19,6 +19,7 @@
 from collections import Counter
 
 import pandas as pd
+from tqdm import tqdm
 
 from .gene_ids import (
     find_gene_and_ensembl_release_by_name,
@@ -52,7 +53,9 @@ def aggregate_gene_expression(
     c = Counter()
     unknown_genes_tpm = 0
     n_unknown = 0
-    for t, tpm in zip(df[transcript_id_column], df[tpm_column]):
+    for t, tpm in tqdm(
+        zip(df[transcript_id_column], df[tpm_column]), "Aggregating gene expression"
+    ):
         gene_name = None
         if t in tx_to_gene_name:
             gene_name = tx_to_gene_name[t]

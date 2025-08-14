@@ -24,20 +24,64 @@ from .gene_sets_old import (
 )
 from .gene_sets_cancer import get_CTAs
 
+# ------------------------ helpers ------------------------
 
-def pick_genes_to_annotate(df, num_per_category=10, verbose=False):
+
+def _guess_gene_cols(df):
+    """Best-effort guess for gene ID and name columns in df_gene_expr."""
+    id_candidates = ["gene_id", "ensembl_gene_id", "canonical_gene_id", "GeneID"]
+    name_candidates = [
+        "gene_display_name",
+        "gene_name",
+        "canonical_gene_name",
+        "symbol",
+        "GeneName",
+    ]
+    gene_id_col = next((c for c in id_candidates if c in df.columns), None)
+    gene_name_col = next((c for c in name_candidates if c in df.columns), None)
+    if gene_id_col is None:
+        raise KeyError(
+            "Could not find a gene ID column in df_gene_expr. "
+            "Tried: %s" % (id_candidates,)
+        )
+    if gene_name_col is None:
+        raise KeyError(
+            "Could not find a gene name column in df_gene_expr. "
+            "Tried: %s" % (name_candidates,)
+        )
+    return gene_id_col, gene_name_col
+
+
+def pick_genes_to_annotate(
+    df,
+    num_per_category=10,
+    verbose=False,
+    category_col="category",
+    tpm_col="TPM",
+    gene_id_col="gene_id",
+    gene_name_col="gene_display_name",
+):
+    """
+    Returns a set of GENE IDs to annotate (top N by TPM per category).
+    Note: we store IDs for stable matching; labels come from df['gene_display_name'] later.
+    """
     genes_to_annotate = set()
-    assert "category" in df, df.columns
-    assert "TPM" in df, df.columns
-    for cat, df_cat in df.groupby("category"):
-        df_cat_sorted = df_cat.sort_values("TPM", ascending=False)
+
+    for c in [gene_id_col, gene_name_col, tpm_col, category_col]:
+        assert c in df.columns, "%s not in %s" % (c, df.columns)
+
+    for cat, df_cat in df.groupby(category_col, observed=True):
+        df_cat_sorted = df_cat.sort_values(tpm_col, ascending=False)
         top = df_cat_sorted.head(num_per_category)
         if verbose:
+            cols = [gene_id_col, gene_name_col, tpm_col, category_col]
             print(cat)
-            print(top[["gene", "TPM"]])
-        genes_to_annotate.update(top.gene)
+            print(top[cols])
+        genes_to_annotate.update(top[gene_id_col].tolist())
     return genes_to_annotate
 
+
+# ------------------------ defaults ------------------------
 
 default_gene_sets = dict(
     APM=APM_genes,
@@ -47,6 +91,8 @@ default_gene_sets = dict(
     Oncogenes=oncogenes,
     CTAs=get_CTAs(),
 )
+
+# ------------------------ main plot ------------------------
 
 
 def plot_gene_expression(
@@ -61,14 +107,32 @@ def plot_gene_expression(
         ensure_inside_axes=False,
     ),
 ):
+    # Pick the correct ID/name columns from the incoming DF
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
 
+    # - join by IDs, label with names, include 'other' as a category and place it first.
     df_gene_expr_annot = prepare_gene_expr_df(
         df_gene_expr,
         gene_sets=gene_sets,
+        gene_id_col=gene_id_col,
+        gene_name_col=gene_name_col,  # ok if None; helper will resolve names
+        other_category_name="other",  # <- ensure lowercase to match your filter
+        place_other_first=True,  # <- 'other' left-most
     )
-    genes_to_annotate = pick_genes_to_annotate(df_gene_expr_annot)
-    assert "category" in df_gene_expr_annot.columns, df_gene_expr_annot.columns
-    assert "TPM" in df_gene_expr_annot.columns, df_gene_expr_annot.columns
+
+    # Just in case the "prepared" DF changed any column names, get them again
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr_annot)
+
+    # Choose which IDs to annotate (top N per category)
+    genes_to_annotate = pick_genes_to_annotate(
+        df_gene_expr_annot, gene_id_col=gene_id_col, gene_name_col=gene_name_col
+    )
+
+    # Sanity checks
+    for col in ("category", "TPM", gene_id_col, gene_name_col):
+        assert col in df_gene_expr_annot.columns, df_gene_expr_annot.columns
+
+    # Plot
     cat = sns.catplot(
         data=df_gene_expr_annot,
         x="category",
@@ -80,24 +144,31 @@ def plot_gene_expression(
     )
     plt.yscale("log")
 
+    # Annotate with display names, never raw ENSG; skip the 'other' column
     texts = []
-    for _, row in df_gene_expr_annot[
+    mask = (
         (df_gene_expr_annot.TPM > 0.1)
         & (df_gene_expr_annot.category != "other")
-        & (df_gene_expr_annot.gene.isin(genes_to_annotate))
-    ].iterrows():
+        & (df_gene_expr_annot[gene_id_col].isin(genes_to_annotate))
+    )
+    for _, row in df_gene_expr_annot[mask].iterrows():
+        # Use the friendly display name
+        label = row[gene_name_col]
         texts.append(
             cat.ax.text(
                 row.category,
                 row.TPM,
-                row.gene,
+                label,
                 color="black",
                 alpha=0.8,
                 ha="right",
                 va="top",
             )
         )
+
     adjust_text(texts, **adjust_args)
+
     if save_to_filename:
         cat.figure.savefig(save_to_filename)
+
     return cat

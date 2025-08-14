@@ -11,13 +11,14 @@
 # limitations under the License.
 
 import pandas as pd
+from tqdm import tqdm
 
 from .aggregate_gene_expression import aggregate_gene_expression as tx2gene
 from .gene_ids import (
     find_canonical_gene_ids_and_names,
     find_gene_name_from_ensembl_gene_id,
 )
-from .gene_aliases import display_name
+from .gene_names import display_name, short_gene_name
 
 
 def get_canonical_gene_name_from_gene_ids_string(gene_ids_string):
@@ -31,7 +32,7 @@ def load_expression_data(input_path, aggregate_gene_expression=False):
 
     if ".csv" in input_path:
         df = pd.read_csv(input_path)
-    elif ".tsv" in input_path:
+    elif ".tsv" in input_path or ".sf" in input_path or ".txt" in input_path:
         df = pd.read_csv(input_path, sep="\t")
     elif ".xlsx" in input_path:
         df = pd.read_excel(input_path)
@@ -41,28 +42,61 @@ def load_expression_data(input_path, aggregate_gene_expression=False):
     if aggregate_gene_expression:
         df = tx2gene(df)
 
-    df = df.rename(columns={"Gene Symbol": "gene", "Gene": "gene", "Gene Name": "gene"})
-
     df = df.rename(
         columns={
+            "Gene Symbol": "gene",
+            "Gene": "gene",
+            "Gene Name": "gene",
             "Gene ID": "ensembl_gene_id",
             "Gene_ID": "ensembl_gene_id",
             "Ensembl Gene ID": "ensembl_gene_id",
             "Ensembl_Gene_ID": "ensembl_gene_id",
         }
     )
-    df["gene"] = df["gene"].str.replace("-", "")
-
     if "gene" not in set(df.columns):
         raise ValueError(
             f"Gene column not found in {input_path}, available columns: {sorted(set(df.columns))}"
         )
+    df["gene"] = df["gene"].apply(short_gene_name)
 
     if "ensembl_gene_id" not in set(df.columns):
         gene_ids, canonical_gene_names = find_canonical_gene_ids_and_names(df.gene)
+        if not gene_ids:
+            raise ValueError(
+                f"Unable to find Ensembl gene IDs for any of the genes in {input_path}"
+            )
+        if len(gene_ids) != len(df):
+            raise ValueError(
+                f"Number of Ensembl gene IDs ({len(gene_ids)}) does not match number of rows in {input_path} ({len(df)})"
+            )
 
         df["ensembl_gene_id"] = gene_ids
-        df["canonical_gene_name"] = ";".join(canonical_gene_names)
+
+        if not canonical_gene_names:
+            raise ValueError(
+                f"Unable to find canonical gene names for any of the genes in {input_path}"
+            )
+        if len(canonical_gene_names) != len(df):
+            raise ValueError(
+                f"Number of canonical gene names ({len(canonical_gene_names)}) does not match number of rows in {input_path} ({len(df)})"
+            )
+        if "canonical_gene_name" in set(df.columns):
+            raise ValueError(
+                f"Column 'canonical_gene_name' already exists in {input_path}, please rename it before loading."
+            )
+        else:
+            df["canonical_gene_name"] = [
+                (
+                    gs
+                    if type(gs) is str
+                    else (
+                        ""
+                        if gs is None
+                        else ";".join(gs) if type(gs) in (list, tuple) else "?"
+                    )
+                )
+                for gs in canonical_gene_names
+            ]
 
     if "canonical_gene_name" not in set(df.columns):
         df["canonical_gene_name"] = df["ensembl_gene_id"].apply(
