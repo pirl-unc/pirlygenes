@@ -109,3 +109,124 @@ def aggregate_gene_expression(
     )
 
     return df_gene_expr
+
+
+####
+# FASTER VERSION
+###
+
+from functools import lru_cache
+from collections import defaultdict
+import pandas as pd
+
+from .gene_ids import (
+    find_gene_and_ensembl_release_by_name,
+    find_gene_name_from_ensembl_transcript_id,
+)
+from .transcript_to_gene import extra_tx_mappings
+from .common import find_column
+
+
+def _expanded_tx_map(tx_to_gene_name: dict[str, str]) -> dict[str, str]:
+    """
+    Expand a transcript->gene dict to include versionless keys.
+    If both versioned and versionless exist, keep the first-seen value.
+    """
+    out = {}
+    for k, v in tx_to_gene_name.items():
+        if k not in out:
+            out[k] = v
+        k0 = k.split(".", 1)[0]
+        out.setdefault(k0, v)
+    return out
+
+
+def aggregate_gene_expression(
+    df: pd.DataFrame,
+    tx_to_gene_name: dict[str, str] = extra_tx_mappings,
+    transcript_id_column_candidates: list[str] = (
+        "transcript transcript_id transcriptid target target_id targetid name".split()
+    ),
+    tpm_column_candidates: list[str] = ("tpm",),
+) -> pd.DataFrame:
+    # Find columns
+    transcript_id_column = find_column(
+        df, transcript_id_column_candidates, "transcript ID"
+    )
+    tpm_column = find_column(df, tpm_column_candidates, "TPM")
+
+    # Normalize inputs
+    tx_raw = df[transcript_id_column].astype(str)
+    tpm = pd.to_numeric(df[tpm_column], errors="coerce").fillna(0.0)
+
+    # Versionless transcript ids
+    tx0 = tx_raw.str.split(".", n=1).str[0]
+
+    # Fast path: map via dict (include versionless keys)
+    tx_map = _expanded_tx_map(tx_to_gene_name or {})
+    gene_series = tx0.map(tx_map)
+
+    # Resolve unknowns once per unique transcript id
+    unknown_mask = gene_series.isna()
+    if unknown_mask.any():
+        unknown_unique = pd.Index(tx0[unknown_mask].unique())
+
+        @lru_cache(maxsize=None)
+        def _resolve_tx(t: str):
+            g = find_gene_name_from_ensembl_transcript_id(t, verbose=False)
+            if g:
+                return g
+            # fall back to any late-loaded mapping
+            return extra_tx_mappings.get(t)
+
+        resolved = {t: _resolve_tx(t) for t in unknown_unique}
+        gene_series.loc[unknown_mask] = tx0[unknown_mask].map(resolved)
+
+    # Compute known/unknown TPM totals
+    unknown_mask = gene_series.isna()
+    unknown_genes_tpm = float(tpm[unknown_mask].sum())
+
+    # (Optional but preserved) emit the same-style unknown prints (TPM>1)
+    # NOTE: This I/O can still be a bottleneck; comment out for an extra speedup.
+    debug_df = pd.DataFrame({"tx": tx0[unknown_mask], "TPM": tpm[unknown_mask]})
+    debug_df = debug_df[debug_df["TPM"] > 1]
+    n_unknown = 0
+    for tx, tpm_val in zip(debug_df["tx"], debug_df["TPM"]):
+        n_unknown += 1
+        print("? ", n_unknown, tx, tpm_val)
+
+    # Aggregate by gene (vectorized)
+    known = pd.DataFrame(
+        {"gene": gene_series[~unknown_mask], "TPM": tpm[~unknown_mask]}
+    )
+    df_gene_expr = known.groupby("gene", as_index=False, sort=False)["TPM"].sum()
+    df_gene_expr = df_gene_expr.sort_values("TPM")
+
+    known_genes_tpm = float(df_gene_expr["TPM"].sum())
+    denom = known_genes_tpm + unknown_genes_tpm
+    pct_known = (known_genes_tpm * 100.0 / denom) if denom > 0 else 0.0
+    print(
+        f"Assigned {known_genes_tpm:.2f} TPM to known genes, "
+        f"{unknown_genes_tpm:.2f} to unknown gene names; {pct_known:.4f}% known"
+    )
+
+    # Gene IDs + Ensembl releases with caching
+    @lru_cache(maxsize=None)
+    def _lookup_gene_meta(gene_name: str):
+        pair = find_gene_and_ensembl_release_by_name(gene_name)
+        if pair is None:
+            return (None, -1)
+        ensembl_genome, gene = pair
+        return (gene.id, ensembl_genome.release)
+
+    metas = [_lookup_gene_meta(g) for g in df_gene_expr["gene"]]
+    if metas:
+        gene_ids, releases = zip(*metas)
+    else:
+        gene_ids, releases = (), ()
+    df_gene_expr["gene_id"] = list(gene_ids)
+    df_gene_expr["ensembl_release"] = (
+        pd.Series(releases, index=df_gene_expr.index).fillna(-1).astype(int)
+    )
+
+    return df_gene_expr

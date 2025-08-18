@@ -76,6 +76,30 @@ def find_gene_name_from_ensembl_transcript_id(
     return gene_name
 
 
+def pick_best_gene(genes):
+    if len(genes) == 0:
+        raise ValueError("Expected at least one gene, got none")
+
+    def sort_key(g):
+        # prefer genes with:
+        #   - more protein-coding transcripts
+        #   - fewer dots in the name (e.g. "TP53" not "AC00003.1"
+        #   - shorter name (eg PRAME not PRAMEL2949)
+        #   - sort order (e.g. TP53-001 vs TP53-002)
+        num_protein_coding = sum([t.is_protein_coding for t in g.transcripts])
+        return (
+            num_protein_coding,
+            -g.name.count("."),
+            len(g.name),
+            g.name,
+        )
+
+    sorted_genes = sorted(genes, key=sort_key, reverse=True)
+    if len(sorted_genes) == 0:
+        raise ValueError("Lost genes after sorting: %s" % genes)
+    return sorted_genes[0]
+
+
 def find_gene_and_ensembl_release_by_name(
     name: str,
     verbose: bool = False,
@@ -98,16 +122,8 @@ def find_gene_and_ensembl_release_by_name(
                 genes = genome.genes_by_name(n)
             except:
                 genes = []
-            if len(genes) == 1:
-                return (genome, genes[0])
-            elif len(genes) > 1:
-                coding_genes = [
-                    gene for gene in genes if gene.biotype == "protein_coding"
-                ]
-                if len(coding_genes) >= 1:
-                    return (genome, coding_genes[0])
-                else:
-                    return (genome, genes[0])
+            if len(genes) >= 1:
+                return genome, pick_best_gene(genes)
 
 
 def find_gene_by_name_from_ensembl(name: str, verbose: bool = False) -> str | None:
@@ -140,12 +156,11 @@ def find_canonical_gene_ids_and_names(
 
     for gene_name in tqdm(gene_names, "Finding canonical gene IDs and names"):
         gene_id, canonical_name = find_canonical_gene_id_and_name(gene_name)
+        print(
+            "Found %s -> %s" % (gene_name, gene_id or "None")
+            if gene_id
+            else "Not found: %s" % gene_name
+        )
         gene_ids.append(gene_id)
         canonical_gene_names.append(canonical_name)
     return gene_ids, canonical_gene_names
-
-
-def find_canonical_names(
-    gene_names: Sequence[str],
-) -> list[str]:
-    return [x[1] for x in find_canonical_gene_ids_and_names(gene_names)]

@@ -21,8 +21,9 @@ from .gene_sets_old import (
     TLR_signaling,
     growth_receptor_genes,
     oncogenes,
+    checkpoints,
 )
-from .gene_sets_cancer import get_CTAs
+from .gene_sets_cancer import CTA_gene_names
 
 # ------------------------ helpers ------------------------
 
@@ -89,7 +90,8 @@ default_gene_sets = dict(
     TLR=TLR_signaling,
     Growth_receptors=growth_receptor_genes,
     Oncogenes=oncogenes,
-    CTAs=get_CTAs(),
+    Immune_checkpoints=checkpoints,
+    CTAs=CTA_gene_names(),
 )
 
 # ------------------------ main plot ------------------------
@@ -139,7 +141,7 @@ def plot_gene_expression(
         y="TPM",
         jitter=0.01,
         height=10,
-        alpha=0.6,
+        alpha=0.5,
         hue="category",
     )
     plt.yscale("log")

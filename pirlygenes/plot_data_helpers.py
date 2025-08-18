@@ -12,12 +12,12 @@
 
 
 from collections import defaultdict
-from typing import Dict, Iterable, Tuple, List
+from typing import Dict, Iterable, List
 import re
 import numpy as np
 import pandas as pd
 
-from .gene_names import aliases  # dict[name -> display alias]
+from .gene_names import aliases
 from .gene_ids import find_canonical_gene_ids_and_names
 
 # --------------------------- small helpers -----------------------------------

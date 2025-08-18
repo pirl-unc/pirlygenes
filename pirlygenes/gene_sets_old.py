@@ -49,7 +49,7 @@ checkpoints = [
     "IDO1",
     "LAG3",
     "HAVCR2",
-    "CYBB",
+    # "CYBB",
     "VSIR",
     "SIGLEC7",
 ]

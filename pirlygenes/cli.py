@@ -16,11 +16,11 @@ import pandas as pd
 from .version import print_name_and_version
 from .load_dataset import load_all_dataframes
 from .gene_sets_cancer import (
-    get_ADC_targets,
-    get_CAR_T_targets,
-    get_multispecific_tcell_engager_targets,
-    get_bispecific_antibody_targets,
-    get_TCR_T_targets,
+    ADC_target_gene_names,
+    CAR_T_target_gene_names,
+    multispecific_tcell_engager_target_gene_names,
+    bispecific_antibody_target_gene_names,
+    TCR_T_target_gene_names,
 )
 from .load_expression import load_expression_data
 from .plot import plot_gene_expression, default_gene_sets
@@ -47,11 +47,11 @@ def plot_expression(
         (
             "treatments",
             {
-                "TCR-T": get_TCR_T_targets(),
-                "CAR-T": get_CAR_T_targets(),
-                "bispecifics": get_bispecific_antibody_targets(),
-                "MuTEs": get_multispecific_tcell_engager_targets(),
-                "ADCs": get_ADC_targets(),
+                "TCR-T": TCR_T_target_gene_names(),
+                "CAR-T": CAR_T_target_gene_names(),
+                "bispecifics": bispecific_antibody_target_gene_names(),
+                "MuTEs": multispecific_tcell_engager_target_gene_names(),
+                "ADCs": ADC_target_gene_names(),
             },
         ),
     ]:
