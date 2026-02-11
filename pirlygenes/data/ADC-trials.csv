@@ -375,7 +375,7 @@ NCT05547321,Multiple_solid,Advanced/Metastatic,OMTX705,FAP,0,Tubulysin,1.0,,ENSG
 NCT05279300,Multiple_solid,Advanced/Metastatic,CS5001,ROR1,0,Pyrrolobenzodiazepine,1.0,,ENSG00000185483
 NCT05577715,Lung,Advanced/Metastatic,MORAb-202,FOLR1,0,Eribulin,2.0,,ENSG00000110195
 NCT05456685,Ovary,Advanced/Metastatic,Mirvetuximab_soravtansine,FOLR1,0,Maytansinoid,2.0,,ENSG00000110195
-NCT05276609,Multiple_solid,Advanced/Metastatic,HS-20093,CD276,0,Undisclosed,1.0,,ENSG00000103855
+NCT05276609,Multiple_solid,Advanced/Metastatic,HS-20093,CD276,0,Topoisomerase_inhibitor,1.0,ARTEMIS-001;licensed_outside_China_as_GSK5764227_(GSK227),ENSG00000103855
 NCT05434234,Multiple_solid,Advanced/Metastatic,YL201,CD276,0,Undisclosed,1.0,,ENSG00000103855
 NCT05601401,Salivary_gland,Advanced/Metastatic,Disitamab_vedotin,ERBB2,0,Auristatin_derivative,2.0,,ENSG00000141736
 NCT05575804,Breast,Advanced/Metastatic,GQ1001,ERBB2,0,Maytansinoid,2.0,,ENSG00000141736
@@ -422,7 +422,7 @@ NCT05797168,Multiple_solid,Advanced/Metastatic,AZD5335,FOLR1,0,Undisclosed,2.0,,
 NCT05867563,Multiple_solid,Advanced/Metastatic,TQB2103,CLDN18,0,Undisclosed,1.0,,ENSG00000066405
 NCT05838521,Uterus,Advanced/Metastatic,Sacituzumab_govitecan,TACSTD2,0,Camptothecin,2.0,,ENSG00000184292
 NCT05831878,Breast,Advanced/Metastatic,Disitamab_vedotin,ERBB2,0,Auristatin_derivative,1.0,,ENSG00000141736
-NCT05830123,Soft_tissue,Advanced/Metastatic,HS-20093,CD276,0,Undisclosed,2.0,,ENSG00000103855
+NCT05830123,Soft_tissue,Advanced/Metastatic,GSK227_HS-20093,CD276,0,Topoisomerase_inhibitor,2.0,ARTEMIS-002,ENSG00000103855
 NCT05870748,Ovary,Advanced/Metastatic,Luveltamab_tazevibulin,FOLR1,0,Hemiasterlin_analogue,2.0,,ENSG00000110195
 NCT04907968,Ovary,Advanced/Metastatic,Upifitamab_rilsodotin,SLC34A2,0,Auristatin_derivative,1.0,,ENSG00000157765
 NCT05756569,Urothelium,Advanced/Metastatic,Enfortumab_vedotin,NECTIN4,0,Auristatin_derivative,2.0,,ENSG00000143217
