@@ -50,6 +50,30 @@ Sources:
 
 - [Pan-cancer analysis of antibody-drug conjugate targets and putative predictors of treatment response](<https://www.ejcancer.com/article/S0959-8049(23)00681-0/fulltext>)
 
+## Radioligand therapies (RLTs)
+
+### Current target list
+
+Last updated: February 11th, 2026
+
+Sources:
+
+- [Radioligand therapy in precision oncology: opportunities and challenges](https://www.mdpi.com/2072-6694/17/21/3412)
+- [FDA approves Pluvicto for metastatic castration-resistant prostate cancer](https://www.fda.gov/drugs/resources-information-approved-drugs/fda-approves-pluvicto-metastatic-castration-resistant-prostate-cancer)
+- [FDA approves Lutetium Lu 177 dotatate for gastroenteropancreatic neuroendocrine tumors](https://www.fda.gov/drugs/resources-information-approved-drugs/fda-approves-lutetium-lu-177-dotatate-gastroenteropancreatic-neuroendocrine-tumors)
+- [Emerging molecular targets and agents in radioligand therapy for solid tumors](https://pmc.ncbi.nlm.nih.gov/articles/PMC12239088/)
+- [Early evidence for anti-CD20 targeted alpha-radiation approaches in B-cell malignancies](https://pmc.ncbi.nlm.nih.gov/articles/PMC10964383/)
+
+Methodology:
+
+- `pirlygenes/data/radioligand-targets.csv` is a curated target-level list (gene targets, Ensembl IDs, and target status buckets) intended to power gene-set visualization while trial-level `v1.4.0` curation is in progress.
+
+CLI plotting notes:
+
+- Treatment plots now include a `Radio` category label (capitalized consistently with other treatment labels).
+- Use `--always-label-genes` to force annotation of genes that should always be text-labeled, for example: `--always-label-genes FAP,CD276`.
+- PNG output defaults are larger/higher resolution (`--plot-height 12.0`, `--plot-aspect 1.4`, `--output-dpi 300`), and can be overridden from CLI.
+
 ## Cancer-testis antigens (CTAs)
 
 Last updated: September 10th, 2024

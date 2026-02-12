@@ -82,6 +82,30 @@ def pick_genes_to_annotate(
     return genes_to_annotate
 
 
+def _normalize_label_token(token):
+    return str(token).strip().upper()
+
+
+def resolve_always_label_gene_ids(
+    df,
+    always_label_genes,
+    gene_id_col="gene_id",
+    gene_name_col="gene_display_name",
+):
+    if not always_label_genes:
+        return set()
+    wanted = {_normalize_label_token(tok) for tok in always_label_genes}
+    forced = set()
+    for _, row in df[[gene_id_col, gene_name_col]].drop_duplicates().iterrows():
+        gene_id = str(row[gene_id_col])
+        name = str(row[gene_name_col])
+        if _normalize_label_token(gene_id) in wanted:
+            forced.add(gene_id)
+        elif _normalize_label_token(name) in wanted:
+            forced.add(gene_id)
+    return forced
+
+
 # ------------------------ defaults ------------------------
 
 default_gene_sets = dict(
@@ -101,6 +125,11 @@ def plot_gene_expression(
     df_gene_expr,
     gene_sets=default_gene_sets,
     save_to_filename=None,
+    save_dpi=300,
+    plot_height=12.0,
+    plot_aspect=1.4,
+    num_labels_per_category=10,
+    always_label_genes=None,
     adjust_args=dict(
         expand=(1.05, 1.3),
         arrowprops=dict(arrowstyle="->", color="red", alpha=0.3),
@@ -127,8 +156,18 @@ def plot_gene_expression(
 
     # Choose which IDs to annotate (top N per category)
     genes_to_annotate = pick_genes_to_annotate(
-        df_gene_expr_annot, gene_id_col=gene_id_col, gene_name_col=gene_name_col
+        df_gene_expr_annot,
+        num_per_category=num_labels_per_category,
+        gene_id_col=gene_id_col,
+        gene_name_col=gene_name_col,
     )
+    forced_gene_ids = resolve_always_label_gene_ids(
+        df_gene_expr_annot,
+        always_label_genes=always_label_genes,
+        gene_id_col=gene_id_col,
+        gene_name_col=gene_name_col,
+    )
+    genes_to_annotate.update(forced_gene_ids)
 
     # Sanity checks
     for col in ("category", "TPM", gene_id_col, gene_name_col):
@@ -140,7 +179,8 @@ def plot_gene_expression(
         x="category",
         y="TPM",
         jitter=0.01,
-        height=10,
+        height=plot_height,
+        aspect=plot_aspect,
         alpha=0.5,
         hue="category",
     )
@@ -148,8 +188,9 @@ def plot_gene_expression(
 
     # Annotate with display names, never raw ENSG; skip the 'other' column
     texts = []
+    forced_mask = df_gene_expr_annot[gene_id_col].isin(forced_gene_ids)
     mask = (
-        (df_gene_expr_annot.TPM > 0.1)
+        ((df_gene_expr_annot.TPM > 0.1) | forced_mask)
         & (df_gene_expr_annot.category != "other")
         & (df_gene_expr_annot[gene_id_col].isin(genes_to_annotate))
     )
@@ -171,6 +212,6 @@ def plot_gene_expression(
     adjust_text(texts, **adjust_args)
 
     if save_to_filename:
-        cat.figure.savefig(save_to_filename)
+        cat.figure.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
 
     return cat

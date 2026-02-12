@@ -1,0 +1,15 @@
+Target_Label,Symbol,Ensembl_Gene_ID,Status_Bucket,notes
+PSMA,FOLH1,ENSG00000086205,FDA_approved,^177Lu-PSMA-617_for_mCRPC
+SSTR2,SSTR2,ENSG00000180616,FDA_approved,^177Lu-DOTATATE_for_GEP-NETs
+CD20,MS4A1,ENSG00000156738,FDA_approved_historical,^90Y-ibritumomab_tiuxetan
+FAP,FAP,ENSG00000078098,Clinical_trials,stromal_target_in_solid_tumors
+CAIX,CA9,ENSG00000107159,Clinical_trials,renal_cell_carcinoma_focus
+GRPR,GRPR,ENSG00000126010,Clinical_trials,multiple_solid_tumors
+HER2,ERBB2,ENSG00000141736,Clinical_trials,breast_and_other_HER2-positive_tumors
+CXCR4,CXCR4,ENSG00000121966,Clinical_trials,hematologic_and_solid_tumors
+DLL3,DLL3,ENSG00000090932,Clinical_trials,small_cell_lung_cancer
+TROP2,TACSTD2,ENSG00000184292,Clinical_trials,triple-negative_breast_and_other_tumors
+Nectin-4,PVRL4,ENSG00000143217,Clinical_trials,nectin4_alias_target
+IGF-1R,IGF1R,ENSG00000140443,Clinical_trials,emerging_solid_tumor_target
+MC1R,MC1R,ENSG00000258839,Clinical_trials,melanoma-focused_target
+GPC3,GPC3,ENSG00000147257,Clinical_trials,hepatocellular_and_other_tumors

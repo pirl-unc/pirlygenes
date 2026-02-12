@@ -11,7 +11,6 @@
 # limitations under the License.
 
 from argh import named, dispatch_commands
-import pandas as pd
 
 from .version import print_name_and_version
 from .load_dataset import load_all_dataframes
@@ -20,6 +19,7 @@ from .gene_sets_cancer import (
     CAR_T_target_gene_names,
     multispecific_tcell_engager_target_gene_names,
     bispecific_antibody_target_gene_names,
+    radio_target_gene_names,
     TCR_T_target_gene_names,
 )
 from .load_expression import load_expression_data
@@ -32,15 +32,26 @@ def print_dataset_sizes():
         print("%s: %d rows" % (csv_file, len(df)))
 
 
+def _parse_always_label_genes(always_label_genes: str | None) -> set[str]:
+    if always_label_genes is None:
+        return set()
+    return {token.strip() for token in always_label_genes.split(",") if token.strip()}
+
+
 @named("plot-expression")
 def plot_expression(
     input_path: str,
     output_image_prefix: str | None = None,
     aggregate_gene_expression: bool = False,
+    always_label_genes: str | None = None,
+    output_dpi: int = 300,
+    plot_height: float = 12.0,
+    plot_aspect: float = 1.4,
 ):
     df_expr = load_expression_data(
         input_path, aggregate_gene_expression=aggregate_gene_expression
     )
+    forced_labels = _parse_always_label_genes(always_label_genes)
 
     for name, gene_sets in [
         ("summary", default_gene_sets),
@@ -52,6 +63,7 @@ def plot_expression(
                 "bispecifics": bispecific_antibody_target_gene_names(),
                 "MuTEs": multispecific_tcell_engager_target_gene_names(),
                 "ADCs": ADC_target_gene_names(),
+                "Radio": radio_target_gene_names(),
             },
         ),
     ]:
@@ -61,7 +73,13 @@ def plot_expression(
             else "%s.png" % name
         )
         plot_gene_expression(
-            df_expr, gene_sets=gene_sets, save_to_filename=output_image
+            df_expr,
+            gene_sets=gene_sets,
+            save_to_filename=output_image,
+            save_dpi=output_dpi,
+            plot_height=plot_height,
+            plot_aspect=plot_aspect,
+            always_label_genes=forced_labels,
         )
 
 

@@ -165,6 +165,23 @@ def bispecific_antibody_targets_gene_ids():
     return bispecific_antibody_approved_target_gene_ids()
 
 
+# ---------- Radioligand therapies ----------
+def radio_target_gene_names():
+    return get_target_gene_name_set("radioligand-targets")
+
+
+def radio_target_gene_ids():
+    return get_target_gene_id_set("radioligand-targets")
+
+
+def radioligand_target_gene_names():
+    return radio_target_gene_names()
+
+
+def radioligand_target_gene_ids():
+    return radio_target_gene_ids()
+
+
 # ---------- Cancer-testis antigens (CTA) ----------
 def CTA_gene_names():
     return get_target_gene_name_set("cancer-testis-antigens")
