@@ -11,11 +11,12 @@
 # limitations under the License.
 
 import pandas as pd
+from typing import Optional
 
 
 def find_column(
     df: pd.DataFrame, candidates: list[str], column_name: str
-) -> str | None:
+) -> Optional[str]:
     result = None
     for col in df.columns:
         if col.lower() in candidates:

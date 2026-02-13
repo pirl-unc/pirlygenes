@@ -12,9 +12,15 @@
 
 import seaborn as sns
 import matplotlib.pyplot as plt
-from adjustText import adjust_text
+
+try:
+    from adjustText import adjust_text
+except ImportError:
+    def adjust_text(*args, **kwargs):
+        return args[0] if args else []
 
 from .plot_data_helpers import prepare_gene_expr_df
+from .gene_ids import find_canonical_gene_ids_and_names
 from .gene_sets_old import (
     APM_genes,
     MHC1_genes,
@@ -103,6 +109,15 @@ def resolve_always_label_gene_ids(
             forced.add(gene_id)
         elif _normalize_label_token(name) in wanted:
             forced.add(gene_id)
+
+    # Also resolve user-provided gene names/aliases to canonical Ensembl IDs.
+    resolved_ids, _ = find_canonical_gene_ids_and_names(list(always_label_genes))
+    expr_gene_ids = set(df[gene_id_col].astype(str))
+    for gid in resolved_ids:
+        if gid:
+            gid_str = str(gid).split(".", 1)[0]
+            if gid_str in expr_gene_ids:
+                forced.add(gid_str)
     return forced
 
 

@@ -12,7 +12,7 @@
 
 
 from collections import defaultdict
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional, Tuple
 import re
 import numpy as np
 import pandas as pd
@@ -25,7 +25,7 @@ from .gene_ids import find_canonical_gene_ids_and_names
 _ENSG_WITH_VER = re.compile(r"^(ENSG\d{11})(?:\.\d+)?$", re.I)
 
 
-def _clean_token(x) -> str | None:
+def _clean_token(x) -> Optional[str]:
     if x is None:
         return None
     s = str(x).strip()
@@ -45,7 +45,7 @@ def check_gene_ids_in_gene_sets(
     cat_to_gene_id_list: Dict[str, List[str]],
     *,
     gene_id_col: str = "gene_id",
-    gene_id_to_name: Dict[str, str] | None = None,
+    gene_id_to_name: Optional[Dict[str, str]] = None,
 ) -> None:
     if gene_id_col not in df_gene_expr.columns:
         raise KeyError(
@@ -69,11 +69,11 @@ def check_gene_ids_in_gene_sets(
 
 def normalize_gene_sets(
     gene_sets: Dict[str, Iterable[str]],
-    priority_category: str | None = None,
+    priority_category: Optional[str] = None,
     *,
     strict: bool = False,
     verbose: bool = True,
-) -> tuple[Dict[str, List[str]], Dict[str, str]]:
+) -> Tuple[Dict[str, List[str]], Dict[str, str]]:
     """
     Map mixed IDs/names in each category to canonical Ensembl gene IDs.
     Returns:
@@ -148,12 +148,10 @@ def prepare_gene_expr_df(
     df_gene_expr: pd.DataFrame,
     gene_sets: Dict[str, Iterable[str]],
     *,
-    priority_category: str | None = None,
+    priority_category: Optional[str] = None,
     TPM_offset: float = 10.0**-2,
     gene_id_col: str = "canonical_gene_id",  # ID column in df_gene_expr
-    gene_name_col: (
-        str | None
-    ) = "canonical_gene_name",  # optional name column in df_gene_expr
+    gene_name_col: Optional[str] = "canonical_gene_name",  # optional name column in df_gene_expr
     tpm_col: str = "TPM",
     other_category_name: str = "Other",
     place_other_first: bool = True,

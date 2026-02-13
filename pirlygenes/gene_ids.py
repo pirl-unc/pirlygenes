@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Sequence
+from typing import Optional, Sequence, Tuple, List
 
 from tqdm import tqdm
 import pyensembl
@@ -33,7 +33,7 @@ print("Installed Ensembl genomes: %s" % " ".join([str(g.release) for g in genome
 
 def find_gene_name_from_ensembl_gene_id(
     gene_id: str, verbose: bool = True
-) -> str | None:
+) -> Optional[str]:
     gene_name = None
     gene = None
 
@@ -41,7 +41,7 @@ def find_gene_name_from_ensembl_gene_id(
 
         try:
             gene = genome.gene_by_id(gene_id)
-        except:
+        except Exception:
             pass
         if gene:
             gene_name = gene.gene_name
@@ -57,7 +57,7 @@ def find_gene_name_from_ensembl_gene_id(
 
 def find_gene_name_from_ensembl_transcript_id(
     t_id: str, verbose: bool = True
-) -> str | None:
+) -> Optional[str]:
     gene_name = None
     t = None
 
@@ -65,7 +65,7 @@ def find_gene_name_from_ensembl_transcript_id(
 
         try:
             t = g.transcript_by_id(t_id)
-        except:
+        except Exception:
             pass
         if t:
             gene_name = t.gene_name
@@ -103,7 +103,7 @@ def pick_best_gene(genes):
 def find_gene_and_ensembl_release_by_name(
     name: str,
     verbose: bool = False,
-) -> tuple[pyensembl.Genome, pyensembl.Gene] | None:
+) -> Optional[Tuple[pyensembl.Genome, pyensembl.Gene]]:
 
     for genome in genomes:
         candidates = set(
@@ -120,26 +120,28 @@ def find_gene_and_ensembl_release_by_name(
                 print("--> %s: %s" % (genome, n))
             try:
                 genes = genome.genes_by_name(n)
-            except:
+            except Exception:
                 genes = []
             if len(genes) >= 1:
                 return genome, pick_best_gene(genes)
 
 
-def find_gene_by_name_from_ensembl(name: str, verbose: bool = False) -> str | None:
+def find_gene_by_name_from_ensembl(
+    name: str, verbose: bool = False
+) -> Optional[pyensembl.Gene]:
     result = find_gene_and_ensembl_release_by_name(name, verbose=verbose)
     if result is not None:
         _, gene = result
         return gene
 
 
-def find_gene_id_by_name_from_ensembl(name: str, verbose: bool = False) -> str | None:
+def find_gene_id_by_name_from_ensembl(name: str, verbose: bool = False) -> Optional[str]:
     gene = find_gene_by_name_from_ensembl(name, verbose=verbose)
     if gene is not None:
         return gene.id
 
 
-def find_canonical_gene_id_and_name(gene_name: str) -> tuple[str | None, str | None]:
+def find_canonical_gene_id_and_name(gene_name: str) -> Tuple[Optional[str], Optional[str]]:
     gene = find_gene_by_name_from_ensembl(gene_name)
     if gene:
         return gene.id, gene.name
@@ -149,7 +151,7 @@ def find_canonical_gene_id_and_name(gene_name: str) -> tuple[str | None, str | N
 
 def find_canonical_gene_ids_and_names(
     gene_names: Sequence[str],
-) -> list[tuple[str | None, str | None]]:
+) -> Tuple[List[Optional[str]], List[Optional[str]]]:
 
     gene_ids = []
     canonical_gene_names = []

@@ -71,7 +71,7 @@ Methodology:
 CLI plotting notes:
 
 - Treatment plots now include a `Radio` category label (capitalized consistently with other treatment labels).
-- Use `--always-label-genes` to force annotation of genes that should always be text-labeled, for example: `--always-label-genes FAP,CD276`.
+- Use `--label-genes` to force annotation of genes that should always be text-labeled, for example: `--label-genes FAP,CD276`.
 - PNG output defaults are larger/higher resolution (`--plot-height 12.0`, `--plot-aspect 1.4`, `--output-dpi 300`), and can be overridden from CLI.
 
 ## Cancer-testis antigens (CTAs)

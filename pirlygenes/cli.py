@@ -11,6 +11,7 @@
 # limitations under the License.
 
 from argh import named, dispatch_commands
+from typing import Optional, Set
 
 from .version import print_name_and_version
 from .load_dataset import load_all_dataframes
@@ -32,7 +33,7 @@ def print_dataset_sizes():
         print("%s: %d rows" % (csv_file, len(df)))
 
 
-def _parse_always_label_genes(always_label_genes: str | None) -> set[str]:
+def _parse_always_label_genes(always_label_genes: Optional[str]) -> Set[str]:
     if always_label_genes is None:
         return set()
     return {token.strip() for token in always_label_genes.split(",") if token.strip()}
@@ -41,9 +42,9 @@ def _parse_always_label_genes(always_label_genes: str | None) -> set[str]:
 @named("plot-expression")
 def plot_expression(
     input_path: str,
-    output_image_prefix: str | None = None,
+    output_image_prefix: Optional[str] = None,
     aggregate_gene_expression: bool = False,
-    always_label_genes: str | None = None,
+    label_genes: Optional[str] = None,
     output_dpi: int = 300,
     plot_height: float = 12.0,
     plot_aspect: float = 1.4,
@@ -51,7 +52,7 @@ def plot_expression(
     df_expr = load_expression_data(
         input_path, aggregate_gene_expression=aggregate_gene_expression
     )
-    forced_labels = _parse_always_label_genes(always_label_genes)
+    forced_labels = _parse_always_label_genes(label_genes)
 
     for name, gene_sets in [
         ("summary", default_gene_sets),
