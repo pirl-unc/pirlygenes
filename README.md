@@ -86,13 +86,13 @@ Sources:
 
 ### Gene sets
 
-The CTA data includes **179 genes** with two access tiers:
+The CTA data includes **207 genes** with two access tiers:
 
 | Function | Returns | Count |
 |---|---|---|
-| `CTA_gene_names()` / `CTA_gene_ids()` | All CTAs (unfiltered) | 179 |
-| `CTA_filtered_gene_names()` / `CTA_filtered_gene_ids()` | Reproductive-tissue-restricted CTAs | ~148 |
-| `CTA_evidence()` | Full DataFrame with all evidence columns | 179 rows |
+| `CTA_gene_names()` / `CTA_gene_ids()` | All CTAs (unfiltered) | 207 |
+| `CTA_filtered_gene_names()` / `CTA_filtered_gene_ids()` | Reproductive-tissue-restricted CTAs | ~176 |
+| `CTA_evidence()` | Full DataFrame with all evidence columns | 207 rows |
 
 ### Evidence columns
 
@@ -127,6 +127,7 @@ The deflated metric (`max(0, nTPM − 1)` per tissue) suppresses low-level basal
 
 - Base list: intersection of CTpedia genes with HPA tissue antibody staining restricted to testis and placenta.
 - Extended with CT genes from EWSR1-FLI1 binding site analysis (ADAM29, CABYR, CCDC33, CTCFL, DDX53, DPPA2, FTHL17, HORMAD2, LEMD1, SYCP1, TDRD1, TEX15).
+- Extended with testis-specific genes from meiosis, piRNA pathway, and CT antigen literature that pass the HPA reproductive-tissue filter (ACTL7A, ACTL7B, BOLL, BRDT, CALR3, DDX4, DMRTB1, DPPA3, DPPA5, FKBP6, GAGE1, LDHC, MAEL, MAGEA8, MAGEA12, MAGEB10, MEIOB, NANOS2, PASD1, PIWIL1, RAD21L1, SMC1B, SYCE2, SYCP3, TEX14, UTF1, ZPBP, ZPBP2).
 - HPA v23 RNA tissue consensus and normal tissue IHC data used to compute reproductive tissue restriction evidence for all genes.
 
 ## Class I MHC antigen presentation
