@@ -184,8 +184,76 @@ def radioligand_target_gene_ids():
 
 # ---------- Cancer-testis antigens (CTA) ----------
 def CTA_gene_names():
+    """All CTA gene symbols (unfiltered)."""
     return get_target_gene_name_set("cancer-testis-antigens")
 
 
 def CTA_gene_ids():
+    """All CTA Ensembl gene IDs (unfiltered)."""
     return get_target_gene_id_set("cancer-testis-antigens")
+
+
+def _cta_filtered(column):
+    from .load_dataset import get_data
+
+    df = get_data("cancer-testis-antigens")
+    if "filtered" not in df.columns:
+        return set()
+    filtered_df = df[df["filtered"].astype(str).str.lower() == "true"]
+    result = set()
+    if column in df.columns:
+        for x in filtered_df[column]:
+            if isinstance(x, str):
+                result.update([xi.strip() for xi in x.split(";")])
+    return result
+
+
+def CTA_filtered_gene_names():
+    """CTA gene symbols that pass the reproductive-tissue filter."""
+    return _cta_filtered("Symbol")
+
+
+def CTA_filtered_gene_ids():
+    """CTA Ensembl gene IDs that pass the reproductive-tissue filter."""
+    return _cta_filtered("Ensembl_Gene_ID")
+
+
+def CTA_evidence():
+    """Return the full CTA evidence DataFrame with HPA tissue-restriction columns.
+
+    Columns
+    -------
+    Symbol, Aliases, Full_Name, Function, Ensembl_Gene_ID
+        Gene identity fields.
+    protein_reproductive : bool or "no data"
+        True if all IHC-detected tissues (excluding thymus) are in
+        {testis, ovary, placenta}.
+    protein_thymus : bool or "no data"
+        True if protein detected in thymus.
+    rna_reproductive : bool
+        True if every tissue with >=1 nTPM (excluding thymus) is in
+        {testis, ovary, placenta}.
+    rna_thymus : bool
+        True if thymus nTPM >= 1.
+    protein_strict_expression : str
+        Semicolon-separated list of tissues where protein is detected
+        (excluding thymus), or "no data" / "not detected".
+    rna_reproductive_frac : float
+        Fraction of total nTPM (excluding thymus) in core reproductive
+        tissues, computed from raw nTPM values.
+    rna_reproductive_and_thymus_frac : float
+        Same but with thymus nTPM added to numerator and denominator.
+    rna_deflated_reproductive_frac : float
+        Like rna_reproductive_frac but using max(0, nTPM - 1) per tissue
+        to suppress low-level basal noise.
+    rna_deflated_reproductive_and_thymus_frac : float
+        Deflated fraction including thymus in the reproductive numerator.
+    rna_80_pct_filter, rna_90_pct_filter, rna_95_pct_filter : bool
+        Whether deflated reproductive fraction >= 80/90/95%.
+    filtered : bool
+        Final inclusion flag.  True when (deflated RNA >=80% AND protein
+        reproductive) OR (no protein data AND deflated RNA >=95%).
+    """
+    from .load_dataset import get_data
+
+    return get_data("cancer-testis-antigens")

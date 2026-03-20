@@ -85,3 +85,38 @@ def test_all_gene_set_wrappers(monkeypatch):
     assert gsc.radioligand_target_gene_ids()
     assert gsc.CTA_gene_names()
     assert gsc.CTA_gene_ids()
+
+
+def test_cta_filtered_and_evidence():
+    all_names = gsc.CTA_gene_names()
+    filtered_names = gsc.CTA_filtered_gene_names()
+    filtered_ids = gsc.CTA_filtered_gene_ids()
+    assert filtered_names
+    assert filtered_ids
+    assert filtered_names < all_names  # strict subset
+
+    evidence_df = gsc.CTA_evidence()
+    assert len(evidence_df) == len(all_names)
+    expected_cols = [
+        "protein_reproductive",
+        "protein_thymus",
+        "rna_reproductive",
+        "rna_thymus",
+        "protein_strict_expression",
+        "rna_reproductive_frac",
+        "rna_reproductive_and_thymus_frac",
+        "rna_deflated_reproductive_frac",
+        "rna_deflated_reproductive_and_thymus_frac",
+        "rna_80_pct_filter",
+        "rna_90_pct_filter",
+        "rna_95_pct_filter",
+        "filtered",
+    ]
+    for col in expected_cols:
+        assert col in evidence_df.columns, f"Missing column: {col}"
+
+    # filtered column should match CTA_filtered_gene_names
+    df_filtered_names = set(
+        evidence_df[evidence_df["filtered"].astype(str).str.lower() == "true"]["Symbol"]
+    )
+    assert df_filtered_names == filtered_names
