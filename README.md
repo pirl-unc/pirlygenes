@@ -76,16 +76,58 @@ CLI plotting notes:
 
 ## Cancer-testis antigens (CTAs)
 
-Last updated: September 10th, 2024
+Last updated: March 20th, 2026
 
 Sources:
 
 - [CTpedia](http://www.cta.lncc.br/)
-- [Human Protein Atlas](https://www.proteinatlas.org/)
+- [Human Protein Atlas v23](https://www.proteinatlas.org/) — RNA tissue consensus & normal tissue IHC
+- [EWSR1-FLI1 Activation of the Cancer/Testis Antigen FATE1 Promotes Ewing Sarcoma Survival](https://pubmed.ncbi.nlm.nih.gov/) — additional CT gene candidates
 
-Methodology:
+### Gene sets
 
-- Intersection of genes in CTpedia which have at least one tissue antibody staining in HPA, keeping only expression in testis and placenta.
+The CTA data includes **179 genes** with two access tiers:
+
+| Function | Returns | Count |
+|---|---|---|
+| `CTA_gene_names()` / `CTA_gene_ids()` | All CTAs (unfiltered) | 179 |
+| `CTA_filtered_gene_names()` / `CTA_filtered_gene_ids()` | Reproductive-tissue-restricted CTAs | ~148 |
+| `CTA_evidence()` | Full DataFrame with all evidence columns | 179 rows |
+
+### Evidence columns
+
+Each gene in `cancer-testis-antigens.csv` carries HPA-derived tissue-restriction evidence:
+
+| Column | Description |
+|---|---|
+| `protein_reproductive` | IHC detected only in testis/ovary/placenta (excluding thymus), or `"no data"` |
+| `protein_thymus` | IHC detected in thymus |
+| `rna_reproductive` | All tissues with ≥1 nTPM (excluding thymus) are testis/ovary/placenta |
+| `rna_thymus` | Thymus nTPM ≥ 1 |
+| `protein_strict_expression` | Semicolon-separated tissues with IHC detection (excluding thymus) |
+| `rna_reproductive_frac` | Fraction of total nTPM (excluding thymus) in core reproductive tissues |
+| `rna_reproductive_and_thymus_frac` | Same, but thymus nTPM added to numerator and denominator |
+| `rna_deflated_reproductive_frac` | Same as `rna_reproductive_frac` but using `max(0, nTPM−1)` per tissue to suppress basal noise |
+| `rna_deflated_reproductive_and_thymus_frac` | Deflated fraction including thymus |
+| `rna_80_pct_filter` / `rna_90_pct_filter` / `rna_95_pct_filter` | Deflated reproductive fraction ≥ threshold |
+| `filtered` | Final inclusion flag (see below) |
+
+### Filter logic
+
+A gene passes the `filtered` column when either:
+
+1. **Has protein data**: deflated RNA reproductive fraction ≥ 80% AND protein detected only in reproductive tissues (thymus excluded), OR
+2. **No protein data**: deflated RNA reproductive fraction ≥ 95%.
+
+Thymus is excluded from restriction checks because AIRE-driven expression in medullary thymic epithelial cells (mTECs) is expected for CTAs.
+
+The deflated metric (`max(0, nTPM − 1)` per tissue) suppresses low-level basal transcription noise that would otherwise dilute the reproductive fraction for genes like CTCFL/BORIS (raw 54% → deflated 100%).
+
+### Methodology
+
+- Base list: intersection of CTpedia genes with HPA tissue antibody staining restricted to testis and placenta.
+- Extended with CT genes from EWSR1-FLI1 binding site analysis (ADAM29, CABYR, CCDC33, CTCFL, DDX53, DPPA2, FTHL17, HORMAD2, LEMD1, SYCP1, TDRD1, TEX15).
+- HPA v23 RNA tissue consensus and normal tissue IHC data used to compute reproductive tissue restriction evidence for all genes.
 
 ## Class I MHC antigen presentation
 
