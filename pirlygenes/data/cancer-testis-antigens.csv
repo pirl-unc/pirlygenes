@@ -86,7 +86,7 @@ TSPY2,,,cancer-testis antigen,ENSG00000168757,True,False,Supported,True,False,te
 TSPY3,,,cancer-testis antigen,ENSG00000228927,True,False,Supported,True,False,testis,0.8056,0.8056,1.0,1.0,True,True,True,True,True
 TSPY4,,,cancer-testis antigen,ENSG00000233803,True,False,Supported,True,False,testis,0.9845,0.9845,1.0,1.0,True,True,True,True,True
 TSPY8,,,cancer-testis antigen,ENSG00000229549,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-TSPY9P,TSPY9,,cancer-testis antigen,ENSG00000238074,no data,no data,no data,False,False,no data,,,,,False,False,False,False,False
+TSPY9,TSPY9P,,cancer-testis antigen,ENSG00000238074,False,False,Supported,True,False,adrenal gland; stomach 1; stomach 2; testis,0.9797,0.9797,1.0,1.0,True,True,True,True,False
 TSPY10,,,cancer-testis antigen,ENSG00000236424,True,False,Supported,True,False,testis,0.95,0.95,1.0,1.0,True,True,True,True,True
 TSPYL6,,,cancer-testis antigen,ENSG00000178021,True,False,Enhanced,True,False,testis,0.963,0.963,1.0,1.0,True,True,True,True,True
 MORC1,,,cancer-testis antigen,ENSG00000114487,True,False,Enhanced,True,False,testis,0.9181,0.9181,1.0,1.0,True,True,True,True,True
