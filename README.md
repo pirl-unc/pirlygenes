@@ -91,7 +91,7 @@ The CTA data includes **207 genes** with two access tiers:
 | Function | Returns | Count |
 |---|---|---|
 | `CTA_gene_names()` / `CTA_gene_ids()` | All CTAs (unfiltered) | 207 |
-| `CTA_filtered_gene_names()` / `CTA_filtered_gene_ids()` | Reproductive-tissue-restricted CTAs | ~170 |
+| `CTA_filtered_gene_names()` / `CTA_filtered_gene_ids()` | Reproductive-tissue-restricted CTAs | ~186 |
 | `CTA_evidence()` | Full DataFrame with all evidence columns | 207 rows |
 
 ### Evidence columns
@@ -108,8 +108,8 @@ Each gene in `cancer-testis-antigens.csv` carries HPA-derived tissue-restriction
 | `protein_strict_expression` | Semicolon-separated tissues with IHC detection (excluding thymus) |
 | `rna_reproductive_frac` | Fraction of total nTPM (excluding thymus) in core reproductive tissues |
 | `rna_reproductive_and_thymus_frac` | Same, but thymus nTPM added to numerator and denominator |
-| `rna_deflated_reproductive_frac` | Same as `rna_reproductive_frac` but using `max(0, nTPM−1)` per tissue to suppress basal noise |
-| `rna_deflated_reproductive_and_thymus_frac` | Deflated fraction including thymus |
+| `rna_deflated_reproductive_frac` | `(1 + Σ repro max(0, nTPM−1)) / (1 + Σ all max(0, nTPM−1))` — deflated with +1 pseudocount |
+| `rna_deflated_reproductive_and_thymus_frac` | Same but thymus added to reproductive numerator |
 | `rna_80_pct_filter` / `rna_90_pct_filter` / `rna_95_pct_filter` | Deflated reproductive fraction ≥ threshold |
 | `filtered` | Final inclusion flag (see below) |
 

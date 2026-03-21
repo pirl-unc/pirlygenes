@@ -247,10 +247,12 @@ def CTA_evidence():
     rna_reproductive_and_thymus_frac : float
         Same but with thymus nTPM added to numerator and denominator.
     rna_deflated_reproductive_frac : float
-        Like rna_reproductive_frac but using max(0, nTPM - 1) per tissue
-        to suppress low-level basal noise.
+        (1 + repro_deflated) / (1 + total_deflated) where each tissue
+        is deflated via max(0, nTPM - 1).  The +1 pseudocount prevents
+        0/0 for very-low-expression genes.
     rna_deflated_reproductive_and_thymus_frac : float
-        Deflated fraction including thymus in the reproductive numerator.
+        Same but with thymus deflated nTPM added to the reproductive
+        numerator.
     rna_80_pct_filter, rna_90_pct_filter, rna_95_pct_filter : bool
         Whether deflated reproductive fraction >= 80/90/95%.
     filtered : bool
