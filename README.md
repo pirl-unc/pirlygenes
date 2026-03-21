@@ -102,6 +102,7 @@ Each gene in `cancer-testis-antigens.csv` carries HPA-derived tissue-restriction
 |---|---|
 | `protein_reproductive` | IHC detected only in testis/ovary/placenta (excluding thymus), or `"no data"` |
 | `protein_thymus` | IHC detected in thymus |
+| `protein_reliability` | Best HPA antibody reliability: Enhanced, Supported, Approved, Uncertain, or `"no data"` |
 | `rna_reproductive` | All tissues with ≥1 nTPM (excluding thymus) are testis/ovary/placenta |
 | `rna_thymus` | Thymus nTPM ≥ 1 |
 | `protein_strict_expression` | Semicolon-separated tissues with IHC detection (excluding thymus) |
@@ -114,10 +115,15 @@ Each gene in `cancer-testis-antigens.csv` carries HPA-derived tissue-restriction
 
 ### Filter logic
 
-A gene passes the `filtered` column when either:
+The `filtered` column uses tiered RNA thresholds based on protein data confidence. A gene passes when protein is detected only in reproductive tissues (thymus excluded) and the deflated RNA reproductive fraction meets the threshold for the antibody reliability tier:
 
-1. **Has protein data**: deflated RNA reproductive fraction ≥ 80% AND protein detected only in reproductive tissues (thymus excluded), OR
-2. **No protein data**: deflated RNA reproductive fraction ≥ 95%.
+| Protein evidence | RNA threshold |
+|---|---|
+| Enhanced or Supported (high confidence) | ≥ 80% |
+| Approved or Uncertain (lower confidence) | ≥ 90% |
+| No protein data | ≥ 95% |
+
+Genes with protein detected in non-reproductive tissues always fail regardless of RNA.
 
 Thymus is excluded from restriction checks because AIRE-driven expression in medullary thymic epithelial cells (mTECs) is expected for CTAs.
 

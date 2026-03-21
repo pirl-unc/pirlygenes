@@ -100,6 +100,7 @@ def test_cta_filtered_and_evidence():
     expected_cols = [
         "protein_reproductive",
         "protein_thymus",
+        "protein_reliability",
         "rna_reproductive",
         "rna_thymus",
         "protein_strict_expression",

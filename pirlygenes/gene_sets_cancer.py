@@ -235,6 +235,9 @@ def CTA_evidence():
         {testis, ovary, placenta}.
     rna_thymus : bool
         True if thymus nTPM >= 1.
+    protein_reliability : str
+        Best HPA antibody reliability for this gene: "Enhanced",
+        "Supported", "Approved", "Uncertain", or "no data".
     protein_strict_expression : str
         Semicolon-separated list of tissues where protein is detected
         (excluding thymus), or "no data" / "not detected".
@@ -251,8 +254,11 @@ def CTA_evidence():
     rna_80_pct_filter, rna_90_pct_filter, rna_95_pct_filter : bool
         Whether deflated reproductive fraction >= 80/90/95%.
     filtered : bool
-        Final inclusion flag.  True when (deflated RNA >=80% AND protein
-        reproductive) OR (no protein data AND deflated RNA >=95%).
+        Final inclusion flag with tiered RNA thresholds based on protein
+        data confidence.  True when:
+        - Enhanced/Supported protein + reproductive only → RNA >=80%, OR
+        - Approved/Uncertain protein + reproductive only → RNA >=90%, OR
+        - No protein data → RNA >=95%.
     """
     from .load_dataset import get_data
 
