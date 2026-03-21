@@ -91,7 +91,7 @@ The CTA data includes **207 genes** with two access tiers:
 | Function | Returns | Count |
 |---|---|---|
 | `CTA_gene_names()` / `CTA_gene_ids()` | All CTAs (unfiltered) | 207 |
-| `CTA_filtered_gene_names()` / `CTA_filtered_gene_ids()` | Reproductive-tissue-restricted CTAs | ~176 |
+| `CTA_filtered_gene_names()` / `CTA_filtered_gene_ids()` | Reproductive-tissue-restricted CTAs | ~170 |
 | `CTA_evidence()` | Full DataFrame with all evidence columns | 207 rows |
 
 ### Evidence columns
@@ -119,9 +119,10 @@ The `filtered` column uses tiered RNA thresholds based on protein data confidenc
 
 | Protein evidence | RNA threshold |
 |---|---|
-| Enhanced or Supported (high confidence) | ≥ 80% |
-| Approved or Uncertain (lower confidence) | ≥ 90% |
-| No protein data | ≥ 95% |
+| Enhanced (orthogonal validation) | ≥ 80% |
+| Supported (consistent characterization) | ≥ 90% |
+| Approved (basic validation) | ≥ 95% |
+| Uncertain or no protein data | ≥ 99% |
 
 Genes with protein detected in non-reproductive tissues always fail regardless of RNA.
 

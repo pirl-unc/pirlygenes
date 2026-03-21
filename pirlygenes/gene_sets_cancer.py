@@ -255,10 +255,13 @@ def CTA_evidence():
         Whether deflated reproductive fraction >= 80/90/95%.
     filtered : bool
         Final inclusion flag with tiered RNA thresholds based on protein
-        data confidence.  True when:
-        - Enhanced/Supported protein + reproductive only → RNA >=80%, OR
-        - Approved/Uncertain protein + reproductive only → RNA >=90%, OR
-        - No protein data → RNA >=95%.
+        antibody reliability.  True when protein is reproductive-only
+        (or absent) and deflated RNA fraction meets the tier threshold:
+        - Enhanced → RNA >=80%
+        - Supported → RNA >=90%
+        - Approved → RNA >=95%
+        - Uncertain or no protein data → RNA >=99%
+        Genes with protein in non-reproductive tissues always fail.
     """
     from .load_dataset import get_data
 
