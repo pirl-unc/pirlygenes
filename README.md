@@ -96,10 +96,11 @@ The CTA data includes **207 genes** with two access tiers:
 
 ### Evidence columns
 
-Each gene in `cancer-testis-antigens.csv` carries HPA-derived tissue-restriction evidence:
+Each gene in `cancer-testis-antigens.csv` carries identity and HPA-derived tissue-restriction evidence:
 
 | Column | Description |
 |---|---|
+| `Canonical_Transcript_ID` | Ensembl canonical (longest protein-coding) transcript ID |
 | `protein_reproductive` | IHC detected only in testis/ovary/placenta (excluding thymus), or `"no data"` |
 | `protein_thymus` | IHC detected in thymus |
 | `protein_reliability` | Best HPA antibody reliability: Enhanced, Supported, Approved, Uncertain, or `"no data"` |

@@ -223,7 +223,8 @@ def CTA_evidence():
 
     Columns
     -------
-    Symbol, Aliases, Full_Name, Function, Ensembl_Gene_ID
+    Symbol, Aliases, Full_Name, Function, Ensembl_Gene_ID,
+    Canonical_Transcript_ID
         Gene identity fields.
     protein_reproductive : bool or "no data"
         True if all IHC-detected tissues (excluding thymus) are in

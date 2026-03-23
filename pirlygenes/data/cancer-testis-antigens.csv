@@ -1,208 +1,208 @@
-Symbol,Aliases,Full_Name,Function,Ensembl_Gene_ID,protein_reproductive,protein_thymus,protein_reliability,rna_reproductive,rna_thymus,protein_strict_expression,rna_reproductive_frac,rna_reproductive_and_thymus_frac,rna_deflated_reproductive_frac,rna_deflated_reproductive_and_thymus_frac,rna_80_pct_filter,rna_90_pct_filter,rna_95_pct_filter,rna_99_pct_filter,filtered
-NUTM1,,,cancer-testis antigen,ENSG00000184507,True,False,Enhanced,True,False,testis,0.9648,0.9648,1.0,1.0,True,True,True,True,True
-CAGE1,,,cancer-testis antigen,ENSG00000164304,no data,no data,no data,True,False,no data,0.9608,0.9608,1.0,1.0,True,True,True,True,True
-PAGE1,,,cancer-testis antigen,ENSG00000068985,True,False,Enhanced,True,False,testis,0.9941,0.9941,1.0,1.0,True,True,True,True,True
-PAGE2,,,cancer-testis antigen,ENSG00000234068,True,False,Supported,True,False,testis,0.9148,0.9153,1.0,1.0,True,True,True,True,True
-PAGE2B,,,cancer-testis antigen,ENSG00000238269,True,False,Supported,False,False,testis,0.8164,0.817,0.9483,0.9483,True,True,False,False,True
-PAGE3,,,cancer-testis antigen,ENSG00000204279,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-PAGE5,,,cancer-testis antigen,ENSG00000158639,True,False,Supported,False,False,testis,0.8805,0.881,1.0,1.0,True,True,True,True,True
-XAGE1A,,,cancer-testis antigen,ENSG00000204379,no data,no data,no data,True,False,no data,0.9913,0.9913,1.0,1.0,True,True,True,True,True
-XAGE1B,,,cancer-testis antigen,ENSG00000204382,no data,no data,no data,False,False,no data,0.8806,0.8808,0.987,0.987,True,True,True,False,False
-XAGE3,,,cancer-testis antigen,ENSG00000171402,True,False,Supported,False,False,placenta,0.9804,0.9804,0.9922,0.9922,True,True,True,True,True
-XAGE5,,,cancer-testis antigen,ENSG00000171405,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-GAGE2A,,,cancer-testis antigen,ENSG00000189064,True,False,Supported,True,False,testis,0.9893,0.9893,1.0,1.0,True,True,True,True,True
-GAGE12H,,,cancer-testis antigen,ENSG00000224902,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-GAGE12J,,,cancer-testis antigen,ENSG00000224659,True,False,Supported,False,False,testis,0.8794,0.8794,0.9494,0.9494,True,True,False,False,True
-GAGE12E,,,cancer-testis antigen,ENSG00000216649,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-GAGE13,,,cancer-testis antigen,ENSG00000274274,True,False,Supported,False,False,testis,0.9729,0.9729,0.9926,0.9926,True,True,True,True,True
-MAGEA1,,,cancer-testis antigen,ENSG00000198681,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-MAGEA2,,,cancer-testis antigen,ENSG00000268606,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-MAGEA4,,,cancer-testis antigen,ENSG00000147381,True,False,Enhanced,True,False,placenta; testis,0.9562,0.9562,1.0,1.0,True,True,True,True,True
-MAGEA6,,,cancer-testis antigen,ENSG00000197172,no data,no data,no data,True,False,no data,0.9091,0.9091,1.0,1.0,True,True,True,True,True
-MAGEA3,,,cancer-testis antigen,ENSG00000221867,no data,no data,no data,True,False,no data,0.9759,0.9759,1.0,1.0,True,True,True,True,True
-MAGEA9,,,cancer-testis antigen,ENSG00000123584,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-MAGEA9B,,,cancer-testis antigen,ENSG00000267978,no data,no data,no data,True,False,no data,0.9346,0.9346,1.0,1.0,True,True,True,True,True
-MAGEA10,,,cancer-testis antigen,ENSG00000124260,True,False,Approved,True,False,placenta; testis,0.8529,0.8529,1.0,1.0,True,True,True,True,True
-MAGEA11,,,cancer-testis antigen,ENSG00000185247,no data,no data,no data,False,False,no data,0.1938,0.1938,0.1807,0.1807,False,False,False,False,False
-MAGEB1,,,cancer-testis antigen,ENSG00000214107,True,False,Enhanced,True,False,testis,0.9677,0.9677,1.0,1.0,True,True,True,True,True
-MAGEB2,,,cancer-testis antigen,ENSG00000099399,True,False,Enhanced,True,False,testis,0.9932,0.9932,1.0,1.0,True,True,True,True,True
-MAGEB3,,,cancer-testis antigen,ENSG00000198798,False,False,Approved,False,False,epididymis; testis,0.2207,0.2207,0.2311,0.2311,False,False,False,False,False
-MAGEB5,,,cancer-testis antigen,ENSG00000188408,no data,no data,no data,False,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-MAGEB6B,,,cancer-testis antigen,ENSG00000232030,no data,no data,no data,False,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-MAGEB16,,,cancer-testis antigen,ENSG00000189023,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-MAGEB18,,,cancer-testis antigen,ENSG00000176774,True,False,Enhanced,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-MAGEC1,,,cancer-testis antigen,ENSG00000155495,True,False,Enhanced,True,False,testis,0.9861,0.9861,1.0,1.0,True,True,True,True,True
-MAGEC2,,,cancer-testis antigen,ENSG00000046774,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-DAZ1,,,cancer-testis antigen,ENSG00000188120,True,False,Supported,True,False,testis,0.9091,0.9091,1.0,1.0,True,True,True,True,True
-DAZ3,,,cancer-testis antigen,ENSG00000187191,True,False,Approved,True,False,testis,0.6087,0.6087,1.0,1.0,True,True,True,True,True
-DAZL,,,cancer-testis antigen,ENSG00000092345,True,False,Enhanced,True,False,testis,0.9664,0.9664,1.0,1.0,True,True,True,True,True
-BSPH1,,,cancer-testis antigen,ENSG00000188334,False,False,Enhanced,False,False,epididymis,0.0,0.0,0.0026,0.0026,False,False,False,False,False
-SPAG11A,,,cancer-testis antigen,ENSG00000178287,False,False,Supported,False,False,epididymis,0.0,0.0,0.0002,0.0002,False,False,False,False,False
-SPANXA1,,,cancer-testis antigen,ENSG00000198021,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPANXA2,,,cancer-testis antigen,ENSG00000203926,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPANXB1,,,cancer-testis antigen,ENSG00000227234,True,False,Supported,False,False,testis,0.9785,0.9785,1.0,1.0,True,True,True,True,True
-SPANXC,,,cancer-testis antigen,ENSG00000198573,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPANXD,,,cancer-testis antigen,ENSG00000196406,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPANXN1,,,cancer-testis antigen,ENSG00000203923,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPANXN2,,,cancer-testis antigen,ENSG00000268988,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPANXN3,,,cancer-testis antigen,ENSG00000189252,no data,no data,no data,True,False,no data,0.9734,0.9734,1.0,1.0,True,True,True,True,True
-SPANXN4,,,cancer-testis antigen,ENSG00000189326,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPANXN5,,,cancer-testis antigen,ENSG00000204363,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-ODF1,,,cancer-testis antigen,ENSG00000155087,True,False,Approved,True,False,testis,0.9915,0.9915,1.0,1.0,True,True,True,True,True
-ODF3,,,cancer-testis antigen,ENSG00000177947,True,False,Enhanced,True,False,testis,0.9579,0.9579,1.0,1.0,True,True,True,True,True
-ODF4,,,cancer-testis antigen,ENSG00000184650,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-ROPN1B,,,cancer-testis antigen,ENSG00000114547,False,False,Supported,False,False,epididymis; testis,0.6617,0.6617,0.7134,0.7134,False,False,False,False,False
-SPAM1,,,cancer-testis antigen,ENSG00000106304,True,False,Enhanced,True,False,testis,0.9444,0.9444,1.0,1.0,True,True,True,True,True
-SPATA4,,,cancer-testis antigen,ENSG00000150628,True,False,Enhanced,False,False,testis,0.8028,0.8028,0.9063,0.9063,True,True,False,False,True
-SPATA12,,,cancer-testis antigen,ENSG00000186451,True,False,Enhanced,True,False,testis,0.9005,0.9005,1.0,1.0,True,True,True,True,True
-SPATA16,,,cancer-testis antigen,ENSG00000144962,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPATA19,,,cancer-testis antigen,ENSG00000166118,True,False,Enhanced,True,False,testis,0.9909,0.9909,1.0,1.0,True,True,True,True,True
-SPATA22,,,cancer-testis antigen,ENSG00000141255,no data,no data,no data,False,False,no data,0.9216,0.9217,0.9921,0.9921,True,True,True,True,True
-SPATA31E1,,,cancer-testis antigen,ENSG00000177992,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPATA31A1,,,cancer-testis antigen,ENSG00000204849,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPATA31A3,,,cancer-testis antigen,ENSG00000275969,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPATA31A5,,,cancer-testis antigen,ENSG00000276581,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPATA31A6,,,cancer-testis antigen,ENSG00000185775,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPATA31A7,,,cancer-testis antigen,ENSG00000276040,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPATA31D3,,,cancer-testis antigen,ENSG00000186788,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPATA31D4,,,cancer-testis antigen,ENSG00000189357,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SPATA32,,,cancer-testis antigen,ENSG00000184361,True,False,Approved,True,False,testis,0.9443,0.9443,1.0,1.0,True,True,True,True,True
-SPACA1,,,cancer-testis antigen,ENSG00000118434,True,False,Enhanced,True,False,testis,0.9975,0.9975,1.0,1.0,True,True,True,True,True
-SPACA3,,,cancer-testis antigen,ENSG00000141316,True,False,Enhanced,False,False,testis,0.826,0.826,0.8584,0.8584,True,False,False,False,True
-CATSPERD,,,cancer-testis antigen,ENSG00000174898,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CATSPER4,,,cancer-testis antigen,ENSG00000188782,True,False,Enhanced,True,False,testis,0.982,0.982,1.0,1.0,True,True,True,True,True
-CTAG1A,,,cancer-testis antigen,ENSG00000268651,True,False,Enhanced,True,False,testis,0.9878,0.9878,1.0,1.0,True,True,True,True,True
-CTAG1B,,,cancer-testis antigen,ENSG00000184033,True,False,Enhanced,True,False,testis,0.9367,0.9367,1.0,1.0,True,True,True,True,True
-CTAGE1,,,cancer-testis antigen,ENSG00000212710,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-CTAGE6,,,cancer-testis antigen,ENSG00000271321,no data,no data,no data,True,False,no data,0.9527,0.9527,1.0,1.0,True,True,True,True,True
-CTAGE9,,,cancer-testis antigen,ENSG00000236761,no data,no data,no data,True,False,no data,0.9,0.9,1.0,1.0,True,True,True,True,True
-SSX1,,,cancer-testis antigen,ENSG00000126752,True,False,Supported,True,False,testis,0.9,0.9,1.0,1.0,True,True,True,True,True
-SSX2,,,cancer-testis antigen,ENSG00000241476,True,False,Enhanced,True,False,testis,0.9878,0.9878,1.0,1.0,True,True,True,True,True
-SSX2B,,,cancer-testis antigen,ENSG00000268447,True,False,Supported,True,False,testis,0.9706,0.9706,1.0,1.0,True,True,True,True,True
-SSX3,,,cancer-testis antigen,ENSG00000165584,True,False,Supported,True,False,testis,0.9776,0.9776,1.0,1.0,True,True,True,True,True
-SSX4,,,cancer-testis antigen,ENSG00000268009,True,False,Supported,True,False,testis,0.8611,0.8611,1.0,1.0,True,True,True,True,True
-TSPY1,,,cancer-testis antigen,ENSG00000258992,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-TSPY2,,,cancer-testis antigen,ENSG00000168757,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-TSPY3,,,cancer-testis antigen,ENSG00000228927,True,False,Supported,True,False,testis,0.8056,0.8056,1.0,1.0,True,True,True,True,True
-TSPY4,,,cancer-testis antigen,ENSG00000233803,True,False,Supported,True,False,testis,0.9845,0.9845,1.0,1.0,True,True,True,True,True
-TSPY8,,,cancer-testis antigen,ENSG00000229549,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-TSPY9,TSPY9P,,cancer-testis antigen,ENSG00000238074,False,False,Supported,True,False,adrenal gland; stomach 1; stomach 2; testis,0.9797,0.9797,1.0,1.0,True,True,True,True,False
-TSPY10,,,cancer-testis antigen,ENSG00000236424,True,False,Supported,True,False,testis,0.95,0.95,1.0,1.0,True,True,True,True,True
-TSPYL6,,,cancer-testis antigen,ENSG00000178021,True,False,Enhanced,True,False,testis,0.963,0.963,1.0,1.0,True,True,True,True,True
-MORC1,,,cancer-testis antigen,ENSG00000114487,True,False,Enhanced,True,False,testis,0.9181,0.9181,1.0,1.0,True,True,True,True,True
-TFDP3,,,cancer-testis antigen,ENSG00000183434,no data,no data,no data,True,False,no data,0.9762,0.9762,1.0,1.0,True,True,True,True,True
-LUZP4,,,cancer-testis antigen,ENSG00000102021,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-DKKL1,,,cancer-testis antigen,ENSG00000104901,True,False,Enhanced,False,False,testis,0.9517,0.9517,0.9994,0.9994,True,True,True,True,True
-SPO11,,,cancer-testis antigen,ENSG00000054796,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-CRISP2,,,cancer-testis antigen,ENSG00000124490,True,False,Enhanced,False,False,testis,0.8602,0.8602,0.8882,0.8882,True,False,False,False,True
-FMR1NB,,,cancer-testis antigen,ENSG00000176988,True,False,Enhanced,True,False,testis,0.9947,0.9947,1.0,1.0,True,True,True,True,True
-TPTE,,,cancer-testis antigen,ENSG00000274391,True,False,Enhanced,True,False,testis,0.9937,0.9937,1.0,1.0,True,True,True,True,True
-CT45A2,,,cancer-testis antigen,ENSG00000271449,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT45A7,,,cancer-testis antigen,ENSG00000273696,True,False,Supported,False,False,testis,0.6667,0.6667,1.0,1.0,True,True,True,True,True
-CT47A1,,,cancer-testis antigen,ENSG00000236371,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT47A2,,,cancer-testis antigen,ENSG00000242362,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT47A3,,,cancer-testis antigen,ENSG00000236126,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT47A4,,,cancer-testis antigen,ENSG00000230594,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT47A5,,,cancer-testis antigen,ENSG00000237957,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT47A6,,,cancer-testis antigen,ENSG00000226023,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT47A7,,,cancer-testis antigen,ENSG00000228517,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT47A11,,,cancer-testis antigen,ENSG00000226929,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT47A12,,,cancer-testis antigen,ENSG00000226685,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT47B1,,,cancer-testis antigen,ENSG00000236446,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-CT83,,,cancer-testis antigen,ENSG00000204019,no data,no data,no data,False,False,no data,0.9555,0.9555,0.9749,0.9749,True,True,True,False,False
-TEX13A,,,cancer-testis antigen,ENSG00000268629,True,False,Enhanced,True,False,placenta; testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-TEX19,,,cancer-testis antigen,ENSG00000182459,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-TEX33,,,cancer-testis antigen,ENSG00000185264,True,False,Enhanced,True,False,testis,0.9989,0.9989,1.0,1.0,True,True,True,True,True
-TEX35,,,cancer-testis antigen,ENSG00000240021,True,False,Approved,False,False,testis,0.88,0.8802,0.9778,0.9778,True,True,True,False,True
-TEX37,,,cancer-testis antigen,ENSG00000172073,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-TEX38,,,cancer-testis antigen,ENSG00000186118,no data,no data,no data,True,False,no data,0.9783,0.9783,1.0,1.0,True,True,True,True,True
-TEX44,,,cancer-testis antigen,ENSG00000177673,True,False,Enhanced,True,False,testis,0.998,0.998,1.0,1.0,True,True,True,True,True
-TEX101,,,cancer-testis antigen,ENSG00000131126,True,False,Enhanced,False,True,testis,0.8825,0.8834,0.9879,0.9879,True,True,True,False,True
-PATE1,,,cancer-testis antigen,ENSG00000171053,False,False,Approved,False,False,epididymis; seminal vesicle; testis,0.0,0.0,0.0005,0.0005,False,False,False,False,False
-PATE4,,,cancer-testis antigen,ENSG00000237353,True,False,Approved,False,False,testis,0.004,0.004,0.0084,0.0084,False,False,False,False,False
-PRSS54,,,cancer-testis antigen,ENSG00000103023,True,False,Enhanced,True,False,testis,0.995,0.995,1.0,1.0,True,True,True,True,True
-PHF7,,,cancer-testis antigen,ENSG00000010318,True,False,Enhanced,False,True,testis,0.9126,0.9128,0.945,0.9451,True,True,False,False,True
-SLCO6A1,,,cancer-testis antigen,ENSG00000205359,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-TEKT5,,,cancer-testis antigen,ENSG00000153060,no data,no data,no data,True,False,no data,0.8067,0.8067,1.0,1.0,True,True,True,True,True
-DMRT1,,,cancer-testis antigen,ENSG00000137090,True,False,Enhanced,True,False,testis,0.9812,0.9812,1.0,1.0,True,True,True,True,True
-DMRTC2,,,cancer-testis antigen,ENSG00000142025,True,False,Uncertain,True,False,testis,0.9475,0.9475,1.0,1.0,True,True,True,True,True
-DNAJB8,,,cancer-testis antigen,ENSG00000179407,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-SAGE1,,,cancer-testis antigen,ENSG00000181433,True,False,Enhanced,True,False,testis,0.8393,0.8393,1.0,1.0,True,True,True,True,True
-LIPI,,,cancer-testis antigen,ENSG00000188992,no data,no data,no data,False,False,no data,0.0002,0.0002,0.0024,0.0024,False,False,False,False,False
-ADAM2,,,cancer-testis antigen,ENSG00000104755,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-PLAC1,,,cancer-testis antigen,ENSG00000170965,True,False,Enhanced,True,False,placenta,0.9691,0.9691,1.0,1.0,True,True,True,True,True
-CABS1,,,cancer-testis antigen,ENSG00000145309,True,False,Enhanced,False,False,testis,0.9628,0.9628,0.9727,0.9727,True,True,True,False,True
-FATE1,,,cancer-testis antigen,ENSG00000147378,True,False,Enhanced,True,True,testis,0.9651,0.9655,1.0,1.0,True,True,True,True,True
-HORMAD1,,,cancer-testis antigen,ENSG00000143452,True,False,Enhanced,False,False,testis,0.879,0.879,0.9338,0.9338,True,True,False,False,True
-ACRBP,,,cancer-testis antigen,ENSG00000111644,True,False,Enhanced,False,True,testis,0.6829,0.6852,0.7563,0.7576,False,False,False,False,False
-TSKS,,,cancer-testis antigen,ENSG00000126467,True,False,Enhanced,False,False,testis,0.8837,0.884,0.9898,0.9898,True,True,True,False,True
-CCDC42,,,cancer-testis antigen,ENSG00000161973,no data,no data,no data,True,False,no data,0.9809,0.9809,1.0,1.0,True,True,True,True,True
-ADAD1,,,cancer-testis antigen,ENSG00000164113,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-RIMBP3,,,cancer-testis antigen,ENSG00000275793,True,False,Supported,True,True,testis,0.8152,0.8205,1.0,1.0,True,True,True,True,True
-TENT5D,,,cancer-testis antigen,ENSG00000174016,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-PRAME,,,cancer-testis antigen,ENSG00000185686,True,False,Enhanced,False,False,testis,0.806,0.8063,0.8787,0.8787,True,False,False,False,True
-PRAMEF18,,,cancer-testis antigen,ENSG00000279804,no data,no data,no data,False,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-PRAMEF20,,,cancer-testis antigen,ENSG00000204478,no data,no data,no data,False,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-CBLL2,,,cancer-testis antigen,ENSG00000175809,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-CPXCR1,,,cancer-testis antigen,ENSG00000147183,no data,no data,no data,True,False,no data,0.9841,0.9841,1.0,1.0,True,True,True,True,True
-TULP2,,,cancer-testis antigen,ENSG00000104804,no data,no data,no data,True,False,no data,0.8298,0.8298,1.0,1.0,True,True,True,True,True
-EPPIN,,,cancer-testis antigen,ENSG00000101448,True,False,Supported,False,False,testis,0.1974,0.1974,0.2034,0.2034,False,False,False,False,False
-ACTL8,,,cancer-testis antigen,ENSG00000117148,no data,no data,no data,True,False,no data,0.939,0.939,1.0,1.0,True,True,True,True,True
-SPEM1,,,cancer-testis antigen,ENSG00000181323,no data,no data,no data,True,False,no data,0.997,0.997,1.0,1.0,True,True,True,True,True
-THEG,,,cancer-testis antigen,ENSG00000105549,no data,no data,no data,False,False,no data,0.8515,0.8515,0.9538,0.9538,True,True,True,False,False
-PRM1,,,cancer-testis antigen,ENSG00000175646,True,False,Enhanced,False,False,testis,0.9938,0.9938,0.9962,0.9962,True,True,True,True,True
-PRM2,,,cancer-testis antigen,ENSG00000122304,True,False,Enhanced,False,False,testis,0.9938,0.9938,0.9965,0.9965,True,True,True,True,True
-PRM3,,,cancer-testis antigen,ENSG00000178257,no data,no data,no data,False,False,no data,0.9351,0.9351,0.9785,0.9785,True,True,True,False,False
-AKAP4,,,cancer-testis antigen,ENSG00000147081,True,False,Enhanced,True,False,testis,0.9989,0.9989,1.0,1.0,True,True,True,True,True
-TNP2,,,cancer-testis antigen,ENSG00000178279,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-CGB8,,,cancer-testis antigen,ENSG00000213030,True,False,Supported,False,False,placenta; testis,0.8873,0.8873,0.933,0.933,True,True,False,False,True
-PSG9,,,cancer-testis antigen,ENSG00000183668,True,False,Supported,True,False,placenta; testis,0.9709,0.9709,1.0,1.0,True,True,True,True,True
-PSG8,,,cancer-testis antigen,ENSG00000124467,True,False,Supported,True,False,placenta; testis,0.9692,0.9692,1.0,1.0,True,True,True,True,True
-PSG11,,,cancer-testis antigen,ENSG00000243130,True,False,Enhanced,True,False,placenta; testis,0.9884,0.9884,1.0,1.0,True,True,True,True,True
-PSG1,,,cancer-testis antigen,ENSG00000231924,True,False,Supported,True,False,placenta; testis,0.9898,0.9898,1.0,1.0,True,True,True,True,True
-PSG3,,,cancer-testis antigen,ENSG00000221826,True,False,Supported,True,False,placenta; testis,0.9914,0.9914,1.0,1.0,True,True,True,True,True
-CSH2,,,cancer-testis antigen,ENSG00000213218,True,False,Supported,False,True,placenta,0.9886,0.9886,0.9909,0.9909,True,True,True,True,True
-PSG5,,,cancer-testis antigen,ENSG00000204941,True,False,Supported,True,False,placenta; testis,0.9714,0.9714,1.0,1.0,True,True,True,True,True
-TRIM64,,,cancer-testis antigen,ENSG00000204450,True,False,Approved,True,False,placenta,1.0,1.0,1.0,1.0,True,True,True,True,True
-EGFL6,,,cancer-testis antigen,ENSG00000198759,True,False,Enhanced,False,False,placenta,0.8745,0.8745,0.9067,0.9067,True,True,False,False,True
-LIN28B,,,cancer-testis antigen,ENSG00000187772,True,False,Enhanced,False,False,placenta,0.9426,0.9426,0.9925,0.9925,True,True,True,True,True
-ADAM29,,,cancer-testis antigen,ENSG00000168594,no data,no data,no data,True,False,no data,0.9684,0.9684,1.0,1.0,True,True,True,True,True
-CABYR,,,cancer-testis antigen,ENSG00000154040,True,False,Enhanced,False,True,testis,0.6992,0.7002,0.7772,0.7774,False,False,False,False,False
-CCDC33,,,cancer-testis antigen,ENSG00000140481,no data,no data,no data,False,False,no data,0.3561,0.3561,0.4298,0.4298,False,False,False,False,False
-CTCFL,,,cancer-testis antigen,ENSG00000124092,True,False,Enhanced,True,False,testis,0.5463,0.5485,1.0,1.0,True,True,True,True,True
-DDX53,,,cancer-testis antigen,ENSG00000184735,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True
-DPPA2,,,cancer-testis antigen,ENSG00000163530,no data,no data,no data,True,False,no data,0.9722,0.973,1.0,1.0,True,True,True,True,True
-FTHL17,,,cancer-testis antigen,ENSG00000132446,no data,no data,no data,True,False,no data,0.9744,0.9744,1.0,1.0,True,True,True,True,True
-HORMAD2,,,cancer-testis antigen,ENSG00000176635,True,False,Enhanced,False,False,testis,0.8506,0.8506,0.925,0.925,True,True,False,False,True
-LEMD1,,,cancer-testis antigen,ENSG00000186007,no data,no data,no data,False,False,no data,0.6192,0.6192,0.7518,0.7518,False,False,False,False,False
-SYCP1,,,cancer-testis antigen,ENSG00000198765,True,False,Enhanced,True,False,testis,0.9848,0.9848,1.0,1.0,True,True,True,True,True
-TDRD1,,,cancer-testis antigen,ENSG00000095627,True,False,Enhanced,False,False,ovary; testis,0.668,0.6707,0.9625,0.9625,True,True,True,False,True
-TEX15,,,cancer-testis antigen,ENSG00000133863,True,False,Enhanced,False,False,testis,0.4485,0.4485,0.5514,0.5514,False,False,False,False,False
-ACTL7A,,,cancer-testis antigen,ENSG00000187003,True,False,Enhanced,True,False,testis,0.9987,0.9987,1.0,1.0,True,True,True,True,True
-ACTL7B,,,cancer-testis antigen,ENSG00000148156,True,False,Enhanced,True,False,testis,0.9991,0.9991,1.0,1.0,True,True,True,True,True
-BOLL,,,cancer-testis antigen,ENSG00000152430,True,False,Enhanced,False,False,testis,0.9065,0.9065,0.9425,0.9425,True,True,False,False,True
-BRDT,,,cancer-testis antigen,ENSG00000137948,True,False,Approved,False,False,testis,0.9443,0.9444,0.9876,0.9876,True,True,True,False,True
-CALR3,,,cancer-testis antigen,ENSG00000269058,True,False,Enhanced,True,False,testis,0.9813,0.9813,1.0,1.0,True,True,True,True,True
-DDX4,,,cancer-testis antigen,ENSG00000152670,True,False,Enhanced,True,False,testis,0.976,0.976,1.0,1.0,True,True,True,True,True
-DMRTB1,,,cancer-testis antigen,ENSG00000143006,True,False,Enhanced,True,False,testis,0.9854,0.9854,1.0,1.0,True,True,True,True,True
-DPPA3,,,cancer-testis antigen,ENSG00000187569,no data,no data,no data,False,False,no data,0.6508,0.6508,0.9688,0.9688,True,True,True,False,False
-DPPA5,,,cancer-testis antigen,ENSG00000203909,no data,no data,no data,True,False,no data,0.7647,0.7647,1.0,1.0,True,True,True,True,True
-FKBP6,,,cancer-testis antigen,ENSG00000077800,True,False,Enhanced,True,False,ovary; testis,0.9549,0.9551,1.0,1.0,True,True,True,True,True
-GAGE1,,,cancer-testis antigen,ENSG00000205777,True,False,Supported,True,False,testis,0.7826,0.7826,1.0,1.0,True,True,True,True,True
-LDHC,,,cancer-testis antigen,ENSG00000166796,True,False,Enhanced,False,False,testis,0.9534,0.9534,0.9973,0.9973,True,True,True,True,True
-MAEL,,,cancer-testis antigen,ENSG00000143194,True,False,Approved,False,False,testis,0.8242,0.8242,0.9163,0.9163,True,True,False,False,False
-MAGEA12,,,cancer-testis antigen,ENSG00000213401,no data,no data,no data,True,False,no data,0.5625,0.5625,1.0,1.0,True,True,True,True,True
-MAGEA8,,,cancer-testis antigen,ENSG00000156009,True,False,Enhanced,True,False,placenta; testis,0.9539,0.9539,1.0,1.0,True,True,True,True,True
-MAGEB10,,,cancer-testis antigen,ENSG00000177689,no data,no data,no data,True,False,no data,0.6857,0.6857,1.0,1.0,True,True,True,True,True
-MEIOB,,,cancer-testis antigen,ENSG00000162039,no data,no data,no data,True,False,no data,0.8277,0.8318,1.0,1.0,True,True,True,True,True
-NANOS2,,,cancer-testis antigen,ENSG00000188425,True,False,Approved,True,False,testis,0.875,0.875,1.0,1.0,True,True,True,True,True
-PASD1,,,cancer-testis antigen,ENSG00000166049,True,False,Enhanced,True,False,placenta; testis,1.0,1.0,1.0,1.0,True,True,True,True,True
-PIWIL1,,,cancer-testis antigen,ENSG00000125207,True,False,Enhanced,False,False,testis,0.9305,0.9305,0.9976,0.9976,True,True,True,True,True
-RAD21L1,,,cancer-testis antigen,ENSG00000244588,True,False,Approved,True,False,testis,0.9043,0.9043,1.0,1.0,True,True,True,True,True
-SMC1B,,,cancer-testis antigen,ENSG00000077935,True,False,Enhanced,True,False,testis,0.9743,0.9744,1.0,1.0,True,True,True,True,True
-SYCE2,,,cancer-testis antigen,ENSG00000161860,True,False,Enhanced,False,True,testis,0.4486,0.4643,0.8286,0.8328,True,False,False,False,True
-SYCP3,,,cancer-testis antigen,ENSG00000139351,True,False,Enhanced,True,False,testis,0.9586,0.9586,1.0,1.0,True,True,True,True,True
-TEX14,,,cancer-testis antigen,ENSG00000121101,True,False,Enhanced,False,False,testis,0.7472,0.7472,0.974,0.974,True,True,True,False,True
-UTF1,,,cancer-testis antigen,ENSG00000171794,True,False,Enhanced,True,False,testis,0.913,0.913,1.0,1.0,True,True,True,True,True
-ZPBP,,,cancer-testis antigen,ENSG00000042813,True,False,Enhanced,False,False,testis,0.956,0.956,0.9754,0.9754,True,True,True,False,True
-ZPBP2,,,cancer-testis antigen,ENSG00000186075,True,False,Enhanced,True,False,testis,0.9556,0.9556,1.0,1.0,True,True,True,True,True
+Symbol,Aliases,Full_Name,Function,Ensembl_Gene_ID,protein_reproductive,protein_thymus,protein_reliability,rna_reproductive,rna_thymus,protein_strict_expression,rna_reproductive_frac,rna_reproductive_and_thymus_frac,rna_deflated_reproductive_frac,rna_deflated_reproductive_and_thymus_frac,rna_80_pct_filter,rna_90_pct_filter,rna_95_pct_filter,rna_99_pct_filter,filtered,Canonical_Transcript_ID
+NUTM1,,,cancer-testis antigen,ENSG00000184507,True,False,Enhanced,True,False,testis,0.9648,0.9648,1.0,1.0,True,True,True,True,True,ENST00000333756
+CAGE1,,,cancer-testis antigen,ENSG00000164304,no data,no data,no data,True,False,no data,0.9608,0.9608,1.0,1.0,True,True,True,True,True,ENST00000502583
+PAGE1,,,cancer-testis antigen,ENSG00000068985,True,False,Enhanced,True,False,testis,0.9941,0.9941,1.0,1.0,True,True,True,True,True,ENST00000376150
+PAGE2,,,cancer-testis antigen,ENSG00000234068,True,False,Supported,True,False,testis,0.9148,0.9153,1.0,1.0,True,True,True,True,True,ENST00000374968
+PAGE2B,,,cancer-testis antigen,ENSG00000238269,True,False,Supported,False,False,testis,0.8164,0.817,0.9483,0.9483,True,True,False,False,True,ENST00000374971
+PAGE3,,,cancer-testis antigen,ENSG00000204279,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000374951
+PAGE5,,,cancer-testis antigen,ENSG00000158639,True,False,Supported,False,False,testis,0.8805,0.881,1.0,1.0,True,True,True,True,True,ENST00000374955
+XAGE1A,,,cancer-testis antigen,ENSG00000204379,no data,no data,no data,True,False,no data,0.9913,0.9913,1.0,1.0,True,True,True,True,True,ENST00000375602
+XAGE1B,,,cancer-testis antigen,ENSG00000204382,no data,no data,no data,False,False,no data,0.8806,0.8808,0.987,0.987,True,True,True,False,False,ENST00000518075
+XAGE3,,,cancer-testis antigen,ENSG00000171402,True,False,Supported,False,False,placenta,0.9804,0.9804,0.9922,0.9922,True,True,True,True,True,ENST00000346279
+XAGE5,,,cancer-testis antigen,ENSG00000171405,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000375501
+GAGE2A,,,cancer-testis antigen,ENSG00000189064,True,False,Supported,True,False,testis,0.9893,0.9893,1.0,1.0,True,True,True,True,True,ENST00000362097
+GAGE12H,,,cancer-testis antigen,ENSG00000224902,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000381722
+GAGE12J,,,cancer-testis antigen,ENSG00000224659,True,False,Supported,False,False,testis,0.8794,0.8794,0.9494,0.9494,True,True,False,False,True,ENST00000442437
+GAGE12E,,,cancer-testis antigen,ENSG00000216649,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000381698
+GAGE13,,,cancer-testis antigen,ENSG00000274274,True,False,Supported,False,False,testis,0.9729,0.9729,0.9926,0.9926,True,True,True,True,True,ENST00000612958
+MAGEA1,,,cancer-testis antigen,ENSG00000198681,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000356661
+MAGEA2,,,cancer-testis antigen,ENSG00000268606,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000611557
+MAGEA4,,,cancer-testis antigen,ENSG00000147381,True,False,Enhanced,True,False,placenta; testis,0.9562,0.9562,1.0,1.0,True,True,True,True,True,ENST00000682265
+MAGEA6,,,cancer-testis antigen,ENSG00000197172,no data,no data,no data,True,False,no data,0.9091,0.9091,1.0,1.0,True,True,True,True,True,ENST00000616035
+MAGEA3,,,cancer-testis antigen,ENSG00000221867,no data,no data,no data,True,False,no data,0.9759,0.9759,1.0,1.0,True,True,True,True,True,ENST00000598245
+MAGEA9,,,cancer-testis antigen,ENSG00000123584,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000243314
+MAGEA9B,,,cancer-testis antigen,ENSG00000267978,no data,no data,no data,True,False,no data,0.9346,0.9346,1.0,1.0,True,True,True,True,True,ENST00000595065
+MAGEA10,,,cancer-testis antigen,ENSG00000124260,True,False,Approved,True,False,placenta; testis,0.8529,0.8529,1.0,1.0,True,True,True,True,True,ENST00000370323
+MAGEA11,,,cancer-testis antigen,ENSG00000185247,no data,no data,no data,False,False,no data,0.1938,0.1938,0.1807,0.1807,False,False,False,False,False,ENST00000333104
+MAGEB1,,,cancer-testis antigen,ENSG00000214107,True,False,Enhanced,True,False,testis,0.9677,0.9677,1.0,1.0,True,True,True,True,True,ENST00000378981
+MAGEB2,,,cancer-testis antigen,ENSG00000099399,True,False,Enhanced,True,False,testis,0.9932,0.9932,1.0,1.0,True,True,True,True,True,ENST00000378988
+MAGEB3,,,cancer-testis antigen,ENSG00000198798,False,False,Approved,False,False,epididymis; testis,0.2207,0.2207,0.2311,0.2311,False,False,False,False,False,ENST00000361644
+MAGEB5,,,cancer-testis antigen,ENSG00000188408,no data,no data,no data,False,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000602297
+MAGEB6B,,,cancer-testis antigen,ENSG00000232030,no data,no data,no data,False,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000416929
+MAGEB16,,,cancer-testis antigen,ENSG00000189023,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000399988
+MAGEB18,,,cancer-testis antigen,ENSG00000176774,True,False,Enhanced,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000325250
+MAGEC1,,,cancer-testis antigen,ENSG00000155495,True,False,Enhanced,True,False,testis,0.9861,0.9861,1.0,1.0,True,True,True,True,True,ENST00000285879
+MAGEC2,,,cancer-testis antigen,ENSG00000046774,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000247452
+DAZ1,,,cancer-testis antigen,ENSG00000188120,True,False,Supported,True,False,testis,0.9091,0.9091,1.0,1.0,True,True,True,True,True,ENST00000405239
+DAZ3,,,cancer-testis antigen,ENSG00000187191,True,False,Approved,True,False,testis,0.6087,0.6087,1.0,1.0,True,True,True,True,True,ENST00000446723
+DAZL,,,cancer-testis antigen,ENSG00000092345,True,False,Enhanced,True,False,testis,0.9664,0.9664,1.0,1.0,True,True,True,True,True,ENST00000454457
+BSPH1,,,cancer-testis antigen,ENSG00000188334,False,False,Enhanced,False,False,epididymis,0.0,0.0,0.0026,0.0026,False,False,False,False,False,ENST00000344839
+SPAG11A,,,cancer-testis antigen,ENSG00000178287,False,False,Supported,False,False,epididymis,0.0,0.0,0.0002,0.0002,False,False,False,False,False,ENST00000528033
+SPANXA1,,,cancer-testis antigen,ENSG00000198021,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000370519
+SPANXA2,,,cancer-testis antigen,ENSG00000203926,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000370518
+SPANXB1,,,cancer-testis antigen,ENSG00000227234,True,False,Supported,False,False,testis,0.9785,0.9785,1.0,1.0,True,True,True,True,True,ENST00000449283
+SPANXC,,,cancer-testis antigen,ENSG00000198573,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000358993
+SPANXD,,,cancer-testis antigen,ENSG00000196406,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000370515
+SPANXN1,,,cancer-testis antigen,ENSG00000203923,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000370493
+SPANXN2,,,cancer-testis antigen,ENSG00000268988,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000598475
+SPANXN3,,,cancer-testis antigen,ENSG00000189252,no data,no data,no data,True,False,no data,0.9734,0.9734,1.0,1.0,True,True,True,True,True,ENST00000370503
+SPANXN4,,,cancer-testis antigen,ENSG00000189326,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000370504
+SPANXN5,,,cancer-testis antigen,ENSG00000204363,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000375511
+ODF1,,,cancer-testis antigen,ENSG00000155087,True,False,Approved,True,False,testis,0.9915,0.9915,1.0,1.0,True,True,True,True,True,ENST00000285402
+ODF3,CIMAP1A,,cancer-testis antigen,ENSG00000177947,True,False,Enhanced,True,False,testis,0.9579,0.9579,1.0,1.0,True,True,True,True,True,ENST00000325113
+ODF4,,,cancer-testis antigen,ENSG00000184650,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000328248
+ROPN1B,,,cancer-testis antigen,ENSG00000114547,False,False,Supported,False,False,epididymis; testis,0.6617,0.6617,0.7134,0.7134,False,False,False,False,False,ENST00000251776
+SPAM1,,,cancer-testis antigen,ENSG00000106304,True,False,Enhanced,True,False,testis,0.9444,0.9444,1.0,1.0,True,True,True,True,True,ENST00000340011
+SPATA4,,,cancer-testis antigen,ENSG00000150628,True,False,Enhanced,False,False,testis,0.8028,0.8028,0.9063,0.9063,True,True,False,False,True,ENST00000280191
+SPATA12,,,cancer-testis antigen,ENSG00000186451,True,False,Enhanced,True,False,testis,0.9005,0.9005,1.0,1.0,True,True,True,True,True,ENST00000334325
+SPATA16,,,cancer-testis antigen,ENSG00000144962,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000351008
+SPATA19,,,cancer-testis antigen,ENSG00000166118,True,False,Enhanced,True,False,testis,0.9909,0.9909,1.0,1.0,True,True,True,True,True,ENST00000299140
+SPATA22,,,cancer-testis antigen,ENSG00000141255,no data,no data,no data,False,False,no data,0.9216,0.9217,0.9921,0.9921,True,True,True,True,True,ENST00000541913
+SPATA31E1,,,cancer-testis antigen,ENSG00000177992,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000325643
+SPATA31A1,,,cancer-testis antigen,ENSG00000204849,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000377647
+SPATA31A3,,,cancer-testis antigen,ENSG00000275969,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000428649
+SPATA31A5,,,cancer-testis antigen,ENSG00000276581,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000437823
+SPATA31A6,,,cancer-testis antigen,ENSG00000185775,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000332857
+SPATA31A7,,,cancer-testis antigen,ENSG00000276040,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000619167
+SPATA31D3,,,cancer-testis antigen,ENSG00000186788,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000445385
+SPATA31D4,,,cancer-testis antigen,ENSG00000189357,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000419782
+SPATA32,,,cancer-testis antigen,ENSG00000184361,True,False,Approved,True,False,testis,0.9443,0.9443,1.0,1.0,True,True,True,True,True,ENST00000331780
+SPACA1,,,cancer-testis antigen,ENSG00000118434,True,False,Enhanced,True,False,testis,0.9975,0.9975,1.0,1.0,True,True,True,True,True,ENST00000237201
+SPACA3,,,cancer-testis antigen,ENSG00000141316,True,False,Enhanced,False,False,testis,0.826,0.826,0.8584,0.8584,True,False,False,False,True,ENST00000580599
+CATSPERD,,,cancer-testis antigen,ENSG00000174898,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000381624
+CATSPER4,,,cancer-testis antigen,ENSG00000188782,True,False,Enhanced,True,False,testis,0.982,0.982,1.0,1.0,True,True,True,True,True,ENST00000456354
+CTAG1A,,,cancer-testis antigen,ENSG00000268651,True,False,Enhanced,True,False,testis,0.9878,0.9878,1.0,1.0,True,True,True,True,True,ENST00000593606
+CTAG1B,,,cancer-testis antigen,ENSG00000184033,True,False,Enhanced,True,False,testis,0.9367,0.9367,1.0,1.0,True,True,True,True,True,ENST00000328435
+CTAGE1,,,cancer-testis antigen,ENSG00000212710,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000391403
+CTAGE6,,,cancer-testis antigen,ENSG00000271321,no data,no data,no data,True,False,no data,0.9527,0.9527,1.0,1.0,True,True,True,True,True,ENST00000470691
+CTAGE9,,,cancer-testis antigen,ENSG00000236761,no data,no data,no data,True,False,no data,0.9,0.9,1.0,1.0,True,True,True,True,True,ENST00000314099
+SSX1,,,cancer-testis antigen,ENSG00000126752,True,False,Supported,True,False,testis,0.9,0.9,1.0,1.0,True,True,True,True,True,ENST00000376919
+SSX2,,,cancer-testis antigen,ENSG00000241476,True,False,Enhanced,True,False,testis,0.9878,0.9878,1.0,1.0,True,True,True,True,True,ENST00000337502
+SSX2B,,,cancer-testis antigen,ENSG00000268447,True,False,Supported,True,False,testis,0.9706,0.9706,1.0,1.0,True,True,True,True,True,ENST00000616191
+SSX3,,,cancer-testis antigen,ENSG00000165584,True,False,Supported,True,False,testis,0.9776,0.9776,1.0,1.0,True,True,True,True,True,ENST00000298396
+SSX4,,,cancer-testis antigen,ENSG00000268009,True,False,Supported,True,False,testis,0.8611,0.8611,1.0,1.0,True,True,True,True,True,ENST00000620320
+TSPY1,,,cancer-testis antigen,ENSG00000258992,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000451548
+TSPY2,,,cancer-testis antigen,ENSG00000168757,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000320701
+TSPY3,,,cancer-testis antigen,ENSG00000228927,True,False,Supported,True,False,testis,0.8056,0.8056,1.0,1.0,True,True,True,True,True,ENST00000457222
+TSPY4,,,cancer-testis antigen,ENSG00000233803,True,False,Supported,True,False,testis,0.9845,0.9845,1.0,1.0,True,True,True,True,True,ENST00000426950
+TSPY8,,,cancer-testis antigen,ENSG00000229549,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000287721
+TSPY9,TSPY9P,,cancer-testis antigen,ENSG00000238074,False,False,Supported,True,False,adrenal gland; stomach 1; stomach 2; testis,0.9797,0.9797,1.0,1.0,True,True,True,True,False,ENST00000440215
+TSPY10,,,cancer-testis antigen,ENSG00000236424,True,False,Supported,True,False,testis,0.95,0.95,1.0,1.0,True,True,True,True,True,ENST00000428845
+TSPYL6,,,cancer-testis antigen,ENSG00000178021,True,False,Enhanced,True,False,testis,0.963,0.963,1.0,1.0,True,True,True,True,True,ENST00000317802
+MORC1,,,cancer-testis antigen,ENSG00000114487,True,False,Enhanced,True,False,testis,0.9181,0.9181,1.0,1.0,True,True,True,True,True,ENST00000232603
+TFDP3,,,cancer-testis antigen,ENSG00000183434,no data,no data,no data,True,False,no data,0.9762,0.9762,1.0,1.0,True,True,True,True,True,ENST00000310125
+LUZP4,,,cancer-testis antigen,ENSG00000102021,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000371920
+DKKL1,,,cancer-testis antigen,ENSG00000104901,True,False,Enhanced,False,False,testis,0.9517,0.9517,0.9994,0.9994,True,True,True,True,True,ENST00000594268
+SPO11,,,cancer-testis antigen,ENSG00000054796,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000371263
+CRISP2,,,cancer-testis antigen,ENSG00000124490,True,False,Enhanced,False,False,testis,0.8602,0.8602,0.8882,0.8882,True,False,False,False,True,ENST00000616725
+FMR1NB,,,cancer-testis antigen,ENSG00000176988,True,False,Enhanced,True,False,testis,0.9947,0.9947,1.0,1.0,True,True,True,True,True,ENST00000370467
+TPTE,,,cancer-testis antigen,ENSG00000274391,True,False,Enhanced,True,False,testis,0.9937,0.9937,1.0,1.0,True,True,True,True,True,ENST00000622113
+CT45A2,,,cancer-testis antigen,ENSG00000271449,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000612907
+CT45A7,,,cancer-testis antigen,ENSG00000273696,True,False,Supported,False,False,testis,0.6667,0.6667,1.0,1.0,True,True,True,True,True,ENST00000610598
+CT47A1,,,cancer-testis antigen,ENSG00000236371,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000433030
+CT47A2,,,cancer-testis antigen,ENSG00000242362,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000458218
+CT47A3,,,cancer-testis antigen,ENSG00000236126,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000441330
+CT47A4,,,cancer-testis antigen,ENSG00000230594,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000415858
+CT47A5,,,cancer-testis antigen,ENSG00000237957,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000439466
+CT47A6,,,cancer-testis antigen,ENSG00000226023,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000419194
+CT47A7,,,cancer-testis antigen,ENSG00000228517,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000434883
+CT47A11,,,cancer-testis antigen,ENSG00000226929,True,False,Supported,False,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000457020
+CT47A12,,,cancer-testis antigen,ENSG00000226685,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000419982
+CT47B1,,,cancer-testis antigen,ENSG00000236446,True,False,Supported,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000371311
+CT83,,,cancer-testis antigen,ENSG00000204019,no data,no data,no data,False,False,no data,0.9555,0.9555,0.9749,0.9749,True,True,True,False,False,ENST00000371894
+TEX13A,,,cancer-testis antigen,ENSG00000268629,True,False,Enhanced,True,False,placenta; testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000600991
+TEX19,,,cancer-testis antigen,ENSG00000182459,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000333437
+TEX33,CIMIP4,,cancer-testis antigen,ENSG00000185264,True,False,Enhanced,True,False,testis,0.9989,0.9989,1.0,1.0,True,True,True,True,True,ENST00000381821
+TEX35,,,cancer-testis antigen,ENSG00000240021,True,False,Approved,False,False,testis,0.88,0.8802,0.9778,0.9778,True,True,True,False,True,ENST00000367639
+TEX37,SPMIP9,,cancer-testis antigen,ENSG00000172073,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000303254
+TEX38,,,cancer-testis antigen,ENSG00000186118,no data,no data,no data,True,False,no data,0.9783,0.9783,1.0,1.0,True,True,True,True,True,ENST00000564071
+TEX44,,,cancer-testis antigen,ENSG00000177673,True,False,Enhanced,True,False,testis,0.998,0.998,1.0,1.0,True,True,True,True,True,ENST00000313965
+TEX101,,,cancer-testis antigen,ENSG00000131126,True,False,Enhanced,False,True,testis,0.8825,0.8834,0.9879,0.9879,True,True,True,False,True,ENST00000602198
+PATE1,,,cancer-testis antigen,ENSG00000171053,False,False,Approved,False,False,epididymis; seminal vesicle; testis,0.0,0.0,0.0005,0.0005,False,False,False,False,False,ENST00000305738
+PATE4,,,cancer-testis antigen,ENSG00000237353,True,False,Approved,False,False,testis,0.004,0.004,0.0084,0.0084,False,False,False,False,False,ENST00000457514
+PRSS54,,,cancer-testis antigen,ENSG00000103023,True,False,Enhanced,True,False,testis,0.995,0.995,1.0,1.0,True,True,True,True,True,ENST00000219301
+PHF7,,,cancer-testis antigen,ENSG00000010318,True,False,Enhanced,False,True,testis,0.9126,0.9128,0.945,0.9451,True,True,False,False,True,ENST00000327906
+SLCO6A1,,,cancer-testis antigen,ENSG00000205359,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000506729
+TEKT5,,,cancer-testis antigen,ENSG00000153060,no data,no data,no data,True,False,no data,0.8067,0.8067,1.0,1.0,True,True,True,True,True,ENST00000283025
+DMRT1,,,cancer-testis antigen,ENSG00000137090,True,False,Enhanced,True,False,testis,0.9812,0.9812,1.0,1.0,True,True,True,True,True,ENST00000382276
+DMRTC2,,,cancer-testis antigen,ENSG00000142025,True,False,Uncertain,True,False,testis,0.9475,0.9475,1.0,1.0,True,True,True,True,True,ENST00000269945
+DNAJB8,,,cancer-testis antigen,ENSG00000179407,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000469083
+SAGE1,,,cancer-testis antigen,ENSG00000181433,True,False,Enhanced,True,False,testis,0.8393,0.8393,1.0,1.0,True,True,True,True,True,ENST00000324447
+LIPI,,,cancer-testis antigen,ENSG00000188992,no data,no data,no data,False,False,no data,0.0002,0.0002,0.0024,0.0024,False,False,False,False,False,ENST00000681601
+ADAM2,,,cancer-testis antigen,ENSG00000104755,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000265708
+PLAC1,,,cancer-testis antigen,ENSG00000170965,True,False,Enhanced,True,False,placenta,0.9691,0.9691,1.0,1.0,True,True,True,True,True,ENST00000359237
+CABS1,,,cancer-testis antigen,ENSG00000145309,True,False,Enhanced,False,False,testis,0.9628,0.9628,0.9727,0.9727,True,True,True,False,True,ENST00000273936
+FATE1,,,cancer-testis antigen,ENSG00000147378,True,False,Enhanced,True,True,testis,0.9651,0.9655,1.0,1.0,True,True,True,True,True,ENST00000370350
+HORMAD1,,,cancer-testis antigen,ENSG00000143452,True,False,Enhanced,False,False,testis,0.879,0.879,0.9338,0.9338,True,True,False,False,True,ENST00000361824
+ACRBP,,,cancer-testis antigen,ENSG00000111644,True,False,Enhanced,False,True,testis,0.6829,0.6852,0.7563,0.7576,False,False,False,False,False,ENST00000229243
+TSKS,,,cancer-testis antigen,ENSG00000126467,True,False,Enhanced,False,False,testis,0.8837,0.884,0.9898,0.9898,True,True,True,False,True,ENST00000246801
+CCDC42,,,cancer-testis antigen,ENSG00000161973,no data,no data,no data,True,False,no data,0.9809,0.9809,1.0,1.0,True,True,True,True,True,ENST00000293845
+ADAD1,,,cancer-testis antigen,ENSG00000164113,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000296513
+RIMBP3,,,cancer-testis antigen,ENSG00000275793,True,False,Supported,True,True,testis,0.8152,0.8205,1.0,1.0,True,True,True,True,True,ENST00000619918
+TENT5D,,,cancer-testis antigen,ENSG00000174016,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000538312
+PRAME,,,cancer-testis antigen,ENSG00000185686,True,False,Enhanced,False,False,testis,0.806,0.8063,0.8787,0.8787,True,False,False,False,True,ENST00000398743
+PRAMEF18,,,cancer-testis antigen,ENSG00000279804,no data,no data,no data,False,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000624297
+PRAMEF20,,,cancer-testis antigen,ENSG00000204478,no data,no data,no data,False,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000602960
+CBLL2,,,cancer-testis antigen,ENSG00000175809,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000323684
+CPXCR1,,,cancer-testis antigen,ENSG00000147183,no data,no data,no data,True,False,no data,0.9841,0.9841,1.0,1.0,True,True,True,True,True,ENST00000276127
+TULP2,,,cancer-testis antigen,ENSG00000104804,no data,no data,no data,True,False,no data,0.8298,0.8298,1.0,1.0,True,True,True,True,True,ENST00000221399
+EPPIN,,,cancer-testis antigen,ENSG00000101448,True,False,Supported,False,False,testis,0.1974,0.1974,0.2034,0.2034,False,False,False,False,False,ENST00000354280
+ACTL8,,,cancer-testis antigen,ENSG00000117148,no data,no data,no data,True,False,no data,0.939,0.939,1.0,1.0,True,True,True,True,True,ENST00000375406
+SPEM1,,,cancer-testis antigen,ENSG00000181323,no data,no data,no data,True,False,no data,0.997,0.997,1.0,1.0,True,True,True,True,True,ENST00000323675
+THEG,SPMAP2,,cancer-testis antigen,ENSG00000105549,no data,no data,no data,False,False,no data,0.8515,0.8515,0.9538,0.9538,True,True,True,False,False,ENST00000342640
+PRM1,,,cancer-testis antigen,ENSG00000175646,True,False,Enhanced,False,False,testis,0.9938,0.9938,0.9962,0.9962,True,True,True,True,True,ENST00000312511
+PRM2,,,cancer-testis antigen,ENSG00000122304,True,False,Enhanced,False,False,testis,0.9938,0.9938,0.9965,0.9965,True,True,True,True,True,ENST00000241808
+PRM3,,,cancer-testis antigen,ENSG00000178257,no data,no data,no data,False,False,no data,0.9351,0.9351,0.9785,0.9785,True,True,True,False,False,ENST00000327157
+AKAP4,,,cancer-testis antigen,ENSG00000147081,True,False,Enhanced,True,False,testis,0.9989,0.9989,1.0,1.0,True,True,True,True,True,ENST00000358526
+TNP2,,,cancer-testis antigen,ENSG00000178279,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000560751
+CGB8,,,cancer-testis antigen,ENSG00000213030,True,False,Supported,False,False,placenta; testis,0.8873,0.8873,0.933,0.933,True,True,False,False,True,ENST00000448456
+PSG9,,,cancer-testis antigen,ENSG00000183668,True,False,Supported,True,False,placenta; testis,0.9709,0.9709,1.0,1.0,True,True,True,True,True,ENST00000418820
+PSG8,,,cancer-testis antigen,ENSG00000124467,True,False,Supported,True,False,placenta; testis,0.9692,0.9692,1.0,1.0,True,True,True,True,True,ENST00000404209
+PSG11,,,cancer-testis antigen,ENSG00000243130,True,False,Enhanced,True,False,placenta; testis,0.9884,0.9884,1.0,1.0,True,True,True,True,True,ENST00000320078
+PSG1,,,cancer-testis antigen,ENSG00000231924,True,False,Supported,True,False,placenta; testis,0.9898,0.9898,1.0,1.0,True,True,True,True,True,ENST00000436291
+PSG3,,,cancer-testis antigen,ENSG00000221826,True,False,Supported,True,False,placenta; testis,0.9914,0.9914,1.0,1.0,True,True,True,True,True,ENST00000327495
+CSH2,,,cancer-testis antigen,ENSG00000213218,True,False,Supported,False,True,placenta,0.9886,0.9886,0.9909,0.9909,True,True,True,True,True,ENST00000336844
+PSG5,,,cancer-testis antigen,ENSG00000204941,True,False,Supported,True,False,placenta; testis,0.9714,0.9714,1.0,1.0,True,True,True,True,True,ENST00000366175
+TRIM64,,,cancer-testis antigen,ENSG00000204450,True,False,Approved,True,False,placenta,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000533122
+EGFL6,,,cancer-testis antigen,ENSG00000198759,True,False,Enhanced,False,False,placenta,0.8745,0.8745,0.9067,0.9067,True,True,False,False,True,ENST00000361306
+LIN28B,,,cancer-testis antigen,ENSG00000187772,True,False,Enhanced,False,False,placenta,0.9426,0.9426,0.9925,0.9925,True,True,True,True,True,ENST00000635857
+ADAM29,,,cancer-testis antigen,ENSG00000168594,no data,no data,no data,True,False,no data,0.9684,0.9684,1.0,1.0,True,True,True,True,True,ENST00000359240
+CABYR,,,cancer-testis antigen,ENSG00000154040,True,False,Enhanced,False,True,testis,0.6992,0.7002,0.7772,0.7774,False,False,False,False,False,ENST00000399481
+CCDC33,,,cancer-testis antigen,ENSG00000140481,no data,no data,no data,False,False,no data,0.3561,0.3561,0.4298,0.4298,False,False,False,False,False,ENST00000635913
+CTCFL,,,cancer-testis antigen,ENSG00000124092,True,False,Enhanced,True,False,testis,0.5463,0.5485,1.0,1.0,True,True,True,True,True,ENST00000423479
+DDX53,,,cancer-testis antigen,ENSG00000184735,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000327968
+DPPA2,,,cancer-testis antigen,ENSG00000163530,no data,no data,no data,True,False,no data,0.9722,0.973,1.0,1.0,True,True,True,True,True,ENST00000478945
+FTHL17,,,cancer-testis antigen,ENSG00000132446,no data,no data,no data,True,False,no data,0.9744,0.9744,1.0,1.0,True,True,True,True,True,ENST00000359202
+HORMAD2,,,cancer-testis antigen,ENSG00000176635,True,False,Enhanced,False,False,testis,0.8506,0.8506,0.925,0.925,True,True,False,False,True,ENST00000336726
+LEMD1,,,cancer-testis antigen,ENSG00000186007,no data,no data,no data,False,False,no data,0.6192,0.6192,0.7518,0.7518,False,False,False,False,False,ENST00000495594
+SYCP1,,,cancer-testis antigen,ENSG00000198765,True,False,Enhanced,True,False,testis,0.9848,0.9848,1.0,1.0,True,True,True,True,True,ENST00000369522
+TDRD1,,,cancer-testis antigen,ENSG00000095627,True,False,Enhanced,False,False,ovary; testis,0.668,0.6707,0.9625,0.9625,True,True,True,False,True,ENST00000251864
+TEX15,,,cancer-testis antigen,ENSG00000133863,True,False,Enhanced,False,False,testis,0.4485,0.4485,0.5514,0.5514,False,False,False,False,False,ENST00000643185
+ACTL7A,,,cancer-testis antigen,ENSG00000187003,True,False,Enhanced,True,False,testis,0.9987,0.9987,1.0,1.0,True,True,True,True,True,ENST00000333999
+ACTL7B,,,cancer-testis antigen,ENSG00000148156,True,False,Enhanced,True,False,testis,0.9991,0.9991,1.0,1.0,True,True,True,True,True,ENST00000374667
+BOLL,,,cancer-testis antigen,ENSG00000152430,True,False,Enhanced,False,False,testis,0.9065,0.9065,0.9425,0.9425,True,True,False,False,True,ENST00000321801
+BRDT,,,cancer-testis antigen,ENSG00000137948,True,False,Approved,False,False,testis,0.9443,0.9444,0.9876,0.9876,True,True,True,False,True,ENST00000394530
+CALR3,,,cancer-testis antigen,ENSG00000269058,True,False,Enhanced,True,False,testis,0.9813,0.9813,1.0,1.0,True,True,True,True,True,ENST00000269881
+DDX4,,,cancer-testis antigen,ENSG00000152670,True,False,Enhanced,True,False,testis,0.976,0.976,1.0,1.0,True,True,True,True,True,ENST00000353507
+DMRTB1,,,cancer-testis antigen,ENSG00000143006,True,False,Enhanced,True,False,testis,0.9854,0.9854,1.0,1.0,True,True,True,True,True,ENST00000371445
+DPPA3,,,cancer-testis antigen,ENSG00000187569,no data,no data,no data,False,False,no data,0.6508,0.6508,0.9688,0.9688,True,True,True,False,False,ENST00000345088
+DPPA5,,,cancer-testis antigen,ENSG00000203909,no data,no data,no data,True,False,no data,0.7647,0.7647,1.0,1.0,True,True,True,True,True,ENST00000370370
+FKBP6,,,cancer-testis antigen,ENSG00000077800,True,False,Enhanced,True,False,ovary; testis,0.9549,0.9551,1.0,1.0,True,True,True,True,True,ENST00000252037
+GAGE1,,,cancer-testis antigen,ENSG00000205777,True,False,Supported,True,False,testis,0.7826,0.7826,1.0,1.0,True,True,True,True,True,ENST00000381700
+LDHC,,,cancer-testis antigen,ENSG00000166796,True,False,Enhanced,False,False,testis,0.9534,0.9534,0.9973,0.9973,True,True,True,True,True,ENST00000541669
+MAEL,,,cancer-testis antigen,ENSG00000143194,True,False,Approved,False,False,testis,0.8242,0.8242,0.9163,0.9163,True,True,False,False,False,ENST00000622874
+MAGEA12,,,cancer-testis antigen,ENSG00000213401,no data,no data,no data,True,False,no data,0.5625,0.5625,1.0,1.0,True,True,True,True,True,ENST00000393869
+MAGEA8,,,cancer-testis antigen,ENSG00000156009,True,False,Enhanced,True,False,placenta; testis,0.9539,0.9539,1.0,1.0,True,True,True,True,True,ENST00000535454
+MAGEB10,,,cancer-testis antigen,ENSG00000177689,no data,no data,no data,True,False,no data,0.6857,0.6857,1.0,1.0,True,True,True,True,True,ENST00000356790
+MEIOB,,,cancer-testis antigen,ENSG00000162039,no data,no data,no data,True,False,no data,0.8277,0.8318,1.0,1.0,True,True,True,True,True,ENST00000470044
+NANOS2,,,cancer-testis antigen,ENSG00000188425,True,False,Approved,True,False,testis,0.875,0.875,1.0,1.0,True,True,True,True,True,ENST00000341294
+PASD1,,,cancer-testis antigen,ENSG00000166049,True,False,Enhanced,True,False,placenta; testis,1.0,1.0,1.0,1.0,True,True,True,True,True,ENST00000370357
+PIWIL1,,,cancer-testis antigen,ENSG00000125207,True,False,Enhanced,False,False,testis,0.9305,0.9305,0.9976,0.9976,True,True,True,True,True,ENST00000245255
+RAD21L1,,,cancer-testis antigen,ENSG00000244588,True,False,Approved,True,False,testis,0.9043,0.9043,1.0,1.0,True,True,True,True,True,ENST00000402452
+SMC1B,,,cancer-testis antigen,ENSG00000077935,True,False,Enhanced,True,False,testis,0.9743,0.9744,1.0,1.0,True,True,True,True,True,ENST00000357450
+SYCE2,,,cancer-testis antigen,ENSG00000161860,True,False,Enhanced,False,True,testis,0.4486,0.4643,0.8286,0.8328,True,False,False,False,True,ENST00000293695
+SYCP3,,,cancer-testis antigen,ENSG00000139351,True,False,Enhanced,True,False,testis,0.9586,0.9586,1.0,1.0,True,True,True,True,True,ENST00000392927
+TEX14,,,cancer-testis antigen,ENSG00000121101,True,False,Enhanced,False,False,testis,0.7472,0.7472,0.974,0.974,True,True,True,False,True,ENST00000389934
+UTF1,,,cancer-testis antigen,ENSG00000171794,True,False,Enhanced,True,False,testis,0.913,0.913,1.0,1.0,True,True,True,True,True,ENST00000304477
+ZPBP,,,cancer-testis antigen,ENSG00000042813,True,False,Enhanced,False,False,testis,0.956,0.956,0.9754,0.9754,True,True,True,False,True,ENST00000046087
+ZPBP2,,,cancer-testis antigen,ENSG00000186075,True,False,Enhanced,True,False,testis,0.9556,0.9556,1.0,1.0,True,True,True,True,True,ENST00000348931

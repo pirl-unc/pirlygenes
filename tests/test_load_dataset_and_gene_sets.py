@@ -111,7 +111,9 @@ def test_cta_filtered_and_evidence():
         "rna_80_pct_filter",
         "rna_90_pct_filter",
         "rna_95_pct_filter",
+        "rna_99_pct_filter",
         "filtered",
+        "Canonical_Transcript_ID",
     ]
     for col in expected_cols:
         assert col in evidence_df.columns, f"Missing column: {col}"
