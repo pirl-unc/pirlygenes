@@ -89,10 +89,10 @@ from pirlygenes.gene_sets_cancer import (
     CTA_evidence,                # full DataFrame with all evidence columns
 )
 
-# Default: HPA-filtered reproductive-restricted CTAs (~248 genes)
+# Default: HPA-filtered reproductive-restricted CTAs (~278 genes)
 cta_genes = CTA_gene_names()
 
-# Full unfiltered superset from all sources (~269 genes)
+# Full unfiltered superset from all sources (~358 genes)
 all_ctas = CTA_unfiltered_gene_names()
 
 # Evidence table with per-gene HPA tissue restriction data
@@ -103,23 +103,24 @@ df = CTA_evidence()
 
 The CTA gene set is built as an unbiased union of genes from multiple CT antigen databases and literature sources, then systematically filtered using Human Protein Atlas tissue expression data.
 
-**Step 1: Collect** — union of protein-coding CT genes from multiple source databases (269 genes):
+**Step 1: Collect** — union of protein-coding CT genes from multiple source databases (358 genes):
 
 | Source | Genes | Reference |
 |---|---|---|
-| [CTpedia](http://www.cta.lncc.br/) | 167 | Almeida et al. 2009, *NAR* |
-| [CTexploreR](https://www.bioconductor.org/packages/release/bioc/html/CTexploreR.html) | 62 new | Loriot et al. 2024, *PLOS Genetics* |
-| EWSR1-FLI1 CT gene binding sites | 12 | Grünewald et al., *Cancer Cell* |
+| [CTpedia](http://www.cta.lncc.br/) | 167 | [Almeida et al. 2009](https://doi.org/10.1093/nar/gkn673), *NAR* |
+| [CTexploreR/CTdata](https://www.bioconductor.org/packages/release/bioc/html/CTexploreR.html) | 62 new | [Loriot et al. 2024](https://doi.org/10.1371/journal.pgen.1011734), *PLOS Genetics* |
+| [da Silva et al. 2017](https://doi.org/10.18632/oncotarget.21715) protein-level CT genes | 89 new | Tumor mass spec proteomics (136 genes, 46 overlap) |
+| EWSR1-FLI1 CT gene binding sites | 12 | [Grünewald et al.](https://doi.org/10.1158/0008-5472.CAN-14-2908), *Cancer Research* |
 | Meiosis, piRNA, spermatogenesis literature | 28 | Multiple sources |
 
-Each gene is tracked with a `source_databases` column indicating which databases include it (CTpedia, CTexploreR_CT, CTexploreR_CTP, daSilva2017). Only protein-coding genes (Ensembl biotype) are included.
+Each gene is tracked with a `source_databases` column indicating which databases include it (CTpedia, CTexploreR_CT, CTexploreR_CTP, daSilva2017, daSilva2017_protein). Only protein-coding genes (Ensembl biotype) are included. Genes with outdated HGNC symbols are renamed to current symbols with old names kept as aliases.
 
-**Step 2: Annotate** — each gene is scored against HPA v23 tissue expression:
+**Step 2: Annotate** — each gene is scored against [Human Protein Atlas](https://www.proteinatlas.org/) v23 tissue expression:
 
 - **RNA**: [HPA RNA tissue consensus](https://www.proteinatlas.org/about/download) (`rna_tissue_consensus.tsv`) — normalized transcripts per million (nTPM) across 50 normal tissues
 - **Protein**: [HPA normal tissue IHC](https://www.proteinatlas.org/about/download) (`normal_tissue.tsv`) — immunohistochemistry detection levels (Not detected / Low / Medium / High) across 63 tissues with antibody reliability scores (Enhanced / Supported / Approved / Uncertain)
 
-**Step 3: Filter** — protein-coding + tiered thresholds based on protein antibody confidence (248 of 269 pass):
+**Step 3: Filter** — protein-coding + tiered thresholds based on protein antibody confidence (278 of 358 pass):
 
 | Protein evidence | Deflated RNA threshold |
 |---|---|
@@ -134,9 +135,9 @@ Genes with protein detected in non-reproductive tissues always fail. Thymus is e
 
 | Function | Description | Count |
 |---|---|---|
-| `CTA_gene_names()` | **Recommended default.** HPA-filtered reproductive-restricted CTAs | ~248 |
-| `CTA_unfiltered_gene_names()` | Full superset from all source databases | 269 |
-| `CTA_evidence()` | Full DataFrame with all evidence columns | 269 rows |
+| `CTA_gene_names()` | **Recommended default.** HPA-filtered reproductive-restricted CTAs | ~278 |
+| `CTA_unfiltered_gene_names()` | Full superset from all source databases | 358 |
+| `CTA_evidence()` | Full DataFrame with all evidence columns | 358 rows |
 
 ### Evidence columns
 

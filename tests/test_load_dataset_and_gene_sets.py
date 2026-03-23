@@ -124,6 +124,8 @@ def test_cta_filtered_and_evidence():
         "source_databases",
         "biotype",
         "Canonical_Transcript_ID",
+        "rna_max_ntpm",
+        "low_evidence",
     ]
     for col in expected_cols:
         assert col in evidence_df.columns, f"Missing column: {col}"

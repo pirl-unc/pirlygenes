@@ -275,6 +275,10 @@ def CTA_evidence():
         - Uncertain or no protein data → RNA >=99%
         Genes with protein in non-reproductive tissues always fail.
         Non-protein-coding genes (biotype != protein_coding) always fail.
+    rna_max_ntpm : float
+        Maximum nTPM across all tissues for this gene.
+    low_evidence : bool
+        True if no HPA protein data AND maximum RNA nTPM < 2.
     """
     from .load_dataset import get_data
 
