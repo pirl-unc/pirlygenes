@@ -183,16 +183,6 @@ def radioligand_target_gene_ids():
 
 
 # ---------- Cancer-testis antigens (CTA) ----------
-def CTA_gene_names():
-    """All CTA gene symbols (unfiltered)."""
-    return get_target_gene_name_set("cancer-testis-antigens")
-
-
-def CTA_gene_ids():
-    """All CTA Ensembl gene IDs (unfiltered)."""
-    return get_target_gene_id_set("cancer-testis-antigens")
-
-
 def _cta_filtered(column):
     from .load_dataset import get_data
 
@@ -208,14 +198,33 @@ def _cta_filtered(column):
     return result
 
 
-def CTA_filtered_gene_names():
-    """CTA gene symbols that pass the reproductive-tissue filter."""
+def CTA_gene_names():
+    """CTA gene symbols that pass the reproductive-tissue HPA filter.
+
+    This is the recommended default.  For the unfiltered superset
+    (all source databases), use ``CTA_unfiltered_gene_names()``.
+    """
     return _cta_filtered("Symbol")
 
 
-def CTA_filtered_gene_ids():
-    """CTA Ensembl gene IDs that pass the reproductive-tissue filter."""
+def CTA_gene_ids():
+    """CTA Ensembl gene IDs that pass the reproductive-tissue HPA filter."""
     return _cta_filtered("Ensembl_Gene_ID")
+
+
+def CTA_unfiltered_gene_names():
+    """All CTA gene symbols from all source databases (unfiltered)."""
+    return get_target_gene_name_set("cancer-testis-antigens")
+
+
+def CTA_unfiltered_gene_ids():
+    """All CTA Ensembl gene IDs from all source databases (unfiltered)."""
+    return get_target_gene_id_set("cancer-testis-antigens")
+
+
+# Backwards-compatible aliases
+CTA_filtered_gene_names = CTA_gene_names
+CTA_filtered_gene_ids = CTA_gene_ids
 
 
 def CTA_evidence():

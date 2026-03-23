@@ -88,12 +88,20 @@ def test_all_gene_set_wrappers(monkeypatch):
 
 
 def test_cta_filtered_and_evidence():
-    all_names = gsc.CTA_gene_names()
-    filtered_names = gsc.CTA_filtered_gene_names()
-    filtered_ids = gsc.CTA_filtered_gene_ids()
+    # CTA_gene_names() now returns the filtered (preferred) set
+    filtered_names = gsc.CTA_gene_names()
+    filtered_ids = gsc.CTA_gene_ids()
+    all_names = gsc.CTA_unfiltered_gene_names()
+    all_ids = gsc.CTA_unfiltered_gene_ids()
     assert filtered_names
     assert filtered_ids
+    assert all_names
+    assert all_ids
     assert filtered_names < all_names  # strict subset
+
+    # Backwards-compatible aliases
+    assert gsc.CTA_filtered_gene_names() == filtered_names
+    assert gsc.CTA_filtered_gene_ids() == filtered_ids
 
     evidence_df = gsc.CTA_evidence()
     assert len(evidence_df) == len(all_names)
@@ -118,7 +126,7 @@ def test_cta_filtered_and_evidence():
     for col in expected_cols:
         assert col in evidence_df.columns, f"Missing column: {col}"
 
-    # filtered column should match CTA_filtered_gene_names
+    # filtered column should match CTA_gene_names (the default/filtered set)
     df_filtered_names = set(
         evidence_df[evidence_df["filtered"].astype(str).str.lower() == "true"]["Symbol"]
     )
