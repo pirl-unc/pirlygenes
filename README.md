@@ -161,6 +161,8 @@ Each gene in `cancer-testis-antigens.csv` carries identity and HPA-derived evide
 | `rna_80/90/95/99_pct_filter` | Whether deflated reproductive fraction ≥ threshold |
 | `filtered` | Final inclusion flag (see tiered thresholds above) |
 
+For full details on the curation process, evidence columns, and filter logic, see [docs/cta-curation.md](docs/cta-curation.md).
+
 ### Deflated RNA metric
 
 The deflated metric `max(0, nTPM − 1)` per tissue suppresses low-level basal transcription noise before computing the reproductive fraction. A `+1` pseudocount on numerator and denominator prevents 0/0 for very-low-expression genes. Example: CTCFL/BORIS has raw reproductive fraction 54% (diluted by sub-1 nTPM noise across ~40 tissues) but deflated fraction 100% (only testis has ≥1 nTPM).

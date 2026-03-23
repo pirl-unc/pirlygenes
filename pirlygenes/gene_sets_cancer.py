@@ -213,13 +213,34 @@ def CTA_gene_ids():
 
 
 def CTA_unfiltered_gene_names():
-    """All CTA gene symbols from all source databases (unfiltered)."""
+    """All CTA gene symbols from all source databases (unfiltered).
+
+    This is the full CTA universe — use for excluding CTA genes from
+    a non-CTA comparison set.  Any gene in this set was identified as
+    a candidate CTA by at least one source database.
+    """
     return get_target_gene_name_set("cancer-testis-antigens")
 
 
 def CTA_unfiltered_gene_ids():
     """All CTA Ensembl gene IDs from all source databases (unfiltered)."""
     return get_target_gene_id_set("cancer-testis-antigens")
+
+
+def CTA_excluded_gene_names():
+    """CTA genes that FAIL the reproductive-tissue filter.
+
+    These are candidate CTAs with evidence of somatic tissue expression.
+    Use this set to exclude from a non-CTA comparison set: they should
+    not be in the clean CTA set (they leak into healthy tissue) but also
+    should not be in a non-CTA set (they are still CTA candidates).
+    """
+    return CTA_unfiltered_gene_names() - CTA_gene_names()
+
+
+def CTA_excluded_gene_ids():
+    """CTA Ensembl gene IDs that FAIL the reproductive-tissue filter."""
+    return CTA_unfiltered_gene_ids() - CTA_gene_ids()
 
 
 # Backwards-compatible aliases
