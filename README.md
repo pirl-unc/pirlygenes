@@ -76,66 +76,106 @@ CLI plotting notes:
 
 ## Cancer-testis antigens (CTAs)
 
-Last updated: March 20th, 2026
+Last updated: March 23rd, 2026
 
-Sources:
+### Quick start
 
-- [CTpedia](http://www.cta.lncc.br/)
-- [Human Protein Atlas v23](https://www.proteinatlas.org/) — RNA tissue consensus & normal tissue IHC
-- [EWSR1-FLI1 Activation of the Cancer/Testis Antigen FATE1 Promotes Ewing Sarcoma Survival](https://pubmed.ncbi.nlm.nih.gov/) — additional CT gene candidates
+```python
+from pirlygenes.gene_sets_cancer import (
+    CTA_gene_names,              # recommended: filtered, reproductive-restricted CTAs
+    CTA_gene_ids,                # same, as Ensembl gene IDs
+    CTA_unfiltered_gene_names,   # full superset from all source databases
+    CTA_unfiltered_gene_ids,     # same, as Ensembl gene IDs
+    CTA_evidence,                # full DataFrame with all evidence columns
+)
 
-### Gene sets
+# Default: expressed, reproductive-restricted CTAs (~257 genes)
+cta_genes = CTA_gene_names()
 
-The CTA data includes **207 genes** with two access tiers:
+# Full unfiltered superset from all sources (~358 genes)
+all_ctas = CTA_unfiltered_gene_names()
 
-| Function | Returns | Count |
+# Partition ALL protein-coding genes into CTA / never-expressed / non-CTA
+from pirlygenes.gene_sets_cancer import CTA_partition_gene_ids
+p = CTA_partition_gene_ids()   # p.cta, p.cta_never_expressed, p.non_cta
+
+# Evidence table with per-gene HPA tissue restriction data
+df = CTA_evidence()
+```
+
+### Pipeline overview
+
+The CTA gene set is built as an unbiased union of genes from multiple CT antigen databases and literature sources, then systematically filtered using Human Protein Atlas tissue expression data.
+
+**Step 1: Collect** — union of protein-coding CT genes from multiple source databases (358 genes):
+
+| Source | Genes | Reference |
 |---|---|---|
-| `CTA_gene_names()` / `CTA_gene_ids()` | All CTAs (unfiltered) | 207 |
-| `CTA_filtered_gene_names()` / `CTA_filtered_gene_ids()` | Reproductive-tissue-restricted CTAs | ~186 |
-| `CTA_evidence()` | Full DataFrame with all evidence columns | 207 rows |
+| [CTpedia](http://www.cta.lncc.br/) | 167 | [Almeida et al. 2009](https://doi.org/10.1093/nar/gkn673), *NAR* |
+| [CTexploreR/CTdata](https://www.bioconductor.org/packages/release/bioc/html/CTexploreR.html) | 62 new | [Loriot et al. 2024](https://doi.org/10.1371/journal.pgen.1011734), *PLOS Genetics* |
+| [da Silva et al. 2017](https://doi.org/10.18632/oncotarget.21715) protein-level CT genes | 89 new | Tumor mass spec proteomics (136 genes, 46 overlap) |
+| EWSR1-FLI1 CT gene binding sites | 12 | [Grünewald et al.](https://doi.org/10.1158/0008-5472.CAN-14-2908), *Cancer Research* |
+| Meiosis, piRNA, spermatogenesis literature | 28 | Multiple sources |
 
-### Evidence columns
+Each gene is tracked with a `source_databases` column indicating which databases include it (CTpedia, CTexploreR_CT, CTexploreR_CTP, daSilva2017, daSilva2017_protein). Only protein-coding genes (Ensembl biotype) are included. Genes with outdated HGNC symbols are renamed to current symbols with old names kept as aliases.
 
-Each gene in `cancer-testis-antigens.csv` carries HPA-derived tissue-restriction evidence:
+**Step 2: Annotate** — each gene is scored against [Human Protein Atlas](https://www.proteinatlas.org/) v23 tissue expression:
 
-| Column | Description |
-|---|---|
-| `protein_reproductive` | IHC detected only in testis/ovary/placenta (excluding thymus), or `"no data"` |
-| `protein_thymus` | IHC detected in thymus |
-| `protein_reliability` | Best HPA antibody reliability: Enhanced, Supported, Approved, Uncertain, or `"no data"` |
-| `rna_reproductive` | All tissues with ≥1 nTPM (excluding thymus) are testis/ovary/placenta |
-| `rna_thymus` | Thymus nTPM ≥ 1 |
-| `protein_strict_expression` | Semicolon-separated tissues with IHC detection (excluding thymus) |
-| `rna_reproductive_frac` | Fraction of total nTPM (excluding thymus) in core reproductive tissues |
-| `rna_reproductive_and_thymus_frac` | Same, but thymus nTPM added to numerator and denominator |
-| `rna_deflated_reproductive_frac` | `(1 + Σ repro max(0, nTPM−1)) / (1 + Σ all max(0, nTPM−1))` — deflated with +1 pseudocount |
-| `rna_deflated_reproductive_and_thymus_frac` | Same but thymus added to reproductive numerator |
-| `rna_80_pct_filter` / `rna_90_pct_filter` / `rna_95_pct_filter` | Deflated reproductive fraction ≥ threshold |
-| `filtered` | Final inclusion flag (see below) |
+- **RNA**: [HPA RNA tissue consensus](https://www.proteinatlas.org/about/download) (`rna_tissue_consensus.tsv`) — normalized transcripts per million (nTPM) across 50 normal tissues
+- **Protein**: [HPA normal tissue IHC](https://www.proteinatlas.org/about/download) (`normal_tissue.tsv`) — immunohistochemistry detection levels (Not detected / Low / Medium / High) across 63 tissues with antibody reliability scores (Enhanced / Supported / Approved / Uncertain)
 
-### Filter logic
+**Step 3: Filter** — protein-coding + tiered thresholds based on protein antibody confidence (278 of 358 pass):
 
-The `filtered` column uses tiered RNA thresholds based on protein data confidence. A gene passes when protein is detected only in reproductive tissues (thymus excluded) and the deflated RNA reproductive fraction meets the threshold for the antibody reliability tier:
-
-| Protein evidence | RNA threshold |
+| Protein evidence | Deflated RNA threshold |
 |---|---|
 | Enhanced (orthogonal validation) | ≥ 80% |
 | Supported (consistent characterization) | ≥ 90% |
 | Approved (basic validation) | ≥ 95% |
 | Uncertain or no protein data | ≥ 99% |
 
-Genes with protein detected in non-reproductive tissues always fail regardless of RNA.
+Genes with protein detected in non-reproductive tissues always fail. Thymus is excluded from all restriction checks (AIRE-driven mTEC expression is expected for CTAs).
 
-Thymus is excluded from restriction checks because AIRE-driven expression in medullary thymic epithelial cells (mTECs) is expected for CTAs.
+### Gene set counts
 
-The deflated metric (`max(0, nTPM − 1)` per tissue) suppresses low-level basal transcription noise that would otherwise dilute the reproductive fraction for genes like CTCFL/BORIS (raw 54% → deflated 100%).
+| Function | Description | Count |
+|---|---|---|
+| `CTA_gene_names()` | **Recommended default.** Expressed, reproductive-restricted CTAs | ~257 |
+| `CTA_never_expressed_gene_names()` | CTAs from databases but no HPA expression (max nTPM < 2, no protein) | ~21 |
+| `CTA_filtered_gene_names()` | All filter-passing CTAs (= expressed + never_expressed) | ~278 |
+| `CTA_excluded_gene_names()` | CTAs that fail filter (somatic expression) | ~80 |
+| `CTA_unfiltered_gene_names()` | Full superset from all source databases | 358 |
+| `CTA_evidence()` | Full DataFrame with all evidence columns | 358 rows |
+| `CTA_partition_gene_ids()` | Partition all protein-coding genes (dataclass with `.cta`, `.cta_never_expressed`, `.non_cta` sets) | ~20k |
+| `CTA_partition_gene_names()` | Same, as gene symbols | ~20k |
+| `CTA_partition_dataframes()` | Same, as DataFrames with evidence columns | ~20k |
 
-### Methodology
+### Evidence columns
 
-- Base list: intersection of CTpedia genes with HPA tissue antibody staining restricted to testis and placenta.
-- Extended with CT genes from EWSR1-FLI1 binding site analysis (ADAM29, CABYR, CCDC33, CTCFL, DDX53, DPPA2, FTHL17, HORMAD2, LEMD1, SYCP1, TDRD1, TEX15).
-- Extended with testis-specific genes from meiosis, piRNA pathway, and CT antigen literature that pass the HPA reproductive-tissue filter (ACTL7A, ACTL7B, BOLL, BRDT, CALR3, DDX4, DMRTB1, DPPA3, DPPA5, FKBP6, GAGE1, LDHC, MAEL, MAGEA8, MAGEA12, MAGEB10, MEIOB, NANOS2, PASD1, PIWIL1, RAD21L1, SMC1B, SYCE2, SYCP3, TEX14, UTF1, ZPBP, ZPBP2).
-- HPA v23 RNA tissue consensus and normal tissue IHC data used to compute reproductive tissue restriction evidence for all genes.
+Each gene in `cancer-testis-antigens.csv` carries identity and HPA-derived evidence:
+
+| Column | Description |
+|---|---|
+| `Ensembl_Gene_ID` | Ensembl gene ID (validated against release 112) |
+| `source_databases` | Semicolon-separated list of source databases (CTpedia, CTexploreR_CT, CTexploreR_CTP, daSilva2017) |
+| `biotype` | Ensembl gene biotype (must be `protein_coding` to pass filter) |
+| `Canonical_Transcript_ID` | Longest protein-coding transcript (Ensembl 112) |
+| `protein_reproductive` | IHC detected only in {testis, ovary, placenta} (excl. thymus), or `"no data"` |
+| `protein_thymus` | IHC detected in thymus |
+| `protein_reliability` | Best HPA antibody reliability: Enhanced / Supported / Approved / Uncertain / `"no data"` |
+| `protein_strict_expression` | Semicolon-separated tissues with IHC detection (excl. thymus) |
+| `rna_reproductive` | All tissues with ≥1 nTPM (excl. thymus) are in {testis, ovary, placenta} |
+| `rna_thymus` | Thymus nTPM ≥ 1 |
+| `rna_reproductive_frac` | Fraction of total nTPM (excl. thymus) in core reproductive tissues |
+| `rna_deflated_reproductive_frac` | `(1 + Σ_repro max(0, nTPM−1)) / (1 + Σ_all max(0, nTPM−1))` |
+| `rna_deflated_reproductive_and_thymus_frac` | Same but thymus added to reproductive numerator |
+| `rna_80/90/95/99_pct_filter` | Whether deflated reproductive fraction ≥ threshold |
+| `filtered` | Final inclusion flag (see tiered thresholds above) |
+
+For full details on the curation process, evidence columns, and filter logic, see [docs/cta-curation.md](docs/cta-curation.md).
+
+### Deflated RNA metric
+
+The deflated metric `max(0, nTPM − 1)` per tissue suppresses low-level basal transcription noise before computing the reproductive fraction. A `+1` pseudocount on numerator and denominator prevents 0/0 for very-low-expression genes. Example: CTCFL/BORIS has raw reproductive fraction 54% (diluted by sub-1 nTPM noise across ~40 tissues) but deflated fraction 100% (only testis has ≥1 nTPM).
 
 ## Class I MHC antigen presentation
 

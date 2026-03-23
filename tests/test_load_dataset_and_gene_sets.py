@@ -88,12 +88,30 @@ def test_all_gene_set_wrappers(monkeypatch):
 
 
 def test_cta_filtered_and_evidence():
-    all_names = gsc.CTA_gene_names()
+    # CTA_gene_names() = filtered + expressed (excludes never_expressed)
+    expressed_names = gsc.CTA_gene_names()
+    expressed_ids = gsc.CTA_gene_ids()
+    # CTA_filtered includes never_expressed
     filtered_names = gsc.CTA_filtered_gene_names()
     filtered_ids = gsc.CTA_filtered_gene_ids()
+    # never_expressed = filtered - expressed
+    never_expr_names = gsc.CTA_never_expressed_gene_names()
+    never_expr_ids = gsc.CTA_never_expressed_gene_ids()
+    # unfiltered = full superset
+    all_names = gsc.CTA_unfiltered_gene_names()
+    all_ids = gsc.CTA_unfiltered_gene_ids()
+    # excluded = fail filter
+    excluded_names = gsc.CTA_excluded_gene_names()
+
+    assert expressed_names
     assert filtered_names
-    assert filtered_ids
-    assert filtered_names < all_names  # strict subset
+    assert all_names
+    assert expressed_names < filtered_names  # expressed is strict subset of filtered
+    assert filtered_names < all_names  # filtered is strict subset of unfiltered
+    assert expressed_names & never_expr_names == set()  # no overlap
+    assert expressed_names | never_expr_names == filtered_names  # partition
+    assert filtered_names | excluded_names == all_names  # partition
+    assert filtered_names & excluded_names == set()  # no overlap
 
     evidence_df = gsc.CTA_evidence()
     assert len(evidence_df) == len(all_names)
@@ -111,13 +129,40 @@ def test_cta_filtered_and_evidence():
         "rna_80_pct_filter",
         "rna_90_pct_filter",
         "rna_95_pct_filter",
+        "rna_99_pct_filter",
         "filtered",
+        "source_databases",
+        "biotype",
+        "Canonical_Transcript_ID",
+        "rna_max_ntpm",
+        "never_expressed",
     ]
     for col in expected_cols:
         assert col in evidence_df.columns, f"Missing column: {col}"
 
-    # filtered column should match CTA_filtered_gene_names
-    df_filtered_names = set(
-        evidence_df[evidence_df["filtered"].astype(str).str.lower() == "true"]["Symbol"]
-    )
-    assert df_filtered_names == filtered_names
+
+def test_cta_partition():
+    # gene_ids
+    p = gsc.CTA_partition_gene_ids()
+    assert isinstance(p, gsc.CTAPartitionSets)
+    assert len(p.cta) > 200
+    assert len(p.non_cta) > 15000
+    assert p.cta & p.cta_never_expressed == set()
+    assert p.cta & p.non_cta == set()
+    assert p.cta_never_expressed & p.non_cta == set()
+
+    # gene_names
+    p2 = gsc.CTA_partition_gene_names()
+    assert isinstance(p2, gsc.CTAPartitionSets)
+    assert "MAGEA4" in p2.cta
+    assert "TP53" in p2.non_cta
+
+    # dataframes
+    p3 = gsc.CTA_partition_dataframes()
+    assert isinstance(p3, gsc.CTAPartitionDataFrames)
+    assert "rna_deflated_reproductive_frac" in p3.cta.columns
+    assert "Ensembl_Gene_ID" in p3.non_cta.columns
+
+    # cta_excluded genes are in non_cta
+    excluded_ids = gsc.CTA_excluded_gene_ids()
+    assert excluded_ids.issubset(p.non_cta)
