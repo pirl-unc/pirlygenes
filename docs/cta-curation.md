@@ -193,23 +193,21 @@ All Ensembl Gene IDs are validated against Ensembl release 112. Canonical transc
 
 ```python
 from pirlygenes.gene_sets_cancer import (
-    CTA_gene_names,              # recommended: filtered, reproductive-restricted CTAs
-    CTA_gene_ids,                # same, as Ensembl gene IDs
-    CTA_unfiltered_gene_names,   # full CTA universe (all source databases)
-    CTA_unfiltered_gene_ids,     # same, as Ensembl gene IDs
-    CTA_excluded_gene_names,     # CTAs that FAIL filter (somatic expression)
-    CTA_excluded_gene_ids,       # same, as Ensembl gene IDs
-    CTA_evidence,                # full DataFrame with all evidence columns
+    CTA_gene_names,                # expressed + filtered CTAs (recommended default)
+    CTA_gene_ids,                  # same, as Ensembl gene IDs
+    CTA_never_expressed_gene_names,# filter-passing but no HPA expression
+    CTA_filtered_gene_names,       # all filter-passing (= expressed + never_expressed)
+    CTA_excluded_gene_names,       # CTAs that FAIL filter (somatic expression)
+    CTA_unfiltered_gene_names,     # full CTA universe (all source databases)
+    CTA_evidence,                  # full DataFrame with all evidence columns
+    CTA_partition,                 # partition ALL protein-coding genes
 )
 
-# Default: HPA-filtered reproductive-restricted CTAs
+# Default: expressed, reproductive-restricted CTAs
 cta_genes = CTA_gene_names()
 
 # Full CTA universe (for excluding from non-CTA comparison sets)
 all_ctas = CTA_unfiltered_gene_names()
-
-# CTAs with somatic expression (exclude from both CTA and non-CTA sets)
-excluded_ctas = CTA_excluded_gene_names()
 
 # Evidence table — filter however you like
 df = CTA_evidence()
@@ -226,21 +224,30 @@ strict = df[
 tumor_protein = df[df['source_databases'].str.contains('daSilva2017_protein', na=False)]
 ```
 
-## CTA vs non-CTA comparison sets
+## Gene partitioning for pMHC analysis
 
-When comparing CTA pMHCs against non-CTA pMHCs (e.g., for immunogenicity analysis), three gene categories matter:
-
-| Category | Function | Use |
-|---|---|---|
-| **CTA (filtered)** | `CTA_gene_names()` | Reproductive-restricted CTAs — source of CTA pMHCs |
-| **CTA (excluded)** | `CTA_excluded_gene_names()` | CTAs with somatic expression — exclude from both sets |
-| **Non-CTA** | Everything else | Source of non-CTA comparison pMHCs |
-
-The **excluded** set (genes that are candidate CTAs but fail the tissue-restriction filter) should be removed from the non-CTA comparison set. Otherwise, CTA peptides that happen to be expressed in healthy tissue would contaminate the non-CTA control, biasing any comparison. These genes are not clean enough to be in the CTA set, but they are still CTA-associated and should not be treated as ordinary somatic genes.
+When comparing CTA pMHCs against non-CTA pMHCs, every protein-coding gene needs to go into exactly one bucket. `CTA_partition()` handles this:
 
 ```python
-# Building a clean non-CTA gene set for comparison
-all_genes = set(...)  # your full gene universe
-cta_universe = CTA_unfiltered_gene_names()  # everything CTA-related
-non_cta_genes = all_genes - cta_universe    # clean non-CTA set
+from pirlygenes.gene_sets_cancer import CTA_partition
+
+# Returns dict of 4 non-overlapping sets (default: Ensembl gene IDs)
+p = CTA_partition()
+
+# Also available as gene names or DataFrames
+p = CTA_partition(return_type="gene_names")
+p = CTA_partition(return_type="dataframes")
 ```
+
+| Partition | Description | Typical count |
+|---|---|---|
+| `p["cta"]` | Expressed, reproductive-restricted CTAs. Source of CTA pMHCs. | ~257 |
+| `p["cta_never_expressed"]` | CTAs from databases but no meaningful HPA expression (max nTPM < 2, no protein data). Pass filter on a technicality (pseudocount). Exclude from analysis. | ~21 |
+| `p["cta_excluded"]` | CTAs that fail the reproductive-tissue filter (somatic expression detected). Should not be in CTA set or non-CTA set. | ~80 |
+| `p["non_cta"]` | All other protein-coding genes. Clean non-CTA comparison set. | ~19,700 |
+
+These four sets are **non-overlapping** and their union covers all protein-coding genes from Ensembl.
+
+**Why four partitions?** A simple CTA / non-CTA split is insufficient:
+- **Never-expressed CTAs** pass our filter because the +1 pseudocount gives them a 1.0 deflated fraction when all nTPMs are below 1. They are in CT antigen databases but HPA has no real signal. Including them in pMHC analysis would add noise.
+- **Excluded CTAs** have evidence of somatic tissue expression. Putting them in the non-CTA set would contaminate it with CTA-derived peptides, biasing any comparison.
