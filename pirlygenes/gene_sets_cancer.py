@@ -233,7 +233,7 @@ def CTA_evidence():
     Columns
     -------
     Symbol, Aliases, Full_Name, Function, Ensembl_Gene_ID,
-    Canonical_Transcript_ID
+    source_databases, biotype, Canonical_Transcript_ID
         Gene identity fields.
     protein_reproductive : bool or "no data"
         True if all IHC-detected tissues (excluding thymus) are in
@@ -274,6 +274,7 @@ def CTA_evidence():
         - Approved → RNA >=95%
         - Uncertain or no protein data → RNA >=99%
         Genes with protein in non-reproductive tissues always fail.
+        Non-protein-coding genes (biotype != protein_coding) always fail.
     """
     from .load_dataset import get_data
 

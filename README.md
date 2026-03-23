@@ -89,10 +89,10 @@ from pirlygenes.gene_sets_cancer import (
     CTA_evidence,                # full DataFrame with all evidence columns
 )
 
-# Default: HPA-filtered reproductive-restricted CTAs (~186 genes)
+# Default: HPA-filtered reproductive-restricted CTAs (~248 genes)
 cta_genes = CTA_gene_names()
 
-# Full unfiltered superset from all sources (~207 genes)
+# Full unfiltered superset from all sources (~269 genes)
 all_ctas = CTA_unfiltered_gene_names()
 
 # Evidence table with per-gene HPA tissue restriction data
@@ -103,20 +103,23 @@ df = CTA_evidence()
 
 The CTA gene set is built as an unbiased union of genes from multiple CT antigen databases and literature sources, then systematically filtered using Human Protein Atlas tissue expression data.
 
-**Step 1: Collect** — union of CT genes from all source databases (207 genes):
+**Step 1: Collect** — union of protein-coding CT genes from multiple source databases (269 genes):
 
 | Source | Genes | Reference |
 |---|---|---|
 | [CTpedia](http://www.cta.lncc.br/) | 167 | Almeida et al. 2009, *NAR* |
+| [CTexploreR](https://www.bioconductor.org/packages/release/bioc/html/CTexploreR.html) | 62 new | Loriot et al. 2024, *PLOS Genetics* |
 | EWSR1-FLI1 CT gene binding sites | 12 | Grünewald et al., *Cancer Cell* |
-| Meiosis, piRNA pathway, spermatogenesis literature | 28 | Multiple sources |
+| Meiosis, piRNA, spermatogenesis literature | 28 | Multiple sources |
+
+Each gene is tracked with a `source_databases` column indicating which databases include it (CTpedia, CTexploreR_CT, CTexploreR_CTP, daSilva2017). Only protein-coding genes (Ensembl biotype) are included.
 
 **Step 2: Annotate** — each gene is scored against HPA v23 tissue expression:
 
 - **RNA**: [HPA RNA tissue consensus](https://www.proteinatlas.org/about/download) (`rna_tissue_consensus.tsv`) — normalized transcripts per million (nTPM) across 50 normal tissues
 - **Protein**: [HPA normal tissue IHC](https://www.proteinatlas.org/about/download) (`normal_tissue.tsv`) — immunohistochemistry detection levels (Not detected / Low / Medium / High) across 63 tissues with antibody reliability scores (Enhanced / Supported / Approved / Uncertain)
 
-**Step 3: Filter** — tiered thresholds based on protein antibody confidence (186 of 207 pass):
+**Step 3: Filter** — protein-coding + tiered thresholds based on protein antibody confidence (248 of 269 pass):
 
 | Protein evidence | Deflated RNA threshold |
 |---|---|
@@ -131,9 +134,9 @@ Genes with protein detected in non-reproductive tissues always fail. Thymus is e
 
 | Function | Description | Count |
 |---|---|---|
-| `CTA_gene_names()` | **Recommended default.** HPA-filtered reproductive-restricted CTAs | ~186 |
-| `CTA_unfiltered_gene_names()` | Full superset from all source databases | 207 |
-| `CTA_evidence()` | Full DataFrame with all evidence columns | 207 rows |
+| `CTA_gene_names()` | **Recommended default.** HPA-filtered reproductive-restricted CTAs | ~248 |
+| `CTA_unfiltered_gene_names()` | Full superset from all source databases | 269 |
+| `CTA_evidence()` | Full DataFrame with all evidence columns | 269 rows |
 
 ### Evidence columns
 
@@ -142,6 +145,8 @@ Each gene in `cancer-testis-antigens.csv` carries identity and HPA-derived evide
 | Column | Description |
 |---|---|
 | `Ensembl_Gene_ID` | Ensembl gene ID (validated against release 112) |
+| `source_databases` | Semicolon-separated list of source databases (CTpedia, CTexploreR_CT, CTexploreR_CTP, daSilva2017) |
+| `biotype` | Ensembl gene biotype (must be `protein_coding` to pass filter) |
 | `Canonical_Transcript_ID` | Longest protein-coding transcript (Ensembl 112) |
 | `protein_reproductive` | IHC detected only in {testis, ovary, placenta} (excl. thymus), or `"no data"` |
 | `protein_thymus` | IHC detected in thymus |
