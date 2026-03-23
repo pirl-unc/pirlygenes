@@ -330,118 +330,171 @@ def CTA_evidence():
     return get_data("cancer-testis-antigens")
 
 
-def CTA_partition(return_type="gene_ids", ensembl_release=112):
-    """Partition all protein-coding genes into CTA, never-expressed CTA, and non-CTA.
+from dataclasses import dataclass
+from typing import Union
 
-    Returns three non-overlapping sets whose union is the full set of
-    protein-coding genes from the given Ensembl release.
+import pandas as pd
 
-    Parameters
+
+@dataclass(frozen=True)
+class CTAPartitionSets:
+    """Three-way partition of protein-coding genes as sets.
+
+    Attributes
     ----------
-    return_type : str
-        What to return for each partition:
-        - ``"gene_ids"`` — sets of Ensembl gene IDs (default)
-        - ``"gene_names"`` — sets of gene symbols
-        - ``"dataframes"`` — DataFrames with Symbol, Ensembl_Gene_ID,
-          and (for CTAs) all evidence columns
-    ensembl_release : int
-        Ensembl release to use for the full protein-coding gene list
-        (default 112).
-
-    Returns
-    -------
-    dict with keys:
-
-    ``"cta"``
-        Reproductive-restricted CTAs (pass HPA filter, not never_expressed).
-        Use as the source of CTA pMHCs.
-    ``"cta_never_expressed"``
+    cta : set[str]
+        Expressed, reproductive-restricted CTAs. Source of CTA pMHCs.
+    cta_never_expressed : set[str]
         CTAs from source databases with no meaningful HPA expression
-        (no protein data + max RNA < 2 nTPM). These pass the filter
-        on a technicality (pseudocount) but lack positive evidence of
-        tissue restriction. Exclude from both CTA and non-CTA sets.
-    ``"cta_excluded"``
-        CTAs that fail the reproductive-tissue filter (somatic
-        expression detected). Exclude from non-CTA comparison sets.
-    ``"non_cta"``
-        All other protein-coding genes. Use as the non-CTA comparison
-        set for pMHC analysis.
-
-    Examples
-    --------
-    >>> p = CTA_partition()
-    >>> len(p["cta"] & p["non_cta"])  # no overlap
-    0
-    >>> len(p["cta"] | p["cta_never_expressed"] | p["cta_excluded"] | p["non_cta"])
-    20000  # approximately — all protein-coding genes
-
-    >>> p = CTA_partition(return_type="gene_names")
-    >>> "MAGEA4" in p["cta"]
-    True
-
-    >>> p = CTA_partition(return_type="dataframes")
-    >>> p["cta"].columns  # full evidence columns for CTAs
+        (no protein data + max RNA < 2 nTPM).
+    non_cta : set[str]
+        All other protein-coding genes, including CTAs that fail the
+        reproductive-tissue filter (somatic expression detected).
     """
+
+    cta: set
+    cta_never_expressed: set
+    non_cta: set
+
+
+@dataclass(frozen=True)
+class CTAPartitionDataFrames:
+    """Three-way partition of protein-coding genes as DataFrames.
+
+    Attributes
+    ----------
+    cta : pd.DataFrame
+        Expressed, reproductive-restricted CTAs with full evidence columns.
+    cta_never_expressed : pd.DataFrame
+        Never-expressed CTAs with full evidence columns.
+    non_cta : pd.DataFrame
+        All other protein-coding genes (Symbol, Ensembl_Gene_ID).
+    """
+
+    cta: pd.DataFrame
+    cta_never_expressed: pd.DataFrame
+    non_cta: pd.DataFrame
+
+
+def _build_partition(ensembl_release=112):
+    """Shared logic for building the three-way partition."""
     from pyensembl import EnsemblRelease
 
     ensembl = EnsemblRelease(ensembl_release)
     evidence_df = CTA_evidence()
 
-    # All protein-coding genes from Ensembl
     all_pc_genes = {
         g.gene_id: g.gene_name
         for g in ensembl.genes()
         if g.biotype == "protein_coding"
     }
     all_pc_ids = set(all_pc_genes.keys())
-    all_pc_names = set(all_pc_genes.values())
 
-    # CTA partitions from evidence table
     filtered_mask = evidence_df["filtered"].astype(str).str.lower() == "true"
     never_expr_mask = evidence_df["never_expressed"].astype(str).str.lower() == "true"
 
     cta_mask = filtered_mask & ~never_expr_mask
     never_expressed_mask = filtered_mask & never_expr_mask
-    excluded_mask = ~filtered_mask
 
     cta_ids = set(evidence_df.loc[cta_mask, "Ensembl_Gene_ID"])
     never_expressed_ids = set(evidence_df.loc[never_expressed_mask, "Ensembl_Gene_ID"])
-    excluded_ids = set(evidence_df.loc[excluded_mask, "Ensembl_Gene_ID"])
-    non_cta_ids = all_pc_ids - cta_ids - never_expressed_ids - excluded_ids
+    non_cta_ids = all_pc_ids - cta_ids - never_expressed_ids
 
+    return all_pc_genes, evidence_df, cta_mask, never_expressed_mask, cta_ids, never_expressed_ids, non_cta_ids
+
+
+def CTA_partition_gene_ids(ensembl_release=112) -> CTAPartitionSets:
+    """Partition all protein-coding genes into CTA / never-expressed / non-CTA
+    as sets of Ensembl gene IDs.
+
+    CTAs that fail the reproductive-tissue filter (somatic expression)
+    are included in ``non_cta``.
+
+    Examples
+    --------
+    >>> p = CTA_partition_gene_ids()
+    >>> "ENSG00000147381" in p.cta   # MAGEA4
+    True
+    >>> len(p.cta & p.non_cta)       # no overlap
+    0
+    """
+    _, _, _, _, cta_ids, never_expressed_ids, non_cta_ids = _build_partition(ensembl_release)
+    return CTAPartitionSets(
+        cta=cta_ids,
+        cta_never_expressed=never_expressed_ids,
+        non_cta=non_cta_ids,
+    )
+
+
+def CTA_partition_gene_names(ensembl_release=112) -> CTAPartitionSets:
+    """Partition all protein-coding genes into CTA / never-expressed / non-CTA
+    as sets of gene symbols.
+
+    CTAs that fail the reproductive-tissue filter (somatic expression)
+    are included in ``non_cta``.
+
+    Examples
+    --------
+    >>> p = CTA_partition_gene_names()
+    >>> "MAGEA4" in p.cta
+    True
+    >>> "TP53" in p.non_cta
+    True
+    """
+    all_pc_genes, evidence_df, cta_mask, never_expressed_mask, _, _, _ = _build_partition(ensembl_release)
+    all_pc_names = set(all_pc_genes.values())
+
+    cta_names = set(evidence_df.loc[cta_mask, "Symbol"])
+    never_expressed_names = set(evidence_df.loc[never_expressed_mask, "Symbol"])
+    non_cta_names = all_pc_names - cta_names - never_expressed_names
+
+    return CTAPartitionSets(
+        cta=cta_names,
+        cta_never_expressed=never_expressed_names,
+        non_cta=non_cta_names,
+    )
+
+
+def CTA_partition_dataframes(ensembl_release=112) -> CTAPartitionDataFrames:
+    """Partition all protein-coding genes into CTA / never-expressed / non-CTA
+    as DataFrames.
+
+    The ``cta`` and ``cta_never_expressed`` DataFrames include all CTA
+    evidence columns. The ``non_cta`` DataFrame has Symbol and
+    Ensembl_Gene_ID columns.
+
+    CTAs that fail the reproductive-tissue filter (somatic expression)
+    are included in ``non_cta``.
+
+    Examples
+    --------
+    >>> p = CTA_partition_dataframes()
+    >>> "rna_deflated_reproductive_frac" in p.cta.columns
+    True
+    """
+    all_pc_genes, evidence_df, cta_mask, never_expressed_mask, _, _, non_cta_ids = _build_partition(ensembl_release)
+
+    non_cta_records = [
+        {"Symbol": all_pc_genes[gid], "Ensembl_Gene_ID": gid}
+        for gid in sorted(non_cta_ids)
+        if gid in all_pc_genes
+    ]
+
+    return CTAPartitionDataFrames(
+        cta=evidence_df.loc[cta_mask].copy().reset_index(drop=True),
+        cta_never_expressed=evidence_df.loc[never_expressed_mask].copy().reset_index(drop=True),
+        non_cta=pd.DataFrame(non_cta_records),
+    )
+
+
+def CTA_partition(return_type="gene_ids", ensembl_release=112):
+    """Deprecated — use CTA_partition_gene_ids, CTA_partition_gene_names,
+    or CTA_partition_dataframes instead."""
     if return_type == "gene_ids":
-        return {
-            "cta": cta_ids,
-            "cta_never_expressed": never_expressed_ids,
-            "cta_excluded": excluded_ids,
-            "non_cta": non_cta_ids,
-        }
+        return CTA_partition_gene_ids(ensembl_release)
     elif return_type == "gene_names":
-        cta_names = set(evidence_df.loc[cta_mask, "Symbol"])
-        never_expressed_names = set(evidence_df.loc[never_expressed_mask, "Symbol"])
-        excluded_names = set(evidence_df.loc[excluded_mask, "Symbol"])
-        non_cta_names = all_pc_names - cta_names - never_expressed_names - excluded_names
-        return {
-            "cta": cta_names,
-            "cta_never_expressed": never_expressed_names,
-            "cta_excluded": excluded_names,
-            "non_cta": non_cta_names,
-        }
+        return CTA_partition_gene_names(ensembl_release)
     elif return_type == "dataframes":
-        import pandas as pd
-
-        non_cta_records = [
-            {"Symbol": all_pc_genes[gid], "Ensembl_Gene_ID": gid}
-            for gid in non_cta_ids
-            if gid in all_pc_genes
-        ]
-        return {
-            "cta": evidence_df.loc[cta_mask].copy().reset_index(drop=True),
-            "cta_never_expressed": evidence_df.loc[never_expressed_mask].copy().reset_index(drop=True),
-            "cta_excluded": evidence_df.loc[excluded_mask].copy().reset_index(drop=True),
-            "non_cta": pd.DataFrame(non_cta_records),
-        }
+        return CTA_partition_dataframes(ensembl_release)
     else:
-        raise ValueError(
-            f"return_type must be 'gene_ids', 'gene_names', or 'dataframes', got {return_type!r}"
-        )
+        raise ValueError(f"return_type must be 'gene_ids', 'gene_names', or 'dataframes', got {return_type!r}")

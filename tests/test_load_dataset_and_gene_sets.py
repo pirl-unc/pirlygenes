@@ -142,20 +142,27 @@ def test_cta_filtered_and_evidence():
 
 
 def test_cta_partition():
-    p = gsc.CTA_partition(return_type="gene_ids")
-    assert len(p) == 4
-    # No overlaps
-    from itertools import combinations
-    for a, b in combinations(p.keys(), 2):
-        assert p[a] & p[b] == set(), f"overlap: {a} & {b}"
-    # Counts are reasonable
-    assert len(p["cta"]) > 200
-    assert len(p["non_cta"]) > 15000
-    # gene_names variant
-    p2 = gsc.CTA_partition(return_type="gene_names")
-    assert "MAGEA4" in p2["cta"]
-    assert "TP53" in p2["non_cta"]
-    # dataframes variant
-    p3 = gsc.CTA_partition(return_type="dataframes")
-    assert "Ensembl_Gene_ID" in p3["cta"].columns
-    assert "Ensembl_Gene_ID" in p3["non_cta"].columns
+    # gene_ids
+    p = gsc.CTA_partition_gene_ids()
+    assert isinstance(p, gsc.CTAPartitionSets)
+    assert len(p.cta) > 200
+    assert len(p.non_cta) > 15000
+    assert p.cta & p.cta_never_expressed == set()
+    assert p.cta & p.non_cta == set()
+    assert p.cta_never_expressed & p.non_cta == set()
+
+    # gene_names
+    p2 = gsc.CTA_partition_gene_names()
+    assert isinstance(p2, gsc.CTAPartitionSets)
+    assert "MAGEA4" in p2.cta
+    assert "TP53" in p2.non_cta
+
+    # dataframes
+    p3 = gsc.CTA_partition_dataframes()
+    assert isinstance(p3, gsc.CTAPartitionDataFrames)
+    assert "rna_deflated_reproductive_frac" in p3.cta.columns
+    assert "Ensembl_Gene_ID" in p3.non_cta.columns
+
+    # cta_excluded genes are in non_cta
+    excluded_ids = gsc.CTA_excluded_gene_ids()
+    assert excluded_ids.issubset(p.non_cta)

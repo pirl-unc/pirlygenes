@@ -229,25 +229,35 @@ tumor_protein = df[df['source_databases'].str.contains('daSilva2017_protein', na
 When comparing CTA pMHCs against non-CTA pMHCs, every protein-coding gene needs to go into exactly one bucket. `CTA_partition()` handles this:
 
 ```python
-from pirlygenes.gene_sets_cancer import CTA_partition
+from pirlygenes.gene_sets_cancer import (
+    CTA_partition_gene_ids,       # sets of Ensembl gene IDs
+    CTA_partition_gene_names,     # sets of gene symbols
+    CTA_partition_dataframes,     # DataFrames with evidence columns
+)
 
-# Returns dict of 4 non-overlapping sets (default: Ensembl gene IDs)
-p = CTA_partition()
+# Each returns a dataclass with .cta, .cta_never_expressed, .non_cta
+p = CTA_partition_gene_ids()
+p.cta                   # set of Ensembl IDs for expressed CTAs
+p.cta_never_expressed   # set of Ensembl IDs for never-expressed CTAs
+p.non_cta               # set of Ensembl IDs for everything else
 
-# Also available as gene names or DataFrames
-p = CTA_partition(return_type="gene_names")
-p = CTA_partition(return_type="dataframes")
+p = CTA_partition_gene_names()
+"MAGEA4" in p.cta       # True
+"TP53" in p.non_cta     # True
+
+p = CTA_partition_dataframes()
+p.cta.columns           # full evidence columns for CTAs
+p.non_cta.columns       # Symbol, Ensembl_Gene_ID
 ```
 
 | Partition | Description | Typical count |
 |---|---|---|
-| `p["cta"]` | Expressed, reproductive-restricted CTAs. Source of CTA pMHCs. | ~257 |
-| `p["cta_never_expressed"]` | CTAs from databases but no meaningful HPA expression (max nTPM < 2, no protein data). Pass filter on a technicality (pseudocount). Exclude from analysis. | ~21 |
-| `p["cta_excluded"]` | CTAs that fail the reproductive-tissue filter (somatic expression detected). Should not be in CTA set or non-CTA set. | ~80 |
-| `p["non_cta"]` | All other protein-coding genes. Clean non-CTA comparison set. | ~19,700 |
+| `p.cta` | Expressed, reproductive-restricted CTAs. Source of CTA pMHCs. | ~257 |
+| `p.cta_never_expressed` | CTAs from databases but no meaningful HPA expression (max nTPM < 2, no protein data). Pass filter on a technicality (pseudocount). Separate from analysis. | ~21 |
+| `p.non_cta` | All other protein-coding genes, **including** CTAs that fail the reproductive-tissue filter (somatic expression). Clean non-CTA comparison set. | ~19,800 |
 
-These four sets are **non-overlapping** and their union covers all protein-coding genes from Ensembl.
+These three sets are **non-overlapping** and their union covers all protein-coding genes from Ensembl.
 
-**Why four partitions?** A simple CTA / non-CTA split is insufficient:
-- **Never-expressed CTAs** pass our filter because the +1 pseudocount gives them a 1.0 deflated fraction when all nTPMs are below 1. They are in CT antigen databases but HPA has no real signal. Including them in pMHC analysis would add noise.
-- **Excluded CTAs** have evidence of somatic tissue expression. Putting them in the non-CTA set would contaminate it with CTA-derived peptides, biasing any comparison.
+**Why three partitions instead of two?**
+- **Never-expressed CTAs** pass our filter because the +1 pseudocount gives them a 1.0 deflated fraction when all nTPMs are below 1. They are in CT antigen databases but HPA has no real signal. Including them in pMHC analysis would add noise — you can't target a protein that's never made.
+- **Excluded CTAs** (those that fail the filter due to somatic expression) are folded into `non_cta`. They express in healthy tissue, so their peptides would appear in the non-CTA proteome anyway. Keeping them in `non_cta` gives a realistic comparison set.

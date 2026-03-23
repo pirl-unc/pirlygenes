@@ -95,8 +95,9 @@ cta_genes = CTA_gene_names()
 # Full unfiltered superset from all sources (~358 genes)
 all_ctas = CTA_unfiltered_gene_names()
 
-# Partition ALL protein-coding genes into CTA / never-expressed / excluded / non-CTA
-partition = CTA_partition()  # returns dict of Ensembl gene ID sets
+# Partition ALL protein-coding genes into CTA / never-expressed / non-CTA
+from pirlygenes.gene_sets_cancer import CTA_partition_gene_ids
+p = CTA_partition_gene_ids()   # p.cta, p.cta_never_expressed, p.non_cta
 
 # Evidence table with per-gene HPA tissue restriction data
 df = CTA_evidence()
@@ -144,7 +145,9 @@ Genes with protein detected in non-reproductive tissues always fail. Thymus is e
 | `CTA_excluded_gene_names()` | CTAs that fail filter (somatic expression) | ~80 |
 | `CTA_unfiltered_gene_names()` | Full superset from all source databases | 358 |
 | `CTA_evidence()` | Full DataFrame with all evidence columns | 358 rows |
-| `CTA_partition()` | Partition all protein-coding genes into cta/never_expressed/excluded/non_cta | ~20k |
+| `CTA_partition_gene_ids()` | Partition all protein-coding genes (dataclass with `.cta`, `.cta_never_expressed`, `.non_cta` sets) | ~20k |
+| `CTA_partition_gene_names()` | Same, as gene symbols | ~20k |
+| `CTA_partition_dataframes()` | Same, as DataFrames with evidence columns | ~20k |
 
 ### Evidence columns
 
