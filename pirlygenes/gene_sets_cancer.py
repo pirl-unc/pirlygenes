@@ -298,7 +298,7 @@ def CTA_evidence():
         Non-protein-coding genes (biotype != protein_coding) always fail.
     rna_max_ntpm : float
         Maximum nTPM across all tissues for this gene.
-    low_evidence : bool
+    never_expressed : bool
         True if no HPA protein data AND maximum RNA nTPM < 2.
     """
     from .load_dataset import get_data

@@ -127,9 +127,9 @@ The `filtered` column uses tiered deflated RNA reproductive fraction thresholds 
 - Genes with protein detected in **non-reproductive tissues** (excluding thymus) always fail, regardless of RNA fraction
 - Thymus is excluded from both RNA and protein restriction checks
 
-## Low-evidence flag
+## Never-expressed flag
 
-The `low_evidence` column flags genes where:
+The `never_expressed` column flags genes where:
 - No HPA protein (IHC) data is available, AND
 - Maximum RNA nTPM across all tissues is < 2
 
@@ -187,7 +187,7 @@ All Ensembl Gene IDs are validated against Ensembl release 112. Canonical transc
 | `rna_95_pct_filter` | Deflated reproductive fraction >= 95% |
 | `rna_99_pct_filter` | Deflated reproductive fraction >= 99% |
 | `filtered` | Final inclusion flag (see filter logic above) |
-| `low_evidence` | No HPA protein data AND max RNA nTPM < 2 |
+| `never_expressed` | No HPA protein data AND max RNA nTPM < 2 |
 
 ## Python API
 
@@ -219,7 +219,7 @@ strict = df[
     (df['filtered'] == True) &
     (df['source_databases'].str.contains('CTpedia')) &
     (df['protein_reliability'] == 'Enhanced') &
-    (~df['low_evidence'])
+    (~df['never_expressed'])
 ]
 
 # Example: genes with tumor mass spec evidence
