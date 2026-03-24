@@ -2,6 +2,23 @@
 
 This document describes how the pirlygenes CTA gene set is built, filtered, and maintained.
 
+## Figures
+
+### Source overlap
+![CTA Source Venn Diagram](cta-source-venn.png)
+
+### Filter funnel by source
+![CTA Filter Funnel](cta-filter-funnel.png)
+
+### Filter outcome by source
+![CTA Filter Outcome](cta-filter-outcome.png)
+
+### Deflated reproductive fraction distribution
+![Deflated Fraction Distribution](cta-deflated-frac-dist.png)
+
+### Protein reliability vs RNA fraction
+![Protein vs RNA](cta-protein-vs-rna.png)
+
 ## Overview
 
 Cancer-testis antigens (CTAs) are proteins normally restricted to reproductive tissues (testis, ovary, placenta) that become aberrantly expressed in tumors. Their tissue restriction makes them attractive targets for cancer immunotherapy because immune responses against them should not damage normal somatic tissues.
