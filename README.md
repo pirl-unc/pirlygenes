@@ -113,9 +113,9 @@ The CTA gene set is built as an unbiased union of genes from multiple CT antigen
 |---|---|---|
 | [CTpedia](http://www.cta.lncc.br/) | 167 | [Almeida et al. 2009](https://doi.org/10.1093/nar/gkn673), *NAR* |
 | [CTexploreR/CTdata](https://www.bioconductor.org/packages/release/bioc/html/CTexploreR.html) | 62 new | [Loriot et al. 2024](https://doi.org/10.1371/journal.pgen.1011734), *PLOS Genetics* |
-| [da Silva et al. 2017](https://doi.org/10.18632/oncotarget.21715) protein-level CT genes | 89 new | Tumor mass spec proteomics (136 genes, 46 overlap) |
-| EWSR1-FLI1 CT gene binding sites | 12 | [Grünewald et al.](https://doi.org/10.1158/0008-5472.CAN-14-2908), *Cancer Research* |
-| Meiosis, piRNA, spermatogenesis literature | 28 | Multiple sources |
+| Protein-level CT genes (136 total, 46 overlap) | 89 new | [da Silva et al. 2017](https://doi.org/10.18632/oncotarget.21715), *Oncotarget* |
+| EWSR1-FLI1 CT gene binding sites | 12 | [Grünewald et al. 2015](https://doi.org/10.1158/0008-5472.CAN-14-2908), *Cancer Research* |
+| Meiosis, piRNA, spermatogenesis genes | 28 | Multiple sources (see [docs](docs/cta-curation.md#literature-scan-28-genes)) |
 
 Each gene is tracked with a `source_databases` column indicating which databases include it (CTpedia, CTexploreR_CT, CTexploreR_CTP, daSilva2017, daSilva2017_protein). Only protein-coding genes (Ensembl biotype) are included. Genes with outdated HGNC symbols are renamed to current symbols with old names kept as aliases.
 
