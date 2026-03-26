@@ -112,7 +112,7 @@ The CTA gene set is built as an unbiased union of genes from multiple CT antigen
 | Source | Genes | Reference |
 |---|---|---|
 | [CTpedia](http://www.cta.lncc.br/) | 167 | [Almeida et al. 2009](https://doi.org/10.1093/nar/gkn673), *NAR* |
-| [CTexploreR/CTdata](https://www.bioconductor.org/packages/release/bioc/html/CTexploreR.html) | 62 new | [Loriot et al. 2024](https://doi.org/10.1371/journal.pgen.1011734), *PLOS Genetics* |
+| [CTexploreR/CTdata](https://www.bioconductor.org/packages/release/bioc/html/CTexploreR.html) | 62 new | [Loriot et al. 2025](https://doi.org/10.1371/journal.pgen.1011734), *PLOS Genetics* |
 | Protein-level CT genes (136 total, 46 overlap) | 89 new | [da Silva et al. 2017](https://doi.org/10.18632/oncotarget.21715), *Oncotarget* |
 | EWSR1-FLI1 CT gene binding sites | 12 | [Gallegos et al. 2019](https://doi.org/10.1128/MCB.00138-19), *Mol Cell Biol* |
 | Meiosis, piRNA, spermatogenesis genes | 28 | Multiple sources (see [docs](docs/cta-curation.md#literature-scan-28-genes)) |
