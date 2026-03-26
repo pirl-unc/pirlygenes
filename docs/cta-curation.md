@@ -59,7 +59,7 @@ The [CTdatabase/CTpedia](http://www.cta.lncc.br/) is the foundational CT antigen
 
 CT genes identified as having EWSR1-FLI1 transcription factor binding sites in Ewing sarcoma.
 
-- **Publication**: [Grünewald et al., *Cancer Research*](https://doi.org/10.1158/0008-5472.CAN-14-2908)
+- **Publication**: [Gallegos et al. 2019, *Molecular and Cellular Biology*](https://doi.org/10.1128/MCB.00138-19)
 - **Content**: 40 CT genes from Table 2. 15 already in CTpedia, 12 new additions, 13 broadly expressed (excluded).
 
 ### Literature scan (28 genes)
