@@ -184,9 +184,14 @@ def radioligand_target_gene_ids():
 
 # ---------- Cancer-testis antigens (CTA) ----------
 def _cta_by_column(column, filtered_only=False, exclude_never_expressed=False):
-    from .load_dataset import get_data
+    try:
+        from perseus.evidence import CTA_evidence
 
-    df = get_data("cancer-testis-antigens")
+        df = CTA_evidence()
+    except ImportError:
+        from .load_dataset import get_data
+
+        df = get_data("cancer-testis-antigens")
     mask = True
     if filtered_only and "filtered" in df.columns:
         mask = df["filtered"].astype(str).str.lower() == "true"
@@ -325,9 +330,14 @@ def CTA_evidence():
     never_expressed : bool
         True if no HPA protein data AND maximum RNA nTPM < 2.
     """
-    from .load_dataset import get_data
+    try:
+        from perseus.evidence import CTA_evidence as _perseus_evidence
 
-    return get_data("cancer-testis-antigens")
+        return _perseus_evidence()
+    except ImportError:
+        from .load_dataset import get_data
+
+        return get_data("cancer-testis-antigens")
 
 
 from dataclasses import dataclass
