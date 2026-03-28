@@ -185,7 +185,7 @@ def radioligand_target_gene_ids():
 # ---------- Cancer-testis antigens (CTA) ----------
 def _cta_by_column(column, filtered_only=False, exclude_never_expressed=False):
     try:
-        from perseus.evidence import CTA_evidence
+        from perseo.evidence import CTA_evidence
 
         df = CTA_evidence()
     except ImportError:
@@ -331,9 +331,9 @@ def CTA_evidence():
         True if no HPA protein data AND maximum RNA nTPM < 2.
     """
     try:
-        from perseus.evidence import CTA_evidence as _perseus_evidence
+        from perseo.evidence import CTA_evidence as _perseo_evidence
 
-        return _perseus_evidence()
+        return _perseo_evidence()
     except ImportError:
         from .load_dataset import get_data
 
