@@ -2,6 +2,31 @@
 
 Gene lists related to cancer immunotherapy
 
+## Installation
+
+Install from PyPI:
+
+```bash
+pip install pirlygenes
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/pirl-unc/pirlygenes.git
+cd pirlygenes
+pip install -e .
+```
+
+### Dependencies
+
+Core dependencies:
+- numpy>=1.24.0,<2.0
+- pandas>=2.0.0  
+- pyensembl>=2.3.0
+- matplotlib>=3.5.0 (for plotting)
+- seaborn>=0.11.0 (for statistical plots)
+
 ## TCR-T 
 
 ### Clinical trials

@@ -12,11 +12,21 @@ classifiers = [
     'Topic :: Scientific/Engineering :: Bio-Informatics',
 ]
 readme = "README.md"
-dynamic = ["version", "dependencies"]
+dynamic = ["version"]
+dependencies = [
+    "numpy>=1.24.0,<2.0",
+    "pandas>=2.0.0",
+    "pyensembl>=2.3.0",
+    "argh",
+    "openpyxl",
+    "matplotlib>=3.5.0",
+    "seaborn>=0.11.0",
+    "tqdm",
+    "setuptools>=60,<70",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "pirlygenes.version.__version__"}
-dependencies = {file = ["requirements.txt"]}
 
 [tool.setuptools]
 packages = ["pirlygenes"]
