@@ -18,14 +18,6 @@ cd pirlygenes
 pip install -e .
 ```
 
-### pyensembl Dependency Note
-
-This package requires `pyensembl>=2.3.0`. If you encounter installation issues with pyensembl, you may need to use a fork with setuptools compatibility fixes until [PR #322](https://github.com/openvax/pyensembl/pull/322) is merged:
-
-```bash
-pip install git+https://github.com/bnelsj/pyensembl.git@worktree-feature%2Bupdate_setuptools
-```
-
 ### Dependencies
 
 Core dependencies:
