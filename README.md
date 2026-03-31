@@ -2,6 +2,39 @@
 
 Gene lists related to cancer immunotherapy
 
+## Installation
+
+Install from PyPI:
+
+```bash
+pip install pirlygenes
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/pirl-unc/pirlygenes.git
+cd pirlygenes
+pip install -e .
+```
+
+### pyensembl Dependency Note
+
+This package requires `pyensembl>=2.3.0`. If you encounter installation issues with pyensembl, you may need to use a fork with setuptools compatibility fixes until [PR #322](https://github.com/openvax/pyensembl/pull/322) is merged:
+
+```bash
+pip install git+https://github.com/bnelsj/pyensembl.git@worktree-feature%2Bupdate_setuptools
+```
+
+### Dependencies
+
+Core dependencies:
+- numpy>=1.24.0,<2.0
+- pandas>=2.0.0  
+- pyensembl>=2.3.0
+- matplotlib>=3.5.0 (for plotting)
+- seaborn>=0.11.0 (for statistical plots)
+
 ## TCR-T 
 
 ### Clinical trials
