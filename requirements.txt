@@ -1,5 +1,0 @@
-numpy<=1.26.09
-pandas<=2.2.1
-pyensembl
-argh
-openpyxl
