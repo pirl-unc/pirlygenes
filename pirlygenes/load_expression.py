@@ -142,7 +142,7 @@ def load_expression_data(
         raise ValueError(
             f"Gene column not found in {input_path}, available columns: {sorted(set(df.columns))}"
         )
-    df["gene"] = df["gene"].apply(short_gene_name)
+    df["gene"] = df["gene"].fillna("").astype(str).apply(short_gene_name)
 
     if "ensembl_gene_id" not in set(df.columns):
         if verbose:
