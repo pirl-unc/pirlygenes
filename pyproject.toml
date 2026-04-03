@@ -1,6 +1,6 @@
 [project]
 name = "pirlygenes"
-requires-python = ">=3.7"
+requires-python = ">=3.9"
 authors = [ {name="Alex Rubinsteyn", email="alex.rubinsteyn@unc.edu" } ]
 description = "Gene lists for cancer immunotherapy expression analysis"
 classifiers = [

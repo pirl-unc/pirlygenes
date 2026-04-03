@@ -1,5 +1,5 @@
-numpy<=1.26.09
-pandas<=2.2.1
-pyensembl
+numpy>=2.0.0
+pandas>=2.0
+pyensembl>=2.6.0
 argh
 openpyxl
