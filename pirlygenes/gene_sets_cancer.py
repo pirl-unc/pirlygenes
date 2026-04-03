@@ -132,6 +132,45 @@ def CAR_T_target_gene_ids():
 
 
 # ---------- Multispecific T-cell Engagers ----------
+
+def _tce_filtered_df(pmhc=None):
+    """Return TCE trial rows, optionally filtered by format.
+
+    Parameters
+    ----------
+    pmhc : bool or None
+        True  = only pMHC-targeting TCEs (TCR-based formats)
+        False = only surface-antigen-targeting TCEs (antibody-based formats)
+        None  = all TCEs (trials + approved pMHC TCEs)
+    """
+    import pandas as pd
+
+    df = get_data("multispecific-tcell-engager-trials")
+    # Include approved pMHC TCEs (e.g. tebentafusp) for pMHC=True or None
+    if pmhc is not False:
+        df_approved = get_data("bispecific-antibodies-approved")
+        if "Format" in df_approved.columns:
+            is_tcr_approved = df_approved["Format"].str.contains(
+                "TCR|ImmTAC", case=False, na=False
+            )
+            df = pd.concat([df, df_approved[is_tcr_approved]], ignore_index=True)
+
+    if pmhc is not None and "Format" in df.columns:
+        is_tcr = df["Format"].str.contains("TCR|ImmTAC", case=False, na=False)
+        df = df[is_tcr] if pmhc else df[~is_tcr]
+    return df
+
+
+def _extract_genes_from_df(df, candidate_columns):
+    result = set()
+    for column in candidate_columns:
+        if column in df.columns:
+            for x in df[column]:
+                if type(x) is str:
+                    result.update([xi.strip() for xi in x.split(";")])
+    return result
+
+
 def multispecific_tcell_engager_trial_target_gene_names():
     return get_target_gene_name_set("multispecific-tcell-engager-trials")
 
@@ -146,6 +185,31 @@ def multispecific_tcell_engager_target_gene_names():
 
 def multispecific_tcell_engager_target_gene_ids():
     return multispecific_tcell_engager_trial_target_gene_ids()
+
+
+# pMHC-targeting TCEs (TCR-based: ImmTAC, TCR-scFv, scFv-TCR-Fc)
+_NAME_COLS = ["Tumor_Target_Symbols", "Tumor_Target_Symbol", "Symbol", "Gene_Name"]
+_ID_COLS = [
+    "Tumor_Target_Gene_IDs", "Tumor_Target_Ensembl_Gene_IDs",
+    "Tumor_Target_Ensembl_Gene_ID", "Ensembl_Gene_ID", "Gene_ID",
+]
+
+
+def pMHC_TCE_target_gene_names():
+    return _extract_genes_from_df(_tce_filtered_df(pmhc=True), _NAME_COLS)
+
+
+def pMHC_TCE_target_gene_ids():
+    return _extract_genes_from_df(_tce_filtered_df(pmhc=True), _ID_COLS)
+
+
+# Surface-antigen-targeting TCEs (antibody-based bispecifics)
+def surface_TCE_target_gene_names():
+    return _extract_genes_from_df(_tce_filtered_df(pmhc=False), _NAME_COLS)
+
+
+def surface_TCE_target_gene_ids():
+    return _extract_genes_from_df(_tce_filtered_df(pmhc=False), _ID_COLS)
 
 
 # ---------- Bispecific antibodies ----------
