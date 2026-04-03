@@ -45,12 +45,17 @@ def plot_expression(
     output_image_prefix: Optional[str] = None,
     aggregate_gene_expression: bool = False,
     label_genes: Optional[str] = None,
+    gene_name_col: Optional[str] = None,
+    gene_id_col: Optional[str] = None,
     output_dpi: int = 300,
     plot_height: float = 12.0,
     plot_aspect: float = 1.4,
 ):
     df_expr = load_expression_data(
-        input_path, aggregate_gene_expression=aggregate_gene_expression
+        input_path,
+        aggregate_gene_expression=aggregate_gene_expression,
+        gene_name_col=gene_name_col,
+        gene_id_col=gene_id_col,
     )
     forced_labels = _parse_always_label_genes(label_genes)
 
