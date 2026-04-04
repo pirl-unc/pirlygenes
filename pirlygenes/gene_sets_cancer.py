@@ -106,12 +106,20 @@ def TCR_T_trial_target_get_ids():
     return get_target_gene_id_set("TCR-T-trials")
 
 
+def TCR_T_approved_target_gene_names():
+    return get_target_gene_name_set("TCR-T-approved")
+
+
+def TCR_T_approved_target_gene_ids():
+    return get_target_gene_id_set("TCR-T-approved")
+
+
 def TCR_T_target_gene_names():
-    return TCR_T_trial_target_get_names()
+    return TCR_T_trial_target_get_names().union(TCR_T_approved_target_gene_names())
 
 
 def TCR_T_target_gene_ids():
-    return TCR_T_trial_target_get_ids()
+    return TCR_T_trial_target_get_ids().union(TCR_T_approved_target_gene_ids())
 
 
 # ---------- CAR-T ----------
