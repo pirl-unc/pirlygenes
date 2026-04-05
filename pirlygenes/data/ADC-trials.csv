@@ -18,7 +18,7 @@ NCT04235101,Multiple_solid,Advanced/Metastatic,SYD985,ERBB2,0,Duocarmycin,1.0,,E
 NCT02368951,Multiple_solid,Advanced/Metastatic,Aprutumab_ixadotin,FGFR2,0,Auristatin_derivative,1.0,,ENSG00000066468
 NCT01439152,Multiple_solid,Advanced/Metastatic,Anetumab_ravtansine,MSLN,0,Maytansinoid,1.0,,ENSG00000102854
 NCT04441099,Multiple_solid,Advanced/Metastatic,NBE-002,ROR1,0,Anthracycline,2.0,,ENSG00000185483
-NCT02487979,Sarcoma,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,,ENSG00000136235
+NCT02487979,Sarcoma,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,DISCONTINUED_Celldex_closed_program,ENSG00000136235
 NCT03255070,Multiple_solid,Advanced/Metastatic,ARX788,ERBB2,0,Auristatin_derivative,1.0,,ENSG00000141736
 NCT05115500,Multiple_solid,Advanced/Metastatic,Disitamab_vedotin,ERBB2,0,Auristatin_derivative,2.0,,ENSG00000141736
 NCT01414283,Prostate,Advanced/Metastatic,PSMA_ADC_1301,FOLH1,0,Auristatin_derivative,1.0,,ENSG00000086205
@@ -44,7 +44,7 @@ NCT04965766,Breast,Advanced/Metastatic,Patritumab_deruxtecan,ERBB3,0,Camptotheci
 NCT04940325,Lung,Advanced/Metastatic,Datopotamab_deruxtecan,TACSTD2,0,Camptothecin,2.0,,ENSG00000184292
 NCT04264936,Urothelium,Advanced/Metastatic,Disitamab_vedotin,ERBB2,0,Auristatin_derivative,2.0,,ENSG00000141736
 NCT01631552,Multiple_solid,Advanced/Metastatic,Sacituzumab_govitecan,TACSTD2,0,Camptothecin,2.0,,ENSG00000184292
-NCT02302339,Melanoma,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,,ENSG00000136235
+NCT02302339,Melanoma,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,COMPLETED;DISCONTINUED_Celldex_closed_program,ENSG00000136235
 NCT04410224,Multiple_solid,Advanced/Metastatic,ASN004,TPBG,0,Auristatin_derivative,1.0,,ENSG00000146242
 NCT00031187,Prostate,Advanced/Metastatic,SGN-15,FUT2,0,Anthracycline,2.0,,ENSG00000176920
 NCT00051584,Ovary,Advanced/Metastatic,SGN-15,FUT2,0,Anthracycline,2.0,,ENSG00000176920
@@ -60,7 +60,7 @@ NCT03248492,Breast,Advanced/Metastatic,Trastuzumab_deruxtecan,ERBB2,0,Camptothec
 NCT02529553,Multiple_solid,Advanced/Metastatic,LY3076226,FGFR3,0,Maytansinoid,1.0,,ENSG00000068078
 NCT04724018,Urothelium,Advanced/Metastatic,Sacituzumab_govitecan+enfortumab_vedotin,TACSTD2;NECTIN4,0,Camptothecin;Auristatin_derivative,1.0,,ENSG00000184292;ENSG00000143217
 NCT04595565,Breast,Adjuvant,Sacituzumab_govitecan,TACSTD2,0,Camptothecin,3.0,,ENSG00000184292
-NCT03473691,Breast,Adjuvant,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,1.0,,ENSG00000136235
+NCT03473691,Breast,Adjuvant,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,1.0,DISCONTINUED_Celldex_closed_program,ENSG00000136235
 NCT03023722,Pancreas,Advanced/Metastatic,Anetumab_ravtansine,MSLN,0,Maytansinoid,2.0,,ENSG00000102854
 NCT02988817,Multiple_solid,Advanced/Metastatic,Enopotamab_vedotin,AXL,0,Auristatin_derivative,2.0,,ENSG00000167601
 NCT02552121,Multiple_solid,Advanced/Metastatic,Tisotumab_vedotin,F3,0,Auristatin_derivative,2.0,,ENSG00000117525
@@ -75,7 +75,7 @@ NCT03523572,Multiple_solid,Advanced/Metastatic,Trastuzumab_deruxtecan,ERBB2,0,Ca
 NCT03523585,Breast,Advanced/Metastatic,Trastuzumab_deruxtecan,ERBB2,0,Camptothecin,3.0,,ENSG00000141736
 NCT03529110,Breast,Advanced/Metastatic,Trastuzumab_deruxtecan,ERBB2,0,Camptothecin,3.0,,ENSG00000141736
 NCT02020135,Prostate,Advanced/Metastatic,PSMA-ADC,FOLH1,0,Auristatin_derivative,2.0,,ENSG00000086205
-NCT01997333,Breast,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,,ENSG00000136235
+NCT01997333,Breast,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,COMPLETED;METRIC_failed_primary_endpoint;DISCONTINUED_Celldex_closed_program,ENSG00000136235
 NCT02221505,Multiple_solid,Advanced/Metastatic,LOP628,KIT,0,Maytansinoid,1.0,,ENSG00000157404
 NCT04084366,Multiple_solid,Advanced/Metastatic,OBI-999,B3GALT5,0,Auristatin_derivative,2.0,,ENSG00000183778
 NCT02512237,Multiple_solid,Advanced/Metastatic,ARX788,ERBB2,0,Auristatin_derivative,1.0,,ENSG00000141736
@@ -84,11 +84,11 @@ NCT03368196,Multiple_solid,Advanced/Metastatic,Trastuzumab_deruxtecan,ERBB2,0,Ca
 NCT04396340,Multiple_solid,Advanced/Metastatic,XMT-1592,SLC34A2,0,Auristatin_derivative,2.0,,ENSG00000157765
 NCT04699630,Breast,Advanced/Metastatic,Patritumab_deruxtecan,ERBB3,0,Camptothecin,2.0,,ENSG00000065361
 NCT04963153,Urothelium,Advanced/Metastatic,Enfortumab_vedotin,NECTIN4,0,Auristatin_derivative,1.0,,ENSG00000143217
-NCT01901653,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,2.0,,ENSG00000090932
+NCT01901653,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,2.0,DISCONTINUED_program_terminated_2019,ENSG00000090932
 NCT04995419,Urothelium,Advanced/Metastatic,Enfortumab_vedotin,NECTIN4,0,Auristatin_derivative,2.0,,ENSG00000143217
 NCT01475006,Brain,Advanced/Metastatic,AMG-595,EGFR,0,Maytansinoid,1.0,,ENSG00000146648
 NCT05011188,Prostate,Advanced/Metastatic,FOR46,CD46,0,Auristatin_derivative,2.0,,ENSG00000117335
-NCT02674568,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,2.0,,ENSG00000090932
+NCT02674568,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,2.0,DISCONTINUED_program_terminated_2019,ENSG00000090932
 NCT05156866,Multiple_solid,Advanced/Metastatic,TORL-2-307-ADC,CLDN18,0,Auristatin_derivative,1.0,,ENSG00000066405
 NCT05263479,Multiple_solid,Advanced/Metastatic,HS-20089,VTCN1,0,Undisclosed,1.0,,ENSG00000134258
 NCT04296890,Ovary,Advanced/Metastatic,Mirvetuximab_soravtansine,FOLR1,0,Maytansinoid,3.0,,ENSG00000110195
@@ -108,8 +108,8 @@ NCT02947152,Multiple_solid,Advanced/Metastatic,HKT288,CDH6,0,Maytansinoid,1.0,,E
 NCT04152499,Multiple_solid,Advanced/Metastatic,SKB264,TACSTD2,0,Camptothecin,2.0,,ENSG00000184292
 NCT03602079,Multiple_solid,Advanced/Metastatic,A166,ERBB2,0,Auristatin_derivative,2.0,,ENSG00000141736
 NCT03575819,Prostate,Advanced/Metastatic,FOR46,CD46,0,Auristatin_derivative,1.0,,ENSG00000117335
-NCT02819999,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,1.0,,ENSG00000090932
-NCT02874664,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,1.0,,ENSG00000090932
+NCT02819999,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,1.0,DISCONTINUED_program_terminated_2019,ENSG00000090932
+NCT02874664,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,1.0,DISCONTINUED_program_terminated_2019,ENSG00000090932
 NCT05205850,Multiple_solid,Advanced/Metastatic,RC118-ADC,CLDN18,0,Auristatin_derivative,2.0,,ENSG00000066405
 NCT03725761,Prostate,Advanced/Metastatic,Sacituzumab_govitecan,TACSTD2,0,Camptothecin,2.0,,ENSG00000184292
 NCT03587740,Breast,Adjuvant,T-DM1,ERBB2,0,Maytansinoid,2.0,,ENSG00000141736
@@ -122,7 +122,7 @@ NCT03425279,Multiple_solid,Advanced/Metastatic,Mecbotamab_vedotin,AXL,0,Auristat
 NCT03835819,Uterus,Advanced/Metastatic,Mirvetuximab_soravtansine,FOLR1,0,Maytansinoid,2.0,,ENSG00000110195
 NCT03504488,Multiple_solid,Advanced/Metastatic,Ozuriftamab_vedotin,ROR2,0,Auristatin_derivative,2.0,,ENSG00000169071
 NCT04434040,Breast,Adjuvant,Sacituzumab_govitecan,TACSTD2,0,Camptothecin,2.0,,ENSG00000184292
-NCT02363283,Melanoma,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,,ENSG00000136235
+NCT02363283,Melanoma,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,COMPLETED;terminated_melanoma;DISCONTINUED_Celldex_closed_program,ENSG00000136235
 NCT02780011,Multiple_solid,Advanced/Metastatic,Brentuximab_vedotin,TNFRSF8,0,Auristatin_derivative,1.0,,ENSG00000120949
 NCT04209855,Ovary,Advanced/Metastatic,Mirvetuximab_soravtansine,FOLR1,0,Maytansinoid,3.0,,ENSG00000110195
 NCT02980341,Breast,Advanced/Metastatic,Patritumab_deruxtecan,ERBB3,0,Camptothecin,2.0,,ENSG00000065361
@@ -150,7 +150,7 @@ NCT02696642,Multiple_solid,Advanced/Metastatic,Anetumab_ravtansine,MSLN,0,Maytan
 NCT03474107,Urothelium,Advanced/Metastatic,Enfortumab_vedotin,NECTIN4,0,Auristatin_derivative,3.0,,ENSG00000143217
 NCT03384940,Colon/Rectum,Advanced/Metastatic,Trastuzumab_deruxtecan,ERBB2,0,Camptothecin,2.0,,ENSG00000141736
 NCT01677390,Kidney,Advanced/Metastatic,Vorsetuzumab_mafodotin,CD70,0,Auristatin_derivative,1.0,,ENSG00000125726
-NCT03326258,Multiple_solid,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,,ENSG00000136235
+NCT03326258,Multiple_solid,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,DISCONTINUED_Celldex_closed_program,ENSG00000136235
 NCT03657043,Ovary,Advanced/Metastatic,Tisotumab_vedotin,F3,0,Auristatin_derivative,2.0,,ENSG00000117525
 NCT02161679,Breast,Advanced/Metastatic,Sacituzumab_govitecan,TACSTD2,0,Camptothecin,2.0,,ENSG00000184292
 NCT03366428,Breast,Advanced/Metastatic,Trastuzumab_deruxtecan,ERBB2,0,Camptothecin,1.0,,ENSG00000141736
@@ -493,11 +493,11 @@ NCT02824042,Multiple_solid,Advanced/Metastatic,Anetumab_ravtansine,MSLN,0,Maytan
 NCT03816358,Pancreas,Advanced/Metastatic,Anetumab_ravtansine,MSLN,0,Maytansinoid,1.0,,ENSG00000102854
 NCT02610140,Pleura,Advanced/Metastatic,Anetumab_ravtansine,MSLN,0,Maytansinoid,2.0,,ENSG00000102854
 NCT03587311,Multiple_solid,Metastatic,Anetumab_ravtansine,MSLN,0,Maytansinoid,2.0,,ENSG00000102854
-NCT03067935,Breast,Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,,phase not available,ENSG00000136235
-NCT01156753,Breast,Advanced,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,,ENSG00000136235
-NCT02713828,Lung,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,,ENSG00000136235
-NCT00704158,Breast,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,,ENSG00000136235
-NCT00412828,Melanoma,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,,ENSG00000136235
+NCT03067935,Breast,Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,,phase not available;DISCONTINUED_Celldex_closed_program,ENSG00000136235
+NCT01156753,Breast,Advanced,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,COMPLETED;DISCONTINUED_Celldex_closed_program,ENSG00000136235
+NCT02713828,Lung,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,COMPLETED;failed_Phase2;DISCONTINUED_Celldex_closed_program,ENSG00000136235
+NCT00704158,Breast,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,DISCONTINUED_Celldex_closed_program,ENSG00000136235
+NCT00412828,Melanoma,Advanced/Metastatic,Glembatumumab_vedotin,GPNMB,0,Auristatin_derivative,2.0,DISCONTINUED_Celldex_closed_program,ENSG00000136235
 NCT05041972,Multiple_solid,Advanced/Metastatic,ARX788,ERBB2,0,Auristatin_derivative,2.0,,ENSG00000141736
 NCT05018702,Breast,Metastatic,ARX788,ERBB2,0,Auristatin_derivative,2.0,,ENSG00000141736
 NCT05018676,Breast,Advanced/Metastatic,ARX788,ERBB2,0,Auristatin_derivative,2.0,,ENSG00000141736
@@ -516,14 +516,14 @@ NCT04484142,Lung,Advanced/Metastatic,Datopotamab_deruxtecan,TACSTD2,0,Camptothec
 NCT05555732,Lung,Advanced/Metastatic,Datopotamab_deruxtecan,TACSTD2,0,Camptothecin,3.0,,ENSG00000184292
 NCT05866432,Breast,Metastatic,Datopotamab_deruxtecan,TACSTD2,0,Camptothecin,2.0,,ENSG00000184292
 NCT05215340,Lung,Advanced/Metastatic,Datopotamab_deruxtecan,TACSTD2,0,Camptothecin,3.0,,ENSG00000184292
-NCT03026166,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,2.0,,ENSG00000090932
-NCT02709889,Multiple_solid,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,2.0,,ENSG00000090932
-NCT03086239,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,1.0,,ENSG00000090932
-NCT03334487,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,3.0,,ENSG00000090932
-NCT03061812,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,3.0,,ENSG00000090932
-NCT03000257,Multiple_solid,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,1.0,,ENSG00000090932
-NCT03543358,Multiple_solid,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,2.0,,ENSG00000090932
-NCT03033511,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,3.0,,ENSG00000090932
+NCT03026166,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,2.0,DISCONTINUED_program_terminated_2019,ENSG00000090932
+NCT02709889,Multiple_solid,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,2.0,DISCONTINUED_program_terminated_2019,ENSG00000090932
+NCT03086239,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,1.0,DISCONTINUED_program_terminated_2019,ENSG00000090932
+NCT03334487,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,3.0,TERMINATED;TAHOE_Phase3_failed_2018;DISCONTINUED_program_terminated_2019,ENSG00000090932
+NCT03061812,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,3.0,DISCONTINUED_program_terminated_2019,ENSG00000090932
+NCT03000257,Multiple_solid,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,1.0,DISCONTINUED_program_terminated_2019,ENSG00000090932
+NCT03543358,Multiple_solid,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,2.0,DISCONTINUED_program_terminated_2019,ENSG00000090932
+NCT03033511,Lung,Advanced/Metastatic,Rovalpituzumab_tesirine,DLL3,0,Pyrrolobenzodiazepine,3.0,TERMINATED;MERU_Phase3_terminated;DISCONTINUED_program_terminated_2019,ENSG00000090932
 NCT02590263,Brain,Advanced,Depatuxizumab_mafodotin,EGFR,0,Auristatin_derivative,2.0,,ENSG00000146648
 NCT01741727,Multiple_solid,Advanced/Metastatic,Depatuxizumab_mafodotin,EGFR,0,Auristatin_derivative,1.0,,ENSG00000146648
 NCT03123952,Multiple_solid,Advanced/Metastatic,Depatuxizumab_mafodotin,EGFR,0,Auristatin_derivative,,phase not available,ENSG00000146648
