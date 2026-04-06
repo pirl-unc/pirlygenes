@@ -29,7 +29,7 @@ from .gene_sets_old import (
     oncogenes,
     checkpoints,
 )
-from .gene_sets_cancer import CTA_gene_names
+from .gene_sets_cancer import CTA_gene_names, housekeeping_gene_names
 
 # ------------------------ helpers ------------------------
 
@@ -124,6 +124,7 @@ def resolve_always_label_gene_ids(
 # ------------------------ defaults ------------------------
 
 default_gene_sets = dict(
+    Housekeeping=housekeeping_gene_names(),
     APM=APM_genes,
     MHC1=MHC1_genes,
     TLR=TLR_signaling,
@@ -189,6 +190,7 @@ def plot_gene_expression(
         assert col in df_gene_expr_annot.columns, df_gene_expr_annot.columns
 
     # Plot
+    other_name = "other"
     cat = sns.catplot(
         data=df_gene_expr_annot,
         x="category",
@@ -200,6 +202,22 @@ def plot_gene_expression(
         hue="category",
     )
     plt.yscale("log")
+
+    # Fade "other" category points so named categories stand out
+    ax = cat.ax
+    for coll in ax.collections:
+        offsets = coll.get_offsets()
+        if len(offsets) == 0:
+            continue
+        # Check if this collection corresponds to "other" by x-position
+        cats = list(df_gene_expr_annot["category"].cat.categories)
+        if other_name in cats:
+            other_idx = cats.index(other_name)
+            # PathCollection x-coords are jittered around integer category index
+            x_coords = offsets[:, 0]
+            is_other = (x_coords > other_idx - 0.5) & (x_coords < other_idx + 0.5)
+            if is_other.any() and is_other.all():
+                coll.set_alpha(0.12)
 
     # Annotate with display names, never raw ENSG; skip the 'other' column
     texts = []

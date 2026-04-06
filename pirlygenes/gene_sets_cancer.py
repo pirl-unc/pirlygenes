@@ -72,6 +72,21 @@ def get_target_gene_id_set(
     return get_field_from_gene_set(name, candidate_id_columns)
 
 
+# ---------- Housekeeping genes ----------
+def housekeeping_gene_names(core_only=False):
+    df = get_data("housekeeping-genes")
+    if core_only:
+        df = df[df["Category"] == "Core"]
+    return set(df["Symbol"])
+
+
+def housekeeping_gene_ids(core_only=False):
+    df = get_data("housekeeping-genes")
+    if core_only:
+        df = df[df["Category"] == "Core"]
+    return set(df["Ensembl_Gene_ID"])
+
+
 # ---------- ADC ----------
 def ADC_trial_target_gene_names():
     return get_target_gene_name_set("ADC-trials")
