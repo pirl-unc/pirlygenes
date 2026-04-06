@@ -29,7 +29,7 @@ from .gene_sets_old import (
     oncogenes,
     checkpoints,
 )
-from .gene_sets_cancer import CTA_gene_names, housekeeping_gene_names, housekeeping_gene_ids
+from .gene_sets_cancer import CTA_gene_names, housekeeping_gene_ids
 
 # ------------------------ helpers ------------------------
 

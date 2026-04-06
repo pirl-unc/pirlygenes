@@ -427,10 +427,9 @@ def CTA_evidence():
         return get_data("cancer-testis-antigens")
 
 
-from dataclasses import dataclass
-from typing import Union
+from dataclasses import dataclass  # noqa: E402
 
-import pandas as pd
+import pandas as pd  # noqa: E402
 
 
 @dataclass(frozen=True)
