@@ -103,7 +103,9 @@ def aggregate_gene_expression(
         )
         for t in iterator:
             resolved[t] = _resolve_tx(t)
-        gene_series.loc[unknown_mask] = tx0[unknown_mask].map(resolved)
+        resolved_series = tx0[unknown_mask].map(resolved)
+        gene_series = gene_series.astype(object)
+        gene_series.loc[unknown_mask] = resolved_series
 
     unknown_mask = gene_series.isna()
     unknown_genes_tpm = float(tpm[unknown_mask].sum())

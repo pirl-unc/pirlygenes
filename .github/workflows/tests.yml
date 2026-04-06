@@ -26,6 +26,17 @@ jobs:
           uv pip install -r requirements.txt
           uv pip install seaborn matplotlib tqdm adjustText
           uv pip install .
+      - name: Cache pyensembl data
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pyensembl/
+          key: pyensembl-112-${{ runner.os }}
+      - name: Install Ensembl genome data
+        run: |
+          source .venv/bin/activate
+          echo "Before installing Ensembl release 112" && df -h
+          pyensembl install --release 112 --species homo_sapiens
+          echo "After installing Ensembl release 112" && df -h
       - name: Run linting script and unit tests
         run: |
           source .venv/bin/activate
