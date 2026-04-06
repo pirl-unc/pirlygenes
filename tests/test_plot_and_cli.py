@@ -55,10 +55,17 @@ def test_plot_gene_expression_smoke(monkeypatch, tmp_path):
     class FakeAx:
         def __init__(self):
             self.text_calls = []
+            self.collections = []
 
         def text(self, *args, **kwargs):
             self.text_calls.append((args, kwargs))
             return SimpleNamespace()
+
+        def scatter(self, *args, **kwargs):
+            pass
+
+        def annotate(self, *args, **kwargs):
+            pass
 
     class FakeFigure:
         def __init__(self):
@@ -102,7 +109,8 @@ def test_cli_plot_expression_and_main(monkeypatch):
     monkeypatch.setattr(cli_mod, "TCR_T_target_gene_names", lambda: {"TCR"})
     monkeypatch.setattr(cli_mod, "CAR_T_target_gene_names", lambda: {"CAR"})
     monkeypatch.setattr(cli_mod, "bispecific_antibody_target_gene_names", lambda: {"BS"})
-    monkeypatch.setattr(cli_mod, "multispecific_tcell_engager_target_gene_names", lambda: {"MUTE"})
+    monkeypatch.setattr(cli_mod, "pMHC_TCE_target_gene_names", lambda: {"PMHC"})
+    monkeypatch.setattr(cli_mod, "surface_TCE_target_gene_names", lambda: {"SURF"})
     monkeypatch.setattr(cli_mod, "ADC_target_gene_names", lambda: {"ADC"})
     monkeypatch.setattr(cli_mod, "radio_target_gene_names", lambda: {"RAD"})
 

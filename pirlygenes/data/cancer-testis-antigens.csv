@@ -49,7 +49,7 @@ SPANXN3,,,cancer-testis antigen,ENSG00000189252,CTpedia;daSilva2017,no data,no d
 SPANXN4,,,cancer-testis antigen,ENSG00000189326,CTpedia;daSilva2017,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,ENST00000370504,protein_coding,True,True,True,True,True,25.2,False
 SPANXN5,,,cancer-testis antigen,ENSG00000204363,CTpedia;daSilva2017,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,ENST00000375511,protein_coding,True,True,True,True,True,16.1,False
 ODF1,,,cancer-testis antigen,ENSG00000155087,CTpedia;daSilva2017;daSilva2017_protein,True,False,Approved,True,False,testis,0.9915,0.9915,1.0,1.0,ENST00000285402,protein_coding,True,True,True,True,True,386.0,False
-ODF3,CIMAP1A,,cancer-testis antigen,ENSG00000177947,CTpedia;daSilva2017,True,False,Enhanced,True,False,testis,0.9579,0.9579,1.0,1.0,ENST00000325113,protein_coding,True,True,True,True,True,9.1,False
+CIMAP1A,ODF3,,cancer-testis antigen,ENSG00000177947,CTpedia;daSilva2017,True,False,Enhanced,True,False,testis,0.9579,0.9579,1.0,1.0,ENST00000325113,protein_coding,True,True,True,True,True,9.1,False
 ODF4,,,cancer-testis antigen,ENSG00000184650,CTpedia;daSilva2017;daSilva2017_protein,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,ENST00000328248,protein_coding,True,True,True,True,True,12.7,False
 ROPN1B,,,cancer-testis antigen,ENSG00000114547,CTpedia;CTexploreR_CTP;daSilva2017,False,False,Supported,False,False,epididymis; testis,0.6617,0.6617,0.7134,0.7134,ENST00000251776,protein_coding,False,False,False,False,False,208.3,False
 SPAM1,,,cancer-testis antigen,ENSG00000106304,CTpedia;daSilva2017,True,False,Enhanced,True,False,testis,0.9444,0.9444,1.0,1.0,ENST00000340011,protein_coding,True,True,True,True,True,16.9,False
@@ -112,9 +112,9 @@ CT47B1,,,cancer-testis antigen,ENSG00000236446,CTpedia;daSilva2017,True,False,Su
 CT83,,,cancer-testis antigen,ENSG00000204019,CTpedia;CTexploreR_CTP;daSilva2017;daSilva2017_protein,no data,no data,no data,False,False,no data,0.9555,0.9555,0.9749,0.9749,ENST00000371894,protein_coding,True,True,True,False,False,62.2,False
 TEX13A,,,cancer-testis antigen,ENSG00000268629,CTpedia;daSilva2017,True,False,Enhanced,True,False,placenta; testis,1.0,1.0,1.0,1.0,ENST00000600991,protein_coding,True,True,True,True,True,10.3,False
 TEX19,,,cancer-testis antigen,ENSG00000182459,CTpedia;CTexploreR_CTP;daSilva2017,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,ENST00000333437,protein_coding,True,True,True,True,True,30.0,False
-TEX33,CIMIP4,,cancer-testis antigen,ENSG00000185264,CTpedia;daSilva2017,True,False,Enhanced,True,False,testis,0.9989,0.9989,1.0,1.0,ENST00000381821,protein_coding,True,True,True,True,True,88.9,False
+CIMIP4,TEX33,,cancer-testis antigen,ENSG00000185264,CTpedia;daSilva2017,True,False,Enhanced,True,False,testis,0.9989,0.9989,1.0,1.0,ENST00000381821,protein_coding,True,True,True,True,True,88.9,False
 TEX35,,,cancer-testis antigen,ENSG00000240021,CTpedia;daSilva2017,True,False,Approved,False,False,testis,0.88,0.8802,0.9778,0.9778,ENST00000367639,protein_coding,True,True,True,False,True,114.7,False
-TEX37,SPMIP9,,cancer-testis antigen,ENSG00000172073,CTpedia;daSilva2017,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,ENST00000303254,protein_coding,True,True,True,True,True,82.6,False
+SPMIP9,TEX37,,cancer-testis antigen,ENSG00000172073,CTpedia;daSilva2017,True,False,Enhanced,True,False,testis,1.0,1.0,1.0,1.0,ENST00000303254,protein_coding,True,True,True,True,True,82.6,False
 TEX38,,,cancer-testis antigen,ENSG00000186118,CTpedia;daSilva2017,no data,no data,no data,True,False,no data,0.9783,0.9783,1.0,1.0,ENST00000564071,protein_coding,True,True,True,True,True,377.8,False
 TEX44,,,cancer-testis antigen,ENSG00000177673,CTpedia,True,False,Enhanced,True,False,testis,0.998,0.998,1.0,1.0,ENST00000313965,protein_coding,True,True,True,True,True,148.2,False
 TEX101,,,cancer-testis antigen,ENSG00000131126,CTpedia;CTexploreR_CTP;daSilva2017,True,False,Enhanced,False,True,testis,0.8825,0.8834,0.9879,0.9879,ENST00000602198,protein_coding,True,True,True,False,True,114.4,False

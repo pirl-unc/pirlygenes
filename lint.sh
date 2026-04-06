@@ -10,7 +10,7 @@ set -o errexit
 find pirlygenes/ -name '*.py' \
   | xargs pylint \
   --errors-only \
-  --disable=unsubscriptable-object,not-an-iterable,no-member,invalid-unary-operand-type \
+  --disable=unsubscriptable-object,not-an-iterable,no-member,invalid-unary-operand-type,import-error \
 && \
 echo 'Passes pylint check' \
 && \

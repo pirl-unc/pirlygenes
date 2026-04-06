@@ -18,7 +18,6 @@ from .load_dataset import load_all_dataframes
 from .gene_sets_cancer import (
     ADC_target_gene_names,
     CAR_T_target_gene_names,
-    multispecific_tcell_engager_target_gene_names,
     pMHC_TCE_target_gene_names,
     surface_TCE_target_gene_names,
     bispecific_antibody_target_gene_names,
