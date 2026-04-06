@@ -234,10 +234,11 @@ def plot_gene_expression(
             color="#e74c3c", alpha=0.7, s=18, zorder=5, label="Housekeeping",
             edgecolors="none",
         )
-        # Label the core housekeeping genes
-        _hk_core_ids = housekeeping_gene_ids(core_only=True)
+        # Label the top 10 housekeeping genes by expression
+        top_hk = hk_in_other.nlargest(10, "TPM")
+        top_hk_ids = set(top_hk[gene_id_col])
         for (_, row), xi in zip(hk_in_other.iterrows(), hk_x):
-            if row[gene_id_col] in _hk_core_ids:
+            if row[gene_id_col] in top_hk_ids:
                 ax.annotate(
                     row[gene_name_col],
                     xy=(xi, row["TPM"]),
