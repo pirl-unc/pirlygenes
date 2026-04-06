@@ -29,7 +29,7 @@ from .gene_sets_old import (
     oncogenes,
     checkpoints,
 )
-from .gene_sets_cancer import CTA_gene_names, housekeeping_gene_names
+from .gene_sets_cancer import CTA_gene_names, housekeeping_gene_names, housekeeping_gene_ids
 
 # ------------------------ helpers ------------------------
 
@@ -124,7 +124,6 @@ def resolve_always_label_gene_ids(
 # ------------------------ defaults ------------------------
 
 default_gene_sets = dict(
-    Housekeeping=housekeeping_gene_names(),
     APM=APM_genes,
     MHC1=MHC1_genes,
     TLR=TLR_signaling,
@@ -218,6 +217,34 @@ def plot_gene_expression(
             is_other = (x_coords > other_idx - 0.5) & (x_coords < other_idx + 0.5)
             if is_other.any() and is_other.all():
                 coll.set_alpha(0.12)
+
+    # Highlight housekeeping genes in "other" with a distinct color and labels
+    _hk_ids = housekeeping_gene_ids()
+    hk_in_other = df_gene_expr_annot[
+        (df_gene_expr_annot["category"] == other_name)
+        & (df_gene_expr_annot[gene_id_col].isin(_hk_ids))
+    ]
+    if len(hk_in_other) > 0:
+        cats = list(df_gene_expr_annot["category"].cat.categories)
+        other_idx = cats.index(other_name) if other_name in cats else 0
+        import numpy as _np
+        hk_x = other_idx + _np.random.default_rng(42).uniform(-0.01, 0.01, len(hk_in_other))
+        ax.scatter(
+            hk_x, hk_in_other["TPM"].values,
+            color="#e74c3c", alpha=0.7, s=18, zorder=5, label="Housekeeping",
+            edgecolors="none",
+        )
+        # Label the core housekeeping genes
+        _hk_core_ids = housekeeping_gene_ids(core_only=True)
+        for (_, row), xi in zip(hk_in_other.iterrows(), hk_x):
+            if row[gene_id_col] in _hk_core_ids:
+                ax.annotate(
+                    row[gene_name_col],
+                    xy=(xi, row["TPM"]),
+                    fontsize=6, color="#c0392b", alpha=0.85,
+                    ha="left", va="bottom",
+                    xytext=(4, 2), textcoords="offset points",
+                )
 
     # Annotate with display names, never raw ENSG; skip the 'other' column
     texts = []
