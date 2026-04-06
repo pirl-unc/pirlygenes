@@ -10,26 +10,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib.resources as pkg_resources
-from importlib.resources import contents
 from pathlib import Path
-
 
 import pandas as pd
 
+_DATA_DIR = Path(__file__).parent / "data"
 
-def get_all_csv_paths() -> list[Path]:
+
+def get_all_csv_paths() -> list:
     """
     Get paths to all CSV files in the data directory.
 
     Returns a list of Path objects for each CSV file.
     """
-    csv_paths = []
-    for resource in contents("pirlygenes.data"):
-        if resource.endswith(".csv"):
-            with pkg_resources.path("pirlygenes.data", resource) as path:
-                csv_paths.append(path)
-    return csv_paths
+    return sorted(_DATA_DIR.glob("*.csv"))
 
 
 def load_all_dataframes():
