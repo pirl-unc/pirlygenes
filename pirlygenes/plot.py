@@ -489,20 +489,33 @@ def _prepare_sample_vs_cancer_data(
     )
 
     ref = pan_cancer_expression(normalize="housekeeping")
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+
     if cancer_type is not None:
         cancer_type = resolve_cancer_type(cancer_type)
         ref_col = f"FPKM_{cancer_type}"
-        ref["_ref_value"] = ref[ref_col].astype(float) * 100  # convert to %
         cancer_label = CANCER_TYPE_NAMES.get(cancer_type, cancer_type)
         cohort_label = f"{cancer_label} cohort ({cancer_type})"
     else:
-        fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
-        ref["_ref_value"] = ref[fpkm_cols].astype(float).mean(axis=1) * 100
+        ref_col = None
         cohort_label = "Mean across 33 TCGA cancer cohorts"
 
-    ref_lookup = dict(zip(
+    # Compute per-gene z-score parameters across cancer types so we can
+    # put the sample (TPM) and reference (FPKM) on a comparable scale.
+    log_ref_matrix = np.log2(ref[fpkm_cols].astype(float) + 1)
+    ref_gene_mean = log_ref_matrix.mean(axis=1)
+    ref_gene_std = log_ref_matrix.std(axis=1).clip(lower=0.1)
+
+    if ref_col is not None:
+        log_ref_vals = np.log2(ref[ref_col].astype(float) + 1)
+        ref["_ref_z"] = (log_ref_vals - ref_gene_mean) / ref_gene_std
+    else:
+        log_ref_vals = log_ref_matrix.mean(axis=1)
+        ref["_ref_z"] = (log_ref_vals - ref_gene_mean) / ref_gene_std
+
+    ref_z_lookup = dict(zip(
         ref["Ensembl_Gene_ID"].map(_strip_ensembl_version),
-        ref["_ref_value"],
+        ref["_ref_z"],
     ))
 
     tpm_col = "TPM" if "TPM" in df.columns else next(
@@ -511,12 +524,20 @@ def _prepare_sample_vs_cancer_data(
     if tpm_col is None:
         raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
 
-    # Normalize sample TPM to housekeeping (same scale as cohort reference)
+    # Normalize sample TPM to housekeeping, then z-score using reference stats
     hk_ids = housekeeping_gene_ids()
     hk_mask = df[gene_id_col].isin(hk_ids)
     hk_median_tpm = df.loc[hk_mask, tpm_col].astype(float).median()
     if hk_median_tpm <= 0:
         hk_median_tpm = 1.0  # fallback
+
+    # Build per-gene z-score lookup for the sample
+    ref_mean_lookup = dict(zip(
+        ref["Ensembl_Gene_ID"].map(_strip_ensembl_version), ref_gene_mean,
+    ))
+    ref_std_lookup = dict(zip(
+        ref["Ensembl_Gene_ID"].map(_strip_ensembl_version), ref_gene_std,
+    ))
 
     gene_to_category = _create_gene_to_category_list_mapping(cat_to_ids)
     name_from_df = dict(zip(df[gene_id_col].astype(str), df[gene_name_col].astype(str)))
@@ -525,31 +546,38 @@ def _prepare_sample_vs_cancer_data(
     for _, row in df.iterrows():
         gid = str(row[gene_id_col])
         tpm = float(row[tpm_col])
-        sample_hk = (tpm / hk_median_tpm) * 100  # % of housekeeping median
-        ref_val = ref_lookup.get(gid)
-        if ref_val is None:
+        sample_hk = tpm / hk_median_tpm
+        log_sample = np.log2(sample_hk + 1)
+        mu = ref_mean_lookup.get(gid)
+        if mu is None:
             continue
+        std = ref_std_lookup.get(gid, 1.0)
+        sample_z = float((log_sample - mu) / std) if std > 0 else 0.0
+        cohort_z = ref_z_lookup.get(gid)
+        if cohort_z is None:
+            continue
+        cohort_z = float(cohort_z)
         cats = gene_to_category.get(gid, ["other"])
         name = name_from_df.get(gid) or id_to_name.get(gid) or gid
         display_name = aliases.get(name, name)
         for cat in cats:
-            rows.append((gid, display_name, cat, sample_hk, ref_val))
+            rows.append((gid, display_name, cat, sample_z, cohort_z))
 
     plot_df = pd.DataFrame(rows, columns=[
         "gene_id", "gene_name", "category", "sample_hk", "cohort_hk",
     ])
-    # Offsets for log scale
-    plot_df["sample_log"] = plot_df["sample_hk"] + 0.001
-    plot_df["cohort_log"] = plot_df["cohort_hk"] + 0.001
-    # Enrichment ratio: sample / cohort (high = sample-enriched)
-    plot_df["enrichment"] = (plot_df["sample_hk"] + 0.001) / (plot_df["cohort_hk"] + 0.001)
+    # For scatter axes (no log transform needed — z-scores are linear)
+    plot_df["sample_log"] = plot_df["sample_hk"]
+    plot_df["cohort_log"] = plot_df["cohort_hk"]
+    # Enrichment: sample z-score minus cohort z-score (positive = sample-enriched)
+    plot_df["enrichment"] = plot_df["sample_hk"] - plot_df["cohort_hk"]
 
     named_cats = list(cat_to_ids.keys())
     palette = sns.color_palette("tab10", len(named_cats))
     cat_to_color = dict(zip(named_cats, palette))
 
-    sample_label = "Sample expression (% of housekeeping)"
-    cohort_axis_label = f"{cohort_label} (% of housekeeping)"
+    sample_label = "Sample expression (z-score across cancer types)"
+    cohort_axis_label = f"{cohort_label} (z-score across cancer types)"
 
     return plot_df, named_cats, cat_to_color, sample_label, cohort_axis_label
 
@@ -577,11 +605,11 @@ def _draw_scatter_panel(
             c=[(0.78, 0.78, 0.78)], alpha=0.18, s=8, zorder=1,
         )
 
-    # Highlight category — mark sample-enriched genes (enrichment > 5) with edge ring
+    # Highlight category — mark sample-enriched genes (enrichment > 1 z-score) with edge ring
     hi = plot_df[plot_df.category == highlight_cat]
     if len(hi):
-        enriched = hi[hi.enrichment > 5]
-        normal = hi[hi.enrichment <= 5]
+        enriched = hi[hi.enrichment > 1]
+        normal = hi[hi.enrichment <= 1]
         if len(normal):
             ax.scatter(
                 normal.sample_log, normal.cohort_log,
@@ -594,11 +622,9 @@ def _draw_scatter_panel(
                 edgecolors="black", linewidths=0.8,
             )
 
-    ax.set_xscale("log")
-    ax.set_yscale("log")
     ax.set_title(highlight_cat.replace("_", " "), fontsize=11, fontweight="bold")
 
-    # Diagonal: y = x (genes on this line have same expression in sample and cohort)
+    # Diagonal: y = x (genes on this line have same z-score in sample and cohort)
     lims = [
         max(ax.get_xlim()[0], ax.get_ylim()[0]),
         min(ax.get_xlim()[1], ax.get_ylim()[1]),
@@ -1405,6 +1431,12 @@ def _compute_cancer_type_signature_stats(
 
 
 def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
+    """Build z-scored feature matrix for PCA/MDS of cancer types + sample.
+
+    For each gene, log-transforms expression then z-scores across the 33
+    cancer types.  The same per-gene mean/std is applied to the sample so
+    it is on a comparable scale regardless of TPM-vs-FPKM differences.
+    """
     import numpy as np
     from .plot_data_helpers import _strip_ensembl_version
 
@@ -1440,15 +1472,28 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
     top_var_idx = gene_cv[gene_mean > 0.01].nlargest(n_genes * 33).index
     ref_filtered = ref.loc[top_var_idx].drop_duplicates(subset="Symbol")
 
-    feature_matrix = [ref_filtered[col].astype(float).values for col in fpkm_cols]
-    sample_vals = [
+    # Log-transform reference and sample
+    log_ref = np.log2(ref_filtered[fpkm_cols].astype(float) + 1)
+    sample_vals = np.array([
         sample_by_id.get(row["Ensembl_Gene_ID"], 0.0)
         for _, row in ref_filtered.iterrows()
-    ]
-    feature_matrix.append(sample_vals)
+    ])
+    log_sample = np.log2(sample_vals + 1)
+
+    # Z-score each gene across cancer types, then apply the same transform
+    # to the sample so TPM and FPKM are on a comparable scale
+    ref_gene_mean = log_ref.mean(axis=1).values.copy()
+    ref_gene_std = log_ref.std(axis=1).values.copy()
+    ref_gene_std[ref_gene_std < 0.1] = 1.0  # avoid tiny std → huge z-scores
+
+    z_ref = (log_ref.values - ref_gene_mean[:, None]) / ref_gene_std[:, None]
+    z_sample = (log_sample - ref_gene_mean) / ref_gene_std
+
+    feature_matrix = list(z_ref.T)  # one row per cancer type
+    feature_matrix.append(z_sample)
     labels.append("SAMPLE")
 
-    return np.log2(np.array(feature_matrix) + 0.001), labels
+    return np.array(feature_matrix), labels
 
 
 def _plot_embedding_with_labels(
