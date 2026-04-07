@@ -25,7 +25,9 @@ _THERAPY_REGISTRY = {
     "TCR-T-trials": ["TCR-T-trials"],
     "TCR-T-approved": ["TCR-T-approved"],
     "CAR-T": ["CAR-T-approved"],
+    "CAR-T-approved": ["CAR-T-approved"],
     "bispecific-antibodies": ["bispecific-antibodies-approved"],
+    "bispecific-antibodies-approved": ["bispecific-antibodies-approved"],
     "radioligand": ["radioligand-targets"],
     "multispecific-TCE": ["multispecific-tcell-engager-trials"],
 }

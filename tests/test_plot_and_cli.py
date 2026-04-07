@@ -21,7 +21,7 @@ def test_guess_gene_cols_and_pick_genes():
     assert gname_col == "gene_display_name"
 
     selected = plot_mod.pick_genes_to_annotate(df, num_per_category=1)
-    assert selected == {"ENSG2", "ENSG3"}
+    assert selected == {"ENSG1", "ENSG2", "ENSG3"}
 
     with pytest.raises(KeyError):
         plot_mod._guess_gene_cols(pd.DataFrame({"TPM": [1.0]}))
@@ -110,14 +110,18 @@ def test_cli_plot_expression_and_main(monkeypatch):
     scatter_calls = []
     cancer_gene_calls = []
     pca_calls = []
+    mds_calls = []
+    tissue_calls = []
+    safety_calls = []
     monkeypatch.setattr(cli_mod, "load_expression_data", lambda *a, **k: pd.DataFrame({"x": [1]}))
     monkeypatch.setattr(cli_mod, "plot_gene_expression", lambda *a, **k: calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_sample_vs_cancer", lambda *a, **k: scatter_calls.append(k))
-    monkeypatch.setattr(cli_mod, "plot_therapy_target_tissues", lambda *a, **k: None)
-    monkeypatch.setattr(cli_mod, "plot_therapy_target_safety", lambda *a, **k: None)
+    monkeypatch.setattr(cli_mod, "plot_therapy_target_tissues", lambda *a, **k: tissue_calls.append(k))
+    monkeypatch.setattr(cli_mod, "plot_therapy_target_safety", lambda *a, **k: safety_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_genes", lambda *a, **k: cancer_gene_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_disjoint_genes", lambda *a, **k: cancer_gene_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_pca", lambda *a, **k: pca_calls.append(k))
+    monkeypatch.setattr(cli_mod, "plot_cancer_type_mds", lambda *a, **k: mds_calls.append(k))
     monkeypatch.setattr(cli_mod, "therapy_target_gene_id_to_name", lambda t: {"ENSG_MOCK": t})
     monkeypatch.setattr(cli_mod, "pMHC_TCE_target_gene_names", lambda: {"PMHC"})
     monkeypatch.setattr(cli_mod, "surface_TCE_target_gene_names", lambda: {"SURF"})
@@ -128,6 +132,8 @@ def test_cli_plot_expression_and_main(monkeypatch):
         aggregate_gene_expression=True,
         label_genes="FAP,CD276",
         output_dpi=200,
+        therapy_target_top_k=12,
+        therapy_target_tpm_threshold=18,
     )
     assert len(calls) == 2
     assert calls[0]["save_to_filename"] == "out-summary.png"
@@ -136,11 +142,67 @@ def test_cli_plot_expression_and_main(monkeypatch):
     assert calls[1]["always_label_genes"] == {"FAP", "CD276"}
     assert len(scatter_calls) == 1
     assert scatter_calls[0]["save_to_filename"] == "out-vs-cancer.pdf"
+    assert tissue_calls[0]["top_k"] == 12
+    assert tissue_calls[0]["tpm_threshold"] == 18
+    assert safety_calls[0]["top_k"] == 12
+    assert safety_calls[0]["tpm_threshold"] == 18
     assert len(cancer_gene_calls) == 2  # genes + disjoint
     assert len(pca_calls) == 1
+    assert len(mds_calls) == 1
 
     printed = []
     monkeypatch.setattr(cli_mod, "print_name_and_version", lambda: printed.append("v"))
     monkeypatch.setattr(cli_mod, "dispatch_commands", lambda cmds: printed.append(cmds))
     cli_mod.main()
     assert printed and printed[0] == "v"
+
+
+def test_collect_ranked_therapy_targets_tracks_multicategory_and_approval(monkeypatch):
+    df = pd.DataFrame(
+        {
+            "gene_id": ["ENSG_A", "ENSG_B", "ENSG_C"],
+            "gene_display_name": ["GENEA", "GENEB", "GENEC"],
+            "TPM": [120.0, 90.0, 60.0],
+        }
+    )
+
+    therapy_maps = {
+        "ADC": {"ENSG_B": "GENEB"},
+        "ADC-approved": {"ENSG_B": "GENEB"},
+        "CAR-T": {"ENSG_A": "GENEA"},
+        "CAR-T-approved": {},
+        "TCR-T": {},
+        "TCR-T-approved": {},
+        "bispecific-antibodies": {"ENSG_A": "GENEA"},
+        "bispecific-antibodies-approved": {},
+        "radioligand": {"ENSG_C": "GENEC"},
+    }
+
+    monkeypatch.setattr(
+        plot_mod,
+        "therapy_target_gene_id_to_name",
+        lambda therapy: therapy_maps.get(therapy, {}),
+    )
+    monkeypatch.setattr(
+        plot_mod,
+        "get_data",
+        lambda name: pd.DataFrame(
+            {
+                "Ensembl_Gene_ID": ["ENSG_C"],
+                "Status_Bucket": ["FDA_approved"],
+            }
+        )
+        if name == "radioligand-targets"
+        else pd.DataFrame(),
+    )
+
+    out = plot_mod._collect_ranked_therapy_targets(df, top_k=1, tpm_threshold=10)
+
+    assert [row["gene_id"] for row in out] == ["ENSG_A", "ENSG_B", "ENSG_C"]
+    assert out[0]["therapies"] == ("CAR-T", "bispecific-antibodies")
+    assert out[0]["has_approved"] is True
+    assert out[0]["approved_therapies"] == ("CAR-T",)
+    assert out[1]["therapies"] == ("ADC",)
+    assert out[1]["approved_therapies"] == ("ADC",)
+    assert out[2]["therapies"] == ("radioligand",)
+    assert out[2]["approved_therapies"] == ("radioligand",)

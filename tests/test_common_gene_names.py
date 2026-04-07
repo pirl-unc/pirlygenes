@@ -31,4 +31,4 @@ def test_gene_name_alias_helpers():
 
 def test_short_gene_name_normalization():
     assert short_gene_name("B7-H3") == "CD276"
-    assert short_gene_name("hla-a") == "HLAA"
+    assert short_gene_name("hla-a") == "HLA-A"
