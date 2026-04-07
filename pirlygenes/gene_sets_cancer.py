@@ -371,7 +371,6 @@ def top_enriched_per_cancer_type(n=10, min_fold=3.0, min_expression=0.01):
     dict[str, list[str]]
         {TCGA_code: [gene_symbol, ...]} sorted by fold-change descending.
     """
-    import numpy as np
     df = pan_cancer_expression(normalize="housekeeping")
     fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
 
