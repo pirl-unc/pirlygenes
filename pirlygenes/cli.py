@@ -22,6 +22,7 @@ from .gene_sets_cancer import (
     cancer_types,
     cancer_type_gene_sets,
 )
+import matplotlib.pyplot as plt
 from .load_expression import load_expression_data
 from .plot import (
     plot_gene_expression,
@@ -170,6 +171,7 @@ def plot_expression(
     plot_cancer_type_pca(df_expr, save_to_filename=pca_png, save_dpi=output_dpi)
 
     # Cancer-type-specific gene set plot (only when --cancer-type specified)
+    ct_png = None
     if cancer_type:
         from .plot import resolve_cancer_type
         code = resolve_cancer_type(cancer_type)
@@ -185,6 +187,39 @@ def plot_expression(
                 plot_aspect=plot_aspect,
                 always_label_genes=forced_labels,
             )
+
+    # Collect all figures into one PDF
+    from matplotlib.backends.backend_pdf import PdfPages
+    from pathlib import Path
+    import matplotlib.image as mpimg
+
+    all_pdf = "%s-all-figures.pdf" % prefix if prefix else "all-figures.pdf"
+    png_files = [
+        "%s-summary.png" % prefix if prefix else "summary.png",
+        "%s-treatments.png" % prefix if prefix else "treatments.png",
+        genes_png,
+        pca_png,
+    ]
+    if ct_png:
+        png_files.append(ct_png)
+
+    # Add per-category scatter PNGs from the vs-cancer output dir
+    scatter_dir = Path(scatter_pdf).parent / Path(scatter_pdf).stem
+    if scatter_dir.is_dir():
+        png_files.extend(sorted(str(p) for p in scatter_dir.glob("*.png")))
+
+    with PdfPages(all_pdf) as pdf:
+        for png_path in png_files:
+            if Path(png_path).exists():
+                img = mpimg.imread(png_path)
+                fig, ax = plt.subplots(figsize=(11, 8.5))
+                ax.imshow(img)
+                ax.axis("off")
+                ax.set_title(Path(png_path).stem, fontsize=10)
+                fig.tight_layout()
+                pdf.savefig(fig, bbox_inches="tight")
+                plt.close(fig)
+    print(f"Saved {all_pdf} ({len(png_files)} pages)")
 
 
 def main():
