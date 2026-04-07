@@ -16,13 +16,9 @@ from typing import Optional, Set
 from .version import print_name_and_version
 from .load_dataset import load_all_dataframes
 from .gene_sets_cancer import (
-    ADC_target_gene_names,
-    CAR_T_target_gene_names,
+    therapy_target_gene_id_to_name,
     pMHC_TCE_target_gene_names,
     surface_TCE_target_gene_names,
-    bispecific_antibody_target_gene_names,
-    radio_target_gene_names,
-    TCR_T_target_gene_names,
     cancer_types,
     cancer_type_gene_sets,
 )
@@ -47,10 +43,9 @@ _DATASET_SOURCES = {
     "cancer-surfaceome": "Hu et al. 2021, Nature Cancer (TCSA L3)",
     "cancer-testis-antigens": "CTpedia, CTexploreR, daSilva2017 + HPA v23",
     "CAR-T-approved": "FDA approvals",
-    "class1-mhc-presentation-pathway": "Literature curation",
+    # class1-mhc-presentation-pathway and interferon-response merged into gene-sets.csv
     "housekeeping-genes": "Eisenberg & Levanon 2013",
-    "gene-sets": "Pre-resolved gene sets (immune, oncogenic, DNA repair)",
-    "interferon-response": "Literature curation",
+    "gene-sets": "Pre-resolved gene sets (immune, oncogenic, DNA repair, MHC1 presentation, IFN response)",
     "multispecific-tcell-engager-trials": "Literature curation 2024",
     "pan-cancer-expression": "HPA v23 (nTPM) + GDC/STAR (median TPM), 33 TCGA types",
     "radioligand-targets": "Literature curation 2026",
@@ -132,13 +127,13 @@ def plot_expression(
         (
             "treatments",
             {
-                "TCR-T": TCR_T_target_gene_names(),
-                "CAR-T": CAR_T_target_gene_names(),
-                "bispecifics": bispecific_antibody_target_gene_names(),
+                "TCR-T": therapy_target_gene_id_to_name("TCR-T"),
+                "CAR-T": therapy_target_gene_id_to_name("CAR-T"),
+                "bispecifics": therapy_target_gene_id_to_name("bispecific-antibodies"),
                 "pMHC-TCEs": pMHC_TCE_target_gene_names(),
                 "surface-TCEs": surface_TCE_target_gene_names(),
-                "ADCs": ADC_target_gene_names(),
-                "Radio": radio_target_gene_names(),
+                "ADCs": therapy_target_gene_id_to_name("ADC"),
+                "Radio": therapy_target_gene_id_to_name("radioligand"),
             },
         ),
     ]:

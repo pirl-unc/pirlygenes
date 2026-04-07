@@ -1,17 +1,17 @@
-Drug_Name,Commercial_name,Approvals,Company,Target_Target_Symbol,Antibody_Type,Linker_Type,Payload,DAR,Disease_Area
-Brentuximab vedotin,Adcetris,FDA 2011; NMPA 2020,Seagen/Takeda,CD30,IgG1,mc-val-cit-PABC,MMAE (tubulin binder),4.0,R/R HL; sALCL; pcALCL; CD30+ MF; CD30+ PTCL
-Trastuzumab emtansine,Kadcyla,FDA 2013; NMPA 2020,Genentech/Roche,HER2,IgG1,SMCC,DM1 (tubulin binder),3.8,HER2+ mBC; HER2+ eBC
-Inotuzumab ozogamicin,Besponsa,FDA 2017; NMPA 2021,Wyeth/Pfizer,CD22,IgG4,Acetyl Butyrate,Ozoganmicin (DNA-targeting),6.0,R/R B-cell precursor ALL
-Polatuzumab vedotin,Polivy,FDA 2019; NPMA 2023,Genentech,CD79b,IgG1,mc-val-cit-PABC,MMAE (tubulin binder),3.5,R/R DLBCL
-Enfortumab vedotin,Padcev,FDA 2019,Astellas/Seagen,Nectin-4,IgG1,mc-val-cit-PABC,MMAE (tubulin binder),4.0,Locally advanced or metastasis UC
-Trastuzumab deruxtecan,Enhertu,FDA 2019; NMPA 2023,Daichi Sankyo/AstraZeneca,HER2,IgG1,Maleimide GGFG peptide,Dxd (TOP1 inhibitor),7.8,HER2+ BC; HER2+ GC/GEJC; HERlow BC; HER2Mut NSCLC
-Sacituzumab govitecan,Trodelvy,FDA 2020; NMPA 2022,Immunomedics/Gilead,TROP2,IgG1,CL2A,SN-38 (TOP1 inhibitor),7.6,Locally advanced or metastasis TNBC; UC; HR+ BC
-Cetuximab sarotalocan,Akalux,PMDA 2020,Rakuten Medical,EGFR,IgG1,,IRDye® 700DX (light activatable dye),2.0 to 3.0,Unresectable locally advanced or recurrent head and neck cancer
-loncastuximab tesirine,Zynlonta,FDA 2021,ADC Therapeutics,CD19,IgG1,PEG-Val-Ala-PABC,SG3199 (PBD dimer),2.3,R/R DLBCL
-Disitamab Vedotin,Aidixi,NMPA 2021,RemeGen,HER2,IgG1,mc-val-cit-PABC,MMAE (tubulin binder),4.0,HER2+ advanced GC/GEJC; HER2+ UC
-Tisotumab vedotin,Tivdak,FDA 2021,Seagen/Genmab,TF,IgG1,mc-val-cit-PABC,MMAE (tubulin binder),4.0,Recurrent or metastatic cervical cancer
-Mirvetuximab soravtansine,Elahere,FDA 2022,ImmunoGen,FRα,IgG1,sulfo-SPDB linker,DM4 (tubulin binder),3.4,FRα+ platinum resistant epithelial ovarian / fallopian tube / or primary peritoneal cancer
-Gemtuzumab ozogamicin,Mylotarg,FDA 2000; withdrawn 2010; FDA 2017,Pfizer/Wyeth,CD33,IgG4,Acetyl Butyrate,Ozogamicin (DNA-targeting),2.5,R/R CD33+ AML
-Belantamab mafodotin,Blenrep,FDA 2020; withdrawn 2022; FDA 2025,GlaxoSmithKline,BCMA,IgG1,mc,MMAF (tubulin binder),4.0,R/R MM (with bortezomib + dexamethasone)
-Datopotamab deruxtecan,Datroway,FDA 2025,Daiichi Sankyo/AstraZeneca,TROP2,IgG1,Maleimide GGFG peptide,Dxd (TOP1 inhibitor),4.0,HR+/HER2- metastatic BC
-Telisotuzumab vedotin,Emrelis,FDA 2025,AbbVie,MET,IgG4,mc-val-cit-PABC,MMAE (tubulin binder),3.1,c-MET high non-squamous NSCLC
+Drug_Name,Commercial_name,Approvals,Company,Tumor_Target_Symbol,Tumor_Target_Ensembl_Gene_ID,Antibody_Type,Linker_Type,Payload,DAR,Disease_Area
+Brentuximab vedotin,Adcetris,FDA 2011; NMPA 2020,Seagen/Takeda,TNFRSF8,ENSG00000120949,IgG1,mc-val-cit-PABC,MMAE (tubulin binder),4.0,R/R HL; sALCL; pcALCL; CD30+ MF; CD30+ PTCL
+Trastuzumab emtansine,Kadcyla,FDA 2013; NMPA 2020,Genentech/Roche,ERBB2,ENSG00000141736,IgG1,SMCC,DM1 (tubulin binder),3.8,HER2+ mBC; HER2+ eBC
+Inotuzumab ozogamicin,Besponsa,FDA 2017; NMPA 2021,Wyeth/Pfizer,CD22,ENSG00000012124,IgG4,Acetyl Butyrate,Ozoganmicin (DNA-targeting),6.0,R/R B-cell precursor ALL
+Polatuzumab vedotin,Polivy,FDA 2019; NPMA 2023,Genentech,CD79B,ENSG00000007312,IgG1,mc-val-cit-PABC,MMAE (tubulin binder),3.5,R/R DLBCL
+Enfortumab vedotin,Padcev,FDA 2019,Astellas/Seagen,NECTIN4,ENSG00000143217,IgG1,mc-val-cit-PABC,MMAE (tubulin binder),4.0,Locally advanced or metastasis UC
+Trastuzumab deruxtecan,Enhertu,FDA 2019; NMPA 2023,Daichi Sankyo/AstraZeneca,ERBB2,ENSG00000141736,IgG1,Maleimide GGFG peptide,Dxd (TOP1 inhibitor),7.8,HER2+ BC; HER2+ GC/GEJC; HERlow BC; HER2Mut NSCLC
+Sacituzumab govitecan,Trodelvy,FDA 2020; NMPA 2022,Immunomedics/Gilead,TACSTD2,ENSG00000184292,IgG1,CL2A,SN-38 (TOP1 inhibitor),7.6,Locally advanced or metastasis TNBC; UC; HR+ BC
+Cetuximab sarotalocan,Akalux,PMDA 2020,Rakuten Medical,EGFR,ENSG00000146648,IgG1,,IRDye® 700DX (light activatable dye),2.0 to 3.0,Unresectable locally advanced or recurrent head and neck cancer
+loncastuximab tesirine,Zynlonta,FDA 2021,ADC Therapeutics,CD19,ENSG00000177455,IgG1,PEG-Val-Ala-PABC,SG3199 (PBD dimer),2.3,R/R DLBCL
+Disitamab Vedotin,Aidixi,NMPA 2021,RemeGen,ERBB2,ENSG00000141736,IgG1,mc-val-cit-PABC,MMAE (tubulin binder),4.0,HER2+ advanced GC/GEJC; HER2+ UC
+Tisotumab vedotin,Tivdak,FDA 2021,Seagen/Genmab,F3,ENSG00000117525,IgG1,mc-val-cit-PABC,MMAE (tubulin binder),4.0,Recurrent or metastatic cervical cancer
+Mirvetuximab soravtansine,Elahere,FDA 2022,ImmunoGen,FOLR1,ENSG00000110195,IgG1,sulfo-SPDB linker,DM4 (tubulin binder),3.4,FRα+ platinum resistant epithelial ovarian / fallopian tube / or primary peritoneal cancer
+Gemtuzumab ozogamicin,Mylotarg,FDA 2000; withdrawn 2010; FDA 2017,Pfizer/Wyeth,CD33,ENSG00000105383,IgG4,Acetyl Butyrate,Ozogamicin (DNA-targeting),2.5,R/R CD33+ AML
+Belantamab mafodotin,Blenrep,FDA 2020; withdrawn 2022; FDA 2025,GlaxoSmithKline,TNFRSF17,ENSG00000048462,IgG1,mc,MMAF (tubulin binder),4.0,R/R MM (with bortezomib + dexamethasone)
+Datopotamab deruxtecan,Datroway,FDA 2025,Daiichi Sankyo/AstraZeneca,TACSTD2,ENSG00000184292,IgG1,Maleimide GGFG peptide,Dxd (TOP1 inhibitor),4.0,HR+/HER2- metastatic BC
+Telisotuzumab vedotin,Emrelis,FDA 2025,AbbVie,MET,ENSG00000105976,IgG4,mc-val-cit-PABC,MMAE (tubulin binder),3.1,c-MET high non-squamous NSCLC

@@ -30,7 +30,7 @@ from .gene_sets_cancer import (
 from .load_dataset import get_data
 
 
-def _load_immune_gene_sets():
+def _load_gene_sets():
     """Load immune gene sets as {category: {ensembl_id: symbol}} from CSV."""
     df = get_data("gene-sets")
     result = {}
@@ -134,7 +134,7 @@ def resolve_always_label_gene_ids(
 
 def _build_default_gene_sets():
     """Build default gene sets using pre-resolved Ensembl IDs (no pyensembl lookup)."""
-    sets = _load_immune_gene_sets()  # APM, MHC1, TLR, Growth_receptors, Oncogenes, Immune_checkpoints
+    sets = _load_gene_sets()  # APM, MHC1, TLR, Growth_receptors, Oncogenes, Immune_checkpoints
     sets["CTAs"] = CTA_gene_id_to_name()
     sets["Cancer_surfaceome"] = cancer_surfaceome_gene_id_to_name()
     return sets
@@ -806,7 +806,6 @@ def plot_cancer_type_pca(
         Output path.
     """
     import numpy as np
-    import pandas as pd
     from sklearn.decomposition import PCA
     from .plot_data_helpers import _strip_ensembl_version
     from .gene_sets_cancer import (

@@ -10,7 +10,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
+
 from .load_dataset import get_data
+
+
+# ---------- Therapy target registry ----------
+
+_THERAPY_REGISTRY = {
+    "ADC": ["ADC-trials", "ADC-approved"],
+    "ADC-trials": ["ADC-trials"],
+    "ADC-approved": ["ADC-approved"],
+    "TCR-T": ["TCR-T-trials", "TCR-T-approved"],
+    "TCR-T-trials": ["TCR-T-trials"],
+    "TCR-T-approved": ["TCR-T-approved"],
+    "CAR-T": ["CAR-T-approved"],
+    "bispecific-antibodies": ["bispecific-antibodies-approved"],
+    "radioligand": ["radioligand-targets"],
+    "multispecific-TCE": ["multispecific-tcell-engager-trials"],
+}
+
+
+# ---------- Low-level field extractors ----------
 
 
 def get_field_from_gene_set(
@@ -70,6 +91,88 @@ def get_target_gene_id_set(
     ],
 ):
     return get_field_from_gene_set(name, candidate_id_columns)
+
+
+def get_target_gene_id_to_name(name):
+    """Extract paired {Ensembl_Gene_ID: Symbol} dict from a therapy dataset.
+
+    Handles semicolon-separated multi-target entries by positional pairing.
+    """
+    df = get_data(name)
+
+    sym_candidates = ["Tumor_Target_Symbol", "Tumor_Target_Symbols", "Symbol", "Symbols", "Gene_Name"]
+    id_candidates = [
+        "Tumor_Target_Ensembl_Gene_ID", "Tumor_Target_Ensembl_Gene_IDs",
+        "Ensembl_Gene_ID", "Ensembl_Gene_IDs", "Ensembl_GeneIDs", "Gene_ID",
+    ]
+
+    sym_col = next((c for c in sym_candidates if c in df.columns), None)
+    id_col = next((c for c in id_candidates if c in df.columns), None)
+
+    if sym_col is None or id_col is None:
+        # Fall back to separate extraction
+        names = get_target_gene_name_set(name)
+        ids = get_target_gene_id_set(name)
+        return {gid: gid for gid in ids} if ids else {n: n for n in names}
+
+    result = {}
+    for _, row in df.iterrows():
+        syms_raw = str(row[sym_col]).strip() if row[sym_col] is not None else ""
+        ids_raw = str(row[id_col]).strip() if row[id_col] is not None else ""
+        if not syms_raw or syms_raw.lower() in ("nan", "none"):
+            continue
+        syms = [s.strip() for s in syms_raw.split(";") if s.strip()]
+        ids = [i.strip() for i in ids_raw.split(";") if i.strip() and i.strip().startswith("ENSG")]
+        for i, sym in enumerate(syms):
+            if i < len(ids):
+                result[ids[i]] = sym
+    return result
+
+
+# ---------- Generic therapy target accessors ----------
+
+
+def therapy_target_gene_names(therapy):
+    """Gene symbols targeted by a therapy type.
+
+    Parameters
+    ----------
+    therapy : str
+        Key from _THERAPY_REGISTRY (e.g. "ADC", "TCR-T", "CAR-T",
+        "bispecific-antibodies", "radioligand", "multispecific-TCE").
+    """
+    if therapy not in _THERAPY_REGISTRY:
+        raise ValueError(
+            f"Unknown therapy '{therapy}'. Available: {sorted(_THERAPY_REGISTRY.keys())}"
+        )
+    result = set()
+    for csv_name in _THERAPY_REGISTRY[therapy]:
+        result.update(get_target_gene_name_set(csv_name))
+    return result
+
+
+def therapy_target_gene_ids(therapy):
+    """Ensembl gene IDs targeted by a therapy type."""
+    if therapy not in _THERAPY_REGISTRY:
+        raise ValueError(
+            f"Unknown therapy '{therapy}'. Available: {sorted(_THERAPY_REGISTRY.keys())}"
+        )
+    result = set()
+    for csv_name in _THERAPY_REGISTRY[therapy]:
+        result.update(get_target_gene_id_set(csv_name))
+    return result
+
+
+def therapy_target_gene_id_to_name(therapy):
+    """Therapy targets as {Ensembl_Gene_ID: Symbol} dict (fast path for plotting)."""
+    if therapy not in _THERAPY_REGISTRY:
+        raise ValueError(
+            f"Unknown therapy '{therapy}'. Available: {sorted(_THERAPY_REGISTRY.keys())}"
+        )
+    result = {}
+    for csv_name in _THERAPY_REGISTRY[therapy]:
+        result.update(get_target_gene_id_to_name(csv_name))
+    return result
 
 
 # ---------- Housekeeping genes ----------
@@ -268,7 +371,6 @@ def top_enriched_per_cancer_type(n=10, min_fold=3.0, min_expression=0.01):
     dict[str, list[str]]
         {TCGA_code: [gene_symbol, ...]} sorted by fold-change descending.
     """
-    import numpy as np
     df = pan_cancer_expression(normalize="housekeeping")
     fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
 
@@ -333,7 +435,6 @@ def cancer_enriched_genes(cancer_type, min_fold=3.0, min_expression=0.01):
         Columns: Ensembl_Gene_ID, Symbol, expression, other_median, fold_change.
         Sorted by fold_change descending.
     """
-    import numpy as np
     from .plot import resolve_cancer_type
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(normalize="housekeeping")
@@ -353,74 +454,7 @@ def cancer_enriched_genes(cancer_type, min_fold=3.0, min_expression=0.01):
     return result.reset_index(drop=True)
 
 
-# ---------- ADC ----------
-def ADC_trial_target_gene_names():
-    return get_target_gene_name_set("ADC-trials")
-
-
-def ADC_trial_target_gene_ids():
-    return get_target_gene_id_set("ADC-trials")
-
-
-def ADC_approved_target_gene_names():
-    return get_target_gene_name_set("ADC-approved")
-
-
-def ADC_approved_target_gene_ids():
-    return get_target_gene_id_set("ADC-approved")
-
-
-def ADC_target_gene_names():
-    return ADC_trial_target_gene_names().union(ADC_approved_target_gene_names())
-
-
-def ADC_target_gene_ids():
-    return ADC_trial_target_gene_ids().union(ADC_approved_target_gene_ids())
-
-
-# ---------- TCR-T ----------
-def TCR_T_trial_target_get_names():
-    return get_target_gene_name_set("TCR-T-trials")
-
-
-def TCR_T_trial_target_get_ids():
-    return get_target_gene_id_set("TCR-T-trials")
-
-
-def TCR_T_approved_target_gene_names():
-    return get_target_gene_name_set("TCR-T-approved")
-
-
-def TCR_T_approved_target_gene_ids():
-    return get_target_gene_id_set("TCR-T-approved")
-
-
-def TCR_T_target_gene_names():
-    return TCR_T_trial_target_get_names().union(TCR_T_approved_target_gene_names())
-
-
-def TCR_T_target_gene_ids():
-    return TCR_T_trial_target_get_ids().union(TCR_T_approved_target_gene_ids())
-
-
-# ---------- CAR-T ----------
-def CAR_T_approved_target_gene_names():
-    return get_target_gene_name_set("CAR-T-approved")
-
-
-def CAR_T_approved_target_gene_ids():
-    return get_target_gene_id_set("CAR-T-approved")
-
-
-def CAR_T_target_gene_names():
-    return CAR_T_approved_target_gene_names()
-
-
-def CAR_T_target_gene_ids():
-    return CAR_T_approved_target_gene_ids()
-
-
-# ---------- Multispecific T-cell Engagers ----------
+# ---------- Multispecific T-cell Engagers (custom filtering) ----------
 
 def _tce_filtered_df(pmhc=None):
     """Return TCE trial rows, optionally filtered by format.
@@ -435,7 +469,6 @@ def _tce_filtered_df(pmhc=None):
     import pandas as pd
 
     df = get_data("multispecific-tcell-engager-trials")
-    # Include approved pMHC TCEs (e.g. tebentafusp) for pMHC=True or None
     if pmhc is not False:
         df_approved = get_data("bispecific-antibodies-approved")
         if "Format" in df_approved.columns:
@@ -460,23 +493,6 @@ def _extract_genes_from_df(df, candidate_columns):
     return result
 
 
-def multispecific_tcell_engager_trial_target_gene_names():
-    return get_target_gene_name_set("multispecific-tcell-engager-trials")
-
-
-def multispecific_tcell_engager_trial_target_gene_ids():
-    return get_target_gene_id_set("multispecific-tcell-engager-trials")
-
-
-def multispecific_tcell_engager_target_gene_names():
-    return multispecific_tcell_engager_trial_target_gene_names()
-
-
-def multispecific_tcell_engager_target_gene_ids():
-    return multispecific_tcell_engager_trial_target_gene_ids()
-
-
-# pMHC-targeting TCEs (TCR-based: ImmTAC, TCR-scFv, scFv-TCR-Fc)
 _NAME_COLS = ["Tumor_Target_Symbols", "Tumor_Target_Symbol", "Symbol", "Gene_Name"]
 _ID_COLS = [
     "Tumor_Target_Gene_IDs", "Tumor_Target_Ensembl_Gene_IDs",
@@ -485,54 +501,68 @@ _ID_COLS = [
 
 
 def pMHC_TCE_target_gene_names():
+    """pMHC-targeting TCE gene symbols (TCR-based: ImmTAC, TCR-scFv)."""
     return _extract_genes_from_df(_tce_filtered_df(pmhc=True), _NAME_COLS)
 
 
 def pMHC_TCE_target_gene_ids():
+    """pMHC-targeting TCE Ensembl gene IDs."""
     return _extract_genes_from_df(_tce_filtered_df(pmhc=True), _ID_COLS)
 
 
-# Surface-antigen-targeting TCEs (antibody-based bispecifics)
 def surface_TCE_target_gene_names():
+    """Surface-antigen-targeting TCE gene symbols (antibody-based bispecifics)."""
     return _extract_genes_from_df(_tce_filtered_df(pmhc=False), _NAME_COLS)
 
 
 def surface_TCE_target_gene_ids():
+    """Surface-antigen-targeting TCE Ensembl gene IDs."""
     return _extract_genes_from_df(_tce_filtered_df(pmhc=False), _ID_COLS)
 
 
-# ---------- Bispecific antibodies ----------
-def bispecific_antibody_approved_target_gene_names():
-    return get_target_gene_name_set("bispecific-antibodies-approved")
+# ---------- Deprecated therapy wrappers ----------
+# Use therapy_target_gene_names/ids/id_to_name() instead.
+
+def _deprecate(old_name, therapy, ret):
+    def fn():
+        warnings.warn(
+            f"{old_name}() is deprecated, use therapy_target_gene_{ret}('{therapy}')",
+            DeprecationWarning, stacklevel=2,
+        )
+        return {"names": therapy_target_gene_names, "ids": therapy_target_gene_ids}[ret](therapy)
+    fn.__name__ = old_name
+    fn.__doc__ = f"Deprecated. Use therapy_target_gene_{ret}('{therapy}')."
+    return fn
 
 
-def bispecific_antibody_approved_target_gene_ids():
-    return get_target_gene_id_set("bispecific-antibodies-approved")
-
-
-def bispecific_antibody_target_gene_names():
-    return bispecific_antibody_approved_target_gene_names()
-
-
-def bispecific_antibody_targets_gene_ids():
-    return bispecific_antibody_approved_target_gene_ids()
-
-
-# ---------- Radioligand therapies ----------
-def radio_target_gene_names():
-    return get_target_gene_name_set("radioligand-targets")
-
-
-def radio_target_gene_ids():
-    return get_target_gene_id_set("radioligand-targets")
-
-
-def radioligand_target_gene_names():
-    return radio_target_gene_names()
-
-
-def radioligand_target_gene_ids():
-    return radio_target_gene_ids()
+ADC_trial_target_gene_names = _deprecate("ADC_trial_target_gene_names", "ADC-trials", "names")
+ADC_trial_target_gene_ids = _deprecate("ADC_trial_target_gene_ids", "ADC-trials", "ids")
+ADC_approved_target_gene_names = _deprecate("ADC_approved_target_gene_names", "ADC-approved", "names")
+ADC_approved_target_gene_ids = _deprecate("ADC_approved_target_gene_ids", "ADC-approved", "ids")
+ADC_target_gene_names = _deprecate("ADC_target_gene_names", "ADC", "names")
+ADC_target_gene_ids = _deprecate("ADC_target_gene_ids", "ADC", "ids")
+TCR_T_trial_target_get_names = _deprecate("TCR_T_trial_target_get_names", "TCR-T-trials", "names")
+TCR_T_trial_target_get_ids = _deprecate("TCR_T_trial_target_get_ids", "TCR-T-trials", "ids")
+TCR_T_approved_target_gene_names = _deprecate("TCR_T_approved_target_gene_names", "TCR-T-approved", "names")
+TCR_T_approved_target_gene_ids = _deprecate("TCR_T_approved_target_gene_ids", "TCR-T-approved", "ids")
+TCR_T_target_gene_names = _deprecate("TCR_T_target_gene_names", "TCR-T", "names")
+TCR_T_target_gene_ids = _deprecate("TCR_T_target_gene_ids", "TCR-T", "ids")
+CAR_T_approved_target_gene_names = _deprecate("CAR_T_approved_target_gene_names", "CAR-T", "names")
+CAR_T_approved_target_gene_ids = _deprecate("CAR_T_approved_target_gene_ids", "CAR-T", "ids")
+CAR_T_target_gene_names = _deprecate("CAR_T_target_gene_names", "CAR-T", "names")
+CAR_T_target_gene_ids = _deprecate("CAR_T_target_gene_ids", "CAR-T", "ids")
+multispecific_tcell_engager_trial_target_gene_names = _deprecate("multispecific_tcell_engager_trial_target_gene_names", "multispecific-TCE", "names")
+multispecific_tcell_engager_trial_target_gene_ids = _deprecate("multispecific_tcell_engager_trial_target_gene_ids", "multispecific-TCE", "ids")
+multispecific_tcell_engager_target_gene_names = _deprecate("multispecific_tcell_engager_target_gene_names", "multispecific-TCE", "names")
+multispecific_tcell_engager_target_gene_ids = _deprecate("multispecific_tcell_engager_target_gene_ids", "multispecific-TCE", "ids")
+bispecific_antibody_approved_target_gene_names = _deprecate("bispecific_antibody_approved_target_gene_names", "bispecific-antibodies", "names")
+bispecific_antibody_approved_target_gene_ids = _deprecate("bispecific_antibody_approved_target_gene_ids", "bispecific-antibodies", "ids")
+bispecific_antibody_target_gene_names = _deprecate("bispecific_antibody_target_gene_names", "bispecific-antibodies", "names")
+bispecific_antibody_targets_gene_ids = _deprecate("bispecific_antibody_targets_gene_ids", "bispecific-antibodies", "ids")
+radio_target_gene_names = _deprecate("radio_target_gene_names", "radioligand", "names")
+radio_target_gene_ids = _deprecate("radio_target_gene_ids", "radioligand", "ids")
+radioligand_target_gene_names = _deprecate("radioligand_target_gene_names", "radioligand", "names")
+radioligand_target_gene_ids = _deprecate("radioligand_target_gene_ids", "radioligand", "ids")
 
 
 # ---------- Cancer-testis antigens (CTA) ----------
