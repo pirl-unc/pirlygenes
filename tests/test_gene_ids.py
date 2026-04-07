@@ -1,8 +1,26 @@
 #!/usr/bin/env python3
 
-from pyensembl import ensembl_grch38
+from pyensembl.shell import collect_all_installed_ensembl_releases
 
 from pirlygenes import load_all_dataframes
+
+_human_genomes = sorted(
+    [g for g in collect_all_installed_ensembl_releases()
+     if g.species.latin_name == "homo_sapiens"],
+    reverse=True,
+    key=lambda g: g.release,
+)
+
+
+def _resolve_in_any_release(gene_id):
+    for genome in _human_genomes:
+        try:
+            gene = genome.gene_by_id(gene_id)
+            if gene is not None:
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def _split_ids(value):
@@ -24,25 +42,29 @@ def _collect_ensembl_gene_ids(df):
     return result
 
 
+# Large external datasets (surface-proteins, pan-cancer-expression) contain
+# IDs from newer Ensembl releases that may not be installed in CI.
+_SKIP_DATASETS = {"surface-proteins", "pan-cancer-expression"}
+
+
 def test_all_gene_ids_resolve_in_ensembl():
     """
-    Validate that all Ensembl gene IDs in packaged CSVs resolve via pyensembl.
+    Validate that all Ensembl gene IDs in curated packaged CSVs resolve via pyensembl.
 
     This intentionally supports multiple schema styles (singular/plural target columns).
+    Checks all installed human Ensembl releases, not just the default GRCh38.
     """
     all_ids = set()
-    for _, df in load_all_dataframes():
+    for name, df in load_all_dataframes():
+        if any(skip in name for skip in _SKIP_DATASETS):
+            continue
         all_ids.update(_collect_ensembl_gene_ids(df))
 
     assert all_ids, "No Ensembl gene IDs were found in packaged CSVs."
 
     missing = []
     for gene_id in sorted(all_ids):
-        try:
-            gene = ensembl_grch38.gene_by_id(gene_id)
-        except Exception:
-            gene = None
-        if gene is None:
+        if not _resolve_in_any_release(gene_id):
             missing.append(gene_id)
 
     assert not missing, "Unresolvable Ensembl gene IDs: %s" % ", ".join(missing)

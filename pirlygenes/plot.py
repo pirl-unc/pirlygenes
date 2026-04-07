@@ -21,15 +21,23 @@ except ImportError:
 
 from .plot_data_helpers import prepare_gene_expr_df
 from .gene_ids import find_canonical_gene_ids_and_names
-from .gene_sets_old import (
-    APM_genes,
-    MHC1_genes,
-    TLR_signaling,
-    growth_receptor_genes,
-    oncogenes,
-    checkpoints,
+from .gene_sets_cancer import (
+    CTA_gene_id_to_name,
+    housekeeping_gene_ids,
+    cancer_surfaceome_gene_id_to_name,
+    pan_cancer_expression,
 )
-from .gene_sets_cancer import CTA_gene_names, housekeeping_gene_ids
+from .load_dataset import get_data
+
+
+def _load_immune_gene_sets():
+    """Load immune gene sets as {category: {ensembl_id: symbol}} from CSV."""
+    df = get_data("immune-gene-sets")
+    result = {}
+    for cat, group in df.groupby("Category"):
+        result[cat] = dict(zip(group["Ensembl_Gene_ID"], group["Symbol"]))
+    return result
+
 
 # ------------------------ helpers ------------------------
 
@@ -41,6 +49,7 @@ def _guess_gene_cols(df):
         "gene_display_name",
         "gene_name",
         "canonical_gene_name",
+        "gene_symbol",
         "symbol",
         "GeneName",
     ]
@@ -123,15 +132,15 @@ def resolve_always_label_gene_ids(
 
 # ------------------------ defaults ------------------------
 
-default_gene_sets = dict(
-    APM=APM_genes,
-    MHC1=MHC1_genes,
-    TLR=TLR_signaling,
-    Growth_receptors=growth_receptor_genes,
-    Oncogenes=oncogenes,
-    Immune_checkpoints=checkpoints,
-    CTAs=CTA_gene_names(),
-)
+def _build_default_gene_sets():
+    """Build default gene sets using pre-resolved Ensembl IDs (no pyensembl lookup)."""
+    sets = _load_immune_gene_sets()  # APM, MHC1, TLR, Growth_receptors, Oncogenes, Immune_checkpoints
+    sets["CTAs"] = CTA_gene_id_to_name()
+    sets["Cancer_surfaceome"] = cancer_surfaceome_gene_id_to_name()
+    return sets
+
+
+default_gene_sets = _build_default_gene_sets()
 
 # ------------------------ main plot ------------------------
 
@@ -234,20 +243,49 @@ def plot_gene_expression(
             color="#e74c3c", alpha=0.7, s=18, zorder=5, label="Housekeeping",
             edgecolors="none",
         )
-        # Label the top 10 housekeeping genes by expression
-        top_hk = hk_in_other.nlargest(10, "TPM")
-        top_hk_ids = set(top_hk[gene_id_col])
+        # Label top 5, bottom 5, and always ACTB — fed through adjust_text
+        top5 = hk_in_other.nlargest(5, "TPM")
+        bot5 = hk_in_other.nsmallest(5, "TPM")
+        label_ids = set(top5[gene_id_col]) | set(bot5[gene_id_col])
+        # Always include ACTB
+        actb_rows = hk_in_other[hk_in_other[gene_name_col].str.upper() == "ACTB"]
+        label_ids.update(actb_rows[gene_id_col])
+
+        hk_texts = []
         for (_, row), xi in zip(hk_in_other.iterrows(), hk_x):
-            if row[gene_id_col] in top_hk_ids:
-                ax.annotate(
-                    row[gene_name_col],
-                    xy=(xi, row["TPM"]),
-                    fontsize=6, color="#c0392b", alpha=0.85,
-                    ha="left", va="bottom",
-                    xytext=(4, 2), textcoords="offset points",
+            if row[gene_id_col] in label_ids:
+                hk_texts.append(
+                    ax.text(
+                        xi, row["TPM"], row[gene_name_col],
+                        fontsize=9, color="#c0392b", alpha=0.85,
+                        ha="right", va="top",
+                    )
                 )
+        adjust_text(
+            hk_texts,
+            **{**adjust_args, "expand": (1.2, 1.6)},
+        )
+
+    # Reference lines at key TPM thresholds
+    for tpm_thresh in (100, 1000):
+        ax.axhline(
+            y=tpm_thresh,
+            color="#cccccc",
+            linestyle="--",
+            linewidth=0.7,
+            alpha=0.5,
+            zorder=1,
+        )
 
     # Annotate with display names, never raw ENSG; skip the 'other' column
+    # Map categories to integer x-positions for adjust_text compatibility
+    cat_col = df_gene_expr_annot["category"]
+    if hasattr(cat_col, "cat"):
+        cat_order = list(cat_col.cat.categories)
+    else:
+        cat_order = list(dict.fromkeys(cat_col))
+    cat_to_x = {c: i for i, c in enumerate(cat_order)}
+
     texts = []
     forced_mask = df_gene_expr_annot[gene_id_col].isin(forced_gene_ids)
     mask = (
@@ -260,7 +298,7 @@ def plot_gene_expression(
         label = row[gene_name_col]
         texts.append(
             cat.ax.text(
-                row.category,
+                cat_to_x[row.category],
                 row.TPM,
                 label,
                 color="black",
@@ -276,3 +314,236 @@ def plot_gene_expression(
         cat.figure.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
 
     return cat
+
+
+# -------------------- sample vs pan-cancer scatter --------------------
+
+
+def _prepare_sample_vs_cancer_data(
+    df_gene_expr,
+    gene_sets,
+    cancer_type,
+):
+    """Shared data prep for sample-vs-cancer scatter plots.
+
+    Returns (plot_df, named_cats, cat_to_color, x_label).
+    """
+    import pandas as pd
+    from .plot_data_helpers import (
+        normalize_gene_sets,
+        _remap_retired_gene_ids,
+        _strip_ensembl_version,
+        _create_gene_to_category_list_mapping,
+    )
+    from .gene_names import aliases
+
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
+
+    df = df_gene_expr.copy()
+    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+
+    cat_to_ids, id_to_name = normalize_gene_sets(gene_sets)
+    cat_to_ids, id_to_name = _remap_retired_gene_ids(
+        cat_to_ids, id_to_name, df,
+        gene_id_col=gene_id_col, gene_name_col=gene_name_col,
+    )
+
+    ref = pan_cancer_expression(normalize="housekeeping")
+    if cancer_type is not None:
+        ref_col = f"FPKM_{cancer_type}"
+        if ref_col not in ref.columns:
+            available = [c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_")]
+            raise ValueError(f"Cancer type '{cancer_type}' not found. Available: {available}")
+        ref["_ref_value"] = ref[ref_col].astype(float)
+        x_label = f"Housekeeping-normalized FPKM ({cancer_type})"
+    else:
+        fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+        ref["_ref_value"] = ref[fpkm_cols].astype(float).mean(axis=1)
+        x_label = "Housekeeping-normalized FPKM (mean across cancers)"
+
+    ref_lookup = dict(zip(
+        ref["Ensembl_Gene_ID"].map(_strip_ensembl_version),
+        ref["_ref_value"],
+    ))
+
+    tpm_col = "TPM" if "TPM" in df.columns else next(
+        (c for c in df.columns if c.lower() == "tpm"), None
+    )
+    if tpm_col is None:
+        raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
+
+    gene_to_category = _create_gene_to_category_list_mapping(cat_to_ids)
+    name_from_df = dict(zip(df[gene_id_col].astype(str), df[gene_name_col].astype(str)))
+
+    rows = []
+    for _, row in df.iterrows():
+        gid = str(row[gene_id_col])
+        tpm = float(row[tpm_col])
+        ref_val = ref_lookup.get(gid)
+        if ref_val is None:
+            continue
+        cats = gene_to_category.get(gid, ["other"])
+        name = name_from_df.get(gid) or id_to_name.get(gid) or gid
+        display_name = aliases.get(name, name)
+        for cat in cats:
+            rows.append((gid, display_name, cat, tpm, ref_val))
+
+    plot_df = pd.DataFrame(rows, columns=[
+        "gene_id", "gene_name", "category", "sample_TPM", "ref_value",
+    ])
+    plot_df["sample_TPM_log"] = plot_df["sample_TPM"] + 0.01
+    plot_df["ref_value_log"] = plot_df["ref_value"] + 0.001
+
+    named_cats = list(cat_to_ids.keys())
+    palette = sns.color_palette("tab10", len(named_cats))
+    cat_to_color = dict(zip(named_cats, palette))
+
+    return plot_df, named_cats, cat_to_color, x_label
+
+
+def _draw_scatter_panel(
+    ax, plot_df, highlight_cat, color, x_label,
+    num_labels=10, adjust_args=None,
+):
+    """Draw a single scatter panel: all genes gray, one category highlighted."""
+    # Background: all genes faded
+    bg = plot_df[plot_df.category == "other"]
+    if len(bg):
+        ax.scatter(
+            bg.ref_value_log, bg.sample_TPM_log,
+            c=[(0.88, 0.88, 0.88)], alpha=0.12, s=6, zorder=1,
+        )
+
+    # Also fade other named categories
+    other_named = plot_df[
+        (plot_df.category != "other") & (plot_df.category != highlight_cat)
+    ]
+    if len(other_named):
+        ax.scatter(
+            other_named.ref_value_log, other_named.sample_TPM_log,
+            c=[(0.78, 0.78, 0.78)], alpha=0.18, s=8, zorder=1,
+        )
+
+    # Highlight category
+    hi = plot_df[plot_df.category == highlight_cat]
+    if len(hi):
+        ax.scatter(
+            hi.ref_value_log, hi.sample_TPM_log,
+            color=color, alpha=0.8, s=30, zorder=3, edgecolors="none",
+        )
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_title(highlight_cat.replace("_", " "), fontsize=11, fontweight="bold")
+
+    # Reference lines
+    for tpm_thresh in (100, 1000):
+        ax.axhline(y=tpm_thresh, color="#cccccc", linestyle="--",
+                    linewidth=0.5, alpha=0.4, zorder=1)
+
+    # Labels: top N by sample TPM
+    if len(hi) and num_labels > 0:
+        top = hi.nlargest(num_labels, "sample_TPM")
+        texts = []
+        for _, row in top.iterrows():
+            texts.append(ax.text(
+                row.ref_value_log, row.sample_TPM_log, row.gene_name,
+                fontsize=8, alpha=0.9, ha="left", va="bottom",
+            ))
+        if adjust_args is not None:
+            adjust_text(texts, ax=ax, **adjust_args)
+
+
+def plot_sample_vs_cancer(
+    df_gene_expr,
+    gene_sets=default_gene_sets,
+    cancer_type=None,
+    save_to_filename=None,
+    save_dpi=300,
+    num_labels_per_category=10,
+    always_label_genes=None,
+    figsize=(10, 8),
+    adjust_args=dict(
+        expand=(1.1, 1.4),
+        arrowprops=dict(arrowstyle="->", color="red", alpha=0.3),
+        min_arrow_len=7,
+        expand_axes=True,
+        ensure_inside_axes=False,
+    ),
+):
+    """Scatter plots: sample TPM vs pan-cancer reference expression.
+
+    Generates one figure per gene-set category — the category's genes are
+    highlighted and labeled while everything else is faint gray.
+
+    Output is controlled by ``save_to_filename``:
+
+    * ``"dir/prefix.pdf"`` — multi-page PDF (one page per category) **plus**
+      individual PNGs in ``dir/prefix/`` (one per category).
+    * ``"dir/prefix.png"`` — individual PNGs in ``dir/prefix/`` only.
+    * ``None`` — returns figures without saving.
+
+    Parameters
+    ----------
+    df_gene_expr : pd.DataFrame
+        Patient expression data with gene ID, gene name, and TPM columns.
+    gene_sets : dict
+        Category name -> list of gene names/IDs.
+    cancer_type : str or None
+        TCGA cancer type code (e.g. ``"LUAD"``, ``"SKCM"``). If None,
+        uses mean across all cancer types.
+    save_to_filename : str or None
+        Output path. Extension determines format (see above).
+    save_dpi : int
+        DPI for saved figures.
+    num_labels_per_category : int
+        Number of genes to label per category (top by sample TPM).
+    always_label_genes : list of str or None
+        Gene names/IDs to always label regardless of expression.
+    figsize : tuple
+        Figure size per category (width, height).
+    """
+    from pathlib import Path
+
+    plot_df, named_cats, cat_to_color, x_label = _prepare_sample_vs_cancer_data(
+        df_gene_expr, gene_sets, cancer_type,
+    )
+
+    # Generate one figure per category
+    figures = {}
+    for cat in named_cats:
+        fig, ax = plt.subplots(figsize=figsize)
+        _draw_scatter_panel(
+            ax, plot_df, cat, cat_to_color[cat], x_label,
+            num_labels=num_labels_per_category,
+            adjust_args=adjust_args,
+        )
+        ax.set_xlabel(x_label, fontsize=10)
+        ax.set_ylabel("Sample TPM", fontsize=10)
+        fig.tight_layout()
+        figures[cat] = fig
+
+    # Save
+    if save_to_filename:
+        out = Path(save_to_filename)
+        stem = out.stem
+        png_dir = out.parent / stem
+        png_dir.mkdir(parents=True, exist_ok=True)
+
+        # Individual PNGs
+        saved_pngs = []
+        for cat, fig in figures.items():
+            png_path = png_dir / f"{cat}.png"
+            fig.savefig(png_path, dpi=save_dpi, bbox_inches="tight")
+            saved_pngs.append(png_path)
+        print(f"Saved {len(saved_pngs)} PNGs to {png_dir}/")
+
+        # Multi-page PDF if requested
+        if out.suffix.lower() == ".pdf":
+            from matplotlib.backends.backend_pdf import PdfPages
+            with PdfPages(out) as pdf:
+                for cat in named_cats:
+                    pdf.savefig(figures[cat], bbox_inches="tight")
+            print(f"Saved multi-page PDF to {out}")
+
+    return figures
