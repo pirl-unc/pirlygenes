@@ -351,6 +351,7 @@ CANCER_TYPE_ALIASES = {
     "uterine": "UCEC",
     "testicular": "TGCT",
     "testis": "TGCT",
+    "sarcoma": "SARC",
 }
 
 
