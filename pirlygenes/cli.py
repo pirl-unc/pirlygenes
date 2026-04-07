@@ -22,7 +22,6 @@ from .gene_sets_cancer import (
     cancer_types,
     cancer_type_gene_sets,
 )
-import matplotlib.pyplot as plt
 from PIL import Image
 from .load_expression import load_expression_data
 from .plot import (

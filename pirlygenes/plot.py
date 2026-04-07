@@ -14,6 +14,7 @@ from collections import defaultdict
 
 import seaborn as sns
 import matplotlib.pyplot as plt
+import numpy as np
 
 try:
     from adjustText import adjust_text
