@@ -21,7 +21,7 @@ def test_guess_gene_cols_and_pick_genes():
     assert gname_col == "gene_display_name"
 
     selected = plot_mod.pick_genes_to_annotate(df, num_per_category=1)
-    assert selected == {"ENSG1", "ENSG2", "ENSG3"}
+    assert selected == {"ENSG2", "ENSG3"}
 
     with pytest.raises(KeyError):
         plot_mod._guess_gene_cols(pd.DataFrame({"TPM": [1.0]}))

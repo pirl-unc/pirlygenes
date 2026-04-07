@@ -617,7 +617,7 @@ radioligand_target_gene_ids = _deprecate("radioligand_target_gene_ids", "radioli
 
 
 # ---------- Cancer-testis antigens (CTA) ----------
-def _cta_by_column(column, filtered_only=False, exclude_never_expressed=False):
+def _cta_df(filtered_only=False, exclude_never_expressed=False):
     try:
         from tsarina.evidence import CTA_evidence
 
@@ -631,7 +631,14 @@ def _cta_by_column(column, filtered_only=False, exclude_never_expressed=False):
         mask = df["filtered"].astype(str).str.lower() == "true"
     if exclude_never_expressed and "never_expressed" in df.columns:
         mask = mask & ~(df["never_expressed"].astype(str).str.lower() == "true")
-    subset = df[mask] if not isinstance(mask, bool) else df
+    return df[mask] if not isinstance(mask, bool) else df
+
+
+def _cta_by_column(column, filtered_only=False, exclude_never_expressed=False):
+    subset = _cta_df(
+        filtered_only=filtered_only,
+        exclude_never_expressed=exclude_never_expressed,
+    )
     result = set()
     if column in subset.columns:
         for x in subset[column]:
@@ -658,10 +665,20 @@ def CTA_gene_ids():
 
 def CTA_gene_id_to_name():
     """CTA {Ensembl_Gene_ID: Symbol} dict: filtered AND expressed."""
-    return dict(zip(
-        _cta_by_column("Ensembl_Gene_ID", filtered_only=True, exclude_never_expressed=True),
-        _cta_by_column("Symbol", filtered_only=True, exclude_never_expressed=True),
-    ))
+    subset = _cta_df(filtered_only=True, exclude_never_expressed=True)
+    if "Ensembl_Gene_ID" not in subset.columns or "Symbol" not in subset.columns:
+        return {}
+
+    result = {}
+    for _, row in subset[["Ensembl_Gene_ID", "Symbol"]].dropna().iterrows():
+        gene_id = str(row["Ensembl_Gene_ID"]).strip()
+        symbol = str(row["Symbol"]).strip()
+        if not gene_id or gene_id.lower() in {"nan", "none"}:
+            continue
+        if not symbol or symbol.lower() in {"nan", "none"}:
+            continue
+        result[gene_id] = symbol
+    return result
 
 
 def CTA_filtered_gene_names():

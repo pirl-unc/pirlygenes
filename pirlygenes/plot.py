@@ -91,15 +91,10 @@ def pick_genes_to_annotate(
         assert c in df.columns, "%s not in %s" % (c, df.columns)
 
     for cat, df_cat in df.groupby(category_col, observed=True):
-        df_cat_sorted = df_cat.sort_values(tpm_col, ascending=False)
-        category_name = str(cat)
-        if len(df_cat_sorted) <= 25:
-            top = df_cat_sorted[df_cat_sorted[tpm_col] > 0.1]
-        else:
-            top_n = max(num_per_category, 20) if category_name == "CTAs" else num_per_category
-            top = df_cat_sorted.head(top_n)
-            high_ids = df_cat_sorted.loc[df_cat_sorted[tpm_col] >= 25, gene_id_col]
-            genes_to_annotate.update(high_ids.tolist())
+        df_cat_sorted = df_cat[df_cat[tpm_col] > 0.1].sort_values(
+            tpm_col, ascending=False
+        )
+        top = df_cat_sorted.head(num_per_category)
         if verbose:
             cols = [gene_id_col, gene_name_col, tpm_col, category_col]
             print(cat)
@@ -166,7 +161,7 @@ def plot_gene_expression(
     num_labels_per_category=10,
     always_label_genes=None,
     adjust_args=dict(
-        expand=(1.05, 1.3),
+        expand=(1.12, 1.45),
         arrowprops=dict(arrowstyle="->", color="red", alpha=0.3),
         min_arrow_len=7,
         expand_axes=True,
@@ -306,6 +301,8 @@ def plot_gene_expression(
     cat_to_x = {c: i for i, c in enumerate(cat_order)}
 
     texts = []
+    point_x = []
+    point_y = []
     forced_mask = df_gene_expr_annot[gene_id_col].isin(forced_gene_ids)
     mask = (
         ((df_gene_expr_annot.TPM > 0.1) | forced_mask)
@@ -326,8 +323,17 @@ def plot_gene_expression(
                 va="top",
             )
         )
+        point_x.append(cat_to_x[row.category])
+        point_y.append(row.TPM)
 
-    adjust_text(texts, **adjust_args)
+    adjust_text(
+        texts,
+        x=point_x,
+        y=point_y,
+        ax=cat.ax,
+        only_move={"text": "y", "static": "y", "explode": "y", "pull": "y"},
+        **adjust_args,
+    )
 
     if save_to_filename:
         cat.figure.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
@@ -767,12 +773,16 @@ def _therapy_combo_sort_key(therapies):
     return (len(therapies), [_THERAPY_PLOT_ORDER.index(t) for t in therapies])
 
 
+def _therapy_base_colors():
+    return dict(
+        zip(_THERAPY_PLOT_ORDER, sns.color_palette("Set2", len(_THERAPY_PLOT_ORDER)))
+    )
+
+
 def _therapy_combo_colors(therapy_combos):
     import numpy as np
 
-    base_palette = dict(
-        zip(_THERAPY_PLOT_ORDER, sns.color_palette("Set2", len(_THERAPY_PLOT_ORDER)))
-    )
+    base_palette = _therapy_base_colors()
     combo_to_color = {}
     for combo in sorted(set(therapy_combos), key=_therapy_combo_sort_key):
         if len(combo) == 1:
@@ -781,6 +791,50 @@ def _therapy_combo_colors(therapy_combos):
             rgb = np.array([base_palette[t] for t in combo]).mean(axis=0)
             combo_to_color[combo] = tuple(rgb.clip(0, 1))
     return combo_to_color
+
+
+def _draw_therapy_marker(
+    ax,
+    x,
+    y,
+    therapies,
+    marker="o",
+    size=80,
+    alpha=0.85,
+    zorder=3,
+):
+    base_palette = _therapy_base_colors()
+    ordered = _ordered_therapy_tuple(therapies)
+    fill_color = base_palette.get(ordered[0], "gray") if ordered else "gray"
+
+    ax.scatter(
+        x,
+        y,
+        s=size,
+        color=fill_color,
+        marker=marker,
+        alpha=alpha,
+        edgecolors="white",
+        linewidths=0.6,
+        zorder=zorder,
+    )
+
+    ring_size = size + 34
+    for therapy in ordered[1:]:
+        ax.scatter(
+            x,
+            y,
+            s=ring_size,
+            facecolors="none",
+            edgecolors=base_palette.get(therapy, "gray"),
+            marker=marker,
+            alpha=0.95,
+            linewidths=1.8,
+            zorder=zorder - 0.1,
+        )
+        ring_size += 34
+
+    return fill_color
 
 
 def _approved_radioligand_gene_ids():
@@ -1072,15 +1126,17 @@ def plot_therapy_target_safety(
     if not records:
         print(f"No therapy targets above {tpm_threshold} TPM")
         return None, None
-    combo_to_color = _therapy_combo_colors([record["therapies"] for record in records])
+    base_palette = _therapy_base_colors()
 
     fig, ax = plt.subplots(figsize=figsize)
+    texts = []
+    point_x = []
+    point_y = []
 
     for record in records:
         gid = record["gene_id"]
         sym = record["symbol"]
         tpm = record["sample_tpm"]
-        color = combo_to_color.get(record["therapies"], "gray")
         max_ess = 0
         if gid in ref_by_id.index:
             vals = [
@@ -1089,39 +1145,46 @@ def plot_therapy_target_safety(
                 if c in ref_by_id.columns
             ]
             max_ess = max(vals) if vals else 0
+        y_value = max_ess + 0.1
         marker = "^" if record["has_approved"] else "o"
-        ax.scatter(
+        _draw_therapy_marker(
+            ax,
             tpm,
-            max_ess + 0.1,
-            s=80,
-            color=color,
+            y_value,
+            record["therapies"],
             marker=marker,
+            size=80,
             alpha=0.85,
-            edgecolors="white",
-            linewidths=0.6,
             zorder=3,
         )
-        ax.text(
-            tpm,
-            max_ess + 0.1,
-            f"  {sym}",
-            fontsize=8,
-            va="center",
-            ha="left",
-            alpha=0.85,
+        point_x.append(tpm)
+        point_y.append(y_value)
+        texts.append(
+            ax.text(
+                tpm * 1.03,
+                y_value * 1.03,
+                sym,
+                fontsize=8,
+                va="bottom",
+                ha="left",
+                alpha=0.85,
+                zorder=4,
+            )
         )
 
-    combo_handles = [
+    therapy_handles = [
         Line2D(
             [],
             [],
             marker="o",
             linestyle="None",
-            color=combo_to_color[combo],
-            label=_therapy_combo_label(combo),
+            markerfacecolor=base_palette[therapy],
+            markeredgecolor="white",
+            color=base_palette[therapy],
+            label=_THERAPY_PLOT_LABELS[therapy],
             markersize=8,
         )
-        for combo in sorted(combo_to_color, key=_therapy_combo_sort_key)
+        for therapy in _THERAPY_PLOT_ORDER
     ]
     marker_handles = [
         Line2D(
@@ -1145,11 +1208,11 @@ def plot_therapy_target_safety(
         ),
     ]
     legend = ax.legend(
-        handles=combo_handles,
+        handles=therapy_handles,
         loc="upper left",
         fontsize=8,
         frameon=False,
-        title="Therapy categories",
+        title="Therapy categories\n(extra categories = outer rings)",
         title_fontsize=9,
     )
     ax.add_artist(legend)
@@ -1176,6 +1239,20 @@ def plot_therapy_target_safety(
     )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+
+    adjust_text(
+        texts,
+        x=point_x,
+        y=point_y,
+        ax=ax,
+        expand=(1.15, 1.45),
+        force_text=(0.15, 0.3),
+        force_static=(0.12, 0.25),
+        force_pull=(0.01, 0.02),
+        arrowprops=dict(arrowstyle="-", color="#666666", alpha=0.35, lw=0.6),
+        min_arrow_len=6,
+        ensure_inside_axes=False,
+    )
 
     # Diagonal reference
     lims = [max(ax.get_xlim()[0], ax.get_ylim()[0]), min(ax.get_xlim()[1], ax.get_ylim()[1])]
