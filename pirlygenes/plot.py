@@ -16,11 +16,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 
-try:
-    from adjustText import adjust_text
-except ImportError:
-    def adjust_text(*args, **kwargs):
-        return args[0] if args else []
+from adjustText import adjust_text
 
 from .plot_data_helpers import prepare_gene_expr_df
 from .gene_ids import find_canonical_gene_ids_and_names
@@ -161,7 +157,7 @@ def plot_gene_expression(
     num_labels_per_category=10,
     always_label_genes=None,
     adjust_args=dict(
-        expand=(1.12, 1.45),
+        expand=(1.3, 1.8),
         arrowprops=dict(arrowstyle="->", color="red", alpha=0.3),
         min_arrow_len=7,
         expand_axes=True,
@@ -331,7 +327,6 @@ def plot_gene_expression(
         x=point_x,
         y=point_y,
         ax=cat.ax,
-        only_move={"text": "y", "static": "y", "explode": "y", "pull": "y"},
         **adjust_args,
     )
 
@@ -634,7 +629,7 @@ def plot_sample_vs_cancer(
     always_label_genes=None,
     figsize=(10, 8),
     adjust_args=dict(
-        expand=(1.1, 1.4),
+        expand=(1.3, 1.8),
         arrowprops=dict(arrowstyle="->", color="red", alpha=0.3),
         min_arrow_len=7,
         expand_axes=True,

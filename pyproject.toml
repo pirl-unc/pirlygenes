@@ -21,6 +21,7 @@ dependencies = [
     "openpyxl",
     "matplotlib>=3.5.0",
     "seaborn>=0.11.0",
+    "adjustText>=0.8",
     "tqdm",
 ]
 
