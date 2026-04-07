@@ -363,8 +363,21 @@ def cancer_expression(cancer_type, genes=None):
     return df[["Ensembl_Gene_ID", "Symbol", col]].rename(columns={col: "expression"})
 
 
-def top_enriched_per_cancer_type(n=10, min_fold=3.0, min_expression=0.01):
-    """Top N enriched genes per cancer type vs pan-cancer median.
+def top_enriched_per_cancer_type(n=10, min_fold=3.0, min_expression=0.01, disjoint=False):
+    """Top N most cancer-type-specific genes vs pan-cancer median.
+
+    Parameters
+    ----------
+    n : int
+        Number of genes per cancer type.
+    min_fold : float
+        Minimum fold-change over median of other cancer types.
+    min_expression : float
+        Minimum housekeeping-normalized expression.
+    disjoint : bool
+        If True, each gene is assigned to only the cancer type where it
+        has the highest fold-change. Genes shared across types are removed
+        from all but the best-matching type.
 
     Returns
     -------
@@ -374,18 +387,54 @@ def top_enriched_per_cancer_type(n=10, min_fold=3.0, min_expression=0.01):
     df = pan_cancer_expression(normalize="housekeeping")
     fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
 
-    result = {}
-    for col in fpkm_cols:
-        code = col.replace("FPKM_", "")
-        other_cols = [c for c in fpkm_cols if c != col]
-        expr = df[col].astype(float)
-        other_med = df[other_cols].astype(float).median(axis=1)
-        fold = (expr + 0.001) / (other_med + 0.001)
+    if disjoint:
+        import numpy as _np
+        # Vectorized: compute fold-change matrix (genes x cancer types)
+        expr_matrix = df[fpkm_cols].astype(float)
+        symbols = df["Symbol"].values
 
-        mask = (expr >= min_expression) & (fold >= min_fold)
-        top_idx = fold[mask].nlargest(n).index
-        result[code] = df.loc[top_idx, "Symbol"].tolist()
-    return result
+        # For each cancer column, fold = expr / median(others)
+        all_folds = {}
+        for col in fpkm_cols:
+            code = col.replace("FPKM_", "")
+            other_cols = [c for c in fpkm_cols if c != col]
+            other_med = expr_matrix[other_cols].median(axis=1)
+            fold = (expr_matrix[col] + 0.001) / (other_med + 0.001)
+            all_folds[code] = fold.values
+
+        codes = [col.replace("FPKM_", "") for col in fpkm_cols]
+        fold_matrix = _np.column_stack([all_folds[c] for c in codes])  # (genes, cancers)
+        expr_max = expr_matrix.values  # (genes, cancers)
+
+        # For each gene, find the cancer type with the highest fold-change
+        best_cancer_idx = fold_matrix.argmax(axis=1)
+        best_fold = fold_matrix.max(axis=1)
+
+        # Filter: must meet fold and expression thresholds in their best cancer
+        cancer_genes = {}
+        for i in range(len(symbols)):
+            ci = best_cancer_idx[i]
+            if best_fold[i] >= min_fold and expr_max[i, ci] >= min_expression:
+                code = codes[ci]
+                cancer_genes.setdefault(code, []).append((symbols[i], best_fold[i]))
+
+        result = {}
+        for code, genes in cancer_genes.items():
+            genes.sort(key=lambda x: -x[1])
+            result[code] = [sym for sym, _ in genes[:n]]
+        return result
+    else:
+        result = {}
+        for col in fpkm_cols:
+            code = col.replace("FPKM_", "")
+            other_cols = [c for c in fpkm_cols if c != col]
+            expr = df[col].astype(float)
+            other_med = df[other_cols].astype(float).median(axis=1)
+            fold = (expr + 0.001) / (other_med + 0.001)
+            mask = (expr >= min_expression) & (fold >= min_fold)
+            top_idx = fold[mask].nlargest(n).index
+            result[code] = df.loc[top_idx, "Symbol"].tolist()
+        return result
 
 
 def cancer_type_gene_sets(cancer_type):

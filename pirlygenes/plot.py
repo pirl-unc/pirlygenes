@@ -698,28 +698,29 @@ def plot_sample_vs_cancer(
 
 def plot_cancer_type_genes(
     df_gene_expr,
-    n_genes=10,
+    n_per_tail=5,
     save_to_filename=None,
     save_dpi=300,
-    figsize=(14, 20),
+    figsize=(14, 22),
 ):
-    """Strip plot of top enriched genes per cancer type, showing sample TPM.
+    """Strip plot of cancer-type-specific genes: top 5 and bottom 5 by sample TPM.
 
-    For each of the 33 TCGA cancer types, identifies the top N most
-    enriched genes (vs pan-cancer median). Shows horizontal strip plots
-    with the sample's TPM values for those genes, sorted by mean
-    expression high to low.
+    For each of the 33 TCGA cancer types, identifies the most specific genes
+    (disjoint — each gene assigned to one cancer type only). Then for each
+    cancer type, shows the 5 highest-expressed and 5 lowest-expressed of
+    those signature genes in the patient sample, with a gap marker between
+    the two groups.
 
     Parameters
     ----------
     df_gene_expr : pd.DataFrame
         Patient expression data.
-    n_genes : int
-        Number of top enriched genes per cancer type (default 10).
+    n_per_tail : int
+        Number of genes to show in each tail (top/bottom). Default 5.
     save_to_filename : str or None
         Output path.
     """
-    import pandas as pd
+    import numpy as np
     from .plot_data_helpers import _strip_ensembl_version
     from .gene_sets_cancer import top_enriched_per_cancer_type
 
@@ -731,50 +732,116 @@ def plot_cancer_type_genes(
     tpm_col = "TPM" if "TPM" in df.columns else next(
         (c for c in df.columns if c.lower() == "tpm"), None
     )
-    sample_tpm = dict(zip(df[gene_name_col].astype(str), df[tpm_col].astype(float)))
+    sample_tpm = dict(zip(
+        df[gene_name_col].astype(str), df[tpm_col].astype(float)
+    ))
 
-    # Get top enriched genes per cancer type
-    top_genes = top_enriched_per_cancer_type(n=n_genes)
-
-    # Sort cancer types by mean sample TPM of their signature genes (highest first)
-    cancer_order = sorted(
-        top_genes.keys(),
-        key=lambda c: -sum(sample_tpm.get(g, 0) for g in top_genes[c]) / max(len(top_genes[c]), 1),
+    # Get disjoint cancer-specific genes (more candidates for top/bottom selection)
+    sig_genes = top_enriched_per_cancer_type(
+        n=n_per_tail * 4, disjoint=True,
     )
 
-    # Build plot data
-    rows = []
-    for cancer in cancer_order:
-        genes = top_genes[cancer]
-        for gene in genes:
-            tpm = sample_tpm.get(gene, 0)
-            full_name = CANCER_TYPE_NAMES.get(cancer, cancer)
-            label = f"{cancer} ({full_name})"
-            rows.append((label, gene, tpm + 0.01))
+    # For each cancer type, pick top N and bottom N by sample TPM
+    cancer_data = {}  # code -> (top_genes, bottom_genes)
+    for code, genes in sig_genes.items():
+        scored = [(g, sample_tpm.get(g, 0)) for g in genes]
+        scored.sort(key=lambda x: -x[1])
+        top = scored[:n_per_tail]
+        bottom = scored[-n_per_tail:] if len(scored) > n_per_tail else []
+        # Avoid overlap if fewer genes than 2*n_per_tail
+        if bottom and top:
+            top_set = {g for g, _ in top}
+            bottom = [(g, t) for g, t in bottom if g not in top_set]
+            bottom = bottom[-n_per_tail:]
+        cancer_data[code] = (top, bottom)
 
-    plot_df = pd.DataFrame(rows, columns=["cancer_type", "gene", "TPM"])
+    # Sort cancer types by mean of top genes (highest mean first)
+    cancer_order = sorted(
+        cancer_data.keys(),
+        key=lambda c: -sum(t for _, t in cancer_data[c][0]) / max(len(cancer_data[c][0]), 1),
+    )
 
     fig, ax = plt.subplots(figsize=figsize)
+    rng = np.random.default_rng(42)
 
-    import numpy as np
-    cancer_labels = [f"{c} ({CANCER_TYPE_NAMES.get(c, c)})" for c in cancer_order]
-    label_to_y = {label: i for i, label in enumerate(cancer_labels)}
+    # Collect all signature genes across all cancer types
+    all_sig_genes = set()
+    for top, bottom in cancer_data.values():
+        all_sig_genes.update(g for g, _ in top)
+        all_sig_genes.update(g for g, _ in bottom)
 
-    for _, row in plot_df.iterrows():
-        y = label_to_y.get(row.cancer_type, 0)
-        jitter = np.random.uniform(-0.15, 0.15)
-        ax.scatter(row.TPM, y + jitter, s=20, alpha=0.7, color="steelblue", edgecolors="none")
-        if row.TPM > 1:
-            ax.text(row.TPM, y + jitter, f" {row.gene}",
-                    fontsize=6, va="center", ha="left", alpha=0.7)
+    # Subsample of non-signature gene TPMs for gray background
+    other_tpms = np.array([
+        tpm for gene, tpm in sample_tpm.items()
+        if gene not in all_sig_genes
+    ])
+    # Take ~200 evenly-spaced quantiles for the background
+    if len(other_tpms) > 200:
+        bg_x = np.quantile(other_tpms[other_tpms > 0], np.linspace(0, 1, 200)) + 0.01
+    else:
+        bg_x = other_tpms + 0.01
 
-    ax.set_yticks(range(len(cancer_labels)))
-    ax.set_yticklabels(cancer_labels, fontsize=8)
+    y_pos = 0
+    y_ticks = []
+    y_labels = []
+
+    for code in cancer_order:
+        top, bottom = cancer_data[code]
+        label = f"{code} ({CANCER_TYPE_NAMES.get(code, code)})"
+        y_ticks.append(y_pos)
+        y_labels.append(label)
+
+        # Faint gray background: quantile distribution of all non-signature genes
+        bg_jitter = rng.uniform(-0.3, 0.3, len(bg_x))
+        ax.scatter(bg_x, y_pos + bg_jitter, s=2, alpha=0.06,
+                   color="#888888", edgecolors="none", zorder=0)
+
+        # Top genes (high expression) — colored
+        for gene, tpm in top:
+            x = tpm + 0.01
+            jitter = rng.uniform(-0.12, 0.12)
+            ax.scatter(x, y_pos + jitter, s=25, alpha=0.8,
+                       color="#2166ac", edgecolors="none", zorder=3)
+            ax.text(x, y_pos + jitter, f" {gene}",
+                    fontsize=6, va="center", ha="left", alpha=0.8, color="#2166ac")
+
+        # Bottom genes (low expression) — different color
+        for gene, tpm in bottom:
+            x = tpm + 0.01
+            jitter = rng.uniform(-0.12, 0.12)
+            ax.scatter(x, y_pos + jitter, s=20, alpha=0.6,
+                       color="#b2182b", edgecolors="none", zorder=3,
+                       marker="v")
+            ax.text(x, y_pos + jitter, f" {gene}",
+                    fontsize=6, va="center", ha="left", alpha=0.6, color="#b2182b")
+
+        # Discontinuity marker: small gray bar between top and bottom
+        if top and bottom:
+            top_min = min(t for _, t in top)
+            bot_max = max(t for _, t in bottom)
+            if top_min > bot_max + 0.01:
+                mid_x = np.sqrt((bot_max + 0.01) * (top_min + 0.01))
+                ax.plot([mid_x, mid_x], [y_pos - 0.25, y_pos + 0.25],
+                        color="#999999", linewidth=1.5, alpha=0.4, zorder=2)
+
+        y_pos += 1
+
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels(y_labels, fontsize=7)
     ax.set_xscale("log")
     ax.set_xlabel("Sample TPM", fontsize=11)
     ax.set_ylabel("")
-    ax.set_title("Top enriched genes per cancer type (sample expression)", fontsize=12)
+    ax.set_title(
+        "Cancer-type-specific genes: sample expression\n"
+        "(blue = top 5, red = bottom 5; genes disjoint across cancer types)",
+        fontsize=11,
+    )
     ax.invert_yaxis()
+
+    # Reference lines
+    for tpm_thresh in (10, 100):
+        ax.axvline(x=tpm_thresh, color="#cccccc", linestyle="--",
+                   linewidth=0.7, alpha=0.5, zorder=1)
 
     fig.tight_layout()
     if save_to_filename:
