@@ -80,6 +80,5 @@ def short_gene_name(name: str) -> str:
     """
     Normalize gene names to their aliases.
     """
-    return sorted(reverse_aliases.get(name, [name.upper().replace("-", "")]), key=len)[
-        0
-    ]
+    normalized = str(name).strip()
+    return sorted(reverse_aliases.get(normalized, [normalized.upper()]), key=len)[0]

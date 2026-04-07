@@ -31,6 +31,7 @@ from .plot import (
     plot_cancer_type_genes,
     plot_cancer_type_disjoint_genes,
     plot_cancer_type_pca,
+    plot_cancer_type_mds,
     plot_therapy_target_tissues,
     plot_therapy_target_safety,
     plot_cohort_heatmap,
@@ -122,6 +123,8 @@ def plot_expression(
     plot_height: float = 12.0,
     plot_aspect: float = 1.4,
     cancer_type: Optional[str] = None,
+    therapy_target_top_k: int = 10,
+    therapy_target_tpm_threshold: float = 30.0,
 ):
     df_expr = load_expression_data(
         input_path,
@@ -175,10 +178,22 @@ def plot_expression(
 
     # Therapy target tissue expression / safety
     tissue_pdf = "%s-target-tissues.pdf" % prefix if prefix else "target-tissues.pdf"
-    plot_therapy_target_tissues(df_expr, save_to_filename=tissue_pdf, save_dpi=output_dpi)
+    plot_therapy_target_tissues(
+        df_expr,
+        top_k=therapy_target_top_k,
+        tpm_threshold=therapy_target_tpm_threshold,
+        save_to_filename=tissue_pdf,
+        save_dpi=output_dpi,
+    )
 
     safety_png = "%s-target-safety.png" % prefix if prefix else "target-safety.png"
-    plot_therapy_target_safety(df_expr, save_to_filename=safety_png, save_dpi=output_dpi)
+    plot_therapy_target_safety(
+        df_expr,
+        top_k=therapy_target_top_k,
+        tpm_threshold=therapy_target_tpm_threshold,
+        save_to_filename=safety_png,
+        save_dpi=output_dpi,
+    )
 
     # Cancer type signature plots
     genes_png = "%s-cancer-types-genes.png" % prefix if prefix else "cancer-types-genes.png"
@@ -189,6 +204,9 @@ def plot_expression(
 
     pca_png = "%s-cancer-types-scatter.png" % prefix if prefix else "cancer-types-scatter.png"
     plot_cancer_type_pca(df_expr, save_to_filename=pca_png, save_dpi=output_dpi)
+
+    mds_png = "%s-cancer-types-mds.png" % prefix if prefix else "cancer-types-mds.png"
+    plot_cancer_type_mds(df_expr, save_to_filename=mds_png, save_dpi=output_dpi)
 
     # Cancer-type-specific gene set plot (only when --cancer-type specified)
     ct_png = None
@@ -220,6 +238,7 @@ def plot_expression(
         genes_png,
         disjoint_png,
         pca_png,
+        mds_png,
     ]
     if ct_png:
         png_files.append(ct_png)

@@ -188,12 +188,10 @@ def load_expression_data(
             print("[load] Finished resolving Ensembl gene IDs")
 
     if "canonical_gene_name" not in set(df.columns):
-        if "gene" in set(df.columns) and df["gene"].astype(str).str.strip().ne("").any():
-            # Use existing gene symbol column — no pyensembl lookup needed
-            if verbose:
-                print("[load] Using gene symbols as canonical gene names")
-            df["canonical_gene_name"] = df["gene"].fillna("").astype(str)
-        else:
+        if (
+            "ensembl_gene_id" in set(df.columns)
+            and df["ensembl_gene_id"].astype(str).str.strip().ne("").any()
+        ):
             if verbose:
                 print("[load] Resolving canonical gene names from Ensembl gene IDs")
             iterator = df["ensembl_gene_id"]
@@ -205,6 +203,10 @@ def load_expression_data(
                 get_canonical_gene_name_from_gene_ids_string(gene_ids_string)
                 for gene_ids_string in iterator
             ]
+        elif "gene" in set(df.columns) and df["gene"].astype(str).str.strip().ne("").any():
+            if verbose:
+                print("[load] Using gene symbols as canonical gene names")
+            df["canonical_gene_name"] = df["gene"].fillna("").astype(str)
 
     if "gene_display_name" not in set(df.columns):
         if verbose:

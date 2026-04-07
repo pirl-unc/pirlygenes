@@ -10,6 +10,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import defaultdict
+
 import seaborn as sns
 import matplotlib.pyplot as plt
 
@@ -26,6 +28,7 @@ from .gene_sets_cancer import (
     housekeeping_gene_ids,
     cancer_surfaceome_gene_id_to_name,
     pan_cancer_expression,
+    therapy_target_gene_id_to_name,
 )
 from .load_dataset import get_data
 
@@ -88,7 +91,14 @@ def pick_genes_to_annotate(
 
     for cat, df_cat in df.groupby(category_col, observed=True):
         df_cat_sorted = df_cat.sort_values(tpm_col, ascending=False)
-        top = df_cat_sorted.head(num_per_category)
+        category_name = str(cat)
+        if len(df_cat_sorted) <= 25:
+            top = df_cat_sorted[df_cat_sorted[tpm_col] > 0.1]
+        else:
+            top_n = max(num_per_category, 20) if category_name == "CTAs" else num_per_category
+            top = df_cat_sorted.head(top_n)
+            high_ids = df_cat_sorted.loc[df_cat_sorted[tpm_col] >= 25, gene_id_col]
+            genes_to_annotate.update(high_ids.tolist())
         if verbose:
             cols = [gene_id_col, gene_name_col, tpm_col, category_col]
             print(cat)
@@ -709,6 +719,21 @@ ESSENTIAL_TISSUES = [
     "bone_marrow", "spleen", "pancreas", "colon", "stomach",
 ]
 
+_THERAPY_PLOT_ORDER = [
+    "ADC",
+    "CAR-T",
+    "TCR-T",
+    "bispecific-antibodies",
+    "radioligand",
+]
+_THERAPY_PLOT_LABELS = {
+    "ADC": "ADC",
+    "CAR-T": "CAR-T",
+    "TCR-T": "TCR-T",
+    "bispecific-antibodies": "Bispecific",
+    "radioligand": "Radio",
+}
+
 # Map essential tissue labels to nTPM column names
 _ESSENTIAL_TISSUE_COLS = {
     "brain": ["nTPM_cerebral_cortex", "nTPM_cerebellum", "nTPM_basal_ganglia",
@@ -726,9 +751,136 @@ _ESSENTIAL_TISSUE_COLS = {
 }
 
 
+def _ordered_therapy_tuple(therapies):
+    therapies = set(therapies)
+    return tuple(sorted(therapies, key=_THERAPY_PLOT_ORDER.index))
+
+
+def _therapy_combo_label(therapies):
+    if not therapies:
+        return "Other"
+    return " + ".join(_THERAPY_PLOT_LABELS[t] for t in therapies)
+
+
+def _therapy_combo_sort_key(therapies):
+    return (len(therapies), [_THERAPY_PLOT_ORDER.index(t) for t in therapies])
+
+
+def _therapy_combo_colors(therapy_combos):
+    import numpy as np
+
+    base_palette = dict(
+        zip(_THERAPY_PLOT_ORDER, sns.color_palette("Set2", len(_THERAPY_PLOT_ORDER)))
+    )
+    combo_to_color = {}
+    for combo in sorted(set(therapy_combos), key=_therapy_combo_sort_key):
+        if len(combo) == 1:
+            combo_to_color[combo] = base_palette[combo[0]]
+        else:
+            rgb = np.array([base_palette[t] for t in combo]).mean(axis=0)
+            combo_to_color[combo] = tuple(rgb.clip(0, 1))
+    return combo_to_color
+
+
+def _approved_radioligand_gene_ids():
+    df = get_data("radioligand-targets")
+    if "Status_Bucket" not in df.columns:
+        return set()
+    mask = df["Status_Bucket"].astype(str).str.startswith("FDA_approved", na=False)
+    return set(df.loc[mask, "Ensembl_Gene_ID"].astype(str))
+
+
+def _collect_ranked_therapy_targets(df_gene_expr, top_k=10, tpm_threshold=30):
+    from .plot_data_helpers import _strip_ensembl_version
+
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
+
+    df = df_gene_expr.copy()
+    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+
+    tpm_col = "TPM" if "TPM" in df.columns else next(
+        (c for c in df.columns if c.lower() == "tpm"), None
+    )
+    if tpm_col is None:
+        raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
+
+    sample_tpm = dict(zip(df[gene_id_col].astype(str), df[tpm_col].astype(float)))
+    sample_name = dict(zip(df[gene_id_col].astype(str), df[gene_name_col].astype(str)))
+
+    therapy_to_targets = {}
+    gene_to_therapies = defaultdict(set)
+    gene_name_from_sets = {}
+    for therapy in _THERAPY_PLOT_ORDER:
+        targets = {}
+        for gid, sym in therapy_target_gene_id_to_name(therapy).items():
+            gid_clean = _strip_ensembl_version(str(gid))
+            targets[gid_clean] = sym
+            gene_to_therapies[gid_clean].add(therapy)
+            gene_name_from_sets.setdefault(gid_clean, sym)
+        therapy_to_targets[therapy] = targets
+
+    approved_sources = {
+        "ADC": "ADC-approved",
+        "CAR-T": "CAR-T",
+        "TCR-T": "TCR-T-approved",
+        "bispecific-antibodies": "bispecific-antibodies-approved",
+    }
+    gene_to_approved_therapies = defaultdict(set)
+    for therapy, dataset in approved_sources.items():
+        for gid in therapy_target_gene_id_to_name(dataset):
+            gid_clean = _strip_ensembl_version(str(gid))
+            gene_to_approved_therapies[gid_clean].add(therapy)
+    for gid in _approved_radioligand_gene_ids():
+        gene_to_approved_therapies[_strip_ensembl_version(str(gid))].add("radioligand")
+
+    selected_gene_ids = set()
+    for therapy, targets in therapy_to_targets.items():
+        scored = []
+        for gid in targets:
+            tpm = sample_tpm.get(gid, 0.0)
+            if tpm >= tpm_threshold:
+                scored.append((gid, tpm))
+        scored.sort(
+            key=lambda item: (
+                -item[1],
+                sample_name.get(item[0], gene_name_from_sets.get(item[0], item[0])),
+            )
+        )
+        selected_gene_ids.update(gid for gid, _ in scored[:top_k])
+
+    records = []
+    for gid in sorted(
+        selected_gene_ids,
+        key=lambda gene_id: (
+            -sample_tpm.get(gene_id, 0.0),
+            sample_name.get(gene_id, gene_name_from_sets.get(gene_id, gene_id)),
+        ),
+    ):
+        therapies = _ordered_therapy_tuple(gene_to_therapies.get(gid, ()))
+        approved_therapies = _ordered_therapy_tuple(
+            gene_to_approved_therapies.get(gid, ())
+        )
+        display_name = sample_name.get(gid) or gene_name_from_sets.get(gid) or gid
+        records.append(
+            {
+                "gene_id": gid,
+                "symbol": display_name,
+                "sample_tpm": sample_tpm.get(gid, 0.0),
+                "therapies": therapies,
+                "therapy_label": _therapy_combo_label(therapies),
+                "approved_therapies": approved_therapies,
+                "approved_label": _therapy_combo_label(approved_therapies)
+                if approved_therapies
+                else "",
+                "has_approved": bool(approved_therapies),
+            }
+        )
+    return records
+
+
 def plot_therapy_target_tissues(
     df_gene_expr,
-    top_k=5,
+    top_k=10,
     tpm_threshold=30,
     save_to_filename=None,
     save_dpi=300,
@@ -736,7 +888,7 @@ def plot_therapy_target_tissues(
     """For top expressed therapy targets, show healthy tissue expression vs sample.
 
     For each therapy category, takes the top K genes above a TPM threshold
-    and creates a sorted bar plot of GTEx normal tissue expression alongside
+    and creates a sorted bar plot of HPA normal tissue expression alongside
     the sample TPM value.
 
     Parameters
@@ -752,22 +904,10 @@ def plot_therapy_target_tissues(
     """
     import numpy as np
     from pathlib import Path
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
     from matplotlib.backends.backend_pdf import PdfPages
-    from .plot_data_helpers import _strip_ensembl_version
-    from .gene_sets_cancer import (
-        therapy_target_gene_id_to_name,
-        pan_cancer_expression,
-    )
-
-    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
-    df = df_gene_expr.copy()
-    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
-
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
-    )
-    sample_tpm = dict(zip(df[gene_id_col].astype(str), df[tpm_col].astype(float)))
-    sample_name = dict(zip(df[gene_id_col].astype(str), df[gene_name_col].astype(str)))
+    from .gene_sets_cancer import pan_cancer_expression
 
     # Load normal tissue expression
     ref = pan_cancer_expression()
@@ -775,31 +915,21 @@ def plot_therapy_target_tissues(
     tissue_labels = [c.replace("nTPM_", "").replace("_", " ") for c in ntpm_cols]
     ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index("Ensembl_Gene_ID")
 
-    # Collect top genes across therapy types
-    therapies = ["ADC", "CAR-T", "TCR-T", "bispecific-antibodies", "radioligand"]
-    gene_therapy = {}  # gid -> therapy
-    for therapy in therapies:
-        targets = therapy_target_gene_id_to_name(therapy)
-        scored = []
-        for gid, sym in targets.items():
-            gid_clean = _strip_ensembl_version(gid)
-            tpm = sample_tpm.get(gid_clean, 0)
-            if tpm >= tpm_threshold:
-                scored.append((gid_clean, sym, tpm))
-        scored.sort(key=lambda x: -x[2])
-        for gid, sym, tpm in scored[:top_k]:
-            if gid not in gene_therapy:
-                gene_therapy[gid] = therapy
-
-    if not gene_therapy:
+    records = _collect_ranked_therapy_targets(
+        df_gene_expr, top_k=top_k, tpm_threshold=tpm_threshold
+    )
+    if not records:
         print(f"No therapy targets above {tpm_threshold} TPM")
         return None
+    combo_to_color = _therapy_combo_colors([record["therapies"] for record in records])
 
     # Generate one page per gene
     figures = {}
-    for gid, therapy in sorted(gene_therapy.items(), key=lambda x: -sample_tpm.get(x[0], 0)):
-        sym = sample_name.get(gid, ref_by_id.loc[gid, "Symbol"] if gid in ref_by_id.index else gid)
-        s_tpm = sample_tpm.get(gid, 0)
+    for record in records:
+        gid = record["gene_id"]
+        sym = record["symbol"]
+        s_tpm = record["sample_tpm"]
+        combo_color = combo_to_color.get(record["therapies"], "#d62728")
 
         # Get tissue expression
         if gid in ref_by_id.index:
@@ -814,16 +944,68 @@ def plot_therapy_target_tissues(
 
         fig, ax = plt.subplots(figsize=(10, 8))
         y = np.arange(len(t_labels))
-        ax.barh(y, t_vals, color="#aec7e8", edgecolor="none", height=0.7, label="Normal tissue (nTPM)")
+        ax.barh(y, t_vals, color="#aec7e8", edgecolor="none", height=0.7)
 
         # Sample TPM as a vertical line
-        ax.axvline(x=s_tpm, color="red", linewidth=2, linestyle="-", alpha=0.8, label=f"Sample TPM = {s_tpm:.1f}")
+        ax.axvline(x=s_tpm, color=combo_color, linewidth=2, linestyle="-", alpha=0.85)
 
         ax.set_yticks(y)
         ax.set_yticklabels(t_labels, fontsize=7)
         ax.set_xlabel("Expression (nTPM / TPM)", fontsize=10)
-        ax.set_title(f"{sym} ({therapy}) — healthy tissue vs sample\nSample TPM: {s_tpm:.1f}", fontsize=11)
-        ax.legend(loc="lower right", fontsize=8, frameon=False)
+        subtitle = (
+            f"Sample TPM: {s_tpm:.1f} | therapy categories: {record['therapy_label']}"
+        )
+        if record["has_approved"]:
+            subtitle += f" | approved: {record['approved_label']}"
+            ax.scatter(
+                [0.97],
+                [0.96],
+                transform=ax.transAxes,
+                marker="^",
+                s=70,
+                color=combo_color,
+                edgecolors="black",
+                linewidths=0.5,
+                clip_on=False,
+                zorder=6,
+            )
+            ax.text(
+                0.93,
+                0.96,
+                "approved",
+                transform=ax.transAxes,
+                fontsize=8,
+                ha="right",
+                va="center",
+                alpha=0.85,
+            )
+        ax.set_title(
+            f"{sym} — healthy tissue vs sample\n{subtitle}",
+            fontsize=11,
+        )
+        legend_handles = [
+            Patch(facecolor="#aec7e8", edgecolor="none", label="Normal tissue (nTPM)"),
+            Line2D(
+                [],
+                [],
+                color=combo_color,
+                linewidth=2,
+                label=f"Sample TPM = {s_tpm:.1f}",
+            ),
+        ]
+        if record["has_approved"]:
+            legend_handles.append(
+                Line2D(
+                    [],
+                    [],
+                    marker="^",
+                    linestyle="None",
+                    color=combo_color,
+                    markeredgecolor="black",
+                    label=f"Approved target ({record['approved_label']})",
+                )
+            )
+        ax.legend(handles=legend_handles, loc="lower right", fontsize=8, frameon=False)
         ax.invert_yaxis()
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
@@ -849,7 +1031,7 @@ def plot_therapy_target_tissues(
 
 def plot_therapy_target_safety(
     df_gene_expr,
-    top_k=5,
+    top_k=10,
     tpm_threshold=30,
     save_to_filename=None,
     save_dpi=300,
@@ -872,22 +1054,8 @@ def plot_therapy_target_safety(
     save_to_filename : str or None
         Output path.
     """
-    import numpy as np
-    from .plot_data_helpers import _strip_ensembl_version
-    from .gene_sets_cancer import (
-        therapy_target_gene_id_to_name,
-        pan_cancer_expression,
-    )
-
-    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
-    df = df_gene_expr.copy()
-    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
-
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
-    )
-    sample_tpm = dict(zip(df[gene_id_col].astype(str), df[tpm_col].astype(float)))
-    sample_name = dict(zip(df[gene_id_col].astype(str), df[gene_name_col].astype(str)))
+    from matplotlib.lines import Line2D
+    from .gene_sets_cancer import pan_cancer_expression
 
     ref = pan_cancer_expression()
     ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index("Ensembl_Gene_ID")
@@ -897,50 +1065,114 @@ def plot_therapy_target_safety(
     for tissue, cols in _ESSENTIAL_TISSUE_COLS.items():
         essential_cols.extend([c for c in cols if c in ref_by_id.columns])
 
-    therapies = ["ADC", "CAR-T", "TCR-T", "bispecific-antibodies", "radioligand"]
-    therapy_palette = dict(zip(therapies, sns.color_palette("Set2", len(therapies))))
-
-    rows = []
-    for therapy in therapies:
-        targets = therapy_target_gene_id_to_name(therapy)
-        scored = []
-        for gid, sym in targets.items():
-            gid_clean = _strip_ensembl_version(gid)
-            tpm = sample_tpm.get(gid_clean, 0)
-            if tpm >= tpm_threshold:
-                scored.append((gid_clean, sym, tpm))
-        scored.sort(key=lambda x: -x[2])
-        for gid, sym, tpm in scored[:top_k]:
-            # Max expression in essential tissues
-            max_essential = 0
-            if gid in ref_by_id.index:
-                vals = [float(ref_by_id.loc[gid, c]) for c in essential_cols if c in ref_by_id.columns]
-                max_essential = max(vals) if vals else 0
-            rows.append((sym, therapy, tpm, max_essential, gid))
-
-    if not rows:
+    records = _collect_ranked_therapy_targets(
+        df_gene_expr, top_k=top_k, tpm_threshold=tpm_threshold
+    )
+    if not records:
         print(f"No therapy targets above {tpm_threshold} TPM")
         return None, None
+    combo_to_color = _therapy_combo_colors([record["therapies"] for record in records])
 
     fig, ax = plt.subplots(figsize=figsize)
 
-    for sym, therapy, tpm, max_ess, gid in rows:
-        color = therapy_palette.get(therapy, "gray")
-        ax.scatter(tpm, max_ess + 0.1, s=60, color=color, alpha=0.8,
-                   edgecolors="white", linewidths=0.5, zorder=3)
-        ax.text(tpm, max_ess + 0.1, f"  {sym}", fontsize=8, va="center",
-                ha="left", alpha=0.85)
+    for record in records:
+        gid = record["gene_id"]
+        sym = record["symbol"]
+        tpm = record["sample_tpm"]
+        color = combo_to_color.get(record["therapies"], "gray")
+        max_ess = 0
+        if gid in ref_by_id.index:
+            vals = [
+                float(ref_by_id.loc[gid, c])
+                for c in essential_cols
+                if c in ref_by_id.columns
+            ]
+            max_ess = max(vals) if vals else 0
+        marker = "^" if record["has_approved"] else "o"
+        ax.scatter(
+            tpm,
+            max_ess + 0.1,
+            s=80,
+            color=color,
+            marker=marker,
+            alpha=0.85,
+            edgecolors="white",
+            linewidths=0.6,
+            zorder=3,
+        )
+        ax.text(
+            tpm,
+            max_ess + 0.1,
+            f"  {sym}",
+            fontsize=8,
+            va="center",
+            ha="left",
+            alpha=0.85,
+        )
 
-    # Legend for therapy types
-    for therapy, color in therapy_palette.items():
-        ax.scatter([], [], color=color, s=60, label=therapy)
-    ax.legend(loc="upper left", fontsize=8, frameon=False)
+    combo_handles = [
+        Line2D(
+            [],
+            [],
+            marker="o",
+            linestyle="None",
+            color=combo_to_color[combo],
+            label=_therapy_combo_label(combo),
+            markersize=8,
+        )
+        for combo in sorted(combo_to_color, key=_therapy_combo_sort_key)
+    ]
+    marker_handles = [
+        Line2D(
+            [],
+            [],
+            marker="o",
+            linestyle="None",
+            color="#666666",
+            label="Trial-only target",
+            markersize=8,
+        ),
+        Line2D(
+            [],
+            [],
+            marker="^",
+            linestyle="None",
+            color="#666666",
+            markeredgecolor="black",
+            label="Approved target",
+            markersize=8,
+        ),
+    ]
+    legend = ax.legend(
+        handles=combo_handles,
+        loc="upper left",
+        fontsize=8,
+        frameon=False,
+        title="Therapy categories",
+        title_fontsize=9,
+    )
+    ax.add_artist(legend)
+    ax.legend(
+        handles=marker_handles,
+        loc="lower right",
+        fontsize=8,
+        frameon=False,
+        title="Marker",
+        title_fontsize=9,
+    )
 
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel("Sample TPM", fontsize=11)
-    ax.set_ylabel("Max expression in essential tissues (nTPM)\n(brain, heart, liver, lung, kidney)", fontsize=10)
-    ax.set_title("Therapy target safety: sample expression vs essential tissue expression\n(lower-right = safest targets)", fontsize=11)
+    ax.set_ylabel(
+        "Max expression in selected essential tissues (nTPM)",
+        fontsize=10,
+    )
+    ax.set_title(
+        "Therapy target safety: sample expression vs essential tissue expression\n"
+        "(brain, heart, liver, lung, kidney, bone marrow, spleen, pancreas, colon, stomach)",
+        fontsize=11,
+    )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
@@ -959,6 +1191,251 @@ def plot_therapy_target_safety(
 # -------------------- cancer-type gene signature plots --------------------
 
 
+def _sample_expression_by_symbol(df_gene_expr):
+    import pandas as pd
+    from .plot_data_helpers import _strip_ensembl_version
+
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
+    df = df_gene_expr.copy()
+    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+
+    tpm_col = "TPM" if "TPM" in df.columns else next(
+        (c for c in df.columns if c.lower() == "tpm"), None
+    )
+    if tpm_col is None:
+        raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
+
+    raw_values = df[tpm_col].astype(float)
+    hk_mask = df[gene_id_col].isin(housekeeping_gene_ids())
+    hk_median = df.loc[hk_mask, tpm_col].astype(float).median()
+    if hk_median <= 0:
+        hk_median = 1.0
+    hk_values = raw_values / hk_median
+
+    if "canonical_gene_name" in df.columns:
+        symbols = df["canonical_gene_name"].fillna("").astype(str)
+    else:
+        ref = pan_cancer_expression()[["Ensembl_Gene_ID", "Symbol"]].drop_duplicates(
+            subset="Ensembl_Gene_ID"
+        )
+        id_to_symbol = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
+        fallback = df[gene_name_col].fillna("").astype(str)
+        symbols = df[gene_id_col].map(id_to_symbol).fillna(fallback)
+
+    expr_df = pd.DataFrame(
+        {
+            "Symbol": symbols,
+            "sample_raw": raw_values,
+            "sample_hk": hk_values,
+        }
+    )
+    expr_df = expr_df[expr_df["Symbol"].astype(str).str.strip().ne("")]
+    grouped = expr_df.groupby("Symbol", as_index=False, sort=False)[
+        ["sample_raw", "sample_hk"]
+    ].sum()
+    return (
+        dict(zip(grouped["Symbol"], grouped["sample_raw"])),
+        dict(zip(grouped["Symbol"], grouped["sample_hk"])),
+    )
+
+
+def _compute_cancer_type_signature_stats(
+    df_gene_expr,
+    n_signature_genes=20,
+    min_fold=2.0,
+):
+    import numpy as np
+    from .gene_sets_cancer import top_enriched_per_cancer_type
+
+    sample_raw_by_symbol, sample_hk_by_symbol = _sample_expression_by_symbol(df_gene_expr)
+    ref = pan_cancer_expression(normalize="housekeeping")
+    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    sig = top_enriched_per_cancer_type(
+        n=n_signature_genes,
+        disjoint=True,
+        min_fold=min_fold,
+    )
+
+    stats = []
+    for code in sorted(sig.keys()):
+        genes = sig[code]
+        cohort_col = f"FPKM_{code}"
+        gene_details = []
+        for gene in genes:
+            sample_raw = float(sample_raw_by_symbol.get(gene, 0.0))
+            sample_hk = float(sample_hk_by_symbol.get(gene, 0.0))
+            cohort_hk = 0.0
+            if gene in ref_by_sym.index and cohort_col in ref_by_sym.columns:
+                cohort_hk = float(ref_by_sym.loc[gene, cohort_col])
+            log_diff = abs(np.log2(sample_hk + 0.001) - np.log2(cohort_hk + 0.001))
+            weight = max(np.log2(cohort_hk + 1.1), 0.1)
+            gene_details.append(
+                {
+                    "gene": gene,
+                    "sample_raw": sample_raw,
+                    "sample_hk": sample_hk,
+                    "cohort_hk": cohort_hk,
+                    "log_diff": log_diff,
+                    "weight": weight,
+                }
+            )
+
+        if gene_details:
+            weighted_mean_log_diff = float(
+                np.average(
+                    [g["log_diff"] for g in gene_details],
+                    weights=[g["weight"] for g in gene_details],
+                )
+            )
+            score = 1.0 / (1.0 + weighted_mean_log_diff)
+            mean_sample_raw = float(np.mean([g["sample_raw"] for g in gene_details]))
+        else:
+            weighted_mean_log_diff = float("inf")
+            score = 0.0
+            mean_sample_raw = 0.0
+
+        stats.append(
+            {
+                "code": code,
+                "genes": genes,
+                "n_genes": len(genes),
+                "score": score,
+                "weighted_mean_log_diff": weighted_mean_log_diff,
+                "mean_sample_raw": mean_sample_raw,
+                "gene_details": gene_details,
+            }
+        )
+
+    stats.sort(key=lambda row: (-row["score"], row["code"]))
+    for rank, row in enumerate(stats, start=1):
+        row["rank"] = rank
+    return stats
+
+
+def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
+    import numpy as np
+    from .plot_data_helpers import _strip_ensembl_version
+
+    gene_id_col, _ = _guess_gene_cols(df_gene_expr)
+    df = df_gene_expr.copy()
+    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+
+    tpm_col = "TPM" if "TPM" in df.columns else next(
+        (c for c in df.columns if c.lower() == "tpm"), None
+    )
+
+    hk_mask = df[gene_id_col].isin(housekeeping_gene_ids())
+    hk_median = df.loc[hk_mask, tpm_col].astype(float).median()
+    if hk_median <= 0:
+        hk_median = 1.0
+
+    sample_by_id = dict(
+        zip(
+            df[gene_id_col].astype(str),
+            df[tpm_col].astype(float) / hk_median,
+        )
+    )
+
+    ref = pan_cancer_expression(normalize="housekeeping")
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    labels = [c.replace("FPKM_", "") for c in fpkm_cols]
+
+    expr_matrix = ref[fpkm_cols].astype(float)
+    gene_mean = expr_matrix.mean(axis=1)
+    gene_std = expr_matrix.std(axis=1)
+    gene_cv = gene_std / (gene_mean + 0.001)
+
+    top_var_idx = gene_cv[gene_mean > 0.01].nlargest(n_genes * 33).index
+    ref_filtered = ref.loc[top_var_idx].drop_duplicates(subset="Symbol")
+
+    feature_matrix = [ref_filtered[col].astype(float).values for col in fpkm_cols]
+    sample_vals = [
+        sample_by_id.get(row["Ensembl_Gene_ID"], 0.0)
+        for _, row in ref_filtered.iterrows()
+    ]
+    feature_matrix.append(sample_vals)
+    labels.append("SAMPLE")
+
+    return np.log2(np.array(feature_matrix) + 0.001), labels
+
+
+def _plot_embedding_with_labels(
+    coords,
+    labels,
+    *,
+    title,
+    xlabel,
+    ylabel,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(12, 10),
+):
+    fig, ax = plt.subplots(figsize=figsize)
+    texts = []
+
+    for i, label in enumerate(labels):
+        if label == "SAMPLE":
+            ax.scatter(
+                coords[i, 0],
+                coords[i, 1],
+                s=220,
+                color="red",
+                edgecolors="black",
+                linewidths=1.5,
+                zorder=5,
+                marker="*",
+            )
+            texts.append(
+                ax.text(
+                    coords[i, 0],
+                    coords[i, 1],
+                    label,
+                    fontsize=10,
+                    fontweight="bold",
+                    color="red",
+                    va="center",
+                )
+            )
+        else:
+            ax.scatter(
+                coords[i, 0],
+                coords[i, 1],
+                s=60,
+                alpha=0.7,
+                color="steelblue",
+                edgecolors="white",
+                linewidths=0.5,
+                zorder=2,
+            )
+            texts.append(
+                ax.text(
+                    coords[i, 0],
+                    coords[i, 1],
+                    label,
+                    fontsize=7,
+                    alpha=0.8,
+                    va="center",
+                )
+            )
+
+    adjust_text(
+        texts,
+        ax=ax,
+        arrowprops=dict(arrowstyle="-", color="#999999", alpha=0.35),
+        expand=(1.05, 1.2),
+    )
+    ax.set_xlabel(xlabel, fontsize=11)
+    ax.set_ylabel(ylabel, fontsize=11)
+    ax.set_title(title, fontsize=12)
+    ax.grid(True, alpha=0.2)
+
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
+
+
 def plot_cancer_type_genes(
     df_gene_expr,
     n_per_tail=5,
@@ -966,137 +1443,118 @@ def plot_cancer_type_genes(
     save_dpi=300,
     figsize=(14, 22),
 ):
-    """Strip plot of cancer-type-specific genes: top 5 and bottom 5 by sample TPM.
+    """Show all signature genes for the closest and most distant cancer types.
 
-    For each of the 33 TCGA cancer types, identifies the most specific genes
-    (disjoint — each gene assigned to one cancer type only). Then for each
-    cancer type, shows the 5 highest-expressed and 5 lowest-expressed of
-    those signature genes in the patient sample, with a gap marker between
-    the two groups.
+    Cancer types are ranked by signature similarity to the sample. The plot
+    then shows the top ``n_per_tail`` closest and bottom ``n_per_tail`` most
+    distant cancer types, while still plotting all signature genes for each
+    selected row. The gray bar marks the mean sample TPM for that row.
 
     Parameters
     ----------
     df_gene_expr : pd.DataFrame
         Patient expression data.
     n_per_tail : int
-        Number of genes to show in each tail (top/bottom). Default 5.
+        Number of cancer types to show in each tail (closest / most distant).
     save_to_filename : str or None
         Output path.
     """
     import numpy as np
-    from .plot_data_helpers import _strip_ensembl_version
-    from .gene_sets_cancer import top_enriched_per_cancer_type
+    stats = _compute_cancer_type_signature_stats(df_gene_expr, n_signature_genes=20)
+    if not stats:
+        return None, None
 
-    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
-
-    df = df_gene_expr.copy()
-    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
-
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
-    )
-    sample_tpm = dict(zip(
-        df[gene_name_col].astype(str), df[tpm_col].astype(float)
-    ))
-
-    # Get disjoint cancer-specific genes (more candidates for top/bottom selection)
-    sig_genes = top_enriched_per_cancer_type(
-        n=n_per_tail * 4, disjoint=True,
-    )
-
-    # For each cancer type, pick top N and bottom N by sample TPM
-    cancer_data = {}  # code -> (top_genes, bottom_genes)
-    for code, genes in sig_genes.items():
-        scored = [(g, sample_tpm.get(g, 0)) for g in genes]
-        scored.sort(key=lambda x: -x[1])
-        top = scored[:n_per_tail]
-        bottom = scored[-n_per_tail:] if len(scored) > n_per_tail else []
-        # Avoid overlap if fewer genes than 2*n_per_tail
-        if bottom and top:
-            top_set = {g for g, _ in top}
-            bottom = [(g, t) for g, t in bottom if g not in top_set]
-            bottom = bottom[-n_per_tail:]
-        cancer_data[code] = (top, bottom)
-
-    # Sort cancer types by mean of top genes (highest mean first)
-    cancer_order = sorted(
-        cancer_data.keys(),
-        key=lambda c: -sum(t for _, t in cancer_data[c][0]) / max(len(cancer_data[c][0]), 1),
-    )
+    top_stats = stats[:n_per_tail]
+    bottom_stats = sorted(stats[-n_per_tail:], key=lambda row: (row["score"], row["code"]))
+    selected_stats = top_stats + bottom_stats
 
     fig, ax = plt.subplots(figsize=figsize)
     rng = np.random.default_rng(42)
 
-    # Collect all signature genes across all cancer types
-    all_sig_genes = set()
-    for top, bottom in cancer_data.values():
-        all_sig_genes.update(g for g, _ in top)
-        all_sig_genes.update(g for g, _ in bottom)
-
-    # Subsample of non-signature gene TPMs for gray background
-    other_tpms = np.array([
-        tpm for gene, tpm in sample_tpm.items()
-        if gene not in all_sig_genes
-    ])
-    # Take ~200 evenly-spaced quantiles for the background
-    if len(other_tpms) > 200:
-        bg_x = np.quantile(other_tpms[other_tpms > 0], np.linspace(0, 1, 200)) + 0.01
-    else:
-        bg_x = other_tpms + 0.01
-
     y_pos = 0
     y_ticks = []
     y_labels = []
+    texts = []
 
-    for code in cancer_order:
-        top, bottom = cancer_data[code]
-        label = f"{code} ({CANCER_TYPE_NAMES.get(code, code)})"
+    for idx, row in enumerate(selected_stats):
+        code = row["code"]
+        gene_details = sorted(
+            row["gene_details"],
+            key=lambda item: (-item["sample_raw"], item["gene"]),
+        )
+        label = (
+            f"{row['rank']:>2}. {code} ({CANCER_TYPE_NAMES.get(code, code)}) "
+            f"[score={row['score']:.2f}, n={row['n_genes']}]"
+        )
         y_ticks.append(y_pos)
         y_labels.append(label)
 
-        # Faint gray background: quantile distribution of all non-signature genes
-        bg_jitter = rng.uniform(-0.3, 0.3, len(bg_x))
-        ax.scatter(bg_x, y_pos + bg_jitter, s=2, alpha=0.06,
-                   color="#888888", edgecolors="none", zorder=0)
+        x_values = [detail["sample_raw"] + 0.01 for detail in gene_details]
+        ax.scatter(
+            x_values,
+            y_pos + rng.uniform(-0.14, 0.14, len(x_values)),
+            s=18,
+            alpha=0.45,
+            color="#2166ac",
+            edgecolors="none",
+            zorder=2,
+        )
 
-        # Top genes (high expression) — colored
-        for gene, tpm in top:
-            x = tpm + 0.01
+        mean_x = row["mean_sample_raw"] + 0.01
+        ax.plot(
+            [mean_x, mean_x],
+            [y_pos - 0.28, y_pos + 0.28],
+            color="#999999",
+            linewidth=1.6,
+            alpha=0.7,
+            zorder=1,
+        )
+
+        for detail in gene_details[:5]:
+            x = detail["sample_raw"] + 0.01
             jitter = rng.uniform(-0.12, 0.12)
-            ax.scatter(x, y_pos + jitter, s=25, alpha=0.8,
-                       color="#2166ac", edgecolors="none", zorder=3)
-            ax.text(x, y_pos + jitter, f" {gene}",
-                    fontsize=6, va="center", ha="left", alpha=0.8, color="#2166ac")
+            ax.scatter(
+                x,
+                y_pos + jitter,
+                s=30,
+                alpha=0.85,
+                color="#2166ac",
+                edgecolors="white",
+                linewidths=0.4,
+                zorder=3,
+            )
+            texts.append(
+                ax.text(
+                    x,
+                    y_pos + jitter,
+                    detail["gene"],
+                    fontsize=6,
+                    va="center",
+                    ha="left",
+                    alpha=0.85,
+                    color="#2166ac",
+                )
+            )
 
-        # Bottom genes (low expression) — different color
-        for gene, tpm in bottom:
-            x = tpm + 0.01
-            jitter = rng.uniform(-0.12, 0.12)
-            ax.scatter(x, y_pos + jitter, s=20, alpha=0.6,
-                       color="#b2182b", edgecolors="none", zorder=3,
-                       marker="v")
-            ax.text(x, y_pos + jitter, f" {gene}",
-                    fontsize=6, va="center", ha="left", alpha=0.6, color="#b2182b")
-
-        # Discontinuity marker: small gray bar between top and bottom
-        if top and bottom:
-            top_min = min(t for _, t in top)
-            bot_max = max(t for _, t in bottom)
-            if top_min > bot_max + 0.01:
-                mid_x = np.sqrt((bot_max + 0.01) * (top_min + 0.01))
-                ax.plot([mid_x, mid_x], [y_pos - 0.25, y_pos + 0.25],
-                        color="#999999", linewidth=1.5, alpha=0.4, zorder=2)
+        if idx == len(top_stats) - 1 and bottom_stats:
+            ax.axhline(y=y_pos + 0.5, color="#cccccc", linewidth=0.8, alpha=0.8, zorder=0)
 
         y_pos += 1
 
+    adjust_text(
+        texts,
+        ax=ax,
+        arrowprops=dict(arrowstyle="-", color="#999999", alpha=0.25),
+        expand=(1.03, 1.2),
+    )
     ax.set_yticks(y_ticks)
     ax.set_yticklabels(y_labels, fontsize=7)
     ax.set_xscale("log")
     ax.set_xlabel("Sample TPM", fontsize=11)
     ax.set_ylabel("")
     ax.set_title(
-        "Cancer-type-specific genes: sample expression\n"
-        "(blue = top 5, red = bottom 5; genes disjoint across cancer types)",
+        "Cancer-type signature genes: sample expression\n"
+        "(top 5 closest and bottom 5 most distant cancer types; gray bar = mean sample TPM)",
         fontsize=11,
     )
     ax.invert_yaxis()
@@ -1120,11 +1578,7 @@ def plot_cancer_type_disjoint_genes(
     save_dpi=300,
     figsize=(14, 12),
 ):
-    """Bar chart of disjoint expression-signature genes per cancer type.
-
-    Shows how many genes are uniquely overexpressed in each cancer type
-    (vs all others), colored by how many of those genes are expressed
-    (TPM > 1) in the patient sample.
+    """Bar chart of cancer-type signature similarity scores.
 
     Parameters
     ----------
@@ -1135,74 +1589,44 @@ def plot_cancer_type_disjoint_genes(
     save_to_filename : str or None
         Output path.
     """
-    import numpy as np
-    from .plot_data_helpers import _strip_ensembl_version
-    from .gene_sets_cancer import top_enriched_per_cancer_type, pan_cancer_expression
-
-    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
-    df = df_gene_expr.copy()
-    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
-
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
+    stats = _compute_cancer_type_signature_stats(
+        df_gene_expr,
+        n_signature_genes=n_genes,
+        min_fold=2.0,
     )
-    sample_tpm = dict(zip(
-        df[gene_name_col].astype(str), df[tpm_col].astype(float)
-    ))
-
-    sig = top_enriched_per_cancer_type(n=n_genes, disjoint=True, min_fold=2.0)
-
-    # Get cohort mean expression for each cancer type's signature genes
-    ref = pan_cancer_expression(normalize="housekeeping")
-    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
-
-    # Score: sum of (sample_TPM / cohort_mean) for each cancer type's genes
-    # High score = sample looks like this cancer type
-    cancer_stats = []
-    for code in sorted(sig.keys()):
-        genes = sig[code]
-        cohort_col = f"FPKM_{code}"
-        score = 0.0
-        gene_scores = []
-        for g in genes:
-            s_tpm = sample_tpm.get(g, 0)
-            c_mean = 0
-            if g in ref_by_sym.index and cohort_col in ref_by_sym.columns:
-                c_mean = float(ref_by_sym.loc[g, cohort_col])
-            ratio = (s_tpm + 0.1) / (c_mean + 0.1)
-            score += ratio
-            gene_scores.append((g, s_tpm, ratio))
-        cancer_stats.append((code, len(genes), score, gene_scores))
-
-    # Sort by score (descending)
-    cancer_stats.sort(key=lambda x: -x[2])
 
     fig, ax = plt.subplots(figsize=figsize)
 
-    codes = [s[0] for s in cancer_stats]
-    scores = [s[2] for s in cancer_stats]
-    labels = [f"{c} ({CANCER_TYPE_NAMES.get(c, c)})" for c in codes]
-    y = np.arange(len(codes))
+    scores = [row["score"] for row in stats]
+    labels = [
+        f"{row['rank']:>2}. {row['code']} ({CANCER_TYPE_NAMES.get(row['code'], row['code'])}) [n={row['n_genes']}]"
+        for row in stats
+    ]
+    y = np.arange(len(stats))
 
     # Color bars by score intensity
-    max_score = max(scores) if scores else 1
-    colors = [plt.cm.Blues(0.3 + 0.7 * s / max_score) for s in scores]
+    colors = [plt.cm.Blues(0.25 + 0.65 * s) for s in scores]
     ax.barh(y, scores, color=colors, edgecolor="none", height=0.7)
 
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=7)
-    ax.set_xlabel("Signature score (Σ sample / cohort mean per gene)", fontsize=10)
-    ax.set_title("Cancer type similarity score\n(higher = sample resembles this cancer type)", fontsize=11)
+    ax.set_xlabel("Signature similarity score", fontsize=10)
+    ax.set_title(
+        "Cancer type similarity score\n"
+        "(higher = closer by weighted mean |log2 sample/cohort| across signature genes)",
+        fontsize=11,
+    )
     ax.invert_yaxis()
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.set_xlim(0, 1)
 
     # Annotate bars with top contributing genes
-    for i, (code, n_genes_ct, score, gene_scores) in enumerate(cancer_stats):
-        top3 = sorted(gene_scores, key=lambda x: -x[2])[:3]
-        top3_str = ", ".join(f"{g}" for g, _, r in top3 if r > 1)
+    for i, row in enumerate(stats):
+        top3 = sorted(row["gene_details"], key=lambda detail: detail["log_diff"])[:3]
+        top3_str = ", ".join(detail["gene"] for detail in top3)
         if top3_str:
-            ax.text(score + max_score * 0.01, i, top3_str,
+            ax.text(min(row["score"] + 0.01, 0.99), i, top3_str,
                     fontsize=5.5, va="center", alpha=0.7)
 
     fig.tight_layout()
@@ -1548,102 +1972,47 @@ def plot_cancer_type_pca(
     save_to_filename : str or None
         Output path.
     """
-    import numpy as np
     from sklearn.decomposition import PCA
-    from .plot_data_helpers import _strip_ensembl_version
-    from .gene_sets_cancer import (
-        top_enriched_per_cancer_type,
-        pan_cancer_expression,
-        housekeeping_gene_ids,
-    )
-
-    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
-
-    df = df_gene_expr.copy()
-    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
-
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
-    )
-
-    # Housekeeping-normalize sample
-    hk_ids = housekeeping_gene_ids()
-    hk_mask = df[gene_id_col].isin(hk_ids)
-    hk_median = df.loc[hk_mask, tpm_col].astype(float).median()
-    if hk_median <= 0:
-        hk_median = 1.0
-
-    sample_by_id = dict(zip(
-        df[gene_id_col].astype(str),
-        df[tpm_col].astype(float) / hk_median,
-    ))
-
-    # Use most variable genes across cancer types (better for PCA than
-    # disjoint enriched genes which can be tissue-specific noise)
-    ref = pan_cancer_expression(normalize="housekeeping")
-    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
-    cancer_codes = [c.replace("FPKM_", "") for c in fpkm_cols]
-
-    # Compute coefficient of variation per gene across cancer types
-    expr_matrix = ref[fpkm_cols].astype(float)
-    gene_mean = expr_matrix.mean(axis=1)
-    gene_std = expr_matrix.std(axis=1)
-    gene_cv = gene_std / (gene_mean + 0.001)
-
-    # Take top N most variable genes that are also reasonably expressed
-    expressed_mask = gene_mean > 0.01
-    top_var_idx = gene_cv[expressed_mask].nlargest(n_genes * 33).index
-    ref_filtered = ref.loc[top_var_idx].drop_duplicates(subset="Symbol")
-    gene_order = list(ref_filtered["Symbol"])
-
-    # Build feature matrix: rows = cancer types + sample, cols = genes
-    symbol_to_id = dict(zip(ref_filtered["Symbol"], ref_filtered["Ensembl_Gene_ID"]))
-    feature_matrix = []
-    labels = []
-
-    for col in fpkm_cols:
-        vals = ref_filtered[col].astype(float).values
-        feature_matrix.append(vals)
-        labels.append(col.replace("FPKM_", ""))
-
-    # Sample vector
-    sample_vals = []
-    for _, row in ref_filtered.iterrows():
-        gid = row["Ensembl_Gene_ID"]
-        sample_vals.append(sample_by_id.get(gid, 0))
-    feature_matrix.append(sample_vals)
-    labels.append("SAMPLE")
-
-    X = np.array(feature_matrix)
-    # Log transform for PCA
-    X = np.log2(X + 0.001)
-
+    X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes)
     pca = PCA(n_components=2)
     coords = pca.fit_transform(X)
+    return _plot_embedding_with_labels(
+        coords,
+        labels,
+        title="Sample position among TCGA cancer type gene signatures (PCA)",
+        xlabel=f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)",
+        ylabel=f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)",
+        save_to_filename=save_to_filename,
+        save_dpi=save_dpi,
+        figsize=figsize,
+    )
 
-    fig, ax = plt.subplots(figsize=figsize)
 
-    # Plot cancer type centroids
-    n_cancers = len(cancer_codes)
-    for i in range(n_cancers):
-        ax.scatter(coords[i, 0], coords[i, 1], s=60, alpha=0.6,
-                   color="steelblue", edgecolors="white", linewidths=0.5, zorder=2)
-        ax.text(coords[i, 0], coords[i, 1], f" {labels[i]}",
-                fontsize=7, alpha=0.7, va="center")
+def plot_cancer_type_mds(
+    df_gene_expr,
+    n_genes=10,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(12, 10),
+):
+    """MDS embedding of the sample with TCGA cancer type centroids."""
+    from sklearn.manifold import MDS
+    from sklearn.metrics import pairwise_distances
 
-    # Plot sample (larger, distinct)
-    ax.scatter(coords[-1, 0], coords[-1, 1], s=200, color="red",
-               edgecolors="black", linewidths=1.5, zorder=5, marker="*")
-    ax.text(coords[-1, 0], coords[-1, 1], "  SAMPLE",
-            fontsize=10, fontweight="bold", color="red", va="center")
-
-    ax.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)", fontsize=11)
-    ax.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)", fontsize=11)
-    ax.set_title("Sample position among TCGA cancer type gene signatures", fontsize=12)
-    ax.grid(True, alpha=0.2)
-
-    fig.tight_layout()
-    if save_to_filename:
-        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
-        print(f"Saved {save_to_filename}")
-    return fig, ax
+    X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes)
+    distances = pairwise_distances(X, metric="euclidean")
+    coords = MDS(
+        n_components=2,
+        dissimilarity="precomputed",
+        random_state=42,
+    ).fit_transform(distances)
+    return _plot_embedding_with_labels(
+        coords,
+        labels,
+        title="Sample position among TCGA cancer type gene signatures (MDS)",
+        xlabel="MDS1",
+        ylabel="MDS2",
+        save_to_filename=save_to_filename,
+        save_dpi=save_dpi,
+        figsize=figsize,
+    )

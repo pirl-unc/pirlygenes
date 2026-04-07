@@ -77,6 +77,8 @@ def test_all_gene_set_wrappers(monkeypatch):
     assert gsc.bispecific_antibody_approved_target_gene_ids()
     assert gsc.bispecific_antibody_target_gene_names()
     assert gsc.bispecific_antibody_targets_gene_ids()
+    assert gsc.therapy_target_gene_id_to_name("bispecific-antibodies-approved")
+    assert gsc.therapy_target_gene_id_to_name("CAR-T-approved")
 
     # Radio + CTA
     assert gsc.radio_target_gene_names()
