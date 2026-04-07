@@ -806,7 +806,6 @@ def plot_cancer_type_pca(
         Output path.
     """
     import numpy as np
-    import pandas as pd
     from sklearn.decomposition import PCA
     from .plot_data_helpers import _strip_ensembl_version
     from .gene_sets_cancer import (

@@ -436,7 +436,6 @@ def cancer_enriched_genes(cancer_type, min_fold=3.0, min_expression=0.01):
         Columns: Ensembl_Gene_ID, Symbol, expression, other_median, fold_change.
         Sorted by fold_change descending.
     """
-    import numpy as np
     from .plot import resolve_cancer_type
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(normalize="housekeeping")
