@@ -30,6 +30,12 @@ from .plot import (
     plot_cancer_type_genes,
     plot_cancer_type_disjoint_genes,
     plot_cancer_type_pca,
+    plot_cohort_heatmap,
+    plot_cohort_disjoint_counts,
+    plot_cohort_pca,
+    plot_cohort_therapy_targets,
+    plot_cohort_surface_proteins,
+    plot_cohort_ctas,
     default_gene_sets,
     CANCER_TYPE_ALIASES,
     CANCER_TYPE_NAMES,
@@ -227,10 +233,52 @@ def plot_expression(
     print(f"Saved {all_pdf} ({len(png_files)} pages)")
 
 
+@named("plot-cancer-cohorts")
+def plot_cancer_cohorts(
+    output_prefix: Optional[str] = None,
+    output_dpi: int = 300,
+):
+    """Visualize curated gene sets across all 33 TCGA cancer types (no sample needed)."""
+    from matplotlib.backends.backend_pdf import PdfPages
+    from pathlib import Path
+
+    prefix = output_prefix or "cohort"
+    png_files = []
+
+    plots = [
+        ("heatmap", plot_cohort_heatmap),
+        ("disjoint-counts", plot_cohort_disjoint_counts),
+        ("pca", plot_cohort_pca),
+        ("therapy-targets", plot_cohort_therapy_targets),
+        ("surface-proteins", plot_cohort_surface_proteins),
+        ("ctas", plot_cohort_ctas),
+    ]
+    for name, fn in plots:
+        out = f"{prefix}-{name}.png"
+        fn(save_to_filename=out, save_dpi=output_dpi)
+        png_files.append(out)
+
+    # Collect into PDF
+    import matplotlib.image as mpimg
+    pdf_path = f"{prefix}-all.pdf"
+    with PdfPages(pdf_path) as pdf:
+        for png_path in png_files:
+            if Path(png_path).exists():
+                img = mpimg.imread(png_path)
+                fig, ax = plt.subplots(figsize=(11, 8.5))
+                ax.imshow(img)
+                ax.axis("off")
+                ax.set_title(Path(png_path).stem, fontsize=10)
+                fig.tight_layout()
+                pdf.savefig(fig, bbox_inches="tight")
+                plt.close(fig)
+    print(f"Saved {pdf_path} ({len(png_files)} pages)")
+
+
 def main():
     print_name_and_version()
     print("---")
-    dispatch_commands([print_dataset_info, plot_expression])
+    dispatch_commands([print_dataset_info, plot_expression, plot_cancer_cohorts])
 
 
 if __name__ == "__main__":

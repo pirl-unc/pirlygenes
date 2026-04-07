@@ -940,6 +940,320 @@ def plot_cancer_type_disjoint_genes(
     return fig, ax
 
 
+# -------------------- cohort-only plots (no sample needed) --------------------
+
+
+def plot_cohort_heatmap(
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(18, 14),
+):
+    """Heatmap of curated cancer-type genes × cancer types.
+
+    Rows are genes from cancer-type-genes.csv, columns are 33 TCGA cancer
+    types. Values are log2(housekeeping-normalized expression + 0.001).
+    """
+    import numpy as np
+    from .gene_sets_cancer import pan_cancer_expression, cancer_types
+
+    # Load curated cancer-type genes
+    from .load_dataset import get_data
+    ct_df = get_data("cancer-type-genes")
+    gene_symbols = sorted(ct_df["Symbol"].unique())
+
+    # Get expression
+    ref = pan_cancer_expression(genes=gene_symbols, normalize="housekeeping")
+    codes = cancer_types()
+    fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
+    codes = [c.replace("FPKM_", "") for c in fpkm_cols]
+
+    # Build matrix
+    ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    present = [s for s in gene_symbols if s in ref_dedup.index]
+    matrix = ref_dedup.loc[present, fpkm_cols].astype(float)
+    matrix = np.log2(matrix + 0.001)
+    matrix.columns = codes
+
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(matrix.values, aspect="auto", cmap="RdBu_r",
+                   vmin=-5, vmax=5, interpolation="nearest")
+    ax.set_xticks(range(len(codes)))
+    ax.set_xticklabels(codes, fontsize=7, rotation=90)
+    ax.set_yticks(range(len(present)))
+    ax.set_yticklabels(present, fontsize=4)
+    ax.set_title("Curated cancer-type genes × TCGA cancer types\n(log2 housekeeping-normalized)", fontsize=11)
+    fig.colorbar(im, ax=ax, label="log2(HK-normalized)", shrink=0.6)
+    fig.tight_layout()
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
+
+
+def plot_cohort_disjoint_counts(
+    n_genes=30,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(12, 10),
+):
+    """Bar chart of disjoint signature gene counts per cancer type (no sample)."""
+    import numpy as np
+    from .gene_sets_cancer import top_enriched_per_cancer_type
+
+    sig = top_enriched_per_cancer_type(n=n_genes, disjoint=True, min_fold=2.0)
+    stats = [(code, len(genes)) for code, genes in sig.items()]
+    stats.sort(key=lambda x: -x[1])
+
+    codes = [s[0] for s in stats]
+    counts = [s[1] for s in stats]
+    labels = [f"{c} ({CANCER_TYPE_NAMES.get(c, c)})" for c in codes]
+
+    fig, ax = plt.subplots(figsize=figsize)
+    y = np.arange(len(codes))
+    ax.barh(y, counts, color="#2166ac", edgecolor="none", height=0.7)
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=7)
+    ax.set_xlabel(f"Disjoint signature genes (of {n_genes} max)", fontsize=10)
+    ax.set_title("Cancer-type-specific disjoint gene counts\n(genes uniquely overexpressed vs all other types)", fontsize=11)
+    ax.invert_yaxis()
+
+    for i, (code, count) in enumerate(stats):
+        top3 = sig[code][:3]
+        ax.text(count + 0.3, i, ", ".join(top3), fontsize=5.5, va="center", alpha=0.7)
+
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
+
+
+def plot_cohort_pca(
+    n_genes=20,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(12, 10),
+):
+    """PCA of 33 TCGA cancer type centroids (no sample)."""
+    import numpy as np
+    from sklearn.decomposition import PCA
+    from .gene_sets_cancer import top_enriched_per_cancer_type, pan_cancer_expression
+
+    sig = top_enriched_per_cancer_type(n=n_genes, disjoint=True)
+    all_symbols = set()
+    for genes in sig.values():
+        all_symbols.update(genes)
+
+    ref = pan_cancer_expression(normalize="housekeeping")
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    codes = [c.replace("FPKM_", "") for c in fpkm_cols]
+
+    ref_filtered = ref[ref["Symbol"].isin(all_symbols)].copy()
+    gene_order = sorted(ref_filtered["Symbol"].unique())
+
+    feature_matrix = []
+    for col in fpkm_cols:
+        vals = []
+        for sym in gene_order:
+            row_mask = ref_filtered["Symbol"] == sym
+            v = ref_filtered.loc[row_mask, col].astype(float).values
+            vals.append(v[0] if len(v) > 0 else 0)
+        feature_matrix.append(vals)
+
+    X = np.array(feature_matrix)
+    X = np.log2(X + 0.001)
+
+    pca = PCA(n_components=2)
+    coords = pca.fit_transform(X)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.scatter(coords[:, 0], coords[:, 1], s=80, alpha=0.7,
+               color="steelblue", edgecolors="white", linewidths=0.5, zorder=2)
+    for i, code in enumerate(codes):
+        ax.text(coords[i, 0], coords[i, 1], f" {code}",
+                fontsize=8, alpha=0.8, va="center")
+
+    ax.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)", fontsize=11)
+    ax.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)", fontsize=11)
+    ax.set_title("TCGA cancer type centroids in gene-signature PCA space", fontsize=12)
+    ax.grid(True, alpha=0.2)
+    fig.tight_layout()
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
+
+
+def plot_cohort_therapy_targets(
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(16, 10),
+):
+    """Heatmap of therapy targets × cancer types showing expression.
+
+    Rows are therapy target genes (from ADC, CAR-T, bispecific, radioligand,
+    TCR-T registries), columns are cancer types.
+    """
+    import numpy as np
+    from .gene_sets_cancer import (
+        therapy_target_gene_id_to_name,
+        pan_cancer_expression,
+        cancer_types,
+    )
+
+    # Collect all therapy targets
+    all_targets = {}
+    for therapy in ["ADC", "CAR-T", "TCR-T", "bispecific-antibodies", "radioligand"]:
+        d = therapy_target_gene_id_to_name(therapy)
+        all_targets.update(d)
+    target_symbols = sorted(set(all_targets.values()))
+
+    ref = pan_cancer_expression(genes=target_symbols, normalize="housekeeping")
+    codes = cancer_types()
+    fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
+    codes = [c.replace("FPKM_", "") for c in fpkm_cols]
+
+    ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    present = [s for s in target_symbols if s in ref_dedup.index]
+    matrix = ref_dedup.loc[present, fpkm_cols].astype(float)
+    matrix = np.log2(matrix + 0.001)
+    matrix.columns = codes
+
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(matrix.values, aspect="auto", cmap="YlOrRd",
+                   vmin=-5, vmax=3, interpolation="nearest")
+    ax.set_xticks(range(len(codes)))
+    ax.set_xticklabels(codes, fontsize=7, rotation=90)
+    ax.set_yticks(range(len(present)))
+    ax.set_yticklabels(present, fontsize=6)
+    ax.set_title("Therapy targets × TCGA cancer types\n(log2 housekeeping-normalized)", fontsize=11)
+    fig.colorbar(im, ax=ax, label="log2(HK-normalized)", shrink=0.6)
+    fig.tight_layout()
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
+
+
+def _plot_geneset_by_cancer_heatmap(
+    gene_symbols,
+    title,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(16, 12),
+    cmap="YlOrRd",
+    top_n_per_cancer=None,
+):
+    """Shared helper: heatmap of gene set × cancer types."""
+    import numpy as np
+    from .gene_sets_cancer import pan_cancer_expression, cancer_types
+
+    ref = pan_cancer_expression(genes=gene_symbols, normalize="housekeeping")
+    codes = cancer_types()
+    fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
+    codes = [c.replace("FPKM_", "") for c in fpkm_cols]
+
+    ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    present = [s for s in gene_symbols if s in ref_dedup.index]
+
+    if not present:
+        return None, None
+
+    matrix = ref_dedup.loc[present, fpkm_cols].astype(float)
+
+    # Filter to top N genes by max expression across any cancer type
+    if top_n_per_cancer and len(present) > top_n_per_cancer:
+        max_expr = matrix.max(axis=1)
+        top_idx = max_expr.nlargest(top_n_per_cancer).index
+        matrix = matrix.loc[top_idx]
+        present = list(top_idx)
+
+    # Sort rows by mean expression (highest at top)
+    row_means = matrix.mean(axis=1)
+    sort_order = row_means.sort_values(ascending=False).index
+    matrix = matrix.loc[sort_order]
+    present = list(sort_order)
+
+    matrix = np.log2(matrix + 0.001)
+    matrix.columns = codes
+
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(matrix.values, aspect="auto", cmap=cmap,
+                   vmin=-5, vmax=3, interpolation="nearest")
+    ax.set_xticks(range(len(codes)))
+    ax.set_xticklabels(codes, fontsize=7, rotation=90)
+    ax.set_yticks(range(len(present)))
+    ax.set_yticklabels(present, fontsize=5 if len(present) > 50 else 6)
+    ax.set_title(f"{title}\n(log2 housekeeping-normalized)", fontsize=11)
+    fig.colorbar(im, ax=ax, label="log2(HK-normalized)", shrink=0.6)
+    fig.tight_layout()
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
+
+
+def plot_cohort_surface_proteins(
+    save_to_filename=None, save_dpi=300, figsize=(16, 14),
+):
+    """Heatmap of cancer surfaceome targets × cancer types."""
+    from .gene_sets_cancer import cancer_surfaceome_gene_names
+    genes = sorted(cancer_surfaceome_gene_names())
+    return _plot_geneset_by_cancer_heatmap(
+        genes, "Tumor-specific surface proteins (TCSA L3) × cancer types",
+        save_to_filename=save_to_filename, save_dpi=save_dpi,
+        figsize=figsize, cmap="YlOrRd",
+    )
+
+
+def plot_cohort_ctas(
+    save_to_filename=None, save_dpi=300, figsize=(16, 14),
+):
+    """Heatmap of CTA genes × cancer types (raw FPKM, log-scaled)."""
+    import numpy as np
+    from .gene_sets_cancer import CTA_gene_names, pan_cancer_expression, cancer_types
+
+    genes = sorted(CTA_gene_names())
+    ref = pan_cancer_expression(genes=genes)  # raw values, not HK-normalized
+    codes = cancer_types()
+    fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
+    codes_clean = [c.replace("FPKM_", "") for c in fpkm_cols]
+
+    ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    present = [s for s in genes if s in ref_dedup.index]
+    matrix = ref_dedup.loc[present, fpkm_cols].astype(float)
+
+    # Filter to top 50 by max expression, sort by mean descending
+    max_expr = matrix.max(axis=1)
+    top50 = max_expr.nlargest(50).index
+    matrix = matrix.loc[top50]
+    matrix = matrix.loc[matrix.mean(axis=1).sort_values(ascending=False).index]
+    present = list(matrix.index)
+
+    matrix = np.log2(matrix + 0.1)  # +0.1 offset for CTAs (many are truly 0)
+    matrix.columns = codes_clean
+
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(matrix.values, aspect="auto", cmap="magma_r",
+                   vmin=-3, vmax=8, interpolation="nearest")
+    ax.set_xticks(range(len(codes_clean)))
+    ax.set_xticklabels(codes_clean, fontsize=7, rotation=90)
+    ax.set_yticks(range(len(present)))
+    ax.set_yticklabels(present, fontsize=6)
+    ax.set_title("Cancer-testis antigens × cancer types (top 50)\n(log2 FPKM)", fontsize=11)
+    fig.colorbar(im, ax=ax, label="log2(FPKM + 0.1)", shrink=0.6)
+    fig.tight_layout()
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
+
+
 def plot_cancer_type_pca(
     df_gene_expr,
     n_genes=10,
