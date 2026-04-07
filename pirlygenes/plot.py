@@ -1317,31 +1317,58 @@ def _compute_cancer_type_signature_stats(
     n_signature_genes=20,
     min_fold=2.0,
 ):
+    """Score each cancer type by how well the sample matches its signature genes.
+
+    Uses z-score–based gene selection (most specifically expressed genes per
+    cancer type) and midrank percentile scoring — the sample's expression of
+    each signature gene is ranked against the cross-cancer distribution.
+    This is robust to TPM-vs-FPKM scale differences.
+    """
     import numpy as np
-    from .gene_sets_cancer import top_enriched_per_cancer_type
 
     sample_raw_by_symbol, sample_hk_by_symbol = _sample_expression_by_symbol(df_gene_expr)
     ref = pan_cancer_expression(normalize="housekeeping")
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
-    sig = top_enriched_per_cancer_type(
-        n=n_signature_genes,
-        disjoint=True,
-        min_fold=min_fold,
-    )
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    codes = [c.replace("FPKM_", "") for c in fpkm_cols]
+
+    # Z-score matrix across cancer types for each gene
+    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
+    gene_mean = expr_matrix.mean(axis=1)
+    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
+    z_matrix = expr_matrix.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
+
+    # Select signature genes per cancer type: top N by z-score,
+    # requiring minimum expression in the cancer type
+    sig = {}
+    for col in fpkm_cols:
+        code = col.replace("FPKM_", "")
+        z_col = z_matrix[col]
+        expr_col = expr_matrix[col]
+        valid = z_col[expr_col > 0.01]
+        sig[code] = list(valid.nlargest(n_signature_genes).index)
 
     stats = []
     for code in sorted(sig.keys()):
         genes = sig[code]
         cohort_col = f"FPKM_{code}"
         gene_details = []
+        percentiles = []
         for gene in genes:
             sample_raw = float(sample_raw_by_symbol.get(gene, 0.0))
             sample_hk = float(sample_hk_by_symbol.get(gene, 0.0))
             cohort_hk = 0.0
+            percentile = 0.5
             if gene in ref_by_sym.index and cohort_col in ref_by_sym.columns:
                 cohort_hk = float(ref_by_sym.loc[gene, cohort_col])
+                # Midrank percentile: robust to ties at zero
+                ref_vals = expr_matrix.loc[gene].values
+                n = len(ref_vals)
+                below = np.sum(ref_vals < sample_hk)
+                equal = np.sum(np.isclose(ref_vals, sample_hk, atol=1e-6))
+                percentile = float((below + 0.5 * equal) / n)
+            percentiles.append(percentile)
             log_diff = abs(np.log2(sample_hk + 0.001) - np.log2(cohort_hk + 0.001))
-            weight = max(np.log2(cohort_hk + 1.1), 0.1)
             gene_details.append(
                 {
                     "gene": gene,
@@ -1349,21 +1376,14 @@ def _compute_cancer_type_signature_stats(
                     "sample_hk": sample_hk,
                     "cohort_hk": cohort_hk,
                     "log_diff": log_diff,
-                    "weight": weight,
+                    "percentile": percentile,
                 }
             )
 
         if gene_details:
-            weighted_mean_log_diff = float(
-                np.average(
-                    [g["log_diff"] for g in gene_details],
-                    weights=[g["weight"] for g in gene_details],
-                )
-            )
-            score = 1.0 / (1.0 + weighted_mean_log_diff)
+            score = float(np.mean(percentiles))
             mean_sample_raw = float(np.mean([g["sample_raw"] for g in gene_details]))
         else:
-            weighted_mean_log_diff = float("inf")
             score = 0.0
             mean_sample_raw = 0.0
 
@@ -1373,7 +1393,6 @@ def _compute_cancer_type_signature_stats(
                 "genes": genes,
                 "n_genes": len(genes),
                 "score": score,
-                "weighted_mean_log_diff": weighted_mean_log_diff,
                 "mean_sample_raw": mean_sample_raw,
                 "gene_details": gene_details,
             }
@@ -1686,7 +1705,7 @@ def plot_cancer_type_disjoint_genes(
     ax.set_xlabel("Signature similarity score", fontsize=10)
     ax.set_title(
         "Cancer type similarity score\n"
-        "(higher = closer by weighted mean |log2 sample/cohort| across signature genes)",
+        "(mean percentile rank of sample expression among signature genes)",
         fontsize=11,
     )
     ax.invert_yaxis()
@@ -1696,7 +1715,7 @@ def plot_cancer_type_disjoint_genes(
 
     # Annotate bars with top contributing genes
     for i, row in enumerate(stats):
-        top3 = sorted(row["gene_details"], key=lambda detail: detail["log_diff"])[:3]
+        top3 = sorted(row["gene_details"], key=lambda detail: -detail["percentile"])[:3]
         top3_str = ", ".join(detail["gene"] for detail in top3)
         if top3_str:
             ax.text(min(row["score"] + 0.01, 0.99), i, top3_str,
