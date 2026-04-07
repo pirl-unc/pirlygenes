@@ -502,15 +502,21 @@ def _prepare_sample_vs_cancer_data(
 
     # Compute per-gene z-score parameters across cancer types so we can
     # put the sample (TPM) and reference (FPKM) on a comparable scale.
+    # Drop genes with near-zero variance — they have no discriminative
+    # power and produce unstable z-scores.
     log_ref_matrix = np.log2(ref[fpkm_cols].astype(float) + 1)
     ref_gene_mean = log_ref_matrix.mean(axis=1)
-    ref_gene_std = log_ref_matrix.std(axis=1).clip(lower=0.1)
+    ref_gene_std = log_ref_matrix.std(axis=1)
+    variable_mask = ref_gene_std >= 0.1
+    ref = ref[variable_mask].copy()
+    ref_gene_mean = ref_gene_mean[variable_mask]
+    ref_gene_std = ref_gene_std[variable_mask]
 
     if ref_col is not None:
         log_ref_vals = np.log2(ref[ref_col].astype(float) + 1)
         ref["_ref_z"] = (log_ref_vals - ref_gene_mean) / ref_gene_std
     else:
-        log_ref_vals = log_ref_matrix.mean(axis=1)
+        log_ref_vals = log_ref_matrix.loc[variable_mask].mean(axis=1)
         ref["_ref_z"] = (log_ref_vals - ref_gene_mean) / ref_gene_std
 
     ref_z_lookup = dict(zip(
@@ -1472,8 +1478,15 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
     top_var_idx = gene_cv[gene_mean > 0.01].nlargest(n_genes * 33).index
     ref_filtered = ref.loc[top_var_idx].drop_duplicates(subset="Symbol")
 
-    # Log-transform reference and sample
+    # Log-transform reference and sample, drop low-variance genes
     log_ref = np.log2(ref_filtered[fpkm_cols].astype(float) + 1)
+    ref_gene_std = log_ref.std(axis=1)
+    var_mask = ref_gene_std >= 0.1
+    log_ref = log_ref[var_mask]
+    ref_filtered = ref_filtered[var_mask]
+    ref_gene_std = ref_gene_std[var_mask].values
+    ref_gene_mean = log_ref.mean(axis=1).values
+
     sample_vals = np.array([
         sample_by_id.get(row["Ensembl_Gene_ID"], 0.0)
         for _, row in ref_filtered.iterrows()
@@ -1482,10 +1495,6 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
 
     # Z-score each gene across cancer types, then apply the same transform
     # to the sample so TPM and FPKM are on a comparable scale
-    ref_gene_mean = log_ref.mean(axis=1).values.copy()
-    ref_gene_std = log_ref.std(axis=1).values.copy()
-    ref_gene_std[ref_gene_std < 0.1] = 1.0  # avoid tiny std → huge z-scores
-
     z_ref = (log_ref.values - ref_gene_mean[:, None]) / ref_gene_std[:, None]
     z_sample = (log_sample - ref_gene_mean) / ref_gene_std
 
