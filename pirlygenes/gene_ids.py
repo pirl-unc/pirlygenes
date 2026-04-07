@@ -28,11 +28,11 @@ genomes = sorted(
     key=lambda g: g.release,
 )
 
-print("Installed Ensembl genomes: %s" % " ".join([str(g.release) for g in genomes]))
+_installed_releases = " ".join([str(g.release) for g in genomes])
 
 
 def find_gene_name_from_ensembl_gene_id(
-    gene_id: str, verbose: bool = True
+    gene_id: str, verbose: bool = False
 ) -> Optional[str]:
     gene_name = None
     gene = None
@@ -56,7 +56,7 @@ def find_gene_name_from_ensembl_gene_id(
 
 
 def find_gene_name_from_ensembl_transcript_id(
-    t_id: str, verbose: bool = True
+    t_id: str, verbose: bool = False
 ) -> Optional[str]:
     gene_name = None
     t = None
@@ -151,18 +151,20 @@ def find_canonical_gene_id_and_name(gene_name: str) -> Tuple[Optional[str], Opti
 
 def find_canonical_gene_ids_and_names(
     gene_names: Sequence[str],
+    verbose: bool = False,
 ) -> Tuple[List[Optional[str]], List[Optional[str]]]:
 
     gene_ids = []
     canonical_gene_names = []
 
-    for gene_name in tqdm(gene_names, "Finding canonical gene IDs and names"):
+    for gene_name in tqdm(gene_names, "Finding canonical gene IDs and names", disable=not verbose):
         gene_id, canonical_name = find_canonical_gene_id_and_name(gene_name)
-        print(
-            "Found %s -> %s" % (gene_name, gene_id or "None")
-            if gene_id
-            else "Not found: %s" % gene_name
-        )
+        if verbose:
+            print(
+                "Found %s -> %s" % (gene_name, gene_id or "None")
+                if gene_id
+                else "Not found: %s" % gene_name
+            )
         gene_ids.append(gene_id)
         canonical_gene_names.append(canonical_name)
     return gene_ids, canonical_gene_names

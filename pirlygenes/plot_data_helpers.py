@@ -210,7 +210,8 @@ def normalize_gene_sets(
                     print("[warn]", f"{cat}: {', '.join(v)}")
 
     cat_to_gene_id_list = {cat: sorted(ids) for cat, ids in cat_to_gene_ids.items()}
-    print("Categories:", list(cat_to_gene_id_list.keys()))
+    if verbose:
+        print("Categories:", list(cat_to_gene_id_list.keys()))
     return cat_to_gene_id_list, gene_id_to_name
 
 
