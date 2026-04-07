@@ -318,6 +318,42 @@ def plot_gene_expression(
 
 # -------------------- cancer type aliases --------------------
 
+CANCER_TYPE_NAMES = {
+    "ACC": "Adrenocortical Carcinoma",
+    "BLCA": "Bladder Urothelial Carcinoma",
+    "BRCA": "Breast Invasive Carcinoma",
+    "CESC": "Cervical Squamous Cell Carcinoma",
+    "CHOL": "Cholangiocarcinoma",
+    "COAD": "Colon Adenocarcinoma",
+    "DLBC": "Diffuse Large B-Cell Lymphoma",
+    "ESCA": "Esophageal Carcinoma",
+    "GBM": "Glioblastoma Multiforme",
+    "HNSC": "Head and Neck Squamous Cell Carcinoma",
+    "KICH": "Kidney Chromophobe",
+    "KIRC": "Kidney Renal Clear Cell Carcinoma",
+    "KIRP": "Kidney Renal Papillary Cell Carcinoma",
+    "LAML": "Acute Myeloid Leukemia",
+    "LGG": "Brain Lower Grade Glioma",
+    "LIHC": "Liver Hepatocellular Carcinoma",
+    "LUAD": "Lung Adenocarcinoma",
+    "LUSC": "Lung Squamous Cell Carcinoma",
+    "MESO": "Mesothelioma",
+    "OV": "Ovarian Serous Cystadenocarcinoma",
+    "PAAD": "Pancreatic Adenocarcinoma",
+    "PCPG": "Pheochromocytoma and Paraganglioma",
+    "PRAD": "Prostate Adenocarcinoma",
+    "READ": "Rectum Adenocarcinoma",
+    "SARC": "Sarcoma",
+    "SKCM": "Skin Cutaneous Melanoma",
+    "STAD": "Stomach Adenocarcinoma",
+    "TGCT": "Testicular Germ Cell Tumor",
+    "THCA": "Thyroid Carcinoma",
+    "THYM": "Thymoma",
+    "UCEC": "Uterine Corpus Endometrial Carcinoma",
+    "UCS": "Uterine Carcinosarcoma",
+    "UVM": "Uveal Melanoma",
+}
+
 CANCER_TYPE_ALIASES = {
     "prostate": "PRAD",
     "breast": "BRCA",
@@ -352,6 +388,25 @@ CANCER_TYPE_ALIASES = {
     "testicular": "TGCT",
     "testis": "TGCT",
     "sarcoma": "SARC",
+    "adrenocortical": "ACC",
+    "adrenal": "ACC",
+    "cholangiocarcinoma": "CHOL",
+    "bile_duct": "CHOL",
+    "dlbcl": "DLBC",
+    "lymphoma": "DLBC",
+    "esophageal": "ESCA",
+    "esophagus": "ESCA",
+    "aml": "LAML",
+    "leukemia": "LAML",
+    "low_grade_glioma": "LGG",
+    "lgg": "LGG",
+    "glioma": "LGG",
+    "mesothelioma": "MESO",
+    "pheochromocytoma": "PCPG",
+    "paraganglioma": "PCPG",
+    "thymoma": "THYM",
+    "uterine_carcinosarcoma": "UCS",
+    "uveal_melanoma": "UVM",
 }
 
 
@@ -418,11 +473,12 @@ def _prepare_sample_vs_cancer_data(
         cancer_type = resolve_cancer_type(cancer_type)
         ref_col = f"FPKM_{cancer_type}"
         ref["_ref_value"] = ref[ref_col].astype(float)
-        x_label = f"Housekeeping-normalized FPKM ({cancer_type})"
+        cancer_label = CANCER_TYPE_NAMES.get(cancer_type, cancer_type)
+        cohort_label = f"{cancer_label} cohort ({cancer_type})"
     else:
         fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
         ref["_ref_value"] = ref[fpkm_cols].astype(float).mean(axis=1)
-        x_label = "Housekeeping-normalized FPKM (mean across cancers)"
+        cohort_label = "Mean across 33 TCGA cancer cohorts"
 
     ref_lookup = dict(zip(
         ref["Ensembl_Gene_ID"].map(_strip_ensembl_version),
@@ -435,6 +491,13 @@ def _prepare_sample_vs_cancer_data(
     if tpm_col is None:
         raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
 
+    # Normalize sample TPM to housekeeping (same scale as cohort reference)
+    hk_ids = housekeeping_gene_ids()
+    hk_mask = df[gene_id_col].isin(hk_ids)
+    hk_median_tpm = df.loc[hk_mask, tpm_col].astype(float).median()
+    if hk_median_tpm <= 0:
+        hk_median_tpm = 1.0  # fallback
+
     gene_to_category = _create_gene_to_category_list_mapping(cat_to_ids)
     name_from_df = dict(zip(df[gene_id_col].astype(str), df[gene_name_col].astype(str)))
 
@@ -442,6 +505,7 @@ def _prepare_sample_vs_cancer_data(
     for _, row in df.iterrows():
         gid = str(row[gene_id_col])
         tpm = float(row[tpm_col])
+        sample_hk = tpm / hk_median_tpm  # housekeeping-normalized
         ref_val = ref_lookup.get(gid)
         if ref_val is None:
             continue
@@ -449,31 +513,37 @@ def _prepare_sample_vs_cancer_data(
         name = name_from_df.get(gid) or id_to_name.get(gid) or gid
         display_name = aliases.get(name, name)
         for cat in cats:
-            rows.append((gid, display_name, cat, tpm, ref_val))
+            rows.append((gid, display_name, cat, sample_hk, ref_val))
 
     plot_df = pd.DataFrame(rows, columns=[
-        "gene_id", "gene_name", "category", "sample_TPM", "ref_value",
+        "gene_id", "gene_name", "category", "sample_hk", "cohort_hk",
     ])
-    plot_df["sample_TPM_log"] = plot_df["sample_TPM"] + 0.01
-    plot_df["ref_value_log"] = plot_df["ref_value"] + 0.001
+    # Offsets for log scale
+    plot_df["sample_log"] = plot_df["sample_hk"] + 0.001
+    plot_df["cohort_log"] = plot_df["cohort_hk"] + 0.001
+    # Enrichment ratio: sample / cohort (high = sample-enriched)
+    plot_df["enrichment"] = (plot_df["sample_hk"] + 0.001) / (plot_df["cohort_hk"] + 0.001)
 
     named_cats = list(cat_to_ids.keys())
     palette = sns.color_palette("tab10", len(named_cats))
     cat_to_color = dict(zip(named_cats, palette))
 
-    return plot_df, named_cats, cat_to_color, x_label
+    sample_label = "Sample (housekeeping-normalized TPM)"
+    cohort_axis_label = f"{cohort_label} (housekeeping-normalized)"
+
+    return plot_df, named_cats, cat_to_color, sample_label, cohort_axis_label
 
 
 def _draw_scatter_panel(
-    ax, plot_df, highlight_cat, color, x_label,
+    ax, plot_df, highlight_cat, color,
     num_labels=10, adjust_args=None,
 ):
-    """Draw a single scatter panel: all genes gray, one category highlighted."""
+    """Draw a single scatter panel: sample (x) vs cohort (y), one category highlighted."""
     # Background: all genes faded
     bg = plot_df[plot_df.category == "other"]
     if len(bg):
         ax.scatter(
-            bg.ref_value_log, bg.sample_TPM_log,
+            bg.sample_log, bg.cohort_log,
             c=[(0.88, 0.88, 0.88)], alpha=0.12, s=6, zorder=1,
         )
 
@@ -483,34 +553,46 @@ def _draw_scatter_panel(
     ]
     if len(other_named):
         ax.scatter(
-            other_named.ref_value_log, other_named.sample_TPM_log,
+            other_named.sample_log, other_named.cohort_log,
             c=[(0.78, 0.78, 0.78)], alpha=0.18, s=8, zorder=1,
         )
 
-    # Highlight category
+    # Highlight category — mark sample-enriched genes (enrichment > 5) with edge ring
     hi = plot_df[plot_df.category == highlight_cat]
     if len(hi):
-        ax.scatter(
-            hi.ref_value_log, hi.sample_TPM_log,
-            color=color, alpha=0.8, s=30, zorder=3, edgecolors="none",
-        )
+        enriched = hi[hi.enrichment > 5]
+        normal = hi[hi.enrichment <= 5]
+        if len(normal):
+            ax.scatter(
+                normal.sample_log, normal.cohort_log,
+                color=color, alpha=0.8, s=30, zorder=3, edgecolors="none",
+            )
+        if len(enriched):
+            ax.scatter(
+                enriched.sample_log, enriched.cohort_log,
+                color=color, alpha=0.9, s=50, zorder=4,
+                edgecolors="black", linewidths=0.8,
+            )
 
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_title(highlight_cat.replace("_", " "), fontsize=11, fontweight="bold")
 
-    # Reference lines
-    for tpm_thresh in (100, 1000):
-        ax.axhline(y=tpm_thresh, color="#cccccc", linestyle="--",
-                    linewidth=0.5, alpha=0.4, zorder=1)
+    # Diagonal: y = x (genes on this line have same expression in sample and cohort)
+    lims = [
+        max(ax.get_xlim()[0], ax.get_ylim()[0]),
+        min(ax.get_xlim()[1], ax.get_ylim()[1]),
+    ]
+    if lims[1] > lims[0]:
+        ax.plot(lims, lims, ":", color="#bbbbbb", linewidth=0.8, alpha=0.5, zorder=0)
 
-    # Labels: top N by sample TPM
+    # Labels: top N by enrichment (sample-enriched), with fallback to top by sample expression
     if len(hi) and num_labels > 0:
-        top = hi.nlargest(num_labels, "sample_TPM")
+        top_enriched = hi.nlargest(num_labels, "enrichment")
         texts = []
-        for _, row in top.iterrows():
+        for _, row in top_enriched.iterrows():
             texts.append(ax.text(
-                row.ref_value_log, row.sample_TPM_log, row.gene_name,
+                row.sample_log, row.cohort_log, row.gene_name,
                 fontsize=8, alpha=0.9, ha="left", va="bottom",
             ))
         if adjust_args is not None:
@@ -568,21 +650,20 @@ def plot_sample_vs_cancer(
     """
     from pathlib import Path
 
-    plot_df, named_cats, cat_to_color, x_label = _prepare_sample_vs_cancer_data(
-        df_gene_expr, gene_sets, cancer_type,
-    )
+    plot_df, named_cats, cat_to_color, sample_label, cohort_label = \
+        _prepare_sample_vs_cancer_data(df_gene_expr, gene_sets, cancer_type)
 
     # Generate one figure per category
     figures = {}
     for cat in named_cats:
         fig, ax = plt.subplots(figsize=figsize)
         _draw_scatter_panel(
-            ax, plot_df, cat, cat_to_color[cat], x_label,
+            ax, plot_df, cat, cat_to_color[cat],
             num_labels=num_labels_per_category,
             adjust_args=adjust_args,
         )
-        ax.set_xlabel(x_label, fontsize=10)
-        ax.set_ylabel("Sample TPM", fontsize=10)
+        ax.set_xlabel(sample_label, fontsize=10)
+        ax.set_ylabel(cohort_label, fontsize=10)
         fig.tight_layout()
         figures[cat] = fig
 
