@@ -28,6 +28,7 @@ from .plot import (
     plot_gene_expression,
     plot_sample_vs_cancer,
     plot_cancer_type_genes,
+    plot_cancer_type_disjoint_genes,
     plot_cancer_type_pca,
     default_gene_sets,
     CANCER_TYPE_ALIASES,
@@ -167,6 +168,9 @@ def plot_expression(
     genes_png = "%s-cancer-types-genes.png" % prefix if prefix else "cancer-types-genes.png"
     plot_cancer_type_genes(df_expr, save_to_filename=genes_png, save_dpi=output_dpi)
 
+    disjoint_png = "%s-cancer-types-disjoint.png" % prefix if prefix else "cancer-types-disjoint.png"
+    plot_cancer_type_disjoint_genes(df_expr, save_to_filename=disjoint_png, save_dpi=output_dpi)
+
     pca_png = "%s-cancer-types-scatter.png" % prefix if prefix else "cancer-types-scatter.png"
     plot_cancer_type_pca(df_expr, save_to_filename=pca_png, save_dpi=output_dpi)
 
@@ -198,6 +202,7 @@ def plot_expression(
         "%s-summary.png" % prefix if prefix else "summary.png",
         "%s-treatments.png" % prefix if prefix else "treatments.png",
         genes_png,
+        disjoint_png,
         pca_png,
     ]
     if ct_png:

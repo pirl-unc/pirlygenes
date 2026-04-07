@@ -114,6 +114,7 @@ def test_cli_plot_expression_and_main(monkeypatch):
     monkeypatch.setattr(cli_mod, "plot_gene_expression", lambda *a, **k: calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_sample_vs_cancer", lambda *a, **k: scatter_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_genes", lambda *a, **k: cancer_gene_calls.append(k))
+    monkeypatch.setattr(cli_mod, "plot_cancer_type_disjoint_genes", lambda *a, **k: cancer_gene_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_pca", lambda *a, **k: pca_calls.append(k))
     monkeypatch.setattr(cli_mod, "therapy_target_gene_id_to_name", lambda t: {"ENSG_MOCK": t})
     monkeypatch.setattr(cli_mod, "pMHC_TCE_target_gene_names", lambda: {"PMHC"})
@@ -133,7 +134,7 @@ def test_cli_plot_expression_and_main(monkeypatch):
     assert calls[1]["always_label_genes"] == {"FAP", "CD276"}
     assert len(scatter_calls) == 1
     assert scatter_calls[0]["save_to_filename"] == "out-vs-cancer.pdf"
-    assert len(cancer_gene_calls) == 1
+    assert len(cancer_gene_calls) == 2  # genes + disjoint
     assert len(pca_calls) == 1
 
     printed = []

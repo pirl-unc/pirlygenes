@@ -850,6 +850,96 @@ def plot_cancer_type_genes(
     return fig, ax
 
 
+def plot_cancer_type_disjoint_genes(
+    df_gene_expr,
+    n_genes=20,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(14, 12),
+):
+    """Bar chart of disjoint expression-signature genes per cancer type.
+
+    Shows how many genes are uniquely overexpressed in each cancer type
+    (vs all others), colored by how many of those genes are expressed
+    (TPM > 1) in the patient sample.
+
+    Parameters
+    ----------
+    df_gene_expr : pd.DataFrame
+        Patient expression data.
+    n_genes : int
+        Max disjoint genes per cancer type to consider.
+    save_to_filename : str or None
+        Output path.
+    """
+    import numpy as np
+    from .plot_data_helpers import _strip_ensembl_version
+    from .gene_sets_cancer import top_enriched_per_cancer_type, pan_cancer_expression
+
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
+    df = df_gene_expr.copy()
+    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+
+    tpm_col = "TPM" if "TPM" in df.columns else next(
+        (c for c in df.columns if c.lower() == "tpm"), None
+    )
+    sample_tpm = dict(zip(
+        df[gene_name_col].astype(str), df[tpm_col].astype(float)
+    ))
+
+    sig = top_enriched_per_cancer_type(n=n_genes, disjoint=True, min_fold=2.0)
+
+    # For each cancer type: count total disjoint genes and how many expressed in sample
+    cancer_stats = []
+    for code in sorted(sig.keys()):
+        genes = sig[code]
+        n_total = len(genes)
+        n_expressed = sum(1 for g in genes if sample_tpm.get(g, 0) > 1)
+        mean_tpm = np.mean([sample_tpm.get(g, 0) for g in genes]) if genes else 0
+        cancer_stats.append((code, n_total, n_expressed, mean_tpm, genes))
+
+    # Sort by number expressed (descending), then mean TPM
+    cancer_stats.sort(key=lambda x: (-x[2], -x[3]))
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    codes = [s[0] for s in cancer_stats]
+    n_totals = [s[1] for s in cancer_stats]
+    n_expressed = [s[2] for s in cancer_stats]
+    labels = [f"{c} ({CANCER_TYPE_NAMES.get(c, c)})" for c in codes]
+    y = np.arange(len(codes))
+
+    # Background bar: total disjoint genes (gray)
+    ax.barh(y, n_totals, color="#dddddd", edgecolor="none", height=0.7, label="Not expressed (TPM<1)")
+    # Foreground bar: expressed genes (colored)
+    ax.barh(y, n_expressed, color="#2166ac", edgecolor="none", height=0.7, label="Expressed in sample (TPM>1)")
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=7)
+    ax.set_xlabel(f"Disjoint signature genes (of {n_genes} max)", fontsize=10)
+    ax.set_title("Cancer-type-specific disjoint genes expressed in sample", fontsize=11)
+    ax.legend(loc="lower right", fontsize=8)
+    ax.invert_yaxis()
+
+    # Annotate bars with counts
+    for i, (code, total, expr, mean, genes) in enumerate(cancer_stats):
+        if expr > 0:
+            # Show top 3 expressed gene names
+            top3 = sorted(
+                [(g, sample_tpm.get(g, 0)) for g in genes],
+                key=lambda x: -x[1]
+            )[:3]
+            top3_str = ", ".join(f"{g}({t:.0f})" for g, t in top3 if t > 1)
+            if top3_str:
+                ax.text(total + 0.3, i, top3_str, fontsize=5.5, va="center", alpha=0.7)
+
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
+
+
 def plot_cancer_type_pca(
     df_gene_expr,
     n_genes=10,
