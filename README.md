@@ -1,6 +1,119 @@
 # pirlygenes
 
-Gene lists related to cancer immunotherapy
+Gene lists and expression data for cancer immunotherapy
+
+## Quick start
+
+```bash
+pip install pirlygenes
+
+# Generate all plots for a sample
+pirlygenes plot-expression gene_expression_salmon.tsv
+
+# Prostate-cancer-specific analysis
+pirlygenes plot-expression gene_expression_salmon.tsv --cancer-type prostate
+
+# List all bundled datasets and cancer types
+pirlygenes data
+```
+
+## Pan-cancer expression data
+
+Expression data for ~3,100 therapy-relevant genes across 50 normal tissues (HPA v23 consensus nTPM) and 33 TCGA cancer types (median FPKM/TPM). All data ships with the package — no downloads needed.
+
+### Cancer types
+
+| Code | Cancer type | Aliases |
+|------|------------|---------|
+| ACC | Adrenocortical Carcinoma | adrenocortical, adrenal |
+| BLCA | Bladder Urothelial Carcinoma | bladder |
+| BRCA | Breast Invasive Carcinoma | breast |
+| CESC | Cervical Squamous Cell Carcinoma | cervical, cervix |
+| CHOL | Cholangiocarcinoma | cholangiocarcinoma, bile_duct |
+| COAD | Colon Adenocarcinoma | colon, colorectal |
+| DLBC | Diffuse Large B-Cell Lymphoma | dlbcl, lymphoma |
+| ESCA | Esophageal Carcinoma | esophageal, esophagus |
+| GBM | Glioblastoma Multiforme | glioblastoma, gbm |
+| HNSC | Head and Neck Squamous Cell Carcinoma | head_neck, hnscc |
+| KICH | Kidney Chromophobe | kidney_chromophobe |
+| KIRC | Kidney Renal Clear Cell Carcinoma | kidney, kidney_clear |
+| KIRP | Kidney Renal Papillary Cell Carcinoma | kidney_papillary |
+| LAML | Acute Myeloid Leukemia | leukemia, aml |
+| LGG | Brain Lower Grade Glioma | glioma, lgg, low_grade_glioma |
+| LIHC | Liver Hepatocellular Carcinoma | liver |
+| LUAD | Lung Adenocarcinoma | lung_adeno |
+| LUSC | Lung Squamous Cell Carcinoma | lung_squamous |
+| MESO | Mesothelioma | mesothelioma |
+| OV | Ovarian Serous Cystadenocarcinoma | ovarian, ovary |
+| PAAD | Pancreatic Adenocarcinoma | pancreatic, pancreas |
+| PCPG | Pheochromocytoma and Paraganglioma | pheochromocytoma, paraganglioma |
+| PRAD | Prostate Adenocarcinoma | prostate |
+| READ | Rectum Adenocarcinoma | rectal |
+| SARC | Sarcoma | sarcoma |
+| SKCM | Skin Cutaneous Melanoma | melanoma, skin |
+| STAD | Stomach Adenocarcinoma | stomach, gastric |
+| TGCT | Testicular Germ Cell Tumor | testicular, testis |
+| THCA | Thyroid Carcinoma | thyroid |
+| THYM | Thymoma | thymoma |
+| UCEC | Uterine Corpus Endometrial Carcinoma | endometrial, uterine |
+| UCS | Uterine Carcinosarcoma | uterine_carcinosarcoma |
+| UVM | Uveal Melanoma | uveal_melanoma |
+
+### Python API
+
+```python
+from pirlygenes.gene_sets_cancer import (
+    pan_cancer_expression,      # full expression matrix
+    cancer_types,               # list of available TCGA codes
+    cancer_expression,          # expression for one cancer type
+    cancer_enriched_genes,      # genes enriched in one cancer type
+    cancer_surfaceome_evidence, # tumor-specific surface targets (TCSA)
+    surface_protein_evidence,   # all surface proteins (SURFY/CSPA)
+)
+
+# Full matrix: ~3,100 genes x 83 columns (50 tissues + 33 cancers)
+df = pan_cancer_expression()
+
+# Housekeeping-normalized, log-scaled (for heatmaps)
+df = pan_cancer_expression(normalize="housekeeping", log_transform=True)
+
+# Expression in prostate cancer (housekeeping-normalized)
+df = cancer_expression("prostate")
+
+# Genes enriched in prostate vs other cancers (>3x fold-change)
+df = cancer_enriched_genes("prostate", min_fold=3.0)
+
+# Specific genes across all cancers
+df = pan_cancer_expression(genes=["EGFR", "ERBB2", "MSLN", "FOLR1"])
+```
+
+### Surface proteins
+
+```python
+from pirlygenes.gene_sets_cancer import (
+    surface_protein_gene_names,       # 2,799 surfaceome genes
+    surface_protein_gene_ids,
+    cancer_surfaceome_gene_names,     # 147 tumor-specific surface targets
+    cancer_surfaceome_evidence,       # with druggability + cancer types
+)
+
+# CSPA mass-spec validated only
+validated = surface_protein_gene_names(validated_only=True)  # 1,410 genes
+```
+
+### Plotting
+
+```python
+from pirlygenes import plot_gene_expression, plot_sample_vs_cancer
+
+# Strip plot: gene expression by category
+plot_gene_expression(df_expr, save_to_filename="summary.png")
+
+# Scatter: sample vs cancer cohort (PDF + per-category PNGs)
+plot_sample_vs_cancer(df_expr, cancer_type="prostate", save_to_filename="vs_prad.pdf")
+```
+
+---
 
 ## TCR-T 
 

@@ -23,15 +23,76 @@ from .gene_sets_cancer import (
     bispecific_antibody_target_gene_names,
     radio_target_gene_names,
     TCR_T_target_gene_names,
+    cancer_types,
 )
 from .load_expression import load_expression_data
-from .plot import plot_gene_expression, plot_sample_vs_cancer, default_gene_sets
+from .plot import (
+    plot_gene_expression,
+    plot_sample_vs_cancer,
+    default_gene_sets,
+    CANCER_TYPE_ALIASES,
+    CANCER_TYPE_NAMES,
+)
+
+_DATASET_SOURCES = {
+    "ADC-approved": "Wiley, doi:10.1002/cac2.12517",
+    "ADC-trials": "EJC, doi:10.1016/j.ejca.2023.113342",
+    "ADC-withdrawn": "FDA records",
+    "bispecific-antibodies-approved": "FDA/EMA approvals",
+    "cancer-driver-genes": "Bailey et al. 2018, Cell",
+    "cancer-driver-variants": "Bailey et al. 2018, Cell",
+    "cancer-surfaceome": "Hu et al. 2021, Nature Cancer (TCSA L3)",
+    "cancer-testis-antigens": "CTpedia, CTexploreR, daSilva2017 + HPA v23",
+    "CAR-T-approved": "FDA approvals",
+    "class1-mhc-presentation-pathway": "Literature curation",
+    "housekeeping-genes": "Eisenberg & Levanon 2013",
+    "immune-gene-sets": "Pre-resolved from literature",
+    "interferon-response": "Literature curation",
+    "multispecific-tcell-engager-trials": "Literature curation 2024",
+    "pan-cancer-expression": "HPA v23 (nTPM) + GDC/STAR (median TPM), 33 TCGA types",
+    "radioligand-targets": "Literature curation 2026",
+    "surface-proteins": "Bausch-Fluck et al. 2018, PNAS (SURFY/CSPA)",
+    "TCR-T-approved": "FDA approvals",
+    "TCR-T-trials": "Literature curation 2024",
+}
 
 
 @named("data")
-def print_dataset_sizes():
+def print_dataset_info():
+    """List all bundled datasets with row counts and sources."""
+    import os
+    from pathlib import Path
+
+    total_size = 0
+    print("\nBundled datasets (shipped with pip install, no downloads needed):\n")
+    print(f"  {'Dataset':<40s} {'Rows':>6s}  {'Size':>8s}  Source")
+    print(f"  {'─'*40}  {'─'*6}  {'─'*8}  {'─'*40}")
     for csv_file, df in load_all_dataframes():
-        print("%s: %d rows" % (csv_file, len(df)))
+        name = Path(csv_file).stem
+        size = os.path.getsize(csv_file)
+        total_size += size
+        if size >= 1024 * 1024:
+            size_str = "%.1f MB" % (size / 1024 / 1024)
+        else:
+            size_str = "%.0f KB" % (size / 1024)
+        source = _DATASET_SOURCES.get(name, "")
+        print(f"  {name:<40s} {len(df):>6d}  {size_str:>8s}  {source}")
+    print(f"\n  Total: {total_size / 1024 / 1024:.1f} MB\n")
+
+    # Cancer types
+    types = cancer_types()
+    print(f"  Cancer types ({len(types)}):\n")
+    print(f"  {'Code':<6s}  {'Full name':<45s}  Aliases")
+    print(f"  {'─'*6}  {'─'*45}  {'─'*30}")
+    # Build reverse alias map: code -> [aliases]
+    code_to_aliases = {}
+    for alias, code in CANCER_TYPE_ALIASES.items():
+        code_to_aliases.setdefault(code, []).append(alias)
+    for code in types:
+        full_name = CANCER_TYPE_NAMES.get(code, "")
+        aliases = ", ".join(sorted(code_to_aliases.get(code, [])))
+        print(f"  {code:<6s}  {full_name:<45s}  {aliases}")
+    print()
 
 
 def _parse_always_label_genes(always_label_genes: Optional[str]) -> Set[str]:
@@ -107,7 +168,7 @@ def plot_expression(
 def main():
     print_name_and_version()
     print("---")
-    dispatch_commands([print_dataset_sizes, plot_expression])
+    dispatch_commands([print_dataset_info, plot_expression])
 
 
 if __name__ == "__main__":

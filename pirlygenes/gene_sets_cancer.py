@@ -169,11 +169,11 @@ def cancer_surfaceome_evidence(min_cancer_types=None):
 
 # ---------- Pan-cancer expression ----------
 def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
-    """Expression across 50 normal tissues (nTPM) and 21 TCGA cancer types (median FPKM).
+    """Expression across 50 normal tissues (nTPM) and 33 TCGA cancer types.
 
-    Data from Human Protein Atlas v23. Normal tissues use consensus nTPM;
-    cancer types use median FPKM across TCGA samples. Column names are
-    prefixed with ``nTPM_`` or ``FPKM_`` to indicate units.
+    Normal tissues from HPA v23 consensus nTPM. Cancer types from HPA
+    (21 types, median FPKM) and GDC/STAR reprocessing (12 additional types,
+    median TPM). Column names are prefixed with ``nTPM_`` or ``FPKM_``.
 
     Parameters
     ----------
@@ -230,6 +230,72 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
             df[col] = np.log2(df[col].astype(float) + 1)
 
     return df
+
+
+def cancer_types():
+    """Return list of available TCGA cancer type codes."""
+    df = get_data("pan-cancer-expression")
+    return sorted(c.replace("FPKM_", "") for c in df.columns if c.startswith("FPKM_"))
+
+
+def cancer_expression(cancer_type, genes=None):
+    """Expression for a single cancer type as a simple gene-level DataFrame.
+
+    Parameters
+    ----------
+    cancer_type : str
+        TCGA code or alias (e.g. ``"PRAD"``, ``"prostate"``).
+    genes : iterable of str, optional
+        Gene symbols or Ensembl IDs to filter to.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: Ensembl_Gene_ID, Symbol, expression (housekeeping-normalized).
+    """
+    from .plot import resolve_cancer_type
+    code = resolve_cancer_type(cancer_type)
+    df = pan_cancer_expression(genes=genes, normalize="housekeeping")
+    col = f"FPKM_{code}"
+    return df[["Ensembl_Gene_ID", "Symbol", col]].rename(columns={col: "expression"})
+
+
+def cancer_enriched_genes(cancer_type, min_fold=3.0, min_expression=0.01):
+    """Genes enriched in a specific cancer type vs the pan-cancer median.
+
+    Parameters
+    ----------
+    cancer_type : str
+        TCGA code or alias (e.g. ``"PRAD"``, ``"prostate"``).
+    min_fold : float
+        Minimum fold-change over median of all other cancer types.
+    min_expression : float
+        Minimum housekeeping-normalized expression in the target cancer type.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: Ensembl_Gene_ID, Symbol, expression, other_median, fold_change.
+        Sorted by fold_change descending.
+    """
+    import numpy as np
+    from .plot import resolve_cancer_type
+    code = resolve_cancer_type(cancer_type)
+    df = pan_cancer_expression(normalize="housekeeping")
+    fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
+    target_col = f"FPKM_{code}"
+    other_cols = [c for c in fpkm_cols if c != target_col]
+
+    result = df[["Ensembl_Gene_ID", "Symbol"]].copy()
+    result["expression"] = df[target_col].astype(float)
+    result["other_median"] = df[other_cols].astype(float).median(axis=1)
+    result["fold_change"] = (result["expression"] + 0.001) / (result["other_median"] + 0.001)
+
+    result = result[
+        (result["expression"] >= min_expression) &
+        (result["fold_change"] >= min_fold)
+    ].sort_values("fold_change", ascending=False)
+    return result.reset_index(drop=True)
 
 
 # ---------- ADC ----------
