@@ -113,6 +113,8 @@ def test_cli_plot_expression_and_main(monkeypatch):
     monkeypatch.setattr(cli_mod, "load_expression_data", lambda *a, **k: pd.DataFrame({"x": [1]}))
     monkeypatch.setattr(cli_mod, "plot_gene_expression", lambda *a, **k: calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_sample_vs_cancer", lambda *a, **k: scatter_calls.append(k))
+    monkeypatch.setattr(cli_mod, "plot_therapy_target_tissues", lambda *a, **k: None)
+    monkeypatch.setattr(cli_mod, "plot_therapy_target_safety", lambda *a, **k: None)
     monkeypatch.setattr(cli_mod, "plot_cancer_type_genes", lambda *a, **k: cancer_gene_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_disjoint_genes", lambda *a, **k: cancer_gene_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_pca", lambda *a, **k: pca_calls.append(k))

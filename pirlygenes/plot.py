@@ -701,6 +701,261 @@ def plot_sample_vs_cancer(
     return figures
 
 
+# -------------------- healthy tissue expression for therapy targets ----------
+
+
+ESSENTIAL_TISSUES = [
+    "brain", "heart_muscle", "liver", "lung", "kidney",
+    "bone_marrow", "spleen", "pancreas", "colon", "stomach",
+]
+
+# Map essential tissue labels to nTPM column names
+_ESSENTIAL_TISSUE_COLS = {
+    "brain": ["nTPM_cerebral_cortex", "nTPM_cerebellum", "nTPM_basal_ganglia",
+              "nTPM_hippocampal_formation", "nTPM_amygdala", "nTPM_midbrain",
+              "nTPM_hypothalamus", "nTPM_spinal_cord", "nTPM_choroid_plexus"],
+    "heart": ["nTPM_heart_muscle"],
+    "liver": ["nTPM_liver"],
+    "lung": ["nTPM_lung"],
+    "kidney": ["nTPM_kidney"],
+    "bone_marrow": ["nTPM_bone_marrow"],
+    "spleen": ["nTPM_spleen"],
+    "pancreas": ["nTPM_pancreas"],
+    "colon": ["nTPM_colon"],
+    "stomach": ["nTPM_stomach"],
+}
+
+
+def plot_therapy_target_tissues(
+    df_gene_expr,
+    top_k=5,
+    tpm_threshold=30,
+    save_to_filename=None,
+    save_dpi=300,
+):
+    """For top expressed therapy targets, show healthy tissue expression vs sample.
+
+    For each therapy category, takes the top K genes above a TPM threshold
+    and creates a sorted bar plot of GTEx normal tissue expression alongside
+    the sample TPM value.
+
+    Parameters
+    ----------
+    df_gene_expr : pd.DataFrame
+        Patient expression data.
+    top_k : int
+        Number of top genes per therapy category.
+    tpm_threshold : float
+        Minimum sample TPM to include a gene.
+    save_to_filename : str or None
+        Output path (PDF with one page per gene, or PNG directory).
+    """
+    import numpy as np
+    from pathlib import Path
+    from matplotlib.backends.backend_pdf import PdfPages
+    from .plot_data_helpers import _strip_ensembl_version
+    from .gene_sets_cancer import (
+        therapy_target_gene_id_to_name,
+        pan_cancer_expression,
+    )
+
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
+    df = df_gene_expr.copy()
+    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+
+    tpm_col = "TPM" if "TPM" in df.columns else next(
+        (c for c in df.columns if c.lower() == "tpm"), None
+    )
+    sample_tpm = dict(zip(df[gene_id_col].astype(str), df[tpm_col].astype(float)))
+    sample_name = dict(zip(df[gene_id_col].astype(str), df[gene_name_col].astype(str)))
+
+    # Load normal tissue expression
+    ref = pan_cancer_expression()
+    ntpm_cols = sorted([c for c in ref.columns if c.startswith("nTPM_")])
+    tissue_labels = [c.replace("nTPM_", "").replace("_", " ") for c in ntpm_cols]
+    ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index("Ensembl_Gene_ID")
+
+    # Collect top genes across therapy types
+    therapies = ["ADC", "CAR-T", "TCR-T", "bispecific-antibodies", "radioligand"]
+    gene_therapy = {}  # gid -> therapy
+    for therapy in therapies:
+        targets = therapy_target_gene_id_to_name(therapy)
+        scored = []
+        for gid, sym in targets.items():
+            gid_clean = _strip_ensembl_version(gid)
+            tpm = sample_tpm.get(gid_clean, 0)
+            if tpm >= tpm_threshold:
+                scored.append((gid_clean, sym, tpm))
+        scored.sort(key=lambda x: -x[2])
+        for gid, sym, tpm in scored[:top_k]:
+            if gid not in gene_therapy:
+                gene_therapy[gid] = therapy
+
+    if not gene_therapy:
+        print(f"No therapy targets above {tpm_threshold} TPM")
+        return None
+
+    # Generate one page per gene
+    figures = {}
+    for gid, therapy in sorted(gene_therapy.items(), key=lambda x: -sample_tpm.get(x[0], 0)):
+        sym = sample_name.get(gid, ref_by_id.loc[gid, "Symbol"] if gid in ref_by_id.index else gid)
+        s_tpm = sample_tpm.get(gid, 0)
+
+        # Get tissue expression
+        if gid in ref_by_id.index:
+            tissue_vals = [float(ref_by_id.loc[gid, c]) if c in ref_by_id.columns else 0 for c in ntpm_cols]
+        else:
+            tissue_vals = [0] * len(ntpm_cols)
+
+        # Sort tissues by expression
+        sorted_pairs = sorted(zip(tissue_labels, tissue_vals), key=lambda x: -x[1])
+        t_labels = [p[0] for p in sorted_pairs]
+        t_vals = [p[1] for p in sorted_pairs]
+
+        fig, ax = plt.subplots(figsize=(10, 8))
+        y = np.arange(len(t_labels))
+        ax.barh(y, t_vals, color="#aec7e8", edgecolor="none", height=0.7, label="Normal tissue (nTPM)")
+
+        # Sample TPM as a vertical line
+        ax.axvline(x=s_tpm, color="red", linewidth=2, linestyle="-", alpha=0.8, label=f"Sample TPM = {s_tpm:.1f}")
+
+        ax.set_yticks(y)
+        ax.set_yticklabels(t_labels, fontsize=7)
+        ax.set_xlabel("Expression (nTPM / TPM)", fontsize=10)
+        ax.set_title(f"{sym} ({therapy}) — healthy tissue vs sample\nSample TPM: {s_tpm:.1f}", fontsize=11)
+        ax.legend(loc="lower right", fontsize=8, frameon=False)
+        ax.invert_yaxis()
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        fig.tight_layout()
+        figures[sym] = fig
+
+    if save_to_filename:
+        out = Path(save_to_filename)
+        if out.suffix.lower() == ".pdf":
+            with PdfPages(out) as pdf:
+                for fig in figures.values():
+                    pdf.savefig(fig, bbox_inches="tight")
+            print(f"Saved {out} ({len(figures)} pages)")
+        else:
+            out_dir = out.parent / out.stem
+            out_dir.mkdir(parents=True, exist_ok=True)
+            for sym, fig in figures.items():
+                fig.savefig(out_dir / f"{sym}.png", dpi=save_dpi, bbox_inches="tight")
+            print(f"Saved {len(figures)} PNGs to {out_dir}/")
+
+    return figures
+
+
+def plot_therapy_target_safety(
+    df_gene_expr,
+    top_k=5,
+    tpm_threshold=30,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(12, 10),
+):
+    """Scatter: sample TPM vs max essential-tissue expression for therapy targets.
+
+    X-axis is sample expression, Y-axis is max expression in essential
+    tissues (brain, heart, liver, lung, kidney). Genes in the lower-right
+    (high sample, low essential tissue) are the safest therapy targets.
+
+    Parameters
+    ----------
+    df_gene_expr : pd.DataFrame
+        Patient expression data.
+    top_k : int
+        Number of top genes per therapy category to include.
+    tpm_threshold : float
+        Minimum sample TPM to include a gene.
+    save_to_filename : str or None
+        Output path.
+    """
+    import numpy as np
+    from .plot_data_helpers import _strip_ensembl_version
+    from .gene_sets_cancer import (
+        therapy_target_gene_id_to_name,
+        pan_cancer_expression,
+    )
+
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
+    df = df_gene_expr.copy()
+    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+
+    tpm_col = "TPM" if "TPM" in df.columns else next(
+        (c for c in df.columns if c.lower() == "tpm"), None
+    )
+    sample_tpm = dict(zip(df[gene_id_col].astype(str), df[tpm_col].astype(float)))
+    sample_name = dict(zip(df[gene_id_col].astype(str), df[gene_name_col].astype(str)))
+
+    ref = pan_cancer_expression()
+    ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index("Ensembl_Gene_ID")
+
+    # Essential tissue columns
+    essential_cols = []
+    for tissue, cols in _ESSENTIAL_TISSUE_COLS.items():
+        essential_cols.extend([c for c in cols if c in ref_by_id.columns])
+
+    therapies = ["ADC", "CAR-T", "TCR-T", "bispecific-antibodies", "radioligand"]
+    therapy_palette = dict(zip(therapies, sns.color_palette("Set2", len(therapies))))
+
+    rows = []
+    for therapy in therapies:
+        targets = therapy_target_gene_id_to_name(therapy)
+        scored = []
+        for gid, sym in targets.items():
+            gid_clean = _strip_ensembl_version(gid)
+            tpm = sample_tpm.get(gid_clean, 0)
+            if tpm >= tpm_threshold:
+                scored.append((gid_clean, sym, tpm))
+        scored.sort(key=lambda x: -x[2])
+        for gid, sym, tpm in scored[:top_k]:
+            # Max expression in essential tissues
+            max_essential = 0
+            if gid in ref_by_id.index:
+                vals = [float(ref_by_id.loc[gid, c]) for c in essential_cols if c in ref_by_id.columns]
+                max_essential = max(vals) if vals else 0
+            rows.append((sym, therapy, tpm, max_essential, gid))
+
+    if not rows:
+        print(f"No therapy targets above {tpm_threshold} TPM")
+        return None, None
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    for sym, therapy, tpm, max_ess, gid in rows:
+        color = therapy_palette.get(therapy, "gray")
+        ax.scatter(tpm, max_ess + 0.1, s=60, color=color, alpha=0.8,
+                   edgecolors="white", linewidths=0.5, zorder=3)
+        ax.text(tpm, max_ess + 0.1, f"  {sym}", fontsize=8, va="center",
+                ha="left", alpha=0.85)
+
+    # Legend for therapy types
+    for therapy, color in therapy_palette.items():
+        ax.scatter([], [], color=color, s=60, label=therapy)
+    ax.legend(loc="upper left", fontsize=8, frameon=False)
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Sample TPM", fontsize=11)
+    ax.set_ylabel("Max expression in essential tissues (nTPM)\n(brain, heart, liver, lung, kidney)", fontsize=10)
+    ax.set_title("Therapy target safety: sample expression vs essential tissue expression\n(lower-right = safest targets)", fontsize=11)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # Diagonal reference
+    lims = [max(ax.get_xlim()[0], ax.get_ylim()[0]), min(ax.get_xlim()[1], ax.get_ylim()[1])]
+    if lims[1] > lims[0]:
+        ax.plot(lims, lims, ":", color="#cccccc", linewidth=0.8, alpha=0.5, zorder=0)
+
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
+
+
 # -------------------- cancer-type gene signature plots --------------------
 
 

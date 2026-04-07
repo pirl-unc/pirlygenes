@@ -31,6 +31,8 @@ from .plot import (
     plot_cancer_type_genes,
     plot_cancer_type_disjoint_genes,
     plot_cancer_type_pca,
+    plot_therapy_target_tissues,
+    plot_therapy_target_safety,
     plot_cohort_heatmap,
     plot_cohort_disjoint_counts,
     plot_cohort_pca,
@@ -171,6 +173,13 @@ def plot_expression(
         always_label_genes=forced_labels,
     )
 
+    # Therapy target tissue expression / safety
+    tissue_pdf = "%s-target-tissues.pdf" % prefix if prefix else "target-tissues.pdf"
+    plot_therapy_target_tissues(df_expr, save_to_filename=tissue_pdf, save_dpi=output_dpi)
+
+    safety_png = "%s-target-safety.png" % prefix if prefix else "target-safety.png"
+    plot_therapy_target_safety(df_expr, save_to_filename=safety_png, save_dpi=output_dpi)
+
     # Cancer type signature plots
     genes_png = "%s-cancer-types-genes.png" % prefix if prefix else "cancer-types-genes.png"
     plot_cancer_type_genes(df_expr, save_to_filename=genes_png, save_dpi=output_dpi)
@@ -207,6 +216,7 @@ def plot_expression(
     png_files = [
         "%s-summary.png" % prefix if prefix else "summary.png",
         "%s-treatments.png" % prefix if prefix else "treatments.png",
+        safety_png,
         genes_png,
         disjoint_png,
         pca_png,
