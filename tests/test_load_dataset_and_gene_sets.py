@@ -143,6 +143,13 @@ def test_cta_filtered_and_evidence():
         assert col in evidence_df.columns, f"Missing column: {col}"
 
 
+def test_cta_gene_id_to_name_preserves_row_pairing():
+    mapping = gsc.CTA_gene_id_to_name()
+    assert mapping["ENSG00000181323"] == "SPEM1"
+    assert mapping["ENSG00000230594"] == "CT47A4"
+    assert mapping["ENSG00000236126"] == "CT47A3"
+
+
 def test_cta_partition():
     # gene_ids
     p = gsc.CTA_partition_gene_ids()
