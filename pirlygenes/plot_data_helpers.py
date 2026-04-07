@@ -40,6 +40,60 @@ def _strip_ensembl_version(gid: str) -> str:
 # --------------------------- validation / normalization ----------------------
 
 
+def _remap_retired_gene_ids(
+    cat_to_gene_id_list: Dict[str, List[str]],
+    gene_id_to_name: Dict[str, str],
+    df_gene_expr: pd.DataFrame,
+    gene_id_col: str,
+    gene_name_col: Optional[str],
+) -> Tuple[Dict[str, List[str]], Dict[str, str]]:
+    """
+    For gene IDs not found in df_gene_expr, try to find the current ID
+    by matching on gene name. Handles retired Ensembl IDs that have been
+    replaced in newer annotations.
+    """
+    if gene_name_col is None or gene_name_col not in df_gene_expr.columns:
+        return cat_to_gene_id_list, gene_id_to_name
+
+    expr_ids = set(df_gene_expr[gene_id_col].astype(str))
+
+    # Build upper-cased name → ID mapping from expression data
+    name_to_expr_id: Dict[str, str] = {}
+    for gid, name in zip(
+        df_gene_expr[gene_id_col].astype(str),
+        df_gene_expr[gene_name_col],
+    ):
+        key = str(name).strip().upper()
+        if key and key not in ("NAN", "NONE", ""):
+            gid = _strip_ensembl_version(gid)
+            name_to_expr_id[key] = gid
+
+    new_cat_to_ids: Dict[str, List[str]] = {}
+    new_id_to_name = dict(gene_id_to_name)
+
+    for cat, gene_ids in cat_to_gene_id_list.items():
+        new_ids: List[str] = []
+        for gid in gene_ids:
+            if gid in expr_ids:
+                new_ids.append(gid)
+                continue
+            name = gene_id_to_name.get(gid)
+            if name:
+                new_gid = name_to_expr_id.get(name.upper())
+                if new_gid:
+                    print(
+                        f"[info] Remapped retired gene ID {gid} ({name}) -> {new_gid}"
+                    )
+                    new_ids.append(new_gid)
+                    new_id_to_name[new_gid] = name
+                    new_id_to_name.pop(gid, None)
+                    continue
+            new_ids.append(gid)  # keep as-is; will warn later
+        new_cat_to_ids[cat] = new_ids
+
+    return new_cat_to_ids, new_id_to_name
+
+
 def check_gene_ids_in_gene_sets(
     df_gene_expr: pd.DataFrame,
     cat_to_gene_id_list: Dict[str, List[str]],
@@ -68,7 +122,7 @@ def check_gene_ids_in_gene_sets(
 
 
 def normalize_gene_sets(
-    gene_sets: Dict[str, Iterable[str]],
+    gene_sets: Dict[str, Iterable],
     priority_category: Optional[str] = None,
     *,
     strict: bool = False,
@@ -76,6 +130,12 @@ def normalize_gene_sets(
 ) -> Tuple[Dict[str, List[str]], Dict[str, str]]:
     """
     Map mixed IDs/names in each category to canonical Ensembl gene IDs.
+
+    Values in gene_sets can be:
+      - list of gene symbols (resolved via pyensembl — slow)
+      - list of (ensembl_id, symbol) tuples (used directly — fast)
+      - dict mapping ensembl_id -> symbol (used directly — fast)
+
     Returns:
       - cat_to_gene_id_list : category -> sorted list of canonical gene IDs (strings)
       - gene_id_to_name     : canonical gene ID -> canonical gene name
@@ -85,7 +145,30 @@ def normalize_gene_sets(
     unresolved: Dict[str, List[str]] = defaultdict(list)
 
     for cat, genes in list(gene_sets.items()):
-        tokens = [_clean_token(g) for g in genes]
+        # Fast path: dict of {ensembl_id: symbol}
+        if isinstance(genes, dict):
+            keep = []
+            for gid, gname in genes.items():
+                gid = _strip_ensembl_version(str(gid))
+                gene_id_to_name[gid] = gname
+                keep.append(gid)
+            cat_to_gene_ids[cat] = set(keep)
+            continue
+
+        genes_list = list(genes)
+
+        # Fast path: list of (ensembl_id, symbol) tuples
+        if genes_list and isinstance(genes_list[0], (tuple, list)) and len(genes_list[0]) == 2:
+            keep = []
+            for gid, gname in genes_list:
+                gid = _strip_ensembl_version(str(gid))
+                gene_id_to_name[gid] = str(gname)
+                keep.append(gid)
+            cat_to_gene_ids[cat] = set(keep)
+            continue
+
+        # Slow path: list of symbols — resolve via pyensembl
+        tokens = [_clean_token(g) for g in genes_list]
         tokens = [t for t in tokens if t is not None]
         if not tokens:
             cat_to_gene_ids[cat] = set()
@@ -185,6 +268,14 @@ def prepare_gene_expr_df(
     # normalize sets -> IDs, and validate presence in DF (with name-aware warnings)
     cat_to_gene_id_list, gene_id_to_name_from_sets = normalize_gene_sets(
         gene_sets, priority_category=priority_category, strict=strict_gene_sets
+    )
+    # remap any retired Ensembl IDs to their current replacements
+    cat_to_gene_id_list, gene_id_to_name_from_sets = _remap_retired_gene_ids(
+        cat_to_gene_id_list,
+        gene_id_to_name_from_sets,
+        df,
+        gene_id_col=gene_id_col,
+        gene_name_col=gene_name_col,
     )
     check_gene_ids_in_gene_sets(
         df,

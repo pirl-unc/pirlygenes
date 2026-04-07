@@ -25,7 +25,7 @@ from .gene_sets_cancer import (
     TCR_T_target_gene_names,
 )
 from .load_expression import load_expression_data
-from .plot import plot_gene_expression, default_gene_sets
+from .plot import plot_gene_expression, plot_sample_vs_cancer, default_gene_sets
 
 
 @named("data")
@@ -51,6 +51,7 @@ def plot_expression(
     output_dpi: int = 300,
     plot_height: float = 12.0,
     plot_aspect: float = 1.4,
+    cancer_type: Optional[str] = None,
 ):
     df_expr = load_expression_data(
         input_path,
@@ -59,7 +60,9 @@ def plot_expression(
         gene_id_col=gene_id_col,
     )
     forced_labels = _parse_always_label_genes(label_genes)
+    prefix = output_image_prefix or ""
 
+    # Strip plots: summary + treatments
     for name, gene_sets in [
         ("summary", default_gene_sets),
         (
@@ -76,9 +79,7 @@ def plot_expression(
         ),
     ]:
         output_image = (
-            "%s-%s.png" % (output_image_prefix, name)
-            if output_image_prefix
-            else "%s.png" % name
+            "%s-%s.png" % (prefix, name) if prefix else "%s.png" % name
         )
         plot_gene_expression(
             df_expr,
@@ -89,6 +90,18 @@ def plot_expression(
             plot_aspect=plot_aspect,
             always_label_genes=forced_labels,
         )
+
+    # Scatter plots: sample vs pan-cancer reference
+    scatter_pdf = (
+        "%s-vs-cancer.pdf" % prefix if prefix else "vs-cancer.pdf"
+    )
+    plot_sample_vs_cancer(
+        df_expr,
+        cancer_type=cancer_type,
+        save_to_filename=scatter_pdf,
+        save_dpi=output_dpi,
+        always_label_genes=forced_labels,
+    )
 
 
 def main():

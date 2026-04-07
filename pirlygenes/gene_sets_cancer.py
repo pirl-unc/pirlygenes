@@ -87,6 +87,151 @@ def housekeeping_gene_ids(core_only=False):
     return set(df["Ensembl_Gene_ID"])
 
 
+# ---------- Surface proteins (surfaceome) ----------
+def _surface_proteins_df(category=None):
+    df = get_data("surface-proteins")
+    if category is not None:
+        df = df[df["Category"] == category]
+    return df
+
+
+def surface_protein_gene_names(validated_only=False):
+    """Human cell surface protein gene symbols.
+
+    Parameters
+    ----------
+    validated_only : bool
+        If True, return only CSPA mass-spec validated proteins.
+        If False (default), include ML-predicted surfaceome.
+    """
+    cat = "CSPA_validated" if validated_only else None
+    return set(_surface_proteins_df(cat)["Symbol"])
+
+
+def surface_protein_gene_ids(validated_only=False):
+    """Human cell surface protein Ensembl gene IDs.
+
+    Parameters
+    ----------
+    validated_only : bool
+        If True, return only CSPA mass-spec validated proteins.
+        If False (default), include ML-predicted surfaceome.
+    """
+    cat = "CSPA_validated" if validated_only else None
+    df = _surface_proteins_df(cat)
+    return set(df.loc[df["Ensembl_Gene_ID"].astype(str).str.startswith("ENSG"), "Ensembl_Gene_ID"])
+
+
+def surface_protein_evidence():
+    """Return the full surface protein DataFrame with categories and sources."""
+    return get_data("surface-proteins")
+
+
+# ---------- Cancer surfaceome (TCSA) ----------
+def _cancer_surfaceome_df(min_cancer_types=None):
+    df = get_data("cancer-surfaceome")
+    if min_cancer_types is not None:
+        df = df[df["num_cancer_types"] >= min_cancer_types]
+    return df
+
+
+def cancer_surfaceome_gene_names(min_cancer_types=None):
+    """Tumor-specific surface protein gene symbols from TCSA (Lin et al. 2021).
+
+    These are L3-tier (highest stringency) surface proteins with
+    tumor-specific overexpression vs normal tissue, excluding
+    immune-cell-expressed genes.
+
+    Parameters
+    ----------
+    min_cancer_types : int or None
+        If set, only return genes overexpressed in at least this many
+        cancer types.
+    """
+    return set(_cancer_surfaceome_df(min_cancer_types)["Symbol"])
+
+
+def cancer_surfaceome_gene_ids(min_cancer_types=None):
+    """Tumor-specific surface protein Ensembl gene IDs from TCSA."""
+    return set(_cancer_surfaceome_df(min_cancer_types)["Ensembl_Gene_ID"])
+
+
+def cancer_surfaceome_gene_id_to_name(min_cancer_types=None):
+    """Tumor-specific surface protein {Ensembl_Gene_ID: Symbol} dict from TCSA."""
+    df = _cancer_surfaceome_df(min_cancer_types)
+    return dict(zip(df["Ensembl_Gene_ID"], df["Symbol"]))
+
+
+def cancer_surfaceome_evidence(min_cancer_types=None):
+    """Full TCSA evidence DataFrame with cancer types and druggability."""
+    return _cancer_surfaceome_df(min_cancer_types)
+
+
+# ---------- Pan-cancer expression ----------
+def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
+    """Expression across 50 normal tissues (nTPM) and 21 TCGA cancer types (median FPKM).
+
+    Data from Human Protein Atlas v23. Normal tissues use consensus nTPM;
+    cancer types use median FPKM across TCGA samples. Column names are
+    prefixed with ``nTPM_`` or ``FPKM_`` to indicate units.
+
+    Parameters
+    ----------
+    genes : iterable of str, optional
+        Gene symbols or Ensembl IDs to filter to. If None, returns all
+        ~3,100 genes in pirlygenes gene sets.
+    normalize : str or None
+        ``"percentile"`` — within-column percentile ranks (0–100).
+        ``"housekeeping"`` — fold over median housekeeping expression.
+        ``None`` (default) — raw values.
+    log_transform : bool
+        If True, apply log2(x + 1) after normalization (or to raw values
+        if normalize is None). Recommended for visualization.
+
+    Returns
+    -------
+    pd.DataFrame
+    """
+    import numpy as np
+
+    df = get_data("pan-cancer-expression")
+    if genes is not None:
+        genes_upper = {str(g).upper() for g in genes}
+        mask = (
+            df["Ensembl_Gene_ID"].str.upper().isin(genes_upper)
+            | df["Symbol"].str.upper().isin(genes_upper)
+        )
+        df = df[mask]
+
+    value_cols = [c for c in df.columns if c.startswith("nTPM_") or c.startswith("FPKM_")]
+
+    if normalize is not None:
+        df = df.copy()
+        if normalize == "percentile":
+            for col in value_cols:
+                vals = df[col].astype(float)
+                df[col] = vals.rank(pct=True) * 100
+        elif normalize == "housekeeping":
+            hk_ids = housekeeping_gene_ids()
+            hk_mask = df["Ensembl_Gene_ID"].isin(hk_ids)
+            for col in value_cols:
+                vals = df[col].astype(float)
+                hk_median = vals[hk_mask].median()
+                if hk_median > 0:
+                    df[col] = vals / hk_median
+                else:
+                    df[col] = np.nan
+        else:
+            raise ValueError(f"normalize must be 'percentile', 'housekeeping', or None, got {normalize!r}")
+
+    if log_transform:
+        df = df.copy() if normalize is None else df
+        for col in value_cols:
+            df[col] = np.log2(df[col].astype(float) + 1)
+
+    return df
+
+
 # ---------- ADC ----------
 def ADC_trial_target_gene_names():
     return get_target_gene_name_set("ADC-trials")
@@ -307,6 +452,14 @@ def CTA_gene_names():
 def CTA_gene_ids():
     """CTA Ensembl gene IDs: filtered AND expressed."""
     return _cta_by_column("Ensembl_Gene_ID", filtered_only=True, exclude_never_expressed=True)
+
+
+def CTA_gene_id_to_name():
+    """CTA {Ensembl_Gene_ID: Symbol} dict: filtered AND expressed."""
+    return dict(zip(
+        _cta_by_column("Ensembl_Gene_ID", filtered_only=True, exclude_never_expressed=True),
+        _cta_by_column("Symbol", filtered_only=True, exclude_never_expressed=True),
+    ))
 
 
 def CTA_filtered_gene_names():

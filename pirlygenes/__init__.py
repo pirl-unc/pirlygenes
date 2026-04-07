@@ -12,7 +12,7 @@
 
 
 from .load_dataset import load_all_dataframes, load_all_dataframes_dict, get_data
-from .plot import plot_gene_expression
+from .plot import plot_gene_expression, plot_sample_vs_cancer
 from .version import __version__
 
 __all__ = [
@@ -20,5 +20,6 @@ __all__ = [
     "load_all_dataframes", 
     "load_all_dataframes_dict", 
     "get_data", 
-    "plot_gene_expression"
+    "plot_gene_expression",
+    "plot_sample_vs_cancer",
 ]
