@@ -328,7 +328,6 @@ def _prepare_sample_vs_cancer_data(
 
     Returns (plot_df, named_cats, cat_to_color, x_label).
     """
-    import numpy as np
     import pandas as pd
     from .plot_data_helpers import (
         normalize_gene_sets,
@@ -504,7 +503,6 @@ def plot_sample_vs_cancer(
     figsize : tuple
         Figure size per category (width, height).
     """
-    import os
     from pathlib import Path
 
     plot_df, named_cats, cat_to_color, x_label = _prepare_sample_vs_cancer_data(
