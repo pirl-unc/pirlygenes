@@ -197,8 +197,15 @@ def plot_gene_expression(
     for col in ("category", "TPM", gene_id_col, gene_name_col):
         assert col in df_gene_expr_annot.columns, df_gene_expr_annot.columns
 
-    # Plot
+    # Plot — build palette with gray for "other", tab10 for named categories
     other_name = "other"
+    cat_col = df_gene_expr_annot["category"]
+    cat_order = list(cat_col.cat.categories) if hasattr(cat_col, "cat") and hasattr(cat_col.cat, "categories") else list(dict.fromkeys(cat_col))
+    named_cats_strip = [c for c in cat_order if c != other_name]
+    named_palette = sns.color_palette("tab10", len(named_cats_strip))
+    palette_dict = {c: color for c, color in zip(named_cats_strip, named_palette)}
+    palette_dict[other_name] = (0.8, 0.8, 0.8)  # gray for "other"
+
     cat = sns.catplot(
         data=df_gene_expr_annot,
         x="category",
@@ -208,6 +215,7 @@ def plot_gene_expression(
         aspect=plot_aspect,
         alpha=0.5,
         hue="category",
+        palette=palette_dict,
     )
     plt.yscale("log")
 
@@ -472,12 +480,12 @@ def _prepare_sample_vs_cancer_data(
     if cancer_type is not None:
         cancer_type = resolve_cancer_type(cancer_type)
         ref_col = f"FPKM_{cancer_type}"
-        ref["_ref_value"] = ref[ref_col].astype(float)
+        ref["_ref_value"] = ref[ref_col].astype(float) * 100  # convert to %
         cancer_label = CANCER_TYPE_NAMES.get(cancer_type, cancer_type)
         cohort_label = f"{cancer_label} cohort ({cancer_type})"
     else:
         fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
-        ref["_ref_value"] = ref[fpkm_cols].astype(float).mean(axis=1)
+        ref["_ref_value"] = ref[fpkm_cols].astype(float).mean(axis=1) * 100
         cohort_label = "Mean across 33 TCGA cancer cohorts"
 
     ref_lookup = dict(zip(
@@ -505,7 +513,7 @@ def _prepare_sample_vs_cancer_data(
     for _, row in df.iterrows():
         gid = str(row[gene_id_col])
         tpm = float(row[tpm_col])
-        sample_hk = tpm / hk_median_tpm  # housekeeping-normalized
+        sample_hk = (tpm / hk_median_tpm) * 100  # % of housekeeping median
         ref_val = ref_lookup.get(gid)
         if ref_val is None:
             continue
@@ -528,8 +536,8 @@ def _prepare_sample_vs_cancer_data(
     palette = sns.color_palette("tab10", len(named_cats))
     cat_to_color = dict(zip(named_cats, palette))
 
-    sample_label = "Sample (housekeeping-normalized TPM)"
-    cohort_axis_label = f"{cohort_label} (housekeeping-normalized)"
+    sample_label = "Sample expression (% of housekeeping)"
+    cohort_axis_label = f"{cohort_label} (% of housekeeping)"
 
     return plot_df, named_cats, cat_to_color, sample_label, cohort_axis_label
 
@@ -889,49 +897,58 @@ def plot_cancer_type_disjoint_genes(
 
     sig = top_enriched_per_cancer_type(n=n_genes, disjoint=True, min_fold=2.0)
 
-    # For each cancer type: count total disjoint genes and how many expressed in sample
+    # Get cohort mean expression for each cancer type's signature genes
+    ref = pan_cancer_expression(normalize="housekeeping")
+    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+
+    # Score: sum of (sample_TPM / cohort_mean) for each cancer type's genes
+    # High score = sample looks like this cancer type
     cancer_stats = []
     for code in sorted(sig.keys()):
         genes = sig[code]
-        n_total = len(genes)
-        n_expressed = sum(1 for g in genes if sample_tpm.get(g, 0) > 1)
-        mean_tpm = np.mean([sample_tpm.get(g, 0) for g in genes]) if genes else 0
-        cancer_stats.append((code, n_total, n_expressed, mean_tpm, genes))
+        cohort_col = f"FPKM_{code}"
+        score = 0.0
+        gene_scores = []
+        for g in genes:
+            s_tpm = sample_tpm.get(g, 0)
+            c_mean = 0
+            if g in ref_by_sym.index and cohort_col in ref_by_sym.columns:
+                c_mean = float(ref_by_sym.loc[g, cohort_col])
+            ratio = (s_tpm + 0.1) / (c_mean + 0.1)
+            score += ratio
+            gene_scores.append((g, s_tpm, ratio))
+        cancer_stats.append((code, len(genes), score, gene_scores))
 
-    # Sort by number expressed (descending), then mean TPM
-    cancer_stats.sort(key=lambda x: (-x[2], -x[3]))
+    # Sort by score (descending)
+    cancer_stats.sort(key=lambda x: -x[2])
 
     fig, ax = plt.subplots(figsize=figsize)
 
     codes = [s[0] for s in cancer_stats]
-    n_totals = [s[1] for s in cancer_stats]
-    n_expressed = [s[2] for s in cancer_stats]
+    scores = [s[2] for s in cancer_stats]
     labels = [f"{c} ({CANCER_TYPE_NAMES.get(c, c)})" for c in codes]
     y = np.arange(len(codes))
 
-    # Background bar: total disjoint genes (gray)
-    ax.barh(y, n_totals, color="#dddddd", edgecolor="none", height=0.7, label="Not expressed (TPM<1)")
-    # Foreground bar: expressed genes (colored)
-    ax.barh(y, n_expressed, color="#2166ac", edgecolor="none", height=0.7, label="Expressed in sample (TPM>1)")
+    # Color bars by score intensity
+    max_score = max(scores) if scores else 1
+    colors = [plt.cm.Blues(0.3 + 0.7 * s / max_score) for s in scores]
+    ax.barh(y, scores, color=colors, edgecolor="none", height=0.7)
 
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=7)
-    ax.set_xlabel(f"Disjoint signature genes (of {n_genes} max)", fontsize=10)
-    ax.set_title("Cancer-type-specific disjoint genes expressed in sample", fontsize=11)
-    ax.legend(loc="lower right", fontsize=8)
+    ax.set_xlabel("Signature score (Σ sample / cohort mean per gene)", fontsize=10)
+    ax.set_title("Cancer type similarity score\n(higher = sample resembles this cancer type)", fontsize=11)
     ax.invert_yaxis()
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
 
-    # Annotate bars with counts
-    for i, (code, total, expr, mean, genes) in enumerate(cancer_stats):
-        if expr > 0:
-            # Show top 3 expressed gene names
-            top3 = sorted(
-                [(g, sample_tpm.get(g, 0)) for g in genes],
-                key=lambda x: -x[1]
-            )[:3]
-            top3_str = ", ".join(f"{g}({t:.0f})" for g, t in top3 if t > 1)
-            if top3_str:
-                ax.text(total + 0.3, i, top3_str, fontsize=5.5, va="center", alpha=0.7)
+    # Annotate bars with top contributing genes
+    for i, (code, n_genes_ct, score, gene_scores) in enumerate(cancer_stats):
+        top3 = sorted(gene_scores, key=lambda x: -x[2])[:3]
+        top3_str = ", ".join(f"{g}" for g, _, r in top3 if r > 1)
+        if top3_str:
+            ax.text(score + max_score * 0.01, i, top3_str,
+                    fontsize=5.5, va="center", alpha=0.7)
 
     fig.tight_layout()
     if save_to_filename:
@@ -1306,41 +1323,39 @@ def plot_cancer_type_pca(
         df[tpm_col].astype(float) / hk_median,
     ))
 
-    # Get union of top enriched genes and their IDs
-    top_genes = top_enriched_per_cancer_type(n=n_genes)
-    all_symbols = set()
-    for genes in top_genes.values():
-        all_symbols.update(genes)
-
-    # Load reference data (housekeeping-normalized)
+    # Use most variable genes across cancer types (better for PCA than
+    # disjoint enriched genes which can be tissue-specific noise)
     ref = pan_cancer_expression(normalize="housekeeping")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     cancer_codes = [c.replace("FPKM_", "") for c in fpkm_cols]
 
-    # Filter to union genes
-    ref_filtered = ref[ref["Symbol"].isin(all_symbols)].copy()
-    gene_order = sorted(ref_filtered["Symbol"].unique())
+    # Compute coefficient of variation per gene across cancer types
+    expr_matrix = ref[fpkm_cols].astype(float)
+    gene_mean = expr_matrix.mean(axis=1)
+    gene_std = expr_matrix.std(axis=1)
+    gene_cv = gene_std / (gene_mean + 0.001)
+
+    # Take top N most variable genes that are also reasonably expressed
+    expressed_mask = gene_mean > 0.01
+    top_var_idx = gene_cv[expressed_mask].nlargest(n_genes * 33).index
+    ref_filtered = ref.loc[top_var_idx].drop_duplicates(subset="Symbol")
+    gene_order = list(ref_filtered["Symbol"])
 
     # Build feature matrix: rows = cancer types + sample, cols = genes
     symbol_to_id = dict(zip(ref_filtered["Symbol"], ref_filtered["Ensembl_Gene_ID"]))
     feature_matrix = []
     labels = []
 
-    for code in cancer_codes:
-        col = f"FPKM_{code}"
-        vals = []
-        for sym in gene_order:
-            row_mask = ref_filtered["Symbol"] == sym
-            v = ref_filtered.loc[row_mask, col].astype(float).values
-            vals.append(v[0] if len(v) > 0 else 0)
+    for col in fpkm_cols:
+        vals = ref_filtered[col].astype(float).values
         feature_matrix.append(vals)
-        labels.append(code)
+        labels.append(col.replace("FPKM_", ""))
 
     # Sample vector
     sample_vals = []
-    for sym in gene_order:
-        gid = symbol_to_id.get(sym)
-        sample_vals.append(sample_by_id.get(gid, 0) if gid else 0)
+    for _, row in ref_filtered.iterrows():
+        gid = row["Ensembl_Gene_ID"]
+        sample_vals.append(sample_by_id.get(gid, 0))
     feature_matrix.append(sample_vals)
     labels.append("SAMPLE")
 

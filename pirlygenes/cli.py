@@ -23,6 +23,7 @@ from .gene_sets_cancer import (
     cancer_type_gene_sets,
 )
 import matplotlib.pyplot as plt
+from PIL import Image
 from .load_expression import load_expression_data
 from .plot import (
     plot_gene_expression,
@@ -198,10 +199,9 @@ def plot_expression(
                 always_label_genes=forced_labels,
             )
 
-    # Collect all figures into one PDF
-    from matplotlib.backends.backend_pdf import PdfPages
+    # Collect all figures into one PDF (native resolution)
     from pathlib import Path
-    import matplotlib.image as mpimg
+    from PIL import Image
 
     all_pdf = "%s-all-figures.pdf" % prefix if prefix else "all-figures.pdf"
     png_files = [
@@ -219,18 +219,18 @@ def plot_expression(
     if scatter_dir.is_dir():
         png_files.extend(sorted(str(p) for p in scatter_dir.glob("*.png")))
 
-    with PdfPages(all_pdf) as pdf:
-        for png_path in png_files:
-            if Path(png_path).exists():
-                img = mpimg.imread(png_path)
-                fig, ax = plt.subplots(figsize=(11, 8.5))
-                ax.imshow(img)
-                ax.axis("off")
-                ax.set_title(Path(png_path).stem, fontsize=10)
-                fig.tight_layout()
-                pdf.savefig(fig, bbox_inches="tight")
-                plt.close(fig)
-    print(f"Saved {all_pdf} ({len(png_files)} pages)")
+    images = []
+    for png_path in png_files:
+        p = Path(png_path)
+        if p.exists():
+            img = Image.open(p).convert("RGB")
+            images.append(img)
+
+    if images:
+        images[0].save(all_pdf, save_all=True, append_images=images[1:], resolution=output_dpi)
+        print(f"Saved {all_pdf} ({len(images)} pages)")
+    else:
+        print("No images to collect into PDF")
 
 
 @named("plot-cancer-cohorts")
@@ -239,7 +239,6 @@ def plot_cancer_cohorts(
     output_dpi: int = 300,
 ):
     """Visualize curated gene sets across all 33 TCGA cancer types (no sample needed)."""
-    from matplotlib.backends.backend_pdf import PdfPages
     from pathlib import Path
 
     prefix = output_prefix or "cohort"
@@ -258,21 +257,15 @@ def plot_cancer_cohorts(
         fn(save_to_filename=out, save_dpi=output_dpi)
         png_files.append(out)
 
-    # Collect into PDF
-    import matplotlib.image as mpimg
+    # Collect into PDF (native resolution)
     pdf_path = f"{prefix}-all.pdf"
-    with PdfPages(pdf_path) as pdf:
-        for png_path in png_files:
-            if Path(png_path).exists():
-                img = mpimg.imread(png_path)
-                fig, ax = plt.subplots(figsize=(11, 8.5))
-                ax.imshow(img)
-                ax.axis("off")
-                ax.set_title(Path(png_path).stem, fontsize=10)
-                fig.tight_layout()
-                pdf.savefig(fig, bbox_inches="tight")
-                plt.close(fig)
-    print(f"Saved {pdf_path} ({len(png_files)} pages)")
+    images = []
+    for png_path in png_files:
+        if Path(png_path).exists():
+            images.append(Image.open(png_path).convert("RGB"))
+    if images:
+        images[0].save(pdf_path, save_all=True, append_images=images[1:], resolution=output_dpi)
+        print(f"Saved {pdf_path} ({len(images)} pages)")
 
 
 def main():
