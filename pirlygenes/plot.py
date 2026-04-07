@@ -316,6 +316,70 @@ def plot_gene_expression(
     return cat
 
 
+# -------------------- cancer type aliases --------------------
+
+CANCER_TYPE_ALIASES = {
+    "prostate": "PRAD",
+    "breast": "BRCA",
+    "lung_adeno": "LUAD",
+    "lung_squamous": "LUSC",
+    "melanoma": "SKCM",
+    "skin": "SKCM",
+    "colon": "COAD",
+    "colorectal": "COAD",
+    "rectal": "READ",
+    "pancreatic": "PAAD",
+    "pancreas": "PAAD",
+    "liver": "LIHC",
+    "kidney_clear": "KIRC",
+    "kidney_papillary": "KIRP",
+    "kidney_chromophobe": "KICH",
+    "kidney": "KIRC",
+    "ovarian": "OV",
+    "ovary": "OV",
+    "cervical": "CESC",
+    "cervix": "CESC",
+    "bladder": "BLCA",
+    "stomach": "STAD",
+    "gastric": "STAD",
+    "glioblastoma": "GBM",
+    "gbm": "GBM",
+    "head_neck": "HNSC",
+    "hnscc": "HNSC",
+    "thyroid": "THCA",
+    "endometrial": "UCEC",
+    "uterine": "UCEC",
+    "testicular": "TGCT",
+    "testis": "TGCT",
+}
+
+
+def resolve_cancer_type(cancer_type):
+    """Resolve a cancer type name or alias to a TCGA code.
+
+    Accepts TCGA codes (e.g. ``"PRAD"``), common names (e.g. ``"prostate"``),
+    or case-insensitive variants. Returns the TCGA code or raises ValueError.
+    """
+    if cancer_type is None:
+        return None
+    key = cancer_type.strip().lower().replace(" ", "_").replace("-", "_")
+    # Direct TCGA code match (case-insensitive)
+    upper = cancer_type.strip().upper()
+    # Check alias map first, then try as TCGA code
+    if key in CANCER_TYPE_ALIASES:
+        return CANCER_TYPE_ALIASES[key]
+    # Check if it's already a valid TCGA code
+    ref = pan_cancer_expression()
+    fpkm_cols = {c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_")}
+    if upper in fpkm_cols:
+        return upper
+    raise ValueError(
+        f"Unknown cancer type '{cancer_type}'. "
+        f"Valid codes: {sorted(fpkm_cols)}. "
+        f"Aliases: {sorted(CANCER_TYPE_ALIASES.keys())}"
+    )
+
+
 # -------------------- sample vs pan-cancer scatter --------------------
 
 
@@ -350,10 +414,8 @@ def _prepare_sample_vs_cancer_data(
 
     ref = pan_cancer_expression(normalize="housekeeping")
     if cancer_type is not None:
+        cancer_type = resolve_cancer_type(cancer_type)
         ref_col = f"FPKM_{cancer_type}"
-        if ref_col not in ref.columns:
-            available = [c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_")]
-            raise ValueError(f"Cancer type '{cancer_type}' not found. Available: {available}")
         ref["_ref_value"] = ref[ref_col].astype(float)
         x_label = f"Housekeeping-normalized FPKM ({cancer_type})"
     else:
