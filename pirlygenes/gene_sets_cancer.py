@@ -260,6 +260,61 @@ def cancer_expression(cancer_type, genes=None):
     return df[["Ensembl_Gene_ID", "Symbol", col]].rename(columns={col: "expression"})
 
 
+def top_enriched_per_cancer_type(n=10, min_fold=3.0, min_expression=0.01):
+    """Top N enriched genes per cancer type vs pan-cancer median.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        {TCGA_code: [gene_symbol, ...]} sorted by fold-change descending.
+    """
+    import numpy as np
+    df = pan_cancer_expression(normalize="housekeeping")
+    fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
+
+    result = {}
+    for col in fpkm_cols:
+        code = col.replace("FPKM_", "")
+        other_cols = [c for c in fpkm_cols if c != col]
+        expr = df[col].astype(float)
+        other_med = df[other_cols].astype(float).median(axis=1)
+        fold = (expr + 0.001) / (other_med + 0.001)
+
+        mask = (expr >= min_expression) & (fold >= min_fold)
+        top_idx = fold[mask].nlargest(n).index
+        result[code] = df.loc[top_idx, "Symbol"].tolist()
+    return result
+
+
+def cancer_type_gene_sets(cancer_type):
+    """Curated gene sets for a specific cancer type, grouped by role.
+
+    Parameters
+    ----------
+    cancer_type : str
+        TCGA code or alias (e.g. ``"PRAD"``, ``"prostate"``).
+
+    Returns
+    -------
+    dict[str, dict[str, str]]
+        {role: {ensembl_id: symbol}} for use as gene_sets in plotting.
+        Returns empty dict if no curated genes exist for that cancer type.
+    """
+    from .plot import resolve_cancer_type
+    code = resolve_cancer_type(cancer_type)
+    try:
+        df = get_data("cancer-type-genes")
+    except Exception:
+        return {}
+    sub = df[df["Cancer_Type"] == code]
+    if sub.empty:
+        return {}
+    result = {}
+    for role, group in sub.groupby("Role"):
+        result[role] = dict(zip(group["Ensembl_Gene_ID"], group["Symbol"]))
+    return result
+
+
 def cancer_enriched_genes(cancer_type, min_fold=3.0, min_expression=0.01):
     """Genes enriched in a specific cancer type vs the pan-cancer median.
 

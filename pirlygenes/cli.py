@@ -24,11 +24,14 @@ from .gene_sets_cancer import (
     radio_target_gene_names,
     TCR_T_target_gene_names,
     cancer_types,
+    cancer_type_gene_sets,
 )
 from .load_expression import load_expression_data
 from .plot import (
     plot_gene_expression,
     plot_sample_vs_cancer,
+    plot_cancer_type_genes,
+    plot_cancer_type_pca,
     default_gene_sets,
     CANCER_TYPE_ALIASES,
     CANCER_TYPE_NAMES,
@@ -46,7 +49,7 @@ _DATASET_SOURCES = {
     "CAR-T-approved": "FDA approvals",
     "class1-mhc-presentation-pathway": "Literature curation",
     "housekeeping-genes": "Eisenberg & Levanon 2013",
-    "immune-gene-sets": "Pre-resolved from literature",
+    "gene-sets": "Pre-resolved gene sets (immune, oncogenic, DNA repair)",
     "interferon-response": "Literature curation",
     "multispecific-tcell-engager-trials": "Literature curation 2024",
     "pan-cancer-expression": "HPA v23 (nTPM) + GDC/STAR (median TPM), 33 TCGA types",
@@ -163,6 +166,30 @@ def plot_expression(
         save_dpi=output_dpi,
         always_label_genes=forced_labels,
     )
+
+    # Cancer type signature plots
+    genes_png = "%s-cancer-types-genes.png" % prefix if prefix else "cancer-types-genes.png"
+    plot_cancer_type_genes(df_expr, save_to_filename=genes_png, save_dpi=output_dpi)
+
+    pca_png = "%s-cancer-types-scatter.png" % prefix if prefix else "cancer-types-scatter.png"
+    plot_cancer_type_pca(df_expr, save_to_filename=pca_png, save_dpi=output_dpi)
+
+    # Cancer-type-specific gene set plot (only when --cancer-type specified)
+    if cancer_type:
+        from .plot import resolve_cancer_type
+        code = resolve_cancer_type(cancer_type)
+        ct_gene_sets = cancer_type_gene_sets(cancer_type)
+        if ct_gene_sets:
+            ct_png = "%s-%s-genes.png" % (prefix, code.lower()) if prefix else "%s-genes.png" % code.lower()
+            plot_gene_expression(
+                df_expr,
+                gene_sets=ct_gene_sets,
+                save_to_filename=ct_png,
+                save_dpi=output_dpi,
+                plot_height=plot_height,
+                plot_aspect=plot_aspect,
+                always_label_genes=forced_labels,
+            )
 
 
 def main():

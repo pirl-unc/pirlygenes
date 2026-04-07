@@ -32,7 +32,7 @@ from .load_dataset import get_data
 
 def _load_immune_gene_sets():
     """Load immune gene sets as {category: {ensembl_id: symbol}} from CSV."""
-    df = get_data("immune-gene-sets")
+    df = get_data("gene-sets")
     result = {}
     for cat, group in df.groupby("Category"):
         result[cat] = dict(zip(group["Ensembl_Gene_ID"], group["Symbol"]))
@@ -691,3 +691,219 @@ def plot_sample_vs_cancer(
             print(f"Saved multi-page PDF to {out}")
 
     return figures
+
+
+# -------------------- cancer-type gene signature plots --------------------
+
+
+def plot_cancer_type_genes(
+    df_gene_expr,
+    n_genes=10,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(14, 20),
+):
+    """Strip plot of top enriched genes per cancer type, showing sample TPM.
+
+    For each of the 33 TCGA cancer types, identifies the top N most
+    enriched genes (vs pan-cancer median). Shows horizontal strip plots
+    with the sample's TPM values for those genes, sorted by mean
+    expression high to low.
+
+    Parameters
+    ----------
+    df_gene_expr : pd.DataFrame
+        Patient expression data.
+    n_genes : int
+        Number of top enriched genes per cancer type (default 10).
+    save_to_filename : str or None
+        Output path.
+    """
+    import pandas as pd
+    from .plot_data_helpers import _strip_ensembl_version
+    from .gene_sets_cancer import top_enriched_per_cancer_type
+
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
+
+    df = df_gene_expr.copy()
+    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+
+    tpm_col = "TPM" if "TPM" in df.columns else next(
+        (c for c in df.columns if c.lower() == "tpm"), None
+    )
+    sample_tpm = dict(zip(df[gene_name_col].astype(str), df[tpm_col].astype(float)))
+
+    # Get top enriched genes per cancer type
+    top_genes = top_enriched_per_cancer_type(n=n_genes)
+
+    # Sort cancer types by mean sample TPM of their signature genes (highest first)
+    cancer_order = sorted(
+        top_genes.keys(),
+        key=lambda c: -sum(sample_tpm.get(g, 0) for g in top_genes[c]) / max(len(top_genes[c]), 1),
+    )
+
+    # Build plot data
+    rows = []
+    for cancer in cancer_order:
+        genes = top_genes[cancer]
+        for gene in genes:
+            tpm = sample_tpm.get(gene, 0)
+            full_name = CANCER_TYPE_NAMES.get(cancer, cancer)
+            label = f"{cancer} ({full_name})"
+            rows.append((label, gene, tpm + 0.01))
+
+    plot_df = pd.DataFrame(rows, columns=["cancer_type", "gene", "TPM"])
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    import numpy as np
+    cancer_labels = [f"{c} ({CANCER_TYPE_NAMES.get(c, c)})" for c in cancer_order]
+    label_to_y = {label: i for i, label in enumerate(cancer_labels)}
+
+    for _, row in plot_df.iterrows():
+        y = label_to_y.get(row.cancer_type, 0)
+        jitter = np.random.uniform(-0.15, 0.15)
+        ax.scatter(row.TPM, y + jitter, s=20, alpha=0.7, color="steelblue", edgecolors="none")
+        if row.TPM > 1:
+            ax.text(row.TPM, y + jitter, f" {row.gene}",
+                    fontsize=6, va="center", ha="left", alpha=0.7)
+
+    ax.set_yticks(range(len(cancer_labels)))
+    ax.set_yticklabels(cancer_labels, fontsize=8)
+    ax.set_xscale("log")
+    ax.set_xlabel("Sample TPM", fontsize=11)
+    ax.set_ylabel("")
+    ax.set_title("Top enriched genes per cancer type (sample expression)", fontsize=12)
+    ax.invert_yaxis()
+
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
+
+
+def plot_cancer_type_pca(
+    df_gene_expr,
+    n_genes=10,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(12, 10),
+):
+    """PCA scatter showing where the sample falls among cancer-type centroids.
+
+    Takes the union of top enriched genes across all cancer types,
+    computes housekeeping-normalized expression for each cancer type
+    (centroid) and the sample, then projects into PCA space.
+
+    Parameters
+    ----------
+    df_gene_expr : pd.DataFrame
+        Patient expression data.
+    n_genes : int
+        Number of top enriched genes per cancer type for PCA features.
+    save_to_filename : str or None
+        Output path.
+    """
+    import numpy as np
+    import pandas as pd
+    from sklearn.decomposition import PCA
+    from .plot_data_helpers import _strip_ensembl_version
+    from .gene_sets_cancer import (
+        top_enriched_per_cancer_type,
+        pan_cancer_expression,
+        housekeeping_gene_ids,
+    )
+
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
+
+    df = df_gene_expr.copy()
+    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+
+    tpm_col = "TPM" if "TPM" in df.columns else next(
+        (c for c in df.columns if c.lower() == "tpm"), None
+    )
+
+    # Housekeeping-normalize sample
+    hk_ids = housekeeping_gene_ids()
+    hk_mask = df[gene_id_col].isin(hk_ids)
+    hk_median = df.loc[hk_mask, tpm_col].astype(float).median()
+    if hk_median <= 0:
+        hk_median = 1.0
+
+    sample_by_id = dict(zip(
+        df[gene_id_col].astype(str),
+        df[tpm_col].astype(float) / hk_median,
+    ))
+
+    # Get union of top enriched genes and their IDs
+    top_genes = top_enriched_per_cancer_type(n=n_genes)
+    all_symbols = set()
+    for genes in top_genes.values():
+        all_symbols.update(genes)
+
+    # Load reference data (housekeeping-normalized)
+    ref = pan_cancer_expression(normalize="housekeeping")
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    cancer_codes = [c.replace("FPKM_", "") for c in fpkm_cols]
+
+    # Filter to union genes
+    ref_filtered = ref[ref["Symbol"].isin(all_symbols)].copy()
+    gene_order = sorted(ref_filtered["Symbol"].unique())
+
+    # Build feature matrix: rows = cancer types + sample, cols = genes
+    symbol_to_id = dict(zip(ref_filtered["Symbol"], ref_filtered["Ensembl_Gene_ID"]))
+    feature_matrix = []
+    labels = []
+
+    for code in cancer_codes:
+        col = f"FPKM_{code}"
+        vals = []
+        for sym in gene_order:
+            row_mask = ref_filtered["Symbol"] == sym
+            v = ref_filtered.loc[row_mask, col].astype(float).values
+            vals.append(v[0] if len(v) > 0 else 0)
+        feature_matrix.append(vals)
+        labels.append(code)
+
+    # Sample vector
+    sample_vals = []
+    for sym in gene_order:
+        gid = symbol_to_id.get(sym)
+        sample_vals.append(sample_by_id.get(gid, 0) if gid else 0)
+    feature_matrix.append(sample_vals)
+    labels.append("SAMPLE")
+
+    X = np.array(feature_matrix)
+    # Log transform for PCA
+    X = np.log2(X + 0.001)
+
+    pca = PCA(n_components=2)
+    coords = pca.fit_transform(X)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Plot cancer type centroids
+    n_cancers = len(cancer_codes)
+    for i in range(n_cancers):
+        ax.scatter(coords[i, 0], coords[i, 1], s=60, alpha=0.6,
+                   color="steelblue", edgecolors="white", linewidths=0.5, zorder=2)
+        ax.text(coords[i, 0], coords[i, 1], f" {labels[i]}",
+                fontsize=7, alpha=0.7, va="center")
+
+    # Plot sample (larger, distinct)
+    ax.scatter(coords[-1, 0], coords[-1, 1], s=200, color="red",
+               edgecolors="black", linewidths=1.5, zorder=5, marker="*")
+    ax.text(coords[-1, 0], coords[-1, 1], "  SAMPLE",
+            fontsize=10, fontweight="bold", color="red", va="center")
+
+    ax.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)", fontsize=11)
+    ax.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)", fontsize=11)
+    ax.set_title("Sample position among TCGA cancer type gene signatures", fontsize=12)
+    ax.grid(True, alpha=0.2)
+
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax

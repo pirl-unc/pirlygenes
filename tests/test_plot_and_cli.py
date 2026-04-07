@@ -108,9 +108,13 @@ def test_plot_gene_expression_smoke(monkeypatch, tmp_path):
 def test_cli_plot_expression_and_main(monkeypatch):
     calls = []
     scatter_calls = []
+    cancer_gene_calls = []
+    pca_calls = []
     monkeypatch.setattr(cli_mod, "load_expression_data", lambda *a, **k: pd.DataFrame({"x": [1]}))
     monkeypatch.setattr(cli_mod, "plot_gene_expression", lambda *a, **k: calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_sample_vs_cancer", lambda *a, **k: scatter_calls.append(k))
+    monkeypatch.setattr(cli_mod, "plot_cancer_type_genes", lambda *a, **k: cancer_gene_calls.append(k))
+    monkeypatch.setattr(cli_mod, "plot_cancer_type_pca", lambda *a, **k: pca_calls.append(k))
     monkeypatch.setattr(cli_mod, "TCR_T_target_gene_names", lambda: {"TCR"})
     monkeypatch.setattr(cli_mod, "CAR_T_target_gene_names", lambda: {"CAR"})
     monkeypatch.setattr(cli_mod, "bispecific_antibody_target_gene_names", lambda: {"BS"})
@@ -133,6 +137,8 @@ def test_cli_plot_expression_and_main(monkeypatch):
     assert calls[1]["always_label_genes"] == {"FAP", "CD276"}
     assert len(scatter_calls) == 1
     assert scatter_calls[0]["save_to_filename"] == "out-vs-cancer.pdf"
+    assert len(cancer_gene_calls) == 1
+    assert len(pca_calls) == 1
 
     printed = []
     monkeypatch.setattr(cli_mod, "print_name_and_version", lambda: printed.append("v"))
