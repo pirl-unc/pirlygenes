@@ -350,7 +350,6 @@ def plot_tumor_purity(
     - Right panel: component summary (signature, stromal, immune, combined)
     """
     import matplotlib.pyplot as plt
-    from matplotlib.patches import FancyBboxPatch
 
     result = estimate_tumor_purity(df_gene_expr, cancer_type=cancer_type)
     cancer_code = result["cancer_type"]

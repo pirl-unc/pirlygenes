@@ -68,8 +68,9 @@ def _consolidate_gene_ids(df, verbose=True):
     Salmon distributes reads across both, splitting the expression.
 
     For each gene symbol with multiple IDs, pick one canonical ID
-    (prefer the one in our pan-cancer reference) and keep the row with
-    the highest TPM.
+    (prefer the one in our pan-cancer reference) and SUM TPM across
+    all alt-haplotype copies (reads are split by the aligner, so
+    summing recovers the true total).
     """
     if "ensembl_gene_id" not in df.columns:
         return df
@@ -125,12 +126,14 @@ def _consolidate_gene_ids(df, verbose=True):
             if alt_id != canonical:
                 id_remap[alt_id] = canonical
 
-        # Keep only the row with highest TPM for this symbol
+        # Sum TPM across alt-haplotype copies (reads are split by aligner)
+        # and keep one row with the summed value
         if tpm_col and len(sub) > 1:
+            total_tpm = sub[tpm_col].astype(float).sum()
             best_idx = sub[tpm_col].astype(float).idxmax()
             drop_idx = sub.index.difference([best_idx])
             rows_to_drop.extend(drop_idx)
-            # Set the kept row's ID to canonical
+            df.loc[best_idx, tpm_col] = total_tpm
             df.loc[best_idx, "_id_stripped"] = canonical
             n_consolidated += 1
 

@@ -1311,10 +1311,9 @@ def _sample_expression_by_symbol(df_gene_expr):
     )
     expr_df = expr_df[expr_df["Symbol"].astype(str).str.strip().ne("")]
     # Aggregate by Ensembl ID (unique), then map to symbol.
-    # Use max (not sum) to avoid inflating expression when multiple
-    # rows share an ID (e.g., isoform-level quantification).
+    # Sum across rows with same ID (alt-haplotype reads are split by aligner).
     grouped = expr_df.groupby("gene_id", as_index=False, sort=False).agg(
-        {"Symbol": "first", "sample_raw": "max", "sample_hk": "max"}
+        {"Symbol": "first", "sample_raw": "sum", "sample_hk": "sum"}
     )
     return (
         dict(zip(grouped["Symbol"], grouped["sample_raw"])),
