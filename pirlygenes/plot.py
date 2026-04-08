@@ -2220,11 +2220,14 @@ def plot_cancer_type_umap(
     from umap import UMAP
 
     X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes, method=method)
-    coords = UMAP(
-        n_components=2,
-        n_neighbors=min(15, len(labels) - 1),
-        random_state=42,
-    ).fit_transform(X)
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="n_jobs value")
+        coords = UMAP(
+            n_components=2,
+            n_neighbors=min(15, len(labels) - 1),
+            random_state=42,
+        ).fit_transform(X)
     mlabel = _METHOD_LABELS.get(method, method)
     return _plot_embedding_with_labels(
         coords,
