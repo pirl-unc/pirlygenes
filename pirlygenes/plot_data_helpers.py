@@ -214,7 +214,8 @@ def normalize_gene_sets(
 
     cat_to_gene_id_list = {cat: sorted(ids) for cat, ids in cat_to_gene_ids.items()}
     if verbose:
-        print("Categories:", list(cat_to_gene_id_list.keys()))
+        n_total = sum(len(ids) for ids in cat_to_gene_id_list.values())
+        print(f"[plot] {len(cat_to_gene_id_list)} gene set categories, {n_total} genes total")
     return cat_to_gene_id_list, gene_id_to_name
 
 
