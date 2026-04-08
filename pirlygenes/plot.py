@@ -152,12 +152,12 @@ def plot_gene_expression(
     gene_sets=default_gene_sets,
     save_to_filename=None,
     save_dpi=300,
-    plot_height=12.0,
+    plot_height=14.0,
     plot_aspect=1.4,
-    num_labels_per_category=10,
+    num_labels_per_category=5,
     always_label_genes=None,
     adjust_args=dict(
-        expand=(1.3, 1.8),
+        expand=(1.4, 2.0),
         arrowprops=dict(arrowstyle="->", color="red", alpha=0.3),
         min_arrow_len=7,
         expand_axes=True,
@@ -267,13 +267,15 @@ def plot_gene_expression(
                 hk_texts.append(
                     ax.text(
                         xi, row["TPM"], row[gene_name_col],
-                        fontsize=9, color="#c0392b", alpha=0.85,
+                        fontsize=7, color="#c0392b", alpha=0.85,
                         ha="right", va="top",
                     )
                 )
         adjust_text(
             hk_texts,
-            **{**adjust_args, "expand": (1.2, 1.6)},
+            force_text=(0.5, 1.0),
+            force_points=(0.5, 1.0),
+            **{**adjust_args, "expand": (1.4, 2.0)},
         )
 
     # Reference lines at key TPM thresholds
@@ -313,6 +315,7 @@ def plot_gene_expression(
                 cat_to_x[row.category],
                 row.TPM,
                 label,
+                fontsize=7,
                 color="black",
                 alpha=0.8,
                 ha="right",
@@ -327,6 +330,8 @@ def plot_gene_expression(
         x=point_x,
         y=point_y,
         ax=cat.ax,
+        force_text=(0.5, 1.0),
+        force_points=(0.5, 1.0),
         **adjust_args,
     )
 
@@ -1620,10 +1625,7 @@ def plot_cancer_type_genes(
             row["gene_details"],
             key=lambda item: (-item["sample_raw"], item["gene"]),
         )
-        label = (
-            f"{row['rank']:>2}. {code} ({CANCER_TYPE_NAMES.get(code, code)}) "
-            f"[score={row['score']:.2f}, n={row['n_genes']}]"
-        )
+        label = f"{row['rank']:>2}. {code} — score={row['score']:.2f}"
         y_ticks.append(y_pos)
         y_labels.append(label)
 
@@ -1666,7 +1668,7 @@ def plot_cancer_type_genes(
                     x,
                     y_pos + jitter,
                     detail["gene"],
-                    fontsize=6,
+                    fontsize=8,
                     va="center",
                     ha="left",
                     alpha=0.85,
@@ -1686,7 +1688,7 @@ def plot_cancer_type_genes(
         expand=(1.03, 1.2),
     )
     ax.set_yticks(y_ticks)
-    ax.set_yticklabels(y_labels, fontsize=7)
+    ax.set_yticklabels(y_labels, fontsize=9)
     ax.set_xscale("log")
     ax.set_xlabel("Sample TPM", fontsize=11)
     ax.set_ylabel("")
@@ -1737,7 +1739,7 @@ def plot_cancer_type_disjoint_genes(
 
     scores = [row["score"] for row in stats]
     labels = [
-        f"{row['rank']:>2}. {row['code']} ({CANCER_TYPE_NAMES.get(row['code'], row['code'])}) [n={row['n_genes']}]"
+        f"{row['rank']:>2}. {row['code']} ({CANCER_TYPE_NAMES.get(row['code'], row['code'])})"
         for row in stats
     ]
     y = np.arange(len(stats))
@@ -1747,7 +1749,7 @@ def plot_cancer_type_disjoint_genes(
     ax.barh(y, scores, color=colors, edgecolor="none", height=0.7)
 
     ax.set_yticks(y)
-    ax.set_yticklabels(labels, fontsize=7)
+    ax.set_yticklabels(labels, fontsize=8)
     ax.set_xlabel("Signature similarity score", fontsize=10)
     ax.set_title(
         "Cancer type similarity score\n"

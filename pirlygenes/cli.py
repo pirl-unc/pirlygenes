@@ -119,7 +119,7 @@ def plot_expression(
     gene_name_col: Optional[str] = None,
     gene_id_col: Optional[str] = None,
     output_dpi: int = 300,
-    plot_height: float = 12.0,
+    plot_height: float = 14.0,
     plot_aspect: float = 1.4,
     cancer_type: Optional[str] = None,
     therapy_target_top_k: int = 10,
