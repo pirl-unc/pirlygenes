@@ -1343,7 +1343,6 @@ def _compute_cancer_type_signature_stats(
     ref = pan_cancer_expression(normalize="housekeeping")
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
-    codes = [c.replace("FPKM_", "") for c in fpkm_cols]
 
     # Z-score matrix across cancer types for gene selection
     expr_matrix = ref_by_sym[fpkm_cols].astype(float)
