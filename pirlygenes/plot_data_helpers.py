@@ -39,6 +39,8 @@ def _strip_ensembl_version(gid: str) -> str:
 
 # --------------------------- validation / normalization ----------------------
 
+_REMAP_LOGGED: set = set()  # suppress duplicate remap messages across calls
+
 
 def _remap_retired_gene_ids(
     cat_to_gene_id_list: Dict[str, List[str]],
@@ -83,9 +85,11 @@ def _remap_retired_gene_ids(
             if name:
                 new_gid = name_to_expr_id.get(name.upper())
                 if new_gid:
-                    print(
-                        f"[info] Remapped retired gene ID {gid} ({name}) -> {new_gid}"
-                    )
+                    if gid not in _REMAP_LOGGED:
+                        print(
+                            f"[info] Remapped retired gene ID {gid} ({name}) -> {new_gid}"
+                        )
+                        _REMAP_LOGGED.add(gid)
                     new_ids.append(new_gid)
                     new_id_to_name[new_gid] = name
                     new_id_to_name.pop(gid, None)
