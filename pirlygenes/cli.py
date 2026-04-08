@@ -272,18 +272,28 @@ def plot_cancer_cohorts(
     prefix = output_prefix or "cohort"
     png_files = []
 
-    plots = [
-        ("heatmap", plot_cohort_heatmap),
+    # Plots without zscore parameter
+    simple_plots = [
         ("disjoint-counts", plot_cohort_disjoint_counts),
         ("pca", plot_cohort_pca),
+    ]
+    for name, fn in simple_plots:
+        out = f"{prefix}-{name}.png"
+        fn(save_to_filename=out, save_dpi=output_dpi)
+        png_files.append(out)
+
+    # Heatmaps: emit both z-score and HK-normalized versions
+    heatmap_plots = [
+        ("heatmap", plot_cohort_heatmap),
         ("therapy-targets", plot_cohort_therapy_targets),
         ("surface-proteins", plot_cohort_surface_proteins),
         ("ctas", plot_cohort_ctas),
     ]
-    for name, fn in plots:
-        out = f"{prefix}-{name}.png"
-        fn(save_to_filename=out, save_dpi=output_dpi)
-        png_files.append(out)
+    for name, fn in heatmap_plots:
+        for suffix, zs in [("zscore", True), ("hk", False)]:
+            out = f"{prefix}-{name}-{suffix}.png"
+            fn(save_to_filename=out, save_dpi=output_dpi, zscore=zs)
+            png_files.append(out)
 
     # Collect into PDF (native resolution)
     pdf_path = f"{prefix}-all.pdf"

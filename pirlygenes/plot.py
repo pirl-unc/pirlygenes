@@ -1789,12 +1789,9 @@ def plot_cohort_heatmap(
     save_to_filename=None,
     save_dpi=300,
     figsize=(18, 14),
+    zscore=True,
 ):
-    """Heatmap of curated cancer-type genes × cancer types.
-
-    Rows are genes from cancer-type-genes.csv, columns are 33 TCGA cancer
-    types. Values are log2(housekeeping-normalized expression + 0.001).
-    """
+    """Heatmap of curated cancer-type genes × cancer types."""
     import numpy as np
     from .gene_sets_cancer import pan_cancer_expression, cancer_types
 
@@ -1809,25 +1806,33 @@ def plot_cohort_heatmap(
     fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
     codes = [c.replace("FPKM_", "") for c in fpkm_cols]
 
-    # Build matrix — z-score each gene (row) across cancer types
     ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     present = [s for s in gene_symbols if s in ref_dedup.index]
     matrix = ref_dedup.loc[present, fpkm_cols].astype(float)
     matrix = np.log2(matrix + 0.001)
-    row_mean = matrix.mean(axis=1)
-    row_std = matrix.std(axis=1).clip(lower=0.1)
-    matrix = matrix.sub(row_mean, axis=0).div(row_std, axis=0)
+
+    if zscore:
+        row_mean = matrix.mean(axis=1)
+        row_std = matrix.std(axis=1).clip(lower=0.1)
+        matrix = matrix.sub(row_mean, axis=0).div(row_std, axis=0)
+        cmap, vmin, vmax = "RdBu_r", -3, 3
+        subtitle = "z-score of log2 expression across cancers"
+        cbar_label = "z-score"
+    else:
+        cmap, vmin, vmax = "RdBu_r", -5, 5
+        subtitle = "log2 housekeeping-normalized"
+        cbar_label = "log2(HK-normalized)"
     matrix.columns = codes
 
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(matrix.values, aspect="auto", cmap="RdBu_r",
-                   vmin=-3, vmax=3, interpolation="nearest")
+    im = ax.imshow(matrix.values, aspect="auto", cmap=cmap,
+                   vmin=vmin, vmax=vmax, interpolation="nearest")
     ax.set_xticks(range(len(codes)))
     ax.set_xticklabels(codes, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
     ax.set_yticklabels(present, fontsize=4)
-    ax.set_title("Curated cancer-type genes × TCGA cancer types\n(z-score of log2 expression across cancers)", fontsize=11)
-    fig.colorbar(im, ax=ax, label="z-score", shrink=0.6)
+    ax.set_title(f"Curated cancer-type genes × TCGA cancer types\n({subtitle})", fontsize=11)
+    fig.colorbar(im, ax=ax, label=cbar_label, shrink=0.6)
     fig.tight_layout()
 
     if save_to_filename:
@@ -1935,6 +1940,7 @@ def plot_cohort_therapy_targets(
     save_to_filename=None,
     save_dpi=300,
     figsize=(16, 10),
+    zscore=True,
 ):
     """Heatmap of therapy targets × cancer types showing expression.
 
@@ -1964,20 +1970,29 @@ def plot_cohort_therapy_targets(
     present = [s for s in target_symbols if s in ref_dedup.index]
     matrix = ref_dedup.loc[present, fpkm_cols].astype(float)
     matrix = np.log2(matrix + 0.001)
-    row_mean = matrix.mean(axis=1)
-    row_std = matrix.std(axis=1).clip(lower=0.1)
-    matrix = matrix.sub(row_mean, axis=0).div(row_std, axis=0)
+
+    if zscore:
+        row_mean = matrix.mean(axis=1)
+        row_std = matrix.std(axis=1).clip(lower=0.1)
+        matrix = matrix.sub(row_mean, axis=0).div(row_std, axis=0)
+        cmap, vmin, vmax = "RdBu_r", -3, 3
+        subtitle = "z-score of log2 expression across cancers"
+        cbar_label = "z-score"
+    else:
+        cmap, vmin, vmax = "YlOrRd", -5, 3
+        subtitle = "log2 housekeeping-normalized"
+        cbar_label = "log2(HK-normalized)"
     matrix.columns = codes
 
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(matrix.values, aspect="auto", cmap="RdBu_r",
-                   vmin=-3, vmax=3, interpolation="nearest")
+    im = ax.imshow(matrix.values, aspect="auto", cmap=cmap,
+                   vmin=vmin, vmax=vmax, interpolation="nearest")
     ax.set_xticks(range(len(codes)))
     ax.set_xticklabels(codes, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
     ax.set_yticklabels(present, fontsize=6)
-    ax.set_title("Therapy targets × TCGA cancer types\n(z-score of log2 expression across cancers)", fontsize=11)
-    fig.colorbar(im, ax=ax, label="z-score", shrink=0.6)
+    ax.set_title(f"Therapy targets × TCGA cancer types\n({subtitle})", fontsize=11)
+    fig.colorbar(im, ax=ax, label=cbar_label, shrink=0.6)
     fig.tight_layout()
 
     if save_to_filename:
@@ -1994,6 +2009,7 @@ def _plot_geneset_by_cancer_heatmap(
     figsize=(16, 12),
     cmap="YlOrRd",
     top_n_per_cancer=None,
+    zscore=True,
 ):
     """Shared helper: heatmap of gene set × cancer types."""
     import numpy as np
@@ -2026,20 +2042,29 @@ def _plot_geneset_by_cancer_heatmap(
     present = list(sort_order)
 
     matrix = np.log2(matrix + 0.001)
-    row_mean = matrix.mean(axis=1)
-    row_std = matrix.std(axis=1).clip(lower=0.1)
-    matrix = matrix.sub(row_mean, axis=0).div(row_std, axis=0)
+
+    if zscore:
+        row_mean = matrix.mean(axis=1)
+        row_std = matrix.std(axis=1).clip(lower=0.1)
+        matrix = matrix.sub(row_mean, axis=0).div(row_std, axis=0)
+        use_cmap, vmin, vmax = "RdBu_r", -3, 3
+        subtitle = "z-score of log2 expression across cancers"
+        cbar_label = "z-score"
+    else:
+        use_cmap, vmin, vmax = cmap, -5, 3
+        subtitle = "log2 housekeeping-normalized"
+        cbar_label = "log2(HK-normalized)"
     matrix.columns = codes
 
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(matrix.values, aspect="auto", cmap="RdBu_r",
-                   vmin=-3, vmax=3, interpolation="nearest")
+    im = ax.imshow(matrix.values, aspect="auto", cmap=use_cmap,
+                   vmin=vmin, vmax=vmax, interpolation="nearest")
     ax.set_xticks(range(len(codes)))
     ax.set_xticklabels(codes, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
     ax.set_yticklabels(present, fontsize=5 if len(present) > 50 else 6)
-    ax.set_title(f"{title}\n(z-score of log2 expression across cancers)", fontsize=11)
-    fig.colorbar(im, ax=ax, label="z-score", shrink=0.6)
+    ax.set_title(f"{title}\n({subtitle})", fontsize=11)
+    fig.colorbar(im, ax=ax, label=cbar_label, shrink=0.6)
     fig.tight_layout()
 
     if save_to_filename:
@@ -2049,7 +2074,7 @@ def _plot_geneset_by_cancer_heatmap(
 
 
 def plot_cohort_surface_proteins(
-    save_to_filename=None, save_dpi=300, figsize=(16, 14),
+    save_to_filename=None, save_dpi=300, figsize=(16, 14), zscore=True,
 ):
     """Heatmap of cancer surfaceome targets × cancer types."""
     from .gene_sets_cancer import cancer_surfaceome_gene_names
@@ -2057,14 +2082,14 @@ def plot_cohort_surface_proteins(
     return _plot_geneset_by_cancer_heatmap(
         genes, "Tumor-specific surface proteins (TCSA L3) × cancer types",
         save_to_filename=save_to_filename, save_dpi=save_dpi,
-        figsize=figsize, cmap="YlOrRd",
+        figsize=figsize, cmap="YlOrRd", zscore=zscore,
     )
 
 
 def plot_cohort_ctas(
-    save_to_filename=None, save_dpi=300, figsize=(16, 14),
+    save_to_filename=None, save_dpi=300, figsize=(16, 14), zscore=True,
 ):
-    """Heatmap of CTA genes × cancer types (raw FPKM, log-scaled)."""
+    """Heatmap of CTA genes × cancer types."""
     import numpy as np
     from .gene_sets_cancer import CTA_gene_names, pan_cancer_expression, cancer_types
 
@@ -2086,20 +2111,29 @@ def plot_cohort_ctas(
     present = list(matrix.index)
 
     matrix = np.log2(matrix + 0.1)  # +0.1 offset for CTAs (many are truly 0)
-    row_mean = matrix.mean(axis=1)
-    row_std = matrix.std(axis=1).clip(lower=0.1)
-    matrix = matrix.sub(row_mean, axis=0).div(row_std, axis=0)
+
+    if zscore:
+        row_mean = matrix.mean(axis=1)
+        row_std = matrix.std(axis=1).clip(lower=0.1)
+        matrix = matrix.sub(row_mean, axis=0).div(row_std, axis=0)
+        cmap, vmin, vmax = "RdBu_r", -3, 3
+        subtitle = "z-score of log2 FPKM across cancers"
+        cbar_label = "z-score"
+    else:
+        cmap, vmin, vmax = "magma_r", -3, 8
+        subtitle = "log2 FPKM"
+        cbar_label = "log2(FPKM + 0.1)"
     matrix.columns = codes_clean
 
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(matrix.values, aspect="auto", cmap="RdBu_r",
-                   vmin=-3, vmax=3, interpolation="nearest")
+    im = ax.imshow(matrix.values, aspect="auto", cmap=cmap,
+                   vmin=vmin, vmax=vmax, interpolation="nearest")
     ax.set_xticks(range(len(codes_clean)))
     ax.set_xticklabels(codes_clean, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
     ax.set_yticklabels(present, fontsize=6)
-    ax.set_title("Cancer-testis antigens × cancer types (top 50)\n(z-score of log2 FPKM across cancers)", fontsize=11)
-    fig.colorbar(im, ax=ax, label="z-score", shrink=0.6)
+    ax.set_title(f"Cancer-testis antigens × cancer types (top 50)\n({subtitle})", fontsize=11)
+    fig.colorbar(im, ax=ax, label=cbar_label, shrink=0.6)
     fig.tight_layout()
 
     if save_to_filename:
