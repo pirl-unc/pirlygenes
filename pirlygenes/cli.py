@@ -178,6 +178,7 @@ def plot_expression(
         save_dpi=output_dpi,
         always_label_genes=forced_labels,
     )
+    _plt.close("all")
 
     # Therapy target tissue expression / safety
     tissue_pdf = "%s-target-tissues.pdf" % prefix if prefix else "target-tissues.pdf"

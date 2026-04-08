@@ -52,21 +52,23 @@ def _remap_retired_gene_ids(
     by matching on gene name. Handles retired Ensembl IDs that have been
     replaced in newer annotations.
     """
-    if gene_name_col is None or gene_name_col not in df_gene_expr.columns:
-        return cat_to_gene_id_list, gene_id_to_name
-
     expr_ids = set(df_gene_expr[gene_id_col].astype(str))
 
-    # Build upper-cased name → ID mapping from expression data
+    # Build upper-cased name → ID mapping from expression data.
+    # Check ALL name columns (gene_display_name, canonical_gene_name, gene)
+    # so we can remap even when pyensembl doesn't know the new ID.
     name_to_expr_id: Dict[str, str] = {}
-    for gid, name in zip(
-        df_gene_expr[gene_id_col].astype(str),
-        df_gene_expr[gene_name_col],
-    ):
-        key = str(name).strip().upper()
-        if key and key not in ("NAN", "NONE", ""):
-            gid = _strip_ensembl_version(gid)
-            name_to_expr_id[key] = gid
+    name_cols = [gene_name_col, "canonical_gene_name", "gene"]
+    name_cols = [c for c in dict.fromkeys(name_cols) if c and c in df_gene_expr.columns]
+    if not name_cols:
+        return cat_to_gene_id_list, gene_id_to_name
+
+    for _, row in df_gene_expr[[gene_id_col] + name_cols].iterrows():
+        gid = _strip_ensembl_version(str(row[gene_id_col]))
+        for col in name_cols:
+            key = str(row[col]).strip().upper()
+            if key and key not in ("NAN", "NONE", ""):
+                name_to_expr_id[key] = gid
 
     new_cat_to_ids: Dict[str, List[str]] = {}
     new_id_to_name = dict(gene_id_to_name)

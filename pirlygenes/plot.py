@@ -1678,13 +1678,6 @@ def plot_cancer_type_genes(
 
         y_pos += 1
 
-    adjust_text(
-        texts,
-        ax=ax,
-        arrowprops=dict(arrowstyle="-", color="#999999", alpha=0.25),
-        expand=(1.03, 1.2),
-        expand_axes=False,
-    )
     ax.set_yticks(y_ticks)
     ax.set_yticklabels(y_labels, fontsize=9)
     ax.set_xscale("log")
@@ -1701,6 +1694,19 @@ def plot_cancer_type_genes(
     for tpm_thresh in (10, 100):
         ax.axvline(x=tpm_thresh, color="#cccccc", linestyle="--",
                    linewidth=0.7, alpha=0.5, zorder=1)
+
+    # Fix x-axis limits before adjustText to prevent blowout
+    ax.set_xlim(left=0.005)
+    ax.autoscale_view(scalex=True, scaley=False)
+
+    adjust_text(
+        texts,
+        ax=ax,
+        arrowprops=dict(arrowstyle="-", color="#999999", alpha=0.25),
+        expand=(1.03, 1.2),
+        expand_axes=False,
+        ensure_inside_axes=True,
+    )
 
     fig.tight_layout()
     if save_to_filename:
