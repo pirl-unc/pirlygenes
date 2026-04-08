@@ -140,6 +140,7 @@ def test_cli_plot_expression_and_main(monkeypatch):
     }
     monkeypatch.setattr(cli_mod, "analyze_sample", lambda *a, **k: mock_analysis)
     monkeypatch.setattr(cli_mod, "plot_sample_summary", lambda *a, **k: (None, mock_analysis))
+    monkeypatch.setattr(cli_mod, "plot_tumor_purity", lambda *a, **k: (None, mock_analysis["purity"]))
 
     cli_mod.plot_expression(
         "input.csv",

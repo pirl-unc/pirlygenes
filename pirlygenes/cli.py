@@ -15,7 +15,7 @@ from typing import Optional, Set
 
 from .version import print_name_and_version
 from .load_dataset import load_all_dataframes
-from .tumor_purity import analyze_sample, plot_sample_summary
+from .tumor_purity import analyze_sample, plot_sample_summary, plot_tumor_purity
 from .gene_sets_cancer import (
     therapy_target_gene_id_to_name,
     pMHC_TCE_target_gene_id_to_name,
@@ -193,6 +193,10 @@ def plot_expression(
 
     summary_png = "%s-sample-summary.png" % prefix if prefix else "sample-summary.png"
     plot_sample_summary(df_expr, cancer_type=cancer_code, save_to_filename=summary_png, save_dpi=output_dpi)
+
+    print("[plot] Generating tumor purity detail plot...")
+    purity_png = "%s-purity.png" % prefix if prefix else "purity.png"
+    plot_tumor_purity(df_expr, cancer_type=cancer_code, save_to_filename=purity_png, save_dpi=output_dpi)
     _plt.close("all")
 
     # Scatter plots: sample vs pan-cancer reference
@@ -283,6 +287,7 @@ def plot_expression(
     print("[output] Collecting figures into PDF...")
     png_files = [
         summary_png,
+        purity_png,
         "%s-summary.png" % prefix if prefix else "summary.png",
         "%s-treatments.png" % prefix if prefix else "treatments.png",
         safety_png,
