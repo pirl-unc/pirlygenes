@@ -488,7 +488,9 @@ def _prepare_sample_vs_cancer_data(
         gene_id_col=gene_id_col, gene_name_col=gene_name_col,
     )
 
-    ref = pan_cancer_expression(normalize="housekeeping")
+    # Use raw (non-HK-normalized) expression so the z-score is the only
+    # normalization — no double-normalizing with HK then z-score.
+    ref = pan_cancer_expression()
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
 
     if cancer_type is not None:
@@ -500,10 +502,8 @@ def _prepare_sample_vs_cancer_data(
         ref_col = None
         cohort_label = "Mean across 33 TCGA cancer cohorts"
 
-    # Compute per-gene z-score parameters across cancer types so we can
-    # put the sample (TPM) and reference (FPKM) on a comparable scale.
-    # Drop genes with near-zero variance — they have no discriminative
-    # power and produce unstable z-scores.
+    # z-score of log2(1 + FPKM) across cancer types per gene.
+    # Drop genes with near-zero variance — no discriminative power.
     log_ref_matrix = np.log2(ref[fpkm_cols].astype(float) + 1)
     ref_gene_mean = log_ref_matrix.mean(axis=1)
     ref_gene_std = log_ref_matrix.std(axis=1)
@@ -530,14 +530,8 @@ def _prepare_sample_vs_cancer_data(
     if tpm_col is None:
         raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
 
-    # Normalize sample TPM to housekeeping, then z-score using reference stats
-    hk_ids = housekeeping_gene_ids()
-    hk_mask = df[gene_id_col].isin(hk_ids)
-    hk_median_tpm = df.loc[hk_mask, tpm_col].astype(float).median()
-    if hk_median_tpm <= 0:
-        hk_median_tpm = 1.0  # fallback
-
-    # Build per-gene z-score lookup for the sample
+    # z-score of log2(1 + TPM) using the reference distribution per gene.
+    # Same z-score transform, no HK normalization needed.
     ref_mean_lookup = dict(zip(
         ref["Ensembl_Gene_ID"].map(_strip_ensembl_version), ref_gene_mean,
     ))
@@ -552,8 +546,7 @@ def _prepare_sample_vs_cancer_data(
     for _, row in df.iterrows():
         gid = str(row[gene_id_col])
         tpm = float(row[tpm_col])
-        sample_hk = tpm / hk_median_tpm
-        log_sample = np.log2(sample_hk + 1)
+        log_sample = np.log2(tpm + 1)
         mu = ref_mean_lookup.get(gid)
         if mu is None:
             continue
@@ -572,18 +565,18 @@ def _prepare_sample_vs_cancer_data(
     plot_df = pd.DataFrame(rows, columns=[
         "gene_id", "gene_name", "category", "sample_hk", "cohort_hk",
     ])
-    # For scatter axes (no log transform needed — z-scores are linear)
+    # z-scores are linear — no log transform on axes
     plot_df["sample_log"] = plot_df["sample_hk"]
     plot_df["cohort_log"] = plot_df["cohort_hk"]
-    # Enrichment: sample z-score minus cohort z-score (positive = sample-enriched)
+    # Enrichment: sample z minus cohort z (positive = sample-enriched)
     plot_df["enrichment"] = plot_df["sample_hk"] - plot_df["cohort_hk"]
 
     named_cats = list(cat_to_ids.keys())
     palette = sns.color_palette("tab10", len(named_cats))
     cat_to_color = dict(zip(named_cats, palette))
 
-    sample_label = "Sample expression (z-score across cancer types)"
-    cohort_axis_label = f"{cohort_label} (z-score across cancer types)"
+    sample_label = "Sample expression (z-score of log2 TPM)"
+    cohort_axis_label = f"{cohort_label} (z-score of log2 FPKM)"
 
     return plot_df, named_cats, cat_to_color, sample_label, cohort_axis_label
 
@@ -1359,12 +1352,15 @@ def _compute_cancer_type_signature_stats(
     import numpy as np
 
     sample_raw_by_symbol, sample_hk_by_symbol = _sample_expression_by_symbol(df_gene_expr)
+    # HK-normalize both sides so percentile comparison is on the same
+    # scale (sample TPM/hk vs reference FPKM/hk). This is consistent
+    # normalization, not mixed — both are divided by their own HK median.
     ref = pan_cancer_expression(normalize="housekeeping")
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     codes = [c.replace("FPKM_", "") for c in fpkm_cols]
 
-    # Z-score matrix across cancer types for each gene
+    # Z-score matrix across cancer types for gene selection
     expr_matrix = ref_by_sym[fpkm_cols].astype(float)
     gene_mean = expr_matrix.mean(axis=1)
     gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
@@ -1455,21 +1451,19 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
     )
 
     hk_mask = df[gene_id_col].isin(housekeeping_gene_ids())
-    hk_median = df.loc[hk_mask, tpm_col].astype(float).median()
-    if hk_median <= 0:
-        hk_median = 1.0
-
+    # Use raw TPM (no HK normalization) — z-score is the only normalization
     sample_by_id = dict(
         zip(
             df[gene_id_col].astype(str),
-            df[tpm_col].astype(float) / hk_median,
+            df[tpm_col].astype(float),
         )
     )
 
-    ref = pan_cancer_expression(normalize="housekeeping")
+    ref = pan_cancer_expression()  # raw FPKM, no HK normalization
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     labels = [c.replace("FPKM_", "") for c in fpkm_cols]
 
+    # Select most variable genes by CV on raw expression
     expr_matrix = ref[fpkm_cols].astype(float)
     gene_mean = expr_matrix.mean(axis=1)
     gene_std = expr_matrix.std(axis=1)
@@ -1478,7 +1472,7 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
     top_var_idx = gene_cv[gene_mean > 0.01].nlargest(n_genes * 33).index
     ref_filtered = ref.loc[top_var_idx].drop_duplicates(subset="Symbol")
 
-    # Log-transform reference and sample, drop low-variance genes
+    # z-score of log2(1 + raw value) — no mixed normalization
     log_ref = np.log2(ref_filtered[fpkm_cols].astype(float) + 1)
     ref_gene_std = log_ref.std(axis=1)
     var_mask = ref_gene_std >= 0.1
@@ -1493,8 +1487,6 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
     ])
     log_sample = np.log2(sample_vals + 1)
 
-    # Z-score each gene across cancer types, then apply the same transform
-    # to the sample so TPM and FPKM are on a comparable scale
     z_ref = (log_ref.values - ref_gene_mean[:, None]) / ref_gene_std[:, None]
     z_sample = (log_sample - ref_gene_mean) / ref_gene_std
 
