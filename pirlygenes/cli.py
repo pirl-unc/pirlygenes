@@ -201,11 +201,16 @@ def plot_expression(
     disjoint_png = "%s-cancer-types-disjoint.png" % prefix if prefix else "cancer-types-disjoint.png"
     plot_cancer_type_disjoint_genes(df_expr, save_to_filename=disjoint_png, save_dpi=output_dpi)
 
-    pca_png = "%s-cancer-types-scatter.png" % prefix if prefix else "cancer-types-scatter.png"
-    plot_cancer_type_pca(df_expr, save_to_filename=pca_png, save_dpi=output_dpi)
+    # PCA and MDS with three normalization methods
+    embedding_pngs = []
+    for method in ["zscore", "hk", "rank"]:
+        pca_png = "%s-pca-%s.png" % (prefix, method) if prefix else "pca-%s.png" % method
+        plot_cancer_type_pca(df_expr, method=method, save_to_filename=pca_png, save_dpi=output_dpi)
+        embedding_pngs.append(pca_png)
 
-    mds_png = "%s-cancer-types-mds.png" % prefix if prefix else "cancer-types-mds.png"
-    plot_cancer_type_mds(df_expr, save_to_filename=mds_png, save_dpi=output_dpi)
+        mds_png = "%s-mds-%s.png" % (prefix, method) if prefix else "mds-%s.png" % method
+        plot_cancer_type_mds(df_expr, method=method, save_to_filename=mds_png, save_dpi=output_dpi)
+        embedding_pngs.append(mds_png)
 
     # Cancer-type-specific gene set plot (only when --cancer-type specified)
     ct_png = None
@@ -236,9 +241,7 @@ def plot_expression(
         safety_png,
         genes_png,
         disjoint_png,
-        pca_png,
-        mds_png,
-    ]
+    ] + embedding_pngs
     if ct_png:
         png_files.append(ct_png)
 

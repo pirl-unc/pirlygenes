@@ -1412,14 +1412,18 @@ def _compute_cancer_type_signature_stats(
     return stats
 
 
-def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
-    """Build z-scored feature matrix for PCA/MDS of cancer types + sample.
+def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
+    """Build feature matrix for PCA/MDS of cancer types + sample.
 
-    For each gene, log-transforms expression then z-scores across the 33
-    cancer types.  The same per-gene mean/std is applied to the sample so
-    it is on a comparable scale regardless of TPM-vs-FPKM differences.
+    Parameters
+    ----------
+    method : str
+        ``"zscore"`` — z-score of log2(1+raw) across cancer types (default).
+        ``"hk"`` — log2(HK-normalized + 0.001).
+        ``"rank"`` — percentile rank within each gene across cancer types.
     """
     import numpy as np
+    from scipy.stats import rankdata
     from .plot_data_helpers import _strip_ensembl_version
 
     gene_id_col, _ = _guess_gene_cols(df_gene_expr)
@@ -1430,20 +1434,25 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
         (c for c in df.columns if c.lower() == "tpm"), None
     )
 
-    hk_mask = df[gene_id_col].isin(housekeeping_gene_ids())
-    # Use raw TPM (no HK normalization) — z-score is the only normalization
-    sample_by_id = dict(
-        zip(
-            df[gene_id_col].astype(str),
-            df[tpm_col].astype(float),
-        )
-    )
+    if method == "hk":
+        hk_mask = df[gene_id_col].isin(housekeeping_gene_ids())
+        hk_median = df.loc[hk_mask, tpm_col].astype(float).median()
+        if hk_median <= 0:
+            hk_median = 1.0
+        sample_by_id = dict(zip(
+            df[gene_id_col].astype(str), df[tpm_col].astype(float) / hk_median,
+        ))
+        ref = pan_cancer_expression(normalize="housekeeping")
+    else:
+        sample_by_id = dict(zip(
+            df[gene_id_col].astype(str), df[tpm_col].astype(float),
+        ))
+        ref = pan_cancer_expression()
 
-    ref = pan_cancer_expression()  # raw FPKM, no HK normalization
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     labels = [c.replace("FPKM_", "") for c in fpkm_cols]
 
-    # Select most variable genes by CV on raw expression
+    # Select most variable genes by CV
     expr_matrix = ref[fpkm_cols].astype(float)
     gene_mean = expr_matrix.mean(axis=1)
     gene_std = expr_matrix.std(axis=1)
@@ -1452,33 +1461,39 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10):
     top_var_idx = gene_cv[gene_mean > 0.01].nlargest(n_genes * 33).index
     ref_filtered = ref.loc[top_var_idx].drop_duplicates(subset="Symbol")
 
-    # z-score of log2(1 + raw value) — no mixed normalization
-    log_ref = np.log2(ref_filtered[fpkm_cols].astype(float) + 1)
-    ref_gene_std = log_ref.std(axis=1)
-    var_mask = ref_gene_std >= 0.1
-    log_ref = log_ref[var_mask]
-    ref_filtered = ref_filtered[var_mask]
-    ref_gene_std = ref_gene_std[var_mask].values
-    ref_gene_mean = log_ref.mean(axis=1).values
-
     sample_vals = np.array([
         sample_by_id.get(row["Ensembl_Gene_ID"], 0.0)
         for _, row in ref_filtered.iterrows()
     ])
-    log_sample = np.log2(sample_vals + 1)
+    ref_vals = ref_filtered[fpkm_cols].astype(float).values  # (genes, cancers)
 
-    z_ref = (log_ref.values - ref_gene_mean[:, None]) / ref_gene_std[:, None]
-    z_sample = (log_sample - ref_gene_mean) / ref_gene_std
+    if method == "zscore":
+        log_ref = np.log2(ref_vals + 1)
+        log_sample = np.log2(sample_vals + 1)
+        g_std = log_ref.std(axis=1)
+        var_mask = g_std >= 0.1
+        log_ref = log_ref[var_mask]
+        log_sample = log_sample[var_mask]
+        g_std = g_std[var_mask]
+        g_mean = log_ref.mean(axis=1)
+        z_ref = np.clip((log_ref - g_mean[:, None]) / g_std[:, None], -3, 3)
+        z_sample = np.clip((log_sample - g_mean) / g_std, -3, 3)
+        matrix = np.vstack([z_ref.T, z_sample[None, :]])
+    elif method == "hk":
+        combined = np.vstack([ref_vals.T, sample_vals[None, :]])
+        matrix = np.log2(combined + 0.001)
+    elif method == "rank":
+        combined = np.vstack([ref_vals.T, sample_vals[None, :]])  # (34, genes)
+        ranked = np.apply_along_axis(
+            lambda col: rankdata(col, method="average") / len(col),
+            axis=0, arr=combined,
+        )
+        matrix = ranked
+    else:
+        raise ValueError(f"Unknown method: {method}")
 
-    # Clip z-scores to prevent outliers from dominating PCA/MDS
-    z_ref = np.clip(z_ref, -3, 3)
-    z_sample = np.clip(z_sample, -3, 3)
-
-    feature_matrix = list(z_ref.T)  # one row per cancer type
-    feature_matrix.append(z_sample)
     labels.append("SAMPLE")
-
-    return np.array(feature_matrix), labels
+    return matrix, labels
 
 
 def _plot_embedding_with_labels(
@@ -1718,7 +1733,7 @@ def plot_cancer_type_disjoint_genes(
 
     scores = [row["score"] for row in stats]
     labels = [
-        f"{row['rank']:>2}. {row['code']} ({CANCER_TYPE_NAMES.get(row['code'], row['code'])})"
+        f"{row['code']} ({CANCER_TYPE_NAMES.get(row['code'], row['code'])})"
         for row in stats
     ]
     y = np.arange(len(stats))
@@ -2115,36 +2130,31 @@ def plot_cohort_ctas(
     return fig, ax
 
 
+_METHOD_LABELS = {
+    "zscore": "z-score of log2(1+expr)",
+    "hk": "log2(HK-normalized)",
+    "rank": "percentile rank",
+}
+
+
 def plot_cancer_type_pca(
     df_gene_expr,
     n_genes=10,
+    method="zscore",
     save_to_filename=None,
     save_dpi=300,
     figsize=(12, 10),
 ):
-    """PCA scatter showing where the sample falls among cancer-type centroids.
-
-    Takes the union of top enriched genes across all cancer types,
-    computes housekeeping-normalized expression for each cancer type
-    (centroid) and the sample, then projects into PCA space.
-
-    Parameters
-    ----------
-    df_gene_expr : pd.DataFrame
-        Patient expression data.
-    n_genes : int
-        Number of top enriched genes per cancer type for PCA features.
-    save_to_filename : str or None
-        Output path.
-    """
+    """PCA scatter showing where the sample falls among cancer-type centroids."""
     from sklearn.decomposition import PCA
-    X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes)
+    X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes, method=method)
     pca = PCA(n_components=2)
     coords = pca.fit_transform(X)
+    mlabel = _METHOD_LABELS.get(method, method)
     return _plot_embedding_with_labels(
         coords,
         labels,
-        title="Sample position among TCGA cancer type gene signatures (PCA)",
+        title=f"Sample among TCGA cancer types — PCA ({mlabel})",
         xlabel=f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)",
         ylabel=f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)",
         save_to_filename=save_to_filename,
@@ -2156,6 +2166,7 @@ def plot_cancer_type_pca(
 def plot_cancer_type_mds(
     df_gene_expr,
     n_genes=10,
+    method="zscore",
     save_to_filename=None,
     save_dpi=300,
     figsize=(12, 10),
@@ -2164,17 +2175,18 @@ def plot_cancer_type_mds(
     from sklearn.manifold import MDS
     from sklearn.metrics import pairwise_distances
 
-    X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes)
+    X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes, method=method)
     distances = pairwise_distances(X, metric="euclidean")
     coords = MDS(
         n_components=2,
         dissimilarity="precomputed",
         random_state=42,
     ).fit_transform(distances)
+    mlabel = _METHOD_LABELS.get(method, method)
     return _plot_embedding_with_labels(
         coords,
         labels,
-        title="Sample position among TCGA cancer type gene signatures (MDS)",
+        title=f"Sample among TCGA cancer types — MDS ({mlabel})",
         xlabel="MDS1",
         ylabel="MDS2",
         save_to_filename=save_to_filename,
