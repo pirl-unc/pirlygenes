@@ -127,6 +127,19 @@ def test_cli_plot_expression_and_main(monkeypatch):
     monkeypatch.setattr(cli_mod, "therapy_target_gene_id_to_name", lambda t: {"ENSG_MOCK": t})
     monkeypatch.setattr(cli_mod, "pMHC_TCE_target_gene_id_to_name", lambda: {"ENSG_PMHC": "PMHC"})
     monkeypatch.setattr(cli_mod, "surface_TCE_target_gene_id_to_name", lambda: {"ENSG_SURF": "SURF"})
+    mock_analysis = {
+        "cancer_type": "PRAD", "cancer_name": "Prostate", "cancer_score": 0.9,
+        "top_cancers": [("PRAD", 0.9)],
+        "purity": {
+            "overall_estimate": 0.1, "overall_lower": 0.05, "overall_upper": 0.15,
+            "components": {"stromal": {"enrichment": 4.0}, "immune": {"enrichment": 2.0}},
+        },
+        "tissue_scores": [("prostate", 0.9, 20)],
+        "mhc1": {"HLA-A": 100, "HLA-B": 200, "HLA-C": 150, "B2M": 3000},
+        "mhc2": {},
+    }
+    monkeypatch.setattr(cli_mod, "analyze_sample", lambda *a, **k: mock_analysis)
+    monkeypatch.setattr(cli_mod, "plot_sample_summary", lambda *a, **k: (None, mock_analysis))
 
     cli_mod.plot_expression(
         "input.csv",

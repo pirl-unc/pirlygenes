@@ -39,15 +39,13 @@ def _strip_ensembl_version(gid: str) -> str:
 
 # --------------------------- validation / normalization ----------------------
 
-_REMAP_LOGGED: set = set()  # suppress duplicate remap messages across calls
-
-
 def _remap_retired_gene_ids(
     cat_to_gene_id_list: Dict[str, List[str]],
     gene_id_to_name: Dict[str, str],
     df_gene_expr: pd.DataFrame,
     gene_id_col: str,
     gene_name_col: Optional[str],
+    verbose: bool = True,
 ) -> Tuple[Dict[str, List[str]], Dict[str, str]]:
     """
     For gene IDs not found in df_gene_expr, try to find the current ID
@@ -85,11 +83,10 @@ def _remap_retired_gene_ids(
             if name:
                 new_gid = name_to_expr_id.get(name.upper())
                 if new_gid:
-                    if gid not in _REMAP_LOGGED:
+                    if verbose:
                         print(
                             f"[info] Remapped retired gene ID {gid} ({name}) -> {new_gid}"
                         )
-                        _REMAP_LOGGED.add(gid)
                     new_ids.append(new_gid)
                     new_id_to_name[new_gid] = name
                     new_id_to_name.pop(gid, None)
@@ -247,6 +244,7 @@ def prepare_gene_expr_df(
     place_other_first: bool = True,
     strip_version: bool = True,
     strict_gene_sets: bool = False,
+    verbose: bool = True,
 ) -> pd.DataFrame:
     """
     Returns a long-format dataframe with:
@@ -283,6 +281,7 @@ def prepare_gene_expr_df(
         df,
         gene_id_col=gene_id_col,
         gene_name_col=gene_name_col,
+        verbose=verbose,
     )
     check_gene_ids_in_gene_sets(
         df,

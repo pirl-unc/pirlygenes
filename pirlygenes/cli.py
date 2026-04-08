@@ -15,6 +15,7 @@ from typing import Optional, Set
 
 from .version import print_name_and_version
 from .load_dataset import load_all_dataframes
+from .tumor_purity import analyze_sample, plot_sample_summary
 from .gene_sets_cancer import (
     therapy_target_gene_id_to_name,
     pMHC_TCE_target_gene_id_to_name,
@@ -136,7 +137,7 @@ def plot_expression(
     prefix = output_image_prefix or ""
 
     # Strip plots: summary + treatments
-    for name, gene_sets in [
+    strip_plots = [
         ("summary", default_gene_sets),
         (
             "treatments",
@@ -150,10 +151,12 @@ def plot_expression(
                 "Radio": therapy_target_gene_id_to_name("radioligand"),
             },
         ),
-    ]:
+    ]
+    for i, (name, gene_sets) in enumerate(strip_plots):
         output_image = (
             "%s-%s.png" % (prefix, name) if prefix else "%s.png" % name
         )
+        print(f"[plot] Generating {name} strip plot...")
         plot_gene_expression(
             df_expr,
             gene_sets=gene_sets,
@@ -162,12 +165,38 @@ def plot_expression(
             plot_height=plot_height,
             plot_aspect=plot_aspect,
             always_label_genes=forced_labels,
+            verbose=(i == 0),  # only log remaps on first call
         )
 
     import matplotlib.pyplot as _plt
     _plt.close("all")
 
+    # Sample composition analysis
+    print("[analysis] Running sample composition analysis...")
+    analysis = analyze_sample(df_expr, cancer_type=cancer_type)
+    cancer_code = analysis["cancer_type"]
+    purity = analysis["purity"]
+    print(f"[analysis] Cancer type: {analysis['cancer_name']} ({cancer_code}), "
+          f"score={analysis['cancer_score']:.3f}")
+    print(f"[analysis] Tumor purity: {purity['overall_estimate']:.0%} "
+          f"[{purity['overall_lower']:.0%}-{purity['overall_upper']:.0%}]")
+    print(f"[analysis] Stromal enrichment: {purity['components']['stromal']['enrichment']:.1f}x vs TCGA")
+    print(f"[analysis] Immune enrichment: {purity['components']['immune']['enrichment']:.1f}x vs TCGA")
+    top_tissues = analysis["tissue_scores"][:3]
+    tissue_str = ", ".join(f"{t} ({s:.2f})" for t, s, _ in top_tissues)
+    print(f"[analysis] Top tissue context: {tissue_str}")
+    mhc1 = analysis["mhc1"]
+    print(f"[analysis] MHC-I: HLA-A={mhc1.get('HLA-A',0):.0f}, "
+          f"HLA-B={mhc1.get('HLA-B',0):.0f}, "
+          f"HLA-C={mhc1.get('HLA-C',0):.0f}, "
+          f"B2M={mhc1.get('B2M',0):.0f} TPM")
+
+    summary_png = "%s-sample-summary.png" % prefix if prefix else "sample-summary.png"
+    plot_sample_summary(df_expr, cancer_type=cancer_code, save_to_filename=summary_png, save_dpi=output_dpi)
+    _plt.close("all")
+
     # Scatter plots: sample vs pan-cancer reference
+    print("[plot] Generating sample vs cancer scatter plots...")
     scatter_pdf = (
         "%s-vs-cancer.pdf" % prefix if prefix else "vs-cancer.pdf"
     )
@@ -181,6 +210,7 @@ def plot_expression(
     _plt.close("all")
 
     # Therapy target tissue expression / safety
+    print("[plot] Generating therapy target tissue expression...")
     tissue_pdf = "%s-target-tissues.pdf" % prefix if prefix else "target-tissues.pdf"
     plot_therapy_target_tissues(
         df_expr,
@@ -190,6 +220,7 @@ def plot_expression(
         save_dpi=output_dpi,
     )
 
+    print("[plot] Generating therapy target safety plot...")
     safety_png = "%s-target-safety.png" % prefix if prefix else "target-safety.png"
     plot_therapy_target_safety(
         df_expr,
@@ -198,19 +229,19 @@ def plot_expression(
         save_to_filename=safety_png,
         save_dpi=output_dpi,
     )
-
     _plt.close("all")
 
     # Cancer type signature plots
+    print("[plot] Generating cancer type signature gene plots...")
     genes_png = "%s-cancer-types-genes.png" % prefix if prefix else "cancer-types-genes.png"
     plot_cancer_type_genes(df_expr, save_to_filename=genes_png, save_dpi=output_dpi)
 
     disjoint_png = "%s-cancer-types-disjoint.png" % prefix if prefix else "cancer-types-disjoint.png"
     plot_cancer_type_disjoint_genes(df_expr, save_to_filename=disjoint_png, save_dpi=output_dpi)
-
     _plt.close("all")
 
     # PCA, MDS, UMAP with three normalization methods
+    print("[plot] Generating PCA/MDS/UMAP embeddings (3 methods x 3 embeddings)...")
     embedding_pngs = []
     for method in ["zscore", "hk", "rank"]:
         pca_png = "%s-pca-%s.png" % (prefix, method) if prefix else "pca-%s.png" % method
@@ -224,6 +255,7 @@ def plot_expression(
         umap_png = "%s-umap-%s.png" % (prefix, method) if prefix else "umap-%s.png" % method
         plot_cancer_type_umap(df_expr, method=method, save_to_filename=umap_png, save_dpi=output_dpi)
         embedding_pngs.append(umap_png)
+    _plt.close("all")
 
     # Cancer-type-specific gene set plot (only when --cancer-type specified)
     ct_png = None
@@ -248,7 +280,9 @@ def plot_expression(
     from PIL import Image
 
     all_pdf = "%s-all-figures.pdf" % prefix if prefix else "all-figures.pdf"
+    print("[output] Collecting figures into PDF...")
     png_files = [
+        summary_png,
         "%s-summary.png" % prefix if prefix else "summary.png",
         "%s-treatments.png" % prefix if prefix else "treatments.png",
         safety_png,

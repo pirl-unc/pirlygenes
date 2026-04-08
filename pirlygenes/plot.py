@@ -163,6 +163,7 @@ def plot_gene_expression(
         expand_axes=True,
         ensure_inside_axes=False,
     ),
+    verbose=True,
 ):
     # Pick the correct ID/name columns from the incoming DF
     gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
@@ -175,6 +176,7 @@ def plot_gene_expression(
         gene_name_col=gene_name_col,  # ok if None; helper will resolve names
         other_category_name="other",  # <- ensure lowercase to match your filter
         place_other_first=True,  # <- 'other' left-most
+        verbose=verbose,
     )
 
     # Just in case the "prepared" DF changed any column names, get them again
@@ -491,6 +493,7 @@ def _prepare_sample_vs_cancer_data(
     cat_to_ids, id_to_name = _remap_retired_gene_ids(
         cat_to_ids, id_to_name, df,
         gene_id_col=gene_id_col, gene_name_col=gene_name_col,
+        verbose=False,  # already logged during strip plot
     )
 
     ref = pan_cancer_expression(normalize="housekeeping")
