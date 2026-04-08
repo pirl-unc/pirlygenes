@@ -125,8 +125,8 @@ def test_cli_plot_expression_and_main(monkeypatch):
     monkeypatch.setattr(cli_mod, "plot_cancer_type_mds", lambda *a, **k: mds_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_umap", lambda *a, **k: umap_calls.append(k))
     monkeypatch.setattr(cli_mod, "therapy_target_gene_id_to_name", lambda t: {"ENSG_MOCK": t})
-    monkeypatch.setattr(cli_mod, "pMHC_TCE_target_gene_names", lambda: {"PMHC"})
-    monkeypatch.setattr(cli_mod, "surface_TCE_target_gene_names", lambda: {"SURF"})
+    monkeypatch.setattr(cli_mod, "pMHC_TCE_target_gene_id_to_name", lambda: {"ENSG_PMHC": "PMHC"})
+    monkeypatch.setattr(cli_mod, "surface_TCE_target_gene_id_to_name", lambda: {"ENSG_SURF": "SURF"})
 
     cli_mod.plot_expression(
         "input.csv",

@@ -322,7 +322,7 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
             for col in value_cols:
                 vals = df[col].astype(float)
                 hk_median = vals[hk_mask].median()
-                if hk_median > 0:
+                if not (np.isnan(hk_median) or hk_median <= 0):
                     df[col] = vals / hk_median
                 else:
                     df[col] = np.nan
@@ -569,6 +569,39 @@ def surface_TCE_target_gene_names():
 def surface_TCE_target_gene_ids():
     """Surface-antigen-targeting TCE Ensembl gene IDs."""
     return _extract_genes_from_df(_tce_filtered_df(pmhc=False), _ID_COLS)
+
+
+def _tce_gene_id_to_name(pmhc):
+    """Paired {Ensembl_Gene_ID: Symbol} dict from TCE data."""
+    df = _tce_filtered_df(pmhc=pmhc)
+    sym_col = next((c for c in _NAME_COLS if c in df.columns), None)
+    id_col = next((c for c in _ID_COLS if c in df.columns), None)
+    if sym_col is None or id_col is None:
+        names = _extract_genes_from_df(df, _NAME_COLS)
+        ids = _extract_genes_from_df(df, _ID_COLS)
+        return {gid: gid for gid in ids} if ids else {n: n for n in names}
+    result = {}
+    for _, row in df.iterrows():
+        syms_raw = str(row[sym_col]).strip() if row[sym_col] is not None else ""
+        ids_raw = str(row[id_col]).strip() if row[id_col] is not None else ""
+        if not syms_raw or syms_raw.lower() in ("nan", "none"):
+            continue
+        syms = [s.strip() for s in syms_raw.split(";") if s.strip()]
+        ids = [i.strip() for i in ids_raw.split(";") if i.strip() and i.strip().startswith("ENSG")]
+        for i, sym in enumerate(syms):
+            if i < len(ids):
+                result[ids[i]] = sym
+    return result
+
+
+def pMHC_TCE_target_gene_id_to_name():
+    """pMHC-targeting TCE: {Ensembl_Gene_ID: Symbol}."""
+    return _tce_gene_id_to_name(pmhc=True)
+
+
+def surface_TCE_target_gene_id_to_name():
+    """Surface-antigen-targeting TCE: {Ensembl_Gene_ID: Symbol}."""
+    return _tce_gene_id_to_name(pmhc=False)
 
 
 # ---------- Deprecated therapy wrappers ----------

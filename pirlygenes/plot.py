@@ -520,8 +520,8 @@ def _prepare_sample_vs_cancer_data(
     hk_ids = housekeeping_gene_ids()
     hk_mask = df[gene_id_col].isin(hk_ids)
     hk_median_tpm = df.loc[hk_mask, tpm_col].astype(float).median()
-    if hk_median_tpm <= 0:
-        hk_median_tpm = 1.0  # fallback
+    if not (hk_median_tpm > 0):  # catches NaN and <= 0
+        hk_median_tpm = 1.0
 
     gene_to_category = _create_gene_to_category_list_mapping(cat_to_ids)
     name_from_df = dict(zip(df[gene_id_col].astype(str), df[gene_name_col].astype(str)))
@@ -1286,31 +1286,36 @@ def _sample_expression_by_symbol(df_gene_expr):
     raw_values = df[tpm_col].astype(float)
     hk_mask = df[gene_id_col].isin(housekeeping_gene_ids())
     hk_median = df.loc[hk_mask, tpm_col].astype(float).median()
-    if hk_median <= 0:
+    if not (hk_median > 0):  # catches NaN and <= 0
         hk_median = 1.0
     hk_values = raw_values / hk_median
 
+    # Resolve symbols from Ensembl IDs via pan-cancer reference
+    ref_lookup = pan_cancer_expression()[["Ensembl_Gene_ID", "Symbol"]].drop_duplicates(
+        subset="Ensembl_Gene_ID"
+    )
+    id_to_symbol = dict(zip(ref_lookup["Ensembl_Gene_ID"], ref_lookup["Symbol"]))
     if "canonical_gene_name" in df.columns:
-        symbols = df["canonical_gene_name"].fillna("").astype(str)
+        fallback = df["canonical_gene_name"].fillna("").astype(str)
     else:
-        ref = pan_cancer_expression()[["Ensembl_Gene_ID", "Symbol"]].drop_duplicates(
-            subset="Ensembl_Gene_ID"
-        )
-        id_to_symbol = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
         fallback = df[gene_name_col].fillna("").astype(str)
-        symbols = df[gene_id_col].map(id_to_symbol).fillna(fallback)
+    symbols = df[gene_id_col].map(id_to_symbol).fillna(fallback)
 
     expr_df = pd.DataFrame(
         {
+            "gene_id": df[gene_id_col],
             "Symbol": symbols,
             "sample_raw": raw_values,
             "sample_hk": hk_values,
         }
     )
     expr_df = expr_df[expr_df["Symbol"].astype(str).str.strip().ne("")]
-    grouped = expr_df.groupby("Symbol", as_index=False, sort=False)[
-        ["sample_raw", "sample_hk"]
-    ].sum()
+    # Aggregate by Ensembl ID (unique), then map to symbol.
+    # Use max (not sum) to avoid inflating expression when multiple
+    # rows share an ID (e.g., isoform-level quantification).
+    grouped = expr_df.groupby("gene_id", as_index=False, sort=False).agg(
+        {"Symbol": "first", "sample_raw": "max", "sample_hk": "max"}
+    )
     return (
         dict(zip(grouped["Symbol"], grouped["sample_raw"])),
         dict(zip(grouped["Symbol"], grouped["sample_hk"])),
@@ -1376,7 +1381,7 @@ def _compute_cancer_type_signature_stats(
                 equal = np.sum(np.isclose(ref_vals, sample_hk, atol=1e-6))
                 percentile = float((below + 0.5 * equal) / n)
             percentiles.append(percentile)
-            log_diff = abs(np.log2(sample_hk + 0.001) - np.log2(cohort_hk + 0.001))
+            log_diff = abs(np.log2(sample_hk + 1) - np.log2(cohort_hk + 1))
             gene_details.append(
                 {
                     "gene": gene,
@@ -1419,7 +1424,7 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
     ----------
     method : str
         ``"zscore"`` — z-score of log2(1+raw) across cancer types (default).
-        ``"hk"`` — log2(HK-normalized + 0.001).
+        ``"hk"`` — log2(HK-normalized + 1).
         ``"rank"`` — percentile rank within each gene across cancer types.
     """
     import numpy as np
@@ -1437,7 +1442,7 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
     if method == "hk":
         hk_mask = df[gene_id_col].isin(housekeeping_gene_ids())
         hk_median = df.loc[hk_mask, tpm_col].astype(float).median()
-        if hk_median <= 0:
+        if not (hk_median > 0):  # catches NaN and <= 0
             hk_median = 1.0
         sample_by_id = dict(zip(
             df[gene_id_col].astype(str), df[tpm_col].astype(float) / hk_median,
@@ -1481,7 +1486,7 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
         matrix = np.vstack([z_ref.T, z_sample[None, :]])
     elif method == "hk":
         combined = np.vstack([ref_vals.T, sample_vals[None, :]])
-        matrix = np.log2(combined + 0.001)
+        matrix = np.log2(combined + 1)
     elif method == "rank":
         combined = np.vstack([ref_vals.T, sample_vals[None, :]])  # (34, genes)
         ranked = np.apply_along_axis(
@@ -1797,7 +1802,7 @@ def plot_cohort_heatmap(
     ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     present = [s for s in gene_symbols if s in ref_dedup.index]
     matrix = ref_dedup.loc[present, fpkm_cols].astype(float)
-    matrix = np.log2(matrix + 0.001)
+    matrix = np.log2(matrix + 1)
 
     if zscore:
         row_mean = matrix.mean(axis=1)
@@ -1900,7 +1905,7 @@ def plot_cohort_pca(
         feature_matrix.append(vals)
 
     X = np.array(feature_matrix)
-    X = np.log2(X + 0.001)
+    X = np.log2(X + 1)
 
     pca = PCA(n_components=2)
     coords = pca.fit_transform(X)
@@ -1957,7 +1962,7 @@ def plot_cohort_therapy_targets(
     ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     present = [s for s in target_symbols if s in ref_dedup.index]
     matrix = ref_dedup.loc[present, fpkm_cols].astype(float)
-    matrix = np.log2(matrix + 0.001)
+    matrix = np.log2(matrix + 1)
 
     if zscore:
         row_mean = matrix.mean(axis=1)
@@ -2029,7 +2034,7 @@ def _plot_geneset_by_cancer_heatmap(
     matrix = matrix.loc[sort_order]
     present = list(sort_order)
 
-    matrix = np.log2(matrix + 0.001)
+    matrix = np.log2(matrix + 1)
 
     if zscore:
         row_mean = matrix.mean(axis=1)
@@ -2098,7 +2103,7 @@ def plot_cohort_ctas(
     matrix = matrix.loc[matrix.mean(axis=1).sort_values(ascending=False).index]
     present = list(matrix.index)
 
-    matrix = np.log2(matrix + 0.1)  # +0.1 offset for CTAs (many are truly 0)
+    matrix = np.log2(matrix + 1)
 
     if zscore:
         row_mean = matrix.mean(axis=1)
@@ -2110,7 +2115,7 @@ def plot_cohort_ctas(
     else:
         cmap, vmin, vmax = "magma_r", -3, 8
         subtitle = "log2 FPKM"
-        cbar_label = "log2(FPKM + 0.1)"
+        cbar_label = "log2(FPKM + 1)"
     matrix.columns = codes_clean
 
     fig, ax = plt.subplots(figsize=figsize)

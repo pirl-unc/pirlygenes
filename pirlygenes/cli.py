@@ -17,8 +17,8 @@ from .version import print_name_and_version
 from .load_dataset import load_all_dataframes
 from .gene_sets_cancer import (
     therapy_target_gene_id_to_name,
-    pMHC_TCE_target_gene_names,
-    surface_TCE_target_gene_names,
+    pMHC_TCE_target_gene_id_to_name,
+    surface_TCE_target_gene_id_to_name,
     cancer_types,
     cancer_type_gene_sets,
 )
@@ -144,8 +144,8 @@ def plot_expression(
                 "TCR-T": therapy_target_gene_id_to_name("TCR-T"),
                 "CAR-T": therapy_target_gene_id_to_name("CAR-T"),
                 "bispecifics": therapy_target_gene_id_to_name("bispecific-antibodies"),
-                "pMHC-TCEs": pMHC_TCE_target_gene_names(),
-                "surface-TCEs": surface_TCE_target_gene_names(),
+                "pMHC-TCEs": pMHC_TCE_target_gene_id_to_name(),
+                "surface-TCEs": surface_TCE_target_gene_id_to_name(),
                 "ADCs": therapy_target_gene_id_to_name("ADC"),
                 "Radio": therapy_target_gene_id_to_name("radioligand"),
             },

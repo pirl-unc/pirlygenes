@@ -303,7 +303,7 @@ def prepare_gene_expr_df(
     if TPM_offset:
         tpm_values = tpm_values + float(TPM_offset)
     gene_to_tpm = dict(zip(expr_gene_ids, tpm_values))
-    gene_to_log_tpm = dict(zip(expr_gene_ids, np.log10(10.0**-4 + tpm_values)))
+    gene_to_log_tpm = dict(zip(expr_gene_ids, np.log2(1 + tpm_values)))
 
     # categories for each ID (from sets)
     gene_to_categories = _create_gene_to_category_list_mapping(cat_to_gene_id_list)
