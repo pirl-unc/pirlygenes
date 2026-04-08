@@ -687,9 +687,16 @@ def plot_sample_summary(
     if tissue_scores:
         tissues = [t.replace("_", " ").title() for t, s, n in tissue_scores]
         t_scores = [s for t, s, n in tissue_scores]
-        matched = CANCER_TO_TISSUE.get(cancer_code, "")
-        t_colors = ["#2166ac" if t.replace("_", " ").title() == matched.replace("_", " ").title()
-                     else "#b2182b" if s > 0.7 else "#92c5de" for t, s, n in tissue_scores]
+        matched = CANCER_TO_TISSUE.get(cancer_code, "").replace("_", " ").title()
+        t_colors = []
+        for t, s, n in tissue_scores:
+            tname = t.replace("_", " ").title()
+            if tname == matched:
+                t_colors.append("#2166ac")  # tumor origin tissue
+            elif s > 0.7:
+                t_colors.append("#b2182b")  # strong non-tumor signal
+            else:
+                t_colors.append("#92c5de")  # background
         y = np.arange(len(tissues))
         ax3.barh(y, t_scores, color=t_colors, edgecolor="none", height=0.6)
         ax3.set_yticks(y)
@@ -699,6 +706,13 @@ def plot_sample_summary(
         ax3.set_xlim(0, 1.1)
         ax3.set_xlabel("Tissue signature score", fontsize=10)
         ax3.invert_yaxis()
+        # Legend
+        from matplotlib.patches import Patch
+        ax3.legend(handles=[
+            Patch(color="#2166ac", label=f"Expected origin ({matched})"),
+            Patch(color="#b2182b", label="Strong signal (>0.7)"),
+            Patch(color="#92c5de", label="Background"),
+        ], loc="lower right", fontsize=7, framealpha=0.9)
     ax3.set_title("Normal tissue context\n(where is the non-tumor signal from?)",
                   fontsize=12, fontweight="bold")
     ax3.spines["top"].set_visible(False)

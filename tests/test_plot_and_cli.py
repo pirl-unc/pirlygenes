@@ -151,11 +151,13 @@ def test_cli_plot_expression_and_main(monkeypatch):
         therapy_target_top_k=12,
         therapy_target_tpm_threshold=18,
     )
-    assert len(calls) == 2
-    assert calls[0]["save_to_filename"] == "out-summary.png"
-    assert calls[1]["save_to_filename"] == "out-treatments.png"
-    assert calls[1]["gene_sets"]["Radio"] == {"ENSG_MOCK": "radioligand"}
-    assert calls[1]["always_label_genes"] == {"FAP", "CD276"}
+    assert len(calls) == 4  # immune, tumor, antigens, treatments
+    assert calls[0]["save_to_filename"] == "out-immune.png"
+    assert calls[1]["save_to_filename"] == "out-tumor.png"
+    assert calls[2]["save_to_filename"] == "out-antigens.png"
+    assert calls[3]["save_to_filename"] == "out-treatments.png"
+    assert calls[3]["gene_sets"]["Radio"] == {"ENSG_MOCK": "radioligand"}
+    assert calls[3]["always_label_genes"] == {"FAP", "CD276"}
     assert len(scatter_calls) == 1
     assert scatter_calls[0]["save_to_filename"] == "out-vs-cancer.pdf"
     assert tissue_calls[0]["top_k"] == 12

@@ -136,21 +136,35 @@ def plot_expression(
     forced_labels = _parse_always_label_genes(label_genes)
     prefix = output_image_prefix or ""
 
-    # Strip plots: summary + treatments
+    # Strip plots: split into focused panels for readability
+    # Immune microenvironment
+    immune_sets = {k: default_gene_sets[k] for k in
+                   ["Immune_checkpoints", "MHC1_presentation", "Interferon_response", "TLR"]
+                   if k in default_gene_sets}
+    # Tumor biology
+    tumor_sets = {k: default_gene_sets[k] for k in
+                  ["Oncogenes", "Tumor_suppressors", "DNA_repair", "Growth_receptors"]
+                  if k in default_gene_sets}
+    # Tumor antigens
+    antigen_sets = {k: default_gene_sets[k] for k in
+                    ["CTAs", "Cancer_surfaceome"]
+                    if k in default_gene_sets}
+    # Therapy modalities
+    therapy_sets = {
+        "TCR-T": therapy_target_gene_id_to_name("TCR-T"),
+        "CAR-T": therapy_target_gene_id_to_name("CAR-T"),
+        "bispecifics": therapy_target_gene_id_to_name("bispecific-antibodies"),
+        "pMHC-TCEs": pMHC_TCE_target_gene_id_to_name(),
+        "surface-TCEs": surface_TCE_target_gene_id_to_name(),
+        "ADCs": therapy_target_gene_id_to_name("ADC"),
+        "Radio": therapy_target_gene_id_to_name("radioligand"),
+    }
+
     strip_plots = [
-        ("summary", default_gene_sets),
-        (
-            "treatments",
-            {
-                "TCR-T": therapy_target_gene_id_to_name("TCR-T"),
-                "CAR-T": therapy_target_gene_id_to_name("CAR-T"),
-                "bispecifics": therapy_target_gene_id_to_name("bispecific-antibodies"),
-                "pMHC-TCEs": pMHC_TCE_target_gene_id_to_name(),
-                "surface-TCEs": surface_TCE_target_gene_id_to_name(),
-                "ADCs": therapy_target_gene_id_to_name("ADC"),
-                "Radio": therapy_target_gene_id_to_name("radioligand"),
-            },
-        ),
+        ("immune", immune_sets),
+        ("tumor", tumor_sets),
+        ("antigens", antigen_sets),
+        ("treatments", therapy_sets),
     ]
     for i, (name, gene_sets) in enumerate(strip_plots):
         output_image = (
@@ -288,7 +302,9 @@ def plot_expression(
     png_files = [
         summary_png,
         purity_png,
-        "%s-summary.png" % prefix if prefix else "summary.png",
+        "%s-immune.png" % prefix if prefix else "immune.png",
+        "%s-tumor.png" % prefix if prefix else "tumor.png",
+        "%s-antigens.png" % prefix if prefix else "antigens.png",
         "%s-treatments.png" % prefix if prefix else "treatments.png",
         safety_png,
         genes_png,

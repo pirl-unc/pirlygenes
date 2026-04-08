@@ -153,7 +153,7 @@ def plot_gene_expression(
     save_to_filename=None,
     save_dpi=300,
     plot_height=14.0,
-    plot_aspect=1.4,
+    plot_aspect=1.6,
     num_labels_per_category=5,
     always_label_genes=None,
     adjust_args=dict(
@@ -317,7 +317,7 @@ def plot_gene_expression(
                 cat_to_x[row.category],
                 row.TPM,
                 label,
-                fontsize=7,
+                fontsize=8,
                 color="black",
                 alpha=0.8,
                 ha="right",
