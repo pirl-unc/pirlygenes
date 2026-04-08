@@ -484,3 +484,266 @@ def plot_tumor_purity(
         fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
         print(f"Saved {save_to_filename}")
     return fig, result
+
+
+# -------------------- tissue scoring --------------------
+
+
+def _score_normal_tissues(sample_tpm_by_symbol, top_n=10):
+    """Score each HPA normal tissue by signature gene expression in sample.
+
+    For each tissue, selects genes most specifically expressed in that tissue
+    (by z-score across 50 tissues) and computes the sample's mean midrank
+    percentile for those genes.
+
+    Returns sorted list of (tissue, score, n_genes).
+    """
+    ref = pan_cancer_expression()
+    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+
+    expr = ref_by_sym[ntpm_cols].astype(float)
+    gene_mean = expr.mean(axis=1)
+    gene_std = expr.std(axis=1).replace(0, np.nan)
+    z_matrix = expr.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
+
+    results = []
+    for col in ntpm_cols:
+        tissue = col.replace("nTPM_", "")
+        z_col = z_matrix[col]
+        expr_col = expr[col]
+        sig_genes = list(z_col[expr_col > 0.5].nlargest(20).index)
+        if len(sig_genes) < 5:
+            continue
+
+        pcts = []
+        for gene in sig_genes:
+            s_val = sample_tpm_by_symbol.get(gene, 0)
+            if gene in expr.index:
+                ref_vals = expr.loc[gene].values
+                n = len(ref_vals)
+                below = np.sum(ref_vals < s_val)
+                equal = np.sum(np.isclose(ref_vals, s_val, atol=0.01))
+                pcts.append((below + 0.5 * equal) / n)
+        if pcts:
+            results.append((tissue, float(np.mean(pcts)), len(pcts)))
+
+    results.sort(key=lambda x: -x[1])
+    return results[:top_n]
+
+
+def _get_mhc_expression(sample_tpm_by_symbol):
+    """Get MHC class I and II expression levels."""
+    mhc1_genes = ["HLA-A", "HLA-B", "HLA-C", "B2M", "TAP1", "TAP2"]
+    mhc2_genes = ["HLA-DRA", "HLA-DRB1", "HLA-DPA1", "HLA-DPB1", "HLA-DQA1", "HLA-DQB1"]
+
+    mhc1 = {g: sample_tpm_by_symbol.get(g, 0) for g in mhc1_genes}
+    mhc2 = {g: sample_tpm_by_symbol.get(g, 0) for g in mhc2_genes}
+    return mhc1, mhc2
+
+
+# -------------------- comprehensive summary --------------------
+
+
+def analyze_sample(df_gene_expr, cancer_type=None):
+    """Comprehensive sample composition analysis.
+
+    Returns a dict with all analysis results: cancer type, purity,
+    tissue context, MHC status, and narrative interpretation.
+    """
+    from .plot import (
+        _compute_cancer_type_signature_stats,
+        resolve_cancer_type,
+        CANCER_TYPE_NAMES,
+    )
+
+    sample_tpm = _build_sample_tpm_by_symbol(df_gene_expr)
+
+    # 1. Cancer type
+    stats = _compute_cancer_type_signature_stats(df_gene_expr)
+    if cancer_type:
+        cancer_code = resolve_cancer_type(cancer_type)
+    else:
+        cancer_code = stats[0]["code"]
+    cancer_name = CANCER_TYPE_NAMES.get(cancer_code, cancer_code)
+    cancer_score = stats[0]["score"] if stats[0]["code"] == cancer_code else None
+
+    # 2. Purity
+    purity = estimate_tumor_purity(df_gene_expr, cancer_type=cancer_code)
+
+    # 3. Tissue context
+    tissue_scores = _score_normal_tissues(sample_tpm)
+
+    # 4. MHC expression
+    mhc1, mhc2 = _get_mhc_expression(sample_tpm)
+
+    # 5. Top cancer type matches
+    top_cancers = [(s["code"], s["score"]) for s in stats[:5]]
+
+    return {
+        "cancer_type": cancer_code,
+        "cancer_name": cancer_name,
+        "cancer_score": cancer_score,
+        "top_cancers": top_cancers,
+        "purity": purity,
+        "tissue_scores": tissue_scores,
+        "mhc1": mhc1,
+        "mhc2": mhc2,
+    }
+
+
+def plot_sample_summary(
+    df_gene_expr,
+    cancer_type=None,
+    save_to_filename=None,
+    save_dpi=300,
+):
+    """Comprehensive sample composition plot.
+
+    Four-panel figure:
+    - Top-left: cancer type identification (bar chart)
+    - Top-right: tumor purity and microenvironment composition
+    - Bottom-left: normal tissue context (where is the non-tumor signal from?)
+    - Bottom-right: MHC class I and II expression
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.gridspec import GridSpec
+
+    analysis = analyze_sample(df_gene_expr, cancer_type=cancer_type)
+    purity = analysis["purity"]
+    cancer_code = analysis["cancer_type"]
+    cancer_name = analysis["cancer_name"]
+
+    fig = plt.figure(figsize=(18, 14))
+    gs = GridSpec(2, 2, figure=fig, hspace=0.35, wspace=0.3)
+
+    # ---- Panel 1: Cancer type identification ----
+    ax1 = fig.add_subplot(gs[0, 0])
+    top_cancers = analysis["top_cancers"]
+    codes = [c for c, s in top_cancers]
+    scores = [s for c, s in top_cancers]
+    colors = ["#2166ac" if c == cancer_code else "#92c5de" for c in codes]
+    y = np.arange(len(codes))
+    ax1.barh(y, scores, color=colors, edgecolor="none", height=0.6)
+    for i, (code, score) in enumerate(top_cancers):
+        from .plot import CANCER_TYPE_NAMES as CTN
+        label = f"{code} ({CTN.get(code, '')})"
+        ax1.text(score + 0.01, i, f"{score:.3f}", va="center", fontsize=9)
+        ax1.text(-0.01, i, label, va="center", ha="right", fontsize=9)
+    ax1.set_yticks([])
+    ax1.set_xlim(0, 1.1)
+    ax1.set_xlabel("Signature similarity score", fontsize=10)
+    ax1.set_title("Cancer type identification", fontsize=12, fontweight="bold")
+    ax1.invert_yaxis()
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["right"].set_visible(False)
+    ax1.spines["left"].set_visible(False)
+
+    # ---- Panel 2: Purity and microenvironment ----
+    ax2 = fig.add_subplot(gs[0, 1])
+    overall = purity["overall_estimate"]
+    stromal_enr = purity["components"]["stromal"]["enrichment"]
+    immune_enr = purity["components"]["immune"]["enrichment"]
+
+    # Stacked composition bar
+    tumor_frac = overall if overall else 0
+    stromal_frac = min(stromal_enr / (stromal_enr + immune_enr + 0.001), 1 - tumor_frac) * (1 - tumor_frac)
+    immune_frac = 1 - tumor_frac - stromal_frac
+
+    ax2.barh(0, tumor_frac * 100, color="#2166ac", height=0.5, label=f"Tumor ({tumor_frac:.0%})")
+    ax2.barh(0, stromal_frac * 100, left=tumor_frac * 100, color="#d6604d", height=0.5,
+             label=f"Stromal ({stromal_frac:.0%})")
+    ax2.barh(0, immune_frac * 100, left=(tumor_frac + stromal_frac) * 100, color="#4393c3",
+             height=0.5, label=f"Immune ({immune_frac:.0%})")
+
+    ax2.set_xlim(0, 100)
+    ax2.set_yticks([])
+    ax2.set_xlabel("Estimated composition (%)", fontsize=10)
+    ax2.legend(loc="upper right", fontsize=9, framealpha=0.9)
+
+    # Add text annotations below
+    lo = purity["overall_lower"]
+    hi = purity["overall_upper"]
+    details = [
+        f"Tumor purity: {overall:.0%}" + (f" [{lo:.0%}–{hi:.0%}]" if lo is not None else ""),
+        f"Stromal enrichment: {stromal_enr:.1f}x vs TCGA {cancer_code}",
+        f"Immune enrichment: {immune_enr:.1f}x vs TCGA {cancer_code}",
+        f"TCGA {cancer_code} median purity: {purity['tcga_median_purity']:.0%}",
+    ]
+    for i, txt in enumerate(details):
+        ax2.text(0, -0.6 - i * 0.5, txt, transform=ax2.transData,
+                 fontsize=9, va="top",
+                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8) if i == 0 else None)
+
+    ax2.set_ylim(-3.5, 0.8)
+    ax2.set_title("Sample composition", fontsize=12, fontweight="bold")
+    ax2.spines["top"].set_visible(False)
+    ax2.spines["right"].set_visible(False)
+    ax2.spines["left"].set_visible(False)
+
+    # ---- Panel 3: Tissue context ----
+    ax3 = fig.add_subplot(gs[1, 0])
+    tissue_scores = analysis["tissue_scores"]
+    if tissue_scores:
+        tissues = [t.replace("_", " ").title() for t, s, n in tissue_scores]
+        t_scores = [s for t, s, n in tissue_scores]
+        matched = CANCER_TO_TISSUE.get(cancer_code, "")
+        t_colors = ["#2166ac" if t.replace("_", " ").title() == matched.replace("_", " ").title()
+                     else "#b2182b" if s > 0.7 else "#92c5de" for t, s, n in tissue_scores]
+        y = np.arange(len(tissues))
+        ax3.barh(y, t_scores, color=t_colors, edgecolor="none", height=0.6)
+        ax3.set_yticks(y)
+        ax3.set_yticklabels(tissues, fontsize=9)
+        for i, (t, s, n) in enumerate(tissue_scores):
+            ax3.text(s + 0.01, i, f"{s:.3f}", va="center", fontsize=8)
+        ax3.set_xlim(0, 1.1)
+        ax3.set_xlabel("Tissue signature score", fontsize=10)
+        ax3.invert_yaxis()
+    ax3.set_title("Normal tissue context\n(where is the non-tumor signal from?)",
+                  fontsize=12, fontweight="bold")
+    ax3.spines["top"].set_visible(False)
+    ax3.spines["right"].set_visible(False)
+
+    # ---- Panel 4: MHC expression ----
+    ax4 = fig.add_subplot(gs[1, 1])
+    mhc1 = analysis["mhc1"]
+    mhc2 = analysis["mhc2"]
+
+    all_genes = list(mhc1.keys()) + list(mhc2.keys())
+    all_tpms = [mhc1.get(g, 0) for g in mhc1] + [mhc2.get(g, 0) for g in mhc2]
+    y = np.arange(len(all_genes))
+
+    # Color by class
+    n1 = len(mhc1)
+    colors_mhc = ["#2166ac"] * n1 + ["#b2182b"] * len(mhc2)
+    ax4.barh(y, all_tpms, color=colors_mhc, edgecolor="none", height=0.6, alpha=0.8)
+
+    ax4.set_yticks(y)
+    ax4.set_yticklabels(all_genes, fontsize=9)
+    for i, tpm in enumerate(all_tpms):
+        if tpm > 0:
+            ax4.text(tpm + max(all_tpms) * 0.02, i, f"{tpm:.0f}", va="center", fontsize=8)
+
+    # Divider between class I and II
+    ax4.axhline(y=n1 - 0.5, color="#cccccc", linewidth=0.8, linestyle="--")
+    ax4.text(max(all_tpms) * 0.95, n1 / 2 - 0.5, "Class I", ha="right", va="center",
+             fontsize=9, color="#2166ac", fontweight="bold")
+    ax4.text(max(all_tpms) * 0.95, n1 + len(mhc2) / 2 - 0.5, "Class II", ha="right", va="center",
+             fontsize=9, color="#b2182b", fontweight="bold")
+
+    ax4.set_xlabel("TPM", fontsize=10)
+    ax4.invert_yaxis()
+    ax4.set_title("MHC antigen presentation", fontsize=12, fontweight="bold")
+    ax4.spines["top"].set_visible(False)
+    ax4.spines["right"].set_visible(False)
+
+    # ---- Main title ----
+    fig.suptitle(
+        f"Sample composition analysis — {cancer_name} ({cancer_code})",
+        fontsize=15, fontweight="bold", y=0.98,
+    )
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, analysis
