@@ -60,6 +60,95 @@ def get_canonical_gene_name_from_gene_ids_string(gene_ids_string):
     return ";".join(not_none_gene_names)
 
 
+def _consolidate_gene_ids(df, verbose=True):
+    """Collapse alt-haplotype / retired Ensembl IDs to one ID per gene symbol.
+
+    GENCODE transcriptomes include genes on alternate haplotype contigs
+    (e.g., B2M has ENSG00000166710 on primary + ENSG00000273686 on alt).
+    Salmon distributes reads across both, splitting the expression.
+
+    For each gene symbol with multiple IDs, pick one canonical ID
+    (prefer the one in our pan-cancer reference) and keep the row with
+    the highest TPM.
+    """
+    if "ensembl_gene_id" not in df.columns:
+        return df
+
+    from .plot_data_helpers import _strip_ensembl_version
+    from .gene_sets_cancer import pan_cancer_expression
+
+    df = df.copy()
+    df["_id_stripped"] = df["ensembl_gene_id"].astype(str).map(_strip_ensembl_version)
+
+    # Find the symbol column (canonical_gene_name or gene)
+    sym_col = "canonical_gene_name" if "canonical_gene_name" in df.columns else "gene"
+    if sym_col not in df.columns:
+        return df
+
+    symbols = df[sym_col].fillna("").astype(str)
+    # Only consolidate genes with actual symbols (skip empty/nan)
+    has_symbol = symbols.str.strip().ne("") & symbols.str.upper().ne("NAN")
+
+    # Count IDs per symbol — only process multi-ID symbols
+    id_counts = df.loc[has_symbol].groupby(sym_col)["_id_stripped"].nunique()
+    multi_id_symbols = set(id_counts[id_counts > 1].index)
+
+    if not multi_id_symbols:
+        df.drop(columns=["_id_stripped"], inplace=True)
+        return df
+
+    # Build set of IDs in our pan-cancer reference for canonical preference
+    ref_ids = set(pan_cancer_expression()["Ensembl_Gene_ID"])
+
+    tpm_col = next((c for c in df.columns if c.upper() == "TPM"), None)
+
+    n_consolidated = 0
+    rows_to_drop = []
+    id_remap = {}  # old_id → canonical_id
+
+    for sym in multi_id_symbols:
+        mask = has_symbol & (symbols == sym)
+        sub = df[mask]
+        ids = sub["_id_stripped"].unique()
+
+        # Pick canonical: prefer ID in reference, then highest TPM
+        in_ref = [i for i in ids if i in ref_ids]
+        if in_ref:
+            canonical = in_ref[0]
+        elif tpm_col:
+            canonical = sub.loc[sub[tpm_col].astype(float).idxmax(), "_id_stripped"]
+        else:
+            canonical = ids[0]
+
+        # Map all alt IDs to canonical
+        for alt_id in ids:
+            if alt_id != canonical:
+                id_remap[alt_id] = canonical
+
+        # Keep only the row with highest TPM for this symbol
+        if tpm_col and len(sub) > 1:
+            best_idx = sub[tpm_col].astype(float).idxmax()
+            drop_idx = sub.index.difference([best_idx])
+            rows_to_drop.extend(drop_idx)
+            # Set the kept row's ID to canonical
+            df.loc[best_idx, "_id_stripped"] = canonical
+            n_consolidated += 1
+
+    if rows_to_drop:
+        df.drop(index=rows_to_drop, inplace=True)
+
+    # Apply ID remapping
+    df["ensembl_gene_id"] = df["_id_stripped"]
+    df.drop(columns=["_id_stripped"], inplace=True)
+
+    if verbose and n_consolidated:
+        print(
+            f"[load] Consolidated {n_consolidated} genes with multiple "
+            f"Ensembl IDs (alt haplotypes / retired IDs)"
+        )
+    return df
+
+
 def load_expression_data(
     input_path,
     aggregate_gene_expression=False,
@@ -218,6 +307,11 @@ def load_expression_data(
             ";".join([display_name(gene_name) for gene_name in gene_names.split(";")])
             for gene_names in iterator
         ]
+    # Consolidate alternate-locus / retired Ensembl IDs that map to the
+    # same gene symbol.  Pick the canonical ID (the one in our pan-cancer
+    # reference, or highest-expressed) and aggregate TPM via max.
+    df = _consolidate_gene_ids(df, verbose=verbose)
+
     if verbose:
         print(
             f"[load] Expression data ready: {len(df)} rows, columns={list(df.columns)}"
