@@ -1685,6 +1685,7 @@ def plot_cancer_type_genes(
         ax=ax,
         arrowprops=dict(arrowstyle="-", color="#999999", alpha=0.25),
         expand=(1.03, 1.2),
+        expand_axes=False,
     )
     ax.set_yticks(y_ticks)
     ax.set_yticklabels(y_labels, fontsize=9)

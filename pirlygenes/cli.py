@@ -164,6 +164,9 @@ def plot_expression(
             always_label_genes=forced_labels,
         )
 
+    import matplotlib.pyplot as _plt
+    _plt.close("all")
+
     # Scatter plots: sample vs pan-cancer reference
     scatter_pdf = (
         "%s-vs-cancer.pdf" % prefix if prefix else "vs-cancer.pdf"
@@ -195,6 +198,8 @@ def plot_expression(
         save_dpi=output_dpi,
     )
 
+    _plt.close("all")
+
     # Cancer type signature plots
     genes_png = "%s-cancer-types-genes.png" % prefix if prefix else "cancer-types-genes.png"
     plot_cancer_type_genes(df_expr, save_to_filename=genes_png, save_dpi=output_dpi)
@@ -202,7 +207,9 @@ def plot_expression(
     disjoint_png = "%s-cancer-types-disjoint.png" % prefix if prefix else "cancer-types-disjoint.png"
     plot_cancer_type_disjoint_genes(df_expr, save_to_filename=disjoint_png, save_dpi=output_dpi)
 
-    # PCA and MDS with three normalization methods
+    _plt.close("all")
+
+    # PCA, MDS, UMAP with three normalization methods
     embedding_pngs = []
     for method in ["zscore", "hk", "rank"]:
         pca_png = "%s-pca-%s.png" % (prefix, method) if prefix else "pca-%s.png" % method
