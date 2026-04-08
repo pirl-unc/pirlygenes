@@ -31,6 +31,7 @@ from .plot import (
     plot_cancer_type_disjoint_genes,
     plot_cancer_type_pca,
     plot_cancer_type_mds,
+    plot_cancer_type_umap,
     plot_therapy_target_tissues,
     plot_therapy_target_safety,
     plot_cohort_heatmap,
@@ -211,6 +212,10 @@ def plot_expression(
         mds_png = "%s-mds-%s.png" % (prefix, method) if prefix else "mds-%s.png" % method
         plot_cancer_type_mds(df_expr, method=method, save_to_filename=mds_png, save_dpi=output_dpi)
         embedding_pngs.append(mds_png)
+
+        umap_png = "%s-umap-%s.png" % (prefix, method) if prefix else "umap-%s.png" % method
+        plot_cancer_type_umap(df_expr, method=method, save_to_filename=umap_png, save_dpi=output_dpi)
+        embedding_pngs.append(umap_png)
 
     # Cancer-type-specific gene set plot (only when --cancer-type specified)
     ct_png = None

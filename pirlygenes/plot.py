@@ -2193,3 +2193,33 @@ def plot_cancer_type_mds(
         save_dpi=save_dpi,
         figsize=figsize,
     )
+
+
+def plot_cancer_type_umap(
+    df_gene_expr,
+    n_genes=10,
+    method="zscore",
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(12, 10),
+):
+    """UMAP embedding of the sample with TCGA cancer type centroids."""
+    from umap import UMAP
+
+    X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes, method=method)
+    coords = UMAP(
+        n_components=2,
+        n_neighbors=min(15, len(labels) - 1),
+        random_state=42,
+    ).fit_transform(X)
+    mlabel = _METHOD_LABELS.get(method, method)
+    return _plot_embedding_with_labels(
+        coords,
+        labels,
+        title=f"Sample among TCGA cancer types — UMAP ({mlabel})",
+        xlabel="UMAP1",
+        ylabel="UMAP2",
+        save_to_filename=save_to_filename,
+        save_dpi=save_dpi,
+        figsize=figsize,
+    )
