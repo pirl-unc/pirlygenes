@@ -165,9 +165,9 @@ def test_cli_plot_expression_and_main(monkeypatch):
     assert safety_calls[0]["top_k"] == 12
     assert safety_calls[0]["tpm_threshold"] == 18
     assert len(cancer_gene_calls) == 2  # genes + disjoint
-    assert len(pca_calls) == 3  # zscore, hk, rank
-    assert len(mds_calls) == 3
-    assert len(umap_calls) == 3
+    assert len(pca_calls) == 4  # zscore, hk, rank, robust
+    assert len(mds_calls) == 4
+    assert len(umap_calls) == 4
 
     printed = []
     monkeypatch.setattr(cli_mod, "print_name_and_version", lambda: printed.append("v"))

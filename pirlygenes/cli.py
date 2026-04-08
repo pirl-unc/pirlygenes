@@ -261,7 +261,7 @@ def plot_expression(
     # PCA, MDS, UMAP with three normalization methods
     print("[plot] Generating PCA/MDS/UMAP embeddings (3 methods x 3 embeddings)...")
     embedding_pngs = []
-    for method in ["zscore", "hk", "rank"]:
+    for method in ["zscore", "hk", "rank", "robust"]:
         pca_png = "%s-pca-%s.png" % (prefix, method) if prefix else "pca-%s.png" % method
         plot_cancer_type_pca(df_expr, method=method, save_to_filename=pca_png, save_dpi=output_dpi)
         embedding_pngs.append(pca_png)

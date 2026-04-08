@@ -1427,6 +1427,9 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
         ``"zscore"`` — z-score of log2(1+raw) across cancer types (default).
         ``"hk"`` — log2(HK-normalized + 1).
         ``"rank"`` — percentile rank within each gene across cancer types.
+        ``"robust"`` — z-score of log2(1+raw), using only purity-robust genes
+        (high cancer/normal-tissue signal-to-noise ratio, detectable even
+        at low tumor purity).
     """
     import numpy as np
     from scipy.stats import rankdata
@@ -1458,14 +1461,42 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     labels = [c.replace("FPKM_", "") for c in fpkm_cols]
 
-    # Select most variable genes by CV
-    expr_matrix = ref[fpkm_cols].astype(float)
-    gene_mean = expr_matrix.mean(axis=1)
-    gene_std = expr_matrix.std(axis=1)
-    gene_cv = gene_std / (gene_mean + 0.001)
+    if method == "robust":
+        # Purity-robust genes: high cancer/normal-tissue signal-to-noise,
+        # detectable even at very low tumor purity.
+        ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+        ref_dedup = ref.drop_duplicates(subset="Symbol")
+        cancer_expr = ref_dedup[fpkm_cols].astype(float)
+        normal_max = ref_dedup[ntpm_cols].astype(float).max(axis=1)
+        g_mean = cancer_expr.mean(axis=1)
+        g_std_raw = cancer_expr.std(axis=1).replace(0, np.nan)
+        z_mat = cancer_expr.sub(g_mean, axis=0).div(g_std_raw, axis=0).fillna(0)
 
-    top_var_idx = gene_cv[gene_mean > 0.01].nlargest(n_genes * 33).index
-    ref_filtered = ref.loc[top_var_idx].drop_duplicates(subset="Symbol")
+        # Disjoint assignment: each gene → its best cancer type
+        best_z = z_mat.max(axis=1)
+        sn = cancer_expr.max(axis=1) / (normal_max + 0.01)
+
+        # Require: z > 1, S/N > 3, expressed > 0.1 in best cancer
+        mask = (best_z > 1) & (sn > 3) & (cancer_expr.max(axis=1) > 0.1)
+        best_cancer = z_mat[mask].idxmax(axis=1)
+
+        # Pick top n_genes per cancer type
+        selected_idx = []
+        for code_col in fpkm_cols:
+            code_genes = best_cancer[best_cancer == code_col].index
+            top = best_z.loc[code_genes].nlargest(n_genes).index
+            selected_idx.extend(top)
+
+        ref_filtered = ref_dedup.loc[list(dict.fromkeys(selected_idx))]
+    else:
+        # Select most variable genes by CV
+        expr_matrix = ref[fpkm_cols].astype(float)
+        gene_mean = expr_matrix.mean(axis=1)
+        gene_std = expr_matrix.std(axis=1)
+        gene_cv = gene_std / (gene_mean + 0.001)
+
+        top_var_idx = gene_cv[gene_mean > 0.01].nlargest(n_genes * 33).index
+        ref_filtered = ref.loc[top_var_idx].drop_duplicates(subset="Symbol")
 
     sample_vals = np.array([
         sample_by_id.get(row["Ensembl_Gene_ID"], 0.0)
@@ -1473,7 +1504,7 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
     ])
     ref_vals = ref_filtered[fpkm_cols].astype(float).values  # (genes, cancers)
 
-    if method == "zscore":
+    if method in ("zscore", "robust"):
         log_ref = np.log2(ref_vals + 1)
         log_sample = np.log2(sample_vals + 1)
         g_std = log_ref.std(axis=1)
@@ -2147,6 +2178,7 @@ _METHOD_LABELS = {
     "zscore": "z-score of log2(1+expr)",
     "hk": "log2(HK-normalized)",
     "rank": "percentile rank",
+    "robust": "purity-robust genes",
 }
 
 
