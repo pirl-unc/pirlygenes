@@ -17,8 +17,8 @@ from .version import print_name_and_version
 from .load_dataset import load_all_dataframes
 from .gene_sets_cancer import (
     therapy_target_gene_id_to_name,
-    pMHC_TCE_target_gene_names,
-    surface_TCE_target_gene_names,
+    pMHC_TCE_target_gene_id_to_name,
+    surface_TCE_target_gene_id_to_name,
     cancer_types,
     cancer_type_gene_sets,
 )
@@ -144,8 +144,8 @@ def plot_expression(
                 "TCR-T": therapy_target_gene_id_to_name("TCR-T"),
                 "CAR-T": therapy_target_gene_id_to_name("CAR-T"),
                 "bispecifics": therapy_target_gene_id_to_name("bispecific-antibodies"),
-                "pMHC-TCEs": pMHC_TCE_target_gene_names(),
-                "surface-TCEs": surface_TCE_target_gene_names(),
+                "pMHC-TCEs": pMHC_TCE_target_gene_id_to_name(),
+                "surface-TCEs": surface_TCE_target_gene_id_to_name(),
                 "ADCs": therapy_target_gene_id_to_name("ADC"),
                 "Radio": therapy_target_gene_id_to_name("radioligand"),
             },
@@ -163,6 +163,9 @@ def plot_expression(
             plot_aspect=plot_aspect,
             always_label_genes=forced_labels,
         )
+
+    import matplotlib.pyplot as _plt
+    _plt.close("all")
 
     # Scatter plots: sample vs pan-cancer reference
     scatter_pdf = (
@@ -195,6 +198,8 @@ def plot_expression(
         save_dpi=output_dpi,
     )
 
+    _plt.close("all")
+
     # Cancer type signature plots
     genes_png = "%s-cancer-types-genes.png" % prefix if prefix else "cancer-types-genes.png"
     plot_cancer_type_genes(df_expr, save_to_filename=genes_png, save_dpi=output_dpi)
@@ -202,7 +207,9 @@ def plot_expression(
     disjoint_png = "%s-cancer-types-disjoint.png" % prefix if prefix else "cancer-types-disjoint.png"
     plot_cancer_type_disjoint_genes(df_expr, save_to_filename=disjoint_png, save_dpi=output_dpi)
 
-    # PCA and MDS with three normalization methods
+    _plt.close("all")
+
+    # PCA, MDS, UMAP with three normalization methods
     embedding_pngs = []
     for method in ["zscore", "hk", "rank"]:
         pca_png = "%s-pca-%s.png" % (prefix, method) if prefix else "pca-%s.png" % method
