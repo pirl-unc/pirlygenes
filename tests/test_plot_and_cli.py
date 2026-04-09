@@ -105,7 +105,7 @@ def test_plot_gene_expression_smoke(monkeypatch, tmp_path):
     assert kwargs["dpi"] == 123
 
 
-def test_cli_plot_expression_and_main(monkeypatch):
+def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     calls = []
     scatter_calls = []
     cancer_gene_calls = []
@@ -150,8 +150,10 @@ def test_cli_plot_expression_and_main(monkeypatch):
     monkeypatch.setattr(cli_mod, "plot_purity_adjusted_targets", lambda *a, **k: None)
     monkeypatch.setattr(cli_mod, "estimate_tumor_expression", lambda *a, **k: pd.DataFrame())
 
+    out_dir = str(tmp_path / "test-output")
     cli_mod.analyze(
         "input.csv",
+        output_dir=out_dir,
         output_image_prefix="out",
         aggregate_gene_expression=True,
         label_genes="FAP,CD276",
@@ -159,15 +161,17 @@ def test_cli_plot_expression_and_main(monkeypatch):
         therapy_target_top_k=12,
         therapy_target_tpm_threshold=18,
     )
+    # prefix becomes output_dir/output_image_prefix
+    expected_prefix = str(tmp_path / "test-output" / "out")
     assert len(calls) == 4  # immune, tumor, antigens, treatments
-    assert calls[0]["save_to_filename"] == "out-immune.png"
-    assert calls[1]["save_to_filename"] == "out-tumor.png"
-    assert calls[2]["save_to_filename"] == "out-antigens.png"
-    assert calls[3]["save_to_filename"] == "out-treatments.png"
+    assert calls[0]["save_to_filename"] == f"{expected_prefix}-immune.png"
+    assert calls[1]["save_to_filename"] == f"{expected_prefix}-tumor.png"
+    assert calls[2]["save_to_filename"] == f"{expected_prefix}-antigens.png"
+    assert calls[3]["save_to_filename"] == f"{expected_prefix}-treatments.png"
     assert calls[3]["gene_sets"]["Radio"] == {"ENSG_MOCK": "radioligand"}
     assert calls[3]["always_label_genes"] == {"FAP", "CD276"}
     assert len(scatter_calls) == 1
-    assert scatter_calls[0]["save_to_filename"] == "out-vs-cancer.pdf"
+    assert scatter_calls[0]["save_to_filename"] == f"{expected_prefix}-vs-cancer.pdf"
     assert tissue_calls[0]["top_k"] == 12
     assert tissue_calls[0]["tpm_threshold"] == 18
     assert safety_calls[0]["top_k"] == 12

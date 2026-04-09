@@ -117,6 +117,7 @@ def _parse_always_label_genes(always_label_genes: Optional[str]) -> Set[str]:
 @named("analyze")
 def analyze(
     input_path: str,
+    output_dir: str = "pirlygenes-output",
     output_image_prefix: Optional[str] = None,
     aggregate_gene_expression: bool = False,
     label_genes: Optional[str] = None,
@@ -129,6 +130,18 @@ def analyze(
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
 ):
+    from pathlib import Path
+
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    print(f"[output] Writing to {out_dir}/")
+
+    # Build prefix: output_dir / image_prefix (or just output_dir/)
+    if output_image_prefix:
+        prefix = str(out_dir / output_image_prefix)
+    else:
+        prefix = str(out_dir / "sample")
+
     df_expr = load_expression_data(
         input_path,
         aggregate_gene_expression=aggregate_gene_expression,
@@ -136,7 +149,6 @@ def analyze(
         gene_id_col=gene_id_col,
     )
     forced_labels = _parse_always_label_genes(label_genes)
-    prefix = output_image_prefix or ""
 
     # Strip plots: split into focused panels for readability
     # Immune microenvironment
@@ -365,8 +377,8 @@ def analyze(
 
     # Move PNGs and per-figure PDFs into figures/ subdir,
     # keeping all-figures.pdf and markdown reports in place.
-    out_dir = Path(prefix).parent if prefix and "/" in prefix else Path(".")
-    figures_dir = out_dir / "figures"
+    fig_out_dir = Path(prefix).parent
+    figures_dir = fig_out_dir / "figures"
     figures_dir.mkdir(exist_ok=True)
     moved = 0
     for png_path in png_files:
