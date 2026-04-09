@@ -1335,10 +1335,9 @@ def estimate_tumor_expression(
 
     Genes are categorized into:
     - **CTA**: cancer-testis antigens (vaccination targets)
-    - **lineage**: cancer-type origin tissue markers
-    - **surface**: known surface proteins (ADC/CAR-T/bispecific targets)
     - **therapy_target**: genes with active therapy trials
-    - **other_tumor**: remaining genes with high tumor signal
+    - **surface**: known surface proteins (ADC/CAR-T/bispecific targets)
+    - **other**: remaining genes with meaningful tumor signal
 
     Returns a DataFrame with columns: gene_id, symbol, category,
     observed_tpm, tme_expected, tumor_adjusted, tcga_median,
@@ -1390,22 +1389,18 @@ def estimate_tumor_expression(
     cta_symbols = set(cta_map.values())
 
     # Therapy targets across all therapy types
-    therapy_types = ["ADC", "CAR-T", "TCR-T", "bispecific-antibodies", "radioligand"]
-    gene_therapies = {}  # symbol -> set of therapy types
-    for tt in therapy_types:
+    _all_therapy_keys = [
+        "ADC", "ADC-approved", "CAR-T", "CAR-T-approved",
+        "TCR-T", "TCR-T-approved", "bispecific-antibodies",
+        "bispecific-antibodies-approved", "radioligand",
+    ]
+    gene_therapies = {}  # symbol -> set of base therapy types
+    for tt in _all_therapy_keys:
         try:
             tmap = therapy_target_gene_id_to_name(tt)
+            base = tt.replace("-approved", "").replace("-trials", "")
             for gid, gname in tmap.items():
-                gene_therapies.setdefault(gname, set()).add(tt)
-        except Exception:
-            pass
-    # Also approved versions
-    for tt in ["ADC-approved", "CAR-T-approved", "TCR-T-approved",
-               "bispecific-antibodies-approved"]:
-        try:
-            tmap = therapy_target_gene_id_to_name(tt)
-            for gid, gname in tmap.items():
-                gene_therapies.setdefault(gname, set()).add(tt)
+                gene_therapies.setdefault(gname, set()).add(base)
         except Exception:
             pass
 
@@ -1413,11 +1408,6 @@ def estimate_tumor_expression(
     try:
         surf_ids = surface_protein_gene_ids()
         cancer_surf = cancer_surfaceome_gene_id_to_name()
-        surf_symbols = set()
-        id_to_sym = dict(zip(ref_dedup["Ensembl_Gene_ID"] if "Ensembl_Gene_ID" in ref_dedup.columns
-                              else ref.drop_duplicates(subset="Symbol").set_index("Symbol").index,
-                              ref_dedup.index))
-        # Build from ref
         ref_flat = ref.drop_duplicates(subset="Ensembl_Gene_ID")
         eid_to_sym = dict(zip(ref_flat["Ensembl_Gene_ID"], ref_flat["Symbol"]))
         surf_symbols = {eid_to_sym.get(eid, "") for eid in surf_ids}
@@ -1435,11 +1425,17 @@ def estimate_tumor_expression(
     # TCGA distribution for percentile calculation
     cancer_expr_all = ref_dedup[fpkm_cols].astype(float)
 
-    # Build result rows
+    # Build result rows — only process genes that the sample expresses
+    # or that are in a known target category
+    interesting_symbols = set(cta_symbols) | set(gene_therapies.keys())
+    interesting_symbols |= {s for s, v in sample_raw.items() if v > 0.1}
+
     rows = []
     purity_clamp = max(purity, 0.01)  # avoid division by zero
 
-    for symbol in ref_dedup.index:
+    for symbol in interesting_symbols:
+        if symbol not in ref_dedup.index:
+            continue
         observed = sample_raw.get(symbol, 0.0)
         tme_ref = float(tme_mean.get(symbol, 0))
         tcga_med = float(tcga_expr[symbol]) if tcga_expr is not None else 0.0
@@ -1448,14 +1444,11 @@ def estimate_tumor_expression(
         tumor_adj = max(0, (observed - (1 - purity_clamp) * tme_ref) / purity_clamp)
 
         # TCGA percentile
-        if symbol in cancer_expr_all.index:
-            ref_vals = cancer_expr_all.loc[symbol].values
-            n = len(ref_vals)
-            below = np.sum(ref_vals < tumor_adj)
-            equal = np.sum(np.isclose(ref_vals, tumor_adj, atol=0.01))
-            pctile = float((below + 0.5 * equal) / n)
-        else:
-            pctile = 0.5
+        ref_vals = cancer_expr_all.loc[symbol].values
+        n = len(ref_vals)
+        below = np.sum(ref_vals < tumor_adj)
+        equal = np.sum(np.isclose(ref_vals, tumor_adj, atol=0.01))
+        pctile = float((below + 0.5 * equal) / n)
 
         # Categorize
         is_cta = symbol in cta_symbols
@@ -1537,7 +1530,9 @@ def plot_purity_adjusted_targets(
         ["category", "tumor_adjusted"], ascending=[True, False]
     ).reset_index(drop=True)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize, width_ratios=[2, 1])
+    fig, (ax1, ax2) = plt.subplots(
+        1, 2, figsize=figsize, gridspec_kw={"width_ratios": [2, 1]}
+    )
 
     # Left: horizontal bar chart of purity-adjusted expression
     y = np.arange(len(selected))
@@ -1600,7 +1595,6 @@ def plot_purity_adjusted_targets(
     return fig
 
 
-import pandas as pd  # ensure available at module level for estimate_tumor_expression
 
 
 def _compute_cancer_type_signature_stats(

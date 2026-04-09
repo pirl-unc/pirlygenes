@@ -365,26 +365,29 @@ def analyze(
     else:
         print("No images to collect into PDF")
 
-    # Move PNGs into figures/ subdir, keep PDF and markdown in place
+    # Move PNGs and per-figure PDFs into figures/ subdir,
+    # keeping all-figures.pdf and markdown reports in place.
     out_dir = Path(prefix).parent if prefix and "/" in prefix else Path(".")
     figures_dir = out_dir / "figures"
     figures_dir.mkdir(exist_ok=True)
+    moved = 0
     for png_path in png_files:
         p = Path(png_path)
         if p.exists() and p.suffix == ".png":
-            dest = figures_dir / p.name
-            p.rename(dest)
-    # Also move scatter PDF dir contents
+            p.rename(figures_dir / p.name)
+            moved += 1
+    # Move scatter dir contents and per-plot PDFs
     if scatter_dir.is_dir():
         for p in scatter_dir.glob("*.png"):
             p.rename(figures_dir / p.name)
-    # Move the scatter PDF and tissue PNGs
+            moved += 1
     for extra in [scatter_pdf, tissue_pdf]:
-        p = Path(extra)
+        p = Path(extra) if isinstance(extra, str) else extra
         if p.exists():
-            dest = figures_dir / p.name
-            p.rename(dest)
-    print(f"[output] Moved figures to {figures_dir}/")
+            p.rename(figures_dir / p.name)
+            moved += 1
+    if moved:
+        print(f"[output] Moved {moved} figures to {figures_dir}/")
 
 
 def _generate_text_reports(analysis, gene_meta, prefix):
