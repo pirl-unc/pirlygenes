@@ -32,7 +32,6 @@ from .plot import (
     plot_cancer_type_disjoint_genes,
     plot_cancer_type_pca,
     plot_cancer_type_mds,
-    plot_cancer_type_umap,
     plot_therapy_target_tissues,
     plot_therapy_target_safety,
     plot_cohort_heatmap,
@@ -42,8 +41,9 @@ from .plot import (
     plot_cohort_surface_proteins,
     plot_cohort_ctas,
     default_gene_sets,
-    _select_embedding_genes,
     _select_embedding_genes_bottleneck,
+    estimate_tumor_expression,
+    plot_purity_adjusted_targets,
     CANCER_TYPE_ALIASES,
     CANCER_TYPE_NAMES,
 )
@@ -298,6 +298,31 @@ def analyze(
                 always_label_genes=forced_labels,
             )
 
+    # Purity-adjusted tumor expression analysis
+    print("[plot] Generating purity-adjusted expression analysis...")
+    adj_png = "%s-purity-adjusted.png" % prefix if prefix else "purity-adjusted.png"
+    purity_est = analysis["purity"]["overall_estimate"]
+    try:
+        plot_purity_adjusted_targets(
+            df_expr,
+            cancer_type=analysis["cancer_type"],
+            purity=purity_est,
+            save_to_filename=adj_png,
+            save_dpi=output_dpi,
+        )
+        _plt.close("all")
+
+        # Generate therapeutic target report
+        adj_df = estimate_tumor_expression(
+            df_expr,
+            cancer_type=analysis["cancer_type"],
+            purity=purity_est,
+        )
+        _generate_target_report(adj_df, analysis, prefix)
+    except Exception as e:
+        print(f"[warn] Purity-adjusted analysis failed: {e}")
+        adj_png = None
+
     # Collect all figures into one PDF (native resolution)
     from pathlib import Path
     from PIL import Image
@@ -315,6 +340,8 @@ def analyze(
         genes_png,
         disjoint_png,
     ] + embedding_pngs
+    if adj_png and Path(adj_png).exists():
+        png_files.append(adj_png)
     if ct_png:
         png_files.append(ct_png)
 
@@ -335,6 +362,30 @@ def analyze(
         print(f"Saved {all_pdf} ({len(images)} pages)")
     else:
         print("No images to collect into PDF")
+
+    # Move PNGs and per-figure PDFs into figures/ subdir,
+    # keeping all-figures.pdf and markdown reports in place.
+    out_dir = Path(prefix).parent if prefix and "/" in prefix else Path(".")
+    figures_dir = out_dir / "figures"
+    figures_dir.mkdir(exist_ok=True)
+    moved = 0
+    for png_path in png_files:
+        p = Path(png_path)
+        if p.exists() and p.suffix == ".png":
+            p.rename(figures_dir / p.name)
+            moved += 1
+    # Move scatter dir contents and per-plot PDFs
+    if scatter_dir.is_dir():
+        for p in scatter_dir.glob("*.png"):
+            p.rename(figures_dir / p.name)
+            moved += 1
+    for extra in [scatter_pdf, tissue_pdf]:
+        p = Path(extra) if isinstance(extra, str) else extra
+        if p.exists():
+            p.rename(figures_dir / p.name)
+            moved += 1
+    if moved:
+        print(f"[output] Moved {moved} figures to {figures_dir}/")
 
 
 def _generate_text_reports(analysis, gene_meta, prefix):
@@ -437,6 +488,125 @@ def _generate_text_reports(analysis, gene_meta, prefix):
     with open(analysis_path, "w") as f:
         f.write("\n".join(lines))
     print(f"[report] Saved {analysis_path}")
+
+
+def _generate_target_report(adj_df, analysis, prefix):
+    """Write purity-adjusted therapeutic target analysis report."""
+    cancer_code = analysis["cancer_type"]
+    cancer_name = analysis["cancer_name"]
+    purity_est = analysis["purity"]["overall_estimate"]
+
+    lines = [f"# Therapeutic Target Analysis — {cancer_code} ({cancer_name})\n"]
+    lines.append(f"Purity-adjusted expression (estimated purity: {purity_est:.0%}).\n")
+    lines.append("Expression values are corrected for TME contamination: "
+                 "`tumor_expr = (observed - (1-purity) * tme_reference) / purity`\n")
+
+    # --- CTAs: vaccination targets ---
+    ctas = adj_df[adj_df["is_cta"] & (adj_df["tumor_adjusted"] > 0.5)].copy()
+    lines.append("## Cancer-Testis Antigens (Vaccination Targets)\n")
+    lines.append("CTAs are expressed in tumor but not normal adult tissue (except testis/placenta). "
+                 "Any expressed CTA is a potential vaccination target regardless of trial status.\n")
+    if len(ctas):
+        lines.append("| Gene | Tumor TPM | Observed | TCGA %ile | Surface | Therapies |")
+        lines.append("|------|-----------|----------|-----------|---------|-----------|")
+        for _, row in ctas.head(20).iterrows():
+            surf = "yes" if row["is_surface"] else ""
+            lines.append(
+                f"| **{row['symbol']}** | {row['tumor_adjusted']:.1f} | "
+                f"{row['observed_tpm']:.1f} | {row['tcga_percentile']:.0%} | "
+                f"{surf} | {row['therapies']} |"
+            )
+        high_ctas = ctas[ctas["tcga_percentile"] > 0.7]
+        if len(high_ctas):
+            names = ", ".join(high_ctas["symbol"].head(5))
+            lines.append(f"\n**Above TCGA median for {cancer_code}**: {names}")
+    else:
+        lines.append("No CTAs detected above threshold.\n")
+    lines.append("")
+
+    # --- Surface therapy targets ---
+    surface_targets = adj_df[
+        adj_df["is_surface"] & (adj_df["tumor_adjusted"] > 1) & ~adj_df["is_cta"]
+    ].copy()
+    lines.append("## Surface Protein Targets (ADC / CAR-T / Bispecific)\n")
+    lines.append("Surface proteins with high purity-adjusted expression. "
+                 "These can be targeted by antibody-drug conjugates, CAR-T, "
+                 "or bispecific T-cell engagers.\n")
+    if len(surface_targets):
+        lines.append("| Gene | Tumor TPM | Observed | TCGA %ile | Therapies |")
+        lines.append("|------|-----------|----------|-----------|-----------|")
+        for _, row in surface_targets.head(20).iterrows():
+            bold = "**" if row["therapies"] else ""
+            lines.append(
+                f"| {bold}{row['symbol']}{bold} | {row['tumor_adjusted']:.1f} | "
+                f"{row['observed_tpm']:.1f} | {row['tcga_percentile']:.0%} | "
+                f"{row['therapies']} |"
+            )
+    else:
+        lines.append("No surface targets above threshold.\n")
+    lines.append("")
+
+    # --- Cytosolic / intracellular targets (TCR-T, pMHC) ---
+    intracellular = adj_df[
+        ~adj_df["is_surface"] & (adj_df["tumor_adjusted"] > 5)
+        & (adj_df["category"].isin(["therapy_target", "CTA"]))
+    ].copy()
+    lines.append("## Intracellular Targets (TCR-T / pMHC Vaccination)\n")
+    lines.append("Intracellular proteins presented via MHC-I. Targetable by "
+                 "TCR-T cell therapy or peptide vaccination.\n")
+    if len(intracellular):
+        lines.append("| Gene | Tumor TPM | TCGA %ile | CTA | Therapies |")
+        lines.append("|------|-----------|-----------|-----|-----------|")
+        for _, row in intracellular.head(15).iterrows():
+            cta_flag = "yes" if row["is_cta"] else ""
+            lines.append(
+                f"| {row['symbol']} | {row['tumor_adjusted']:.1f} | "
+                f"{row['tcga_percentile']:.0%} | {cta_flag} | {row['therapies']} |"
+            )
+    else:
+        lines.append("No intracellular targets above threshold.\n")
+    lines.append("")
+
+    # --- Top recommendation summary ---
+    lines.append("## Recommended Targets Summary\n")
+
+    # Best surface
+    best_surface = surface_targets.head(3)
+    if len(best_surface):
+        lines.append("**Best surface targets** (ADC/CAR-T/bispecific):")
+        for _, row in best_surface.iterrows():
+            therapy_note = f" — active in {row['therapies']}" if row["therapies"] else ""
+            lines.append(f"- **{row['symbol']}** ({row['tumor_adjusted']:.0f} TPM){therapy_note}")
+        lines.append("")
+
+    # Best CTAs
+    best_cta = ctas.head(3)
+    if len(best_cta):
+        lines.append("**Best CTA targets** (vaccination even without active trials):")
+        for _, row in best_cta.iterrows():
+            lines.append(f"- **{row['symbol']}** ({row['tumor_adjusted']:.0f} TPM, "
+                         f"TCGA {row['tcga_percentile']:.0%})")
+        lines.append("")
+
+    # MHC context for intracellular targeting
+    mhc1 = analysis.get("mhc1", {})
+    b2m = mhc1.get("B2M", 0)
+    hla_mean = sum(mhc1.get(g, 0) for g in ["HLA-A", "HLA-B", "HLA-C"]) / 3
+    if hla_mean > 50 and b2m > 100:
+        lines.append(f"**MHC-I status**: adequate (HLA mean={hla_mean:.0f}, B2M={b2m:.0f} TPM) "
+                     "— intracellular targets are presentable.")
+    elif hla_mean > 10:
+        lines.append(f"**MHC-I status**: reduced (HLA mean={hla_mean:.0f}, B2M={b2m:.0f} TPM) "
+                     "— intracellular targeting may have limited efficacy.")
+    else:
+        lines.append(f"**MHC-I status**: low/absent (HLA mean={hla_mean:.0f}, B2M={b2m:.0f} TPM) "
+                     "— intracellular targets unlikely to be presented. Prioritize surface targets.")
+    lines.append("")
+
+    target_path = "%s-targets.md" % prefix if prefix else "targets.md"
+    with open(target_path, "w") as f:
+        f.write("\n".join(lines))
+    print(f"[report] Saved {target_path}")
 
 
 @named("plot-expression")
