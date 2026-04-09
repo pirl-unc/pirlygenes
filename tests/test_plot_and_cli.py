@@ -143,10 +143,14 @@ def test_cli_plot_expression_and_main(monkeypatch):
     monkeypatch.setattr(cli_mod, "plot_tumor_purity", lambda *a, **k: (None, mock_analysis["purity"]))
 
     report_calls = []
+    target_report_calls = []
     monkeypatch.setattr(cli_mod, "_generate_text_reports", lambda *a, **k: report_calls.append(True))
+    monkeypatch.setattr(cli_mod, "_generate_target_report", lambda *a, **k: target_report_calls.append(True))
     monkeypatch.setattr(cli_mod, "_select_embedding_genes_bottleneck", lambda **k: (None, {
         "per_type": {}, "n_genes": 0, "n_types": 0, "method": "bottleneck", "tme_tissues": [],
     }))
+    monkeypatch.setattr(cli_mod, "plot_purity_adjusted_targets", lambda *a, **k: None)
+    monkeypatch.setattr(cli_mod, "estimate_tumor_expression", lambda *a, **k: pd.DataFrame())
 
     cli_mod.analyze(
         "input.csv",

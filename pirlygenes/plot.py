@@ -1324,6 +1324,285 @@ def _sample_expression_by_symbol(df_gene_expr):
     )
 
 
+def estimate_tumor_expression(
+    df_gene_expr,
+    cancer_type,
+    purity,
+):
+    """Estimate true tumor cell expression by deconvolving TME contribution.
+
+    For each gene: ``tumor_expr = (observed - (1-purity) * tme_ref) / purity``
+
+    Genes are categorized into:
+    - **CTA**: cancer-testis antigens (vaccination targets)
+    - **lineage**: cancer-type origin tissue markers
+    - **surface**: known surface proteins (ADC/CAR-T/bispecific targets)
+    - **therapy_target**: genes with active therapy trials
+    - **other_tumor**: remaining genes with high tumor signal
+
+    Returns a DataFrame with columns: gene_id, symbol, category,
+    observed_tpm, tme_expected, tumor_adjusted, tcga_median,
+    tcga_percentile, is_surface, therapies.
+    """
+    import numpy as np
+    import pandas as pd
+    from .gene_sets_cancer import (
+        CTA_gene_id_to_name,
+        therapy_target_gene_id_to_name,
+        surface_protein_gene_ids,
+        cancer_surfaceome_gene_id_to_name,
+    )
+
+    cancer_code = resolve_cancer_type(cancer_type)
+
+    # Sample expression
+    sample_raw, _ = _sample_expression_by_symbol(df_gene_expr)
+
+    # Reference data
+    ref = pan_cancer_expression()
+    ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+    ntpm_nonrepro = [
+        c for c in ntpm_cols
+        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
+    ]
+
+    # TME tissues
+    ptprc_row = ref_dedup.loc["PTPRC"] if "PTPRC" in ref_dedup.index else None
+    if ptprc_row is not None:
+        ptprc_vals = ptprc_row[ntpm_nonrepro].astype(float)
+        immune_cols = [c for c in ntpm_nonrepro if ptprc_vals[c] > ptprc_vals.median()]
+    else:
+        immune_cols = []
+    stromal_cols = [
+        c for c in ntpm_nonrepro
+        if c.replace("nTPM_", "") in _STROMAL_TISSUES
+    ]
+    tme_cols = list(set(immune_cols + stromal_cols))
+
+    # Cancer type origin tissue: map cancer type to closest normal tissue
+    cancer_col = f"FPKM_{cancer_code}"
+    tcga_expr = ref_dedup[cancer_col].astype(float) if cancer_col in ref_dedup.columns else None
+
+    # Build gene lookup sets
+    cta_map = CTA_gene_id_to_name()  # {ensembl_id: name}
+    cta_symbols = set(cta_map.values())
+
+    # Therapy targets across all therapy types
+    therapy_types = ["ADC", "CAR-T", "TCR-T", "bispecific-antibodies", "radioligand"]
+    gene_therapies = {}  # symbol -> set of therapy types
+    for tt in therapy_types:
+        try:
+            tmap = therapy_target_gene_id_to_name(tt)
+            for gid, gname in tmap.items():
+                gene_therapies.setdefault(gname, set()).add(tt)
+        except Exception:
+            pass
+    # Also approved versions
+    for tt in ["ADC-approved", "CAR-T-approved", "TCR-T-approved",
+               "bispecific-antibodies-approved"]:
+        try:
+            tmap = therapy_target_gene_id_to_name(tt)
+            for gid, gname in tmap.items():
+                gene_therapies.setdefault(gname, set()).add(tt)
+        except Exception:
+            pass
+
+    # Surface proteins
+    try:
+        surf_ids = surface_protein_gene_ids()
+        cancer_surf = cancer_surfaceome_gene_id_to_name()
+        surf_symbols = set()
+        id_to_sym = dict(zip(ref_dedup["Ensembl_Gene_ID"] if "Ensembl_Gene_ID" in ref_dedup.columns
+                              else ref.drop_duplicates(subset="Symbol").set_index("Symbol").index,
+                              ref_dedup.index))
+        # Build from ref
+        ref_flat = ref.drop_duplicates(subset="Ensembl_Gene_ID")
+        eid_to_sym = dict(zip(ref_flat["Ensembl_Gene_ID"], ref_flat["Symbol"]))
+        surf_symbols = {eid_to_sym.get(eid, "") for eid in surf_ids}
+        surf_symbols |= set(cancer_surf.values())
+        surf_symbols.discard("")
+    except Exception:
+        surf_symbols = set()
+
+    # TME reference: mean across TME tissues for each gene
+    if tme_cols:
+        tme_mean = ref_dedup[tme_cols].astype(float).mean(axis=1)
+    else:
+        tme_mean = pd.Series(0, index=ref_dedup.index)
+
+    # TCGA distribution for percentile calculation
+    cancer_expr_all = ref_dedup[fpkm_cols].astype(float)
+
+    # Build result rows
+    rows = []
+    purity_clamp = max(purity, 0.01)  # avoid division by zero
+
+    for symbol in ref_dedup.index:
+        observed = sample_raw.get(symbol, 0.0)
+        tme_ref = float(tme_mean.get(symbol, 0))
+        tcga_med = float(tcga_expr[symbol]) if tcga_expr is not None else 0.0
+
+        # Purity adjustment
+        tumor_adj = max(0, (observed - (1 - purity_clamp) * tme_ref) / purity_clamp)
+
+        # TCGA percentile
+        if symbol in cancer_expr_all.index:
+            ref_vals = cancer_expr_all.loc[symbol].values
+            n = len(ref_vals)
+            below = np.sum(ref_vals < tumor_adj)
+            equal = np.sum(np.isclose(ref_vals, tumor_adj, atol=0.01))
+            pctile = float((below + 0.5 * equal) / n)
+        else:
+            pctile = 0.5
+
+        # Categorize
+        is_cta = symbol in cta_symbols
+        is_surface = symbol in surf_symbols
+        therapies = gene_therapies.get(symbol, set())
+        is_therapy = bool(therapies)
+
+        # Filter: only include genes with meaningful tumor signal
+        # or that are in a known category
+        if tumor_adj < 0.5 and not is_cta and not is_therapy:
+            continue
+
+        if is_cta:
+            category = "CTA"
+        elif is_therapy:
+            category = "therapy_target"
+        elif is_surface and tumor_adj > 1:
+            category = "surface"
+        else:
+            category = "other"
+
+        eid = ref_dedup.loc[symbol, "Ensembl_Gene_ID"] if "Ensembl_Gene_ID" in ref_dedup.columns else ""
+
+        rows.append({
+            "gene_id": eid,
+            "symbol": symbol,
+            "category": category,
+            "observed_tpm": round(observed, 2),
+            "tme_expected": round(tme_ref, 2),
+            "tumor_adjusted": round(tumor_adj, 2),
+            "tcga_median": round(tcga_med, 2),
+            "tcga_percentile": round(pctile, 3),
+            "is_surface": is_surface,
+            "is_cta": is_cta,
+            "therapies": ", ".join(sorted(therapies)) if therapies else "",
+        })
+
+    result = pd.DataFrame(rows)
+    result = result.sort_values("tumor_adjusted", ascending=False).reset_index(drop=True)
+    return result
+
+
+def plot_purity_adjusted_targets(
+    df_gene_expr,
+    cancer_type,
+    purity,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(14, 10),
+    top_n=40,
+):
+    """Plot purity-adjusted tumor expression for key gene categories.
+
+    Shows observed vs purity-adjusted expression for CTAs, therapy
+    targets, and surface proteins, with TCGA percentile context.
+    """
+    import numpy as np
+
+    adj = estimate_tumor_expression(df_gene_expr, cancer_type, purity)
+    cancer_code = resolve_cancer_type(cancer_type)
+
+    # Select top genes per category
+    categories = ["CTA", "therapy_target", "surface"]
+    selected = []
+    for cat in categories:
+        sub = adj[adj["category"] == cat].head(top_n // len(categories))
+        selected.append(sub)
+    selected = pd.concat(selected, ignore_index=True) if selected else adj.head(0)
+    # Add high-expression "other" if space remains
+    remaining = top_n - len(selected)
+    if remaining > 0:
+        other = adj[(adj["category"] == "other") & (adj["tumor_adjusted"] > 10)]
+        selected = pd.concat([selected, other.head(remaining)], ignore_index=True)
+
+    if selected.empty:
+        return None
+
+    selected = selected.sort_values(
+        ["category", "tumor_adjusted"], ascending=[True, False]
+    ).reset_index(drop=True)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize, width_ratios=[2, 1])
+
+    # Left: horizontal bar chart of purity-adjusted expression
+    y = np.arange(len(selected))
+    cat_colors = {
+        "CTA": "#e74c3c",
+        "therapy_target": "#3498db",
+        "surface": "#2ecc71",
+        "other": "#95a5a6",
+    }
+    colors = [cat_colors.get(c, "#95a5a6") for c in selected["category"]]
+
+    ax1.barh(y, selected["tumor_adjusted"], color=colors, alpha=0.8, height=0.7)
+    # Overlay observed as dots
+    ax1.scatter(
+        selected["observed_tpm"], y,
+        color="black", s=20, zorder=5, label="observed TPM"
+    )
+    ax1.set_yticks(y)
+    labels = []
+    for _, row in selected.iterrows():
+        suffix = ""
+        if row["is_surface"]:
+            suffix += " [S]"
+        if row["therapies"]:
+            suffix += f" ({row['therapies']})"
+        labels.append(f"{row['symbol']}{suffix}")
+    ax1.set_yticklabels(labels, fontsize=8)
+    ax1.set_xlabel("Expression (TPM)")
+    ax1.set_xscale("symlog", linthresh=1)
+    ax1.set_title(f"Purity-adjusted tumor expression\n({cancer_code}, purity={purity:.0%})")
+    ax1.invert_yaxis()
+    ax1.legend(fontsize=8, loc="lower right")
+
+    # Right: TCGA percentile heatmap
+    pctiles = selected["tcga_percentile"].values
+    ax2.barh(y, pctiles, color=colors, alpha=0.8, height=0.7)
+    ax2.set_xlim(0, 1)
+    ax2.axvline(0.5, color="gray", linestyle="--", alpha=0.5)
+    ax2.set_yticks([])
+    ax2.set_xlabel("TCGA percentile")
+    ax2.set_title("vs TCGA cancer types")
+    ax2.invert_yaxis()
+
+    # Category legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor="#e74c3c", label="CTA (vaccination target)"),
+        Patch(facecolor="#3498db", label="Therapy target (in trials)"),
+        Patch(facecolor="#2ecc71", label="Surface protein"),
+        Patch(facecolor="#95a5a6", label="Other tumor gene"),
+    ]
+    fig.legend(handles=legend_elements, loc="lower center", ncol=4, fontsize=8)
+
+    plt.tight_layout(rect=[0, 0.04, 1, 1])
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+
+    return fig
+
+
+import pandas as pd  # ensure available at module level for estimate_tumor_expression
+
+
 def _compute_cancer_type_signature_stats(
     df_gene_expr,
     n_signature_genes=20,
