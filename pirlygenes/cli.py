@@ -391,6 +391,11 @@ def analyze(
         for p in scatter_dir.glob("*.png"):
             p.rename(figures_dir / p.name)
             moved += 1
+        # Remove empty scatter dir
+        try:
+            scatter_dir.rmdir()
+        except OSError:
+            pass
     for extra in [scatter_pdf, tissue_pdf]:
         p = Path(extra) if isinstance(extra, str) else extra
         if p.exists():
@@ -398,6 +403,43 @@ def analyze(
             moved += 1
     if moved:
         print(f"[output] Moved {moved} figures to {figures_dir}/")
+
+    # Write README explaining output files
+    readme_path = Path(prefix).parent / "README.md"
+    cancer_code = analysis["cancer_type"]
+    cancer_name = analysis["cancer_name"]
+    readme = f"""# PIRLy Genes Analysis Output
+
+Sample analyzed as **{cancer_code}** ({cancer_name}).
+
+## Reports
+
+| File | Description |
+|------|-------------|
+| `*-summary.md` | One-paragraph natural language summary — cancer type, purity, key findings |
+| `*-analysis.md` | Structured analysis — cancer type ranking, purity components, MHC expression, tissue context, embedding genes |
+| `*-targets.md` | Therapeutic targets — CTAs (vaccination), surface proteins (ADC/CAR-T), intracellular (TCR-T), purity-adjusted expression |
+| `*-all-figures.pdf` | All figures combined into a single PDF |
+
+## Figures (in `figures/`)
+
+| Figure | Description |
+|--------|-------------|
+| `*-sample-summary.png` | Overview: cancer type, purity, tissue context |
+| `*-purity.png` | Tumor purity estimation detail |
+| `*-immune.png` | Immune microenvironment gene expression |
+| `*-tumor.png` | Tumor biology gene expression |
+| `*-antigens.png` | Tumor antigen expression (CTAs, surfaceome) |
+| `*-treatments.png` | Therapy target expression by modality |
+| `*-target-safety.png` | Therapy target normal tissue expression |
+| `*-purity-adjusted.png` | Purity-adjusted expression by target category |
+| `*-pca-bottleneck.png` | PCA: sample among TCGA cancer types |
+| `*-mds-bottleneck.png` | MDS: sample among TCGA cancer types |
+| `*-cancer-types-genes.png` | Cancer-type gene signature heatmap |
+| `*-cancer-types-disjoint.png` | Disjoint (unique) gene counts per cancer type |
+"""
+    readme_path.write_text(readme)
+    print(f"[output] Wrote {readme_path}")
 
 
 def _generate_text_reports(analysis, gene_meta, prefix):
