@@ -142,7 +142,13 @@ def test_cli_plot_expression_and_main(monkeypatch):
     monkeypatch.setattr(cli_mod, "plot_sample_summary", lambda *a, **k: (None, mock_analysis))
     monkeypatch.setattr(cli_mod, "plot_tumor_purity", lambda *a, **k: (None, mock_analysis["purity"]))
 
-    cli_mod.plot_expression(
+    report_calls = []
+    monkeypatch.setattr(cli_mod, "_generate_text_reports", lambda *a, **k: report_calls.append(True))
+    monkeypatch.setattr(cli_mod, "_select_embedding_genes_bottleneck", lambda **k: (None, {
+        "per_type": {}, "n_genes": 0, "n_types": 0, "method": "bottleneck", "tme_tissues": [],
+    }))
+
+    cli_mod.analyze(
         "input.csv",
         output_image_prefix="out",
         aggregate_gene_expression=True,
@@ -165,9 +171,9 @@ def test_cli_plot_expression_and_main(monkeypatch):
     assert safety_calls[0]["top_k"] == 12
     assert safety_calls[0]["tpm_threshold"] == 18
     assert len(cancer_gene_calls) == 2  # genes + disjoint
-    assert len(pca_calls) == 4  # zscore, hk, rank, robust
-    assert len(mds_calls) == 4
-    assert len(umap_calls) == 4
+    assert len(pca_calls) == 1  # tme
+    assert len(mds_calls) == 1
+    assert len(report_calls) == 1
 
     printed = []
     monkeypatch.setattr(cli_mod, "print_name_and_version", lambda: printed.append("v"))
