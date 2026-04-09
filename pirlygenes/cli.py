@@ -272,16 +272,16 @@ def analyze(
     plot_cancer_type_disjoint_genes(df_expr, save_to_filename=disjoint_png, save_dpi=output_dpi)
     _plt.close("all")
 
-    # PCA and MDS — bottleneck gene selection (purity-robust)
-    methods = ["bottleneck"]
+    # PCA and MDS — bottleneck (general) + TME-low (preferred at low purity)
+    methods = ["bottleneck", "tme"]
     print(f"[plot] Generating PCA/MDS embeddings ({len(methods)} methods x 2 embeddings)...")
     embedding_pngs = []
     for method in methods:
-        pca_png = "%s-pca-%s.png" % (prefix, method) if prefix else "pca-%s.png" % method
+        pca_png = "%s-pca-%s.png" % (prefix, method)
         plot_cancer_type_pca(df_expr, method=method, save_to_filename=pca_png, save_dpi=output_dpi)
         embedding_pngs.append(pca_png)
 
-        mds_png = "%s-mds-%s.png" % (prefix, method) if prefix else "mds-%s.png" % method
+        mds_png = "%s-mds-%s.png" % (prefix, method)
         plot_cancer_type_mds(df_expr, method=method, save_to_filename=mds_png, save_dpi=output_dpi)
         embedding_pngs.append(mds_png)
     _plt.close("all")
@@ -433,8 +433,10 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 | `*-treatments.png` | Therapy target expression by modality |
 | `*-target-safety.png` | Therapy target normal tissue expression |
 | `*-purity-adjusted.png` | Purity-adjusted expression by target category |
-| `*-pca-bottleneck.png` | PCA: sample among TCGA cancer types |
-| `*-mds-bottleneck.png` | MDS: sample among TCGA cancer types |
+| `*-pca-bottleneck.png` | PCA: sample among TCGA cancer types (bottleneck genes) |
+| `*-mds-bottleneck.png` | MDS: sample among TCGA cancer types (bottleneck genes) |
+| `*-pca-tme.png` | PCA: TME-low genes — preferred when purity is low |
+| `*-mds-tme.png` | MDS: TME-low genes — preferred when purity is low |
 | `*-cancer-types-genes.png` | Cancer-type gene signature heatmap |
 | `*-cancer-types-disjoint.png` | Disjoint (unique) gene counts per cancer type |
 """

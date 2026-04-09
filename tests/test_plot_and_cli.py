@@ -177,8 +177,8 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert safety_calls[0]["top_k"] == 12
     assert safety_calls[0]["tpm_threshold"] == 18
     assert len(cancer_gene_calls) == 2  # genes + disjoint
-    assert len(pca_calls) == 1  # tme
-    assert len(mds_calls) == 1
+    assert len(pca_calls) == 2  # bottleneck + tme
+    assert len(mds_calls) == 2
     assert len(report_calls) == 1
 
     printed = []
