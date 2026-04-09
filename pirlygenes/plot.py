@@ -3025,11 +3025,10 @@ def plot_cancer_type_pca(
     X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes, method=method)
     pca = PCA(n_components=2)
     coords = pca.fit_transform(X)
-    mlabel = _METHOD_LABELS.get(method, method)
     return _plot_embedding_with_labels(
         coords,
         labels,
-        title=f"Sample among TCGA cancer types — PCA",
+        title="Sample among TCGA cancer types — PCA",
         xlabel=f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)",
         ylabel=f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)",
         save_to_filename=save_to_filename,
@@ -3057,11 +3056,10 @@ def plot_cancer_type_mds(
         dissimilarity="precomputed",
         random_state=42,
     ).fit_transform(distances)
-    mlabel = _METHOD_LABELS.get(method, method)
     return _plot_embedding_with_labels(
         coords,
         labels,
-        title=f"Sample among TCGA cancer types — MDS",
+        title="Sample among TCGA cancer types — MDS",
         xlabel="MDS1",
         ylabel="MDS2",
         save_to_filename=save_to_filename,
@@ -3090,11 +3088,10 @@ def plot_cancer_type_umap(
             n_neighbors=min(15, len(labels) - 1),
             random_state=42,
         ).fit_transform(X)
-    mlabel = _METHOD_LABELS.get(method, method)
     return _plot_embedding_with_labels(
         coords,
         labels,
-        title=f"Sample among TCGA cancer types — UMAP",
+        title="Sample among TCGA cancer types — UMAP",
         xlabel="UMAP1",
         ylabel="UMAP2",
         save_to_filename=save_to_filename,

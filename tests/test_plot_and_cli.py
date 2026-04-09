@@ -111,7 +111,6 @@ def test_cli_plot_expression_and_main(monkeypatch):
     cancer_gene_calls = []
     pca_calls = []
     mds_calls = []
-    umap_calls = []
     tissue_calls = []
     safety_calls = []
     monkeypatch.setattr(cli_mod, "load_expression_data", lambda *a, **k: pd.DataFrame({"x": [1]}))
@@ -123,7 +122,6 @@ def test_cli_plot_expression_and_main(monkeypatch):
     monkeypatch.setattr(cli_mod, "plot_cancer_type_disjoint_genes", lambda *a, **k: cancer_gene_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_pca", lambda *a, **k: pca_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_mds", lambda *a, **k: mds_calls.append(k))
-    monkeypatch.setattr(cli_mod, "plot_cancer_type_umap", lambda *a, **k: umap_calls.append(k))
     monkeypatch.setattr(cli_mod, "therapy_target_gene_id_to_name", lambda t: {"ENSG_MOCK": t})
     monkeypatch.setattr(cli_mod, "pMHC_TCE_target_gene_id_to_name", lambda: {"ENSG_PMHC": "PMHC"})
     monkeypatch.setattr(cli_mod, "surface_TCE_target_gene_id_to_name", lambda: {"ENSG_SURF": "SURF"})
