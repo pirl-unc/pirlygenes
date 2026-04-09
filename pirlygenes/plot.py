@@ -1506,6 +1506,7 @@ def plot_purity_adjusted_targets(
     targets, and surface proteins, with TCGA percentile context.
     """
     import numpy as np
+    import pandas as pd
 
     adj = estimate_tumor_expression(df_gene_expr, cancer_type, purity)
     cancer_code = resolve_cancer_type(cancer_type)
