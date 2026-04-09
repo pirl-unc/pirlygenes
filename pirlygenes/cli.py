@@ -42,6 +42,8 @@ from .plot import (
     plot_cohort_surface_proteins,
     plot_cohort_ctas,
     default_gene_sets,
+    _select_embedding_genes,
+    _select_embedding_genes_bottleneck,
     CANCER_TYPE_ALIASES,
     CANCER_TYPE_NAMES,
 )
@@ -112,8 +114,8 @@ def _parse_always_label_genes(always_label_genes: Optional[str]) -> Set[str]:
     return {token.strip() for token in always_label_genes.split(",") if token.strip()}
 
 
-@named("plot-expression")
-def plot_expression(
+@named("analyze")
+def analyze(
     input_path: str,
     output_image_prefix: Optional[str] = None,
     aggregate_gene_expression: bool = False,
@@ -258,10 +260,11 @@ def plot_expression(
     plot_cancer_type_disjoint_genes(df_expr, save_to_filename=disjoint_png, save_dpi=output_dpi)
     _plt.close("all")
 
-    # PCA, MDS, UMAP with three normalization methods
-    print("[plot] Generating PCA/MDS/UMAP embeddings (3 methods x 3 embeddings)...")
+    # PCA and MDS — bottleneck gene selection (purity-robust)
+    methods = ["bottleneck"]
+    print(f"[plot] Generating PCA/MDS embeddings ({len(methods)} methods x 2 embeddings)...")
     embedding_pngs = []
-    for method in ["zscore", "hk", "rank", "robust"]:
+    for method in methods:
         pca_png = "%s-pca-%s.png" % (prefix, method) if prefix else "pca-%s.png" % method
         plot_cancer_type_pca(df_expr, method=method, save_to_filename=pca_png, save_dpi=output_dpi)
         embedding_pngs.append(pca_png)
@@ -269,11 +272,13 @@ def plot_expression(
         mds_png = "%s-mds-%s.png" % (prefix, method) if prefix else "mds-%s.png" % method
         plot_cancer_type_mds(df_expr, method=method, save_to_filename=mds_png, save_dpi=output_dpi)
         embedding_pngs.append(mds_png)
-
-        umap_png = "%s-umap-%s.png" % (prefix, method) if prefix else "umap-%s.png" % method
-        plot_cancer_type_umap(df_expr, method=method, save_to_filename=umap_png, save_dpi=output_dpi)
-        embedding_pngs.append(umap_png)
     _plt.close("all")
+
+    # Generate text reports
+    print("[report] Generating text reports...")
+    _gene_meta = _select_embedding_genes_bottleneck()[1]
+    _generate_text_reports(analysis, _gene_meta, prefix)
+
 
     # Cancer-type-specific gene set plot (only when --cancer-type specified)
     ct_png = None
@@ -332,6 +337,146 @@ def plot_expression(
         print("No images to collect into PDF")
 
 
+def _generate_text_reports(analysis, gene_meta, prefix):
+    """Write summary and detailed analysis markdown reports."""
+    cancer_code = analysis["cancer_type"]
+    cancer_name = analysis["cancer_name"]
+    purity = analysis["purity"]
+    mhc1 = analysis["mhc1"]
+    top_tissues = analysis["tissue_scores"][:5]
+
+    # --- Summary report ---
+    tissue_str = ", ".join(f"{t} ({s:.2f})" for t, s, _ in top_tissues[:3])
+    hla_a = mhc1.get("HLA-A", 0)
+    hla_b = mhc1.get("HLA-B", 0)
+    b2m = mhc1.get("B2M", 0)
+    mhc_level = "high" if min(hla_a, hla_b, b2m) > 20 else (
+        "low" if max(hla_a, hla_b, b2m) < 5 else "moderate"
+    )
+    summary = (
+        f"The sample most closely matches **{cancer_name} ({cancer_code})** "
+        f"(score {analysis['cancer_score']:.3f}). "
+        f"Estimated tumor purity is **{purity['overall_estimate']:.0%}** "
+        f"(range {purity['overall_lower']:.0%}\u2013{purity['overall_upper']:.0%}), "
+        f"with {purity['components']['stromal']['enrichment']:.1f}x stromal "
+        f"and {purity['components']['immune']['enrichment']:.1f}x immune enrichment "
+        f"vs TCGA median. "
+        f"Top tissue context: {tissue_str}. "
+        f"MHC-I expression is {mhc_level} "
+        f"(HLA-A={hla_a:.0f}, HLA-B={hla_b:.0f}, B2M={b2m:.0f} TPM)."
+    )
+    summary_path = "%s-summary.md" % prefix if prefix else "summary.md"
+    with open(summary_path, "w") as f:
+        f.write(f"# Sample Analysis Summary\n\n{summary}\n")
+    print(f"[report] Saved {summary_path}")
+
+    # --- Detailed report ---
+    lines = ["# Detailed Sample Analysis\n"]
+
+    # Cancer type identification
+    lines.append("## Cancer Type Identification\n")
+    top_cancers = analysis.get("top_cancers", [(cancer_code, analysis["cancer_score"])])
+    for code, score in top_cancers[:5]:
+        name = CANCER_TYPE_NAMES.get(code, code)
+        lines.append(f"- **{code}** ({name}): {score:.3f}")
+    lines.append("")
+
+    # Gene selection
+    lines.append("## Embedding Gene Selection\n")
+    lines.append(f"- **Method**: {gene_meta.get('method', 'unknown')}")
+    lines.append(f"- **Total genes**: {gene_meta['n_genes']}")
+    lines.append(f"- **Cancer types represented**: {gene_meta['n_types']}/33")
+    if gene_meta.get("fallback_types"):
+        lines.append(f"- **Fallback types** (z-score only, no S/N filter): "
+                      f"{', '.join(gene_meta['fallback_types'])}")
+    if gene_meta.get("cta_added"):
+        lines.append(f"- **Curated CTAs added**: {', '.join(gene_meta['cta_added'])}")
+    lines.append("")
+    lines.append("### Genes per cancer type\n")
+    lines.append("| Cancer | Genes |")
+    lines.append("|--------|-------|")
+    for ct in sorted(gene_meta["per_type"]):
+        genes = gene_meta["per_type"][ct]
+        if genes:
+            lines.append(f"| {ct} | {', '.join(genes)} |")
+    lines.append("")
+
+    # Tumor purity
+    lines.append("## Tumor Purity\n")
+    lines.append(f"- **Overall estimate**: {purity['overall_estimate']:.0%} "
+                  f"({purity['overall_lower']:.0%}\u2013{purity['overall_upper']:.0%})")
+    components = purity.get("components", {})
+    for comp_name in ("stromal", "immune"):
+        comp = components.get(comp_name, {})
+        if isinstance(comp, dict):
+            enrichment = comp.get("enrichment", 0)
+            lines.append(f"- **{comp_name.title()}** enrichment: {enrichment:.1f}x vs TCGA")
+    lines.append("")
+
+    # MHC expression
+    lines.append("## MHC Expression\n")
+    lines.append("| Gene | TPM |")
+    lines.append("|------|-----|")
+    for gene in ["HLA-A", "HLA-B", "HLA-C", "B2M"]:
+        lines.append(f"| {gene} | {mhc1.get(gene, 0):.0f} |")
+    mhc2 = analysis.get("mhc2", {})
+    if mhc2:
+        for gene, val in sorted(mhc2.items()):
+            lines.append(f"| {gene} | {val:.0f} |")
+    lines.append("")
+
+    # Normal tissue context
+    lines.append("## Normal Tissue Context\n")
+    lines.append("| Tissue | Score | N genes |")
+    lines.append("|--------|-------|---------|")
+    for tissue, score, n in top_tissues:
+        lines.append(f"| {tissue} | {score:.3f} | {n} |")
+    lines.append("")
+
+    analysis_path = "%s-analysis.md" % prefix if prefix else "analysis.md"
+    with open(analysis_path, "w") as f:
+        f.write("\n".join(lines))
+    print(f"[report] Saved {analysis_path}")
+
+
+@named("plot-expression")
+def plot_expression(
+    input_path: str,
+    output_image_prefix: Optional[str] = None,
+    aggregate_gene_expression: bool = False,
+    label_genes: Optional[str] = None,
+    gene_name_col: Optional[str] = None,
+    gene_id_col: Optional[str] = None,
+    output_dpi: int = 300,
+    plot_height: float = 14.0,
+    plot_aspect: float = 1.4,
+    cancer_type: Optional[str] = None,
+    therapy_target_top_k: int = 10,
+    therapy_target_tpm_threshold: float = 30.0,
+):
+    """Deprecated: use 'analyze' instead."""
+    import warnings
+    warnings.warn(
+        "plot-expression is deprecated, use 'analyze' instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return analyze(
+        input_path,
+        output_image_prefix=output_image_prefix,
+        aggregate_gene_expression=aggregate_gene_expression,
+        label_genes=label_genes,
+        gene_name_col=gene_name_col,
+        gene_id_col=gene_id_col,
+        output_dpi=output_dpi,
+        plot_height=plot_height,
+        plot_aspect=plot_aspect,
+        cancer_type=cancer_type,
+        therapy_target_top_k=therapy_target_top_k,
+        therapy_target_tpm_threshold=therapy_target_tpm_threshold,
+    )
+
+
 @named("plot-cancer-cohorts")
 def plot_cancer_cohorts(
     output_prefix: Optional[str] = None,
@@ -380,7 +525,7 @@ def plot_cancer_cohorts(
 def main():
     print_name_and_version()
     print("---")
-    dispatch_commands([print_dataset_info, plot_expression, plot_cancer_cohorts])
+    dispatch_commands([print_dataset_info, analyze, plot_expression, plot_cancer_cohorts])
 
 
 if __name__ == "__main__":

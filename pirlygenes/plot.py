@@ -1418,22 +1418,594 @@ def _compute_cancer_type_signature_stats(
     return stats
 
 
+# ---------------------------------------------------------------------------
+# Unified embedding gene selection
+# ---------------------------------------------------------------------------
+
+_REPRODUCTIVE_TISSUES = {"testis", "epididymis", "seminal_vesicle", "placenta", "ovary"}
+_IG_TR_PREFIXES = ("IGH", "IGK", "IGL", "TRA", "TRB", "TRG", "TRD")
+_CURATED_CTAS = [
+    "PRAME",    # UCS/SKCM/UCEC — high-expression melanoma/uterine marker
+    "MAGEA3",   # SKCM/LUSC — melanoma and squamous cancers
+    "CTCFL",    # UCS/OV — gynecologic cancers (BORIS, CTCF paralog)
+    "SMC1B",    # CESC/LAML — meiotic cohesin, cervical cancer marker
+    "LIN28B",   # TGCT/UCS — stem cell / embryonal marker
+    "SSX1",     # THCA/UVM/SKCM — thyroid + melanomas
+    "C1orf94",  # LGG/GBM — brain tumor CTA marker
+    "SYCP3",    # LAML/TGCT — synaptonemal complex, meiosis marker
+    "FATE1",    # ACC — adrenocortical CTA marker
+]
+
+_STROMAL_TISSUES = {"smooth_muscle", "skeletal_muscle", "heart_muscle", "adipose_tissue"}
+
+# Clinically important genes with low TME background.  The data-driven
+# algorithm may miss these because their best z-score peaks in a sibling
+# type or they sit just below per-type selection cutoffs.
+_CURATED_TME_BOOST = [
+    # Cancer-testis antigens
+    "PRAME",      # S/N_tme≈179  UCS/UCEC/SKCM — immunotherapy target
+    "MAGEA3",     # S/N_tme≈27   SKCM — vaccine target
+    "LIN28B",     # S/N_tme≈19   TGCT — embryonal/stem marker
+    "SYCP3",      # S/N_tme≈12   LAML — meiosis marker
+    # Glioma / neuroendocrine (brain-restricted, TME-silent)
+    "DLL3",       # S/N_tme≈94   LGG/GBM — Rova-T & BiTE target
+    "PTPRZ1",     # S/N_tme≈29   LGG/GBM — glioma phosphatase
+    # Melanocyte lineage (melanocyte-restricted)
+    "MLANA",      # S/N_tme≈1472 UVM/SKCM — MART-1, TIL/TCR target
+    "TYR",        # S/N_tme≈726  UVM/SKCM — tyrosinase
+    # Therapy targets with low TME expression
+    "MSLN",       # S/N_tme≈10   MESO/OV — mesothelin, CAR-T target
+    "CDKN2A",     # S/N_tme≈13   UCS/OV — p16, broad tumor marker
+    "COL11A1",    # S/N_tme≈11   MESO/BRCA/PAAD — desmoplastic, ADC target
+    # Lineage transcription factors
+    "FOXA1",      # S/N_tme≈5    PRAD/BRCA — luminal breast/prostate
+    "ASCL2",      # S/N_tme≈10   COAD/READ — intestinal stem cell TF
+    "DLX5",       # S/N_tme≈9    UCEC/UCS — homeobox, endometrial
+    "SOX2",       # S/N_tme≈22   LUSC/LGG — squamous & neural stem cell TF
+    "TH",         # S/N_tme≈792  PCPG — tyrosine hydroxylase, catecholamine
+    # Therapy targets & lineage markers for additional types
+    "FLT3",       # S/N_tme≈47   LAML — gilteritinib/midostaurin target
+    "LIN28A",     # S/N_tme≈319  TGCT — embryonal pluripotency marker
+    "NANOG",      # S/N_tme≈111  TGCT — pluripotency TF, germ cell tumors
+    "PMEL",       # S/N_tme≈104  UVM/SKCM — gp100, melanoma vaccine target
+    "OLIG2",      # S/N_tme≈10   LGG/GBM — oligodendrocyte lineage TF
+    "NKX3-1",     # S/N_tme≈6    PRAD — prostate lineage TF, diagnostic
+    "STEAP2",     # S/N_tme≈4    PRAD — prostate surface antigen
+    "MITF",       # S/N_tme≈4    UVM/SKCM — master melanocyte TF
+    "FOXN1",      # S/N_tme≈8    THYM — thymic epithelial TF
+]
+
+# Lineage markers for cancer types whose defining genes are also expressed
+# in normal tissue (high TME background).  NOT TME-low — these won't help
+# at very low purity, but they prevent these types from collapsing into a
+# featureless cluster in embedding space.
+_CURATED_LINEAGE_BOOST = [
+    "UPK2",       # BLCA — uroplakin, 120x vs other cancers
+    "APOA2",      # LIHC — liver secretory protein, 70000x vs others
+    "SFTPB",      # LUAD — surfactant protein B, 12000x vs others
+    "NAPSA",      # LUAD — napsin A, lung adeno IHC marker
+    "KRT6A",      # ESCA — squamous keratin, 214x vs others
+    "PGC",        # STAD — pepsinogen C, best available (3x vs others)
+]
+
+_embedding_gene_cache = {}
+_tme_gene_cache = {}
+_bottleneck_gene_cache = {}
+
+
+def _select_embedding_genes_bottleneck(n_genes_per_type=5):
+    """Select genes for cancer-type embedding using bottleneck scoring.
+
+    For each gene × cancer type, two z-scores are computed:
+
+    * **z_tme** — how far the gene's cancer-type expression is above
+      the distribution of TME (immune + stromal) tissue expression.
+      High z_tme ⇒ gene visible above microenvironment background.
+
+    * **z_other** — how far the gene's cancer-type expression is above
+      the distribution of *all* cancer types.
+      High z_other ⇒ gene is specific to this cancer type.
+
+    The combined score is ``min(z_tme, z_other)`` — the bottleneck.
+    A gene ranks high only if it scores well on *both* axes.  This
+    naturally balances purity robustness (TME silence) against
+    cancer-type discrimination without any hard threshold on either.
+
+    Evaluation on 160 individual TCGA samples diluted 1:1 with GTEx
+    immune expression (simulating 5% tumor purity) showed this method
+    achieves 56% top-1 / 76% top-5 nearest-neighbor accuracy with only
+    158 genes — the best purity-robust performance tested.  See
+    ``eval/`` for the full comparison across 21 gene sets, 9
+    normalizations, and 5 purity levels.
+
+    Parameters
+    ----------
+    n_genes_per_type : int
+        Number of top-scoring genes to select per cancer type (default 5).
+
+    Returns
+    -------
+    ref_filtered : DataFrame
+        Subset of pan-cancer reference for the selected genes.
+    metadata : dict
+        Per-type gene lists, total gene count, etc.
+    """
+    import numpy as np
+
+    cache_key = n_genes_per_type
+    if cache_key in _bottleneck_gene_cache:
+        return _bottleneck_gene_cache[cache_key]
+
+    ref = pan_cancer_expression()
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+    ntpm_nonrepro = [
+        c for c in ntpm_cols
+        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
+    ]
+
+    ref_dedup = ref.drop_duplicates(subset="Symbol")
+    cancer_expr = ref_dedup[fpkm_cols].astype(float)
+
+    # Identify TME tissues (immune via PTPRC, plus stromal)
+    ptprc_row = ref_dedup[ref_dedup["Symbol"] == "PTPRC"]
+    if len(ptprc_row):
+        ptprc_vals = ptprc_row[ntpm_nonrepro].astype(float).iloc[0]
+        immune_cols = [c for c in ntpm_nonrepro if ptprc_vals[c] > ptprc_vals.median()]
+    else:
+        immune_cols = []
+    stromal_cols = [
+        c for c in ntpm_nonrepro
+        if c.replace("nTPM_", "") in _STROMAL_TISSUES
+    ]
+    tme_cols = list(set(immune_cols + stromal_cols))
+    tme_expr = ref_dedup[tme_cols].astype(float)
+
+    # IG/TR exclusion
+    is_rearranged = ref_dedup["Symbol"].apply(
+        lambda s: any(s.startswith(p) for p in _IG_TR_PREFIXES)
+    )
+
+    # Log-transform
+    log_cancer = np.log2(cancer_expr + 1)
+    log_tme = np.log2(tme_expr + 1)
+
+    # z_tme: z-score of cancer expr against TME tissue distribution
+    tme_mean = log_tme.mean(axis=1)
+    tme_std = log_tme.std(axis=1).replace(0, 0.1)
+    z_tme = log_cancer.sub(tme_mean.values, axis=0).div(tme_std.values, axis=0)
+
+    # z_other: z-score of cancer expr against all cancer types
+    cancer_mean = log_cancer.mean(axis=1)
+    cancer_std = log_cancer.std(axis=1).replace(0, 0.1)
+    z_other = log_cancer.sub(cancer_mean.values, axis=0).div(cancer_std.values, axis=0)
+
+    # Bottleneck score: min of the two positive z-scores
+    z_tme_pos = z_tme.clip(lower=0)
+    z_other_pos = z_other.clip(lower=0)
+    import pandas as pd
+    bottleneck = pd.DataFrame(
+        np.minimum(z_tme_pos.values, z_other_pos.values),
+        index=cancer_expr.index,
+        columns=cancer_expr.columns,
+    )
+
+    # Select top genes per type
+    selected_idx = []
+    per_type = {}
+    for col in fpkm_cols:
+        code = col.replace("FPKM_", "")
+        mask = (cancer_expr[col] > 0.5) & (~is_rearranged.values)
+        valid = bottleneck[col][mask]
+        top = valid.nlargest(n_genes_per_type)
+        syms = list(ref_dedup.loc[top.index, "Symbol"].values)
+        per_type[code] = syms
+        selected_idx.extend(top.index)
+
+    selected_idx = list(dict.fromkeys(selected_idx))
+    ref_filtered = ref_dedup.loc[selected_idx]
+
+    metadata = {
+        "per_type": per_type,
+        "n_genes": len(selected_idx),
+        "n_types": len([t for t, g in per_type.items() if g]),
+        "method": "bottleneck",
+        "tme_tissues": sorted(c.replace("nTPM_", "") for c in tme_cols),
+    }
+
+    result = (ref_filtered, metadata)
+    _bottleneck_gene_cache[cache_key] = result
+    return result
+
+
+def _select_tme_low_genes(n_genes_per_type=3, sn_tme_threshold=10):
+    """Select genes with low tumor microenvironment (TME) background.
+
+    These genes are silent in immune and stromal cells, so their signal
+    is detectable even at very low tumor purity (down to ~5%).
+
+    Parameters
+    ----------
+    sn_tme_threshold : float
+        Minimum ratio of cancer expression to TME tissue expression.
+        Default 10 means genes are visible at ~10% purity.
+    """
+    import numpy as np
+
+    cache_key = (n_genes_per_type, sn_tme_threshold)
+    if cache_key in _tme_gene_cache:
+        return _tme_gene_cache[cache_key]
+
+    ref = pan_cancer_expression()
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+    ntpm_nonrepro = [
+        c for c in ntpm_cols
+        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
+    ]
+
+    ref_dedup = ref.drop_duplicates(subset="Symbol")
+    cancer_expr = ref_dedup[fpkm_cols].astype(float)
+    normal_expr = ref_dedup[ntpm_nonrepro].astype(float)
+
+    # Immune tissues (PTPRC-defined) + stromal tissues = TME background
+    ptprc_row = ref_dedup[ref_dedup["Symbol"] == "PTPRC"]
+    if len(ptprc_row):
+        ptprc_vals = ptprc_row[ntpm_nonrepro].astype(float).iloc[0]
+        immune_cols = [c for c in ntpm_nonrepro if ptprc_vals[c] > ptprc_vals.median()]
+    else:
+        immune_cols = []
+    stromal_cols = [
+        c for c in ntpm_nonrepro
+        if c.replace("nTPM_", "") in _STROMAL_TISSUES
+    ]
+    tme_cols = list(set(immune_cols + stromal_cols))
+    tme_max = normal_expr[tme_cols].max(axis=1) if tme_cols else normal_expr.max(axis=1)
+
+    sn_tme = cancer_expr.max(axis=1) / (tme_max + 0.01)
+
+    # IG/TR exclusion
+    is_rearranged = ref_dedup["Symbol"].apply(
+        lambda s: any(s.startswith(p) for p in _IG_TR_PREFIXES)
+    )
+
+    # Z-scores for cancer-type specificity
+    g_mean = cancer_expr.mean(axis=1)
+    g_std_raw = cancer_expr.std(axis=1).replace(0, np.nan)
+    z_mat = cancer_expr.sub(g_mean, axis=0).div(g_std_raw, axis=0).fillna(0)
+    best_z = z_mat.max(axis=1)
+
+    base_mask = (~is_rearranged.values) & (cancer_expr.max(axis=1) > 1) & (best_z > 1)
+
+    # Tiered selection: strict S/N first, then relax for underrepresented types
+    selected_idx = []
+    per_type = {}
+    covered = set()
+
+    for tier_thresh in [sn_tme_threshold, 3, 1.5]:
+        tier_mask = base_mask & (sn_tme > tier_thresh)
+        tier_best_cancer = z_mat[tier_mask].idxmax(axis=1)
+        for code_col in fpkm_cols:
+            code = code_col.replace("FPKM_", "")
+            if code in covered:
+                continue
+            genes = tier_best_cancer[tier_best_cancer == code_col].index
+            top = best_z.loc[genes].nlargest(n_genes_per_type).index
+            if len(top):
+                syms = list(ref_dedup.loc[top, "Symbol"].values)
+                per_type[code] = syms
+                selected_idx.extend(top)
+                covered.add(code)
+
+    # Final fallback: composite score for any still-missing types
+    fallback_mask = base_mask & (sn_tme > 0.5)
+    if fallback_mask.any():
+        fallback_score = best_z[fallback_mask] * np.log2(
+            cancer_expr.max(axis=1)[fallback_mask] + 1
+        ) * np.minimum(sn_tme[fallback_mask], 3) / 3
+        fallback_best = z_mat[fallback_mask].idxmax(axis=1)
+        for code_col in fpkm_cols:
+            code = code_col.replace("FPKM_", "")
+            if code in covered:
+                continue
+            genes = fallback_best[fallback_best == code_col].index
+            top = fallback_score.loc[genes].nlargest(n_genes_per_type).index
+            syms = list(ref_dedup.loc[top, "Symbol"].values) if len(top) else []
+            per_type[code] = syms
+            selected_idx.extend(top)
+            covered.add(code)
+
+    # Fill any remaining types with empty
+    for code_col in fpkm_cols:
+        code = code_col.replace("FPKM_", "")
+        if code not in per_type:
+            per_type[code] = []
+
+    selected_idx = list(dict.fromkeys(selected_idx))
+
+    # --- Curated boost: clinically important TME-low markers ---
+    selected_syms = set(ref_dedup.loc[selected_idx, "Symbol"].values)
+    boost_added = []
+    for sym in _CURATED_TME_BOOST:
+        if sym in selected_syms:
+            continue
+        hits = ref_dedup[ref_dedup["Symbol"] == sym]
+        if hits.empty:
+            continue
+        idx = hits.index[0]
+        gene_sn = sn_tme.loc[idx]
+        gene_expr = cancer_expr.loc[idx].max()
+        if gene_sn > 3 and gene_expr > 1:
+            selected_idx.append(idx)
+            selected_syms.add(sym)
+            boost_added.append(sym)
+
+    # --- Lineage boost: high-discrimination markers for types without TME-low genes ---
+    lineage_added = []
+    for sym in _CURATED_LINEAGE_BOOST:
+        if sym in selected_syms:
+            continue
+        hits = ref_dedup[ref_dedup["Symbol"] == sym]
+        if hits.empty:
+            continue
+        idx = hits.index[0]
+        gene_expr = cancer_expr.loc[idx].max()
+        if gene_expr > 5:
+            selected_idx.append(idx)
+            selected_syms.add(sym)
+            lineage_added.append(sym)
+
+    selected_idx = list(dict.fromkeys(selected_idx))
+    ref_filtered = ref_dedup.loc[selected_idx]
+
+    metadata = {
+        "per_type": per_type,
+        "boost_added": boost_added,
+        "lineage_added": lineage_added,
+        "n_genes": len(selected_idx),
+        "n_types": len([t for t, g in per_type.items() if g]),
+        "sn_tme_threshold": sn_tme_threshold,
+        "tme_tissues": sorted(c.replace("nTPM_", "") for c in tme_cols),
+    }
+
+    result = (ref_filtered, metadata)
+    _tme_gene_cache[cache_key] = result
+    return result
+
+
+def _select_embedding_genes(n_genes_per_type=3):
+    """Select a unified gene set for cancer-type embeddings.
+
+    Applies biologically-informed filters to select genes that discriminate
+    cancer types without being confounded by immune infiltrate or normal
+    tissue contamination.
+
+    Returns
+    -------
+    ref_filtered : DataFrame
+        Subset of pan-cancer reference data for the selected genes.
+    metadata : dict
+        Per-cancer-type gene lists, excluded genes, CTA additions, etc.
+    """
+    import numpy as np
+
+    cache_key = n_genes_per_type
+    if cache_key in _embedding_gene_cache:
+        return _embedding_gene_cache[cache_key]
+
+    ref = pan_cancer_expression()
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+
+    # Exclude reproductive tissues from the normal-tissue denominator
+    # so that cancer-testis antigens can pass the S/N filter.
+    ntpm_nonrepro = [
+        c for c in ntpm_cols
+        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
+    ]
+
+    ref_dedup = ref.drop_duplicates(subset="Symbol")
+    cancer_expr = ref_dedup[fpkm_cols].astype(float)
+    normal_expr = ref_dedup[ntpm_nonrepro].astype(float)
+    normal_max = normal_expr.max(axis=1)
+
+    # --- Data-driven immune tissue identification via PTPRC (CD45) ---
+    ptprc_row = ref_dedup[ref_dedup["Symbol"] == "PTPRC"]
+    if len(ptprc_row):
+        ptprc_vals = ptprc_row[ntpm_nonrepro].astype(float).iloc[0]
+        immune_cols = [c for c in ntpm_nonrepro if ptprc_vals[c] > ptprc_vals.median()]
+    else:
+        immune_cols = []
+    immune_sum = normal_expr[immune_cols].sum(axis=1) if immune_cols else 0
+    total_sum = normal_expr.sum(axis=1)
+    immune_frac = np.where(total_sum > 0.01, immune_sum / total_sum, 0.0)
+
+    # --- Exclusion masks ---
+    is_immune = (immune_frac > 0.5) & (total_sum > 10)
+    is_rearranged = ref_dedup["Symbol"].apply(
+        lambda s: any(s.startswith(p) for p in _IG_TR_PREFIXES)
+    )
+    excluded = is_immune | is_rearranged.values
+
+    # --- Z-scores and S/N ---
+    g_mean = cancer_expr.mean(axis=1)
+    g_std_raw = cancer_expr.std(axis=1).replace(0, np.nan)
+    z_mat = cancer_expr.sub(g_mean, axis=0).div(g_std_raw, axis=0).fillna(0)
+    best_z = z_mat.max(axis=1)
+    sn = cancer_expr.max(axis=1) / (normal_max + 0.01)
+
+    # --- Primary selection: S/N pathway ---
+    primary_mask = (
+        (best_z > 1)
+        & (sn > 3)
+        & (cancer_expr.max(axis=1) > 0.1)
+        & (normal_max >= 0.5)
+        & ~excluded
+    )
+    primary_best = z_mat[primary_mask].idxmax(axis=1)
+
+    selected_idx = []
+    per_type = {}
+    for code_col in fpkm_cols:
+        code = code_col.replace("FPKM_", "")
+        code_genes = primary_best[primary_best == code_col].index
+        top = best_z.loc[code_genes].nlargest(n_genes_per_type).index
+        syms = list(ref_dedup.loc[top, "Symbol"].values)
+        per_type[code] = syms
+        selected_idx.extend(top)
+
+    # --- Fallback for underrepresented cancer types ---
+    # Use a composite score: z-score × log2(expr+1) × min(S/N, 3)/3
+    # This favors genes that are type-specific (z), reasonably expressed
+    # (log-expr), and have at least partial cancer vs. normal enrichment (S/N).
+    fallback_types = []
+    fallback_mask = (best_z > 1) & (cancer_expr.max(axis=1) > 0.1) & ~excluded
+    for code_col in fpkm_cols:
+        code = code_col.replace("FPKM_", "")
+        if len(per_type.get(code, [])) >= 2:
+            continue
+        fallback_types.append(code)
+        avail = fallback_mask & ~ref_dedup.index.isin(selected_idx)
+        z_col = z_mat.loc[avail, code_col]
+        expr_col = cancer_expr.loc[avail, code_col]
+        sn_col = sn.loc[avail]
+        composite = z_col * np.log2(expr_col + 1) * np.clip(sn_col, 0, 3) / 3
+        top = composite.nlargest(n_genes_per_type).index
+        syms = list(ref_dedup.loc[top, "Symbol"].values)
+        per_type[code] = per_type.get(code, []) + syms
+        selected_idx.extend(top)
+
+    # --- CTA boost ---
+    selected_syms = set(ref_dedup.loc[list(dict.fromkeys(selected_idx)), "Symbol"].values)
+    cta_added = []
+    for cta in _CURATED_CTAS:
+        if cta in selected_syms:
+            continue
+        cta_rows = ref_dedup[ref_dedup["Symbol"] == cta]
+        if len(cta_rows) == 0:
+            continue
+        cta_row = cta_rows.iloc[0]
+        cta_expr = cancer_expr.loc[cta_row.name]
+        if cta_expr.max() < 1.0:
+            continue  # median < 1 FPKM in best type
+        selected_idx.append(cta_row.name)
+        cta_added.append(cta)
+
+    selected_idx = list(dict.fromkeys(selected_idx))
+    ref_filtered = ref_dedup.loc[selected_idx]
+
+    metadata = {
+        "per_type": per_type,
+        "fallback_types": fallback_types,
+        "cta_added": cta_added,
+        "n_genes": len(selected_idx),
+        "n_types": len([t for t, g in per_type.items() if g]),
+    }
+
+    result = (ref_filtered, metadata)
+    _embedding_gene_cache[cache_key] = result
+    return result
+
+
+def _cancer_type_score_matrix(df_gene_expr, n_signature_genes=20):
+    """Build feature matrix using cancer-type signature scores.
+
+    Each cancer type (and the sample) is represented as a vector of scores:
+    "how well does this expression profile match each cancer type's signature?"
+
+    For reference cancer types, the score is the midrank percentile of that
+    type's median expression among all cancer types, for the target type's
+    signature genes.  For the sample, same scoring via
+    ``_compute_cancer_type_signature_stats``.
+
+    Returns (matrix, labels) where matrix is (34, 33) — 33 cancer types + sample.
+    """
+    import numpy as np
+
+    ref = pan_cancer_expression(normalize="housekeeping")
+    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    labels = [c.replace("FPKM_", "") for c in fpkm_cols]
+
+    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
+    gene_mean = expr_matrix.mean(axis=1)
+    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
+    z_matrix = expr_matrix.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
+
+    # Select signature genes per cancer type
+    sig = {}
+    for col in fpkm_cols:
+        code = col.replace("FPKM_", "")
+        z_col = z_matrix[col]
+        expr_col = expr_matrix[col]
+        valid = z_col[expr_col > 0.01]
+        sig[code] = list(valid.nlargest(n_signature_genes).index)
+
+    # Score each reference cancer type against all signatures
+    ref_scores = np.zeros((len(labels), len(labels)))
+    for j, target_code in enumerate(labels):
+        genes = sig[target_code]
+        for i, source_code in enumerate(labels):
+            source_col = f"FPKM_{source_code}"
+            pcts = []
+            for gene in genes:
+                if gene not in expr_matrix.index:
+                    continue
+                val = float(expr_matrix.loc[gene, source_col])
+                ref_vals = expr_matrix.loc[gene].values
+                n = len(ref_vals)
+                below = np.sum(ref_vals < val)
+                equal = np.sum(np.isclose(ref_vals, val, atol=1e-6))
+                pcts.append((below + 0.5 * equal) / n)
+            ref_scores[i, j] = float(np.mean(pcts)) if pcts else 0.5
+
+    # Score the sample
+    sample_stats = _compute_cancer_type_signature_stats(
+        df_gene_expr, n_signature_genes=n_signature_genes,
+    )
+    sample_scores = np.zeros(len(labels))
+    for stat in sample_stats:
+        j = labels.index(stat["code"])
+        sample_scores[j] = stat["score"]
+
+    matrix = np.vstack([ref_scores, sample_scores[None, :]])
+    labels.append("SAMPLE")
+    return matrix, labels
+
+
 def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
     """Build feature matrix for PCA/MDS of cancer types + sample.
+
+    Gene selection is unified: a single biologically-informed gene set is
+    used regardless of normalization method.  The *method* parameter only
+    controls how expression values are transformed before embedding.
 
     Parameters
     ----------
     method : str
         ``"zscore"`` — z-score of log2(1+raw) across cancer types (default).
         ``"hk"`` — log2(HK-normalized + 1).
+        ``"hk_zscore"`` — z-score of log2(HK-normalized + 1).
         ``"rank"`` — percentile rank within each gene across cancer types.
-        ``"robust"`` — z-score of log2(1+raw), using only purity-robust genes
-        (high cancer/normal-tissue signal-to-noise ratio, detectable even
-        at low tumor purity).
+        ``"score"`` — cancer-type signature scores (33-d vector).
     """
+    import warnings
+
     import numpy as np
     from scipy.stats import rankdata
     from .plot_data_helpers import _strip_ensembl_version
+
+    if method == "robust":
+        warnings.warn(
+            "method='robust' is deprecated; gene selection is now unified. "
+            "Using 'zscore'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        method = "zscore"
+
+    if method == "score":
+        return _cancer_type_score_matrix(df_gene_expr)
 
     gene_id_col, _ = _guess_gene_cols(df_gene_expr)
     df = df_gene_expr.copy()
@@ -1443,7 +2015,7 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
         (c for c in df.columns if c.lower() == "tpm"), None
     )
 
-    if method == "hk":
+    if method in ("hk", "hk_zscore"):
         hk_mask = df[gene_id_col].isin(housekeeping_gene_ids())
         hk_median = df.loc[hk_mask, tpm_col].astype(float).median()
         if not (hk_median > 0):  # catches NaN and <= 0
@@ -1451,60 +2023,41 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
         sample_by_id = dict(zip(
             df[gene_id_col].astype(str), df[tpm_col].astype(float) / hk_median,
         ))
-        ref = pan_cancer_expression(normalize="housekeeping")
+        ref_full = pan_cancer_expression(normalize="housekeeping")
     else:
         sample_by_id = dict(zip(
             df[gene_id_col].astype(str), df[tpm_col].astype(float),
         ))
-        ref = pan_cancer_expression()
+        ref_full = pan_cancer_expression()
 
-    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    fpkm_cols = [c for c in ref_full.columns if c.startswith("FPKM_")]
     labels = [c.replace("FPKM_", "") for c in fpkm_cols]
 
-    if method == "robust":
-        # Purity-robust genes: high cancer/normal-tissue signal-to-noise,
-        # detectable even at very low tumor purity.
-        ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
-        ref_dedup = ref.drop_duplicates(subset="Symbol")
-        cancer_expr = ref_dedup[fpkm_cols].astype(float)
-        normal_max = ref_dedup[ntpm_cols].astype(float).max(axis=1)
-        g_mean = cancer_expr.mean(axis=1)
-        g_std_raw = cancer_expr.std(axis=1).replace(0, np.nan)
-        z_mat = cancer_expr.sub(g_mean, axis=0).div(g_std_raw, axis=0).fillna(0)
-
-        # Disjoint assignment: each gene → its best cancer type
-        best_z = z_mat.max(axis=1)
-        sn = cancer_expr.max(axis=1) / (normal_max + 0.01)
-
-        # Require: z > 1, S/N > 3, expressed > 0.1 in best cancer
-        mask = (best_z > 1) & (sn > 3) & (cancer_expr.max(axis=1) > 0.1)
-        best_cancer = z_mat[mask].idxmax(axis=1)
-
-        # Pick top n_genes per cancer type
-        selected_idx = []
-        for code_col in fpkm_cols:
-            code_genes = best_cancer[best_cancer == code_col].index
-            top = best_z.loc[code_genes].nlargest(n_genes).index
-            selected_idx.extend(top)
-
-        ref_filtered = ref_dedup.loc[list(dict.fromkeys(selected_idx))]
+    # Gene selection
+    if method == "tme":
+        ref_filtered, _meta = _select_tme_low_genes(n_genes_per_type=n_genes)
+    elif method == "bottleneck":
+        ref_filtered, _meta = _select_embedding_genes_bottleneck(n_genes_per_type=n_genes)
     else:
-        # Select most variable genes by CV
-        expr_matrix = ref[fpkm_cols].astype(float)
-        gene_mean = expr_matrix.mean(axis=1)
-        gene_std = expr_matrix.std(axis=1)
-        gene_cv = gene_std / (gene_mean + 0.001)
+        ref_filtered, _meta = _select_embedding_genes(n_genes_per_type=n_genes)
 
-        top_var_idx = gene_cv[gene_mean > 0.01].nlargest(n_genes * 33).index
-        ref_filtered = ref.loc[top_var_idx].drop_duplicates(subset="Symbol")
+    # Map gene set to potentially HK-normalized reference
+    gene_ids = list(ref_filtered["Ensembl_Gene_ID"])
+    ref_norm = ref_full[ref_full["Ensembl_Gene_ID"].isin(gene_ids)].drop_duplicates(
+        subset="Ensembl_Gene_ID"
+    )
+    # Preserve the gene order from _select_embedding_genes
+    ref_norm = ref_norm.set_index("Ensembl_Gene_ID").loc[
+        [gid for gid in gene_ids if gid in ref_norm["Ensembl_Gene_ID"].values]
+    ].reset_index()
 
     sample_vals = np.array([
         sample_by_id.get(row["Ensembl_Gene_ID"], 0.0)
-        for _, row in ref_filtered.iterrows()
+        for _, row in ref_norm.iterrows()
     ])
-    ref_vals = ref_filtered[fpkm_cols].astype(float).values  # (genes, cancers)
+    ref_vals = ref_norm[fpkm_cols].astype(float).values  # (genes, cancers)
 
-    if method in ("zscore", "robust"):
+    if method in ("zscore", "hk_zscore", "tme", "bottleneck"):
         log_ref = np.log2(ref_vals + 1)
         log_sample = np.log2(sample_vals + 1)
         g_std = log_ref.std(axis=1)
@@ -2175,10 +2728,13 @@ def plot_cohort_ctas(
 
 
 _METHOD_LABELS = {
-    "zscore": "z-score of log2(1+expr)",
-    "hk": "log2(HK-normalized)",
+    "zscore": "z-score",
+    "hk": "HK-normalized",
+    "hk_zscore": "HK z-score",
     "rank": "percentile rank",
-    "robust": "purity-robust genes",
+    "tme": "TME-low genes",
+    "score": "signature scores",
+    "bottleneck": "bottleneck genes",
 }
 
 
@@ -2199,7 +2755,7 @@ def plot_cancer_type_pca(
     return _plot_embedding_with_labels(
         coords,
         labels,
-        title=f"Sample among TCGA cancer types — PCA ({mlabel})",
+        title=f"Sample among TCGA cancer types — PCA",
         xlabel=f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)",
         ylabel=f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)",
         save_to_filename=save_to_filename,
@@ -2231,7 +2787,7 @@ def plot_cancer_type_mds(
     return _plot_embedding_with_labels(
         coords,
         labels,
-        title=f"Sample among TCGA cancer types — MDS ({mlabel})",
+        title=f"Sample among TCGA cancer types — MDS",
         xlabel="MDS1",
         ylabel="MDS2",
         save_to_filename=save_to_filename,
@@ -2264,7 +2820,7 @@ def plot_cancer_type_umap(
     return _plot_embedding_with_labels(
         coords,
         labels,
-        title=f"Sample among TCGA cancer types — UMAP ({mlabel})",
+        title=f"Sample among TCGA cancer types — UMAP",
         xlabel="UMAP1",
         ylabel="UMAP2",
         save_to_filename=save_to_filename,

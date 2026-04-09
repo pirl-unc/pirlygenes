@@ -47,44 +47,36 @@ def test_all_gene_set_wrappers(monkeypatch):
     monkeypatch.setattr(gsc, "get_data", fake_get_data)
 
     # ADC
-    assert gsc.ADC_trial_target_gene_names()
-    assert gsc.ADC_trial_target_gene_ids()
-    assert gsc.ADC_approved_target_gene_names()
-    assert gsc.ADC_approved_target_gene_ids()
-    assert gsc.ADC_target_gene_names()
-    assert gsc.ADC_target_gene_ids()
+    assert gsc.therapy_target_gene_names("ADC-trials")
+    assert gsc.therapy_target_gene_ids("ADC-trials")
+    assert gsc.therapy_target_gene_names("ADC-approved")
+    assert gsc.therapy_target_gene_ids("ADC-approved")
+    assert gsc.therapy_target_gene_names("ADC")
+    assert gsc.therapy_target_gene_ids("ADC")
 
     # TCR-T
-    assert gsc.TCR_T_trial_target_get_names()
-    assert gsc.TCR_T_trial_target_get_ids()
-    assert gsc.TCR_T_target_gene_names()
-    assert gsc.TCR_T_target_gene_ids()
+    assert gsc.therapy_target_gene_names("TCR-T-trials")
+    assert gsc.therapy_target_gene_ids("TCR-T-trials")
+    assert gsc.therapy_target_gene_names("TCR-T")
+    assert gsc.therapy_target_gene_ids("TCR-T")
 
     # CAR-T
-    assert gsc.CAR_T_approved_target_gene_names()
-    assert gsc.CAR_T_approved_target_gene_ids()
-    assert gsc.CAR_T_target_gene_names()
-    assert gsc.CAR_T_target_gene_ids()
+    assert gsc.therapy_target_gene_names("CAR-T")
+    assert gsc.therapy_target_gene_ids("CAR-T")
 
     # MuTE
-    assert gsc.multispecific_tcell_engager_trial_target_gene_names()
-    assert gsc.multispecific_tcell_engager_trial_target_gene_ids()
-    assert gsc.multispecific_tcell_engager_target_gene_names()
-    assert gsc.multispecific_tcell_engager_target_gene_ids()
+    assert gsc.therapy_target_gene_names("multispecific-TCE")
+    assert gsc.therapy_target_gene_ids("multispecific-TCE")
 
     # Bispecifics
-    assert gsc.bispecific_antibody_approved_target_gene_names()
-    assert gsc.bispecific_antibody_approved_target_gene_ids()
-    assert gsc.bispecific_antibody_target_gene_names()
-    assert gsc.bispecific_antibody_targets_gene_ids()
+    assert gsc.therapy_target_gene_names("bispecific-antibodies")
+    assert gsc.therapy_target_gene_ids("bispecific-antibodies")
     assert gsc.therapy_target_gene_id_to_name("bispecific-antibodies-approved")
     assert gsc.therapy_target_gene_id_to_name("CAR-T-approved")
 
-    # Radio + CTA
-    assert gsc.radio_target_gene_names()
-    assert gsc.radio_target_gene_ids()
-    assert gsc.radioligand_target_gene_names()
-    assert gsc.radioligand_target_gene_ids()
+    # Radioligand + CTA
+    assert gsc.therapy_target_gene_names("radioligand")
+    assert gsc.therapy_target_gene_ids("radioligand")
     assert gsc.CTA_gene_names()
     assert gsc.CTA_gene_ids()
 
