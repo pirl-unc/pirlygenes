@@ -164,6 +164,7 @@ def plot_gene_expression(
         ensure_inside_axes=False,
     ),
     verbose=True,
+    source_file=None,
 ):
     # Pick the correct ID/name columns from the incoming DF
     gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
@@ -177,6 +178,7 @@ def plot_gene_expression(
         other_category_name="other",  # <- ensure lowercase to match your filter
         place_other_first=True,  # <- 'other' left-most
         verbose=verbose,
+        source_file=source_file,
     )
 
     # Just in case the "prepared" DF changed any column names, get them again
@@ -1755,27 +1757,43 @@ def plot_tumor_expression_ranges(
         "surface": "#2ecc71",
         "other": "#95a5a6",
     }
+    # Count genes per panel to size adaptively
+    panel_counts = []
+    for cat in categories:
+        n = min(top_n, len(df_ranges[df_ranges["category"] == cat]))
+        panel_counts.append(max(n, 1))
+    total_genes = sum(panel_counts)
+
     n_panels = len(categories)
     if figsize is None:
-        figsize = (14, max(4, 2.5 * n_panels))
+        # ~0.4 inches per gene row, minimum 2 inches per panel
+        panel_heights = [max(2.0, 0.4 * n) for n in panel_counts]
+        figsize = (14, sum(panel_heights) + 1.5)
 
     fig, axes = plt.subplots(
         n_panels, 2, figsize=figsize, squeeze=False,
-        gridspec_kw={"width_ratios": [3, 1]},
+        gridspec_kw={
+            "width_ratios": [3, 1],
+            "height_ratios": panel_counts,
+        },
     )
     est_cols = [f"est_{i+1}" for i in range(9)]
+
+    # Adaptive font/marker sizes: larger when fewer genes
+    base_font = min(12, max(8, int(200 / max(total_genes, 1))))
+    marker_s = min(80, max(30, int(600 / max(total_genes, 1))))
+    diamond_s = min(120, max(50, int(900 / max(total_genes, 1))))
 
     for ax_idx, cat in enumerate(categories):
         ax_strip = axes[ax_idx, 0]
         ax_pct = axes[ax_idx, 1]
         sub = df_ranges[df_ranges["category"] == cat].head(top_n).copy()
-        # Sort by median descending (top gene at top of plot)
         sub = sub.sort_values("median_est", ascending=True).reset_index(drop=True)
 
         if sub.empty:
             ax_strip.set_title(cat_titles.get(cat, cat))
             ax_strip.text(0.5, 0.5, "No genes", ha="center", va="center",
-                          transform=ax_strip.transAxes, fontsize=10, color="gray")
+                          transform=ax_strip.transAxes, fontsize=base_font, color="gray")
             ax_pct.set_visible(False)
             continue
 
@@ -1788,13 +1806,14 @@ def plot_tumor_expression_ranges(
             vals_plot = [max(v, 0.01) for v in vals]
             median_v = max(row["median_est"], 0.01)
 
-            ax_strip.scatter(vals_plot, [i] * 9, color=color, alpha=0.4, s=25, zorder=3)
-            ax_strip.scatter([median_v], [i], color=color, marker="D", s=50,
-                             edgecolors="black", linewidths=0.5, zorder=5)
+            ax_strip.scatter(vals_plot, [i] * 9, color=color, alpha=0.4,
+                             s=marker_s, zorder=3)
+            ax_strip.scatter([median_v], [i], color=color, marker="D",
+                             s=diamond_s, edgecolors="black", linewidths=0.7,
+                             zorder=5)
             ax_strip.plot([min(vals_plot), max(vals_plot)], [i, i],
-                          color=color, alpha=0.3, linewidth=2, zorder=2)
+                          color=color, alpha=0.3, linewidth=2.5, zorder=2)
 
-        # Build labels with therapy info
         labels = []
         for _, row in sub.iterrows():
             label = row["symbol"]
@@ -1803,11 +1822,11 @@ def plot_tumor_expression_ranges(
             labels.append(label)
 
         ax_strip.set_yticks(y_positions)
-        ax_strip.set_yticklabels(labels, fontsize=8)
+        ax_strip.set_yticklabels(labels, fontsize=base_font)
         ax_strip.set_xscale("log")
-        ax_strip.set_xlabel("Tumor-specific expression (TPM)", fontsize=8)
-        ax_strip.set_title(cat_titles.get(cat, cat), fontsize=10, fontweight="bold",
-                           color=color)
+        ax_strip.set_xlabel("Tumor-specific expression (TPM)", fontsize=base_font)
+        ax_strip.set_title(cat_titles.get(cat, cat), fontsize=base_font + 2,
+                           fontweight="bold", color=color)
         ax_strip.set_ylim(-0.5, len(sub) - 0.5)
         ax_strip.grid(axis="x", alpha=0.2)
 
@@ -1815,29 +1834,27 @@ def plot_tumor_expression_ranges(
         for i, (_, row) in enumerate(sub.iterrows()):
             pct = row.get("pct_cancer_median")
             if pct is None or (isinstance(pct, float) and (np.isinf(pct) or np.isnan(pct))):
-                # No TCGA reference (e.g. CTAs with zero expression)
-                ax_pct.annotate("novel", (0.5, i), fontsize=7, color="gray",
-                                ha="center", va="center",
+                ax_pct.annotate("novel", (0.5, i), fontsize=base_font - 1,
+                                color="gray", ha="center", va="center",
                                 transform=ax_pct.get_yaxis_transform())
                 continue
-            pct_display = pct * 100  # convert ratio to percentage
-            bar_color = color if pct >= 0.5 else "#d4a017"  # amber if below 50%
+            pct_display = pct * 100
+            bar_color = color if pct >= 0.5 else "#d4a017"
             ax_pct.barh(i, max(pct_display, 0.1), color=bar_color, alpha=0.7, height=0.6)
-            # Label
             if pct_display >= 1000:
-                lbl = f"{pct_display / 100:.0f}×"
+                lbl = f"{pct_display / 100:.0f}x"
             elif pct_display >= 100:
                 lbl = f"{pct_display:.0f}%"
             else:
                 lbl = f"{pct_display:.0f}%"
-            ax_pct.text(max(pct_display, 0.1) * 1.15, i, lbl, fontsize=7,
+            ax_pct.text(max(pct_display, 0.1) * 1.15, i, lbl, fontsize=base_font - 1,
                         va="center", color="black")
 
         ax_pct.set_xscale("log")
         ax_pct.axvline(100, color="black", linestyle="--", alpha=0.4, linewidth=1)
         ax_pct.set_yticks([])
-        ax_pct.set_xlabel(f"% of {cancer_code} median", fontsize=8)
-        ax_pct.set_title(f"vs {cancer_code}", fontsize=9, color="gray")
+        ax_pct.set_xlabel(f"% of {cancer_code} median", fontsize=base_font)
+        ax_pct.set_title(f"vs {cancer_code}", fontsize=base_font, color="gray")
         ax_pct.set_ylim(-0.5, len(sub) - 0.5)
         ax_pct.grid(axis="x", alpha=0.15)
 

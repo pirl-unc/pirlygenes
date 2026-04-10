@@ -103,12 +103,14 @@ def check_gene_ids_in_gene_sets(
     *,
     gene_id_col: str = "gene_id",
     gene_id_to_name: Optional[Dict[str, str]] = None,
+    source_file: Optional[str] = None,
 ) -> None:
     if gene_id_col not in df_gene_expr.columns:
         raise KeyError(
             f"Column '{gene_id_col}' not found in expression DataFrame; "
             f"available: {list(df_gene_expr.columns)}"
         )
+    src = f" in {source_file}" if source_file else ""
     ids_in_expr = set(df_gene_expr[gene_id_col].astype(str))
     for cat, gene_ids in cat_to_gene_id_list.items():
         for gid in gene_ids:
@@ -116,11 +118,11 @@ def check_gene_ids_in_gene_sets(
                 expected = (gene_id_to_name or {}).get(gid)
                 if expected:
                     print(
-                        f"[warn] Gene ID {gid} ({expected}) (category='{cat}') not found in '{gene_id_col}'"
+                        f"[warn] Gene ID {gid} ({expected}) (category='{cat}') not found{src}"
                     )
                 else:
                     print(
-                        f"[warn] Gene ID {gid} (category='{cat}') not found in '{gene_id_col}'"
+                        f"[warn] Gene ID {gid} (category='{cat}') not found{src}"
                     )
 
 
@@ -246,6 +248,7 @@ def prepare_gene_expr_df(
     strip_version: bool = True,
     strict_gene_sets: bool = False,
     verbose: bool = True,
+    source_file: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Returns a long-format dataframe with:
@@ -289,6 +292,7 @@ def prepare_gene_expr_df(
         cat_to_gene_id_list,
         gene_id_col=gene_id_col,
         gene_id_to_name=gene_id_to_name_from_sets,
+        source_file=source_file,
     )
 
     # map ID -> name from DF if provided, else resolve names for all expressed IDs

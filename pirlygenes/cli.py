@@ -195,6 +195,7 @@ def analyze(
             plot_aspect=plot_aspect,
             always_label_genes=forced_labels,
             verbose=(i == 0),  # only log remaps on first call
+            source_file=input_path,
         )
 
     import matplotlib.pyplot as _plt
@@ -309,6 +310,7 @@ def analyze(
                 plot_height=plot_height,
                 plot_aspect=plot_aspect,
                 always_label_genes=forced_labels,
+                source_file=input_path,
             )
 
     # Purity-adjusted tumor expression analysis (9-point ranges)
