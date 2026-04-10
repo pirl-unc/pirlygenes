@@ -127,6 +127,147 @@ def _geneset_hk_ratio(genes, hk_symbols, expr_by_symbol):
     return gs_sum / hk_sum
 
 
+# Lineage genes per cancer type — genes retained in metastases and specific
+# enough to calibrate purity.  Only genes with low TME background and high
+# expression in the origin tissue should be listed.
+LINEAGE_GENES = {
+    # Genitourinary
+    "PRAD": ["STEAP1", "STEAP2", "FOLH1", "TMPRSS2", "KLK3", "KLK2", "NKX3-1", "HOXB13", "AR"],
+    "BLCA": ["UPK1A", "UPK2", "UPK3A", "KRT20", "GATA3", "PPARG"],
+    "TGCT": ["POU5F1", "NANOG", "SOX17", "TFAP2C", "KIT"],
+    # Breast / gynecologic
+    "BRCA": ["ESR1", "GATA3", "FOXA1", "TFF1", "TFF3", "AGR2"],
+    "OV":   ["PAX8", "WT1", "MUC16", "MSLN", "FOLR1"],
+    "UCEC": ["PAX8", "ESR1", "PGR", "MSX1", "HOXA10"],
+    "UCS":  ["PAX8", "ESR1", "PGR", "MSX1"],
+    "CESC": ["TP63", "SOX2", "KRT17", "CDKN2A", "DSG3"],
+    # Lung
+    "LUAD": ["NKX2-1", "NAPSA", "SFTPB", "SFTPC"],
+    "LUSC": ["TP63", "SOX2", "KRT5", "KRT14"],
+    "MESO": ["MSLN", "WT1", "CALB2", "BAP1"],
+    # GI
+    "COAD": ["CDX2", "MUC2", "VIL1", "CDH17"],
+    "READ": ["CDX2", "MUC2", "VIL1", "CDH17"],
+    "STAD": ["MUC5AC", "MUC6", "CDX2", "CLDN18"],
+    "ESCA": ["TP63", "SOX2", "KRT5", "KRT14", "CDX2"],
+    "LIHC": ["ALB", "APOB", "HNF4A", "AFP"],
+    "CHOL": ["KRT7", "KRT19", "SOX9", "HNF1B", "EPCAM"],
+    "PAAD": ["PDX1", "PTF1A", "KRT19", "MUC1"],
+    # Kidney
+    "KIRC": ["CA9", "PAX8", "NDUFA4L2"],
+    "KIRP": ["PAX8", "PAX2", "AMACR"],
+    "KICH": ["KIT", "PAX8", "FOXI1"],
+    # CNS
+    "GBM":  ["GFAP", "OLIG2", "SOX2"],
+    "LGG":  ["GFAP", "OLIG2", "IDH1", "ATRX"],
+    # Endocrine
+    "THCA": ["TG", "TPO", "PAX8", "NIS"],
+    "ACC":  ["CYP11B1", "CYP11B2", "CYP21A2", "STAR", "NR5A1"],
+    "PCPG": ["TH", "DBH", "CHGA", "CHGB", "PHOX2B"],
+    # Skin / soft tissue
+    "SKCM": ["MLANA", "PMEL", "TYR", "DCT", "MITF"],
+    "UVM":  ["MLANA", "PMEL", "TYR", "MITF"],
+    "SARC": ["DES", "ACTA2", "MYOD1", "MYOG"],
+    # Hematologic
+    "LAML": ["MPO", "CD34", "KIT", "FLT3"],
+    "DLBC": ["CD19", "CD20", "PAX5", "BCL6", "IRF4"],
+    "THYM": ["CD3D", "CD3E", "CD3G", "LCK", "ZAP70"],
+    # Head and neck
+    "HNSC": ["TP63", "SOX2", "KRT5", "KRT14", "CDKN2A"],
+}
+
+
+def _lineage_purity_estimates(cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga_purity):
+    """Estimate purity from cancer-type lineage genes using HK-normalized ratios.
+
+    For each lineage gene, computes:
+        sample_ratio = gene_sample / HK_sample
+        ref_ratio    = gene_TCGA  / HK_TCGA
+        tme_ratio    = median(gene_tissue / HK_tissue) across TME tissues
+        true_tumor_ratio = (ref_ratio - (1-tcga_purity) * tme_ratio) / tcga_purity
+        purity = (sample_ratio - tme_ratio) / (true_tumor_ratio - tme_ratio)
+
+    Returns list of dicts with per-gene purity estimates.
+    """
+    genes = LINEAGE_GENES.get(cancer_code, [])
+    if not genes:
+        return []
+
+    ref = pan_cancer_expression()
+    ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+    _repro = {"testis", "epididymis", "seminal_vesicle", "placenta", "ovary"}
+    ntpm_nonrepro = [c for c in ntpm_cols if c.replace("nTPM_", "") not in _repro]
+
+    # Curated TME tissues (immune organs + stromal/connective)
+    _tme = {
+        "bone_marrow", "lymph_node", "spleen", "thymus", "tonsil", "appendix",
+        "smooth_muscle", "skeletal_muscle", "heart_muscle", "adipose_tissue",
+    }
+    tme_cols = [c for c in ntpm_nonrepro if c.replace("nTPM_", "") in _tme]
+
+    # HK symbols in reference
+    hk_in_ref = [s for s in hk_syms if s in ref_dedup.index]
+
+    # HK medians per column
+    cancer_col = f"FPKM_{cancer_code}"
+    if cancer_col not in ref_dedup.columns:
+        return []
+    ref_hk_cancer = ref_dedup.loc[hk_in_ref, cancer_col].astype(float).median()
+    if ref_hk_cancer <= 0:
+        return []
+
+    tme_hk_medians = {}
+    for col in tme_cols:
+        tme_hk_medians[col] = ref_dedup.loc[hk_in_ref, col].astype(float).median()
+
+    # Sample HK (median of expressed HK genes)
+    sample_hk_vals = [sample_tpm[g] for g in hk_syms if sample_tpm.get(g, 0) > 0]
+    sample_hk_med = float(np.median(sample_hk_vals)) if sample_hk_vals else 0.0
+    if sample_hk_med <= 0:
+        return []
+
+    results = []
+    for gene in genes:
+        if gene not in ref_dedup.index:
+            continue
+        s_tpm = sample_tpm.get(gene, 0)
+        if s_tpm <= 0:
+            continue
+
+        sample_ratio = s_tpm / sample_hk_med
+        ref_ratio = float(ref_dedup.loc[gene, cancer_col]) / ref_hk_cancer
+
+        # TME ratio: median across TME tissues (HK-normalized)
+        tme_ratios = []
+        for col in tme_cols:
+            hk_m = tme_hk_medians[col]
+            if hk_m > 0:
+                tme_ratios.append(float(ref_dedup.loc[gene, col]) / hk_m)
+        tme_ratio = float(np.median(tme_ratios)) if tme_ratios else 0.0
+
+        # Deconvolve TCGA to get true tumor ratio
+        true_tumor_ratio = (ref_ratio - (1 - tcga_purity) * tme_ratio) / tcga_purity
+
+        if true_tumor_ratio <= tme_ratio:
+            continue
+
+        purity = (sample_ratio - tme_ratio) / (true_tumor_ratio - tme_ratio)
+        purity = float(np.clip(purity, 0, 1))
+
+        results.append({
+            "gene": gene,
+            "sample_tpm": s_tpm,
+            "sample_ratio": float(sample_ratio),
+            "ref_ratio": float(ref_ratio),
+            "tme_ratio": float(tme_ratio),
+            "tumor_ratio": float(true_tumor_ratio),
+            "purity": purity,
+        })
+
+    return results
+
+
 def _select_tumor_specific_genes(cancer_code, n=30):
     """Select genes highly expressed in cancer but NOT in matched normal tissue.
 
@@ -284,23 +425,48 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
         0, 1,
     ))
 
+    # ---- Component 3: Lineage gene refinement ----
+    lineage_per_gene = _lineage_purity_estimates(
+        cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga_purity,
+    )
+    lineage_purities = sorted(g["purity"] for g in lineage_per_gene if g["purity"] > 0)
+    if len(lineage_purities) >= 3:
+        # Use upper-half median: genes giving LOW estimates likely
+        # de-differentiated (lost expression) rather than indicating
+        # low purity.  Genes giving HIGH estimates are reliable —
+        # their signal can't be explained by gene loss.
+        mid = len(lineage_purities) // 2
+        upper_half = lineage_purities[mid:]
+        lineage_purity = float(np.median(upper_half))
+        lineage_lower = float(np.percentile(upper_half, 25))
+        lineage_upper = float(np.percentile(upper_half, 75))
+    else:
+        lineage_purity = lineage_lower = lineage_upper = None
+
     # ---- Combine estimates ----
     estimates = []
     if sig_purity is not None:
         estimates.append(sig_purity)
     if stromal_genes:
         estimates.append(estimate_purity)
+    if lineage_purity is not None:
+        estimates.append(lineage_purity)
 
     if estimates:
         overall = float(np.median(estimates))
-        all_bounds = []
-        if sig_lower is not None:
-            all_bounds.extend([sig_lower, sig_upper])
-        all_bounds.append(estimate_purity)
-        if sig_purity is not None:
-            all_bounds.append(sig_purity)
-        overall_lower = float(min(all_bounds))
-        overall_upper = float(max(all_bounds))
+        # Bounds: use lineage IQR when available (tighter), else signature + ESTIMATE
+        if lineage_lower is not None:
+            overall_lower = lineage_lower
+            overall_upper = lineage_upper
+        else:
+            all_bounds = []
+            if sig_lower is not None:
+                all_bounds.extend([sig_lower, sig_upper])
+            all_bounds.append(estimate_purity)
+            if sig_purity is not None:
+                all_bounds.append(sig_purity)
+            overall_lower = float(min(all_bounds))
+            overall_upper = float(max(all_bounds))
     else:
         overall = overall_lower = overall_upper = None
 
@@ -319,6 +485,13 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
                 "lower": sig_lower,
                 "upper": sig_upper,
                 "per_gene": per_gene,
+            },
+            "lineage": {
+                "genes": [g["gene"] for g in lineage_per_gene],
+                "purity": lineage_purity,
+                "lower": lineage_lower,
+                "upper": lineage_upper,
+                "per_gene": lineage_per_gene,
             },
             "stromal": {
                 "enrichment": stromal_enrichment,

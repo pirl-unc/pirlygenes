@@ -147,7 +147,8 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_mod, "_select_embedding_genes_bottleneck", lambda **k: (None, {
         "per_type": {}, "n_genes": 0, "n_types": 0, "method": "bottleneck", "tme_tissues": [],
     }))
-    monkeypatch.setattr(cli_mod, "plot_purity_adjusted_targets", lambda *a, **k: None)
+    monkeypatch.setattr(cli_mod, "estimate_tumor_expression_ranges", lambda *a, **k: pd.DataFrame())
+    monkeypatch.setattr(cli_mod, "plot_tumor_expression_ranges", lambda *a, **k: None)
     monkeypatch.setattr(cli_mod, "estimate_tumor_expression", lambda *a, **k: pd.DataFrame())
 
     out_dir = str(tmp_path / "test-output")

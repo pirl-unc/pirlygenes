@@ -43,7 +43,8 @@ from .plot import (
     default_gene_sets,
     _select_embedding_genes_bottleneck,
     estimate_tumor_expression,
-    plot_purity_adjusted_targets,
+    estimate_tumor_expression_ranges,
+    plot_tumor_expression_ranges,
     CANCER_TYPE_ALIASES,
     CANCER_TYPE_NAMES,
 )
@@ -310,21 +311,29 @@ def analyze(
                 always_label_genes=forced_labels,
             )
 
-    # Purity-adjusted tumor expression analysis
-    print("[plot] Generating purity-adjusted expression analysis...")
+    # Purity-adjusted tumor expression analysis (9-point ranges)
+    print("[plot] Generating tumor expression range analysis...")
     adj_png = "%s-purity-adjusted.png" % prefix if prefix else "purity-adjusted.png"
-    purity_est = analysis["purity"]["overall_estimate"]
+    purity_dict = analysis["purity"]
     try:
-        plot_purity_adjusted_targets(
+        ranges_df = estimate_tumor_expression_ranges(
             df_expr,
             cancer_type=analysis["cancer_type"],
-            purity=purity_est,
+            purity_result=purity_dict,
+        )
+        plot_tumor_expression_ranges(
+            ranges_df,
+            purity_result=purity_dict,
+            cancer_type=analysis["cancer_type"],
+            top_n=15,
             save_to_filename=adj_png,
             save_dpi=output_dpi,
+            figsize=(12, 14),
         )
         _plt.close("all")
 
-        # Generate therapeutic target report
+        # Generate therapeutic target report (legacy single-point for table)
+        purity_est = purity_dict["overall_estimate"]
         adj_df = estimate_tumor_expression(
             df_expr,
             cancer_type=analysis["cancer_type"],
@@ -333,6 +342,8 @@ def analyze(
         _generate_target_report(adj_df, analysis, prefix)
     except Exception as e:
         print(f"[warn] Purity-adjusted analysis failed: {e}")
+        import traceback
+        traceback.print_exc()
         adj_png = None
 
     # Collect all figures into one PDF (native resolution)
@@ -518,6 +529,78 @@ def _generate_text_reports(analysis, gene_meta, prefix):
         if isinstance(comp, dict):
             enrichment = comp.get("enrichment", 0)
             lines.append(f"- **{comp_name.title()}** enrichment: {enrichment:.1f}x vs TCGA")
+
+    # Lineage gene narrative
+    lineage = components.get("lineage", {})
+    lineage_genes = lineage.get("per_gene", [])
+    if lineage_genes:
+        lines.append("")
+        lines.append("### Lineage Gene Calibration\n")
+        lines.append(
+            "Purity was refined using cancer-type lineage genes — genes with "
+            "known high expression in this tumor type and low TME background. "
+            "Each gene independently estimates purity by comparing the sample's "
+            "HK-normalized expression to the TCGA reference (adjusted for "
+            "TCGA cohort purity).\n"
+        )
+
+        # Sort genes into clusters
+        sorted_genes = sorted(lineage_genes, key=lambda g: g["purity"], reverse=True)
+        median_p = lineage.get("purity")
+
+        # Identify retained vs de-differentiated
+        if median_p is not None and median_p > 0:
+            retained = [g for g in sorted_genes if g["purity"] >= median_p * 0.5]
+            lost = [g for g in sorted_genes if g["purity"] < median_p * 0.5]
+        else:
+            retained = sorted_genes
+            lost = []
+
+        # Not found in sample
+        from .tumor_purity import LINEAGE_GENES
+        cancer_code_local = purity.get("cancer_type", cancer_code)
+        all_lineage = LINEAGE_GENES.get(cancer_code_local, [])
+        found_names = {g["gene"] for g in lineage_genes}
+        not_found = [g for g in all_lineage if g not in found_names]
+
+        lines.append("| Gene | Purity est. | Interpretation |")
+        lines.append("|------|------------|----------------|")
+        for g in sorted_genes:
+            if g in retained:
+                interp = "retained — reliable"
+            else:
+                interp = "likely de-differentiated"
+            lines.append(
+                f"| {g['gene']} | {g['purity']:.1%} | {interp} |"
+            )
+        for g in not_found:
+            lines.append(f"| {g} | — | not detected |")
+
+        lines.append("")
+
+        if retained:
+            retained_names = ", ".join(g["gene"] for g in retained)
+            lines.append(
+                f"**Reliable cluster** ({lineage['purity']:.0%}, "
+                f"IQR {lineage['lower']:.0%}\u2013{lineage['upper']:.0%}): "
+                f"{retained_names}. "
+                "These genes are expressed at levels consistent with their "
+                "TCGA reference, indicating retained tumor lineage identity."
+            )
+        if lost:
+            lost_names = ", ".join(g["gene"] for g in lost)
+            lines.append(
+                f"\n**Possible de-differentiation**: {lost_names}. "
+                "These genes give much lower purity estimates, suggesting "
+                "the tumor may have lost expression of these markers — "
+                "common in metastatic or treatment-resistant disease. "
+                "These are excluded from the purity estimate."
+            )
+        if not_found:
+            lines.append(
+                f"\n**Not detected**: {', '.join(not_found)}."
+            )
+
     lines.append("")
 
     # MHC expression
