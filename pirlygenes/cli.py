@@ -313,26 +313,34 @@ def analyze(
                 source_file=input_path,
             )
 
-    # Purity-adjusted tumor expression analysis (9-point ranges)
+    # Purity-adjusted tumor expression analysis (9-point ranges, one PNG per category)
     print("[plot] Generating tumor expression range analysis...")
-    adj_png = "%s-purity-adjusted.png" % prefix if prefix else "purity-adjusted.png"
     purity_dict = analysis["purity"]
+    adj_pngs = []
+    _adj_categories = [
+        ("therapy_target", "targets"),
+        ("CTA", "ctas"),
+        ("surface", "surface"),
+    ]
     try:
         ranges_df = estimate_tumor_expression_ranges(
             df_expr,
             cancer_type=analysis["cancer_type"],
             purity_result=purity_dict,
         )
-        plot_tumor_expression_ranges(
-            ranges_df,
-            purity_result=purity_dict,
-            cancer_type=analysis["cancer_type"],
-            top_n=15,
-            save_to_filename=adj_png,
-            save_dpi=output_dpi,
-            figsize=(12, 14),
-        )
-        _plt.close("all")
+        for cat_key, cat_slug in _adj_categories:
+            cat_png = "%s-purity-%s.png" % (prefix, cat_slug) if prefix else "purity-%s.png" % cat_slug
+            plot_tumor_expression_ranges(
+                ranges_df,
+                purity_result=purity_dict,
+                cancer_type=analysis["cancer_type"],
+                top_n=15,
+                categories=[cat_key],
+                save_to_filename=cat_png,
+                save_dpi=output_dpi,
+            )
+            adj_pngs.append(cat_png)
+            _plt.close("all")
 
         # Generate therapeutic target report (legacy single-point for table)
         purity_est = purity_dict["overall_estimate"]
@@ -346,7 +354,6 @@ def analyze(
         print(f"[warn] Purity-adjusted analysis failed: {e}")
         import traceback
         traceback.print_exc()
-        adj_png = None
 
     # Collect all figures into one PDF (native resolution)
     from pathlib import Path
@@ -365,8 +372,6 @@ def analyze(
         genes_png,
         disjoint_png,
     ] + embedding_pngs
-    if adj_png and Path(adj_png).exists():
-        png_files.append(adj_png)
     if ct_png:
         png_files.append(ct_png)
 
@@ -374,6 +379,11 @@ def analyze(
     scatter_dir = Path(scatter_pdf).parent / Path(scatter_pdf).stem
     if scatter_dir.is_dir():
         png_files.extend(sorted(str(p) for p in scatter_dir.glob("*.png")))
+
+    # Purity-adjusted plots go last (different RNA measure)
+    for adj_p in adj_pngs:
+        if Path(adj_p).exists():
+            png_files.append(adj_p)
 
     images = []
     for png_path in png_files:

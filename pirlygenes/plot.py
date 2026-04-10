@@ -1833,36 +1833,39 @@ def plot_tumor_expression_ranges(
         # --- Right panel: % of cancer type median (log scale) ---
         for i, (_, row) in enumerate(sub.iterrows()):
             pct = row.get("pct_cancer_median")
-            if pct is None or (isinstance(pct, float) and (np.isinf(pct) or np.isnan(pct))):
-                ax_pct.annotate("novel", (0.5, i), fontsize=base_font - 1,
-                                color="gray", ha="center", va="center",
-                                transform=ax_pct.get_yaxis_transform())
+            if pct is None or (isinstance(pct, float) and np.isnan(pct)):
+                # Gene not in TCGA reference for this cancer type
+                ax_pct.text(0.5, i, "0 in TCGA", fontsize=base_font - 2,
+                            color="gray", ha="center", va="center",
+                            transform=ax_pct.get_yaxis_transform())
                 continue
-            pct_display = pct * 100
+            if isinstance(pct, float) and np.isinf(pct):
+                # TCGA has zero but sample has expression → tumor-specific
+                ax_pct.text(0.5, i, "tumor-only", fontsize=base_font - 2,
+                            color="#8b0000", fontweight="bold",
+                            ha="center", va="center",
+                            transform=ax_pct.get_yaxis_transform())
+                continue
             bar_color = color if pct >= 0.5 else "#d4a017"
-            ax_pct.barh(i, max(pct_display, 0.1), color=bar_color, alpha=0.7, height=0.6)
-            if pct_display >= 1000:
-                lbl = f"{pct_display / 100:.0f}x"
-            elif pct_display >= 100:
-                lbl = f"{pct_display:.0f}%"
-            else:
-                lbl = f"{pct_display:.0f}%"
-            ax_pct.text(max(pct_display, 0.1) * 1.15, i, lbl, fontsize=base_font - 1,
+            ax_pct.barh(i, max(pct, 0.001), color=bar_color, alpha=0.7, height=0.6)
+            lbl = f"{pct:.1f}x" if pct < 10 else f"{pct:.0f}x"
+            ax_pct.text(max(pct, 0.001) * 1.2, i, lbl, fontsize=base_font - 1,
                         va="center", color="black")
 
         ax_pct.set_xscale("log")
-        ax_pct.axvline(100, color="black", linestyle="--", alpha=0.4, linewidth=1)
+        ax_pct.axvline(1.0, color="black", linestyle="--", alpha=0.4, linewidth=1)
         ax_pct.set_yticks([])
-        ax_pct.set_xlabel(f"% of {cancer_code} median", fontsize=base_font)
+        ax_pct.set_xlabel(f"vs {cancer_code} median", fontsize=base_font)
         ax_pct.set_title(f"vs {cancer_code}", fontsize=base_font, color="gray")
         ax_pct.set_ylim(-0.5, len(sub) - 0.5)
         ax_pct.grid(axis="x", alpha=0.15)
 
-    # Suptitle with purity info
+    # Suptitle with purity info and caveat
     fig.suptitle(
-        f"Tumor expression estimates — {cancer_code}\n"
-        f"Purity: {p_lo:.0%} / {p_med:.0%} / {p_hi:.0%} (low / est / high)",
-        fontsize=11, fontweight="bold", y=1.02,
+        f"Purity-adjusted tumor expression — {cancer_code}\n"
+        f"Purity: {p_lo:.0%} / {p_med:.0%} / {p_hi:.0%} (low / est / high)\n"
+        f"Values are deconvolved estimates — may overstate expression at low purity",
+        fontsize=10, fontweight="bold", y=1.04,
     )
     plt.tight_layout()
 
