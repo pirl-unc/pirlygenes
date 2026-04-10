@@ -7,15 +7,59 @@ Gene lists and expression data for cancer immunotherapy
 ```bash
 pip install pirlygenes
 
-# Generate all plots for a sample
-pirlygenes plot-expression gene_expression_salmon.tsv
+# Full sample analysis: cancer type, purity, targets, embeddings
+pirlygenes analyze gene_expression.tsv
 
-# Prostate-cancer-specific analysis
-pirlygenes plot-expression gene_expression_salmon.tsv --cancer-type prostate
+# Specify cancer type and output directory
+pirlygenes analyze gene_expression.tsv --cancer-type prostate --output-dir results/
+
+# Force-label specific genes in plots
+pirlygenes analyze gene_expression.tsv --cancer-type PRAD --label-genes "FOLH1,STEAP1,CD276"
 
 # List all bundled datasets and cancer types
 pirlygenes data
+
+# Multi-sample cohort analysis
+pirlygenes plot-cancer-cohorts sample1.tsv sample2.tsv sample3.tsv --cancer-type PRAD
 ```
+
+## The `analyze` command
+
+The main entry point for single-sample analysis. Takes a gene expression file (CSV, TSV, or Excel with a TPM column) and produces a comprehensive output directory with:
+
+- **Cancer type identification** — auto-detected or specified, scored against 33 TCGA types
+- **Tumor purity estimation** — three methods combined: cancer-type signature genes, ESTIMATE stromal/immune enrichment, and lineage gene calibration
+- **Purity-adjusted expression** — 9-point tumor expression ranges crossing (low/med/high) TME background with (low/med/high) purity, with % of cancer type median comparison
+- **Therapeutic target analysis** — CTAs, ADC/CAR-T/TCR-T/bispecific/radioligand targets, surface proteins
+- **Tissue context** — normal tissue similarity scoring
+- **PCA/MDS embeddings** — sample positioned among 33 TCGA cancer types
+- **Combined PDF** with all figures
+
+See [docs/analyze-command.md](docs/analyze-command.md) for full output file reference.
+
+### Tumor purity estimation
+
+Purity is estimated by combining three independent methods:
+
+1. **Signature genes** — 30 cancer-type-specific genes selected by z-score across TCGA; per-gene HK-ratio compared to TCGA reference (calibrated for cohort purity)
+2. **ESTIMATE enrichment** — stromal and immune gene set enrichment ratios vs TCGA
+3. **Lineage gene calibration** — cancer-type-specific lineage markers (e.g. STEAP1/2, KLK3 for prostate) that anchor purity to known biology. Uses upper-half median to resist de-differentiation artifacts in metastatic samples
+
+All comparisons are HK-normalized (fold-over-housekeeping) for cross-platform robustness (TPM, FPKM, nTPM).
+
+### 9-point expression ranges
+
+For each gene, tumor-specific expression is estimated as:
+
+```
+tumor = (observed - (1-purity) * tme_background) / purity
+```
+
+The TME background is the median expression across curated immune + stromal reference tissues (bone marrow, lymph node, spleen, thymus, tonsil, appendix, smooth muscle, skeletal muscle, heart muscle, adipose tissue), HK-normalized.
+
+Uncertainty is captured by a 3x3 grid: (25th/50th/75th percentile TME) x (lower/estimate/upper purity). The median of these 9 estimates is the point estimate; the full range is shown in the strip plot.
+
+Each gene's estimate is compared to the purity-adjusted TCGA median for the matched cancer type (e.g. "STEAP1 = 103% of PRAD median"), providing a biologically meaningful reference point.
 
 ## Pan-cancer expression data
 
@@ -99,6 +143,25 @@ from pirlygenes.gene_sets_cancer import (
 
 # CSPA mass-spec validated only
 validated = surface_protein_gene_names(validated_only=True)  # 1,410 genes
+```
+
+### Tumor purity estimation
+
+```python
+from pirlygenes.tumor_purity import estimate_tumor_purity
+
+result = estimate_tumor_purity(df_expr, cancer_type="PRAD")
+print(result["overall_estimate"])  # e.g. 0.10
+print(result["components"]["lineage"]["per_gene"])  # per-gene purity estimates
+```
+
+### Purity-adjusted expression
+
+```python
+from pirlygenes.plot import estimate_tumor_expression_ranges
+
+ranges = estimate_tumor_expression_ranges(df_expr, "PRAD", purity_result)
+# DataFrame with est_1..est_9 (9-point grid), median_est, pct_cancer_median
 ```
 
 ### Plotting
