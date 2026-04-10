@@ -1491,6 +1491,371 @@ def estimate_tumor_expression(
     return result
 
 
+def estimate_tumor_expression_ranges(
+    df_gene_expr,
+    cancer_type,
+    purity_result,
+):
+    """Estimate tumor-specific expression with uncertainty bounds.
+
+    For each gene, computes a 3×3 grid of estimates by crossing
+    (low, med, high) TME background with (low, med, high) purity:
+
+        tumor_expr = max(0, (observed - (1-purity) * tme_bg) / purity)
+
+    TME bounds come from the 25th / 50th / 75th percentile of expression
+    across TME reference tissues for each gene.  Purity bounds come from
+    the ``overall_lower`` / ``overall_estimate`` / ``overall_upper`` fields
+    of ``estimate_tumor_purity()``.
+
+    Parameters
+    ----------
+    df_gene_expr : DataFrame
+        Sample gene expression with TPM column.
+    cancer_type : str
+        TCGA cancer type code or name.
+    purity_result : dict
+        Return value of ``estimate_tumor_purity()``.
+
+    Returns
+    -------
+    DataFrame with columns: symbol, category, observed_tpm,
+        tme_lo, tme_med, tme_hi,
+        est_1 … est_9 (the 3×3 grid, ascending order),
+        median_est, therapies, is_surface, is_cta.
+    """
+    import numpy as np
+    import pandas as pd
+    from .gene_sets_cancer import (
+        CTA_gene_id_to_name,
+        therapy_target_gene_id_to_name,
+        surface_protein_gene_ids,
+        cancer_surfaceome_gene_id_to_name,
+    )
+
+    from .gene_sets_cancer import housekeeping_gene_ids
+    from .tumor_purity import TCGA_MEDIAN_PURITY
+
+    cancer_code = resolve_cancer_type(cancer_type)
+
+    # --- Sample expression (raw TPM and HK-normalized) ---
+    sample_raw, sample_hk = _sample_expression_by_symbol(df_gene_expr)
+
+    # Sample HK median (for converting back from fold-HK to TPM)
+    hk_ids = housekeeping_gene_ids()
+    ref_full = pan_cancer_expression()
+    ref_flat = ref_full.drop_duplicates(subset="Ensembl_Gene_ID")
+    id_to_sym = dict(zip(ref_flat["Ensembl_Gene_ID"], ref_flat["Symbol"]))
+    hk_syms = {id_to_sym[gid] for gid in hk_ids if gid in id_to_sym}
+    sample_hk_vals = [sample_raw[s] for s in hk_syms if sample_raw.get(s, 0) > 0]
+    sample_hk_median = float(np.median(sample_hk_vals)) if sample_hk_vals else 1.0
+
+    # --- Reference data ---
+    ref_dedup = ref_full.drop_duplicates(subset="Symbol").set_index("Symbol")
+    ntpm_cols = [c for c in ref_full.columns if c.startswith("nTPM_")]
+    fpkm_cols = [c for c in ref_full.columns if c.startswith("FPKM_")]
+    ntpm_nonrepro = [
+        c for c in ntpm_cols
+        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
+    ]
+
+    # TME tissues (curated immune + stromal)
+    tme_cols = [c for c in ntpm_nonrepro if c.replace("nTPM_", "") in _TME_TISSUES]
+
+    # --- HK-normalize reference columns ---
+    # Each column (nTPM tissue or FPKM cancer type) gets its own HK median
+    hk_in_ref = sorted(hk_syms & set(ref_dedup.index))
+    ref_hk_medians = {}
+    for col in tme_cols + fpkm_cols:
+        ref_hk_medians[col] = ref_dedup.loc[hk_in_ref, col].astype(float).median()
+
+    # TME reference in HK-fold space: per gene, per tissue
+    # tme_hk[gene, tissue] = gene_nTPM / tissue_HK_median
+    # We compute quantiles across tissues for each gene in the main loop.
+
+    # --- Purity-adjusted TCGA (HK-normalized, then deconvolved) ---
+    # For each FPKM cancer-type column, compute:
+    #   tcga_hk = FPKM / FPKM_HK_median
+    #   tme_hk  = median TME tissue fold (same as sample TME reference)
+    #   tcga_tumor_hk = (tcga_hk - (1-tcga_purity) * tme_hk) / tcga_purity
+    # We'll compute this per-gene in the loop.
+
+    # --- Purity bounds ---
+    p_lo = max(purity_result.get("overall_lower") or 0.01, 0.01)
+    p_med = max(purity_result.get("overall_estimate") or 0.05, 0.01)
+    p_hi = max(purity_result.get("overall_upper") or p_med, 0.01)
+    p_lo, p_med, p_hi = sorted([p_lo, p_med, p_hi])
+
+    # --- Gene category lookups ---
+    cta_symbols = set(CTA_gene_id_to_name().values())
+
+    _all_therapy_keys = [
+        "ADC", "ADC-approved", "CAR-T", "CAR-T-approved",
+        "TCR-T", "TCR-T-approved", "bispecific-antibodies",
+        "bispecific-antibodies-approved", "radioligand",
+    ]
+    gene_therapies = {}
+    for tt in _all_therapy_keys:
+        try:
+            tmap = therapy_target_gene_id_to_name(tt)
+            base = tt.replace("-approved", "").replace("-trials", "")
+            for gid, gname in tmap.items():
+                gene_therapies.setdefault(gname, set()).add(base)
+        except Exception:
+            pass
+
+    try:
+        surf_ids = surface_protein_gene_ids()
+        cancer_surf = cancer_surfaceome_gene_id_to_name()
+        eid_to_sym = dict(zip(ref_flat["Ensembl_Gene_ID"], ref_flat["Symbol"]))
+        surf_symbols = {eid_to_sym.get(eid, "") for eid in surf_ids}
+        surf_symbols |= set(cancer_surf.values())
+        surf_symbols.discard("")
+    except Exception:
+        surf_symbols = set()
+
+    # --- Compute 9-point estimates for every expressed gene ---
+    rows = []
+    for symbol in sample_raw:
+        if symbol not in ref_dedup.index:
+            continue
+        observed = sample_raw[symbol]
+        if observed < 0.01:
+            continue
+
+        # HK-normalize sample
+        sample_fold = observed / sample_hk_median
+
+        # TME background in HK-fold space (quantiles across tissues)
+        tme_folds = []
+        for col in tme_cols:
+            hk_m = ref_hk_medians.get(col, 0)
+            if hk_m > 0:
+                tme_folds.append(float(ref_dedup.loc[symbol, col]) / hk_m)
+        if not tme_folds:
+            tme_folds = [0.0]
+        tme_fold_lo = float(np.percentile(tme_folds, 25))
+        tme_fold_med = float(np.median(tme_folds))
+        tme_fold_hi = float(np.percentile(tme_folds, 75))
+
+        # 3×3 grid in HK-fold space, then convert back to TPM
+        estimates = []
+        for bg in [tme_fold_lo, tme_fold_med, tme_fold_hi]:
+            for p in [p_lo, p_med, p_hi]:
+                tumor_fold = max(0.0, (sample_fold - (1 - p) * bg) / p)
+                tumor_tpm = tumor_fold * sample_hk_median
+                estimates.append(tumor_tpm)
+        estimates.sort()
+        median_est = float(np.median(estimates))
+
+        # Ratio vs purity-adjusted TCGA median for matched cancer type
+        cancer_col = f"FPKM_{cancer_code}"
+        if cancer_col in ref_dedup.columns and cancer_col in ref_hk_medians:
+            cancer_hk_m = ref_hk_medians[cancer_col]
+            if cancer_hk_m > 0:
+                tcga_fold = float(ref_dedup.loc[symbol, cancer_col]) / cancer_hk_m
+                tcga_p = TCGA_MEDIAN_PURITY.get(cancer_code, 0.7)
+                tcga_tumor_fold = max(0.0, (tcga_fold - (1 - tcga_p) * tme_fold_med) / tcga_p)
+                our_tumor_fold = median_est / sample_hk_median
+                if tcga_tumor_fold > 0.001:
+                    vs_tcga = float(our_tumor_fold / tcga_tumor_fold)
+                elif our_tumor_fold > 0.001:
+                    vs_tcga = float("inf")
+                else:
+                    vs_tcga = None
+            else:
+                vs_tcga = None
+        else:
+            vs_tcga = None
+
+        # Categorize
+        is_cta = symbol in cta_symbols
+        is_surface = symbol in surf_symbols
+        therapies = gene_therapies.get(symbol, set())
+
+        if is_cta:
+            category = "CTA"
+        elif therapies:
+            category = "therapy_target"
+        elif is_surface:
+            category = "surface"
+        else:
+            category = "other"
+
+        eid = ref_dedup.loc[symbol, "Ensembl_Gene_ID"] if "Ensembl_Gene_ID" in ref_dedup.columns else ""
+
+        rows.append({
+            "gene_id": eid,
+            "symbol": symbol,
+            "category": category,
+            "observed_tpm": round(observed, 2),
+            "tme_fold_lo": round(tme_fold_lo, 4),
+            "tme_fold_med": round(tme_fold_med, 4),
+            "tme_fold_hi": round(tme_fold_hi, 4),
+            **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
+            "median_est": round(median_est, 2),
+            "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None else None,
+            "is_surface": is_surface,
+            "is_cta": is_cta,
+            "therapies": ", ".join(sorted(therapies)) if therapies else "",
+        })
+
+    result = pd.DataFrame(rows)
+    if not result.empty:
+        result = result.sort_values("median_est", ascending=False).reset_index(drop=True)
+    return result
+
+
+def plot_tumor_expression_ranges(
+    df_ranges,
+    purity_result,
+    cancer_type,
+    top_n=15,
+    categories=None,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=None,
+):
+    """Strip plot of 9-point tumor expression estimates per gene.
+
+    Parameters
+    ----------
+    df_ranges : DataFrame
+        Output of ``estimate_tumor_expression_ranges()``.
+    purity_result : dict
+        Output of ``estimate_tumor_purity()``.
+    cancer_type : str
+        Cancer type code for title.
+    top_n : int
+        Max genes per category panel.
+    categories : list of str, optional
+        Which categories to plot. Default: CTA, therapy_target, surface.
+    save_to_filename : str, optional
+        Path to save the figure.
+    """
+    import numpy as np
+
+    if categories is None:
+        categories = ["therapy_target", "CTA", "surface"]
+
+    cancer_code = resolve_cancer_type(cancer_type)
+    p_lo = max(purity_result.get("overall_lower") or 0.01, 0.01)
+    p_med = max(purity_result.get("overall_estimate") or 0.05, 0.01)
+    p_hi = max(purity_result.get("overall_upper") or p_med, 0.01)
+
+    cat_titles = {
+        "CTA": "Cancer-Testis Antigens",
+        "therapy_target": "Therapeutic Targets",
+        "surface": "Surface Proteins",
+        "other": "Other Tumor Genes",
+    }
+    cat_colors = {
+        "CTA": "#e74c3c",
+        "therapy_target": "#3498db",
+        "surface": "#2ecc71",
+        "other": "#95a5a6",
+    }
+    n_panels = len(categories)
+    if figsize is None:
+        figsize = (14, max(4, 2.5 * n_panels))
+
+    fig, axes = plt.subplots(
+        n_panels, 2, figsize=figsize, squeeze=False,
+        gridspec_kw={"width_ratios": [3, 1]},
+    )
+    est_cols = [f"est_{i+1}" for i in range(9)]
+
+    for ax_idx, cat in enumerate(categories):
+        ax_strip = axes[ax_idx, 0]
+        ax_pct = axes[ax_idx, 1]
+        sub = df_ranges[df_ranges["category"] == cat].head(top_n).copy()
+        # Sort by median descending (top gene at top of plot)
+        sub = sub.sort_values("median_est", ascending=True).reset_index(drop=True)
+
+        if sub.empty:
+            ax_strip.set_title(cat_titles.get(cat, cat))
+            ax_strip.text(0.5, 0.5, "No genes", ha="center", va="center",
+                          transform=ax_strip.transAxes, fontsize=10, color="gray")
+            ax_pct.set_visible(False)
+            continue
+
+        color = cat_colors.get(cat, "#95a5a6")
+        y_positions = np.arange(len(sub))
+
+        # --- Left panel: 9-point strip plot ---
+        for i, (_, row) in enumerate(sub.iterrows()):
+            vals = [row[c] for c in est_cols]
+            vals_plot = [max(v, 0.01) for v in vals]
+            median_v = max(row["median_est"], 0.01)
+
+            ax_strip.scatter(vals_plot, [i] * 9, color=color, alpha=0.4, s=25, zorder=3)
+            ax_strip.scatter([median_v], [i], color=color, marker="D", s=50,
+                             edgecolors="black", linewidths=0.5, zorder=5)
+            ax_strip.plot([min(vals_plot), max(vals_plot)], [i, i],
+                          color=color, alpha=0.3, linewidth=2, zorder=2)
+
+        # Build labels with therapy info
+        labels = []
+        for _, row in sub.iterrows():
+            label = row["symbol"]
+            if row["therapies"]:
+                label += f"  [{row['therapies']}]"
+            labels.append(label)
+
+        ax_strip.set_yticks(y_positions)
+        ax_strip.set_yticklabels(labels, fontsize=8)
+        ax_strip.set_xscale("log")
+        ax_strip.set_xlabel("Tumor-specific expression (TPM)", fontsize=8)
+        ax_strip.set_title(cat_titles.get(cat, cat), fontsize=10, fontweight="bold",
+                           color=color)
+        ax_strip.set_ylim(-0.5, len(sub) - 0.5)
+        ax_strip.grid(axis="x", alpha=0.2)
+
+        # --- Right panel: % of cancer type median (log scale) ---
+        for i, (_, row) in enumerate(sub.iterrows()):
+            pct = row.get("pct_cancer_median")
+            if pct is None or (isinstance(pct, float) and (np.isinf(pct) or np.isnan(pct))):
+                # No TCGA reference (e.g. CTAs with zero expression)
+                ax_pct.annotate("novel", (0.5, i), fontsize=7, color="gray",
+                                ha="center", va="center",
+                                transform=ax_pct.get_yaxis_transform())
+                continue
+            pct_display = pct * 100  # convert ratio to percentage
+            bar_color = color if pct >= 0.5 else "#d4a017"  # amber if below 50%
+            ax_pct.barh(i, max(pct_display, 0.1), color=bar_color, alpha=0.7, height=0.6)
+            # Label
+            if pct_display >= 1000:
+                lbl = f"{pct_display / 100:.0f}×"
+            elif pct_display >= 100:
+                lbl = f"{pct_display:.0f}%"
+            else:
+                lbl = f"{pct_display:.0f}%"
+            ax_pct.text(max(pct_display, 0.1) * 1.15, i, lbl, fontsize=7,
+                        va="center", color="black")
+
+        ax_pct.set_xscale("log")
+        ax_pct.axvline(100, color="black", linestyle="--", alpha=0.4, linewidth=1)
+        ax_pct.set_yticks([])
+        ax_pct.set_xlabel(f"% of {cancer_code} median", fontsize=8)
+        ax_pct.set_title(f"vs {cancer_code}", fontsize=9, color="gray")
+        ax_pct.set_ylim(-0.5, len(sub) - 0.5)
+        ax_pct.grid(axis="x", alpha=0.15)
+
+    # Suptitle with purity info
+    fig.suptitle(
+        f"Tumor expression estimates — {cancer_code}\n"
+        f"Purity: {p_lo:.0%} / {p_med:.0%} / {p_hi:.0%} (low / est / high)",
+        fontsize=11, fontweight="bold", y=1.02,
+    )
+    plt.tight_layout()
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+
+    return fig
+
+
 def plot_purity_adjusted_targets(
     df_gene_expr,
     cancer_type,
@@ -1711,6 +2076,15 @@ _CURATED_CTAS = [
 ]
 
 _STROMAL_TISSUES = {"smooth_muscle", "skeletal_muscle", "heart_muscle", "adipose_tissue"}
+
+# Immune/lymphoid tissues that represent TME infiltrate.  Curated to
+# exclude epithelial organs that merely contain resident immune cells
+# (which would inflate the TME background estimate).
+_IMMUNE_TISSUES = {
+    "bone_marrow", "lymph_node", "spleen", "thymus", "tonsil", "appendix",
+}
+
+_TME_TISSUES = _STROMAL_TISSUES | _IMMUNE_TISSUES
 
 # Clinically important genes with low TME background.  The data-driven
 # algorithm may miss these because their best z-score peaks in a sibling
