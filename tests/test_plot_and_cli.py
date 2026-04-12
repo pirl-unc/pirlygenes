@@ -807,3 +807,89 @@ def test_collect_ranked_therapy_targets_tracks_multicategory_and_approval(monkey
     assert out[1]["approved_therapies"] == ("ADC",)
     assert out[2]["therapies"] == ("radioligand",)
     assert out[2]["approved_therapies"] == ("radioligand",)
+
+
+def test_resolve_gene_set_symbols_by_category_name():
+    """String input resolves via the Category column in data/gene-sets.csv."""
+    syms = plot_mod._resolve_gene_set_symbols("Interferon_response")
+    assert isinstance(syms, list) and len(syms) > 5
+    # Case / whitespace insensitive
+    syms2 = plot_mod._resolve_gene_set_symbols("interferon response")
+    assert set(syms) == set(syms2)
+
+
+def test_resolve_gene_set_symbols_iterable_passthrough():
+    out = plot_mod._resolve_gene_set_symbols(["IRF1", "STAT1"])
+    assert out == ["IRF1", "STAT1"]
+
+
+def test_resolve_gene_set_symbols_unknown_raises():
+    with pytest.raises(ValueError):
+        plot_mod._resolve_gene_set_symbols("this_gene_set_does_not_exist")
+
+
+def test_plot_geneset_vs_vital_tissues_saves_png(tmp_path):
+    """The toxicity view renders a non-empty PNG from a minimal sample.
+
+    Uses a handful of real symbols so the ref-expression lookup path
+    exercises (they are in pan_cancer_expression).
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+
+    sample = pd.DataFrame({
+        "gene_id": [
+            "ENSG00000125347",  # IRF1
+            "ENSG00000115415",  # STAT1
+            "ENSG00000081059",  # TCF7 (not in IFN set; shouldn't show)
+            "ENSG00000165949",  # IFI27
+        ],
+        "gene_name": ["IRF1", "STAT1", "TCF7", "IFI27"],
+        "TPM": [85.0, 110.0, 12.0, 40.0],
+    })
+    out = tmp_path / "ifn_vs_vitals.png"
+    fig = plot_mod.plot_geneset_vs_vital_tissues(
+        sample,
+        gene_set=["IRF1", "STAT1", "IFI27"],
+        title="IFN vs vital tissues (test)",
+        save_to_filename=str(out),
+    )
+    assert fig is not None
+    assert out.exists()
+    assert out.stat().st_size > 5_000
+
+
+def test_plot_geneset_vs_vital_tissues_empty_symbols_returns_none(capsys):
+    """Empty gene list should return None and print, not raise."""
+    sample = pd.DataFrame({
+        "gene_id": ["ENSG00000125347"],
+        "gene_name": ["IRF1"],
+        "TPM": [85.0],
+    })
+    fig = plot_mod.plot_geneset_vs_vital_tissues(sample, gene_set=[])
+    assert fig is None
+
+
+def test_plot_geneset_vs_vital_tissues_all_absent_returns_none(capsys):
+    """All genes absent from both sample and reference → None, not crash."""
+    sample = pd.DataFrame({
+        "gene_id": ["ENSG00000125347"],
+        "gene_name": ["IRF1"],
+        "TPM": [85.0],
+    })
+    fig = plot_mod.plot_geneset_vs_vital_tissues(
+        sample, gene_set=["SOME_GENE_THAT_DOES_NOT_EXIST_ANYWHERE_XYZ"]
+    )
+    assert fig is None
+
+
+def test_plot_geneset_vs_vital_tissues_unknown_tissue_raises():
+    sample = pd.DataFrame({
+        "gene_id": ["ENSG00000125347"],
+        "gene_name": ["IRF1"],
+        "TPM": [85.0],
+    })
+    with pytest.raises(ValueError):
+        plot_mod.plot_geneset_vs_vital_tissues(
+            sample, gene_set=["IRF1"], vital_tissues=["mars"]
+        )
