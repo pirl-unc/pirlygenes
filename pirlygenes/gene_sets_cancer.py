@@ -273,6 +273,20 @@ def cancer_surfaceome_evidence(min_cancer_types=None):
 
 
 # ---------- Pan-cancer expression ----------
+#
+# The full pan-cancer-expression CSV is ~16k rows × 85 cols, and the
+# housekeeping normalization rescales 83 value columns. Recomputing on every
+# call is wasteful because ~every purity / ranking / plotting path asks for
+# the same `normalize="housekeeping"` snapshot. We cache on a hashable form
+# of the args and hand back `.copy()` so callers keep their mutation freedom.
+_PAN_CANCER_CACHE = {}
+
+
+def _pan_cancer_cache_key(genes, normalize, log_transform):
+    genes_key = None if genes is None else frozenset(str(g).upper() for g in genes)
+    return (genes_key, normalize, bool(log_transform))
+
+
 def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
     """Expression across 50 normal tissues (nTPM) and 33 TCGA cancer types.
 
@@ -296,8 +310,14 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
     Returns
     -------
     pd.DataFrame
+        A defensive copy of an internally-cached frame. Safe to mutate.
     """
     import numpy as np
+
+    cache_key = _pan_cancer_cache_key(genes, normalize, log_transform)
+    cached = _PAN_CANCER_CACHE.get(cache_key)
+    if cached is not None:
+        return cached.copy()
 
     df = get_data("pan-cancer-expression")
     if genes is not None:
@@ -334,7 +354,8 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
         for col in value_cols:
             df[col] = np.log2(df[col].astype(float) + 1)
 
-    return df
+    _PAN_CANCER_CACHE[cache_key] = df
+    return df.copy()
 
 
 def cancer_types():

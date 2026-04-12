@@ -233,6 +233,56 @@ TUMOR_PURITY_PARAMETERS = {
 
 _SIGNATURE_PANEL_CACHE = {}
 
+# The derived reference matrices (Symbol-indexed frame, FPKM expression
+# matrix, z-score matrix across cancer types) are identical for every
+# cancer code given the same `normalize` parameter. Build them once per
+# distinct normalization, not once per (code, normalize) pair — the 33×
+# redundant recompute across cancer types was the single biggest source of
+# wall-clock in panel scans.
+_REFERENCE_MATRIX_CACHE = {}
+
+
+def _cached_reference_matrices(normalize="housekeeping"):
+    """Return cached derived frames for pan-cancer expression.
+
+    Returns a dict with:
+        ref_by_sym    — pan_cancer_expression() deduped on Symbol and
+                        indexed by Symbol
+        fpkm_cols     — list of FPKM_* column names
+        expr_matrix   — ref_by_sym[fpkm_cols] as float
+        gene_mean     — per-gene mean across cancer types
+        gene_std      — per-gene std (zero replaced with NaN for safe div)
+        z_matrix      — full z-score matrix (columns: fpkm_cols)
+
+    Keyed on `normalize` alone because the per-cancer panel builder only
+    needs one view of the reference data. If callers ever need raw
+    (non-normalized) values they can pass `normalize=None`.
+    """
+    cached = _REFERENCE_MATRIX_CACHE.get(normalize)
+    if cached is not None:
+        return cached
+
+    ref = pan_cancer_expression(normalize=normalize)
+    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
+    gene_mean = expr_matrix.mean(axis=1)
+    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
+    z_matrix = (
+        expr_matrix.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
+    )
+
+    entry = {
+        "ref_by_sym": ref_by_sym,
+        "fpkm_cols": fpkm_cols,
+        "expr_matrix": expr_matrix,
+        "gene_mean": gene_mean,
+        "gene_std": gene_std,
+        "z_matrix": z_matrix,
+    }
+    _REFERENCE_MATRIX_CACHE[normalize] = entry
+    return entry
+
 
 def _params_fingerprint(subkeys):
     """Stable, hashable snapshot of the selected TUMOR_PURITY_PARAMETERS keys.
@@ -605,24 +655,35 @@ def _build_signature_panel_tiers():
     ]
 
 
-def _panel_reference_frames(cancer_code, ref_by_sym):
+def _panel_reference_frames(cancer_code, ref_by_sym=None):
     """Assemble per-gene expression vectors used by the panel filter.
 
     Returns a dict with the cancer-side HK-normalized expression, the
     maximum across matched-normal and broad-normal backgrounds (union), the
     max across TME tissues, the combined background, and a z-score over
     cancer types. Returns None if the cancer code has no FPKM column.
+
+    `ref_by_sym` is accepted for backward compatibility but ignored — the
+    cached reference matrices (`_cached_reference_matrices`) are used so
+    the expensive z-score matrix is computed once per normalization, not
+    once per cancer code.
     """
-    fpkm_cols = [c for c in ref_by_sym.columns if c.startswith("FPKM_")]
+    del ref_by_sym  # unused; kept in the signature for call-site compatibility
+
+    cached = _cached_reference_matrices(normalize="housekeeping")
+    ref_by_sym = cached["ref_by_sym"]
+    expr_matrix = cached["expr_matrix"]
+    z_matrix = cached["z_matrix"]
+
+    cancer_col = f"FPKM_{cancer_code}"
+    if cancer_col not in expr_matrix.columns:
+        return None
+
     ntpm_cols = [c for c in ref_by_sym.columns if c.startswith("nTPM_")]
     ntpm_nonrepro = [
         c for c in ntpm_cols
         if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES_FOR_BROAD_BACKGROUND
     ]
-
-    cancer_col = f"FPKM_{cancer_code}"
-    if cancer_col not in ref_by_sym.columns:
-        return None
 
     matched_tissues = list(_CANCER_NORMAL_TISSUES.get(cancer_code, []))
     tissue = CANCER_TO_TISSUE.get(cancer_code)
@@ -639,10 +700,7 @@ def _panel_reference_frames(cancer_code, ref_by_sym):
         if f"nTPM_{t}" in ref_by_sym.columns
     ]
 
-    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
-    gene_mean = expr_matrix.mean(axis=1)
-    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
-    z_scores = ((expr_matrix[cancer_col] - gene_mean) / gene_std).fillna(0)
+    z_scores = z_matrix[cancer_col]
     cancer_hk = expr_matrix[cancer_col]
 
     def _row_max(cols):
@@ -662,6 +720,7 @@ def _panel_reference_frames(cancer_code, ref_by_sym):
     ).max(axis=1)
 
     return {
+        "ref_by_sym": ref_by_sym,
         "z_scores": z_scores,
         "cancer_hk": cancer_hk,
         "normal_hk": normal_hk,
@@ -692,13 +751,11 @@ def _select_tumor_specific_genes_for_panel(cancer_code, n=30, exclude_lineage=Tr
     if cached is not None:
         return list(cached)
 
-    ref = pan_cancer_expression(normalize="housekeeping")
-    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
-
-    frames = _panel_reference_frames(cancer_code, ref_by_sym)
+    frames = _panel_reference_frames(cancer_code)
     if frames is None:
         _SIGNATURE_PANEL_CACHE[cache_key] = tuple()
         return []
+    ref_by_sym = frames["ref_by_sym"]
     z_scores = frames["z_scores"]
     cancer_hk = frames["cancer_hk"]
     normal_hk = frames["normal_hk"]

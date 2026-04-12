@@ -2036,6 +2036,7 @@ def _get_cancer_type_signature_panels(n_signature_genes=20):
     """
     from .tumor_purity import (
         TUMOR_PURITY_PARAMETERS,
+        _cached_reference_matrices,
         _compile_excluded_gene_matcher,
         _params_fingerprint,
         _select_tumor_specific_genes_for_panel,
@@ -2047,13 +2048,10 @@ def _get_cancer_type_signature_panels(n_signature_genes=20):
     if cached is not None:
         return {code: list(genes) for code, genes in cached.items()}
 
-    ref = pan_cancer_expression(normalize="housekeeping")
-    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
-    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
-    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
-    gene_mean = expr_matrix.mean(axis=1)
-    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
-    z_matrix = expr_matrix.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
+    ref_matrices = _cached_reference_matrices(normalize="housekeeping")
+    fpkm_cols = ref_matrices["fpkm_cols"]
+    expr_matrix = ref_matrices["expr_matrix"]
+    z_matrix = ref_matrices["z_matrix"]
 
     is_excluded_default = _compile_excluded_gene_matcher()
     immune_origin = set(
@@ -2116,15 +2114,15 @@ def _compute_cancer_type_signature_stats(
     """
     import numpy as np
 
+    from .tumor_purity import _cached_reference_matrices
+
     sample_raw_by_symbol, sample_hk_by_symbol = _sample_expression_by_symbol(df_gene_expr)
     # HK-normalize both sides so percentile comparison is on the same
     # scale (sample TPM/hk vs reference FPKM/hk). This is consistent
     # normalization, not mixed — both are divided by their own HK median.
-    ref = pan_cancer_expression(normalize="housekeeping")
-    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
-    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
-
-    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
+    ref_matrices = _cached_reference_matrices(normalize="housekeeping")
+    ref_by_sym = ref_matrices["ref_by_sym"]
+    expr_matrix = ref_matrices["expr_matrix"]
     sig = _get_cancer_type_signature_panels(n_signature_genes=n_signature_genes)
 
     stats = []
@@ -2698,12 +2696,13 @@ def _cancer_type_score_matrix(df_gene_expr, n_signature_genes=20):
     """
     import numpy as np
 
-    ref = pan_cancer_expression(normalize="housekeeping")
-    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
-    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    from .tumor_purity import _cached_reference_matrices
+
+    ref_matrices = _cached_reference_matrices(normalize="housekeeping")
+    fpkm_cols = ref_matrices["fpkm_cols"]
     labels = [c.replace("FPKM_", "") for c in fpkm_cols]
 
-    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
+    expr_matrix = ref_matrices["expr_matrix"]
     sig = _get_cancer_type_signature_panels(n_signature_genes=n_signature_genes)
 
     # Score each reference cancer type against all signatures

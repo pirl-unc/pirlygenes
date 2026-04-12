@@ -33,6 +33,13 @@ packages = ["pirlygenes"]
 
 
 
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+]
+
 [project.urls]
 "Homepage" = "https://github.com/pirl-unc/pirlygenes"
 "Bug Tracker" = "https://github.com/pirl-unc/pirlygenes"
