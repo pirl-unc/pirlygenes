@@ -36,7 +36,6 @@ from .plot import (
     plot_sample_vs_cancer,
     plot_cancer_type_genes,
     plot_cancer_type_disjoint_genes,
-    plot_cancer_type_pca,
     plot_cancer_type_mds,
     plot_therapy_target_tissues,
     plot_therapy_target_safety,
@@ -58,6 +57,8 @@ from .decomposition import (
     get_decomposition_parameters,
     infer_sample_mode,
     plot_decomposition_summary,
+    plot_decomposition_composition,
+    plot_decomposition_component_breakdown,
 )
 from .sample_quality import assess_sample_quality
 
@@ -333,7 +334,7 @@ def analyze(
                 "tumor_purity": get_tumor_purity_parameters(),
                 "decomposition": get_decomposition_parameters(),
                 "selected_sample_mode": analysis["sample_mode"],
-                "embedding_methods": ["hierarchy", "tme"],
+                "embedding_methods": ["tme"],
                 "sample_quality": {
                     "degradation_level": quality["degradation"]["level"],
                     "degradation_pair_index": quality["degradation"]["long_short_ratio"],
@@ -402,6 +403,19 @@ def analyze(
             decomp_results,
             call_summary=call_summary,
             save_to_filename=decomp_png,
+            save_dpi=output_dpi,
+        )
+        # Standalone presentation-ready plots for the best hypothesis
+        composition_png = "%s-decomposition-composition.png" % prefix if prefix else "decomposition-composition.png"
+        plot_decomposition_composition(
+            best_decomp,
+            save_to_filename=composition_png,
+            save_dpi=output_dpi,
+        )
+        components_png = "%s-decomposition-components.png" % prefix if prefix else "decomposition-components.png"
+        plot_decomposition_component_breakdown(
+            best_decomp,
+            save_to_filename=components_png,
             save_dpi=output_dpi,
         )
 
@@ -503,18 +517,18 @@ def analyze(
     plot_cancer_type_disjoint_genes(df_expr, save_to_filename=disjoint_png, save_dpi=output_dpi)
     _plt.close("all")
 
-    # PCA and MDS — bottleneck (general) + TME-low (preferred at low purity)
-    methods = ["hierarchy", "tme"]
-    print(f"[plot] Generating PCA/MDS embeddings ({len(methods)} methods x 2 embeddings)...")
-    embedding_pngs = []
-    for method in methods:
-        pca_png = "%s-pca-%s.png" % (prefix, method)
-        plot_cancer_type_pca(df_expr, method=method, save_to_filename=pca_png, save_dpi=output_dpi)
-        embedding_pngs.append(pca_png)
-
-        mds_png = "%s-mds-%s.png" % (prefix, method)
-        plot_cancer_type_mds(df_expr, method=method, save_to_filename=mds_png, save_dpi=output_dpi)
-        embedding_pngs.append(mds_png)
+    # Sample-among-TCGA embedding: MDS in the TME-low gene space is the
+    # preferred view — robust at low purity (where hierarchy-method plots
+    # can cluster the sample by infiltrate instead of by tumor biology),
+    # and MDS preserves pairwise distances better than PCA for samples
+    # that sit between canonical cancer-type centroids.  Other
+    # method/algorithm combinations are available in the Python API but
+    # are not emitted by default; see pirl-unc/pirlygenes#... for the
+    # design rationale.
+    print("[plot] Generating MDS embedding (TME-low genes)...")
+    mds_png = "%s-mds-tme.png" % prefix
+    plot_cancer_type_mds(df_expr, method="tme", save_to_filename=mds_png, save_dpi=output_dpi)
+    embedding_pngs = [mds_png]
     _plt.close("all")
 
     # Generate text reports
@@ -703,10 +717,10 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 | `*-purity-targets.png` | Tumor-expression ranges for therapeutic targets |
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
-| `*-pca-hierarchy.png` | PCA: sample among TCGA cancer types (hierarchical support space) |
-| `*-mds-hierarchy.png` | MDS: sample among TCGA cancer types (hierarchical support space) |
-| `*-pca-tme.png` | PCA: TME-low genes — preferred when purity is low |
-| `*-mds-tme.png` | MDS: TME-low genes — preferred when purity is low |
+| `*-mds-tme.png` | MDS: sample among TCGA cancer types (TME-low gene space) |
+| `*-decomposition.png` | 4-panel decomposition diagnostic: hypotheses, composition, components, markers |
+| `*-decomposition-composition.png` | Standalone composition bar (tumor + TME) for the best hypothesis |
+| `*-decomposition-components.png` | Standalone TME cell-type breakdown for the best hypothesis |
 | `*-cancer-types-genes.png` | Cancer-type gene signature heatmap |
 | `*-cancer-types-disjoint.png` | Disjoint (unique) gene counts per cancer type |
 """

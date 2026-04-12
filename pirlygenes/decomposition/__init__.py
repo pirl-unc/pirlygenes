@@ -14,7 +14,11 @@ from .engine import (
     get_decomposition_parameters,
     infer_sample_mode,
 )
-from .plot import plot_decomposition_summary
+from .plot import (
+    plot_decomposition_summary,
+    plot_decomposition_composition,
+    plot_decomposition_component_breakdown,
+)
 
 __all__ = [
     "decompose_sample",
@@ -22,4 +26,6 @@ __all__ = [
     "get_decomposition_parameters",
     "infer_sample_mode",
     "plot_decomposition_summary",
+    "plot_decomposition_composition",
+    "plot_decomposition_component_breakdown",
 ]

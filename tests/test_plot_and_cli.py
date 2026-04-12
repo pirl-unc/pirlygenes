@@ -124,7 +124,6 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_mod, "plot_therapy_target_safety", lambda *a, **k: safety_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_genes", lambda *a, **k: cancer_gene_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_disjoint_genes", lambda *a, **k: cancer_gene_calls.append(k))
-    monkeypatch.setattr(cli_mod, "plot_cancer_type_pca", lambda *a, **k: pca_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_cancer_type_mds", lambda *a, **k: mds_calls.append(k))
     monkeypatch.setattr(cli_mod, "therapy_target_gene_id_to_name", lambda t: {"ENSG_MOCK": t})
     monkeypatch.setattr(cli_mod, "pMHC_TCE_target_gene_id_to_name", lambda: {"ENSG_PMHC": "PMHC"})
@@ -156,6 +155,8 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
         lambda *a, **k: decomp_kwargs.update(k) or [],
     )
     monkeypatch.setattr(cli_mod, "plot_decomposition_summary", lambda *a, **k: None)
+    monkeypatch.setattr(cli_mod, "plot_decomposition_composition", lambda *a, **k: None)
+    monkeypatch.setattr(cli_mod, "plot_decomposition_component_breakdown", lambda *a, **k: None)
 
     report_calls = []
     target_report_calls = []
@@ -202,17 +203,18 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert safety_calls[0]["top_k"] == 12
     assert safety_calls[0]["tpm_threshold"] == 18
     assert len(cancer_gene_calls) == 2  # genes + disjoint
-    assert len(pca_calls) == 2
-    assert len(mds_calls) == 2
-    assert {call["method"] for call in pca_calls} == {"hierarchy", "tme"}
-    assert {call["method"] for call in mds_calls} == {"hierarchy", "tme"}
+    # Only MDS-TME is emitted now — PCA and hierarchy-method plots have
+    # been removed from the default output (see pirl-unc/pirlygenes#36).
+    assert len(pca_calls) == 0
+    assert len(mds_calls) == 1
+    assert mds_calls[0]["method"] == "tme"
     assert len(report_calls) == 1
     assert len(target_report_calls) == 1
     params = json.loads((tmp_path / "test-output" / "out-analysis-parameters.json").read_text())
     assert "tumor_purity" in params
     assert "decomposition" in params
     assert params["selected_sample_mode"] == "solid"
-    assert params["embedding_methods"] == ["hierarchy", "tme"]
+    assert params["embedding_methods"] == ["tme"]
     assert params["input"]["tumor_context"] == "met"
     assert params["input"]["site_hint"] == "liver"
     assert params["input"]["decomposition_templates"] == ["met_liver"]

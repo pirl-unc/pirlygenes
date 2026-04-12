@@ -6,6 +6,102 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+_COMPOSITION_PALETTE = [
+    "#1f77b4", "#2ca02c", "#ff7f0e", "#9467bd", "#d62728",
+    "#8c564b", "#e377c2", "#17becf", "#7f7f7f",
+]
+
+
+def _render_composition_bar(ax, best, title="Sample composition (tumor + TME)"):
+    """Horizontal stacked bar — tumor + TME components as fractions of sample."""
+    frac_items = sorted(best.fractions.items(), key=lambda item: item[1], reverse=True)
+    left = 0.0
+    for idx, (name, value) in enumerate(frac_items):
+        ax.barh(
+            [0],
+            [value * 100],
+            left=left * 100,
+            color=_COMPOSITION_PALETTE[idx % len(_COMPOSITION_PALETTE)],
+            edgecolor="none",
+            height=0.55,
+            label=f"{name} ({value:.0%})",
+        )
+        left += value
+    ax.set_xlim(0, 100)
+    ax.set_yticks([])
+    ax.set_xlabel("Estimated composition (%)")
+    ax.set_title(title, fontweight="bold")
+    ax.legend(loc="lower center", fontsize=8, ncol=2, framealpha=0.9)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+
+
+def _render_component_breakdown(ax, best, title="TME cell-type breakdown"):
+    """Horizontal bar per TME component — fraction (%) + marker-support annotation.
+
+    Marker-support number (median observed/expected ratio across each
+    component's marker genes) is shown unlabelled next to each bar;
+    readers get a sense of how well each component's signal matches its
+    reference without the chart being cluttered with 'marker=' prefixes.
+    """
+    comp_df = best.component_trace.copy()
+    if comp_df.empty:
+        ax.text(0.5, 0.5, "No component trace", ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
+    comp_df = comp_df.sort_values("fraction", ascending=True).reset_index(drop=True)
+    y = np.arange(len(comp_df))
+    ax.barh(y, comp_df["fraction"] * 100, color="#4c78a8", alpha=0.85, height=0.55)
+    ax.set_yticks(y)
+    ax.set_yticklabels(comp_df["component"], fontsize=9)
+    ax.set_xlabel("Fraction of sample (%)")
+    ax.set_title(title, fontweight="bold")
+    for idx, row in comp_df.iterrows():
+        txt = f"{row['marker_score']:.2f}" if row["marker_score"] is not None else "n/a"
+        ax.text(row["fraction"] * 100 + 0.8, idx, txt, va="center", fontsize=8)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+
+def plot_decomposition_composition(best, save_to_filename=None, save_dpi=300):
+    """Standalone stacked-bar of tumor + TME composition for the best hypothesis.
+
+    Same content as panel 2 of plot_decomposition_summary, rendered
+    larger as its own figure for inclusion in slide decks or focused
+    reports.
+    """
+    fig, ax = plt.subplots(figsize=(12, 3))
+    _render_composition_bar(
+        ax, best,
+        title=f"Sample composition — {best.cancer_type} / {best.template}",
+    )
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
+
+
+def plot_decomposition_component_breakdown(best, save_to_filename=None, save_dpi=300):
+    """Standalone horizontal-bar plot of per-component TME fractions.
+
+    Same content as panel 3 of plot_decomposition_summary, rendered
+    larger with a cleaner title and numeric marker-support annotations
+    (no 'marker=' prefix).
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    _render_component_breakdown(
+        ax, best,
+        title=f"TME cell-type breakdown — {best.cancer_type} / {best.template}",
+    )
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
+
+
 def plot_decomposition_summary(
     results,
     call_summary=None,
@@ -81,57 +177,10 @@ def plot_decomposition_summary(
             )
 
     # --- Panel 2: final composition ---
-    frac_items = sorted(best.fractions.items(), key=lambda item: item[1], reverse=True)
-    left = 0.0
-    palette = [
-        "#1f77b4",
-        "#2ca02c",
-        "#ff7f0e",
-        "#9467bd",
-        "#d62728",
-        "#8c564b",
-        "#e377c2",
-        "#17becf",
-        "#7f7f7f",
-    ]
-    for idx, (name, value) in enumerate(frac_items):
-        ax_frac.barh(
-            [0],
-            [value * 100],
-            left=left * 100,
-            color=palette[idx % len(palette)],
-            edgecolor="none",
-            height=0.55,
-            label=f"{name} ({value:.0%})",
-        )
-        left += value
-    ax_frac.set_xlim(0, 100)
-    ax_frac.set_yticks([])
-    ax_frac.set_xlabel("Estimated composition (%)")
-    ax_frac.set_title("Best-fit composition", fontweight="bold")
-    ax_frac.legend(loc="lower center", fontsize=8, ncol=2, framealpha=0.9)
-    ax_frac.spines["top"].set_visible(False)
-    ax_frac.spines["right"].set_visible(False)
-    ax_frac.spines["left"].set_visible(False)
+    _render_composition_bar(ax_frac, best, title="Sample composition")
 
-    # --- Panel 3: component evidence ---
-    comp_df = best.component_trace.copy()
-    if comp_df.empty:
-        ax_comp.text(0.5, 0.5, "No component trace", ha="center", va="center", transform=ax_comp.transAxes)
-        ax_comp.set_axis_off()
-    else:
-        comp_df = comp_df.sort_values("fraction", ascending=True).reset_index(drop=True)
-        y = np.arange(len(comp_df))
-        ax_comp.barh(y, comp_df["fraction"] * 100, color="#4c78a8", alpha=0.85, height=0.55)
-        ax_comp.set_yticks(y)
-        ax_comp.set_yticklabels(comp_df["component"], fontsize=9)
-        ax_comp.set_xlabel("Fraction of sample (%)")
-        ax_comp.set_title("Component support", fontweight="bold")
-        for idx, row in comp_df.iterrows():
-            txt = f"marker={row['marker_score']:.2f}" if row["marker_score"] is not None else "marker=n/a"
-            ax_comp.text(row["fraction"] * 100 + 0.8, idx, txt, va="center", fontsize=8)
-        ax_comp.spines["top"].set_visible(False)
-        ax_comp.spines["right"].set_visible(False)
+    # --- Panel 3: TME component breakdown ---
+    _render_component_breakdown(ax_comp, best, title="TME cell-type breakdown")
 
     # --- Panel 4: marker trace text ---
     ax_mark.set_title("Marker logic", fontweight="bold")
