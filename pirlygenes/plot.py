@@ -1282,6 +1282,268 @@ def plot_therapy_target_safety(
     return fig, ax
 
 
+# -------------------- gene-set vs essential-tissue toxicity view -----------
+
+
+def _resolve_gene_set_symbols(gene_set):
+    """Return a list of gene symbols from a flexible gene-set specifier.
+
+    Accepts:
+        - an iterable of symbols: ("IFI6", "ISG15", ...) used directly
+        - a str referring to a Category in `data/gene-sets.csv`
+          (case-insensitive; the set `"Interferon response"` or
+          `"interferon_response"` would match). Loaded via get_data.
+
+    Raises ValueError if a string reference doesn't resolve.
+    """
+    if isinstance(gene_set, str):
+        from .load_dataset import get_data
+        df = get_data("gene-sets")
+        target = gene_set.strip().lower().replace(" ", "_")
+        categories_available = {
+            str(c).strip().lower().replace(" ", "_"): c
+            for c in df["Category"].dropna().unique()
+        }
+        matched = categories_available.get(target)
+        if matched is None:
+            raise ValueError(
+                f"Gene set {gene_set!r} not found in data/gene-sets.csv. "
+                f"Available: {sorted(categories_available.values())}"
+            )
+        symbols = df.loc[df["Category"] == matched, "Symbol"].astype(str).tolist()
+        return [s for s in symbols if s]
+    return [str(s) for s in gene_set]
+
+
+def plot_geneset_vs_vital_tissues(
+    df_gene_expr,
+    gene_set,
+    title=None,
+    toxicity_tpm_threshold=10.0,
+    vital_tissues=None,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=None,
+):
+    """Plot a sample's expression of a gene set against vital-tissue baselines.
+
+    For each gene in the set, renders a horizontal strip on a log TPM
+    axis with:
+        - the sample's TPM (blue filled marker)
+        - each vital tissue's nTPM (small tissue-colored dots, flipped
+          to red when the tissue value exceeds `toxicity_tpm_threshold`
+          — a visual flag that targeting this gene therapeutically
+          would affect a tissue that can't tolerate damage / regenerate)
+
+    Per-gene reading: "is the sample high AND are vital tissues also
+    high on this gene?" Genes where only the sample is high are safer
+    therapeutic targets; genes where one or more vital tissues are
+    above the threshold are toxicity risks.
+
+    Parameters
+    ----------
+    df_gene_expr : pd.DataFrame
+        Sample expression (same schema expected by `_guess_gene_cols`).
+    gene_set : str or iterable of str
+        Either a gene-set Category name in `data/gene-sets.csv`
+        (e.g. "Interferon response", "MHC1_presentation") or an explicit
+        list of gene symbols.
+    title : str or None
+        Figure title.
+    toxicity_tpm_threshold : float
+        nTPM above which a vital-tissue dot is colored red. Default 10.0.
+    vital_tissues : list of str or None
+        Keys into `_ESSENTIAL_TISSUE_COLS` to display. Default: all.
+    save_to_filename, save_dpi : plot save options.
+    figsize : tuple or None
+        Explicit size. Default scales with gene count.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    from .gene_sets_cancer import pan_cancer_expression
+    from .plot_data_helpers import _strip_ensembl_version
+
+    symbols = _resolve_gene_set_symbols(gene_set)
+    if not symbols:
+        print(f"Gene set {gene_set!r} resolved to zero genes.")
+        return None
+
+    if vital_tissues is None:
+        vital_tissues = list(_ESSENTIAL_TISSUE_COLS.keys())
+    else:
+        missing = [t for t in vital_tissues if t not in _ESSENTIAL_TISSUE_COLS]
+        if missing:
+            raise ValueError(
+                f"Unknown vital_tissues: {missing}. "
+                f"Available: {list(_ESSENTIAL_TISSUE_COLS.keys())}"
+            )
+
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
+    df = df_gene_expr.copy()
+    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+    tpm_col = "TPM" if "TPM" in df.columns else next(
+        (c for c in df.columns if c.lower() == "tpm"), None
+    )
+    if tpm_col is None:
+        raise KeyError(f"No TPM column in sample. Columns: {list(df.columns)}")
+
+    ref = pan_cancer_expression()
+    id_to_sym = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
+    sample_by_symbol = {}
+    for _, row in df.iterrows():
+        gid = str(row[gene_id_col])
+        sym = id_to_sym.get(gid)
+        if sym is None:
+            sym = str(row.get(gene_name_col, ""))
+        if not sym:
+            continue
+        tpm = float(row[tpm_col])
+        if sym not in sample_by_symbol or tpm > sample_by_symbol[sym]:
+            sample_by_symbol[sym] = tpm
+
+    # For tissue groups like "brain" that span several nTPM_* columns,
+    # use the MAX — any single CNS region with high expression is a
+    # toxicity concern, no need to average it out.
+    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    tissue_columns_resolved = {
+        tissue: [c for c in _ESSENTIAL_TISSUE_COLS[tissue] if c in ref_by_sym.columns]
+        for tissue in vital_tissues
+    }
+
+    def _tissue_value(sym, tissue):
+        cols = tissue_columns_resolved.get(tissue, [])
+        if sym not in ref_by_sym.index or not cols:
+            return None
+        return float(ref_by_sym.loc[sym, cols].astype(float).max())
+
+    rows = []
+    for sym in symbols:
+        sample_tpm = sample_by_symbol.get(sym)
+        tissue_vals = {t: _tissue_value(sym, t) for t in vital_tissues}
+        has_any = (sample_tpm is not None and sample_tpm > 0) or any(
+            v is not None and v > 0 for v in tissue_vals.values()
+        )
+        if has_any:
+            rows.append((sym, sample_tpm or 0.0, tissue_vals))
+
+    if not rows:
+        print(f"Gene set {gene_set!r} had no expression in sample or reference.")
+        return None
+
+    n = len(rows)
+    if figsize is None:
+        figsize = (11, 0.32 * n + 2.2)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    y = np.arange(n)
+
+    tissue_colors = {
+        "brain": "#6a3d9a",
+        "heart": "#e31a1c",
+        "liver": "#ff7f00",
+        "lung": "#1f78b4",
+        "kidney": "#33a02c",
+        "bone_marrow": "#b15928",
+        "spleen": "#a6cee3",
+        "pancreas": "#fb9a99",
+        "colon": "#b2df8a",
+        "stomach": "#fdbf6f",
+    }
+
+    # Vertical jitter spread for tissue dots — overlapping tissues at
+    # similar TPM become distinguishable. Spread is symmetric around the
+    # gene's row index, inside ±0.35 so rows don't visually collide.
+    n_tissues = max(1, len(vital_tissues))
+    jitter_map = {
+        tissue: (idx / max(1, n_tissues - 1) - 0.5) * 0.7
+        for idx, tissue in enumerate(vital_tissues)
+    }
+
+    for i, (sym, sample_tpm, tissue_vals) in enumerate(rows):
+        x_sample = max(sample_tpm, 0.05)
+        ax.scatter(
+            [x_sample], [i], s=110, color="#1f77b4",
+            edgecolor="black", linewidth=0.8, zorder=5, label=None,
+        )
+        ax.text(
+            x_sample * 1.2, i, f"{sample_tpm:.0f}", fontsize=7.5,
+            va="center", color="#1f77b4", fontweight="bold", zorder=6,
+        )
+        for tissue, val in tissue_vals.items():
+            if val is None:
+                continue
+            base = tissue_colors.get(tissue, "#888888")
+            if val >= toxicity_tpm_threshold:
+                color = "#d62728"
+                edge = "#7a0000"
+                lw = 0.9
+                size = 55
+            else:
+                color = base
+                edge = "white"
+                lw = 0.4
+                size = 32
+            x = max(val, 0.05)
+            y_pos = i + jitter_map.get(tissue, 0.0)
+            ax.scatter([x], [y_pos], s=size, color=color, edgecolor=edge,
+                       linewidth=lw,
+                       zorder=4 if color == "#d62728" else 3,
+                       alpha=0.9)
+
+    ax.set_xscale("log")
+    ax.set_xlim(0.05, 10_000)
+    ax.axvline(toxicity_tpm_threshold, linestyle="--", color="#d62728",
+               linewidth=0.8, alpha=0.5, zorder=1)
+    ax.set_yticks(y)
+    ax.set_yticklabels([r[0] for r in rows], fontsize=9)
+    ax.invert_yaxis()
+    ax.set_xlabel(
+        "TPM (log scale) — sample in blue, vital tissues colored by tissue; red = above threshold"
+    )
+    if title is None:
+        title = (
+            f"{gene_set} vs vital tissues"
+            if isinstance(gene_set, str)
+            else "Gene set vs vital tissues"
+        )
+    ax.set_title(title, fontweight="bold")
+    ax.grid(axis="x", alpha=0.25, zorder=0)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    from matplotlib.lines import Line2D
+    legend_entries = [
+        Line2D([], [], marker="o", color="#1f77b4", markeredgecolor="black",
+               markersize=10, linestyle="", label="sample"),
+    ]
+    for tissue in vital_tissues:
+        legend_entries.append(
+            Line2D([], [], marker="o",
+                   color=tissue_colors.get(tissue, "#888888"),
+                   markersize=6, linestyle="",
+                   label=tissue.replace("_", " "))
+        )
+    legend_entries.append(
+        Line2D([], [], marker="o", color="#d62728", markeredgecolor="#7a0000",
+               markersize=8, linestyle="",
+               label=f"tissue > {toxicity_tpm_threshold:g} TPM")
+    )
+    ax.legend(
+        handles=legend_entries, loc="upper center",
+        bbox_to_anchor=(0.5, -0.08),
+        ncol=min(len(legend_entries), 6), fontsize=8,
+        frameon=False,
+    )
+    fig.tight_layout()
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
+
+
 # -------------------- cancer-type gene signature plots --------------------
 
 
