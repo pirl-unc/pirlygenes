@@ -1591,6 +1591,14 @@ def plot_cancer_cohorts(
 
 
 def main():
+    import sys
+    # Handle --version / -V before dispatching to subcommands.  argh's
+    # dispatch_commands uses argparse under the hood and rejects unknown
+    # top-level flags, so without this, `pirlygenes --version` would print
+    # the banner and then error with "unrecognized arguments: --version".
+    if len(sys.argv) >= 2 and sys.argv[1] in ("--version", "-V"):
+        print_name_and_version()
+        return
     print_name_and_version()
     print("---")
     dispatch_commands([print_dataset_info, analyze, plot_expression, plot_cancer_cohorts])
