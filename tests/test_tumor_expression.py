@@ -7,7 +7,10 @@ import numpy as np
 from pirlygenes.tumor_purity import (
     LINEAGE_GENES,
     TCGA_MEDIAN_PURITY,
+    _combine_purity_estimates,
     _lineage_purity_estimates,
+    _summarize_gene_level_purity,
+    _summarize_lineage_support,
 )
 
 
@@ -60,6 +63,58 @@ def test_upper_half_median_ignores_low_outliers():
     assert upper < 0.25, f"Upper {upper} should be < 25%"
 
 
+def test_lineage_support_penalizes_wrong_pattern():
+    rows = [
+        {"sample_ratio": 1.00, "tme_ratio": 0.0, "tumor_ratio": 0.20},
+        {"sample_ratio": 0.01, "tme_ratio": 0.0, "tumor_ratio": 5.00},
+        {"sample_ratio": 0.01, "tme_ratio": 0.0, "tumor_ratio": 3.00},
+    ]
+    stats = _summarize_lineage_support(rows)
+    assert stats["concordance"] < 0.2
+    assert stats["support_factor"] < 0.2
+
+
+def test_combine_purity_ignores_zero_estimate_when_lineage_exists():
+    overall, lower, upper = _combine_purity_estimates(
+        sig_purity=0.35,
+        sig_lower=0.20,
+        sig_upper=0.50,
+        estimate_purity=0.0,
+        lineage_purity=0.60,
+        lineage_lower=0.45,
+        lineage_upper=0.75,
+    )
+    assert 0.45 < overall < 0.50
+    assert lower <= overall <= upper
+    assert lower == 0.20
+    assert upper == 0.75
+
+
+def test_combine_purity_penalizes_signature_only_calls_with_infiltration():
+    overall, lower, upper = _combine_purity_estimates(
+        sig_purity=0.52,
+        sig_lower=0.30,
+        sig_upper=0.70,
+        estimate_purity=0.0,
+        lineage_purity=None,
+        lineage_lower=None,
+        lineage_upper=None,
+    )
+    assert 0.15 < overall < 0.17
+    assert lower <= overall <= upper
+
+
+def test_signature_summary_ignores_high_outlier():
+    overall, lower, upper, stability = _summarize_gene_level_purity(
+        [0.03, 0.04, 0.05, 0.06, 0.80],
+        strategy="winsorized_median",
+    )
+    assert 0.04 < overall < 0.07
+    assert 0.03 <= lower <= overall
+    assert upper < 0.30
+    assert 0.1 < stability < 1.0
+
+
 # ── estimate_tumor_expression_ranges ──────────────────────────────
 
 def test_ranges_dataframe_columns():
@@ -85,7 +140,7 @@ def test_ranges_dataframe_columns():
         "gene_id", "symbol", "category", "observed_tpm",
         "tme_fold_lo", "tme_fold_med", "tme_fold_hi",
         "est_1", "est_5", "est_9", "median_est",
-        "pct_cancer_median", "is_surface", "is_cta", "therapies",
+        "pct_cancer_median", "tcga_percentile", "is_surface", "is_cta", "therapies",
     ]
     for col in expected_cols:
         assert col in result.columns, f"Missing column: {col}"

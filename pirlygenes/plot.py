@@ -720,6 +720,9 @@ def plot_sample_vs_cancer(
                     pdf.savefig(figures[cat], bbox_inches="tight")
             print(f"Saved multi-page PDF to {out}")
 
+        for fig in figures.values():
+            plt.close(fig)
+
     return figures
 
 
@@ -983,8 +986,16 @@ def plot_therapy_target_tissues(
         return None
     combo_to_color = _therapy_combo_colors([record["therapies"] for record in records])
 
-    # Generate one page per gene
     figures = {}
+    out = Path(save_to_filename) if save_to_filename else None
+    pdf = PdfPages(out) if out is not None and out.suffix.lower() == ".pdf" else None
+    if out is not None and out.suffix.lower() != ".pdf":
+        out_dir = out.parent / out.stem
+        out_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        out_dir = None
+
+    # Generate one page per gene
     for record in records:
         gid = record["gene_id"]
         sym = record["symbol"]
@@ -1070,21 +1081,21 @@ def plot_therapy_target_tissues(
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         fig.tight_layout()
-        figures[sym] = fig
 
-    if save_to_filename:
-        out = Path(save_to_filename)
-        if out.suffix.lower() == ".pdf":
-            with PdfPages(out) as pdf:
-                for fig in figures.values():
-                    pdf.savefig(fig, bbox_inches="tight")
-            print(f"Saved {out} ({len(figures)} pages)")
+        if pdf is not None:
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+        elif out_dir is not None:
+            fig.savefig(out_dir / f"{sym}.png", dpi=save_dpi, bbox_inches="tight")
+            plt.close(fig)
         else:
-            out_dir = out.parent / out.stem
-            out_dir.mkdir(parents=True, exist_ok=True)
-            for sym, fig in figures.items():
-                fig.savefig(out_dir / f"{sym}.png", dpi=save_dpi, bbox_inches="tight")
-            print(f"Saved {len(figures)} PNGs to {out_dir}/")
+            figures[sym] = fig
+
+    if pdf is not None:
+        pdf.close()
+        print(f"Saved {out} ({len(records)} pages)")
+    elif out_dir is not None:
+        print(f"Saved {len(records)} PNGs to {out_dir}/")
 
     return figures
 
@@ -1497,6 +1508,7 @@ def estimate_tumor_expression_ranges(
     df_gene_expr,
     cancer_type,
     purity_result,
+    decomposition_results=None,
 ):
     """Estimate tumor-specific expression with uncertainty bounds.
 
@@ -1505,10 +1517,14 @@ def estimate_tumor_expression_ranges(
 
         tumor_expr = max(0, (observed - (1-purity) * tme_bg) / purity)
 
-    TME bounds come from the 25th / 50th / 75th percentile of expression
-    across TME reference tissues for each gene.  Purity bounds come from
-    the ``overall_lower`` / ``overall_estimate`` / ``overall_upper`` fields
-    of ``estimate_tumor_purity()``.
+    TME bounds come from either:
+
+    - the 25th / 50th / 75th percentile across TME reference tissues, or
+    - the 25th / 50th / 75th percentile across candidate decomposition
+      hypotheses when ``decomposition_results`` is provided.
+
+    Purity bounds come from the ``overall_lower`` / ``overall_estimate`` /
+    ``overall_upper`` fields of ``estimate_tumor_purity()``.
 
     Parameters
     ----------
@@ -1518,6 +1534,9 @@ def estimate_tumor_expression_ranges(
         TCGA cancer type code or name.
     purity_result : dict
         Return value of ``estimate_tumor_purity()``.
+    decomposition_results : list, optional
+        Candidate ``DecompositionResult`` objects from
+        ``pirlygenes.decomposition.decompose_sample()``.
 
     Returns
     -------
@@ -1571,9 +1590,15 @@ def estimate_tumor_expression_ranges(
     for col in tme_cols + fpkm_cols:
         ref_hk_medians[col] = ref_dedup.loc[hk_in_ref, col].astype(float).median()
 
-    # TME reference in HK-fold space: per gene, per tissue
-    # tme_hk[gene, tissue] = gene_nTPM / tissue_HK_median
-    # We compute quantiles across tissues for each gene in the main loop.
+    # TME reference in HK-fold space: per gene, per tissue or decomposition.
+    # When decomposition hypotheses are available, use their inferred
+    # non-tumor background profile instead of a generic TME tissue panel.
+    decomp_backgrounds = []
+    if decomposition_results:
+        for result in decomposition_results:
+            bg = getattr(result, "tme_background_hk", None)
+            if bg:
+                decomp_backgrounds.append(bg)
 
     # --- Purity-adjusted TCGA (HK-normalized, then deconvolved) ---
     # For each FPKM cancer-type column, compute:
@@ -1617,6 +1642,7 @@ def estimate_tumor_expression_ranges(
         surf_symbols = set()
 
     # --- Compute 9-point estimates for every expressed gene ---
+    cancer_expr_all = ref_dedup[fpkm_cols].astype(float)
     rows = []
     for symbol in sample_raw:
         if symbol not in ref_dedup.index:
@@ -1628,12 +1654,15 @@ def estimate_tumor_expression_ranges(
         # HK-normalize sample
         sample_fold = observed / sample_hk_median
 
-        # TME background in HK-fold space (quantiles across tissues)
-        tme_folds = []
-        for col in tme_cols:
-            hk_m = ref_hk_medians.get(col, 0)
-            if hk_m > 0:
-                tme_folds.append(float(ref_dedup.loc[symbol, col]) / hk_m)
+        # TME background in HK-fold space.
+        if decomp_backgrounds:
+            tme_folds = [float(bg.get(symbol, 0.0)) for bg in decomp_backgrounds]
+        else:
+            tme_folds = []
+            for col in tme_cols:
+                hk_m = ref_hk_medians.get(col, 0)
+                if hk_m > 0:
+                    tme_folds.append(float(ref_dedup.loc[symbol, col]) / hk_m)
         if not tme_folds:
             tme_folds = [0.0]
         tme_fold_lo = float(np.percentile(tme_folds, 25))
@@ -1649,6 +1678,12 @@ def estimate_tumor_expression_ranges(
                 estimates.append(tumor_tpm)
         estimates.sort()
         median_est = float(np.median(estimates))
+
+        ref_vals = cancer_expr_all.loc[symbol].values
+        n = len(ref_vals)
+        below = np.sum(ref_vals < median_est)
+        equal = np.sum(np.isclose(ref_vals, median_est, atol=0.01))
+        tcga_percentile = float((below + 0.5 * equal) / n)
 
         # Ratio vs purity-adjusted TCGA median for matched cancer type
         cancer_col = f"FPKM_{cancer_code}"
@@ -1697,6 +1732,7 @@ def estimate_tumor_expression_ranges(
             **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
             "median_est": round(median_est, 2),
             "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None else None,
+            "tcga_percentile": round(tcga_percentile, 3),
             "is_surface": is_surface,
             "is_cta": is_cta,
             "therapies": ", ".join(sorted(therapies)) if therapies else "",
@@ -2159,6 +2195,8 @@ _CURATED_LINEAGE_BOOST = [
 _embedding_gene_cache = {}
 _tme_gene_cache = {}
 _bottleneck_gene_cache = {}
+_hierarchy_feature_cache = {}
+_hierarchy_site_cache = {}
 
 
 def _select_embedding_genes_bottleneck(n_genes_per_type=5):
@@ -2641,6 +2679,196 @@ def _cancer_type_score_matrix(df_gene_expr, n_signature_genes=20):
     return matrix, labels
 
 
+def _reference_cancer_expression_df(cancer_code):
+    """Return a TCGA-median expression frame for one cancer type."""
+    import pandas as pd
+
+    ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
+        }
+    )
+
+
+def _hierarchy_feature_labels():
+    from .tumor_purity import _CANCER_FAMILY_PANELS, CANCER_TO_TISSUE
+
+    ref = pan_cancer_expression()
+    codes = [c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_")]
+    families = list(_CANCER_FAMILY_PANELS)
+    site_labels = sorted(
+        set(CANCER_TO_TISSUE.values())
+        | {"appendix", "bone_marrow", "lymph_node", "smooth_muscle", "spleen", "adipose_tissue"}
+    )
+    feature_labels = (
+        [f"support::{code}" for code in codes]
+        + [f"family::{family}" for family in families]
+        + [f"site::{site}" for site in site_labels]
+        + ["purity::best_estimate"]
+    )
+    return codes, families, site_labels, feature_labels
+
+
+def _hierarchy_feature_vector(df_gene_expr, candidate_codes, family_labels, site_labels):
+    """Build one hierarchy-aware embedding vector for a sample/profile."""
+    from .tumor_purity import (
+        rank_cancer_type_candidates,
+        _score_cancer_family_panels,
+        _score_host_tissues,
+    )
+
+    candidate_trace = rank_cancer_type_candidates(
+        df_gene_expr,
+        candidate_codes=candidate_codes,
+        top_k=len(candidate_codes),
+    )
+    trace_by_code = {row["code"]: row for row in candidate_trace}
+    sample_raw_by_symbol, _ = _sample_expression_by_symbol(df_gene_expr)
+    family_scores = _score_cancer_family_panels(sample_raw_by_symbol)
+    max_family_score = max(family_scores.values(), default=0.0)
+    if max_family_score > 0:
+        family_features = [
+            float(family_scores.get(family, 0.0) / max_family_score)
+            for family in family_labels
+        ]
+    else:
+        family_features = [0.0 for _ in family_labels]
+
+    site_scores = {
+        tissue: score
+        for tissue, score, _ in _score_host_tissues(
+            sample_raw_by_symbol,
+            tissues=site_labels,
+            top_n=None,
+        )
+    }
+    max_site_score = max(site_scores.values(), default=0.0)
+    if max_site_score > 0:
+        site_features = [
+            float(site_scores.get(site, 0.0) / max_site_score)
+            for site in site_labels
+        ]
+    else:
+        site_features = [0.0 for _ in site_labels]
+
+    support_features = [
+        float(trace_by_code.get(code, {}).get("support_norm", 0.0))
+        for code in candidate_codes
+    ]
+    best_purity = float(candidate_trace[0]["purity_estimate"]) if candidate_trace else 0.0
+    return np.array(support_features + family_features + site_features + [best_purity], dtype=float)
+
+
+def _reference_family_feature_matrix(candidate_codes, family_labels):
+    """Build normalized family-panel features for TCGA reference centroids."""
+    from .tumor_purity import _CANCER_FAMILY_PANELS
+
+    ref_hk = pan_cancer_expression(normalize="housekeeping").drop_duplicates(subset="Symbol")
+    ref_hk = ref_hk.set_index("Symbol")
+
+    rows = []
+    for code in candidate_codes:
+        col = f"FPKM_{code}"
+        family_values = []
+        for family in family_labels:
+            genes = [gene for gene in _CANCER_FAMILY_PANELS[family] if gene in ref_hk.index]
+            if genes:
+                values = sorted(ref_hk.loc[genes, col].astype(float).tolist())
+                upper_half = values[len(values) // 2:] if len(values) >= 3 else values
+                score = float(np.median(upper_half)) if upper_half else 0.0
+            else:
+                score = 0.0
+            family_values.append(score)
+        max_family = max(family_values, default=0.0)
+        if max_family > 0:
+            family_values = [float(value / max_family) for value in family_values]
+        rows.append(family_values)
+    return np.asarray(rows, dtype=float)
+
+
+def _reference_site_feature_matrix(candidate_codes, site_labels):
+    """Build normalized host/background context features for TCGA centroids."""
+    from .tumor_purity import _score_host_tissues
+
+    cache_key = (tuple(candidate_codes), tuple(site_labels))
+    cached = _hierarchy_site_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    rows = []
+    for code in candidate_codes:
+        sample_raw_by_symbol = ref[f"FPKM_{code}"].astype(float).to_dict()
+        site_scores = {
+            tissue: score
+            for tissue, score, _ in _score_host_tissues(
+                sample_raw_by_symbol,
+                tissues=site_labels,
+                top_n=None,
+            )
+        }
+        max_site_score = max(site_scores.values(), default=0.0)
+        if max_site_score > 0:
+            site_values = [
+                float(site_scores.get(site, 0.0) / max_site_score)
+                for site in site_labels
+            ]
+        else:
+            site_values = [0.0 for _ in site_labels]
+        rows.append(site_values)
+    cached = np.asarray(rows, dtype=float)
+    _hierarchy_site_cache[cache_key] = cached
+    return cached
+
+
+def _hierarchy_embedding_metadata():
+    """Describe the hierarchy-aware embedding feature space."""
+    candidate_codes, family_labels, site_labels, feature_labels = _hierarchy_feature_labels()
+    return {
+        "method": "hierarchy",
+        "feature_kind": "hierarchical_scores",
+        "n_features": len(feature_labels),
+        "n_types": len(candidate_codes),
+        "n_genes": 0,
+        "per_type": {},
+        "families": family_labels,
+        "sites": site_labels,
+        "codes": candidate_codes,
+        "feature_labels": feature_labels,
+    }
+
+
+def _cancer_type_hierarchy_matrix(df_gene_expr):
+    """Build a family-aware support-space matrix for TCGA centroids + sample."""
+    import numpy as np
+    from .tumor_purity import TCGA_MEDIAN_PURITY
+
+    candidate_codes, family_labels, site_labels, _feature_labels = _hierarchy_feature_labels()
+    cache_key = tuple(candidate_codes)
+    cached = _hierarchy_feature_cache.get(cache_key)
+    if cached is None:
+        ref_scores, labels = _cancer_type_score_matrix(_reference_cancer_expression_df(candidate_codes[0]))
+        ref_labels = labels[:-1]
+        ref_matrix = ref_scores[:-1]
+        ref_families = _reference_family_feature_matrix(ref_labels, family_labels)
+        ref_sites = _reference_site_feature_matrix(ref_labels, site_labels)
+        ref_purity = np.array(
+            [[float(TCGA_MEDIAN_PURITY.get(code, 0.5))] for code in ref_labels],
+            dtype=float,
+        )
+        cached = (np.hstack([ref_matrix, ref_families, ref_sites, ref_purity]), ref_labels)
+        _hierarchy_feature_cache[cache_key] = cached
+
+    ref_matrix, labels = cached
+    sample_vector = _hierarchy_feature_vector(df_gene_expr, candidate_codes, family_labels, site_labels)
+    matrix = np.vstack([ref_matrix, sample_vector[None, :]])
+    out_labels = list(labels) + ["SAMPLE"]
+    return matrix, out_labels
+
+
 def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
     """Build feature matrix for PCA/MDS of cancer types + sample.
 
@@ -2656,6 +2884,7 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
         ``"hk_zscore"`` — z-score of log2(HK-normalized + 1).
         ``"rank"`` — percentile rank within each gene across cancer types.
         ``"score"`` — cancer-type signature scores (33-d vector).
+        ``"hierarchy"`` — family-aware support-score space with purity anchor.
     """
     import warnings
 
@@ -2674,6 +2903,8 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
 
     if method == "score":
         return _cancer_type_score_matrix(df_gene_expr)
+    if method == "hierarchy":
+        return _cancer_type_hierarchy_matrix(df_gene_expr)
 
     gene_id_col, _ = _guess_gene_cols(df_gene_expr)
     df = df_gene_expr.copy()
@@ -2754,6 +2985,17 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
     return matrix, labels
 
 
+def get_embedding_feature_metadata(method="hierarchy", n_genes=10):
+    """Return metadata describing the active embedding feature space."""
+    if method == "hierarchy":
+        return _hierarchy_embedding_metadata()
+    if method == "tme":
+        return _select_tme_low_genes(n_genes_per_type=n_genes)[1]
+    if method == "bottleneck":
+        return _select_embedding_genes_bottleneck(n_genes_per_type=n_genes)[1]
+    return _select_embedding_genes(n_genes_per_type=n_genes)[1]
+
+
 def _plot_embedding_with_labels(
     coords,
     labels,
@@ -2761,12 +3003,41 @@ def _plot_embedding_with_labels(
     title,
     xlabel,
     ylabel,
+    method=None,
     save_to_filename=None,
     save_dpi=300,
     figsize=(12, 10),
 ):
+    from matplotlib.lines import Line2D
+
     fig, ax = plt.subplots(figsize=figsize)
     texts = []
+    family_palette = {}
+    label_to_family = {}
+    if method == "hierarchy":
+        from .tumor_purity import _CANCER_FAMILY_BY_CODE
+
+        family_order = []
+        for label in labels:
+            if label == "SAMPLE":
+                continue
+            family = _CANCER_FAMILY_BY_CODE.get(label, label)
+            label_to_family[label] = family
+            if family not in family_order:
+                family_order.append(family)
+        palette = sns.color_palette("tab20", max(len(family_order), 1))
+        family_palette = {family: palette[idx] for idx, family in enumerate(family_order)}
+
+    nearest_neighbors = []
+    if "SAMPLE" in labels:
+        sample_idx = labels.index("SAMPLE")
+        sample_coords = coords[sample_idx]
+        for i, label in enumerate(labels):
+            if label == "SAMPLE":
+                continue
+            dist = float(np.linalg.norm(coords[i] - sample_coords))
+            nearest_neighbors.append((dist, label))
+        nearest_neighbors.sort(key=lambda item: (item[0], item[1]))
 
     for i, label in enumerate(labels):
         if label == "SAMPLE":
@@ -2792,12 +3063,13 @@ def _plot_embedding_with_labels(
                 )
             )
         else:
+            point_color = family_palette.get(label_to_family.get(label), "steelblue")
             ax.scatter(
                 coords[i, 0],
                 coords[i, 1],
                 s=60,
                 alpha=0.7,
-                color="steelblue",
+                color=point_color,
                 edgecolors="white",
                 linewidths=0.5,
                 zorder=2,
@@ -2823,6 +3095,29 @@ def _plot_embedding_with_labels(
     ax.set_ylabel(ylabel, fontsize=11)
     ax.set_title(title, fontsize=12)
     ax.grid(True, alpha=0.2)
+
+    if nearest_neighbors:
+        nearest_text = "\n".join(
+            f"{label} ({dist:.2f})" for dist, label in nearest_neighbors[:5]
+        )
+        ax.text(
+            0.98,
+            0.02,
+            "Nearest TCGA centroids\n" + nearest_text,
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=8,
+            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9, edgecolor="#cccccc"),
+        )
+
+    if family_palette:
+        handles = [
+            Line2D([0], [0], marker="o", color="none", markerfacecolor=color,
+                   markeredgecolor="white", markersize=7, label=family)
+            for family, color in list(family_palette.items())[:10]
+        ]
+        ax.legend(handles=handles, title="Family", loc="upper left", fontsize=8, title_fontsize=9, framealpha=0.9)
 
     fig.tight_layout()
     if save_to_filename:
@@ -3400,6 +3695,7 @@ _METHOD_LABELS = {
     "hk": "HK-normalized",
     "hk_zscore": "HK z-score",
     "rank": "percentile rank",
+    "hierarchy": "hierarchical support space",
     "tme": "TME-low genes",
     "score": "signature scores",
     "bottleneck": "bottleneck genes",
@@ -3429,6 +3725,7 @@ def plot_cancer_type_pca(
         title=title,
         xlabel=f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)",
         ylabel=f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)",
+        method=method,
         save_to_filename=save_to_filename,
         save_dpi=save_dpi,
         figsize=figsize,
@@ -3464,6 +3761,7 @@ def plot_cancer_type_mds(
         title=title,
         xlabel="MDS1",
         ylabel="MDS2",
+        method=method,
         save_to_filename=save_to_filename,
         save_dpi=save_dpi,
         figsize=figsize,
@@ -3500,6 +3798,7 @@ def plot_cancer_type_umap(
         title=title,
         xlabel="UMAP1",
         ylabel="UMAP2",
+        method=method,
         save_to_filename=save_to_filename,
         save_dpi=save_dpi,
         figsize=figsize,

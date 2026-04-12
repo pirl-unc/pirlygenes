@@ -19,7 +19,10 @@ Multiple gene sets are scored independently:
 Higher stromal/immune scores → lower tumor purity.
 """
 
+from collections import Counter
+
 import numpy as np
+import pandas as pd
 
 from .gene_sets_cancer import (
     pan_cancer_expression,
@@ -83,6 +86,111 @@ TCGA_MEDIAN_PURITY = {
     "UVM": 0.85,
 }
 
+_HOST_SITE_BACKGROUND_TISSUES = {
+    "bone_marrow", "lymph_node", "spleen", "thymus", "tonsil", "appendix",
+    "smooth_muscle", "skeletal_muscle", "heart_muscle", "adipose_tissue",
+}
+
+_CANCER_FAMILY_PANELS = {
+    "PROSTATE": ["KLK3", "KLK2", "TMPRSS2", "FOLH1", "NKX3-1", "HOXB13", "STEAP1", "STEAP2", "AR"],
+    "CRC": ["GUCY2C", "TFF3", "CDH17", "HEPH", "SLC12A2", "EPHB2", "CEACAM5", "CEACAM6", "VIL1", "CDX2"],
+    "GASTRIC": ["MUC5AC", "MUC6", "CLDN18", "TFF1", "TFF2", "REG4", "GKN1", "GKN2"],
+    "ESCA_SQ": ["TP63", "SOX2", "KRT5", "KRT14", "DSG3", "PPL", "KRT17", "FAM83H"],
+    "SQUAMOUS": ["TP63", "SOX2", "KRT5", "KRT14", "DSG3", "PPL", "KRT17", "CLCA2", "KRT6A"],
+    "MESENCHYMAL": ["COL1A1", "COL1A2", "COL3A1", "DCN", "THBS4", "POSTN", "TAGLN", "ACTA2", "MYLK", "DES"],
+    "RENAL": ["PAX8", "PAX2", "CA9", "NDUFA4L2", "SLC22A12", "KCNJ1", "AMACR"],
+    "GLIAL": ["GFAP", "OLIG2", "AQP4", "ALDH1L1", "SLC1A3", "SOX2"],
+    "MELANOCYTIC": ["MLANA", "PMEL", "TYR", "DCT", "MITF"],
+}
+
+_CANCER_FAMILY_BY_CODE = {
+    "PRAD": "PROSTATE",
+    "COAD": "CRC",
+    "READ": "CRC",
+    "STAD": "GASTRIC",
+    "ESCA": "ESCA_SQ",
+    "HNSC": "SQUAMOUS",
+    "LUSC": "SQUAMOUS",
+    "CESC": "SQUAMOUS",
+    "SARC": "MESENCHYMAL",
+    "UCS": "MESENCHYMAL",
+    "KIRC": "RENAL",
+    "KIRP": "RENAL",
+    "KICH": "RENAL",
+    "GBM": "GLIAL",
+    "LGG": "GLIAL",
+    "SKCM": "MELANOCYTIC",
+    "UVM": "MELANOCYTIC",
+}
+
+_CANCER_FAMILY_CODE_COUNTS = Counter(_CANCER_FAMILY_BY_CODE.values())
+_CANCER_FAMILY_GROUP = {
+    "ESCA_SQ": "SQUAMOUS",
+}
+_CANCER_FAMILY_GROUP_CODE_COUNTS = Counter(
+    _CANCER_FAMILY_GROUP.get(family, family)
+    for family in _CANCER_FAMILY_BY_CODE.values()
+)
+_CANCER_FAMILY_DISPLAY = {
+    "CRC": "CRC",
+    "ESCA_SQ": "esophageal squamous",
+    "GASTRIC": "gastric",
+    "GLIAL": "glial",
+    "MELANOCYTIC": "melanocytic",
+    "MESENCHYMAL": "mesenchymal / sarcoma-like",
+    "PROSTATE": "prostate",
+    "RENAL": "renal",
+    "SQUAMOUS": "squamous",
+}
+
+TUMOR_PURITY_PARAMETERS = {
+    "lineage": {
+        "missing_support_factor": 0.35,
+        "detection_fraction_threshold": 0.05,
+    },
+    "tumor_specific_markers": {
+        "delta_min": 0.02,
+        "normal_fraction_max": 0.5,
+    },
+    "host_background": {
+        "expression_min": 0.05,
+        "zscore_min": 1.5,
+        "specificity_min": 2.0,
+        "top_genes": 20,
+    },
+    "purity_combination": {
+        "signature_only_estimate_floor": 0.05,
+        "tumor_anchor_weight": 0.7,
+        "estimate_weight": 0.3,
+    },
+    "family_scoring": {
+        "presence_scale": 0.15,
+        "within_family_base": 0.35,
+        "within_family_gain": 0.65,
+        "non_family_penalty": 0.85,
+        "min_factor": 0.05,
+        "support_norm_floor": 0.05,
+        "signature_stability_floor": 0.2,
+        "family_display_fraction": 0.4,
+        "candidate_panel_min_score": 0.05,
+        "candidate_panel_top_n": 2,
+        "non_penalizing_families": ["MESENCHYMAL"],
+        "soft_family_penalty_gain": 0.75,
+    },
+}
+
+
+def get_tumor_purity_parameters():
+    """Return the current tumor-purity and family-scoring free parameters."""
+    return TUMOR_PURITY_PARAMETERS
+
+_CANCER_NORMAL_TISSUES = {
+    "COAD": ["colon", "rectum", "appendix", "small_intestine", "duodenum"],
+    "READ": ["rectum", "colon", "appendix", "small_intestine", "duodenum"],
+    "STAD": ["stomach", "duodenum", "esophagus", "gallbladder"],
+    "ESCA": ["esophagus", "stomach"],
+}
+
 
 # -------------------- helpers --------------------
 
@@ -125,6 +233,15 @@ def _geneset_hk_ratio(genes, hk_symbols, expr_by_symbol):
     if hk_sum <= 0:
         return 0.0
     return gs_sum / hk_sum
+
+
+def _sample_hk_median(sample_tpm):
+    """Return the sample housekeeping median on raw TPM scale."""
+    ref = pan_cancer_expression()
+    id_to_sym = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
+    hk_syms = [id_to_sym[gid] for gid in housekeeping_gene_ids() if gid in id_to_sym]
+    sample_hk_vals = [sample_tpm[g] for g in hk_syms if sample_tpm.get(g, 0) > 0]
+    return float(np.median(sample_hk_vals)) if sample_hk_vals else 0.0
 
 
 # Lineage genes per cancer type — genes retained in metastases and specific
@@ -268,6 +385,56 @@ def _lineage_purity_estimates(cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga
     return results
 
 
+def _summarize_lineage_support(lineage_per_gene):
+    """Summarize whether the observed lineage pattern matches the candidate tumor.
+
+    A single shared marker can produce a misleadingly high lineage purity. We
+    therefore score the *pattern* of lineage genes, not just their median
+    purity, using a weighted cosine similarity between the observed lineage
+    excess and the candidate's expected tumor lineage profile.
+    """
+    if not lineage_per_gene:
+        return {
+            "concordance": None,
+            "detection_fraction": 0.0,
+            "support_factor": TUMOR_PURITY_PARAMETERS["lineage"]["missing_support_factor"],
+        }
+
+    sample_excess = np.array(
+        [max(0.0, row["sample_ratio"] - row["tme_ratio"]) for row in lineage_per_gene],
+        dtype=float,
+    )
+    tumor_excess = np.array(
+        [max(0.0, row["tumor_ratio"] - row["tme_ratio"]) for row in lineage_per_gene],
+        dtype=float,
+    )
+    weights = np.sqrt(np.maximum(tumor_excess, 1e-6))
+
+    sample_weighted = sample_excess * weights
+    tumor_weighted = tumor_excess * weights
+    denom = float(np.linalg.norm(sample_weighted) * np.linalg.norm(tumor_weighted))
+    if denom > 0:
+        concordance = float(np.clip(sample_weighted.dot(tumor_weighted) / denom, 0.0, 1.0))
+    else:
+        concordance = 0.0
+
+    detected = sample_excess >= (
+        TUMOR_PURITY_PARAMETERS["lineage"]["detection_fraction_threshold"]
+        * np.maximum(tumor_excess, 1e-6)
+    )
+    detection_fraction = float(np.mean(detected))
+
+    # Pattern match matters more than raw detection count. A candidate with a
+    # few expressed genes but the wrong overall shape should be penalized hard.
+    support_factor = float(np.sqrt(concordance) * (0.5 + 0.5 * detection_fraction))
+
+    return {
+        "concordance": concordance,
+        "detection_fraction": detection_fraction,
+        "support_factor": support_factor,
+    }
+
+
 def _select_tumor_specific_genes(cancer_code, n=30):
     """Select genes highly expressed in cancer but NOT in matched normal tissue.
 
@@ -281,8 +448,13 @@ def _select_tumor_specific_genes(cancer_code, n=30):
     if cancer_col not in ref_by_sym.columns:
         return []
 
+    normal_tissues = list(_CANCER_NORMAL_TISSUES.get(cancer_code, []))
     tissue = CANCER_TO_TISSUE.get(cancer_code)
-    normal_col = f"nTPM_{tissue}" if tissue else None
+    if tissue and tissue not in normal_tissues:
+        normal_tissues.append(tissue)
+    background_tissues = sorted(set(normal_tissues) | _HOST_SITE_BACKGROUND_TISSUES)
+    normal_cols = [f"nTPM_{t}" for t in background_tissues if f"nTPM_{t}" in ref_by_sym.columns]
+    lineage_genes = set(LINEAGE_GENES.get(cancer_code, []))
 
     # Z-score across cancer types for initial ranking
     expr_matrix = ref_by_sym[fpkm_cols].astype(float)
@@ -295,20 +467,123 @@ def _select_tumor_specific_genes(cancer_code, n=30):
 
     markers = []
     for gene in candidates.index:
+        if gene in lineage_genes:
+            continue
         cancer_hk = float(ref_by_sym.loc[gene, cancer_col])
-        if normal_col and normal_col in ref_by_sym.columns:
-            normal_hk = float(ref_by_sym.loc[gene, normal_col])
+        if normal_cols:
+            normal_hk = float(ref_by_sym.loc[gene, normal_cols].astype(float).max())
         else:
             normal_hk = 0.0
 
-        # Require cancer expression to meaningfully exceed normal tissue
+        # Require cancer expression to meaningfully exceed the broader
+        # origin-tissue family and generic stromal/immune backgrounds. This
+        # avoids using normal lineage genes as tumor-purity anchors.
         delta = cancer_hk - normal_hk
-        if delta > 0 and delta / (cancer_hk + 0.001) >= 0.3:
+        normal_frac = normal_hk / (cancer_hk + 0.001)
+        if (
+            delta > TUMOR_PURITY_PARAMETERS["tumor_specific_markers"]["delta_min"]
+            and normal_frac <= TUMOR_PURITY_PARAMETERS["tumor_specific_markers"]["normal_fraction_max"]
+        ):
             markers.append(gene)
             if len(markers) >= n:
                 break
 
     return markers
+
+
+def _summarize_gene_level_purity(per_gene_purities, strategy="winsorized_median"):
+    """Summarize per-gene purity estimates robustly.
+
+    Signature genes can contain amplified or noisy outliers, while lineage
+    genes can contain low outliers from de-differentiation. The summary should
+    reflect the stable center of the distribution rather than a few extremes.
+    """
+    vals = np.array(sorted(float(p) for p in per_gene_purities if p is not None and p > 0), dtype=float)
+    if len(vals) == 0:
+        return None, None, None, None
+
+    lower = float(np.percentile(vals, 25))
+    upper = float(np.percentile(vals, 75))
+    if strategy == "upper_half":
+        core = vals[len(vals) // 2:] if len(vals) >= 3 else vals
+    elif strategy == "winsorized_median" and len(vals) >= 4:
+        core = np.clip(vals, lower, upper)
+    else:
+        core = vals
+
+    overall = float(np.median(core))
+    stability = float(np.clip((lower + 0.02) / (upper + 0.02), 0.0, 1.0))
+    return overall, lower, upper, stability
+
+
+def _combine_purity_estimates(
+    sig_purity,
+    sig_lower,
+    sig_upper,
+    estimate_purity,
+    lineage_purity,
+    lineage_lower,
+    lineage_upper,
+):
+    """Combine purity signals while keeping ESTIMATE as context, not destiny.
+
+    The ESTIMATE-derived purity is useful as an infiltration warning, but in
+    highly inflamed metastases it often collapses to ~0 and should not erase a
+    coherent tumor/lineage signal. When lineage support exists, combine it with
+    the tumor-specific signature directly; otherwise fall back to the available
+    evidence.
+    """
+    has_sig = sig_purity is not None
+    has_lineage = lineage_purity is not None
+
+    if has_sig and has_lineage:
+        tumor_anchor = float(np.sqrt(max(sig_purity, 0.0) * max(lineage_purity, 0.0)))
+    elif has_lineage:
+        tumor_anchor = float(lineage_purity)
+    elif has_sig:
+        tumor_anchor = float(sig_purity)
+    else:
+        tumor_anchor = None
+
+    if tumor_anchor is not None and estimate_purity is not None:
+        # Tumor-positive and infiltration-negative signals should both matter,
+        # but the tumor-specific anchor gets slightly more weight because
+        # ESTIMATE can undercall purity in inflamed metastases.
+        if has_sig and has_lineage and estimate_purity <= 0:
+            overall = float(tumor_anchor)
+        elif has_sig and not has_lineage:
+            estimate_floor = TUMOR_PURITY_PARAMETERS["purity_combination"]["signature_only_estimate_floor"]
+            overall = float(np.sqrt(max(tumor_anchor, 0.0) * max(estimate_purity, estimate_floor)))
+        else:
+            estimate_floor = TUMOR_PURITY_PARAMETERS["purity_combination"]["signature_only_estimate_floor"]
+            overall = float(
+                (max(tumor_anchor, 0.0) ** TUMOR_PURITY_PARAMETERS["purity_combination"]["tumor_anchor_weight"])
+                * (max(estimate_purity, estimate_floor) ** TUMOR_PURITY_PARAMETERS["purity_combination"]["estimate_weight"])
+            )
+    elif tumor_anchor is not None:
+        overall = float(tumor_anchor)
+    elif estimate_purity is not None:
+        overall = float(estimate_purity)
+    else:
+        return None, None, None
+
+    lower_candidates = [overall]
+    upper_candidates = [overall]
+
+    for value in (sig_lower, lineage_lower):
+        if value is not None:
+            lower_candidates.append(float(value))
+    for value in (sig_upper, lineage_upper):
+        if value is not None:
+            upper_candidates.append(float(value))
+
+        if estimate_purity is not None and (estimate_purity > 0 or (has_sig and not has_lineage)):
+            lower_candidates.append(float(estimate_purity))
+
+    overall_lower = float(np.clip(min(lower_candidates), 0.0, 1.0))
+    overall_upper = float(np.clip(max(upper_candidates), 0.0, 1.0))
+    overall = float(np.clip(overall, overall_lower, overall_upper))
+    return overall, overall_lower, overall_upper
 
 
 # -------------------- main estimation --------------------
@@ -391,8 +666,12 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
         sig_purity = None
 
     per_gene_purities = [g["purity"] for g in per_gene]
-    sig_lower = float(np.percentile(per_gene_purities, 25)) if per_gene_purities else None
-    sig_upper = float(np.percentile(per_gene_purities, 75)) if per_gene_purities else None
+    sig_purity_robust, sig_lower, sig_upper, sig_stability = _summarize_gene_level_purity(
+        per_gene_purities,
+        strategy="winsorized_median",
+    )
+    if sig_purity_robust is not None:
+        sig_purity = sig_purity_robust
 
     # ---- Component 2: ESTIMATE stromal genes ----
     try:
@@ -414,16 +693,13 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
     stromal_enrichment = stromal_sample / stromal_ref if stromal_ref > 0 else 1.0
     immune_enrichment = immune_sample / immune_ref if immune_ref > 0 else 1.0
 
-    # Estimate non-tumor fraction from enrichment
-    # TCGA non-tumor fraction = 1 - tcga_purity
-    # Sample non-tumor fraction ≈ (1 - tcga_purity) × enrichment
-    tcga_nontumor = 1 - tcga_purity
-    stromal_nontumor = min(tcga_nontumor * stromal_enrichment, 1.0)
-    immune_nontumor = min(tcga_nontumor * immune_enrichment, 1.0)
-    estimate_purity = float(np.clip(
-        1.0 - (stromal_nontumor + immune_nontumor) / 2,
-        0, 1,
-    ))
+    # Convert stromal/immune enrichment into a tumor-vs-background odds model
+    # rather than a linear fraction model, which otherwise collapses to 0 on
+    # inflamed samples.
+    tcga_nontumor_odds = (1 - tcga_purity) / max(tcga_purity, 1e-6)
+    stromal_purity = 1.0 / (1.0 + tcga_nontumor_odds * max(stromal_enrichment, 0.0))
+    immune_purity = 1.0 / (1.0 + tcga_nontumor_odds * max(immune_enrichment, 0.0))
+    estimate_purity = float(np.clip(np.sqrt(stromal_purity * immune_purity), 0.0, 1.0))
 
     # ---- Component 3: Lineage gene refinement ----
     lineage_per_gene = _lineage_purity_estimates(
@@ -437,38 +713,24 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
         # their signal can't be explained by gene loss.
         mid = len(lineage_purities) // 2
         upper_half = lineage_purities[mid:]
-        lineage_purity = float(np.median(upper_half))
-        lineage_lower = float(np.percentile(upper_half, 25))
-        lineage_upper = float(np.percentile(upper_half, 75))
+        lineage_purity, lineage_lower, lineage_upper, lineage_stability = _summarize_gene_level_purity(
+            upper_half,
+            strategy="upper_half",
+        )
     else:
-        lineage_purity = lineage_lower = lineage_upper = None
+        lineage_purity = lineage_lower = lineage_upper = lineage_stability = None
+    lineage_support = _summarize_lineage_support(lineage_per_gene)
 
     # ---- Combine estimates ----
-    estimates = []
-    if sig_purity is not None:
-        estimates.append(sig_purity)
-    if stromal_genes:
-        estimates.append(estimate_purity)
-    if lineage_purity is not None:
-        estimates.append(lineage_purity)
-
-    if estimates:
-        overall = float(np.median(estimates))
-        # Bounds: use lineage IQR when available (tighter), else signature + ESTIMATE
-        if lineage_lower is not None:
-            overall_lower = lineage_lower
-            overall_upper = lineage_upper
-        else:
-            all_bounds = []
-            if sig_lower is not None:
-                all_bounds.extend([sig_lower, sig_upper])
-            all_bounds.append(estimate_purity)
-            if sig_purity is not None:
-                all_bounds.append(sig_purity)
-            overall_lower = float(min(all_bounds))
-            overall_upper = float(max(all_bounds))
-    else:
-        overall = overall_lower = overall_upper = None
+    overall, overall_lower, overall_upper = _combine_purity_estimates(
+        sig_purity=sig_purity,
+        sig_lower=sig_lower,
+        sig_upper=sig_upper,
+        estimate_purity=estimate_purity if stromal_genes else None,
+        lineage_purity=lineage_purity,
+        lineage_lower=lineage_lower,
+        lineage_upper=lineage_upper,
+    )
 
     return {
         "cancer_type": cancer_code,
@@ -484,6 +746,7 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
                 "purity": sig_purity,
                 "lower": sig_lower,
                 "upper": sig_upper,
+                "stability": sig_stability,
                 "per_gene": per_gene,
             },
             "lineage": {
@@ -491,6 +754,10 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
                 "purity": lineage_purity,
                 "lower": lineage_lower,
                 "upper": lineage_upper,
+                "stability": lineage_stability,
+                "concordance": lineage_support["concordance"],
+                "detection_fraction": lineage_support["detection_fraction"],
+                "support_factor": lineage_support["support_factor"],
                 "per_gene": lineage_per_gene,
             },
             "stromal": {
@@ -512,6 +779,7 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
 def plot_tumor_purity(
     df_gene_expr,
     cancer_type=None,
+    sample_mode="auto",
     save_to_filename=None,
     save_dpi=300,
     figsize=(14, 8),
@@ -527,6 +795,45 @@ def plot_tumor_purity(
     result = estimate_tumor_purity(df_gene_expr, cancer_type=cancer_type)
     cancer_code = result["cancer_type"]
     comp = result["components"]
+    if sample_mode == "auto":
+        try:
+            from .decomposition import infer_sample_mode
+            sample_mode = infer_sample_mode(cancer_types=[cancer_code], sample_mode="auto")
+        except Exception:
+            sample_mode = "solid"
+
+    if sample_mode == "heme":
+        metric_label = "Fraction estimate"
+        component_title = "Fraction / context components"
+        summary_title = "Malignant-lineage fraction estimate"
+        signature_label = "Malignant signature"
+        overall_label = "Overall fraction proxy"
+        left_title = (
+            f"{cancer_code} lineage-signature fraction estimates\n"
+            f"(gene TPM / HK TPM vs TCGA reference, calibrated for "
+            f"TCGA median purity {result['tcga_median_purity']:.0%})"
+        )
+    elif sample_mode == "pure":
+        metric_label = "Consistency estimate"
+        component_title = "Consistency / context components"
+        summary_title = "Population consistency estimate"
+        signature_label = "Population signature"
+        overall_label = "Overall consistency"
+        left_title = (
+            f"{cancer_code} lineage-profile consistency estimates\n"
+            f"(gene TPM / HK TPM vs TCGA reference, not interpreted as bulk admixture)"
+        )
+    else:
+        metric_label = "Purity estimate"
+        component_title = "Purity components"
+        summary_title = "Tumor purity estimate"
+        signature_label = "Tumor signature"
+        overall_label = "Overall estimate"
+        left_title = (
+            f"{cancer_code} signature gene purity estimates\n"
+            f"(gene TPM / HK TPM vs TCGA reference, calibrated for "
+            f"TCGA median purity {result['tcga_median_purity']:.0%})"
+        )
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize, gridspec_kw={"width_ratios": [2, 1]})
 
@@ -543,13 +850,8 @@ def plot_tumor_purity(
 
         ax1.set_yticks(y)
         ax1.set_yticklabels(genes, fontsize=8)
-        ax1.set_xlabel("Purity estimate (%)", fontsize=10)
-        ax1.set_title(
-            f"{cancer_code} signature gene purity estimates\n"
-            f"(gene TPM / HK TPM vs TCGA reference, calibrated for "
-            f"TCGA median purity {result['tcga_median_purity']:.0%})",
-            fontsize=10,
-        )
+        ax1.set_xlabel(f"{metric_label} (%)", fontsize=10)
+        ax1.set_title(left_title, fontsize=10)
         ax1.set_xlim(0, 100)
         ax1.invert_yaxis()
         ax1.axvline(
@@ -567,7 +869,7 @@ def plot_tumor_purity(
 
     if comp["signature"]["purity"] is not None:
         components.append((
-            f"Tumor signature\n({len(comp['signature']['genes'])} genes)",
+            f"{signature_label}\n({len(comp['signature']['genes'])} genes)",
             comp["signature"]["purity"] * 100,
             comp["signature"]["lower"] * 100 if comp["signature"]["lower"] is not None else None,
             comp["signature"]["upper"] * 100 if comp["signature"]["upper"] is not None else None,
@@ -597,7 +899,7 @@ def plot_tumor_purity(
 
     if result["overall_estimate"] is not None:
         components.append((
-            "Overall estimate",
+            overall_label,
             result["overall_estimate"] * 100,
             result["overall_lower"] * 100,
             result["overall_upper"] * 100,
@@ -638,17 +940,17 @@ def plot_tumor_purity(
     ax2.set_yticks(y_positions)
     ax2.set_yticklabels(y_labels, fontsize=9)
     ax2.set_xlim(0, 110)
-    ax2.set_xlabel("Purity (%) / enrichment", fontsize=10)
-    ax2.set_title("Purity components", fontsize=11)
+    ax2.set_xlabel(f"{metric_label.split()[0]} (%) / enrichment", fontsize=10)
+    ax2.set_title(component_title, fontsize=11)
     ax2.invert_yaxis()
     ax2.spines["top"].set_visible(False)
     ax2.spines["right"].set_visible(False)
 
     fig.suptitle(
-        f"Tumor purity estimate: {result['overall_estimate']:.0%} "
+        f"{summary_title}: {result['overall_estimate']:.0%} "
         f"[{result['overall_lower']:.0%}–{result['overall_upper']:.0%}]"
         if result["overall_estimate"] is not None
-        else "Tumor purity estimate: N/A",
+        else f"{summary_title}: N/A",
         fontsize=13, fontweight="bold", y=1.02,
     )
     fig.tight_layout()
@@ -705,6 +1007,102 @@ def _score_normal_tissues(sample_tpm_by_symbol, top_n=10):
     return results[:top_n]
 
 
+def _score_host_tissues(sample_tpm_by_symbol, tissues=None, top_n=None):
+    """Score host tissues using site-specific genes depleted from TME overlap.
+
+    This is stricter than `_score_normal_tissues()`: genes must be specific for
+    the candidate host tissue relative to other tissues and relative to generic
+    immune/stromal backgrounds. This prevents lymph node from winning simply
+    because a sample is immune-rich.
+    """
+    ref = pan_cancer_expression()
+    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+    expr = ref_by_sym[ntpm_cols].astype(float)
+    hk_median = _sample_hk_median(sample_tpm_by_symbol)
+    if hk_median <= 0:
+        hk_median = 1.0
+
+    id_to_sym = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
+    hk_gene_symbols = [id_to_sym[gid] for gid in housekeeping_gene_ids() if gid in id_to_sym and id_to_sym[gid] in ref_by_sym.index]
+    if hk_gene_symbols:
+        ref_hk_medians = expr.loc[hk_gene_symbols].median(axis=0).replace(0, np.nan)
+    else:
+        ref_hk_medians = pd.Series(1.0, index=expr.columns, dtype=float)
+    expr_hk = expr.div(ref_hk_medians, axis=1).fillna(0.0)
+
+    gene_mean = expr_hk.mean(axis=1)
+    gene_std = expr_hk.std(axis=1).replace(0, np.nan)
+    z_matrix = expr_hk.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
+
+    results = []
+    for col in ntpm_cols:
+        tissue = col.replace("nTPM_", "")
+        if tissues is not None and tissue not in tissues:
+            continue
+
+        background_cols = [
+            other for other in ntpm_cols
+            if other != col and other.replace("nTPM_", "") in _HOST_SITE_BACKGROUND_TISSUES
+        ]
+        if background_cols:
+            background_max = expr_hk[background_cols].max(axis=1)
+        else:
+            background_max = pd.Series(0.0, index=expr.index)
+
+        tissue_expr = expr_hk[col]
+        z_col = z_matrix[col]
+        specificity = (tissue_expr + 1e-6) / (background_max + 1e-6)
+        score = z_col * np.log2(specificity + 1.0)
+        keep = (
+            (tissue_expr > TUMOR_PURITY_PARAMETERS["host_background"]["expression_min"])
+            & (z_col > TUMOR_PURITY_PARAMETERS["host_background"]["zscore_min"])
+            & (specificity > TUMOR_PURITY_PARAMETERS["host_background"]["specificity_min"])
+        )
+        sig_genes = list(
+            score[keep]
+            .sort_values(ascending=False)
+            .head(TUMOR_PURITY_PARAMETERS["host_background"]["top_genes"])
+            .index
+        )
+        if len(sig_genes) < 5:
+            continue
+
+        pcts = []
+        for gene in sig_genes:
+            s_val = sample_tpm_by_symbol.get(gene, 0.0) / hk_median
+            ref_vals = expr_hk.loc[gene].values
+            n = len(ref_vals)
+            below = np.sum(ref_vals < s_val)
+            equal = np.sum(np.isclose(ref_vals, s_val, atol=1e-6))
+            pcts.append((below + 0.5 * equal) / n)
+        if pcts:
+            results.append((tissue, float(np.mean(pcts)), len(pcts)))
+
+    results.sort(key=lambda x: -x[1])
+    if top_n is None:
+        return results
+    return results[:top_n]
+
+
+def _score_cancer_family_panels(sample_tpm_by_symbol):
+    """Score broad cancer families before attempting fine subtype ranking."""
+    hk_median = _sample_hk_median(sample_tpm_by_symbol)
+    if hk_median <= 0:
+        return {family: 0.0 for family in _CANCER_FAMILY_PANELS}
+
+    scores = {}
+    for family, genes in _CANCER_FAMILY_PANELS.items():
+        values = [sample_tpm_by_symbol.get(g, 0.0) / hk_median for g in genes]
+        if not values:
+            scores[family] = 0.0
+            continue
+        values = sorted(values)
+        upper_half = values[len(values) // 2:] if len(values) >= 3 else values
+        scores[family] = float(np.median(upper_half)) if upper_half else 0.0
+    return scores
+
+
 def _get_mhc_expression(sample_tpm_by_symbol):
     """Get MHC class I and II expression levels."""
     mhc1_genes = ["HLA-A", "HLA-B", "HLA-C", "B2M", "TAP1", "TAP2"]
@@ -715,6 +1113,267 @@ def _get_mhc_expression(sample_tpm_by_symbol):
     return mhc1, mhc2
 
 
+def rank_cancer_type_candidates(
+    df_gene_expr,
+    candidate_codes=None,
+    top_k=5,
+):
+    """Rank cancer-type hypotheses by signature evidence and purity plausibility.
+
+    Pure signature similarity tends to overcall stromal or immune-rich cancer
+    types when the sample has heavy admixture. We rank candidates by:
+
+    - cancer-type signature similarity
+    - a purity anchor that combines tumor-specific and lineage evidence
+    - lineage pattern concordance when lineage genes are available
+
+    This keeps "one of these two is plausible" ambiguity visible while
+    downweighting types whose purity model does not fit the sample.
+    """
+    from .plot import _compute_cancer_type_signature_stats, resolve_cancer_type
+
+    stats = _compute_cancer_type_signature_stats(df_gene_expr)
+    signature_score_map = {row["code"]: float(row["score"]) for row in stats}
+    sample_tpm = _build_sample_tpm_by_symbol(df_gene_expr)
+    family_scores = _score_cancer_family_panels(sample_tpm)
+    family_params = TUMOR_PURITY_PARAMETERS["family_scoring"]
+    soft_families = set(family_params.get("non_penalizing_families", []))
+    hard_family_scores = {
+        family: score for family, score in family_scores.items()
+        if family not in soft_families
+    }
+    max_family_score = max(hard_family_scores.values(), default=0.0)
+    sorted_family_scores = sorted(hard_family_scores.values(), reverse=True)
+    top_family_score = sorted_family_scores[0] if sorted_family_scores else 0.0
+    second_family_score = sorted_family_scores[1] if len(sorted_family_scores) > 1 else 0.0
+    family_presence = float(np.clip(top_family_score / family_params["presence_scale"], 0.0, 1.0))
+    family_specificity = 0.0
+    if top_family_score > 0:
+        family_specificity = float(
+            np.clip((top_family_score - second_family_score) / top_family_score, 0.0, 1.0)
+        )
+    ranked_families = sorted(
+        family_scores.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    hard_ranked_families = sorted(
+        hard_family_scores.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+
+    if candidate_codes is None:
+        candidate_codes = [row["code"] for row in stats[:8]]
+        for family, score in ranked_families[: family_params["candidate_panel_top_n"]]:
+            if score < family_params["candidate_panel_min_score"]:
+                continue
+            if family in soft_families and top_family_score >= family_params["presence_scale"]:
+                continue
+            family_codes = [
+                code for code, family_label in _CANCER_FAMILY_BY_CODE.items()
+                if family_label == family
+            ]
+            candidate_codes.extend(family_codes)
+    else:
+        candidate_codes = [resolve_cancer_type(code) for code in candidate_codes]
+
+    seen = set()
+    ordered_codes = []
+    for code in candidate_codes:
+        if code not in seen:
+            seen.add(code)
+            ordered_codes.append(code)
+
+    rows = []
+    top_family_label = hard_ranked_families[0][0] if hard_ranked_families else None
+    non_penalizing_families = soft_families
+    for code in ordered_codes:
+        purity_result = estimate_tumor_purity(df_gene_expr, cancer_type=code)
+        purity_estimate = float(purity_result["overall_estimate"] or 0.0)
+        signature_score = float(signature_score_map.get(code, 0.0))
+        signature_stability = float(
+            purity_result.get("components", {}).get("signature", {}).get("stability") or 1.0
+        )
+        lineage = purity_result.get("components", {}).get("lineage", {})
+        lineage_support_factor = float(lineage.get("support_factor") or 1.0)
+        lineage_concordance = lineage.get("concordance")
+        lineage_detection_fraction = lineage.get("detection_fraction")
+        family_label = _CANCER_FAMILY_BY_CODE.get(code)
+        if family_label is not None:
+            if family_label in non_penalizing_families:
+                family_factor = float(
+                    np.clip(
+                        1.0 - family_params["soft_family_penalty_gain"] * family_presence,
+                        family_params["min_factor"],
+                        1.0,
+                    )
+                )
+            else:
+                family_relative = (
+                    float(family_scores.get(family_label, 0.0) / max_family_score)
+                    if max_family_score > 0
+                    else 0.0
+                )
+                family_factor = float(
+                    np.clip(
+                        family_params["within_family_base"] + family_params["within_family_gain"] * family_presence * family_relative,
+                        family_params["min_factor"],
+                        1.0,
+                    )
+                )
+        elif family_label is None and family_presence > 0:
+            if top_family_label in non_penalizing_families:
+                family_factor = 1.0
+            else:
+                family_factor = float(
+                    np.clip(
+                        1.0 - family_params["non_family_penalty"] * family_presence,
+                        family_params["min_factor"],
+                        1.0,
+                    )
+                )
+        else:
+            family_factor = 1.0
+        support_score = (
+            signature_score
+            * max(purity_estimate, family_params["support_norm_floor"])
+            * lineage_support_factor
+            * max(signature_stability, family_params["signature_stability_floor"])
+            * max(family_factor, family_params["min_factor"])
+        )
+        rows.append(
+            {
+                "code": code,
+                "signature_score": signature_score,
+                "signature_stability": signature_stability,
+                "purity_estimate": purity_estimate,
+                "lineage_purity": lineage.get("purity"),
+                "lineage_concordance": lineage_concordance,
+                "lineage_detection_fraction": lineage_detection_fraction,
+                "lineage_support_factor": lineage_support_factor,
+                "family_label": family_label,
+                "family_score": family_scores.get(family_label) if family_label is not None else None,
+                "family_presence": family_presence,
+                "family_specificity": family_specificity,
+                "family_factor": family_factor,
+                "support_score": support_score,
+                "purity_result": purity_result,
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            -row["support_score"],
+            -row["signature_score"],
+            row["code"],
+        )
+    )
+
+    max_support = max((row["support_score"] for row in rows), default=0.0)
+    for row in rows:
+        row["support_norm"] = (
+            float(row["support_score"] / max_support) if max_support > 0 else 0.0
+        )
+
+    return rows[:top_k]
+
+
+def _summarize_candidate_family(candidate_trace):
+    """Summarize family-level ambiguity from ranked cancer candidates."""
+    if not candidate_trace:
+        return {
+            "label": None,
+            "codes": [],
+            "display": None,
+            "subtype_clause": None,
+        }
+
+    best = candidate_trace[0]
+    family = best.get("family_label")
+    if family is None:
+        return {
+            "label": None,
+            "codes": [best["code"]],
+            "display": None,
+            "subtype_clause": None,
+        }
+    family_group = _CANCER_FAMILY_GROUP.get(family, family)
+
+    family_rows = [
+        row for row in candidate_trace
+        if _CANCER_FAMILY_GROUP.get(row.get("family_label"), row.get("family_label")) == family_group
+        and row["support_score"] >= best["support_score"] * TUMOR_PURITY_PARAMETERS["family_scoring"]["family_display_fraction"]
+    ]
+    family_codes = [row["code"] for row in family_rows]
+    if _CANCER_FAMILY_GROUP_CODE_COUNTS.get(family_group, 0) < 2:
+        return {
+            "label": family_group,
+            "codes": family_codes or [best["code"]],
+            "display": None,
+            "subtype_clause": None,
+        }
+    display_name = _CANCER_FAMILY_DISPLAY.get(family_group, family_group)
+    display = f"{display_name} family"
+    subtype_clause = None
+    if len(family_codes) >= 2:
+        display = f"{display_name} family ({' > '.join(family_codes[:3])})"
+        subtype_clause = f"{family_codes[0]} > {family_codes[1]}"
+    elif family_codes:
+        subtype_clause = family_codes[0]
+
+    return {
+        "label": family_group,
+        "codes": family_codes,
+        "display": display,
+        "subtype_clause": subtype_clause,
+    }
+
+
+def _summarize_fit_quality(candidate_trace, signature_stats):
+    """Describe whether TCGA references provide a focused subtype fit."""
+    if not candidate_trace:
+        return {
+            "label": "unknown",
+            "signature_gap": None,
+            "support_ratio": None,
+            "message": "No cancer candidates were available.",
+        }
+
+    best = candidate_trace[0]
+    second = candidate_trace[1] if len(candidate_trace) > 1 else None
+    support_ratio = None
+    if second is not None and second["support_score"] > 0:
+        support_ratio = float(best["support_score"] / second["support_score"])
+
+    top_signature = float(signature_stats[0]["score"]) if signature_stats else 0.0
+    reference_idx = min(4, len(signature_stats) - 1) if signature_stats else 0
+    reference_signature = float(signature_stats[reference_idx]["score"]) if signature_stats else 0.0
+    signature_gap = float(top_signature - reference_signature)
+
+    if signature_gap < 0.05:
+        return {
+            "label": "weak",
+            "signature_gap": signature_gap,
+            "support_ratio": support_ratio,
+            "message": (
+                "Subtype fit is weak: the sample sits in a flat TCGA signature landscape, "
+                "so broad family interpretation is more trustworthy than the exact top label."
+            ),
+        }
+    if support_ratio is not None and support_ratio < 1.35:
+        return {
+            "label": "ambiguous",
+            "signature_gap": signature_gap,
+            "support_ratio": support_ratio,
+            "message": "Top subtype candidates remain close; treat the leading label as provisional.",
+        }
+    return {
+        "label": "focused",
+        "signature_gap": signature_gap,
+        "support_ratio": support_ratio,
+        "message": "The leading TCGA reference is materially separated from alternatives.",
+    }
+
+
 # -------------------- comprehensive summary --------------------
 
 
@@ -722,7 +1381,7 @@ def analyze_sample(df_gene_expr, cancer_type=None):
     """Comprehensive sample composition analysis.
 
     Returns a dict with all analysis results: cancer type, purity,
-    tissue context, MHC status, and narrative interpretation.
+    background signatures, MHC status, and narrative interpretation.
     """
     from .plot import (
         _compute_cancer_type_signature_stats,
@@ -734,30 +1393,53 @@ def analyze_sample(df_gene_expr, cancer_type=None):
 
     # 1. Cancer type
     stats = _compute_cancer_type_signature_stats(df_gene_expr)
+    default_candidates = [row["code"] for row in stats[:8]]
     if cancer_type:
         cancer_code = resolve_cancer_type(cancer_type)
+        candidate_trace = rank_cancer_type_candidates(
+            df_gene_expr,
+            candidate_codes=[cancer_code] + default_candidates,
+            top_k=8,
+        )
     else:
-        cancer_code = stats[0]["code"]
+        candidate_trace = rank_cancer_type_candidates(
+            df_gene_expr,
+            candidate_codes=None,
+            top_k=8,
+        )
+        cancer_code = candidate_trace[0]["code"] if candidate_trace else stats[0]["code"]
     cancer_name = CANCER_TYPE_NAMES.get(cancer_code, cancer_code)
-    cancer_score = stats[0]["score"] if stats[0]["code"] == cancer_code else None
+    candidate_lookup = {row["code"]: row for row in candidate_trace}
+    selected_candidate = candidate_lookup.get(cancer_code)
+    cancer_score = selected_candidate["support_score"] if selected_candidate else None
+    family_summary = _summarize_candidate_family(candidate_trace)
+    fit_quality = _summarize_fit_quality(candidate_trace, stats)
 
     # 2. Purity
-    purity = estimate_tumor_purity(df_gene_expr, cancer_type=cancer_code)
+    if selected_candidate is not None:
+        purity = selected_candidate["purity_result"]
+    else:
+        purity = estimate_tumor_purity(df_gene_expr, cancer_type=cancer_code)
 
-    # 3. Tissue context
-    tissue_scores = _score_normal_tissues(sample_tpm)
+    # 3. Residual background signatures
+    tissue_scores = _score_host_tissues(sample_tpm, top_n=10)
 
     # 4. MHC expression
     mhc1, mhc2 = _get_mhc_expression(sample_tpm)
 
     # 5. Top cancer type matches
-    top_cancers = [(s["code"], s["score"]) for s in stats[:5]]
+    top_cancers = [(row["code"], row["support_score"]) for row in candidate_trace[:5]]
+    signature_top_cancers = [(s["code"], s["score"]) for s in stats[:5]]
 
     return {
         "cancer_type": cancer_code,
         "cancer_name": cancer_name,
         "cancer_score": cancer_score,
         "top_cancers": top_cancers,
+        "signature_top_cancers": signature_top_cancers,
+        "candidate_trace": candidate_trace,
+        "family_summary": family_summary,
+        "fit_quality": fit_quality,
         "purity": purity,
         "tissue_scores": tissue_scores,
         "mhc1": mhc1,
@@ -768,6 +1450,7 @@ def analyze_sample(df_gene_expr, cancer_type=None):
 def plot_sample_summary(
     df_gene_expr,
     cancer_type=None,
+    sample_mode="auto",
     save_to_filename=None,
     save_dpi=300,
 ):
@@ -776,7 +1459,7 @@ def plot_sample_summary(
     Four-panel figure:
     - Top-left: cancer type identification (bar chart)
     - Top-right: tumor purity and microenvironment composition
-    - Bottom-left: normal tissue context (where is the non-tumor signal from?)
+    - Bottom-left: residual background signatures (where is the non-tumor signal from?)
     - Bottom-right: MHC class I and II expression
     """
     import matplotlib.pyplot as plt
@@ -786,6 +1469,16 @@ def plot_sample_summary(
     purity = analysis["purity"]
     cancer_code = analysis["cancer_type"]
     cancer_name = analysis["cancer_name"]
+    if sample_mode == "auto":
+        try:
+            from .decomposition import infer_sample_mode
+            sample_mode = infer_sample_mode(
+                candidate_rows=analysis.get("candidate_trace"),
+                cancer_types=[cancer_code],
+                sample_mode="auto",
+            )
+        except Exception:
+            sample_mode = "solid"
 
     fig = plt.figure(figsize=(18, 14))
     gs = GridSpec(2, 2, figure=fig, hspace=0.35, wspace=0.3)
@@ -805,12 +1498,38 @@ def plot_sample_summary(
         ax1.text(-0.01, i, label, va="center", ha="right", fontsize=9)
     ax1.set_yticks([])
     ax1.set_xlim(0, 1.1)
-    ax1.set_xlabel("Signature similarity score", fontsize=10)
-    ax1.set_title("Cancer type identification", fontsize=12, fontweight="bold")
+    ax1.set_xlabel("Support score (signature x purity)", fontsize=10)
+    fit_quality = analysis.get("fit_quality", {})
+    fit_label = fit_quality.get("label")
+    title = "Cancer type hypotheses"
+    if fit_label in {"weak", "ambiguous"}:
+        title += f" ({fit_label} fit)"
+    ax1.set_title(title, fontsize=12, fontweight="bold")
     ax1.invert_yaxis()
     ax1.spines["top"].set_visible(False)
     ax1.spines["right"].set_visible(False)
     ax1.spines["left"].set_visible(False)
+    label_options = [top_cancers[0][0]] if top_cancers else []
+    if len(top_cancers) >= 2 and fit_label in {"weak", "ambiguous"}:
+        label_options.append(top_cancers[1][0])
+    if fit_label or label_options:
+        lines = []
+        if fit_label:
+            lines.append(f"Fit: {fit_label}")
+        if len(label_options) == 2:
+            lines.append(f"Possible labels: {label_options[0]} or {label_options[1]}")
+        elif len(label_options) == 1:
+            lines.append(f"Lead label: {label_options[0]}")
+        ax1.text(
+            0.02,
+            0.02,
+            "\n".join(lines),
+            transform=ax1.transAxes,
+            fontsize=9,
+            va="bottom",
+            ha="left",
+            bbox=dict(boxstyle="round,pad=0.25", facecolor="white", alpha=0.85),
+        )
 
     # ---- Panel 2: Purity and microenvironment ----
     ax2 = fig.add_subplot(gs[0, 1])
@@ -823,38 +1542,79 @@ def plot_sample_summary(
     stromal_frac = min(stromal_enr / (stromal_enr + immune_enr + 0.001), 1 - tumor_frac) * (1 - tumor_frac)
     immune_frac = 1 - tumor_frac - stromal_frac
 
-    ax2.barh(0, tumor_frac * 100, color="#2166ac", height=0.5, label=f"Tumor ({tumor_frac:.0%})")
+    if sample_mode == "heme":
+        main_label = "Malignant-like"
+        stromal_label = "Stromal context"
+        immune_label = "Immune context"
+        comp_title = "Heme Composition Context"
+        comp_xlabel = "Estimated fraction / context (%)"
+        detail_prefix = "Malignant-lineage fraction proxy"
+    elif sample_mode == "pure":
+        main_label = "Dominant population"
+        stromal_label = "Residual stromal"
+        immune_label = "Residual immune"
+        comp_title = "Population Coherence"
+        comp_xlabel = "Estimated population / context (%)"
+        detail_prefix = "Population consistency"
+    else:
+        main_label = "Tumor"
+        stromal_label = "Stromal"
+        immune_label = "Immune"
+        comp_title = "Sample Composition"
+        comp_xlabel = "Estimated composition (%)"
+        detail_prefix = "Tumor purity"
+
+    ax2.barh(0, tumor_frac * 100, color="#2166ac", height=0.5, label=f"{main_label} ({tumor_frac:.0%})")
     ax2.barh(0, stromal_frac * 100, left=tumor_frac * 100, color="#d6604d", height=0.5,
-             label=f"Stromal ({stromal_frac:.0%})")
+             label=f"{stromal_label} ({stromal_frac:.0%})")
     ax2.barh(0, immune_frac * 100, left=(tumor_frac + stromal_frac) * 100, color="#4393c3",
-             height=0.5, label=f"Immune ({immune_frac:.0%})")
+             height=0.5, label=f"{immune_label} ({immune_frac:.0%})")
 
     ax2.set_xlim(0, 100)
     ax2.set_yticks([])
-    ax2.set_xlabel("Estimated composition (%)", fontsize=10)
+    ax2.set_xlabel(comp_xlabel, fontsize=10)
     ax2.legend(loc="upper right", fontsize=9, framealpha=0.9)
 
     # Add text annotations below
     lo = purity["overall_lower"]
     hi = purity["overall_upper"]
-    details = [
-        f"Tumor purity: {overall:.0%}" + (f" [{lo:.0%}–{hi:.0%}]" if lo is not None else ""),
-        f"Stromal enrichment: {stromal_enr:.1f}x vs TCGA {cancer_code}",
-        f"Immune enrichment: {immune_enr:.1f}x vs TCGA {cancer_code}",
-        f"TCGA {cancer_code} median purity: {purity['tcga_median_purity']:.0%}",
-    ]
+    details = [f"{detail_prefix}: {overall:.0%}" + (f" [{lo:.0%}–{hi:.0%}]" if lo is not None else "")]
+    if sample_mode == "solid":
+        details.extend(
+            [
+                f"Stromal enrichment: {stromal_enr:.1f}x vs TCGA {cancer_code}",
+                f"Immune enrichment: {immune_enr:.1f}x vs TCGA {cancer_code}",
+                f"TCGA {cancer_code} median purity: {purity['tcga_median_purity']:.0%}",
+            ]
+        )
+    elif sample_mode == "heme":
+        details.extend(
+            [
+                f"Stromal context: {stromal_enr:.1f}x vs TCGA {cancer_code}",
+                f"Immune context: {immune_enr:.1f}x vs TCGA {cancer_code}",
+                "Interpretation: lineage/background context, not a strict tumor-vs-immune split",
+            ]
+        )
+    else:
+        details.extend(
+            [
+                f"Residual stromal context: {stromal_enr:.1f}x vs TCGA {cancer_code}",
+                f"Residual immune context: {immune_enr:.1f}x vs TCGA {cancer_code}",
+                "Interpretation: consistency vs matched lineage profile, not bulk admixture",
+            ]
+        )
     for i, txt in enumerate(details):
         ax2.text(0, -0.6 - i * 0.5, txt, transform=ax2.transData,
                  fontsize=9, va="top",
                  bbox=dict(boxstyle="round,pad=0.2", facecolor="white", alpha=0.8) if i == 0 else None)
 
     ax2.set_ylim(-3.5, 0.8)
-    ax2.set_title("Sample composition", fontsize=12, fontweight="bold")
+    ax2.set_title(comp_title, fontsize=12, fontweight="bold")
     ax2.spines["top"].set_visible(False)
     ax2.spines["right"].set_visible(False)
     ax2.spines["left"].set_visible(False)
 
-    # ---- Panel 3: Tissue context ----
+    # ---- Panel 3: Background tissue signatures ----
     ax3 = fig.add_subplot(gs[1, 0])
     tissue_scores = analysis["tissue_scores"]
     if tissue_scores:
@@ -877,17 +1637,22 @@ def plot_sample_summary(
         for i, (t, s, n) in enumerate(tissue_scores):
             ax3.text(s + 0.01, i, f"{s:.3f}", va="center", fontsize=8)
         ax3.set_xlim(0, 1.1)
-        ax3.set_xlabel("Tissue signature score", fontsize=10)
+        ax3.set_xlabel("Background signature score", fontsize=10)
         ax3.invert_yaxis()
         # Legend
         from matplotlib.patches import Patch
         ax3.legend(handles=[
-            Patch(color="#2166ac", label=f"Expected origin ({matched})"),
-            Patch(color="#b2182b", label="Strong signal (>0.7)"),
+            Patch(color="#2166ac", label=f"Expected origin family ({matched})"),
+            Patch(color="#b2182b", label="Strong residual background"),
             Patch(color="#92c5de", label="Background"),
         ], loc="lower right", fontsize=7, framealpha=0.9)
-    ax3.set_title("Normal tissue context\n(where is the non-tumor signal from?)",
-                  fontsize=12, fontweight="bold")
+    if sample_mode == "heme":
+        bg_title = "Lineage / Background Context\n(residual hematopoietic and tissue programs)"
+    elif sample_mode == "pure":
+        bg_title = "Residual Background Check\n(contamination / off-target context)"
+    else:
+        bg_title = "Background Tissue Signatures\n(residual non-tumor context)"
+    ax3.set_title(bg_title, fontsize=12, fontweight="bold")
     ax3.spines["top"].set_visible(False)
     ax3.spines["right"].set_visible(False)
 
@@ -925,8 +1690,14 @@ def plot_sample_summary(
     ax4.spines["right"].set_visible(False)
 
     # ---- Main title ----
+    if sample_mode == "heme":
+        mode_title = "hematologic / lymphoid bulk"
+    elif sample_mode == "pure":
+        mode_title = "pure population / cell culture"
+    else:
+        mode_title = "solid tumor / metastatic bulk"
     fig.suptitle(
-        f"Sample composition analysis — {cancer_name} ({cancer_code})",
+        f"Sample composition analysis — {cancer_name} ({cancer_code}) [{mode_title}]",
         fontsize=15, fontweight="bold", y=0.98,
     )
 
