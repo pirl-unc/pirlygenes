@@ -244,6 +244,42 @@ def test_detect_and_convert_to_tpm_noop_when_no_fpkm_column():
     pd.testing.assert_frame_equal(out, df)
 
 
+@pytest.mark.parametrize("derived_col", [
+    "log2_fpkm",
+    "log_fpkm",
+    "FPKM_zscore",
+    "fpkm_adjusted",
+    "FPKM_rank",
+    "FPKM_COAD",  # TCGA reference column
+    "FPKM_BRCA",
+    "fpkm_per_million",
+])
+def test_detect_and_convert_to_tpm_ignores_derived_fpkm_columns(derived_col):
+    """Derived or per-cohort FPKM columns must NOT trigger conversion."""
+    df = pd.DataFrame({
+        "ensembl_gene_id": ["ENSG1", "ENSG2"],
+        derived_col: [2.5, 3.0],
+    })
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = le._detect_and_convert_to_tpm(df, verbose=False)
+    pd.testing.assert_frame_equal(out, df)
+
+
+@pytest.mark.parametrize("raw_col", ["FPKM", "fpkm", "gene_fpkm", "gene FPKM", "rna_fpkm"])
+def test_detect_and_convert_to_tpm_recognises_raw_fpkm_variants(raw_col):
+    """Raw-FPKM variants (exact match) should all trigger conversion."""
+    df = pd.DataFrame({
+        "ensembl_gene_id": ["ENSG1", "ENSG2"],
+        raw_col: [100.0, 200.0],
+    })
+    with pytest.warns(UserWarning, match="converted to TPM"):
+        out = le._detect_and_convert_to_tpm(df, verbose=False)
+    assert "TPM" in out.columns
+    assert raw_col not in out.columns
+    assert abs(out["TPM"].sum() - 1e6) < 1.0
+
+
 # ── Alt-haplotype ID aliasing + TPM summing ─────────────────────────────
 
 def test_apply_id_aliases_sums_alt_haplotype_tpm(monkeypatch):
@@ -347,3 +383,66 @@ def test_load_ensembl_id_aliases_detects_cycles(monkeypatch):
     monkeypatch.setattr(ld, "get_data", lambda name: cyclic)
     with pytest.raises(ValueError, match="Cycle"):
         le._load_ensembl_id_aliases()
+
+
+# ── Ensembl release version check ───────────────────────────────────────
+
+def _reset_release_check():
+    """Reset the once-per-process flag so tests can exercise the warning."""
+    le._ensembl_release_check_done = False
+
+
+def test_ensembl_release_check_warns_when_no_releases_installed(monkeypatch):
+    _reset_release_check()
+    from pyensembl import shell
+    monkeypatch.setattr(shell, "collect_all_installed_ensembl_releases", lambda: [])
+    with pytest.warns(UserWarning, match="No human Ensembl releases"):
+        le._check_installed_ensembl_releases()
+
+
+def test_ensembl_release_check_warns_when_only_old_releases(monkeypatch):
+    _reset_release_check()
+    from types import SimpleNamespace
+    from pyensembl import shell
+    old_release = SimpleNamespace(
+        species=SimpleNamespace(latin_name="homo_sapiens"),
+        release=93,
+    )
+    monkeypatch.setattr(
+        shell,
+        "collect_all_installed_ensembl_releases",
+        lambda: [old_release],
+    )
+    with pytest.warns(UserWarning, match="older than the recommended minimum"):
+        le._check_installed_ensembl_releases()
+
+
+def test_ensembl_release_check_silent_when_recent_release_installed(monkeypatch):
+    _reset_release_check()
+    from types import SimpleNamespace
+    from pyensembl import shell
+    recent = SimpleNamespace(
+        species=SimpleNamespace(latin_name="homo_sapiens"),
+        release=112,
+    )
+    monkeypatch.setattr(
+        shell,
+        "collect_all_installed_ensembl_releases",
+        lambda: [recent],
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        le._check_installed_ensembl_releases()
+
+
+def test_ensembl_release_check_fires_only_once_per_process(monkeypatch):
+    _reset_release_check()
+    from pyensembl import shell
+    monkeypatch.setattr(shell, "collect_all_installed_ensembl_releases", lambda: [])
+    # First call warns
+    with pytest.warns(UserWarning):
+        le._check_installed_ensembl_releases()
+    # Second call is silent (the flag persists)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        le._check_installed_ensembl_releases()

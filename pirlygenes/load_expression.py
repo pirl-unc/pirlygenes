@@ -47,6 +47,17 @@ _TPM_PATTERNS = [
     r"(^|[_\s])tpm($|[_\s])",
 ]
 
+# Strict FPKM column patterns — match raw FPKM columns only, not derived
+# columns like log2_fpkm, FPKM_zscore, FPKM_adjusted, or per-cohort
+# reference columns like FPKM_COAD.  A full column-name match is required.
+_RAW_FPKM_PATTERNS = [
+    r"^FPKM$",
+    r"^fpkm$",
+    r"^gene[_\s]?fpkm$",
+    r"^rna[_\s]?fpkm$",
+    r"^mrna[_\s]?fpkm$",
+]
+
 
 def _guess_col(columns, patterns):
     """Return the first column that matches any pattern, or None."""
@@ -97,6 +108,57 @@ def get_canonical_gene_name_from_gene_ids_string(gene_ids_string):
     gene_names = [find_gene_name_from_ensembl_gene_id(gene_id) for gene_id in gene_ids]
     not_none_gene_names = [name for name in gene_names if name is not None]
     return ";".join(not_none_gene_names)
+
+
+_MIN_RECOMMENDED_ENSEMBL_RELEASE = 110
+_ensembl_release_check_done = False
+
+
+def _check_installed_ensembl_releases():
+    """Warn once if no Ensembl release >= 110 is installed.
+
+    The alt-haplotype alias mapping canonicalises to primary-contig IDs
+    that exist on the primary assembly.  Many of these IDs were added or
+    updated in Ensembl 110+, so older installed releases may fail to
+    resolve them to gene symbols downstream, leading to missing names in
+    reports and plots.
+    """
+    global _ensembl_release_check_done
+    if _ensembl_release_check_done:
+        return
+    _ensembl_release_check_done = True
+    try:
+        from pyensembl.shell import collect_all_installed_ensembl_releases
+    except ImportError:
+        return
+    try:
+        installed = [
+            g for g in collect_all_installed_ensembl_releases()
+            if g.species.latin_name == "homo_sapiens"
+        ]
+    except Exception:
+        return
+    if not installed:
+        warnings.warn(
+            "No human Ensembl releases are installed via pyensembl. "
+            "Gene symbol resolution will be incomplete. Install with: "
+            f"pyensembl install --release {_MIN_RECOMMENDED_ENSEMBL_RELEASE} "
+            "--species homo_sapiens",
+            UserWarning,
+            stacklevel=3,
+        )
+        return
+    latest = max(g.release for g in installed)
+    if latest < _MIN_RECOMMENDED_ENSEMBL_RELEASE:
+        warnings.warn(
+            f"Installed Ensembl release {latest} is older than the "
+            f"recommended minimum ({_MIN_RECOMMENDED_ENSEMBL_RELEASE}). "
+            "Recently-added alt-haplotype MHC/KIR genes may fail to "
+            f"resolve to symbols. Install with: pyensembl install "
+            f"--release {_MIN_RECOMMENDED_ENSEMBL_RELEASE} --species homo_sapiens",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def _load_ensembl_id_aliases():
@@ -154,17 +216,18 @@ def _detect_and_convert_to_tpm(df, verbose=True):
     downstream comparisons (e.g. sample vs. TCGA cohort) are on the same
     scale.
 
+    Only raw FPKM columns are converted (full-name match against
+    _RAW_FPKM_PATTERNS).  Derived columns like ``log2_fpkm``,
+    ``FPKM_zscore``, or per-cohort reference columns like ``FPKM_COAD``
+    are deliberately NOT treated as raw FPKM — those contain values that
+    have already been transformed or belong to a different use case.
+
     Emits a UserWarning when conversion happens, since this modifies the
     values in the input DataFrame.  The warning surfaces even when
     ``verbose=False`` so callers always see that a conversion occurred.
     """
-    # Detect by column name: if we see FPKM but no TPM column, convert.
-    # After fuzzy renaming, the value column is named "TPM" regardless, so
-    # we look at the original columns first.
-    fpkm_col = next(
-        (c for c in df.columns if c.upper() == "FPKM" or "fpkm" in c.lower()),
-        None,
-    )
+    # Detect raw FPKM column by strict pattern; derived columns are ignored
+    fpkm_col = _guess_col(df.columns, _RAW_FPKM_PATTERNS)
     tpm_col = next(
         (c for c in df.columns if c.upper() == "TPM" or c.lower().endswith("_tpm")),
         None,
@@ -380,6 +443,7 @@ def load_expression_data(
     verbose=True,
     progress=True,
 ):
+    _check_installed_ensembl_releases()
     if verbose:
         print(f"[load] Loading expression data from: {input_path}")
 
