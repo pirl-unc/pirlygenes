@@ -149,14 +149,57 @@ TUMOR_PURITY_PARAMETERS = {
         "detection_fraction_threshold": 0.05,
     },
     "tumor_specific_markers": {
+        # Difference in HK-normalized expression a candidate must clear over
+        # the matched-normal background to be eligible at all. Keeps the
+        # filter meaningful for low-abundance but legitimately tumor-biased
+        # genes.
         "delta_min": 0.02,
+        # Strict tier: maximum share of the cancer signal that can come from
+        # matched-normal tissue / broad host background, and minimum
+        # cancer-vs-background fold change. A lower bound on z-score and
+        # absolute HK-normalized expression in the cancer type itself.
         "normal_fraction_max": 0.5,
         "tme_fraction_max": 0.5,
         "cancer_expression_min": 0.5,
-        "fallback_expression_min": 0.1,
         "zscore_min": 1.0,
-        "fallback_zscore_min": 0.25,
         "specificity_min": 1.5,
+        # Loose tier: if the strict tier leaves a cancer type under-covered,
+        # relax the absolute-expression and z-score floors. Still enforces
+        # `delta_min` and some minimal specificity.
+        "fallback_expression_min": 0.1,
+        "fallback_zscore_min": 0.25,
+        # Tuning knobs on the loose tier. Kept explicit (rather than
+        # hard-coded in the tier construction) so the behavior is visible
+        # without reading the filter code.
+        "fallback_normal_fraction_max": 0.8,
+        "fallback_tme_fraction_max": 0.8,
+        "fallback_specificity_min": 1.1,
+        # Gene-family exclusions, expressed as regex patterns matched with
+        # `re.fullmatch` against gene symbols. The defaults drop:
+        #   - rearranged-receptor V/D/J/C segments (IGHV3-33, TRGV9, ...)
+        #     which are infiltrate-driven and sequence-unstable
+        #   - HLA class II (HLA-D*) which are APC / infiltrate markers
+        #   - RPL*/RPS* ribosomal protein genes
+        #   - MT-* mitochondrial-encoded transcripts (unstable, degradation
+        #     artifact territory)
+        # HLA class I (HLA-A/B/C/E/F/G) and non-receptor IG/TR genes
+        # (IGHMBP2, TRAF*, TRADD, TRAP1, TRAK1, ...) are deliberately not
+        # excluded.
+        "excluded_gene_regexes": [
+            r"(IGH|IGK|IGL|TRA|TRB|TRG|TRD)[VDJC]\d.*",
+            r"HLA-D[A-Z]+\d*",
+            r"(RPL|RPS)\d.*",
+            r"MT-.*",
+        ],
+        # Cancer types where the excluded families above ARE the legitimate
+        # tumor signal. Covers lymphoid (DLBC → B-cell receptor), myeloid
+        # APC-like (LAML — monocytic subtypes retain high HLA-DR / MHC-II;
+        # HLA-DR is a standard AML immunophenotyping marker and only APL/M3
+        # is reliably HLA-DR-negative), and thymic epithelial (THYM, which
+        # also expresses class II). The rearranged-receptor and HLA-D
+        # regexes above are bypassed for these codes so the panel captures
+        # legitimate lineage markers instead of dropping them.
+        "immune_origin_cancer_types": ["DLBC", "LAML", "THYM"],
     },
     "host_background": {
         "expression_min": 0.05,
@@ -189,8 +232,59 @@ TUMOR_PURITY_PARAMETERS = {
 }
 
 _SIGNATURE_PANEL_CACHE = {}
-_REARRANGED_GENE_PREFIXES = ("IGH", "IGK", "IGL", "TRA", "TRB", "TRG", "TRD")
-_GENERIC_SIGNATURE_EXCLUDE_PREFIXES = ("MT-", "RPL", "RPS", "HLA-")
+
+
+def _params_fingerprint(subkeys):
+    """Stable, hashable snapshot of the selected TUMOR_PURITY_PARAMETERS keys.
+
+    Used as part of a cache key so mutating parameters between calls
+    invalidates previously cached panels instead of silently serving stale
+    results (which would surprise anyone tuning parameters in a REPL or test).
+    """
+    snap = []
+    for key in subkeys:
+        value = TUMOR_PURITY_PARAMETERS.get(key, {})
+        # Cheap canonicalization — sort top-level keys and coerce nested
+        # lists to tuples so the result is hashable.
+        flat = tuple(
+            (k, tuple(v) if isinstance(v, list) else v)
+            for k, v in sorted(value.items())
+        )
+        snap.append((key, flat))
+    return tuple(snap)
+
+
+def _compile_excluded_gene_matcher():
+    """Return a predicate `symbol -> bool` from the configured regex list.
+
+    Factored out so the compiled regex is cached per distinct pattern list
+    and re-used across many gene lookups inside a single panel build.
+    """
+    import re
+
+    params = TUMOR_PURITY_PARAMETERS["tumor_specific_markers"]
+    patterns = tuple(params.get("excluded_gene_regexes", ()) or ())
+    if not patterns:
+        return lambda symbol: False
+    joined = "|".join(f"(?:{p})" for p in patterns)
+    regex = re.compile(f"^(?:{joined})$")
+
+    def is_excluded(symbol):
+        if not symbol:
+            return True
+        return bool(regex.fullmatch(str(symbol)))
+
+    return is_excluded
+
+
+def _is_excluded_signature_gene(symbol):
+    """Compatibility wrapper — compiles the matcher per call.
+
+    Kept so external callers (tests, plot.py fallback) can ask without
+    needing to know about the compiled cache. For tight loops prefer
+    `_compile_excluded_gene_matcher()` and call its returned predicate.
+    """
+    return _compile_excluded_gene_matcher()(symbol)
 
 
 def get_tumor_purity_parameters():
@@ -460,97 +554,29 @@ def _select_tumor_specific_genes(cancer_code, n=30):
     )
 
 
-def _is_excluded_signature_gene(symbol):
-    """Exclude gene families that are brittle or driven by non-tumor admixture."""
-    if not symbol:
-        return True
-    symbol = str(symbol)
-    return symbol.startswith(_REARRANGED_GENE_PREFIXES) or symbol.startswith(
-        _GENERIC_SIGNATURE_EXCLUDE_PREFIXES
-    )
+_REPRODUCTIVE_TISSUES_FOR_BROAD_BACKGROUND = (
+    # Reproductive tissues are excluded from the "broad normal" background
+    # because they express a lot of otherwise cancer-specific markers (CT
+    # antigens, lineage programs) that we do want to use as tumor signals.
+    "testis", "epididymis", "seminal_vesicle", "placenta", "ovary",
+)
 
 
-def _select_tumor_specific_genes_for_panel(cancer_code, n=30, exclude_lineage=True):
-    """Select robust cancer-signature genes for purity and subtype panels.
+def _build_signature_panel_tiers():
+    """Return the ordered list of selectivity tiers for panel building.
 
-    The panel builder is deliberately conservative:
-    - drop rearranged immune receptor loci and generic housekeeping-like genes
-    - require meaningful expression in the target cancer type
-    - score genes by cancer-type specificity *and* visibility above TME / normal
-    - relax thresholds only if the strict tier leaves a type under-covered
+    Strict tier first, then a loose fallback tier, then an open tier that
+    still keeps `delta_min` and a minimal specificity floor. Each tier is
+    described by the maximum tolerated share from normal / TME backgrounds
+    and minimum cancer-side expression and specificity.
+
+    Kept as data rather than nested constants so the shape is visible next
+    to the filter code that consumes it.
     """
-    cache_key = (cancer_code, int(n), bool(exclude_lineage))
-    cached = _SIGNATURE_PANEL_CACHE.get(cache_key)
-    if cached is not None:
-        return list(cached)
-
-    ref = pan_cancer_expression(normalize="housekeeping")
-    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
-    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
-    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
-    ntpm_nonrepro = [
-        c for c in ntpm_cols
-        if c.replace("nTPM_", "") not in {"testis", "epididymis", "seminal_vesicle", "placenta", "ovary"}
-    ]
-
-    cancer_col = f"FPKM_{cancer_code}"
-    if cancer_col not in ref_by_sym.columns:
-        return []
-
-    normal_tissues = list(_CANCER_NORMAL_TISSUES.get(cancer_code, []))
-    tissue = CANCER_TO_TISSUE.get(cancer_code)
-    if tissue and tissue not in normal_tissues:
-        normal_tissues.append(tissue)
-    normal_cols = [f"nTPM_{t}" for t in sorted(set(normal_tissues)) if f"nTPM_{t}" in ref_by_sym.columns]
-    tme_cols = [
-        f"nTPM_{t}"
-        for t in sorted(_HOST_SITE_BACKGROUND_TISSUES)
-        if f"nTPM_{t}" in ref_by_sym.columns
-    ]
-    lineage_genes = set(LINEAGE_GENES.get(cancer_code, [])) if exclude_lineage else set()
-
-    # Z-score across cancer types for initial ranking
-    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
-    gene_mean = expr_matrix.mean(axis=1)
-    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
-    z_scores = ((expr_matrix[cancer_col] - gene_mean) / gene_std).fillna(0)
-    cancer_hk = expr_matrix[cancer_col]
-    matched_normal_hk = (
-        ref_by_sym[normal_cols].astype(float).max(axis=1)
-        if normal_cols
-        else pd.Series(0.0, index=ref_by_sym.index, dtype=float)
-    )
-    broad_normal_hk = (
-        ref_by_sym[ntpm_nonrepro].astype(float).max(axis=1)
-        if ntpm_nonrepro
-        else pd.Series(0.0, index=ref_by_sym.index, dtype=float)
-    )
-    normal_hk = pd.concat(
-        [matched_normal_hk.rename("matched"), broad_normal_hk.rename("broad")],
-        axis=1,
-    ).max(axis=1)
-    tme_hk = (
-        ref_by_sym[tme_cols].astype(float).max(axis=1)
-        if tme_cols
-        else pd.Series(0.0, index=ref_by_sym.index, dtype=float)
-    )
-    background_hk = pd.concat([normal_hk.rename("normal"), tme_hk.rename("tme")], axis=1).max(axis=1)
-
-    score = (
-        z_scores.clip(lower=0.0)
-        * np.log2(cancer_hk + 1.0)
-        * np.log2((cancer_hk + 0.01) / (background_hk + 0.01) + 1.0)
-    )
-    normal_frac = normal_hk / (cancer_hk + 0.001)
-    tme_frac = tme_hk / (cancer_hk + 0.001)
-    specificity = (cancer_hk + 0.001) / (background_hk + 0.001)
-    excluded = ref_by_sym.index.to_series().map(_is_excluded_signature_gene)
-    if lineage_genes:
-        excluded = excluded | ref_by_sym.index.to_series().isin(lineage_genes)
-
     params = TUMOR_PURITY_PARAMETERS["tumor_specific_markers"]
-    tiers = [
+    return [
         {
+            "name": "strict",
             "expr_min": params["cancer_expression_min"],
             "zscore_min": params["zscore_min"],
             "normal_frac_max": params["normal_fraction_max"],
@@ -558,13 +584,18 @@ def _select_tumor_specific_genes_for_panel(cancer_code, n=30, exclude_lineage=Tr
             "specificity_min": params["specificity_min"],
         },
         {
-            "expr_min": max(params["fallback_expression_min"], params["cancer_expression_min"] * 0.5),
+            "name": "loose",
+            "expr_min": max(
+                params["fallback_expression_min"],
+                params["cancer_expression_min"] * 0.5,
+            ),
             "zscore_min": max(0.0, params["fallback_zscore_min"]),
-            "normal_frac_max": min(0.8, params["normal_fraction_max"] + 0.15),
-            "tme_frac_max": min(0.8, params["tme_fraction_max"] + 0.2),
-            "specificity_min": max(1.1, params["specificity_min"] - 0.3),
+            "normal_frac_max": params["fallback_normal_fraction_max"],
+            "tme_frac_max": params["fallback_tme_fraction_max"],
+            "specificity_min": params["fallback_specificity_min"],
         },
         {
+            "name": "open",
             "expr_min": params["fallback_expression_min"],
             "zscore_min": 0.0,
             "normal_frac_max": 1.0,
@@ -573,9 +604,139 @@ def _select_tumor_specific_genes_for_panel(cancer_code, n=30, exclude_lineage=Tr
         },
     ]
 
+
+def _panel_reference_frames(cancer_code, ref_by_sym):
+    """Assemble per-gene expression vectors used by the panel filter.
+
+    Returns a dict with the cancer-side HK-normalized expression, the
+    maximum across matched-normal and broad-normal backgrounds (union), the
+    max across TME tissues, the combined background, and a z-score over
+    cancer types. Returns None if the cancer code has no FPKM column.
+    """
+    fpkm_cols = [c for c in ref_by_sym.columns if c.startswith("FPKM_")]
+    ntpm_cols = [c for c in ref_by_sym.columns if c.startswith("nTPM_")]
+    ntpm_nonrepro = [
+        c for c in ntpm_cols
+        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES_FOR_BROAD_BACKGROUND
+    ]
+
+    cancer_col = f"FPKM_{cancer_code}"
+    if cancer_col not in ref_by_sym.columns:
+        return None
+
+    matched_tissues = list(_CANCER_NORMAL_TISSUES.get(cancer_code, []))
+    tissue = CANCER_TO_TISSUE.get(cancer_code)
+    if tissue and tissue not in matched_tissues:
+        matched_tissues.append(tissue)
+    normal_cols = [
+        f"nTPM_{t}"
+        for t in sorted(set(matched_tissues))
+        if f"nTPM_{t}" in ref_by_sym.columns
+    ]
+    tme_cols = [
+        f"nTPM_{t}"
+        for t in sorted(_HOST_SITE_BACKGROUND_TISSUES)
+        if f"nTPM_{t}" in ref_by_sym.columns
+    ]
+
+    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
+    gene_mean = expr_matrix.mean(axis=1)
+    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
+    z_scores = ((expr_matrix[cancer_col] - gene_mean) / gene_std).fillna(0)
+    cancer_hk = expr_matrix[cancer_col]
+
+    def _row_max(cols):
+        if not cols:
+            return pd.Series(0.0, index=ref_by_sym.index, dtype=float)
+        return ref_by_sym[cols].astype(float).max(axis=1)
+
+    matched_normal_hk = _row_max(normal_cols)
+    broad_normal_hk = _row_max(ntpm_nonrepro)
+    normal_hk = pd.concat(
+        [matched_normal_hk.rename("matched"), broad_normal_hk.rename("broad")],
+        axis=1,
+    ).max(axis=1)
+    tme_hk = _row_max(tme_cols)
+    background_hk = pd.concat(
+        [normal_hk.rename("normal"), tme_hk.rename("tme")], axis=1
+    ).max(axis=1)
+
+    return {
+        "z_scores": z_scores,
+        "cancer_hk": cancer_hk,
+        "normal_hk": normal_hk,
+        "tme_hk": tme_hk,
+        "background_hk": background_hk,
+    }
+
+
+def _select_tumor_specific_genes_for_panel(cancer_code, n=30, exclude_lineage=True):
+    """Select robust cancer-signature genes for purity and subtype panels.
+
+    The panel builder is deliberately conservative:
+    - drop rearranged-receptor V/D/J/C segments and MHC class II by default
+      (configurable, bypassed for hematopoietic / immune-origin cancers
+      where those genes are legitimate lineage markers)
+    - require meaningful HK-normalized expression in the target cancer type
+    - score genes by cancer-type specificity AND visibility above the union
+      of matched-normal, broad-normal (minus reproductive tissues), and TME
+    - relax thresholds across three tiers only if the strict tier leaves a
+      type under-covered
+
+    The cache key includes a fingerprint of TUMOR_PURITY_PARAMETERS so
+    tuning parameters in-process invalidates stale panels.
+    """
+    params_fp = _params_fingerprint(["tumor_specific_markers"])
+    cache_key = (cancer_code, int(n), bool(exclude_lineage), params_fp)
+    cached = _SIGNATURE_PANEL_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
+
+    ref = pan_cancer_expression(normalize="housekeeping")
+    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+
+    frames = _panel_reference_frames(cancer_code, ref_by_sym)
+    if frames is None:
+        _SIGNATURE_PANEL_CACHE[cache_key] = tuple()
+        return []
+    z_scores = frames["z_scores"]
+    cancer_hk = frames["cancer_hk"]
+    normal_hk = frames["normal_hk"]
+    tme_hk = frames["tme_hk"]
+    background_hk = frames["background_hk"]
+
+    params = TUMOR_PURITY_PARAMETERS["tumor_specific_markers"]
+
+    # Rank candidates by a compound specificity score: positive z-score,
+    # absolute expression, and cancer-vs-background fold.
+    score = (
+        z_scores.clip(lower=0.0)
+        * np.log2(cancer_hk + 1.0)
+        * np.log2((cancer_hk + 0.01) / (background_hk + 0.01) + 1.0)
+    )
+    normal_frac = normal_hk / (cancer_hk + 0.001)
+    tme_frac = tme_hk / (cancer_hk + 0.001)
+    specificity = (cancer_hk + 0.001) / (background_hk + 0.001)
+
+    # Build the exclusion mask. Immune-origin cancer types (DLBC, LAML, THYM)
+    # bypass the family exclusion entirely — for those, rearranged-receptor
+    # loci and HLA-D genes ARE the lineage signal we want to capture, not
+    # infiltrate contamination to filter out.
+    immune_origin = set(params.get("immune_origin_cancer_types", []) or [])
+    if cancer_code in immune_origin:
+        excluded = pd.Series(False, index=ref_by_sym.index)
+    else:
+        is_excluded = _compile_excluded_gene_matcher()
+        excluded = ref_by_sym.index.to_series().map(is_excluded).astype(bool)
+
+    if exclude_lineage:
+        lineage_genes = set(LINEAGE_GENES.get(cancer_code, []))
+        if lineage_genes:
+            excluded = excluded | ref_by_sym.index.to_series().isin(lineage_genes)
+
     markers = []
     seen = set()
-    for tier in tiers:
+    for tier in _build_signature_panel_tiers():
         keep = (
             (cancer_hk > tier["expr_min"])
             & (z_scores > tier["zscore_min"])
@@ -595,7 +756,12 @@ def _select_tumor_specific_genes_for_panel(cancer_code, n=30, exclude_lineage=Tr
                 _SIGNATURE_PANEL_CACHE[cache_key] = tuple(markers[:n])
                 return markers[:n]
 
-    fallback = score[(cancer_hk > params["fallback_expression_min"]) & ~excluded].sort_values(ascending=False)
+    # Last-resort fallback: still apply the family exclusion so the panel
+    # never quietly regresses to including MT-* / rearranged receptors just
+    # because the tiered filter ran short.
+    fallback = score[
+        (cancer_hk > params["fallback_expression_min"]) & ~excluded
+    ].sort_values(ascending=False)
     for gene in fallback.index:
         if gene in seen:
             continue
@@ -664,7 +830,18 @@ def _combine_purity_estimates(
         if deprioritize_signature:
             tumor_anchor = float(lineage_purity)
         else:
-            sig_weight = float(max(sig_stability or 1.0, signature_params["signature_weight_floor"]))
+            # Weight the signature channel by its own stability. Use
+            # `is not None` rather than truthiness so a stability of exactly
+            # 0.0 is not promoted back to full weight — the earlier
+            # conflict check already gates truly-degenerate cases, but this
+            # branch still has to handle the "low but present stability"
+            # case coherently.
+            raw_sig_weight = (
+                float(sig_stability) if sig_stability is not None else 1.0
+            )
+            sig_weight = max(
+                raw_sig_weight, signature_params["signature_weight_floor"]
+            )
             lineage_weight = 1.0
             tumor_anchor = float(
                 np.exp(
@@ -1292,6 +1469,55 @@ def _get_mhc_expression(sample_tpm_by_symbol):
     return mhc1, mhc2
 
 
+def _resolve_family_group(family_label):
+    """Collapse a specific family label to its top-level group, if any.
+
+    Some families are expressed at two granularities (e.g. `ESCA_SQ` is a
+    specific subtype of the broader `SQUAMOUS` group). When comparing or
+    grouping across candidates we want to treat both as the same family.
+    Families without a group mapping return their own label.
+    """
+    if family_label is None:
+        return None
+    return _CANCER_FAMILY_GROUP.get(family_label, family_label)
+
+
+def _promote_same_family_alternatives(rows):
+    """Surface same-family alternatives immediately after the top candidate.
+
+    Purpose: when the top-ranked candidate belongs to a family with multiple
+    TCGA members (e.g. squamous → HNSC / LUSC / CESC / ESCA, or renal →
+    KIRC / KIRP / KICH), a user reading the ranked list benefits from
+    seeing the sibling subtypes adjacently, even if some out-of-family
+    candidate technically scored higher on the next line. This is a *display*
+    rerank layered on top of the support-score sort — the top pick is
+    preserved and intra-group order still reflects the underlying ranking.
+
+    No-op when the top family has only one code in the cancer set, or when
+    no same-family alternatives remain after the top pick.
+    """
+    if not rows:
+        return rows
+
+    best_family_group = _resolve_family_group(rows[0].get("family_label"))
+    if not best_family_group:
+        return rows
+    if _CANCER_FAMILY_GROUP_CODE_COUNTS.get(best_family_group, 0) <= 1:
+        return rows
+
+    same_family = []
+    other_rows = []
+    for row in rows[1:]:
+        if _resolve_family_group(row.get("family_label")) == best_family_group:
+            same_family.append(row)
+        else:
+            other_rows.append(row)
+    if not same_family:
+        return rows
+
+    return [rows[0]] + same_family + other_rows
+
+
 def rank_cancer_type_candidates(
     df_gene_expr,
     candidate_codes=None,
@@ -1446,22 +1672,7 @@ def rank_cancer_type_candidates(
             row["code"],
         )
     )
-    if rows:
-        best_family_group = _CANCER_FAMILY_GROUP.get(
-            rows[0].get("family_label"),
-            rows[0].get("family_label"),
-        )
-        if best_family_group and _CANCER_FAMILY_GROUP_CODE_COUNTS.get(best_family_group, 0) > 1:
-            same_family = [
-                row for row in rows[1:]
-                if _CANCER_FAMILY_GROUP.get(row.get("family_label"), row.get("family_label")) == best_family_group
-            ]
-            if same_family:
-                other_rows = [
-                    row for row in rows[1:]
-                    if _CANCER_FAMILY_GROUP.get(row.get("family_label"), row.get("family_label")) != best_family_group
-                ]
-                rows = [rows[0]] + same_family + other_rows
+    rows = _promote_same_family_alternatives(rows)
 
     max_support = max((row["support_score"] for row in rows), default=0.0)
     for row in rows:

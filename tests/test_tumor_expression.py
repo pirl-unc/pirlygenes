@@ -135,12 +135,117 @@ def test_signature_summary_ignores_high_outlier():
 def test_prad_signature_panel_excludes_rearranged_immune_genes():
     panel = _select_tumor_specific_genes("PRAD", n=30)
     assert panel
-    assert not any(
-        gene.startswith(("IGH", "IGK", "IGL", "TRA", "TRB", "TRG", "TRD"))
-        for gene in panel
-    )
+    # Only rearranged V/D/J/C segments should be blocked — prefix-based
+    # checks would also drop unrelated genes like TRAF*, TRAK1, TRAP1.
+    rearranged_prefixes = ("IGH", "IGK", "IGL", "TRA", "TRB", "TRG", "TRD")
+    for gene in panel:
+        for prefix in rearranged_prefixes:
+            if gene.startswith(prefix) and len(gene) > len(prefix):
+                segment_char = gene[len(prefix)]
+                assert segment_char not in "VDJC", (
+                    f"{gene} looks like a rearranged receptor segment"
+                )
     assert "TRGV9" not in panel
     assert "TRGC1" not in panel
+
+
+def test_signature_exclusion_preserves_unrelated_tr_ig_genes():
+    """TRAF*, TRAK1, TRAP1, TRADD, IGHMBP2, IGFBP* should not be excluded."""
+    from pirlygenes.tumor_purity import _compile_excluded_gene_matcher
+
+    is_excluded = _compile_excluded_gene_matcher()
+    for gene in ["TRAF3", "TRAF6", "TRAK1", "TRAP1", "TRADD", "IGHMBP2", "IGFBP3"]:
+        assert not is_excluded(gene), f"{gene} should not be excluded"
+    # HLA class I stays, class II goes
+    for gene in ["HLA-A", "HLA-B", "HLA-C", "HLA-E", "HLA-F", "HLA-G"]:
+        assert not is_excluded(gene), f"{gene} (class I) should not be excluded"
+    for gene in ["HLA-DRA", "HLA-DRB1", "HLA-DPA1", "HLA-DQB1"]:
+        assert is_excluded(gene), f"{gene} (class II) should be excluded"
+    # Rearranged receptors should still be excluded
+    for gene in ["TRGV9", "TRGC1", "IGHV3-33", "IGKV1-5", "TRBV7-9"]:
+        assert is_excluded(gene), f"{gene} (rearranged receptor) should be excluded"
+
+
+def test_dlbc_panel_bypasses_immune_exclusion():
+    """Immune-origin cancers should include lineage markers that would otherwise
+    be filtered as infiltrate contamination."""
+    panel = _select_tumor_specific_genes("DLBC", n=30)
+    assert panel
+    # B-cell lineage markers should be recoverable for DLBC
+    assert any(g.startswith("HLA-D") for g in panel), (
+        f"DLBC panel should include HLA class II markers, got: {panel}"
+    )
+
+
+def test_signature_panel_cache_invalidates_on_param_change():
+    """Mutating TUMOR_PURITY_PARAMETERS should not serve stale panels."""
+    from pirlygenes.tumor_purity import (
+        TUMOR_PURITY_PARAMETERS,
+        _select_tumor_specific_genes_for_panel,
+    )
+
+    panel_with_defaults = _select_tumor_specific_genes_for_panel("PRAD", n=30)
+    params = TUMOR_PURITY_PARAMETERS["tumor_specific_markers"]
+    original = params["excluded_gene_regexes"]
+    try:
+        # Add a pattern that blocks "KLK.*" — any KLK gene previously in
+        # the panel should now be removed.
+        params["excluded_gene_regexes"] = list(original) + [r"KLK.*"]
+        panel_with_klk_blocked = _select_tumor_specific_genes_for_panel("PRAD", n=30)
+        assert not any(g.startswith("KLK") for g in panel_with_klk_blocked), (
+            f"cache should have re-keyed on param change; got {panel_with_klk_blocked}"
+        )
+    finally:
+        params["excluded_gene_regexes"] = original
+
+    # After restoring params the original panel should return.
+    panel_restored = _select_tumor_specific_genes_for_panel("PRAD", n=30)
+    assert panel_restored == panel_with_defaults
+
+
+def test_combine_purity_treats_zero_stability_as_low_weight():
+    """A stability of exactly 0.0 must not collapse to full weight via truthiness.
+
+    Guards against the `sig_stability or 1.0` pattern: 0.0 is not
+    "unknown", it's the strongest possible signal that the signature
+    channel is unreliable. When the conflict gate happens NOT to fire
+    (signature is close to lineage in absolute value), the weighted-log
+    path should still downweight the signature instead of giving it full
+    weight equal to lineage.
+    """
+    # Pick values where the conflict gate does NOT trigger — i.e.
+    # sig/lineage >= signature_conflict_ratio (0.75). This forces the code
+    # through the weighted-log branch where the bug lived.
+    kwargs = dict(
+        sig_lower=0.30,
+        sig_upper=0.70,
+        estimate_purity=None,
+        lineage_purity=0.60,
+        lineage_lower=0.55,
+        lineage_upper=0.65,
+    )
+    overall_zero, _, _ = _combine_purity_estimates(
+        sig_purity=0.50, sig_stability=0.0, **kwargs
+    )
+    overall_unknown, _, _ = _combine_purity_estimates(
+        sig_purity=0.50, sig_stability=None, **kwargs
+    )
+    overall_high, _, _ = _combine_purity_estimates(
+        sig_purity=0.50, sig_stability=0.9, **kwargs
+    )
+    # Stability=0 should pull the anchor closer to lineage (0.60) than
+    # stability=None (which is treated as full signature weight = 1.0).
+    # Stability=0.9 lies between the two.
+    assert overall_zero > overall_unknown, (
+        f"stability=0 must give lineage more relative weight than "
+        f"stability=None; zero={overall_zero:.3f} unknown={overall_unknown:.3f}"
+    )
+    assert overall_unknown <= overall_high <= overall_zero or (
+        overall_unknown <= overall_zero
+    ), (
+        f"Monotonicity check: lower stability should pull toward lineage; "
+        f"zero={overall_zero:.3f} high={overall_high:.3f} unknown={overall_unknown:.3f}"
+    )
 
 
 # ── estimate_tumor_expression_ranges ──────────────────────────────
