@@ -1011,6 +1011,11 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
         f"(HLA-A={hla_a:.0f}, HLA-B={hla_b:.0f}, B2M={b2m:.0f} TPM). "
         f"Analysis mode: **{_sample_mode_display(sample_mode)}**."
     )
+    if purity.get("components", {}).get("integration", {}).get("signature_deprioritized"):
+        summary += (
+            " The tumor-specific signature panel was materially weaker and less stable than "
+            "the lineage panel, so it was downweighted rather than used as a hard lower anchor."
+        )
     if fit_quality.get("message"):
         summary += f" {fit_quality['message']}"
     if constraints:
@@ -1065,6 +1070,8 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
         lines.append(f"**RNA degradation**: {deg['level']}")
         lines.append(f"- Mitochondrial fraction: {deg['mt_fraction']:.1%}")
         lines.append(f"- Ribosomal protein fraction: {deg['rp_fraction']:.1%}")
+        if deg.get("long_short_ratio") is not None:
+            lines.append(f"- Long/short transcript index: {deg['long_short_ratio']:.2f}")
         if deg.get("matched_tissue"):
             lines.append(f"- Matched tissue baseline: {deg['matched_tissue']} "
                          f"(MT={deg['baseline_mt']:.1%}, RP={deg['baseline_rp']:.1%})")
@@ -1206,6 +1213,12 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
         if isinstance(comp, dict):
             enrichment = comp.get("enrichment", 0)
             lines.append(f"- **{comp_name.title()}** enrichment: {enrichment:.1f}x vs TCGA")
+    integration = components.get("integration", {})
+    if integration.get("signature_deprioritized"):
+        lines.append(
+            "- **Integration note**: the tumor-specific signature panel was weaker and less stable "
+            "than the lineage panel, so it was downweighted rather than used as a hard lower bound."
+        )
     if sample_mode == "pure":
         lines.append(
             "- **Interpretation**: in pure-population mode this estimate is a consistency check "

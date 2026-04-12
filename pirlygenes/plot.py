@@ -2017,6 +2017,89 @@ def plot_purity_adjusted_targets(
     return fig
 
 
+_signature_panel_cache = {}
+
+
+def _get_cancer_type_signature_panels(n_signature_genes=20):
+    """Return robust per-cancer signature panels used for ranking and plotting.
+
+    Reuses `_select_tumor_specific_genes_for_panel` from `tumor_purity` so
+    the plotting / ranking paths see the same tier-filtered, family-excluded
+    panels as the purity estimator. When the strict tiers leave a cancer
+    type short of `n_signature_genes`, a z-score fallback is appended — but
+    that fallback still respects the configured family-exclusion regex and
+    the `immune_origin_cancer_types` bypass, so the two paths never silently
+    diverge on borderline cases.
+
+    Cache is keyed on a fingerprint of TUMOR_PURITY_PARAMETERS so tuning
+    parameters in-process invalidates stale panels.
+    """
+    from .tumor_purity import (
+        TUMOR_PURITY_PARAMETERS,
+        _compile_excluded_gene_matcher,
+        _params_fingerprint,
+        _select_tumor_specific_genes_for_panel,
+    )
+
+    params_fp = _params_fingerprint(["tumor_specific_markers"])
+    cache_key = (int(n_signature_genes), params_fp)
+    cached = _signature_panel_cache.get(cache_key)
+    if cached is not None:
+        return {code: list(genes) for code, genes in cached.items()}
+
+    ref = pan_cancer_expression(normalize="housekeeping")
+    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
+    gene_mean = expr_matrix.mean(axis=1)
+    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
+    z_matrix = expr_matrix.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
+
+    is_excluded_default = _compile_excluded_gene_matcher()
+    immune_origin = set(
+        TUMOR_PURITY_PARAMETERS["tumor_specific_markers"].get(
+            "immune_origin_cancer_types", []
+        )
+        or []
+    )
+
+    panels = {}
+    for col in fpkm_cols:
+        code = col.replace("FPKM_", "")
+        genes = _select_tumor_specific_genes_for_panel(
+            code,
+            n=n_signature_genes,
+            exclude_lineage=False,
+        )
+        if len(genes) >= n_signature_genes:
+            panels[code] = genes[:n_signature_genes]
+            continue
+
+        # Fallback top-up: raw top-N-by-z-score, but still respecting the
+        # configured family exclusion so the plotting panel can't silently
+        # pick up MT-* / rearranged-receptor genes that the purity path
+        # just filtered out. Immune-origin codes skip the filter for the
+        # same reason the purity path does.
+        is_excluded = (
+            (lambda _sym: False) if code in immune_origin else is_excluded_default
+        )
+        z_col = z_matrix[col]
+        expr_col = expr_matrix[col]
+        fallback_candidates = z_col[expr_col > 0.01].nlargest(n_signature_genes * 3)
+        for gene in fallback_candidates.index:
+            if gene in genes:
+                continue
+            if is_excluded(gene):
+                continue
+            genes.append(gene)
+            if len(genes) >= n_signature_genes:
+                break
+        panels[code] = genes[:n_signature_genes]
+
+    _signature_panel_cache[cache_key] = {
+        code: tuple(genes) for code, genes in panels.items()
+    }
+    return panels
 
 
 def _compute_cancer_type_signature_stats(
@@ -2041,21 +2124,8 @@ def _compute_cancer_type_signature_stats(
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
 
-    # Z-score matrix across cancer types for gene selection
     expr_matrix = ref_by_sym[fpkm_cols].astype(float)
-    gene_mean = expr_matrix.mean(axis=1)
-    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
-    z_matrix = expr_matrix.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
-
-    # Select signature genes per cancer type: top N by z-score,
-    # requiring minimum expression in the cancer type
-    sig = {}
-    for col in fpkm_cols:
-        code = col.replace("FPKM_", "")
-        z_col = z_matrix[col]
-        expr_col = expr_matrix[col]
-        valid = z_col[expr_col > 0.01]
-        sig[code] = list(valid.nlargest(n_signature_genes).index)
+    sig = _get_cancer_type_signature_panels(n_signature_genes=n_signature_genes)
 
     stats = []
     for code in sorted(sig.keys()):
@@ -2634,18 +2704,7 @@ def _cancer_type_score_matrix(df_gene_expr, n_signature_genes=20):
     labels = [c.replace("FPKM_", "") for c in fpkm_cols]
 
     expr_matrix = ref_by_sym[fpkm_cols].astype(float)
-    gene_mean = expr_matrix.mean(axis=1)
-    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
-    z_matrix = expr_matrix.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
-
-    # Select signature genes per cancer type
-    sig = {}
-    for col in fpkm_cols:
-        code = col.replace("FPKM_", "")
-        z_col = z_matrix[col]
-        expr_col = expr_matrix[col]
-        valid = z_col[expr_col > 0.01]
-        sig[code] = list(valid.nlargest(n_signature_genes).index)
+    sig = _get_cancer_type_signature_panels(n_signature_genes=n_signature_genes)
 
     # Score each reference cancer type against all signatures
     ref_scores = np.zeros((len(labels), len(labels)))
