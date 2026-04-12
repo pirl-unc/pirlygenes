@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -7,6 +9,15 @@ from pirlygenes.decomposition.signature import _load_hpa_cell_types
 from pirlygenes.decomposition.templates import get_template_components
 from pirlygenes.gene_sets_cancer import pan_cancer_expression
 from pirlygenes.tumor_purity import estimate_tumor_purity, rank_cancer_type_candidates
+
+
+# Clinical test data (gitignored, developer-only)
+_CLINICAL_DATA_DIR = "pfo002"
+_has_clinical_data = os.path.isdir(_CLINICAL_DATA_DIR)
+_skip_no_clinical_data = pytest.mark.skipif(
+    not _has_clinical_data,
+    reason="pfo002/ clinical samples are gitignored; tests only run locally",
+)
 
 
 def _load_bg_sample(filename):
@@ -397,6 +408,7 @@ def test_synthetic_sarc_smooth_muscle_mix_surfaces_mesenchymal_family():
     assert candidates[1]["family_label"] == "MESENCHYMAL"
 
 
+@_skip_no_clinical_data
 def test_bg002179_crc_primary_beats_sarc_and_met_templates():
     """Known ascending-colon CRC should stay CRC-family and primary-like."""
     df = _load_bg_sample("pfo002/H37-H37002-BG002179-ar-BG002179.quant.sf.csv")
@@ -416,6 +428,7 @@ def test_bg002179_crc_primary_beats_sarc_and_met_templates():
     assert 0.2 < results[0].purity < 0.5
 
 
+@_skip_no_clinical_data
 def test_bg004281_crc_purity_matches_pathology_scale():
     """Known retroperitoneal CRC sample should stay around ~30% RNA purity."""
     df = _load_bg_sample("pfo002/H37-H37002-BG004281-ar-BG004281.quant.sf.csv")
