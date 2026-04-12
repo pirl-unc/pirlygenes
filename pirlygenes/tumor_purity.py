@@ -25,8 +25,10 @@ import numpy as np
 import pandas as pd
 
 from .gene_sets_cancer import (
-    pan_cancer_expression,
+    cancer_family_panels,
     housekeeping_gene_ids,
+    lineage_genes_by_cancer_type,
+    pan_cancer_expression,
 )
 from .load_dataset import get_data
 from .plot import _guess_gene_cols
@@ -91,17 +93,9 @@ _HOST_SITE_BACKGROUND_TISSUES = {
     "smooth_muscle", "skeletal_muscle", "heart_muscle", "adipose_tissue",
 }
 
-_CANCER_FAMILY_PANELS = {
-    "PROSTATE": ["KLK3", "KLK2", "TMPRSS2", "FOLH1", "NKX3-1", "HOXB13", "STEAP1", "STEAP2", "AR"],
-    "CRC": ["GUCY2C", "TFF3", "CDH17", "HEPH", "SLC12A2", "EPHB2", "CEACAM5", "CEACAM6", "VIL1", "CDX2"],
-    "GASTRIC": ["MUC5AC", "MUC6", "CLDN18", "TFF1", "TFF2", "REG4", "GKN1", "GKN2"],
-    "ESCA_SQ": ["TP63", "SOX2", "KRT5", "KRT14", "DSG3", "PPL", "KRT17", "FAM83H"],
-    "SQUAMOUS": ["TP63", "SOX2", "KRT5", "KRT14", "DSG3", "PPL", "KRT17", "CLCA2", "KRT6A"],
-    "MESENCHYMAL": ["COL1A1", "COL1A2", "COL3A1", "DCN", "THBS4", "POSTN", "TAGLN", "ACTA2", "MYLK", "DES"],
-    "RENAL": ["PAX8", "PAX2", "CA9", "NDUFA4L2", "SLC22A12", "KCNJ1", "AMACR"],
-    "GLIAL": ["GFAP", "OLIG2", "AQP4", "ALDH1L1", "SLC1A3", "SOX2"],
-    "MELANOCYTIC": ["MLANA", "PMEL", "TYR", "DCT", "MITF"],
-}
+# Broad-family signature panels loaded from data/cancer-family-panels.csv.
+# The CSV is the source of truth; this dict is a view built once on import.
+_CANCER_FAMILY_PANELS = cancer_family_panels()
 
 _CANCER_FAMILY_BY_CODE = {
     "PRAD": "PROSTATE",
@@ -402,53 +396,11 @@ def _sample_hk_median(sample_tpm):
 
 
 # Lineage genes per cancer type — genes retained in metastases and specific
-# enough to calibrate purity.  Only genes with low TME background and high
-# expression in the origin tissue should be listed.
-LINEAGE_GENES = {
-    # Genitourinary
-    "PRAD": ["STEAP1", "STEAP2", "FOLH1", "TMPRSS2", "KLK3", "KLK2", "NKX3-1", "HOXB13", "AR"],
-    "BLCA": ["UPK1A", "UPK2", "UPK3A", "KRT20", "GATA3", "PPARG"],
-    "TGCT": ["POU5F1", "NANOG", "SOX17", "TFAP2C", "KIT"],
-    # Breast / gynecologic
-    "BRCA": ["ESR1", "GATA3", "FOXA1", "TFF1", "TFF3", "AGR2"],
-    "OV":   ["PAX8", "WT1", "MUC16", "MSLN", "FOLR1"],
-    "UCEC": ["PAX8", "ESR1", "PGR", "MSX1", "HOXA10"],
-    "UCS":  ["PAX8", "ESR1", "PGR", "MSX1"],
-    "CESC": ["TP63", "SOX2", "KRT17", "CDKN2A", "DSG3"],
-    # Lung
-    "LUAD": ["NKX2-1", "NAPSA", "SFTPB", "SFTPC"],
-    "LUSC": ["TP63", "SOX2", "KRT5", "KRT14"],
-    "MESO": ["MSLN", "WT1", "CALB2", "BAP1"],
-    # GI
-    "COAD": ["CDX2", "MUC2", "VIL1", "CDH17"],
-    "READ": ["CDX2", "MUC2", "VIL1", "CDH17"],
-    "STAD": ["MUC5AC", "MUC6", "CDX2", "CLDN18"],
-    "ESCA": ["TP63", "SOX2", "KRT5", "KRT14", "CDX2"],
-    "LIHC": ["ALB", "APOB", "HNF4A", "AFP"],
-    "CHOL": ["KRT7", "KRT19", "SOX9", "HNF1B", "EPCAM"],
-    "PAAD": ["PDX1", "PTF1A", "KRT19", "MUC1"],
-    # Kidney
-    "KIRC": ["CA9", "PAX8", "NDUFA4L2"],
-    "KIRP": ["PAX8", "PAX2", "AMACR"],
-    "KICH": ["KIT", "PAX8", "FOXI1"],
-    # CNS
-    "GBM":  ["GFAP", "OLIG2", "SOX2"],
-    "LGG":  ["GFAP", "OLIG2", "IDH1", "ATRX"],
-    # Endocrine
-    "THCA": ["TG", "TPO", "PAX8", "NIS"],
-    "ACC":  ["CYP11B1", "CYP11B2", "CYP21A2", "STAR", "NR5A1"],
-    "PCPG": ["TH", "DBH", "CHGA", "CHGB", "PHOX2B"],
-    # Skin / soft tissue
-    "SKCM": ["MLANA", "PMEL", "TYR", "DCT", "MITF"],
-    "UVM":  ["MLANA", "PMEL", "TYR", "MITF"],
-    "SARC": ["DES", "ACTA2", "MYOD1", "MYOG"],
-    # Hematologic
-    "LAML": ["MPO", "CD34", "KIT", "FLT3"],
-    "DLBC": ["CD19", "CD20", "PAX5", "BCL6", "IRF4"],
-    "THYM": ["CD3D", "CD3E", "CD3G", "LCK", "ZAP70"],
-    # Head and neck
-    "HNSC": ["TP63", "SOX2", "KRT5", "KRT14", "CDKN2A"],
-}
+# enough to calibrate purity. Loaded from data/lineage-genes.csv; only
+# genes with low TME background and high expression in the origin tissue
+# should be listed there. Keep the name `LINEAGE_GENES` for backward
+# compatibility with external importers.
+LINEAGE_GENES = lineage_genes_by_cancer_type()
 
 
 def _lineage_purity_estimates(cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga_purity):
