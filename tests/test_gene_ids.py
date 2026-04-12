@@ -42,9 +42,10 @@ def _collect_ensembl_gene_ids(df):
     return result
 
 
-# Large external datasets (surface-proteins, pan-cancer-expression) contain
-# IDs from newer Ensembl releases that may not be installed in CI.
-_SKIP_DATASETS = {"surface-proteins", "pan-cancer-expression"}
+# Large external datasets contain IDs from newer Ensembl releases that may
+# not be installed in CI.  The HPA cell-type atlas uses Ensembl 112+ gene
+# IDs (e.g. ENSG00000283886), which don't resolve in older pyensembl releases.
+_SKIP_DATASETS = {"surface-proteins", "pan-cancer-expression", "hpa-cell-type-expression"}
 
 
 def test_all_gene_ids_resolve_in_ensembl():
