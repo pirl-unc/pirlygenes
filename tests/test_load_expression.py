@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -188,3 +189,131 @@ def test_load_expression_error_paths(tmp_path):
             verbose=False,
             progress=False,
         )
+
+
+# ── FPKM → TPM conversion ───────────────────────────────────────────────
+
+def test_detect_and_convert_to_tpm_converts_fpkm_column():
+    """FPKM column gets rescaled so values sum to 1e6, and a warning fires."""
+    df = pd.DataFrame({
+        "ensembl_gene_id": ["ENSG1", "ENSG2", "ENSG3"],
+        "FPKM": [100.0, 200.0, 300.0],  # total = 600
+    })
+    with pytest.warns(UserWarning, match="converted to TPM"):
+        out = le._detect_and_convert_to_tpm(df, verbose=False)
+    assert "TPM" in out.columns
+    assert "FPKM" not in out.columns
+    assert abs(out["TPM"].sum() - 1e6) < 1.0
+    # Within-sample ratios preserved
+    assert out.loc[0, "TPM"] == pytest.approx(1e6 * 100 / 600)
+
+
+def test_detect_and_convert_to_tpm_leaves_tpm_column_alone():
+    """When a TPM column is already present, no conversion happens."""
+    df = pd.DataFrame({
+        "ensembl_gene_id": ["ENSG1", "ENSG2"],
+        "TPM": [50.0, 150.0],
+    })
+    # No warning expected
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = le._detect_and_convert_to_tpm(df, verbose=False)
+    pd.testing.assert_frame_equal(out, df)
+
+
+def test_detect_and_convert_to_tpm_noop_when_both_fpkm_and_tpm_present():
+    """If both columns exist, TPM is already there; leave FPKM column untouched."""
+    df = pd.DataFrame({
+        "ensembl_gene_id": ["ENSG1", "ENSG2"],
+        "FPKM": [100.0, 200.0],
+        "TPM": [60.0, 140.0],
+    })
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = le._detect_and_convert_to_tpm(df, verbose=False)
+    assert list(out["FPKM"]) == [100.0, 200.0]
+    assert list(out["TPM"]) == [60.0, 140.0]
+
+
+def test_detect_and_convert_to_tpm_noop_when_no_fpkm_column():
+    """No FPKM column → no-op, no warning."""
+    df = pd.DataFrame({"ensembl_gene_id": ["ENSG1"], "other": [1.0]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = le._detect_and_convert_to_tpm(df, verbose=False)
+    pd.testing.assert_frame_equal(out, df)
+
+
+# ── Alt-haplotype ID aliasing + TPM summing ─────────────────────────────
+
+def test_apply_id_aliases_sums_alt_haplotype_tpm(monkeypatch):
+    """Alt-haplotype + primary rows for the same gene collapse to a single
+    canonical row with summed TPM."""
+    monkeypatch.setattr(
+        le,
+        "_load_ensembl_id_aliases",
+        lambda: {"ENSG00000235657": "ENSG00000206503"},  # HLA-A alt → primary
+    )
+    df = pd.DataFrame({
+        "ensembl_gene_id": ["ENSG00000206503", "ENSG00000235657"],
+        "gene": ["HLA-A", ""],
+        "TPM": [42.0, 8.0],
+    })
+    out = le._apply_id_aliases_and_sum(df, verbose=False)
+    assert len(out) == 1
+    row = out.iloc[0]
+    assert row["ensembl_gene_id"] == "ENSG00000206503"
+    assert row["TPM"] == 50.0  # 42 + 8
+    # Non-empty symbol is preferred over the empty alt-row symbol
+    assert row["gene"] == "HLA-A"
+
+
+def test_apply_id_aliases_prefers_non_empty_symbol_regardless_of_order(monkeypatch):
+    """Even if the empty-symbol row comes first, the populated value wins."""
+    monkeypatch.setattr(
+        le,
+        "_load_ensembl_id_aliases",
+        lambda: {"ENSG00000235657": "ENSG00000206503"},
+    )
+    df = pd.DataFrame({
+        "ensembl_gene_id": ["ENSG00000235657", "ENSG00000206503"],
+        "gene": ["", "HLA-A"],
+        "TPM": [8.0, 42.0],
+    })
+    out = le._apply_id_aliases_and_sum(df, verbose=False)
+    assert len(out) == 1
+    assert out.iloc[0]["gene"] == "HLA-A"
+
+
+def test_apply_id_aliases_noop_when_no_alt_haplotype_ids(monkeypatch):
+    """Clean data with no alt-haplotype IDs is unchanged."""
+    monkeypatch.setattr(
+        le,
+        "_load_ensembl_id_aliases",
+        lambda: {"ENSG00000235657": "ENSG00000206503"},
+    )
+    df = pd.DataFrame({
+        "ensembl_gene_id": ["ENSG00000000003", "ENSG00000000419"],
+        "gene": ["TSPAN6", "DPM1"],
+        "TPM": [10.0, 20.0],
+    })
+    out = le._apply_id_aliases_and_sum(df, verbose=False)
+    pd.testing.assert_frame_equal(out, df)
+
+
+def test_apply_id_aliases_noop_when_no_ensembl_gene_id_column():
+    """Without an ensembl_gene_id column, function is a pass-through."""
+    df = pd.DataFrame({"gene": ["X"], "TPM": [1.0]})
+    out = le._apply_id_aliases_and_sum(df, verbose=False)
+    pd.testing.assert_frame_equal(out, df)
+
+
+def test_apply_id_aliases_noop_when_aliases_file_missing(monkeypatch):
+    """If the aliases CSV isn't available, function is a pass-through."""
+    monkeypatch.setattr(le, "_load_ensembl_id_aliases", lambda: {})
+    df = pd.DataFrame({
+        "ensembl_gene_id": ["ENSG00000235657"],
+        "TPM": [5.0],
+    })
+    out = le._apply_id_aliases_and_sum(df, verbose=False)
+    pd.testing.assert_frame_equal(out, df)

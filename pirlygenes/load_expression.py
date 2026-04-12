@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -127,6 +128,10 @@ def _detect_and_convert_to_tpm(df, verbose=True):
     bias or protocol differences, but it harmonizes the units so
     downstream comparisons (e.g. sample vs. TCGA cohort) are on the same
     scale.
+
+    Emits a UserWarning when conversion happens, since this modifies the
+    values in the input DataFrame.  The warning surfaces even when
+    ``verbose=False`` so callers always see that a conversion occurred.
     """
     # Detect by column name: if we see FPKM but no TPM column, convert.
     # After fuzzy renaming, the value column is named "TPM" regardless, so
@@ -145,17 +150,44 @@ def _detect_and_convert_to_tpm(df, verbose=True):
             df = df.copy()
             df[fpkm_col] = 1e6 * df[fpkm_col].astype(float) / total
             df = df.rename(columns={fpkm_col: "TPM"})
+            warnings.warn(
+                f"FPKM column '{fpkm_col}' was converted to TPM in-place "
+                f"(original sum={total:.0f}; new sum=1e6). This is a "
+                "within-sample rescaling; gene-length bias is not corrected.",
+                UserWarning,
+                stacklevel=2,
+            )
             if verbose:
                 print(f"[load] Converted FPKM column '{fpkm_col}' to TPM (sum was {total:.0f})")
     return df
+
+
+def _first_non_empty(series):
+    """Return the first non-empty, non-null value in a series; fall back to
+    first value.  Used to merge string columns (symbol, display name)
+    across rows that share a canonical ID: prefer a populated value over
+    an empty one regardless of row order."""
+    for val in series:
+        if pd.notna(val) and str(val).strip() != "":
+            return val
+    return series.iloc[0] if len(series) else None
 
 
 def _apply_id_aliases_and_sum(df, verbose=True):
     """Map alt-haplotype Ensembl IDs to their primary-contig equivalents
     and sum TPM values (alt-haplotype IDs represent alleles of the same gene).
 
-    Operates by ID only — runs BEFORE symbol-based consolidation and before
-    symbol lookup, so inputs with only Ensembl IDs still get consolidated.
+    Operates by ID only.  Runs AFTER symbol-based consolidation in the
+    load pipeline: symbol consolidation handles inputs where alt-haplotype
+    rows share a gene symbol with the primary, and this step catches
+    alt-haplotype rows that lack a symbol (e.g. a sample exported with
+    only Ensembl IDs).
+
+    Sums TPM across rows that collapse onto the same canonical ID
+    (alt-haplotype alleles contribute to the same gene's total expression).
+    Non-TPM string columns are merged by preferring the first non-empty
+    value, so a remapped alt-haplotype row with an empty symbol inherits
+    the primary row's symbol.
     """
     if "ensembl_gene_id" not in df.columns:
         return df
@@ -173,15 +205,15 @@ def _apply_id_aliases_and_sum(df, verbose=True):
         return df
     df["ensembl_gene_id"] = canonical_ids
 
-    # Sum TPM across rows that now share the same canonical ID
+    # Sum TPM across rows that now share the same canonical ID; for other
+    # columns, prefer the first non-empty value (avoids inheriting an
+    # empty symbol from an alt-haplotype row just because it came first).
     tpm_col = next((c for c in df.columns if c.upper() == "TPM"), None)
     if tpm_col and df["ensembl_gene_id"].duplicated().any():
-        groupby_cols = ["ensembl_gene_id"]
         agg_map = {tpm_col: "sum"}
-        # Keep the first value for any other column
         for col in df.columns:
-            if col not in groupby_cols and col != tpm_col:
-                agg_map[col] = "first"
+            if col != "ensembl_gene_id" and col != tpm_col:
+                agg_map[col] = _first_non_empty
         df = df.groupby("ensembl_gene_id", as_index=False).agg(agg_map)
 
     if verbose:
