@@ -35,7 +35,11 @@ from .gene_sets_cancer import (
     tme_markers_df,
 )
 from .load_dataset import load_all_dataframes, load_all_dataframes_dict, get_data
-from .plot import plot_gene_expression, plot_sample_vs_cancer
+from .plot import (
+    plot_ctas_vs_cancer_type_detail,
+    plot_gene_expression,
+    plot_sample_vs_cancer,
+)
 from .version import __version__
 
 __all__ = [
@@ -47,6 +51,7 @@ __all__ = [
     # Plotting
     "plot_gene_expression",
     "plot_sample_vs_cancer",
+    "plot_ctas_vs_cancer_type_detail",
     # Pan-cancer reference
     "pan_cancer_expression",
     # Housekeeping

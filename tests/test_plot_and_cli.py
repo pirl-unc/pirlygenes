@@ -806,3 +806,58 @@ def test_collect_ranked_therapy_targets_tracks_multicategory_and_approval(monkey
     assert out[1]["approved_therapies"] == ("ADC",)
     assert out[2]["therapies"] == ("radioligand",)
     assert out[2]["approved_therapies"] == ("radioligand",)
+
+
+def test_plot_ctas_vs_cancer_type_detail_saves_png(tmp_path):
+    """End-to-end render with real CTA Ensembl IDs → non-empty PNG."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from pirlygenes.gene_sets_cancer import CTA_gene_id_to_name
+
+    cta_map = CTA_gene_id_to_name()
+    assert cta_map, "Reference CTA set is unexpectedly empty"
+    picks = list(cta_map.items())[:8]
+
+    sample = pd.DataFrame({
+        "gene_id": [gid for gid, _ in picks],
+        "gene_name": [sym for _, sym in picks],
+        "TPM": [5.0, 25.0, 1.5, 80.0, 3.0, 12.0, 2.0, 60.0][: len(picks)],
+    })
+    out = tmp_path / "prad_cta_detail.png"
+    fig = plot_mod.plot_ctas_vs_cancer_type_detail(
+        sample, cancer_type="PRAD", top_k=6, save_to_filename=str(out),
+    )
+    assert fig is not None
+    assert out.exists()
+    assert out.stat().st_size > 5_000
+
+
+def test_plot_ctas_vs_cancer_type_detail_min_sample_tpm_filters_rows():
+    """Rows below `min_sample_tpm` are dropped; all-below → None."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from pirlygenes.gene_sets_cancer import CTA_gene_id_to_name
+
+    cta_map = CTA_gene_id_to_name()
+    picks = list(cta_map.items())[:3]
+    sample = pd.DataFrame({
+        "gene_id": [gid for gid, _ in picks],
+        "gene_name": [sym for _, sym in picks],
+        "TPM": [0.1, 0.2, 0.3],
+    })
+    fig = plot_mod.plot_ctas_vs_cancer_type_detail(
+        sample, cancer_type="PRAD", min_sample_tpm=1.0,
+    )
+    assert fig is None
+
+
+def test_plot_ctas_vs_cancer_type_detail_unknown_type_raises():
+    sample = pd.DataFrame({
+        "gene_id": ["ENSG00000125347"],
+        "gene_name": ["IRF1"],
+        "TPM": [10.0],
+    })
+    with pytest.raises((ValueError, KeyError)):
+        plot_mod.plot_ctas_vs_cancer_type_detail(
+            sample, cancer_type="NOT_A_REAL_CANCER_TYPE_XYZ",
+        )
