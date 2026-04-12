@@ -1111,7 +1111,16 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
     lines.append("")
 
     if candidate_trace:
-        lines.append("### Candidate Trace\n")
+        lines.append("### Cancer Type Inference — Candidate Ranking\n")
+        lines.append(
+            "Each row is a TCGA cancer-type hypothesis considered by the classifier. "
+            "**Support** is the combined score used for ranking (higher = better). "
+            "**Signature** measures z-scored expression of cancer-type-enriched genes, "
+            "**Purity** is the overall purity estimate for that hypothesis, **Lineage** "
+            "is an orthogonal per-lineage-gene purity, and **Concordance** is how well "
+            "the sample's lineage-gene pattern matches the expected pattern for that "
+            "cancer type. Top row is the working call.\n"
+        )
         lines.append("| Cancer | Family | Support | Signature | Purity | Lineage | Concordance |")
         lines.append("|--------|--------|---------|-----------|--------|---------|-------------|")
         for row in candidate_trace[:8]:
@@ -1227,6 +1236,21 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
         found_names = {g["gene"] for g in lineage_genes}
         not_found = [g for g in all_lineage if g not in found_names]
 
+        lines.append(
+            "**Purity est.** per row = an independent purity estimate from that "
+            "gene alone: sample expression ÷ the TCGA reference, after TCGA's own "
+            "cohort impurity has been deconvolved from the reference. A value of "
+            "20% means the sample expresses this gene at 20% of pure-tumor levels.\n"
+        )
+        lines.append(
+            "**Lineage caveat**: these are prostate-lineage genes (AR, KLK3, "
+            "STEAP1/2, TMPRSS2 etc.), expressed in *both* normal prostate "
+            "epithelium and prostate cancer. A 20% signal is consistent with "
+            "either 20% tumor + non-prostate TME, OR a mix of tumor + normal "
+            "prostate epithelium totaling 20% of the sample. Lineage genes "
+            "distinguish prostate from non-prostate; they do NOT by themselves "
+            "distinguish tumor from normal prostate.\n"
+        )
         lines.append("| Gene | Purity est. | Interpretation |")
         lines.append("|------|------------|----------------|")
         for g in sorted_genes:
@@ -1250,13 +1274,13 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
                     f"IQR {lineage['lower']:.0%}\u2013{lineage['upper']:.0%}): "
                     f"{retained_names}. "
                     "These genes are expressed at levels consistent with their "
-                    "TCGA reference, indicating retained tumor lineage identity."
+                    "TCGA reference, indicating retained lineage identity (does not distinguish tumor cells from normal cells of the same lineage)."
                 )
             else:
                 lines.append(
                     f"**Reliable cluster**: {retained_names}. "
                     "These genes are expressed at levels consistent with their "
-                    "TCGA reference, indicating retained tumor lineage identity."
+                    "TCGA reference, indicating retained lineage identity (does not distinguish tumor cells from normal cells of the same lineage)."
                 )
         if lost:
             lost_names = ", ".join(g["gene"] for g in lost)

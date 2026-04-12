@@ -447,6 +447,24 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None):
     flags = []
     has_issues = False
 
+    # Suspicious MT fraction: 0% MT is biologically implausible (real bulk
+    # samples range 5–70% depending on tissue).  0% usually means the MT
+    # genes were filtered upstream (some salmon/kallisto pipelines drop
+    # MT-* contigs) or use a different symbol convention.  Flag this so
+    # the user knows the degradation signal is not reliable.
+    if n_mt == 0 or mt_fraction < 0.005:
+        has_issues = True
+        flags.append(
+            f"Suspicious MT fraction: {mt_fraction:.1%} "
+            f"(n_mt_found={n_mt}/{len(_MT_GENES)}) — mitochondrial genes "
+            "appear filtered or renamed in the input; degradation signal "
+            "is unreliable"
+        )
+        degradation["level"] = "unknown"
+        degradation["message"] = (
+            "MT genes missing or filtered from input — degradation cannot be assessed reliably"
+        )
+
     if deg_level in ("severe", "moderate"):
         has_issues = True
         if matched_tissue and mt_fold is not None:
