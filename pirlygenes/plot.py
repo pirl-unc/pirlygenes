@@ -1876,10 +1876,18 @@ def plot_tumor_expression_ranges(
                             transform=ax_pct.get_yaxis_transform())
                 continue
             if isinstance(pct, float) and np.isinf(pct):
-                # TCGA has zero but sample has expression → tumor-specific
-                ax_pct.text(0.5, i, "tumor-only", fontsize=base_font - 2,
-                            color="#8b0000", fontweight="bold",
-                            ha="center", va="center",
+                # Sample expresses the gene but the TCGA cohort reference is
+                # zero — so this gene is absent from TCGA {cancer_code} but
+                # present in THIS sample. Draw a solid dark-red band across
+                # the row with white text inside so the reader can't mistake
+                # it for a tissue-decomposition claim or a general property
+                # of the cancer type.
+                ax_pct.axhspan(i - 0.35, i + 0.35, color="#6b0000",
+                               alpha=1.0, zorder=3, linewidth=0)
+                ax_pct.text(0.5, i, f"absent in TCGA {cancer_code}",
+                            fontsize=base_font - 2, color="white",
+                            fontweight="bold", ha="center", va="center",
+                            zorder=4,
                             transform=ax_pct.get_yaxis_transform())
                 continue
             bar_color = color if pct >= 0.5 else "#d4a017"
