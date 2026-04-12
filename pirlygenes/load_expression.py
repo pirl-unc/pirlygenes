@@ -40,6 +40,11 @@ _GENE_ID_PATTERNS = [
     r"^gene[_\s]?id$",
     r"^ensg$",
 ]
+_TPM_PATTERNS = [
+    r"^TPM$",
+    r"^gene[_\s]?tpm",
+    r"(^|[_\s])tpm($|[_\s])",
+]
 
 
 def _guess_col(columns, patterns):
@@ -49,6 +54,39 @@ def _guess_col(columns, patterns):
             if re.search(pat, col, re.IGNORECASE):
                 return col
     return None
+
+
+def _select_sample_rows(df, sample_id_col=None, sample_id_value=None, verbose=True):
+    if sample_id_col is None and sample_id_value is None:
+        return df
+    if not sample_id_col or sample_id_value is None:
+        raise ValueError(
+            "Both sample_id_col and sample_id_value must be provided to select a sample"
+        )
+    if sample_id_col not in df.columns:
+        raise ValueError(
+            f"Sample column '{sample_id_col}' not found, available columns: {sorted(df.columns)}"
+        )
+
+    mask = df[sample_id_col].astype(str) == str(sample_id_value)
+    if not mask.any():
+        available = sorted(df[sample_id_col].dropna().astype(str).unique().tolist())
+        if len(available) > 8:
+            available_preview = available[:8] + ["..."]
+        else:
+            available_preview = available
+        raise ValueError(
+            f"No rows matched {sample_id_col}={sample_id_value!r}; "
+            f"available values include: {available_preview}"
+        )
+
+    out = df.loc[mask].copy()
+    if verbose:
+        print(
+            f"[load] Selected {len(out)} rows where "
+            f"{sample_id_col}={sample_id_value!r}"
+        )
+    return out
 
 
 def get_canonical_gene_name_from_gene_ids_string(gene_ids_string):
@@ -152,6 +190,36 @@ def _consolidate_gene_ids(df, verbose=True):
     return df
 
 
+def _attach_gene_sidecar_if_present(input_path, df, verbose=True):
+    """Hydrate one-column TPM vectors using a sibling Gene.csv sidecar.
+
+    Some sample bundles store gene names in ``Gene.csv`` and one or more
+    parallel TPM vectors in separate one-column CSVs. When such a vector is
+    loaded directly, attach the gene-name sidecar so the rest of the loader can
+    treat it as ordinary gene-level expression data.
+    """
+    if list(df.columns) != ["TPM"]:
+        return df, False
+
+    sidecar = Path(input_path).with_name("Gene.csv")
+    if not sidecar.exists():
+        return df, False
+
+    gene_df = pd.read_csv(sidecar)
+    if len(gene_df.columns) != 1 or len(gene_df) != len(df):
+        return df, False
+
+    out = pd.DataFrame(
+        {
+            "gene": gene_df.iloc[:, 0].astype(str),
+            "TPM": pd.to_numeric(df["TPM"], errors="coerce").fillna(0.0),
+        }
+    )
+    if verbose:
+        print(f"[load] Attached gene names from sidecar: {sidecar}")
+    return out, True
+
+
 def load_expression_data(
     input_path,
     aggregate_gene_expression=False,
@@ -159,6 +227,8 @@ def load_expression_data(
     aggregated_output_path=None,
     gene_name_col=None,
     gene_id_col=None,
+    sample_id_col=None,
+    sample_id_value=None,
     verbose=True,
     progress=True,
 ):
@@ -175,6 +245,18 @@ def load_expression_data(
         raise ValueError(f"Unrecognized file format for {input_path}")
     if verbose:
         print(f"[load] Loaded {len(df)} rows and {len(df.columns)} columns")
+
+    df, used_sidecar = _attach_gene_sidecar_if_present(input_path, df, verbose=verbose)
+    df = _select_sample_rows(
+        df,
+        sample_id_col=sample_id_col,
+        sample_id_value=sample_id_value,
+        verbose=verbose,
+    )
+    if used_sidecar and aggregate_gene_expression:
+        if verbose:
+            print("[load] Input is already gene-level via Gene.csv sidecar; skipping transcript aggregation")
+        aggregate_gene_expression = False
 
     if aggregate_gene_expression:
         if verbose:
@@ -210,9 +292,13 @@ def load_expression_data(
             "Gene_ID": "ensembl_gene_id",
             "Ensembl Gene ID": "ensembl_gene_id",
             "Ensembl_Gene_ID": "ensembl_gene_id",
+            "ensembl_gene": "ensembl_gene_id",
             "gene_id": "ensembl_gene_id",
             "canonical_gene_id": "ensembl_gene_id",
             "GeneID": "ensembl_gene_id",
+            "tpm": "TPM",
+            "gene_tpm": "TPM",
+            "gene_tpm_cognizant_corrector": "TPM",
         }
     )
 
@@ -229,12 +315,23 @@ def load_expression_data(
             if verbose:
                 print(f"[load] Auto-detected gene ID column: '{col}'")
             df = df.rename(columns={col: "ensembl_gene_id"})
+    if "TPM" not in set(df.columns):
+        col = _guess_col(df.columns, _TPM_PATTERNS)
+        if col:
+            if verbose:
+                print(f"[load] Auto-detected TPM column: '{col}'")
+            df = df.rename(columns={col: "TPM"})
 
-    if "gene" not in set(df.columns):
+    if "gene" not in set(df.columns) and "ensembl_gene_id" not in set(df.columns):
         raise ValueError(
             f"Gene column not found in {input_path}, available columns: {sorted(set(df.columns))}"
         )
-    df["gene"] = df["gene"].fillna("").astype(str).apply(short_gene_name)
+    if "TPM" not in set(df.columns):
+        raise ValueError(
+            f"TPM column not found in {input_path}, available columns: {sorted(set(df.columns))}"
+        )
+    if "gene" in set(df.columns):
+        df["gene"] = df["gene"].fillna("").astype(str).apply(short_gene_name)
 
     if "ensembl_gene_id" not in set(df.columns):
         if verbose:
@@ -299,6 +396,20 @@ def load_expression_data(
             if verbose:
                 print("[load] Using gene symbols as canonical gene names")
             df["canonical_gene_name"] = df["gene"].fillna("").astype(str)
+
+    if "gene" not in set(df.columns):
+        if verbose:
+            print("[load] Using canonical gene names as gene symbols")
+        df["gene"] = df["canonical_gene_name"].fillna("").astype(str).apply(short_gene_name)
+    elif "canonical_gene_name" in set(df.columns):
+        missing_gene = df["gene"].astype(str).str.strip().eq("")
+        if missing_gene.any():
+            df.loc[missing_gene, "gene"] = (
+                df.loc[missing_gene, "canonical_gene_name"]
+                .fillna("")
+                .astype(str)
+                .apply(short_gene_name)
+            )
 
     if "gene_display_name" not in set(df.columns):
         if verbose:

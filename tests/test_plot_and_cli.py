@@ -1,10 +1,14 @@
+import json
 from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
 import pytest
 
 import pirlygenes.plot as plot_mod
 import pirlygenes.cli as cli_mod
+import pirlygenes.tumor_purity as purity_mod
+from pirlygenes.tumor_purity import _summarize_candidate_family
 
 
 def test_guess_gene_cols_and_pick_genes():
@@ -137,19 +141,35 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
         "mhc2": {},
     }
     monkeypatch.setattr(cli_mod, "analyze_sample", lambda *a, **k: mock_analysis)
+    monkeypatch.setattr(cli_mod, "assess_sample_quality", lambda *a, **k: {
+        "degradation": {"mt_fraction": 0.05, "rp_fraction": 0.08, "long_short_ratio": 0.95, "n_mt_found": 13, "n_long_found": 18, "matched_tissue": "prostate", "baseline_mt": 0.29, "baseline_rp": 0.21, "mt_fold": 0.17, "rp_fold": 0.38, "level": "normal", "message": "No degradation"},
+        "culture": {"stress_score": 0.5, "tme_mean_tpm": 50.0, "tme_absent": False, "top_stress_genes": [], "n_tme_found": 15, "level": "normal", "message": "No culture signal"},
+        "flags": ["No quality concerns detected"],
+        "has_issues": False,
+    })
     monkeypatch.setattr(cli_mod, "plot_sample_summary", lambda *a, **k: (None, mock_analysis))
     monkeypatch.setattr(cli_mod, "plot_tumor_purity", lambda *a, **k: (None, mock_analysis["purity"]))
+    decomp_kwargs = {}
+    monkeypatch.setattr(
+        cli_mod,
+        "decompose_sample",
+        lambda *a, **k: decomp_kwargs.update(k) or [],
+    )
+    monkeypatch.setattr(cli_mod, "plot_decomposition_summary", lambda *a, **k: None)
 
     report_calls = []
     target_report_calls = []
     monkeypatch.setattr(cli_mod, "_generate_text_reports", lambda *a, **k: report_calls.append(True))
     monkeypatch.setattr(cli_mod, "_generate_target_report", lambda *a, **k: target_report_calls.append(True))
-    monkeypatch.setattr(cli_mod, "_select_embedding_genes_bottleneck", lambda **k: (None, {
-        "per_type": {}, "n_genes": 0, "n_types": 0, "method": "bottleneck", "tme_tissues": [],
-    }))
+    monkeypatch.setattr(cli_mod, "get_embedding_feature_metadata", lambda **k: {
+        "method": "hierarchy",
+        "feature_kind": "hierarchical_scores",
+        "n_features": 5,
+        "n_types": 2,
+        "families": ["PROSTATE"],
+    })
     monkeypatch.setattr(cli_mod, "estimate_tumor_expression_ranges", lambda *a, **k: pd.DataFrame())
     monkeypatch.setattr(cli_mod, "plot_tumor_expression_ranges", lambda *a, **k: None)
-    monkeypatch.setattr(cli_mod, "estimate_tumor_expression", lambda *a, **k: pd.DataFrame())
 
     out_dir = str(tmp_path / "test-output")
     cli_mod.analyze(
@@ -159,6 +179,10 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
         aggregate_gene_expression=True,
         label_genes="FAP,CD276",
         output_dpi=200,
+        sample_mode="solid",
+        tumor_context="met",
+        site_hint="liver",
+        decomposition_templates="met_liver",
         therapy_target_top_k=12,
         therapy_target_tpm_threshold=18,
     )
@@ -178,15 +202,557 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert safety_calls[0]["top_k"] == 12
     assert safety_calls[0]["tpm_threshold"] == 18
     assert len(cancer_gene_calls) == 2  # genes + disjoint
-    assert len(pca_calls) == 2  # bottleneck + tme
+    assert len(pca_calls) == 2
     assert len(mds_calls) == 2
+    assert {call["method"] for call in pca_calls} == {"hierarchy", "tme"}
+    assert {call["method"] for call in mds_calls} == {"hierarchy", "tme"}
     assert len(report_calls) == 1
+    assert len(target_report_calls) == 1
+    params = json.loads((tmp_path / "test-output" / "out-analysis-parameters.json").read_text())
+    assert "tumor_purity" in params
+    assert "decomposition" in params
+    assert params["selected_sample_mode"] == "solid"
+    assert params["embedding_methods"] == ["hierarchy", "tme"]
+    assert params["input"]["tumor_context"] == "met"
+    assert params["input"]["site_hint"] == "liver"
+    assert params["input"]["decomposition_templates"] == ["met_liver"]
+    assert decomp_kwargs["tumor_context"] == "met"
+    assert decomp_kwargs["site_hint"] == "liver"
+    assert decomp_kwargs["templates"] == ["met_liver"]
 
     printed = []
     monkeypatch.setattr(cli_mod, "print_name_and_version", lambda: printed.append("v"))
     monkeypatch.setattr(cli_mod, "dispatch_commands", lambda cmds: printed.append(cmds))
     cli_mod.main()
     assert printed and printed[0] == "v"
+
+
+def test_generate_text_reports_uses_family_and_background_language(tmp_path):
+    analysis = {
+        "cancer_type": "COAD",
+        "cancer_name": "Colon Adenocarcinoma",
+        "cancer_score": 0.24,
+        "family_summary": {
+            "display": "CRC-family (COAD > READ)",
+            "subtype_clause": "COAD > READ",
+        },
+        "top_cancers": [("COAD", 0.24), ("READ", 0.22)],
+        "candidate_trace": [
+            {
+                "code": "COAD",
+                "support_score": 0.24,
+                "signature_score": 0.84,
+                "purity_estimate": 0.37,
+                "family_label": "CRC",
+                "lineage_purity": 0.50,
+                "lineage_concordance": 0.78,
+            },
+            {
+                "code": "READ",
+                "support_score": 0.22,
+                "signature_score": 0.78,
+                "purity_estimate": 0.36,
+                "family_label": "CRC",
+                "lineage_purity": 0.45,
+                "lineage_concordance": 0.77,
+            },
+        ],
+        "fit_quality": {
+            "label": "ambiguous",
+            "message": "Top subtype candidates remain close; treat the leading label as provisional.",
+        },
+        "purity": {
+            "overall_estimate": 0.37,
+            "overall_lower": 0.13,
+            "overall_upper": 0.81,
+            "cancer_type": "COAD",
+            "components": {
+                "stromal": {"enrichment": 15.3},
+                "immune": {"enrichment": 3.0},
+                "lineage": {"per_gene": []},
+            },
+        },
+        "tissue_scores": [("smooth_muscle", 0.91, 20), ("gallbladder", 0.86, 20)],
+        "mhc1": {"HLA-A": 19, "HLA-B": 614, "B2M": 7089},
+        "mhc2": {},
+        "sample_mode": "solid",
+        "call_summary": {
+            "label_options": ["COAD", "READ"],
+            "label_display": "COAD or READ",
+            "reported_context": "primary",
+            "reported_site": "primary site",
+            "site_indeterminate": False,
+            "site_note": None,
+            "hypothesis_display": ["COAD / solid_primary", "READ / solid_primary"],
+        },
+    }
+    embedding_meta = {
+        "method": "hierarchy",
+        "feature_kind": "hierarchical_scores",
+        "n_features": 12,
+        "n_types": 2,
+        "families": ["CRC", "GASTRIC"],
+    }
+    prefix = str(tmp_path / "sample")
+
+    cli_mod._generate_text_reports(analysis, embedding_meta, prefix, decomp_results=[])
+
+    summary = (tmp_path / "sample-summary.md").read_text()
+    detailed = (tmp_path / "sample-analysis.md").read_text()
+    assert "CRC-family (COAD > READ)" in summary
+    assert "not literal site calls" in summary
+    assert "Top subtype candidates remain close" in summary
+    assert "Possible labels: **COAD** or **READ**." in summary
+    assert "Family-level call" in detailed
+    assert "Fit quality" in detailed
+    assert "Top broad possibilities" in detailed
+    assert "Background Tissue Signatures" in detailed
+
+
+def test_generate_text_reports_is_mode_aware_for_heme(tmp_path):
+    analysis = {
+        "cancer_type": "DLBC",
+        "cancer_name": "Diffuse Large B-Cell Lymphoma",
+        "cancer_score": 0.42,
+        "family_summary": {"display": None, "subtype_clause": None},
+        "top_cancers": [("DLBC", 0.42)],
+        "candidate_trace": [],
+        "purity": {
+            "overall_estimate": 0.81,
+            "overall_lower": 0.71,
+            "overall_upper": 0.89,
+            "cancer_type": "DLBC",
+            "components": {
+                "stromal": {"enrichment": 1.2},
+                "immune": {"enrichment": 4.8},
+                "lineage": {"per_gene": []},
+            },
+        },
+        "tissue_scores": [("lymph_node", 0.93, 20), ("spleen", 0.78, 20)],
+        "mhc1": {"HLA-A": 40, "HLA-B": 55, "B2M": 200},
+        "mhc2": {},
+        "sample_mode": "heme",
+    }
+    embedding_meta = {
+        "method": "hierarchy",
+        "feature_kind": "hierarchical_scores",
+        "n_features": 10,
+        "n_types": 2,
+        "families": ["SQUAMOUS"],
+    }
+    prefix = str(tmp_path / "heme")
+
+    cli_mod._generate_text_reports(analysis, embedding_meta, prefix, decomp_results=[])
+
+    summary = (tmp_path / "heme-summary.md").read_text()
+    detailed = (tmp_path / "heme-analysis.md").read_text()
+    assert "malignant-lineage fraction proxy" in summary
+    assert "not a strict tumor-vs-immune split" in detailed
+    assert "Lineage / Background Context" in detailed
+
+
+def test_generate_text_reports_handles_missing_lineage_summary(tmp_path):
+    analysis = {
+        "cancer_type": "UCS",
+        "cancer_name": "Uterine Carcinosarcoma",
+        "cancer_score": 0.09,
+        "family_summary": {
+            "display": "mesenchymal / sarcoma-like family (UCS > SARC)",
+            "subtype_clause": "UCS > SARC",
+        },
+        "top_cancers": [("UCS", 0.09), ("SARC", 0.05)],
+        "candidate_trace": [
+            {
+                "code": "UCS",
+                "support_score": 0.09,
+                "signature_score": 0.94,
+                "purity_estimate": 0.25,
+                "family_label": "MESENCHYMAL",
+                "lineage_purity": None,
+                "lineage_concordance": 0.92,
+            },
+            {
+                "code": "SARC",
+                "support_score": 0.05,
+                "signature_score": 0.82,
+                "purity_estimate": 0.28,
+                "family_label": "MESENCHYMAL",
+                "lineage_purity": None,
+                "lineage_concordance": 1.0,
+            },
+        ],
+        "fit_quality": {
+            "label": "weak",
+            "message": "Subtype fit is weak: the sample sits in a flat TCGA signature landscape, so broad family interpretation is more trustworthy than the exact top label.",
+        },
+        "purity": {
+            "overall_estimate": 0.25,
+            "overall_lower": 0.09,
+            "overall_upper": 0.26,
+            "cancer_type": "UCS",
+            "components": {
+                "stromal": {"enrichment": 4.7},
+                "immune": {"enrichment": 1.3},
+                "lineage": {
+                    "per_gene": [
+                        {"gene": "COL3A1", "purity": 0.31},
+                        {"gene": "DCN", "purity": 0.28},
+                    ],
+                    "purity": None,
+                    "lower": None,
+                    "upper": None,
+                },
+            },
+        },
+        "tissue_scores": [("smooth_muscle", 0.96, 20), ("skin", 0.87, 20)],
+        "mhc1": {"HLA-A": 36, "HLA-B": 66, "B2M": 1997},
+        "mhc2": {},
+        "sample_mode": "solid",
+        "call_summary": {
+            "label_options": ["UCS", "SARC"],
+            "label_display": "UCS or SARC",
+            "reported_context": None,
+            "reported_site": None,
+            "site_indeterminate": True,
+            "site_note": "Weak subtype fit prevents a reliable metastatic site call.",
+            "hypothesis_display": ["UCS / met_bone", "SARC / met_bone"],
+        },
+    }
+    embedding_meta = {
+        "method": "hierarchy",
+        "feature_kind": "hierarchical_scores",
+        "n_features": 12,
+        "n_types": 2,
+        "families": ["MESENCHYMAL", "SQUAMOUS"],
+    }
+    prefix = str(tmp_path / "sarcoma-like")
+
+    cli_mod._generate_text_reports(analysis, embedding_meta, prefix, decomp_results=[])
+
+    summary = (tmp_path / "sarcoma-like-summary.md").read_text()
+    detailed = (tmp_path / "sarcoma-like-analysis.md").read_text()
+    assert "broad family interpretation is more trustworthy" in summary
+    assert "site/template assignment is indeterminate" in summary
+    assert "**Reliable cluster**: COL3A1, DCN." in detailed
+    assert "Reported site/template call: **indeterminate**." in detailed
+
+
+def test_summarize_sample_call_keeps_primary_site_for_weak_primary_fit():
+    analysis = {
+        "cancer_type": "SARC",
+        "candidate_trace": [
+            {
+                "code": "UCS",
+                "support_score": 0.21,
+                "signature_score": 0.94,
+                "purity_estimate": 0.25,
+                "family_label": "MESENCHYMAL",
+                "lineage_purity": None,
+                "lineage_concordance": 0.92,
+            },
+            {
+                "code": "SARC",
+                "support_score": 0.20,
+                "signature_score": 0.82,
+                "purity_estimate": 0.28,
+                "family_label": "MESENCHYMAL",
+                "lineage_purity": None,
+                "lineage_concordance": 1.0,
+            },
+        ],
+        "fit_quality": {"label": "weak"},
+    }
+    decomp_results = [
+        SimpleNamespace(
+            template="solid_primary",
+            cancer_type="SARC",
+            score=0.2,
+            warnings=[],
+            template_site_factor=0.9,
+            template_tissue_score=0.8,
+        ),
+        SimpleNamespace(
+            template="solid_primary",
+            cancer_type="UCS",
+            score=0.18,
+            warnings=[],
+            template_site_factor=0.88,
+            template_tissue_score=0.77,
+        ),
+    ]
+
+    summary = cli_mod._summarize_sample_call(analysis, decomp_results, sample_mode="solid")
+
+    assert summary["site_indeterminate"] is False
+    assert summary["reported_context"] == "primary"
+    assert summary["reported_site"] == "primary site"
+
+
+def test_generate_text_reports_mentions_analysis_constraints(tmp_path):
+    analysis = {
+        "cancer_type": "SARC",
+        "cancer_name": "Sarcoma",
+        "cancer_score": 0.2,
+        "top_cancers": [("SARC", 0.2), ("UCS", 0.18)],
+        "candidate_trace": [
+            {
+                "code": "UCS",
+                "support_score": 0.21,
+                "signature_score": 0.94,
+                "purity_estimate": 0.25,
+                "family_label": "MESENCHYMAL",
+                "lineage_purity": None,
+                "lineage_concordance": 0.92,
+            },
+            {
+                "code": "SARC",
+                "support_score": 0.20,
+                "signature_score": 0.82,
+                "purity_estimate": 0.28,
+                "family_label": "MESENCHYMAL",
+                "lineage_purity": None,
+                "lineage_concordance": 1.0,
+            },
+        ],
+        "purity": {
+            "overall_estimate": 0.28,
+            "overall_lower": 0.06,
+            "overall_upper": 0.49,
+            "components": {
+                "stromal": {"enrichment": 1.7},
+                "immune": {"enrichment": 0.4},
+                "lineage": {"per_gene": []},
+            },
+        },
+        "family_summary": {
+            "display": "mesenchymal / sarcoma-like family (UCS > SARC)",
+            "subtype_clause": "UCS > SARC",
+        },
+        "fit_quality": {
+            "label": "weak",
+            "message": "Subtype fit is weak.",
+        },
+        "tissue_scores": [("liver", 0.96, 20)],
+        "mhc1": {"HLA-A": 36, "HLA-B": 66, "B2M": 1997},
+        "mhc2": {},
+        "sample_mode": "solid",
+        "analysis_constraints": {
+            "cancer_type": "SARC",
+            "sample_mode": "solid",
+            "tumor_context": "primary",
+        },
+        "call_summary": {
+            "label_options": ["UCS", "SARC"],
+            "label_display": "UCS or SARC",
+            "reported_context": "primary",
+            "reported_site": "primary site",
+            "site_indeterminate": False,
+            "site_note": None,
+            "hypothesis_display": ["UCS / solid_primary", "SARC / solid_primary"],
+        },
+    }
+    embedding_meta = {
+        "method": "hierarchy",
+        "feature_kind": "hierarchical_scores",
+        "n_features": 12,
+        "n_types": 2,
+        "families": ["MESENCHYMAL"],
+    }
+    prefix = str(tmp_path / "constrained")
+
+    cli_mod._generate_text_reports(analysis, embedding_meta, prefix, decomp_results=[])
+
+    summary = (tmp_path / "constrained-summary.md").read_text()
+    detailed = (tmp_path / "constrained-analysis.md").read_text()
+    assert "constrained working subtype" in summary
+    assert "Analysis constraints: cancer type fixed to **SARC**; template context restricted to **primary**." in summary
+    assert "User-constrained cancer type" in detailed
+    assert "Requested tumor context" in detailed
+
+
+def test_generate_target_report_is_mode_aware(tmp_path):
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "GENE1",
+                "median_est": 12.0,
+                "est_1": 8.0,
+                "est_9": 15.0,
+                "observed_tpm": 10.0,
+                "pct_cancer_median": 1.3,
+                "tcga_percentile": 0.82,
+                "is_surface": True,
+                "is_cta": False,
+                "therapies": "CAR-T",
+                "category": "therapy_target",
+            }
+        ]
+    )
+    purity = {"overall_lower": 0.9, "overall_estimate": 0.95, "overall_upper": 0.99}
+
+    pure_prefix = str(tmp_path / "pure")
+    cli_mod._generate_target_report(
+        ranges_df,
+        {"sample_mode": "pure", "mhc1": {"HLA-A": 100, "HLA-B": 100, "HLA-C": 100, "B2M": 500}},
+        pure_prefix,
+        "PRAD",
+        purity,
+    )
+    pure_text = (tmp_path / "pure-targets.md").read_text()
+    assert "Population-expression range" in pure_text
+    assert "Cellular TPM" in pure_text
+
+    heme_prefix = str(tmp_path / "heme-targets")
+    cli_mod._generate_target_report(
+        ranges_df,
+        {"sample_mode": "heme", "mhc1": {"HLA-A": 100, "HLA-B": 100, "HLA-C": 100, "B2M": 500}},
+        heme_prefix,
+        "DLBC",
+        purity,
+    )
+    heme_text = (tmp_path / "heme-targets-targets.md").read_text()
+    assert "Malignant-lineage expression range" in heme_text
+    assert "Malignant TPM" in heme_text
+
+
+def _tcga_sample(cancer_code):
+    ref = plot_mod.pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
+        }
+    )
+
+
+def test_hierarchy_embedding_keeps_coad_near_crc_family():
+    df = _tcga_sample("COAD")
+    matrix, labels = plot_mod._cancer_type_feature_matrix(df, method="hierarchy")
+
+    sample = matrix[labels.index("SAMPLE")]
+    coad = matrix[labels.index("COAD")]
+    read = matrix[labels.index("READ")]
+    prad = matrix[labels.index("PRAD")]
+    dlbc = matrix[labels.index("DLBC")]
+
+    assert np.linalg.norm(sample - coad) < np.linalg.norm(sample - prad)
+    assert np.linalg.norm(sample - read) < np.linalg.norm(sample - dlbc)
+
+
+def test_hierarchy_embedding_metadata_reports_feature_space():
+    meta = plot_mod.get_embedding_feature_metadata(method="hierarchy")
+
+    assert meta["method"] == "hierarchy"
+    assert meta["feature_kind"] == "hierarchical_scores"
+    assert meta["n_features"] > 0
+    assert "CRC" in meta["families"]
+    assert "sites" in meta
+    assert "lymph_node" in meta["sites"]
+
+
+def test_plot_tumor_purity_is_mode_aware(monkeypatch):
+    mock_result = {
+        "cancer_type": "DLBC",
+        "tcga_median_purity": 0.94,
+        "overall_estimate": 0.81,
+        "overall_lower": 0.71,
+        "overall_upper": 0.89,
+        "components": {
+            "signature": {
+                "per_gene": [{"gene": "CD19", "purity": 0.8}],
+                "purity": 0.8,
+                "lower": 0.7,
+                "upper": 0.9,
+                "genes": ["CD19"],
+            },
+            "stromal": {"n_genes": 5, "enrichment": 1.2},
+            "immune": {"n_genes": 5, "enrichment": 4.8},
+            "estimate_purity": 0.75,
+        },
+    }
+    monkeypatch.setattr(purity_mod, "estimate_tumor_purity", lambda *a, **k: mock_result)
+
+    fig, result = purity_mod.plot_tumor_purity(
+        pd.DataFrame({"gene_id": ["ENSG1"], "gene_display_name": ["A"], "TPM": [1.0]}),
+        cancer_type="DLBC",
+        sample_mode="heme",
+    )
+    assert result["cancer_type"] == "DLBC"
+    assert fig.axes[0].get_xlabel() == "Fraction estimate (%)"
+    assert fig.axes[1].get_title() == "Fraction / context components"
+    assert "Malignant-lineage fraction estimate" in fig._suptitle.get_text()
+
+
+def test_plot_sample_summary_is_mode_aware(monkeypatch):
+    mock_analysis = {
+        "cancer_type": "DLBC",
+        "cancer_name": "Diffuse Large B-Cell Lymphoma",
+        "top_cancers": [("DLBC", 0.42)],
+        "purity": {
+            "overall_estimate": 0.81,
+            "overall_lower": 0.71,
+            "overall_upper": 0.89,
+            "tcga_median_purity": 0.94,
+            "components": {
+                "stromal": {"enrichment": 1.2},
+                "immune": {"enrichment": 4.8},
+            },
+        },
+        "tissue_scores": [("lymph_node", 0.93, 20), ("spleen", 0.78, 20)],
+        "mhc1": {"HLA-A": 40, "HLA-B": 55, "HLA-C": 30, "B2M": 200},
+        "mhc2": {},
+        "candidate_trace": [{"code": "DLBC"}],
+    }
+    monkeypatch.setattr(purity_mod, "analyze_sample", lambda *a, **k: mock_analysis)
+
+    fig, analysis = purity_mod.plot_sample_summary(
+        pd.DataFrame({"gene_id": ["ENSG1"], "gene_display_name": ["A"], "TPM": [1.0]}),
+        cancer_type="DLBC",
+        sample_mode="heme",
+    )
+    assert analysis["cancer_type"] == "DLBC"
+    assert fig.axes[1].get_title() == "Heme Composition Context"
+    assert fig.axes[2].get_title().startswith("Lineage / Background Context")
+    assert "hematologic / lymphoid bulk" in fig._suptitle.get_text()
+
+
+def test_hierarchy_embedding_plot_adds_family_legend_and_neighbors(monkeypatch):
+    monkeypatch.setattr(plot_mod, "adjust_text", lambda *a, **k: None)
+    coords = np.array([
+        [0.0, 0.0],
+        [0.2, 0.1],
+        [1.5, 1.3],
+        [0.1, 0.05],
+    ])
+    labels = ["COAD", "READ", "PRAD", "SAMPLE"]
+
+    fig, ax = plot_mod._plot_embedding_with_labels(
+        coords,
+        labels,
+        title="Test",
+        xlabel="x",
+        ylabel="y",
+        method="hierarchy",
+    )
+
+    assert ax.get_legend() is not None
+    assert ax.get_legend().get_title().get_text() == "Family"
+    all_text = "\n".join(text.get_text() for text in ax.texts)
+    assert "Nearest TCGA centroids" in all_text
+    assert "COAD" in all_text
+
+
+def test_singleton_family_is_not_rendered_as_family_call():
+    summary = _summarize_candidate_family(
+        [
+            {"code": "PRAD", "family_label": "PROSTATE", "support_score": 0.4},
+            {"code": "DLBC", "family_label": None, "support_score": 0.1},
+        ]
+    )
+    assert summary["label"] == "PROSTATE"
+    assert summary["display"] is None
+    assert summary["subtype_clause"] is None
 
 
 def test_collect_ranked_therapy_targets_tracks_multicategory_and_approval(monkeypatch):
