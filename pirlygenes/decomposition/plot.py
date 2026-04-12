@@ -102,6 +102,170 @@ def plot_decomposition_component_breakdown(best, save_to_filename=None, save_dpi
     return fig
 
 
+# Palette for the 3-segment candidate composition bar. Chosen so the
+# tumor / template-specific / shared-host triplet is intuitive:
+# - blue for tumor signal (the thing the sample is)
+# - green for the template's tissue-specific compartment (matched-normal
+#   epithelium for a primary, target-tissue signature for a met) — the
+#   compartment whose "fit" the ranking cares about
+# - warm gray for the shared immune + stroma basis that every template
+#   shares, so it visually recedes
+_CANDIDATE_SEGMENT_COLORS = {
+    "tumor": "#1f77b4",
+    "template_specific": "#2ca02c",
+    "shared_host": "#b3a18a",
+}
+
+
+def _candidate_composition_segments(row):
+    """Split a decomposition candidate into (tumor, template_specific, shared_host) fractions of the sample.
+
+    Each segment is a fraction in [0, 1]; the three sum to 1. Computed
+    directly from the row fields:
+        tumor            = purity
+        template_specific = (1 - purity) * template_extra_fraction
+        shared_host      = (1 - purity) * (1 - template_extra_fraction)
+
+    Where `template_extra_fraction` is already the share of the non-tumor
+    portion decomposed into the template's tissue-specific extra components
+    (see decomposition/engine.py — `extra_fraction × (1 − tumor_fraction)`
+    is `extra_sample_fraction`, but the stored field on the result is
+    `template_extra_fraction` which is the pre-scaled ratio).
+    """
+    purity = float(row.purity or 0.0)
+    extra_ratio = float(row.template_extra_fraction or 0.0)
+    non_tumor = max(0.0, 1.0 - purity)
+    template_specific = non_tumor * extra_ratio
+    shared_host = max(0.0, non_tumor - template_specific)
+    return purity, template_specific, shared_host
+
+
+def plot_decomposition_candidates(
+    results,
+    top_candidates=6,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=None,
+):
+    """Render one row per candidate as a 3-segment composition bar.
+
+    Each bar occupies the full x-axis (0–100% of the sample) and is split
+    into tumor / template-specific / shared-host segments, making the
+    *structural* difference between candidates readable at a glance:
+
+    - a `solid_primary` candidate's non-tumor fraction is dominated by
+      matched-normal epithelium (large green segment)
+    - a `met_liver` candidate in the same sample shifts the non-tumor
+      fraction into the template's hepatocyte compartment if the signal
+      is there, or collapses to shared immune/stroma if it isn't (tiny
+      green, large gray)
+    - an immune-only template (e.g. `met_lymph`) has no template-specific
+      compartment at all — the row is just tumor + shared (no green)
+
+    The combined decomposition `score` is shown as a text annotation per
+    row rather than encoded in bar length, so composition differences
+    remain directly comparable across candidates.
+
+    Parameters
+    ----------
+    results : list of DecompositionResult
+        Typically `engine.decompose_sample(...)`. Candidates are plotted
+        in score-descending order; top entry sits at the top of the axis.
+    top_candidates : int
+        Maximum number of candidate rows to render.
+    save_to_filename : str or None
+        If given, save the figure to this path as a standalone PNG.
+    save_dpi : int
+        DPI used when saving.
+    figsize : tuple or None
+        Explicit figure size; defaults to (12, 0.55 * n_candidates + 1.5).
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    if not results:
+        return None
+
+    rows = results[:top_candidates]
+    n = len(rows)
+    if figsize is None:
+        figsize = (12, 0.55 * n + 1.8)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    labels = [f"{row.cancer_type} / {row.template}" for row in rows]
+    y = np.arange(n)
+
+    tumor_vals = np.zeros(n)
+    tmpl_vals = np.zeros(n)
+    shared_vals = np.zeros(n)
+    for i, row in enumerate(rows):
+        tumor, tmpl, shared = _candidate_composition_segments(row)
+        tumor_vals[i] = tumor
+        tmpl_vals[i] = tmpl
+        shared_vals[i] = shared
+
+    # Stacked horizontal bars — widths in percent of sample for readability.
+    ax.barh(y, tumor_vals * 100, color=_CANDIDATE_SEGMENT_COLORS["tumor"],
+            edgecolor="white", linewidth=0.5, height=0.6, label="Tumor")
+    ax.barh(y, tmpl_vals * 100, left=tumor_vals * 100,
+            color=_CANDIDATE_SEGMENT_COLORS["template_specific"],
+            edgecolor="white", linewidth=0.5, height=0.6,
+            label="Template-specific compartment")
+    ax.barh(y, shared_vals * 100, left=(tumor_vals + tmpl_vals) * 100,
+            color=_CANDIDATE_SEGMENT_COLORS["shared_host"],
+            edgecolor="white", linewidth=0.5, height=0.6,
+            label="Shared immune / stroma")
+
+    # Inline percent labels inside each segment, only if the segment is
+    # wide enough to hold a readable label.
+    def _annotate(vals, offsets, fmt):
+        for i, (v, off) in enumerate(zip(vals, offsets)):
+            if v * 100 >= 7:
+                ax.text(off * 100 + v * 100 / 2, i, fmt(v),
+                        va="center", ha="center",
+                        fontsize=8, color="white", fontweight="bold")
+
+    _annotate(tumor_vals, np.zeros(n), lambda v: f"tumor {v:.0%}")
+    _annotate(tmpl_vals, tumor_vals,
+              lambda v: f"site {v:.0%}")
+    _annotate(shared_vals, tumor_vals + tmpl_vals,
+              lambda v: f"immune/stroma {v:.0%}")
+
+    # Right-side per-row score text. Kept textual (not a second bar) so
+    # it's not confused with a width-encoded quantity.
+    for i, row in enumerate(rows):
+        score = float(row.score or 0.0)
+        cancer = float(row.cancer_support_score or 0.0)
+        site = float(row.template_tissue_score or 0.0)
+        ax.text(101, i, f"score {score:.2f}  (cancer {cancer:.2f} · site {site:.2f})",
+                va="center", ha="left", fontsize=8.5, color="#333333")
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=9.5)
+    ax.invert_yaxis()
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("Percent of sample")
+    # Legend above the plot area so it never overlaps the last row's
+    # segment labels — the title still sits above the legend.
+    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.02),
+              ncol=3, frameon=False, fontsize=9)
+    ax.set_title(
+        "Sample decomposition candidates\n"
+        "(each bar = one candidate's estimated sample composition)",
+        fontweight="bold", pad=28,
+    )
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
+
+
 def plot_decomposition_summary(
     results,
     call_summary=None,

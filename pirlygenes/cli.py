@@ -57,8 +57,9 @@ from .decomposition import (
     get_decomposition_parameters,
     infer_sample_mode,
     plot_decomposition_summary,
-    plot_decomposition_composition,
+    plot_decomposition_candidates,
     plot_decomposition_component_breakdown,
+    plot_decomposition_composition,
 )
 from .sample_quality import assess_sample_quality
 
@@ -418,6 +419,18 @@ def analyze(
             save_to_filename=components_png,
             save_dpi=output_dpi,
         )
+        # Sample decomposition candidate bars — one row per (cancer × template)
+        # candidate, showing the 3-segment composition (tumor / template-
+        # specific / shared immune+stroma). Replaces the "extra=..." text
+        # annotation on the composite summary with a structural picture.
+        candidates_png = (
+            "%s-decomposition-candidates.png" % prefix if prefix else "decomposition-candidates.png"
+        )
+        plot_decomposition_candidates(
+            decomp_results,
+            save_to_filename=candidates_png,
+            save_dpi=output_dpi,
+        )
 
         hypotheses_tsv = "%s-decomposition-hypotheses.tsv" % prefix if prefix else "decomposition-hypotheses.tsv"
         pd.DataFrame(
@@ -721,6 +734,7 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 | `*-decomposition.png` | 4-panel decomposition diagnostic: hypotheses, composition, components, markers |
 | `*-decomposition-composition.png` | Standalone composition bar (tumor + TME) for the best hypothesis |
 | `*-decomposition-components.png` | Standalone TME cell-type breakdown for the best hypothesis |
+| `*-decomposition-candidates.png` | Standalone per-candidate composition bars (tumor / template-specific / shared host) across top decomposition candidates |
 | `*-cancer-types-genes.png` | Cancer-type gene signature heatmap |
 | `*-cancer-types-disjoint.png` | Disjoint (unique) gene counts per cancer type |
 """
