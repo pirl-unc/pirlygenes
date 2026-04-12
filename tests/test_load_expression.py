@@ -317,3 +317,33 @@ def test_apply_id_aliases_noop_when_aliases_file_missing(monkeypatch):
     })
     out = le._apply_id_aliases_and_sum(df, verbose=False)
     pd.testing.assert_frame_equal(out, df)
+
+
+def test_load_ensembl_id_aliases_resolves_chains(monkeypatch, tmp_path):
+    """A→B→C in the bundled data should be flattened to A→C, B→C."""
+    chained = pd.DataFrame({
+        "alt_haplotype_id": ["ENSG_A", "ENSG_B"],
+        "primary_contig_id": ["ENSG_B", "ENSG_C"],
+        "symbol": ["", ""],
+        "source": ["test", "test"],
+    })
+    monkeypatch.setattr(le, "get_data", lambda name: chained, raising=False)
+    import pirlygenes.load_dataset as ld
+    monkeypatch.setattr(ld, "get_data", lambda name: chained)
+    out = le._load_ensembl_id_aliases()
+    assert out["ENSG_A"] == "ENSG_C"
+    assert out["ENSG_B"] == "ENSG_C"
+
+
+def test_load_ensembl_id_aliases_detects_cycles(monkeypatch):
+    """A→B→A in the data should raise ValueError."""
+    cyclic = pd.DataFrame({
+        "alt_haplotype_id": ["ENSG_A", "ENSG_B"],
+        "primary_contig_id": ["ENSG_B", "ENSG_A"],
+        "symbol": ["", ""],
+        "source": ["test", "test"],
+    })
+    import pirlygenes.load_dataset as ld
+    monkeypatch.setattr(ld, "get_data", lambda name: cyclic)
+    with pytest.raises(ValueError, match="Cycle"):
+        le._load_ensembl_id_aliases()

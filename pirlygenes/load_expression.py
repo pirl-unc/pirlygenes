@@ -107,6 +107,10 @@ def _load_ensembl_id_aliases():
     equivalent, plus a few retired IDs with documented successors.  Alt-
     haplotype IDs represent alleles of the same gene as the primary-contig
     ID, so their expression should be summed when both are present.
+
+    Chains (A→B→C) are resolved transitively: if the bundled data contains
+    both entries, callers get A→C directly.  Cycles and over-long chains
+    are detected and raise (indicates bad input data).
     """
     from .plot_data_helpers import _strip_ensembl_version
     try:
@@ -114,10 +118,31 @@ def _load_ensembl_id_aliases():
         df = get_data("ensembl-id-aliases")
     except Exception:
         return {}
-    return dict(zip(
+    raw = dict(zip(
         df["alt_haplotype_id"].astype(str).map(_strip_ensembl_version),
         df["primary_contig_id"].astype(str).map(_strip_ensembl_version),
     ))
+    # Transitively resolve chains so the returned dict has no A→B where B
+    # is itself a key.  Cap iterations to catch cycles.
+    resolved = {}
+    for src in raw:
+        dst = raw[src]
+        seen = {src}
+        for _ in range(16):
+            if dst not in raw:
+                break
+            if dst in seen:
+                raise ValueError(
+                    f"Cycle in ensembl-id-aliases starting from {src} (loop at {dst})"
+                )
+            seen.add(dst)
+            dst = raw[dst]
+        else:
+            raise ValueError(
+                f"Chain from {src} exceeded 16 hops in ensembl-id-aliases"
+            )
+        resolved[src] = dst
+    return resolved
 
 
 def _detect_and_convert_to_tpm(df, verbose=True):
