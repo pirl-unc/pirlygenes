@@ -9,6 +9,7 @@ from pirlygenes.tumor_purity import (
     TCGA_MEDIAN_PURITY,
     _combine_purity_estimates,
     _lineage_purity_estimates,
+    _select_tumor_specific_genes,
     _summarize_gene_level_purity,
     _summarize_lineage_support,
 )
@@ -104,6 +105,22 @@ def test_combine_purity_penalizes_signature_only_calls_with_infiltration():
     assert lower <= overall <= upper
 
 
+def test_combine_purity_deprioritizes_unstable_low_signature_when_lineage_exists():
+    overall, lower, upper = _combine_purity_estimates(
+        sig_purity=0.03,
+        sig_lower=0.005,
+        sig_upper=0.08,
+        estimate_purity=0.35,
+        lineage_purity=0.11,
+        lineage_lower=0.08,
+        lineage_upper=0.14,
+        sig_stability=0.2,
+    )
+    assert overall > 0.10
+    assert lower >= 0.08
+    assert upper >= overall
+
+
 def test_signature_summary_ignores_high_outlier():
     overall, lower, upper, stability = _summarize_gene_level_purity(
         [0.03, 0.04, 0.05, 0.06, 0.80],
@@ -113,6 +130,17 @@ def test_signature_summary_ignores_high_outlier():
     assert 0.03 <= lower <= overall
     assert upper < 0.30
     assert 0.1 < stability < 1.0
+
+
+def test_prad_signature_panel_excludes_rearranged_immune_genes():
+    panel = _select_tumor_specific_genes("PRAD", n=30)
+    assert panel
+    assert not any(
+        gene.startswith(("IGH", "IGK", "IGL", "TRA", "TRB", "TRG", "TRD"))
+        for gene in panel
+    )
+    assert "TRGV9" not in panel
+    assert "TRGC1" not in panel
 
 
 # ── estimate_tumor_expression_ranges ──────────────────────────────

@@ -151,6 +151,12 @@ TUMOR_PURITY_PARAMETERS = {
     "tumor_specific_markers": {
         "delta_min": 0.02,
         "normal_fraction_max": 0.5,
+        "tme_fraction_max": 0.5,
+        "cancer_expression_min": 0.5,
+        "fallback_expression_min": 0.1,
+        "zscore_min": 1.0,
+        "fallback_zscore_min": 0.25,
+        "specificity_min": 1.5,
     },
     "host_background": {
         "expression_min": 0.05,
@@ -162,6 +168,9 @@ TUMOR_PURITY_PARAMETERS = {
         "signature_only_estimate_floor": 0.05,
         "tumor_anchor_weight": 0.7,
         "estimate_weight": 0.3,
+        "signature_conflict_ratio": 0.75,
+        "signature_stability_min": 0.45,
+        "signature_weight_floor": 0.35,
     },
     "family_scoring": {
         "presence_scale": 0.15,
@@ -178,6 +187,10 @@ TUMOR_PURITY_PARAMETERS = {
         "soft_family_penalty_gain": 0.75,
     },
 }
+
+_SIGNATURE_PANEL_CACHE = {}
+_REARRANGED_GENE_PREFIXES = ("IGH", "IGK", "IGL", "TRA", "TRB", "TRG", "TRD")
+_GENERIC_SIGNATURE_EXCLUDE_PREFIXES = ("MT-", "RPL", "RPS", "HLA-")
 
 
 def get_tumor_purity_parameters():
@@ -440,9 +453,45 @@ def _select_tumor_specific_genes(cancer_code, n=30):
 
     Returns list of gene symbols sorted by tumor specificity.
     """
+    return _select_tumor_specific_genes_for_panel(
+        cancer_code,
+        n=n,
+        exclude_lineage=True,
+    )
+
+
+def _is_excluded_signature_gene(symbol):
+    """Exclude gene families that are brittle or driven by non-tumor admixture."""
+    if not symbol:
+        return True
+    symbol = str(symbol)
+    return symbol.startswith(_REARRANGED_GENE_PREFIXES) or symbol.startswith(
+        _GENERIC_SIGNATURE_EXCLUDE_PREFIXES
+    )
+
+
+def _select_tumor_specific_genes_for_panel(cancer_code, n=30, exclude_lineage=True):
+    """Select robust cancer-signature genes for purity and subtype panels.
+
+    The panel builder is deliberately conservative:
+    - drop rearranged immune receptor loci and generic housekeeping-like genes
+    - require meaningful expression in the target cancer type
+    - score genes by cancer-type specificity *and* visibility above TME / normal
+    - relax thresholds only if the strict tier leaves a type under-covered
+    """
+    cache_key = (cancer_code, int(n), bool(exclude_lineage))
+    cached = _SIGNATURE_PANEL_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
+
     ref = pan_cancer_expression(normalize="housekeeping")
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+    ntpm_nonrepro = [
+        c for c in ntpm_cols
+        if c.replace("nTPM_", "") not in {"testis", "epididymis", "seminal_vesicle", "placenta", "ovary"}
+    ]
 
     cancer_col = f"FPKM_{cancer_code}"
     if cancer_col not in ref_by_sym.columns:
@@ -452,42 +501,110 @@ def _select_tumor_specific_genes(cancer_code, n=30):
     tissue = CANCER_TO_TISSUE.get(cancer_code)
     if tissue and tissue not in normal_tissues:
         normal_tissues.append(tissue)
-    background_tissues = sorted(set(normal_tissues) | _HOST_SITE_BACKGROUND_TISSUES)
-    normal_cols = [f"nTPM_{t}" for t in background_tissues if f"nTPM_{t}" in ref_by_sym.columns]
-    lineage_genes = set(LINEAGE_GENES.get(cancer_code, []))
+    normal_cols = [f"nTPM_{t}" for t in sorted(set(normal_tissues)) if f"nTPM_{t}" in ref_by_sym.columns]
+    tme_cols = [
+        f"nTPM_{t}"
+        for t in sorted(_HOST_SITE_BACKGROUND_TISSUES)
+        if f"nTPM_{t}" in ref_by_sym.columns
+    ]
+    lineage_genes = set(LINEAGE_GENES.get(cancer_code, [])) if exclude_lineage else set()
 
     # Z-score across cancer types for initial ranking
     expr_matrix = ref_by_sym[fpkm_cols].astype(float)
     gene_mean = expr_matrix.mean(axis=1)
     gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
     z_scores = ((expr_matrix[cancer_col] - gene_mean) / gene_std).fillna(0)
+    cancer_hk = expr_matrix[cancer_col]
+    matched_normal_hk = (
+        ref_by_sym[normal_cols].astype(float).max(axis=1)
+        if normal_cols
+        else pd.Series(0.0, index=ref_by_sym.index, dtype=float)
+    )
+    broad_normal_hk = (
+        ref_by_sym[ntpm_nonrepro].astype(float).max(axis=1)
+        if ntpm_nonrepro
+        else pd.Series(0.0, index=ref_by_sym.index, dtype=float)
+    )
+    normal_hk = pd.concat(
+        [matched_normal_hk.rename("matched"), broad_normal_hk.rename("broad")],
+        axis=1,
+    ).max(axis=1)
+    tme_hk = (
+        ref_by_sym[tme_cols].astype(float).max(axis=1)
+        if tme_cols
+        else pd.Series(0.0, index=ref_by_sym.index, dtype=float)
+    )
+    background_hk = pd.concat([normal_hk.rename("normal"), tme_hk.rename("tme")], axis=1).max(axis=1)
 
-    # Candidates: high z-score AND meaningful expression
-    candidates = z_scores[expr_matrix[cancer_col] > 0.01].nlargest(n * 5)
+    score = (
+        z_scores.clip(lower=0.0)
+        * np.log2(cancer_hk + 1.0)
+        * np.log2((cancer_hk + 0.01) / (background_hk + 0.01) + 1.0)
+    )
+    normal_frac = normal_hk / (cancer_hk + 0.001)
+    tme_frac = tme_hk / (cancer_hk + 0.001)
+    specificity = (cancer_hk + 0.001) / (background_hk + 0.001)
+    excluded = ref_by_sym.index.to_series().map(_is_excluded_signature_gene)
+    if lineage_genes:
+        excluded = excluded | ref_by_sym.index.to_series().isin(lineage_genes)
+
+    params = TUMOR_PURITY_PARAMETERS["tumor_specific_markers"]
+    tiers = [
+        {
+            "expr_min": params["cancer_expression_min"],
+            "zscore_min": params["zscore_min"],
+            "normal_frac_max": params["normal_fraction_max"],
+            "tme_frac_max": params["tme_fraction_max"],
+            "specificity_min": params["specificity_min"],
+        },
+        {
+            "expr_min": max(params["fallback_expression_min"], params["cancer_expression_min"] * 0.5),
+            "zscore_min": max(0.0, params["fallback_zscore_min"]),
+            "normal_frac_max": min(0.8, params["normal_fraction_max"] + 0.15),
+            "tme_frac_max": min(0.8, params["tme_fraction_max"] + 0.2),
+            "specificity_min": max(1.1, params["specificity_min"] - 0.3),
+        },
+        {
+            "expr_min": params["fallback_expression_min"],
+            "zscore_min": 0.0,
+            "normal_frac_max": 1.0,
+            "tme_frac_max": 1.0,
+            "specificity_min": 1.0,
+        },
+    ]
 
     markers = []
-    for gene in candidates.index:
-        if gene in lineage_genes:
-            continue
-        cancer_hk = float(ref_by_sym.loc[gene, cancer_col])
-        if normal_cols:
-            normal_hk = float(ref_by_sym.loc[gene, normal_cols].astype(float).max())
-        else:
-            normal_hk = 0.0
-
-        # Require cancer expression to meaningfully exceed the broader
-        # origin-tissue family and generic stromal/immune backgrounds. This
-        # avoids using normal lineage genes as tumor-purity anchors.
-        delta = cancer_hk - normal_hk
-        normal_frac = normal_hk / (cancer_hk + 0.001)
-        if (
-            delta > TUMOR_PURITY_PARAMETERS["tumor_specific_markers"]["delta_min"]
-            and normal_frac <= TUMOR_PURITY_PARAMETERS["tumor_specific_markers"]["normal_fraction_max"]
-        ):
+    seen = set()
+    for tier in tiers:
+        keep = (
+            (cancer_hk > tier["expr_min"])
+            & (z_scores > tier["zscore_min"])
+            & ((cancer_hk - normal_hk) > params["delta_min"])
+            & (normal_frac <= tier["normal_frac_max"])
+            & (tme_frac <= tier["tme_frac_max"])
+            & (specificity >= tier["specificity_min"])
+            & ~excluded
+        )
+        candidates = score[keep].sort_values(ascending=False)
+        for gene in candidates.index:
+            if gene in seen:
+                continue
+            seen.add(gene)
             markers.append(gene)
             if len(markers) >= n:
-                break
+                _SIGNATURE_PANEL_CACHE[cache_key] = tuple(markers[:n])
+                return markers[:n]
 
+    fallback = score[(cancer_hk > params["fallback_expression_min"]) & ~excluded].sort_values(ascending=False)
+    for gene in fallback.index:
+        if gene in seen:
+            continue
+        seen.add(gene)
+        markers.append(gene)
+        if len(markers) >= n:
+            break
+
+    _SIGNATURE_PANEL_CACHE[cache_key] = tuple(markers[:n])
     return markers
 
 
@@ -524,6 +641,7 @@ def _combine_purity_estimates(
     lineage_purity,
     lineage_lower,
     lineage_upper,
+    sig_stability=None,
 ):
     """Combine purity signals while keeping ESTIMATE as context, not destiny.
 
@@ -535,9 +653,28 @@ def _combine_purity_estimates(
     """
     has_sig = sig_purity is not None
     has_lineage = lineage_purity is not None
+    signature_params = TUMOR_PURITY_PARAMETERS["purity_combination"]
+    deprioritize_signature = _signature_conflicts_with_lineage(
+        sig_purity=sig_purity,
+        lineage_purity=lineage_purity,
+        sig_stability=sig_stability,
+    )
 
     if has_sig and has_lineage:
-        tumor_anchor = float(np.sqrt(max(sig_purity, 0.0) * max(lineage_purity, 0.0)))
+        if deprioritize_signature:
+            tumor_anchor = float(lineage_purity)
+        else:
+            sig_weight = float(max(sig_stability or 1.0, signature_params["signature_weight_floor"]))
+            lineage_weight = 1.0
+            tumor_anchor = float(
+                np.exp(
+                    (
+                        sig_weight * np.log(max(sig_purity, 1e-6))
+                        + lineage_weight * np.log(max(lineage_purity, 1e-6))
+                    )
+                    / (sig_weight + lineage_weight)
+                )
+            )
     elif has_lineage:
         tumor_anchor = float(lineage_purity)
     elif has_sig:
@@ -552,13 +689,13 @@ def _combine_purity_estimates(
         if has_sig and has_lineage and estimate_purity <= 0:
             overall = float(tumor_anchor)
         elif has_sig and not has_lineage:
-            estimate_floor = TUMOR_PURITY_PARAMETERS["purity_combination"]["signature_only_estimate_floor"]
+            estimate_floor = signature_params["signature_only_estimate_floor"]
             overall = float(np.sqrt(max(tumor_anchor, 0.0) * max(estimate_purity, estimate_floor)))
         else:
-            estimate_floor = TUMOR_PURITY_PARAMETERS["purity_combination"]["signature_only_estimate_floor"]
+            estimate_floor = signature_params["signature_only_estimate_floor"]
             overall = float(
-                (max(tumor_anchor, 0.0) ** TUMOR_PURITY_PARAMETERS["purity_combination"]["tumor_anchor_weight"])
-                * (max(estimate_purity, estimate_floor) ** TUMOR_PURITY_PARAMETERS["purity_combination"]["estimate_weight"])
+                (max(tumor_anchor, 0.0) ** signature_params["tumor_anchor_weight"])
+                * (max(estimate_purity, estimate_floor) ** signature_params["estimate_weight"])
             )
     elif tumor_anchor is not None:
         overall = float(tumor_anchor)
@@ -570,20 +707,40 @@ def _combine_purity_estimates(
     lower_candidates = [overall]
     upper_candidates = [overall]
 
-    for value in (sig_lower, lineage_lower):
+    for value in (lineage_lower,):
         if value is not None:
             lower_candidates.append(float(value))
-    for value in (sig_upper, lineage_upper):
+    if not deprioritize_signature:
+        for value in (sig_lower,):
+            if value is not None:
+                lower_candidates.append(float(value))
+    for value in (lineage_upper,):
         if value is not None:
             upper_candidates.append(float(value))
+    if not deprioritize_signature:
+        for value in (sig_upper,):
+            if value is not None:
+                upper_candidates.append(float(value))
 
-        if estimate_purity is not None and (estimate_purity > 0 or (has_sig and not has_lineage)):
-            lower_candidates.append(float(estimate_purity))
+    if estimate_purity is not None and (estimate_purity > 0 or (has_sig and not has_lineage)):
+        lower_candidates.append(float(estimate_purity))
 
     overall_lower = float(np.clip(min(lower_candidates), 0.0, 1.0))
     overall_upper = float(np.clip(max(upper_candidates), 0.0, 1.0))
     overall = float(np.clip(overall, overall_lower, overall_upper))
     return overall, overall_lower, overall_upper
+
+
+def _signature_conflicts_with_lineage(sig_purity, lineage_purity, sig_stability):
+    """Return True when a weak signature should not drag down a coherent lineage call."""
+    if sig_purity is None or lineage_purity is None:
+        return False
+    params = TUMOR_PURITY_PARAMETERS["purity_combination"]
+    stability = float(sig_stability if sig_stability is not None else 1.0)
+    return (
+        float(sig_purity) < float(lineage_purity) * params["signature_conflict_ratio"]
+        and stability < params["signature_stability_min"]
+    )
 
 
 # -------------------- main estimation --------------------
@@ -730,7 +887,25 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
         lineage_purity=lineage_purity,
         lineage_lower=lineage_lower,
         lineage_upper=lineage_upper,
+        sig_stability=sig_stability,
     )
+    signature_deprioritized = _signature_conflicts_with_lineage(
+        sig_purity=sig_purity,
+        lineage_purity=lineage_purity,
+        sig_stability=sig_stability,
+    )
+    if signature_deprioritized:
+        integration_source = "lineage"
+    elif sig_purity is not None and lineage_purity is not None:
+        integration_source = "signature+lineage"
+    elif lineage_purity is not None:
+        integration_source = "lineage"
+    elif sig_purity is not None:
+        integration_source = "signature"
+    elif estimate_purity is not None:
+        integration_source = "estimate"
+    else:
+        integration_source = None
 
     return {
         "cancer_type": cancer_code,
@@ -769,6 +944,10 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
                 "n_genes": len(immune_genes),
             },
             "estimate_purity": estimate_purity,
+            "integration": {
+                "source": integration_source,
+                "signature_deprioritized": signature_deprioritized,
+            },
         },
     }
 
@@ -1267,6 +1446,22 @@ def rank_cancer_type_candidates(
             row["code"],
         )
     )
+    if rows:
+        best_family_group = _CANCER_FAMILY_GROUP.get(
+            rows[0].get("family_label"),
+            rows[0].get("family_label"),
+        )
+        if best_family_group and _CANCER_FAMILY_GROUP_CODE_COUNTS.get(best_family_group, 0) > 1:
+            same_family = [
+                row for row in rows[1:]
+                if _CANCER_FAMILY_GROUP.get(row.get("family_label"), row.get("family_label")) == best_family_group
+            ]
+            if same_family:
+                other_rows = [
+                    row for row in rows[1:]
+                    if _CANCER_FAMILY_GROUP.get(row.get("family_label"), row.get("family_label")) != best_family_group
+                ]
+                rows = [rows[0]] + same_family + other_rows
 
     max_support = max((row["support_score"] for row in rows), default=0.0)
     for row in rows:

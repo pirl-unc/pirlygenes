@@ -2017,6 +2017,48 @@ def plot_purity_adjusted_targets(
     return fig
 
 
+_signature_panel_cache = {}
+
+
+def _get_cancer_type_signature_panels(n_signature_genes=20):
+    """Return robust per-cancer signature panels used for ranking and plotting."""
+    cache_key = int(n_signature_genes)
+    cached = _signature_panel_cache.get(cache_key)
+    if cached is not None:
+        return {code: list(genes) for code, genes in cached.items()}
+
+    from .tumor_purity import _select_tumor_specific_genes_for_panel
+
+    ref = pan_cancer_expression(normalize="housekeeping")
+    ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    expr_matrix = ref_by_sym[fpkm_cols].astype(float)
+    gene_mean = expr_matrix.mean(axis=1)
+    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
+    z_matrix = expr_matrix.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
+
+    panels = {}
+    for col in fpkm_cols:
+        code = col.replace("FPKM_", "")
+        genes = _select_tumor_specific_genes_for_panel(
+            code,
+            n=n_signature_genes,
+            exclude_lineage=False,
+        )
+        z_col = z_matrix[col]
+        expr_col = expr_matrix[col]
+        fallback = list(z_col[expr_col > 0.01].nlargest(n_signature_genes).index)
+        for gene in fallback:
+            if gene not in genes:
+                genes.append(gene)
+            if len(genes) >= n_signature_genes:
+                break
+        panels[code] = genes[:n_signature_genes]
+
+    _signature_panel_cache[cache_key] = {
+        code: tuple(genes) for code, genes in panels.items()
+    }
+    return panels
 
 
 def _compute_cancer_type_signature_stats(
@@ -2041,21 +2083,8 @@ def _compute_cancer_type_signature_stats(
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
 
-    # Z-score matrix across cancer types for gene selection
     expr_matrix = ref_by_sym[fpkm_cols].astype(float)
-    gene_mean = expr_matrix.mean(axis=1)
-    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
-    z_matrix = expr_matrix.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
-
-    # Select signature genes per cancer type: top N by z-score,
-    # requiring minimum expression in the cancer type
-    sig = {}
-    for col in fpkm_cols:
-        code = col.replace("FPKM_", "")
-        z_col = z_matrix[col]
-        expr_col = expr_matrix[col]
-        valid = z_col[expr_col > 0.01]
-        sig[code] = list(valid.nlargest(n_signature_genes).index)
+    sig = _get_cancer_type_signature_panels(n_signature_genes=n_signature_genes)
 
     stats = []
     for code in sorted(sig.keys()):
@@ -2634,18 +2663,7 @@ def _cancer_type_score_matrix(df_gene_expr, n_signature_genes=20):
     labels = [c.replace("FPKM_", "") for c in fpkm_cols]
 
     expr_matrix = ref_by_sym[fpkm_cols].astype(float)
-    gene_mean = expr_matrix.mean(axis=1)
-    gene_std = expr_matrix.std(axis=1).replace(0, np.nan)
-    z_matrix = expr_matrix.sub(gene_mean, axis=0).div(gene_std, axis=0).fillna(0)
-
-    # Select signature genes per cancer type
-    sig = {}
-    for col in fpkm_cols:
-        code = col.replace("FPKM_", "")
-        z_col = z_matrix[col]
-        expr_col = expr_matrix[col]
-        valid = z_col[expr_col > 0.01]
-        sig[code] = list(valid.nlargest(n_signature_genes).index)
+    sig = _get_cancer_type_signature_panels(n_signature_genes=n_signature_genes)
 
     # Score each reference cancer type against all signatures
     ref_scores = np.zeros((len(labels), len(labels)))
