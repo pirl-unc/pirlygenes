@@ -15,9 +15,10 @@ from .engine import (
     infer_sample_mode,
 )
 from .plot import (
-    plot_decomposition_summary,
-    plot_decomposition_composition,
+    plot_decomposition_candidates,
     plot_decomposition_component_breakdown,
+    plot_decomposition_composition,
+    plot_decomposition_summary,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "plot_decomposition_summary",
     "plot_decomposition_composition",
     "plot_decomposition_component_breakdown",
+    "plot_decomposition_candidates",
 ]

@@ -656,3 +656,52 @@ def test_brain_met_does_not_win_for_colon_sample():
     )
 
     assert results[0].template == "solid_primary"
+
+
+def test_plot_decomposition_candidates_saves_png(tmp_path):
+    """Candidate composition bar plot writes a non-empty PNG and handles
+    templates with and without a template-specific compartment."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from types import SimpleNamespace
+    from pirlygenes.decomposition import plot_decomposition_candidates
+
+    rows = [
+        SimpleNamespace(
+            cancer_type="COAD", template="solid_primary",
+            purity=0.45, template_extra_fraction=0.6,
+            cancer_support_score=0.7, template_tissue_score=0.85,
+            score=0.42,
+        ),
+        SimpleNamespace(
+            cancer_type="COAD", template="met_lymph",
+            purity=0.45, template_extra_fraction=0.0,
+            cancer_support_score=0.65, template_tissue_score=0.4,
+            score=0.18,
+        ),
+    ]
+    out = tmp_path / "candidates.png"
+    fig = plot_decomposition_candidates(rows, save_to_filename=str(out))
+    assert fig is not None
+    assert out.exists()
+    assert out.stat().st_size > 5_000
+
+
+def test_plot_decomposition_candidates_empty_results_returns_none():
+    from pirlygenes.decomposition import plot_decomposition_candidates
+    assert plot_decomposition_candidates([]) is None
+
+
+def test_candidate_composition_segments_sum_to_one():
+    """(tumor, template_specific, shared_host) must sum to 1."""
+    from types import SimpleNamespace
+    from pirlygenes.decomposition.plot import _candidate_composition_segments
+
+    for purity in [0.0, 0.2, 0.5, 0.85, 1.0]:
+        for extra in [0.0, 0.35, 1.0]:
+            row = SimpleNamespace(purity=purity, template_extra_fraction=extra)
+            tumor, tmpl, shared = _candidate_composition_segments(row)
+            assert abs(tumor + tmpl + shared - 1.0) < 1e-9
+            assert 0 <= tumor <= 1
+            assert 0 <= tmpl <= 1
+            assert 0 <= shared <= 1

@@ -157,6 +157,7 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_mod, "plot_decomposition_summary", lambda *a, **k: None)
     monkeypatch.setattr(cli_mod, "plot_decomposition_composition", lambda *a, **k: None)
     monkeypatch.setattr(cli_mod, "plot_decomposition_component_breakdown", lambda *a, **k: None)
+    monkeypatch.setattr(cli_mod, "plot_decomposition_candidates", lambda *a, **k: None)
 
     report_calls = []
     target_report_calls = []
