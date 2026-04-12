@@ -177,6 +177,179 @@ def therapy_target_gene_id_to_name(therapy):
     return result
 
 
+# ---------- Mitochondrial genes ----------
+def mitochondrial_genes_df(role=None):
+    """DataFrame of mitochondrially-encoded genes (chrM).
+
+    Parameters
+    ----------
+    role : str or None
+        ``"protein_coding"`` — the 13 OXPHOS subunits (MT-CO*, MT-ND*,
+        MT-CYB, MT-ATP6/8).
+        ``"rRNA"`` — MT-RNR1, MT-RNR2.
+        ``None`` (default) — all 15 rows.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: Symbol, Ensembl_Gene_ID, Role.
+    """
+    df = get_data("mitochondrial-genes")
+    if role is not None:
+        df = df[df["Role"] == role]
+    return df
+
+
+def mitochondrial_gene_names(role=None):
+    """Set of mitochondrially-encoded gene symbols. See `mitochondrial_genes_df`."""
+    return set(mitochondrial_genes_df(role=role)["Symbol"])
+
+
+def mitochondrial_gene_ids(role=None):
+    """Set of mitochondrially-encoded Ensembl gene IDs. See `mitochondrial_genes_df`."""
+    return set(mitochondrial_genes_df(role=role)["Ensembl_Gene_ID"])
+
+
+# ---------- Culture-stress genes ----------
+def culture_stress_genes_df(category=None):
+    """DataFrame of culture-stress-UP genes used to flag cell-line samples.
+
+    Genes upregulated in culture-adapted cells vs primary tissue (Yu et al.,
+    Nat Commun 2019). Split across categories: HSP / glycolysis /
+    proliferation / ER_stress / oxidative_stress / glutamine.
+    """
+    df = get_data("culture-stress-genes")
+    if category is not None:
+        df = df[df["Category"] == category]
+    return df
+
+
+def culture_stress_gene_names(category=None):
+    return set(culture_stress_genes_df(category=category)["Symbol"])
+
+
+def culture_stress_gene_ids(category=None):
+    return set(culture_stress_genes_df(category=category)["Ensembl_Gene_ID"])
+
+
+# ---------- Tumor microenvironment (TME) markers ----------
+def tme_markers_df(cell_type=None):
+    """DataFrame of TME marker genes split by cell type.
+
+    Used to detect the presence of tumor microenvironment (absent in cell
+    lines, present in tissue biopsies). `cell_type` is one of ``T_cell``,
+    ``B_cell``, ``myeloid``, ``fibroblast``, ``endothelial``, or None for
+    all markers.
+    """
+    df = get_data("tme-markers")
+    if cell_type is not None:
+        df = df[df["Cell_Type"] == cell_type]
+    return df
+
+
+def tme_marker_gene_names(cell_type=None):
+    return set(tme_markers_df(cell_type=cell_type)["Symbol"])
+
+
+def tme_marker_gene_ids(cell_type=None):
+    return set(tme_markers_df(cell_type=cell_type)["Ensembl_Gene_ID"])
+
+
+# ---------- Degradation gene pairs (transcript length FFPE index) ----------
+def degradation_gene_pairs_df():
+    """DataFrame of (short, long) gene pairs with expected long/short ratios.
+
+    Used by the transcript-length degradation index: in fresh tissue the
+    ratio is near 1; in FFPE / degraded RNA the long transcript is
+    preferentially lost. Each row has short/long symbol + Ensembl ID +
+    expected ratio calibrated from 83 fresh/frozen reference columns.
+    """
+    return get_data("degradation-gene-pairs")
+
+
+def degradation_gene_pairs():
+    """List of (short_symbol, long_symbol, expected_ratio) tuples.
+
+    Convenience view for callers that don't need Ensembl IDs. Returns the
+    pairs in the order they appear in the CSV.
+    """
+    df = degradation_gene_pairs_df()
+    return [
+        (row["Short_Gene_Symbol"], row["Long_Gene_Symbol"], float(row["Expected_Long_Over_Short_Ratio"]))
+        for _, row in df.iterrows()
+    ]
+
+
+# ---------- Cancer lineage genes ----------
+def lineage_genes_df(cancer_type=None):
+    """DataFrame of per-TCGA-cancer lineage genes.
+
+    Lineage genes are retained in metastases and specific enough to
+    calibrate tumor purity. Each row is (Cancer_Type, Symbol,
+    Ensembl_Gene_ID). Filter by `cancer_type` to get one type's genes.
+    """
+    df = get_data("lineage-genes")
+    if cancer_type is not None:
+        df = df[df["Cancer_Type"] == cancer_type]
+    return df
+
+
+def lineage_gene_symbols(cancer_type):
+    """List of lineage gene symbols for a given TCGA cancer type code.
+
+    Preserves CSV order (which encodes the curator's intent about which
+    markers are most load-bearing for that cancer type).
+    """
+    df = lineage_genes_df(cancer_type=cancer_type)
+    return df["Symbol"].tolist()
+
+
+def lineage_gene_ids(cancer_type):
+    """List of lineage Ensembl IDs for a given TCGA cancer type code."""
+    df = lineage_genes_df(cancer_type=cancer_type)
+    return df["Ensembl_Gene_ID"].tolist()
+
+
+def lineage_genes_by_cancer_type():
+    """Dict of {TCGA_code: [Symbol, ...]} for all cancer types.
+
+    Primarily for consumers that historically used a pre-built dict. Built
+    once per process via the `get_data` cache.
+    """
+    df = get_data("lineage-genes")
+    return {
+        code: group["Symbol"].tolist()
+        for code, group in df.groupby("Cancer_Type", sort=False)
+    }
+
+
+# ---------- Cancer family panels ----------
+def cancer_family_panels_df(family=None):
+    """DataFrame of broad-family signature panels used for cancer-type scoring.
+
+    Family labels include ``PROSTATE``, ``CRC``, ``GASTRIC``, ``ESCA_SQ``,
+    ``SQUAMOUS``, ``MESENCHYMAL``, ``RENAL``, ``GLIAL``, ``MELANOCYTIC``.
+    """
+    df = get_data("cancer-family-panels")
+    if family is not None:
+        df = df[df["Family"] == family]
+    return df
+
+
+def cancer_family_panel(family):
+    """List of Symbols for one cancer family. See `cancer_family_panels_df`."""
+    return cancer_family_panels_df(family=family)["Symbol"].tolist()
+
+
+def cancer_family_panels():
+    """Dict of {family_label: [Symbol, ...]} for all families."""
+    df = get_data("cancer-family-panels")
+    return {
+        family: group["Symbol"].tolist()
+        for family, group in df.groupby("Family", sort=False)
+    }
+
+
 # ---------- Housekeeping genes ----------
 def housekeeping_gene_names(core_only=False):
     df = get_data("housekeeping-genes")

@@ -26,85 +26,48 @@ import numpy as np
 
 
 # ── Gene lists ───────────────────────────────────────────────────────────
+#
+# Gene panels live in `data/*.csv` and are loaded via `gene_sets_cancer`.
+# Module-level aliases are kept so existing imports keep working; the CSV
+# is the source of truth.
 
-# Mitochondrial-encoded genes — short transcripts that survive degradation.
-_MT_GENES = [
-    "MT-CO1", "MT-CO2", "MT-CO3", "MT-ND1", "MT-ND2", "MT-ND3",
-    "MT-ND4", "MT-ND4L", "MT-ND5", "MT-ND6", "MT-CYB", "MT-ATP6",
-    "MT-ATP8", "MT-RNR1", "MT-RNR2",
-]
+from .gene_sets_cancer import (
+    culture_stress_gene_names,
+    degradation_gene_pairs,
+    mitochondrial_gene_names,
+    tme_marker_gene_names,
+)
 
-# Culture-stress genes — upregulated in cell lines vs primary tissue.
-_CULTURE_STRESS_UP = [
-    # Heat shock / chaperones
-    "HSPA1A", "HSPA1B", "HSP90AA1", "HSPA6", "HSPB1", "HSPA5",
-    # Glycolysis (amplified beyond in-vivo Warburg)
-    "LDHA", "HK2", "SLC2A1", "PKM", "ENO1",
-    # Proliferation
-    "TOP2A", "MKI67", "CDK1", "CCNB1", "AURKA",
-    # ER stress / UPR
-    "DDIT3", "ATF4", "XBP1",
-    # Oxidative stress (NRF2 targets)
-    "TXNRD1", "NQO1",
-    # Glutamine metabolism
-    "GLS", "SLC1A5",
-]
+
+# Mitochondrial-encoded gene symbols — short transcripts that survive
+# degradation, so their fraction rises in FFPE / degraded RNA.
+_MT_GENES = sorted(mitochondrial_gene_names())
+
+# Culture-stress genes — upregulated in cell lines vs primary tissue
+# (Yu et al., Nat Commun 2019). Split across HSP / glycolysis /
+# proliferation / ER_stress / oxidative_stress / glutamine categories in
+# the CSV.
+_CULTURE_STRESS_UP = sorted(culture_stress_gene_names())
 
 # TME markers — absent in cell lines, present in tissue biopsies.
-_TME_MARKERS = [
-    # T cell
-    "CD3D", "CD3E", "CD8A", "CD4",
-    # B cell / plasma
-    "CD19", "MS4A1", "IGKC",
-    # Myeloid
-    "CD14", "CD68", "TYROBP", "FCER1G",
-    # Fibroblast / ECM
-    "COL1A1", "COL1A2", "DCN", "LUM", "FAP",
-    # Endothelial
-    "PECAM1", "VWF", "CDH5",
-]
+# Grouped by Cell_Type (T_cell / B_cell / myeloid / fibroblast /
+# endothelial) in the CSV.
+_TME_MARKERS = sorted(tme_marker_gene_names())
 
 # Ribosomal protein gene prefixes — fraction rises in degraded samples.
+# Kept as a literal prefix tuple because it's used for `startswith` checks
+# on all gene symbols rather than an enumerated panel.
 _RIBOSOMAL_PROTEIN_PREFIXES = ("RPL", "RPS")
 
-# Matched-expression gene pairs for transcript-length degradation index.
-# Selected from bottom-10% (short, <1.2 kb) and top-10% (long, >6.9 kb)
-# of coding genes with median nTPM > 10 (ubiquitously expressed).
-# Pairs were chosen for: expression ratio near 1.0 across 50 normal
-# tissues and CV < 0.30.  In FFPE/degraded RNA, long transcripts are
-# preferentially lost, so the observed ratio drops below expected.
-# Generated from pyensembl release 110 transcript lengths.
-# Expected ratios calibrated from 83 columns (50 nTPM tissues + 33 TCGA
-# cancer types), all fresh/frozen.  Each pair was selected for:
-#   - Short gene coding exon length in bottom 10% (<1.2 kb)
-#   - Long gene coding exon length in top 10% (>6.9 kb)
-#   - Both ubiquitously expressed (>10 nTPM median, detected in 83/83 columns)
-#   - Expression ratio near 1.0 across all 83 reference columns
-#   - Coefficient of variation < 0.35
-# Generated from pyensembl release 110 (GRCh38) transcript lengths.
-_DEGRADATION_GENE_PAIRS = [
-    # (short_gene, long_gene, expected_ratio=long/short across 83 reference columns)
-    ("SSBP1", "RTRAF", 0.97),      # 989bp vs 7007bp, CV=0.22
-    ("C18orf21", "CWC27", 0.96),   # 1059bp vs 10941bp, CV=0.26
-    ("TTC32", "PDS5B", 0.88),      # 941bp vs 7472bp, CV=0.28
-    ("PIGBOS1", "ZNF316", 1.18),   # 944bp vs 7243bp, CV=0.29
-    ("C18orf21", "PANK2", 0.75),   # 1059bp vs 8484bp, CV=0.30
-    ("PSMA3", "GSPT1", 0.71),      # 955bp vs 7141bp, CV=0.30
-    ("LSM1", "LARS1", 1.17),       # 975bp vs 7202bp, CV=0.31
-    ("NSMCE2", "CPSF2", 0.83),     # 1188bp vs 13003bp, CV=0.31
-    ("THOC7", "HNRNPR", 0.75),     # 892bp vs 7751bp, CV=0.31
-    ("EXOSC1", "WDR33", 0.74),     # 1145bp vs 9490bp, CV=0.31
-    ("NSMCE2", "PHF3", 1.04),      # 1188bp vs 18797bp, CV=0.32
-    ("SDHAF2", "VTA1", 0.95),      # 1186bp vs 6991bp, CV=0.32
-    ("CDC26", "RBM23", 1.06),      # 871bp vs 10007bp, CV=0.32
-    ("PHF5A", "ADNP", 0.94),       # 1053bp vs 7360bp, CV=0.32
-    ("HPF1", "CUL4B", 0.93),       # 1216bp vs 24020bp, CV=0.32
-    ("RBX1", "HNRNPR", 1.03),      # 1169bp vs 7751bp, CV=0.33
-    ("MRPL1", "USP9X", 1.07),      # 1175bp vs 12591bp, CV=0.33
-    ("NSMCE2", "CWC27", 0.89),     # 1188bp vs 10941bp, CV=0.33
-    ("ZNHIT3", "SUGT1", 0.85),     # 926bp vs 14161bp, CV=0.33
-    ("EMC7", "CLTC", 1.16),        # 1069bp vs 8369bp, CV=0.33
-]
+# Matched-expression gene pairs for the transcript-length degradation
+# index. See `data/degradation-gene-pairs.csv` for the full schema — each
+# row is (short_symbol, short_id, long_symbol, long_id, expected_ratio).
+# The short genes are in the bottom-10% of coding-exon length (<1.2 kb),
+# long genes in the top-10% (>6.9 kb); both ubiquitously expressed
+# (>10 nTPM median across 83 reference columns); expected ratios have
+# CV < 0.35 across fresh/frozen tissues. Generated from pyensembl
+# release 110 (GRCh38).
+_DEGRADATION_GENE_PAIRS = degradation_gene_pairs()
 
 
 # ── Thresholds ───────────────────────────────────────────────────────────

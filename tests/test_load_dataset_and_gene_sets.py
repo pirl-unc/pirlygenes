@@ -167,3 +167,77 @@ def test_cta_partition():
     # cta_excluded genes are in non_cta
     excluded_ids = gsc.CTA_excluded_gene_ids()
     assert excluded_ids.issubset(p.non_cta)
+
+
+# ── Externalized gene sets (mitochondrial / culture / TME / degradation /
+#    lineage / cancer-family) ─────────────────────────────────────────────
+
+def test_mitochondrial_gene_loaders():
+    df = gsc.mitochondrial_genes_df()
+    # 13 protein-coding OXPHOS subunits + 2 rRNAs = 15
+    assert len(df) == 15
+    assert set(df["Role"]) == {"protein_coding", "rRNA"}
+    assert df["Ensembl_Gene_ID"].notna().all()
+    assert "MT-CO1" in gsc.mitochondrial_gene_names()
+    assert "MT-RNR1" in gsc.mitochondrial_gene_names(role="rRNA")
+    assert "MT-CO1" not in gsc.mitochondrial_gene_names(role="rRNA")
+    assert len(gsc.mitochondrial_gene_ids()) == 15
+
+
+def test_culture_stress_gene_loaders():
+    df = gsc.culture_stress_genes_df()
+    assert len(df) >= 20
+    assert "HSPA1A" in gsc.culture_stress_gene_names()
+    assert "HSPA1A" in gsc.culture_stress_gene_names(category="HSP")
+    assert "LDHA" not in gsc.culture_stress_gene_names(category="HSP")
+
+
+def test_tme_marker_loaders():
+    df = gsc.tme_markers_df()
+    assert len(df) >= 15
+    expected_cell_types = {"T_cell", "B_cell", "myeloid", "fibroblast", "endothelial"}
+    assert expected_cell_types.issubset(set(df["Cell_Type"]))
+    assert "CD3D" in gsc.tme_marker_gene_names(cell_type="T_cell")
+    assert "CD3D" not in gsc.tme_marker_gene_names(cell_type="fibroblast")
+
+
+def test_degradation_gene_pairs_loader():
+    pairs = gsc.degradation_gene_pairs()
+    assert len(pairs) == 20
+    short, long, ratio = pairs[0]
+    assert isinstance(short, str) and isinstance(long, str)
+    assert 0.5 < ratio < 1.5
+
+
+def test_lineage_gene_loaders_cover_all_tcga_codes():
+    from pirlygenes.tumor_purity import TCGA_MEDIAN_PURITY
+    by_code = gsc.lineage_genes_by_cancer_type()
+    missing = [c for c in TCGA_MEDIAN_PURITY if c not in by_code]
+    assert missing == [], f"Missing lineage genes for: {missing}"
+    # PRAD sanity: classic prostate markers
+    prad = set(gsc.lineage_gene_symbols("PRAD"))
+    assert {"KLK3", "FOLH1", "TMPRSS2"}.issubset(prad)
+
+
+def test_cancer_family_panel_loader():
+    families = gsc.cancer_family_panels()
+    expected = {"PROSTATE", "CRC", "GASTRIC", "SQUAMOUS", "ESCA_SQ",
+                "MESENCHYMAL", "RENAL", "GLIAL", "MELANOCYTIC"}
+    assert set(families) == expected
+    assert "KLK3" in gsc.cancer_family_panel("PROSTATE")
+    assert "GFAP" not in gsc.cancer_family_panel("PROSTATE")
+
+
+def test_gene_loaders_are_exported_from_package():
+    """Core panel loaders should be reachable via `from pirlygenes import ...`."""
+    import pirlygenes
+
+    for name in [
+        "mitochondrial_gene_ids",
+        "culture_stress_gene_names",
+        "tme_markers_df",
+        "degradation_gene_pairs",
+        "lineage_genes_by_cancer_type",
+        "cancer_family_panels",
+    ]:
+        assert hasattr(pirlygenes, name), f"{name} not re-exported"
