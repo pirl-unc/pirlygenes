@@ -42,9 +42,15 @@ def load_all_dataframes_dict():
     return {csv_file: df for csv_file, df in load_all_dataframes()}
 
 
+_CACHED_DATAFRAMES = None
+
+
 def get_data(name, _dataframes_dict=None):
+    global _CACHED_DATAFRAMES
     if _dataframes_dict is None:
-        _dataframes_dict = load_all_dataframes_dict()
+        if _CACHED_DATAFRAMES is None:
+            _CACHED_DATAFRAMES = load_all_dataframes_dict()
+        _dataframes_dict = _CACHED_DATAFRAMES
     candidates = [name, name.lower()]
     for candidate in list(candidates):
         candidates.append(candidate + ".csv")
