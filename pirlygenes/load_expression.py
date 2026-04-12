@@ -98,6 +98,97 @@ def get_canonical_gene_name_from_gene_ids_string(gene_ids_string):
     return ";".join(not_none_gene_names)
 
 
+def _load_ensembl_id_aliases():
+    """Return {alt_haplotype_id: primary_contig_id} mapping from bundled data.
+
+    The aliases cover alt-haplotype genes (MHC, KIR, olfactory receptors on
+    HSCHR6_MHC_*/HSCHR19KIR_* contigs) that have a primary-chromosome
+    equivalent, plus a few retired IDs with documented successors.  Alt-
+    haplotype IDs represent alleles of the same gene as the primary-contig
+    ID, so their expression should be summed when both are present.
+    """
+    from .plot_data_helpers import _strip_ensembl_version
+    try:
+        from .load_dataset import get_data
+        df = get_data("ensembl-id-aliases")
+    except Exception:
+        return {}
+    return dict(zip(
+        df["alt_haplotype_id"].astype(str).map(_strip_ensembl_version),
+        df["primary_contig_id"].astype(str).map(_strip_ensembl_version),
+    ))
+
+
+def _detect_and_convert_to_tpm(df, verbose=True):
+    """Convert FPKM column to TPM if the input looks like FPKM.
+
+    TPM_i = 1e6 * FPKM_i / sum_g(FPKM_g).  This is a within-sample
+    rescaling that makes values sum to 1M; it does not correct gene-length
+    bias or protocol differences, but it harmonizes the units so
+    downstream comparisons (e.g. sample vs. TCGA cohort) are on the same
+    scale.
+    """
+    # Detect by column name: if we see FPKM but no TPM column, convert.
+    # After fuzzy renaming, the value column is named "TPM" regardless, so
+    # we look at the original columns first.
+    fpkm_col = next(
+        (c for c in df.columns if c.upper() == "FPKM" or "fpkm" in c.lower()),
+        None,
+    )
+    tpm_col = next(
+        (c for c in df.columns if c.upper() == "TPM" or c.lower().endswith("_tpm")),
+        None,
+    )
+    if fpkm_col and not tpm_col:
+        total = df[fpkm_col].astype(float).sum()
+        if total > 0:
+            df = df.copy()
+            df[fpkm_col] = 1e6 * df[fpkm_col].astype(float) / total
+            df = df.rename(columns={fpkm_col: "TPM"})
+            if verbose:
+                print(f"[load] Converted FPKM column '{fpkm_col}' to TPM (sum was {total:.0f})")
+    return df
+
+
+def _apply_id_aliases_and_sum(df, verbose=True):
+    """Map alt-haplotype Ensembl IDs to their primary-contig equivalents
+    and sum TPM values (alt-haplotype IDs represent alleles of the same gene).
+
+    Operates by ID only — runs BEFORE symbol-based consolidation and before
+    symbol lookup, so inputs with only Ensembl IDs still get consolidated.
+    """
+    if "ensembl_gene_id" not in df.columns:
+        return df
+    aliases = _load_ensembl_id_aliases()
+    if not aliases:
+        return df
+
+    from .plot_data_helpers import _strip_ensembl_version
+
+    df = df.copy()
+    original_ids = df["ensembl_gene_id"].astype(str).map(_strip_ensembl_version)
+    canonical_ids = original_ids.map(lambda gid: aliases.get(gid, gid))
+    n_remapped = int((canonical_ids != original_ids).sum())
+    if n_remapped == 0:
+        return df
+    df["ensembl_gene_id"] = canonical_ids
+
+    # Sum TPM across rows that now share the same canonical ID
+    tpm_col = next((c for c in df.columns if c.upper() == "TPM"), None)
+    if tpm_col and df["ensembl_gene_id"].duplicated().any():
+        groupby_cols = ["ensembl_gene_id"]
+        agg_map = {tpm_col: "sum"}
+        # Keep the first value for any other column
+        for col in df.columns:
+            if col not in groupby_cols and col != tpm_col:
+                agg_map[col] = "first"
+        df = df.groupby("ensembl_gene_id", as_index=False).agg(agg_map)
+
+    if verbose:
+        print(f"[load] Remapped {n_remapped} alt-haplotype Ensembl IDs to primary contig and summed TPM")
+    return df
+
+
 def _consolidate_gene_ids(df, verbose=True):
     """Collapse alt-haplotype / retired Ensembl IDs to one ID per gene symbol.
 
@@ -253,6 +344,9 @@ def load_expression_data(
         sample_id_value=sample_id_value,
         verbose=verbose,
     )
+    # FPKM→TPM: convert BEFORE any aggregation or ID remapping so downstream
+    # consolidation (which sums values) operates on consistent units.
+    df = _detect_and_convert_to_tpm(df, verbose=verbose)
     if used_sidecar and aggregate_gene_expression:
         if verbose:
             print("[load] Input is already gene-level via Gene.csv sidecar; skipping transcript aggregation")
@@ -425,6 +519,11 @@ def load_expression_data(
     # same gene symbol.  Pick the canonical ID (the one in our pan-cancer
     # reference, or highest-expressed) and aggregate TPM via max.
     df = _consolidate_gene_ids(df, verbose=verbose)
+
+    # Apply ID-based aliases (alt-haplotype MHC/KIR → primary contig).
+    # Runs after symbol consolidation so either approach can consolidate
+    # whatever the other missed.  Sums TPM across alt-haplotype alleles.
+    df = _apply_id_aliases_and_sum(df, verbose=verbose)
 
     if verbose:
         print(
