@@ -7,11 +7,17 @@ Gene lists and expression data for cancer immunotherapy
 ```bash
 pip install pirlygenes
 
-# Full sample analysis: cancer type, purity, targets, embeddings
+# Full sample analysis: cancer type, purity, decomposition, targets, embeddings
 pirlygenes analyze gene_expression.tsv
 
 # Specify cancer type and output directory
 pirlygenes analyze gene_expression.tsv --cancer-type prostate --output-dir results/
+
+# Force a metastatic template with a site hint
+pirlygenes analyze gene_expression.tsv --cancer-type COAD --tumor-context met --site-hint liver
+
+# Explicit decomposition template list
+pirlygenes analyze gene_expression.tsv --decomposition-templates "solid_primary,met_liver"
 
 # Force-label specific genes in plots
 pirlygenes analyze gene_expression.tsv --cancer-type PRAD --label-genes "FOLH1,STEAP1,CD276"
@@ -27,8 +33,10 @@ pirlygenes plot-cancer-cohorts sample1.tsv sample2.tsv sample3.tsv --cancer-type
 
 The main entry point for single-sample analysis. Takes a gene expression file (CSV, TSV, or Excel with a TPM column) and produces a comprehensive output directory with:
 
+- **Sample quality assessment** — RNA degradation / FFPE detection (transcript-length gene pairs + tissue-matched MT/RP baselines) and cell line / cell culture detection
 - **Cancer type identification** — auto-detected or specified, scored against 33 TCGA types
 - **Tumor purity estimation** — three methods combined: cancer-type signature genes, ESTIMATE stromal/immune enrichment, and lineage gene calibration
+- **Broad-compartment decomposition** — weighted NNLS decomposition of the non-tumor fraction into immune, stromal, and site-specific host components with template-based scoring
 - **Purity-adjusted expression** — 9-point tumor expression ranges crossing (low/med/high) TME background with (low/med/high) purity, with % of cancer type median comparison
 - **Therapeutic target analysis** — CTAs, ADC/CAR-T/TCR-T/bispecific/radioligand targets, surface proteins
 - **Tissue context** — normal tissue similarity scoring
@@ -36,6 +44,67 @@ The main entry point for single-sample analysis. Takes a gene expression file (C
 - **Combined PDF** with all figures
 
 See [docs/analyze-command.md](docs/analyze-command.md) for full output file reference.
+
+### CLI arguments
+
+Key decomposition-related options:
+
+| Argument | Description |
+|---|---|
+| `--cancer-type` | TCGA code or alias (e.g. `PRAD`, `prostate`). If omitted, auto-detected. |
+| `--sample-mode` | `auto` (default), `solid` (solid tumor biopsy), `heme` (hematologic malignancy), `pure` (cell line / sorted population) |
+| `--tumor-context` | `auto` (default), `primary` (restricts to primary-site templates), `met` (restricts to metastatic templates) |
+| `--site-hint` | Metastatic site (e.g. `liver`, `lung`, `brain`, `bone`) — selects the matching met template |
+| `--decomposition-templates` | Comma-separated explicit template list (e.g. `solid_primary,met_liver`) |
+| `--label-genes` | Comma-separated genes to always label in plots |
+
+### Sample quality assessment
+
+Before decomposition, the sample is evaluated for two quality issues that would undermine downstream interpretation. Quality metrics are inferred from the expression matrix alone (no raw reads or BAM files needed).
+
+**RNA degradation / FFPE detection.** Three complementary signals:
+
+1. **Transcript-length gene pairs** — 20 matched pairs of a short gene (<1.2 kb coding) and a long gene (>6.9 kb coding), selected for stable expression ratios (CV < 0.35) across 50 normal tissues and 33 TCGA cancer types. In FFPE/degraded RNA, long transcripts are preferentially fragmented, so the observed/expected ratio drops. The median across pairs is the degradation index (1.0 = normal, < 0.3 = severe).
+2. **Mitochondrial fraction** — MT-encoded transcripts are short and abundant; their fraction rises in degraded samples. Compared against the matched normal tissue baseline (kidney at 56% MT is biological, not degradation).
+3. **Ribosomal protein fraction** — short RP transcripts survive degradation, so their share of non-MT expression rises. Also compared to tissue-matched baselines.
+
+Degradation is called as *moderate* or *severe* when multiple signals agree. The call flows into downstream analysis: decomposition warnings, purity caveats, and report narrative.
+
+**Cell line / cell culture detection.** Two signals:
+
+1. **TME absence** — mean TPM of immune + stromal markers (CD3D, CD68, COL1A1, VWF, etc.) near zero
+2. **Culture stress signature** — elevated heat-shock, glycolysis, proliferation, ER stress, and glutamine metabolism genes (Yu et al., *Nature Communications* 2019)
+
+Both absent + stress high → likely cell line. TME absent but stress normal → could be immune-desert tumor or sorted population.
+
+### Broad-compartment decomposition
+
+After purity anchoring, the non-tumor fraction is decomposed across broad, reference-supported compartments using weighted non-negative least squares (NNLS) on component-enriched marker genes.
+
+**Algorithm.**
+
+1. **Template selection** — the sample mode determines which templates are evaluated:
+    - `solid` → solid primary + 9 metastatic site templates (liver, lung, brain, bone, lymph node, adrenal, peritoneal, skin, soft tissue)
+    - `heme` → nodal, blood, marrow
+    - `pure` → pure population (just tumor, no TME)
+2. **Signature matrix** — for each template, build a reference matrix from HPA single-cell profiles (immune/stromal components) and bulk tissue references (site-specific components). Site-specific components use a hierarchical best-match approach: for brain mets, the CNS category compares the sample against cerebral cortex, cerebellum, hippocampus, etc. and picks the best-matching tissue as the reference column. This avoids HK-normalization distortion seen in HPA single-cell neural references (astrocyte HK median ~20 nTPM vs ~350 nTPM for immune/stroma).
+3. **Marker selection** — for each component, pick 12 genes with highest specificity × expression in the HK-normalized signature matrix. Component-specific curated markers (e.g., CD3D/CD3E for T cells, IGKC/JCHAIN for plasma) are always included.
+4. **Weighted NNLS fit** — solve for component fractions summing to 1, with:
+    - `1/b` row weighting (proportional error, not absolute — prevents Ig genes from dominating the residual in plasma-heavy samples)
+    - Soft sum-to-one penalty and light ridge
+    - External purity anchor (tumor fraction fixed from the purity estimate)
+5. **Template scoring** — each (cancer_type, template) hypothesis gets:
+    - `fit_score = 1 / (1 + residual)` — how well the marker expression is explained
+    - `template_factor` — site_factor × extra_component_factor (penalizes met templates with weak site evidence or underused site-specific components)
+    - Final score = `fit_score × (base + gain × cancer_support) × template_factor`
+6. **Ranking** — hypotheses are sorted by combined score. Top-6 are reported; the best is used for gene-level attribution.
+
+**Per-gene attribution.** For each expressed gene, the decomposition computes:
+- Component-wise TPM contribution: `(1 - purity) × mix[comp] × signature[gene, comp]`
+- Residual tumor TPM: `observed - sum(TME contributions)`
+- Overexplained TPM: when the TME model predicts more than observed (flagged in warnings)
+
+**Quality caveats.** If RNA degradation is detected, decomposition adds a warning to the result and the reports flag that component fractions involving long-transcript markers (e.g., fibroblast via COL6A3, endothelial via VWF) may be systematically underestimated.
 
 ### Tumor purity estimation
 
@@ -60,6 +129,44 @@ The TME background is the median expression across curated immune + stromal refe
 Uncertainty is captured by a 3x3 grid: (25th/50th/75th percentile TME) x (lower/estimate/upper purity). The median of these 9 estimates is the point estimate; the full range is shown in the strip plot.
 
 Each gene's estimate is compared to the purity-adjusted TCGA median for the matched cancer type (e.g. "STEAP1 = 103% of PRAD median"), providing a biologically meaningful reference point.
+
+### Output files
+
+Every `analyze` run produces a directory with these files (prefixed by the input basename):
+
+**Reports** (markdown):
+
+| File | Description |
+|---|---|
+| `*-summary.md` | One-paragraph natural language summary — cancer type, purity, key findings, quality warnings |
+| `*-analysis.md` | Structured analysis — sample quality, candidate trace, purity components, decomposition hypotheses, background signatures, embedding features |
+| `*-targets.md` | Therapeutic targets — CTAs, surface proteins, tumor-expression ranges, safety context |
+
+**Structured data** (TSV / JSON):
+
+| File | Description |
+|---|---|
+| `*-analysis-parameters.json` | All free parameters, selected sample mode, embedding methods, sample quality flags |
+| `*-cancer-candidates.tsv` | Candidate cancer-type support trace (family, signature, purity, lineage scores) |
+| `*-decomposition-hypotheses.tsv` | Ranked decomposition hypotheses with fit quality, site score, template factor |
+| `*-decomposition-components.tsv` | Component-level fit for best decomposition (fraction, marker score, top markers) |
+| `*-decomposition-markers.tsv` | Marker-gene evidence for best decomposition (specificity, reference HK, observed TPM, sample/ref ratio) |
+| `*-decomposition-gene-attribution.tsv` | Per-gene TME vs tumor attribution (how much of each gene's observed TPM is explained by each component) |
+| `*-tumor-expression-ranges.tsv` | Purity-adjusted tumor-expression ranges with TCGA context (9-point grid, TCGA percentile) |
+
+**Figures** (PNG + combined PDF):
+
+| File | Description |
+|---|---|
+| `*-sample-summary.png` | Overview: cancer type, purity, background signatures |
+| `*-decomposition.png` | 4-panel: ranked hypotheses, best-fit composition, component support, marker logic |
+| `*-purity.png` | Tumor purity estimation detail |
+| `*-immune.png`, `*-tumor.png`, `*-antigens.png`, `*-treatments.png` | Gene expression strip plots by category |
+| `*-target-safety.png`, `*-purity-targets.png`, `*-purity-ctas.png`, `*-purity-surface.png` | Therapy target expression with normal tissue context |
+| `*-pca-hierarchy.png`, `*-mds-hierarchy.png` | Embeddings in hierarchical support space |
+| `*-pca-tme.png`, `*-mds-tme.png` | Embeddings in TME-low gene space |
+| `*-cancer-types-genes.png`, `*-cancer-types-disjoint.png` | Cancer-type gene signature heatmaps |
+| `*-all-figures.pdf` | All figures combined into a single PDF |
 
 ## Pan-cancer expression data
 
@@ -153,6 +260,43 @@ from pirlygenes.tumor_purity import estimate_tumor_purity
 result = estimate_tumor_purity(df_expr, cancer_type="PRAD")
 print(result["overall_estimate"])  # e.g. 0.10
 print(result["components"]["lineage"]["per_gene"])  # per-gene purity estimates
+```
+
+### Sample quality assessment
+
+```python
+from pirlygenes.sample_quality import assess_sample_quality
+
+# Optionally pass tissue_scores from analyze_sample for tissue-matched baselines
+quality = assess_sample_quality(df_expr, tissue_scores=[("prostate", 0.9, 20)])
+
+print(quality["degradation"]["level"])         # "normal" | "mild" | "moderate" | "severe"
+print(quality["degradation"]["long_short_ratio"])  # transcript-length pair index
+print(quality["culture"]["level"])             # "normal" | "tme_absent" | "possible_cell_line" | "likely_cell_line"
+print(quality["flags"])                        # human-readable warnings
+```
+
+### Broad-compartment decomposition
+
+```python
+from pirlygenes.decomposition import decompose_sample
+
+results = decompose_sample(
+    df_expr,
+    cancer_types=["PRAD", "BRCA"],          # optional — ranked automatically if omitted
+    sample_mode="auto",                      # "auto" | "solid" | "heme" | "pure"
+    tumor_context="auto",                    # "auto" | "primary" | "met"
+    site_hint=None,                          # e.g. "liver", "brain", "bone"
+    templates=None,                          # or explicit list: ["solid_primary", "met_liver"]
+    top_k=6,
+)
+
+best = results[0]
+print(best.cancer_type, best.template, best.score)
+print(best.fractions)                        # {"tumor": 0.65, "T_cell": 0.08, "fibroblast": 0.12, ...}
+print(best.component_trace)                  # DataFrame: per-component fractions + top markers
+print(best.gene_attribution)                 # DataFrame: per-gene TME vs tumor TPM split
+print(best.warnings)                         # warnings for overexplained genes, weak site support, etc.
 ```
 
 ### Purity-adjusted expression
