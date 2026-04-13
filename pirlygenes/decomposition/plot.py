@@ -251,11 +251,9 @@ def plot_decomposition_candidates(
     # segment labels — the title still sits above the legend.
     ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.02),
               ncol=3, frameon=False, fontsize=9)
-    ax.set_title(
-        "Sample decomposition candidates\n"
-        "(each bar = one candidate's estimated sample composition)",
-        fontweight="bold", pad=28,
-    )
+    # Title kept single-line — the per-bar segments + legend already
+    # explain that each row is one candidate's composition.
+    ax.set_title("Sample decomposition candidates", fontweight="bold", pad=28)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     fig.tight_layout()

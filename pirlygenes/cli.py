@@ -288,6 +288,9 @@ def analyze(
 
     print("[analysis] Running broad-compartment decomposition...")
     decomp_png = None
+    composition_png = None
+    components_png = None
+    candidates_png = None
     candidate_codes = [row["code"] for row in analysis.get("candidate_trace", [])[:4]]
     candidate_tsv = "%s-cancer-candidates.tsv" % prefix if prefix else "cancer-candidates.tsv"
     import pandas as pd
@@ -623,6 +626,12 @@ def analyze(
     png_files = [
         summary_png,
         decomp_png,
+        # Standalone decomposition PNGs — composition / component breakdown
+        # / candidate bars. Historically missed the move-to-figures/ step
+        # because they weren't listed here.
+        composition_png,
+        components_png,
+        candidates_png,
         purity_png,
         "%s-immune.png" % prefix if prefix else "immune.png",
         "%s-tumor.png" % prefix if prefix else "tumor.png",

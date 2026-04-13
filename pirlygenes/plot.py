@@ -2509,7 +2509,7 @@ def plot_purity_adjusted_targets(
     ax1.set_yticklabels(labels, fontsize=8)
     ax1.set_xlabel("Expression (TPM)")
     ax1.set_xscale("symlog", linthresh=1)
-    ax1.set_title(f"Purity-adjusted tumor expression\n({cancer_code}, purity={purity:.0%})")
+    ax1.set_title(f"Purity-adjusted tumor expression — {cancer_code} (purity={purity:.0%})")
     ax1.invert_yaxis()
     ax1.legend(fontsize=8, loc="lower right")
 
@@ -3888,11 +3888,8 @@ def plot_cancer_type_disjoint_genes(
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=8)
     ax.set_xlabel("Signature similarity score", fontsize=10)
-    ax.set_title(
-        "Cancer type similarity score\n"
-        "(mean percentile rank of sample expression among signature genes)",
-        fontsize=11,
-    )
+    # Definition belongs on the axis label, not in a subtitle.
+    ax.set_title("Cancer type similarity score", fontsize=11)
     ax.invert_yaxis()
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -3962,7 +3959,7 @@ def plot_cohort_heatmap(
     ax.set_xticklabels(codes, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
     ax.set_yticklabels(present, fontsize=4)
-    ax.set_title(f"Curated cancer-type genes × TCGA cancer types\n({subtitle})", fontsize=11)
+    ax.set_title(f"Curated cancer-type genes × TCGA cancer types — {subtitle}", fontsize=11)
     fig.colorbar(im, ax=ax, label=cbar_label, shrink=0.6)
     fig.tight_layout()
 
@@ -3996,7 +3993,7 @@ def plot_cohort_disjoint_counts(
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=7)
     ax.set_xlabel(f"Disjoint signature genes (of {n_genes} max)", fontsize=10)
-    ax.set_title("Cancer-type-specific disjoint gene counts\n(genes uniquely overexpressed vs all other types)", fontsize=11)
+    ax.set_title("Cancer-type-specific disjoint gene counts", fontsize=11)
     ax.invert_yaxis()
 
     for i, (code, count) in enumerate(stats):
@@ -4122,7 +4119,7 @@ def plot_cohort_therapy_targets(
     ax.set_xticklabels(codes, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
     ax.set_yticklabels(present, fontsize=6)
-    ax.set_title(f"Therapy targets × TCGA cancer types\n({subtitle})", fontsize=11)
+    ax.set_title(f"Therapy targets × TCGA cancer types — {subtitle}", fontsize=11)
     fig.colorbar(im, ax=ax, label=cbar_label, shrink=0.6)
     fig.tight_layout()
 
@@ -4194,7 +4191,7 @@ def _plot_geneset_by_cancer_heatmap(
     ax.set_xticklabels(codes, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
     ax.set_yticklabels(present, fontsize=5 if len(present) > 50 else 6)
-    ax.set_title(f"{title}\n({subtitle})", fontsize=11)
+    ax.set_title(f"{title} — {subtitle}", fontsize=11)
     fig.colorbar(im, ax=ax, label=cbar_label, shrink=0.6)
     fig.tight_layout()
 
@@ -4263,7 +4260,7 @@ def plot_cohort_ctas(
     ax.set_xticklabels(codes_clean, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
     ax.set_yticklabels(present, fontsize=6)
-    ax.set_title(f"Cancer-testis antigens × cancer types (top 50)\n({subtitle})", fontsize=11)
+    ax.set_title(f"Cancer-testis antigens × cancer types (top 50) — {subtitle}", fontsize=11)
     fig.colorbar(im, ax=ax, label=cbar_label, shrink=0.6)
     fig.tight_layout()
 
