@@ -2258,28 +2258,83 @@ def estimate_tumor_expression_ranges(
         tme_fold_med = float(np.median(tme_folds))
         tme_fold_hi = float(np.percentile(tme_folds, 75))
 
+        # TME-explainability flag: the max TPM this gene reaches in ANY
+        # single healthy reference tissue. Used below to decide how
+        # aggressively to clamp toward the cohort prior.
+        max_healthy_tpm = float(max_healthy_tpm_by_symbol.get(symbol, 0.0))
+        tme_explainable = max_healthy_tpm >= observed * 0.5
+
+        # Cohort prior for tumor expression in this cancer type. Computed
+        # by deconvolving the TCGA cancer-cohort median against the cohort's
+        # assumed median purity, then rescaling to the sample's TPM scale.
+        # This prior implicitly includes the "reactive stroma" signal
+        # typical for this cancer type (TCGA medians are bulk tumor
+        # samples, so tissue-specific cancer-associated fibroblast and
+        # infiltrate contributions are baked in). Used for empirical-
+        # Bayes shrinkage of the sample-based estimate at low purity.
+        cancer_col = f"FPKM_{cancer_code}"
+        cohort_prior_tpm = 0.0
+        tcga_tumor_fold = 0.0
+        if (
+            cancer_col in ref_dedup.columns
+            and cancer_col in ref_hk_medians
+            and ref_hk_medians[cancer_col] > 0
+        ):
+            cancer_hk_m = ref_hk_medians[cancer_col]
+            tcga_fold = float(ref_dedup.loc[symbol, cancer_col]) / cancer_hk_m
+            tcga_p = TCGA_MEDIAN_PURITY.get(cancer_code, 0.7)
+            tcga_tumor_fold = max(
+                0.0, (tcga_fold - (1 - tcga_p) * tme_fold_med) / tcga_p
+            )
+            cohort_prior_tpm = tcga_tumor_fold * sample_hk_median
+
+        # Empirical-Bayes shrinkage weight. At high purity the sample-
+        # based estimate is reliable (w_sample → 1). At low purity the
+        # 1/p division in the deconvolution inflates noise; shrinkage
+        # pulls estimates back toward the cohort prior (w_sample → 0
+        # as purity → 0). `k_shrinkage` is the purity at which weights
+        # are 50/50 — tuned so that CTAs and real tumor markers at
+        # moderate purity (~0.4) are mostly sample-driven, while
+        # low-purity stromal-like genes get anchored to cohort.
+        #
+        # `k_shrinkage` doubles for tme_explainable genes (to ~2×
+        # stronger shrinkage), reflecting the extra uncertainty about
+        # whether the signal is genuinely tumor-cell-derived.
+        k_shrinkage = 0.20
+        if tme_explainable:
+            k_shrinkage = 0.40
+
         # 9-point estimate grid. TPM-space path (preferred) uses the
         # decomposition's per-gene expected TME contribution directly.
-        # HK-fold path is the fallback when no decomposition is available
-        # or the gene is absent from the reference.
+        # HK-fold path is the fallback when no decomposition is
+        # available or the gene is absent from the reference. Every
+        # grid point is shrunk toward the cohort prior and clamped at
+        # `observed_tpm` when tme_explainable=True (tumor cells can't
+        # contribute more than the observed signal if a single healthy
+        # tissue could explain it alone).
+        def _apply_priors(raw_tumor_tpm, purity_used):
+            w_sample = float(purity_used) / (float(purity_used) + k_shrinkage)
+            shrunk = w_sample * raw_tumor_tpm + (1.0 - w_sample) * cohort_prior_tpm
+            if tme_explainable:
+                shrunk = min(shrunk, observed)
+            return max(0.0, shrunk)
+
         estimates = []
         if tme_bg_tpm_by_symbol is not None and symbol in tme_bg_tpm_by_symbol:
             bg_tpm_mid = tme_bg_tpm_by_symbol[symbol]
-            # Uncertainty on the TME estimate itself: ±50%. This captures
-            # the fact that bulk HPA / cell-type references may under- or
-            # over-estimate the actual infiltrate composition in the
-            # specific sample (e.g. reactive tumor stroma expresses FN1
-            # higher than resting fibroblasts).
+            # Uncertainty on the TME estimate itself: ±50%. Reference
+            # cell-type profiles may under- or over-estimate the actual
+            # infiltrate composition in the specific sample.
             for bg_tpm in [bg_tpm_mid * 0.5, bg_tpm_mid, bg_tpm_mid * 1.5]:
                 for p in [p_lo, p_med, p_hi]:
-                    tumor_tpm = max(0.0, (observed - bg_tpm)) / p
-                    estimates.append(tumor_tpm)
+                    raw = max(0.0, (observed - bg_tpm)) / p
+                    estimates.append(_apply_priors(raw, p))
         else:
             for bg in [tme_fold_lo, tme_fold_med, tme_fold_hi]:
                 for p in [p_lo, p_med, p_hi]:
                     tumor_fold = max(0.0, (sample_fold - (1 - p) * bg) / p)
-                    tumor_tpm = tumor_fold * sample_hk_median
-                    estimates.append(tumor_tpm)
+                    raw = tumor_fold * sample_hk_median
+                    estimates.append(_apply_priors(raw, p))
         estimates.sort()
         median_est = float(np.median(estimates))
 
@@ -2289,32 +2344,18 @@ def estimate_tumor_expression_ranges(
         equal = np.sum(np.isclose(ref_vals, median_est, atol=0.01))
         tcga_percentile = float((below + 0.5 * equal) / n)
 
-        # Ratio vs purity-adjusted TCGA median for matched cancer type
-        cancer_col = f"FPKM_{cancer_code}"
-        if cancer_col in ref_dedup.columns and cancer_col in ref_hk_medians:
-            cancer_hk_m = ref_hk_medians[cancer_col]
-            if cancer_hk_m > 0:
-                tcga_fold = float(ref_dedup.loc[symbol, cancer_col]) / cancer_hk_m
-                tcga_p = TCGA_MEDIAN_PURITY.get(cancer_code, 0.7)
-                tcga_tumor_fold = max(0.0, (tcga_fold - (1 - tcga_p) * tme_fold_med) / tcga_p)
-                our_tumor_fold = median_est / sample_hk_median
-                if tcga_tumor_fold > 0.001:
-                    vs_tcga = float(our_tumor_fold / tcga_tumor_fold)
-                elif our_tumor_fold > 0.001:
-                    vs_tcga = float("inf")
-                else:
-                    vs_tcga = None
+        # Ratio vs purity-adjusted TCGA median for matched cancer type.
+        # Uses the already-computed cohort tumor fold above.
+        if tcga_tumor_fold > 0.0:
+            our_tumor_fold = median_est / sample_hk_median
+            if tcga_tumor_fold > 0.001:
+                vs_tcga = float(our_tumor_fold / tcga_tumor_fold)
+            elif our_tumor_fold > 0.001:
+                vs_tcga = float("inf")
             else:
                 vs_tcga = None
         else:
             vs_tcga = None
-
-        # TME-explainability flag: the max TPM this gene reaches in ANY
-        # single healthy reference tissue. If the sample value is below
-        # that ceiling, the signal could in principle come entirely from
-        # non-tumor cells — the reported Tumor TPM is then unreliable.
-        max_healthy_tpm = float(max_healthy_tpm_by_symbol.get(symbol, 0.0))
-        tme_explainable = max_healthy_tpm >= observed * 0.5
 
         # Categorize
         is_cta = symbol in cta_symbols
@@ -2342,6 +2383,7 @@ def estimate_tumor_expression_ranges(
             "tme_fold_hi": round(tme_fold_hi, 4),
             "max_healthy_tpm": round(max_healthy_tpm, 2),
             "tme_explainable": bool(tme_explainable),
+            "cohort_prior_tpm": round(cohort_prior_tpm, 2),
             **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
             "median_est": round(median_est, 2),
             "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None else None,

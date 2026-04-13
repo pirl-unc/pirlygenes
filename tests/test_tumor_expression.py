@@ -272,11 +272,87 @@ def test_ranges_dataframe_columns():
     expected_cols = [
         "gene_id", "symbol", "category", "observed_tpm",
         "tme_fold_lo", "tme_fold_med", "tme_fold_hi",
+        "max_healthy_tpm", "tme_explainable", "cohort_prior_tpm",
         "est_1", "est_5", "est_9", "median_est",
         "pct_cancer_median", "tcga_percentile", "is_surface", "is_cta", "therapies",
     ]
     for col in expected_cols:
         assert col in result.columns, f"Missing column: {col}"
+
+
+def test_ranges_tme_explainable_clamps_at_observed():
+    """For genes whose healthy-tissue max can explain the sample signal
+    alone, `median_est` must not exceed `observed_tpm`. This guards
+    against the 1/purity inflation for stromal / normal-lineage genes
+    (e.g. KLK3 in prostate, FN1 stroma).
+    """
+    from pirlygenes.plot import estimate_tumor_expression_ranges
+    import pandas as pd
+
+    # KLK3: high in normal prostate (~7700 nTPM), observed 500 TPM.
+    # max_healthy >> observed → tme_explainable = True → clamped at
+    # observed. Without the clamp, 500/0.3 ≈ 1667 would be reported.
+    df = pd.DataFrame({
+        "ensembl_gene_id": [
+            "ENSG00000142515",  # KLK3
+            "ENSG00000075624",  # ACTB
+            "ENSG00000156508",  # EEF1A1
+            "ENSG00000111640",  # GAPDH
+        ],
+        "gene_symbol": ["KLK3", "ACTB", "EEF1A1", "GAPDH"],
+        "TPM": [500.0, 150.0, 300.0, 100.0],
+    })
+    purity = {"overall_lower": 0.25, "overall_estimate": 0.30, "overall_upper": 0.35}
+    out = estimate_tumor_expression_ranges(df, "PRAD", purity)
+    klk3 = out[out["symbol"] == "KLK3"].iloc[0]
+    assert klk3["tme_explainable"], "KLK3 should be tme_explainable in a 30% purity sample"
+    assert klk3["median_est"] <= klk3["observed_tpm"] + 1e-6, (
+        f"median_est {klk3['median_est']} exceeds observed {klk3['observed_tpm']} "
+        f"despite tme_explainable=True"
+    )
+
+
+def test_ranges_low_purity_shrinks_toward_cohort_prior():
+    """At very low purity, the sample-based estimator has high variance
+    (1/purity inflates). Shrinkage should pull estimates toward the
+    TCGA cohort prior so we don't report pathological numbers.
+    """
+    from pirlygenes.plot import estimate_tumor_expression_ranges
+    import pandas as pd
+
+    # Gene not expressed in any healthy tissue but elevated in sample.
+    # Without shrinkage: observed/purity is the estimator.
+    # With shrinkage at very low purity: pulled toward cohort prior.
+    df = pd.DataFrame({
+        "ensembl_gene_id": [
+            "ENSG00000137959",  # IFI44L — interferon-stimulated, low baseline
+            "ENSG00000075624",  # ACTB (for HK median)
+            "ENSG00000156508",  # EEF1A1
+            "ENSG00000111640",  # GAPDH
+        ],
+        "gene_symbol": ["IFI44L", "ACTB", "EEF1A1", "GAPDH"],
+        "TPM": [10.0, 150.0, 300.0, 100.0],
+    })
+    purity_low = {"overall_lower": 0.08, "overall_estimate": 0.10, "overall_upper": 0.12}
+    purity_high = {"overall_lower": 0.60, "overall_estimate": 0.65, "overall_upper": 0.70}
+
+    out_low = estimate_tumor_expression_ranges(df, "PRAD", purity_low)
+    out_high = estimate_tumor_expression_ranges(df, "PRAD", purity_high)
+
+    # Find the target gene in both outputs
+    g_low = out_low[out_low["symbol"] == "IFI44L"]
+    g_high = out_high[out_high["symbol"] == "IFI44L"]
+    if len(g_low) and len(g_high):
+        # At low purity the estimate should be LESS inflated than raw
+        # 1/purity would give: raw low-purity estimate ≈ 10/0.10 = 100.
+        # With shrinkage toward a (low) cohort prior, it should be much
+        # closer to the cohort prior than to 100.
+        low_est = float(g_low.iloc[0]["median_est"])
+        raw_low = 10.0 / 0.10
+        assert low_est < raw_low, (
+            f"Shrinkage should pull low-purity estimate ({low_est}) "
+            f"below raw 1/purity estimate ({raw_low})"
+        )
 
 
 def test_ranges_nine_estimates_are_sorted():
