@@ -2499,6 +2499,116 @@ def estimate_tumor_expression_ranges(
     return result
 
 
+def plot_matched_normal_attribution(
+    df_ranges,
+    cancer_type,
+    category,
+    top_n=15,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=None,
+):
+    """Stacked horizontal-bar plot of per-gene tumor / matched-normal / TME
+    attribution for a single target category (issue #55).
+
+    For each of the top ``top_n`` genes in ``category`` (ranked by
+    ``median_est``), draw a horizontal bar broken into:
+
+    - ``tumor``: ``observed_tpm − matched_normal_tpm − tme_only_tpm``
+    - ``matched_normal_tpm``: benign parent-tissue contribution
+    - ``tme_only_tpm``: stromal / immune / host-tissue contribution
+
+    Only useful when ``df_ranges`` carries non-zero ``matched_normal_tpm``
+    for at least one gene in the category (i.e. the decomposition ran
+    with ``use_matched_normal=True`` for an epithelial primary). Returns
+    ``None`` otherwise — the CLI uses that to skip emitting an empty
+    figure.
+
+    Emitted as a standalone PNG (one per category) rather than as a
+    panel in a composite figure, following the project's plot-crowding
+    preference.
+    """
+    import numpy as np
+
+    cancer_code = resolve_cancer_type(cancer_type)
+
+    sub = df_ranges[df_ranges["category"] == category].head(top_n).copy()
+    if sub.empty:
+        return None
+    if "matched_normal_tpm" not in sub.columns:
+        return None
+    if (sub["matched_normal_tpm"].astype(float) <= 0).all():
+        return None
+
+    sub = sub.sort_values("median_est", ascending=True).reset_index(drop=True)
+    n = len(sub)
+    if figsize is None:
+        figsize = (10, max(3.0, 0.4 * n + 1.5))
+
+    observed = sub["observed_tpm"].astype(float).values
+    mn = sub["matched_normal_tpm"].astype(float).values
+    tme = sub["tme_only_tpm"].astype(float).values
+    # Tumor-cell attribution is whatever observed signal remains after
+    # TME and matched-normal are subtracted. Floor at 0 to guard against
+    # tiny over-subtractions from solver jitter.
+    tumor_attr = np.maximum(0.0, observed - mn - tme)
+
+    y = np.arange(n)
+    fig, ax = plt.subplots(figsize=figsize)
+
+    ax.barh(y, tumor_attr, color="#e74c3c", label="tumor cells")
+    ax.barh(y, mn, left=tumor_attr, color="#3498db", label="matched-normal tissue")
+    ax.barh(y, tme, left=tumor_attr + mn, color="#95a5a6", label="other TME (stromal/immune)")
+
+    # Symbols on the y-axis. Therapy-target annotation appended when present.
+    labels = []
+    for _, row in sub.iterrows():
+        sym = str(row["symbol"])
+        if row.get("therapies"):
+            sym = f"{sym}  [{row['therapies']}]"
+        flags = []
+        if row.get("tme_explainable"):
+            flags.append("⚠")
+        path = str(row.get("estimation_path", ""))
+        if path == "clamped":
+            flags.append("clamp")
+        if flags:
+            sym = f"{sym}  {' '.join(flags)}"
+        labels.append(sym)
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=9)
+
+    # Cohort-prior marker: small tick on each bar so reviewers can see
+    # where the TCGA cohort would have placed tumor-cell expression.
+    if "cohort_prior_tpm" in sub.columns:
+        priors = sub["cohort_prior_tpm"].astype(float).values
+        for i, prior in enumerate(priors):
+            if prior > 0:
+                ax.plot([prior], [i], marker="|", color="black", markersize=14, markeredgewidth=2)
+
+    ax.set_xlabel("TPM (stacked: tumor + matched-normal + other TME = observed)", fontsize=10)
+    ax.set_xscale("symlog", linthresh=1.0)
+    ax.grid(axis="x", alpha=0.2)
+    ax.legend(loc="lower right", fontsize=9, framealpha=0.9)
+
+    mn_tissue = ""
+    if "matched_normal_tissue" in sub.columns:
+        nonempty = sub["matched_normal_tissue"].astype(str).replace("nan", "")
+        nonempty = [v for v in nonempty.unique() if v]
+        if nonempty:
+            mn_tissue = nonempty[0]
+    title = f"Matched-normal attribution — {cancer_code} {category}"
+    if mn_tissue:
+        title += f"\n(benign {mn_tissue} subtracted before purity division; black tick = TCGA cohort prior)"
+    ax.set_title(title, fontsize=11, fontweight="bold")
+
+    plt.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
+
+
 def plot_tumor_expression_ranges(
     df_ranges,
     purity_result,

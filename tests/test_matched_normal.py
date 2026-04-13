@@ -1,11 +1,18 @@
 """Regression tests for the matched-normal epithelium decomposition path (issue #50).
 
-The matched-normal feature is opt-in via ``use_matched_normal=True``. Tests
-cover: (a) flag-off path preserves the existing template-selection
-behavior that ``ffa9325`` explicitly protected, (b) flag-on path correctly
-attributes parent-tissue retained-lineage signal to the matched-normal
-compartment, and (c) the panel-construction utilities return sensible
-gene counts for a few representative epithelial cancers.
+Matched-normal subtraction runs unconditionally for epithelial primaries
+whose cancer code is in ``EPITHELIAL_MATCHED_NORMAL_TISSUE``. Tests cover:
+
+- Template plumbing (matched-normal component appears for epithelial
+  primaries, not for mesenchymal / heme / unmapped cancer codes).
+- ``ffa9325`` regression protection: PRAD+smooth_muscle still picks
+  solid_primary; a synthetic COAD mixture still resolves to COAD.
+- End-to-end: pure-normal-prostate run as PRAD assigns the full TME
+  allocation to matched_normal and drops purity to zero via the
+  lineage-specific tumor-fraction estimator.
+- Panel utilities produce sensible gene lists for representative
+  epithelial cancers.
+- Companion fix for ``vs_tcga`` inf-routing for silent-TCGA genes.
 """
 
 from __future__ import annotations
@@ -83,39 +90,36 @@ def test_matched_normal_helper_returns_expected_component():
     assert epithelial_matched_normal_component(None) is None
 
 
-def test_get_template_components_without_flag_unchanged():
-    # Flag off: PRAD solid_primary should not include matched_normal_prostate.
+def test_get_template_components_appends_matched_normal_for_epithelial_primaries():
     comps = get_template_components("solid_primary", cancer_type="PRAD")
-    assert "matched_normal_prostate" not in comps
-    assert "tumor" in comps
-
-
-def test_get_template_components_with_flag_appends_matched_normal():
-    comps = get_template_components(
-        "solid_primary", cancer_type="PRAD", use_matched_normal=True,
-    )
     assert "matched_normal_prostate" in comps
+    assert "tumor" in comps
     # Only appended for solid_primary; met templates stay unchanged.
-    met_comps = get_template_components(
-        "met_liver", cancer_type="PRAD", use_matched_normal=True,
-    )
+    met_comps = get_template_components("met_liver", cancer_type="PRAD")
     assert "matched_normal_prostate" not in met_comps
-    # And only for epithelial-listed cancers.
-    sarc_comps = get_template_components(
-        "solid_primary", cancer_type="SARC", use_matched_normal=True,
-    )
-    assert not any(c.startswith("matched_normal_") for c in sarc_comps)
+
+
+def test_get_template_components_skips_matched_normal_for_non_epithelial():
+    # Mesenchymal / heme / glial cancers have no matched-normal mapping
+    # in EPITHELIAL_MATCHED_NORMAL_TISSUE, so solid_primary stays
+    # unchanged for them.
+    sarc = get_template_components("solid_primary", cancer_type="SARC")
+    assert not any(c.startswith("matched_normal_") for c in sarc)
+    dlbc = get_template_components("solid_primary", cancer_type="DLBC")
+    assert not any(c.startswith("matched_normal_") for c in dlbc)
+    gbm = get_template_components("solid_primary", cancer_type="GBM")
+    assert not any(c.startswith("matched_normal_") for c in gbm)
 
 
 # ── Regression tests: ffa9325 template-selection cases preserved ────────
 
 
-def test_prad_smooth_muscle_mix_stays_solid_primary_with_flag():
-    """The PRAD + 80% smooth_muscle mix must still rank solid_primary above
-    met_soft_tissue when `use_matched_normal=True`. The extra_components
-    scoring branch in the engine excludes matched_normal_* to avoid the
-    ffa9325 regression (see engine._fit_one_hypothesis).
-    """
+def test_prad_smooth_muscle_mix_stays_solid_primary():
+    """The PRAD + 80% smooth_muscle mix must rank solid_primary above
+    met_soft_tissue even though solid_primary now carries an extra
+    matched_normal_prostate compartment. The extra_components scoring
+    branch excludes matched_normal_* and marker selection skips it, so
+    this ``ffa9325`` regression does not resurface."""
     df = _mix_samples(
         [
             (0.2, _tcga_sample("PRAD")),
@@ -127,18 +131,16 @@ def test_prad_smooth_muscle_mix_stays_solid_primary_with_flag():
         cancer_types=["PRAD"],
         templates=["solid_primary", "met_bone", "met_soft_tissue"],
         top_k=3,
-        use_matched_normal=True,
     )
     assert results[0].template == "solid_primary"
     assert results[0].cancer_type == "PRAD"
     assert results[0].score > results[1].score
 
 
-def test_coad_solid_primary_stays_coad_with_flag():
-    """Synthetic COAD primary must still resolve to COAD (not READ) when the
-    flag is on. Both COAD and READ get matched_normal_<tissue> components
-    at the same hierarchy level; the fit quality differential should still
-    favor COAD."""
+def test_coad_solid_primary_stays_coad():
+    """Synthetic COAD primary must resolve to COAD (not READ) with
+    matched_normal_<tissue> appended to both. Fit-quality differential
+    between colon and rectum references still favors COAD."""
     df = _mix_samples(
         [
             (0.6, _tcga_sample("COAD")),
@@ -150,7 +152,6 @@ def test_coad_solid_primary_stays_coad_with_flag():
         cancer_types=["COAD", "READ"],
         templates=["solid_primary"],
         top_k=2,
-        use_matched_normal=True,
     )
     assert results[0].cancer_type == "COAD"
     assert results[0].template == "solid_primary"
@@ -160,35 +161,39 @@ def test_coad_solid_primary_stays_coad_with_flag():
 
 
 def test_pure_normal_prostate_run_as_prad_assigns_matched_normal_mass():
-    """A pure normal-prostate sample run as PRAD with the flag on should
-    assign non-trivial mass to matched_normal_prostate. This is the
-    motivating scenario from issue #50 — without the compartment, prostate
-    lineage signal (KLK3) gets attributed to tumor cells."""
+    """A pure normal-prostate sample run as PRAD should assign all TME
+    mass to matched_normal_prostate AND identify the sample as tumor-
+    free via the lineage panel. This is the motivating scenario from
+    issue #50 — without the matched-normal compartment and the lineage-
+    specific tumor-fraction estimator, prostate lineage signal (KLK3)
+    gets attributed to tumor cells with purity ≈ 0.31 (signature-gene
+    bias)."""
     df = _normal_tissue_sample("prostate")
     results = decompose_sample(
         df,
         cancer_types=["PRAD"],
         templates=["solid_primary"],
         top_k=1,
-        use_matched_normal=True,
     )
     assert len(results) == 1
     result = results[0]
     assert result.matched_normal_tissue == "prostate"
-    # Matched-normal fraction should dominate the TME allocation for a
-    # pure-prostate input. Conservative floor to keep the test stable to
-    # solver perturbations; the qualitative claim is "substantial".
-    assert result.matched_normal_fraction > 0.3
     assert result.fractions.get("matched_normal_prostate", 0.0) > 0.3
+    # Lineage-panel purity estimator should recognise this sample as
+    # tumor-free and override the signature-based purity estimate.
+    assert result.purity_source == "lineage_panel"
+    assert result.purity < 0.05
+    # And the matched-normal compartment absorbs effectively all the
+    # non-tumor mass.
+    assert result.matched_normal_fraction > 0.9
 
 
 def test_estimate_ranges_splits_parent_tissue_for_prad_mixture():
-    """With a 50/50 PRAD + normal-prostate mix and the flag on, the
-    tumor-expression range output should expose a non-zero
-    matched_normal_tpm for prostate-specific lineage genes (KLK3)
-    and mark those genes with ``estimation_path == "matched_normal_split"``
-    unless the existing TME-explainable clamp fires. This is the
-    three-component formula working end-to-end."""
+    """With a 50/50 PRAD + normal-prostate mix the tumor-expression range
+    output exposes a non-zero matched_normal_tpm for prostate-specific
+    lineage genes (KLK3) and marks those genes with ``estimation_path
+    == "matched_normal_split"`` unless the existing TME-explainable
+    clamp fires. This is the three-component formula working end-to-end."""
     df = _mix_samples(
         [
             (0.5, _tcga_sample("PRAD")),
@@ -201,7 +206,6 @@ def test_estimate_ranges_splits_parent_tissue_for_prad_mixture():
         cancer_types=["PRAD"],
         templates=["solid_primary"],
         top_k=1,
-        use_matched_normal=True,
     )
     ranges = estimate_tumor_expression_ranges(
         df, cancer_type="PRAD", purity_result=purity, decomposition_results=results,
@@ -222,26 +226,22 @@ def test_estimate_ranges_splits_parent_tissue_for_prad_mixture():
         assert float(klk3["matched_normal_tpm"].iloc[0]) > 5.0
 
 
-def test_estimate_ranges_flag_off_has_no_matched_normal_contribution():
-    df = _mix_samples(
-        [
-            (0.5, _tcga_sample("PRAD")),
-            (0.5, _normal_tissue_sample("prostate")),
-        ]
-    )
-    purity = estimate_tumor_purity(df, cancer_type="PRAD")
+def test_estimate_ranges_non_epithelial_cancer_has_no_matched_normal_split():
+    """SARC / mesenchymal samples stay on the original non-matched-normal
+    path: there's no matched_normal_<tissue> component for SARC (see
+    issue #51), so the matched_normal_tpm column stays uniformly zero."""
+    df = _tcga_sample("SARC")
+    purity = estimate_tumor_purity(df, cancer_type="SARC")
     results = decompose_sample(
         df,
-        cancer_types=["PRAD"],
+        cancer_types=["SARC"],
         templates=["solid_primary"],
         top_k=1,
-        use_matched_normal=False,
     )
     ranges = estimate_tumor_expression_ranges(
-        df, cancer_type="PRAD", purity_result=purity, decomposition_results=results,
+        df, cancer_type="SARC", purity_result=purity, decomposition_results=results,
     )
-    # When flag is off, matched_normal columns exist (schema stability)
-    # but are uniformly zero / empty.
+    assert "matched_normal_tpm" in ranges.columns
     assert (ranges["matched_normal_tpm"] == 0.0).all()
     assert (ranges["matched_normal_tissue"].fillna("") == "").all()
 

@@ -48,6 +48,7 @@ from .plot import (
     default_gene_sets,
     get_embedding_feature_metadata,
     estimate_tumor_expression_ranges,
+    plot_matched_normal_attribution,
     plot_tumor_expression_ranges,
     CANCER_TYPE_ALIASES,
     CANCER_TYPE_NAMES,
@@ -157,7 +158,6 @@ def analyze(
     decomposition_templates: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
-    use_matched_normal: bool = False,
 ):
     from pathlib import Path
 
@@ -353,18 +353,6 @@ def analyze(
             sort_keys=True,
         )
 
-    if use_matched_normal:
-        # Experimental / WIP path (issue #50). Emit a single notice so
-        # operators know the decomposition is running with the new
-        # matched-normal-epithelium compartment and that the tumor-
-        # expression estimates are split three ways (TME / matched-
-        # normal / tumor). Reports include an extra column so gene-level
-        # provenance is visible.
-        print(
-            "[decomposition] use_matched_normal=True — adding "
-            "matched_normal_<tissue> compartment to solid_primary for "
-            "epithelial primaries (experimental; see issue #50)"
-        )
     decomp_results = decompose_sample(
         df_expr,
         cancer_types=candidate_codes or [cancer_code],
@@ -373,7 +361,6 @@ def analyze(
         tumor_context=tumor_context,
         site_hint=site_hint,
         templates=template_overrides,
-        use_matched_normal=use_matched_normal,
     )
     call_summary = _summarize_sample_call(
         analysis,
@@ -618,6 +605,31 @@ def analyze(
             )
             adj_pngs.append(cat_png)
             _plt.close("all")
+
+        # Per-gene matched-normal attribution (issue #55). One PNG per
+        # category, only emitted when matched-normal subtraction was
+        # active. Separate plots rather than a composite figure per the
+        # project's crowding preference.
+        if (
+            "matched_normal_tpm" in ranges_df.columns
+            and (ranges_df["matched_normal_tpm"].astype(float) > 0).any()
+        ):
+            for cat_key, cat_slug in _adj_categories:
+                mn_png = (
+                    "%s-matched-normal-%s.png" % (prefix, cat_slug)
+                    if prefix else "matched-normal-%s.png" % cat_slug
+                )
+                fig = plot_matched_normal_attribution(
+                    ranges_df,
+                    cancer_type=effective_cancer_type,
+                    category=cat_key,
+                    top_n=15,
+                    save_to_filename=mn_png,
+                    save_dpi=output_dpi,
+                )
+                if fig is not None:
+                    adj_pngs.append(mn_png)
+                _plt.close("all")
 
         _generate_target_report(
             ranges_df,
@@ -1465,8 +1477,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             f"{cancer_code} TCGA cohort.\n"
         )
 
-    # Matched-normal provenance banner (issue #50). When the decomposition
-    # included a matched_normal_<tissue> compartment, per-gene estimates
+    # Matched-normal provenance banner (issue #50). Per-gene estimates
     # subtract both TME and matched-normal parent-tissue contributions
     # before dividing by purity. Surface this explicitly so readers can
     # interpret the columns in the TSV output (tme_only_tpm,
@@ -1483,14 +1494,13 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             )
             mn_frac = float(mn_frac_series.iloc[0]) if len(mn_frac_series) else 0.0
             lines.append(
-                f"**Matched-normal split** (experimental, issue #50): the "
-                f"decomposition included a `matched_normal_{mn_tissue}` "
-                f"compartment at fraction **{mn_frac:.2%}** of the sample. "
-                "Estimates subtract both stromal/immune TME *and* matched "
-                "benign parent-tissue contribution before dividing by purity. "
-                "Per-gene provenance is in the TSV under `estimation_path` "
-                "(`tme_only`, `matched_normal_split`, `clamped`, "
-                "`tme_fold_fallback`).\n"
+                f"**Matched-normal split**: the decomposition admitted a "
+                f"`matched_normal_{mn_tissue}` compartment at fraction "
+                f"**{mn_frac:.2%}** of the sample. Estimates subtract both "
+                "stromal/immune TME *and* matched benign parent-tissue "
+                "contribution before dividing by purity. Per-gene provenance "
+                "is in the TSV under `estimation_path` (`tme_only`, "
+                "`matched_normal_split`, `clamped`, `tme_fold_fallback`).\n"
             )
 
     # --- CTAs: vaccination targets ---
@@ -1678,7 +1688,6 @@ def plot_expression(
     decomposition_templates: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
-    use_matched_normal: bool = False,
 ):
     """Deprecated: use 'analyze' instead."""
     import warnings
@@ -1706,7 +1715,6 @@ def plot_expression(
         decomposition_templates=decomposition_templates,
         therapy_target_top_k=therapy_target_top_k,
         therapy_target_tpm_threshold=therapy_target_tpm_threshold,
-        use_matched_normal=use_matched_normal,
     )
 
 

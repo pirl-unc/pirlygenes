@@ -18,6 +18,7 @@ from .panels import (
     build_matched_normal_biased_panel,
     build_shared_lineage_panel,
     build_tumor_biased_panel,
+    estimate_lineage_tumor_fraction,
     summarize_panels,
 )
 from .plot import (
@@ -39,6 +40,7 @@ __all__ = [
     "build_tumor_biased_panel",
     "build_matched_normal_biased_panel",
     "build_shared_lineage_panel",
+    "estimate_lineage_tumor_fraction",
     "summarize_panels",
     "get_decomposition_parameters",
     "infer_sample_mode",

@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .panels import estimate_lineage_tumor_fraction
 from .signature import build_signature_matrix, get_component_markers
 from .templates import (
     EPITHELIAL_MATCHED_NORMAL_TISSUE,
@@ -276,6 +277,8 @@ class DecompositionResult:
     warnings: list[str] = field(default_factory=list)
     matched_normal_tissue: str | None = None
     matched_normal_fraction: float = 0.0
+    lineage_tumor_fraction: dict[str, Any] | None = None
+    purity_source: str = "signature"
 
 
 def _hk_normalize(values, genes, hk_gene_set):
@@ -338,18 +341,30 @@ def _select_marker_rows(
     symbols,
     sig_matrix_hk,
     comp_names,
+    cancer_type=None,
     top_n_per_component=DECOMPOSITION_PARAMETERS["marker_selection"]["top_n_per_component"],
 ):
     """Pick component-enriched marker rows for the weighted fit.
 
-    Matched-normal (``matched_normal_<tissue>``) components are included
-    in the signature matrix so the NNLS can route benign parent-tissue
-    signal there, but they are **not** used to seed markers. Prostate
-    (or colon, breast, etc.) bulk-tissue references share smooth-muscle
-    / glandular signal with the generic fibroblast reference, so
-    prostate-biased "matched-normal markers" come out collinear with
-    fibroblast markers and destabilise the fit (issue #50,
-    ``ffa9325`` regression mechanism).
+    Matched-normal (``matched_normal_<tissue>``) components are left out
+    of marker selection. The generic specificity machinery would pick
+    prostate-glandular / lung-alveolar / colon-enterocyte markers that
+    are also strongly expressed in samples of the matched cancer type
+    (retained-lineage genes), and using those as matched-normal markers
+    destabilises the NNLS — we saw fit residuals more than double on a
+    PRAD+smooth-muscle synthetic, flipping template selection (see
+    ``ffa9325``). Panel-based marker anchoring was explored and produced
+    the same destabilisation via a different route (smooth-muscle
+    collinearity between prostate bulk and the generic fibroblast
+    reference); dropped in favor of letting the NNLS allocate the
+    matched-normal column as a free sink for parent-tissue signal, and
+    using the tumor-biased / matched-normal-biased panels elsewhere
+    (lineage-specific tumor-fraction estimator — see
+    ``tumor_purity.estimate_lineage_tumor_fraction``).
+
+    ``cancer_type`` is still threaded through so future marker-selection
+    calibration (e.g. panel-gated anchoring with a stronger specificity
+    test) can use it without another signature change.
     """
     symbol_to_rows = {}
     for idx, symbol in enumerate(symbols):
@@ -507,32 +522,71 @@ def _fit_one_hypothesis(
     tissue_score_map,
     template_name,
     purity_override=None,
-    use_matched_normal=False,
+    sample_raw_by_symbol=None,
 ):
     """Fit one (cancer_type, template) broad-compartment hypothesis."""
     hk_ids = housekeeping_gene_ids()
     cancer_type = candidate_row["code"]
     purity_result = candidate_row["purity_result"]
+
+    components = get_template_components(template_name, cancer_type)
+    comp_names = [comp for comp in components if comp != "tumor"]
+    matched_normal_name = (
+        epithelial_matched_normal_component(cancer_type)
+        if template_name == "solid_primary"
+        else None
+    )
+
+    # Lineage-specific tumor-fraction estimator (issue #54). When we
+    # have a matched-normal compartment for this cancer type, prefer a
+    # panel-based tumor fraction over the generic signature-gene
+    # estimate: the panel is explicitly tumor-biased vs matched normal,
+    # so it doesn't confuse retained-lineage genes for tumor-cell signal
+    # the way the signature machinery can. Only overrides when the
+    # caller didn't pin `purity_override`, the cancer has a panel, and
+    # the per-gene agreement (``stability``) is good enough. Falls back
+    # silently otherwise so non-epithelial paths stay on the existing
+    # purity flow.
+    lineage_fraction_info = None
+    purity_source = "signature"
+    if (
+        purity_override is None
+        and matched_normal_name is not None
+        and sample_raw_by_symbol is not None
+    ):
+        lineage_fraction_info = estimate_lineage_tumor_fraction(
+            sample_raw_by_symbol, cancer_type,
+        )
+
     if purity_override is None:
-        tumor_fraction = float(purity_result.get("overall_estimate") or 0.5)
-        purity_to_store = purity_result
+        if (
+            lineage_fraction_info is not None
+            and lineage_fraction_info["stability"] < 1.5
+            and lineage_fraction_info["panel_genes_observed"] >= 10
+        ):
+            tumor_fraction = float(lineage_fraction_info["estimate"])
+            purity_source = "lineage_panel"
+            purity_to_store = dict(purity_result or {})
+            purity_to_store["overall_estimate"] = tumor_fraction
+            purity_to_store["overall_lower"] = float(lineage_fraction_info["lower"])
+            purity_to_store["overall_upper"] = float(lineage_fraction_info["upper"])
+            purity_to_store["lineage_tumor_fraction"] = lineage_fraction_info
+            purity_to_store["purity_source"] = purity_source
+        else:
+            tumor_fraction = float(purity_result.get("overall_estimate") or 0.5)
+            purity_to_store = purity_result
+            if lineage_fraction_info is not None:
+                purity_to_store = dict(purity_result or {})
+                purity_to_store["lineage_tumor_fraction"] = lineage_fraction_info
     else:
         tumor_fraction = float(np.clip(purity_override, 0.0, 1.0))
         purity_to_store = {
             "overall_lower": tumor_fraction,
             "overall_estimate": tumor_fraction,
             "overall_upper": tumor_fraction,
+            "purity_source": "override",
         }
-
-    components = get_template_components(
-        template_name, cancer_type, use_matched_normal=use_matched_normal,
-    )
-    comp_names = [comp for comp in components if comp != "tumor"]
-    matched_normal_name = (
-        epithelial_matched_normal_component(cancer_type)
-        if use_matched_normal and template_name == "solid_primary"
-        else None
-    )
+        purity_source = "override"
     warnings = []
 
     if not comp_names or tumor_fraction >= 0.999:
@@ -562,6 +616,8 @@ def _fit_one_hypothesis(
                 if matched_normal_name else None
             ),
             matched_normal_fraction=0.0,
+            lineage_tumor_fraction=lineage_fraction_info,
+            purity_source=purity_source,
         )
 
     gene_subset = set(sample_by_eid.keys())
@@ -580,6 +636,7 @@ def _fit_one_hypothesis(
         filt_symbols,
         sig_hk,
         comp_names,
+        cancer_type=cancer_type,
     )
     if len(fit_rows) < max(10, len(comp_names) * 2):
         warnings.append("Low marker support for template fit")
@@ -744,6 +801,8 @@ def _fit_one_hypothesis(
             if matched_normal_name else None
         ),
         matched_normal_fraction=matched_normal_fraction,
+        lineage_tumor_fraction=lineage_fraction_info,
+        purity_source=purity_source,
     )
 
 
@@ -756,17 +815,20 @@ def decompose_sample(
     sample_mode="auto",
     tumor_context="auto",
     site_hint=None,
-    use_matched_normal=False,
 ):
     """Decompose a sample across multiple cancer-type and template hypotheses.
 
-    When ``use_matched_normal=True``, epithelial primaries whose cancer type
-    is in :data:`pirlygenes.decomposition.templates.EPITHELIAL_MATCHED_NORMAL_TISSUE`
+    Epithelial primaries whose cancer type is in
+    :data:`pirlygenes.decomposition.templates.EPITHELIAL_MATCHED_NORMAL_TISSUE`
     get an additional ``matched_normal_<tissue>`` compartment in the
     ``solid_primary`` template, so admixed benign parent tissue (benign
-    prostate glands, adjacent normal colon mucosa, etc.) can be absorbed
-    as non-tumor signal rather than attributed to tumor cells (see issue
-    #50). Default is off while the feature is calibrated.
+    prostate glands, adjacent normal colon mucosa, etc.) is absorbed as
+    non-tumor signal rather than attributed to tumor cells (issue #50).
+    Purity for those same cases comes from a lineage-specific tumor-
+    fraction estimator (:func:`panels.estimate_lineage_tumor_fraction`)
+    when the per-gene agreement is stable enough; falls back to the
+    signature-gene estimator otherwise. Non-epithelial primaries
+    (SARC, heme, glioma, etc.) retain the existing behavior unchanged.
     """
     from ..plot import _sample_expression_by_symbol
 
@@ -808,7 +870,7 @@ def decompose_sample(
                 tissue_score_map,
                 template_name,
                 purity_override=purity_override,
-                use_matched_normal=use_matched_normal,
+                sample_raw_by_symbol=sample_raw_by_symbol,
             )
             results.append(result)
 

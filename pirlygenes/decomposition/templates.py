@@ -223,15 +223,15 @@ TUMOR_ORIGIN_TYPE = {
 }
 
 
-def get_template_components(template_name, cancer_type=None, use_matched_normal=False):
+def get_template_components(template_name, cancer_type=None):
     """Get the full component list for a template + cancer type.
 
-    When ``use_matched_normal=True`` and ``template_name == "solid_primary"``
-    and ``cancer_type`` is in :data:`EPITHELIAL_MATCHED_NORMAL_TISSUE`, an
-    additional ``matched_normal_<tissue>`` component is appended (see issue
-    #50). Default is off to preserve existing behavior while the feature is
-    calibrated; see ``ffa9325`` for the template-selection regressions that
-    motivated gating it.
+    For ``template_name == "solid_primary"`` and ``cancer_type`` in
+    :data:`EPITHELIAL_MATCHED_NORMAL_TISSUE`, a ``matched_normal_<tissue>``
+    component is appended so admixed benign parent tissue can be absorbed
+    as non-tumor signal rather than attributed to tumor cells (issue #50).
+    Non-epithelial solid primaries (SARC, heme, etc.) get no matched-normal
+    compartment — see issue #51 for the subtype-aware SARC plan.
 
     Returns
     -------
@@ -240,7 +240,7 @@ def get_template_components(template_name, cancer_type=None, use_matched_normal=
     """
     tmpl = TEMPLATES[template_name]
     components = ["tumor"] + list(tmpl["components"])
-    if use_matched_normal and template_name == "solid_primary":
+    if template_name == "solid_primary":
         matched = epithelial_matched_normal_component(cancer_type)
         if matched is not None:
             components.append(matched)
