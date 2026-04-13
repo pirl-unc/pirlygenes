@@ -1544,6 +1544,261 @@ def plot_geneset_vs_vital_tissues(
     return fig
 
 
+# -------------------- per-cancer-type CTA detail view ----------------------
+
+
+def plot_ctas_vs_cancer_type_detail(
+    df_gene_expr,
+    cancer_type,
+    top_k=30,
+    min_sample_tpm=1.0,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=None,
+):
+    """Per-sample CTA expression zoomed to one cancer type.
+
+    Each row is one CTA gene. Each row plots, on a single log TPM axis:
+
+        - sample TPM ................ large blue filled circle + label
+        - TCGA cohort median ........ orange diamond (cancer_type's FPKM_*
+                                      column, treated as TPM-equivalent)
+        - tissue-of-origin normal ... green square (nTPM for the normal
+                                      tissue mapped from cancer_type via
+                                      CANCER_TO_TISSUE)
+        - testis .................... purple triangle (expected baseline
+                                      for CTAs — the tissue they're
+                                      *defined* against)
+        - max non-testis vital ...... red X when its value crosses the
+                                      10-TPM toxicity threshold, else a
+                                      small gray X. The offending tissue
+                                      name is annotated to the right.
+
+    Reads per gene:
+
+        - sample ≫ cohort → outlier up-regulation in this patient
+        - sample ≈ cohort → this CTA is typical for the cancer type
+        - sample ≪ cohort → cohort expresses it but this patient doesn't
+        - high red X → toxicity risk (a non-testis vital tissue also
+          expresses this CTA, regardless of tumor/cohort signal)
+
+    The data is cohort-level (one median per cancer type), so "per-
+    patient variation within PRAD" is not available. This plot shows
+    what IS in the dataset: how a single sample compares to the per-
+    cohort median + normal-tissue baselines.
+
+    Parameters
+    ----------
+    df_gene_expr : pd.DataFrame
+        Sample expression with gene ID, name, TPM columns.
+    cancer_type : str
+        TCGA cancer code or alias (e.g. "PRAD", "prostate").
+    top_k : int
+        Render at most this many CTAs, ranked by sample TPM.
+    min_sample_tpm : float
+        Skip CTAs where sample TPM is below this; keeps the plot focused
+        on genes that are actually expressed in this patient.
+    save_to_filename, save_dpi : plot save options.
+    figsize : tuple or None
+        Explicit size. Default scales with the number of rendered rows.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    from matplotlib.lines import Line2D
+
+    from .gene_sets_cancer import CTA_gene_id_to_name, pan_cancer_expression
+    from .plot_data_helpers import _strip_ensembl_version
+    from .tumor_purity import CANCER_TO_TISSUE
+
+    cancer_code = resolve_cancer_type(cancer_type)
+    ref = pan_cancer_expression()
+    cancer_col = f"FPKM_{cancer_code}"
+    if cancer_col not in ref.columns:
+        raise ValueError(
+            f"Unknown cancer_type {cancer_type!r} → code {cancer_code!r} "
+            f"has no FPKM column in the reference."
+        )
+
+    # CTAs as Ensembl IDs + display symbols.
+    cta_id_to_name = CTA_gene_id_to_name()
+    if not cta_id_to_name:
+        print("No CTAs available in reference.")
+        return None
+
+    # Build a row per CTA: sample TPM, cancer-cohort TPM-equivalent,
+    # tissue-of-origin nTPM, testis nTPM, max non-testis vital nTPM.
+    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
+    sample = df_gene_expr.copy()
+    sample[gene_id_col] = sample[gene_id_col].astype(str).map(_strip_ensembl_version)
+    tpm_col = "TPM" if "TPM" in sample.columns else next(
+        (c for c in sample.columns if c.lower() == "tpm"), None
+    )
+    if tpm_col is None:
+        raise KeyError(f"No TPM column in sample. Columns: {list(sample.columns)}")
+    sample_tpm = dict(zip(
+        sample[gene_id_col].astype(str),
+        sample[tpm_col].astype(float),
+    ))
+
+    ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index(
+        "Ensembl_Gene_ID"
+    )
+    origin_tissue = CANCER_TO_TISSUE.get(cancer_code)
+    origin_col = f"nTPM_{origin_tissue}" if origin_tissue else None
+    testis_col = "nTPM_testis" if "nTPM_testis" in ref_by_id.columns else None
+
+    # Vital-tissue columns minus testis (testis is treated separately as
+    # the "expected" CTA baseline, not a toxicity concern).
+    vital_tissue_cols = []
+    for tissue in ESSENTIAL_TISSUES:
+        for col in _ESSENTIAL_TISSUE_COLS.get(tissue, []):
+            if col in ref_by_id.columns and col != testis_col:
+                vital_tissue_cols.append((tissue, col))
+
+    rows = []
+    for gid, sym in cta_id_to_name.items():
+        gid_clean = _strip_ensembl_version(str(gid))
+        s_tpm = sample_tpm.get(gid_clean, 0.0)
+        if s_tpm < min_sample_tpm:
+            continue
+        if gid_clean not in ref_by_id.index:
+            continue
+        ref_row = ref_by_id.loc[gid_clean]
+        cohort_val = float(ref_row[cancer_col])
+        origin_val = float(ref_row[origin_col]) if origin_col and origin_col in ref_row else None
+        testis_val = float(ref_row[testis_col]) if testis_col else None
+
+        worst_vital = None
+        for tissue, col in vital_tissue_cols:
+            val = float(ref_row[col]) if col in ref_row else 0.0
+            if worst_vital is None or val > worst_vital[1]:
+                worst_vital = (tissue, val, col)
+
+        rows.append({
+            "symbol": sym,
+            "sample": s_tpm,
+            "cohort": cohort_val,
+            "origin": origin_val,
+            "testis": testis_val,
+            "worst_vital": worst_vital,
+        })
+
+    if not rows:
+        print(
+            f"No CTAs with sample TPM ≥ {min_sample_tpm} found for {cancer_code}."
+        )
+        return None
+
+    # Rank by sample TPM descending; truncate to top_k.
+    rows.sort(key=lambda r: -r["sample"])
+    rows = rows[:top_k]
+    n = len(rows)
+    if figsize is None:
+        figsize = (13, 0.34 * n + 2.2)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    y = np.arange(n)
+
+    toxicity_threshold = 10.0
+
+    for i, r in enumerate(rows):
+        # Sample — large blue circle, TPM labeled inline to the right of
+        # the marker.
+        x_sample = max(r["sample"], 0.05)
+        ax.scatter([x_sample], [i], s=120, color="#1f77b4",
+                   edgecolor="black", linewidth=0.8, zorder=6)
+        ax.text(x_sample * 1.2, i, f"{r['sample']:.0f}",
+                fontsize=7.5, va="center", color="#1f77b4",
+                fontweight="bold", zorder=7)
+
+        # Cohort median — orange diamond.
+        x_cohort = max(r["cohort"], 0.05)
+        ax.scatter([x_cohort], [i], s=70, marker="D", color="#ff7f0e",
+                   edgecolor="#704000", linewidth=0.6, zorder=5, alpha=0.95)
+
+        # Tissue-of-origin normal — green square.
+        if r["origin"] is not None:
+            x_origin = max(r["origin"], 0.05)
+            ax.scatter([x_origin], [i], s=65, marker="s", color="#2ca02c",
+                       edgecolor="#175417", linewidth=0.6, zorder=5, alpha=0.95)
+
+        # Testis — purple triangle (CTAs' expected reference).
+        if r["testis"] is not None:
+            x_testis = max(r["testis"], 0.05)
+            ax.scatter([x_testis], [i], s=65, marker="^", color="#9467bd",
+                       edgecolor="#4a285e", linewidth=0.6, zorder=5, alpha=0.95)
+
+        # Worst non-testis vital tissue — only prominent if it crosses
+        # the toxicity threshold; otherwise faint gray X.
+        if r["worst_vital"] is not None:
+            tissue, val, _col = r["worst_vital"]
+            x_vital = max(val, 0.05)
+            if val >= toxicity_threshold:
+                ax.scatter([x_vital], [i], s=95, marker="X",
+                           color="#d62728", edgecolor="#7a0000",
+                           linewidth=0.9, zorder=5.5)
+                ax.text(x_vital * 1.15, i,
+                        f"  {tissue} {val:.0f}",
+                        fontsize=7, va="center", color="#d62728",
+                        zorder=6)
+            else:
+                ax.scatter([x_vital], [i], s=45, marker="X",
+                           color="#999999", edgecolor="none", zorder=4,
+                           alpha=0.7)
+
+    ax.axvline(toxicity_threshold, linestyle="--", color="#d62728",
+               linewidth=0.8, alpha=0.45, zorder=1)
+
+    ax.set_xscale("log")
+    ax.set_xlim(0.05, max(1000.0, max(r["sample"] for r in rows) * 3))
+    ax.set_yticks(y)
+    ax.set_yticklabels([r["symbol"] for r in rows], fontsize=9)
+    ax.invert_yaxis()
+    ax.set_xlabel("TPM (log scale)")
+    origin_display = origin_tissue.replace("_", " ") if origin_tissue else "origin tissue"
+    ax.set_title(
+        f"CTA detail — {cancer_code} (sample vs cohort / {origin_display} / testis / worst vital tissue)",
+        fontweight="bold",
+    )
+    ax.grid(axis="x", alpha=0.25, zorder=0)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    legend = [
+        Line2D([], [], marker="o", color="#1f77b4", markeredgecolor="black",
+               markersize=10, linestyle="", label="sample"),
+        Line2D([], [], marker="D", color="#ff7f0e", markeredgecolor="#704000",
+               markersize=8, linestyle="", label=f"{cancer_code} cohort"),
+    ]
+    if origin_tissue:
+        legend.append(Line2D(
+            [], [], marker="s", color="#2ca02c", markeredgecolor="#175417",
+            markersize=8, linestyle="",
+            label=f"normal {origin_display}",
+        ))
+    legend.extend([
+        Line2D([], [], marker="^", color="#9467bd", markeredgecolor="#4a285e",
+               markersize=8, linestyle="", label="testis"),
+        Line2D([], [], marker="X", color="#d62728", markeredgecolor="#7a0000",
+               markersize=9, linestyle="",
+               label=f"vital tissue > {toxicity_threshold:g} TPM"),
+        Line2D([], [], marker="X", color="#999999", markersize=6,
+               linestyle="", label="worst vital tissue (below threshold)"),
+    ])
+    ax.legend(
+        handles=legend, loc="upper center", bbox_to_anchor=(0.5, -0.08),
+        ncol=min(len(legend), 3), fontsize=8, frameon=False,
+    )
+    fig.tight_layout()
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
+
+
 # -------------------- cancer-type gene signature plots --------------------
 
 
