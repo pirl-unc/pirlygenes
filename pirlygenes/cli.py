@@ -1485,16 +1485,36 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                  "These can be targeted by antibody-drug conjugates, CAR-T, "
                  "or bispecific T-cell engagers.\n")
     if len(surface_targets):
-        lines.append(f"| Gene | {value_label} | Range | Observed | vs TCGA | TCGA %ile | Therapies |")
-        lines.append("|------|-----------|-------|----------|---------|-----------|-----------|")
+        lines.append(
+            f"| Gene | {value_label} | Range | Observed | vs TCGA | TCGA %ile | TME | Therapies |"
+        )
+        lines.append(
+            "|------|-----------|-------|----------|---------|-----------|-----|-----------|"
+        )
         for _, row in surface_targets.head(20).iterrows():
             bold = "**" if row["therapies"] else ""
             vs_tcga = row["pct_cancer_median"]
+            # TME warning: "⚠" when a healthy reference tissue alone
+            # could explain ≥50% of the sample signal, so the reported
+            # tumor-cell attribution is unreliable (tracked via the
+            # `tme_explainable` flag computed in estimate_tumor_
+            # expression_ranges; see issue #45).
+            tme_warn = "⚠" if row.get("tme_explainable") else ""
             lines.append(
                 f"| {bold}{row['symbol']}{bold} | {row['median_est']:.1f} | "
                 f"{row['est_1']:.1f}\u2013{row['est_9']:.1f} | {row['observed_tpm']:.1f} | "
                 f"{'%.1fx' % vs_tcga if pd.notna(vs_tcga) else '—'} | {row['tcga_percentile']:.0%} | "
-                f"{row['therapies']} |"
+                f"{tme_warn} | {row['therapies']} |"
+            )
+        if (
+            "tme_explainable" in surface_targets.columns
+            and surface_targets.head(20)["tme_explainable"].any()
+        ):
+            lines.append(
+                "\n⚠ = sample signal could be entirely explained by a single healthy "
+                "tissue's expression (max across non-reproductive tissues ≥ 50% of "
+                "observed TPM). The tumor-cell attribution for these genes is "
+                "unreliable — consider stromal / immune origin."
             )
     else:
         lines.append("No surface targets above threshold.\n")

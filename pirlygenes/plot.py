@@ -2127,6 +2127,68 @@ def estimate_tumor_expression_ranges(
             if bg:
                 decomp_backgrounds.append(bg)
 
+    # Per-gene max across healthy tissues (precomputed vector; used to
+    # flag rows where sample signal could be entirely TME-explained).
+    # Vectorized once here to avoid a per-gene `.loc[].max()` inside the
+    # main loop — that was a measured ~30x slowdown on full panels.
+    if ntpm_nonrepro:
+        _max_healthy = ref_dedup[ntpm_nonrepro].astype(float).max(axis=1)
+        max_healthy_tpm_by_symbol = _max_healthy.to_dict()
+    else:
+        max_healthy_tpm_by_symbol = {}
+
+    # --- Full-coverage TPM-space TME background (fixes issue #45) --------
+    #
+    # The decomposition's `tme_background_hk` dict only covers genes that
+    # were in the decomposition's signature panel. For target-list genes
+    # like FN1 / COL1A1 / IGKC that AREN'T signature genes but ARE clearly
+    # stromal/immune expressed, `tme_background_hk.get(sym, 0.0)` returns 0
+    # → no TME subtraction → `tumor_tpm ≈ sample_tpm / purity` which
+    # inflates the "Tumor TPM" reported in the target table.
+    #
+    # Fix: when we have a decomposition result with a `fractions` dict,
+    # build a full-gene signature matrix using the same cell-type /
+    # bulk-tissue references the decomposition engine uses, and compute:
+    #
+    #   tme_bg_tpm[g] = Σ_{c ≠ tumor} fractions[c] × ref_tpm[g, c]
+    #
+    # This gives a per-gene TPM-scale TME background for every gene in
+    # the reference, not just signature genes. The formula in the loop
+    # prefers this TPM-space path when available and falls back to the
+    # HK-fold path when it isn't.
+    tme_bg_tpm_by_symbol = None
+    if decomposition_results:
+        top_fractions = (
+            getattr(decomposition_results[0], "fractions", None) or {}
+        )
+        non_tumor_components = [
+            c for c, f in top_fractions.items() if c != "tumor" and f > 0
+        ]
+        if non_tumor_components:
+            from .decomposition.signature import build_signature_matrix
+            try:
+                _genes, sym_list, matrix, _cols = build_signature_matrix(
+                    non_tumor_components,
+                    gene_subset=None,
+                    sample_by_eid=None,
+                )
+                non_tumor_fracs = np.array(
+                    [float(top_fractions[c]) for c in non_tumor_components],
+                    dtype=float,
+                )
+                # Per-gene expected non-tumor contribution to sample TPM:
+                # Σ_c fractions[c] × ref_tpm[g, c]. `fractions[c]` is
+                # already scaled by (1 − tumor_fraction), so summing
+                # directly gives absolute non-tumor TPM — no extra
+                # (1 − p) multiplier needed at the formula site.
+                tme_tpm_vec = matrix @ non_tumor_fracs
+                tme_bg_tpm_by_symbol = {
+                    str(sym): float(val)
+                    for sym, val in zip(sym_list, tme_tpm_vec)
+                }
+            except Exception:
+                tme_bg_tpm_by_symbol = None
+
     # --- Purity-adjusted TCGA (HK-normalized, then deconvolved) ---
     # For each FPKM cancer-type column, compute:
     #   tcga_hk = FPKM / FPKM_HK_median
@@ -2196,13 +2258,28 @@ def estimate_tumor_expression_ranges(
         tme_fold_med = float(np.median(tme_folds))
         tme_fold_hi = float(np.percentile(tme_folds, 75))
 
-        # 3×3 grid in HK-fold space, then convert back to TPM
+        # 9-point estimate grid. TPM-space path (preferred) uses the
+        # decomposition's per-gene expected TME contribution directly.
+        # HK-fold path is the fallback when no decomposition is available
+        # or the gene is absent from the reference.
         estimates = []
-        for bg in [tme_fold_lo, tme_fold_med, tme_fold_hi]:
-            for p in [p_lo, p_med, p_hi]:
-                tumor_fold = max(0.0, (sample_fold - (1 - p) * bg) / p)
-                tumor_tpm = tumor_fold * sample_hk_median
-                estimates.append(tumor_tpm)
+        if tme_bg_tpm_by_symbol is not None and symbol in tme_bg_tpm_by_symbol:
+            bg_tpm_mid = tme_bg_tpm_by_symbol[symbol]
+            # Uncertainty on the TME estimate itself: ±50%. This captures
+            # the fact that bulk HPA / cell-type references may under- or
+            # over-estimate the actual infiltrate composition in the
+            # specific sample (e.g. reactive tumor stroma expresses FN1
+            # higher than resting fibroblasts).
+            for bg_tpm in [bg_tpm_mid * 0.5, bg_tpm_mid, bg_tpm_mid * 1.5]:
+                for p in [p_lo, p_med, p_hi]:
+                    tumor_tpm = max(0.0, (observed - bg_tpm)) / p
+                    estimates.append(tumor_tpm)
+        else:
+            for bg in [tme_fold_lo, tme_fold_med, tme_fold_hi]:
+                for p in [p_lo, p_med, p_hi]:
+                    tumor_fold = max(0.0, (sample_fold - (1 - p) * bg) / p)
+                    tumor_tpm = tumor_fold * sample_hk_median
+                    estimates.append(tumor_tpm)
         estimates.sort()
         median_est = float(np.median(estimates))
 
@@ -2232,6 +2309,13 @@ def estimate_tumor_expression_ranges(
         else:
             vs_tcga = None
 
+        # TME-explainability flag: the max TPM this gene reaches in ANY
+        # single healthy reference tissue. If the sample value is below
+        # that ceiling, the signal could in principle come entirely from
+        # non-tumor cells — the reported Tumor TPM is then unreliable.
+        max_healthy_tpm = float(max_healthy_tpm_by_symbol.get(symbol, 0.0))
+        tme_explainable = max_healthy_tpm >= observed * 0.5
+
         # Categorize
         is_cta = symbol in cta_symbols
         is_surface = symbol in surf_symbols
@@ -2256,6 +2340,8 @@ def estimate_tumor_expression_ranges(
             "tme_fold_lo": round(tme_fold_lo, 4),
             "tme_fold_med": round(tme_fold_med, 4),
             "tme_fold_hi": round(tme_fold_hi, 4),
+            "max_healthy_tpm": round(max_healthy_tpm, 2),
+            "tme_explainable": bool(tme_explainable),
             **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
             "median_est": round(median_est, 2),
             "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None else None,
