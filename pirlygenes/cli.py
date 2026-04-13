@@ -157,6 +157,7 @@ def analyze(
     decomposition_templates: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
+    use_matched_normal: bool = False,
 ):
     from pathlib import Path
 
@@ -352,6 +353,18 @@ def analyze(
             sort_keys=True,
         )
 
+    if use_matched_normal:
+        # Experimental / WIP path (issue #50). Emit a single notice so
+        # operators know the decomposition is running with the new
+        # matched-normal-epithelium compartment and that the tumor-
+        # expression estimates are split three ways (TME / matched-
+        # normal / tumor). Reports include an extra column so gene-level
+        # provenance is visible.
+        print(
+            "[decomposition] use_matched_normal=True — adding "
+            "matched_normal_<tissue> compartment to solid_primary for "
+            "epithelial primaries (experimental; see issue #50)"
+        )
     decomp_results = decompose_sample(
         df_expr,
         cancer_types=candidate_codes or [cancer_code],
@@ -360,6 +373,7 @@ def analyze(
         tumor_context=tumor_context,
         site_hint=site_hint,
         templates=template_overrides,
+        use_matched_normal=use_matched_normal,
     )
     call_summary = _summarize_sample_call(
         analysis,
@@ -1451,27 +1465,71 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             f"{cancer_code} TCGA cohort.\n"
         )
 
+    # Matched-normal provenance banner (issue #50). When the decomposition
+    # included a matched_normal_<tissue> compartment, per-gene estimates
+    # subtract both TME and matched-normal parent-tissue contributions
+    # before dividing by purity. Surface this explicitly so readers can
+    # interpret the columns in the TSV output (tme_only_tpm,
+    # matched_normal_tpm, estimation_path) and don't mistake a
+    # matched-normal-heavy gene for a tumor-only expression claim.
+    if "matched_normal_tissue" in ranges_df.columns:
+        mn_values = ranges_df["matched_normal_tissue"].dropna().astype(str)
+        mn_nonempty = [v for v in mn_values.unique() if v]
+        if mn_nonempty:
+            mn_tissue = mn_nonempty[0]
+            mn_frac_series = (
+                ranges_df.get("matched_normal_fraction", pd.Series(dtype=float))
+                .dropna()
+            )
+            mn_frac = float(mn_frac_series.iloc[0]) if len(mn_frac_series) else 0.0
+            lines.append(
+                f"**Matched-normal split** (experimental, issue #50): the "
+                f"decomposition included a `matched_normal_{mn_tissue}` "
+                f"compartment at fraction **{mn_frac:.2%}** of the sample. "
+                "Estimates subtract both stromal/immune TME *and* matched "
+                "benign parent-tissue contribution before dividing by purity. "
+                "Per-gene provenance is in the TSV under `estimation_path` "
+                "(`tme_only`, `matched_normal_split`, `clamped`, "
+                "`tme_fold_fallback`).\n"
+            )
+
     # --- CTAs: vaccination targets ---
     ctas = ranges_df[ranges_df["is_cta"] & (ranges_df["median_est"] > 0.5)].copy()
     lines.append("## Cancer-Testis Antigens (Vaccination Targets)\n")
     lines.append("CTAs are expressed in tumor but not normal adult tissue (except testis/placenta). "
                  "Any expressed CTA is a potential vaccination target regardless of trial status.\n")
     if len(ctas):
-        lines.append(f"| Gene | {value_label} | Range | Observed | vs TCGA | TCGA %ile | Surface | Therapies |")
-        lines.append("|------|-----------|-------|----------|---------|-----------|---------|-----------|")
+        lines.append(f"| Gene | {value_label} | Range | Observed | vs TCGA | TCGA %ile | TME | Surface | Therapies |")
+        lines.append("|------|-----------|-------|----------|---------|-----------|-----|---------|-----------|")
         for _, row in ctas.head(20).iterrows():
             surf = "yes" if row["is_surface"] else ""
             vs_tcga = row["pct_cancer_median"]
+            tme_warn = "⚠" if row.get("tme_explainable") else ""
             lines.append(
                 f"| **{row['symbol']}** | {row['median_est']:.1f} | "
                 f"{row['est_1']:.1f}\u2013{row['est_9']:.1f} | {row['observed_tpm']:.1f} | "
                 f"{'%.1fx' % vs_tcga if pd.notna(vs_tcga) else '—'} | {row['tcga_percentile']:.0%} | "
-                f"{surf} | {row['therapies']} |"
+                f"{tme_warn} | {surf} | {row['therapies']} |"
             )
         high_ctas = ctas[ctas["tcga_percentile"] > 0.7]
         if len(high_ctas):
             names = ", ".join(high_ctas["symbol"].head(5))
             lines.append(f"\n**Above TCGA median for {cancer_code}**: {names}")
+        # Propagate healthy-tissue-explainability warnings across all target
+        # tables, not just surface (issue #50 point 5). For a CTA this is
+        # usually a false alarm (CTAs activated in a subset of tumors),
+        # but the flag still conveys real ambiguity — e.g. testis-
+        # retained genes in TGCT samples — so surface it consistently.
+        if (
+            "tme_explainable" in ctas.columns
+            and ctas.head(20)["tme_explainable"].any()
+        ):
+            lines.append(
+                "\n⚠ = sample signal could be entirely explained by a single healthy "
+                "tissue's expression. For CTAs this is usually benign (cohort-median "
+                "≈ 0 is normal for CTAs), but verify the flagged gene is not a germline "
+                "/ germ-cell lineage marker in this patient's context."
+            )
     else:
         lines.append("No CTAs detected above threshold.\n")
     lines.append("")
@@ -1529,16 +1587,27 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     lines.append("Intracellular proteins presented via MHC-I. Targetable by "
                  "TCR-T cell therapy or peptide vaccination.\n")
     if len(intracellular):
-        lines.append(f"| Gene | {value_label} | Range | vs TCGA | TCGA %ile | CTA | Therapies |")
-        lines.append("|------|-----------|-------|---------|-----------|-----|-----------|")
+        lines.append(f"| Gene | {value_label} | Range | vs TCGA | TCGA %ile | TME | CTA | Therapies |")
+        lines.append("|------|-----------|-------|---------|-----------|-----|-----|-----------|")
         for _, row in intracellular.head(15).iterrows():
             cta_flag = "yes" if row["is_cta"] else ""
             vs_tcga = row["pct_cancer_median"]
+            tme_warn = "⚠" if row.get("tme_explainable") else ""
             lines.append(
                 f"| {row['symbol']} | {row['median_est']:.1f} | "
                 f"{row['est_1']:.1f}\u2013{row['est_9']:.1f} | "
                 f"{'%.1fx' % vs_tcga if pd.notna(vs_tcga) else '—'} | "
-                f"{row['tcga_percentile']:.0%} | {cta_flag} | {row['therapies']} |"
+                f"{row['tcga_percentile']:.0%} | {tme_warn} | {cta_flag} | {row['therapies']} |"
+            )
+        if (
+            "tme_explainable" in intracellular.columns
+            and intracellular.head(15)["tme_explainable"].any()
+        ):
+            lines.append(
+                "\n⚠ = sample signal could be entirely explained by a single healthy "
+                "tissue's expression (max across non-reproductive tissues ≥ 50% of "
+                "observed TPM). The tumor-cell attribution for these genes is "
+                "unreliable — consider lineage-retained / stromal origin."
             )
     else:
         lines.append("No intracellular targets above threshold.\n")
@@ -1609,6 +1678,7 @@ def plot_expression(
     decomposition_templates: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
+    use_matched_normal: bool = False,
 ):
     """Deprecated: use 'analyze' instead."""
     import warnings
@@ -1636,6 +1706,7 @@ def plot_expression(
         decomposition_templates=decomposition_templates,
         therapy_target_top_k=therapy_target_top_k,
         therapy_target_tpm_threshold=therapy_target_tpm_threshold,
+        use_matched_normal=use_matched_normal,
     )
 
 

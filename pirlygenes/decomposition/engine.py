@@ -18,7 +18,9 @@ import pandas as pd
 
 from .signature import build_signature_matrix, get_component_markers
 from .templates import (
+    EPITHELIAL_MATCHED_NORMAL_TISSUE,
     TEMPLATES,
+    epithelial_matched_normal_component,
     get_template_components,
     get_template_extra_components,
     get_template_host_tissues,
@@ -272,6 +274,8 @@ class DecompositionResult:
     score: float
     description: str = ""
     warnings: list[str] = field(default_factory=list)
+    matched_normal_tissue: str | None = None
+    matched_normal_fraction: float = 0.0
 
 
 def _hk_normalize(values, genes, hk_gene_set):
@@ -336,7 +340,17 @@ def _select_marker_rows(
     comp_names,
     top_n_per_component=DECOMPOSITION_PARAMETERS["marker_selection"]["top_n_per_component"],
 ):
-    """Pick component-enriched marker rows for the weighted fit."""
+    """Pick component-enriched marker rows for the weighted fit.
+
+    Matched-normal (``matched_normal_<tissue>``) components are included
+    in the signature matrix so the NNLS can route benign parent-tissue
+    signal there, but they are **not** used to seed markers. Prostate
+    (or colon, breast, etc.) bulk-tissue references share smooth-muscle
+    / glandular signal with the generic fibroblast reference, so
+    prostate-biased "matched-normal markers" come out collinear with
+    fibroblast markers and destabilise the fit (issue #50,
+    ``ffa9325`` regression mechanism).
+    """
     symbol_to_rows = {}
     for idx, symbol in enumerate(symbols):
         symbol_to_rows.setdefault(str(symbol), []).append(idx)
@@ -345,6 +359,8 @@ def _select_marker_rows(
     fit_weight_by_row = {}
 
     for comp_idx, comp in enumerate(comp_names):
+        if comp.startswith("matched_normal_"):
+            continue
         comp_signal = sig_matrix_hk[:, comp_idx]
         if sig_matrix_hk.shape[1] > 1:
             other_mask = np.arange(sig_matrix_hk.shape[1]) != comp_idx
@@ -491,6 +507,7 @@ def _fit_one_hypothesis(
     tissue_score_map,
     template_name,
     purity_override=None,
+    use_matched_normal=False,
 ):
     """Fit one (cancer_type, template) broad-compartment hypothesis."""
     hk_ids = housekeeping_gene_ids()
@@ -507,8 +524,15 @@ def _fit_one_hypothesis(
             "overall_upper": tumor_fraction,
         }
 
-    components = get_template_components(template_name, cancer_type)
+    components = get_template_components(
+        template_name, cancer_type, use_matched_normal=use_matched_normal,
+    )
     comp_names = [comp for comp in components if comp != "tumor"]
+    matched_normal_name = (
+        epithelial_matched_normal_component(cancer_type)
+        if use_matched_normal and template_name == "solid_primary"
+        else None
+    )
     warnings = []
 
     if not comp_names or tumor_fraction >= 0.999:
@@ -533,6 +557,11 @@ def _fit_one_hypothesis(
             score=float(candidate_row["support_norm"]),
             description=f"{cancer_type} — {TEMPLATES.get(template_name, {}).get('description', template_name)}",
             warnings=["No non-tumor components in template"],
+            matched_normal_tissue=(
+                EPITHELIAL_MATCHED_NORMAL_TISSUE.get(cancer_type)
+                if matched_normal_name else None
+            ),
+            matched_normal_fraction=0.0,
         )
 
     gene_subset = set(sample_by_eid.keys())
@@ -609,9 +638,23 @@ def _fit_one_hypothesis(
     else:
         host_tissue, template_tissue_score = None, 0.0
 
-    extra_components = set(get_template_extra_components(template_name))
+    # Extra-component scoring rewards met templates whose site-specific host
+    # cell is detected. Matched-normal epithelium is deliberately excluded:
+    # it is a lineage-awareness addition to solid_primary, not a met host
+    # cell, and including it here would re-balance the primary-vs-met
+    # scoring (see `ffa9325` regression notes in issue #50).
+    extra_components = {
+        comp for comp in get_template_extra_components(template_name)
+        if not comp.startswith("matched_normal_")
+    }
     extra_fraction = float(sum(comp_mix[idx] for idx, comp in enumerate(comp_names) if comp in extra_components))
     extra_sample_fraction = extra_fraction * max(0.0, 1.0 - tumor_fraction)
+
+    matched_normal_mix = 0.0
+    if matched_normal_name is not None and matched_normal_name in comp_names:
+        mn_idx = comp_names.index(matched_normal_name)
+        matched_normal_mix = float(comp_mix[mn_idx])
+    matched_normal_fraction = matched_normal_mix * max(0.0, 1.0 - tumor_fraction)
 
     scoring = DECOMPOSITION_PARAMETERS["template_scoring"]
     if template_name == "solid_primary":
@@ -696,6 +739,11 @@ def _fit_one_hypothesis(
         score=float(score),
         description=f"{cancer_type} — {TEMPLATES.get(template_name, {}).get('description', template_name)}",
         warnings=warnings,
+        matched_normal_tissue=(
+            EPITHELIAL_MATCHED_NORMAL_TISSUE.get(cancer_type)
+            if matched_normal_name else None
+        ),
+        matched_normal_fraction=matched_normal_fraction,
     )
 
 
@@ -708,8 +756,18 @@ def decompose_sample(
     sample_mode="auto",
     tumor_context="auto",
     site_hint=None,
+    use_matched_normal=False,
 ):
-    """Decompose a sample across multiple cancer-type and template hypotheses."""
+    """Decompose a sample across multiple cancer-type and template hypotheses.
+
+    When ``use_matched_normal=True``, epithelial primaries whose cancer type
+    is in :data:`pirlygenes.decomposition.templates.EPITHELIAL_MATCHED_NORMAL_TISSUE`
+    get an additional ``matched_normal_<tissue>`` compartment in the
+    ``solid_primary`` template, so admixed benign parent tissue (benign
+    prostate glands, adjacent normal colon mucosa, etc.) can be absorbed
+    as non-tumor signal rather than attributed to tumor cells (see issue
+    #50). Default is off while the feature is calibrated.
+    """
     from ..plot import _sample_expression_by_symbol
 
     sample_raw_by_symbol, _ = _sample_expression_by_symbol(df_gene_expr)
@@ -750,6 +808,7 @@ def decompose_sample(
                 tissue_score_map,
                 template_name,
                 purity_override=purity_override,
+                use_matched_normal=use_matched_normal,
             )
             results.append(result)
 
