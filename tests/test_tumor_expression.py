@@ -312,6 +312,54 @@ def test_ranges_tme_explainable_clamps_at_observed():
     )
 
 
+def test_ranges_skips_shrinkage_when_cohort_prior_is_near_zero():
+    """CTAs with cohort median ≈ 0 (activated in a minority of samples)
+    must NOT be shrunk toward zero by empirical-Bayes — the cohort
+    median is uninformative for sparsely-expressed genes.
+    """
+    from pirlygenes.plot import estimate_tumor_expression_ranges
+    from pirlygenes.gene_sets_cancer import CTA_gene_id_to_name, pan_cancer_expression
+    import pandas as pd
+
+    # Pick 3 CTAs with cohort_prior near zero in PRAD.
+    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    cta_map = CTA_gene_id_to_name()
+    zero_cohort_ctas = []
+    for gid, sym in cta_map.items():
+        if sym in ref.index and float(ref.loc[sym, "FPKM_PRAD"]) < 0.1:
+            zero_cohort_ctas.append((gid, sym))
+        if len(zero_cohort_ctas) >= 3:
+            break
+    assert zero_cohort_ctas, "Should find at least one near-zero CTA in PRAD"
+
+    rows = [{"gene_id": gid, "gene_name": sym, "TPM": 50.0}
+            for gid, sym in zero_cohort_ctas]
+    rows.extend([
+        {"gene_id": "ENSG00000075624", "gene_name": "ACTB",   "TPM": 150.0},
+        {"gene_id": "ENSG00000156508", "gene_name": "EEF1A1", "TPM": 300.0},
+        {"gene_id": "ENSG00000111640", "gene_name": "GAPDH",  "TPM": 100.0},
+    ])
+    df = pd.DataFrame(rows)
+    purity = {"overall_lower": 0.30, "overall_estimate": 0.35, "overall_upper": 0.40}
+    out = estimate_tumor_expression_ranges(df, "PRAD", purity)
+
+    # Near-zero cohort prior CTAs should land at roughly `observed/purity`,
+    # the raw deconvolution — NOT shrunk toward zero.
+    cta_symbols = {sym for _, sym in zero_cohort_ctas}
+    ctas = out[out["symbol"].isin(cta_symbols)]
+    assert len(ctas) > 0
+    for _, row in ctas.iterrows():
+        # observed=50, purity~0.35 → raw ≈ 143. Allow some flexibility
+        # for the 3x3 TME/purity grid's median.
+        assert row["cohort_prior_tpm"] < 1.0, (
+            f"{row['symbol']} cohort prior {row['cohort_prior_tpm']} not near zero"
+        )
+        assert row["median_est"] > 100, (
+            f"{row['symbol']} median_est {row['median_est']} was shrunk toward zero "
+            f"despite near-zero cohort prior (should be ~143)"
+        )
+
+
 def test_ranges_low_purity_shrinks_toward_cohort_prior():
     """At very low purity, the sample-based estimator has high variance
     (1/purity inflates). Shrinkage should pull estimates toward the

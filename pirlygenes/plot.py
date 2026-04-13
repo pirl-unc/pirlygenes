@@ -2304,6 +2304,13 @@ def estimate_tumor_expression_ranges(
         if tme_explainable:
             k_shrinkage = 0.40
 
+        # Shrinkage floor: when the cohort prior is near-zero (e.g.
+        # CTAs — activated in a minority of samples, so median = 0),
+        # the prior mean is uninformative. Empirical-Bayes shrinkage
+        # toward 0 would wrongly pull real sample-specific signal
+        # down. Skip shrinkage in that regime and trust the sample.
+        skip_shrinkage = cohort_prior_tpm < 1.0
+
         # 9-point estimate grid. TPM-space path (preferred) uses the
         # decomposition's per-gene expected TME contribution directly.
         # HK-fold path is the fallback when no decomposition is
@@ -2313,8 +2320,14 @@ def estimate_tumor_expression_ranges(
         # contribute more than the observed signal if a single healthy
         # tissue could explain it alone).
         def _apply_priors(raw_tumor_tpm, purity_used):
-            w_sample = float(purity_used) / (float(purity_used) + k_shrinkage)
-            shrunk = w_sample * raw_tumor_tpm + (1.0 - w_sample) * cohort_prior_tpm
+            if skip_shrinkage:
+                shrunk = raw_tumor_tpm
+            else:
+                w_sample = float(purity_used) / (float(purity_used) + k_shrinkage)
+                shrunk = (
+                    w_sample * raw_tumor_tpm
+                    + (1.0 - w_sample) * cohort_prior_tpm
+                )
             if tme_explainable:
                 shrunk = min(shrunk, observed)
             return max(0.0, shrunk)

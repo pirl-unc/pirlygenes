@@ -195,6 +195,25 @@ def build_signature_matrix(components, gene_subset=None, sample_by_eid=None):
 
     cols = []
     for comp in components:
+        # Priority 0: explicit matched-normal-epithelium convention,
+        # `matched_normal_<tissue>` — used by `get_template_components`
+        # for solid_primary + cancer_type to admit admixed normal-tissue
+        # glands as a non-tumor compartment. Directly resolves to the
+        # bulk nTPM tissue column.
+        if comp.startswith("matched_normal_"):
+            tissue = comp[len("matched_normal_"):]
+            tissue_col = f"nTPM_{tissue}"
+            if tissue_col in bulk.columns:
+                vals = (
+                    bulk[tissue_col]
+                    .astype(float)
+                    .reindex(genes)
+                    .fillna(0.0)
+                    .values
+                )
+                cols.append(vals)
+                continue
+
         # Priority 1: composite tissue category (best-match selection)
         category = COMPONENT_TO_CATEGORY.get(comp)
         if category is not None:
