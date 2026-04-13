@@ -36,6 +36,7 @@ from .gene_sets_cancer import (
 )
 from .load_dataset import load_all_dataframes, load_all_dataframes_dict, get_data
 from .plot import (
+    plot_ctas_vs_cancer_type_detail,
     plot_gene_expression,
     plot_geneset_vs_vital_tissues,
     plot_sample_vs_cancer,
@@ -52,6 +53,7 @@ __all__ = [
     "plot_gene_expression",
     "plot_sample_vs_cancer",
     "plot_geneset_vs_vital_tissues",
+    "plot_ctas_vs_cancer_type_detail",
     # Pan-cancer reference
     "pan_cancer_expression",
     # Housekeeping
