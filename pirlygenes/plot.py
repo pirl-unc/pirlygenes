@@ -498,21 +498,27 @@ def _prepare_sample_vs_cancer_data(
         verbose=False,  # already logged during strip plot
     )
 
+    # Internally we still HK-normalize the reference so the cross-dataset
+    # scale mismatch (sample TPM totals ~1M; TCGA `FPKM_*` cohort medians
+    # total ~250K over the ~20K genes we track) cancels out. For display
+    # we then multiply back by the sample's own HK median TPM — so both
+    # axes end up on a familiar TPM scale that's correctly rescaled to
+    # this sample's sequencing depth.
     ref = pan_cancer_expression(normalize="housekeeping")
     if cancer_type is not None:
         cancer_type = resolve_cancer_type(cancer_type)
         ref_col = f"FPKM_{cancer_type}"
-        ref["_ref_value"] = ref[ref_col].astype(float) * 100  # convert to %
+        ref["_ref_hk"] = ref[ref_col].astype(float)
         cancer_label = CANCER_TYPE_NAMES.get(cancer_type, cancer_type)
         cohort_label = f"{cancer_label} cohort ({cancer_type})"
     else:
         fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
-        ref["_ref_value"] = ref[fpkm_cols].astype(float).mean(axis=1) * 100
+        ref["_ref_hk"] = ref[fpkm_cols].astype(float).mean(axis=1)
         cohort_label = "Mean across 33 TCGA cancer cohorts"
 
     ref_lookup = dict(zip(
         ref["Ensembl_Gene_ID"].map(_strip_ensembl_version),
-        ref["_ref_value"],
+        ref["_ref_hk"],
     ))
 
     tpm_col = "TPM" if "TPM" in df.columns else next(
@@ -521,11 +527,13 @@ def _prepare_sample_vs_cancer_data(
     if tpm_col is None:
         raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
 
-    # Normalize sample TPM to housekeeping (same scale as cohort reference)
+    # Sample's own HK-median TPM. Used as the rescaling factor that
+    # brings the HK-normalized cohort reference back onto this sample's
+    # TPM scale.
     hk_ids = housekeeping_gene_ids()
     hk_mask = df[gene_id_col].isin(hk_ids)
     hk_median_tpm = df.loc[hk_mask, tpm_col].astype(float).median()
-    if not (hk_median_tpm > 0):  # catches NaN and <= 0
+    if not (hk_median_tpm > 0):
         hk_median_tpm = 1.0
 
     gene_to_category = _create_gene_to_category_list_mapping(cat_to_ids)
@@ -535,31 +543,33 @@ def _prepare_sample_vs_cancer_data(
     for _, row in df.iterrows():
         gid = str(row[gene_id_col])
         tpm = float(row[tpm_col])
-        sample_hk = (tpm / hk_median_tpm) * 100  # % of housekeeping median
-        ref_val = ref_lookup.get(gid)
-        if ref_val is None:
+        ref_hk = ref_lookup.get(gid)
+        if ref_hk is None:
             continue
+        # Both axes on TPM scale. Reference rescaled via sample's HK median.
+        sample_val = tpm
+        cohort_val = float(ref_hk) * hk_median_tpm
         cats = gene_to_category.get(gid, ["other"])
         name = name_from_df.get(gid) or id_to_name.get(gid) or gid
         display_name = aliases.get(name, name)
         for cat in cats:
-            rows.append((gid, display_name, cat, sample_hk, ref_val))
+            rows.append((gid, display_name, cat, sample_val, cohort_val))
 
     plot_df = pd.DataFrame(rows, columns=[
         "gene_id", "gene_name", "category", "sample_hk", "cohort_hk",
     ])
-    # Offsets for log scale
+    # Column names kept (`sample_hk` / `cohort_hk`) for wire-compatibility
+    # with downstream panel code; the stored values are TPM, not % of HK.
     plot_df["sample_log"] = plot_df["sample_hk"] + 0.001
     plot_df["cohort_log"] = plot_df["cohort_hk"] + 0.001
-    # Enrichment ratio: sample / cohort (high = sample-enriched)
     plot_df["enrichment"] = (plot_df["sample_hk"] + 0.001) / (plot_df["cohort_hk"] + 0.001)
 
     named_cats = list(cat_to_ids.keys())
     palette = sns.color_palette("tab10", len(named_cats))
     cat_to_color = dict(zip(named_cats, palette))
 
-    sample_label = "Sample expression (% of housekeeping)"
-    cohort_axis_label = f"{cohort_label} (% of housekeeping)"
+    sample_label = "Sample TPM"
+    cohort_axis_label = f"{cohort_label} (TPM)"
 
     return plot_df, named_cats, cat_to_color, sample_label, cohort_axis_label
 
