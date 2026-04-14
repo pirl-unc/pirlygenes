@@ -678,6 +678,53 @@ def test_plot_decomposition_candidates_empty_results_returns_none():
     assert plot_decomposition_candidates([]) is None
 
 
+def test_auto_marker_selection_excludes_mhc_ii_and_ribosomal(monkeypatch):
+    """#31: CD74 / HLA-D* / RPL* / RPS* must not be auto-picked as
+    component-specific markers, even when their reference nTPM is high
+    in the target component. Curated ``COMPONENT_MARKERS`` from
+    signature.py remains the source of truth.
+    """
+    import numpy as np
+    from pirlygenes.decomposition.engine import (
+        _AUTO_MARKER_EXCLUDED_SYMBOLS,
+        _select_marker_rows,
+    )
+
+    # Build a 3-component (T_cell, B_cell, myeloid) synthetic matrix where
+    # the first few "genes" are exactly the excluded symbols and happen to
+    # be high only in B_cell — so the specificity rule would otherwise
+    # auto-pick them.
+    tainted = ["CD74", "HLA-DPB1", "HLA-DQB1", "RPL18A", "RPS6"]
+    clean_b = ["BANK1", "MS4A1", "CD79A"]  # genuine B-cell markers
+    genes = tainted + clean_b + [f"OTHER{i}" for i in range(50)]
+    symbols = list(genes)  # symbol==gene_id for this toy case
+
+    n = len(genes)
+    mat = np.full((n, 3), 0.1)  # baseline in T_cell / B_cell / myeloid
+    # tainted genes: very high in B_cell only
+    for i in range(len(tainted)):
+        mat[i, 1] = 200.0
+    # clean b-cell markers: also high in B_cell
+    for i in range(len(tainted), len(tainted) + len(clean_b)):
+        mat[i, 1] = 150.0
+
+    fit_rows, _weights, marker_df = _select_marker_rows(
+        genes=genes,
+        symbols=symbols,
+        sig_matrix_hk=mat,
+        comp_names=["T_cell", "B_cell", "myeloid"],
+    )
+
+    auto_b_cell = marker_df[marker_df["component"] == "B_cell"]["symbol"].tolist()
+    for bad in tainted:
+        assert bad not in auto_b_cell, f"Auto-picked excluded marker {bad} for B_cell"
+
+    # The exclusion table itself must cover the MHC-II shared-APC genes
+    # that motivated issue #31 (guard against accidental deletion).
+    for required in ["CD74", "HLA-DPB1", "HLA-DQB1"]:
+        assert required in _AUTO_MARKER_EXCLUDED_SYMBOLS
+
+
 def test_candidate_composition_segments_sum_to_one():
     """(tumor, template_specific, shared_host) must sum to 1."""
     from types import SimpleNamespace
