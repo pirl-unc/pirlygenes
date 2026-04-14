@@ -63,6 +63,7 @@ from .decomposition import (
     plot_decomposition_component_breakdown,
     plot_decomposition_composition,
 )
+from .sample_context import infer_sample_context, plot_sample_context
 from .sample_quality import assess_sample_quality
 
 _DATASET_SOURCES = {
@@ -223,6 +224,23 @@ def analyze(
     forced_labels = _parse_always_label_genes(label_genes)
     template_overrides = _parse_csv_tokens(decomposition_templates)
 
+    # Stage 1 of the unified attribution flow: infer SampleContext BEFORE
+    # cancer-type inference. Downstream stages (purity CIs, decomposition,
+    # tumor-value adjustment, reporting) read from it as the base layer
+    # of expression expectations.
+    print("[context] Inferring sample context (library prep + preservation)...")
+    sample_context = infer_sample_context(df_expr)
+    print(f"[context] {sample_context.summary_line()}")
+    for flag in sample_context.flags:
+        print(f"[context] {flag}")
+
+    context_png = "%s-sample-context.png" % prefix if prefix else "sample-context.png"
+    try:
+        plot_sample_context(sample_context, save_to_filename=context_png, save_dpi=output_dpi)
+        print(f"[plot] Saved sample-context diagnostic to {context_png}")
+    except Exception as exc:  # noqa: BLE001 — plotting must not break analyze
+        print(f"[plot] sample-context plot failed: {exc}")
+
     # Strip plots: split into focused panels for readability
     # Immune microenvironment
     immune_sets = {k: default_gene_sets[k] for k in
@@ -276,6 +294,23 @@ def analyze(
     # Sample composition analysis
     print("[analysis] Running sample composition analysis...")
     analysis = analyze_sample(df_expr, cancer_type=cancer_type)
+    analysis["sample_context"] = sample_context
+
+    # Stage 1 propagation: widen purity confidence intervals under
+    # detected degradation (#26). A noisier sample has a noisier purity
+    # estimate; we don't re-estimate, just scale the reported band.
+    ci_factor = sample_context.purity_ci_widening_factor()
+    if ci_factor > 1.0 and "purity" in analysis:
+        purity_block = analysis["purity"]
+        est = purity_block.get("overall_estimate")
+        lo = purity_block.get("overall_lower")
+        hi = purity_block.get("overall_upper")
+        if est is not None and lo is not None and hi is not None:
+            half_lo = max(0.0, est - lo) * ci_factor
+            half_hi = max(0.0, hi - est) * ci_factor
+            purity_block["overall_lower"] = round(max(0.0, est - half_lo), 4)
+            purity_block["overall_upper"] = round(min(1.0, est + half_hi), 4)
+            purity_block["ci_widening_factor"] = round(ci_factor, 3)
     analysis["sample_mode"] = infer_sample_mode(
         candidate_rows=analysis.get("candidate_trace"),
         cancer_types=[analysis["cancer_type"]] if analysis.get("cancer_type") else ([cancer_type] if cancer_type else None),
@@ -291,8 +326,22 @@ def analyze(
     cancer_code = analysis["cancer_type"]
     purity = analysis["purity"]
     fit_quality = analysis.get("fit_quality", {})
-    print(f"[analysis] Cancer type: {analysis['cancer_name']} ({cancer_code}), "
-          f"score={analysis['cancer_score']:.3f}")
+    candidate_trace_for_print = analysis.get("candidate_trace", [])
+    top_row = candidate_trace_for_print[0] if candidate_trace_for_print else None
+    if top_row:
+        parts = [
+            f"signature={top_row.get('signature_score', 0.0):.2f}",
+            f"geomean={top_row.get('support_geomean', 0.0):.2f}",
+            f"normalized={top_row.get('support_norm', 0.0):.2f}",
+        ]
+        if len(candidate_trace_for_print) > 1:
+            runner = candidate_trace_for_print[1]
+            parts.append(
+                f"(runner-up {runner['code']} {runner.get('support_norm', 0.0):.2f})"
+            )
+        print(f"[analysis] Cancer type: {analysis['cancer_name']} ({cancer_code}), " + ", ".join(parts))
+    else:
+        print(f"[analysis] Cancer type: {analysis['cancer_name']} ({cancer_code})")
     if fit_quality.get("label"):
         print(f"[analysis] Fit quality: {fit_quality['label']} — {fit_quality.get('message', '')}")
     print(f"[analysis] Sample mode: {_sample_mode_display(analysis['sample_mode'])}")
@@ -354,6 +403,7 @@ def analyze(
                 "family_factor": row.get("family_factor"),
                 "signature_stability": row.get("signature_stability"),
                 "support_score": row["support_score"],
+                "support_geomean": row.get("support_geomean"),
                 "support_norm": row["support_norm"],
             }
             for idx, row in enumerate(analysis.get("candidate_trace", []))
@@ -1136,6 +1186,21 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
         )
     summary += ambiguity_clause
 
+    # Sample context (stage 1 of unified attribution flow) lands as the
+    # first framing line after the cancer-type summary, so readers see
+    # how library-prep + preservation shape all downstream claims.
+    sample_context = analysis.get("sample_context")
+    if sample_context is not None:
+        context_line = f"\n\n**Sample context**: {sample_context.summary_line()}."
+        if sample_context.missing_mt:
+            context_line += " ⚠ MT genes missing from quant table — degradation signal is unreliable."
+        if sample_context.purity_ci_widening_factor() > 1.0:
+            context_line += (
+                f" Purity CIs widened ×{sample_context.purity_ci_widening_factor():.2f} "
+                "to reflect degradation-driven noise."
+            )
+        summary += context_line
+
     # Quality flags in summary
     quality = analysis.get("quality")
     if quality and quality.get("has_issues"):
@@ -1215,31 +1280,55 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
                 "- **Requested decomposition templates**: "
                 + ", ".join(constraints["decomposition_templates"])
             )
-    top_cancers = analysis.get("top_cancers", [(cancer_code, analysis["cancer_score"])])
-    for code, score in top_cancers[:5]:
-        name = CANCER_TYPE_NAMES.get(code, code)
-        lines.append(f"- **{code}** ({name}): {score:.3f}")
+    if candidate_trace:
+        lines.append("- **Top candidates** (geomean · normalized):")
+        for row in candidate_trace[:5]:
+            name = CANCER_TYPE_NAMES.get(row["code"], row["code"])
+            lines.append(
+                f"  - **{row['code']}** ({name}): "
+                f"{row.get('support_geomean', 0.0):.2f} · {row.get('support_norm', 0.0):.2f}"
+            )
+    else:
+        top_cancers = analysis.get("top_cancers", [(cancer_code, analysis["cancer_score"])])
+        for code, score in top_cancers[:5]:
+            name = CANCER_TYPE_NAMES.get(code, code)
+            lines.append(f"- **{code}** ({name}): {score:.3f}")
     lines.append("")
 
     if candidate_trace:
         lines.append("### Cancer Type Inference — Candidate Ranking\n")
         lines.append(
             "Each row is a TCGA cancer-type hypothesis considered by the classifier. "
-            "**Support** is the combined score used for ranking (higher = better). "
-            "**Signature** measures z-scored expression of cancer-type-enriched genes, "
-            "**Purity** is the overall purity estimate for that hypothesis, **Lineage** "
-            "is an orthogonal per-lineage-gene purity, and **Concordance** is how well "
-            "the sample's lineage-gene pattern matches the expected pattern for that "
-            "cancer type. Top row is the working call.\n"
+            "Three scores summarize the match; the top row is the working call.\n\n"
+            "- **Signature** (0–1): raw match quality between the sample's expression and "
+            "this cancer type's TCGA-derived signature genes, computed from z-scored "
+            "expression of cancer-type-enriched genes. Interpretable on its own — higher "
+            "means the lineage pattern is strongly present. Does not account for purity "
+            "or lineage concordance.\n"
+            "- **Geomean** (0–1): the geometric mean of the five factors that feed the "
+            "ranking (signature × purity × lineage support × signature stability × family "
+            "factor). Stays bounded on [0, 1] so it's comparable across samples, unlike "
+            "the raw product which collapses toward zero.\n"
+            "- **Normalized** (0–1, top = 1.0): each candidate's composite support score "
+            "divided by the top candidate's. Use this to judge separation — if the runner-up "
+            "is ≪ 1.0, the top call is well-isolated; values near 1.0 mean the call is "
+            "ambiguous between rows.\n\n"
+            "Supporting columns: **Purity** is the overall tumor-purity estimate under "
+            "this hypothesis; **Lineage** is an orthogonal per-lineage-gene purity; "
+            "**Concordance** is how well the sample's lineage-gene pattern matches the "
+            "expected pattern for that cancer type.\n"
         )
-        lines.append("| Cancer | Family | Support | Signature | Purity | Lineage | Concordance |")
-        lines.append("|--------|--------|---------|-----------|--------|---------|-------------|")
+        lines.append("| Cancer | Family | Signature | Geomean | Normalized | Purity | Lineage | Concordance |")
+        lines.append("|--------|--------|-----------|---------|------------|--------|---------|-------------|")
         for row in candidate_trace[:8]:
             lineage = row.get("lineage_purity")
             concordance = row.get("lineage_concordance")
             lines.append(
-                f"| {row['code']} | {row.get('family_label') or '—'} | {row['support_score']:.3f} | {row['signature_score']:.3f} | "
-                f"{row['purity_estimate']:.3f} | "
+                f"| {row['code']} | {row.get('family_label') or '—'} | "
+                f"{row.get('signature_score', 0.0):.3f} | "
+                f"{row.get('support_geomean', 0.0):.3f} | "
+                f"{row.get('support_norm', 0.0):.3f} | "
+                f"{row.get('purity_estimate', 0.0):.3f} | "
                 f"{'%.3f' % lineage if lineage is not None else '—'} | "
                 f"{'%.3f' % concordance if concordance is not None else '—'} |"
             )
@@ -1500,6 +1589,43 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
 
     lines = [f"# Therapeutic Target Analysis — {cancer_code} ({cancer_name})\n"]
     lines.append(_target_report_mode_intro(sample_mode, cancer_code, p_lo, p_mid, p_hi))
+
+    # Low-purity TME-inflation caveat (#35). Below 20% purity, every
+    # residual TPM is amplified ≥5× by the tumor-value division.
+    # Combined with incomplete TME subtraction, this can rank classic
+    # stromal / ECM genes (FN1, COL1A1/2, DCN) as high-expressing tumor
+    # markers. Users must read the caveat before interpreting the CAR-T
+    # / ADC / radioligand target tables.
+    if p_mid is not None and p_mid < 0.20:
+        lines.append(
+            f"> **⚠ Low-purity caveat**: estimated purity is "
+            f"**{p_mid:.0%}**, so residual TPM is divided by a small "
+            "number and amplified ≥5×. Genes heavily expressed in "
+            "fibroblast / endothelial / immune compartments (FN1, "
+            "COL1A1/2, DCN, etc.) can appear as high tumor-expressed "
+            "even when most of the signal is stromal. Treat the "
+            "`tme_explainable=true` column in the TSV as the primary "
+            "filter for therapy-target safety; cross-check any "
+            "`median_est` > 30 TPM against `tme_fold_med` before acting.\n"
+        )
+
+    # Sample-context caveat (stage 1 propagation): when the sample was
+    # flagged as degraded / FFPE, every marker-selection step down the
+    # pipeline is noisier and the target medians are correspondingly
+    # less reliable.
+    sample_context = analysis.get("sample_context")
+    if sample_context is not None and sample_context.is_degraded:
+        index_str = (
+            f" (length-pair index {sample_context.degradation_index:.2f})"
+            if sample_context.degradation_index is not None else ""
+        )
+        lines.append(
+            f"> **⚠ Degradation caveat**: sample flagged as "
+            f"`{sample_context.degradation_severity}` degradation"
+            f"{index_str}. Long-transcript TPMs are under-represented; "
+            "tumor-expression estimates for long-gene targets carry "
+            "higher uncertainty than the reported CIs suggest.\n"
+        )
     if sample_mode == "pure":
         lines.append(
             "Each gene is reported as a bounded expression estimate around the observed sample value, "

@@ -35,6 +35,7 @@ from .gene_sets_cancer import (
     tme_markers_df,
 )
 from .load_dataset import load_all_dataframes, load_all_dataframes_dict, get_data
+from .sample_context import SampleContext, infer_sample_context, plot_sample_context
 from .plot import (
     plot_ctas_vs_cancer_type_detail,
     plot_gene_expression,
@@ -83,4 +84,8 @@ __all__ = [
     "cancer_family_panels_df",
     "cancer_family_panel",
     "cancer_family_panels",
+    # Sample context (stage 1 of unified attribution flow)
+    "SampleContext",
+    "infer_sample_context",
+    "plot_sample_context",
 ]

@@ -1647,13 +1647,17 @@ def rank_cancer_type_candidates(
                 )
         else:
             family_factor = 1.0
-        support_score = (
-            signature_score
-            * max(purity_estimate, family_params["support_norm_floor"])
-            * lineage_support_factor
-            * max(signature_stability, family_params["signature_stability_floor"])
-            * max(family_factor, family_params["min_factor"])
+        support_factors = (
+            signature_score,
+            max(purity_estimate, family_params["support_norm_floor"]),
+            lineage_support_factor,
+            max(signature_stability, family_params["signature_stability_floor"]),
+            max(family_factor, family_params["min_factor"]),
         )
+        support_score = float(np.prod(support_factors))
+        # Geomean across the 5 factors — same ordering as support_score but
+        # stays bounded on [0, 1] instead of collapsing toward zero.
+        support_geomean = float(support_score ** (1.0 / len(support_factors))) if support_score > 0 else 0.0
         rows.append(
             {
                 "code": code,
@@ -1670,6 +1674,7 @@ def rank_cancer_type_candidates(
                 "family_specificity": family_specificity,
                 "family_factor": family_factor,
                 "support_score": support_score,
+                "support_geomean": support_geomean,
                 "purity_result": purity_result,
             }
         )
