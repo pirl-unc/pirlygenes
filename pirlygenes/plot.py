@@ -2036,6 +2036,7 @@ def estimate_tumor_expression_ranges(
     cancer_type,
     purity_result,
     decomposition_results=None,
+    met_site=None,
 ):
     """Estimate tumor-specific expression with uncertainty bounds.
 
@@ -2107,8 +2108,15 @@ def estimate_tumor_expression_ranges(
         if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
     ]
 
-    # TME tissues (curated immune + stromal)
-    tme_cols = [c for c in ntpm_nonrepro if c.replace("nTPM_", "") in _TME_TISSUES]
+    # TME tissues (curated immune + stromal). Met-site aware: when the
+    # caller supplies ``met_site``, union in the host tissues for that
+    # biopsy site so the TME background reflects, e.g., lymph-node
+    # infiltrate for a nodal met (#13). Uniform median falls back to
+    # the default curated set.
+    effective_tme_tissues = set(_TME_TISSUES)
+    if met_site:
+        effective_tme_tissues |= MET_SITE_TISSUE_AUGMENTATION.get(met_site, set())
+    tme_cols = [c for c in ntpm_nonrepro if c.replace("nTPM_", "") in effective_tme_tissues]
 
     # --- HK-normalize reference columns ---
     # Each column (nTPM tissue or FPKM cancer type) gets its own HK median
@@ -3082,6 +3090,23 @@ _IMMUNE_TISSUES = {
 }
 
 _TME_TISSUES = _STROMAL_TISSUES | _IMMUNE_TISSUES
+
+# Met-site tissue augmentation (#13). When a biopsy was taken from a
+# specific metastatic site, its host-tissue contribution should be
+# represented in the TME background so tumor-expression estimates are
+# not inflated by unsubtracted host-tissue signal. Each entry lists
+# tissues to **add** to the TME reference; passing an empty set (for
+# `primary`) leaves the default set untouched.
+MET_SITE_TISSUE_AUGMENTATION = {
+    "primary":    set(),
+    "lymph_node": {"lymph_node", "spleen", "thymus", "tonsil"},
+    "liver":      {"liver"},
+    "brain":      {"cerebral_cortex", "cerebellum"},
+    "lung":       {"lung"},
+    "bone":       {"bone_marrow"},
+}
+
+MET_SITES = tuple(MET_SITE_TISSUE_AUGMENTATION.keys())
 
 # Clinically important genes with low TME background.  The data-driven
 # algorithm may miss these because their best z-score peaks in a sibling
