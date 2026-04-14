@@ -12,6 +12,7 @@
 
 from argh import named, dispatch_commands
 import json
+from pathlib import Path
 from typing import Optional, Set
 
 from .version import print_name_and_version
@@ -137,6 +138,42 @@ def _parse_csv_tokens(arg_value: Optional[str]):
     return tokens or None
 
 
+def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
+    """Delete stale files from a prior run sharing the same output prefix.
+
+    Removes files in ``out_dir`` (and the ``figures/`` subdir) whose name
+    starts with ``{prefix_basename}-``, so a partial rerun cannot leave
+    misleading artifacts from an earlier successful run. Only touches
+    files matching our prefix — anything else the user placed in the
+    directory is preserved (issue #30).
+
+    Also removes ``{prefix_basename}-vs-cancer`` scatter subdirectories.
+    Returns the number of files deleted.
+    """
+    base = Path(prefix_path).name
+    if not base:
+        return 0
+    stale_prefix = f"{base}-"
+    removed = 0
+    for directory in (out_dir, out_dir / "figures"):
+        if not directory.is_dir():
+            continue
+        for path in directory.iterdir():
+            if path.is_file() and path.name.startswith(stale_prefix):
+                path.unlink()
+                removed += 1
+            elif path.is_dir() and path.name.startswith(stale_prefix):
+                for child in path.iterdir():
+                    if child.is_file():
+                        child.unlink()
+                        removed += 1
+                try:
+                    path.rmdir()
+                except OSError:
+                    pass
+    return removed
+
+
 @named("analyze")
 def analyze(
     input_path: str,
@@ -170,6 +207,10 @@ def analyze(
         prefix = str(out_dir / output_image_prefix)
     else:
         prefix = str(out_dir / "sample")
+
+    stale_removed = _clean_prefix_outputs(out_dir, prefix)
+    if stale_removed:
+        print(f"[output] Removed {stale_removed} stale files from prior run")
 
     df_expr = load_expression_data(
         input_path,
