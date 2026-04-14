@@ -56,5 +56,7 @@ def get_data(name, _dataframes_dict=None):
         candidates.append(candidate + ".csv")
     for candidate in candidates:
         if candidate in _dataframes_dict:
-            return _dataframes_dict[candidate]
+            # Return a copy so callers that mutate in place (e.g. df["c"]=...,
+            # df.fillna(0, inplace=True)) can't corrupt the shared cache.
+            return _dataframes_dict[candidate].copy()
     raise ValueError(f"Dataset {name} not found")
