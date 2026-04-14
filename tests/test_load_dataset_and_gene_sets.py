@@ -18,6 +18,17 @@ def test_get_data_missing_raises():
         ld.get_data("does-not-exist", _dataframes_dict={})
 
 
+def test_get_data_returns_copy_not_cached_reference():
+    # Mutating the returned DataFrame must not corrupt the cached copy that
+    # subsequent callers will get (issue #29).
+    first = ld.get_data("ADC-trials")
+    first["_should_not_persist"] = 1
+    first.drop(first.index, inplace=True)
+    second = ld.get_data("ADC-trials")
+    assert "_should_not_persist" not in second.columns
+    assert len(second) > 0
+
+
 def test_get_all_csv_paths_contains_core_dataset():
     paths = ld.get_all_csv_paths()
     assert any(Path(p).name == "ADC-trials.csv" for p in paths)
