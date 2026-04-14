@@ -14,16 +14,34 @@ from .engine import (
     get_decomposition_parameters,
     infer_sample_mode,
 )
+from .panels import (
+    build_matched_normal_biased_panel,
+    build_shared_lineage_panel,
+    build_tumor_biased_panel,
+    estimate_lineage_tumor_fraction,
+    summarize_panels,
+)
 from .plot import (
     plot_decomposition_candidates,
     plot_decomposition_component_breakdown,
     plot_decomposition_composition,
     plot_decomposition_summary,
 )
+from .templates import (
+    EPITHELIAL_MATCHED_NORMAL_TISSUE,
+    epithelial_matched_normal_component,
+)
 
 __all__ = [
     "decompose_sample",
     "DecompositionResult",
+    "EPITHELIAL_MATCHED_NORMAL_TISSUE",
+    "epithelial_matched_normal_component",
+    "build_tumor_biased_panel",
+    "build_matched_normal_biased_panel",
+    "build_shared_lineage_panel",
+    "estimate_lineage_tumor_fraction",
+    "summarize_panels",
     "get_decomposition_parameters",
     "infer_sample_mode",
     "plot_decomposition_summary",

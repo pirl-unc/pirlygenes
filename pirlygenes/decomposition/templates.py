@@ -151,6 +151,56 @@ _PRIMARY_HOST_TISSUES = {
     "READ": ["rectum", "colon", "appendix"],
 }
 
+# Epithelial primaries with a defensible matched-normal parent tissue.
+# Enables an optional `matched_normal_<tissue>` compartment in solid_primary
+# that lets admixed benign parent tissue (e.g. admixed benign prostate gland
+# in a PRAD resection, adjacent normal mucosa in a COAD biopsy) be absorbed
+# as non-tumor signal rather than attributed to tumor cells by the
+# purity-adjusted deconvolution.
+#
+# Scope: epithelial cancers only. Mesenchymal / glial / melanocytic / heme
+# cancers are excluded because they lack a single stable benign analog at
+# the bulk-reference level; see issue #51 for a subtype-aware SARC plan.
+# TGCT is excluded because germ-cell origin is sui generis. MESO is
+# excluded because its parent mesothelium is a thin serosal layer not
+# captured well by bulk references.
+EPITHELIAL_MATCHED_NORMAL_TISSUE = {
+    "BLCA": "urinary_bladder",
+    "BRCA": "breast",
+    "CESC": "cervix",
+    "CHOL": "gallbladder",
+    "COAD": "colon",
+    "ESCA": "esophagus",
+    "HNSC": "tongue",
+    "KICH": "kidney",
+    "KIRC": "kidney",
+    "KIRP": "kidney",
+    "LIHC": "liver",
+    "LUAD": "lung",
+    "LUSC": "lung",
+    "OV": "ovary",
+    "PAAD": "pancreas",
+    "PRAD": "prostate",
+    "READ": "rectum",
+    "STAD": "stomach",
+    "THCA": "thyroid_gland",
+    "UCEC": "endometrium",
+}
+
+
+def epithelial_matched_normal_component(cancer_type):
+    """Return matched-normal component name for an epithelial primary, or None.
+
+    Returns e.g. ``"matched_normal_prostate"`` for PRAD, or None for cancer
+    types that are not in :data:`EPITHELIAL_MATCHED_NORMAL_TISSUE`.
+    """
+    if cancer_type is None:
+        return None
+    tissue = EPITHELIAL_MATCHED_NORMAL_TISSUE.get(cancer_type)
+    if tissue is None:
+        return None
+    return f"matched_normal_{tissue}"
+
 _TEMPLATE_HOST_TISSUES = {
     # Retroperitoneal/deep soft tissue biopsies can look like a mix of muscle
     # and adipose rather than one exact reference tissue.
@@ -176,13 +226,25 @@ TUMOR_ORIGIN_TYPE = {
 def get_template_components(template_name, cancer_type=None):
     """Get the full component list for a template + cancer type.
 
+    For ``template_name == "solid_primary"`` and ``cancer_type`` in
+    :data:`EPITHELIAL_MATCHED_NORMAL_TISSUE`, a ``matched_normal_<tissue>``
+    component is appended so admixed benign parent tissue can be absorbed
+    as non-tumor signal rather than attributed to tumor cells (issue #50).
+    Non-epithelial solid primaries (SARC, heme, etc.) get no matched-normal
+    compartment — see issue #51 for the subtype-aware SARC plan.
+
     Returns
     -------
     components : list of str
         Component names including "tumor" as the first entry.
     """
     tmpl = TEMPLATES[template_name]
-    return ["tumor"] + list(tmpl["components"])
+    components = ["tumor"] + list(tmpl["components"])
+    if template_name == "solid_primary":
+        matched = epithelial_matched_normal_component(cancer_type)
+        if matched is not None:
+            components.append(matched)
+    return components
 
 
 def get_template_extra_components(template_name):

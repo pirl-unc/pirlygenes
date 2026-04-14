@@ -2156,14 +2156,35 @@ def estimate_tumor_expression_ranges(
     # the reference, not just signature genes. The formula in the loop
     # prefers this TPM-space path when available and falls back to the
     # HK-fold path when it isn't.
+    #
+    # Matched-normal split (issue #50): when the decomposition included a
+    # `matched_normal_<tissue>` component (epithelial primaries with
+    # `use_matched_normal=True`), its contribution is tracked separately
+    # as `matched_normal_tpm_by_symbol`. This lets the target report
+    # distinguish "subtracted stromal/immune background" from "subtracted
+    # benign parent-tissue contribution" per gene. The formula sums
+    # them — total non-tumor background is still `tme_only + matched_normal`.
     tme_bg_tpm_by_symbol = None
+    tme_only_tpm_by_symbol = None
+    matched_normal_tpm_by_symbol = None
+    matched_normal_component_name = None
+    matched_normal_tissue = None
+    matched_normal_fraction_global = 0.0
     if decomposition_results:
-        top_fractions = (
-            getattr(decomposition_results[0], "fractions", None) or {}
-        )
+        top_result = decomposition_results[0]
+        top_fractions = getattr(top_result, "fractions", None) or {}
         non_tumor_components = [
             c for c, f in top_fractions.items() if c != "tumor" and f > 0
         ]
+        matched_normal_component_name = getattr(
+            top_result, "matched_normal_tissue", None,
+        )
+        if matched_normal_component_name is not None:
+            matched_normal_tissue = matched_normal_component_name
+            matched_normal_component_name = f"matched_normal_{matched_normal_tissue}"
+            matched_normal_fraction_global = float(
+                getattr(top_result, "matched_normal_fraction", 0.0) or 0.0
+            )
         if non_tumor_components:
             from .decomposition.signature import build_signature_matrix
             try:
@@ -2186,8 +2207,30 @@ def estimate_tumor_expression_ranges(
                     str(sym): float(val)
                     for sym, val in zip(sym_list, tme_tpm_vec)
                 }
+                # Split out the matched-normal contribution so the report
+                # can distinguish TME-only subtraction from parent-tissue
+                # subtraction (issue #50). The matched-normal column is
+                # present only when the decomposition was run with
+                # `use_matched_normal=True` on an epithelial primary.
+                if matched_normal_component_name in non_tumor_components:
+                    mn_idx = non_tumor_components.index(matched_normal_component_name)
+                    mn_frac = float(non_tumor_fracs[mn_idx])
+                    mn_vec = matrix[:, mn_idx] * mn_frac
+                    matched_normal_tpm_by_symbol = {
+                        str(sym): float(val)
+                        for sym, val in zip(sym_list, mn_vec)
+                    }
+                    tme_only_vec = tme_tpm_vec - mn_vec
+                    tme_only_tpm_by_symbol = {
+                        str(sym): float(max(0.0, val))
+                        for sym, val in zip(sym_list, tme_only_vec)
+                    }
+                else:
+                    tme_only_tpm_by_symbol = dict(tme_bg_tpm_by_symbol)
             except Exception:
                 tme_bg_tpm_by_symbol = None
+                tme_only_tpm_by_symbol = None
+                matched_normal_tpm_by_symbol = None
 
     # --- Purity-adjusted TCGA (HK-normalized, then deconvolved) ---
     # For each FPKM cancer-type column, compute:
@@ -2359,14 +2402,29 @@ def estimate_tumor_expression_ranges(
 
         # Ratio vs purity-adjusted TCGA median for matched cancer type.
         # Uses the already-computed cohort tumor fold above.
-        if tcga_tumor_fold > 0.0:
-            our_tumor_fold = median_est / sample_hk_median
-            if tcga_tumor_fold > 0.001:
-                vs_tcga = float(our_tumor_fold / tcga_tumor_fold)
-            elif our_tumor_fold > 0.001:
-                vs_tcga = float("inf")
-            else:
-                vs_tcga = None
+        #
+        # Three outcomes, each consumed by a distinct plot label:
+        #   - finite positive → fold-change vs TCGA ("0.3x", "1.5x", ...)
+        #   - inf             → sample expresses the gene but the TCGA
+        #                       cohort tumor-component is essentially zero.
+        #                       Rendered as a red "absent in TCGA" alert —
+        #                       flags atypical expression for this cancer.
+        #   - None            → both the sample tumor-component and TCGA
+        #                       tumor-component are essentially zero.
+        #                       Rendered as a gray "0 in TCGA" — nothing to
+        #                       compare.
+        #
+        # `tcga_tumor_fold` clips to exactly 0.0 whenever the TCGA cohort
+        # median is explainable by TME alone; previously the ≤ 0 branch
+        # collapsed to None unconditionally, so a CTA with FPKM_<cancer>
+        # median ≈ 0 and strong sample expression rendered as a quiet gray
+        # label instead of the intended red "absent in TCGA" alert. The
+        # sample-side check below restores the intended semantics.
+        our_tumor_fold = median_est / sample_hk_median
+        if tcga_tumor_fold > 0.001:
+            vs_tcga = float(our_tumor_fold / tcga_tumor_fold)
+        elif our_tumor_fold > 0.001:
+            vs_tcga = float("inf")
         else:
             vs_tcga = None
 
@@ -2386,6 +2444,30 @@ def estimate_tumor_expression_ranges(
 
         eid = ref_dedup.loc[symbol, "Ensembl_Gene_ID"] if "Ensembl_Gene_ID" in ref_dedup.columns else ""
 
+        # Per-gene matched-normal split reporting (issue #50). Zero when
+        # no matched-normal component is active or the gene isn't in the
+        # signature matrix. `estimation_path` records which branch
+        # produced the estimate, so the target report can annotate each
+        # gene with its provenance.
+        mn_tpm = 0.0
+        if matched_normal_tpm_by_symbol is not None:
+            mn_tpm = float(matched_normal_tpm_by_symbol.get(symbol, 0.0))
+        if tme_only_tpm_by_symbol is not None:
+            tme_only_tpm = float(tme_only_tpm_by_symbol.get(symbol, 0.0))
+        elif tme_bg_tpm_by_symbol is not None:
+            tme_only_tpm = float(tme_bg_tpm_by_symbol.get(symbol, 0.0))
+        else:
+            tme_only_tpm = 0.0
+
+        if tme_explainable:
+            estimation_path = "clamped"
+        elif mn_tpm > 0.0:
+            estimation_path = "matched_normal_split"
+        elif tme_bg_tpm_by_symbol is not None and symbol in tme_bg_tpm_by_symbol:
+            estimation_path = "tme_only"
+        else:
+            estimation_path = "tme_fold_fallback"
+
         rows.append({
             "gene_id": eid,
             "symbol": symbol,
@@ -2397,6 +2479,11 @@ def estimate_tumor_expression_ranges(
             "max_healthy_tpm": round(max_healthy_tpm, 2),
             "tme_explainable": bool(tme_explainable),
             "cohort_prior_tpm": round(cohort_prior_tpm, 2),
+            "tme_only_tpm": round(tme_only_tpm, 2),
+            "matched_normal_tpm": round(mn_tpm, 2),
+            "matched_normal_tissue": matched_normal_tissue or "",
+            "matched_normal_fraction": round(matched_normal_fraction_global, 4),
+            "estimation_path": estimation_path,
             **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
             "median_est": round(median_est, 2),
             "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None else None,
@@ -2410,6 +2497,116 @@ def estimate_tumor_expression_ranges(
     if not result.empty:
         result = result.sort_values("median_est", ascending=False).reset_index(drop=True)
     return result
+
+
+def plot_matched_normal_attribution(
+    df_ranges,
+    cancer_type,
+    category,
+    top_n=15,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=None,
+):
+    """Stacked horizontal-bar plot of per-gene tumor / matched-normal / TME
+    attribution for a single target category (issue #55).
+
+    For each of the top ``top_n`` genes in ``category`` (ranked by
+    ``median_est``), draw a horizontal bar broken into:
+
+    - ``tumor``: ``observed_tpm − matched_normal_tpm − tme_only_tpm``
+    - ``matched_normal_tpm``: benign parent-tissue contribution
+    - ``tme_only_tpm``: stromal / immune / host-tissue contribution
+
+    Only useful when ``df_ranges`` carries non-zero ``matched_normal_tpm``
+    for at least one gene in the category (i.e. the decomposition ran
+    with ``use_matched_normal=True`` for an epithelial primary). Returns
+    ``None`` otherwise — the CLI uses that to skip emitting an empty
+    figure.
+
+    Emitted as a standalone PNG (one per category) rather than as a
+    panel in a composite figure, following the project's plot-crowding
+    preference.
+    """
+    import numpy as np
+
+    cancer_code = resolve_cancer_type(cancer_type)
+
+    sub = df_ranges[df_ranges["category"] == category].head(top_n).copy()
+    if sub.empty:
+        return None
+    if "matched_normal_tpm" not in sub.columns:
+        return None
+    if (sub["matched_normal_tpm"].astype(float) <= 0).all():
+        return None
+
+    sub = sub.sort_values("median_est", ascending=True).reset_index(drop=True)
+    n = len(sub)
+    if figsize is None:
+        figsize = (10, max(3.0, 0.4 * n + 1.5))
+
+    observed = sub["observed_tpm"].astype(float).values
+    mn = sub["matched_normal_tpm"].astype(float).values
+    tme = sub["tme_only_tpm"].astype(float).values
+    # Tumor-cell attribution is whatever observed signal remains after
+    # TME and matched-normal are subtracted. Floor at 0 to guard against
+    # tiny over-subtractions from solver jitter.
+    tumor_attr = np.maximum(0.0, observed - mn - tme)
+
+    y = np.arange(n)
+    fig, ax = plt.subplots(figsize=figsize)
+
+    ax.barh(y, tumor_attr, color="#e74c3c", label="tumor cells")
+    ax.barh(y, mn, left=tumor_attr, color="#3498db", label="matched-normal tissue")
+    ax.barh(y, tme, left=tumor_attr + mn, color="#95a5a6", label="other TME (stromal/immune)")
+
+    # Symbols on the y-axis. Therapy-target annotation appended when present.
+    labels = []
+    for _, row in sub.iterrows():
+        sym = str(row["symbol"])
+        if row.get("therapies"):
+            sym = f"{sym}  [{row['therapies']}]"
+        flags = []
+        if row.get("tme_explainable"):
+            flags.append("⚠")
+        path = str(row.get("estimation_path", ""))
+        if path == "clamped":
+            flags.append("clamp")
+        if flags:
+            sym = f"{sym}  {' '.join(flags)}"
+        labels.append(sym)
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=9)
+
+    # Cohort-prior marker: small tick on each bar so reviewers can see
+    # where the TCGA cohort would have placed tumor-cell expression.
+    if "cohort_prior_tpm" in sub.columns:
+        priors = sub["cohort_prior_tpm"].astype(float).values
+        for i, prior in enumerate(priors):
+            if prior > 0:
+                ax.plot([prior], [i], marker="|", color="black", markersize=14, markeredgewidth=2)
+
+    ax.set_xlabel("TPM (stacked: tumor + matched-normal + other TME = observed)", fontsize=10)
+    ax.set_xscale("symlog", linthresh=1.0)
+    ax.grid(axis="x", alpha=0.2)
+    ax.legend(loc="lower right", fontsize=9, framealpha=0.9)
+
+    mn_tissue = ""
+    if "matched_normal_tissue" in sub.columns:
+        nonempty = sub["matched_normal_tissue"].astype(str).replace("nan", "")
+        nonempty = [v for v in nonempty.unique() if v]
+        if nonempty:
+            mn_tissue = nonempty[0]
+    title = f"Matched-normal attribution — {cancer_code} {category}"
+    if mn_tissue:
+        title += f"\n(benign {mn_tissue} subtracted before purity division; black tick = TCGA cohort prior)"
+    ax.set_title(title, fontsize=11, fontweight="bold")
+
+    plt.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
 
 
 def plot_tumor_expression_ranges(
