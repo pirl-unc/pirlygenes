@@ -193,11 +193,20 @@ def analyze(
     sample_mode: str = "auto",
     tumor_context: str = "auto",
     site_hint: Optional[str] = None,
+    met_site: Optional[str] = None,
     decomposition_templates: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
 ):
     from pathlib import Path
+
+    # Validate met_site up front, before any I/O, so bad values fail fast.
+    if met_site is not None:
+        from .plot import MET_SITE_TISSUE_AUGMENTATION as _MET_SITE_MAP
+        if met_site not in _MET_SITE_MAP:
+            raise ValueError(
+                f"--met-site must be one of {sorted(_MET_SITE_MAP.keys())}, got {met_site!r}"
+            )
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -295,6 +304,7 @@ def analyze(
     print("[analysis] Running sample composition analysis...")
     analysis = analyze_sample(df_expr, cancer_type=cancer_type)
     analysis["sample_context"] = sample_context
+    analysis["cancer_type_source"] = "user-specified" if cancer_type else "auto-detected"
 
     # Stage 1 propagation: widen purity confidence intervals under
     # detected degradation (#26). A noisier sample has a noisier purity
@@ -322,6 +332,7 @@ def analyze(
         tumor_context=tumor_context,
         site_hint=site_hint,
         decomposition_templates=template_overrides,
+        met_site=met_site,
     )
     cancer_code = analysis["cancer_type"]
     purity = analysis["purity"]
@@ -642,7 +653,11 @@ def analyze(
     # Generate text reports
     print("[report] Generating text reports...")
     _embedding_meta = get_embedding_feature_metadata(method="hierarchy")
-    _generate_text_reports(analysis, _embedding_meta, prefix, decomp_results=decomp_results)
+    _generate_text_reports(
+        analysis, _embedding_meta, prefix,
+        decomp_results=decomp_results,
+        input_path=input_path,
+    )
 
 
     # Cancer-type-specific gene set plot (only when --cancer-type specified)
@@ -680,6 +695,7 @@ def analyze(
             cancer_type=effective_cancer_type,
             purity_result=purity_dict,
             decomposition_results=decomp_results,
+            met_site=analysis.get("analysis_constraints", {}).get("met_site"),
         )
         ranges_tsv = "%s-tumor-expression-ranges.tsv" % prefix if prefix else "tumor-expression-ranges.tsv"
         ranges_df.to_csv(ranges_tsv, sep="\t", index=False)
@@ -1016,6 +1032,7 @@ def _analysis_constraints(
     tumor_context="auto",
     site_hint=None,
     decomposition_templates=None,
+    met_site=None,
 ):
     constraints = {}
     if cancer_type:
@@ -1028,6 +1045,8 @@ def _analysis_constraints(
         constraints["site_hint"] = site_hint
     if decomposition_templates:
         constraints["decomposition_templates"] = list(decomposition_templates)
+    if met_site:
+        constraints["met_site"] = met_site
     return constraints
 
 
@@ -1097,7 +1116,24 @@ def _summarize_sample_call(analysis, decomp_results, sample_mode):
     }
 
 
-def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None):
+def _next_best_support_gap(candidate_trace):
+    """Return (next_best_code, support_ratio) — ratio of top support_norm
+    over the second candidate's support_norm, or None when unavailable.
+    """
+    if not candidate_trace or len(candidate_trace) < 2:
+        return None, None
+    top = candidate_trace[0]
+    runner = candidate_trace[1]
+    top_n = float(top.get("support_norm", 0.0) or 0.0)
+    runner_n = float(runner.get("support_norm", 0.0) or 0.0)
+    if runner_n <= 0:
+        return runner.get("code"), None
+    return runner.get("code"), top_n / runner_n
+
+
+def _generate_text_reports(
+    analysis, embedding_meta, prefix, decomp_results=None, input_path=None,
+):
     """Write summary and detailed analysis markdown reports."""
     cancer_code = analysis["cancer_type"]
     cancer_name = analysis["cancer_name"]
@@ -1133,19 +1169,36 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
     subtype_clause = family_summary.get("subtype_clause")
     lead_candidate = candidate_trace[0]["code"] if candidate_trace else None
     constrained_cancer = constraints.get("cancer_type")
+
+    # Cancer-type call line. Qualitative, not raw composite-score (#32):
+    # show "top match, X× over next-best <CODE>" built from support_norm,
+    # and whether the call was auto-detected vs user-specified (#33).
+    source_label = {
+        "auto-detected": "auto-detected",
+        "user-specified": "user-specified",
+    }.get(analysis.get("cancer_type_source"), "")
+    source_suffix = f" ({source_label})" if source_label else ""
+    next_best_code, support_ratio = _next_best_support_gap(candidate_trace)
     if family_display:
         intro = f"The sample most closely matches **{family_display}**"
         if subtype_clause:
             if constrained_cancer and lead_candidate and constrained_cancer != lead_candidate:
-                intro += f", with **{cancer_code}** as the constrained working subtype"
+                intro += f", with **{cancer_code}** as the constrained working subtype{source_suffix}"
             else:
-                intro += f", with **{cancer_code}** as the current best subtype hypothesis"
-        intro += f" (score {analysis['cancer_score']:.3f}). "
+                intro += f", with **{cancer_code}** as the current best subtype hypothesis{source_suffix}"
+        intro += ". "
     else:
         intro = (
-            f"The sample most closely matches **{cancer_name} ({cancer_code})** "
-            f"(score {analysis['cancer_score']:.3f}). "
+            f"The sample most closely matches **{cancer_name} ({cancer_code})**"
+            f"{source_suffix}. "
         )
+    if next_best_code and support_ratio is not None and support_ratio > 1.0:
+        intro += (
+            f"Support is **{support_ratio:.1f}× over next-best {next_best_code}**. "
+        )
+    if fit_quality.get("label") and fit_quality.get("message"):
+        intro += f"Fit quality: *{fit_quality['label']}* — {fit_quality['message']} "
+
     summary = intro + _summary_mode_clause(sample_mode, purity, top_tissues) + (
         f"MHC-I expression is {mhc_level} "
         f"(HLA-A={hla_a:.0f}, HLA-B={hla_b:.0f}, B2M={b2m:.0f} TPM). "
@@ -1156,8 +1209,6 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
             " The tumor-specific signature panel was materially weaker and less stable than "
             "the lineage panel, so it was downweighted rather than used as a hard lower anchor."
         )
-    if fit_quality.get("message"):
-        summary += f" {fit_quality['message']}"
     if constraints:
         constraint_parts = []
         if constraints.get("cancer_type"):
@@ -1174,17 +1225,35 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
                 + ", ".join(constraints["decomposition_templates"])
                 + "**"
             )
+        if constraints.get("met_site"):
+            constraint_parts.append(
+                f"biopsy site **{constraints['met_site']}** (TME reference augmented)"
+            )
         if constraint_parts:
             summary += " Analysis constraints: " + "; ".join(constraint_parts) + "."
+    # Only surface the decomposition line when its call materially differs
+    # from the headline call (#33: the tumor fraction % is identical to the
+    # already-stated purity, so repeating it is noise).
     if call_summary.get("site_indeterminate"):
         summary += " Decomposition recovered broad admixture structure, but site/template assignment is indeterminate."
     elif best_decomp is not None:
-        summary += (
-            f" Best {_decomposition_section_title(sample_mode).lower()}: "
-            f"**{best_decomp.cancer_type} / {best_decomp.template}** "
-            f"with {_decomposition_fraction_label(sample_mode)} **{best_decomp.purity:.0%}**."
+        decomp_piece = (
+            f" Decomposition template: **{best_decomp.cancer_type} / {best_decomp.template}**"
         )
+        if (
+            getattr(best_decomp, "cancer_type", None)
+            and best_decomp.cancer_type != cancer_code
+        ):
+            decomp_piece += " (differs from headline call)"
+        summary += decomp_piece + "."
     summary += ambiguity_clause
+    # Tissue-score caveat (#33): readers were interpreting similarity
+    # scores as composition percentages. One short line clarifies.
+    if top_tissues:
+        summary += (
+            "\n\n*Note: background tissue scores are normalised similarity "
+            "to reference nTPM profiles, not composition percentages.*"
+        )
 
     # Sample context (stage 1 of unified attribution flow) lands as the
     # first framing line after the cancer-type summary, so readers see
@@ -1209,8 +1278,11 @@ def _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=None
         summary += "\n\n**Quality note**: " + "; ".join(quality["flags"]) + "."
 
     summary_path = "%s-summary.md" % prefix if prefix else "summary.md"
+    header = "# Sample Analysis Summary\n"
+    if input_path:
+        header += f"\n*Input*: `{input_path}`\n"
     with open(summary_path, "w") as f:
-        f.write(f"# Sample Analysis Summary\n\n{summary}\n")
+        f.write(f"{header}\n{summary}\n")
     print(f"[report] Saved {summary_path}")
 
     # --- Detailed report ---

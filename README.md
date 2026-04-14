@@ -70,6 +70,7 @@ Key decomposition-related options:
 | `--sample-mode` | `auto` (default), `solid` (solid tumor biopsy), `heme` (hematologic malignancy), `pure` (cell line / sorted population) |
 | `--tumor-context` | `auto` (default), `primary` (restricts to primary-site templates), `met` (restricts to metastatic templates) |
 | `--site-hint` | Metastatic site (e.g. `liver`, `lung`, `brain`, `bone`) — selects the matching met template |
+| `--met-site` | Biopsy site for TME background augmentation (`primary`, `lymph_node`, `liver`, `brain`, `lung`, `bone`). Adds the host tissue to the TME reference so tumor-expression estimates aren't inflated by unsubtracted host signal (e.g. CD74 in a lymph-node met). |
 | `--decomposition-templates` | Comma-separated explicit template list (e.g. `solid_primary,met_liver`) |
 | `--label-genes` | Comma-separated genes to always label in plots |
 
