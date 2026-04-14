@@ -29,6 +29,43 @@ from .templates import (
 from ..gene_sets_cancer import housekeeping_gene_ids, pan_cancer_expression
 from ..tumor_purity import rank_cancer_type_candidates, _score_host_tissues
 
+
+# Marker symbols that must never be auto-selected by the specificity-based
+# rule, even when their HPA nTPM in a target component is high (issue #31).
+#
+# MHC-II / shared APC genes are expressed on B cells *and* macrophages,
+# dendritic cells, monocytes, and activated T cells. Auto-selecting them
+# as "B_cell markers" lets the NNLS re-route MHC-II signal into T_cell
+# and myeloid columns, distorting per-compartment fractions. The curated
+# ``COMPONENT_MARKERS`` in signature.py remains the source of truth for
+# B-cell-specific markers (MS4A1, CD79A, CD79B, CD19, BANK1).
+_AUTO_MARKER_EXCLUDED_SYMBOLS = frozenset({
+    "CD74",
+    "HLA-DRA", "HLA-DRB1", "HLA-DRB5",
+    "HLA-DPA1", "HLA-DPB1",
+    "HLA-DQA1", "HLA-DQB1",
+    "HLA-DMA", "HLA-DMB",
+    "HLA-DOA", "HLA-DOB",
+})
+
+
+def _is_ribosomal_protein_symbol(symbol: str) -> bool:
+    """RPL* / RPS* ribosomal proteins are broadly expressed and leak
+    into every compartment when auto-picked (issue #31, RPL18A showed up
+    as a B_cell marker).
+    """
+    if not isinstance(symbol, str):
+        return False
+    return symbol.startswith("RPL") or symbol.startswith("RPS")
+
+
+def _is_excluded_auto_marker(symbol: str) -> bool:
+    return (
+        symbol in _AUTO_MARKER_EXCLUDED_SYMBOLS
+        or _is_ribosomal_protein_symbol(symbol)
+    )
+
+
 DECOMPOSITION_PARAMETERS = {
     # ── Sample mode routing ──────────────────────────────────────────────
     # Controls which template set is evaluated.
@@ -402,6 +439,11 @@ def _select_marker_rows(
             if not keep[idx]:
                 continue
             if idx in chosen:
+                continue
+            # Block shared-APC (MHC-II) and ribosomal-protein leakage (#31).
+            # Curated markers above already ran, so genuine B/T/myeloid
+            # specifics are in; this only blocks the auto-pick residue.
+            if _is_excluded_auto_marker(str(symbols[idx])):
                 continue
             chosen.append(int(idx))
             if len(chosen) >= top_n_per_component:
