@@ -69,6 +69,7 @@ from .sample_context import (
     plot_sample_context,
 )
 from .sample_quality import assess_sample_quality
+from .therapy_response import score_therapy_signatures
 
 _DATASET_SOURCES = {
     "ADC-approved": "Wiley, doi:10.1002/cac2.12517",
@@ -414,6 +415,23 @@ def analyze(
         qtag = "[quality]" if not quality["has_issues"] else "[quality WARNING]"
         print(f"{qtag} {flag}")
 
+    # Therapy-response signatures (#57) — score each applicable axis
+    # (AR / ER / HER2 / MAPK-EGFR / NE / EMT / hypoxia / IFN) so the
+    # report can explain *why* individual genes are high or low
+    # (e.g. KLK3 ↓ + FOLH1 ↑ → AR-suppressed, consistent with ADT).
+    try:
+        from .tumor_purity import _build_sample_tpm_by_symbol
+        sample_tpm_by_symbol = _build_sample_tpm_by_symbol(df_expr)
+        therapy_scores = score_therapy_signatures(sample_tpm_by_symbol, cancer_code)
+    except (KeyError, ValueError, TypeError) as exc:
+        print(f"[therapy-response] scoring skipped: {exc}")
+        therapy_scores = {}
+    analysis["therapy_response_scores"] = therapy_scores
+    for cls, score in therapy_scores.items():
+        if score.state in ("up", "down"):
+            tag = "[therapy-state]"
+            print(f"{tag} {cls}: {score.state} — {score.message}")
+
     summary_png = "%s-sample-summary.png" % prefix if prefix else "sample-summary.png"
     plot_sample_summary(
         df_expr,
@@ -512,6 +530,54 @@ def analyze(
         best_decomp = decomp_results[0]
         effective_cancer_type = best_decomp.cancer_type
         effective_purity = best_decomp.purity_result or purity
+
+        # Propagate a lineage-panel purity override back into
+        # ``analysis["purity"]`` so every downstream report is
+        # consistent (bug 2026-04-14: user saw 23% in the headline
+        # and 64% in the decomposition-hypotheses table). When the
+        # decomposition's best hypothesis used a non-signature purity
+        # source we promote it, preserve the original estimate as
+        # ``signature_based_estimate``, and reset the CI widening
+        # and the downstream pct_cancer_median math to use the new
+        # anchor.
+        purity_source_best = (
+            effective_purity.get("purity_source")
+            if isinstance(effective_purity, dict) else None
+        )
+        if (
+            purity_source_best in ("lineage_panel",)
+            and isinstance(effective_purity, dict)
+            and "overall_estimate" in effective_purity
+        ):
+            orig_purity = dict(analysis["purity"])
+            analysis["purity"]["signature_based_estimate"] = orig_purity.get(
+                "overall_estimate"
+            )
+            analysis["purity"]["signature_based_lower"] = orig_purity.get(
+                "overall_lower"
+            )
+            analysis["purity"]["signature_based_upper"] = orig_purity.get(
+                "overall_upper"
+            )
+            analysis["purity"]["overall_estimate"] = effective_purity["overall_estimate"]
+            analysis["purity"]["overall_lower"] = effective_purity.get(
+                "overall_lower", effective_purity["overall_estimate"]
+            )
+            analysis["purity"]["overall_upper"] = effective_purity.get(
+                "overall_upper", effective_purity["overall_estimate"]
+            )
+            analysis["purity"]["purity_source"] = purity_source_best
+            analysis["purity"]["lineage_tumor_fraction"] = effective_purity.get(
+                "lineage_tumor_fraction"
+            )
+            # Refresh locals that were captured above the override.
+            purity = analysis["purity"]
+            print(
+                f"[analysis] Adopted lineage-panel purity "
+                f"{analysis['purity']['overall_estimate']:.0%} "
+                f"(signature-based estimate was "
+                f"{orig_purity.get('overall_estimate', 0):.0%})"
+            )
         if call_summary.get("site_indeterminate"):
             print(
                 f"[analysis] Possible labels: {call_summary['label_display']}; "
@@ -792,7 +858,15 @@ def analyze(
 
     all_pdf = "%s-all-figures.pdf" % prefix if prefix else "all-figures.pdf"
     print("[output] Collecting figures into PDF...")
+    # Report-flow order (user direction 2026-04-14): QC first
+    # (context_png + degradation_png), then the headline cancer call
+    # (summary_png), then deeper detail (decomposition / purity /
+    # strip plots / embeddings). Plots missing from this list didn't
+    # make it into all-figures.pdf and got left out of the moved-to-
+    # figures/ step.
     png_files = [
+        context_png,
+        degradation_png,
         summary_png,
         decomp_png,
         # Standalone decomposition PNGs — composition / component breakdown
@@ -1294,8 +1368,35 @@ def _generate_text_reports(
             "the lineage panel, so it was downweighted rather than used as a hard lower anchor."
         )
 
+    # Therapy-response state (#57): surface any axis that is clearly
+    # up or down vs cohort so the reader sees *why* individual genes
+    # might be off-baseline — ADT suppression of AR-transactivated
+    # genes, endocrine resistance, etc.
+    therapy_scores = analysis.get("therapy_response_scores") or {}
+    therapy_paragraph = ""
+    active_states = [
+        (cls, s) for cls, s in therapy_scores.items()
+        if s.state in ("up", "down")
+    ]
+    if active_states:
+        lines_ts = ["**Therapy-response state**:"]
+        for cls, s in active_states:
+            verb = "active" if s.state == "up" else "suppressed"
+            fold_phrase = ""
+            if s.up_geomean_fold is not None:
+                fold_phrase = f" (up-panel {s.up_geomean_fold:.2f}× cohort"
+                if s.down_geomean_fold is not None:
+                    fold_phrase += f", down-panel {s.down_geomean_fold:.2f}×"
+                fold_phrase += ")"
+            lines_ts.append(
+                f"  - {cls.replace('_', ' ')}: {verb}{fold_phrase}"
+            )
+        therapy_paragraph = "\n".join(lines_ts)
+
     # Stage 4: constraints / decomposition detail / ambiguity.
     detail_parts = []
+    if therapy_paragraph:
+        detail_parts.append(therapy_paragraph)
     if constraints:
         constraint_parts = []
         if constraints.get("cancer_type"):
@@ -1804,6 +1905,45 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             "filter for therapy-target safety; cross-check any "
             "`median_est` > 30 TPM against `tme_fold_med` before acting.\n"
         )
+
+    # Therapy-state context (#57): enumerate the chain of evidence
+    # behind any active / suppressed signaling axis so the reader can
+    # see *why* specific genes are off-baseline rather than having to
+    # reconstruct the pattern from per-gene tables. Positioned right
+    # after the low-purity caveat so the reader has the confidence
+    # calibration before they see target-specific mechanisms.
+    therapy_scores = analysis.get("therapy_response_scores") or {}
+    ts_to_show = [
+        (cls, s) for cls, s in therapy_scores.items()
+        if s.state in ("up", "down") and s.per_gene
+    ]
+    if ts_to_show:
+        lines.append("## Therapy-state context\n")
+        lines.append(
+            "Cohort-referenced fold changes across curated signaling-axis "
+            "panels (#57). Interpretation: a ≥2× up-panel elevation "
+            "signals active signaling; a ≤0.5× up-panel drop with elevated "
+            "down-panel genes signals therapy exposure (e.g. ADT in PRAD).\n"
+        )
+        for cls, s in ts_to_show:
+            verb = "active" if s.state == "up" else "suppressed"
+            lines.append(f"**{cls.replace('_', ' ')}** — {verb}. {s.message}\n")
+            # Show the top 8 most-divergent per-gene rows so the chain
+            # of evidence is concrete without overflowing the report.
+            entries = sorted(
+                s.per_gene,
+                key=lambda e: abs((e["fold_vs_cohort"] or 1.0) - 1.0),
+                reverse=True,
+            )[:8]
+            lines.append("| Gene | Direction | Sample TPM | Cohort median | Fold | Mechanism |")
+            lines.append("|------|-----------|------------|---------------|------|-----------|")
+            for e in entries:
+                lines.append(
+                    f"| {e['symbol']} | {e['direction']} | "
+                    f"{e['sample_tpm']:.1f} | {e['cohort_median']:.1f} | "
+                    f"{e['fold_vs_cohort']:.2f}× | {e['mechanism']} |"
+                )
+            lines.append("")
 
     # Sample-context caveat (stage 1 propagation): when the sample was
     # flagged as degraded / FFPE, every marker-selection step down the

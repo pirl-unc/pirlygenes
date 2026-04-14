@@ -213,6 +213,69 @@ def test_expression_distribution_signals_populated():
     assert 0 < s["top_1pct_share_of_total_tpm"] <= 1.0
 
 
+def test_tempus_like_exome_capture_ffpe_detected_correctly():
+    """Bug 2026-04-14: Tempus FFPE exome-capture samples got labeled
+    'unknown library prep, fresh_frozen'. Simulate the signal profile
+    from that sample (MT-rRNA absent, MT-mRNA present at vanishing
+    fractions, histone in the 0.1–0.5% 'limbo' band, and a long-pair
+    index >> 1 from capture enrichment) and verify the detector now
+    routes to ``exome_capture`` + ``preservation=unknown``.
+    """
+    # Background that dominates total TPM.
+    rows = [("ACTB", 1000), ("GAPDH", 800), ("TUBB", 600), ("EEF1A1", 500)]
+    # Fill out the gene universe enough that histones land in the
+    # "limbo" band (~0.3% of total). Use 8 bulk genes at ~100 TPM each.
+    for i in range(8):
+        rows.append((f"FILLER{i}", 200))
+    # Very small amounts of a few MT-mRNA genes (probe bleed-through).
+    rows += [("MT-CO1", 0.1), ("MT-ND1", 0.1)]
+    # Histones in the "limbo" band — ~0.3% of total.
+    total_bg = 1000 + 800 + 600 + 500 + 8 * 200 + 0.2
+    target_histone = total_bg * 0.003 / (1 - 0.003)  # ≈ 0.3% of final total
+    rows += [("H2BC1", target_histone / 6)] * 6
+    # Degradation pairs: long transcripts over-represented ~3x.
+    from pirlygenes.gene_sets_cancer import degradation_gene_pairs
+    for short_sym, long_sym, expected in list(degradation_gene_pairs())[:15]:
+        rows.append((short_sym, 20.0))
+        rows.append((long_sym, 20.0 * float(expected) * 3.0))
+
+    frame = _frame_from_pairs(rows)
+    ctx = infer_sample_context(frame)
+
+    # Library prep: exome_capture high confidence (MT-rRNA absent,
+    # MT-total tiny).
+    assert ctx.library_prep == "exome_capture", ctx.library_prep
+    assert ctx.library_prep_confidence >= 0.85
+
+    # Preservation: must NOT be labeled fresh_frozen on a capture-
+    # biased sample — the length-pair index is inflated artefactually.
+    assert ctx.preservation != "fresh_frozen"
+    assert ctx.degradation_index is not None
+    assert ctx.degradation_index > 1.4
+    # The flag must explain the capture-bias interpretation.
+    assert any(
+        "exon-capture" in f or "capture enrichment" in f
+        for f in ctx.flags
+    ), ctx.flags
+
+
+def test_degradation_index_above_upper_bound_yields_unknown_preservation():
+    """Regression: the index > 1.4 path must route to
+    ``preservation=unknown`` rather than ``fresh_frozen``."""
+    rows = [("ACTB", 500), ("GAPDH", 400)]
+    # Every pair has long >> short, index ≈ 5× expected.
+    from pirlygenes.gene_sets_cancer import degradation_gene_pairs
+    for short_sym, long_sym, expected in list(degradation_gene_pairs())[:12]:
+        rows.append((short_sym, 10.0))
+        rows.append((long_sym, 10.0 * float(expected) * 5.0))
+    rows += [(s, 30) for s in _MT_MRNA_SYMBOLS]  # Present — not exome capture
+    frame = _frame_from_pairs(rows)
+
+    ctx = infer_sample_context(frame)
+    assert ctx.preservation == "unknown"
+    assert ctx.degradation_index is not None and ctx.degradation_index > 1.4
+
+
 def test_plot_sample_context_writes_png(tmp_path):
     from pirlygenes.sample_context import plot_sample_context
 

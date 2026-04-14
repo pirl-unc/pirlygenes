@@ -1,0 +1,71 @@
+symbol,ensembl_gene_id,therapy_class,direction,mechanism,cancer_context,strength,refs
+KLK3,ENSG00000142515,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:20220176
+KLK2,ENSG00000167759,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:20220176
+TMPRSS2,ENSG00000184012,AR_signaling,up,AR-transactivated (TMPRSS2-ERG fusion driver),PRAD,canonical,PMID:16254181
+NKX3-1,ENSG00000167034,AR_signaling,up,AR-transactivated homeobox tumor suppressor,PRAD,canonical,PMID:14530290
+FKBP5,ENSG00000096060,AR_signaling,up,AR-transactivated chaperone,PRAD,canonical,PMID:20220176
+STEAP4,ENSG00000183196,AR_signaling,up,AR-transactivated,PRAD,supported,
+NDRG1,ENSG00000104419,AR_signaling,up,AR-transactivated,PRAD,supported,
+PMEPA1,ENSG00000124225,AR_signaling,up,AR-transactivated,PRAD,supported,
+SLC45A3,ENSG00000158715,AR_signaling,up,AR-transactivated prostein,PRAD,supported,
+ACPP,ENSG00000014257,AR_signaling,up,AR-transactivated (PAP),PRAD,canonical,
+AR,ENSG00000169083,AR_signaling,up,Receptor itself; stable to moderate AR blockade but lost on potent inhibition,PRAD,canonical,
+FOLH1,ENSG00000086205,AR_signaling,down,AR-suppressed / ADT-upregulated (PSMA),PRAD,canonical,PMID:26162558
+CHGA,ENSG00000100604,AR_signaling,down,NE-lineage emergence under sustained AR blockade,PRAD,emerging,PMID:28546367
+SYP,ENSG00000102003,AR_signaling,down,NE differentiation marker,PRAD,emerging,PMID:28546367
+ENO2,ENSG00000111674,AR_signaling,down,Neuronal enolase — NE differentiation,PRAD,emerging,PMID:28546367
+NCAM1,ENSG00000149294,AR_signaling,down,NE differentiation marker,PRAD,emerging,
+ASCL1,ENSG00000139352,AR_signaling,down,NE-lineage transcription factor,PRAD,emerging,PMID:28546367
+ESR1,ENSG00000091831,ER_signaling,up,Estrogen receptor — target and driver,BRCA,canonical,
+PGR,ENSG00000082175,ER_signaling,up,Classic ER-transactivated,BRCA,canonical,
+TFF1,ENSG00000160182,ER_signaling,up,ER-transactivated (pS2),BRCA,canonical,PMID:11786590
+GREB1,ENSG00000196208,ER_signaling,up,ER-transactivated (highly ER-dependent),BRCA,canonical,PMID:15831514
+CCND1,ENSG00000110092,ER_signaling,up,ER-transactivated cyclin D1,BRCA,supported,
+MYB,ENSG00000118513,ER_signaling,up,ER-transactivated,BRCA,supported,
+ERBB2,ENSG00000141736,HER2_signaling,up,HER2 amplification / receptor overexpression,BRCA,canonical,PMID:22149876
+GRB7,ENSG00000141738,HER2_signaling,up,Co-amplified with ERBB2,BRCA,canonical,PMID:22149876
+STARD3,ENSG00000092850,HER2_signaling,up,Co-amplified (17q12 amplicon),BRCA,canonical,PMID:22149876
+PNMT,ENSG00000141744,HER2_signaling,up,Co-amplified (17q12 amplicon),BRCA,supported,
+EGFR,ENSG00000146648,MAPK_EGFR_signaling,up,EGFR receptor — driver in LUAD / glioma / CRC,LUAD;GBM;COAD,canonical,
+DUSP6,ENSG00000139318,MAPK_EGFR_signaling,up,MAPK-transcribed negative-feedback phosphatase,LUAD;COAD;GBM;SKCM;THCA,canonical,PMID:16892078
+SPRY2,ENSG00000136158,MAPK_EGFR_signaling,up,MAPK-transcribed feedback,LUAD;COAD;GBM;SKCM;THCA,canonical,
+SPRY4,ENSG00000187678,MAPK_EGFR_signaling,up,MAPK-transcribed feedback,LUAD;COAD;GBM;SKCM;THCA,canonical,
+ETV4,ENSG00000175832,MAPK_EGFR_signaling,up,MAPK-PEA3 family transcription factor,LUAD;COAD;GBM;SKCM;THCA,supported,
+ETV5,ENSG00000244405,MAPK_EGFR_signaling,up,MAPK-PEA3 family transcription factor,LUAD;COAD;GBM;SKCM;THCA,supported,
+CCND1,ENSG00000110092,MAPK_EGFR_signaling,up,MAPK-driven cell cycle,LUAD;COAD;GBM;SKCM;THCA,supported,
+PHLDA1,ENSG00000139289,MAPK_EGFR_signaling,up,MAPK-induced,LUAD;COAD;GBM;SKCM;THCA,supported,
+CHGA,ENSG00000100604,NE_differentiation,up,NE / small-cell lineage marker,PRAD;LUSC;LUAD;NBL,canonical,PMID:28546367
+SYP,ENSG00000102003,NE_differentiation,up,NE / small-cell lineage marker,PRAD;LUSC;LUAD;NBL,canonical,PMID:28546367
+ENO2,ENSG00000111674,NE_differentiation,up,Neuronal enolase,PRAD;LUSC;LUAD;NBL,canonical,PMID:28546367
+INSM1,ENSG00000173404,NE_differentiation,up,NE transcription factor,PRAD;LUSC;LUAD;NBL,canonical,PMID:30175790
+ASCL1,ENSG00000139352,NE_differentiation,up,NE-lineage TF,PRAD;LUSC;LUAD;NBL,canonical,PMID:28546367
+POU3F2,ENSG00000184486,NE_differentiation,up,NE-lineage TF (Brn2),PRAD;LUSC;LUAD;NBL,canonical,
+NEUROD1,ENSG00000162992,NE_differentiation,up,NE-lineage TF,LUSC;LUAD;NBL,canonical,PMID:28546367
+NCAM1,ENSG00000149294,NE_differentiation,up,NE surface marker (CD56),PRAD;LUSC;LUAD;NBL,canonical,
+VIM,ENSG00000026025,EMT,up,Mesenchymal intermediate filament,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
+FN1,ENSG00000115414,EMT,up,Extracellular matrix (also high in CAFs),BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
+CDH2,ENSG00000170558,EMT,up,N-cadherin cadherin switch,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
+SNAI1,ENSG00000124216,EMT,up,EMT TF (Snail),BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
+SNAI2,ENSG00000019549,EMT,up,EMT TF (Slug),BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
+ZEB1,ENSG00000148516,EMT,up,EMT TF,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
+ZEB2,ENSG00000169554,EMT,up,EMT TF,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
+TWIST1,ENSG00000122691,EMT,up,EMT TF,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
+CDH1,ENSG00000039068,EMT,down,E-cadherin — epithelial marker lost in EMT,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
+EPCAM,ENSG00000119888,EMT,down,Epithelial marker lost in EMT,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
+CA9,ENSG00000107159,hypoxia,up,HIF-transactivated carbonic anhydrase,pan_cancer,canonical,PMID:11752456
+VEGFA,ENSG00000112715,hypoxia,up,HIF-transactivated,pan_cancer,canonical,PMID:11752456
+SLC2A1,ENSG00000117394,hypoxia,up,HIF-transactivated (GLUT1),pan_cancer,canonical,PMID:11752456
+PGK1,ENSG00000102144,hypoxia,up,HIF-transactivated glycolysis gene,pan_cancer,supported,
+LDHA,ENSG00000134333,hypoxia,up,HIF-transactivated,pan_cancer,supported,
+NDRG1,ENSG00000104419,hypoxia,up,HIF-transactivated,pan_cancer,supported,
+BNIP3,ENSG00000176171,hypoxia,up,HIF-transactivated pro-autophagic,pan_cancer,supported,
+ISG15,ENSG00000187608,IFN_response,up,IFN-stimulated gene (ISG),pan_cancer,canonical,PMID:21851797
+IFIT1,ENSG00000185745,IFN_response,up,IFN-stimulated antiviral,pan_cancer,canonical,PMID:21851797
+IFIT3,ENSG00000119922,IFN_response,up,IFN-stimulated antiviral,pan_cancer,canonical,PMID:21851797
+MX1,ENSG00000157601,IFN_response,up,IFN-stimulated (Mx1),pan_cancer,canonical,PMID:21851797
+OAS1,ENSG00000089127,IFN_response,up,IFN-stimulated (2-5A synthetase),pan_cancer,canonical,PMID:21851797
+OAS2,ENSG00000111335,IFN_response,up,IFN-stimulated (2-5A synthetase),pan_cancer,canonical,
+STAT1,ENSG00000115415,IFN_response,up,IFN-signal transducer,pan_cancer,canonical,
+IRF7,ENSG00000185507,IFN_response,up,IFN-regulatory factor,pan_cancer,canonical,
+CXCL10,ENSG00000169245,IFN_response,up,IFN-stimulated chemokine,pan_cancer,canonical,PMID:21851797
+CXCL9,ENSG00000138755,IFN_response,up,IFN-stimulated chemokine,pan_cancer,canonical,PMID:21851797

@@ -109,11 +109,25 @@ _THRESHOLDS = {
     # <0.1% flagged as "MT missing" (either filtered or exome capture).
     "mt_fraction_suspicious_floor": 0.001,
 
+    # Tempus xT / Twist RNA Exome and similar *hybrid capture / exome-
+    # capture RNA* protocols drop MT probes entirely, so MT-total is
+    # effectively zero (<0.05%) and MT-rRNA absolutely zero — much
+    # stronger than the ``mt_fraction_suspicious_floor``. Used to route
+    # to ``exome_capture`` even when histones are in a "limbo" band
+    # (0.1-0.5% — not pure poly-A, not true total RNA).
+    "mt_fraction_exome_ceiling": 0.0005,
+
     # Gene-length degradation index (long/short observed/expected
     # median ratio). Calibrated in sample_quality.QUALITY_THRESHOLDS;
     # kept consistent here.
     "degradation_pair_moderate": 0.30,
     "degradation_pair_severe":   0.20,
+    # Upper bound on the index: values >> 1.0 indicate systematic
+    # over-representation of long transcripts — a dead giveaway for
+    # exon capture enrichment (long genes have more probes), NOT fresh
+    # RNA. Without this bound the naive "anything > 0.55 is fresh"
+    # path mislabels capture-enriched FFPE samples as fresh_frozen.
+    "degradation_pair_biased_upper": 1.40,
 }
 
 
@@ -281,8 +295,26 @@ def _infer_library_prep(tpm_by_symbol, signals):
         round(mt_rrna_fraction_of_mt, 4) if mt_rrna_fraction_of_mt is not None else None
     )
 
-    # Exome capture: MT absent AND histones absent (exome panels don't
-    # cover MT contigs and only pick up sparse histone exons).
+    # Exome / hybrid-capture RNA (Tempus xT, Twist RNA Exome, etc.) —
+    # probes don't cover chrM, so BOTH MT-rRNA and MT-mRNA are
+    # essentially zero. This is a much stronger signal than the
+    # general "MT missing" floor, and — critically — it fires
+    # independently of histone fraction. Hybrid-capture panels can
+    # legitimately carry histone TPM in the "limbo" band (0.1-0.5%)
+    # because some histones have probes and FFPE fragmentation adds
+    # background. An earlier histone<0.2% gate wrongly routed these
+    # samples to "unknown" (bug report 2026-04-14).
+    if (
+        mt_fraction < _THRESHOLDS["mt_fraction_exome_ceiling"]
+        and (mt_rrna_tpm == 0.0)
+    ):
+        # Very high confidence when MT-rRNA is *exactly* zero — no
+        # polyadenylation protocol and no total-RNA protocol can
+        # produce that pattern by design.
+        return "exome_capture", 0.9
+
+    # Broader MT-missing signal (may be upstream chrM filter rather
+    # than capture — treat as exome_capture at moderate confidence).
     if (
         mt_fraction < _THRESHOLDS["mt_fraction_suspicious_floor"]
         and histone_frac < _THRESHOLDS["histone_fraction_polyA_ceiling"]
@@ -357,6 +389,15 @@ def _infer_preservation_and_degradation(tpm_by_symbol, signals):
         return "ffpe", 0.7, "moderate", index
     if index < 0.55:
         return "degraded", 0.6, "mild", index
+    # Upper bound (bug 2026-04-14): index >> 1.0 indicates systematic
+    # over-representation of long transcripts — exon-capture enrichment,
+    # NOT fresh RNA. The length-pair signal can't report preservation
+    # in that regime because the reference calibration (fresh tissue,
+    # uncapture-enriched) doesn't apply. Return ``unknown`` so
+    # downstream consumers don't treat a capture-biased sample as
+    # confidently fresh.
+    if index > _THRESHOLDS["degradation_pair_biased_upper"]:
+        return "unknown", 0.0, "none", index
     return "fresh_frozen", 0.7, "none", index
 
 
@@ -555,6 +596,17 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
         flags.append(f"Preservation: partial degradation (length-pair index {index:.2f})")
     elif preservation == "fresh_frozen":
         flags.append(f"Preservation: fresh / frozen (length-pair index {index:.2f})")
+    elif preservation == "unknown" and index is not None and index > 1.0:
+        # Capture-enriched libraries (exome / hybrid) inflate the long/
+        # short ratio because long genes have more probes. Flag that
+        # the length-pair test can't report preservation in this regime.
+        flags.append(
+            f"Preservation unknown — length-pair index {index:.2f} is "
+            f"above fresh-reference range (>{_THRESHOLDS['degradation_pair_biased_upper']:.1f}), "
+            "consistent with exon-capture enrichment (long transcripts "
+            "over-represented). Orthogonal signals (read-length, 3′ bias) "
+            "needed to assess FFPE status."
+        )
 
     return SampleContext(
         library_prep=library_prep,
