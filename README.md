@@ -29,10 +29,25 @@ pirlygenes data
 pirlygenes plot-cancer-cohorts sample1.tsv sample2.tsv sample3.tsv --cancer-type PRAD
 ```
 
+## Attribution flow: "make it make sense"
+
+`pirlygenes` treats every TPM in a bulk tumor sample as a claim that must be *attributed* to some source — and then explains away as much of it as possible before crediting the tumor. The goal is a conservative, defensible core of tumor-specific expression, not a lift of raw TPM straight into therapeutic target recommendations.
+
+The flow runs in five stages:
+
+1. **Sample context** (runs *first*, before any cancer-type inference). A `SampleContext` is inferred from the expression table alone — what **library prep** produced the data (poly-A capture, ribo-depletion, total RNA, or exome capture) and what **preservation / degradation** state the RNA is in (fresh-frozen, FFPE, partial degradation). This becomes a **base layer of expression expectations**: which genes are expected to be over- or under-represented for *artifactual* reasons, independent of biology. The context is propagated forward and every downstream stage reads from it.
+2. **Coarse healthy-tissue decomposition.** Broad non-tumor compartments (T cell, B cell, myeloid, fibroblast, endothelial, plus site-specific host tissue for met samples) are fit by weighted NNLS against curated marker panels, anchored to an externally-estimated tumor purity.
+3. **Fine TME-subtype / activation-state dissection** (in progress: CAF vs healthy fibroblast, TAM polarisation, exhausted T, tumor endothelium, etc.). Activated-state references refine the coarse compartment call into biologically actionable subsets.
+4. **Tumor-value adjustment.** Per gene, the TME and matched-normal contributions are subtracted from the observed TPM before dividing by purity. Genes whose observed signal is dominantly explained by non-tumor compartments are flagged `tme_explainable` rather than credited to the tumor.
+5. **Conservative tumor-specific core.** What remains after stages 1–4 is reported as a bounded per-gene tumor-expression range (9-point across low/median/high TME and low/median/high purity), with a low-purity caveat for samples below 20% purity where TME residuals would otherwise be amplified ≥5×.
+
+Each stage *adds* to the attribution chain; none replaces earlier stages. The `analyze` report (summary.md, analysis.md, targets.md) surfaces the chain so a reader can see *why* a number is what it is, not just the final value.
+
 ## The `analyze` command
 
 The main entry point for single-sample analysis. Takes a gene expression file (CSV, TSV, or Excel with a TPM column) and produces a comprehensive output directory with:
 
+- **Sample context inference** — library prep (poly-A / ribo-depleted / total RNA / exome capture) and preservation (fresh / FFPE / degraded) detected from the expression table; propagated to every downstream step as the base layer of expression expectations
 - **Sample quality assessment** — RNA degradation / FFPE detection (transcript-length gene pairs + tissue-matched MT/RP baselines) and cell line / cell culture detection
 - **Cancer type identification** — auto-detected or specified, scored against 33 TCGA types
 - **Tumor purity estimation** — three methods combined: cancer-type signature genes, ESTIMATE stromal/immune enrichment, and lineage gene calibration
@@ -158,6 +173,7 @@ Every `analyze` run produces a directory with these files (prefixed by the input
 
 | File | Description |
 |---|---|
+| `*-sample-context.png` | Stage 1 diagnostic: library prep + preservation inference with thresholds used for the call |
 | `*-sample-summary.png` | Overview: cancer type, purity, background signatures |
 | `*-decomposition.png` | 4-panel: ranked hypotheses, best-fit composition, component support, marker logic |
 | `*-purity.png` | Tumor purity estimation detail |
