@@ -439,9 +439,37 @@ def _summarise_expression_distribution(tpm_by_symbol, signals):
 
     total = float(values.sum())
     if total > 0:
+        sorted_desc = np.sort(values)[::-1]
         top_n = max(1, int(round(0.01 * n_genes)))
-        top_sum = float(np.sort(values)[-top_n:].sum())
-        signals["top_1pct_share_of_total_tpm"] = round(top_sum / total, 4)
+        signals["top_1pct_share_of_total_tpm"] = round(
+            float(sorted_desc[:top_n].sum()) / total, 4
+        )
+        # Panel-vs-whole-transcriptome heuristic (#68): whole-
+        # transcriptome samples carry ~10–15% of total TPM in the top
+        # 50 genes; targeted panels concentrate much more sharply.
+        signals["top_50_share_of_total_tpm"] = round(
+            float(sorted_desc[:50].sum()) / total, 4
+        ) if n_genes >= 50 else None
+        signals["top_2000_share_of_total_tpm"] = round(
+            float(sorted_desc[:2000].sum()) / total, 4
+        ) if n_genes >= 2000 else None
+        # Likely a targeted panel when BOTH signals fire (few detected
+        # genes AND most TPM concentrated in a narrow top). Using AND
+        # avoids flagging normal-tissue nTPM references (which are
+        # strongly concentrated at the top but still cover >10k genes)
+        # while still catching sparse real panels (few genes, heavy
+        # top-2000 share).
+        #
+        # When the sample has fewer than 2000 detected genes total,
+        # top-2000 share is trivially 1.0 — treat it that way rather
+        # than ``None`` so the heuristic fires correctly on very small
+        # panels.
+        n_det_1 = signals.get("genes_detected_above_1_tpm", 0) or 0
+        top_2000 = signals.get("top_2000_share_of_total_tpm")
+        effective_top_2000 = top_2000 if top_2000 is not None else 1.0
+        signals["likely_targeted_panel"] = bool(
+            n_det_1 < 4000 and effective_top_2000 >= 0.95
+        )
 
 
 def infer_sample_context(df_gene_expr) -> SampleContext:
@@ -651,6 +679,90 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     ax_bars.spines["top"].set_visible(False)
     ax_bars.spines["right"].set_visible(False)
     ax_bars.set_title("Library-prep diagnostic signals", fontsize=10, loc="left")
+
+    fig.tight_layout()
+    fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    plt.close(fig)
+    return save_to_filename
+
+
+def plot_degradation_index(
+    df_gene_expr,
+    sample_context: SampleContext,
+    save_to_filename: str,
+    save_dpi: int = 150,
+) -> Optional[str]:
+    """Scatter of expected vs observed long/short pair ratios (#27).
+
+    One point per gene pair from ``data/degradation-gene-pairs.csv``:
+    x = expected (fresh-tissue calibrated) ratio, y = observed in this
+    sample. Diagonal = no degradation. Points below the diagonal flag
+    preferential loss of long transcripts. The plot annotates the
+    median observed/expected ratio and the severity call from the
+    sample context, so users can see whether the call is driven by a
+    systematic shift across pairs or a few outliers.
+
+    Returns the filename on success, ``None`` when no pair has the
+    short-gene expressed (``s_tpm > 1``) so the plot would be empty.
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from .gene_sets_cancer import degradation_gene_pairs
+
+    tpm_by_symbol = _build_tpm_by_symbol(df_gene_expr)
+
+    expected_vals = []
+    observed_vals = []
+    labels = []
+    for short_sym, long_sym, expected in degradation_gene_pairs():
+        s = tpm_by_symbol.get(short_sym)
+        long_tpm = tpm_by_symbol.get(long_sym)
+        if s is None or not (s > 1):
+            continue
+        if long_tpm is None or expected <= 0:
+            continue
+        expected_vals.append(float(expected))
+        observed_vals.append(float(long_tpm) / float(s))
+        labels.append(f"{short_sym}/{long_sym}")
+
+    if not expected_vals:
+        return None
+
+    expected_arr = np.array(expected_vals)
+    observed_arr = np.array(observed_vals)
+    deviation = observed_arr / np.maximum(expected_arr, 1e-6)
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+
+    # Diagonal guide.
+    diag_lo = 0.0
+    diag_hi = max(expected_arr.max(), observed_arr.max()) * 1.1
+    ax.plot([diag_lo, diag_hi], [diag_lo, diag_hi],
+            linestyle="--", color="#888888", linewidth=0.8,
+            label="expected = observed (no degradation)")
+
+    sc = ax.scatter(
+        expected_arr, observed_arr,
+        c=np.log2(np.maximum(deviation, 1e-3)),
+        cmap="RdYlGn", edgecolors="black", linewidth=0.3, s=60,
+    )
+    cb = plt.colorbar(sc, ax=ax, pad=0.02)
+    cb.set_label("log2(observed / expected)", fontsize=9)
+
+    ax.set_xlabel("Expected long/short ratio (fresh-tissue calibration)", fontsize=10)
+    ax.set_ylabel("Observed long/short ratio (this sample)", fontsize=10)
+    ax.set_xlim(diag_lo, diag_hi)
+    ax.set_ylim(diag_lo, diag_hi)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    title_parts = [f"Degradation index — {sample_context.degradation_severity}"]
+    if sample_context.degradation_index is not None:
+        title_parts.append(f"median index {sample_context.degradation_index:.2f}")
+    title_parts.append(f"{len(expected_vals)} pairs")
+    ax.set_title(" · ".join(title_parts), fontsize=11, loc="left")
+    ax.legend(loc="upper left", fontsize=9)
 
     fig.tight_layout()
     fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")

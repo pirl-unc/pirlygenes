@@ -26,7 +26,11 @@ from .templates import (
     get_template_extra_components,
     get_template_host_tissues,
 )
-from ..gene_sets_cancer import housekeeping_gene_ids, pan_cancer_expression
+from ..gene_sets_cancer import (
+    housekeeping_gene_ids,
+    is_extended_housekeeping_symbol,
+    pan_cancer_expression,
+)
 from ..tumor_purity import rank_cancer_type_candidates, _score_host_tissues
 
 
@@ -49,21 +53,24 @@ _AUTO_MARKER_EXCLUDED_SYMBOLS = frozenset({
 })
 
 
-def _is_ribosomal_protein_symbol(symbol: str) -> bool:
-    """RPL* / RPS* ribosomal proteins are broadly expressed and leak
-    into every compartment when auto-picked (issue #31, RPL18A showed up
-    as a B_cell marker).
+def _is_excluded_auto_marker(symbol: str) -> bool:
+    """Return True when the symbol must not be auto-selected as a
+    decomposition-component discriminator.
+
+    Combines three exclusion sources:
+
+    - The curated MHC-II / shared-APC blacklist above (#31).
+    - The extended housekeeping panel from ``gene_sets_cancer``
+      (``scope="markers"``; #60) — universal exclusion of ribosomal,
+      mitochondrial, translation/splicing, rearranged IG/TR, proteasome
+      and classic housekeeping symbols that can't discriminate cell
+      types. This subsumes the old hard-coded RPL/RPS-prefix filter.
     """
     if not isinstance(symbol, str):
         return False
-    return symbol.startswith("RPL") or symbol.startswith("RPS")
-
-
-def _is_excluded_auto_marker(symbol: str) -> bool:
-    return (
-        symbol in _AUTO_MARKER_EXCLUDED_SYMBOLS
-        or _is_ribosomal_protein_symbol(symbol)
-    )
+    if symbol in _AUTO_MARKER_EXCLUDED_SYMBOLS:
+        return True
+    return is_extended_housekeeping_symbol(symbol, scope="markers")
 
 
 DECOMPOSITION_PARAMETERS = {
@@ -379,6 +386,7 @@ def _select_marker_rows(
     sig_matrix_hk,
     comp_names,
     cancer_type=None,
+    sample_context=None,
     top_n_per_component=DECOMPOSITION_PARAMETERS["marker_selection"]["top_n_per_component"],
 ):
     """Pick component-enriched marker rows for the weighted fit.
@@ -406,6 +414,24 @@ def _select_marker_rows(
     symbol_to_rows = {}
     for idx, symbol in enumerate(symbols):
         symbol_to_rows.setdefault(str(symbol), []).append(idx)
+
+    # #25: when the sample is FFPE / moderately-or-severely degraded,
+    # markers drawn from known long-transcript genes (>6.9 kb coding —
+    # the ``long`` column of ``data/degradation-gene-pairs.csv``) get
+    # systematically suppressed TPM because long transcripts fragment
+    # first. Downweight these markers so the NNLS isn't fooled into
+    # reading the suppression as low component abundance.
+    long_transcript_symbols: set[str] = set()
+    context_weight_factor = 1.0
+    if sample_context is not None and getattr(sample_context, "is_degraded", False):
+        context_weight_factor = float(
+            sample_context.long_transcript_weight_factor()
+        )
+        if context_weight_factor < 1.0:
+            from ..gene_sets_cancer import degradation_gene_pairs
+            long_transcript_symbols = {
+                long_sym for _, long_sym, _ in degradation_gene_pairs()
+            }
 
     marker_records = []
     fit_weight_by_row = {}
@@ -454,6 +480,12 @@ def _select_marker_rows(
 
         for idx in chosen[:top_n_per_component]:
             marker_weight = float(max(0.5, np.log2(specificity[idx] + 1.0)))
+            # #25: downweight long-transcript markers under FFPE degradation.
+            if (
+                context_weight_factor < 1.0
+                and str(symbols[idx]) in long_transcript_symbols
+            ):
+                marker_weight = float(marker_weight * context_weight_factor)
             fit_weight_by_row[idx] = max(fit_weight_by_row.get(idx, 0.0), marker_weight)
             marker_records.append(
                 {
@@ -565,6 +597,7 @@ def _fit_one_hypothesis(
     template_name,
     purity_override=None,
     sample_raw_by_symbol=None,
+    sample_context=None,
 ):
     """Fit one (cancer_type, template) broad-compartment hypothesis."""
     hk_ids = housekeeping_gene_ids()
@@ -679,6 +712,7 @@ def _fit_one_hypothesis(
         sig_hk,
         comp_names,
         cancer_type=cancer_type,
+        sample_context=sample_context,
     )
     if len(fit_rows) < max(10, len(comp_names) * 2):
         warnings.append("Low marker support for template fit")
@@ -857,6 +891,7 @@ def decompose_sample(
     sample_mode="auto",
     tumor_context="auto",
     site_hint=None,
+    sample_context=None,
 ):
     """Decompose a sample across multiple cancer-type and template hypotheses.
 
@@ -913,6 +948,7 @@ def decompose_sample(
                 template_name,
                 purity_override=purity_override,
                 sample_raw_by_symbol=sample_raw_by_symbol,
+                sample_context=sample_context,
             )
             results.append(result)
 

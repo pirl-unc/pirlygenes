@@ -23,6 +23,7 @@ from .gene_ids import find_canonical_gene_ids_and_names
 from .gene_sets_cancer import (
     CTA_gene_id_to_name,
     housekeeping_gene_ids,
+    is_extended_housekeeping_symbol,
     cancer_surfaceome_gene_id_to_name,
     pan_cancer_expression,
     therapy_target_gene_id_to_name,
@@ -2476,6 +2477,27 @@ def estimate_tumor_expression_ranges(
         else:
             estimation_path = "tme_fold_fallback"
 
+        # #60: mark extended-housekeeping symbols so downstream
+        # target tables can filter them out without silently dropping
+        # rows from the TSV (power users still see them with the flag).
+        excluded_from_ranking = bool(
+            is_extended_housekeeping_symbol(symbol, scope="ranking")
+        )
+
+        # #35: any gene whose observed TPM is mostly explained by the
+        # TME reference is a low-confidence tumor-expression claim —
+        # especially risky at low purity, where residual TPM is divided
+        # by a small number and amplified. Threshold is stricter than
+        # the existing ``tme_explainable`` flag: require ≥70% of
+        # observed to be TME-explained, and flag separately from
+        # ``tme_explainable`` so the two signals are distinguishable
+        # in the TSV.
+        tme_dominant = (
+            observed > 0
+            and round(tme_fold_med, 4) * sample_hk_median >= round(0.7 * observed, 4)
+        )
+        low_confidence_tumor = bool(tme_dominant)
+
         rows.append({
             "gene_id": eid,
             "symbol": symbol,
@@ -2486,6 +2508,8 @@ def estimate_tumor_expression_ranges(
             "tme_fold_hi": round(tme_fold_hi, 4),
             "max_healthy_tpm": round(max_healthy_tpm, 2),
             "tme_explainable": bool(tme_explainable),
+            "tme_dominant": tme_dominant,
+            "low_confidence_tumor": low_confidence_tumor,
             "cohort_prior_tpm": round(cohort_prior_tpm, 2),
             "tme_only_tpm": round(tme_only_tpm, 2),
             "matched_normal_tpm": round(mn_tpm, 2),
@@ -2498,6 +2522,7 @@ def estimate_tumor_expression_ranges(
             "tcga_percentile": round(tcga_percentile, 3),
             "is_surface": is_surface,
             "is_cta": is_cta,
+            "excluded_from_ranking": excluded_from_ranking,
             "therapies": ", ".join(sorted(therapies)) if therapies else "",
         })
 

@@ -365,6 +365,111 @@ def housekeeping_gene_ids(core_only=False):
     return set(df["Ensembl_Gene_ID"])
 
 
+# ---------- Extended housekeeping (issue #60) ----------
+#
+# A single authoritative panel of genes that cannot discriminate between
+# cell types because they are ubiquitously expressed at high levels, or
+# because their apparent abundance reflects artifact (MT copy number,
+# FFPE short-transcript survival, clonal IG/TR rearrangement) rather
+# than biology. Excluded from:
+#
+# - Marker selection (``engine._select_marker_rows``) — never picked as
+#   a decomposition-component discriminator.
+# - Tumor-attribution ranking (``estimate_tumor_expression_ranges``) —
+#   flagged ``excluded_from_ranking`` so they don't show up as top
+#   therapy targets when their observed TPM is high for housekeeping
+#   reasons.
+#
+# Kept declarative (regex families + curated classics) so the panel can
+# be audited at a glance and extended without a CSV churn cycle. The
+# ``scope`` on each family lets B2M stay visible in the ranking output
+# (it's a legitimate MHC-I context gene) while still being skipped from
+# decomposition markers (the NNLS shouldn't treat it as a lineage
+# discriminator).
+
+import re as _re  # noqa: E402
+
+_EXTENDED_HK_FAMILIES = [
+    # (family_name, compiled_regex, scope)
+    # scope ∈ {"markers", "ranking", "both"}
+    ("mitochondrial_chrM",          _re.compile(r"MT-.*"),                              "both"),
+    ("cytosolic_ribosomal",         _re.compile(r"(RPL|RPS)\d.*"),                      "both"),
+    ("mito_ribosomal",              _re.compile(r"(MRPL|MRPS)\d.*"),                    "both"),
+    ("translation_factors",         _re.compile(r"(EEF|EIF)\d.*"),                      "both"),
+    ("hnRNPs",                      _re.compile(r"HNRNP[A-Z]\d?[A-Z]?\d?"),             "both"),
+    ("splicing_SR_proteins",        _re.compile(r"SRSF\d+"),                            "both"),
+    ("snRNPs",                      _re.compile(r"SNRP[A-Z]\d?"),                       "both"),
+    ("proteasome_subunits",         _re.compile(r"PSM[ABCDEF]\d+"),                     "both"),
+    ("cyclophilins",                _re.compile(r"PPI[A-Z]\d?"),                        "both"),
+    ("tubulin",                     _re.compile(r"TUB(A|B|G)\d+[A-Z]?"),                "both"),
+    ("rearranged_ig_segments",      _re.compile(r"(IGH|IGK|IGL)[VDJC]\d.*"),            "both"),
+    ("rearranged_tcr_segments",     _re.compile(r"(TRA|TRB|TRG|TRD)[VDJC]\d.*"),        "both"),
+]
+
+# Classic housekeeping symbols that don't follow a family regex. Keep
+# these as an enumerated allow-list because bare prefix matching would
+# catch too much. Each row declares the exclusion scope so we can keep
+# biologically-meaningful genes (B2M) in the ranking output.
+_EXTENDED_HK_CLASSICS = {
+    # symbol: scope
+    "ACTB":   "both",
+    "ACTG1":  "both",
+    "GAPDH":  "both",
+    "HPRT1":  "both",
+    "TPT1":   "both",
+    "RACK1":  "both",
+    "B2M":    "markers",   # MHC-I context — keep visible in ranking.
+    "PGK1":   "both",
+    "YWHAZ":  "both",
+    "UBC":    "both",
+    "PPIA":   "both",
+}
+
+
+def _extended_hk_symbol_match(symbol):
+    """Return ``(family_name, scope)`` if the symbol matches any family
+    in the extended HK panel, else ``(None, None)``.
+    """
+    if not isinstance(symbol, str) or not symbol:
+        return None, None
+    for family, pattern, scope in _EXTENDED_HK_FAMILIES:
+        if pattern.fullmatch(symbol):
+            return family, scope
+    classic_scope = _EXTENDED_HK_CLASSICS.get(symbol)
+    if classic_scope is not None:
+        return "classic_hk", classic_scope
+    return None, None
+
+
+def is_extended_housekeeping_symbol(symbol, scope="markers"):
+    """Return True when the symbol should be excluded for the given
+    scope (``"markers"``, ``"ranking"``, or ``"both"``).
+
+    Issue #60. ``scope="markers"`` is the superset — every symbol
+    excluded from ranking is also excluded from marker selection.
+    ``scope="ranking"`` excludes only what's unambiguously uninteresting
+    as a therapy target (keeps B2M, since MHC-I readers need it).
+    """
+    family, family_scope = _extended_hk_symbol_match(symbol)
+    if family is None:
+        return False
+    if family_scope == "both":
+        return True
+    return family_scope == scope
+
+
+def extended_housekeeping_symbols(scope="markers"):
+    """Return a set of classic-symbol housekeeping members for the
+    given scope. Regex families are not enumerated — use
+    ``is_extended_housekeeping_symbol`` for runtime membership tests.
+    """
+    out = set()
+    for symbol, sc in _EXTENDED_HK_CLASSICS.items():
+        if sc == "both" or sc == scope:
+            out.add(symbol)
+    return out
+
+
 # ---------- Surface proteins (surfaceome) ----------
 def _surface_proteins_df(category=None):
     df = get_data("surface-proteins")

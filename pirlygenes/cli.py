@@ -63,7 +63,11 @@ from .decomposition import (
     plot_decomposition_component_breakdown,
     plot_decomposition_composition,
 )
-from .sample_context import infer_sample_context, plot_sample_context
+from .sample_context import (
+    infer_sample_context,
+    plot_degradation_index,
+    plot_sample_context,
+)
 from .sample_quality import assess_sample_quality
 
 _DATASET_SOURCES = {
@@ -250,6 +254,23 @@ def analyze(
     except Exception as exc:  # noqa: BLE001 — plotting must not break analyze
         print(f"[plot] sample-context plot failed: {exc}")
 
+    # #27: gene-pair degradation index scatter. Emitted whenever any
+    # degradation signal is available (including the "none" call, so
+    # users can visually confirm a non-degraded sample lies on the
+    # diagonal).
+    degradation_png = (
+        "%s-degradation-index.png" % prefix if prefix else "degradation-index.png"
+    )
+    try:
+        out = plot_degradation_index(
+            df_expr, sample_context,
+            save_to_filename=degradation_png, save_dpi=output_dpi,
+        )
+        if out:
+            print(f"[plot] Saved degradation-index scatter to {degradation_png}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[plot] degradation-index plot failed: {exc}")
+
     # Strip plots: split into focused panels for readability
     # Immune microenvironment
     immune_sets = {k: default_gene_sets[k] for k in
@@ -308,7 +329,10 @@ def analyze(
 
     # Stage 1 propagation: widen purity confidence intervals under
     # detected degradation (#26). A noisier sample has a noisier purity
-    # estimate; we don't re-estimate, just scale the reported band.
+    # estimate; we don't re-estimate, just scale the reported band and
+    # attach a ``degradation_caveat`` so downstream consumers (reports,
+    # downstream analyses) can cite the reason for the wider band
+    # without having to re-derive it from the raw sample_context.
     ci_factor = sample_context.purity_ci_widening_factor()
     if ci_factor > 1.0 and "purity" in analysis:
         purity_block = analysis["purity"]
@@ -321,6 +345,17 @@ def analyze(
             purity_block["overall_lower"] = round(max(0.0, est - half_lo), 4)
             purity_block["overall_upper"] = round(min(1.0, est + half_hi), 4)
             purity_block["ci_widening_factor"] = round(ci_factor, 3)
+            purity_block["degradation_caveat"] = {
+                "severity": sample_context.degradation_severity,
+                "index": sample_context.degradation_index,
+                "message": (
+                    f"Purity confidence interval widened ×{ci_factor:.2f} "
+                    f"to reflect {sample_context.degradation_severity} "
+                    "RNA degradation — tumor-specific genes with long "
+                    "transcripts are under-represented, biasing the "
+                    "point estimate low and the precision high."
+                ),
+            }
     analysis["sample_mode"] = infer_sample_mode(
         candidate_rows=analysis.get("candidate_trace"),
         cancer_types=[analysis["cancer_type"]] if analysis.get("cancer_type") else ([cancer_type] if cancer_type else None),
@@ -463,6 +498,7 @@ def analyze(
         tumor_context=tumor_context,
         site_hint=site_hint,
         templates=template_overrides,
+        sample_context=sample_context,
     )
     call_summary = _summarize_sample_call(
         analysis,
@@ -1199,16 +1235,67 @@ def _generate_text_reports(
     if fit_quality.get("label") and fit_quality.get("message"):
         intro += f"Fit quality: *{fit_quality['label']}* — {fit_quality['message']} "
 
-    summary = intro + _summary_mode_clause(sample_mode, purity, top_tissues) + (
-        f"MHC-I expression is {mhc_level} "
-        f"(HLA-A={hla_a:.0f}, HLA-B={hla_b:.0f}, B2M={b2m:.0f} TPM). "
-        f"Analysis mode: **{_sample_mode_display(sample_mode)}**."
+    # Report flow (user direction 2026-04-14):
+    #   1. What data do we have + sample QC (this block)
+    #   2. What kind of cancer (the intro above, written before this)
+    #   3. What else is in the sample (purity + TME + tissues)
+    #   4. Deeper detail (analysis.md, targets.md, figures)
+    #
+    # Build ordering below assembles the summary string in that flow —
+    # *not* in the order variables were defined — so the narrative
+    # starts with QC and ends with ambiguity / constraints.
+
+    # Stage 1: input & sample-QC framing.
+    sample_context = analysis.get("sample_context")
+    context_paragraph = ""
+    if sample_context is not None:
+        ctx_signals = sample_context.signals or {}
+        context_line = f"**Sample context**: {sample_context.summary_line()}."
+        n_det_1 = ctx_signals.get("genes_detected_above_1_tpm")
+        if n_det_1 is not None:
+            context_line += f" {n_det_1} genes at TPM > 1"
+            top50 = ctx_signals.get("top_50_share_of_total_tpm")
+            if top50 is not None:
+                context_line += f"; top-50 share {top50:.0%} of total"
+            context_line += "."
+        if ctx_signals.get("likely_targeted_panel"):
+            context_line += " ⚠ Input looks like a targeted panel rather than whole-transcriptome."
+        if sample_context.missing_mt:
+            context_line += " ⚠ MT genes missing from quant — degradation signal unreliable."
+        if sample_context.purity_ci_widening_factor() > 1.0:
+            context_line += (
+                f" Purity CIs widened ×{sample_context.purity_ci_widening_factor():.2f} "
+                "to reflect degradation-driven noise."
+            )
+        context_paragraph = context_line
+
+    # Quality flags land right after sample_context in the QC block.
+    quality = analysis.get("quality")
+    quality_paragraph = ""
+    if quality and quality.get("has_issues"):
+        quality_paragraph = "**Quality warnings**: " + "; ".join(quality["flags"]) + "."
+    elif quality and quality["degradation"]["level"] != "normal":
+        quality_paragraph = "**Quality note**: " + "; ".join(quality["flags"]) + "."
+
+    # Stage 2: headline call (already built above as `intro`).
+    headline = intro
+
+    # Stage 3: what else is in the sample — purity clause + background
+    # tissues (from _summary_mode_clause), MHC-I level, analysis mode.
+    composition = (
+        _summary_mode_clause(sample_mode, purity, top_tissues)
+        + f"MHC-I expression is {mhc_level} "
+        + f"(HLA-A={hla_a:.0f}, HLA-B={hla_b:.0f}, B2M={b2m:.0f} TPM). "
+        + f"Analysis mode: **{_sample_mode_display(sample_mode)}**."
     )
     if purity.get("components", {}).get("integration", {}).get("signature_deprioritized"):
-        summary += (
+        composition += (
             " The tumor-specific signature panel was materially weaker and less stable than "
             "the lineage panel, so it was downweighted rather than used as a hard lower anchor."
         )
+
+    # Stage 4: constraints / decomposition detail / ambiguity.
+    detail_parts = []
     if constraints:
         constraint_parts = []
         if constraints.get("cancer_type"):
@@ -1230,52 +1317,44 @@ def _generate_text_reports(
                 f"biopsy site **{constraints['met_site']}** (TME reference augmented)"
             )
         if constraint_parts:
-            summary += " Analysis constraints: " + "; ".join(constraint_parts) + "."
+            detail_parts.append("Analysis constraints: " + "; ".join(constraint_parts) + ".")
     # Only surface the decomposition line when its call materially differs
     # from the headline call (#33: the tumor fraction % is identical to the
     # already-stated purity, so repeating it is noise).
     if call_summary.get("site_indeterminate"):
-        summary += " Decomposition recovered broad admixture structure, but site/template assignment is indeterminate."
+        detail_parts.append(
+            "Decomposition recovered broad admixture structure, but "
+            "site/template assignment is indeterminate."
+        )
     elif best_decomp is not None:
         decomp_piece = (
-            f" Decomposition template: **{best_decomp.cancer_type} / {best_decomp.template}**"
+            f"Decomposition template: **{best_decomp.cancer_type} / {best_decomp.template}**"
         )
         if (
             getattr(best_decomp, "cancer_type", None)
             and best_decomp.cancer_type != cancer_code
         ):
             decomp_piece += " (differs from headline call)"
-        summary += decomp_piece + "."
-    summary += ambiguity_clause
+        detail_parts.append(decomp_piece + ".")
+    if ambiguity_clause.strip():
+        detail_parts.append(ambiguity_clause.strip())
     # Tissue-score caveat (#33): readers were interpreting similarity
     # scores as composition percentages. One short line clarifies.
     if top_tissues:
-        summary += (
-            "\n\n*Note: background tissue scores are normalised similarity "
+        detail_parts.append(
+            "*Note: background tissue scores are normalised similarity "
             "to reference nTPM profiles, not composition percentages.*"
         )
 
-    # Sample context (stage 1 of unified attribution flow) lands as the
-    # first framing line after the cancer-type summary, so readers see
-    # how library-prep + preservation shape all downstream claims.
-    sample_context = analysis.get("sample_context")
-    if sample_context is not None:
-        context_line = f"\n\n**Sample context**: {sample_context.summary_line()}."
-        if sample_context.missing_mt:
-            context_line += " ⚠ MT genes missing from quant table — degradation signal is unreliable."
-        if sample_context.purity_ci_widening_factor() > 1.0:
-            context_line += (
-                f" Purity CIs widened ×{sample_context.purity_ci_widening_factor():.2f} "
-                "to reflect degradation-driven noise."
-            )
-        summary += context_line
-
-    # Quality flags in summary
-    quality = analysis.get("quality")
-    if quality and quality.get("has_issues"):
-        summary += "\n\n**Quality warnings**: " + "; ".join(quality["flags"]) + "."
-    elif quality and quality["degradation"]["level"] != "normal":
-        summary += "\n\n**Quality note**: " + "; ".join(quality["flags"]) + "."
+    # Assemble in the user-requested order (QC → coarse call → detail).
+    sections = []
+    qc_block = "\n\n".join([b for b in (context_paragraph, quality_paragraph) if b])
+    if qc_block:
+        sections.append(qc_block)
+    sections.append(headline + composition)
+    if detail_parts:
+        sections.append("\n\n".join(detail_parts))
+    summary = "\n\n".join(sections)
 
     summary_path = "%s-summary.md" % prefix if prefix else "summary.md"
     header = "# Sample Analysis Summary\n"
@@ -1287,6 +1366,51 @@ def _generate_text_reports(
 
     # --- Detailed report ---
     lines = ["# Detailed Sample Analysis\n"]
+
+    # Input characterization (#68) — surfaced before quality/decomp so
+    # readers see whether the file we analysed was transcript-level vs
+    # gene-level, whole-transcriptome vs panel, poly-A vs total RNA,
+    # before they scrutinise downstream numbers.
+    sample_context = analysis.get("sample_context")
+    if sample_context is not None:
+        ctx_signals = sample_context.signals or {}
+        lines.append("## Input characterization\n")
+        if input_path:
+            lines.append(f"- **Source file**: `{input_path}`")
+        lines.append(f"- **Library prep**: {sample_context.library_prep.replace('_', ' ')} "
+                     f"(confidence {sample_context.library_prep_confidence:.0%})")
+        lines.append(f"- **Preservation**: {sample_context.preservation.replace('_', ' ')}"
+                     + (f" (degradation index {sample_context.degradation_index:.2f})"
+                        if sample_context.degradation_index is not None else ""))
+        n_det = ctx_signals.get("genes_detected_above_1_tpm")
+        if n_det is not None:
+            lines.append(f"- **Detection breadth**: {n_det} genes with TPM > 1 "
+                         f"({ctx_signals.get('genes_detected_above_10_tpm', 0)} with TPM > 10, "
+                         f"{ctx_signals.get('genes_detected_above_0p5_tpm', 0)} with TPM > 0.5)")
+        top50 = ctx_signals.get("top_50_share_of_total_tpm")
+        top2000 = ctx_signals.get("top_2000_share_of_total_tpm")
+        if top50 is not None:
+            concentration = f"- **Concentration**: top 50 genes carry {top50:.0%} of total TPM"
+            if top2000 is not None:
+                concentration += f"; top 2000 carry {top2000:.0%}"
+            lines.append(concentration)
+        if ctx_signals.get("likely_targeted_panel"):
+            lines.append(
+                "- ⚠ **Likely targeted panel** (few detected genes or >90% TPM "
+                "concentrated in top 2000 genes) — downstream scores assume "
+                "whole-transcriptome input; interpret carefully."
+            )
+        log2_med = ctx_signals.get("log2_tpm_median")
+        if log2_med is not None:
+            lines.append(f"- **Expression range**: log2(TPM+1) median={log2_med:.2f}, "
+                         f"IQR={ctx_signals.get('log2_tpm_iqr', 0):.2f}, "
+                         f"p95={ctx_signals.get('log2_tpm_p95', 0):.2f}")
+        if sample_context.missing_mt:
+            lines.append(
+                "- ⚠ **Mitochondrial genes missing** from quant table — "
+                "degradation signal from MT fraction is unreliable."
+            )
+        lines.append("")
 
     # Sample quality
     quality = analysis.get("quality")
@@ -1784,8 +1908,15 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     lines.append("")
 
     # --- Surface therapy targets ---
+    # #60: drop extended-housekeeping symbols (excluded_from_ranking)
+    # from the ranked output so they can't appear as spurious high
+    # tumor-expressed targets. They remain in the TSV with the flag.
+    _excluded = ranges_df.get("excluded_from_ranking", pd.Series(False, index=ranges_df.index))
     surface_targets = ranges_df[
-        ranges_df["is_surface"] & (ranges_df["median_est"] > 1) & ~ranges_df["is_cta"]
+        ranges_df["is_surface"]
+        & (ranges_df["median_est"] > 1)
+        & ~ranges_df["is_cta"]
+        & ~_excluded
     ].copy()
     lines.append("## Surface Protein Targets (ADC / CAR-T / Bispecific)\n")
     lines.append("Surface proteins with high purity-adjusted expression. "
@@ -1801,22 +1932,42 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         for _, row in surface_targets.head(20).iterrows():
             bold = "**" if row["therapies"] else ""
             vs_tcga = row["pct_cancer_median"]
-            # TME warning: "⚠" when a healthy reference tissue alone
-            # could explain ≥50% of the sample signal, so the reported
-            # tumor-cell attribution is unreliable (tracked via the
-            # `tme_explainable` flag computed in estimate_tumor_
-            # expression_ranges; see issue #45).
-            tme_warn = "⚠" if row.get("tme_explainable") else ""
+            # TME flag — compact key:
+            #   ⚠⚠ = ``tme_dominant`` (TME alone accounts for ≥70% of
+            #   the observed signal — almost certainly a stromal /
+            #   immune origin, #35); ⚠ = ``tme_explainable`` (a single
+            #   healthy reference tissue could explain ≥50% of signal,
+            #   #45).
+            if row.get("tme_dominant"):
+                tme_warn = "⚠⚠"
+            elif row.get("tme_explainable"):
+                tme_warn = "⚠"
+            else:
+                tme_warn = ""
             lines.append(
                 f"| {bold}{row['symbol']}{bold} | {row['median_est']:.1f} | "
                 f"{row['est_1']:.1f}\u2013{row['est_9']:.1f} | {row['observed_tpm']:.1f} | "
                 f"{'%.1fx' % vs_tcga if pd.notna(vs_tcga) else '—'} | {row['tcga_percentile']:.0%} | "
                 f"{tme_warn} | {row['therapies']} |"
             )
-        if (
+        head20 = surface_targets.head(20)
+        any_dominant = (
+            "tme_dominant" in surface_targets.columns
+            and head20["tme_dominant"].any()
+        )
+        any_explainable = (
             "tme_explainable" in surface_targets.columns
-            and surface_targets.head(20)["tme_explainable"].any()
-        ):
+            and head20["tme_explainable"].any()
+        )
+        if any_dominant:
+            lines.append(
+                "\n⚠⚠ = **TME-dominant** (≥70% of observed signal is "
+                "explained by the TME reference alone). These are very "
+                "likely stromal / immune rather than tumor-cell expressed "
+                "— excluding them from therapy-target consideration is "
+                "the safest default (#35)."
+            )
+        if any_explainable:
             lines.append(
                 "\n⚠ = sample signal could be entirely explained by a single healthy "
                 "tissue's expression (max across non-reproductive tissues ≥ 50% of "
@@ -1831,6 +1982,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     intracellular = ranges_df[
         ~ranges_df["is_surface"] & (ranges_df["median_est"] > 5)
         & (ranges_df["category"].isin(["therapy_target", "CTA"]))
+        & ~_excluded  # #60: drop extended housekeeping from ranking
     ].copy()
     lines.append("## Intracellular Targets (TCR-T / pMHC Vaccination)\n")
     lines.append("Intracellular proteins presented via MHC-I. Targetable by "

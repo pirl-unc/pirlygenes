@@ -43,6 +43,8 @@ The flow runs in five stages:
 
 Each stage *adds* to the attribution chain; none replaces earlier stages. The `analyze` report (summary.md, analysis.md, targets.md) surfaces the chain so a reader can see *why* a number is what it is, not just the final value.
 
+Reports and figures are ordered high-level → specific: start with what data we're looking at and how it was prepared (QC), then the coarse cancer-type call and what else is in the sample, then the deeper per-gene / per-target detail.
+
 ## The `analyze` command
 
 The main entry point for single-sample analysis. Takes a gene expression file (CSV, TSV, or Excel with a TPM column) and produces a comprehensive output directory with:
@@ -175,6 +177,7 @@ Every `analyze` run produces a directory with these files (prefixed by the input
 | File | Description |
 |---|---|
 | `*-sample-context.png` | Stage 1 diagnostic: library prep + preservation inference with thresholds used for the call |
+| `*-degradation-index.png` | Gene-pair scatter: expected vs observed long/short ratios, diagonal = no degradation |
 | `*-sample-summary.png` | Overview: cancer type, purity, background signatures |
 | `*-decomposition.png` | 4-panel: ranked hypotheses, best-fit composition, component support, marker logic |
 | `*-purity.png` | Tumor purity estimation detail |
