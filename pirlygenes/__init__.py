@@ -35,7 +35,12 @@ from .gene_sets_cancer import (
     tme_markers_df,
 )
 from .load_dataset import load_all_dataframes, load_all_dataframes_dict, get_data
-from .sample_context import SampleContext, infer_sample_context, plot_sample_context
+from .sample_context import (
+    SampleContext,
+    infer_sample_context,
+    plot_degradation_index,
+    plot_sample_context,
+)
 from .plot import (
     plot_ctas_vs_cancer_type_detail,
     plot_gene_expression,
@@ -88,4 +93,5 @@ __all__ = [
     "SampleContext",
     "infer_sample_context",
     "plot_sample_context",
+    "plot_degradation_index",
 ]
