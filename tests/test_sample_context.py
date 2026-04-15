@@ -320,15 +320,17 @@ def test_compute_ffpe_marker_score_returns_value_for_present_panel():
     from pirlygenes.sample_context import compute_ffpe_marker_score
 
     # Synthetic sample where stable refs are high and FFPE-sensitive
-    # genes are very low (the FFPE pattern).
+    # genes (the v4.4.1 biology-neutral long-scaffold panel per #75)
+    # are very low — the canonical FFPE pattern.
     sample = {
-        # stable_in_ffpe panel: ACTB, GAPDH, RPLP0, PPIA, HPRT1, TBP, B2M
-        "ACTB": 1000, "GAPDH": 800, "RPLP0": 600, "PPIA": 400,
-        "HPRT1": 100, "TBP": 50, "B2M": 200,
-        # drops_in_ffpe: TTN, NEB, OBSCN, DST, RYR1, RYR2, MUC16, DMD, ESR1, PGR, PTEN
-        "TTN": 0.1, "NEB": 0.1, "OBSCN": 0.1, "DST": 0.1,
-        "RYR1": 0.1, "RYR2": 0.1, "MUC16": 0.1, "DMD": 0.1,
-        "ESR1": 0.1, "PGR": 0.1, "PTEN": 0.5,
+        # stable_in_ffpe: ACTB, GAPDH, RPLP0, RPL13, PPIA, HPRT1, TBP
+        "ACTB": 1000, "GAPDH": 800, "RPLP0": 600, "RPL13": 500,
+        "PPIA": 400, "HPRT1": 100, "TBP": 50,
+        # drops_in_ffpe: AHNAK, DYNC1H1, HUWE1, UBR4, MACF1, PLEC,
+        # BIRC6, SON, SPTAN1, TRRAP (biology-neutral giant scaffolds)
+        "AHNAK": 0.1, "DYNC1H1": 0.1, "HUWE1": 0.1, "UBR4": 0.1,
+        "MACF1": 0.1, "PLEC": 0.1, "BIRC6": 0.1, "SON": 0.1,
+        "SPTAN1": 0.1, "TRRAP": 0.1,
     }
     score, n = compute_ffpe_marker_score(sample)
     assert score is not None
@@ -349,14 +351,14 @@ def test_capture_biased_ffpe_now_detected_via_orthogonal_signals():
 
     # Background: enough reference genes and stable HK refs.
     rows = [
-        ("ACTB", 1000), ("GAPDH", 800), ("RPLP0", 600),
-        ("PPIA", 400), ("HPRT1", 100), ("TBP", 50), ("B2M", 200),
+        ("ACTB", 1000), ("GAPDH", 800), ("RPLP0", 600), ("RPL13", 500),
+        ("PPIA", 400), ("HPRT1", 100), ("TBP", 50),
         ("TUBB", 300), ("EEF1A1", 500),
     ]
-    # FFPE-sensitive panel: collapsed to near-zero.
-    for sym in ("TTN", "NEB", "OBSCN", "DST", "RYR1", "RYR2", "MUC16",
-                "DMD", "NRXN1", "NRXN3", "LRP1B", "PCDH15", "CSMD1",
-                "CSMD3", "ESR1", "PGR", "PTEN"):
+    # FFPE-sensitive panel (v4.4.1 biology-neutral scaffolds per #75):
+    # collapsed to near-zero.
+    for sym in ("AHNAK", "DYNC1H1", "HUWE1", "UBR4", "MACF1", "PLEC",
+                "BIRC6", "SON", "SPTAN1", "TRRAP"):
         rows.append((sym, 0.05))
     # MT mRNA present (so library_prep doesn't route to exome here —
     # we want preservation refinement to fire on its own).

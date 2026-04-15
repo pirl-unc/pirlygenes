@@ -481,8 +481,41 @@ def _build_transcript_expression_frame(df, verbose=False):
         if src in cols and dst not in out.columns:
             out[dst] = df[cols[src]].astype(str)
     out = out.dropna(subset=["length"])
+
+    # Resolve transcript → gene when the upstream frame doesn't carry
+    # gene identifiers (raw salmon quant.sf has Name/Length/TPM only).
+    # Downstream signals (isoform length bias) need a gene grouping
+    # key; without this they silently disable on the most common input.
+    if "ensembl_gene_id" not in out.columns and "gene_symbol" not in out.columns:
+        from .aggregate_gene_expression import _expanded_tx_map
+        from .transcript_to_gene import extra_tx_mappings
+        from .gene_ids import find_gene_name_from_ensembl_transcript_id
+
+        tx0 = out["transcript_id"].astype(str).str.split(".", n=1).str[0]
+        static_map = _expanded_tx_map(extra_tx_mappings or {})
+        gene_syms = tx0.map(static_map)
+        unresolved = gene_syms.isna()
+        if unresolved.any():
+            uniq = pd.Index(tx0[unresolved].unique())
+            if verbose:
+                print(
+                    f"[load] Resolving {len(uniq)} unknown transcripts via "
+                    "Ensembl for transcript-level signals"
+                )
+            resolved = {
+                t: find_gene_name_from_ensembl_transcript_id(t, verbose=False)
+                for t in uniq
+            }
+            gene_syms.loc[unresolved] = tx0[unresolved].map(resolved)
+        out["gene_symbol"] = gene_syms.astype(object)
+        out = out[out["gene_symbol"].notna()].copy()
+
     if verbose:
-        print(f"[load] Retained {len(out)} transcript-level rows for downstream signals")
+        print(
+            f"[load] Retained {len(out)} transcript-level rows for downstream signals"
+            + (" (no gene-id column; gene_symbol used for grouping)"
+               if "ensembl_gene_id" not in out.columns else "")
+        )
     return out
 
 
@@ -562,17 +595,18 @@ def load_expression_data(
             print("[load] Input is already gene-level via Gene.csv sidecar; skipping transcript aggregation")
         aggregate_gene_expression = False
 
+    # Preserve the transcript-level frame (if present in the input) so
+    # downstream stages can use it for capture-bias-immune signals
+    # (isoform length bias, APA-3'UTR usage). Computed here *before*
+    # aggregation / consolidation because those pandas groupby ops
+    # strip ``df.attrs``; the retained frame is re-attached to the
+    # final returned DataFrame right before return.
+    _retained_transcript_df = None
     if aggregate_gene_expression:
         if verbose:
             print("[load] Aggregating transcript-level TPM values to gene-level TPM")
-        # Preserve the transcript-level frame so downstream stages can
-        # use it for capture-bias-immune signals (isoform length bias,
-        # APA-3'UTR usage). Stored on the gene-level frame's ``attrs``
-        # so single-arg callers don't have to be threaded.
-        transcript_df = _build_transcript_expression_frame(df, verbose=verbose)
+        _retained_transcript_df = _build_transcript_expression_frame(df, verbose=verbose)
         df = tx2gene(df, verbose=verbose, progress=progress)
-        if transcript_df is not None and not transcript_df.empty:
-            df.attrs["transcript_expression"] = transcript_df
 
         if save_aggregated_gene_expression:
             if aggregated_output_path:
@@ -742,11 +776,19 @@ def load_expression_data(
     # whatever the other missed.  Sums TPM across alt-haplotype alleles.
     df = _apply_id_aliases_and_sum(df, verbose=verbose)
 
-    # Surface a transcript-level frame on ``df.attrs`` so downstream
+    # Attach a transcript-level frame on ``df.attrs`` so downstream
     # signals (isoform length bias, APA-3'UTR usage, etc.) can use
-    # capture-bias-immune within-gene comparisons. If the input was
-    # already gene-level, look for a sibling transcript file.
-    if "transcript_expression" not in df.attrs:
+    # capture-bias-immune within-gene comparisons. Prefer the frame we
+    # extracted before aggregation (it was computed from the
+    # transcript-level input rows); fall back to a sibling transcript
+    # file when the input was already gene-level. The re-attach here
+    # is the last step because intermediate ``groupby().agg()`` calls
+    # in ``_apply_id_aliases_and_sum`` / ``_consolidate_gene_ids``
+    # strip ``df.attrs`` — re-attaching at the final return ensures
+    # the caller sees the retained frame.
+    if _retained_transcript_df is not None and not _retained_transcript_df.empty:
+        df.attrs["transcript_expression"] = _retained_transcript_df
+    else:
         sibling_tx = _try_load_sibling_transcript_frame(input_path, verbose=verbose)
         if sibling_tx is not None:
             df.attrs["transcript_expression"] = sibling_tx

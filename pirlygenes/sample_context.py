@@ -376,7 +376,16 @@ def compute_isoform_length_bias(transcript_df, signals=None):
     needed = {"transcript_id", "length", "TPM"}
     if not needed.issubset(transcript_df.columns):
         return None, 0
-    if "ensembl_gene_id" not in transcript_df.columns:
+    # Accept either an ensembl_gene_id or gene_symbol column as the
+    # gene grouping key. Raw salmon quant.sf inputs come through with
+    # gene_symbol (resolved from transcript ID at load time) rather
+    # than gene_id.
+    group_col = None
+    if "ensembl_gene_id" in transcript_df.columns:
+        group_col = "ensembl_gene_id"
+    elif "gene_symbol" in transcript_df.columns:
+        group_col = "gene_symbol"
+    else:
         return None, 0
 
     import numpy as np
@@ -386,15 +395,19 @@ def compute_isoform_length_bias(transcript_df, signals=None):
     df["TPM"] = df["TPM"].astype(float)
     df = df[df["TPM"] > 0]
     df = df[df["length"] > 0]
-    df = df[df["ensembl_gene_id"].astype(str).str.startswith("ENS")]
+    # Strip trailing version on ENSG gene IDs; skip empty / NaN symbols.
+    if group_col == "ensembl_gene_id":
+        df = df[df["ensembl_gene_id"].astype(str).str.startswith("ENS")]
+        df["_gene_key"] = df["ensembl_gene_id"].astype(str).str.split(".", n=1).str[0]
+    else:
+        df = df[df["gene_symbol"].notna()]
+        df = df[df["gene_symbol"].astype(str).str.strip() != ""]
+        df["_gene_key"] = df["gene_symbol"].astype(str)
     if df.empty:
         return None, 0
 
-    # Drop trailing version on transcript IDs / gene IDs for grouping.
-    df["gene_id"] = df["ensembl_gene_id"].astype(str).str.split(".", n=1).str[0]
-
     ratios = []
-    for _, group in df.groupby("gene_id"):
+    for _, group in df.groupby("_gene_key"):
         if len(group) < 2:
             continue
         lo = float(group["length"].min())
