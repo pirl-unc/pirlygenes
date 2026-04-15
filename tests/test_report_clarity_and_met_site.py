@@ -199,6 +199,176 @@ def test_summary_md_structure_for_report_clarity(tmp_path):
     assert "similarity" in summary_md.lower()
 
 
+def test_compose_disease_state_detects_crpc_nepc_pattern():
+    """#78: AR retained + AR targets collapsed + NE up + AR axis
+    down must produce the castrate-resistant + emerging-NEPC narrative.
+    """
+    from pirlygenes.cli import compose_disease_state_narrative
+    from pirlygenes.therapy_response import TherapyAxisScore
+
+    analysis = {
+        "cancer_type": "PRAD",
+        "purity": {
+            "overall_estimate": 0.64,
+            "components": {
+                "lineage": {
+                    "per_gene": [
+                        {"gene": "AR", "purity": 0.51},
+                        {"gene": "STEAP2", "purity": 0.16},
+                        {"gene": "KLK3", "purity": 0.003},
+                        {"gene": "KLK2", "purity": 0.015},
+                        {"gene": "NKX3-1", "purity": 0.011},
+                        {"gene": "HOXB13", "purity": 0.004},
+                        {"gene": "FOLH1", "purity": 0.073},
+                    ]
+                }
+            },
+        },
+        "therapy_response_scores": {
+            "AR_signaling": TherapyAxisScore(
+                therapy_class="AR_signaling", state="down",
+                up_geomean_fold=0.33, down_geomean_fold=2.54,
+            ),
+            "NE_differentiation": TherapyAxisScore(
+                therapy_class="NE_differentiation", state="up",
+                up_geomean_fold=2.08,
+            ),
+            "EMT": TherapyAxisScore(
+                therapy_class="EMT", state="up", up_geomean_fold=8.95,
+            ),
+            "hypoxia": TherapyAxisScore(
+                therapy_class="hypoxia", state="up", up_geomean_fold=3.52,
+            ),
+            "IFN_response": TherapyAxisScore(
+                therapy_class="IFN_response", state="up",
+                up_geomean_fold=2.73,
+            ),
+        },
+    }
+    narrative = compose_disease_state_narrative(analysis)
+    # Core clinical call must be present.
+    assert "Castrate-resistant" in narrative
+    assert "neuroendocrine" in narrative.lower()
+    # Each collapsed AR target should be cited in evidence.
+    for g in ("KLK3", "KLK2", "NKX3-1"):
+        assert g in narrative
+    # EMT + hypoxia cross-axis must land.
+    assert "EMT" in narrative and "hypoxia" in narrative
+    # IFN active must be flagged so users discount MHC-I fold changes.
+    assert "IFN" in narrative
+
+
+def test_compose_disease_state_empty_when_no_pattern():
+    """Generic samples with nothing notable should not produce a
+    disease-state narrative — callers skip the section when empty.
+    """
+    from pirlygenes.cli import compose_disease_state_narrative
+
+    analysis = {
+        "cancer_type": "PRAD",
+        "purity": {"overall_estimate": 0.7, "components": {}},
+        "therapy_response_scores": {},
+    }
+    assert compose_disease_state_narrative(analysis) == ""
+
+
+def test_recommended_targets_skips_tme_dominant_rows():
+    """#79: ⚠⚠ (tme_dominant) rows must not appear in the Recommended
+    Targets Summary; they're called out as excluded."""
+    import pandas as pd
+    from pirlygenes.cli import _generate_target_report
+
+    purity = {
+        "overall_estimate": 0.6, "overall_lower": 0.5, "overall_upper": 0.7,
+    }
+    analysis = {
+        "sample_mode": "solid", "cancer_type": "PRAD",
+        "mhc1": {"HLA-A": 100, "HLA-B": 200, "HLA-C": 80, "B2M": 300},
+    }
+    ranges_df = pd.DataFrame([
+        # TME-dominant top row → must be filtered from the summary
+        {"symbol": "CD74", "median_est": 1580, "observed_tpm": 1580,
+         "est_1": 1156, "est_9": 1580, "pct_cancer_median": 1.5,
+         "tcga_percentile": 0.94, "is_surface": True, "is_cta": False,
+         "tme_explainable": True, "tme_dominant": True,
+         "excluded_from_ranking": False, "therapies": "",
+         "max_healthy_tpm": 2000, "tme_fold_lo": 0.1, "tme_fold_med": 0.2,
+         "tme_fold_hi": 0.3, "cohort_prior_tpm": 1400, "tme_only_tpm": 1100,
+         "matched_normal_tpm": 0, "matched_normal_tissue": "",
+         "matched_normal_fraction": 0.0, "estimation_path": "clamped",
+         "low_confidence_tumor": True, "category": "therapy_target",
+         **{f"est_{i+1}": 1156 + i*50 for i in range(9)},
+        },
+        # Clean ADAM9 → SHOULD appear in the summary
+        {"symbol": "ADAM9", "median_est": 998, "observed_tpm": 825,
+         "est_1": 696, "est_9": 2179, "pct_cancer_median": 7.5,
+         "tcga_percentile": 1.0, "is_surface": True, "is_cta": False,
+         "tme_explainable": False, "tme_dominant": False,
+         "excluded_from_ranking": False, "therapies": "ADC",
+         "max_healthy_tpm": 300, "tme_fold_lo": 0.1, "tme_fold_med": 0.2,
+         "tme_fold_hi": 0.3, "cohort_prior_tpm": 100, "tme_only_tpm": 150,
+         "matched_normal_tpm": 0, "matched_normal_tissue": "",
+         "matched_normal_fraction": 0.0, "estimation_path": "tme_only",
+         "low_confidence_tumor": False, "category": "therapy_target",
+         **{f"est_{i+1}": 696 + i*150 for i in range(9)},
+        },
+    ])
+
+    tmp_prefix = "/tmp/target_test"
+    import os
+    if os.path.exists(f"{tmp_prefix}-targets.md"):
+        os.remove(f"{tmp_prefix}-targets.md")
+    _generate_target_report(
+        ranges_df, analysis, tmp_prefix, cancer_type="PRAD",
+        purity_result=purity,
+    )
+    targets = open(f"{tmp_prefix}-targets.md").read()
+
+    # The Recommended Targets section must not list CD74 as a best
+    # surface target — it was ⚠⚠ flagged.
+    recs_block = targets.split("## Recommended Targets Summary")[-1]
+    assert "**Best surface targets**" in recs_block
+    # Clean ADAM9 should be there
+    assert "ADAM9" in recs_block
+    # CD74 is in the full targets table above but NOT in the
+    # recommendations block
+    assert "CD74" not in recs_block.split("**Best CTA targets**")[0]
+
+
+def test_ci_confidence_tier_buckets():
+    from pirlygenes.cli import _ci_confidence_tier
+
+    assert _ci_confidence_tier(0.58, 0.70) == "high"       # span 0.12
+    assert _ci_confidence_tier(0.40, 0.70) == "moderate"   # span 0.30
+    assert _ci_confidence_tier(0.19, 1.00) == "low"        # span 0.81
+    assert _ci_confidence_tier(None, 0.5) == "unknown"
+
+
+def test_filter_quality_flags_rewrites_mt_warning_under_exome():
+    """#77: MT 'Suspicious' warning must be rewritten as informational
+    when the inferred library prep (exome capture / poly-A) already
+    explains MT absence."""
+    from pirlygenes.cli import _filter_quality_flags_against_context
+    from pirlygenes.sample_context import SampleContext
+
+    flags = [
+        "Suspicious MT fraction: 0.0% (n_mt_found=13/15) — mitochondrial "
+        "genes appear filtered or renamed in the input",
+        "Some other warning that must pass through",
+    ]
+    ctx = SampleContext(library_prep="exome_capture")
+    out = _filter_quality_flags_against_context(flags, ctx)
+    assert len(out) == 2
+    assert "Suspicious MT fraction" not in out[0]
+    assert "informational" in out[0]
+    assert out[1] == "Some other warning that must pass through"
+
+    # Under total_rna the warning should pass through unchanged.
+    ctx2 = SampleContext(library_prep="total_rna")
+    out2 = _filter_quality_flags_against_context(flags, ctx2)
+    assert "Suspicious MT fraction" in out2[0]
+
+
 def test_cli_analyze_rejects_invalid_met_site(monkeypatch, tmp_path):
     """CLI-level validation: analyze() should raise ValueError on
     an unknown --met-site value rather than silently ignoring it."""
