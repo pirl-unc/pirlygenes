@@ -431,6 +431,95 @@ def _attach_gene_sidecar_if_present(input_path, df, verbose=True):
     return out, True
 
 
+def _build_transcript_expression_frame(df, verbose=False):
+    """Return a normalized transcript-level frame extracted from ``df``.
+
+    The input must look like a salmon ``quant.sf`` (Name + Length + TPM)
+    or a previously-rebuilt rich transcript table
+    (ensembl_transcript_id + length + TPM). Returns columns:
+
+    - ``transcript_id``
+    - ``length`` (transcript length in nt; needed for length-bias)
+    - ``TPM``
+    - ``ensembl_gene_id`` (when available)
+    - ``gene_symbol`` (when available)
+
+    Returns ``None`` if no usable transcript columns are found — the
+    caller treats that as "transcript-level signals unavailable".
+    """
+    cols = {c.lower(): c for c in df.columns}
+    tx_col = next(
+        (cols[c] for c in (
+            "ensembl_transcript_id", "transcript_id", "name",
+            "transcript", "target", "target_id", "transcriptid", "targetid",
+        ) if c in cols),
+        None,
+    )
+    len_col = next(
+        (cols[c] for c in ("length", "transcript_length") if c in cols),
+        None,
+    )
+    tpm_col = next(
+        (cols[c] for c in ("tpm",) if c in cols),
+        None,
+    )
+    if tx_col is None or len_col is None or tpm_col is None:
+        return None
+
+    out = pd.DataFrame({
+        "transcript_id": df[tx_col].astype(str),
+        "length": pd.to_numeric(df[len_col], errors="coerce"),
+        "TPM": pd.to_numeric(df[tpm_col], errors="coerce").fillna(0.0),
+    })
+    for src, dst in (
+        ("ensembl_gene_id", "ensembl_gene_id"),
+        ("gene_id", "ensembl_gene_id"),
+        ("gene_symbol", "gene_symbol"),
+        ("gene", "gene_symbol"),
+        ("symbol", "gene_symbol"),
+    ):
+        if src in cols and dst not in out.columns:
+            out[dst] = df[cols[src]].astype(str)
+    out = out.dropna(subset=["length"])
+    if verbose:
+        print(f"[load] Retained {len(out)} transcript-level rows for downstream signals")
+    return out
+
+
+def _try_load_sibling_transcript_frame(input_path, verbose=False):
+    """When the user passed a gene-level table, look for a sibling
+    transcript-level file in the same directory and load it.
+
+    Recognises ``transcript_expression_salmon.tsv`` (rich format with
+    gene + length + TPM) and the standard salmon ``quant.sf``. Returns
+    the normalized transcript frame or ``None`` if no sibling found.
+    """
+    try:
+        parent = Path(input_path).resolve().parent
+    except (OSError, RuntimeError):
+        return None
+    candidates = [
+        parent / "transcript_expression_salmon.tsv",
+        parent / "tempus-rna" / "salmon_rich_quant" / "quant.sf",
+    ]
+    for c in candidates:
+        if c.exists():
+            try:
+                if c.suffix == ".sf":
+                    raw = pd.read_csv(str(c), sep="\t")
+                else:
+                    raw = pd.read_csv(str(c), sep="\t")
+                tx = _build_transcript_expression_frame(raw, verbose=verbose)
+                if tx is not None and not tx.empty:
+                    if verbose:
+                        print(f"[load] Picked up sibling transcript file: {c}")
+                    return tx
+            except Exception as exc:  # noqa: BLE001
+                if verbose:
+                    print(f"[load] Sibling transcript file load failed for {c}: {exc}")
+    return None
+
+
 def load_expression_data(
     input_path,
     aggregate_gene_expression=False,
@@ -476,7 +565,14 @@ def load_expression_data(
     if aggregate_gene_expression:
         if verbose:
             print("[load] Aggregating transcript-level TPM values to gene-level TPM")
+        # Preserve the transcript-level frame so downstream stages can
+        # use it for capture-bias-immune signals (isoform length bias,
+        # APA-3'UTR usage). Stored on the gene-level frame's ``attrs``
+        # so single-arg callers don't have to be threaded.
+        transcript_df = _build_transcript_expression_frame(df, verbose=verbose)
         df = tx2gene(df, verbose=verbose, progress=progress)
+        if transcript_df is not None and not transcript_df.empty:
+            df.attrs["transcript_expression"] = transcript_df
 
         if save_aggregated_gene_expression:
             if aggregated_output_path:
@@ -645,6 +741,15 @@ def load_expression_data(
     # Runs after symbol consolidation so either approach can consolidate
     # whatever the other missed.  Sums TPM across alt-haplotype alleles.
     df = _apply_id_aliases_and_sum(df, verbose=verbose)
+
+    # Surface a transcript-level frame on ``df.attrs`` so downstream
+    # signals (isoform length bias, APA-3'UTR usage, etc.) can use
+    # capture-bias-immune within-gene comparisons. If the input was
+    # already gene-level, look for a sibling transcript file.
+    if "transcript_expression" not in df.attrs:
+        sibling_tx = _try_load_sibling_transcript_frame(input_path, verbose=verbose)
+        if sibling_tx is not None:
+            df.attrs["transcript_expression"] = sibling_tx
 
     if verbose:
         print(

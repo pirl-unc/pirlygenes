@@ -276,6 +276,121 @@ def test_degradation_index_above_upper_bound_yields_unknown_preservation():
     assert ctx.degradation_index is not None and ctx.degradation_index > 1.4
 
 
+def test_compute_isoform_length_bias_returns_index_for_synthetic_ffpe():
+    """Within-gene shorter-isoform preference (FFPE pattern) must yield
+    an isoform-length-bias index well below 1.0; balanced isoform usage
+    must sit near 1.0."""
+    import pandas as pd
+    from pirlygenes.sample_context import compute_isoform_length_bias
+
+    # Two genes, each with 3 isoforms of different lengths.
+    rows = []
+    for gene_idx in range(60):  # need >= 50 multi-isoform genes for the call
+        gid = f"ENSG{gene_idx:011d}"
+        # FFPE pattern: short isoform dominates.
+        rows += [
+            (f"ENST{gene_idx:08d}A.1", 600,  100.0, gid),
+            (f"ENST{gene_idx:08d}B.1", 3000, 5.0,   gid),
+            (f"ENST{gene_idx:08d}C.1", 8000, 1.0,   gid),
+        ]
+    df = pd.DataFrame(rows, columns=["transcript_id", "length", "TPM", "ensembl_gene_id"])
+
+    index, n_genes = compute_isoform_length_bias(df)
+    assert n_genes == 60
+    assert index is not None
+    # Heavy short-isoform preference → index well below 1.0
+    assert index < 0.5
+
+    # Now balanced usage — index should sit near 1.0.
+    balanced_rows = []
+    for gene_idx in range(60):
+        gid = f"ENSG{gene_idx:011d}"
+        balanced_rows += [
+            (f"ENST{gene_idx:08d}A.1", 600,  50.0, gid),
+            (f"ENST{gene_idx:08d}B.1", 3000, 50.0, gid),
+            (f"ENST{gene_idx:08d}C.1", 8000, 50.0, gid),
+        ]
+    bdf = pd.DataFrame(balanced_rows, columns=["transcript_id", "length", "TPM", "ensembl_gene_id"])
+    bidx, _ = compute_isoform_length_bias(bdf)
+    assert bidx is not None
+    assert 0.7 < bidx < 1.3, f"Balanced usage expected ~1.0, got {bidx}"
+
+
+def test_compute_ffpe_marker_score_returns_value_for_present_panel():
+    from pirlygenes.sample_context import compute_ffpe_marker_score
+
+    # Synthetic sample where stable refs are high and FFPE-sensitive
+    # genes are very low (the FFPE pattern).
+    sample = {
+        # stable_in_ffpe panel: ACTB, GAPDH, RPLP0, PPIA, HPRT1, TBP, B2M
+        "ACTB": 1000, "GAPDH": 800, "RPLP0": 600, "PPIA": 400,
+        "HPRT1": 100, "TBP": 50, "B2M": 200,
+        # drops_in_ffpe: TTN, NEB, OBSCN, DST, RYR1, RYR2, MUC16, DMD, ESR1, PGR, PTEN
+        "TTN": 0.1, "NEB": 0.1, "OBSCN": 0.1, "DST": 0.1,
+        "RYR1": 0.1, "RYR2": 0.1, "MUC16": 0.1, "DMD": 0.1,
+        "ESR1": 0.1, "PGR": 0.1, "PTEN": 0.5,
+    }
+    score, n = compute_ffpe_marker_score(sample)
+    assert score is not None
+    assert n >= 10
+    # Heavy suppression of the panel relative to refs → score >> 100.
+    assert score > 100.0
+
+
+def test_capture_biased_ffpe_now_detected_via_orthogonal_signals():
+    """Synthesises the Tempus FFPE pattern: capture-enriched (length-
+    pair index inflated >1.4) AND FFPE marker panel suppressed AND
+    isoform usage shifted short. The orthogonal-signal refinement
+    must promote preservation from `unknown` to `ffpe`.
+    """
+    import pandas as pd
+    from pirlygenes.gene_sets_cancer import degradation_gene_pairs
+    from pirlygenes.sample_context import infer_sample_context
+
+    # Background: enough reference genes and stable HK refs.
+    rows = [
+        ("ACTB", 1000), ("GAPDH", 800), ("RPLP0", 600),
+        ("PPIA", 400), ("HPRT1", 100), ("TBP", 50), ("B2M", 200),
+        ("TUBB", 300), ("EEF1A1", 500),
+    ]
+    # FFPE-sensitive panel: collapsed to near-zero.
+    for sym in ("TTN", "NEB", "OBSCN", "DST", "RYR1", "RYR2", "MUC16",
+                "DMD", "NRXN1", "NRXN3", "LRP1B", "PCDH15", "CSMD1",
+                "CSMD3", "ESR1", "PGR", "PTEN"):
+        rows.append((sym, 0.05))
+    # MT mRNA present (so library_prep doesn't route to exome here —
+    # we want preservation refinement to fire on its own).
+    for sym in _MT_MRNA_SYMBOLS:
+        rows.append((sym, 30.0))
+    # Length-pair index: long >> short, ~3× expected (capture-bias regime).
+    for short_sym, long_sym, expected in list(degradation_gene_pairs())[:18]:
+        rows.append((short_sym, 20.0))
+        rows.append((long_sym, 20.0 * float(expected) * 3.0))
+
+    frame = _frame_from_pairs(rows)
+
+    # Synthesize a transcript-level frame attached via ``attrs`` —
+    # within-gene short-isoform preference for 60 multi-isoform genes.
+    tx_rows = []
+    for i in range(60):
+        gid = f"ENSG{i:011d}"
+        tx_rows += [
+            (f"ENST{i:08d}A.1", 600,  120.0, gid),
+            (f"ENST{i:08d}B.1", 3000, 5.0,   gid),
+            (f"ENST{i:08d}C.1", 8000, 0.5,   gid),
+        ]
+    tx_df = pd.DataFrame(
+        tx_rows, columns=["transcript_id", "length", "TPM", "ensembl_gene_id"]
+    )
+    frame.attrs["transcript_expression"] = tx_df
+
+    ctx = infer_sample_context(frame)
+    assert ctx.preservation == "ffpe", (ctx.preservation, ctx.flags)
+    assert ctx.degradation_severity in ("moderate", "severe")
+    # The flag must mention orthogonal signals.
+    assert any("orthogonal signals" in f for f in ctx.flags), ctx.flags
+
+
 def test_plot_sample_context_writes_png(tmp_path):
     from pirlygenes.sample_context import plot_sample_context
 
