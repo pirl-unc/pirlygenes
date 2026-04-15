@@ -144,6 +144,197 @@ def _parse_csv_tokens(arg_value: Optional[str]):
     return tokens or None
 
 
+_MT_EXPECTED_MISSING_PREPS = frozenset({"poly_a", "exome_capture"})
+
+# Genes we treat as "AR-transactivation output" — the downstream AR-
+# target program that collapses in castrate-resistant PRAD. Used by
+# the synthesis layer (#78) to detect the AR-retained-but-targets-
+# collapsed pattern typical of ADT-treated CRPC.
+_PRAD_AR_TARGET_GENES = frozenset({
+    "KLK3", "KLK2", "NKX3-1", "HOXB13", "FOLH1", "TMPRSS2",
+    "SLC45A3", "NDRG1", "PMEPA1", "FKBP5",
+})
+
+# Genes annotated in the therapy_response AR_signaling *up* panel but
+# also core ISGs — used to tag per-gene surface-target fold-changes as
+# "IFN-driven" when the IFN_response axis is active.
+_CORE_ISG_SURFACE = frozenset({
+    "HLA-A", "HLA-B", "HLA-C", "HLA-F", "HLA-E",
+    "HLA-DPA1", "HLA-DPB1", "HLA-DQA1", "HLA-DQB1", "HLA-DRA", "HLA-DRB1",
+    "B2M", "TAP1", "TAP2",
+    "STAT1", "IRF1", "ISG15", "IFIT1", "IFIT3", "MX1", "OAS1", "OAS2",
+    "CXCL9", "CXCL10",
+})
+
+
+def compose_disease_state_narrative(analysis) -> str:
+    """Synthesize a one-line disease-state narrative from combined
+    signals (issue #78).
+
+    Draws on the candidate trace, lineage-gene calibration, and
+    therapy-response axis scores. Cancer-type-family-specific rules;
+    PRAD covers the castrate-resistant / NEPC pattern first since
+    that's the validation case (Tempus FFPE PRAD sample: AR retained
+    at 51% + KLK3/KLK2/NKX3-1/HOXB13 all < 2% + NE markers elevated
+    = textbook ADT-treated CRPC trending toward NEPC).
+
+    Returns an empty string when no family rule matches — callers
+    skip rendering in that case.
+    """
+    cancer_code = analysis.get("cancer_type")
+    therapy_scores = analysis.get("therapy_response_scores") or {}
+    purity = analysis.get("purity") or {}
+    components = purity.get("components") or {}
+    lineage = components.get("lineage") or {}
+    per_gene = lineage.get("per_gene") or []
+
+    # Bucket lineage genes by their independent purity estimate.
+    retained: set[str] = set()
+    collapsed: set[str] = set()
+    for g in per_gene:
+        sym = g.get("gene")
+        est = g.get("purity")
+        if not sym or est is None:
+            continue
+        if est >= 0.30:
+            retained.add(sym)
+        elif est < 0.05:
+            collapsed.add(sym)
+
+    # Axis states
+    def _state(cls):
+        s = therapy_scores.get(cls)
+        return s.state if s is not None else None
+
+    ar_state = _state("AR_signaling")
+    ne_state = _state("NE_differentiation")
+    emt_state = _state("EMT")
+    ifn_state = _state("IFN_response")
+    hypoxia_state = _state("hypoxia")
+    er_state = _state("ER_signaling")
+    her2_state = _state("HER2_signaling")
+
+    parts: list[str] = []
+
+    if cancer_code == "PRAD":
+        ar_retained = "AR" in retained
+        ar_targets_collapsed = len(_PRAD_AR_TARGET_GENES & collapsed) >= 3
+        if ar_retained and ar_targets_collapsed and ar_state == "down":
+            verb = (
+                "**Castrate-resistant pattern**: AR receptor retained "
+                "while AR-transactivation targets "
+                f"({', '.join(sorted(_PRAD_AR_TARGET_GENES & collapsed))}) "
+                "are collapsed — consistent with prior ADT exposure"
+            )
+            if ne_state == "up":
+                verb += (
+                    " with **emerging neuroendocrine differentiation** "
+                    "(NE markers elevated; workup for NEPC warranted)"
+                )
+            verb += "."
+            parts.append(verb)
+        elif ar_state == "down":
+            parts.append(
+                "**AR axis suppressed** — consistent with ADT exposure. "
+                "Lineage AR was not retained in the sample; insufficient "
+                "signal for a castrate-resistant call."
+            )
+    elif cancer_code in ("BRCA",):
+        if er_state == "down" and "ESR1" in collapsed:
+            parts.append(
+                "**ER-axis suppressed / endocrine-exposed pattern** "
+                "(ESR1 low, classic ER targets collapsed)."
+            )
+        if her2_state == "up":
+            parts.append(
+                "**HER2-amplification pattern** (ERBB2 / GRB7 / STARD3 "
+                "co-elevated)."
+            )
+
+    # Cross-axis observation: EMT + hypoxia together typically signal
+    # an aggressive / treatment-resistant phenotype regardless of
+    # cancer type.
+    if emt_state == "up" and hypoxia_state == "up":
+        parts.append(
+            "EMT and hypoxia programs are both active — aggressive-"
+            "phenotype pattern."
+        )
+    elif emt_state == "up":
+        parts.append("EMT program is active (mesenchymal switch).")
+
+    # Active IFN response affects how we read high-fold-change
+    # surface / MHC targets; mention so the reader knows the targets
+    # table carries IFN-driven inflation.
+    if ifn_state == "up":
+        parts.append(
+            "**Active IFN response** — MHC-I / ISG surface fold-changes "
+            "in the therapy-target tables carry IFN-driven inflation "
+            "and are not tumor-cell-specific."
+        )
+
+    return " ".join(parts)
+
+
+def annotate_surface_targets_with_cross_signals(ranges_df, therapy_scores):
+    """Return a map ``{symbol: note}`` annotating surface / intracellular
+    targets whose elevation is likely *driven by* an active therapy-
+    response axis rather than tumor-cell specificity (issue #78).
+
+    Currently covers IFN: when ``IFN_response`` axis is active and the
+    gene is a core ISG, tag with "IFN-driven". The renderer attaches
+    these notes inline in the target tables so a high fold-change
+    isn't read as pure tumor-cell selectivity.
+    """
+    ifn = therapy_scores.get("IFN_response")
+    if ifn is None or getattr(ifn, "state", None) != "up":
+        return {}
+    return {sym: "IFN-driven" for sym in _CORE_ISG_SURFACE}
+
+
+def _filter_quality_flags_against_context(flags, sample_context):
+    """Drop / rewrite quality flags that the stage-1 SampleContext
+    already explains (issue #77).
+
+    Specifically: the "Suspicious MT fraction" warning fires whenever
+    MT detection is near zero, but that's *expected* under the poly-A
+    and exome-capture library preps we already inferred. In those
+    cases the warning is noise — replace it with an informational
+    line so readers see the reason rather than a false alarm.
+    """
+    if sample_context is None:
+        return list(flags)
+    prep = getattr(sample_context, "library_prep", None)
+    out = []
+    for flag in flags:
+        if "Suspicious MT fraction" in flag and prep in _MT_EXPECTED_MISSING_PREPS:
+            prep_label = prep.replace("_", " ")
+            out.append(
+                f"MT fraction near zero — consistent with {prep_label} "
+                "library prep; degradation signal from MT fold is not "
+                "assessable (this is informational, not a warning)"
+            )
+        else:
+            out.append(flag)
+    return out
+
+
+def _ci_confidence_tier(overall_lower, overall_upper):
+    """Map a (lower, upper) span to a confidence tier (issue #79).
+
+    Reader-facing tags on the purity estimate so a 19–100% CI is
+    visibly different from a 58–70% CI in the report.
+    """
+    try:
+        span = float(overall_upper) - float(overall_lower)
+    except (TypeError, ValueError):
+        return "unknown"
+    if span < 0.15:
+        return "high"
+    if span < 0.35:
+        return "moderate"
+    return "low"
+
+
 def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
     """Delete stale files from a prior run sharing the same output prefix.
 
@@ -411,7 +602,16 @@ def analyze(
     # are available for tissue-matched degradation baselines.
     quality = assess_sample_quality(df_expr, tissue_scores=analysis.get("tissue_scores"))
     analysis["quality"] = quality
-    for flag in quality["flags"]:
+    # #77: filter quality flags against the stage-1 SampleContext — the
+    # "Suspicious MT fraction" warning is a false alarm when the
+    # library prep we already inferred (exome capture / poly-A) legitimately
+    # strips MT. Same filtered list is used by the markdown reports,
+    # so the three documents agree on the same set of concerns.
+    filtered_flags = _filter_quality_flags_against_context(
+        quality["flags"], sample_context
+    )
+    quality["filtered_flags"] = filtered_flags
+    for flag in filtered_flags:
         qtag = "[quality]" if not quality["has_issues"] else "[quality WARNING]"
         print(f"{qtag} {flag}")
 
@@ -1012,27 +1212,47 @@ def _purity_metric_label(sample_mode):
     return "tumor purity"
 
 
+def _purity_ci_phrase(purity):
+    """Render the purity estimate and CI with an explicit low-confidence
+    tag when the interval is so wide it provides almost no constraint
+    (issue #79). A 19%-100% CI should NOT look the same to a reader as
+    a 58%-70% CI.
+    """
+    est = purity["overall_estimate"]
+    lo = purity["overall_lower"]
+    hi = purity["overall_upper"]
+    tier = _ci_confidence_tier(lo, hi)
+    core = f"**{est:.0%}** (range {lo:.0%}–{hi:.0%})"
+    if tier == "low":
+        core += (
+            " — **⚠ low-confidence**: the CI spans "
+            f"{(hi - lo):.0%}, so per-gene tumor-expression estimates "
+            "derived from this purity carry wide error bars"
+        )
+    elif tier == "moderate":
+        core += " (moderate-width CI)"
+    return core
+
+
 def _summary_mode_clause(sample_mode, purity, top_tissues):
     tissue_str = ", ".join(f"{t} ({s:.2f})" for t, s, _ in top_tissues[:3])
+    ci_phrase = _purity_ci_phrase(purity)
     if sample_mode == "pure":
         return (
             f"The sample was analyzed in **pure-population mode**. The reported "
-            f"purity-like estimate (**{purity['overall_estimate']:.0%}**, range "
-            f"{purity['overall_lower']:.0%}–{purity['overall_upper']:.0%}) is best read as "
+            f"purity-like estimate ({ci_phrase}) is best read as "
             "a coherence check against the matched lineage profile rather than as a bulk admixture fraction. "
             f"Residual background signatures are limited ({tissue_str}). "
         )
     if sample_mode == "heme":
         return (
-            f"The estimated **malignant-lineage fraction proxy** is **{purity['overall_estimate']:.0%}** "
-            f"(range {purity['overall_lower']:.0%}–{purity['overall_upper']:.0%}). "
+            f"The estimated **malignant-lineage fraction proxy** is {ci_phrase}. "
             "In heme mode this is not a strict tumor-vs-immune split; it reflects how strongly the sample "
             "resembles the matched malignant program relative to hematopoietic background. "
             f"Top lineage/background contexts: {tissue_str}. "
         )
     return (
-        f"Estimated tumor purity is **{purity['overall_estimate']:.0%}** "
-        f"(range {purity['overall_lower']:.0%}–{purity['overall_upper']:.0%}), "
+        f"Estimated tumor purity is {ci_phrase}, "
         f"with {purity['components']['stromal']['enrichment']:.1f}x stromal "
         f"and {purity['components']['immune']['enrichment']:.1f}x immune enrichment "
         f"vs TCGA median. "
@@ -1319,6 +1539,9 @@ def _generate_text_reports(
     # *not* in the order variables were defined — so the narrative
     # starts with QC and ends with ambiguity / constraints.
 
+    # Disease-state synthesis (#78): one-line narrative up top.
+    disease_state_paragraph = compose_disease_state_narrative(analysis)
+
     # Stage 1: input & sample-QC framing.
     sample_context = analysis.get("sample_context")
     context_paragraph = ""
@@ -1334,22 +1557,28 @@ def _generate_text_reports(
             context_line += "."
         if ctx_signals.get("likely_targeted_panel"):
             context_line += " ⚠ Input looks like a targeted panel rather than whole-transcriptome."
-        if sample_context.missing_mt:
+        if sample_context.missing_mt and getattr(sample_context, "library_prep", None) not in _MT_EXPECTED_MISSING_PREPS:
+            # #77: suppress the MT caveat when the inferred library
+            # prep already explains the absence — avoids double-counting.
             context_line += " ⚠ MT genes missing from quant — degradation signal unreliable."
-        if sample_context.purity_ci_widening_factor() > 1.0:
-            context_line += (
-                f" Purity CIs widened ×{sample_context.purity_ci_widening_factor():.2f} "
-                "to reflect degradation-driven noise."
-            )
         context_paragraph = context_line
 
     # Quality flags land right after sample_context in the QC block.
     quality = analysis.get("quality")
     quality_paragraph = ""
     if quality and quality.get("has_issues"):
-        quality_paragraph = "**Quality warnings**: " + "; ".join(quality["flags"]) + "."
+        # Prefer the SampleContext-filtered flag list (#77) so the MT
+        # warning doesn't double-count an exome-capture library prep
+        # we already explained.
+        flags_to_show = quality.get("filtered_flags", quality["flags"])
+        # Only emit a "Quality warnings" paragraph when real issues
+        # remain after filtering — otherwise skip entirely.
+        if flags_to_show and any(not f.startswith("MT fraction near zero") for f in flags_to_show):
+            quality_paragraph = "**Quality warnings**: " + "; ".join(flags_to_show) + "."
     elif quality and quality["degradation"]["level"] != "normal":
-        quality_paragraph = "**Quality note**: " + "; ".join(quality["flags"]) + "."
+        flags_to_show = quality.get("filtered_flags", quality["flags"])
+        if flags_to_show:
+            quality_paragraph = "**Quality note**: " + "; ".join(flags_to_show) + "."
 
     # Stage 2: headline call (already built above as `intro`).
     headline = intro
@@ -1447,8 +1676,14 @@ def _generate_text_reports(
             "to reference nTPM profiles, not composition percentages.*"
         )
 
-    # Assemble in the user-requested order (QC → coarse call → detail).
+    # Assemble in the user-requested order: disease-state synthesis
+    # (#78) → QC → coarse call → detail. The synthesis line lands
+    # *before* the QC block so a reader immediately sees the clinical
+    # framing ("ADT-treated CRPC with emerging NEPC") before
+    # descending into sequencing QC or the raw cancer-type number.
     sections = []
+    if disease_state_paragraph:
+        sections.append(f"**Disease state**: {disease_state_paragraph}")
     qc_block = "\n\n".join([b for b in (context_paragraph, quality_paragraph) if b])
     if qc_block:
         sections.append(qc_block)
@@ -1467,6 +1702,11 @@ def _generate_text_reports(
 
     # --- Detailed report ---
     lines = ["# Detailed Sample Analysis\n"]
+
+    # Disease-state synthesis (#78) — matches the summary.md top line
+    # so readers arriving from either report see the same framing.
+    if disease_state_paragraph:
+        lines.append(f"**Disease state**: {disease_state_paragraph}\n")
 
     # Input characterization (#68) — surfaced before quality/decomp so
     # readers see whether the file we analysed was transcript-level vs
@@ -1513,13 +1753,39 @@ def _generate_text_reports(
             )
         lines.append("")
 
-    # Sample quality
+    # Sample quality — driven by the stage-1 SampleContext so the
+    # three report sections (summary / analysis / targets) agree
+    # (#77). The raw sample_quality output is still used for its
+    # tissue-matched baselines, but the top-level "is this sample
+    # degraded?" answer comes from sample_context.preservation.
     quality = analysis.get("quality")
     if quality:
         lines.append("## Sample Quality\n")
         deg = quality["degradation"]
         cul = quality["culture"]
-        lines.append(f"**RNA degradation**: {deg['level']}")
+
+        if sample_context is not None:
+            # Preservation call is the sample_context call; the
+            # sample_quality raw-signal read is shown as supporting
+            # detail under it, not as a competing verdict.
+            preservation_label = sample_context.preservation.replace("_", " ")
+            prep = getattr(sample_context, "library_prep", "unknown")
+            prep_label = prep.replace("_", " ")
+            lines.append(
+                f"**Preservation**: {preservation_label} "
+                f"(library prep inferred as *{prep_label}*, confidence "
+                f"{sample_context.library_prep_confidence:.0%})"
+            )
+            if sample_context.degradation_severity and sample_context.degradation_severity != "none":
+                lines.append(
+                    f"- Severity: {sample_context.degradation_severity}"
+                    + (
+                        f" (length-pair index {sample_context.degradation_index:.2f})"
+                        if sample_context.degradation_index is not None else ""
+                    )
+                )
+        else:
+            lines.append(f"**RNA degradation**: {deg['level']}")
         lines.append(f"- Mitochondrial fraction: {deg['mt_fraction']:.1%}")
         lines.append(f"- Ribosomal protein fraction: {deg['rp_fraction']:.1%}")
         if deg.get("long_short_ratio") is not None:
@@ -1529,19 +1795,33 @@ def _generate_text_reports(
                          f"(MT={deg['baseline_mt']:.1%}, RP={deg['baseline_rp']:.1%})")
             if deg.get("mt_fold") is not None:
                 lines.append(f"- Fold over baseline: MT {deg['mt_fold']:.1f}×, RP {deg['rp_fold']:.1f}×")
-        if deg["level"] != "normal":
+        # #77: only echo the raw sample_quality "MT filtered" message
+        # when the inferred library prep doesn't already explain it.
+        prep = getattr(sample_context, "library_prep", None) if sample_context else None
+        mt_expected_missing = prep in _MT_EXPECTED_MISSING_PREPS
+        if deg["level"] not in ("normal", "unknown"):
+            lines.append(f"- *{deg['message']}*")
+        elif deg["level"] == "unknown" and not mt_expected_missing:
             lines.append(f"- *{deg['message']}*")
         lines.append("")
-        lines.append(f"**Cell culture / cell line**: {cul['level'].replace('_', ' ')}")
-        lines.append(f"- Culture-stress z-score: {cul['stress_score']:.1f}")
-        lines.append(f"- TME marker mean: {cul['tme_mean_tpm']:.1f} TPM "
-                     f"({'absent' if cul['tme_absent'] else 'present'})")
-        if cul["top_stress_genes"]:
-            top_genes_str = ", ".join(f"{g}={t:.0f}" for g, t in cul["top_stress_genes"][:5])
-            lines.append(f"- Top stress genes: {top_genes_str}")
-        if cul["level"] != "normal":
-            lines.append(f"- *{cul['message']}*")
-        lines.append("")
+
+        # Cell-culture / stress section is only meaningful when the
+        # sample may plausibly be a cell line. Skip for solid-tumor
+        # biopsies (#77) — the HSP90AA1 / GLS elevated pattern is
+        # almost always hypoxia / tumor metabolism, already covered
+        # by the therapy-response hypoxia axis.
+        skip_culture = sample_mode == "solid"
+        if not skip_culture:
+            lines.append(f"**Cell culture / cell line**: {cul['level'].replace('_', ' ')}")
+            lines.append(f"- Culture-stress z-score: {cul['stress_score']:.1f}")
+            lines.append(f"- TME marker mean: {cul['tme_mean_tpm']:.1f} TPM "
+                         f"({'absent' if cul['tme_absent'] else 'present'})")
+            if cul["top_stress_genes"]:
+                top_genes_str = ", ".join(f"{g}={t:.0f}" for g, t in cul["top_stress_genes"][:5])
+                lines.append(f"- Top stress genes: {top_genes_str}")
+            if cul["level"] != "normal":
+                lines.append(f"- *{cul['message']}*")
+            lines.append("")
 
     # Cancer type identification
     lines.append("## Cancer Type Identification\n")
@@ -1858,11 +2138,35 @@ def _generate_text_reports(
             lines.append("### Best-Fit Components\n")
             lines.append("| Component | Fraction | Marker score | Top markers |")
             lines.append("|-----------|----------|--------------|-------------|")
-            for _, row in best_decomp.component_trace.iterrows():
+            # #79: collapse components with < 0.5% fraction into a
+            # single summary row so the useful entries are legible.
+            trace_df = best_decomp.component_trace
+            shown = trace_df[trace_df["fraction"] >= 0.005]
+            hidden = trace_df[trace_df["fraction"] < 0.005]
+            for _, row in shown.iterrows():
+                comp = row["component"]
+                marker_score = row["marker_score"]
+                score_cell = (
+                    f"{marker_score:.3f}" if isinstance(marker_score, (int, float))
+                    and marker_score is not None else (marker_score if marker_score else "—")
+                )
+                top_markers_cell = row["top_markers"]
+                # Matched-normal compartments have no decomposition
+                # markers by design (see panels.py); annotate rather
+                # than leave the empty cell unexplained (#79).
+                if str(comp).startswith("matched_normal_") and (
+                    not top_markers_cell or str(top_markers_cell).strip() == ""
+                ):
+                    top_markers_cell = "*matched-normal compartment — fraction derived from lineage-panel estimate (#52), not discriminative markers*"
+                    if score_cell in ("—", "", "0.000", "0.0"):
+                        score_cell = "n/a"
                 lines.append(
-                    f"| {row['component']} | {row['fraction']:.3f} | "
-                    f"{row['marker_score'] if row['marker_score'] is not None else '—'} | "
-                    f"{row['top_markers']} |"
+                    f"| {comp} | {row['fraction']:.3f} | {score_cell} | {top_markers_cell} |"
+                )
+            if len(hidden):
+                lines.append(
+                    f"| *other components* | *{hidden['fraction'].sum():.3f} total across "
+                    f"{len(hidden)} components < 0.5%* | — | — |"
                 )
             lines.append("")
 
@@ -2069,6 +2373,12 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         lines.append(
             "|------|-----------|-------|----------|---------|-----------|-----|-----------|"
         )
+        # #78: cross-signal annotations — flag IFN-driven surface /
+        # MHC targets when the IFN_response axis is active, so the
+        # reader knows a 287× HLA-F fold change isn't tumor-specific.
+        cross_notes = annotate_surface_targets_with_cross_signals(
+            ranges_df, analysis.get("therapy_response_scores") or {}
+        )
         for _, row in surface_targets.head(20).iterrows():
             bold = "**" if row["therapies"] else ""
             vs_tcga = row["pct_cancer_median"]
@@ -2084,11 +2394,17 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                 tme_warn = "⚠"
             else:
                 tme_warn = ""
+            # Append IFN-driven cross-signal note to the therapies
+            # column for core ISGs when IFN is active.
+            therapies_cell = row["therapies"]
+            cross = cross_notes.get(row["symbol"])
+            if cross:
+                therapies_cell = f"{therapies_cell} ({cross})" if therapies_cell else f"*{cross}*"
             lines.append(
                 f"| {bold}{row['symbol']}{bold} | {row['median_est']:.1f} | "
                 f"{row['est_1']:.1f}\u2013{row['est_9']:.1f} | {row['observed_tpm']:.1f} | "
                 f"{'%.1fx' % vs_tcga if pd.notna(vs_tcga) else '—'} | {row['tcga_percentile']:.0%} | "
-                f"{tme_warn} | {row['therapies']} |"
+                f"{tme_warn} | {therapies_cell} |"
             )
         head20 = surface_targets.head(20)
         any_dominant = (
@@ -2155,27 +2471,68 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     lines.append("")
 
     # --- Top recommendation summary ---
+    # #79: Recommendations must respect the reliability flags from the
+    # per-category tables. Previously the top-3 surface targets were
+    # chosen by TPM rank alone, which promoted genes flagged ⚠⚠ (TME-
+    # dominant / very likely stromal) as "best surface targets" — the
+    # opposite of the safe default. Now: skip ⚠⚠-flagged rows
+    # entirely from the summary; ⚠-flagged retained rows carry an
+    # inline caveat.
     lines.append("## Recommended Targets Summary\n")
 
-    # Best surface
-    best_surface = surface_targets.head(3)
-    if len(best_surface):
+    def _reliability_badge(row):
+        if row.get("tme_dominant"):
+            return "⚠⚠"  # caller filters these out
+        if row.get("tme_explainable"):
+            return "⚠"
+        return ""
+
+    # Best surface — strict filter on ⚠⚠.
+    safe_surface = surface_targets[~surface_targets.get(
+        "tme_dominant",
+        pd.Series(False, index=surface_targets.index),
+    )].head(3)
+    dropped_dominant = int(
+        surface_targets.head(3).get("tme_dominant", pd.Series(False)).sum()
+    )
+    if len(safe_surface):
         lines.append("**Best surface targets** (ADC/CAR-T/bispecific):")
-        for _, row in best_surface.iterrows():
+        for _, row in safe_surface.iterrows():
+            badge = _reliability_badge(row)
+            caveat = f", {badge} single-tissue-explainable" if badge == "⚠" else ""
             therapy_note = f" — active in {row['therapies']}" if row["therapies"] else ""
             lines.append(
                 f"- **{row['symbol']}** ({row['median_est']:.0f} TPM, "
-                f"range {row['est_1']:.0f}\u2013{row['est_9']:.0f}){therapy_note}"
+                f"range {row['est_1']:.0f}\u2013{row['est_9']:.0f}"
+                f"{caveat}){therapy_note}"
+            )
+        if dropped_dominant:
+            lines.append(
+                f"- *{dropped_dominant} top-ranked row"
+                + ("s" if dropped_dominant != 1 else "")
+                + " excluded from this summary for being TME-dominant"
+                " (⚠⚠, see Surface Protein Targets table).*"
             )
         lines.append("")
+    elif dropped_dominant:
+        lines.append(
+            "**Best surface targets** (ADC/CAR-T/bispecific): "
+            "all top-ranked rows were flagged TME-dominant (⚠⚠) and "
+            "are not safe to recommend. See Surface Protein Targets "
+            "table for full context."
+        )
+        lines.append("")
 
-    # Best CTAs
+    # Best CTAs — same flag respect (though CTA flags usually benign,
+    # cohort-median ≈ 0 is normal for CTAs).
     best_cta = ctas.head(3)
     if len(best_cta):
         lines.append("**Best CTA targets** (vaccination even without active trials):")
         for _, row in best_cta.iterrows():
+            badge = _reliability_badge(row)
+            caveat = f" — {badge} check vs germline" if badge else ""
             lines.append(f"- **{row['symbol']}** ({row['median_est']:.0f} TPM, "
-                         f"TCGA {row['tcga_percentile']:.0%})")
+                         f"TCGA {row['tcga_percentile']:.0%}){caveat}")
         lines.append("")
 
     # MHC context for intracellular targeting
