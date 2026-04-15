@@ -365,6 +365,46 @@ def housekeeping_gene_ids(core_only=False):
     return set(df["Ensembl_Gene_ID"])
 
 
+# ---------- FFPE-sensitive marker panel (issue #72 follow-up) ----------
+#
+# Curated panel of genes whose expression behaviour distinguishes FFPE
+# from fresh / frozen RNA *independently of the matched gene-pair length
+# index* (which becomes unreliable under exon-capture enrichment because
+# probe density biases long transcripts).
+#
+# Two directions:
+#
+# - ``drops_in_ffpe``: genes that systematically under-detect in FFPE
+#   for length-independent reasons (extreme transcript length, long
+#   3′UTR with low mRNA stability, structural fragility).
+# - ``stable_in_ffpe``: short, abundant reference genes that retain
+#   detectable expression even in heavily degraded FFPE.
+#
+# The score is ``geomean(stable_TPM) / geomean(drops_TPM)`` after
+# pseudocounting; values >> reference suggest FFPE.
+
+def ffpe_sensitive_markers_df(direction=None):
+    """Return the FFPE-sensitive marker panel.
+
+    Parameters
+    ----------
+    direction : {"drops_in_ffpe", "stable_in_ffpe", None}
+        If specified, return only one direction; otherwise return all.
+    """
+    df = get_data("ffpe-sensitive-markers")
+    if direction is not None:
+        df = df[df["direction"] == direction]
+    return df
+
+
+def ffpe_sensitive_gene_names(direction=None):
+    return set(ffpe_sensitive_markers_df(direction)["symbol"])
+
+
+def ffpe_sensitive_gene_ids(direction=None):
+    return set(ffpe_sensitive_markers_df(direction)["ensembl_gene_id"])
+
+
 # ---------- Extended housekeeping (issue #60) ----------
 #
 # A single authoritative panel of genes that cannot discriminate between

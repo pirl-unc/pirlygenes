@@ -353,6 +353,123 @@ def _infer_library_prep(tpm_by_symbol, signals):
     return "unknown", 0.2
 
 
+def compute_isoform_length_bias(transcript_df, signals=None):
+    """Within-gene transcript-isoform length bias — capture-bias immune.
+
+    For each gene with ≥ 2 detected isoforms (TPM > 0), compute the
+    TPM-weighted mean transcript length and compare it to the geometric
+    mean of the gene's max isoform length and the gene's min isoform
+    length. Median across qualifying genes:
+
+        index = 1.0  → no preferential isoform loss (fresh-like)
+        index < 0.7  → systematic shorter-isoform preference (FFPE-like)
+        index > 1.3  → unusual longer-isoform preference (capture-only,
+                       not FFPE)
+
+    Because both isoforms of a gene share the same capture probes,
+    this signal is NOT confounded by exon-capture probe density bias.
+    Returns ``(index, n_genes_used)``; (None, 0) when transcript_df is
+    None / empty / has no multi-isoform genes.
+    """
+    if transcript_df is None or transcript_df.empty:
+        return None, 0
+    needed = {"transcript_id", "length", "TPM"}
+    if not needed.issubset(transcript_df.columns):
+        return None, 0
+    if "ensembl_gene_id" not in transcript_df.columns:
+        return None, 0
+
+    import numpy as np
+
+    df = transcript_df.copy()
+    df["length"] = df["length"].astype(float)
+    df["TPM"] = df["TPM"].astype(float)
+    df = df[df["TPM"] > 0]
+    df = df[df["length"] > 0]
+    df = df[df["ensembl_gene_id"].astype(str).str.startswith("ENS")]
+    if df.empty:
+        return None, 0
+
+    # Drop trailing version on transcript IDs / gene IDs for grouping.
+    df["gene_id"] = df["ensembl_gene_id"].astype(str).str.split(".", n=1).str[0]
+
+    ratios = []
+    for _, group in df.groupby("gene_id"):
+        if len(group) < 2:
+            continue
+        lo = float(group["length"].min())
+        hi = float(group["length"].max())
+        if lo <= 0 or hi <= lo * 1.2:
+            # Too narrow length range — not informative for length bias.
+            continue
+        # TPM-weighted mean length, then expressed as a position
+        # between min length (= 0) and max length (= 1).
+        tpm = group["TPM"].values
+        lens = group["length"].values
+        if tpm.sum() <= 0:
+            continue
+        mean_len = float(np.average(lens, weights=tpm))
+        position = (mean_len - lo) / (hi - lo)
+        # Convert to an "index" — 1.0 = same as length-weighted balanced
+        # usage, 0 = all signal at the shortest isoform.
+        ratios.append(position * 2)  # scale 0..1 → 0..2 so 1.0 ≈ balanced
+
+    if not ratios:
+        return None, 0
+    index = float(np.median(ratios))
+    if signals is not None:
+        signals["isoform_length_bias_index"] = round(index, 3)
+        signals["isoform_length_bias_n_genes"] = int(len(ratios))
+    return index, int(len(ratios))
+
+
+def compute_ffpe_marker_score(tpm_by_symbol, signals=None):
+    """Score the FFPE-sensitive marker panel.
+
+    Pseudocounted geomean of stable-in-FFPE genes divided by geomean of
+    drops-in-FFPE genes. A value materially above the *expected fresh
+    ratio* indicates FFPE: the long / unstable transcripts are
+    disproportionately suppressed relative to short stable references.
+
+    Returns ``(score, n_genes_used)`` or ``(None, 0)`` when the panel
+    can't be evaluated. Threshold interpretation lives in the
+    preservation routing logic so the threshold can be tuned without
+    re-walking the math.
+    """
+    import numpy as np
+
+    from .gene_sets_cancer import ffpe_sensitive_markers_df
+
+    panel = ffpe_sensitive_markers_df()
+    if panel is None or panel.empty:
+        return None, 0
+
+    drops_syms = panel[panel["direction"] == "drops_in_ffpe"]["symbol"].tolist()
+    stable_syms = panel[panel["direction"] == "stable_in_ffpe"]["symbol"].tolist()
+
+    drops_vals = [
+        float(tpm_by_symbol.get(s, 0.0))
+        for s in drops_syms if s in tpm_by_symbol
+    ]
+    stable_vals = [
+        float(tpm_by_symbol.get(s, 0.0))
+        for s in stable_syms if s in tpm_by_symbol
+    ]
+    if not drops_vals or not stable_vals:
+        return None, 0
+
+    drops_geomean = float(np.exp(np.mean(np.log(np.array(drops_vals) + 0.5))))
+    stable_geomean = float(np.exp(np.mean(np.log(np.array(stable_vals) + 0.5))))
+    if drops_geomean <= 0:
+        return None, 0
+    score = stable_geomean / drops_geomean
+    if signals is not None:
+        signals["ffpe_marker_score"] = round(score, 3)
+        signals["ffpe_marker_drops_n"] = int(len(drops_vals))
+        signals["ffpe_marker_stable_n"] = int(len(stable_vals))
+    return score, int(len(drops_vals) + len(stable_vals))
+
+
 def _infer_preservation_and_degradation(tpm_by_symbol, signals):
     """Infer preservation + degradation severity using the gene-length
     pair index from ``data/degradation-gene-pairs.csv``.
@@ -513,6 +630,77 @@ def _summarise_expression_distribution(tpm_by_symbol, signals):
         )
 
 
+def _refine_preservation_with_orthogonal_signals(
+    preservation, severity, index, tpm_by_symbol, transcript_df, signals, flags,
+):
+    """Second-pass preservation call using the FFPE marker panel and
+    transcript-level isoform-length-bias index — both immune to
+    capture-enrichment probe-density bias.
+
+    Only fires when the primary length-pair test was inconclusive
+    (``preservation == "unknown"`` because the index sat above the
+    fresh-reference upper bound). Returns possibly-updated
+    ``(preservation, severity)`` plus appended flags. Never overrides
+    a confident FFPE / fresh call.
+    """
+    if preservation != "unknown":
+        return preservation, severity
+
+    ffpe_score, _ = compute_ffpe_marker_score(tpm_by_symbol, signals=signals)
+    iso_index, n_iso_genes = compute_isoform_length_bias(transcript_df, signals=signals)
+
+    # Calibration: in fresh / frozen samples the FFPE marker score
+    # (geomean(stable) / geomean(drops)) sits roughly 1–8 because the
+    # "drops_in_ffpe" panel is dominated by lowly-expressed muscle /
+    # neuronal long transcripts. In FFPE it climbs well above 30.
+    # Conservative: flag FFPE only when the score is > 30.
+    ffpe_strong = ffpe_score is not None and ffpe_score > 30.0
+    ffpe_moderate = ffpe_score is not None and ffpe_score > 15.0
+
+    # Isoform length bias (within-gene, capture-immune):
+    # ~1.0 fresh, < 0.6 systematic short-isoform preference (FFPE).
+    iso_strong = (
+        iso_index is not None
+        and n_iso_genes >= 50
+        and iso_index < 0.6
+    )
+    iso_moderate = (
+        iso_index is not None
+        and n_iso_genes >= 50
+        and iso_index < 0.85
+    )
+
+    if ffpe_strong and iso_strong:
+        flags.append(
+            f"FFPE detected via orthogonal signals: marker score "
+            f"{ffpe_score:.1f} (long-transcript panel suppressed) + "
+            f"isoform bias {iso_index:.2f} (within-gene short isoforms "
+            "dominate). Length-pair index was masked by capture enrichment."
+        )
+        return "ffpe", "severe"
+    if ffpe_strong or (ffpe_moderate and iso_moderate):
+        flags.append(
+            "FFPE likely (orthogonal signals): "
+            + (f"marker score {ffpe_score:.1f}" if ffpe_score else "")
+            + (
+                f"; isoform bias {iso_index:.2f} (n={n_iso_genes})"
+                if iso_index is not None else ""
+            )
+            + ". Length-pair index masked by capture enrichment."
+        )
+        return "ffpe", "moderate"
+    if ffpe_moderate or iso_moderate:
+        flags.append(
+            "Possible FFPE: orthogonal signals weakly support degradation "
+            + (f"(marker score {ffpe_score:.1f}" if ffpe_score else "(")
+            + (
+                f", isoform bias {iso_index:.2f})" if iso_index is not None else ")"
+            )
+        )
+        return "degraded", "mild"
+    return preservation, severity
+
+
 def infer_sample_context(df_gene_expr) -> SampleContext:
     """Infer a ``SampleContext`` from a TPM expression table.
 
@@ -562,6 +750,26 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
         tpm_by_symbol, signals
     )
 
+    # Second pass for capture-biased samples (#72 fix proposal 3 via
+    # gene-level proxies). When the primary length-pair test gave up,
+    # try the FFPE marker panel + transcript-isoform length bias —
+    # both immune to exon-capture probe-density bias. Pulls the
+    # transcript frame from ``df_gene_expr.attrs["transcript_expression"]``
+    # populated by ``load_expression`` for inputs that have a sibling
+    # transcript file.
+    transcript_df = (
+        df_gene_expr.attrs.get("transcript_expression")
+        if hasattr(df_gene_expr, "attrs") else None
+    )
+    refined_flags: list[str] = []
+    preservation, severity = _refine_preservation_with_orthogonal_signals(
+        preservation, severity, index,
+        tpm_by_symbol, transcript_df, signals, refined_flags,
+    )
+    # If refinement updated the call, raise the confidence above 0.
+    if refined_flags:
+        pr_conf = max(pr_conf, 0.65)
+
     # Missing-MT detection (#61). We check the count of MT symbols that
     # map to any TPM > 0 in the sample. ``missing_mt`` is a distinct
     # signal from preservation — it's about the quant table, not the RNA.
@@ -588,25 +796,37 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
             f"(confidence {lp_conf:.0%})"
         )
     if preservation == "ffpe":
-        flags.append(
-            f"Preservation: FFPE / heavily degraded "
-            f"(length-pair index {index:.2f})"
-        )
+        # If the FFPE call came from the orthogonal-signal refinement
+        # path, the explanatory flag was already added there. Only emit
+        # the length-pair-based message when the primary test was the
+        # one that triggered FFPE.
+        if not refined_flags:
+            flags.append(
+                f"Preservation: FFPE / heavily degraded "
+                f"(length-pair index {index:.2f})"
+            )
     elif preservation == "degraded":
-        flags.append(f"Preservation: partial degradation (length-pair index {index:.2f})")
+        if not refined_flags:
+            flags.append(f"Preservation: partial degradation (length-pair index {index:.2f})")
     elif preservation == "fresh_frozen":
         flags.append(f"Preservation: fresh / frozen (length-pair index {index:.2f})")
     elif preservation == "unknown" and index is not None and index > 1.0:
         # Capture-enriched libraries (exome / hybrid) inflate the long/
-        # short ratio because long genes have more probes. Flag that
-        # the length-pair test can't report preservation in this regime.
+        # short ratio because long genes have more probes. Even after
+        # the orthogonal-signal pass, the call remained inconclusive —
+        # surface that and explain why so the user knows what's missing.
         flags.append(
             f"Preservation unknown — length-pair index {index:.2f} is "
             f"above fresh-reference range (>{_THRESHOLDS['degradation_pair_biased_upper']:.1f}), "
             "consistent with exon-capture enrichment (long transcripts "
-            "over-represented). Orthogonal signals (read-length, 3′ bias) "
-            "needed to assess FFPE status."
+            "over-represented). FFPE marker panel and isoform length "
+            "bias did not strongly support FFPE either; orthogonal "
+            "BAM-level signals (read-length distribution, 3′ bias) "
+            "needed for a definitive FFPE call."
         )
+
+    # Append refinement-stage flags last so they read in narrative order.
+    flags.extend(refined_flags)
 
     return SampleContext(
         library_prep=library_prep,
