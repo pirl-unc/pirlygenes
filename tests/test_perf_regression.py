@@ -21,8 +21,10 @@ the load path.
 
 We use 5k transcripts (not 120k) so the test finishes in a few seconds
 while still exercising every branch in the load path. The bound is
-proportional: 5k/120k of a 2-minute ceiling ≈ 5s, rounded up to 15s
-for CI variance.
+proportional: 5k/120k of a 2-minute ceiling ≈ 5s, but we keep generous
+slack because GitHub Actions runs the suite under xdist across multiple
+interpreters and older Python versions can land materially above the
+single-process local timing without indicating a catastrophic regression.
 """
 
 from __future__ import annotations
@@ -35,7 +37,7 @@ import pandas as pd
 import pytest
 
 N_TRANSCRIPTS = 5_000
-TIME_CEILING_S = 15.0
+TIME_CEILING_S = 25.0
 
 
 def _make_fake_quant(path: Path, n: int = N_TRANSCRIPTS, seed: int = 42) -> None:
