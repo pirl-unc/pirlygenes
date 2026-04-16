@@ -110,7 +110,7 @@ def test_build_tpm_by_symbol_uses_gene_column_without_fallback(monkeypatch):
         raise AssertionError("tumor-purity fallback should not be used")
 
     monkeypatch.setattr(
-        "pirlygenes.tumor_purity._build_sample_tpm_by_symbol",
+        "pirlygenes.common.build_sample_tpm_by_symbol",
         _should_not_run,
     )
 

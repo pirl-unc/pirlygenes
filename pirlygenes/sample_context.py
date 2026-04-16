@@ -540,7 +540,7 @@ def _build_tpm_by_symbol(df_gene_expr):
     Prefers a direct symbol column (``gene_symbol``/``symbol``/``Symbol``)
     so that synthetic test frames with just ``(gene_symbol, TPM)`` work
     without requiring a gene-ID column. Falls back to
-    ``tumor_purity._build_sample_tpm_by_symbol`` (which maps gene IDs
+    ``common.build_sample_tpm_by_symbol`` (which maps gene IDs
     through the HPA/pan-cancer reference) for frames without a symbol
     column.
     """
@@ -562,9 +562,9 @@ def _build_tpm_by_symbol(df_gene_expr):
                 .groupby("sym")["tpm"]
                 .max()
             )
-    # Fall back to the gene-ID path.
-    from .tumor_purity import _build_sample_tpm_by_symbol
-    return _build_sample_tpm_by_symbol(df_gene_expr)
+    # Fall back to the gene-ID path (canonical home: common.py).
+    from .common import build_sample_tpm_by_symbol
+    return build_sample_tpm_by_symbol(df_gene_expr)
 
 
 def _summarise_expression_distribution(tpm_by_symbol, signals):

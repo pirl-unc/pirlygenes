@@ -30,10 +30,8 @@ from .gene_sets_cancer import (
     lineage_genes_by_cancer_type,
     pan_cancer_expression,
 )
-from .common import without_dataframe_attrs
+from .common import _build_sample_tpm_by_symbol as _common_build_sample_tpm
 from .load_dataset import get_data
-from .plot import _guess_gene_cols
-from .plot_data_helpers import _strip_ensembl_version
 
 
 # -------------------- cancer type → normal tissue mapping --------------------
@@ -348,28 +346,12 @@ _CANCER_NORMAL_TISSUES = {
 
 
 def _build_sample_tpm_by_symbol(df_gene_expr):
-    """Return {symbol: max_TPM} from expression data (no normalization)."""
-    with without_dataframe_attrs(df_gene_expr):
-        gene_id_col, _gene_name_col = _guess_gene_cols(df_gene_expr)
-        gene_ids = df_gene_expr[gene_id_col].astype(str).map(_strip_ensembl_version)
+    """Return {symbol: max_TPM} from expression data (no normalization).
 
-        tpm_col = "TPM" if "TPM" in df_gene_expr.columns else next(
-            (c for c in df_gene_expr.columns if c.lower() == "tpm"), None
-        )
-        if tpm_col is None:
-            raise KeyError(f"No TPM column found. Columns: {list(df_gene_expr.columns)}")
-
-        ref = pan_cancer_expression()
-        id_to_sym = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
-
-        syms = gene_ids.map(id_to_sym)
-        tpms = pd.to_numeric(df_gene_expr[tpm_col], errors="coerce")
-        valid = syms.notna() & tpms.notna()
-        return dict(
-            pd.DataFrame({"sym": syms[valid], "tpm": tpms[valid]})
-            .groupby("sym")["tpm"]
-            .max()
-        )
+    Canonical implementation lives in ``common.build_sample_tpm_by_symbol``;
+    this is a thin delegate kept for backward compatibility.
+    """
+    return _common_build_sample_tpm(df_gene_expr)
 
 
 def _geneset_hk_ratio(genes, hk_symbols, expr_by_symbol):
