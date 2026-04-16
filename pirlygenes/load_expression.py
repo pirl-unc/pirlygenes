@@ -431,7 +431,86 @@ def _attach_gene_sidecar_if_present(input_path, df, verbose=True):
     return out, True
 
 
-def _build_transcript_expression_frame(df, verbose=False, progress=True):
+def _resolve_unknown_transcripts_for_raw_frame(df, verbose=False, progress=True):
+    """Build the ``transcript_id → gene_symbol`` map for a raw
+    transcript-level frame in one pass (#81).
+
+    Returns a dict that includes (a) the static ``extra_tx_mappings``
+    hits, (b) their versionless equivalents, and (c) the pyensembl
+    resolution for the remaining unknowns. Downstream consumers
+    (``_build_transcript_expression_frame``, ``tx2gene``) read from
+    this map instead of resolving the same IDs again. The map
+    preserves full presence/absence semantics — zero-TPM transcripts
+    are resolved too, so a gene whose every transcript is zero still
+    makes it into the aggregated gene-level output with TPM=0
+    (important for FFPE-panel and other present-vs-absent checks).
+    """
+    from .aggregate_gene_expression import _expanded_tx_map
+    from .transcript_to_gene import extra_tx_mappings
+
+    tx_col = None
+    for candidate in (
+        "ensembl_transcript_id", "transcript_id", "Name", "name",
+        "transcript", "target", "target_id",
+    ):
+        if candidate in df.columns:
+            tx_col = candidate
+            break
+    if tx_col is None:
+        return {}
+
+    tx_raw = df[tx_col].astype(str)
+    tx0 = tx_raw.str.split(".", n=1).str[0]
+    static_map = _expanded_tx_map(extra_tx_mappings or {})
+
+    # pandas.Series.map with a dict: missing keys yield NaN.
+    gene_series = tx0.map(static_map)
+    unknown_mask = gene_series.isna()
+    resolved = {k: v for k, v in static_map.items() if v is not None}
+    if unknown_mask.any():
+        unknown_unique = pd.Index(tx0[unknown_mask].dropna().unique())
+        pyensembl_hits = _resolve_unknown_transcripts_to_genes(
+            unknown_unique, verbose=verbose, progress=progress
+        )
+        # Drop unresolved (None-valued) entries from the shared map
+        # so downstream `gene_series = tx0.map(map)` treats them as
+        # unknown (which is correct) rather than mapping them to
+        # Python None (which would quietly coerce to NaN but clutter
+        # the map for debuggers).
+        for k, v in pyensembl_hits.items():
+            if v is not None:
+                resolved[k] = v
+    return resolved
+
+
+def _resolve_unknown_transcripts_to_genes(tx0_unique, verbose=False, progress=True):
+    """One authoritative pyensembl pass over unique versionless
+    transcript IDs. Returns ``dict[str, Optional[str]]`` — a ``None``
+    value means pyensembl couldn't resolve it across any installed
+    release. Shared by ``_build_transcript_expression_frame`` and
+    ``tx2gene`` so the load path resolves the transcript set exactly
+    once per file (#81).
+    """
+    from .gene_ids import find_gene_name_from_ensembl_transcript_id
+    if verbose:
+        print(
+            f"[load] Resolving {len(tx0_unique)} unique transcripts via "
+            "Ensembl (one pass, shared across downstream steps)"
+        )
+    iterator = tqdm(
+        tx0_unique,
+        desc="Resolving transcript IDs",
+        disable=not progress,
+    )
+    return {t: find_gene_name_from_ensembl_transcript_id(t, verbose=False) for t in iterator}
+
+
+def _build_transcript_expression_frame(
+    df,
+    verbose=False,
+    progress=True,
+    tx_to_gene_name=None,
+):
     """Return a normalized transcript-level frame extracted from ``df``.
 
     The input must look like a salmon ``quant.sf`` (Name + Length + TPM)
@@ -487,18 +566,19 @@ def _build_transcript_expression_frame(df, verbose=False, progress=True):
     # Downstream signals (isoform length bias) need a gene grouping
     # key; without this they silently disable on the most common input.
     #
-    # Perf (#81): only expressed transcripts (TPM > 0) can ever
-    # participate in isoform-level signals, so we restrict the
-    # Ensembl resolution set to those — cuts ~3-5× of the pyensembl
-    # work on a typical quant.sf (most transcripts are zero). The
-    # module-level ``@lru_cache`` on
-    # ``find_gene_name_from_ensembl_transcript_id`` (see gene_ids.py)
-    # means the overlapping ``tx2gene`` pass later is then free.
+    # The caller can pass a precomputed ``tx_to_gene_name`` map to
+    # skip the pyensembl pass entirely (#81) — this is how
+    # ``load_expression_data`` shares one resolution across both the
+    # transcript-level frame and ``tx2gene``.
     if "ensembl_gene_id" not in out.columns and "gene_symbol" not in out.columns:
         from .aggregate_gene_expression import _expanded_tx_map
         from .transcript_to_gene import extra_tx_mappings
-        from .gene_ids import find_gene_name_from_ensembl_transcript_id
 
+        # Isoform-level signals (compute_isoform_length_bias) require
+        # TPM > 0 anyway, so we can safely restrict the transcript
+        # frame itself to expressed rows. This does NOT affect
+        # gene-level presence/absence downstream — that's computed
+        # from the separate ``tx2gene`` output.
         expressed_mask = out["TPM"].astype(float) > 0
         out = out.loc[expressed_mask].copy()
 
@@ -508,20 +588,12 @@ def _build_transcript_expression_frame(df, verbose=False, progress=True):
         unresolved = gene_syms.isna()
         if unresolved.any():
             uniq = pd.Index(tx0[unresolved].unique())
-            if verbose:
-                print(
-                    f"[load] Resolving {len(uniq)} expressed transcripts via "
-                    "Ensembl for transcript-level signals"
+            if tx_to_gene_name is not None:
+                resolved = {t: tx_to_gene_name.get(t) for t in uniq}
+            else:
+                resolved = _resolve_unknown_transcripts_to_genes(
+                    uniq, verbose=verbose, progress=progress
                 )
-            iterator = tqdm(
-                uniq,
-                desc="Resolving transcripts (tx-level frame)",
-                disable=not progress,
-            )
-            resolved = {
-                t: find_gene_name_from_ensembl_transcript_id(t, verbose=False)
-                for t in iterator
-            }
             gene_syms.loc[unresolved] = tx0[unresolved].map(resolved)
         out["gene_symbol"] = gene_syms.astype(object)
         out = out[out["gene_symbol"].notna()].copy()
@@ -621,10 +693,23 @@ def load_expression_data(
     if aggregate_gene_expression:
         if verbose:
             print("[load] Aggregating transcript-level TPM values to gene-level TPM")
-        _retained_transcript_df = _build_transcript_expression_frame(
+
+        # #81: resolve tx → gene once, then hand the shared map to
+        # both ``_build_transcript_expression_frame`` and ``tx2gene``.
+        # Previously each step did its own pyensembl pass over the
+        # same IDs, doubling the wall-clock cost of the load on a
+        # ~177k-transcript salmon quant.
+        shared_tx_map = _resolve_unknown_transcripts_for_raw_frame(
             df, verbose=verbose, progress=progress
         )
-        df = tx2gene(df, verbose=verbose, progress=progress)
+        _retained_transcript_df = _build_transcript_expression_frame(
+            df, verbose=verbose, progress=progress,
+            tx_to_gene_name=shared_tx_map,
+        )
+        df = tx2gene(
+            df, verbose=verbose, progress=progress,
+            tx_to_gene_name=shared_tx_map,
+        )
 
         if save_aggregated_gene_expression:
             if aggregated_output_path:
