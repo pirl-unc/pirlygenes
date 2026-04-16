@@ -2322,8 +2322,32 @@ def _generate_text_reports(
 
     # Purity / composition
     lines.append(f"## {_purity_metric_label(sample_mode).title()}\n")
+    # #109: compute the sample-level confidence tier once and surface it
+    # inline so readers see a 19–100% CI render visibly different from a
+    # 58–70% CI (#79). The tier consumes purity CI width, point estimate,
+    # degradation severity, and sample-context flags.
+    from .confidence import compute_purity_confidence
+
+    sample_ctx_for_tier = analysis.get("sample_context")
+    deg_for_tier = (
+        getattr(sample_ctx_for_tier, "degradation_severity", "none")
+        if sample_ctx_for_tier else "none"
+    )
+    purity_tier = compute_purity_confidence(
+        purity,
+        sample_context=sample_ctx_for_tier,
+        degradation_severity=deg_for_tier,
+    )
+    analysis["purity_confidence"] = purity_tier
+    tier_suffix = (
+        f" — **{purity_tier.tier} confidence** "
+        f"({purity_tier.inline_note})"
+        if purity_tier.tier in {"low", "moderate"} and purity_tier.reasons
+        else ""
+    )
     lines.append(f"- **Overall estimate**: {purity['overall_estimate']:.0%} "
-                  f"({purity['overall_lower']:.0%}\u2013{purity['overall_upper']:.0%})")
+                  f"({purity['overall_lower']:.0%}\u2013{purity['overall_upper']:.0%})"
+                  f"{tier_suffix}")
     components = purity.get("components", {})
     for comp_name in ("stromal", "immune"):
         comp = components.get(comp_name, {})
