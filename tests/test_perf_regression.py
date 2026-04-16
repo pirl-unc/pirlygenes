@@ -59,17 +59,28 @@ def test_load_expression_data_perf_fence(tmp_path: Path) -> None:
     quant_path = tmp_path / "fake_quant.sf"
     _make_fake_quant(quant_path)
 
-    from pirlygenes.load_expression import load_expression_data
+    import pirlygenes.load_expression as le
 
-    t0 = time.time()
-    df = load_expression_data(
-        str(quant_path),
-        aggregate_gene_expression=True,
-        save_aggregated_gene_expression=False,
-        progress=False,
-        verbose=False,
-    )
-    elapsed = time.time() - t0
+    # This fence is about catastrophic runtime regressions in the
+    # transcript-load path, not about annotation correctness. The
+    # synthetic ENST IDs below are intentionally fake, so #89's
+    # unresolved-signal hard stop would now raise before we can measure
+    # the performance path we actually care about.
+    original_guard = le._raise_if_transcript_aggregation_incomplete
+    le._raise_if_transcript_aggregation_incomplete = lambda *_a, **_k: None
+
+    try:
+        t0 = time.time()
+        df = le.load_expression_data(
+            str(quant_path),
+            aggregate_gene_expression=True,
+            save_aggregated_gene_expression=False,
+            progress=False,
+            verbose=False,
+        )
+        elapsed = time.time() - t0
+    finally:
+        le._raise_if_transcript_aggregation_incomplete = original_guard
 
     assert elapsed < TIME_CEILING_S, (
         f"load_expression_data took {elapsed:.1f}s on {N_TRANSCRIPTS} fake "
