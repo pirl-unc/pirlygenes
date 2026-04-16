@@ -518,6 +518,86 @@ def test_ranges_pct_cancer_median_steap1_near_one():
         assert 0.5 < pct < 2.0, f"Expected ~1.0, got {pct}"
 
 
+def _fn1_target_test_frame():
+    import pandas as pd
+
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": [
+                "ENSG00000115414",  # FN1
+                "ENSG00000075624",  # ACTB
+                "ENSG00000156508",  # EEF1A1
+                "ENSG00000111640",  # GAPDH
+            ],
+            "gene_symbol": ["FN1", "ACTB", "EEF1A1", "GAPDH"],
+            "TPM": [180.0, 150.0, 300.0, 100.0],
+        }
+    )
+
+
+def test_ranges_fn1_therapy_requires_transcript_support():
+    from pirlygenes.plot import estimate_tumor_expression_ranges
+
+    df = _fn1_target_test_frame()
+    purity = {"overall_lower": 0.45, "overall_estimate": 0.55, "overall_upper": 0.65}
+    out = estimate_tumor_expression_ranges(df, "PRAD", purity)
+    fn1 = out[out["symbol"] == "FN1"].iloc[0]
+
+    assert fn1["therapies"] == ""
+    assert fn1["category"] != "therapy_target"
+    assert bool(fn1["therapy_supported"]) is False
+    assert "EDB+ FN1" in fn1["therapy_support_note"]
+    assert "transcript-level data is unavailable" in fn1["therapy_support_note"]
+
+
+def test_ranges_fn1_therapy_stays_blocked_without_edb_transcripts():
+    from pirlygenes.plot import estimate_tumor_expression_ranges
+    import pandas as pd
+
+    df = _fn1_target_test_frame()
+    df.attrs["transcript_expression"] = pd.DataFrame(
+        {
+            "transcript_id": ["ENST00000443816", "ENST00000421182"],
+            "TPM": [70.0, 30.0],
+            "ensembl_gene_id": ["ENSG00000115414", "ENSG00000115414"],
+            "gene_symbol": ["FN1", "FN1"],
+        }
+    )
+    purity = {"overall_lower": 0.45, "overall_estimate": 0.55, "overall_upper": 0.65}
+    out = estimate_tumor_expression_ranges(df, "PRAD", purity)
+    fn1 = out[out["symbol"] == "FN1"].iloc[0]
+
+    assert fn1["therapies"] == ""
+    assert fn1["category"] != "therapy_target"
+    assert bool(fn1["therapy_supported"]) is False
+    assert "no EDB+ FN1 transcripts were detected" in fn1["therapy_support_note"]
+
+
+def test_ranges_fn1_therapy_requires_high_edb_transcripts():
+    from pirlygenes.plot import estimate_tumor_expression_ranges
+    import pandas as pd
+
+    df = _fn1_target_test_frame()
+    df.attrs["transcript_expression"] = pd.DataFrame(
+        {
+            "transcript_id": ["ENST00000432072", "ENST00000443816"],
+            "TPM": [40.0, 20.0],
+            "ensembl_gene_id": ["ENSG00000115414", "ENSG00000115414"],
+            "gene_symbol": ["FN1", "FN1"],
+        }
+    )
+    purity = {"overall_lower": 0.45, "overall_estimate": 0.55, "overall_upper": 0.65}
+    out = estimate_tumor_expression_ranges(df, "PRAD", purity)
+    fn1 = out[out["symbol"] == "FN1"].iloc[0]
+
+    assert "ADC" in fn1["therapies"]
+    assert fn1["category"] == "therapy_target"
+    assert bool(fn1["therapy_supported"]) is True
+    assert fn1["therapy_support_tpm"] == 40.0
+    assert fn1["therapy_support_fraction"] == 0.667
+    assert "PYX-201 / NCT05720117" in fn1["therapy_support_note"]
+
+
 # ── _TME_TISSUES consistency ─────────────────────────────────────
 
 def test_tme_tissues_are_valid():
