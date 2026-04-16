@@ -14,11 +14,15 @@
 
 v4.5.0 shipped with a pyensembl-lookup loop that turned a ~90s analyze
 into a 10+ minute stall on real salmon quant.sf inputs. The test below
-loads a synthetic 120k-transcript quant file — shaped like a Gencode
-salmon quant — and fails if load_expression_data takes longer than a
-generous ceiling. The point is not to fence microbenchmarks but to
-catch a *catastrophic* regression (10×+) the next time someone wires
-per-transcript work into the load path.
+loads a small synthetic quant and asserts a proportional time bound.
+The point is not to fence microbenchmarks but to catch a *catastrophic*
+regression (10×+) the next time someone wires per-transcript work into
+the load path.
+
+We use 5k transcripts (not 120k) so the test finishes in a few seconds
+while still exercising every branch in the load path. The bound is
+proportional: 5k/120k of a 2-minute ceiling ≈ 5s, rounded up to 15s
+for CI variance.
 """
 
 from __future__ import annotations
@@ -30,12 +34,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+N_TRANSCRIPTS = 5_000
+TIME_CEILING_S = 15.0
 
-def _make_fake_quant(path: Path, n: int = 120_000, seed: int = 42) -> None:
+
+def _make_fake_quant(path: Path, n: int = N_TRANSCRIPTS, seed: int = 42) -> None:
     rng = random.Random(seed)
-    # Sparsity: only ~30% of transcripts have TPM > 0 in a typical
-    # salmon quant. The perf fix (#81) skips pyensembl resolution for
-    # zero-TPM transcripts, so we exercise a realistic mix.
     tpms = [rng.random() * 10 if rng.random() < 0.3 else 0.0 for _ in range(n)]
     pd.DataFrame(
         {
@@ -51,7 +55,7 @@ def _make_fake_quant(path: Path, n: int = 120_000, seed: int = 42) -> None:
 @pytest.mark.perf
 def test_load_expression_data_perf_fence(tmp_path: Path) -> None:
     quant_path = tmp_path / "fake_quant.sf"
-    _make_fake_quant(quant_path, n=120_000)
+    _make_fake_quant(quant_path)
 
     from pirlygenes.load_expression import load_expression_data
 
@@ -65,9 +69,8 @@ def test_load_expression_data_perf_fence(tmp_path: Path) -> None:
     )
     elapsed = time.time() - t0
 
-    # Generous ceiling; v4.5.0 pre-fix would trip this in CI.
-    assert elapsed < 120.0, (
-        f"load_expression_data took {elapsed:.1f}s on 120k fake transcripts — "
-        "a catastrophic regression vs expected < 2 min (issue #81)"
+    assert elapsed < TIME_CEILING_S, (
+        f"load_expression_data took {elapsed:.1f}s on {N_TRANSCRIPTS} fake "
+        f"transcripts — expected < {TIME_CEILING_S}s (issue #81)"
     )
     assert df is not None and len(df) > 0

@@ -57,7 +57,8 @@ requires = [
 pirlygenes = ["data/*.csv"]
 
 [tool.pytest.ini_options]
+addopts = "-n auto"
 markers = [
-    "perf: performance-regression fences (slower; allowed to be skipped by default CI)",
+    "perf: performance-regression fences",
 ]
 
