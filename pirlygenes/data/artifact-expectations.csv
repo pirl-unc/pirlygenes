@@ -1,0 +1,17 @@
+library_prep,preservation,gene_class,expected_lo,expected_hi,interpretation
+exome_capture,*,mitochondrial,0.000,0.005,Filtered by design — hybrid-capture kits do not select MT transcripts.
+exome_capture,*,rRNA,0.000,0.005,Filtered by design — rRNAs not targeted by exome probes.
+exome_capture,*,histone_cluster,0.000,0.010,Replication-dependent histone mRNAs lack poly-A tails and are not captured by exome probes.
+poly_a,fresh,mitochondrial,0.020,0.150,Expected MT band for poly-A capture in non-degraded RNA; tissue-dependent (heart/muscle skew higher).
+poly_a,ffpe,mitochondrial,0.005,0.080,FFPE depresses MT relative to fresh but some signal persists.
+poly_a,*,rRNA,0.000,0.005,Ribosomal RNAs are not polyadenylated and should be absent from poly-A libraries.
+poly_a,*,histone_cluster,0.000,0.005,Replication-dependent histones lack poly-A tails — absent from poly-A libraries.
+ribo_depleted,fresh,rRNA,0.001,0.020,Residual rRNA after ribosomal depletion (Ribo-Zero / NEBNext rRNA depletion).
+ribo_depleted,ffpe,rRNA,0.005,0.050,FFPE samples retain more rRNA residual because depletion is less efficient on fragmented RNA.
+ribo_depleted,fresh,mitochondrial,0.020,0.150,Mitochondrial rRNAs are typically NOT removed by nuclear-rRNA depletion; expected to be present.
+ribo_depleted,ffpe,mitochondrial,0.020,0.250,FFPE concentrates short MT transcripts; fraction rises with degradation.
+ribo_depleted,*,histone_cluster,0.005,0.030,Histone mRNAs are retained in ribo-depleted libraries (they have stem-loop tails).
+total_rna,fresh,rRNA,0.600,0.850,Ribosomal RNA dominates un-depleted total-RNA libraries.
+total_rna,ffpe,rRNA,0.500,0.900,FFPE total-RNA libraries remain rRNA-dominated with wider spread.
+total_rna,*,mitochondrial,0.020,0.200,MT transcripts present at typical tissue bands with wider spread in degraded samples.
+total_rna,*,histone_cluster,0.005,0.030,Histone cluster retained.
