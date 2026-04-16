@@ -198,6 +198,9 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert calls[3]["always_label_genes"] == {"FAP", "CD276"}
     assert len(scatter_calls) == 1
     assert scatter_calls[0]["save_to_filename"] == f"{expected_prefix}-vs-cancer.pdf"
+    # #83: scatter must use the resolved cancer type (PRAD from
+    # analyze_sample), not None / the raw CLI arg.
+    assert scatter_calls[0]["cancer_type"] == "PRAD"
     assert tissue_calls[0]["top_k"] == 12
     assert tissue_calls[0]["tpm_threshold"] == 18
     assert safety_calls[0]["top_k"] == 12

@@ -929,12 +929,11 @@ def decompose_sample(
             candidate_codes=cancer_types,
             top_k=len(cancer_types) if cancer_types is not None else 6,
         )
-    elif cancer_types is not None:
-        # Narrow a broader precomputed trace down to the requested codes
-        # (preserving rank order) so callers that pass e.g. the full
-        # top-8 trace get the same hypotheses the uncached path would.
-        requested = set(cancer_types)
-        candidate_rows = [row for row in candidate_rows if row["code"] in requested]
+    else:
+        if cancer_types is not None:
+            requested = set(cancer_types)
+            candidate_rows = [row for row in candidate_rows if row["code"] in requested]
+        candidate_rows = candidate_rows[:top_k]
     if not candidate_rows:
         return []
 

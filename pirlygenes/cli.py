@@ -389,9 +389,13 @@ class _OutputDirLock:
                 )
         import os
         from datetime import datetime, timezone
-        self.path.write_text(
-            f"{os.getpid()},{datetime.now(timezone.utc).isoformat()}\n"
-        )
+        content = f"{os.getpid()},{datetime.now(timezone.utc).isoformat()}\n"
+        try:
+            fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, content.encode())
+            os.close(fd)
+        except FileExistsError:
+            self.path.write_text(content)
         self.acquired = True
 
     def release(self):
