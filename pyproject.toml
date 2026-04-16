@@ -56,3 +56,9 @@ requires = [
 [tool.setuptools.package-data]
 pirlygenes = ["data/*.csv"]
 
+[tool.pytest.ini_options]
+addopts = "-n auto"
+markers = [
+    "perf: performance-regression fences",
+]
+

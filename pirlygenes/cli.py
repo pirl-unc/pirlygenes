@@ -335,6 +335,78 @@ def _ci_confidence_tier(overall_lower, overall_upper):
     return "low"
 
 
+class _OutputDirLock:
+    """Advisory lock for an analyze() output directory (issue #82).
+
+    Writes ``$OUTPUT_DIR/.pirlygenes.lock`` with the running pid +
+    start time. Two concurrent analyze runs pointed at the same
+    output dir used to clobber each other silently — each one wipes
+    stale prefix outputs at start, and both write interleaved
+    artifacts to the same filenames. The lock refuses a second run
+    unless the caller passes ``--force``.
+    """
+
+    def __init__(self, out_dir: Path, force: bool = False):
+        self.path = Path(out_dir) / ".pirlygenes.lock"
+        self.force = force
+        self.acquired = False
+
+    def _stale(self) -> bool:
+        """Return True iff the existing lockfile points at a pid that's
+        no longer running. Treat malformed files as stale."""
+        try:
+            raw = self.path.read_text().strip()
+            pid_str = raw.split(",", 1)[0].strip()
+            pid = int(pid_str)
+        except (OSError, ValueError):
+            return True
+        if pid <= 0:
+            return True
+        try:
+            import os
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            # A live process we don't own — treat as live, not stale.
+            return False
+        except OSError:
+            return True
+        return False
+
+    def acquire(self):
+        if self.path.exists() and not self._stale():
+            if not self.force:
+                try:
+                    holder = self.path.read_text().strip()
+                except OSError:
+                    holder = "(unreadable)"
+                raise RuntimeError(
+                    "Another pirlygenes analyze run appears active in this "
+                    f"output directory ({self.path.parent}): {holder}. "
+                    "Re-run with --force to override, or choose a different "
+                    "--output-dir."
+                )
+        import os
+        from datetime import datetime, timezone
+        content = f"{os.getpid()},{datetime.now(timezone.utc).isoformat()}\n"
+        try:
+            fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, content.encode())
+            os.close(fd)
+        except FileExistsError:
+            self.path.write_text(content)
+        self.acquired = True
+
+    def release(self):
+        if self.acquired:
+            try:
+                self.path.unlink()
+            except OSError:
+                pass
+            self.acquired = False
+
+
 def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
     """Delete stale files from a prior run sharing the same output prefix.
 
@@ -373,10 +445,12 @@ def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
 
 @named("analyze")
 def analyze(
-    input_path: str,
+    input_path: str = "",
     output_dir: str = "pirlygenes-output",
     output_image_prefix: Optional[str] = None,
     aggregate_gene_expression: bool = False,
+    genes: Optional[str] = None,
+    transcripts: Optional[str] = None,
     label_genes: Optional[str] = None,
     gene_name_col: Optional[str] = None,
     gene_id_col: Optional[str] = None,
@@ -393,10 +467,42 @@ def analyze(
     decomposition_templates: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
+    force: bool = False,
 ):
+    """Analyze gene expression from transcript and/or gene-level quantification.
+
+    Input modes (preferred — explicit)::
+
+        --transcripts quant.sf                     # aggregate to gene level + isoform signals
+        --genes gene_tpm.csv                       # gene-level only, auto-discover sibling tx
+        --genes g.csv --transcripts quant.sf       # gene file + explicit tx for isoform signals
+
+    Legacy (backward-compatible positional)::
+
+        pirlygenes analyze quant.sf -a             # same as --transcripts quant.sf
+        pirlygenes analyze gene_tpm.csv            # same as --genes gene_tpm.csv
+    """
     from pathlib import Path
 
-    # Validate met_site up front, before any I/O, so bad values fail fast.
+    # --- Resolve input: --genes / --transcripts / legacy positional ---
+    if not genes and not transcripts:
+        if not input_path:
+            raise ValueError(
+                "Provide at least one of --genes <gene-file> or "
+                "--transcripts <transcript-file> (e.g. salmon quant.sf, "
+                "kallisto abundance.tsv)."
+            )
+        if aggregate_gene_expression:
+            transcripts = input_path
+        else:
+            genes = input_path
+
+    if transcripts and not genes:
+        aggregate_gene_expression = True
+
+    gene_input = genes or transcripts
+    transcript_input = transcripts if genes else None
+
     if met_site is not None:
         from .plot import MET_SITE_TISSUE_AUGMENTATION as _MET_SITE_MAP
         if met_site not in _MET_SITE_MAP:
@@ -408,7 +514,59 @@ def analyze(
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[output] Writing to {out_dir}/")
 
-    # Build prefix: output_dir / image_prefix (or just output_dir/)
+    lock = _OutputDirLock(out_dir, force=force)
+    lock.acquire()
+    try:
+        _analyze_body(
+            input_path=gene_input,
+            out_dir=out_dir,
+            output_image_prefix=output_image_prefix,
+            aggregate_gene_expression=aggregate_gene_expression,
+            label_genes=label_genes,
+            gene_name_col=gene_name_col,
+            gene_id_col=gene_id_col,
+            sample_id_col=sample_id_col,
+            sample_id_value=sample_id_value,
+            output_dpi=output_dpi,
+            plot_height=plot_height,
+            plot_aspect=plot_aspect,
+            cancer_type=cancer_type,
+            sample_mode=sample_mode,
+            tumor_context=tumor_context,
+            site_hint=site_hint,
+            met_site=met_site,
+            transcript_path=transcript_input,
+            decomposition_templates=decomposition_templates,
+            therapy_target_top_k=therapy_target_top_k,
+            therapy_target_tpm_threshold=therapy_target_tpm_threshold,
+        )
+    finally:
+        lock.release()
+
+
+def _analyze_body(
+    input_path: str,
+    out_dir: Path,
+    output_image_prefix: Optional[str],
+    aggregate_gene_expression: bool,
+    label_genes: Optional[str],
+    gene_name_col: Optional[str],
+    gene_id_col: Optional[str],
+    sample_id_col: Optional[str],
+    sample_id_value: Optional[str],
+    output_dpi: int,
+    plot_height: float,
+    plot_aspect: float,
+    cancer_type: Optional[str],
+    sample_mode: str,
+    tumor_context: str,
+    site_hint: Optional[str],
+    met_site: Optional[str],
+    transcript_path: Optional[str],
+    decomposition_templates: Optional[str],
+    therapy_target_top_k: int,
+    therapy_target_tpm_threshold: float,
+):
     if output_image_prefix:
         prefix = str(out_dir / output_image_prefix)
     else:
@@ -425,6 +583,7 @@ def analyze(
         gene_id_col=gene_id_col,
         sample_id_col=sample_id_col,
         sample_id_value=sample_id_value,
+        transcript_path=transcript_path,
     )
     forced_labels = _parse_always_label_genes(label_genes)
     template_overrides = _parse_csv_tokens(decomposition_templates)
@@ -639,6 +798,7 @@ def analyze(
         sample_mode=analysis["sample_mode"],
         save_to_filename=summary_png,
         save_dpi=output_dpi,
+        analysis=analysis,  # #84: skip redundant analyze_sample call
     )
 
     print("[analysis] Running broad-compartment decomposition...")
@@ -717,6 +877,11 @@ def analyze(
         site_hint=site_hint,
         templates=template_overrides,
         sample_context=sample_context,
+        # #85: hand off the already-ranked candidate rows so
+        # decompose_sample reuses analyze_sample's work instead of
+        # re-ranking (which internally re-runs estimate_tumor_purity
+        # per candidate).
+        candidate_rows=analysis.get("candidate_trace"),
     )
     call_summary = _summarize_sample_call(
         analysis,
@@ -890,6 +1055,10 @@ def analyze(
         sample_mode=analysis["sample_mode"],
         save_to_filename=purity_png,
         save_dpi=output_dpi,
+        # #86: render the harmonized purity (may be lineage-panel-
+        # adopted) so the figure agrees with the rest of the report
+        # instead of silently recomputing a signature-only estimate.
+        purity_result=analysis["purity"],
     )
     _plt.close("all")
 
@@ -900,7 +1069,12 @@ def analyze(
     )
     plot_sample_vs_cancer(
         df_expr,
-        cancer_type=cancer_type,
+        # #83: use the resolved (possibly auto-detected and decomp-
+        # promoted) cancer type so the scatter agrees with the
+        # summary/purity outputs. Previously fell back to the raw CLI
+        # argument, which for the default auto-detect path meant the
+        # pan-cancer mean instead of the inferred tumor type.
+        cancer_type=effective_cancer_type,
         save_to_filename=scatter_pdf,
         save_dpi=output_dpi,
         always_label_genes=forced_labels,

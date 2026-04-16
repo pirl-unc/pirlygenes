@@ -82,6 +82,19 @@ def aggregate_gene_expression(
 
     unknown_mask = gene_series.isna()
     if unknown_mask.any():
+        # Resolve the full unknown set — including zero-TPM rows.
+        # Dropping zero-TPM transcripts here is unsafe: a gene whose
+        # every transcript is zero would fail to resolve, get dropped
+        # from the aggregate entirely, and flip from "present at 0 TPM"
+        # to "missing from quant" — which changes downstream
+        # presence/absence decisions (e.g. the FFPE-sensitive panel
+        # geomean in sample_context.py uses ``if s in tpm_by_symbol``).
+        # The module-level ``@lru_cache`` on
+        # ``find_gene_name_from_ensembl_transcript_id`` (gene_ids.py)
+        # means duplicated calls from other passes on the same IDs
+        # within one process are free — so we eat the cost of the
+        # first resolution but don't pay for the subsequent
+        # ``_build_transcript_expression_frame`` pass.
         unknown_unique = pd.Index(tx0[unknown_mask].dropna().unique())
         if verbose:
             print(
