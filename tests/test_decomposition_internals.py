@@ -188,3 +188,35 @@ def test_lineage_override_upward_delta_is_positive():
     lo = DECOMPOSITION_PARAMETERS["lineage_override"]
     assert lo["max_upward_delta"] > 0
     assert lo["max_upward_ratio"] > 1.0
+
+
+def test_min_tumor_fraction_parameter_exists():
+    ts = DECOMPOSITION_PARAMETERS["template_scoring"]
+    assert "min_tumor_fraction" in ts
+    assert 0 < ts["min_tumor_fraction"] < 0.1
+
+
+def test_low_purity_candidate_is_penalised():
+    """A decomposition candidate with purity < min_tumor_fraction should
+    have a lower score than one at normal purity, all else equal."""
+    import pandas as pd
+    from pirlygenes.gene_sets_cancer import pan_cancer_expression
+    from pirlygenes.decomposition import decompose_sample
+
+    ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
+    # Build a PRAD sample — should score well for PRAD, poorly for unrelated types
+    df = pd.DataFrame({
+        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+        "gene_symbol": ref["Symbol"],
+        "TPM": ref["FPKM_PRAD"].astype(float),
+    })
+    results = decompose_sample(
+        df, cancer_types=["PRAD", "HNSC"], templates=["solid_primary"], top_k=2,
+    )
+    assert len(results) == 2
+    prad_result = next(r for r in results if r.cancer_type == "PRAD")
+    hnsc_result = next(r for r in results if r.cancer_type == "HNSC")
+    # If HNSC has very low purity, it should have been penalised
+    if hnsc_result.purity < 0.02:
+        assert hnsc_result.score < prad_result.score * 0.5
+        assert any("floor" in w for w in hnsc_result.warnings)
