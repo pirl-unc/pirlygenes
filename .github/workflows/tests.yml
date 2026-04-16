@@ -22,8 +22,8 @@ jobs:
           python -m pip install uv
           uv venv
           source .venv/bin/activate
-          uv pip install pytest pytest-cov coveralls pylint ruff
-          uv pip install .
+          uv pip install coveralls pylint ruff
+          uv pip install '.[test]'
       - name: Cache pyensembl data
         uses: actions/cache@v4
         with:
