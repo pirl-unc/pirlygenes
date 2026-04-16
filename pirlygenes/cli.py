@@ -443,9 +443,38 @@ def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
     return removed
 
 
+_TX_HEADER_TOKENS = frozenset({
+    "name", "target_id", "transcript_id", "transcript",
+    "transcriptid", "targetid", "effectivelength", "numreads",
+})
+_GENE_HEADER_TOKENS = frozenset({
+    "gene", "gene symbol", "gene_symbol", "genesymbol",
+    "geneid", "gene_id", "ensembl_gene_id",
+})
+
+
+def _sniff_input_level(path: str) -> str:
+    """Read the header of a tabular file and guess whether it contains
+    transcript-level or gene-level quantification.
+
+    Returns ``"transcript"`` or ``"gene"``.
+    """
+    import csv
+    with open(path) as f:
+        reader = csv.reader(f, delimiter="\t" if path.endswith((".sf", ".tsv")) else ",")
+        try:
+            header = next(reader)
+        except StopIteration:
+            return "gene"
+    lower = {h.strip().lower() for h in header}
+    if lower & _TX_HEADER_TOKENS:
+        return "transcript"
+    return "gene"
+
+
 @named("analyze")
 def analyze(
-    input_path: str = "",
+    input_path: str,
     output_dir: str = "pirlygenes-output",
     output_image_prefix: Optional[str] = None,
     aggregate_gene_expression: bool = False,
@@ -469,46 +498,46 @@ def analyze(
     therapy_target_tpm_threshold: float = 30.0,
     force: bool = False,
 ):
-    """Analyze gene expression from transcript and/or gene-level quantification.
+    """Analyze gene expression from a quantification file.
 
-    Input modes (preferred — explicit)::
+    The positional argument auto-detects whether the input is
+    transcript-level (salmon quant.sf, kallisto abundance.tsv) or
+    gene-level. Transcript-level inputs are aggregated to gene-level
+    automatically. Use --genes / --transcripts for explicit control
+    or to supply both simultaneously::
 
-        --transcripts quant.sf                     # aggregate to gene level + isoform signals
-        --genes gene_tpm.csv                       # gene-level only, auto-discover sibling tx
-        --genes g.csv --transcripts quant.sf       # gene file + explicit tx for isoform signals
-
-    Legacy (backward-compatible positional)::
-
-        pirlygenes analyze quant.sf -a             # same as --transcripts quant.sf
-        pirlygenes analyze gene_tpm.csv            # same as --genes gene_tpm.csv
+        pirlygenes analyze quant.sf                    # auto-detect: transcript → aggregate
+        pirlygenes analyze gene_tpm.csv                # auto-detect: gene-level
+        pirlygenes analyze --genes g.csv --transcripts quant.sf  # explicit both
     """
     from pathlib import Path
 
-    # --- Resolve input: --genes / --transcripts / legacy positional ---
-    if not genes and not transcripts:
-        if not input_path:
-            raise ValueError(
-                "Provide at least one of --genes <gene-file> or "
-                "--transcripts <transcript-file> (e.g. salmon quant.sf, "
-                "kallisto abundance.tsv)."
-            )
-        if aggregate_gene_expression:
-            transcripts = input_path
-        else:
-            genes = input_path
-
-    if transcripts and not genes:
-        aggregate_gene_expression = True
-
-    gene_input = genes or transcripts
-    transcript_input = transcripts if genes else None
-
+    # Validate met_site before any I/O so bad values fail fast.
     if met_site is not None:
         from .plot import MET_SITE_TISSUE_AUGMENTATION as _MET_SITE_MAP
         if met_site not in _MET_SITE_MAP:
             raise ValueError(
                 f"--met-site must be one of {sorted(_MET_SITE_MAP.keys())}, got {met_site!r}"
             )
+
+    # --- Resolve input -------------------------------------------------
+    if not genes and not transcripts:
+        if aggregate_gene_expression:
+            transcripts = input_path
+        else:
+            level = _sniff_input_level(input_path)
+            if level == "transcript":
+                transcripts = input_path
+                aggregate_gene_expression = True
+                print("[input] Auto-detected transcript-level input, will aggregate to gene level")
+            else:
+                genes = input_path
+
+    if transcripts and not genes:
+        aggregate_gene_expression = True
+
+    gene_input = genes or transcripts
+    transcript_input = transcripts if genes else None
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
