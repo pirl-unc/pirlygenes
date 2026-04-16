@@ -1,12 +1,51 @@
 # pirlygenes
 
-Gene lists and expression data for cancer immunotherapy
+Curated gene sets, pan-cancer expression references, and bulk RNA-seq decomposition tools for cancer immunotherapy.
+
+**What it ships:** ~30 curated CSVs covering therapy targets (ADC, CAR-T, TCR-T, bispecific, radioligand), cancer-testis antigens, surface proteins, cancer-driver genes, housekeeping genes, immune/stromal marker panels, and pan-cancer expression across 33 TCGA types and 50 normal tissues. All data are bundled in the package — no downloads needed.
+
+**What it does with them:** The gene sets are the building blocks for decomposing a bulk tumor expression profile into its constituent parts — tumor, immune, stromal, and site-specific host tissue — so that per-gene expression can be conservatively attributed to the tumor rather than naively read from raw TPM. The `analyze` command runs this full pipeline end-to-end and produces reports, figures, and structured data.
+
+## Contents
+
+- [Quick start](#quick-start) — install, run `analyze`, use gene sets in Python
+- [Gene sets](#gene-sets) — what's bundled and how to access it
+- [Analyze command](#the-analyze-command) — full single-sample pipeline
+  - [Attribution flow](#attribution-flow-make-it-make-sense) — the 5-stage decomposition logic
+  - [CLI arguments](#cli-arguments)
+  - [Sample quality](#sample-quality-assessment)
+  - [Decomposition](#broad-compartment-decomposition)
+  - [Purity estimation](#tumor-purity-estimation)
+  - [9-point expression ranges](#9-point-expression-ranges)
+  - [Output files](#output-files)
+- [Python API](#python-api) — expression data, surface proteins, purity, quality, decomposition, plotting
+- [Therapy modalities](#therapy-modalities) — ADC, CAR-T, TCR-T, bispecific, radioligand references
+- [Cancer-testis antigens](#cancer-testis-antigens-ctas) — curation pipeline and evidence columns
+- [Other gene sets](#class-i-mhc-antigen-presentation) — MHC presentation, IFN-gamma, cancer drivers
 
 ## Quick start
 
 ```bash
 pip install pirlygenes
+```
 
+### Use gene sets directly
+
+```python
+from pirlygenes.gene_sets_cancer import (
+    CTA_gene_names,                   # ~257 cancer-testis antigens
+    surface_protein_gene_names,       # 2,799 surfaceome genes
+    cancer_surfaceome_gene_names,     # 147 tumor-specific surface targets
+    therapy_target_gene_names,        # targets by modality: "ADC", "CAR-T", etc.
+    pan_cancer_expression,            # ~3,100 genes x 83 columns (50 tissues + 33 cancers)
+    cancer_expression,                # expression for one cancer type
+    cancer_enriched_genes,            # genes enriched in one cancer type
+)
+```
+
+### Run full sample analysis
+
+```bash
 # Full sample analysis: cancer type, purity, decomposition, targets, embeddings
 pirlygenes analyze gene_expression.tsv
 
@@ -29,21 +68,25 @@ pirlygenes data
 pirlygenes plot-cancer-cohorts sample1.tsv sample2.tsv sample3.tsv --cancer-type PRAD
 ```
 
-## Attribution flow: "make it make sense"
+## Gene sets
 
-`pirlygenes` treats every TPM in a bulk tumor sample as a claim that must be *attributed* to some source — and then explains away as much of it as possible before crediting the tumor. The goal is a conservative, defensible core of tumor-specific expression, not a lift of raw TPM straight into therapeutic target recommendations.
+All gene sets ship as CSVs in `pirlygenes/data/` and are accessible via `pirlygenes.gene_sets_cancer`. See [docs/gene-sets.md](docs/gene-sets.md) for the full API reference.
 
-The flow runs in five stages:
+| Gene set | Genes | Access | Description |
+|----------|------:|--------|-------------|
+| Cancer-testis antigens | ~257 | `CTA_gene_names()` | Reproductive-restricted, filter-passing CTAs from CTpedia, CTexploreR, literature |
+| Surface proteins | 2,799 | `surface_protein_gene_names()` | Human surfaceome (SURFY + CSPA); 1,410 mass-spec validated |
+| Tumor-specific surface | 147 | `cancer_surfaceome_gene_names()` | TCSA L3-tier surface targets |
+| ADC targets | — | `therapy_target_gene_names("ADC")` | Approved + trial ADC antigens |
+| CAR-T targets | — | `therapy_target_gene_names("CAR-T")` | Approved CAR-T antigens |
+| TCR-T targets | — | `therapy_target_gene_names("TCR-T")` | Approved + trial TCR-T antigens |
+| Bispecific / TCE | — | `therapy_target_gene_names("bispecific-antibodies")` | Bispecific T-cell engager targets |
+| Radioligand targets | — | `therapy_target_gene_names("radioligand")` | RLT target genes |
+| Cancer drivers | — | `cancer-driver-genes.csv` | Recurrently mutated genes (Bailey et al. 2018) |
+| Housekeeping genes | — | `housekeeping-genes.csv` | Cross-platform normalization reference |
+| Pan-cancer expression | ~3,100 | `pan_cancer_expression()` | 33 TCGA cancers + 50 HPA normal tissues |
 
-1. **Sample context** (runs *first*, before any cancer-type inference). A `SampleContext` is inferred from the expression table alone — what **library prep** produced the data (poly-A capture, ribo-depletion, total RNA, or exome capture) and what **preservation / degradation** state the RNA is in (fresh-frozen, FFPE, partial degradation). This becomes a **base layer of expression expectations**: which genes are expected to be over- or under-represented for *artifactual* reasons, independent of biology. The context is propagated forward and every downstream stage reads from it.
-2. **Coarse healthy-tissue decomposition.** Broad non-tumor compartments (T cell, B cell, myeloid, fibroblast, endothelial, plus site-specific host tissue for met samples) are fit by weighted NNLS against curated marker panels, anchored to an externally-estimated tumor purity.
-3. **Fine TME-subtype / activation-state dissection** (in progress: CAF vs healthy fibroblast, TAM polarisation, exhausted T, tumor endothelium, etc.). Activated-state references refine the coarse compartment call into biologically actionable subsets.
-4. **Tumor-value adjustment.** Per gene, the TME and matched-normal contributions are subtracted from the observed TPM before dividing by purity. Genes whose observed signal is dominantly explained by non-tumor compartments are flagged `tme_explainable` rather than credited to the tumor.
-5. **Conservative tumor-specific core.** What remains after stages 1–4 is reported as a bounded per-gene tumor-expression range (9-point across low/median/high TME and low/median/high purity), with a low-purity caveat for samples below 20% purity where TME residuals would otherwise be amplified ≥5×.
-
-Each stage *adds* to the attribution chain; none replaces earlier stages. The `analyze` report (summary.md, analysis.md, targets.md) surfaces the chain so a reader can see *why* a number is what it is, not just the final value.
-
-Reports and figures are ordered high-level → specific: start with what data we're looking at and how it was prepared (QC), then the coarse cancer-type call and what else is in the sample, then the deeper per-gene / per-target detail.
+These gene sets serve two purposes: **(1)** as standalone curated lists for target selection, enrichment analysis, or annotation, and **(2)** as the reference panels that power the decomposition pipeline — immune and stromal marker genes define the TME signature matrix, housekeeping genes anchor cross-platform normalization, and therapy target sets structure the final report.
 
 ## The `analyze` command
 
@@ -61,6 +104,22 @@ The main entry point for single-sample analysis. Takes a gene expression file (C
 - **Combined PDF** with all figures
 
 See [docs/analyze-command.md](docs/analyze-command.md) for full output file reference.
+
+### Attribution flow: "make it make sense"
+
+`pirlygenes` treats every TPM in a bulk tumor sample as a claim that must be *attributed* to some source — and then explains away as much of it as possible before crediting the tumor. The goal is a conservative, defensible core of tumor-specific expression, not a lift of raw TPM straight into therapeutic target recommendations.
+
+The flow runs in five stages:
+
+1. **Sample context** (runs *first*, before any cancer-type inference). A `SampleContext` is inferred from the expression table alone — what **library prep** produced the data (poly-A capture, ribo-depletion, total RNA, or exome capture) and what **preservation / degradation** state the RNA is in (fresh-frozen, FFPE, partial degradation). This becomes a **base layer of expression expectations**: which genes are expected to be over- or under-represented for *artifactual* reasons, independent of biology. The context is propagated forward and every downstream stage reads from it.
+2. **Coarse healthy-tissue decomposition.** Broad non-tumor compartments (T cell, B cell, myeloid, fibroblast, endothelial, plus site-specific host tissue for met samples) are fit by weighted NNLS against curated marker panels, anchored to an externally-estimated tumor purity.
+3. **Fine TME-subtype / activation-state dissection** (in progress: CAF vs healthy fibroblast, TAM polarisation, exhausted T, tumor endothelium, etc.). Activated-state references refine the coarse compartment call into biologically actionable subsets.
+4. **Tumor-value adjustment.** Per gene, the TME and matched-normal contributions are subtracted from the observed TPM before dividing by purity. Genes whose observed signal is dominantly explained by non-tumor compartments are flagged `tme_explainable` rather than credited to the tumor.
+5. **Conservative tumor-specific core.** What remains after stages 1–4 is reported as a bounded per-gene tumor-expression range (9-point across low/median/high TME and low/median/high purity), with a low-purity caveat for samples below 20% purity where TME residuals would otherwise be amplified ≥5×.
+
+Each stage *adds* to the attribution chain; none replaces earlier stages. The `analyze` report (summary.md, analysis.md, targets.md) surfaces the chain so a reader can see *why* a number is what it is, not just the final value.
+
+Reports and figures are ordered high-level → specific: start with what data we're looking at and how it was prepared (QC), then the coarse cancer-type call and what else is in the sample, then the deeper per-gene / per-target detail.
 
 ### CLI arguments
 
@@ -188,11 +247,13 @@ Every `analyze` run produces a directory with these files (prefixed by the input
 | `*-cancer-types-genes.png`, `*-cancer-types-disjoint.png` | Cancer-type gene signature heatmaps |
 | `*-all-figures.pdf` | All figures combined into a single PDF |
 
-## Pan-cancer expression data
+## Python API
+
+### Pan-cancer expression data
 
 Expression data for ~3,100 therapy-relevant genes across 50 normal tissues (HPA v23 consensus nTPM) and 33 TCGA cancer types (median FPKM/TPM). All data ships with the package — no downloads needed.
 
-### Cancer types
+#### Cancer types
 
 | Code | Cancer type | Aliases |
 |------|------------|---------|
@@ -229,8 +290,6 @@ Expression data for ~3,100 therapy-relevant genes across 50 normal tissues (HPA 
 | UCEC | Uterine Corpus Endometrial Carcinoma | endometrial, uterine |
 | UCS | Uterine Carcinosarcoma | uterine_carcinosarcoma |
 | UVM | Uveal Melanoma | uveal_melanoma |
-
-### Python API
 
 ```python
 from pirlygenes.gene_sets_cancer import (
@@ -342,9 +401,13 @@ plot_sample_vs_cancer(df_expr, cancer_type="prostate", save_to_filename="vs_prad
 
 ---
 
-## TCR-T 
+## Therapy modalities
 
-### Clinical trials
+Curated target lists and literature references for each therapy modality. Target gene sets are accessible via `therapy_target_gene_names(key)` (see [Gene sets](#gene-sets) above).
+
+### TCR-T 
+
+#### Clinical trials
 
 Last updated: September 17th, 2024
 
@@ -352,9 +415,9 @@ Sources:
 
 - [Toward a comprehensive solution for treating solid tumors using T-cell receptor therapy: A review](https://www.sciencedirect.com/science/article/pii/S0959804924008803#sec0055)
 
-## CAR-T
+### CAR-T
 
-### Approved therapies
+#### Approved therapies
 
 Last updated: September 17th, 2024
 
@@ -362,9 +425,9 @@ Sources:
 
 - [CAR-T: What Is Next? ](https://www.mdpi.com/2072-6694/15/3/663)
 
-## Multi-specific antibodies and T-cell engagers
+### Multi-specific antibodies and T-cell engagers
 
-### Clinical trials
+#### Clinical trials
 
 Last updated: September 11th, 2024
 
@@ -372,9 +435,9 @@ Sources:
 
 - [Progresses of T-cell-engaging bispecific antibodies in treatment of solid tumors](https://www.sciencedirect.com/science/article/abs/pii/S1567576924011305)
 
-## Antibody-drug conjugates (ADCs)
+### Antibody-drug conjugates (ADCs)
 
-### Approved
+#### Approved
 
 Last updated: September 19th, 2024
 
@@ -383,16 +446,16 @@ Sources:
 - [Development of antibody-drug conjugates in cancer: Overview and prospects](https://onlinelibrary.wiley.com/doi/full/10.1002/cac2.12517)
 
 
-### Clinical trials 
+#### Clinical trials 
 Last updated: September 11th, 2024
 
 Sources:
 
 - [Pan-cancer analysis of antibody-drug conjugate targets and putative predictors of treatment response](<https://www.ejcancer.com/article/S0959-8049(23)00681-0/fulltext>)
 
-## Radioligand therapies (RLTs)
+### Radioligand therapies (RLTs)
 
-### Current target list
+#### Current target list
 
 Last updated: February 11th, 2026
 
