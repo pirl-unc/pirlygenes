@@ -574,14 +574,13 @@ def _build_transcript_expression_frame(
         from .aggregate_gene_expression import _expanded_tx_map
         from .transcript_to_gene import extra_tx_mappings
 
-        # Isoform-level signals (compute_isoform_length_bias) require
-        # TPM > 0 anyway, so we can safely restrict the transcript
-        # frame itself to expressed rows. This does NOT affect
-        # gene-level presence/absence downstream — that's computed
-        # from the separate ``tx2gene`` output.
-        expressed_mask = out["TPM"].astype(float) > 0
-        out = out.loc[expressed_mask].copy()
-
+        # Resolve every transcript, not just expressed ones. This keeps
+        # the frame a faithful representation of the input quant so
+        # future presence/absence signals on isoforms aren't forced to
+        # distinguish "isoform absent from quant" from "isoform present
+        # at TPM=0". The only current consumer
+        # (``compute_isoform_length_bias``) applies its own ``TPM > 0``
+        # filter internally — that's the correct layer for it.
         tx0 = out["transcript_id"].astype(str).str.split(".", n=1).str[0]
         static_map = _expanded_tx_map(extra_tx_mappings or {})
         gene_syms = tx0.map(static_map)
