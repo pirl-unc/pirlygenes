@@ -427,6 +427,67 @@ def test_recommended_targets_skips_tme_dominant_rows():
     assert "CD74" not in recs_block.split("**Best CTA targets**")[0]
 
 
+def test_target_report_explains_blocked_fn1_pyx201_call():
+    """FN1 should carry an explicit report caveat when the curated
+    PYX-201 hook is withheld for lack of EDB+ transcript support."""
+    from pirlygenes.cli import _generate_target_report
+
+    purity = {
+        "overall_estimate": 0.6, "overall_lower": 0.5, "overall_upper": 0.7,
+    }
+    analysis = {
+        "sample_mode": "solid", "cancer_type": "PRAD",
+        "mhc1": {"HLA-A": 100, "HLA-B": 200, "HLA-C": 80, "B2M": 300},
+    }
+    ranges_df = pd.DataFrame([
+        {
+            "symbol": "ADAM9", "median_est": 998, "observed_tpm": 825,
+            "est_1": 696, "est_9": 2179, "pct_cancer_median": 7.5,
+            "tcga_percentile": 1.0, "is_surface": True, "is_cta": False,
+            "tme_explainable": False, "tme_dominant": False,
+            "excluded_from_ranking": False, "therapies": "ADC",
+            "therapy_supported": True, "therapy_support_note": "",
+            "max_healthy_tpm": 300, "tme_fold_lo": 0.1, "tme_fold_med": 0.2,
+            "tme_fold_hi": 0.3, "cohort_prior_tpm": 100, "tme_only_tpm": 150,
+            "matched_normal_tpm": 0, "matched_normal_tissue": "",
+            "matched_normal_fraction": 0.0, "estimation_path": "tme_only",
+            "low_confidence_tumor": False, "category": "therapy_target",
+            **{f"est_{i+1}": 696 + i*150 for i in range(9)},
+        },
+        {
+            "symbol": "FN1", "median_est": 260, "observed_tpm": 180,
+            "est_1": 180, "est_9": 340, "pct_cancer_median": 0.9,
+            "tcga_percentile": 0.65, "is_surface": False, "is_cta": False,
+            "tme_explainable": False, "tme_dominant": False,
+            "excluded_from_ranking": False, "therapies": "",
+            "therapy_supported": False,
+            "therapy_support_note": (
+                "PYX-201 (NCT05720117) targets EDB+ FN1; bulk gene-level FN1 alone "
+                "is not sufficient evidence because transcript-level data is unavailable."
+            ),
+            "max_healthy_tpm": 500, "tme_fold_lo": 0.1, "tme_fold_med": 0.2,
+            "tme_fold_hi": 0.3, "cohort_prior_tpm": 120, "tme_only_tpm": 80,
+            "matched_normal_tpm": 0, "matched_normal_tissue": "",
+            "matched_normal_fraction": 0.0, "estimation_path": "tme_only",
+            "low_confidence_tumor": False, "category": "other",
+            **{f"est_{i+1}": 180 + i*20 for i in range(9)},
+        },
+    ])
+
+    tmp_prefix = "/tmp/target_test_fn1"
+    import os
+    if os.path.exists(f"{tmp_prefix}-targets.md"):
+        os.remove(f"{tmp_prefix}-targets.md")
+    _generate_target_report(
+        ranges_df, analysis, tmp_prefix, cancer_type="PRAD",
+        purity_result=purity,
+    )
+    targets = open(f"{tmp_prefix}-targets.md").read()
+
+    assert "PYX-201 (NCT05720117) targets EDB+ FN1" in targets
+    assert "Landscape cautions" in targets
+
+
 def test_ci_confidence_tier_buckets():
     from pirlygenes.cli import _ci_confidence_tier
 

@@ -11,6 +11,7 @@
 # limitations under the License.
 
 from collections import defaultdict
+from functools import lru_cache
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -18,6 +19,7 @@ import numpy as np
 
 from adjustText import adjust_text
 
+from .common import _guess_gene_cols  # re-exported; canonical home is common.py
 from .plot_data_helpers import prepare_gene_expr_df
 from .gene_ids import find_canonical_gene_ids_and_names
 from .gene_sets_cancer import (
@@ -40,33 +42,189 @@ def _load_gene_sets():
     return result
 
 
+_FN1_GENE_ID = "ENSG00000115414"
+_FN1_EDB_MIN_TPM = 5.0
+_FN1_EDB_MIN_FRACTION = 0.10
+_FN1_EDB_TRANSCRIPT_IDS = frozenset(
+    {
+        "ENST00000323926",  # FN1-201
+        "ENST00000354785",  # FN1-203
+        "ENST00000432072",  # FN1-209
+        "ENST00000456923",  # FN1-213
+    }
+)
+_FN1_EDB_TRANSCRIPT_NAMES = frozenset({"FN1-201", "FN1-203", "FN1-209", "FN1-213"})
+_FN1_EDB_EXON_IDS = frozenset({"ENSE00000965897", "ENSE00001744777"})
+_FN1_EDB_EXON_INTERVALS = frozenset(
+    {
+        (215392931, 215393203),
+        (215392931, 215393147),
+    }
+)
+
+
+@lru_cache(maxsize=1)
+def _fn1_edb_transcript_ids():
+    """Return versionless FN1 transcript IDs carrying the EDB cassette exon.
+
+    The curated FN1 ADC hook in this repo is PYX-201 / NCT05720117,
+    which is specific to EDB+ fibronectin rather than total FN1.
+    Resolve the EDB+ transcript set once from local Ensembl releases,
+    with a hardcoded fallback so the gate still works if pyensembl
+    metadata is unavailable at runtime.
+    """
+    ids = set(_FN1_EDB_TRANSCRIPT_IDS)
+    try:
+        from .gene_ids import genomes
+    except Exception:
+        return frozenset(ids)
+
+    for genome in genomes:
+        try:
+            genes = genome.genes_by_name("FN1")
+        except Exception:
+            continue
+        if not genes:
+            continue
+        gene = genes[0]
+        try:
+            transcript_ids = genome.transcript_ids_of_gene_id(gene.gene_id)
+        except Exception:
+            continue
+        for transcript_id in transcript_ids:
+            try:
+                transcript = genome.transcript_by_id(transcript_id)
+            except Exception:
+                continue
+            if getattr(transcript, "biotype", None) != "protein_coding":
+                continue
+            exons = list(getattr(transcript, "exons", []) or [])
+            exon_ids = {str(exon.exon_id) for exon in exons if getattr(exon, "exon_id", None)}
+            exon_intervals = {
+                (int(exon.start), int(exon.end))
+                for exon in exons
+                if getattr(exon, "start", None) is not None
+                and getattr(exon, "end", None) is not None
+            }
+            if (
+                getattr(transcript, "transcript_name", None) in _FN1_EDB_TRANSCRIPT_NAMES
+                or exon_ids & _FN1_EDB_EXON_IDS
+                or exon_intervals & _FN1_EDB_EXON_INTERVALS
+            ):
+                ids.add(str(transcript.transcript_id).split(".", 1)[0])
+    return frozenset(ids)
+
+
+def _summarize_fn1_edb_transcript_support(df_gene_expr):
+    """Summarize whether transcript-level input supports EDB+ FN1 targeting."""
+    import pandas as pd
+
+    prefix = (
+        "PYX-201 (NCT05720117) targets EDB+ FN1; bulk gene-level FN1 alone "
+        "is not sufficient evidence"
+    )
+    empty = {
+        "supported": False,
+        "note": f"{prefix} because transcript-level data is unavailable.",
+        "edb_tpm": None,
+        "edb_fraction": None,
+        "supporting_transcripts": "",
+    }
+
+    tx_df = getattr(df_gene_expr, "attrs", {}).get("transcript_expression")
+    if not isinstance(tx_df, pd.DataFrame) or tx_df.empty:
+        return empty
+    if "transcript_id" not in tx_df.columns or "TPM" not in tx_df.columns:
+        return empty
+
+    tx_ids = tx_df["transcript_id"].astype(str).str.split(".", n=1).str[0]
+    fn1_mask = pd.Series(False, index=tx_df.index, dtype=bool)
+    if "ensembl_gene_id" in tx_df.columns:
+        fn1_mask |= (
+            tx_df["ensembl_gene_id"].astype(str).str.split(".", n=1).str[0].eq(_FN1_GENE_ID)
+        )
+    if "gene_symbol" in tx_df.columns:
+        fn1_mask |= tx_df["gene_symbol"].fillna("").astype(str).str.upper().eq("FN1")
+    if not fn1_mask.any():
+        return {
+            **empty,
+            "note": f"{prefix} because no FN1 transcripts were retained in the transcript-level input.",
+        }
+
+    tx_tpm = pd.to_numeric(tx_df["TPM"], errors="coerce").fillna(0.0)
+    total_fn1_tpm = float(tx_tpm[fn1_mask].sum())
+    edb_mask = fn1_mask & tx_ids.isin(_fn1_edb_transcript_ids())
+    edb_tpm = float(tx_tpm[edb_mask].sum())
+    edb_fraction = (edb_tpm / total_fn1_tpm) if total_fn1_tpm > 0 else 0.0
+
+    support_by_tx = (
+        pd.DataFrame(
+            {
+                "transcript_id": tx_ids[edb_mask].values,
+                "TPM": tx_tpm[edb_mask].values,
+            }
+        )
+        .groupby("transcript_id", sort=False)["TPM"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+    supporting_transcripts = ", ".join(
+        f"{transcript_id}:{value:.1f}"
+        for transcript_id, value in support_by_tx.head(4).items()
+    )
+
+    if edb_tpm <= 0:
+        note = f"{prefix} because no EDB+ FN1 transcripts were detected."
+        supported = False
+    elif edb_tpm >= _FN1_EDB_MIN_TPM and edb_fraction >= _FN1_EDB_MIN_FRACTION:
+        note = (
+            f"EDB+ FN1 transcript support present for PYX-201 / NCT05720117: "
+            f"{edb_tpm:.1f} TPM ({edb_fraction:.0%} of FN1 transcript signal)."
+        )
+        supported = True
+    else:
+        note = (
+            f"{prefix} because EDB+ FN1 transcripts reached only {edb_tpm:.1f} TPM "
+            f"({edb_fraction:.0%} of FN1 transcript signal), below the current gate."
+        )
+        supported = False
+
+    return {
+        "supported": supported,
+        "note": note,
+        "edb_tpm": edb_tpm,
+        "edb_fraction": edb_fraction,
+        "supporting_transcripts": supporting_transcripts,
+    }
+
+
+def _apply_therapy_support_gate(symbol, therapies, fn1_support):
+    """Return gated therapies plus structured support metadata."""
+    therapies = set(therapies or ())
+    if not therapies:
+        return therapies, None, "", None, None, ""
+    if symbol != "FN1":
+        return therapies, True, "", None, None, ""
+    if fn1_support.get("supported"):
+        return (
+            therapies,
+            True,
+            fn1_support.get("note", ""),
+            fn1_support.get("edb_tpm"),
+            fn1_support.get("edb_fraction"),
+            fn1_support.get("supporting_transcripts", ""),
+        )
+    return (
+        set(),
+        False,
+        fn1_support.get("note", ""),
+        fn1_support.get("edb_tpm"),
+        fn1_support.get("edb_fraction"),
+        fn1_support.get("supporting_transcripts", ""),
+    )
+
+
 # ------------------------ helpers ------------------------
-
-
-def _guess_gene_cols(df):
-    """Best-effort guess for gene ID and name columns in df_gene_expr."""
-    id_candidates = ["gene_id", "ensembl_gene_id", "canonical_gene_id", "GeneID"]
-    name_candidates = [
-        "gene_display_name",
-        "gene_name",
-        "canonical_gene_name",
-        "gene_symbol",
-        "symbol",
-        "GeneName",
-    ]
-    gene_id_col = next((c for c in id_candidates if c in df.columns), None)
-    gene_name_col = next((c for c in name_candidates if c in df.columns), None)
-    if gene_id_col is None:
-        raise KeyError(
-            "Could not find a gene ID column in df_gene_expr. "
-            "Tried: %s" % (id_candidates,)
-        )
-    if gene_name_col is None:
-        raise KeyError(
-            "Could not find a gene name column in df_gene_expr. "
-            "Tried: %s" % (name_candidates,)
-        )
-    return gene_id_col, gene_name_col
 
 
 def pick_genes_to_annotate(
@@ -1944,6 +2102,7 @@ def estimate_tumor_expression(
                 gene_therapies.setdefault(gname, set()).add(base)
         except Exception:
             pass
+    fn1_support = _summarize_fn1_edb_transcript_support(df_gene_expr)
 
     # Surface proteins
     try:
@@ -1994,7 +2153,11 @@ def estimate_tumor_expression(
         # Categorize
         is_cta = symbol in cta_symbols
         is_surface = symbol in surf_symbols
-        therapies = gene_therapies.get(symbol, set())
+        therapies, therapy_supported, therapy_support_note, therapy_support_tpm, therapy_support_fraction, therapy_supporting_transcripts = _apply_therapy_support_gate(
+            symbol,
+            gene_therapies.get(symbol, set()),
+            fn1_support,
+        )
         is_therapy = bool(therapies)
 
         # Filter: only include genes with meaningful tumor signal
@@ -2024,6 +2187,11 @@ def estimate_tumor_expression(
             "tcga_percentile": round(pctile, 3),
             "is_surface": is_surface,
             "is_cta": is_cta,
+            "therapy_supported": therapy_supported,
+            "therapy_support_note": therapy_support_note,
+            "therapy_support_tpm": round(therapy_support_tpm, 2) if therapy_support_tpm is not None else None,
+            "therapy_support_fraction": round(therapy_support_fraction, 3) if therapy_support_fraction is not None else None,
+            "therapy_supporting_transcripts": therapy_supporting_transcripts,
             "therapies": ", ".join(sorted(therapies)) if therapies else "",
         })
 
@@ -2271,6 +2439,7 @@ def estimate_tumor_expression_ranges(
                 gene_therapies.setdefault(gname, set()).add(base)
         except Exception:
             pass
+    fn1_support = _summarize_fn1_edb_transcript_support(df_gene_expr)
 
     try:
         surf_ids = surface_protein_gene_ids()
@@ -2440,7 +2609,11 @@ def estimate_tumor_expression_ranges(
         # Categorize
         is_cta = symbol in cta_symbols
         is_surface = symbol in surf_symbols
-        therapies = gene_therapies.get(symbol, set())
+        therapies, therapy_supported, therapy_support_note, therapy_support_tpm, therapy_support_fraction, therapy_supporting_transcripts = _apply_therapy_support_gate(
+            symbol,
+            gene_therapies.get(symbol, set()),
+            fn1_support,
+        )
 
         if is_cta:
             category = "CTA"
@@ -2523,6 +2696,11 @@ def estimate_tumor_expression_ranges(
             "is_surface": is_surface,
             "is_cta": is_cta,
             "excluded_from_ranking": excluded_from_ranking,
+            "therapy_supported": therapy_supported,
+            "therapy_support_note": therapy_support_note,
+            "therapy_support_tpm": round(therapy_support_tpm, 2) if therapy_support_tpm is not None else None,
+            "therapy_support_fraction": round(therapy_support_fraction, 3) if therapy_support_fraction is not None else None,
+            "therapy_supporting_transcripts": therapy_supporting_transcripts,
             "therapies": ", ".join(sorted(therapies)) if therapies else "",
         })
 

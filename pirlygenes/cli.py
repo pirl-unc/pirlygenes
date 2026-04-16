@@ -2609,6 +2609,19 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         landscape_cautions.append("some of the numerically highest surface rows are TME-dominant and should not be treated as tumor-cell targets")
     if matched_normal_summary:
         landscape_cautions.append("benign parent-tissue admixture is active")
+    if (
+        "therapy_supported" in ranges_df.columns
+        and "therapy_support_note" in ranges_df.columns
+    ):
+        fn1_blocked = ranges_df[
+            ranges_df["symbol"].eq("FN1")
+            & ~ranges_df["therapy_supported"].fillna(True).astype(bool)
+            & ranges_df["therapy_support_note"].fillna("").astype(str).str.len().gt(0)
+        ]
+        if len(fn1_blocked):
+            landscape_cautions.append(
+                fn1_blocked.sort_values("observed_tpm", ascending=False).iloc[0]["therapy_support_note"]
+            )
     if landscape_cautions:
         lines.append(f"- **Landscape cautions**: {'; '.join(landscape_cautions)}.")
     lines.append("")
