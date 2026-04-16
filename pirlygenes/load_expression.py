@@ -608,27 +608,42 @@ def _build_transcript_expression_frame(
 
 def _try_load_sibling_transcript_frame(input_path, verbose=False, progress=True):
     """When the user passed a gene-level table, look for a sibling
-    transcript-level file in the same directory and load it.
+    transcript-level file in the same directory (or common subdirs)
+    and load it.
 
-    Recognises ``transcript_expression_salmon.tsv`` (rich format with
-    gene + length + TPM) and the standard salmon ``quant.sf``. Returns
-    the normalized transcript frame or ``None`` if no sibling found.
+    Recognises standard quantifier outputs:
+    - ``quant.sf`` — salmon (same dir, or one level up)
+    - ``abundance.tsv`` — kallisto
+    - ``transcript_expression_salmon.tsv`` — rich format with gene +
+      length + TPM (legacy / custom pipelines)
+
+    Returns the normalized transcript frame or ``None`` if no sibling
+    found. The caller can bypass this search entirely by passing
+    ``--transcripts`` to the CLI.
     """
     try:
         parent = Path(input_path).resolve().parent
     except (OSError, RuntimeError):
         return None
     candidates = [
+        parent / "quant.sf",
+        parent / "abundance.tsv",
         parent / "transcript_expression_salmon.tsv",
-        parent / "tempus-rna" / "salmon_rich_quant" / "quant.sf",
     ]
+    # One level up — common when the gene file lives in a subdirectory
+    # alongside the quantifier output (e.g. ``results/gene_tpm.csv``
+    # next to ``results/../quant.sf``).
+    grandparent = parent.parent
+    if grandparent != parent:
+        candidates.extend([
+            grandparent / "quant.sf",
+            grandparent / "abundance.tsv",
+        ])
     for c in candidates:
         if c.exists():
             try:
-                if c.suffix == ".sf":
-                    raw = pd.read_csv(str(c), sep="\t")
-                else:
-                    raw = pd.read_csv(str(c), sep="\t")
+                sep = "\t" if c.suffix in (".sf", ".tsv") else ","
+                raw = pd.read_csv(str(c), sep=sep)
                 tx = _build_transcript_expression_frame(raw, verbose=verbose, progress=progress)
                 if tx is not None and not tx.empty:
                     if verbose:
@@ -649,6 +664,7 @@ def load_expression_data(
     gene_id_col=None,
     sample_id_col=None,
     sample_id_value=None,
+    transcript_path=None,
     verbose=True,
     progress=True,
 ):
@@ -880,16 +896,30 @@ def load_expression_data(
 
     # Attach a transcript-level frame on ``df.attrs`` so downstream
     # signals (isoform length bias, APA-3'UTR usage, etc.) can use
-    # capture-bias-immune within-gene comparisons. Prefer the frame we
-    # extracted before aggregation (it was computed from the
-    # transcript-level input rows); fall back to a sibling transcript
-    # file when the input was already gene-level. The re-attach here
-    # is the last step because intermediate ``groupby().agg()`` calls
-    # in ``_apply_id_aliases_and_sum`` / ``_consolidate_gene_ids``
-    # strip ``df.attrs`` — re-attaching at the final return ensures
-    # the caller sees the retained frame.
+    # capture-bias-immune within-gene comparisons.
+    #
+    # Priority:
+    # 1. Frame retained from this file's own transcript-level rows
+    #    (available when the input was transcript-level + ``-a``).
+    # 2. Explicit ``--transcripts <path>`` provided by the caller.
+    # 3. Sibling auto-discovery: look for a standard quantifier
+    #    output (salmon quant.sf, kallisto abundance.tsv) alongside
+    #    the gene-level input.
     if _retained_transcript_df is not None and not _retained_transcript_df.empty:
         df.attrs["transcript_expression"] = _retained_transcript_df
+    elif transcript_path is not None:
+        try:
+            tp = Path(transcript_path)
+            sep = "\t" if tp.suffix in (".sf", ".tsv") else ","
+            raw = pd.read_csv(str(tp), sep=sep)
+            tx = _build_transcript_expression_frame(raw, verbose=verbose, progress=progress)
+            if tx is not None and not tx.empty:
+                df.attrs["transcript_expression"] = tx
+                if verbose:
+                    print(f"[load] Loaded transcript frame from --transcripts: {tp}")
+        except Exception as exc:  # noqa: BLE001
+            if verbose:
+                print(f"[load] Failed to load --transcripts {transcript_path}: {exc}")
     else:
         sibling_tx = _try_load_sibling_transcript_frame(input_path, verbose=verbose, progress=progress)
         if sibling_tx is not None:

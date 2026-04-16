@@ -175,10 +175,9 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
 
     out_dir = str(tmp_path / "test-output")
     cli_mod.analyze(
-        "input.csv",
+        transcripts="input.csv",
         output_dir=out_dir,
         output_image_prefix="out",
-        aggregate_gene_expression=True,
         label_genes="FAP,CD276",
         output_dpi=200,
         sample_mode="solid",

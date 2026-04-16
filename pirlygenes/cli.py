@@ -441,10 +441,12 @@ def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
 
 @named("analyze")
 def analyze(
-    input_path: str,
+    input_path: str = "",
     output_dir: str = "pirlygenes-output",
     output_image_prefix: Optional[str] = None,
     aggregate_gene_expression: bool = False,
+    genes: Optional[str] = None,
+    transcripts: Optional[str] = None,
     label_genes: Optional[str] = None,
     gene_name_col: Optional[str] = None,
     gene_id_col: Optional[str] = None,
@@ -463,9 +465,40 @@ def analyze(
     therapy_target_tpm_threshold: float = 30.0,
     force: bool = False,
 ):
+    """Analyze gene expression from transcript and/or gene-level quantification.
+
+    Input modes (preferred — explicit)::
+
+        --transcripts quant.sf                     # aggregate to gene level + isoform signals
+        --genes gene_tpm.csv                       # gene-level only, auto-discover sibling tx
+        --genes g.csv --transcripts quant.sf       # gene file + explicit tx for isoform signals
+
+    Legacy (backward-compatible positional)::
+
+        pirlygenes analyze quant.sf -a             # same as --transcripts quant.sf
+        pirlygenes analyze gene_tpm.csv            # same as --genes gene_tpm.csv
+    """
     from pathlib import Path
 
-    # Validate met_site up front, before any I/O, so bad values fail fast.
+    # --- Resolve input: --genes / --transcripts / legacy positional ---
+    if not genes and not transcripts:
+        if not input_path:
+            raise ValueError(
+                "Provide at least one of --genes <gene-file> or "
+                "--transcripts <transcript-file> (e.g. salmon quant.sf, "
+                "kallisto abundance.tsv)."
+            )
+        if aggregate_gene_expression:
+            transcripts = input_path
+        else:
+            genes = input_path
+
+    if transcripts and not genes:
+        aggregate_gene_expression = True
+
+    gene_input = genes or transcripts
+    transcript_input = transcripts if genes else None
+
     if met_site is not None:
         from .plot import MET_SITE_TISSUE_AUGMENTATION as _MET_SITE_MAP
         if met_site not in _MET_SITE_MAP:
@@ -477,13 +510,11 @@ def analyze(
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[output] Writing to {out_dir}/")
 
-    # #82: refuse concurrent analyze runs into the same output dir
-    # (they silently clobber each other's outputs). --force bypasses.
     lock = _OutputDirLock(out_dir, force=force)
     lock.acquire()
     try:
         _analyze_body(
-            input_path=input_path,
+            input_path=gene_input,
             out_dir=out_dir,
             output_image_prefix=output_image_prefix,
             aggregate_gene_expression=aggregate_gene_expression,
@@ -500,6 +531,7 @@ def analyze(
             tumor_context=tumor_context,
             site_hint=site_hint,
             met_site=met_site,
+            transcript_path=transcript_input,
             decomposition_templates=decomposition_templates,
             therapy_target_top_k=therapy_target_top_k,
             therapy_target_tpm_threshold=therapy_target_tpm_threshold,
@@ -526,11 +558,11 @@ def _analyze_body(
     tumor_context: str,
     site_hint: Optional[str],
     met_site: Optional[str],
+    transcript_path: Optional[str],
     decomposition_templates: Optional[str],
     therapy_target_top_k: int,
     therapy_target_tpm_threshold: float,
 ):
-    # Build prefix: output_dir / image_prefix (or just output_dir/)
     if output_image_prefix:
         prefix = str(out_dir / output_image_prefix)
     else:
@@ -547,6 +579,7 @@ def _analyze_body(
         gene_id_col=gene_id_col,
         sample_id_col=sample_id_col,
         sample_id_value=sample_id_value,
+        transcript_path=transcript_path,
     )
     forced_labels = _parse_always_label_genes(label_genes)
     template_overrides = _parse_csv_tokens(decomposition_templates)
