@@ -181,9 +181,9 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None):
         has_issues : bool
             True if any quality concern was detected.
     """
-    from .tumor_purity import _build_sample_tpm_by_symbol
+    from .common import build_sample_tpm_by_symbol
 
-    sample_tpm = _build_sample_tpm_by_symbol(df_gene_expr)
+    sample_tpm = build_sample_tpm_by_symbol(df_gene_expr)
 
     # Filter NaN values from the TPM dict (some reference genes have NaN
     # in TCGA cohorts where they were not measured, e.g. BCR/TCR loci).

@@ -738,8 +738,8 @@ def _analyze_body(
     # report can explain *why* individual genes are high or low
     # (e.g. KLK3 ↓ + FOLH1 ↑ → AR-suppressed, consistent with ADT).
     try:
-        from .tumor_purity import _build_sample_tpm_by_symbol
-        sample_tpm_by_symbol = _build_sample_tpm_by_symbol(df_expr)
+        from .common import build_sample_tpm_by_symbol
+        sample_tpm_by_symbol = build_sample_tpm_by_symbol(df_expr)
         therapy_scores = score_therapy_signatures(sample_tpm_by_symbol, cancer_code)
     except (KeyError, ValueError, TypeError) as exc:
         print(f"[therapy-response] scoring skipped: {exc}")

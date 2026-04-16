@@ -1,5 +1,7 @@
 import pandas as pd
 
+from pirlygenes.common import build_sample_tpm_by_symbol
+# Backward-compat: the underscore alias is still importable from tumor_purity
 from pirlygenes.tumor_purity import _build_sample_tpm_by_symbol
 
 
@@ -24,7 +26,12 @@ def test_build_sample_tpm_by_symbol_does_not_deepcopy_attrs(monkeypatch):
             "Symbol": ["GENE1", "GENE2"],
         }
     )
-    monkeypatch.setattr("pirlygenes.tumor_purity.pan_cancer_expression", lambda: ref)
+    # Patch at the source module — common.py lazy-imports from gene_sets_cancer
+    monkeypatch.setattr("pirlygenes.gene_sets_cancer.pan_cancer_expression", lambda: ref)
 
-    out = _build_sample_tpm_by_symbol(df)
+    out = build_sample_tpm_by_symbol(df)
     assert out == {"GENE1": 1.0, "GENE2": 2.5}
+
+    # The tumor_purity delegate should produce the same result
+    out2 = _build_sample_tpm_by_symbol(df)
+    assert out2 == {"GENE1": 1.0, "GENE2": 2.5}
