@@ -1093,6 +1093,80 @@ def _analyze_body(
     embedding_pngs = [mds_png]
     _plt.close("all")
 
+    # Deep-dive therapy target + CTA + subtype plots
+    from .plot_target_deep_dive import (
+        plot_actionable_targets,
+        plot_tumor_attribution,
+        plot_cta_deep_dive,
+    )
+    from .plot_subtype_signature import plot_subtype_signature
+
+    p_est = purity.get("overall_estimate")
+    try:
+        targets_deep_png = "%s-targets-deep-dive.png" % prefix
+        plot_actionable_targets(
+            df_expr, cancer_type=effective_cancer_type,
+            purity_estimate=p_est,
+            save_to_filename=targets_deep_png, save_dpi=output_dpi,
+        )
+        print(f"[plot] Saved actionable targets deep dive to {targets_deep_png}")
+    except Exception as exc:
+        print(f"[plot] actionable targets deep dive failed: {exc}")
+        targets_deep_png = None
+
+    try:
+        cta_deep_png = "%s-cta-deep-dive.png" % prefix
+        plot_cta_deep_dive(
+            df_expr, cancer_type=effective_cancer_type,
+            purity_estimate=p_est,
+            save_to_filename=cta_deep_png, save_dpi=output_dpi,
+        )
+        print(f"[plot] Saved CTA deep dive to {cta_deep_png}")
+    except Exception as exc:
+        print(f"[plot] CTA deep dive failed: {exc}")
+        cta_deep_png = None
+
+    try:
+        attrib_targets_png = "%s-tumor-attribution-targets.png" % prefix
+        plot_tumor_attribution(
+            df_expr, cancer_type=effective_cancer_type,
+            purity_estimate=p_est or 0.5, category="surface",
+            save_to_filename=attrib_targets_png, save_dpi=output_dpi,
+        )
+        print(f"[plot] Saved tumor attribution (targets) to {attrib_targets_png}")
+    except Exception as exc:
+        print(f"[plot] tumor attribution (targets) failed: {exc}")
+        attrib_targets_png = None
+
+    try:
+        attrib_cta_png = "%s-tumor-attribution-cta.png" % prefix
+        plot_tumor_attribution(
+            df_expr, cancer_type=effective_cancer_type,
+            purity_estimate=p_est or 0.5, category="CTA",
+            save_to_filename=attrib_cta_png, save_dpi=output_dpi,
+        )
+        print(f"[plot] Saved tumor attribution (CTA) to {attrib_cta_png}")
+    except Exception as exc:
+        print(f"[plot] tumor attribution (CTA) failed: {exc}")
+        attrib_cta_png = None
+
+    subtype_png = None
+    try:
+        subtype_png = "%s-subtype-signature.png" % prefix
+        fig = plot_subtype_signature(
+            df_expr, cancer_type=effective_cancer_type,
+            save_to_filename=subtype_png, save_dpi=output_dpi,
+        )
+        if fig is None:
+            subtype_png = None
+        else:
+            print(f"[plot] Saved subtype signature to {subtype_png}")
+    except Exception as exc:
+        print(f"[plot] subtype signature failed: {exc}")
+        subtype_png = None
+
+    _plt.close("all")
+
     # Generate text reports
     print("[report] Generating text reports...")
     _embedding_meta = get_embedding_feature_metadata(method="hierarchy")
@@ -1227,6 +1301,10 @@ def _analyze_body(
     ] + embedding_pngs
     if ct_png:
         png_files.append(ct_png)
+    # Deep-dive plots
+    for _ddp in [targets_deep_png, cta_deep_png, attrib_targets_png, attrib_cta_png, subtype_png]:
+        if _ddp and Path(_ddp).exists():
+            png_files.append(_ddp)
 
     # Add per-category scatter PNGs from the vs-cancer output dir
     scatter_dir = Path(scatter_pdf).parent / Path(scatter_pdf).stem
