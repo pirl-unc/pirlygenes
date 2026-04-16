@@ -31,7 +31,10 @@ def _render_composition_bar(ax, best, title="Sample composition (tumor + TME)"):
     ax.set_yticks([])
     ax.set_xlabel("Estimated composition (%)")
     ax.set_title(title, fontweight="bold")
-    ax.legend(loc="lower center", fontsize=8, ncol=2, framealpha=0.9)
+    ax.legend(
+        bbox_to_anchor=(0.0, -0.25), loc="upper left",
+        fontsize=8, ncol=3, framealpha=0.9, borderaxespad=0,
+    )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["left"].set_visible(False)
@@ -58,6 +61,8 @@ def _render_component_breakdown(ax, best, title="TME cell-type breakdown"):
     ax.set_xlabel("Fraction of sample (%)")
     ax.set_title(title, fontweight="bold")
     for idx, row in comp_df.iterrows():
+        if row["fraction"] < 0.005:
+            continue  # skip labels for sub-0.5% components (#96)
         txt = f"{row['marker_score']:.2f}" if row["marker_score"] is not None else "n/a"
         ax.text(row["fraction"] * 100 + 0.8, idx, txt, va="center", fontsize=8)
     ax.spines["top"].set_visible(False)
@@ -71,12 +76,12 @@ def plot_decomposition_composition(best, save_to_filename=None, save_dpi=300):
     larger as its own figure for inclusion in slide decks or focused
     reports.
     """
-    fig, ax = plt.subplots(figsize=(12, 3))
+    fig, ax = plt.subplots(figsize=(12, 3.5))
     _render_composition_bar(
         ax, best,
         title=f"Sample composition — {best.cancer_type} / {best.template}",
     )
-    fig.tight_layout()
+    fig.subplots_adjust(bottom=0.35)
     if save_to_filename:
         fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
         print(f"Saved {save_to_filename}")
