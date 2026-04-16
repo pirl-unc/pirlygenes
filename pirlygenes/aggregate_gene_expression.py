@@ -22,6 +22,7 @@ from tqdm import tqdm
 
 from .common import find_column
 from .gene_ids import (
+    _build_indexes,
     find_gene_and_ensembl_release_by_name,
     find_gene_name_from_ensembl_transcript_id,
 )
@@ -101,6 +102,10 @@ def aggregate_gene_expression(
                 f"[aggregate] Resolving {len(unknown_unique)} unique transcripts via Ensembl lookup"
             )
 
+        # Build the Ensembl index *before* the progress bar starts so the
+        # user doesn't see a 0% bar stuck while the index loads.
+        _build_indexes()
+
         @lru_cache(maxsize=None)
         def _resolve_tx(t: str):
             g = find_gene_name_from_ensembl_transcript_id(t, verbose=False)
@@ -122,6 +127,9 @@ def aggregate_gene_expression(
 
     unknown_mask = gene_series.isna()
     unknown_genes_tpm = float(tpm[unknown_mask].sum())
+    unresolved_tx_count = int(unknown_mask.sum())
+    unresolved_unique_count = int(tx0[unknown_mask].nunique())
+    unresolved_high_tpm = []
 
     if verbose and unknown_mask.any():
         high_tpm_unknown = (
@@ -131,6 +139,10 @@ def aggregate_gene_expression(
             .sort_values("TPM", ascending=False)
         )
         high_tpm_unknown = high_tpm_unknown[high_tpm_unknown["TPM"] > 1]
+        unresolved_high_tpm = [
+            {"tx": str(row.tx), "TPM": float(row.TPM)}
+            for _, row in high_tpm_unknown.iterrows()
+        ]
         if len(high_tpm_unknown):
             print(
                 f"[aggregate] {len(high_tpm_unknown)} unresolved transcript IDs with TPM>1 (showing up to 20):"
@@ -182,5 +194,14 @@ def aggregate_gene_expression(
 
     if verbose:
         print(f"[aggregate] Completed aggregation with {len(df_gene_expr)} genes")
+    df_gene_expr.attrs["transcript_aggregation_stats"] = {
+        "known_tpm": known_genes_tpm,
+        "unknown_tpm": unknown_genes_tpm,
+        "known_fraction": float(pct_known / 100.0),
+        "unknown_fraction": float(unknown_genes_tpm / denom) if denom > 0 else 0.0,
+        "unresolved_row_count": unresolved_tx_count,
+        "unresolved_unique_count": unresolved_unique_count,
+        "unresolved_high_tpm": unresolved_high_tpm,
+    }
 
     return df_gene_expr

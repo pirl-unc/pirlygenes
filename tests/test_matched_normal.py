@@ -246,6 +246,53 @@ def test_estimate_ranges_non_epithelial_cancer_has_no_matched_normal_split():
     assert (ranges["matched_normal_tissue"].fillna("") == "").all()
 
 
+def test_lineage_override_rejects_large_upward_jump(monkeypatch):
+    """A matched-normal panel can correct an over-high signature purity
+    downward, but it must not jump a plausible low-purity call up to an
+    implausibly high value from a contaminated panel."""
+    from pirlygenes.decomposition import engine
+
+    monkeypatch.setattr(
+        engine,
+        "estimate_lineage_tumor_fraction",
+        lambda *_a, **_k: {
+            "estimate": 0.8,
+            "lower": 0.7,
+            "upper": 0.9,
+            "stability": 0.4,
+            "panel_size": 30,
+            "panel_genes_observed": 20,
+            "per_gene": [],
+        },
+    )
+
+    df = _tcga_sample("PRAD")
+    results = decompose_sample(
+        df,
+        cancer_types=["PRAD"],
+        candidate_rows=[
+            {
+                "code": "PRAD",
+                "signature_score": 0.7,
+                "purity_estimate": 0.2,
+                "support_norm": 1.0,
+                "purity_result": {
+                    "overall_estimate": 0.2,
+                    "overall_lower": 0.1,
+                    "overall_upper": 0.3,
+                },
+            }
+        ],
+        templates=["solid_primary"],
+        top_k=1,
+    )
+    assert len(results) == 1
+    result = results[0]
+    assert result.purity_source == "signature"
+    assert result.purity == pytest.approx(0.2)
+    assert any("Lineage-panel purity conflicts" in w for w in result.warnings)
+
+
 # ── vs_tcga label-routing fix (companion to issue #50 PR) ───────────────
 
 

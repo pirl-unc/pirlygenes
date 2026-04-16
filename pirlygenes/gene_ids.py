@@ -37,6 +37,8 @@ _installed_releases = " ".join([str(g.release) for g in genomes])
 _gene_id_to_name: dict = {}
 _transcript_id_to_gene_name: dict = {}
 _indexes_built = False
+_gene_id_miss_cache: set[str] = set()
+_transcript_id_miss_cache: set[str] = set()
 
 
 def _build_indexes():
@@ -64,11 +66,54 @@ def _build_indexes():
     _indexes_built = True
 
 
+def _lookup_gene_name_in_older_releases(gene_id: str) -> Optional[str]:
+    """Resolve a gene ID against older installed releases on demand.
+
+    The fast path indexes only the newest release. When a sample was
+    quantified against an older annotation, valid IDs can disappear from
+    that latest-only map; we need a correctness-preserving fallback
+    instead of silently treating them as unresolved.
+    """
+    gid = gene_id.split(".")[0]
+    if gid in _gene_id_miss_cache:
+        return None
+    for genome in genomes[1:]:
+        try:
+            gene = genome.gene_by_id(gid)
+        except Exception:
+            gene = None
+        if gene and gene.gene_name:
+            _gene_id_to_name[gid] = gene.gene_name
+            return gene.gene_name
+    _gene_id_miss_cache.add(gid)
+    return None
+
+
+def _lookup_transcript_name_in_older_releases(t_id: str) -> Optional[str]:
+    """Resolve a transcript ID against older installed releases on demand."""
+    tid = t_id.split(".")[0]
+    if tid in _transcript_id_miss_cache:
+        return None
+    for genome in genomes[1:]:
+        try:
+            transcript = genome.transcript_by_id(tid)
+        except Exception:
+            transcript = None
+        if transcript and transcript.gene_name:
+            _transcript_id_to_gene_name[tid] = transcript.gene_name
+            return transcript.gene_name
+    _transcript_id_miss_cache.add(tid)
+    return None
+
+
 def find_gene_name_from_ensembl_gene_id(
     gene_id: str, verbose: bool = False
 ) -> Optional[str]:
     _build_indexes()
-    name = _gene_id_to_name.get(gene_id.split(".")[0])
+    gid = gene_id.split(".")[0]
+    name = _gene_id_to_name.get(gid)
+    if name is None:
+        name = _lookup_gene_name_in_older_releases(gid)
     if name and verbose:
         print("Found %s -> %s" % (gene_id, name))
     return name
@@ -78,7 +123,10 @@ def find_gene_name_from_ensembl_transcript_id(
     t_id: str, verbose: bool = False
 ) -> Optional[str]:
     _build_indexes()
-    name = _transcript_id_to_gene_name.get(t_id.split(".")[0])
+    tid = t_id.split(".")[0]
+    name = _transcript_id_to_gene_name.get(tid)
+    if name is None:
+        name = _lookup_transcript_name_in_older_releases(tid)
     if name and verbose:
         print("Found %s -> %s" % (t_id, name))
     return name
