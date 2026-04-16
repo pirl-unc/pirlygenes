@@ -206,6 +206,28 @@ def test_combine_purity_conflict_deprioritizes_signature():
     assert overall > 0.40
 
 
+def test_combine_purity_ci_symmetric_when_upper_candidates_depressed():
+    """#101: low-purity samples had `max(upper_candidates) == overall` because
+    the upper quartiles were themselves low, producing a one-sided CI like
+    7–16% around 16%. The fix mirrors the wider half of the interval so the
+    upper bound reflects the observed spread, not the floor of the sample."""
+    overall, lo, hi = _combine_purity_estimates(
+        sig_purity=0.16, sig_lower=0.07, sig_upper=0.16,
+        estimate_purity=0.10,
+        lineage_purity=0.16, lineage_lower=0.08, lineage_upper=0.16,
+        sig_stability=0.5,
+    )
+    assert overall is not None
+    lower_span = overall - lo
+    upper_span = hi - overall
+    assert upper_span >= lower_span - 1e-9, (
+        f"upper span {upper_span:.4f} should not be smaller than lower span "
+        f"{lower_span:.4f} (got CI {lo:.3f}–{hi:.3f} around {overall:.3f})"
+    )
+    # Upper bound must meaningfully exceed the point estimate in this scenario
+    assert hi > overall + 0.01
+
+
 # ── _signature_conflicts_with_lineage ────────────────────────────────────
 
 

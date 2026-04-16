@@ -895,6 +895,17 @@ def _combine_purity_estimates(
     overall_lower = float(np.clip(min(lower_candidates), 0.0, 1.0))
     overall_upper = float(np.clip(max(upper_candidates), 0.0, 1.0))
     overall = float(np.clip(overall, overall_lower, overall_upper))
+
+    # #101: lineage / signature upper quartiles are themselves depressed in
+    # low-purity samples, so `max(upper_candidates)` collapses onto the point
+    # estimate and the reported CI becomes one-sided low (e.g. 7–16 around 16).
+    # Mirror the lower half onto the upper half so the upper bound is at least
+    # as wide as the lower, reflecting the observed spread rather than the
+    # floor of the sample itself. The lower bound is left alone.
+    lower_span = overall - overall_lower
+    upper_span = overall_upper - overall
+    if upper_span < lower_span:
+        overall_upper = float(np.clip(overall + lower_span, 0.0, 1.0))
     return overall, overall_lower, overall_upper
 
 

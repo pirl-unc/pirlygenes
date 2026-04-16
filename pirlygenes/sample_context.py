@@ -945,7 +945,14 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     ax_bars.set_yticks(y)
     ax_bars.set_yticklabels(labels, fontsize=9)
     ax_bars.invert_yaxis()
-    ax_bars.set_xlim(0, max(max(values) * 1.2, 1.0))
+    # #102: with exome-capture samples every value is ~0 and a raw axis
+    # (xlim = 1.0) produces a chart that looks empty. Give a minimum axis
+    # width tied to the thresholds so bars remain readable, and annotate
+    # the "all near zero" case with the plausible library-prep explanation.
+    max_value = max(values) if values else 0.0
+    max_threshold = max((b[2] for b in bars), default=0.0)
+    axis_floor = max(max_threshold * 4.0, 0.05)
+    ax_bars.set_xlim(0, max(max_value * 1.2, axis_floor))
     ax_bars.set_xlabel("Fraction", fontsize=10)
     for yi, (thr, thr_name) in zip(y, thresholds):
         ax_bars.axvline(thr, color="#888888", linestyle="--", linewidth=0.8)
@@ -955,6 +962,30 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
         )
     for yi, val in zip(y, values):
         ax_bars.text(val, yi, f"  {val:.3f}", va="center", fontsize=9)
+
+    if max_value < 0.01:
+        # Show the user what "all near zero" means rather than leaving a
+        # visually empty plot. Exome / hybrid-capture library prep strips
+        # non-polyadenylated RNAs (histones, mitochondrial), so near-zero
+        # values are the expected pattern — not a quality problem.
+        explanation = (
+            "All diagnostic signals are near zero — consistent with\n"
+            "exome / hybrid-capture library prep (non-polyadenylated\n"
+            "RNAs are filtered). Interpret MT / histone fractions\n"
+            "relative to the expected floor for this prep, not as\n"
+            "degradation evidence."
+        )
+        ax_bars.text(
+            0.98, 0.05, explanation,
+            transform=ax_bars.transAxes,
+            fontsize=8, color="#444444", ha="right", va="bottom",
+            bbox=dict(
+                boxstyle="round,pad=0.4",
+                facecolor="#f5f5dc",
+                edgecolor="#bbbbbb",
+                linewidth=0.6,
+            ),
+        )
 
     ax_bars.spines["top"].set_visible(False)
     ax_bars.spines["right"].set_visible(False)
