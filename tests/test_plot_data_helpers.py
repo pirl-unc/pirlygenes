@@ -4,6 +4,11 @@ import pytest
 import pirlygenes.plot_data_helpers as pdh
 
 
+class _NoDeepcopy:
+    def __deepcopy__(self, memo):
+        raise AssertionError("unexpected deepcopy of DataFrame.attrs")
+
+
 def _fake_find_canonical(tokens):
     mapping = {
         "GENE1": ("ENSG00000000001", "GENE1"),
@@ -88,3 +93,25 @@ def test_prepare_gene_expr_df_with_and_without_name_col(monkeypatch):
         place_other_first=False,
     )
     assert len(out2) == 2
+
+
+def test_prepare_gene_expr_df_does_not_deepcopy_attrs(monkeypatch):
+    monkeypatch.setattr(pdh, "find_canonical_gene_ids_and_names", _fake_find_canonical)
+
+    df = pd.DataFrame(
+        {
+            "canonical_gene_id": ["ENSG00000000001", "ENSG00000000002"],
+            "canonical_gene_name": ["GENE1", "GENE2"],
+            "TPM": [1.0, 0.2],
+        }
+    )
+    df.attrs["transcript_expression"] = _NoDeepcopy()
+
+    out = pdh.prepare_gene_expr_df(
+        df,
+        gene_sets={"Set1": ["GENE1"]},
+        place_other_first=True,
+        strict_gene_sets=False,
+        verbose=False,
+    )
+    assert len(out) == 2

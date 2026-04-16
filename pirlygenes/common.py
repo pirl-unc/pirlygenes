@@ -10,8 +10,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import contextmanager
 import pandas as pd
-from typing import Optional
+from typing import Iterator, Optional
 
 
 def find_column(
@@ -33,3 +34,23 @@ def find_column(
             )
         )
     return result
+
+
+@contextmanager
+def without_dataframe_attrs(df: pd.DataFrame) -> Iterator[pd.DataFrame]:
+    """Temporarily clear ``DataFrame.attrs`` during pandas-heavy helpers.
+
+    Pandas deep-copies ``attrs`` in many column/subset/finalize paths.
+    When callers attach a large object there (for example the retained
+    transcript-level frame under ``attrs["transcript_expression"]``),
+    otherwise-cheap helpers can become minute-scale. Clear attrs for the
+    duration of the helper, then restore them.
+    """
+    saved_attrs = dict(getattr(df, "attrs", {}))
+    if saved_attrs:
+        df.attrs = {}
+    try:
+        yield df
+    finally:
+        if saved_attrs:
+            df.attrs = saved_attrs

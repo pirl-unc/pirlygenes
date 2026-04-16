@@ -51,6 +51,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+
+from .common import without_dataframe_attrs
 from typing import Optional
 
 
@@ -551,14 +553,15 @@ def _build_tpm_by_symbol(df_gene_expr):
     )
     if sym_col is not None and tpm_col is not None:
         import pandas as pd
-        syms = df_gene_expr[sym_col].astype(str)
-        tpms = pd.to_numeric(df_gene_expr[tpm_col], errors="coerce")
-        valid = syms.ne("") & syms.ne("nan") & syms.ne("None") & tpms.notna()
-        return dict(
-            pd.DataFrame({"sym": syms[valid], "tpm": tpms[valid]})
-            .groupby("sym")["tpm"]
-            .max()
-        )
+        with without_dataframe_attrs(df_gene_expr):
+            syms = df_gene_expr[sym_col].astype(str)
+            tpms = pd.to_numeric(df_gene_expr[tpm_col], errors="coerce")
+            valid = syms.ne("") & syms.ne("nan") & syms.ne("None") & tpms.notna()
+            return dict(
+                pd.DataFrame({"sym": syms[valid], "tpm": tpms[valid]})
+                .groupby("sym")["tpm"]
+                .max()
+            )
     # Fall back to the gene-ID path.
     from .tumor_purity import _build_sample_tpm_by_symbol
     return _build_sample_tpm_by_symbol(df_gene_expr)
