@@ -2128,3 +2128,118 @@ def plot_sample_summary(
         fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
         print(f"Saved {save_to_filename}")
     return fig, analysis
+
+
+def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
+    """Standalone: cancer-type hypothesis ranking bar chart."""
+    import matplotlib.pyplot as plt
+    from .plot import CANCER_TYPE_NAMES as CTN
+
+    cancer_code = analysis["cancer_type"]
+    top_cancers = analysis["top_cancers"]
+    fit_quality = analysis.get("fit_quality", {})
+
+    fig, ax = plt.subplots(figsize=(10, max(3, 0.4 * len(top_cancers))))
+    codes = [c for c, s in top_cancers]
+    scores = [s for c, s in top_cancers]
+    colors = ["#2166ac" if c == cancer_code else "#92c5de" for c in codes]
+    y = np.arange(len(codes))
+    ax.barh(y, scores, color=colors, edgecolor="none", height=0.6)
+    for i, (code, score) in enumerate(top_cancers):
+        label = f"{code} ({CTN.get(code, '')})"
+        ax.text(score + 0.01, i, f"{score:.3f}", va="center", fontsize=9)
+        ax.text(-0.01, i, label, va="center", ha="right", fontsize=9)
+    ax.set_yticks([])
+    ax.set_xlim(0, 1.1)
+    ax.set_xlabel("Support score")
+    fit_label = fit_quality.get("label")
+    title = "Cancer type hypotheses"
+    if fit_label in {"weak", "ambiguous"}:
+        title += f" ({fit_label} fit)"
+    ax.set_title(title, fontweight="bold")
+    ax.invert_yaxis()
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    return fig
+
+
+def plot_background_tissues(analysis, save_to_filename=None, save_dpi=300):
+    """Standalone: background tissue signature bar chart."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
+
+    cancer_code = analysis["cancer_type"]
+    tissue_scores = analysis["tissue_scores"]
+    if not tissue_scores:
+        return None
+
+    matched = CANCER_TO_TISSUE.get(cancer_code, "").replace("_", " ").title()
+    tissues = [t.replace("_", " ").title() for t, s, n in tissue_scores]
+    t_scores = [s for t, s, n in tissue_scores]
+    t_colors = []
+    for t, s, n in tissue_scores:
+        tname = t.replace("_", " ").title()
+        if tname == matched:
+            t_colors.append("#2166ac")
+        elif s > 0.7:
+            t_colors.append("#b2182b")
+        else:
+            t_colors.append("#92c5de")
+
+    fig, ax = plt.subplots(figsize=(10, max(3, 0.35 * len(tissues))))
+    y = np.arange(len(tissues))
+    ax.barh(y, t_scores, color=t_colors, edgecolor="none", height=0.6)
+    ax.set_yticks(y)
+    ax.set_yticklabels(tissues, fontsize=9)
+    for i, (t, s, n) in enumerate(tissue_scores):
+        ax.text(s + 0.01, i, f"{s:.3f}", va="center", fontsize=8)
+    ax.set_xlim(0, 1.1)
+    ax.set_xlabel("Background signature score")
+    ax.invert_yaxis()
+    ax.legend(handles=[
+        Patch(color="#2166ac", label=f"Expected origin ({matched})"),
+        Patch(color="#b2182b", label="Strong residual"),
+        Patch(color="#92c5de", label="Background"),
+    ], loc="lower right", fontsize=8)
+    ax.set_title("Background Tissue Signatures", fontweight="bold")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    return fig
+
+
+def plot_mhc_expression(analysis, save_to_filename=None, save_dpi=300):
+    """Standalone: MHC class I and II expression bar chart."""
+    import matplotlib.pyplot as plt
+
+    mhc1 = analysis["mhc1"]
+    mhc2 = analysis["mhc2"]
+    all_genes = list(mhc1.keys()) + list(mhc2.keys())
+    all_tpms = [mhc1.get(g, 0) for g in mhc1] + [mhc2.get(g, 0) for g in mhc2]
+    n1 = len(mhc1)
+    colors_mhc = ["#2166ac"] * n1 + ["#b2182b"] * len(mhc2)
+
+    fig, ax = plt.subplots(figsize=(8, max(3, 0.35 * len(all_genes))))
+    y = np.arange(len(all_genes))
+    ax.barh(y, all_tpms, color=colors_mhc, edgecolor="none", height=0.6, alpha=0.8)
+    ax.set_yticks(y)
+    ax.set_yticklabels(all_genes, fontsize=9)
+    for i, tpm in enumerate(all_tpms):
+        if tpm > 0:
+            ax.text(tpm + max(all_tpms) * 0.02, i, f"{tpm:.0f}", va="center", fontsize=8)
+    ax.axhline(y=n1 - 0.5, color="#cccccc", linewidth=0.8, linestyle="--")
+    ax.set_xlabel("TPM")
+    ax.invert_yaxis()
+    ax.set_title("MHC Antigen Presentation", fontweight="bold")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    return fig
