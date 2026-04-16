@@ -335,76 +335,10 @@ def _ci_confidence_tier(overall_lower, overall_upper):
     return "low"
 
 
-class _OutputDirLock:
-    """Advisory lock for an analyze() output directory (issue #82).
-
-    Writes ``$OUTPUT_DIR/.pirlygenes.lock`` with the running pid +
-    start time. Two concurrent analyze runs pointed at the same
-    output dir used to clobber each other silently — each one wipes
-    stale prefix outputs at start, and both write interleaved
-    artifacts to the same filenames. The lock refuses a second run
-    unless the caller passes ``--force``.
-    """
-
-    def __init__(self, out_dir: Path, force: bool = False):
-        self.path = Path(out_dir) / ".pirlygenes.lock"
-        self.force = force
-        self.acquired = False
-
-    def _stale(self) -> bool:
-        """Return True iff the existing lockfile points at a pid that's
-        no longer running. Treat malformed files as stale."""
-        try:
-            raw = self.path.read_text().strip()
-            pid_str = raw.split(",", 1)[0].strip()
-            pid = int(pid_str)
-        except (OSError, ValueError):
-            return True
-        if pid <= 0:
-            return True
-        try:
-            import os
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            return True
-        except PermissionError:
-            # A live process we don't own — treat as live, not stale.
-            return False
-        except OSError:
-            return True
-        return False
-
-    def acquire(self):
-        if self.path.exists() and not self._stale():
-            if not self.force:
-                try:
-                    holder = self.path.read_text().strip()
-                except OSError:
-                    holder = "(unreadable)"
-                raise RuntimeError(
-                    "Another pirlygenes analyze run appears active in this "
-                    f"output directory ({self.path.parent}): {holder}. "
-                    "Re-run with --force to override, or choose a different "
-                    "--output-dir."
-                )
-        import os
-        from datetime import datetime, timezone
-        content = f"{os.getpid()},{datetime.now(timezone.utc).isoformat()}\n"
-        try:
-            fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, content.encode())
-            os.close(fd)
-        except FileExistsError:
-            self.path.write_text(content)
-        self.acquired = True
-
-    def release(self):
-        if self.acquired:
-            try:
-                self.path.unlink()
-            except OSError:
-                pass
-            self.acquired = False
+def _default_output_dir() -> str:
+    from datetime import datetime
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"pirlygenes-{ts}"
 
 
 def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
@@ -496,7 +430,6 @@ def analyze(
     decomposition_templates: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
-    force: bool = False,
 ):
     """Analyze gene expression from a quantification file.
 
@@ -539,38 +472,35 @@ def analyze(
     gene_input = genes or transcripts
     transcript_input = transcripts if genes else None
 
+    if not output_dir or output_dir == "pirlygenes-output":
+        output_dir = _default_output_dir()
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[output] Writing to {out_dir}/")
 
-    lock = _OutputDirLock(out_dir, force=force)
-    lock.acquire()
-    try:
-        _analyze_body(
-            input_path=gene_input,
-            out_dir=out_dir,
-            output_image_prefix=output_image_prefix,
-            aggregate_gene_expression=aggregate_gene_expression,
-            label_genes=label_genes,
-            gene_name_col=gene_name_col,
-            gene_id_col=gene_id_col,
-            sample_id_col=sample_id_col,
-            sample_id_value=sample_id_value,
-            output_dpi=output_dpi,
-            plot_height=plot_height,
-            plot_aspect=plot_aspect,
-            cancer_type=cancer_type,
-            sample_mode=sample_mode,
-            tumor_context=tumor_context,
-            site_hint=site_hint,
-            met_site=met_site,
-            transcript_path=transcript_input,
-            decomposition_templates=decomposition_templates,
-            therapy_target_top_k=therapy_target_top_k,
-            therapy_target_tpm_threshold=therapy_target_tpm_threshold,
-        )
-    finally:
-        lock.release()
+    _analyze_body(
+        input_path=gene_input,
+        out_dir=out_dir,
+        output_image_prefix=output_image_prefix,
+        aggregate_gene_expression=aggregate_gene_expression,
+        label_genes=label_genes,
+        gene_name_col=gene_name_col,
+        gene_id_col=gene_id_col,
+        sample_id_col=sample_id_col,
+        sample_id_value=sample_id_value,
+        output_dpi=output_dpi,
+        plot_height=plot_height,
+        plot_aspect=plot_aspect,
+        cancer_type=cancer_type,
+        sample_mode=sample_mode,
+        tumor_context=tumor_context,
+        site_hint=site_hint,
+        met_site=met_site,
+        transcript_path=transcript_input,
+        decomposition_templates=decomposition_templates,
+        therapy_target_top_k=therapy_target_top_k,
+        therapy_target_tpm_threshold=therapy_target_tpm_threshold,
+    )
 
 
 def _analyze_body(

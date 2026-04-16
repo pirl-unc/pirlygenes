@@ -36,6 +36,12 @@ class FakeGenome:
             raise KeyError(tx_id)
         return self._tx_by_id_map[tx_id]
 
+    def genes(self):
+        return list(self._gene_by_id_map.values())
+
+    def transcripts(self):
+        return [SimpleNamespace(id=tid, gene_name=tx.gene_name) for tid, tx in self._tx_by_id_map.items()]
+
     def genes_by_name(self, name):
         return self._by_name.get(name, [])
 
@@ -63,6 +69,9 @@ def test_lookup_functions_with_fake_genomes(monkeypatch):
         )
     ]
     monkeypatch.setattr(gi, "genomes", genomes)
+    monkeypatch.setattr(gi, "_indexes_built", False)
+    monkeypatch.setattr(gi, "_gene_id_to_name", {})
+    monkeypatch.setattr(gi, "_transcript_id_to_gene_name", {})
 
     assert gi.find_gene_name_from_ensembl_gene_id("ENSGA", verbose=False) == "GENEA"
     assert gi.find_gene_name_from_ensembl_transcript_id("ENST1", verbose=False) == "GENEA"

@@ -10,7 +10,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from functools import lru_cache
 from typing import Optional, Sequence, Tuple, List
 
 from tqdm import tqdm
@@ -31,51 +30,55 @@ genomes = sorted(
 
 _installed_releases = " ".join([str(g.release) for g in genomes])
 
+# ---------------------------------------------------------------------------
+# Batch indexes — built once from the latest installed Ensembl release.
+# ---------------------------------------------------------------------------
 
-@lru_cache(maxsize=None)
-def _cached_gene_name_from_gene_id(gene_id: str) -> Optional[str]:
-    for genome in genomes:
-        try:
-            gene = genome.gene_by_id(gene_id)
-        except Exception:
-            gene = None
-        if gene and gene.gene_name:
-            return gene.gene_name
-    return None
+_gene_id_to_name: dict = {}
+_transcript_id_to_gene_name: dict = {}
+_indexes_built = False
+
+
+def _build_indexes():
+    global _gene_id_to_name, _transcript_id_to_gene_name, _indexes_built
+    if _indexes_built:
+        return
+    if not genomes:
+        _indexes_built = True
+        return
+    g = genomes[0]
+    print(f"[index] Building gene/transcript index from Ensembl release {g.release}...")
+    try:
+        for gene in g.genes():
+            gid = gene.id.split(".")[0]
+            _gene_id_to_name[gid] = gene.name
+    except Exception:
+        pass
+    try:
+        for t in g.transcripts():
+            tid = t.id.split(".")[0]
+            _transcript_id_to_gene_name[tid] = t.gene_name
+    except Exception:
+        pass
+    print(f"[index] {len(_gene_id_to_name)} genes, {len(_transcript_id_to_gene_name)} transcripts indexed")
+    _indexes_built = True
 
 
 def find_gene_name_from_ensembl_gene_id(
     gene_id: str, verbose: bool = False
 ) -> Optional[str]:
-    name = _cached_gene_name_from_gene_id(gene_id)
+    _build_indexes()
+    name = _gene_id_to_name.get(gene_id.split(".")[0])
     if name and verbose:
         print("Found %s -> %s" % (gene_id, name))
     return name
 
 
-@lru_cache(maxsize=None)
-def _cached_gene_name_from_transcript_id(t_id: str) -> Optional[str]:
-    # Process-wide cache: resolving ~150k unique transcript IDs via
-    # SQLAlchemy would take ~45s per pass across the 20+ Ensembl
-    # releases users typically have installed. Several call sites
-    # (``_build_transcript_expression_frame``, ``aggregate_gene_expression``,
-    # and occasionally sibling-transcript paths) independently resolve
-    # the same ID set, so caching here eliminates the duplicate passes
-    # that caused the v4.5.0 perf regression (#81).
-    for g in genomes:
-        try:
-            t = g.transcript_by_id(t_id)
-        except Exception:
-            t = None
-        if t and t.gene_name:
-            return t.gene_name
-    return None
-
-
 def find_gene_name_from_ensembl_transcript_id(
     t_id: str, verbose: bool = False
 ) -> Optional[str]:
-    name = _cached_gene_name_from_transcript_id(t_id)
+    _build_indexes()
+    name = _transcript_id_to_gene_name.get(t_id.split(".")[0])
     if name and verbose:
         print("Found %s -> %s" % (t_id, name))
     return name
@@ -86,11 +89,6 @@ def pick_best_gene(genes):
         raise ValueError("Expected at least one gene, got none")
 
     def sort_key(g):
-        # prefer genes with:
-        #   - more protein-coding transcripts
-        #   - fewer dots in the name (e.g. "TP53" not "AC00003.1"
-        #   - shorter name (eg PRAME not PRAMEL2949)
-        #   - sort order (e.g. TP53-001 vs TP53-002)
         num_protein_coding = sum([t.is_protein_coding for t in g.transcripts])
         return (
             num_protein_coding,

@@ -172,57 +172,16 @@ def test_decompose_sample_skips_reranking_when_rows_passed():
 
 
 # -----------------------------------------------------------------
-# #82: concurrent analyze runs must be refused.
+# #82: default output dirs get unique timestamps.
 # -----------------------------------------------------------------
 
 
-def test_output_dir_lock_refuses_live_process(tmp_path):
-    """A fresh lock held by the current pid must block a second acquire."""
-    from pirlygenes.cli import _OutputDirLock
+def test_default_output_dir_has_timestamp():
+    """Default output dir name includes a timestamp so concurrent runs
+    don't clobber each other."""
+    from pirlygenes.cli import _default_output_dir
+    import re
 
-    lock_a = _OutputDirLock(tmp_path)
-    lock_a.acquire()
-    try:
-        lock_b = _OutputDirLock(tmp_path)
-        with pytest.raises(RuntimeError, match="Another pirlygenes analyze"):
-            lock_b.acquire()
-    finally:
-        lock_a.release()
-
-
-def test_output_dir_lock_force_override(tmp_path):
-    """--force bypasses the lock even when a live pid is listed."""
-    from pirlygenes.cli import _OutputDirLock
-
-    lock_a = _OutputDirLock(tmp_path)
-    lock_a.acquire()
-    try:
-        lock_b = _OutputDirLock(tmp_path, force=True)
-        lock_b.acquire()  # should succeed
-        lock_b.release()
-    finally:
-        lock_a.release()
-
-
-def test_output_dir_lock_stale_pid_cleared(tmp_path):
-    """A lockfile pointing at a dead pid must be treated as stale."""
-    from pirlygenes.cli import _OutputDirLock
-
-    # Use pid 999999 which is very unlikely to be alive, but we also
-    # tolerate malformed files. Write a clearly-invalid pid entry.
-    (tmp_path / ".pirlygenes.lock").write_text("0,2026-04-15T00:00:00\n")
-
-    lock = _OutputDirLock(tmp_path)
-    lock.acquire()  # should succeed: pid 0 is treated as stale
-    lock.release()
-
-
-def test_output_dir_lock_released_on_exit(tmp_path):
-    """Acquire + release must remove the lockfile."""
-    from pirlygenes.cli import _OutputDirLock
-
-    lock = _OutputDirLock(tmp_path)
-    lock.acquire()
-    assert (tmp_path / ".pirlygenes.lock").exists()
-    lock.release()
-    assert not (tmp_path / ".pirlygenes.lock").exists()
+    d = _default_output_dir()
+    assert d.startswith("pirlygenes-")
+    assert re.match(r"pirlygenes-\d{8}-\d{6}", d)
