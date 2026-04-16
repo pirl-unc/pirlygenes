@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 import pirlygenes.plot as plot_mod
+import pirlygenes.plot_strip as plot_strip_mod
 import pirlygenes.cli as cli_mod
 import pirlygenes.tumor_purity as purity_mod
 from pirlygenes.tumor_purity import _summarize_candidate_family
@@ -36,7 +37,7 @@ def test_resolve_always_label_gene_ids(monkeypatch):
         {"gene_id": ["ENSG1", "ENSG2"], "gene_display_name": ["GENE1", "B7-H3"]}
     )
     monkeypatch.setattr(
-        plot_mod,
+        plot_strip_mod,
         "find_canonical_gene_ids_and_names",
         lambda tokens: (["ENSG2"], ["CD276"]),
     )
@@ -53,8 +54,8 @@ def test_plot_gene_expression_smoke(monkeypatch, tmp_path):
             "category": ["A", "A"],
         }
     )
-    monkeypatch.setattr(plot_mod, "prepare_gene_expr_df", lambda *a, **k: prepared.copy())
-    monkeypatch.setattr(plot_mod, "adjust_text", lambda *a, **k: None)
+    monkeypatch.setattr(plot_strip_mod, "prepare_gene_expr_df", lambda *a, **k: prepared.copy())
+    monkeypatch.setattr(plot_strip_mod, "adjust_text", lambda *a, **k: None)
 
     class FakeAx:
         def __init__(self):
@@ -87,7 +88,8 @@ def test_plot_gene_expression_smoke(monkeypatch, tmp_path):
             self.figure = FakeFigure()
 
     fake_cat = FakeCat()
-    monkeypatch.setattr(plot_mod.sns, "catplot", lambda **kwargs: fake_cat)
+    import pirlygenes.plot_strip as _ps
+    monkeypatch.setattr(_ps.sns, "catplot", lambda **kwargs: fake_cat)
 
     out_path = tmp_path / "plot.png"
     result = plot_mod.plot_gene_expression(
@@ -734,7 +736,8 @@ def test_generate_target_report_adds_tumor_context_and_landscape_summary(tmp_pat
 
 
 def _tcga_sample(cancer_code):
-    ref = plot_mod.pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
+    from pirlygenes.gene_sets_cancer import pan_cancer_expression
+    ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
     return pd.DataFrame(
         {
             "ensembl_gene_id": ref["Ensembl_Gene_ID"],
@@ -836,7 +839,8 @@ def test_plot_sample_summary_is_mode_aware(monkeypatch):
 
 
 def test_hierarchy_embedding_plot_adds_family_legend_and_neighbors(monkeypatch):
-    monkeypatch.setattr(plot_mod, "adjust_text", lambda *a, **k: None)
+    import pirlygenes.plot_embedding as _pe
+    monkeypatch.setattr(_pe, "adjust_text", lambda *a, **k: None)
     coords = np.array([
         [0.0, 0.0],
         [0.2, 0.1],
@@ -894,13 +898,14 @@ def test_collect_ranked_therapy_targets_tracks_multicategory_and_approval(monkey
         "radioligand": {"ENSG_C": "GENEC"},
     }
 
+    import pirlygenes.plot_therapy as _pt
     monkeypatch.setattr(
-        plot_mod,
+        _pt,
         "therapy_target_gene_id_to_name",
         lambda therapy: therapy_maps.get(therapy, {}),
     )
     monkeypatch.setattr(
-        plot_mod,
+        _pt,
         "get_data",
         lambda name: pd.DataFrame(
             {

@@ -2615,7 +2615,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     ):
         fn1_blocked = ranges_df[
             ranges_df["symbol"].eq("FN1")
-            & ~ranges_df["therapy_supported"].fillna(True).astype(bool)
+            & ~ranges_df["therapy_supported"].infer_objects(copy=False).fillna(True).astype(bool)
             & ranges_df["therapy_support_note"].fillna("").astype(str).str.len().gt(0)
         ]
         if len(fn1_blocked):
