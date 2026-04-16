@@ -435,6 +435,7 @@ def estimate_tumor_expression_ranges(
     matched_normal_component_name = None
     matched_normal_tissue = None
     matched_normal_fraction_global = 0.0
+    per_compartment_tpm_by_symbol = None  # #108: per-gene per-compartment TPM
     if decomposition_results:
         top_result = decomposition_results[0]
         top_fractions = getattr(top_result, "fractions", None) or {}
@@ -472,6 +473,20 @@ def estimate_tumor_expression_ranges(
                     str(sym): float(val)
                     for sym, val in zip(sym_list, tme_tpm_vec)
                 }
+                # #108: keep the per-compartment breakdown so target
+                # rendering can show attribution columns instead of only
+                # a collapsed TME total. Each entry maps a gene symbol to
+                # a {compartment: attributed_tpm} dict (non-zero only).
+                per_comp_mat = matrix * non_tumor_fracs[np.newaxis, :]
+                per_compartment_tpm_by_symbol = {}
+                for i, sym in enumerate(sym_list):
+                    breakdown = {}
+                    for j, comp in enumerate(non_tumor_components):
+                        val = float(per_comp_mat[i, j])
+                        if val >= 0.01:
+                            breakdown[comp] = round(val, 2)
+                    if breakdown:
+                        per_compartment_tpm_by_symbol[str(sym)] = breakdown
                 # Split out the matched-normal contribution so the report
                 # can distinguish TME-only subtraction from parent-tissue
                 # subtraction (issue #50). The matched-normal column is
@@ -745,18 +760,44 @@ def estimate_tumor_expression_ranges(
             is_extended_housekeeping_symbol(symbol, scope="ranking")
         )
 
-        # #35: any gene whose observed TPM is mostly explained by the
-        # TME reference is a low-confidence tumor-expression claim --
-        # especially risky at low purity, where residual TPM is divided
-        # by a small number and amplified. Threshold is stricter than
-        # the existing ``tme_explainable`` flag: require >=70% of
-        # observed to be TME-explained, and flag separately from
-        # ``tme_explainable`` so the two signals are distinguishable
-        # in the TSV.
-        tme_dominant = (
-            observed > 0
-            and round(tme_fold_med, 4) * sample_hk_median >= round(0.7 * observed, 4)
+        # #108: per-compartment attribution. When decomposition ran,
+        # apportion the observed TPM across TME compartments using the
+        # per-compartment reference × fitted fractions, then derive:
+        #   attr_tumor_tpm = max(0, observed - sum(attr_compartments))
+        # and tumor fraction of total. These drive the Attribution
+        # column in targets.md and the per-target stacked-bar figure.
+        attribution = {}
+        if per_compartment_tpm_by_symbol is not None:
+            raw = per_compartment_tpm_by_symbol.get(symbol)
+            if raw:
+                attribution = dict(raw)
+        attr_tme_total = sum(attribution.values())
+        attr_tumor_tpm = max(0.0, observed - attr_tme_total)
+        attr_tumor_fraction = (
+            float(attr_tumor_tpm / observed) if observed > 0 else 0.0
         )
+        if attribution:
+            attr_top_comp, attr_top_tpm = max(
+                attribution.items(), key=lambda kv: kv[1]
+            )
+        else:
+            attr_top_comp, attr_top_tpm = "", 0.0
+
+        # #35: a gene whose observed TPM is mostly explained by non-
+        # tumor compartments is a low-confidence tumor-expression claim,
+        # especially risky at low purity where residual TPM is divided
+        # by a small number and amplified. When decomposition attribution
+        # is available, fire the flag from `attr_tumor_fraction < 0.3`
+        # so it's grounded in the fitted compartments instead of a
+        # generic TME-fold. Fall back to the old formula when no
+        # decomposition ran.
+        if attribution:
+            tme_dominant = observed > 0 and attr_tumor_fraction < 0.30
+        else:
+            tme_dominant = (
+                observed > 0
+                and round(tme_fold_med, 4) * sample_hk_median >= round(0.7 * observed, 4)
+            )
         low_confidence_tumor = bool(tme_dominant)
 
         rows.append({
@@ -777,6 +818,16 @@ def estimate_tumor_expression_ranges(
             "matched_normal_tissue": matched_normal_tissue or "",
             "matched_normal_fraction": round(matched_normal_fraction_global, 4),
             "estimation_path": estimation_path,
+            # #108: per-compartment attribution. `attribution` is a dict
+            # of {compartment: attributed_tpm}; `attr_tumor_tpm` is the
+            # residual after subtracting those compartments; the top-
+            # compartment shortcut keeps the common case cheap for
+            # markdown rendering.
+            "attribution": attribution,
+            "attr_tumor_tpm": round(attr_tumor_tpm, 2),
+            "attr_tumor_fraction": round(attr_tumor_fraction, 4),
+            "attr_top_compartment": attr_top_comp,
+            "attr_top_compartment_tpm": round(float(attr_top_tpm), 2),
             **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
             "median_est": round(median_est, 2),
             "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None else None,
@@ -899,6 +950,112 @@ def plot_matched_normal_attribution(
     if mn_tissue:
         title += f"\n(benign {mn_tissue} subtracted before purity division; black tick = TCGA cohort prior)"
     ax.set_title(title, fontsize=11, fontweight="bold")
+
+    plt.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
+
+
+def plot_target_attribution(
+    df_ranges,
+    cancer_type,
+    category,
+    top_n=15,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=None,
+):
+    """Per-target compositional attribution stacked bars (#108).
+
+    For each of the top ``top_n`` targets in ``category`` (ranked by
+    ``median_est``), draw a horizontal bar broken into the tumor core
+    plus each non-tumor compartment that contributes at least 1% of the
+    observed TPM. Compartments are read from the ``attribution`` column
+    of ``df_ranges`` (a dict of {compartment: TPM}); tumor-core TPM is
+    taken from ``attr_tumor_tpm``.
+
+    Emitted as a standalone PNG (one per category, per project
+    plot-crowding preference). Returns ``None`` and does not write a
+    file when no row in the category has an attribution breakdown (e.g.
+    decomposition didn't run, or none of the top targets overlapped the
+    reference matrix).
+    """
+    cancer_code = resolve_cancer_type(cancer_type)
+    sub = df_ranges[df_ranges["category"] == category].head(top_n).copy()
+    if sub.empty or "attribution" not in sub.columns:
+        return None
+
+    def _has_breakdown(v):
+        return isinstance(v, dict) and len(v) > 0
+
+    if not sub["attribution"].apply(_has_breakdown).any():
+        return None
+
+    sub = sub.sort_values("median_est", ascending=True).reset_index(drop=True)
+    n = len(sub)
+    if figsize is None:
+        figsize = (11, max(3.0, 0.4 * n + 1.5))
+
+    # Collect all compartments that appear across the shown targets, in
+    # descending order of aggregate contribution so the legend ranks the
+    # most-impactful compartments first.
+    totals = {}
+    for attr in sub["attribution"]:
+        if not isinstance(attr, dict):
+            continue
+        for comp, tpm in attr.items():
+            totals[comp] = totals.get(comp, 0.0) + float(tpm)
+    compartments = sorted(totals, key=lambda c: -totals[c])
+    palette = plt.cm.tab20.colors
+    comp_colors = {c: palette[i % len(palette)] for i, c in enumerate(compartments)}
+
+    y = np.arange(n)
+    fig, ax = plt.subplots(figsize=figsize)
+
+    tumor_attr = sub["attr_tumor_tpm"].astype(float).values
+    ax.barh(y, tumor_attr, color="#e74c3c", label="tumor core")
+    left = tumor_attr.copy()
+    for comp in compartments:
+        vals = np.array([
+            float(attr.get(comp, 0.0)) if isinstance(attr, dict) else 0.0
+            for attr in sub["attribution"]
+        ])
+        if not np.any(vals > 0):
+            continue
+        ax.barh(y, vals, left=left, color=comp_colors[comp],
+                label=comp.replace("_", " "))
+        left = left + vals
+
+    labels = []
+    for _, row in sub.iterrows():
+        sym = str(row["symbol"])
+        if row.get("therapies"):
+            sym = f"{sym}  [{row['therapies']}]"
+        flags = []
+        if row.get("tme_dominant"):
+            flags.append("\u26a0\u26a0")
+        elif row.get("tme_explainable"):
+            flags.append("\u26a0")
+        if flags:
+            sym = f"{sym}  {' '.join(flags)}"
+        labels.append(sym)
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=9)
+
+    ax.set_xlabel(
+        "TPM (stacked: tumor core + non-tumor compartments = observed)",
+        fontsize=10,
+    )
+    ax.set_xscale("symlog", linthresh=1.0)
+    ax.grid(axis="x", alpha=0.2)
+    ax.legend(loc="lower right", fontsize=8, framealpha=0.9, ncol=1)
+    ax.set_title(
+        f"Per-target compositional attribution \u2014 {cancer_code} {category}\n"
+        "(\u26a0\u26a0 = tumor < 30% of observed; \u26a0 = single-tissue-explainable)",
+        fontsize=10, fontweight="bold",
+    )
 
     plt.tight_layout()
     if save_to_filename:

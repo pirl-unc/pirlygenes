@@ -53,6 +53,7 @@ from .plot import (
     get_embedding_feature_metadata,
     estimate_tumor_expression_ranges,
     plot_matched_normal_attribution,
+    plot_target_attribution,
     plot_tumor_expression_ranges,
     CANCER_TYPE_ALIASES,
     CANCER_TYPE_NAMES,
@@ -319,6 +320,35 @@ def _filter_quality_flags_against_context(flags, sample_context):
         else:
             out.append(flag)
     return out
+
+
+def _format_attribution_cell(row):
+    """Compact per-target Attribution cell for targets.md (#108).
+
+    Renders "tumor T / comp C" when the decomposition produced a per-
+    compartment attribution for this gene; returns "—" when attribution
+    isn't available (no decomposition ran, or the gene wasn't in the
+    reference matrix).
+    """
+    try:
+        observed = float(row.get("observed_tpm") or 0.0)
+    except (TypeError, ValueError):
+        observed = 0.0
+    if observed <= 0:
+        return "—"
+    attribution = row.get("attribution")
+    if not attribution or not isinstance(attribution, dict):
+        return "—"
+    try:
+        attr_tumor = float(row.get("attr_tumor_tpm") or 0.0)
+        top_comp = row.get("attr_top_compartment") or ""
+        top_tpm = float(row.get("attr_top_compartment_tpm") or 0.0)
+    except (TypeError, ValueError):
+        return "—"
+    if not top_comp:
+        return f"tumor {attr_tumor:.0f}"
+    comp_label = top_comp.replace("_", " ")
+    return f"tumor {attr_tumor:.0f} / {comp_label} {top_tpm:.0f}"
 
 
 def _ci_confidence_tier(overall_lower, overall_upper):
@@ -721,7 +751,16 @@ def _analyze_body(
 
     # Sample quality assessment — run after analysis so tissue_scores
     # are available for tissue-matched degradation baselines.
-    quality = assess_sample_quality(df_expr, tissue_scores=analysis.get("tissue_scores"))
+    # #77: pass the stage-1 library_prep so the assessor skips the
+    # "Suspicious MT fraction" override (and doesn't clobber the
+    # length-pair-derived degradation level) when MT being near-zero is
+    # explained by the inferred prep.
+    quality = assess_sample_quality(
+        df_expr,
+        tissue_scores=analysis.get("tissue_scores"),
+        library_prep=getattr(sample_context, "library_prep", None)
+        if sample_context is not None else None,
+    )
     analysis["quality"] = quality
     # #77: filter quality flags against the stage-1 SampleContext — the
     # "Suspicious MT fraction" warning is a false alarm when the
@@ -1229,6 +1268,35 @@ def _analyze_body(
             )
             adj_pngs.append(cat_png)
             _plt.close("all")
+
+        # Per-target compositional attribution (#108). One PNG per
+        # category showing the per-gene tumor-core + compartment
+        # breakdown. Emitted only when decomposition produced an
+        # attribution; the function returns None otherwise and no file
+        # is written, which the CLI respects by not appending to
+        # adj_pngs.
+        if (
+            "attribution" in ranges_df.columns
+            and ranges_df["attribution"].apply(
+                lambda v: isinstance(v, dict) and len(v) > 0
+            ).any()
+        ):
+            for cat_key, cat_slug in _adj_categories:
+                attr_png = (
+                    "%s-target-attribution-%s.png" % (prefix, cat_slug)
+                    if prefix else "target-attribution-%s.png" % cat_slug
+                )
+                fig = plot_target_attribution(
+                    ranges_df,
+                    cancer_type=effective_cancer_type,
+                    category=cat_key,
+                    top_n=15,
+                    save_to_filename=attr_png,
+                    save_dpi=output_dpi,
+                )
+                if fig is not None:
+                    adj_pngs.append(attr_png)
+                _plt.close("all")
 
         # Per-gene matched-normal attribution (issue #55). One PNG per
         # category, only emitted when matched-normal subtraction was
@@ -2797,10 +2865,10 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                  "or bispecific T-cell engagers.\n")
     if len(surface_targets):
         lines.append(
-            f"| Gene | {value_label} | Range | Observed | vs TCGA | TCGA %ile | TME | Therapies |"
+            f"| Gene | {value_label} | Range | Observed | vs TCGA | TCGA %ile | TME | Attribution | Therapies |"
         )
         lines.append(
-            "|------|-----------|-------|----------|---------|-----------|-----|-----------|"
+            "|------|-----------|-------|----------|---------|-----------|-----|-------------|-----------|"
         )
         # #78: cross-signal annotations — flag IFN-driven surface /
         # MHC targets when the IFN_response axis is active, so the
@@ -2812,11 +2880,10 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             bold = "**" if row["therapies"] else ""
             vs_tcga = row["pct_cancer_median"]
             # TME flag — compact key:
-            #   ⚠⚠ = ``tme_dominant`` (TME alone accounts for ≥70% of
-            #   the observed signal — almost certainly a stromal /
-            #   immune origin, #35); ⚠ = ``tme_explainable`` (a single
-            #   healthy reference tissue could explain ≥50% of signal,
-            #   #45).
+            #   ⚠⚠ = ``tme_dominant`` (observed signal is mostly non-
+            #   tumor per the decomposition attribution, #108); ⚠ =
+            #   ``tme_explainable`` (a single healthy reference tissue
+            #   could explain ≥50% of signal, #45).
             if row.get("tme_dominant"):
                 tme_warn = "⚠⚠"
             elif row.get("tme_explainable"):
@@ -2829,11 +2896,12 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             cross = cross_notes.get(row["symbol"])
             if cross:
                 therapies_cell = f"{therapies_cell} ({cross})" if therapies_cell else f"*{cross}*"
+            attribution_cell = _format_attribution_cell(row)
             lines.append(
                 f"| {bold}{row['symbol']}{bold} | {row['median_est']:.1f} | "
                 f"{row['est_1']:.1f}\u2013{row['est_9']:.1f} | {row['observed_tpm']:.1f} | "
                 f"{'%.1fx' % vs_tcga if pd.notna(vs_tcga) else '—'} | {row['tcga_percentile']:.0%} | "
-                f"{tme_warn} | {therapies_cell} |"
+                f"{tme_warn} | {attribution_cell} | {therapies_cell} |"
             )
         head20 = surface_targets.head(20)
         any_dominant = (
@@ -2846,11 +2914,18 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         )
         if any_dominant:
             lines.append(
-                "\n⚠⚠ = **TME-dominant** (≥70% of observed signal is "
-                "explained by the TME reference alone). These are very "
-                "likely stromal / immune rather than tumor-cell expressed "
-                "— excluding them from therapy-target consideration is "
-                "the safest default (#35)."
+                "\n⚠⚠ = **TME-dominant**: the decomposition attribution "
+                "assigns less than 30% of the observed TPM to the tumor "
+                "compartment (#108). These targets are very likely "
+                "stromal / immune rather than tumor-cell expressed — "
+                "excluding them from therapy-target consideration is the "
+                "safest default (#35)."
+            )
+            lines.append(
+                "\nAttribution column shows `tumor {tpm} / {dominant "
+                "non-tumor compartment} {tpm}` from the decomposition "
+                "fit; `—` means no decomposition attribution was "
+                "available for this gene."
             )
         if any_explainable:
             lines.append(
@@ -2868,17 +2943,18 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     lines.append("Intracellular proteins presented via MHC-I. Targetable by "
                  "TCR-T cell therapy or peptide vaccination.\n")
     if len(intracellular):
-        lines.append(f"| Gene | {value_label} | Range | vs TCGA | TCGA %ile | TME | CTA | Therapies |")
-        lines.append("|------|-----------|-------|---------|-----------|-----|-----|-----------|")
+        lines.append(f"| Gene | {value_label} | Range | vs TCGA | TCGA %ile | TME | Attribution | CTA | Therapies |")
+        lines.append("|------|-----------|-------|---------|-----------|-----|-------------|-----|-----------|")
         for _, row in intracellular.head(15).iterrows():
             cta_flag = "yes" if row["is_cta"] else ""
             vs_tcga = row["pct_cancer_median"]
             tme_warn = "⚠" if row.get("tme_explainable") else ""
+            attribution_cell = _format_attribution_cell(row)
             lines.append(
                 f"| {row['symbol']} | {row['median_est']:.1f} | "
                 f"{row['est_1']:.1f}\u2013{row['est_9']:.1f} | "
                 f"{'%.1fx' % vs_tcga if pd.notna(vs_tcga) else '—'} | "
-                f"{row['tcga_percentile']:.0%} | {tme_warn} | {cta_flag} | {row['therapies']} |"
+                f"{row['tcga_percentile']:.0%} | {tme_warn} | {attribution_cell} | {cta_flag} | {row['therapies']} |"
             )
         if (
             "tme_explainable" in intracellular.columns

@@ -157,6 +157,49 @@ def test_normal_tissue_is_not_flagged_as_culture():
     assert not result["culture"]["tme_absent"]
 
 
+def test_exome_capture_library_prep_mutes_mt_warning():
+    """#77: when library_prep=exome_capture and MT is near-zero, the MT
+    fraction is expected to be ~0 and there's still a valid length-pair
+    signal, so the "Suspicious MT fraction" flag must not fire and the
+    degradation level must not be overwritten to "unknown"."""
+    df = _tcga_sample("PRAD").copy()
+    tpm = dict(zip(df["gene_symbol"], df["TPM"]))
+    for gene in _MT_GENES:
+        tpm[gene] = 0.0
+    df["TPM"] = df["gene_symbol"].map(tpm).fillna(0.0)
+
+    result = assess_sample_quality(
+        df,
+        tissue_scores=[("prostate", 0.9, 20)],
+        library_prep="exome_capture",
+    )
+    assert not any("Suspicious MT fraction" in f for f in result["flags"]), (
+        f"MT warning should be muted under exome_capture; got {result['flags']!r}"
+    )
+    assert result["degradation"]["level"] != "unknown", (
+        "deg level was clobbered to 'unknown' despite valid length-pair signal"
+    )
+    assert any(
+        "consistent with exome capture" in f.lower() for f in result["flags"]
+    ), f"Expected informational MT line; got {result['flags']!r}"
+
+
+def test_unknown_library_prep_still_warns_on_missing_mt():
+    """Without a prep call, MT near zero should still flag as suspicious
+    and the degradation level should still fall back to "unknown"."""
+    df = _tcga_sample("PRAD").copy()
+    tpm = dict(zip(df["gene_symbol"], df["TPM"]))
+    for gene in _MT_GENES:
+        tpm[gene] = 0.0
+    df["TPM"] = df["gene_symbol"].map(tpm).fillna(0.0)
+
+    result = assess_sample_quality(
+        df, tissue_scores=[("prostate", 0.9, 20)], library_prep=None,
+    )
+    assert any("Suspicious MT fraction" in f for f in result["flags"])
+    assert result["degradation"]["level"] == "unknown"
+
+
 def test_nan_tpm_values_do_not_cause_errors():
     """Genes with NaN TPM should be handled gracefully."""
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
