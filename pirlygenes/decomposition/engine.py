@@ -933,7 +933,6 @@ def decompose_sample(
         if cancer_types is not None:
             requested = set(cancer_types)
             candidate_rows = [row for row in candidate_rows if row["code"] in requested]
-        candidate_rows = candidate_rows[:top_k]
     if not candidate_rows:
         return []
 
