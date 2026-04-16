@@ -7,6 +7,7 @@ from pirlygenes.sample_context import (
     _HISTONE_SYMBOL_PREFIXES,
     _MT_MRNA_SYMBOLS,
     _MT_RRNA_SYMBOLS,
+    _build_tpm_by_symbol,
 )
 
 
@@ -91,6 +92,30 @@ def test_library_prep_exome_capture_signature_is_detected():
     frame = _frame_from_pairs(rows)
     ctx = infer_sample_context(frame)
     assert ctx.library_prep == "exome_capture"
+
+
+def test_build_tpm_by_symbol_uses_gene_column_without_fallback(monkeypatch):
+    """Aggregated pirlygenes outputs use ``gene`` rather than
+    ``gene_symbol``; sample-context inference should treat that as a
+    direct symbol column and avoid the slower tumor-purity fallback.
+    """
+    frame = pd.DataFrame(
+        {
+            "gene": ["TP53", "TP53", "EGFR"],
+            "TPM": [1.0, 3.0, 2.5],
+        }
+    )
+
+    def _should_not_run(_df):
+        raise AssertionError("tumor-purity fallback should not be used")
+
+    monkeypatch.setattr(
+        "pirlygenes.tumor_purity._build_sample_tpm_by_symbol",
+        _should_not_run,
+    )
+
+    out = _build_tpm_by_symbol(frame)
+    assert out == {"TP53": 3.0, "EGFR": 2.5}
 
 
 # ── Preservation + degradation ────────────────────────────────────────────

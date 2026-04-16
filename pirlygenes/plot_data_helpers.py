@@ -17,6 +17,7 @@ import re
 import numpy as np
 import pandas as pd
 
+from .common import without_dataframe_attrs
 from .gene_names import aliases
 from .gene_ids import find_canonical_gene_ids_and_names
 
@@ -270,14 +271,14 @@ def prepare_gene_expr_df(
 
     # Avoid deep-copying DataFrame.attrs here: load_expression attaches the
     # retained transcript-level frame under ``attrs["transcript_expression"]``,
-    # and copying that blob inside plotting prep turns cheap row-wise helper
-    # code into minute-scale work on real transcript-level inputs.
-    needed_cols = [gene_id_col, tpm_col]
-    for extra in (gene_name_col, "canonical_gene_name", "gene"):
-        if extra and extra in df_gene_expr.columns and extra not in needed_cols:
-            needed_cols.append(extra)
-    df = df_gene_expr[needed_cols].copy(deep=False)
-    df.attrs = {}
+    # and even a simple column subset can deepcopy that blob via pandas'
+    # finalize path.
+    with without_dataframe_attrs(df_gene_expr):
+        needed_cols = [gene_id_col, tpm_col]
+        for extra in (gene_name_col, "canonical_gene_name", "gene"):
+            if extra and extra in df_gene_expr.columns and extra not in needed_cols:
+                needed_cols.append(extra)
+        df = df_gene_expr[needed_cols].copy(deep=False)
     expr_gene_ids = df[gene_id_col].astype(str)
     if strip_version:
         expr_gene_ids = expr_gene_ids.map(_strip_ensembl_version)
