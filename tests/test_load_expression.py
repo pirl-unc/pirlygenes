@@ -91,6 +91,39 @@ def test_load_expression_aggregate_and_save(tmp_path, monkeypatch):
     assert list(out["ensembl_gene_id"]) == ["ENSG1"]
 
 
+def test_load_expression_aggregate_raises_on_large_unresolved_fraction(tmp_path, monkeypatch):
+    p = tmp_path / "tx.csv"
+    pd.DataFrame({"transcript": ["tx1"], "tpm": [1.0]}).to_csv(p, index=False)
+
+    def _fake_tx2gene(*_args, **_kwargs):
+        out = pd.DataFrame(
+            {
+                "gene": ["GENE1"],
+                "TPM": [1.0],
+                "gene_id": ["ENSG1"],
+                "ensembl_release": [112],
+            }
+        )
+        out.attrs["transcript_aggregation_stats"] = {
+            "known_tpm": 910000.0,
+            "unknown_tpm": 90000.0,
+            "unknown_fraction": 0.09,
+            "unresolved_unique_count": 123,
+            "unresolved_high_tpm": [{"tx": "ENSTOLD1", "TPM": 1200.0}],
+        }
+        return out
+
+    monkeypatch.setattr(le, "tx2gene", _fake_tx2gene)
+
+    with pytest.raises(ValueError, match="silently treat those genes as 0 TPM"):
+        le.load_expression_data(
+            str(p),
+            aggregate_gene_expression=True,
+            verbose=False,
+            progress=False,
+        )
+
+
 def test_load_expression_with_gene_sidecar_skips_aggregation(tmp_path, monkeypatch):
     p = tmp_path / "sample.quant.sf.csv"
     sidecar = tmp_path / "Gene.csv"

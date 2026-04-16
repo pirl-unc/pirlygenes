@@ -58,6 +58,8 @@ _RAW_FPKM_PATTERNS = [
     r"^mrna[_\s]?fpkm$",
 ]
 
+_MAX_UNRESOLVED_TRANSCRIPT_TPM_FRACTION = 0.05
+
 
 def _guess_col(columns, patterns):
     """Return the first column that matches any pattern, or None."""
@@ -259,6 +261,40 @@ def _first_non_empty(series):
         if pd.notna(val) and str(val).strip() != "":
             return val
     return series.iloc[0] if len(series) else None
+
+
+def _raise_if_transcript_aggregation_incomplete(df, input_path):
+    """Fail fast when transcript aggregation lost too much nonzero signal.
+
+    Downstream purity / ranking code interprets a missing symbol as 0 TPM
+    via ``dict.get(symbol, 0.0)``. If transcript->gene aggregation drops a
+    substantial chunk of TPM mass, continuing would produce overconfident
+    calls from a materially incomplete expression vector.
+    """
+    stats = df.attrs.get("transcript_aggregation_stats") or {}
+    unknown_fraction = float(stats.get("unknown_fraction") or 0.0)
+    if unknown_fraction <= _MAX_UNRESOLVED_TRANSCRIPT_TPM_FRACTION:
+        return
+
+    unknown_tpm = float(stats.get("unknown_tpm") or 0.0)
+    known_tpm = float(stats.get("known_tpm") or 0.0)
+    unresolved_unique = int(stats.get("unresolved_unique_count") or 0)
+    preview = stats.get("unresolved_high_tpm") or []
+    preview_text = ", ".join(
+        f"{row['tx']} ({row['TPM']:.1f} TPM)" for row in preview[:5]
+    )
+    if preview_text:
+        preview_text = f" Top unresolved transcripts: {preview_text}."
+    raise ValueError(
+        "Transcript-level aggregation left too much signal unresolved for "
+        f"{input_path}: {unknown_tpm:.1f} TPM ({unknown_fraction:.1%}) across "
+        f"{unresolved_unique} unique transcript IDs remained unmapped "
+        f"(known TPM={known_tpm:.1f}). This usually means the sample was "
+        "quantified against an older or mismatched Ensembl annotation. "
+        "Refusing to continue because downstream purity/classification code "
+        "would silently treat those genes as 0 TPM."
+        + preview_text
+    )
 
 
 def _apply_id_aliases_and_sum(df, verbose=True):
@@ -491,7 +527,10 @@ def _resolve_unknown_transcripts_to_genes(tx0_unique, verbose=False, progress=Tr
     ``tx2gene`` so the load path resolves the transcript set exactly
     once per file (#81).
     """
-    from .gene_ids import find_gene_name_from_ensembl_transcript_id
+    from .gene_ids import find_gene_name_from_ensembl_transcript_id, _build_indexes
+    # Build the Ensembl index *before* the progress bar starts so the
+    # user doesn't see a 0% bar stuck while the index loads.
+    _build_indexes()
     if verbose:
         print(f"[load] Resolving {len(tx0_unique)} unique transcripts via Ensembl")
     iterator = tqdm(
@@ -722,6 +761,7 @@ def load_expression_data(
             df, verbose=verbose, progress=progress,
             tx_to_gene_name=shared_tx_map,
         )
+        _raise_if_transcript_aggregation_incomplete(df, input_path)
 
         if save_aggregated_gene_expression:
             if aggregated_output_path:

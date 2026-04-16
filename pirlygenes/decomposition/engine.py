@@ -140,6 +140,16 @@ DECOMPOSITION_PARAMETERS = {
         # selection finds too few rows and falls back to all expressed genes.
         "fallback_expression_floor": 0.05,
     },
+    # ── Matched-normal lineage override ────────────────────────────────
+    "lineage_override": {
+        # The matched-normal panel is allowed to correct an over-high
+        # signature purity downward (e.g. pure normal prostate run as
+        # PRAD), but large *upward* jumps are a red flag that the panel
+        # got contaminated by non-lineage genes. Reject those jumps.
+        "max_upward_delta": 0.25,
+        "max_upward_ratio": 2.0,
+        "ratio_floor": 0.05,
+    },
     # ── Template / hypothesis scoring ────────────────────────────────────
     # Final score = fit_score × (fit_score_base + fit_score_gain × cancer_support)
     #               × template_factor
@@ -624,6 +634,7 @@ def _fit_one_hypothesis(
     # purity flow.
     lineage_fraction_info = None
     purity_source = "signature"
+    warnings = []
     if (
         purity_override is None
         and matched_normal_name is not None
@@ -639,14 +650,34 @@ def _fit_one_hypothesis(
             and lineage_fraction_info["stability"] < 1.5
             and lineage_fraction_info["panel_genes_observed"] >= 10
         ):
-            tumor_fraction = float(lineage_fraction_info["estimate"])
-            purity_source = "lineage_panel"
-            purity_to_store = dict(purity_result or {})
-            purity_to_store["overall_estimate"] = tumor_fraction
-            purity_to_store["overall_lower"] = float(lineage_fraction_info["lower"])
-            purity_to_store["overall_upper"] = float(lineage_fraction_info["upper"])
-            purity_to_store["lineage_tumor_fraction"] = lineage_fraction_info
-            purity_to_store["purity_source"] = purity_source
+            candidate_purity = float(purity_result.get("overall_estimate") or 0.5)
+            lineage_estimate = float(lineage_fraction_info["estimate"])
+            override_params = DECOMPOSITION_PARAMETERS["lineage_override"]
+            upward_delta = lineage_estimate - candidate_purity
+            upward_ratio = (
+                lineage_estimate / max(candidate_purity, override_params["ratio_floor"])
+            )
+            if (
+                upward_delta > override_params["max_upward_delta"]
+                and upward_ratio > override_params["max_upward_ratio"]
+            ):
+                tumor_fraction = candidate_purity
+                purity_to_store = dict(purity_result or {})
+                purity_to_store["lineage_tumor_fraction"] = lineage_fraction_info
+                purity_to_store["purity_source"] = purity_source
+                warnings.append(
+                    "Lineage-panel purity conflicts with signature purity; "
+                    "kept the conservative signature prior"
+                )
+            else:
+                tumor_fraction = lineage_estimate
+                purity_source = "lineage_panel"
+                purity_to_store = dict(purity_result or {})
+                purity_to_store["overall_estimate"] = tumor_fraction
+                purity_to_store["overall_lower"] = float(lineage_fraction_info["lower"])
+                purity_to_store["overall_upper"] = float(lineage_fraction_info["upper"])
+                purity_to_store["lineage_tumor_fraction"] = lineage_fraction_info
+                purity_to_store["purity_source"] = purity_source
         else:
             tumor_fraction = float(purity_result.get("overall_estimate") or 0.5)
             purity_to_store = purity_result
@@ -662,8 +693,6 @@ def _fit_one_hypothesis(
             "purity_source": "override",
         }
         purity_source = "override"
-    warnings = []
-
     if not comp_names or tumor_fraction >= 0.999:
         return DecompositionResult(
             template=template_name,

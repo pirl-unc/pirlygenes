@@ -72,6 +72,8 @@ def test_lookup_functions_with_fake_genomes(monkeypatch):
     monkeypatch.setattr(gi, "_indexes_built", False)
     monkeypatch.setattr(gi, "_gene_id_to_name", {})
     monkeypatch.setattr(gi, "_transcript_id_to_gene_name", {})
+    monkeypatch.setattr(gi, "_gene_id_miss_cache", set())
+    monkeypatch.setattr(gi, "_transcript_id_miss_cache", set())
 
     assert gi.find_gene_name_from_ensembl_gene_id("ENSGA", verbose=False) == "GENEA"
     assert gi.find_gene_name_from_ensembl_transcript_id("ENST1", verbose=False) == "GENEA"
@@ -83,6 +85,28 @@ def test_lookup_functions_with_fake_genomes(monkeypatch):
     assert gi.find_gene_by_name_from_ensembl("CD276", verbose=False).id == "ENSGX"
     assert gi.find_gene_id_by_name_from_ensembl("CD276", verbose=False) == "ENSGX"
     assert gi.find_canonical_gene_id_and_name("CD276") == ("ENSGX", "CD276")
+
+
+def test_lookup_functions_fall_back_to_older_release_on_latest_miss(monkeypatch):
+    older_gene = FakeGene("ENSGOLD", "OLDER")
+    older_tx = SimpleNamespace(gene_name="OLDER")
+    genomes = [
+        FakeGenome(release=112),
+        FakeGenome(
+            release=111,
+            gene_by_id_map={"ENSGOLD": older_gene},
+            tx_by_id_map={"ENSTOLD": older_tx},
+        ),
+    ]
+    monkeypatch.setattr(gi, "genomes", genomes)
+    monkeypatch.setattr(gi, "_indexes_built", False)
+    monkeypatch.setattr(gi, "_gene_id_to_name", {})
+    monkeypatch.setattr(gi, "_transcript_id_to_gene_name", {})
+    monkeypatch.setattr(gi, "_gene_id_miss_cache", set())
+    monkeypatch.setattr(gi, "_transcript_id_miss_cache", set())
+
+    assert gi.find_gene_name_from_ensembl_gene_id("ENSGOLD", verbose=False) == "OLDER"
+    assert gi.find_gene_name_from_ensembl_transcript_id("ENSTOLD", verbose=False) == "OLDER"
 
 
 def test_find_canonical_gene_ids_and_names(monkeypatch):
