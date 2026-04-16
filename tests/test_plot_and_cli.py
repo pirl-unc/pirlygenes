@@ -154,7 +154,6 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
         "decompose_sample",
         lambda *a, **k: decomp_kwargs.update(k) or [],
     )
-    monkeypatch.setattr(cli_mod, "plot_decomposition_summary", lambda *a, **k: None)
     monkeypatch.setattr(cli_mod, "plot_decomposition_composition", lambda *a, **k: None)
     monkeypatch.setattr(cli_mod, "plot_decomposition_component_breakdown", lambda *a, **k: None)
     monkeypatch.setattr(cli_mod, "plot_decomposition_candidates", lambda *a, **k: None)
@@ -225,6 +224,10 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert decomp_kwargs["tumor_context"] == "met"
     assert decomp_kwargs["site_hint"] == "liver"
     assert decomp_kwargs["templates"] == ["met_liver"]
+    readme = (tmp_path / "test-output" / "README.md").read_text()
+    assert "Prefer the standalone decomposition figures" in readme
+    assert "*-decomposition-composition.png" in readme
+    assert "*-decomposition.png" not in readme
 
     printed = []
     monkeypatch.setattr(cli_mod, "print_name_and_version", lambda: printed.append("v"))
@@ -619,6 +622,115 @@ def test_generate_target_report_is_mode_aware(tmp_path):
     heme_text = (tmp_path / "heme-targets-targets.md").read_text()
     assert "Malignant-lineage expression range" in heme_text
     assert "Malignant TPM" in heme_text
+
+
+def test_generate_target_report_adds_tumor_context_and_landscape_summary(tmp_path):
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "MAGEA4",
+                "median_est": 28.0,
+                "est_1": 20.0,
+                "est_9": 40.0,
+                "observed_tpm": 19.0,
+                "pct_cancer_median": 6.2,
+                "tcga_percentile": 0.98,
+                "is_surface": False,
+                "is_cta": True,
+                "therapies": "",
+                "tme_explainable": False,
+                "tme_dominant": False,
+                "excluded_from_ranking": False,
+                "category": "CTA",
+                "matched_normal_tpm": 0.0,
+                "matched_normal_tissue": "colon",
+                "matched_normal_fraction": 0.18,
+            },
+            {
+                "symbol": "CEACAM5",
+                "median_est": 120.0,
+                "est_1": 90.0,
+                "est_9": 145.0,
+                "observed_tpm": 88.0,
+                "pct_cancer_median": 3.8,
+                "tcga_percentile": 0.95,
+                "is_surface": True,
+                "is_cta": False,
+                "therapies": "ADC",
+                "tme_explainable": False,
+                "tme_dominant": False,
+                "excluded_from_ranking": False,
+                "category": "therapy_target",
+                "matched_normal_tpm": 14.0,
+                "matched_normal_tissue": "colon",
+                "matched_normal_fraction": 0.18,
+            },
+            {
+                "symbol": "WT1",
+                "median_est": 22.0,
+                "est_1": 17.0,
+                "est_9": 33.0,
+                "observed_tpm": 16.0,
+                "pct_cancer_median": 2.5,
+                "tcga_percentile": 0.90,
+                "is_surface": False,
+                "is_cta": False,
+                "therapies": "TCR-T",
+                "tme_explainable": False,
+                "tme_dominant": False,
+                "excluded_from_ranking": False,
+                "category": "therapy_target",
+                "matched_normal_tpm": 0.0,
+                "matched_normal_tissue": "colon",
+                "matched_normal_fraction": 0.18,
+            },
+        ]
+    )
+    purity = {
+        "overall_lower": 0.42,
+        "overall_estimate": 0.51,
+        "overall_upper": 0.63,
+        "components": {
+            "integration": {"signature_deprioritized": True},
+        },
+    }
+    analysis = {
+        "sample_mode": "solid",
+        "cancer_type": "COAD",
+        "family_summary": {"display": "CRC-family (COAD > READ)"},
+        "fit_quality": {
+            "label": "ambiguous",
+            "message": "Top subtype candidates remain close; treat the exact site as provisional.",
+        },
+        "call_summary": {
+            "label_options": ["COAD", "READ"],
+            "label_display": "COAD or READ",
+            "reported_context": "primary",
+            "reported_site": "primary site",
+            "site_indeterminate": False,
+            "site_note": None,
+            "hypothesis_display": ["COAD / solid_primary", "READ / solid_primary"],
+        },
+        "mhc1": {"HLA-A": 80, "HLA-B": 72, "HLA-C": 68, "B2M": 420},
+    }
+
+    prefix = str(tmp_path / "coad")
+    cli_mod._generate_target_report(
+        ranges_df,
+        analysis,
+        prefix,
+        "COAD",
+        purity,
+    )
+
+    text = (tmp_path / "coad-targets.md").read_text()
+    assert "## Tumor context for interpretation" in text
+    assert "## Therapy landscape at a glance" in text
+    assert "provisional between **COAD** and **READ**" in text
+    assert "matched_normal_colon" in text
+    assert "CEACAM5" in text
+    assert "MAGEA4" in text
+    assert "WT1" in text
 
 
 def _tcga_sample(cancer_code):

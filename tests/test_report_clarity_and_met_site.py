@@ -199,6 +199,98 @@ def test_summary_md_structure_for_report_clarity(tmp_path):
     assert "similarity" in summary_md.lower()
 
 
+def test_detailed_report_uses_generic_lineage_caveat(tmp_path):
+    from pirlygenes.cli import _generate_text_reports
+
+    analysis = {
+        "cancer_type": "HNSC",
+        "cancer_name": "Head and Neck Squamous Cell Carcinoma",
+        "cancer_score": 0.18,
+        "top_cancers": [("HNSC", 0.18), ("LUSC", 0.12)],
+        "candidate_trace": [
+            {
+                "code": "HNSC",
+                "support_score": 0.18,
+                "support_geomean": 0.18,
+                "support_norm": 1.0,
+                "signature_score": 0.81,
+                "purity_estimate": 0.42,
+                "family_label": "SQUAMOUS",
+                "lineage_purity": 0.44,
+                "lineage_concordance": 0.89,
+            },
+            {
+                "code": "LUSC",
+                "support_score": 0.12,
+                "support_geomean": 0.12,
+                "support_norm": 0.67,
+                "signature_score": 0.72,
+                "purity_estimate": 0.38,
+                "family_label": "SQUAMOUS",
+                "lineage_purity": 0.41,
+                "lineage_concordance": 0.82,
+            },
+        ],
+        "fit_quality": {
+            "label": "ambiguous",
+            "message": "Top squamous candidates remain close; treat the exact site as provisional.",
+        },
+        "family_summary": {
+            "display": "squamous family (HNSC > LUSC)",
+            "subtype_clause": "HNSC > LUSC",
+        },
+        "purity": {
+            "overall_estimate": 0.42,
+            "overall_lower": 0.25,
+            "overall_upper": 0.58,
+            "cancer_type": "HNSC",
+            "components": {
+                "stromal": {"enrichment": 2.1},
+                "immune": {"enrichment": 1.7},
+                "lineage": {
+                    "per_gene": [
+                        {"gene": "KRT14", "purity": 0.52},
+                        {"gene": "KRT5", "purity": 0.47},
+                        {"gene": "TP63", "purity": 0.24},
+                    ],
+                    "purity": 0.49,
+                    "lower": 0.47,
+                    "upper": 0.52,
+                },
+            },
+        },
+        "tissue_scores": [("tongue", 0.93, 20), ("esophagus", 0.84, 20)],
+        "mhc1": {"HLA-A": 26, "HLA-B": 31, "B2M": 220},
+        "mhc2": {},
+        "sample_mode": "solid",
+        "call_summary": {
+            "label_options": ["HNSC", "LUSC"],
+            "label_display": "HNSC or LUSC",
+            "reported_context": "primary",
+            "reported_site": "primary site",
+            "site_indeterminate": False,
+            "site_note": None,
+            "hypothesis_display": ["HNSC / solid_primary", "LUSC / solid_primary"],
+        },
+    }
+    embedding_meta = {
+        "method": "hierarchy",
+        "feature_kind": "hierarchical_scores",
+        "n_features": 12,
+        "n_types": 3,
+        "families": ["SQUAMOUS"],
+        "sites": ["tongue", "lung", "esophagus"],
+    }
+    prefix = str(tmp_path / "hnsccase")
+
+    _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=[])
+
+    detailed = (tmp_path / "hnsccase-analysis.md").read_text()
+    assert "Lineage caveat" in detailed
+    assert "prostate-lineage" not in detailed
+    assert "do NOT by themselves distinguish tumor cells from benign cells of the same lineage" in detailed
+
+
 def test_compose_disease_state_detects_crpc_nepc_pattern():
     """#78: AR retained + AR targets collapsed + NE up + AR axis
     down must produce the castrate-resistant + emerging-NEPC narrative.

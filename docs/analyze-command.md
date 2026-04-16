@@ -26,14 +26,17 @@ pirlygenes analyze input.csv \
 |------|----------|
 | `{prefix}-summary.md` | One-paragraph natural language summary |
 | `{prefix}-analysis.md` | Structured analysis: cancer type, purity (with lineage gene calibration), MHC, tissue context, embedding genes |
-| `{prefix}-targets.md` | Therapeutic target analysis with purity-adjusted expression |
+| `{prefix}-targets.md` | Therapeutic target analysis with tumor context, therapy landscape summary, and purity-adjusted expression |
 | `README.md` | Output directory index |
 
 ### Figures (in `figures/` subdir)
 
 | Figure | Description |
 |--------|-------------|
-| `{prefix}-summary.png` | Sample overview: cancer type, purity, tissue context |
+| `{prefix}-sample-summary.png` | Sample overview: cancer type, purity, tissue context |
+| `{prefix}-decomposition-composition.png` | Standalone best-hypothesis composition bar |
+| `{prefix}-decomposition-components.png` | Standalone best-hypothesis TME component breakdown |
+| `{prefix}-decomposition-candidates.png` | Standalone candidate composition comparison |
 | `{prefix}-purity.png` | Tumor purity estimation detail |
 | `{prefix}-immune.png` | Immune gene expression strip plot |
 | `{prefix}-tumor.png` | Tumor marker gene expression |

@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+import pirlygenes.gene_ids as gene_ids_mod
 import pirlygenes.load_expression as le
 
 
@@ -168,6 +169,39 @@ def test_load_expression_gene_id_only_with_tpm_alias(tmp_path, monkeypatch):
     assert list(out["canonical_gene_name"]) == ["A", "B"]
     assert list(out["gene"]) == ["A", "B"]
     assert list(out["TPM"]) == [1.5, 2.5]
+
+
+def test_load_expression_prebuilds_indexes_before_canonical_name_progress(tmp_path, monkeypatch):
+    p = tmp_path / "expr.csv"
+    pd.DataFrame(
+        {
+            "Ensembl Gene ID": ["ENSG1", "ENSG2"],
+            "TPM": [1.0, 2.0],
+        }
+    ).to_csv(p, index=False)
+
+    events = []
+
+    monkeypatch.setattr(
+        le,
+        "find_gene_name_from_ensembl_gene_id",
+        lambda gid: {"ENSG1": "A", "ENSG2": "B"}[gid],
+    )
+    monkeypatch.setattr(
+        gene_ids_mod,
+        "_build_indexes",
+        lambda: events.append("build"),
+    )
+    monkeypatch.setattr(
+        le,
+        "tqdm",
+        lambda iterator, **_kwargs: events.append("tqdm") or iterator,
+    )
+
+    out = le.load_expression_data(str(p), verbose=False, progress=True)
+
+    assert list(out["canonical_gene_name"]) == ["A", "B"]
+    assert events[:2] == ["build", "tqdm"]
 
 
 def test_load_expression_select_sample_rows(tmp_path, monkeypatch):
