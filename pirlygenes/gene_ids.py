@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import lru_cache
 from typing import Optional, Sequence, Tuple, List
 
 from tqdm import tqdm
@@ -31,49 +32,53 @@ genomes = sorted(
 _installed_releases = " ".join([str(g.release) for g in genomes])
 
 
-def find_gene_name_from_ensembl_gene_id(
-    gene_id: str, verbose: bool = False
-) -> Optional[str]:
-    gene_name = None
-    gene = None
-
+@lru_cache(maxsize=None)
+def _cached_gene_name_from_gene_id(gene_id: str) -> Optional[str]:
     for genome in genomes:
-
         try:
             gene = genome.gene_by_id(gene_id)
         except Exception:
-            pass
-        if gene:
-            gene_name = gene.gene_name
-        if gene_name:
-            if verbose:
-                print(
-                    "Found %s -> %s in Ensembl v%d"
-                    % (gene_id, gene_name, genome.release)
-                )
-            break
-    return gene_name
+            gene = None
+        if gene and gene.gene_name:
+            return gene.gene_name
+    return None
+
+
+def find_gene_name_from_ensembl_gene_id(
+    gene_id: str, verbose: bool = False
+) -> Optional[str]:
+    name = _cached_gene_name_from_gene_id(gene_id)
+    if name and verbose:
+        print("Found %s -> %s" % (gene_id, name))
+    return name
+
+
+@lru_cache(maxsize=None)
+def _cached_gene_name_from_transcript_id(t_id: str) -> Optional[str]:
+    # Process-wide cache: resolving ~150k unique transcript IDs via
+    # SQLAlchemy would take ~45s per pass across the 20+ Ensembl
+    # releases users typically have installed. Several call sites
+    # (``_build_transcript_expression_frame``, ``aggregate_gene_expression``,
+    # and occasionally sibling-transcript paths) independently resolve
+    # the same ID set, so caching here eliminates the duplicate passes
+    # that caused the v4.5.0 perf regression (#81).
+    for g in genomes:
+        try:
+            t = g.transcript_by_id(t_id)
+        except Exception:
+            t = None
+        if t and t.gene_name:
+            return t.gene_name
+    return None
 
 
 def find_gene_name_from_ensembl_transcript_id(
     t_id: str, verbose: bool = False
 ) -> Optional[str]:
-    gene_name = None
-    t = None
-
-    for g in genomes:
-
-        try:
-            t = g.transcript_by_id(t_id)
-        except Exception:
-            pass
-        if t:
-            gene_name = t.gene_name
-        if gene_name:
-            if verbose:
-                print("Found %s -> %s in Ensembl v%d" % (t_id, gene_name, g.release))
-            break
-    return gene_name
+    name = _cached_gene_name_from_transcript_id(t_id)
+    if name and verbose:
+        print("Found %s -> %s" % (t_id, name))
+    return name
 
 
 def pick_best_gene(genes):

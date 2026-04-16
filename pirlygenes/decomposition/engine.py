@@ -892,6 +892,7 @@ def decompose_sample(
     tumor_context="auto",
     site_hint=None,
     sample_context=None,
+    candidate_rows=None,
 ):
     """Decompose a sample across multiple cancer-type and template hypotheses.
 
@@ -918,11 +919,22 @@ def decompose_sample(
         if eid:
             sample_by_eid[eid] = float(tpm)
 
-    candidate_rows = rank_cancer_type_candidates(
-        df_gene_expr,
-        candidate_codes=cancer_types,
-        top_k=len(cancer_types) if cancer_types is not None else 6,
-    )
+    # Reuse pre-ranked candidates when the caller has them (#85). The
+    # CLI's analyze() already computes the full ranking trace —
+    # including the expensive per-candidate ``estimate_tumor_purity``
+    # pass — so re-ranking here doubled that cost for every run.
+    if candidate_rows is None:
+        candidate_rows = rank_cancer_type_candidates(
+            df_gene_expr,
+            candidate_codes=cancer_types,
+            top_k=len(cancer_types) if cancer_types is not None else 6,
+        )
+    elif cancer_types is not None:
+        # Narrow a broader precomputed trace down to the requested codes
+        # (preserving rank order) so callers that pass e.g. the full
+        # top-8 trace get the same hypotheses the uncached path would.
+        requested = set(cancer_types)
+        candidate_rows = [row for row in candidate_rows if row["code"] in requested]
     if not candidate_rows:
         return []
 

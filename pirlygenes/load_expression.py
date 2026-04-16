@@ -431,7 +431,7 @@ def _attach_gene_sidecar_if_present(input_path, df, verbose=True):
     return out, True
 
 
-def _build_transcript_expression_frame(df, verbose=False):
+def _build_transcript_expression_frame(df, verbose=False, progress=True):
     """Return a normalized transcript-level frame extracted from ``df``.
 
     The input must look like a salmon ``quant.sf`` (Name + Length + TPM)
@@ -486,10 +486,21 @@ def _build_transcript_expression_frame(df, verbose=False):
     # gene identifiers (raw salmon quant.sf has Name/Length/TPM only).
     # Downstream signals (isoform length bias) need a gene grouping
     # key; without this they silently disable on the most common input.
+    #
+    # Perf (#81): only expressed transcripts (TPM > 0) can ever
+    # participate in isoform-level signals, so we restrict the
+    # Ensembl resolution set to those — cuts ~3-5× of the pyensembl
+    # work on a typical quant.sf (most transcripts are zero). The
+    # module-level ``@lru_cache`` on
+    # ``find_gene_name_from_ensembl_transcript_id`` (see gene_ids.py)
+    # means the overlapping ``tx2gene`` pass later is then free.
     if "ensembl_gene_id" not in out.columns and "gene_symbol" not in out.columns:
         from .aggregate_gene_expression import _expanded_tx_map
         from .transcript_to_gene import extra_tx_mappings
         from .gene_ids import find_gene_name_from_ensembl_transcript_id
+
+        expressed_mask = out["TPM"].astype(float) > 0
+        out = out.loc[expressed_mask].copy()
 
         tx0 = out["transcript_id"].astype(str).str.split(".", n=1).str[0]
         static_map = _expanded_tx_map(extra_tx_mappings or {})
@@ -499,12 +510,17 @@ def _build_transcript_expression_frame(df, verbose=False):
             uniq = pd.Index(tx0[unresolved].unique())
             if verbose:
                 print(
-                    f"[load] Resolving {len(uniq)} unknown transcripts via "
+                    f"[load] Resolving {len(uniq)} expressed transcripts via "
                     "Ensembl for transcript-level signals"
                 )
+            iterator = tqdm(
+                uniq,
+                desc="Resolving transcripts (tx-level frame)",
+                disable=not progress,
+            )
             resolved = {
                 t: find_gene_name_from_ensembl_transcript_id(t, verbose=False)
-                for t in uniq
+                for t in iterator
             }
             gene_syms.loc[unresolved] = tx0[unresolved].map(resolved)
         out["gene_symbol"] = gene_syms.astype(object)
@@ -519,7 +535,7 @@ def _build_transcript_expression_frame(df, verbose=False):
     return out
 
 
-def _try_load_sibling_transcript_frame(input_path, verbose=False):
+def _try_load_sibling_transcript_frame(input_path, verbose=False, progress=True):
     """When the user passed a gene-level table, look for a sibling
     transcript-level file in the same directory and load it.
 
@@ -542,7 +558,7 @@ def _try_load_sibling_transcript_frame(input_path, verbose=False):
                     raw = pd.read_csv(str(c), sep="\t")
                 else:
                     raw = pd.read_csv(str(c), sep="\t")
-                tx = _build_transcript_expression_frame(raw, verbose=verbose)
+                tx = _build_transcript_expression_frame(raw, verbose=verbose, progress=progress)
                 if tx is not None and not tx.empty:
                     if verbose:
                         print(f"[load] Picked up sibling transcript file: {c}")
@@ -605,7 +621,9 @@ def load_expression_data(
     if aggregate_gene_expression:
         if verbose:
             print("[load] Aggregating transcript-level TPM values to gene-level TPM")
-        _retained_transcript_df = _build_transcript_expression_frame(df, verbose=verbose)
+        _retained_transcript_df = _build_transcript_expression_frame(
+            df, verbose=verbose, progress=progress
+        )
         df = tx2gene(df, verbose=verbose, progress=progress)
 
         if save_aggregated_gene_expression:
@@ -789,7 +807,7 @@ def load_expression_data(
     if _retained_transcript_df is not None and not _retained_transcript_df.empty:
         df.attrs["transcript_expression"] = _retained_transcript_df
     else:
-        sibling_tx = _try_load_sibling_transcript_frame(input_path, verbose=verbose)
+        sibling_tx = _try_load_sibling_transcript_frame(input_path, verbose=verbose, progress=progress)
         if sibling_tx is not None:
             df.attrs["transcript_expression"] = sibling_tx
 

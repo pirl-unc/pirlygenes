@@ -1148,16 +1148,28 @@ def plot_tumor_purity(
     save_to_filename=None,
     save_dpi=300,
     figsize=(14, 8),
+    purity_result=None,
 ):
     """Plot tumor purity estimation with all components.
 
     Shows:
     - Left panel: per-gene purity estimates from cancer-type signature
     - Right panel: component summary (signature, stromal, immune, combined)
+
+    Pass ``purity_result`` (e.g. the harmonized ``analysis["purity"]``
+    from :func:`analyze_sample` / CLI ``analyze``) to render from a
+    precomputed estimate instead of recomputing (issue #86). Without
+    this the plot could silently snap back to the signature-based
+    estimate even when the rest of the report had adopted a lineage-
+    panel purity — producing a user-visible inconsistency between the
+    ``*-purity.png`` figure and the markdown reports.
     """
     import matplotlib.pyplot as plt
 
-    result = estimate_tumor_purity(df_gene_expr, cancer_type=cancer_type)
+    if purity_result is None:
+        result = estimate_tumor_purity(df_gene_expr, cancer_type=cancer_type)
+    else:
+        result = purity_result
     cancer_code = result["cancer_type"]
     comp = result["components"]
     if sample_mode == "auto":
@@ -1873,6 +1885,7 @@ def plot_sample_summary(
     sample_mode="auto",
     save_to_filename=None,
     save_dpi=300,
+    analysis=None,
 ):
     """Comprehensive sample composition plot.
 
@@ -1881,11 +1894,20 @@ def plot_sample_summary(
     - Top-right: tumor purity and microenvironment composition
     - Bottom-left: residual background signatures (where is the non-tumor signal from?)
     - Bottom-right: MHC class I and II expression
+
+    Pass ``analysis`` to skip the internal :func:`analyze_sample` call
+    when the caller has already computed one (issue #84). The CLI's
+    ``analyze()`` does this so the plotter renders from the same
+    enriched/harmonized ``analysis`` dict the rest of the report
+    uses — previously this rerendered from a fresh ``analyze_sample``
+    which both cost a second full analysis pass and could silently
+    drift from the report.
     """
     import matplotlib.pyplot as plt
     from matplotlib.gridspec import GridSpec
 
-    analysis = analyze_sample(df_gene_expr, cancer_type=cancer_type)
+    if analysis is None:
+        analysis = analyze_sample(df_gene_expr, cancer_type=cancer_type)
     purity = analysis["purity"]
     cancer_code = analysis["cancer_type"]
     cancer_name = analysis["cancer_name"]
