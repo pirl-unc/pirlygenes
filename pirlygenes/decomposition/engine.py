@@ -196,6 +196,13 @@ DECOMPOSITION_PARAMETERS = {
         # Hard floor on the combined template factor to prevent a template
         # from being completely zeroed out by a poor tissue match.
         "min_template_factor": 0.05,
+        # Minimum tumor fraction below which the hypothesis score is
+        # heavily penalised.  A candidate at <2% purity is biologically
+        # nonsensical (no sample is 98% TME) and represents the NNLS
+        # solver routing almost all expression to host components.
+        # Penalty: score *= max(purity, floor) / floor  → smooth ramp
+        # that effectively zeroes out near-zero-purity candidates.
+        "min_tumor_fraction": 0.02,
     },
 }
 
@@ -876,6 +883,18 @@ def _fit_one_hypothesis(
     score = fit_score * (
         scoring["fit_score_base"] + scoring["fit_score_gain"] * cancer_support
     ) * template_factor
+
+    # Purity floor penalty (#98): candidates with biologically
+    # implausible purity (<2%) get their score collapsed so they
+    # don't clutter the candidate list as noise.
+    min_tf = scoring.get("min_tumor_fraction", 0.02)
+    if tumor_fraction < min_tf:
+        penalty = tumor_fraction / max(min_tf, 1e-6)
+        score *= penalty
+        warnings.append(
+            f"Purity {tumor_fraction:.1%} below {min_tf:.0%} floor "
+            f"(score penalised ×{penalty:.2f})"
+        )
 
     if not gene_attr.empty and gene_attr["overexplained_tpm"].gt(0).mean() > 0.2:
         warnings.append("Many genes are overexplained by the TME background")
