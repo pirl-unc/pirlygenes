@@ -86,6 +86,7 @@ from .plot_tumor_expr import (  # noqa: F401
     estimate_tumor_expression,
     estimate_tumor_expression_ranges,
     plot_matched_normal_attribution,
+    plot_target_attribution,
     plot_tumor_expression_ranges,
     plot_purity_adjusted_targets,
 )
