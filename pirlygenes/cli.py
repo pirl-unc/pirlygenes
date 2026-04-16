@@ -56,9 +56,9 @@ from .plot import (
 )
 from .decomposition import (
     decompose_sample,
+    epithelial_matched_normal_component,
     get_decomposition_parameters,
     infer_sample_mode,
-    plot_decomposition_summary,
     plot_decomposition_candidates,
     plot_decomposition_component_breakdown,
     plot_decomposition_composition,
@@ -931,13 +931,10 @@ def _analyze_body(
                 "decomposition TME components are not meaningful."
             )
 
-        decomp_png = "%s-decomposition.png" % prefix if prefix else "decomposition.png"
-        plot_decomposition_summary(
-            decomp_results,
-            call_summary=call_summary,
-            save_to_filename=decomp_png,
-            save_dpi=output_dpi,
-        )
+        # Prefer standalone decomposition plots over the crowded legacy
+        # 4-panel composite so each figure reads cleanly on its own.
+        # Keep ``plot_decomposition_summary`` available in the API, but
+        # do not emit it by default from ``analyze``.
         # Standalone presentation-ready plots for the best hypothesis
         composition_png = "%s-decomposition-composition.png" % prefix if prefix else "decomposition-composition.png"
         plot_decomposition_composition(
@@ -1290,7 +1287,7 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 |------|-------------|
 | `*-summary.md` | One-paragraph natural language summary — cancer type, purity, key findings |
 | `*-analysis.md` | Structured analysis — candidate trace, purity components, decomposition, background signatures, embedding features |
-| `*-targets.md` | Therapeutic targets — CTAs (vaccination), surface proteins (ADC/CAR-T), intracellular (TCR-T), tumor-expression ranges |
+| `*-targets.md` | Therapeutic targets — tumor context, therapy landscape at a glance, CTAs, surface proteins, intracellular targets, tumor-expression ranges |
 | `*-analysis-parameters.json` | Free model parameters plus selected sample mode and embedding methods |
 | `*-all-figures.pdf` | All figures combined into a single PDF |
 | `*-cancer-candidates.tsv` | Candidate cancer-type support trace |
@@ -1302,10 +1299,14 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 
 ## Figures (in `figures/`)
 
+Prefer the standalone decomposition figures for review and sharing. They replace the crowded legacy composite by splitting composition, component breakdown, and candidate comparison into separate PNGs.
+
 | Figure | Description |
 |--------|-------------|
-| `*-sample-summary.png` | Overview: cancer type, purity, background signatures |
-| `*-decomposition.png` | Broad-compartment decomposition hypotheses and marker logic |
+| `*-sample-summary.png` | Quick overview: cancer type, purity, background signatures |
+| `*-decomposition-composition.png` | Standalone composition bar (tumor + TME) for the best hypothesis |
+| `*-decomposition-components.png` | Standalone TME cell-type breakdown for the best hypothesis |
+| `*-decomposition-candidates.png` | Standalone per-candidate composition bars (tumor / template-specific / shared host) across top decomposition candidates |
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-immune.png` | Immune microenvironment gene expression |
 | `*-tumor.png` | Tumor biology gene expression |
@@ -1316,10 +1317,6 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
 | `*-mds-tme.png` | MDS: sample among TCGA cancer types (TME-low gene space) |
-| `*-decomposition.png` | 4-panel decomposition diagnostic: hypotheses, composition, components, markers |
-| `*-decomposition-composition.png` | Standalone composition bar (tumor + TME) for the best hypothesis |
-| `*-decomposition-components.png` | Standalone TME cell-type breakdown for the best hypothesis |
-| `*-decomposition-candidates.png` | Standalone per-candidate composition bars (tumor / template-specific / shared host) across top decomposition candidates |
 | `*-cancer-types-genes.png` | Cancer-type gene signature heatmap |
 | `*-cancer-types-disjoint.png` | Disjoint (unique) gene counts per cancer type |
 """
@@ -1456,6 +1453,80 @@ def _target_value_label(sample_mode):
     if sample_mode == "heme":
         return "Malignant TPM"
     return "Tumor TPM"
+
+
+def _mhc1_status_text(mhc1):
+    mhc1 = mhc1 or {}
+    b2m = float(mhc1.get("B2M", 0) or 0)
+    hla_mean = sum(float(mhc1.get(g, 0) or 0) for g in ("HLA-A", "HLA-B", "HLA-C")) / 3
+    if hla_mean > 50 and b2m > 100:
+        return (
+            "adequate",
+            f"adequate (HLA mean={hla_mean:.0f}, B2M={b2m:.0f} TPM) — "
+            "intracellular targets are plausibly presentable.",
+        )
+    if hla_mean > 10:
+        return (
+            "reduced",
+            f"reduced (HLA mean={hla_mean:.0f}, B2M={b2m:.0f} TPM) — "
+            "intracellular targeting may have limited efficacy.",
+        )
+    return (
+        "low/absent",
+        f"low/absent (HLA mean={hla_mean:.0f}, B2M={b2m:.0f} TPM) — "
+        "surface-directed strategies are safer than TCR-style approaches.",
+    )
+
+
+def _lineage_caveat_text(sample_mode, cancer_code):
+    if sample_mode == "pure":
+        return (
+            "these are lineage-identity genes. In pure-population mode they help "
+            "confirm that the population still resembles the expected lineage, but "
+            "they do not prove every expressing cell is malignant."
+        )
+    if sample_mode == "heme":
+        return (
+            "these are lineage-identity genes. They help separate the malignant "
+            "program from unrelated hematopoietic background, but reactive cells of "
+            "the same lineage can express them too, so they do not by themselves "
+            "distinguish malignant from benign same-lineage cells."
+        )
+    if epithelial_matched_normal_component(cancer_code) is not None:
+        return (
+            "these are lineage-identity genes. They help confirm tissue-of-origin "
+            "against unrelated TME background, but epithelial primaries can share "
+            "them with admixed benign parent tissue. They do NOT by themselves "
+            "distinguish tumor cells from benign cells of the same lineage."
+        )
+    return (
+        "these are lineage-identity genes. They help confirm tissue-of-origin "
+        "against unrelated host background, but benign cells of the same lineage "
+        "can also express them. They do NOT by themselves distinguish malignant "
+        "from benign cells when both share the same program."
+    )
+
+
+def _matched_normal_split_summary(ranges_df):
+    if "matched_normal_tissue" not in ranges_df.columns:
+        return None
+    import pandas as pd
+
+    mn_values = ranges_df["matched_normal_tissue"].dropna().astype(str)
+    mn_nonempty = [v for v in mn_values.unique() if v]
+    if not mn_nonempty:
+        return None
+    mn_tissue = mn_nonempty[0]
+    mn_frac_series = (
+        ranges_df.get("matched_normal_fraction", pd.Series(dtype=float))
+        .dropna()
+    )
+    mn_frac = float(mn_frac_series.iloc[0]) if len(mn_frac_series) else 0.0
+    return (
+        f"`matched_normal_{mn_tissue}` at **{mn_frac:.2%}** of the sample. "
+        "Per-gene estimates subtract both stromal/immune TME and benign parent-tissue "
+        "signal before dividing by purity."
+    )
 
 
 def _candidate_label_options(analysis):
@@ -2159,13 +2230,7 @@ def _generate_text_reports(
             "20% means the sample expresses this gene at 20% of pure-tumor levels.\n"
         )
         lines.append(
-            "**Lineage caveat**: these are prostate-lineage genes (AR, KLK3, "
-            "STEAP1/2, TMPRSS2 etc.), expressed in *both* normal prostate "
-            "epithelium and prostate cancer. A 20% signal is consistent with "
-            "either 20% tumor + non-prostate TME, OR a mix of tumor + normal "
-            "prostate epithelium totaling 20% of the sample. Lineage genes "
-            "distinguish prostate from non-prostate; they do NOT by themselves "
-            "distinguish tumor from normal prostate.\n"
+            f"**Lineage caveat**: {_lineage_caveat_text(sample_mode, cancer_code_local)}\n"
         )
         lines.append("| Gene | Purity est. | Interpretation |")
         lines.append("|------|------------|----------------|")
@@ -2343,45 +2408,6 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             "`median_est` > 30 TPM against `tme_fold_med` before acting.\n"
         )
 
-    # Therapy-state context (#57): enumerate the chain of evidence
-    # behind any active / suppressed signaling axis so the reader can
-    # see *why* specific genes are off-baseline rather than having to
-    # reconstruct the pattern from per-gene tables. Positioned right
-    # after the low-purity caveat so the reader has the confidence
-    # calibration before they see target-specific mechanisms.
-    therapy_scores = analysis.get("therapy_response_scores") or {}
-    ts_to_show = [
-        (cls, s) for cls, s in therapy_scores.items()
-        if s.state in ("up", "down") and s.per_gene
-    ]
-    if ts_to_show:
-        lines.append("## Therapy-state context\n")
-        lines.append(
-            "Cohort-referenced fold changes across curated signaling-axis "
-            "panels (#57). Interpretation: a ≥2× up-panel elevation "
-            "signals active signaling; a ≤0.5× up-panel drop with elevated "
-            "down-panel genes signals therapy exposure (e.g. ADT in PRAD).\n"
-        )
-        for cls, s in ts_to_show:
-            verb = "active" if s.state == "up" else "suppressed"
-            lines.append(f"**{cls.replace('_', ' ')}** — {verb}. {s.message}\n")
-            # Show the top 8 most-divergent per-gene rows so the chain
-            # of evidence is concrete without overflowing the report.
-            entries = sorted(
-                s.per_gene,
-                key=lambda e: abs((e["fold_vs_cohort"] or 1.0) - 1.0),
-                reverse=True,
-            )[:8]
-            lines.append("| Gene | Direction | Sample TPM | Cohort median | Fold | Mechanism |")
-            lines.append("|------|-----------|------------|---------------|------|-----------|")
-            for e in entries:
-                lines.append(
-                    f"| {e['symbol']} | {e['direction']} | "
-                    f"{e['sample_tpm']:.1f} | {e['cohort_median']:.1f} | "
-                    f"{e['fold_vs_cohort']:.2f}× | {e['mechanism']} |"
-                )
-            lines.append("")
-
     # Sample-context caveat (stage 1 propagation): when the sample was
     # flagged as degraded / FFPE, every marker-selection step down the
     # pipeline is noisier and the target medians are correspondingly
@@ -2417,34 +2443,209 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             f"{cancer_code} TCGA cohort.\n"
         )
 
-    # Matched-normal provenance banner (issue #50). Per-gene estimates
-    # subtract both TME and matched-normal parent-tissue contributions
-    # before dividing by purity. Surface this explicitly so readers can
-    # interpret the columns in the TSV output (tme_only_tpm,
-    # matched_normal_tpm, estimation_path) and don't mistake a
-    # matched-normal-heavy gene for a tumor-only expression claim.
-    if "matched_normal_tissue" in ranges_df.columns:
-        mn_values = ranges_df["matched_normal_tissue"].dropna().astype(str)
-        mn_nonempty = [v for v in mn_values.unique() if v]
-        if mn_nonempty:
-            mn_tissue = mn_nonempty[0]
-            mn_frac_series = (
-                ranges_df.get("matched_normal_fraction", pd.Series(dtype=float))
-                .dropna()
-            )
-            mn_frac = float(mn_frac_series.iloc[0]) if len(mn_frac_series) else 0.0
+    def _flag_series(df, column):
+        if column in df.columns:
+            return df[column].fillna(False).astype(bool)
+        return pd.Series(False, index=df.index)
+
+    def _format_target_stub(row, *, include_tcga=False):
+        parts = [f"{row['median_est']:.0f} {value_label}"]
+        therapies = str(row.get("therapies") or "").strip()
+        if therapies:
+            parts.append(therapies)
+        if include_tcga and pd.notna(row.get("tcga_percentile")):
+            parts.append(f"TCGA {row['tcga_percentile']:.0%}")
+        if row.get("tme_explainable"):
+            parts.append("single-tissue-explainable")
+        return f"{row['symbol']} ({'; '.join(parts)})"
+
+    therapy_scores = analysis.get("therapy_response_scores") or {}
+    ts_to_show = [
+        (cls, s) for cls, s in therapy_scores.items()
+        if s.state in ("up", "down") and s.per_gene
+    ]
+    call_summary = analysis.get("call_summary") or _summarize_sample_call(
+        analysis,
+        [],
+        sample_mode=sample_mode,
+    )
+    fit_quality = analysis.get("fit_quality", {})
+    family_display = (analysis.get("family_summary") or {}).get("display")
+    disease_state = compose_disease_state_narrative(analysis)
+    matched_normal_summary = _matched_normal_split_summary(ranges_df)
+    mhc_status_label, mhc_status_text = _mhc1_status_text(analysis.get("mhc1"))
+
+    # Pre-sort the key target categories so the summary and the full
+    # tables agree on what "top" means.
+    ctas = (
+        ranges_df[ranges_df["is_cta"] & (ranges_df["median_est"] > 0.5)]
+        .sort_values("median_est", ascending=False)
+        .copy()
+    )
+    _excluded = ranges_df.get(
+        "excluded_from_ranking", pd.Series(False, index=ranges_df.index)
+    )
+    surface_targets = (
+        ranges_df[
+            ranges_df["is_surface"]
+            & (ranges_df["median_est"] > 1)
+            & ~ranges_df["is_cta"]
+            & ~_excluded
+        ]
+        .sort_values("median_est", ascending=False)
+        .copy()
+    )
+    intracellular = (
+        ranges_df[
+            ~ranges_df["is_surface"]
+            & (ranges_df["median_est"] > 5)
+            & (ranges_df["category"].isin(["therapy_target", "CTA"]))
+            & ~_excluded
+        ]
+        .sort_values("median_est", ascending=False)
+        .copy()
+    )
+
+    safe_surface = surface_targets[~_flag_series(surface_targets, "tme_dominant")].head(3)
+    best_cta = ctas.head(3)
+    clean_intracellular = intracellular[~_flag_series(intracellular, "tme_explainable")].head(3)
+
+    lines.append("## Tumor context for interpretation\n")
+    if call_summary.get("label_options"):
+        if len(call_summary["label_options"]) == 2:
             lines.append(
-                f"**Matched-normal split**: the decomposition admitted a "
-                f"`matched_normal_{mn_tissue}` compartment at fraction "
-                f"**{mn_frac:.2%}** of the sample. Estimates subtract both "
-                "stromal/immune TME *and* matched benign parent-tissue "
-                "contribution before dividing by purity. Per-gene provenance "
-                "is in the TSV under `estimation_path` (`tme_only`, "
-                "`matched_normal_split`, `clamped`, `tme_fold_fallback`).\n"
+                f"- **Working label**: provisional between "
+                f"**{call_summary['label_options'][0]}** and **{call_summary['label_options'][1]}**."
             )
+        else:
+            lines.append(f"- **Working label**: **{call_summary['label_options'][0]}**.")
+    else:
+        lines.append(f"- **Working label**: **{cancer_code}** ({cancer_name}).")
+    if family_display:
+        lines.append(f"- **Family-level framing**: {family_display}.")
+    if fit_quality.get("label"):
+        fit_line = f"- **Fit quality**: {fit_quality['label']}"
+        if fit_quality.get("message"):
+            fit_line += f" — {fit_quality['message']}"
+        lines.append(fit_line + ".")
+    if call_summary.get("site_indeterminate"):
+        lines.append("- **Context / site template**: indeterminate; treat site-specific decomposition as provisional.")
+    elif call_summary.get("reported_site"):
+        lines.append(f"- **Context / site template**: {call_summary['reported_site']}.")
+    lines.append(f"- **Analysis mode**: {_sample_mode_display(sample_mode)}.")
+    lines.append(
+        f"- **{_purity_metric_label(sample_mode).title()}**: "
+        f"{_purity_ci_phrase(purity_result)}."
+    )
+    if disease_state:
+        lines.append(f"- **Disease-state synthesis**: {disease_state.rstrip('.')}.")
+    lines.append(f"- **MHC-I status**: {mhc_status_text}")
+    if matched_normal_summary:
+        lines.append(f"- **Matched-normal split**: {matched_normal_summary}")
+        lines.append(
+            "- **Per-gene provenance**: see TSV `estimation_path` "
+            "(`tme_only`, `matched_normal_split`, `clamped`, `tme_fold_fallback`)."
+        )
+
+    context_cautions = []
+    integration = purity_result.get("components", {}).get("integration", {})
+    if integration.get("signature_deprioritized"):
+        context_cautions.append(
+            "tumor-specific signature evidence was weaker than lineage/background evidence, so purity leaned more on the latter"
+        )
+    if p_mid is not None and p_mid < 0.20:
+        context_cautions.append("low purity amplifies residual host/background signal")
+    if sample_context is not None and sample_context.is_degraded:
+        context_cautions.append("RNA degradation widens uncertainty for long transcripts")
+    if therapy_scores.get("IFN_response") is not None and therapy_scores["IFN_response"].state == "up":
+        context_cautions.append("active IFN response can inflate HLA/MHC-class and other interferon-stimulated targets")
+    if context_cautions:
+        lines.append(f"- **Interpretation caveats**: {'; '.join(context_cautions)}.")
+    lines.append("")
+
+    lines.append("## Therapy landscape at a glance\n")
+    if len(safe_surface):
+        lines.append(
+            "- **Surface-directed modalities**: "
+            + ", ".join(_format_target_stub(row) for _, row in safe_surface.iterrows())
+            + "."
+        )
+    elif len(surface_targets):
+        lines.append(
+            "- **Surface-directed modalities**: no clean surface target passed the current reliability filter; "
+            "top rows were TME-dominant or otherwise host-explainable."
+        )
+    else:
+        lines.append("- **Surface-directed modalities**: no surface target rose above the reporting threshold.")
+    if len(best_cta):
+        lines.append(
+            "- **CTA / vaccine ideas**: "
+            + ", ".join(_format_target_stub(row, include_tcga=True) for _, row in best_cta.iterrows())
+            + "."
+        )
+    else:
+        lines.append("- **CTA / vaccine ideas**: no CTA rose above the reporting threshold.")
+    if mhc_status_label == "adequate" and len(clean_intracellular):
+        lines.append(
+            "- **Intracellular / TCR-style ideas**: "
+            + ", ".join(_format_target_stub(row) for _, row in clean_intracellular.iterrows())
+            + "."
+        )
+    elif mhc_status_label == "adequate" and len(intracellular):
+        lines.append(
+            "- **Intracellular / TCR-style ideas**: MHC-I is adequate, but the current intracellular rows are mostly "
+            "explainable by host-lineage/background signal."
+        )
+    elif len(intracellular):
+        lines.append(
+            "- **Intracellular / TCR-style ideas**: detectable candidates exist, but reduced antigen presentation makes "
+            "surface-directed strategies safer to prioritize first."
+        )
+    else:
+        lines.append("- **Intracellular / TCR-style ideas**: no intracellular target rose above the reporting threshold.")
+
+    landscape_cautions = []
+    if len(surface_targets) and _flag_series(surface_targets.head(10), "tme_dominant").any():
+        landscape_cautions.append("some of the numerically highest surface rows are TME-dominant and should not be treated as tumor-cell targets")
+    if matched_normal_summary:
+        landscape_cautions.append("benign parent-tissue admixture is active")
+    if landscape_cautions:
+        lines.append(f"- **Landscape cautions**: {'; '.join(landscape_cautions)}.")
+    lines.append("")
+
+    # Therapy-state context (#57): enumerate the chain of evidence
+    # behind any active / suppressed signaling axis so the reader can
+    # see *why* specific genes are off-baseline rather than having to
+    # reconstruct the pattern from per-gene tables.
+    if ts_to_show:
+        lines.append("## Therapy-state context\n")
+        lines.append(
+            "Cohort-referenced fold changes across curated signaling-axis "
+            "panels (#57). Interpretation: a ≥2× up-panel elevation "
+            "signals active signaling; a ≤0.5× up-panel drop with elevated "
+            "down-panel genes signals therapy exposure (e.g. ADT in PRAD).\n"
+        )
+        for cls, s in ts_to_show:
+            verb = "active" if s.state == "up" else "suppressed"
+            lines.append(f"**{cls.replace('_', ' ')}** — {verb}. {s.message}\n")
+            # Show the top 8 most-divergent per-gene rows so the chain
+            # of evidence is concrete without overflowing the report.
+            entries = sorted(
+                s.per_gene,
+                key=lambda e: abs((e["fold_vs_cohort"] or 1.0) - 1.0),
+                reverse=True,
+            )[:8]
+            lines.append("| Gene | Direction | Sample TPM | Cohort median | Fold | Mechanism |")
+            lines.append("|------|-----------|------------|---------------|------|-----------|")
+            for e in entries:
+                lines.append(
+                    f"| {e['symbol']} | {e['direction']} | "
+                    f"{e['sample_tpm']:.1f} | {e['cohort_median']:.1f} | "
+                    f"{e['fold_vs_cohort']:.2f}× | {e['mechanism']} |"
+                )
+            lines.append("")
 
     # --- CTAs: vaccination targets ---
-    ctas = ranges_df[ranges_df["is_cta"] & (ranges_df["median_est"] > 0.5)].copy()
     lines.append("## Cancer-Testis Antigens (Vaccination Targets)\n")
     lines.append("CTAs are expressed in tumor but not normal adult tissue (except testis/placenta). "
                  "Any expressed CTA is a potential vaccination target regardless of trial status.\n")
@@ -2488,13 +2689,6 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     # #60: drop extended-housekeeping symbols (excluded_from_ranking)
     # from the ranked output so they can't appear as spurious high
     # tumor-expressed targets. They remain in the TSV with the flag.
-    _excluded = ranges_df.get("excluded_from_ranking", pd.Series(False, index=ranges_df.index))
-    surface_targets = ranges_df[
-        ranges_df["is_surface"]
-        & (ranges_df["median_est"] > 1)
-        & ~ranges_df["is_cta"]
-        & ~_excluded
-    ].copy()
     lines.append("## Surface Protein Targets (ADC / CAR-T / Bispecific)\n")
     lines.append("Surface proteins with high purity-adjusted expression. "
                  "These can be targeted by antibody-drug conjugates, CAR-T, "
@@ -2568,11 +2762,6 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     lines.append("")
 
     # --- Cytosolic / intracellular targets (TCR-T, pMHC) ---
-    intracellular = ranges_df[
-        ~ranges_df["is_surface"] & (ranges_df["median_est"] > 5)
-        & (ranges_df["category"].isin(["therapy_target", "CTA"]))
-        & ~_excluded  # #60: drop extended housekeeping from ranking
-    ].copy()
     lines.append("## Intracellular Targets (TCR-T / pMHC Vaccination)\n")
     lines.append("Intracellular proteins presented via MHC-I. Targetable by "
                  "TCR-T cell therapy or peptide vaccination.\n")
@@ -2669,18 +2858,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         lines.append("")
 
     # MHC context for intracellular targeting
-    mhc1 = analysis.get("mhc1", {})
-    b2m = mhc1.get("B2M", 0)
-    hla_mean = sum(mhc1.get(g, 0) for g in ["HLA-A", "HLA-B", "HLA-C"]) / 3
-    if hla_mean > 50 and b2m > 100:
-        lines.append(f"**MHC-I status**: adequate (HLA mean={hla_mean:.0f}, B2M={b2m:.0f} TPM) "
-                     "— intracellular targets are presentable.")
-    elif hla_mean > 10:
-        lines.append(f"**MHC-I status**: reduced (HLA mean={hla_mean:.0f}, B2M={b2m:.0f} TPM) "
-                     "— intracellular targeting may have limited efficacy.")
-    else:
-        lines.append(f"**MHC-I status**: low/absent (HLA mean={hla_mean:.0f}, B2M={b2m:.0f} TPM) "
-                     "— intracellular targets unlikely to be presented. Prioritize surface targets.")
+    lines.append(f"**MHC-I status**: {mhc_status_text}")
     lines.append("")
 
     target_path = "%s-targets.md" % prefix if prefix else "targets.md"

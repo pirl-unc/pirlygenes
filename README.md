@@ -217,7 +217,7 @@ Every `analyze` run produces a directory with these files (prefixed by the input
 |---|---|
 | `*-summary.md` | One-paragraph natural language summary — cancer type, purity, key findings, quality warnings |
 | `*-analysis.md` | Structured analysis — sample quality, candidate trace, purity components, decomposition hypotheses, background signatures, embedding features |
-| `*-targets.md` | Therapeutic targets — CTAs, surface proteins, tumor-expression ranges, safety context |
+| `*-targets.md` | Therapeutic targets — tumor context, therapy landscape at a glance, CTAs, surface proteins, intracellular targets, safety context |
 
 **Structured data** (TSV / JSON):
 
@@ -233,12 +233,16 @@ Every `analyze` run produces a directory with these files (prefixed by the input
 
 **Figures** (PNG + combined PDF):
 
+Prefer the standalone decomposition figures when reviewing or sharing a case. They replace the crowded legacy composite by splitting composition, component breakdown, and candidate comparison into separate PNGs.
+
 | File | Description |
 |---|---|
 | `*-sample-context.png` | Stage 1 diagnostic: library prep + preservation inference with thresholds used for the call |
 | `*-degradation-index.png` | Gene-pair scatter: expected vs observed long/short ratios, diagonal = no degradation |
-| `*-sample-summary.png` | Overview: cancer type, purity, background signatures |
-| `*-decomposition.png` | 4-panel: ranked hypotheses, best-fit composition, component support, marker logic |
+| `*-sample-summary.png` | Quick overview: cancer type, purity, background signatures |
+| `*-decomposition-composition.png` | Standalone composition bar for the best hypothesis |
+| `*-decomposition-components.png` | Standalone TME component breakdown for the best hypothesis |
+| `*-decomposition-candidates.png` | Standalone per-candidate composition comparison |
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-immune.png`, `*-tumor.png`, `*-antigens.png`, `*-treatments.png` | Gene expression strip plots by category |
 | `*-target-safety.png`, `*-purity-targets.png`, `*-purity-ctas.png`, `*-purity-surface.png` | Therapy target expression with normal tissue context |

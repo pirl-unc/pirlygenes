@@ -883,6 +883,11 @@ def load_expression_data(
         ):
             if verbose:
                 print("[load] Resolving canonical gene names from Ensembl gene IDs")
+            # Pre-build the Ensembl indexes before starting tqdm so the
+            # progress bar measures actual row resolution work rather
+            # than sitting at 0% during the one-time index build.
+            from .gene_ids import _build_indexes
+            _build_indexes()
             iterator = df["ensembl_gene_id"]
             if progress:
                 iterator = tqdm(
