@@ -1338,3 +1338,55 @@ def CTA_partition(return_type="gene_ids", ensembl_release=112):
         return CTA_partition_dataframes(ensembl_release)
     else:
         raise ValueError(f"return_type must be 'gene_ids', 'gene_names', or 'dataframes', got {return_type!r}")
+
+
+# ---------- Cancer-type key genes (biomarkers + therapy targets) #110 ----------
+def cancer_key_genes_df():
+    """Full curated table of clinician-relevant biomarker and therapy-
+    target genes per cancer type (#110).
+
+    One row per (cancer_code, symbol, role, agent?) — so genes with
+    multiple approved agents appear as multiple rows. Columns:
+    ``cancer_code, subtype, symbol, role (biomarker|target), agent,
+    agent_class, phase (approved|phase_3|phase_2|phase_1|preclinical),
+    indication, rationale, source``.
+
+    The curation bar is "genes a clinician would ask about because they
+    have clear prognostic value or gate access to an active therapy."
+    Some cancer types have no well-validated targets and are omitted
+    from the CSV rather than padded — an empty lookup is a valid
+    result.
+    """
+    from .load_dataset import get_data
+
+    return get_data("cancer-key-genes")
+
+
+def cancer_biomarker_genes(cancer_code):
+    """Ordered list of biomarker gene symbols for ``cancer_code``.
+
+    Empty list when the cancer type is not yet curated — callers should
+    treat that as "no clinician-relevant biomarker panel available" and
+    render an appropriate placeholder, not synthesize fallback genes.
+    """
+    df = cancer_key_genes_df()
+    sub = df[(df["cancer_code"] == cancer_code) & (df["role"] == "biomarker")]
+    return list(sub["symbol"].dropna().astype(str).unique())
+
+
+def cancer_therapy_targets(cancer_code):
+    """Subset of :func:`cancer_key_genes_df` for therapy-target rows of
+    ``cancer_code``. Returns a DataFrame so callers can render the
+    Phase / Indication / Agent columns without re-joining.
+    """
+    df = cancer_key_genes_df()
+    sub = df[(df["cancer_code"] == cancer_code) & (df["role"] == "target")]
+    return sub.copy().reset_index(drop=True)
+
+
+def cancer_key_genes_cancer_types():
+    """Return the set of cancer codes currently curated in the CSV.
+    Use to show a follow-up banner for non-covered cancer types.
+    """
+    df = cancer_key_genes_df()
+    return sorted(df["cancer_code"].dropna().astype(str).unique())

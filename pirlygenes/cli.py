@@ -1330,6 +1330,69 @@ def _analyze_body(
             cancer_type=effective_cancer_type,
             purity_result=purity_dict,
         )
+
+        # #111: two-tier markdown handoff. Emitted after the detailed
+        # reports so both can reference each other. The brief is the
+        # doc a clinician pastes into a note; the actionable is the
+        # one they read before a tumor board.
+        try:
+            from .brief import build_brief, build_actionable
+
+            disease_state_for_brief = compose_disease_state_narrative(analysis)
+            sample_id = prefix if prefix else None
+            brief_md = build_brief(
+                analysis,
+                ranges_df,
+                cancer_code=effective_cancer_type,
+                disease_state=disease_state_for_brief,
+                sample_id=sample_id,
+            )
+            actionable_md = build_actionable(
+                analysis,
+                ranges_df,
+                cancer_code=effective_cancer_type,
+                disease_state=disease_state_for_brief,
+                sample_id=sample_id,
+            )
+            brief_path = "%s-brief.md" % prefix if prefix else "brief.md"
+            actionable_path = (
+                "%s-actionable.md" % prefix if prefix else "actionable.md"
+            )
+            with open(brief_path, "w") as f:
+                f.write(brief_md)
+            with open(actionable_path, "w") as f:
+                f.write(actionable_md)
+            print(f"[report] Saved {brief_path}")
+            print(f"[report] Saved {actionable_path}")
+
+            # #106: one-page provenance chain (library prep -> tumor
+            # core). Emits *-provenance.md alongside a simple stacked-
+            # bar figure showing the compartment composition.
+            from .provenance import build_provenance_md, plot_provenance_funnel
+
+            provenance_md = build_provenance_md(
+                analysis,
+                ranges_df,
+                decomp_results,
+                cancer_code=effective_cancer_type,
+                sample_id=sample_id,
+            )
+            prov_path = "%s-provenance.md" % prefix if prefix else "provenance.md"
+            with open(prov_path, "w") as f:
+                f.write(provenance_md)
+            print(f"[report] Saved {prov_path}")
+            prov_png = "%s-provenance.png" % prefix if prefix else "provenance.png"
+            fig_out = plot_provenance_funnel(
+                analysis,
+                ranges_df,
+                decomp_results,
+                save_to_filename=prov_png,
+                save_dpi=output_dpi,
+            )
+            if fig_out:
+                print(f"[plot] Saved {prov_png}")
+        except Exception as brief_err:
+            print(f"[warn] Brief / actionable rendering failed: {brief_err}")
     except Exception as e:
         print(f"[warn] Purity-adjusted analysis failed: {e}")
         import traceback
@@ -2655,6 +2718,121 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     disease_state = compose_disease_state_narrative(analysis)
     matched_normal_summary = _matched_normal_split_summary(ranges_df)
     mhc_status_label, mhc_status_text = _mhc1_status_text(analysis.get("mhc1"))
+
+    # #110: cancer-type-scoped biomarker panel + therapy landscape.
+    # Emitted before the general surface/intracellular tables so a
+    # clinician reading top-down sees the curated, decision-relevant
+    # rows first. Silently omitted for cancer types that aren't yet
+    # curated in ``data/cancer-key-genes.csv`` — that's explicit, not
+    # a fallback to the general tables.
+    try:
+        from .gene_sets_cancer import (
+            cancer_biomarker_genes,
+            cancer_therapy_targets,
+            cancer_key_genes_cancer_types,
+        )
+
+        if cancer_code in cancer_key_genes_cancer_types():
+            # Build symbol → row lookup from ranges_df for biomarker
+            # expression levels.
+            sym_to_row = {}
+            for _, rrow in ranges_df.iterrows():
+                sym_to_row[str(rrow["symbol"])] = rrow
+
+            lines.append(f"## Biomarker Panel — {cancer_code}\n")
+            lines.append(
+                "Clinician-relevant biomarkers for this cancer type: "
+                "lineage confirmation, disease-state indicators, and "
+                "diagnostic markers. **Not therapy targets** — see the "
+                "Therapy Landscape below for druggable genes.\n"
+            )
+            biomarker_syms = cancer_biomarker_genes(cancer_code)
+            if biomarker_syms:
+                lines.append("| Gene | Observed TPM | Tumor-attributed | Attribution |")
+                lines.append("|------|--------------|------------------|-------------|")
+                for sym in biomarker_syms:
+                    row = sym_to_row.get(sym)
+                    if row is None:
+                        lines.append(f"| {sym} | *not measured* | — | — |")
+                        continue
+                    obs = float(row.get("observed_tpm") or 0.0)
+                    attr_tumor = float(row.get("attr_tumor_tpm") or 0.0)
+                    attribution_cell = _format_attribution_cell(row)
+                    tumor_cell = (
+                        f"{attr_tumor:.0f}" if row.get("attribution")
+                        else "—"
+                    )
+                    lines.append(
+                        f"| {sym} | {obs:.1f} | {tumor_cell} | {attribution_cell} |"
+                    )
+                lines.append("")
+            else:
+                lines.append("*No biomarker genes curated for this cancer type.*\n")
+
+            lines.append(f"## Therapy Target Landscape — {cancer_code}\n")
+            lines.append(
+                "Approved and trialed agents with an indication for this "
+                "cancer type, cross-referenced against sample expression. "
+                "Rows where the target is absent from the sample are "
+                "still shown to make that explicit.\n"
+            )
+            targets_df = cancer_therapy_targets(cancer_code)
+            if len(targets_df):
+                lines.append(
+                    "| Target | Agent | Class | Phase | Indication | "
+                    "Observed | Tumor-attr. | Attribution |"
+                )
+                lines.append(
+                    "|--------|-------|-------|-------|------------|"
+                    "----------|-------------|-------------|"
+                )
+                # Approved first, then phase_3, phase_2, phase_1,
+                # preclinical. Within phase, agent name for stability.
+                phase_order = {
+                    "approved": 0, "phase_3": 1, "phase_2": 2,
+                    "phase_1": 3, "preclinical": 4,
+                }
+                targets_sorted = targets_df.assign(
+                    _phase_key=targets_df["phase"].map(
+                        lambda p: phase_order.get(str(p), 99)
+                    )
+                ).sort_values(["_phase_key", "symbol", "agent"])
+                for _, trow in targets_sorted.iterrows():
+                    sym = str(trow["symbol"])
+                    expr = sym_to_row.get(sym)
+                    agent = str(trow.get("agent") or "—")
+                    agent_class = str(trow.get("agent_class") or "—")
+                    phase = str(trow.get("phase") or "—").replace("_", " ")
+                    indication = str(trow.get("indication") or "—")
+                    if expr is None:
+                        obs_cell = "*not measured*"
+                        tumor_cell = "—"
+                        attr_cell = "—"
+                    else:
+                        obs_cell = f"{float(expr.get('observed_tpm') or 0.0):.1f}"
+                        attr_tumor = float(expr.get("attr_tumor_tpm") or 0.0)
+                        tumor_cell = (
+                            f"{attr_tumor:.0f}" if expr.get("attribution")
+                            else "—"
+                        )
+                        attr_cell = _format_attribution_cell(expr)
+                    bold = "**" if phase == "approved" else ""
+                    lines.append(
+                        f"| {bold}{sym}{bold} | {agent} | {agent_class} | "
+                        f"{phase} | {indication} | {obs_cell} | "
+                        f"{tumor_cell} | {attr_cell} |"
+                    )
+                lines.append("")
+            else:
+                lines.append(
+                    "*No clinician-validated therapy targets curated for "
+                    "this cancer type yet. The general Surface / "
+                    "Intracellular tables below are ranked by raw "
+                    "expression, not by approved indication.*\n"
+                )
+    except Exception as _lm_err:
+        # Never fail the whole report on curation / loader issues.
+        print(f"[warn] Could not render cancer-key-genes panel: {_lm_err}")
 
     # Pre-sort the key target categories so the summary and the full
     # tables agree on what "top" means.
