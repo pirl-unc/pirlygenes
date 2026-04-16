@@ -852,6 +852,56 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
 # ── Plotting ──────────────────────────────────────────────────────────────
 
 
+_GENE_CLASS_TO_SIGNAL = {
+    "histone_fraction": "histone_cluster",
+    "mt_fraction": "mitochondrial",
+    "mt_rrna_fraction_of_mt": "mitochondrial",  # same gene class
+}
+
+
+def _load_artifact_expectations():
+    """Return (library_prep, preservation, gene_class) -> (lo, hi, interp).
+
+    Loaded from ``data/artifact-expectations.csv`` (#107). ``preservation``
+    is either an explicit value or ``"*"``, which matches any preservation.
+    Returns an empty dict when the CSV is missing so downstream code
+    degrades gracefully.
+    """
+    try:
+        from .load_dataset import get_data
+
+        df = get_data("artifact-expectations")
+    except Exception:
+        return {}
+    out = {}
+    for _, row in df.iterrows():
+        key = (
+            str(row["library_prep"]).strip(),
+            str(row["preservation"]).strip(),
+            str(row["gene_class"]).strip(),
+        )
+        out[key] = (
+            float(row["expected_lo"]),
+            float(row["expected_hi"]),
+            str(row.get("interpretation", "")).strip(),
+        )
+    return out
+
+
+def _expectation_for(expectations, library_prep, preservation, gene_class):
+    """Look up the expected range for a (prep, preservation, class) combo.
+
+    Exact preservation match preferred; ``preservation="*"`` used as
+    the fallback. Returns ``None`` when no rule applies (unknown prep
+    or gene class).
+    """
+    for pres in (preservation, "*"):
+        key = (library_prep, pres, gene_class)
+        if key in expectations:
+            return expectations[key]
+    return None
+
+
 def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
                         save_dpi: int = 150) -> Optional[str]:
     """Standalone PNG summarising ``sample_context`` as the first panel
@@ -941,7 +991,45 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     labels = [b[0] for b in bars]
     thresholds = [(b[2], b[3]) for b in bars]
 
-    ax_bars.barh(y, values, color="#4682b4", alpha=0.8)
+    # #107: expected-range bands for the inferred library prep +
+    # preservation. Shading a band behind each bar lets the reader see
+    # whether the observed value is inside the "normal for this prep"
+    # window instead of chasing an absolute threshold that doesn't
+    # apply to every prep.
+    expectations = _load_artifact_expectations()
+    signal_keys = ["histone_fraction", "mt_fraction", "mt_rrna_fraction_of_mt"]
+    bar_bands = []
+    in_band_count = 0
+    for yi, sig_key in zip(y, signal_keys):
+        gene_class = _GENE_CLASS_TO_SIGNAL.get(sig_key)
+        band = _expectation_for(
+            expectations,
+            sample_context.library_prep,
+            sample_context.preservation,
+            gene_class,
+        ) if gene_class else None
+        bar_bands.append(band)
+        if band is not None:
+            lo, hi, _ = band
+            ax_bars.axhspan(
+                yi - 0.35, yi + 0.35,
+                xmin=0.0, xmax=1.0,
+                facecolor="none", edgecolor="none",  # no-op placeholder
+            )
+            # Use axvspan-shape-per-row: draw a narrow patch via bar
+            # on a secondary layer to keep implementation simple.
+            ax_bars.barh(
+                [yi], [hi - lo], left=[lo],
+                color="#bbd8a3", alpha=0.4, edgecolor="none",
+                height=0.75, zorder=0,
+            )
+            val = values[signal_keys.index(sig_key)] if sig_key in (
+                "histone_fraction", "mt_fraction", "mt_rrna_fraction_of_mt"
+            ) else None
+            if val is not None and lo <= val <= hi:
+                in_band_count += 1
+
+    ax_bars.barh(y, values, color="#4682b4", alpha=0.85)
     ax_bars.set_yticks(y)
     ax_bars.set_yticklabels(labels, fontsize=9)
     ax_bars.invert_yaxis()
@@ -951,7 +1039,10 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     # the "all near zero" case with the plausible library-prep explanation.
     max_value = max(values) if values else 0.0
     max_threshold = max((b[2] for b in bars), default=0.0)
-    axis_floor = max(max_threshold * 4.0, 0.05)
+    max_band_hi = max(
+        (band[1] for band in bar_bands if band is not None), default=0.0
+    )
+    axis_floor = max(max_threshold * 4.0, max_band_hi * 1.1, 0.05)
     ax_bars.set_xlim(0, max(max_value * 1.2, axis_floor))
     ax_bars.set_xlabel("Fraction", fontsize=10)
     for yi, (thr, thr_name) in zip(y, thresholds):
@@ -960,8 +1051,13 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
             thr, yi - 0.4, thr_name,
             fontsize=7, color="#666666", ha="left",
         )
-    for yi, val in zip(y, values):
-        ax_bars.text(val, yi, f"  {val:.3f}", va="center", fontsize=9)
+    for yi, val, band in zip(y, values, bar_bands):
+        if band is not None:
+            lo, hi, _ = band
+            status = "✓" if lo <= val <= hi else ("⚠" if val < lo * 0.5 or val > hi * 2 else "~")
+        else:
+            status = ""
+        ax_bars.text(val, yi, f"  {val:.3f} {status}", va="center", fontsize=9)
 
     if max_value < 0.01:
         # Show the user what "all near zero" means rather than leaving a
