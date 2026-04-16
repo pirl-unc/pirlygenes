@@ -493,10 +493,7 @@ def _resolve_unknown_transcripts_to_genes(tx0_unique, verbose=False, progress=Tr
     """
     from .gene_ids import find_gene_name_from_ensembl_transcript_id
     if verbose:
-        print(
-            f"[load] Resolving {len(tx0_unique)} unique transcripts via "
-            "Ensembl (one pass, shared across downstream steps)"
-        )
+        print(f"[load] Resolving {len(tx0_unique)} unique transcripts via Ensembl")
     iterator = tqdm(
         tx0_unique,
         desc="Resolving transcript IDs",

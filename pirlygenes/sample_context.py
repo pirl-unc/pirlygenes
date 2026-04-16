@@ -757,19 +757,16 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
 
     signals = {}
 
+    print("[context]   expression distribution...")
     _summarise_expression_distribution(tpm_by_symbol, signals)
+    print("[context]   library prep inference...")
     library_prep, lp_conf = _infer_library_prep(tpm_by_symbol, signals)
+    print("[context]   preservation / degradation...")
     preservation, pr_conf, severity, index = _infer_preservation_and_degradation(
         tpm_by_symbol, signals
     )
 
-    # Second pass for capture-biased samples (#72 fix proposal 3 via
-    # gene-level proxies). When the primary length-pair test gave up,
-    # try the FFPE marker panel + transcript-isoform length bias —
-    # both immune to exon-capture probe-density bias. Pulls the
-    # transcript frame from ``df_gene_expr.attrs["transcript_expression"]``
-    # populated by ``load_expression`` for inputs that have a sibling
-    # transcript file.
+    print("[context]   orthogonal-signal refinement...")
     transcript_df = (
         df_gene_expr.attrs.get("transcript_expression")
         if hasattr(df_gene_expr, "attrs") else None
