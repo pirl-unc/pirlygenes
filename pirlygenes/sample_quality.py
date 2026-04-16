@@ -73,6 +73,9 @@ _DEGRADATION_GENE_PAIRS = degradation_gene_pairs()
 # ── Thresholds ───────────────────────────────────────────────────────────
 # Calibrated against TCGA fresh/frozen cohort medians (33 types).
 
+_MT_EXPECTED_MISSING_PREPS = frozenset({"poly_a", "exome_capture"})
+
+
 QUALITY_THRESHOLDS = {
     # Tissue-matched degradation: flag when sample's MT or RP fraction
     # exceeds the matched tissue baseline by this multiplicative factor.
@@ -155,7 +158,7 @@ def _gene_tpm_lookup(sample_tpm_by_symbol, genes):
     return vals, len(vals)
 
 
-def assess_sample_quality(df_gene_expr, tissue_scores=None):
+def assess_sample_quality(df_gene_expr, tissue_scores=None, library_prep=None):
     """Assess sample quality from a TPM expression matrix.
 
     Parameters
@@ -166,6 +169,15 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None):
         Background tissue scores from analyze_sample().  Used to select
         the tissue-matched baseline for MT/RP comparison.  If None,
         falls back to absolute thresholds.
+    library_prep : str, optional
+        Library prep inferred by :class:`SampleContext` (e.g.
+        ``"exome_capture"``, ``"poly_a"``, ``"ribo_depleted"``,
+        ``"total_rna"``).  When set to a prep that legitimately strips
+        mitochondrial transcripts (``exome_capture`` / ``poly_a``) and the
+        transcript-length pair index is available, the MT-fraction
+        warning is suppressed and the degradation level is **not**
+        overwritten with ``"unknown"`` (#77) — preservation has already
+        been called from the length-pair signal.
 
     Returns
     -------
@@ -415,7 +427,22 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None):
     # genes were filtered upstream (some salmon/kallisto pipelines drop
     # MT-* contigs) or use a different symbol convention.  Flag this so
     # the user knows the degradation signal is not reliable.
-    if n_mt == 0 or mt_fraction < 0.005:
+    mt_near_zero = n_mt == 0 or mt_fraction < 0.005
+    prep_explains_mt = (
+        library_prep in _MT_EXPECTED_MISSING_PREPS
+    )
+    have_pair_signal = long_short_ratio is not None
+    if mt_near_zero and prep_explains_mt and have_pair_signal:
+        # #77: exome capture / poly-A legitimately strip MT. The length-
+        # pair index still gives a valid preservation call, so don't
+        # clobber deg_level to "unknown"; emit an informational flag
+        # instead of a false alarm.
+        prep_label = library_prep.replace("_", " ")
+        flags.append(
+            f"MT fraction {mt_fraction:.1%} — consistent with {prep_label} "
+            "library prep; degradation assessed from length-pair index"
+        )
+    elif mt_near_zero:
         has_issues = True
         flags.append(
             f"Suspicious MT fraction: {mt_fraction:.1%} "

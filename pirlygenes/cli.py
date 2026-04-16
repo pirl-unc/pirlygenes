@@ -721,7 +721,16 @@ def _analyze_body(
 
     # Sample quality assessment — run after analysis so tissue_scores
     # are available for tissue-matched degradation baselines.
-    quality = assess_sample_quality(df_expr, tissue_scores=analysis.get("tissue_scores"))
+    # #77: pass the stage-1 library_prep so the assessor skips the
+    # "Suspicious MT fraction" override (and doesn't clobber the
+    # length-pair-derived degradation level) when MT being near-zero is
+    # explained by the inferred prep.
+    quality = assess_sample_quality(
+        df_expr,
+        tissue_scores=analysis.get("tissue_scores"),
+        library_prep=getattr(sample_context, "library_prep", None)
+        if sample_context is not None else None,
+    )
     analysis["quality"] = quality
     # #77: filter quality flags against the stage-1 SampleContext — the
     # "Suspicious MT fraction" warning is a false alarm when the
