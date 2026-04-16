@@ -114,13 +114,13 @@ def resolve_always_label_gene_ids(
         return set()
     wanted = {_normalize_label_token(tok) for tok in always_label_genes}
     forced = set()
-    for _, row in df[[gene_id_col, gene_name_col]].drop_duplicates().iterrows():
-        gene_id = str(row[gene_id_col])
-        name = str(row[gene_name_col])
-        if _normalize_label_token(gene_id) in wanted:
-            forced.add(gene_id)
-        elif _normalize_label_token(name) in wanted:
-            forced.add(gene_id)
+    sub = df[[gene_id_col, gene_name_col]].drop_duplicates()
+    gids = sub[gene_id_col].astype(str)
+    names = sub[gene_name_col].astype(str)
+    norm_gids = gids.map(_normalize_label_token)
+    norm_names = names.map(_normalize_label_token)
+    forced.update(gids[norm_gids.isin(wanted)])
+    forced.update(gids[norm_names.isin(wanted) & ~norm_gids.isin(wanted)])
 
     # Also resolve user-provided gene names/aliases to canonical Ensembl IDs.
     resolved_ids, _ = find_canonical_gene_ids_and_names(list(always_label_genes))

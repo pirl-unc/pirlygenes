@@ -348,29 +348,26 @@ _CANCER_NORMAL_TISSUES = {
 
 def _build_sample_tpm_by_symbol(df_gene_expr):
     """Return {symbol: max_TPM} from expression data (no normalization)."""
-    gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
-    df = df_gene_expr.copy()
-    df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
+    gene_id_col, _gene_name_col = _guess_gene_cols(df_gene_expr)
+    gene_ids = df_gene_expr[gene_id_col].astype(str).map(_strip_ensembl_version)
 
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
+    tpm_col = "TPM" if "TPM" in df_gene_expr.columns else next(
+        (c for c in df_gene_expr.columns if c.lower() == "tpm"), None
     )
     if tpm_col is None:
-        raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
+        raise KeyError(f"No TPM column found. Columns: {list(df_gene_expr.columns)}")
 
     ref = pan_cancer_expression()
     id_to_sym = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
 
-    result = {}
-    for _, row in df.iterrows():
-        gid = str(row[gene_id_col])
-        sym = id_to_sym.get(gid)
-        if sym is None:
-            continue
-        tpm = float(row[tpm_col])
-        if sym not in result or tpm > result[sym]:
-            result[sym] = tpm
-    return result
+    syms = gene_ids.map(id_to_sym)
+    tpms = pd.to_numeric(df_gene_expr[tpm_col], errors="coerce")
+    valid = syms.notna() & tpms.notna()
+    return dict(
+        pd.DataFrame({"sym": syms[valid], "tpm": tpms[valid]})
+        .groupby("sym")["tpm"]
+        .max()
+    )
 
 
 def _geneset_hk_ratio(genes, hk_symbols, expr_by_symbol):

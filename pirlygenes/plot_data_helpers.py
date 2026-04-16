@@ -63,12 +63,12 @@ def _remap_retired_gene_ids(
     if not name_cols:
         return cat_to_gene_id_list, gene_id_to_name
 
-    for _, row in df_gene_expr[[gene_id_col] + name_cols].iterrows():
-        gid = _strip_ensembl_version(str(row[gene_id_col]))
-        for col in name_cols:
-            key = str(row[col]).strip().upper()
-            if key and key not in ("NAN", "NONE", ""):
-                name_to_expr_id[key] = gid
+    gids = df_gene_expr[gene_id_col].astype(str).map(_strip_ensembl_version)
+    for col in name_cols:
+        keys = df_gene_expr[col].astype(str).str.strip().str.upper()
+        valid = keys.ne("") & keys.ne("NAN") & keys.ne("NONE")
+        for key, gid in zip(keys[valid], gids[valid]):
+            name_to_expr_id[key] = gid
 
     new_cat_to_ids: Dict[str, List[str]] = {}
     new_id_to_name = dict(gene_id_to_name)
@@ -268,7 +268,16 @@ def prepare_gene_expr_df(
                 f"Column '{col}' not found; available: {list(df_gene_expr.columns)}"
             )
 
-    df = df_gene_expr.copy()
+    # Avoid deep-copying DataFrame.attrs here: load_expression attaches the
+    # retained transcript-level frame under ``attrs["transcript_expression"]``,
+    # and copying that blob inside plotting prep turns cheap row-wise helper
+    # code into minute-scale work on real transcript-level inputs.
+    needed_cols = [gene_id_col, tpm_col]
+    for extra in (gene_name_col, "canonical_gene_name", "gene"):
+        if extra and extra in df_gene_expr.columns and extra not in needed_cols:
+            needed_cols.append(extra)
+    df = df_gene_expr[needed_cols].copy(deep=False)
+    df.attrs = {}
     expr_gene_ids = df[gene_id_col].astype(str)
     if strip_version:
         expr_gene_ids = expr_gene_ids.map(_strip_ensembl_version)

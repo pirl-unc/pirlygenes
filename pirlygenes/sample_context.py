@@ -543,27 +543,22 @@ def _build_tpm_by_symbol(df_gene_expr):
     column.
     """
     sym_col = next(
-        (c for c in ("gene_symbol", "Symbol", "symbol", "GeneName") if c in df_gene_expr.columns),
+        (c for c in ("gene_symbol", "gene", "Symbol", "symbol", "GeneName") if c in df_gene_expr.columns),
         None,
     )
     tpm_col = "TPM" if "TPM" in df_gene_expr.columns else next(
         (c for c in df_gene_expr.columns if c.lower() == "tpm"), None
     )
     if sym_col is not None and tpm_col is not None:
-        out = {}
-        for _, row in df_gene_expr.iterrows():
-            sym = row[sym_col]
-            if not isinstance(sym, str) or not sym:
-                continue
-            try:
-                tpm = float(row[tpm_col])
-            except (TypeError, ValueError):
-                continue
-            if math.isnan(tpm):
-                continue
-            if sym not in out or tpm > out[sym]:
-                out[sym] = tpm
-        return out
+        import pandas as pd
+        syms = df_gene_expr[sym_col].astype(str)
+        tpms = pd.to_numeric(df_gene_expr[tpm_col], errors="coerce")
+        valid = syms.ne("") & syms.ne("nan") & syms.ne("None") & tpms.notna()
+        return dict(
+            pd.DataFrame({"sym": syms[valid], "tpm": tpms[valid]})
+            .groupby("sym")["tpm"]
+            .max()
+        )
     # Fall back to the gene-ID path.
     from .tumor_purity import _build_sample_tpm_by_symbol
     return _build_sample_tpm_by_symbol(df_gene_expr)
