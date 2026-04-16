@@ -1330,6 +1330,42 @@ def _analyze_body(
             cancer_type=effective_cancer_type,
             purity_result=purity_dict,
         )
+
+        # #111: two-tier markdown handoff. Emitted after the detailed
+        # reports so both can reference each other. The brief is the
+        # doc a clinician pastes into a note; the actionable is the
+        # one they read before a tumor board.
+        try:
+            from .brief import build_brief, build_actionable
+
+            disease_state_for_brief = compose_disease_state_narrative(analysis)
+            sample_id = prefix if prefix else None
+            brief_md = build_brief(
+                analysis,
+                ranges_df,
+                cancer_code=effective_cancer_type,
+                disease_state=disease_state_for_brief,
+                sample_id=sample_id,
+            )
+            actionable_md = build_actionable(
+                analysis,
+                ranges_df,
+                cancer_code=effective_cancer_type,
+                disease_state=disease_state_for_brief,
+                sample_id=sample_id,
+            )
+            brief_path = "%s-brief.md" % prefix if prefix else "brief.md"
+            actionable_path = (
+                "%s-actionable.md" % prefix if prefix else "actionable.md"
+            )
+            with open(brief_path, "w") as f:
+                f.write(brief_md)
+            with open(actionable_path, "w") as f:
+                f.write(actionable_md)
+            print(f"[report] Saved {brief_path}")
+            print(f"[report] Saved {actionable_path}")
+        except Exception as brief_err:
+            print(f"[warn] Brief / actionable rendering failed: {brief_err}")
     except Exception as e:
         print(f"[warn] Purity-adjusted analysis failed: {e}")
         import traceback
