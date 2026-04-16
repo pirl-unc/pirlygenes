@@ -1364,6 +1364,33 @@ def _analyze_body(
                 f.write(actionable_md)
             print(f"[report] Saved {brief_path}")
             print(f"[report] Saved {actionable_path}")
+
+            # #106: one-page provenance chain (library prep -> tumor
+            # core). Emits *-provenance.md alongside a simple stacked-
+            # bar figure showing the compartment composition.
+            from .provenance import build_provenance_md, plot_provenance_funnel
+
+            provenance_md = build_provenance_md(
+                analysis,
+                ranges_df,
+                decomp_results,
+                cancer_code=effective_cancer_type,
+                sample_id=sample_id,
+            )
+            prov_path = "%s-provenance.md" % prefix if prefix else "provenance.md"
+            with open(prov_path, "w") as f:
+                f.write(provenance_md)
+            print(f"[report] Saved {prov_path}")
+            prov_png = "%s-provenance.png" % prefix if prefix else "provenance.png"
+            fig_out = plot_provenance_funnel(
+                analysis,
+                ranges_df,
+                decomp_results,
+                save_to_filename=prov_png,
+                save_dpi=output_dpi,
+            )
+            if fig_out:
+                print(f"[plot] Saved {prov_png}")
         except Exception as brief_err:
             print(f"[warn] Brief / actionable rendering failed: {brief_err}")
     except Exception as e:
