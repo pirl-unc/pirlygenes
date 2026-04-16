@@ -22,6 +22,9 @@ from .tumor_purity import (
     get_tumor_purity_parameters,
     plot_sample_summary,
     plot_tumor_purity,
+    plot_cancer_type_hypotheses,
+    plot_background_tissues,
+    plot_mhc_expression,
 )
 from .gene_sets_cancer import (
     therapy_target_gene_id_to_name,
@@ -750,15 +753,23 @@ def _analyze_body(
             tag = "[therapy-state]"
             print(f"{tag} {cls}: {score.state} — {score.message}")
 
+    # Individual summary panels (replaces the crowded 4-panel composite, #97)
     summary_png = "%s-sample-summary.png" % prefix if prefix else "sample-summary.png"
+    # Keep the composite for backward compatibility but also emit standalone PNGs
     plot_sample_summary(
         df_expr,
         cancer_type=cancer_code,
         sample_mode=analysis["sample_mode"],
         save_to_filename=summary_png,
         save_dpi=output_dpi,
-        analysis=analysis,  # #84: skip redundant analyze_sample call
+        analysis=analysis,
     )
+    hypotheses_png = "%s-cancer-hypotheses.png" % prefix
+    plot_cancer_type_hypotheses(analysis, save_to_filename=hypotheses_png, save_dpi=output_dpi)
+    tissues_png = "%s-background-tissues.png" % prefix
+    plot_background_tissues(analysis, save_to_filename=tissues_png, save_dpi=output_dpi)
+    mhc_png = "%s-mhc-expression.png" % prefix
+    plot_mhc_expression(analysis, save_to_filename=mhc_png, save_dpi=output_dpi)
 
     print("[analysis] Running broad-compartment decomposition...")
     decomp_png = None
