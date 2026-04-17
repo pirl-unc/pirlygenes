@@ -1489,6 +1489,20 @@ def _analyze_body(
         components_png,
         candidates_png,
         purity_png,
+        # Standalone analysis panels (cancer hypotheses, background
+        # tissues, MHC) — new outputs added while splitting the legacy
+        # 4-panel composite. Without being listed here they never made
+        # it into the PDF or the figures/ move step.
+        hypotheses_png,
+        tissues_png,
+        mhc_png,
+        # Purity-method comparison (#124) and sample-provenance (#106)
+        # — added later and initially missed the figures/ move list.
+        methods_png,
+        # Provenance PNG may not exist when decomposition / range
+        # computation was skipped; resolve by path rather than a
+        # possibly-undefined variable.
+        "%s-provenance.png" % prefix if prefix else "provenance.png",
         "%s-immune.png" % prefix if prefix else "immune.png",
         "%s-tumor.png" % prefix if prefix else "tumor.png",
         "%s-antigens.png" % prefix if prefix else "antigens.png",

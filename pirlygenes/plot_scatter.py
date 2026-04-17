@@ -301,17 +301,35 @@ def _draw_scatter_panel(
     if lims[1] > lims[0]:
         ax.plot(lims, lims, ":", color="#bbbbbb", linewidth=0.8, alpha=0.5, zorder=0)
 
-    # Labels: top N by enrichment (sample-enriched), with fallback to top by sample expression
+    # Labels: top N by enrichment (sample-enriched), with fallback to top by sample expression.
+    #
+    # Rendering settings tuned for per-category panels where labels
+    # tend to cluster in the upper-right quadrant (sample-enriched
+    # genes): smaller font, stronger force-separation via adjust_text,
+    # and ha="center" so the label doesn't overhang the marker. The
+    # CTA panel in particular was crowded at the old defaults (#128
+    # follow-up); these settings keep label overlap minimal without
+    # requiring per-panel manual tuning.
     if len(hi) and num_labels > 0:
         top_enriched = hi.nlargest(num_labels, "enrichment")
         texts = []
         for _, row in top_enriched.iterrows():
             texts.append(ax.text(
                 row.sample_log, row.cohort_log, row.gene_name,
-                fontsize=8, alpha=0.9, ha="left", va="bottom",
+                fontsize=7, alpha=0.9, ha="center", va="bottom",
             ))
         if adjust_args is not None:
-            adjust_text(texts, ax=ax, **adjust_args)
+            panel_adjust_args = {
+                **adjust_args,
+                # Default adjust_args target the full heat-strip plot;
+                # per-panel scatters want more aggressive separation
+                # because the highlighted category packs into one corner.
+                "expand": (1.6, 2.2),
+                "force_text": (0.8, 1.6),
+                "force_points": (0.6, 1.2),
+                "only_move": {"points": "xy", "text": "xy"},
+            }
+            adjust_text(texts, ax=ax, **panel_adjust_args)
 
 
 def plot_sample_vs_cancer(
@@ -320,7 +338,7 @@ def plot_sample_vs_cancer(
     cancer_type=None,
     save_to_filename=None,
     save_dpi=300,
-    num_labels_per_category=10,
+    num_labels_per_category=7,
     always_label_genes=None,
     figsize=(10, 8),
     adjust_args=dict(

@@ -1137,6 +1137,15 @@ def plot_matched_normal_attribution(
     ax.barh(y, tme, left=tumor_attr + mn, color="#95a5a6", label="other TME (stromal/immune)")
 
     # Symbols on the y-axis. Therapy-target annotation appended when present.
+    #
+    # Flag legend (kept short because they share the y-tick label):
+    #   ⚠  = a single healthy reference tissue could explain >= 50% of
+    #        observed (tme_explainable)
+    #   MN>obs = the fitted matched-normal reference alone predicts more
+    #        of this gene than the sample contains — attribution is
+    #        unreliable, expect tumor = 0 regardless of real biology
+    #        (#131). Replaces the cryptic "clamp" marker — the old
+    #        label read like a typo in the report.
     labels = []
     for _, row in sub.iterrows():
         sym = str(row["symbol"])
@@ -1145,9 +1154,14 @@ def plot_matched_normal_attribution(
         flags = []
         if row.get("tme_explainable"):
             flags.append("\u26a0")
-        path = str(row.get("estimation_path", ""))
-        if path == "clamped":
-            flags.append("clamp")
+        if row.get("matched_normal_over_predicted"):
+            flags.append("MN>obs")
+        elif str(row.get("estimation_path", "")) == "clamped":
+            # Older ranges_df rows (before #131) won't have the
+            # matched_normal_over_predicted column — fall back to
+            # the estimation_path signal but with a human-readable
+            # marker instead of the raw "clamp" jargon.
+            flags.append("MN>obs")
         if flags:
             sym = f"{sym}  {' '.join(flags)}"
         labels.append(sym)
