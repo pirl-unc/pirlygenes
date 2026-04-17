@@ -1211,7 +1211,7 @@ def plot_tumor_expression_ranges(
                 continue
             bar_color = color if pct >= 0.5 else "#d4a017"
             ax_pct.barh(i, max(pct, 0.001), color=bar_color, alpha=0.7, height=0.6)
-            lbl = f"{pct:.1f}x" if pct < 10 else f"{pct:.0f}x"
+            lbl = f"{pct:.1f}\u00d7" if pct < 10 else f"{pct:.0f}\u00d7"
             ax_pct.text(max(pct, 0.001) * 1.2, i, lbl, fontsize=base_font - 1,
                         va="center", color="black")
 

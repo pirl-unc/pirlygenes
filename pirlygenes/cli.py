@@ -74,6 +74,11 @@ from .sample_context import (
 )
 from .sample_quality import assess_sample_quality
 from .therapy_response import score_therapy_signatures
+from .format import (
+    render_fold,
+    render_fraction_no_decimal,
+    render_tpm,
+)
 
 _DATASET_SOURCES = {
     "ADC-approved": "Wiley, doi:10.1002/cac2.12517",
@@ -738,8 +743,8 @@ def _analyze_body(
         print(f"[analysis] Constraints: {analysis['analysis_constraints']}")
     print(f"[analysis] {_purity_metric_label(analysis['sample_mode']).capitalize()}: {purity['overall_estimate']:.0%} "
           f"[{purity['overall_lower']:.0%}-{purity['overall_upper']:.0%}]")
-    print(f"[analysis] Stromal enrichment: {purity['components']['stromal']['enrichment']:.1f}x vs TCGA")
-    print(f"[analysis] Immune enrichment: {purity['components']['immune']['enrichment']:.1f}x vs TCGA")
+    print(f"[analysis] Stromal enrichment: {render_fold(purity['components']['stromal']['enrichment'])} vs TCGA")
+    print(f"[analysis] Immune enrichment: {render_fold(purity['components']['immune']['enrichment'])} vs TCGA")
     top_tissues = analysis["tissue_scores"][:3]
     tissue_str = ", ".join(f"{t} ({s:.2f})" for t, s, _ in top_tissues)
     print(f"[analysis] Top background signatures: {tissue_str}")
@@ -1603,8 +1608,8 @@ def _summary_mode_clause(sample_mode, purity, top_tissues):
         )
     return (
         f"Estimated tumor purity is {ci_phrase}, "
-        f"with {purity['components']['stromal']['enrichment']:.1f}x stromal "
-        f"and {purity['components']['immune']['enrichment']:.1f}x immune enrichment "
+        f"with {render_fold(purity['components']['stromal']['enrichment'])} stromal "
+        f"and {render_fold(purity['components']['immune']['enrichment'])} immune enrichment "
         f"vs TCGA median. "
         f"Top background signatures: {tissue_str}. "
         f"These tissue matches describe residual non-tumor background and are not literal site calls. "
@@ -2416,7 +2421,7 @@ def _generate_text_reports(
         comp = components.get(comp_name, {})
         if isinstance(comp, dict):
             enrichment = comp.get("enrichment", 0)
-            lines.append(f"- **{comp_name.title()}** enrichment: {enrichment:.1f}x vs TCGA")
+            lines.append(f"- **{comp_name.title()}** enrichment: {render_fold(enrichment)} vs TCGA")
     integration = components.get("integration", {})
     if integration.get("signature_deprioritized"):
         lines.append(
@@ -2974,7 +2979,14 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     ):
         fn1_blocked = ranges_df[
             ranges_df["symbol"].eq("FN1")
-            & ~ranges_df["therapy_supported"].infer_objects(copy=False).fillna(True).astype(bool)
+            # Treat missing therapy_supported as True (the common case for
+            # rows without any therapy flag set); avoid .fillna on the
+            # object-dtype series because pandas 2.x emits a FutureWarning
+            # about silent downcasting. Mask + default keeps the intent
+            # explicit.
+            & ~ranges_df["therapy_supported"].map(
+                lambda v: True if v is None or (isinstance(v, float) and pd.isna(v)) else bool(v)
+            )
             & ranges_df["therapy_support_note"].fillna("").astype(str).str.len().gt(0)
         ]
         if len(fn1_blocked):
@@ -3026,12 +3038,14 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         lines.append("|------|-----------|-------|----------|---------|-----------|-----|---------|-----------|")
         for _, row in ctas.head(20).iterrows():
             surf = "yes" if row["is_surface"] else ""
-            vs_tcga = row["pct_cancer_median"]
+            vs_tcga = row["pct_cancer_median"] if pd.notna(row["pct_cancer_median"]) else None
             tme_warn = "⚠" if row.get("tme_explainable") else ""
             lines.append(
-                f"| **{row['symbol']}** | {row['median_est']:.1f} | "
-                f"{row['est_1']:.1f}\u2013{row['est_9']:.1f} | {row['observed_tpm']:.1f} | "
-                f"{'%.1fx' % vs_tcga if pd.notna(vs_tcga) else '—'} | {row['tcga_percentile']:.0%} | "
+                f"| **{row['symbol']}** | {render_tpm(row['median_est'])} | "
+                f"{render_tpm(row['est_1'])}\u2013{render_tpm(row['est_9'])} | "
+                f"{render_tpm(row['observed_tpm'])} | "
+                f"{render_fold(vs_tcga)} | "
+                f"{render_fraction_no_decimal(row['tcga_percentile'])} | "
                 f"{tme_warn} | {surf} | {row['therapies']} |"
             )
         high_ctas = ctas[ctas["tcga_percentile"] > 0.7]
@@ -3080,7 +3094,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         )
         for _, row in surface_targets.head(20).iterrows():
             bold = "**" if row["therapies"] else ""
-            vs_tcga = row["pct_cancer_median"]
+            vs_tcga = row["pct_cancer_median"] if pd.notna(row["pct_cancer_median"]) else None
             # TME flag — compact key:
             #   ⚠⚠ = ``tme_dominant`` (observed signal is mostly non-
             #   tumor per the decomposition attribution, #108); ⚠ =
@@ -3100,9 +3114,11 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                 therapies_cell = f"{therapies_cell} ({cross})" if therapies_cell else f"*{cross}*"
             attribution_cell = _format_attribution_cell(row)
             lines.append(
-                f"| {bold}{row['symbol']}{bold} | {row['median_est']:.1f} | "
-                f"{row['est_1']:.1f}\u2013{row['est_9']:.1f} | {row['observed_tpm']:.1f} | "
-                f"{'%.1fx' % vs_tcga if pd.notna(vs_tcga) else '—'} | {row['tcga_percentile']:.0%} | "
+                f"| {bold}{row['symbol']}{bold} | {render_tpm(row['median_est'])} | "
+                f"{render_tpm(row['est_1'])}\u2013{render_tpm(row['est_9'])} | "
+                f"{render_tpm(row['observed_tpm'])} | "
+                f"{render_fold(vs_tcga)} | "
+                f"{render_fraction_no_decimal(row['tcga_percentile'])} | "
                 f"{tme_warn} | {attribution_cell} | {therapies_cell} |"
             )
         head20 = surface_targets.head(20)
@@ -3149,14 +3165,15 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         lines.append("|------|-----------|-------|---------|-----------|-----|-------------|-----|-----------|")
         for _, row in intracellular.head(15).iterrows():
             cta_flag = "yes" if row["is_cta"] else ""
-            vs_tcga = row["pct_cancer_median"]
+            vs_tcga = row["pct_cancer_median"] if pd.notna(row["pct_cancer_median"]) else None
             tme_warn = "⚠" if row.get("tme_explainable") else ""
             attribution_cell = _format_attribution_cell(row)
             lines.append(
-                f"| {row['symbol']} | {row['median_est']:.1f} | "
-                f"{row['est_1']:.1f}\u2013{row['est_9']:.1f} | "
-                f"{'%.1fx' % vs_tcga if pd.notna(vs_tcga) else '—'} | "
-                f"{row['tcga_percentile']:.0%} | {tme_warn} | {attribution_cell} | {cta_flag} | {row['therapies']} |"
+                f"| {row['symbol']} | {render_tpm(row['median_est'])} | "
+                f"{render_tpm(row['est_1'])}\u2013{render_tpm(row['est_9'])} | "
+                f"{render_fold(vs_tcga)} | "
+                f"{render_fraction_no_decimal(row['tcga_percentile'])} | "
+                f"{tme_warn} | {attribution_cell} | {cta_flag} | {row['therapies']} |"
             )
         if (
             "tme_explainable" in intracellular.columns
