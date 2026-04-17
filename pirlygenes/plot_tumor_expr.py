@@ -63,6 +63,71 @@ MET_SITE_TISSUE_AUGMENTATION = {
 
 MET_SITES = tuple(MET_SITE_TISSUE_AUGMENTATION.keys())
 
+# #128: tissue-breadth thresholds for the "broadly-expressed" flag and
+# the breadth-floor baseline used by the robust attribution algorithm.
+#
+# Sources & assumptions — kept explicit so downstream callers (or
+# cancer-type-specific tuning) can override them via the tunable
+# parameters below rather than digging into call sites.
+#
+# HK_TISSUE_NTPM_THRESHOLD (5.0 nTPM):
+#   HPA's convention for "detectable expression" in their tissue
+#   browser. A gene at <5 nTPM in a given tissue is effectively not
+#   expressed there. Used to count how many tissues a gene reaches
+#   above detection.
+#
+# BROAD_TISSUE_COUNT (15 of ~50 non-reproductive HPA tissues):
+#   Threshold for "broadly expressed" is a **necessary but not
+#   sufficient** condition — it's combined with the enrichment gate
+#   below so a gene highly enriched in one specific tissue (e.g.
+#   KLK3 in prostate, or a CTA in testis-plus-low-background) cannot
+#   trip the flag just because low-level detection crosses many
+#   tissues. 15/50 is ~30% — genes above that with **no** strong
+#   tissue preference are genuinely broad.
+#
+# BROADLY_ENRICHED_MAX_RATIO (3.0×):
+#   `max_healthy_tpm / mean_top_healthy_tpm` — a gene's peak tissue
+#   must be less than this multiple of the mean of its top-N
+#   tissues to qualify as broadly expressed. Tissue-restricted
+#   genes (prostate-only KLK3, brain-only NEUROD1) have very high
+#   enrichment ratios because max is far above mean. This keeps the
+#   flag tissue-type agnostic — it depends on the gene's own
+#   expression breadth, not on which tissues happen to be reference
+#   tissues in HPA.
+#
+# BREADTH_BASELINE_TOP_N (10 of ~50):
+#   Used for the attribution breadth floor. Mean of the 10 highest
+#   healthy tissues gives a "what healthy cells would look like if
+#   not drawn from any single tissue" baseline. Smaller N makes the
+#   baseline more conservative (harder to trip); larger N pulls
+#   toward the whole-tissue median. 10 is a reasonable middle.
+#
+# All three are module-level so a consumer tuning for a specific
+# cancer type can adjust without forking — a blood-cancer pipeline
+# might legitimately lower BROAD_TISSUE_COUNT, for example, since
+# lymphoid-lineage genes appear across only a few tissues even at
+# high levels.
+HK_TISSUE_NTPM_THRESHOLD = 5.0
+BROAD_TISSUE_COUNT = 15
+BROADLY_ENRICHED_MAX_RATIO = 3.0
+BREADTH_BASELINE_TOP_N = 10
+
+# AMPLIFICATION_MIN_FOLD (5.0):
+#   When the sample's observed TPM exceeds ``max_healthy_tpm`` by this
+#   multiple, treat the observation as an amplification / over-
+#   expression signal even if the gene is otherwise broadly expressed
+#   at baseline. HER2 at 1000 TPM in a HER2+ breast cancer sample
+#   against max-healthy ~100 is the canonical case: broadly
+#   expressed per HPA, but the tumor-cell story is real and clinically
+#   actionable. A 5× fold-over-peak is conservative; routine
+#   tissue-to-tissue variability alone can account for 2-3×.
+#
+#   When ``amplified`` fires AND ``broadly_expressed`` is also True,
+#   the reliability tier does NOT downgrade and the Attribution cell
+#   renders "amplified N×" rather than "broadly expr." — the reader
+#   sees the amplification story, not a spurious caution.
+AMPLIFICATION_MIN_FOLD = 5.0
+
 # ---------------------------------------------------------------------------
 # Functions
 # ---------------------------------------------------------------------------
@@ -396,11 +461,38 @@ def estimate_tumor_expression_ranges(
     # flag rows where sample signal could be entirely TME-explained).
     # Vectorized once here to avoid a per-gene `.loc[].max()` inside the
     # main loop — that was a measured ~30x slowdown on full panels.
+    #
+    # #128: also precompute **tissue breadth** (how many non-reproductive
+    # HPA tissues express the gene above the detection threshold) and
+    # the **mean of the top-N healthy tissues**. Broadly-expressed genes
+    # can't be attributed to one compartment cleanly; the per-gene
+    # attribution was silently inflating tumor-core residuals for
+    # universally-expressed housekeeping-like and surface genes. These
+    # two metrics drive a breadth floor on non-tumor attribution and a
+    # new ``broadly_expressed`` reliability flag.
     if ntpm_nonrepro:
-        _max_healthy = ref_dedup[ntpm_nonrepro].astype(float).max(axis=1)
+        _all_healthy = ref_dedup[ntpm_nonrepro].astype(float)
+        _max_healthy = _all_healthy.max(axis=1)
         max_healthy_tpm_by_symbol = _max_healthy.to_dict()
+        # Count healthy tissues with nTPM >= HK_TISSUE_NTPM_THRESHOLD.
+        # Threshold matches the detection bar elsewhere in pirlygenes:
+        # 5 nTPM is "detectable expression" per HPA conventions.
+        _n_tissues_expressed = (_all_healthy >= HK_TISSUE_NTPM_THRESHOLD).sum(axis=1)
+        n_healthy_tissues_by_symbol = _n_tissues_expressed.to_dict()
+        # Mean of the top-N healthy tissues per gene — used as a "breadth
+        # baseline" for the non-tumor floor below. Genes expressed in
+        # only one tissue have a small mean (dominated by zeros); genes
+        # expressed ubiquitously have a large mean.
+        _mean_top_healthy = _all_healthy.apply(
+            lambda row: float(row.nlargest(BREADTH_BASELINE_TOP_N).mean())
+            if row.notna().any() else 0.0,
+            axis=1,
+        )
+        mean_top_healthy_tpm_by_symbol = _mean_top_healthy.to_dict()
     else:
         max_healthy_tpm_by_symbol = {}
+        n_healthy_tissues_by_symbol = {}
+        mean_top_healthy_tpm_by_symbol = {}
 
     # --- Full-coverage TPM-space TME background (fixes issue #45) --------
     #
@@ -762,17 +854,93 @@ def estimate_tumor_expression_ranges(
 
         # #108: per-compartment attribution. When decomposition ran,
         # apportion the observed TPM across TME compartments using the
-        # per-compartment reference × fitted fractions, then derive:
-        #   attr_tumor_tpm = max(0, observed - sum(attr_compartments))
-        # and tumor fraction of total. These drive the Attribution
-        # column in targets.md and the per-target stacked-bar figure.
+        # per-compartment reference × fitted fractions, then derive a
+        # tumor residual.
+        #
+        # #128: robust attribution. Add a **breadth floor** on non-
+        # tumor attribution. The observation motivating it: on a 28%-
+        # purity PRAD sample the decomposition's matched_normal_prostate
+        # (~26%) + T_cell (3%) + endothelial (3%) compartments couldn't
+        # absorb the signal of broadly-expressed genes like CRIM1,
+        # HLA-F, IL6ST, TBCE, NPM1 — so the residual defaulted into
+        # the "tumor core" and every one of these came out as 95–99%
+        # tumor-attributed, which isn't defensible for genes expressed
+        # in 15+ HPA tissues. The floor says: **for genes broadly
+        # expressed, non-tumor cells in the sample carry a baseline
+        # equal to non_tumor_frac × mean-of-top-N healthy tissues**.
+        # If that exceeds the compartment-fit estimate, it's the
+        # better prior for what healthy cells contribute.
+        #
+        # This does *not* clobber prostate-restricted PRAD targets:
+        # KLK3 / NKX3-1 / HOXB13 have a small mean-of-top-N because
+        # only prostate expresses them at meaningful levels, so the
+        # breadth floor is tiny and the matched_normal_prostate
+        # compartment fit dominates (as intended).
         attribution = {}
         if per_compartment_tpm_by_symbol is not None:
             raw = per_compartment_tpm_by_symbol.get(symbol)
             if raw:
                 attribution = dict(raw)
         attr_tme_total = sum(attribution.values())
-        attr_tumor_tpm = max(0.0, observed - attr_tme_total)
+
+        # Breadth metrics (precomputed once above).
+        n_healthy_tissues_expressed = int(
+            n_healthy_tissues_by_symbol.get(symbol, 0)
+        )
+        mean_top_healthy_tpm = float(
+            mean_top_healthy_tpm_by_symbol.get(symbol, 0.0)
+        )
+        # Two-part gate for "broadly expressed":
+        # 1. Detected above HK_TISSUE_NTPM_THRESHOLD in at least
+        #    BROAD_TISSUE_COUNT non-reproductive HPA tissues; AND
+        # 2. peak-to-mean-of-top-N ratio below BROADLY_ENRICHED_MAX_RATIO
+        #    so a gene strongly enriched in one tissue (KLK3 in
+        #    prostate, NEUROD1 in brain) cannot trip the flag purely
+        #    because low-level detection crossed the count threshold.
+        tissue_enrichment_ratio = (
+            max_healthy_tpm / mean_top_healthy_tpm
+            if mean_top_healthy_tpm > 0 else float("inf")
+        )
+        broadly_at_baseline = (
+            n_healthy_tissues_expressed >= BROAD_TISSUE_COUNT
+            and tissue_enrichment_ratio < BROADLY_ENRICHED_MAX_RATIO
+        )
+
+        # Amplification gate. If observed is well above the peak
+        # healthy tissue, the sample-level story is amplification / over-
+        # expression — which overrides the breadth caveat for
+        # reader-facing reliability. The raw attribution is unchanged
+        # either way; only the warning / downgrade logic treats the
+        # two differently.
+        amplification_fold = (
+            observed / max(max_healthy_tpm, 0.5)
+            if observed > 0 else 0.0
+        )
+        amplified_over_healthy = (
+            amplification_fold >= AMPLIFICATION_MIN_FOLD
+        )
+
+        # The reader-facing "broadly expressed" flag ONLY fires for
+        # broadly-expressed-at-baseline genes that are NOT also
+        # showing amplification. HER2-amplified BRCA, MDM2-amplified
+        # LPS, GPC3-overexpressed HCC — all broadly expressed per HPA
+        # but clinically actionable because of the amplification.
+        # Those keep a clean rendering with an "amplified Nx" tag
+        # instead of a suppression caveat.
+        broadly_expressed = broadly_at_baseline and not amplified_over_healthy
+
+        # Sample-level non-tumor fraction used for the breadth floor.
+        # When purity isn't known yet (shouldn't happen in practice),
+        # use a conservative 0.5.
+        non_tumor_frac = max(0.0, min(1.0, 1.0 - p_med))
+        breadth_floor = non_tumor_frac * mean_top_healthy_tpm
+
+        # Effective non-tumor attribution = max of
+        # (per-compartment fit, breadth baseline). For gene-sparse
+        # cases where the compartment fit is tiny but healthy cells
+        # alone carry a meaningful baseline, breadth floor wins.
+        effective_non_tumor = max(attr_tme_total, breadth_floor)
+        attr_tumor_tpm = max(0.0, observed - effective_non_tumor)
         attr_tumor_fraction = (
             float(attr_tumor_tpm / observed) if observed > 0 else 0.0
         )
@@ -791,14 +959,14 @@ def estimate_tumor_expression_ranges(
         # so it's grounded in the fitted compartments instead of a
         # generic TME-fold. Fall back to the old formula when no
         # decomposition ran.
-        if attribution:
+        if attribution or breadth_floor > 0:
             tme_dominant = observed > 0 and attr_tumor_fraction < 0.30
         else:
             tme_dominant = (
                 observed > 0
                 and round(tme_fold_med, 4) * sample_hk_median >= round(0.7 * observed, 4)
             )
-        low_confidence_tumor = bool(tme_dominant)
+        low_confidence_tumor = tme_dominant or broadly_expressed
 
         rows.append({
             "gene_id": eid,
@@ -828,6 +996,25 @@ def estimate_tumor_expression_ranges(
             "attr_tumor_fraction": round(attr_tumor_fraction, 4),
             "attr_top_compartment": attr_top_comp,
             "attr_top_compartment_tpm": round(float(attr_top_tpm), 2),
+            # #128: breadth metrics used by the robust attribution.
+            # `n_healthy_tissues_expressed` counts non-reproductive HPA
+            # tissues with nTPM >= HK_TISSUE_NTPM_THRESHOLD;
+            # `mean_top_healthy_tpm` is the mean of the top-N healthy
+            # tissues. `broadly_expressed` is the reader-facing flag.
+            # `breadth_floor_tpm` records the baseline that was applied
+            # (useful for debugging / understanding why a specific
+            # gene's attr_tumor was dampened).
+            "n_healthy_tissues_expressed": n_healthy_tissues_expressed,
+            "mean_top_healthy_tpm": round(mean_top_healthy_tpm, 2),
+            "tissue_enrichment_ratio": (
+                round(tissue_enrichment_ratio, 2)
+                if tissue_enrichment_ratio != float("inf") else None
+            ),
+            "broadly_at_baseline": broadly_at_baseline,
+            "broadly_expressed": broadly_expressed,
+            "amplification_fold": round(amplification_fold, 2),
+            "amplified_over_healthy": amplified_over_healthy,
+            "breadth_floor_tpm": round(breadth_floor, 2),
             **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
             "median_est": round(median_est, 2),
             "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None else None,
