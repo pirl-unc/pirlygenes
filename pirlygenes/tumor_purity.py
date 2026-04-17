@@ -1331,6 +1331,244 @@ def plot_tumor_purity(
     return fig, result
 
 
+def plot_purity_method_comparison(
+    purity_result,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(10, 5.5),
+    decomposition_result=None,
+    title=None,
+):
+    """Compare every purity estimation method on one axis (#124).
+
+    The existing :func:`plot_tumor_purity` mixes purity percentages and
+    enrichment values on the same component panel, which makes the
+    methods hard to compare at a glance. This dedicated figure renders
+    every method on a single ``purity %`` axis with CIs as horizontal
+    bars where they exist, plus reference lines for the TCGA cohort
+    median and the adopted overall estimate.
+
+    Parameters
+    ----------
+    purity_result : dict
+        Return value of :func:`estimate_tumor_purity` or the promoted
+        ``analysis["purity"]``.
+    decomposition_result : DecompositionResult, optional
+        If provided, the decomposition's fitted tumor fraction is
+        added as its own row — useful when the decomposition adopted
+        its lineage-panel call back into ``analysis["purity"]`` and
+        the reader wants to see that signal plotted alongside the
+        signature / lineage / ESTIMATE estimates.
+
+    Returns the matplotlib figure; saves to ``save_to_filename`` when
+    provided.
+    """
+    import matplotlib.pyplot as plt
+
+    comp = purity_result.get("components", {}) or {}
+    cancer_code = purity_result.get("cancer_type") or ""
+    tcga_median = purity_result.get("tcga_median_purity")
+    integration_source = (comp.get("integration") or {}).get("source") or ""
+    signature_deprioritized = (comp.get("integration") or {}).get("signature_deprioritized", False)
+
+    # Re-derive stromal_purity / immune_purity from their enrichment
+    # values using the same odds-model conversion estimate_tumor_purity
+    # uses internally. Otherwise these two methods land on a different
+    # axis than the others.
+    stromal_purity = None
+    immune_purity = None
+    if tcga_median and tcga_median > 0:
+        odds_nontumor = (1.0 - tcga_median) / max(tcga_median, 1e-6)
+        stromal_enr = (comp.get("stromal") or {}).get("enrichment")
+        immune_enr = (comp.get("immune") or {}).get("enrichment")
+        if stromal_enr is not None:
+            stromal_purity = 1.0 / (1.0 + odds_nontumor * max(float(stromal_enr), 0.0))
+        if immune_enr is not None:
+            immune_purity = 1.0 / (1.0 + odds_nontumor * max(float(immune_enr), 0.0))
+
+    sig_comp = comp.get("signature") or {}
+    lin_comp = comp.get("lineage") or {}
+
+    # Row schema: (label, point, lower, upper, family, n_genes, note)
+    rows = []
+
+    if sig_comp.get("purity") is not None:
+        n = len(sig_comp.get("genes") or [])
+        rows.append((
+            "Tumor-specific signature",
+            float(sig_comp["purity"]),
+            _safe_float(sig_comp.get("lower")),
+            _safe_float(sig_comp.get("upper")),
+            "signature",
+            n,
+            " (deprioritized)" if signature_deprioritized else "",
+        ))
+
+    if lin_comp.get("purity") is not None:
+        n = len(lin_comp.get("genes") or [])
+        rows.append((
+            "Lineage panel",
+            float(lin_comp["purity"]),
+            _safe_float(lin_comp.get("lower")),
+            _safe_float(lin_comp.get("upper")),
+            "lineage",
+            n,
+            "",
+        ))
+
+    if stromal_purity is not None:
+        n = (comp.get("stromal") or {}).get("n_genes", 0)
+        rows.append((
+            "ESTIMATE stromal",
+            stromal_purity,
+            None,
+            None,
+            "estimate",
+            n,
+            "",
+        ))
+
+    if immune_purity is not None:
+        n = (comp.get("immune") or {}).get("n_genes", 0)
+        rows.append((
+            "ESTIMATE immune",
+            immune_purity,
+            None,
+            None,
+            "estimate",
+            n,
+            "",
+        ))
+
+    if comp.get("estimate_purity") is not None:
+        rows.append((
+            "ESTIMATE combined",
+            float(comp["estimate_purity"]),
+            None,
+            None,
+            "estimate",
+            0,
+            "",
+        ))
+
+    if decomposition_result is not None:
+        decomp_purity = getattr(decomposition_result, "purity", None)
+        if decomp_purity is not None:
+            rows.append((
+                "Decomposition (NNLS)",
+                float(decomp_purity),
+                None,
+                None,
+                "decomposition",
+                0,
+                f" [{getattr(decomposition_result, 'cancer_type', '')} / "
+                f"{getattr(decomposition_result, 'template', '')}]",
+            ))
+
+    overall = purity_result.get("overall_estimate")
+    overall_lower = purity_result.get("overall_lower")
+    overall_upper = purity_result.get("overall_upper")
+    if overall is not None:
+        rows.append((
+            "Adopted overall",
+            float(overall),
+            _safe_float(overall_lower),
+            _safe_float(overall_upper),
+            "adopted",
+            0,
+            "",
+        ))
+
+    # Family → color
+    family_color = {
+        "signature": "#2166ac",
+        "lineage": "#2ca25f",
+        "estimate": "#d6604d",
+        "decomposition": "#762a83",
+        "adopted": "#1a1a1a",
+    }
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # TCGA cohort median as reference line, labelled on the right edge.
+    if tcga_median is not None:
+        ax.axvline(
+            float(tcga_median) * 100, color="#888888",
+            linestyle="--", linewidth=1.0, alpha=0.8,
+            label=f"TCGA {cancer_code} median ({float(tcga_median):.0%})",
+        )
+
+    # Adopted overall marker as a thin vertical line so every row's
+    # alignment vs the final call is immediately visible.
+    if overall is not None:
+        ax.axvline(
+            float(overall) * 100, color="#1a1a1a",
+            linestyle=":", linewidth=1.5, alpha=0.8,
+        )
+
+    y_positions = list(range(len(rows)))
+    y_labels = []
+    for y, (label, point, lower, upper, family, n_genes, note) in zip(y_positions, rows):
+        color = family_color.get(family, "#555555")
+        point_pct = point * 100
+        # Error bar (if CI available)
+        if lower is not None and upper is not None:
+            ax.plot(
+                [lower * 100, upper * 100], [y, y],
+                color=color, linewidth=6, alpha=0.25, solid_capstyle="round",
+            )
+        # Point marker
+        ax.plot(
+            [point_pct], [y],
+            marker="o", markersize=12, color=color,
+            markeredgecolor="white", markeredgewidth=1.4,
+            linestyle="",
+        )
+        # Value text
+        ax.text(
+            point_pct + 1.5, y, f"{point_pct:.0f}%",
+            va="center", fontsize=10, fontweight="bold", color=color,
+        )
+        # Row label
+        gene_note = f" ({n_genes} genes)" if n_genes else ""
+        y_labels.append(f"{label}{gene_note}{note}")
+
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(y_labels, fontsize=10)
+    ax.invert_yaxis()
+    ax.set_xlim(-2, 105)
+    ax.set_xlabel("Purity estimate (%)", fontsize=11)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    if title is None:
+        if overall is not None and overall_lower is not None and overall_upper is not None:
+            title = (
+                f"Purity estimation methods — {cancer_code} · "
+                f"adopted {overall * 100:.0f}% "
+                f"(CI {overall_lower * 100:.0f}–{overall_upper * 100:.0f}%)"
+            )
+        else:
+            title = f"Purity estimation methods — {cancer_code}"
+        if integration_source:
+            title += f" · integration: {integration_source}"
+    ax.set_title(title, fontsize=11, fontweight="bold", loc="left")
+    ax.legend(loc="lower right", fontsize=8, frameon=False)
+
+    fig.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
+
+
+def _safe_float(x):
+    try:
+        return float(x) if x is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 # -------------------- tissue scoring --------------------
 
 
