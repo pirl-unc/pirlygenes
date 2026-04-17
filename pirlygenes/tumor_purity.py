@@ -31,6 +31,7 @@ from .gene_sets_cancer import (
     pan_cancer_expression,
 )
 from .common import _build_sample_tpm_by_symbol as _common_build_sample_tpm
+from .format import render_fold
 from .load_dataset import get_data
 
 
@@ -2016,24 +2017,24 @@ def plot_sample_summary(
     if sample_mode == "solid":
         details.extend(
             [
-                f"Stromal enrichment: {stromal_enr:.1f}x vs TCGA {cancer_code}",
-                f"Immune enrichment: {immune_enr:.1f}x vs TCGA {cancer_code}",
+                f"Stromal enrichment: {render_fold(stromal_enr)} vs TCGA {cancer_code}",
+                f"Immune enrichment: {render_fold(immune_enr)} vs TCGA {cancer_code}",
                 f"TCGA {cancer_code} median purity: {purity['tcga_median_purity']:.0%}",
             ]
         )
     elif sample_mode == "heme":
         details.extend(
             [
-                f"Stromal context: {stromal_enr:.1f}x vs TCGA {cancer_code}",
-                f"Immune context: {immune_enr:.1f}x vs TCGA {cancer_code}",
+                f"Stromal context: {render_fold(stromal_enr)} vs TCGA {cancer_code}",
+                f"Immune context: {render_fold(immune_enr)} vs TCGA {cancer_code}",
                 "Interpretation: lineage/background context, not a strict tumor-vs-immune split",
             ]
         )
     else:
         details.extend(
             [
-                f"Residual stromal context: {stromal_enr:.1f}x vs TCGA {cancer_code}",
-                f"Residual immune context: {immune_enr:.1f}x vs TCGA {cancer_code}",
+                f"Residual stromal context: {render_fold(stromal_enr)} vs TCGA {cancer_code}",
+                f"Residual immune context: {render_fold(immune_enr)} vs TCGA {cancer_code}",
                 "Interpretation: consistency vs matched lineage profile, not bulk admixture",
             ]
         )
