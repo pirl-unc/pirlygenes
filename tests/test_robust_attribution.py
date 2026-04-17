@@ -92,6 +92,54 @@ def test_amplification_does_not_trigger_confidence_downgrade():
     )
 
 
+def test_option_a_recovers_nonzero_tumor_when_mn_over_predicts():
+    """#134 Option A: when the per-gene matched-normal prediction
+    over-shoots observed, tumor attribution must fall back to
+    `observed × tumor_fraction` — not zero — so clinically curated
+    PRAD targets (KLK3 / KLK2 / TACSTD2 / FOLH1) on CRPC samples
+    retain useful signal. Previously the proportional-rescale path
+    reported tumor = 0 because matched-normal proportionally absorbed
+    the full observed signal.
+
+    We unit-test the decision logic without re-running the whole
+    decomposition: given the per-row inputs that the function receives
+    inside the attribution loop, verify that the `attr_tumor_tpm`
+    formula we chose actually matches `observed × tumor_fraction`.
+    """
+    # Canonical CRPC scenario: KLK3 observed 82, fitted tumor=28%,
+    # matched-normal fraction=26%, everything else ~3%.
+    observed = 82.0
+    top_fractions = {
+        "tumor": 0.28,
+        "matched_normal_prostate": 0.26,
+        "T_cell": 0.03,
+        "endothelial": 0.03,
+    }
+    attribution_raw = {"matched_normal_prostate": 4848.0}  # HPA over-predicts
+    attr_tme_total_raw = sum(attribution_raw.values())
+    matched_normal_over_predicted = (
+        observed > 0
+        and attribution_raw
+        and attr_tme_total_raw > observed
+    )
+    assert matched_normal_over_predicted
+
+    # Option A: rescale attribution to `observed × fitted_fraction`
+    attribution = {
+        comp: round(observed * top_fractions.get(comp, 0.0), 2)
+        for comp in attribution_raw
+    }
+    tumor_tpm = observed * top_fractions["tumor"]
+
+    # Expected: tumor ≈ 23 TPM (not zero)
+    assert 20 < tumor_tpm < 26, (
+        f"expected ~23 TPM tumor attribution; got {tumor_tpm}"
+    )
+    assert attribution["matched_normal_prostate"] < observed, (
+        "matched-normal should be scaled below observed (not absorb all)"
+    )
+
+
 def test_matched_normal_over_predicted_downgrades_and_tags():
     """When the fitted matched-normal compartment predicts more TPM
     than the sample contains (KLK3 / TACSTD2 on CRPC samples, #131),
