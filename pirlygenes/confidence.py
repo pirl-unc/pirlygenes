@@ -157,6 +157,23 @@ def compute_target_confidence(
             tier = "moderate"
         reasons.append("could be explained by a single healthy tissue's expression")
 
+    # #131: matched-normal over-prediction. When the fitted
+    # matched-normal (or any) compartment predicts more of the gene
+    # than the sample actually contains, the attribution math's
+    # tumor residual is zero by construction — but that's a ceiling
+    # effect of the model, not evidence the tumor isn't expressing
+    # the gene. Fire a moderate downgrade with a reader-facing reason
+    # so clinically curated targets (KLK3 / TACSTD2 / FOLH1 on CRPC
+    # samples) aren't silently dismissed.
+    if _get("matched_normal_over_predicted"):
+        if tier == "high":
+            tier = "moderate"
+        reasons.append(
+            "matched-normal reference over-predicts this gene — "
+            "tumor attribution hit the zero floor; the raw observed "
+            "TPM is the better read than the attributed fraction"
+        )
+
     # #128: broadly-expressed flag. A gene expressed across many
     # non-reproductive HPA tissues cannot be claimed as tumor-cell-
     # specific even when the residual attribution puts most of the

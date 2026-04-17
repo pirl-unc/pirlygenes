@@ -354,12 +354,22 @@ def _format_attribution_cell(row):
         return "—"
     broadly = bool(row.get("broadly_expressed"))
     amplified = bool(row.get("amplified_over_healthy"))
+    over_predicted = bool(row.get("matched_normal_over_predicted"))
     try:
         amp_fold = float(row.get("amplification_fold") or 0.0)
     except (TypeError, ValueError):
         amp_fold = 0.0
 
     def _tag():
+        # Over-prediction is the strongest caveat — when matched-normal
+        # alone predicts more of the gene than we observed, the
+        # attribution math can't say anything reliable about the tumor
+        # contribution (#131). Surface this first so a reader looking
+        # at e.g. KLK3 / TACSTD2 on a CRPC sample knows the "tumor 0"
+        # number isn't independent evidence that tumor cells aren't
+        # expressing the gene — it means the reference over-predicted.
+        if over_predicted:
+            return "matched-normal over-predicted"
         # Amplification is a positive specificity signal and takes
         # precedence over the broadly-expressed caution (#128). A gene
         # that's broadly expressed at baseline but observed >= 5× over

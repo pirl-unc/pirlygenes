@@ -881,6 +881,40 @@ def estimate_tumor_expression_ranges(
             raw = per_compartment_tpm_by_symbol.get(symbol)
             if raw:
                 attribution = dict(raw)
+        attr_tme_total_raw = sum(attribution.values())
+
+        # #131: over-prediction handling. In CRPC / NE-differentiated
+        # samples, AR-target genes (KLK3, KLK2, TACSTD2, FOLH1) are
+        # suppressed relative to normal prostate epithelium, yet the
+        # decomposition's ``matched_normal_prostate`` reference uses
+        # the HPA normal-prostate nTPM profile. Multiplying the fitted
+        # matched-normal fraction × the normal nTPM then predicts much
+        # more of these genes than the sample actually contains —
+        # observed on the ``rs`` PRAD sample: KLK3 4848 predicted vs
+        # 82 observed (59×), TACSTD2 77 vs 12 (6×). The raw math
+        # correctly floors tumor residual at 0, but silently zeroing a
+        # clinically interesting gene is misleading.
+        #
+        # Fix: when the per-compartment fit over-predicts, **rescale
+        # the attribution proportionally** so the reported compartment
+        # TPMs sum to observed. The relative compartment shares are
+        # preserved (matched-normal still dominates) but the absolute
+        # numbers are clipped to what we saw. Tumor residual stays at
+        # 0 (we have no unexplained expression). The
+        # ``matched_normal_over_predicted`` flag records that the fit
+        # was over-extended so the reader sees the attribution's
+        # numeric values aren't independent evidence.
+        matched_normal_over_predicted = (
+            observed > 0
+            and attribution
+            and attr_tme_total_raw > observed
+        )
+        if matched_normal_over_predicted:
+            scale = observed / attr_tme_total_raw
+            attribution = {
+                comp: round(val * scale, 2)
+                for comp, val in attribution.items()
+            }
         attr_tme_total = sum(attribution.values())
 
         # Breadth metrics (precomputed once above).
@@ -1015,6 +1049,12 @@ def estimate_tumor_expression_ranges(
             "amplification_fold": round(amplification_fold, 2),
             "amplified_over_healthy": amplified_over_healthy,
             "breadth_floor_tpm": round(breadth_floor, 2),
+            # #131: flag when the per-compartment fit over-predicted
+            # the gene's TPM. Attribution values above have been
+            # proportionally rescaled to sum to observed; raw sum is
+            # kept for audit.
+            "matched_normal_over_predicted": matched_normal_over_predicted,
+            "attribution_raw_sum_tpm": round(attr_tme_total_raw, 2),
             **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
             "median_est": round(median_est, 2),
             "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None else None,
