@@ -92,6 +92,47 @@ def test_amplification_does_not_trigger_confidence_downgrade():
     )
 
 
+def test_matched_normal_over_predicted_downgrades_and_tags():
+    """When the fitted matched-normal compartment predicts more TPM
+    than the sample contains (KLK3 / TACSTD2 on CRPC samples, #131),
+    the attribution cell must surface the caveat and the confidence
+    tier must drop from high to moderate — otherwise a clinically
+    curated target silently reports "tumor 0" as if the tumor isn't
+    expressing it."""
+    from pirlygenes.cli import _format_attribution_cell
+    from pirlygenes.confidence import (
+        ConfidenceTier,
+        compute_target_confidence,
+    )
+
+    # Row shape after the #131 rescaling: attribution values clipped
+    # to observed, over_predicted flag set.
+    row = {
+        "observed_tpm": 82.17,
+        "attribution": {"matched_normal_prostate": 82.17},  # rescaled
+        "attr_tumor_tpm": 0.0,
+        "attr_tumor_fraction": 0.0,
+        "attr_top_compartment": "matched_normal_prostate",
+        "attr_top_compartment_tpm": 82.17,
+        "matched_normal_over_predicted": True,
+        "attribution_raw_sum_tpm": 4847.81,
+        "broadly_expressed": False,
+        "amplified_over_healthy": False,
+        "amplification_fold": 0.0,
+        "tme_dominant": True,
+        "tme_explainable": True,
+    }
+    cell = _format_attribution_cell(row)
+    assert "over-predicted" in cell, f"cell missing over-predicted tag: {cell!r}"
+
+    purity_tier = ConfidenceTier(tier="high", reasons=[])
+    tier = compute_target_confidence(row, purity_tier)
+    assert tier.tier in ("moderate", "low"), (
+        f"over-predicted row should trip the tier: {tier}"
+    )
+    assert any("over-predicts" in r for r in tier.reasons), tier.reasons
+
+
 def test_truly_broadly_expressed_still_downgrades():
     """Without amplification, the broadly-expressed flag should still
     fire and the confidence tier should drop to low."""
