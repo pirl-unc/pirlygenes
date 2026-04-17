@@ -22,6 +22,7 @@ from .tumor_purity import (
     get_tumor_purity_parameters,
     plot_sample_summary,
     plot_tumor_purity,
+    plot_purity_method_comparison,
     plot_cancer_type_hypotheses,
     plot_background_tissues,
     plot_mhc_expression,
@@ -1070,6 +1071,28 @@ def _analyze_body(
         # adopted) so the figure agrees with the rest of the report
         # instead of silently recomputing a signature-only estimate.
         purity_result=analysis["purity"],
+    )
+    _plt.close("all")
+
+    # #124: side-by-side comparison of every purity estimation method
+    # on a single purity axis. The existing plot_tumor_purity panel
+    # mixes enrichment scales with purity % on the same row, which
+    # hides how much the methods agree / disagree. This dedicated
+    # figure renders signature / lineage / ESTIMATE stromal / ESTIMATE
+    # immune / ESTIMATE combined / decomposition / adopted overall on
+    # one purity axis with CI bars, plus TCGA cohort median reference.
+    print("[plot] Generating purity-method comparison plot...")
+    methods_png = (
+        "%s-purity-methods.png" % prefix if prefix else "purity-methods.png"
+    )
+    best_for_methods = (
+        decomp_results[0] if decomp_results else None
+    )
+    plot_purity_method_comparison(
+        analysis["purity"],
+        save_to_filename=methods_png,
+        save_dpi=output_dpi,
+        decomposition_result=best_for_methods,
     )
     _plt.close("all")
 
