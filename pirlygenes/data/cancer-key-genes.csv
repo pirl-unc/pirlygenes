@@ -19,6 +19,19 @@ PRAD,,KLK2,target,JNJ-69086420,bispecific,phase_1,mCRPC,KLK2-targeting bispecifi
 PRAD,,TACSTD2,target,sacituzumab govitecan,ADC,phase_2,mCRPC,Trop-2 ADC trials in CRPC following breast and urothelial approvals,
 PRAD,,AR,target,enzalutamide,small_molecule,approved,mCRPC,Second-generation AR antagonist; standard of care in CRPC,PMID:22894553
 PRAD,,AR,target,apalutamide,small_molecule,approved,nmCRPC,Approved for non-metastatic CRPC and mHSPC,PMID:29420164
+PRAD,,PSCA,biomarker,,,,,Prostate stem cell antigen — PRAD-adenocarcinoma-enriched lineage marker; co-expressed with PSMA / STEAP1 / TROP-2 in AR-retained disease,PMID:9653118
+PRAD,,PSCA,target,BPX-601,CAR-T,phase_1,mCRPC,PSCA-directed autologous CAR-T with rimiducid (GoCAR-T) — early-phase PRAD trial,PMID:32961293
+PRAD,,PSCA,target,PSMA-PSCA bispecific,bispecific,preclinical,mCRPC,PSMA×PSCA dual-targeting bispecifics in preclinical / early trials — leverage co-expression to narrow on-target / off-tumor toxicity,
+PRAD,,CD276,biomarker,,,,,B7-H3 — surface protein positively correlated with AR expression in PRAD; overexpressed in AR-retained mCRPC and a subset of NEPC,PMID:35839033
+PRAD,,CD276,target,ifinatamab deruxtecan (DS-7300),ADC,phase_2,mCRPC,B7-H3 DXd-payload ADC — active in pretreated mCRPC regardless of PSMA status; positively correlated with AR expression,PMID:35839033
+PRAD,,CD276,target,vobramitamab duocarmazine (MGC018),ADC,phase_2,mCRPC,B7-H3 ADC — TAMARACK trial in pretreated mCRPC,PMID:38061024
+PRAD,,CD276,target,enoblituzumab,antibody,phase_2,mCRPC,Anti-B7-H3 antibody — neoadjuvant and combination trials,
+PRAD,,CEACAM5,biomarker,,,,,CEA — negatively correlated with AR expression in PRAD; enriched in AR-suppressed / NEPC-trending disease where PSMA is lost,PMID:30333172
+PRAD,,CEACAM5,target,labetuzumab govitecan,ADC,phase_2,AR-low / NEPC mCRPC,CEACAM5 ADC — basket activity; candidate for AR-suppressed mCRPC where PSMA is low,
+PRAD,,CEACAM5,target,tusamitamab ravtansine,ADC,phase_2,CEACAM5+ mCRPC,CEACAM5 ADC extending from NSCLC; trials in AR-low / NE-differentiated mCRPC,
+PRAD,,FAP,biomarker,,,,,Fibroblast activation protein — marks cancer-associated fibroblasts in PRAD stroma; expression **not strongly correlated** with PSMA because it's CAF-origin rather than tumor-cell,PMID:36898755
+PRAD,,FAP,target,[68Ga]FAPI-46,radioligand,phase_2,mCRPC,FAP-directed PET imaging — detects PSMA-negative / NEPC disease by imaging tumor stroma,PMID:36898755
+PRAD,,FAP,target,[177Lu]FAPI-46,radioligand,phase_1,mCRPC,FAP-directed radioligand therapy — early-phase trials for PSMA-low or PSMA-refractory mCRPC,PMID:36898755
 BRCA,,ESR1,biomarker,,,,,Estrogen receptor — drives endocrine therapy indication; loss / mutation marks endocrine resistance,PMID:27532823
 BRCA,,PGR,biomarker,,,,,Progesterone receptor — luminal marker; retained PR favors endocrine sensitivity,PMID:17438091
 BRCA,,ERBB2,biomarker,,,,,HER2 — gating biomarker for HER2-targeted agents; IHC/ISH 3+ or FISH-amplified eligible,PMID:17544441
