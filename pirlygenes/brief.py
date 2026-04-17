@@ -116,6 +116,17 @@ def _top_therapies(
         # don't belong in the clinician handoff per #79 semantics.
         if attr_fraction < 0.30:
             continue
+        # Note (#128): we deliberately do NOT filter on
+        # ``broadly_expressed`` here. The caller's ``targets_df`` is
+        # the **curated** cancer-key-genes panel (#110) — every row
+        # in it has been evaluated by hand as a clinician-relevant
+        # target, often because the targeting mechanism is
+        # amplification or lineage-retained overexpression rather
+        # than baseline expression breadth (ERBB2 for HER2+ BRCA,
+        # MDM2 for WD/DD-LPS, GPC3 for HCC). Trust curation. The
+        # broadly-expressed flag is enforced in the generic Surface
+        # / Intracellular target tables where ranking is by raw
+        # expression, not curation.
         phase = str(t.get("phase") or "")
         sort_key = (phase_priority.get(phase, 99), -attr_tumor, sym)
         scored.append((sort_key, t, expr))

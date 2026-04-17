@@ -329,12 +329,15 @@ def _filter_quality_flags_against_context(flags, sample_context):
 
 
 def _format_attribution_cell(row):
-    """Compact per-target Attribution cell for targets.md (#108).
+    """Compact per-target Attribution cell for targets.md (#108, #128).
 
     Renders "tumor T / comp C" when the decomposition produced a per-
     compartment attribution for this gene; returns "—" when attribution
-    isn't available (no decomposition ran, or the gene wasn't in the
-    reference matrix).
+    isn't available.
+
+    For genes flagged ``broadly_expressed`` (#128), appends a brief
+    "broadly expr." tag so the reader can't mistake a high
+    tumor-attribution number for a specificity claim.
     """
     try:
         observed = float(row.get("observed_tpm") or 0.0)
@@ -343,18 +346,44 @@ def _format_attribution_cell(row):
     if observed <= 0:
         return "—"
     attribution = row.get("attribution")
-    if not attribution or not isinstance(attribution, dict):
-        return "—"
     try:
         attr_tumor = float(row.get("attr_tumor_tpm") or 0.0)
         top_comp = row.get("attr_top_compartment") or ""
         top_tpm = float(row.get("attr_top_compartment_tpm") or 0.0)
     except (TypeError, ValueError):
         return "—"
+    broadly = bool(row.get("broadly_expressed"))
+    amplified = bool(row.get("amplified_over_healthy"))
+    try:
+        amp_fold = float(row.get("amplification_fold") or 0.0)
+    except (TypeError, ValueError):
+        amp_fold = 0.0
+
+    def _tag():
+        # Amplification is a positive specificity signal and takes
+        # precedence over the broadly-expressed caution (#128). A gene
+        # that's broadly expressed at baseline but observed >= 5× over
+        # the peak healthy tissue is telling an amplification /
+        # overexpression story — HER2 in HER2+ BRCA, MDM2 in WD/DD-LPS.
+        if amplified and amp_fold >= 1.5:
+            return f"amplified {amp_fold:.1f}\u00d7"
+        if broadly:
+            return "broadly expr."
+        return ""
+
+    tag = _tag()
+    if not attribution or not isinstance(attribution, dict):
+        if tag:
+            return tag
+        return "—"
     if not top_comp:
-        return f"tumor {attr_tumor:.0f}"
-    comp_label = top_comp.replace("_", " ")
-    return f"tumor {attr_tumor:.0f} / {comp_label} {top_tpm:.0f}"
+        base = f"tumor {attr_tumor:.0f}"
+    else:
+        comp_label = top_comp.replace("_", " ")
+        base = f"tumor {attr_tumor:.0f} / {comp_label} {top_tpm:.0f}"
+    if tag:
+        base += f" · {tag}"
+    return base
 
 
 def _ci_confidence_tier(overall_lower, overall_upper):
@@ -3166,7 +3195,12 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                 "\nAttribution column shows `tumor {tpm} / {dominant "
                 "non-tumor compartment} {tpm}` from the decomposition "
                 "fit; `—` means no decomposition attribution was "
-                "available for this gene."
+                "available for this gene. A trailing `· broadly expr.` "
+                "flag (#128) means the gene is detected above 5 nTPM "
+                "in many non-reproductive HPA tissues and has no "
+                "strongly enriched tissue — tumor-cell specificity is "
+                "not supported regardless of the numeric tumor-attributed "
+                "TPM."
             )
         if any_explainable:
             lines.append(

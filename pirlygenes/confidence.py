@@ -157,6 +157,37 @@ def compute_target_confidence(
             tier = "moderate"
         reasons.append("could be explained by a single healthy tissue's expression")
 
+    # #128: broadly-expressed flag. A gene expressed across many
+    # non-reproductive HPA tissues cannot be claimed as tumor-cell-
+    # specific even when the residual attribution puts most of the
+    # observed TPM into the tumor compartment, because the sample's
+    # healthy cells alone carry a baseline broader than any single
+    # compartment in the fitted decomposition.
+    #
+    # Amplification overrides: HER2 in HER2+ BRCA, MDM2 in WD/DD-LPS,
+    # GPC3 in HCC — broadly expressed per HPA but observed well above
+    # peak-healthy in the sample, which IS a tumor-specificity signal
+    # regardless of breadth. The ``broadly_expressed`` column in
+    # ranges_df is already gated on ``not amplified_over_healthy`` so
+    # amplification-driven targets don't even trigger this branch.
+    n_tissues = _get("n_healthy_tissues_expressed")
+    amp_fold = _get("amplification_fold")
+    if _get("broadly_expressed"):
+        tier = "low"
+        amp_note = ""
+        if isinstance(amp_fold, (int, float)) and float(amp_fold) < 5.0:
+            amp_note = f", peak-healthy fold only {float(amp_fold):.1f}×"
+        if isinstance(n_tissues, (int, float)):
+            reasons.append(
+                f"broadly expressed across {int(n_tissues)} healthy "
+                f"tissues{amp_note} — not tumor-cell-specific"
+            )
+        else:
+            reasons.append(
+                "broadly expressed across many healthy tissues — "
+                "not tumor-cell-specific"
+            )
+
     attr_fraction = _get("attr_tumor_fraction")
     if isinstance(attr_fraction, (int, float)) and 0.3 <= float(attr_fraction) < 0.5:
         if tier == "high":
