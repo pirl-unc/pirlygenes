@@ -148,3 +148,127 @@ LAML,,BCL2,target,venetoclax,small_molecule,approved,AML (unfit),Venetoclax+azac
 LAML,,KMT2A,target,revumenib,small_molecule,approved,R/R KMT2A-rearranged AML,Menin inhibitor approved in KMT2A-rearranged R/R AML,PMID:37018480
 LAML,,NPM1,target,revumenib,small_molecule,phase_2,NPM1-mut AML,Menin inhibitor trials in NPM1-mutant AML,PMID:37018480
 LAML,,CD123,target,tagraxofusp,fusion,approved,BPDCN,CD123-directed; approved for BPDCN (related myeloid malignancy),PMID:30987805
+UCEC,,MLH1,biomarker,,,,,MMR gene — loss indicates MSI-H / dMMR; gates pembrolizumab / dostarlimab,PMID:26028255
+UCEC,,MSH2,biomarker,,,,,MMR gene — MSI-H / dMMR marker; Lynch syndrome relevance,PMID:26028255
+UCEC,,MSH6,biomarker,,,,,MMR gene — MSI-H / dMMR marker,PMID:26028255
+UCEC,,PMS2,biomarker,,,,,MMR gene — MSI-H / dMMR marker,PMID:26028255
+UCEC,,POLE,biomarker,,,,,Ultramutated TCGA subtype; exceptional IO responders despite MMR-proficient,PMID:23636398
+UCEC,,PTEN,biomarker,,,,,Loss common in endometrioid; prognostic,PMID:23636398
+UCEC,,TP53,biomarker,,,,,Mutation marks serous-like / copy-number-high TCGA subtype; adverse prognosis,PMID:23636398
+UCEC,,PAX8,biomarker,,,,,Müllerian lineage — diagnostic of endometrial / gynaecologic origin,PMID:21577204
+UCEC,,ERBB2,biomarker,,,,,HER2 amplified / overexpressed in serous subtype; gates trastuzumab combos,PMID:29967118
+UCEC,,ARID1A,biomarker,,,,,Loss common in endometrioid and clear-cell subtypes; IO-modifying,PMID:23636398
+UCEC,,CTNNB1,biomarker,,,,,Exon 3 mutation — low-grade endometrioid marker with distinct prognosis,PMID:23636398
+UCEC,,CD274,target,pembrolizumab,antibody,approved,MSI-H / dMMR UCEC,PD-1 blockade — frontline IO for MSI-H / dMMR advanced UCEC,PMID:32834393
+UCEC,,CD274,target,dostarlimab,antibody,approved,MSI-H / dMMR UCEC,PD-1 blockade approved for dMMR endometrial cancer (GARNET),PMID:32941234
+UCEC,,CD274,target,pembrolizumab + lenvatinib,antibody,approved,pMMR UCEC,IO + VEGFR-TKI combination for pMMR advanced endometrial,PMID:32150749
+UCEC,,ERBB2,target,trastuzumab,antibody,phase_3,HER2+ serous UCEC,HER2 combined with chemo in HER2+ serous UCEC,PMID:29967118
+UCEC,,ERBB2,target,trastuzumab deruxtecan,ADC,phase_2,HER2+/HER2-low UCEC,Enhertu basket activity in HER2-expressing endometrial,PMID:36423325
+STAD,,ERBB2,biomarker,,,,,HER2 amplification — gates trastuzumab-based therapy,PMID:20728210
+STAD,,CLDN18,biomarker,,,,,Claudin-18 isoform 2 expression — gates zolbetuximab,PMID:37256819
+STAD,,MLH1,biomarker,,,,,MSI-H marker; gates checkpoint IO,PMID:25079317
+STAD,,MSH2,biomarker,,,,,MSI-H marker; Lynch syndrome relevance,PMID:25079317
+STAD,,EBER1,biomarker,,,,,EBV-encoded RNA — marks EBV subtype with distinct IO sensitivity,PMID:25079317
+STAD,,CD274,biomarker,,,,,PD-L1 CPS gates first-line IO,PMID:32171126
+STAD,,FGFR2,biomarker,,,,,Amplification in diffuse-type gastric; FGFR inhibitor eligibility,PMID:23674492
+STAD,,MET,biomarker,,,,,Amplification / overexpression; targeted-therapy interest,PMID:28947956
+STAD,,ERBB2,target,trastuzumab,antibody,approved,HER2+ gastric/GEJ,First-line with chemo for HER2+ gastric (ToGA),PMID:20728210
+STAD,,ERBB2,target,trastuzumab deruxtecan,ADC,approved,HER2+ gastric/GEJ,Enhertu approved in HER2-mut / HER2+ gastric post-progression,PMID:32469182
+STAD,,CLDN18,target,zolbetuximab,antibody,approved,CLDN18.2+ HER2- gastric/GEJ,SPOTLIGHT and GLOW trial-led approval for CLDN18.2+ HER2-negative advanced gastric,PMID:37256819
+STAD,,CD274,target,pembrolizumab,antibody,approved,PD-L1+ / MSI-H gastric/GEJ,KEYNOTE-859 — first-line IO combo for PD-L1 CPS ≥1 (≥10 in EU),PMID:37989261
+STAD,,CD274,target,nivolumab,antibody,approved,gastric/GEJ,CheckMate 649 — first-line IO combo,PMID:33891889
+STAD,,VEGFR2,target,ramucirumab,antibody,approved,pretreated gastric/GEJ,Anti-VEGFR2 — second-line combined with paclitaxel,PMID:25240821
+STAD,,FGFR2,target,bemarituzumab,antibody,phase_3,FGFR2b+ gastric,FIGHT trial — FGFR2b-selective antibody,PMID:36089003
+BLCA,,FGFR3,biomarker,,,,,Activating mutations / fusions — erdafitinib eligibility,PMID:31340094
+BLCA,,NECTIN4,biomarker,,,,,Nectin-4 expression — gates enfortumab vedotin,PMID:30423390
+BLCA,,TACSTD2,biomarker,,,,,Trop-2 expression — gates sacituzumab govitecan,PMID:33882206
+BLCA,,CD274,biomarker,,,,,PD-L1 — gates first-line IO (CPS-aware),PMID:29268932
+BLCA,,ERBB2,biomarker,,,,,HER2 amplification subset — trastuzumab combos / ADCs,PMID:35665782
+BLCA,,FOXA1,biomarker,,,,,Luminal-subtype marker (BASE47 / consensus classifiers),PMID:28988769
+BLCA,,UPK2,biomarker,,,,,Uroplakin II — urothelial lineage confirmation,PMID:9890150
+BLCA,,GATA3,biomarker,,,,,Luminal urothelial lineage marker,PMID:28988769
+BLCA,,KRT5,biomarker,,,,,Basal-subtype marker,PMID:28988769
+BLCA,,FGFR3,target,erdafitinib,small_molecule,approved,FGFR3-altered advanced urothelial,FGFR1-4 inhibitor — second-line post platinum + IO (THOR),PMID:37870969
+BLCA,,NECTIN4,target,enfortumab vedotin,ADC,approved,advanced urothelial,Padcev — first-line combined with pembrolizumab (EV-302) and monotherapy in subsequent lines,PMID:38076652
+BLCA,,TACSTD2,target,sacituzumab govitecan,ADC,approved,advanced urothelial,Trodelvy — second-line post platinum/IO,PMID:33882206
+BLCA,,CD274,target,pembrolizumab,antibody,approved,advanced urothelial,First-line with EV (EV-302) and monotherapy for cisplatin-ineligible PD-L1+,PMID:38076652
+BLCA,,CD274,target,atezolizumab,antibody,approved,advanced urothelial,Anti-PD-L1; earlier approvals since narrowed,PMID:28212060
+BLCA,,CD274,target,avelumab,antibody,approved,advanced urothelial,Maintenance IO after platinum response (JAVELIN Bladder 100),PMID:32945632
+BLCA,,ERBB2,target,trastuzumab deruxtecan,ADC,phase_2,HER2+ urothelial,Enhertu basket activity in HER2-expressing urothelial,PMID:36423325
+KIRC,,KDR,biomarker,,,,,VEGFR2 — target of TKI backbone in RCC,PMID:17215530
+KIRC,,FLT1,biomarker,,,,,VEGFR1 — VEGF pathway marker,
+KIRC,,MET,biomarker,,,,,MET overexpression / amplification — cabozantinib activity,PMID:26406150
+KIRC,,AXL,biomarker,,,,,Cabozantinib target; linked to VEGFR-TKI resistance,PMID:26406150
+KIRC,,CD274,biomarker,,,,,PD-L1 enriched in sarcomatoid; prognostic for IO response,PMID:25399552
+KIRC,,PBRM1,biomarker,,,,,Loss common in ccRCC; candidate IO-response biomarker,PMID:29301960
+KIRC,,BAP1,biomarker,,,,,Loss — adverse prognosis; differential biology,PMID:22683710
+KIRC,,VHL,biomarker,,,,,Inactivation drives HIF axis; universal in sporadic ccRCC,PMID:22683710
+KIRC,,HIF1A,biomarker,,,,,HIF axis activation marker downstream of VHL loss,
+KIRC,,CA9,biomarker,,,,,CAIX — HIF-driven surface marker; diagnostic and theranostic target,PMID:18483390
+KIRC,,PAX8,biomarker,,,,,Kidney epithelial lineage — diagnostic in difficult cases,PMID:21577204
+KIRC,,KDR,target,sunitinib,small_molecule,approved,advanced RCC,Multikinase TKI — historic first-line backbone,PMID:17215530
+KIRC,,KDR,target,pazopanib,small_molecule,approved,advanced RCC,Multikinase TKI,PMID:20100962
+KIRC,,KDR,target,cabozantinib,small_molecule,approved,advanced RCC,MET/VEGFR/AXL multi-TKI — monotherapy and combined with IO,PMID:26406150
+KIRC,,KDR,target,axitinib,small_molecule,approved,advanced RCC,VEGFR inhibitor — combined with pembrolizumab or avelumab in first-line,PMID:30779529
+KIRC,,KDR,target,lenvatinib,small_molecule,approved,advanced RCC,VEGFR multi-TKI — with pembrolizumab (CLEAR) in first-line,PMID:33616314
+KIRC,,CD274,target,pembrolizumab,antibody,approved,advanced RCC,Anti-PD-1 — first-line combined with axitinib or lenvatinib,PMID:30779529
+KIRC,,CD274,target,nivolumab + ipilimumab,antibody,approved,intermediate/poor-risk RCC,IO-IO combination (CheckMate 214),PMID:29562145
+KIRC,,CD274,target,avelumab + axitinib,antibody,approved,advanced RCC,Anti-PD-L1 + VEGFR-TKI combination,PMID:30779531
+KIRC,,HIF2A,target,belzutifan,small_molecule,approved,VHL-associated RCC / advanced ccRCC,HIF-2α inhibitor — approved for VHL syndrome and post-IO/TKI ccRCC,PMID:34597551
+KIRC,,CA9,target,girentuximab,antibody,phase_3,non-metastatic ccRCC,"CAIX antibody — ZIRCON imaging approved; ARISER, adjuvant trials",PMID:24100620
+CESC,,CDKN2A,biomarker,,,,,p16 — surrogate marker for HPV-driven cervical / head-and-neck,PMID:12649158
+CESC,,CD274,biomarker,,,,,PD-L1 CPS — gates first-line pembrolizumab,PMID:32795402
+CESC,,F3,biomarker,,,,,Tissue factor expression — gates tisotumab vedotin,PMID:32882178
+CESC,,MUC16,biomarker,,,,,Elevated in adenocarcinoma subset; emerging target,
+CESC,,CD274,target,pembrolizumab,antibody,approved,recurrent/metastatic CESC,Anti-PD-1 — first-line with chemo (KEYNOTE-826),PMID:34534429
+CESC,,CD274,target,cemiplimab,antibody,approved,recurrent/metastatic CESC,Anti-PD-1 — post-progression (EMPOWER-Cervical 1),PMID:35179851
+CESC,,F3,target,tisotumab vedotin,ADC,approved,recurrent/metastatic CESC,Tivdak — tissue-factor ADC,PMID:33497583
+CESC,,CD274,target,nivolumab,antibody,phase_3,recurrent/metastatic CESC,Anti-PD-1 — CheckMate 358 activity,PMID:31116649
+ESCA,,ERBB2,biomarker,,,,,HER2 amplification in adenocarcinoma — trastuzumab eligibility,PMID:20728210
+ESCA,,CD274,biomarker,,,,,PD-L1 CPS — first-line IO,PMID:32178703
+ESCA,,MLH1,biomarker,,,,,MSI-H marker — uncommon but eligible for IO,
+ESCA,,TP53,biomarker,,,,,Mutation common; prognostic,PMID:28052061
+ESCA,,CLDN18,biomarker,,,,,CLDN18.2 expression in GEJ / lower-esophageal adeno,PMID:37256819
+ESCA,,FGFR2,biomarker,,,,,Amplification subset; FGFR-inhibitor eligibility,PMID:23674492
+ESCA,,ERBB2,target,trastuzumab,antibody,approved,HER2+ GEJ/esophageal,First-line with chemo (ToGA extension),PMID:20728210
+ESCA,,ERBB2,target,trastuzumab deruxtecan,ADC,approved,HER2+ GEJ/esophageal,Enhertu in HER2-mut / HER2+ esophagogastric post-progression,PMID:32469182
+ESCA,,CD274,target,nivolumab,antibody,approved,advanced esophageal/GEJ,First-line IO combination (CheckMate 648 / 649),PMID:33891889
+ESCA,,CD274,target,pembrolizumab,antibody,approved,advanced esophageal squamous / adeno,First-line with chemo (KEYNOTE-590),PMID:34454674
+ESCA,,CLDN18,target,zolbetuximab,antibody,approved,CLDN18.2+ HER2- GEJ,SPOTLIGHT / GLOW — CLDN18.2+ HER2-negative advanced gastric/GEJ,PMID:37256819
+PAAD,,KRAS,biomarker,,,,,Activating mutations near universal (G12D most common); predictive and stratifying,PMID:20644561
+PAAD,,BRCA1,biomarker,,,,,Germline mutation — olaparib maintenance eligibility,PMID:31157963
+PAAD,,BRCA2,biomarker,,,,,Germline mutation — olaparib maintenance eligibility,PMID:31157963
+PAAD,,PALB2,biomarker,,,,,HRD gene; emerging PARP inhibitor trials,PMID:33293427
+PAAD,,TP53,biomarker,,,,,Mutation common; prognostic and co-occurring with KRAS,PMID:25079552
+PAAD,,CDKN2A,biomarker,,,,,Frequent loss; potential synthetic-lethal approaches,PMID:25079552
+PAAD,,SMAD4,biomarker,,,,,Loss associated with metastatic phenotype / adverse prognosis,PMID:25079552
+PAAD,,CLDN18,biomarker,,,,,CLDN18.2 expression subset — emerging target for zolbetuximab / ADCs,PMID:37256819
+PAAD,,NRG1,biomarker,,,,,NRG1 fusion — actionable subset with zenocutuzumab,PMID:34521628
+PAAD,,KRT19,biomarker,,,,,Pancreatic ductal adenocarcinoma lineage marker,PMID:18239683
+PAAD,,PDX1,biomarker,,,,,Pancreatic lineage transcription factor,
+PAAD,,BRCA1,target,olaparib,small_molecule,approved,gBRCA-mut metastatic PAAD,PARP inhibitor maintenance after platinum response (POLO),PMID:31157963
+PAAD,,NRG1,target,zenocutuzumab,antibody,approved,NRG1-fusion PAAD and NSCLC,Bispecific HER2/HER3 in NRG1-fusion tumours,PMID:34521628
+PAAD,,KRAS,target,adagrasib,small_molecule,phase_2,KRAS G12C PAAD,KRAS G12C inhibitor — basket activity,PMID:35658005
+PAAD,,KRAS,target,sotorasib,small_molecule,phase_2,KRAS G12C PAAD,KRAS G12C inhibitor — basket activity,PMID:34252278
+PAAD,,KRAS,target,MRTX1133,small_molecule,phase_1,KRAS G12D PAAD,Selective KRAS G12D inhibitor in early clinical development,PMID:36446367
+PAAD,,CLDN18,target,zolbetuximab,antibody,phase_2,CLDN18.2+ PAAD,CLDN18.2 antibody extending from gastric into PAAD trials,
+PAAD,,ERBB2,target,trastuzumab deruxtecan,ADC,phase_2,HER2+ PAAD,Enhertu basket activity in HER2-expressing PAAD,PMID:36423325
+LIHC,,AFP,biomarker,,,,,Alpha-fetoprotein — diagnostic and prognostic serum marker,PMID:14985538
+LIHC,,GPC3,biomarker,,,,,Glypican-3 — HCC-enriched surface antigen; diagnostic and target,PMID:14985538
+LIHC,,CTNNB1,biomarker,,,,,Activating exon 3 mutations common; β-catenin-active subtype,PMID:28187286
+LIHC,,TERT,biomarker,,,,,Promoter mutation — the most frequent somatic alteration in HCC,PMID:24753553
+LIHC,,TP53,biomarker,,,,,Mutation marks HBV-associated and more aggressive disease,PMID:28187286
+LIHC,,AXIN1,biomarker,,,,,Wnt pathway alteration — subset of HCC,PMID:28187286
+LIHC,,FGF19,biomarker,,,,,11q13 amplification with CCND1 — FGFR4 pathway,PMID:24474064
+LIHC,,VEGFA,biomarker,,,,,Elevated in HCC; rationale for VEGF-axis therapy,
+LIHC,,MET,biomarker,,,,,Overexpression subset; tivantinib / cabozantinib interest,PMID:26436913
+LIHC,,CD274,biomarker,,,,,PD-L1 prognostic in some cohorts; role in IO response,PMID:32185388
+LIHC,,CD274,target,atezolizumab + bevacizumab,antibody,approved,advanced HCC,First-line IO + VEGF (IMbrave150),PMID:32402160
+LIHC,,CD274,target,durvalumab + tremelimumab,antibody,approved,advanced HCC,STRIDE regimen — PD-L1 + CTLA-4 (HIMALAYA),PMID:36198093
+LIHC,,KDR,target,sorafenib,small_molecule,approved,advanced HCC,Historic first-line multikinase TKI,PMID:18650514
+LIHC,,KDR,target,lenvatinib,small_molecule,approved,advanced HCC,First-line multikinase TKI (REFLECT),PMID:29433850
+LIHC,,MET,target,cabozantinib,small_molecule,approved,advanced HCC (2L),Multikinase TKI — second-line post sorafenib (CELESTIAL),PMID:29972759
+LIHC,,KDR,target,regorafenib,small_molecule,approved,advanced HCC (2L),Multikinase TKI — post-sorafenib,PMID:27932229
+LIHC,,VEGFR2,target,ramucirumab,antibody,approved,AFP+ advanced HCC (2L),Anti-VEGFR2 for AFP ≥ 400 (REACH-2),PMID:30665869
+LIHC,,GPC3,target,codrituzumab,antibody,phase_2,GPC3+ HCC,Glypican-3 antibody — earlier trials; active ADC / CAR-T programmes,PMID:28698288
+LIHC,,FGF19,target,fisogatinib,small_molecule,phase_1,FGF19+ HCC,FGFR4-selective inhibitor for FGF19-amplified HCC,PMID:31694886
