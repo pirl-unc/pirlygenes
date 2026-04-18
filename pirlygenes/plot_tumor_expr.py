@@ -883,33 +883,43 @@ def estimate_tumor_expression_ranges(
                 attribution = dict(raw)
         attr_tme_total_raw = sum(attribution.values())
 
-        # #131: over-prediction handling. In CRPC / NE-differentiated
-        # samples, AR-target genes (KLK3, KLK2, TACSTD2, FOLH1) are
-        # suppressed relative to normal prostate epithelium, yet the
-        # decomposition's ``matched_normal_prostate`` reference uses
-        # the HPA normal-prostate nTPM profile. Multiplying the fitted
-        # matched-normal fraction × the normal nTPM then predicts much
-        # more of these genes than the sample actually contains —
-        # observed on the ``rs`` PRAD sample: KLK3 4848 predicted vs
-        # 82 observed (59×), TACSTD2 77 vs 12 (6×). The raw math
-        # correctly floors tumor residual at 0, but silently zeroing a
-        # clinically interesting gene is misleading.
+        # #131 / #134 Option A: when the per-gene compartment fit
+        # over-predicts (sum of reference × fitted_fraction exceeds
+        # observed), we can't use the reference-weighted attribution
+        # because it's internally inconsistent — either the fitted
+        # matched-normal fraction is too high, or the sample's
+        # matched-normal cells are expressing this gene below the
+        # HPA reference (CRPC / AR-suppression is the canonical case
+        # for KLK3 / KLK2 / TACSTD2 / FOLH1 on the rs sample).
         #
-        # Fix: when the per-compartment fit over-predicts, **rescale
-        # the attribution proportionally** so the reported compartment
-        # TPMs sum to observed. The relative compartment shares are
-        # preserved (matched-normal still dominates) but the absolute
-        # numbers are clipped to what we saw. Tumor residual stays at
-        # 0 (we have no unexplained expression). The
-        # ``matched_normal_over_predicted`` flag records that the fit
-        # was over-extended so the reader sees the attribution's
-        # numeric values aren't independent evidence.
+        # Fall back to a **purity-weighted split**: each compartment
+        # receives `observed × fitted_fraction` (agnostic to the
+        # per-gene HPA reference), and tumor receives
+        # `observed × tumor_fraction`. Per-gene attribution is no
+        # longer "reference × fit" but "sample-level-fraction ×
+        # observed" — honest about the fact that the per-gene signal
+        # alone can't distinguish tumor from matched-normal when the
+        # reference over-predicts. The
+        # ``matched_normal_over_predicted`` flag marks these rows so
+        # the confidence tier and Attribution cell both surface the
+        # caveat.
+        #
+        # This recovers clinically useful nonzero tumor attribution for
+        # exactly the PRAD targets that matter (KLK3 82 TPM observed
+        # → tumor ~23 TPM on a 28% purity sample, vs the old
+        # proportional-rescale path that reported tumor = 0).
         matched_normal_over_predicted = (
             observed > 0
             and attribution
             and attr_tme_total_raw > observed
         )
-        if matched_normal_over_predicted:
+        if matched_normal_over_predicted and top_fractions:
+            for comp in list(attribution.keys()):
+                frac = float(top_fractions.get(comp, 0.0) or 0.0)
+                attribution[comp] = round(observed * frac, 2)
+        elif matched_normal_over_predicted:
+            # No fitted fractions available — fall back to proportional
+            # rescale so compartment display sums to observed.
             scale = observed / attr_tme_total_raw
             attribution = {
                 comp: round(val * scale, 2)
@@ -973,8 +983,23 @@ def estimate_tumor_expression_ranges(
         # (per-compartment fit, breadth baseline). For gene-sparse
         # cases where the compartment fit is tiny but healthy cells
         # alone carry a meaningful baseline, breadth floor wins.
-        effective_non_tumor = max(attr_tme_total, breadth_floor)
-        attr_tumor_tpm = max(0.0, observed - effective_non_tumor)
+        #
+        # #134 Option A: when matched-normal over-predicts, tumor is
+        # computed directly from the purity split rather than the
+        # residual — `observed × tumor_fraction`. The breadth floor
+        # is still applied as a sanity check so broadly-expressed
+        # genes don't claim unreasonably high tumor attribution even
+        # under the purity-weighted fallback. Non-over-predicted
+        # rows keep the residual semantics unchanged.
+        if matched_normal_over_predicted and top_fractions:
+            tumor_fraction_fit = float(top_fractions.get("tumor", 0.0) or 0.0)
+            if tumor_fraction_fit <= 0:
+                tumor_fraction_fit = float(p_med or 0.0)
+            purity_inferred_tumor = observed * tumor_fraction_fit
+            attr_tumor_tpm = max(0.0, min(purity_inferred_tumor, observed - breadth_floor))
+        else:
+            effective_non_tumor = max(attr_tme_total, breadth_floor)
+            attr_tumor_tpm = max(0.0, observed - effective_non_tumor)
         attr_tumor_fraction = (
             float(attr_tumor_tpm / observed) if observed > 0 else 0.0
         )
