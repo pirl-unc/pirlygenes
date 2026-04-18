@@ -15,12 +15,49 @@ from pathlib import Path
 
 
 def _load_extra_tx_mappings() -> dict:
+    """Return ``{transcript_id: gene_symbol}`` for back-compat.
+
+    Consumed by :mod:`pirlygenes.aggregate_gene_expression` and
+    :mod:`pirlygenes.load_expression` as a fallback before the
+    pyensembl cascade — a transcript that pyensembl doesn't know
+    about (GENCODE alt-haplotype contigs, transcripts retired
+    between Ensembl releases, etc.) can still be resolved to a gene
+    symbol here. Richer per-row metadata (gene_id, biotype, source
+    notes) lives in the CSV too and is exposed via
+    :func:`load_extra_tx_mapping_records` for consumers that need it
+    (#122).
+    """
     p = Path(__file__).parent / "data" / "extra-tx-mappings.csv"
     out = {}
     with open(p) as f:
         for row in csv.DictReader(f):
             out[row["transcript_id"]] = row["gene_symbol"]
     return out
+
+
+def load_extra_tx_mapping_records() -> list[dict]:
+    """Return the full record for each row in
+    ``data/extra-tx-mappings.csv``.
+
+    Columns: ``transcript_id, gene_symbol, ensembl_gene_id (may be
+    empty), biotype (may be empty), source_notes (may be empty)``.
+
+    Use this when you need the gene_id / biotype annotation (#122) —
+    the plain :func:`_load_extra_tx_mappings` strips everything except
+    the transcript → symbol mapping for aggregator back-compat.
+    """
+    p = Path(__file__).parent / "data" / "extra-tx-mappings.csv"
+    records = []
+    with open(p) as f:
+        for row in csv.DictReader(f):
+            records.append({
+                "transcript_id": row["transcript_id"],
+                "gene_symbol": row["gene_symbol"],
+                "ensembl_gene_id": row.get("ensembl_gene_id") or "",
+                "biotype": row.get("biotype") or "",
+                "source_notes": row.get("source_notes") or "",
+            })
+    return records
 
 
 extra_tx_mappings = _load_extra_tx_mappings()

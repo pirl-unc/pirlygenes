@@ -501,8 +501,13 @@ def _resolve_unknown_transcripts_for_raw_frame(df, verbose=False, progress=True)
 
     # pandas.Series.map with a dict: missing keys yield NaN.
     gene_series = tx0.map(static_map)
+    # #122: count how many unique transcripts were resolved via the
+    # auxiliary CSV vs pyensembl, so a curator can see the aux map
+    # actually getting used (otherwise it silently goes stale).
+    aux_used = set(tx0[~gene_series.isna()].dropna().unique()) & set(static_map.keys())
     unknown_mask = gene_series.isna()
     resolved = {k: v for k, v in static_map.items() if v is not None}
+    pyensembl_used = set()
     if unknown_mask.any():
         unknown_unique = pd.Index(tx0[unknown_mask].dropna().unique())
         pyensembl_hits = _resolve_unknown_transcripts_to_genes(
@@ -516,6 +521,13 @@ def _resolve_unknown_transcripts_for_raw_frame(df, verbose=False, progress=True)
         for k, v in pyensembl_hits.items():
             if v is not None:
                 resolved[k] = v
+                pyensembl_used.add(k)
+    if verbose and (aux_used or pyensembl_used):
+        print(
+            f"[load] Transcript resolution: "
+            f"{len(aux_used)} via extra-tx-mappings.csv (#122), "
+            f"{len(pyensembl_used)} via pyensembl cascade"
+        )
     return resolved
 
 
