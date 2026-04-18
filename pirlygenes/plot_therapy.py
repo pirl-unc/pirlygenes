@@ -1267,3 +1267,200 @@ def plot_ctas_vs_cancer_type_detail(
         fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
         print(f"Saved {save_to_filename}")
     return fig
+
+
+# ── Therapy-pathway state plot (#136) ───────────────────────────────────
+
+
+_AXIS_STATE_COLOR = {
+    "up": "#2ca25f",        # active
+    "down": "#d6604d",      # suppressed
+    "mixed": "#c9a227",     # mixed / indeterminate
+    "indeterminate": "#8888a0",
+}
+
+
+def _format_axis_label(therapy_class: str) -> str:
+    """Human labels for the therapy-response axis names — the raw
+    ``therapy_class`` strings (e.g. ``AR_signaling``) read fine in a
+    TSV but are noisy in a figure title."""
+    mapping = {
+        "AR_signaling": "AR signaling",
+        "ER_signaling": "ER signaling",
+        "HER2_signaling": "HER2 signaling",
+        "MAPK_EGFR": "MAPK / EGFR",
+        "NE_differentiation": "NE differentiation",
+        "EMT": "EMT",
+        "hypoxia": "Hypoxia",
+        "IFN_response": "IFN response",
+    }
+    return mapping.get(therapy_class, therapy_class.replace("_", " "))
+
+
+def plot_therapy_pathway_state(
+    therapy_response_scores,
+    cancer_code: str = "",
+    disease_state_caption: str = "",
+    save_to_filename=None,
+    save_dpi: int = 300,
+    figsize=None,
+):
+    """One-figure therapy-pathway state readout (#136).
+
+    Renders the disease-state narrative visually: one row per therapy-
+    response axis (AR / NE / EMT / hypoxia / IFN / ER / HER2 where
+    applicable), dumbbell showing up-panel vs down-panel fold-vs-
+    cohort, with state label + color. A caption underneath restates
+    the disease-state sentence so the figure is self-contained for
+    tumor-board review.
+
+    Parameters
+    ----------
+    therapy_response_scores : dict
+        ``analysis["therapy_response_scores"]`` — per-axis
+        :class:`pirlygenes.therapy_response.TherapyAxisScore`.
+    cancer_code : str
+        Displayed in the title for context.
+    disease_state_caption : str
+        Text to display under the plot (typically the output of
+        :func:`compose_disease_state_narrative`). Empty-caption calls
+        just skip the caption row.
+    save_to_filename : str, optional
+        Write PNG here (and print the saved-path line for the CLI
+        progress log).
+    """
+    # Materialize and order axes: active / suppressed axes first (more
+    # informative), baseline-ish axes last. Within each bucket keep the
+    # input order so cancer-type-specific ordering (AR first for PRAD,
+    # ER first for BRCA etc.) is preserved.
+    items = []
+    for cls, score in (therapy_response_scores or {}).items():
+        state = getattr(score, "state", "indeterminate")
+        up_fold = getattr(score, "up_geomean_fold", None)
+        down_fold = getattr(score, "down_geomean_fold", None)
+        if up_fold is None and down_fold is None:
+            continue
+        items.append({
+            "cls": cls,
+            "label": _format_axis_label(cls),
+            "state": state,
+            "up_fold": up_fold,
+            "down_fold": down_fold,
+            "up_n": getattr(score, "up_genes_measured", 0),
+            "down_n": getattr(score, "down_genes_measured", 0),
+            "message": getattr(score, "message", "") or "",
+        })
+    if not items:
+        return None
+
+    bucket_priority = {"up": 0, "down": 0, "mixed": 1, "indeterminate": 2}
+    items.sort(key=lambda r: bucket_priority.get(r["state"], 2))
+
+    n_rows = len(items)
+    if figsize is None:
+        # Reserve vertical room for the caption wrap. Width accommodates
+        # fold-range labels without the legend overflowing.
+        figsize = (12, max(4.0, 0.7 * n_rows + 2.8))
+
+    fig = plt.figure(figsize=figsize)
+    # Top area for the dumbbells, bottom for the narrative caption.
+    if disease_state_caption:
+        ax = fig.add_axes([0.07, 0.30, 0.88, 0.60])
+        ax_caption = fig.add_axes([0.07, 0.02, 0.88, 0.22])
+        ax_caption.axis("off")
+    else:
+        ax = fig.add_axes([0.07, 0.10, 0.88, 0.80])
+        ax_caption = None
+
+    # --- Dumbbell plot ---
+    y_positions = np.arange(n_rows)
+    for i, row in enumerate(items):
+        color = _AXIS_STATE_COLOR.get(row["state"], "#555555")
+
+        up_fold = row["up_fold"]
+        down_fold = row["down_fold"]
+
+        # X positions in log space — label axis as log for
+        # interpretability but compute on linear folds.
+        xs = [f for f in (up_fold, down_fold) if f is not None]
+        if len(xs) == 2:
+            x_min, x_max = min(xs), max(xs)
+            ax.plot([x_min, x_max], [i, i], color=color, linewidth=3, alpha=0.45,
+                    solid_capstyle="round", zorder=2)
+
+        if up_fold is not None:
+            ax.plot([up_fold], [i], marker="o", markersize=11,
+                    color=color, markeredgecolor="white", markeredgewidth=1.4,
+                    linestyle="", zorder=3,
+                    label="up-panel" if i == 0 else None)
+            ax.text(up_fold, i + 0.20, f"up {up_fold:.2f}\u00d7",
+                    ha="center", va="bottom", fontsize=8, color=color, fontweight="bold")
+        if down_fold is not None:
+            ax.plot([down_fold], [i], marker="s", markersize=10,
+                    color=color, markeredgecolor="white", markeredgewidth=1.4,
+                    linestyle="", zorder=3,
+                    label="down-panel" if i == 0 else None)
+            ax.text(down_fold, i - 0.26, f"down {down_fold:.2f}\u00d7",
+                    ha="center", va="top", fontsize=8, color=color, fontweight="bold")
+
+    ax.axvline(1.0, color="#888888", linestyle="--", linewidth=1.0, alpha=0.7, zorder=1)
+    ax.set_xscale("log")
+    x_vals = []
+    for r in items:
+        for f in (r["up_fold"], r["down_fold"]):
+            if f is not None and f > 0:
+                x_vals.append(f)
+    if x_vals:
+        lo = min(0.1, min(x_vals) * 0.7)
+        hi = max(10.0, max(x_vals) * 1.4)
+        ax.set_xlim(lo, hi)
+    ax.set_xlabel("Fold vs TCGA cohort median  (log scale; 1.0 = baseline)",
+                  fontsize=10)
+
+    # Y-axis: label + state tag (color-coded)
+    ax.set_yticks(y_positions)
+    labels = []
+    for row in items:
+        state_tag = {"up": "active", "down": "suppressed",
+                     "mixed": "mixed", "indeterminate": "near baseline"}.get(
+                         row["state"], row["state"])
+        n_info = ""
+        parts = []
+        if row["up_n"]:
+            parts.append(f"{row['up_n']} up")
+        if row["down_n"]:
+            parts.append(f"{row['down_n']} down")
+        if parts:
+            n_info = f"  ({', '.join(parts)})"
+        labels.append(f"{row['label']}  \u2014  {state_tag}{n_info}")
+    ax.set_yticklabels(labels, fontsize=10)
+    ax.invert_yaxis()
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    title = "Therapy-pathway state"
+    if cancer_code:
+        title += f" \u2014 {cancer_code}"
+    ax.set_title(title, fontsize=12, fontweight="bold", loc="left")
+    ax.legend(loc="lower right", fontsize=8, frameon=False,
+              markerscale=0.9, handletextpad=0.4)
+
+    # --- Caption ---
+    if ax_caption is not None and disease_state_caption:
+        # Single wrapped paragraph underneath. Narrow to ~130 chars per
+        # line so wrapping matches the figure width.
+        import textwrap
+        wrapped = "\n".join(textwrap.wrap(
+            disease_state_caption, width=130, break_long_words=False,
+            break_on_hyphens=True,
+        ))
+        ax_caption.text(
+            0.0, 1.0, wrapped,
+            ha="left", va="top", fontsize=9, color="#222222",
+            wrap=True,
+        )
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
