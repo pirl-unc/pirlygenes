@@ -240,12 +240,81 @@ def plot_decomposition_candidates(
 
     # Right-side per-row score text. Kept textual (not a second bar) so
     # it's not confused with a width-encoded quantity.
+    #
+    # #123: also surface **fit quality** (raw reconstruction_error —
+    # smaller is better) and **median marker support** (how well-
+    # supported each fitted compartment is by its own markers) so the
+    # reader can tell whether a candidate is high-scoring because it
+    # actually explains the sample or because the composite score
+    # happens to land high. Candidates flagged with warnings by the
+    # decomposition engine (purity floor, low marker support, template
+    # incomplete, etc.) get a hatched pattern overlaid on their bars —
+    # a visible signal that the row is gated, not just aggregated.
+    import matplotlib.patches as mpatches
+
     for i, row in enumerate(rows):
         score = float(row.score or 0.0)
         cancer = float(row.cancer_support_score or 0.0)
         site = float(row.template_tissue_score or 0.0)
-        ax.text(101, i, f"score {score:.2f}  (cancer {cancer:.2f} · site {site:.2f})",
-                va="center", ha="left", fontsize=8.5, color="#333333")
+        err = float(getattr(row, "reconstruction_error", 0.0) or 0.0)
+
+        # Median marker support across fitted compartments. Typical range
+        # 0.0 (no marker evidence) to ~1.0 (each compartment solidly
+        # supported by its markers). Falls back to 0.0 for rows without
+        # a component_trace (e.g. the template-incomplete early return).
+        try:
+            trace = getattr(row, "component_trace", None)
+            if trace is not None and not trace.empty and "marker_score" in trace.columns:
+                ms = trace["marker_score"].astype(float)
+                median_marker = float(np.nanmedian(ms)) if len(ms) else 0.0
+            else:
+                median_marker = 0.0
+        except Exception:
+            median_marker = 0.0
+
+        ax.text(
+            101, i - 0.18,
+            f"score {score:.2f}  (cancer {cancer:.2f} · site {site:.2f})",
+            va="center", ha="left", fontsize=8.5, color="#333333",
+        )
+        ax.text(
+            101, i + 0.20,
+            f"fit err {err:.2f} · markers {median_marker:.2f}",
+            va="center", ha="left", fontsize=8, color="#555555", style="italic",
+        )
+
+        # Hatched overlay when the engine flagged this row (purity-floor
+        # penalty, low marker support, etc.).
+        warnings_list = list(getattr(row, "warnings", None) or [])
+        if warnings_list:
+            ax.barh(
+                [i], [100], left=[0],
+                height=0.6,
+                facecolor="none",
+                edgecolor="#555555",
+                hatch="///",
+                linewidth=0.0,
+                alpha=0.35,
+                zorder=5,
+            )
+
+    # Legend artist for the hatched "gated" pattern — the stacked bars
+    # already carry the three segment labels.
+    any_warnings = any(
+        (getattr(r, "warnings", None) or []) for r in rows
+    )
+    existing_handles, existing_labels = ax.get_legend_handles_labels()
+    if any_warnings:
+        gated_patch = mpatches.Patch(
+            facecolor="none", edgecolor="#555555", hatch="///",
+            label="gated (see row warnings)",
+        )
+        ax.legend(
+            existing_handles + [gated_patch],
+            existing_labels + ["gated (see row warnings)"],
+            loc="lower center", bbox_to_anchor=(0.5, 1.02),
+            ncol=4, frameon=False, fontsize=9,
+        )
 
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=9.5)
@@ -253,9 +322,13 @@ def plot_decomposition_candidates(
     ax.set_xlim(0, 100)
     ax.set_xlabel("Percent of sample")
     # Legend above the plot area so it never overlaps the last row's
-    # segment labels — the title still sits above the legend.
-    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.02),
-              ncol=3, frameon=False, fontsize=9)
+    # segment labels — the title still sits above the legend. Legend
+    # entries include the hatched "gated" pattern only when at least
+    # one row has an engine-issued warning (so unaffected plots stay
+    # uncluttered).
+    if not any_warnings:
+        ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.02),
+                  ncol=3, frameon=False, fontsize=9)
     # Title kept single-line — the per-bar segments + legend already
     # explain that each row is one candidate's composition.
     ax.set_title("Sample decomposition candidates", fontweight="bold", pad=28)
