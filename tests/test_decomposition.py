@@ -692,6 +692,86 @@ def test_plot_decomposition_candidates_empty_results_returns_none():
     assert plot_decomposition_candidates([]) is None
 
 
+def test_plot_decomposition_candidates_surfaces_fit_and_markers(tmp_path):
+    """#123: the candidates figure must surface per-row
+    reconstruction_error (as 'fit err') and median marker score (as
+    'markers'), so two similarly-scored candidates can be distinguished
+    by which one actually explains the sample. Also: rows with engine
+    warnings should be rendered with a hatched overlay (gated flag)
+    so purity-floor / marker-support / template-incomplete candidates
+    stand out visually."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from types import SimpleNamespace
+    import pandas as pd
+    from pirlygenes.decomposition import plot_decomposition_candidates
+
+    trace_strong = pd.DataFrame([
+        {"component": "T_cell", "fraction": 0.03, "marker_score": 0.42,
+         "top_markers": "TRAC,CD3D", "n_markers": 3},
+        {"component": "myeloid", "fraction": 0.02, "marker_score": 0.38,
+         "top_markers": "LYZ,CD68", "n_markers": 3},
+    ])
+    trace_weak = pd.DataFrame([
+        {"component": "T_cell", "fraction": 0.01, "marker_score": 0.08,
+         "top_markers": "", "n_markers": 1},
+    ])
+
+    rows = [
+        SimpleNamespace(
+            cancer_type="PRAD", template="solid_primary",
+            purity=0.28, template_extra_fraction=0.60,
+            cancer_support_score=0.72, template_tissue_score=0.80,
+            score=0.72, reconstruction_error=0.18,
+            component_trace=trace_strong,
+            warnings=[],
+        ),
+        SimpleNamespace(
+            cancer_type="PRAD", template="met_liver",
+            purity=0.32, template_extra_fraction=0.50,
+            cancer_support_score=0.65, template_tissue_score=0.40,
+            score=0.45, reconstruction_error=0.55,
+            component_trace=trace_weak,
+            warnings=["Low marker support for template fit"],
+        ),
+    ]
+    out = tmp_path / "candidates_fit.png"
+    fig = plot_decomposition_candidates(rows, save_to_filename=str(out))
+    assert fig is not None
+    assert out.exists()
+    assert out.stat().st_size > 5_000
+
+    # Fit + markers annotation should be on the axes as a text artist.
+    ax = fig.axes[0]
+    texts = [t.get_text() for t in ax.texts]
+    assert any("fit err" in t and "markers" in t for t in texts), (
+        f"missing fit/markers annotation; texts: {texts}"
+    )
+
+
+def test_plot_decomposition_candidates_handles_missing_reconstruction_error(tmp_path):
+    """Old-style rows (SimpleNamespace without reconstruction_error /
+    component_trace) still render — the new annotation falls back to
+    fit err = 0.00 and markers = 0.00."""
+    import matplotlib
+    matplotlib.use("Agg")
+    from types import SimpleNamespace
+    from pirlygenes.decomposition import plot_decomposition_candidates
+
+    rows = [
+        SimpleNamespace(
+            cancer_type="COAD", template="solid_primary",
+            purity=0.45, template_extra_fraction=0.6,
+            cancer_support_score=0.7, template_tissue_score=0.85,
+            score=0.42,
+        ),
+    ]
+    out = tmp_path / "candidates_legacy.png"
+    fig = plot_decomposition_candidates(rows, save_to_filename=str(out))
+    assert fig is not None
+    assert out.exists()
+
+
 def test_auto_marker_selection_excludes_mhc_ii_and_ribosomal(monkeypatch):
     """#31: CD74 / HLA-D* / RPL* / RPS* must not be auto-picked as
     component-specific markers, even when their reference nTPM is high
