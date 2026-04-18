@@ -285,3 +285,68 @@ LIHC,,KDR,target,regorafenib,small_molecule,approved,advanced HCC (2L),Multikina
 LIHC,,VEGFR2,target,ramucirumab,antibody,approved,AFP+ advanced HCC (2L),Anti-VEGFR2 for AFP ≥ 400 (REACH-2),PMID:30665869
 LIHC,,GPC3,target,codrituzumab,antibody,phase_2,GPC3+ HCC,Glypican-3 antibody — earlier trials; active ADC / CAR-T programmes,PMID:28698288
 LIHC,,FGF19,target,fisogatinib,small_molecule,phase_1,FGF19+ HCC,FGFR4-selective inhibitor for FGF19-amplified HCC,PMID:31694886
+SARC,leiomyosarcoma,ACTA2,biomarker,,,,,Smooth-muscle actin — lineage marker for LMS,PMID:23954400
+SARC,leiomyosarcoma,CALD1,biomarker,,,,,Caldesmon (h-caldesmon) — smooth-muscle lineage confirmation in LMS,PMID:23954400
+SARC,leiomyosarcoma,MYH11,biomarker,,,,,Smooth-muscle myosin heavy chain — LMS lineage,PMID:23954400
+SARC,leiomyosarcoma,DES,biomarker,,,,,Desmin — confirms smooth-muscle / striated-muscle lineage,PMID:23954400
+SARC,leiomyosarcoma,CDKN2A,biomarker,,,,,Frequent loss in LMS; prognostic,PMID:23954400
+SARC,leiomyosarcoma,TP53,biomarker,,,,,High somatic mutation rate in LMS; adverse prognosis,PMID:23954400
+SARC,leiomyosarcoma,RB1,biomarker,,,,,Frequent inactivation in LMS,PMID:23954400
+SARC,leiomyosarcoma,,target,trabectedin,small_molecule,approved,advanced LMS,Alkylating agent — approved for L-sarcomas (LMS/liposarcoma) after anthracycline,PMID:26967202
+SARC,leiomyosarcoma,,target,pazopanib,small_molecule,approved,advanced non-adipocytic STS,Multikinase TKI — PALETTE trial; includes LMS,PMID:22595799
+SARC,leiomyosarcoma,,target,doxorubicin,small_molecule,approved,first-line STS,Anthracycline — backbone cytotoxic,PMID:22595799
+SARC,dedifferentiated_liposarcoma,MDM2,biomarker,,,,,Ring-chromosome 12q amplification with MDM2 — pathognomonic for WDLPS/DDLPS,PMID:20181787
+SARC,dedifferentiated_liposarcoma,CDK4,biomarker,,,,,Co-amplified with MDM2 on 12q13-15 — gates CDK4/6-inhibitor eligibility,PMID:20181787
+SARC,dedifferentiated_liposarcoma,HMGA2,biomarker,,,,,12q amplicon — lipogenic-lineage marker in WDLPS/DDLPS,PMID:20181787
+SARC,dedifferentiated_liposarcoma,FRS2,biomarker,,,,,12q co-amplification; FGFR-pathway adapter,PMID:20181787
+SARC,dedifferentiated_liposarcoma,TP53,biomarker,,,,,More common in DDLPS than WDLPS — adverse prognosis,PMID:20181787
+SARC,dedifferentiated_liposarcoma,MDM2,target,brigimadlin (BI 907828),small_molecule,phase_3,MDM2-amplified DDLPS,MDM2-p53 antagonist — Brightline-1 phase 3 trial,PMID:37467370
+SARC,dedifferentiated_liposarcoma,MDM2,target,milademetan,small_molecule,phase_3,MDM2-amplified DDLPS,MDM2-p53 antagonist — MANTRA phase 3 (failed primary) with ongoing combination exploration,PMID:37467370
+SARC,dedifferentiated_liposarcoma,CDK4,target,palbociclib,small_molecule,phase_2,CDK4-amplified WDLPS/DDLPS,CDK4/6 inhibitor — encouraging phase 2 results in WDLPS/DDLPS,PMID:26948088
+SARC,dedifferentiated_liposarcoma,CDK4,target,abemaciclib,small_molecule,phase_2,CDK4-amplified WDLPS/DDLPS,CDK4/6 inhibitor — SARC041 and other phase 2 studies,PMID:31924739
+SARC,dedifferentiated_liposarcoma,,target,trabectedin,small_molecule,approved,advanced liposarcoma,Approved L-sarcoma indication — includes myxoid and DDLPS,PMID:26967202
+SARC,myxoid_liposarcoma,DDIT3,biomarker,,,,,FUS-DDIT3 (formerly FUS-CHOP) fusion — pathognomonic for MRCLS,PMID:20181787
+SARC,myxoid_liposarcoma,MAGE-A4,biomarker,,,,,Expressed in ~40% of MRCLS — gates afami-cel / MAGE-A4 TCR-T eligibility,PMID:39141605
+SARC,myxoid_liposarcoma,CTAG1B,biomarker,,,,,NY-ESO-1 — expressed in majority of MRCLS; TCR-T target,PMID:25668005
+SARC,myxoid_liposarcoma,PRAME,biomarker,,,,,CT antigen expressed in MRCLS; TCR-T / ADC target,PMID:34428009
+SARC,myxoid_liposarcoma,PPARG,biomarker,,,,,Adipogenic master regulator; lineage confirmation,PMID:20181787
+SARC,myxoid_liposarcoma,MAGE-A4,target,afami-cel (afamitresgene autoleucel),TCR-T,phase_2,HLA-A*02+ MAGE-A4+ MRCLS,First-in-class engineered TCR-T — approved in synovial sarcoma; MRCLS cohorts in basket trials,PMID:39141605
+SARC,myxoid_liposarcoma,CTAG1B,target,letetresgene autoleucel,TCR-T,phase_2,HLA-A*02+ NY-ESO-1+ MRCLS,NY-ESO-1 TCR-T — phase 2 in synovial / MRCLS,PMID:25668005
+SARC,myxoid_liposarcoma,,target,trabectedin,small_molecule,approved,advanced MRCLS,Approved L-sarcoma indication — particularly active in MRCLS,PMID:26967202
+SARC,synovial_sarcoma,SS18,biomarker,,,,,SS18-SSX1/2/4 fusion (typically t(X;18)) — pathognomonic for synovial sarcoma,PMID:23583762
+SARC,synovial_sarcoma,MAGE-A4,biomarker,,,,,Expressed in majority of synovial sarcoma — gates afami-cel eligibility,PMID:39141605
+SARC,synovial_sarcoma,CTAG1B,biomarker,,,,,NY-ESO-1 — widely expressed; lete-cel target,PMID:25668005
+SARC,synovial_sarcoma,PRAME,biomarker,,,,,Broadly expressed CT antigen; candidate TCR-T target,PMID:34428009
+SARC,synovial_sarcoma,TLE1,biomarker,,,,,Diagnostic IHC marker — near-universal nuclear staining in synovial sarcoma,PMID:17255762
+SARC,synovial_sarcoma,BCL2,biomarker,,,,,Broadly overexpressed — candidate for BCL2-targeted therapy trials,PMID:11297487
+SARC,synovial_sarcoma,MAGE-A4,target,afami-cel (Tecelra),TCR-T,approved,HLA-A*02+ MAGE-A4+ advanced synovial sarcoma,First engineered TCR-T approved by FDA (2024) — SPEARHEAD-1 trial,PMID:39141605
+SARC,synovial_sarcoma,CTAG1B,target,letetresgene autoleucel (lete-cel),TCR-T,phase_2,HLA-A*02+ NY-ESO-1+ synovial sarcoma,NY-ESO-1 TCR-T — pivotal phase 2,PMID:38458182
+SARC,synovial_sarcoma,,target,pazopanib,small_molecule,approved,advanced non-adipocytic STS,Multikinase TKI — PALETTE trial; synovial sarcoma included,PMID:22595799
+SARC,synovial_sarcoma,,target,trabectedin,small_molecule,phase_3,advanced synovial sarcoma,Alkylating agent — activity documented in synovial sarcoma subgroups,PMID:26967202
+SARC,dsrct,EWSR1,biomarker,,,,,EWSR1-WT1 t(11;22)(p13;q12) fusion — pathognomonic for desmoplastic small round cell tumor,PMID:11559696
+SARC,dsrct,WT1,biomarker,,,,,C-terminal WT1 IHC — positive due to the EWSR1-WT1 fusion; diagnostic,PMID:11559696
+SARC,dsrct,DES,biomarker,,,,,Dot-like desmin IHC — characteristic DSRCT pattern,PMID:11559696
+SARC,dsrct,VIM,biomarker,,,,,Vimentin positivity alongside keratin — DSRCT polyphenotypic pattern,PMID:11559696
+SARC,dsrct,WT1,target,,TCR-T,phase_1,WT1+ DSRCT,WT1-directed TCR-T and peptide vaccines in early trials,PMID:35379757
+SARC,gist,KIT,biomarker,,,,,CD117 — activating mutation in majority of GIST; gates imatinib / sunitinib / avapritinib eligibility,PMID:12522257
+SARC,gist,PDGFRA,biomarker,,,,,Imatinib-sensitive mutations (e.g. V561D); D842V requires avapritinib,PMID:12522257
+SARC,gist,SDHB,biomarker,,,,,Loss identifies SDH-deficient (WT) GIST — paediatric/young adult subtype with different biology,PMID:21252315
+SARC,gist,SDHA,biomarker,,,,,Alternate SDH complex loss — similar SDH-deficient biology,PMID:21252315
+SARC,gist,BRAF,biomarker,,,,,V600E in wild-type GIST — BRAF-inhibitor candidate,PMID:23054102
+SARC,gist,NF1,biomarker,,,,,NF1 inactivation in wild-type GIST,PMID:23054102
+SARC,gist,KIT,target,imatinib,small_molecule,approved,unresectable/metastatic GIST,First-line KIT/PDGFRA inhibitor — standard of care,PMID:12181401
+SARC,gist,KIT,target,sunitinib,small_molecule,approved,imatinib-resistant GIST,Multikinase — second-line after imatinib failure,PMID:17046465
+SARC,gist,KIT,target,regorafenib,small_molecule,approved,third-line GIST,Multikinase — post-imatinib/sunitinib failure,PMID:23177515
+SARC,gist,KIT,target,ripretinib,small_molecule,approved,fourth-line GIST,Switch-control KIT/PDGFRA inhibitor — INVICTUS trial,PMID:32511981
+SARC,gist,PDGFRA,target,avapritinib,small_molecule,approved,PDGFRA D842V GIST,Selective PDGFRA D842V inhibitor — NAVIGATOR trial,PMID:32078923
+SARC,gist,NTRK1,target,larotrectinib,small_molecule,approved,NTRK-fusion GIST,Tumor-agnostic NTRK inhibitor — relevant to NTRK-fusion WT GIST,PMID:29466156
+SARC,ewing_sarcoma,EWSR1,biomarker,,,,,EWSR1-FLI1 t(11;22) fusion (~85%) or EWSR1-ERG — pathognomonic for Ewing sarcoma,PMID:20142596
+SARC,ewing_sarcoma,FLI1,biomarker,,,,,Fusion partner — IHC positive in Ewing,PMID:20142596
+SARC,ewing_sarcoma,NKX2-2,biomarker,,,,,Downstream EWSR1-FLI1 target; lineage marker,PMID:21339729
+SARC,ewing_sarcoma,CD99,biomarker,,,,,Membranous CD99 staining — sensitive but not specific Ewing IHC,PMID:20142596
+SARC,ewing_sarcoma,CAV1,biomarker,,,,,Caveolin-1 — marker of Ewing differentiation,PMID:21339729
+SARC,ewing_sarcoma,PRAME,biomarker,,,,,CT antigen expressed in Ewing; TCR-T target,PMID:34428009
+SARC,ewing_sarcoma,,target,trabectedin,small_molecule,phase_2,relapsed Ewing,Alkylating agent — active in Ewing per single-agent and combo trials,PMID:26967202
+SARC,ewing_sarcoma,CDK4,target,palbociclib,small_molecule,phase_2,relapsed Ewing,CDK4/6 inhibitor — ongoing phase 2,PMID:31924739
+SARC,ewing_sarcoma,,target,TK216,small_molecule,phase_1,relapsed Ewing,Small-molecule ETV fusion inhibitor — first-in-class trial,PMID:33872428
+SARC,ewing_sarcoma,PRAME,target,IMA203,TCR-T,phase_2,PRAME+ HLA-A*02+ Ewing,PRAME-directed TCR-T — basket phase 2 including Ewing,PMID:34428009
