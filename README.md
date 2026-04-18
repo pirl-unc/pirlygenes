@@ -74,17 +74,23 @@ All gene sets ship as CSVs in `pirlygenes/data/` and are accessible via `pirlyge
 
 | Gene set | Genes | Access | Description |
 |----------|------:|--------|-------------|
-| Cancer-testis antigens | ~257 | `CTA_gene_names()` | Reproductive-restricted, filter-passing CTAs from CTpedia, CTexploreR, literature |
+| Cancer-testis antigens | 257 | `CTA_gene_names()` | Reproductive-restricted, filter-passing and expressed CTAs from CTpedia, CTexploreR, literature. `CTA_filtered_gene_names()` (278) adds never-expressed filter-passers; `CTA_unfiltered_gene_names()` (358) is the full candidate pool from source databases |
 | Surface proteins | 2,799 | `surface_protein_gene_names()` | Human surfaceome (SURFY + CSPA); 1,410 mass-spec validated |
 | Tumor-specific surface | 147 | `cancer_surfaceome_gene_names()` | TCSA L3-tier surface targets |
-| ADC targets | — | `therapy_target_gene_names("ADC")` | Approved + trial ADC antigens |
-| CAR-T targets | — | `therapy_target_gene_names("CAR-T")` | Approved CAR-T antigens |
-| TCR-T targets | — | `therapy_target_gene_names("TCR-T")` | Approved + trial TCR-T antigens |
-| Bispecific / TCE | — | `therapy_target_gene_names("bispecific-antibodies")` | Bispecific T-cell engager targets |
-| Radioligand targets | — | `therapy_target_gene_names("radioligand")` | RLT target genes |
-| Cancer drivers | — | `cancer-driver-genes.csv` | Recurrently mutated genes (Bailey et al. 2018) |
-| Housekeeping genes | — | `housekeeping-genes.csv` | Cross-platform normalization reference |
-| Pan-cancer expression | ~3,100 | `pan_cancer_expression()` | 33 TCGA cancers + 50 HPA normal tissues |
+| ADC targets | 59 (13 approved) | `therapy_target_gene_id_to_name("ADC")` | Approved + trial ADC antigens |
+| CAR-T targets | 2 (2 approved) | `therapy_target_gene_id_to_name("CAR-T")` | Approved CAR-T antigens |
+| TCR-T targets | 14 (1 approved) | `therapy_target_gene_id_to_name("TCR-T")` | Approved + trial TCR-T antigens |
+| Bispecific / TCE | 11 (11 approved) | `therapy_target_gene_id_to_name("bispecific-antibodies")` | Bispecific T-cell engager targets |
+| Multispecific TCE (trials) | 30 | `therapy_target_gene_id_to_name("multispecific-TCE")` | TCE trials across multispecific formats |
+| Radioligand targets | 20 | `therapy_target_gene_id_to_name("radioligand")` | RLT target genes |
+| Cancer-key-genes panel | 122 (16 cancer types) | `cancer_key_genes_df()` / `cancer_biomarker_genes()` / `cancer_therapy_targets()` | Clinician-relevant biomarker + therapy-target rows per cancer type |
+| Cancer drivers | 739 | `cancer-driver-genes.csv` | Recurrently mutated genes (Bailey et al. 2018) |
+| Housekeeping genes | 30 | `housekeeping-genes.csv` | Cross-platform normalization reference |
+| Mitochondrial genes | 15 | `mitochondrial_gene_names()` | MT-encoded transcripts (quality / FFPE signal) |
+| TME markers | 19 | `tme_marker_gene_names()` | Minimal immune + stromal markers for cell-line vs tissue |
+| Culture stress | 23 | `culture_stress_gene_names()` | Cell-line adaptation signature |
+| Degradation gene pairs | 20 | `degradation_gene_pairs()` | Matched short / long transcript pairs for FFPE length-bias index |
+| Pan-cancer expression | 19,784 | `pan_cancer_expression()` | Expression reference: 33 TCGA cancers × 50 HPA normal tissues |
 
 These gene sets serve two purposes: **(1)** as standalone curated lists for target selection, enrichment analysis, or annotation, and **(2)** as the reference panels that power the decomposition pipeline — immune and stromal marker genes define the TME signature matrix, housekeeping genes anchor cross-platform normalization, and therapy target sets structure the final report.
 
