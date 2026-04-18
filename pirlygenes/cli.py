@@ -419,6 +419,103 @@ def _default_output_dir() -> str:
     return f"pirlygenes-{ts}"
 
 
+# ── Output-directory lock (#82) ─────────────────────────────────────────
+#
+# Two concurrent ``analyze`` invocations pointed at the same
+# ``--output-dir`` would happily overwrite each other's artifacts
+# because ``_clean_prefix_outputs`` wipes stale files at start and both
+# runs race to write to the same filenames. The result is a silently
+# inconsistent report (figures from one run, markdowns from the other).
+#
+# Cheap fix: write an advisory ``.pirlygenes.lock`` with the runner's
+# pid + start time. A second invocation into the same directory while
+# the lock-owner is still alive bails out with a clear error directing
+# the user to ``--force`` or a different ``--output-dir``.
+#
+# Not a true concurrency guarantee — a race still exists between the
+# stale-lock unlink and the new write — but the common accidental
+# double-launch case is caught and diagnosed instead of silently
+# corrupting the output.
+_LOCKFILE_NAME = ".pirlygenes.lock"
+
+
+def _pid_is_alive(pid: int) -> bool:
+    """Cheap liveness check.
+
+    ``os.kill(pid, 0)`` raises :class:`ProcessLookupError` when the
+    process does not exist and :class:`PermissionError` when it
+    exists but the caller can't signal it (which still counts as
+    alive for our purposes — we don't want a lock held by another
+    user to look stale just because we can't ping it).
+    """
+    if pid <= 0:
+        return False
+    import os as _os
+
+    try:
+        _os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _acquire_output_dir_lock(out_dir, force: bool = False):
+    """Claim the output dir for this process. Returns the lockfile Path
+    so the caller can unlink on exit.
+
+    Raises :class:`RuntimeError` with a clear message when another
+    pirlygenes process is already writing there and ``force`` is
+    False. Stale locks (pid no longer alive) are reclaimed with a
+    console note.
+    """
+    import json
+    import os as _os
+    from datetime import datetime
+
+    lock_path = out_dir / _LOCKFILE_NAME
+    if lock_path.exists():
+        try:
+            payload = json.loads(lock_path.read_text() or "{}")
+            holder_pid = int(payload.get("pid") or 0)
+            holder_started = str(payload.get("started_at") or "unknown time")
+        except (ValueError, OSError):
+            holder_pid = 0
+            holder_started = "unknown time"
+        if holder_pid and _pid_is_alive(holder_pid):
+            if not force:
+                raise RuntimeError(
+                    f"Another pirlygenes analyze process (pid={holder_pid}, "
+                    f"started {holder_started}) is writing to {out_dir}. "
+                    "Use a different --output-dir, wait for it to finish, "
+                    "or pass --force to override (only do this if you're "
+                    "sure the lock is stale)."
+                )
+            print(
+                f"[output] --force: ignoring live lock held by pid={holder_pid} "
+                "(started {holder_started})"
+            )
+        else:
+            print(
+                f"[output] Cleaning stale lockfile (pid={holder_pid} "
+                f"not running, started {holder_started})"
+            )
+
+    lock_path.write_text(
+        json.dumps(
+            {
+                "pid": _os.getpid(),
+                "started_at": datetime.now().isoformat(timespec="seconds"),
+            },
+            indent=2,
+        )
+    )
+    return lock_path
+
+
 def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
     """Delete stale files from a prior run sharing the same output prefix.
 
@@ -508,6 +605,7 @@ def analyze(
     decomposition_templates: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
+    force: bool = False,
 ):
     """Analyze gene expression from a quantification file.
 
@@ -556,29 +654,38 @@ def analyze(
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[output] Writing to {out_dir}/")
 
-    _analyze_body(
-        input_path=gene_input,
-        out_dir=out_dir,
-        output_image_prefix=output_image_prefix,
-        aggregate_gene_expression=aggregate_gene_expression,
-        label_genes=label_genes,
-        gene_name_col=gene_name_col,
-        gene_id_col=gene_id_col,
-        sample_id_col=sample_id_col,
-        sample_id_value=sample_id_value,
-        output_dpi=output_dpi,
-        plot_height=plot_height,
-        plot_aspect=plot_aspect,
-        cancer_type=cancer_type,
-        sample_mode=sample_mode,
-        tumor_context=tumor_context,
-        site_hint=site_hint,
-        met_site=met_site,
-        transcript_path=transcript_input,
-        decomposition_templates=decomposition_templates,
-        therapy_target_top_k=therapy_target_top_k,
-        therapy_target_tpm_threshold=therapy_target_tpm_threshold,
-    )
+    # #82: advisory lock so a second concurrent analyze into the same
+    # output dir fails fast instead of silently corrupting artifacts.
+    lock_path = _acquire_output_dir_lock(out_dir, force=force)
+    try:
+        _analyze_body(
+            input_path=gene_input,
+            out_dir=out_dir,
+            output_image_prefix=output_image_prefix,
+            aggregate_gene_expression=aggregate_gene_expression,
+            label_genes=label_genes,
+            gene_name_col=gene_name_col,
+            gene_id_col=gene_id_col,
+            sample_id_col=sample_id_col,
+            sample_id_value=sample_id_value,
+            output_dpi=output_dpi,
+            plot_height=plot_height,
+            plot_aspect=plot_aspect,
+            cancer_type=cancer_type,
+            sample_mode=sample_mode,
+            tumor_context=tumor_context,
+            site_hint=site_hint,
+            met_site=met_site,
+            transcript_path=transcript_input,
+            decomposition_templates=decomposition_templates,
+            therapy_target_top_k=therapy_target_top_k,
+            therapy_target_tpm_threshold=therapy_target_tpm_threshold,
+        )
+    finally:
+        try:
+            lock_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _analyze_body(
