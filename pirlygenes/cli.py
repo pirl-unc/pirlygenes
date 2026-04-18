@@ -855,6 +855,31 @@ def _analyze_body(
     mhc_png = "%s-mhc-expression.png" % prefix
     plot_mhc_expression(analysis, save_to_filename=mhc_png, save_dpi=output_dpi)
 
+    # #136: one-figure therapy-pathway state readout. Renders the
+    # disease-state narrative visually — dumbbells for each AR / NE /
+    # EMT / hypoxia / IFN axis, caption restating the synthesis
+    # sentence. Emitted only when at least one axis has a measurable
+    # up/down geomean; skipped for empty therapy-scores dicts.
+    pathway_state_png = (
+        "%s-therapy-pathway-state.png" % prefix
+        if prefix else "therapy-pathway-state.png"
+    )
+    try:
+        from .plot_therapy import plot_therapy_pathway_state
+
+        fig_ps = plot_therapy_pathway_state(
+            therapy_response_scores=therapy_scores,
+            cancer_code=cancer_code,
+            disease_state_caption=compose_disease_state_narrative(analysis),
+            save_to_filename=pathway_state_png,
+            save_dpi=output_dpi,
+        )
+        if fig_ps is None:
+            pathway_state_png = None
+    except Exception as _tps_err:
+        print(f"[warn] Therapy-pathway state plot failed: {_tps_err}")
+        pathway_state_png = None
+
     print("[analysis] Running broad-compartment decomposition...")
     decomp_png = None
     composition_png = None
@@ -1503,6 +1528,8 @@ def _analyze_body(
         # computation was skipped; resolve by path rather than a
         # possibly-undefined variable.
         "%s-provenance.png" % prefix if prefix else "provenance.png",
+        # #136: therapy-pathway-state dumbbell figure.
+        pathway_state_png,
         "%s-immune.png" % prefix if prefix else "immune.png",
         "%s-tumor.png" % prefix if prefix else "tumor.png",
         "%s-antigens.png" % prefix if prefix else "antigens.png",
