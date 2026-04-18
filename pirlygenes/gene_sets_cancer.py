@@ -1362,25 +1362,38 @@ def cancer_key_genes_df():
     return get_data("cancer-key-genes")
 
 
-def cancer_biomarker_genes(cancer_code):
+def cancer_biomarker_genes(cancer_code, subtype=None):
     """Ordered list of biomarker gene symbols for ``cancer_code``.
 
     Empty list when the cancer type is not yet curated — callers should
     treat that as "no clinician-relevant biomarker panel available" and
     render an appropriate placeholder, not synthesize fallback genes.
+
+    ``subtype`` (optional) filters to a specific subtype string (e.g.
+    ``"synovial_sarcoma"`` under ``cancer_code="SARC"``, #126). When
+    ``None``, returns **all** biomarker rows for the cancer code
+    regardless of subtype — suitable for samples whose subtype isn't
+    yet determined at report time.
     """
     df = cancer_key_genes_df()
     sub = df[(df["cancer_code"] == cancer_code) & (df["role"] == "biomarker")]
+    if subtype is not None:
+        sub = sub[sub["subtype"].fillna("").astype(str) == subtype]
     return list(sub["symbol"].dropna().astype(str).unique())
 
 
-def cancer_therapy_targets(cancer_code):
+def cancer_therapy_targets(cancer_code, subtype=None):
     """Subset of :func:`cancer_key_genes_df` for therapy-target rows of
     ``cancer_code``. Returns a DataFrame so callers can render the
     Phase / Indication / Agent columns without re-joining.
+
+    ``subtype`` (optional) filters to a specific subtype; see
+    :func:`cancer_biomarker_genes` for semantics.
     """
     df = cancer_key_genes_df()
     sub = df[(df["cancer_code"] == cancer_code) & (df["role"] == "target")]
+    if subtype is not None:
+        sub = sub[sub["subtype"].fillna("").astype(str) == subtype]
     return sub.copy().reset_index(drop=True)
 
 
@@ -1390,3 +1403,19 @@ def cancer_key_genes_cancer_types():
     """
     df = cancer_key_genes_df()
     return sorted(df["cancer_code"].dropna().astype(str).unique())
+
+
+def cancer_key_genes_subtypes(cancer_code):
+    """Return the list of curated subtypes for ``cancer_code``.
+
+    SARC is the primary user — subtype-stratified for leiomyosarcoma
+    / WD-DDLPS / MRCLS / synovial_sarcoma / DSRCT / GIST /
+    ewing_sarcoma (#126). Returns ``[]`` for cancer codes without
+    subtype rows (curation is a single flat panel).
+    """
+    df = cancer_key_genes_df()
+    sub = df[df["cancer_code"] == cancer_code]
+    subtypes = (
+        sub["subtype"].fillna("").astype(str).replace("nan", "").str.strip()
+    )
+    return sorted(s for s in set(subtypes) if s)
