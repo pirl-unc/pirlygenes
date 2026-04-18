@@ -350,3 +350,88 @@ SARC,ewing_sarcoma,,target,trabectedin,small_molecule,phase_2,relapsed Ewing,Alk
 SARC,ewing_sarcoma,CDK4,target,palbociclib,small_molecule,phase_2,relapsed Ewing,CDK4/6 inhibitor — ongoing phase 2,PMID:31924739
 SARC,ewing_sarcoma,,target,TK216,small_molecule,phase_1,relapsed Ewing,Small-molecule ETV fusion inhibitor — first-in-class trial,PMID:33872428
 SARC,ewing_sarcoma,PRAME,target,IMA203,TCR-T,phase_2,PRAME+ HLA-A*02+ Ewing,PRAME-directed TCR-T — basket phase 2 including Ewing,PMID:34428009
+THCA,,BRAF,biomarker,,,,,V600E — most common mutation in papillary thyroid carcinoma (~50%); drives RAI resistance,PMID:24557579
+THCA,,RET,biomarker,,,,,RET fusions (CCDC6-RET etc.) in PTC — selpercatinib / pralsetinib eligibility,PMID:32273263
+THCA,,HRAS,biomarker,,,,,RAS-family mutation (H/N/KRAS Q61) — prevalent in follicular thyroid cancer,PMID:24557579
+THCA,,NRAS,biomarker,,,,,Most common RAS mutation in FTC; defines follicular subtype,PMID:24557579
+THCA,,NTRK1,biomarker,,,,,NTRK fusion — rare; larotrectinib / entrectinib eligibility,PMID:29466156
+THCA,,TERT,biomarker,,,,,Promoter mutation — adverse prognosis; common in anaplastic / poorly-differentiated,PMID:24035356
+THCA,,TG,biomarker,,,,,Thyroglobulin — lineage confirmation and serum recurrence marker,PMID:24557579
+THCA,,NKX2-1,biomarker,,,,,TTF-1 — thyroid lineage (also lung),PMID:24557579
+THCA,,PAX8,biomarker,,,,,Thyroid / gynecologic lineage,PMID:21577204
+THCA,,TP53,biomarker,,,,,Mutation in anaplastic thyroid carcinoma — adverse prognosis,PMID:24557579
+THCA,,KDR,target,lenvatinib,small_molecule,approved,RAI-refractory DTC,VEGFR multi-TKI — SELECT trial,PMID:25671254
+THCA,,KDR,target,sorafenib,small_molecule,approved,RAI-refractory DTC,VEGFR multi-TKI — DECISION trial,PMID:24768112
+THCA,,KDR,target,cabozantinib,small_molecule,approved,RAI-refractory DTC (2L),Multikinase TKI — COSMIC-311 trial,PMID:33798485
+THCA,,BRAF,target,dabrafenib + trametinib,small_molecule,approved,BRAF V600E anaplastic thyroid,BRAF/MEK combination — tumor-agnostic plus specific ATC approval,PMID:30161798
+THCA,,RET,target,selpercatinib,small_molecule,approved,RET-altered thyroid cancer,Selective RET inhibitor — approved for medullary + RET-fusion DTC,PMID:32846060
+THCA,,RET,target,pralsetinib,small_molecule,approved,RET-altered thyroid cancer,Selective RET inhibitor,PMID:32615108
+THCA,,NTRK1,target,larotrectinib,small_molecule,approved,NTRK-fusion thyroid cancer,Tumor-agnostic NTRK inhibitor,PMID:29466156
+LGG,,IDH1,biomarker,,,,,R132H mutation — majority of adult LGG; defines IDH-mutant class; gates vorasidenib eligibility,PMID:37272516
+LGG,,IDH2,biomarker,,,,,R172 mutation — less common than IDH1; also targeted by vorasidenib,PMID:37272516
+LGG,,ATRX,biomarker,,,,,Loss — astrocytoma lineage marker (combined with IDH-mutant and 1p/19q retained),PMID:24105470
+LGG,,CDKN2A,biomarker,,,,,Homozygous deletion — adverse prognosis in IDH-mutant astrocytoma; grade 4 criterion,PMID:34185076
+LGG,,TERT,biomarker,,,,,Promoter mutation — common in oligodendroglioma and GBM; diagnostic,PMID:24327574
+LGG,,MGMT,biomarker,,,,,Promoter methylation — temozolomide response predictor,PMID:15758009
+LGG,,TP53,biomarker,,,,,Mutation — astrocytoma lineage (excluded in oligodendroglioma),PMID:24105470
+LGG,,BRAF,biomarker,,,,,V600E — pediatric LGG / pilocytic astrocytoma; dabrafenib+trametinib eligibility,PMID:32818466
+LGG,,IDH1,target,vorasidenib,small_molecule,approved,IDH-mutant residual/recurrent grade 2 LGG,Dual IDH1/2 inhibitor — INDIGO trial (2024 approval),PMID:37272516
+LGG,,IDH2,target,vorasidenib,small_molecule,approved,IDH-mutant residual/recurrent grade 2 LGG,Dual IDH1/2 inhibitor — same drug covers both,PMID:37272516
+LGG,,BRAF,target,dabrafenib + trametinib,small_molecule,approved,BRAF V600E pediatric glioma,Tumor-agnostic plus pediatric LGG-specific approval,PMID:32818466
+LGG,,MGMT,target,temozolomide,small_molecule,approved,MGMT-methylated glioma,Alkylating chemo — efficacy tied to MGMT promoter methylation,PMID:15758009
+GBM,,IDH1,biomarker,,,,,Wild-type defines GBM per 2021 WHO; IDH-mutant is now classified as astrocytoma,PMID:34185076
+GBM,,MGMT,biomarker,,,,,Promoter methylation — temozolomide response predictor; ~40% of GBM,PMID:15758009
+GBM,,EGFR,biomarker,,,,,Amplification in ~40% of GBM; EGFRvIII variant in ~30% of amplified cases,PMID:24060863
+GBM,,PTEN,biomarker,,,,,Loss — common; adverse prognosis; PI3K-pathway activation,PMID:24060863
+GBM,,CDKN2A,biomarker,,,,,Deletion — very common; grade 4 criterion in IDH-mutant astrocytoma,PMID:34185076
+GBM,,TP53,biomarker,,,,,Mutation — more common in secondary GBM from astrocytoma,PMID:24060863
+GBM,,TERT,biomarker,,,,,Promoter mutation — near-universal in IDH-wildtype GBM,PMID:24327574
+GBM,,NF1,biomarker,,,,,Loss — mesenchymal subtype association,PMID:24060863
+GBM,,H3F3A,biomarker,,,,,K27M or G34R/V mutation — paediatric / diffuse midline glioma; grade-defining,PMID:22286061
+GBM,,MGMT,target,temozolomide,small_molecule,approved,MGMT-methylated GBM,Alkylating chemo — standard of care with radiation (Stupp protocol),PMID:15758009
+GBM,,KDR,target,bevacizumab,antibody,approved,recurrent GBM,Anti-VEGF — approved for recurrent disease,PMID:19114704
+GBM,,EGFR,target,depatuxizumab mafodotin,ADC,phase_3,EGFR-amplified GBM,Anti-EGFR ADC — INTELLANCE trials (mixed results),PMID:33253437
+CHOL,,FGFR2,biomarker,,,,,Fusions and rearrangements in ~15% of intrahepatic cholangiocarcinoma; gate FGFR-inhibitor eligibility,PMID:32655039
+CHOL,,IDH1,biomarker,,,,,Mutation in ~20% of intrahepatic cholangiocarcinoma; ivosidenib eligibility,PMID:32474412
+CHOL,,BRCA1,biomarker,,,,,Germline/somatic mutation — PARP inhibitor basket eligibility,PMID:30975651
+CHOL,,BRCA2,biomarker,,,,,Germline/somatic mutation — PARP inhibitor basket eligibility,PMID:30975651
+CHOL,,BAP1,biomarker,,,,,Loss — cholangiocarcinoma subtype with distinct biology; mesothelioma overlap,PMID:24035356
+CHOL,,ARID1A,biomarker,,,,,Loss — chromatin-remodeling alteration common in cholangiocarcinoma,PMID:24035356
+CHOL,,TP53,biomarker,,,,,Mutation — adverse prognosis,PMID:24035356
+CHOL,,KRAS,biomarker,,,,,Mutation — extrahepatic cholangiocarcinoma; chemoresistance marker,PMID:24035356
+CHOL,,ERBB2,biomarker,,,,,Amplification — HER2-targeted therapy basket eligibility,PMID:31843955
+CHOL,,MLH1,biomarker,,,,,MMR — MSI-H cholangiocarcinoma for pembrolizumab,PMID:26028255
+CHOL,,NTRK1,biomarker,,,,,Rare NTRK fusion — larotrectinib eligibility (tumor-agnostic),PMID:29466156
+CHOL,,FGFR2,target,pemigatinib,small_molecule,approved,FGFR2-fusion cholangiocarcinoma,Selective FGFR1-3 inhibitor — FIGHT-202 trial,PMID:32268924
+CHOL,,FGFR2,target,infigratinib,small_molecule,approved,FGFR2-fusion cholangiocarcinoma,Selective FGFR inhibitor,PMID:33570312
+CHOL,,FGFR2,target,futibatinib,small_molecule,approved,FGFR2-fusion cholangiocarcinoma,Irreversible FGFR inhibitor — FOENIX-CCA2 trial,PMID:37186853
+CHOL,,IDH1,target,ivosidenib,small_molecule,approved,IDH1-mutant cholangiocarcinoma,IDH1 inhibitor — ClarIDHy trial,PMID:32474412
+CHOL,,BRAF,target,dabrafenib + trametinib,small_molecule,approved,BRAF V600E cholangiocarcinoma,Tumor-agnostic BRAF/MEK,PMID:32818466
+CHOL,,ERBB2,target,trastuzumab + pertuzumab,antibody,phase_2,HER2-amplified cholangiocarcinoma,HER2-targeted antibody combo — MyPathway basket,PMID:31843955
+CHOL,,NTRK1,target,larotrectinib,small_molecule,approved,NTRK-fusion cholangiocarcinoma,Tumor-agnostic NTRK inhibitor,PMID:29466156
+CHOL,,CD274,target,pembrolizumab,antibody,approved,MSI-H / dMMR cholangiocarcinoma,Tumor-agnostic checkpoint IO,PMID:32914748
+OV,,BRCA1,biomarker,,,,,Germline/somatic mutation — PARP inhibitor maintenance eligibility; 20-25% of HGSOC,PMID:22452356
+OV,,BRCA2,biomarker,,,,,Germline/somatic mutation — PARP inhibitor maintenance eligibility,PMID:22452356
+OV,,PALB2,biomarker,,,,,HR-pathway gene — PARP basket eligibility,PMID:33293427
+OV,,RAD51C,biomarker,,,,,HR-pathway gene — PARP basket eligibility; alongside RAD51D,PMID:33293427
+OV,,RAD51D,biomarker,,,,,HR-pathway gene — PARP basket eligibility,PMID:33293427
+OV,,TP53,biomarker,,,,,Mutation — near-universal in HGSOC; defines high-grade serous vs low-grade serous,PMID:22452356
+OV,,PAX8,biomarker,,,,,Müllerian lineage — diagnostic for gynaecologic origin,PMID:21577204
+OV,,WT1,biomarker,,,,,Serous lineage — IHC marker; distinguishes HGSOC from endometrioid ovarian,PMID:22452356
+OV,,FOLR1,biomarker,,,,,Folate receptor alpha — mirvetuximab soravtansine eligibility (FRα-high platinum-resistant),PMID:37094291
+OV,,CD274,biomarker,,,,,PD-L1 — MSI-H / dMMR subset for checkpoint IO,PMID:32914748
+OV,,BRCA1,target,olaparib,small_molecule,approved,BRCA-mut HGSOC,First PARP inhibitor approved — maintenance after platinum response (SOLO-1),PMID:30145076
+OV,,BRCA2,target,olaparib,small_molecule,approved,BRCA-mut HGSOC,PARP inhibitor maintenance — extends PFS dramatically,PMID:30145076
+OV,,BRCA1,target,niraparib,small_molecule,approved,HGSOC maintenance,PARP inhibitor — broader maintenance indication (BRCA-mut and BRCA-wt),PMID:28678572
+OV,,BRCA1,target,rucaparib,small_molecule,approved,BRCA-mut HGSOC,PARP inhibitor,PMID:27908594
+OV,,FOLR1,target,mirvetuximab soravtansine (Elahere),ADC,approved,FRα-high platinum-resistant HGSOC,FRα-directed ADC — first-in-class,PMID:37094291
+OV,,KDR,target,bevacizumab,antibody,approved,HGSOC maintenance / recurrence,Anti-VEGF — approved with chemo and as maintenance,PMID:22183408
+OV,,CD274,target,pembrolizumab,antibody,approved,MSI-H / dMMR OV,Tumor-agnostic checkpoint IO for MSI-H subset,PMID:32914748
+TGCT,,KIT,biomarker,,,,,Seminoma-restricted expression; CD117 IHC diagnostic,PMID:15765456
+TGCT,,AFP,biomarker,,,,,Alpha-fetoprotein — serum marker for non-seminomatous germ cell tumors,PMID:9870293
+TGCT,,CGB1,biomarker,,,,,beta-hCG — serum marker for choriocarcinoma / non-seminoma,PMID:9870293
+TGCT,,POU5F1,biomarker,,,,,OCT4 — embryonal/seminoma stem-cell lineage marker,PMID:15765456
+TGCT,,NANOG,biomarker,,,,,Pluripotency factor — germ cell / seminoma lineage,PMID:15765456
+TGCT,,SOX2,biomarker,,,,,Embryonal carcinoma lineage marker,PMID:15765456
+TGCT,,SALL4,biomarker,,,,,Stem-cell factor — diagnostic IHC for germ cell tumors,PMID:21765467
+TGCT,,LDHA,biomarker,,,,,Lactate dehydrogenase (LDH) — serum marker; prognostic in bulky disease,PMID:9870293
