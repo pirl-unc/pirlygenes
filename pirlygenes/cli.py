@@ -3012,26 +3012,43 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                         lambda p: phase_order.get(str(p), 99)
                     )
                 ).sort_values(["_phase_key", "symbol", "agent"])
+                def _cell(value):
+                    if value is None:
+                        return "—"
+                    s = str(value).strip()
+                    if s == "" or s.lower() == "nan":
+                        return "—"
+                    return s
+
                 for _, trow in targets_sorted.iterrows():
-                    sym = str(trow["symbol"])
-                    expr = sym_to_row.get(sym)
-                    agent = str(trow.get("agent") or "—")
-                    agent_class = str(trow.get("agent_class") or "—")
-                    phase = str(trow.get("phase") or "—").replace("_", " ")
-                    indication = str(trow.get("indication") or "—")
-                    if expr is None:
+                    sym = _cell(trow.get("symbol"))
+                    agent = _cell(trow.get("agent"))
+                    agent_class = _cell(trow.get("agent_class"))
+                    phase = _cell(trow.get("phase")).replace("_", " ")
+                    indication = _cell(trow.get("indication"))
+                    # Agent-only rows (no gene target — e.g. doxorubicin,
+                    # trabectedin for sarcoma) carry a blank symbol; skip the
+                    # expression lookup so we don't render a "nan" row with
+                    # false tumor TPM claims.
+                    if sym == "—":
                         obs_cell = "*not measured*"
                         tumor_cell = "—"
                         attr_cell = "—"
                     else:
-                        obs_cell = f"{float(expr.get('observed_tpm') or 0.0):.1f}"
-                        attr_tumor = float(expr.get("attr_tumor_tpm") or 0.0)
-                        tumor_cell = (
-                            f"{attr_tumor:.0f}" if expr.get("attribution")
-                            else "—"
-                        )
-                        attr_cell = _format_attribution_cell(expr)
-                    bold = "**" if phase == "approved" else ""
+                        expr = sym_to_row.get(sym)
+                        if expr is None:
+                            obs_cell = "*not measured*"
+                            tumor_cell = "—"
+                            attr_cell = "—"
+                        else:
+                            obs_cell = f"{float(expr.get('observed_tpm') or 0.0):.1f}"
+                            attr_tumor = float(expr.get("attr_tumor_tpm") or 0.0)
+                            tumor_cell = (
+                                f"{attr_tumor:.0f}" if expr.get("attribution")
+                                else "—"
+                            )
+                            attr_cell = _format_attribution_cell(expr)
+                    bold = "**" if phase == "approved" and sym != "—" else ""
                     lines.append(
                         f"| {bold}{sym}{bold} | {agent} | {agent_class} | "
                         f"{phase} | {indication} | {obs_cell} | "
