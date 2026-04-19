@@ -94,6 +94,12 @@ class TissueCompositionSignal:
     cancer_hint: str = "tumor-consistent"
     n_reference_genes: int = 0
     verdict: str = ""
+    # True when the top HPA / top TCGA pair is structurally
+    # indistinguishable by bulk RNA (lymphoid normal vs heme-lymphoid
+    # cancer). Downstream tumor-evidence gates should NOT suppress
+    # the Stage-0 banner in this case — the "purity" estimate on a
+    # normal lymphoid sample is spurious anchor.
+    structural_ambiguity: bool = False
 
     def summary_line(self) -> str:
         """One-sentence description suitable for a brief or summary.md."""
@@ -141,7 +147,12 @@ class TissueCompositionSignal:
         if not self.top_normal_tissues:
             return None
 
-        if purity is not None or signature_score is not None:
+        if (purity is not None or signature_score is not None) \
+                and not self.structural_ambiguity:
+            # Structural-ambiguity cases (lymphoid normal vs heme-
+            # lymphoid cancer) always keep the banner — the purity
+            # and signature estimates are spurious in that regime
+            # because the reference itself is lymphoid tissue.
             p = float(purity) if purity is not None else 0.0
             s = float(signature_score) if signature_score is not None else 0.0
             if self.cancer_hint == "healthy-dominant":
@@ -170,6 +181,16 @@ class TissueCompositionSignal:
                 f"cancer-type call is soft-confidence."
             )
         # possibly-tumor
+        if self.structural_ambiguity:
+            return (
+                f"**Stage-0 hint: structural ambiguity (lymphoid).** Top normal "
+                f"match is **{tissue_name}** (ρ={rho:.2f}); top TCGA match is "
+                f"{cohort} (ρ={cohort_rho:.2f}). Normal lymphoid tissue and "
+                f"lymphoid malignancy are indistinguishable by bulk-RNA "
+                f"correlation — treat the downstream cancer call as soft-"
+                f"confidence regardless of purity (the purity estimate itself "
+                f"is unreliable in this regime)."
+            )
         return (
             f"**Stage-0 hint: composition ambiguous.** Top normal-tissue match "
             f"is **{tissue_name}** (ρ={rho:.2f}); top TCGA match is {cohort} "
@@ -299,8 +320,10 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         and top_tcga_name in _HEME_LYMPHOID_TCGA_COHORTS
     )
 
+    structural_ambiguity = False
     if lymphoid_ambiguity:
         cancer_hint = "possibly-tumor"
+        structural_ambiguity = True
     elif prolif_log2 >= _PROLIFERATION_HIGH_LOG2:
         cancer_hint = "tumor-consistent"
     elif prolif_log2 < _PROLIFERATION_QUIET_LOG2 and margin >= _HPA_MARGIN_STRONG:
@@ -338,6 +361,7 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         cancer_hint=cancer_hint,
         n_reference_genes=n_overlap,
         verdict=verdict,
+        structural_ambiguity=structural_ambiguity,
     )
 
 
