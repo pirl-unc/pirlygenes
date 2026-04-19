@@ -43,7 +43,7 @@ from .tumor_evidence import (
     TumorEvidenceScore,
     compute_tumor_evidence_score,
 )
-from .reasoning import run_stage0_rules
+from .reasoning import DerivedFlags, compute_derived_flags, run_stage0_rules
 
 
 _MIN_REFERENCE_GENES = 2000
@@ -663,14 +663,24 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         type_specific_hits=type_specific_hits,
         evidence=evidence,
     )
-    # Attach structural-ambiguity precomputed flags for the rule
-    # functions (private attributes, not part of the dataclass
-    # contract — they're derived-from-tissues and could be recomputed
-    # by rules themselves).
-    tmp._lymphoid_ambiguity = lymphoid_ambiguity  # type: ignore[attr-defined]
-    tmp._mesenchymal_ambiguity = mesenchymal_ambiguity  # type: ignore[attr-defined]
+    # Derive the Stage-0 flags (lymphoid/mesenchymal ambiguity, strong/
+    # soft tumor-evidence booleans, correlation margin) from the signal
+    # fields + the ambiguity booleans that were computed upstream from
+    # the raw tissue correlations.
+    base_flags = compute_derived_flags(tmp)
+    flags = DerivedFlags(
+        lymphoid_ambiguity=lymphoid_ambiguity,
+        mesenchymal_ambiguity=mesenchymal_ambiguity,
+        cta_strong=base_flags.cta_strong,
+        oncofetal_strong=base_flags.oncofetal_strong,
+        type_specific_strong=base_flags.type_specific_strong,
+        cta_soft=base_flags.cta_soft,
+        oncofetal_soft=base_flags.oncofetal_soft,
+        type_specific_soft=base_flags.type_specific_soft,
+        correlation_margin=base_flags.correlation_margin,
+    )
 
-    outcome, reasoning_trace = run_stage0_rules(tmp)
+    outcome, reasoning_trace = run_stage0_rules(tmp, flags)
     cancer_hint = outcome.hint
     structural_ambiguity = outcome.structural
     if outcome.rationale:
