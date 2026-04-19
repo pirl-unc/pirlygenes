@@ -136,18 +136,16 @@ def test_brief_no_internal_jargon():
 
 
 def test_brief_handles_uncurated_cancer_type():
-    # Use a cancer type still not in the curated key-genes CSV. Keep
-    # in sync with cancer_key_genes_cancer_types() — pick a TCGA code
-    # far from the current curation tranches.
-    # Use a TCGA code still not in the curated key-genes CSV. Keep in
-    # sync with cancer_key_genes_cancer_types() — pick something far
-    # from the current curation tranches (MESO / ACC / etc. are not
-    # covered as of writing).
+    """The brief must gracefully handle any cancer code that isn't in
+    the curated key-genes panel — not just TCGA codes. Uses a fake
+    placeholder code so the test is independent of which TCGA codes
+    we've curated (all 33 are curated as of #155; pick a non-existent
+    code so the test remains valid as we expand)."""
     analysis = _make_analysis()
-    analysis["cancer_type"] = "MESO"
+    analysis["cancer_type"] = "ZZUNCURATED"
     ranges_df = _make_ranges_df()
     md = build_brief(
-        analysis, ranges_df, cancer_code="MESO",
+        analysis, ranges_df, cancer_code="ZZUNCURATED",
         disease_state="",
     )
     assert "not yet in the curated key-genes panel" in md
