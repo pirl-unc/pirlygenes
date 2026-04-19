@@ -535,3 +535,71 @@ UVM,,PMEL,biomarker,,,,,gp100 — melanocyte lineage; tebentafusp epitope target
 UVM,,PMEL,target,tebentafusp,bispecific,approved,HLA-A*02:01+ metastatic UVM,Gp100 × CD3 bispecific — first approved targeted UVM agent,PMID:35179935
 UVM,,PDCD1,target,pembrolizumab + ipilimumab,antibody,phase_2,metastatic UVM,Checkpoint combinations — limited but documented responses,PMID:34115983
 UVM,,PRKCB,target,darovasertib (IDE196),small_molecule,phase_3,metastatic UVM,Protein kinase C inhibitor — GNAQ/GNA11 pathway; phase 3 ongoing,PMID:38182506
+LUSC,,TP53,biomarker,,,,,Near-universal mutation (~80%) — dominant driver of LUSC,PMID:22960745
+LUSC,,PIK3CA,biomarker,,,,,Recurrent activating mutation / amplification; PI3K-pathway driver,PMID:22960745
+LUSC,,SOX2,biomarker,,,,,3q amplification — squamous-lineage oncogene; ~20% LUSC,PMID:22960745
+LUSC,,FGFR1,biomarker,,,,,Amplification in ~20% LUSC — historical FGFR-inhibitor trials,PMID:22960745
+LUSC,,KEAP1,biomarker,,,,,Loss-of-function — cold-immune phenotype; co-occurs with STK11 axis,PMID:27308297
+LUSC,,NFE2L2,biomarker,,,,,Gain-of-function — oxidative-stress resistance; IO-refractory,PMID:27308297
+LUSC,,CDKN2A,biomarker,,,,,9p21 deletion — common in LUSC; IO-cold axis,PMID:22960745
+LUSC,,PTEN,biomarker,,,,,Loss in ~10% LUSC — PI3K activation,PMID:22960745
+LUSC,,PDCD1,target,pembrolizumab + chemotherapy,antibody,approved,advanced LUSC,KEYNOTE-407 — first-line pembrolizumab + carboplatin + taxane,PMID:30280656
+LUSC,,PDCD1,target,cemiplimab,antibody,approved,PD-L1>=50% advanced LUSC,EMPOWER-Lung 1 — first-line PD-L1 high monotherapy,PMID:33581821
+LUSC,,PDCD1,target,nivolumab + ipilimumab,antibody,approved,advanced NSCLC,CheckMate-227 — first-line IO combination for advanced LUSC,PMID:31562796
+LUSC,,VEGFA,target,atezolizumab + bevacizumab + chemo,antibody,approved,non-squamous NSCLC (LUAD),IMpower150 — approved in LUAD; LUSC generally receives non-bevacizumab regimens (bleeding risk),PMID:29863955
+LUSC,,FGFR1,target,AZD4547,small_molecule,phase_2,FGFR1-amp LUSC,FGFR-selective TKI — mixed results historically; trials largely negative,PMID:29298535
+MM,,CD38,biomarker,,,,,Near-universal surface on plasma cells — daratumumab / isatuximab epitope,PMID:26778312
+MM,,TNFRSF17,biomarker,,,,,BCMA — plasma-cell restricted; BCMA-directed therapy target,PMID:34192469
+MM,,SLAMF7,biomarker,,,,,Elotuzumab target — expressed on myeloma + NK cells,PMID:26527819
+MM,,FCRH5,biomarker,,,,,FcRH5 — lineage-restricted; cevostamab bispecific target,PMID:35512710
+MM,,GPRC5D,biomarker,,,,,Plasma-cell lineage — talquetamab target; differential expression vs normal plasma,PMID:34192469
+MM,,MYC,biomarker,,,,,Translocations (~15%); MYC-IGH or rearrangements drive aggressive disease,PMID:22869879
+MM,,CCND1,biomarker,,,,,t(11;14) CCND1-IGH — venetoclax-sensitive subset,PMID:30808845
+MM,,FGFR3,biomarker,,,,,t(4;14) FGFR3-IGH — high-risk subset,PMID:22869879
+MM,,TP53,biomarker,,,,,del(17p) or mutation — high-risk; venetoclax + selinexor rationale,PMID:27118452
+MM,,TNFRSF17,target,teclistamab,bispecific,approved,R/R multiple myeloma,BCMA x CD3 bispecific — approved 2022; MajesTEC-1 trial,PMID:35923167
+MM,,TNFRSF17,target,elranatamab,bispecific,approved,R/R multiple myeloma,BCMA x CD3 bispecific — approved 2023; MagnetisMM-3 trial,PMID:37290434
+MM,,TNFRSF17,target,cilta-cel (ciltacabtagene autoleucel),CAR-T,approved,R/R multiple myeloma,BCMA CAR-T — approved 2022; CARTITUDE-1 trial,PMID:34175021
+MM,,TNFRSF17,target,ide-cel (idecabtagene vicleucel),CAR-T,approved,R/R multiple myeloma,BCMA CAR-T — approved 2021; KarMMa trial,PMID:33626253
+MM,,TNFRSF17,target,belantamab mafodotin,ADC,approved,R/R multiple myeloma,BCMA MMAF ADC — approved 2024; DREAMM-7 / DREAMM-8,PMID:38581663
+MM,,GPRC5D,target,talquetamab,bispecific,approved,R/R multiple myeloma,GPRC5D x CD3 bispecific — approved 2023; MonumenTAL-1 trial,PMID:37632447
+MM,,CD38,target,daratumumab,antibody,approved,multiple myeloma (multiple lines),Anti-CD38 — approved newly-diagnosed + relapsed; MAIA/CASTOR/POLLUX,PMID:28498003
+MM,,CD38,target,isatuximab,antibody,approved,R/R multiple myeloma,Anti-CD38 — approved with pom+dex (ICARIA-MM) and with carfil+dex (IKEMA),PMID:31735560
+MM,,SLAMF7,target,elotuzumab,antibody,approved,R/R multiple myeloma,Anti-SLAMF7 — approved with lenalidomide+dex; ELOQUENT-2,PMID:26527819
+MM,,BCL2,target,venetoclax,small_molecule,phase_3,t(11;14) R/R MM,BCL2 inhibitor — CANOVA trial in t(11;14) subset,PMID:32213337
+CLL,,MS4A1,biomarker,,,,,CD20 — pan-B-cell; rituximab / obinutuzumab target,PMID:21358700
+CLL,,CD5,biomarker,,,,,Aberrant T-cell marker — defining CLL phenotype (CD5+ CD23+ CD20-dim),PMID:18832546
+CLL,,CD23,biomarker,,,,,FCER2 — CLL diagnostic IHC; distinguishes from MCL (CD23-),PMID:18832546
+CLL,,IGHV,biomarker,,,,,Unmutated IGHV (U-CLL) — poor prognosis; mutated (M-CLL) — favorable,PMID:10477712
+CLL,,TP53,biomarker,,,,,del(17p) or TP53 mutation — highest-risk; venetoclax + BTK-inhibitor preferred,PMID:22323484
+CLL,,NOTCH1,biomarker,,,,,Recurrent mutation — mutated IGHV independence; ATM subset,PMID:22150006
+CLL,,BTK,target,ibrutinib,small_molecule,approved,CLL first-line + R/R,First-in-class BTK inhibitor — RESONATE / RESONATE-2,PMID:26639149
+CLL,,BTK,target,acalabrutinib,small_molecule,approved,CLL first-line + R/R,Second-gen BTK inhibitor — improved selectivity / tolerability; ELEVATE-RR/TN,PMID:34358457
+CLL,,BTK,target,zanubrutinib,small_molecule,approved,CLL first-line + R/R,Second-gen BTK inhibitor — SEQUOIA / ALPINE trials,PMID:36791211
+CLL,,BTK,target,pirtobrutinib,small_molecule,approved,R/R CLL after covalent BTK-i,Non-covalent BTK-i — overcomes C481 resistance; BRUIN,PMID:37099297
+CLL,,BCL2,target,venetoclax,small_molecule,approved,CLL first-line + R/R,BCL2 inhibitor — ven+obinutuzumab (CLL14) or ven+ibrutinib (CAPTIVATE),PMID:30864090
+CLL,,MS4A1,target,obinutuzumab,antibody,approved,previously untreated CLL,Anti-CD20 type II — replaces rituximab in several CLL regimens; CLL11,PMID:24631112
+MCL,,CCND1,biomarker,,,,,t(11;14) CCND1-IGH — pathognomonic for MCL; cyclin D1 overexpression,PMID:9500537
+MCL,,SOX11,biomarker,,,,,Expressed in ~95% MCL — defines classical MCL; distinguishes from CLL,PMID:20554603
+MCL,,TP53,biomarker,,,,,Mutation / del(17p) — blastoid variant; chemorefractory,PMID:28035779
+MCL,,BTK,target,ibrutinib,small_molecule,approved,R/R MCL,BTK inhibitor — first-line MCL after chemo; LYM-3002,PMID:23782157
+MCL,,BTK,target,acalabrutinib,small_molecule,approved,R/R MCL,Second-gen BTK-i — more selective; approval basis ACE-LY-004,PMID:29126709
+MCL,,BTK,target,zanubrutinib,small_molecule,approved,R/R MCL,Second-gen BTK-i — approved 2019,PMID:31492771
+MCL,,CD19,target,brexucabtagene autoleucel (brexu-cel),CAR-T,approved,R/R MCL,CD19 CAR-T — approved 2020; ZUMA-2 trial,PMID:32726532
+MCL,,BCL2,target,venetoclax,small_molecule,phase_2,R/R MCL,"BCL2 inhibitor — activity in R/R MCL, especially with ibrutinib combo",PMID:30275128
+HL,,TNFRSF8,biomarker,,,,,CD30 — Reed-Sternberg / Hodgkin lineage; brentuximab-vedotin target,PMID:21128251
+HL,,PDCD1LG2,biomarker,,,,,PD-L2 — commonly amplified 9p24.1 in cHL with PD-L1 co-amp,PMID:27391691
+HL,,CD274,biomarker,,,,,PD-L1 — 9p24.1 amplification characteristic of cHL; IO sensitivity,PMID:27391691
+HL,,TNFRSF8,target,brentuximab vedotin,ADC,approved,CD30+ Hodgkin + PTCL,Anti-CD30 MMAE ADC — first-line AVD (ECHELON-1) + R/R,PMID:28636853
+HL,,PDCD1,target,nivolumab,antibody,approved,R/R classic Hodgkin,Anti-PD1 — CheckMate-205; approved R/R cHL,PMID:25482239
+HL,,PDCD1,target,pembrolizumab,antibody,approved,R/R classic Hodgkin,Anti-PD1 — KEYNOTE-204 (vs brentuximab),PMID:34264741
+B_ALL,,CD19,biomarker,,,,,Pan-B-cell surface — blinatumomab + tisa-cel epitope; near-universal in B-ALL,PMID:25795067
+B_ALL,,CD22,biomarker,,,,,Pan-B-cell surface — inotuzumab / moxetumomab epitope,PMID:27959700
+B_ALL,,CD20,biomarker,,,,,Variable expression in B-ALL — rituximab candidate in CD20+ subset,PMID:26919009
+B_ALL,,BCR,biomarker,,,,,BCR-ABL1 (Philadelphia chromosome) — TKI-eligible subset (~25% adult),PMID:26183700
+B_ALL,,BCR,target,imatinib + chemo,small_molecule,approved,Ph+ (BCR-ABL1) B-ALL,First-gen BCR-ABL TKI — added to induction for Ph+ B-ALL,PMID:16837215
+B_ALL,,BCR,target,ponatinib + chemo,small_molecule,approved,Ph+ B-ALL (incl T315I),Third-gen BCR-ABL TKI — active against T315I; PhALLCON trial,PMID:37917421
+B_ALL,,CD19,target,blinatumomab,bispecific,approved,R/R B-ALL + MRD+ B-ALL,CD19 x CD3 BiTE — approved 2014 R/R; 2018 MRD+ setting,PMID:25795067
+B_ALL,,CD19,target,tisagenlecleucel (tisa-cel),CAR-T,approved,R/R pediatric / young adult B-ALL,CD19 CAR-T — first-of-kind FDA approval 2017,PMID:28562253
+B_ALL,,CD19,target,brexucabtagene autoleucel (brexu-cel),CAR-T,approved,R/R adult B-ALL,CD19 CAR-T — approved 2021; ZUMA-3 trial,PMID:34214213
+B_ALL,,CD22,target,inotuzumab ozogamicin,ADC,approved,R/R B-ALL,CD22 calicheamicin ADC — approved 2017; INO-VATE trial,PMID:27386334
