@@ -71,6 +71,27 @@ _HEME_LYMPHOID_TCGA_COHORTS = frozenset({
     "FPKM_DLBC", "FPKM_LAML", "FPKM_THYM",
 })
 
+# Mesenchymal structural-ambiguity: the sarcoma analogue of the
+# lymphoid case. Normal smooth muscle / adipose / skeletal muscle /
+# endometrial myometrium share the same mesenchymal lineage as SARC
+# tumors, so bulk-RNA correlation cannot distinguish them — a well-
+# differentiated leiomyosarcoma looks like smooth muscle, a well-
+# differentiated liposarcoma looks like adipose. The workflow prior
+# is that users upload cancer samples (not random normal tissue), so
+# when this override fires, downstream cancer-specific analysis
+# proceeds — we just note the ambiguity so the clinician sees it.
+_MESENCHYMAL_NORMAL_TISSUES = frozenset({
+    "nTPM_smooth_muscle", "nTPM_adipose_tissue",
+    "nTPM_skeletal_muscle", "nTPM_heart_muscle",
+    "nTPM_endometrium",  # uterine myometrium
+    "nTPM_cervix",       # also smooth-muscle-rich
+    "nTPM_urinary_bladder",  # smooth-muscle dominant
+    "nTPM_epididymis",   # smooth muscle
+})
+_MESENCHYMAL_SARC_TCGA_COHORTS = frozenset({
+    "FPKM_SARC", "FPKM_UCS",
+})
+
 # CTA panel as independent tumor evidence. Cancer-testis antigens are
 # epigenetically silenced in every somatic tissue except testis +
 # placenta (+ in some cases ovary). Detection above threshold in a
@@ -301,14 +322,39 @@ class TissueCompositionSignal:
             )
         # possibly-tumor
         if self.structural_ambiguity:
+            # Distinguish lymphoid vs mesenchymal wording. The workflow
+            # prior is that users upload cancer samples, so the banner
+            # explicitly notes that downstream cancer-specific analysis
+            # still proceeds — the ambiguity is context for the
+            # clinician, not a blocker.
+            tissue_lc = tissue.lower()
+            lymphoid_tissues = (
+                "lymph", "spleen", "thymus", "bone_marrow",
+                "bone marrow", "tonsil", "appendix",
+            )
+            if any(tag in tissue_lc for tag in lymphoid_tissues):
+                return (
+                    f"**Stage-0 hint: structural ambiguity (lymphoid).** Top "
+                    f"normal match is **{tissue_name}** (ρ={rho:.2f}); top "
+                    f"TCGA match is {cohort} (ρ={cohort_rho:.2f}). Normal "
+                    f"lymphoid tissue and lymphoid malignancy are indist-"
+                    f"inguishable by bulk-RNA correlation. Proceeding with "
+                    f"the {cohort}-specific downstream analysis under the "
+                    f"tumor-sample prior, but treat the cancer call and "
+                    f"purity as soft-confidence — the purity estimate itself "
+                    f"is unreliable in this regime."
+                )
             return (
-                f"**Stage-0 hint: structural ambiguity (lymphoid).** Top normal "
-                f"match is **{tissue_name}** (ρ={rho:.2f}); top TCGA match is "
-                f"{cohort} (ρ={cohort_rho:.2f}). Normal lymphoid tissue and "
-                f"lymphoid malignancy are indistinguishable by bulk-RNA "
-                f"correlation — treat the downstream cancer call as soft-"
-                f"confidence regardless of purity (the purity estimate itself "
-                f"is unreliable in this regime)."
+                f"**Stage-0 hint: structural ambiguity (mesenchymal).** Top "
+                f"normal match is **{tissue_name}** (ρ={rho:.2f}); top TCGA "
+                f"match is {cohort} (ρ={cohort_rho:.2f}). Well-differentiated "
+                f"sarcomas share a mesenchymal expression program with "
+                f"normal smooth muscle / adipose / muscle / myometrium, so "
+                f"bulk-RNA correlation cannot cleanly distinguish tumor "
+                f"from tissue-of-origin. Proceeding with the {cohort}-"
+                f"specific downstream analysis under the tumor-sample prior "
+                f"— use the CTA / oncofetal / type-specific tumor-up panels "
+                f"below as the primary tumor-evidence channels."
             )
         return (
             f"**Stage-0 hint: composition ambiguous.** Top normal-tissue match "
@@ -541,6 +587,10 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         top_hpa_name in _LYMPHOID_NORMAL_TISSUES
         and top_tcga_name in _HEME_LYMPHOID_TCGA_COHORTS
     )
+    mesenchymal_ambiguity = (
+        top_hpa_name in _MESENCHYMAL_NORMAL_TISSUES
+        and top_tcga_name in _MESENCHYMAL_SARC_TCGA_COHORTS
+    )
 
     # CTA panel acts as independent tumor evidence.  Any CTA detection
     # in a non-reproductive sample is suspicious; strong CTA signal
@@ -579,18 +629,26 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
     type_specific_soft = len(type_specific_hits) >= 1
 
     structural_ambiguity = False
-    if lymphoid_ambiguity:
-        cancer_hint = "possibly-tumor"
-        structural_ambiguity = True
-    elif cta_strong_signal or oncofetal_strong_signal or type_specific_strong:
+    # Priority: strong tumor-specific evidence (CTAs, oncofetal, or
+    # type-specific tumor-up panel) wins over structural-ambiguity
+    # overrides. A sample with 58 CTA hits at 5000+ TPM (pfo004
+    # sarcoma) is definitively tumor, not "ambiguous mesenchymal"
+    # — even though it sits in the mesenchymal-ambiguity regime by
+    # correlation. Same for a lymphoid sample with strong tumor-up
+    # markers.
+    if cta_strong_signal or oncofetal_strong_signal or type_specific_strong:
         # Strong tumor-specific re-expression (CTAs, oncofetal, or
         # the top-TCGA-cohort's own private tumor-up panel) is near-
         # definitive positive evidence. Overrides any correlation-
-        # based healthy call; guards already exclude reproductive
-        # normals (CTAs) and +liver (oncofetal). Type-specific
-        # markers are already cancer-code-filtered upstream to ≤4
-        # cancers each, so they're safe to use as positive evidence.
+        # based healthy call and any structural-ambiguity flag.
         cancer_hint = "tumor-consistent"
+    elif lymphoid_ambiguity or mesenchymal_ambiguity:
+        # Structural-ambiguity override for the regimes where bulk-
+        # RNA correlation can't distinguish tumor from normal of
+        # origin. Fires only when there's no strong tumor evidence
+        # — those cases would already be tumor-consistent above.
+        cancer_hint = "possibly-tumor"
+        structural_ambiguity = True
     elif prolif_log2 >= _PROLIFERATION_HIGH_LOG2:
         cancer_hint = "tumor-consistent"
     elif prolif_log2 < _PROLIFERATION_QUIET_LOG2 and margin >= _HPA_MARGIN_STRONG:
