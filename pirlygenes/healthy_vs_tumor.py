@@ -35,17 +35,24 @@ import pandas as pd
 
 from .gene_sets_cancer import (
     pan_cancer_expression, CTA_gene_names,
+    proliferation_panel_gene_names,
+    oncofetal_strict_gene_names,
     tumor_up_vs_matched_normal, heme_tumor_up_vs_matched_normal,
+)
+from .tumor_evidence import (
+    TumorEvidenceScore,
+    compute_tumor_evidence_score,
 )
 
 
 _MIN_REFERENCE_GENES = 2000
 
-# Coordinate cell-cycle / mitosis panel. Elevated as a group only in
-# proliferating (malignant or regenerating) tissue; individual members
-# can be up in normal tissue (MKI67 in germinal-center spleen, colon
-# crypts, bone marrow) without the full panel firing.
-_PROLIFERATION_PANEL = ("MKI67", "TOP2A", "CCNB1", "BIRC5", "AURKA")
+# Coordinate cell-cycle / mitosis panel — sourced from the public API
+# in gene_sets_cancer so consumers can use the same panel for
+# downstream scoring. Expanded in v4.28 from the 5-gene minimal set
+# to the full 13-gene panel (CENPF median-fold 14×, FOXM1 6.3×,
+# CDC20 6.1× were missing from the original set).
+_PROLIFERATION_PANEL = tuple(proliferation_panel_gene_names())
 _PROLIFERATION_HIGH_LOG2 = 4.5   # panel mean > this → "tumor-consistent"
 _PROLIFERATION_QUIET_LOG2 = 3.5  # panel mean < this → proliferation quiet
 
@@ -124,17 +131,7 @@ _CTA_NORMAL_TISSUES = frozenset({
 # immune-privileged niches). These expressed-in-normal markers fail
 # the "near-zero in adult somatic" criterion and were dropping the
 # panel's specificity.
-_ONCOFETAL_STRICT = frozenset({
-    "AFP",        # fetal liver, yolk sac, HCC, germ cell tumors, HEPB
-    "LIN28A",     # germ cells + tumors (Yamanaka-factor-like re-expr)
-    "LIN28B",     # neuroblastoma, germ cell, embryonal
-    "TPBG",       # trophoblast glycoprotein / 5T4 — tumor-restricted
-    "PLAC1",      # placenta + wide range of cancers
-    "CGB",        # hCG-beta — trophoblast + hCG-secreting tumors
-    "CGB1", "CGB2", "CGB3",
-    "NANOG",      # ES/germline + tumors; very restricted in adults
-    "POU5F1",     # OCT4 — ES/germline + germ cell tumors
-})
+_ONCOFETAL_STRICT = frozenset(oncofetal_strict_gene_names())
 # Back-compat: keep _ONCOFETAL_LOOSE as an empty set so any caller
 # that still references it (including the panel-union in
 # _oncofetal_panel_signal below) doesn't break.
@@ -221,6 +218,31 @@ class TissueCompositionSignal:
     # hits from it, that's cancer-type-specific positive evidence.
     type_specific_cohort: str = ""
     type_specific_hits: list[tuple[str, float]] = field(default_factory=list)
+    # Unified tumor-evidence score across all channels. aggregate_score
+    # ≥ 1.0 is tumor-consistent; < 0.3 + healthy correlation margin →
+    # healthy-dominant; in-between → possibly-tumor. Holistic — no
+    # single-threshold win/lose per channel; channels contribute
+    # additively up to their saturation point.
+    evidence: TumorEvidenceScore = field(default_factory=TumorEvidenceScore)
+    # Ordered list of named rules that fired during the cancer-hint
+    # decision. Human-readable; makes the reasoning auditable.
+    reasoning_trace: list[str] = field(default_factory=list)
+
+    def synthesis(self) -> str:
+        """Single-spot narrative of all Stage-0 evidence.
+
+        Enumerates the top tissue / top cohort / all tumor-evidence
+        channels + aggregate + the rule trace that drove the
+        cancer_hint call. Intended for the analysis.md report + as
+        a machine-readable reasoning audit.
+        """
+        parts = [self.summary_line()]
+        if self.reasoning_trace:
+            parts.append(
+                "Reasoning trace: " + " → ".join(self.reasoning_trace) + "."
+            )
+        parts.append(self.evidence.synthesis())
+        return " ".join(parts)
 
     def summary_line(self) -> str:
         """One-sentence description suitable for a brief or summary.md."""
@@ -628,42 +650,108 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
     type_specific_strong = len(type_specific_hits) >= _TUMOR_UP_PANEL_STRONG_COUNT
     type_specific_soft = len(type_specific_hits) >= 1
 
+    # Unified tumor-evidence score across all channels.
+    evidence = compute_tumor_evidence_score(
+        sample_by_symbol=sample_by_symbol,
+        cta_count=cta_count,
+        oncofetal_count=oncofetal_count,
+        type_specific_count=len(type_specific_hits),
+        proliferation_log2_mean=prolif_log2,
+    )
+    aggregate = evidence.aggregate_score
+
+    # ---- Ordered rule list — explicit, auditable reasoning ----
+    # Each rule either fires (sets cancer_hint + trace, breaks) or
+    # defers to the next. The trace is stored in the signal so a
+    # reader can audit which rules the sample took.
     structural_ambiguity = False
-    # Priority: strong tumor-specific evidence (CTAs, oncofetal, or
-    # type-specific tumor-up panel) wins over structural-ambiguity
-    # overrides. A sample with 58 CTA hits at 5000+ TPM (pfo004
-    # sarcoma) is definitively tumor, not "ambiguous mesenchymal"
-    # — even though it sits in the mesenchymal-ambiguity regime by
-    # correlation. Same for a lymphoid sample with strong tumor-up
-    # markers.
-    if cta_strong_signal or oncofetal_strong_signal or type_specific_strong:
-        # Strong tumor-specific re-expression (CTAs, oncofetal, or
-        # the top-TCGA-cohort's own private tumor-up panel) is near-
-        # definitive positive evidence. Overrides any correlation-
-        # based healthy call and any structural-ambiguity flag.
-        cancer_hint = "tumor-consistent"
-    elif lymphoid_ambiguity or mesenchymal_ambiguity:
-        # Structural-ambiguity override for the regimes where bulk-
-        # RNA correlation can't distinguish tumor from normal of
-        # origin. Fires only when there's no strong tumor evidence
-        # — those cases would already be tumor-consistent above.
-        cancer_hint = "possibly-tumor"
-        structural_ambiguity = True
+    reasoning_trace: list[str] = []
+
+    def _fire(hint: str, rule: str, *, structural: bool = False):
+        nonlocal cancer_hint, structural_ambiguity
+        cancer_hint = hint
+        structural_ambiguity = structural
+        reasoning_trace.append(rule)
+
+    cancer_hint = "tumor-consistent"  # default if no rule fires
+
+    # Rule 1a: structural-ambiguity tissues — the aggregate score
+    # alone is NOT safe evidence because normal-tissue biology
+    # (germinal-center proliferation in spleen, glycolysis in active
+    # normal tissue, CTA / type-specific panel leakage) inflates the
+    # aggregate without implying cancer. Only STRONG SINGLE-CHANNEL
+    # tumor evidence overrides the structural flag.
+    in_ambiguous_regime = lymphoid_ambiguity or mesenchymal_ambiguity
+    single_channel_strong = (
+        cta_strong_signal or oncofetal_strong_signal or type_specific_strong
+    )
+    if in_ambiguous_regime and single_channel_strong:
+        strong_reasons = []
+        if cta_strong_signal:
+            strong_reasons.append(f"CTA_strong(n={cta_count})")
+        if oncofetal_strong_signal:
+            strong_reasons.append(f"oncofetal_strong(n={oncofetal_count})")
+        if type_specific_strong:
+            strong_reasons.append(
+                f"type_specific_strong(n={len(type_specific_hits)})"
+            )
+        _fire("tumor-consistent",
+              "R1a-single-channel-tumor-wins-in-ambiguity["
+              + ",".join(strong_reasons) + "]")
+    # Rule 2: lymphoid structural ambiguity (fires before aggregate
+    # rule so proliferative normal lymphoid doesn't get called tumor
+    # by virtue of germinal-center proliferation).
+    elif lymphoid_ambiguity:
+        _fire("possibly-tumor", "R2-lymphoid-ambiguity", structural=True)
+    # Rule 3: mesenchymal structural ambiguity.
+    elif mesenchymal_ambiguity:
+        _fire("possibly-tumor", "R3-mesenchymal-ambiguity", structural=True)
+    # Rule 1b: non-ambiguous-tissue strong aggregate or strong single
+    # channel → tumor. Holistic score ≥ 1.0 OR any single channel
+    # strong. Aggregate catches low-purity cases where multiple soft
+    # channels co-occur (rs PRAD CTA+oncofetal+prolif).
+    elif (aggregate >= 1.0 or single_channel_strong):
+        strong_reasons = []
+        if aggregate >= 1.0:
+            strong_reasons.append(f"aggregate={aggregate:.2f}≥1.0")
+        if cta_strong_signal:
+            strong_reasons.append(f"CTA_strong(n={cta_count})")
+        if oncofetal_strong_signal:
+            strong_reasons.append(f"oncofetal_strong(n={oncofetal_count})")
+        if type_specific_strong:
+            strong_reasons.append(
+                f"type_specific_strong(n={len(type_specific_hits)})"
+            )
+        _fire("tumor-consistent", "R1b-strong-tumor-evidence["
+              + ",".join(strong_reasons) + "]")
+    # Rule 4: elevated proliferation alone → tumor-consistent.
     elif prolif_log2 >= _PROLIFERATION_HIGH_LOG2:
-        cancer_hint = "tumor-consistent"
+        _fire("tumor-consistent",
+              f"R4-proliferation-high(log2={prolif_log2:.1f})")
+    # Rule 5: strong healthy correlation + quiet prolif + no soft
+    # tumor evidence → confident healthy call.
     elif prolif_log2 < _PROLIFERATION_QUIET_LOG2 and margin >= _HPA_MARGIN_STRONG:
-        # Two or more CTA hits OR any oncofetal hit block the most
-        # confident healthy call. Single CTA hit is panel noise;
-        # multiple hits or any oncofetal-strict hit imply coordinated
-        # de-silencing of tumor-associated programs.
         if cta_soft_signal or oncofetal_soft_signal or type_specific_soft:
-            cancer_hint = "possibly-tumor"
+            demotes = []
+            if cta_soft_signal:
+                demotes.append(f"CTA_soft(n={cta_count})")
+            if oncofetal_soft_signal:
+                demotes.append(f"oncofetal_soft(n={oncofetal_count})")
+            if type_specific_soft:
+                demotes.append("type_specific_soft")
+            _fire("possibly-tumor",
+                  f"R5b-healthy-correlation-demoted-by[{','.join(demotes)}]")
         else:
-            cancer_hint = "healthy-dominant"
+            _fire("healthy-dominant",
+                  f"R5a-healthy-correlation-quiet-prolif(margin={margin:+.2f})")
+    # Rule 6: weak healthy-margin without loud proliferation → soft
+    # possibly-tumor.
     elif margin >= _HPA_MARGIN_WEAK:
-        cancer_hint = "possibly-tumor"
+        _fire("possibly-tumor",
+              f"R6-weak-healthy-margin(margin={margin:+.2f})")
+    # Rule 7 (default): correlation favours TCGA → tumor-consistent.
     else:
-        cancer_hint = "tumor-consistent"
+        _fire("tumor-consistent", "R7-tcga-dominant-correlation")
 
     if cancer_hint == "healthy-dominant":
         verdict = (
@@ -701,6 +789,8 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         oncofetal_top_hits=oncofetal_top_hits,
         type_specific_cohort=top_tcga_code,
         type_specific_hits=type_specific_hits,
+        evidence=evidence,
+        reasoning_trace=reasoning_trace,
     )
 
 

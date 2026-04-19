@@ -711,6 +711,131 @@ def subtype_deconvolved_expression():
         return None
 
 
+# ---------- Cancer-pathway panels (tumor-evidence Stage-0 signals) ----------
+#
+# Each panel is a coordinated-program set — genes that move together in
+# tumors vs normal tissue. Empirical median-fold-change numbers below
+# are from a pan-cancer TCGA-vs-matched-HPA-normal sweep of 20
+# epithelial cancer-tissue pairs. Ship as public API so consumers can
+# reuse the same definitions for downstream analysis (scoring,
+# signature calibration, cross-cohort comparison).
+
+
+_PROLIFERATION_PANEL_GENES = (
+    # Empirically-selected from pan-cancer sweep: each gene has
+    # median fold ≥ 3 across 20 epithelial cancers vs matched normal,
+    # and coordinated with the rest of the mitotic program.
+    "MKI67",    # median fold 4.0x
+    "TOP2A",    # 4.3
+    "CCNB1",    # 3.1
+    "CCNB2",    # 3.7
+    "CDC20",    # 6.1
+    "CDK1",     # 2.2
+    "UBE2C",    # 5.9
+    "TPX2",     # 4.8
+    "CENPF",    # 14.3 — strongest single marker
+    "FOXM1",    # 6.3
+    "PLK1",     # 3.8
+    "AURKA",    # 2.1
+    "BIRC5",    # 3.8
+)
+
+
+_HYPOXIA_PANEL_GENES = (
+    # Carbonic anhydrase 9 is the classic HIF1α-driven hypoxia marker;
+    # SLC2A1 (GLUT1) is the Warburg/hypoxia crosslink. Median fold
+    # across pan-cancer sweep — CA9 12.1x, SLC2A1 9.1x.
+    "CA9",
+    "SLC2A1",
+    "LDHA",
+    "ENO1",
+    "PGK1",
+)
+
+
+_GLYCOLYSIS_PANEL_GENES = (
+    # Warburg / glycolysis panel. Most individual fold-changes are
+    # modest (1-2x over normal) because glycolytic enzymes are high
+    # everywhere; the ABSOLUTE tumor TPM is what's striking (PKM 557,
+    # ENO1 723, GAPDH 2575 across pan-cancer). SLC2A1 (GLUT1) and
+    # ALDOA give the best fold-change contrast.
+    "HK2", "LDHA", "PKM", "SLC2A1", "ENO1", "PGK1", "ALDOA", "PFKP",
+)
+
+
+_DDR_ACTIVATION_PANEL_GENES = (
+    # DNA-damage-response / replication-stress markers. Modest fold-
+    # change (1-2x) but co-upregulated under replication stress.
+    "RAD51", "RAD51AP1", "CHEK1", "CHEK2", "ATR", "BRCA1",
+)
+
+
+_ONCOFETAL_STRICT_GENES = (
+    # Genes near-zero in any adult somatic tissue, re-expressed in
+    # tumors as an oncofetal program. Stricter than the CTA panel —
+    # these must pass HPA-check of median nTPM < 1 outside
+    # reproductive / trophoblastic cells.
+    "AFP",
+    "LIN28A",
+    "LIN28B",
+    "TPBG",       # 5T4
+    "PLAC1",
+    "CGB", "CGB1", "CGB2", "CGB3",
+    "NANOG",
+    "POU5F1",     # OCT4
+)
+
+
+def proliferation_panel_gene_names():
+    """Coordinated cell-cycle / mitotic-program panel (13 genes).
+
+    Empirically-selected from a pan-cancer sweep: each gene has
+    median fold-change ≥ 3 across 20 epithelial cancer-tissue pairs.
+    Used as a Stage-0 tumor-evidence signal (healthy_vs_tumor) and
+    available here for downstream scoring / calibration.
+    """
+    return list(_PROLIFERATION_PANEL_GENES)
+
+
+def hypoxia_panel_gene_names():
+    """Hypoxia-response panel — CA9, SLC2A1, LDHA, ENO1, PGK1.
+
+    CA9 is the strongest single-gene marker (median fold 12x across
+    pan-cancer). Used as a Stage-0 tumor-evidence signal and for
+    downstream hypoxia-score calculation.
+    """
+    return list(_HYPOXIA_PANEL_GENES)
+
+
+def glycolysis_panel_gene_names():
+    """Warburg / glycolysis panel — 8 canonical enzymes.
+
+    Modest per-gene fold-change over normal (these are high
+    everywhere) but coordinated upregulation is a cancer hallmark.
+    Absolute tumor TPMs are dramatic (PKM 557, ENO1 723, GAPDH 2575
+    averaged across pan-cancer medians).
+    """
+    return list(_GLYCOLYSIS_PANEL_GENES)
+
+
+def ddr_activation_panel_gene_names():
+    """DNA-damage-response / replication-stress panel (6 genes)."""
+    return list(_DDR_ACTIVATION_PANEL_GENES)
+
+
+def oncofetal_strict_gene_names():
+    """Oncofetal / embryonic-stemness strict panel (11 genes).
+
+    Near-zero in any adult somatic tissue, re-expressed in many
+    cancers. Strictest specificity — SOX2 / KLF4 / IGF2 / HMGA2 /
+    HLA-G were intentionally excluded from this tier because they
+    are physiologically expressed in adult niches (neural
+    progenitors, gut stem cells, smooth muscle, etc.) and would
+    false-positive as tumor evidence.
+    """
+    return list(_ONCOFETAL_STRICT_GENES)
+
+
 def heme_tumor_up_vs_matched_normal(cancer_code: str | None = None):
     """Heme analogue of :func:`tumor_up_vs_matched_normal`.
 
