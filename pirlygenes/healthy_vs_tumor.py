@@ -4,25 +4,31 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""Stage-0 healthy-vs-tumor gate (#149).
+"""Stage-0 tissue-composition + cancer-hint gate (#149, refined).
 
-Runs BEFORE cancer-type classification. Races the sample's expression
-profile against every HPA normal tissue (50 columns) and every TCGA
-cohort (33 columns) already shipped in :func:`pan_cancer_expression`.
-If the best-matching HPA tissue correlates more strongly than the
-best-matching TCGA cohort by a comfortable margin, and there is no
-corroborating proliferation signal (MKI67), the sample is flagged as
-likely healthy rather than force-classified into a TCGA code.
+Runs BEFORE cancer-type classification. Produces the coarsest
+possible reading of "what kind of tissue is this, and is there a
+hint of cancer?" and propagates the result forward so later stages
+can refine. Explicitly does NOT make a binary healthy-vs-cancer call
+on the first pass — healthy and low-purity-tumor look similar here
+and will be distinguished downstream once lineage markers, purity,
+and therapy-axis signals have been read.
 
-This is the minimum-viable gate that fixes the GTEx-normals-called-as-
-DLBC/SARC/GBM failure without requiring a new classifier or new data.
-The HPA nTPM reference is already shipped; the TCGA FPKM reference is
-already shipped; the correlation pass is a few hundred milliseconds.
+Output:
+
+- ``top_normal_tissues``: the three HPA normal-tissue columns that
+  best correlate with the sample's log-TPM profile, each with a
+  Spearman rho.
+- ``top_tcga_cohorts``: the three TCGA cohorts that best correlate.
+- ``proliferation_log2_mean``: geomean on log-TPM of the five-gene
+  proliferation panel (MKI67 / TOP2A / CCNB1 / BIRC5 / AURKA).
+- ``cancer_hint``: one of ``"tumor-consistent"``, ``"possibly-tumor"``,
+  ``"healthy-dominant"`` — a coarse read, not a commitment.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -30,95 +36,109 @@ import pandas as pd
 from .gene_sets_cancer import pan_cancer_expression
 
 
-# Sample needs at least this many genes overlapping the reference to
-# produce a meaningful correlation; falls below the noise floor
-# otherwise. Empirically ~5K genes is enough; set conservatively.
 _MIN_REFERENCE_GENES = 2000
 
-# Margin by which the best HPA tissue must beat the best TCGA cohort
-# before we even consider a healthy call. Too tight: false positives
-# on cold-immune cancers or low-purity tumors where the sample's
-# stroma-and-normal fraction dominates.  Too loose: misses the GTEx-
-# style mis-classifications this gate exists to catch.
-_HEALTHY_MARGIN_CONFIDENT = 0.05
-_HEALTHY_MARGIN_AMBIGUOUS = 0.03
-
-# Proliferation-panel veto. Any malignancy coordinately upregulates
-# multiple cell-cycle / mitotic-checkpoint genes; healthy tissue
-# does not, even when one member (MKI67 in germinal-center spleen,
-# colon crypts) is elevated in isolation. We require the geomean
-# of the panel on log-TPM to be below ``_PROLIFERATION_VETO_LOG2``.
-# Empirically ~3.5 log2-TPM separates healthy solid tissues from
-# primary solid tumors; heme-normal vs heme-cancer remains
-# ambiguous because normal lymphoid tissue has cycling B-cells.
+# Coordinate cell-cycle / mitosis panel. Elevated as a group only in
+# proliferating (malignant or regenerating) tissue; individual members
+# can be up in normal tissue (MKI67 in germinal-center spleen, colon
+# crypts, bone marrow) without the full panel firing.
 _PROLIFERATION_PANEL = ("MKI67", "TOP2A", "CCNB1", "BIRC5", "AURKA")
-_PROLIFERATION_VETO_LOG2 = 3.5
+_PROLIFERATION_HIGH_LOG2 = 4.5   # panel mean > this → "tumor-consistent"
+_PROLIFERATION_QUIET_LOG2 = 3.5  # panel mean < this → proliferation quiet
+
+# The margin by which the top HPA tissue must beat the top TCGA cohort
+# correlation before we nudge toward "healthy-dominant". In combination
+# with the proliferation panel.
+_HPA_MARGIN_STRONG = 0.05
+_HPA_MARGIN_WEAK = 0.02
 
 
 @dataclass
-class HealthyVsTumorResult:
-    """Outcome of the Stage-0 gate.
+class TissueCompositionSignal:
+    """Stage-0 coarse reading of tissue composition + cancer hint.
 
-    ``call`` takes one of three values:
+    ``cancer_hint`` is one of:
 
-    - ``"healthy"`` — confident healthy-tissue match: HPA clearly
-      beats TCGA AND proliferation panel is quiet.
-    - ``"ambiguous"`` — HPA beats TCGA by a modest margin or
-      proliferation panel is modest; the sample could be a low-purity
-      tumor or normal tissue.  Downstream must treat the cancer call
-      as soft-confidence.
-    - ``"tumor-consistent"`` — no evidence against cancer (default).
+    - ``"tumor-consistent"`` — proliferation panel is clearly active
+      OR TCGA cohort correlation exceeds HPA tissue correlation by
+      more than the margin (typical primary tumor).
+    - ``"possibly-tumor"`` — proliferation panel is not loud AND HPA
+      correlation is close to TCGA; could be tumor or normal.
+    - ``"healthy-dominant"`` — proliferation panel is quiet AND HPA
+      correlation clearly exceeds TCGA.
+
+    This is a coarse hint designed to be refined downstream, not a
+    final classification.
     """
 
-    call: str
-    best_hpa_tissue: str
-    hpa_correlation: float
-    best_tcga_code: str
-    tcga_correlation: float
-    margin: float
-    proliferation_log2_mean: float
-    proliferation_genes_observed: int
-    verdict: str
-    n_reference_genes: int
+    top_normal_tissues: list[tuple[str, float]] = field(default_factory=list)
+    top_tcga_cohorts: list[tuple[str, float]] = field(default_factory=list)
+    proliferation_log2_mean: float = 0.0
+    proliferation_genes_observed: int = 0
+    cancer_hint: str = "tumor-consistent"
+    n_reference_genes: int = 0
+    verdict: str = ""
 
-    @property
-    def likely_healthy(self) -> bool:
-        """Back-compat: True for confident healthy calls only."""
-        return self.call == "healthy"
+    def summary_line(self) -> str:
+        """One-sentence description suitable for a brief or summary.md."""
+        if not self.top_normal_tissues:
+            return "Tissue-composition signal unavailable (reference overlap too small)."
+
+        def _fmt_tissue(name, rho):
+            return f"{name.replace('nTPM_', '').replace('_', ' ')} (ρ={rho:.2f})"
+
+        def _fmt_cancer(name, rho):
+            return f"{name.replace('FPKM_', '')} (ρ={rho:.2f})"
+
+        tissues = ", ".join(_fmt_tissue(n, r) for n, r in self.top_normal_tissues[:3])
+        cohorts = ", ".join(_fmt_cancer(n, r) for n, r in self.top_tcga_cohorts[:3])
+        return (
+            f"Top normal-tissue matches: {tissues}. "
+            f"Top TCGA cohorts: {cohorts}. "
+            f"Proliferation panel {self.proliferation_log2_mean:.1f} log2-TPM "
+            f"(of {self.proliferation_genes_observed}/{len(_PROLIFERATION_PANEL)} "
+            f"genes observed). Hint: **{self.cancer_hint}**."
+        )
 
     def brief_banner(self) -> str | None:
-        """Short one-line banner for the brief when healthy/ambiguous; ``None`` otherwise."""
-        if self.call == "tumor-consistent":
+        """Terse banner for the brief — shown for every non-tumor-consistent hint.
+
+        Propagates the Stage-0 coarse reading forward so a clinician
+        reading the brief sees the tissue context and the cancer-hint
+        confidence up front rather than just the downstream TCGA label.
+        """
+        if self.cancer_hint == "tumor-consistent":
             return None
-        tissue = self.best_hpa_tissue.replace("nTPM_", "").replace("_", " ")
-        cohort = self.best_tcga_code.replace("FPKM_", "")
-        if self.call == "healthy":
+        if not self.top_normal_tissues:
+            return None
+        tissue, rho = self.top_normal_tissues[0]
+        tissue_name = tissue.replace("nTPM_", "").replace("_", " ")
+        cohort = self.top_tcga_cohorts[0][0].replace("FPKM_", "") if self.top_tcga_cohorts else "—"
+        cohort_rho = self.top_tcga_cohorts[0][1] if self.top_tcga_cohorts else 0.0
+        if self.cancer_hint == "healthy-dominant":
             return (
-                f"**⚠ Sample may not be cancer.** Expression profile matches "
-                f"normal **{tissue}** (ρ={self.hpa_correlation:.2f}) more than "
-                f"any TCGA cohort (best {cohort} ρ={self.tcga_correlation:.2f}); "
-                f"proliferation panel is quiet ({self.proliferation_log2_mean:.1f} "
-                f"log2-TPM mean across "
-                f"{self.proliferation_genes_observed}/{len(_PROLIFERATION_PANEL)} "
-                f"cell-cycle genes)."
+                f"**⚠ Stage-0 hint: healthy tissue dominant.** Sample profile "
+                f"correlates with normal **{tissue_name}** (ρ={rho:.2f}) more "
+                f"than any TCGA cohort (best {cohort} ρ={cohort_rho:.2f}); "
+                f"proliferation panel quiet "
+                f"({self.proliferation_log2_mean:.1f} log2-TPM). Downstream "
+                f"cancer-type call is soft-confidence."
             )
-        # ambiguous
+        # possibly-tumor
         return (
-            f"**Ambiguous healthy-vs-tumor signal.** Expression correlates "
-            f"slightly more with normal **{tissue}** (ρ={self.hpa_correlation:.2f}) "
-            f"than TCGA {cohort} (ρ={self.tcga_correlation:.2f}) — sample may be "
-            f"normal tissue or a low-purity tumor. Treat the cancer call as "
-            f"soft-confidence pending orthogonal evidence."
+            f"**Stage-0 hint: composition ambiguous.** Top normal-tissue match "
+            f"is **{tissue_name}** (ρ={rho:.2f}); top TCGA match is {cohort} "
+            f"(ρ={cohort_rho:.2f}). Could be normal tissue or a low-purity "
+            f"tumor — the downstream cancer call is soft-confidence pending "
+            f"lineage / purity / therapy-axis evidence."
         )
 
 
-def _extract_sample_tpm_by_symbol(df_expr: pd.DataFrame) -> dict[str, float]:
-    """Extract {symbol: TPM} from a pirlygenes expression frame.
+# Back-compat alias: old name some callers used.
+HealthyVsTumorResult = TissueCompositionSignal
 
-    Accepts the same schema the rest of the pipeline uses: a TPM
-    column (case-insensitive 'TPM' or 'tpm') plus either a gene_id
-    (Ensembl) or gene_name column.
-    """
+
+def _extract_sample_tpm_by_symbol(df_expr: pd.DataFrame) -> dict[str, float]:
     tpm_col = next(
         (c for c in df_expr.columns if c.upper() == "TPM"),
         None,
@@ -159,23 +179,13 @@ def _extract_sample_tpm_by_symbol(df_expr: pd.DataFrame) -> dict[str, float]:
     return out
 
 
-def assess_healthy_vs_tumor(
-    df_expr: pd.DataFrame,
-    confident_margin: float = _HEALTHY_MARGIN_CONFIDENT,
-    ambiguous_margin: float = _HEALTHY_MARGIN_AMBIGUOUS,
-    proliferation_veto_log2: float = _PROLIFERATION_VETO_LOG2,
-) -> HealthyVsTumorResult:
-    """Race the sample against HPA-normal-tissue vs TCGA-cohort references.
+def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
+    """Race the sample against HPA-normal-tissue and TCGA-cohort columns.
 
-    Returns a :class:`HealthyVsTumorResult`.  The sample is classified:
-
-    - ``"healthy"`` when HPA correlation exceeds TCGA by
-      ``confident_margin`` AND the proliferation-panel geomean is
-      below ``proliferation_veto_log2``.
-    - ``"ambiguous"`` when either the correlation margin is between
-      ``ambiguous_margin`` and ``confident_margin`` OR the panel is
-      borderline — the sample may be a low-purity tumor or normal.
-    - ``"tumor-consistent"`` otherwise.
+    Returns the top-3 matches on each side + proliferation-panel
+    geomean + a coarse cancer-hint call. Intended as the first stage
+    in a coarse-to-fine pipeline: it gives downstream stages a
+    tissue-composition prior without committing to healthy / cancer.
     """
     sample_by_symbol = _extract_sample_tpm_by_symbol(df_expr)
     ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
@@ -197,94 +207,90 @@ def assess_healthy_vs_tumor(
     n_prolif_obs = len(prolif_tpms)
 
     if n_overlap < _MIN_REFERENCE_GENES:
-        return HealthyVsTumorResult(
-            call="tumor-consistent",
-            best_hpa_tissue="",
-            hpa_correlation=0.0,
-            best_tcga_code="",
-            tcga_correlation=0.0,
-            margin=0.0,
+        return TissueCompositionSignal(
             proliferation_log2_mean=prolif_log2,
             proliferation_genes_observed=n_prolif_obs,
+            cancer_hint="tumor-consistent",
+            n_reference_genes=n_overlap,
             verdict=(
                 f"Insufficient reference overlap ({n_overlap} < "
-                f"{_MIN_REFERENCE_GENES} genes); cannot race healthy vs tumor."
+                f"{_MIN_REFERENCE_GENES} genes); tissue-composition signal "
+                f"unavailable — defer to downstream cancer-type inference."
             ),
-            n_reference_genes=n_overlap,
         )
 
     sample_log = np.log2(np.array(
         [sample_by_symbol[s] + 1.0 for s in shared_symbols]
     ))
 
-    def _best_match(cols: list[str]) -> tuple[str, float]:
-        best_col, best_rho = "", -1.0
+    def _top_matches(cols: list[str], k: int = 3) -> list[tuple[str, float]]:
+        scored = []
         for col in cols:
             ref_vals = ref.loc[shared_symbols, col].astype(float).to_numpy()
             if not np.isfinite(ref_vals).any() or float(np.nanmax(ref_vals)) <= 0:
                 continue
             ref_log = np.log2(np.nan_to_num(ref_vals) + 1.0)
             rho = float(_spearman_rho(sample_log, ref_log))
-            if rho > best_rho:
-                best_rho, best_col = rho, col
-        return best_col, best_rho
+            scored.append((col, rho))
+        scored.sort(key=lambda t: t[1], reverse=True)
+        return scored[:k]
 
-    best_hpa, hpa_rho = _best_match(hpa_cols)
-    best_tcga, tcga_rho = _best_match(tcga_cols)
-    margin = hpa_rho - tcga_rho
+    top_normal = _top_matches(hpa_cols, k=3)
+    top_tcga = _top_matches(tcga_cols, k=3)
 
-    prolif_quiet = prolif_log2 < proliferation_veto_log2
-    prolif_borderline = prolif_log2 < (proliferation_veto_log2 + 1.0)
+    best_normal_rho = top_normal[0][1] if top_normal else 0.0
+    best_tcga_rho = top_tcga[0][1] if top_tcga else 0.0
+    margin = best_normal_rho - best_tcga_rho
 
-    if margin >= confident_margin and prolif_quiet:
-        call = "healthy"
-    elif margin >= ambiguous_margin and prolif_borderline:
-        call = "ambiguous"
+    if prolif_log2 >= _PROLIFERATION_HIGH_LOG2:
+        cancer_hint = "tumor-consistent"
+    elif prolif_log2 < _PROLIFERATION_QUIET_LOG2 and margin >= _HPA_MARGIN_STRONG:
+        cancer_hint = "healthy-dominant"
+    elif margin >= _HPA_MARGIN_WEAK:
+        cancer_hint = "possibly-tumor"
     else:
-        call = "tumor-consistent"
+        cancer_hint = "tumor-consistent"
 
-    if call == "healthy":
+    if cancer_hint == "healthy-dominant":
         verdict = (
-            f"Confident healthy-tissue call: HPA "
-            f"{best_hpa.replace('nTPM_', '')} ρ={hpa_rho:.3f} vs TCGA "
-            f"{best_tcga.replace('FPKM_', '')} ρ={tcga_rho:.3f} "
-            f"(margin {margin:+.3f}); proliferation panel mean "
-            f"{prolif_log2:.1f} log2-TPM below veto {proliferation_veto_log2:.1f}."
+            f"Healthy-dominant: best HPA "
+            f"{top_normal[0][0].replace('nTPM_', '')} ρ={best_normal_rho:.3f} "
+            f"beats best TCGA {top_tcga[0][0].replace('FPKM_', '') if top_tcga else '-'} "
+            f"ρ={best_tcga_rho:.3f} by {margin:+.3f}; proliferation "
+            f"{prolif_log2:.1f} log2-TPM quiet."
         )
-    elif call == "ambiguous":
+    elif cancer_hint == "possibly-tumor":
         verdict = (
-            f"Ambiguous healthy-vs-tumor: HPA ρ={hpa_rho:.3f}, TCGA "
-            f"ρ={tcga_rho:.3f} (margin {margin:+.3f}); proliferation panel "
-            f"{prolif_log2:.1f} log2-TPM. Could be normal tissue or a "
-            f"low-purity tumor — treat the cancer call as soft."
+            f"Composition ambiguous: HPA ρ={best_normal_rho:.3f} vs "
+            f"TCGA ρ={best_tcga_rho:.3f} (margin {margin:+.3f}); "
+            f"proliferation {prolif_log2:.1f} log2-TPM moderate."
         )
     else:
         verdict = (
-            f"Tumor-consistent: HPA ρ={hpa_rho:.3f} does not clearly beat "
-            f"TCGA ρ={tcga_rho:.3f}; proliferation panel "
-            f"{prolif_log2:.1f} log2-TPM."
+            f"Tumor-consistent: proliferation panel {prolif_log2:.1f} log2-TPM "
+            f"or TCGA ρ={best_tcga_rho:.3f} dominant vs HPA ρ={best_normal_rho:.3f}."
         )
 
-    return HealthyVsTumorResult(
-        call=call,
-        best_hpa_tissue=best_hpa,
-        hpa_correlation=hpa_rho,
-        best_tcga_code=best_tcga,
-        tcga_correlation=tcga_rho,
-        margin=margin,
+    return TissueCompositionSignal(
+        top_normal_tissues=top_normal,
+        top_tcga_cohorts=top_tcga,
         proliferation_log2_mean=prolif_log2,
         proliferation_genes_observed=n_prolif_obs,
-        verdict=verdict,
+        cancer_hint=cancer_hint,
         n_reference_genes=n_overlap,
+        verdict=verdict,
     )
 
 
-def _spearman_rho(x: np.ndarray, y: np.ndarray) -> float:
-    """Spearman rank correlation on two equal-length vectors.
+# Back-compat alias: callers wrote ``assess_healthy_vs_tumor`` before
+# the rename. Keep the old entry point working.
+def assess_healthy_vs_tumor(
+    df_expr: pd.DataFrame, *_args, **_kwargs,
+) -> TissueCompositionSignal:
+    return assess_tissue_composition(df_expr)
 
-    Uses scipy if available; falls back to a Pearson-on-ranks
-    implementation that has no scipy dependency.
-    """
+
+def _spearman_rho(x: np.ndarray, y: np.ndarray) -> float:
     try:
         from scipy.stats import spearmanr
         return float(spearmanr(x, y, nan_policy="omit").statistic)

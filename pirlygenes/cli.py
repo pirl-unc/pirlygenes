@@ -2480,8 +2480,18 @@ def _generate_text_reports(
     header = "# Sample Analysis Summary\n"
     if input_path:
         header += f"\n*Input*: `{input_path}`\n"
+    # #149: Prepend the Stage-0 tissue-composition + cancer-hint
+    # reading so a reader sees the coarse "what kind of tissue is
+    # this and is there any hint of cancer" context before the
+    # downstream cancer-type call. Propagated forward from analyze().
+    hvt = analysis.get("healthy_vs_tumor")
+    stage0_section = ""
+    if hvt is not None and hvt.top_normal_tissues:
+        stage0_section = (
+            f"\n**Stage-0 tissue composition**: {hvt.summary_line()}\n"
+        )
     with open(summary_path, "w") as f:
-        f.write(f"{header}\n{summary}\n")
+        f.write(f"{header}{stage0_section}\n{summary}\n")
     print(f"[report] Saved {summary_path}")
 
     # --- Detailed report ---

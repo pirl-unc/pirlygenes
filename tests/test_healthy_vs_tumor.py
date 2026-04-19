@@ -1,9 +1,8 @@
-"""Tests for the Stage-0 healthy-vs-tumor gate (#149).
+"""Tests for the Stage-0 tissue-composition + cancer-hint gate (#149).
 
-Uses the shipped HPA nTPM reference to construct a synthetic "healthy
-tissue" sample (a tissue column perturbed with noise) and a synthetic
-"tumor" sample (TCGA FPKM column + high proliferation markers). The
-gate must call the first healthy, the second tumor.
+Uses the shipped HPA nTPM + TCGA FPKM reference to construct synthetic
+samples (pure-tissue + pure-tumor) and asserts the top-3 matches and
+the coarse cancer_hint fall where expected.
 
 Does NOT depend on external cohort files so CI can run offline.
 """
@@ -14,8 +13,10 @@ import pytest
 
 from pirlygenes.gene_sets_cancer import pan_cancer_expression
 from pirlygenes.healthy_vs_tumor import (
-    HealthyVsTumorResult,
-    assess_healthy_vs_tumor,
+    TissueCompositionSignal,
+    HealthyVsTumorResult,  # back-compat alias
+    assess_tissue_composition,
+    assess_healthy_vs_tumor,  # back-compat
     _PROLIFERATION_PANEL,
 )
 
@@ -31,97 +32,117 @@ def _as_df(sample_dict: dict[str, float]) -> pd.DataFrame:
     )
 
 
-def test_result_default_fields_populated():
-    """The dataclass must expose every field the brief banner touches
-    without AttributeError."""
-    r = HealthyVsTumorResult(
-        call="tumor-consistent",
-        best_hpa_tissue="",
-        hpa_correlation=0.0,
-        best_tcga_code="",
-        tcga_correlation=0.0,
-        margin=0.0,
-        proliferation_log2_mean=0.0,
-        proliferation_genes_observed=0,
-        verdict="-",
-        n_reference_genes=0,
-    )
-    assert r.brief_banner() is None  # tumor-consistent does not banner
-    assert r.likely_healthy is False
+def test_backcompat_alias_points_to_new_class():
+    """Callers using the old name must still find the class."""
+    assert HealthyVsTumorResult is TissueCompositionSignal
 
 
-def test_synthetic_healthy_brain_is_called_healthy():
-    """Reconstruct a healthy-brain sample from the HPA nTPM_cerebral_cortex
-    column + proliferation markers set at near-zero. The gate must call
-    it healthy — margin vs any TCGA cohort should be large because
-    brain-native TCGA codes (GBM, LGG) aren't exact matches for HPA
-    cerebral_cortex when the proliferation panel is quiet."""
-    ref = _ref()
-    sample = ref["nTPM_cerebral_cortex"].astype(float).to_dict()
-    # Keep MKI67 + other proliferation genes low.
-    for g in _PROLIFERATION_PANEL:
-        sample[g] = 0.5
-    r = assess_healthy_vs_tumor(_as_df(sample))
-    assert r.call in ("healthy", "ambiguous"), (
-        f"synthetic healthy brain should not be tumor-consistent; got {r.call}"
-    )
-    assert "cerebral_cortex" in r.best_hpa_tissue or "spinal_cord" in r.best_hpa_tissue
-
-
-def test_synthetic_tumor_profile_is_tumor_consistent():
-    """Reconstruct a sample from a TCGA FPKM cohort + high proliferation.
-    The gate must call it tumor-consistent (not flag it as healthy)."""
+def test_backcompat_function_dispatches_to_new_impl():
     ref = _ref()
     sample = ref["FPKM_BRCA"].astype(float).to_dict()
-    # Force proliferation high.
     for g in _PROLIFERATION_PANEL:
-        sample[g] = 200.0
-    r = assess_healthy_vs_tumor(_as_df(sample))
-    assert r.call == "tumor-consistent", (
-        f"high-proliferation BRCA profile should not be called healthy; got {r.call}"
+        sample[g] = 300.0
+    r_old = assess_healthy_vs_tumor(_as_df(sample))
+    r_new = assess_tissue_composition(_as_df(sample))
+    assert r_old.cancer_hint == r_new.cancer_hint
+
+
+def test_brain_sample_routes_to_healthy_dominant_with_brain_tissues_on_top():
+    """A synthetic brain sample with quiet proliferation must produce
+    a healthy-dominant hint AND the top HPA match must be a brain
+    tissue (cerebral_cortex / spinal_cord / cerebellum). This is the
+    coarse-to-fine signal that downstream stages read."""
+    ref = _ref()
+    sample = ref["nTPM_cerebral_cortex"].astype(float).to_dict()
+    for g in _PROLIFERATION_PANEL:
+        sample[g] = 0.5
+    r = assess_tissue_composition(_as_df(sample))
+    assert r.cancer_hint == "healthy-dominant", (
+        f"synthetic healthy brain should be healthy-dominant; got {r.cancer_hint}"
     )
+    top_names = [t for t, _ in r.top_normal_tissues]
+    assert any(
+        "cerebral" in n or "spinal" in n or "cerebell" in n or "hippocampal" in n
+        for n in top_names
+    ), f"expected a brain tissue in top HPA matches; got {top_names}"
 
 
-def test_proliferation_panel_veto_blocks_healthy_call():
-    """Even when correlation favours HPA, a high proliferation-panel
-    geomean must not be swallowed as healthy — the proliferation
-    veto is the primary guard against low-purity tumor false-positives."""
+def test_high_proliferation_overrides_healthy_call():
+    """Even when HPA correlation favours normal tissue, a loud
+    proliferation panel must produce tumor-consistent. This is the
+    primary guard against low-purity normal-like tumors being called
+    healthy."""
     ref = _ref()
     sample = ref["nTPM_liver"].astype(float).to_dict()
     for g in _PROLIFERATION_PANEL:
-        sample[g] = 500.0  # full proliferation program on
-    r = assess_healthy_vs_tumor(_as_df(sample))
-    assert r.call != "healthy", (
-        f"high proliferation veto should prevent healthy call; got {r.call} "
-        f"(prolif log2 mean {r.proliferation_log2_mean:.1f})"
-    )
+        sample[g] = 500.0
+    r = assess_tissue_composition(_as_df(sample))
+    assert r.cancer_hint == "tumor-consistent"
+    assert r.proliferation_log2_mean > 4.5
 
 
-def test_insufficient_reference_overlap_returns_tumor_consistent():
-    """If the sample barely overlaps the reference, the gate must fall
-    back to tumor-consistent rather than produce a spurious call."""
+def test_top_matches_are_three_entries():
+    """The signal must always surface the top-3 matches (when overlap
+    is sufficient) so downstream reasoning can enumerate plausible
+    tissues + cohorts rather than a single best-guess."""
+    ref = _ref()
+    sample = ref["nTPM_breast"].astype(float).to_dict()
+    for g in _PROLIFERATION_PANEL:
+        sample[g] = 1.0
+    r = assess_tissue_composition(_as_df(sample))
+    assert len(r.top_normal_tissues) == 3
+    assert len(r.top_tcga_cohorts) == 3
+
+
+def test_insufficient_reference_overlap_returns_neutral_signal():
+    """If the sample barely overlaps the reference, return a neutral
+    tumor-consistent signal (no top matches) so downstream doesn't
+    act on noise."""
     sample = {"FAKE_GENE_1": 10.0, "FAKE_GENE_2": 20.0}
-    r = assess_healthy_vs_tumor(_as_df(sample))
-    assert r.call == "tumor-consistent"
+    r = assess_tissue_composition(_as_df(sample))
+    assert r.cancer_hint == "tumor-consistent"
+    assert r.top_normal_tissues == []
+    assert r.top_tcga_cohorts == []
     assert "Insufficient" in r.verdict
 
 
-def test_result_brief_banner_mentions_tissue_and_cohort():
-    """The brief banner must name the winning normal tissue AND the
-    runner-up TCGA cohort so the reader can judge the call."""
-    r = HealthyVsTumorResult(
-        call="healthy",
-        best_hpa_tissue="nTPM_cerebral_cortex",
-        hpa_correlation=0.94,
-        best_tcga_code="FPKM_LGG",
-        tcga_correlation=0.86,
-        margin=0.08,
-        proliferation_log2_mean=0.8,
+def test_summary_line_includes_top_tissue_top_cohort_and_hint():
+    """The one-liner must carry enough detail to propagate forward:
+    top tissue, top cohort, proliferation, hint."""
+    r = TissueCompositionSignal(
+        top_normal_tissues=[("nTPM_prostate", 0.88), ("nTPM_seminal_vesicle", 0.85), ("nTPM_smooth_muscle", 0.82)],
+        top_tcga_cohorts=[("FPKM_PRAD", 0.78), ("FPKM_BRCA", 0.75), ("FPKM_OV", 0.74)],
+        proliferation_log2_mean=2.1,
         proliferation_genes_observed=5,
-        verdict="-",
+        cancer_hint="possibly-tumor",
         n_reference_genes=5000,
+        verdict="",
     )
-    banner = r.brief_banner()
-    assert banner is not None
-    assert "cerebral cortex" in banner
-    assert "LGG" in banner
+    line = r.summary_line()
+    assert "prostate" in line
+    assert "PRAD" in line
+    assert "possibly-tumor" in line
+    assert "2.1" in line  # proliferation
+
+
+def test_brief_banner_fires_for_healthy_and_ambiguous_hints():
+    for hint, expect_fire in [
+        ("tumor-consistent", False),
+        ("possibly-tumor", True),
+        ("healthy-dominant", True),
+    ]:
+        r = TissueCompositionSignal(
+            top_normal_tissues=[("nTPM_liver", 0.9), ("nTPM_gallbladder", 0.85), ("nTPM_pancreas", 0.8)],
+            top_tcga_cohorts=[("FPKM_LIHC", 0.78), ("FPKM_CHOL", 0.74), ("FPKM_PAAD", 0.72)],
+            proliferation_log2_mean=1.0,
+            proliferation_genes_observed=5,
+            cancer_hint=hint,
+            n_reference_genes=5000,
+            verdict="",
+        )
+        banner = r.brief_banner()
+        if expect_fire:
+            assert banner is not None, f"banner should fire for hint={hint}"
+            assert "liver" in banner
+        else:
+            assert banner is None, f"banner should NOT fire for hint={hint}"
