@@ -414,24 +414,43 @@ def build_actionable(
                     lambda p: phase_order.get(str(p), 99)
                 )
             ).sort_values(["_po", "symbol", "agent"])
+            def _cell(value):
+                """Render a cell, turning NaN / blank / 'nan' into em-dash."""
+                if value is None:
+                    return "—"
+                s = str(value).strip()
+                if s == "" or s.lower() == "nan":
+                    return "—"
+                return s
+
             for _, t in sorted_df.iterrows():
-                sym = str(t["symbol"])
-                expr = sym_to_row.get(sym)
-                if expr is None:
+                raw_sym = t.get("symbol")
+                sym = _cell(raw_sym)
+                # Agent-only rows (no gene target — e.g. doxorubicin, pazopanib,
+                # trabectedin for sarcoma) have a blank ``symbol``; sym_to_row
+                # keying by "nan" would always miss, so skip the lookup and
+                # mark as not measurable rather than reporting the TPM of a
+                # nonexistent gene.
+                if sym == "—":
                     obs_cell = "*not measured*"
                     tumor_cell = "—"
                 else:
-                    obs_cell = f"{float(expr.get('observed_tpm') or 0):.1f}"
-                    attr_tumor = float(expr.get("attr_tumor_tpm") or 0)
-                    tumor_cell = (
-                        f"{attr_tumor:.0f}" if expr.get("attribution") else "—"
-                    )
+                    expr = sym_to_row.get(sym)
+                    if expr is None:
+                        obs_cell = "*not measured*"
+                        tumor_cell = "—"
+                    else:
+                        obs_cell = f"{float(expr.get('observed_tpm') or 0):.1f}"
+                        attr_tumor = float(expr.get("attr_tumor_tpm") or 0)
+                        tumor_cell = (
+                            f"{attr_tumor:.0f}" if expr.get("attribution") else "—"
+                        )
                 phase = _phase_label(str(t.get("phase") or ""))
-                bold = "**" if phase == "Approved" else ""
+                bold = "**" if phase == "Approved" and sym != "—" else ""
                 lines.append(
-                    f"| {bold}{sym}{bold} | {t.get('agent', '—')} | "
-                    f"{t.get('agent_class', '—')} | {phase} | "
-                    f"{t.get('indication', '—')} | {obs_cell} | {tumor_cell} |"
+                    f"| {bold}{sym}{bold} | {_cell(t.get('agent'))} | "
+                    f"{_cell(t.get('agent_class'))} | {phase} | "
+                    f"{_cell(t.get('indication'))} | {obs_cell} | {tumor_cell} |"
                 )
             lines.append("")
 

@@ -83,14 +83,16 @@ All gene sets ship as CSVs in `pirlygenes/data/` and are accessible via `pirlyge
 | Bispecific / TCE | 11 (11 approved) | `therapy_target_gene_id_to_name("bispecific-antibodies")` | Bispecific T-cell engager targets |
 | Multispecific TCE (trials) | 30 | `therapy_target_gene_id_to_name("multispecific-TCE")` | TCE trials across multispecific formats |
 | Radioligand targets | 20 | `therapy_target_gene_id_to_name("radioligand")` | RLT target genes |
-| Cancer-key-genes panel | 122 (16 cancer types) | `cancer_key_genes_df()` / `cancer_biomarker_genes()` / `cancer_therapy_targets()` | Clinician-relevant biomarker + therapy-target rows per cancer type |
+| Cancer-key-genes panel | 441 (23 cancer types) | `cancer_key_genes_df()` / `cancer_biomarker_genes()` / `cancer_therapy_targets()` | Clinician-relevant biomarker + therapy-target rows per cancer type. SARC is subtype-tiled (LMS, DDLPS, myxoid LPS, synovial, DSRCT, GIST, Ewing); LAML has an APL subtype tile. |
 | Cancer drivers | 739 | `cancer-driver-genes.csv` | Recurrently mutated genes (Bailey et al. 2018) |
 | Housekeeping genes | 30 | `housekeeping-genes.csv` | Cross-platform normalization reference |
 | Mitochondrial genes | 15 | `mitochondrial_gene_names()` | MT-encoded transcripts (quality / FFPE signal) |
 | TME markers | 19 | `tme_marker_gene_names()` | Minimal immune + stromal markers for cell-line vs tissue |
 | Culture stress | 23 | `culture_stress_gene_names()` | Cell-line adaptation signature |
 | Degradation gene pairs | 20 | `degradation_gene_pairs()` | Matched short / long transcript pairs for FFPE length-bias index |
-| Pan-cancer expression | 19,784 | `pan_cancer_expression()` | Expression reference: 33 TCGA cancers × 50 HPA normal tissues |
+| Pan-cancer expression | 19,784 | `pan_cancer_expression()` | Expression reference: 33 TCGA cancers × 50 HPA normal tissues (HPA nTPM + GDC FPKM). Filtered to the ~3,100 gene-set universe when callers pass `genes=`. |
+| TCGA deconvolved tumor-only | 33 codes | `tcga_deconvolved_expression()` | Per-(TCGA code, symbol) tumor-only TPM (median + IQR + N) after running the pirlygenes decomposition on every Xena TOIL TCGA sample (#21). Merged into `pan_cancer_expression()` as `tcga_<CODE>` columns when shipped. |
+| Subtype-stratified tumor-only | 4 cohorts × 11 subtypes | `subtype_deconvolved_expression()` | BRCA × PAM50, BeatAML × ELN2017 + APL, TARGET AML, TARGET NBL × MYCN — tumor-only medians for subtype-aware downstream reasoning. |
 
 These gene sets serve two purposes: **(1)** as standalone curated lists for target selection, enrichment analysis, or annotation, and **(2)** as the reference panels that power the decomposition pipeline — immune and stromal marker genes define the TME signature matrix, housekeeping genes anchor cross-platform normalization, and therapy target sets structure the final report.
 
