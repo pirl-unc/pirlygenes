@@ -245,6 +245,15 @@ def build_brief(
     )
     lines.append("")
 
+    # #149: Stage-0 healthy-vs-tumor banner. Above the cancer call so
+    # the reader sees the caveat before anchoring on the TCGA label.
+    hvt = analysis.get("healthy_vs_tumor")
+    if hvt is not None:
+        banner = hvt.brief_banner()
+        if banner:
+            lines.append(banner)
+            lines.append("")
+
     # Cancer call
     lines.append(f"**Cancer call:** {cancer_code} ({cancer_name}).")
 

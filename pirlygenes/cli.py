@@ -868,6 +868,22 @@ def _analyze_body(
     for flag in sample_context.flags:
         print(f"[context] {flag}")
 
+    # #149: Stage-0 healthy-vs-tumor gate. Races the sample against
+    # the 50 HPA normal-tissue columns + 33 TCGA cancer columns in
+    # pan_cancer_expression() and checks a proliferation-panel
+    # (MKI67+TOP2A+CCNB1+BIRC5+AURKA) geomean. Fixes the GTEx-style
+    # mis-classification where a healthy sample gets force-called
+    # into a TCGA cohort. Informational only — doesn't override
+    # cancer-type inference; surfaces as a banner in brief/actionable
+    # when the call is "healthy" or "ambiguous".
+    from .healthy_vs_tumor import assess_healthy_vs_tumor
+    try:
+        healthy_vs_tumor = assess_healthy_vs_tumor(df_expr)
+        print(f"[stage-0] {healthy_vs_tumor.verdict}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[stage-0] healthy-vs-tumor gate failed: {exc}")
+        healthy_vs_tumor = None
+
     context_png = "%s-sample-context.png" % prefix if prefix else "sample-context.png"
     try:
         plot_sample_context(sample_context, save_to_filename=context_png, save_dpi=output_dpi)
@@ -1065,6 +1081,9 @@ def _analyze_body(
         print(f"[therapy-response] scoring skipped: {exc}")
         therapy_scores = {}
     analysis["therapy_response_scores"] = therapy_scores
+    # #149: make the Stage-0 healthy-vs-tumor call available to
+    # brief / actionable / summary renderers downstream.
+    analysis["healthy_vs_tumor"] = healthy_vs_tumor
     for cls, score in therapy_scores.items():
         if score.state in ("up", "down"):
             tag = "[therapy-state]"
