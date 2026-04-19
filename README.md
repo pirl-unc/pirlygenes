@@ -114,6 +114,23 @@ The main entry point for single-sample analysis. Takes a gene expression file (C
 
 See [docs/analyze-command.md](docs/analyze-command.md) for full output file reference.
 
+### Reasoning pipeline: coarse-to-fine with explicit stages
+
+See [docs/reasoning-pipeline.md](docs/reasoning-pipeline.md) for the complete stage inventory and information-flow contract. Short version:
+
+```
+  Stage 0a  Sample context        library prep + preservation + degradation
+  Stage 0b  Tissue composition    top HPA normals + top TCGA cohorts + cancer-hint
+  Stage 1   Cancer-type call      top-k TCGA candidates (signature + purity + lineage)
+  Stage 2   Tumor purity          point + CI + confidence tier
+  Stage 3   Broad decomposition   NNLS fit of tumor + TME (template-aware)
+  Stage 4   Therapy-axis state    AR / EMT / hypoxia / IFN / HER2 / ER up/down calls
+  Stage 5   Tumor-value core      9-point per-gene tumor-TPM
+  Stage 6   Report synthesis      brief / actionable / summary / analysis / targets / provenance
+```
+
+Each stage writes a named result into a shared `analysis` dict; downstream stages read but never overwrite. Contracts are explicit — a reader of the final brief can trace any claim back through the stage chain. The guiding principle: if a sample is flagged ambiguous at Stage 0, that flag propagates through to Stage 6; no downstream stage silently promotes a soft-confidence call to a confident one.
+
 ### Attribution flow: "make it make sense"
 
 `pirlygenes` treats every TPM in a bulk tumor sample as a claim that must be *attributed* to some source — and then explains away as much of it as possible before crediting the tumor. The goal is a conservative, defensible core of tumor-specific expression, not a lift of raw TPM straight into therapeutic target recommendations.
