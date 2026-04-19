@@ -138,6 +138,90 @@ def test_parent_codes_reference_registry_entries():
     assert not orphan, f"parent_codes not in registry: {set(orphan)}"
 
 
+def test_registry_has_source_cohort_column():
+    """Every curated row carries the cohort that produced its expression
+    median — enables downstream tracking of which cohort + paper each
+    reference value came from."""
+    df = cancer_type_registry()
+    assert "source_cohort" in df.columns
+    assert "source_pmid" in df.columns
+
+
+def test_source_cohort_values_are_canonical():
+    """source_cohort should only take values from the canonical
+    cohort vocabulary — rejects typos like 'TCGA_BRCA' vs 'TCGA_XENA_TOIL'."""
+    df = cancer_type_registry()
+    valid = {
+        "", "TCGA_XENA_TOIL", "TCGA_BRCA_PAM50", "TCGA_HNSC", "TCGA_LUAD",
+        "BEATAML_OHSU_2022", "TARGET_NBL_2018", "TARGET_OS_2020",
+        "TARGET_RMS_2014", "TARGET_WT_2015", "TARGET_RT_2017",
+        "TARGET_ALL_2018", "TARGET_UNSPECIFIED", "TARGET_AML_2018",
+        "SCLC_UCOLOGNE_2015", "MMRF_COMMPASS", "ICGC",
+        "LITERATURE_CURATED",
+    }
+    present = set(df["source_cohort"].fillna("").astype(str).unique())
+    unknown = present - valid
+    assert not unknown, f"unknown source_cohort values: {unknown}"
+
+
+def test_expanded_sarcomas_present():
+    """The 19 sarcoma additions (WHO therapy-distinct entities) must
+    be in the registry so the second-pass subtype classifier can
+    route to them."""
+    df = cancer_type_registry()
+    codes = set(df["code"])
+    required = {
+        "SARC_EPITH", "SARC_DFSP", "SARC_ASPS", "SARC_CCS", "SARC_IFS",
+        "SARC_EHE", "SARC_PEC", "SARC_KS", "SARC_MYXFIB", "SARC_SFT",
+        "SARC_IMT", "GCTB", "ESS_LG", "ESS_HG", "SARC_LGFMS",
+        "SARC_EMC", "SARC_PLEOLPS", "RMS_PRMS", "RMS_SSRMS",
+    }
+    missing = required - codes
+    assert not missing, f"expanded-sarcoma codes missing: {missing}"
+
+
+def test_subtype_key_maps_sarc_subtypes_to_key_genes_entries():
+    """The subtype_key column must match the actual subtype values
+    used in cancer-key-genes.csv, otherwise the cancers CLI
+    subcommand will report bm=0 / tg=0 for curated subtypes."""
+    from pirlygenes.gene_sets_cancer import (
+        cancer_biomarker_genes, cancer_therapy_targets,
+    )
+    df = cancer_type_registry()
+    mapped = df[df["subtype_key"].fillna("").astype(str).ne("")]
+    assert len(mapped) >= 7, "expected at least 7 rows with subtype_key populated"
+    for _, row in mapped.iterrows():
+        parent = row["parent_code"]
+        subtype = row["subtype_key"]
+        bm = cancer_biomarker_genes(parent, subtype=subtype)
+        tg = cancer_therapy_targets(parent, subtype=subtype)
+        assert len(bm) > 0 or len(tg) > 0, (
+            f"subtype_key {parent}/{subtype} (code {row['code']}) has "
+            f"no key-genes rows — either the subtype_key is wrong or "
+            f"cancer-key-genes.csv is missing the tile"
+        )
+
+
+def test_nutm_has_actionable_curation():
+    """NUT carcinoma gets the fusion-partner biomarkers (NUTM1,
+    BRD4, BRD3, NSD3) plus BET-inhibitor therapy rows — these were
+    added because pirlygenes is applied to NUT carcinoma samples
+    (tempus-unc-nutm1)."""
+    from pirlygenes.gene_sets_cancer import (
+        cancer_biomarker_genes, cancer_therapy_targets,
+    )
+    bm = cancer_biomarker_genes("NUTM")
+    for gene in ("NUTM1", "BRD4", "BRD3", "MYC", "TP63"):
+        assert gene in bm, f"NUTM biomarker missing: {gene}"
+    tg = cancer_therapy_targets("NUTM")
+    agents = set(tg["agent"].astype(str).str.lower())
+    # At least one BET inhibitor must be present.
+    assert any("bet" in row.lower() or "bromodomain" in row.lower() or
+               "molibresib" in row.lower() or "birabresib" in row.lower() or
+               "bms-986158" in row.lower()
+               for row in list(agents) + list(tg["rationale"].astype(str).str.lower()))
+
+
 def test_primary_templates_are_declared_or_planned():
     """Every row has a primary_template — either an implemented
     template name or a ``primary_<tissue>`` name documented as planned
