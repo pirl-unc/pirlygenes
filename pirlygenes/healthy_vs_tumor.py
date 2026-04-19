@@ -33,7 +33,9 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from .gene_sets_cancer import pan_cancer_expression, CTA_gene_names
+from .gene_sets_cancer import (
+    pan_cancer_expression, CTA_gene_names, tumor_up_vs_matched_normal,
+)
 
 
 _MIN_REFERENCE_GENES = 2000
@@ -125,6 +127,13 @@ _ONCOFETAL_NORMAL_TISSUES = frozenset({
 _ONCOFETAL_PER_GENE_MIN_TPM = 3.0
 _ONCOFETAL_STRONG_COUNT = 2  # stricter than CTA since the panel is smaller
 
+# Cancer-type-specific tumor-up-vs-matched-normal panel. Built from
+# :func:`tumor_up_vs_matched_normal`. When Stage-0's top TCGA match
+# aligns with a sample expressing several of that cohort's private
+# tumor-up markers, that's independent type-specific tumor evidence.
+_TUMOR_UP_PANEL_PER_GENE_MIN_TPM = 3.0
+_TUMOR_UP_PANEL_STRONG_COUNT = 2
+
 # Thresholds for the CTA signal. Empirically tuned against the 6-
 # sample battery: healthy tissues (GTEx brain / smooth muscle / spleen)
 # show a few CTA hits at 1-5 TPM (PHF7, STKLD1, TEX14 — broadly
@@ -183,6 +192,13 @@ class TissueCompositionSignal:
     # where specific members pop ~100x vs normal.
     oncofetal_count_above_threshold: int = 0
     oncofetal_top_hits: list[tuple[str, float]] = field(default_factory=list)
+    # Cancer-type-specific tumor-up-vs-matched-normal panel hits.
+    # Keyed on the top Stage-0 TCGA cohort — if that cohort has a
+    # specific tumor-up panel (PRAD: OTOP1/ANKRD34C; OV: CLDN6;
+    # KIRC: CD70, GAGE1; STAD: CT45A9/DAZ1) and the sample expresses
+    # hits from it, that's cancer-type-specific positive evidence.
+    type_specific_cohort: str = ""
+    type_specific_hits: list[tuple[str, float]] = field(default_factory=list)
 
     def summary_line(self) -> str:
         """One-sentence description suitable for a brief or summary.md."""
@@ -375,6 +391,31 @@ def _oncofetal_panel_signal(
     return len(hits), hits[:10]
 
 
+def _type_specific_tumor_up_signal(
+    sample_by_symbol: dict[str, float],
+    top_tcga_code: str,
+) -> list[tuple[str, float]]:
+    """Return hits from the cancer-type-specific tumor-up panel.
+
+    For the top-matching TCGA cohort, looks up the curated tumor-up
+    vs matched-normal panel (genes ≥ 10-fold up in this cancer,
+    low across all HPA normal tissues). Returns the sample's hits
+    above ``_TUMOR_UP_PANEL_PER_GENE_MIN_TPM``.
+    """
+    if not top_tcga_code:
+        return []
+    panel = tumor_up_vs_matched_normal(cancer_code=top_tcga_code)
+    if panel is None or panel.empty:
+        return []
+    hits = []
+    for sym in panel["symbol"].astype(str):
+        tpm = float(sample_by_symbol.get(sym, 0.0))
+        if tpm >= _TUMOR_UP_PANEL_PER_GENE_MIN_TPM:
+            hits.append((sym, tpm))
+    hits.sort(key=lambda t: t[1], reverse=True)
+    return hits[:10]
+
+
 def _cta_panel_signal(
     sample_by_symbol: dict[str, float],
 ) -> tuple[float, int, list[tuple[str, float]]]:
@@ -427,6 +468,14 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
 
     cta_sum_tpm, cta_count, cta_top_hits = _cta_panel_signal(sample_by_symbol)
     oncofetal_count, oncofetal_top_hits = _oncofetal_panel_signal(sample_by_symbol)
+    # Compute top-TCGA code for the type-specific tumor-up lookup.
+    # Done before the full top_matches pass because it only needs
+    # the best match — cheaper than the full rank.
+    _top_tcga_for_panel = ""
+    if shared_symbols and len(shared_symbols) >= _MIN_REFERENCE_GENES:
+        # We'll fill this properly below after computing top_tcga;
+        # delay the type-specific lookup until after.
+        pass
 
     if n_overlap < _MIN_REFERENCE_GENES:
         return TissueCompositionSignal(
@@ -464,6 +513,13 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
 
     top_normal = _top_matches(hpa_cols, k=3)
     top_tcga = _top_matches(tcga_cols, k=3)
+
+    # Cancer-type-specific tumor-up panel: check the top TCGA cohort's
+    # tumor-vs-matched-normal private markers against the sample.
+    top_tcga_code = top_tcga[0][0].replace("FPKM_", "") if top_tcga else ""
+    type_specific_hits = _type_specific_tumor_up_signal(
+        sample_by_symbol, top_tcga_code,
+    )
 
     best_normal_rho = top_normal[0][1] if top_normal else 0.0
     best_tcga_rho = top_tcga[0][1] if top_tcga else 0.0
@@ -511,16 +567,24 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         not oncofetal_is_physiological and oncofetal_count >= 1
     )
 
+    # Cancer-type-specific tumor-up hits corroborate the Stage-1
+    # TCGA match. Two or more type-specific markers above threshold
+    # is strong positive evidence that the sample is that tumor type.
+    type_specific_strong = len(type_specific_hits) >= _TUMOR_UP_PANEL_STRONG_COUNT
+    type_specific_soft = len(type_specific_hits) >= 1
+
     structural_ambiguity = False
     if lymphoid_ambiguity:
         cancer_hint = "possibly-tumor"
         structural_ambiguity = True
-    elif cta_strong_signal or oncofetal_strong_signal:
-        # Strong tumor-specific re-expression (CTAs or oncofetal
-        # program) is near-definitive positive evidence. Overrides
-        # any correlation-based healthy call; guards already
-        # exclude testis / placenta / ovary (CTAs) and +liver
-        # (oncofetal, where AFP can be regenerative).
+    elif cta_strong_signal or oncofetal_strong_signal or type_specific_strong:
+        # Strong tumor-specific re-expression (CTAs, oncofetal, or
+        # the top-TCGA-cohort's own private tumor-up panel) is near-
+        # definitive positive evidence. Overrides any correlation-
+        # based healthy call; guards already exclude reproductive
+        # normals (CTAs) and +liver (oncofetal). Type-specific
+        # markers are already cancer-code-filtered upstream to ≤4
+        # cancers each, so they're safe to use as positive evidence.
         cancer_hint = "tumor-consistent"
     elif prolif_log2 >= _PROLIFERATION_HIGH_LOG2:
         cancer_hint = "tumor-consistent"
@@ -529,7 +593,7 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         # confident healthy call. Single CTA hit is panel noise;
         # multiple hits or any oncofetal-strict hit imply coordinated
         # de-silencing of tumor-associated programs.
-        if cta_soft_signal or oncofetal_soft_signal:
+        if cta_soft_signal or oncofetal_soft_signal or type_specific_soft:
             cancer_hint = "possibly-tumor"
         else:
             cancer_hint = "healthy-dominant"
@@ -572,6 +636,8 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         cta_top_hits=cta_top_hits,
         oncofetal_count_above_threshold=oncofetal_count,
         oncofetal_top_hits=oncofetal_top_hits,
+        type_specific_cohort=top_tcga_code,
+        type_specific_hits=type_specific_hits,
     )
 
 

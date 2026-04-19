@@ -711,6 +711,42 @@ def subtype_deconvolved_expression():
         return None
 
 
+def tumor_up_vs_matched_normal(cancer_code: str | None = None):
+    """Per-cancer genes dramatically up in tumor vs matched normal tissue.
+
+    Built offline by racing the shipped :func:`tcga_deconvolved_expression`
+    tumor-only medians against the matched-tissue nTPM_<tissue> columns
+    in :func:`pan_cancer_expression`, filtered so each gene is genuinely
+    low across *all* HPA normal tissues (not just the matched tissue)
+    and specific to ≤ 4 cancer codes (drops ubiquitous artefacts and
+    Ig / TCR rearrangement genes).
+
+    Useful as cancer-type-specific tumor evidence — if Stage-1 says
+    the sample best matches PRAD, and one of the PRAD-specific tumor-
+    up genes (OTOP1, ANKRD34C) is expressed, that is independent
+    corroboration distinct from the correlation pass.
+
+    Parameters
+    ----------
+    cancer_code : str or None
+        Filter to a single TCGA code. ``None`` returns all rows.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: cancer_code, matched_normal_tissue, symbol,
+        ensembl_gene_id, fold_change_vs_matched_normal, tumor_tpm,
+        matched_normal_ntpm, max_any_normal_ntpm.
+    """
+    try:
+        df = get_data("tumor-up-vs-matched-normal")
+    except ValueError:
+        return None
+    if cancer_code:
+        df = df[df["cancer_code"] == cancer_code]
+    return df.copy()
+
+
 def tcga_deconvolved_expression():
     """Per-(symbol, TCGA code) tumor-only TPM derived by #21 offline deconv.
 
