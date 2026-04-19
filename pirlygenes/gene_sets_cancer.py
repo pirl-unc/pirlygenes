@@ -605,6 +605,40 @@ def _pan_cancer_cache_key(genes, normalize, log_transform):
     return (genes_key, normalize, bool(log_transform))
 
 
+def subtype_deconvolved_expression():
+    """Per-(cancer_code, subtype, symbol) tumor-only TPM from multi-cohort deconv.
+
+    Subtype-stratified companion to :func:`tcga_deconvolved_expression`.
+    Covers:
+
+    - BRCA × PAM50 (LumA / LumB / HER2-enriched / Basal / Normal)
+      from a subtype-partitioned re-run of the TCGA deconv pipeline
+      using Ciriello 2015 Cell PAM50 calls from cBioPortal.
+    - BeatAML (Tyner 2022 OHSU cohort) × ELN2017 risk
+      (Favorable / Intermediate / Adverse) + APL (FAB-M3) breakout.
+    - TARGET AML (pediatric AML, NCI TARGET initiative).
+    - TARGET NBL (pediatric neuroblastoma) × MYCN amplification status.
+
+    Non-TCGA cohorts are processed in high-purity-passthrough mode by
+    :mod:`pirlygenes.cohort_deconvolve` — appropriate for sorted heme
+    malignancies (AML peripheral blood, where the malignant clone is
+    ~90%+ by construction and solid-primary TME templates would
+    mis-attribute clone signal to normal immune components).
+
+    Returns
+    -------
+    pd.DataFrame or None
+        Long-form frame with columns ``symbol``, ``cancer_code``,
+        ``subtype``, ``tumor_tpm_median``, ``tumor_tpm_q1``,
+        ``tumor_tpm_q3``, ``n_samples``. ``None`` when the CSV is
+        not bundled (maintainer hasn't run the offline batch).
+    """
+    try:
+        return get_data("subtype-deconvolved-expression")
+    except ValueError:
+        return None
+
+
 def tcga_deconvolved_expression():
     """Per-(symbol, TCGA code) tumor-only TPM derived by #21 offline deconv.
 
