@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from .gene_sets_cancer import pan_cancer_expression
+from .gene_sets_cancer import pan_cancer_expression, CTA_gene_names
 
 
 _MIN_REFERENCE_GENES = 2000
@@ -68,6 +68,75 @@ _HEME_LYMPHOID_TCGA_COHORTS = frozenset({
     "FPKM_DLBC", "FPKM_LAML", "FPKM_THYM",
 })
 
+# CTA panel as independent tumor evidence. Cancer-testis antigens are
+# epigenetically silenced in every somatic tissue except testis +
+# placenta (+ in some cases ovary). Detection above threshold in a
+# non-reproductive sample = positive tumor evidence that can override
+# a correlation-based "healthy-dominant" call.
+# The filtered-and-expressed CTA list (~257 genes) is shipped with
+# pirlygenes; we load it once and cache.
+_CTA_SYMBOLS_CACHE: frozenset[str] | None = None
+
+# HPA tissues where CTA expression is physiological, not pathological.
+# CTAs are defined by their testis-restricted normal expression, so
+# ANY sample that matches testis / placenta / ovary is expected to
+# express them — flagging CTA presence as tumor evidence in those
+# regimes would false-positive on reproductive-tissue normals.
+_CTA_NORMAL_TISSUES = frozenset({
+    "nTPM_testis", "nTPM_placenta", "nTPM_ovary",
+})
+
+# Oncofetal / embryonic-stemness panel — complementary tumor evidence
+# beyond the CTA panel. Every member of this panel must be near-zero
+# in *any* adult somatic tissue (HPA check: median nTPM < 1 across
+# non-reproductive tissues) so that detection above threshold in a
+# non-reproductive sample is near-definitive tumor evidence.
+#
+# Explicitly excluded (initially included then removed after healthy-
+# tissue false positives): SOX2 (normal neural progenitors — 46 TPM
+# in GTEx brain), KLF4 (normal gut + smooth muscle — 67 TPM in GTEx
+# smooth muscle), IGF2 (widely expressed — 45 TPM in smooth muscle),
+# HMGA2 (adult expression in some tissues), HLA-G (placenta +
+# immune-privileged niches). These expressed-in-normal markers fail
+# the "near-zero in adult somatic" criterion and were dropping the
+# panel's specificity.
+_ONCOFETAL_STRICT = frozenset({
+    "AFP",        # fetal liver, yolk sac, HCC, germ cell tumors, HEPB
+    "LIN28A",     # germ cells + tumors (Yamanaka-factor-like re-expr)
+    "LIN28B",     # neuroblastoma, germ cell, embryonal
+    "TPBG",       # trophoblast glycoprotein / 5T4 — tumor-restricted
+    "PLAC1",      # placenta + wide range of cancers
+    "CGB",        # hCG-beta — trophoblast + hCG-secreting tumors
+    "CGB1", "CGB2", "CGB3",
+    "NANOG",      # ES/germline + tumors; very restricted in adults
+    "POU5F1",     # OCT4 — ES/germline + germ cell tumors
+})
+# Back-compat: keep _ONCOFETAL_LOOSE as an empty set so any caller
+# that still references it (including the panel-union in
+# _oncofetal_panel_signal below) doesn't break.
+_ONCOFETAL_LOOSE: frozenset[str] = frozenset()
+
+# HPA tissues where oncofetal expression is physiological.
+_ONCOFETAL_NORMAL_TISSUES = frozenset({
+    "nTPM_testis", "nTPM_placenta", "nTPM_ovary",
+    "nTPM_liver",  # AFP can be elevated in regenerating / fetal-pattern liver
+})
+
+_ONCOFETAL_PER_GENE_MIN_TPM = 3.0
+_ONCOFETAL_STRONG_COUNT = 2  # stricter than CTA since the panel is smaller
+
+# Thresholds for the CTA signal. Empirically tuned against the 6-
+# sample battery: healthy tissues (GTEx brain / smooth muscle / spleen)
+# show a few CTA hits at 1-5 TPM (PHF7, STKLD1, TEX14 — broadly
+# expressed CTAs with relaxed tumor specificity). Tumors with real
+# CTA re-expression (rs PRAD DAZ3=13, pfo002 CRC PIWIL1=8, pfo004
+# sarcoma PAGE5=1383) sit one or two orders of magnitude higher.
+# Per-gene 3 TPM + count ≥ 4 avoids the healthy-tissue CTA noise
+# floor while preserving tumor detection at low purity.
+_CTA_PER_GENE_MIN_TPM = 3.0
+_CTA_STRONG_COUNT = 4
+_CTA_STRONG_SUM_TPM = 30.0
+
 
 @dataclass
 class TissueCompositionSignal:
@@ -100,6 +169,20 @@ class TissueCompositionSignal:
     # the Stage-0 banner in this case — the "purity" estimate on a
     # normal lymphoid sample is spurious anchor.
     structural_ambiguity: bool = False
+    # CTA panel as positive tumor evidence (zero in non-reproductive
+    # tissue; re-expression in cancer after epigenetic de-silencing).
+    # ``cta_panel_sum_tpm`` is the total TPM across the curated
+    # filtered-and-expressed CTA panel (~257 genes).
+    cta_panel_sum_tpm: float = 0.0
+    cta_count_above_1_tpm: int = 0
+    cta_top_hits: list[tuple[str, float]] = field(default_factory=list)
+    # Oncofetal / embryonic-stemness re-expression panel (AFP, LIN28A,
+    # TPBG, PLAC1, NANOG, POU5F1, SOX2, KLF4, HLA-G, etc.). Independent
+    # tumor evidence beyond CTAs; most informative for HCC / hepato-
+    # blastoma / germ cell / SCLC / MBL / liposarcoma / neuroblastoma
+    # where specific members pop ~100x vs normal.
+    oncofetal_count_above_threshold: int = 0
+    oncofetal_top_hits: list[tuple[str, float]] = field(default_factory=list)
 
     def summary_line(self) -> str:
         """One-sentence description suitable for a brief or summary.md."""
@@ -114,12 +197,31 @@ class TissueCompositionSignal:
 
         tissues = ", ".join(_fmt_tissue(n, r) for n, r in self.top_normal_tissues[:3])
         cohorts = ", ".join(_fmt_cancer(n, r) for n, r in self.top_tcga_cohorts[:3])
+        cta_clause = ""
+        if self.cta_count_above_1_tpm > 0:
+            top_cta = ", ".join(
+                f"{s} {t:.0f}" for s, t in self.cta_top_hits[:3]
+            )
+            cta_clause = (
+                f" CTA panel: {self.cta_count_above_1_tpm} above 3 TPM "
+                f"(sum {self.cta_panel_sum_tpm:.0f} TPM; top: {top_cta})."
+            )
+        oncofetal_clause = ""
+        if self.oncofetal_count_above_threshold > 0:
+            top_of = ", ".join(
+                f"{s} {t:.0f}" for s, t in self.oncofetal_top_hits[:3]
+            )
+            oncofetal_clause = (
+                f" Oncofetal panel: {self.oncofetal_count_above_threshold} "
+                f"hits (top: {top_of})."
+            )
         return (
             f"Top normal-tissue matches: {tissues}. "
             f"Top TCGA cohorts: {cohorts}. "
             f"Proliferation panel {self.proliferation_log2_mean:.1f} log2-TPM "
             f"(of {self.proliferation_genes_observed}/{len(_PROLIFERATION_PANEL)} "
-            f"genes observed). Hint: **{self.cancer_hint}**."
+            f"genes observed).{cta_clause}{oncofetal_clause} "
+            f"Hint: **{self.cancer_hint}**."
         )
 
     def brief_banner(
@@ -245,6 +347,57 @@ def _extract_sample_tpm_by_symbol(df_expr: pd.DataFrame) -> dict[str, float]:
     return out
 
 
+def _cta_symbols() -> frozenset[str]:
+    """Cache the filtered-and-expressed CTA symbol set."""
+    global _CTA_SYMBOLS_CACHE
+    if _CTA_SYMBOLS_CACHE is None:
+        _CTA_SYMBOLS_CACHE = frozenset(CTA_gene_names() or [])
+    return _CTA_SYMBOLS_CACHE
+
+
+def _oncofetal_panel_signal(
+    sample_by_symbol: dict[str, float],
+) -> tuple[int, list[tuple[str, float]]]:
+    """Return (count above threshold, top-hits) for the oncofetal panel.
+
+    Combines ``_ONCOFETAL_STRICT`` + ``_ONCOFETAL_LOOSE``. Count and
+    hits are drawn from genes exceeding ``_ONCOFETAL_PER_GENE_MIN_TPM``.
+    Strict-panel members score their own hit; loose-panel members
+    also count but carry less specificity — the caller decides how
+    strongly to weight them.
+    """
+    hits = []
+    for sym in _ONCOFETAL_STRICT | _ONCOFETAL_LOOSE:
+        tpm = float(sample_by_symbol.get(sym, 0.0))
+        if tpm >= _ONCOFETAL_PER_GENE_MIN_TPM:
+            hits.append((sym, tpm))
+    hits.sort(key=lambda t: t[1], reverse=True)
+    return len(hits), hits[:10]
+
+
+def _cta_panel_signal(
+    sample_by_symbol: dict[str, float],
+) -> tuple[float, int, list[tuple[str, float]]]:
+    """Return (sum TPM across hits, count above threshold, top-hits) for CTAs.
+
+    Only CTAs exceeding the per-gene threshold contribute to the sum —
+    a handful of noise-level CTAs at 0.5-1 TPM shouldn't push the
+    sample over the "strong-signal" line. The panel is the filtered-
+    and-expressed CTA set (~257 genes): epigenetically silenced in
+    somatic tissue, re-expressed in tumors.
+    """
+    cta_set = _cta_symbols()
+    hits = []
+    total = 0.0
+    for sym in cta_set:
+        tpm = float(sample_by_symbol.get(sym, 0.0))
+        if tpm >= _CTA_PER_GENE_MIN_TPM:
+            total += tpm
+            hits.append((sym, tpm))
+    hits.sort(key=lambda t: t[1], reverse=True)
+    return total, len(hits), hits[:10]
+
+
 def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
     """Race the sample against HPA-normal-tissue and TCGA-cohort columns.
 
@@ -272,6 +425,9 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         prolif_log2 = 0.0
     n_prolif_obs = len(prolif_tpms)
 
+    cta_sum_tpm, cta_count, cta_top_hits = _cta_panel_signal(sample_by_symbol)
+    oncofetal_count, oncofetal_top_hits = _oncofetal_panel_signal(sample_by_symbol)
+
     if n_overlap < _MIN_REFERENCE_GENES:
         return TissueCompositionSignal(
             proliferation_log2_mean=prolif_log2,
@@ -283,6 +439,11 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
                 f"{_MIN_REFERENCE_GENES} genes); tissue-composition signal "
                 f"unavailable — defer to downstream cancer-type inference."
             ),
+            cta_panel_sum_tpm=cta_sum_tpm,
+            cta_count_above_1_tpm=cta_count,
+            cta_top_hits=cta_top_hits,
+            oncofetal_count_above_threshold=oncofetal_count,
+            oncofetal_top_hits=oncofetal_top_hits,
         )
 
     sample_log = np.log2(np.array(
@@ -320,14 +481,58 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         and top_tcga_name in _HEME_LYMPHOID_TCGA_COHORTS
     )
 
+    # CTA panel acts as independent tumor evidence.  Any CTA detection
+    # in a non-reproductive sample is suspicious; strong CTA signal
+    # (≥ _CTA_STRONG_COUNT above threshold OR sum ≥ _CTA_STRONG_SUM_TPM)
+    # overrides a correlation-driven "healthy-dominant" call.
+    cta_is_physiological = top_hpa_name in _CTA_NORMAL_TISSUES
+    cta_strong_signal = (
+        not cta_is_physiological
+        and (cta_count >= _CTA_STRONG_COUNT or cta_sum_tpm >= _CTA_STRONG_SUM_TPM)
+    )
+    # Demoting a confident healthy-dominant call needs at least two
+    # CTA hits above threshold — a single hit is plausibly a leaky
+    # panel member (PHF7 shows up at 5 TPM in normal brain / smooth
+    # muscle; TEX14, STKLD1 show up at 3 TPM in normal brain). Two
+    # coordinated hits are much less likely in non-reproductive
+    # healthy tissue.
+    cta_soft_signal = not cta_is_physiological and cta_count >= 2
+
+    # Oncofetal panel as complementary tumor evidence — specificity is
+    # higher per hit than the CTA panel (stricter curation), so the
+    # strong-signal threshold is lower (2 hits vs 4). Guard against
+    # physiological reactivation in testis / placenta / liver.
+    oncofetal_is_physiological = top_hpa_name in _ONCOFETAL_NORMAL_TISSUES
+    oncofetal_strong_signal = (
+        not oncofetal_is_physiological
+        and oncofetal_count >= _ONCOFETAL_STRONG_COUNT
+    )
+    oncofetal_soft_signal = (
+        not oncofetal_is_physiological and oncofetal_count >= 1
+    )
+
     structural_ambiguity = False
     if lymphoid_ambiguity:
         cancer_hint = "possibly-tumor"
         structural_ambiguity = True
+    elif cta_strong_signal or oncofetal_strong_signal:
+        # Strong tumor-specific re-expression (CTAs or oncofetal
+        # program) is near-definitive positive evidence. Overrides
+        # any correlation-based healthy call; guards already
+        # exclude testis / placenta / ovary (CTAs) and +liver
+        # (oncofetal, where AFP can be regenerative).
+        cancer_hint = "tumor-consistent"
     elif prolif_log2 >= _PROLIFERATION_HIGH_LOG2:
         cancer_hint = "tumor-consistent"
     elif prolif_log2 < _PROLIFERATION_QUIET_LOG2 and margin >= _HPA_MARGIN_STRONG:
-        cancer_hint = "healthy-dominant"
+        # Two or more CTA hits OR any oncofetal hit block the most
+        # confident healthy call. Single CTA hit is panel noise;
+        # multiple hits or any oncofetal-strict hit imply coordinated
+        # de-silencing of tumor-associated programs.
+        if cta_soft_signal or oncofetal_soft_signal:
+            cancer_hint = "possibly-tumor"
+        else:
+            cancer_hint = "healthy-dominant"
     elif margin >= _HPA_MARGIN_WEAK:
         cancer_hint = "possibly-tumor"
     else:
@@ -362,6 +567,11 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         n_reference_genes=n_overlap,
         verdict=verdict,
         structural_ambiguity=structural_ambiguity,
+        cta_panel_sum_tpm=cta_sum_tpm,
+        cta_count_above_1_tpm=cta_count,
+        cta_top_hits=cta_top_hits,
+        oncofetal_count_above_threshold=oncofetal_count,
+        oncofetal_top_hits=oncofetal_top_hits,
     )
 
 

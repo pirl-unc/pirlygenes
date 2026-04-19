@@ -52,10 +52,18 @@ def test_brain_sample_routes_to_healthy_dominant_with_brain_tissues_on_top():
     a healthy-dominant hint AND the top HPA match must be a brain
     tissue (cerebral_cortex / spinal_cord / cerebellum). This is the
     coarse-to-fine signal that downstream stages read."""
+    from pirlygenes.healthy_vs_tumor import _ONCOFETAL_STRICT
     ref = _ref()
     sample = ref["nTPM_cerebral_cortex"].astype(float).to_dict()
     for g in _PROLIFERATION_PANEL:
         sample[g] = 0.5
+    # Zero the strict oncofetal panel too — HPA brain has trace
+    # residual LIN28B / others that would spuriously trip the
+    # oncofetal soft-signal and demote healthy-dominant to
+    # possibly-tumor. The test targets the correlation-driven
+    # healthy call, not the tumor-evidence overrides.
+    for g in _ONCOFETAL_STRICT:
+        sample[g] = 0.0
     r = assess_tissue_composition(_as_df(sample))
     assert r.cancer_hint == "healthy-dominant", (
         f"synthetic healthy brain should be healthy-dominant; got {r.cancer_hint}"
