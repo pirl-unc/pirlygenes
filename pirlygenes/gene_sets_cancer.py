@@ -681,6 +681,15 @@ def subtype_deconvolved_expression():
       (Favorable / Intermediate / Adverse) + APL (FAB-M3) breakout.
     - TARGET AML (pediatric AML, NCI TARGET initiative).
     - TARGET NBL (pediatric neuroblastoma) × MYCN amplification status.
+    - TARGET WT (pediatric Wilms tumor) and TARGET RT (rhabdoid tumor).
+    - SCLC Rudin/UCologne 2015 (ASCL1-dominant NE-SCLC).
+    - TCGA LUAD × mutation class (EGFR / KRAS / STK11+KEAP1 / co-mut).
+    - TCGA HNSC × HPV status (HPV+ / HPV-).
+    - **Treehouse Tumor Compendium v25.01 PolyA (GSE294351)** — 1274
+      pediatric + underrepresented samples across 20 diseases (OS 262,
+      Ewing 101, ERMS 95, ARMS 73, MBL 125, UPS 110, LMS 151, LPS 92,
+      synovial 50, myxofibrosarcoma 41, rhabdoid 69, UCS 57, etc.).
+      Expression scale: log2(TPM+1) un-transformed to linear TPM.
 
     Non-TCGA cohorts are processed in high-purity-passthrough mode by
     :mod:`pirlygenes.cohort_deconvolve` — appropriate for sorted heme
