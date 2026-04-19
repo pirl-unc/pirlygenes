@@ -720,3 +720,27 @@ NPC,,CD274,biomarker,,,,,PD-L1 — elevated in NPC tumor + immune infiltrate; IO
 NPC,,PDCD1,target,toripalimab + gemcitabine/cisplatin,antibody,approved,recurrent/metastatic NPC,JUPITER-02 — approved 2023 first-line; anti-PD1,PMID:34516835
 NPC,,PDCD1,target,tislelizumab,antibody,approved,R/R NPC,RATIONALE-309 — approved in NPC 2023,PMID:36933560
 NPC,,PDCD1,target,pembrolizumab,antibody,approved,R/R NPC,Basket approval PD-L1+ solid tumors; KEYNOTE-122,PMID:32163866
+ACINIC,,BCL6,biomarker,,,,,Translocation (ACIN) — MSA-B family marker; salivary acinic carcinoma,PMID:26811196
+ACINIC,,DOG1,biomarker,,,,,Anoctamin 1 — distinctive IHC for acinic cell carcinoma,PMID:19820346
+ACINIC,,NR4A3,biomarker,,,,,HTN3-MSANTD3 fusion → NR4A3 overexpression; diagnostic for ACC variant,PMID:30980744
+ACINIC,,TYMS,target,carboplatin + paclitaxel,small_molecule,off_label,advanced acinic cell carcinoma,Rarely needed — mostly indolent; reserved for high-grade transformed variant,PMID:25974463
+ADCC,,MYB,biomarker,,,,,MYB-NFIB translocation — pathognomonic for adenoid cystic carcinoma (~60%),PMID:20093190
+ADCC,,NFIB,biomarker,,,,,MYB-NFIB fusion — more rarely MYBL1-NFIB,PMID:24002401
+ADCC,,NOTCH1,biomarker,,,,,Recurrent activating mutation — subset has aggressive phenotype + NOTCH-inhibitor rationale,PMID:27149988
+ADCC,,KIT,biomarker,,,,,Near-universal expression — historically imatinib trialed (largely negative),PMID:17762320
+ADCC,,MYB,target,brontictuzumab,antibody,phase_1,NOTCH1-mut ADCC,Anti-NOTCH1 monoclonal — limited activity; high-toxicity,PMID:31064789
+ADCC,,FGF2,target,lenvatinib,small_molecule,phase_2,advanced ADCC,Multikinase TKI — modest activity in advanced ADCC,PMID:30496135
+CHOR,,T,biomarker,,,,,Brachyury (TBXT) — pathognomonic for chordoma; defining nuclear IHC,PMID:18094074
+CHOR,,CDKN2A,biomarker,,,,,Frequent homozygous deletion — prognostic,PMID:24509719
+CHOR,,LYST,biomarker,,,,,Recurrent loss — subset of chordoma,PMID:30266954
+CHOR,,EGFR,target,erlotinib / gefitinib,small_molecule,phase_2,advanced chordoma,EGFR inhibitors — activity observed in subset; small series,PMID:21775476
+CHOR,,PDGFRB,target,imatinib,small_molecule,phase_2,advanced chordoma,Case reports + small series of durable responses in PDGFR-expressing chordoma,PMID:15751962
+CHOR,,T,target,brachyury vaccine,vaccine,phase_2,resectable chordoma,GI-6301 brachyury yeast vaccine — immunotherapy trials,PMID:29391359
+CHON,,IDH1,biomarker,,,,,Recurrent mutation in conventional chondrosarcoma — driver; potential ivosidenib-eligible,PMID:22057233
+CHON,,IDH2,biomarker,,,,,Recurrent mutation; complementary to IDH1; enasidenib rationale,PMID:22057233
+CHON,,EXT1,biomarker,,,,,Germline inactivation — hereditary multiple exostoses + secondary chondrosarcoma risk,PMID:19255577
+CHON,,EXT2,biomarker,,,,,Germline inactivation — hereditary multiple exostoses,PMID:19255577
+CHON,,COL2A1,biomarker,,,,,Mutation in small subset; cartilage-lineage driver in hereditary enchondromatosis,PMID:21643004
+CHON,,HEY1,biomarker,,,,,HEY1-NCOA2 fusion — defining for mesenchymal chondrosarcoma variant,PMID:22836606
+CHON,,IDH1,target,ivosidenib,small_molecule,phase_1,IDH1-mut advanced chondrosarcoma,Selective IDH1 inhibitor — activity in IDH1-R132 chondrosarcoma subset,PMID:32679069
+CHON,,VEGFA,target,pazopanib,small_molecule,phase_2,advanced chondrosarcoma,VEGFR multi-TKI — modest PFS benefit; pan-sarcoma data,PMID:22749852
