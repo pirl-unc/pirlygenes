@@ -40,6 +40,31 @@ def _phase_label(phase: str) -> str:
     }.get(phase, phase)
 
 
+def _top_candidate_signature_score(analysis) -> float | None:
+    """Return the top-ranked cancer candidate's signature match score.
+
+    Used by the Stage-0 banner to suppress noise: a confident TCGA
+    signature match is evidence of tumor and nudges the banner to
+    stay silent on soft "composition-ambiguous" cases.
+    """
+    candidates = (
+        analysis.get("cancer_candidates")
+        or analysis.get("candidate_trace")
+        or []
+    )
+    if not candidates:
+        return None
+    top = candidates[0]
+    # Different code paths store this under slightly different keys.
+    for key in ("signature_score", "support_norm", "geomean", "normalized"):
+        if key in top and top[key] is not None:
+            try:
+                return float(top[key])
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
 def _format_therapy_bullet(target_row, expression_row) -> str:
     """One standardized therapy bullet for the brief."""
     sym = str(target_row.get("symbol") or "")
@@ -247,9 +272,15 @@ def build_brief(
 
     # #149: Stage-0 healthy-vs-tumor banner. Above the cancer call so
     # the reader sees the caveat before anchoring on the TCGA label.
+    # Banner decision reads downstream tumor evidence (purity from
+    # Stage 2, signature score from Stage 1) so a confident cancer
+    # call doesn't trigger a spurious Stage-0 warning.
     hvt = analysis.get("healthy_vs_tumor")
     if hvt is not None:
-        banner = hvt.brief_banner()
+        banner = hvt.brief_banner(
+            purity=purity.get("overall_estimate") if purity else None,
+            signature_score=_top_candidate_signature_score(analysis),
+        )
         if banner:
             lines.append(banner)
             lines.append("")
@@ -389,10 +420,14 @@ def build_actionable(
     lines.append(f"Working call: **{cancer_code}** ({cancer_name}).")
     # Stage-0 tissue-composition banner (if non-tumor-consistent) so
     # an actionable reader sees the Stage-0 caveat attached to the
-    # working call, not buried in the summary.
+    # working call, not buried in the summary. Same evidence-gated
+    # logic as the brief — strong tumor signal suppresses the banner.
     hvt = analysis.get("healthy_vs_tumor")
     if hvt is not None:
-        banner = hvt.brief_banner()
+        banner = hvt.brief_banner(
+            purity=purity.get("overall_estimate") if purity else None,
+            signature_score=_top_candidate_signature_score(analysis),
+        )
         if banner:
             lines.append(f"\n{banner}")
     if disease_state:

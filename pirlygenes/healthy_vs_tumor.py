@@ -100,17 +100,46 @@ class TissueCompositionSignal:
             f"genes observed). Hint: **{self.cancer_hint}**."
         )
 
-    def brief_banner(self) -> str | None:
+    def brief_banner(
+        self,
+        purity: float | None = None,
+        signature_score: float | None = None,
+    ) -> str | None:
         """Terse banner for the brief — shown for every non-tumor-consistent hint.
 
         Propagates the Stage-0 coarse reading forward so a clinician
         reading the brief sees the tissue context and the cancer-hint
         confidence up front rather than just the downstream TCGA label.
+
+        When ``purity`` (Stage 2) and/or ``signature_score`` (Stage 1)
+        are supplied, corroborating tumor evidence can suppress the
+        banner: we don't want to shout "composition ambiguous" on a
+        sample that has a solid lineage-matched TCGA cohort at moderate
+        purity. The healthy-dominant banner has a higher bar to
+        suppress than the possibly-tumor banner — it takes strong
+        evidence (purity ≥ 0.5 AND signature ≥ 0.75) to override a
+        confident Stage-0 healthy call.
         """
         if self.cancer_hint == "tumor-consistent":
             return None
         if not self.top_normal_tissues:
             return None
+
+        if purity is not None or signature_score is not None:
+            p = float(purity) if purity is not None else 0.0
+            s = float(signature_score) if signature_score is not None else 0.0
+            if self.cancer_hint == "healthy-dominant":
+                # Require strong corroborating tumor evidence to
+                # override a confident healthy signal.
+                if p >= 0.50 and s >= 0.75:
+                    return None
+            elif self.cancer_hint == "possibly-tumor":
+                # Modest corroborating evidence suffices to suppress
+                # the soft ambiguity banner — the downstream cancer
+                # call is already well-supported.
+                if p >= 0.30 or s >= 0.75:
+                    return None
+
         tissue, rho = self.top_normal_tissues[0]
         tissue_name = tissue.replace("nTPM_", "").replace("_", " ")
         cohort = self.top_tcga_cohorts[0][0].replace("FPKM_", "") if self.top_tcga_cohorts else "—"
