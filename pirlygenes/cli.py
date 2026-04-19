@@ -2502,6 +2502,31 @@ def _generate_text_reports(
     if disease_state_paragraph:
         lines.append(f"**Disease state**: {disease_state_paragraph}\n")
 
+    # Stage-0 tissue composition (#149) — same signal that drives the
+    # brief banner and the summary top-line, surfaced here with the
+    # full top-3 tissues / top-3 cohorts so a reader doing a deep
+    # analysis.md read sees the Stage-0 prior inline.
+    hvt = analysis.get("healthy_vs_tumor")
+    if hvt is not None and hvt.top_normal_tissues:
+        lines.append("## Stage-0 tissue composition\n")
+        lines.append(f"- **Cancer hint**: {hvt.cancer_hint}")
+        lines.append(
+            f"- **Proliferation panel**: "
+            f"{hvt.proliferation_log2_mean:.2f} log2-TPM mean across "
+            f"{hvt.proliferation_genes_observed}/5 genes observed"
+        )
+        hpa_line = ", ".join(
+            f"{t.replace('nTPM_', '').replace('_', ' ')} (ρ={rho:.2f})"
+            for t, rho in hvt.top_normal_tissues[:3]
+        )
+        lines.append(f"- **Top normal-tissue matches**: {hpa_line}")
+        tcga_line = ", ".join(
+            f"{t.replace('FPKM_', '')} (ρ={rho:.2f})"
+            for t, rho in hvt.top_tcga_cohorts[:3]
+        )
+        lines.append(f"- **Top TCGA cohort matches**: {tcga_line}")
+        lines.append("")
+
     # Input characterization (#68) — surfaced before quality/decomp so
     # readers see whether the file we analysed was transcript-level vs
     # gene-level, whole-transcriptome vs panel, poly-A vs total RNA,

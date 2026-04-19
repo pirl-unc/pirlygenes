@@ -387,6 +387,14 @@ def build_actionable(
     # Cancer call + disease state
     lines.append("## Cancer call and disease state\n")
     lines.append(f"Working call: **{cancer_code}** ({cancer_name}).")
+    # Stage-0 tissue-composition banner (if non-tumor-consistent) so
+    # an actionable reader sees the Stage-0 caveat attached to the
+    # working call, not buried in the summary.
+    hvt = analysis.get("healthy_vs_tumor")
+    if hvt is not None:
+        banner = hvt.brief_banner()
+        if banner:
+            lines.append(f"\n{banner}")
     if disease_state:
         lines.append(f"\n{disease_state}")
     lines.append("")

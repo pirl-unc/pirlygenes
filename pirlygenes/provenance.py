@@ -47,6 +47,22 @@ def build_provenance_md(
     )
     lines.append("")
 
+    # Stage 0b — tissue composition screen (#149). Runs before the
+    # lineage-aware stages so the reader sees "what kind of tissue is
+    # this, and is there any hint of cancer" in the first breath.
+    hvt = analysis.get("healthy_vs_tumor")
+    if hvt is not None and hvt.top_normal_tissues:
+        lines.append("## 0. Tissue composition screen\n")
+        lines.append(hvt.summary_line())
+        if hvt.cancer_hint != "tumor-consistent":
+            lines.append(
+                "\nThis Stage-0 signal propagates forward: the downstream "
+                "cancer call is treated as soft-confidence in the report "
+                "synthesis, and the per-gene expression ranges carry a "
+                "wider CI to reflect the ambiguity."
+            )
+        lines.append("")
+
     # Stage 1 — library prep
     lines.append("## 1. Library prep\n")
     if sample_context is not None:
