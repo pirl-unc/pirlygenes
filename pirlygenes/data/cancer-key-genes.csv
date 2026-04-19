@@ -454,3 +454,84 @@ NUTM,,BRD4,target,birabresib (OTX015/MK-8628),small_molecule,phase_1,NUT carcino
 NUTM,,BRD4,target,BMS-986158,small_molecule,phase_1,NUT carcinoma,BET inhibitor trials in NUT carcinoma and hematologic malignancies,PMID:34187828
 NUTM,,BRD4,target,NUV-868,small_molecule,phase_1,NUT carcinoma,BD2-selective BET inhibitor; improved tolerability profile,PMID:38456273
 NUTM,,HDAC1,target,vorinostat,small_molecule,off_label,NUT carcinoma,HDAC inhibitor — synergizes with BET-i preclinically; case reports of clinical benefit,PMID:23152362
+ACC,,INHA,biomarker,,,,,Inhibin α — adrenal cortex lineage marker; diagnostic IHC,PMID:22684458
+ACC,,NR5A1,biomarker,,,,,SF1 / steroidogenic factor 1 — adrenocortical differentiation marker,PMID:22684458
+ACC,,STAR,biomarker,,,,,Steroidogenic acute regulatory protein — adrenal-restricted,PMID:22684458
+ACC,,TP53,biomarker,,,,,Somatic and germline (Li-Fraumeni) inactivation — predicts aggressive course,PMID:25932744
+ACC,,CTNNB1,biomarker,,,,,Activating mutations — Wnt pathway driver; worse prognosis,PMID:18974114
+ACC,,IGF2,biomarker,,,,,Overexpressed in ~90% ACC; proposed but unproven therapy target,PMID:19861546
+ACC,,MKI67,biomarker,,,,,Ki-67 >10% proliferation index — independent predictor of recurrence,PMID:19299547
+ACC,,NR5A1,target,mitotane,small_molecule,approved,advanced/metastatic ACC,Adrenolytic — standard first-line single-agent therapy in ACC,PMID:17551153
+ACC,,CTLA4,target,ipilimumab,antibody,phase_2,advanced ACC,Anti-CTLA4; modest activity in trials; limited without nivolumab combo,PMID:30528525
+ACC,,PDCD1,target,pembrolizumab,antibody,phase_2,PD-L1+ / MSI-H ACC,Anti-PD1; limited activity overall but responders documented in MSI-H subset,PMID:30763180
+KICH,,KIT,biomarker,,,,,CD117 diffuse IHC — defining KICH; distinguishes from KIRC oncocytoma,PMID:25241740
+KICH,,KRT7,biomarker,,,,,CK7 diffuse — chromophobe lineage marker; negative in KIRC,PMID:25241740
+KICH,,TP53,biomarker,,,,,Recurrent mutation in KICH; associated with sarcomatoid dedifferentiation,PMID:25241740
+KICH,,PTEN,biomarker,,,,,Loss in subset of KICH; PI3K-mTOR pathway activation,PMID:25241740
+KICH,,MET,target,cabozantinib,small_molecule,approved,advanced RCC (non-clear-cell) incl KICH,MET/VEGFR/AXL TKI — approved for advanced RCC; best evidence in papillary/non-clear,PMID:31545681
+KICH,,VEGFA,target,sunitinib,small_molecule,approved,advanced RCC,VEGFR/PDGFR TKI — included in combined non-clear-cell RCC trials,PMID:17215530
+KICH,,PDCD1,target,nivolumab,antibody,approved,advanced RCC,Anti-PD1; approved in combination settings for advanced RCC,PMID:26406148
+KIRP,,MET,biomarker,,,,,Germline and somatic activating mutations — Type 1 papillary driver,PMID:25776748
+KIRP,,CDKN2A,biomarker,,,,,9p21 deletion — Type 2 papillary; worse prognosis,PMID:25776748
+KIRP,,NF2,biomarker,,,,,Recurrent in Type 2 KIRP; Hippo pathway activation,PMID:25776748
+KIRP,,FH,biomarker,,,,,HLRCC syndrome — germline fumarate hydratase loss; aggressive Type 2 variant,PMID:25776748
+KIRP,,SETD2,biomarker,,,,,Chromatin regulator — frequently mutated in Type 2 KIRP,PMID:25776748
+KIRP,,MET,target,cabozantinib,small_molecule,approved,advanced papillary RCC,FDA-approved for advanced RCC; Type 1 MET-mut papillary may respond preferentially,PMID:31545681
+KIRP,,MET,target,savolitinib,small_molecule,phase_3,MET-driven papillary RCC,Selective MET inhibitor; positive SAMETA trial subset,PMID:37696272
+KIRP,,PDCD1,target,pembrolizumab,antibody,approved,advanced papillary RCC,Approved with lenvatinib or as monotherapy post-TKI,PMID:35297388
+MESO,,BAP1,biomarker,,,,,Loss-of-function in ~60% pleural MESO; germline predisposition; IHC diagnostic,PMID:21642991
+MESO,,NF2,biomarker,,,,,Loss in ~40% pleural MESO; Hippo pathway activation,PMID:26928227
+MESO,,CDKN2A,biomarker,,,,,9p21 homozygous deletion in ~70% — key diagnostic and prognostic,PMID:26928227
+MESO,,WT1,biomarker,,,,,Diagnostic IHC — distinguishes MESO from adenocarcinoma,PMID:9789724
+MESO,,MSLN,biomarker,,,,,Mesothelin — highly expressed; serum biomarker and therapy target,PMID:16778184
+MESO,,CALB2,biomarker,,,,,Calretinin — defining mesothelial-lineage IHC marker,PMID:9789724
+MESO,,PDCD1,target,nivolumab + ipilimumab,antibody,approved,unresectable pleural MESO,CheckMate-743 — first-line combined IO; approved 2020,PMID:33485464
+MESO,,TYMS,target,pemetrexed + cisplatin,small_molecule,approved,unresectable MESO,Antifolate + platinum — historical standard of care,PMID:12860938
+MESO,,MSLN,target,anetumab ravtansine (BAY 94-9343),ADC,phase_2,MSLN-high MESO,Anti-MSLN maytansinoid ADC; missed primary endpoint but responders documented,PMID:34045265
+MESO,,VEGFA,target,bevacizumab,antibody,approved,pleural MESO + pem/cis,Anti-VEGF — MAPS trial showed OS benefit added to pem/cis,PMID:26719230
+PCPG,,SDHB,biomarker,,,,,Germline/somatic loss — metastatic risk; SDHx immunostain-negative PCC,PMID:24029231
+PCPG,,VHL,biomarker,,,,,Germline inactivation — von Hippel-Lindau syndrome PCC,PMID:24029231
+PCPG,,RET,biomarker,,,,,Germline activating mutation — MEN2 syndrome; pheo + medullary thyroid,PMID:23551588
+PCPG,,NF1,biomarker,,,,,Neurofibromatosis type 1 — pheo predisposition,PMID:24029231
+PCPG,,CHGA,biomarker,,,,,Chromogranin A — serum marker + NE lineage IHC,PMID:26398321
+PCPG,,TH,biomarker,,,,,Tyrosine hydroxylase — catecholamine-synthesis lineage marker,PMID:26398321
+PCPG,,MAX,biomarker,,,,,Germline loss — MYC-associated-X; bilateral pheo predisposition,PMID:22436948
+PCPG,,SSTR2,target,iobenguane I-131 ([131I]-MIBG),radioligand,approved,iobenguane-scan-positive metastatic PCC/PGL,Norepinephrine-transporter-directed radionuclide; approved 2018,PMID:30940672
+PCPG,,VEGFA,target,sunitinib,small_molecule,phase_2,advanced PCC/PGL,FIRSTMAPPP trial — PFS benefit vs placebo,PMID:35934015
+PCPG,,EPAS1,target,belzutifan,small_molecule,phase_2,VHL / SDHB pheochromocytoma,HIF2α inhibitor — approved in VHL syndrome-associated PCC,PMID:34818478
+READ,,MLH1,biomarker,,,,,MMR loss — MSI-H; gates pembrolizumab / dostarlimab,PMID:26028255
+READ,,MSH2,biomarker,,,,,MMR gene — MSI-H / Lynch association,PMID:26028255
+READ,,KRAS,biomarker,,,,,Codon 12/13/61 mutation — precludes anti-EGFR therapy,PMID:18316791
+READ,,NRAS,biomarker,,,,,Exon 2-4 mutation — precludes anti-EGFR therapy,PMID:24024839
+READ,,BRAF,biomarker,,,,,V600E mutation — poor prognosis; gates BRAF+anti-EGFR combo,PMID:31566309
+READ,,ERBB2,biomarker,,,,,HER2 amplification in ~3% — trastuzumab+tucatinib,PMID:32580927
+READ,,TP53,biomarker,,,,,Frequent somatic mutation; prognostic in some contexts,PMID:22810696
+READ,,EGFR,target,cetuximab,antibody,approved,KRAS/NRAS/BRAF-WT mCRC,Anti-EGFR monoclonal; approved for RAS-WT mCRC,PMID:15020612
+READ,,BRAF,target,encorafenib + cetuximab,small_molecule,approved,BRAF V600E mCRC,BEACON trial — approved for BRAF V600E mCRC after first-line failure,PMID:31566309
+READ,,PDCD1,target,pembrolizumab,antibody,approved,MSI-H / dMMR mCRC,KEYNOTE-177 — first-line in MSI-H mCRC,PMID:33264544
+READ,,ERBB2,target,trastuzumab + tucatinib,antibody,approved,HER2-amp mCRC,MOUNTAINEER — approved 2023 for HER2-amp RAS-WT mCRC,PMID:34534392
+THYM,,GTF2I,biomarker,,,,,Thymoma-specific chromosome 7 L424H mutation — indolent-behavior predictor,PMID:24974848
+THYM,,CD5,biomarker,,,,,Diffuse CD5+ in thymic carcinoma — distinguishes from thymoma,PMID:15837625
+THYM,,KIT,biomarker,,,,,Diffuse CD117 in thymic carcinoma — distinguishes from thymoma,PMID:16385570
+THYM,,MCM2,biomarker,,,,,Proliferation marker — correlated with histologic grade in thymoma,PMID:17496220
+THYM,,VEGFA,target,sunitinib,small_molecule,approved,thymic carcinoma (limited thymoma),VEGFR/PDGFR/KIT TKI — approved 2016; myasthenia-flare caution,PMID:26706735
+THYM,,PDCD1,target,pembrolizumab,antibody,approved,thymic carcinoma,Approved in thymic carcinoma; NOT thymoma (severe myasthenia flare risk),PMID:29502935
+THYM,,KIT,target,sunitinib,small_molecule,phase_2,thymic carcinoma,TKI activity in KIT-mut thymic carcinoma — secondary endpoint,PMID:26706735
+UCS,,TP53,biomarker,,,,,Mutation in ~90% UCS — near-universal,PMID:24185509
+UCS,,PIK3CA,biomarker,,,,,Recurrent activating mutation; PI3K-pathway driver,PMID:24185509
+UCS,,ERBB2,biomarker,,,,,HER2 amplification in subset — trastuzumab-deruxtecan candidate,PMID:31880538
+UCS,,PPP2R1A,biomarker,,,,,Recurrent mutation in UCS + serous endometrial — distinctive from endometrioid,PMID:24185509
+UCS,,FBXW7,biomarker,,,,,Recurrent mutation; tumor suppressor inactivation,PMID:24185509
+UCS,,TYMS,target,carboplatin + paclitaxel,small_molecule,approved,advanced UCS,GOG-261 — superior to ifosfamide + paclitaxel; current SOC,PMID:34375086
+UCS,,ERBB2,target,trastuzumab deruxtecan,ADC,approved,HER2-low / HER2+ endometrial / UCS,DESTINY-PanTumor trial basket — approved 2024 HER2 expressing solid tumors,PMID:38662561
+UCS,,PDCD1,target,pembrolizumab + lenvatinib,antibody,approved,pMMR advanced endometrial (incl UCS),KEYNOTE-775 — advanced endometrial/UCS after prior platinum,PMID:33711226
+UCS,,PDCD1,target,dostarlimab,antibody,approved,dMMR / MSI-H endometrial / UCS,GARNET — approved 2021 in dMMR endometrial,PMID:34026889
+UVM,,GNAQ,biomarker,,,,,Q209/R183 activating mutation — defining UVM driver (~50%),PMID:21196391
+UVM,,GNA11,biomarker,,,,,Q209/R183 activating mutation — complementary to GNAQ (~40%),PMID:21196391
+UVM,,BAP1,biomarker,,,,,Loss — strong predictor of monosomy-3 metastasis phenotype,PMID:21083361
+UVM,,SF3B1,biomarker,,,,,R625 hotspot mutation — intermediate metastatic risk; distinct from BAP1 class,PMID:24875646
+UVM,,EIF1AX,biomarker,,,,,Mutation — low-risk subset; mutually exclusive with BAP1 loss,PMID:24875646
+UVM,,PMEL,biomarker,,,,,gp100 — melanocyte lineage; tebentafusp epitope target (HLA-A*02:01+),PMID:35179935
+UVM,,PMEL,target,tebentafusp,bispecific,approved,HLA-A*02:01+ metastatic UVM,Gp100 × CD3 bispecific — first approved targeted UVM agent,PMID:35179935
+UVM,,PDCD1,target,pembrolizumab + ipilimumab,antibody,phase_2,metastatic UVM,Checkpoint combinations — limited but documented responses,PMID:34115983
+UVM,,PRKCB,target,darovasertib (IDE196),small_molecule,phase_3,metastatic UVM,Protein kinase C inhibitor — GNAQ/GNA11 pathway; phase 3 ongoing,PMID:38182506
