@@ -605,12 +605,67 @@ def _pan_cancer_cache_key(genes, normalize, log_transform):
     return (genes_key, normalize, bool(log_transform))
 
 
+def tcga_deconvolved_expression():
+    """Per-(symbol, TCGA code) tumor-only TPM derived by #21 offline deconv.
+
+    Reads ``data/tcga-deconvolved-expression.csv`` if present. The CSV
+    is produced by :mod:`pirlygenes.tcga_decompose` on the full Xena
+    TOIL TCGA TPM matrix; it ships with the package once the
+    maintainer has run the batch.
+
+    Returns
+    -------
+    pd.DataFrame or None
+        Long-form frame with columns ``symbol``, ``cancer_code``,
+        ``tumor_tpm_median``, ``tumor_tpm_q1``, ``tumor_tpm_q3``,
+        ``n_samples``. Returns ``None`` when the CSV is not bundled
+        (e.g. a fresh checkout where the offline batch hasn't been
+        run yet). Callers must handle the ``None`` case.
+    """
+    try:
+        return get_data("tcga-deconvolved-expression")
+    except ValueError:
+        return None
+
+
+def _tcga_deconv_wide(cache={}):
+    """Wide-form (Symbol-indexed) view of the tumor-only TPM median.
+
+    Built from the long-form :func:`tcga_deconvolved_expression` frame
+    with one column per TCGA code (``tcga_PRAD``, ``tcga_BRCA`` …).
+    Cached in-process; returns ``None`` when the deconv CSV is absent.
+    """
+    if "value" in cache:
+        return cache["value"]
+    long = tcga_deconvolved_expression()
+    if long is None or long.empty:
+        cache["value"] = None
+        return None
+
+    wide = long.pivot_table(
+        index="symbol",
+        columns="cancer_code",
+        values="tumor_tpm_median",
+        aggfunc="median",
+    )
+    wide.columns = [f"tcga_{c}" for c in wide.columns]
+    wide = wide.reset_index().rename(columns={"symbol": "Symbol"})
+    cache["value"] = wide
+    return wide
+
+
 def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
     """Expression across 50 normal tissues (nTPM) and 33 TCGA cancer types.
 
     Normal tissues from HPA v23 consensus nTPM. Cancer types from HPA
     (21 types, median FPKM) and GDC/STAR reprocessing (12 additional types,
     median TPM). Column names are prefixed with ``nTPM_`` or ``FPKM_``.
+
+    When the #21 offline deconv has been run and shipped
+    ``data/tcga-deconvolved-expression.csv``, tumor-only columns
+    prefixed ``tcga_`` are merged in as well (#22). They sit alongside
+    (not replacing) the FPKM_ columns until callers migrate — the
+    breaking swap is reserved for v5.0.0.
 
     Parameters
     ----------
@@ -638,6 +693,9 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
         return cached.copy()
 
     df = get_data("pan-cancer-expression")
+    deconv_wide = _tcga_deconv_wide()
+    if deconv_wide is not None:
+        df = df.merge(deconv_wide, on="Symbol", how="left")
     if genes is not None:
         genes_upper = {str(g).upper() for g in genes}
         mask = (
@@ -646,7 +704,10 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
         )
         df = df[mask]
 
-    value_cols = [c for c in df.columns if c.startswith("nTPM_") or c.startswith("FPKM_")]
+    value_cols = [
+        c for c in df.columns
+        if c.startswith("nTPM_") or c.startswith("FPKM_") or c.startswith("tcga_")
+    ]
 
     if normalize is not None:
         df = df.copy()
