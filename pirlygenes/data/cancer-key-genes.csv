@@ -603,3 +603,74 @@ B_ALL,,CD19,target,blinatumomab,bispecific,approved,R/R B-ALL + MRD+ B-ALL,CD19 
 B_ALL,,CD19,target,tisagenlecleucel (tisa-cel),CAR-T,approved,R/R pediatric / young adult B-ALL,CD19 CAR-T — first-of-kind FDA approval 2017,PMID:28562253
 B_ALL,,CD19,target,brexucabtagene autoleucel (brexu-cel),CAR-T,approved,R/R adult B-ALL,CD19 CAR-T — approved 2021; ZUMA-3 trial,PMID:34214213
 B_ALL,,CD22,target,inotuzumab ozogamicin,ADC,approved,R/R B-ALL,CD22 calicheamicin ADC — approved 2017; INO-VATE trial,PMID:27386334
+OS,,RB1,biomarker,,,,,Loss (~50%) — tumor suppressor; germline RB1 loss predisposes to OS,PMID:29156804
+OS,,TP53,biomarker,,,,,Mutation / Li-Fraumeni germline — ubiquitous driver,PMID:29156804
+OS,,ATRX,biomarker,,,,,Loss — ALT telomere-maintenance phenotype,PMID:29156804
+OS,,MDM2,biomarker,,,,,Amplification in parosteal OS variant — MDM2-p53 axis,PMID:24909179
+OS,,CDK4,biomarker,,,,,Co-amplified with MDM2 in parosteal OS; palbociclib rationale,PMID:24909179
+OS,,RUNX2,biomarker,,,,,Osteoblast master TF — lineage marker; retained in OS tumors,PMID:29156804
+OS,,COL1A1,biomarker,,,,,Osteoid matrix production — tumor-intrinsic (not TME) in OS,PMID:29156804
+OS,,GD2_SYN,biomarker,,,,,ST8SIA1 encodes GD2 synthase — variable surface GD2 expression,PMID:34648686
+OS,,B4GALNT1,target,dinutuximab,antibody,phase_2,advanced / metastatic OS,Anti-GD2 — AOST1421 trial; active in subset,PMID:34648686
+OS,,ERBB2,target,trastuzumab deruxtecan,ADC,phase_2,HER2-expressing OS,Trastuzumab + chemo backbone trials in HER2+ OS,PMID:22271477
+OS,,IGF1R,target,ganitumab + chemo,antibody,phase_2,metastatic OS,IGF1R inhibitor — SARC021 + AEWS1221 trials,PMID:32762005
+OS,,VEGFA,target,cabozantinib,small_molecule,phase_2,R/R OS,CABONE / CABOSARC trials — activity documented,PMID:33008784
+EWS,,EWSR1,biomarker,,,,,EWSR1 fusion partner — defines Ewing family; translocation partner FLI1 (most) / ERG (~10%),PMID:26009011
+EWS,,FLI1,biomarker,,,,,EWSR1-FLI1 fusion — pathognomonic; EWS master driver,PMID:26009011
+EWS,,ERG,biomarker,,,,,EWSR1-ERG fusion in ~10% — alternative to FLI1; indistinguishable clinically,PMID:26009011
+EWS,,CD99,biomarker,,,,,MIC2 — diffuse membrane IHC; diagnostic for Ewing,PMID:2185739
+EWS,,NKX2-2,biomarker,,,,,Downstream EWS-FLI1 target; diagnostic IHC,PMID:18812539
+EWS,,STAG2,biomarker,,,,,Recurrent loss in Ewing — cohesin complex; poor prognosis subset,PMID:24814251
+EWS,,IGF1R,target,ganitumab,antibody,phase_3,high-risk EWS,AEWS1221 phase 3 — IGF1R inhibitor + VDC/IE in high-risk EWS,PMID:32762005
+EWS,,ERG,target,TK216,small_molecule,phase_2,R/R EWS,EWS-FLI1 direct inhibitor (small molecule) — phase 2 trials,PMID:33712479
+EWS,,KDM1A,target,seclidemstat,small_molecule,phase_1,R/R Ewing,LSD1 inhibitor — EWS-FLI1-dependent program,PMID:29438748
+EWS,,PRAME,target,IMA203,TCR-T,phase_2,PRAME+ HLA-A*02+ Ewing,PRAME-directed TCR-T in EWS-expressing samples,PMID:38197793
+RMS_ERMS,,MYOD1,biomarker,,,,,Myogenic regulatory factor — embryonal skeletal-muscle program; diagnostic IHC,PMID:22290179
+RMS_ERMS,,MYOG,biomarker,,,,,Myogenin — downstream MYOD1; focal IHC pattern (vs diffuse in ARMS),PMID:22290179
+RMS_ERMS,,DES,biomarker,,,,,Desmin — skeletal-muscle lineage IHC,PMID:22290179
+RMS_ERMS,,NRAS,biomarker,,,,,Recurrent activating mutation in ERMS — RAS-pathway driver,PMID:24703002
+RMS_ERMS,,TYMS,target,vincristine + actinomycin + cyclophosphamide (VAC),small_molecule,approved,ERMS first-line,VAC is pediatric RMS chemotherapy backbone — IRS/COG trials,PMID:19901112
+RMS_ARMS,,FOXO1,biomarker,,,,,PAX3-FOXO1 or PAX7-FOXO1 fusion — pathognomonic for fusion-positive RMS,PMID:19901112
+RMS_ARMS,,PAX3,biomarker,,,,,Majority PAX3-FOXO1 variant — worst prognosis,PMID:19901112
+RMS_ARMS,,PAX7,biomarker,,,,,PAX7-FOXO1 variant — better prognosis than PAX3,PMID:19901112
+RMS_ARMS,,MYOG,biomarker,,,,,Diffuse myogenin IHC (vs focal in ERMS) — diagnostic,PMID:22290179
+RMS_ARMS,,FGFR4,biomarker,,,,,Recurrent activating mutation in fusion-negative RMS — erdafitinib candidate,PMID:24703002
+RMS_ARMS,,FGFR4,target,erdafitinib,small_molecule,phase_2,FGFR4-mut fusion-neg RMS,FGFR-selective TKI — activity in FGFR-altered tumors,PMID:31378236
+WILMS,,WT1,biomarker,,,,,Wilms tumor gene — recurrent loss; metanephric lineage,PMID:18612257
+WILMS,,CTNNB1,biomarker,,,,,Activating mutation — Wnt pathway; co-occurs with WT1 mutation,PMID:18612257
+WILMS,,AMER1,biomarker,,,,,Loss — Wnt-pathway component; recurrent,PMID:18612257
+WILMS,,TP53,biomarker,,,,,Anaplastic variant — poor prognosis; chemo-resistant,PMID:15044706
+WILMS,,DROSHA,biomarker,,,,,Recurrent mutation — miRNA biogenesis; WT-specific,PMID:24909177
+WILMS,,DGCR8,biomarker,,,,,Recurrent mutation — miRNA biogenesis; WT-specific,PMID:24909177
+WILMS,,TYMS,target,vincristine + actinomycin + doxorubicin,small_molecule,approved,favorable-histology Wilms,COG / SIOP chemo backbone — risk-stratified intensity,PMID:23965906
+NBL,,MYCN,biomarker,,,,,Amplification — defines high-risk NBL; single strongest prognostic biomarker,PMID:3822889
+NBL,,ALK,biomarker,,,,,Activating mutation or amplification — ~10% NBL; crizotinib / lorlatinib rationale,PMID:18724361
+NBL,,ATRX,biomarker,,,,,Loss — ALT phenotype; older-age NBL subset,PMID:22367537
+NBL,,PHOX2B,biomarker,,,,,Sympathetic-nervous-system lineage TF — pan-NBL IHC,PMID:16636671
+NBL,,TH,biomarker,,,,,Tyrosine hydroxylase — catecholamine synthesis; neuroblastic IHC,PMID:16636671
+NBL,,B4GALNT1,biomarker,,,,,GD2 synthase — surface GD2 near-universal in NBL,PMID:21045144
+NBL,,B4GALNT1,target,dinutuximab,antibody,approved,high-risk NBL,Anti-GD2 + GM-CSF / IL2 — approved first-line maintenance,PMID:20879881
+NBL,,B4GALNT1,target,naxitamab,antibody,approved,R/R high-risk NBL (bone / marrow),Anti-GD2 humanized — approved 2020,PMID:34380744
+NBL,,ALK,target,lorlatinib,small_molecule,phase_2,ALK-mut NBL,Third-gen ALK TKI — NANT trial in R/R ALK-altered NBL,PMID:34480566
+NBL,,ALK,target,crizotinib,small_molecule,phase_1,ALK-mut NBL,First-gen ALK TKI — pediatric trials in ALK-altered NBL,PMID:21926007
+NBL,,MYCN,target,aurora A kinase inhibitors,small_molecule,phase_1,MYCN-amp NBL,Aurora-A stabilises MYCN — alisertib / LY3295668 trials,PMID:29514830
+MBL,,MYC,biomarker,,,,,Amplification — defines Group 3 MBL; worst prognosis,PMID:22265402
+MBL,,MYCN,biomarker,,,,,Amplification — subset of Group 4 + SHH-TP53-mut MBL,PMID:22265402
+MBL,,CTNNB1,biomarker,,,,,Activating mutation — WNT subgroup; best prognosis,PMID:22265402
+MBL,,PTCH1,biomarker,,,,,Germline or somatic loss — SHH subgroup; vismodegib candidate,PMID:22265402
+MBL,,SMO,biomarker,,,,,Activating mutation — SHH subgroup; vismodegib target,PMID:22265402
+MBL,,TP53,biomarker,,,,,Germline (Li-Fraumeni) — SHH subgroup high-risk anaplastic variant,PMID:24493713
+MBL,,SMO,target,vismodegib,small_molecule,phase_2,SHH-subgroup MBL,Smoothened inhibitor — SHH-specific activity; limited pediatric approval,PMID:24493713
+MBL,,TYMS,target,cisplatin + CCNU + vincristine,small_molecule,approved,newly-diagnosed MBL,Standard-risk / high-risk backbone — Packer regimen,PMID:16614307
+ATRT,,SMARCB1,biomarker,,,,,Biallelic loss — pathognomonic for ATRT (and non-CNS RT),PMID:21062906
+ATRT,,VIM,biomarker,,,,,Mesenchymal marker — frequently expressed in rhabdoid tumors,PMID:21062906
+ATRT,,EZH2,target,tazemetostat,small_molecule,phase_2,R/R SMARCB1-deficient ATRT,EZH2 inhibitor — SMARCB1-loss synthetic-lethal; pediatric trials,PMID:32750541
+ATRT,,TYMS,target,intensive chemo + radiation,small_molecule,approved,newly-diagnosed ATRT,Multi-agent pediatric regimens — no single-agent backbone,PMID:25825194
+RB,,RB1,biomarker,,,,,Biallelic inactivation — defines retinoblastoma; germline or somatic,PMID:12399767
+RB,,MYCN,biomarker,,,,,Amplification in rare RB1-wildtype variant — distinct entity,PMID:24606874
+RB,,TYMS,target,intra-arterial melphalan,small_molecule,approved,advanced unilateral RB (globe salvage),Intra-arterial chemotherapy — globe-preservation standard,PMID:24030949
+RB,,TYMS,target,carboplatin + etoposide + vincristine,small_molecule,approved,bilateral / recently-diagnosed RB,Systemic chemoreduction — first-line bilateral RB,PMID:19289752
+HEPB,,CTNNB1,biomarker,,,,,Activating mutation — Wnt-pathway driver in ~70% hepatoblastoma,PMID:24691097
+HEPB,,AFP,biomarker,,,,,Alpha-fetoprotein — near-universal serum elevation in hepatoblastoma,PMID:24691097
+HEPB,,TP53,biomarker,,,,,Rare in HEPB — high-risk subset; hepatocellular carcinoma overlap,PMID:24691097
+HEPB,,TYMS,target,cisplatin + doxorubicin (PLADO),small_molecule,approved,newly-diagnosed HEPB,International cooperative backbone — SIOPEL / COG regimens,PMID:28445040
