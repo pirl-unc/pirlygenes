@@ -711,6 +711,35 @@ def subtype_deconvolved_expression():
         return None
 
 
+def heme_tumor_up_vs_matched_normal(cancer_code: str | None = None):
+    """Heme analogue of :func:`tumor_up_vs_matched_normal`.
+
+    DLBC vs lymph_node (mature-B normal background), LAML vs
+    bone_marrow (myeloid-progenitor normal background). Filter is
+    looser than the solid panel because heme tumors ARE immune
+    tissue — we can't exclude immune-rich HPA columns from the
+    background. Requires low across all non-lymphoid HPA tissues
+    so ubiquitously-expressed genes don't leak through.
+
+    Known limitation: heme-vs-heme-normal differentials are
+    structurally harder than solid-vs-tissue — the malignant clone
+    shares most expression with its normal lineage counterpart. Use
+    the top hits as one signal among several, not as a definitive
+    call.
+
+    Returns
+    -------
+    pd.DataFrame or None
+    """
+    try:
+        df = get_data("heme-tumor-up-vs-matched-normal")
+    except ValueError:
+        return None
+    if cancer_code:
+        df = df[df["cancer_code"] == cancer_code]
+    return df.copy()
+
+
 def tumor_up_vs_matched_normal(cancer_code: str | None = None):
     """Per-cancer genes dramatically up in tumor vs matched normal tissue.
 

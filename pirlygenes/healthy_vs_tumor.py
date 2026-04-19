@@ -34,7 +34,8 @@ import numpy as np
 import pandas as pd
 
 from .gene_sets_cancer import (
-    pan_cancer_expression, CTA_gene_names, tumor_up_vs_matched_normal,
+    pan_cancer_expression, CTA_gene_names,
+    tumor_up_vs_matched_normal, heme_tumor_up_vs_matched_normal,
 )
 
 
@@ -405,6 +406,10 @@ def _type_specific_tumor_up_signal(
     if not top_tcga_code:
         return []
     panel = tumor_up_vs_matched_normal(cancer_code=top_tcga_code)
+    if panel is None or panel.empty:
+        # Fall back to the heme panel — DLBC / LAML are the covered
+        # heme cohorts today.
+        panel = heme_tumor_up_vs_matched_normal(cancer_code=top_tcga_code)
     if panel is None or panel.empty:
         return []
     hits = []
