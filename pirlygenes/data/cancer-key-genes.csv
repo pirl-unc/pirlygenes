@@ -440,3 +440,17 @@ TGCT,,NANOG,biomarker,,,,,Pluripotency factor — germ cell / seminoma lineage,P
 TGCT,,SOX2,biomarker,,,,,Embryonal carcinoma lineage marker,PMID:15765456
 TGCT,,SALL4,biomarker,,,,,Stem-cell factor — diagnostic IHC for germ cell tumors,PMID:21765467
 TGCT,,LDHA,biomarker,,,,,Lactate dehydrogenase (LDH) — serum marker; prognostic in bulky disease,PMID:9870293
+NUTM,,NUTM1,biomarker,,,,,Pathognomonic fusion partner — BRD4-NUTM1 / BRD3-NUTM1 / NSD3-NUTM1 defines NUT carcinoma,PMID:12543779
+NUTM,,BRD4,biomarker,,,,,BRD4-NUTM1 most common fusion; BET-inhibitor target,PMID:16314571
+NUTM,,BRD3,biomarker,,,,,BRD3-NUTM1 in ~30%; biologically similar to BRD4 variant,PMID:19318580
+NUTM,,NSD3,biomarker,,,,,NSD3-NUTM1 in ~10% of NUT carcinoma; emerging variant,PMID:26057308
+NUTM,,MYC,biomarker,,,,,Major BRD4-NUT downstream output; drives proliferation program,PMID:24686095
+NUTM,,TP63,biomarker,,,,,ΔNp63 isoform overexpressed; squamous-like differentiation program,PMID:23152362
+NUTM,,SOX2,biomarker,,,,,Stem-cell program; commonly expressed in NUT carcinoma,PMID:23152362
+NUTM,,KRT5,biomarker,,,,,Cytokeratin — squamous-like differentiation signal in NUT carcinoma,PMID:22895140
+NUTM,,CDKN2A,biomarker,,,,,Frequently deleted — p16 loss additional cooperating lesion,PMID:23152362
+NUTM,,BRD4,target,molibresib (GSK525762),small_molecule,phase_1,NUT carcinoma,First-in-class BET bromodomain inhibitor — targets BRD4-NUT driver directly,PMID:27376203
+NUTM,,BRD4,target,birabresib (OTX015/MK-8628),small_molecule,phase_1,NUT carcinoma,BET inhibitor — early clinical activity in NUT carcinoma,PMID:27184417
+NUTM,,BRD4,target,BMS-986158,small_molecule,phase_1,NUT carcinoma,BET inhibitor trials in NUT carcinoma and hematologic malignancies,PMID:34187828
+NUTM,,BRD4,target,NUV-868,small_molecule,phase_1,NUT carcinoma,BD2-selective BET inhibitor; improved tolerability profile,PMID:38456273
+NUTM,,HDAC1,target,vorinostat,small_molecule,off_label,NUT carcinoma,HDAC inhibitor — synergizes with BET-i preclinically; case reports of clinical benefit,PMID:23152362

@@ -141,6 +141,132 @@ def print_dataset_info():
     print()
 
 
+@named("cancers")
+def print_cancer_registry(family: str = None, tissue: str = None, show_all: bool = False):
+    """List cancer types in the registry with data-availability markers.
+
+    For each code the output shows which data sources are curated:
+      bm=biomarkers   tg=targets   tcga=tcga_deconvolved   sub=subtype_deconvolved
+
+    :param family: Restrict to one family (e.g. "sarcoma", "heme-myeloid", "net").
+    :param tissue: Restrict to one primary tissue (e.g. "bone", "lymph_node").
+    :param show_all: Show full registry including rows without expression data.
+    """
+    from .gene_sets_cancer import (
+        cancer_type_registry,
+        cancer_biomarker_genes,
+        cancer_therapy_targets,
+        tcga_deconvolved_expression,
+        subtype_deconvolved_expression,
+    )
+
+    df = cancer_type_registry()
+    if family:
+        df = df[df["family"] == family]
+    if tissue:
+        df = df[df["primary_tissue"] == tissue]
+    if df.empty:
+        print("No registry entries match the given filters.")
+        return
+
+    tcga_deconv = tcga_deconvolved_expression()
+    tcga_codes = set(tcga_deconv["cancer_code"].unique()) if tcga_deconv is not None else set()
+    sub_deconv = subtype_deconvolved_expression()
+    sub_codes = set() if sub_deconv is None else set(
+        sub_deconv["cancer_code"].astype(str).unique()
+    )
+
+    def _safe_count(fn, *args, **kwargs):
+        try:
+            return len(fn(*args, **kwargs) or [])
+        except Exception:
+            return 0
+
+    def _clean(value):
+        """Normalise pandas NaN / blank / 'nan' to the empty string."""
+        if value is None:
+            return ""
+        s = str(value).strip()
+        if s.lower() == "nan":
+            return ""
+        return s
+
+    def _resolve_lookup(row):
+        """Hierarchical key-genes lookup.
+
+        Prefers the explicit ``subtype_key`` column when non-empty
+        (e.g. SARC_LMS -> SARC + 'leiomyosarcoma'). Falls back to the
+        code-suffix heuristic only when the code abbreviation already
+        matches the key-genes subtype literally (SARC_GIST -> 'gist');
+        otherwise returns the code itself with no subtype so the
+        lookup falls back to the parent's full-panel union."""
+        code = _clean(row["code"])
+        parent_code = _clean(row.get("parent_code"))
+        subtype_key = _clean(row.get("subtype_key"))
+        if subtype_key and parent_code:
+            return parent_code, subtype_key
+        if parent_code and code.startswith(parent_code + "_"):
+            suffix = code[len(parent_code) + 1:].lower()
+            # Only use the suffix as a subtype if the caller actually
+            # has a row for it; the _clean() above already rejects NaN.
+            if suffix:
+                return parent_code, suffix
+        return code, None
+
+    # Render family by family; parent codes listed before children (subtypes).
+    print(f"\nCancer-type registry — {len(df)} entries\n")
+    print(f"  {'Code':<14s} {'Name':<42s} {'Primary tissue':<18s} {'Data':<22s} Source")
+    print(f"  {'─'*14} {'─'*42} {'─'*18} {'─'*22} {'─'*30}")
+
+    # Sort within family: parents first (no parent_code), then children.
+    df = df.assign(_is_child=df["parent_code"].fillna("").astype(str).ne(""))
+    df = df.sort_values(["family", "_is_child", "code"])
+
+    current_family = None
+    for _, row in df.iterrows():
+        code = str(row["code"])
+        if row["family"] != current_family:
+            current_family = row["family"]
+            print(f"\n  [{current_family}]")
+
+        lookup_code, subtype = _resolve_lookup(row)
+        if subtype is not None:
+            bm_count = _safe_count(cancer_biomarker_genes, lookup_code, subtype=subtype)
+            tg_df = cancer_therapy_targets(lookup_code, subtype=subtype)
+        else:
+            bm_count = _safe_count(cancer_biomarker_genes, lookup_code)
+            tg_df = cancer_therapy_targets(lookup_code) if code else None
+        tg_count = 0 if tg_df is None else len(tg_df)
+        data_flags = []
+        if bm_count:
+            data_flags.append(f"bm={bm_count}")
+        if tg_count:
+            data_flags.append(f"tg={tg_count}")
+        if code in tcga_codes:
+            data_flags.append("tcga")
+        if code in sub_codes:
+            data_flags.append("sub")
+        # Check if any subtype row below this code has sub-deconv
+        if sub_deconv is not None:
+            sub_children = sub_deconv[
+                sub_deconv.get("subtype", "").astype(str).str.startswith(code + "_")
+            ]
+            if not sub_children.empty:
+                data_flags.append("sub-child")
+        data_cell = " ".join(data_flags) if data_flags else "—"
+
+        if not show_all and data_cell == "—":
+            continue
+
+        indent = "    " if row["_is_child"] else "  "
+        name_s = str(row["name"])[:42]
+        tissue_s = str(row.get("primary_tissue") or "")[:18]
+        source_s = str(row.get("source_cohort") or "")[:30]
+        print(f"  {indent+code:<14s} {name_s:<42s} {tissue_s:<18s} {data_cell:<22s} {source_s}")
+
+    print("\n  Legend: bm=biomarkers  tg=therapy-targets  tcga=deconvolved-TCGA-median  sub=subtype-stratified-median  sub-child=subtype-tiles-below  — = no curation/data yet\n")
+
+
 def _parse_always_label_genes(always_label_genes: Optional[str]) -> Set[str]:
     if always_label_genes is None:
         return set()
@@ -3602,7 +3728,7 @@ def main():
         return
     print_name_and_version()
     print("---")
-    dispatch_commands([print_dataset_info, analyze, plot_expression, plot_cancer_cohorts])
+    dispatch_commands([print_dataset_info, print_cancer_registry, analyze, plot_expression, plot_cancer_cohorts])
 
 
 if __name__ == "__main__":
