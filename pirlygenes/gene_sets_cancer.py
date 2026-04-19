@@ -605,6 +605,69 @@ def _pan_cancer_cache_key(genes, normalize, log_transform):
     return (genes_key, normalize, bool(log_transform))
 
 
+def cancer_type_registry():
+    """Return the cancer-type registry: one row per code with family / tissue / template / parent / source.
+
+    The registry is a richer superset of TCGA — it covers non-TCGA heme
+    malignancies (CLL, MM, MCL, FL, HL, MPN, etc.), pediatric cancers
+    (OS, RMS, Ewing, NBL, Wilms, RT, MBL, ATRT, RB, HEPB), the
+    neuroendocrine axis (panNET, midgut carcinoid, lung NE, SCLC +
+    ASCL1/NEUROD1/POU2F3/YAP1 subtypes, Merkel cell), and rare entities
+    (NUT carcinoma, adenoid cystic, medullary thyroid, chordoma, NPC).
+    Each row carries:
+
+    - ``code`` — canonical short code (TCGA codes preserved, plus new)
+    - ``family`` — broad grouping (carcinoma-gi, sarcoma, heme-myeloid …)
+    - ``primary_tissue`` — tissue of origin (bone, lymph_node, pancreas …)
+    - ``primary_template`` — preferred pirlygenes decomposition template
+      (``solid_primary``, ``heme_marrow``, ``primary_bone``, …) — the
+      latter bone / cartilage / adipose / muscle variants are planned
+      additions (#follow-up) that will let osteosarcoma / chondrosarcoma /
+      liposarcoma route to a tissue-appropriate template instead of the
+      soft-tissue SARC default
+    - ``parent_code`` — if this row is a subtype of another registry
+      entry (e.g. ``LAML_APL`` has ``parent_code=LAML``)
+    - ``expression_source`` — where to find median expression (TCGA,
+      TARGET, BEATAML, CoMMpass, curated, none)
+    - ``notes`` — one-line clinical / therapeutic context
+
+    Returns a defensive copy so callers can mutate freely.
+    """
+    return get_data("cancer-type-registry").copy()
+
+
+def cancer_types_in_family(family):
+    """Return cancer-type codes belonging to a registry family.
+
+    Families span more than TCGA — ``sarcoma`` includes TCGA SARC
+    subtype-tiles and the pediatric-bone / pediatric-soft cohorts;
+    ``heme-myeloid`` covers LAML + MDS + MPN + CML etc.
+    """
+    df = cancer_type_registry()
+    return df[df["family"] == family]["code"].tolist()
+
+
+def cancer_types_by_tissue(primary_tissue):
+    """Return cancer-type codes whose primary tissue matches.
+
+    Useful for site-aware hypothesis generation — passing ``bone``
+    returns osteosarcoma, Ewing, chondrosarcoma, chordoma, etc.
+    """
+    df = cancer_type_registry()
+    return df[df["primary_tissue"] == primary_tissue]["code"].tolist()
+
+
+def cancer_type_subtypes_of(parent_code):
+    """Return registry subtypes of a given parent cancer code.
+
+    For example ``cancer_type_subtypes_of("LAML")`` returns
+    ``["LAML_APL", "LAML_ELN_Fav", "LAML_ELN_Int", "LAML_ELN_Adv"]``.
+    Lets the second-pass subtype classifier enumerate candidates.
+    """
+    df = cancer_type_registry()
+    return df[df["parent_code"] == parent_code]["code"].tolist()
+
+
 def subtype_deconvolved_expression():
     """Per-(cancer_code, subtype, symbol) tumor-only TPM from multi-cohort deconv.
 
