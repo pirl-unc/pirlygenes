@@ -52,6 +52,22 @@ _PROLIFERATION_QUIET_LOG2 = 3.5  # panel mean < this → proliferation quiet
 _HPA_MARGIN_STRONG = 0.05
 _HPA_MARGIN_WEAK = 0.02
 
+# Lymphoid-tissue normals whose expression profile is structurally
+# indistinguishable from lymphoid malignancy by bulk RNA — the TCGA
+# DLBC reference is itself >90% lymph-node tissue + the malignant
+# clone, so correlation alone can't separate them. When the top HPA
+# match falls in this set AND the top TCGA match is a heme-lymphoid
+# cancer, we always flag as "possibly-tumor" regardless of
+# proliferation (germinal centers + bone marrow are normally
+# cycling) and regardless of correlation margin.
+_LYMPHOID_NORMAL_TISSUES = frozenset({
+    "nTPM_lymph_node", "nTPM_spleen", "nTPM_thymus",
+    "nTPM_bone_marrow", "nTPM_appendix", "nTPM_tonsil",
+})
+_HEME_LYMPHOID_TCGA_COHORTS = frozenset({
+    "FPKM_DLBC", "FPKM_LAML", "FPKM_THYM",
+})
+
 
 @dataclass
 class TissueCompositionSignal:
@@ -271,7 +287,21 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
     best_tcga_rho = top_tcga[0][1] if top_tcga else 0.0
     margin = best_normal_rho - best_tcga_rho
 
-    if prolif_log2 >= _PROLIFERATION_HIGH_LOG2:
+    # Structural-ambiguity override: when the top HPA match is a
+    # lymphoid normal AND the top TCGA match is a heme-lymphoid
+    # cancer, bulk-RNA correlation cannot distinguish them. Always
+    # flag as possibly-tumor so the downstream reader sees the
+    # ambiguity rather than a false tumor-consistent call.
+    top_hpa_name = top_normal[0][0] if top_normal else ""
+    top_tcga_name = top_tcga[0][0] if top_tcga else ""
+    lymphoid_ambiguity = (
+        top_hpa_name in _LYMPHOID_NORMAL_TISSUES
+        and top_tcga_name in _HEME_LYMPHOID_TCGA_COHORTS
+    )
+
+    if lymphoid_ambiguity:
+        cancer_hint = "possibly-tumor"
+    elif prolif_log2 >= _PROLIFERATION_HIGH_LOG2:
         cancer_hint = "tumor-consistent"
     elif prolif_log2 < _PROLIFERATION_QUIET_LOG2 and margin >= _HPA_MARGIN_STRONG:
         cancer_hint = "healthy-dominant"
