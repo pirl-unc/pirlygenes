@@ -1,0 +1,106 @@
+code,name,family,primary_tissue,primary_template,parent_code,expression_source,notes
+ACC,Adrenocortical Carcinoma,endocrine,adrenal_cortex,solid_primary,,TCGA,
+BLCA,Bladder Urothelial Carcinoma,carcinoma-gu,bladder,solid_primary,,TCGA,
+BRCA,Breast Invasive Carcinoma,carcinoma-breast,breast,solid_primary,,TCGA,Umbrella — use PAM50 subtypes for subtype-aware inference
+BRCA_LumA,Luminal A,carcinoma-breast,breast,solid_primary,BRCA,TCGA/PAM50,ER+/PR+ HER2-; endocrine-first
+BRCA_LumB,Luminal B,carcinoma-breast,breast,solid_primary,BRCA,TCGA/PAM50,ER+ proliferative; endocrine + chemo
+BRCA_HER2,HER2-enriched,carcinoma-breast,breast,solid_primary,BRCA,TCGA/PAM50,ERBB2-amp; HER2-directed therapy
+BRCA_Basal,Basal-like,carcinoma-breast,breast,solid_primary,BRCA,TCGA/PAM50,TNBC proxy; chemo + sacituzumab
+BRCA_Normal,Normal-like,carcinoma-breast,breast,solid_primary,BRCA,TCGA/PAM50,rare; low-confidence stratum
+CESC,Cervical Squamous / Adenocarcinoma,carcinoma-gu,cervix,solid_primary,,TCGA,HPV-driven
+CHOL,Cholangiocarcinoma,carcinoma-gi,bile_duct,solid_primary,,TCGA,Intrahepatic + extrahepatic + gallbladder lumped
+COAD,Colon Adenocarcinoma,carcinoma-gi,colon,solid_primary,,TCGA,CMS1-4 molecular subtypes + MSI-H axis
+DLBC,Diffuse Large B-cell Lymphoma,heme-bcell,lymph_node,heme_nodal,,TCGA,ABC vs GCB subtypes
+ESCA,Esophageal Carcinoma,carcinoma-gi,esophagus,solid_primary,,TCGA,Adenocarcinoma + squamous lumped — biologically distinct
+GBM,Glioblastoma Multiforme,cns,cerebrum,solid_primary,,TCGA,IDH-wildtype per 2021 WHO; mes/classical/proneural subtypes
+HNSC,Head and Neck Squamous Cell Carcinoma,carcinoma-head-neck,pharynx,solid_primary,,TCGA,HPV+ vs HPV- — two distinct diseases
+HNSC_HPV_pos,HPV+ HNSC,carcinoma-head-neck,oropharynx,solid_primary,HNSC,TCGA/HPV,Better prognosis; p16+; E6/E7-driven
+HNSC_HPV_neg,HPV- HNSC,carcinoma-head-neck,oral_cavity,solid_primary,HNSC,TCGA/HPV,Smoking/alcohol; TP53-mutant
+KICH,Kidney Chromophobe,carcinoma-gu,kidney,solid_primary,,TCGA,
+KIRC,Kidney Renal Clear Cell,carcinoma-gu,kidney,solid_primary,,TCGA,VHL-driven
+KIRP,Kidney Renal Papillary,carcinoma-gu,kidney,solid_primary,,TCGA,Type 1 (MET) + Type 2 lumped
+LAML,Acute Myeloid Leukemia,heme-myeloid,bone_marrow,heme_marrow,,TCGA,Umbrella — see APL / ELN subtypes
+LAML_APL,Acute Promyelocytic Leukemia,heme-myeloid,bone_marrow,heme_marrow,LAML,BEATAML,PML-RARA; ATRA + ATO chemo-free cure
+LAML_ELN_Fav,AML ELN2017 Favorable,heme-myeloid,bone_marrow,heme_marrow,LAML,BEATAML,NPM1+/FLT3- or CBF; chemo-sensitive
+LAML_ELN_Int,AML ELN2017 Intermediate,heme-myeloid,bone_marrow,heme_marrow,LAML,BEATAML,Mixed; individualized therapy
+LAML_ELN_Adv,AML ELN2017 Adverse,heme-myeloid,bone_marrow,heme_marrow,LAML,BEATAML,TP53/complex karyo; transplant-first
+LGG,Lower Grade Glioma,cns,cerebrum,solid_primary,,TCGA,IDH-mutant (per 2021 WHO); vorasidenib-eligible
+LIHC,Liver Hepatocellular Carcinoma,carcinoma-gi,liver,solid_primary,,TCGA,HBV/HCV/NASH etiologies
+LUAD,Lung Adenocarcinoma,carcinoma-lung,lung,solid_primary,,TCGA,EGFR / KRAS / STK11-KEAP1 axes — therapy-gating
+LUAD_EGFR,EGFR-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,TCGA/mut,Osimertinib-first; often never-smoker
+LUAD_KRAS,KRAS-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,TCGA/mut,Sotorasib (G12C); smoker-associated
+LUAD_STK11,STK11/KEAP1 LUAD,carcinoma-lung,lung,solid_primary,LUAD,TCGA/mut,Cold-immune; IO-refractory axis
+LUSC,Lung Squamous Cell Carcinoma,carcinoma-lung,lung,solid_primary,,TCGA,
+MESO,Mesothelioma,carcinoma-mesothelial,pleura,solid_primary,,TCGA,Pleural + peritoneal; BAP1/NF2
+OV,Ovarian Serous Cystadenocarcinoma,carcinoma-gu,ovary,solid_primary,,TCGA,HGSOC-dominant; BRCA/HRD + PARP
+PAAD,Pancreatic Adenocarcinoma,carcinoma-gi,pancreas,solid_primary,,TCGA,Adenocarcinoma only; panNET/acinar separate
+PCPG,Pheochromocytoma and Paraganglioma,endocrine,adrenal_medulla,solid_primary,,TCGA,Extra-adrenal paragangliomas + pheos
+PRAD,Prostate Adenocarcinoma,carcinoma-gu,prostate,solid_primary,,TCGA,AR-driven; CRPC / NEPC disease states
+READ,Rectum Adenocarcinoma,carcinoma-gi,rectum,solid_primary,,TCGA,Similar to COAD; MSI-H matters
+SARC,Sarcoma,sarcoma,soft_tissue,solid_primary,,TCGA,Umbrella — soft-tissue only (no OS/Ewing/RMS)
+SKCM,Skin Cutaneous Melanoma,melanoma,skin,solid_primary,,TCGA,BRAF/NRAS/KIT/triple-WT mutation classes
+STAD,Stomach Adenocarcinoma,carcinoma-gi,stomach,solid_primary,,TCGA,EBV+ / MSI-H / CIN / GS molecular subtypes
+TGCT,Testicular Germ Cell Tumors,germ-cell,testis,solid_primary,,TCGA,Seminoma + non-seminoma; chemo-cure
+THCA,Thyroid Carcinoma,endocrine,thyroid,solid_primary,,TCGA,Papillary-dominant; follicular / anaplastic separate; medullary distinct
+THYM,Thymoma,thymic,thymus,solid_primary,,TCGA,
+UCEC,Uterine Corpus Endometrial Carcinoma,carcinoma-gu,endometrium,solid_primary,,TCGA,Endometrioid + serous — different therapy
+UCS,Uterine Carcinosarcoma,carcinoma-gu,endometrium,solid_primary,,TCGA,Mixed epithelial + sarcomatoid
+UVM,Uveal Melanoma,melanoma,eye,solid_primary,,TCGA,GNAQ/GNA11; liver met tropism
+SARC_LMS,Leiomyosarcoma,sarcoma,smooth_muscle,primary_smooth_muscle,SARC,TCGA,Uterine + extrauterine; chemo + trabectedin
+SARC_DDLPS,Dedifferentiated Liposarcoma,sarcoma,adipose,primary_adipose,SARC,TCGA,MDM2-amp; brigimadlin / milademetan trials
+SARC_WDLPS,Well-Differentiated Liposarcoma,sarcoma,adipose,primary_adipose,SARC,TCGA,MDM2-amp; surgery-first
+SARC_MYXLPS,Myxoid Liposarcoma,sarcoma,adipose,primary_adipose,SARC,TCGA,FUS-DDIT3; NY-ESO-1 TCR-T target
+SARC_SYN,Synovial Sarcoma,sarcoma,soft_tissue,solid_primary,SARC,TCGA,SS18-SSX; afami-cel (MAGE-A4 TCR-T) approved
+SARC_DSRCT,Desmoplastic Small Round Cell Tumor,sarcoma,peritoneum,primary_peritoneal_mesenchymal,SARC,curated,EWSR1-WT1; WT1 TCR-T trials
+SARC_GIST,Gastrointestinal Stromal Tumor,sarcoma,gi_wall,primary_gi_wall,SARC,TCGA,KIT/PDGFRA; imatinib ladder + avapritinib
+SARC_MPNST,Malignant Peripheral Nerve Sheath Tumor,sarcoma,nerve_sheath,primary_nerve_sheath,SARC,curated,NF1-associated; SMARCB1/EED/SUZ12 loss
+SARC_ANGIO,Angiosarcoma,sarcoma,vascular_endothelium,primary_vascular,SARC,curated,Tumor IS endothelial — constrained deduct
+SARC_UPS,Undifferentiated Pleomorphic Sarcoma,sarcoma,soft_tissue,solid_primary,SARC,TCGA,Previously MFH; diagnosis of exclusion
+OS,Osteosarcoma,pediatric-bone,bone,primary_bone,,TARGET,Not in TCGA — TARGET OS; GD2/HER2 trials
+EWS,Ewing Sarcoma,pediatric-bone,bone,primary_bone,,TARGET,EWSR1-FLI1/ERG; CD99+; VDC/IE
+CHON,Chondrosarcoma,sarcoma,cartilage,primary_cartilage,,curated,IDH1/IDH2 + EXT1/EXT2; conventional / mesenchymal / dediff variants
+CHOR,Chordoma,rare,notochord,primary_notochord,,curated,T (brachyury) defining; skull-base / sacral
+RMS_ERMS,Embryonal Rhabdomyosarcoma,pediatric-soft,skeletal_muscle,primary_skeletal_muscle,,TARGET,MYOD1/MYOG; better prognosis than ARMS
+RMS_ARMS,Alveolar Rhabdomyosarcoma,pediatric-soft,skeletal_muscle,primary_skeletal_muscle,,TARGET,PAX3-FOXO1 or PAX7-FOXO1; aggressive
+NBL,Neuroblastoma,pediatric-net,sympathetic_ganglia,primary_neural_crest,,TARGET,MYCN amp vs non-amp — therapy-gating
+NBL_MYCN_amp,Neuroblastoma MYCN-amplified,pediatric-net,sympathetic_ganglia,primary_neural_crest,NBL,TARGET,High-risk; dinutuximab + chemo
+NBL_MYCN_nonamp,Neuroblastoma MYCN-non-amplified,pediatric-net,sympathetic_ganglia,primary_neural_crest,NBL,TARGET,Intermediate/low-risk; better prognosis
+WILMS,Wilms Tumor / Nephroblastoma,pediatric-embryonal,kidney,primary_embryonal,,TARGET,WT1/CTNNB1/AMER1; favorable vs anaplastic
+RT,Rhabdoid Tumor,pediatric-embryonal,kidney_cns_soft,primary_embryonal,,TARGET,SMARCB1 loss; malignant; CNS AT/RT subset
+ATRT,Atypical Teratoid/Rhabdoid Tumor,pediatric-cns,cerebellum,solid_primary,,curated,SMARCB1 loss; CNS-only rhabdoid
+MBL,Medulloblastoma,pediatric-cns,cerebellum,solid_primary,,curated,SHH / WNT / Group 3 / Group 4 subgroups
+MBL_WNT,Medulloblastoma WNT,pediatric-cns,cerebellum,solid_primary,MBL,curated,Excellent prognosis; CTNNB1
+MBL_SHH,Medulloblastoma SHH,pediatric-cns,cerebellum,solid_primary,MBL,curated,PTCH1/SMO; vismodegib-eligible
+MBL_G3,Medulloblastoma Group 3,pediatric-cns,cerebellum,solid_primary,MBL,curated,MYC-amp; worst prognosis
+MBL_G4,Medulloblastoma Group 4,pediatric-cns,cerebellum,solid_primary,MBL,curated,Most common; MYCN/CDK6
+RB,Retinoblastoma,pediatric-eye,retina,solid_primary,,curated,RB1 loss; pediatric eye
+HEPB,Hepatoblastoma,pediatric-liver,liver,solid_primary,,curated,CTNNB1; pediatric liver
+CLL,Chronic Lymphocytic Leukemia,heme-bcell,peripheral_blood,heme_blood,,ICGC,IGHV mutation status; BTK/BCL2 inhibitors
+MCL,Mantle Cell Lymphoma,heme-bcell,lymph_node,heme_nodal,,curated,CCND1-IgH; blastoid variant aggressive
+FL,Follicular Lymphoma,heme-bcell,lymph_node,heme_nodal,,curated,BCL2-IgH; indolent; transforms to DLBCL
+HL,Hodgkin Lymphoma,heme-bcell,lymph_node,heme_nodal,,curated,Reed-Sternberg cells; CD30+; brentuximab
+BL,Burkitt Lymphoma,heme-bcell,lymph_node,heme_nodal,,curated,MYC-Ig translocation; endemic/sporadic/immunodef
+MM,Multiple Myeloma,heme-plasma,bone_marrow,heme_marrow,,CoMMpass,Plasma-cell malignancy; BCMA/FCRH5 bispecifics
+MDS,Myelodysplastic Syndrome,heme-myeloid,bone_marrow,heme_marrow,,curated,Pre-leukemic; IPSS-R risk; luspatercept
+MPN,Myeloproliferative Neoplasms,heme-myeloid,bone_marrow,heme_marrow,,curated,PV / ET / MF; JAK2 V617F
+CML,Chronic Myeloid Leukemia,heme-myeloid,peripheral_blood,heme_blood,,curated,BCR-ABL; imatinib-cure paradigm
+B_ALL,B-cell Acute Lymphoblastic Leukemia,heme-bcell,bone_marrow,heme_marrow,,TARGET,BCR-ABL-like + other fusions; blinatumomab / tisa-cel
+T_ALL,T-cell Acute Lymphoblastic Leukemia,heme-tcell,bone_marrow,heme_marrow,,TARGET,NOTCH1; nelarabine
+CTCL,Cutaneous T-cell Lymphoma,heme-tcell,skin,heme_skin,,curated,Mycosis fungoides / Sezary; mogamulizumab
+PANNET,Pancreatic Neuroendocrine Tumor,net,pancreas,solid_primary,,curated,Not in TCGA PAAD (which is adeno); Scarpa 2017 cohort
+MID_NET,Midgut / Small Bowel Carcinoid,net,small_intestine,solid_primary,,curated,Serotonin-secreting; 177Lu-DOTATATE
+LUNG_NET_LC,Lung Typical/Atypical Carcinoid,net,lung,solid_primary,,curated,Low-grade lung NE; distinct from SCLC
+LUNG_NET_LCNEC,Large-Cell Neuroendocrine Carcinoma Lung,net,lung,solid_primary,,curated,Intermediate between carcinoid and SCLC
+SCLC,Small Cell Lung Cancer,net,lung,solid_primary,,curated,"Rudin/George 2015; ASCL1/NEUROD1/POU2F3/YAP1 subtypes"
+SCLC_ASCL1,SCLC ASCL1-dominant,net,lung,solid_primary,SCLC,curated,Classic neuroendocrine; DLL3 target
+SCLC_NEUROD1,SCLC NEUROD1-dominant,net,lung,solid_primary,SCLC,curated,Neural; ASCL1-low
+SCLC_POU2F3,SCLC POU2F3-dominant,net,lung,solid_primary,SCLC,curated,Tuft-cell-like; non-NE
+SCLC_YAP1,SCLC YAP1-dominant,net,lung,solid_primary,SCLC,curated,Inflamed; proposed IO-responsive
+MEC,Merkel Cell Carcinoma,net,skin,solid_primary,,curated,MCPyV+ vs UV; avelumab-sensitive
+NUTM,NUT Carcinoma,rare,midline_structures,solid_primary,,curated,NUT-BRD3/4 fusion; midline aggressive
+ACINIC,Acinic Cell Carcinoma,salivary,salivary_gland,solid_primary,,curated,Salivary gland low-grade
+ADCC,Adenoid Cystic Carcinoma,salivary,salivary_gland,solid_primary,,curated,MYB-NFIB; salivary + lacrimal + breast
+MTC,Medullary Thyroid Carcinoma,endocrine,thyroid_c_cell,solid_primary,,curated,Calcitonin; RET-driven; separate from TCGA THCA (follicular-cell)
+NPC,Nasopharyngeal Carcinoma,carcinoma-head-neck,nasopharynx,solid_primary,,curated,EBV-driven; distinct from TCGA HNSC
+HCL,Hairy Cell Leukemia,heme-bcell,spleen_marrow,heme_marrow,,curated,BRAF V600E; vemurafenib effective
+PCN,Plasmacytoma,heme-plasma,soft_tissue,solid_primary,,curated,Solitary plasma-cell mass (solitary bone / extramedullary)
