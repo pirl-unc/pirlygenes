@@ -21,18 +21,28 @@ def get_all_csv_paths() -> list:
     """
     Get paths to all CSV files in the data directory.
 
+    Picks up both plain ``.csv`` and gzipped ``.csv.gz`` — the latter is used
+    for references that would otherwise bloat the package (e.g. the #22
+    tcga-deconvolved-expression reference, ~13 MB → ~4 MB gzipped).
+
     Returns a list of Path objects for each CSV file.
     """
-    return sorted(_DATA_DIR.glob("*.csv"))
+    return sorted(
+        list(_DATA_DIR.glob("*.csv")) + list(_DATA_DIR.glob("*.csv.gz"))
+    )
 
 
 def load_all_dataframes():
     """
-    Generator that yields pairs of (csv_file, df) for all CSV files in the data directory
+    Generator that yields pairs of (csv_name, df) for all CSV files in the
+    data directory. Gzipped files are transparently decompressed and keyed
+    under their underlying ``.csv`` name so callers don't need to know
+    the on-disk compression format.
     """
     for csv_path in get_all_csv_paths():
         df = pd.read_csv(str(csv_path))
-        yield csv_path.name, df
+        key = csv_path.name.removesuffix(".gz")
+        yield key, df
 
 
 def load_all_dataframes_dict():

@@ -161,6 +161,11 @@ LAML,,BCL2,target,venetoclax,small_molecule,approved,AML (unfit),Venetoclax+azac
 LAML,,KMT2A,target,revumenib,small_molecule,approved,R/R KMT2A-rearranged AML,Menin inhibitor approved in KMT2A-rearranged R/R AML,PMID:37018480
 LAML,,NPM1,target,revumenib,small_molecule,phase_2,NPM1-mut AML,Menin inhibitor trials in NPM1-mutant AML,PMID:37018480
 LAML,,CD123,target,tagraxofusp,fusion,approved,BPDCN,CD123-directed; approved for BPDCN (related myeloid malignancy),PMID:30987805
+LAML,apl,PML,biomarker,,,,,PML-RARA fusion partner — pathognomonic for APL (t(15;17)); defines the subtype,PMID:11001887
+LAML,apl,RARA,biomarker,,,,,PML-RARA fusion — ATRA differentiation target; near-universal in APL,PMID:11001887
+LAML,apl,FLT3,biomarker,,,,,ITD co-mutation in 30-40% of APL — hyperleukocytosis risk factor,PMID:18234679
+LAML,apl,RARA,target,tretinoin,small_molecule,approved,APL,All-trans retinoic acid (ATRA) — differentiation therapy; combined with ATO in low-risk APL,PMID:15837627
+LAML,apl,PML,target,arsenic trioxide,small_molecule,approved,APL,ATO targets PML moiety of PML-RARA; ATRA+ATO is chemo-free standard for low-risk APL,PMID:23841729
 UCEC,,MLH1,biomarker,,,,,MMR gene — loss indicates MSI-H / dMMR; gates pembrolizumab / dostarlimab,PMID:26028255
 UCEC,,MSH2,biomarker,,,,,MMR gene — MSI-H / dMMR marker; Lynch syndrome relevance,PMID:26028255
 UCEC,,MSH6,biomarker,,,,,MMR gene — MSI-H / dMMR marker,PMID:26028255
