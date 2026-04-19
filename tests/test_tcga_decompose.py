@@ -137,3 +137,43 @@ def test_aggregate_per_type_empty_input():
         "n_samples",
     ]
     assert len(summary) == 0
+
+
+def test_aggregate_per_type_with_subtype_partitions_rows():
+    per_sample = pd.DataFrame(
+        [
+            {"sample": "s1", "cancer_code": "BRCA", "subtype": "BRCA_Basal",
+             "symbol": "KRT17", "tumor_tpm": 400.0},
+            {"sample": "s2", "cancer_code": "BRCA", "subtype": "BRCA_Basal",
+             "symbol": "KRT17", "tumor_tpm": 600.0},
+            {"sample": "s3", "cancer_code": "BRCA", "subtype": "BRCA_LumA",
+             "symbol": "KRT17", "tumor_tpm": 20.0},
+            {"sample": "s4", "cancer_code": "BRCA", "subtype": "BRCA_LumA",
+             "symbol": "KRT17", "tumor_tpm": 30.0},
+        ]
+    )
+    summary = aggregate_per_type(per_sample, group_by_subtype=True)
+    assert "subtype" in summary.columns
+    basal = summary[summary["subtype"] == "BRCA_Basal"].iloc[0]
+    luma = summary[summary["subtype"] == "BRCA_LumA"].iloc[0]
+    # Basal is the canonical KRT17-high BRCA subtype — guard the
+    # median bump so the summarised reference reflects subtype biology.
+    assert basal["tumor_tpm_median"] == pytest.approx(500.0)
+    assert luma["tumor_tpm_median"] == pytest.approx(25.0)
+
+
+def test_aggregate_per_type_drops_blank_subtype_rows():
+    per_sample = pd.DataFrame(
+        [
+            {"sample": "s1", "cancer_code": "BRCA", "subtype": "BRCA_Basal",
+             "symbol": "KRT17", "tumor_tpm": 400.0},
+            {"sample": "s2", "cancer_code": "BRCA", "subtype": "",
+             "symbol": "KRT17", "tumor_tpm": 10.0},
+        ]
+    )
+    summary = aggregate_per_type(per_sample, group_by_subtype=True)
+    # Only the labelled sample contributes — blanks would pollute
+    # the subtype median with unclassified tumours.
+    assert len(summary) == 1
+    assert summary.iloc[0]["n_samples"] == 1
+    assert summary.iloc[0]["tumor_tpm_median"] == pytest.approx(400.0)

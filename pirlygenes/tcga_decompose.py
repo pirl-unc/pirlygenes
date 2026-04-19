@@ -244,40 +244,51 @@ def decompose_one_sample(
 
 def aggregate_per_type(
     per_sample_rows: pd.DataFrame,
+    group_by_subtype: bool = False,
 ) -> pd.DataFrame:
-    """Reduce per-(sample, symbol) tumor TPM to per-(cancer_code, symbol) stats.
+    """Reduce per-(sample, symbol) tumor TPM to per-(cancer_code[, subtype], symbol) stats.
 
-    Output columns: ``symbol``, ``cancer_code``, ``tumor_tpm_median``,
-    ``tumor_tpm_q1``, ``tumor_tpm_q3``, ``n_samples``.
+    When ``group_by_subtype=True`` the input must carry a ``subtype``
+    column and the output grows a ``subtype`` column — samples with a
+    blank subtype are dropped so each row represents a coherent
+    sub-cohort rather than a mix of annotated + unannotated samples.
+
+    Output columns: ``symbol``, ``cancer_code``, [``subtype``,]
+    ``tumor_tpm_median``, ``tumor_tpm_q1``, ``tumor_tpm_q3``, ``n_samples``.
     """
+    base_cols = [
+        "symbol",
+        "cancer_code",
+        "tumor_tpm_median",
+        "tumor_tpm_q1",
+        "tumor_tpm_q3",
+        "n_samples",
+    ]
+    cols = base_cols[:2] + (["subtype"] if group_by_subtype else []) + base_cols[2:]
+
     if per_sample_rows.empty:
-        return pd.DataFrame(
-            columns=[
-                "symbol",
-                "cancer_code",
-                "tumor_tpm_median",
-                "tumor_tpm_q1",
-                "tumor_tpm_q3",
-                "n_samples",
-            ]
-        )
-    grouped = per_sample_rows.groupby(["cancer_code", "symbol"])["tumor_tpm"]
+        return pd.DataFrame(columns=cols)
+
+    df = per_sample_rows
+    group_cols = ["cancer_code", "symbol"]
+    if group_by_subtype:
+        if "subtype" not in df.columns:
+            raise ValueError(
+                "group_by_subtype=True but per_sample_rows lacks a 'subtype' column"
+            )
+        df = df[df["subtype"].astype(str).str.len() > 0]
+        if df.empty:
+            return pd.DataFrame(columns=cols)
+        group_cols = ["cancer_code", "subtype", "symbol"]
+
+    grouped = df.groupby(group_cols)["tumor_tpm"]
     summary = grouped.agg(
         tumor_tpm_median="median",
         tumor_tpm_q1=lambda s: float(np.quantile(s, 0.25)),
         tumor_tpm_q3=lambda s: float(np.quantile(s, 0.75)),
         n_samples="count",
     ).reset_index()
-    return summary[
-        [
-            "symbol",
-            "cancer_code",
-            "tumor_tpm_median",
-            "tumor_tpm_q1",
-            "tumor_tpm_q3",
-            "n_samples",
-        ]
-    ]
+    return summary[cols]
 
 
 def select_samples(
@@ -311,6 +322,19 @@ def select_samples(
     return selected
 
 
+def load_subtype_map(path: str | Path) -> dict[str, str]:
+    """Return ``{patient_barcode: subtype}`` from a 2-col CSV (no header).
+
+    Keys are 12-char patient barcodes (``TCGA-XX-YYYY``). Values are
+    free-form subtype strings (``BRCA_LumA``, ``panNET_G2``, ``apl``…).
+    Samples whose patient barcode is not in the map are tagged with an
+    empty subtype and later dropped by :func:`aggregate_per_type` under
+    ``group_by_subtype=True``.
+    """
+    df = pd.read_csv(path, header=None, names=["patient", "subtype"])
+    return dict(zip(df["patient"].astype(str), df["subtype"].astype(str)))
+
+
 def run(
     tpm_gz: str,
     barcode_project_pkl: str,
@@ -318,6 +342,7 @@ def run(
     cancer_types: list[str] | None = None,
     max_samples_per_type: int | None = None,
     checkpoint_every: int = 500,
+    subtype_map: dict[str, str] | None = None,
 ) -> None:
     patient_to_project = load_barcode_to_project(barcode_project_pkl)
 
@@ -341,6 +366,7 @@ def run(
 
     print(f"[tcga] Decomposing {len(pairs)} samples", flush=True)
     versioned_ids = pd.Index(tpm.index).astype(str)
+    group_by_subtype = subtype_map is not None
 
     checkpoint_path = Path(output_csv).with_suffix(".partial.csv")
     accum: list[pd.DataFrame] = []
@@ -349,6 +375,8 @@ def run(
         col = tpm[sample]
         attr = decompose_one_sample(sample, col, code, versioned_ids)
         if attr is not None:
+            if group_by_subtype:
+                attr["subtype"] = subtype_map.get(sample[:12], "")
             accum.append(attr)
         if i % checkpoint_every == 0:
             elapsed = time.time() - t0
@@ -366,7 +394,7 @@ def run(
         return
 
     per_sample = pd.concat(accum, ignore_index=True)
-    summary = aggregate_per_type(per_sample)
+    summary = aggregate_per_type(per_sample, group_by_subtype=group_by_subtype)
     Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output_csv, index=False)
     print(
@@ -409,6 +437,16 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default=500,
         help="Write a .partial.csv every N processed samples",
     )
+    p.add_argument(
+        "--subtype-map",
+        default=None,
+        help=(
+            "Optional 2-column CSV (no header): patient_barcode,subtype. "
+            "When provided, output is aggregated per (cancer_code, subtype, symbol) "
+            "instead of per (cancer_code, symbol). Samples whose patient is not "
+            "in the map are dropped."
+        ),
+    )
     return p.parse_args(argv)
 
 
@@ -417,6 +455,7 @@ def main(argv: list[str] | None = None) -> int:
     cancer_types = None
     if args.cancer_types:
         cancer_types = [c.strip() for c in args.cancer_types.split(",") if c.strip()]
+    subtype_map = load_subtype_map(args.subtype_map) if args.subtype_map else None
     run(
         tpm_gz=args.tpm_gz,
         barcode_project_pkl=args.barcode_project_pkl,
@@ -424,6 +463,7 @@ def main(argv: list[str] | None = None) -> int:
         cancer_types=cancer_types,
         max_samples_per_type=args.max_samples_per_type,
         checkpoint_every=args.checkpoint_every,
+        subtype_map=subtype_map,
     )
     return 0
 
