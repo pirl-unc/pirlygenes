@@ -21,10 +21,10 @@ from .signature import build_signature_matrix, get_component_markers
 from .templates import (
     EPITHELIAL_MATCHED_NORMAL_TISSUE,
     TEMPLATES,
-    epithelial_matched_normal_component,
     get_template_components,
     get_template_extra_components,
     get_template_host_tissues,
+    matched_normal_component,
 )
 from ..gene_sets_cancer import (
     housekeeping_gene_ids,
@@ -621,10 +621,17 @@ def _fit_one_hypothesis(
     cancer_type = candidate_row["code"]
     purity_result = candidate_row["purity_result"]
 
-    components = get_template_components(template_name, cancer_type)
+    # Mixture-cohort subtype (#171) — when the classifier tagged a
+    # winning subtype (e.g. SARC parent with winning SARC_LMS), use it
+    # to route matched-normal selection (#51). Falls back silently to
+    # parent-code lookup for non-mixture cohorts.
+    winning_subtype = candidate_row.get("winning_subtype")
+    components = get_template_components(
+        template_name, cancer_type, winning_subtype=winning_subtype,
+    )
     comp_names = [comp for comp in components if comp != "tumor"]
     matched_normal_name = (
-        epithelial_matched_normal_component(cancer_type)
+        matched_normal_component(cancer_type, winning_subtype=winning_subtype)
         if template_name == "solid_primary"
         else None
     )

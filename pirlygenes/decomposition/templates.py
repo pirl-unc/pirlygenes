@@ -151,20 +151,22 @@ _PRIMARY_HOST_TISSUES = {
     "READ": ["rectum", "colon", "appendix"],
 }
 
-# Epithelial primaries with a defensible matched-normal parent tissue.
-# Enables an optional `matched_normal_<tissue>` compartment in solid_primary
-# that lets admixed benign parent tissue (e.g. admixed benign prostate gland
-# in a PRAD resection, adjacent normal mucosa in a COAD biopsy) be absorbed
-# as non-tumor signal rather than attributed to tumor cells by the
-# purity-adjusted deconvolution.
+# Cancer codes with a defensible matched-normal parent tissue — enables an
+# optional ``matched_normal_<tissue>`` compartment in solid_primary so that
+# admixed benign parent tissue (adjacent benign prostate in a PRAD resection,
+# adjacent mucosa in a COAD biopsy, uterine smooth muscle in a LMS) is
+# absorbed as non-tumor signal rather than attributed to tumor cells.
 #
-# Scope: epithelial cancers only. Mesenchymal / glial / melanocytic / heme
-# cancers are excluded because they lack a single stable benign analog at
-# the bulk-reference level; see issue #51 for a subtype-aware SARC plan.
-# TGCT is excluded because germ-cell origin is sui generis. MESO is
-# excluded because its parent mesothelium is a thin serosal layer not
-# captured well by bulk references.
-EPITHELIAL_MATCHED_NORMAL_TISSUE = {
+# Scope note: mesenchymal / glial / melanocytic / heme cancers lack a single
+# stable benign analog at the **parent** level. For SARC the analog depends
+# on subtype (LMS → smooth muscle; liposarcoma → adipose; MPNST → Schwann),
+# so the parent SARC code is deliberately absent and the classifier's
+# ``winning_subtype`` (#171) routes per-subtype. UPS / MFS / UPS-like /
+# synovial sarcoma / angiosarcoma have no defensible benign counterpart and
+# stay on the unassigned path. TGCT germ-cell origin and MESO serosal
+# mesothelium are also excluded for reference-quality reasons.
+MATCHED_NORMAL_TISSUE = {
+    # Epithelial primaries
     "BLCA": "urinary_bladder",
     "BRCA": "breast",
     "CESC": "cervix",
@@ -185,21 +187,52 @@ EPITHELIAL_MATCHED_NORMAL_TISSUE = {
     "STAD": "stomach",
     "THCA": "thyroid_gland",
     "UCEC": "endometrium",
+    # SARC subtypes (issue #51, enabled by mixture-cohort winning_subtype
+    # from #171). LMS → smooth muscle; all liposarcoma flavors → mature
+    # adipose. MPNST → Schwann would require a non-HPA reference and is
+    # deferred. UPS / MFS / synovial / angiosarcoma stay unassigned.
+    "SARC_LMS": "smooth_muscle",
+    "SARC_DDLPS": "adipose_tissue",
+    "SARC_WDLPS": "adipose_tissue",
+    "SARC_MYXLPS": "adipose_tissue",
+    "SARC_LPS_UNSPEC": "adipose_tissue",
+}
+
+# Backwards-compatibility alias kept so external importers that used
+# ``EPITHELIAL_MATCHED_NORMAL_TISSUE`` keep working. Reads the merged map
+# and filters out the sarcoma subtypes at access time; prefer the new name.
+EPITHELIAL_MATCHED_NORMAL_TISSUE = {
+    code: tissue for code, tissue in MATCHED_NORMAL_TISSUE.items()
+    if not code.startswith("SARC_")
 }
 
 
-def epithelial_matched_normal_component(cancer_type):
-    """Return matched-normal component name for an epithelial primary, or None.
+def matched_normal_component(cancer_type, winning_subtype=None):
+    """Return matched-normal component name, or ``None`` when unavailable.
 
-    Returns e.g. ``"matched_normal_prostate"`` for PRAD, or None for cancer
-    types that are not in :data:`EPITHELIAL_MATCHED_NORMAL_TISSUE`.
+    ``winning_subtype`` is the mixture-cohort classifier's per-subtype
+    call (#171). When set, it takes precedence over the parent code so
+    a SARC parent with ``winning_subtype=SARC_LMS`` picks up
+    ``matched_normal_smooth_muscle`` instead of falling to the unassigned
+    default.
     """
-    if cancer_type is None:
+    code = winning_subtype or cancer_type
+    if code is None:
         return None
-    tissue = EPITHELIAL_MATCHED_NORMAL_TISSUE.get(cancer_type)
+    tissue = MATCHED_NORMAL_TISSUE.get(code)
     if tissue is None:
         return None
     return f"matched_normal_{tissue}"
+
+
+def epithelial_matched_normal_component(cancer_type):
+    """Deprecated alias for :func:`matched_normal_component`.
+
+    Kept so external importers keep working. Does not consult the
+    mixture-cohort ``winning_subtype`` — callers that need the SARC
+    subtype-aware path should use :func:`matched_normal_component`.
+    """
+    return matched_normal_component(cancer_type)
 
 _TEMPLATE_HOST_TISSUES = {
     # Retroperitoneal/deep soft tissue biopsies can look like a mix of muscle
@@ -223,15 +256,20 @@ TUMOR_ORIGIN_TYPE = {
 }
 
 
-def get_template_components(template_name, cancer_type=None):
+def get_template_components(template_name, cancer_type=None, winning_subtype=None):
     """Get the full component list for a template + cancer type.
 
-    For ``template_name == "solid_primary"`` and ``cancer_type`` in
-    :data:`EPITHELIAL_MATCHED_NORMAL_TISSUE`, a ``matched_normal_<tissue>``
-    component is appended so admixed benign parent tissue can be absorbed
-    as non-tumor signal rather than attributed to tumor cells (issue #50).
-    Non-epithelial solid primaries (SARC, heme, etc.) get no matched-normal
-    compartment — see issue #51 for the subtype-aware SARC plan.
+    For ``template_name == "solid_primary"`` and a cancer code with a
+    defensible benign parent tissue in :data:`MATCHED_NORMAL_TISSUE`, a
+    ``matched_normal_<tissue>`` component is appended so admixed benign
+    parent tissue is absorbed as non-tumor signal rather than attributed
+    to tumor cells (issue #50).
+
+    ``winning_subtype`` is the mixture-cohort classifier's per-subtype
+    hypothesis (#171). When set it takes precedence over ``cancer_type``
+    for matched-normal lookup — the SARC subtype-aware path (#51)
+    routes SARC_LMS → smooth muscle, liposarcoma flavors → adipose,
+    etc., while leaving UPS / MFS / synovial / angiosarcoma unassigned.
 
     Returns
     -------
@@ -241,7 +279,9 @@ def get_template_components(template_name, cancer_type=None):
     tmpl = TEMPLATES[template_name]
     components = ["tumor"] + list(tmpl["components"])
     if template_name == "solid_primary":
-        matched = epithelial_matched_normal_component(cancer_type)
+        matched = matched_normal_component(
+            cancer_type, winning_subtype=winning_subtype,
+        )
         if matched is not None:
             components.append(matched)
     return components
