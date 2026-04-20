@@ -399,7 +399,7 @@ def _lineage_purity_estimates(cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga
     """
     genes = LINEAGE_GENES.get(cancer_code, [])
     if not genes:
-        return []
+        return [], []
 
     ref = pan_cancer_expression()
     ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
@@ -433,9 +433,17 @@ def _lineage_purity_estimates(cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga
     sample_hk_vals = [sample_tpm[g] for g in hk_syms if sample_tpm.get(g, 0) > 0]
     sample_hk_med = float(np.median(sample_hk_vals)) if sample_hk_vals else 0.0
     if sample_hk_med <= 0:
-        return []
+        return [], []
 
     results = []
+    # Parallel list of lineage genes that were genuinely present in the
+    # sample but dropped by the estimator (TME signal exceeds tumor
+    # signal in the reference, so the gene can't anchor a purity
+    # estimate). Callers can surface these as "uninformative" rather
+    # than "not detected" — the distinction matters for pfo004-style
+    # cases where ACTA2 is at 189 TPM but gets filtered because its
+    # TME-bleed-through in SARC exceeds its tumor contribution.
+    skipped_detected = []
     for gene in genes:
         if gene not in ref_dedup.index:
             continue
@@ -458,6 +466,13 @@ def _lineage_purity_estimates(cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga
         true_tumor_ratio = (ref_ratio - (1 - tcga_purity) * tme_ratio) / tcga_purity
 
         if true_tumor_ratio <= tme_ratio:
+            skipped_detected.append({
+                "gene": gene,
+                "sample_tpm": s_tpm,
+                "reason": "tme_dominated",
+                "tme_ratio": float(tme_ratio),
+                "tumor_ratio": float(true_tumor_ratio),
+            })
             continue
 
         purity = (sample_ratio - tme_ratio) / (true_tumor_ratio - tme_ratio)
@@ -473,7 +488,7 @@ def _lineage_purity_estimates(cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga
             "purity": purity,
         })
 
-    return results
+    return results, skipped_detected
 
 
 def _summarize_lineage_support(lineage_per_gene):
@@ -1038,7 +1053,7 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
     estimate_purity = float(np.clip(np.sqrt(stromal_purity * immune_purity), 0.0, 1.0))
 
     # ---- Component 3: Lineage gene refinement ----
-    lineage_per_gene = _lineage_purity_estimates(
+    lineage_per_gene, lineage_skipped_detected = _lineage_purity_estimates(
         cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga_purity,
     )
     lineage_purities = sorted(g["purity"] for g in lineage_per_gene if g["purity"] > 0)
@@ -1113,6 +1128,12 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
                 "detection_fraction": lineage_support["detection_fraction"],
                 "support_factor": lineage_support["support_factor"],
                 "per_gene": lineage_per_gene,
+                # Genes that WERE detected in the sample but the
+                # estimator couldn't use for purity (TME dominates).
+                # Consumers can render these as "uninformative" rather
+                # than "not detected" — a calibration signal, not an
+                # absence signal.
+                "skipped_detected": lineage_skipped_detected,
             },
             "stromal": {
                 "enrichment": stromal_enrichment,
