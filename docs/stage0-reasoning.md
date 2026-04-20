@@ -71,41 +71,46 @@ rules read from fields rather than re-deriving thresholds.
 
 Ordered list (first match wins):
 
-1. **`tumor_marker_overrides_ambiguity`** — strong tumor-specific
+Rule names below are the actual strings stamped by ``@rule(...)``
+— what appears in the reasoning trace. Underlying Python function
+names use underscores (`tumor_marker_overrides_ambiguity`); the
+trace format uses hyphens.
+
+1. **`tumor-marker-overrides-ambiguity`** — strong tumor-specific
    marker (CTA ≥ 4 hits OR CTA panel sum ≥ 30 TPM / oncofetal ≥ 2
    hits / type-specific ≥ 2 hits) AND in a lymphoid or mesenchymal
    ambiguity regime → **tumor-consistent**. A sample with
    overwhelming CTA signal is definitively tumor even when the
    correlation regime can't distinguish lineage (pfo004 SARC with 58
    CTA hits at 5000+ TPM is the canonical case).
-2. **`lymphoid_tissue_ambiguity`** *(structural)* — top HPA
-   lymphoid AND top TCGA heme-lymphoid cohort →
+2. **`lymphoid-tissue-tumor-indistinguishable`** *(structural)* —
+   top HPA lymphoid AND top TCGA heme-lymphoid cohort →
    **possibly-tumor / structural-ambiguity**. Banner notes bulk-RNA
    correlation cannot distinguish normal lymphoid tissue from
    lymphoid malignancy; downstream cancer-specific analysis still
    proceeds under the tumor-sample prior.
-3. **`mesenchymal_tissue_ambiguity`** *(structural)* — top HPA
-   mesenchymal AND top TCGA sarcoma cohort → **possibly-tumor /
-   structural-ambiguity**. Analogous to rule 2 for well-
-   differentiated SARC vs smooth-muscle / adipose / skeletal-muscle
-   / endometrial myometrium.
-4. **`aggregate_tumor_evidence`** — non-ambiguous tissue, aggregate
+3. **`mesenchymal-tissue-tumor-indistinguishable`** *(structural)*
+   — top HPA mesenchymal AND top TCGA sarcoma cohort →
+   **possibly-tumor / structural-ambiguity**. Analogous to rule 2
+   for well-differentiated SARC vs smooth-muscle / adipose /
+   skeletal-muscle / endometrial myometrium.
+4. **`aggregate-tumor-evidence`** — non-ambiguous tissue, aggregate
    score ≥ 1.0 OR any single strong tumor-marker category fires →
    **tumor-consistent**. Catches the low-purity case where multiple
    soft channels co-occur (rs PRAD at 16% purity).
-5. **`high_proliferation_panel`** — proliferation panel ≥ 4.5
+5. **`high-proliferation-panel`** — proliferation panel ≥ 4.5
    log2-TPM → **tumor-consistent**. One strong channel is enough
    here because the panel is guarded against physiological
    proliferation (germinal-center spleen fires rule 2 first).
-6. **`confident_healthy_tissue`** — quiet proliferation (< 3.5
+6. **`confident-healthy-tissue`** — quiet proliferation (< 3.5
    log2-TPM) AND strong healthy-margin (≥ 0.05) AND no soft tumor
    evidence → **healthy-dominant**.
-7. **`healthy_with_soft_tumor_signal`** — healthy correlation + quiet
-   proliferation BUT a soft tumor-marker hit (CTA ≥ 2 / any
+7. **`healthy-tissue-with-soft-tumor-signal`** — healthy correlation
+   + quiet proliferation BUT a soft tumor-marker hit (CTA ≥ 2 / any
    oncofetal / any type-specific) → **possibly-tumor**.
-8. **`weak_healthy_lean`** — margin ≥ 0.02 without stronger signals
+8. **`weak-healthy-lean`** — margin ≥ 0.02 without stronger signals
    → **possibly-tumor** (soft caveat).
-9. **`tcga_dominant_correlation`** — nothing else fires →
+9. **`tcga-dominant-correlation`** — nothing else fires →
    **tumor-consistent** (default).
 
 Ordering is deliberate: the ambiguity overrides (1–3) fire before

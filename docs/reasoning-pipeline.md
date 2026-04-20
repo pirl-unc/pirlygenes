@@ -72,8 +72,8 @@ Produces:
 - `top_normal_tissues`: top-3 HPA tissues with Spearman ρ on log-TPM
 - `top_tcga_cohorts`: top-3 TCGA cohorts with ρ
 - `proliferation_log2_mean`: 13-gene panel geomean (MKI67, TOP2A,
-  CCNB1, BIRC5, AURKA, CDC20, PLK1, UBE2C, CCNB2, KIF2C, NUSAP1,
-  TPX2, RRM2) via `proliferation_panel_gene_names()`
+  CCNB1, CCNB2, CDC20, CDK1, UBE2C, TPX2, CENPF, FOXM1, PLK1, AURKA,
+  BIRC5) via `proliferation_panel_gene_names()`
 - `cancer_hint`: `"tumor-consistent"` / `"possibly-tumor"` /
   `"healthy-dominant"`
 

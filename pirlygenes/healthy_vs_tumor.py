@@ -20,8 +20,8 @@ Output:
   best correlate with the sample's log-TPM profile, each with a
   Spearman rho.
 - ``top_tcga_cohorts``: the three TCGA cohorts that best correlate.
-- ``proliferation_log2_mean``: geomean on log-TPM of the five-gene
-  proliferation panel (MKI67 / TOP2A / CCNB1 / BIRC5 / AURKA).
+- ``proliferation_log2_mean``: geomean on log-TPM of the 13-gene
+  proliferation panel (see ``proliferation_panel_gene_names()``).
 - ``cancer_hint``: one of ``"tumor-consistent"``, ``"possibly-tumor"``,
   ``"healthy-dominant"`` — a coarse read, not a commitment.
 """
