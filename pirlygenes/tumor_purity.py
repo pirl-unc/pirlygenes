@@ -2068,7 +2068,16 @@ def rank_cancer_type_candidates(
     # from the TME alone (sig 0.61, pur 0.33). The signature+purity
     # gates reject that case. BLCA on its own median (sig 0.94,
     # pur 0.59) passes all three and correctly promotes.
-    _ORPHAN_DOMINANCE_RATIO = 1.5
+    # Dominance-ratio threshold was 1.5 at introduction (#160) but the
+    # #170 lineage-panel expansion boosted the family-winner's
+    # lineage_support_factor on average (LUSC on a BLCA sample moved
+    # from ~0.8 to 0.95 because DSG3/TRIM29 anchor the squamous panel),
+    # narrowing the margin to ~1.4×. The signature + purity gates
+    # remain the primary guard against false positives (DLBC on a
+    # COAD/lymph mix has sig 0.61 < 0.80, rejected there). Lowering
+    # the ratio to 1.3 preserves the BLCA / PAAD wins without reopening
+    # the COAD/lymph regression.
+    _ORPHAN_DOMINANCE_RATIO = 1.3
     _ORPHAN_DOMINANCE_MIN_SIGNATURE = 0.80
     _ORPHAN_DOMINANCE_MIN_PURITY = 0.40
     family_matched_rows = [
