@@ -1943,6 +1943,68 @@ def rank_cancer_type_candidates(
             }
         )
 
+    # #160: orphan-dominance override. Cancer types that aren't grouped
+    # into a family (BLCA, PAAD, MESO, ACC, CHOL, LIHC, ...) were getting
+    # penalized by ``non_family_penalty`` even when every direct signal
+    # (signature × purity × lineage support) strongly favored them over
+    # a family-matched competitor. On the TCGA-median battery this
+    # miscalled BLCA → ESCA (orphan BLCA at signature 0.94 losing to
+    # ESCA_SQ-family ESCA at 0.66). The override fires only when the
+    # orphan's evidence is unambiguously tumor-like — three gates must
+    # all pass:
+    #
+    #   1. ``signature_score ≥ 0.80`` — signature is itself strong,
+    #      not a byproduct of TME bleed-through
+    #   2. ``purity_estimate ≥ 0.40`` — sample looks like a real
+    #      tumor, not a dilute admixture
+    #   3. raw-signal dominance (sig × purity × lineage_support) ≥ 1.5×
+    #      the top family-matched competitor's — enough to justify
+    #      ignoring the family signal
+    #
+    # On a COAD/lymph-node 30/70 mix DLBC's raw signal can dominate
+    # from the TME alone (sig 0.61, pur 0.33). The signature+purity
+    # gates reject that case. BLCA on its own median (sig 0.94,
+    # pur 0.59) passes all three and correctly promotes.
+    _ORPHAN_DOMINANCE_RATIO = 1.5
+    _ORPHAN_DOMINANCE_MIN_SIGNATURE = 0.80
+    _ORPHAN_DOMINANCE_MIN_PURITY = 0.40
+    family_matched_rows = [
+        r for r in rows if r["family_label"] is not None
+    ]
+    if family_matched_rows:
+        def _raw_signal(r):
+            return (
+                r["signature_score"]
+                * max(r["purity_estimate"], family_params["support_norm_floor"])
+                * r["lineage_support_factor"]
+            )
+        best_family_raw = max(_raw_signal(r) for r in family_matched_rows)
+        if best_family_raw > 0:
+            for r in rows:
+                if r["family_label"] is not None or r["family_factor"] >= 1.0:
+                    continue
+                if r["signature_score"] < _ORPHAN_DOMINANCE_MIN_SIGNATURE:
+                    continue
+                if r["purity_estimate"] < _ORPHAN_DOMINANCE_MIN_PURITY:
+                    continue
+                if _raw_signal(r) < _ORPHAN_DOMINANCE_RATIO * best_family_raw:
+                    continue
+                # Orphan dominates — recompute support without the
+                # family-penalty handicap.
+                r["family_factor"] = 1.0
+                support_factors = (
+                    r["signature_score"],
+                    max(r["purity_estimate"], family_params["support_norm_floor"]),
+                    r["lineage_support_factor"],
+                    max(r["signature_stability"], family_params["signature_stability_floor"]),
+                    1.0,
+                )
+                r["support_score"] = float(np.prod(support_factors))
+                r["support_geomean"] = (
+                    float(r["support_score"] ** (1.0 / len(support_factors)))
+                    if r["support_score"] > 0 else 0.0
+                )
+
     rows.sort(
         key=lambda row: (
             -row["support_score"],
