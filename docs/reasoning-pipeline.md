@@ -71,8 +71,9 @@ Produces:
 
 - `top_normal_tissues`: top-3 HPA tissues with Spearman ρ on log-TPM
 - `top_tcga_cohorts`: top-3 TCGA cohorts with ρ
-- `proliferation_log2_mean`: 5-gene panel geomean (MKI67, TOP2A,
-  CCNB1, BIRC5, AURKA)
+- `proliferation_log2_mean`: 13-gene panel geomean (MKI67, TOP2A,
+  CCNB1, CCNB2, CDC20, CDK1, UBE2C, TPX2, CENPF, FOXM1, PLK1, AURKA,
+  BIRC5) via `proliferation_panel_gene_names()`
 - `cancer_hint`: `"tumor-consistent"` / `"possibly-tumor"` /
   `"healthy-dominant"`
 
@@ -103,18 +104,34 @@ using five composable factors:
 
 1. **signature** — z-scored match to cancer-type-enriched genes
 2. **purity** — per-candidate tumor-purity estimate (lineage-weighted)
-3. **support** — lineage-gene pattern concordance
+3. **support** — lineage-gene pattern concordance + detection
 4. **stability** — signature-gene dispersion / stability
 5. **family-factor** — carries through to the final `geomean` score
+
+**Orphan-family dominance override (#160)**: cancer types not assigned
+to any family (BLCA, PAAD, MESO, ACC, CHOL, LIHC, …) are handicapped
+by the `non_family_penalty` when a competing family is nearby. The
+override suspends this penalty when three gates pass on the orphan:
+signature ≥ 0.80, purity ≥ 0.40, and raw-signal dominance
+(`sig × purity × lineage_support`) ≥ 1.3× the top family-matched
+competitor. Without this, BLCA → ESCA and PAAD → STAD on their own
+cohort medians.
 
 Reads: `sample_context` (library prep adjusts marker weights),
 `tissue_composition` (the Stage-0b top TCGA cohorts inform the
 candidate-codes set when caller doesn't override).
 
-Writes: `analysis["cancer_candidates"]` — a list of
-`{code, name, signature_score, purity_result, support_norm, geomean,
- normalized}` rows. Head of the list is the working call; rows 2-6
-are the alternatives surfaced in the *analysis.md* table.
+Writes: `analysis["candidate_trace"]` — a list of
+`{code, signature_score, purity_estimate, lineage_purity,
+ lineage_concordance, family_label, family_factor, support_geomean,
+ purity_result, …}` rows. Head of the list is the working call;
+rows 2-k are the alternatives surfaced in the *analysis.md* table.
+
+`analysis["call_confidence"]` (#169) carries a separate
+`ConfidenceTier` that flags contested calls when the top candidate
+has near-zero lineage concordance, a tied geomean vs the runner-up,
+or a Stage-0 top-ρ TCGA cohort that disagrees with the pick. The
+brief / actionable render this tier inline on the cancer-call line.
 
 Consumed by: Stage 2 pulls the top candidate's `purity_result` as
 the starting point; Stage 3 runs decomposition per (cancer_type,
@@ -133,15 +150,26 @@ Combines three orthogonal estimators:
 1. **signature-gene** — TCGA-cohort signature-gene fold-change
 2. **ESTIMATE-style** — stromal / immune enrichment penalty
 3. **lineage** — lineage-gene tumor-fraction estimator (per-gene
-   agreement across the curated lineage panel)
+   agreement across the curated lineage panel). Every cohort panel
+   has ≥ 5 curated, home-cohort-expressed genes (#170). A per-cohort
+   specificity filter (#162, refined in #167) drops panel genes
+   whose home-cohort expression is dominated by another TCGA cohort's
+   expression — prevents STAD's lineage firing on a PAAD sample via
+   shared GI-epithelium markers. Rare subtype markers (home-cohort
+   median ≈ 0 because only a subset of the cohort expresses them,
+   e.g. MYOD1 in SARC) are preserved when the max competitor cohort
+   is below 5 TPM.
 
 Produces:
 
 - `overall_estimate` / `overall_lower` / `overall_upper` — point + CI
 - `purity_source` — which estimator dominated
-- `purity_confidence` tier — high / moderate / low / very_low with
-  per-reason explanations (wide CI, low-purity regime, inconsistency
-  across estimators)
+- `purity_confidence` tier — high / moderate / low / degenerate /
+  unknown with per-reason explanations (wide CI, low-purity regime,
+  inconsistency across estimators, deterministic input). The
+  `degenerate` tier (#161) fires on zero-width CIs — synthetic /
+  cohort-median / decomposition-template inputs that give the
+  estimator no per-gene variance to bound uncertainty with.
 
 Reads: `sample_context`, top candidate from Stage 1.
 
