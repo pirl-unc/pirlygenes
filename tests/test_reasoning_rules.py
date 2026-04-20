@@ -12,16 +12,16 @@ from dataclasses import replace
 from pirlygenes.healthy_vs_tumor import TissueCompositionSignal
 from pirlygenes.reasoning import (
     DerivedFlags,
+    aggregate_tumor_evidence,
     compute_derived_flags,
     confident_healthy_tissue,
     healthy_with_soft_tumor_signal,
     high_proliferation_panel,
     lymphoid_tissue_ambiguity,
     mesenchymal_tissue_ambiguity,
-    multi_channel_tumor_evidence,
     run_stage0_rules,
-    single_channel_tumor_beats_ambiguity,
     tcga_dominant_correlation,
+    tumor_marker_overrides_ambiguity,
     weak_healthy_lean,
 )
 from pirlygenes.tumor_evidence import TumorEvidenceScore
@@ -59,27 +59,27 @@ def _flags(signal, **overrides):
     return f
 
 
-# ---------- single_channel_tumor_beats_ambiguity ----------
+# ---------- tumor_marker_overrides_ambiguity ----------
 
-def test_single_channel_beats_ambiguity_fires_on_strong_cta_in_lymphoid():
+def test_tumor_marker_overrides_ambiguity_fires_on_strong_cta_in_lymphoid():
     s = _make_signal(cta_count_above_1_tpm=10, cta_panel_sum_tpm=500)
     f = _flags(s, lymphoid_ambiguity=True)
-    out = single_channel_tumor_beats_ambiguity(s, f)
+    out = tumor_marker_overrides_ambiguity(s, f)
     assert out is not None
     assert out.hint == "tumor-consistent"
-    assert "single-channel-tumor-wins-in-ambiguity" in out.rule_name
+    assert out.rule_name == "tumor-marker-overrides-ambiguity"
 
 
-def test_single_channel_beats_ambiguity_skips_without_ambiguity_flag():
+def test_tumor_marker_overrides_ambiguity_skips_without_ambiguity_flag():
     s = _make_signal(cta_count_above_1_tpm=10)
     f = _flags(s)
-    assert single_channel_tumor_beats_ambiguity(s, f) is None
+    assert tumor_marker_overrides_ambiguity(s, f) is None
 
 
-def test_single_channel_beats_ambiguity_skips_without_strong_signal():
+def test_tumor_marker_overrides_ambiguity_skips_without_strong_signal():
     s = _make_signal(cta_count_above_1_tpm=1)  # below strong threshold
     f = _flags(s, lymphoid_ambiguity=True)
-    assert single_channel_tumor_beats_ambiguity(s, f) is None
+    assert tumor_marker_overrides_ambiguity(s, f) is None
 
 
 # ---------- lymphoid / mesenchymal ambiguity ----------
@@ -115,34 +115,34 @@ def test_ambiguity_rules_skip_when_not_ambiguous():
     assert mesenchymal_tissue_ambiguity(s, f) is None
 
 
-# ---------- multi_channel_tumor_evidence ----------
+# ---------- aggregate_tumor_evidence ----------
 
-def test_multi_channel_evidence_fires_on_aggregate_above_1():
+def test_aggregate_tumor_evidence_fires_on_aggregate_above_1():
     evidence = TumorEvidenceScore(cta=0.5, oncofetal=0.3, proliferation=0.4)
     assert evidence.aggregate_score >= 1.0
     s = _make_signal(evidence=evidence)
     f = _flags(s)
-    out = multi_channel_tumor_evidence(s, f)
+    out = aggregate_tumor_evidence(s, f)
     assert out is not None
     assert out.hint == "tumor-consistent"
     assert "aggregate" in out.rationale
 
 
-def test_multi_channel_evidence_fires_on_strong_single_cta():
+def test_aggregate_tumor_evidence_fires_on_strong_single_cta():
     s = _make_signal(cta_count_above_1_tpm=10)
     f = _flags(s)
-    out = multi_channel_tumor_evidence(s, f)
+    out = aggregate_tumor_evidence(s, f)
     assert out is not None
     assert "CTA_strong" in out.rationale
 
 
-def test_multi_channel_evidence_skips_below_thresholds():
+def test_aggregate_tumor_evidence_skips_below_thresholds():
     s = _make_signal(
         cta_count_above_1_tpm=1,
         evidence=TumorEvidenceScore(cta=0.2),  # aggregate only 0.2
     )
     f = _flags(s)
-    assert multi_channel_tumor_evidence(s, f) is None
+    assert aggregate_tumor_evidence(s, f) is None
 
 
 # ---------- high_proliferation_panel ----------
@@ -217,8 +217,8 @@ def test_run_stage0_rules_picks_first_match():
     s = _make_signal(cta_count_above_1_tpm=10)
     f = _flags(s, lymphoid_ambiguity=True)
     outcome, trace = run_stage0_rules(s, f)
-    # single_channel_tumor_beats_ambiguity is first and matches.
-    assert outcome.rule_name == "single-channel-tumor-wins-in-ambiguity"
+    # tumor_marker_overrides_ambiguity is first and matches.
+    assert outcome.rule_name == "tumor-marker-overrides-ambiguity"
     assert outcome.hint == "tumor-consistent"
 
 
@@ -240,7 +240,7 @@ def test_run_stage0_rules_accepts_custom_rule_order():
     # override.
     custom_order = [
         lymphoid_tissue_ambiguity,
-        single_channel_tumor_beats_ambiguity,
+        tumor_marker_overrides_ambiguity,
         tcga_dominant_correlation,
     ]
     outcome, trace = run_stage0_rules(s, f, rules=custom_order)
@@ -252,4 +252,4 @@ def test_run_stage0_rules_auto_computes_flags_when_omitted():
     s = _make_signal(cta_count_above_1_tpm=10)
     outcome, trace = run_stage0_rules(s)
     assert outcome.hint == "tumor-consistent"
-    assert outcome.rule_name == "multi-channel-tumor-evidence"
+    assert outcome.rule_name == "aggregate-tumor-evidence"

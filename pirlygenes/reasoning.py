@@ -71,11 +71,13 @@ class DerivedFlags:
     correlation_margin: float = 0.0
 
     @property
-    def any_strong_single_channel(self) -> bool:
+    def any_tumor_marker_strong(self) -> bool:
+        """Any CTA / oncofetal / type-specific category crossed its strong threshold."""
         return self.cta_strong or self.oncofetal_strong or self.type_specific_strong
 
     @property
-    def any_soft_signal(self) -> bool:
+    def any_tumor_marker_soft(self) -> bool:
+        """Any tumor-specific category has at least soft evidence."""
         return self.cta_soft or self.oncofetal_soft or self.type_specific_soft
 
     @property
@@ -164,20 +166,20 @@ def compute_derived_flags(signal) -> DerivedFlags:
 # ``flags`` instead of re-deriving thresholds inline.
 
 
-@rule("single-channel-tumor-wins-in-ambiguity")
-def single_channel_tumor_beats_ambiguity(s, f) -> Optional[RuleOutcome]:
-    """Strong tumor-specific re-expression (CTAs, oncofetal, or type-
-    specific) overrides the lymphoid/mesenchymal-ambiguity flag.
+@rule("tumor-marker-overrides-ambiguity")
+def tumor_marker_overrides_ambiguity(s, f) -> Optional[RuleOutcome]:
+    """A strong tumor-specific marker — CTA, oncofetal, or type-specific
+    — overrides the lymphoid/mesenchymal-ambiguity flag.
 
     Canonical case: pfo004 (real SARC) with 58 CTA hits is definitively
     tumor despite the mesenchymal correlation regime.
     """
-    if not (f.in_ambiguous_regime and f.any_strong_single_channel):
+    if not (f.in_ambiguous_regime and f.any_tumor_marker_strong):
         return None
-    reasons = _strong_channel_reasons(s, f)
+    reasons = _tumor_marker_reasons(s, f)
     return RuleOutcome(
         hint="tumor-consistent",
-        rule_name=single_channel_tumor_beats_ambiguity.rule_name,
+        rule_name=tumor_marker_overrides_ambiguity.rule_name,
         rationale=",".join(reasons),
     )
 
@@ -213,21 +215,23 @@ def mesenchymal_tissue_ambiguity(s, f) -> Optional[RuleOutcome]:
     )
 
 
-@rule("multi-channel-tumor-evidence")
-def multi_channel_tumor_evidence(s, f) -> Optional[RuleOutcome]:
-    """Non-ambiguous tissue: aggregate evidence score ≥ 1.0 OR any
-    single strong channel → tumor-consistent. Catches the low-purity
-    case where multiple soft channels co-occur (rs PRAD)."""
+@rule("aggregate-tumor-evidence")
+def aggregate_tumor_evidence(s, f) -> Optional[RuleOutcome]:
+    """Non-ambiguous tissue: aggregated evidence across all six
+    categories (CTA, oncofetal, type-specific, proliferation, hypoxia,
+    glycolysis) sums to ≥ 1.0, OR any single tumor-marker category is
+    strong on its own → tumor-consistent. Catches the low-purity case
+    where multiple soft categories co-occur (rs PRAD)."""
     agg = s.evidence.aggregate_score
-    if not (agg >= 1.0 or f.any_strong_single_channel):
+    if not (agg >= 1.0 or f.any_tumor_marker_strong):
         return None
     reasons = []
     if agg >= 1.0:
         reasons.append(f"aggregate={agg:.2f}≥1.0")
-    reasons.extend(_strong_channel_reasons(s, f))
+    reasons.extend(_tumor_marker_reasons(s, f))
     return RuleOutcome(
         hint="tumor-consistent",
-        rule_name=multi_channel_tumor_evidence.rule_name,
+        rule_name=aggregate_tumor_evidence.rule_name,
         rationale=",".join(reasons),
     )
 
@@ -254,7 +258,7 @@ def confident_healthy_tissue(s, f) -> Optional[RuleOutcome]:
     if not (s.evidence.prolif_log2 < _PROLIFERATION_QUIET_LOG2
             and f.correlation_margin >= _HPA_MARGIN_STRONG):
         return None
-    if f.any_soft_signal:
+    if f.any_tumor_marker_soft:
         return None
     return RuleOutcome(
         hint="healthy-dominant",
@@ -266,13 +270,13 @@ def confident_healthy_tissue(s, f) -> Optional[RuleOutcome]:
 @rule("healthy-tissue-with-soft-tumor-signal")
 def healthy_with_soft_tumor_signal(s, f) -> Optional[RuleOutcome]:
     """Healthy-correlation preconditions of :func:`confident_healthy_tissue`
-    met BUT soft tumor evidence (CTA ≥2 hits, or any oncofetal/type-
-    specific hit) fires — demote to possibly-tumor rather than call
-    healthy."""
+    met BUT a soft tumor-marker signal (CTA ≥2 hits, or any oncofetal /
+    type-specific hit) fires — demote to possibly-tumor rather than
+    call healthy."""
     if not (s.evidence.prolif_log2 < _PROLIFERATION_QUIET_LOG2
             and f.correlation_margin >= _HPA_MARGIN_STRONG):
         return None
-    if not f.any_soft_signal:
+    if not f.any_tumor_marker_soft:
         return None
     demotes = []
     if f.cta_soft:
@@ -319,7 +323,9 @@ def _top_pair_rationale(s) -> str:
     return f"top_HPA={h} vs top_TCGA={t}"
 
 
-def _strong_channel_reasons(s, f: DerivedFlags) -> list[str]:
+def _tumor_marker_reasons(s, f: DerivedFlags) -> list[str]:
+    """Per-category rationale strings for whichever tumor markers
+    (CTA / oncofetal / type-specific) are strong on this sample."""
     out = []
     if f.cta_strong:
         out.append(f"CTA_strong(n={s.cta_count_above_1_tpm})")
@@ -334,10 +340,10 @@ def _strong_channel_reasons(s, f: DerivedFlags) -> list[str]:
 # (return a non-None ``RuleOutcome``) wins and downstream rules are
 # skipped. Re-orderable without editing rule bodies.
 STAGE0_RULES: list[Stage0Rule] = [
-    single_channel_tumor_beats_ambiguity,
+    tumor_marker_overrides_ambiguity,
     lymphoid_tissue_ambiguity,
     mesenchymal_tissue_ambiguity,
-    multi_channel_tumor_evidence,
+    aggregate_tumor_evidence,
     high_proliferation_panel,
     confident_healthy_tissue,
     healthy_with_soft_tumor_signal,
