@@ -59,6 +59,42 @@ def test_coad_panel_drops_genes_shared_with_other_gi():
     assert len(specific) >= 2
 
 
+def test_sarc_panel_retains_rare_subtype_markers_below_floor():
+    """#167 regression: MYOD1 and MYOG are rhabdomyosarcoma / muscle-
+    lineage markers whose cohort median is near-zero in every TCGA
+    cohort (including SARC — the cohort includes many non-muscle
+    sarcomas, pulling the median to 0). The filter must NOT drop them
+    as "non-specific" just because home_val=0; when the max competitor
+    is below the competitor floor (5 TPM), the gene is kept regardless.
+
+    On pfo004 (real sarcoma) MYOD1 is the only lineage marker that
+    yields a usable purity estimate — dropping it collapses SARC's
+    lineage concordance and lets THYM (with 0 concordance) win the
+    classifier.
+    """
+    specific = _cancer_specific_lineage_genes("SARC")
+    assert "MYOD1" in specific, (
+        "MYOD1 must be retained in SARC's panel — max-other ≈ 1.5 TPM "
+        "is below the 5 TPM competitor floor, so no crosstalk risk"
+    )
+    assert "MYOG" in specific, (
+        "MYOG must be retained in SARC's panel for the same reason"
+    )
+
+
+def test_sarc_panel_drops_tme_shared_smooth_muscle_markers():
+    """DES and ACTA2 are expressed at higher levels in PRAD's smooth-
+    muscle stroma than in TCGA SARC median, so they're genuinely not
+    SARC-specific and SHOULD be dropped from SARC's panel."""
+    specific = _cancer_specific_lineage_genes("SARC")
+    assert "DES" not in specific, (
+        "DES (PRAD=391 > SARC=56) should be dropped from SARC's panel"
+    )
+    assert "ACTA2" not in specific, (
+        "ACTA2 (PRAD=241 > SARC=189) should be dropped from SARC's panel"
+    )
+
+
 def test_filter_always_returns_at_least_minimum_genes():
     """Every cohort with a lineage panel keeps ≥ 2 genes (the
     estimator needs at least that to anchor a stable purity)."""
