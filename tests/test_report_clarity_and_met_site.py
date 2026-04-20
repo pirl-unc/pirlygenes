@@ -168,35 +168,38 @@ def test_summary_md_structure_for_report_clarity(tmp_path):
     }
 
     prefix = str(tmp_path / "sample")
-    # Minimal embedding_meta shape — summary.md is written first, before
-    # the more demanding analysis.md fields are consulted.
     embedding_meta = {
         "method": "hierarchy", "feature_kind": "hierarchical_scores",
         "n_genes": 0, "n_features": 0, "n_types": 33, "families": [],
     }
-    try:
-        _generate_text_reports(
-            analysis, embedding_meta, prefix,
-            decomp_results=[], input_path="/data/sample_BG002.tsv",
-        )
-    except KeyError:
-        # analysis.md generation may need more context than this fixture
-        # provides — we only assert on summary.md below.
-        pass
-
-    summary_md = (tmp_path / "sample-summary.md").read_text()
-    # Input filename header (#33)
-    assert "/data/sample_BG002.tsv" in summary_md
-    # Source attribution (#33)
-    assert "auto-detected" in summary_md
-    # Raw composite score 0.019 should NOT appear in prose (#32).
-    assert "0.019" not in summary_md, (
-        "Raw composite cancer_score must not be in summary prose (#32)."
+    _generate_text_reports(
+        analysis, embedding_meta, prefix,
+        decomp_results=[], input_path="/data/sample_BG002.tsv",
     )
-    # Qualitative ratio instead (#32) — top match is 2.5× HNSC.
-    assert "2.5" in summary_md and "HNSC" in summary_md
-    # Tissue score caveat (#33)
-    assert "similarity" in summary_md.lower()
+
+    # The retired free-form summary.md used to carry input-filename
+    # header, source attribution, and the "2.5× HNSC" / "similarity"
+    # clauses. Analysis.md now owns the input-filename + candidate
+    # trace; the "similarity" tissue-score caveat lives in analysis.md
+    # too. No try/except guard — if _generate_text_reports KeyErrors on
+    # a minimal fixture that's a real test signal, not something to
+    # swallow.
+    analysis_md_path = tmp_path / "sample-analysis.md"
+    assert analysis_md_path.exists(), (
+        "_generate_text_reports must write analysis.md; missing file "
+        "points at a test-fixture bug, not an expected branch"
+    )
+    analysis_md = analysis_md_path.read_text()
+    # Input filename header — now under "## Input characterization".
+    assert "/data/sample_BG002.tsv" in analysis_md
+    # Source attribution (#33) — moved from summary.md to analysis.md.
+    assert "auto-detected" in analysis_md
+    # Raw composite score 0.019 must not appear in prose (#32).
+    assert "0.019" not in analysis_md, (
+        "Raw composite cancer_score must not be in report prose (#32)."
+    )
+    # Tissue-score caveat (#33).
+    assert "similarity" in analysis_md.lower()
 
 
 def test_detailed_report_uses_generic_lineage_caveat(tmp_path):
