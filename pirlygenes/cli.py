@@ -303,6 +303,55 @@ _CORE_ISG_SURFACE = frozenset({
 })
 
 
+def _metabolic_axes_rows(evidence) -> list[tuple[str, str, str]]:
+    """Return (axis, signal, therapy) rows for active metabolic programs (#158).
+
+    Step-0 already computes proliferation / hypoxia / glycolysis
+    channel scores on :class:`TumorEvidenceScore`. This helper converts
+    those scores into therapy-report rows so readers see actionable
+    metabolic axes (CA9-directed ADC, MCT inhibitors, CDK4/6) without
+    having to cross-reference Step-0 narrative against the target
+    landscape. Rows emit only when the corresponding channel is
+    meaningfully elevated so the section is silent on non-metabolic
+    tumors.
+    """
+    if evidence is None:
+        return []
+    rows: list[tuple[str, str, str]] = []
+
+    hypoxia = float(getattr(evidence, "hypoxia", 0.0) or 0.0)
+    ca9_tpm = float(getattr(evidence, "ca9_tpm", 0.0) or 0.0)
+    if hypoxia >= 0.5 or ca9_tpm >= 20.0:
+        rows.append((
+            "Hypoxia / CA9",
+            f"CA9 observed {ca9_tpm:.0f} TPM (hypoxia score {hypoxia:.2f})",
+            "Acetazolamide; CA9-directed ADCs (DS-6157a / trials). Consider "
+            "HIF-2α inhibitors (belzutifan) in ccRCC context.",
+        ))
+
+    glycolysis = float(getattr(evidence, "glycolysis", 0.0) or 0.0)
+    glyc_fold = float(getattr(evidence, "glycolysis_geomean_fold", 0.0) or 0.0)
+    if glycolysis >= 0.5:
+        rows.append((
+            "Glycolysis / MCT",
+            f"Panel geomean {glyc_fold:.1f}× over median (score {glycolysis:.2f})",
+            "MCT1/4 inhibitors (AZD3965 trials); LDHA / HK2 inhibitors "
+            "(preclinical). Metformin where comorbidity supports it.",
+        ))
+
+    prolif = float(getattr(evidence, "proliferation", 0.0) or 0.0)
+    prolif_log2 = float(getattr(evidence, "prolif_log2", 0.0) or 0.0)
+    if prolif >= 0.6:
+        rows.append((
+            "Proliferation / cell-cycle",
+            f"Panel log2-TPM {prolif_log2:.2f} (score {prolif:.2f})",
+            "CDK4/6 inhibitors (palbociclib / ribociclib) where cancer-type "
+            "context supports; WEE1 inhibitors (adavosertib trials).",
+        ))
+
+    return rows
+
+
 def compose_disease_state_narrative(analysis) -> str:
     """Synthesize a one-line disease-state narrative from combined
     signals (issue #78).
@@ -3532,6 +3581,28 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     if landscape_cautions:
         lines.append(f"- **Landscape cautions**: {'; '.join(landscape_cautions)}.")
     lines.append("")
+
+    # Metabolic axes (#158): Step-0 already computes proliferation /
+    # hypoxia / glycolysis channel scores on TumorEvidenceScore but only
+    # uses them for the Step-0 narrative. Surface any meaningfully-
+    # elevated metabolic programs here so the therapy report names the
+    # axes a reader could act on (CA9-directed ADCs, MCT inhibitors,
+    # CDK4/6). Emits nothing when no channel clears the threshold.
+    metabolic_rows = _metabolic_axes_rows(
+        getattr(analysis.get("healthy_vs_tumor"), "evidence", None)
+    )
+    if metabolic_rows:
+        lines.append("## Metabolic axes\n")
+        lines.append(
+            "Metabolic programs active on Step-0 scoring (proliferation / "
+            "hypoxia / glycolysis). Rows emit only when the corresponding "
+            "channel is meaningfully elevated.\n"
+        )
+        lines.append("| Axis | Signal | Therapy considerations |")
+        lines.append("|------|--------|------------------------|")
+        for axis, signal, therapy in metabolic_rows:
+            lines.append(f"| {axis} | {signal} | {therapy} |")
+        lines.append("")
 
     # Therapy-state context (#57): enumerate the chain of evidence
     # behind any active / suppressed signaling axis so the reader can
