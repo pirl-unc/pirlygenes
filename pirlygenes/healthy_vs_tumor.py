@@ -158,8 +158,9 @@ _TUMOR_UP_PANEL_STRONG_COUNT = 2
 # sample battery: healthy tissues (GTEx brain / smooth muscle / spleen)
 # show a few CTA hits at 1-5 TPM (PHF7, STKLD1, TEX14 — broadly
 # expressed CTAs with relaxed tumor specificity). Tumors with real
-# CTA re-expression (rs PRAD DAZ3=13, pfo002 CRC PIWIL1=8, pfo004
-# sarcoma PAGE5=1383) sit one or two orders of magnitude higher.
+# CTA re-expression (low-purity PRAD with DAZ3 ≈ 13 TPM, CRC with
+# PIWIL1 ≈ 8, sarcoma with PAGE5 ≈ 1383) sit one or two orders of
+# magnitude above the healthy-tissue noise floor.
 # Per-gene 3 TPM + count ≥ 4 avoids the healthy-tissue CTA noise
 # floor while preserving tumor detection at low purity.
 _CTA_PER_GENE_MIN_TPM = 3.0

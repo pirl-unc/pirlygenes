@@ -398,7 +398,7 @@ _LINEAGE_SPECIFICITY_MIN = 0.5  # home / (home + max_other) ≥ 0.5
 # The filter only fires when the competing cohort's expression is above
 # this absolute floor — below it, the competitor isn't really "expressing"
 # the gene at levels that would create crosstalk. Pinned to 5 TPM after
-# the pfo004→THYM regression (#167): the original 1 TPM threshold was
+# the sarcoma→THYM regression (#167): the original 1 TPM threshold was
 # dropping rare subtype markers like MYOD1 (TCGA_SARC median ≈ 0,
 # TCGA_UCS median 1.5) even though neither cohort materially expresses
 # the gene at median.
@@ -543,8 +543,8 @@ def _lineage_purity_estimates(cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga
     # sample but dropped by the estimator (TME signal exceeds tumor
     # signal in the reference, so the gene can't anchor a purity
     # estimate). Callers can surface these as "uninformative" rather
-    # than "not detected" — the distinction matters for pfo004-style
-    # cases where ACTA2 is at 189 TPM but gets filtered because its
+    # than "not detected" — the distinction matters for sarcoma-style
+    # cases where ACTA2 is at ~190 TPM but gets filtered because its
     # TME-bleed-through in SARC exceeds its tumor contribution.
     skipped_detected = []
     for gene in genes:

@@ -9,8 +9,9 @@ facing reasons when:
 2. Geomean gap to runner-up < 1.1× (tied call)
 3. Stage-0 top-ρ TCGA cohort disagrees with the classifier's pick
 
-Canonical failure the tier catches: pfo004 at 4.35.0 → THYM with
-concordance 0.000 and a 0.002 geomean margin over SARC.
+Canonical failure the tier catches: a real sarcoma validation
+sample at 4.35.0 → THYM with concordance 0.000 and a 0.002 geomean
+margin over SARC.
 """
 
 from pirlygenes.confidence import compute_call_confidence
@@ -44,7 +45,7 @@ def test_clean_call_returns_high_tier():
 
 
 def test_zero_concordance_top_call_is_low_confidence():
-    """The pfo004 → THYM regression: top candidate's lineage genes
+    """The SARC → THYM regression: top candidate's lineage genes
     aren't expressed in the sample (concordance 0.0). That's a
     contested call, not a clean win."""
     analysis = {

@@ -1,8 +1,9 @@
 """Regression tests for the battery-audit fixes (PR #159).
 
 Each bug here was a report-correctness issue found by auditing the
-pfo002 (CRC) and pfo004 (SARC) markdown outputs. These tests pin the
-root-cause fixes so a future refactor can't silently regress them.
+markdown outputs for a CRC validation sample and a SARC validation
+sample. These tests pin the root-cause fixes so a future refactor
+can't silently regress them.
 """
 
 import math
@@ -71,7 +72,8 @@ def test_render_vs_tcga_both_absent_renders_dash():
 
 
 def test_render_vs_tcga_preserves_large_finite_folds_uncapped():
-    """ITGA10 in pfo004 renders at 1548× — capping would mask the signal."""
+    """ITGA10 in a SARC validation sample renders at 1548× — capping
+    would mask the signal."""
     row = _row(tcga_ref_state="finite", pct_cancer_median=1548.45)
     out = _render_vs_tcga_cell(row)
     assert "1548" in out
@@ -213,8 +215,8 @@ def test_decomp_purity_adoption_guard_matches_docstring():
 
     The logic isn't extracted into a helper yet — this test encodes
     the contract so a future refactor can pull out a named predicate
-    without losing behavior. pfo002 / BRCA-template 100% was the
-    failure case: classifier=COAD, decomp=BRCA → decomp_agrees=False
+    without losing behavior. The canonical failure was a CRC
+    validation sample where classifier=COAD, decomp=BRCA → decomp_agrees=False
     → keep classifier's 36%.
     """
     # Simulate the three branches that should NOT adopt decomp purity:

@@ -163,9 +163,9 @@ def compute_call_confidence(analysis) -> ConfidenceTier:
     materially different if any of the orthogonal signals were the
     tiebreaker.
 
-    Issue #169 motivated this: pfo004 (real sarcoma) classified as
-    THYM with concordance=0.000 at 4.35.0, and the report emitted a
-    clean "Cancer call: THYM" with no caveat.
+    Issue #169 motivated this: a real sarcoma validation sample was
+    classified as THYM with concordance=0.000 at 4.35.0, and the
+    report emitted a clean "Cancer call: THYM" with no caveat.
     """
     reasons: List[str] = []
     tier = "high"

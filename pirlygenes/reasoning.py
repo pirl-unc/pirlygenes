@@ -171,8 +171,8 @@ def tumor_marker_overrides_ambiguity(s, f) -> Optional[RuleOutcome]:
     """A strong tumor-specific marker — CTA, oncofetal, or type-specific
     — overrides the lymphoid/mesenchymal-ambiguity flag.
 
-    Canonical case: pfo004 (real SARC) with 58 CTA hits is definitively
-    tumor despite the mesenchymal correlation regime.
+    Canonical case: a real SARC sample with ~58 CTA hits at high TPM
+    is definitively tumor despite the mesenchymal correlation regime.
     """
     if not (f.in_ambiguous_regime and f.any_tumor_marker_strong):
         return None
@@ -221,7 +221,8 @@ def aggregate_tumor_evidence(s, f) -> Optional[RuleOutcome]:
     categories (CTA, oncofetal, type-specific, proliferation, hypoxia,
     glycolysis) sums to ≥ 1.0, OR any single tumor-marker category is
     strong on its own → tumor-consistent. Catches the low-purity case
-    where multiple soft categories co-occur (rs PRAD)."""
+    where multiple soft categories co-occur (e.g. a ~16%-purity PRAD
+    sample with soft CTA + soft oncofetal + soft glycolysis)."""
     agg = s.evidence.aggregate_score
     if not (agg >= 1.0 or f.any_tumor_marker_strong):
         return None

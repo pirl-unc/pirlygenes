@@ -67,10 +67,10 @@ def test_sarc_panel_retains_rare_subtype_markers_below_floor():
     as "non-specific" just because home_val=0; when the max competitor
     is below the competitor floor (5 TPM), the gene is kept regardless.
 
-    On pfo004 (real sarcoma) MYOD1 is the only lineage marker that
-    yields a usable purity estimate — dropping it collapses SARC's
-    lineage concordance and lets THYM (with 0 concordance) win the
-    classifier.
+    On a real sarcoma validation sample, MYOD1 is the only lineage
+    marker that yields a usable purity estimate — dropping it
+    collapses SARC's lineage concordance and lets THYM (with 0
+    concordance) win the classifier.
     """
     specific = _cancer_specific_lineage_genes("SARC")
     assert "MYOD1" in specific, (
