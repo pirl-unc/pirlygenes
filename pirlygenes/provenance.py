@@ -284,11 +284,8 @@ def plot_provenance_funnel(
 
     ax.set_xlim(0, max(1.0, left))
     ax.set_yticks([])
-    ax.set_xlabel("Fraction of sample composition", fontsize=10)
-    ax.set_title(
-        "Sample composition chain — tumor core vs non-tumor compartments",
-        fontsize=11, fontweight="bold",
-    )
+    ax.set_xlabel("")
+    ax.set_title("Sample composition", fontsize=11, fontweight="bold")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2),
               ncol=min(4, len(labels)), fontsize=8, frameon=False)
 

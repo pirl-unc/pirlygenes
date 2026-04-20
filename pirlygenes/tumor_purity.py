@@ -1740,6 +1740,13 @@ def plot_purity_method_comparison(
     # Row schema: (label, point, lower, upper, family, n_genes, note)
     rows = []
 
+    # Row ordering (#159 polish): group direct purity estimates first
+    # (signature / lineage / decomposition — these are tumor-fraction
+    # calls in their own right), then enrichment-derived (ESTIMATE
+    # stromal / immune / combined — these are odds-model conversions of
+    # TME-enrichment scores, not independent tumor-fraction measurements),
+    # then the adopted overall at the bottom so the reader's eye lands
+    # on the final call last.
     if sig_comp.get("purity") is not None:
         n = len(sig_comp.get("genes") or [])
         rows.append((
@@ -1764,41 +1771,6 @@ def plot_purity_method_comparison(
             "",
         ))
 
-    if stromal_purity is not None:
-        n = (comp.get("stromal") or {}).get("n_genes", 0)
-        rows.append((
-            "ESTIMATE stromal",
-            stromal_purity,
-            None,
-            None,
-            "estimate",
-            n,
-            "",
-        ))
-
-    if immune_purity is not None:
-        n = (comp.get("immune") or {}).get("n_genes", 0)
-        rows.append((
-            "ESTIMATE immune",
-            immune_purity,
-            None,
-            None,
-            "estimate",
-            n,
-            "",
-        ))
-
-    if comp.get("estimate_purity") is not None:
-        rows.append((
-            "ESTIMATE combined",
-            float(comp["estimate_purity"]),
-            None,
-            None,
-            "estimate",
-            0,
-            "",
-        ))
-
     if decomposition_result is not None:
         decomp_purity = getattr(decomposition_result, "purity", None)
         if decomp_purity is not None:
@@ -1812,6 +1784,47 @@ def plot_purity_method_comparison(
                 f" [{getattr(decomposition_result, 'cancer_type', '')} / "
                 f"{getattr(decomposition_result, 'template', '')}]",
             ))
+
+    # Sentinel row used only as a visual separator between the direct-
+    # estimate block above and the enrichment-derived block below.
+    n_direct = len(rows)
+
+    if stromal_purity is not None:
+        n = (comp.get("stromal") or {}).get("n_genes", 0)
+        rows.append((
+            "ESTIMATE stromal (derived)",
+            stromal_purity,
+            None,
+            None,
+            "estimate",
+            n,
+            "",
+        ))
+
+    if immune_purity is not None:
+        n = (comp.get("immune") or {}).get("n_genes", 0)
+        rows.append((
+            "ESTIMATE immune (derived)",
+            immune_purity,
+            None,
+            None,
+            "estimate",
+            n,
+            "",
+        ))
+
+    if comp.get("estimate_purity") is not None:
+        rows.append((
+            "ESTIMATE combined (derived)",
+            float(comp["estimate_purity"]),
+            None,
+            None,
+            "estimate",
+            0,
+            "",
+        ))
+
+    n_before_adopted = len(rows)
 
     overall = purity_result.get("overall_estimate")
     overall_lower = purity_result.get("overall_lower")
@@ -1853,6 +1866,14 @@ def plot_purity_method_comparison(
             float(overall) * 100, color="#1a1a1a",
             linestyle=":", linewidth=1.5, alpha=0.8,
         )
+
+    # Horizontal separator between the direct-estimate block and the
+    # enrichment-derived (ESTIMATE) block, and between the
+    # enrichment-derived block and the adopted call. Makes the visual
+    # hierarchy (direct / derived / final) obvious at a glance.
+    for sep_y in (n_direct - 0.5, n_before_adopted - 0.5):
+        if 0 < sep_y < len(rows) - 0.5:
+            ax.axhline(sep_y, color="#cccccc", linewidth=0.8, alpha=0.7)
 
     y_positions = list(range(len(rows)))
     y_labels = []

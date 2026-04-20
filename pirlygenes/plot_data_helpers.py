@@ -311,8 +311,12 @@ def prepare_gene_expr_df(
         # build from DF
         id_to_name_from_df = dict(zip(expr_gene_ids, df[gene_name_col].astype(str)))
     else:
-        # fallback: resolve names for all expressed IDs (one call)
+        # fallback: resolve names for all expressed IDs (one call). Slow
+        # on full transcriptomes — announce so the CLI progress log
+        # doesn't go silent for tens of seconds here.
         uniq_ids = list(dict.fromkeys(expr_gene_ids))  # preserves order, de-dups
+        if verbose:
+            print(f"[plot] resolving gene names for {len(uniq_ids)} IDs...")
         resolved_ids, resolved_names = find_canonical_gene_ids_and_names(uniq_ids)
         for gid, gname in zip(resolved_ids, resolved_names):
             if gid and gname:

@@ -316,9 +316,18 @@ def build_brief(
             if not match.empty:
                 row = match.iloc[0]
                 subtype_key = row.get("subtype_key")
+                label = None
                 if isinstance(subtype_key, str) and subtype_key and subtype_key.lower() != "nan":
                     label = subtype_key.replace("_", " ")
                 else:
+                    # Fall back to the human-readable registry ``name``
+                    # so aggregate-only rows without a ``subtype_key``
+                    # still render cleanly (SARC_LPS_UNSPEC →
+                    # "liposarcoma" rather than raw code).
+                    name = row.get("name")
+                    if isinstance(name, str) and name:
+                        label = name.split("(")[0].strip().lower()
+                if not label:
                     label = winning_subtype
                 subtype_annotation = f" (subtype: {label}-consistent)"
         except Exception:
