@@ -574,11 +574,21 @@ def _ci_confidence_tier(overall_lower, overall_upper):
 
     Reader-facing tags on the purity estimate so a 19–100% CI is
     visibly different from a 58–70% CI in the report.
+
+    A *zero-width* CI (``lower == upper == estimate``) is degenerate —
+    the estimator saw no per-gene variation, which happens on synthetic
+    / deterministic inputs (TCGA cohort medians, decomposition
+    templates, expected-expression probes). Surfacing that as "high
+    confidence" is misleading — the estimator couldn't produce
+    uncertainty, not because the answer is certain but because the
+    input has no spread to bound it with (#161).
     """
     try:
         span = float(overall_upper) - float(overall_lower)
     except (TypeError, ValueError):
         return "unknown"
+    if span <= 1e-9:
+        return "degenerate"
     if span < 0.15:
         return "high"
     if span < 0.35:
@@ -2003,7 +2013,13 @@ def _purity_ci_phrase(purity):
     hi = purity["overall_upper"]
     tier = _ci_confidence_tier(lo, hi)
     core = f"**{est:.0%}** (range {lo:.0%}–{hi:.0%})"
-    if tier == "low":
+    if tier == "degenerate":
+        core += (
+            " — **degenerate CI**: input had no per-gene variation so "
+            "uncertainty could not be estimated (typical of synthetic "
+            "/ cohort-median inputs)"
+        )
+    elif tier == "low":
         core += (
             " — **⚠ low-confidence**: the CI spans "
             f"{(hi - lo):.0%}, so per-gene tumor-expression estimates "
@@ -2883,12 +2899,15 @@ def _generate_text_reports(
         degradation_severity=deg_for_tier,
     )
     analysis["purity_confidence"] = purity_tier
-    tier_suffix = (
-        f" — **{purity_tier.tier} confidence** "
-        f"({purity_tier.inline_note})"
-        if purity_tier.tier in {"low", "moderate"} and purity_tier.reasons
-        else ""
-    )
+    if purity_tier.tier == "degenerate":
+        tier_suffix = f" — **degenerate CI**: {purity_tier.inline_note}"
+    elif purity_tier.tier in {"low", "moderate"} and purity_tier.reasons:
+        tier_suffix = (
+            f" — **{purity_tier.tier} confidence** "
+            f"({purity_tier.inline_note})"
+        )
+    else:
+        tier_suffix = ""
     lines.append(f"- **Overall estimate**: {purity['overall_estimate']:.0%} "
                   f"({purity['overall_lower']:.0%}\u2013{purity['overall_upper']:.0%})"
                   f"{tier_suffix}")

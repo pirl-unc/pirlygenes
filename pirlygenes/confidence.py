@@ -33,14 +33,18 @@ from typing import List
 
 @dataclass(frozen=True)
 class ConfidenceTier:
-    tier: str  # "high" | "moderate" | "low" | "unknown"
+    tier: str  # "high" | "moderate" | "low" | "degenerate" | "unknown"
     reasons: List[str] = field(default_factory=list)
 
     @property
     def badge(self) -> str:
-        return {"low": "⚠⚠", "moderate": "⚠", "high": "", "unknown": "?"}.get(
-            self.tier, ""
-        )
+        return {
+            "low": "⚠⚠",
+            "moderate": "⚠",
+            "high": "",
+            "degenerate": "—",
+            "unknown": "?",
+        }.get(self.tier, "")
 
     @property
     def inline_note(self) -> str:
@@ -77,6 +81,21 @@ def compute_purity_confidence(
 
     tier = "high"
     span = upper - lower
+    if span <= 1e-9:
+        # Zero-width CI means the estimator saw no per-gene variation
+        # (synthetic / cohort-median / deterministic input). Surfacing
+        # that as "high confidence" is misleading — the estimator
+        # couldn't produce uncertainty, not because the answer is
+        # certain but because the input has no spread to bound it.
+        # #161: tier this as ``degenerate`` so renderers show a
+        # specific "deterministic input — CI not estimated" message.
+        return ConfidenceTier(
+            tier="degenerate",
+            reasons=[
+                "deterministic input (no per-gene variation) — purity "
+                "CI not estimated"
+            ],
+        )
     if span >= 0.35:
         tier = "low"
         reasons.append(f"wide purity CI ({lower:.0%}–{upper:.0%})")
