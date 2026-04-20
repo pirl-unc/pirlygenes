@@ -11,7 +11,7 @@ Curated gene sets, pan-cancer expression references, and bulk RNA-seq decomposit
 - [Quick start](#quick-start) — install, run `analyze`, use gene sets in Python
 - [Gene sets](#gene-sets) — what's bundled and how to access it
 - [Analyze command](#the-analyze-command) — full single-sample pipeline
-  - [Attribution flow](#attribution-flow-make-it-make-sense) — the 5-stage decomposition logic
+  - [Attribution flow](#attribution-flow-make-it-make-sense) — the 5-step decomposition logic
   - [CLI arguments](#cli-arguments)
   - [Sample quality](#sample-quality-assessment)
   - [Decomposition](#broad-compartment-decomposition)
@@ -114,36 +114,36 @@ The main entry point for single-sample analysis. Takes a gene expression file (C
 
 See [docs/analyze-command.md](docs/analyze-command.md) for full output file reference.
 
-### Reasoning pipeline: coarse-to-fine with explicit stages
+### Reasoning pipeline: coarse-to-fine with explicit steps
 
-See [docs/reasoning-pipeline.md](docs/reasoning-pipeline.md) for the complete stage inventory and information-flow contract. Short version:
+See [docs/reasoning-pipeline.md](docs/reasoning-pipeline.md) for the complete step inventory and information-flow contract. Short version:
 
 ```
-  Stage 0a  Sample context        library prep + preservation + degradation
-  Stage 0b  Tissue composition    top HPA normals + top TCGA cohorts + cancer-hint
-  Stage 1   Cancer-type call      top-k TCGA candidates (signature + purity + lineage)
-  Stage 2   Tumor purity          point + CI + confidence tier
-  Stage 3   Broad decomposition   NNLS fit of tumor + TME (template-aware)
-  Stage 4   Therapy-axis state    AR / EMT / hypoxia / IFN / HER2 / ER up/down calls
-  Stage 5   Tumor-value core      9-point per-gene tumor-TPM
-  Stage 6   Report synthesis      brief / actionable / summary / analysis / targets / provenance
+  Step 0a  Sample context        library prep + preservation + degradation
+  Step 0b  Tissue composition    top HPA normals + top TCGA cohorts + cancer-hint
+  Step 1   Cancer-type call      top-k TCGA candidates (signature + purity + lineage)
+  Step 2   Tumor purity          point + CI + confidence tier
+  Step 3   Broad decomposition   NNLS fit of tumor + TME (template-aware)
+  Step 4   Therapy-axis state    AR / EMT / hypoxia / IFN / HER2 / ER up/down calls
+  Step 5   Tumor-value core      9-point per-gene tumor-TPM
+  Step 6   Report synthesis      brief / actionable / summary / analysis / targets / provenance
 ```
 
-Each stage writes a named result into a shared `analysis` dict; downstream stages read but never overwrite. Contracts are explicit — a reader of the final brief can trace any claim back through the stage chain. The guiding principle: if a sample is flagged ambiguous at Stage 0, that flag propagates through to Stage 6; no downstream stage silently promotes a soft-confidence call to a confident one.
+Each step writes a named result into a shared `analysis` dict; downstream steps read but never overwrite. Contracts are explicit — a reader of the final brief can trace any claim back through the step chain. The guiding principle: if a sample is flagged ambiguous at Step 0, that flag propagates through to Step 6; no downstream step silently promotes a soft-confidence call to a confident one.
 
 ### Attribution flow: "make it make sense"
 
 `pirlygenes` treats every TPM in a bulk tumor sample as a claim that must be *attributed* to some source — and then explains away as much of it as possible before crediting the tumor. The goal is a conservative, defensible core of tumor-specific expression, not a lift of raw TPM straight into therapeutic target recommendations.
 
-The flow runs in five stages:
+The flow runs in five steps:
 
-1. **Sample context** (runs *first*, before any cancer-type inference). A `SampleContext` is inferred from the expression table alone — what **library prep** produced the data (poly-A capture, ribo-depletion, total RNA, or exome capture) and what **preservation / degradation** state the RNA is in (fresh-frozen, FFPE, partial degradation). This becomes a **base layer of expression expectations**: which genes are expected to be over- or under-represented for *artifactual* reasons, independent of biology. The context is propagated forward and every downstream stage reads from it.
+1. **Sample context** (runs *first*, before any cancer-type inference). A `SampleContext` is inferred from the expression table alone — what **library prep** produced the data (poly-A capture, ribo-depletion, total RNA, or exome capture) and what **preservation / degradation** state the RNA is in (fresh-frozen, FFPE, partial degradation). This becomes a **base layer of expression expectations**: which genes are expected to be over- or under-represented for *artifactual* reasons, independent of biology. The context is propagated forward and every downstream step reads from it.
 2. **Coarse healthy-tissue decomposition.** Broad non-tumor compartments (T cell, B cell, myeloid, fibroblast, endothelial, plus site-specific host tissue for met samples) are fit by weighted NNLS against curated marker panels, anchored to an externally-estimated tumor purity.
 3. **Fine TME-subtype / activation-state dissection** (in progress: CAF vs healthy fibroblast, TAM polarisation, exhausted T, tumor endothelium, etc.). Activated-state references refine the coarse compartment call into biologically actionable subsets.
 4. **Tumor-value adjustment.** Per gene, the TME and matched-normal contributions are subtracted from the observed TPM before dividing by purity. Genes whose observed signal is dominantly explained by non-tumor compartments are flagged `tme_explainable` rather than credited to the tumor.
-5. **Conservative tumor-specific core.** What remains after stages 1–4 is reported as a bounded per-gene tumor-expression range (9-point across low/median/high TME and low/median/high purity), with a low-purity caveat for samples below 20% purity where TME residuals would otherwise be amplified ≥5×.
+5. **Conservative tumor-specific core.** What remains after steps 1–4 is reported as a bounded per-gene tumor-expression range (9-point across low/median/high TME and low/median/high purity), with a low-purity caveat for samples below 20% purity where TME residuals would otherwise be amplified ≥5×.
 
-Each stage *adds* to the attribution chain; none replaces earlier stages. The `analyze` report (summary.md, analysis.md, targets.md) surfaces the chain so a reader can see *why* a number is what it is, not just the final value.
+Each step *adds* to the attribution chain; none replaces earlier steps. The `analyze` report (summary.md, analysis.md, targets.md) surfaces the chain so a reader can see *why* a number is what it is, not just the final value.
 
 Reports and figures are ordered high-level → specific: start with what data we're looking at and how it was prepared (QC), then the coarse cancer-type call and what else is in the sample, then the deeper per-gene / per-target detail.
 
@@ -263,7 +263,7 @@ Prefer the standalone decomposition figures when reviewing or sharing a case. Th
 
 | File | Description |
 |---|---|
-| `*-sample-context.png` | Stage 1 diagnostic: library prep + preservation inference with thresholds used for the call |
+| `*-sample-context.png` | Step 1 diagnostic: library prep + preservation inference with thresholds used for the call |
 | `*-degradation-index.png` | Gene-pair scatter: expected vs observed long/short ratios, diagonal = no degradation |
 | `*-sample-summary.png` | Quick overview: cancer type, purity, background signatures |
 | `*-decomposition-composition.png` | Standalone composition bar for the best hypothesis |

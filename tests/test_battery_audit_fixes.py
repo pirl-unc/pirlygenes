@@ -269,7 +269,7 @@ def test_proliferation_panel_size_matches_public_api():
     assert len(set(panel)) == len(panel)
 
 
-# ── #37: Stage-0 reasoning_trace format ─────────────────────────────
+# ── #37: Step-0 reasoning_trace format ─────────────────────────────
 
 
 def test_reasoning_trace_rendering_format_stable():

@@ -740,7 +740,7 @@ def subtype_deconvolved_expression():
         return None
 
 
-# ---------- Cancer-pathway panels (tumor-evidence Stage-0 signals) ----------
+# ---------- Cancer-pathway panels (tumor-evidence Step-0 signals) ----------
 #
 # Each panel is a coordinated-program set — genes that move together in
 # tumors vs normal tissue. Empirical median-fold-change numbers below
@@ -820,7 +820,7 @@ def proliferation_panel_gene_names():
 
     Empirically-selected from a pan-cancer sweep: each gene has
     median fold-change ≥ 3 across 20 epithelial cancer-tissue pairs.
-    Used as a Stage-0 tumor-evidence signal (healthy_vs_tumor) and
+    Used as a Step-0 tumor-evidence signal (healthy_vs_tumor) and
     available here for downstream scoring / calibration.
     """
     return list(_PROLIFERATION_PANEL_GENES)
@@ -830,7 +830,7 @@ def hypoxia_panel_gene_names():
     """Hypoxia-response panel — CA9, SLC2A1, LDHA, ENO1, PGK1.
 
     CA9 is the strongest single-gene marker (median fold 12x across
-    pan-cancer). Used as a Stage-0 tumor-evidence signal and for
+    pan-cancer). Used as a Step-0 tumor-evidence signal and for
     downstream hypoxia-score calculation.
     """
     return list(_HYPOXIA_PANEL_GENES)
@@ -904,7 +904,7 @@ def tumor_up_vs_matched_normal(cancer_code: str | None = None):
     and specific to ≤ 4 cancer codes (drops ubiquitous artefacts and
     Ig / TCR rearrangement genes).
 
-    Useful as cancer-type-specific tumor evidence — if Stage-1 says
+    Useful as cancer-type-specific tumor evidence — if Step-1 says
     the sample best matches PRAD, and one of the PRAD-specific tumor-
     up genes (OTOP1, ANKRD34C) is expressed, that is independent
     corroboration distinct from the correlation pass.

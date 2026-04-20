@@ -4,11 +4,11 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-"""Stage-0 tissue-composition + cancer-hint gate (#149, refined).
+"""Step-0 tissue-composition + cancer-hint gate (#149, refined).
 
 Runs BEFORE cancer-type classification. Produces the coarsest
 possible reading of "what kind of tissue is this, and is there a
-hint of cancer?" and propagates the result forward so later stages
+hint of cancer?" and propagates the result forward so later steps
 can refine. Explicitly does NOT make a binary healthy-vs-cancer call
 on the first pass — healthy and low-purity-tumor look similar here
 and will be distinguished downstream once lineage markers, purity,
@@ -43,7 +43,7 @@ from .tumor_evidence import (
     TumorEvidenceScore,
     compute_tumor_evidence_score,
 )
-from .reasoning import DerivedFlags, compute_derived_flags, run_stage0_rules
+from .reasoning import DerivedFlags, compute_derived_flags, run_step0_rules
 
 
 _MIN_REFERENCE_GENES = 2000
@@ -148,7 +148,7 @@ _ONCOFETAL_PER_GENE_MIN_TPM = 3.0
 _ONCOFETAL_STRONG_COUNT = 2  # stricter than CTA since the panel is smaller
 
 # Cancer-type-specific tumor-up-vs-matched-normal panel. Built from
-# :func:`tumor_up_vs_matched_normal`. When Stage-0's top TCGA match
+# :func:`tumor_up_vs_matched_normal`. When Step-0's top TCGA match
 # aligns with a sample expressing several of that cohort's private
 # tumor-up markers, that's independent type-specific tumor evidence.
 _TUMOR_UP_PANEL_PER_GENE_MIN_TPM = 3.0
@@ -170,7 +170,7 @@ _CTA_STRONG_SUM_TPM = 30.0
 
 @dataclass
 class TissueCompositionSignal:
-    """Stage-0 coarse reading of tissue composition + cancer hint.
+    """Step-0 coarse reading of tissue composition + cancer hint.
 
     ``cancer_hint`` is one of:
 
@@ -196,7 +196,7 @@ class TissueCompositionSignal:
     # True when the top HPA / top TCGA pair is structurally
     # indistinguishable by bulk RNA (lymphoid normal vs heme-lymphoid
     # cancer). Downstream tumor-evidence gates should NOT suppress
-    # the Stage-0 banner in this case — the "purity" estimate on a
+    # the Step-0 banner in this case — the "purity" estimate on a
     # normal lymphoid sample is spurious anchor.
     structural_ambiguity: bool = False
     # CTA panel as positive tumor evidence (zero in non-reproductive
@@ -214,7 +214,7 @@ class TissueCompositionSignal:
     oncofetal_count_above_threshold: int = 0
     oncofetal_top_hits: list[tuple[str, float]] = field(default_factory=list)
     # Cancer-type-specific tumor-up-vs-matched-normal panel hits.
-    # Keyed on the top Stage-0 TCGA cohort — if that cohort has a
+    # Keyed on the top Step-0 TCGA cohort — if that cohort has a
     # specific tumor-up panel (PRAD: OTOP1/ANKRD34C; OV: CLDN6;
     # KIRC: CD70, GAGE1; STAD: CT45A9/DAZ1) and the sample expresses
     # hits from it, that's cancer-type-specific positive evidence.
@@ -231,7 +231,7 @@ class TissueCompositionSignal:
     reasoning_trace: list[str] = field(default_factory=list)
 
     def synthesis(self) -> str:
-        """Single-spot narrative of all Stage-0 evidence.
+        """Single-spot narrative of all Step-0 evidence.
 
         Enumerates the top tissue / top cohort / all tumor-evidence
         channels + aggregate + the rule trace that drove the
@@ -293,18 +293,18 @@ class TissueCompositionSignal:
     ) -> str | None:
         """Terse banner for the brief — shown for every non-tumor-consistent hint.
 
-        Propagates the Stage-0 coarse reading forward so a clinician
+        Propagates the Step-0 coarse reading forward so a clinician
         reading the brief sees the tissue context and the cancer-hint
         confidence up front rather than just the downstream TCGA label.
 
-        When ``purity`` (Stage 2) and/or ``signature_score`` (Stage 1)
+        When ``purity`` (Step 2) and/or ``signature_score`` (Step 1)
         are supplied, corroborating tumor evidence can suppress the
         banner: we don't want to shout "composition ambiguous" on a
         sample that has a solid lineage-matched TCGA cohort at moderate
         purity. The healthy-dominant banner has a higher bar to
         suppress than the possibly-tumor banner — it takes strong
         evidence (purity ≥ 0.5 AND signature ≥ 0.75) to override a
-        confident Stage-0 healthy call.
+        confident Step-0 healthy call.
         """
         if self.cancer_hint == "tumor-consistent":
             return None
@@ -337,7 +337,7 @@ class TissueCompositionSignal:
         cohort_rho = self.top_tcga_cohorts[0][1] if self.top_tcga_cohorts else 0.0
         if self.cancer_hint == "healthy-dominant":
             return (
-                f"**⚠ Stage-0 hint: healthy tissue dominant.** Sample profile "
+                f"**⚠ Step-0 hint: healthy tissue dominant.** Sample profile "
                 f"correlates with normal **{tissue_name}** (ρ={rho:.2f}) more "
                 f"than any TCGA cohort (best {cohort} ρ={cohort_rho:.2f}); "
                 f"proliferation panel quiet "
@@ -358,7 +358,7 @@ class TissueCompositionSignal:
             )
             if any(tag in tissue_lc for tag in lymphoid_tissues):
                 return (
-                    f"**Stage-0 hint: structural ambiguity (lymphoid).** Top "
+                    f"**Step-0 hint: structural ambiguity (lymphoid).** Top "
                     f"normal match is **{tissue_name}** (ρ={rho:.2f}); top "
                     f"TCGA match is {cohort} (ρ={cohort_rho:.2f}). Normal "
                     f"lymphoid tissue and lymphoid malignancy are indist-"
@@ -369,7 +369,7 @@ class TissueCompositionSignal:
                     f"is unreliable in this regime."
                 )
             return (
-                f"**Stage-0 hint: structural ambiguity (mesenchymal).** Top "
+                f"**Step-0 hint: structural ambiguity (mesenchymal).** Top "
                 f"normal match is **{tissue_name}** (ρ={rho:.2f}); top TCGA "
                 f"match is {cohort} (ρ={cohort_rho:.2f}). Well-differentiated "
                 f"sarcomas share a mesenchymal expression program with "
@@ -381,7 +381,7 @@ class TissueCompositionSignal:
                 f"below as the primary tumor-evidence channels."
             )
         return (
-            f"**Stage-0 hint: composition ambiguous.** Top normal-tissue match "
+            f"**Step-0 hint: composition ambiguous.** Top normal-tissue match "
             f"is **{tissue_name}** (ρ={rho:.2f}); top TCGA match is {cohort} "
             f"(ρ={cohort_rho:.2f}). Could be normal tissue or a low-purity "
             f"tumor — the downstream cancer call is soft-confidence pending "
@@ -518,8 +518,8 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
     """Race the sample against HPA-normal-tissue and TCGA-cohort columns.
 
     Returns the top-3 matches on each side + proliferation-panel
-    geomean + a coarse cancer-hint call. Intended as the first stage
-    in a coarse-to-fine pipeline: it gives downstream stages a
+    geomean + a coarse cancer-hint call. Intended as the first step
+    in a coarse-to-fine pipeline: it gives downstream steps a
     tissue-composition prior without committing to healthy / cancer.
     """
     sample_by_symbol = _extract_sample_tpm_by_symbol(df_expr)
@@ -645,7 +645,7 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
     # ---- Ordered rule-list reasoning ----
     # Build a lightweight signal carrier holding every field the
     # standalone rules need (rules are in pirlygenes.reasoning and
-    # are testable in isolation — see docs/stage0-reasoning.md).
+    # are testable in isolation — see docs/step0-reasoning.md).
     tmp = TissueCompositionSignal(
         top_normal_tissues=top_normal,
         top_tcga_cohorts=top_tcga,
@@ -664,7 +664,7 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         type_specific_hits=type_specific_hits,
         evidence=evidence,
     )
-    # Derive the Stage-0 flags (lymphoid/mesenchymal ambiguity, strong/
+    # Derive the Step-0 flags (lymphoid/mesenchymal ambiguity, strong/
     # soft tumor-evidence booleans, correlation margin) from the signal
     # fields + the ambiguity booleans that were computed upstream from
     # the raw tissue correlations.
@@ -681,7 +681,7 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
         correlation_margin=base_flags.correlation_margin,
     )
 
-    outcome, reasoning_trace = run_stage0_rules(tmp, flags)
+    outcome, reasoning_trace = run_step0_rules(tmp, flags)
     cancer_hint = outcome.hint
     structural_ambiguity = outcome.structural
     if outcome.rationale:

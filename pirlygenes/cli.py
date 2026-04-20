@@ -428,7 +428,7 @@ def annotate_surface_targets_with_cross_signals(ranges_df, therapy_scores):
 
 
 def _filter_quality_flags_against_context(flags, sample_context):
-    """Drop / rewrite quality flags that the stage-1 SampleContext
+    """Drop / rewrite quality flags that the step-1 SampleContext
     already explains (issue #77).
 
     Specifically: the "Suspicious MT fraction" warning fires whenever
@@ -915,8 +915,8 @@ def _analyze_body(
     forced_labels = _parse_always_label_genes(label_genes)
     template_overrides = _parse_csv_tokens(decomposition_templates)
 
-    # Stage 1 of the unified attribution flow: infer SampleContext BEFORE
-    # cancer-type inference. Downstream stages (purity CIs, decomposition,
+    # Step 1 of the unified attribution flow: infer SampleContext BEFORE
+    # cancer-type inference. Downstream steps (purity CIs, decomposition,
     # tumor-value adjustment, reporting) read from it as the base layer
     # of expression expectations.
     print("[context] Inferring sample context (library prep + preservation)...")
@@ -925,7 +925,7 @@ def _analyze_body(
     for flag in sample_context.flags:
         print(f"[context] {flag}")
 
-    # #149: Stage-0 healthy-vs-tumor gate. Races the sample against
+    # #149: Step-0 healthy-vs-tumor gate. Races the sample against
     # the 50 HPA normal-tissue columns + 33 TCGA cancer columns in
     # pan_cancer_expression() and checks a proliferation-panel
     # (MKI67+TOP2A+CCNB1+BIRC5+AURKA) geomean. Fixes the GTEx-style
@@ -936,9 +936,9 @@ def _analyze_body(
     from .healthy_vs_tumor import assess_healthy_vs_tumor
     try:
         healthy_vs_tumor = assess_healthy_vs_tumor(df_expr)
-        print(f"[stage-0] {healthy_vs_tumor.verdict}")
+        print(f"[step-0] {healthy_vs_tumor.verdict}")
     except Exception as exc:  # noqa: BLE001
-        print(f"[stage-0] healthy-vs-tumor gate failed: {exc}")
+        print(f"[step-0] healthy-vs-tumor gate failed: {exc}")
         healthy_vs_tumor = None
 
     context_png = "%s-sample-context.png" % prefix if prefix else "sample-context.png"
@@ -1021,7 +1021,7 @@ def _analyze_body(
     analysis["sample_context"] = sample_context
     analysis["cancer_type_source"] = "user-specified" if cancer_type else "auto-detected"
 
-    # Stage 1 propagation: widen purity confidence intervals under
+    # Step 1 propagation: widen purity confidence intervals under
     # detected degradation (#26). A noisier sample has a noisier purity
     # estimate; we don't re-estimate, just scale the reported band and
     # attach a ``degradation_caveat`` so downstream consumers (reports,
@@ -1102,7 +1102,7 @@ def _analyze_body(
 
     # Sample quality assessment — run after analysis so tissue_scores
     # are available for tissue-matched degradation baselines.
-    # #77: pass the stage-1 library_prep so the assessor skips the
+    # #77: pass the step-1 library_prep so the assessor skips the
     # "Suspicious MT fraction" override (and doesn't clobber the
     # length-pair-derived degradation level) when MT being near-zero is
     # explained by the inferred prep.
@@ -1113,7 +1113,7 @@ def _analyze_body(
         if sample_context is not None else None,
     )
     analysis["quality"] = quality
-    # #77: filter quality flags against the stage-1 SampleContext — the
+    # #77: filter quality flags against the step-1 SampleContext — the
     # "Suspicious MT fraction" warning is a false alarm when the
     # library prep we already inferred (exome capture / poly-A) legitimately
     # strips MT. Same filtered list is used by the markdown reports,
@@ -1138,7 +1138,7 @@ def _analyze_body(
         print(f"[therapy-response] scoring skipped: {exc}")
         therapy_scores = {}
     analysis["therapy_response_scores"] = therapy_scores
-    # #149: make the Stage-0 healthy-vs-tumor call available to
+    # #149: make the Step-0 healthy-vs-tumor call available to
     # brief / actionable / summary renderers downstream.
     analysis["healthy_vs_tumor"] = healthy_vs_tumor
     for cls, score in therapy_scores.items():
@@ -2413,7 +2413,7 @@ def _generate_text_reports(
     # Disease-state synthesis (#78): one-line narrative up top.
     disease_state_paragraph = compose_disease_state_narrative(analysis)
 
-    # Stage 1: input & sample-QC framing.
+    # Step 1: input & sample-QC framing.
     sample_context = analysis.get("sample_context")
     context_paragraph = ""
     if sample_context is not None:
@@ -2451,10 +2451,10 @@ def _generate_text_reports(
         if flags_to_show:
             quality_paragraph = "**Quality note**: " + "; ".join(flags_to_show) + "."
 
-    # Stage 2: headline call (already built above as `intro`).
+    # Step 2: headline call (already built above as `intro`).
     headline = intro
 
-    # Stage 3: what else is in the sample — purity clause + background
+    # Step 3: what else is in the sample — purity clause + background
     # tissues (from _summary_mode_clause), MHC-I level, analysis mode.
     composition = (
         _summary_mode_clause(sample_mode, purity, top_tissues)
@@ -2493,7 +2493,7 @@ def _generate_text_reports(
             )
         therapy_paragraph = "\n".join(lines_ts)
 
-    # Stage 4: constraints / decomposition detail / ambiguity.
+    # Step 4: constraints / decomposition detail / ambiguity.
     detail_parts = []
     if therapy_paragraph:
         detail_parts.append(therapy_paragraph)
@@ -2567,23 +2567,23 @@ def _generate_text_reports(
     header = "# Sample Analysis Summary\n"
     if input_path:
         header += f"\n*Input*: `{input_path}`\n"
-    # #149: Prepend the Stage-0 tissue-composition + cancer-hint
+    # #149: Prepend the Step-0 tissue-composition + cancer-hint
     # reading so a reader sees the coarse "what kind of tissue is
     # this and is there any hint of cancer" context before the
     # downstream cancer-type call. Propagated forward from analyze().
     hvt = analysis.get("healthy_vs_tumor")
-    stage0_section = ""
+    step0_section = ""
     if hvt is not None and hvt.top_normal_tissues:
         trace_clause = (
             f" *Rule: {' → '.join(hvt.reasoning_trace)}.*"
             if hvt.reasoning_trace else ""
         )
-        stage0_section = (
-            f"\n**Stage-0 tissue composition**: "
+        step0_section = (
+            f"\n**Step-0 tissue composition**: "
             f"{hvt.summary_line()}{trace_clause}\n"
         )
     with open(summary_path, "w") as f:
-        f.write(f"{header}{stage0_section}\n{summary}\n")
+        f.write(f"{header}{step0_section}\n{summary}\n")
     print(f"[report] Saved {summary_path}")
 
     # --- Detailed report ---
@@ -2594,15 +2594,15 @@ def _generate_text_reports(
     if disease_state_paragraph:
         lines.append(f"**Disease state**: {disease_state_paragraph}\n")
 
-    # Stage-0 tissue composition (#149) — same signal that drives the
+    # Step-0 tissue composition (#149) — same signal that drives the
     # brief banner and the summary top-line, surfaced here with the
     # full top-3 tissues / top-3 cohorts so a reader doing a deep
-    # analysis.md read sees the Stage-0 prior inline.
+    # analysis.md read sees the Step-0 prior inline.
     hvt = analysis.get("healthy_vs_tumor")
     if hvt is not None and hvt.top_normal_tissues:
         from .gene_sets_cancer import proliferation_panel_gene_names
         _prolif_panel_size = len(proliferation_panel_gene_names())
-        lines.append("## Stage-0 tissue composition\n")
+        lines.append("## Step-0 tissue composition\n")
         lines.append(f"- **Cancer hint**: {hvt.cancer_hint}")
         lines.append(
             f"- **Proliferation panel**: "
@@ -2620,7 +2620,7 @@ def _generate_text_reports(
         )
         lines.append(f"- **Top TCGA cohort matches**: {tcga_line}")
         # Surface the reasoning trace (which rule fired + rationale)
-        # so a reader can audit how Stage-0 arrived at the hint.
+        # so a reader can audit how Step-0 arrived at the hint.
         if hvt.reasoning_trace:
             lines.append(
                 f"- **Reasoning rule**: {' → '.join(hvt.reasoning_trace)}"
@@ -2675,7 +2675,7 @@ def _generate_text_reports(
             )
         lines.append("")
 
-    # Sample quality — driven by the stage-1 SampleContext so the
+    # Sample quality — driven by the step-1 SampleContext so the
     # three report sections (summary / analysis / targets) agree
     # (#77). The raw sample_quality output is still used for its
     # tissue-matched baselines, but the top-level "is this sample
@@ -3176,7 +3176,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             "`median_est` > 30 TPM against `tme_fold_med` before acting.\n"
         )
 
-    # Sample-context caveat (stage 1 propagation): when the sample was
+    # Sample-context caveat (step 1 propagation): when the sample was
     # flagged as degraded / FFPE, every marker-selection step down the
     # pipeline is noisier and the target medians are correspondingly
     # less reliable.

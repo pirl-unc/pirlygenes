@@ -1,37 +1,37 @@
-# Reasoning pipeline — stages and information flow
+# Reasoning pipeline — steps and information flow
 
-`pirlygenes analyze` runs a coarse-to-fine pipeline. Each stage
-produces a named result that downstream stages consume. This page
-documents the stages and the contract between them — what each stage
-writes, and what each stage reads from its predecessors.
+`pirlygenes analyze` runs a coarse-to-fine pipeline. Each step
+produces a named result that downstream steps consume. This page
+documents the steps and the contract between them — what each step
+writes, and what each step reads from its predecessors.
 
-The guiding principle: **no stage overrides an earlier stage's
-output**. Later stages refine the reading by adding orthogonal
-evidence; if a sample is flagged as ambiguous at Stage 0, that flag
+The guiding principle: **no step overrides an earlier step's
+output**. Later steps refine the reading by adding orthogonal
+evidence; if a sample is flagged as ambiguous at Step 0, that flag
 travels all the way to the brief. The reader sees the full chain.
 
-## Stage inventory (coarsest → finest)
+## Step inventory (coarsest → finest)
 
 ```
-  Stage 0   Sample context      library prep + preservation + degradation
-  Stage 0   Tissue composition  top HPA normals + top TCGA cohorts + cancer-hint
-  Stage 1   Cancer-type call    top-k TCGA candidates with signature + purity + lineage
-  Stage 2   Tumor purity        point + CI + confidence tier
-  Stage 3   Broad decomposition NNLS fit of tumor + TME compartments (template-aware)
-  Stage 4   Therapy-axis state  AR / EMT / hypoxia / IFN / HER2 / ER up/down calls
-  Stage 5   Tumor-value core    9-point per-gene tumor-attributed TPM with TME + purity ranges
-  Stage 6   Report synthesis    brief / actionable / summary / analysis / targets / provenance
+  Step 0   Sample context      library prep + preservation + degradation
+  Step 0   Tissue composition  top HPA normals + top TCGA cohorts + cancer-hint
+  Step 1   Cancer-type call    top-k TCGA candidates with signature + purity + lineage
+  Step 2   Tumor purity        point + CI + confidence tier
+  Step 3   Broad decomposition NNLS fit of tumor + TME compartments (template-aware)
+  Step 4   Therapy-axis state  AR / EMT / hypoxia / IFN / HER2 / ER up/down calls
+  Step 5   Tumor-value core    9-point per-gene tumor-attributed TPM with TME + purity ranges
+  Step 6   Report synthesis    brief / actionable / summary / analysis / targets / provenance
 ```
 
-Stages 0 run before Stage 1; the rest form a strictly ordered chain
-from Stage 1 onward. Each stage emits its result into the in-memory
-`analysis` dict under a known key, so Stage 6 (report synthesis) can
+Steps 0 run before Step 1; the rest form a strictly ordered chain
+from Step 1 onward. Each step emits its result into the in-memory
+`analysis` dict under a known key, so Step 6 (report synthesis) can
 read the full chain to surface every piece of evidence the clinician
 needs.
 
 ---
 
-## Stage 0a — Sample context
+## Step 0a — Sample context
 
 Module: `pirlygenes.sample_context`
 Entry: `infer_sample_context(df_expr) -> SampleContext`
@@ -48,15 +48,15 @@ Reads the expression table alone and infers:
 
 Writes: `analysis["sample_context"]`
 
-Consumed by: every downstream stage reads `sample_context` as a
-keyword argument. Stage 3 adjusts marker-panel weightings when prep
-is exome-capture (skip non-coding genes), Stage 5 widens 9-point
-ranges when degradation is severe, Stage 6 surfaces the prep-specific
+Consumed by: every downstream step reads `sample_context` as a
+keyword argument. Step 3 adjusts marker-panel weightings when prep
+is exome-capture (skip non-coding genes), Step 5 widens 9-point
+ranges when degradation is severe, Step 6 surfaces the prep-specific
 "mitochondrial and non-coding absence is expected by design" caveat.
 
 ---
 
-## Stage 0b — Tissue composition + cancer hint
+## Step 0b — Tissue composition + cancer hint
 
 Module: `pirlygenes.healthy_vs_tumor`
 Entry: `assess_tissue_composition(df_expr) -> TissueCompositionSignal`
@@ -78,7 +78,7 @@ Produces:
 
 Writes: `analysis["healthy_vs_tumor"]`
 
-Consumed by: Stage 6 (brief / summary banner). Explicitly does NOT
+Consumed by: Step 6 (brief / summary banner). Explicitly does NOT
 override the cancer call; it gives the reader a coarse "what kind of
 tissue + any hint of cancer" context so they can judge downstream
 confidence. Low-purity tumors and healthy tissue look similar here —
@@ -86,13 +86,13 @@ the gate surfaces that ambiguity rather than guessing.
 
 Known limitation: lymphoid-tissue-normal correlates almost identically
 with DLBC (the TCGA reference is itself >90% lymphoid tissue + the
-malignant clone). Stage 0b flags such cases as tumor-consistent /
-ambiguous rather than over-committing; Stage 3's lineage-marker
+malignant clone). Step 0b flags such cases as tumor-consistent /
+ambiguous rather than over-committing; Step 3's lineage-marker
 check is better positioned to distinguish.
 
 ---
 
-## Stage 1 — Cancer-type classification
+## Step 1 — Cancer-type classification
 
 Module: `pirlygenes.tumor_purity`
 Entry: `rank_cancer_type_candidates(df_expr, candidate_codes=None,
@@ -108,7 +108,7 @@ using five composable factors:
 5. **family-factor** — carries through to the final `geomean` score
 
 Reads: `sample_context` (library prep adjusts marker weights),
-`tissue_composition` (the Stage-0b top TCGA cohorts inform the
+`tissue_composition` (the Step-0b top TCGA cohorts inform the
 candidate-codes set when caller doesn't override).
 
 Writes: `analysis["cancer_candidates"]` — a list of
@@ -116,13 +116,13 @@ Writes: `analysis["cancer_candidates"]` — a list of
  normalized}` rows. Head of the list is the working call; rows 2-6
 are the alternatives surfaced in the *analysis.md* table.
 
-Consumed by: Stage 2 pulls the top candidate's `purity_result` as
-the starting point; Stage 3 runs decomposition per (cancer_type,
+Consumed by: Step 2 pulls the top candidate's `purity_result` as
+the starting point; Step 3 runs decomposition per (cancer_type,
 template) hypothesis across the top-k list.
 
 ---
 
-## Stage 2 — Tumor purity refinement
+## Step 2 — Tumor purity refinement
 
 Module: `pirlygenes.tumor_purity`
 Entry: `estimate_tumor_purity(df_expr, cancer_code, sample_context)
@@ -143,17 +143,17 @@ Produces:
   per-reason explanations (wide CI, low-purity regime, inconsistency
   across estimators)
 
-Reads: `sample_context`, top candidate from Stage 1.
+Reads: `sample_context`, top candidate from Step 1.
 
 Writes: `analysis["purity"]`, `analysis["purity_confidence"]`.
 
-Consumed by: Stage 3 uses purity as the external anchor for the NNLS
-fit; Stage 5 uses CI to widen 9-point ranges; Stage 6 surfaces tier
+Consumed by: Step 3 uses purity as the external anchor for the NNLS
+fit; Step 5 uses CI to widen 9-point ranges; Step 6 surfaces tier
 + reasons in the brief's purity line.
 
 ---
 
-## Stage 3 — Broad-compartment decomposition
+## Step 3 — Broad-compartment decomposition
 
 Module: `pirlygenes.decomposition`
 Entry: `decompose_sample(df_expr, cancer_types, templates=None,
@@ -170,23 +170,23 @@ For each (cancer_type, template) hypothesis in the top-k candidates:
 2. Select markers per compartment (HPA-derived specificity ranks,
    guarded against lineage-irrelevant auto-markers)
 3. Fit weighted NNLS under a soft sum-to-one constraint, with the
-   external purity from Stage 2 as anchor
+   external purity from Step 2 as anchor
 4. Attribute per gene: the TME + matched-normal contributions are
    subtracted from observed TPM to produce tumor-attributed TPM
 
-Reads: `sample_context`, `candidate_rows` (reuses Stage 1's ranking
+Reads: `sample_context`, `candidate_rows` (reuses Step 1's ranking
 to avoid re-running purity estimation per candidate — #85).
 
 Writes: `analysis["decomp_results"]` (list of candidates),
 `best_decomp = decomp_results[0]` — the winning hypothesis has
 `gene_attribution` DataFrame + `fractions` dict + `component_trace`.
 
-Consumed by: Stage 5 reads the gene_attribution for per-target tumor
-TPM; Stage 6 renders the component breakdown in provenance.md.
+Consumed by: Step 5 reads the gene_attribution for per-target tumor
+TPM; Step 6 renders the component breakdown in provenance.md.
 
 ---
 
-## Stage 4 — Therapy-response axis state
+## Step 4 — Therapy-response axis state
 
 Module: `pirlygenes.therapy_response`
 Entry: `score_therapy_signatures(sample_tpm_by_symbol, cancer_code)
@@ -203,14 +203,14 @@ TCGA cohort and emits a state call:
 
 Writes: `analysis["therapy_response_scores"]`.
 
-Consumed by: Stage 6 synthesises disease-state narrative from axis
+Consumed by: Step 6 synthesises disease-state narrative from axis
 states ("AR axis suppressed consistent with ADT exposure ...
 hypoxia active ... IFN-driven inflation of MHC-I / ISG surface
 targets").
 
 ---
 
-## Stage 5 — Tumor-value adjustment + 9-point expression ranges
+## Step 5 — Tumor-value adjustment + 9-point expression ranges
 
 Module: `pirlygenes.cli` (inside `analyze()` after decomposition)
 
@@ -230,12 +230,12 @@ levels. Attribution flags:
 Writes: `analysis["expression_ranges"]` — DataFrame with one row
 per target gene.
 
-Consumed by: Stage 6 renders targets.md deep tables + actionable
+Consumed by: Step 6 renders targets.md deep tables + actionable
 therapy landscape + brief top-3 candidates.
 
 ---
 
-## Stage 6 — Report synthesis
+## Step 6 — Report synthesis
 
 Modules: `pirlygenes.brief` (build_brief + build_actionable),
 `pirlygenes.cli` (summary.md, analysis.md, targets.md, provenance.md)
@@ -243,18 +243,18 @@ Modules: `pirlygenes.brief` (build_brief + build_actionable),
 Reads the entire `analysis` dict and produces six markdown
 artefacts:
 
-- `*-brief.md` — ≤40-line tumor-board handoff (Stage-0 banner,
+- `*-brief.md` — ≤40-line tumor-board handoff (Step-0 banner,
   cancer call, purity, disease state, top-3 therapies, caveats)
 - `*-actionable.md` — oncologist-facing review with therapy
   landscape + biomarker panel
-- `*-summary.md` — narrative summary (Stage-0 tissue composition
+- `*-summary.md` — narrative summary (Step-0 tissue composition
   line at top, then cancer call, therapy state, purity)
-- `*-analysis.md` — full pipeline detail (every stage's output)
+- `*-analysis.md` — full pipeline detail (every step's output)
 - `*-targets.md` — per-gene deep tables
-- `*-provenance.md` — stage-by-stage deduction chain
+- `*-provenance.md` — step-by-step deduction chain
 
-Each of these surfaces evidence from every prior stage so a reader
-can follow the reasoning from Stage 0 context down to the final
+Each of these surfaces evidence from every prior step so a reader
+can follow the reasoning from Step 0 context down to the final
 per-gene tumor-TPM call without losing intermediate evidence.
 
 ---
@@ -264,21 +264,21 @@ per-gene tumor-TPM call without losing intermediate evidence.
 ```
   df_expr
     │
-    ├─► Stage 0a: SampleContext ──────┐
+    ├─► Step 0a: SampleContext ──────┐
     │                                 │
-    ├─► Stage 0b: TissueComposition ──┤
+    ├─► Step 0b: TissueComposition ──┤
     │                                 ▼
-    └─► Stage 1: CancerCandidates ───► Stage 2: Purity ───► Stage 3: Decomp
+    └─► Step 1: CancerCandidates ───► Step 2: Purity ───► Step 3: Decomp
                                                                    │
-                                                                   ├─► Stage 4: TherapyAxes
+                                                                   ├─► Step 4: TherapyAxes
                                                                    │
-                                                                   └─► Stage 5: ExpressionRanges
+                                                                   └─► Step 5: ExpressionRanges
                                                                                    │
                                                                                    ▼
-                                                                           Stage 6: Reports
+                                                                           Step 6: Reports
 ```
 
-All stages write to the same `analysis` dict; Stage 6 is a pure reader.
-No stage mutates another stage's output. This means any stage's result
+All steps write to the same `analysis` dict; Step 6 is a pure reader.
+No step mutates another step's output. This means any step's result
 can be re-run independently (e.g. to debug a bad purity call) without
 corrupting upstream reasoning.

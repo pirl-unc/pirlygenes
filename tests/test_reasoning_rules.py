@@ -1,4 +1,4 @@
-"""Tests for the Stage-0 reasoning rules as standalone pure functions.
+"""Tests for the Step-0 reasoning rules as standalone pure functions.
 
 Each rule in :mod:`pirlygenes.reasoning` takes a
 ``TissueCompositionSignal`` and a pre-computed :class:`DerivedFlags`,
@@ -19,7 +19,7 @@ from pirlygenes.reasoning import (
     high_proliferation_panel,
     lymphoid_tissue_ambiguity,
     mesenchymal_tissue_ambiguity,
-    run_stage0_rules,
+    run_step0_rules,
     tcga_dominant_correlation,
     tumor_marker_overrides_ambiguity,
     weak_healthy_lean,
@@ -212,27 +212,27 @@ def test_tcga_dominant_correlation_is_unconditional_default():
 
 # ---------- Rule runner ----------
 
-def test_run_stage0_rules_picks_first_match():
+def test_run_step0_rules_picks_first_match():
     """Rule runner returns the first rule that fires — ordering matters."""
     s = _make_signal(cta_count_above_1_tpm=10)
     f = _flags(s, lymphoid_ambiguity=True)
-    outcome, trace = run_stage0_rules(s, f)
+    outcome, trace = run_step0_rules(s, f)
     # tumor_marker_overrides_ambiguity is first and matches.
     assert outcome.rule_name == "tumor-marker-overrides-ambiguity"
     assert outcome.hint == "tumor-consistent"
 
 
-def test_run_stage0_rules_falls_to_default_when_nothing_else_matches():
+def test_run_step0_rules_falls_to_default_when_nothing_else_matches():
     """Rule runner reaches the TCGA-dominant default when no earlier
     rule fires."""
     s = _make_signal()  # no tumor evidence, no ambiguity, no healthy margin
     f = _flags(s)
-    outcome, trace = run_stage0_rules(s, f)
+    outcome, trace = run_step0_rules(s, f)
     assert outcome.rule_name == "tcga-dominant-correlation"
     assert outcome.hint == "tumor-consistent"
 
 
-def test_run_stage0_rules_accepts_custom_rule_order():
+def test_run_step0_rules_accepts_custom_rule_order():
     """Custom rule order is honored."""
     s = _make_signal(cta_count_above_1_tpm=10)
     f = _flags(s, lymphoid_ambiguity=True)
@@ -243,13 +243,13 @@ def test_run_stage0_rules_accepts_custom_rule_order():
         tumor_marker_overrides_ambiguity,
         tcga_dominant_correlation,
     ]
-    outcome, trace = run_stage0_rules(s, f, rules=custom_order)
+    outcome, trace = run_step0_rules(s, f, rules=custom_order)
     assert outcome.rule_name == "lymphoid-tissue-tumor-indistinguishable"
 
 
-def test_run_stage0_rules_auto_computes_flags_when_omitted():
+def test_run_step0_rules_auto_computes_flags_when_omitted():
     """When ``flags`` is omitted the runner pre-computes them."""
     s = _make_signal(cta_count_above_1_tpm=10)
-    outcome, trace = run_stage0_rules(s)
+    outcome, trace = run_step0_rules(s)
     assert outcome.hint == "tumor-consistent"
     assert outcome.rule_name == "aggregate-tumor-evidence"

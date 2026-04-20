@@ -1,7 +1,7 @@
 # Licensed under the Apache License, Version 2.0
 """Unified tumor-evidence scoring (#149 synthesis).
 
-Every tumor-evidence channel Stage-0 computes — CTA re-expression,
+Every tumor-evidence channel Step-0 computes — CTA re-expression,
 oncofetal reactivation, coordinated proliferation, Warburg /
 glycolysis, hypoxia, cancer-type-specific tumor-up hits, DDR
 activation — each produces a normalised 0..1 score. Scores are
