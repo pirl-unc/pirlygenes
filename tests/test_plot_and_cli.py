@@ -124,8 +124,9 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     monkeypatch.setattr(cli_mod, "plot_sample_vs_cancer", lambda *a, **k: scatter_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_therapy_target_tissues", lambda *a, **k: tissue_calls.append(k))
     monkeypatch.setattr(cli_mod, "plot_therapy_target_safety", lambda *a, **k: safety_calls.append(k))
-    monkeypatch.setattr(cli_mod, "plot_cancer_type_genes", lambda *a, **k: cancer_gene_calls.append(k))
-    monkeypatch.setattr(cli_mod, "plot_cancer_type_disjoint_genes", lambda *a, **k: cancer_gene_calls.append(k))
+    # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
+    # removed from the default plot set (polish/4.40.1); skip
+    # monkeypatching them — they're no longer imported by cli.
     monkeypatch.setattr(cli_mod, "plot_cancer_type_mds", lambda *a, **k: mds_calls.append(k))
     monkeypatch.setattr(cli_mod, "therapy_target_gene_id_to_name", lambda t: {"ENSG_MOCK": t})
     monkeypatch.setattr(cli_mod, "pMHC_TCE_target_gene_id_to_name", lambda: {"ENSG_PMHC": "PMHC"})
@@ -207,7 +208,9 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert tissue_calls[0]["tpm_threshold"] == 18
     assert safety_calls[0]["top_k"] == 12
     assert safety_calls[0]["tpm_threshold"] == 18
-    assert len(cancer_gene_calls) == 2  # genes + disjoint
+    # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
+    # removed from the default plot set (polish/4.40.1).
+    assert len(cancer_gene_calls) == 0
     # Only MDS-TME is emitted now — PCA and hierarchy-method plots have
     # been removed from the default output (see pirl-unc/pirlygenes#36).
     assert len(pca_calls) == 0

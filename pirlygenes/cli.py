@@ -39,8 +39,6 @@ from .load_expression import load_expression_data
 from .plot import (
     plot_gene_expression,
     plot_sample_vs_cancer,
-    plot_cancer_type_genes,
-    plot_cancer_type_disjoint_genes,
     plot_cancer_type_mds,
     plot_therapy_target_tissues,
     plot_therapy_target_safety,
@@ -1583,14 +1581,11 @@ def _analyze_body(
     )
     _plt.close("all")
 
-    # Cancer type signature plots
-    print("[plot] Generating cancer type signature gene plots...")
-    genes_png = "%s-cancer-types-genes.png" % prefix if prefix else "cancer-types-genes.png"
-    plot_cancer_type_genes(df_expr, save_to_filename=genes_png, save_dpi=output_dpi)
-
-    disjoint_png = "%s-cancer-types-disjoint.png" % prefix if prefix else "cancer-types-disjoint.png"
-    plot_cancer_type_disjoint_genes(df_expr, save_to_filename=disjoint_png, save_dpi=output_dpi)
-    _plt.close("all")
+    # Cancer-type signature gene grids (``plot_cancer_type_genes`` +
+    # ``plot_cancer_type_disjoint_genes``) were removed from the default
+    # plot set in 4.40.1 — they duplicated the candidate-ranking table
+    # in analysis.md without adding interpretive value. The functions
+    # remain in ``pirlygenes.plot_embedding`` for Python-API consumers.
 
     # Sample-among-TCGA embedding: MDS in the TME-low gene space is the
     # preferred view — robust at low purity (where hierarchy-method plots
@@ -1917,8 +1912,6 @@ def _analyze_body(
         "%s-antigens.png" % prefix if prefix else "antigens.png",
         "%s-treatments.png" % prefix if prefix else "treatments.png",
         safety_png,
-        genes_png,
-        disjoint_png,
     ] + embedding_pngs
     if ct_png:
         png_files.append(ct_png)
@@ -1995,9 +1988,12 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 
 | File | Description |
 |------|-------------|
-| `*-summary.md` | One-paragraph natural language summary — cancer type, purity, key findings |
-| `*-analysis.md` | Structured analysis — candidate trace, purity components, decomposition, background signatures, embedding features |
+| `*-brief.md` | One-page clinician-facing summary (≤ 40 lines) — cancer call, purity, top therapies, caveats |
+| `*-actionable.md` | Oncologist-facing treatment-review document — deeper context on each therapy, subtype hypothesis, disease-state narrative |
+| `*-summary.md` | One-paragraph natural-language summary — cancer type, purity, key findings |
+| `*-analysis.md` | Structured deep-dive — candidate trace, purity components, decomposition, background signatures, embedding features |
 | `*-targets.md` | Therapeutic targets — tumor context, therapy landscape at a glance, CTAs, surface proteins, intracellular targets, tumor-expression ranges |
+| `*-provenance.md` | Attribution chain — how the sample gets parsed into library-prep / preservation / TME / tumor-core step by step |
 | `*-analysis-parameters.json` | Free model parameters plus selected sample mode and embedding methods |
 | `*-all-figures.pdf` | All figures combined into a single PDF |
 | `*-cancer-candidates.tsv` | Candidate cancer-type support trace |
@@ -2027,8 +2023,6 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
 | `*-mds-tme.png` | MDS: sample among TCGA cancer types (TME-low gene space) |
-| `*-cancer-types-genes.png` | Cancer-type gene signature heatmap |
-| `*-cancer-types-disjoint.png` | Disjoint (unique) gene counts per cancer type |
 """
     readme_path.write_text(readme)
     print(f"[output] Wrote {readme_path}")

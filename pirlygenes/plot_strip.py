@@ -182,6 +182,8 @@ def plot_gene_expression(
     palette_dict = {c: color for c, color in zip(named_cats_strip, named_palette)}
     palette_dict[other_name] = (0.8, 0.8, 0.8)  # gray for "other"
 
+    if verbose:
+        print(f"[plot] rendering strip plot ({len(df_gene_expr_annot)} points)...")
     cat = sns.catplot(
         data=df_gene_expr_annot,
         x="category",

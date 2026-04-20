@@ -1392,15 +1392,15 @@ def plot_therapy_pathway_state(
             ax.plot([up_fold], [i], marker="o", markersize=11,
                     color=color, markeredgecolor="white", markeredgewidth=1.4,
                     linestyle="", zorder=3,
-                    label="up-panel" if i == 0 else None)
-            ax.text(up_fold, i + 0.20, f"up {up_fold:.2f}\u00d7",
+                    label="genes up when pathway active" if i == 0 else None)
+            ax.text(up_fold, i + 0.20, f"\u2191 {up_fold:.2f}\u00d7",
                     ha="center", va="bottom", fontsize=8, color=color, fontweight="bold")
         if down_fold is not None:
             ax.plot([down_fold], [i], marker="s", markersize=10,
                     color=color, markeredgecolor="white", markeredgewidth=1.4,
                     linestyle="", zorder=3,
-                    label="down-panel" if i == 0 else None)
-            ax.text(down_fold, i - 0.26, f"down {down_fold:.2f}\u00d7",
+                    label="genes down when pathway active" if i == 0 else None)
+            ax.text(down_fold, i - 0.26, f"\u2193 {down_fold:.2f}\u00d7",
                     ha="center", va="top", fontsize=8, color=color, fontweight="bold")
 
     ax.axvline(1.0, color="#888888", linestyle="--", linewidth=1.0, alpha=0.7, zorder=1)
