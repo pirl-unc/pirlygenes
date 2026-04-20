@@ -1,8 +1,8 @@
 # Licensed under the Apache License, Version 2.0
-"""Stage-by-stage reasoning framework.
+"""Step-by-step reasoning framework.
 
-Each pipeline stage emits a typed dataclass. An ``AnalysisState``
-composes all the stage outputs so far, and reasoning rules are
+Each pipeline step emits a typed dataclass. An ``AnalysisState``
+composes all the step outputs so far, and reasoning rules are
 standalone typed functions that take the state (plus the fields
 they specifically need) and return a ``RuleOutcome`` or ``None``.
 
@@ -12,14 +12,14 @@ Design intent:
   dependencies on upstream analysis dicts.
 - Rules are ordered as a list (data, not code) so ordering changes
   are configurational, not edits-to-decision-logic.
-- Stages accumulate: Stage-1 analysis reads Stage-0 signals + fresh
-  Stage-1 fields; Stage-2 reads Stage-0 + Stage-1 + Stage-2.
-- Every stage has the same ``cancer_hint / reasoning_trace`` contract
+- Steps accumulate: Step-1 analysis reads Step-0 signals + fresh
+  Step-1 fields; Step-2 reads Step-0 + Step-1 + Step-2.
+- Every step has the same ``cancer_hint / reasoning_trace`` contract
   so downstream code that only needs the hint doesn't care which
-  stage produced the call.
+  step produced the call.
 
-For now this module implements the Stage-0 rule set; Stage-1 through
-Stage-6 are planned follow-ups. The framework is ready to extend.
+For now this module implements the Step-0 rule set; Step-1 through
+Step-6 are planned follow-ups. The framework is ready to extend.
 """
 
 from __future__ import annotations
@@ -46,11 +46,11 @@ _TUMOR_UP_PANEL_STRONG_COUNT = 2
 
 @dataclass(frozen=True)
 class DerivedFlags:
-    """Precomputed boolean derivations used by Stage-0 reasoning rules.
+    """Precomputed boolean derivations used by Step-0 reasoning rules.
 
     Populated by :func:`compute_derived_flags` once from the
     :class:`TissueCompositionSignal` fields so rules don't re-derive
-    them. Typed, immutable, and part of the Stage-0 contract (unlike
+    them. Typed, immutable, and part of the Step-0 contract (unlike
     the earlier hack of attaching private attributes to the signal).
     """
 
@@ -104,7 +104,7 @@ class RuleOutcome:
 
 # Type alias: rules are pure functions of (signal, flags) returning
 # a RuleOutcome (fires) or None (defers to next rule).
-Stage0Rule = Callable[
+Step0Rule = Callable[
     ["TissueCompositionSignal", DerivedFlags], Optional[RuleOutcome]
 ]
 
@@ -123,7 +123,7 @@ def rule(name: str, *, structural: bool = False):
 
 
 def compute_derived_flags(signal) -> DerivedFlags:
-    """Pre-compute the Stage-0 derived booleans from raw signal fields.
+    """Pre-compute the Step-0 derived booleans from raw signal fields.
 
     Single source of truth for the evidence-channel thresholds — rules
     read from the returned flags rather than re-deriving. Structural-
@@ -157,7 +157,7 @@ def compute_derived_flags(signal) -> DerivedFlags:
     )
 
 
-# ---- Stage-0 rules ----
+# ---- Step-0 rules ----
 #
 # Each rule is a pure function of (signal, flags) → RuleOutcome | None.
 # The @rule decorator stamps a descriptive name + the structural flag
@@ -340,7 +340,7 @@ def _tumor_marker_reasons(s, f: DerivedFlags) -> list[str]:
 # Ordered rule list. Rules are applied in order; the first to fire
 # (return a non-None ``RuleOutcome``) wins and downstream rules are
 # skipped. Re-orderable without editing rule bodies.
-STAGE0_RULES: list[Stage0Rule] = [
+STEP0_RULES: list[Step0Rule] = [
     tumor_marker_overrides_ambiguity,
     lymphoid_tissue_ambiguity,
     mesenchymal_tissue_ambiguity,
@@ -353,22 +353,22 @@ STAGE0_RULES: list[Stage0Rule] = [
 ]
 
 
-def run_stage0_rules(
+def run_step0_rules(
     signal,
     flags: DerivedFlags | None = None,
-    rules: list[Stage0Rule] | None = None,
+    rules: list[Step0Rule] | None = None,
 ) -> tuple[RuleOutcome, list[str]]:
     """Apply rules in order. Return (first-fire outcome, trace).
 
-    ``flags`` holds the pre-computed Stage-0 derivations; when omitted
+    ``flags`` holds the pre-computed Step-0 derivations; when omitted
     it is computed from ``signal``. ``rules`` defaults to
-    :data:`STAGE0_RULES` but can be overridden for unit tests that
+    :data:`STEP0_RULES` but can be overridden for unit tests that
     want to reorder or subset the rule list.
     """
     if flags is None:
         flags = compute_derived_flags(signal)
     if rules is None:
-        rules = STAGE0_RULES
+        rules = STEP0_RULES
     for fn in rules:
         outcome = fn(signal, flags)
         if outcome is not None:
@@ -381,30 +381,30 @@ def run_stage0_rules(
     )
 
 
-# ---- Analysis state (composable; grows stage by stage) ----
+# ---- Analysis state (composable; grows step by step) ----
 
 @dataclass
 class AnalysisState:
-    """Accumulating typed container for stage outputs.
+    """Accumulating typed container for step outputs.
 
-    Rules and downstream analyses read whichever stage fields they
-    need. ``stage0`` is the Stage-0 tissue-composition signal;
-    ``stage1``..``stage6`` will be populated as the pipeline runs
-    (Stage-1 cancer candidates, Stage-2 purity, Stage-3 decomposition,
-    etc.). A stage that hasn't run yet is ``None`` — rules that
+    Rules and downstream analyses read whichever step fields they
+    need. ``step0`` is the Step-0 tissue-composition signal;
+    ``step1``..``step6`` will be populated as the pipeline runs
+    (Step-1 cancer candidates, Step-2 purity, Step-3 decomposition,
+    etc.). A step that hasn't run yet is ``None`` — rules that
     depend on it must check before reading.
 
-    For now only stage0 is typed through; the other slots are kept
+    For now only step0 is typed through; the other slots are kept
     as the raw ``analysis`` dict pirlygenes already threads through
     the pipeline. Future PRs can replace each slot with a typed
-    dataclass as the corresponding stage is refactored.
+    dataclass as the corresponding step is refactored.
     """
 
-    stage0: object | None = None  # TissueCompositionSignal
+    step0: object | None = None  # TissueCompositionSignal
     # Future slots — left as Any so pre-refactor pipeline still works:
-    stage1_candidates: list | None = None
-    stage2_purity: dict | None = None
-    stage3_decomp: object | None = None
-    stage4_therapy_axes: dict | None = None
-    stage5_expression_ranges: object | None = None
+    step1_candidates: list | None = None
+    step2_purity: dict | None = None
+    step3_decomp: object | None = None
+    step4_therapy_axes: dict | None = None
+    step5_expression_ranges: object | None = None
     reasoning_trace: list[str] = field(default_factory=list)

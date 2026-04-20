@@ -104,7 +104,7 @@ targeting TCE, opening a new category for mutation-specific pMHC therapies.
 ## Methodology
 
 Targets were scored by: (1) number of distinct modalities with active programs,
-and (2) sum of development-stage scores per modality (Approved=5, Phase 3=3,
+and (2) sum of development-step scores per modality (Approved=5, Phase 3=3,
 Phase 2=2, Phase 1=1, Preclinical=0.5). Data sourced from pirlygenes curated
 datasets covering ADC-approved, ADC-trials, bispecific-antibodies-approved,
 multispecific-tcell-engager-trials, CAR-T-approved, TCR-T-approved, and

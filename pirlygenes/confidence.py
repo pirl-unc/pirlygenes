@@ -147,7 +147,7 @@ def compute_call_confidence(analysis) -> ConfidenceTier:
       pattern matches the candidate's expected pattern. Near-zero
       concordance means the classifier picked a candidate whose
       lineage genes aren't expressed in the sample.
-    - Stage-0 top-ρ TCGA cohort vs the classifier's pick. When Stage
+    - Step-0 top-ρ TCGA cohort vs the classifier's pick. When Step
       0 ranks cohort A first by correlation but the classifier picks
       cohort B, that's a mismatch worth surfacing.
     - Geomean gap to the runner-up. Top geomean 0.431 vs second 0.429
@@ -210,22 +210,22 @@ def compute_call_confidence(analysis) -> ConfidenceTier:
                 f"{second_gm:.3f}) — call is ambiguous"
             )
 
-    # 3. Stage-0 top-ρ TCGA cohort disagrees with the classifier's
+    # 3. Step-0 top-ρ TCGA cohort disagrees with the classifier's
     # pick. Sample-level correlation is the coarsest signal and can
     # be more reliable than the classifier's geomean when the panel
     # evidence is weak.
     hvt = analysis.get("healthy_vs_tumor")
-    stage0_top_code = None
+    step0_top_code = None
     if hvt is not None:
         tcga = getattr(hvt, "top_tcga_cohorts", None) or []
         if tcga:
             name, _rho = tcga[0]
-            stage0_top_code = name.replace("FPKM_", "") if isinstance(name, str) else None
-    if stage0_top_code and top_code and stage0_top_code != top_code:
+            step0_top_code = name.replace("FPKM_", "") if isinstance(name, str) else None
+    if step0_top_code and top_code and step0_top_code != top_code:
         if tier == "high":
             tier = "moderate"
         reasons.append(
-            f"Stage-0 correlation favored {stage0_top_code} but the "
+            f"Step-0 correlation favored {step0_top_code} but the "
             f"classifier picked {top_code}"
         )
 

@@ -1,4 +1,4 @@
-"""Tests for the Stage-0 tissue-composition + cancer-hint gate (#149).
+"""Tests for the Step-0 tissue-composition + cancer-hint gate (#149).
 
 Uses the shipped HPA nTPM + TCGA FPKM reference to construct synthetic
 samples (pure-tissue + pure-tumor) and asserts the top-3 matches and
@@ -51,7 +51,7 @@ def test_brain_sample_routes_to_healthy_dominant_with_brain_tissues_on_top():
     """A synthetic brain sample with quiet proliferation must produce
     a healthy-dominant hint AND the top HPA match must be a brain
     tissue (cerebral_cortex / spinal_cord / cerebellum). This is the
-    coarse-to-fine signal that downstream stages read."""
+    coarse-to-fine signal that downstream steps read."""
     from pirlygenes.healthy_vs_tumor import _ONCOFETAL_STRICT
     ref = _ref()
     sample = ref["nTPM_cerebral_cortex"].astype(float).to_dict()

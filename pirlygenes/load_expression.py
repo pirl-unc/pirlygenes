@@ -747,7 +747,7 @@ def load_expression_data(
         aggregate_gene_expression = False
 
     # Preserve the transcript-level frame (if present in the input) so
-    # downstream stages can use it for capture-bias-immune signals
+    # downstream steps can use it for capture-bias-immune signals
     # (isoform length bias, APA-3'UTR usage). Computed here *before*
     # aggregation / consolidation because those pandas groupby ops
     # strip ``df.attrs``; the retained frame is re-attached to the

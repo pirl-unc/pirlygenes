@@ -43,7 +43,7 @@ def _phase_label(phase: str) -> str:
 def _top_candidate_signature_score(analysis) -> float | None:
     """Return the top-ranked cancer candidate's signature match score.
 
-    Used by the Stage-0 banner to suppress noise: a confident TCGA
+    Used by the Step-0 banner to suppress noise: a confident TCGA
     signature match is evidence of tumor and nudges the banner to
     stay silent on soft "composition-ambiguous" cases.
     """
@@ -270,11 +270,11 @@ def build_brief(
     )
     lines.append("")
 
-    # #149: Stage-0 healthy-vs-tumor banner. Above the cancer call so
+    # #149: Step-0 healthy-vs-tumor banner. Above the cancer call so
     # the reader sees the caveat before anchoring on the TCGA label.
     # Banner decision reads downstream tumor evidence (purity from
-    # Stage 2, signature score from Stage 1) so a confident cancer
-    # call doesn't trigger a spurious Stage-0 warning.
+    # Step 2, signature score from Step 1) so a confident cancer
+    # call doesn't trigger a spurious Step-0 warning.
     hvt = analysis.get("healthy_vs_tumor")
     if hvt is not None:
         banner = hvt.brief_banner(
@@ -286,7 +286,7 @@ def build_brief(
             lines.append("")
 
     # Cancer call — annotated with #169 contested-call confidence when
-    # orthogonal signals (lineage concordance, runner-up gap, Stage-0
+    # orthogonal signals (lineage concordance, runner-up gap, Step-0
     # top-ρ cohort) disagree with the classifier's pick.
     from .confidence import compute_call_confidence
     call_tier = compute_call_confidence(analysis)
@@ -470,8 +470,8 @@ def build_actionable(
     lines.append(
         f"Working call: **{cancer_code}** ({cancer_name}).{call_suffix}"
     )
-    # Stage-0 tissue-composition banner (if non-tumor-consistent) so
-    # an actionable reader sees the Stage-0 caveat attached to the
+    # Step-0 tissue-composition banner (if non-tumor-consistent) so
+    # an actionable reader sees the Step-0 caveat attached to the
     # working call, not buried in the summary. Same evidence-gated
     # logic as the brief — strong tumor signal suppresses the banner.
     hvt = analysis.get("healthy_vs_tumor")

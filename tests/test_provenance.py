@@ -47,7 +47,7 @@ def _ranges_df():
     ])
 
 
-def test_provenance_md_walks_the_five_stages():
+def test_provenance_md_walks_the_five_steps():
     analysis = {
         "sample_context": _Ctx(),
         "purity": {"overall_estimate": 0.28, "overall_lower": 0.19, "overall_upper": 0.40},
@@ -56,11 +56,11 @@ def test_provenance_md_walks_the_five_stages():
         analysis, _ranges_df(), [_Decomp()],
         cancer_code="PRAD", sample_id="sample_X",
     )
-    # Each numbered stage must appear.
+    # Each numbered step must appear.
     for heading in ["1. Library prep", "2. Preservation",
                     "3. Coarse composition", "4. Subtype refinements",
                     "5. Tumor-specific core"]:
-        assert heading in md, f"missing stage heading: {heading}"
+        assert heading in md, f"missing step heading: {heading}"
     assert "exome capture" in md
     assert "FOLH1" in md or "tumor-core" in md.lower()
 

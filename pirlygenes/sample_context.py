@@ -12,7 +12,7 @@
 
 """Sample-context inference — library prep, preservation, degradation.
 
-First stage of the unified attribution flow (see README "Attribution
+First step of the unified attribution flow (see README "Attribution
 flow"). Runs before cancer-type inference and produces a ``SampleContext``
 that every downstream step consumes as a **base-layer of expression
 expectations**: which genes are expected to be over- or under-represented
@@ -715,7 +715,7 @@ def _refine_preservation_with_orthogonal_signals(
 def infer_sample_context(df_gene_expr) -> SampleContext:
     """Infer a ``SampleContext`` from a TPM expression table.
 
-    This is the FIRST stage of the unified attribution flow — it runs
+    This is the FIRST step of the unified attribution flow — it runs
     before cancer-type inference, decomposition, and any downstream
     analysis that might be biased by FFPE / library-prep artifacts.
 
@@ -833,7 +833,7 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
             "needed for a definitive FFPE call."
         )
 
-    # Append refinement-stage flags last so they read in narrative order.
+    # Append refinement-step flags last so they read in narrative order.
     flags.extend(refined_flags)
 
     return SampleContext(

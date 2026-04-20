@@ -7,7 +7,7 @@ facing reasons when:
 
 1. Top candidate's lineage concordance < 0.2 (near zero)
 2. Geomean gap to runner-up < 1.1× (tied call)
-3. Stage-0 top-ρ TCGA cohort disagrees with the classifier's pick
+3. Step-0 top-ρ TCGA cohort disagrees with the classifier's pick
 
 Canonical failure the tier catches: a real sarcoma validation
 sample at 4.35.0 → THYM with concordance 0.000 and a 0.002 geomean
@@ -74,8 +74,8 @@ def test_tied_geomean_downgrades_to_moderate():
     assert any("ambiguous" in r.lower() for r in tier.reasons)
 
 
-def test_stage0_mismatch_downgrades_to_moderate():
-    """Stage-0 correlation favors a cohort the classifier didn't pick
+def test_step0_mismatch_downgrades_to_moderate():
+    """Step-0 correlation favors a cohort the classifier didn't pick
     — surface the mismatch."""
     class _HVT:
         top_tcga_cohorts = [("FPKM_SARC", 0.77)]
@@ -88,11 +88,11 @@ def test_stage0_mismatch_downgrades_to_moderate():
     }
     tier = compute_call_confidence(analysis)
     assert tier.tier == "moderate"
-    assert any("Stage-0" in r and "SARC" in r for r in tier.reasons)
+    assert any("Step-0" in r and "SARC" in r for r in tier.reasons)
 
 
 def test_multiple_contradictions_all_surface_at_low_tier():
-    """Zero concordance + Stage-0 mismatch + tied geomean → tier stays
+    """Zero concordance + Step-0 mismatch + tied geomean → tier stays
     ``low`` and all three reasons appear."""
     class _HVT:
         top_tcga_cohorts = [("FPKM_SARC", 0.77)]
@@ -115,8 +115,8 @@ def test_missing_candidate_trace_returns_unknown():
     assert tier.tier == "unknown"
 
 
-def test_stage0_match_does_not_downgrade():
-    """Stage-0 agreeing with the classifier keeps the tier high."""
+def test_step0_match_does_not_downgrade():
+    """Step-0 agreeing with the classifier keeps the tier high."""
     class _HVT:
         top_tcga_cohorts = [("FPKM_PRAD", 0.82)]
     analysis = {

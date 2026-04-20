@@ -1,6 +1,6 @@
-# Stage-0 reasoning: signals, rules, and evidence synthesis
+# Step-0 reasoning: signals, rules, and evidence synthesis
 
-The Stage-0 gate answers "what kind of tissue is this, and is there
+The Step-0 gate answers "what kind of tissue is this, and is there
 evidence of cancer?" as the coarsest step of the pirlygenes pipeline.
 This document enumerates every signal the gate reads, the ordered
 rule list that drives the `cancer_hint` decision, and the
@@ -59,7 +59,7 @@ channel alone or several soft channels co-occurring.
 
 ## Rule list
 
-Stage-0 picks a `cancer_hint` by running these rules in order. The
+Step-0 picks a `cancer_hint` by running these rules in order. The
 first rule whose precondition matches fires and writes to the
 `reasoning_trace` for audit.
 
@@ -98,8 +98,8 @@ high TPM is the canonical strong-evidence-wins-over-ambiguity case.
 ## Banner suppression
 
 Banners are displayed to the clinician in the brief / actionable.
-They can be suppressed when downstream evidence (Stage 1 signature +
-Stage 2 purity) corroborates the cancer call:
+They can be suppressed when downstream evidence (Step 1 signature +
+Step 2 purity) corroborates the cancer call:
 
 - **Healthy-dominant banner**: suppressed only under very strong
   corroboration (purity ≥ 0.5 AND signature ≥ 0.75).
@@ -127,4 +127,4 @@ All gene panels are exposed via `pirlygenes.gene_sets_cancer`:
 
 Consumers can reuse these panels for downstream scoring, signature
 calibration, or cross-cohort comparison — same definitions the
-Stage-0 gate uses.
+Step-0 gate uses.

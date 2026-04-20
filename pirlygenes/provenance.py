@@ -3,7 +3,7 @@
 """Sample-provenance page — one synthesized 'what is this sample' doc (#106).
 
 The existing reports (summary, analysis, targets, brief, actionable)
-each surface different parts of the 5-stage attribution chain:
+each surface different parts of the 5-step attribution chain:
 
     library prep -> preservation -> coarse TME -> fine subtypes -> tumor core
 
@@ -30,9 +30,9 @@ def build_provenance_md(
     cancer_code: str,
     sample_id: Optional[str] = None,
 ) -> str:
-    """Render ``*-provenance.md`` — the 5-stage attribution chain.
+    """Render ``*-provenance.md`` — the 5-step attribution chain.
 
-    Each stage states its input and what it deducts from the naive
+    Each step states its input and what it deducts from the naive
     "all signal is tumor" interpretation so the reader can follow the
     chain from raw TPMs to a conservative tumor core.
     """
@@ -42,13 +42,13 @@ def build_provenance_md(
     header_id = f": {sample_id}" if sample_id else ""
     lines.append(f"# Sample provenance{header_id}\n")
     lines.append(
-        "<!-- What is in this sample, stage by stage. Each step "
+        "<!-- What is in this sample, step by step. Each step "
         "explains what it deducts before the next one. -->"
     )
     lines.append("")
 
-    # Stage 0b — tissue composition screen (#149). Runs before the
-    # lineage-aware stages so the reader sees "what kind of tissue is
+    # Step 0b — tissue composition screen (#149). Runs before the
+    # lineage-aware steps so the reader sees "what kind of tissue is
     # this, and is there any hint of cancer" in the first breath.
     hvt = analysis.get("healthy_vs_tumor")
     if hvt is not None and hvt.top_normal_tissues:
@@ -56,14 +56,14 @@ def build_provenance_md(
         lines.append(hvt.summary_line())
         if hvt.cancer_hint != "tumor-consistent":
             lines.append(
-                "\nThis Stage-0 signal propagates forward: the downstream "
+                "\nThis Step-0 signal propagates forward: the downstream "
                 "cancer call is treated as soft-confidence in the report "
                 "synthesis, and the per-gene expression ranges carry a "
                 "wider CI to reflect the ambiguity."
             )
         lines.append("")
 
-    # Stage 1 — library prep
+    # Step 1 — library prep
     lines.append("## 1. Library prep\n")
     if sample_context is not None:
         prep = getattr(sample_context, "library_prep", "unknown")
@@ -103,7 +103,7 @@ def build_provenance_md(
         lines.append("*Library prep could not be inferred from this input.*")
     lines.append("")
 
-    # Stage 2 — preservation / degradation
+    # Step 2 — preservation / degradation
     lines.append("## 2. Preservation\n")
     if sample_context is not None:
         pres = getattr(sample_context, "preservation", "unknown").replace("_", " ")
@@ -124,7 +124,7 @@ def build_provenance_md(
             )
     lines.append("")
 
-    # Stage 3 — coarse composition
+    # Step 3 — coarse composition
     lines.append("## 3. Coarse composition\n")
     best = decomp_results[0] if decomp_results else None
     if best is not None:
@@ -153,7 +153,7 @@ def build_provenance_md(
         lines.append("*No decomposition result available for this sample.*")
     lines.append("")
 
-    # Stage 4 — activated subtypes
+    # Step 4 — activated subtypes
     lines.append("## 4. Subtype refinements\n")
     if best is not None:
         trace = getattr(best, "component_trace", None)
@@ -185,7 +185,7 @@ def build_provenance_md(
             )
     lines.append("")
 
-    # Stage 5 — tumor core
+    # Step 5 — tumor core
     lines.append("## 5. Tumor-specific core\n")
     if ranges_df is not None and len(ranges_df):
         if "attribution" in ranges_df.columns:

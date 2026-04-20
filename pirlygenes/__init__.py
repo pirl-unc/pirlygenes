@@ -89,7 +89,7 @@ __all__ = [
     "cancer_family_panels_df",
     "cancer_family_panel",
     "cancer_family_panels",
-    # Sample context (stage 1 of unified attribution flow)
+    # Sample context (step 1 of unified attribution flow)
     "SampleContext",
     "infer_sample_context",
     "plot_sample_context",
