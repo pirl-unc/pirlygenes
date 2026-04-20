@@ -1295,10 +1295,11 @@ def _analyze_body(
         # matches the classifier AND its template has non-tumor
         # compartments. A template without TME compartments trivially
         # returns fraction=1.0 (everything maps to tumor by construction),
-        # which is not a purity measurement — pfo002 / BRCA template was
-        # the failure case: classifier said 36% (COAD), but BRCA template
-        # with "No non-tumor components in template" warning returned
-        # fraction=100% and that propagated as the headline purity.
+        # which is not a purity measurement — the canonical failure
+        # case is a CRC sample whose classifier said 36% (COAD) but
+        # whose best-fit decomposition template was BRCA / solid_primary
+        # with "No non-tumor components in template"; fraction=100%
+        # propagated as the headline purity.
         decomp_agrees = (best_decomp.cancer_type == cancer_code)
         decomp_has_tme = not any(
             "No non-tumor components in template" in w
@@ -2964,8 +2965,9 @@ def _generate_text_reports(
         # detected-but-uninformative. The estimator skips lineage genes
         # whose TME bleed-through in the reference exceeds their tumor
         # contribution; those genes are still present in the sample at
-        # real TPM, they just can't anchor a lineage purity. pfo004 /
-        # SARC / ACTA2 is the canonical case.
+        # real TPM, they just can't anchor a lineage purity. The
+        # canonical case is SARC-ACTA2: ACTA2 at ~190 TPM in the
+        # sample but TME-dominated at the TCGA SARC reference.
         from .tumor_purity import LINEAGE_GENES
         cancer_code_local = purity.get("cancer_type", cancer_code)
         all_lineage = LINEAGE_GENES.get(cancer_code_local, [])

@@ -92,8 +92,8 @@ first rule whose precondition matches fires and writes to the
 The ordering is deliberate: R1 (strong tumor evidence) fires before
 R2/R3 (structural ambiguity) because a sample with overwhelming
 CTA signal is definitively tumor even in a lineage-ambiguous
-correlation regime. pfo004 (SARC, 58 CTA hits at 5000+ TPM) is the
-canonical R1-wins-over-R3 case.
+correlation regime. A real SARC sample with ~58 CTA hits at very
+high TPM is the canonical strong-evidence-wins-over-ambiguity case.
 
 ## Banner suppression
 
