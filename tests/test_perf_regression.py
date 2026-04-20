@@ -38,11 +38,11 @@ import pytest
 
 N_TRANSCRIPTS = 5_000
 # Ceiling is set to catch *catastrophic* regressions (10×+), not micro
-# drift. A single-process local run lands at ~2s; xdist + noisy CI can
-# push this materially higher without indicating a real regression.
-# Keep enough slack that routine parallel-suite runs don't flake, and
-# a 10× regression to ~20s still fires.
-TIME_CEILING_S = 45.0
+# drift. A single-process local run lands at ~2s; xdist + coverage +
+# noisy CI can push this materially higher without indicating a real
+# regression. Keep enough slack that routine parallel-suite runs don't
+# flake, and a 50× regression to ~100s still fires.
+TIME_CEILING_S = 120.0
 
 
 def _make_fake_quant(path: Path, n: int = N_TRANSCRIPTS, seed: int = 42) -> None:
