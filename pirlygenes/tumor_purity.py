@@ -385,6 +385,94 @@ def _sample_hk_median(sample_tpm):
 LINEAGE_GENES = lineage_genes_by_cancer_type()
 
 
+# #162: cross-cohort lineage-panel specificity. When a lineage panel
+# gene is expressed at comparable levels in multiple TCGA cohorts
+# (e.g. MUC5AC in both STAD and PAAD, KRT19 across all GI epithelia),
+# running cohort X's panel on a sample from cohort Y inflates Y's
+# lineage purity for X — on the cohort-median battery STAD's lineage
+# computed to 0.913 on a PAAD median, which combined with the GASTRIC
+# family factor flipped the classifier to STAD. Filter each cohort's
+# panel to the genes whose *home* expression dominates the max non-
+# home cohort expression by the specificity threshold.
+_LINEAGE_SPECIFICITY_MIN = 0.5  # home / (home + max_other) ≥ 0.5
+_LINEAGE_SPECIFICITY_IGNORE_BELOW = 1.0  # don't filter near-zero refs
+_LINEAGE_MIN_GENES_AFTER_FILTER = 2  # don't prune a panel below this
+_LINEAGE_SPECIFIC_CACHE: dict = {}
+
+
+def _cancer_specific_lineage_genes(cancer_code: str) -> list:
+    """Return the subset of the cancer type's lineage panel that is
+    specific to its home cohort.
+
+    A gene is considered specific when its FPKM in ``cancer_code``'s
+    cohort exceeds every other cohort's FPKM such that
+    ``home / (home + max_other) ≥ _LINEAGE_SPECIFICITY_MIN``. Genes
+    with near-zero home expression (below
+    ``_LINEAGE_SPECIFICITY_IGNORE_BELOW``) are kept regardless — those
+    are ambient-level genes not driving cross-cohort crosstalk.
+
+    The filter guarantees at least ``_LINEAGE_MIN_GENES_AFTER_FILTER``
+    genes remain; when specificity-filtering would drop too many, the
+    original panel is returned (the cohort's panel is too promiscuous
+    to filter safely and the lineage estimator's own ``tme_ratio`` check
+    remains the safety net).
+    """
+    if cancer_code in _LINEAGE_SPECIFIC_CACHE:
+        return _LINEAGE_SPECIFIC_CACHE[cancer_code]
+    panel = LINEAGE_GENES.get(cancer_code, [])
+    if not panel:
+        _LINEAGE_SPECIFIC_CACHE[cancer_code] = []
+        return []
+    ref = pan_cancer_expression().drop_duplicates(subset="Symbol")
+    ref = ref.set_index("Symbol")
+    home_col = f"FPKM_{cancer_code}"
+    other_cols = [
+        c for c in ref.columns
+        if c.startswith("FPKM_") and c != home_col
+    ]
+    if home_col not in ref.columns or not other_cols:
+        _LINEAGE_SPECIFIC_CACHE[cancer_code] = list(panel)
+        return list(panel)
+    # Compute per-gene specificity score; keep the ones above the
+    # threshold. For genes below the threshold, retain the top-N most-
+    # specific so a heavily-shared panel (STAD's 3-of-4 GI-epithelium
+    # markers) still yields enough signal for the purity estimator.
+    scored = []
+    specific = []
+    for gene in panel:
+        if gene not in ref.index:
+            continue
+        home_val = float(ref.loc[gene, home_col] or 0.0)
+        other_vals = ref.loc[gene, other_cols].astype(float)
+        max_other = float(other_vals.max())
+        # Near-zero expression everywhere → filter doesn't apply.
+        if home_val + max_other < _LINEAGE_SPECIFICITY_IGNORE_BELOW:
+            specific.append(gene)
+            scored.append((gene, 1.0))
+            continue
+        denom = home_val + max_other
+        if denom <= 0:
+            scored.append((gene, 0.0))
+            continue
+        specificity = home_val / denom
+        scored.append((gene, specificity))
+        if specificity >= _LINEAGE_SPECIFICITY_MIN:
+            specific.append(gene)
+    if len(specific) < _LINEAGE_MIN_GENES_AFTER_FILTER and scored:
+        # Not enough specific genes to anchor a purity estimate. Fill
+        # in by keeping the top-N most-specific genes from the full
+        # panel, even if they fall below the threshold — safer than
+        # reverting to the full panel (which defeats the filter).
+        scored_sorted = sorted(scored, key=lambda pair: pair[1], reverse=True)
+        fill = [g for g, _ in scored_sorted if g not in specific]
+        for g in fill:
+            if len(specific) >= _LINEAGE_MIN_GENES_AFTER_FILTER:
+                break
+            specific.append(g)
+    _LINEAGE_SPECIFIC_CACHE[cancer_code] = specific
+    return specific
+
+
 def _lineage_purity_estimates(cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga_purity):
     """Estimate purity from cancer-type lineage genes using HK-normalized ratios.
 
@@ -397,7 +485,11 @@ def _lineage_purity_estimates(cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga
 
     Returns list of dicts with per-gene purity estimates.
     """
-    genes = LINEAGE_GENES.get(cancer_code, [])
+    # #162: filter the panel to genes that are specific to this cohort
+    # relative to other TCGA cohorts — avoids the STAD/PAAD-style
+    # crosstalk where shared GI-epithelium markers inflate the wrong
+    # cancer type's lineage purity.
+    genes = _cancer_specific_lineage_genes(cancer_code)
     if not genes:
         return [], []
 
