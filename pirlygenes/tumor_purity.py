@@ -26,9 +26,12 @@ import pandas as pd
 
 from .gene_sets_cancer import (
     cancer_family_panels,
+    cancer_type_subtypes_of,
     housekeeping_gene_ids,
+    is_mixture_cohort,
     lineage_genes_by_cancer_type,
     pan_cancer_expression,
+    subtype_deconvolved_expression,
 )
 from .common import _build_sample_tpm_by_symbol as _common_build_sample_tpm
 from .format import render_fold
@@ -644,6 +647,188 @@ def _summarize_lineage_support(lineage_per_gene):
     }
 
 
+def _subtype_tumor_tpm_lookup(subtype_code):
+    """Return dict of {symbol: tumor_tpm_median} for a subtype.
+
+    Source: ``subtype-deconvolved-expression.csv.gz`` (tumor-only TPM
+    per (cancer_code, subtype)). Used by mixture-cohort lineage
+    estimation (#171) — the parent-cohort median (``FPKM_SARC``) is a
+    diluted mixture; the subtype median is a clean per-subtype tumor
+    profile.
+    """
+    sub_df = subtype_deconvolved_expression()
+    if sub_df is None:
+        return {}
+    matched = sub_df[sub_df["cancer_code"] == subtype_code]
+    if matched.empty:
+        return {}
+    return dict(zip(matched["symbol"], matched["tumor_tpm_median"].astype(float)))
+
+
+def _subtype_lineage_purity_estimates(
+    subtype_code, panel, sample_tpm, hk_syms, ref_by_sym=None,
+):
+    """Per-gene purity estimates for a mixture-cohort subtype (#171).
+
+    Like :func:`_lineage_purity_estimates` but uses the subtype's
+    tumor-only median TPM as the reference (no TCGA purity deconv
+    needed — the source is already tumor-pure). This lets rare markers
+    like MYOD1 (near-zero at TCGA-SARC median, but ~65 TPM at RMS_ERMS
+    tumor median) actually anchor a purity estimate.
+
+    Returns ``(results, skipped_detected)`` matching the parent helper
+    contract so :func:`_summarize_lineage_support` consumes either.
+    """
+    subtype_tpm = _subtype_tumor_tpm_lookup(subtype_code)
+    if not subtype_tpm:
+        return [], []
+
+    ref = pan_cancer_expression()
+    ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
+
+    # Same TME tissues the parent helper uses — keeps the TME-ratio
+    # computation consistent across the mixture / non-mixture paths.
+    _tme = {
+        "bone_marrow", "lymph_node", "spleen", "thymus", "tonsil", "appendix",
+        "smooth_muscle", "skeletal_muscle", "heart_muscle", "adipose_tissue",
+    }
+    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+    tme_cols = [c for c in ntpm_cols if c.replace("nTPM_", "") in _tme]
+    hk_in_ref = [s for s in hk_syms if s in ref_dedup.index]
+
+    tme_hk_medians = {
+        col: ref_dedup.loc[hk_in_ref, col].astype(float).median()
+        for col in tme_cols
+    }
+
+    sample_hk_vals = [sample_tpm[g] for g in hk_syms if sample_tpm.get(g, 0) > 0]
+    sample_hk_med = float(np.median(sample_hk_vals)) if sample_hk_vals else 0.0
+    if sample_hk_med <= 0:
+        return [], []
+
+    # The subtype tumor-TPM table has no HK row per se; use the HPA
+    # median of HK genes as the normalizer that converts subtype tumor
+    # TPM into an HK-relative "tumor ratio". This follows the same
+    # normalization spirit as the parent-cohort helper but without a
+    # cohort-specific FPKM column.
+    ref_hk_median_cols = [
+        c for c in ntpm_cols if c.replace("nTPM_", "")
+        not in _tme and c.replace("nTPM_", "")
+        not in {"testis", "epididymis", "seminal_vesicle", "placenta", "ovary"}
+    ]
+    if not ref_hk_median_cols:
+        return [], []
+    ref_hk_normalizer = float(
+        ref_dedup.loc[hk_in_ref, ref_hk_median_cols].astype(float).median().median()
+    )
+    if ref_hk_normalizer <= 0:
+        return [], []
+
+    results = []
+    skipped_detected = []
+    for gene in panel:
+        s_tpm = sample_tpm.get(gene, 0)
+        if s_tpm <= 0:
+            continue
+        tumor_tpm = subtype_tpm.get(gene)
+        if tumor_tpm is None or tumor_tpm <= 0:
+            continue
+        if gene not in ref_dedup.index:
+            continue
+
+        sample_ratio = s_tpm / sample_hk_med
+        tumor_ratio = float(tumor_tpm) / ref_hk_normalizer
+
+        tme_ratios = []
+        for col in tme_cols:
+            hk_m = tme_hk_medians[col]
+            if hk_m > 0:
+                tme_ratios.append(float(ref_dedup.loc[gene, col]) / hk_m)
+        tme_ratio = float(np.median(tme_ratios)) if tme_ratios else 0.0
+
+        if tumor_ratio <= tme_ratio:
+            skipped_detected.append({
+                "gene": gene,
+                "sample_tpm": s_tpm,
+                "reason": "tme_dominated",
+                "tme_ratio": float(tme_ratio),
+                "tumor_ratio": float(tumor_ratio),
+            })
+            continue
+
+        purity = (sample_ratio - tme_ratio) / (tumor_ratio - tme_ratio)
+        purity = float(np.clip(purity, 0, 1))
+        results.append({
+            "gene": gene,
+            "sample_tpm": s_tpm,
+            "sample_ratio": float(sample_ratio),
+            "ref_ratio": float(tumor_ratio),  # subtype is already tumor-pure
+            "tme_ratio": float(tme_ratio),
+            "tumor_ratio": float(tumor_ratio),
+            "purity": purity,
+        })
+
+    return results, skipped_detected
+
+
+def _mixture_cohort_lineage_summary(parent_code, sample_tpm, hk_syms):
+    """Evaluate lineage per subtype for a mixture parent; return max (#171).
+
+    For each subtype of ``parent_code`` that has both (a) a curated
+    lineage panel in ``lineage-genes.csv`` and (b) tumor-only
+    expression medians in ``subtype-deconvolved-expression``, compute
+    the lineage support. Pick the subtype with the best concordance
+    (ties broken by detection_fraction).
+
+    Returns ``None`` when no subtype qualifies — callers should fall
+    back to the parent-level lineage computation.
+    """
+    subtypes = cancer_type_subtypes_of(parent_code)
+    if not subtypes:
+        return None
+
+    best = None
+    per_subtype = []
+    for subtype_code in subtypes:
+        panel = LINEAGE_GENES.get(subtype_code, [])
+        if not panel:
+            continue
+        per_gene, skipped = _subtype_lineage_purity_estimates(
+            subtype_code, panel, sample_tpm, hk_syms,
+        )
+        if not per_gene:
+            per_subtype.append({
+                "code": subtype_code,
+                "concordance": None,
+                "detection_fraction": 0.0,
+                "lineage_per_gene": [],
+                "skipped": skipped,
+            })
+            continue
+        support = _summarize_lineage_support(per_gene)
+        record = {
+            "code": subtype_code,
+            "concordance": support["concordance"],
+            "detection_fraction": support["detection_fraction"],
+            "support_factor": support["support_factor"],
+            "lineage_per_gene": per_gene,
+            "skipped": skipped,
+        }
+        per_subtype.append(record)
+        # Rank: (concordance, detection_fraction, panel-size tiebreak).
+        concordance = record["concordance"] or 0.0
+        detection = record["detection_fraction"] or 0.0
+        score = (concordance, detection, len(per_gene))
+        if best is None or score > best["_score"]:
+            best = {**record, "_score": score}
+
+    if best is None:
+        return None
+    best.pop("_score", None)
+    best["per_subtype"] = per_subtype
+    return best
+
+
 def _select_tumor_specific_genes(cancer_code, n=30):
     """Select genes highly expressed in cancer but NOT in matched normal tissue.
 
@@ -1159,6 +1344,38 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
     lineage_per_gene, lineage_skipped_detected = _lineage_purity_estimates(
         cancer_code, sample_tpm, ref_by_sym, hk_syms, tcga_purity,
     )
+    # #171: mixture-cohort modeling. When the parent cohort is a union
+    # of lineage-distinct subtypes (SARC = LMS ∪ liposarcoma ∪ synovial
+    # ∪ ...), the TCGA parent median drowns subtype-specific markers.
+    # Evaluate each subtype's panel against the subtype's tumor-only
+    # expression and, if any subtype carries more anchoring genes or
+    # clearly better concordance than the diluted parent panel, use its
+    # result and tag the winning subtype.
+    #
+    # Tiebreak rule: a subtype wins when it either (a) has strictly
+    # more anchoring genes (parent panels on mixture cohorts often
+    # collapse to 1–2 genes after the specificity+TME filters, which
+    # inflates concordance artificially) or (b) matches the parent
+    # gene-count and scores better concordance.
+    winning_subtype = None
+    mixture_subtype_details = None
+    if is_mixture_cohort(cancer_code):
+        mixture = _mixture_cohort_lineage_summary(cancer_code, sample_tpm, hk_syms)
+        if mixture is not None and mixture.get("lineage_per_gene"):
+            parent_support = _summarize_lineage_support(lineage_per_gene)
+            parent_conc = parent_support.get("concordance") or 0.0
+            parent_n = len(lineage_per_gene)
+            subtype_conc = mixture.get("concordance") or 0.0
+            subtype_n = len(mixture["lineage_per_gene"])
+            subtype_wins = (
+                subtype_n > parent_n
+                or (subtype_n == parent_n and subtype_conc >= parent_conc)
+            )
+            if subtype_wins:
+                lineage_per_gene = mixture["lineage_per_gene"]
+                lineage_skipped_detected = mixture.get("skipped") or []
+                winning_subtype = mixture["code"]
+                mixture_subtype_details = mixture.get("per_subtype")
     lineage_purities = sorted(g["purity"] for g in lineage_per_gene if g["purity"] > 0)
     if len(lineage_purities) >= 3:
         # Use upper-half median: genes giving LOW estimates likely
@@ -1237,6 +1454,13 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
                 # than "not detected" — a calibration signal, not an
                 # absence signal.
                 "skipped_detected": lineage_skipped_detected,
+                # #171: when the parent is a mixture cohort (e.g. SARC
+                # = LMS ∪ liposarcoma ∪ synovial ∪ …) and one of the
+                # subtypes outscored the parent panel, the winning
+                # subtype is surfaced here so the classifier / brief
+                # can render "Cancer call: SARC (subtype: X-consistent)".
+                "winning_subtype": winning_subtype,
+                "mixture_subtype_details": mixture_subtype_details,
             },
             "stromal": {
                 "enrichment": stromal_enrichment,
@@ -1978,6 +2202,7 @@ def rank_cancer_type_candidates(
         lineage_support_factor = float(lineage.get("support_factor") or 1.0)
         lineage_concordance = lineage.get("concordance")
         lineage_detection_fraction = lineage.get("detection_fraction")
+        winning_subtype = lineage.get("winning_subtype")
         family_label = _CANCER_FAMILY_BY_CODE.get(code)
         if family_label is not None:
             if family_label in non_penalizing_families:
@@ -2035,6 +2260,7 @@ def rank_cancer_type_candidates(
                 "lineage_concordance": lineage_concordance,
                 "lineage_detection_fraction": lineage_detection_fraction,
                 "lineage_support_factor": lineage_support_factor,
+                "winning_subtype": winning_subtype,
                 "family_label": family_label,
                 "family_score": family_scores.get(family_label) if family_label is not None else None,
                 "family_presence": family_presence,

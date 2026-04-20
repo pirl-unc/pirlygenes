@@ -297,7 +297,37 @@ def build_brief(
         )
     else:
         suffix = ""
-    lines.append(f"**Cancer call:** {cancer_code} ({cancer_name}).{suffix}")
+
+    # #171: for mixture cohorts, surface the winning subtype hypothesis
+    # so the reader sees "Cancer call: SARC (subtype: rhabdomyosarcoma
+    # -consistent)" instead of just SARC. The subtype is the registry
+    # code's ``subtype_key`` field (e.g. "leiomyosarcoma") or the code
+    # itself when no human-readable key is populated.
+    subtype_annotation = ""
+    winning_subtype = None
+    candidate_trace = analysis.get("candidate_trace") or []
+    if candidate_trace:
+        winning_subtype = candidate_trace[0].get("winning_subtype")
+    if winning_subtype:
+        try:
+            from .gene_sets_cancer import cancer_type_registry
+            reg = cancer_type_registry()
+            match = reg[reg["code"] == winning_subtype]
+            if not match.empty:
+                row = match.iloc[0]
+                subtype_key = row.get("subtype_key")
+                if isinstance(subtype_key, str) and subtype_key and subtype_key.lower() != "nan":
+                    label = subtype_key.replace("_", " ")
+                else:
+                    label = winning_subtype
+                subtype_annotation = f" (subtype: {label}-consistent)"
+        except Exception:
+            subtype_annotation = f" (subtype: {winning_subtype}-consistent)"
+
+    lines.append(
+        f"**Cancer call:** {cancer_code} ({cancer_name})"
+        f"{subtype_annotation}.{suffix}"
+    )
 
     # Purity
     overall = purity.get("overall_estimate")

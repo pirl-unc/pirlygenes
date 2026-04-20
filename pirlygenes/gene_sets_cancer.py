@@ -670,6 +670,33 @@ def cancer_type_subtypes_of(parent_code):
     return df[df["parent_code"] == parent_code]["code"].tolist()
 
 
+def mixture_cohort_codes():
+    """Return parent codes flagged as mixture cohorts in the registry (#171).
+
+    A mixture cohort is a parent code whose TCGA / reference median is a
+    biological union of lineage-distinct subtypes. Running classification
+    against the parent median drowns subtype-specific markers; the
+    classifier instead evaluates each subtype's lineage panel
+    independently and takes the max (see
+    :func:`pirlygenes.tumor_purity.estimate_tumor_purity`).
+
+    Example: ``SARC`` = leiomyosarcoma ∪ liposarcoma ∪ myxofibrosarcoma ∪
+    undifferentiated pleomorphic ∪ synovial ∪ MPNST. MYH11 is a
+    leiomyosarcoma marker but near-zero at TCGA-SARC median because LMS
+    is only ~26% of the cohort.
+    """
+    df = cancer_type_registry()
+    if "mixture_cohort" not in df.columns:
+        return []
+    flag = df["mixture_cohort"].fillna(False).astype(bool)
+    return df.loc[flag, "code"].tolist()
+
+
+def is_mixture_cohort(code):
+    """True when ``code`` is a mixture cohort per the registry (#171)."""
+    return code in set(mixture_cohort_codes())
+
+
 def subtype_deconvolved_expression():
     """Per-(cancer_code, subtype, symbol) tumor-only TPM from multi-cohort deconv.
 
