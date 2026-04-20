@@ -135,6 +135,103 @@ def compute_purity_confidence(
     return ConfidenceTier(tier=tier, reasons=reasons)
 
 
+def compute_call_confidence(analysis) -> ConfidenceTier:
+    """Tier the cancer-type call itself based on orthogonal-signal contradictions.
+
+    The classifier's top candidate is its best guess, but that guess
+    can be fragile when orthogonal signals disagree. pirlygenes
+    computes several such signals that never feed back into the
+    confidence tier:
+
+    - ``lineage_concordance`` — how well the sample's lineage-gene
+      pattern matches the candidate's expected pattern. Near-zero
+      concordance means the classifier picked a candidate whose
+      lineage genes aren't expressed in the sample.
+    - Stage-0 top-ρ TCGA cohort vs the classifier's pick. When Stage
+      0 ranks cohort A first by correlation but the classifier picks
+      cohort B, that's a mismatch worth surfacing.
+    - Geomean gap to the runner-up. Top geomean 0.431 vs second 0.429
+      is a tied call, not a clean win.
+
+    This tier is independent of ``compute_purity_confidence`` — a
+    clean purity CI does not rescue a contested cancer-type call, and
+    a wide purity CI does not condemn an uncontested call.
+
+    Returns a ``ConfidenceTier`` with tier ∈ {high, moderate, low}
+    and reader-facing reason strings. ``low`` is the new tier for
+    "contested call" — reserved for cases where the call would be
+    materially different if any of the orthogonal signals were the
+    tiebreaker.
+
+    Issue #169 motivated this: pfo004 (real sarcoma) classified as
+    THYM with concordance=0.000 at 4.35.0, and the report emitted a
+    clean "Cancer call: THYM" with no caveat.
+    """
+    reasons: List[str] = []
+    tier = "high"
+
+    candidate_trace = analysis.get("candidate_trace") or []
+    if not candidate_trace:
+        return ConfidenceTier(tier="unknown", reasons=["no candidate trace"])
+
+    top = candidate_trace[0]
+    top_code = top.get("code")
+
+    # 1. Lineage concordance near zero — classifier picked a candidate
+    # whose lineage genes aren't expressed.
+    concordance = top.get("lineage_concordance")
+    if concordance is not None:
+        try:
+            concordance = float(concordance)
+        except (TypeError, ValueError):
+            concordance = None
+    if concordance is not None and concordance < 0.2:
+        tier = "low"
+        reasons.append(
+            f"lineage-pattern concordance is {concordance:.2f} "
+            f"(near zero) — sample does not match the expected "
+            f"{top_code} lineage-gene pattern"
+        )
+
+    # 2. Geomean gap to the runner-up. Within ~10% of the runner-up is
+    # a tied call.
+    if len(candidate_trace) >= 2:
+        second = candidate_trace[1]
+        top_gm = float(top.get("support_geomean") or 0.0)
+        second_gm = float(second.get("support_geomean") or 0.0)
+        if second_gm > 0 and (top_gm / second_gm) < 1.1:
+            gap_pct = (top_gm / second_gm - 1.0) * 100 if second_gm else 0
+            second_code = second.get("code")
+            if tier == "high":
+                tier = "moderate"
+            reasons.append(
+                f"top candidate {top_code} beats runner-up {second_code} "
+                f"by only {gap_pct:.0f}% on geomean ({top_gm:.3f} vs "
+                f"{second_gm:.3f}) — call is ambiguous"
+            )
+
+    # 3. Stage-0 top-ρ TCGA cohort disagrees with the classifier's
+    # pick. Sample-level correlation is the coarsest signal and can
+    # be more reliable than the classifier's geomean when the panel
+    # evidence is weak.
+    hvt = analysis.get("healthy_vs_tumor")
+    stage0_top_code = None
+    if hvt is not None:
+        tcga = getattr(hvt, "top_tcga_cohorts", None) or []
+        if tcga:
+            name, _rho = tcga[0]
+            stage0_top_code = name.replace("FPKM_", "") if isinstance(name, str) else None
+    if stage0_top_code and top_code and stage0_top_code != top_code:
+        if tier == "high":
+            tier = "moderate"
+        reasons.append(
+            f"Stage-0 correlation favored {stage0_top_code} but the "
+            f"classifier picked {top_code}"
+        )
+
+    return ConfidenceTier(tier=tier, reasons=reasons)
+
+
 def compute_target_confidence(
     row,
     purity_tier: ConfidenceTier,

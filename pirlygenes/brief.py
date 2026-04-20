@@ -285,8 +285,19 @@ def build_brief(
             lines.append(banner)
             lines.append("")
 
-    # Cancer call
-    lines.append(f"**Cancer call:** {cancer_code} ({cancer_name}).")
+    # Cancer call — annotated with #169 contested-call confidence when
+    # orthogonal signals (lineage concordance, runner-up gap, Stage-0
+    # top-ρ cohort) disagree with the classifier's pick.
+    from .confidence import compute_call_confidence
+    call_tier = compute_call_confidence(analysis)
+    if call_tier.tier in {"low", "moderate"} and call_tier.reasons:
+        suffix = (
+            f" — **{call_tier.tier} confidence** "
+            f"({call_tier.inline_note})"
+        )
+    else:
+        suffix = ""
+    lines.append(f"**Cancer call:** {cancer_code} ({cancer_name}).{suffix}")
 
     # Purity
     overall = purity.get("overall_estimate")
@@ -417,7 +428,18 @@ def build_actionable(
 
     # Cancer call + disease state
     lines.append("## Cancer call and disease state\n")
-    lines.append(f"Working call: **{cancer_code}** ({cancer_name}).")
+    from .confidence import compute_call_confidence
+    call_tier = compute_call_confidence(analysis)
+    if call_tier.tier in {"low", "moderate"} and call_tier.reasons:
+        call_suffix = (
+            f" — **{call_tier.tier} confidence** "
+            f"({call_tier.inline_note})"
+        )
+    else:
+        call_suffix = ""
+    lines.append(
+        f"Working call: **{cancer_code}** ({cancer_name}).{call_suffix}"
+    )
     # Stage-0 tissue-composition banner (if non-tumor-consistent) so
     # an actionable reader sees the Stage-0 caveat attached to the
     # working call, not buried in the summary. Same evidence-gated
