@@ -395,7 +395,14 @@ LINEAGE_GENES = lineage_genes_by_cancer_type()
 # panel to the genes whose *home* expression dominates the max non-
 # home cohort expression by the specificity threshold.
 _LINEAGE_SPECIFICITY_MIN = 0.5  # home / (home + max_other) ≥ 0.5
-_LINEAGE_SPECIFICITY_IGNORE_BELOW = 1.0  # don't filter near-zero refs
+# The filter only fires when the competing cohort's expression is above
+# this absolute floor — below it, the competitor isn't really "expressing"
+# the gene at levels that would create crosstalk. Pinned to 5 TPM after
+# the pfo004→THYM regression (#167): the original 1 TPM threshold was
+# dropping rare subtype markers like MYOD1 (TCGA_SARC median ≈ 0,
+# TCGA_UCS median 1.5) even though neither cohort materially expresses
+# the gene at median.
+_LINEAGE_COMPETITOR_FLOOR = 5.0
 _LINEAGE_MIN_GENES_AFTER_FILTER = 2  # don't prune a panel below this
 _LINEAGE_SPECIFIC_CACHE: dict = {}
 
@@ -445,8 +452,12 @@ def _cancer_specific_lineage_genes(cancer_code: str) -> list:
         home_val = float(ref.loc[gene, home_col] or 0.0)
         other_vals = ref.loc[gene, other_cols].astype(float)
         max_other = float(other_vals.max())
-        # Near-zero expression everywhere → filter doesn't apply.
-        if home_val + max_other < _LINEAGE_SPECIFICITY_IGNORE_BELOW:
+        # Competitor below the floor → no crosstalk risk; keep the
+        # gene. This preserves rare / subtype-specific markers whose
+        # cohort median is low in every cohort (MYOD1 / MYOG in SARC
+        # are the canonical case — only rhabdomyosarcoma subtypes
+        # express them, so the pan-cohort median is near zero).
+        if max_other < _LINEAGE_COMPETITOR_FLOOR:
             specific.append(gene)
             scored.append((gene, 1.0))
             continue
