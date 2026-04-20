@@ -454,6 +454,53 @@ def _filter_quality_flags_against_context(flags, sample_context):
     return out
 
 
+def _render_vs_tcga_cell(row):
+    """Render the "vs TCGA" column for a target-table row.
+
+    The naive ``render_fold(row["pct_cancer_median"])`` produces ``∞×``
+    whenever the TCGA cohort's tumor-component deconvolves to ~0 for
+    this gene — which happens in two biologically distinct cases:
+
+    - **not_in_cohort**: the raw cohort median is itself ~0 (the gene
+      genuinely isn't expressed at cohort median — the CTA-in-solid-
+      cohort case). Here ``∞×`` is not wrong but is degenerate for a
+      clinician; instead show the raw cohort TPM so the reader sees
+      "gene is absent from the reference cohort".
+    - **tme_explained**: the raw cohort was non-trivial but the TME
+      deconvolution zeroed the tumor component. The ratio isn't
+      meaningful because the deconvolution subtracted everything;
+      label as "TME-only" with the raw cohort TPM for context.
+
+    Keeps the column narrow; preserves information rather than capping.
+    """
+    import math as _math
+    import pandas as _pd
+    state = row.get("tcga_ref_state")
+    vs_tcga = row.get("pct_cancer_median")
+    cohort_tpm = row.get("tcga_cohort_median_tpm")
+
+    if state == "finite" and _pd.notna(vs_tcga):
+        return render_fold(vs_tcga)
+    if state == "not_in_cohort":
+        if cohort_tpm is not None and cohort_tpm > 0:
+            return f"ref {cohort_tpm:.2f} TPM"
+        return "ref 0"
+    if state == "tme_explained":
+        if cohort_tpm is not None:
+            return f"TME-only ({cohort_tpm:.1f} TPM)"
+        return "TME-only"
+    if state == "both_absent":
+        return "—"
+    # Back-compat: when tcga_ref_state is missing (older ranges_df),
+    # fall back to the raw fold. Inf still lands here and renders ∞×;
+    # new runs always set the state.
+    if vs_tcga is None or (isinstance(vs_tcga, float) and _math.isinf(vs_tcga)):
+        if cohort_tpm is not None and cohort_tpm > 0:
+            return f"ref {cohort_tpm:.2f} TPM"
+        return "ref 0"
+    return render_fold(vs_tcga) if _pd.notna(vs_tcga) else "—"
+
+
 def _format_attribution_cell(row):
     """Compact per-target Attribution cell for targets.md (#108, #128).
 
@@ -1224,8 +1271,31 @@ def _analyze_body(
     effective_purity = purity
     if decomp_results:
         best_decomp = decomp_results[0]
-        effective_cancer_type = best_decomp.cancer_type
-        effective_purity = best_decomp.purity_result or purity
+        # The classifier's top call (``cancer_code``) is the authoritative
+        # cancer-type identification across every downstream report; the
+        # decomposer only fits *subtraction templates* to separate tumor
+        # from TME. When the best-fit template belongs to a different
+        # cancer type than the classifier's call that's a decomposition-
+        # fit observation, not a re-classification — do NOT overwrite
+        # effective_cancer_type here (prior behavior leaked the template
+        # label into brief/actionable/targets and recommended BRCA agents
+        # on a COAD sample).
+        #
+        # The decomp's purity is only safe to adopt when its cancer_type
+        # matches the classifier AND its template has non-tumor
+        # compartments. A template without TME compartments trivially
+        # returns fraction=1.0 (everything maps to tumor by construction),
+        # which is not a purity measurement — pfo002 / BRCA template was
+        # the failure case: classifier said 36% (COAD), but BRCA template
+        # with "No non-tumor components in template" warning returned
+        # fraction=100% and that propagated as the headline purity.
+        decomp_agrees = (best_decomp.cancer_type == cancer_code)
+        decomp_has_tme = not any(
+            "No non-tumor components in template" in w
+            for w in (best_decomp.warnings or [])
+        )
+        if decomp_agrees and decomp_has_tme and best_decomp.purity_result:
+            effective_purity = best_decomp.purity_result
 
         # Propagate a lineage-panel purity override back into
         # ``analysis["purity"]`` so every downstream report is
@@ -2487,8 +2557,13 @@ def _generate_text_reports(
     hvt = analysis.get("healthy_vs_tumor")
     stage0_section = ""
     if hvt is not None and hvt.top_normal_tissues:
+        trace_clause = (
+            f" *Rule: {' → '.join(hvt.reasoning_trace)}.*"
+            if hvt.reasoning_trace else ""
+        )
         stage0_section = (
-            f"\n**Stage-0 tissue composition**: {hvt.summary_line()}\n"
+            f"\n**Stage-0 tissue composition**: "
+            f"{hvt.summary_line()}{trace_clause}\n"
         )
     with open(summary_path, "w") as f:
         f.write(f"{header}{stage0_section}\n{summary}\n")
@@ -2508,12 +2583,14 @@ def _generate_text_reports(
     # analysis.md read sees the Stage-0 prior inline.
     hvt = analysis.get("healthy_vs_tumor")
     if hvt is not None and hvt.top_normal_tissues:
+        from .gene_sets_cancer import proliferation_panel_gene_names
+        _prolif_panel_size = len(proliferation_panel_gene_names())
         lines.append("## Stage-0 tissue composition\n")
         lines.append(f"- **Cancer hint**: {hvt.cancer_hint}")
         lines.append(
             f"- **Proliferation panel**: "
             f"{hvt.proliferation_log2_mean:.2f} log2-TPM mean across "
-            f"{hvt.proliferation_genes_observed}/5 genes observed"
+            f"{hvt.proliferation_genes_observed}/{_prolif_panel_size} genes observed"
         )
         hpa_line = ", ".join(
             f"{t.replace('nTPM_', '').replace('_', ' ')} (ρ={rho:.2f})"
@@ -2525,6 +2602,15 @@ def _generate_text_reports(
             for t, rho in hvt.top_tcga_cohorts[:3]
         )
         lines.append(f"- **Top TCGA cohort matches**: {tcga_line}")
+        # Surface the reasoning trace (which rule fired + rationale)
+        # so a reader can audit how Stage-0 arrived at the hint.
+        if hvt.reasoning_trace:
+            lines.append(
+                f"- **Reasoning rule**: {' → '.join(hvt.reasoning_trace)}"
+            )
+        # Full tumor-evidence breakdown (per-channel scores + aggregate)
+        # so the hint isn't a black box.
+        lines.append(f"- **Evidence**: {hvt.evidence.synthesis()}")
         lines.append("")
 
     # Input characterization (#68) — surfaced before quality/decomp so
@@ -2855,12 +2941,24 @@ def _generate_text_reports(
             retained = sorted_genes
             lost = []
 
-        # Not found in sample
+        # Not found in sample — but distinguish genuinely absent from
+        # detected-but-uninformative. The estimator skips lineage genes
+        # whose TME bleed-through in the reference exceeds their tumor
+        # contribution; those genes are still present in the sample at
+        # real TPM, they just can't anchor a lineage purity. pfo004 /
+        # SARC / ACTA2 is the canonical case.
         from .tumor_purity import LINEAGE_GENES
         cancer_code_local = purity.get("cancer_type", cancer_code)
         all_lineage = LINEAGE_GENES.get(cancer_code_local, [])
         found_names = {g["gene"] for g in lineage_genes}
-        not_found = [g for g in all_lineage if g not in found_names]
+        skipped_detected = {
+            entry["gene"]: entry
+            for entry in lineage.get("skipped_detected", [])
+        }
+        not_found = [
+            g for g in all_lineage
+            if g not in found_names and g not in skipped_detected
+        ]
 
         lines.append(
             "**Purity est.** per row = an independent purity estimate from that "
@@ -2880,6 +2978,16 @@ def _generate_text_reports(
                 interp = "likely de-differentiated"
             lines.append(
                 f"| {g['gene']} | {g['purity']:.1%} | {interp} |"
+            )
+        for gene_name, entry in skipped_detected.items():
+            s_tpm = entry["sample_tpm"]
+            # Keep resolution proportional to magnitude so a 0.3 TPM
+            # gene doesn't render as "0 TPM".
+            tpm_str = f"{s_tpm:.1f}" if s_tpm < 10 else f"{s_tpm:.0f}"
+            lines.append(
+                f"| {gene_name} | — | detected {tpm_str} TPM — "
+                "uninformative (TME background exceeds tumor contribution "
+                "for this cancer type) |"
             )
         for g in not_found:
             lines.append(f"| {g} | — | not detected |")
@@ -3445,13 +3553,12 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         lines.append("|------|-----------|-------|----------|---------|-----------|-----|---------|-----------|")
         for _, row in ctas.head(20).iterrows():
             surf = "yes" if row["is_surface"] else ""
-            vs_tcga = row["pct_cancer_median"] if pd.notna(row["pct_cancer_median"]) else None
             tme_warn = "⚠" if row.get("tme_explainable") else ""
             lines.append(
                 f"| **{row['symbol']}** | {render_tpm(row['median_est'])} | "
                 f"{render_tpm(row['est_1'])}\u2013{render_tpm(row['est_9'])} | "
                 f"{render_tpm(row['observed_tpm'])} | "
-                f"{render_fold(vs_tcga)} | "
+                f"{_render_vs_tcga_cell(row)} | "
                 f"{render_fraction_no_decimal(row['tcga_percentile'])} | "
                 f"{tme_warn} | {surf} | {row['therapies']} |"
             )
@@ -3501,7 +3608,6 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         )
         for _, row in surface_targets.head(20).iterrows():
             bold = "**" if row["therapies"] else ""
-            vs_tcga = row["pct_cancer_median"] if pd.notna(row["pct_cancer_median"]) else None
             # TME flag — compact key:
             #   ⚠⚠ = ``tme_dominant`` (observed signal is mostly non-
             #   tumor per the decomposition attribution, #108); ⚠ =
@@ -3524,7 +3630,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                 f"| {bold}{row['symbol']}{bold} | {render_tpm(row['median_est'])} | "
                 f"{render_tpm(row['est_1'])}\u2013{render_tpm(row['est_9'])} | "
                 f"{render_tpm(row['observed_tpm'])} | "
-                f"{render_fold(vs_tcga)} | "
+                f"{_render_vs_tcga_cell(row)} | "
                 f"{render_fraction_no_decimal(row['tcga_percentile'])} | "
                 f"{tme_warn} | {attribution_cell} | {therapies_cell} |"
             )
@@ -3577,13 +3683,12 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         lines.append("|------|-----------|-------|---------|-----------|-----|-------------|-----|-----------|")
         for _, row in intracellular.head(15).iterrows():
             cta_flag = "yes" if row["is_cta"] else ""
-            vs_tcga = row["pct_cancer_median"] if pd.notna(row["pct_cancer_median"]) else None
             tme_warn = "⚠" if row.get("tme_explainable") else ""
             attribution_cell = _format_attribution_cell(row)
             lines.append(
                 f"| {row['symbol']} | {render_tpm(row['median_est'])} | "
                 f"{render_tpm(row['est_1'])}\u2013{render_tpm(row['est_9'])} | "
-                f"{render_fold(vs_tcga)} | "
+                f"{_render_vs_tcga_cell(row)} | "
                 f"{render_fraction_no_decimal(row['tcga_percentile'])} | "
                 f"{tme_warn} | {attribution_cell} | {cta_flag} | {row['therapies']} |"
             )

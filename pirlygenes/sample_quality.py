@@ -444,15 +444,31 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None, library_prep=None):
         )
     elif mt_near_zero:
         has_issues = True
-        flags.append(
-            f"Suspicious MT fraction: {mt_fraction:.1%} "
-            f"(n_mt_found={n_mt}/{len(_MT_GENES)}) — mitochondrial genes "
-            "appear filtered or renamed in the input; degradation signal "
-            "is unreliable"
-        )
+        # n_mt==0 and n_mt>0-but-low-fraction are biologically distinct
+        # states. "Filtered or renamed" only applies when the MT symbols
+        # are genuinely absent from the quant table — if 13/15 MT genes
+        # are in the input at low TPM, they weren't filtered; the sample
+        # just has anomalously low MT share (aggressive MT depletion, a
+        # capture panel that under-samples MT contigs, or a genuine
+        # low-MT tissue).
+        if n_mt == 0:
+            flags.append(
+                f"Suspicious MT fraction: {mt_fraction:.1%} "
+                f"(n_mt_found=0/{len(_MT_GENES)}) — mitochondrial genes "
+                "missing from the quant table (filtered or renamed "
+                "upstream); degradation signal is unreliable"
+            )
+        else:
+            flags.append(
+                f"Low MT fraction: {mt_fraction:.1%} "
+                f"(n_mt_found={n_mt}/{len(_MT_GENES)}, genes present but "
+                "contribute minimal TPM) — MT-based degradation signal "
+                "has reduced discriminative power"
+            )
         degradation["level"] = "unknown"
         degradation["message"] = (
-            "MT genes missing or filtered from input — degradation cannot be assessed reliably"
+            "MT fraction too low for reliable degradation assessment "
+            f"(n_mt_found={n_mt}/{len(_MT_GENES)}, fraction={mt_fraction:.1%})"
         )
 
     if deg_level in ("severe", "moderate"):

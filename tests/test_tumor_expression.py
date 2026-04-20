@@ -37,13 +37,17 @@ def test_lineage_genes_has_no_duplicates():
 # ── _lineage_purity_estimates edge cases ──────────────────────────
 
 def test_lineage_unknown_cancer_type_returns_empty():
-    result = _lineage_purity_estimates("FAKE_TYPE", {}, {}, [], 0.7)
-    assert result == []
+    # Returns (estimates, skipped_detected); both empty when cancer
+    # type isn't in the lineage panel registry.
+    estimates, skipped = _lineage_purity_estimates("FAKE_TYPE", {}, {}, [], 0.7)
+    assert estimates == []
+    assert skipped == []
 
 
 def test_lineage_empty_sample_returns_empty():
-    result = _lineage_purity_estimates("PRAD", {}, {}, [], 0.69)
-    assert result == []
+    estimates, skipped = _lineage_purity_estimates("PRAD", {}, {}, [], 0.69)
+    assert estimates == []
+    assert skipped == []
 
 
 # ── Upper-half median estimator ───────────────────────────────────

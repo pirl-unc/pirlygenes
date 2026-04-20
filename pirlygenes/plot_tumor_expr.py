@@ -10,6 +10,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -691,6 +693,14 @@ def estimate_tumor_expression_ranges(
         cancer_col = f"FPKM_{cancer_code}"
         cohort_prior_tpm = 0.0
         tcga_tumor_fold = 0.0
+        # Raw cohort median TPM in HK-normalized space (before TME
+        # deconvolution). Kept separate so a downstream renderer can
+        # distinguish "cohort genuinely doesn't express this gene" from
+        # "cohort median was TME-only and got subtracted to zero" —
+        # both currently collapse to ∞× fold, which is degenerate for
+        # a clinician-facing table.
+        tcga_fold_raw = 0.0
+        tcga_cohort_tpm_raw = None  # None = gene not in ref (not_measurable)
         if (
             cancer_col in ref_dedup.columns
             and cancer_col in ref_hk_medians
@@ -698,6 +708,8 @@ def estimate_tumor_expression_ranges(
         ):
             cancer_hk_m = ref_hk_medians[cancer_col]
             tcga_fold = float(ref_dedup.loc[symbol, cancer_col]) / cancer_hk_m
+            tcga_fold_raw = tcga_fold
+            tcga_cohort_tpm_raw = float(ref_dedup.loc[symbol, cancer_col])
             tcga_p = TCGA_MEDIAN_PURITY.get(cancer_code, 0.7)
             tcga_tumor_fold = max(
                 0.0, (tcga_fold - (1 - tcga_p) * tme_fold_med) / tcga_p
@@ -794,12 +806,29 @@ def estimate_tumor_expression_ranges(
         # label instead of the intended red "absent in TCGA" alert. The
         # sample-side check below restores the intended semantics.
         our_tumor_fold = median_est / sample_hk_median
+        # Three diagnostic states for the cohort-reference comparison:
+        #   "finite"        — cohort has detectable tumor component,
+        #                     fold = sample / cohort
+        #   "not_in_cohort" — raw cohort median ≈ 0 (gene genuinely not
+        #                     expressed at cohort median; this is the
+        #                     CTA-in-solid-cohort case)
+        #   "tme_explained" — raw cohort was non-trivial but TME
+        #                     subtraction zeroed the tumor component
+        #   "both_absent"   — neither sample nor cohort expresses
+        # The tumor-expression table can use the state to render a more
+        # informative label than ∞×.
         if tcga_tumor_fold > 0.001:
             vs_tcga = float(our_tumor_fold / tcga_tumor_fold)
+            tcga_ref_state = "finite"
         elif our_tumor_fold > 0.001:
             vs_tcga = float("inf")
+            if tcga_fold_raw <= 0.001:
+                tcga_ref_state = "not_in_cohort"
+            else:
+                tcga_ref_state = "tme_explained"
         else:
             vs_tcga = None
+            tcga_ref_state = "both_absent"
 
         # Categorize
         is_cta = symbol in cta_symbols
@@ -1082,7 +1111,12 @@ def estimate_tumor_expression_ranges(
             "attribution_raw_sum_tpm": round(attr_tme_total_raw, 2),
             **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
             "median_est": round(median_est, 2),
-            "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None else None,
+            "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None and not math.isinf(vs_tcga) else vs_tcga,
+            "tcga_ref_state": tcga_ref_state,
+            "tcga_cohort_median_tpm": (
+                round(tcga_cohort_tpm_raw, 3)
+                if tcga_cohort_tpm_raw is not None else None
+            ),
             "tcga_percentile": round(tcga_percentile, 3),
             "is_surface": is_surface,
             "is_cta": is_cta,
