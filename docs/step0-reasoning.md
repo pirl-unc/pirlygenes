@@ -103,35 +103,37 @@ less decisive in those regimes.
 ## Ordered Rule Set
 
 `pirlygenes.reasoning` runs nine named rules in order. The first matching
-rule sets the `cancer_hint` and writes its name to the reasoning trace.
-Rules are pure functions of `(signal, flags)`. `DerivedFlags` computes
-thresholded booleans once, and the `@rule(...)` decorator stamps the
-rule name and structural-ambiguity status into the trace.
+rule sets the `cancer_hint` and writes its hyphenated rule name to the
+reasoning trace. The Python functions use underscores; the trace uses the
+`@rule(...)` names shown below. Rules are pure functions of
+`(signal, flags)`. `DerivedFlags` computes thresholded booleans once, and
+the decorator stamps the rule name and structural-ambiguity status into
+the trace.
 
-1. **`tumor_marker_overrides_ambiguity`**:
+1. **`tumor-marker-overrides-ambiguity`**:
    Strong tumor-specific marker evidence in a lymphoid or mesenchymal
    ambiguity regime -> `tumor-consistent`.
-2. **`lymphoid_tissue_ambiguity`**:
+2. **`lymphoid-tissue-tumor-indistinguishable`**:
    Lymphoid normal-tissue context plus heme/lymphoid TCGA context ->
    `possibly-tumor` with a structural-ambiguity caveat.
-3. **`mesenchymal_tissue_ambiguity`**:
+3. **`mesenchymal-tissue-tumor-indistinguishable`**:
    Mesenchymal normal-tissue context plus sarcoma-like TCGA context ->
    `possibly-tumor` with a structural-ambiguity caveat.
-4. **`aggregate_tumor_evidence`**:
+4. **`aggregate-tumor-evidence`**:
    Non-ambiguous tissue plus aggregate score >= 1.0, or a strong single
    tumor-marker category -> `tumor-consistent`.
-5. **`high_proliferation_panel`**:
+5. **`high-proliferation-panel`**:
    13-gene mitotic panel >= 4.5 log2-TPM -> `tumor-consistent`.
-6. **`confident_healthy_tissue`**:
+6. **`confident-healthy-tissue`**:
    Quiet proliferation, strong healthy correlation margin, and no soft
    tumor evidence -> `healthy-dominant`.
-7. **`healthy_with_soft_tumor_signal`**:
+7. **`healthy-tissue-with-soft-tumor-signal`**:
    Healthy-leaning correlation plus quiet proliferation, but soft tumor
    marker evidence -> `possibly-tumor`.
-8. **`weak_healthy_lean`**:
+8. **`weak-healthy-lean`**:
    Weak healthy correlation margin without stronger evidence ->
    `possibly-tumor`.
-9. **`tcga_dominant_correlation`**:
+9. **`tcga-dominant-correlation`**:
    Default when no earlier rule fires -> `tumor-consistent`.
 
 The ordering is deliberate. Tumor-specific marker evidence is allowed to
