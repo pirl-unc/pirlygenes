@@ -87,7 +87,7 @@ CML,Chronic Myeloid Leukemia,heme-myeloid,peripheral_blood,heme_blood,,,curated,
 B_ALL,B-cell Acute Lymphoblastic Leukemia,heme-bcell,bone_marrow,heme_marrow,,,TARGET,TARGET_ALL_2018,PMID:30046113,BCR-ABL-like + other fusions; blinatumomab / tisa-cel,False
 T_ALL,T-cell Acute Lymphoblastic Leukemia,heme-tcell,bone_marrow,heme_marrow,,,TARGET,TARGET_ALL_2018,PMID:30046113,NOTCH1; nelarabine,False
 CTCL,Cutaneous T-cell Lymphoma,heme-tcell,skin,heme_skin,,,curated,LITERATURE_CURATED,,Mycosis fungoides / Sezary; mogamulizumab,False
-PANNET,Pancreatic Neuroendocrine Tumor,net,pancreas,solid_primary,,,curated,LITERATURE_CURATED,,Not in TCGA PAAD (which is adeno); Scarpa 2017 cohort,False
+PANNET,Pancreatic Neuroendocrine Tumor,net,pancreas,solid_primary,,,GEO,GSE118014_ALVAREZ_2018,PMID:30296526,"PanNET — Alvarez 2018 (GSE118014, 33 samples log2-TPM); octreotide/lanreotide, 177Lu-DOTATATE, everolimus",False
 MID_NET,Midgut / Small Bowel Carcinoid,net,small_intestine,solid_primary,,,curated,LITERATURE_CURATED,,Serotonin-secreting; 177Lu-DOTATATE,False
 LUNG_NET_LC,Lung Typical/Atypical Carcinoid,net,lung,solid_primary,,,curated,LITERATURE_CURATED,,Low-grade lung NE; distinct from SCLC,False
 LUNG_NET_LCNEC,Large-Cell Neuroendocrine Carcinoma Lung,net,lung,solid_primary,,,curated,LITERATURE_CURATED,,Intermediate between carcinoid and SCLC,False
