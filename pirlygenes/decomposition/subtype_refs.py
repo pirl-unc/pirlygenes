@@ -97,6 +97,109 @@ TAM_MARKER_FOLDS: Dict[str, float] = {
 }
 
 
+# ---------- Extended TME activated-state panels (#58) ----------
+
+# These compartments live alongside CAF / TAM in the same refinement
+# mechanism. Each panel targets a template compartment where the HPA
+# generic reference under-represents the tumor-activated state.
+
+
+# Exhausted / tumor-infiltrating T cells. Zheng 2021 pan-cancer TIL
+# atlas; Oliveira 2021 TCR/T-cell atlas. Checkpoint-receptor biology —
+# these are the genes ICI (anti-PD-1 / CTLA4 / LAG3) targets, and
+# their over-attribution to tumor is a major UX failure on any
+# lymphocyte-rich sample.
+EXHAUSTED_T_MARKER_FOLDS: Dict[str, float] = {
+    "PDCD1": 8.0,      # PD-1 — canonical exhaustion marker
+    "CTLA4": 6.0,      # CTLA-4 — checkpoint
+    "LAG3": 6.0,       # LAG-3 — co-expressed with PD-1
+    "HAVCR2": 6.0,     # TIM-3
+    "TIGIT": 5.0,      # TIGIT checkpoint
+    "TOX": 5.0,        # Exhaustion transcription factor
+    "ENTPD1": 4.0,     # CD39 — tissue-resident exhausted Treg
+    "ITGAE": 4.0,      # CD103 — Trm / TIL marker
+    "LAYN": 4.0,       # Layilin — terminal exhaustion
+    "CXCL13": 5.0,     # Follicular / TLS-T cell chemokine
+}
+
+
+# Tumor endothelium — angiogenic / tip-cell / venule programs elevated
+# in solid tumors. Goveia 2020 pan-cancer lung EC atlas; Kalucka 2020
+# pan-tissue EC atlas. Anti-angiogenic ADC / TKI biology.
+TUMOR_ENDOTHELIUM_MARKER_FOLDS: Dict[str, float] = {
+    "DLL4": 8.0,       # Notch ligand — tip-cell / angiogenic EC
+    "ESM1": 7.0,       # Endocan — tip-cell marker
+    "ANGPT2": 6.0,     # Angiogenic signaling
+    "PLVAP": 5.0,      # Fenestrated tumor venule
+    "ACKR1": 4.0,      # Post-capillary venule (Duffy)
+    "APLN": 5.0,       # Apelin — tumor-EC-specific ligand
+    "CXCR4": 4.0,      # Tip-cell migration
+    "INSR": 3.0,       # Metabolic tumor-EC program
+    "KDR": 4.0,        # VEGFR2 — angiogenic
+    "FLT1": 4.0,       # VEGFR1 — angiogenic
+}
+
+
+# Myeloid-derived suppressor cells — distinct from TAM by lineage
+# (granulocytic / monocytic MDSC). Alshetaiwi 2020 MDSC atlas;
+# Zilionis 2019 lung TAN/TAM atlas. Lives on the same ``myeloid``
+# compartment as TAM; genes don't overlap meaningfully.
+MDSC_MARKER_FOLDS: Dict[str, float] = {
+    "ARG1": 8.0,       # Arginase-1 — immunosuppressive; PMN-MDSC
+    "S100A8": 5.0,     # Calprotectin subunit — MDSC / neutrophil
+    "S100A9": 5.0,     # Calprotectin subunit
+    "CEBPB": 3.0,      # Transcription factor — MDSC polarization
+    "FCGR3B": 4.0,     # CD16b — granulocytic MDSC / neutrophil
+    "MPO": 4.0,        # Myeloperoxidase — neutrophil lineage
+    "ELANE": 4.0,      # Neutrophil elastase
+    "CAMP": 4.0,       # Cathelicidin — neutrophil
+}
+
+
+# Tertiary lymphoid structure B cells — germinal-center B cells
+# organised into ectopic lymphoid follicles in the tumor. Meylan 2022
+# RCC TLS; Patil 2022 pan-cancer TLS atlas. Positive ICI prognostic.
+TLS_B_MARKER_FOLDS: Dict[str, float] = {
+    "CXCR5": 5.0,      # Germinal-center homing
+    "BCL6": 4.0,       # Germinal-center master TF
+    "AICDA": 6.0,      # Activation-induced deaminase — class-switch
+    "MS4A1": 3.0,      # CD20 — B-cell identity (scaled for TLS density)
+    "RGS13": 4.0,      # GC-B signature
+    "STMN1": 3.0,      # Proliferative GC-B
+}
+
+
+# Tumor-infiltrating plasma cells. Cheng 2021 pan-cancer B/plasma
+# atlas. IgG class-switched patterns distinct from marrow plasma.
+TI_PLASMA_MARKER_FOLDS: Dict[str, float] = {
+    "MZB1": 4.0,       # Plasma cell maturation — elevated in TI plasma
+    "JCHAIN": 3.0,     # Polymeric Ig joining chain
+    "IGHG1": 5.0,      # IgG1 heavy chain (class-switched)
+    "IGHG3": 4.0,      # IgG3 heavy chain
+    "IGHA1": 4.0,      # IgA1 heavy chain
+    "XBP1": 3.0,       # Plasma-cell UPR / ER stress
+}
+
+
+# ---------- Panel registry ----------
+
+# Each row: (label, NNLS-compartment-name, marker-fold dict). Order
+# matters for provenance (first panel whose compartment has signal on
+# a gene wins), but canonical markers do not overlap across panels —
+# a TAM-marker like CD163 doesn't appear in MDSC or exhausted-T.
+# Add a new compartment by appending a row here + its ``_MARKER_FOLDS``
+# dict above; no other code needs to change.
+PANELS: List[Tuple[str, str, Dict[str, float]]] = [
+    ("CAF", "fibroblast", CAF_MARKER_FOLDS),
+    ("TAM", "myeloid", TAM_MARKER_FOLDS),
+    ("MDSC", "myeloid", MDSC_MARKER_FOLDS),
+    ("exhausted_T", "T_cell", EXHAUSTED_T_MARKER_FOLDS),
+    ("tumor_endothelium", "endothelial", TUMOR_ENDOTHELIUM_MARKER_FOLDS),
+    ("TLS_B", "B_cell", TLS_B_MARKER_FOLDS),
+    ("TI_plasma", "plasma", TI_PLASMA_MARKER_FOLDS),
+]
+
+
 def caf_markers() -> List[str]:
     """Return the canonical CAF marker-gene list (#56)."""
     return list(CAF_MARKER_FOLDS.keys())
@@ -105,6 +208,19 @@ def caf_markers() -> List[str]:
 def tam_markers() -> List[str]:
     """Return the canonical TAM marker-gene list (#56)."""
     return list(TAM_MARKER_FOLDS.keys())
+
+
+def panel_markers(label: str) -> List[str]:
+    """Return the marker-gene list for any registered panel (#58)."""
+    for panel_label, _compartment, folds in PANELS:
+        if panel_label == label:
+            return list(folds.keys())
+    return []
+
+
+def panel_labels() -> List[str]:
+    """List every registered panel label (#58)."""
+    return [label for label, _comp, _folds in PANELS]
 
 
 def refine_tme_per_gene(
@@ -157,13 +273,17 @@ def refine_tme_per_gene(
     # the fields this module populates, via ``.get(name)`` on dicts.
     provenance: Dict[str, Dict[str, Any]] = {}
 
-    panels = (
-        ("CAF", "fibroblast", CAF_MARKER_FOLDS),
-        ("TAM", "myeloid", TAM_MARKER_FOLDS),
-    )
-    for subtype_label, compartment, marker_folds in panels:
+    # Iterate every registered panel (#58). Canonical markers don't
+    # overlap across panels, but if a gene IS shared, first-match-wins
+    # by registration order.
+    for subtype_label, compartment, marker_folds in PANELS:
         for gene, fold in marker_folds.items():
             if gene not in refined:
+                continue
+            if gene in provenance:
+                # First panel to refine this gene wins — keeps the
+                # provenance single-source and avoids compounding folds
+                # on genes that appear on multiple panels.
                 continue
             tme_before = float(refined[gene])
             observed = float(sample_tpm_by_symbol.get(gene, 0.0))
