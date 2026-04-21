@@ -575,6 +575,7 @@ def _format_attribution_cell(row):
     broadly = bool(row.get("broadly_expressed"))
     amplified = bool(row.get("amplified_over_healthy"))
     over_predicted = bool(row.get("matched_normal_over_predicted"))
+    sm_leakage = bool(row.get("smooth_muscle_stromal_leakage"))
     try:
         amp_fold = float(row.get("amplification_fold") or 0.0)
     except (TypeError, ValueError):
@@ -590,6 +591,14 @@ def _format_attribution_cell(row):
         # expressing the gene — it means the reference over-predicted.
         if over_predicted:
             return "matched-normal over-predicted"
+        # #59 item 1: smooth-muscle stromal leakage. Fibromuscular-
+        # stroma density varies sample-to-sample; matched-normal
+        # references carry the cohort-average and under-subtract
+        # SM-lineage genes when the biopsy is SM-rich. The tumor
+        # story for TAGLN / ACTA2 / MYH11 / CNN1 should be read with
+        # that caveat.
+        if sm_leakage:
+            return "likely smooth-muscle stromal leakage"
         # Amplification is a positive specificity signal and takes
         # precedence over the broadly-expressed caution (#128). A gene
         # that's broadly expressed at baseline but observed >= 5× over
