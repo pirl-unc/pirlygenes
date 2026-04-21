@@ -89,7 +89,8 @@ def test_brief_is_compact():
     assert len(lines) <= 40, f"brief is {len(lines)} lines, must be ≤ 40:\n{md}"
 
     # Key structural elements present.
-    assert "# Brief" in md
+    # File was renamed brief → summary in 4.41.0; header tracks the name.
+    assert "# Summary" in md
     assert "**Cancer call:**" in md
     assert "**Purity:**" in md
     assert "**Disease state:**" in md
@@ -162,7 +163,12 @@ def test_actionable_is_longer_but_structured():
     # Actionable should be > 15 lines (more detail than the brief).
     assert len(md.splitlines()) > 15
 
-    # Key section headings.
+    # Biomarker panel moved to targets.md in 4.41.0 to avoid a
+    # duplicated table. Actionable still carries the three core
+    # headings + links to targets.md as the panel source.
     for heading in ["Sample and confidence", "Cancer call and disease state",
-                    "Therapy landscape", "Biomarker panel"]:
+                    "Therapy landscape"]:
         assert heading in md, f"missing heading: {heading}"
+    assert "*-targets.md*" in md or "`*-targets.md`" in md, (
+        "actionable should link to targets.md as the biomarker-panel source"
+    )

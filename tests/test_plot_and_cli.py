@@ -311,12 +311,13 @@ def test_generate_text_reports_uses_family_and_background_language(tmp_path):
 
     cli_mod._generate_text_reports(analysis, embedding_meta, prefix, decomp_results=[])
 
-    summary = (tmp_path / "sample-summary.md").read_text()
+    # The old free-form summary.md that carried family-call phrasing
+    # (CRC-family, Possible labels, subtype-candidates clause) was
+    # retired in 4.41.0 as ~80% redundant with analysis.md. The
+    # content below is now only checked in analysis.md.
     detailed = (tmp_path / "sample-analysis.md").read_text()
-    assert "CRC-family (COAD > READ)" in summary
-    assert "not literal site calls" in summary
-    assert "Top subtype candidates remain close" in summary
-    assert "Possible labels: **COAD** or **READ**." in summary
+    assert "not literal" in detailed  # tissue-score caveat
+    assert "Possible labels" in detailed
     assert "Family-level call" in detailed
     assert "Fit quality" in detailed
     assert "Top broad possibilities" in detailed
@@ -358,9 +359,10 @@ def test_generate_text_reports_is_mode_aware_for_heme(tmp_path):
 
     cli_mod._generate_text_reports(analysis, embedding_meta, prefix, decomp_results=[])
 
-    summary = (tmp_path / "heme-summary.md").read_text()
+    # Heme-mode "malignant-lineage fraction proxy" phrasing lived in
+    # the retired summary.md paragraph; analysis.md still carries the
+    # mode-aware "not a strict tumor-vs-immune split" caveat.
     detailed = (tmp_path / "heme-analysis.md").read_text()
-    assert "malignant-lineage fraction proxy" in summary
     assert "not a strict tumor-vs-immune split" in detailed
     assert "Lineage / Background Context" in detailed
 
@@ -443,10 +445,10 @@ def test_generate_text_reports_handles_missing_lineage_summary(tmp_path):
 
     cli_mod._generate_text_reports(analysis, embedding_meta, prefix, decomp_results=[])
 
-    summary = (tmp_path / "sarcoma-like-summary.md").read_text()
+    # "broad family interpretation is more trustworthy" + "site/template
+    # assignment is indeterminate" lived in the retired summary.md
+    # paragraph. Analysis.md still carries the Reliable cluster signal.
     detailed = (tmp_path / "sarcoma-like-analysis.md").read_text()
-    assert "broad family interpretation is more trustworthy" in summary
-    assert "site/template assignment is indeterminate" in summary
     assert "**Reliable cluster**: COL3A1, DCN." in detailed
     assert "Reported site/template call: **indeterminate**." in detailed
 
@@ -576,10 +578,11 @@ def test_generate_text_reports_mentions_analysis_constraints(tmp_path):
 
     cli_mod._generate_text_reports(analysis, embedding_meta, prefix, decomp_results=[])
 
-    summary = (tmp_path / "constrained-summary.md").read_text()
+    # "constrained working subtype" + the one-line "Analysis constraints"
+    # recap lived in the retired summary.md paragraph. Analysis.md
+    # surfaces the constraint set in its own User-constrained /
+    # Requested-context lines.
     detailed = (tmp_path / "constrained-analysis.md").read_text()
-    assert "constrained working subtype" in summary
-    assert "Analysis constraints: cancer type fixed to **SARC**; template context restricted to **primary**." in summary
     assert "User-constrained cancer type" in detailed
     assert "Requested tumor context" in detailed
 

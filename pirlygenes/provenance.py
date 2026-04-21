@@ -223,7 +223,7 @@ def build_provenance_md(
         )
     lines.append("")
     lines.append(
-        "*See also: `*-brief.md`, `*-actionable.md`, `*-summary.md`, "
+        "*See also: `*-summary.md`, `*-actionable.md`, "
         "`*-analysis.md`, `*-targets.md`.*"
     )
     return "\n".join(lines)

@@ -4,9 +4,11 @@
 
 Audience distinction:
 
-- ``*-brief.md`` — one-page summary, ≤ 40 lines. For a clinician
+- ``*-summary.md`` — one-page summary, ≤ 40 lines. For a clinician
   skimming before a tumor board, or an LLM asked for a 3-sentence
   referral-note paragraph. Strict structure; no internal jargon.
+  (Named ``brief.md`` through 4.40; the earlier free-form
+  ``summary.md`` paragraph was retired as redundant with analysis.md.)
 - ``*-actionable.md`` — longer treatment-review document. For an
   oncologist preparing a treatment discussion, reading carefully.
 
@@ -238,18 +240,19 @@ def _caveats_from_purity_tier(purity_tier, sample_context) -> List[str]:
     return out
 
 
-def build_brief(
+def build_summary(
     analysis,
     ranges_df,
     cancer_code: str,
     disease_state: str,
     sample_id: Optional[str] = None,
 ) -> str:
-    """Return the one-page ``*-brief.md`` content (≤ 40 lines).
+    """Return the one-page ``*-summary.md`` content (≤ 40 lines).
 
     Audience: clinician skimming before a tumor board; LLM asked for a
     short referral-note paragraph. Strict structure; no internal
-    jargon.
+    jargon. (Named ``build_brief`` through 4.40; the legacy name is
+    still exported as an alias.)
     """
     from .gene_sets_cancer import (
         cancer_therapy_targets,
@@ -263,7 +266,7 @@ def build_brief(
 
     lines: List[str] = []
     header_id = f": {sample_id}" if sample_id else ""
-    lines.append(f"# Brief{header_id}\n")
+    lines.append(f"# Summary{header_id}\n")
     lines.append(
         "<!-- Audience: clinician skimming before tumor board. "
         "Intended length: ≤ 40 lines. -->"
@@ -394,10 +397,15 @@ def build_brief(
 
     lines.append(
         "*Full detail: see the accompanying `*-actionable.md`, "
-        "`*-summary.md`, `*-analysis.md`, and `*-targets.md`.*"
+        "`*-analysis.md`, and `*-targets.md`.*"
     )
 
     return "\n".join(lines)
+
+
+# Back-compat alias — ``build_brief`` was the public name through 4.40;
+# removed in 5.0. External importers should migrate to ``build_summary``.
+build_brief = build_summary
 
 
 def build_actionable(
@@ -415,7 +423,6 @@ def build_actionable(
     internal jargon.
     """
     from .gene_sets_cancer import (
-        cancer_biomarker_genes,
         cancer_therapy_targets,
         cancer_key_genes_cancer_types,
     )
@@ -567,28 +574,6 @@ def build_actionable(
                 )
             lines.append("")
 
-        # Biomarker panel
-        biomarker_syms = cancer_biomarker_genes(cancer_code)
-        if biomarker_syms:
-            lines.append("## Biomarker panel\n")
-            lines.append(
-                "Lineage, diagnostic, and disease-state biomarkers for "
-                f"{cancer_code}. Status in this sample:"
-            )
-            lines.append("")
-            lines.append("| Gene | Observed TPM | Tumor-attributed |")
-            lines.append("|------|--------------|------------------|")
-            for sym in biomarker_syms:
-                row = sym_to_row.get(sym)
-                if row is None:
-                    lines.append(f"| {sym} | *not measured* | — |")
-                    continue
-                obs = float(row.get("observed_tpm") or 0)
-                attr = float(row.get("attr_tumor_tpm") or 0)
-                tumor_cell = f"{attr:.0f}" if row.get("attribution") else "—"
-                lines.append(f"| {sym} | {obs:.1f} | {tumor_cell} |")
-            lines.append("")
-
     # Caveats
     caveats = _caveats_from_purity_tier(purity_tier, sample_context)
     if caveats:
@@ -598,9 +583,9 @@ def build_actionable(
         lines.append("")
 
     lines.append(
-        "*See also: `*-summary.md` (free-form narrative), "
-        "`*-analysis.md` (full pipeline detail), `*-targets.md` "
-        "(complete target list), `*-provenance.md` (sample-content chain).*"
+        "*See also: `*-analysis.md` (full pipeline detail), "
+        "`*-targets.md` (biomarker panel + complete target list), "
+        "`*-provenance.md` (sample-content chain).*"
     )
     return "\n".join(lines)
 

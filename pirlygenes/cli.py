@@ -1805,34 +1805,53 @@ def _analyze_body(
         # doc a clinician pastes into a note; the actionable is the
         # one they read before a tumor board.
         try:
-            from .brief import build_brief, build_actionable
+            from .brief import build_summary, build_actionable
 
-            disease_state_for_brief = compose_disease_state_narrative(analysis)
+            disease_state_for_summary = compose_disease_state_narrative(analysis)
             sample_id = prefix if prefix else None
-            brief_md = build_brief(
+            summary_md = build_summary(
                 analysis,
                 ranges_df,
                 cancer_code=effective_cancer_type,
-                disease_state=disease_state_for_brief,
+                disease_state=disease_state_for_summary,
                 sample_id=sample_id,
             )
             actionable_md = build_actionable(
                 analysis,
                 ranges_df,
                 cancer_code=effective_cancer_type,
-                disease_state=disease_state_for_brief,
+                disease_state=disease_state_for_summary,
                 sample_id=sample_id,
             )
-            brief_path = "%s-brief.md" % prefix if prefix else "brief.md"
+            # The 1-page clinician-facing file is emitted as
+            # ``*-summary.md``. The old free-form paragraph that used to
+            # live at that name was retired in 4.41.0 — its disease-state,
+            # step-0, and cancer-type text was ~80% redundant with
+            # analysis.md.
+            summary_path = "%s-summary.md" % prefix if prefix else "summary.md"
             actionable_path = (
                 "%s-actionable.md" % prefix if prefix else "actionable.md"
             )
-            with open(brief_path, "w") as f:
-                f.write(brief_md)
+            with open(summary_path, "w") as f:
+                f.write(summary_md)
             with open(actionable_path, "w") as f:
                 f.write(actionable_md)
-            print(f"[report] Saved {brief_path}")
+            print(f"[report] Saved {summary_path}")
             print(f"[report] Saved {actionable_path}")
+
+            # Back-compat: emit ``*-brief.md`` as a duplicate of
+            # ``*-summary.md`` for one deprecation window (removed in 5.0).
+            # Downstream pipelines that glob for ``*-brief.md`` keep
+            # working; new code should read ``*-summary.md``.
+            brief_path = "%s-brief.md" % prefix if prefix else "brief.md"
+            with open(brief_path, "w") as f:
+                f.write(
+                    "<!-- DEPRECATED in 4.41.0, removed in 5.0. "
+                    "This file is a copy of *-summary.md; update your "
+                    "pipelines to read the new name. -->\n\n"
+                )
+                f.write(summary_md)
+            print(f"[report] Saved {brief_path} (deprecated copy of summary.md)")
 
             # #106: one-page provenance chain (library prep -> tumor
             # core). Emits *-provenance.md alongside a simple stacked-
@@ -1988,12 +2007,11 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 
 | File | Description |
 |------|-------------|
-| `*-brief.md` | One-page clinician-facing summary (≤ 40 lines) — cancer call, purity, top therapies, caveats |
-| `*-actionable.md` | Oncologist-facing treatment-review document — deeper context on each therapy, subtype hypothesis, disease-state narrative |
-| `*-summary.md` | One-paragraph natural-language summary — cancer type, purity, key findings |
-| `*-analysis.md` | Structured deep-dive — candidate trace, purity components, decomposition, background signatures, embedding features |
-| `*-targets.md` | Therapeutic targets — tumor context, therapy landscape at a glance, CTAs, surface proteins, intracellular targets, tumor-expression ranges |
-| `*-provenance.md` | Attribution chain — how the sample gets parsed into library-prep / preservation / TME / tumor-core step by step |
+| `*-summary.md` | One-page clinician-facing summary (≤ 40 lines) — cancer call, purity, top therapies, caveats |
+| `*-actionable.md` | Oncologist treatment-review — agents with cancer-type-indicated approvals + trials, cross-referenced against this sample |
+| `*-analysis.md` | Structured deep-dive — disease-state, step-0 evidence, candidate trace, purity components, decomposition, background signatures |
+| `*-targets.md` | Biomarker panel + full therapy-target landscape + tumor-expression ranges |
+| `*-provenance.md` | Attribution chain — library-prep → preservation → TME → tumor-core step by step |
 | `*-analysis-parameters.json` | Free model parameters plus selected sample mode and embedding methods |
 | `*-all-figures.pdf` | All figures combined into a single PDF |
 | `*-cancer-candidates.tsv` | Candidate cancer-type support trace |
@@ -2116,9 +2134,10 @@ def _background_section_config(sample_mode):
         )
     return (
         "Background Tissue Signatures",
-        "These scores summarize which residual non-tumor backgrounds the sample "
-        "resembles after normalization. They are useful context, not literal "
-        "anatomical site calls in mixed samples.\n",
+        "These scores are normalised similarity to reference nTPM profiles "
+        "— they summarize which residual non-tumor backgrounds the sample "
+        "resembles after normalization. Useful context, not literal "
+        "anatomical site calls or composition percentages in mixed samples.\n",
     )
 
 
@@ -2378,9 +2397,8 @@ def _next_best_support_gap(candidate_trace):
 def _generate_text_reports(
     analysis, embedding_meta, prefix, decomp_results=None, input_path=None,
 ):
-    """Write summary and detailed analysis markdown reports."""
+    """Write the detailed ``*-analysis.md`` report."""
     cancer_code = analysis["cancer_type"]
-    cancer_name = analysis["cancer_name"]
     purity = analysis["purity"]
     mhc1 = analysis["mhc1"]
     top_tissues = analysis["tissue_scores"][:5]
@@ -2395,245 +2413,28 @@ def _generate_text_reports(
         sample_mode=sample_mode,
     )
     best_decomp = decomp_results[0] if decomp_results else None
-
-    # --- Summary report ---
-    ambiguity_clause = ""
-    if len(call_summary.get("label_options", [])) == 2:
-        ambiguity_clause = (
-            f" Possible labels: **{call_summary['label_options'][0]}** or "
-            f"**{call_summary['label_options'][1]}**."
-        )
-    hla_a = mhc1.get("HLA-A", 0)
-    hla_b = mhc1.get("HLA-B", 0)
-    b2m = mhc1.get("B2M", 0)
-    mhc_level = "high" if min(hla_a, hla_b, b2m) > 20 else (
-        "low" if max(hla_a, hla_b, b2m) < 5 else "moderate"
-    )
     family_display = family_summary.get("display")
     subtype_clause = family_summary.get("subtype_clause")
-    lead_candidate = candidate_trace[0]["code"] if candidate_trace else None
-    constrained_cancer = constraints.get("cancer_type")
 
-    # Cancer-type call line. Qualitative, not raw composite-score (#32):
-    # show "top match, X× over next-best <CODE>" built from support_norm,
-    # and whether the call was auto-detected vs user-specified (#33).
-    source_label = {
-        "auto-detected": "auto-detected",
-        "user-specified": "user-specified",
-    }.get(analysis.get("cancer_type_source"), "")
-    source_suffix = f" ({source_label})" if source_label else ""
-    next_best_code, support_ratio = _next_best_support_gap(candidate_trace)
-    if family_display:
-        intro = f"The sample most closely matches **{family_display}**"
-        if subtype_clause:
-            if constrained_cancer and lead_candidate and constrained_cancer != lead_candidate:
-                intro += f", with **{cancer_code}** as the constrained working subtype{source_suffix}"
-            else:
-                intro += f", with **{cancer_code}** as the current best subtype hypothesis{source_suffix}"
-        intro += ". "
-    else:
-        intro = (
-            f"The sample most closely matches **{cancer_name} ({cancer_code})**"
-            f"{source_suffix}. "
-        )
-    if next_best_code and support_ratio is not None and support_ratio > 1.0:
-        intro += (
-            f"Support is **{support_ratio:.1f}× over next-best {next_best_code}**. "
-        )
-    if fit_quality.get("label") and fit_quality.get("message"):
-        intro += f"Fit quality: *{fit_quality['label']}* — {fit_quality['message']} "
-
-    # Report flow (user direction 2026-04-14):
-    #   1. What data do we have + sample QC (this block)
-    #   2. What kind of cancer (the intro above, written before this)
-    #   3. What else is in the sample (purity + TME + tissues)
-    #   4. Deeper detail (analysis.md, targets.md, figures)
-    #
-    # Build ordering below assembles the summary string in that flow —
-    # *not* in the order variables were defined — so the narrative
-    # starts with QC and ends with ambiguity / constraints.
-
-    # Disease-state synthesis (#78): one-line narrative up top.
+    # Disease-state synthesis (#78) — still used by analysis.md.
     disease_state_paragraph = compose_disease_state_narrative(analysis)
 
-    # Step 1: input & sample-QC framing.
-    sample_context = analysis.get("sample_context")
-    context_paragraph = ""
-    if sample_context is not None:
-        ctx_signals = sample_context.signals or {}
-        context_line = f"**Sample context**: {sample_context.summary_line()}."
-        n_det_1 = ctx_signals.get("genes_detected_above_1_tpm")
-        if n_det_1 is not None:
-            context_line += f" {n_det_1} genes at TPM > 1"
-            top50 = ctx_signals.get("top_50_share_of_total_tpm")
-            if top50 is not None:
-                context_line += f"; top-50 share {top50:.0%} of total"
-            context_line += "."
-        if ctx_signals.get("likely_targeted_panel"):
-            context_line += " ⚠ Input looks like a targeted panel rather than whole-transcriptome."
-        if sample_context.missing_mt and getattr(sample_context, "library_prep", None) not in _MT_EXPECTED_MISSING_PREPS:
-            # #77: suppress the MT caveat when the inferred library
-            # prep already explains the absence — avoids double-counting.
-            context_line += " ⚠ MT genes missing from quant — degradation signal unreliable."
-        context_paragraph = context_line
-
-    # Quality flags land right after sample_context in the QC block.
-    quality = analysis.get("quality")
-    quality_paragraph = ""
-    if quality and quality.get("has_issues"):
-        # Prefer the SampleContext-filtered flag list (#77) so the MT
-        # warning doesn't double-count an exome-capture library prep
-        # we already explained.
-        flags_to_show = quality.get("filtered_flags", quality["flags"])
-        # Only emit a "Quality warnings" paragraph when real issues
-        # remain after filtering — otherwise skip entirely.
-        if flags_to_show and any(not f.startswith("MT fraction near zero") for f in flags_to_show):
-            quality_paragraph = "**Quality warnings**: " + "; ".join(flags_to_show) + "."
-    elif quality and quality["degradation"]["level"] != "normal":
-        flags_to_show = quality.get("filtered_flags", quality["flags"])
-        if flags_to_show:
-            quality_paragraph = "**Quality note**: " + "; ".join(flags_to_show) + "."
-
-    # Step 2: headline call (already built above as `intro`).
-    headline = intro
-
-    # Step 3: what else is in the sample — purity clause + background
-    # tissues (from _summary_mode_clause), MHC-I level, analysis mode.
-    composition = (
-        _summary_mode_clause(sample_mode, purity, top_tissues)
-        + f"MHC-I expression is {mhc_level} "
-        + f"(HLA-A={hla_a:.0f}, HLA-B={hla_b:.0f}, B2M={b2m:.0f} TPM). "
-        + f"Analysis mode: **{_sample_mode_display(sample_mode)}**."
-    )
-    if purity.get("components", {}).get("integration", {}).get("signature_deprioritized"):
-        composition += (
-            " The tumor-specific signature panel was materially weaker and less stable than "
-            "the lineage panel, so it was downweighted rather than used as a hard lower anchor."
-        )
-
-    # Therapy-response state (#57): surface any axis that is clearly
-    # up or down vs cohort so the reader sees *why* individual genes
-    # might be off-baseline — ADT suppression of AR-transactivated
-    # genes, endocrine resistance, etc.
-    therapy_scores = analysis.get("therapy_response_scores") or {}
-    therapy_paragraph = ""
-    active_states = [
-        (cls, s) for cls, s in therapy_scores.items()
-        if s.state in ("up", "down")
-    ]
-    if active_states:
-        lines_ts = ["**Therapy-response state**:"]
-        for cls, s in active_states:
-            verb = "active" if s.state == "up" else "suppressed"
-            fold_phrase = ""
-            if s.up_geomean_fold is not None:
-                fold_phrase = f" (up-panel {s.up_geomean_fold:.2f}× cohort"
-                if s.down_geomean_fold is not None:
-                    fold_phrase += f", down-panel {s.down_geomean_fold:.2f}×"
-                fold_phrase += ")"
-            lines_ts.append(
-                f"  - {cls.replace('_', ' ')}: {verb}{fold_phrase}"
-            )
-        therapy_paragraph = "\n".join(lines_ts)
-
-    # Step 4: constraints / decomposition detail / ambiguity.
-    detail_parts = []
-    if therapy_paragraph:
-        detail_parts.append(therapy_paragraph)
-    if constraints:
-        constraint_parts = []
-        if constraints.get("cancer_type"):
-            constraint_parts.append(f"cancer type fixed to **{constraints['cancer_type']}**")
-        if constraints.get("tumor_context"):
-            constraint_parts.append(
-                f"template context restricted to **{constraints['tumor_context']}**"
-            )
-        if constraints.get("site_hint"):
-            constraint_parts.append(f"site hint **{constraints['site_hint']}**")
-        if constraints.get("decomposition_templates"):
-            constraint_parts.append(
-                "template list fixed to **"
-                + ", ".join(constraints["decomposition_templates"])
-                + "**"
-            )
-        if constraints.get("met_site"):
-            constraint_parts.append(
-                f"biopsy site **{constraints['met_site']}** (TME reference augmented)"
-            )
-        if constraint_parts:
-            detail_parts.append("Analysis constraints: " + "; ".join(constraint_parts) + ".")
-    # Only surface the decomposition line when its call materially differs
-    # from the headline call (#33: the tumor fraction % is identical to the
-    # already-stated purity, so repeating it is noise).
-    if call_summary.get("site_indeterminate"):
-        detail_parts.append(
-            "Decomposition recovered broad admixture structure, but "
-            "site/template assignment is indeterminate."
-        )
-    elif best_decomp is not None:
-        decomp_piece = (
-            f"Decomposition template: **{best_decomp.cancer_type} / {best_decomp.template}**"
-        )
-        if (
-            getattr(best_decomp, "cancer_type", None)
-            and best_decomp.cancer_type != cancer_code
-        ):
-            decomp_piece += " (differs from headline call)"
-        detail_parts.append(decomp_piece + ".")
-    if ambiguity_clause.strip():
-        detail_parts.append(ambiguity_clause.strip())
-    # Tissue-score caveat (#33): readers were interpreting similarity
-    # scores as composition percentages. One short line clarifies.
-    if top_tissues:
-        detail_parts.append(
-            "*Note: background tissue scores are normalised similarity "
-            "to reference nTPM profiles, not composition percentages.*"
-        )
-
-    # Assemble in the user-requested order: disease-state synthesis
-    # (#78) → QC → coarse call → detail. The synthesis line lands
-    # *before* the QC block so a reader immediately sees the clinical
-    # framing ("ADT-treated CRPC with emerging NEPC") before
-    # descending into sequencing QC or the raw cancer-type number.
-    sections = []
-    if disease_state_paragraph:
-        sections.append(f"**Disease state**: {disease_state_paragraph}")
-    qc_block = "\n\n".join([b for b in (context_paragraph, quality_paragraph) if b])
-    if qc_block:
-        sections.append(qc_block)
-    sections.append(headline + composition)
-    if detail_parts:
-        sections.append("\n\n".join(detail_parts))
-    summary = "\n\n".join(sections)
-
-    summary_path = "%s-summary.md" % prefix if prefix else "summary.md"
-    header = "# Sample Analysis Summary\n"
-    if input_path:
-        header += f"\n*Input*: `{input_path}`\n"
-    # #149: Prepend the Step-0 tissue-composition + cancer-hint
-    # reading so a reader sees the coarse "what kind of tissue is
-    # this and is there any hint of cancer" context before the
-    # downstream cancer-type call. Propagated forward from analyze().
-    hvt = analysis.get("healthy_vs_tumor")
-    step0_section = ""
-    if hvt is not None and hvt.top_normal_tissues:
-        trace_clause = (
-            f" *Rule: {' → '.join(hvt.reasoning_trace)}.*"
-            if hvt.reasoning_trace else ""
-        )
-        step0_section = (
-            f"\n**Step-0 tissue composition**: "
-            f"{hvt.summary_line()}{trace_clause}\n"
-        )
-    with open(summary_path, "w") as f:
-        f.write(f"{header}{step0_section}\n{summary}\n")
-    print(f"[report] Saved {summary_path}")
+    # The old free-form ``*-summary.md`` paragraph (disease-state +
+    # QC + headline + composition + therapy-response state) was
+    # retired in 4.41.0 — every block already lived in analysis.md.
+    # The name ``summary.md`` now carries what used to be
+    # ``brief.md`` (the 1-page clinician file).
 
     # --- Detailed report ---
     lines = ["# Detailed Sample Analysis\n"]
+    if input_path:
+        # Input path at the top so the file is self-identifying even
+        # without sample_context downstream. Propagated from
+        # ``analyze()`` along with the rest of the analysis dict.
+        lines.append(f"*Input*: `{input_path}`\n")
 
-    # Disease-state synthesis (#78) — matches the summary.md top line
-    # so readers arriving from either report see the same framing.
+    # Disease-state synthesis (#78) — rendered at the top so a reader
+    # sees the clinical framing before descending into pipeline detail.
     if disease_state_paragraph:
         lines.append(f"**Disease state**: {disease_state_paragraph}\n")
 
@@ -2791,6 +2592,14 @@ def _generate_text_reports(
     # Cancer type identification
     lines.append("## Cancer Type Identification\n")
     lines.append(f"- **Sample mode**: {_sample_mode_display(sample_mode)}")
+    # #33 source attribution — show whether the call was auto-detected
+    # or user-specified. Used to live only in the retired summary.md.
+    source_label = {
+        "auto-detected": "auto-detected",
+        "user-specified": "user-specified",
+    }.get(analysis.get("cancer_type_source"))
+    if source_label:
+        lines.append(f"- **Call source**: {source_label}")
     if fit_quality.get("label"):
         lines.append(f"- **Fit quality**: {fit_quality['label']}")
     if fit_quality.get("message"):
