@@ -1613,7 +1613,6 @@ def _analyze_body(
     # Deep-dive therapy target + CTA + subtype plots
     from .plot_target_deep_dive import (
         plot_actionable_targets,
-        plot_tumor_attribution,
         plot_cta_deep_dive,
     )
     from .plot_subtype_signature import plot_subtype_signature
@@ -1643,29 +1642,15 @@ def _analyze_body(
         print(f"[plot] CTA deep dive failed: {exc}")
         cta_deep_png = None
 
-    try:
-        attrib_targets_png = "%s-tumor-attribution-targets.png" % prefix
-        plot_tumor_attribution(
-            df_expr, cancer_type=effective_cancer_type,
-            purity_estimate=p_est or 0.5, category="surface",
-            save_to_filename=attrib_targets_png, save_dpi=output_dpi,
-        )
-        print(f"[plot] Saved tumor attribution (targets) to {attrib_targets_png}")
-    except Exception as exc:
-        print(f"[plot] tumor attribution (targets) failed: {exc}")
-        attrib_targets_png = None
-
-    try:
-        attrib_cta_png = "%s-tumor-attribution-cta.png" % prefix
-        plot_tumor_attribution(
-            df_expr, cancer_type=effective_cancer_type,
-            purity_estimate=p_est or 0.5, category="CTA",
-            save_to_filename=attrib_cta_png, save_dpi=output_dpi,
-        )
-        print(f"[plot] Saved tumor attribution (CTA) to {attrib_cta_png}")
-    except Exception as exc:
-        print(f"[plot] tumor attribution (CTA) failed: {exc}")
-        attrib_cta_png = None
+    # The pre-#108 ``plot_tumor_attribution`` (reference-based 2-color
+    # tumor-vs-TME view) was removed from the default plot set in
+    # v4.46.0 — ``plot_target_attribution`` (per-compartment stacked
+    # bars keyed on the #108 attribution dict) is strictly more
+    # informative and already emits per-category ``target-attribution-
+    # *.png``. The older function remains in
+    # ``pirlygenes.plot_target_deep_dive`` for Python-API consumers.
+    attrib_targets_png = None
+    attrib_cta_png = None
 
     subtype_png = None
     try:
