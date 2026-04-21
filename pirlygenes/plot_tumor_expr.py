@@ -606,6 +606,34 @@ def estimate_tumor_expression_ranges(
                 tme_only_tpm_by_symbol = None
                 matched_normal_tpm_by_symbol = None
 
+    # #56: post-hoc CAF / TAM reference swap. The NNLS anchors
+    # ``fibroblast`` to HPA generic fibroblast and ``myeloid`` to HPA
+    # generic macrophage; both under-represent the tumor-activated
+    # states (CAF ≠ primary fibroblast; TAM ≠ generic macrophage).
+    # Swap the per-gene reference for canonical marker genes (FAP /
+    # POSTN / CD163 / MRC1 / ...) before computing tumor_tpm so
+    # unambiguously-stromal / myeloid genes don't leak into the tumor
+    # residual. NNLS is not re-run — strictly per-gene reference swap.
+    subtype_refinement_provenance: dict = {}
+    tme_bg_tpm_before_refinement = None
+    if tme_bg_tpm_by_symbol is not None:
+        from .decomposition.subtype_refs import refine_tme_per_gene
+        tme_bg_tpm_before_refinement = dict(tme_bg_tpm_by_symbol)
+        refined_tme, subtype_refinement_provenance = refine_tme_per_gene(
+            tme_bg_tpm_by_symbol=tme_bg_tpm_by_symbol,
+            per_compartment_tpm_by_symbol=per_compartment_tpm_by_symbol,
+            sample_tpm_by_symbol=sample_raw,
+        )
+        tme_bg_tpm_by_symbol = refined_tme
+        # Mirror the refinement into the TME-only view so matched-normal
+        # stays unchanged but the CAF/TAM correction propagates.
+        if tme_only_tpm_by_symbol is not None and subtype_refinement_provenance:
+            for gene, prov in subtype_refinement_provenance.items():
+                delta = prov["after"] - prov["before"]
+                tme_only_tpm_by_symbol[gene] = float(
+                    tme_only_tpm_by_symbol.get(gene, 0.0) + delta
+                )
+
     # --- Purity-adjusted TCGA (HK-normalized, then deconvolved) ---
     # For each FPKM cancer-type column, compute:
     #   tcga_hk = FPKM / FPKM_HK_median
@@ -1109,6 +1137,23 @@ def estimate_tumor_expression_ranges(
             # kept for audit.
             "matched_normal_over_predicted": matched_normal_over_predicted,
             "attribution_raw_sum_tpm": round(attr_tme_total_raw, 2),
+            # #56: post-hoc CAF / TAM reference swap provenance.
+            # ``subtype_refined`` is True when the per-gene TME
+            # contribution got reference-swapped; the *_before column
+            # carries the TPM that would have been attributed to tumor
+            # under the generic-reference path for comparison.
+            "subtype_refined": bool(
+                subtype_refinement_provenance
+                and symbol in subtype_refinement_provenance
+            ),
+            "subtype_refinement_label": (
+                subtype_refinement_provenance.get(symbol, {}).get("subtype", "")
+                if subtype_refinement_provenance else ""
+            ),
+            "tme_tpm_before_subtype_refinement": (
+                round(float(tme_bg_tpm_before_refinement.get(symbol, 0.0)), 2)
+                if tme_bg_tpm_before_refinement is not None else None
+            ),
             **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
             "median_est": round(median_est, 2),
             "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None and not math.isinf(vs_tcga) else vs_tcga,
