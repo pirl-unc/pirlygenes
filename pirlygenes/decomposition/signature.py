@@ -41,6 +41,11 @@ COMPONENT_TO_HPA = {
     "normal_lymphoid": ["B-cells", "T-cells", "NK-cells"],
     "erythroid": ["Erythroid cells"],
     "normal_blood": ["T-cells", "B-cells", "NK-cells", "monocytes", "granulocytes"],
+    # Optional compartments (#59 items 2-4) — gated via
+    # ``templates.OPTIONAL_COMPARTMENT_GATES`` so they only enter NNLS
+    # when the sample carries sufficient marker signal.
+    "adipocyte": ["Adipocytes"],
+    "schwann": ["Schwann cells"],
 }
 
 # Legacy bulk-tissue fallback for components not routed through
@@ -75,6 +80,10 @@ COMPONENT_MARKERS = {
     "normal_lymphoid": ["CD3D", "MS4A1", "NKG7", "LTB"],
     "erythroid": ["HBA1", "HBA2", "HBB", "ALAS2"],
     "normal_blood": ["LYZ", "S100A8", "NKG7", "MS4A1", "HBB"],
+    # Optional compartments (#59). Markers match the detection gates
+    # in ``templates.OPTIONAL_COMPARTMENT_GATES``.
+    "adipocyte": ["ADIPOQ", "FABP4", "PLIN1", "LEP", "CIDEA", "CIDEC"],
+    "schwann": ["MPZ", "PMP22", "S100B", "GFAP"],
 }
 
 def _load_hpa_cell_types():
