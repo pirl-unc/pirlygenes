@@ -1448,6 +1448,122 @@ def plot_target_attribution(
     return fig
 
 
+def plot_subtype_attribution(
+    df_ranges,
+    category,
+    top_n=15,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=None,
+):
+    """Per-gene before/after deltas from subtype refinement (#56 / #58).
+
+    For each of the top-N genes in ``category`` that were refined by
+    ``refine_tme_per_gene``, draw paired horizontal bars:
+
+    - BEFORE: tumor residual + aggregate TME under the generic-reference
+      path (pre-#56 behavior).
+    - AFTER: tumor residual + aggregate TME under the tumor-activated
+      reference swap.
+
+    Each gene's pair is labelled with the winning subtype (CAF / TAM /
+    exhausted_T / …). Makes the per-gene effect of the refinement
+    concrete — readers see exactly which genes moved from
+    mis-attributed-to-tumor to correctly-absorbed-by-the-refined-compartment.
+
+    Returns ``None`` when no row in the category has subtype-refinement
+    provenance (e.g. decomposition didn't run, or no marker gene
+    crossed the fold threshold on this category).
+    """
+    if "subtype_refined" not in df_ranges.columns:
+        return None
+    sub = df_ranges[
+        (df_ranges["category"] == category)
+        & (df_ranges["subtype_refined"].astype(bool))
+    ].copy()
+    if sub.empty:
+        return None
+
+    # Rank by the size of the per-gene correction so the most-impactful
+    # refinements appear at the top of the chart.
+    sub["_delta"] = (
+        sub["tme_tpm_before_subtype_refinement"].astype(float)
+        - (sub["observed_tpm"].astype(float) - sub["attr_tumor_tpm"].astype(float))
+    ).abs()
+    sub = sub.sort_values("_delta", ascending=False).head(top_n)
+    sub = sub.sort_values("_delta", ascending=True).reset_index(drop=True)
+
+    n = len(sub)
+    if n == 0:
+        return None
+    if figsize is None:
+        figsize = (11, max(3.0, 0.55 * n + 1.5))
+
+    # Two rows per gene: "before" above, "after" below.
+    fig, ax = plt.subplots(figsize=figsize)
+
+    tumor_color = "#e74c3c"
+    tme_color_before = "#95a5a6"   # grey — generic reference
+    tme_color_after = "#f39c12"    # orange — tumor-activated reference
+
+    row_positions = []
+    labels = []
+    for i, (_, row) in enumerate(sub.iterrows()):
+        observed = float(row.get("observed_tpm") or 0.0)
+        tme_before = float(row.get("tme_tpm_before_subtype_refinement") or 0.0)
+        tumor_before = max(0.0, observed - tme_before)
+        tumor_after = float(row.get("attr_tumor_tpm") or 0.0)
+        tme_after = max(0.0, observed - tumor_after)
+
+        y_before = 2 * i
+        y_after = 2 * i + 0.75
+        ax.barh(y_before, tumor_before, color=tumor_color)
+        ax.barh(y_before, tme_before, left=tumor_before,
+                color=tme_color_before)
+        ax.barh(y_after, tumor_after, color=tumor_color)
+        ax.barh(y_after, tme_after, left=tumor_after,
+                color=tme_color_after)
+
+        sym = str(row["symbol"])
+        label_subtype = row.get("subtype_refinement_label", "") or "refined"
+        row_positions.extend([y_before, y_after])
+        labels.append(f"{sym} · before")
+        labels.append(f"{sym} · after ({label_subtype})")
+
+    ax.set_yticks(row_positions)
+    ax.set_yticklabels(labels, fontsize=9)
+    ax.invert_yaxis()
+    ax.set_xlabel(
+        "TPM (stacked: tumor core + TME background = observed)",
+        fontsize=10,
+    )
+    ax.set_xscale("symlog", linthresh=1.0)
+    ax.grid(axis="x", alpha=0.2)
+
+    import matplotlib.patches as mpatches
+    handles = [
+        mpatches.Patch(color=tumor_color, label="tumor core"),
+        mpatches.Patch(color=tme_color_before,
+                       label="TME — generic reference (pre-#56)"),
+        mpatches.Patch(color=tme_color_after,
+                       label="TME — tumor-activated reference (post-#56)"),
+    ]
+    ax.legend(handles=handles, loc="lower right", fontsize=8, framealpha=0.9)
+    ax.set_title(
+        f"Subtype-refinement before / after — {category}\n"
+        "top rows = largest correction; AFTER-bars show how much "
+        "signal the tumor-activated reference absorbs that the "
+        "generic reference missed.",
+        fontsize=9, fontweight="bold", loc="left",
+    )
+
+    plt.tight_layout()
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig
+
+
 def plot_tumor_expression_ranges(
     df_ranges,
     purity_result,
