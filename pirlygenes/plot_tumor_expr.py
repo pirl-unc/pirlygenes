@@ -130,6 +130,31 @@ BREADTH_BASELINE_TOP_N = 10
 #   sees the amplification story, not a spurious caution.
 AMPLIFICATION_MIN_FOLD = 5.0
 
+# Smooth-muscle lineage markers (#59 item 1). Canonical vascular +
+# visceral SM identity genes — not rhabdomyosarcoma / cardiac markers
+# (DES is omitted here because it also fires in skeletal / cardiac
+# muscle and on RMS samples). When these land in the tumor-attributed
+# column at materially high TPM, the reader should treat the
+# tumor-cell story with caution: the matched-normal reference carries
+# average fibromuscular-stroma density for the parent tissue, and a
+# biopsy with above-average SM content leaks SM signal into tumor.
+_SMOOTH_MUSCLE_LINEAGE_MARKERS = frozenset({
+    "TAGLN",   # Transgelin / SM22α
+    "ACTA2",   # α-smooth muscle actin
+    "MYH11",   # Smooth muscle myosin heavy chain 11
+    "CNN1",    # Calponin 1
+    "MYL9",    # Myosin light chain 9
+    "CALD1",   # Caldesmon
+    "SMTN",    # Smoothelin
+    "MYLK",    # Myosin light-chain kinase
+    "TPM2",    # Tropomyosin 2 (SM-enriched isoform)
+})
+# Firing thresholds. Kept conservative — this is an annotation, not a
+# refitting override, so over-annotating is cheap but under-annotating
+# misses the case.
+_SM_LEAKAGE_MIN_OBSERVED_TPM = 50.0
+_SM_LEAKAGE_MIN_TUMOR_FRACTION = 0.30
+
 # ---------------------------------------------------------------------------
 # Functions
 # ---------------------------------------------------------------------------
@@ -1137,6 +1162,20 @@ def estimate_tumor_expression_ranges(
             # kept for audit.
             "matched_normal_over_predicted": matched_normal_over_predicted,
             "attribution_raw_sum_tpm": round(attr_tme_total_raw, 2),
+            # #59 item 1: smooth-muscle stromal leakage. Matched-normal
+            # references carry average fibromuscular-stroma density for
+            # the parent tissue; a biopsy with above-average SM content
+            # leaks SM-lineage signal into the tumor column. When a
+            # canonical SM marker lands with a substantial tumor share
+            # at a non-trivial TPM, annotate rather than silently treat
+            # as tumor-cell expressed. NOT a refitting override — this
+            # is strictly a reader-facing caveat that the tumor-cell
+            # story should be read with skepticism.
+            "smooth_muscle_stromal_leakage": bool(
+                symbol in _SMOOTH_MUSCLE_LINEAGE_MARKERS
+                and observed >= _SM_LEAKAGE_MIN_OBSERVED_TPM
+                and attr_tumor_fraction >= _SM_LEAKAGE_MIN_TUMOR_FRACTION
+            ),
             # #56: post-hoc CAF / TAM reference swap provenance.
             # ``subtype_refined`` is True when the per-gene TME
             # contribution got reference-swapped; the *_before column
