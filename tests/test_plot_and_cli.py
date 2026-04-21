@@ -192,13 +192,14 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     )
     # prefix becomes output_dir/output_image_prefix
     expected_prefix = str(tmp_path / "test-output" / "out")
-    assert len(calls) == 4  # immune, tumor, antigens, treatments
-    assert calls[0]["save_to_filename"] == f"{expected_prefix}-immune.png"
-    assert calls[1]["save_to_filename"] == f"{expected_prefix}-tumor.png"
-    assert calls[2]["save_to_filename"] == f"{expected_prefix}-antigens.png"
-    assert calls[3]["save_to_filename"] == f"{expected_prefix}-treatments.png"
-    assert calls[3]["gene_sets"]["Radio"] == {"ENSG_MOCK": "radioligand"}
-    assert calls[3]["always_label_genes"] == {"FAP", "CD276"}
+    # v4.46.0: retired the immune / tumor / antigens overview strip
+    # plots — they duplicated the 10 per-category curated strip plots
+    # (Immune_checkpoints / Oncogenes / CTAs / ...). Only the
+    # treatments modality strip plot remains.
+    assert len(calls) == 1
+    assert calls[0]["save_to_filename"] == f"{expected_prefix}-treatments.png"
+    assert calls[0]["gene_sets"]["Radio"] == {"ENSG_MOCK": "radioligand"}
+    assert calls[0]["always_label_genes"] == {"FAP", "CD276"}
     assert len(scatter_calls) == 1
     assert scatter_calls[0]["save_to_filename"] == f"{expected_prefix}-vs-cancer.pdf"
     # #83: scatter must use the resolved cancer type (PRAD from
