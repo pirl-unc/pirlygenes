@@ -159,6 +159,7 @@ def test_source_cohort_values_are_canonical():
         "SCLC_UCOLOGNE_2015", "MMRF_COMMPASS", "ICGC",
         "LITERATURE_CURATED",
         "TREEHOUSE_v25.01",
+        "GSE118014_ALVAREZ_2018",
     }
     present = set(df["source_cohort"].fillna("").astype(str).unique())
     unknown = present - valid
