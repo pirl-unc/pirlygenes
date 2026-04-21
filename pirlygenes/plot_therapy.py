@@ -83,14 +83,33 @@ def _fn1_edb_transcript_ids():
                 continue
             if getattr(transcript, "biotype", None) != "protein_coding":
                 continue
-            exons = list(getattr(transcript, "exons", []) or [])
-            exon_ids = {str(exon.exon_id) for exon in exons if getattr(exon, "exon_id", None)}
-            exon_intervals = {
-                (int(exon.start), int(exon.end))
-                for exon in exons
-                if getattr(exon, "start", None) is not None
-                and getattr(exon, "end", None) is not None
-            }
+            # ``transcript.exons`` is a lazily-evaluated property that
+            # issues a pyensembl SQL query. Older Ensembl releases
+            # (e.g. 54) have an ``exon`` table without an ``exon_id``
+            # column — the query raises ``sqlite3.OperationalError``.
+            # Catch it so one release's schema weirdness doesn't abort
+            # the whole cross-release lookup. Whichever releases still
+            # have intact schemas contribute; broken ones silently skip.
+            try:
+                exons = list(getattr(transcript, "exons", []) or [])
+            except Exception:
+                continue
+            try:
+                exon_ids = {
+                    str(exon.exon_id) for exon in exons
+                    if getattr(exon, "exon_id", None)
+                }
+            except Exception:
+                exon_ids = set()
+            try:
+                exon_intervals = {
+                    (int(exon.start), int(exon.end))
+                    for exon in exons
+                    if getattr(exon, "start", None) is not None
+                    and getattr(exon, "end", None) is not None
+                }
+            except Exception:
+                exon_intervals = set()
             if (
                 getattr(transcript, "transcript_name", None) in _FN1_EDB_TRANSCRIPT_NAMES
                 or exon_ids & _FN1_EDB_EXON_IDS
