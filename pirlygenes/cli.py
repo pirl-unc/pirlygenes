@@ -1756,6 +1756,31 @@ def _analyze_body(
                     adj_pngs.append(attr_png)
                 _plt.close("all")
 
+        # Per-gene subtype-refinement before / after bars (#56 / #58,
+        # figure-audit C2). Only emitted when at least one gene in the
+        # category got refined by the CAF / TAM / ... reference swap.
+        # Separate PNG per category per the plot-crowding preference.
+        if (
+            "subtype_refined" in ranges_df.columns
+            and ranges_df["subtype_refined"].astype(bool).any()
+        ):
+            from .plot_tumor_expr import plot_subtype_attribution
+            for cat_key, cat_slug in _adj_categories:
+                sub_png = (
+                    "%s-subtype-attribution-%s.png" % (prefix, cat_slug)
+                    if prefix else "subtype-attribution-%s.png" % cat_slug
+                )
+                fig = plot_subtype_attribution(
+                    ranges_df,
+                    category=cat_key,
+                    top_n=15,
+                    save_to_filename=sub_png,
+                    save_dpi=output_dpi,
+                )
+                if fig is not None:
+                    adj_pngs.append(sub_png)
+                _plt.close("all")
+
         # Per-gene matched-normal attribution (issue #55). One PNG per
         # category, only emitted when matched-normal subtraction was
         # active. Separate plots rather than a composite figure per the
