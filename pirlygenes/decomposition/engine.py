@@ -21,6 +21,7 @@ from .signature import build_signature_matrix, get_component_markers
 from .templates import (
     EPITHELIAL_MATCHED_NORMAL_TISSUE,
     TEMPLATES,
+    _detect_optional_compartments,
     get_template_components,
     get_template_extra_components,
     get_template_host_tissues,
@@ -626,8 +627,22 @@ def _fit_one_hypothesis(
     # to route matched-normal selection (#51). Falls back silently to
     # parent-code lookup for non-mixture cohorts.
     winning_subtype = candidate_row.get("winning_subtype")
+
+    # #59 items 2-4: optional-compartment detection. Adipocyte /
+    # Schwann / erythroid compartments enter the NNLS only when the
+    # sample carries enough marker signal to justify absorbing them,
+    # and only on templates / cancer types where the biology makes
+    # sense (see ``templates.OPTIONAL_COMPARTMENT_GATES``). With no
+    # detections the component list is byte-identical to the
+    # pre-#59 path.
+    detected_compartments = _detect_optional_compartments(
+        sample_raw_by_symbol, cancer_type=cancer_type,
+        template_name=template_name,
+    )
     components = get_template_components(
-        template_name, cancer_type, winning_subtype=winning_subtype,
+        template_name, cancer_type,
+        winning_subtype=winning_subtype,
+        detected_compartments=detected_compartments,
     )
     comp_names = [comp for comp in components if comp != "tumor"]
     matched_normal_name = (
