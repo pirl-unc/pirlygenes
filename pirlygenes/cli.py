@@ -48,7 +48,6 @@ from .plot import (
     plot_cohort_therapy_targets,
     plot_cohort_surface_proteins,
     plot_cohort_ctas,
-    default_gene_sets,
     get_embedding_feature_metadata,
     estimate_tumor_expression_ranges,
     plot_matched_normal_attribution,
@@ -1021,19 +1020,10 @@ def _analyze_body(
     except Exception as exc:  # noqa: BLE001
         print(f"[plot] degradation-index plot failed: {exc}")
 
-    # Strip plots: split into focused panels for readability
-    # Immune microenvironment
-    immune_sets = {k: default_gene_sets[k] for k in
-                   ["Immune_checkpoints", "MHC1_presentation", "Interferon_response", "TLR"]
-                   if k in default_gene_sets}
-    # Tumor biology
-    tumor_sets = {k: default_gene_sets[k] for k in
-                  ["Oncogenes", "Tumor_suppressors", "DNA_repair", "Growth_receptors"]
-                  if k in default_gene_sets}
-    # Tumor antigens
-    antigen_sets = {k: default_gene_sets[k] for k in
-                    ["CTAs", "Cancer_surfaceome"]
-                    if k in default_gene_sets}
+    # Strip plot: therapy modalities. The per-category strip plots
+    # (Immune_checkpoints / Oncogenes / CTAs / ...) are emitted
+    # elsewhere; the aggregate immune / tumor / antigens overview
+    # panels were retired as redundant in v4.46.0.
     # Therapy modalities
     therapy_sets = {
         "TCR-T": therapy_target_gene_id_to_name("TCR-T"),
@@ -1045,10 +1035,15 @@ def _analyze_body(
         "Radio": therapy_target_gene_id_to_name("radioligand"),
     }
 
+    # The ``immune`` / ``tumor`` / ``antigens`` overview strip plots
+    # duplicate the 10 curated category strip plots (Immune_checkpoints,
+    # Oncogenes, Tumor_suppressors, CTAs, Cancer_surfaceome, …) that
+    # this CLI also emits. Per the figure audit (docs/figure-audit.md),
+    # the overview set is the redundant one — retired in 4.46.0. The
+    # ``treatments`` plot stays because it's organized by therapy
+    # modality (ADC / TCR-T / CAR-T / bispecific / …), not by gene-set
+    # category, so it's not covered by the per-category plots.
     strip_plots = [
-        ("immune", immune_sets),
-        ("tumor", tumor_sets),
-        ("antigens", antigen_sets),
         ("treatments", therapy_sets),
     ]
     for i, (name, gene_sets) in enumerate(strip_plots):
@@ -1920,9 +1915,6 @@ def _analyze_body(
         "%s-provenance.png" % prefix if prefix else "provenance.png",
         # #136: therapy-pathway-state dumbbell figure.
         pathway_state_png,
-        "%s-immune.png" % prefix if prefix else "immune.png",
-        "%s-tumor.png" % prefix if prefix else "tumor.png",
-        "%s-antigens.png" % prefix if prefix else "antigens.png",
         "%s-treatments.png" % prefix if prefix else "treatments.png",
         safety_png,
     ] + embedding_pngs
@@ -2026,9 +2018,6 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-decomposition-components.png` | Standalone TME cell-type breakdown for the best hypothesis |
 | `*-decomposition-candidates.png` | Standalone per-candidate composition bars (tumor / template-specific / shared host) across top decomposition candidates |
 | `*-purity.png` | Tumor purity estimation detail |
-| `*-immune.png` | Immune microenvironment gene expression |
-| `*-tumor.png` | Tumor biology gene expression |
-| `*-antigens.png` | Tumor antigen expression (CTAs, surfaceome) |
 | `*-treatments.png` | Therapy target expression by modality |
 | `*-target-safety.png` | Therapy target normal tissue expression |
 | `*-purity-targets.png` | Tumor-expression ranges for therapeutic targets |
