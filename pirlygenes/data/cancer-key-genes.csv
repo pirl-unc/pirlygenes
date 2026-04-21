@@ -744,3 +744,66 @@ CHON,,COL2A1,biomarker,,,,,Mutation in small subset; cartilage-lineage driver in
 CHON,,HEY1,biomarker,,,,,HEY1-NCOA2 fusion — defining for mesenchymal chondrosarcoma variant,PMID:22836606
 CHON,,IDH1,target,ivosidenib,small_molecule,phase_1,IDH1-mut advanced chondrosarcoma,Selective IDH1 inhibitor — activity in IDH1-R132 chondrosarcoma subset,PMID:32679069
 CHON,,VEGFA,target,pazopanib,small_molecule,phase_2,advanced chondrosarcoma,VEGFR multi-TKI — modest PFS benefit; pan-sarcoma data,PMID:22749852
+BL,,MYC,biomarker,,,,,"Defining oncogene — t(8;14) IGH-MYC (~80%), t(2;8) or t(8;22) variants; drives aggressive proliferation",PMID:16760443
+BL,,MS4A1,biomarker,,,,,CD20 — B-cell lineage; rituximab target,PMID:11807147
+BL,,CD79A,biomarker,,,,,B-cell receptor — BCR pathway component,PMID:19194475
+BL,,BCL6,biomarker,,,,,Germinal-center B-cell transcription factor — Burkitt cell of origin,PMID:14688368
+BL,,TP53,biomarker,,,,,Frequently mutated (~40%); high-risk in HIV-associated BL,PMID:22343534
+BL,,MS4A1,target,rituximab,antibody,approved,BL (DA-EPOCH-R),Anti-CD20 — standard of care with DA-EPOCH chemo backbone,PMID:32356518
+BL,,CD19,target,tisagenlecleucel,CAR-T,phase_2,R/R BL (pediatric),CD19 CAR-T — pediatric R/R BL activity in JULIET / ELIANA follow-ups,PMID:29262281
+BL,,CD22,target,inotuzumab ozogamicin,ADC,phase_2,R/R BL,CD22 ADC — activity in R/R BCR signaling B-cell lymphomas including BL,PMID:22431578
+FL,,MS4A1,biomarker,,,,,CD20 — germinal-center B-cell; anti-CD20 backbone of FL therapy,PMID:18836437
+FL,,BCL2,biomarker,,,,,t(14;18) IGH-BCL2 (~85%) — defining cytogenetic — anti-apoptotic driver,PMID:15033871
+FL,,BCL6,biomarker,,,,,Germinal-center TF; retained in FL vs lost in transformed aggressive variants,PMID:11432899
+FL,,CD10,biomarker,,,,,MME — germinal-center marker; differentiates FL from other B-NHLs,PMID:11432899
+FL,,EZH2,biomarker,,,,,Gain-of-function mutations (~25%); tazemetostat-sensitive subset,PMID:30692609
+FL,,MS4A1,target,rituximab,antibody,approved,FL (first-line maintenance + R/R),"Anti-CD20 — R-bendamustine / R-CHOP backbone, rituximab maintenance extends PFS",PMID:21890466
+FL,,MS4A1,target,obinutuzumab,antibody,approved,FL (R/R rituximab-refractory),Type-2 anti-CD20 — GADOLIN trial in rituximab-refractory FL,PMID:27686830
+FL,,EZH2,target,tazemetostat,small_molecule,approved,R/R EZH2-mutant FL,EZH2 inhibitor — approved 2020; response enriched in EZH2-mutant subset,PMID:33035457
+FL,,MS4A1,target,mosunetuzumab,bispecific,approved,R/R FL (≥2 prior lines),CD20xCD3 bispecific — approved 2022; GO29781 trial,PMID:36463577
+FL,,MS4A1,target,epcoritamab,bispecific,approved,R/R FL,CD20xCD3 bispecific — EPCORE NHL-1 trial,PMID:37192387
+FL,,CD19,target,axicabtagene ciloleucel (axi-cel),CAR-T,approved,R/R FL,CD19 CAR-T — ZUMA-5 trial; approved 2021,PMID:35045297
+FL,,CD19,target,lisocabtagene maraleucel (liso-cel),CAR-T,approved,R/R FL,CD19 CAR-T — TRANSCEND FL trial,PMID:37125909
+HCL,,BRAF,biomarker,,,,,V600E mutation — pathognomonic for classical HCL; ~100% of cases,PMID:21666225
+HCL,,CD20,biomarker,,,,,Strong B-cell surface expression — rituximab target,PMID:22689687
+HCL,,CD22,biomarker,,,,,B-cell surface — moxetumomab pasudotox target,PMID:30093631
+HCL,,CD25,biomarker,,,,,IL2RA — characteristic of classical HCL (vs HCL-v which is CD25-),PMID:22689687
+HCL,,BRAF,target,vemurafenib,small_molecule,approved,R/R classical HCL,BRAF V600E inhibitor — FDA approved 2024 for R/R HCL after purine analogs,PMID:26352686
+HCL,,BRAF,target,dabrafenib + trametinib,small_molecule,phase_2,R/R HCL,BRAF + MEK combo — clinical trial data in purine-analog refractory cases,PMID:35404892
+HCL,,CD22,target,moxetumomab pasudotox,ADC,approved,R/R classical HCL,CD22 immunotoxin — approved 2018 for multiply-relapsed HCL,PMID:30093631
+CML,,BCR,biomarker,,,,,BCR-ABL1 fusion — t(9;22) Philadelphia chromosome; pathognomonic for CML,PMID:10086668
+CML,,ABL1,biomarker,,,,,Kinase domain of BCR-ABL1 fusion — T315I mutation confers resistance to 1st/2nd-gen TKIs,PMID:11337484
+CML,,ABL1,target,imatinib,small_molecule,approved,CML chronic phase,First-gen BCR-ABL TKI — first-line standard since 2001; IRIS trial,PMID:12637609
+CML,,ABL1,target,dasatinib,small_molecule,approved,CML first-line or imatinib-resistant,Second-gen BCR-ABL TKI — DASISION trial,PMID:20525993
+CML,,ABL1,target,nilotinib,small_molecule,approved,CML first-line or imatinib-resistant,Second-gen BCR-ABL TKI — ENESTnd trial,PMID:20525997
+CML,,ABL1,target,bosutinib,small_molecule,approved,CML R/R or intolerant to imatinib,Second-gen BCR-ABL TKI — approved 2012,PMID:22829185
+CML,,ABL1,target,ponatinib,small_molecule,approved,T315I-mutant or multi-TKI-refractory CML,Third-gen BCR-ABL TKI — only approved agent with T315I activity,PMID:23770846
+CML,,ABL1,target,asciminib,small_molecule,approved,R/R CML including T315I,STAMP inhibitor — myristoyl-pocket allosteric inhibitor; approved 2021,PMID:34407557
+SCLC,,DLL3,biomarker,,,,,NOTCH ligand — overexpressed on SCLC; low in normal tissues except testis/brain,PMID:26330465
+SCLC,,ASCL1,biomarker,,,,,Subtype-defining TF — SCLC-A predominant subtype (Rudin 2019),PMID:30804526
+SCLC,,NEUROD1,biomarker,,,,,Subtype-defining TF — SCLC-N subtype,PMID:30804526
+SCLC,,POU2F3,biomarker,,,,,Subtype-defining TF — SCLC-P tuft-cell-like variant,PMID:30804526
+SCLC,,YAP1,biomarker,,,,,Subtype-defining TF — SCLC-Y inflammatory variant,PMID:30804526
+SCLC,,TP53,biomarker,,,,,Near-universal loss (~90%) — smoker-associated LoF,PMID:26168399
+SCLC,,RB1,biomarker,,,,,Near-universal loss (~90%) alongside TP53 — biallelic inactivation defines SCLC,PMID:26168399
+SCLC,,DLL3,target,tarlatamab,bispecific,approved,R/R SCLC (≥2 prior lines),DLL3xCD3 bispecific — approved 2024; DeLLphi-301 trial,PMID:37830521
+SCLC,,TOP1,target,lurbinectedin,small_molecule,approved,R/R SCLC,Transcription-inhibitor alkylator — accelerated approval 2020,PMID:32622651
+SCLC,,TOP1,target,topotecan,small_molecule,approved,R/R SCLC,TOP1 inhibitor — standard second-line SCLC chemo,PMID:16880325
+SCLC,,CD274,target,atezolizumab,antibody,approved,ES-SCLC first-line (+ chemo),Anti-PD-L1 — IMpower133; first chemo-IO approval in SCLC,PMID:30280641
+SCLC,,CD274,target,durvalumab,antibody,approved,ES-SCLC first-line (+ chemo),Anti-PD-L1 — CASPIAN trial,PMID:31590988
+T_ALL,,CD7,biomarker,,,,,T-cell surface — broadly expressed on T-ALL blasts; CAR-T target,PMID:30020014
+T_ALL,,NOTCH1,biomarker,,,,,Activating mutation (~60%) — HES1/MYC axis driver,PMID:15472075
+T_ALL,,FBXW7,biomarker,,,,,Co-occurs with NOTCH1 — sensitizes to γ-secretase inhibitors in preclinical,PMID:17641202
+T_ALL,,TP53,biomarker,,,,,Loss-of-function — high-risk relapsed T-ALL,PMID:24132215
+T_ALL,,CD7,target,WU-CART-007,CAR-T,phase_1,R/R T-ALL,Allogeneic CD7 CAR-T — early-phase data in R/R T-ALL,PMID:37523543
+T_ALL,,NT5E,target,nelarabine,small_molecule,approved,R/R T-ALL,Ara-G prodrug — selectively toxic to T-lineage blasts; approved 2005,PMID:16287964
+T_ALL,,CD38,target,daratumumab,antibody,phase_2,R/R T-ALL (CD38+),Anti-CD38 — activity in CD38+ T-ALL per investigator trials,PMID:35316844
+CTCL,,CD4,biomarker,,,,,Helper-T lineage; CTCL blasts are CD4+ CD26-,PMID:29997202
+CTCL,,DPP4,biomarker,,,,,CD26 loss on CTCL blasts is diagnostic,PMID:29997202
+CTCL,,PTK7,biomarker,,,,,Overexpressed on Sézary cells — cofetuzumab pelidotin target,PMID:28765115
+CTCL,,CCR4,biomarker,,,,,Elevated on CTCL blasts — mogamulizumab target,PMID:30366567
+CTCL,,TNFRSF8,biomarker,,,,,"CD30 — positive in ~50% CTCL cases, defines BV-eligible subset",PMID:28024975
+CTCL,,CCR4,target,mogamulizumab,antibody,approved,R/R mycosis fungoides / Sézary,Anti-CCR4 — approved 2018; MAVORIC trial,PMID:30366567
+CTCL,,TNFRSF8,target,brentuximab vedotin,ADC,approved,CD30+ CTCL,CD30 MMAE ADC — approved 2017; ALCANZA trial,PMID:28433508
+CTCL,,HDAC1,target,romidepsin,small_molecule,approved,R/R CTCL,Class-1 HDAC inhibitor — approved 2009,PMID:19451442
+CTCL,,HDAC1,target,vorinostat,small_molecule,approved,R/R CTCL,Pan-HDAC inhibitor — approved 2006,PMID:17227786
