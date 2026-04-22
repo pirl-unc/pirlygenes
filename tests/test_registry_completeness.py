@@ -66,18 +66,26 @@ from pirlygenes.gene_sets_cancer import (
 # removed from this allowlist.
 
 # Codes currently lacking a matched-normal reference (tumor-up-vs-matched-
-# normal data). Covers every leaf code not in ``tumor-up-vs-matched-
-# normal.csv`` or ``heme-tumor-up-vs-matched-normal.csv`` as of v4.48.1.
-# Shrink one family at a time via dedicated curation PRs — each removal
-# unlocks the ``sample-matched-normal-*.png`` figures for that code.
+# normal data). Shrunk v4.49.3 by the HPA-direct sweep that added 12
+# TCGA-covered codes (LUAD, MESO, GBM, LGG, SKCM, UVM, UCEC, UCS, TGCT,
+# THYM, PCPG, ACC) — see scripts/generate_matched_normal.py.
+# Remaining codes are: heme entities (need heme-tumor-up-vs-matched-
+# normal expansion), pediatric / subtype-only codes whose tumor
+# reference lives in subtype-deconvolved-expression, and rare entities
+# with no clean HPA-tissue mapping.
 _MISSING_MATCHED_NORMAL = frozenset({
-    "ACC", "ACINIC", "ADCC", "ATRT", "BL", "B_ALL", "CHON", "CHOR", "CLL",
-    "CML", "CTCL", "ESS_HG", "ESS_LG", "EWS", "FL", "GBM", "GCTB", "HCL",
-    "HEPB", "HL", "LGG", "LUAD", "LUNG_NET_LC", "LUNG_NET_LCNEC", "MBL",
-    "MCL", "MDS", "MEC", "MESO", "MID_NET", "MM", "MPN", "MTC", "NBL",
-    "NPC", "NUTM", "OS", "PANNET", "PCN", "PCPG", "RB", "RMS_ARMS",
-    "RMS_ERMS", "RMS_SSRMS", "RT", "SARC", "SARC_IFS", "SCLC", "SKCM",
-    "TGCT", "THYM", "T_ALL", "UCEC", "UCS", "UVM", "WILMS",
+    # ACC stays — its adrenal-cortex markers are mostly physiologic
+    # (adrenal nTPM >= 3 for IGF2 / steroidogenic enzymes), so no
+    # row survives the "matched-normal silent" filter. Needs manual
+    # curation of ACC-specific tumor-up markers.
+    "ACC",
+    "ACINIC", "ADCC", "ATRT", "BL", "B_ALL", "CHON", "CHOR", "CLL",
+    "CML", "CTCL", "ESS_HG", "ESS_LG", "EWS", "FL", "GCTB", "HCL",
+    "HEPB", "HL", "LUNG_NET_LC", "LUNG_NET_LCNEC", "MBL",
+    "MCL", "MDS", "MEC", "MID_NET", "MM", "MPN", "MTC", "NBL",
+    "NPC", "NUTM", "OS", "PANNET", "PCN", "RB", "RMS_ARMS",
+    "RMS_ERMS", "RMS_SSRMS", "RT", "SARC", "SARC_IFS", "SCLC",
+    "T_ALL", "WILMS",
 })
 
 # Codes currently lacking a cancer-specific therapy-response axis panel
