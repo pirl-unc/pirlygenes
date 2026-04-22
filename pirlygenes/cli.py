@@ -1855,7 +1855,7 @@ def _analyze_body(
 
     # Collect all figures into one PDF (native resolution)
     from pathlib import Path
-    from PIL import Image
+    from PIL import Image, ImageDraw, ImageFont
 
     all_pdf = "%s-all-figures.pdf" % prefix if prefix else "all-figures.pdf"
     print("[output] Collecting figures into PDF...")
@@ -1913,6 +1913,35 @@ def _analyze_body(
         if Path(adj_p).exists():
             png_files.append(adj_p)
 
+    def _with_filename_caption(img, filename):
+        """Add a light-gray filename caption in a small strip below
+        the figure so readers can locate the source PNG later. Caption
+        sits in its own strip so it never overlaps the plot."""
+        caption_h = 18
+        new_w, new_h = img.width, img.height + caption_h
+        canvas = Image.new("RGB", (new_w, new_h), color="white")
+        canvas.paste(img, (0, 0))
+        draw = ImageDraw.Draw(canvas)
+        try:
+            font = ImageFont.load_default()
+        except Exception:
+            font = None
+        # Bottom-right, light gray.
+        text = filename
+        if font is not None:
+            try:
+                bbox = draw.textbbox((0, 0), text, font=font)
+                tw = bbox[2] - bbox[0]
+            except AttributeError:  # pragma: no cover — very old PIL
+                tw = len(text) * 6
+        else:
+            tw = len(text) * 6
+        draw.text(
+            (max(4, new_w - tw - 8), img.height + 3),
+            text, fill="#AAAAAA", font=font,
+        )
+        return canvas
+
     images = []
     for png_path in png_files:
         if not png_path:
@@ -1920,7 +1949,7 @@ def _analyze_body(
         p = Path(png_path)
         if p.exists():
             img = Image.open(p).convert("RGB")
-            images.append(img)
+            images.append(_with_filename_caption(img, p.name))
 
     if images:
         images[0].save(all_pdf, save_all=True, append_images=images[1:], resolution=output_dpi)

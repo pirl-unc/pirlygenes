@@ -63,7 +63,15 @@ def _render_component_breakdown(ax, best, title="TME cell-type breakdown"):
     for idx, row in comp_df.iterrows():
         if row["fraction"] < 0.005:
             continue  # skip labels for sub-0.5% components (#96)
-        txt = f"{row['marker_score']:.2f}" if row["marker_score"] is not None else "n/a"
+        # A marker_score of 0.00 with n_markers=0 means the compartment
+        # had no markers to evaluate (typical for matched-normal
+        # compartments in mixture-cohort templates). Showing "0.00"
+        # reads as a bad fit; "n/a" is more honest.
+        n_markers = int(row.get("n_markers") or 0)
+        if n_markers == 0 or row["marker_score"] is None:
+            txt = "n/a"
+        else:
+            txt = f"{row['marker_score']:.2f}"
         ax.text(row["fraction"] * 100 + 0.8, idx, txt, va="center", fontsize=8)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
