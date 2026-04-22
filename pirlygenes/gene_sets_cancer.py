@@ -1805,3 +1805,73 @@ def cancer_key_genes_subtypes(cancer_code):
         sub["subtype"].fillna("").astype(str).replace("nan", "").str.strip()
     )
     return sorted(s for s in set(subtypes) if s)
+
+
+# ── #202 narrative gene sets + #198 degenerate-pair / fusion-surrogate
+# public exposure. These CSVs are already auto-loaded by
+# ``load_dataset.get_data``; re-exporting the high-level accessors
+# here so ``pirlygenes.gene_sets_cancer`` is the single discovery
+# surface for every curated gene set bundled with the package.
+
+
+def narrative_gene_sets_df():
+    """Return the raw ``narrative-gene-sets.csv`` DataFrame.
+
+    Columns: ``set_name``, ``members`` (``;``-delimited), ``notes``.
+    Each row is a named gene set referenced by the #202 disease-state
+    rule engine (``AR_targets``, ``HER2_amplicon``, ``NE_markers``,
+    ...). Use :func:`narrative_gene_set` to look up members by name.
+    """
+    from .disease_state_rules import narrative_gene_sets
+    sets = narrative_gene_sets()
+    import pandas as pd
+    rows = [
+        {"set_name": name, "members": ";".join(members)}
+        for name, members in sets.items()
+    ]
+    return pd.DataFrame(rows)
+
+
+def narrative_gene_set(set_name):
+    """Return the tuple of gene symbols in a named narrative set, or
+    ``()`` when unknown. Case-sensitive."""
+    from .disease_state_rules import narrative_gene_sets
+    return narrative_gene_sets().get(set_name, ())
+
+
+def narrative_gene_set_names():
+    """Return the list of known narrative gene-set names."""
+    from .disease_state_rules import narrative_gene_sets
+    return sorted(narrative_gene_sets().keys())
+
+
+def degenerate_subtype_pairs_df():
+    """Return the parsed ``degenerate-subtype-pairs.csv`` DataFrame
+    (#198). Members are lists of subtype codes, mappings are dicts,
+    activation_signatures are ``{gene: min_tpm}`` dicts."""
+    from .degenerate_subtype import degenerate_subtype_pairs
+    return degenerate_subtype_pairs()
+
+
+def fusion_surrogate_expression_df():
+    """Return the raw ``fusion-surrogate-expression.csv`` DataFrame
+    (#198) — genes whose expression serves as a deterministic
+    surrogate for a specific fusion/translocation class."""
+    from .degenerate_subtype import fusion_surrogate_expression
+    return fusion_surrogate_expression()
+
+
+def fusion_surrogate_genes_for_cancer(cancer_code):
+    """Return the list of ``{gene, fusion_class, role, rationale}``
+    dicts applicable to a cancer code (includes ``pan_cancer``
+    entries)."""
+    from .degenerate_subtype import fusion_surrogate_genes_for
+    return fusion_surrogate_genes_for(cancer_code)
+
+
+def disease_state_rules_df():
+    """Return the raw ``disease-state-rules.csv`` DataFrame (#202) —
+    declarative per-cancer narrative rules consumed by
+    ``compose_disease_state_narrative``."""
+    from .load_dataset import get_data
+    return get_data("disease-state-rules")

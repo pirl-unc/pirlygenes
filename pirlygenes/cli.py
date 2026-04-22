@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Optional, Set
 
 from .version import print_name_and_version
-from .load_dataset import load_all_dataframes
 from .tumor_purity import (
     analyze_sample,
     get_tumor_purity_parameters,
@@ -97,22 +96,28 @@ _DATASET_SOURCES = {
     "surface-proteins": "Bausch-Fluck et al. 2018, PNAS (SURFY/CSPA)",
     "TCR-T-approved": "FDA approvals",
     "TCR-T-trials": "Literature curation 2024",
+    "disease-state-rules": "Per-cancer narrative rule catalog (#202)",
+    "narrative-gene-sets": "Named gene sets for #202 disease-state rules",
+    "degenerate-subtype-pairs": "Subtype disambiguation catalog (#198)",
+    "fusion-surrogate-expression": "Fusion-surrogate gene catalog (#198)",
 }
 
 
 @named("data")
 def print_dataset_info():
     """List all bundled datasets with row counts and sources."""
-    import os
-    from pathlib import Path
+    import pandas as pd
+
+    from .load_dataset import get_all_csv_paths
 
     total_size = 0
     print("\nBundled datasets (shipped with pip install, no downloads needed):\n")
     print(f"  {'Dataset':<40s} {'Rows':>6s}  {'Size':>8s}  Source")
     print(f"  {'─'*40}  {'─'*6}  {'─'*8}  {'─'*40}")
-    for csv_file, df in load_all_dataframes():
-        name = Path(csv_file).stem
-        size = os.path.getsize(csv_file)
+    for csv_path in get_all_csv_paths():
+        df = pd.read_csv(str(csv_path))
+        name = csv_path.name.removesuffix(".gz").removesuffix(".csv")
+        size = csv_path.stat().st_size
         total_size += size
         if size >= 1024 * 1024:
             size_str = "%.1f MB" % (size / 1024 / 1024)
@@ -279,14 +284,10 @@ def _parse_csv_tokens(arg_value: Optional[str]):
 
 _MT_EXPECTED_MISSING_PREPS = frozenset({"poly_a", "exome_capture"})
 
-# Genes we treat as "AR-transactivation output" — the downstream AR-
-# target program that collapses in castrate-resistant PRAD. Used by
-# the synthesis layer (#78) to detect the AR-retained-but-targets-
-# collapsed pattern typical of ADT-treated CRPC.
-_PRAD_AR_TARGET_GENES = frozenset({
-    "KLK3", "KLK2", "NKX3-1", "HOXB13", "FOLH1", "TMPRSS2",
-    "SLC45A3", "NDRG1", "PMEPA1", "FKBP5",
-})
+# The AR-transactivation output panel used by the CRPC-pattern
+# narrative rule moved to ``narrative-gene-sets.csv`` (#202). The
+# disease-state rule engine looks it up by name (``AR_targets``) so
+# the synthesis layer stays data-driven.
 
 # Genes annotated in the therapy_response AR_signaling *up* panel but
 # also core ISGs — used to tag per-gene surface-target fold-changes as
@@ -350,19 +351,20 @@ def _metabolic_axes_rows(evidence) -> list[tuple[str, str, str]]:
 
 
 def compose_disease_state_narrative(analysis) -> str:
-    """Synthesize a one-line disease-state narrative from combined
-    signals (issue #78).
+    """Synthesize the disease-state narrative line (#78).
 
-    Draws on the candidate trace, lineage-gene calibration, and
-    therapy-response axis scores. Cancer-type-family-specific rules;
-    PRAD covers the castrate-resistant / NEPC pattern first since
-    that's the validation case (Tempus FFPE PRAD sample: AR retained
-    at 51% + KLK3/KLK2/NKX3-1/HOXB13 all < 2% + NE markers elevated
-    = textbook ADT-treated CRPC trending toward NEPC).
+    As of #202 the per-cancer logic lives in ``disease-state-rules.csv``
+    and ``narrative-gene-sets.csv``. This function only prepares the
+    three inputs the rule engine consumes (axis states + lineage-
+    retained / lineage-collapsed gene sets) and dispatches.
 
-    Returns an empty string when no family rule matches — callers
-    skip rendering in that case.
+    Adding a new cancer-specific narrative is a CSV edit — no Python
+    change. This keeps the analyze pipeline uniform across cancer
+    types; differences live in data, not in ``if/elif cancer_code``
+    branches.
     """
+    from .disease_state_rules import synthesize_disease_state
+
     cancer_code = analysis.get("cancer_type")
     therapy_scores = analysis.get("therapy_response_scores") or {}
     purity = analysis.get("purity") or {}
@@ -370,7 +372,6 @@ def compose_disease_state_narrative(analysis) -> str:
     lineage = components.get("lineage") or {}
     per_gene = lineage.get("per_gene") or []
 
-    # Bucket lineage genes by their independent purity estimate.
     retained: set[str] = set()
     collapsed: set[str] = set()
     for g in per_gene:
@@ -383,78 +384,16 @@ def compose_disease_state_narrative(analysis) -> str:
         elif est < 0.05:
             collapsed.add(sym)
 
-    # Axis states
-    def _state(cls):
-        s = therapy_scores.get(cls)
-        return s.state if s is not None else None
+    axis_states: dict[str, str | None] = {}
+    for axis_name, score in therapy_scores.items():
+        axis_states[axis_name] = getattr(score, "state", None)
 
-    ar_state = _state("AR_signaling")
-    ne_state = _state("NE_differentiation")
-    emt_state = _state("EMT")
-    ifn_state = _state("IFN_response")
-    hypoxia_state = _state("hypoxia")
-    er_state = _state("ER_signaling")
-    her2_state = _state("HER2_signaling")
-
-    parts: list[str] = []
-
-    if cancer_code == "PRAD":
-        ar_retained = "AR" in retained
-        ar_targets_collapsed = len(_PRAD_AR_TARGET_GENES & collapsed) >= 3
-        if ar_retained and ar_targets_collapsed and ar_state == "down":
-            verb = (
-                "**Castrate-resistant pattern**: AR receptor retained "
-                "while AR-transactivation targets "
-                f"({', '.join(sorted(_PRAD_AR_TARGET_GENES & collapsed))}) "
-                "are collapsed — consistent with prior ADT exposure"
-            )
-            if ne_state == "up":
-                verb += (
-                    " with **emerging neuroendocrine differentiation** "
-                    "(NE markers elevated; workup for NEPC warranted)"
-                )
-            verb += "."
-            parts.append(verb)
-        elif ar_state == "down":
-            parts.append(
-                "**AR axis suppressed** — consistent with ADT exposure. "
-                "Lineage AR was not retained in the sample; insufficient "
-                "signal for a castrate-resistant call."
-            )
-    elif cancer_code in ("BRCA",):
-        if er_state == "down" and "ESR1" in collapsed:
-            parts.append(
-                "**ER-axis suppressed / endocrine-exposed pattern** "
-                "(ESR1 low, classic ER targets collapsed)."
-            )
-        if her2_state == "up":
-            parts.append(
-                "**HER2-amplification pattern** (ERBB2 / GRB7 / STARD3 "
-                "co-elevated)."
-            )
-
-    # Cross-axis observation: EMT + hypoxia together typically signal
-    # an aggressive / treatment-resistant phenotype regardless of
-    # cancer type.
-    if emt_state == "up" and hypoxia_state == "up":
-        parts.append(
-            "EMT and hypoxia programs are both active — aggressive-"
-            "phenotype pattern."
-        )
-    elif emt_state == "up":
-        parts.append("EMT program is active (mesenchymal switch).")
-
-    # Active IFN response affects how we read high-fold-change
-    # surface / MHC targets; mention so the reader knows the targets
-    # table carries IFN-driven inflation.
-    if ifn_state == "up":
-        parts.append(
-            "**Active IFN response** — MHC-I / ISG surface fold-changes "
-            "in the therapy-target tables carry IFN-driven inflation "
-            "and are not tumor-cell-specific."
-        )
-
-    return " ".join(parts)
+    return synthesize_disease_state(
+        cancer_code=cancer_code,
+        axis_states=axis_states,
+        retained=retained,
+        collapsed=collapsed,
+    )
 
 
 def annotate_surface_targets_with_cross_signals(ranges_df, therapy_scores):
