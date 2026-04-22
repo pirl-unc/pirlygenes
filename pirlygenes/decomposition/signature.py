@@ -112,15 +112,18 @@ MATCHED_NORMAL_CELL_TYPE = {
     "breast": ["Breast glandular cells"],
     "liver": ["Hepatocytes"],
     "gallbladder": ["Cholangiocytes"],
+    "bile_duct": ["Cholangiocytes"],  # registry key for CHOL
     "pancreas": ["Ductal cells"],
     "kidney": ["Proximal tubular cells"],
     "lung": ["Alveolar cells type 2", "Club cells"],
+    "pleura": ["Mesothelial cells"],  # MESO registry key
     "stomach": ["Gastric mucus-secreting cells"],
     "ovary": ["Granulosa cells"],
     "testis": ["Spermatocytes", "Sertoli cells"],
     "endometrium": ["Glandular and luminal cells"],
     "salivary_gland": ["Salivary duct cells", "Serous glandular cells"],
     "retina": ["Rod photoreceptor cells", "Cone photoreceptor cells"],
+    "eye": ["Melanocytes"],  # UVM arises in uveal melanocytes
     "cerebrum": ["Astrocytes"],
     "cerebellum": ["Astrocytes"],
     "skeletal_muscle": ["Skeletal myocytes"],
@@ -129,15 +132,122 @@ MATCHED_NORMAL_CELL_TYPE = {
     # colon / rectum / esophagus / cervix / tongue / skin / small_intestine
     # left using bulk-tissue fallback for now — their CRC/squamous
     # decomposition tests expect the bulk-reference semantics.
-    # Heme / lymphoid are handled by their dedicated templates
-    # (heme_marrow, heme_nodal, heme_blood) + matched-normal
-    # compartments in those templates are bulk-tissue; expanding
-    # the cell-type map into heme is a separate PR.
-    #
-    # Tissues with no cell-type match (fall back to bulk):
-    # thyroid_gland, urinary_bladder, adrenal_gland, tonsil,
-    # nasopharynx, bone, cartilage, notochord, thymus.
 }
+
+
+# Proxy mappings for tissues without a direct HPA single-cell match.
+# These are imperfect — each entry carries a ``confidence`` score — and
+# are consumed by the ensemble uncertainty scoring (#216) which runs
+# attribution multiple ways and reports inter-method spread. Also
+# consulted at lookup time as a secondary fallback when
+# ``MATCHED_NORMAL_CELL_TYPE`` has no direct match.
+#
+# Confidence scale:
+#   0.8-1.0 : very close lineage match (urothelial ≈ basal squamous)
+#   0.5-0.7 : shared functional axis (chromaffin ≈ pancreatic endocrine
+#             — both NE)
+#   0.3-0.5 : rough proxy (osteoblast ≈ Fibroblasts — same mesenchymal
+#             origin, very different phenotype)
+#   < 0.3   : we don't list it; use bulk fallback instead
+#
+# When ``MATCHED_NORMAL_CELL_TYPE_BLEND`` override is 0 (default),
+# proxies have no runtime effect — they're declarative metadata for
+# the ensemble synthesis plan in #216.
+MATCHED_NORMAL_CELL_TYPE_PROXY = {
+    "thyroid_gland": {
+        "cell_types": ["Serous glandular cells"],
+        "confidence": 0.45,
+        "rationale": "thyroid follicular cells not in HPA; secretory glandular epithelium as functional proxy",
+    },
+    "thyroid": {  # registry key alias for THCA
+        "cell_types": ["Serous glandular cells"],
+        "confidence": 0.45,
+        "rationale": "thyroid follicular cells not in HPA; secretory glandular epithelium as functional proxy",
+    },
+    "pharynx": {  # NPC-adjacent registry key
+        "cell_types": ["Squamous epithelial cells"],
+        "confidence": 0.70,
+        "rationale": "pharyngeal mucosa is predominantly stratified squamous epithelium; covered well by HPA Squamous epithelial cells",
+    },
+    "bladder": {  # registry key alias for BLCA
+        "cell_types": ["Basal squamous epithelial cells"],
+        "confidence": 0.60,
+        "rationale": "urothelial cells not in HPA; basal squamous shares KRT5/6/14 basal-layer phenotype that transitional epithelium expresses",
+    },
+    "thyroid_c_cell": {
+        "cell_types": ["Pancreatic endocrine cells", "Enteroendocrine cells"],
+        "confidence": 0.50,
+        "rationale": "thyroid C-cells (parafollicular / calcitonin+) not in HPA; both pancreatic endocrine and enteroendocrine share the NE-hormone-secreting lineage",
+    },
+    "urinary_bladder": {
+        "cell_types": ["Basal squamous epithelial cells"],
+        "confidence": 0.60,
+        "rationale": "urothelial cells not in HPA; basal squamous shares the KRT5/6/14 basal-layer phenotype that transitional epithelium expresses",
+    },
+    "adrenal_cortex": {
+        "cell_types": ["Hepatocytes"],
+        "confidence": 0.35,
+        "rationale": "adrenocortical steroidogenic cells not in HPA; hepatocytes share steroid / lipid metabolism axis + secretory phenotype; IGF2 is the literature-anchored marker in the curated matched-normal panel",
+    },
+    "adrenal_medulla": {
+        "cell_types": ["Pancreatic endocrine cells", "Excitatory neurons"],
+        "confidence": 0.50,
+        "rationale": "chromaffin cells (PCPG) not in HPA; pancreatic endocrine shares NE-secretory axis; excitatory neurons share sympathetic-lineage neural genes",
+    },
+    "bone": {
+        "cell_types": ["Fibroblasts", "Undifferentiated cells"],
+        "confidence": 0.35,
+        "rationale": "osteoblasts not in HPA; fibroblasts share mesenchymal origin + type I collagen production; osteoblast-specific markers (BGLAP / ALPL / SPP1) handled via COMPONENT_MARKERS[osteoblast]",
+    },
+    "cartilage": {
+        "cell_types": ["Fibroblasts"],
+        "confidence": 0.30,
+        "rationale": "chondrocytes not in HPA; fibroblast proxy captures mesenchymal signature but misses COL2A1 / ACAN / cartilage-specific biology",
+    },
+    "sympathetic_ganglia": {
+        "cell_types": ["Excitatory neurons", "Schwann cells"],
+        "confidence": 0.45,
+        "rationale": "peripheral sympathetic neurons (NBL origin) not in HPA; CNS excitatory neurons share SYP / CHGA / ENO2 neural genes; Schwann cells are the peripheral-nerve-sheath partner",
+    },
+    "thymus": {
+        "cell_types": ["T-cells", "B-cells", "Basal keratinocytes"],
+        "confidence": 0.40,
+        "rationale": "thymic epithelial cells (cortical / medullary TECs, Hassall corpuscles) not in HPA; bulk thymus is dominated by T / B cells anyway; basal keratinocytes partially mimic Hassall-corpuscle keratin signature",
+    },
+    "nasopharynx": {
+        "cell_types": ["Squamous epithelial cells"],
+        "confidence": 0.70,
+        "rationale": "nasopharyngeal mucosa is pseudostratified + squamous; Squamous epithelial cells cover the squamous portion well",
+    },
+    "notochord": {
+        "cell_types": ["Fibroblasts"],
+        "confidence": 0.30,
+        "rationale": "notochord remnant cells (CHOR origin) not in HPA; fibroblast proxy captures mesenchymal ECM signature but misses brachyury-driven notochord biology",
+    },
+    "midline_structures": {
+        "cell_types": ["Squamous epithelial cells"],
+        "confidence": 0.60,
+        "rationale": "NUTM arises in midline mucosal sites (sinonasal / mediastinal / supraglottic); squamous epithelium covers most origin sites; NUTM1-itself is in the fusion-surrogate catalog (#198)",
+    },
+}
+
+
+def get_matched_normal_cell_type(tissue):
+    """Return ``(cell_types, confidence, source)`` for a matched-normal
+    tissue. ``source`` is one of:
+
+    - ``'direct'`` — exact HPA single-cell match (confidence 1.0)
+    - ``'proxy'`` — closest-related proxy (confidence < 1.0; see
+      :data:`MATCHED_NORMAL_CELL_TYPE_PROXY` for rationale)
+    - ``'bulk_fallback'`` — no mapping available; callers should use
+      the bulk ``nTPM_<tissue>`` column from pan-cancer-expression
+    """
+    if tissue in MATCHED_NORMAL_CELL_TYPE:
+        return (MATCHED_NORMAL_CELL_TYPE[tissue], 1.0, "direct")
+    if tissue in MATCHED_NORMAL_CELL_TYPE_PROXY:
+        entry = MATCHED_NORMAL_CELL_TYPE_PROXY[tissue]
+        return (entry["cell_types"], entry["confidence"], "proxy")
+    return ([], 0.0, "bulk_fallback")
 
 
 COMPONENT_MARKERS = {
@@ -313,7 +423,7 @@ def build_signature_matrix(components, gene_subset=None, sample_by_eid=None):
                     .values
                 )
 
-            cell_types = MATCHED_NORMAL_CELL_TYPE.get(tissue) or []
+            cell_types, _proxy_confidence, _source = get_matched_normal_cell_type(tissue)
             present_cell_types = [t for t in cell_types if t in hpa.columns]
             cell_type_vals = None
             if present_cell_types:
