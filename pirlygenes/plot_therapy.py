@@ -64,6 +64,13 @@ def _fn1_edb_transcript_ids():
     except Exception:
         return frozenset(ids)
 
+    # ``genomes`` is sorted newest-release-first. FN1-EDB transcript IDs
+    # are stable Ensembl accessions, so once the first release with an
+    # intact ``exon`` schema yields exon data we have the authoritative
+    # answer — stop rather than querying older releases whose schemas
+    # may be broken (see #192: release 54's ``exon`` table is missing
+    # ``exon_id``). Each release is wrapped in try/except so a broken
+    # release is skipped, not fatal.
     for genome in genomes:
         try:
             genes = genome.genes_by_name("FN1")
@@ -76,6 +83,7 @@ def _fn1_edb_transcript_ids():
             transcript_ids = genome.transcript_ids_of_gene_id(gene.gene_id)
         except Exception:
             continue
+        release_saw_exons = False
         for transcript_id in transcript_ids:
             try:
                 transcript = genome.transcript_by_id(transcript_id)
@@ -83,17 +91,12 @@ def _fn1_edb_transcript_ids():
                 continue
             if getattr(transcript, "biotype", None) != "protein_coding":
                 continue
-            # ``transcript.exons`` is a lazily-evaluated property that
-            # issues a pyensembl SQL query. Older Ensembl releases
-            # (e.g. 54) have an ``exon`` table without an ``exon_id``
-            # column — the query raises ``sqlite3.OperationalError``.
-            # Catch it so one release's schema weirdness doesn't abort
-            # the whole cross-release lookup. Whichever releases still
-            # have intact schemas contribute; broken ones silently skip.
             try:
                 exons = list(getattr(transcript, "exons", []) or [])
             except Exception:
                 continue
+            if exons:
+                release_saw_exons = True
             try:
                 exon_ids = {
                     str(exon.exon_id) for exon in exons
@@ -116,6 +119,8 @@ def _fn1_edb_transcript_ids():
                 or exon_intervals & _FN1_EDB_EXON_INTERVALS
             ):
                 ids.add(str(transcript.transcript_id).split(".", 1)[0])
+        if release_saw_exons:
+            break
     return frozenset(ids)
 
 
