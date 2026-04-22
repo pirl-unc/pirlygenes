@@ -74,10 +74,11 @@ from pirlygenes.gene_sets_cancer import (
 #     whose tumor reference lives in subtype-deconvolved-expression)
 # See scripts/generate_matched_normal.py for both recipes.
 _MISSING_MATCHED_NORMAL = frozenset({
-    # ACC stays — its adrenal-cortex markers are physiologic (IGF2 /
-    # steroidogenic enzymes), no row survives the "matched-normal
-    # silent" filter. Needs manual curation.
-    "ACC",
+    # Closed v4.50.4: SCLC (subtype-deconvolved, lung; ASCL1 / INSM1 /
+    # CHGA textbook NE panel), ACC (hand-curated IGF2 override;
+    # PMID:23095921). Remaining codes are blocked on tumor-expression
+    # data acquisition (#151 / #152 / #197) or need CTA / aberrantly-
+    # derepressed markers per entity (heme, NET, rare sarcomas).
     # Rare-entity / head-neck not easily auto-generated
     "ACINIC", "ADCC", "CHOR", "NPC", "NUTM",
     # Heme — blocked on tumor expression data (#151 / #197)
@@ -86,7 +87,7 @@ _MISSING_MATCHED_NORMAL = frozenset({
     # Rare sarcoma subtypes without subtype-deconvolved data
     "ESS_HG", "ESS_LG", "GCTB", "SARC", "SARC_IFS",
     # NET axis — blocked on expression data (#152 / #197)
-    "LUNG_NET_LC", "LUNG_NET_LCNEC", "MEC", "MID_NET", "MTC", "SCLC",
+    "LUNG_NET_LC", "LUNG_NET_LCNEC", "MEC", "MID_NET", "MTC",
 })
 
 # Codes currently lacking a cancer-specific therapy-response axis panel
