@@ -172,3 +172,55 @@ pirlygenes plot-cancer-cohorts sample1.tsv sample2.tsv sample3.tsv \
 ### `pirlygenes plot-expression` (deprecated)
 
 Legacy single-sample plotting command. Use `pirlygenes analyze` instead.
+
+## Design principles
+
+### Uniformity — every cancer runs the same pipeline
+
+The analyze command runs a uniform loop over 76+ leaf codes in the
+registry. Per-cancer differences live in *data* (the registry CSVs,
+the signature panels, the rule catalogs) — not in `if cancer_code == ...`
+code branches. A clinician reading the markdown for a PRAD sample sees
+the same structure as a PANNET or NUT carcinoma report, differing only
+in the curated content.
+
+Three data-driven catalogs power the per-cancer differentiation:
+
+| Catalog | Purpose | Contract |
+|---|---|---|
+| `disease-state-rules.csv` + `narrative-gene-sets.csv` | Per-cancer disease-state narrative rules (castrate-resistant PRAD, HER2+ BRCA, ER-suppressed BRCA, plus pan-cancer EMT/hypoxia/IFN) | Adding a narrative = adding a CSV row; no Python change. Rule engine: `pirlygenes.disease_state_rules.synthesize_disease_state`. |
+| `degenerate-subtype-pairs.csv` + `fusion-surrogate-expression.csv` | Within-family subtype disambiguation (OS vs DDLPS, Ewing vs DSRCT vs ARMS, PANNET vs MID_NET vs lung NET, squamous trio, B-cell lymphomas, NUTM vs squamous). Activation-gated — pairs only fire when the shared signature is actually present in the sample. | Resolver: `pirlygenes.degenerate_subtype.resolve_degenerate_subtype`. |
+| `cancer-type-registry.csv` | The canonical leaf-code list with family / primary_tissue / primary_template / subtype_key / mixture_cohort columns | Registry completeness contract (#199) requires every leaf to carry expression + lineage + biomarker + therapy + matched-normal + therapy-response axis panel. Baseline gaps enumerated in `_MISSING_MATCHED_NORMAL` / `_MISSING_THERAPY_AXIS` allowlists (`tests/test_registry_completeness.py`). |
+
+### Conditional figures and reports — data-driven
+
+Figure emission is gated by what the registry has for the called
+cancer, not by code branches:
+
+- `sample-matched-normal-*.png` emits when the cancer has a row in
+  `tumor-up-vs-matched-normal.csv` (or the heme variant).
+- `sample-subtype-signature.png` emits when the cancer has a
+  cancer-specific `cancer_context` in `therapy-response-signatures.csv`.
+- `sample-subtype-attribution-*.png` emits when within-family
+  subtype refinement fires on the sample.
+- Degenerate-pair resolution surfaces a `Subtype note:` line in
+  `summary.md` whenever the resolver corrects or flags ambiguity.
+
+### Public data-discovery surface
+
+All bundled catalogs are discoverable via `pirlygenes.gene_sets_cancer`:
+
+```python
+from pirlygenes.gene_sets_cancer import (
+    narrative_gene_set, narrative_gene_set_names,
+    disease_state_rules_df,
+    degenerate_subtype_pairs_df,
+    fusion_surrogate_expression_df,
+    fusion_surrogate_genes_for_cancer,
+)
+```
+
+`pirlygenes data` lists every bundled CSV with a source description.
+
+See also:
+- `docs/reasoning-pipeline.md` — step-by-step information flow through the analyze pipeline (Steps 0–6 including Step 5b subtype disambiguation).
