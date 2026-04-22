@@ -1332,6 +1332,20 @@ def _analyze_body(
     effective_purity = purity
     if decomp_results:
         best_decomp = decomp_results[0]
+        # #198: surface the decomposition top template into the analysis
+        # dict so the degenerate-subtype resolver (invoked from brief.py)
+        # can consult it as a tiebreaker context. ``best_template`` is
+        # the top-ranked template name (e.g. ``met_bone``); full ranked
+        # list available for future tiebreakers that need the runner-up.
+        analysis["decomposition"] = {
+            "best_template": best_decomp.template,
+            "best_cancer_type": best_decomp.cancer_type,
+            "hypotheses": [
+                {"template": d.template, "cancer_type": d.cancer_type,
+                 "score": d.score}
+                for d in decomp_results[:5]
+            ],
+        }
         # The classifier's top call (``cancer_code``) is the authoritative
         # cancer-type identification across every downstream report; the
         # decomposer only fits *subtraction templates* to separate tumor

@@ -311,6 +311,37 @@ def build_summary(
     candidate_trace = analysis.get("candidate_trace") or []
     if candidate_trace:
         winning_subtype = candidate_trace[0].get("winning_subtype")
+
+    # #198: before rendering, consult the degenerate-subtype registry.
+    # Several within-family subtypes share a gene signature (OS vs DDLPS
+    # both carry 12q13-15 amplicon; Ewing vs DSRCT vs ARMS all CD99+)
+    # and need a site or fusion-surrogate tiebreaker. When the resolver
+    # corrects the pick, swap the label; when it flags the ambiguity
+    # inconclusive, mark the subtype as ``degenerate`` so the markdown
+    # reader knows we can't commit.
+    degenerate_status = None
+    degenerate_reason = ""
+    degenerate_alternatives = []
+    if winning_subtype:
+        try:
+            from .degenerate_subtype import resolve_degenerate_subtype
+            site_template = None
+            decomposition = analysis.get("decomposition") or {}
+            site_template = decomposition.get("best_template")
+            tumor_tpm_by_symbol = analysis.get("tumor_tpm_by_symbol") or {}
+            resolution = resolve_degenerate_subtype(
+                winning_subtype,
+                site_template=site_template,
+                tumor_tpm_by_symbol=tumor_tpm_by_symbol,
+            )
+            if resolution["status"] == "corrected":
+                winning_subtype = resolution["final_subtype"]
+            degenerate_status = resolution["status"]
+            degenerate_reason = resolution["reason"]
+            degenerate_alternatives = resolution["alternatives"]
+        except Exception:
+            pass
+
     if winning_subtype:
         try:
             from .gene_sets_cancer import cancer_type_registry
@@ -332,7 +363,13 @@ def build_summary(
                         label = name.split("(")[0].strip().lower()
                 if not label:
                     label = winning_subtype
-                subtype_annotation = f" (subtype: {label}-consistent)"
+                if degenerate_status == "degenerate":
+                    subtype_annotation = (
+                        f" (subtype: degenerate — {label} vs "
+                        f"{'/'.join(degenerate_alternatives)})"
+                    )
+                else:
+                    subtype_annotation = f" (subtype: {label}-consistent)"
         except Exception:
             subtype_annotation = f" (subtype: {winning_subtype}-consistent)"
 
@@ -340,6 +377,8 @@ def build_summary(
         f"**Cancer call:** {cancer_code} ({cancer_name})"
         f"{subtype_annotation}.{suffix}"
     )
+    if degenerate_status in ("corrected", "degenerate") and degenerate_reason:
+        lines.append(f"**Subtype note:** {degenerate_reason}")
 
     # Purity
     overall = purity.get("overall_estimate")
