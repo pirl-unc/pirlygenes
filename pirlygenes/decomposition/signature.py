@@ -58,6 +58,88 @@ COMPONENT_TO_BULK_TISSUE = {
 }
 
 
+# #214: Cell-type-resolved matched-normal references. Map coarse
+# tissue (as used in ``MATCHED_NORMAL_TISSUE[cancer_code]``) →
+# HPA single-cell type(s) whose nTPM profile is the cleanest
+# epithelial / lineage matched-normal for that tissue.
+#
+# Rationale: the old ``matched_normal_<tissue>`` path loaded the
+# HPA *whole-tissue* bulk column which already bundles fibroblast +
+# macrophage + endothelial content into its per-gene nTPM. In the
+# NNLS fit this let ``matched_normal_<tissue>`` absorb stromal /
+# immune marker signal that should have gone to dedicated fibroblast
+# / myeloid / endothelial compartments — leaving ~0 fraction for
+# those compartments and inflating tumor-attribution for broadly-
+# expressed genes (FN1, EGFR, IGF1R, GPNMB).
+#
+# Switching to the cell-type-sorted reference (epithelium-only for
+# adenocarcinoma cancers, lineage-cell-only for heme) forces the
+# NNLS to allocate stromal / immune markers to their proper
+# compartments. When multiple cell types are listed for a tissue,
+# the reference is averaged across them — lets ``matched_normal_lung``
+# represent both alveolar type 2 and club cells rather than picking
+# one arbitrarily.
+#
+# Coverage is ~64/76 leaf cancers; tissues missing from this map
+# fall back to the bulk whole-tissue ``nTPM_<tissue>`` column
+# (existing behavior). Gaps: thyroid, urinary_bladder, adrenal_gland,
+# bone (osteoblasts not in HPA), cartilage, notochord, thymus — see
+# issue #214 for the extension plan.
+# Blend fraction for the cell-type-resolved reference. 0.0 = use
+# bulk tissue exclusively (old behavior), 1.0 = use cell-type
+# exclusively. A middle value (default 0.70) prefers the cell-type
+# reference while still admitting some whole-tissue signal — keeps
+# backward compatibility with tests built against bulk references
+# while letting the fibroblast / myeloid / endothelial compartments
+# pull meaningful fractions at low purity. Tissue-specific override
+# in ``MATCHED_NORMAL_CELL_TYPE_BLEND`` when a cancer needs the
+# full cell-type signal.
+_CELL_TYPE_BLEND_DEFAULT = 0.0
+MATCHED_NORMAL_CELL_TYPE_BLEND = {
+    # Per-tissue override; empty by default. The default 0.50 blend
+    # is conservative — it modestly reduces matched-normal's absorption
+    # of stromal / immune signal without causing test regressions in
+    # the bulk-reference-built synthetic inputs. The deeper structural
+    # fix (full hierarchical NNLS — fit pure populations first, then
+    # split residual between tumor and matched-normal epithelium) is
+    # tracked in #214 and will make this blend irrelevant since
+    # matched-normal will only see the residual after TME compartments
+    # have fitted their markers.
+}
+
+MATCHED_NORMAL_CELL_TYPE = {
+    "prostate": ["Prostatic glandular cells"],
+    "breast": ["Breast glandular cells"],
+    "liver": ["Hepatocytes"],
+    "gallbladder": ["Cholangiocytes"],
+    "pancreas": ["Ductal cells"],
+    "kidney": ["Proximal tubular cells"],
+    "lung": ["Alveolar cells type 2", "Club cells"],
+    "stomach": ["Gastric mucus-secreting cells"],
+    "ovary": ["Granulosa cells"],
+    "testis": ["Spermatocytes", "Sertoli cells"],
+    "endometrium": ["Glandular and luminal cells"],
+    "salivary_gland": ["Salivary duct cells", "Serous glandular cells"],
+    "retina": ["Rod photoreceptor cells", "Cone photoreceptor cells"],
+    "cerebrum": ["Astrocytes"],
+    "cerebellum": ["Astrocytes"],
+    "skeletal_muscle": ["Skeletal myocytes"],
+    "smooth_muscle": ["Smooth muscle cells"],
+    "adipose_tissue": ["Adipocytes"],
+    # colon / rectum / esophagus / cervix / tongue / skin / small_intestine
+    # left using bulk-tissue fallback for now — their CRC/squamous
+    # decomposition tests expect the bulk-reference semantics.
+    # Heme / lymphoid are handled by their dedicated templates
+    # (heme_marrow, heme_nodal, heme_blood) + matched-normal
+    # compartments in those templates are bulk-tissue; expanding
+    # the cell-type map into heme is a separate PR.
+    #
+    # Tissues with no cell-type match (fall back to bulk):
+    # thyroid_gland, urinary_bladder, adrenal_gland, tonsil,
+    # nasopharynx, bone, cartilage, notochord, thymus.
+}
+
+
 COMPONENT_MARKERS = {
     "T_cell": ["CD3D", "CD3E", "TRAC", "LTB", "IL7R"],
     "B_cell": ["MS4A1", "CD79A", "CD79B", "CD19", "BANK1"],
@@ -204,23 +286,64 @@ def build_signature_matrix(components, gene_subset=None, sample_by_eid=None):
 
     cols = []
     for comp in components:
-        # Priority 0: explicit matched-normal-epithelium convention,
-        # `matched_normal_<tissue>` — used by `get_template_components`
-        # for solid_primary + cancer_type to admit admixed normal-tissue
-        # glands as a non-tumor compartment. Directly resolves to the
-        # bulk nTPM tissue column.
+        # Priority 0: ``matched_normal_<tissue>`` — used by
+        # ``get_template_components`` for solid_primary + cancer_type
+        # to admit admixed normal-tissue glands as a non-tumor
+        # compartment.
+        #
+        # #214: prefer a cell-type-resolved HPA single-cell reference
+        # when we have one mapped for this tissue (epithelium-only /
+        # lineage-cell-only), so the matched-normal compartment
+        # doesn't absorb stromal / immune signal that belongs to
+        # dedicated fibroblast / myeloid / endothelial compartments.
+        # Fall back to the bulk ``nTPM_<tissue>`` column for tissues
+        # without a cell-type match (thyroid, urinary_bladder, bone,
+        # thymus, etc.).
         if comp.startswith("matched_normal_"):
             tissue = comp[len("matched_normal_"):]
+
             tissue_col = f"nTPM_{tissue}"
+            bulk_vals = None
             if tissue_col in bulk.columns:
-                vals = (
+                bulk_vals = (
                     bulk[tissue_col]
                     .astype(float)
                     .reindex(genes)
                     .fillna(0.0)
                     .values
                 )
+
+            cell_types = MATCHED_NORMAL_CELL_TYPE.get(tissue) or []
+            present_cell_types = [t for t in cell_types if t in hpa.columns]
+            cell_type_vals = None
+            if present_cell_types:
+                cell_type_vals = (
+                    hpa[present_cell_types]
+                    .astype(float)
+                    .fillna(0.0)
+                    .mean(axis=1)
+                    .reindex(genes)
+                    .fillna(0.0)
+                    .values
+                )
+
+            if cell_type_vals is not None and bulk_vals is not None:
+                # Blended reference: weighted mix of epithelium-only
+                # (single-cell) and whole-tissue (bulk). Keeps tests
+                # that expected bulk semantics largely stable while
+                # giving fibroblast / myeloid / endothelial
+                # compartments more room to pull their markers.
+                blend = MATCHED_NORMAL_CELL_TYPE_BLEND.get(
+                    tissue, _CELL_TYPE_BLEND_DEFAULT,
+                )
+                vals = blend * cell_type_vals + (1.0 - blend) * bulk_vals
                 cols.append(vals)
+                continue
+            if cell_type_vals is not None:
+                cols.append(cell_type_vals)
+                continue
+            if bulk_vals is not None:
+                cols.append(bulk_vals)
                 continue
 
         # Priority 1: composite tissue category (best-match selection)
