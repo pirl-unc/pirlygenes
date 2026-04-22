@@ -807,3 +807,18 @@ CTCL,,CCR4,target,mogamulizumab,antibody,approved,R/R mycosis fungoides / Sézar
 CTCL,,TNFRSF8,target,brentuximab vedotin,ADC,approved,CD30+ CTCL,CD30 MMAE ADC — approved 2017; ALCANZA trial,PMID:28433508
 CTCL,,HDAC1,target,romidepsin,small_molecule,approved,R/R CTCL,Class-1 HDAC inhibitor — approved 2009,PMID:19451442
 CTCL,,HDAC1,target,vorinostat,small_molecule,approved,R/R CTCL,Pan-HDAC inhibitor — approved 2006,PMID:17227786
+SARC,MPNST,NF1,biomarker,,,,,Biallelic NF1 loss drives constitutive RAS/MAPK signaling in MPNST (up to 50% NF1-associated; sporadic cases also NF1-null),PMID:37173835
+SARC,MPNST,CDKN2A,biomarker,,,,,CDKN2A/B loss near-obligate in MPNST progression; marker of malignant transformation from plexiform NF,PMID:37173835
+SARC,MPNST,CDKN2B,biomarker,,,,,Co-deleted with CDKN2A in MPNST,PMID:37173835
+SARC,MPNST,TP53,biomarker,,,,,TP53 inactivation frequent in high-grade MPNST,PMID:37173835
+SARC,MPNST,SUZ12,biomarker,,,,,PRC2 loss-of-function (SUZ12/EED) yields global H3K27me3 loss — diagnostically useful IHC correlate,PMID:24857941
+SARC,MPNST,EED,biomarker,,,,,PRC2 loss-of-function partner of SUZ12 — global H3K27me3 loss,PMID:24857941
+SARC,MPNST,SMARCB1,biomarker,,,,,SMARCB1 loss in a subset of MPNST (epithelioid variant); overlaps with epithelioid sarcoma biology,PMID:25348869
+SARC,MPNST,SOX10,biomarker,,,,,Schwann-cell lineage confirmation — frequently retained in MPNST despite differentiation drift,PMID:37173835
+SARC,MPNST,S100B,biomarker,,,,,Schwann-cell lineage marker; loss often accompanies high-grade / dedifferentiated MPNST,PMID:37173835
+SARC,MPNST,MEK1,target,trametinib,small_molecule,phase_2,unresectable/metastatic NF1-associated MPNST,RAS-pathway dependency from NF1 loss; SARC031 trial investigating trametinib ± SHP2i,PMID:37173835
+SARC,MPNST,MEK1,target,selumetinib,small_molecule,phase_2,NF1-associated MPNST (investigational),"FDA-approved for inoperable plexiform NF (the MPNST precursor); extending into MPNST trials",PMID:32029004
+SARC,MPNST,MDM2,target,brigimadlin (BI 907828),small_molecule,phase_1,MDM2-amplified TP53-retained MPNST,MDM2 inhibition where TP53 wild-type preserved,PMID:35551194
+SARC,MPNST,EZH2,target,tazemetostat,small_molecule,phase_2,PRC2-null / SMARCB1-null MPNST,Synthetic lethal with PRC2 loss; FDA-approved for epithelioid sarcoma (SMARCB1-null) precedent,PMID:32507290
+SARC,MPNST,PTPN11,target,SHP2 inhibitors (trials),small_molecule,phase_1,RAS-driven MPNST (MEK-combo trials),SHP2 inhibition as MEK-resistance mitigator,PMID:37173835
+SARC,MPNST,BRD4,target,BET inhibitors (trials),small_molecule,phase_1,MPNST (preclinical / early-phase),BRD4 dependency in PRC2-null contexts — synergy with MEK inhibition,PMID:29203800
