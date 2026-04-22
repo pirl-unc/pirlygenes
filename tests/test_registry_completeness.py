@@ -11,6 +11,16 @@ Every **leaf** cancer-type code in ``cancer-type-registry.csv``
 3. **Biomarker** — at least one row in ``cancer-key-genes.csv``
    with ``role=biomarker``.
 4. **Therapy target** — at least one row with ``role=target``.
+5. **Matched-normal reference** — at least one row in
+   ``tumor-up-vs-matched-normal.csv`` or
+   ``heme-tumor-up-vs-matched-normal.csv``. Drives the
+   ``sample-matched-normal-*.png`` figures and the
+   over-predicted-by-matched-normal attribution in targets.md.
+6. **Therapy-response axis panel** — at least one row in
+   ``therapy-response-signatures.csv`` with this code in its
+   ``cancer_context`` column (not just ``pan_cancer``). Drives the
+   ``sample-subtype-signature.png`` therapy-axis plot and the
+   disease-state synthesis line in summary.md.
 
 Subtype rows (``parent_code`` set) are exempt — the parent carries the
 minimum and the subtype inherits context via the mixture-cohort
@@ -21,6 +31,13 @@ registry, this test flags the gap. The ``_TOLERATED_GAPS`` set below
 enumerates codes that are allowed to miss one or more fields today —
 the goal is to shrink it to empty over time. Each entry lists the
 specific fields that code is allowed to be missing.
+
+Fields #5 and #6 are a registry contract expansion (issue #199) —
+every clinician-facing markdown should read the same way regardless
+of which cancer type the sample landed in. Both got introduced with
+a large baseline of tolerated gaps; individual follow-up PRs shrink
+the list as matched-normal medians and cancer-specific axis panels
+get curated per family.
 """
 
 import pandas as pd
@@ -48,7 +65,52 @@ from pirlygenes.gene_sets_cancer import (
 # Re-run the audit after each gap-closure PR to see which codes can be
 # removed from this allowlist.
 
-_TOLERATED_GAPS = {
+# Codes currently lacking a matched-normal reference (tumor-up-vs-matched-
+# normal data). Covers every leaf code not in ``tumor-up-vs-matched-
+# normal.csv`` or ``heme-tumor-up-vs-matched-normal.csv`` as of v4.48.1.
+# Shrink one family at a time via dedicated curation PRs — each removal
+# unlocks the ``sample-matched-normal-*.png`` figures for that code.
+_MISSING_MATCHED_NORMAL = frozenset({
+    "ACC", "ACINIC", "ADCC", "ATRT", "BL", "B_ALL", "CHON", "CHOR", "CLL",
+    "CML", "CTCL", "ESS_HG", "ESS_LG", "EWS", "FL", "GBM", "GCTB", "HCL",
+    "HEPB", "HL", "LGG", "LUAD", "LUNG_NET_LC", "LUNG_NET_LCNEC", "MBL",
+    "MCL", "MDS", "MEC", "MESO", "MID_NET", "MM", "MPN", "MTC", "NBL",
+    "NPC", "NUTM", "OS", "PANNET", "PCN", "PCPG", "RB", "RMS_ARMS",
+    "RMS_ERMS", "RMS_SSRMS", "RT", "SARC", "SARC_IFS", "SCLC", "SKCM",
+    "TGCT", "THYM", "T_ALL", "UCEC", "UCS", "UVM", "WILMS",
+})
+
+# Codes currently lacking a cancer-specific therapy-response axis panel
+# (rows in ``therapy-response-signatures.csv`` mentioning this code in
+# ``cancer_context``, beyond the pan_cancer fallback). As of v4.48.1,
+# only BRCA / COAD / GBM / LUAD / LUSC / NBL / PRAD / SKCM / THCA ship
+# a curated cancer-specific panel.
+_MISSING_THERAPY_AXIS = frozenset({
+    "ACC", "ACINIC", "ADCC", "ATRT", "BL", "BLCA", "B_ALL", "CESC",
+    "CHOL", "CHON", "CHOR", "CLL", "CML", "CTCL", "DLBC", "ESCA",
+    "ESS_HG", "ESS_LG", "EWS", "FL", "GCTB", "HCL", "HEPB", "HL",
+    "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC", "LUNG_NET_LC",
+    "LUNG_NET_LCNEC", "MBL", "MCL", "MDS", "MEC", "MESO", "MID_NET",
+    "MM", "MPN", "MTC", "NPC", "NUTM", "OS", "OV", "PAAD", "PANNET",
+    "PCN", "PCPG", "RB", "READ", "RMS_ARMS", "RMS_ERMS", "RMS_SSRMS",
+    "RT", "SARC", "SARC_IFS", "SCLC", "STAD", "TGCT", "THYM", "T_ALL",
+    "UCEC", "UCS", "UVM", "WILMS",
+})
+
+
+def _auto_tolerate(code, base):
+    """Seed ``matched_normal`` / ``therapy_axis`` into ``base`` based on
+    the baseline-coverage frozen sets above. Any explicit override in
+    ``_TOLERATED_GAPS_EXPLICIT`` below still wins."""
+    fields = set(base)
+    if code in _MISSING_MATCHED_NORMAL:
+        fields.add("matched_normal")
+    if code in _MISSING_THERAPY_AXIS:
+        fields.add("therapy_axis")
+    return fields
+
+
+_TOLERATED_GAPS_EXPLICIT = {
     # Heme entries still awaiting expression-data integration
     "CLL": {"expression", "lineage"},
     "MM":  {"expression"},   # MMRF CoMMpass deferred
@@ -109,6 +171,27 @@ _TOLERATED_GAPS = {
 }
 
 
+# Final tolerated-gap lookup — explicit 4-field gaps from above, unioned
+# with the matched-normal / therapy-axis baseline for every leaf code that
+# lacks those. Codes not in ``_TOLERATED_GAPS_EXPLICIT`` may still have
+# ``matched_normal`` or ``therapy_axis`` in their tolerated set (via
+# ``_auto_tolerate``).
+def _build_tolerated_gaps():
+    from pirlygenes.gene_sets_cancer import cancer_type_registry
+    reg = cancer_type_registry()
+    leaf = reg[reg["parent_code"].fillna("").astype(str).eq("")]
+    out = {}
+    for code in leaf["code"]:
+        base = _TOLERATED_GAPS_EXPLICIT.get(code, set())
+        seeded = _auto_tolerate(code, base)
+        if seeded:
+            out[code] = seeded
+    return out
+
+
+_TOLERATED_GAPS = _build_tolerated_gaps()
+
+
 def _leaf_codes_with_coverage():
     """Return a dict ``{code: {field: bool}}`` for every leaf entry."""
     reg = cancer_type_registry()
@@ -136,6 +219,25 @@ def _leaf_codes_with_coverage():
     biomarker_codes = set(key[key["role"] == "biomarker"]["cancer_code"].dropna())
     therapy_codes = set(key[key["role"] == "target"]["cancer_code"].dropna())
 
+    # matched-normal — union of solid + heme reference files
+    mn_solid = pd.read_csv("pirlygenes/data/tumor-up-vs-matched-normal.csv")
+    mn_heme = pd.read_csv("pirlygenes/data/heme-tumor-up-vs-matched-normal.csv")
+    matched_normal_codes = (
+        set(mn_solid["cancer_code"].dropna().unique())
+        | set(mn_heme["cancer_code"].dropna().unique())
+    )
+
+    # therapy-response axis panel — ``cancer_context`` can be a
+    # semicolon-separated list; split and skip the ``pan_cancer``
+    # fallback so only cancer-specific curation counts.
+    ts = pd.read_csv("pirlygenes/data/therapy-response-signatures.csv")
+    therapy_axis_codes = set()
+    for value in ts["cancer_context"].dropna():
+        for part in str(value).split(";"):
+            part = part.strip()
+            if part and part != "pan_cancer":
+                therapy_axis_codes.add(part)
+
     out = {}
     for _, row in leaf.iterrows():
         code = row["code"]
@@ -144,6 +246,8 @@ def _leaf_codes_with_coverage():
             "lineage": code in ln_codes,
             "biomarker": code in biomarker_codes,
             "therapy": code in therapy_codes,
+            "matched_normal": code in matched_normal_codes,
+            "therapy_axis": code in therapy_axis_codes,
         }
     return out
 
@@ -162,8 +266,9 @@ def test_every_leaf_passes_minimum_or_is_tolerated():
         "Registry-completeness violations:\n  "
         + "\n  ".join(violations)
         + "\n\nEither fix the gap (add expression / lineage / biomarker / "
-        "therapy data) or extend ``_TOLERATED_GAPS`` with a justified "
-        "entry in this test."
+        "therapy / matched-normal / therapy-axis data) or extend "
+        "``_TOLERATED_GAPS_EXPLICIT`` / ``_MISSING_MATCHED_NORMAL`` / "
+        "``_MISSING_THERAPY_AXIS`` with a justified entry."
     )
 
 
@@ -178,7 +283,8 @@ def test_tolerated_gaps_only_list_real_codes():
 
 
 def test_tolerated_fields_are_valid_names():
-    valid = {"expression", "lineage", "biomarker", "therapy"}
+    valid = {"expression", "lineage", "biomarker", "therapy",
+             "matched_normal", "therapy_axis"}
     for code, fields in _TOLERATED_GAPS.items():
         bad = fields - valid
         assert not bad, (
@@ -187,17 +293,78 @@ def test_tolerated_fields_are_valid_names():
         )
 
 
+def test_baseline_missing_sets_only_list_real_codes():
+    """The baseline missing sets must reference real registry codes."""
+    from pirlygenes.gene_sets_cancer import cancer_type_registry
+    reg_codes = set(cancer_type_registry()["code"])
+    unknown_mn = set(_MISSING_MATCHED_NORMAL) - reg_codes
+    unknown_ax = set(_MISSING_THERAPY_AXIS) - reg_codes
+    assert not unknown_mn, (
+        f"``_MISSING_MATCHED_NORMAL`` references unknown codes: "
+        f"{sorted(unknown_mn)}"
+    )
+    assert not unknown_ax, (
+        f"``_MISSING_THERAPY_AXIS`` references unknown codes: "
+        f"{sorted(unknown_ax)}"
+    )
+
+
+def test_baseline_missing_sets_match_current_data():
+    """If the baseline sets claim a code is missing matched-normal /
+    therapy-axis but the data actually present covers that code, the
+    set has drifted and should be shrunk. Conversely, if a code has
+    the data missing but isn't in the baseline set, the contract will
+    misfire. Both are drift signals."""
+    coverage = _leaf_codes_with_coverage()
+    missing_mn_actual = {c for c, f in coverage.items() if not f["matched_normal"]}
+    missing_ax_actual = {c for c, f in coverage.items() if not f["therapy_axis"]}
+
+    stale_mn = set(_MISSING_MATCHED_NORMAL) - missing_mn_actual
+    stale_ax = set(_MISSING_THERAPY_AXIS) - missing_ax_actual
+    new_mn = missing_mn_actual - set(_MISSING_MATCHED_NORMAL)
+    new_ax = missing_ax_actual - set(_MISSING_THERAPY_AXIS)
+
+    assert not stale_mn, (
+        f"``_MISSING_MATCHED_NORMAL`` contains codes that NOW have data — "
+        f"shrink the set: {sorted(stale_mn)}"
+    )
+    assert not stale_ax, (
+        f"``_MISSING_THERAPY_AXIS`` contains codes that NOW have data — "
+        f"shrink the set: {sorted(stale_ax)}"
+    )
+    assert not new_mn, (
+        f"New leaf codes lack matched-normal and aren't in "
+        f"``_MISSING_MATCHED_NORMAL``: {sorted(new_mn)}"
+    )
+    assert not new_ax, (
+        f"New leaf codes lack therapy-axis panel and aren't in "
+        f"``_MISSING_THERAPY_AXIS``: {sorted(new_ax)}"
+    )
+
+
 def test_completeness_progress_report(capsys):
     """Informational — print the current gap distribution. Not a
     contract assertion; just a way to see progress in CI logs."""
     coverage = _leaf_codes_with_coverage()
     total = len(coverage)
-    complete = sum(1 for fields in coverage.values() if all(fields.values()))
+    fields = ("expression", "lineage", "biomarker", "therapy",
+              "matched_normal", "therapy_axis")
+    complete = sum(
+        1 for c_fields in coverage.values()
+        if all(c_fields[f] for f in fields)
+    )
+    per_field_missing = {
+        f: sum(1 for c_fields in coverage.values() if not c_fields[f])
+        for f in fields
+    }
     with capsys.disabled():
         print(
             f"\n[completeness] {complete}/{total} leaf codes have the "
-            "full minimum package (expression + lineage + biomarker + "
-            "therapy). "
-            f"{len(_TOLERATED_GAPS)} codes still in tolerated-gaps list."
+            "full 6-field package (expression + lineage + biomarker + "
+            "therapy + matched-normal + therapy-axis). "
+            f"{len(_TOLERATED_GAPS)} codes in tolerated-gaps list."
         )
+        print("  gaps by field:")
+        for f, n in per_field_missing.items():
+            print(f"    {f}: {n} codes")
     assert complete >= 0  # always passes; smoke
