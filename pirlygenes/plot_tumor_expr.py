@@ -1082,6 +1082,36 @@ def estimate_tumor_expression_ranges(
         else:
             effective_non_tumor = max(attr_tme_total, breadth_floor)
             attr_tumor_tpm = max(0.0, observed - effective_non_tumor)
+
+        # #204: low-purity attribution cap. At purity < 25% the fitted
+        # per-compartment TPMs systematically under-represent stromal
+        # / TME contribution for broadly-expressed genes — the
+        # reference tables (HPA per-cell-type nTPM) under-predict what
+        # fibroblast / endothelial / macrophage compartments actually
+        # contribute to bulk tissue, so the residual defaults to the
+        # tumor compartment. Anchor attr_tumor_tpm to
+        # ``purity * observed`` with a 3× headroom factor so genuine
+        # amplification still registers (tumor-intrinsic can exceed
+        # bulk-observed), but pure-stromal inflation is damped.
+        #
+        # Example (rs PRAD, 16% pure): FN1 obs=801, attr_tumor before
+        # cap = 368 (46%); cap = 0.16 * 801 * 3 = 384 → unchanged.
+        # IGF1R obs=279, attr_tumor before cap = 267 (96%); cap =
+        # 0.16 * 279 * 3 = 134 → dropped to 134 (the tumor share this
+        # compartment pattern + purity can plausibly support).
+        low_purity_cap_applied = False
+        LOW_PURITY_THRESHOLD = 0.25
+        LOW_PURITY_HEADROOM = 3.0
+        if (
+            p_med is not None
+            and p_med < LOW_PURITY_THRESHOLD
+            and not matched_normal_over_predicted
+            and observed > 0
+        ):
+            purity_cap = observed * float(p_med) * LOW_PURITY_HEADROOM
+            if attr_tumor_tpm > purity_cap:
+                attr_tumor_tpm = purity_cap
+                low_purity_cap_applied = True
         attr_tumor_fraction = (
             float(attr_tumor_tpm / observed) if observed > 0 else 0.0
         )
@@ -1137,6 +1167,12 @@ def estimate_tumor_expression_ranges(
             "attr_tumor_fraction": round(attr_tumor_fraction, 4),
             "attr_top_compartment": attr_top_comp,
             "attr_top_compartment_tpm": round(float(attr_top_tpm), 2),
+            # #204: True when the low-purity cap damped attr_tumor_tpm
+            # away from the raw residual; downstream renderers can
+            # tag these rows as "low-purity-capped" so clinicians know
+            # the tumor share is bounded by purity × headroom, not
+            # fitted directly.
+            "low_purity_cap_applied": bool(low_purity_cap_applied),
             # #128: breadth metrics used by the robust attribution.
             # `n_healthy_tissues_expressed` counts non-reproductive HPA
             # tissues with nTPM >= HK_TISSUE_NTPM_THRESHOLD;
