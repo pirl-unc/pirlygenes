@@ -66,26 +66,27 @@ from pirlygenes.gene_sets_cancer import (
 # removed from this allowlist.
 
 # Codes currently lacking a matched-normal reference (tumor-up-vs-matched-
-# normal data). Shrunk v4.49.3 by the HPA-direct sweep that added 12
-# TCGA-covered codes (LUAD, MESO, GBM, LGG, SKCM, UVM, UCEC, UCS, TGCT,
-# THYM, PCPG, ACC) — see scripts/generate_matched_normal.py.
-# Remaining codes are: heme entities (need heme-tumor-up-vs-matched-
-# normal expansion), pediatric / subtype-only codes whose tumor
-# reference lives in subtype-deconvolved-expression, and rare entities
-# with no clean HPA-tissue mapping.
+# normal data). Shrunk in two sweeps:
+#   - v4.49.3 HPA-direct: LUAD, MESO, GBM, LGG, SKCM, UVM, UCEC, UCS,
+#     TGCT, THYM, PCPG (11 TCGA-covered codes)
+#   - v4.50.1 subtype-deconvolved: OS, EWS, ATRT, MBL, RB, RMS_ERMS/ARMS/
+#     SSRMS, RT, HEPB, PANNET, CHON, NBL, WILMS (14 pediatric + NET codes
+#     whose tumor reference lives in subtype-deconvolved-expression)
+# See scripts/generate_matched_normal.py for both recipes.
 _MISSING_MATCHED_NORMAL = frozenset({
-    # ACC stays — its adrenal-cortex markers are mostly physiologic
-    # (adrenal nTPM >= 3 for IGF2 / steroidogenic enzymes), so no
-    # row survives the "matched-normal silent" filter. Needs manual
-    # curation of ACC-specific tumor-up markers.
+    # ACC stays — its adrenal-cortex markers are physiologic (IGF2 /
+    # steroidogenic enzymes), no row survives the "matched-normal
+    # silent" filter. Needs manual curation.
     "ACC",
-    "ACINIC", "ADCC", "ATRT", "BL", "B_ALL", "CHON", "CHOR", "CLL",
-    "CML", "CTCL", "ESS_HG", "ESS_LG", "EWS", "FL", "GCTB", "HCL",
-    "HEPB", "HL", "LUNG_NET_LC", "LUNG_NET_LCNEC", "MBL",
-    "MCL", "MDS", "MEC", "MID_NET", "MM", "MPN", "MTC", "NBL",
-    "NPC", "NUTM", "OS", "PANNET", "PCN", "RB", "RMS_ARMS",
-    "RMS_ERMS", "RMS_SSRMS", "RT", "SARC", "SARC_IFS", "SCLC",
-    "T_ALL", "WILMS",
+    # Rare-entity / head-neck not easily auto-generated
+    "ACINIC", "ADCC", "CHOR", "NPC", "NUTM",
+    # Heme — blocked on tumor expression data (#151 / #197)
+    "BL", "B_ALL", "CLL", "CML", "CTCL", "FL", "HCL", "HL",
+    "MCL", "MDS", "MM", "MPN", "PCN", "T_ALL",
+    # Rare sarcoma subtypes without subtype-deconvolved data
+    "ESS_HG", "ESS_LG", "GCTB", "SARC", "SARC_IFS",
+    # NET axis — blocked on expression data (#152 / #197)
+    "LUNG_NET_LC", "LUNG_NET_LCNEC", "MEC", "MID_NET", "MTC", "SCLC",
 })
 
 # Codes currently lacking a cancer-specific therapy-response axis panel
