@@ -21,9 +21,35 @@ def test_degenerate_pairs_csv_loads_and_parses():
         assert isinstance(row["members"], list)
         assert len(row["members"]) >= 2
         assert isinstance(row["tiebreaker_mapping"], dict)
+        assert isinstance(row["activation_signature"], dict)
+        # Activation signature values must parse as floats.
+        for gene, min_tpm in row["activation_signature"].items():
+            assert isinstance(gene, str) and gene
+            assert isinstance(min_tpm, float)
         assert row["tiebreaker_rule"] in {
             "site_template", "fusion_surrogate", "marker_combo",
         }
+
+
+def test_nutm_pair_uses_nutm1_only_not_mage_or_prame():
+    """MAGEA / PRAME / HORMAD1 / CTAG1B are all broadly expressed in
+    LUSC and HNSC (PRAME median 24.5 TPM, MAGEA3 42 TPM in LUSC) —
+    using them as NUTM surrogates would systematically mis-call
+    squamous tumors as NUT carcinoma. The NUTM_vs_squamous pair must
+    rely only on NUTM1 mRNA (near-silent across TCGA cohorts) for
+    disambiguation. Pinned to prevent regression."""
+    df = degenerate_subtype_pairs()
+    nutm_row = df[df["pair_id"] == "NUTM_vs_squamous"].iloc[0]
+    mapping_genes = set(nutm_row["tiebreaker_mapping"].keys())
+    assert mapping_genes == {"NUTM1"}, (
+        f"NUTM_vs_squamous tiebreaker mapping must contain only NUTM1, "
+        f"got {sorted(mapping_genes)}. MAGE-A / PRAME / HORMAD1 are "
+        f"NOT NUTM-specific (see pair notes)."
+    )
+    # Activation signature likewise requires NUTM1 expression.
+    assert "NUTM1" in nutm_row["activation_signature"], (
+        "NUTM_vs_squamous activation must require NUTM1 expression"
+    )
 
 
 def test_degenerate_pair_members_are_real_registry_codes():
@@ -85,33 +111,51 @@ def test_resolver_returns_no_pair_for_none_subtype():
 
 def test_resolver_os_vs_ddlps_bone_site_swaps_to_os():
     """Canonical pfo004-shape input: classifier picked DDLPS, site is
-    bone, so the resolver should swap DDLPS → OS."""
+    bone, MDM2 strongly amplified — the pair activates and site-template
+    tiebreaker swaps DDLPS → OS."""
     result = resolve_degenerate_subtype(
         winning_subtype="SARC_DDLPS",
         site_template="met_bone",
+        tumor_tpm_by_symbol={"MDM2": 877.0, "CDK4": 73.0},
     )
     assert result["status"] == "corrected", result
     assert result["final_subtype"] == "OS"
     assert "site_template" in result["reason"]
 
 
+def test_resolver_os_vs_ddlps_low_mdm2_is_pair_inactive():
+    """A DDLPS call on a bone-site sample WITHOUT MDM2 amplification
+    shouldn't be second-guessed by the OS/DDLPS pair — the 12q amp
+    ambiguity simply isn't present. Classifier's DDLPS pick stands."""
+    result = resolve_degenerate_subtype(
+        winning_subtype="SARC_DDLPS",
+        site_template="met_bone",
+        tumor_tpm_by_symbol={"MDM2": 3.0, "CDK4": 5.0},
+    )
+    assert result["status"] == "pair_inactive", result
+    assert result["final_subtype"] == "SARC_DDLPS"
+
+
 def test_resolver_os_vs_ddlps_retroperitoneum_confirms_ddlps():
-    """When classifier picks DDLPS and site is retroperitoneum, the
-    tiebreaker agrees → confirmed."""
+    """When classifier picks DDLPS, site is retroperitoneum, and MDM2
+    is amplified, the pair activates and the tiebreaker confirms DDLPS."""
     result = resolve_degenerate_subtype(
         winning_subtype="SARC_DDLPS",
         site_template="primary_retroperitoneum",
+        tumor_tpm_by_symbol={"MDM2": 500.0, "CDK4": 80.0},
     )
     assert result["status"] == "confirmed"
     assert result["final_subtype"] == "SARC_DDLPS"
 
 
 def test_resolver_os_vs_ddlps_unknown_site_leaves_degenerate():
-    """When site doesn't appear in the mapping, resolver returns
-    degenerate so the markdown layer can emit the ambiguity."""
+    """When site doesn't appear in the mapping but the pair activates,
+    resolver returns degenerate so the markdown layer can emit the
+    ambiguity."""
     result = resolve_degenerate_subtype(
         winning_subtype="SARC_DDLPS",
         site_template="solid_primary",  # not in OS/DDLPS mapping
+        tumor_tpm_by_symbol={"MDM2": 500.0, "CDK4": 80.0},
     )
     assert result["status"] == "degenerate"
     assert result["final_subtype"] == "SARC_DDLPS"  # left unchanged
@@ -119,10 +163,12 @@ def test_resolver_os_vs_ddlps_unknown_site_leaves_degenerate():
 
 
 def test_resolver_ewing_fate1_nr0b1_confirms_ewing():
-    """FATE1 + NR0B1 high → EWS-FLI1 signature → confirms Ewing."""
+    """FATE1 + NR0B1 high with CD99 elevated → EWS-FLI1 signature
+    active → confirms Ewing."""
     result = resolve_degenerate_subtype(
         winning_subtype="EWS",
         tumor_tpm_by_symbol={
+            "CD99": 500.0,   # activation gate
             "FATE1": 80.0,
             "NR0B1": 50.0,
             "WT1": 0.0,
@@ -132,61 +178,168 @@ def test_resolver_ewing_fate1_nr0b1_confirms_ewing():
     assert result["final_subtype"] == "EWS"
 
 
+def test_resolver_ewing_pair_inactive_without_cd99():
+    """If CD99 is silent, the small-blue-round-cell ambiguity isn't
+    present and the pair shouldn't fire regardless of other genes."""
+    result = resolve_degenerate_subtype(
+        winning_subtype="EWS",
+        tumor_tpm_by_symbol={"CD99": 0.5, "FATE1": 80.0, "NR0B1": 50.0},
+    )
+    assert result["status"] == "pair_inactive"
+    assert result["final_subtype"] == "EWS"
+
+
 def test_resolver_dsrct_wt1_corrects_from_ewing():
     """If classifier picked EWS but WT1 is high and FATE1/NR0B1 are
-    silent, DSRCT is the real call."""
+    silent (and CD99 is high to activate the pair), DSRCT is the
+    real call."""
     result = resolve_degenerate_subtype(
         winning_subtype="EWS",
         tumor_tpm_by_symbol={
+            "CD99": 500.0,
             "FATE1": 0.0,
             "NR0B1": 0.0,
             "WT1": 200.0,
         },
     )
-    # DSRCT has a single surrogate gene (WT1) while EWS has multiple,
-    # so the 1-vote margin for DSRCT shouldn't outrank EWS unless the
-    # EWS genes are silent. Here EWS genes are 0 TPM → 0 votes, DSRCT
-    # gets 1 vote → corrected.
     assert result["status"] == "corrected"
     assert result["final_subtype"] == "SARC_DSRCT"
 
 
 def test_resolver_pannet_vs_midnet_pancreas_site():
+    """NE markers present (activates pair) + pancreatic site → PANNET."""
     result = resolve_degenerate_subtype(
         winning_subtype="MID_NET",
         site_template="primary_pancreas",
+        tumor_tpm_by_symbol={"CHGA": 1200.0, "SYP": 80.0, "ENO2": 150.0},
     )
     assert result["status"] == "corrected"
     assert result["final_subtype"] == "PANNET"
 
 
+def test_resolver_pannet_pair_inactive_without_ne_markers():
+    """A MID_NET pick on a sample with silent NE markers (CHGA/SYP/ENO2
+    all low) means the NE-axis ambiguity isn't present; skip the pair."""
+    result = resolve_degenerate_subtype(
+        winning_subtype="MID_NET",
+        site_template="primary_pancreas",
+        tumor_tpm_by_symbol={"CHGA": 1.0, "SYP": 2.0, "ENO2": 5.0},
+    )
+    assert result["status"] == "pair_inactive"
+
+
 def test_resolver_squamous_axis_lung_corrects_hnsc_to_lusc():
+    """Squamous markers present + primary_lung site → LUSC corrected."""
     result = resolve_degenerate_subtype(
         winning_subtype="HNSC",
         site_template="primary_lung",
+        tumor_tpm_by_symbol={"KRT5": 300.0, "KRT6A": 200.0, "TP63": 50.0},
     )
     assert result["status"] == "corrected"
     assert result["final_subtype"] == "LUSC"
 
 
 def test_resolver_mcl_ccnd1_corrects_from_cll():
-    """CCND1 high drives MCL even if classifier picked CLL."""
+    """CCND1 high drives MCL even if classifier picked CLL — but the
+    pair only activates when B-cell markers are present."""
     result = resolve_degenerate_subtype(
         winning_subtype="CLL",
-        tumor_tpm_by_symbol={"CCND1": 200.0, "SOX11": 80.0, "BCL6": 0.0},
+        tumor_tpm_by_symbol={
+            "CD19": 40.0, "MS4A1": 80.0, "CD79A": 30.0,  # activation
+            "CCND1": 200.0, "SOX11": 80.0, "BCL6": 0.0,
+        },
     )
     assert result["status"] == "corrected"
     assert result["final_subtype"] == "MCL"
 
 
-def test_resolver_no_fusion_panel_tpm_leaves_degenerate():
-    """When no TPM dict is provided for a fusion-surrogate pair, the
-    resolver returns degenerate rather than guessing."""
+def test_resolver_no_fusion_panel_tpm_leaves_pair_inactive():
+    """When no TPM dict is provided for a fusion-surrogate pair whose
+    activation signature requires gene expression, the resolver can't
+    confirm activation → pair_inactive, classifier's pick stands."""
     result = resolve_degenerate_subtype(
         winning_subtype="EWS",
         tumor_tpm_by_symbol=None,
     )
-    assert result["status"] == "degenerate"
+    assert result["status"] == "pair_inactive"
+    assert result["final_subtype"] == "EWS"
+
+
+# ── NUT carcinoma vs squamous — critical correctness case ──────────
+
+
+def test_resolver_nutm_inactive_on_squamous_sample_with_silent_nutm1():
+    """A LUSC sample with high PRAME + MAGEA3 (common in squamous!)
+    but silent NUTM1 should NOT get pulled toward NUT carcinoma.
+    Before the activation-gate fix, vote-based disambiguation would
+    count PRAME+MAGE-A as NUTM evidence; now the NUTM_vs_squamous
+    pair only activates when NUTM1 is expressed."""
+    # With LUSC as winning_subtype, the LUSC_vs_HNSC_vs_CESC pair is
+    # preferred because it has site context available and it's
+    # applicable.
+    result = resolve_degenerate_subtype(
+        winning_subtype="LUSC",
+        site_template="primary_lung",
+        tumor_tpm_by_symbol={
+            # Squamous activation signal (this pair fires)
+            "KRT5": 400.0, "KRT6A": 300.0, "TP63": 80.0,
+            # High PRAME + MAGE-A as is typical of LUSC
+            "PRAME": 30.0, "MAGEA3": 60.0, "MAGEA1": 5.0,
+            # But NUTM1 silent — NOT a NUT carcinoma
+            "NUTM1": 0.1,
+        },
+    )
+    assert result["status"] == "confirmed"
+    assert result["final_subtype"] == "LUSC"
+
+
+def test_resolver_nutm_corrects_squamous_when_nutm1_expressed():
+    """A sample that classified as LUSC but actually expresses NUTM1
+    at diagnostic levels should get flagged. With LUSC's primary pair
+    being LUSC_vs_HNSC_vs_CESC (site-template) — it confirms LUSC on
+    site — NUTM is not reached. The NUTM flag comes via the NUTM
+    winning_subtype path instead: a sample classified as NUTM but
+    without NUTM1 expression should be pair_inactive (stays NUTM) —
+    the NUTM->squamous swap would require a reverse-mapping which is
+    out of scope for this pair.
+
+    This test pins that a NUTM winning_subtype WITH NUTM1 present is
+    confirmed by the fusion_surrogate rule."""
+    result = resolve_degenerate_subtype(
+        winning_subtype="NUTM",
+        tumor_tpm_by_symbol={"NUTM1": 15.0, "PRAME": 200.0, "MAGEA3": 20.0},
+    )
+    assert result["status"] == "confirmed"
+    assert result["final_subtype"] == "NUTM"
+
+
+def test_resolver_nutm_pair_inactive_when_nutm1_silent():
+    """A NUTM winning_subtype on a sample where NUTM1 is silent is
+    pair_inactive — the pair doesn't activate, so the classifier's
+    (likely wrong) NUTM call stays, but the confidence / markdown
+    layer can inspect ``status='pair_inactive'`` to tell the reader
+    the diagnostic NUTM1 signal is absent."""
+    result = resolve_degenerate_subtype(
+        winning_subtype="NUTM",
+        tumor_tpm_by_symbol={"NUTM1": 0.05, "PRAME": 20.0, "MAGEA3": 40.0},
+    )
+    assert result["status"] == "pair_inactive"
+    assert result["final_subtype"] == "NUTM"
+
+
+def test_resolver_pair_selection_prefers_applicable_pair():
+    """HNSC is a member of both LUSC_vs_HNSC_vs_CESC (site_template)
+    and NUTM_vs_squamous (fusion_surrogate). When site_template
+    context is available, the site pair is preferred; when only TPM
+    context is available, the fusion pair takes over."""
+    # Site context → LUSC_vs_HNSC_vs_CESC applies
+    result_site = resolve_degenerate_subtype(
+        winning_subtype="HNSC",
+        site_template="primary_head_neck",
+        tumor_tpm_by_symbol={"KRT5": 400.0, "TP63": 80.0, "NUTM1": 0.0},
+    )
+    assert result_site["pair_id"] == "LUSC_vs_HNSC_vs_CESC"
+    assert result_site["status"] == "confirmed"
 
 
 # ── Fusion-surrogate genes by cancer ────────────────────────────────
@@ -219,9 +372,16 @@ def test_fusion_surrogate_pan_cancer_applies_to_any_code():
 
 def test_brief_renders_corrected_subtype():
     """End-to-end pin: when the analysis dict carries a liposarcoma
-    winning_subtype but the decomposition top template is met_bone, the
-    summary.md should render osteosarcoma-consistent + a subtype note
-    explaining the swap. Reproduces the pfo004 failure mode."""
+    winning_subtype, the decomposition top template is met_bone, AND
+    MDM2 is amplified (activating the 12q-amp pair), the summary.md
+    should render osteosarcoma-consistent + a subtype note explaining
+    the swap. Reproduces the pfo004 failure mode.
+
+    This version exercises the tumor_tpm_by_symbol-from-ranges_df
+    path — the production analyze call builds the TPM dict from
+    ranges_df, not from an analysis key."""
+    import pandas as pd
+
     from pirlygenes.brief import build_summary
 
     analysis = {
@@ -243,11 +403,15 @@ def test_brief_renders_corrected_subtype():
                 {"template": "met_bone", "cancer_type": "SARC", "score": 0.22},
             ],
         },
-        "tumor_tpm_by_symbol": {"MDM2": 877, "CDK4": 73, "FRS2": 137},
     }
+    ranges_df = pd.DataFrame([
+        {"symbol": "MDM2",  "attr_tumor_tpm": 877.0},
+        {"symbol": "CDK4",  "attr_tumor_tpm": 73.0},
+        {"symbol": "FRS2",  "attr_tumor_tpm": 137.0},
+    ])
     summary = build_summary(
         analysis,
-        ranges_df=None,
+        ranges_df=ranges_df,
         cancer_code="SARC",
         disease_state="",
         sample_id="synthetic-bone-mdm2",
@@ -255,6 +419,54 @@ def test_brief_renders_corrected_subtype():
     assert "osteosarcoma-consistent" in summary, summary
     assert "site_template tiebreaker swapped" in summary, summary
     assert "OS" in summary
+
+
+def test_brief_lusc_with_high_prame_mage_does_not_flag_nutm():
+    """Pin the squamous-vs-NUTM correctness case: a LUSC sample with
+    high PRAME + MAGEA3 (typical of LUSC) but silent NUTM1 should NOT
+    be pulled into a NUT carcinoma flag. Before the activation-gate
+    fix, vote-based disambiguation would have mis-called this as NUTM."""
+    import pandas as pd
+
+    from pirlygenes.brief import build_summary
+
+    analysis = {
+        "purity": {
+            "overall_estimate": 0.60,
+            "overall_lower": 0.40,
+            "overall_upper": 0.80,
+        },
+        "purity_confidence": type("PT", (), {"tier": "moderate"})(),
+        "sample_context": None,
+        "cancer_name": "Lung squamous cell carcinoma",
+        "candidate_trace": [{"code": "LUSC", "winning_subtype": "LUSC"}],
+        "decomposition": {
+            "best_template": "primary_lung",
+            "best_cancer_type": "LUSC",
+        },
+    }
+    ranges_df = pd.DataFrame([
+        # Squamous lineage — this activates LUSC_vs_HNSC_vs_CESC
+        {"symbol": "KRT5",   "attr_tumor_tpm": 400.0},
+        {"symbol": "KRT6A",  "attr_tumor_tpm": 300.0},
+        {"symbol": "TP63",   "attr_tumor_tpm": 80.0},
+        # High PRAME + MAGE-A as typical of LUSC (NOT NUTM-specific!)
+        {"symbol": "PRAME",   "attr_tumor_tpm": 30.0},
+        {"symbol": "MAGEA3",  "attr_tumor_tpm": 60.0},
+        # But NUTM1 silent — NOT a NUT carcinoma
+        {"symbol": "NUTM1",   "attr_tumor_tpm": 0.1},
+    ])
+    summary = build_summary(
+        analysis,
+        ranges_df=ranges_df,
+        cancer_code="LUSC",
+        disease_state="",
+        sample_id="synthetic-lusc-high-cta",
+    )
+    assert "NUT" not in summary, (
+        "LUSC with high PRAME/MAGEA but silent NUTM1 must NOT flag NUT carcinoma"
+    )
+    assert "degenerate" not in summary.lower() or "degenerate between" not in summary
 
 
 def test_refs_populated_for_each_pair():

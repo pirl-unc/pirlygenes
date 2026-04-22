@@ -7,29 +7,44 @@ vs dedifferentiated liposarcoma both carry the 12q13-15 amplicon
 small-blue-round-cell signature. The canonical tiebreaker is either
 anatomic site (bone vs retroperitoneum) or a deterministic
 fusion-surrogate expression pattern (FATE1/NR0B1 for EWS-FLI1;
-NUTM1 + PRAME for NUT carcinoma; CCNB3 for BCOR-rearranged sarcoma).
+NUTM1 mRNA for NUT carcinoma; CCND1 for MCL).
 
-This module loads two declarative catalogs:
+Two declarative catalogs drive the resolution:
 
 - ``degenerate-subtype-pairs.csv`` — pairs/triples of subtypes that
-  share a signature, plus the tiebreaker rule and mapping.
+  share a signature, plus the tiebreaker rule, mapping, and an
+  ``activation_signature`` that gates when the pair applies.
 - ``fusion-surrogate-expression.csv`` — genes whose expression is a
   deterministic surrogate for a specific fusion/translocation class
   (ectopic expression from fusion-driven derepression, or promoter-
   swap hyperexpression).
 
-``resolve_degenerate_subtype()`` consumes the catalogs and a minimal
-context (current winning subtype, site template, a dict of observed
-tumor TPMs) and returns the final subtype plus a provenance dict
-explaining the call. When the catalog can't resolve the ambiguity,
-the resolver returns ``status='degenerate'`` so the markdown layer
-can render ``degenerate between {A, B} — insufficient context to
-commit`` rather than forcing a false-confident pick.
+Activation gating
+-----------------
+Each pair declares an ``activation_signature`` (e.g. ``MDM2:100`` or
+``CD99:20``). The resolver evaluates the signature against the
+observed tumor-attributed TPMs before consulting the tiebreaker; if
+the shared signature isn't present in the sample, the pair is
+**inactive** and the upstream classifier's call is kept unchanged.
+This prevents routine high-confidence calls (e.g. LUSC with clear
+squamous signature but no NUTM1 expression) from being pulled into
+irrelevant degenerate-pair resolutions.
+
+Information flow
+----------------
+The resolver consumes two contextual inputs beyond the raw winning
+subtype: the decomposition's top-ranked site template (bone /
+retroperitoneum / lung / …) and the full tumor-attributed TPM dict.
+These come from earlier pipeline stages — the resolver reasons over
+the full context, not any single gene in isolation.
 """
 
+import logging
 from functools import lru_cache
 
 from .load_dataset import get_data
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -37,9 +52,10 @@ def degenerate_subtype_pairs():
     """Load ``degenerate-subtype-pairs.csv``.
 
     Returns a DataFrame with ``pair_id``, ``members`` (list of subtype
-    codes), ``shared_signature``, ``tiebreaker_rule``,
-    ``tiebreaker_mapping`` (dict keyed by context value → subtype),
-    and free-text ``notes`` / ``refs``.
+    codes), ``shared_signature``, ``activation_signature`` (dict
+    ``{gene: min_tpm}``), ``tiebreaker_rule``, ``tiebreaker_mapping``
+    (dict keyed by context value → subtype), and free-text ``notes`` /
+    ``refs``.
     """
     df = get_data("degenerate-subtype-pairs")
     df["members"] = df["members"].fillna("").astype(str).apply(
@@ -57,7 +73,22 @@ def degenerate_subtype_pairs():
             out[key.strip()] = val.strip()
         return out
 
+    def _parse_activation(value):
+        """``GENE:min_tpm|GENE:min_tpm|...`` → dict of {gene: float}."""
+        raw = _parse_mapping(value)
+        parsed = {}
+        for gene, tpm_str in raw.items():
+            try:
+                parsed[gene] = float(tpm_str)
+            except (TypeError, ValueError):
+                continue
+        return parsed
+
     df["tiebreaker_mapping"] = df["tiebreaker_mapping"].apply(_parse_mapping)
+    if "activation_signature" in df.columns:
+        df["activation_signature"] = df["activation_signature"].apply(_parse_activation)
+    else:
+        df["activation_signature"] = [{} for _ in range(len(df))]
     return df
 
 
@@ -67,14 +98,66 @@ def fusion_surrogate_expression():
     return get_data("fusion-surrogate-expression")
 
 
-def _find_pair_for_subtype(subtype_code):
+def _pair_applicable(pair_row, site_template, tumor_tpm_by_symbol):
+    """A pair is *applicable* when its ``tiebreaker_rule`` has the
+    context inputs it needs. ``site_template`` rules need a template;
+    ``fusion_surrogate`` / ``marker_combo`` rules need TPMs. Used to
+    prefer applicable pairs over inapplicable ones when a subtype sits
+    in multiple pairs (HNSC ∈ {LUSC_vs_HNSC_vs_CESC, NUTM_vs_squamous}).
+    """
+    rule = pair_row["tiebreaker_rule"]
+    if rule == "site_template":
+        return bool(site_template)
+    if rule in ("fusion_surrogate", "marker_combo"):
+        return bool(tumor_tpm_by_symbol)
+    return False
+
+
+def _find_pair_for_subtype(subtype_code, site_template=None,
+                           tumor_tpm_by_symbol=None):
     """Return the degenerate-pair row whose ``members`` contain this
-    subtype, or ``None``."""
+    subtype. When the subtype is listed in multiple pairs, prefer the
+    first *applicable* pair (rule's context is available). Falls back
+    to first-match if none are applicable. Returns ``None`` when no
+    pair lists the subtype.
+    """
     pairs = degenerate_subtype_pairs()
-    for _, row in pairs.iterrows():
-        if subtype_code in row["members"]:
-            return row
-    return None
+    matches = [row for _, row in pairs.iterrows() if subtype_code in row["members"]]
+    if not matches:
+        return None
+    applicable = [
+        row for row in matches
+        if _pair_applicable(row, site_template, tumor_tpm_by_symbol)
+    ]
+    if applicable:
+        return applicable[0]
+    return matches[0]
+
+
+def _activation_met(pair_row, tumor_tpm_by_symbol):
+    """Return ``True`` when the pair's ``activation_signature`` is
+    satisfied by the observed TPMs (at least one gene meets its
+    threshold). Empty activation signature is always satisfied —
+    the pair applies unconditionally. Missing TPM dict with a
+    populated signature means we cannot confirm activation and the
+    pair is treated as inactive (don't second-guess a classifier pick
+    when context isn't available).
+    """
+    activation = pair_row.get("activation_signature") or {}
+    if not activation:
+        return True
+    if not tumor_tpm_by_symbol:
+        return False
+    for gene, min_tpm in activation.items():
+        observed = tumor_tpm_by_symbol.get(gene)
+        if observed is None:
+            continue
+        try:
+            if float(observed) >= float(min_tpm):
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
 
 
 def _resolve_site_template(pair_row, site_template):
@@ -87,10 +170,12 @@ def _resolve_site_template(pair_row, site_template):
 
 
 def _resolve_fusion_surrogate(pair_row, tumor_tpm_by_symbol, min_tpm=1.0):
-    """Apply a ``fusion_surrogate`` tiebreaker. Inspect the mapping
-    keys (gene symbols) and count how many hits each target subtype
-    gets in the observed TPM dict. Return the subtype with the most
-    hits when the margin is ≥ 2, else ``None``."""
+    """Apply a ``fusion_surrogate`` tiebreaker. Count votes by
+    subtype — each mapping gene whose TPM is ≥ ``min_tpm`` adds one
+    vote for its mapped subtype. Returns the subtype with the most
+    votes when (a) it's the only subtype with votes, or (b) its
+    margin over the runner-up is ≥ 2. Ties or narrow margins return
+    ``None`` so the resolver can surface the ambiguity."""
     mapping = pair_row["tiebreaker_mapping"] or {}
     if not mapping or not tumor_tpm_by_symbol:
         return None
@@ -99,11 +184,14 @@ def _resolve_fusion_surrogate(pair_row, tumor_tpm_by_symbol, min_tpm=1.0):
         tpm = tumor_tpm_by_symbol.get(gene)
         if tpm is None:
             continue
-        if float(tpm) >= min_tpm:
-            votes[subtype] = votes.get(subtype, 0) + 1
+        try:
+            if float(tpm) >= min_tpm:
+                votes[subtype] = votes.get(subtype, 0) + 1
+        except (TypeError, ValueError):
+            continue
     if not votes:
         return None
-    ranked = sorted(votes.items(), key=lambda kv: -kv[1])
+    ranked = sorted(votes.items(), key=lambda kv: (-kv[1], kv[0]))
     if len(ranked) == 1:
         return ranked[0][0]
     if ranked[0][1] - ranked[1][1] >= 2:
@@ -112,8 +200,10 @@ def _resolve_fusion_surrogate(pair_row, tumor_tpm_by_symbol, min_tpm=1.0):
 
 
 def _resolve_marker_combo(pair_row, tumor_tpm_by_symbol, min_tpm=1.0):
-    """Same shape as fusion_surrogate but used when a marker panel
-    (not a fusion) disambiguates — e.g. CCND1 for MCL vs CLL."""
+    """Same mechanism as ``fusion_surrogate`` but used for pairs whose
+    disambiguator is a marker panel (not a fusion) — e.g. CCND1 for
+    MCL vs CLL. Kept as a distinct rule name so the markdown reason
+    text stays accurate."""
     return _resolve_fusion_surrogate(
         pair_row, tumor_tpm_by_symbol, min_tpm=min_tpm,
     )
@@ -136,8 +226,9 @@ def resolve_degenerate_subtype(
         ``primary_retroperitoneum``). Drives ``site_template``
         tiebreaker rules.
     tumor_tpm_by_symbol : dict[str, float] or None
-        Tumor-attributed TPM per gene symbol. Drives ``fusion_surrogate``
-        and ``marker_combo`` tiebreakers.
+        Tumor-attributed TPM per gene symbol, from the attribution
+        stage. Drives activation-signature gating plus
+        ``fusion_surrogate`` and ``marker_combo`` tiebreakers.
 
     Returns
     -------
@@ -145,11 +236,17 @@ def resolve_degenerate_subtype(
         ``final_subtype`` — the resolved subtype, may equal
             ``winning_subtype`` when the catalog confirms or can't
             rule it out.
-        ``status`` — ``'confirmed'`` (tiebreaker agrees with pick),
-            ``'corrected'`` (pick swapped for another member),
-            ``'degenerate'`` (tiebreaker inconclusive; caller should
-            render ambiguity explicitly), or ``'no_pair'`` (subtype
-            not in any degenerate pair).
+        ``status`` — one of:
+            * ``'no_pair'`` — subtype not in any degenerate pair.
+            * ``'pair_inactive'`` — subtype is in a pair but the
+              activation signature isn't met in the sample; the
+              classifier's pick stands unchanged.
+            * ``'confirmed'`` — tiebreaker agrees with classifier.
+            * ``'corrected'`` — tiebreaker swapped the call for a
+              pair member.
+            * ``'degenerate'`` — pair active but tiebreaker
+              inconclusive; render ambiguity explicitly rather than
+              committing.
         ``reason`` — short human-readable note for the markdown layer.
         ``pair_id`` — identifier of the matched pair (or ``None``).
         ``alternatives`` — list of the other members of the pair.
@@ -163,7 +260,11 @@ def resolve_degenerate_subtype(
             "alternatives": [],
         }
 
-    pair_row = _find_pair_for_subtype(winning_subtype)
+    pair_row = _find_pair_for_subtype(
+        winning_subtype,
+        site_template=site_template,
+        tumor_tpm_by_symbol=tumor_tpm_by_symbol,
+    )
     if pair_row is None:
         return {
             "final_subtype": winning_subtype,
@@ -177,6 +278,25 @@ def resolve_degenerate_subtype(
     alternatives = [m for m in members if m != winning_subtype]
     rule = pair_row["tiebreaker_rule"]
     pair_id = pair_row["pair_id"]
+
+    # Activation gate: the pair's shared signature must be present in
+    # the sample for the ambiguity to be real. Without it, the
+    # classifier's pick stands — we don't pull LUSC into NUTM_vs_squamous
+    # just because LUSC happens to be a member of the pair.
+    if not _activation_met(pair_row, tumor_tpm_by_symbol):
+        activation_desc = ", ".join(
+            f"{g}>={int(t)}" for g, t in (pair_row.get("activation_signature") or {}).items()
+        )
+        return {
+            "final_subtype": winning_subtype,
+            "status": "pair_inactive",
+            "reason": (
+                f"{pair_id} pair skipped — activation signature "
+                f"({activation_desc}) not present in sample"
+            ),
+            "pair_id": pair_id,
+            "alternatives": alternatives,
+        }
 
     resolved = None
     if rule == "site_template":

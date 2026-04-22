@@ -29,7 +29,10 @@ parseable?".)
 
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _phase_label(phase: str) -> str:
@@ -315,20 +318,46 @@ def build_summary(
     # #198: before rendering, consult the degenerate-subtype registry.
     # Several within-family subtypes share a gene signature (OS vs DDLPS
     # both carry 12q13-15 amplicon; Ewing vs DSRCT vs ARMS all CD99+)
-    # and need a site or fusion-surrogate tiebreaker. When the resolver
-    # corrects the pick, swap the label; when it flags the ambiguity
-    # inconclusive, mark the subtype as ``degenerate`` so the markdown
-    # reader knows we can't commit.
+    # and need a site or fusion-surrogate tiebreaker. The resolver
+    # reasons over the full sample context — decomposition site
+    # template AND the complete tumor-attributed TPM dict — so that
+    # decisions aren't made from single-gene lookups in isolation.
+    # Activation-signature gating ensures pairs only fire when the
+    # shared signature is actually present; high-confidence clear-
+    # winner calls bypass the resolver entirely.
     degenerate_status = None
     degenerate_reason = ""
     degenerate_alternatives = []
     if winning_subtype:
         try:
             from .degenerate_subtype import resolve_degenerate_subtype
-            site_template = None
             decomposition = analysis.get("decomposition") or {}
             site_template = decomposition.get("best_template")
-            tumor_tpm_by_symbol = analysis.get("tumor_tpm_by_symbol") or {}
+            tumor_tpm_by_symbol = analysis.get("tumor_tpm_by_symbol")
+            if not tumor_tpm_by_symbol and ranges_df is not None:
+                # Build from ``ranges_df`` — the per-gene attribution
+                # stage's output. Propagates the full tumor-attributed
+                # TPM context so activation signatures and multi-gene
+                # tiebreakers get the full evidence, not a single-gene
+                # slice.
+                try:
+                    import pandas as pd
+                    if isinstance(ranges_df, pd.DataFrame) and "symbol" in ranges_df.columns and "attr_tumor_tpm" in ranges_df.columns:
+                        tumor_tpm_by_symbol = dict(
+                            zip(
+                                ranges_df["symbol"].astype(str),
+                                pd.to_numeric(
+                                    ranges_df["attr_tumor_tpm"],
+                                    errors="coerce",
+                                ).fillna(0.0).astype(float),
+                            )
+                        )
+                except Exception:
+                    logger.debug(
+                        "degenerate-subtype: failed to build tumor_tpm_by_symbol from ranges_df",
+                        exc_info=True,
+                    )
+                    tumor_tpm_by_symbol = None
             resolution = resolve_degenerate_subtype(
                 winning_subtype,
                 site_template=site_template,
@@ -340,7 +369,10 @@ def build_summary(
             degenerate_reason = resolution["reason"]
             degenerate_alternatives = resolution["alternatives"]
         except Exception:
-            pass
+            logger.debug(
+                "degenerate-subtype resolution failed; keeping classifier pick",
+                exc_info=True,
+            )
 
     if winning_subtype:
         try:
@@ -377,6 +409,9 @@ def build_summary(
         f"**Cancer call:** {cancer_code} ({cancer_name})"
         f"{subtype_annotation}.{suffix}"
     )
+    # Surface a subtype note only when the resolver changed the call or
+    # flagged irreducible ambiguity. ``pair_inactive`` means the pair
+    # didn't apply — no reader-facing note needed.
     if degenerate_status in ("corrected", "degenerate") and degenerate_reason:
         lines.append(f"**Subtype note:** {degenerate_reason}")
 
