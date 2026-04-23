@@ -1120,6 +1120,7 @@ def _analyze_body(
     # (AR / ER / HER2 / MAPK-EGFR / NE / EMT / hypoxia / IFN) so the
     # report can explain *why* individual genes are high or low
     # (e.g. KLK3 ↓ + FOLH1 ↑ → AR-suppressed, consistent with ADT).
+    sample_tpm_by_symbol = None
     try:
         from .common import build_sample_tpm_by_symbol
         sample_tpm_by_symbol = build_sample_tpm_by_symbol(df_expr)
@@ -1704,6 +1705,7 @@ def _analyze_body(
                     top_n=15,
                     save_to_filename=attr_png,
                     save_dpi=output_dpi,
+                    sample_tpm_by_symbol=sample_tpm_by_symbol,
                 )
                 if fig is not None:
                     adj_pngs.append(attr_png)
@@ -1754,6 +1756,7 @@ def _analyze_body(
                     top_n=15,
                     save_to_filename=mn_png,
                     save_dpi=output_dpi,
+                    sample_tpm_by_symbol=sample_tpm_by_symbol,
                 )
                 if fig is not None:
                     adj_pngs.append(mn_png)

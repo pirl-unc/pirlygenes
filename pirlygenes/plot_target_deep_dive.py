@@ -335,6 +335,18 @@ def plot_actionable_targets(
     ax.invert_yaxis()
     ax.legend(loc="lower right", fontsize=8)
     ax.set_title(title or f"Actionable Surface Targets — {cancer_code}")
+
+    # Sample-wide 90th-percentile anchor (faint dashed).
+    try:
+        from .plot_reference_lines import add_p90_reference_line
+        from .common import build_sample_tpm_by_symbol
+        add_p90_reference_line(
+            ax, build_sample_tpm_by_symbol(df_gene_expr),
+            orientation="vertical",
+        )
+    except Exception:
+        pass
+
     fig.tight_layout()
 
     if save_to_filename:
@@ -506,6 +518,17 @@ def plot_cta_deep_dive(
     ax.invert_yaxis()
     ax.legend(loc="lower right", fontsize=8)
     ax.set_title(f"Cancer-Testis Antigens — {cancer_code}")
+
+    try:
+        from .plot_reference_lines import add_p90_reference_line
+        from .common import build_sample_tpm_by_symbol
+        add_p90_reference_line(
+            ax, build_sample_tpm_by_symbol(df_gene_expr),
+            orientation="vertical",
+        )
+    except Exception:
+        pass
+
     fig.tight_layout()
 
     if save_to_filename:

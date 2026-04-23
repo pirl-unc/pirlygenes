@@ -1263,6 +1263,7 @@ def plot_matched_normal_attribution(
     save_to_filename=None,
     save_dpi=300,
     figsize=None,
+    sample_tpm_by_symbol=None,
 ):
     """Stacked horizontal-bar plot of per-gene tumor / matched-normal / TME
     attribution for a single target category (issue #55).
@@ -1360,6 +1361,15 @@ def plot_matched_normal_attribution(
     ax.grid(axis="x", alpha=0.2)
     ax.legend(loc="lower right", fontsize=9, framealpha=0.9)
 
+    # Sample-wide 90th-percentile reference line — faint dashed anchor
+    # so readers see where each gene sits relative to the rest of the
+    # transcriptome.
+    if sample_tpm_by_symbol is not None:
+        from .plot_reference_lines import add_p90_reference_line
+        add_p90_reference_line(
+            ax, sample_tpm_by_symbol, orientation="vertical",
+        )
+
     mn_tissue = ""
     if "matched_normal_tissue" in sub.columns:
         nonempty = sub["matched_normal_tissue"].astype(str).replace("nan", "")
@@ -1383,6 +1393,7 @@ def plot_target_attribution(
     cancer_type,
     category,
     top_n=15,
+    sample_tpm_by_symbol=None,
     save_to_filename=None,
     save_dpi=300,
     figsize=None,
@@ -1476,6 +1487,12 @@ def plot_target_attribution(
         "(\u26a0\u26a0 = tumor < 30% of observed; \u26a0 = single-tissue-explainable)",
         fontsize=10, fontweight="bold",
     )
+    # Sample-wide 90th-percentile reference line (faint dashed).
+    if sample_tpm_by_symbol is not None:
+        from .plot_reference_lines import add_p90_reference_line
+        add_p90_reference_line(
+            ax, sample_tpm_by_symbol, orientation="vertical",
+        )
 
     plt.tight_layout()
     if save_to_filename:
