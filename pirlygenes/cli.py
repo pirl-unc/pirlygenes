@@ -48,6 +48,7 @@ from .plot import (
     plot_cohort_surface_proteins,
     plot_cohort_ctas,
     plot_curated_target_evidence,
+    plot_priority_targets,
     get_embedding_feature_metadata,
     estimate_tumor_expression_ranges,
     plot_matched_normal_attribution,
@@ -1531,11 +1532,21 @@ def _analyze_body(
     # Therapy target tissue expression / safety
     print("[plot] Generating therapy target tissue expression...")
     tissue_pdf = "%s-target-tissues.pdf" % prefix if prefix else "target-tissues.pdf"
+    tissue_png_manifest = (
+        "%s-target-tissues.png" % prefix if prefix else "target-tissues.png"
+    )
     plot_therapy_target_tissues(
         df_expr,
         top_k=therapy_target_top_k,
         tpm_threshold=therapy_target_tpm_threshold,
         save_to_filename=tissue_pdf,
+        save_dpi=output_dpi,
+    )
+    plot_therapy_target_tissues(
+        df_expr,
+        top_k=therapy_target_top_k,
+        tpm_threshold=therapy_target_tpm_threshold,
+        save_to_filename=tissue_png_manifest,
         save_dpi=output_dpi,
     )
 
@@ -1782,6 +1793,7 @@ def _analyze_body(
         )
 
         curated_evidence_png = None
+        priority_targets_png = None
         try:
             from .gene_sets_cancer import (
                 cancer_key_genes_cancer_types,
@@ -1793,6 +1805,7 @@ def _analyze_body(
                 analysis,
                 ranges_df=ranges_df,
             )
+            target_panel = None
             if panel_code in cancer_key_genes_cancer_types():
                 target_panel = (
                     cancer_therapy_targets(panel_code, subtype=panel_subtype)
@@ -1815,9 +1828,33 @@ def _analyze_body(
                 else:
                     curated_evidence_png = None
                 _plt.close("all")
+
+            priority_targets_png = (
+                "%s-priority-targets.png" % prefix
+                if prefix else "priority-targets.png"
+            )
+            fig = plot_priority_targets(
+                ranges_df,
+                cancer_type=panel_code if target_panel is not None else effective_cancer_type,
+                target_panel=(
+                    target_panel.reset_index(drop=True)
+                    if target_panel is not None else None
+                ),
+                df_gene_expr=df_expr,
+                save_to_filename=priority_targets_png,
+                save_dpi=output_dpi,
+            )
+            if fig is not None:
+                adj_pngs.append(priority_targets_png)
+                print(f"[plot] Saved priority targets to {priority_targets_png}")
+            else:
+                priority_targets_png = None
+            _plt.close("all")
+
         except Exception as curated_err:
             print(f"[plot] curated target evidence failed: {curated_err}")
             curated_evidence_png = None
+            priority_targets_png = None
 
         # #111: two-tier markdown handoff. Emitted after the detailed
         # reports so both can reference each other. The brief is the
@@ -1959,6 +1996,9 @@ def _analyze_body(
     scatter_dir = Path(scatter_pdf).parent / Path(scatter_pdf).stem
     if scatter_dir.is_dir():
         png_files.extend(sorted(str(p) for p in scatter_dir.glob("*.png")))
+    tissue_dir = Path(tissue_png_manifest).parent / Path(tissue_png_manifest).stem
+    if tissue_dir.is_dir():
+        png_files.extend(sorted(str(p) for p in tissue_dir.glob("*.png")))
 
     # Purity-adjusted plots go last (different RNA measure)
     for adj_p in adj_pngs:
@@ -2032,6 +2072,14 @@ def _analyze_body(
             scatter_dir.rmdir()
         except OSError:
             pass
+    if tissue_dir.is_dir():
+        for p in tissue_dir.glob("*.png"):
+            p.rename(figures_dir / p.name)
+            moved += 1
+        try:
+            tissue_dir.rmdir()
+        except OSError:
+            pass
     for extra in [scatter_pdf, tissue_pdf]:
         p = Path(extra) if isinstance(extra, str) else extra
         if p.exists():
@@ -2070,6 +2118,20 @@ def _analyze_body(
             if any(path.name.endswith(suffix) for suffix in suffixes):
                 out.append(path)
         return out
+
+    def _artifact_page(path):
+        path = Path(path)
+        if path.suffix.lower() == ".png":
+            img = Image.open(path).convert("RGB")
+            return _with_filename_caption(img, path.name)
+        return _make_audit_text_page(
+            f"Figure Artifact: {path.name}",
+            [
+                "This figure is emitted as a PDF artifact rather than a single PNG page.",
+                f"Path: {path}",
+                "If a sibling PNG page series exists, those pages appear elsewhere in this audit packet.",
+            ],
+        )
 
     audit_sections = [
         (
@@ -2116,6 +2178,7 @@ def _analyze_body(
                         "matched-normal-surface.png",
                         "subtype-attribution-targets.png",
                         "curated-target-evidence.png",
+                        "priority-targets.png",
                     ),
                 },
             ],
@@ -2146,6 +2209,7 @@ def _analyze_body(
                         "purity-methods.png",
                         "target-safety.png",
                         "curated-target-evidence.png",
+                        "priority-targets.png",
                         "provenance.png",
                         "therapy-pathway-state.png",
                     ),
@@ -2153,6 +2217,7 @@ def _analyze_body(
             ],
         ),
     ]
+    audit_seen = set()
 
     audit_images = [
         _make_audit_text_page(
@@ -2186,10 +2251,34 @@ def _analyze_body(
                 )
             )
             for path in files:
-                if path.suffix.lower() != ".png":
-                    continue
-                img = Image.open(path).convert("RGB")
-                audit_images.append(_with_filename_caption(img, path.name))
+                audit_seen.add(path.name)
+                audit_images.append(_artifact_page(path))
+
+    remaining_files = [
+        path
+        for path in sorted(figures_dir.iterdir())
+        if path.name not in audit_seen
+    ]
+    if remaining_files:
+        audit_images.append(
+            _make_audit_text_page(
+                "Coverage Appendix",
+                [
+                    "Every emitted figure is included at least once in this packet.",
+                    "The following pages cover artifacts that did not fit one of the opinionated groups above.",
+                ],
+            )
+        )
+        audit_images.append(
+            _make_audit_text_page(
+                "Other Emitted Figures",
+                [
+                    "Included: " + ", ".join(path.name for path in remaining_files),
+                ],
+            )
+        )
+        for path in remaining_files:
+            audit_images.append(_artifact_page(path))
 
     if audit_images:
         audit_images[0].save(
@@ -2240,6 +2329,8 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-treatments.png` | Therapy target expression by modality |
 | `*-target-safety.png` | Therapy target normal tissue expression |
+| `*-priority-targets.png` | Integrated priority ranking: actionability + tumor-source support + uncertainty |
+| `*-curated-target-evidence.png` | Curated cancer-type targets with tumor-core band, normal context, and maturity |
 | `*-purity-targets.png` | Tumor-expression ranges for therapeutic targets |
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
