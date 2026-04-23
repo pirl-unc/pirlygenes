@@ -18,6 +18,11 @@ from typing import List, Optional
 
 import numpy as np
 
+from .reporting import (
+    partition_tumor_core_rows,
+    summarize_reliability_reasons,
+)
+
 
 def _compartment_label(comp: str) -> str:
     return comp.replace("matched_normal_", "matched-normal ").replace("_", " ")
@@ -189,24 +194,38 @@ def build_provenance_md(
     lines.append("## 5. Tumor-specific core\n")
     if ranges_df is not None and len(ranges_df):
         if "attribution" in ranges_df.columns:
-            has_attr = ranges_df["attribution"].apply(
-                lambda v: isinstance(v, dict) and len(v) > 0
+            supported_core, provisional_core, _ = partition_tumor_core_rows(
+                ranges_df, min_tumor_tpm=1.0,
             )
-            core = ranges_df[has_attr & (ranges_df["attr_tumor_tpm"].astype(float) > 1.0)]
-            n_core = int(len(core))
+            n_core = int(len(supported_core))
             lines.append(
                 f"After subtracting the fitted non-tumor compartments, "
-                f"**{n_core} genes** retain ≥1 TPM of tumor-attributed "
-                "expression."
+                f"**{n_core} genes** retain ≥1 TPM of supported "
+                "tumor-attributed expression."
             )
-            # Top 5 tumor-core genes.
-            top = core.sort_values("attr_tumor_tpm", ascending=False).head(5)
+            if len(provisional_core):
+                reason_summary = summarize_reliability_reasons(provisional_core)
+                lines.append(
+                    f"\nAn additional **{len(provisional_core)} genes** retain residual "
+                    "tumor-attributed TPM but stay provisional in the markdown layer"
+                    + (
+                        f" ({reason_summary})."
+                        if reason_summary else "."
+                    )
+                )
+            # Top 5 supported tumor-core genes.
+            top = supported_core.sort_values("attr_tumor_tpm", ascending=False).head(5)
             if len(top):
                 names = ", ".join(
                     f"{str(r['symbol'])} ({float(r['attr_tumor_tpm']):.0f})"
                     for _, r in top.iterrows()
                 )
                 lines.append(f"\nTop tumor-core genes (symbol, tumor TPM): {names}.")
+            elif len(provisional_core):
+                lines.append(
+                    "\nNo gene cleared the current high-confidence tumor-core filter; "
+                    "use the provisional rows in `targets.md` and the TSV for manual review."
+                )
     else:
         lines.append("*No target-expression ranges available.*")
     lines.append("")

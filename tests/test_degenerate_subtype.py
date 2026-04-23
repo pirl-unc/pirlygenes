@@ -421,6 +421,130 @@ def test_brief_renders_corrected_subtype():
     assert "OS" in summary
 
 
+def test_key_genes_lookup_switches_to_direct_os_panel():
+    """Degenerate resolution can land on a standalone cancer code.
+
+    When that happens, report curation must use the resolved code's
+    panel directly instead of the umbrella parent union.
+    """
+    import pandas as pd
+
+    from pirlygenes.reporting import cancer_key_genes_lookup_for_analysis
+
+    analysis = {
+        "candidate_trace": [
+            {"code": "SARC", "winning_subtype": "SARC_LPS_UNSPEC"},
+        ],
+        "decomposition": {
+            "best_template": "met_bone",
+            "best_cancer_type": "SARC",
+        },
+    }
+    ranges_df = pd.DataFrame([
+        {"symbol": "MDM2", "attr_tumor_tpm": 877.0},
+        {"symbol": "CDK4", "attr_tumor_tpm": 73.0},
+        {"symbol": "FRS2", "attr_tumor_tpm": 137.0},
+    ])
+    assert cancer_key_genes_lookup_for_analysis(
+        "SARC",
+        analysis,
+        ranges_df=ranges_df,
+    ) == ("OS", None)
+
+
+def test_key_genes_lookup_matches_uppercase_parent_subtype_rows():
+    """Key-genes subtype matching should be case-tolerant.
+
+    Registry codes like ``SARC_MPNST`` should recover the curated
+    uppercase subtype value ``MPNST`` rather than falling back to the
+    umbrella SARC union.
+    """
+    from pirlygenes.reporting import cancer_key_genes_lookup_for_analysis
+
+    analysis = {
+        "candidate_trace": [
+            {"code": "SARC", "winning_subtype": "SARC_MPNST"},
+        ],
+        "decomposition": {
+            "best_template": "primary_nerve_sheath",
+            "best_cancer_type": "SARC",
+        },
+    }
+    assert cancer_key_genes_lookup_for_analysis(
+        "SARC",
+        analysis,
+    ) == ("SARC", "MPNST")
+
+
+def test_brief_uses_os_therapy_panel_after_corrected_subtype():
+    """User-facing pin for the pfo004 failure mode.
+
+    The summary should stop surfacing DDLPS-only therapies once the
+    bone-site tiebreaker resolves the sample to osteosarcoma.
+    """
+    import pandas as pd
+
+    from pirlygenes.brief import build_summary
+
+    analysis = {
+        "purity": {
+            "overall_estimate": 0.74,
+            "overall_lower": 0.42,
+            "overall_upper": 1.0,
+        },
+        "purity_confidence": type("PT", (), {"tier": "low"})(),
+        "sample_context": None,
+        "cancer_name": "Sarcoma",
+        "candidate_trace": [
+            {"code": "SARC", "winning_subtype": "SARC_LPS_UNSPEC"},
+        ],
+        "decomposition": {
+            "best_template": "met_bone",
+            "best_cancer_type": "SARC",
+        },
+    }
+    ranges_df = pd.DataFrame([
+        {
+            "symbol": "MDM2",
+            "observed_tpm": 1180.4,
+            "attr_tumor_tpm": 1176.0,
+            "attr_tumor_fraction": 0.99,
+            "attribution": "tumor",
+        },
+        {
+            "symbol": "CDK4",
+            "observed_tpm": 112.8,
+            "attr_tumor_tpm": 90.0,
+            "attr_tumor_fraction": 0.80,
+            "attribution": "tumor",
+        },
+        {
+            "symbol": "FRS2",
+            "observed_tpm": 140.0,
+            "attr_tumor_tpm": 137.0,
+            "attr_tumor_fraction": 0.96,
+            "attribution": "tumor",
+        },
+        {
+            "symbol": "IGF1R",
+            "observed_tpm": 125.0,
+            "attr_tumor_tpm": 120.0,
+            "attr_tumor_fraction": 0.96,
+            "attribution": "tumor",
+        },
+    ])
+    summary = build_summary(
+        analysis,
+        ranges_df=ranges_df,
+        cancer_code="SARC",
+        disease_state="",
+        sample_id="synthetic-bone-os-panel",
+    )
+    assert "Subtype-resolved therapy curation" in summary, summary
+    assert "ganitumab + chemo" in summary, summary
+    assert "brigimadlin" not in summary, summary
+
+
 def test_brief_lusc_with_high_prame_mage_does_not_flag_nutm():
     """Pin the squamous-vs-NUTM correctness case: a LUSC sample with
     high PRAME + MAGEA3 (typical of LUSC) but silent NUTM1 should NOT

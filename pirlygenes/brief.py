@@ -32,6 +32,8 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
+from .reporting import cancer_key_genes_lookup_for_analysis
+
 logger = logging.getLogger(__name__)
 
 
@@ -175,6 +177,27 @@ def _top_therapies(
         if len(deduped) >= limit:
             break
     return deduped
+
+
+def _panel_display_label(panel_code, panel_subtype=None):
+    if panel_subtype:
+        return f"{panel_code} ({str(panel_subtype).replace('_', ' ')})"
+    return panel_code
+
+
+def _curated_target_panel_for_sample(cancer_code, analysis, ranges_df=None):
+    from .gene_sets_cancer import cancer_therapy_targets
+
+    panel_code, panel_subtype = cancer_key_genes_lookup_for_analysis(
+        cancer_code,
+        analysis,
+        ranges_df=ranges_df,
+    )
+    if panel_subtype:
+        targets_df = cancer_therapy_targets(panel_code, subtype=panel_subtype)
+    else:
+        targets_df = cancer_therapy_targets(panel_code)
+    return panel_code, panel_subtype, targets_df.reset_index(drop=True)
 
 
 def _caveats_from_purity_tier(purity_tier, sample_context) -> List[str]:
@@ -438,18 +461,25 @@ def build_summary(
 
     lines.append("")
 
-    # Top therapies — only if the cancer type is curated.
-    if cancer_code in cancer_key_genes_cancer_types():
-        targets_df = cancer_therapy_targets(cancer_code)
+    # Top therapies — subtype/direct-code resolved when the umbrella
+    # cancer call narrows onto a more specific curated panel.
+    panel_code, panel_subtype, targets_df = _curated_target_panel_for_sample(
+        cancer_code, analysis, ranges_df=ranges_df,
+    )
+    panel_label = _panel_display_label(panel_code, panel_subtype)
+    if panel_code in cancer_key_genes_cancer_types():
         top = _top_therapies(targets_df, ranges_df, limit=3)
+        lines.append("## Top candidate therapies\n")
+        if panel_code != cancer_code or panel_subtype:
+            lines.append(
+                f"*Subtype-resolved therapy curation:* using the `{panel_label}` panel rather than the umbrella `{cancer_code}` union.\n"
+            )
         if top:
-            lines.append("## Top candidate therapies\n")
             for target_row, expression_row in top:
                 lines.append(_format_therapy_bullet(target_row, expression_row))
             lines.append("")
         else:
             lines.append(
-                "## Top candidate therapies\n"
                 "*No approved or trialed agents with a measured, "
                 "tumor-attributed target in this sample.*\n"
             )
@@ -577,17 +607,24 @@ def build_actionable(
     lines.append("")
 
     # Therapy landscape
-    if cancer_code in cancer_key_genes_cancer_types():
-        targets_df = cancer_therapy_targets(cancer_code)
+    panel_code, panel_subtype, targets_df = _curated_target_panel_for_sample(
+        cancer_code, analysis, ranges_df=ranges_df,
+    )
+    panel_label = _panel_display_label(panel_code, panel_subtype)
+    if panel_code in cancer_key_genes_cancer_types():
         sym_to_row = {}
         for _, rrow in ranges_df.iterrows():
             sym_to_row[str(rrow["symbol"])] = rrow
 
         if len(targets_df):
             lines.append("## Therapy landscape\n")
+            if panel_code != cancer_code or panel_subtype:
+                lines.append(
+                    f"*Subtype-resolved therapy curation:* `{panel_label}` panel selected from the broader `{cancer_code}` call.\n"
+                )
             lines.append(
                 "Agents with an approved or trialed indication for "
-                f"{cancer_code}, cross-referenced to this sample. "
+                f"{panel_label}, cross-referenced to this sample. "
                 "Approved agents listed first."
             )
             lines.append("")
@@ -647,6 +684,18 @@ def build_actionable(
                     f"{_cell(t.get('indication'))} | {obs_cell} | {tumor_cell} |"
                 )
             lines.append("")
+        else:
+            lines.append(
+                "## Therapy landscape\n"
+                "*No curated therapy targets are available for this resolved panel.*\n"
+            )
+    else:
+        lines.append(
+            "## Therapy landscape\n"
+            f"*Cancer type {cancer_code} is not yet in the curated "
+            "key-genes panel — see `targets.md` for the generic "
+            "expression-ranked tables.*\n"
+        )
 
     # Caveats
     caveats = _caveats_from_purity_tier(purity_tier, sample_context)
