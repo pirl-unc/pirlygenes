@@ -32,7 +32,13 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from .reporting import cancer_key_genes_lookup_for_analysis
+from .reporting import (
+    cancer_key_genes_lookup_for_analysis,
+    clinical_maturity_summary,
+    normal_expression_context,
+    target_reliability_status,
+    tumor_attribution_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +78,7 @@ def _top_candidate_signature_score(analysis) -> float | None:
     return None
 
 
-def _format_therapy_bullet(target_row, expression_row) -> str:
+def _format_therapy_bullet(target_row, expression_row, target_panel=None) -> str:
     """One standardized therapy bullet for the brief."""
     sym = str(target_row.get("symbol") or "")
     agent = str(target_row.get("agent") or "—")
@@ -85,27 +91,28 @@ def _format_therapy_bullet(target_row, expression_row) -> str:
             f"Target **not measured** in this sample."
         )
     observed = float(expression_row.get("observed_tpm") or 0.0)
-    attr_tumor = float(expression_row.get("attr_tumor_tpm") or 0.0)
     has_attribution = bool(expression_row.get("attribution"))
-    attr_fraction = float(expression_row.get("attr_tumor_fraction") or 0.0)
     if observed < 1.0:
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
             f"Observed {observed:.1f} TPM — **target absent** in this sample."
         )
-    if has_attribution:
-        tumor_clause = f"tumor-attributed {attr_tumor:.0f} TPM"
-    else:
-        tumor_clause = f"observed {observed:.0f} TPM"
-    if attr_fraction >= 0.5:
-        conf = "high"
-    elif attr_fraction >= 0.3 or not has_attribution:
-        conf = "moderate"
-    else:
-        conf = "low (mostly non-tumor)"
+    if not has_attribution:
+        return (
+            f"- **{sym}** — {agent} ({phase}{indication_clause}). "
+            f"Observed {observed:.0f} TPM; tumor-specific decomposition was unavailable."
+        )
+    source = tumor_attribution_context(expression_row)
+    normal = normal_expression_context(expression_row)
+    maturity = clinical_maturity_summary(target_row, target_panel=target_panel)
+    interpretation_parts = [source["label"], source["band"], normal["label"]]
+    notes = list(source.get("notes") or []) + list(normal.get("details") or [])
+    if notes:
+        interpretation_parts.append(notes[0])
+    interpretation = "; ".join(part for part in interpretation_parts if part)
     return (
         f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-        f"{tumor_clause.capitalize()}. Confidence: {conf}."
+        f"{interpretation}. Clinical maturity: {maturity}."
     )
 
 
@@ -148,6 +155,9 @@ def _top_therapies(
         # don't belong in the clinician handoff per #79 semantics.
         if attr_fraction < 0.30:
             continue
+        reliability_status = target_reliability_status(expr)
+        if reliability_status == "unsupported":
+            continue
         # Note (#128): we deliberately do NOT filter on
         # ``broadly_expressed`` here. The caller's ``targets_df`` is
         # the **curated** cancer-key-genes panel (#110) — every row
@@ -160,7 +170,8 @@ def _top_therapies(
         # / Intracellular target tables where ranking is by raw
         # expression, not curation.
         phase = str(t.get("phase") or "")
-        sort_key = (phase_priority.get(phase, 99), -attr_tumor, sym)
+        reliability_rank = 0 if reliability_status == "supported" else 1
+        sort_key = (phase_priority.get(phase, 99), reliability_rank, -attr_tumor, sym)
         scored.append((sort_key, t, expr))
 
     # Sort by key only — avoid pandas Series comparison in tie-break.
@@ -169,7 +180,7 @@ def _top_therapies(
     deduped = []
     seen_symbols = set()
     for sort_key, t, expr in scored:
-        sym = sort_key[2]
+        sym = str(t.get("symbol") or "")
         if sym in seen_symbols:
             continue
         seen_symbols.add(sym)
@@ -476,7 +487,13 @@ def build_summary(
             )
         if top:
             for target_row, expression_row in top:
-                lines.append(_format_therapy_bullet(target_row, expression_row))
+                lines.append(
+                    _format_therapy_bullet(
+                        target_row,
+                        expression_row,
+                        target_panel=targets_df,
+                    )
+                )
             lines.append("")
         else:
             lines.append(
@@ -625,16 +642,19 @@ def build_actionable(
             lines.append(
                 "Agents with an approved or trialed indication for "
                 f"{panel_label}, cross-referenced to this sample. "
-                "Approved agents listed first."
+                "Approved agents listed first. Interpretation separates "
+                "tumor-source support from normal-expression context so "
+                "lineage markers are not confused with tumor-exclusive "
+                "targets."
             )
             lines.append("")
             lines.append(
                 "| Target | Agent | Class | Phase | Indication | "
-                "Observed | Tumor-attr. |"
+                "Observed | Tumor-core | Interpretation |"
             )
             lines.append(
                 "|--------|-------|-------|-------|------------|"
-                "----------|-------------|"
+                "----------|------------|----------------|"
             )
             phase_order = {
                 "approved": 0, "phase_3": 1, "phase_2": 2,
@@ -665,23 +685,41 @@ def build_actionable(
                 if sym == "—":
                     obs_cell = "*not measured*"
                     tumor_cell = "—"
+                    interp_cell = "agent-only / no direct gene target"
                 else:
                     expr = sym_to_row.get(sym)
                     if expr is None:
                         obs_cell = "*not measured*"
                         tumor_cell = "—"
+                        interp_cell = "not measured"
                     else:
                         obs_cell = f"{float(expr.get('observed_tpm') or 0):.1f}"
-                        attr_tumor = float(expr.get("attr_tumor_tpm") or 0)
-                        tumor_cell = (
-                            f"{attr_tumor:.0f}" if expr.get("attribution") else "—"
+                        if expr.get("attribution"):
+                            tumor_cell = (
+                                f"{float(expr.get('attr_tumor_tpm') or 0.0):.0f} "
+                                f"({float(expr.get('attr_tumor_tpm_low') or expr.get('attr_tumor_tpm') or 0.0):.0f}-"
+                                f"{float(expr.get('attr_tumor_tpm_high') or expr.get('attr_tumor_tpm') or 0.0):.0f})"
+                            )
+                        else:
+                            tumor_cell = "—"
+                        source = tumor_attribution_context(expr)
+                        normal = normal_expression_context(expr)
+                        interp_parts = [source["label"], normal["label"]]
+                        notes = list(source.get("notes") or []) + list(normal.get("details") or [])
+                        if notes:
+                            interp_parts.append(notes[0])
+                        interp_parts.append(
+                            clinical_maturity_summary(t, target_panel=targets_df)
+                        )
+                        interp_cell = "; ".join(
+                            part for part in interp_parts if part
                         )
                 phase = _phase_label(str(t.get("phase") or ""))
                 bold = "**" if phase == "Approved" and sym != "—" else ""
                 lines.append(
                     f"| {bold}{sym}{bold} | {_cell(t.get('agent'))} | "
                     f"{_cell(t.get('agent_class'))} | {phase} | "
-                    f"{_cell(t.get('indication'))} | {obs_cell} | {tumor_cell} |"
+                    f"{_cell(t.get('indication'))} | {obs_cell} | {tumor_cell} | {interp_cell} |"
                 )
             lines.append("")
         else:

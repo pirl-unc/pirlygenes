@@ -421,6 +421,92 @@ def test_brief_trusts_curation_over_broadly_expressed_flag():
     assert "FOLH1" in symbols
 
 
+def test_brief_keeps_same_lineage_targets_but_skips_background_dominant_rows():
+    from pirlygenes.brief import _format_therapy_bullet, _top_therapies
+
+    targets_df = pd.DataFrame([
+        {
+            "symbol": "FOLH1", "agent": "177Lu-PSMA-617",
+            "agent_class": "radioligand", "phase": "approved",
+            "indication": "mCRPC",
+        },
+        {
+            "symbol": "STEAP2", "agent": "experimental ADC",
+            "agent_class": "ADC", "phase": "phase_2",
+            "indication": "mCRPC",
+        },
+    ])
+    ranges_df = pd.DataFrame([
+        {
+            "symbol": "FOLH1", "observed_tpm": 87.0,
+            "attribution": {"matched_normal_prostate": 46.0},
+            "attr_tumor_tpm": 34.0, "attr_tumor_fraction": 0.39,
+            "attr_tumor_tpm_low": 28.0, "attr_tumor_tpm_high": 39.0,
+            "attr_tumor_fraction_low": 0.32, "attr_tumor_fraction_high": 0.45,
+            "attr_support_fraction": 1.0,
+            "attr_top_compartment": "matched_normal_prostate",
+            "attr_top_compartment_tpm": 46.0,
+            "tme_dominant": False, "tme_explainable": True,
+            "matched_normal_over_predicted": False,
+            "broadly_expressed": False,
+            "matched_normal_tissue": "prostate",
+            "matched_normal_tpm": 46.0,
+        },
+        {
+            "symbol": "STEAP2", "observed_tpm": 90.0,
+            "attribution": {"matched_normal_prostate": 78.0},
+            "attr_tumor_tpm": 13.0, "attr_tumor_fraction": 0.14,
+            "attr_tumor_tpm_low": 8.0, "attr_tumor_tpm_high": 17.0,
+            "attr_tumor_fraction_low": 0.09, "attr_tumor_fraction_high": 0.19,
+            "attr_support_fraction": 0.0,
+            "attr_top_compartment": "matched_normal_prostate",
+            "attr_top_compartment_tpm": 78.0,
+            "tme_dominant": True, "tme_explainable": True,
+            "matched_normal_over_predicted": False,
+            "broadly_expressed": False,
+        },
+    ])
+
+    top = _top_therapies(targets_df, ranges_df, limit=3)
+    symbols = [t["symbol"] for t, _ in top]
+    assert symbols == ["FOLH1"]
+
+    bullet = _format_therapy_bullet(top[0][0], top[0][1], target_panel=targets_df)
+    assert "same-lineage expected" in bullet
+    assert "tumor-supported" in bullet
+    assert "Provisional:" not in bullet
+
+
+def test_same_lineage_target_can_stay_supported_when_band_remains_material():
+    from pirlygenes.reporting import (
+        normal_expression_context,
+        target_reliability_status,
+        tumor_attribution_context,
+    )
+
+    row = {
+        "observed_tpm": 87.0,
+        "attr_tumor_tpm": 34.0,
+        "attr_tumor_tpm_low": 28.0,
+        "attr_tumor_tpm_high": 39.0,
+        "attr_tumor_fraction": 0.39,
+        "attr_tumor_fraction_low": 0.32,
+        "attr_tumor_fraction_high": 0.45,
+        "attr_support_fraction": 1.0,
+        "matched_normal_tissue": "prostate",
+        "matched_normal_tpm": 46.0,
+        "attr_top_compartment": "matched_normal_prostate",
+        "tme_explainable": True,
+        "tme_dominant": False,
+        "matched_normal_over_predicted": False,
+    }
+    source = tumor_attribution_context(row)
+    normal = normal_expression_context(row)
+    assert source["tier"] == "tumor_supported"
+    assert normal["tier"] == "same_lineage_expected"
+    assert target_reliability_status(row) == "supported"
+
+
 # ── attribution cell rendering ──────────────────────────────────────────
 
 

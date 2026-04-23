@@ -9,6 +9,7 @@ from pirlygenes.gene_sets_cancer import pan_cancer_expression
 from pirlygenes.plot_target_deep_dive import (
     actionable_surface_targets,
     plot_actionable_targets,
+    plot_curated_target_evidence,
     plot_tumor_attribution,
     plot_cta_deep_dive,
     _CANCER_SURFACE_TARGETS,
@@ -102,6 +103,76 @@ def test_plot_cta_deep_dive_saves_png(tmp_path):
     out = tmp_path / "cta.png"
     fig = plot_cta_deep_dive(df, "SKCM", purity_estimate=0.65,
                               save_to_filename=str(out))
+    assert fig is not None
+    assert out.exists()
+
+
+def test_plot_curated_target_evidence_saves_png(tmp_path):
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "FOLH1",
+                "observed_tpm": 87.0,
+                "attr_tumor_tpm": 34.0,
+                "attr_tumor_tpm_low": 28.0,
+                "attr_tumor_tpm_high": 39.0,
+                "attr_tumor_fraction": 0.39,
+                "attr_tumor_fraction_low": 0.32,
+                "attr_tumor_fraction_high": 0.45,
+                "attr_support_fraction": 1.0,
+                "matched_normal_tissue": "prostate",
+                "matched_normal_tpm": 46.0,
+                "attr_top_compartment": "matched_normal_prostate",
+                "tme_explainable": True,
+                "tme_dominant": False,
+                "matched_normal_over_predicted": False,
+                "category": "therapy_target",
+            },
+            {
+                "symbol": "STEAP2",
+                "observed_tpm": 90.0,
+                "attr_tumor_tpm": 13.0,
+                "attr_tumor_tpm_low": 8.0,
+                "attr_tumor_tpm_high": 17.0,
+                "attr_tumor_fraction": 0.14,
+                "attr_tumor_fraction_low": 0.09,
+                "attr_tumor_fraction_high": 0.19,
+                "attr_support_fraction": 0.0,
+                "matched_normal_tissue": "prostate",
+                "matched_normal_tpm": 78.0,
+                "attr_top_compartment": "matched_normal_prostate",
+                "tme_explainable": True,
+                "tme_dominant": True,
+                "matched_normal_over_predicted": False,
+                "category": "therapy_target",
+            },
+        ]
+    )
+    target_panel = pd.DataFrame(
+        [
+            {
+                "symbol": "FOLH1",
+                "agent": "177Lu-PSMA-617",
+                "agent_class": "radioligand",
+                "phase": "approved",
+                "indication": "mCRPC",
+            },
+            {
+                "symbol": "STEAP2",
+                "agent": "experimental ADC",
+                "agent_class": "ADC",
+                "phase": "phase_2",
+                "indication": "mCRPC",
+            },
+        ]
+    )
+    out = tmp_path / "curated-evidence.png"
+    fig = plot_curated_target_evidence(
+        ranges_df,
+        target_panel,
+        "PRAD",
+        save_to_filename=str(out),
+    )
     assert fig is not None
     assert out.exists()
 

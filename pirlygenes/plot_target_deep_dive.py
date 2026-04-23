@@ -35,6 +35,11 @@ from .gene_sets_cancer import (
     CTA_gene_id_to_name,
 )
 from .plot_scatter import resolve_cancer_type
+from .reporting import (
+    clinical_maturity_summary,
+    normal_expression_context,
+    tumor_attribution_context,
+)
 
 # ── Essential tissues for safety context ─────────────────────────────────
 
@@ -274,7 +279,10 @@ def plot_actionable_targets(
     custom_genes : list[str] or None
         Override the default curated panel.
     """
-    cancer_code = resolve_cancer_type(cancer_type)
+    try:
+        cancer_code = resolve_cancer_type(cancer_type)
+    except Exception:
+        cancer_code = str(cancer_type)
     genes = custom_genes or actionable_surface_targets(cancer_code)
 
     sample_tpm = _get_sample_tpm_by_symbol(df_gene_expr)
@@ -373,7 +381,10 @@ def plot_tumor_attribution(
     tumor_component = purity × tumor_adjusted
     tme_component = (1 - purity) × tme_reference
     """
-    cancer_code = resolve_cancer_type(cancer_type)
+    try:
+        cancer_code = resolve_cancer_type(cancer_type)
+    except Exception:
+        cancer_code = str(cancer_type)
 
     if category == "CTA":
         cta_map = CTA_gene_id_to_name()
@@ -437,6 +448,216 @@ def plot_tumor_attribution(
     ax.legend(loc="lower right", fontsize=8)
     cat_label = "CTAs" if category == "CTA" else "Actionable Targets"
     ax.set_title(f"Tumor vs TME Attribution — {cat_label} — {cancer_code} (purity={purity:.0%})")
+    fig.tight_layout()
+
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    return fig
+
+
+def plot_curated_target_evidence(
+    ranges_df,
+    target_panel,
+    cancer_type,
+    top_n=12,
+    save_to_filename=None,
+    save_dpi=300,
+):
+    """Integrated view for curated targets: tumor band + normal context.
+
+    The existing matched-normal / safety / attribution plots each show
+    one axis of the story. This plot intentionally combines the three
+    questions the markdown now asks for each curated target:
+
+    - how much tumor-core TPM remains across the uncertainty band,
+    - what kind of normal-expression context that target carries, and
+    - how clinically mature the target class is.
+    """
+    import pandas as pd
+    from matplotlib.lines import Line2D
+
+    if (
+        ranges_df is None
+        or target_panel is None
+        or len(ranges_df) == 0
+        or len(target_panel) == 0
+        or "symbol" not in ranges_df.columns
+        or "symbol" not in target_panel.columns
+    ):
+        return None
+
+    try:
+        cancer_code = resolve_cancer_type(cancer_type)
+    except Exception:
+        cancer_code = str(cancer_type)
+    sym_to_expr = {
+        str(row["symbol"]): row
+        for _, row in ranges_df.iterrows()
+        if str(row.get("symbol") or "")
+    }
+    phase_priority = {
+        "approved": 0,
+        "phase_3": 1,
+        "phase_2": 2,
+        "phase_1": 3,
+        "preclinical": 4,
+    }
+    best_by_symbol = {}
+    for _, trow in target_panel.iterrows():
+        sym = str(trow.get("symbol") or "").strip()
+        if not sym or sym.lower() == "nan" or sym not in sym_to_expr:
+            continue
+        expr = sym_to_expr[sym]
+        try:
+            observed = float(expr.get("observed_tpm") or 0.0)
+        except Exception:
+            observed = 0.0
+        if observed < 1.0:
+            continue
+        sort_key = (
+            phase_priority.get(str(trow.get("phase") or ""), 99),
+            -float(expr.get("attr_tumor_tpm") or 0.0),
+            sym,
+        )
+        if sym not in best_by_symbol or sort_key < best_by_symbol[sym]["sort_key"]:
+            best_by_symbol[sym] = {"target": trow, "expr": expr, "sort_key": sort_key}
+
+    if not best_by_symbol:
+        return None
+
+    normal_colors = {
+        "cta_restricted": "#2ca02c",
+        "restricted_outside_lineage": "#2ca02c",
+        "same_lineage_expected": "#1f77b4",
+        "broad_healthy_expression": "#ff7f0e",
+        "vital_tissue_concern": "#d62728",
+    }
+    source_markers = {
+        "tumor_supported": "o",
+        "mixed_source": "D",
+        "background_dominant": "X",
+    }
+    rows = []
+    for sym, payload in best_by_symbol.items():
+        trow = payload["target"]
+        expr = payload["expr"]
+        source = tumor_attribution_context(expr)
+        normal = normal_expression_context(expr)
+        rows.append(
+            {
+                "symbol": sym,
+                "phase_key": phase_priority.get(str(trow.get("phase") or ""), 99),
+                "mid": float(source["attr_tumor_tpm"]),
+                "low": float(source["attr_tumor_tpm_low"]),
+                "high": float(source["attr_tumor_tpm_high"]),
+                "observed": float(expr.get("observed_tpm") or 0.0),
+                "source": source,
+                "normal": normal,
+                "maturity": clinical_maturity_summary(trow, target_panel=target_panel),
+                "color": normal_colors.get(normal["tier"], "#444444"),
+                "marker": source_markers.get(source["tier"], "o"),
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            row["phase_key"],
+            {"tumor_supported": 0, "mixed_source": 1, "background_dominant": 2}.get(
+                row["source"]["tier"], 9
+            ),
+            -row["mid"],
+            row["symbol"],
+        )
+    )
+    rows = rows[:top_n]
+    if not rows:
+        return None
+
+    fig, ax = plt.subplots(figsize=(12, max(4.5, 0.6 * len(rows) + 1.2)))
+    y_pos = np.arange(len(rows))
+    for i, row in enumerate(rows):
+        ax.hlines(i, row["low"], row["high"], color=row["color"], lw=4, alpha=0.75)
+        ax.scatter(
+            row["mid"],
+            i,
+            s=90,
+            marker=row["marker"],
+            color=row["color"],
+            edgecolor="black",
+            linewidth=0.8,
+            zorder=3,
+        )
+        ax.scatter(
+            row["observed"],
+            i,
+            s=45,
+            marker="|",
+            color="black",
+            linewidth=1.2,
+            zorder=4,
+        )
+        note = f"{row['source']['label']} | {row['normal']['label']} | {row['maturity']}"
+        ax.text(
+            max(row["high"], row["observed"]) * 1.08 + 0.5,
+            i,
+            note,
+            va="center",
+            fontsize=8,
+            color="#555555",
+        )
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels([row["symbol"] for row in rows], fontsize=9)
+    ax.invert_yaxis()
+    ax.set_xscale("symlog", linthresh=1.0)
+    ax.set_xlabel("Tumor-core TPM band (point = band median, tick = observed bulk TPM)")
+    ax.set_title(f"Curated Target Evidence — {cancer_code}")
+
+    normal_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="none",
+            markerfacecolor=color,
+            markeredgecolor="black",
+            markersize=8,
+            label=label,
+        )
+        for label, color in [
+            ("same-lineage expected", normal_colors["same_lineage_expected"]),
+            ("restricted / CTA-like", normal_colors["restricted_outside_lineage"]),
+            ("broad healthy expression", normal_colors["broad_healthy_expression"]),
+            ("vital-tissue concern", normal_colors["vital_tissue_concern"]),
+        ]
+    ]
+    source_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker=marker,
+            color="#444444",
+            markerfacecolor="#dddddd",
+            markeredgecolor="black",
+            linestyle="none",
+            markersize=8,
+            label=label.replace("_", "-"),
+        )
+        for label, marker in source_markers.items()
+    ]
+    legend1 = ax.legend(
+        handles=normal_handles,
+        loc="lower right",
+        fontsize=8,
+        title="Normal-expression context",
+    )
+    ax.add_artist(legend1)
+    ax.legend(
+        handles=source_handles,
+        loc="upper right",
+        fontsize=8,
+        title="Tumor-source support",
+    )
     fig.tight_layout()
 
     if save_to_filename:

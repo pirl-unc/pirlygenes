@@ -78,7 +78,7 @@ def test_provenance_handles_missing_decomposition():
     assert "No decomposition result" in md
 
 
-def test_provenance_distinguishes_supported_from_provisional_tumor_core():
+def test_provenance_distinguishes_tumor_supported_from_mixed_source_core():
     analysis = {
         "sample_context": _Ctx(),
         "purity": {"overall_estimate": 0.28, "overall_lower": 0.19, "overall_upper": 0.40},
@@ -98,16 +98,21 @@ def test_provenance_distinguishes_supported_from_provisional_tumor_core():
             "low_purity_cap_applied": False,
         },
         {
-            "symbol": "BROAD",
+            "symbol": "MIXED",
             "observed_tpm": 78.0,
-            "attribution": {"fibroblast": 10.0},
-            "attr_tumor_tpm": 62.0,
-            "attr_tumor_fraction": 0.79,
+            "attribution": {"matched_normal_prostate": 48.0},
+            "attr_tumor_tpm": 26.0,
+            "attr_tumor_fraction": 0.33,
+            "attr_tumor_tpm_low": 8.0,
+            "attr_tumor_tpm_high": 36.0,
+            "attr_tumor_fraction_low": 0.10,
+            "attr_tumor_fraction_high": 0.46,
+            "attr_support_fraction": 0.33,
             "tme_dominant": False,
-            "matched_normal_over_predicted": False,
+            "matched_normal_over_predicted": True,
             "smooth_muscle_stromal_leakage": False,
-            "broadly_expressed": True,
-            "tme_explainable": False,
+            "broadly_expressed": False,
+            "tme_explainable": True,
             "low_purity_cap_applied": False,
         },
     ])
@@ -115,10 +120,10 @@ def test_provenance_distinguishes_supported_from_provisional_tumor_core():
         analysis, ranges_df, [_Decomp()],
         cancer_code="PRAD", sample_id="sample_X",
     )
-    assert "**1 genes** retain ≥1 TPM of supported tumor-attributed expression." in md
+    assert "**1 genes** retain ≥1 TPM of tumor-supported tumor-attributed expression." in md
     assert "additional **1 genes** retain residual tumor-attributed TPM" in md
     assert "SAFE (128)" in md
-    assert "BROAD (62)" not in md
+    assert "MIXED (26)" not in md
 
 
 def test_provenance_funnel_renders_png(tmp_path):

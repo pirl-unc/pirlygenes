@@ -200,14 +200,14 @@ def build_provenance_md(
             n_core = int(len(supported_core))
             lines.append(
                 f"After subtracting the fitted non-tumor compartments, "
-                f"**{n_core} genes** retain ≥1 TPM of supported "
+                f"**{n_core} genes** retain ≥1 TPM of tumor-supported "
                 "tumor-attributed expression."
             )
             if len(provisional_core):
                 reason_summary = summarize_reliability_reasons(provisional_core)
                 lines.append(
                     f"\nAn additional **{len(provisional_core)} genes** retain residual "
-                    "tumor-attributed TPM but stay provisional in the markdown layer"
+                    "tumor-attributed TPM but remain mixed-source in the markdown layer"
                     + (
                         f" ({reason_summary})."
                         if reason_summary else "."
@@ -223,8 +223,8 @@ def build_provenance_md(
                 lines.append(f"\nTop tumor-core genes (symbol, tumor TPM): {names}.")
             elif len(provisional_core):
                 lines.append(
-                    "\nNo gene cleared the current high-confidence tumor-core filter; "
-                    "use the provisional rows in `targets.md` and the TSV for manual review."
+                    "\nNo gene cleared the current tumor-supported filter; "
+                    "use the mixed-source rows in `targets.md` and the TSV for manual review."
                 )
     else:
         lines.append("*No target-expression ranges available.*")

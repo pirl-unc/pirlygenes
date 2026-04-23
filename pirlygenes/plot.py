@@ -128,6 +128,7 @@ from .plot_embedding import (  # noqa: F401
 from .plot_target_deep_dive import (  # noqa: F401
     actionable_surface_targets,
     plot_actionable_targets,
+    plot_curated_target_evidence,
     plot_tumor_attribution,
     plot_cta_deep_dive,
 )
