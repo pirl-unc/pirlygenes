@@ -34,9 +34,11 @@ from pathlib import Path
 from typing import List, Optional
 
 from .reporting import (
+    cancer_code_display_name,
     cancer_key_genes_lookup_for_analysis,
     clinical_maturity_summary,
     normal_expression_context,
+    subtype_curation_scope_note,
     tumor_band_available,
     tumor_band_cell,
     target_reliability_status,
@@ -55,6 +57,122 @@ def _display_sample_id(sample_id: Optional[str]) -> Optional[str]:
     if "/" in text or "\\" in text:
         text = Path(text).name.strip()
     return text or None
+
+
+def _display_subtype_code(code: Optional[str]) -> str:
+    text = str(code or "").strip()
+    if not text:
+        return "the alternate subtype"
+    try:
+        from .gene_sets_cancer import cancer_type_registry
+
+        reg = cancer_type_registry()
+        match = reg[reg["code"] == text]
+        if not match.empty:
+            row = match.iloc[0]
+            subtype_key = row.get("subtype_key")
+            if isinstance(subtype_key, str) and subtype_key and subtype_key.lower() != "nan":
+                return subtype_key.replace("_", " ")
+            name = row.get("name")
+            if isinstance(name, str) and name:
+                return name.split("(")[0].strip().lower()
+    except Exception:
+        logger.debug("subtype display lookup failed", exc_info=True)
+    return text.replace("_", " ").lower()
+
+
+def _site_template_note_label(template_name: Optional[str]) -> str:
+    mapping = {
+        "met_adrenal": "adrenal-site",
+        "met_bone": "bone-site",
+        "met_brain": "brain-site",
+        "met_liver": "liver-site",
+        "met_lung": "lung-site",
+        "met_lymph_node": "lymph-node",
+        "met_peritoneal": "peritoneal-site",
+        "met_skin": "skin-site",
+        "met_soft_tissue": "soft-tissue",
+        "solid_primary": "primary-site",
+    }
+    text = str(template_name or "").strip()
+    if not text:
+        return "site"
+    return mapping.get(text, text.replace("_", " "))
+
+
+def _shared_signature_note(shared_signature: Optional[str]) -> str:
+    text = str(shared_signature or "").strip()
+    if not text:
+        return "shared lineage pattern"
+    text = text.replace("_", " ")
+    text = text.replace("+", " / ")
+    text = text.replace(" amp", " amplification")
+    return text
+
+
+def _render_subtype_note(
+    resolution: dict,
+    *,
+    original_subtype: Optional[str],
+    site_template: Optional[str],
+) -> str:
+    if not resolution:
+        return ""
+    status = str(resolution.get("status") or "")
+    rule = str(resolution.get("rule") or "")
+    shared_signature = _shared_signature_note(resolution.get("shared_signature"))
+    final_label = _display_subtype_code(resolution.get("final_subtype"))
+    original_label = _display_subtype_code(original_subtype)
+    alternatives = [
+        _display_subtype_code(code)
+        for code in (resolution.get("alternatives") or [])
+    ]
+
+    if status == "corrected":
+        if rule == "site_template":
+            site_label = _site_template_note_label(site_template)
+            return (
+                f"{site_label.capitalize()} context favors {final_label} over {original_label}; "
+                f"both can share the {shared_signature}."
+            )
+        if rule == "fusion_surrogate":
+            return (
+                f"Fusion-surrogate expression favors {final_label} over {original_label}; "
+                f"both can share the {shared_signature}."
+            )
+        if rule == "marker_combo":
+            return (
+                f"The marker combination is more consistent with {final_label} than {original_label}; "
+                f"both can share the {shared_signature}."
+            )
+        return (
+            f"Additional subtype evidence favors {final_label} over {original_label}; "
+            f"both can share the {shared_signature}."
+        )
+
+    if status == "degenerate":
+        option_text = " vs ".join([final_label] + alternatives) if alternatives else final_label
+        if rule == "site_template":
+            return (
+                f"Subtype remains unresolved between {option_text}; the available site context does not break the tie, "
+                f"and these options can share the {shared_signature}."
+            )
+        if rule == "fusion_surrogate":
+            return (
+                f"Subtype remains unresolved between {option_text}; the available fusion-surrogate expression does not break the tie, "
+                f"and these options can share the {shared_signature}."
+            )
+        if rule == "marker_combo":
+            return (
+                f"Subtype remains unresolved between {option_text}; the available marker combination does not break the tie, "
+                f"and these options can share the {shared_signature}."
+            )
+        return (
+            f"Subtype remains unresolved between {option_text}; the available evidence does not break the tie, "
+            f"and these options can share the {shared_signature}."
+        )
+
+    return str(resolution.get("reason") or "").strip()
 
 
 def _phase_label(phase: str) -> str:
@@ -376,6 +494,8 @@ def build_summary(
     degenerate_status = None
     degenerate_reason = ""
     degenerate_alternatives = []
+    degenerate_resolution = None
+    original_winning_subtype = winning_subtype
     if winning_subtype:
         try:
             from .degenerate_subtype import resolve_degenerate_subtype
@@ -411,6 +531,7 @@ def build_summary(
                 site_template=site_template,
                 tumor_tpm_by_symbol=tumor_tpm_by_symbol,
             )
+            degenerate_resolution = resolution
             if resolution["status"] == "corrected":
                 winning_subtype = resolution["final_subtype"]
             degenerate_status = resolution["status"]
@@ -460,8 +581,14 @@ def build_summary(
     # Surface a subtype note only when the resolver changed the call or
     # flagged irreducible ambiguity. ``pair_inactive`` means the pair
     # didn't apply — no reader-facing note needed.
-    if degenerate_status in ("corrected", "degenerate") and degenerate_reason:
-        lines.append(f"**Subtype note:** {degenerate_reason}")
+    if degenerate_status in ("corrected", "degenerate"):
+        subtype_note = _render_subtype_note(
+            degenerate_resolution or {},
+            original_subtype=original_winning_subtype,
+            site_template=(analysis.get("decomposition") or {}).get("best_template"),
+        ).strip()
+        if subtype_note:
+            lines.append(f"**Subtype note:** {subtype_note}")
 
     # Purity
     overall = purity.get("overall_estimate")
@@ -497,7 +624,15 @@ def build_summary(
         lines.append("## Top candidate therapies\n")
         if panel_code != cancer_code or panel_subtype:
             lines.append(
-                f"*Subtype-resolved therapy curation:* using the `{panel_label}` panel rather than the umbrella `{cancer_code}` union.\n"
+                "*Subtype-resolved therapy curation:* "
+                + subtype_curation_scope_note(
+                    panel_code,
+                    panel_subtype=panel_subtype,
+                    base_code=cancer_code,
+                    base_name=analysis.get("cancer_name") or cancer_code,
+                    noun="therapy evidence",
+                )
+                + "\n"
             )
         if top:
             for target_row, expression_row in top:
@@ -652,11 +787,19 @@ def build_actionable(
             lines.append("## Therapy landscape\n")
             if panel_code != cancer_code or panel_subtype:
                 lines.append(
-                    f"*Subtype-resolved therapy curation:* `{panel_label}` panel selected from the broader `{cancer_code}` call.\n"
+                    "*Subtype-resolved therapy curation:* "
+                    + subtype_curation_scope_note(
+                        panel_code,
+                        panel_subtype=panel_subtype,
+                        base_code=cancer_code,
+                        base_name=cancer_name or cancer_code,
+                        noun="therapy evidence",
+                    )
+                    + "\n"
                 )
             lines.append(
                 "Agents with an approved or trialed indication for "
-                f"{panel_label}, cross-referenced to this sample. "
+                f"{cancer_code_display_name(panel_code, panel_label)}, cross-referenced to this sample. "
                 "Approved agents listed first. Interpretation separates "
                 "tumor-source support from normal-expression context so "
                 "lineage markers are not confused with tumor-exclusive "

@@ -80,9 +80,11 @@ from .format import (
     render_tpm,
 )
 from .reporting import (
+    cancer_code_display_name,
     cancer_key_genes_lookup_for_analysis,
     clinical_maturity_summary,
     normal_expression_context,
+    subtype_curation_scope_note,
     tumor_band_cell,
     target_interpretation_summary,
     target_reliability_reasons,
@@ -3708,7 +3710,15 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             )
             if panel_code != cancer_code or panel_subtype:
                 lines.append(
-                    f"*Subtype-resolved curation:* using the `{panel_display}` panel rather than the umbrella `{cancer_code}` union.\n"
+                    "*Subtype-resolved curation:* "
+                    + subtype_curation_scope_note(
+                        panel_code,
+                        panel_subtype=panel_subtype,
+                        base_code=cancer_code,
+                        base_name=analysis.get("cancer_name") or cancer_code,
+                        noun="biomarker and therapy curation",
+                    )
+                    + "\n"
                 )
             biomarker_syms = (
                 cancer_biomarker_genes(panel_code, subtype=panel_subtype)
@@ -3735,7 +3745,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             lines.append(f"## Therapy Target Landscape — {panel_display}\n")
             lines.append(
                 "Approved and trialed agents with an indication for this "
-                "cancer type, cross-referenced against sample expression. "
+                f"{cancer_code_display_name(panel_code, panel_display)}, cross-referenced against sample expression. "
                 "Rows where the target is absent from the sample are "
                 "still shown to make that explicit.\n"
             )

@@ -53,6 +53,62 @@ def _safe_int(value, default=0) -> int:
         return int(default)
 
 
+@lru_cache(maxsize=1)
+def _cancer_registry_display_names():
+    try:
+        from .gene_sets_cancer import cancer_type_registry
+
+        df = cancer_type_registry()
+    except Exception:
+        return {}
+
+    mapping = {}
+    for _, row in df.iterrows():
+        code = _clean_text(row.get("code"))
+        if not code:
+            continue
+        name = _clean_text(row.get("name"))
+        subtype_key = _clean_text(row.get("subtype_key"))
+        if name:
+            mapping[code] = name.split("(")[0].strip()
+        elif subtype_key:
+            mapping[code] = subtype_key.replace("_", " ").strip()
+    return mapping
+
+
+def cancer_code_display_name(code, fallback=None):
+    text = _clean_text(code)
+    if not text:
+        return _clean_text(fallback) or "this cancer type"
+    reg_name = _cancer_registry_display_names().get(text)
+    if reg_name:
+        return reg_name
+    fallback_text = _clean_text(fallback)
+    if fallback_text:
+        return fallback_text
+    return text.replace("_", " ").strip()
+
+
+def subtype_curation_scope_note(
+    panel_code,
+    *,
+    panel_subtype=None,
+    base_code=None,
+    base_name=None,
+    noun="therapy evidence",
+):
+    panel_name = cancer_code_display_name(panel_code).lower()
+    base_label = cancer_code_display_name(base_code, fallback=base_name).lower()
+    subtype_label = _clean_text(panel_subtype).replace("_", " ").lower()
+    if subtype_label:
+        focus = f"{subtype_label} {panel_name}".strip()
+    else:
+        focus = panel_name
+    if not base_label or focus == base_label:
+        return f"Using {focus}-specific {noun}."
+    return f"Using {focus}-specific {noun} rather than the broader {base_label} list."
+
+
 def tumor_attribution_context(row):
     """Summarize how securely a row stays tumor-attributed."""
     observed = _safe_float(row.get("observed_tpm"), 0.0)

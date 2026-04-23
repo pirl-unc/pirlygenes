@@ -250,6 +250,8 @@ def resolve_degenerate_subtype(
         ``reason`` — short human-readable note for the markdown layer.
         ``pair_id`` — identifier of the matched pair (or ``None``).
         ``alternatives`` — list of the other members of the pair.
+        ``rule`` — the tiebreaker family used (or ``None``).
+        ``shared_signature`` — short label for the shared ambiguous signal.
     """
     if not winning_subtype:
         return {
@@ -258,6 +260,8 @@ def resolve_degenerate_subtype(
             "reason": "",
             "pair_id": None,
             "alternatives": [],
+            "rule": None,
+            "shared_signature": None,
         }
 
     pair_row = _find_pair_for_subtype(
@@ -272,6 +276,8 @@ def resolve_degenerate_subtype(
             "reason": "",
             "pair_id": None,
             "alternatives": [],
+            "rule": None,
+            "shared_signature": None,
         }
 
     members = pair_row["members"]
@@ -296,6 +302,8 @@ def resolve_degenerate_subtype(
             ),
             "pair_id": pair_id,
             "alternatives": alternatives,
+            "rule": rule,
+            "shared_signature": pair_row["shared_signature"],
         }
 
     resolved = None
@@ -317,6 +325,8 @@ def resolve_degenerate_subtype(
             ),
             "pair_id": pair_id,
             "alternatives": alternatives,
+            "rule": rule,
+            "shared_signature": pair_row["shared_signature"],
         }
 
     if resolved == winning_subtype:
@@ -329,6 +339,8 @@ def resolve_degenerate_subtype(
             ),
             "pair_id": pair_id,
             "alternatives": alternatives,
+            "rule": rule,
+            "shared_signature": pair_row["shared_signature"],
         }
 
     return {
@@ -340,6 +352,8 @@ def resolve_degenerate_subtype(
         ),
         "pair_id": pair_id,
         "alternatives": [m for m in members if m != resolved],
+        "rule": rule,
+        "shared_signature": pair_row["shared_signature"],
     }
 
 
