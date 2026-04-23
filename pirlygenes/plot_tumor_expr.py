@@ -555,6 +555,7 @@ def estimate_tumor_expression_ranges(
     matched_normal_tissue = None
     matched_normal_fraction_global = 0.0
     per_compartment_tpm_by_symbol = None  # #108: per-gene per-compartment TPM
+    top_fractions = {}
     if decomposition_results:
         top_result = decomposition_results[0]
         top_fractions = getattr(top_result, "fractions", None) or {}
@@ -671,6 +672,23 @@ def estimate_tumor_expression_ranges(
     p_med = max(purity_result.get("overall_estimate") or 0.05, 0.01)
     p_hi = max(purity_result.get("overall_upper") or p_med, 0.01)
     p_lo, p_med, p_hi = sorted([p_lo, p_med, p_hi])
+
+    LOW_PURITY_THRESHOLD = 0.25
+    LOW_PURITY_HEADROOM = 3.0
+
+    def _scale_non_tumor_tpm(base_tpm, purity_used):
+        denom = max(1.0 - float(p_med), 1e-3)
+        numer = max(0.0, 1.0 - float(purity_used))
+        return float(base_tpm) * (numer / denom)
+
+    def _tumor_fraction_for_purity(purity_used):
+        tumor_fraction_fit = float(top_fractions.get("tumor", 0.0) or 0.0)
+        if tumor_fraction_fit <= 0 or p_med <= 0:
+            return max(0.0, min(1.0, float(purity_used)))
+        return max(
+            0.0,
+            min(1.0, tumor_fraction_fit * float(purity_used) / float(p_med)),
+        )
 
     # --- Gene category lookups ---
     cta_symbols = set(CTA_gene_id_to_name().values())
@@ -1061,6 +1079,54 @@ def estimate_tumor_expression_ranges(
         non_tumor_frac = max(0.0, min(1.0, 1.0 - p_med))
         breadth_floor = non_tumor_frac * mean_top_healthy_tpm
 
+        def _attribution_candidate(purity_used):
+            scaled_attr = {
+                comp: _scale_non_tumor_tpm(val, purity_used)
+                for comp, val in attribution.items()
+            }
+            attr_total_candidate = sum(scaled_attr.values())
+            breadth_floor_candidate = (
+                max(0.0, min(1.0, 1.0 - float(purity_used)))
+                * mean_top_healthy_tpm
+            )
+            over_predicted_candidate = observed > 0 and attr_total_candidate > observed
+            if over_predicted_candidate:
+                tumor_fraction_fit = _tumor_fraction_for_purity(purity_used)
+                tumor_candidate = max(
+                    0.0,
+                    min(
+                        observed * tumor_fraction_fit,
+                        observed - breadth_floor_candidate,
+                    ),
+                )
+            else:
+                tumor_candidate = max(
+                    0.0,
+                    observed - max(attr_total_candidate, breadth_floor_candidate),
+                )
+
+            capped = False
+            if (
+                purity_used is not None
+                and float(purity_used) < LOW_PURITY_THRESHOLD
+                and not over_predicted_candidate
+                and observed > 0
+            ):
+                purity_cap = observed * float(purity_used) * LOW_PURITY_HEADROOM
+                if tumor_candidate > purity_cap:
+                    tumor_candidate = purity_cap
+                    capped = True
+
+            tumor_fraction_candidate = (
+                float(tumor_candidate / observed) if observed > 0 else 0.0
+            )
+            return (
+                tumor_candidate,
+                tumor_fraction_candidate,
+                over_predicted_candidate,
+                capped,
+            )
+
         # Effective non-tumor attribution = max of
         # (per-compartment fit, breadth baseline). For gene-sparse
         # cases where the compartment fit is tiny but healthy cells
@@ -1100,8 +1166,6 @@ def estimate_tumor_expression_ranges(
         # 0.16 * 279 * 3 = 134 → dropped to 134 (the tumor share this
         # compartment pattern + purity can plausibly support).
         low_purity_cap_applied = False
-        LOW_PURITY_THRESHOLD = 0.25
-        LOW_PURITY_HEADROOM = 3.0
         if (
             p_med is not None
             and p_med < LOW_PURITY_THRESHOLD
@@ -1112,9 +1176,51 @@ def estimate_tumor_expression_ranges(
             if attr_tumor_tpm > purity_cap:
                 attr_tumor_tpm = purity_cap
                 low_purity_cap_applied = True
+
+        attr_estimates = []
+        attr_fraction_estimates = []
+        attr_over_predicted_flags = []
+        attr_capped_flags = []
+        for purity_used in [p_lo, p_med, p_hi]:
+            tumor_candidate, fraction_candidate, over_flag, capped_flag = _attribution_candidate(
+                purity_used
+            )
+            attr_estimates.append(float(tumor_candidate))
+            attr_fraction_estimates.append(float(fraction_candidate))
+            attr_over_predicted_flags.append(bool(over_flag))
+            attr_capped_flags.append(bool(capped_flag))
+        attr_tumor_tpm = float(np.median(attr_estimates))
         attr_tumor_fraction = (
-            float(attr_tumor_tpm / observed) if observed > 0 else 0.0
+            float(np.median(attr_fraction_estimates))
+            if attr_fraction_estimates else 0.0
         )
+        attr_tumor_tpm_low = float(min(attr_estimates)) if attr_estimates else attr_tumor_tpm
+        attr_tumor_tpm_high = float(max(attr_estimates)) if attr_estimates else attr_tumor_tpm
+        attr_tumor_fraction_low = (
+            float(min(attr_fraction_estimates))
+            if attr_fraction_estimates else attr_tumor_fraction
+        )
+        attr_tumor_fraction_high = (
+            float(max(attr_fraction_estimates))
+            if attr_fraction_estimates else attr_tumor_fraction
+        )
+        attr_support_fraction = (
+            float(
+                np.mean(
+                    [
+                        1.0
+                        if (tpm >= 1.0 and frac >= 0.30) else 0.0
+                        for tpm, frac in zip(attr_estimates, attr_fraction_estimates)
+                    ]
+                )
+            )
+            if attr_estimates else 0.0
+        )
+        low_purity_cap_applied = bool(low_purity_cap_applied or any(attr_capped_flags))
+        matched_normal_over_predicted = bool(
+            matched_normal_over_predicted or any(attr_over_predicted_flags)
+        )
+
         if attribution:
             attr_top_comp, attr_top_tpm = max(
                 attribution.items(), key=lambda kv: kv[1]
@@ -1165,6 +1271,11 @@ def estimate_tumor_expression_ranges(
             "attribution": attribution,
             "attr_tumor_tpm": round(attr_tumor_tpm, 2),
             "attr_tumor_fraction": round(attr_tumor_fraction, 4),
+            "attr_tumor_tpm_low": round(attr_tumor_tpm_low, 2),
+            "attr_tumor_tpm_high": round(attr_tumor_tpm_high, 2),
+            "attr_tumor_fraction_low": round(attr_tumor_fraction_low, 4),
+            "attr_tumor_fraction_high": round(attr_tumor_fraction_high, 4),
+            "attr_support_fraction": round(attr_support_fraction, 4),
             "attr_top_compartment": attr_top_comp,
             "attr_top_compartment_tpm": round(float(attr_top_tpm), 2),
             # #204: True when the low-purity cap damped attr_tumor_tpm

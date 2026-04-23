@@ -321,6 +321,8 @@ def test_generate_text_reports_uses_family_and_background_language(tmp_path):
     assert "Possible labels" in detailed
     assert "Family-level call" in detailed
     assert "Fit quality" in detailed
+    assert "Integrated evidence synthesis" in detailed
+    assert "Parallel hypotheses still alive" in detailed
     assert "Top broad possibilities" in detailed
     assert "Background Tissue Signatures" in detailed
 
@@ -736,10 +738,156 @@ def test_generate_target_report_adds_tumor_context_and_landscape_summary(tmp_pat
     assert "## Tumor context for interpretation" in text
     assert "## Therapy landscape at a glance" in text
     assert "provisional between **COAD** and **READ**" in text
-    assert "matched_normal_colon" in text
+    assert "colon-like matched-normal reference" in text
     assert "CEACAM5" in text
     assert "MAGEA4" in text
     assert "WT1" in text
+
+
+def test_generate_target_report_filters_unreliable_rows_from_headlines(tmp_path):
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "BAD_TME",
+                "median_est": 500.0,
+                "est_1": 300.0,
+                "est_9": 700.0,
+                "observed_tpm": 200.0,
+                "pct_cancer_median": 8.0,
+                "tcga_percentile": 0.99,
+                "is_surface": True,
+                "is_cta": False,
+                "therapies": "ADC",
+                "tme_explainable": False,
+                "tme_dominant": True,
+                "excluded_from_ranking": False,
+                "category": "therapy_target",
+                "matched_normal_tpm": 0.0,
+                "matched_normal_tissue": "colon",
+                "matched_normal_fraction": 0.12,
+                "attr_tumor_tpm": 15.0,
+                "attr_tumor_fraction": 0.08,
+                "attr_top_compartment": "fibroblast",
+                "attr_top_compartment_tpm": 130.0,
+                "attribution": {"fibroblast": 130.0},
+                "broadly_expressed": False,
+                "matched_normal_over_predicted": False,
+                "smooth_muscle_stromal_leakage": False,
+                "low_purity_cap_applied": False,
+            },
+            {
+                "symbol": "BAD_BROAD",
+                "median_est": 320.0,
+                "est_1": 220.0,
+                "est_9": 430.0,
+                "observed_tpm": 180.0,
+                "pct_cancer_median": 5.0,
+                "tcga_percentile": 0.98,
+                "is_surface": True,
+                "is_cta": False,
+                "therapies": "",
+                "tme_explainable": False,
+                "tme_dominant": False,
+                "excluded_from_ranking": False,
+                "category": "therapy_target",
+                "matched_normal_tpm": 10.0,
+                "matched_normal_tissue": "colon",
+                "matched_normal_fraction": 0.12,
+                "attr_tumor_tpm": 120.0,
+                "attr_tumor_fraction": 0.67,
+                "attr_top_compartment": "matched_normal_colon",
+                "attr_top_compartment_tpm": 40.0,
+                "attribution": {"matched_normal_colon": 40.0},
+                "broadly_expressed": True,
+                "matched_normal_over_predicted": False,
+                "smooth_muscle_stromal_leakage": False,
+                "low_purity_cap_applied": False,
+            },
+            {
+                "symbol": "GOOD1",
+                "median_est": 120.0,
+                "est_1": 90.0,
+                "est_9": 150.0,
+                "observed_tpm": 95.0,
+                "pct_cancer_median": 3.0,
+                "tcga_percentile": 0.95,
+                "is_surface": True,
+                "is_cta": False,
+                "therapies": "ADC",
+                "tme_explainable": False,
+                "tme_dominant": False,
+                "excluded_from_ranking": False,
+                "category": "therapy_target",
+                "matched_normal_tpm": 6.0,
+                "matched_normal_tissue": "colon",
+                "matched_normal_fraction": 0.12,
+                "attr_tumor_tpm": 80.0,
+                "attr_tumor_fraction": 0.84,
+                "attr_top_compartment": "matched_normal_colon",
+                "attr_top_compartment_tpm": 6.0,
+                "attribution": {"matched_normal_colon": 6.0},
+                "broadly_expressed": False,
+                "matched_normal_over_predicted": False,
+                "smooth_muscle_stromal_leakage": False,
+                "low_purity_cap_applied": False,
+            },
+        ]
+    )
+    analysis = {
+        "sample_mode": "solid",
+        "cancer_type": "COAD",
+        "candidate_trace": [
+            {
+                "code": "COAD",
+                "support_norm": 1.0,
+                "support_score": 0.4,
+                "signature_score": 0.82,
+                "lineage_concordance": 0.76,
+            },
+            {
+                "code": "READ",
+                "support_norm": 0.7,
+                "support_score": 0.28,
+                "signature_score": 0.79,
+                "lineage_concordance": 0.74,
+            },
+        ],
+        "fit_quality": {
+            "label": "ambiguous",
+            "message": "Top subtype candidates remain close; treat the leading label as provisional.",
+        },
+        "call_summary": {
+            "label_options": ["COAD", "READ"],
+            "label_display": "COAD or READ",
+            "reported_context": "primary",
+            "reported_site": "primary site",
+            "site_indeterminate": False,
+            "site_note": None,
+            "hypothesis_display": ["COAD / solid_primary", "READ / solid_primary"],
+        },
+        "purity": {
+            "overall_lower": 0.32,
+            "overall_estimate": 0.41,
+            "overall_upper": 0.52,
+            "components": {"integration": {}},
+        },
+        "mhc1": {"HLA-A": 80, "HLA-B": 75, "HLA-C": 70, "B2M": 400},
+    }
+    prefix = str(tmp_path / "filtered")
+    cli_mod._generate_target_report(
+        ranges_df,
+        analysis,
+        prefix,
+        "COAD",
+        analysis["purity"],
+    )
+
+    text = (tmp_path / "filtered-targets.md").read_text()
+    context_section = text.split("## Therapy landscape at a glance", 1)[1].split("##", 1)[0]
+    assert "GOOD1" in context_section
+    assert "BAD_TME" not in context_section
+    assert "BAD_BROAD" not in context_section
+    assert "Integrated evidence synthesis" in text
 
 
 def _tcga_sample(cancer_code):

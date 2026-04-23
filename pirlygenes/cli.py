@@ -13,6 +13,7 @@
 from argh import named, dispatch_commands
 import json
 from pathlib import Path
+import re
 from typing import Optional, Set
 
 from .version import print_name_and_version
@@ -47,6 +48,8 @@ from .plot import (
     plot_cohort_therapy_targets,
     plot_cohort_surface_proteins,
     plot_cohort_ctas,
+    plot_curated_target_evidence,
+    plot_priority_targets,
     get_embedding_feature_metadata,
     estimate_tumor_expression_ranges,
     plot_matched_normal_attribution,
@@ -76,6 +79,19 @@ from .format import (
     render_fraction_no_decimal,
     render_tpm,
 )
+from .reporting import (
+    cancer_code_display_name,
+    cancer_key_genes_lookup_for_analysis,
+    clinical_maturity_summary,
+    normal_expression_context,
+    subtype_curation_scope_note,
+    tumor_band_cell,
+    target_interpretation_summary,
+    target_reliability_reasons,
+    target_reliability_status,
+    tumor_attribution_band_text,
+    tumor_attribution_context,
+)
 
 _DATASET_SOURCES = {
     "ADC-approved": "Wiley, doi:10.1002/cac2.12517",
@@ -101,6 +117,38 @@ _DATASET_SOURCES = {
     "degenerate-subtype-pairs": "Subtype disambiguation catalog (#198)",
     "fusion-surrogate-expression": "Fusion-surrogate gene catalog (#198)",
 }
+
+_GENERIC_OUTPUT_NAME_PARTS = {
+    "",
+    "sample",
+    "input",
+    "expression",
+    "gene-expression",
+    "gene_expression",
+    "gene-expression.csv",
+    "gene_expression_salmon",
+    "transcript_expression_salmon",
+    "rna_stringtie_gene_expression",
+    "gene_abundance",
+    "abundance",
+    "quant",
+    "quant.gene_tpm",
+    "pipeline_results",
+    "mcdb-workflow_results",
+    "fda-submission",
+    "analysis",
+    "results",
+    "processed",
+    "salmon_rich_quant",
+}
+
+_PREFERRED_SAMPLE_ID_PATTERNS = [
+    re.compile(r"(?i)\b(pfo\d{3,})\b"),
+    re.compile(r"(?i)\b(rs)\b"),
+    re.compile(r"\b(TL-\d{2}-[A-Z0-9]+)\b"),
+    re.compile(r"\b(BG\d{5,})\b"),
+    re.compile(r"\b(PSNLDx\d+)\b", re.IGNORECASE),
+]
 
 
 @named("data")
@@ -729,6 +777,41 @@ def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
     return removed
 
 
+def _sanitize_output_basename(value: Optional[str]) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    if "/" in text or "\\" in text:
+        text = Path(text).name
+    stem = Path(text).stem.strip()
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip("._-")
+    return slug
+
+
+def _derive_sample_display_id(input_path: str, sample_id_value: Optional[str] = None) -> str:
+    explicit = _sanitize_output_basename(sample_id_value)
+    if explicit:
+        return explicit
+
+    path = Path(str(input_path))
+    parts = [path.stem] + [parent.name for parent in path.parents if parent.name]
+    for pattern in _PREFERRED_SAMPLE_ID_PATTERNS:
+        for part in parts:
+            match = pattern.search(part)
+            if match:
+                derived = _sanitize_output_basename(match.group(1))
+                if derived:
+                    return derived
+
+    for part in parts:
+        derived = _sanitize_output_basename(part)
+        if derived and derived.lower() not in _GENERIC_OUTPUT_NAME_PARTS:
+            return derived
+    return "sample"
+
+
 _TX_HEADER_TOKENS = frozenset({
     "name", "target_id", "transcript_id", "transcript",
     "transcriptid", "targetid", "effectivelength", "numreads",
@@ -888,12 +971,20 @@ def _analyze_body(
     therapy_target_top_k: int,
     therapy_target_tpm_threshold: float,
 ):
-    if output_image_prefix:
-        prefix = str(out_dir / output_image_prefix)
-    else:
-        prefix = str(out_dir / "sample")
+    sample_display_id = _derive_sample_display_id(
+        input_path,
+        sample_id_value=sample_id_value,
+    )
+    prefix_base = (
+        _sanitize_output_basename(output_image_prefix)
+        if output_image_prefix else sample_display_id
+    ) or "sample"
+    prefix = str(out_dir / prefix_base)
 
     stale_removed = _clean_prefix_outputs(out_dir, prefix)
+    legacy_default_prefix = str(out_dir / "sample")
+    if not output_image_prefix and prefix != legacy_default_prefix:
+        stale_removed += _clean_prefix_outputs(out_dir, legacy_default_prefix)
     if stale_removed:
         print(f"[output] Removed {stale_removed} stale files from prior run")
 
@@ -1520,11 +1611,21 @@ def _analyze_body(
     # Therapy target tissue expression / safety
     print("[plot] Generating therapy target tissue expression...")
     tissue_pdf = "%s-target-tissues.pdf" % prefix if prefix else "target-tissues.pdf"
+    tissue_png_manifest = (
+        "%s-target-tissues.png" % prefix if prefix else "target-tissues.png"
+    )
     plot_therapy_target_tissues(
         df_expr,
         top_k=therapy_target_top_k,
         tpm_threshold=therapy_target_tpm_threshold,
         save_to_filename=tissue_pdf,
+        save_dpi=output_dpi,
+    )
+    plot_therapy_target_tissues(
+        df_expr,
+        top_k=therapy_target_top_k,
+        tpm_threshold=therapy_target_tpm_threshold,
+        save_to_filename=tissue_png_manifest,
         save_dpi=output_dpi,
     )
 
@@ -1770,6 +1871,70 @@ def _analyze_body(
             purity_result=purity_dict,
         )
 
+        curated_evidence_png = None
+        priority_targets_png = None
+        try:
+            from .gene_sets_cancer import (
+                cancer_key_genes_cancer_types,
+                cancer_therapy_targets,
+            )
+
+            panel_code, panel_subtype = cancer_key_genes_lookup_for_analysis(
+                effective_cancer_type,
+                analysis,
+                ranges_df=ranges_df,
+            )
+            target_panel = None
+            if panel_code in cancer_key_genes_cancer_types():
+                target_panel = (
+                    cancer_therapy_targets(panel_code, subtype=panel_subtype)
+                    if panel_subtype else cancer_therapy_targets(panel_code)
+                )
+                curated_evidence_png = (
+                    "%s-curated-target-evidence.png" % prefix
+                    if prefix else "curated-target-evidence.png"
+                )
+                fig = plot_curated_target_evidence(
+                    ranges_df,
+                    target_panel.reset_index(drop=True),
+                    cancer_type=panel_code,
+                    save_to_filename=curated_evidence_png,
+                    save_dpi=output_dpi,
+                )
+                if fig is not None:
+                    adj_pngs.append(curated_evidence_png)
+                    print(f"[plot] Saved curated target evidence to {curated_evidence_png}")
+                else:
+                    curated_evidence_png = None
+                _plt.close("all")
+
+            priority_targets_png = (
+                "%s-priority-targets.png" % prefix
+                if prefix else "priority-targets.png"
+            )
+            fig = plot_priority_targets(
+                ranges_df,
+                cancer_type=panel_code if target_panel is not None else effective_cancer_type,
+                target_panel=(
+                    target_panel.reset_index(drop=True)
+                    if target_panel is not None else None
+                ),
+                df_gene_expr=df_expr,
+                save_to_filename=priority_targets_png,
+                save_dpi=output_dpi,
+            )
+            if fig is not None:
+                adj_pngs.append(priority_targets_png)
+                print(f"[plot] Saved priority targets to {priority_targets_png}")
+            else:
+                priority_targets_png = None
+            _plt.close("all")
+
+        except Exception as curated_err:
+            print(f"[plot] curated target evidence failed: {curated_err}")
+            curated_evidence_png = None
+            priority_targets_png = None
+
         # #111: two-tier markdown handoff. Emitted after the detailed
         # reports so both can reference each other. The brief is the
         # doc a clinician pastes into a note; the actionable is the
@@ -1778,7 +1943,7 @@ def _analyze_body(
             from .brief import build_summary, build_actionable
 
             disease_state_for_summary = compose_disease_state_narrative(analysis)
-            sample_id = prefix if prefix else None
+            sample_id = sample_display_id or None
             summary_md = build_summary(
                 analysis,
                 ranges_df,
@@ -1910,6 +2075,9 @@ def _analyze_body(
     scatter_dir = Path(scatter_pdf).parent / Path(scatter_pdf).stem
     if scatter_dir.is_dir():
         png_files.extend(sorted(str(p) for p in scatter_dir.glob("*.png")))
+    tissue_dir = Path(tissue_png_manifest).parent / Path(tissue_png_manifest).stem
+    if tissue_dir.is_dir():
+        png_files.extend(sorted(str(p) for p in tissue_dir.glob("*.png")))
 
     # Purity-adjusted plots go last (different RNA measure)
     for adj_p in adj_pngs:
@@ -1983,6 +2151,14 @@ def _analyze_body(
             scatter_dir.rmdir()
         except OSError:
             pass
+    if tissue_dir.is_dir():
+        for p in tissue_dir.glob("*.png"):
+            p.rename(figures_dir / p.name)
+            moved += 1
+        try:
+            tissue_dir.rmdir()
+        except OSError:
+            pass
     for extra in [scatter_pdf, tissue_pdf]:
         p = Path(extra) if isinstance(extra, str) else extra
         if p.exists():
@@ -1990,6 +2166,207 @@ def _analyze_body(
             moved += 1
     if moved:
         print(f"[output] Moved {moved} figures to {figures_dir}/")
+
+    figure_audit_pdf = "%s-figure-audit.pdf" % prefix if prefix else "figure-audit.pdf"
+
+    def _make_audit_text_page(title, lines):
+        from textwrap import wrap
+
+        width, height = 1800, 2400
+        img = Image.new("RGB", (width, height), color="white")
+        draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.load_default()
+        except Exception:
+            font = None
+        y = 80
+        draw.text((80, y), title, fill="black", font=font)
+        y += 70
+        for line in lines:
+            wrapped = wrap(str(line), width=90) or [""]
+            for piece in wrapped:
+                draw.text((80, y), piece, fill="#333333", font=font)
+                y += 28
+            y += 12
+        return img
+
+    def _existing_figure_paths(*suffixes):
+        out = []
+        suffixes = tuple(suffixes)
+        for path in sorted(figures_dir.iterdir()):
+            if any(path.name.endswith(suffix) for suffix in suffixes):
+                out.append(path)
+        return out
+
+    def _artifact_page(path):
+        path = Path(path)
+        if path.suffix.lower() == ".png":
+            img = Image.open(path).convert("RGB")
+            return _with_filename_caption(img, path.name)
+        return _make_audit_text_page(
+            f"Figure Artifact: {path.name}",
+            [
+                "This figure is emitted as a PDF artifact rather than a single PNG page.",
+                f"Path: {path}",
+                "If a sibling PNG page series exists, those pages appear elsewhere in this audit packet.",
+            ],
+        )
+
+    audit_sections = [
+        (
+            "Potentially Redundant Groups",
+            [
+                {
+                    "title": "Sample Snapshot Cluster",
+                    "note": "These all answer variants of 'what kind of sample is this and is it technically trustworthy?'",
+                    "files": _existing_figure_paths(
+                        "sample-summary.png",
+                        "sample-context.png",
+                        "degradation-index.png",
+                        "background-tissues.png",
+                    ),
+                },
+                {
+                    "title": "Cancer-Call Cluster",
+                    "note": "These all support the cancer label from different angles; good candidates for consolidation when the call is already clear.",
+                    "files": _existing_figure_paths(
+                        "cancer-hypotheses.png",
+                        "mds-tme.png",
+                        "subtype-signature.png",
+                        "vs-cancer.pdf",
+                    ),
+                },
+                {
+                    "title": "Purity + Expression Range Cluster",
+                    "note": "These explain purity and then immediately apply that estimate to targets/CTAs/surface proteins.",
+                    "files": _existing_figure_paths(
+                        "purity.png",
+                        "purity-methods.png",
+                        "purity-targets.png",
+                        "purity-ctas.png",
+                        "purity-surface.png",
+                    ),
+                },
+                {
+                    "title": "Attribution / Matched-Normal Cluster",
+                    "note": "These are the most likely to feel repetitive because they all inspect the same targets from adjacent decomposition views.",
+                    "files": _existing_figure_paths(
+                        "target-attribution-targets.png",
+                        "target-attribution-surface.png",
+                        "matched-normal-targets.png",
+                        "matched-normal-surface.png",
+                        "subtype-attribution-targets.png",
+                        "curated-target-evidence.png",
+                        "priority-targets.png",
+                    ),
+                },
+            ],
+        ),
+        (
+            "Low-Value Figures",
+            [
+                {
+                    "title": "Low-Value in the Default Packet",
+                    "note": "These currently add the least unique decision support relative to the rest of the packet.",
+                    "files": _existing_figure_paths(
+                        "background-tissues.png",
+                        "TLR.png",
+                        "DNA_repair.png",
+                    ),
+                },
+            ],
+        ),
+        (
+            "Unique Figures I Like",
+            [
+                {
+                    "title": "Distinctive / Keep",
+                    "note": "These each answer a question that the rest of the packet does not cover cleanly.",
+                    "files": _existing_figure_paths(
+                        "sample-summary.png",
+                        "cancer-hypotheses.png",
+                        "purity-methods.png",
+                        "target-safety.png",
+                        "curated-target-evidence.png",
+                        "priority-targets.png",
+                        "provenance.png",
+                        "therapy-pathway-state.png",
+                    ),
+                },
+            ],
+        ),
+    ]
+    audit_seen = set()
+
+    audit_images = [
+        _make_audit_text_page(
+            "Figure Audit",
+            [
+                "This PDF groups emitted figures by likely redundancy, low-value defaults, and distinctive keepers.",
+                "PNG pages are reproduced directly after each group cover page; PDF-only figures are listed on the cover page but not rasterized here.",
+                f"Source directory: {figures_dir}",
+            ],
+        )
+    ]
+    for section_title, groups in audit_sections:
+        audit_images.append(
+            _make_audit_text_page(
+                section_title,
+                [
+                    "The following pages are grouped by how they function in the report packet.",
+                ],
+            )
+        )
+        for group in groups:
+            files = group["files"]
+            file_labels = ", ".join(path.name for path in files) if files else "No matching figures emitted for this run."
+            audit_images.append(
+                _make_audit_text_page(
+                    group["title"],
+                    [
+                        group["note"],
+                        f"Included: {file_labels}",
+                    ],
+                )
+            )
+            for path in files:
+                audit_seen.add(path.name)
+                audit_images.append(_artifact_page(path))
+
+    remaining_files = [
+        path
+        for path in sorted(figures_dir.iterdir())
+        if path.name not in audit_seen
+    ]
+    if remaining_files:
+        audit_images.append(
+            _make_audit_text_page(
+                "Coverage Appendix",
+                [
+                    "Every emitted figure is included at least once in this packet.",
+                    "The following pages cover artifacts that did not fit one of the opinionated groups above.",
+                ],
+            )
+        )
+        audit_images.append(
+            _make_audit_text_page(
+                "Other Emitted Figures",
+                [
+                    "Included: " + ", ".join(path.name for path in remaining_files),
+                ],
+            )
+        )
+        for path in remaining_files:
+            audit_images.append(_artifact_page(path))
+
+    if audit_images:
+        audit_images[0].save(
+            figure_audit_pdf,
+            save_all=True,
+            append_images=audit_images[1:],
+            resolution=output_dpi,
+        )
+        print(f"Saved {figure_audit_pdf} ({len(audit_images)} pages)")
 
     # Write README explaining output files
     readme_path = Path(prefix).parent / "README.md"
@@ -2010,6 +2387,7 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 | `*-provenance.md` | Attribution chain — library-prep → preservation → TME → tumor-core step by step |
 | `*-analysis-parameters.json` | Free model parameters plus selected sample mode and embedding methods |
 | `*-all-figures.pdf` | All figures combined into a single PDF |
+| `*-figure-audit.pdf` | Figure packet grouped into redundant / low-value / distinctive sections |
 | `*-cancer-candidates.tsv` | Candidate cancer-type support trace |
 | `*-decomposition-hypotheses.tsv` | Ranked decomposition hypotheses |
 | `*-decomposition-components.tsv` | Component-level fit for best decomposition |
@@ -2030,6 +2408,8 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-treatments.png` | Therapy target expression by modality |
 | `*-target-safety.png` | Therapy target normal tissue expression |
+| `*-priority-targets.png` | Integrated priority ranking: actionability + tumor-source support + uncertainty |
+| `*-curated-target-evidence.png` | Curated cancer-type targets with tumor-core band, normal context, and maturity |
 | `*-purity-targets.png` | Tumor-expression ranges for therapeutic targets |
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
@@ -2244,8 +2624,11 @@ def _matched_normal_split_summary(ranges_df):
         .dropna()
     )
     mn_frac = float(mn_frac_series.iloc[0]) if len(mn_frac_series) else 0.0
+    if mn_frac < 0.01:
+        return None
+    tissue_label = mn_tissue.replace("_", " ")
     return (
-        f"`matched_normal_{mn_tissue}` at **{mn_frac:.2%}** of the sample. "
+        f"estimated benign parent-tissue admixture from a {tissue_label}-like matched-normal reference at **{mn_frac:.0%}** of the sample. "
         "Per-gene estimates subtract both stromal/immune TME and benign parent-tissue "
         "signal before dividing by purity."
     )
@@ -2280,6 +2663,22 @@ def _template_site_display(template_name):
         "heme_nodal": "lymphoid / nodal",
     }
     return mapping.get(template_name, template_name.replace("_", " "))
+
+
+def _hypothesis_display_label(result, *, primary_code=None):
+    cancer_label = str(getattr(result, "cancer_type", "") or "").strip()
+    template_label = _template_site_display(
+        str(getattr(result, "template", "") or "").strip()
+    )
+    if not cancer_label:
+        return template_label
+    if template_label == "primary site":
+        if primary_code and cancer_label == primary_code:
+            return f"{cancer_label} primary-site pattern"
+        return f"{cancer_label}-like primary-site pattern"
+    if primary_code and cancer_label == primary_code:
+        return f"{cancer_label} {template_label} pattern"
+    return f"{cancer_label}-like {template_label} pattern"
 
 
 def _analysis_constraints(
@@ -2358,7 +2757,10 @@ def _summarize_sample_call(analysis, decomp_results, sample_mode):
 
     label_display = " or ".join(label_options) if label_options else analysis.get("cancer_type")
     hypothesis_display = [
-        f"{row.cancer_type} / {row.template}"
+        _hypothesis_display_label(
+            row,
+            primary_code=analysis.get("cancer_type"),
+        )
         for row in hypothesis_options[:2]
     ]
     return {
@@ -2385,6 +2787,156 @@ def _next_best_support_gap(candidate_trace):
     if runner_n <= 0:
         return runner.get("code"), None
     return runner.get("code"), top_n / runner_n
+
+
+def _strip_terminal_punctuation(text):
+    if text is None:
+        return ""
+    return str(text).strip().rstrip(".;:! ")
+
+
+def _target_reliability_series(df, *, category=None):
+    import pandas as pd
+
+    if df is None:
+        return pd.Series(dtype=object)
+    if len(df) == 0:
+        return pd.Series(dtype=object, index=df.index)
+    return pd.Series(
+        [
+            target_reliability_status(row, category=category)
+            for _, row in df.iterrows()
+        ],
+        index=df.index,
+    )
+
+
+def _composition_highlights(decomp_result, *, top_n=3):
+    if decomp_result is None:
+        return []
+    fractions = dict(getattr(decomp_result, "fractions", {}) or {})
+    non_tumor = sorted(
+        (
+            (comp, float(frac))
+            for comp, frac in fractions.items()
+            if comp != "tumor" and float(frac) >= 0.03
+        ),
+        key=lambda kv: -kv[1],
+    )
+    highlights = []
+    for comp, frac in non_tumor[:top_n]:
+        label = str(comp).replace("matched_normal_", "matched-normal ").replace("_", " ")
+        highlights.append(f"{label} {frac:.0%}")
+    return highlights
+
+
+def _integrated_evidence_bullets(analysis, decomp_results=None):
+    candidate_trace = analysis.get("candidate_trace", [])
+    fit_quality = analysis.get("fit_quality", {})
+    cancer_code = analysis.get("cancer_type")
+    purity = analysis.get("purity") or {}
+    sample_context = analysis.get("sample_context")
+    hvt = analysis.get("healthy_vs_tumor")
+    call_summary = analysis.get("call_summary") or _summarize_sample_call(
+        analysis,
+        decomp_results or [],
+        sample_mode=analysis.get("sample_mode", "auto"),
+    )
+    best_decomp = decomp_results[0] if decomp_results else None
+    bullets = []
+
+    if candidate_trace:
+        best = candidate_trace[0]
+        runner = candidate_trace[1] if len(candidate_trace) > 1 else None
+        sentence = f"- **Classifier line**: {best['code']} is the leading label"
+        if runner is not None:
+            runner_norm = float(runner.get("support_norm", 0.0) or 0.0)
+            if runner_norm > 0:
+                sentence += f", ahead of {runner['code']} by {1.0 / runner_norm:.1f}x on normalized support"
+            else:
+                sentence += f", with {runner['code']} the next candidate"
+        if best.get("signature_score") is not None:
+            sentence += f"; signature {best['signature_score']:.2f}"
+        if best.get("lineage_concordance") is not None:
+            sentence += f", lineage concordance {best['lineage_concordance']:.2f}"
+        sentence += "."
+        bullets.append(sentence)
+
+    if hvt is not None and getattr(hvt, "top_tcga_cohorts", None):
+        coarse = str(hvt.top_tcga_cohorts[0][0]).replace("FPKM_", "")
+        if coarse == cancer_code:
+            bullets.append(
+                f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}` and its top TCGA match ({coarse}) agrees with the working call."
+            )
+        elif coarse in call_summary.get("label_options", []):
+            bullets.append(
+                f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}` and keeps {coarse} alive as one of the same competing labels carried downstream."
+            )
+        else:
+            bullets.append(
+                f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}`, but its top TCGA match is {coarse}; the final {cancer_code} call depends on the later classifier/decomposition evidence rather than the coarse screen alone."
+            )
+
+    if best_decomp is not None:
+        comp_bits = _composition_highlights(best_decomp)
+        sentence = (
+            f"- **Decomposition line**: best template is {_hypothesis_display_label(best_decomp, primary_code=cancer_code)}"
+        )
+        if best_decomp.cancer_type == cancer_code:
+            sentence += ", consistent with the classifier"
+        else:
+            sentence += f", diverging from the classifier's {cancer_code} call"
+        if comp_bits:
+            sentence += "; dominant non-tumor components are " + ", ".join(comp_bits)
+        if getattr(best_decomp, "warnings", None):
+            sentence += f"; key warning: {_strip_terminal_punctuation(best_decomp.warnings[0])}"
+        sentence += "."
+        bullets.append(sentence)
+
+    parallel = []
+    label_options = call_summary.get("label_options", [])
+    if len(label_options) >= 2:
+        parallel.append("cancer-type labels " + " vs ".join(label_options[:2]))
+    hypothesis_display = call_summary.get("hypothesis_display", [])
+    if len(hypothesis_display) >= 2:
+        parallel.append("template/site hypotheses " + " vs ".join(hypothesis_display[:2]))
+    if parallel:
+        bullets.append(
+            "- **Parallel hypotheses still alive**: " + "; ".join(parallel) + "."
+        )
+
+    uncertainty = []
+    fit_label = fit_quality.get("label")
+    fit_message = _strip_terminal_punctuation(fit_quality.get("message"))
+    if fit_label in {"weak", "ambiguous"} and fit_message:
+        uncertainty.append(fit_message)
+    try:
+        overall = float(purity.get("overall_estimate"))
+        lower = float(purity.get("overall_lower"))
+        upper = float(purity.get("overall_upper"))
+        if overall < 0.20:
+            uncertainty.append("low purity amplifies residual host/background signal")
+        if upper - lower >= 0.25:
+            uncertainty.append(f"purity remains broad at {lower:.0%}-{upper:.0%}")
+    except (TypeError, ValueError):
+        pass
+    integration = purity.get("components", {}).get("integration", {})
+    if integration.get("signature_deprioritized"):
+        uncertainty.append("tumor-specific signature evidence was downweighted relative to lineage/background evidence")
+    if sample_context is not None and getattr(sample_context, "is_degraded", False):
+        uncertainty.append("RNA degradation lowers confidence for long-transcript negatives")
+    if call_summary.get("site_indeterminate"):
+        note = _strip_terminal_punctuation(call_summary.get("site_note") or "site/template assignment remains indeterminate")
+        if note:
+            uncertainty.append(note)
+    if best_decomp is not None and getattr(best_decomp, "matched_normal_fraction", 0.0) >= 0.15:
+        uncertainty.append(
+            f"benign parent-tissue admixture is large ({best_decomp.matched_normal_fraction:.0%})"
+        )
+    if uncertainty:
+        bullets.append("- **Main uncertainties**: " + "; ".join(dict.fromkeys(uncertainty)) + ".")
+
+    return bullets
 
 
 def _generate_text_reports(
@@ -2430,6 +2982,14 @@ def _generate_text_reports(
     # sees the clinical framing before descending into pipeline detail.
     if disease_state_paragraph:
         lines.append(f"**Disease state**: {disease_state_paragraph}\n")
+
+    integrated_bullets = _integrated_evidence_bullets(
+        analysis, decomp_results or [],
+    )
+    if integrated_bullets:
+        lines.append("## Integrated evidence synthesis\n")
+        lines.extend(integrated_bullets)
+        lines.append("")
 
     # Step-0 tissue composition (#149) — same signal that drives the
     # brief banner and the summary top-line, surfaced here with the
@@ -3062,15 +3622,39 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         return pd.Series(False, index=df.index)
 
     def _format_target_stub(row, *, include_tcga=False):
-        parts = [f"{row['median_est']:.0f} {value_label}"]
+        source = tumor_attribution_context(row)
+        normal = normal_expression_context(row)
+        parts = [tumor_attribution_band_text(row), normal["label"]]
         therapies = str(row.get("therapies") or "").strip()
         if therapies:
             parts.append(therapies)
         if include_tcga and pd.notna(row.get("tcga_percentile")):
             parts.append(f"TCGA {row['tcga_percentile']:.0%}")
-        if row.get("tme_explainable"):
-            parts.append("single-tissue-explainable")
+        if source["tier"] != "tumor_supported":
+            parts.append(source["label"])
+        if source.get("notes"):
+            parts.append(source["notes"][0])
+        elif normal.get("details"):
+            parts.append(normal["details"][0])
         return f"{row['symbol']} ({'; '.join(parts)})"
+
+    def _target_interpretation_cell(target_row, expr_row, *, include_maturity=False, target_panel=None):
+        if expr_row is None:
+            return "not measured"
+        if include_maturity:
+            return target_interpretation_summary(
+                target_row,
+                expr_row,
+                target_panel=target_panel,
+            )
+        source = tumor_attribution_context(expr_row)
+        normal = normal_expression_context(expr_row)
+        parts = [source["label"], normal["label"]]
+        if source.get("notes"):
+            parts.append(source["notes"][0])
+        elif normal.get("details"):
+            parts.append(normal["details"][0])
+        return "; ".join(part for part in parts if part)
 
     therapy_scores = analysis.get("therapy_response_scores") or {}
     ts_to_show = [
@@ -3101,21 +3685,45 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             cancer_key_genes_cancer_types,
         )
 
-        if cancer_code in cancer_key_genes_cancer_types():
+        panel_code, panel_subtype = cancer_key_genes_lookup_for_analysis(
+            cancer_code,
+            analysis,
+            ranges_df=ranges_df,
+        )
+        panel_display = (
+            f"{panel_code} ({str(panel_subtype).replace('_', ' ')})"
+            if panel_subtype else panel_code
+        )
+        if panel_code in cancer_key_genes_cancer_types():
             # Build symbol → row lookup from ranges_df for biomarker
             # expression levels.
             sym_to_row = {}
             for _, rrow in ranges_df.iterrows():
                 sym_to_row[str(rrow["symbol"])] = rrow
 
-            lines.append(f"## Biomarker Panel — {cancer_code}\n")
+            lines.append(f"## Biomarker Panel — {panel_display}\n")
             lines.append(
                 "Clinician-relevant biomarkers for this cancer type: "
                 "lineage confirmation, disease-state indicators, and "
                 "diagnostic markers. **Not therapy targets** — see the "
                 "Therapy Landscape below for druggable genes.\n"
             )
-            biomarker_syms = cancer_biomarker_genes(cancer_code)
+            if panel_code != cancer_code or panel_subtype:
+                lines.append(
+                    "*Subtype-resolved curation:* "
+                    + subtype_curation_scope_note(
+                        panel_code,
+                        panel_subtype=panel_subtype,
+                        base_code=cancer_code,
+                        base_name=analysis.get("cancer_name") or cancer_code,
+                        noun="biomarker and therapy curation",
+                    )
+                    + "\n"
+                )
+            biomarker_syms = (
+                cancer_biomarker_genes(panel_code, subtype=panel_subtype)
+                if panel_subtype else cancer_biomarker_genes(panel_code)
+            )
             if biomarker_syms:
                 lines.append("| Gene | Observed TPM | Tumor-attributed | Attribution |")
                 lines.append("|------|--------------|------------------|-------------|")
@@ -3125,12 +3733,8 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                         lines.append(f"| {sym} | *not measured* | — | — |")
                         continue
                     obs = float(row.get("observed_tpm") or 0.0)
-                    attr_tumor = float(row.get("attr_tumor_tpm") or 0.0)
                     attribution_cell = _format_attribution_cell(row)
-                    tumor_cell = (
-                        f"{attr_tumor:.0f}" if row.get("attribution")
-                        else "—"
-                    )
+                    tumor_cell = tumor_band_cell(row)
                     lines.append(
                         f"| {sym} | {obs:.1f} | {tumor_cell} | {attribution_cell} |"
                     )
@@ -3138,22 +3742,33 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             else:
                 lines.append("*No biomarker genes curated for this cancer type.*\n")
 
-            lines.append(f"## Therapy Target Landscape — {cancer_code}\n")
+            lines.append(f"## Therapy Target Landscape — {panel_display}\n")
             lines.append(
                 "Approved and trialed agents with an indication for this "
-                "cancer type, cross-referenced against sample expression. "
+                f"{cancer_code_display_name(panel_code, panel_display)}, cross-referenced against sample expression. "
                 "Rows where the target is absent from the sample are "
                 "still shown to make that explicit.\n"
             )
-            targets_df = cancer_therapy_targets(cancer_code)
+            lines.append(
+                "Interpretation separates **tumor-source support** "
+                "(`tumor-supported`, `mixed-source`, `background-dominant`) "
+                "from **normal-expression context** "
+                "(`same-lineage expected`, `broad healthy expression`, "
+                "`vital-tissue concern`, etc.). Phase / class still carry "
+                "the clinical-development tier.\n"
+            )
+            targets_df = (
+                cancer_therapy_targets(panel_code, subtype=panel_subtype)
+                if panel_subtype else cancer_therapy_targets(panel_code)
+            )
             if len(targets_df):
                 lines.append(
                     "| Target | Agent | Class | Phase | Indication | "
-                    "Observed | Tumor-attr. | Attribution |"
+                    "Observed | Tumor-core | Attribution | Interpretation |"
                 )
                 lines.append(
                     "|--------|-------|-------|-------|------------|"
-                    "----------|-------------|-------------|"
+                    "----------|------------|-------------|----------------|"
                 )
                 # Approved first, then phase_3, phase_2, phase_1,
                 # preclinical. Within phase, agent name for stability.
@@ -3188,25 +3803,28 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                         obs_cell = "*not measured*"
                         tumor_cell = "—"
                         attr_cell = "—"
+                        interpretation_cell = "agent-only / no direct gene target"
                     else:
                         expr = sym_to_row.get(sym)
                         if expr is None:
                             obs_cell = "*not measured*"
                             tumor_cell = "—"
                             attr_cell = "—"
+                            interpretation_cell = "not measured"
                         else:
                             obs_cell = f"{float(expr.get('observed_tpm') or 0.0):.1f}"
-                            attr_tumor = float(expr.get("attr_tumor_tpm") or 0.0)
-                            tumor_cell = (
-                                f"{attr_tumor:.0f}" if expr.get("attribution")
-                                else "—"
-                            )
+                            tumor_cell = tumor_band_cell(expr)
                             attr_cell = _format_attribution_cell(expr)
+                            interpretation_cell = _target_interpretation_cell(
+                                trow,
+                                expr,
+                                target_panel=targets_df,
+                            )
                     bold = "**" if phase == "approved" and sym != "—" else ""
                     lines.append(
                         f"| {bold}{sym}{bold} | {agent} | {agent_class} | "
                         f"{phase} | {indication} | {obs_cell} | "
-                        f"{tumor_cell} | {attr_cell} |"
+                        f"{tumor_cell} | {attr_cell} | {interpretation_cell} |"
                     )
                 lines.append("")
             else:
@@ -3251,9 +3869,41 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         .copy()
     )
 
-    safe_surface = surface_targets[~_flag_series(surface_targets, "tme_dominant")].head(3)
+    surface_status = _target_reliability_series(surface_targets)
+    cta_status = _target_reliability_series(ctas, category="CTA")
+    intracellular_status = _target_reliability_series(intracellular)
+
+    def _headline_surface_row(row):
+        normal = normal_expression_context(row)
+        detail_text = " ".join(normal.get("details") or [])
+        therapies = str(row.get("therapies") or "").strip()
+        if therapies:
+            return True
+        if normal["tier"] in {"broad_healthy_expression", "vital_tissue_concern"}:
+            return False
+        if "broader healthy-tissue signal" in detail_text:
+            return False
+        return True
+
+    headline_surface = surface_targets[
+        surface_targets.apply(_headline_surface_row, axis=1)
+    ].copy()
+    if len(headline_surface):
+        headline_surface["_status"] = surface_status.loc[headline_surface.index].values
+        headline_surface["_status_rank"] = headline_surface["_status"].map(
+            {"supported": 0, "provisional": 1, "unsupported": 2}
+        ).fillna(9)
+        headline_surface = headline_surface.sort_values(
+            ["_status_rank", "median_est"],
+            ascending=[True, False],
+        )
+    else:
+        headline_surface["_status"] = pd.Series(dtype=object)
+        headline_surface["_status_rank"] = pd.Series(dtype=float)
+    safe_surface = headline_surface[headline_surface["_status"] == "supported"].head(3)
+    mixed_surface = headline_surface[headline_surface["_status"] == "provisional"].head(3)
     best_cta = ctas.head(3)
-    clean_intracellular = intracellular[~_flag_series(intracellular, "tme_explainable")].head(3)
+    clean_intracellular = intracellular[intracellular_status == "supported"].head(3)
 
     lines.append("## Tumor context for interpretation\n")
     if call_summary.get("label_options"):
@@ -3271,7 +3921,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     if fit_quality.get("label"):
         fit_line = f"- **Fit quality**: {fit_quality['label']}"
         if fit_quality.get("message"):
-            fit_line += f" — {fit_quality['message']}"
+            fit_line += f" — {_strip_terminal_punctuation(fit_quality['message'])}"
         lines.append(fit_line + ".")
     if call_summary.get("site_indeterminate"):
         lines.append("- **Context / site template**: indeterminate; treat site-specific decomposition as provisional.")
@@ -3306,6 +3956,11 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         context_cautions.append("active IFN response can inflate HLA/MHC-class and other interferon-stimulated targets")
     if context_cautions:
         lines.append(f"- **Interpretation caveats**: {'; '.join(context_cautions)}.")
+    integrated_bullets = _integrated_evidence_bullets(analysis)
+    if integrated_bullets:
+        lines.append("")
+        lines.append("### Integrated evidence synthesis\n")
+        lines.extend(integrated_bullets)
     lines.append("")
 
     lines.append("## Therapy landscape at a glance\n")
@@ -3315,10 +3970,17 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             + ", ".join(_format_target_stub(row) for _, row in safe_surface.iterrows())
             + "."
         )
+    elif len(mixed_surface):
+        lines.append(
+            "- **Surface-directed modalities**: no surface target stayed tumor-supported across the current uncertainty band; "
+            "best mixed-source options are "
+            + ", ".join(_format_target_stub(row) for _, row in mixed_surface.iterrows())
+            + "."
+        )
     elif len(surface_targets):
         lines.append(
-            "- **Surface-directed modalities**: no clean surface target passed the current reliability filter; "
-            "top rows were TME-dominant or otherwise host-explainable."
+            "- **Surface-directed modalities**: no surface target stayed tumor-supported across the current uncertainty band; "
+            "the leading rows remain mixed-source or background-dominant."
         )
     else:
         lines.append("- **Surface-directed modalities**: no surface target rose above the reporting threshold.")
@@ -3338,8 +4000,8 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         )
     elif mhc_status_label == "adequate" and len(intracellular):
         lines.append(
-            "- **Intracellular / TCR-style ideas**: MHC-I is adequate, but the current intracellular rows are mostly "
-            "explainable by host-lineage/background signal."
+            "- **Intracellular / TCR-style ideas**: MHC-I is adequate, but the current intracellular rows remain "
+            "mixed-source or background-dominant under the tumor-source uncertainty band."
         )
     elif len(intracellular):
         lines.append(
@@ -3352,6 +4014,8 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     landscape_cautions = []
     if len(surface_targets) and _flag_series(surface_targets.head(10), "tme_dominant").any():
         landscape_cautions.append("some of the numerically highest surface rows are TME-dominant and should not be treated as tumor-cell targets")
+    if len(surface_targets) and (surface_status.head(10) == "provisional").any():
+        landscape_cautions.append("several high-signal surface rows remain mixed-source because their tumor contribution is not cleanly separated from benign/background signal")
     if matched_normal_summary:
         landscape_cautions.append("benign parent-tissue admixture is active")
     if (
@@ -3375,7 +4039,12 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                 fn1_blocked.sort_values("observed_tpm", ascending=False).iloc[0]["therapy_support_note"]
             )
     if landscape_cautions:
-        lines.append(f"- **Landscape cautions**: {'; '.join(landscape_cautions)}.")
+        cleaned_cautions = [
+            _strip_terminal_punctuation(str(item))
+            for item in landscape_cautions
+            if str(item).strip()
+        ]
+        lines.append(f"- **Landscape cautions**: {'; '.join(cleaned_cautions)}.")
     lines.append("")
 
     # Metabolic axes (#158): Step-0 already computes proliferation /
@@ -3605,25 +4274,24 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     lines.append("## Recommended Targets Summary\n")
 
     def _reliability_badge(row):
-        if row.get("tme_dominant"):
-            return "⚠⚠"  # caller filters these out
-        if row.get("tme_explainable"):
+        status = target_reliability_status(row)
+        if status == "unsupported":
+            return "⚠⚠"
+        if status == "provisional":
             return "⚠"
         return ""
 
-    # Best surface — strict filter on ⚠⚠.
-    safe_surface = surface_targets[~surface_targets.get(
-        "tme_dominant",
-        pd.Series(False, index=surface_targets.index),
-    )].head(3)
-    dropped_dominant = int(
-        surface_targets.head(3).get("tme_dominant", pd.Series(False)).sum()
-    )
+    # Best surface — promote only rows that remain supported after the
+    # attribution reliability pass.
+    safe_surface = headline_surface[headline_surface["_status"] == "supported"].head(3)
+    mixed_surface = headline_surface[headline_surface["_status"] == "provisional"].head(3)
+    dropped_dominant = int((surface_status.head(10) == "unsupported").sum())
     if len(safe_surface):
         lines.append("**Best surface targets** (ADC/CAR-T/bispecific):")
         for _, row in safe_surface.iterrows():
             badge = _reliability_badge(row)
-            caveat = f", {badge} single-tissue-explainable" if badge == "⚠" else ""
+            reasons = target_reliability_reasons(row)
+            caveat = f", {badge} {reasons[0]}" if badge == "⚠" and reasons else ""
             therapy_note = f" — active in {row['therapies']}" if row["therapies"] else ""
             lines.append(
                 f"- **{row['symbol']}** ({row['median_est']:.0f} TPM, "
@@ -3634,15 +4302,29 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             lines.append(
                 f"- *{dropped_dominant} top-ranked row"
                 + ("s" if dropped_dominant != 1 else "")
-                + " excluded from this summary for being TME-dominant"
-                " (⚠⚠, see Surface Protein Targets table).*"
+                + " excluded from this summary because they remained background-dominant"
+                " (see Surface Protein Targets table).*"
             )
+        lines.append("")
+    elif len(mixed_surface):
+        lines.append("**Best surface targets** (ADC/CAR-T/bispecific):")
+        for _, row in mixed_surface.iterrows():
+            reasons = target_reliability_reasons(row)
+            caveat = f", ⚠ {reasons[0]}" if reasons else ""
+            therapy_note = f" — active in {row['therapies']}" if row["therapies"] else ""
+            lines.append(
+                f"- **{row['symbol']}** ({row['median_est']:.0f} TPM, "
+                f"{tumor_attribution_band_text(row)}{caveat}){therapy_note}"
+            )
+        lines.append(
+            "- *These remain mixed-source rather than tumor-supported; treat them as lineage-guided options that need the full attribution and safety context.*"
+        )
         lines.append("")
     elif dropped_dominant:
         lines.append(
             "**Best surface targets** (ADC/CAR-T/bispecific): "
-            "all top-ranked rows were flagged TME-dominant (⚠⚠) and "
-            "are not safe to recommend. See Surface Protein Targets "
+            "all top-ranked rows remained background-dominant "
+            "after the current uncertainty pass. See Surface Protein Targets "
             "table for full context."
         )
         lines.append("")
@@ -3654,7 +4336,8 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         lines.append("**Best CTA targets** (vaccination even without active trials):")
         for _, row in best_cta.iterrows():
             badge = _reliability_badge(row)
-            caveat = f" — {badge} check vs germline" if badge else ""
+            reasons = target_reliability_reasons(row, category="CTA")
+            caveat = f" — {badge} {reasons[0]}" if badge and reasons else ""
             lines.append(f"- **{row['symbol']}** ({row['median_est']:.0f} TPM, "
                          f"TCGA {row['tcga_percentile']:.0%}){caveat}")
         lines.append("")

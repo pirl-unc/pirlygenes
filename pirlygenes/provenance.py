@@ -14,13 +14,30 @@ figure, cross-linked from the other reports.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
 
+from .reporting import (
+    partition_tumor_core_rows,
+    summarize_reliability_reasons,
+)
+
 
 def _compartment_label(comp: str) -> str:
     return comp.replace("matched_normal_", "matched-normal ").replace("_", " ")
+
+
+def _display_sample_id(sample_id: Optional[str]) -> Optional[str]:
+    if sample_id is None:
+        return None
+    text = str(sample_id).strip()
+    if not text:
+        return None
+    if "/" in text or "\\" in text:
+        text = Path(text).name.strip()
+    return text or None
 
 
 def build_provenance_md(
@@ -39,6 +56,7 @@ def build_provenance_md(
     sample_context = analysis.get("sample_context")
     purity = analysis.get("purity") or {}
     lines: List[str] = []
+    sample_id = _display_sample_id(sample_id)
     header_id = f": {sample_id}" if sample_id else ""
     lines.append(f"# Sample provenance{header_id}\n")
     lines.append(
@@ -189,24 +207,38 @@ def build_provenance_md(
     lines.append("## 5. Tumor-specific core\n")
     if ranges_df is not None and len(ranges_df):
         if "attribution" in ranges_df.columns:
-            has_attr = ranges_df["attribution"].apply(
-                lambda v: isinstance(v, dict) and len(v) > 0
+            supported_core, provisional_core, _ = partition_tumor_core_rows(
+                ranges_df, min_tumor_tpm=1.0,
             )
-            core = ranges_df[has_attr & (ranges_df["attr_tumor_tpm"].astype(float) > 1.0)]
-            n_core = int(len(core))
+            n_core = int(len(supported_core))
             lines.append(
                 f"After subtracting the fitted non-tumor compartments, "
-                f"**{n_core} genes** retain ≥1 TPM of tumor-attributed "
-                "expression."
+                f"**{n_core} genes** retain ≥1 TPM of tumor-supported "
+                "tumor-attributed expression."
             )
-            # Top 5 tumor-core genes.
-            top = core.sort_values("attr_tumor_tpm", ascending=False).head(5)
+            if len(provisional_core):
+                reason_summary = summarize_reliability_reasons(provisional_core)
+                lines.append(
+                    f"\nAn additional **{len(provisional_core)} genes** retain residual "
+                    "tumor-attributed TPM but remain mixed-source in the markdown layer"
+                    + (
+                        f" ({reason_summary})."
+                        if reason_summary else "."
+                    )
+                )
+            # Top 5 supported tumor-core genes.
+            top = supported_core.sort_values("attr_tumor_tpm", ascending=False).head(5)
             if len(top):
                 names = ", ".join(
                     f"{str(r['symbol'])} ({float(r['attr_tumor_tpm']):.0f})"
                     for _, r in top.iterrows()
                 )
                 lines.append(f"\nTop tumor-core genes (symbol, tumor TPM): {names}.")
+            elif len(provisional_core):
+                lines.append(
+                    "\nNo gene cleared the current tumor-supported filter; "
+                    "use the mixed-source rows in `targets.md` and the TSV for manual review."
+                )
     else:
         lines.append("*No target-expression ranges available.*")
     lines.append("")

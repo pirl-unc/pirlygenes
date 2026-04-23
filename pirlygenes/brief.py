@@ -30,9 +30,149 @@ parseable?".)
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import List, Optional
 
+from .reporting import (
+    cancer_code_display_name,
+    cancer_key_genes_lookup_for_analysis,
+    clinical_maturity_summary,
+    normal_expression_context,
+    subtype_curation_scope_note,
+    tumor_band_available,
+    tumor_band_cell,
+    target_reliability_status,
+    tumor_attribution_context,
+)
+
 logger = logging.getLogger(__name__)
+
+
+def _display_sample_id(sample_id: Optional[str]) -> Optional[str]:
+    if sample_id is None:
+        return None
+    text = str(sample_id).strip()
+    if not text:
+        return None
+    if "/" in text or "\\" in text:
+        text = Path(text).name.strip()
+    return text or None
+
+
+def _display_subtype_code(code: Optional[str]) -> str:
+    text = str(code or "").strip()
+    if not text:
+        return "the alternate subtype"
+    try:
+        from .gene_sets_cancer import cancer_type_registry
+
+        reg = cancer_type_registry()
+        match = reg[reg["code"] == text]
+        if not match.empty:
+            row = match.iloc[0]
+            subtype_key = row.get("subtype_key")
+            if isinstance(subtype_key, str) and subtype_key and subtype_key.lower() != "nan":
+                return subtype_key.replace("_", " ")
+            name = row.get("name")
+            if isinstance(name, str) and name:
+                return name.split("(")[0].strip().lower()
+    except Exception:
+        logger.debug("subtype display lookup failed", exc_info=True)
+    return text.replace("_", " ").lower()
+
+
+def _site_template_note_label(template_name: Optional[str]) -> str:
+    mapping = {
+        "met_adrenal": "adrenal-site",
+        "met_bone": "bone-site",
+        "met_brain": "brain-site",
+        "met_liver": "liver-site",
+        "met_lung": "lung-site",
+        "met_lymph_node": "lymph-node",
+        "met_peritoneal": "peritoneal-site",
+        "met_skin": "skin-site",
+        "met_soft_tissue": "soft-tissue",
+        "solid_primary": "primary-site",
+    }
+    text = str(template_name or "").strip()
+    if not text:
+        return "site"
+    return mapping.get(text, text.replace("_", " "))
+
+
+def _shared_signature_note(shared_signature: Optional[str]) -> str:
+    text = str(shared_signature or "").strip()
+    if not text:
+        return "shared lineage pattern"
+    text = text.replace("_", " ")
+    text = text.replace("+", " / ")
+    text = text.replace(" amp", " amplification")
+    return text
+
+
+def _render_subtype_note(
+    resolution: dict,
+    *,
+    original_subtype: Optional[str],
+    site_template: Optional[str],
+) -> str:
+    if not resolution:
+        return ""
+    status = str(resolution.get("status") or "")
+    rule = str(resolution.get("rule") or "")
+    shared_signature = _shared_signature_note(resolution.get("shared_signature"))
+    final_label = _display_subtype_code(resolution.get("final_subtype"))
+    original_label = _display_subtype_code(original_subtype)
+    alternatives = [
+        _display_subtype_code(code)
+        for code in (resolution.get("alternatives") or [])
+    ]
+
+    if status == "corrected":
+        if rule == "site_template":
+            site_label = _site_template_note_label(site_template)
+            return (
+                f"{site_label.capitalize()} context favors {final_label} over {original_label}; "
+                f"both can share the {shared_signature}."
+            )
+        if rule == "fusion_surrogate":
+            return (
+                f"Fusion-surrogate expression favors {final_label} over {original_label}; "
+                f"both can share the {shared_signature}."
+            )
+        if rule == "marker_combo":
+            return (
+                f"The marker combination is more consistent with {final_label} than {original_label}; "
+                f"both can share the {shared_signature}."
+            )
+        return (
+            f"Additional subtype evidence favors {final_label} over {original_label}; "
+            f"both can share the {shared_signature}."
+        )
+
+    if status == "degenerate":
+        option_text = " vs ".join([final_label] + alternatives) if alternatives else final_label
+        if rule == "site_template":
+            return (
+                f"Subtype remains unresolved between {option_text}; the available site context does not break the tie, "
+                f"and these options can share the {shared_signature}."
+            )
+        if rule == "fusion_surrogate":
+            return (
+                f"Subtype remains unresolved between {option_text}; the available fusion-surrogate expression does not break the tie, "
+                f"and these options can share the {shared_signature}."
+            )
+        if rule == "marker_combo":
+            return (
+                f"Subtype remains unresolved between {option_text}; the available marker combination does not break the tie, "
+                f"and these options can share the {shared_signature}."
+            )
+        return (
+            f"Subtype remains unresolved between {option_text}; the available evidence does not break the tie, "
+            f"and these options can share the {shared_signature}."
+        )
+
+    return str(resolution.get("reason") or "").strip()
 
 
 def _phase_label(phase: str) -> str:
@@ -70,7 +210,7 @@ def _top_candidate_signature_score(analysis) -> float | None:
     return None
 
 
-def _format_therapy_bullet(target_row, expression_row) -> str:
+def _format_therapy_bullet(target_row, expression_row, target_panel=None) -> str:
     """One standardized therapy bullet for the brief."""
     sym = str(target_row.get("symbol") or "")
     agent = str(target_row.get("agent") or "—")
@@ -83,27 +223,27 @@ def _format_therapy_bullet(target_row, expression_row) -> str:
             f"Target **not measured** in this sample."
         )
     observed = float(expression_row.get("observed_tpm") or 0.0)
-    attr_tumor = float(expression_row.get("attr_tumor_tpm") or 0.0)
-    has_attribution = bool(expression_row.get("attribution"))
-    attr_fraction = float(expression_row.get("attr_tumor_fraction") or 0.0)
     if observed < 1.0:
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
             f"Observed {observed:.1f} TPM — **target absent** in this sample."
         )
-    if has_attribution:
-        tumor_clause = f"tumor-attributed {attr_tumor:.0f} TPM"
-    else:
-        tumor_clause = f"observed {observed:.0f} TPM"
-    if attr_fraction >= 0.5:
-        conf = "high"
-    elif attr_fraction >= 0.3 or not has_attribution:
-        conf = "moderate"
-    else:
-        conf = "low (mostly non-tumor)"
+    if not tumor_band_available(expression_row):
+        return (
+            f"- **{sym}** — {agent} ({phase}{indication_clause}). "
+            f"Observed {observed:.0f} TPM; a tumor-core uncertainty band was not available for this run."
+        )
+    source = tumor_attribution_context(expression_row)
+    normal = normal_expression_context(expression_row)
+    maturity = clinical_maturity_summary(target_row, target_panel=target_panel)
+    interpretation_parts = [source["label"], source["band"], normal["label"]]
+    notes = list(source.get("notes") or []) + list(normal.get("details") or [])
+    if notes:
+        interpretation_parts.append(notes[0])
+    interpretation = "; ".join(part for part in interpretation_parts if part)
     return (
         f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-        f"{tumor_clause.capitalize()}. Confidence: {conf}."
+        f"{interpretation}. Clinical maturity: {maturity}."
     )
 
 
@@ -146,6 +286,9 @@ def _top_therapies(
         # don't belong in the clinician handoff per #79 semantics.
         if attr_fraction < 0.30:
             continue
+        reliability_status = target_reliability_status(expr)
+        if reliability_status == "unsupported":
+            continue
         # Note (#128): we deliberately do NOT filter on
         # ``broadly_expressed`` here. The caller's ``targets_df`` is
         # the **curated** cancer-key-genes panel (#110) — every row
@@ -158,7 +301,8 @@ def _top_therapies(
         # / Intracellular target tables where ranking is by raw
         # expression, not curation.
         phase = str(t.get("phase") or "")
-        sort_key = (phase_priority.get(phase, 99), -attr_tumor, sym)
+        reliability_rank = 0 if reliability_status == "supported" else 1
+        sort_key = (phase_priority.get(phase, 99), reliability_rank, -attr_tumor, sym)
         scored.append((sort_key, t, expr))
 
     # Sort by key only — avoid pandas Series comparison in tie-break.
@@ -167,7 +311,7 @@ def _top_therapies(
     deduped = []
     seen_symbols = set()
     for sort_key, t, expr in scored:
-        sym = sort_key[2]
+        sym = str(t.get("symbol") or "")
         if sym in seen_symbols:
             continue
         seen_symbols.add(sym)
@@ -175,6 +319,27 @@ def _top_therapies(
         if len(deduped) >= limit:
             break
     return deduped
+
+
+def _panel_display_label(panel_code, panel_subtype=None):
+    if panel_subtype:
+        return f"{panel_code} ({str(panel_subtype).replace('_', ' ')})"
+    return panel_code
+
+
+def _curated_target_panel_for_sample(cancer_code, analysis, ranges_df=None):
+    from .gene_sets_cancer import cancer_therapy_targets
+
+    panel_code, panel_subtype = cancer_key_genes_lookup_for_analysis(
+        cancer_code,
+        analysis,
+        ranges_df=ranges_df,
+    )
+    if panel_subtype:
+        targets_df = cancer_therapy_targets(panel_code, subtype=panel_subtype)
+    else:
+        targets_df = cancer_therapy_targets(panel_code)
+    return panel_code, panel_subtype, targets_df.reset_index(drop=True)
 
 
 def _caveats_from_purity_tier(purity_tier, sample_context) -> List[str]:
@@ -268,6 +433,7 @@ def build_summary(
     cancer_name = analysis.get("cancer_name") or cancer_code
 
     lines: List[str] = []
+    sample_id = _display_sample_id(sample_id)
     header_id = f": {sample_id}" if sample_id else ""
     lines.append(f"# Summary{header_id}\n")
     lines.append(
@@ -328,6 +494,8 @@ def build_summary(
     degenerate_status = None
     degenerate_reason = ""
     degenerate_alternatives = []
+    degenerate_resolution = None
+    original_winning_subtype = winning_subtype
     if winning_subtype:
         try:
             from .degenerate_subtype import resolve_degenerate_subtype
@@ -363,6 +531,7 @@ def build_summary(
                 site_template=site_template,
                 tumor_tpm_by_symbol=tumor_tpm_by_symbol,
             )
+            degenerate_resolution = resolution
             if resolution["status"] == "corrected":
                 winning_subtype = resolution["final_subtype"]
             degenerate_status = resolution["status"]
@@ -412,8 +581,14 @@ def build_summary(
     # Surface a subtype note only when the resolver changed the call or
     # flagged irreducible ambiguity. ``pair_inactive`` means the pair
     # didn't apply — no reader-facing note needed.
-    if degenerate_status in ("corrected", "degenerate") and degenerate_reason:
-        lines.append(f"**Subtype note:** {degenerate_reason}")
+    if degenerate_status in ("corrected", "degenerate"):
+        subtype_note = _render_subtype_note(
+            degenerate_resolution or {},
+            original_subtype=original_winning_subtype,
+            site_template=(analysis.get("decomposition") or {}).get("best_template"),
+        ).strip()
+        if subtype_note:
+            lines.append(f"**Subtype note:** {subtype_note}")
 
     # Purity
     overall = purity.get("overall_estimate")
@@ -438,18 +613,39 @@ def build_summary(
 
     lines.append("")
 
-    # Top therapies — only if the cancer type is curated.
-    if cancer_code in cancer_key_genes_cancer_types():
-        targets_df = cancer_therapy_targets(cancer_code)
+    # Top therapies — subtype/direct-code resolved when the umbrella
+    # cancer call narrows onto a more specific curated panel.
+    panel_code, panel_subtype, targets_df = _curated_target_panel_for_sample(
+        cancer_code, analysis, ranges_df=ranges_df,
+    )
+    panel_label = _panel_display_label(panel_code, panel_subtype)
+    if panel_code in cancer_key_genes_cancer_types():
         top = _top_therapies(targets_df, ranges_df, limit=3)
+        lines.append("## Top candidate therapies\n")
+        if panel_code != cancer_code or panel_subtype:
+            lines.append(
+                "*Subtype-resolved therapy curation:* "
+                + subtype_curation_scope_note(
+                    panel_code,
+                    panel_subtype=panel_subtype,
+                    base_code=cancer_code,
+                    base_name=analysis.get("cancer_name") or cancer_code,
+                    noun="therapy evidence",
+                )
+                + "\n"
+            )
         if top:
-            lines.append("## Top candidate therapies\n")
             for target_row, expression_row in top:
-                lines.append(_format_therapy_bullet(target_row, expression_row))
+                lines.append(
+                    _format_therapy_bullet(
+                        target_row,
+                        expression_row,
+                        target_panel=targets_df,
+                    )
+                )
             lines.append("")
         else:
             lines.append(
-                "## Top candidate therapies\n"
                 "*No approved or trialed agents with a measured, "
                 "tumor-attributed target in this sample.*\n"
             )
@@ -507,6 +703,7 @@ def build_actionable(
     cancer_name = analysis.get("cancer_name") or cancer_code
 
     lines: List[str] = []
+    sample_id = _display_sample_id(sample_id)
     header_id = f" — {sample_id}" if sample_id else ""
     lines.append(f"# Actionable review{header_id}\n")
     lines.append(
@@ -577,27 +774,45 @@ def build_actionable(
     lines.append("")
 
     # Therapy landscape
-    if cancer_code in cancer_key_genes_cancer_types():
-        targets_df = cancer_therapy_targets(cancer_code)
+    panel_code, panel_subtype, targets_df = _curated_target_panel_for_sample(
+        cancer_code, analysis, ranges_df=ranges_df,
+    )
+    panel_label = _panel_display_label(panel_code, panel_subtype)
+    if panel_code in cancer_key_genes_cancer_types():
         sym_to_row = {}
         for _, rrow in ranges_df.iterrows():
             sym_to_row[str(rrow["symbol"])] = rrow
 
         if len(targets_df):
             lines.append("## Therapy landscape\n")
+            if panel_code != cancer_code or panel_subtype:
+                lines.append(
+                    "*Subtype-resolved therapy curation:* "
+                    + subtype_curation_scope_note(
+                        panel_code,
+                        panel_subtype=panel_subtype,
+                        base_code=cancer_code,
+                        base_name=cancer_name or cancer_code,
+                        noun="therapy evidence",
+                    )
+                    + "\n"
+                )
             lines.append(
                 "Agents with an approved or trialed indication for "
-                f"{cancer_code}, cross-referenced to this sample. "
-                "Approved agents listed first."
+                f"{cancer_code_display_name(panel_code, panel_label)}, cross-referenced to this sample. "
+                "Approved agents listed first. Interpretation separates "
+                "tumor-source support from normal-expression context so "
+                "lineage markers are not confused with tumor-exclusive "
+                "targets."
             )
             lines.append("")
             lines.append(
                 "| Target | Agent | Class | Phase | Indication | "
-                "Observed | Tumor-attr. |"
+                "Observed | Tumor-core | Interpretation |"
             )
             lines.append(
                 "|--------|-------|-------|-------|------------|"
-                "----------|-------------|"
+                "----------|------------|----------------|"
             )
             phase_order = {
                 "approved": 0, "phase_3": 1, "phase_2": 2,
@@ -628,25 +843,48 @@ def build_actionable(
                 if sym == "—":
                     obs_cell = "*not measured*"
                     tumor_cell = "—"
+                    interp_cell = "agent-only / no direct gene target"
                 else:
                     expr = sym_to_row.get(sym)
                     if expr is None:
                         obs_cell = "*not measured*"
                         tumor_cell = "—"
+                        interp_cell = "not measured"
                     else:
                         obs_cell = f"{float(expr.get('observed_tpm') or 0):.1f}"
-                        attr_tumor = float(expr.get("attr_tumor_tpm") or 0)
-                        tumor_cell = (
-                            f"{attr_tumor:.0f}" if expr.get("attribution") else "—"
+                        tumor_cell = tumor_band_cell(expr)
+                        source = tumor_attribution_context(expr)
+                        normal = normal_expression_context(expr)
+                        interp_parts = [source["label"], normal["label"]]
+                        notes = list(source.get("notes") or []) + list(normal.get("details") or [])
+                        if notes:
+                            interp_parts.append(notes[0])
+                        interp_parts.append(
+                            clinical_maturity_summary(t, target_panel=targets_df)
+                        )
+                        interp_cell = "; ".join(
+                            part for part in interp_parts if part
                         )
                 phase = _phase_label(str(t.get("phase") or ""))
                 bold = "**" if phase == "Approved" and sym != "—" else ""
                 lines.append(
                     f"| {bold}{sym}{bold} | {_cell(t.get('agent'))} | "
                     f"{_cell(t.get('agent_class'))} | {phase} | "
-                    f"{_cell(t.get('indication'))} | {obs_cell} | {tumor_cell} |"
+                    f"{_cell(t.get('indication'))} | {obs_cell} | {tumor_cell} | {interp_cell} |"
                 )
             lines.append("")
+        else:
+            lines.append(
+                "## Therapy landscape\n"
+                "*No curated therapy targets are available for this resolved panel.*\n"
+            )
+    else:
+        lines.append(
+            "## Therapy landscape\n"
+            f"*Cancer type {cancer_code} is not yet in the curated "
+            "key-genes panel — see `targets.md` for the generic "
+            "expression-ranked tables.*\n"
+        )
 
     # Caveats
     caveats = _caveats_from_purity_tier(purity_tier, sample_context)
