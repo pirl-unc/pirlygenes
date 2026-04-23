@@ -91,7 +91,7 @@ should be consolidated. 42 files baseline after round-1 cleanups.
 
 | File | Purpose | Verdict |
 |---|---|---|
-| `sample-provenance.png` | Sample composition stacked bar (#106) | ✓ keep — paired with provenance.md |
+| `sample-provenance.png` | Sample composition stacked bar (#106) | ✓ keep — paired with evidence.md |
 | `sample-therapy-pathway-state.png` | Dumbbell of therapy-response axes (up/down-panel fold) | ✓ keep (polished in v4.40.1) |
 
 ---

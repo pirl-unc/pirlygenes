@@ -30,6 +30,7 @@ from .plot_therapy import (
     _summarize_fn1_edb_transcript_support,
     _apply_therapy_support_gate,
 )
+from .reporting import tumor_attribution_context
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -1511,11 +1512,11 @@ def plot_target_attribution(
 ):
     """Per-target compositional attribution stacked bars (#108).
 
-    For each of the top ``top_n`` targets in ``category`` (ranked by
-    ``median_est``), draw a horizontal bar broken into the tumor core
+    For each of the selected ``top_n`` targets in ``category``, draw a
+    horizontal bar broken into the tumor
     plus each non-tumor compartment that contributes at least 1% of the
     observed TPM. Compartments are read from the ``attribution`` column
-    of ``df_ranges`` (a dict of {compartment: TPM}); tumor-core TPM is
+    of ``df_ranges`` (a dict of {compartment: TPM}); tumor TPM is
     taken from ``attr_tumor_tpm``.
 
     Emitted as a standalone PNG (one per category, per project
@@ -1525,7 +1526,56 @@ def plot_target_attribution(
     reference matrix).
     """
     cancer_code = resolve_cancer_type(cancer_type)
-    sub = df_ranges[df_ranges["category"] == category].head(top_n).copy()
+
+    def _therapy_list(row):
+        raw = str(row.get("therapies") or "").strip()
+        if not raw:
+            return []
+        return [piece.strip() for piece in raw.split(",") if piece.strip()]
+
+    def _select_rows(frame):
+        sub = frame[frame["category"] == category].copy()
+        if sub.empty:
+            return sub
+        tier_order = {
+            "mixed_source": 0,
+            "background_dominant": 1,
+            "tumor_supported": 2,
+        }
+        source_tiers = []
+        sort_keys = []
+        for _, row in sub.iterrows():
+            source = tumor_attribution_context(row)
+            therapies = _therapy_list(row)
+            therapy_supported = row.get("therapy_supported") is True or bool(therapies)
+            source_tiers.append(source["tier"])
+            sort_keys.append(
+                (
+                    0 if therapy_supported else 1,
+                    tier_order.get(source["tier"], 9),
+                    -len(therapies),
+                    -float(row.get("observed_tpm") or 0.0),
+                    -float(row.get("attr_tumor_tpm") or 0.0),
+                    str(row.get("symbol") or ""),
+                )
+            )
+        sub["_source_tier"] = source_tiers
+        sub["_sort_key"] = sort_keys
+        ranked = sub.sort_values("_sort_key").copy()
+        selected = []
+        base_quota = 2 if top_n >= 6 else 1
+        for tier in ("mixed_source", "background_dominant", "tumor_supported"):
+            tier_rows = ranked[ranked["_source_tier"] == tier]
+            selected.extend(list(tier_rows.head(base_quota).index))
+        for idx in ranked.index:
+            if idx not in selected:
+                selected.append(idx)
+            if len(selected) >= top_n:
+                break
+        chosen = ranked.loc[selected[:top_n]].copy()
+        return chosen
+
+    sub = _select_rows(df_ranges)
     if sub.empty or "attribution" not in sub.columns:
         return None
 
@@ -1557,7 +1607,7 @@ def plot_target_attribution(
     fig, ax = plt.subplots(figsize=figsize)
 
     tumor_attr = sub["attr_tumor_tpm"].astype(float).values
-    ax.barh(y, tumor_attr, color="#e74c3c", label="tumor core")
+    ax.barh(y, tumor_attr, color="#e74c3c", label="tumor")
     left = tumor_attr.copy()
     for comp in compartments:
         vals = np.array([
@@ -1587,14 +1637,20 @@ def plot_target_attribution(
     ax.set_yticklabels(labels, fontsize=9)
 
     ax.set_xlabel(
-        "TPM (stacked: tumor core + non-tumor compartments = observed)",
+        "TPM (stacked: tumor + background compartments = observed)",
         fontsize=10,
     )
     ax.set_xscale("symlog", linthresh=1.0)
     ax.grid(axis="x", alpha=0.2)
     ax.legend(loc="lower right", fontsize=8, framealpha=0.9, ncol=1)
+    cat_label = {
+        "therapy_target": "Therapy-linked targets",
+        "CTA": "CTAs",
+        "surface": "Surface proteins",
+    }.get(category, category.replace("_", " "))
     ax.set_title(
-        f"Per-target compositional attribution \u2014 {cancer_code} {category}\n"
+        f"Target source breakdown — {cat_label} — {cancer_code}\n"
+        "Selected to show clinically relevant genes plus mixed/background cases "
         "(\u26a0\u26a0 = tumor < 30% of observed; \u26a0 = single-tissue-explainable)",
         fontsize=10, fontweight="bold",
     )
@@ -1630,10 +1686,10 @@ def plot_subtype_attribution(
     - AFTER: tumor residual + aggregate TME under the tumor-activated
       reference swap.
 
-    Each gene's pair is labelled with the winning subtype (CAF / TAM /
-    exhausted_T / …). Makes the per-gene effect of the refinement
-    concrete — readers see exactly which genes moved from
-    mis-attributed-to-tumor to correctly-absorbed-by-the-refined-compartment.
+    Each gene's pair is labelled with the winning subtype reference
+    (CAF / TAM / exhausted_T / ...). This is an audit/provenance view:
+    it shows which genes changed materially after swapping from the
+    generic background reference to a subtype-specific one.
 
     Returns ``None`` when no row in the category has subtype-refinement
     provenance (e.g. decomposition didn't run, or no marker gene
@@ -1698,7 +1754,7 @@ def plot_subtype_attribution(
     ax.set_yticklabels(labels, fontsize=9)
     ax.invert_yaxis()
     ax.set_xlabel(
-        "TPM (stacked: tumor core + TME background = observed)",
+        "TPM (stacked: tumor + background = observed)",
         fontsize=10,
     )
     ax.set_xscale("symlog", linthresh=1.0)
@@ -1706,18 +1762,22 @@ def plot_subtype_attribution(
 
     import matplotlib.patches as mpatches
     handles = [
-        mpatches.Patch(color=tumor_color, label="tumor core"),
+        mpatches.Patch(color=tumor_color, label="tumor"),
         mpatches.Patch(color=tme_color_before,
-                       label="TME — generic reference (pre-#56)"),
+                       label="background — generic reference"),
         mpatches.Patch(color=tme_color_after,
-                       label="TME — tumor-activated reference (post-#56)"),
+                       label="background — refined reference"),
     ]
     ax.legend(handles=handles, loc="lower right", fontsize=8, framealpha=0.9)
+    cat_label = {
+        "therapy_target": "Therapy-linked targets",
+        "CTA": "CTAs",
+        "surface": "Surface proteins",
+    }.get(category, category.replace("_", " "))
     ax.set_title(
-        f"Subtype-refinement before / after — {category}\n"
-        "top rows = largest correction; AFTER-bars show how much "
-        "signal the tumor-activated reference absorbs that the "
-        "generic reference missed.",
+        f"Subtype-reference correction audit — {cat_label}\n"
+        "Audit-only view: shows genes whose background estimate changed "
+        "after subtype-specific refinement.",
         fontsize=9, fontweight="bold", loc="left",
     )
 

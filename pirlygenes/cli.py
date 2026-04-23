@@ -49,6 +49,7 @@ from .plot import (
     plot_cohort_surface_proteins,
     plot_cohort_ctas,
     plot_curated_target_evidence,
+    plot_priority_target_context,
     plot_priority_targets,
     get_embedding_feature_metadata,
     estimate_tumor_expression_ranges,
@@ -83,6 +84,7 @@ from .reporting import (
     cancer_code_display_name,
     cancer_key_genes_lookup_for_analysis,
     normal_expression_context,
+    resolved_subtype_code_for_analysis,
     subtype_curation_scope_note,
     tumor_band_cell,
     target_interpretation_summary,
@@ -457,6 +459,78 @@ def annotate_surface_targets_with_cross_signals(ranges_df, therapy_scores):
     if ifn is None or getattr(ifn, "state", None) != "up":
         return {}
     return {sym: "IFN-driven" for sym in _CORE_ISG_SURFACE}
+
+
+def _select_actionable_plot_genes(ranges_df, cancer_code, target_panel=None, max_genes=18):
+    """Return a compact gene list for the default actionable-target plot.
+
+    The simple figure should not drift away from the curated report
+    panel, but it also should not hide strong sample-specific surface
+    targets that sit outside that panel (for example FAP in a bone-rich
+    sarcoma sample). Use the curated panel when available, then append
+    strong therapy-linked sample hits ranked by tumor-source support.
+    """
+    try:
+        from .plot_target_deep_dive import actionable_surface_targets
+    except Exception:
+        actionable_surface_targets = None
+
+    curated = []
+    if target_panel is not None and len(target_panel) and "symbol" in target_panel.columns:
+        curated = [
+            str(sym).strip()
+            for sym in target_panel["symbol"].dropna().astype(str)
+            if str(sym).strip() and str(sym).strip().lower() != "nan"
+        ]
+    elif actionable_surface_targets is not None:
+        try:
+            curated = actionable_surface_targets(cancer_code)
+        except Exception:
+            curated = []
+
+    if ranges_df is None or len(ranges_df) == 0 or "symbol" not in ranges_df.columns:
+        return list(dict.fromkeys(curated))[:max_genes]
+
+    reliability_rank = {"supported": 0, "provisional": 1, "unsupported": 2}
+    extras = []
+    for _, row in ranges_df.iterrows():
+        sym = str(row.get("symbol") or "").strip()
+        if not sym or sym.lower() == "nan":
+            continue
+        try:
+            observed = float(row.get("observed_tpm") or 0.0)
+        except Exception:
+            observed = 0.0
+        if observed < 1.0:
+            continue
+        therapies = str(row.get("therapies") or "").strip()
+        therapy_list = [piece.strip() for piece in therapies.split(",") if piece.strip()]
+        therapy_supported = row.get("therapy_supported") is True
+        category = str(row.get("category") or "").strip()
+        is_surface = bool(row.get("is_surface"))
+        if not therapy_list and not therapy_supported and category != "therapy_target":
+            continue
+        if not is_surface and category != "therapy_target":
+            continue
+        reliability = target_reliability_status(row)
+        extras.append(
+            (
+                reliability_rank.get(reliability, 9),
+                0 if therapy_supported or therapy_list else 1,
+                0 if is_surface else 1,
+                -len(therapy_list),
+                -float(row.get("attr_tumor_tpm") or 0.0),
+                -observed,
+                sym,
+            )
+        )
+
+    ranked_extras = [sym for *_unused, sym in sorted(extras)]
+    genes = []
+    for sym in list(curated) + ranked_extras:
+        if sym not in genes:
+            genes.append(sym)
+    return genes[:max_genes]
 
 
 def _filter_quality_flags_against_context(flags, sample_context):
@@ -1361,6 +1435,7 @@ def _analyze_body(
     effective_cancer_type = cancer_code
     effective_purity = purity
     if decomp_results:
+        analysis["decomposition_results"] = decomp_results
         best_decomp = decomp_results[0]
         # #198: surface the decomposition top template into the analysis
         # dict so the degenerate-subtype resolver (invoked from brief.py)
@@ -1484,17 +1559,45 @@ def _analyze_body(
         # Keep ``plot_decomposition_summary`` available in the API, but
         # do not emit it by default from ``analyze``.
         # Standalone presentation-ready plots for the best hypothesis
+        label_options = call_summary.get("label_options") or []
+        if len(label_options) == 1:
+            decomp_title_prefix = _cancer_label(label_options[0])
+        elif len(label_options) >= 2:
+            decomp_title_prefix = " / ".join(
+                _cancer_label(code) for code in label_options[:2]
+            )
+        else:
+            decomp_title_prefix = call_summary.get("label_display") or _cancer_label(
+                best_decomp.cancer_type
+            )
+        if call_summary.get("site_indeterminate"):
+            decomp_context_suffix = "host context indeterminate"
+        elif call_summary.get("reported_site"):
+            decomp_context_suffix = call_summary["reported_site"]
+        else:
+            decomp_context_suffix = _template_site_display(
+                best_decomp.template,
+                analysis=analysis,
+                cancer_code=analysis.get("cancer_type"),
+            )
+        composition_title = f"Sample composition — {decomp_title_prefix}"
+        component_title = f"TME cell-type breakdown — {decomp_title_prefix}"
+        if decomp_context_suffix:
+            composition_title += f" ({decomp_context_suffix})"
+            component_title += f" ({decomp_context_suffix})"
         composition_png = "%s-decomposition-composition.png" % prefix if prefix else "decomposition-composition.png"
         plot_decomposition_composition(
             best_decomp,
             save_to_filename=composition_png,
             save_dpi=output_dpi,
+            title=composition_title,
         )
         components_png = "%s-decomposition-components.png" % prefix if prefix else "decomposition-components.png"
         plot_decomposition_component_breakdown(
             best_decomp,
             save_to_filename=components_png,
             save_dpi=output_dpi,
+            title=component_title,
         )
         # Sample decomposition candidate bars — one row per (cancer × template)
         # candidate, showing the 3-segment composition (tumor / template-
@@ -1507,6 +1610,14 @@ def _analyze_body(
             decomp_results,
             save_to_filename=candidates_png,
             save_dpi=output_dpi,
+            labels=[
+                _hypothesis_display_label(
+                    row,
+                    primary_code=analysis.get("cancer_type"),
+                    analysis=analysis,
+                )
+                for row in decomp_results[:6]
+            ],
         )
 
         hypotheses_tsv = "%s-decomposition-hypotheses.tsv" % prefix if prefix else "decomposition-hypotheses.tsv"
@@ -1751,6 +1862,7 @@ def _analyze_body(
     print("[plot] Generating tumor expression range analysis...")
     purity_dict = effective_purity
     adj_pngs = []
+    audit_only_pngs = []
     ranges_df = None
     _adj_categories = [
         ("therapy_target", "targets"),
@@ -1782,7 +1894,7 @@ def _analyze_body(
             _plt.close("all")
 
         # Per-target compositional attribution (#108). One PNG per
-        # category showing the per-gene tumor-core + compartment
+        # category showing the per-gene tumor + compartment
         # breakdown. Emitted only when decomposition produced an
         # attribution; the function returns None otherwise and no file
         # is written, which the CLI respects by not appending to
@@ -1811,10 +1923,9 @@ def _analyze_body(
                     adj_pngs.append(attr_png)
                 _plt.close("all")
 
-        # Per-gene subtype-refinement before / after bars (#56 / #58,
-        # figure-audit C2). Only emitted when at least one gene in the
-        # category got refined by the CAF / TAM / ... reference swap.
-        # Separate PNG per category per the plot-crowding preference.
+        # Per-gene subtype-reference correction audit (#56 / #58).
+        # This is mainly provenance/debug material, so keep it out of
+        # the main all-figures packet and reserve it for figure-audit.
         if (
             "subtype_refined" in ranges_df.columns
             and ranges_df["subtype_refined"].astype(bool).any()
@@ -1833,7 +1944,7 @@ def _analyze_body(
                     save_dpi=output_dpi,
                 )
                 if fig is not None:
-                    adj_pngs.append(sub_png)
+                    audit_only_pngs.append(sub_png)
                 _plt.close("all")
 
         # Per-gene matched-normal attribution (issue #55). One PNG per
@@ -1862,16 +1973,17 @@ def _analyze_body(
                     adj_pngs.append(mn_png)
                 _plt.close("all")
 
-        _generate_target_report(
+        target_report_md = _build_target_report(
             ranges_df,
             analysis,
-            prefix,
             cancer_type=effective_cancer_type,
             purity_result=purity_dict,
+            decomp_results=decomp_results,
         )
 
         curated_evidence_png = None
         priority_targets_png = None
+        priority_target_context_png = None
         try:
             from .gene_sets_cancer import (
                 cancer_key_genes_cancer_types,
@@ -1889,6 +2001,31 @@ def _analyze_body(
                     cancer_therapy_targets(panel_code, subtype=panel_subtype)
                     if panel_subtype else cancer_therapy_targets(panel_code)
                 )
+                if targets_deep_png:
+                    actionable_genes = _select_actionable_plot_genes(
+                        ranges_df,
+                        panel_code,
+                        target_panel=target_panel,
+                    )
+                    try:
+                        fig = plot_actionable_targets(
+                            df_expr,
+                            cancer_type=effective_cancer_type,
+                            purity_estimate=p_est,
+                            custom_genes=actionable_genes,
+                            save_to_filename=targets_deep_png,
+                            save_dpi=output_dpi,
+                            title=f"Actionable Targets — {panel_code}",
+                        )
+                        if fig is not None:
+                            print(
+                                f"[plot] Refreshed actionable targets deep dive to {targets_deep_png}"
+                            )
+                        _plt.close("all")
+                    except Exception as action_plot_err:
+                        print(
+                            f"[plot] actionable targets refresh failed: {action_plot_err}"
+                        )
                 curated_evidence_png = (
                     "%s-curated-target-evidence.png" % prefix
                     if prefix else "curated-target-evidence.png"
@@ -1929,20 +2066,55 @@ def _analyze_body(
                 priority_targets_png = None
             _plt.close("all")
 
+            priority_target_context_png = (
+                "%s-priority-target-context.png" % prefix
+                if prefix else "priority-target-context.png"
+            )
+            fig = plot_priority_target_context(
+                ranges_df,
+                cancer_type=panel_code if target_panel is not None else effective_cancer_type,
+                target_panel=(
+                    target_panel.reset_index(drop=True)
+                    if target_panel is not None else None
+                ),
+                df_gene_expr=df_expr,
+                save_to_filename=priority_target_context_png,
+                save_dpi=output_dpi,
+            )
+            if fig is not None:
+                adj_pngs.append(priority_target_context_png)
+                print(
+                    f"[plot] Saved priority target context to {priority_target_context_png}"
+                )
+            else:
+                priority_target_context_png = None
+            _plt.close("all")
+
         except Exception as curated_err:
             print(f"[plot] curated target evidence failed: {curated_err}")
             curated_evidence_png = None
             priority_targets_png = None
+            priority_target_context_png = None
 
-        # #111: two-tier markdown handoff. Emitted after the detailed
-        # reports so both can reference each other. The brief is the
-        # doc a clinician pastes into a note; the actionable is the
-        # one they read before a tumor board.
+        # The public markdown surface is intentionally compact:
+        # summary.md for the distilled read, analysis.md for the full
+        # interpreted report, and evidence.md for the stepwise/rawer
+        # support tables.
         try:
-            from .brief import build_summary, build_actionable
+            from .brief import build_summary
+            from .provenance import plot_provenance_funnel
 
             disease_state_for_summary = compose_disease_state_narrative(analysis)
             sample_id = sample_display_id or None
+            _generate_text_reports(
+                analysis,
+                _embedding_meta,
+                prefix,
+                decomp_results=decomp_results,
+                input_path=input_path,
+                ranges_df=ranges_df,
+                sample_id=sample_id,
+            )
             summary_md = build_summary(
                 analysis,
                 ranges_df,
@@ -1950,59 +2122,22 @@ def _analyze_body(
                 disease_state=disease_state_for_summary,
                 sample_id=sample_id,
             )
-            actionable_md = build_actionable(
-                analysis,
-                ranges_df,
-                cancer_code=effective_cancer_type,
-                disease_state=disease_state_for_summary,
-                sample_id=sample_id,
-            )
-            # The 1-page clinician-facing file is emitted as
-            # ``*-summary.md``. The old free-form paragraph that used to
-            # live at that name was retired in 4.41.0 — its disease-state,
-            # step-0, and cancer-type text was ~80% redundant with
-            # analysis.md.
-            summary_path = "%s-summary.md" % prefix if prefix else "summary.md"
-            actionable_path = (
-                "%s-actionable.md" % prefix if prefix else "actionable.md"
-            )
-            with open(summary_path, "w") as f:
-                f.write(summary_md)
-            with open(actionable_path, "w") as f:
-                f.write(actionable_md)
-            print(f"[report] Saved {summary_path}")
-            print(f"[report] Saved {actionable_path}")
-
-            # Back-compat: emit ``*-brief.md`` as a duplicate of
-            # ``*-summary.md`` for one deprecation window (removed in 5.0).
-            # Downstream pipelines that glob for ``*-brief.md`` keep
-            # working; new code should read ``*-summary.md``.
-            brief_path = "%s-brief.md" % prefix if prefix else "brief.md"
-            with open(brief_path, "w") as f:
-                f.write(
-                    "<!-- DEPRECATED in 4.41.0, removed in 5.0. "
-                    "This file is a copy of *-summary.md; update your "
-                    "pipelines to read the new name. -->\n\n"
-                )
-                f.write(summary_md)
-            print(f"[report] Saved {brief_path} (deprecated copy of summary.md)")
-
-            # #106: one-page provenance chain (library prep -> tumor
-            # core). Emits *-provenance.md alongside a simple stacked-
-            # bar figure showing the compartment composition.
-            from .provenance import build_provenance_md, plot_provenance_funnel
-
-            provenance_md = build_provenance_md(
+            evidence_md = _build_evidence_report(
                 analysis,
                 ranges_df,
                 decomp_results,
                 cancer_code=effective_cancer_type,
                 sample_id=sample_id,
+                target_report_md=target_report_md,
             )
-            prov_path = "%s-provenance.md" % prefix if prefix else "provenance.md"
-            with open(prov_path, "w") as f:
-                f.write(provenance_md)
-            print(f"[report] Saved {prov_path}")
+            summary_path = "%s-summary.md" % prefix if prefix else "summary.md"
+            evidence_path = "%s-evidence.md" % prefix if prefix else "evidence.md"
+            with open(summary_path, "w") as f:
+                f.write(summary_md)
+            with open(evidence_path, "w") as f:
+                f.write(evidence_md)
+            print(f"[report] Saved {summary_path}")
+            print(f"[report] Saved {evidence_path}")
             prov_png = "%s-provenance.png" % prefix if prefix else "provenance.png"
             fig_out = plot_provenance_funnel(
                 analysis,
@@ -2014,7 +2149,7 @@ def _analyze_body(
             if fig_out:
                 print(f"[plot] Saved {prov_png}")
         except Exception as brief_err:
-            print(f"[warn] Brief / actionable rendering failed: {brief_err}")
+            print(f"[warn] Summary / evidence rendering failed: {brief_err}")
     except Exception as e:
         print(f"[warn] Purity-adjusted analysis failed: {e}")
         import traceback
@@ -2133,7 +2268,9 @@ def _analyze_body(
     figures_dir = fig_out_dir / "figures"
     figures_dir.mkdir(exist_ok=True)
     moved = 0
-    for png_path in png_files:
+    move_png_files = png_files + [p for p in audit_only_pngs if p]
+
+    for png_path in move_png_files:
         if not png_path:
             continue
         p = Path(png_path)
@@ -2254,9 +2391,9 @@ def _analyze_body(
                         "target-attribution-surface.png",
                         "matched-normal-targets.png",
                         "matched-normal-surface.png",
-                        "subtype-attribution-targets.png",
                         "curated-target-evidence.png",
                         "priority-targets.png",
+                        "priority-target-context.png",
                     ),
                 },
             ],
@@ -2266,9 +2403,12 @@ def _analyze_body(
             [
                 {
                     "title": "Low-Value in the Default Packet",
-                    "note": "These currently add the least unique decision support relative to the rest of the packet.",
+                    "note": "These currently add the least unique decision support relative to the rest of the packet, or are mainly provenance/debug views.",
                     "files": _existing_figure_paths(
                         "background-tissues.png",
+                        "subtype-attribution-targets.png",
+                        "subtype-attribution-ctas.png",
+                        "subtype-attribution-surface.png",
                         "TLR.png",
                         "DNA_repair.png",
                     ),
@@ -2288,6 +2428,7 @@ def _analyze_body(
                         "target-safety.png",
                         "curated-target-evidence.png",
                         "priority-targets.png",
+                        "priority-target-context.png",
                         "provenance.png",
                         "therapy-pathway-state.png",
                     ),
@@ -2379,11 +2520,9 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 
 | File | Description |
 |------|-------------|
-| `*-summary.md` | One-page clinician-facing summary (≤ 40 lines) — cancer call, purity, top therapies, caveats |
-| `*-actionable.md` | Oncologist treatment-review — agents with cancer-type-indicated approvals + trials, cross-referenced against this sample |
-| `*-analysis.md` | Structured deep-dive — disease-state, step-0 evidence, candidate trace, purity components, decomposition, background signatures |
-| `*-targets.md` | Biomarker panel + full therapy-target landscape + tumor-expression ranges |
-| `*-provenance.md` | Attribution chain — library-prep → preservation → TME → tumor-core step by step |
+| `*-summary.md` | One-page distilled read (≤ 40 lines) — cancer call, purity, top therapies, caveats |
+| `*-analysis.md` | Main interpreted report — disease-state, step-0 evidence, candidate trace, purity components, decomposition, and therapy landscape |
+| `*-evidence.md` | Stepwise/raw appendix — attribution chain plus full biomarker/target evidence tables |
 | `*-analysis-parameters.json` | Free model parameters plus selected sample mode and embedding methods |
 | `*-all-figures.pdf` | All figures combined into a single PDF |
 | `*-figure-audit.pdf` | Figure packet grouped into redundant / low-value / distinctive sections |
@@ -2407,8 +2546,9 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-treatments.png` | Therapy target expression by modality |
 | `*-target-safety.png` | Therapy target normal tissue expression |
-| `*-priority-targets.png` | Integrated priority ranking: actionability + tumor-source support + uncertainty |
-| `*-curated-target-evidence.png` | Curated cancer-type targets with tumor-core band, normal context, and maturity |
+| `*-priority-targets.png` | Priority ranking only: integrated score across tumor support, readiness, safety, and tumor level |
+| `*-priority-target-context.png` | Separate evidence page: tumor-expression range plus tumor-source, healthy-tissue, and maturity context |
+| `*-curated-target-evidence.png` | Curated cancer-type targets with tumor-expression range, normal context, and maturity |
 | `*-purity-targets.png` | Tumor-expression ranges for therapeutic targets |
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
@@ -2437,10 +2577,10 @@ def _purity_metric_label(sample_mode):
 
 
 def _purity_ci_phrase(purity):
-    """Render the purity estimate and CI with an explicit low-confidence
+    """Render the purity estimate and heuristic range with an explicit low-confidence
     tag when the interval is so wide it provides almost no constraint
-    (issue #79). A 19%-100% CI should NOT look the same to a reader as
-    a 58%-70% CI.
+    (issue #79). A 19%-100% range should NOT look the same to a reader as
+    a 58%-70% range.
     """
     est = purity["overall_estimate"]
     lo = purity["overall_lower"]
@@ -2449,18 +2589,18 @@ def _purity_ci_phrase(purity):
     core = f"**{est:.0%}** (range {lo:.0%}–{hi:.0%})"
     if tier == "degenerate":
         core += (
-            " — **degenerate CI**: input had no per-gene variation so "
-            "uncertainty could not be estimated (typical of synthetic "
+            " — **degenerate range**: input had no per-gene variation so "
+            "uncertainty could not be estimated from the data (typical of synthetic "
             "/ cohort-median inputs)"
         )
     elif tier == "low":
         core += (
-            " — **⚠ low-confidence**: the CI spans "
+            " — **⚠ low-confidence**: the range spans "
             f"{(hi - lo):.0%}, so per-gene tumor-expression estimates "
             "derived from this purity carry wide error bars"
         )
     elif tier == "moderate":
-        core += " (moderate-width CI)"
+        core += " (moderate-width range)"
     return core
 
 
@@ -2471,7 +2611,7 @@ def _summary_mode_clause(sample_mode, purity, top_tissues):
         return (
             f"The sample was analyzed in **pure-population mode**. The reported "
             f"purity-like estimate ({ci_phrase}) is best read as "
-            "a coherence check against the matched lineage profile rather than as a bulk admixture fraction. "
+            "a coherence check against the likely tissue-of-origin profile rather than as a bulk admixture fraction. "
             f"Residual background signatures are limited ({tissue_str}). "
         )
     if sample_mode == "heme":
@@ -2501,15 +2641,20 @@ def _background_section_config(sample_mode):
     if sample_mode == "heme":
         return (
             "Lineage / Background Context",
-            "These scores summarize hematopoietic or tissue-context programs that remain in the sample. "
+            "These scores summarize hematopoietic or tissue-related programs that remain in the sample. "
             "For heme specimens they should be read as lineage/background context rather than metastatic site calls.\n",
         )
     return (
-        "Background Tissue Signatures",
-        "These scores are normalised similarity to reference nTPM profiles "
-        "— they summarize which residual non-tumor backgrounds the sample "
-        "resembles after normalization. Useful context, not literal "
-        "anatomical site calls or composition percentages in mixed samples.\n",
+        "Residual Tissue-like Programs",
+        "These scores are normalized similarity to reference nTPM profiles. "
+        "They summarize residual tissue-like programs left in the sample after normalization, "
+        "which can reflect host background, ectopic lineage programs, developmental/neuronal programs, "
+        "or CTA-like/testis-like signal. They are not literal site calls or composition percentages. "
+        "Host-tissue context is handled separately in the decomposition section. "
+        "Not every anatomic site exists as its own reference row here "
+        "(for example, the panel has bone marrow but not a standalone bone/osteoblast tissue row). "
+        "The `N genes` column is the size of the retained tissue-specific panel, and "
+        "`Top matching genes` shows the strongest sample genes from that panel.\n",
     )
 
 
@@ -2644,7 +2789,57 @@ def _candidate_label_options(analysis):
     return labels[:2]
 
 
-def _template_site_display(template_name):
+_TEMPLATE_PRIMARY_COMPATIBILITY = {
+    "met_adrenal": ("adrenal",),
+    "met_bone": ("bone",),
+    "met_brain": ("brain", "cerebr", "cns"),
+    "met_liver": ("liver",),
+    "met_lung": ("lung",),
+    "met_lymph_node": ("lymph_node", "lymph", "tonsil", "thymus", "spleen"),
+    "met_peritoneal": ("peritone", "mesothelial", "appendix"),
+    "met_skin": ("skin",),
+    "met_soft_tissue": ("soft_tissue", "smooth_muscle", "adipose", "skeletal_muscle", "vascular"),
+}
+
+
+def _analysis_primary_descriptor(analysis=None, cancer_code=None):
+    lookup_code = None
+    if analysis is not None:
+        try:
+            lookup_code = resolved_subtype_code_for_analysis(analysis)
+        except Exception:
+            lookup_code = None
+    lookup_code = lookup_code or str(cancer_code or "").strip() or None
+    if not lookup_code:
+        return "", None
+    try:
+        from .gene_sets_cancer import cancer_type_registry
+
+        reg = cancer_type_registry()
+        match = reg[reg["code"] == lookup_code]
+        if not match.empty:
+            row = match.iloc[0]
+            bits = [
+                str(row.get("primary_tissue") or "").strip(),
+                str(row.get("primary_template") or "").strip(),
+            ]
+            desc = " ".join(bit for bit in bits if bit and bit.lower() != "nan").lower()
+            return desc, lookup_code
+    except Exception:
+        pass
+    return str(lookup_code).lower(), lookup_code
+
+
+def _template_primary_compatible(template_name, *, analysis=None, cancer_code=None):
+    template_text = str(template_name or "").strip()
+    if not template_text.startswith("met_"):
+        return False
+    desc, _ = _analysis_primary_descriptor(analysis=analysis, cancer_code=cancer_code)
+    keywords = _TEMPLATE_PRIMARY_COMPATIBILITY.get(template_text, ())
+    return any(keyword in desc for keyword in keywords)
+
+
+def _template_site_display(template_name, *, analysis=None, cancer_code=None):
     mapping = {
         "met_adrenal": "adrenal",
         "met_bone": "bone",
@@ -2652,32 +2847,34 @@ def _template_site_display(template_name):
         "met_liver": "liver",
         "met_lung": "lung",
         "met_lymph_node": "lymph node",
-        "met_peritoneal": "peritoneum",
+        "met_peritoneal": "peritoneal",
         "met_skin": "skin",
-        "met_soft_tissue": "soft tissue",
+        "met_soft_tissue": "soft-tissue",
         "solid_primary": "primary site",
         "pure_population": "pure population",
         "heme_blood": "blood",
         "heme_marrow": "marrow",
         "heme_nodal": "lymphoid / nodal",
     }
-    return mapping.get(template_name, template_name.replace("_", " "))
+    template_text = str(template_name or "").strip()
+    base = mapping.get(template_text, template_text.replace("_", " "))
+    if template_text == "solid_primary":
+        return "primary site"
+    if template_text.startswith("met_"):
+        if _template_primary_compatible(template_text, analysis=analysis, cancer_code=cancer_code):
+            return f"primary-compatible {base} context"
+        return f"{base}-associated host context"
+    return base
 
 
-def _hypothesis_display_label(result, *, primary_code=None):
-    cancer_label = str(getattr(result, "cancer_type", "") or "").strip()
-    template_label = _template_site_display(
-        str(getattr(result, "template", "") or "").strip()
+def _hypothesis_display_label(result, *, primary_code=None, analysis=None):
+    cancer_code = str(getattr(result, "cancer_type", "") or "").strip()
+    template = str(getattr(result, "template", "") or "").strip()
+    return _hypothesis_label(
+        f"{cancer_code} / {template}",
+        primary_code=primary_code,
+        analysis=analysis,
     )
-    if not cancer_label:
-        return template_label
-    if template_label == "primary site":
-        if primary_code and cancer_label == primary_code:
-            return f"{cancer_label} primary-site pattern"
-        return f"{cancer_label}-like primary-site pattern"
-    if primary_code and cancer_label == primary_code:
-        return f"{cancer_label} {template_label} pattern"
-    return f"{cancer_label}-like {template_label} pattern"
 
 
 def _analysis_constraints(
@@ -2726,6 +2923,7 @@ def _summarize_sample_call(analysis, decomp_results, sample_mode):
     reported_context = None
     reported_site = None
     site_note = None
+    site_primary_compatible = False
 
     if best is not None:
         if sample_mode == "pure":
@@ -2734,13 +2932,16 @@ def _summarize_sample_call(analysis, decomp_results, sample_mode):
             reported_context = "heme"
         elif best.template == "solid_primary":
             reported_context = "primary"
-        elif best.template.startswith("met_"):
-            reported_context = "met"
+        site_primary_compatible = _template_primary_compatible(
+            best.template,
+            analysis=analysis,
+            cancer_code=analysis.get("cancer_type"),
+        )
 
         if fit_quality.get("label") == "weak" and best.template.startswith("met_"):
             site_indeterminate = True
             context_indeterminate = True
-            site_note = "Weak subtype fit prevents a reliable metastatic site call."
+            site_note = "Weak subtype fit prevents a reliable site-context call."
         elif best.template.startswith("met_"):
             if (
                 "Primary tissue support exceeds metastatic-site support" in best.warnings
@@ -2749,16 +2950,26 @@ def _summarize_sample_call(analysis, decomp_results, sample_mode):
             ):
                 site_indeterminate = True
                 context_indeterminate = True
-                site_note = "Host-site evidence is not strong enough to trust a specific metastatic template."
+                site_note = "Background evidence is not strong enough to trust a specific background/site model."
 
         if not site_indeterminate:
-            reported_site = _template_site_display(best.template)
+            reported_site = _template_site_display(
+                best.template,
+                analysis=analysis,
+                cancer_code=analysis.get("cancer_type"),
+            )
+            if site_primary_compatible and best.template.startswith("met_"):
+                site_note = (
+                    "This background/site match is compatible with the cancer's native primary tissue, "
+                    "so it is not treated as evidence of metastasis."
+                )
 
     label_display = " or ".join(label_options) if label_options else analysis.get("cancer_type")
     hypothesis_display = [
         _hypothesis_display_label(
             row,
             primary_code=analysis.get("cancer_type"),
+            analysis=analysis,
         )
         for row in hypothesis_options[:2]
     ]
@@ -2769,6 +2980,7 @@ def _summarize_sample_call(analysis, decomp_results, sample_mode):
         "reported_site": reported_site,
         "site_indeterminate": site_indeterminate,
         "site_note": site_note,
+        "site_primary_compatible": site_primary_compatible,
         "hypothesis_display": hypothesis_display,
     }
 
@@ -2788,10 +3000,71 @@ def _next_best_support_gap(candidate_trace):
     return runner.get("code"), top_n / runner_n
 
 
+def _cancer_label(code, *, include_code=True):
+    code_text = str(code or "").strip()
+    if not code_text:
+        return "this cancer type"
+    display_name = cancer_code_display_name(
+        code_text,
+        fallback=CANCER_TYPE_NAMES.get(code_text, code_text),
+    )
+    if not display_name or display_name.lower() == code_text.lower():
+        return code_text
+    if include_code:
+        return f"{code_text} ({display_name})"
+    return display_name
+
+
+def _hypothesis_label(text, *, primary_code=None, analysis=None):
+    label = str(text or "").strip()
+    if not label:
+        return ""
+    if " pattern" in label or "-like " in label:
+        return label
+    if " / " not in label:
+        return _cancer_label(label)
+    cancer_code, template = [part.strip() for part in label.split(" / ", 1)]
+    cancer_label = _cancer_label(cancer_code)
+    template_label = _template_site_display(
+        template,
+        analysis=analysis,
+        cancer_code=primary_code or cancer_code,
+    )
+    if template_label == "primary-site-compatible context":
+        if primary_code and cancer_code == primary_code:
+            return f"{cancer_label} primary-site pattern"
+        return f"{cancer_label}-like primary-site pattern"
+    if template_label.endswith("context"):
+        if primary_code and cancer_code == primary_code:
+            return f"{cancer_label} {template_label}"
+        return f"{cancer_label}-like {template_label}"
+    if primary_code and cancer_code == primary_code:
+        return f"{cancer_label} {template_label} pattern"
+    return f"{cancer_label}-like {template_label} pattern"
+
+
 def _strip_terminal_punctuation(text):
     if text is None:
         return ""
     return str(text).strip().rstrip(".;:! ")
+
+
+def _format_tissue_driver_genes(driver_rows, *, top_n=5):
+    drivers = list(driver_rows or [])[:top_n]
+    if not drivers:
+        return "—"
+    parts = []
+    for row in drivers:
+        gene = str(row.get("gene") or "").strip()
+        if not gene:
+            continue
+        try:
+            tpm = float(row.get("sample_tpm") or 0.0)
+        except Exception:
+            tpm = 0.0
+        tpm_text = f"{tpm:.0f}" if tpm >= 10 else f"{tpm:.1f}"
+        parts.append(f"{gene} ({tpm_text} TPM)")
+    return ", ".join(parts) if parts else "—"
 
 
 def _target_reliability_series(df, *, category=None):
@@ -2847,13 +3120,16 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
     if candidate_trace:
         best = candidate_trace[0]
         runner = candidate_trace[1] if len(candidate_trace) > 1 else None
-        sentence = f"- **Classifier line**: {best['code']} is the leading label"
+        sentence = f"- **Classifier line**: {_cancer_label(best['code'])} is the leading label"
         if runner is not None:
             runner_norm = float(runner.get("support_norm", 0.0) or 0.0)
             if runner_norm > 0:
-                sentence += f", ahead of {runner['code']} by {1.0 / runner_norm:.1f}x on normalized support"
+                sentence += (
+                    f", ahead of {_cancer_label(runner['code'])} "
+                    f"by {1.0 / runner_norm:.1f}x on normalized support"
+                )
             else:
-                sentence += f", with {runner['code']} the next candidate"
+                sentence += f", with {_cancer_label(runner['code'])} the next candidate"
         if best.get("signature_score") is not None:
             sentence += f"; signature {best['signature_score']:.2f}"
         if best.get("lineage_concordance") is not None:
@@ -2863,28 +3139,36 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
 
     if hvt is not None and getattr(hvt, "top_tcga_cohorts", None):
         coarse = str(hvt.top_tcga_cohorts[0][0]).replace("FPKM_", "")
+        coarse_label = _cancer_label(coarse)
         if coarse == cancer_code:
             bullets.append(
-                f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}` and its top TCGA match ({coarse}) agrees with the working call."
+                f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}` and its top TCGA cohort match, "
+                f"{coarse_label}, agrees with the working call."
             )
         elif coarse in call_summary.get("label_options", []):
             bullets.append(
-                f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}` and keeps {coarse} alive as one of the same competing labels carried downstream."
+                f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}` and keeps {coarse_label} alive "
+                "as one of the same competing labels carried downstream."
             )
         else:
             bullets.append(
-                f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}`, but its top TCGA match is {coarse}; the final {cancer_code} call depends on the later classifier/decomposition evidence rather than the coarse screen alone."
+                f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}`, but its top TCGA cohort match "
+                f"is {coarse_label}; the final {_cancer_label(cancer_code)} call depends on the "
+                "later classifier/decomposition evidence rather than the coarse screen alone."
             )
 
     if best_decomp is not None:
         comp_bits = _composition_highlights(best_decomp)
         sentence = (
-            f"- **Decomposition line**: best template is {_hypothesis_display_label(best_decomp, primary_code=cancer_code)}"
+            f"- **Decomposition line**: best fit is "
+            f"{_hypothesis_display_label(best_decomp, primary_code=cancer_code, analysis=analysis)}"
         )
         if best_decomp.cancer_type == cancer_code:
             sentence += ", consistent with the classifier"
         else:
-            sentence += f", diverging from the classifier's {cancer_code} call"
+            sentence += f", diverging from the classifier's {_cancer_label(cancer_code)} call"
+        if call_summary.get("site_primary_compatible"):
+            sentence += "; this host context is compatible with the tumor's native primary tissue and is not specific for metastasis"
         if comp_bits:
             sentence += "; dominant non-tumor components are " + ", ".join(comp_bits)
         if getattr(best_decomp, "warnings", None):
@@ -2895,10 +3179,19 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
     parallel = []
     label_options = call_summary.get("label_options", [])
     if len(label_options) >= 2:
-        parallel.append("cancer-type labels " + " vs ".join(label_options[:2]))
+        parallel.append(
+            "cancer-type labels "
+            + " vs ".join(_cancer_label(label) for label in label_options[:2])
+        )
     hypothesis_display = call_summary.get("hypothesis_display", [])
     if len(hypothesis_display) >= 2:
-        parallel.append("template/site hypotheses " + " vs ".join(hypothesis_display[:2]))
+        parallel.append(
+            "template/site hypotheses "
+            + " vs ".join(
+                _hypothesis_label(label, primary_code=cancer_code, analysis=analysis)
+                for label in hypothesis_display[:2]
+            )
+        )
     if parallel:
         bullets.append(
             "- **Parallel hypotheses still alive**: " + "; ".join(parallel) + "."
@@ -2938,14 +3231,118 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
     return bullets
 
 
+def _strip_markdown_wrapper(md: str) -> str:
+    """Drop top-level title/comment wrappers and trailing cross-links."""
+    lines = md.splitlines()
+    while lines and (
+        not lines[0].strip()
+        or lines[0].startswith("# ")
+        or lines[0].startswith("<!--")
+    ):
+        lines.pop(0)
+    while lines and (
+        not lines[-1].strip()
+        or lines[-1].startswith("*See also:")
+        or lines[-1].startswith("*Full detail:")
+    ):
+        lines.pop()
+    return "\n".join(lines).strip()
+
+
+def _demote_markdown_headings(md: str, levels: int = 1) -> str:
+    if levels <= 0:
+        return md
+    prefix = "#" * levels
+    out = []
+    for line in md.splitlines():
+        if line.startswith("#"):
+            out.append(prefix + line)
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _extract_markdown_section(md: str, heading: str) -> str:
+    """Return one H2 section from ``md`` including its heading."""
+    lines = md.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if line.strip() == heading:
+            start = i
+            break
+    if start is None:
+        return ""
+    end = len(lines)
+    for i in range(start + 1, len(lines)):
+        if lines[i].startswith("## "):
+            end = i
+            break
+    return "\n".join(lines[start:end]).strip()
+
+
+def _build_evidence_report(
+    analysis,
+    ranges_df,
+    decomp_results,
+    cancer_code,
+    sample_id,
+    target_report_md,
+):
+    from .provenance import build_provenance_md
+
+    header_id = f": {sample_id}" if sample_id else ""
+    provenance_md = build_provenance_md(
+        analysis,
+        ranges_df,
+        decomp_results,
+        cancer_code=cancer_code,
+        sample_id=sample_id,
+    )
+    provenance_body = _demote_markdown_headings(
+        _strip_markdown_wrapper(provenance_md), levels=1,
+    )
+    target_body = _demote_markdown_headings(
+        _strip_markdown_wrapper(target_report_md), levels=1,
+    )
+
+    lines = [f"# Evidence{header_id}\n"]
+    lines.append(
+        "<!-- Less-distilled support for the summary and analysis: "
+        "stepwise deductions, attribution caveats, and full target tables. -->"
+    )
+    lines.append("")
+    lines.append(
+        "This appendix keeps the stepwise and table-heavy support behind the "
+        "distilled reports. Use it to audit how the call was assembled, inspect "
+        "uncertainty, or review the full target evidence tables."
+    )
+    lines.append("")
+    lines.append("## Stepwise attribution chain\n")
+    lines.append(provenance_body)
+    lines.append("")
+    lines.append("## Full target evidence\n")
+    lines.append(target_body)
+    return "\n".join(lines)
+
+
 def _generate_text_reports(
-    analysis, embedding_meta, prefix, decomp_results=None, input_path=None,
+    analysis,
+    embedding_meta,
+    prefix,
+    decomp_results=None,
+    input_path=None,
+    ranges_df=None,
+    sample_id=None,
 ):
     """Write the detailed ``*-analysis.md`` report."""
     cancer_code = analysis["cancer_type"]
     purity = analysis["purity"]
     mhc1 = analysis["mhc1"]
     top_tissues = analysis["tissue_scores"][:5]
+    tissue_score_details = {
+        row.get("tissue"): row for row in (analysis.get("tissue_score_details") or [])
+        if row.get("tissue")
+    }
     candidate_trace = analysis.get("candidate_trace", [])
     family_summary = analysis.get("family_summary", {})
     fit_quality = analysis.get("fit_quality", {})
@@ -2959,6 +3356,8 @@ def _generate_text_reports(
     best_decomp = decomp_results[0] if decomp_results else None
     family_display = family_summary.get("display")
     subtype_clause = family_summary.get("subtype_clause")
+
+    sample_context = analysis.get("sample_context")
 
     # Disease-state synthesis (#78) — still used by analysis.md.
     disease_state_paragraph = compose_disease_state_narrative(analysis)
@@ -2981,6 +3380,36 @@ def _generate_text_reports(
     # sees the clinical framing before descending into pipeline detail.
     if disease_state_paragraph:
         lines.append(f"**Disease state**: {disease_state_paragraph}\n")
+
+    lines.append("## Sample framing\n")
+    if sample_context is not None:
+        lines.append(
+            f"- **Input type**: {sample_context.library_prep.replace('_', ' ')} library prep; "
+            f"{sample_context.preservation.replace('_', ' ')} preservation."
+        )
+    if call_summary.get("label_options"):
+        if len(call_summary["label_options"]) == 1:
+            lines.append(
+                f"- **Working cancer call**: {_cancer_label(call_summary['label_options'][0])}."
+            )
+        else:
+            lines.append(
+                "- **Working cancer call**: provisional between "
+                + " and ".join(
+                    _cancer_label(label) for label in call_summary["label_options"][:2]
+                )
+                + "."
+            )
+    lines.append(
+        f"- **{_purity_metric_label(sample_mode).title()}**: {_purity_ci_phrase(purity)}."
+    )
+    if call_summary.get("site_indeterminate"):
+        lines.append("- **Background/site context**: indeterminate.")
+    elif call_summary.get("reported_site"):
+        lines.append(f"- **Background/site context**: {call_summary['reported_site']}.")
+    if call_summary.get("site_note"):
+        lines.append(f"- **Note**: {_strip_terminal_punctuation(call_summary['site_note'])}.")
+    lines.append("")
 
     integrated_bullets = _integrated_evidence_bullets(
         analysis, decomp_results or [],
@@ -3017,10 +3446,6 @@ def _generate_text_reports(
         lines.append(f"- **Top TCGA cohort matches**: {tcga_line}")
         # Surface the reasoning trace (which rule fired + rationale)
         # so a reader can audit how Step-0 arrived at the hint.
-        if hvt.reasoning_trace:
-            lines.append(
-                f"- **Reasoning rule**: {' → '.join(hvt.reasoning_trace)}"
-            )
         # Full tumor-evidence breakdown (per-channel scores + aggregate)
         # so the hint isn't a black box.
         lines.append(f"- **Evidence**: {hvt.evidence.synthesis()}")
@@ -3030,7 +3455,6 @@ def _generate_text_reports(
     # readers see whether the file we analysed was transcript-level vs
     # gene-level, whole-transcriptome vs panel, poly-A vs total RNA,
     # before they scrutinise downstream numbers.
-    sample_context = analysis.get("sample_context")
     if sample_context is not None:
         ctx_signals = sample_context.signals or {}
         lines.append("## Input characterization\n")
@@ -3108,15 +3532,27 @@ def _generate_text_reports(
         lines.append(f"- Ribosomal protein fraction: {deg['rp_fraction']:.1%}")
         if deg.get("long_short_ratio") is not None:
             lines.append(f"- Long/short transcript index: {deg['long_short_ratio']:.2f}")
-        if deg.get("matched_tissue"):
-            lines.append(f"- Matched tissue baseline: {deg['matched_tissue']} "
-                         f"(MT={deg['baseline_mt']:.1%}, RP={deg['baseline_rp']:.1%})")
-            if deg.get("mt_fold") is not None:
-                lines.append(f"- Fold over baseline: MT {deg['mt_fold']:.1f}×, RP {deg['rp_fold']:.1f}×")
         # #77: only echo the raw sample_quality "MT filtered" message
         # when the inferred library prep doesn't already explain it.
         prep = getattr(sample_context, "library_prep", None) if sample_context else None
         mt_expected_missing = prep in _MT_EXPECTED_MISSING_PREPS
+        suppress_mt_rp_baseline = mt_expected_missing and deg.get("mt_fraction", 1.0) < 0.005
+        if deg.get("matched_tissue") and not suppress_mt_rp_baseline:
+            lines.append(
+                f"- Normal-tissue QC baseline: {deg['matched_tissue']} "
+                f"(expected MT={deg['baseline_mt']:.1%}, RP={deg['baseline_rp']:.1%})"
+            )
+            if deg.get("mt_fold") is not None:
+                lines.append(
+                    f"- Relative to that QC baseline: MT {deg['mt_fold']:.1f}×, "
+                    f"RP {deg['rp_fold']:.1f}×"
+                )
+        elif deg.get("matched_tissue") and suppress_mt_rp_baseline:
+            lines.append(
+                "- MT/RP baseline comparison is not emphasized here because this "
+                "library prep can under-represent mitochondrial reads; preservation "
+                "is judged mainly from the long/short transcript index."
+            )
         if deg["level"] not in ("normal", "unknown"):
             lines.append(f"- *{deg['message']}*")
         elif deg["level"] == "unknown" and not mt_expected_missing:
@@ -3158,10 +3594,15 @@ def _generate_text_reports(
         lines.append(f"- **Fit note**: {fit_quality['message']}")
     if call_summary.get("label_options"):
         if len(call_summary["label_options"]) == 1:
-            lines.append(f"- **Resolved label**: {call_summary['label_options'][0]}")
+            lines.append(
+                f"- **Resolved label**: {_cancer_label(call_summary['label_options'][0])}"
+            )
         else:
             lines.append(
-                f"- **Possible labels**: {call_summary['label_options'][0]} or {call_summary['label_options'][1]}"
+                "- **Possible labels**: "
+                + " or ".join(
+                    _cancer_label(label) for label in call_summary["label_options"][:2]
+                )
             )
     if family_display:
         lines.append(f"- **Family-level call**: {family_display}")
@@ -3186,28 +3627,28 @@ def _generate_text_reports(
     if candidate_trace:
         lines.append("- **Top candidates** (geomean · normalized):")
         for row in candidate_trace[:5]:
-            name = CANCER_TYPE_NAMES.get(row["code"], row["code"])
             lines.append(
-                f"  - **{row['code']}** ({name}): "
+                f"  - **{_cancer_label(row['code'])}**: "
                 f"{row.get('support_geomean', 0.0):.2f} · {row.get('support_norm', 0.0):.2f}"
             )
     else:
         top_cancers = analysis.get("top_cancers", [(cancer_code, analysis["cancer_score"])])
         for code, score in top_cancers[:5]:
-            name = CANCER_TYPE_NAMES.get(code, code)
-            lines.append(f"- **{code}** ({name}): {score:.3f}")
+            lines.append(f"- **{_cancer_label(code)}**: {score:.3f}")
     lines.append("")
 
     if candidate_trace:
         lines.append("### Cancer Type Inference — Candidate Ranking\n")
         lines.append(
-            "Each row is a TCGA cancer-type hypothesis considered by the classifier. "
-            "Three scores summarize the match; the top row is the working call.\n\n"
+            "Each row is a top-level cancer-code hypothesis considered by the classifier. "
+            "Most of these labels are broad TCGA-style cohorts, but later steps can also "
+            "use finer subtype and decomposition references. Three scores summarize the "
+            "match; the top row is the working call.\n\n"
             "- **Signature** (0–1): raw match quality between the sample's expression and "
-            "this cancer type's TCGA-derived signature genes, computed from z-scored "
-            "expression of cancer-type-enriched genes. Interpretable on its own — higher "
-            "means the lineage pattern is strongly present. Does not account for purity "
-            "or lineage concordance.\n"
+            "this candidate's broad reference signature, computed from z-scored expression "
+            "of cancer-type-enriched genes. Interpretable on its own — higher means the "
+            "candidate pattern is strongly present. Does not account for purity or lineage "
+            "concordance.\n"
             "- **Geomean** (0–1): the geometric mean of the five factors that feed the "
             "ranking (signature × purity × lineage support × signature stability × family "
             "factor). Stays bounded on [0, 1] so it's comparable across samples, unlike "
@@ -3217,9 +3658,9 @@ def _generate_text_reports(
             "is ≪ 1.0, the top call is well-isolated; values near 1.0 mean the call is "
             "ambiguous between rows.\n\n"
             "Supporting columns: **Purity** is the overall tumor-purity estimate under "
-            "this hypothesis; **Lineage** is an orthogonal per-lineage-gene purity; "
-            "**Concordance** is how well the sample's lineage-gene pattern matches the "
-            "expected pattern for that cancer type.\n"
+            "this hypothesis; **Lineage** is a purity estimate derived only from the "
+            "curated lineage genes for that candidate cancer type; **Concordance** is "
+            "how well those lineage genes match the expected pattern for that candidate.\n"
         )
         lines.append("| Cancer | Family | Signature | Geomean | Normalized | Purity | Lineage | Concordance |")
         lines.append("|--------|--------|-----------|---------|------------|--------|---------|-------------|")
@@ -3227,7 +3668,7 @@ def _generate_text_reports(
             lineage = row.get("lineage_purity")
             concordance = row.get("lineage_concordance")
             lines.append(
-                f"| {row['code']} | {row.get('family_label') or '—'} | "
+                f"| {_cancer_label(row['code'])} | {row.get('family_label') or '—'} | "
                 f"{row.get('signature_score', 0.0):.3f} | "
                 f"{row.get('support_geomean', 0.0):.3f} | "
                 f"{row.get('support_norm', 0.0):.3f} | "
@@ -3304,12 +3745,15 @@ def _generate_text_reports(
         degradation_severity=deg_for_tier,
     )
     analysis["purity_confidence"] = purity_tier
+    tier_note = str(getattr(purity_tier, "inline_note", "") or "")
+    tier_note = tier_note.replace("purity CI", "purity range")
+    tier_note = tier_note.replace("CI", "range")
     if purity_tier.tier == "degenerate":
-        tier_suffix = f" — **degenerate CI**: {purity_tier.inline_note}"
+        tier_suffix = f" — **degenerate range**: {tier_note}"
     elif purity_tier.tier in {"low", "moderate"} and purity_tier.reasons:
         tier_suffix = (
             f" — **{purity_tier.tier} confidence** "
-            f"({purity_tier.inline_note})"
+            f"({tier_note})"
         )
     else:
         tier_suffix = ""
@@ -3467,18 +3911,18 @@ def _generate_text_reports(
     bg_title, bg_intro = _background_section_config(sample_mode)
     lines.append(f"## {bg_title}\n")
     lines.append(bg_intro)
-    lines.append("| Tissue | Score | N genes |")
-    lines.append("|--------|-------|---------|")
+    lines.append("| Reference tissue/program | Score | N genes | Top matching genes |")
+    lines.append("|--------------------------|-------|---------|--------------------|")
     for tissue, score, n in top_tissues:
-        lines.append(f"| {tissue} | {score:.3f} | {n} |")
+        detail = tissue_score_details.get(tissue, {})
+        drivers = _format_tissue_driver_genes(detail.get("drivers"))
+        lines.append(f"| {tissue} | {score:.3f} | {n} | {drivers} |")
     lines.append("")
 
     if decomp_results or call_summary.get("site_indeterminate") or call_summary.get("hypothesis_display"):
         lines.append(f"## {_decomposition_section_title(sample_mode)}\n")
         if call_summary.get("site_indeterminate"):
             lines.append("Reported site/template call: **indeterminate**.\n")
-            if call_summary.get("site_note"):
-                lines.append(call_summary["site_note"] + "\n")
         elif call_summary.get("reported_site") is not None:
             lines.append(
                 f"Reported template/site call: **{call_summary['reported_site']}**"
@@ -3488,10 +3932,23 @@ def _generate_text_reports(
                     else "\n"
                 )
             )
+        if call_summary.get("site_note"):
+            lines.append(call_summary["site_note"] + "\n")
         if len(call_summary.get("hypothesis_display", [])) == 2:
             lines.append(
-                f"Top broad possibilities: **{call_summary['hypothesis_display'][0]}** "
-                f"or **{call_summary['hypothesis_display'][1]}**.\n"
+                "Top broad possibilities: **"
+                + _hypothesis_label(
+                    call_summary["hypothesis_display"][0],
+                    primary_code=cancer_code,
+                    analysis=analysis,
+                )
+                + "** or **"
+                + _hypothesis_label(
+                    call_summary["hypothesis_display"][1],
+                    primary_code=cancer_code,
+                    analysis=analysis,
+                )
+                + "**.\n"
             )
         if decomp_results:
             lines.append("| Hypothesis | Score | Fraction | Tissue | Warnings |")
@@ -3499,7 +3956,7 @@ def _generate_text_reports(
             for row in decomp_results[:6]:
                 warnings = "; ".join(row.warnings) if row.warnings else ""
                 lines.append(
-                    f"| {row.cancer_type} / {row.template} | {row.score:.3f} | "
+                    f"| {_hypothesis_display_label(row, primary_code=cancer_code, analysis=analysis)} | {row.score:.3f} | "
                     f"{row.purity:.3f} | {row.template_tissue_score:.3f} | {warnings} |"
                 )
             lines.append("")
@@ -3540,14 +3997,44 @@ def _generate_text_reports(
                 )
             lines.append("")
 
+    if ranges_df is not None:
+        try:
+            from .brief import build_actionable
+
+            therapy_md = build_actionable(
+                analysis,
+                ranges_df,
+                cancer_code=cancer_code,
+                disease_state=disease_state_paragraph or "",
+                sample_id=sample_id,
+            )
+            therapy_section = _extract_markdown_section(
+                therapy_md, "## Therapy landscape",
+            )
+            if therapy_section:
+                lines.append(therapy_section)
+                lines.append("")
+        except Exception as exc:
+            print(f"[warn] Could not fold therapy landscape into analysis.md: {exc}")
+
+        lines.append(
+            "*Stepwise deductions and the full target tables live in `*-evidence.md`.*"
+        )
+
     analysis_path = "%s-analysis.md" % prefix if prefix else "analysis.md"
     with open(analysis_path, "w") as f:
         f.write("\n".join(lines))
     print(f"[report] Saved {analysis_path}")
 
 
-def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_result):
-    """Write tumor-expression range report using purity/decomposition bounds."""
+def _build_target_report(
+    ranges_df,
+    analysis,
+    cancer_type,
+    purity_result,
+    decomp_results=None,
+):
+    """Return tumor-expression range report using purity/decomposition bounds."""
     import pandas as pd
 
     cancer_code = cancer_type
@@ -3595,7 +4082,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             f"`{sample_context.degradation_severity}` degradation"
             f"{index_str}. Long-transcript TPMs are under-represented; "
             "tumor-expression estimates for long-gene targets carry "
-            "higher uncertainty than the reported CIs suggest.\n"
+            "higher uncertainty than the reported ranges suggest.\n"
         )
     if sample_mode == "pure":
         lines.append(
@@ -3662,7 +4149,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     ]
     call_summary = analysis.get("call_summary") or _summarize_sample_call(
         analysis,
-        [],
+        decomp_results or [],
         sample_mode=sample_mode,
     )
     fit_quality = analysis.get("fit_quality", {})
@@ -3670,6 +4157,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     disease_state = compose_disease_state_narrative(analysis)
     matched_normal_summary = _matched_normal_split_summary(ranges_df)
     mhc_status_label, mhc_status_text = _mhc1_status_text(analysis.get("mhc1"))
+    panel_target_symbols = set()
 
     # #110: cancer-type-scoped biomarker panel + therapy landscape.
     # Emitted before the general surface/intracellular tables so a
@@ -3760,6 +4248,11 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                 cancer_therapy_targets(panel_code, subtype=panel_subtype)
                 if panel_subtype else cancer_therapy_targets(panel_code)
             )
+            panel_target_symbols = {
+                str(sym).strip()
+                for sym in targets_df.get("symbol", pd.Series(dtype=object)).dropna().astype(str)
+                if str(sym).strip() and str(sym).strip().lower() != "nan"
+            }
             if len(targets_df):
                 lines.append(
                     "| Target | Agent | Class | Phase | Indication | "
@@ -3891,15 +4384,29 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         headline_surface["_status_rank"] = headline_surface["_status"].map(
             {"supported": 0, "provisional": 1, "unsupported": 2}
         ).fillna(9)
+        headline_surface["_therapy_rank"] = headline_surface["therapies"].fillna("").astype(str).map(
+            lambda text: 0 if text.strip() else 1
+        )
+        headline_surface["_therapy_count"] = headline_surface["therapies"].fillna("").astype(str).map(
+            lambda text: len([piece for piece in text.split(",") if piece.strip()])
+        )
+        headline_surface["_category_rank"] = headline_surface["category"].fillna("").astype(str).map(
+            lambda text: 0 if text == "therapy_target" else 1
+        )
         headline_surface = headline_surface.sort_values(
-            ["_status_rank", "median_est"],
-            ascending=[True, False],
+            ["_status_rank", "_therapy_rank", "_category_rank", "_therapy_count", "median_est"],
+            ascending=[True, True, True, False, False],
         )
     else:
         headline_surface["_status"] = pd.Series(dtype=object)
         headline_surface["_status_rank"] = pd.Series(dtype=float)
     safe_surface = headline_surface[headline_surface["_status"] == "supported"].head(3)
     mixed_surface = headline_surface[headline_surface["_status"] == "provisional"].head(3)
+    extra_surface = headline_surface[
+        (headline_surface["_status"] == "supported")
+        & ~headline_surface["symbol"].astype(str).isin(panel_target_symbols)
+        & ~headline_surface["symbol"].astype(str).isin(safe_surface["symbol"].astype(str))
+    ].head(3)
     best_cta = ctas.head(3)
     clean_intracellular = intracellular[intracellular_status == "supported"].head(3)
 
@@ -3908,12 +4415,15 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         if len(call_summary["label_options"]) == 2:
             lines.append(
                 f"- **Working label**: provisional between "
-                f"**{call_summary['label_options'][0]}** and **{call_summary['label_options'][1]}**."
+                f"**{_cancer_label(call_summary['label_options'][0])}** and "
+                f"**{_cancer_label(call_summary['label_options'][1])}**."
             )
         else:
-            lines.append(f"- **Working label**: **{call_summary['label_options'][0]}**.")
+            lines.append(
+                f"- **Working label**: **{_cancer_label(call_summary['label_options'][0])}**."
+            )
     else:
-        lines.append(f"- **Working label**: **{cancer_code}** ({cancer_name}).")
+        lines.append(f"- **Working label**: **{_cancer_label(cancer_code)}**.")
     if family_display:
         lines.append(f"- **Family-level framing**: {family_display}.")
     if fit_quality.get("label"):
@@ -3922,9 +4432,9 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
             fit_line += f" — {_strip_terminal_punctuation(fit_quality['message'])}"
         lines.append(fit_line + ".")
     if call_summary.get("site_indeterminate"):
-        lines.append("- **Context / site template**: indeterminate; treat site-specific decomposition as provisional.")
+        lines.append("- **Background/site model**: indeterminate; treat this part of the decomposition as provisional.")
     elif call_summary.get("reported_site"):
-        lines.append(f"- **Context / site template**: {call_summary['reported_site']}.")
+        lines.append(f"- **Background/site model**: {call_summary['reported_site']}.")
     lines.append(f"- **Analysis mode**: {_sample_mode_display(sample_mode)}.")
     lines.append(
         f"- **{_purity_metric_label(sample_mode).title()}**: "
@@ -3954,7 +4464,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         context_cautions.append("active IFN response can inflate HLA/MHC-class and other interferon-stimulated targets")
     if context_cautions:
         lines.append(f"- **Interpretation caveats**: {'; '.join(context_cautions)}.")
-    integrated_bullets = _integrated_evidence_bullets(analysis)
+    integrated_bullets = _integrated_evidence_bullets(analysis, decomp_results or [])
     if integrated_bullets:
         lines.append("")
         lines.append("### Integrated evidence synthesis\n")
@@ -3970,18 +4480,24 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
         )
     elif len(mixed_surface):
         lines.append(
-            "- **Surface-directed modalities**: no surface target stayed tumor-supported across the current uncertainty band; "
+            "- **Surface-directed modalities**: no surface target stayed tumor-supported across the current range; "
             "best mixed-source options are "
             + ", ".join(_format_target_stub(row) for _, row in mixed_surface.iterrows())
             + "."
         )
     elif len(surface_targets):
         lines.append(
-            "- **Surface-directed modalities**: no surface target stayed tumor-supported across the current uncertainty band; "
+            "- **Surface-directed modalities**: no surface target stayed tumor-supported across the current range; "
             "the leading rows remain mixed-source or background-dominant."
         )
     else:
         lines.append("- **Surface-directed modalities**: no surface target rose above the reporting threshold.")
+    if len(extra_surface):
+        lines.append(
+            "- **Additional non-panel surface leads**: "
+            + ", ".join(_format_target_stub(row) for _, row in extra_surface.iterrows())
+            + "."
+        )
     if len(best_cta):
         lines.append(
             "- **CTA / vaccine ideas**: "
@@ -3999,7 +4515,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     elif mhc_status_label == "adequate" and len(intracellular):
         lines.append(
             "- **Intracellular / TCR-style ideas**: MHC-I is adequate, but the current intracellular rows remain "
-            "mixed-source or background-dominant under the tumor-source uncertainty band."
+            "mixed-source or background-dominant under the current tumor-source range."
         )
     elif len(intracellular):
         lines.append(
@@ -4344,10 +4860,23 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     lines.append(f"**MHC-I status**: {mhc_status_text}")
     lines.append("")
 
+    return "\n".join(lines)
+
+
+def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_result):
+    """Back-compat wrapper that writes the standalone target report."""
+    target_md = _build_target_report(
+        ranges_df,
+        analysis,
+        cancer_type=cancer_type,
+        purity_result=purity_result,
+        decomp_results=analysis.get("decomposition_results"),
+    )
     target_path = "%s-targets.md" % prefix if prefix else "targets.md"
     with open(target_path, "w") as f:
-        f.write("\n".join(lines))
+        f.write(target_md)
     print(f"[report] Saved {target_path}")
+    return target_md
 
 
 @named("plot-expression")

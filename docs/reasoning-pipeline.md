@@ -183,7 +183,7 @@ Writes: `analysis["decomp_results"]` (list of candidates),
 `gene_attribution` DataFrame + `fractions` dict + `component_trace`.
 
 Consumed by: Step 5 reads the gene_attribution for per-target tumor
-TPM; Step 6 renders the component breakdown in provenance.md.
+TPM; Step 6 renders the component breakdown in evidence.md.
 
 ---
 
@@ -231,8 +231,8 @@ levels. Attribution flags:
 Writes: `analysis["expression_ranges"]` — DataFrame with one row
 per target gene.
 
-Consumed by: Step 6 renders targets.md deep tables + actionable
-therapy landscape + brief top-3 candidates.
+Consumed by: Step 6 renders evidence.md deep tables + analysis.md
+therapy landscape + summary.md top-line candidates.
 
 ---
 
@@ -328,20 +328,17 @@ resolver's output drives the cancer-call line and the subtype note.
 ## Step 6 — Report synthesis
 
 Modules: `pirlygenes.brief` (build_brief + build_actionable),
-`pirlygenes.cli` (summary.md, analysis.md, targets.md, provenance.md)
+`pirlygenes.cli` (summary.md, analysis.md, evidence.md)
 
-Reads the entire `analysis` dict and produces six markdown
+Reads the entire `analysis` dict and produces three markdown
 artefacts:
 
-- `*-brief.md` — ≤40-line tumor-board handoff (Step-0 banner,
-  cancer call, purity, disease state, top-3 therapies, caveats)
-- `*-actionable.md` — oncologist-facing review with therapy
-  landscape + biomarker panel
-- `*-summary.md` — narrative summary (Step-0 tissue composition
-  line at top, then cancer call, therapy state, purity)
-- `*-analysis.md` — full pipeline detail (every step's output)
-- `*-targets.md` — per-gene deep tables
-- `*-provenance.md` — step-by-step deduction chain
+- `*-summary.md` — distilled top-line read (cancer call, purity,
+  top therapies, caveats)
+- `*-analysis.md` — main interpreted report (pipeline detail +
+  therapy landscape)
+- `*-evidence.md` — step-by-step deduction chain + per-gene deep
+  tables
 
 Each of these surfaces evidence from every prior step so a reader
 can follow the reasoning from Step 0 context down to the final

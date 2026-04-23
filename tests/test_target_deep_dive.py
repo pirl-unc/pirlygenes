@@ -10,6 +10,7 @@ from pirlygenes.plot_target_deep_dive import (
     actionable_surface_targets,
     plot_actionable_targets,
     plot_curated_target_evidence,
+    plot_priority_target_context,
     plot_priority_targets,
     plot_tumor_attribution,
     plot_cta_deep_dive,
@@ -238,6 +239,75 @@ def test_plot_priority_targets_saves_png(tmp_path):
     )
     out = tmp_path / "priority-targets.png"
     fig = plot_priority_targets(
+        ranges_df,
+        "PRAD",
+        target_panel=target_panel,
+        save_to_filename=str(out),
+    )
+    assert fig is not None
+    assert out.exists()
+
+
+def test_plot_priority_target_context_saves_png(tmp_path):
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "FOLH1",
+                "observed_tpm": 87.0,
+                "attr_tumor_tpm": 34.0,
+                "attr_tumor_tpm_low": 18.0,
+                "attr_tumor_tpm_high": 40.0,
+                "attr_tumor_fraction": 0.39,
+                "attr_tumor_fraction_low": 0.21,
+                "attr_tumor_fraction_high": 0.45,
+                "attr_support_fraction": 0.67,
+                "matched_normal_tissue": "prostate",
+                "matched_normal_tpm": 46.0,
+                "attr_top_compartment": "matched_normal_prostate",
+                "tme_explainable": True,
+                "tme_dominant": False,
+                "matched_normal_over_predicted": False,
+                "therapy_supported": True,
+                "therapies": "ADC, radioligand",
+                "tcga_percentile": 0.97,
+                "category": "therapy_target",
+            },
+            {
+                "symbol": "FAP",
+                "observed_tpm": 44.0,
+                "attr_tumor_tpm": 17.0,
+                "attr_tumor_tpm_low": 10.0,
+                "attr_tumor_tpm_high": 24.0,
+                "attr_tumor_fraction": 0.39,
+                "attr_tumor_fraction_low": 0.23,
+                "attr_tumor_fraction_high": 0.55,
+                "attr_support_fraction": 0.0,
+                "matched_normal_tissue": "",
+                "matched_normal_tpm": 0.0,
+                "attr_top_compartment": "fibroblast",
+                "tme_explainable": True,
+                "tme_dominant": True,
+                "matched_normal_over_predicted": False,
+                "therapy_supported": True,
+                "therapies": "radioligand",
+                "tcga_percentile": 1.0,
+                "category": "therapy_target",
+            },
+        ]
+    )
+    target_panel = pd.DataFrame(
+        [
+            {
+                "symbol": "FOLH1",
+                "agent": "177Lu-PSMA-617",
+                "agent_class": "radioligand",
+                "phase": "approved",
+                "indication": "mCRPC",
+            },
+        ]
+    )
+    out = tmp_path / "priority-target-context.png"
+    fig = plot_priority_target_context(
         ranges_df,
         "PRAD",
         target_panel=target_panel,

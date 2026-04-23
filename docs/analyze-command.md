@@ -6,7 +6,7 @@ or Excel) and produces:
 
 - Figures (moved to `figures/` subdir)
 - A combined PDF (`{prefix}-all-figures.pdf`)
-- Text reports (`{prefix}-summary.md`, `{prefix}-analysis.md`, `{prefix}-targets.md`)
+- Text reports (`{prefix}-summary.md`, `{prefix}-analysis.md`, `{prefix}-evidence.md`)
 
 ## Usage
 
@@ -24,9 +24,9 @@ pirlygenes analyze input.csv \
 
 | File | Contents |
 |------|----------|
-| `{prefix}-summary.md` | One-paragraph natural language summary |
-| `{prefix}-analysis.md` | Structured analysis: cancer type, purity (with lineage gene calibration), MHC, tissue context, embedding genes |
-| `{prefix}-targets.md` | Therapeutic target analysis with tumor context, therapy landscape summary, and purity-adjusted expression |
+| `{prefix}-summary.md` | Distilled reader-facing summary |
+| `{prefix}-analysis.md` | Main interpreted report: cancer type, purity, therapy landscape, context, and reasoning |
+| `{prefix}-evidence.md` | Stepwise/raw appendix: attribution chain plus full biomarker and target tables |
 | `README.md` | Output directory index |
 
 ### Figures (in `figures/` subdir)
@@ -43,6 +43,8 @@ pirlygenes analyze input.csv \
 | `{prefix}-antigens.png` | Antigen gene expression (CTAs + surface) |
 | `{prefix}-treatments.png` | Therapy target gene expression |
 | `{prefix}-target-safety.png` | Therapy target normal tissue expression |
+| `{prefix}-priority-targets.png` | Priority ranking only: integrated score across tumor support, readiness, safety, and tumor level |
+| `{prefix}-priority-target-context.png` | Separate evidence page: tumor range plus tumor-source, healthy-tissue, and maturity context |
 | `{prefix}-target-tissues.pdf` | Per-gene tissue expression heatmaps |
 | `{prefix}-purity-adjusted.png` | 9-point tumor expression ranges with % of cancer type median |
 | `{prefix}-cancer-types-genes.png` | Gene set heatmap vs TCGA cancer types |
@@ -135,7 +137,7 @@ purity estimates (Aran et al. 2015).
 
 ## Therapeutic Target Categories
 
-The target report (`targets.md`) categorizes genes as:
+The evidence appendix (`evidence.md`) carries the full target tables and categorizes genes as:
 
 - **CTA** (Cancer-Testis Antigens): expressed in tumor but not normal
   adult tissue. Any expressed CTA is a potential vaccination target,
@@ -202,7 +204,8 @@ cancer, not by code branches:
 - `sample-subtype-signature.png` emits when the cancer has a
   cancer-specific `cancer_context` in `therapy-response-signatures.csv`.
 - `sample-subtype-attribution-*.png` emits when within-family
-  subtype refinement fires on the sample.
+  subtype refinement fires on the sample. These are audit/provenance
+  figures and are mainly surfaced in `figure-audit.pdf`.
 - Degenerate-pair resolution surfaces a `Subtype note:` line in
   `summary.md` whenever the resolver corrects or flags ambiguity.
 

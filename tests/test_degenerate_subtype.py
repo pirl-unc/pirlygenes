@@ -417,7 +417,7 @@ def test_brief_renders_corrected_subtype():
         sample_id="synthetic-bone-mdm2",
     )
     assert "osteosarcoma-consistent" in summary, summary
-    assert "Bone-site context favors osteosarcoma over liposarcoma" in summary, summary
+    assert "Bone-associated context favors osteosarcoma over liposarcoma" in summary, summary
     assert "MDM2 / CDK4 / FRS2 amplification" in summary, summary
     assert "site_template tiebreaker swapped" not in summary
 

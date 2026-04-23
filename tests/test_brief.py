@@ -93,6 +93,8 @@ def test_brief_is_compact():
     assert "# Summary" in md
     assert "**Cancer call:**" in md
     assert "**Purity:**" in md
+    assert "range" in md
+    assert "(CI " not in md
     assert "**Disease state:**" in md
     assert "Top candidate therapies" in md
 
@@ -163,14 +165,16 @@ def test_actionable_is_longer_but_structured():
     # Actionable should be > 15 lines (more detail than the brief).
     assert len(md.splitlines()) > 15
 
-    # Biomarker panel moved to targets.md in 4.41.0 to avoid a
-    # duplicated table. Actionable still carries the three core
-    # headings + links to targets.md as the panel source.
+    # Actionable remains available as an internal builder, but its
+    # cross-links should now point to the consolidated evidence.md
+    # appendix rather than a standalone targets.md file.
     for heading in ["Sample and confidence", "Cancer call and disease state",
                     "Therapy landscape"]:
         assert heading in md, f"missing heading: {heading}"
-    assert "*-targets.md*" in md or "`*-targets.md`" in md, (
-        "actionable should link to targets.md as the biomarker-panel source"
+    assert "range" in md
+    assert "(CI " not in md
+    assert "*-evidence.md*" in md or "`*-evidence.md`" in md, (
+        "actionable should link to evidence.md as the target-table source"
     )
 
 
@@ -199,7 +203,7 @@ def test_brief_uses_tumor_band_without_attribution_dict():
         disease_state="",
     )
     assert "tumor-specific decomposition was unavailable" not in md
-    assert "128 TPM (band 128-128" in md
+    assert "128 TPM (range 128-128" in md
 
 
 def test_actionable_renders_tumor_band_without_attribution_dict():

@@ -74,10 +74,9 @@ def build_provenance_md(
         lines.append(hvt.summary_line())
         if hvt.cancer_hint != "tumor-consistent":
             lines.append(
-                "\nThis Step-0 signal propagates forward: the downstream "
-                "cancer call is treated as soft-confidence in the report "
-                "synthesis, and the per-gene expression ranges carry a "
-                "wider CI to reflect the ambiguity."
+                "\nThis Step-0 signal carries forward: the downstream "
+                "cancer call is treated more cautiously, and the per-gene "
+                "expression ranges are widened to reflect the ambiguity."
             )
         lines.append("")
 
@@ -132,7 +131,7 @@ def build_provenance_md(
         if sev in ("moderate", "severe"):
             lines.append(
                 "\nImplication: long-transcript quantification is biased "
-                "downward — the purity CI has been widened and long-gene "
+                "downward — the purity range has been widened and long-gene "
                 "therapy targets are de-emphasized in the ranking."
             )
         elif pres == "ffpe":
@@ -203,8 +202,8 @@ def build_provenance_md(
             )
     lines.append("")
 
-    # Step 5 — tumor core
-    lines.append("## 5. Tumor-specific core\n")
+    # Step 5 — tumor-linked expression
+    lines.append("## 5. Tumor-linked expression\n")
     if ranges_df is not None and len(ranges_df):
         if "attribution" in ranges_df.columns:
             supported_core, provisional_core, _ = partition_tumor_core_rows(
@@ -226,18 +225,18 @@ def build_provenance_md(
                         if reason_summary else "."
                     )
                 )
-            # Top 5 supported tumor-core genes.
+            # Top 5 supported tumor-linked genes.
             top = supported_core.sort_values("attr_tumor_tpm", ascending=False).head(5)
             if len(top):
                 names = ", ".join(
                     f"{str(r['symbol'])} ({float(r['attr_tumor_tpm']):.0f})"
                     for _, r in top.iterrows()
                 )
-                lines.append(f"\nTop tumor-core genes (symbol, tumor TPM): {names}.")
+                lines.append(f"\nTop tumor-linked genes (symbol, tumor TPM): {names}.")
             elif len(provisional_core):
                 lines.append(
                     "\nNo gene cleared the current tumor-supported filter; "
-                    "use the mixed-source rows in `targets.md` and the TSV for manual review."
+                    "use the mixed-source evidence tables and the TSV for manual review."
                 )
     else:
         lines.append("*No target-expression ranges available.*")
@@ -250,13 +249,12 @@ def build_provenance_md(
             f"**Chain summary:** observed expression → library-prep-aware "
             f"artifact expectations → preservation-adjusted quantification → "
             f"decomposition subtracts {1 - float(overall):.0%} as non-tumor "
-            "compartments → residual is the tumor-specific core used for "
+            "compartments → residual is the tumor-linked signal used for "
             "therapy-target ranking."
         )
     lines.append("")
     lines.append(
-        "*See also: `*-summary.md`, `*-actionable.md`, "
-        "`*-analysis.md`, `*-targets.md`.*"
+        "*See also: `*-summary.md`, `*-analysis.md`, and `*-evidence.md`.*"
     )
     return "\n".join(lines)
 
@@ -269,7 +267,7 @@ def plot_provenance_funnel(
     save_dpi: int = 150,
 ):
     """Render ``*-provenance.png`` — horizontal stacked bar showing the
-    compartment fractions with tumor-core on the right and non-tumor
+    compartment fractions with tumor-linked signal on the right and non-tumor
     compartments to its left, one simple figure per sample.
 
     Returns the filename on success, ``None`` when the inputs don't
@@ -291,7 +289,7 @@ def plot_provenance_funnel(
     )
     rest_frac = sum(f for c, f in fractions.items() if f <= 0.005 and f > 0)
 
-    labels = ["tumor core"] + [_compartment_label(c) for c, _ in non_tumor]
+    labels = ["tumor-linked"] + [_compartment_label(c) for c, _ in non_tumor]
     values = [tumor_frac] + [f for _, f in non_tumor]
     if rest_frac > 0:
         labels.append("other")

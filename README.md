@@ -143,7 +143,7 @@ The flow runs in five steps:
 4. **Tumor-value adjustment.** Per gene, the TME and matched-normal contributions are subtracted from the observed TPM before dividing by purity. Genes whose observed signal is dominantly explained by non-tumor compartments are flagged `tme_explainable` rather than credited to the tumor.
 5. **Conservative tumor-specific core.** What remains after steps 1–4 is reported as a bounded per-gene tumor-expression range (9-point across low/median/high TME and low/median/high purity), with a low-purity caveat for samples below 20% purity where TME residuals would otherwise be amplified ≥5×.
 
-Each step *adds* to the attribution chain; none replaces earlier steps. The `analyze` report (summary.md, analysis.md, targets.md) surfaces the chain so a reader can see *why* a number is what it is, not just the final value.
+Each step *adds* to the attribution chain; none replaces earlier steps. The `analyze` reports (`summary.md`, `analysis.md`, `evidence.md`) surface the chain so a reader can see *why* a number is what it is, not just the final value.
 
 Reports and figures are ordered high-level → specific: start with what data we're looking at and how it was prepared (QC), then the coarse cancer-type call and what else is in the sample, then the deeper per-gene / per-target detail.
 
@@ -243,7 +243,7 @@ Every `analyze` run produces a directory with these files (prefixed by the input
 |---|---|
 | `*-summary.md` | One-paragraph natural language summary — cancer type, purity, key findings, quality warnings |
 | `*-analysis.md` | Structured analysis — sample quality, candidate trace, purity components, decomposition hypotheses, background signatures, embedding features |
-| `*-targets.md` | Therapeutic targets — tumor context, therapy landscape at a glance, CTAs, surface proteins, intracellular targets, safety context |
+| `*-evidence.md` | Stepwise/raw appendix — attribution chain, biomarker panel, therapy-target landscape, CTAs, surface proteins, intracellular targets, safety context |
 
 **Structured data** (TSV / JSON):
 

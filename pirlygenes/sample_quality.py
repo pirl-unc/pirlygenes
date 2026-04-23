@@ -251,7 +251,25 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None, library_prep=None):
     baseline_mt = None
     baseline_rp = None
     if tissue_scores:
-        for tissue, _score, _n in tissue_scores:
+        preferred_tissues = set()
+        try:
+            from .tumor_purity import _HOST_SITE_BACKGROUND_TISSUES
+
+            preferred_tissues = set(_HOST_SITE_BACKGROUND_TISSUES)
+        except Exception:
+            preferred_tissues = set()
+
+        ordered_tissues = list(tissue_scores)
+        if preferred_tissues:
+            ordered_tissues = [
+                row for row in tissue_scores
+                if row[0] in preferred_tissues
+            ] + [
+                row for row in tissue_scores
+                if row[0] not in preferred_tissues
+            ]
+
+        for tissue, _score, _n in ordered_tissues:
             if tissue in baselines:
                 matched_tissue = tissue
                 baseline_mt = baselines[tissue]["mt_fraction"]

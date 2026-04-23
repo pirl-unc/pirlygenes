@@ -83,16 +83,16 @@ def _display_subtype_code(code: Optional[str]) -> str:
 
 def _site_template_note_label(template_name: Optional[str]) -> str:
     mapping = {
-        "met_adrenal": "adrenal-site",
-        "met_bone": "bone-site",
-        "met_brain": "brain-site",
-        "met_liver": "liver-site",
-        "met_lung": "lung-site",
-        "met_lymph_node": "lymph-node",
-        "met_peritoneal": "peritoneal-site",
-        "met_skin": "skin-site",
-        "met_soft_tissue": "soft-tissue",
-        "solid_primary": "primary-site",
+        "met_adrenal": "adrenal-associated",
+        "met_bone": "bone-associated",
+        "met_brain": "brain-associated",
+        "met_liver": "liver-associated",
+        "met_lung": "lung-associated",
+        "met_lymph_node": "lymph-node-associated",
+        "met_peritoneal": "peritoneal-associated",
+        "met_skin": "skin-associated",
+        "met_soft_tissue": "soft-tissue-associated",
+        "solid_primary": "primary-site-compatible",
     }
     text = str(template_name or "").strip()
     if not text:
@@ -231,7 +231,7 @@ def _format_therapy_bullet(target_row, expression_row, target_panel=None) -> str
     if not tumor_band_available(expression_row):
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-            f"Observed {observed:.0f} TPM; a tumor-core uncertainty band was not available for this run."
+            f"Observed {observed:.0f} TPM; a tumor-expression range was not available for this run."
         )
     source = tumor_attribution_context(expression_row)
     normal = normal_expression_context(expression_row)
@@ -356,7 +356,7 @@ def _caveats_from_purity_tier(purity_tier, sample_context) -> List[str]:
         r = str(reason)
         if "wide purity CI" in r:
             out.append(
-                "Purity confidence interval is wide — target TPMs "
+                "Purity range is wide — target TPMs "
                 "could be over- or under-stated depending on the true "
                 "purity."
             )
@@ -592,7 +592,7 @@ def build_summary(
     if overall is not None and lower is not None and upper is not None:
         tier_label = getattr(purity_tier, "tier", "unknown") if purity_tier else "unknown"
         lines.append(
-            f"**Purity:** {overall:.0%} (CI {lower:.0%}–{upper:.0%}, "
+            f"**Purity:** {overall:.0%} (range {lower:.0%}–{upper:.0%}, "
             f"{tier_label} confidence)."
         )
 
@@ -660,8 +660,7 @@ def build_summary(
         lines.append("")
 
     lines.append(
-        "*Full detail: see the accompanying `*-actionable.md`, "
-        "`*-analysis.md`, and `*-targets.md`.*"
+        "*Full detail: see the accompanying `*-analysis.md` and `*-evidence.md`.*"
     )
 
     return "\n".join(lines)
@@ -729,7 +728,7 @@ def build_actionable(
             confidence_clause += " (" + "; ".join(tier_reasons) + ")"
         lines.append(
             f"\nPurity point estimate: **{overall:.0%}** "
-            f"(CI {lower:.0%}–{upper:.0%}). {confidence_clause.capitalize()}."
+            f"(range {lower:.0%}–{upper:.0%}). {confidence_clause.capitalize()}."
         )
 
     lines.append("")
@@ -873,7 +872,7 @@ def build_actionable(
         lines.append(
             "## Therapy landscape\n"
             f"*Cancer type {cancer_code} is not yet in the curated "
-            "key-genes panel — see `targets.md` for the generic "
+            "key-genes panel — see `evidence.md` for the generic "
             "expression-ranked tables.*\n"
         )
 
@@ -886,9 +885,8 @@ def build_actionable(
         lines.append("")
 
     lines.append(
-        "*See also: `*-analysis.md` (full pipeline detail), "
-        "`*-targets.md` (biomarker panel + complete target list), "
-        "`*-provenance.md` (sample-content chain).*"
+        "*See also: `*-analysis.md` (full integrated interpretation) "
+        "and `*-evidence.md` (stepwise deduction chain + full target tables).*"
     )
     return "\n".join(lines)
 

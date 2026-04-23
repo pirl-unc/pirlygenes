@@ -184,6 +184,18 @@ def test_exome_capture_library_prep_mutes_mt_warning():
     ), f"Expected informational MT line; got {result['flags']!r}"
 
 
+def test_quality_baseline_prefers_plausible_host_background_tissue():
+    """QC baseline selection should prefer plausible host-background tissues
+    over CTA-like tissues when both appear in the background ranking."""
+    df = _tcga_sample("COAD")
+    result = assess_sample_quality(
+        df,
+        tissue_scores=[("testis", 0.95, 20), ("thymus", 0.80, 20)],
+        library_prep="ribo_depleted",
+    )
+    assert result["degradation"]["matched_tissue"] == "thymus"
+
+
 def test_unknown_library_prep_still_warns_on_missing_mt():
     """Without a prep call, MT near zero should still flag as suspicious
     and the degradation level should still fall back to "unknown"."""

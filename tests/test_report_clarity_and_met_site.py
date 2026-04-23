@@ -202,6 +202,103 @@ def test_summary_md_structure_for_report_clarity(tmp_path):
     assert "similarity" in analysis_md.lower()
 
 
+def test_analysis_renders_background_tissue_driver_genes(tmp_path):
+    from types import SimpleNamespace
+    from pirlygenes.cli import _generate_text_reports
+
+    analysis = {
+        "cancer_type": "SARC",
+        "cancer_name": "Sarcoma",
+        "cancer_score": 0.42,
+        "cancer_type_source": "auto-detected",
+        "top_cancers": [("SARC", 0.42)],
+        "candidate_trace": [],
+        "family_summary": {},
+        "fit_quality": {},
+        "sample_mode": "solid",
+        "analysis_constraints": {},
+        "purity": {
+            "overall_estimate": 0.80,
+            "overall_lower": 0.48,
+            "overall_upper": 1.00,
+            "components": {
+                "stromal": {"enrichment": 3.15},
+                "immune": {"enrichment": 1.28},
+            },
+        },
+        "tissue_scores": [
+            ("testis", 0.703, 20),
+            ("retina", 0.667, 20),
+        ],
+        "tissue_score_details": [
+            {
+                "tissue": "testis",
+                "score": 0.703,
+                "n_genes": 20,
+                "drivers": [
+                    {"gene": "UBQLN3", "sample_tpm": 154.3, "percentile": 0.98},
+                    {"gene": "CXorf51B", "sample_tpm": 145.8, "percentile": 0.98},
+                ],
+            },
+            {
+                "tissue": "retina",
+                "score": 0.667,
+                "n_genes": 20,
+                "drivers": [
+                    {"gene": "FSTL5", "sample_tpm": 91.9, "percentile": 0.96},
+                    {"gene": "GNGT1", "sample_tpm": 1842.8, "percentile": 0.94},
+                ],
+            },
+        ],
+        "mhc1": {"HLA-A": 438, "HLA-B": 625, "HLA-C": 346, "B2M": 6027},
+        "mhc2": {},
+        "sample_context": SimpleNamespace(
+            library_prep="exome_capture",
+            library_prep_confidence=0.9,
+            preservation="unknown",
+            degradation_index=2.58,
+            missing_mt=False,
+            signals={},
+            degradation_severity="none",
+        ),
+        "quality": {
+            "degradation": {
+                "level": "normal",
+                "mt_fraction": 0.0,
+                "rp_fraction": 0.067,
+                "long_short_ratio": 2.75,
+                "matched_tissue": "testis",
+                "baseline_mt": 0.245,
+                "baseline_rp": 0.083,
+                "mt_fold": 0.0,
+                "rp_fold": 0.8,
+                "message": "Within normal range.",
+            },
+            "culture": {"level": "normal", "message": "No cell culture signal."},
+        },
+    }
+    embedding_meta = {
+        "method": "hierarchy",
+        "feature_kind": "hierarchical_scores",
+        "n_features": 12,
+        "n_types": 2,
+        "families": ["MESENCHYMAL"],
+        "sites": ["bone", "lung"],
+    }
+    prefix = str(tmp_path / "sarcoma-bg")
+
+    _generate_text_reports(analysis, embedding_meta, prefix, decomp_results=[])
+
+    detailed = (tmp_path / "sarcoma-bg-analysis.md").read_text()
+    assert "Top matching genes" in detailed
+    assert "UBQLN3 (154 TPM)" in detailed
+    assert "FSTL5 (92 TPM)" in detailed
+    assert "bone marrow but not a standalone bone/osteoblast tissue row" in detailed
+    assert "Matched tissue baseline" not in detailed
+    assert "Fold over baseline" not in detailed
+    assert "MT/RP baseline comparison is not emphasized here" in detailed
+
+
 def test_detailed_report_uses_generic_lineage_caveat(tmp_path):
     from pirlygenes.cli import _generate_text_reports
 

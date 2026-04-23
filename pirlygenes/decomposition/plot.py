@@ -14,9 +14,14 @@ _COMPOSITION_PALETTE = [
 
 def _render_composition_bar(ax, best, title="Sample composition (tumor + TME)"):
     """Horizontal stacked bar — tumor + TME components as fractions of sample."""
-    frac_items = sorted(best.fractions.items(), key=lambda item: item[1], reverse=True)
+    raw_items = sorted(best.fractions.items(), key=lambda item: item[1], reverse=True)
+    frac_items = [(name, value) for name, value in raw_items if value >= 0.005]
+    minor_total = sum(value for _, value in raw_items if value < 0.005)
+    if minor_total > 0:
+        frac_items.append(("other_minor", minor_total))
     left = 0.0
     for idx, (name, value) in enumerate(frac_items):
+        label_name = str(name).replace("_", " ")
         ax.barh(
             [0],
             [value * 100],
@@ -24,7 +29,7 @@ def _render_composition_bar(ax, best, title="Sample composition (tumor + TME)"):
             color=_COMPOSITION_PALETTE[idx % len(_COMPOSITION_PALETTE)],
             edgecolor="none",
             height=0.55,
-            label=f"{name} ({value:.0%})",
+            label=f"{label_name} ({value:.0%})",
         )
         left += value
     ax.set_xlim(0, 100)
@@ -77,7 +82,12 @@ def _render_component_breakdown(ax, best, title="TME cell-type breakdown"):
     ax.spines["right"].set_visible(False)
 
 
-def plot_decomposition_composition(best, save_to_filename=None, save_dpi=300):
+def plot_decomposition_composition(
+    best,
+    save_to_filename=None,
+    save_dpi=300,
+    title=None,
+):
     """Standalone stacked-bar of tumor + TME composition for the best hypothesis.
 
     Same content as panel 2 of plot_decomposition_summary, rendered
@@ -87,7 +97,7 @@ def plot_decomposition_composition(best, save_to_filename=None, save_dpi=300):
     fig, ax = plt.subplots(figsize=(12, 3.5))
     _render_composition_bar(
         ax, best,
-        title=f"Sample composition — {best.cancer_type} / {best.template}",
+        title=title or f"Sample composition — {best.cancer_type} / {best.template}",
     )
     fig.subplots_adjust(bottom=0.35)
     if save_to_filename:
@@ -96,7 +106,12 @@ def plot_decomposition_composition(best, save_to_filename=None, save_dpi=300):
     return fig
 
 
-def plot_decomposition_component_breakdown(best, save_to_filename=None, save_dpi=300):
+def plot_decomposition_component_breakdown(
+    best,
+    save_to_filename=None,
+    save_dpi=300,
+    title=None,
+):
     """Standalone horizontal-bar plot of per-component TME fractions.
 
     Same content as panel 3 of plot_decomposition_summary, rendered
@@ -106,7 +121,7 @@ def plot_decomposition_component_breakdown(best, save_to_filename=None, save_dpi
     fig, ax = plt.subplots(figsize=(10, 6))
     _render_component_breakdown(
         ax, best,
-        title=f"TME cell-type breakdown — {best.cancer_type} / {best.template}",
+        title=title or f"TME cell-type breakdown — {best.cancer_type} / {best.template}",
     )
     fig.tight_layout()
     if save_to_filename:
@@ -159,6 +174,8 @@ def plot_decomposition_candidates(
     save_to_filename=None,
     save_dpi=300,
     figsize=None,
+    labels=None,
+    title="Sample decomposition candidates",
 ):
     """Render one row per candidate as a 3-segment composition bar.
 
@@ -207,7 +224,7 @@ def plot_decomposition_candidates(
 
     fig, ax = plt.subplots(figsize=figsize)
 
-    labels = [f"{row.cancer_type} / {row.template}" for row in rows]
+    labels = list(labels) if labels is not None else [f"{row.cancer_type} / {row.template}" for row in rows]
     y = np.arange(n)
 
     tumor_vals = np.zeros(n)
@@ -339,7 +356,7 @@ def plot_decomposition_candidates(
                   ncol=3, frameon=False, fontsize=9)
     # Title kept single-line — the per-bar segments + legend already
     # explain that each row is one candidate's composition.
-    ax.set_title("Sample decomposition candidates", fontweight="bold", pad=28)
+    ax.set_title(title, fontweight="bold", pad=28)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     fig.tight_layout()

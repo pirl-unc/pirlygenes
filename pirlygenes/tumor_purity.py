@@ -1915,7 +1915,7 @@ def plot_purity_method_comparison(
             title = (
                 f"Purity estimation methods — {cancer_code} · "
                 f"adopted {overall * 100:.0f}% "
-                f"(CI {overall_lower * 100:.0f}–{overall_upper * 100:.0f}%)"
+                f"(range {overall_lower * 100:.0f}–{overall_upper * 100:.0f}%)"
             )
         else:
             title = f"Purity estimation methods — {cancer_code}"
@@ -1984,8 +1984,8 @@ def _score_normal_tissues(sample_tpm_by_symbol, top_n=10):
     return results[:top_n]
 
 
-def _score_host_tissues(sample_tpm_by_symbol, tissues=None, top_n=None):
-    """Score host tissues using site-specific genes depleted from TME overlap.
+def _score_host_tissue_details(sample_tpm_by_symbol, tissues=None, top_n=None, driver_n=5):
+    """Score host tissues and retain the top sample-matching driver genes.
 
     This is stricter than `_score_normal_tissues()`: genes must be specific for
     the candidate host tissue relative to other tissues and relative to generic
@@ -2046,20 +2046,52 @@ def _score_host_tissues(sample_tpm_by_symbol, tissues=None, top_n=None):
             continue
 
         pcts = []
+        gene_details = []
         for gene in sig_genes:
             s_val = sample_tpm_by_symbol.get(gene, 0.0) / hk_median
             ref_vals = expr_hk.loc[gene].values
             n = len(ref_vals)
             below = np.sum(ref_vals < s_val)
             equal = np.sum(np.isclose(ref_vals, s_val, atol=1e-6))
-            pcts.append((below + 0.5 * equal) / n)
+            pct = (below + 0.5 * equal) / n
+            pcts.append(pct)
+            gene_details.append(
+                {
+                    "gene": gene,
+                    "percentile": float(pct),
+                    "sample_tpm": float(sample_tpm_by_symbol.get(gene, 0.0) or 0.0),
+                }
+            )
         if pcts:
-            results.append((tissue, float(np.mean(pcts)), len(pcts)))
+            gene_details.sort(
+                key=lambda row: (-row["percentile"], -row["sample_tpm"], row["gene"])
+            )
+            results.append(
+                {
+                    "tissue": tissue,
+                    "score": float(np.mean(pcts)),
+                    "n_genes": len(pcts),
+                    "drivers": gene_details[:driver_n],
+                }
+            )
 
-    results.sort(key=lambda x: -x[1])
+    results.sort(key=lambda row: -row["score"])
     if top_n is None:
         return results
     return results[:top_n]
+
+
+def _score_host_tissues(sample_tpm_by_symbol, tissues=None, top_n=None):
+    """Backward-compatible tuple view over `_score_host_tissue_details()`."""
+    details = _score_host_tissue_details(
+        sample_tpm_by_symbol,
+        tissues=tissues,
+        top_n=top_n,
+    )
+    return [
+        (row["tissue"], row["score"], row["n_genes"])
+        for row in details
+    ]
 
 
 def _score_cancer_family_panels(sample_tpm_by_symbol):
@@ -2527,7 +2559,11 @@ def analyze_sample(df_gene_expr, cancer_type=None):
         purity = estimate_tumor_purity(df_gene_expr, cancer_type=cancer_code)
 
     # 3. Residual background signatures
-    tissue_scores = _score_host_tissues(sample_tpm, top_n=10)
+    tissue_score_details = _score_host_tissue_details(sample_tpm, top_n=10)
+    tissue_scores = [
+        (row["tissue"], row["score"], row["n_genes"])
+        for row in tissue_score_details
+    ]
 
     # 4. MHC expression
     mhc1, mhc2 = _get_mhc_expression(sample_tpm)
@@ -2547,6 +2583,7 @@ def analyze_sample(df_gene_expr, cancer_type=None):
         "fit_quality": fit_quality,
         "purity": purity,
         "tissue_scores": tissue_scores,
+        "tissue_score_details": tissue_score_details,
         "mhc1": mhc1,
         "mhc2": mhc2,
     }
@@ -2715,7 +2752,7 @@ def plot_sample_summary(
             [
                 f"Residual stromal context: {render_fold(stromal_enr)} vs TCGA {cancer_code}",
                 f"Residual immune context: {render_fold(immune_enr)} vs TCGA {cancer_code}",
-                "Interpretation: consistency vs matched lineage profile, not bulk admixture",
+                "Interpretation: consistency vs likely tissue-of-origin profile, not bulk admixture",
             ]
         )
     for i, txt in enumerate(details):

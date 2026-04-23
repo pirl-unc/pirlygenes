@@ -9,6 +9,10 @@ import pirlygenes.plot as plot_mod
 import pirlygenes.plot_strip as plot_strip_mod
 import pirlygenes.cli as cli_mod
 import pirlygenes.tumor_purity as purity_mod
+from pirlygenes.decomposition.plot import (
+    plot_decomposition_candidates,
+    plot_decomposition_composition,
+)
 from pirlygenes.tumor_purity import _summarize_candidate_family
 
 
@@ -164,7 +168,11 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     report_calls = []
     target_report_calls = []
     monkeypatch.setattr(cli_mod, "_generate_text_reports", lambda *a, **k: report_calls.append(True))
-    monkeypatch.setattr(cli_mod, "_generate_target_report", lambda *a, **k: target_report_calls.append(True))
+    monkeypatch.setattr(
+        cli_mod,
+        "_build_target_report",
+        lambda *a, **k: target_report_calls.append(True) or "# Therapeutic Target Analysis\n\nmock",
+    )
     monkeypatch.setattr(cli_mod, "get_embedding_feature_metadata", lambda **k: {
         "method": "hierarchy",
         "feature_kind": "hierarchical_scores",
@@ -217,8 +225,14 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert len(pca_calls) == 0
     assert len(mds_calls) == 1
     assert mds_calls[0]["method"] == "tme"
-    assert len(report_calls) == 1
+    assert len(report_calls) == 2
     assert len(target_report_calls) == 1
+    assert (tmp_path / "test-output" / "out-summary.md").exists()
+    assert (tmp_path / "test-output" / "out-evidence.md").exists()
+    assert not (tmp_path / "test-output" / "out-actionable.md").exists()
+    assert not (tmp_path / "test-output" / "out-targets.md").exists()
+    assert not (tmp_path / "test-output" / "out-provenance.md").exists()
+    assert not (tmp_path / "test-output" / "out-brief.md").exists()
     params = json.loads((tmp_path / "test-output" / "out-analysis-parameters.json").read_text())
     assert "tumor_purity" in params
     assert "decomposition" in params
@@ -324,7 +338,7 @@ def test_generate_text_reports_uses_family_and_background_language(tmp_path):
     assert "Integrated evidence synthesis" in detailed
     assert "Parallel hypotheses still alive" in detailed
     assert "Top broad possibilities" in detailed
-    assert "Background Tissue Signatures" in detailed
+    assert "Residual Tissue-like Programs" in detailed
 
 
 def test_generate_text_reports_is_mode_aware_for_heme(tmp_path):
@@ -454,6 +468,11 @@ def test_generate_text_reports_handles_missing_lineage_summary(tmp_path):
     detailed = (tmp_path / "sarcoma-like-analysis.md").read_text()
     assert "**Reliable cluster**: COL3A1, DCN." in detailed
     assert "Reported site/template call: **indeterminate**." in detailed
+    assert "SARC (Sarcoma)" in detailed
+    assert "UCS (Uterine Carcinosarcoma)" in detailed
+    assert "top-level cancer-code hypothesis" in detailed
+    assert "Lineage** is a purity estimate derived only from the curated lineage genes" in detailed
+    assert "UCS / met_bone" not in detailed
 
 
 def test_summarize_sample_call_keeps_primary_site_for_weak_primary_fit():
@@ -588,6 +607,41 @@ def test_generate_text_reports_mentions_analysis_constraints(tmp_path):
     detailed = (tmp_path / "constrained-analysis.md").read_text()
     assert "User-constrained cancer type" in detailed
     assert "Requested tumor context" in detailed
+
+
+def test_select_actionable_plot_genes_prefers_therapy_linked_surface_hits():
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "ITGB1",
+                "observed_tpm": 2400.0,
+                "attr_tumor_tpm": 2300.0,
+                "category": "surface",
+                "is_surface": True,
+                "therapies": "",
+                "therapy_supported": False,
+            },
+            {
+                "symbol": "FAP",
+                "observed_tpm": 44.0,
+                "attr_tumor_tpm": 41.0,
+                "category": "therapy_target",
+                "is_surface": True,
+                "therapies": "ADC, radioligand",
+                "therapy_supported": True,
+            },
+        ]
+    )
+
+    genes = cli_mod._select_actionable_plot_genes(
+        ranges_df,
+        "OS",
+        target_panel=None,
+        max_genes=5,
+    )
+
+    assert "FAP" in genes
+    assert "ITGB1" not in genes
 
 
 def test_generate_target_report_is_mode_aware(tmp_path):
@@ -737,11 +791,46 @@ def test_generate_target_report_adds_tumor_context_and_landscape_summary(tmp_pat
     text = (tmp_path / "coad-targets.md").read_text()
     assert "## Tumor context for interpretation" in text
     assert "## Therapy landscape at a glance" in text
-    assert "provisional between **COAD** and **READ**" in text
+    assert "provisional between **COAD (Colon Adenocarcinoma)** and **READ (Rectum Adenocarcinoma)**" in text
     assert "colon-like matched-normal reference" in text
     assert "CEACAM5" in text
     assert "MAGEA4" in text
     assert "WT1" in text
+
+
+def test_decomposition_plots_accept_reader_facing_titles_and_labels():
+    best = SimpleNamespace(
+        cancer_type="SARC",
+        template="met_bone",
+        fractions={"tumor": 0.80, "osteoblast": 0.09, "marrow_stroma": 0.09, "T_cell": 0.01, "endothelial": 0.01},
+        component_trace=pd.DataFrame(
+            [
+                {"component": "osteoblast", "fraction": 0.09, "marker_score": 1.2, "n_markers": 4},
+                {"component": "marrow_stroma", "fraction": 0.09, "marker_score": 1.1, "n_markers": 4},
+            ]
+        ),
+    )
+    fig = plot_decomposition_composition(
+        best,
+        title="Sample composition — SARC (Sarcoma) (host context indeterminate)",
+    )
+    assert fig.axes[0].get_title() == "Sample composition — SARC (Sarcoma) (host context indeterminate)"
+
+    row = SimpleNamespace(
+        purity=0.80,
+        template_extra_fraction=0.45,
+        score=0.15,
+        cancer_support_score=0.43,
+        template_tissue_score=0.56,
+        reconstruction_error=0.12,
+        component_trace=pd.DataFrame(),
+        warnings=[],
+    )
+    fig2 = plot_decomposition_candidates(
+        [row],
+        labels=["SARC (Sarcoma) bone-associated host context"],
+    )
+    assert fig2.axes[0].get_yticklabels()[0].get_text() == "SARC (Sarcoma) bone-associated host context"
 
 
 def test_generate_target_report_filters_unreliable_rows_from_headlines(tmp_path):

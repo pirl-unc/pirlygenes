@@ -2,9 +2,9 @@
 
 These helpers are intentionally narrow: they do not change the raw
 attribution math, only how downstream markdown decides whether a row is
-safe to summarize as credible tumor-core signal. The goal is to keep the
-headline markdown blocks aligned with the caveats already present in the
-tables and TSVs.
+safe to summarize as credible tumor-linked signal. The goal is to keep
+the headline markdown blocks aligned with the caveats already present in
+the tables and TSVs.
 """
 
 from __future__ import annotations
@@ -154,14 +154,18 @@ def tumor_attribution_context(row):
     ):
         tier = "tumor_supported"
         label = "tumor-supported"
-        summary = "tumor-attributed signal stays material across the uncertainty band"
+        summary = "tumor-attributed signal stays material across the range"
     else:
         tier = "mixed_source"
         label = "mixed-source"
         summary = "both tumor and benign/background sources remain plausible"
 
     if observed > 0:
-        band = f"{mid_tpm:.0f} TPM (band {low_tpm:.0f}-{high_tpm:.0f}; {mid_frac:.0%} tumor, {low_frac:.0%}-{high_frac:.0%} band)"
+        band = (
+            f"{mid_tpm:.0f} TPM "
+            f"(range {low_tpm:.0f}-{high_tpm:.0f}; "
+            f"{mid_frac:.0%} tumor, {low_frac:.0%}-{high_frac:.0%} range)"
+        )
     else:
         band = f"{mid_tpm:.0f} TPM"
 
@@ -187,7 +191,7 @@ def tumor_attribution_band_text(row):
 
 
 def tumor_band_available(row):
-    """Whether a row carries a usable tumor-core uncertainty band."""
+    """Whether a row carries a usable tumor-attributed range."""
     for key in (
         "attr_tumor_tpm",
         "attr_tumor_tpm_low",
@@ -338,7 +342,7 @@ def normal_expression_context(row):
             vital_detail = f"{top_tissue.replace('_', ' ')} expression is appreciable"
 
     if _truthy(row.get("broadly_expressed")) or _safe_int(row.get("n_healthy_tissues_expressed"), 0) >= 15:
-        details.append("broader healthy-tissue signal is present outside the matched lineage")
+        details.append("broader healthy-tissue signal is present outside the likely tissue of origin")
     if vital_detail:
         details.append(vital_detail)
 
@@ -367,9 +371,9 @@ def normal_expression_context(row):
         }
 
     return {
-        "tier": "restricted_outside_lineage",
-        "label": "restricted outside matched lineage",
-        "summary": "limited healthy-tissue signal outside the matched lineage",
+            "tier": "restricted_outside_lineage",
+            "label": "restricted outside likely tissue of origin",
+            "summary": "limited healthy-tissue signal outside the likely tissue of origin",
         "details": [],
     }
 
