@@ -130,6 +130,35 @@ def tumor_attribution_band_text(row):
     return tumor_attribution_context(row)["band"]
 
 
+def tumor_band_available(row):
+    """Whether a row carries a usable tumor-core uncertainty band."""
+    for key in (
+        "attr_tumor_tpm",
+        "attr_tumor_tpm_low",
+        "attr_tumor_tpm_high",
+        "attr_tumor_fraction",
+        "attr_tumor_fraction_high",
+    ):
+        value = row.get(key)
+        if value is None:
+            continue
+        text = _clean_text(value)
+        if text:
+            return True
+    return False
+
+
+def tumor_band_cell(row):
+    """Compact ``mid (low-high)`` cell for markdown tables."""
+    if not tumor_band_available(row):
+        return "—"
+    ctx = tumor_attribution_context(row)
+    return (
+        f"{ctx['attr_tumor_tpm']:.0f} "
+        f"({ctx['attr_tumor_tpm_low']:.0f}-{ctx['attr_tumor_tpm_high']:.0f})"
+    )
+
+
 def target_reliability_reasons(row, *, category=None):
     """Return ordered reader-facing caveats for a target/expression row."""
     source = tumor_attribution_context(row)

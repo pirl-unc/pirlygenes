@@ -13,6 +13,7 @@
 from argh import named, dispatch_commands
 import json
 from pathlib import Path
+import re
 from typing import Optional, Set
 
 from .version import print_name_and_version
@@ -82,6 +83,7 @@ from .reporting import (
     cancer_key_genes_lookup_for_analysis,
     clinical_maturity_summary,
     normal_expression_context,
+    tumor_band_cell,
     target_interpretation_summary,
     target_reliability_reasons,
     target_reliability_status,
@@ -113,6 +115,38 @@ _DATASET_SOURCES = {
     "degenerate-subtype-pairs": "Subtype disambiguation catalog (#198)",
     "fusion-surrogate-expression": "Fusion-surrogate gene catalog (#198)",
 }
+
+_GENERIC_OUTPUT_NAME_PARTS = {
+    "",
+    "sample",
+    "input",
+    "expression",
+    "gene-expression",
+    "gene_expression",
+    "gene-expression.csv",
+    "gene_expression_salmon",
+    "transcript_expression_salmon",
+    "rna_stringtie_gene_expression",
+    "gene_abundance",
+    "abundance",
+    "quant",
+    "quant.gene_tpm",
+    "pipeline_results",
+    "mcdb-workflow_results",
+    "fda-submission",
+    "analysis",
+    "results",
+    "processed",
+    "salmon_rich_quant",
+}
+
+_PREFERRED_SAMPLE_ID_PATTERNS = [
+    re.compile(r"(?i)\b(pfo\d{3,})\b"),
+    re.compile(r"(?i)\b(rs)\b"),
+    re.compile(r"\b(TL-\d{2}-[A-Z0-9]+)\b"),
+    re.compile(r"\b(BG\d{5,})\b"),
+    re.compile(r"\b(PSNLDx\d+)\b", re.IGNORECASE),
+]
 
 
 @named("data")
@@ -741,6 +775,41 @@ def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
     return removed
 
 
+def _sanitize_output_basename(value: Optional[str]) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    if "/" in text or "\\" in text:
+        text = Path(text).name
+    stem = Path(text).stem.strip()
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip("._-")
+    return slug
+
+
+def _derive_sample_display_id(input_path: str, sample_id_value: Optional[str] = None) -> str:
+    explicit = _sanitize_output_basename(sample_id_value)
+    if explicit:
+        return explicit
+
+    path = Path(str(input_path))
+    parts = [path.stem] + [parent.name for parent in path.parents if parent.name]
+    for pattern in _PREFERRED_SAMPLE_ID_PATTERNS:
+        for part in parts:
+            match = pattern.search(part)
+            if match:
+                derived = _sanitize_output_basename(match.group(1))
+                if derived:
+                    return derived
+
+    for part in parts:
+        derived = _sanitize_output_basename(part)
+        if derived and derived.lower() not in _GENERIC_OUTPUT_NAME_PARTS:
+            return derived
+    return "sample"
+
+
 _TX_HEADER_TOKENS = frozenset({
     "name", "target_id", "transcript_id", "transcript",
     "transcriptid", "targetid", "effectivelength", "numreads",
@@ -900,12 +969,20 @@ def _analyze_body(
     therapy_target_top_k: int,
     therapy_target_tpm_threshold: float,
 ):
-    if output_image_prefix:
-        prefix = str(out_dir / output_image_prefix)
-    else:
-        prefix = str(out_dir / "sample")
+    sample_display_id = _derive_sample_display_id(
+        input_path,
+        sample_id_value=sample_id_value,
+    )
+    prefix_base = (
+        _sanitize_output_basename(output_image_prefix)
+        if output_image_prefix else sample_display_id
+    ) or "sample"
+    prefix = str(out_dir / prefix_base)
 
     stale_removed = _clean_prefix_outputs(out_dir, prefix)
+    legacy_default_prefix = str(out_dir / "sample")
+    if not output_image_prefix and prefix != legacy_default_prefix:
+        stale_removed += _clean_prefix_outputs(out_dir, legacy_default_prefix)
     if stale_removed:
         print(f"[output] Removed {stale_removed} stale files from prior run")
 
@@ -1864,7 +1941,7 @@ def _analyze_body(
             from .brief import build_summary, build_actionable
 
             disease_state_for_summary = compose_disease_state_narrative(analysis)
-            sample_id = prefix if prefix else None
+            sample_id = sample_display_id or None
             summary_md = build_summary(
                 analysis,
                 ranges_df,
@@ -2545,8 +2622,11 @@ def _matched_normal_split_summary(ranges_df):
         .dropna()
     )
     mn_frac = float(mn_frac_series.iloc[0]) if len(mn_frac_series) else 0.0
+    if mn_frac < 0.01:
+        return None
+    tissue_label = mn_tissue.replace("_", " ")
     return (
-        f"`matched_normal_{mn_tissue}` at **{mn_frac:.2%}** of the sample. "
+        f"estimated benign parent-tissue admixture from a {tissue_label}-like matched-normal reference at **{mn_frac:.0%}** of the sample. "
         "Per-gene estimates subtract both stromal/immune TME and benign parent-tissue "
         "signal before dividing by purity."
     )
@@ -2581,6 +2661,22 @@ def _template_site_display(template_name):
         "heme_nodal": "lymphoid / nodal",
     }
     return mapping.get(template_name, template_name.replace("_", " "))
+
+
+def _hypothesis_display_label(result, *, primary_code=None):
+    cancer_label = str(getattr(result, "cancer_type", "") or "").strip()
+    template_label = _template_site_display(
+        str(getattr(result, "template", "") or "").strip()
+    )
+    if not cancer_label:
+        return template_label
+    if template_label == "primary site":
+        if primary_code and cancer_label == primary_code:
+            return f"{cancer_label} primary-site pattern"
+        return f"{cancer_label}-like primary-site pattern"
+    if primary_code and cancer_label == primary_code:
+        return f"{cancer_label} {template_label} pattern"
+    return f"{cancer_label}-like {template_label} pattern"
 
 
 def _analysis_constraints(
@@ -2659,7 +2755,10 @@ def _summarize_sample_call(analysis, decomp_results, sample_mode):
 
     label_display = " or ".join(label_options) if label_options else analysis.get("cancer_type")
     hypothesis_display = [
-        f"{row.cancer_type} / {row.template}"
+        _hypothesis_display_label(
+            row,
+            primary_code=analysis.get("cancer_type"),
+        )
         for row in hypothesis_options[:2]
     ]
     return {
@@ -2779,7 +2878,7 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
     if best_decomp is not None:
         comp_bits = _composition_highlights(best_decomp)
         sentence = (
-            f"- **Decomposition line**: best template is `{best_decomp.cancer_type} / {best_decomp.template}`"
+            f"- **Decomposition line**: best template is {_hypothesis_display_label(best_decomp, primary_code=cancer_code)}"
         )
         if best_decomp.cancer_type == cancer_code:
             sentence += ", consistent with the classifier"
@@ -3624,12 +3723,8 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                         lines.append(f"| {sym} | *not measured* | — | — |")
                         continue
                     obs = float(row.get("observed_tpm") or 0.0)
-                    attr_tumor = float(row.get("attr_tumor_tpm") or 0.0)
                     attribution_cell = _format_attribution_cell(row)
-                    tumor_cell = (
-                        f"{attr_tumor:.0f}" if row.get("attribution")
-                        else "—"
-                    )
+                    tumor_cell = tumor_band_cell(row)
                     lines.append(
                         f"| {sym} | {obs:.1f} | {tumor_cell} | {attribution_cell} |"
                     )
@@ -3708,14 +3803,7 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
                             interpretation_cell = "not measured"
                         else:
                             obs_cell = f"{float(expr.get('observed_tpm') or 0.0):.1f}"
-                            if expr.get("attribution"):
-                                tumor_cell = (
-                                    f"{float(expr.get('attr_tumor_tpm') or 0.0):.0f} "
-                                    f"({float(expr.get('attr_tumor_tpm_low') or expr.get('attr_tumor_tpm') or 0.0):.0f}-"
-                                    f"{float(expr.get('attr_tumor_tpm_high') or expr.get('attr_tumor_tpm') or 0.0):.0f})"
-                                )
-                            else:
-                                tumor_cell = "—"
+                            tumor_cell = tumor_band_cell(expr)
                             attr_cell = _format_attribution_cell(expr)
                             interpretation_cell = _target_interpretation_cell(
                                 trow,

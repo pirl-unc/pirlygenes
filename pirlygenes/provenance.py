@@ -14,6 +14,7 @@ figure, cross-linked from the other reports.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
@@ -26,6 +27,17 @@ from .reporting import (
 
 def _compartment_label(comp: str) -> str:
     return comp.replace("matched_normal_", "matched-normal ").replace("_", " ")
+
+
+def _display_sample_id(sample_id: Optional[str]) -> Optional[str]:
+    if sample_id is None:
+        return None
+    text = str(sample_id).strip()
+    if not text:
+        return None
+    if "/" in text or "\\" in text:
+        text = Path(text).name.strip()
+    return text or None
 
 
 def build_provenance_md(
@@ -44,6 +56,7 @@ def build_provenance_md(
     sample_context = analysis.get("sample_context")
     purity = analysis.get("purity") or {}
     lines: List[str] = []
+    sample_id = _display_sample_id(sample_id)
     header_id = f": {sample_id}" if sample_id else ""
     lines.append(f"# Sample provenance{header_id}\n")
     lines.append(

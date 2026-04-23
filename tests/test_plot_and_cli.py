@@ -738,7 +738,7 @@ def test_generate_target_report_adds_tumor_context_and_landscape_summary(tmp_pat
     assert "## Tumor context for interpretation" in text
     assert "## Therapy landscape at a glance" in text
     assert "provisional between **COAD** and **READ**" in text
-    assert "matched_normal_colon" in text
+    assert "colon-like matched-normal reference" in text
     assert "CEACAM5" in text
     assert "MAGEA4" in text
     assert "WT1" in text

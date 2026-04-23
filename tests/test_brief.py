@@ -172,3 +172,45 @@ def test_actionable_is_longer_but_structured():
     assert "*-targets.md*" in md or "`*-targets.md`" in md, (
         "actionable should link to targets.md as the biomarker-panel source"
     )
+
+
+def test_brief_normalizes_path_like_sample_id():
+    analysis = _make_analysis()
+    ranges_df = _make_ranges_df()
+    md = build_brief(
+        analysis,
+        ranges_df,
+        cancer_code="PRAD",
+        disease_state="",
+        sample_id="/tmp/run-123/rs",
+    )
+    assert md.splitlines()[0] == "# Summary: rs"
+
+
+def test_brief_uses_tumor_band_without_attribution_dict():
+    analysis = _make_analysis()
+    ranges_df = _make_ranges_df()
+    idx = ranges_df.index[ranges_df["symbol"] == "FOLH1"][0]
+    ranges_df.at[idx, "attribution"] = {}
+    md = build_brief(
+        analysis,
+        ranges_df,
+        cancer_code="PRAD",
+        disease_state="",
+    )
+    assert "tumor-specific decomposition was unavailable" not in md
+    assert "128 TPM (band 128-128" in md
+
+
+def test_actionable_renders_tumor_band_without_attribution_dict():
+    analysis = _make_analysis()
+    ranges_df = _make_ranges_df()
+    idx = ranges_df.index[ranges_df["symbol"] == "FOLH1"][0]
+    ranges_df.at[idx, "attribution"] = {}
+    md = build_actionable(
+        analysis,
+        ranges_df,
+        cancer_code="PRAD",
+        disease_state="",
+    )
+    assert "| **FOLH1** | 177Lu-PSMA-617 | radioligand | Approved | mCRPC | 142.0 | 128 (128-128) |" in md

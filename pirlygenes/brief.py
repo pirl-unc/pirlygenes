@@ -30,17 +30,31 @@ parseable?".)
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import List, Optional
 
 from .reporting import (
     cancer_key_genes_lookup_for_analysis,
     clinical_maturity_summary,
     normal_expression_context,
+    tumor_band_available,
+    tumor_band_cell,
     target_reliability_status,
     tumor_attribution_context,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _display_sample_id(sample_id: Optional[str]) -> Optional[str]:
+    if sample_id is None:
+        return None
+    text = str(sample_id).strip()
+    if not text:
+        return None
+    if "/" in text or "\\" in text:
+        text = Path(text).name.strip()
+    return text or None
 
 
 def _phase_label(phase: str) -> str:
@@ -91,16 +105,15 @@ def _format_therapy_bullet(target_row, expression_row, target_panel=None) -> str
             f"Target **not measured** in this sample."
         )
     observed = float(expression_row.get("observed_tpm") or 0.0)
-    has_attribution = bool(expression_row.get("attribution"))
     if observed < 1.0:
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
             f"Observed {observed:.1f} TPM — **target absent** in this sample."
         )
-    if not has_attribution:
+    if not tumor_band_available(expression_row):
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-            f"Observed {observed:.0f} TPM; tumor-specific decomposition was unavailable."
+            f"Observed {observed:.0f} TPM; a tumor-core uncertainty band was not available for this run."
         )
     source = tumor_attribution_context(expression_row)
     normal = normal_expression_context(expression_row)
@@ -302,6 +315,7 @@ def build_summary(
     cancer_name = analysis.get("cancer_name") or cancer_code
 
     lines: List[str] = []
+    sample_id = _display_sample_id(sample_id)
     header_id = f": {sample_id}" if sample_id else ""
     lines.append(f"# Summary{header_id}\n")
     lines.append(
@@ -554,6 +568,7 @@ def build_actionable(
     cancer_name = analysis.get("cancer_name") or cancer_code
 
     lines: List[str] = []
+    sample_id = _display_sample_id(sample_id)
     header_id = f" — {sample_id}" if sample_id else ""
     lines.append(f"# Actionable review{header_id}\n")
     lines.append(
@@ -694,14 +709,7 @@ def build_actionable(
                         interp_cell = "not measured"
                     else:
                         obs_cell = f"{float(expr.get('observed_tpm') or 0):.1f}"
-                        if expr.get("attribution"):
-                            tumor_cell = (
-                                f"{float(expr.get('attr_tumor_tpm') or 0.0):.0f} "
-                                f"({float(expr.get('attr_tumor_tpm_low') or expr.get('attr_tumor_tpm') or 0.0):.0f}-"
-                                f"{float(expr.get('attr_tumor_tpm_high') or expr.get('attr_tumor_tpm') or 0.0):.0f})"
-                            )
-                        else:
-                            tumor_cell = "—"
+                        tumor_cell = tumor_band_cell(expr)
                         source = tumor_attribution_context(expr)
                         normal = normal_expression_context(expr)
                         interp_parts = [source["label"], normal["label"]]
