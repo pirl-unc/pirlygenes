@@ -387,6 +387,12 @@ def test_recommended_targets_skips_tme_dominant_rows():
          "tcga_percentile": 0.94, "is_surface": True, "is_cta": False,
          "tme_explainable": True, "tme_dominant": True,
          "excluded_from_ranking": False, "therapies": "",
+         "attr_tumor_tpm": 180.0, "attr_tumor_tpm_low": 80.0,
+         "attr_tumor_tpm_high": 240.0, "attr_tumor_fraction": 0.11,
+         "attr_tumor_fraction_low": 0.05, "attr_tumor_fraction_high": 0.16,
+         "attr_support_fraction": 0.0,
+         "attr_top_compartment": "myeloid",
+         "attr_top_compartment_tpm": 1100.0,
          "max_healthy_tpm": 2000, "tme_fold_lo": 0.1, "tme_fold_med": 0.2,
          "tme_fold_hi": 0.3, "cohort_prior_tpm": 1400, "tme_only_tpm": 1100,
          "matched_normal_tpm": 0, "matched_normal_tissue": "",
@@ -400,6 +406,12 @@ def test_recommended_targets_skips_tme_dominant_rows():
          "tcga_percentile": 1.0, "is_surface": True, "is_cta": False,
          "tme_explainable": False, "tme_dominant": False,
          "excluded_from_ranking": False, "therapies": "ADC",
+         "attr_tumor_tpm": 150.0, "attr_tumor_tpm_low": 130.0,
+         "attr_tumor_tpm_high": 175.0, "attr_tumor_fraction": 0.62,
+         "attr_tumor_fraction_low": 0.54, "attr_tumor_fraction_high": 0.69,
+         "attr_support_fraction": 1.0,
+         "attr_top_compartment": "tumor",
+         "attr_top_compartment_tpm": 150.0,
          "max_healthy_tpm": 300, "tme_fold_lo": 0.1, "tme_fold_med": 0.2,
          "tme_fold_hi": 0.3, "cohort_prior_tpm": 100, "tme_only_tpm": 150,
          "matched_normal_tpm": 0, "matched_normal_tissue": "",
@@ -489,6 +501,79 @@ def test_target_report_explains_blocked_fn1_pyx201_call():
 
     assert "PYX-201 (NCT05720117) targets EDB+ FN1" in targets
     assert "Landscape cautions" in targets
+
+
+def test_target_report_falls_back_to_mixed_source_surface_targets(tmp_path):
+    """If no surface row stays tumor-supported, keep the best mixed-source
+    options visible with explicit caveats."""
+    from pirlygenes.cli import _generate_target_report
+
+    purity = {
+        "overall_estimate": 0.16,
+        "overall_lower": 0.07,
+        "overall_upper": 0.24,
+    }
+    analysis = {
+        "sample_mode": "solid",
+        "cancer_type": "PRAD",
+        "mhc1": {"HLA-A": 100, "HLA-B": 200, "HLA-C": 80, "B2M": 300},
+    }
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "FOLH1",
+                "median_est": 87.0,
+                "observed_tpm": 87.0,
+                "est_1": 60.0,
+                "est_9": 100.0,
+                "pct_cancer_median": 6.5,
+                "tcga_percentile": 1.0,
+                "is_surface": True,
+                "is_cta": False,
+                "tme_explainable": True,
+                "tme_dominant": False,
+                "excluded_from_ranking": False,
+                "therapies": "radioligand",
+                "max_healthy_tpm": 46.0,
+                "tme_fold_lo": 0.1,
+                "tme_fold_med": 0.2,
+                "tme_fold_hi": 0.3,
+                "cohort_prior_tpm": 10.0,
+                "tme_only_tpm": 12.0,
+                "matched_normal_tpm": 46.0,
+                "matched_normal_tissue": "prostate",
+                "matched_normal_fraction": 0.53,
+                "estimation_path": "matched_normal_split",
+                "low_confidence_tumor": False,
+                "category": "therapy_target",
+                "attr_tumor_tpm": 34.0,
+                "attr_tumor_tpm_low": 18.0,
+                "attr_tumor_tpm_high": 40.0,
+                "attr_tumor_fraction": 0.39,
+                "attr_tumor_fraction_low": 0.21,
+                "attr_tumor_fraction_high": 0.45,
+                "attr_support_fraction": 0.33,
+                "attr_top_compartment": "matched_normal_prostate",
+                "attr_top_compartment_tpm": 46.0,
+                "matched_normal_over_predicted": False,
+                "broadly_expressed": False,
+                "n_healthy_tissues_expressed": 0,
+                **{f"est_{i+1}": 60.0 + i * 5.0 for i in range(9)},
+            }
+        ]
+    )
+
+    prefix = str(tmp_path / "sample")
+    _generate_target_report(
+        ranges_df, analysis, prefix, cancer_type="PRAD", purity_result=purity
+    )
+    targets = (tmp_path / "sample-targets.md").read_text()
+    recs_block = targets.split("## Recommended Targets Summary")[-1]
+
+    assert "no surface target stayed tumor-supported" in targets
+    assert "**Best surface targets**" in recs_block
+    assert "FOLH1" in recs_block
+    assert "mixed-source rather than tumor-supported" in recs_block
 
 
 def test_ci_confidence_tier_buckets():
