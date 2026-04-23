@@ -230,7 +230,7 @@ def test_summarize_call_met_template_with_good_site():
     )
     result = _summarize_sample_call(analysis, [best], sample_mode="solid")
     assert result["reported_context"] == "met"
-    assert result["reported_site"] == "liver"
+    assert result["reported_site"] == "liver-associated host context"
 
 
 def test_summarize_call_weak_fit_met_is_indeterminate():

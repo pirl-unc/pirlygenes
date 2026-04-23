@@ -59,10 +59,10 @@ def test_provenance_md_walks_the_five_steps():
     # Each numbered step must appear.
     for heading in ["1. Library prep", "2. Preservation",
                     "3. Coarse composition", "4. Subtype refinements",
-                    "5. Tumor-specific core"]:
+                    "5. Tumor-linked expression"]:
         assert heading in md, f"missing step heading: {heading}"
     assert "exome capture" in md
-    assert "FOLH1" in md or "tumor-core" in md.lower()
+    assert "FOLH1" in md or "tumor-linked" in md.lower()
 
 
 def test_provenance_handles_missing_decomposition():

@@ -2932,6 +2932,8 @@ def _summarize_sample_call(analysis, decomp_results, sample_mode):
             reported_context = "heme"
         elif best.template == "solid_primary":
             reported_context = "primary"
+        elif best.template.startswith("met_"):
+            reported_context = "met"
         site_primary_compatible = _template_primary_compatible(
             best.template,
             analysis=analysis,
@@ -2959,6 +2961,7 @@ def _summarize_sample_call(analysis, decomp_results, sample_mode):
                 cancer_code=analysis.get("cancer_type"),
             )
             if site_primary_compatible and best.template.startswith("met_"):
+                reported_context = "primary"
                 site_note = (
                     "This background/site match is compatible with the cancer's native primary tissue, "
                     "so it is not treated as evidence of metastasis."

@@ -119,6 +119,6 @@ def test_summarize_sample_call_humanizes_hypotheses():
     }
     summary = _summarize_sample_call(analysis, [top, runner], sample_mode="solid")
     assert summary["hypothesis_display"] == [
-        "BRCA-like primary-site pattern",
-        "READ peritoneum pattern",
+        "BRCA (Breast Invasive Carcinoma)-like primary site pattern",
+        "READ (Rectum Adenocarcinoma) peritoneal-associated host context",
     ]
