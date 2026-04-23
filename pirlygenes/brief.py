@@ -422,10 +422,7 @@ def build_summary(
     jargon. (Named ``build_brief`` through 4.40; the legacy name is
     still exported as an alias.)
     """
-    from .gene_sets_cancer import (
-        cancer_therapy_targets,
-        cancer_key_genes_cancer_types,
-    )
+    from .gene_sets_cancer import cancer_key_genes_cancer_types
 
     purity = analysis.get("purity") or {}
     purity_tier = analysis.get("purity_confidence")
@@ -492,7 +489,6 @@ def build_summary(
     # shared signature is actually present; high-confidence clear-
     # winner calls bypass the resolver entirely.
     degenerate_status = None
-    degenerate_reason = ""
     degenerate_alternatives = []
     degenerate_resolution = None
     original_winning_subtype = winning_subtype
@@ -535,7 +531,6 @@ def build_summary(
             if resolution["status"] == "corrected":
                 winning_subtype = resolution["final_subtype"]
             degenerate_status = resolution["status"]
-            degenerate_reason = resolution["reason"]
             degenerate_alternatives = resolution["alternatives"]
         except Exception:
             logger.debug(
@@ -618,7 +613,6 @@ def build_summary(
     panel_code, panel_subtype, targets_df = _curated_target_panel_for_sample(
         cancer_code, analysis, ranges_df=ranges_df,
     )
-    panel_label = _panel_display_label(panel_code, panel_subtype)
     if panel_code in cancer_key_genes_cancer_types():
         top = _top_therapies(targets_df, ranges_df, limit=3)
         lines.append("## Top candidate therapies\n")
@@ -692,10 +686,7 @@ def build_actionable(
     biomarker panel and therapy landscape inline; no pipeline-
     internal jargon.
     """
-    from .gene_sets_cancer import (
-        cancer_therapy_targets,
-        cancer_key_genes_cancer_types,
-    )
+    from .gene_sets_cancer import cancer_key_genes_cancer_types
 
     purity = analysis.get("purity") or {}
     purity_tier = analysis.get("purity_confidence")

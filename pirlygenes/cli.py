@@ -82,7 +82,6 @@ from .format import (
 from .reporting import (
     cancer_code_display_name,
     cancer_key_genes_lookup_for_analysis,
-    clinical_maturity_summary,
     normal_expression_context,
     subtype_curation_scope_note,
     tumor_band_cell,
@@ -3870,7 +3869,6 @@ def _generate_target_report(ranges_df, analysis, prefix, cancer_type, purity_res
     )
 
     surface_status = _target_reliability_series(surface_targets)
-    cta_status = _target_reliability_series(ctas, category="CTA")
     intracellular_status = _target_reliability_series(intracellular)
 
     def _headline_surface_row(row):

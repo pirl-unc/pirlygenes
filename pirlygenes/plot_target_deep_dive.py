@@ -474,7 +474,6 @@ def plot_curated_target_evidence(
     - what kind of normal-expression context that target carries, and
     - how clinically mature the target class is.
     """
-    import pandas as pd
     from matplotlib.lines import Line2D
 
     if (
@@ -689,7 +688,6 @@ def plot_priority_targets(
     as FAP are not hidden just because they sit outside the disease-matched
     curation table.
     """
-    import pandas as pd
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
 
