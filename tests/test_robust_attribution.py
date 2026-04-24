@@ -7,7 +7,7 @@ Covers three invariants the new breadth-aware attribution must hold:
    detection crosses many tissues.
 2. Ubiquitously-expressed housekeeping-like genes (TBCE, NPM1, broad
    surface markers) MUST trip the flag.
-3. The breadth floor on non-tumor attribution dampens the tumor-core
+3. The breadth floor on non-tumor attribution dampens the tumor-inferred
    residual for broadly-expressed genes without zeroing it out, and
    doesn't touch restricted genes.
 """
@@ -475,6 +475,30 @@ def test_brief_keeps_same_lineage_targets_but_skips_background_dominant_rows():
     assert "same-lineage expected" in bullet
     assert "tumor-supported" in bullet
     assert "Provisional:" not in bullet
+
+
+def test_same_lineage_clinical_target_can_remain_provisional_when_bulk_background_dominant():
+    from pirlygenes.reporting import target_reliability_status
+
+    target = {
+        "symbol": "KLK2",
+        "agent": "JNJ-69086420",
+        "agent_class": "bispecific",
+        "phase": "phase_1",
+        "indication": "mCRPC",
+    }
+    row = {
+        "observed_tpm": 247.0,
+        "attr_tumor_tpm": 57.0,
+        "attr_tumor_fraction": 0.23,
+        "attr_top_compartment": "matched_normal_prostate",
+        "attr_top_compartment_tpm": 155.0,
+        "tme_dominant": False,
+        "tme_explainable": True,
+        "matched_normal_over_predicted": True,
+    }
+
+    assert target_reliability_status(row, target_row=target) == "provisional"
 
 
 def test_same_lineage_target_can_stay_supported_when_band_remains_material():

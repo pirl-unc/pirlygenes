@@ -240,9 +240,13 @@ def test_brief_explains_bulk_present_targets_that_fail_source_gate():
         cancer_code="PRAD",
         disease_state="",
     )
-    assert "Not short-listed despite bulk RNA" in md
+    assert "Target expression source trace" in md
+    assert "Tumor-inferred TPM" in md
+    assert "Top non-tumor attribution" in md
     assert "STEAP2" in md
     assert "KLK2" in md
+    assert "matched-normal prostate" in md
+    assert "phase 1 exploratory" in md
 
 
 def test_brief_no_internal_jargon():

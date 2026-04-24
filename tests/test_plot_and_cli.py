@@ -228,6 +228,7 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert mds_calls[0]["method"] == "tme"
     assert mds_calls[1]["method"] == "tme"
     assert mds_calls[1]["include_normals"] is True
+    assert mds_calls[1]["include_subtypes"] is True
     assert mds_calls[1]["label_nearest_cancers"] == 5
     assert mds_calls[1]["label_nearest_normals"] == 5
     assert mds_calls[1]["label_all"] is False
@@ -243,7 +244,7 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert "tumor_purity" in params
     assert "decomposition" in params
     assert params["selected_sample_mode"] == "solid"
-    assert params["embedding_methods"] == ["tme", "tme_with_normals"]
+    assert params["embedding_methods"] == ["tme", "tme_with_subtypes_and_normals"]
     assert params["input"]["tumor_context"] == "met"
     assert params["input"]["site_hint"] == "liver"
     assert params["input"]["decomposition_templates"] == ["met_liver"]
@@ -1195,6 +1196,33 @@ def test_embedding_plot_can_label_nearest_cancers_and_normals_only(monkeypatch):
     assert "COAD" not in all_text
     assert "liver" not in all_text
     assert "Nearest normal tissues" in all_text
+
+
+def test_embedding_matrix_sanitizes_nonfinite_features():
+    matrix = np.array([
+        [1.0, np.nan, 2.0, np.inf],
+        [2.0, np.nan, 3.0, 4.0],
+        [3.0, np.nan, 4.0, 5.0],
+    ])
+
+    clean = plot_mod._sanitize_embedding_matrix(matrix)
+
+    assert clean.shape == (3, 2)
+    assert np.isfinite(clean).all()
+
+
+def test_embedding_can_include_available_subtype_references():
+    df = _tcga_sample("SARC")
+    matrix, labels = plot_mod._cancer_type_feature_matrix(
+        df,
+        method="tme",
+        include_subtypes=True,
+    )
+
+    assert matrix.shape[0] == len(labels)
+    assert "SARC_LMS" in labels
+    assert "OS" in labels
+    assert np.isfinite(matrix).all()
 
 
 def test_singleton_family_is_not_rendered_as_family_call():

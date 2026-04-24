@@ -40,6 +40,7 @@ from .reporting import (
     expression_independent_indication,
     expression_independent_interpretation,
     normal_expression_context,
+    same_lineage_material_target_candidate,
     subtype_curation_scope_note,
     therapy_path_context,
     therapy_path_rank,
@@ -274,7 +275,7 @@ def _format_therapy_bullet(
     if not tumor_band_available(expression_row):
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-            f"{path_prefix}Bulk TPM {observed:.0f}; a tumor-core model interval "
+            f"{path_prefix}Bulk TPM {observed:.0f}; a tumor-inferred model interval "
             f"was not available for this run.{caution_suffix}"
         )
     source = tumor_attribution_context(expression_row)
@@ -359,9 +360,16 @@ def _top_therapies(
             continue
         attr_tumor = float(expr.get("attr_tumor_tpm") or 0.0)
         attr_fraction = float(expr.get("attr_tumor_fraction") or 1.0)
+        lineage_material = same_lineage_material_target_candidate(
+            expr,
+            target_row=t,
+        )
         # Drop rows that are mostly non-tumor from the top-3 — they
         # don't belong in the clinician handoff per #79 semantics.
-        if attr_fraction < 0.30 and not expr_independent:
+        # Same-lineage clinical targets are a special case: a prostate
+        # lineage marker assigned partly to matched-normal prostate is
+        # source-ambiguous, not equivalent to an immune/stromal target.
+        if attr_fraction < 0.30 and not expr_independent and not lineage_material:
             continue
         reliability_status = target_reliability_status(expr, target_row=t)
         if reliability_status == "unsupported":
@@ -433,8 +441,116 @@ def _brief_truthy(value) -> bool:
     return bool(value)
 
 
+def _format_trace_tpm(value) -> str:
+    value = _brief_float(value, 0.0)
+    if value >= 100:
+        return f"{value:.0f}"
+    if value >= 10:
+        return f"{value:.1f}"
+    return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _format_component_label(value) -> str:
+    text = str(value or "").strip()
+    if not text or text.lower() == "nan":
+        return "—"
+    text = text.replace("_", " ")
+    if text.startswith("matched normal "):
+        text = text.replace("matched normal ", "matched-normal ", 1)
+    return text
+
+
+def _top_non_tumor_attribution(expression_row) -> tuple[str, float]:
+    label = _format_component_label(expression_row.get("attr_top_compartment"))
+    value = _brief_float(expression_row.get("attr_top_compartment_tpm"), 0.0)
+    if label != "—" and label.lower() != "tumor" and value > 0:
+        return label, value
+
+    attribution = expression_row.get("attribution")
+    if isinstance(attribution, str):
+        try:
+            import ast
+
+            attribution = ast.literal_eval(attribution)
+        except Exception:
+            attribution = None
+    if isinstance(attribution, dict):
+        candidates = []
+        for comp, comp_value in attribution.items():
+            comp_label = _format_component_label(comp)
+            if comp_label == "—" or comp_label.lower() == "tumor":
+                continue
+            comp_tpm = _brief_float(comp_value, 0.0)
+            if comp_tpm > 0:
+                candidates.append((comp_label, comp_tpm))
+        if candidates:
+            return max(candidates, key=lambda item: item[1])
+    return "—", 0.0
+
+
+def _trace_phase_label(target_row) -> str:
+    phase = str(target_row.get("phase") or "")
+    return {
+        "approved": "approved",
+        "phase_3": "phase 3",
+        "phase_2": "phase 2",
+        "phase_1": "phase 1 exploratory",
+        "preclinical": "preclinical",
+    }.get(phase, phase.replace("_", " ") or "curated")
+
+
+def _source_trace_reason(target_row, expression_row, *, in_shortlist: bool) -> str:
+    source = tumor_attribution_context(expression_row)
+    reliability = target_reliability_status(expression_row, target_row=target_row)
+    phase = _trace_phase_label(target_row)
+    attr_fraction = _brief_float(expression_row.get("attr_tumor_fraction"), 0.0)
+    comp_label, _comp_tpm = _top_non_tumor_attribution(expression_row)
+    lineage_material = same_lineage_material_target_candidate(
+        expression_row,
+        target_row=target_row,
+    )
+
+    parts = []
+    if phase and phase != "approved":
+        parts.append(phase)
+
+    if in_shortlist:
+        if source["tier"] == "tumor_supported":
+            parts.append("clears source gate")
+        elif lineage_material:
+            parts.append("same-lineage marker, provisional source")
+        else:
+            parts.append(f"{source['label']}, clears source gate")
+    elif lineage_material:
+        parts.append("same-lineage marker, provisional source")
+    elif _brief_truthy(expression_row.get("matched_normal_over_predicted")):
+        if comp_label != "—":
+            parts.append(f"{comp_label} over-predicts / lineage background")
+        else:
+            parts.append("matched-normal over-predicts / lineage background")
+    elif reliability == "unsupported" and attr_fraction < 0.30:
+        if comp_label != "—":
+            parts.append(f"{attr_fraction:.0%} tumor; mostly {comp_label}")
+        else:
+            parts.append(f"{attr_fraction:.0%} tumor fraction")
+    elif reliability == "unsupported":
+        parts.append(
+            f"mostly {comp_label}/background" if comp_label != "—" else "background-dominant"
+        )
+    elif reliability == "provisional":
+        parts.append(source["label"])
+    else:
+        parts.append("ranked below top list")
+
+    deduped = []
+    for part in parts:
+        if part and part not in deduped:
+            deduped.append(part)
+    return "; ".join(deduped)
+
+
 def _shortlist_omission_note(targets_df, ranges_df, top_rows) -> str:
-    """Explain bulk-present curated targets that failed the source gate."""
+    """Trace source attribution for non-clean clinical target decisions."""
     if targets_df is None or ranges_df is None or not top_rows:
         return ""
     top_symbols = {str(t.get("symbol") or "") for t, _ in top_rows}
@@ -454,24 +570,65 @@ def _shortlist_omission_note(targets_df, ranges_df, top_rows) -> str:
             continue
         attr_fraction = _brief_float(expr.get("attr_tumor_fraction"), 1.0)
         reliability_status = target_reliability_status(expr, target_row=target)
-        reason = ""
-        if _brief_truthy(expr.get("matched_normal_over_predicted")):
-            reason = "matched-normal over-predicted"
-        elif reliability_status == "unsupported":
-            reason = "background-dominant"
-        elif attr_fraction < 0.30:
-            reason = f"{attr_fraction:.0%} tumor-core"
-        if reason:
-            omitted.append(f"{sym} ({reason})")
+        phase = str(target.get("phase") or "")
+        if reliability_status != "supported" or phase in {"phase_1", "preclinical"}:
+            comp_label, comp_tpm = _top_non_tumor_attribution(expr)
+            omitted.append(
+                {
+                    "symbol": sym,
+                    "bulk": _brief_float(expr.get("observed_tpm"), 0.0),
+                    "tumor": _brief_float(expr.get("attr_tumor_tpm"), 0.0),
+                    "fraction": attr_fraction,
+                    "component": comp_label,
+                    "component_tpm": comp_tpm,
+                    "reason": _source_trace_reason(target, expr, in_shortlist=False),
+                }
+            )
         if len(omitted) >= 3:
             break
     if not omitted:
         return ""
-    names = ", ".join(omitted)
-    return (
-        f"*Not short-listed despite bulk RNA: {names} did not clear the "
-        "tumor-core/source gate; see `*-evidence.md`.*"
-    )
+
+    shortlist_context = []
+    for target, expr in top_rows:
+        if expr is None:
+            continue
+        phase = str(target.get("phase") or "")
+        source = tumor_attribution_context(expr)
+        if phase == "approved" and source["tier"] == "tumor_supported":
+            continue
+        if phase == "approved":
+            continue
+        comp_label, comp_tpm = _top_non_tumor_attribution(expr)
+        shortlist_context.append(
+            {
+                "symbol": str(target.get("symbol") or ""),
+                "bulk": _brief_float(expr.get("observed_tpm"), 0.0),
+                "tumor": _brief_float(expr.get("attr_tumor_tpm"), 0.0),
+                "fraction": _brief_float(expr.get("attr_tumor_fraction"), 0.0),
+                "component": comp_label,
+                "component_tpm": comp_tpm,
+                "reason": _source_trace_reason(target, expr, in_shortlist=True),
+            }
+        )
+        if len(shortlist_context) >= 2:
+            break
+
+    rows = shortlist_context + omitted
+    lines = [
+        "**Target expression source trace**",
+        "| Gene | Bulk TPM | Tumor-inferred TPM | Tumor fraction | Top non-tumor attribution | Component TPM | Main reason |",
+        "|---|---:|---:|---:|---|---:|---|",
+    ]
+    for row in rows:
+        lines.append(
+            f"| {row['symbol']} | {_format_trace_tpm(row['bulk'])} | "
+            f"{_format_trace_tpm(row['tumor'])} | {row['fraction']:.0%} | "
+            f"{row['component']} | {_format_trace_tpm(row['component_tpm'])} | "
+            f"{row['reason']} |"
+        )
+    lines.append("*Same-lineage background is a caveat, not automatic exclusion; clinical maturity and eligibility still set the shortlist order.*")
+    return "\n".join(lines)
 
 
 def _panel_display_label(panel_code, panel_subtype=None):
@@ -777,7 +934,7 @@ def build_summary(
         )
         lines.append("## Top candidate therapies\n")
         lines.append(
-            "*Ranked by treatment-path maturity first, then tumor-core support; "
+            "*Ranked by treatment-path maturity first, then tumor-source support; "
             "verify current therapy before acting on any row.*\n"
         )
         if panel_code != cancer_code or panel_subtype:
@@ -810,7 +967,7 @@ def build_summary(
         else:
             lines.append(
                 "*No approved or trialed agents with a measured, "
-                "tumor-core-supported target in this sample.*\n"
+                "tumor-supported target in this sample.*\n"
             )
     else:
         lines.append(
@@ -974,7 +1131,7 @@ def build_actionable(
             lines.append("")
             lines.append(
                 "| Target | Agent | Class | Phase | Indication | "
-                "Bulk TPM (measured) | Tumor-core TPM (model) | Interpretation |"
+                "Bulk TPM (measured) | Tumor-inferred TPM (model) | Interpretation |"
             )
             lines.append(
                 "|--------|-------|-------|-------|------------|"

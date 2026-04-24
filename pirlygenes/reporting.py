@@ -188,11 +188,11 @@ def tumor_attribution_context(row):
 
 
 def tpm_semantics_note() -> str:
-    """One reader-facing explanation of bulk vs modeled tumor-core TPM."""
+    """One reader-facing explanation of bulk vs modeled tumor-inferred TPM."""
     return (
         "**TPM semantics:** Bulk TPM is the measured RNA abundance in the mixed "
-        "specimen. Tumor-core TPM is a model-derived estimate after subtracting "
-        "matched-normal and TME-attributable signal. Use tumor-core TPM for "
+        "specimen. Tumor-inferred TPM is a model-derived estimate after subtracting "
+        "matched-normal and TME-attributable signal. Use tumor-inferred TPM for "
         "tumor-cell target prioritization only when attribution is tumor-supported "
         "or mixed-source; for immune/stromal markers, agent-only rows, and "
         "expression-independent indications, bulk RNA is contextual and the "
@@ -337,12 +337,50 @@ def target_reliability_reasons(row, *, category=None):
     return reasons
 
 
+def same_lineage_material_target_candidate(
+    row,
+    target_row=None,
+    *,
+    min_tumor_tpm=10.0,
+) -> bool:
+    """Whether a same-lineage clinical target should remain reviewable.
+
+    Matched-normal attribution for a lineage marker is different from
+    unrelated immune/stromal attribution: it is a source and specificity
+    caveat, not automatic evidence that the target is clinically irrelevant.
+    Keep such rows provisional when there is a named clinical agent and a
+    material tumor-inferred signal.
+    """
+    if target_row is None or expression_independent_indication(target_row):
+        return False
+    phase = _clean_text(target_row.get("phase"))
+    if phase not in {"approved", "phase_3", "phase_2", "phase_1"}:
+        return False
+    if not _clean_text(target_row.get("agent")):
+        return False
+    if _truthy(row.get("tme_dominant")) and not _truthy(row.get("matched_normal_over_predicted")):
+        return False
+    if _safe_float(row.get("attr_tumor_tpm"), 0.0) < float(min_tumor_tpm):
+        return False
+    normal = normal_expression_context(row)
+    if normal.get("tier") != "same_lineage_expected":
+        return False
+    top_compartment = _clean_text(row.get("attr_top_compartment")).replace("_", " ")
+    return (
+        top_compartment.startswith("matched normal ")
+        or _truthy(row.get("matched_normal_over_predicted"))
+        or _safe_float(row.get("matched_normal_tpm"), 0.0) > 0.0
+    )
+
+
 def target_reliability_status(row, *, category=None, target_row=None):
     """Classify a row as ``supported``, ``provisional``, or ``unsupported``."""
     if target_row is not None and expression_independent_indication(target_row):
         return "provisional"
     source = tumor_attribution_context(row)
     if source["tier"] == "background_dominant":
+        if same_lineage_material_target_candidate(row, target_row=target_row):
+            return "provisional"
         return "unsupported"
     if _truthy(row.get("matched_normal_over_predicted")):
         return "provisional"
@@ -426,6 +464,8 @@ def normal_expression_context(row):
     matched_normal_tpm = _safe_float(row.get("matched_normal_tpm"), 0.0)
     tumor_tpm = _safe_float(row.get("attr_tumor_tpm"), 0.0)
     attr_top = _clean_text(row.get("attr_top_compartment")).replace("_", " ")
+    if not matched_tissue and attr_top.startswith("matched normal "):
+        matched_tissue = attr_top.replace("matched normal ", "", 1)
     details = []
     same_lineage = False
     if matched_tissue:
@@ -977,7 +1017,7 @@ def target_interpretation_summary(
 
 
 def partition_tumor_core_rows(ranges_df, min_tumor_tpm=1.0):
-    """Split expression rows by report-facing tumor-core reliability."""
+    """Split expression rows by report-facing tumor-inferred reliability."""
     if ranges_df is None or len(ranges_df) == 0 or "attr_tumor_tpm" not in ranges_df.columns:
         empty = ranges_df.iloc[0:0] if ranges_df is not None else None
         return empty, empty, empty

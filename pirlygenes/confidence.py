@@ -379,7 +379,7 @@ def compute_target_confidence(
     if isinstance(attr_fraction, (int, float)) and 0.3 <= float(attr_fraction) < 0.5:
         if tier == "high":
             tier = "moderate"
-        reasons.append(f"only {float(attr_fraction):.0%} of signal attributed to tumor core")
+        reasons.append(f"only {float(attr_fraction):.0%} of signal attributed to tumor")
 
     # Deduplicate reasons while preserving order.
     seen = set()

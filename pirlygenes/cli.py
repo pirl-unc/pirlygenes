@@ -1404,7 +1404,7 @@ def _analyze_body(
                 "tumor_purity": get_tumor_purity_parameters(),
                 "decomposition": get_decomposition_parameters(),
                 "selected_sample_mode": analysis["sample_mode"],
-                "embedding_methods": ["tme", "tme_with_normals"],
+                "embedding_methods": ["tme", "tme_with_subtypes_and_normals"],
                 "sample_quality": {
                     "degradation_level": quality["degradation"]["level"],
                     "degradation_pair_index": quality["degradation"]["long_short_ratio"],
@@ -1764,14 +1764,16 @@ def _analyze_body(
     # in analysis.md without adding interpretive value. The functions
     # remain in ``pirlygenes.plot_embedding`` for Python-API consumers.
 
-    # Sample-among-TCGA embedding: MDS in the TME-low gene space is the
+    # Sample-among-reference embedding: MDS in the TME-low gene space is the
     # preferred view — robust at low purity (where hierarchy-method plots
     # can cluster the sample by infiltrate instead of by tumor biology),
     # and MDS preserves pairwise distances better than PCA for samples
     # that sit between canonical cancer-type centroids.  Other
     # method/algorithm combinations are available in the Python API but
     # are not emitted by default; see pirl-unc/pirlygenes#... for the
-    # design rationale.
+    # design rationale. The companion view appends available subtype
+    # references and normal-tissue centroids; registry-only cancer types
+    # without expression medians are not embedded.
     print("[plot] Generating MDS embedding (TME-low genes)...")
     mds_png = "%s-mds-tme.png" % prefix
     plot_cancer_type_mds(df_expr, method="tme", save_to_filename=mds_png, save_dpi=output_dpi)
@@ -1780,6 +1782,7 @@ def _analyze_body(
         df_expr,
         method="tme",
         include_normals=True,
+        include_subtypes=True,
         label_nearest_cancers=5,
         label_nearest_normals=5,
         label_all=False,
@@ -2736,7 +2739,7 @@ def _target_value_label(sample_mode):
         return "Cellular TPM (model)"
     if sample_mode == "heme":
         return "Malignant-lineage TPM (model)"
-    return "Tumor-core TPM (model)"
+    return "Tumor-inferred TPM (model)"
 
 
 def _mhc1_status_text(mhc1):
@@ -4296,7 +4299,7 @@ def _build_target_report(
                 if panel_subtype else cancer_biomarker_genes(panel_code)
             )
             if biomarker_syms:
-                lines.append("| Gene | Bulk TPM (measured) | Tumor-core TPM (model) | Attribution |")
+                lines.append("| Gene | Bulk TPM (measured) | Tumor-inferred TPM (model) | Attribution |")
                 lines.append("|------|---------------------|------------------------|-------------|")
                 for sym in biomarker_syms:
                     row = sym_to_row.get(sym)
@@ -4344,7 +4347,7 @@ def _build_target_report(
             if len(targets_df):
                 lines.append(
                     "| Target | Agent | Class | Phase | Indication | "
-                    "Bulk TPM (measured) | Tumor-core TPM (model) | Attribution | Interpretation |"
+                    "Bulk TPM (measured) | Tumor-inferred TPM (model) | Attribution | Interpretation |"
                 )
                 lines.append(
                     "|--------|-------|-------|-------|------------|"

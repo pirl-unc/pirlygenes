@@ -929,11 +929,101 @@ def _cancer_type_hierarchy_matrix(df_gene_expr):
     return matrix, out_labels
 
 
+def _subtype_expression_values_for_ref(
+    ref_norm,
+    *,
+    normalize_housekeeping=False,
+    exclude_codes=None,
+):
+    """Return subtype-reference expression columns aligned to ``ref_norm``.
+
+    The main pan-cancer table has one ``FPKM_<TCGA>`` column per parent
+    cohort. Additional curated cancer types live in the registry and, for
+    some subtypes, in ``subtype-deconvolved-expression`` as long-form
+    tumor-TPM medians. This helper widens only those subtype references
+    that have measured/deconvolved expression rather than fabricating
+    centroids from marker panels.
+    """
+    import pandas as pd
+
+    if ref_norm is None or len(ref_norm) == 0 or "Symbol" not in ref_norm.columns:
+        return [], np.zeros((len(ref_norm), 0), dtype=float)
+
+    try:
+        from .gene_sets_cancer import subtype_deconvolved_expression, housekeeping_gene_names
+
+        subtype_df = subtype_deconvolved_expression()
+    except Exception:
+        return [], np.zeros((len(ref_norm), 0), dtype=float)
+
+    if subtype_df is None or subtype_df.empty:
+        return [], np.zeros((len(ref_norm), 0), dtype=float)
+
+    symbols = [str(symbol) for symbol in ref_norm["Symbol"].astype(str)]
+    symbol_set = set(symbols)
+    sub = subtype_df[subtype_df["symbol"].astype(str).isin(symbol_set)].copy()
+    if sub.empty:
+        return [], np.zeros((len(ref_norm), 0), dtype=float)
+
+    subtype_code = sub.get("subtype", pd.Series("", index=sub.index)).fillna("").astype(str).str.strip()
+    cancer_code = sub["cancer_code"].fillna("").astype(str).str.strip()
+    sub["_embed_code"] = subtype_code.where(subtype_code.ne("") & subtype_code.ne("nan"), cancer_code)
+    sub = sub[sub["_embed_code"].ne("") & sub["_embed_code"].ne("nan")]
+    if sub.empty:
+        return [], np.zeros((len(ref_norm), 0), dtype=float)
+
+    pivot = sub.pivot_table(
+        index="symbol",
+        columns="_embed_code",
+        values="tumor_tpm_median",
+        aggfunc="median",
+    )
+    exclude_codes = set(exclude_codes or [])
+    labels = sorted(str(label) for label in pivot.columns if str(label) not in exclude_codes)
+    if not labels:
+        return [], np.zeros((len(ref_norm), 0), dtype=float)
+
+    if normalize_housekeeping:
+        hk_symbols = set(housekeeping_gene_names())
+        hk = subtype_df[subtype_df["symbol"].astype(str).isin(hk_symbols)].copy()
+        if not hk.empty:
+            hk_subtype = hk.get("subtype", pd.Series("", index=hk.index)).fillna("").astype(str).str.strip()
+            hk_cancer = hk["cancer_code"].fillna("").astype(str).str.strip()
+            hk["_embed_code"] = hk_subtype.where(hk_subtype.ne("") & hk_subtype.ne("nan"), hk_cancer)
+            hk = hk[hk["_embed_code"].isin(labels)]
+            hk_medians = hk.groupby("_embed_code")["tumor_tpm_median"].median()
+            for label in labels:
+                denom = float(hk_medians.get(label, 1.0) or 1.0)
+                if denom > 0:
+                    pivot[label] = pivot[label].astype(float) / denom
+
+    values = pivot.reindex(index=symbols, columns=labels).fillna(0.0).astype(float).to_numpy()
+    return labels, values
+
+
+def _sanitize_embedding_matrix(matrix):
+    """Remove all-NaN/non-finite feature columns before distance geometry."""
+    matrix = np.asarray(matrix, dtype=float)
+    if matrix.ndim != 2:
+        return np.nan_to_num(matrix, nan=0.0, posinf=0.0, neginf=0.0)
+    if matrix.shape[1] == 0:
+        return np.zeros((matrix.shape[0], 1), dtype=float)
+    finite_cols = np.isfinite(matrix).all(axis=0)
+    if finite_cols.any():
+        matrix = matrix[:, finite_cols]
+    elif matrix.shape[1] > 0:
+        matrix = np.zeros((matrix.shape[0], 1), dtype=float)
+    if matrix.shape[1] == 0:
+        matrix = np.zeros((matrix.shape[0], 1), dtype=float)
+    return np.nan_to_num(matrix, nan=0.0, posinf=0.0, neginf=0.0)
+
+
 def _cancer_type_feature_matrix(
     df_gene_expr,
     n_genes=10,
     method="zscore",
     include_normals=False,
+    include_subtypes=False,
 ):
     """Build feature matrix for PCA/MDS of cancer types + sample.
 
@@ -954,6 +1044,10 @@ def _cancer_type_feature_matrix(
         When true, append normal-tissue nTPM centroids to the embedded
         reference rows. Supported for expression-space methods; ignored for
         score/hierarchy spaces where the normal vectors are not defined.
+    include_subtypes : bool
+        When true, append available subtype-deconvolved tumor-TPM references
+        (for example SARC_LMS, OS, EWS) in addition to TCGA parent cohorts.
+        Registry-only rows without expression medians are still not embedded.
     """
     import warnings
 
@@ -1031,6 +1125,14 @@ def _cancer_type_feature_matrix(
         for _, row in ref_norm.iterrows()
     ])
     ref_vals = ref_norm[fpkm_cols].astype(float).values  # (genes, cancers)
+    subtype_labels, subtype_vals = (
+        _subtype_expression_values_for_ref(
+            ref_norm,
+            normalize_housekeeping=method in ("hk", "hk_zscore"),
+            exclude_codes=set(labels),
+        )
+        if include_subtypes else ([], np.zeros((len(ref_norm), 0), dtype=float))
+    )
     normal_vals = (
         ref_norm[normal_cols].astype(float).values
         if normal_cols else np.zeros((len(ref_norm), 0), dtype=float)
@@ -1039,11 +1141,14 @@ def _cancer_type_feature_matrix(
     if method in ("zscore", "hk_zscore", "tme", "bottleneck"):
         log_ref = np.log2(ref_vals + 1)
         log_sample = np.log2(sample_vals + 1)
+        log_subtypes = np.log2(subtype_vals + 1) if subtype_labels else None
         log_normals = np.log2(normal_vals + 1) if normal_cols else None
         g_std = log_ref.std(axis=1)
         var_mask = g_std >= 0.1
         log_ref = log_ref[var_mask]
         log_sample = log_sample[var_mask]
+        if log_subtypes is not None:
+            log_subtypes = log_subtypes[var_mask]
         if log_normals is not None:
             log_normals = log_normals[var_mask]
         g_std = g_std[var_mask]
@@ -1051,6 +1156,13 @@ def _cancer_type_feature_matrix(
         z_ref = np.clip((log_ref - g_mean[:, None]) / g_std[:, None], -3, 3)
         z_sample = np.clip((log_sample - g_mean) / g_std, -3, 3)
         parts = [z_ref.T]
+        if log_subtypes is not None and log_subtypes.shape[1]:
+            z_subtypes = np.clip(
+                (log_subtypes - g_mean[:, None]) / g_std[:, None],
+                -3,
+                3,
+            )
+            parts.append(z_subtypes.T)
         if log_normals is not None and log_normals.shape[1]:
             z_normals = np.clip(
                 (log_normals - g_mean[:, None]) / g_std[:, None],
@@ -1062,6 +1174,8 @@ def _cancer_type_feature_matrix(
         matrix = np.vstack(parts)
     elif method == "hk":
         parts = [ref_vals.T]
+        if subtype_labels:
+            parts.append(subtype_vals.T)
         if normal_cols:
             parts.append(normal_vals.T)
         parts.append(sample_vals[None, :])
@@ -1069,6 +1183,8 @@ def _cancer_type_feature_matrix(
         matrix = np.log2(combined + 1)
     elif method == "rank":
         parts = [ref_vals.T]
+        if subtype_labels:
+            parts.append(subtype_vals.T)
         if normal_cols:
             parts.append(normal_vals.T)
         parts.append(sample_vals[None, :])
@@ -1081,9 +1197,10 @@ def _cancer_type_feature_matrix(
     else:
         raise ValueError(f"Unknown method: {method}")
 
+    labels.extend(subtype_labels)
     labels.extend(normal_labels)
     labels.append("SAMPLE")
-    return matrix, labels
+    return _sanitize_embedding_matrix(matrix), labels
 
 
 def get_embedding_feature_metadata(method="hierarchy", n_genes=10):
@@ -1906,6 +2023,7 @@ def plot_cancer_type_pca(
     n_genes=10,
     method="zscore",
     include_normals=False,
+    include_subtypes=False,
     save_to_filename=None,
     save_dpi=300,
     figsize=(12, 10),
@@ -1917,11 +2035,18 @@ def plot_cancer_type_pca(
         n_genes=n_genes,
         method=method,
         include_normals=include_normals,
+        include_subtypes=include_subtypes,
     )
     pca = PCA(n_components=2)
     coords = pca.fit_transform(X)
     mlabel = _METHOD_LABELS.get(method)
-    title = "Sample among TCGA cancer types — PCA"
+    title = "Sample among TCGA parent cancer cohorts — PCA"
+    if include_subtypes and include_normals:
+        title = "Sample among TCGA parent cohorts, subtype references, and normal tissues — PCA"
+    elif include_subtypes:
+        title = "Sample among TCGA parent cohorts and subtype references — PCA"
+    elif include_normals:
+        title = "Sample among TCGA parent cancer cohorts and normal tissues — PCA"
     if mlabel:
         title += f" ({mlabel})"
     return _plot_embedding_with_labels(
@@ -1942,6 +2067,7 @@ def plot_cancer_type_mds(
     n_genes=10,
     method="zscore",
     include_normals=False,
+    include_subtypes=False,
     label_nearest_cancers=None,
     label_nearest_normals=None,
     label_all=True,
@@ -1958,6 +2084,7 @@ def plot_cancer_type_mds(
         n_genes=n_genes,
         method=method,
         include_normals=include_normals,
+        include_subtypes=include_subtypes,
     )
     distances = pairwise_distances(X, metric="euclidean")
     coords = MDS(
@@ -1966,9 +2093,13 @@ def plot_cancer_type_mds(
         random_state=42,
     ).fit_transform(distances)
     mlabel = _METHOD_LABELS.get(method)
-    title = "Sample among TCGA cancer types — MDS"
-    if include_normals:
-        title = "Sample among TCGA cancer and normal tissue types — MDS"
+    title = "Sample among TCGA parent cancer cohorts — MDS"
+    if include_subtypes and include_normals:
+        title = "Sample among TCGA parent cohorts, subtype references, and normal tissues — MDS"
+    elif include_subtypes:
+        title = "Sample among TCGA parent cohorts and subtype references — MDS"
+    elif include_normals:
+        title = "Sample among TCGA parent cancer cohorts and normal tissues — MDS"
     if mlabel:
         title += f" ({mlabel})"
     xlabel = "MDS1"

@@ -107,6 +107,8 @@ from .plot_embedding import (  # noqa: F401
     _reference_site_feature_matrix,
     _hierarchy_embedding_metadata,
     _cancer_type_hierarchy_matrix,
+    _sanitize_embedding_matrix,
+    _subtype_expression_values_for_ref,
     _cancer_type_feature_matrix,
     get_embedding_feature_metadata,
     _plot_embedding_with_labels,

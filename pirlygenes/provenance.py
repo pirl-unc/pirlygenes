@@ -5,7 +5,7 @@
 The existing reports (summary, analysis, targets, brief, actionable)
 each surface different parts of the 5-step attribution chain:
 
-    library prep -> preservation -> coarse TME -> fine subtypes -> tumor core
+    library prep -> preservation -> coarse TME -> fine subtypes -> tumor-inferred expression
 
 Readers have to reassemble the chain mentally. The provenance page is
 the assembled view in one ~30-line document plus a simple stacked-bar
@@ -52,7 +52,7 @@ def build_provenance_md(
 
     Each step states its input and what it deducts from the naive
     "all signal is tumor" interpretation so the reader can follow the
-    chain from raw TPMs to a conservative tumor core.
+    chain from raw TPMs to conservative tumor-inferred expression.
     """
     sample_context = analysis.get("sample_context")
     purity = analysis.get("purity") or {}

@@ -494,7 +494,7 @@ def estimate_tumor_expression_ranges(
     # HPA tissues express the gene above the detection threshold) and
     # the **mean of the top-N healthy tissues**. Broadly-expressed genes
     # can't be attributed to one compartment cleanly; the per-gene
-    # attribution was silently inflating tumor-core residuals for
+    # attribution was silently inflating tumor-inferred residuals for
     # universally-expressed housekeeping-like and surface genes. These
     # two metrics drive a breadth floor on non-tumor attribution and a
     # new ``broadly_expressed`` reliability flag.
@@ -964,7 +964,7 @@ def estimate_tumor_expression_ranges(
         # (~26%) + T_cell (3%) + endothelial (3%) compartments couldn't
         # absorb the signal of broadly-expressed genes like CRIM1,
         # HLA-F, IL6ST, TBCE, NPM1 — so the residual defaulted into
-        # the "tumor core" and every one of these came out as 95–99%
+        # the tumor-inferred compartment and every one of these came out as 95–99%
         # tumor-attributed, which isn't defensible for genes expressed
         # in 15+ HPA tissues. The floor says: **for genes broadly
         # expressed, non-tumor cells in the sample carry a baseline
