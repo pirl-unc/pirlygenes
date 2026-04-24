@@ -600,6 +600,35 @@ _MAPK_RTK_AGENTS = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+THERAPY_PATH_TIERS = frozenset(
+    {
+        "approved_standard",
+        "approved_indication_matched",
+        "approved_later_line",
+        "late_clinical",
+        "trial_follow_up",
+        "preclinical",
+        "off_label",
+    }
+)
+_THERAPY_PATH_RANK = {
+    "approved_standard": 0,
+    "approved_indication_matched": 1,
+    "approved_later_line": 2,
+    "late_clinical": 3,
+    "trial_follow_up": 4,
+    "preclinical": 6,
+    "off_label": 7,
+}
+_THERAPY_PATH_DEFAULT_NOTE = {
+    "approved_standard": "confirm indication and line of therapy",
+    "approved_indication_matched": "confirm clinical eligibility",
+    "approved_later_line": "confirm prior therapies and indication-specific eligibility",
+    "late_clinical": "not default standard",
+    "trial_follow_up": "not default standard",
+    "preclinical": "not a clinical recommendation",
+    "off_label": "confirm rationale and alternatives",
+}
 _THERAPY_EXPOSURE_RULES = (
     {
         "axis": "AR_signaling",
@@ -711,7 +740,56 @@ def _therapy_row_matches_exposure_rule(target_row, rule: dict) -> bool:
     return False
 
 
-def _therapy_path_info(target_row) -> dict:
+def _therapy_path_context_for_tier(target_row, tier: str, note: str = "") -> str:
+    agent_class = _agent_class_text(target_row)
+    if tier == "approved_standard":
+        prefix = "guideline-standard approved pathway"
+    elif tier == "approved_indication_matched":
+        prefix = "approved biomarker/indication-matched pathway"
+    elif tier == "approved_later_line":
+        prefix = (
+            "approved radioligand pathway"
+            if "radioligand" in agent_class
+            else "approved later-line pathway"
+        )
+    elif tier == "late_clinical":
+        prefix = "late-clinical follow-up"
+    elif tier == "trial_follow_up":
+        prefix = "clinical-trial follow-up"
+    elif tier == "preclinical":
+        prefix = "preclinical follow-up"
+    elif tier == "off_label":
+        prefix = "off-label follow-up"
+    else:
+        return ""
+
+    suffix = _clean_text(note) or _THERAPY_PATH_DEFAULT_NOTE.get(tier, "")
+    if suffix:
+        return f"{prefix}; {suffix}"
+    return prefix
+
+
+def _explicit_therapy_path_info(target_row) -> dict | None:
+    tier = _clean_text(
+        target_row.get("treatment_path_tier")
+        if hasattr(target_row, "get") else ""
+    ).lower()
+    if not tier:
+        return None
+    if tier not in THERAPY_PATH_TIERS:
+        return None
+    note = _clean_text(
+        target_row.get("eligibility_note") if hasattr(target_row, "get") else ""
+    )
+    return {
+        "tier": tier,
+        "rank": _THERAPY_PATH_RANK.get(tier, 99),
+        "context": _therapy_path_context_for_tier(target_row, tier, note),
+        "source": "curated",
+    }
+
+
+def _inferred_therapy_path_info(target_row) -> dict:
     phase = _phase_text(target_row)
     agent_class = _agent_class_text(target_row)
     text = _therapy_row_text(target_row)
@@ -727,6 +805,7 @@ def _therapy_path_info(target_row) -> dict:
                     "approved radioligand pathway; confirm imaging/eligibility "
                     "and prior-line requirements"
                 ),
+                "source": "inferred",
             }
         if is_standard:
             return {
@@ -736,6 +815,7 @@ def _therapy_path_info(target_row) -> dict:
                     "guideline-standard approved pathway; confirm the indication "
                     "and line of therapy"
                 ),
+                "source": "inferred",
             }
         if is_later_line:
             return {
@@ -745,6 +825,7 @@ def _therapy_path_info(target_row) -> dict:
                     "approved later-line pathway; confirm prior therapies and "
                     "indication-specific eligibility"
                 ),
+                "source": "inferred",
             }
         return {
             "tier": "approved_indication_matched",
@@ -753,6 +834,7 @@ def _therapy_path_info(target_row) -> dict:
                 "approved biomarker/indication-matched pathway; confirm clinical "
                 "eligibility"
             ),
+            "source": "inferred",
         }
 
     phase_context = {
@@ -763,7 +845,11 @@ def _therapy_path_info(target_row) -> dict:
         "off_label": ("off_label", 7, "off-label follow-up; confirm rationale and alternatives"),
     }
     tier, rank, context = phase_context.get(phase, ("unknown", 99, ""))
-    return {"tier": tier, "rank": rank, "context": context}
+    return {"tier": tier, "rank": rank, "context": context, "source": "inferred"}
+
+
+def _therapy_path_info(target_row) -> dict:
+    return _explicit_therapy_path_info(target_row) or _inferred_therapy_path_info(target_row)
 
 
 def therapy_path_tier(target_row) -> str:
