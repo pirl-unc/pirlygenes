@@ -28,6 +28,8 @@ def main() -> int:
     targets = [row for row in rows if (row.get("role") or "").strip() == "target"]
     errors = []
     counts = Counter()
+    sourced_rows = 0
+    pmid_sourced_rows = 0
 
     for idx, row in enumerate(targets, start=2):
         label = (
@@ -51,6 +53,11 @@ def main() -> int:
             errors.append(f"{label}: missing eligibility_note")
         if phase not in PHASE_BY_TIER[tier]:
             errors.append(f"{label}: phase {phase!r} incompatible with tier {tier!r}")
+        source = (row.get("source") or "").strip()
+        if source:
+            sourced_rows += 1
+            if "PMID:" in source:
+                pmid_sourced_rows += 1
         counts[tier] += 1
 
     if errors:
@@ -59,6 +66,11 @@ def main() -> int:
         return 1
 
     print(f"Validated {len(targets)} target rows")
+    print(
+        f"Rows with source citations: {sourced_rows}/{len(targets)} "
+        f"({sourced_rows / max(len(targets), 1):.1%})"
+    )
+    print(f"Rows with PMID citations: {pmid_sourced_rows}/{len(targets)}")
     for tier, count in sorted(counts.items()):
         print(f"{tier}: {count}")
     return 0

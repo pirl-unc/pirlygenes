@@ -57,6 +57,13 @@ def test_treatment_path_tier_is_phase_compatible():
     assert not bad, "phase/tier mismatch: " + ", ".join(bad[:20])
 
 
+def test_target_row_sources_are_present_for_most_curation_rows():
+    targets = _target_rows()
+    sources = targets["source"].astype(str).str.strip()
+    assert sources.ne("").mean() >= 0.95
+    assert sources[sources.ne("")].str.contains("PMID:", regex=False).all()
+
+
 def test_reports_prefer_explicit_treatment_path_tier_over_rationale_text():
     later_line_row = {
         "symbol": "TEST1",
