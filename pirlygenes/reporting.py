@@ -481,6 +481,30 @@ def normal_expression_context(row):
 
 def clinical_maturity_info(target_row, target_panel=None):
     """Summarize maturity from the current row and its curated siblings."""
+    def _display_agent_class(value):
+        text = _clean_text(value).replace("_", " ")
+        if not text:
+            return ""
+        acronym_map = {
+            "adc": "ADC",
+            "tce": "TCE",
+            "car t": "CAR-T",
+            "cart": "CAR-T",
+            "tcr t": "TCR-T",
+            "tcrt": "TCR-T",
+            "pmhc": "pMHC",
+            "mhc": "MHC",
+        }
+        lowered = text.lower()
+        if lowered in acronym_map:
+            return acronym_map[lowered]
+        return re.sub(
+            r"\b(adc|tce|car-t|tcr-t|pmhc|mhc)\b",
+            lambda match: acronym_map.get(match.group(1).lower(), match.group(1).upper()),
+            text,
+            flags=re.IGNORECASE,
+        )
+
     phase = _clean_text(target_row.get("phase"))
     phase_label = {
         "approved": "approved",
@@ -489,7 +513,7 @@ def clinical_maturity_info(target_row, target_panel=None):
         "phase_1": "early clinical",
         "preclinical": "preclinical",
     }.get(phase, phase or "curated")
-    agent_class = _clean_text(target_row.get("agent_class")).replace("_", " ")
+    agent_class = _display_agent_class(target_row.get("agent_class"))
     summary = phase_label
     if agent_class:
         summary += f" {agent_class}"
@@ -536,7 +560,7 @@ def clinical_maturity_info(target_row, target_panel=None):
     )
     extras = []
     if n_agents > 1:
-        extras.append(f"{n_agents} curated agents")
+        extras.append(f"{n_agents} agents")
     if n_modalities > 1:
         extras.append(f"{n_modalities} modalities")
     if extras:

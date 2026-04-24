@@ -220,11 +220,17 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
     # removed from the default plot set (polish/4.40.1).
     assert len(cancer_gene_calls) == 0
-    # Only MDS-TME is emitted now — PCA and hierarchy-method plots have
+    # MDS-TME plus the normal-inclusive nearest-label MDS are emitted now;
+    # PCA and hierarchy-method plots have
     # been removed from the default output (see pirl-unc/pirlygenes#36).
     assert len(pca_calls) == 0
-    assert len(mds_calls) == 1
+    assert len(mds_calls) == 2
     assert mds_calls[0]["method"] == "tme"
+    assert mds_calls[1]["method"] == "tme"
+    assert mds_calls[1]["include_normals"] is True
+    assert mds_calls[1]["label_nearest_cancers"] == 5
+    assert mds_calls[1]["label_nearest_normals"] == 5
+    assert mds_calls[1]["label_all"] is False
     assert len(report_calls) == 2
     assert len(target_report_calls) == 1
     assert (tmp_path / "test-output" / "out-summary.md").exists()
@@ -237,7 +243,7 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert "tumor_purity" in params
     assert "decomposition" in params
     assert params["selected_sample_mode"] == "solid"
-    assert params["embedding_methods"] == ["tme"]
+    assert params["embedding_methods"] == ["tme", "tme_with_normals"]
     assert params["input"]["tumor_context"] == "met"
     assert params["input"]["site_hint"] == "liver"
     assert params["input"]["decomposition_templates"] == ["met_liver"]
@@ -607,6 +613,57 @@ def test_generate_text_reports_mentions_analysis_constraints(tmp_path):
     detailed = (tmp_path / "constrained-analysis.md").read_text()
     assert "User-constrained cancer type" in detailed
     assert "Requested tumor context" in detailed
+
+
+def test_matched_normal_attribution_uses_decomposition_residual():
+    import matplotlib
+    matplotlib.use("Agg")
+
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "CD74",
+                "category": "surface",
+                "median_est": 50.0,
+                "observed_tpm": 100.0,
+                "attr_tumor_tpm": 5.0,
+                "matched_normal_tpm": 0.0,
+                "tme_only_tpm": 0.0,
+                "attribution": {"B_cell": 80.0, "macrophage": 15.0},
+                "therapies": "",
+                "tme_explainable": True,
+            },
+            {
+                "symbol": "KLK3",
+                "category": "surface",
+                "median_est": 80.0,
+                "observed_tpm": 80.0,
+                "attr_tumor_tpm": 20.0,
+                "matched_normal_tpm": 45.0,
+                "tme_only_tpm": 15.0,
+                "attribution": {
+                    "matched_normal_prostate": 45.0,
+                    "fibroblast": 15.0,
+                },
+                "therapies": "",
+                "tme_explainable": False,
+            },
+        ]
+    )
+
+    fig = plot_mod.plot_matched_normal_attribution(
+        ranges_df,
+        cancer_type="PRAD",
+        category="surface",
+    )
+
+    assert fig is not None
+    ax = fig.axes[0]
+    tumor_widths = [patch.get_width() for patch in ax.patches[:2]]
+    assert tumor_widths[0] == pytest.approx(5.0)
+    labels = "\n".join(label.get_text() for label in ax.get_yticklabels())
+    assert "tissue-explainable" in labels
+    assert "\u26a0" not in labels
 
 
 def test_select_actionable_plot_genes_prefers_therapy_linked_surface_hits():
@@ -1109,6 +1166,37 @@ def test_hierarchy_embedding_plot_adds_family_legend_and_neighbors(monkeypatch):
     assert "COAD" in all_text
 
 
+def test_embedding_plot_can_label_nearest_cancers_and_normals_only(monkeypatch):
+    import pirlygenes.plot_embedding as _pe
+    monkeypatch.setattr(_pe, "adjust_text", lambda *a, **k: None)
+    coords = np.array([
+        [0.0, 0.0],
+        [2.0, 2.0],
+        [0.1, 0.0],
+        [3.0, 3.0],
+        [0.05, 0.05],
+    ])
+    labels = ["PRAD", "COAD", "normal:prostate", "normal:liver", "SAMPLE"]
+
+    _fig, ax = plot_mod._plot_embedding_with_labels(
+        coords,
+        labels,
+        title="Test",
+        xlabel="x",
+        ylabel="y",
+        label_nearest_cancers=1,
+        label_nearest_normals=1,
+        label_all=False,
+    )
+
+    all_text = "\n".join(text.get_text() for text in ax.texts)
+    assert "PRAD" in all_text
+    assert "prostate" in all_text
+    assert "COAD" not in all_text
+    assert "liver" not in all_text
+    assert "Nearest normal tissues" in all_text
+
+
 def test_singleton_family_is_not_rendered_as_family_call():
     summary = _summarize_candidate_family(
         [
@@ -1279,6 +1367,49 @@ def test_plot_ctas_vs_cancer_type_detail_saves_png(tmp_path):
     assert fig is not None
     assert out.exists()
     assert out.stat().st_size > 5_000
+
+
+def test_plot_ctas_vs_cancer_type_detail_worst_vital_excludes_testis_and_thymus(
+    monkeypatch,
+):
+    """CTA max-vital tissue excludes reproductive/immune-privileged tissues."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import pirlygenes.plot_therapy as therapy_mod
+
+    monkeypatch.setattr(
+        therapy_mod,
+        "CTA_gene_id_to_name",
+        lambda: {"ENSGCTA": "CTA1"},
+    )
+    monkeypatch.setattr(
+        therapy_mod,
+        "pan_cancer_expression",
+        lambda: pd.DataFrame({
+            "Ensembl_Gene_ID": ["ENSGCTA"],
+            "Symbol": ["CTA1"],
+            "FPKM_PRAD": [1.0],
+            "nTPM_prostate": [0.5],
+            "nTPM_testis": [300.0],
+            "nTPM_thymus": [250.0],
+            "nTPM_heart_muscle": [35.0],
+            "nTPM_liver": [4.0],
+        }),
+    )
+
+    sample = pd.DataFrame({
+        "gene_id": ["ENSGCTA"],
+        "gene_name": ["CTA1"],
+        "TPM": [50.0],
+    })
+    fig = therapy_mod.plot_ctas_vs_cancer_type_detail(
+        sample, cancer_type="PRAD", min_sample_tpm=1.0,
+    )
+
+    text = "\n".join(t.get_text() for t in fig.axes[0].texts)
+    assert "heart 35" in text
+    assert "thymus" not in text
+    assert "testis" not in text
 
 
 def test_plot_ctas_vs_cancer_type_detail_min_sample_tpm_filters_rows():

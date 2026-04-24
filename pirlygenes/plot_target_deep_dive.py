@@ -486,6 +486,13 @@ def plot_tumor_attribution(
     ax.legend(loc="lower right", fontsize=8)
     cat_label = "CTAs" if category == "CTA" else "Actionable Targets"
     ax.set_title(f"Tumor vs TME Attribution — {cat_label} — {cancer_code} (purity={purity:.0%})")
+
+    try:
+        from .plot_reference_lines import add_p90_reference_line
+
+        add_p90_reference_line(ax, sample_tpm, orientation="vertical")
+    except Exception:
+        pass
     fig.tight_layout()
 
     if save_to_filename:
@@ -498,20 +505,13 @@ def plot_curated_target_evidence(
     target_panel,
     cancer_type,
     top_n=12,
+    df_gene_expr=None,
     save_to_filename=None,
     save_dpi=300,
 ):
-    """Integrated view for curated targets: tumor range + normal context.
-
-    The existing matched-normal / safety / attribution plots each show
-    one axis of the story. This plot intentionally combines the three
-    questions the markdown now asks for each curated target:
-
-    - how much estimated tumor TPM remains across the range,
-    - what kind of normal-expression context that target carries, and
-    - how clinically mature the target class is.
-    """
+    """Integrated view for curated targets: expression evidence + context."""
     from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
 
     if (
         ranges_df is None
@@ -610,11 +610,24 @@ def plot_curated_target_evidence(
     if not rows:
         return None
 
-    fig, ax = plt.subplots(figsize=(12, max(4.5, 0.6 * len(rows) + 1.2)))
+    fig, (ax_expr, ax_ctx) = plt.subplots(
+        1,
+        2,
+        figsize=(13.5, max(4.8, 0.55 * len(rows) + 1.8)),
+        gridspec_kw={"width_ratios": [1.1, 1.15]},
+    )
     y_pos = np.arange(len(rows))
     for i, row in enumerate(rows):
-        ax.hlines(i, row["low"], row["high"], color=row["color"], lw=4, alpha=0.75)
-        ax.scatter(
+        ax_expr.hlines(
+            i,
+            row["low"],
+            row["high"],
+            color=row["color"],
+            lw=5,
+            alpha=0.78,
+            zorder=2,
+        )
+        ax_expr.scatter(
             row["mid"],
             i,
             s=90,
@@ -624,7 +637,7 @@ def plot_curated_target_evidence(
             linewidth=0.8,
             zorder=3,
         )
-        ax.scatter(
+        ax_expr.scatter(
             row["observed"],
             i,
             s=45,
@@ -633,34 +646,64 @@ def plot_curated_target_evidence(
             linewidth=1.2,
             zorder=4,
         )
-        note = f"{row['source']['label']} | {row['normal']['label']} | {row['maturity']}"
-        ax.text(
-            max(row["high"], row["observed"]) * 1.08 + 0.5,
+
+        ax_ctx.text(
+            0.02,
             i,
-            note,
+            row["source"]["label"],
             va="center",
-            fontsize=8,
-            color="#555555",
+            fontsize=8.5,
+            color="#222222",
+        )
+        ax_ctx.text(
+            1.05,
+            i,
+            row["normal"]["label"],
+            va="center",
+            fontsize=8.5,
+            color="#222222",
+        )
+        ax_ctx.text(
+            2.25,
+            i,
+            row["maturity"],
+            va="center",
+            fontsize=8.5,
+            color="#222222",
         )
 
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels([row["symbol"] for row in rows], fontsize=9)
-    ax.invert_yaxis()
-    ax.set_xscale("symlog", linthresh=1.0)
-    ax.set_xlabel("Estimated tumor TPM range (dot = midpoint, tick = observed TPM)")
-    ax.set_title(f"Curated Targets — {cancer_code}")
+    ax_expr.set_yticks(y_pos)
+    ax_expr.set_yticklabels([row["symbol"] for row in rows], fontsize=9.5)
+    ax_expr.invert_yaxis()
+    ax_expr.set_xscale("symlog", linthresh=1.0)
+    ax_expr.set_xlabel("Purity-adjusted tumor TPM range; black tick = bulk TPM")
+    ax_expr.set_title("Expression Evidence", fontsize=12, fontweight="bold")
+    ax_expr.grid(axis="x", color="#dddddd", linewidth=0.6, alpha=0.7)
+    ax_expr.spines["top"].set_visible(False)
+    ax_expr.spines["right"].set_visible(False)
+
+    ax_ctx.set_xlim(0.0, 4.0)
+    ax_ctx.set_ylim(-0.5, len(rows) - 0.5)
+    ax_ctx.invert_yaxis()
+    ax_ctx.axis("off")
+    for xpos, label in [
+        (0.02, "Tumor source"),
+        (1.05, "Healthy tissues"),
+        (2.25, "Maturity"),
+    ]:
+        ax_ctx.text(
+            xpos,
+            -0.85,
+            label,
+            fontsize=9.5,
+            fontweight="bold",
+            color="#333333",
+            clip_on=False,
+        )
+    ax_ctx.set_title("Context", fontsize=12, fontweight="bold")
 
     normal_handles = [
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color="none",
-            markerfacecolor=color,
-            markeredgecolor="black",
-            markersize=8,
-            label=label,
-        )
+        Patch(facecolor=color, edgecolor="black", label=label)
         for label, color in [
             ("same-lineage expected", normal_colors["same_lineage_expected"]),
             ("restricted / CTA-like", normal_colors["restricted_outside_lineage"]),
@@ -682,20 +725,52 @@ def plot_curated_target_evidence(
         )
         for label, marker in source_markers.items()
     ]
-    legend1 = ax.legend(
+    range_handles = [
+        Line2D([0], [0], color="#555555", lw=5, label="purity-adjusted tumor range"),
+        Line2D(
+            [0],
+            [0],
+            marker="|",
+            color="black",
+            linestyle="none",
+            markersize=12,
+            markeredgewidth=1.5,
+            label="bulk TPM",
+        ),
+    ]
+    legend1 = fig.legend(
+        handles=range_handles + source_handles,
+        loc="lower center",
+        bbox_to_anchor=(0.34, 0.015),
+        fontsize=8,
+        title="Expression / source",
+        frameon=False,
+        ncol=2,
+    )
+    fig.add_artist(legend1)
+    fig.legend(
         handles=normal_handles,
-        loc="lower right",
+        loc="lower center",
+        bbox_to_anchor=(0.76, 0.015),
         fontsize=8,
-        title="Normal-expression context",
+        title="Healthy-tissue context",
+        frameon=False,
+        ncol=2,
     )
-    ax.add_artist(legend1)
-    ax.legend(
-        handles=source_handles,
-        loc="upper right",
-        fontsize=8,
-        title="Tumor-source support",
-    )
-    fig.tight_layout()
+    if df_gene_expr is not None:
+        try:
+            from .common import build_sample_tpm_by_symbol
+            from .plot_reference_lines import add_p90_reference_line
+
+            add_p90_reference_line(
+                ax_expr,
+                build_sample_tpm_by_symbol(df_gene_expr),
+                orientation="vertical",
+            )
+        except Exception:
+            pass
+    fig.suptitle(f"Curated Targets — {cancer_code}", fontsize=13, y=0.985)
+    fig.tight_layout(rect=[0.0, 0.11, 1.0, 0.93])
 
     if save_to_filename:
         fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
@@ -809,7 +884,6 @@ def _priority_target_rows(
             maturity = clinical_maturity_info(curated, target_panel=target_panel)
             phase = str(curated.get("phase") or "")
             points = _PRIORITY_PHASE_POINTS.get(phase, 0.8)
-            points += 0.8
             points += min(0.4, 0.15 * max(0, maturity.get("n_modalities", 0) - 1))
             points += min(0.3, 0.05 * max(0, maturity.get("n_agents", 0) - 1))
             label = maturity["summary"]
@@ -850,6 +924,7 @@ def _priority_target_rows(
         source_points = _source_component(source, row)
         normal_points = _normal_component(normal)
         strength_points = _strength_component(source, row)
+        curation_points = 0.8 if matched_panel else 0.0
         rows.append(
             {
                 "symbol": sym,
@@ -865,7 +940,14 @@ def _priority_target_rows(
                 "actionability_points": actionability_points,
                 "normal_points": normal_points,
                 "strength_points": strength_points,
-                "total_score": source_points + actionability_points + normal_points + strength_points,
+                "curation_points": curation_points,
+                "total_score": (
+                    source_points
+                    + actionability_points
+                    + normal_points
+                    + strength_points
+                    + curation_points
+                ),
                 "phase_key": _PRIORITY_PHASE_PRIORITY.get(
                     str(curated.get("phase") or "") if curated is not None else "",
                     99 if curated is None else 9,
@@ -913,7 +995,8 @@ def plot_priority_targets(
     score_parts = [
         ("Tumor support", "source_points", "#2e8b57"),
         ("Clinical readiness", "actionability_points", "#4a90d9"),
-        ("Healthy-tissue fit", "normal_points", "#9b59b6"),
+        ("Disease-matched curation", "curation_points", "#f39c12"),
+        ("Healthy-tissue specificity", "normal_points", "#9b59b6"),
         ("Tumor level", "strength_points", "#8c8c8c"),
     ]
     left = np.zeros(len(rows))
@@ -941,7 +1024,7 @@ def plot_priority_targets(
             color="#444444",
         )
 
-    labels = [f"{row['symbol']}{'*' if row['matched_panel'] else ''}" for row in rows]
+    labels = [row["symbol"] for row in rows]
     ax.set_yticks(y_pos)
     ax.set_yticklabels(labels, fontsize=10)
     ax.invert_yaxis()
@@ -953,20 +1036,11 @@ def plot_priority_targets(
     fig.text(
         0.5,
         0.965,
-        "Higher scores reflect better tumor support, stronger clinical maturity, safer healthy-tissue context, and higher estimated tumor expression.",
+        "Higher scores reflect better tumor support, stronger clinical maturity, disease-matched curation, healthy-tissue specificity/safety, and higher estimated tumor expression.",
         ha="center",
         va="top",
         fontsize=9,
         color="#555555",
-    )
-    fig.text(
-        0.99,
-        0.01,
-        "* disease-matched curated target",
-        ha="right",
-        va="bottom",
-        fontsize=8,
-        color="#666666",
     )
     fig.tight_layout(rect=[0.0, 0.03, 1.0, 0.93])
 
@@ -1005,7 +1079,7 @@ def plot_priority_target_context(
         gridspec_kw={"width_ratios": [1.2, 1.0]},
     )
     y_pos = np.arange(len(rows))
-    labels = [f"{row['symbol']}{'*' if row['matched_panel'] else ''}" for row in rows]
+    labels = [row["symbol"] for row in rows]
     source_labels = {row["source"]["label"] for row in rows}
     normal_labels = {row["normal"]["label"] for row in rows}
     show_source_col = len(source_labels) > 1
@@ -1052,6 +1126,15 @@ def plot_priority_target_context(
         if show_normal_col:
             ax_note.text(x, i, row["normal"]["label"], va="center", fontsize=9, color="#222222")
             x += 1.0
+        ax_note.text(
+            x,
+            i,
+            "disease-matched" if row["matched_panel"] else "generic",
+            va="center",
+            fontsize=9,
+            color="#222222",
+        )
+        x += 1.0
         ax_note.text(x, i, row["clinical_label"], va="center", fontsize=9, color="#222222")
         ax_note.text(x + 1.0, i, f"{row['total_score']:.1f}", va="center", fontsize=9, color="#222222")
 
@@ -1065,12 +1148,25 @@ def plot_priority_target_context(
     ax_range.set_xticks([_log_tpm(tick) for tick in raw_ticks])
     ax_range.set_xticklabels([f"{tick:g}" for tick in raw_ticks])
     ax_range.set_xlim(left=0.0, right=_log_tpm(max_raw) + 0.12)
-    ax_range.set_xlabel("Tumor-core TPM, log10(TPM+1); black tick = bulk measured TPM")
+    ax_range.set_xlabel("Purity-adjusted tumor TPM, log10(TPM+1); black tick = bulk TPM")
     ax_range.set_title("Tumor Range", fontsize=12, fontweight="bold")
     ax_range.grid(axis="x", color="#dddddd", linewidth=0.6, alpha=0.7)
     ax_range.set_axisbelow(True)
+    if df_gene_expr is not None:
+        try:
+            from .common import build_sample_tpm_by_symbol
+            from .plot_reference_lines import add_p90_reference_line
 
-    note_cols = int(show_source_col) + int(show_normal_col) + 2
+            add_p90_reference_line(
+                ax_range,
+                build_sample_tpm_by_symbol(df_gene_expr),
+                orientation="vertical",
+                value_transform=_log_tpm,
+            )
+        except Exception:
+            pass
+
+    note_cols = int(show_source_col) + int(show_normal_col) + 3
     ax_note.set_xlim(0.0, note_cols + 0.05)
     ax_note.set_ylim(-0.5, len(rows) - 0.5)
     ax_note.invert_yaxis()
@@ -1083,6 +1179,8 @@ def plot_priority_target_context(
     if show_normal_col:
         header_cols.append((x, "Healthy tissues"))
         x += 1.0
+    header_cols.append((x, "Curation"))
+    x += 1.0
     header_cols.append((x, "Clinical maturity"))
     header_cols.append((x + 1.0, "Priority"))
     for xpos, text in header_cols:
@@ -1134,14 +1232,6 @@ def plot_priority_target_context(
         )
         for label, marker in _PRIORITY_SOURCE_MARKERS.items()
     ]
-    panel_handle = Line2D(
-        [0],
-        [0],
-        marker=None,
-        color="none",
-        linestyle="none",
-        label="* disease-matched curated target",
-    )
     normal_legend = fig.legend(
         handles=normal_handles,
         loc="lower center",
@@ -1153,7 +1243,7 @@ def plot_priority_target_context(
     )
     fig.add_artist(normal_legend)
     fig.legend(
-        handles=source_handles + [panel_handle],
+        handles=source_handles,
         loc="lower center",
         bbox_to_anchor=(0.76, 0.015),
         fontsize=8,

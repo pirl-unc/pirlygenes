@@ -234,7 +234,7 @@ def _apply_therapy_support_gate(symbol, therapies, fn1_support):
 
 
 ESSENTIAL_TISSUES = [
-    "brain", "heart_muscle", "liver", "lung", "kidney",
+    "brain", "heart", "liver", "lung", "kidney",
     "bone_marrow", "spleen", "pancreas", "colon", "stomach",
 ]
 
@@ -662,13 +662,12 @@ def plot_therapy_target_safety(
             ]
             max_ess = max(vals) if vals else 0
         y_value = max_ess + 0.1
-        marker = "^" if record["has_approved"] else "o"
         _draw_therapy_marker(
             ax,
             tpm,
             y_value,
             record["therapies"],
-            marker=marker,
+            marker="o",
             size=80,
             alpha=0.85,
             zorder=3,
@@ -702,27 +701,6 @@ def plot_therapy_target_safety(
         )
         for therapy in _THERAPY_PLOT_ORDER
     ]
-    marker_handles = [
-        Line2D(
-            [],
-            [],
-            marker="o",
-            linestyle="None",
-            color="#666666",
-            label="Trial-only target",
-            markersize=8,
-        ),
-        Line2D(
-            [],
-            [],
-            marker="^",
-            linestyle="None",
-            color="#666666",
-            markeredgecolor="black",
-            label="Approved target",
-            markersize=8,
-        ),
-    ]
     legend = ax.legend(
         handles=therapy_handles,
         loc="upper left",
@@ -732,14 +710,6 @@ def plot_therapy_target_safety(
         title_fontsize=9,
     )
     ax.add_artist(legend)
-    ax.legend(
-        handles=marker_handles,
-        loc="lower right",
-        fontsize=8,
-        frameon=False,
-        title="Marker",
-        title_fontsize=9,
-    )
 
     ax.set_xscale("log")
     ax.set_yscale("log")
@@ -753,6 +723,17 @@ def plot_therapy_target_safety(
         "(brain, heart, liver, lung, kidney, bone marrow, spleen, pancreas, colon, stomach)",
         fontsize=11,
     )
+    try:
+        from .common import build_sample_tpm_by_symbol
+        from .plot_reference_lines import add_p90_reference_line
+
+        add_p90_reference_line(
+            ax,
+            build_sample_tpm_by_symbol(df_gene_expr),
+            orientation="vertical",
+        )
+    except Exception:
+        pass
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
@@ -992,6 +973,17 @@ def plot_geneset_vs_vital_tissues(
     ax.set_xlim(0.05, 10_000)
     ax.axvline(toxicity_tpm_threshold, linestyle="--", color="#d62728",
                linewidth=0.8, alpha=0.5, zorder=1)
+    try:
+        from .common import build_sample_tpm_by_symbol
+        from .plot_reference_lines import add_p90_reference_line
+
+        add_p90_reference_line(
+            ax,
+            build_sample_tpm_by_symbol(df_gene_expr),
+            orientation="vertical",
+        )
+    except Exception:
+        pass
     ax.set_yticks(y)
     ax.set_yticklabels([r[0] for r in rows], fontsize=9)
     ax.invert_yaxis()
@@ -1256,6 +1248,12 @@ def plot_ctas_vs_cancer_type_detail(
         f"CTA detail — {cancer_code} (sample vs cohort / {origin_display} / testis / worst vital tissue)",
         fontweight="bold",
     )
+    try:
+        from .plot_reference_lines import add_p90_reference_line
+
+        add_p90_reference_line(ax, sample_tpm, orientation="vertical")
+    except Exception:
+        pass
     ax.grid(axis="x", alpha=0.25, zorder=0)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -1380,11 +1378,51 @@ def plot_therapy_pathway_state(
     bucket_priority = {"up": 0, "down": 0, "mixed": 1, "indeterminate": 2}
     items.sort(key=lambda r: bucket_priority.get(r["state"], 2))
 
-    n_rows = len(items)
+    plot_rows = []
+    for axis_idx, item in enumerate(items):
+        panels = []
+        if item["up_fold"] is not None:
+            panels.append(
+                {
+                    "panel": "up",
+                    "fold": item["up_fold"],
+                    "n": item["up_n"],
+                    "marker": "o",
+                    "arrow": "\u2191",
+                    "panel_label": "expected-up genes",
+                    "legend_label": "genes expected up when pathway active",
+                }
+            )
+        if item["down_fold"] is not None:
+            panels.append(
+                {
+                    "panel": "down",
+                    "fold": item["down_fold"],
+                    "n": item["down_n"],
+                    "marker": "s",
+                    "arrow": "\u2193",
+                    "panel_label": "expected-down genes",
+                    "legend_label": "genes expected down when pathway active",
+                }
+            )
+        for panel_idx, panel in enumerate(panels):
+            plot_rows.append(
+                {
+                    **item,
+                    **panel,
+                    "axis_index": axis_idx,
+                    "axis_first_row": panel_idx == 0,
+                    "axis_last_row": panel_idx == len(panels) - 1,
+                    "axis_panel_count": len(panels),
+                }
+            )
+
+    n_rows = len(plot_rows)
     if figsize is None:
         # Reserve vertical room for the caption wrap. Width accommodates
-        # fold-range labels without the legend overflowing.
-        figsize = (12, max(4.0, 0.7 * n_rows + 2.8))
+        # fold labels without the legend overflowing. Up- and down-panel
+        # folds are separate rows because they are opposite evidence streams.
+        figsize = (12, max(4.0, 0.55 * n_rows + 2.8))
 
     fig = plt.figure(figsize=figsize)
     # Top area for the dumbbells, bottom for the narrative caption.
@@ -1398,42 +1436,47 @@ def plot_therapy_pathway_state(
 
     # --- Dumbbell plot ---
     y_positions = np.arange(n_rows)
-    for i, row in enumerate(items):
+    legend_seen = set()
+    for i, row in enumerate(plot_rows):
         color = _AXIS_STATE_COLOR.get(row["state"], "#555555")
 
-        up_fold = row["up_fold"]
-        down_fold = row["down_fold"]
+        fold = row["fold"]
+        if fold is None or fold <= 0:
+            continue
+        # Anchor each panel to baseline. Do not connect up- and down-panel
+        # folds: for suppressed pathways they move in opposite directions and
+        # connecting them implies a single continuum that is not biological.
+        ax.plot(
+            [min(1.0, fold), max(1.0, fold)],
+            [i, i],
+            color=color,
+            linewidth=3,
+            alpha=0.24,
+            solid_capstyle="round",
+            zorder=2,
+        )
+        legend_label = None
+        if row["panel"] not in legend_seen:
+            legend_label = row["legend_label"]
+            legend_seen.add(row["panel"])
+        ax.plot([fold], [i], marker=row["marker"], markersize=10.5,
+                color=color, markeredgecolor="white", markeredgewidth=1.4,
+                linestyle="", zorder=3, label=legend_label)
+        text_x = fold * (1.08 if fold >= 1.0 else 0.92)
+        ha = "left" if fold >= 1.0 else "right"
+        ax.text(text_x, i, f"{row['arrow']} {fold:.2f}\u00d7",
+                ha=ha, va="center", fontsize=8, color=color, fontweight="bold")
 
-        # X positions in log space — label axis as log for
-        # interpretability but compute on linear folds.
-        xs = [f for f in (up_fold, down_fold) if f is not None]
-        if len(xs) == 2:
-            x_min, x_max = min(xs), max(xs)
-            ax.plot([x_min, x_max], [i, i], color=color, linewidth=3, alpha=0.45,
-                    solid_capstyle="round", zorder=2)
-
-        if up_fold is not None:
-            ax.plot([up_fold], [i], marker="o", markersize=11,
-                    color=color, markeredgecolor="white", markeredgewidth=1.4,
-                    linestyle="", zorder=3,
-                    label="genes up when pathway active" if i == 0 else None)
-            ax.text(up_fold, i + 0.20, f"\u2191 {up_fold:.2f}\u00d7",
-                    ha="center", va="bottom", fontsize=8, color=color, fontweight="bold")
-        if down_fold is not None:
-            ax.plot([down_fold], [i], marker="s", markersize=10,
-                    color=color, markeredgecolor="white", markeredgewidth=1.4,
-                    linestyle="", zorder=3,
-                    label="genes down when pathway active" if i == 0 else None)
-            ax.text(down_fold, i - 0.26, f"\u2193 {down_fold:.2f}\u00d7",
-                    ha="center", va="top", fontsize=8, color=color, fontweight="bold")
+        if row["axis_last_row"] and i < n_rows - 1:
+            ax.axhline(i + 0.5, color="#eeeeee", linewidth=0.8, zorder=0)
 
     ax.axvline(1.0, color="#888888", linestyle="--", linewidth=1.0, alpha=0.7, zorder=1)
     ax.set_xscale("log")
     x_vals = []
-    for r in items:
-        for f in (r["up_fold"], r["down_fold"]):
-            if f is not None and f > 0:
-                x_vals.append(f)
+    for r in plot_rows:
+        f = r["fold"]
+        if f is not None and f > 0:
+            x_vals.append(f)
     if x_vals:
         lo = min(0.1, min(x_vals) * 0.7)
         hi = max(10.0, max(x_vals) * 1.4)
@@ -1444,19 +1487,16 @@ def plot_therapy_pathway_state(
     # Y-axis: label + state tag (color-coded)
     ax.set_yticks(y_positions)
     labels = []
-    for row in items:
+    for row in plot_rows:
         state_tag = {"up": "active", "down": "suppressed",
                      "mixed": "mixed", "indeterminate": "near baseline"}.get(
                          row["state"], row["state"])
-        n_info = ""
-        parts = []
-        if row["up_n"]:
-            parts.append(f"{row['up_n']} up")
-        if row["down_n"]:
-            parts.append(f"{row['down_n']} down")
-        if parts:
-            n_info = f"  ({', '.join(parts)})"
-        labels.append(f"{row['label']}  \u2014  {state_tag}{n_info}")
+        n_info = f" ({row['n']})" if row["n"] else ""
+        panel_text = f"{row['panel_label']}{n_info}"
+        if row["axis_first_row"]:
+            labels.append(f"{row['label']}  \u2014  {state_tag}\n  {panel_text}")
+        else:
+            labels.append(f"  \u21b3 {panel_text}")
     ax.set_yticklabels(labels, fontsize=10)
     ax.invert_yaxis()
     ax.spines["top"].set_visible(False)

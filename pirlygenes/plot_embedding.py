@@ -929,7 +929,12 @@ def _cancer_type_hierarchy_matrix(df_gene_expr):
     return matrix, out_labels
 
 
-def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
+def _cancer_type_feature_matrix(
+    df_gene_expr,
+    n_genes=10,
+    method="zscore",
+    include_normals=False,
+):
     """Build feature matrix for PCA/MDS of cancer types + sample.
 
     Gene selection is unified: a single biologically-informed gene set is
@@ -945,6 +950,10 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
         ``"rank"`` — percentile rank within each gene across cancer types.
         ``"score"`` — cancer-type signature scores (33-d vector).
         ``"hierarchy"`` — family-aware support-score space with purity anchor.
+    include_normals : bool
+        When true, append normal-tissue nTPM centroids to the embedded
+        reference rows. Supported for expression-space methods; ignored for
+        score/hierarchy spaces where the normal vectors are not defined.
     """
     import warnings
 
@@ -990,6 +999,14 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
 
     fpkm_cols = [c for c in ref_full.columns if c.startswith("FPKM_")]
     labels = [c.replace("FPKM_", "") for c in fpkm_cols]
+    normal_cols = []
+    normal_labels = []
+    if include_normals:
+        normal_cols = [c for c in ref_full.columns if c.startswith("nTPM_")]
+        normal_labels = [
+            "normal:" + c.replace("nTPM_", "").replace("_", " ")
+            for c in normal_cols
+        ]
 
     # Gene selection
     if method == "tme":
@@ -1014,24 +1031,48 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
         for _, row in ref_norm.iterrows()
     ])
     ref_vals = ref_norm[fpkm_cols].astype(float).values  # (genes, cancers)
+    normal_vals = (
+        ref_norm[normal_cols].astype(float).values
+        if normal_cols else np.zeros((len(ref_norm), 0), dtype=float)
+    )
 
     if method in ("zscore", "hk_zscore", "tme", "bottleneck"):
         log_ref = np.log2(ref_vals + 1)
         log_sample = np.log2(sample_vals + 1)
+        log_normals = np.log2(normal_vals + 1) if normal_cols else None
         g_std = log_ref.std(axis=1)
         var_mask = g_std >= 0.1
         log_ref = log_ref[var_mask]
         log_sample = log_sample[var_mask]
+        if log_normals is not None:
+            log_normals = log_normals[var_mask]
         g_std = g_std[var_mask]
         g_mean = log_ref.mean(axis=1)
         z_ref = np.clip((log_ref - g_mean[:, None]) / g_std[:, None], -3, 3)
         z_sample = np.clip((log_sample - g_mean) / g_std, -3, 3)
-        matrix = np.vstack([z_ref.T, z_sample[None, :]])
+        parts = [z_ref.T]
+        if log_normals is not None and log_normals.shape[1]:
+            z_normals = np.clip(
+                (log_normals - g_mean[:, None]) / g_std[:, None],
+                -3,
+                3,
+            )
+            parts.append(z_normals.T)
+        parts.append(z_sample[None, :])
+        matrix = np.vstack(parts)
     elif method == "hk":
-        combined = np.vstack([ref_vals.T, sample_vals[None, :]])
+        parts = [ref_vals.T]
+        if normal_cols:
+            parts.append(normal_vals.T)
+        parts.append(sample_vals[None, :])
+        combined = np.vstack(parts)
         matrix = np.log2(combined + 1)
     elif method == "rank":
-        combined = np.vstack([ref_vals.T, sample_vals[None, :]])  # (34, genes)
+        parts = [ref_vals.T]
+        if normal_cols:
+            parts.append(normal_vals.T)
+        parts.append(sample_vals[None, :])
+        combined = np.vstack(parts)
         ranked = np.apply_along_axis(
             lambda col: rankdata(col, method="average") / len(col),
             axis=0, arr=combined,
@@ -1040,6 +1081,7 @@ def _cancer_type_feature_matrix(df_gene_expr, n_genes=10, method="zscore"):
     else:
         raise ValueError(f"Unknown method: {method}")
 
+    labels.extend(normal_labels)
     labels.append("SAMPLE")
     return matrix, labels
 
@@ -1063,11 +1105,24 @@ def _plot_embedding_with_labels(
     xlabel,
     ylabel,
     method=None,
+    label_nearest_cancers=None,
+    label_nearest_normals=None,
+    label_all=True,
     save_to_filename=None,
     save_dpi=300,
     figsize=(12, 10),
 ):
     from matplotlib.lines import Line2D
+
+    def _label_kind(label):
+        if label == "SAMPLE":
+            return "sample"
+        if str(label).startswith("normal:"):
+            return "normal"
+        return "cancer"
+
+    def _display_label(label):
+        return str(label).replace("normal:", "")
 
     fig, ax = plt.subplots(figsize=figsize)
     texts = []
@@ -1078,7 +1133,7 @@ def _plot_embedding_with_labels(
 
         family_order = []
         for label in labels:
-            if label == "SAMPLE":
+            if label == "SAMPLE" or _label_kind(label) == "normal":
                 continue
             family = _CANCER_FAMILY_BY_CODE.get(label, label)
             label_to_family[label] = family
@@ -1095,8 +1150,41 @@ def _plot_embedding_with_labels(
             if label == "SAMPLE":
                 continue
             dist = float(np.linalg.norm(coords[i] - sample_coords))
-            nearest_neighbors.append((dist, label))
+            nearest_neighbors.append((dist, label, _label_kind(label)))
         nearest_neighbors.sort(key=lambda item: (item[0], item[1]))
+
+    nearest_cancer_ordered = [
+        label
+        for _, label, kind in nearest_neighbors
+        if kind == "cancer"
+    ]
+    nearest_normal_ordered = [
+        label
+        for _, label, kind in nearest_neighbors
+        if kind == "normal"
+    ]
+    nearest_cancer_labels = set(nearest_cancer_ordered)
+    nearest_normal_labels = set(nearest_normal_ordered)
+    if label_nearest_cancers is not None:
+        nearest_cancer_labels = set(
+            nearest_cancer_ordered[: int(label_nearest_cancers)]
+        )
+    if label_nearest_normals is not None:
+        nearest_normal_labels = set(
+            nearest_normal_ordered[: int(label_nearest_normals)]
+        )
+
+    def _should_label(label):
+        if label == "SAMPLE":
+            return True
+        if label_all:
+            return True
+        kind = _label_kind(label)
+        if kind == "cancer":
+            return label in nearest_cancer_labels
+        if kind == "normal":
+            return label in nearest_normal_labels
+        return False
 
     for i, label in enumerate(labels):
         if label == "SAMPLE":
@@ -1122,27 +1210,41 @@ def _plot_embedding_with_labels(
                 )
             )
         else:
-            point_color = family_palette.get(label_to_family.get(label), "steelblue")
+            kind = _label_kind(label)
+            if kind == "normal":
+                point_color = "#8da08d"
+                edge_color = "#f8f8f8"
+                marker = "s"
+                size = 38
+                alpha = 0.52
+            else:
+                point_color = family_palette.get(label_to_family.get(label), "steelblue")
+                edge_color = "white"
+                marker = "o"
+                size = 60
+                alpha = 0.7
             ax.scatter(
                 coords[i, 0],
                 coords[i, 1],
-                s=60,
-                alpha=0.7,
+                s=size,
+                alpha=alpha,
                 color=point_color,
-                edgecolors="white",
+                edgecolors=edge_color,
                 linewidths=0.5,
                 zorder=2,
+                marker=marker,
             )
-            texts.append(
-                ax.text(
-                    coords[i, 0],
-                    coords[i, 1],
-                    label,
-                    fontsize=7,
-                    alpha=0.8,
-                    va="center",
+            if _should_label(label):
+                texts.append(
+                    ax.text(
+                        coords[i, 0],
+                        coords[i, 1],
+                        _display_label(label),
+                        fontsize=7,
+                        alpha=0.85,
+                        va="center",
+                    )
                 )
-            )
 
     adjust_text(
         texts,
@@ -1156,13 +1258,35 @@ def _plot_embedding_with_labels(
     ax.grid(True, alpha=0.2)
 
     if nearest_neighbors:
-        nearest_text = "\n".join(
-            f"{label} ({dist:.2f})" for dist, label in nearest_neighbors[:5]
-        )
+        if any(kind == "normal" for _, _, kind in nearest_neighbors):
+            n_cancers = 5 if label_nearest_cancers is None else int(label_nearest_cancers)
+            n_normals = 5 if label_nearest_normals is None else int(label_nearest_normals)
+            cancer_text = "\n".join(
+                f"{_display_label(label)} ({dist:.2f})"
+                for dist, label, kind in nearest_neighbors
+                if kind == "cancer"
+            )
+            normal_text = "\n".join(
+                f"{_display_label(label)} ({dist:.2f})"
+                for dist, label, kind in nearest_neighbors
+                if kind == "normal"
+            )
+            nearest_text = (
+                "Nearest TCGA cancers\n"
+                + "\n".join(cancer_text.splitlines()[:n_cancers])
+                + "\n\nNearest normal tissues\n"
+                + "\n".join(normal_text.splitlines()[:n_normals])
+            )
+            nearest_title = ""
+        else:
+            nearest_text = "\n".join(
+                f"{label} ({dist:.2f})" for dist, label, _kind in nearest_neighbors[:5]
+            )
+            nearest_title = "Nearest TCGA centroids\n"
         ax.text(
             0.98,
             0.02,
-            "Nearest TCGA centroids\n" + nearest_text,
+            nearest_title + nearest_text,
             transform=ax.transAxes,
             ha="right",
             va="bottom",
@@ -1177,6 +1301,16 @@ def _plot_embedding_with_labels(
             for family, color in list(family_palette.items())[:10]
         ]
         ax.legend(handles=handles, title="Family", loc="upper left", fontsize=8, title_fontsize=9, framealpha=0.9)
+    elif any(_label_kind(label) == "normal" for label in labels):
+        handles = [
+            Line2D([0], [0], marker="o", color="none", markerfacecolor="steelblue",
+                   markeredgecolor="white", markersize=7, label="TCGA cancer"),
+            Line2D([0], [0], marker="s", color="none", markerfacecolor="#8da08d",
+                   markeredgecolor="white", markersize=6, label="normal tissue"),
+            Line2D([0], [0], marker="*", color="red", markeredgecolor="black",
+                   markersize=10, linestyle="none", label="sample"),
+        ]
+        ax.legend(handles=handles, loc="upper left", fontsize=8, framealpha=0.9)
 
     fig.tight_layout()
     if save_to_filename:
@@ -1307,6 +1441,17 @@ def plot_cancer_type_genes(
     # Fix x-axis limits before adjustText to prevent blowout
     ax.set_xlim(left=0.005)
     ax.autoscale_view(scalex=True, scaley=False)
+    try:
+        from .common import build_sample_tpm_by_symbol
+        from .plot_reference_lines import add_p90_reference_line
+
+        add_p90_reference_line(
+            ax,
+            build_sample_tpm_by_symbol(df_gene_expr),
+            orientation="vertical",
+        )
+    except Exception:
+        pass
 
     adjust_text(
         texts,
@@ -1760,13 +1905,19 @@ def plot_cancer_type_pca(
     df_gene_expr,
     n_genes=10,
     method="zscore",
+    include_normals=False,
     save_to_filename=None,
     save_dpi=300,
     figsize=(12, 10),
 ):
     """PCA scatter showing where the sample falls among cancer-type centroids."""
     from sklearn.decomposition import PCA
-    X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes, method=method)
+    X, labels = _cancer_type_feature_matrix(
+        df_gene_expr,
+        n_genes=n_genes,
+        method=method,
+        include_normals=include_normals,
+    )
     pca = PCA(n_components=2)
     coords = pca.fit_transform(X)
     mlabel = _METHOD_LABELS.get(method)
@@ -1790,6 +1941,10 @@ def plot_cancer_type_mds(
     df_gene_expr,
     n_genes=10,
     method="zscore",
+    include_normals=False,
+    label_nearest_cancers=None,
+    label_nearest_normals=None,
+    label_all=True,
     save_to_filename=None,
     save_dpi=300,
     figsize=(12, 10),
@@ -1798,7 +1953,12 @@ def plot_cancer_type_mds(
     from sklearn.manifold import MDS
     from sklearn.metrics import pairwise_distances
 
-    X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes, method=method)
+    X, labels = _cancer_type_feature_matrix(
+        df_gene_expr,
+        n_genes=n_genes,
+        method=method,
+        include_normals=include_normals,
+    )
     distances = pairwise_distances(X, metric="euclidean")
     coords = MDS(
         n_components=2,
@@ -1807,15 +1967,25 @@ def plot_cancer_type_mds(
     ).fit_transform(distances)
     mlabel = _METHOD_LABELS.get(method)
     title = "Sample among TCGA cancer types — MDS"
+    if include_normals:
+        title = "Sample among TCGA cancer and normal tissue types — MDS"
     if mlabel:
         title += f" ({mlabel})"
+    xlabel = "MDS1"
+    ylabel = "MDS2"
+    if method in {"zscore", "hk_zscore", "tme", "bottleneck", "hk"}:
+        xlabel = "MDS1 (log-expression distance)"
+        ylabel = "MDS2 (log-expression distance)"
     return _plot_embedding_with_labels(
         coords,
         labels,
         title=title,
-        xlabel="MDS1",
-        ylabel="MDS2",
+        xlabel=xlabel,
+        ylabel=ylabel,
         method=method,
+        label_nearest_cancers=label_nearest_cancers,
+        label_nearest_normals=label_nearest_normals,
+        label_all=label_all,
         save_to_filename=save_to_filename,
         save_dpi=save_dpi,
         figsize=figsize,

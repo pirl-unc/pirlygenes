@@ -1404,7 +1404,7 @@ def _analyze_body(
                 "tumor_purity": get_tumor_purity_parameters(),
                 "decomposition": get_decomposition_parameters(),
                 "selected_sample_mode": analysis["sample_mode"],
-                "embedding_methods": ["tme"],
+                "embedding_methods": ["tme", "tme_with_normals"],
                 "sample_quality": {
                     "degradation_level": quality["degradation"]["level"],
                     "degradation_pair_index": quality["degradation"]["long_short_ratio"],
@@ -1775,7 +1775,18 @@ def _analyze_body(
     print("[plot] Generating MDS embedding (TME-low genes)...")
     mds_png = "%s-mds-tme.png" % prefix
     plot_cancer_type_mds(df_expr, method="tme", save_to_filename=mds_png, save_dpi=output_dpi)
-    embedding_pngs = [mds_png]
+    mds_normals_png = "%s-mds-tme-normals.png" % prefix
+    plot_cancer_type_mds(
+        df_expr,
+        method="tme",
+        include_normals=True,
+        label_nearest_cancers=5,
+        label_nearest_normals=5,
+        label_all=False,
+        save_to_filename=mds_normals_png,
+        save_dpi=output_dpi,
+    )
+    embedding_pngs = [mds_png, mds_normals_png]
     _plt.close("all")
 
     # Deep-dive therapy target + CTA + subtype plots
@@ -2042,6 +2053,7 @@ def _analyze_body(
                     ranges_df,
                     target_panel.reset_index(drop=True),
                     cancer_type=panel_code,
+                    df_gene_expr=df_expr,
                     save_to_filename=curated_evidence_png,
                     save_dpi=output_dpi,
                 )
@@ -2392,6 +2404,7 @@ def _analyze_body(
                     "files": _existing_figure_paths(
                         "cancer-hypotheses.png",
                         "mds-tme.png",
+                        "mds-tme-normals.png",
                         "subtype-signature.png",
                         "vs-cancer.pdf",
                     ),
@@ -2577,6 +2590,7 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
 | `*-mds-tme.png` | MDS: sample among TCGA cancer types (TME-low gene space) |
+| `*-mds-tme-normals.png` | MDS: sample among TCGA cancer and normal tissue types; labels nearest 5 cancer and 5 normal centroids |
 """
     readme_path.write_text(readme)
     print(f"[output] Wrote {readme_path}")
@@ -4706,7 +4720,7 @@ def _build_target_report(
         lines.append("|------|-----------|----------------|---------------------|---------|-----------|-----|---------|-----------|")
         for _, row in ctas.head(20).iterrows():
             surf = "yes" if row["is_surface"] else ""
-            tme_warn = "⚠" if row.get("tme_explainable") else ""
+            tme_warn = "tissue-explainable" if row.get("tme_explainable") else ""
             lines.append(
                 f"| **{row['symbol']}** | {render_tpm(row['median_est'])} | "
                 f"{render_tpm(row['est_1'])}\u2013{render_tpm(row['est_9'])} | "
@@ -4729,7 +4743,7 @@ def _build_target_report(
             and ctas.head(20)["tme_explainable"].any()
         ):
             lines.append(
-                "\n⚠ = sample signal could be entirely explained by a single healthy "
+                "\n`tissue-explainable` = sample signal could be entirely explained by a single healthy "
                 "tissue's expression. For CTAs this is usually benign (cohort-median "
                 "≈ 0 is normal for CTAs), but verify the flagged gene is not a germline "
                 "/ germ-cell lineage marker in this patient's context."
@@ -4761,15 +4775,10 @@ def _build_target_report(
         )
         for _, row in surface_targets.head(20).iterrows():
             bold = "**" if row["therapies"] else ""
-            # TME flag — compact key:
-            #   ⚠⚠ = ``tme_dominant`` (observed signal is mostly non-
-            #   tumor per the decomposition attribution, #108); ⚠ =
-            #   ``tme_explainable`` (a single healthy reference tissue
-            #   could explain ≥50% of signal, #45).
             if row.get("tme_dominant"):
-                tme_warn = "⚠⚠"
+                tme_warn = "background-dominant"
             elif row.get("tme_explainable"):
-                tme_warn = "⚠"
+                tme_warn = "tissue-explainable"
             else:
                 tme_warn = ""
             # Append IFN-driven cross-signal note to the therapies
@@ -4798,7 +4807,7 @@ def _build_target_report(
         )
         if any_dominant:
             lines.append(
-                "\n⚠⚠ = **TME-dominant**: the decomposition attribution "
+                "\n`background-dominant` = the decomposition attribution "
                 "assigns less than 30% of the observed TPM to the tumor "
                 "compartment (#108). These targets are very likely "
                 "stromal / immune rather than tumor-cell expressed — "
@@ -4815,10 +4824,10 @@ def _build_target_report(
                 "strongly enriched tissue — tumor-cell specificity is "
                 "not supported regardless of the numeric tumor-attributed "
                 "TPM."
-            )
+        )
         if any_explainable:
             lines.append(
-                "\n⚠ = sample signal could be entirely explained by a single healthy "
+                "\n`tissue-explainable` = sample signal could be entirely explained by a single healthy "
                 "tissue's expression (max across non-reproductive tissues ≥ 50% of "
                 "observed TPM). The tumor-cell attribution for these genes is "
                 "unreliable — consider stromal / immune origin."
@@ -4836,7 +4845,7 @@ def _build_target_report(
         lines.append("|------|-----------|----------------|---------|-----------|-----|-------------|-----|-----------|")
         for _, row in intracellular.head(15).iterrows():
             cta_flag = "yes" if row["is_cta"] else ""
-            tme_warn = "⚠" if row.get("tme_explainable") else ""
+            tme_warn = "tissue-explainable" if row.get("tme_explainable") else ""
             attribution_cell = _format_attribution_cell(row)
             lines.append(
                 f"| {row['symbol']} | {render_tpm(row['median_est'])} | "
@@ -4850,7 +4859,7 @@ def _build_target_report(
             and intracellular.head(15)["tme_explainable"].any()
         ):
             lines.append(
-                "\n⚠ = sample signal could be entirely explained by a single healthy "
+                "\n`tissue-explainable` = sample signal could be entirely explained by a single healthy "
                 "tissue's expression (max across non-reproductive tissues ≥ 50% of "
                 "observed TPM). The tumor-cell attribution for these genes is "
                 "unreliable — consider lineage-retained / stromal origin."
@@ -4862,19 +4871,18 @@ def _build_target_report(
     # --- Top recommendation summary ---
     # #79: Recommendations must respect the reliability flags from the
     # per-category tables. Previously the top-3 surface targets were
-    # chosen by TPM rank alone, which promoted genes flagged ⚠⚠ (TME-
+    # chosen by TPM rank alone, which promoted TME-dominant genes
     # dominant / very likely stromal) as "best surface targets" — the
-    # opposite of the safe default. Now: skip ⚠⚠-flagged rows
-    # entirely from the summary; ⚠-flagged retained rows carry an
-    # inline caveat.
+    # opposite of the safe default. Now: skip unsupported rows entirely
+    # from the summary; provisional retained rows carry an inline caveat.
     lines.append("## Recommended Targets Summary\n")
 
     def _reliability_badge(row):
         status = target_reliability_status(row)
         if status == "unsupported":
-            return "⚠⚠"
+            return "background-dominant"
         if status == "provisional":
-            return "⚠"
+            return "provisional"
         return ""
 
     # Best surface — promote only rows that remain supported after the
@@ -4887,7 +4895,7 @@ def _build_target_report(
         for _, row in safe_surface.iterrows():
             badge = _reliability_badge(row)
             reasons = target_reliability_reasons(row)
-            caveat = f", {badge} {reasons[0]}" if badge == "⚠" and reasons else ""
+            caveat = f", {badge}: {reasons[0]}" if badge == "provisional" and reasons else ""
             therapy_note = f" — active in {row['therapies']}" if row["therapies"] else ""
             lines.append(
                 f"- **{row['symbol']}** ({row['median_est']:.0f} TPM, "
@@ -4906,7 +4914,7 @@ def _build_target_report(
         lines.append("**Best surface targets** (ADC/CAR-T/bispecific):")
         for _, row in mixed_surface.iterrows():
             reasons = target_reliability_reasons(row)
-            caveat = f", ⚠ {reasons[0]}" if reasons else ""
+            caveat = f", provisional: {reasons[0]}" if reasons else ""
             therapy_note = f" — active in {row['therapies']}" if row["therapies"] else ""
             lines.append(
                 f"- **{row['symbol']}** ({row['median_est']:.0f} TPM, "
