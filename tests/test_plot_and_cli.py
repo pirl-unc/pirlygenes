@@ -686,7 +686,7 @@ def test_generate_target_report_is_mode_aware(tmp_path):
     )
     heme_text = (tmp_path / "heme-targets-targets.md").read_text()
     assert "Malignant-lineage expression range" in heme_text
-    assert "Malignant TPM" in heme_text
+    assert "Malignant-lineage TPM (model)" in heme_text
 
 
 def test_generate_target_report_adds_tumor_context_and_landscape_summary(tmp_path):

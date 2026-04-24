@@ -70,6 +70,7 @@ from .decomposition import (
 )
 from .sample_context import (
     infer_sample_context,
+    library_prep_display_label,
     plot_degradation_index,
     plot_sample_context,
 )
@@ -83,13 +84,19 @@ from .format import (
 from .reporting import (
     cancer_code_display_name,
     cancer_key_genes_lookup_for_analysis,
+    expression_independent_indication,
+    expression_independent_interpretation,
     normal_expression_context,
     resolved_subtype_code_for_analysis,
     subtype_curation_scope_note,
+    therapy_path_context,
+    therapy_path_rank,
+    therapy_state_caution,
     tumor_band_cell,
     target_interpretation_summary,
     target_reliability_reasons,
     target_reliability_status,
+    tpm_semantics_note,
     tumor_attribution_band_text,
     tumor_attribution_context,
 )
@@ -549,7 +556,7 @@ def _filter_quality_flags_against_context(flags, sample_context):
     out = []
     for flag in flags:
         if "Suspicious MT fraction" in flag and prep in _MT_EXPECTED_MISSING_PREPS:
-            prep_label = prep.replace("_", " ")
+            prep_label = library_prep_display_label(prep)
             out.append(
                 f"MT fraction near zero — consistent with {prep_label} "
                 "library prep; degradation signal from MT fold is not "
@@ -1269,8 +1276,8 @@ def _analyze_body(
     analysis["quality"] = quality
     # #77: filter quality flags against the step-1 SampleContext — the
     # "Suspicious MT fraction" warning is a false alarm when the
-    # library prep we already inferred (exome capture / poly-A) legitimately
-    # strips MT. Same filtered list is used by the markdown reports,
+    # library prep we already inferred (RNA capture / poly-A) legitimately
+    # depresses MT/rRNA signal. Same filtered list is used by the markdown reports,
     # so the three documents agree on the same set of concerns.
     filtered_flags = _filter_quality_flags_against_context(
         quality["flags"], sample_context
@@ -1637,6 +1644,7 @@ def _analyze_body(
                     "template_origin_tissue_score": row.template_origin_tissue_score,
                     "template_site_factor": row.template_site_factor,
                     "template_extra_fraction": row.template_extra_fraction,
+                    "n_measured_in_fit": row.n_measured_in_fit,
                     "warnings": "; ".join(row.warnings),
                 }
                 for idx, row in enumerate(decomp_results)
@@ -2218,32 +2226,50 @@ def _analyze_body(
         if Path(adj_p).exists():
             png_files.append(adj_p)
 
+    def _pdf_font(size: int, *, bold: bool = False):
+        """Return a scalable PDF text font; fall back gracefully."""
+        candidates = (
+            (
+                "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+                if bold else "/System/Library/Fonts/Supplemental/Arial.ttf"
+            ),
+            (
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+                if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+            ),
+            "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
+            "Arial Bold.ttf" if bold else "Arial.ttf",
+        )
+        for candidate in candidates:
+            try:
+                return ImageFont.truetype(candidate, size=size)
+            except Exception:
+                continue
+        try:
+            return ImageFont.load_default(size=size)
+        except TypeError:
+            return ImageFont.load_default()
+
     def _with_filename_caption(img, filename):
         """Add a light-gray filename caption in a small strip below
         the figure so readers can locate the source PNG later. Caption
         sits in its own strip so it never overlaps the plot."""
-        caption_h = 18
+        caption_font = _pdf_font(26)
+        caption_h = 46
         new_w, new_h = img.width, img.height + caption_h
         canvas = Image.new("RGB", (new_w, new_h), color="white")
         canvas.paste(img, (0, 0))
         draw = ImageDraw.Draw(canvas)
-        try:
-            font = ImageFont.load_default()
-        except Exception:
-            font = None
         # Bottom-right, light gray.
         text = filename
-        if font is not None:
-            try:
-                bbox = draw.textbbox((0, 0), text, font=font)
-                tw = bbox[2] - bbox[0]
-            except AttributeError:  # pragma: no cover — very old PIL
-                tw = len(text) * 6
-        else:
-            tw = len(text) * 6
+        try:
+            bbox = draw.textbbox((0, 0), text, font=caption_font)
+            tw = bbox[2] - bbox[0]
+        except AttributeError:  # pragma: no cover — very old PIL
+            tw = len(text) * 14
         draw.text(
-            (max(4, new_w - tw - 8), img.height + 3),
-            text, fill="#AAAAAA", font=font,
+            (max(12, new_w - tw - 18), img.height + 8),
+            text, fill="#888888", font=caption_font,
         )
         return canvas
 
@@ -2311,19 +2337,17 @@ def _analyze_body(
         width, height = 1800, 2400
         img = Image.new("RGB", (width, height), color="white")
         draw = ImageDraw.Draw(img)
-        try:
-            font = ImageFont.load_default()
-        except Exception:
-            font = None
+        title_font = _pdf_font(62, bold=True)
+        body_font = _pdf_font(36)
         y = 80
-        draw.text((80, y), title, fill="black", font=font)
-        y += 70
+        draw.text((90, y), title, fill="black", font=title_font)
+        y += 105
         for line in lines:
-            wrapped = wrap(str(line), width=90) or [""]
+            wrapped = wrap(str(line), width=68) or [""]
             for piece in wrapped:
-                draw.text((80, y), piece, fill="#333333", font=font)
-                y += 28
-            y += 12
+                draw.text((90, y), piece, fill="#333333", font=body_font)
+                y += 48
+            y += 22
         return img
 
     def _existing_figure_paths(*suffixes):
@@ -2586,7 +2610,7 @@ def _purity_ci_phrase(purity):
     lo = purity["overall_lower"]
     hi = purity["overall_upper"]
     tier = _ci_confidence_tier(lo, hi)
-    core = f"**{est:.0%}** (range {lo:.0%}–{hi:.0%})"
+    core = f"**{est:.0%}** (model interval {lo:.0%}–{hi:.0%})"
     if tier == "degenerate":
         core += (
             " — **degenerate range**: input had no per-gene variation so "
@@ -2695,10 +2719,10 @@ def _target_report_mode_intro(sample_mode, cancer_code, p_lo, p_mid, p_hi):
 
 def _target_value_label(sample_mode):
     if sample_mode == "pure":
-        return "Cellular TPM"
+        return "Cellular TPM (model)"
     if sample_mode == "heme":
-        return "Malignant TPM"
-    return "Tumor TPM"
+        return "Malignant-lineage TPM (model)"
+    return "Tumor-core TPM (model)"
 
 
 def _mhc1_status_text(mhc1):
@@ -4104,6 +4128,7 @@ def _build_target_report(
             "TME-background assumptions, then contextualized against the matched "
             f"{cancer_code} TCGA cohort.\n"
         )
+    lines.append(tpm_semantics_note() + "\n")
 
     def _flag_series(df, column):
         if column in df.columns:
@@ -4129,20 +4154,62 @@ def _build_target_report(
 
     def _target_interpretation_cell(target_row, expr_row, *, include_maturity=False, target_panel=None):
         if expr_row is None:
-            return "not measured"
+            if target_row is not None and expression_independent_indication(target_row):
+                parts = [
+                    expression_independent_interpretation(target_row)
+                    + "; target RNA not measured"
+                ]
+            else:
+                parts = ["not measured"]
+            if target_row is not None:
+                path_context = therapy_path_context(
+                    target_row,
+                    analysis=analysis,
+                    disease_state=disease_state,
+                )
+                if path_context:
+                    parts.append(path_context)
+                state_caution = therapy_state_caution(
+                    target_row,
+                    analysis=analysis,
+                    disease_state=disease_state,
+                )
+                if state_caution:
+                    parts.append(f"current-therapy check: {state_caution}")
+            return "; ".join(part for part in parts if part)
         if include_maturity:
             return target_interpretation_summary(
                 target_row,
                 expr_row,
                 target_panel=target_panel,
+                analysis=analysis,
+                disease_state=disease_state,
             )
         source = tumor_attribution_context(expr_row)
         normal = normal_expression_context(expr_row)
-        parts = [source["label"], normal["label"]]
+        if target_row is not None and expression_independent_indication(target_row):
+            parts = [expression_independent_interpretation(target_row), normal["label"]]
+        else:
+            parts = [source["label"], normal["label"]]
         if source.get("notes"):
             parts.append(source["notes"][0])
         elif normal.get("details"):
             parts.append(normal["details"][0])
+        if target_row is not None:
+            path_context = therapy_path_context(
+                target_row,
+                analysis=analysis,
+                disease_state=disease_state,
+            )
+            if path_context:
+                parts.append(path_context)
+            state_caution = therapy_state_caution(
+                target_row,
+                analysis=analysis,
+                disease_state=disease_state,
+            )
+            if state_caution:
+                parts.append(f"current-therapy check: {state_caution}")
         return "; ".join(part for part in parts if part)
 
     therapy_scores = analysis.get("therapy_response_scores") or {}
@@ -4215,8 +4282,8 @@ def _build_target_report(
                 if panel_subtype else cancer_biomarker_genes(panel_code)
             )
             if biomarker_syms:
-                lines.append("| Gene | Observed TPM | Tumor-attributed | Attribution |")
-                lines.append("|------|--------------|------------------|-------------|")
+                lines.append("| Gene | Bulk TPM (measured) | Tumor-core TPM (model) | Attribution |")
+                lines.append("|------|---------------------|------------------------|-------------|")
                 for sym in biomarker_syms:
                     row = sym_to_row.get(sym)
                     if row is None:
@@ -4235,17 +4302,21 @@ def _build_target_report(
             lines.append(f"## Therapy Target Landscape — {panel_display}\n")
             lines.append(
                 "Approved and trialed agents with an indication for this "
-                f"{cancer_code_display_name(panel_code, panel_display)}, cross-referenced against sample expression. "
-                "Rows where the target is absent from the sample are "
-                "still shown to make that explicit.\n"
+                f"{cancer_code_display_name(panel_code, panel_display)}, "
+                "cross-referenced against sample expression. Rows where the "
+                "target is absent from the sample are still shown to make "
+                "that explicit.\n"
             )
+            lines.append(tpm_semantics_note() + "\n")
             lines.append(
                 "Interpretation separates **tumor-source support** "
                 "(`tumor-supported`, `mixed-source`, `background-dominant`) "
                 "from **normal-expression context** "
                 "(`same-lineage expected`, `broad healthy expression`, "
                 "`vital-tissue concern`, etc.). Phase / class still carry "
-                "the clinical-development tier.\n"
+                "the clinical-development tier. Treatment-path context flags "
+                "standard options, later-line requirements, trial follow-ups, "
+                "and possible current/prior therapy exposure.\n"
             )
             targets_df = (
                 cancer_therapy_targets(panel_code, subtype=panel_subtype)
@@ -4259,7 +4330,7 @@ def _build_target_report(
             if len(targets_df):
                 lines.append(
                     "| Target | Agent | Class | Phase | Indication | "
-                    "Observed | Tumor-core | Attribution | Interpretation |"
+                    "Bulk TPM (measured) | Tumor-core TPM (model) | Attribution | Interpretation |"
                 )
                 lines.append(
                     "|--------|-------|-------|-------|------------|"
@@ -4272,10 +4343,18 @@ def _build_target_report(
                     "phase_1": 3, "preclinical": 4,
                 }
                 targets_sorted = targets_df.assign(
+                    _path_key=[
+                        therapy_path_rank(
+                            trow,
+                            analysis=analysis,
+                            disease_state=disease_state,
+                        )
+                        for _, trow in targets_df.iterrows()
+                    ],
                     _phase_key=targets_df["phase"].map(
                         lambda p: phase_order.get(str(p), 99)
                     )
-                ).sort_values(["_phase_key", "symbol", "agent"])
+                ).sort_values(["_path_key", "_phase_key", "symbol", "agent"])
                 def _cell(value):
                     if value is None:
                         return "—"
@@ -4623,8 +4702,8 @@ def _build_target_report(
     lines.append("CTAs are expressed in tumor but not normal adult tissue (except testis/placenta). "
                  "Any expressed CTA is a potential vaccination target regardless of trial status.\n")
     if len(ctas):
-        lines.append(f"| Gene | {value_label} | Range | Observed | vs TCGA | TCGA %ile | TME | Surface | Therapies |")
-        lines.append("|------|-----------|-------|----------|---------|-----------|-----|---------|-----------|")
+        lines.append(f"| Gene | {value_label} | Model interval | Bulk TPM (measured) | vs TCGA | TCGA %ile | TME | Surface | Therapies |")
+        lines.append("|------|-----------|----------------|---------------------|---------|-----------|-----|---------|-----------|")
         for _, row in ctas.head(20).iterrows():
             surf = "yes" if row["is_surface"] else ""
             tme_warn = "⚠" if row.get("tme_explainable") else ""
@@ -4669,10 +4748,10 @@ def _build_target_report(
                  "or bispecific T-cell engagers.\n")
     if len(surface_targets):
         lines.append(
-            f"| Gene | {value_label} | Range | Observed | vs TCGA | TCGA %ile | TME | Attribution | Therapies |"
+            f"| Gene | {value_label} | Model interval | Bulk TPM (measured) | vs TCGA | TCGA %ile | TME | Attribution | Therapies |"
         )
         lines.append(
-            "|------|-----------|-------|----------|---------|-----------|-----|-------------|-----------|"
+            "|------|-----------|----------------|---------------------|---------|-----------|-----|-------------|-----------|"
         )
         # #78: cross-signal annotations — flag IFN-driven surface /
         # MHC targets when the IFN_response axis is active, so the
@@ -4753,8 +4832,8 @@ def _build_target_report(
     lines.append("Intracellular proteins presented via MHC-I. Targetable by "
                  "TCR-T cell therapy or peptide vaccination.\n")
     if len(intracellular):
-        lines.append(f"| Gene | {value_label} | Range | vs TCGA | TCGA %ile | TME | Attribution | CTA | Therapies |")
-        lines.append("|------|-----------|-------|---------|-----------|-----|-------------|-----|-----------|")
+        lines.append(f"| Gene | {value_label} | Model interval | vs TCGA | TCGA %ile | TME | Attribution | CTA | Therapies |")
+        lines.append("|------|-----------|----------------|---------|-----------|-----|-------------|-----|-----------|")
         for _, row in intracellular.head(15).iterrows():
             cta_flag = "yes" if row["is_cta"] else ""
             tme_warn = "⚠" if row.get("tme_explainable") else ""
@@ -4812,7 +4891,7 @@ def _build_target_report(
             therapy_note = f" — active in {row['therapies']}" if row["therapies"] else ""
             lines.append(
                 f"- **{row['symbol']}** ({row['median_est']:.0f} TPM, "
-                f"range {row['est_1']:.0f}\u2013{row['est_9']:.0f}"
+                f"model interval {row['est_1']:.0f}\u2013{row['est_9']:.0f}"
                 f"{caveat}){therapy_note}"
             )
         if dropped_dominant:

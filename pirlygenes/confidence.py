@@ -177,6 +177,23 @@ def compute_call_confidence(analysis) -> ConfidenceTier:
     top = candidate_trace[0]
     top_code = top.get("code")
 
+    fit_quality = analysis.get("fit_quality") or {}
+    fit_label = str(fit_quality.get("label") or "").strip().lower()
+    fit_message = str(fit_quality.get("message") or "").strip()
+    if fit_label == "weak":
+        tier = "low"
+        reason = "fit quality is weak — exact cancer label is provisional"
+        if fit_message:
+            reason += f" ({fit_message})"
+        reasons.append(reason)
+    elif fit_label == "ambiguous":
+        if tier == "high":
+            tier = "moderate"
+        reason = "fit quality is ambiguous — preserve alternate cancer hypotheses"
+        if fit_message:
+            reason += f" ({fit_message})"
+        reasons.append(reason)
+
     # 1. Lineage concordance near zero — classifier picked a candidate
     # whose lineage genes aren't expressed.
     concordance = top.get("lineage_concordance")
@@ -210,6 +227,36 @@ def compute_call_confidence(analysis) -> ConfidenceTier:
                 f"{second_gm:.3f}) — call is ambiguous"
             )
 
+    # 2b. Raw signature tension: the final support score can promote a
+    # candidate via purity/family factors even when another cancer type has
+    # the stronger raw expression signature. That is legitimate, but the
+    # reader should not see a cleaner confidence banner than the evidence.
+    try:
+        top_sig = float(top.get("signature_score") or 0.0)
+        best_sig = max(
+            candidate_trace,
+            key=lambda row: float(row.get("signature_score") or 0.0),
+        )
+        best_sig_score = float(best_sig.get("signature_score") or 0.0)
+    except (TypeError, ValueError):
+        top_sig = 0.0
+        best_sig = top
+        best_sig_score = 0.0
+    best_sig_code = best_sig.get("code")
+    if (
+        best_sig_code
+        and top_code
+        and best_sig_code != top_code
+        and top_sig > 0
+        and best_sig_score > top_sig * 1.05
+    ):
+        if tier == "high":
+            tier = "moderate"
+        reasons.append(
+            f"raw signature score favored {best_sig_code} over {top_code} "
+            f"({best_sig_score:.3f} vs {top_sig:.3f})"
+        )
+
     # 3. Step-0 top-ρ TCGA cohort disagrees with the classifier's
     # pick. Sample-level correlation is the coarsest signal and can
     # be more reliable than the classifier's geomean when the panel
@@ -229,7 +276,14 @@ def compute_call_confidence(analysis) -> ConfidenceTier:
             f"classifier picked {top_code}"
         )
 
-    return ConfidenceTier(tier=tier, reasons=reasons)
+    seen = set()
+    deduped: List[str] = []
+    for reason in reasons:
+        if reason not in seen:
+            seen.add(reason)
+            deduped.append(reason)
+
+    return ConfidenceTier(tier=tier, reasons=deduped)
 
 
 def compute_target_confidence(

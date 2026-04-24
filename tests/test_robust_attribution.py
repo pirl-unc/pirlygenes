@@ -507,6 +507,69 @@ def test_same_lineage_target_can_stay_supported_when_band_remains_material():
     assert target_reliability_status(row) == "supported"
 
 
+def test_expression_independent_indication_is_not_demoted_by_target_tpm():
+    from pirlygenes.brief import _format_therapy_bullet, _top_therapies
+    from pirlygenes.reporting import indication_biomarker, target_reliability_status
+
+    targets_df = pd.DataFrame([
+        {
+            "symbol": "PDCD1",
+            "agent": "pembrolizumab",
+            "agent_class": "immune_checkpoint",
+            "phase": "approved",
+            "indication": "MSI-H / dMMR metastatic colorectal cancer",
+        },
+        {
+            "symbol": "STEAP2",
+            "agent": "experimental ADC",
+            "agent_class": "ADC",
+            "phase": "phase_2",
+            "indication": "mCRPC",
+        },
+    ])
+    ranges_df = pd.DataFrame([
+        {
+            "symbol": "PDCD1",
+            "observed_tpm": 0.2,
+            "attr_tumor_tpm": 0.0,
+            "attr_tumor_fraction": 0.0,
+            "attr_tumor_tpm_low": 0.0,
+            "attr_tumor_tpm_high": 0.0,
+            "attr_tumor_fraction_low": 0.0,
+            "attr_tumor_fraction_high": 0.0,
+            "attr_support_fraction": 0.0,
+            "tme_dominant": True,
+            "tme_explainable": True,
+        },
+        {
+            "symbol": "STEAP2",
+            "observed_tpm": 80.0,
+            "attr_tumor_tpm": 2.0,
+            "attr_tumor_fraction": 0.03,
+            "tme_dominant": True,
+        },
+    ])
+
+    top = _top_therapies(targets_df, ranges_df, limit=3)
+    assert [t["symbol"] for t, _ in top] == ["PDCD1"]
+    assert indication_biomarker(targets_df.iloc[0]) == "msi_high"
+    assert target_reliability_status(ranges_df.iloc[0], target_row=targets_df.iloc[0]) == "provisional"
+    bullet = _format_therapy_bullet(top[0][0], top[0][1], target_panel=targets_df)
+    assert "expression-independent indication" in bullet
+    assert "target absent" not in bullet.lower()
+
+
+def test_pmmr_text_does_not_get_classified_as_msi_high():
+    from pirlygenes.reporting import indication_biomarker
+
+    row = {
+        "agent": "pembrolizumab",
+        "agent_class": "immune_checkpoint",
+        "indication": "pMMR colorectal cancer with PD-L1 expression",
+    }
+    assert indication_biomarker(row) == "target_expression"
+
+
 # ── attribution cell rendering ──────────────────────────────────────────
 
 

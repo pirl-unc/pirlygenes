@@ -341,6 +341,7 @@ class DecompositionResult:
     matched_normal_fraction: float = 0.0
     lineage_tumor_fraction: dict[str, Any] | None = None
     purity_source: str = "signature"
+    n_measured_in_fit: int = 0
 
 
 def _hk_normalize(values, genes, hk_gene_set):
@@ -751,13 +752,34 @@ def _fit_one_hypothesis(
             matched_normal_fraction=0.0,
             lineage_tumor_fraction=lineage_fraction_info,
             purity_source=purity_source,
+            n_measured_in_fit=0,
         )
 
     gene_subset = set(sample_by_eid.keys())
     filt_genes, filt_symbols, sig_raw, _ = build_signature_matrix(
         comp_names, gene_subset=gene_subset, sample_by_eid=sample_by_eid,
     )
-    filt_sample_vec = np.array([sample_by_eid.get(gene_id, 0.0) for gene_id in filt_genes], dtype=float)
+    filt_sample_vec = np.array(
+        [
+            float(sample_by_eid[gene_id]) if gene_id in sample_by_eid else np.nan
+            for gene_id in filt_genes
+        ],
+        dtype=float,
+    )
+    measured_mask = np.isfinite(filt_sample_vec)
+    if not np.all(measured_mask):
+        dropped = int((~measured_mask).sum())
+        warnings.append(
+            f"Dropped {dropped} unmeasured genes from decomposition fit"
+        )
+        filt_genes = [
+            gene for gene, keep in zip(filt_genes, measured_mask) if keep
+        ]
+        filt_symbols = [
+            symbol for symbol, keep in zip(filt_symbols, measured_mask) if keep
+        ]
+        sig_raw = sig_raw[measured_mask, :]
+        filt_sample_vec = filt_sample_vec[measured_mask]
     observed_hk, sample_hk_median = _hk_normalize(filt_sample_vec, filt_genes, hk_ids)
 
     sig_hk = np.zeros_like(sig_raw, dtype=float)
@@ -779,6 +801,7 @@ def _fit_one_hypothesis(
         floor = DECOMPOSITION_PARAMETERS["marker_selection"]["fallback_expression_floor"]
         fit_rows = list(np.where((observed_hk > floor) | (sig_hk.max(axis=1) > floor))[0])
         fit_weights = np.ones(len(fit_rows), dtype=float)
+    n_measured_in_fit = int(len(fit_rows))
 
     A = sig_hk[fit_rows]
     b = observed_hk[fit_rows]
@@ -949,6 +972,7 @@ def _fit_one_hypothesis(
         matched_normal_fraction=matched_normal_fraction,
         lineage_tumor_fraction=lineage_fraction_info,
         purity_source=purity_source,
+        n_measured_in_fit=n_measured_in_fit,
     )
 
 

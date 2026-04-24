@@ -128,3 +128,31 @@ def test_step0_match_does_not_downgrade():
     }
     tier = compute_call_confidence(analysis)
     assert tier.tier == "high"
+
+
+def test_weak_fit_quality_caps_call_confidence_low():
+    analysis = {
+        "fit_quality": {
+            "label": "weak",
+            "message": "Top support remains close to background.",
+        },
+        "candidate_trace": [
+            _candidate("READ", support_geomean=0.70, lineage_concordance=0.95),
+            _candidate("COAD", support_geomean=0.30, lineage_concordance=0.80),
+        ],
+    }
+    tier = compute_call_confidence(analysis)
+    assert tier.tier == "low"
+    assert any("fit quality is weak" in r for r in tier.reasons)
+
+
+def test_raw_signature_tension_downgrades_clean_support_call():
+    analysis = {
+        "candidate_trace": [
+            _candidate("READ", signature_score=0.42, support_geomean=0.70),
+            _candidate("SARC", signature_score=0.65, support_geomean=0.30),
+        ],
+    }
+    tier = compute_call_confidence(analysis)
+    assert tier.tier == "moderate"
+    assert any("raw signature score favored SARC" in r for r in tier.reasons)

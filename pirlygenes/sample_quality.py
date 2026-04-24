@@ -37,6 +37,7 @@ from .gene_sets_cancer import (
     mitochondrial_gene_names,
     tme_marker_gene_names,
 )
+from .sample_context import library_prep_display_label
 
 
 # Mitochondrial-encoded gene symbols — short transcripts that survive
@@ -451,11 +452,11 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None, library_prep=None):
     )
     have_pair_signal = long_short_ratio is not None
     if mt_near_zero and prep_explains_mt and have_pair_signal:
-        # #77: exome capture / poly-A legitimately strip MT. The length-
-        # pair index still gives a valid preservation call, so don't
-        # clobber deg_level to "unknown"; emit an informational flag
-        # instead of a false alarm.
-        prep_label = library_prep.replace("_", " ")
+        # #77: RNA capture / poly-A legitimately depress MT-rRNA or MT
+        # fraction. The length-pair index still gives a valid preservation
+        # call, so don't clobber deg_level to "unknown"; emit an
+        # informational flag instead of a false alarm.
+        prep_label = library_prep_display_label(library_prep)
         flags.append(
             f"MT fraction {mt_fraction:.1%} — consistent with {prep_label} "
             "library prep; degradation assessed from length-pair index"

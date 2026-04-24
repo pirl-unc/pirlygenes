@@ -23,6 +23,7 @@ from .reporting import (
     partition_tumor_core_rows,
     summarize_reliability_reasons,
 )
+from .sample_context import library_prep_display_label
 
 
 def _compartment_label(comp: str) -> str:
@@ -85,15 +86,16 @@ def build_provenance_md(
     if sample_context is not None:
         prep = getattr(sample_context, "library_prep", "unknown")
         confidence = float(getattr(sample_context, "library_prep_confidence", 0.0) or 0.0)
-        prep_label = prep.replace("_", " ")
+        prep_label = library_prep_display_label(prep)
         lines.append(
             f"Inferred: **{prep_label}** (confidence {confidence:.0%}). "
         )
         if prep == "exome_capture":
             lines.append(
-                "Implication: mitochondrial, rRNA, and non-polyadenylated "
-                "transcripts are absent by design. Their near-zero fractions "
-                "are the expected pattern, not a sign of degradation."
+                "Implication: rRNA and many non-polyadenylated transcripts "
+                "are under-sampled by the capture design. Low MT fraction is "
+                "expected, but measured MT protein-coding transcripts can "
+                "still be real low-level signal."
             )
         elif prep == "poly_a":
             lines.append(

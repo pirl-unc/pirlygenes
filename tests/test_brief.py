@@ -93,7 +93,7 @@ def test_brief_is_compact():
     assert "# Summary" in md
     assert "**Cancer call:**" in md
     assert "**Purity:**" in md
-    assert "range" in md
+    assert "model interval" in md
     assert "(CI " not in md
     assert "**Disease state:**" in md
     assert "Top candidate therapies" in md
@@ -120,6 +120,129 @@ def test_brief_reports_tumor_attributed_for_present_targets():
     # FOLH1 has tumor-attr 128; the bullet should mention it.
     assert "FOLH1" in md
     assert "128" in md or "**FOLH1**" in md
+
+
+def test_brief_prioritizes_ar_path_and_flags_possible_current_therapy():
+    from pirlygenes.therapy_response import TherapyAxisScore
+
+    analysis = _make_analysis()
+    analysis["therapy_response_scores"] = {
+        "AR_signaling": TherapyAxisScore(
+            therapy_class="AR_signaling",
+            state="down",
+            up_geomean_fold=0.39,
+            down_geomean_fold=3.24,
+        )
+    }
+    ranges_df = _make_ranges_df()
+    md = build_brief(
+        analysis,
+        ranges_df,
+        cancer_code="PRAD",
+        disease_state="**AR axis suppressed** — consistent with ADT exposure.",
+    )
+    assert md.index("**AR**") < md.index("**FOLH1**")
+    ar_line = next(line for line in md.splitlines() if line.startswith("- **AR**"))
+    assert "guideline-standard approved pathway" in ar_line
+    assert "current/prior ADT or ARPI" in ar_line
+
+
+def test_brief_uses_path_maturity_across_cancer_types_not_prad_special_case():
+    analysis = _make_analysis()
+    analysis["cancer_type"] = "BRCA"
+    analysis["cancer_name"] = "Breast invasive carcinoma"
+    ranges_df = pd.DataFrame([
+        {
+            "symbol": "TACSTD2", "observed_tpm": 260.0,
+            "attr_tumor_tpm": 240.0, "attr_tumor_fraction": 0.92,
+            "attr_top_compartment": "tumor", "attr_top_compartment_tpm": 240.0,
+            "tme_dominant": False, "tme_explainable": False,
+        },
+        {
+            "symbol": "ERBB2", "observed_tpm": 45.0,
+            "attr_tumor_tpm": 40.0, "attr_tumor_fraction": 0.89,
+            "attr_top_compartment": "tumor", "attr_top_compartment_tpm": 40.0,
+            "tme_dominant": False, "tme_explainable": False,
+        },
+    ])
+    md = build_brief(
+        analysis,
+        ranges_df,
+        cancer_code="BRCA",
+        disease_state="",
+    )
+    assert md.index("**ERBB2**") < md.index("**TACSTD2**")
+    erbb2_line = next(line for line in md.splitlines() if line.startswith("- **ERBB2**"))
+    assert "guideline-standard approved pathway" in erbb2_line
+    tacstd2_line = next(line for line in md.splitlines() if line.startswith("- **TACSTD2**"))
+    assert "approved later-line pathway" in tacstd2_line
+
+
+def test_brief_flags_possible_current_endocrine_therapy_beyond_prad():
+    from pirlygenes.therapy_response import TherapyAxisScore
+
+    analysis = _make_analysis()
+    analysis["cancer_type"] = "BRCA"
+    analysis["cancer_name"] = "Breast invasive carcinoma"
+    analysis["therapy_response_scores"] = {
+        "ER_signaling": TherapyAxisScore(
+            therapy_class="ER_signaling",
+            state="down",
+            up_geomean_fold=0.31,
+            down_geomean_fold=2.4,
+        )
+    }
+    ranges_df = pd.DataFrame([
+        {
+            "symbol": "ESR1", "observed_tpm": 80.0,
+            "attr_tumor_tpm": 70.0, "attr_tumor_fraction": 0.88,
+            "attr_top_compartment": "tumor", "attr_top_compartment_tpm": 70.0,
+            "tme_dominant": False, "tme_explainable": False,
+        },
+    ])
+    md = build_brief(
+        analysis,
+        ranges_df,
+        cancer_code="BRCA",
+        disease_state="**ER-axis suppressed / endocrine-exposed pattern**.",
+    )
+    esr1_line = next(line for line in md.splitlines() if line.startswith("- **ESR1**"))
+    assert "current/prior endocrine therapy" in esr1_line
+
+
+def test_brief_explains_bulk_present_targets_that_fail_source_gate():
+    analysis = _make_analysis()
+    ranges_df = pd.concat([
+        _make_ranges_df(),
+        pd.DataFrame([
+            {
+                "symbol": "STEAP2", "observed_tpm": 90.0,
+                "attribution": {"matched_normal_prostate": 78.0},
+                "attr_tumor_tpm": 13.0, "attr_tumor_fraction": 0.14,
+                "attr_top_compartment": "matched_normal_prostate",
+                "attr_top_compartment_tpm": 78.0,
+                "tme_dominant": True, "tme_explainable": True,
+            },
+            {
+                "symbol": "KLK2", "observed_tpm": 247.0,
+                "attribution": {"matched_normal_prostate": 155.0},
+                "attr_tumor_tpm": 57.0, "attr_tumor_fraction": 0.23,
+                "attr_top_compartment": "matched_normal_prostate",
+                "attr_top_compartment_tpm": 155.0,
+                "tme_dominant": False, "tme_explainable": True,
+                "matched_normal_over_predicted": True,
+            },
+        ]),
+    ], ignore_index=True)
+    md = build_brief(
+        analysis,
+        ranges_df,
+        cancer_code="PRAD",
+        disease_state="",
+    )
+    assert "Not short-listed despite bulk RNA" in md
+    assert "STEAP2" in md
+    assert "KLK2" in md
 
 
 def test_brief_no_internal_jargon():
@@ -171,7 +294,7 @@ def test_actionable_is_longer_but_structured():
     for heading in ["Sample and confidence", "Cancer call and disease state",
                     "Therapy landscape"]:
         assert heading in md, f"missing heading: {heading}"
-    assert "range" in md
+    assert "model interval" in md
     assert "(CI " not in md
     assert "*-evidence.md*" in md or "`*-evidence.md`" in md, (
         "actionable should link to evidence.md as the target-table source"
@@ -203,7 +326,7 @@ def test_brief_uses_tumor_band_without_attribution_dict():
         disease_state="",
     )
     assert "tumor-specific decomposition was unavailable" not in md
-    assert "128 TPM (range 128-128" in md
+    assert "128 TPM (model interval 128-128" in md
 
 
 def test_actionable_renders_tumor_band_without_attribution_dict():

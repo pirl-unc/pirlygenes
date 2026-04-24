@@ -72,7 +72,6 @@ _HISTONE_SYMBOL_PREFIXES: tuple[str, ...] = (
     "H1-", "H2AC", "H2BC", "H3C", "H4C",
     "HIST1H", "HIST2H", "HIST3H", "HIST4H",
 )
-
 # MT ribosomal RNAs — non-polyadenylated. Present in total / ribo-dep,
 # absent in poly-A and typically in exome capture. Combined with the
 # histone fraction, this disambiguates all four common libraries.
@@ -87,6 +86,21 @@ _MT_MRNA_SYMBOLS: frozenset[str] = frozenset({
     "MT-ND1", "MT-ND2", "MT-ND3", "MT-ND4", "MT-ND4L", "MT-ND5", "MT-ND6",
     "MT-CYB", "MT-ATP6", "MT-ATP8",
 })
+
+
+def library_prep_display_label(prep: str | None, *, title_case: bool = False) -> str:
+    """Human label for the inferred RNA library-prep class."""
+    text = str(prep or "unknown").strip()
+    label = {
+        "poly_a": "poly-A capture",
+        "ribo_depleted": "ribosomal depletion",
+        "total_rna": "total RNA",
+        "exome_capture": "RNA hybrid-capture / RNA-exome capture",
+        "unknown": "unknown library prep",
+    }.get(text, text.replace("_", " "))
+    if title_case:
+        return label[:1].upper() + label[1:]
+    return label
 
 
 # ── Thresholds ────────────────────────────────────────────────────────────
@@ -118,7 +132,6 @@ _THRESHOLDS = {
     # to ``exome_capture`` even when histones are in a "limbo" band
     # (0.1-0.5% — not pure poly-A, not true total RNA).
     "mt_fraction_exome_ceiling": 0.0005,
-
     # Gene-length degradation index (long/short observed/expected
     # median ratio). Calibrated in sample_quality.QUALITY_THRESHOLDS;
     # kept consistent here.
@@ -155,10 +168,12 @@ class SampleContext:
     """
 
     # Library preparation method inferred from histone + MT rRNA signals.
-    # One of: "poly_a", "ribo_depleted", "total_rna", "exome_capture",
-    # "unknown". ``poly_a`` is the most common for RNA-seq of clinical
-    # samples; ``total_rna`` and ``ribo_depleted`` together cover most
-    # research cohorts and recent ribo-depleted clinical protocols.
+    # One of: "poly_a", "ribo_depleted", "total_rna",
+    # "exome_capture", "unknown". ``exome_capture`` means RNA
+    # hybrid-capture / RNA-exome style enrichment, not DNA exome
+    # sequencing; MT mRNAs can still be measured if probes/reference
+    # retain them, so downstream wording must not collapse absent MT-rRNA
+    # into "all MT stripped".
     library_prep: str = "unknown"
     library_prep_confidence: float = 0.0  # 0.0 (guess) to 1.0 (strong)
 
@@ -228,13 +243,7 @@ class SampleContext:
 
     def summary_line(self) -> str:
         """One-line human summary for reports and stdout."""
-        prep = {
-            "poly_a":         "poly-A capture",
-            "ribo_depleted":  "ribosomal-depleted",
-            "total_rna":      "total RNA",
-            "exome_capture":  "exome capture",
-            "unknown":        "unknown library prep",
-        }.get(self.library_prep, self.library_prep)
+        prep = library_prep_display_label(self.library_prep)
         pres = {
             "fresh_frozen": "fresh / frozen",
             "ffpe":         "FFPE",
@@ -297,26 +306,21 @@ def _infer_library_prep(tpm_by_symbol, signals):
         round(mt_rrna_fraction_of_mt, 4) if mt_rrna_fraction_of_mt is not None else None
     )
 
-    # Exome / hybrid-capture RNA (Tempus xT, Twist RNA Exome, etc.) —
-    # probes don't cover chrM, so BOTH MT-rRNA and MT-mRNA are
-    # essentially zero. This is a much stronger signal than the
-    # general "MT missing" floor, and — critically — it fires
-    # independently of histone fraction. Hybrid-capture panels can
-    # legitimately carry histone TPM in the "limbo" band (0.1-0.5%)
-    # because some histones have probes and FFPE fragmentation adds
-    # background. An earlier histone<0.2% gate wrongly routed these
-    # samples to "unknown" (bug report 2026-04-14).
+    # RNA hybrid-capture / RNA-exome style enrichment. The strong signal
+    # is absent MT-rRNA plus very low total chrM fraction, not proof that
+    # every MT transcript was removed. Clinical capture references may
+    # still quantify MT protein-coding transcripts at low TPM.
     if (
         mt_fraction < _THRESHOLDS["mt_fraction_exome_ceiling"]
         and (mt_rrna_tpm == 0.0)
     ):
-        # Very high confidence when MT-rRNA is *exactly* zero — no
-        # polyadenylation protocol and no total-RNA protocol can
-        # produce that pattern by design.
+        # Very high confidence when MT-rRNA is exactly zero and total chrM
+        # is very low. This is a capture-enrichment signature, not a
+        # statement that MT mRNAs are unmeasurable.
         return "exome_capture", 0.9
 
-    # Broader MT-missing signal (may be upstream chrM filter rather
-    # than capture — treat as exome_capture at moderate confidence).
+    # Broader low-MT signal; call RNA capture at lower confidence only
+    # when histones are also poly-A-like.
     if (
         mt_fraction < _THRESHOLDS["mt_fraction_suspicious_floor"]
         and histone_frac < _THRESHOLDS["histone_fraction_polyA_ceiling"]
@@ -800,7 +804,7 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
         flags.append("Library prep inconclusive — histone + MT-rRNA signals did not match any profile")
     else:
         flags.append(
-            f"Library prep: {library_prep.replace('_', ' ')} "
+            f"Library prep: {library_prep_display_label(library_prep)} "
             f"(confidence {lp_conf:.0%})"
         )
     if preservation == "ffpe":
@@ -923,13 +927,10 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     )
     ax_text.axis("off")
 
-    prep_label = {
-        "poly_a": "Poly-A capture",
-        "ribo_depleted": "Ribosomal depletion",
-        "total_rna": "Total RNA",
-        "exome_capture": "Exome capture",
-        "unknown": "Unknown",
-    }.get(sample_context.library_prep, sample_context.library_prep)
+    prep_label = library_prep_display_label(
+        sample_context.library_prep,
+        title_case=True,
+    )
 
     pres_label = {
         "fresh_frozen": "Fresh / frozen",

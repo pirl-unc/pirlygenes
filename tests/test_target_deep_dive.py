@@ -3,7 +3,6 @@
 """Tests for therapy target deep-dive and subtype signature plots."""
 
 import pandas as pd
-import pytest
 
 from pirlygenes.gene_sets_cancer import pan_cancer_expression
 from pirlygenes.plot_target_deep_dive import (
@@ -315,6 +314,10 @@ def test_plot_priority_target_context_saves_png(tmp_path):
     )
     assert fig is not None
     assert out.exists()
+    ax_range = fig.axes[0]
+    assert ax_range.get_xscale() == "linear"
+    assert "log10(TPM+1)" in ax_range.get_xlabel()
+    assert fig.legends
 
 
 # ── subtype signatures ───────────────────────────────────────────────────

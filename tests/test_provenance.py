@@ -61,7 +61,7 @@ def test_provenance_md_walks_the_five_steps():
                     "3. Coarse composition", "4. Subtype refinements",
                     "5. Tumor-linked expression"]:
         assert heading in md, f"missing step heading: {heading}"
-    assert "exome capture" in md
+    assert "RNA hybrid-capture" in md
     assert "FOLH1" in md or "tumor-linked" in md.lower()
 
 

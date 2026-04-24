@@ -7,18 +7,15 @@ expression distribution metrics, preservation refinement.
 """
 
 import pandas as pd
-import pytest
 
 from pirlygenes.sample_context import (
     SampleContext,
     infer_sample_context,
-    _HISTONE_SYMBOL_PREFIXES,
     _MT_MRNA_SYMBOLS,
     _MT_RRNA_SYMBOLS,
     _build_tpm_by_symbol,
     _infer_library_prep,
     _summarise_expression_distribution,
-    _THRESHOLDS,
 )
 
 
@@ -83,10 +80,22 @@ def test_mt_rrna_exactly_zero_high_confidence_exome():
     assert ctx.library_prep_confidence >= 0.8
 
 
+def test_low_mt_fraction_with_mt_mrnas_is_not_reported_as_mt_stripped():
+    """Low chrM fraction can support RNA capture without inventing an MT-stripped class."""
+    rows = [("ACTB", 50000), ("GAPDH", 45000), ("EEF1A1", 40000)]
+    rows += [("MT-ND1", 5.0), ("MT-CO1", 4.0), ("MT-ATP6", 3.0)]
+    frame = _frame_from_pairs(rows)
+    ctx = infer_sample_context(frame)
+    assert ctx.library_prep == "exome_capture"
+    assert ctx.signals["mt_genes_detected"] >= 3
+    assert not ctx.missing_mt
+    assert "stripped" not in ctx.summary_line().lower()
+    assert "RNA hybrid-capture" in ctx.summary_line()
+
+
 def test_mt_rrna_near_zero_lower_confidence():
     """MT fraction < suspicious floor but rRNA NOT exactly zero
     → exome_capture at moderate confidence (0.6)."""
-    total = 100000
     rows = [("ACTB", 50000), ("GAPDH", 49900)]
     # Tiny MT rRNA — nonzero but fraction < suspicious floor
     rows += [(_MT_RRNA_SYMBOLS[0] if isinstance(_MT_RRNA_SYMBOLS, list) else list(_MT_RRNA_SYMBOLS)[0], 0.01)]
@@ -114,7 +123,6 @@ def test_expression_distribution_populates_detection_counts():
 
 
 def test_expression_distribution_log2_median():
-    import numpy as np
     tpm = {f"GENE_{i}": float(2**i) for i in range(1, 11)}  # 2, 4, ..., 1024
     signals = {}
     _summarise_expression_distribution(tpm, signals)

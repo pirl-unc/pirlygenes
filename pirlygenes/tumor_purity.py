@@ -2568,8 +2568,16 @@ def analyze_sample(df_gene_expr, cancer_type=None):
     # 4. MHC expression
     mhc1, mhc2 = _get_mhc_expression(sample_tpm)
 
-    # 5. Top cancer type matches
-    top_cancers = [(row["code"], row["support_score"]) for row in candidate_trace[:5]]
+    # 5. Top cancer type matches. ``top_cancers`` is report-facing and
+    # normalized to the best candidate so the bar plots read as relative
+    # support rather than tiny raw support products.
+    top_cancers = [(row["code"], row.get("support_norm", 0.0)) for row in candidate_trace[:5]]
+    top_cancers_raw_support = [
+        (row["code"], row["support_score"]) for row in candidate_trace[:5]
+    ]
+    top_cancer_geomean = [
+        (row["code"], row.get("support_geomean", 0.0)) for row in candidate_trace[:5]
+    ]
     signature_top_cancers = [(s["code"], s["score"]) for s in stats[:5]]
 
     return {
@@ -2577,6 +2585,8 @@ def analyze_sample(df_gene_expr, cancer_type=None):
         "cancer_name": cancer_name,
         "cancer_score": cancer_score,
         "top_cancers": top_cancers,
+        "top_cancers_raw_support": top_cancers_raw_support,
+        "top_cancer_geomean": top_cancer_geomean,
         "signature_top_cancers": signature_top_cancers,
         "candidate_trace": candidate_trace,
         "family_summary": family_summary,
@@ -2640,17 +2650,25 @@ def plot_sample_summary(
     top_cancers = analysis["top_cancers"]
     codes = [c for c, s in top_cancers]
     scores = [s for c, s in top_cancers]
+    candidate_by_code = {
+        row["code"]: row for row in analysis.get("candidate_trace", [])
+        if isinstance(row, dict) and row.get("code")
+    }
     colors = ["#2166ac" if c == cancer_code else "#92c5de" for c in codes]
     y = np.arange(len(codes))
     ax1.barh(y, scores, color=colors, edgecolor="none", height=0.6)
     for i, (code, score) in enumerate(top_cancers):
         from .plot import CANCER_TYPE_NAMES as CTN
         label = f"{code} ({CTN.get(code, '')})"
-        ax1.text(score + 0.01, i, f"{score:.3f}", va="center", fontsize=9)
+        geomean = candidate_by_code.get(code, {}).get("support_geomean")
+        score_label = f"{score:.2f}"
+        if geomean is not None:
+            score_label += f" (geo {float(geomean):.2f})"
+        ax1.text(score + 0.01, i, score_label, va="center", fontsize=9)
         ax1.text(-0.01, i, label, va="center", ha="right", fontsize=9)
     ax1.set_yticks([])
     ax1.set_xlim(0, 1.1)
-    ax1.set_xlabel("Support score (signature x purity)", fontsize=10)
+    ax1.set_xlabel("Normalized support (top = 1.0; geo = factor geomean)", fontsize=10)
     fit_quality = analysis.get("fit_quality", {})
     fit_label = fit_quality.get("label")
     title = "Cancer type hypotheses"
@@ -2867,6 +2885,10 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
     cancer_code = analysis["cancer_type"]
     top_cancers = analysis["top_cancers"]
     fit_quality = analysis.get("fit_quality", {})
+    candidate_by_code = {
+        row["code"]: row for row in analysis.get("candidate_trace", [])
+        if isinstance(row, dict) and row.get("code")
+    }
 
     fig, ax = plt.subplots(figsize=(10, max(3, 0.4 * len(top_cancers))))
     codes = [c for c, s in top_cancers]
@@ -2876,11 +2898,15 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
     ax.barh(y, scores, color=colors, edgecolor="none", height=0.6)
     for i, (code, score) in enumerate(top_cancers):
         label = f"{code} ({CTN.get(code, '')})"
-        ax.text(score + 0.01, i, f"{score:.3f}", va="center", fontsize=9)
+        geomean = candidate_by_code.get(code, {}).get("support_geomean")
+        score_label = f"{score:.2f}"
+        if geomean is not None:
+            score_label += f" (geo {float(geomean):.2f})"
+        ax.text(score + 0.01, i, score_label, va="center", fontsize=9)
         ax.text(-0.01, i, label, va="center", ha="right", fontsize=9)
     ax.set_yticks([])
     ax.set_xlim(0, 1.1)
-    ax.set_xlabel("Support score")
+    ax.set_xlabel("Normalized support (top = 1.0; geo = factor geomean)")
     fit_label = fit_quality.get("label")
     title = "Cancer type hypotheses"
     if fit_label in {"weak", "ambiguous"}:

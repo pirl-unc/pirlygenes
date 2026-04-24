@@ -330,14 +330,19 @@ def _select_best_category_tissue(category, sample_by_eid, genes, bulk_indexed):
     enriched = (category_max > background_median * 2) & (category_max > 1.0)
 
     sample_vec = np.array(
-        [float(sample_by_eid.get(gid, 0.0)) for gid in genes], dtype=float
+        [
+            float(sample_by_eid[gid]) if gid in sample_by_eid else np.nan
+            for gid in genes
+        ],
+        dtype=float,
     )
 
     best_idx = 0
     best_corr = -np.inf
     for col_idx in range(member_matrix.shape[1]):
         ref_vec = member_matrix[:, col_idx]
-        mask = enriched & ((sample_vec > 0.5) | (ref_vec > 0.5))
+        measured = np.isfinite(sample_vec)
+        mask = measured & enriched & ((sample_vec > 0.5) | (ref_vec > 0.5))
         if mask.sum() < 10:
             continue
         corr = float(np.corrcoef(

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections import Counter
 from functools import lru_cache
+import re
 
 
 def _truthy(value) -> bool:
@@ -163,8 +164,8 @@ def tumor_attribution_context(row):
     if observed > 0:
         band = (
             f"{mid_tpm:.0f} TPM "
-            f"(range {low_tpm:.0f}-{high_tpm:.0f}; "
-            f"{mid_frac:.0%} tumor, {low_frac:.0%}-{high_frac:.0%} range)"
+            f"(model interval {low_tpm:.0f}-{high_tpm:.0f}; "
+            f"{mid_frac:.0%} tumor, {low_frac:.0%}-{high_frac:.0%} interval)"
         )
     else:
         band = f"{mid_tpm:.0f} TPM"
@@ -184,6 +185,104 @@ def tumor_attribution_context(row):
         "attr_tumor_fraction_high": high_frac,
         "attr_support_fraction": support_fraction,
     }
+
+
+def tpm_semantics_note() -> str:
+    """One reader-facing explanation of bulk vs modeled tumor-core TPM."""
+    return (
+        "**TPM semantics:** Bulk TPM is the measured RNA abundance in the mixed "
+        "specimen. Tumor-core TPM is a model-derived estimate after subtracting "
+        "matched-normal and TME-attributable signal. Use tumor-core TPM for "
+        "tumor-cell target prioritization only when attribution is tumor-supported "
+        "or mixed-source; for immune/stromal markers, agent-only rows, and "
+        "expression-independent indications, bulk RNA is contextual and the "
+        "clinical biomarker must come from the indicated assay."
+    )
+
+
+_IMMUNE_CHECKPOINT_AGENTS = re.compile(
+    r"\b("
+    r"pembrolizumab|nivolumab|ipilimumab|dostarlimab|relatlimab|"
+    r"atezolizumab|avelumab|durvalumab"
+    r")\b",
+    re.IGNORECASE,
+)
+_TARGET_EXPRESSION_INDICATION = re.compile(
+    r"\b(pd[- ]?l1|pd[- ]?1|cps|tps|ihc|overexpress|expression|expressing)\b",
+    re.IGNORECASE,
+)
+_MUTATION_INDICATION = re.compile(
+    r"\b("
+    r"mutation|mutant|v600|exon\s*\d+|fusion|rearrangement|"
+    r"amplification|amplified|amp\b|her2\+|brca[- ]?(mut|mutation)"
+    r")\b",
+    re.IGNORECASE,
+)
+_MSI_HIGH_INDICATION = re.compile(
+    r"\b(msi[- ]?h|msi[- ]?high|dmmr|deficient\s+mmr|mismatch\s+repair\s+deficien)",
+    re.IGNORECASE,
+)
+_MMR_PROFICIENT = re.compile(
+    r"\b(pmmr|mmr[- ]?proficient|mismatch\s+repair\s+proficient|mss|msi[- ]?stable)\b",
+    re.IGNORECASE,
+)
+
+
+def indication_biomarker(target_row) -> str:
+    """Return the typed biomarker that gates a curated therapy row.
+
+    The CSV may eventually carry an explicit ``indication_biomarker`` column.
+    Until then this central inference prevents report renderers from treating
+    histology/MSI/TMB/mutation-gated therapies as if target RNA expression were
+    the approval criterion.
+    """
+    explicit = _clean_text(
+        target_row.get("indication_biomarker")
+        if hasattr(target_row, "get") else None
+    ).lower()
+    if explicit:
+        return explicit
+
+    text = " ".join(
+        _clean_text(target_row.get(key))
+        for key in ("indication", "rationale", "agent", "agent_class")
+        if hasattr(target_row, "get")
+    )
+    low = text.lower()
+    if _MSI_HIGH_INDICATION.search(low) and not _MMR_PROFICIENT.search(low):
+        return "msi_high"
+    if "tmb" in low or "tumor mutational burden" in low:
+        return "tmb_high"
+    if _MUTATION_INDICATION.search(text):
+        return "mutation"
+
+    agent = _clean_text(target_row.get("agent") if hasattr(target_row, "get") else "")
+    if _IMMUNE_CHECKPOINT_AGENTS.search(agent) and not _TARGET_EXPRESSION_INDICATION.search(text):
+        return "histology_only"
+
+    return "target_expression"
+
+
+def indication_biomarker_label(target_row) -> str:
+    biomarker = indication_biomarker(target_row)
+    return {
+        "target_expression": "target expression",
+        "msi_high": "MSI-H / dMMR",
+        "tmb_high": "TMB-high",
+        "mutation": "mutation / fusion / amplification",
+        "histology_only": "histology indication",
+    }.get(biomarker, biomarker.replace("_", " "))
+
+
+def expression_independent_indication(target_row) -> bool:
+    return indication_biomarker(target_row) != "target_expression"
+
+
+def expression_independent_interpretation(target_row) -> str:
+    label = indication_biomarker_label(target_row)
+    if indication_biomarker(target_row) == "histology_only":
+        return "expression-independent indication — confirm clinical eligibility"
+    return f"expression-independent indication — confirm {label} status"
 
 
 def tumor_attribution_band_text(row):
@@ -238,8 +337,10 @@ def target_reliability_reasons(row, *, category=None):
     return reasons
 
 
-def target_reliability_status(row, *, category=None):
+def target_reliability_status(row, *, category=None, target_row=None):
     """Classify a row as ``supported``, ``provisional``, or ``unsupported``."""
+    if target_row is not None and expression_independent_indication(target_row):
+        return "provisional"
     source = tumor_attribution_context(row)
     if source["tier"] == "background_dominant":
         return "unsupported"
@@ -452,7 +553,287 @@ def clinical_maturity_summary(target_row, target_panel=None):
     return clinical_maturity_info(target_row, target_panel=target_panel)["summary"]
 
 
-def target_interpretation_summary(target_row, expression_row, target_panel=None):
+_STANDARD_PATH_TEXT = re.compile(
+    r"\b("
+    r"standard(?:\s+of\s+care)?|standard\s+backbone|backbone|"
+    r"first[- ]line|frontline|newly\s+diagnosed|1l\b|"
+    r"adjuvant|neoadjuvant|maintenance|combined\s+with\s+chemo"
+    r")\b",
+    re.IGNORECASE,
+)
+_LATER_LINE_TEXT = re.compile(
+    r"\b("
+    r"pretreated|previously\s+treated|relapsed[/ -]?refractory|"
+    r"refractory|post[- ]|after\s+.+\btherapy|after\s+.+\btreatment|"
+    r"second[- ]line|third[- ]line|subsequent\s+lines?|"
+    r"2l\b|3l\b|r/r|resistance\s+setting|prior\s+(?:line|lines|therapy|"
+    r"therapies|arpi|taxane)|at\s+least\s+one\s+prior|>=\s*2|≥\s*2"
+    r")\b",
+    re.IGNORECASE,
+)
+_AR_PATHWAY_AGENTS = re.compile(
+    r"\b(enzalutamide|apalutamide|darolutamide|abiraterone)\b",
+    re.IGNORECASE,
+)
+_ER_ENDOCRINE_AGENTS = re.compile(
+    r"\b("
+    r"elacestrant|fulvestrant|tamoxifen|letrozole|anastrozole|exemestane|"
+    r"palbociclib|ribociclib|abemaciclib|aromatase\s+inhibitor|serd|"
+    r"endocrine\s+therapy"
+    r")\b",
+    re.IGNORECASE,
+)
+_HER2_DIRECTED_AGENTS = re.compile(
+    r"\b("
+    r"trastuzumab|pertuzumab|tucatinib|lapatinib|neratinib|margetuximab|"
+    r"trastuzumab\s+deruxtecan|t-dxd"
+    r")\b",
+    re.IGNORECASE,
+)
+_MAPK_RTK_AGENTS = re.compile(
+    r"\b("
+    r"osimertinib|erlotinib|gefitinib|afatinib|dacomitinib|amivantamab|"
+    r"alectinib|brigatinib|ceritinib|crizotinib|lorlatinib|entrectinib|"
+    r"larotrectinib|selpercatinib|pralsetinib|capmatinib|tepotinib|"
+    r"sotorasib|adagrasib|dabrafenib|trametinib|encorafenib|binimetinib|"
+    r"vemurafenib|cetuximab|panitumumab|erdafitinib"
+    r")\b",
+    re.IGNORECASE,
+)
+_THERAPY_EXPOSURE_RULES = (
+    {
+        "axis": "AR_signaling",
+        "state": "down",
+        "symbols": {"AR"},
+        "agent_re": _AR_PATHWAY_AGENTS,
+        "class_re": re.compile(r"\bandrogen\b", re.IGNORECASE),
+        "disease_re": re.compile(
+            r"\b(ar[- ]?axis\s+suppressed|ar\s+signaling\s+suppressed|"
+            r"adt\s+exposure|androgen\s+deprivation|arpi)\b",
+            re.IGNORECASE,
+        ),
+        "axis_label": "AR-axis",
+        "exposure_label": "ADT or ARPI",
+    },
+    {
+        "axis": "ER_signaling",
+        "state": "down",
+        "symbols": {"ESR1", "PGR"},
+        "agent_re": _ER_ENDOCRINE_AGENTS,
+        "class_re": re.compile(r"\bhormone\b", re.IGNORECASE),
+        "disease_re": re.compile(
+            r"\b(er[- ]?axis\s+suppressed|endocrine[- ]?exposed|"
+            r"endocrine\s+therapy|aromatase\s+inhibitor|serd)\b",
+            re.IGNORECASE,
+        ),
+        "axis_label": "ER-axis",
+        "exposure_label": "endocrine therapy",
+    },
+    {
+        "axis": "HER2_signaling",
+        "state": "down",
+        "symbols": {"ERBB2", "HER2"},
+        "agent_re": _HER2_DIRECTED_AGENTS,
+        "class_re": re.compile(r"\bher2\b", re.IGNORECASE),
+        "disease_re": re.compile(
+            r"\b(her2[- ]?axis\s+suppressed|anti[- ]?her2|"
+            r"her2[- ]?directed)\b",
+            re.IGNORECASE,
+        ),
+        "axis_label": "HER2-axis",
+        "exposure_label": "HER2-directed therapy",
+    },
+    {
+        "axis": "MAPK_EGFR_signaling",
+        "state": "down",
+        "symbols": {
+            "EGFR", "BRAF", "KRAS", "NRAS", "MAP2K1", "MAP2K2",
+            "MEK1", "MEK2", "ALK", "ROS1", "RET", "MET", "NTRK1",
+            "NTRK2", "NTRK3", "FGFR1", "FGFR2", "FGFR3",
+        },
+        "agent_re": _MAPK_RTK_AGENTS,
+        "class_re": re.compile(r"\b(tki|kinase)\b", re.IGNORECASE),
+        "disease_re": re.compile(
+            r"\b(egfr[- ]?tki|mapk[-/ ]?pathway\s+suppressed|"
+            r"targeted\s+kinase\s+inhibitor)\b",
+            re.IGNORECASE,
+        ),
+        "axis_label": "MAPK/RTK pathway",
+        "exposure_label": "targeted kinase inhibitor",
+    },
+)
+
+
+def _target_symbol(target_row) -> str:
+    return _clean_text(
+        target_row.get("symbol") if hasattr(target_row, "get") else ""
+    ).upper()
+
+
+def _agent_text(target_row) -> str:
+    return _clean_text(
+        target_row.get("agent") if hasattr(target_row, "get") else ""
+    )
+
+
+def _agent_class_text(target_row) -> str:
+    return _clean_text(
+        target_row.get("agent_class") if hasattr(target_row, "get") else ""
+    ).lower()
+
+
+def _phase_text(target_row) -> str:
+    return _clean_text(
+        target_row.get("phase") if hasattr(target_row, "get") else ""
+    ).lower()
+
+
+def _therapy_row_text(target_row) -> str:
+    if not hasattr(target_row, "get"):
+        return ""
+    return " ".join(
+        _clean_text(target_row.get(key))
+        for key in ("agent", "agent_class", "indication", "rationale")
+    )
+
+
+def _therapy_row_matches_exposure_rule(target_row, rule: dict) -> bool:
+    symbol = _target_symbol(target_row)
+    if symbol and symbol in rule.get("symbols", set()):
+        return True
+    text = _therapy_row_text(target_row)
+    agent_re = rule.get("agent_re")
+    if agent_re is not None and agent_re.search(text):
+        return True
+    class_re = rule.get("class_re")
+    if class_re is not None and class_re.search(_agent_class_text(target_row)):
+        return True
+    return False
+
+
+def _therapy_path_info(target_row) -> dict:
+    phase = _phase_text(target_row)
+    agent_class = _agent_class_text(target_row)
+    text = _therapy_row_text(target_row)
+    is_standard = _STANDARD_PATH_TEXT.search(text) is not None
+    is_later_line = _LATER_LINE_TEXT.search(text) is not None
+
+    if phase == "approved":
+        if "radioligand" in agent_class:
+            return {
+                "tier": "approved_later_line",
+                "rank": 2,
+                "context": (
+                    "approved radioligand pathway; confirm imaging/eligibility "
+                    "and prior-line requirements"
+                ),
+            }
+        if is_standard:
+            return {
+                "tier": "approved_standard",
+                "rank": 0,
+                "context": (
+                    "guideline-standard approved pathway; confirm the indication "
+                    "and line of therapy"
+                ),
+            }
+        if is_later_line:
+            return {
+                "tier": "approved_later_line",
+                "rank": 2,
+                "context": (
+                    "approved later-line pathway; confirm prior therapies and "
+                    "indication-specific eligibility"
+                ),
+            }
+        return {
+            "tier": "approved_indication_matched",
+            "rank": 1,
+            "context": (
+                "approved biomarker/indication-matched pathway; confirm clinical "
+                "eligibility"
+            ),
+        }
+
+    phase_context = {
+        "phase_3": ("late_clinical", 3, "late-clinical follow-up, not default standard"),
+        "phase_2": ("trial_follow_up", 4, "clinical-trial follow-up, not default standard"),
+        "phase_1": ("trial_follow_up", 5, "clinical-trial follow-up, not default standard"),
+        "preclinical": ("preclinical", 6, "preclinical follow-up, not a clinical recommendation"),
+        "off_label": ("off_label", 7, "off-label follow-up; confirm rationale and alternatives"),
+    }
+    tier, rank, context = phase_context.get(phase, ("unknown", 99, ""))
+    return {"tier": tier, "rank": rank, "context": context}
+
+
+def therapy_path_tier(target_row) -> str:
+    """Data-driven treatment-path tier used by report sorting/wording."""
+    return _therapy_path_info(target_row)["tier"]
+
+
+def _exposure_rule_active(rule: dict, *, analysis=None, disease_state=None) -> bool:
+    axis_down = (
+        _therapy_axis_state(analysis, str(rule.get("axis") or ""))
+        == str(rule.get("state") or "").lower()
+    )
+    disease_re = rule.get("disease_re")
+    disease_match = (
+        disease_re.search(_clean_text(disease_state)) is not None
+        if disease_re is not None else False
+    )
+    return bool(axis_down or disease_match)
+
+
+def _therapy_axis_state(analysis, axis: str) -> str:
+    if not isinstance(analysis, dict):
+        return ""
+    scores = analysis.get("therapy_response_scores") or {}
+    score = scores.get(axis) if hasattr(scores, "get") else None
+    if score is None:
+        return ""
+    if hasattr(score, "get"):
+        return _clean_text(score.get("state")).lower()
+    return _clean_text(getattr(score, "state", "")).lower()
+
+
+def therapy_state_caution(target_row, *, analysis=None, disease_state=None) -> str:
+    """Warn when a candidate therapy matches an exposure pattern already seen.
+
+    This is intentionally phrased as a medication-reconciliation prompt, not
+    a clinical contraindication. Single-sample RNA can suggest exposure but
+    cannot determine whether the drug is current, prior, tolerated, or failed.
+    """
+    for rule in _THERAPY_EXPOSURE_RULES:
+        if not _therapy_row_matches_exposure_rule(target_row, rule):
+            continue
+        if not _exposure_rule_active(rule, analysis=analysis, disease_state=disease_state):
+            continue
+        return (
+            f"{rule['axis_label']} RNA/signaling is already suppressed "
+            f"(current/prior {rule['exposure_label']} signal); verify the "
+            "medication list before treating this as new-start therapy"
+        )
+    return ""
+
+
+def therapy_path_context(target_row, *, analysis=None, disease_state=None) -> str:
+    """Brief reader-facing treatment-path context for curated therapy rows."""
+    return _therapy_path_info(target_row)["context"]
+
+
+def therapy_path_rank(target_row, *, analysis=None, disease_state=None) -> int:
+    """Sort standard paths ahead of exploratory rows in concise reports."""
+    return int(_therapy_path_info(target_row)["rank"])
+
+
+def target_interpretation_summary(
+    target_row,
+    expression_row,
+    target_panel=None,
+    *,
+    analysis=None,
+    disease_state=None,
+):
     """Return a compact integrated summary for a curated target row."""
     source = tumor_attribution_context(expression_row)
     normal = normal_expression_context(expression_row)
@@ -460,10 +841,26 @@ def target_interpretation_summary(target_row, expression_row, target_panel=None)
         clinical_maturity_summary(target_row, target_panel=target_panel)
         if target_row is not None else ""
     )
-    parts = [source["label"], source["band"], normal["label"]]
+    if target_row is not None and expression_independent_indication(target_row):
+        parts = [expression_independent_interpretation(target_row), source["band"]]
+    else:
+        parts = [source["label"], source["band"]]
+    parts.append(normal["label"])
     details = list(normal.get("details") or [])
     if details:
         parts.append(details[0])
+    path_context = (
+        therapy_path_context(target_row, analysis=analysis, disease_state=disease_state)
+        if target_row is not None else ""
+    )
+    if path_context:
+        parts.append(path_context)
+    caution = (
+        therapy_state_caution(target_row, analysis=analysis, disease_state=disease_state)
+        if target_row is not None else ""
+    )
+    if caution:
+        parts.append(f"current-therapy check: {caution}")
     if maturity:
         parts.append(maturity)
     return "; ".join(part for part in parts if part)

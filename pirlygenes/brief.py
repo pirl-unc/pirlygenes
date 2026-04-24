@@ -37,13 +37,20 @@ from .reporting import (
     cancer_code_display_name,
     cancer_key_genes_lookup_for_analysis,
     clinical_maturity_summary,
+    expression_independent_indication,
+    expression_independent_interpretation,
     normal_expression_context,
     subtype_curation_scope_note,
+    therapy_path_context,
+    therapy_path_rank,
+    therapy_state_caution,
     tumor_band_available,
     tumor_band_cell,
     target_reliability_status,
+    tpm_semantics_note,
     tumor_attribution_context,
 )
+from .sample_context import library_prep_display_label
 
 logger = logging.getLogger(__name__)
 
@@ -210,40 +217,86 @@ def _top_candidate_signature_score(analysis) -> float | None:
     return None
 
 
-def _format_therapy_bullet(target_row, expression_row, target_panel=None) -> str:
+def _format_therapy_bullet(
+    target_row,
+    expression_row,
+    target_panel=None,
+    *,
+    analysis=None,
+    disease_state=None,
+) -> str:
     """One standardized therapy bullet for the brief."""
     sym = str(target_row.get("symbol") or "")
     agent = str(target_row.get("agent") or "—")
     phase = _phase_label(str(target_row.get("phase") or ""))
     indication = str(target_row.get("indication") or "")
     indication_clause = f", {indication}" if indication else ""
+    expr_independent = expression_independent_indication(target_row)
+    path_context = therapy_path_context(
+        target_row,
+        analysis=analysis,
+        disease_state=disease_state,
+    )
+    path_prefix = f"{path_context}. " if path_context else ""
+    state_caution = therapy_state_caution(
+        target_row,
+        analysis=analysis,
+        disease_state=disease_state,
+    )
+    caution_suffix = (
+        f" Current-therapy check: {state_caution}."
+        if state_caution else ""
+    )
     if expression_row is None:
+        if expr_independent:
+            return (
+                f"- **{sym}** — {agent} ({phase}{indication_clause}). "
+                f"{path_prefix}{expression_independent_interpretation(target_row)}; "
+                f"target RNA was not measured.{caution_suffix}"
+            )
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-            f"Target **not measured** in this sample."
+            f"{path_prefix}Target **not measured** in this sample.{caution_suffix}"
         )
     observed = float(expression_row.get("observed_tpm") or 0.0)
     if observed < 1.0:
+        if expr_independent:
+            return (
+                f"- **{sym}** — {agent} ({phase}{indication_clause}). "
+                f"{path_prefix}{expression_independent_interpretation(target_row)}; "
+                f"bulk target RNA {observed:.1f} TPM.{caution_suffix}"
+            )
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-            f"Observed {observed:.1f} TPM — **target absent** in this sample."
+            f"{path_prefix}Bulk target RNA {observed:.1f} TPM — "
+            f"**target absent** in this sample.{caution_suffix}"
         )
     if not tumor_band_available(expression_row):
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-            f"Observed {observed:.0f} TPM; a tumor-expression range was not available for this run."
+            f"{path_prefix}Bulk TPM {observed:.0f}; a tumor-core model interval "
+            f"was not available for this run.{caution_suffix}"
         )
     source = tumor_attribution_context(expression_row)
     normal = normal_expression_context(expression_row)
     maturity = clinical_maturity_summary(target_row, target_panel=target_panel)
-    interpretation_parts = [source["label"], source["band"], normal["label"]]
+    if expr_independent:
+        interpretation_parts = [
+            expression_independent_interpretation(target_row),
+            source["band"],
+            normal["label"],
+        ]
+    else:
+        interpretation_parts = [source["label"], source["band"], normal["label"]]
     notes = list(source.get("notes") or []) + list(normal.get("details") or [])
     if notes:
         interpretation_parts.append(notes[0])
+    if path_context:
+        interpretation_parts.append(path_context)
     interpretation = "; ".join(part for part in interpretation_parts if part)
     return (
         f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-        f"{interpretation}. Clinical maturity: {maturity}."
+        f"{interpretation}. Clinical maturity: {maturity}.{caution_suffix}"
     )
 
 
@@ -251,6 +304,9 @@ def _top_therapies(
     targets_df,
     ranges_df,
     limit=3,
+    *,
+    analysis=None,
+    disease_state=None,
 ):
     """Pick the top therapies to show in the brief.
 
@@ -273,10 +329,31 @@ def _top_therapies(
     for _, t in targets_df.iterrows():
         sym = str(t.get("symbol") or "")
         expr = sym_to_row.get(sym)
+        expr_independent = expression_independent_indication(t)
         if expr is None:
+            if expr_independent:
+                phase = str(t.get("phase") or "")
+                scored.append(
+                    (
+                        (
+                            therapy_path_rank(
+                                t,
+                                analysis=analysis,
+                                disease_state=disease_state,
+                            ),
+                            phase_priority.get(phase, 99),
+                            1,
+                            1,
+                            0.0,
+                            sym,
+                        ),
+                        t,
+                        None,
+                    )
+                )
             continue
         observed = float(expr.get("observed_tpm") or 0.0)
-        if observed < 1.0:
+        if observed < 1.0 and not expr_independent:
             # Target absent — the brief reports presence, not absence.
             # The full landscape in targets.md has the absence noted.
             continue
@@ -284,9 +361,9 @@ def _top_therapies(
         attr_fraction = float(expr.get("attr_tumor_fraction") or 1.0)
         # Drop rows that are mostly non-tumor from the top-3 — they
         # don't belong in the clinician handoff per #79 semantics.
-        if attr_fraction < 0.30:
+        if attr_fraction < 0.30 and not expr_independent:
             continue
-        reliability_status = target_reliability_status(expr)
+        reliability_status = target_reliability_status(expr, target_row=t)
         if reliability_status == "unsupported":
             continue
         # Note (#128): we deliberately do NOT filter on
@@ -302,7 +379,19 @@ def _top_therapies(
         # expression, not curation.
         phase = str(t.get("phase") or "")
         reliability_rank = 0 if reliability_status == "supported" else 1
-        sort_key = (phase_priority.get(phase, 99), reliability_rank, -attr_tumor, sym)
+        expression_rank = 1 if expr_independent else 0
+        sort_key = (
+            therapy_path_rank(
+                t,
+                analysis=analysis,
+                disease_state=disease_state,
+            ),
+            phase_priority.get(phase, 99),
+            expression_rank,
+            reliability_rank,
+            -attr_tumor,
+            sym,
+        )
         scored.append((sort_key, t, expr))
 
     # Sort by key only — avoid pandas Series comparison in tie-break.
@@ -319,6 +408,70 @@ def _top_therapies(
         if len(deduped) >= limit:
             break
     return deduped
+
+
+def _brief_float(value, default=0.0) -> float:
+    try:
+        result = float(value)
+    except Exception:
+        return float(default)
+    if result != result:
+        return float(default)
+    return result
+
+
+def _brief_truthy(value) -> bool:
+    if value is None:
+        return False
+    try:
+        if value != value:
+            return False
+    except Exception:
+        pass
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    return bool(value)
+
+
+def _shortlist_omission_note(targets_df, ranges_df, top_rows) -> str:
+    """Explain bulk-present curated targets that failed the source gate."""
+    if targets_df is None or ranges_df is None or not top_rows:
+        return ""
+    top_symbols = {str(t.get("symbol") or "") for t, _ in top_rows}
+    sym_to_row = {
+        str(row.get("symbol") or ""): row
+        for _, row in ranges_df.iterrows()
+    }
+    omitted = []
+    seen = set()
+    for _, target in targets_df.iterrows():
+        sym = str(target.get("symbol") or "").strip()
+        if not sym or sym.lower() == "nan" or sym in top_symbols or sym in seen:
+            continue
+        seen.add(sym)
+        expr = sym_to_row.get(sym)
+        if expr is None or _brief_float(expr.get("observed_tpm"), 0.0) < 1.0:
+            continue
+        attr_fraction = _brief_float(expr.get("attr_tumor_fraction"), 1.0)
+        reliability_status = target_reliability_status(expr, target_row=target)
+        reason = ""
+        if _brief_truthy(expr.get("matched_normal_over_predicted")):
+            reason = "matched-normal over-predicted"
+        elif reliability_status == "unsupported":
+            reason = "background-dominant"
+        elif attr_fraction < 0.30:
+            reason = f"{attr_fraction:.0%} tumor-core"
+        if reason:
+            omitted.append(f"{sym} ({reason})")
+        if len(omitted) >= 3:
+            break
+    if not omitted:
+        return ""
+    names = ", ".join(omitted)
+    return (
+        f"*Not short-listed despite bulk RNA: {names} did not clear the "
+        "tumor-core/source gate; see `*-evidence.md`.*"
+    )
 
 
 def _panel_display_label(panel_code, panel_subtype=None):
@@ -387,23 +540,19 @@ def _caveats_from_purity_tier(purity_tier, sample_context) -> List[str]:
     if sample_context is not None:
         prep = getattr(sample_context, "library_prep", None)
         preservation = getattr(sample_context, "preservation", None)
-        prep_label = {
-            "exome_capture": "exome capture",
-            "poly_a": "poly-A capture",
-            "ribo_depleted": "ribosomal depletion",
-            "total_rna": "total RNA",
-        }.get(prep, None)
+        prep_label = library_prep_display_label(prep) if prep else None
         if prep_label and preservation == "ffpe":
             out.append(
                 f"FFPE preservation with {prep_label} library prep — "
                 "short transcripts favored; some classes of targets "
                 "are artificially depressed."
             )
-        elif prep_label == "exome capture":
+        elif prep == "exome_capture":
             out.append(
-                "Exome-capture library prep — mitochondrial and "
-                "non-coding RNAs are absent by design; don't interpret "
-                "their absence as sample quality issues."
+                "RNA hybrid-capture / RNA-exome prep — rRNA and many "
+                "non-polyadenylated RNAs are under-sampled by design; "
+                "low MT fraction is expected, but measurable MT mRNAs "
+                "should not be treated as filtered out."
             )
     return out
 
@@ -460,8 +609,11 @@ def build_summary(
     from .confidence import compute_call_confidence
     call_tier = compute_call_confidence(analysis)
     if call_tier.tier in {"low", "moderate"} and call_tier.reasons:
+        tier_text = f"{call_tier.tier} confidence"
+        if call_tier.tier == "low":
+            tier_text += ", provisional"
         suffix = (
-            f" — **{call_tier.tier} confidence** "
+            f" — **{tier_text}** "
             f"({call_tier.inline_note})"
         )
     else:
@@ -592,7 +744,7 @@ def build_summary(
     if overall is not None and lower is not None and upper is not None:
         tier_label = getattr(purity_tier, "tier", "unknown") if purity_tier else "unknown"
         lines.append(
-            f"**Purity:** {overall:.0%} (range {lower:.0%}–{upper:.0%}, "
+            f"**Purity:** {overall:.0%} (model interval {lower:.0%}–{upper:.0%}, "
             f"{tier_label} confidence)."
         )
 
@@ -602,7 +754,9 @@ def build_summary(
 
     # Sample context
     if sample_context is not None:
-        prep_label = str(getattr(sample_context, "library_prep", "unknown")).replace("_", " ")
+        prep_label = library_prep_display_label(
+            getattr(sample_context, "library_prep", "unknown")
+        )
         pres_label = str(getattr(sample_context, "preservation", "unknown")).replace("_", " ")
         lines.append(f"**Sample:** {prep_label} library, {pres_label} preservation.")
 
@@ -614,8 +768,18 @@ def build_summary(
         cancer_code, analysis, ranges_df=ranges_df,
     )
     if panel_code in cancer_key_genes_cancer_types():
-        top = _top_therapies(targets_df, ranges_df, limit=3)
+        top = _top_therapies(
+            targets_df,
+            ranges_df,
+            limit=3,
+            analysis=analysis,
+            disease_state=disease_state,
+        )
         lines.append("## Top candidate therapies\n")
+        lines.append(
+            "*Ranked by treatment-path maturity first, then tumor-core support; "
+            "verify current therapy before acting on any row.*\n"
+        )
         if panel_code != cancer_code or panel_subtype:
             lines.append(
                 "*Subtype-resolved therapy curation:* "
@@ -635,13 +799,18 @@ def build_summary(
                         target_row,
                         expression_row,
                         target_panel=targets_df,
+                        analysis=analysis,
+                        disease_state=disease_state,
                     )
                 )
+            omission_note = _shortlist_omission_note(targets_df, ranges_df, top)
+            if omission_note:
+                lines.append(omission_note)
             lines.append("")
         else:
             lines.append(
                 "*No approved or trialed agents with a measured, "
-                "tumor-attributed target in this sample.*\n"
+                "tumor-core-supported target in this sample.*\n"
             )
     else:
         lines.append(
@@ -704,9 +873,10 @@ def build_actionable(
 
     # Sample + confidence paragraph
     lines.append("## Sample and confidence\n")
-    prep_label = str(
-        getattr(sample_context, "library_prep", "unknown")
-    ).replace("_", " ") if sample_context else "unknown"
+    prep_label = (
+        library_prep_display_label(getattr(sample_context, "library_prep", "unknown"))
+        if sample_context else "unknown"
+    )
     pres_label = str(
         getattr(sample_context, "preservation", "unknown")
     ).replace("_", " ") if sample_context else "unknown"
@@ -728,7 +898,7 @@ def build_actionable(
             confidence_clause += " (" + "; ".join(tier_reasons) + ")"
         lines.append(
             f"\nPurity point estimate: **{overall:.0%}** "
-            f"(range {lower:.0%}–{upper:.0%}). {confidence_clause.capitalize()}."
+            f"(model interval {lower:.0%}–{upper:.0%}). {confidence_clause.capitalize()}."
         )
 
     lines.append("")
@@ -738,8 +908,11 @@ def build_actionable(
     from .confidence import compute_call_confidence
     call_tier = compute_call_confidence(analysis)
     if call_tier.tier in {"low", "moderate"} and call_tier.reasons:
+        tier_text = f"{call_tier.tier} confidence"
+        if call_tier.tier == "low":
+            tier_text += ", provisional"
         call_suffix = (
-            f" — **{call_tier.tier} confidence** "
+            f" — **{tier_text}** "
             f"({call_tier.inline_note})"
         )
     else:
@@ -793,12 +966,15 @@ def build_actionable(
                 "Approved agents listed first. Interpretation separates "
                 "tumor-source support from normal-expression context so "
                 "lineage markers are not confused with tumor-exclusive "
-                "targets."
+                "targets. Treatment-path context flags standard options, "
+                "later-line requirements, trial follow-ups, and possible "
+                "current/prior therapy exposure."
             )
+            lines.append(tpm_semantics_note())
             lines.append("")
             lines.append(
                 "| Target | Agent | Class | Phase | Indication | "
-                "Observed | Tumor-core | Interpretation |"
+                "Bulk TPM (measured) | Tumor-core TPM (model) | Interpretation |"
             )
             lines.append(
                 "|--------|-------|-------|-------|------------|"
@@ -809,10 +985,18 @@ def build_actionable(
                 "phase_1": 3, "preclinical": 4,
             }
             sorted_df = targets_df.assign(
+                _path_key=[
+                    therapy_path_rank(
+                        t,
+                        analysis=analysis,
+                        disease_state=disease_state,
+                    )
+                    for _, t in targets_df.iterrows()
+                ],
                 _po=targets_df["phase"].map(
                     lambda p: phase_order.get(str(p), 99)
                 )
-            ).sort_values(["_po", "symbol", "agent"])
+            ).sort_values(["_path_key", "_po", "symbol", "agent"])
             def _cell(value):
                 """Render a cell, turning NaN / blank / 'nan' into em-dash."""
                 if value is None:
@@ -839,16 +1023,66 @@ def build_actionable(
                     if expr is None:
                         obs_cell = "*not measured*"
                         tumor_cell = "—"
-                        interp_cell = "not measured"
+                        if expression_independent_indication(t):
+                            interp_cell = (
+                                expression_independent_interpretation(t)
+                                + "; target RNA not measured"
+                            )
+                        else:
+                            interp_cell = "not measured"
+                        path_context = therapy_path_context(
+                            t,
+                            analysis=analysis,
+                            disease_state=disease_state,
+                        )
+                        state_caution = therapy_state_caution(
+                            t,
+                            analysis=analysis,
+                            disease_state=disease_state,
+                        )
+                        extra_parts = []
+                        if path_context:
+                            extra_parts.append(path_context)
+                        if state_caution:
+                            extra_parts.append(
+                                f"current-therapy check: {state_caution}"
+                            )
+                        if extra_parts:
+                            interp_cell += "; " + "; ".join(extra_parts)
                     else:
                         obs_cell = f"{float(expr.get('observed_tpm') or 0):.1f}"
                         tumor_cell = tumor_band_cell(expr)
                         source = tumor_attribution_context(expr)
                         normal = normal_expression_context(expr)
-                        interp_parts = [source["label"], normal["label"]]
-                        notes = list(source.get("notes") or []) + list(normal.get("details") or [])
+                        if expression_independent_indication(t):
+                            interp_parts = [
+                                expression_independent_interpretation(t),
+                                normal["label"],
+                            ]
+                        else:
+                            interp_parts = [source["label"], normal["label"]]
+                        notes = (
+                            list(source.get("notes") or [])
+                            + list(normal.get("details") or [])
+                        )
                         if notes:
                             interp_parts.append(notes[0])
+                        path_context = therapy_path_context(
+                            t,
+                            analysis=analysis,
+                            disease_state=disease_state,
+                        )
+                        if path_context:
+                            interp_parts.append(path_context)
+                        state_caution = therapy_state_caution(
+                            t,
+                            analysis=analysis,
+                            disease_state=disease_state,
+                        )
+                        if state_caution:
+                            interp_parts.append(
+                                f"current-therapy check: {state_caution}"
+                            )
                         interp_parts.append(
                             clinical_maturity_summary(t, target_panel=targets_df)
                         )
@@ -904,8 +1138,8 @@ def _preservation_clinical_clause(sample_context) -> str:
         )
     if prep == "exome_capture":
         return (
-            "Exome-capture prep selectively targets coding exons; "
-            "mitochondrial and non-polyadenylated transcripts are "
-            "absent by design."
+            "RNA hybrid-capture / RNA-exome prep selectively enriches "
+            "targeted transcripts; rRNA and many non-polyadenylated RNAs "
+            "are under-sampled, while low-level MT mRNAs may still be real."
         )
     return ""

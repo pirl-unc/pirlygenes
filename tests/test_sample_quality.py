@@ -180,7 +180,7 @@ def test_exome_capture_library_prep_mutes_mt_warning():
         "deg level was clobbered to 'unknown' despite valid length-pair signal"
     )
     assert any(
-        "consistent with exome capture" in f.lower() for f in result["flags"]
+        "consistent with rna hybrid-capture" in f.lower() for f in result["flags"]
     ), f"Expected informational MT line; got {result['flags']!r}"
 
 

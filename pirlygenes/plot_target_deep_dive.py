@@ -1006,11 +1006,27 @@ def plot_priority_target_context(
     )
     y_pos = np.arange(len(rows))
     labels = [f"{row['symbol']}{'*' if row['matched_panel'] else ''}" for row in rows]
+    source_labels = {row["source"]["label"] for row in rows}
+    normal_labels = {row["normal"]["label"] for row in rows}
+    show_source_col = len(source_labels) > 1
+    show_normal_col = len(normal_labels) > 1
+
+    def _log_tpm(value):
+        return np.log10(max(0.0, float(value)) + 1.0)
+
+    max_raw = max(
+        max(row["high"], row["observed"], row["mid"], 1.0)
+        for row in rows
+    )
 
     for i, row in enumerate(rows):
-        ax_range.hlines(i, row["low"], row["high"], color=row["color"], lw=5, alpha=0.8)
+        low = _log_tpm(row["low"])
+        mid = _log_tpm(row["mid"])
+        high = _log_tpm(row["high"])
+        observed = _log_tpm(row["observed"])
+        ax_range.hlines(i, low, high, color=row["color"], lw=5, alpha=0.8)
         ax_range.scatter(
-            row["mid"],
+            mid,
             i,
             s=105,
             marker=row["marker"],
@@ -1020,7 +1036,7 @@ def plot_priority_target_context(
             zorder=3,
         )
         ax_range.scatter(
-            row["observed"],
+            observed,
             i,
             s=70,
             marker="|",
@@ -1029,36 +1045,47 @@ def plot_priority_target_context(
             zorder=4,
         )
 
-        ax_note.text(0.02, i, row["source"]["label"], va="center", fontsize=9, color="#222222")
-        ax_note.text(1.03, i, row["normal"]["label"], va="center", fontsize=9, color="#222222")
-        ax_note.text(2.04, i, row["clinical_label"], va="center", fontsize=9, color="#222222")
+        x = 0.02
+        if show_source_col:
+            ax_note.text(x, i, row["source"]["label"], va="center", fontsize=9, color="#222222")
+            x += 1.0
+        if show_normal_col:
+            ax_note.text(x, i, row["normal"]["label"], va="center", fontsize=9, color="#222222")
+            x += 1.0
+        ax_note.text(x, i, row["clinical_label"], va="center", fontsize=9, color="#222222")
+        ax_note.text(x + 1.0, i, f"{row['total_score']:.1f}", va="center", fontsize=9, color="#222222")
 
     ax_range.set_yticks(y_pos)
     ax_range.set_yticklabels(labels, fontsize=10)
     ax_range.invert_yaxis()
-    ax_range.set_xscale("symlog", linthresh=1.0)
-    ax_range.set_xlabel("Estimated tumor TPM range (dot = midpoint, tick = observed TPM)")
+    raw_ticks = [0, 1, 3, 10, 30, 100, 300, 1000, 3000, 10000]
+    raw_ticks = [tick for tick in raw_ticks if tick <= max_raw * 1.2]
+    if raw_ticks[-1] < max_raw:
+        raw_ticks.append(float(np.ceil(max_raw)))
+    ax_range.set_xticks([_log_tpm(tick) for tick in raw_ticks])
+    ax_range.set_xticklabels([f"{tick:g}" for tick in raw_ticks])
+    ax_range.set_xlim(left=0.0, right=_log_tpm(max_raw) + 0.12)
+    ax_range.set_xlabel("Tumor-core TPM, log10(TPM+1); black tick = bulk measured TPM")
     ax_range.set_title("Tumor Range", fontsize=12, fontweight="bold")
     ax_range.grid(axis="x", color="#dddddd", linewidth=0.6, alpha=0.7)
     ax_range.set_axisbelow(True)
 
-    if df_gene_expr is not None:
-        try:
-            from .plot_reference_lines import add_p90_reference_line
-
-            add_p90_reference_line(
-                ax_range,
-                _get_sample_tpm_by_symbol(df_gene_expr),
-                orientation="vertical",
-            )
-        except Exception:
-            pass
-
-    ax_note.set_xlim(0.0, 3.05)
+    note_cols = int(show_source_col) + int(show_normal_col) + 2
+    ax_note.set_xlim(0.0, note_cols + 0.05)
     ax_note.set_ylim(-0.5, len(rows) - 0.5)
     ax_note.invert_yaxis()
     ax_note.axis("off")
-    for xpos, text in [(0.02, "Tumor source"), (1.03, "Healthy tissues"), (2.04, "Clinical maturity")]:
+    header_cols = []
+    x = 0.02
+    if show_source_col:
+        header_cols.append((x, "Tumor source"))
+        x += 1.0
+    if show_normal_col:
+        header_cols.append((x, "Healthy tissues"))
+        x += 1.0
+    header_cols.append((x, "Clinical maturity"))
+    header_cols.append((x + 1.0, "Priority"))
+    for xpos, text in header_cols:
         ax_note.text(
             xpos,
             -0.9,
@@ -1067,6 +1094,21 @@ def plot_priority_target_context(
             fontweight="bold",
             color="#333333",
             clip_on=False,
+        )
+    constant_notes = []
+    if not show_source_col:
+        constant_notes.append(f"tumor source: {next(iter(source_labels))}")
+    if not show_normal_col:
+        constant_notes.append(f"healthy tissues: {next(iter(normal_labels))}")
+    if constant_notes:
+        fig.text(
+            0.50,
+            0.915,
+            "All rows share " + "; ".join(constant_notes) + ".",
+            ha="center",
+            va="top",
+            fontsize=8.5,
+            color="#555555",
         )
 
     normal_handles = [
@@ -1100,20 +1142,24 @@ def plot_priority_target_context(
         linestyle="none",
         label="* disease-matched curated target",
     )
-    legend1 = ax_range.legend(
+    normal_legend = fig.legend(
         handles=normal_handles,
-        loc="lower right",
+        loc="lower center",
+        bbox_to_anchor=(0.33, 0.015),
         fontsize=8,
         title="Healthy-tissue context",
         frameon=False,
+        ncol=2,
     )
-    ax_range.add_artist(legend1)
-    ax_range.legend(
+    fig.add_artist(normal_legend)
+    fig.legend(
         handles=source_handles + [panel_handle],
-        loc="upper right",
+        loc="lower center",
+        bbox_to_anchor=(0.76, 0.015),
         fontsize=8,
         title="Tumor-source support",
         frameon=False,
+        ncol=2,
     )
 
     fig.suptitle(f"Priority Target Context — {cancer_code}", fontsize=13, y=0.985)
@@ -1126,7 +1172,7 @@ def plot_priority_target_context(
         fontsize=9,
         color="#555555",
     )
-    fig.tight_layout(rect=[0.0, 0.0, 1.0, 0.93])
+    fig.tight_layout(rect=[0.0, 0.11, 1.0, 0.89])
 
     if save_to_filename:
         fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")

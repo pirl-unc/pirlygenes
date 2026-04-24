@@ -1,5 +1,5 @@
 library_prep,preservation,gene_class,expected_lo,expected_hi,interpretation
-exome_capture,*,mitochondrial,0.000,0.005,Filtered by design — hybrid-capture kits do not select MT transcripts.
+exome_capture,*,mitochondrial,0.000,0.005,Very low under RNA capture / RNA-exome enrichment; MT protein-coding transcripts may still be measurable at low TPM.
 exome_capture,*,rRNA,0.000,0.005,Filtered by design — rRNAs not targeted by exome probes.
 exome_capture,*,histone_cluster,0.000,0.010,Replication-dependent histone mRNAs lack poly-A tails and are not captured by exome probes.
 poly_a,fresh,mitochondrial,0.020,0.150,Expected MT band for poly-A capture in non-degraded RNA; tissue-dependent (heart/muscle skew higher).
