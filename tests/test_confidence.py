@@ -1,7 +1,5 @@
 """Tests for the confidence-tier module (#109)."""
 
-import pytest
-
 from pirlygenes.confidence import (
     ConfidenceTier,
     compute_purity_confidence,
@@ -33,7 +31,7 @@ def test_wide_ci_low_tier():
     tier = compute_purity_confidence(_purity(0.64, 0.19, 1.00))
     assert tier.tier == "low"
     assert "wide purity CI" in tier.inline_note
-    assert tier.badge == "⚠⚠"
+    assert tier.badge == "low"
 
 
 def test_low_purity_regime_bumps_tier():

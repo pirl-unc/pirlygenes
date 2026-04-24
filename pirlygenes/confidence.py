@@ -39,8 +39,8 @@ class ConfidenceTier:
     @property
     def badge(self) -> str:
         return {
-            "low": "⚠⚠",
-            "moderate": "⚠",
+            "low": "low",
+            "moderate": "moderate",
             "high": "",
             "degenerate": "—",
             "unknown": "?",

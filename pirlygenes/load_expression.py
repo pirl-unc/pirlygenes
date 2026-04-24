@@ -73,6 +73,31 @@ def _guess_col(columns, patterns):
 def _select_sample_rows(df, sample_id_col=None, sample_id_value=None, verbose=True):
     if sample_id_col is None and sample_id_value is None:
         return df
+    if sample_id_col is None and sample_id_value is not None:
+        sample_col = str(sample_id_value)
+        if sample_col not in df.columns:
+            available = sorted(str(col) for col in df.columns)
+            if len(available) > 8:
+                available_preview = available[:8] + ["..."]
+            else:
+                available_preview = available
+            raise ValueError(
+                f"Sample value {sample_id_value!r} was provided without "
+                f"sample_id_col, but no matching expression column was found; "
+                f"available columns include: {available_preview}"
+            )
+        keep = [
+            col
+            for col in df.columns
+            if col == sample_col
+            or re.search(r"(^|[_\s])gene([_\s]?id|[_\s]?name)?$", str(col), re.IGNORECASE)
+            or str(col).lower() in {"gene", "symbol", "ensembl_gene_id"}
+        ]
+        out = df.loc[:, keep].copy()
+        out = out.rename(columns={sample_col: "TPM"})
+        if verbose:
+            print(f"[load] Selected wide expression column {sample_col!r} as TPM")
+        return out
     if not sample_id_col or sample_id_value is None:
         raise ValueError(
             "Both sample_id_col and sample_id_value must be provided to select a sample"
@@ -250,6 +275,46 @@ def _detect_and_convert_to_tpm(df, verbose=True):
             if verbose:
                 print(f"[load] Converted FPKM column '{fpkm_col}' to TPM (sum was {total:.0f})")
     return df
+
+
+def _detect_kallisto_gene_abundance_tpm(df, verbose=True):
+    """Normalize kallisto/BostonGene gene_abundance.tsv TPM naming.
+
+    Some kallisto-derived gene-level tables call the TPM-like value
+    ``abundance`` and carry ``counts`` + ``length`` beside it. Treat that
+    exact shape as a TPM input, while avoiding broad "abundance" guesses in
+    unrelated tables.
+    """
+    if "TPM" in set(df.columns) or "abundance" not in set(df.columns):
+        return df
+    lower_cols = {str(col).lower() for col in df.columns}
+    if not {"counts", "length"}.issubset(lower_cols):
+        return df
+    if verbose:
+        print("[load] Auto-detected kallisto gene-level 'abundance' column as TPM")
+    return df.rename(columns={"abundance": "TPM"})
+
+
+def _normalize_bostongene_gene_columns(df, verbose=True):
+    """Normalize BostonGene/kallisto gene-level column naming.
+
+    Their ``gene_abundance.tsv`` has ``gene_name`` = symbol and ``gene`` =
+    Ensembl gene ID. The generic aliases otherwise treat ``gene`` as the
+    symbol and lose the Ensembl IDs.
+    """
+    if not {"gene_name", "gene"}.issubset(set(df.columns)):
+        return df
+    if "ensembl_gene_id" in set(df.columns):
+        return df
+    gene_values = df["gene"].dropna().astype(str)
+    if gene_values.empty:
+        return df
+    ensg_fraction = gene_values.str.startswith("ENSG").mean()
+    if ensg_fraction < 0.5:
+        return df
+    if verbose:
+        print("[load] Auto-detected BostonGene gene_name/gene columns")
+    return df.rename(columns={"gene": "ensembl_gene_id", "gene_name": "gene"})
 
 
 def _first_non_empty(series):
@@ -738,9 +803,11 @@ def load_expression_data(
         sample_id_value=sample_id_value,
         verbose=verbose,
     )
+    df = _normalize_bostongene_gene_columns(df, verbose=verbose)
     # FPKM→TPM: convert BEFORE any aggregation or ID remapping so downstream
     # consolidation (which sums values) operates on consistent units.
     df = _detect_and_convert_to_tpm(df, verbose=verbose)
+    df = _detect_kallisto_gene_abundance_tpm(df, verbose=verbose)
     if used_sidecar and aggregate_gene_expression:
         if verbose:
             print("[load] Input is already gene-level via Gene.csv sidecar; skipping transcript aggregation")

@@ -99,6 +99,31 @@ def test_brief_is_compact():
     assert "Top candidate therapies" in md
 
 
+def test_low_confidence_call_punctuation_is_clean():
+    analysis = _make_analysis()
+    analysis["candidate_trace"] = [{
+        "code": "PRAD",
+        "support_geomean": 0.4,
+        "signature_score": 0.4,
+    }]
+    analysis["fit_quality"] = {"label": "weak", "message": "flat signature"}
+    ranges_df = _make_ranges_df()
+
+    md = build_brief(
+        analysis, ranges_df, cancer_code="PRAD",
+        disease_state="",
+    )
+    cancer_line = next(line for line in md.splitlines() if line.startswith("**Cancer call:**"))
+    assert "). —" not in cancer_line
+
+    actionable = build_actionable(
+        analysis, ranges_df, cancer_code="PRAD",
+        disease_state="",
+    )
+    working_line = next(line for line in actionable.splitlines() if line.startswith("Working call:"))
+    assert "). —" not in working_line
+
+
 def test_brief_excludes_absent_targets():
     analysis = _make_analysis()
     ranges_df = _make_ranges_df()

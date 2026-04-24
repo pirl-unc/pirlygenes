@@ -36,6 +36,16 @@ def test_guess_gene_cols_and_pick_genes():
         plot_mod._guess_gene_cols(pd.DataFrame({"TPM": [1.0]}))
 
 
+def test_purity_ci_phrase_uses_text_not_warning_icon():
+    phrase = cli_mod._purity_ci_phrase({
+        "overall_estimate": 0.50,
+        "overall_lower": 0.10,
+        "overall_upper": 1.00,
+    })
+    assert "low confidence" in phrase
+    assert "\u26a0" not in phrase
+
+
 def test_resolve_always_label_gene_ids(monkeypatch):
     df = pd.DataFrame(
         {"gene_id": ["ENSG1", "ENSG2"], "gene_display_name": ["GENE1", "B7-H3"]}

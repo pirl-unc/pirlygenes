@@ -2636,7 +2636,7 @@ def _purity_ci_phrase(purity):
         )
     elif tier == "low":
         core += (
-            " — **⚠ low-confidence**: the range spans "
+            " — **low confidence**: the range spans "
             f"{(hi - lo):.0%}, so per-gene tumor-expression estimates "
             "derived from this purity carry wide error bars"
         )
@@ -3523,7 +3523,7 @@ def _generate_text_reports(
             lines.append(concentration)
         if ctx_signals.get("likely_targeted_panel"):
             lines.append(
-                "- ⚠ **Likely targeted panel** (few detected genes or >90% TPM "
+                "- **Likely targeted panel** (few detected genes or >90% TPM "
                 "concentrated in top 2000 genes) — downstream scores assume "
                 "whole-transcriptome input; interpret carefully."
             )
@@ -3534,7 +3534,7 @@ def _generate_text_reports(
                          f"p95={ctx_signals.get('log2_tpm_p95', 0):.2f}")
         if sample_context.missing_mt:
             lines.append(
-                "- ⚠ **Mitochondrial genes missing** from quant table — "
+                "- **Mitochondrial genes missing** from quant table — "
                 "degradation signal from MT fraction is unreliable."
             )
         lines.append("")
@@ -4100,7 +4100,7 @@ def _build_target_report(
     # / ADC / radioligand target tables.
     if p_mid is not None and p_mid < 0.20:
         lines.append(
-            f"> **⚠ Low-purity caveat**: estimated purity is "
+            f"> **Low-purity caveat**: estimated purity is "
             f"**{p_mid:.0%}**, so residual TPM is divided by a small "
             "number and amplified ≥5×. Genes heavily expressed in "
             "fibroblast / endothelial / immune compartments (FN1, "
@@ -4122,7 +4122,7 @@ def _build_target_report(
             if sample_context.degradation_index is not None else ""
         )
         lines.append(
-            f"> **⚠ Degradation caveat**: sample flagged as "
+            f"> **Degradation caveat**: sample flagged as "
             f"`{sample_context.degradation_severity}` degradation"
             f"{index_str}. Long-transcript TPMs are under-represented; "
             "tumor-expression estimates for long-gene targets carry "

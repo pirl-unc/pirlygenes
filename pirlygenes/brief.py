@@ -584,7 +584,7 @@ def _shortlist_omission_note(targets_df, ranges_df, top_rows) -> str:
                     "reason": _source_trace_reason(target, expr, in_shortlist=False),
                 }
             )
-        if len(omitted) >= 3:
+        if len(omitted) >= 4:
             break
     if not omitted:
         return ""
@@ -878,9 +878,10 @@ def build_summary(
         except Exception:
             subtype_annotation = f" (subtype: {winning_subtype}-consistent)"
 
+    call_punctuation = suffix or "."
     lines.append(
         f"**Cancer call:** {cancer_code} ({cancer_name})"
-        f"{subtype_annotation}.{suffix}"
+        f"{subtype_annotation}{call_punctuation}"
     )
     # Surface a subtype note only when the resolver changed the call or
     # flagged irreducible ambiguity. ``pair_inactive`` means the pair
@@ -1074,8 +1075,9 @@ def build_actionable(
         )
     else:
         call_suffix = ""
+    call_punctuation = call_suffix or "."
     lines.append(
-        f"Working call: **{cancer_code}** ({cancer_name}).{call_suffix}"
+        f"Working call: **{cancer_code}** ({cancer_name}){call_punctuation}"
     )
     # Step-0 tissue-composition banner (if non-tumor-consistent) so
     # an actionable reader sees the Step-0 caveat attached to the

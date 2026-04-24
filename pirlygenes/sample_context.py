@@ -957,7 +957,7 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
         ),
     ]
     if sample_context.missing_mt:
-        header_lines.append("⚠ MT genes missing from quant table")
+        header_lines.append("MT genes missing from quant table")
 
     ax_text.text(
         0.02, 0.95, "Sample context",
@@ -1055,7 +1055,7 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     for yi, val, band in zip(y, values, bar_bands):
         if band is not None:
             lo, hi, _ = band
-            status = "✓" if lo <= val <= hi else ("⚠" if val < lo * 0.5 or val > hi * 2 else "~")
+            status = "ok" if lo <= val <= hi else ("out" if val < lo * 0.5 or val > hi * 2 else "~")
         else:
             status = ""
         ax_bars.text(val, yi, f"  {val:.3f} {status}", va="center", fontsize=9)

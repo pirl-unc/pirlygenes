@@ -465,7 +465,7 @@ def test_compose_disease_state_empty_when_no_pattern():
 
 
 def test_recommended_targets_skips_tme_dominant_rows():
-    """#79: ⚠⚠ (tme_dominant) rows must not appear in the Recommended
+    """#79: tme_dominant rows must not appear in the Recommended
     Targets Summary; they're called out as excluded."""
     import pandas as pd
     from pirlygenes.cli import _generate_target_report
@@ -529,7 +529,7 @@ def test_recommended_targets_skips_tme_dominant_rows():
     targets = open(f"{tmp_prefix}-targets.md").read()
 
     # The Recommended Targets section must not list CD74 as a best
-    # surface target — it was ⚠⚠ flagged.
+    # surface target — it was low-confidence flagged.
     recs_block = targets.split("## Recommended Targets Summary")[-1]
     assert "**Best surface targets**" in recs_block
     # Clean ADAM9 should be there

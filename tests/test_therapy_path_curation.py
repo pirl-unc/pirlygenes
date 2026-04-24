@@ -93,3 +93,19 @@ def test_reports_prefer_explicit_treatment_path_tier_over_rationale_text():
     assert therapy_path_tier(standard_row) == "approved_standard"
     assert therapy_path_rank(standard_row) == 0
     assert "guideline-standard approved pathway" in therapy_path_context(standard_row)
+
+
+def test_treatment_path_context_dedupes_curated_note_prefix():
+    row = {
+        "symbol": "TEST3",
+        "agent": "example TCE",
+        "agent_class": "TCE",
+        "phase": "phase_2",
+        "indication": "example cancer",
+        "rationale": "",
+        "treatment_path_tier": "trial_follow_up",
+        "eligibility_note": "clinical-trial follow-up; not default standard",
+    }
+    context = therapy_path_context(row)
+    assert context == "clinical-trial follow-up; not default standard"
+    assert "clinical-trial follow-up; clinical-trial follow-up" not in context

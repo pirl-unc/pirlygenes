@@ -828,6 +828,16 @@ def _therapy_path_context_for_tier(target_row, tier: str, note: str = "") -> str
         return ""
 
     suffix = _clean_text(note) or _THERAPY_PATH_DEFAULT_NOTE.get(tier, "")
+    suffix_lc = suffix.lower()
+    prefix_lc = prefix.lower()
+    if suffix_lc == prefix_lc:
+        suffix = ""
+    elif suffix_lc.startswith(prefix_lc + ";"):
+        suffix = suffix[len(prefix):].lstrip(" ;")
+    elif suffix_lc.startswith(prefix_lc + ","):
+        suffix = suffix[len(prefix):].lstrip(" ,")
+    elif suffix_lc.startswith(prefix_lc + " -"):
+        suffix = suffix[len(prefix):].lstrip(" -")
     if suffix:
         return f"{prefix}; {suffix}"
     return prefix
