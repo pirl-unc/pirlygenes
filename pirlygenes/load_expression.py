@@ -70,7 +70,14 @@ def _guess_col(columns, patterns):
     return None
 
 
-def _select_sample_rows(df, sample_id_col=None, sample_id_value=None, verbose=True):
+def _select_sample_rows(
+    df,
+    sample_id_col=None,
+    sample_id_value=None,
+    gene_name_col=None,
+    gene_id_col=None,
+    verbose=True,
+):
     if sample_id_col is None and sample_id_value is None:
         return df
     if sample_id_col is None and sample_id_value is not None:
@@ -86,10 +93,15 @@ def _select_sample_rows(df, sample_id_col=None, sample_id_value=None, verbose=Tr
                 f"sample_id_col, but no matching expression column was found; "
                 f"available columns include: {available_preview}"
             )
+        explicit_gene_cols = {
+            col for col in (gene_name_col, gene_id_col)
+            if col is not None and str(col).strip()
+        }
         keep = [
             col
             for col in df.columns
             if col == sample_col
+            or col in explicit_gene_cols
             or re.search(r"(^|[_\s])gene([_\s]?id|[_\s]?name)?$", str(col), re.IGNORECASE)
             or str(col).lower() in {"gene", "symbol", "ensembl_gene_id"}
         ]
@@ -801,6 +813,8 @@ def load_expression_data(
         df,
         sample_id_col=sample_id_col,
         sample_id_value=sample_id_value,
+        gene_name_col=gene_name_col,
+        gene_id_col=gene_id_col,
         verbose=verbose,
     )
     df = _normalize_bostongene_gene_columns(df, verbose=verbose)
