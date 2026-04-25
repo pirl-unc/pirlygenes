@@ -102,7 +102,11 @@ def subtype_curation_scope_note(
     base_label = cancer_code_display_name(base_code, fallback=base_name).lower()
     subtype_label = _clean_text(panel_subtype).replace("_", " ").lower()
     if subtype_label:
-        focus = f"{subtype_label} {panel_name}".strip()
+        focus = (
+            subtype_label
+            if subtype_label.endswith(panel_name)
+            else f"{subtype_label} {panel_name}".strip()
+        )
     else:
         focus = panel_name
     if not base_label or focus == base_label:
@@ -139,7 +143,7 @@ def tumor_attribution_context(row):
     if _truthy(row.get("low_purity_cap_applied")):
         notes.append("low-purity cap is active")
     if _truthy(row.get("tme_explainable")) and support_fraction < 1.0:
-        notes.append("healthy-tissue-only explanations remain plausible")
+        notes.append("non-tumor tissue explanations remain plausible")
     if _truthy(row.get("tme_dominant")):
         notes.append("most fitted signal remains non-tumor")
 
@@ -283,6 +287,35 @@ def expression_independent_interpretation(target_row) -> str:
     if indication_biomarker(target_row) == "histology_only":
         return "expression-independent indication — confirm clinical eligibility"
     return f"expression-independent indication — confirm {label} status"
+
+
+def expression_independent_rna_context(expression_row) -> str:
+    """Explain RNA values for eligibility that is not expression-gated."""
+    if expression_row is None:
+        return "target RNA not measured; eligibility is not inferred from expression"
+    observed = _safe_float(expression_row.get("observed_tpm"), 0.0)
+    return (
+        f"target RNA is contextual only (bulk {observed:.1f} TPM; "
+        "eligibility is not inferred from expression)"
+    )
+
+
+def report_disease_state_text(disease_state: str | None, analysis=None) -> str:
+    """Consistent disease-state sentence for Markdown reports.
+
+    ``compose_disease_state_narrative`` intentionally returns an empty
+    string when no positive state rule fires. In clinician-facing
+    Markdown, silence reads like missing propagation rather than a
+    negative finding, so reports render a bounded no-pattern statement
+    when therapy-state panels were actually evaluated.
+    """
+    text = _clean_text(disease_state)
+    if text:
+        return text
+    scores = analysis.get("therapy_response_scores") if isinstance(analysis, dict) else None
+    if scores:
+        return "No strong RNA-defined therapy-exposure or pathway-state pattern passed reporting thresholds."
+    return ""
 
 
 def tumor_attribution_band_text(row):
@@ -1001,13 +1034,19 @@ def target_interpretation_summary(
         clinical_maturity_summary(target_row, target_panel=target_panel)
         if target_row is not None else ""
     )
-    if target_row is not None and expression_independent_indication(target_row):
-        parts = [expression_independent_interpretation(target_row), source["band"]]
+    expr_independent = (
+        target_row is not None and expression_independent_indication(target_row)
+    )
+    if expr_independent:
+        parts = [
+            expression_independent_interpretation(target_row),
+            expression_independent_rna_context(expression_row),
+        ]
     else:
         parts = [source["label"], source["band"]]
-    parts.append(normal["label"])
+        parts.append(normal["label"])
     details = list(normal.get("details") or [])
-    if details:
+    if details and not expr_independent:
         parts.append(details[0])
     path_context = (
         therapy_path_context(target_row, analysis=analysis, disease_state=disease_state)

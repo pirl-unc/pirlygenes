@@ -4,6 +4,7 @@ import pandas as pd
 
 from pirlygenes.reporting import (
     THERAPY_PATH_TIERS,
+    subtype_curation_scope_note,
     therapy_path_context,
     therapy_path_rank,
     therapy_path_tier,
@@ -109,3 +110,14 @@ def test_treatment_path_context_dedupes_curated_note_prefix():
     context = therapy_path_context(row)
     assert context == "clinical-trial follow-up; not default standard"
     assert "clinical-trial follow-up; clinical-trial follow-up" not in context
+
+
+def test_subtype_scope_note_avoids_duplicate_parent_label():
+    note = subtype_curation_scope_note(
+        "SARC",
+        panel_subtype="synovial_sarcoma",
+        base_code="SARC",
+        noun="therapy evidence",
+    )
+    assert "synovial sarcoma-specific therapy evidence" in note
+    assert "synovial sarcoma sarcoma" not in note

@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from pirlygenes.brief import build_brief, build_actionable
+from pirlygenes.brief import build_brief, build_actionable, _shortlist_omission_note
 from pirlygenes.confidence import ConfidenceTier
 
 
@@ -147,6 +147,19 @@ def test_brief_reports_tumor_attributed_for_present_targets():
     assert "128" in md or "**FOLH1**" in md
 
 
+def test_brief_renders_no_pattern_disease_state_when_scores_exist():
+    analysis = _make_analysis()
+    analysis["therapy_response_scores"] = {"IFN_response": object()}
+    ranges_df = _make_ranges_df()
+    md = build_brief(
+        analysis,
+        ranges_df,
+        cancer_code="PRAD",
+        disease_state="",
+    )
+    assert "No strong RNA-defined therapy-exposure" in md
+
+
 def test_brief_prioritizes_ar_path_and_flags_possible_current_therapy():
     from pirlygenes.therapy_response import TherapyAxisScore
 
@@ -201,6 +214,32 @@ def test_brief_uses_path_maturity_across_cancer_types_not_prad_special_case():
     assert "guideline-standard approved pathway" in erbb2_line
     tacstd2_line = next(line for line in md.splitlines() if line.startswith("- **TACSTD2**"))
     assert "approved later-line pathway" in tacstd2_line
+
+
+def test_expression_independent_therapy_summary_keeps_rna_contextual():
+    analysis = _make_analysis()
+    analysis["cancer_type"] = "COAD"
+    analysis["cancer_name"] = "Colon adenocarcinoma"
+    ranges_df = pd.DataFrame([
+        {
+            "symbol": "CD274", "observed_tpm": 0.0,
+            "attr_tumor_tpm": 0.0, "attr_tumor_fraction": 0.0,
+            "attr_top_compartment": "", "attr_top_compartment_tpm": 0.0,
+            "tme_dominant": False, "tme_explainable": False,
+        },
+    ])
+    md = build_brief(
+        analysis,
+        ranges_df,
+        cancer_code="COAD",
+        disease_state="",
+    )
+    pdcd1_line = next(line for line in md.splitlines() if line.startswith("- **CD274**"))
+    assert "expression-independent indication" in pdcd1_line
+    assert "target RNA is contextual only" in pdcd1_line
+    assert "Clinical maturity: approved antibody" in pdcd1_line
+    assert "; Clinical maturity" not in pdcd1_line
+    assert "model interval" not in pdcd1_line
 
 
 def test_brief_flags_possible_current_endocrine_therapy_beyond_prad():
@@ -272,6 +311,78 @@ def test_brief_explains_bulk_present_targets_that_fail_source_gate():
     assert "KLK2" in md
     assert "matched-normal prostate" in md
     assert "phase 1 exploratory" in md
+
+
+def test_source_trace_renders_when_top_trial_rows_are_mixed_source():
+    target = pd.Series({
+        "symbol": "TARGET1",
+        "phase": "phase_2",
+        "agent": "trial drug",
+        "agent_class": "antibody",
+        "treatment_path_tier": "trial_follow_up",
+        "eligibility_note": "not default standard",
+    })
+    expr = pd.Series({
+        "symbol": "TARGET1",
+        "observed_tpm": 20.0,
+        "attr_tumor_tpm": 8.0,
+        "attr_tumor_fraction": 0.40,
+        "attr_top_compartment": "",
+        "attr_top_compartment_tpm": 0.0,
+        "tme_dominant": False,
+        "tme_explainable": False,
+    })
+    md = _shortlist_omission_note(
+        pd.DataFrame([target]),
+        pd.DataFrame([expr]),
+        [(target, expr)],
+    )
+    assert "Target expression source trace" in md
+    assert "none modeled" in md
+
+
+def test_source_trace_does_not_call_non_lineage_component_lineage_background():
+    top = pd.Series({
+        "symbol": "TOP",
+        "phase": "phase_2",
+        "agent": "trial drug",
+        "agent_class": "antibody",
+    })
+    top_expr = pd.Series({
+        "symbol": "TOP",
+        "observed_tpm": 20.0,
+        "attr_tumor_tpm": 12.0,
+        "attr_tumor_fraction": 0.60,
+        "attr_top_compartment": "osteoblast",
+        "attr_top_compartment_tpm": 1.0,
+        "tme_dominant": False,
+        "tme_explainable": False,
+    })
+    omitted = pd.Series({
+        "symbol": "ERBB2",
+        "phase": "phase_2",
+        "agent": "trial drug",
+        "agent_class": "ADC",
+    })
+    omitted_expr = pd.Series({
+        "symbol": "ERBB2",
+        "observed_tpm": 25.0,
+        "attr_tumor_tpm": 0.0,
+        "attr_tumor_fraction": 0.0,
+        "attr_top_compartment": "osteoblast",
+        "attr_top_compartment_tpm": 8.0,
+        "matched_normal_over_predicted": True,
+        "tme_dominant": True,
+        "tme_explainable": True,
+    })
+    md = _shortlist_omission_note(
+        pd.DataFrame([top, omitted]),
+        pd.DataFrame([top_expr, omitted_expr]),
+        [(top, top_expr)],
+    )
+    erbb2_line = next(line for line in md.splitlines() if line.startswith("| ERBB2 "))
+    assert "osteoblast over-predicts / non-tumor background" in erbb2_line
+    assert "osteoblast over-predicts / lineage background" not in erbb2_line
 
 
 def test_brief_no_internal_jargon():

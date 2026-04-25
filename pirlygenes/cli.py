@@ -70,6 +70,7 @@ from .decomposition import (
 )
 from .sample_context import (
     infer_sample_context,
+    library_prep_clause,
     library_prep_display_label,
     plot_degradation_index,
     plot_sample_context,
@@ -86,7 +87,9 @@ from .reporting import (
     cancer_key_genes_lookup_for_analysis,
     expression_independent_indication,
     expression_independent_interpretation,
+    expression_independent_rna_context,
     normal_expression_context,
+    report_disease_state_text,
     resolved_subtype_code_for_analysis,
     subtype_curation_scope_note,
     therapy_path_context,
@@ -3405,6 +3408,10 @@ def _generate_text_reports(
 
     # Disease-state synthesis (#78) — still used by analysis.md.
     disease_state_paragraph = compose_disease_state_narrative(analysis)
+    disease_state_display = report_disease_state_text(
+        disease_state_paragraph,
+        analysis=analysis,
+    )
 
     # The old free-form ``*-summary.md`` paragraph (disease-state +
     # QC + headline + composition + therapy-response state) was
@@ -3422,13 +3429,14 @@ def _generate_text_reports(
 
     # Disease-state synthesis (#78) — rendered at the top so a reader
     # sees the clinical framing before descending into pipeline detail.
-    if disease_state_paragraph:
-        lines.append(f"**Disease state**: {disease_state_paragraph}\n")
+    if disease_state_display:
+        lines.append(f"**Disease state**: {disease_state_display}\n")
 
     lines.append("## Sample framing\n")
     if sample_context is not None:
+        prep_clause = library_prep_clause(sample_context.library_prep)
         lines.append(
-            f"- **Input type**: {sample_context.library_prep.replace('_', ' ')} library prep; "
+            f"- **Input type**: {prep_clause}; "
             f"{sample_context.preservation.replace('_', ' ')} preservation."
         )
     if call_summary.get("label_options"):
@@ -3504,8 +3512,10 @@ def _generate_text_reports(
         lines.append("## Input characterization\n")
         if input_path:
             lines.append(f"- **Source file**: `{input_path}`")
-        lines.append(f"- **Library prep**: {sample_context.library_prep.replace('_', ' ')} "
-                     f"(confidence {sample_context.library_prep_confidence:.0%})")
+        lines.append(
+            f"- **Library prep**: {library_prep_display_label(sample_context.library_prep)} "
+            f"(confidence {sample_context.library_prep_confidence:.0%})"
+        )
         lines.append(f"- **Preservation**: {sample_context.preservation.replace('_', ' ')}"
                      + (f" (degradation index {sample_context.degradation_index:.2f})"
                         if sample_context.degradation_index is not None else ""))
@@ -4049,7 +4059,7 @@ def _generate_text_reports(
                 analysis,
                 ranges_df,
                 cancer_code=cancer_code,
-                disease_state=disease_state_paragraph or "",
+                disease_state=disease_state_display,
                 sample_id=sample_id,
             )
             therapy_section = _extract_markdown_section(
@@ -4173,8 +4183,8 @@ def _build_target_report(
         if expr_row is None:
             if target_row is not None and expression_independent_indication(target_row):
                 parts = [
-                    expression_independent_interpretation(target_row)
-                    + "; target RNA not measured"
+                    expression_independent_interpretation(target_row),
+                    expression_independent_rna_context(None),
                 ]
             else:
                 parts = ["not measured"]
@@ -4204,11 +4214,19 @@ def _build_target_report(
             )
         source = tumor_attribution_context(expr_row)
         normal = normal_expression_context(expr_row)
-        if target_row is not None and expression_independent_indication(target_row):
-            parts = [expression_independent_interpretation(target_row), normal["label"]]
+        expr_independent = (
+            target_row is not None and expression_independent_indication(target_row)
+        )
+        if expr_independent:
+            parts = [
+                expression_independent_interpretation(target_row),
+                expression_independent_rna_context(expr_row),
+            ]
         else:
             parts = [source["label"], normal["label"]]
-        if source.get("notes"):
+        if expr_independent:
+            pass
+        elif source.get("notes"):
             parts.append(source["notes"][0])
         elif normal.get("details"):
             parts.append(normal["details"][0])
@@ -4241,7 +4259,10 @@ def _build_target_report(
     )
     fit_quality = analysis.get("fit_quality", {})
     family_display = (analysis.get("family_summary") or {}).get("display")
-    disease_state = compose_disease_state_narrative(analysis)
+    disease_state = report_disease_state_text(
+        compose_disease_state_narrative(analysis),
+        analysis=analysis,
+    )
     matched_normal_summary = _matched_normal_split_summary(ranges_df)
     mhc_status_label, mhc_status_text = _mhc1_status_text(analysis.get("mhc1"))
     panel_target_symbols = set()

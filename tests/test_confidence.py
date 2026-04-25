@@ -2,6 +2,7 @@
 
 from pirlygenes.confidence import (
     ConfidenceTier,
+    concise_confidence_reasons,
     compute_purity_confidence,
     compute_target_confidence,
 )
@@ -32,6 +33,18 @@ def test_wide_ci_low_tier():
     assert tier.tier == "low"
     assert "wide purity CI" in tier.inline_note
     assert tier.badge == "low"
+
+
+def test_concise_call_confidence_reasons_keep_summary_skimmable():
+    tier = ConfidenceTier(
+        tier="moderate",
+        reasons=[
+            "fit quality is ambiguous — preserve alternate cancer hypotheses (long detail)",
+            "top candidate SARC beats runner-up ESCA by only 4% on geomean (0.498 vs 0.477) — call is ambiguous",
+            "Step-0 correlation favored BLCA but the classifier picked SARC",
+        ],
+    )
+    assert concise_confidence_reasons(tier) == "ambiguous fit; near tie with ESCA; Step-0 favors BLCA"
 
 
 def test_low_purity_regime_bumps_tier():

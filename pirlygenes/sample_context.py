@@ -103,6 +103,15 @@ def library_prep_display_label(prep: str | None, *, title_case: bool = False) ->
     return label
 
 
+def library_prep_clause(prep: str | None, *, title_case: bool = False) -> str:
+    """Human phrase for report prose, including ``library`` when helpful."""
+    label = library_prep_display_label(prep, title_case=title_case)
+    low = label.lower()
+    if "library" in low or "prep" in low:
+        return label
+    return f"{label} library"
+
+
 # ── Thresholds ────────────────────────────────────────────────────────────
 # Calibrated from ENCODE total-RNA vs poly-A replicates and a TCGA
 # poly-A-capture snapshot. Values are conservative — the inference

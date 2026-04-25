@@ -39,7 +39,9 @@ from .reporting import (
     clinical_maturity_summary,
     expression_independent_indication,
     expression_independent_interpretation,
+    expression_independent_rna_context,
     normal_expression_context,
+    report_disease_state_text,
     same_lineage_material_target_candidate,
     subtype_curation_scope_note,
     therapy_path_context,
@@ -51,7 +53,8 @@ from .reporting import (
     tpm_semantics_note,
     tumor_attribution_context,
 )
-from .sample_context import library_prep_display_label
+from .confidence import concise_confidence_reasons
+from .sample_context import library_prep_clause, library_prep_display_label
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +90,17 @@ def _display_subtype_code(code: Optional[str]) -> str:
     except Exception:
         logger.debug("subtype display lookup failed", exc_info=True)
     return text.replace("_", " ").lower()
+
+
+def _call_confidence_suffix(call_tier, *, concise: bool = True) -> str:
+    """Render cancer-call confidence consistently across Markdown reports."""
+    if call_tier.tier not in {"low", "moderate"} or not call_tier.reasons:
+        return ""
+    tier_text = f"{call_tier.tier} confidence"
+    if call_tier.tier == "low":
+        tier_text += ", provisional"
+    note = concise_confidence_reasons(call_tier) if concise else call_tier.inline_note
+    return f" — **{tier_text}** ({note})" if note else f" — **{tier_text}**"
 
 
 def _site_template_note_label(template_name: Optional[str]) -> str:
@@ -248,12 +262,25 @@ def _format_therapy_bullet(
         f" Current-therapy check: {state_caution}."
         if state_caution else ""
     )
+    maturity = clinical_maturity_summary(target_row, target_panel=target_panel)
+
+    def _sentence(parts, *, maturity: str | None = None) -> str:
+        body = "; ".join(part for part in parts if part)
+        if maturity:
+            return f"{body}. Clinical maturity: {maturity}."
+        return f"{body}."
+
     if expression_row is None:
         if expr_independent:
+            parts = [
+                expression_independent_interpretation(target_row),
+                expression_independent_rna_context(None),
+            ]
+            if path_context:
+                parts.append(path_context)
             return (
                 f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-                f"{path_prefix}{expression_independent_interpretation(target_row)}; "
-                f"target RNA was not measured.{caution_suffix}"
+                f"{_sentence(parts, maturity=maturity)}{caution_suffix}"
             )
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
@@ -262,10 +289,15 @@ def _format_therapy_bullet(
     observed = float(expression_row.get("observed_tpm") or 0.0)
     if observed < 1.0:
         if expr_independent:
+            parts = [
+                expression_independent_interpretation(target_row),
+                expression_independent_rna_context(expression_row),
+            ]
+            if path_context:
+                parts.append(path_context)
             return (
                 f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-                f"{path_prefix}{expression_independent_interpretation(target_row)}; "
-                f"bulk target RNA {observed:.1f} TPM.{caution_suffix}"
+                f"{_sentence(parts, maturity=maturity)}{caution_suffix}"
             )
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
@@ -273,31 +305,32 @@ def _format_therapy_bullet(
             f"**target absent** in this sample.{caution_suffix}"
         )
     if not tumor_band_available(expression_row):
+        parts = [f"Bulk TPM {observed:.0f}", "tumor-inferred model interval unavailable"]
+        if path_context:
+            parts.append(path_context)
         return (
             f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-            f"{path_prefix}Bulk TPM {observed:.0f}; a tumor-inferred model interval "
-            f"was not available for this run.{caution_suffix}"
+            f"{_sentence(parts, maturity=maturity)}{caution_suffix}"
         )
     source = tumor_attribution_context(expression_row)
     normal = normal_expression_context(expression_row)
-    maturity = clinical_maturity_summary(target_row, target_panel=target_panel)
     if expr_independent:
         interpretation_parts = [
             expression_independent_interpretation(target_row),
-            source["band"],
-            normal["label"],
+            expression_independent_rna_context(expression_row),
         ]
     else:
         interpretation_parts = [source["label"], source["band"], normal["label"]]
     notes = list(source.get("notes") or []) + list(normal.get("details") or [])
-    if notes:
+    if notes and not expr_independent:
         interpretation_parts.append(notes[0])
     if path_context:
         interpretation_parts.append(path_context)
     interpretation = "; ".join(part for part in interpretation_parts if part)
+    maturity_sentence = f" Clinical maturity: {maturity}." if maturity else ""
     return (
         f"- **{sym}** — {agent} ({phase}{indication_clause}). "
-        f"{interpretation}. Clinical maturity: {maturity}.{caution_suffix}"
+        f"{interpretation}.{maturity_sentence}{caution_suffix}"
     )
 
 
@@ -525,7 +558,12 @@ def _source_trace_reason(target_row, expression_row, *, in_shortlist: bool) -> s
         parts.append("same-lineage marker, provisional source")
     elif _brief_truthy(expression_row.get("matched_normal_over_predicted")):
         if comp_label != "—":
-            parts.append(f"{comp_label} over-predicts / lineage background")
+            background = (
+                "lineage background"
+                if comp_label.lower().startswith("matched-normal")
+                else "non-tumor background"
+            )
+            parts.append(f"{comp_label} over-predicts / {background}")
         else:
             parts.append("matched-normal over-predicts / lineage background")
     elif reliability == "unsupported" and attr_fraction < 0.30:
@@ -586,9 +624,6 @@ def _shortlist_omission_note(targets_df, ranges_df, top_rows) -> str:
             )
         if len(omitted) >= 4:
             break
-    if not omitted:
-        return ""
-
     shortlist_context = []
     for target, expr in top_rows:
         if expr is None:
@@ -615,19 +650,25 @@ def _shortlist_omission_note(targets_df, ranges_df, top_rows) -> str:
             break
 
     rows = shortlist_context + omitted
+    if not rows:
+        return ""
     lines = [
         "**Target expression source trace**",
         "| Gene | Bulk TPM | Tumor-inferred TPM | Tumor fraction | Top non-tumor attribution | Component TPM | Main reason |",
         "|---|---:|---:|---:|---|---:|---|",
     ]
     for row in rows:
+        component = row["component"] if row["component"] != "—" else "none modeled"
         lines.append(
             f"| {row['symbol']} | {_format_trace_tpm(row['bulk'])} | "
             f"{_format_trace_tpm(row['tumor'])} | {row['fraction']:.0%} | "
-            f"{row['component']} | {_format_trace_tpm(row['component_tpm'])} | "
+            f"{component} | {_format_trace_tpm(row['component_tpm'])} | "
             f"{row['reason']} |"
         )
-    lines.append("*Same-lineage background is a caveat, not automatic exclusion; clinical maturity and eligibility still set the shortlist order.*")
+    lines.append(
+        "*Source attribution is a caveat, not an automatic exclusion; "
+        "clinical maturity and eligibility still set the shortlist order.*"
+    )
     return "\n".join(lines)
 
 
@@ -765,16 +806,7 @@ def build_summary(
     # top-ρ cohort) disagree with the classifier's pick.
     from .confidence import compute_call_confidence
     call_tier = compute_call_confidence(analysis)
-    if call_tier.tier in {"low", "moderate"} and call_tier.reasons:
-        tier_text = f"{call_tier.tier} confidence"
-        if call_tier.tier == "low":
-            tier_text += ", provisional"
-        suffix = (
-            f" — **{tier_text}** "
-            f"({call_tier.inline_note})"
-        )
-    else:
-        suffix = ""
+    suffix = _call_confidence_suffix(call_tier, concise=True)
 
     # #171: for mixture cohorts, surface the winning subtype hypothesis
     # so the reader sees "Cancer call: SARC (subtype: rhabdomyosarcoma
@@ -907,16 +939,15 @@ def build_summary(
         )
 
     # Disease state
-    if disease_state:
-        lines.append(f"**Disease state:** {disease_state}")
+    disease_state_display = report_disease_state_text(disease_state, analysis=analysis)
+    if disease_state_display:
+        lines.append(f"**Disease state:** {disease_state_display}")
 
     # Sample context
     if sample_context is not None:
-        prep_label = library_prep_display_label(
-            getattr(sample_context, "library_prep", "unknown")
-        )
+        prep_label = library_prep_clause(getattr(sample_context, "library_prep", "unknown"))
         pres_label = str(getattr(sample_context, "preservation", "unknown")).replace("_", " ")
-        lines.append(f"**Sample:** {prep_label} library, {pres_label} preservation.")
+        lines.append(f"**Sample:** {prep_label}, {pres_label} preservation.")
 
     lines.append("")
 
@@ -931,7 +962,7 @@ def build_summary(
             ranges_df,
             limit=3,
             analysis=analysis,
-            disease_state=disease_state,
+            disease_state=disease_state_display,
         )
         lines.append("## Top candidate therapies\n")
         lines.append(
@@ -958,7 +989,7 @@ def build_summary(
                         expression_row,
                         target_panel=targets_df,
                         analysis=analysis,
-                        disease_state=disease_state,
+                        disease_state=disease_state_display,
                     )
                 )
             omission_note = _shortlist_omission_note(targets_df, ranges_df, top)
@@ -1032,7 +1063,7 @@ def build_actionable(
     # Sample + confidence paragraph
     lines.append("## Sample and confidence\n")
     prep_label = (
-        library_prep_display_label(getattr(sample_context, "library_prep", "unknown"))
+        library_prep_clause(getattr(sample_context, "library_prep", "unknown"))
         if sample_context else "unknown"
     )
     pres_label = str(
@@ -1040,7 +1071,7 @@ def build_actionable(
     ).replace("_", " ") if sample_context else "unknown"
     if sample_context:
         lines.append(
-            f"Input: **{prep_label}** library prep, **{pres_label}** "
+            f"Input: **{prep_label}**, **{pres_label}** "
             "preservation. "
             + _preservation_clinical_clause(sample_context)
         )
@@ -1065,16 +1096,7 @@ def build_actionable(
     lines.append("## Cancer call and disease state\n")
     from .confidence import compute_call_confidence
     call_tier = compute_call_confidence(analysis)
-    if call_tier.tier in {"low", "moderate"} and call_tier.reasons:
-        tier_text = f"{call_tier.tier} confidence"
-        if call_tier.tier == "low":
-            tier_text += ", provisional"
-        call_suffix = (
-            f" — **{tier_text}** "
-            f"({call_tier.inline_note})"
-        )
-    else:
-        call_suffix = ""
+    call_suffix = _call_confidence_suffix(call_tier, concise=True)
     call_punctuation = call_suffix or "."
     lines.append(
         f"Working call: **{cancer_code}** ({cancer_name}){call_punctuation}"
@@ -1091,8 +1113,9 @@ def build_actionable(
         )
         if banner:
             lines.append(f"\n{banner}")
-    if disease_state:
-        lines.append(f"\n{disease_state}")
+    disease_state_display = report_disease_state_text(disease_state, analysis=analysis)
+    if disease_state_display:
+        lines.append(f"\n{disease_state_display}")
     lines.append("")
 
     # Therapy landscape
@@ -1148,7 +1171,7 @@ def build_actionable(
                     therapy_path_rank(
                         t,
                         analysis=analysis,
-                        disease_state=disease_state,
+                        disease_state=disease_state_display,
                     )
                     for _, t in targets_df.iterrows()
                 ],
@@ -1185,19 +1208,20 @@ def build_actionable(
                         if expression_independent_indication(t):
                             interp_cell = (
                                 expression_independent_interpretation(t)
-                                + "; target RNA not measured"
+                                + "; "
+                                + expression_independent_rna_context(None)
                             )
                         else:
                             interp_cell = "not measured"
                         path_context = therapy_path_context(
                             t,
                             analysis=analysis,
-                            disease_state=disease_state,
+                            disease_state=disease_state_display,
                         )
                         state_caution = therapy_state_caution(
                             t,
                             analysis=analysis,
-                            disease_state=disease_state,
+                            disease_state=disease_state_display,
                         )
                         extra_parts = []
                         if path_context:
@@ -1213,10 +1237,11 @@ def build_actionable(
                         tumor_cell = tumor_band_cell(expr)
                         source = tumor_attribution_context(expr)
                         normal = normal_expression_context(expr)
-                        if expression_independent_indication(t):
+                        expr_independent = expression_independent_indication(t)
+                        if expr_independent:
                             interp_parts = [
                                 expression_independent_interpretation(t),
-                                normal["label"],
+                                expression_independent_rna_context(expr),
                             ]
                         else:
                             interp_parts = [source["label"], normal["label"]]
@@ -1224,19 +1249,19 @@ def build_actionable(
                             list(source.get("notes") or [])
                             + list(normal.get("details") or [])
                         )
-                        if notes:
+                        if notes and not expr_independent:
                             interp_parts.append(notes[0])
                         path_context = therapy_path_context(
                             t,
                             analysis=analysis,
-                            disease_state=disease_state,
+                            disease_state=disease_state_display,
                         )
                         if path_context:
                             interp_parts.append(path_context)
                         state_caution = therapy_state_caution(
                             t,
                             analysis=analysis,
-                            disease_state=disease_state,
+                            disease_state=disease_state_display,
                         )
                         if state_caution:
                             interp_parts.append(
