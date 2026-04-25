@@ -4,6 +4,7 @@ from pirlygenes.gene_sets_cancer import pan_cancer_expression, degradation_gene_
 from pirlygenes.sample_context import (
     SampleContext,
     infer_sample_context,
+    library_prep_clause,
     _HISTONE_SYMBOL_PREFIXES,
     _MT_MRNA_SYMBOLS,
     _MT_RRNA_SYMBOLS,
@@ -35,6 +36,11 @@ def _fresh_degradation_pair_expectations():
 
 
 # ── Library-prep inference ────────────────────────────────────────────────
+
+
+def test_library_prep_clause_does_not_duplicate_library_word():
+    assert library_prep_clause("poly_a") == "poly-A capture library"
+    assert library_prep_clause("unknown") == "unknown library prep"
 
 
 def test_library_prep_polya_signature_is_detected():

@@ -337,7 +337,7 @@ class TissueCompositionSignal:
         cohort_rho = self.top_tcga_cohorts[0][1] if self.top_tcga_cohorts else 0.0
         if self.cancer_hint == "healthy-dominant":
             return (
-                f"**⚠ Step-0 hint: healthy tissue dominant.** Sample profile "
+                f"**Step-0 hint: healthy tissue dominant.** Sample profile "
                 f"correlates with normal **{tissue_name}** (ρ={rho:.2f}) more "
                 f"than any TCGA cohort (best {cohort} ρ={cohort_rho:.2f}); "
                 f"proliferation panel quiet "

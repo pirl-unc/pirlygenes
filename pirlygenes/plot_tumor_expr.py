@@ -494,7 +494,7 @@ def estimate_tumor_expression_ranges(
     # HPA tissues express the gene above the detection threshold) and
     # the **mean of the top-N healthy tissues**. Broadly-expressed genes
     # can't be attributed to one compartment cleanly; the per-gene
-    # attribution was silently inflating tumor-core residuals for
+    # attribution was silently inflating tumor-inferred residuals for
     # universally-expressed housekeeping-like and surface genes. These
     # two metrics drive a breadth floor on non-tumor attribution and a
     # new ``broadly_expressed`` reliability flag.
@@ -964,7 +964,7 @@ def estimate_tumor_expression_ranges(
         # (~26%) + T_cell (3%) + endothelial (3%) compartments couldn't
         # absorb the signal of broadly-expressed genes like CRIM1,
         # HLA-F, IL6ST, TBCE, NPM1 — so the residual defaulted into
-        # the "tumor core" and every one of these came out as 95–99%
+        # the tumor-inferred compartment and every one of these came out as 95–99%
         # tumor-attributed, which isn't defensible for genes expressed
         # in 15+ HPA tissues. The floor says: **for genes broadly
         # expressed, non-tumor cells in the sample carry a baseline
@@ -1383,9 +1383,9 @@ def plot_matched_normal_attribution(
     For each of the top ``top_n`` genes in ``category`` (ranked by
     ``median_est``), draw a horizontal bar broken into:
 
-    - ``tumor``: ``observed_tpm - matched_normal_tpm - tme_only_tpm``
-    - ``matched_normal_tpm``: benign parent-tissue contribution
-    - ``tme_only_tpm``: stromal / immune / host-tissue contribution
+    - tumor-attributed bulk TPM from the decomposition residual
+    - matched-normal / benign parent-tissue contribution
+    - other background compartments from the decomposition attribution
 
     Only useful when ``df_ranges`` carries non-zero ``matched_normal_tpm``
     for at least one gene in the category (i.e. the decomposition ran
@@ -1413,13 +1413,63 @@ def plot_matched_normal_attribution(
     if figsize is None:
         figsize = (10, max(3.0, 0.4 * n + 1.5))
 
-    observed = sub["observed_tpm"].astype(float).values
-    mn = sub["matched_normal_tpm"].astype(float).values
-    tme = sub["tme_only_tpm"].astype(float).values
-    # Tumor-cell attribution is whatever observed signal remains after
-    # TME and matched-normal are subtracted. Floor at 0 to guard against
-    # tiny over-subtractions from solver jitter.
-    tumor_attr = np.maximum(0.0, observed - mn - tme)
+    def _safe_float_value(value, default=0.0):
+        try:
+            result = float(value)
+        except Exception:
+            return float(default)
+        if not np.isfinite(result):
+            return float(default)
+        return result
+
+    def _attribution_dict(value):
+        return value if isinstance(value, dict) else {}
+
+    def _split_display_components(row):
+        observed_value = _safe_float_value(row.get("observed_tpm"), 0.0)
+        matched_value = _safe_float_value(row.get("matched_normal_tpm"), 0.0)
+        other_value = _safe_float_value(row.get("tme_only_tpm"), 0.0)
+        tumor_value = max(0.0, observed_value - matched_value - other_value)
+
+        attr = _attribution_dict(row.get("attribution"))
+        if "attr_tumor_tpm" in row:
+            tumor_value = _safe_float_value(row.get("attr_tumor_tpm"), tumor_value)
+        if attr:
+            matched_from_attr = sum(
+                _safe_float_value(value)
+                for name, value in attr.items()
+                if str(name).startswith("matched_normal")
+            )
+            other_from_attr = sum(
+                _safe_float_value(value)
+                for name, value in attr.items()
+                if str(name) != "tumor"
+                and not str(name).startswith("matched_normal")
+            )
+            matched_value = max(matched_value, matched_from_attr)
+            other_value = max(other_value, other_from_attr)
+
+        tumor_value = max(0.0, min(tumor_value, observed_value))
+        matched_value = max(0.0, matched_value)
+        other_value = max(0.0, other_value)
+        # If robust attribution says tumor is small but the explicit
+        # background compartments are sparse/thresholded, do not put the
+        # unexplained remainder back into tumor. Keep the displayed stack
+        # faithful to the tumor-attribution residual.
+        other_value = max(other_value, observed_value - tumor_value - matched_value)
+
+        total = tumor_value + matched_value + other_value
+        if observed_value > 0 and total > observed_value:
+            scale = observed_value / total
+            tumor_value *= scale
+            matched_value *= scale
+            other_value *= scale
+        return tumor_value, matched_value, other_value
+
+    split_components = [_split_display_components(row) for _, row in sub.iterrows()]
+    tumor_attr = np.array([parts[0] for parts in split_components], dtype=float)
+    mn = np.array([parts[1] for parts in split_components], dtype=float)
+    tme = np.array([parts[2] for parts in split_components], dtype=float)
 
     y = np.arange(n)
     fig, ax = plt.subplots(figsize=figsize)
@@ -1428,16 +1478,6 @@ def plot_matched_normal_attribution(
     ax.barh(y, mn, left=tumor_attr, color="#3498db", label="matched-normal tissue")
     ax.barh(y, tme, left=tumor_attr + mn, color="#95a5a6", label="other TME (stromal/immune)")
 
-    # Symbols on the y-axis. Therapy-target annotation appended when present.
-    #
-    # Flag legend (kept short because they share the y-tick label):
-    #   ⚠  = a single healthy reference tissue could explain >= 50% of
-    #        observed (tme_explainable)
-    #   MN>obs = the fitted matched-normal reference alone predicts more
-    #        of this gene than the sample contains — attribution is
-    #        unreliable, expect tumor = 0 regardless of real biology
-    #        (#131). Replaces the cryptic "clamp" marker — the old
-    #        label read like a typo in the report.
     labels = []
     for _, row in sub.iterrows():
         sym = str(row["symbol"])
@@ -1445,7 +1485,7 @@ def plot_matched_normal_attribution(
             sym = f"{sym}  [{row['therapies']}]"
         flags = []
         if row.get("tme_explainable"):
-            flags.append("\u26a0")
+            flags.append("tissue-explainable")
         if row.get("matched_normal_over_predicted"):
             flags.append("MN>obs")
         elif str(row.get("estimation_path", "")) == "clamped":
@@ -1468,7 +1508,7 @@ def plot_matched_normal_attribution(
             if prior > 0:
                 ax.plot([prior], [i], marker="|", color="black", markersize=14, markeredgewidth=2)
 
-    ax.set_xlabel("TPM (stacked: tumor + matched-normal + other TME = observed)", fontsize=10)
+    ax.set_xlabel("Bulk TPM attribution (stacked: tumor + matched-normal + other background)", fontsize=10)
     ax.set_xscale("symlog", linthresh=1.0)
     ax.grid(axis="x", alpha=0.2)
     ax.legend(loc="lower right", fontsize=9, framealpha=0.9)
@@ -1490,7 +1530,7 @@ def plot_matched_normal_attribution(
             mn_tissue = nonempty[0]
     title = f"Matched-normal attribution \u2014 {cancer_code} {category}"
     if mn_tissue:
-        title += f"\n(benign {mn_tissue} subtracted before purity division; black tick = TCGA cohort prior)"
+        title += f"\n(benign {mn_tissue} and other decomposition background; black tick = TCGA cohort prior)"
     ax.set_title(title, fontsize=11, fontweight="bold")
 
     plt.tight_layout()
@@ -1625,13 +1665,10 @@ def plot_target_attribution(
         sym = str(row["symbol"])
         if row.get("therapies"):
             sym = f"{sym}  [{row['therapies']}]"
-        flags = []
         if row.get("tme_dominant"):
-            flags.append("\u26a0\u26a0")
+            sym = f"{sym}  tumor-low"
         elif row.get("tme_explainable"):
-            flags.append("\u26a0")
-        if flags:
-            sym = f"{sym}  {' '.join(flags)}"
+            sym = f"{sym}  tissue-explainable"
         labels.append(sym)
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=9)
@@ -1650,8 +1687,7 @@ def plot_target_attribution(
     }.get(category, category.replace("_", " "))
     ax.set_title(
         f"Target source breakdown — {cat_label} — {cancer_code}\n"
-        "Selected to show clinically relevant genes plus mixed/background cases "
-        "(\u26a0\u26a0 = tumor < 30% of observed; \u26a0 = single-tissue-explainable)",
+        "Selected to show clinically relevant genes plus mixed/background cases",
         fontsize=10, fontweight="bold",
     )
     # Sample-wide 90th-percentile reference line (faint dashed).
@@ -2037,6 +2073,17 @@ def plot_purity_adjusted_targets(
     ax1.set_title(f"Purity-adjusted tumor expression \u2014 {cancer_code} (purity={purity:.0%})")
     ax1.invert_yaxis()
     ax1.legend(fontsize=8, loc="lower right")
+    try:
+        from .common import build_sample_tpm_by_symbol
+        from .plot_reference_lines import add_p90_reference_line
+
+        add_p90_reference_line(
+            ax1,
+            build_sample_tpm_by_symbol(df_gene_expr),
+            orientation="vertical",
+        )
+    except Exception:
+        pass
 
     # Right: TCGA percentile heatmap
     pctiles = selected["tcga_percentile"].values

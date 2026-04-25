@@ -103,6 +103,15 @@ def library_prep_display_label(prep: str | None, *, title_case: bool = False) ->
     return label
 
 
+def library_prep_clause(prep: str | None, *, title_case: bool = False) -> str:
+    """Human phrase for report prose, including ``library`` when helpful."""
+    label = library_prep_display_label(prep, title_case=title_case)
+    low = label.lower()
+    if "library" in low or "prep" in low:
+        return label
+    return f"{label} library"
+
+
 # ── Thresholds ────────────────────────────────────────────────────────────
 # Calibrated from ENCODE total-RNA vs poly-A replicates and a TCGA
 # poly-A-capture snapshot. Values are conservative — the inference
@@ -957,7 +966,7 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
         ),
     ]
     if sample_context.missing_mt:
-        header_lines.append("⚠ MT genes missing from quant table")
+        header_lines.append("MT genes missing from quant table")
 
     ax_text.text(
         0.02, 0.95, "Sample context",
@@ -1055,7 +1064,7 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     for yi, val, band in zip(y, values, bar_bands):
         if band is not None:
             lo, hi, _ = band
-            status = "✓" if lo <= val <= hi else ("⚠" if val < lo * 0.5 or val > hi * 2 else "~")
+            status = "ok" if lo <= val <= hi else ("out" if val < lo * 0.5 or val > hi * 2 else "~")
         else:
             status = ""
         ax_bars.text(val, yi, f"  {val:.3f} {status}", va="center", fontsize=9)

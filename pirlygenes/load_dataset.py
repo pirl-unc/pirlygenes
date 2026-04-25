@@ -40,7 +40,7 @@ def load_all_dataframes():
     the on-disk compression format.
     """
     for csv_path in get_all_csv_paths():
-        df = pd.read_csv(str(csv_path))
+        df = pd.read_csv(str(csv_path), low_memory=False)
         key = csv_path.name.removesuffix(".gz")
         yield key, df
 

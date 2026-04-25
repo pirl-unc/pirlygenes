@@ -28,6 +28,7 @@ Two computed tiers:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import List
 
 
@@ -39,8 +40,8 @@ class ConfidenceTier:
     @property
     def badge(self) -> str:
         return {
-            "low": "⚠⚠",
-            "moderate": "⚠",
+            "low": "low",
+            "moderate": "moderate",
             "high": "",
             "degenerate": "—",
             "unknown": "?",
@@ -58,6 +59,48 @@ class ConfidenceTier:
         note = self.inline_note
         prefix = f"**{self.tier} confidence**"
         return f"{prefix} ({note})" if note else prefix
+
+
+def concise_confidence_reasons(tier: ConfidenceTier, max_reasons: int = 3) -> str:
+    """Return reader-facing shorthand for verbose confidence reasons.
+
+    The full reason strings remain in ``analysis.md`` / evidence tables.
+    The one-page summary needs the same information in a compact form so
+    the cancer-call line stays skimmable across cancer types.
+    """
+    notes: list[str] = []
+    for reason in tier.reasons or []:
+        text = str(reason)
+        low = text.lower()
+        note = ""
+        if "fit quality is weak" in low:
+            note = "weak fit"
+        elif "fit quality is ambiguous" in low:
+            note = "ambiguous fit"
+        elif "lineage-pattern concordance" in low:
+            note = "lineage mismatch"
+        elif "beats runner-up" in low:
+            match = re.search(r"runner-up ([A-Za-z0-9_]+)", text)
+            note = (
+                f"near tie with {match.group(1)}"
+                if match else "near tie with runner-up"
+            )
+        elif "raw signature score favored" in low:
+            match = re.search(r"raw signature score favored ([A-Za-z0-9_]+)", text)
+            note = (
+                f"raw signature favors {match.group(1)}"
+                if match else "raw signature conflict"
+            )
+        elif "step-0 correlation favored" in low:
+            match = re.search(r"Step-0 correlation favored ([A-Za-z0-9_]+)", text)
+            note = f"Step-0 favors {match.group(1)}" if match else "Step-0 conflict"
+        else:
+            note = text.split(" — ", 1)[0].strip()
+        if note and note not in notes:
+            notes.append(note)
+        if len(notes) >= max_reasons:
+            break
+    return "; ".join(notes)
 
 
 def compute_purity_confidence(
@@ -379,7 +422,7 @@ def compute_target_confidence(
     if isinstance(attr_fraction, (int, float)) and 0.3 <= float(attr_fraction) < 0.5:
         if tier == "high":
             tier = "moderate"
-        reasons.append(f"only {float(attr_fraction):.0%} of signal attributed to tumor core")
+        reasons.append(f"only {float(attr_fraction):.0%} of signal attributed to tumor")
 
     # Deduplicate reasons while preserving order.
     seen = set()

@@ -1,5 +1,4 @@
 import warnings
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -171,6 +170,30 @@ def test_load_expression_gene_id_only_with_tpm_alias(tmp_path, monkeypatch):
     assert list(out["TPM"]) == [1.5, 2.5]
 
 
+def test_load_expression_accepts_kallisto_gene_abundance_column(tmp_path, monkeypatch):
+    p = tmp_path / "gene_abundance.tsv"
+    pd.DataFrame(
+        {
+            "gene_name": ["A", "B"],
+            "gene": ["ENSG1", "ENSG2"],
+            "abundance": [4.0, 5.0],
+            "counts": [40, 50],
+            "length": [1000, 1200],
+        }
+    ).to_csv(p, sep="\t", index=False)
+
+    monkeypatch.setattr(
+        le,
+        "find_gene_name_from_ensembl_gene_id",
+        lambda gid: {"ENSG1": "A", "ENSG2": "B"}[gid],
+    )
+
+    out = le.load_expression_data(str(p), verbose=False, progress=False)
+
+    assert list(out["ensembl_gene_id"]) == ["ENSG1", "ENSG2"]
+    assert list(out["TPM"]) == [4.0, 5.0]
+
+
 def test_load_expression_prebuilds_indexes_before_canonical_name_progress(tmp_path, monkeypatch):
     p = tmp_path / "expr.csv"
     pd.DataFrame(
@@ -229,6 +252,66 @@ def test_load_expression_select_sample_rows(tmp_path, monkeypatch):
     )
     assert list(out["ensembl_gene_id"]) == ["ENSG1", "ENSG2"]
     assert list(out["TPM"]) == [5.0, 6.0]
+
+
+def test_load_expression_selects_wide_sample_column(tmp_path, monkeypatch):
+    p = tmp_path / "wide.tsv"
+    pd.DataFrame(
+        {
+            "gene_id": ["ENSG1", "ENSG2"],
+            "gene_name": ["A", "B"],
+            "sample_a": [7.0, 8.0],
+            "sample_b": [99.0, 100.0],
+        }
+    ).to_csv(p, sep="\t", index=False)
+
+    monkeypatch.setattr(
+        le,
+        "find_gene_name_from_ensembl_gene_id",
+        lambda gid: {"ENSG1": "A", "ENSG2": "B"}[gid],
+    )
+
+    out = le.load_expression_data(
+        str(p),
+        sample_id_value="sample_a",
+        verbose=False,
+        progress=False,
+    )
+
+    assert list(out["ensembl_gene_id"]) == ["ENSG1", "ENSG2"]
+    assert list(out["gene"]) == ["A", "B"]
+    assert list(out["TPM"]) == [7.0, 8.0]
+
+
+def test_load_expression_wide_sample_preserves_explicit_gene_columns(tmp_path, monkeypatch):
+    p = tmp_path / "wide_custom_gene_cols.tsv"
+    pd.DataFrame(
+        {
+            "Stable ID": ["ENSG1", "ENSG2"],
+            "Hugo_Symbol": ["A", "B"],
+            "sample_a": [7.0, 8.0],
+            "sample_b": [99.0, 100.0],
+        }
+    ).to_csv(p, sep="\t", index=False)
+
+    monkeypatch.setattr(
+        le,
+        "find_gene_name_from_ensembl_gene_id",
+        lambda gid: {"ENSG1": "A", "ENSG2": "B"}[gid],
+    )
+
+    out = le.load_expression_data(
+        str(p),
+        sample_id_value="sample_a",
+        gene_name_col="Hugo_Symbol",
+        gene_id_col="Stable ID",
+        verbose=False,
+        progress=False,
+    )
+
+    assert list(out["ensembl_gene_id"]) == ["ENSG1", "ENSG2"]
+    assert list(out["gene"]) == ["A", "B"]
+    assert list(out["TPM"]) == [7.0, 8.0]
 
 
 def test_load_expression_error_paths(tmp_path):

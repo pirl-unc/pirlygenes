@@ -53,6 +53,9 @@ def test_renders_dumbbell_and_caption(tmp_path):
     assert any("AR signaling" in label for label in labels)
     assert any("NE differentiation" in label for label in labels)
     assert any("EMT" in label for label in labels)
+    assert any("expected-up genes" in label for label in labels)
+    assert any("expected-down genes" in label for label in labels)
+    assert len(labels) == 5
 
 
 def test_state_tag_matches_direction(tmp_path):
@@ -121,4 +124,4 @@ def test_state_ordering_active_suppressed_first(tmp_path):
     )
     labels = [t.get_text() for t in fig.axes[0].get_yticklabels()]
     assert "suppressed axis" in labels[0]
-    assert "near baseline" in labels[1]
+    assert "near baseline" in labels[2]

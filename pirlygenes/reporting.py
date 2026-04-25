@@ -102,7 +102,11 @@ def subtype_curation_scope_note(
     base_label = cancer_code_display_name(base_code, fallback=base_name).lower()
     subtype_label = _clean_text(panel_subtype).replace("_", " ").lower()
     if subtype_label:
-        focus = f"{subtype_label} {panel_name}".strip()
+        focus = (
+            subtype_label
+            if subtype_label.endswith(panel_name)
+            else f"{subtype_label} {panel_name}".strip()
+        )
     else:
         focus = panel_name
     if not base_label or focus == base_label:
@@ -139,7 +143,7 @@ def tumor_attribution_context(row):
     if _truthy(row.get("low_purity_cap_applied")):
         notes.append("low-purity cap is active")
     if _truthy(row.get("tme_explainable")) and support_fraction < 1.0:
-        notes.append("healthy-tissue-only explanations remain plausible")
+        notes.append("non-tumor tissue explanations remain plausible")
     if _truthy(row.get("tme_dominant")):
         notes.append("most fitted signal remains non-tumor")
 
@@ -188,11 +192,11 @@ def tumor_attribution_context(row):
 
 
 def tpm_semantics_note() -> str:
-    """One reader-facing explanation of bulk vs modeled tumor-core TPM."""
+    """One reader-facing explanation of bulk vs modeled tumor-inferred TPM."""
     return (
         "**TPM semantics:** Bulk TPM is the measured RNA abundance in the mixed "
-        "specimen. Tumor-core TPM is a model-derived estimate after subtracting "
-        "matched-normal and TME-attributable signal. Use tumor-core TPM for "
+        "specimen. Tumor-inferred TPM is a model-derived estimate after subtracting "
+        "matched-normal and TME-attributable signal. Use tumor-inferred TPM for "
         "tumor-cell target prioritization only when attribution is tumor-supported "
         "or mixed-source; for immune/stromal markers, agent-only rows, and "
         "expression-independent indications, bulk RNA is contextual and the "
@@ -285,6 +289,35 @@ def expression_independent_interpretation(target_row) -> str:
     return f"expression-independent indication — confirm {label} status"
 
 
+def expression_independent_rna_context(expression_row) -> str:
+    """Explain RNA values for eligibility that is not expression-gated."""
+    if expression_row is None:
+        return "target RNA not measured; eligibility is not inferred from expression"
+    observed = _safe_float(expression_row.get("observed_tpm"), 0.0)
+    return (
+        f"target RNA is contextual only (bulk {observed:.1f} TPM; "
+        "eligibility is not inferred from expression)"
+    )
+
+
+def report_disease_state_text(disease_state: str | None, analysis=None) -> str:
+    """Consistent disease-state sentence for Markdown reports.
+
+    ``compose_disease_state_narrative`` intentionally returns an empty
+    string when no positive state rule fires. In clinician-facing
+    Markdown, silence reads like missing propagation rather than a
+    negative finding, so reports render a bounded no-pattern statement
+    when therapy-state panels were actually evaluated.
+    """
+    text = _clean_text(disease_state)
+    if text:
+        return text
+    scores = analysis.get("therapy_response_scores") if isinstance(analysis, dict) else None
+    if scores:
+        return "No strong RNA-defined therapy-exposure or pathway-state pattern passed reporting thresholds."
+    return ""
+
+
 def tumor_attribution_band_text(row):
     return tumor_attribution_context(row)["band"]
 
@@ -337,12 +370,50 @@ def target_reliability_reasons(row, *, category=None):
     return reasons
 
 
+def same_lineage_material_target_candidate(
+    row,
+    target_row=None,
+    *,
+    min_tumor_tpm=10.0,
+) -> bool:
+    """Whether a same-lineage clinical target should remain reviewable.
+
+    Matched-normal attribution for a lineage marker is different from
+    unrelated immune/stromal attribution: it is a source and specificity
+    caveat, not automatic evidence that the target is clinically irrelevant.
+    Keep such rows provisional when there is a named clinical agent and a
+    material tumor-inferred signal.
+    """
+    if target_row is None or expression_independent_indication(target_row):
+        return False
+    phase = _clean_text(target_row.get("phase"))
+    if phase not in {"approved", "phase_3", "phase_2", "phase_1"}:
+        return False
+    if not _clean_text(target_row.get("agent")):
+        return False
+    if _truthy(row.get("tme_dominant")) and not _truthy(row.get("matched_normal_over_predicted")):
+        return False
+    if _safe_float(row.get("attr_tumor_tpm"), 0.0) < float(min_tumor_tpm):
+        return False
+    normal = normal_expression_context(row)
+    if normal.get("tier") != "same_lineage_expected":
+        return False
+    top_compartment = _clean_text(row.get("attr_top_compartment")).replace("_", " ")
+    return (
+        top_compartment.startswith("matched normal ")
+        or _truthy(row.get("matched_normal_over_predicted"))
+        or _safe_float(row.get("matched_normal_tpm"), 0.0) > 0.0
+    )
+
+
 def target_reliability_status(row, *, category=None, target_row=None):
     """Classify a row as ``supported``, ``provisional``, or ``unsupported``."""
     if target_row is not None and expression_independent_indication(target_row):
         return "provisional"
     source = tumor_attribution_context(row)
     if source["tier"] == "background_dominant":
+        if same_lineage_material_target_candidate(row, target_row=target_row):
+            return "provisional"
         return "unsupported"
     if _truthy(row.get("matched_normal_over_predicted")):
         return "provisional"
@@ -426,6 +497,8 @@ def normal_expression_context(row):
     matched_normal_tpm = _safe_float(row.get("matched_normal_tpm"), 0.0)
     tumor_tpm = _safe_float(row.get("attr_tumor_tpm"), 0.0)
     attr_top = _clean_text(row.get("attr_top_compartment")).replace("_", " ")
+    if not matched_tissue and attr_top.startswith("matched normal "):
+        matched_tissue = attr_top.replace("matched normal ", "", 1)
     details = []
     same_lineage = False
     if matched_tissue:
@@ -481,6 +554,30 @@ def normal_expression_context(row):
 
 def clinical_maturity_info(target_row, target_panel=None):
     """Summarize maturity from the current row and its curated siblings."""
+    def _display_agent_class(value):
+        text = _clean_text(value).replace("_", " ")
+        if not text:
+            return ""
+        acronym_map = {
+            "adc": "ADC",
+            "tce": "TCE",
+            "car t": "CAR-T",
+            "cart": "CAR-T",
+            "tcr t": "TCR-T",
+            "tcrt": "TCR-T",
+            "pmhc": "pMHC",
+            "mhc": "MHC",
+        }
+        lowered = text.lower()
+        if lowered in acronym_map:
+            return acronym_map[lowered]
+        return re.sub(
+            r"\b(adc|tce|car-t|tcr-t|pmhc|mhc)\b",
+            lambda match: acronym_map.get(match.group(1).lower(), match.group(1).upper()),
+            text,
+            flags=re.IGNORECASE,
+        )
+
     phase = _clean_text(target_row.get("phase"))
     phase_label = {
         "approved": "approved",
@@ -489,7 +586,7 @@ def clinical_maturity_info(target_row, target_panel=None):
         "phase_1": "early clinical",
         "preclinical": "preclinical",
     }.get(phase, phase or "curated")
-    agent_class = _clean_text(target_row.get("agent_class")).replace("_", " ")
+    agent_class = _display_agent_class(target_row.get("agent_class"))
     summary = phase_label
     if agent_class:
         summary += f" {agent_class}"
@@ -536,7 +633,7 @@ def clinical_maturity_info(target_row, target_panel=None):
     )
     extras = []
     if n_agents > 1:
-        extras.append(f"{n_agents} curated agents")
+        extras.append(f"{n_agents} agents")
     if n_modalities > 1:
         extras.append(f"{n_modalities} modalities")
     if extras:
@@ -600,6 +697,35 @@ _MAPK_RTK_AGENTS = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+THERAPY_PATH_TIERS = frozenset(
+    {
+        "approved_standard",
+        "approved_indication_matched",
+        "approved_later_line",
+        "late_clinical",
+        "trial_follow_up",
+        "preclinical",
+        "off_label",
+    }
+)
+_THERAPY_PATH_RANK = {
+    "approved_standard": 0,
+    "approved_indication_matched": 1,
+    "approved_later_line": 2,
+    "late_clinical": 3,
+    "trial_follow_up": 4,
+    "preclinical": 6,
+    "off_label": 7,
+}
+_THERAPY_PATH_DEFAULT_NOTE = {
+    "approved_standard": "confirm indication and line of therapy",
+    "approved_indication_matched": "confirm clinical eligibility",
+    "approved_later_line": "confirm prior therapies and indication-specific eligibility",
+    "late_clinical": "not default standard",
+    "trial_follow_up": "not default standard",
+    "preclinical": "not a clinical recommendation",
+    "off_label": "confirm rationale and alternatives",
+}
 _THERAPY_EXPOSURE_RULES = (
     {
         "axis": "AR_signaling",
@@ -711,7 +837,66 @@ def _therapy_row_matches_exposure_rule(target_row, rule: dict) -> bool:
     return False
 
 
-def _therapy_path_info(target_row) -> dict:
+def _therapy_path_context_for_tier(target_row, tier: str, note: str = "") -> str:
+    agent_class = _agent_class_text(target_row)
+    if tier == "approved_standard":
+        prefix = "guideline-standard approved pathway"
+    elif tier == "approved_indication_matched":
+        prefix = "approved biomarker/indication-matched pathway"
+    elif tier == "approved_later_line":
+        prefix = (
+            "approved radioligand pathway"
+            if "radioligand" in agent_class
+            else "approved later-line pathway"
+        )
+    elif tier == "late_clinical":
+        prefix = "late-clinical follow-up"
+    elif tier == "trial_follow_up":
+        prefix = "clinical-trial follow-up"
+    elif tier == "preclinical":
+        prefix = "preclinical follow-up"
+    elif tier == "off_label":
+        prefix = "off-label follow-up"
+    else:
+        return ""
+
+    suffix = _clean_text(note) or _THERAPY_PATH_DEFAULT_NOTE.get(tier, "")
+    suffix_lc = suffix.lower()
+    prefix_lc = prefix.lower()
+    if suffix_lc == prefix_lc:
+        suffix = ""
+    elif suffix_lc.startswith(prefix_lc + ";"):
+        suffix = suffix[len(prefix):].lstrip(" ;")
+    elif suffix_lc.startswith(prefix_lc + ","):
+        suffix = suffix[len(prefix):].lstrip(" ,")
+    elif suffix_lc.startswith(prefix_lc + " -"):
+        suffix = suffix[len(prefix):].lstrip(" -")
+    if suffix:
+        return f"{prefix}; {suffix}"
+    return prefix
+
+
+def _explicit_therapy_path_info(target_row) -> dict | None:
+    tier = _clean_text(
+        target_row.get("treatment_path_tier")
+        if hasattr(target_row, "get") else ""
+    ).lower()
+    if not tier:
+        return None
+    if tier not in THERAPY_PATH_TIERS:
+        return None
+    note = _clean_text(
+        target_row.get("eligibility_note") if hasattr(target_row, "get") else ""
+    )
+    return {
+        "tier": tier,
+        "rank": _THERAPY_PATH_RANK.get(tier, 99),
+        "context": _therapy_path_context_for_tier(target_row, tier, note),
+        "source": "curated",
+    }
+
+
+def _inferred_therapy_path_info(target_row) -> dict:
     phase = _phase_text(target_row)
     agent_class = _agent_class_text(target_row)
     text = _therapy_row_text(target_row)
@@ -727,6 +912,7 @@ def _therapy_path_info(target_row) -> dict:
                     "approved radioligand pathway; confirm imaging/eligibility "
                     "and prior-line requirements"
                 ),
+                "source": "inferred",
             }
         if is_standard:
             return {
@@ -736,6 +922,7 @@ def _therapy_path_info(target_row) -> dict:
                     "guideline-standard approved pathway; confirm the indication "
                     "and line of therapy"
                 ),
+                "source": "inferred",
             }
         if is_later_line:
             return {
@@ -745,6 +932,7 @@ def _therapy_path_info(target_row) -> dict:
                     "approved later-line pathway; confirm prior therapies and "
                     "indication-specific eligibility"
                 ),
+                "source": "inferred",
             }
         return {
             "tier": "approved_indication_matched",
@@ -753,6 +941,7 @@ def _therapy_path_info(target_row) -> dict:
                 "approved biomarker/indication-matched pathway; confirm clinical "
                 "eligibility"
             ),
+            "source": "inferred",
         }
 
     phase_context = {
@@ -763,7 +952,11 @@ def _therapy_path_info(target_row) -> dict:
         "off_label": ("off_label", 7, "off-label follow-up; confirm rationale and alternatives"),
     }
     tier, rank, context = phase_context.get(phase, ("unknown", 99, ""))
-    return {"tier": tier, "rank": rank, "context": context}
+    return {"tier": tier, "rank": rank, "context": context, "source": "inferred"}
+
+
+def _therapy_path_info(target_row) -> dict:
+    return _explicit_therapy_path_info(target_row) or _inferred_therapy_path_info(target_row)
 
 
 def therapy_path_tier(target_row) -> str:
@@ -841,13 +1034,19 @@ def target_interpretation_summary(
         clinical_maturity_summary(target_row, target_panel=target_panel)
         if target_row is not None else ""
     )
-    if target_row is not None and expression_independent_indication(target_row):
-        parts = [expression_independent_interpretation(target_row), source["band"]]
+    expr_independent = (
+        target_row is not None and expression_independent_indication(target_row)
+    )
+    if expr_independent:
+        parts = [
+            expression_independent_interpretation(target_row),
+            expression_independent_rna_context(expression_row),
+        ]
     else:
         parts = [source["label"], source["band"]]
-    parts.append(normal["label"])
+        parts.append(normal["label"])
     details = list(normal.get("details") or [])
-    if details:
+    if details and not expr_independent:
         parts.append(details[0])
     path_context = (
         therapy_path_context(target_row, analysis=analysis, disease_state=disease_state)
@@ -867,7 +1066,7 @@ def target_interpretation_summary(
 
 
 def partition_tumor_core_rows(ranges_df, min_tumor_tpm=1.0):
-    """Split expression rows by report-facing tumor-core reliability."""
+    """Split expression rows by report-facing tumor-inferred reliability."""
     if ranges_df is None or len(ranges_df) == 0 or "attr_tumor_tpm" not in ranges_df.columns:
         empty = ranges_df.iloc[0:0] if ranges_df is not None else None
         return empty, empty, empty
