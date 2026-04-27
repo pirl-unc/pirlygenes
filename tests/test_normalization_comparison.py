@@ -27,7 +27,10 @@ from pirlygenes.decomposition.engine import (
     _select_marker_rows,
     _weighted_constrained_nnls,
 )
-from pirlygenes.decomposition.signature import build_signature_matrix, _load_hpa_cell_types
+from pirlygenes.decomposition.signature import (
+    build_signature_matrix,
+    _load_hpa_cell_types,
+)
 from pirlygenes.decomposition.templates import get_template_components
 from pirlygenes.gene_sets_cancer import housekeeping_gene_ids, pan_cancer_expression
 from pirlygenes.tumor_purity import estimate_tumor_purity
@@ -35,31 +38,38 @@ from pirlygenes.tumor_purity import estimate_tumor_purity
 
 # ── Test fixtures ────────────────────────────────────────────────────────
 
+
 def _tcga_sample(cancer_code):
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    return pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
+        }
+    )
 
 
 def _normal_tissue_sample(tissue):
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    return pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref[f"nTPM_{tissue}"].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"nTPM_{tissue}"].astype(float),
+        }
+    )
 
 
 def _hpa_cell_sample(cell_type):
     hpa = _load_hpa_cell_types()
-    return pd.DataFrame({
-        "ensembl_gene_id": hpa["Ensembl_Gene_ID"],
-        "gene_symbol": hpa["Symbol"],
-        "TPM": hpa[cell_type].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": hpa["Ensembl_Gene_ID"],
+            "gene_symbol": hpa["Symbol"],
+            "TPM": hpa[cell_type].astype(float),
+        }
+    )
 
 
 def _mix_samples(parts):
@@ -67,9 +77,9 @@ def _mix_samples(parts):
     symbol_by_gene = {}
     for weight, df in parts:
         for row in df.itertuples(index=False):
-            value_by_gene[row.ensembl_gene_id] = (
-                value_by_gene.get(row.ensembl_gene_id, 0.0) + weight * float(row.TPM)
-            )
+            value_by_gene[row.ensembl_gene_id] = value_by_gene.get(
+                row.ensembl_gene_id, 0.0
+            ) + weight * float(row.TPM)
             symbol_by_gene[row.ensembl_gene_id] = row.gene_symbol
     out = pd.DataFrame({"ensembl_gene_id": list(value_by_gene.keys())})
     out["gene_symbol"] = out["ensembl_gene_id"].map(symbol_by_gene)
@@ -81,8 +91,21 @@ def _mix_samples(parts):
 
 NORMALIZATIONS = ["hk", "zscore", "hk_zscore", "raw"]
 WEIGHTINGS = ["uniform", "inv_sqrt", "inv_b"]
-IG_GENES = {"IGKC", "IGLC2", "IGHG1", "IGHG2", "IGHG3", "IGHG4", "IGHA1",
-            "IGHA2", "IGLC1", "IGLC3", "IGLL5", "JCHAIN", "MZB1"}
+IG_GENES = {
+    "IGKC",
+    "IGLC2",
+    "IGHG1",
+    "IGHG2",
+    "IGHG3",
+    "IGHG4",
+    "IGHA1",
+    "IGHA2",
+    "IGLC1",
+    "IGLC3",
+    "IGLL5",
+    "JCHAIN",
+    "MZB1",
+}
 
 
 def _apply_normalization(sample_vec, sig_raw, genes, normalization):
@@ -139,8 +162,7 @@ def _apply_weighting(fit_weights, b, weighting):
     raise ValueError(f"Unknown weighting: {weighting}")
 
 
-def _fit_combo(df_sample, template_name, cancer_type, purity,
-               normalization, weighting):
+def _fit_combo(df_sample, template_name, cancer_type, purity, normalization, weighting):
     """Run one normalization × weighting combo and return metrics.
 
     Returns dict with:
@@ -160,15 +182,19 @@ def _fit_combo(df_sample, template_name, cancer_type, purity,
         return {
             "fractions": {"tumor": 1.0},
             "residual": 0.0,
-            "ig_tumor_tpm": 0.0, "ig_tme_tpm": 0.0, "ig_obs_tpm": 0.0,
+            "ig_tumor_tpm": 0.0,
+            "ig_tme_tpm": 0.0,
+            "ig_obs_tpm": 0.0,
             "prop_error": 0.0,
         }
 
     # Build sample and signature
-    sample_by_eid = dict(zip(
-        df_sample["ensembl_gene_id"].astype(str),
-        df_sample["TPM"].astype(float),
-    ))
+    sample_by_eid = dict(
+        zip(
+            df_sample["ensembl_gene_id"].astype(str),
+            df_sample["TPM"].astype(float),
+        )
+    )
     gene_subset = set(sample_by_eid.keys())
     filt_genes, filt_symbols, sig_raw, _ = build_signature_matrix(
         comp_names, gene_subset=gene_subset
@@ -226,10 +252,7 @@ def _fit_combo(df_sample, template_name, cancer_type, purity,
 
     # Ig attribution: how much Ig TPM leaks into tumor?
     sym_set = {str(s) for s in filt_symbols}
-    ig_indices = [
-        i for i, s in enumerate(filt_symbols)
-        if str(s) in IG_GENES
-    ]
+    ig_indices = [i for i, s in enumerate(filt_symbols) if str(s) in IG_GENES]
     ig_obs_tpm = 0.0
     ig_tme_tpm = 0.0
     for idx in ig_indices:
@@ -276,10 +299,12 @@ def _get_samples():
 
     # 2. Synthetic 30% CRC + 70% colon — known purity, primary site
     SAMPLES["CRC_colon_30"] = {
-        "df": _mix_samples([
-            (0.3, _tcga_sample("COAD")),
-            (0.7, _normal_tissue_sample("colon")),
-        ]),
+        "df": _mix_samples(
+            [
+                (0.3, _tcga_sample("COAD")),
+                (0.7, _normal_tissue_sample("colon")),
+            ]
+        ),
         "template": "solid_primary",
         "cancer_type": "COAD",
         "expected_purity_range": (0.15, 0.45),
@@ -288,10 +313,12 @@ def _get_samples():
 
     # 3. Synthetic 30% CRC + 70% liver — should detect hepatocyte
     SAMPLES["CRC_liver_30"] = {
-        "df": _mix_samples([
-            (0.3, _tcga_sample("COAD")),
-            (0.7, _normal_tissue_sample("liver")),
-        ]),
+        "df": _mix_samples(
+            [
+                (0.3, _tcga_sample("COAD")),
+                (0.7, _normal_tissue_sample("liver")),
+            ]
+        ),
         "template": "met_liver",
         "cancer_type": "COAD",
         "expected_purity_range": (0.15, 0.45),
@@ -313,10 +340,12 @@ def _get_samples():
     #    ALL Ig expression comes from the plasma TME component, so any Ig
     #    attributed to "tumor" is pure leakage from the decomposition.
     SAMPLES["plasma_heavy"] = {
-        "df": _mix_samples([
-            (0.2, _tcga_sample("COAD")),
-            (0.8, _hpa_cell_sample("Plasma cells")),
-        ]),
+        "df": _mix_samples(
+            [
+                (0.2, _tcga_sample("COAD")),
+                (0.8, _hpa_cell_sample("Plasma cells")),
+            ]
+        ),
         "template": "solid_primary",
         "cancer_type": "COAD",
         "expected_purity_range": (0.05, 0.35),
@@ -325,10 +354,12 @@ def _get_samples():
 
     # 6. Brain met — 25% LUAD + 75% brain (astrocyte/neuron)
     SAMPLES["brain_met"] = {
-        "df": _mix_samples([
-            (0.25, _tcga_sample("LUAD")),
-            (0.75, _normal_tissue_sample("cerebral_cortex")),
-        ]),
+        "df": _mix_samples(
+            [
+                (0.25, _tcga_sample("LUAD")),
+                (0.75, _normal_tissue_sample("cerebral_cortex")),
+            ]
+        ),
         "template": "met_brain",
         "cancer_type": "LUAD",
         "expected_purity_range": (0.10, 0.40),
@@ -339,6 +370,7 @@ def _get_samples():
 
 
 # ── Main comparison ──────────────────────────────────────────────────────
+
 
 def run_comparison():
     """Run all normalization × weighting combos across all samples."""
@@ -360,34 +392,40 @@ def run_comparison():
         for norm in NORMALIZATIONS:
             for wt in WEIGHTINGS:
                 try:
-                    result = _fit_combo(
-                        df, template, cancer_type, purity, norm, wt
+                    result = _fit_combo(df, template, cancer_type, purity, norm, wt)
+                    rows.append(
+                        {
+                            "sample": sample_name,
+                            "normalization": norm,
+                            "weighting": wt,
+                            "purity": round(purity, 3),
+                            **{
+                                f"f_{k}": round(v, 4)
+                                for k, v in result["fractions"].items()
+                                if k != "tumor" and v > 0.005
+                            },
+                            "residual": result["residual"],
+                            "prop_error": result["prop_error"],
+                            "ig_obs_tpm": result["ig_obs_tpm"],
+                            "ig_tumor_tpm": result["ig_tumor_tpm"],
+                            "ig_tme_tpm": result["ig_tme_tpm"],
+                        }
                     )
-                    rows.append({
-                        "sample": sample_name,
-                        "normalization": norm,
-                        "weighting": wt,
-                        "purity": round(purity, 3),
-                        **{f"f_{k}": round(v, 4) for k, v in result["fractions"].items()
-                           if k != "tumor" and v > 0.005},
-                        "residual": result["residual"],
-                        "prop_error": result["prop_error"],
-                        "ig_obs_tpm": result["ig_obs_tpm"],
-                        "ig_tumor_tpm": result["ig_tumor_tpm"],
-                        "ig_tme_tpm": result["ig_tme_tpm"],
-                    })
                 except Exception as e:
-                    rows.append({
-                        "sample": sample_name,
-                        "normalization": norm,
-                        "weighting": wt,
-                        "error": str(e)[:80],
-                    })
+                    rows.append(
+                        {
+                            "sample": sample_name,
+                            "normalization": norm,
+                            "weighting": wt,
+                            "error": str(e)[:80],
+                        }
+                    )
 
     return pd.DataFrame(rows)
 
 
 # ── Pytest entry points ──────────────────────────────────────────────────
+
 
 def test_comparison_runs_without_errors():
     """All 72 normalization × weighting × sample combos should run."""
@@ -400,7 +438,9 @@ def test_comparison_runs_without_errors():
         assert errors.empty, f"{len(errors)} combos failed"
 
 
-@pytest.mark.skip(reason="Diagnostic benchmark — run manually with -k test_print_comparison_table --no-header -s")
+@pytest.mark.skip(
+    reason="Diagnostic benchmark — run manually with -k test_print_comparison_table --no-header -s"
+)
 def test_print_comparison_table(capsys):
     """Print the full comparison table for human review."""
     df = run_comparison()
@@ -409,13 +449,19 @@ def test_print_comparison_table(capsys):
     for sample_name in df["sample"].unique():
         sub = df[df["sample"] == sample_name].copy()
         desc = _get_samples()[sample_name]["description"]
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"  {sample_name}: {desc}")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         # Show key metrics
-        show_cols = ["normalization", "weighting", "residual", "prop_error",
-                     "ig_obs_tpm", "ig_tumor_tpm"]
+        show_cols = [
+            "normalization",
+            "weighting",
+            "residual",
+            "prop_error",
+            "ig_obs_tpm",
+            "ig_tumor_tpm",
+        ]
         # Add any fraction columns
         frac_cols = [c for c in sub.columns if c.startswith("f_")]
         show_cols.extend(sorted(frac_cols))
@@ -423,9 +469,9 @@ def test_print_comparison_table(capsys):
         print(sub[show_cols].to_string(index=False))
 
     # Print ranking: which combo is best overall?
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("  AGGREGATE RANKING (lower is better)")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     # For each combo, compute mean rank across samples on:
     # (1) prop_error  (2) ig_tumor_tpm
@@ -438,19 +484,31 @@ def test_print_comparison_table(capsys):
                 continue
 
             # Mean proportional error across samples
-            mean_prop = sub["prop_error"].mean() if "prop_error" in sub.columns else float("nan")
+            mean_prop = (
+                sub["prop_error"].mean()
+                if "prop_error" in sub.columns
+                else float("nan")
+            )
             # Mean Ig leakage into tumor
-            mean_ig_leak = sub["ig_tumor_tpm"].mean() if "ig_tumor_tpm" in sub.columns else float("nan")
+            mean_ig_leak = (
+                sub["ig_tumor_tpm"].mean()
+                if "ig_tumor_tpm" in sub.columns
+                else float("nan")
+            )
             # Mean residual
-            mean_resid = sub["residual"].mean() if "residual" in sub.columns else float("nan")
+            mean_resid = (
+                sub["residual"].mean() if "residual" in sub.columns else float("nan")
+            )
 
-            combo_scores.append({
-                "normalization": norm,
-                "weighting": wt,
-                "mean_prop_error": round(mean_prop, 4),
-                "mean_ig_tumor_tpm": round(mean_ig_leak, 1),
-                "mean_residual": round(mean_resid, 4),
-            })
+            combo_scores.append(
+                {
+                    "normalization": norm,
+                    "weighting": wt,
+                    "mean_prop_error": round(mean_prop, 4),
+                    "mean_ig_tumor_tpm": round(mean_ig_leak, 1),
+                    "mean_residual": round(mean_resid, 4),
+                }
+            )
 
     ranking = pd.DataFrame(combo_scores).sort_values("mean_prop_error")
     print(ranking.to_string(index=False))

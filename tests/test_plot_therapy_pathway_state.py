@@ -90,8 +90,10 @@ def test_axes_with_only_up_fold_still_render(tmp_path):
     up-panel point."""
     scores = {
         "hypoxia": TherapyAxisScore(
-            therapy_class="hypoxia", state="up",
-            up_geomean_fold=3.5, down_geomean_fold=None,
+            therapy_class="hypoxia",
+            state="up",
+            up_geomean_fold=3.5,
+            down_geomean_fold=None,
             up_genes_measured=6,
         ),
     }
@@ -109,12 +111,16 @@ def test_state_ordering_active_suppressed_first(tmp_path):
     row readers see is the clinically informative one."""
     scores = {
         "near_baseline": TherapyAxisScore(
-            therapy_class="near_baseline", state="indeterminate",
-            up_geomean_fold=1.05, down_geomean_fold=0.98,
+            therapy_class="near_baseline",
+            state="indeterminate",
+            up_geomean_fold=1.05,
+            down_geomean_fold=0.98,
         ),
         "suppressed_axis": TherapyAxisScore(
-            therapy_class="suppressed_axis", state="down",
-            up_geomean_fold=0.4, down_geomean_fold=2.0,
+            therapy_class="suppressed_axis",
+            state="down",
+            up_geomean_fold=0.4,
+            down_geomean_fold=2.0,
         ),
     }
     fig = plot_therapy_pathway_state(

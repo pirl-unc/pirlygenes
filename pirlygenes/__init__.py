@@ -9,7 +9,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import importlib
 
 from .gene_sets_cancer import (
     cancer_family_panel,
@@ -35,19 +35,33 @@ from .gene_sets_cancer import (
     tme_markers_df,
 )
 from .load_dataset import load_all_dataframes, load_all_dataframes_dict, get_data
-from .sample_context import (
-    SampleContext,
-    infer_sample_context,
-    plot_degradation_index,
-    plot_sample_context,
-)
-from .plot import (
-    plot_ctas_vs_cancer_type_detail,
-    plot_gene_expression,
-    plot_geneset_vs_vital_tissues,
-    plot_sample_vs_cancer,
-)
+from .sample_context import SampleContext, infer_sample_context
 from .version import __version__
+
+_LAZY_EXPORTS = {
+    "plot_ctas_vs_cancer_type_detail": (
+        "pirlygenes.plot",
+        "plot_ctas_vs_cancer_type_detail",
+    ),
+    "plot_degradation_index": ("pirlygenes.sample_context", "plot_degradation_index"),
+    "plot_gene_expression": ("pirlygenes.plot", "plot_gene_expression"),
+    "plot_geneset_vs_vital_tissues": (
+        "pirlygenes.plot",
+        "plot_geneset_vs_vital_tissues",
+    ),
+    "plot_sample_context": ("pirlygenes.sample_context", "plot_sample_context"),
+    "plot_sample_vs_cancer": ("pirlygenes.plot", "plot_sample_vs_cancer"),
+}
+
+
+def __getattr__(name):
+    if name in _LAZY_EXPORTS:
+        module_name, attr_name = _LAZY_EXPORTS[name]
+        value = getattr(importlib.import_module(module_name), attr_name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "__version__",

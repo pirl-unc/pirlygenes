@@ -168,8 +168,11 @@ def _prepare_sample_vs_cancer_data(
 
     cat_to_ids, id_to_name = normalize_gene_sets(gene_sets)
     cat_to_ids, id_to_name = _remap_retired_gene_ids(
-        cat_to_ids, id_to_name, df,
-        gene_id_col=gene_id_col, gene_name_col=gene_name_col,
+        cat_to_ids,
+        id_to_name,
+        df,
+        gene_id_col=gene_id_col,
+        gene_name_col=gene_name_col,
         verbose=False,  # already logged during strip plot
     )
 
@@ -191,13 +194,17 @@ def _prepare_sample_vs_cancer_data(
         ref["_ref_hk"] = ref[fpkm_cols].astype(float).mean(axis=1)
         cohort_label = "Mean across 33 TCGA cancer cohorts"
 
-    ref_lookup = dict(zip(
-        ref["Ensembl_Gene_ID"].map(_strip_ensembl_version),
-        ref["_ref_hk"],
-    ))
+    ref_lookup = dict(
+        zip(
+            ref["Ensembl_Gene_ID"].map(_strip_ensembl_version),
+            ref["_ref_hk"],
+        )
+    )
 
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
+    tpm_col = (
+        "TPM"
+        if "TPM" in df.columns
+        else next((c for c in df.columns if c.lower() == "tpm"), None)
     )
     if tpm_col is None:
         raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
@@ -230,14 +237,23 @@ def _prepare_sample_vs_cancer_data(
         for cat in cats:
             rows.append((gid, display_name, cat, sample_val, cohort_val))
 
-    plot_df = pd.DataFrame(rows, columns=[
-        "gene_id", "gene_name", "category", "sample_hk", "cohort_hk",
-    ])
+    plot_df = pd.DataFrame(
+        rows,
+        columns=[
+            "gene_id",
+            "gene_name",
+            "category",
+            "sample_hk",
+            "cohort_hk",
+        ],
+    )
     # Column names kept (`sample_hk` / `cohort_hk`) for wire-compatibility
     # with downstream panel code; the stored values are TPM, not % of HK.
     plot_df["sample_log"] = plot_df["sample_hk"] + 0.001
     plot_df["cohort_log"] = plot_df["cohort_hk"] + 0.001
-    plot_df["enrichment"] = (plot_df["sample_hk"] + 0.001) / (plot_df["cohort_hk"] + 0.001)
+    plot_df["enrichment"] = (plot_df["sample_hk"] + 0.001) / (
+        plot_df["cohort_hk"] + 0.001
+    )
 
     named_cats = list(cat_to_ids.keys())
     palette = sns.color_palette("tab10", len(named_cats))
@@ -250,16 +266,24 @@ def _prepare_sample_vs_cancer_data(
 
 
 def _draw_scatter_panel(
-    ax, plot_df, highlight_cat, color,
-    num_labels=10, adjust_args=None,
+    ax,
+    plot_df,
+    highlight_cat,
+    color,
+    num_labels=10,
+    adjust_args=None,
 ):
     """Draw a single scatter panel: sample (x) vs cohort (y), one category highlighted."""
     # Background: all genes faded
     bg = plot_df[plot_df.category == "other"]
     if len(bg):
         ax.scatter(
-            bg.sample_log, bg.cohort_log,
-            c=[(0.88, 0.88, 0.88)], alpha=0.12, s=6, zorder=1,
+            bg.sample_log,
+            bg.cohort_log,
+            c=[(0.88, 0.88, 0.88)],
+            alpha=0.12,
+            s=6,
+            zorder=1,
         )
 
     # Also fade other named categories
@@ -268,8 +292,12 @@ def _draw_scatter_panel(
     ]
     if len(other_named):
         ax.scatter(
-            other_named.sample_log, other_named.cohort_log,
-            c=[(0.78, 0.78, 0.78)], alpha=0.18, s=8, zorder=1,
+            other_named.sample_log,
+            other_named.cohort_log,
+            c=[(0.78, 0.78, 0.78)],
+            alpha=0.18,
+            s=8,
+            zorder=1,
         )
 
     # Highlight category — mark sample-enriched genes (enrichment > 5x) with edge ring
@@ -279,14 +307,24 @@ def _draw_scatter_panel(
         normal = hi[hi.enrichment <= 5]
         if len(normal):
             ax.scatter(
-                normal.sample_log, normal.cohort_log,
-                color=color, alpha=0.8, s=30, zorder=3, edgecolors="none",
+                normal.sample_log,
+                normal.cohort_log,
+                color=color,
+                alpha=0.8,
+                s=30,
+                zorder=3,
+                edgecolors="none",
             )
         if len(enriched):
             ax.scatter(
-                enriched.sample_log, enriched.cohort_log,
-                color=color, alpha=0.9, s=50, zorder=4,
-                edgecolors="black", linewidths=0.8,
+                enriched.sample_log,
+                enriched.cohort_log,
+                color=color,
+                alpha=0.9,
+                s=50,
+                zorder=4,
+                edgecolors="black",
+                linewidths=0.8,
             )
 
     ax.set_xscale("log")
@@ -314,10 +352,17 @@ def _draw_scatter_panel(
         top_enriched = hi.nlargest(num_labels, "enrichment")
         texts = []
         for _, row in top_enriched.iterrows():
-            texts.append(ax.text(
-                row.sample_log, row.cohort_log, row.gene_name,
-                fontsize=7, alpha=0.9, ha="center", va="bottom",
-            ))
+            texts.append(
+                ax.text(
+                    row.sample_log,
+                    row.cohort_log,
+                    row.gene_name,
+                    fontsize=7,
+                    alpha=0.9,
+                    ha="center",
+                    va="bottom",
+                )
+            )
         if adjust_args is not None:
             panel_adjust_args = {
                 **adjust_args,
@@ -383,15 +428,19 @@ def plot_sample_vs_cancer(
     """
     from pathlib import Path
 
-    plot_df, named_cats, cat_to_color, sample_label, cohort_label = \
+    plot_df, named_cats, cat_to_color, sample_label, cohort_label = (
         _prepare_sample_vs_cancer_data(df_gene_expr, gene_sets, cancer_type)
+    )
 
     # Generate one figure per category
     figures = {}
     for cat in named_cats:
         fig, ax = plt.subplots(figsize=figsize)
         _draw_scatter_panel(
-            ax, plot_df, cat, cat_to_color[cat],
+            ax,
+            plot_df,
+            cat,
+            cat_to_color[cat],
             num_labels=num_labels_per_category,
             adjust_args=adjust_args,
         )
@@ -418,6 +467,7 @@ def plot_sample_vs_cancer(
         # Multi-page PDF if requested
         if out.suffix.lower() == ".pdf":
             from matplotlib.backends.backend_pdf import PdfPages
+
             with PdfPages(out) as pdf:
                 for cat in named_cats:
                     pdf.savefig(figures[cat], bbox_inches="tight")

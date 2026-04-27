@@ -34,10 +34,12 @@ import numpy as np
 import pandas as pd
 
 from .gene_sets_cancer import (
-    pan_cancer_expression, CTA_gene_names,
+    pan_cancer_expression,
+    CTA_gene_names,
     proliferation_panel_gene_names,
     oncofetal_strict_gene_names,
-    tumor_up_vs_matched_normal, heme_tumor_up_vs_matched_normal,
+    tumor_up_vs_matched_normal,
+    heme_tumor_up_vs_matched_normal,
 )
 from .tumor_evidence import (
     TumorEvidenceScore,
@@ -54,7 +56,7 @@ _MIN_REFERENCE_GENES = 2000
 # to the full 13-gene panel (CENPF median-fold 14×, FOXM1 6.3×,
 # CDC20 6.1× were missing from the original set).
 _PROLIFERATION_PANEL = tuple(proliferation_panel_gene_names())
-_PROLIFERATION_HIGH_LOG2 = 4.5   # panel mean > this → "tumor-consistent"
+_PROLIFERATION_HIGH_LOG2 = 4.5  # panel mean > this → "tumor-consistent"
 _PROLIFERATION_QUIET_LOG2 = 3.5  # panel mean < this → proliferation quiet
 
 # The margin by which the top HPA tissue must beat the top TCGA cohort
@@ -71,13 +73,23 @@ _HPA_MARGIN_WEAK = 0.02
 # cancer, we always flag as "possibly-tumor" regardless of
 # proliferation (germinal centers + bone marrow are normally
 # cycling) and regardless of correlation margin.
-_LYMPHOID_NORMAL_TISSUES = frozenset({
-    "nTPM_lymph_node", "nTPM_spleen", "nTPM_thymus",
-    "nTPM_bone_marrow", "nTPM_appendix", "nTPM_tonsil",
-})
-_HEME_LYMPHOID_TCGA_COHORTS = frozenset({
-    "FPKM_DLBC", "FPKM_LAML", "FPKM_THYM",
-})
+_LYMPHOID_NORMAL_TISSUES = frozenset(
+    {
+        "nTPM_lymph_node",
+        "nTPM_spleen",
+        "nTPM_thymus",
+        "nTPM_bone_marrow",
+        "nTPM_appendix",
+        "nTPM_tonsil",
+    }
+)
+_HEME_LYMPHOID_TCGA_COHORTS = frozenset(
+    {
+        "FPKM_DLBC",
+        "FPKM_LAML",
+        "FPKM_THYM",
+    }
+)
 
 # Mesenchymal structural-ambiguity: the sarcoma analogue of the
 # lymphoid case. Normal smooth muscle / adipose / skeletal muscle /
@@ -88,17 +100,24 @@ _HEME_LYMPHOID_TCGA_COHORTS = frozenset({
 # is that users upload cancer samples (not random normal tissue), so
 # when this override fires, downstream cancer-specific analysis
 # proceeds — we just note the ambiguity so the clinician sees it.
-_MESENCHYMAL_NORMAL_TISSUES = frozenset({
-    "nTPM_smooth_muscle", "nTPM_adipose_tissue",
-    "nTPM_skeletal_muscle", "nTPM_heart_muscle",
-    "nTPM_endometrium",  # uterine myometrium
-    "nTPM_cervix",       # also smooth-muscle-rich
-    "nTPM_urinary_bladder",  # smooth-muscle dominant
-    "nTPM_epididymis",   # smooth muscle
-})
-_MESENCHYMAL_SARC_TCGA_COHORTS = frozenset({
-    "FPKM_SARC", "FPKM_UCS",
-})
+_MESENCHYMAL_NORMAL_TISSUES = frozenset(
+    {
+        "nTPM_smooth_muscle",
+        "nTPM_adipose_tissue",
+        "nTPM_skeletal_muscle",
+        "nTPM_heart_muscle",
+        "nTPM_endometrium",  # uterine myometrium
+        "nTPM_cervix",  # also smooth-muscle-rich
+        "nTPM_urinary_bladder",  # smooth-muscle dominant
+        "nTPM_epididymis",  # smooth muscle
+    }
+)
+_MESENCHYMAL_SARC_TCGA_COHORTS = frozenset(
+    {
+        "FPKM_SARC",
+        "FPKM_UCS",
+    }
+)
 
 # CTA panel as independent tumor evidence. Cancer-testis antigens are
 # epigenetically silenced in every somatic tissue except testis +
@@ -114,9 +133,13 @@ _CTA_SYMBOLS_CACHE: frozenset[str] | None = None
 # ANY sample that matches testis / placenta / ovary is expected to
 # express them — flagging CTA presence as tumor evidence in those
 # regimes would false-positive on reproductive-tissue normals.
-_CTA_NORMAL_TISSUES = frozenset({
-    "nTPM_testis", "nTPM_placenta", "nTPM_ovary",
-})
+_CTA_NORMAL_TISSUES = frozenset(
+    {
+        "nTPM_testis",
+        "nTPM_placenta",
+        "nTPM_ovary",
+    }
+)
 
 # Oncofetal / embryonic-stemness panel — complementary tumor evidence
 # beyond the CTA panel. Every member of this panel must be near-zero
@@ -139,10 +162,14 @@ _ONCOFETAL_STRICT = frozenset(oncofetal_strict_gene_names())
 _ONCOFETAL_LOOSE: frozenset[str] = frozenset()
 
 # HPA tissues where oncofetal expression is physiological.
-_ONCOFETAL_NORMAL_TISSUES = frozenset({
-    "nTPM_testis", "nTPM_placenta", "nTPM_ovary",
-    "nTPM_liver",  # AFP can be elevated in regenerating / fetal-pattern liver
-})
+_ONCOFETAL_NORMAL_TISSUES = frozenset(
+    {
+        "nTPM_testis",
+        "nTPM_placenta",
+        "nTPM_ovary",
+        "nTPM_liver",  # AFP can be elevated in regenerating / fetal-pattern liver
+    }
+)
 
 _ONCOFETAL_PER_GENE_MIN_TPM = 3.0
 _ONCOFETAL_STRONG_COUNT = 2  # stricter than CTA since the panel is smaller
@@ -240,16 +267,16 @@ class TissueCompositionSignal:
         """
         parts = [self.summary_line()]
         if self.reasoning_trace:
-            parts.append(
-                "Reasoning trace: " + " → ".join(self.reasoning_trace) + "."
-            )
+            parts.append("Reasoning trace: " + " → ".join(self.reasoning_trace) + ".")
         parts.append(self.evidence.synthesis())
         return " ".join(parts)
 
     def summary_line(self) -> str:
         """One-sentence description suitable for a brief or summary.md."""
         if not self.top_normal_tissues:
-            return "Tissue-composition signal unavailable (reference overlap too small)."
+            return (
+                "Tissue-composition signal unavailable (reference overlap too small)."
+            )
 
         def _fmt_tissue(name, rho):
             return f"{name.replace('nTPM_', '').replace('_', ' ')} (ρ={rho:.2f})"
@@ -261,18 +288,14 @@ class TissueCompositionSignal:
         cohorts = ", ".join(_fmt_cancer(n, r) for n, r in self.top_tcga_cohorts[:3])
         cta_clause = ""
         if self.cta_count_above_1_tpm > 0:
-            top_cta = ", ".join(
-                f"{s} {t:.0f}" for s, t in self.cta_top_hits[:3]
-            )
+            top_cta = ", ".join(f"{s} {t:.0f}" for s, t in self.cta_top_hits[:3])
             cta_clause = (
                 f" CTA panel: {self.cta_count_above_1_tpm} above 3 TPM "
                 f"(sum {self.cta_panel_sum_tpm:.0f} TPM; top: {top_cta})."
             )
         oncofetal_clause = ""
         if self.oncofetal_count_above_threshold > 0:
-            top_of = ", ".join(
-                f"{s} {t:.0f}" for s, t in self.oncofetal_top_hits[:3]
-            )
+            top_of = ", ".join(f"{s} {t:.0f}" for s, t in self.oncofetal_top_hits[:3])
             oncofetal_clause = (
                 f" Oncofetal panel: {self.oncofetal_count_above_threshold} "
                 f"hits (top: {top_of})."
@@ -311,8 +334,9 @@ class TissueCompositionSignal:
         if not self.top_normal_tissues:
             return None
 
-        if (purity is not None or signature_score is not None) \
-                and not self.structural_ambiguity:
+        if (
+            purity is not None or signature_score is not None
+        ) and not self.structural_ambiguity:
             # Structural-ambiguity cases (lymphoid normal vs heme-
             # lymphoid cancer) always keep the banner — the purity
             # and signature estimates are spurious in that regime
@@ -333,7 +357,11 @@ class TissueCompositionSignal:
 
         tissue, rho = self.top_normal_tissues[0]
         tissue_name = tissue.replace("nTPM_", "").replace("_", " ")
-        cohort = self.top_tcga_cohorts[0][0].replace("FPKM_", "") if self.top_tcga_cohorts else "—"
+        cohort = (
+            self.top_tcga_cohorts[0][0].replace("FPKM_", "")
+            if self.top_tcga_cohorts
+            else "—"
+        )
         cohort_rho = self.top_tcga_cohorts[0][1] if self.top_tcga_cohorts else 0.0
         if self.cancer_hint == "healthy-dominant":
             return (
@@ -353,8 +381,13 @@ class TissueCompositionSignal:
             # clinician, not a blocker.
             tissue_lc = tissue.lower()
             lymphoid_tissues = (
-                "lymph", "spleen", "thymus", "bone_marrow",
-                "bone marrow", "tonsil", "appendix",
+                "lymph",
+                "spleen",
+                "thymus",
+                "bone_marrow",
+                "bone marrow",
+                "tonsil",
+                "appendix",
             )
             if any(tag in tissue_lc for tag in lymphoid_tissues):
                 return (
@@ -401,13 +434,27 @@ def _extract_sample_tpm_by_symbol(df_expr: pd.DataFrame) -> dict[str, float]:
     if tpm_col is None:
         return {}
     gene_id_col = next(
-        (c for c in df_expr.columns if c.lower() in
-         ("gene_id", "ensembl_gene_id", "canonical_gene_id", "geneid")),
+        (
+            c
+            for c in df_expr.columns
+            if c.lower()
+            in ("gene_id", "ensembl_gene_id", "canonical_gene_id", "geneid")
+        ),
         None,
     )
     gene_name_col = next(
-        (c for c in df_expr.columns if c.lower() in
-         ("gene_name", "canonical_gene_name", "gene_symbol", "symbol", "hugo_symbol")),
+        (
+            c
+            for c in df_expr.columns
+            if c.lower()
+            in (
+                "gene_name",
+                "canonical_gene_name",
+                "gene_symbol",
+                "symbol",
+                "hugo_symbol",
+            )
+        ),
         None,
     )
     ref = pan_cancer_expression()[["Ensembl_Gene_ID", "Symbol"]].drop_duplicates(
@@ -532,7 +579,8 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
     n_overlap = len(shared_symbols)
 
     prolif_tpms = [
-        sample_by_symbol.get(g, 0.0) for g in _PROLIFERATION_PANEL
+        sample_by_symbol.get(g, 0.0)
+        for g in _PROLIFERATION_PANEL
         if g in sample_by_symbol
     ]
     if prolif_tpms:
@@ -570,9 +618,7 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
             oncofetal_top_hits=oncofetal_top_hits,
         )
 
-    sample_log = np.log2(np.array(
-        [sample_by_symbol[s] + 1.0 for s in shared_symbols]
-    ))
+    sample_log = np.log2(np.array([sample_by_symbol[s] + 1.0 for s in shared_symbols]))
 
     def _top_matches(cols: list[str], k: int = 3) -> list[tuple[str, float]]:
         scored = []
@@ -593,7 +639,8 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
     # tumor-vs-matched-normal private markers against the sample.
     top_tcga_code = top_tcga[0][0].replace("FPKM_", "") if top_tcga else ""
     type_specific_hits = _type_specific_tumor_up_signal(
-        sample_by_symbol, top_tcga_code,
+        sample_by_symbol,
+        top_tcga_code,
     )
 
     best_normal_rho = top_normal[0][1] if top_normal else 0.0
@@ -731,7 +778,9 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
 # Back-compat alias: callers wrote ``assess_healthy_vs_tumor`` before
 # the rename. Keep the old entry point working.
 def assess_healthy_vs_tumor(
-    df_expr: pd.DataFrame, *_args, **_kwargs,
+    df_expr: pd.DataFrame,
+    *_args,
+    **_kwargs,
 ) -> TissueCompositionSignal:
     return assess_tissue_composition(df_expr)
 
@@ -739,6 +788,7 @@ def assess_healthy_vs_tumor(
 def _spearman_rho(x: np.ndarray, y: np.ndarray) -> float:
     try:
         from scipy.stats import spearmanr
+
         return float(spearmanr(x, y, nan_policy="omit").statistic)
     except Exception:
         return _pearson_on_ranks(x, y)

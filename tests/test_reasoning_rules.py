@@ -61,6 +61,7 @@ def _flags(signal, **overrides):
 
 # ---------- tumor_marker_overrides_ambiguity ----------
 
+
 def test_tumor_marker_overrides_ambiguity_fires_on_strong_cta_in_lymphoid():
     s = _make_signal(cta_count_above_1_tpm=10, cta_panel_sum_tpm=500)
     f = _flags(s, lymphoid_ambiguity=True)
@@ -83,6 +84,7 @@ def test_tumor_marker_overrides_ambiguity_skips_without_strong_signal():
 
 
 # ---------- lymphoid / mesenchymal ambiguity ----------
+
 
 def test_lymphoid_ambiguity_fires_and_marks_structural():
     s = _make_signal(
@@ -117,6 +119,7 @@ def test_ambiguity_rules_skip_when_not_ambiguous():
 
 # ---------- aggregate_tumor_evidence ----------
 
+
 def test_aggregate_tumor_evidence_fires_on_aggregate_above_1():
     evidence = TumorEvidenceScore(cta=0.5, oncofetal=0.3, proliferation=0.4)
     assert evidence.aggregate_score >= 1.0
@@ -147,6 +150,7 @@ def test_aggregate_tumor_evidence_skips_below_thresholds():
 
 # ---------- high_proliferation_panel ----------
 
+
 def test_high_proliferation_fires_when_panel_elevated():
     s = _make_signal(evidence=TumorEvidenceScore(prolif_log2=5.0))
     f = _flags(s)
@@ -162,6 +166,7 @@ def test_high_proliferation_skips_when_quiet():
 
 
 # ---------- confident_healthy_tissue / healthy_with_soft_tumor_signal ----------
+
 
 def test_confident_healthy_fires_on_clean_healthy_profile():
     s = _make_signal(
@@ -191,6 +196,7 @@ def test_healthy_with_soft_tumor_signal_demotes_on_soft_cta():
 
 # ---------- weak_healthy_lean / tcga_dominant_correlation ----------
 
+
 def test_weak_healthy_lean_fires_on_weak_margin():
     s = _make_signal(
         top_normal_tissues=[("nTPM_lung", 0.82)],
@@ -211,6 +217,7 @@ def test_tcga_dominant_correlation_is_unconditional_default():
 
 
 # ---------- Rule runner ----------
+
 
 def test_run_step0_rules_picks_first_match():
     """Rule runner returns the first rule that fires — ordering matters."""

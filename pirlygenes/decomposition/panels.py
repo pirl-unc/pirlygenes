@@ -111,7 +111,8 @@ def _load_cohort_vs_tissue(cancer_code, tissue=None):
     normal_ntpm = ref[tissue_col].astype(float)
     purity = float(TCGA_MEDIAN_PURITY.get(cancer_code, 0.7))
     tumor_cell = np.maximum(
-        0.0, (cohort_bulk - (1.0 - purity) * normal_ntpm) / purity,
+        0.0,
+        (cohort_bulk - (1.0 - purity) * normal_ntpm) / purity,
     )
 
     out = pd.DataFrame(
@@ -143,8 +144,15 @@ def _stromal_immune_background_by_symbol():
     hpa = _load_hpa_cell_types().drop_duplicates(subset="Symbol").copy()
     hpa_indexed = hpa.set_index(hpa["Symbol"].astype(str))
     stromal_cells = set()
-    for comp in ("fibroblast", "endothelial", "T_cell", "B_cell", "plasma",
-                 "NK", "myeloid"):
+    for comp in (
+        "fibroblast",
+        "endothelial",
+        "T_cell",
+        "B_cell",
+        "plasma",
+        "NK",
+        "myeloid",
+    ):
         stromal_cells.update(COMPONENT_TO_HPA.get(comp, []))
     present = [c for c in stromal_cells if c in hpa_indexed.columns]
     if not present:
@@ -155,7 +163,9 @@ def _stromal_immune_background_by_symbol():
 
 def _log2_ratio(a, b, floor=0.1):
     """Symmetric, floor-stabilized log2 ratio ``log2((a + floor) / (b + floor))``."""
-    return np.log2((np.asarray(a, dtype=float) + floor) / (np.asarray(b, dtype=float) + floor))
+    return np.log2(
+        (np.asarray(a, dtype=float) + floor) / (np.asarray(b, dtype=float) + floor)
+    )
 
 
 def build_tumor_biased_panel(
@@ -225,14 +235,16 @@ def build_matched_normal_biased_panel(
     """
     df, _tissue = _load_cohort_vs_tissue(cancer_code, tissue=tissue)
     df["log2_ratio"] = _log2_ratio(df["normal_ntpm"], df["tumor_fpkm"])
-    keep = (df["normal_ntpm"] >= min_normal_expression) & (df["log2_ratio"] >= delta_log2)
+    keep = (df["normal_ntpm"] >= min_normal_expression) & (
+        df["log2_ratio"] >= delta_log2
+    )
     df = df[keep].copy()
     if stromal_collinearity_ratio:
         background = _stromal_immune_background_by_symbol()
         df["stromal_bg"] = df["symbol"].map(background).fillna(0.0).astype(float)
-        df = df[
-            df["stromal_bg"] < df["normal_ntpm"] * stromal_collinearity_ratio
-        ].drop(columns=["stromal_bg"])
+        df = df[df["stromal_bg"] < df["normal_ntpm"] * stromal_collinearity_ratio].drop(
+            columns=["stromal_bg"]
+        )
     return df.sort_values("log2_ratio", ascending=False).reset_index(drop=True)
 
 

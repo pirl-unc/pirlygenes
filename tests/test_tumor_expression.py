@@ -17,6 +17,7 @@ from pirlygenes.tumor_purity import (
 
 # ── LINEAGE_GENES coverage ────────────────────────────────────────
 
+
 def test_lineage_genes_covers_all_tcga_types():
     """Every TCGA cancer type with a known purity should have lineage genes."""
     missing = [ct for ct in TCGA_MEDIAN_PURITY if ct not in LINEAGE_GENES]
@@ -36,6 +37,7 @@ def test_lineage_genes_has_no_duplicates():
 
 # ── _lineage_purity_estimates edge cases ──────────────────────────
 
+
 def test_lineage_unknown_cancer_type_returns_empty():
     # Returns (estimates, skipped_detected); both empty when cancer
     # type isn't in the lineage panel registry.
@@ -51,6 +53,7 @@ def test_lineage_empty_sample_returns_empty():
 
 
 # ── Upper-half median estimator ───────────────────────────────────
+
 
 def test_upper_half_median_ignores_low_outliers():
     """Simulates de-differentiated genes pulling down the median."""
@@ -254,17 +257,20 @@ def test_combine_purity_treats_zero_stability_as_low_weight():
 
 # ── estimate_tumor_expression_ranges ──────────────────────────────
 
+
 def test_ranges_dataframe_columns():
     """Verify the output DataFrame has all expected columns."""
     from pirlygenes.plot import estimate_tumor_expression_ranges
     import pandas as pd
 
     # Minimal expression data with just a few genes
-    df = pd.DataFrame({
-        "ensembl_gene_id": ["ENSG00000169398", "ENSG00000160752"],
-        "gene_symbol": ["PTK2", "IL34"],
-        "TPM": [50.0, 10.0],
-    })
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": ["ENSG00000169398", "ENSG00000160752"],
+            "gene_symbol": ["PTK2", "IL34"],
+            "TPM": [50.0, 10.0],
+        }
+    )
     purity_result = {
         "overall_lower": 0.05,
         "overall_estimate": 0.10,
@@ -274,11 +280,25 @@ def test_ranges_dataframe_columns():
     assert isinstance(result, pd.DataFrame)
 
     expected_cols = [
-        "gene_id", "symbol", "category", "observed_tpm",
-        "tme_fold_lo", "tme_fold_med", "tme_fold_hi",
-        "max_healthy_tpm", "tme_explainable", "cohort_prior_tpm",
-        "est_1", "est_5", "est_9", "median_est",
-        "pct_cancer_median", "tcga_percentile", "is_surface", "is_cta", "therapies",
+        "gene_id",
+        "symbol",
+        "category",
+        "observed_tpm",
+        "tme_fold_lo",
+        "tme_fold_med",
+        "tme_fold_hi",
+        "max_healthy_tpm",
+        "tme_explainable",
+        "cohort_prior_tpm",
+        "est_1",
+        "est_5",
+        "est_9",
+        "median_est",
+        "pct_cancer_median",
+        "tcga_percentile",
+        "is_surface",
+        "is_cta",
+        "therapies",
     ]
     for col in expected_cols:
         assert col in result.columns, f"Missing column: {col}"
@@ -296,20 +316,24 @@ def test_ranges_tme_explainable_clamps_at_observed():
     # KLK3: high in normal prostate (~7700 nTPM), observed 500 TPM.
     # max_healthy >> observed → tme_explainable = True → clamped at
     # observed. Without the clamp, 500/0.3 ≈ 1667 would be reported.
-    df = pd.DataFrame({
-        "ensembl_gene_id": [
-            "ENSG00000142515",  # KLK3
-            "ENSG00000075624",  # ACTB
-            "ENSG00000156508",  # EEF1A1
-            "ENSG00000111640",  # GAPDH
-        ],
-        "gene_symbol": ["KLK3", "ACTB", "EEF1A1", "GAPDH"],
-        "TPM": [500.0, 150.0, 300.0, 100.0],
-    })
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": [
+                "ENSG00000142515",  # KLK3
+                "ENSG00000075624",  # ACTB
+                "ENSG00000156508",  # EEF1A1
+                "ENSG00000111640",  # GAPDH
+            ],
+            "gene_symbol": ["KLK3", "ACTB", "EEF1A1", "GAPDH"],
+            "TPM": [500.0, 150.0, 300.0, 100.0],
+        }
+    )
     purity = {"overall_lower": 0.25, "overall_estimate": 0.30, "overall_upper": 0.35}
     out = estimate_tumor_expression_ranges(df, "PRAD", purity)
     klk3 = out[out["symbol"] == "KLK3"].iloc[0]
-    assert klk3["tme_explainable"], "KLK3 should be tme_explainable in a 30% purity sample"
+    assert klk3["tme_explainable"], (
+        "KLK3 should be tme_explainable in a 30% purity sample"
+    )
     assert klk3["median_est"] <= klk3["observed_tpm"] + 1e-6, (
         f"median_est {klk3['median_est']} exceeds observed {klk3['observed_tpm']} "
         f"despite tme_explainable=True"
@@ -336,13 +360,16 @@ def test_ranges_skips_shrinkage_when_cohort_prior_is_near_zero():
             break
     assert zero_cohort_ctas, "Should find at least one near-zero CTA in PRAD"
 
-    rows = [{"gene_id": gid, "gene_name": sym, "TPM": 50.0}
-            for gid, sym in zero_cohort_ctas]
-    rows.extend([
-        {"gene_id": "ENSG00000075624", "gene_name": "ACTB",   "TPM": 150.0},
-        {"gene_id": "ENSG00000156508", "gene_name": "EEF1A1", "TPM": 300.0},
-        {"gene_id": "ENSG00000111640", "gene_name": "GAPDH",  "TPM": 100.0},
-    ])
+    rows = [
+        {"gene_id": gid, "gene_name": sym, "TPM": 50.0} for gid, sym in zero_cohort_ctas
+    ]
+    rows.extend(
+        [
+            {"gene_id": "ENSG00000075624", "gene_name": "ACTB", "TPM": 150.0},
+            {"gene_id": "ENSG00000156508", "gene_name": "EEF1A1", "TPM": 300.0},
+            {"gene_id": "ENSG00000111640", "gene_name": "GAPDH", "TPM": 100.0},
+        ]
+    )
     df = pd.DataFrame(rows)
     purity = {"overall_lower": 0.30, "overall_estimate": 0.35, "overall_upper": 0.40}
     out = estimate_tumor_expression_ranges(df, "PRAD", purity)
@@ -375,18 +402,28 @@ def test_ranges_low_purity_shrinks_toward_cohort_prior():
     # Gene not expressed in any healthy tissue but elevated in sample.
     # Without shrinkage: observed/purity is the estimator.
     # With shrinkage at very low purity: pulled toward cohort prior.
-    df = pd.DataFrame({
-        "ensembl_gene_id": [
-            "ENSG00000137959",  # IFI44L — interferon-stimulated, low baseline
-            "ENSG00000075624",  # ACTB (for HK median)
-            "ENSG00000156508",  # EEF1A1
-            "ENSG00000111640",  # GAPDH
-        ],
-        "gene_symbol": ["IFI44L", "ACTB", "EEF1A1", "GAPDH"],
-        "TPM": [10.0, 150.0, 300.0, 100.0],
-    })
-    purity_low = {"overall_lower": 0.08, "overall_estimate": 0.10, "overall_upper": 0.12}
-    purity_high = {"overall_lower": 0.60, "overall_estimate": 0.65, "overall_upper": 0.70}
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": [
+                "ENSG00000137959",  # IFI44L — interferon-stimulated, low baseline
+                "ENSG00000075624",  # ACTB (for HK median)
+                "ENSG00000156508",  # EEF1A1
+                "ENSG00000111640",  # GAPDH
+            ],
+            "gene_symbol": ["IFI44L", "ACTB", "EEF1A1", "GAPDH"],
+            "TPM": [10.0, 150.0, 300.0, 100.0],
+        }
+    )
+    purity_low = {
+        "overall_lower": 0.08,
+        "overall_estimate": 0.10,
+        "overall_upper": 0.12,
+    }
+    purity_high = {
+        "overall_lower": 0.60,
+        "overall_estimate": 0.65,
+        "overall_upper": 0.70,
+    }
 
     out_low = estimate_tumor_expression_ranges(df, "PRAD", purity_low)
     out_high = estimate_tumor_expression_ranges(df, "PRAD", purity_high)
@@ -412,11 +449,13 @@ def test_ranges_nine_estimates_are_sorted():
     from pirlygenes.plot import estimate_tumor_expression_ranges
     import pandas as pd
 
-    df = pd.DataFrame({
-        "ensembl_gene_id": ["ENSG00000169398"],
-        "gene_symbol": ["PTK2"],
-        "TPM": [100.0],
-    })
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": ["ENSG00000169398"],
+            "gene_symbol": ["PTK2"],
+            "TPM": [100.0],
+        }
+    )
     purity_result = {
         "overall_lower": 0.05,
         "overall_estimate": 0.10,
@@ -425,7 +464,7 @@ def test_ranges_nine_estimates_are_sorted():
     result = estimate_tumor_expression_ranges(df, "PRAD", purity_result)
     if not result.empty:
         row = result.iloc[0]
-        ests = [row[f"est_{i+1}"] for i in range(9)]
+        ests = [row[f"est_{i + 1}"] for i in range(9)]
         assert ests == sorted(ests), f"Estimates not sorted: {ests}"
 
 
@@ -434,11 +473,13 @@ def test_ranges_all_estimates_nonnegative():
     from pirlygenes.plot import estimate_tumor_expression_ranges
     import pandas as pd
 
-    df = pd.DataFrame({
-        "ensembl_gene_id": ["ENSG00000169398"],
-        "gene_symbol": ["PTK2"],
-        "TPM": [0.5],  # very low expression
-    })
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": ["ENSG00000169398"],
+            "gene_symbol": ["PTK2"],
+            "TPM": [0.5],  # very low expression
+        }
+    )
     purity_result = {
         "overall_lower": 0.05,
         "overall_estimate": 0.10,
@@ -448,7 +489,7 @@ def test_ranges_all_estimates_nonnegative():
     if not result.empty:
         row = result.iloc[0]
         for i in range(9):
-            assert row[f"est_{i+1}"] >= 0, f"est_{i+1} is negative"
+            assert row[f"est_{i + 1}"] >= 0, f"est_{i + 1} is negative"
 
 
 def test_ranges_empty_input():
@@ -456,11 +497,13 @@ def test_ranges_empty_input():
     from pirlygenes.plot import estimate_tumor_expression_ranges
     import pandas as pd
 
-    df = pd.DataFrame({
-        "ensembl_gene_id": [],
-        "gene_symbol": [],
-        "TPM": [],
-    })
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": [],
+            "gene_symbol": [],
+            "TPM": [],
+        }
+    )
     purity_result = {
         "overall_lower": 0.05,
         "overall_estimate": 0.10,
@@ -501,11 +544,13 @@ def test_ranges_pct_cancer_median_steap1_near_one():
         eid = ref_flat[ref_flat["Symbol"] == sym]["Ensembl_Gene_ID"].iloc[0]
         rows.append({"ensembl_gene_id": eid, "gene_symbol": sym, "TPM": sample_hk_med})
     # Add STEAP1
-    rows.append({
-        "ensembl_gene_id": "ENSG00000205542",
-        "gene_symbol": "STEAP1",
-        "TPM": steap1_tpm,
-    })
+    rows.append(
+        {
+            "ensembl_gene_id": "ENSG00000205542",
+            "gene_symbol": "STEAP1",
+            "TPM": steap1_tpm,
+        }
+    )
     df = pd.DataFrame(rows)
 
     purity_result = {
@@ -604,6 +649,7 @@ def test_ranges_fn1_therapy_requires_high_edb_transcripts():
 
 # ── _TME_TISSUES consistency ─────────────────────────────────────
 
+
 def test_tme_tissues_are_valid():
     """All curated TME tissues should exist in the reference data."""
     from pirlygenes.plot import _TME_TISSUES
@@ -612,10 +658,13 @@ def test_tme_tissues_are_valid():
     ref = pan_cancer_expression()
     ntpm_cols = {c.replace("nTPM_", "") for c in ref.columns if c.startswith("nTPM_")}
     for tissue in _TME_TISSUES:
-        assert tissue in ntpm_cols, f"TME tissue {tissue!r} not in reference nTPM columns"
+        assert tissue in ntpm_cols, (
+            f"TME tissue {tissue!r} not in reference nTPM columns"
+        )
 
 
 # ── CLI lineage narrative ─────────────────────────────────────────
+
 
 def test_lineage_narrative_generation():
     """The lineage narrative should handle all three cases: retained, lost, not found."""
@@ -623,10 +672,24 @@ def test_lineage_narrative_generation():
 
     # Simulate a purity result with lineage component
     lineage_per_gene = [
-        {"gene": "STEAP1", "purity": 0.098, "sample_tpm": 90.0,
-         "sample_ratio": 0.16, "ref_ratio": 1.1, "tme_ratio": 0.01, "tumor_ratio": 1.6},
-        {"gene": "KLK3", "purity": 0.003, "sample_tpm": 139.0,
-         "sample_ratio": 0.25, "ref_ratio": 50.0, "tme_ratio": 0.0, "tumor_ratio": 73.0},
+        {
+            "gene": "STEAP1",
+            "purity": 0.098,
+            "sample_tpm": 90.0,
+            "sample_ratio": 0.16,
+            "ref_ratio": 1.1,
+            "tme_ratio": 0.01,
+            "tumor_ratio": 1.6,
+        },
+        {
+            "gene": "KLK3",
+            "purity": 0.003,
+            "sample_tpm": 139.0,
+            "sample_ratio": 0.25,
+            "ref_ratio": 50.0,
+            "tme_ratio": 0.0,
+            "tumor_ratio": 73.0,
+        },
     ]
     purity = {
         "cancer_type": "PRAD",
@@ -718,17 +781,20 @@ def test_tme_dominant_flag_reads_attribution_when_available():
     formula. Simulate the column shape estimate_tumor_expression_ranges
     produces."""
     import pandas as pd
+
     # We don't call estimate_tumor_expression_ranges directly here — it
     # requires a heavy reference load. Instead, verify the post-hoc
     # derivation logic used elsewhere: a row with tumor < 30% of
     # observed should be TME-dominant even if tme_fold is small.
-    row = pd.Series({
-        "observed_tpm": 100.0,
-        "attribution": {"fibroblast": 80.0},
-        "attr_tumor_tpm": 20.0,
-        "attr_tumor_fraction": 0.20,
-        "tme_fold_med": 0.05,  # would NOT trigger the legacy fold rule
-    })
+    row = pd.Series(
+        {
+            "observed_tpm": 100.0,
+            "attribution": {"fibroblast": 80.0},
+            "attr_tumor_tpm": 20.0,
+            "attr_tumor_fraction": 0.20,
+            "tme_fold_med": 0.05,  # would NOT trigger the legacy fold rule
+        }
+    )
     attribution = row["attribution"]
     assert isinstance(attribution, dict) and attribution, "attribution populated"
     attr_fraction = row["attr_tumor_fraction"]

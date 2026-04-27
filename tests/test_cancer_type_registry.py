@@ -19,8 +19,16 @@ from pirlygenes.gene_sets_cancer import (
 
 def test_registry_has_required_columns():
     df = cancer_type_registry()
-    required = {"code", "name", "family", "primary_tissue",
-                "primary_template", "parent_code", "expression_source", "notes"}
+    required = {
+        "code",
+        "name",
+        "family",
+        "primary_tissue",
+        "primary_template",
+        "parent_code",
+        "expression_source",
+        "notes",
+    }
     missing = required - set(df.columns)
     assert not missing, f"registry missing columns: {missing}"
 
@@ -36,10 +44,38 @@ def test_registry_covers_all_33_tcga_codes():
     compatibility with existing cancer-type detection code paths."""
     df = cancer_type_registry()
     tcga_codes = {
-        "ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA",
-        "GBM", "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC",
-        "LUAD", "LUSC", "MESO", "OV", "PAAD", "PCPG", "PRAD", "READ",
-        "SARC", "SKCM", "STAD", "TGCT", "THCA", "THYM", "UCEC", "UCS",
+        "ACC",
+        "BLCA",
+        "BRCA",
+        "CESC",
+        "CHOL",
+        "COAD",
+        "DLBC",
+        "ESCA",
+        "GBM",
+        "HNSC",
+        "KICH",
+        "KIRC",
+        "KIRP",
+        "LAML",
+        "LGG",
+        "LIHC",
+        "LUAD",
+        "LUSC",
+        "MESO",
+        "OV",
+        "PAAD",
+        "PCPG",
+        "PRAD",
+        "READ",
+        "SARC",
+        "SKCM",
+        "STAD",
+        "TGCT",
+        "THCA",
+        "THYM",
+        "UCEC",
+        "UCS",
         "UVM",
     }
     registry_codes = set(df["code"])
@@ -57,8 +93,19 @@ def test_registry_includes_non_tcga_heme():
 def test_registry_includes_pediatric():
     df = cancer_type_registry()
     codes = set(df["code"])
-    for need in ("OS", "EWS", "RMS_ERMS", "RMS_ARMS", "NBL", "WILMS", "RT",
-                 "MBL", "ATRT", "RB", "HEPB"):
+    for need in (
+        "OS",
+        "EWS",
+        "RMS_ERMS",
+        "RMS_ARMS",
+        "NBL",
+        "WILMS",
+        "RT",
+        "MBL",
+        "ATRT",
+        "RB",
+        "HEPB",
+    ):
         assert need in codes, f"missing pediatric code: {need}"
 
 
@@ -80,8 +127,13 @@ def test_brca_pam50_subtypes_present():
     """BRCA's expression-based PAM50 tiles must be in the registry so
     the second-pass subtype classifier can route to them."""
     subs = cancer_type_subtypes_of("BRCA")
-    assert set(subs) == {"BRCA_LumA", "BRCA_LumB", "BRCA_HER2",
-                         "BRCA_Basal", "BRCA_Normal"}
+    assert set(subs) == {
+        "BRCA_LumA",
+        "BRCA_LumB",
+        "BRCA_HER2",
+        "BRCA_Basal",
+        "BRCA_Normal",
+    }
 
 
 def test_sarc_subtypes_cover_main_entities():
@@ -89,9 +141,17 @@ def test_sarc_subtypes_cover_main_entities():
     plus the known tumor-biology subtypes (MPNST, angiosarcoma,
     UPS)."""
     subs = set(cancer_type_subtypes_of("SARC"))
-    required = {"SARC_LMS", "SARC_DDLPS", "SARC_MYXLPS", "SARC_SYN",
-                "SARC_DSRCT", "SARC_GIST", "SARC_MPNST", "SARC_ANGIO",
-                "SARC_UPS"}
+    required = {
+        "SARC_LMS",
+        "SARC_DDLPS",
+        "SARC_MYXLPS",
+        "SARC_SYN",
+        "SARC_DSRCT",
+        "SARC_GIST",
+        "SARC_MPNST",
+        "SARC_ANGIO",
+        "SARC_UPS",
+    }
     missing = required - subs
     assert not missing, f"SARC subtypes missing: {missing}"
 
@@ -152,11 +212,23 @@ def test_source_cohort_values_are_canonical():
     cohort vocabulary — rejects typos like 'TCGA_BRCA' vs 'TCGA_XENA_TOIL'."""
     df = cancer_type_registry()
     valid = {
-        "", "TCGA_XENA_TOIL", "TCGA_BRCA_PAM50", "TCGA_HNSC", "TCGA_LUAD",
-        "BEATAML_OHSU_2022", "TARGET_NBL_2018", "TARGET_OS_2020",
-        "TARGET_RMS_2014", "TARGET_WT_2015", "TARGET_RT_2017",
-        "TARGET_ALL_2018", "TARGET_UNSPECIFIED", "TARGET_AML_2018",
-        "SCLC_UCOLOGNE_2015", "MMRF_COMMPASS", "ICGC",
+        "",
+        "TCGA_XENA_TOIL",
+        "TCGA_BRCA_PAM50",
+        "TCGA_HNSC",
+        "TCGA_LUAD",
+        "BEATAML_OHSU_2022",
+        "TARGET_NBL_2018",
+        "TARGET_OS_2020",
+        "TARGET_RMS_2014",
+        "TARGET_WT_2015",
+        "TARGET_RT_2017",
+        "TARGET_ALL_2018",
+        "TARGET_UNSPECIFIED",
+        "TARGET_AML_2018",
+        "SCLC_UCOLOGNE_2015",
+        "MMRF_COMMPASS",
+        "ICGC",
         "LITERATURE_CURATED",
         "TREEHOUSE_v25.01",
         "GSE118014_ALVAREZ_2018",
@@ -173,10 +245,25 @@ def test_expanded_sarcomas_present():
     df = cancer_type_registry()
     codes = set(df["code"])
     required = {
-        "SARC_EPITH", "SARC_DFSP", "SARC_ASPS", "SARC_CCS", "SARC_IFS",
-        "SARC_EHE", "SARC_PEC", "SARC_KS", "SARC_MYXFIB", "SARC_SFT",
-        "SARC_IMT", "GCTB", "ESS_LG", "ESS_HG", "SARC_LGFMS",
-        "SARC_EMC", "SARC_PLEOLPS", "RMS_PRMS", "RMS_SSRMS",
+        "SARC_EPITH",
+        "SARC_DFSP",
+        "SARC_ASPS",
+        "SARC_CCS",
+        "SARC_IFS",
+        "SARC_EHE",
+        "SARC_PEC",
+        "SARC_KS",
+        "SARC_MYXFIB",
+        "SARC_SFT",
+        "SARC_IMT",
+        "GCTB",
+        "ESS_LG",
+        "ESS_HG",
+        "SARC_LGFMS",
+        "SARC_EMC",
+        "SARC_PLEOLPS",
+        "RMS_PRMS",
+        "RMS_SSRMS",
     }
     missing = required - codes
     assert not missing, f"expanded-sarcoma codes missing: {missing}"
@@ -187,8 +274,10 @@ def test_subtype_key_maps_sarc_subtypes_to_key_genes_entries():
     used in cancer-key-genes.csv, otherwise the cancers CLI
     subcommand will report bm=0 / tg=0 for curated subtypes."""
     from pirlygenes.gene_sets_cancer import (
-        cancer_biomarker_genes, cancer_therapy_targets,
+        cancer_biomarker_genes,
+        cancer_therapy_targets,
     )
+
     df = cancer_type_registry()
     mapped = df[df["subtype_key"].fillna("").astype(str).ne("")]
     assert len(mapped) >= 7, "expected at least 7 rows with subtype_key populated"
@@ -207,21 +296,26 @@ def test_subtype_key_maps_sarc_subtypes_to_key_genes_entries():
 def test_nutm_has_actionable_curation():
     """NUT carcinoma gets the fusion-partner biomarkers (NUTM1,
     BRD4, BRD3, NSD3) plus BET-inhibitor therapy rows — these were
-    added because pirlygenes is applied to NUT carcinoma samples
-    (tempus-unc-nutm1)."""
+    added because pirlygenes is applied to NUTM1-rearranged carcinoma samples."""
     from pirlygenes.gene_sets_cancer import (
-        cancer_biomarker_genes, cancer_therapy_targets,
+        cancer_biomarker_genes,
+        cancer_therapy_targets,
     )
+
     bm = cancer_biomarker_genes("NUTM")
     for gene in ("NUTM1", "BRD4", "BRD3", "MYC", "TP63"):
         assert gene in bm, f"NUTM biomarker missing: {gene}"
     tg = cancer_therapy_targets("NUTM")
     agents = set(tg["agent"].astype(str).str.lower())
     # At least one BET inhibitor must be present.
-    assert any("bet" in row.lower() or "bromodomain" in row.lower() or
-               "molibresib" in row.lower() or "birabresib" in row.lower() or
-               "bms-986158" in row.lower()
-               for row in list(agents) + list(tg["rationale"].astype(str).str.lower()))
+    assert any(
+        "bet" in row.lower()
+        or "bromodomain" in row.lower()
+        or "molibresib" in row.lower()
+        or "birabresib" in row.lower()
+        or "bms-986158" in row.lower()
+        for row in list(agents) + list(tg["rationale"].astype(str).str.lower())
+    )
 
 
 def test_primary_templates_are_declared_or_planned():
@@ -233,6 +327,6 @@ def test_primary_templates_are_declared_or_planned():
     templates = df["primary_template"].dropna().unique()
     # Every template must match the convention.
     for t in templates:
-        assert t == "solid_primary" or t.startswith("primary_") or t.startswith("heme_"), (
-            f"unknown primary_template convention: {t}"
-        )
+        assert (
+            t == "solid_primary" or t.startswith("primary_") or t.startswith("heme_")
+        ), f"unknown primary_template convention: {t}"

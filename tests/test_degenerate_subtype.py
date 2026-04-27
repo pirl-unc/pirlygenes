@@ -27,7 +27,9 @@ def test_degenerate_pairs_csv_loads_and_parses():
             assert isinstance(gene, str) and gene
             assert isinstance(min_tpm, float)
         assert row["tiebreaker_rule"] in {
-            "site_template", "fusion_surrogate", "marker_combo",
+            "site_template",
+            "fusion_surrogate",
+            "marker_combo",
         }
 
 
@@ -61,8 +63,12 @@ def test_degenerate_pair_members_are_real_registry_codes():
     # MBL_SHH/WNT/MYC, LAML_APL). Allow those as a transitional
     # allowlist; shrink when the registry grows to include them.
     allow_not_yet_in_registry = {
-        "SARC_CIC_DUX4", "SARC_BCOR", "EPN_RELA",
-        "MBL_SHH", "MBL_WNT", "MBL_MYC",
+        "SARC_CIC_DUX4",
+        "SARC_BCOR",
+        "EPN_RELA",
+        "MBL_SHH",
+        "MBL_WNT",
+        "MBL_MYC",
     }
     unknown = set()
     for _, row in df.iterrows():
@@ -78,8 +84,11 @@ def test_fusion_surrogate_csv_loads():
     df = fusion_surrogate_expression()
     assert len(df) >= 30
     required_cols = {
-        "fusion_class", "surrogate_gene", "surrogate_role",
-        "cancer_code", "rationale",
+        "fusion_class",
+        "surrogate_gene",
+        "surrogate_role",
+        "cancer_code",
+        "rationale",
     }
     missing = required_cols - set(df.columns)
     assert not missing, f"fusion-surrogate schema missing: {missing}"
@@ -110,7 +119,7 @@ def test_resolver_returns_no_pair_for_none_subtype():
 
 
 def test_resolver_os_vs_ddlps_bone_site_swaps_to_os():
-    """Canonical pfo004-shape input: classifier picked DDLPS, site is
+    """Sid Sijbrandij public-data shape: classifier picked DDLPS, site is
     bone, MDM2 strongly amplified — the pair activates and site-template
     tiebreaker swaps DDLPS → OS."""
     result = resolve_degenerate_subtype(
@@ -168,7 +177,7 @@ def test_resolver_ewing_fate1_nr0b1_confirms_ewing():
     result = resolve_degenerate_subtype(
         winning_subtype="EWS",
         tumor_tpm_by_symbol={
-            "CD99": 500.0,   # activation gate
+            "CD99": 500.0,  # activation gate
             "FATE1": 80.0,
             "NR0B1": 50.0,
             "WT1": 0.0,
@@ -245,8 +254,12 @@ def test_resolver_mcl_ccnd1_corrects_from_cll():
     result = resolve_degenerate_subtype(
         winning_subtype="CLL",
         tumor_tpm_by_symbol={
-            "CD19": 40.0, "MS4A1": 80.0, "CD79A": 30.0,  # activation
-            "CCND1": 200.0, "SOX11": 80.0, "BCL6": 0.0,
+            "CD19": 40.0,
+            "MS4A1": 80.0,
+            "CD79A": 30.0,  # activation
+            "CCND1": 200.0,
+            "SOX11": 80.0,
+            "BCL6": 0.0,
         },
     )
     assert result["status"] == "corrected"
@@ -282,9 +295,13 @@ def test_resolver_nutm_inactive_on_squamous_sample_with_silent_nutm1():
         site_template="primary_lung",
         tumor_tpm_by_symbol={
             # Squamous activation signal (this pair fires)
-            "KRT5": 400.0, "KRT6A": 300.0, "TP63": 80.0,
+            "KRT5": 400.0,
+            "KRT6A": 300.0,
+            "TP63": 80.0,
             # High PRAME + MAGE-A as is typical of LUSC
-            "PRAME": 30.0, "MAGEA3": 60.0, "MAGEA1": 5.0,
+            "PRAME": 30.0,
+            "MAGEA3": 60.0,
+            "MAGEA1": 5.0,
             # But NUTM1 silent — NOT a NUT carcinoma
             "NUTM1": 0.1,
         },
@@ -375,7 +392,7 @@ def test_brief_renders_corrected_subtype():
     winning_subtype, the decomposition top template is met_bone, AND
     MDM2 is amplified (activating the 12q-amp pair), the summary.md
     should render osteosarcoma-consistent + a subtype note explaining
-    the swap. Reproduces the pfo004 failure mode.
+    the swap. Reproduces the Sid public osteosarcoma-data failure mode.
 
     This version exercises the tumor_tpm_by_symbol-from-ranges_df
     path — the production analyze call builds the TPM dict from
@@ -383,6 +400,7 @@ def test_brief_renders_corrected_subtype():
     import pandas as pd
 
     from pirlygenes.brief import build_summary
+    from pirlygenes.reporting import cancer_key_genes_lookup_for_analysis
 
     analysis = {
         "purity": {
@@ -404,11 +422,13 @@ def test_brief_renders_corrected_subtype():
             ],
         },
     }
-    ranges_df = pd.DataFrame([
-        {"symbol": "MDM2",  "attr_tumor_tpm": 877.0},
-        {"symbol": "CDK4",  "attr_tumor_tpm": 73.0},
-        {"symbol": "FRS2",  "attr_tumor_tpm": 137.0},
-    ])
+    ranges_df = pd.DataFrame(
+        [
+            {"symbol": "MDM2", "attr_tumor_tpm": 877.0},
+            {"symbol": "CDK4", "attr_tumor_tpm": 73.0},
+            {"symbol": "FRS2", "attr_tumor_tpm": 137.0},
+        ]
+    )
     summary = build_summary(
         analysis,
         ranges_df=ranges_df,
@@ -417,9 +437,68 @@ def test_brief_renders_corrected_subtype():
         sample_id="synthetic-bone-mdm2",
     )
     assert "osteosarcoma-consistent" in summary, summary
-    assert "Bone-associated context favors osteosarcoma over liposarcoma" in summary, summary
+    assert "Bone-associated context favors osteosarcoma over liposarcoma" in summary, (
+        summary
+    )
+    assert cancer_key_genes_lookup_for_analysis("SARC", analysis, ranges_df) == (
+        "OS",
+        None,
+    )
     assert "MDM2 / CDK4 / FRS2 amplification" in summary, summary
     assert "site_template tiebreaker swapped" not in summary
+
+
+def test_brief_uses_site_hint_for_corrected_subtype_without_decomposition():
+    """Explicit site constraints can resolve subtype even when decomposition
+    did not produce a best template."""
+    import pandas as pd
+
+    from pirlygenes.brief import build_summary
+
+    analysis = {
+        "cancer_type": "SARC",
+        "cancer_name": "Sarcoma",
+        "analysis_constraints": {
+            "cancer_type": "SARC",
+            "tumor_context": "met",
+            "site_hint": "bone",
+        },
+        "cancer_type_source": "user-specified",
+        "purity": {
+            "overall_estimate": 0.74,
+            "overall_lower": 0.42,
+            "overall_upper": 1.0,
+        },
+        "purity_confidence": type("PT", (), {"tier": "low"})(),
+        "sample_context": None,
+        "candidate_trace": [
+            {
+                "code": "SARC",
+                "winning_subtype": "SARC_LPS_UNSPEC",
+                "support_geomean": 0.58,
+            },
+        ],
+    }
+    ranges_df = pd.DataFrame(
+        [
+            {"symbol": "MDM2", "attr_tumor_tpm": 877.0},
+            {"symbol": "CDK4", "attr_tumor_tpm": 73.0},
+            {"symbol": "FRS2", "attr_tumor_tpm": 137.0},
+        ]
+    )
+
+    summary = build_summary(
+        analysis,
+        ranges_df=ranges_df,
+        cancer_code="SARC",
+        disease_state="",
+        sample_id="synthetic-bone-mdm2",
+    )
+
+    assert "osteosarcoma-consistent" in summary, summary
+    assert "Bone-associated context favors osteosarcoma over liposarcoma" in summary, (
+        summary
+    )
 
 
 def test_key_genes_lookup_switches_to_direct_os_panel():
@@ -441,11 +520,13 @@ def test_key_genes_lookup_switches_to_direct_os_panel():
             "best_cancer_type": "SARC",
         },
     }
-    ranges_df = pd.DataFrame([
-        {"symbol": "MDM2", "attr_tumor_tpm": 877.0},
-        {"symbol": "CDK4", "attr_tumor_tpm": 73.0},
-        {"symbol": "FRS2", "attr_tumor_tpm": 137.0},
-    ])
+    ranges_df = pd.DataFrame(
+        [
+            {"symbol": "MDM2", "attr_tumor_tpm": 877.0},
+            {"symbol": "CDK4", "attr_tumor_tpm": 73.0},
+            {"symbol": "FRS2", "attr_tumor_tpm": 137.0},
+        ]
+    )
     assert cancer_key_genes_lookup_for_analysis(
         "SARC",
         analysis,
@@ -478,7 +559,7 @@ def test_key_genes_lookup_matches_uppercase_parent_subtype_rows():
 
 
 def test_brief_uses_os_therapy_panel_after_corrected_subtype():
-    """User-facing pin for the pfo004 failure mode.
+    """User-facing pin for the Sid public osteosarcoma-data failure mode.
 
     The summary should stop surfacing DDLPS-only therapies once the
     bone-site tiebreaker resolves the sample to osteosarcoma.
@@ -504,36 +585,38 @@ def test_brief_uses_os_therapy_panel_after_corrected_subtype():
             "best_cancer_type": "SARC",
         },
     }
-    ranges_df = pd.DataFrame([
-        {
-            "symbol": "MDM2",
-            "observed_tpm": 1180.4,
-            "attr_tumor_tpm": 1176.0,
-            "attr_tumor_fraction": 0.99,
-            "attribution": "tumor",
-        },
-        {
-            "symbol": "CDK4",
-            "observed_tpm": 112.8,
-            "attr_tumor_tpm": 90.0,
-            "attr_tumor_fraction": 0.80,
-            "attribution": "tumor",
-        },
-        {
-            "symbol": "FRS2",
-            "observed_tpm": 140.0,
-            "attr_tumor_tpm": 137.0,
-            "attr_tumor_fraction": 0.96,
-            "attribution": "tumor",
-        },
-        {
-            "symbol": "IGF1R",
-            "observed_tpm": 125.0,
-            "attr_tumor_tpm": 120.0,
-            "attr_tumor_fraction": 0.96,
-            "attribution": "tumor",
-        },
-    ])
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "MDM2",
+                "observed_tpm": 1180.4,
+                "attr_tumor_tpm": 1176.0,
+                "attr_tumor_fraction": 0.99,
+                "attribution": "tumor",
+            },
+            {
+                "symbol": "CDK4",
+                "observed_tpm": 112.8,
+                "attr_tumor_tpm": 90.0,
+                "attr_tumor_fraction": 0.80,
+                "attribution": "tumor",
+            },
+            {
+                "symbol": "FRS2",
+                "observed_tpm": 140.0,
+                "attr_tumor_tpm": 137.0,
+                "attr_tumor_fraction": 0.96,
+                "attribution": "tumor",
+            },
+            {
+                "symbol": "IGF1R",
+                "observed_tpm": 125.0,
+                "attr_tumor_tpm": 120.0,
+                "attr_tumor_fraction": 0.96,
+                "attribution": "tumor",
+            },
+        ]
+    )
     summary = build_summary(
         analysis,
         ranges_df=ranges_df,
@@ -544,6 +627,68 @@ def test_brief_uses_os_therapy_panel_after_corrected_subtype():
     assert "Subtype-resolved therapy curation" in summary, summary
     assert "ganitumab + chemo" in summary, summary
     assert "brigimadlin" not in summary, summary
+
+
+def test_forced_cancer_type_does_not_inherit_unrelated_subtype():
+    """A constrained COAD report must not adopt a SARC subtype from the
+    unconstrained classifier trace."""
+    import pandas as pd
+
+    from pirlygenes.brief import build_summary
+    from pirlygenes.reporting import (
+        cancer_key_genes_lookup_for_analysis,
+        candidate_winning_subtype_for_analysis,
+    )
+
+    analysis = {
+        "cancer_type": "COAD",
+        "cancer_name": "Colon Adenocarcinoma",
+        "analysis_constraints": {"cancer_type": "COAD"},
+        "purity": {
+            "overall_estimate": 0.30,
+            "overall_lower": 0.20,
+            "overall_upper": 0.45,
+        },
+        "purity_confidence": type("PT", (), {"tier": "moderate"})(),
+        "sample_context": None,
+        "candidate_trace": [
+            {"code": "SARC", "winning_subtype": "SARC_LMS"},
+            {"code": "COAD"},
+        ],
+        "decomposition": {
+            "best_template": "solid_primary",
+            "best_cancer_type": "COAD",
+        },
+    }
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "EGFR",
+                "observed_tpm": 90.0,
+                "attr_tumor_tpm": 70.0,
+                "attr_tumor_fraction": 0.78,
+                "attr_top_compartment": "",
+                "attr_top_compartment_tpm": 0.0,
+                "attribution": {},
+                "tme_dominant": False,
+                "tme_explainable": False,
+            }
+        ]
+    )
+
+    assert candidate_winning_subtype_for_analysis(analysis) is None
+    assert cancer_key_genes_lookup_for_analysis("COAD", analysis) == ("COAD", None)
+
+    summary = build_summary(
+        analysis,
+        ranges_df=ranges_df,
+        cancer_code="COAD",
+        disease_state="",
+        sample_id="forced-coad",
+    )
+    assert "Cancer call:** COAD" in summary, summary
+    assert "Subtype-resolved therapy curation" not in summary, summary
+    assert "leiomyosarcoma" not in summary.lower(), summary
 
 
 def test_brief_lusc_with_high_prame_mage_does_not_flag_nutm():
@@ -570,17 +715,19 @@ def test_brief_lusc_with_high_prame_mage_does_not_flag_nutm():
             "best_cancer_type": "LUSC",
         },
     }
-    ranges_df = pd.DataFrame([
-        # Squamous lineage — this activates LUSC_vs_HNSC_vs_CESC
-        {"symbol": "KRT5",   "attr_tumor_tpm": 400.0},
-        {"symbol": "KRT6A",  "attr_tumor_tpm": 300.0},
-        {"symbol": "TP63",   "attr_tumor_tpm": 80.0},
-        # High PRAME + MAGE-A as typical of LUSC (NOT NUTM-specific!)
-        {"symbol": "PRAME",   "attr_tumor_tpm": 30.0},
-        {"symbol": "MAGEA3",  "attr_tumor_tpm": 60.0},
-        # But NUTM1 silent — NOT a NUT carcinoma
-        {"symbol": "NUTM1",   "attr_tumor_tpm": 0.1},
-    ])
+    ranges_df = pd.DataFrame(
+        [
+            # Squamous lineage — this activates LUSC_vs_HNSC_vs_CESC
+            {"symbol": "KRT5", "attr_tumor_tpm": 400.0},
+            {"symbol": "KRT6A", "attr_tumor_tpm": 300.0},
+            {"symbol": "TP63", "attr_tumor_tpm": 80.0},
+            # High PRAME + MAGE-A as typical of LUSC (NOT NUTM-specific!)
+            {"symbol": "PRAME", "attr_tumor_tpm": 30.0},
+            {"symbol": "MAGEA3", "attr_tumor_tpm": 60.0},
+            # But NUTM1 silent — NOT a NUT carcinoma
+            {"symbol": "NUTM1", "attr_tumor_tpm": 0.1},
+        ]
+    )
     summary = build_summary(
         analysis,
         ranges_df=ranges_df,

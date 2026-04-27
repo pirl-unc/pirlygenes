@@ -6,8 +6,11 @@ from pirlygenes import load_all_dataframes
 from pirlygenes.load_dataset import get_data
 
 _human_genomes = sorted(
-    [g for g in collect_all_installed_ensembl_releases()
-     if g.species.latin_name == "homo_sapiens"],
+    [
+        g
+        for g in collect_all_installed_ensembl_releases()
+        if g.species.latin_name == "homo_sapiens"
+    ],
     reverse=True,
     key=lambda g: g.release,
 )
@@ -104,7 +107,8 @@ def test_all_gene_ids_resolve_in_ensembl():
         if not dataset_ids:
             continue
         missing = sorted(
-            gid for gid in dataset_ids
+            gid
+            for gid in dataset_ids
             if not _resolve_in_any_release(gid, aliases=aliases)
         )
         per_dataset_missing[stem] = missing

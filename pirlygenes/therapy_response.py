@@ -167,7 +167,10 @@ def score_therapy_signatures(
         per_gene = []
         up_folds = []
         down_folds = []
-        for direction, genes in (("up", directions["up"]), ("down", directions["down"])):
+        for direction, genes in (
+            ("up", directions["up"]),
+            ("down", directions["down"]),
+        ):
             for g in genes:
                 sym = g["symbol"]
                 sample_tpm = sample_tpm_by_symbol.get(sym)
@@ -177,15 +180,17 @@ def score_therapy_signatures(
                 # Cohort-referenced fold change. Pseudocount of 0.5 TPM
                 # keeps the ratio well-defined when either side is zero.
                 fold = (float(sample_tpm) + 0.5) / (float(cohort_med) + 0.5)
-                per_gene.append({
-                    "symbol": sym,
-                    "direction": direction,
-                    "sample_tpm": round(float(sample_tpm), 2),
-                    "cohort_median": round(float(cohort_med), 2),
-                    "fold_vs_cohort": round(fold, 3),
-                    "mechanism": g["mechanism"],
-                    "strength": g["strength"],
-                })
+                per_gene.append(
+                    {
+                        "symbol": sym,
+                        "direction": direction,
+                        "sample_tpm": round(float(sample_tpm), 2),
+                        "cohort_median": round(float(cohort_med), 2),
+                        "fold_vs_cohort": round(fold, 3),
+                        "mechanism": g["mechanism"],
+                        "strength": g["strength"],
+                    }
+                )
                 if direction == "up":
                     up_folds.append(fold)
                 else:
@@ -202,22 +207,32 @@ def score_therapy_signatures(
         if up_geo is None and down_geo is None:
             state = "indeterminate"
             message = "No cohort-resolvable genes on either side"
-        elif up_geo is not None and up_geo >= 2.0 and (down_geo is None or down_geo < 1.5):
+        elif (
+            up_geo is not None
+            and up_geo >= 2.0
+            and (down_geo is None or down_geo < 1.5)
+        ):
             state = "up"
-            message = (
-                f"Active signaling: up-panel geomean {up_geo:.2f}× cohort"
-                + (f", down-panel {down_geo:.2f}× cohort" if down_geo else "")
+            message = f"Active signaling: up-panel geomean {up_geo:.2f}× cohort" + (
+                f", down-panel {down_geo:.2f}× cohort" if down_geo else ""
             )
-        elif up_geo is not None and up_geo <= 0.5 and (down_geo is None or down_geo >= 1.5):
+        elif (
+            up_geo is not None
+            and up_geo <= 0.5
+            and (down_geo is None or down_geo >= 1.5)
+        ):
             state = "down"
-            message = (
-                f"Suppressed: up-panel geomean {up_geo:.2f}× cohort"
-                + (
-                    f", down-panel {down_geo:.2f}× cohort (therapy-response genes elevated)"
-                    if down_geo and down_geo >= 1.5 else ""
-                )
+            message = f"Suppressed: up-panel geomean {up_geo:.2f}× cohort" + (
+                f", down-panel {down_geo:.2f}× cohort (therapy-response genes elevated)"
+                if down_geo and down_geo >= 1.5
+                else ""
             )
-        elif up_geo is not None and up_geo > 1.5 and down_geo is not None and down_geo > 1.5:
+        elif (
+            up_geo is not None
+            and up_geo > 1.5
+            and down_geo is not None
+            and down_geo > 1.5
+        ):
             state = "mixed"
             message = (
                 f"Mixed: up-panel {up_geo:.2f}× and down-panel {down_geo:.2f}× "
@@ -225,9 +240,8 @@ def score_therapy_signatures(
             )
         elif up_geo is not None and 0.5 < up_geo < 2.0:
             state = "indeterminate"
-            message = (
-                f"Near-cohort baseline: up-panel {up_geo:.2f}× cohort"
-                + (f", down-panel {down_geo:.2f}× cohort" if down_geo else "")
+            message = f"Near-cohort baseline: up-panel {up_geo:.2f}× cohort" + (
+                f", down-panel {down_geo:.2f}× cohort" if down_geo else ""
             )
         else:
             state = "indeterminate"

@@ -85,11 +85,11 @@ def build_provenance_md(
     lines.append("## 1. Library prep\n")
     if sample_context is not None:
         prep = getattr(sample_context, "library_prep", "unknown")
-        confidence = float(getattr(sample_context, "library_prep_confidence", 0.0) or 0.0)
-        prep_label = library_prep_display_label(prep)
-        lines.append(
-            f"Inferred: **{prep_label}** (confidence {confidence:.0%}). "
+        confidence = float(
+            getattr(sample_context, "library_prep_confidence", 0.0) or 0.0
         )
+        prep_label = library_prep_display_label(prep)
+        lines.append(f"Inferred: **{prep_label}** (confidence {confidence:.0%}). ")
         if prep == "exome_capture":
             lines.append(
                 "Implication: rRNA and many non-polyadenylated transcripts "
@@ -209,7 +209,8 @@ def build_provenance_md(
     if ranges_df is not None and len(ranges_df):
         if "attribution" in ranges_df.columns:
             supported_core, provisional_core, _ = partition_tumor_core_rows(
-                ranges_df, min_tumor_tpm=1.0,
+                ranges_df,
+                min_tumor_tpm=1.0,
             )
             n_core = int(len(supported_core))
             lines.append(
@@ -222,10 +223,7 @@ def build_provenance_md(
                 lines.append(
                     f"\nAn additional **{len(provisional_core)} genes** retain residual "
                     "tumor-attributed TPM but remain mixed-source in the markdown layer"
-                    + (
-                        f" ({reason_summary})."
-                        if reason_summary else "."
-                    )
+                    + (f" ({reason_summary})." if reason_summary else ".")
                 )
             # Top 5 supported tumor-linked genes.
             top = supported_core.sort_values("attr_tumor_tpm", ascending=False).head(5)
@@ -255,9 +253,7 @@ def build_provenance_md(
             "therapy-target ranking."
         )
     lines.append("")
-    lines.append(
-        "*See also: `*-summary.md`, `*-analysis.md`, and `*-evidence.md`.*"
-    )
+    lines.append("*See also: `*-summary.md`, `*-analysis.md`, and `*-evidence.md`.*")
     return "\n".join(lines)
 
 
@@ -309,8 +305,14 @@ def plot_provenance_funnel(
         ax.barh([0], [val], left=[left], color=color, edgecolor="white", label=label)
         if val > 0.03:
             ax.text(
-                left + val / 2, 0, f"{label}\n{val:.0%}",
-                ha="center", va="center", fontsize=9, color="white", fontweight="bold",
+                left + val / 2,
+                0,
+                f"{label}\n{val:.0%}",
+                ha="center",
+                va="center",
+                fontsize=9,
+                color="white",
+                fontweight="bold",
             )
         left += val
 
@@ -318,8 +320,13 @@ def plot_provenance_funnel(
     ax.set_yticks([])
     ax.set_xlabel("")
     ax.set_title("Sample composition", fontsize=11, fontweight="bold")
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2),
-              ncol=min(4, len(labels)), fontsize=8, frameon=False)
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.2),
+        ncol=min(4, len(labels)),
+        fontsize=8,
+        frameon=False,
+    )
 
     plt.tight_layout()
     fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")

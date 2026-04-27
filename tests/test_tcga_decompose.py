@@ -82,9 +82,7 @@ def test_select_samples_per_type_cap():
         "TCGA-AA-0003": "BRCA",
         "TCGA-BB-0001": "GBM",
     }
-    pairs = select_samples(
-        columns, patient_to_project, max_samples_per_type=2
-    )
+    pairs = select_samples(columns, patient_to_project, max_samples_per_type=2)
     brca = [b for b, code in pairs if code == "BRCA"]
     gbm = [b for b, code in pairs if code == "GBM"]
     assert len(brca) == 2
@@ -97,24 +95,44 @@ def test_select_samples_cancer_type_filter():
         "TCGA-A1-A0SB": "BRCA",
         "TCGA-19-1787": "GBM",
     }
-    pairs = select_samples(
-        columns, patient_to_project, cancer_types=["GBM"]
-    )
+    pairs = select_samples(columns, patient_to_project, cancer_types=["GBM"])
     assert pairs == [("TCGA-19-1787-01", "GBM")]
 
 
 def test_aggregate_per_type_basic_stats():
     per_sample = pd.DataFrame(
         [
-            {"sample": "s1", "cancer_code": "BRCA", "symbol": "TP53", "tumor_tpm": 10.0},
-            {"sample": "s2", "cancer_code": "BRCA", "symbol": "TP53", "tumor_tpm": 20.0},
-            {"sample": "s3", "cancer_code": "BRCA", "symbol": "TP53", "tumor_tpm": 30.0},
-            {"sample": "s4", "cancer_code": "BRCA", "symbol": "TP53", "tumor_tpm": 40.0},
+            {
+                "sample": "s1",
+                "cancer_code": "BRCA",
+                "symbol": "TP53",
+                "tumor_tpm": 10.0,
+            },
+            {
+                "sample": "s2",
+                "cancer_code": "BRCA",
+                "symbol": "TP53",
+                "tumor_tpm": 20.0,
+            },
+            {
+                "sample": "s3",
+                "cancer_code": "BRCA",
+                "symbol": "TP53",
+                "tumor_tpm": 30.0,
+            },
+            {
+                "sample": "s4",
+                "cancer_code": "BRCA",
+                "symbol": "TP53",
+                "tumor_tpm": 40.0,
+            },
             {"sample": "s1", "cancer_code": "GBM", "symbol": "TP53", "tumor_tpm": 5.0},
         ]
     )
     summary = aggregate_per_type(per_sample)
-    brca = summary[(summary["cancer_code"] == "BRCA") & (summary["symbol"] == "TP53")].iloc[0]
+    brca = summary[
+        (summary["cancer_code"] == "BRCA") & (summary["symbol"] == "TP53")
+    ].iloc[0]
     assert brca["tumor_tpm_median"] == pytest.approx(25.0)
     assert brca["tumor_tpm_q1"] == pytest.approx(17.5)
     assert brca["tumor_tpm_q3"] == pytest.approx(32.5)
@@ -124,9 +142,7 @@ def test_aggregate_per_type_basic_stats():
 
 
 def test_aggregate_per_type_empty_input():
-    empty = pd.DataFrame(
-        columns=["sample", "cancer_code", "symbol", "tumor_tpm"]
-    )
+    empty = pd.DataFrame(columns=["sample", "cancer_code", "symbol", "tumor_tpm"])
     summary = aggregate_per_type(empty)
     assert list(summary.columns) == [
         "symbol",
@@ -142,14 +158,34 @@ def test_aggregate_per_type_empty_input():
 def test_aggregate_per_type_with_subtype_partitions_rows():
     per_sample = pd.DataFrame(
         [
-            {"sample": "s1", "cancer_code": "BRCA", "subtype": "BRCA_Basal",
-             "symbol": "KRT17", "tumor_tpm": 400.0},
-            {"sample": "s2", "cancer_code": "BRCA", "subtype": "BRCA_Basal",
-             "symbol": "KRT17", "tumor_tpm": 600.0},
-            {"sample": "s3", "cancer_code": "BRCA", "subtype": "BRCA_LumA",
-             "symbol": "KRT17", "tumor_tpm": 20.0},
-            {"sample": "s4", "cancer_code": "BRCA", "subtype": "BRCA_LumA",
-             "symbol": "KRT17", "tumor_tpm": 30.0},
+            {
+                "sample": "s1",
+                "cancer_code": "BRCA",
+                "subtype": "BRCA_Basal",
+                "symbol": "KRT17",
+                "tumor_tpm": 400.0,
+            },
+            {
+                "sample": "s2",
+                "cancer_code": "BRCA",
+                "subtype": "BRCA_Basal",
+                "symbol": "KRT17",
+                "tumor_tpm": 600.0,
+            },
+            {
+                "sample": "s3",
+                "cancer_code": "BRCA",
+                "subtype": "BRCA_LumA",
+                "symbol": "KRT17",
+                "tumor_tpm": 20.0,
+            },
+            {
+                "sample": "s4",
+                "cancer_code": "BRCA",
+                "subtype": "BRCA_LumA",
+                "symbol": "KRT17",
+                "tumor_tpm": 30.0,
+            },
         ]
     )
     summary = aggregate_per_type(per_sample, group_by_subtype=True)
@@ -165,10 +201,20 @@ def test_aggregate_per_type_with_subtype_partitions_rows():
 def test_aggregate_per_type_drops_blank_subtype_rows():
     per_sample = pd.DataFrame(
         [
-            {"sample": "s1", "cancer_code": "BRCA", "subtype": "BRCA_Basal",
-             "symbol": "KRT17", "tumor_tpm": 400.0},
-            {"sample": "s2", "cancer_code": "BRCA", "subtype": "",
-             "symbol": "KRT17", "tumor_tpm": 10.0},
+            {
+                "sample": "s1",
+                "cancer_code": "BRCA",
+                "subtype": "BRCA_Basal",
+                "symbol": "KRT17",
+                "tumor_tpm": 400.0,
+            },
+            {
+                "sample": "s2",
+                "cancer_code": "BRCA",
+                "subtype": "",
+                "symbol": "KRT17",
+                "tumor_tpm": 10.0,
+            },
         ]
     )
     summary = aggregate_per_type(per_sample, group_by_subtype=True)

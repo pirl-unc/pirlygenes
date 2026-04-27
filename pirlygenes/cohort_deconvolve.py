@@ -187,7 +187,10 @@ def run(
         )
 
     summary = summarise_passthrough(
-        tpm, cohort_code, subtype_map=subtype_map, min_tpm=min_tpm,
+        tpm,
+        cohort_code,
+        subtype_map=subtype_map,
+        min_tpm=min_tpm,
     )
     Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output_csv, index=False)
@@ -201,22 +204,41 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Non-TCGA cohort deconvolution / summarisation.",
     )
-    p.add_argument("--expression-path", required=True,
-                   help="Path to the cohort's expression matrix")
-    p.add_argument("--cohort-code", required=True,
-                   help="Short code for this cohort (e.g. BEATAML, TARGET_NBL)")
-    p.add_argument("--output-csv", required=True,
-                   help="Output CSV path")
-    p.add_argument("--subtype-labels", default=None,
-                   help="Optional 2-col CSV (no header): sample_id,subtype")
-    p.add_argument("--input-format", default="cbioportal_rpkm",
-                   choices=["cbioportal_rpkm", "tpm_tsv"],
-                   help="How to parse the expression matrix")
-    p.add_argument("--passthrough", action="store_true", default=True,
-                   help="Treat observed TPM as tumor TPM (default). "
-                        "Appropriate for high-purity heme malignancies.")
-    p.add_argument("--min-tpm", type=float, default=0.01,
-                   help="Drop genes whose max TPM across samples is below this.")
+    p.add_argument(
+        "--expression-path",
+        required=True,
+        help="Path to the cohort's expression matrix",
+    )
+    p.add_argument(
+        "--cohort-code",
+        required=True,
+        help="Short code for this cohort (e.g. BEATAML, TARGET_NBL)",
+    )
+    p.add_argument("--output-csv", required=True, help="Output CSV path")
+    p.add_argument(
+        "--subtype-labels",
+        default=None,
+        help="Optional 2-col CSV (no header): sample_id,subtype",
+    )
+    p.add_argument(
+        "--input-format",
+        default="cbioportal_rpkm",
+        choices=["cbioportal_rpkm", "tpm_tsv"],
+        help="How to parse the expression matrix",
+    )
+    p.add_argument(
+        "--passthrough",
+        action="store_true",
+        default=True,
+        help="Treat observed TPM as tumor TPM (default). "
+        "Appropriate for high-purity heme malignancies.",
+    )
+    p.add_argument(
+        "--min-tpm",
+        type=float,
+        default=0.01,
+        help="Drop genes whose max TPM across samples is below this.",
+    )
     return p.parse_args(argv)
 
 

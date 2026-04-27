@@ -44,14 +44,22 @@ from ..tumor_purity import rank_cancer_type_candidates, _score_host_tissues
 # and myeloid columns, distorting per-compartment fractions. The curated
 # ``COMPONENT_MARKERS`` in signature.py remains the source of truth for
 # B-cell-specific markers (MS4A1, CD79A, CD79B, CD19, BANK1).
-_AUTO_MARKER_EXCLUDED_SYMBOLS = frozenset({
-    "CD74",
-    "HLA-DRA", "HLA-DRB1", "HLA-DRB5",
-    "HLA-DPA1", "HLA-DPB1",
-    "HLA-DQA1", "HLA-DQB1",
-    "HLA-DMA", "HLA-DMB",
-    "HLA-DOA", "HLA-DOB",
-})
+_AUTO_MARKER_EXCLUDED_SYMBOLS = frozenset(
+    {
+        "CD74",
+        "HLA-DRA",
+        "HLA-DRB1",
+        "HLA-DRB5",
+        "HLA-DPA1",
+        "HLA-DPB1",
+        "HLA-DQA1",
+        "HLA-DQB1",
+        "HLA-DMA",
+        "HLA-DMB",
+        "HLA-DOA",
+        "HLA-DOB",
+    }
+)
 
 
 def _is_excluded_auto_marker(symbol: str) -> bool:
@@ -287,9 +295,13 @@ def _resolve_templates(
     site_template = None
     site_hint_norm = _normalize_site_hint(site_hint)
     if site_hint_norm is not None:
-        site_template = DECOMPOSITION_PARAMETERS["sample_mode"]["site_hint_templates"].get(site_hint_norm)
+        site_template = DECOMPOSITION_PARAMETERS["sample_mode"][
+            "site_hint_templates"
+        ].get(site_hint_norm)
         if site_template is None:
-            valid_hints = sorted(DECOMPOSITION_PARAMETERS["sample_mode"]["site_hint_templates"])
+            valid_hints = sorted(
+                DECOMPOSITION_PARAMETERS["sample_mode"]["site_hint_templates"]
+            )
             raise ValueError(
                 f"Unknown site_hint '{site_hint}'. Valid hints include: {valid_hints[:12]}"
             )
@@ -300,13 +312,14 @@ def _resolve_templates(
     if tumor_context == "met":
         if site_template is not None:
             return [site_template], resolved_mode
-        return [name for name in resolved_templates if name.startswith("met_")], resolved_mode
+        return [
+            name for name in resolved_templates if name.startswith("met_")
+        ], resolved_mode
 
     if site_template is not None:
         prioritized = [site_template, "solid_primary"]
         prioritized.extend(
-            name for name in resolved_templates
-            if name not in prioritized
+            name for name in resolved_templates if name not in prioritized
         )
         return prioritized, resolved_mode
 
@@ -346,7 +359,9 @@ class DecompositionResult:
 
 def _hk_normalize(values, genes, hk_gene_set):
     """Normalize an expression vector by its housekeeping-gene median."""
-    hk_vals = [values[i] for i, g in enumerate(genes) if g in hk_gene_set and values[i] > 0]
+    hk_vals = [
+        values[i] for i, g in enumerate(genes) if g in hk_gene_set and values[i] > 0
+    ]
     hk_med = float(np.median(hk_vals)) if hk_vals else 1.0
     if hk_med <= 0:
         hk_med = 1.0
@@ -406,7 +421,9 @@ def _select_marker_rows(
     comp_names,
     cancer_type=None,
     sample_context=None,
-    top_n_per_component=DECOMPOSITION_PARAMETERS["marker_selection"]["top_n_per_component"],
+    top_n_per_component=DECOMPOSITION_PARAMETERS["marker_selection"][
+        "top_n_per_component"
+    ],
 ):
     """Pick component-enriched marker rows for the weighted fit.
 
@@ -443,11 +460,10 @@ def _select_marker_rows(
     long_transcript_symbols: set[str] = set()
     context_weight_factor = 1.0
     if sample_context is not None and getattr(sample_context, "is_degraded", False):
-        context_weight_factor = float(
-            sample_context.long_transcript_weight_factor()
-        )
+        context_weight_factor = float(sample_context.long_transcript_weight_factor())
         if context_weight_factor < 1.0:
             from ..gene_sets_cancer import degradation_gene_pairs
+
             long_transcript_symbols = {
                 long_sym for _, long_sym, _ in degradation_gene_pairs()
             }
@@ -539,7 +555,9 @@ def _build_gene_attribution(
     sig_matrix_hk,
 ):
     """Build per-gene attribution on TPM scale."""
-    tme_background_hk = sig_matrix_hk @ comp_mix if len(comp_mix) else np.zeros(len(genes))
+    tme_background_hk = (
+        sig_matrix_hk @ comp_mix if len(comp_mix) else np.zeros(len(genes))
+    )
 
     rows = []
     for idx, (gid, symbol) in enumerate(zip(genes, symbols)):
@@ -555,7 +573,11 @@ def _build_gene_attribution(
         }
         tme_total_tpm = 0.0
         for comp_idx, comp in enumerate(comp_names):
-            attr_hk = (1.0 - tumor_fraction) * float(comp_mix[comp_idx]) * float(sig_matrix_hk[idx, comp_idx])
+            attr_hk = (
+                (1.0 - tumor_fraction)
+                * float(comp_mix[comp_idx])
+                * float(sig_matrix_hk[idx, comp_idx])
+            )
             attr_tpm = attr_hk * sample_hk_median
             row[comp] = round(attr_tpm, 2)
             tme_total_tpm += attr_tpm
@@ -564,13 +586,19 @@ def _build_gene_attribution(
         overexplained_tpm = max(0.0, tme_total_tpm - obs_tpm)
         row["tumor"] = round(tumor_tpm, 2)
         row["overexplained_tpm"] = round(overexplained_tpm, 2)
-        row["tumor_fraction_of_total"] = round(tumor_tpm / obs_tpm if obs_tpm > 0 else 0.0, 4)
+        row["tumor_fraction_of_total"] = round(
+            tumor_tpm / obs_tpm if obs_tpm > 0 else 0.0, 4
+        )
         rows.append(row)
 
     attr_df = pd.DataFrame(rows)
     if not attr_df.empty:
-        attr_df = attr_df.sort_values("observed_tpm", ascending=False).reset_index(drop=True)
-    tme_by_symbol = {str(symbol): float(value) for symbol, value in zip(symbols, tme_background_hk)}
+        attr_df = attr_df.sort_values("observed_tpm", ascending=False).reset_index(
+            drop=True
+        )
+    tme_by_symbol = {
+        str(symbol): float(value) for symbol, value in zip(symbols, tme_background_hk)
+    }
     return attr_df, tme_by_symbol
 
 
@@ -579,11 +607,21 @@ def _build_component_trace(marker_trace, comp_names, comp_mix, tumor_fraction):
     rows = []
     non_tumor_fraction = max(0.0, 1.0 - tumor_fraction)
     for comp_idx, comp in enumerate(comp_names):
-        sub = marker_trace[marker_trace["component"] == comp] if not marker_trace.empty else marker_trace
+        sub = (
+            marker_trace[marker_trace["component"] == comp]
+            if not marker_trace.empty
+            else marker_trace
+        )
         if sub is not None and not sub.empty:
-            marker_score = float(np.nanmedian(sub["sample_to_ref_ratio"].replace([np.inf, -np.inf], np.nan)))
+            marker_score = float(
+                np.nanmedian(
+                    sub["sample_to_ref_ratio"].replace([np.inf, -np.inf], np.nan)
+                )
+            )
             top_markers = ", ".join(
-                sub.sort_values(["observed_tpm", "specificity"], ascending=[False, False])["symbol"].head(4)
+                sub.sort_values(
+                    ["observed_tpm", "specificity"], ascending=[False, False]
+                )["symbol"].head(4)
             )
             n_markers = int(len(sub))
         else:
@@ -596,7 +634,9 @@ def _build_component_trace(marker_trace, comp_names, comp_mix, tumor_fraction):
                 "component": comp,
                 "mix_within_tme": round(float(comp_mix[comp_idx]), 4),
                 "fraction": round(float(comp_mix[comp_idx] * non_tumor_fraction), 4),
-                "marker_score": round(marker_score, 4) if np.isfinite(marker_score) else None,
+                "marker_score": round(marker_score, 4)
+                if np.isfinite(marker_score)
+                else None,
                 "n_markers": n_markers,
                 "top_markers": top_markers,
             }
@@ -604,7 +644,9 @@ def _build_component_trace(marker_trace, comp_names, comp_mix, tumor_fraction):
 
     component_df = pd.DataFrame(rows)
     if not component_df.empty:
-        component_df = component_df.sort_values("fraction", ascending=False).reset_index(drop=True)
+        component_df = component_df.sort_values(
+            "fraction", ascending=False
+        ).reset_index(drop=True)
     return component_df
 
 
@@ -637,11 +679,13 @@ def _fit_one_hypothesis(
     # detections the component list is byte-identical to the
     # pre-#59 path.
     detected_compartments = _detect_optional_compartments(
-        sample_raw_by_symbol, cancer_type=cancer_type,
+        sample_raw_by_symbol,
+        cancer_type=cancer_type,
         template_name=template_name,
     )
     components = get_template_components(
-        template_name, cancer_type,
+        template_name,
+        cancer_type,
         winning_subtype=winning_subtype,
         detected_compartments=detected_compartments,
     )
@@ -671,7 +715,8 @@ def _fit_one_hypothesis(
         and sample_raw_by_symbol is not None
     ):
         lineage_fraction_info = estimate_lineage_tumor_fraction(
-            sample_raw_by_symbol, cancer_type,
+            sample_raw_by_symbol,
+            cancer_type,
         )
 
     if purity_override is None:
@@ -684,8 +729,8 @@ def _fit_one_hypothesis(
             lineage_estimate = float(lineage_fraction_info["estimate"])
             override_params = DECOMPOSITION_PARAMETERS["lineage_override"]
             upward_delta = lineage_estimate - candidate_purity
-            upward_ratio = (
-                lineage_estimate / max(candidate_purity, override_params["ratio_floor"])
+            upward_ratio = lineage_estimate / max(
+                candidate_purity, override_params["ratio_floor"]
             )
             if (
                 upward_delta > override_params["max_upward_delta"]
@@ -747,7 +792,8 @@ def _fit_one_hypothesis(
             warnings=["No non-tumor components in template"],
             matched_normal_tissue=(
                 EPITHELIAL_MATCHED_NORMAL_TISSUE.get(cancer_type)
-                if matched_normal_name else None
+                if matched_normal_name
+                else None
             ),
             matched_normal_fraction=0.0,
             lineage_tumor_fraction=lineage_fraction_info,
@@ -757,7 +803,9 @@ def _fit_one_hypothesis(
 
     gene_subset = set(sample_by_eid.keys())
     filt_genes, filt_symbols, sig_raw, _ = build_signature_matrix(
-        comp_names, gene_subset=gene_subset, sample_by_eid=sample_by_eid,
+        comp_names,
+        gene_subset=gene_subset,
+        sample_by_eid=sample_by_eid,
     )
     filt_sample_vec = np.array(
         [
@@ -769,12 +817,8 @@ def _fit_one_hypothesis(
     measured_mask = np.isfinite(filt_sample_vec)
     if not np.all(measured_mask):
         dropped = int((~measured_mask).sum())
-        warnings.append(
-            f"Dropped {dropped} unmeasured genes from decomposition fit"
-        )
-        filt_genes = [
-            gene for gene, keep in zip(filt_genes, measured_mask) if keep
-        ]
+        warnings.append(f"Dropped {dropped} unmeasured genes from decomposition fit")
+        filt_genes = [gene for gene, keep in zip(filt_genes, measured_mask) if keep]
         filt_symbols = [
             symbol for symbol, keep in zip(filt_symbols, measured_mask) if keep
         ]
@@ -798,8 +842,12 @@ def _fit_one_hypothesis(
         warnings.append("Low marker support for template fit")
 
     if not fit_rows:
-        floor = DECOMPOSITION_PARAMETERS["marker_selection"]["fallback_expression_floor"]
-        fit_rows = list(np.where((observed_hk > floor) | (sig_hk.max(axis=1) > floor))[0])
+        floor = DECOMPOSITION_PARAMETERS["marker_selection"][
+            "fallback_expression_floor"
+        ]
+        fit_rows = list(
+            np.where((observed_hk > floor) | (sig_hk.max(axis=1) > floor))[0]
+        )
         fit_weights = np.ones(len(fit_rows), dtype=float)
     n_measured_in_fit = int(len(fit_rows))
 
@@ -816,13 +864,26 @@ def _fit_one_hypothesis(
 
     if not marker_trace.empty:
         marker_trace = marker_trace.copy()
-        symbol_to_obs = {str(symbol): float(obs) for symbol, obs in zip(filt_symbols, filt_sample_vec)}
-        symbol_to_obs_hk = {str(symbol): float(obs) for symbol, obs in zip(filt_symbols, observed_hk)}
-        marker_trace["observed_tpm"] = marker_trace["symbol"].map(symbol_to_obs).fillna(0.0)
-        marker_trace["sample_hk"] = marker_trace["symbol"].map(symbol_to_obs_hk).fillna(0.0)
-        marker_trace["sample_to_ref_ratio"] = marker_trace["sample_hk"] / marker_trace["reference_hk"].replace(0, np.nan)
+        symbol_to_obs = {
+            str(symbol): float(obs)
+            for symbol, obs in zip(filt_symbols, filt_sample_vec)
+        }
+        symbol_to_obs_hk = {
+            str(symbol): float(obs) for symbol, obs in zip(filt_symbols, observed_hk)
+        }
+        marker_trace["observed_tpm"] = (
+            marker_trace["symbol"].map(symbol_to_obs).fillna(0.0)
+        )
+        marker_trace["sample_hk"] = (
+            marker_trace["symbol"].map(symbol_to_obs_hk).fillna(0.0)
+        )
+        marker_trace["sample_to_ref_ratio"] = marker_trace["sample_hk"] / marker_trace[
+            "reference_hk"
+        ].replace(0, np.nan)
 
-    component_trace = _build_component_trace(marker_trace, comp_names, comp_mix, tumor_fraction)
+    component_trace = _build_component_trace(
+        marker_trace, comp_names, comp_mix, tumor_fraction
+    )
     gene_attr, tme_background_hk = _build_gene_attribution(
         filt_genes,
         filt_symbols,
@@ -839,16 +900,22 @@ def _fit_one_hypothesis(
         fractions[comp] = float(comp_mix[comp_idx] * max(0.0, 1.0 - tumor_fraction))
 
     origin_tissues = get_template_host_tissues("solid_primary", cancer_type=cancer_type)
-    origin_tissue_scores = [(tissue, float(tissue_score_map.get(tissue, 0.0))) for tissue in origin_tissues]
+    origin_tissue_scores = [
+        (tissue, float(tissue_score_map.get(tissue, 0.0))) for tissue in origin_tissues
+    ]
     if origin_tissue_scores:
         _, origin_tissue_score = max(origin_tissue_scores, key=lambda item: item[1])
     else:
         origin_tissue_score = 0.0
 
     host_tissues = get_template_host_tissues(template_name, cancer_type=cancer_type)
-    host_tissue_scores = [(tissue, float(tissue_score_map.get(tissue, 0.0))) for tissue in host_tissues]
+    host_tissue_scores = [
+        (tissue, float(tissue_score_map.get(tissue, 0.0))) for tissue in host_tissues
+    ]
     if host_tissue_scores:
-        host_tissue, template_tissue_score = max(host_tissue_scores, key=lambda item: item[1])
+        host_tissue, template_tissue_score = max(
+            host_tissue_scores, key=lambda item: item[1]
+        )
     else:
         host_tissue, template_tissue_score = None, 0.0
 
@@ -858,10 +925,17 @@ def _fit_one_hypothesis(
     # cell, and including it here would re-balance the primary-vs-met
     # scoring (see `ffa9325` regression notes in issue #50).
     extra_components = {
-        comp for comp in get_template_extra_components(template_name)
+        comp
+        for comp in get_template_extra_components(template_name)
         if not comp.startswith("matched_normal_")
     }
-    extra_fraction = float(sum(comp_mix[idx] for idx, comp in enumerate(comp_names) if comp in extra_components))
+    extra_fraction = float(
+        sum(
+            comp_mix[idx]
+            for idx, comp in enumerate(comp_names)
+            if comp in extra_components
+        )
+    )
     extra_sample_fraction = extra_fraction * max(0.0, 1.0 - tumor_fraction)
 
     matched_normal_mix = 0.0
@@ -873,13 +947,15 @@ def _fit_one_hypothesis(
     scoring = DECOMPOSITION_PARAMETERS["template_scoring"]
     if template_name == "solid_primary":
         template_site_factor = (
-            scoring["primary_site_base"] + scoring["primary_site_gain"] * origin_tissue_score
+            scoring["primary_site_base"]
+            + scoring["primary_site_gain"] * origin_tissue_score
         )
     elif host_tissue is None:
         template_site_factor = scoring["missing_host_factor"]
     else:
         template_site_factor = float(
-            scoring["met_site_base"] + scoring["met_site_gain"] * np.sqrt(max(template_tissue_score, 0.0))
+            scoring["met_site_base"]
+            + scoring["met_site_gain"] * np.sqrt(max(template_tissue_score, 0.0))
         )
         if origin_tissue_score >= scoring["met_origin_preference_min"]:
             origin_advantage = max(0.0, origin_tissue_score - template_tissue_score)
@@ -903,9 +979,7 @@ def _fit_one_hypothesis(
             )
         )
         if extra_sample_fraction < 0.01:
-            warnings.append(
-                "Template-specific host component is effectively unused"
-            )
+            warnings.append("Template-specific host component is effectively unused")
     elif template_name.startswith("met_"):
         # Met templates without an explicit host compartment need stronger site
         # evidence than primaries because immune/stromal infiltrates can occur
@@ -915,19 +989,28 @@ def _fit_one_hypothesis(
         extra_component_factor = 1.0
 
     template_factor = float(
-        np.clip(template_site_factor * extra_component_factor, scoring["min_template_factor"], 1.0)
+        np.clip(
+            template_site_factor * extra_component_factor,
+            scoring["min_template_factor"],
+            1.0,
+        )
     )
 
     if host_tissue is not None and template_tissue_score < 0.2:
         warnings.append(f"Weak host-tissue support for {host_tissue}")
-    if template_name.startswith("met_") and origin_tissue_score > template_tissue_score + 0.2:
+    if (
+        template_name.startswith("met_")
+        and origin_tissue_score > template_tissue_score + 0.2
+    ):
         warnings.append("Primary tissue support exceeds metastatic-site support")
 
     fit_score = 1.0 / (1.0 + residual)
     cancer_support = float(candidate_row["support_norm"])
-    score = fit_score * (
-        scoring["fit_score_base"] + scoring["fit_score_gain"] * cancer_support
-    ) * template_factor
+    score = (
+        fit_score
+        * (scoring["fit_score_base"] + scoring["fit_score_gain"] * cancer_support)
+        * template_factor
+    )
 
     # Purity floor penalty (#98): candidates with biologically
     # implausible purity (<2%) get their score collapsed so they
@@ -967,7 +1050,8 @@ def _fit_one_hypothesis(
         warnings=warnings,
         matched_normal_tissue=(
             EPITHELIAL_MATCHED_NORMAL_TISSUE.get(cancer_type)
-            if matched_normal_name else None
+            if matched_normal_name
+            else None
         ),
         matched_normal_fraction=matched_normal_fraction,
         lineage_tumor_fraction=lineage_fraction_info,
@@ -1039,7 +1123,10 @@ def decompose_sample(
         site_hint=site_hint,
     )
 
-    tissue_score_map = {tissue: score for tissue, score, _ in _score_host_tissues(sample_raw_by_symbol, top_n=None)}
+    tissue_score_map = {
+        tissue: score
+        for tissue, score, _ in _score_host_tissues(sample_raw_by_symbol, top_n=None)
+    }
 
     results = []
     for candidate_row in candidate_rows:

@@ -101,9 +101,7 @@ def test_filter_always_returns_at_least_minimum_genes():
     for code in LINEAGE_GENES:
         specific = _cancer_specific_lineage_genes(code)
         if LINEAGE_GENES[code]:
-            assert len(specific) >= 2, (
-                f"{code}: filter returned < 2 genes: {specific}"
-            )
+            assert len(specific) >= 2, f"{code}: filter returned < 2 genes: {specific}"
 
 
 def test_filter_returns_subset_of_original_panel():
@@ -113,8 +111,7 @@ def test_filter_returns_subset_of_original_panel():
         full = set(LINEAGE_GENES[code])
         specific = set(_cancer_specific_lineage_genes(code))
         assert specific <= full, (
-            f"{code}: filter added genes not in the original panel: "
-            f"{specific - full}"
+            f"{code}: filter added genes not in the original panel: {specific - full}"
         )
 
 
@@ -130,11 +127,13 @@ def test_filter_result_cached_across_calls():
 
 def _cohort_median_sample(code: str) -> pd.DataFrame:
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    return pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref[f"FPKM_{code}"].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"FPKM_{code}"].astype(float),
+        }
+    )
 
 
 def test_paad_cohort_median_classifies_as_paad():

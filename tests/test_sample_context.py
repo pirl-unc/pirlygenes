@@ -64,8 +64,12 @@ def test_library_prep_total_rna_signature_is_detected():
     # High histone mass — use modern HGNC names so prefix detection
     # catches H2AC* / H2BC* / H3C* / H4C*.
     rows += [
-        ("H2BC1", 80), ("H2BC3", 70), ("H2BC4", 65), ("H2AC1", 60),
-        ("H3C1", 55), ("H4C1", 50),
+        ("H2BC1", 80),
+        ("H2BC3", 70),
+        ("H2BC4", 65),
+        ("H2AC1", 60),
+        ("H3C1", 55),
+        ("H4C1", 50),
     ]
     # MT rRNAs dominate MT signal (characteristic of total RNA libraries)
     rows += [(sym, 200) for sym in _MT_RRNA_SYMBOLS]
@@ -81,7 +85,11 @@ def test_library_prep_ribo_depleted_signature_is_detected():
     """Histones present, MT rRNAs depleted → ribo-depleted."""
     rows = [("ACTB", 500), ("GAPDH", 400), ("TUBB", 300)]
     rows += [
-        ("H2BC1", 80), ("H2BC3", 70), ("H2AC1", 60), ("H3C1", 55), ("H4C1", 50),
+        ("H2BC1", 80),
+        ("H2BC3", 70),
+        ("H2AC1", 60),
+        ("H3C1", 55),
+        ("H4C1", 50),
     ]
     # MT rRNAs absent or very low; MT mRNAs present
     rows += [(sym, 40) for sym in _MT_MRNA_SYMBOLS]
@@ -145,6 +153,7 @@ def test_ffpe_sample_triggers_ffpe_preservation():
     canonical FFPE signature.
     """
     import random
+
     random.seed(0)
     rows = []
     # Background
@@ -155,7 +164,7 @@ def test_ffpe_sample_triggers_ffpe_preservation():
     # 10x lower than the fresh expected ratio would predict.
     for short_sym, long_sym, expected in _fresh_degradation_pair_expectations()[:18]:
         short_tpm = 50.0 + random.random() * 20
-        long_tpm = short_tpm * float(expected) * 0.10   # 10× depletion
+        long_tpm = short_tpm * float(expected) * 0.10  # 10× depletion
         rows.append((short_sym, short_tpm))
         rows.append((long_sym, long_tpm))
     frame = _frame_from_pairs(rows)
@@ -266,6 +275,7 @@ def test_tempus_like_exome_capture_ffpe_detected_correctly():
     rows += [("H2BC1", target_histone / 6)] * 6
     # Degradation pairs: long transcripts over-represented ~3x.
     from pirlygenes.gene_sets_cancer import degradation_gene_pairs
+
     for short_sym, long_sym, expected in list(degradation_gene_pairs())[:15]:
         rows.append((short_sym, 20.0))
         rows.append((long_sym, 20.0 * float(expected) * 3.0))
@@ -284,10 +294,9 @@ def test_tempus_like_exome_capture_ffpe_detected_correctly():
     assert ctx.degradation_index is not None
     assert ctx.degradation_index > 1.4
     # The flag must explain the capture-bias interpretation.
-    assert any(
-        "exon-capture" in f or "capture enrichment" in f
-        for f in ctx.flags
-    ), ctx.flags
+    assert any("exon-capture" in f or "capture enrichment" in f for f in ctx.flags), (
+        ctx.flags
+    )
 
 
 def test_degradation_index_above_upper_bound_yields_unknown_preservation():
@@ -296,6 +305,7 @@ def test_degradation_index_above_upper_bound_yields_unknown_preservation():
     rows = [("ACTB", 500), ("GAPDH", 400)]
     # Every pair has long >> short, index ≈ 5× expected.
     from pirlygenes.gene_sets_cancer import degradation_gene_pairs
+
     for short_sym, long_sym, expected in list(degradation_gene_pairs())[:12]:
         rows.append((short_sym, 10.0))
         rows.append((long_sym, 10.0 * float(expected) * 5.0))
@@ -320,11 +330,13 @@ def test_compute_isoform_length_bias_returns_index_for_synthetic_ffpe():
         gid = f"ENSG{gene_idx:011d}"
         # FFPE pattern: short isoform dominates.
         rows += [
-            (f"ENST{gene_idx:08d}A.1", 600,  100.0, gid),
-            (f"ENST{gene_idx:08d}B.1", 3000, 5.0,   gid),
-            (f"ENST{gene_idx:08d}C.1", 8000, 1.0,   gid),
+            (f"ENST{gene_idx:08d}A.1", 600, 100.0, gid),
+            (f"ENST{gene_idx:08d}B.1", 3000, 5.0, gid),
+            (f"ENST{gene_idx:08d}C.1", 8000, 1.0, gid),
         ]
-    df = pd.DataFrame(rows, columns=["transcript_id", "length", "TPM", "ensembl_gene_id"])
+    df = pd.DataFrame(
+        rows, columns=["transcript_id", "length", "TPM", "ensembl_gene_id"]
+    )
 
     index, n_genes = compute_isoform_length_bias(df)
     assert n_genes == 60
@@ -337,11 +349,13 @@ def test_compute_isoform_length_bias_returns_index_for_synthetic_ffpe():
     for gene_idx in range(60):
         gid = f"ENSG{gene_idx:011d}"
         balanced_rows += [
-            (f"ENST{gene_idx:08d}A.1", 600,  50.0, gid),
+            (f"ENST{gene_idx:08d}A.1", 600, 50.0, gid),
             (f"ENST{gene_idx:08d}B.1", 3000, 50.0, gid),
             (f"ENST{gene_idx:08d}C.1", 8000, 50.0, gid),
         ]
-    bdf = pd.DataFrame(balanced_rows, columns=["transcript_id", "length", "TPM", "ensembl_gene_id"])
+    bdf = pd.DataFrame(
+        balanced_rows, columns=["transcript_id", "length", "TPM", "ensembl_gene_id"]
+    )
     bidx, _ = compute_isoform_length_bias(bdf)
     assert bidx is not None
     assert 0.7 < bidx < 1.3, f"Balanced usage expected ~1.0, got {bidx}"
@@ -355,13 +369,25 @@ def test_compute_ffpe_marker_score_returns_value_for_present_panel():
     # are very low — the canonical FFPE pattern.
     sample = {
         # stable_in_ffpe: ACTB, GAPDH, RPLP0, RPL13, PPIA, HPRT1, TBP
-        "ACTB": 1000, "GAPDH": 800, "RPLP0": 600, "RPL13": 500,
-        "PPIA": 400, "HPRT1": 100, "TBP": 50,
+        "ACTB": 1000,
+        "GAPDH": 800,
+        "RPLP0": 600,
+        "RPL13": 500,
+        "PPIA": 400,
+        "HPRT1": 100,
+        "TBP": 50,
         # drops_in_ffpe: AHNAK, DYNC1H1, HUWE1, UBR4, MACF1, PLEC,
         # BIRC6, SON, SPTAN1, TRRAP (biology-neutral giant scaffolds)
-        "AHNAK": 0.1, "DYNC1H1": 0.1, "HUWE1": 0.1, "UBR4": 0.1,
-        "MACF1": 0.1, "PLEC": 0.1, "BIRC6": 0.1, "SON": 0.1,
-        "SPTAN1": 0.1, "TRRAP": 0.1,
+        "AHNAK": 0.1,
+        "DYNC1H1": 0.1,
+        "HUWE1": 0.1,
+        "UBR4": 0.1,
+        "MACF1": 0.1,
+        "PLEC": 0.1,
+        "BIRC6": 0.1,
+        "SON": 0.1,
+        "SPTAN1": 0.1,
+        "TRRAP": 0.1,
     }
     score, n = compute_ffpe_marker_score(sample)
     assert score is not None
@@ -382,14 +408,30 @@ def test_capture_biased_ffpe_now_detected_via_orthogonal_signals():
 
     # Background: enough reference genes and stable HK refs.
     rows = [
-        ("ACTB", 1000), ("GAPDH", 800), ("RPLP0", 600), ("RPL13", 500),
-        ("PPIA", 400), ("HPRT1", 100), ("TBP", 50),
-        ("TUBB", 300), ("EEF1A1", 500),
+        ("ACTB", 1000),
+        ("GAPDH", 800),
+        ("RPLP0", 600),
+        ("RPL13", 500),
+        ("PPIA", 400),
+        ("HPRT1", 100),
+        ("TBP", 50),
+        ("TUBB", 300),
+        ("EEF1A1", 500),
     ]
     # FFPE-sensitive panel (v4.4.1 biology-neutral scaffolds per #75):
     # collapsed to near-zero.
-    for sym in ("AHNAK", "DYNC1H1", "HUWE1", "UBR4", "MACF1", "PLEC",
-                "BIRC6", "SON", "SPTAN1", "TRRAP"):
+    for sym in (
+        "AHNAK",
+        "DYNC1H1",
+        "HUWE1",
+        "UBR4",
+        "MACF1",
+        "PLEC",
+        "BIRC6",
+        "SON",
+        "SPTAN1",
+        "TRRAP",
+    ):
         rows.append((sym, 0.05))
     # MT mRNA present (so library_prep doesn't route to exome here —
     # we want preservation refinement to fire on its own).
@@ -408,9 +450,9 @@ def test_capture_biased_ffpe_now_detected_via_orthogonal_signals():
     for i in range(60):
         gid = f"ENSG{i:011d}"
         tx_rows += [
-            (f"ENST{i:08d}A.1", 600,  120.0, gid),
-            (f"ENST{i:08d}B.1", 3000, 5.0,   gid),
-            (f"ENST{i:08d}C.1", 8000, 0.5,   gid),
+            (f"ENST{i:08d}A.1", 600, 120.0, gid),
+            (f"ENST{i:08d}B.1", 3000, 5.0, gid),
+            (f"ENST{i:08d}C.1", 8000, 0.5, gid),
         ]
     tx_df = pd.DataFrame(
         tx_rows, columns=["transcript_id", "length", "TPM", "ensembl_gene_id"]

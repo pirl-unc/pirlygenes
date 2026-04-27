@@ -32,9 +32,13 @@ from pirlygenes.decomposition.subtype_refs import (
 def test_panel_registry_covers_all_expected_labels():
     labels = set(panel_labels())
     expected = {
-        "CAF", "TAM", "MDSC",
-        "exhausted_T", "tumor_endothelium",
-        "TLS_B", "TI_plasma",
+        "CAF",
+        "TAM",
+        "MDSC",
+        "exhausted_T",
+        "tumor_endothelium",
+        "TLS_B",
+        "TI_plasma",
     }
     missing = expected - labels
     assert not missing, f"missing panels: {missing}"
@@ -45,9 +49,7 @@ def test_panel_registry_compartments_are_from_solid_primary_template():
     actually fits. Otherwise refinement never has anything to act on."""
     from pirlygenes.decomposition.templates import TEMPLATES
 
-    solid_primary_compartments = set(
-        TEMPLATES["solid_primary"]["components"]
-    )
+    solid_primary_compartments = set(TEMPLATES["solid_primary"]["components"])
     for label, compartment, _folds in PANELS:
         assert compartment in solid_primary_compartments, (
             f"{label} targets ``{compartment}`` but that compartment "
@@ -128,6 +130,7 @@ def test_mdsc_and_tam_do_not_share_markers():
     pin that."""
     mdsc = set(MDSC_MARKER_FOLDS.keys())
     from pirlygenes.decomposition.subtype_refs import TAM_MARKER_FOLDS
+
     tam = set(TAM_MARKER_FOLDS.keys())
     assert not (mdsc & tam), (
         f"MDSC and TAM share markers: {mdsc & tam} — compounded refinement"

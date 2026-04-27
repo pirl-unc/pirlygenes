@@ -33,7 +33,10 @@ def _base_analysis(**overrides):
         "cancer_type": "PRAD",
         "cancer_name": "Prostate Adenocarcinoma",
         "therapy_response_scores": {},
-        "purity": {"overall_estimate": 0.6, "components": {"lineage": {"per_gene": []}}},
+        "purity": {
+            "overall_estimate": 0.6,
+            "components": {"lineage": {"per_gene": []}},
+        },
         "candidate_trace": [{"code": "PRAD", "support_norm": 1.0}],
         "fit_quality": {},
     }
@@ -50,9 +53,13 @@ def test_brca_er_down_pattern():
         therapy_response_scores=_mock_therapy_scores(ER_signaling="down"),
         purity={
             "overall_estimate": 0.6,
-            "components": {"lineage": {"per_gene": [
-                {"gene": "ESR1", "purity": 0.01},
-            ]}},
+            "components": {
+                "lineage": {
+                    "per_gene": [
+                        {"gene": "ESR1", "purity": 0.01},
+                    ]
+                }
+            },
         },
     )
     narrative = compose_disease_state_narrative(analysis)
@@ -73,13 +80,18 @@ def test_brca_combined_er_down_her2_up():
     analysis = _base_analysis(
         cancer_type="BRCA",
         therapy_response_scores=_mock_therapy_scores(
-            ER_signaling="down", HER2_signaling="up",
+            ER_signaling="down",
+            HER2_signaling="up",
         ),
         purity={
             "overall_estimate": 0.6,
-            "components": {"lineage": {"per_gene": [
-                {"gene": "ESR1", "purity": 0.01},
-            ]}},
+            "components": {
+                "lineage": {
+                    "per_gene": [
+                        {"gene": "ESR1", "purity": 0.01},
+                    ]
+                }
+            },
         },
     )
     narrative = compose_disease_state_narrative(analysis)
@@ -187,6 +199,15 @@ def test_candidate_label_ambiguous_shows_two():
     assert _candidate_label_options(analysis) == ["LUAD", "LUSC"]
 
 
+def test_candidate_label_respects_forced_cancer_type():
+    analysis = {
+        "analysis_constraints": {"cancer_type": "COAD"},
+        "candidate_trace": [{"code": "SARC"}, {"code": "COAD"}],
+        "fit_quality": {"label": "ambiguous"},
+    }
+    assert _candidate_label_options(analysis) == ["COAD"]
+
+
 def test_candidate_label_empty_trace():
     analysis = {"candidate_trace": [], "fit_quality": {}}
     assert _candidate_label_options(analysis) == []
@@ -197,9 +218,13 @@ def test_candidate_label_empty_trace():
 
 def _mock_decomp_result(**kwargs):
     defaults = {
-        "cancer_type": "COAD", "template": "solid_primary",
-        "score": 0.9, "purity": 0.6, "warnings": [],
-        "template_site_factor": 0.9, "template_tissue_score": 0.8,
+        "cancer_type": "COAD",
+        "template": "solid_primary",
+        "score": 0.9,
+        "purity": 0.6,
+        "warnings": [],
+        "template_site_factor": 0.9,
+        "template_tissue_score": 0.8,
     }
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)

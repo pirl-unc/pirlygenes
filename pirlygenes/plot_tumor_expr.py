@@ -38,13 +38,23 @@ from .reporting import tumor_attribution_context
 
 _REPRODUCTIVE_TISSUES = {"testis", "epididymis", "seminal_vesicle", "placenta", "ovary"}
 
-_STROMAL_TISSUES = {"smooth_muscle", "skeletal_muscle", "heart_muscle", "adipose_tissue"}
+_STROMAL_TISSUES = {
+    "smooth_muscle",
+    "skeletal_muscle",
+    "heart_muscle",
+    "adipose_tissue",
+}
 
 # Immune/lymphoid tissues that represent TME infiltrate.  Curated to
 # exclude epithelial organs that merely contain resident immune cells
 # (which would inflate the TME background estimate).
 _IMMUNE_TISSUES = {
-    "bone_marrow", "lymph_node", "spleen", "thymus", "tonsil", "appendix",
+    "bone_marrow",
+    "lymph_node",
+    "spleen",
+    "thymus",
+    "tonsil",
+    "appendix",
 }
 
 _TME_TISSUES = _STROMAL_TISSUES | _IMMUNE_TISSUES
@@ -56,12 +66,12 @@ _TME_TISSUES = _STROMAL_TISSUES | _IMMUNE_TISSUES
 # tissues to **add** to the TME reference; passing an empty set (for
 # `primary`) leaves the default set untouched.
 MET_SITE_TISSUE_AUGMENTATION = {
-    "primary":    set(),
+    "primary": set(),
     "lymph_node": {"lymph_node", "spleen", "thymus", "tonsil"},
-    "liver":      {"liver"},
-    "brain":      {"cerebral_cortex", "cerebellum"},
-    "lung":       {"lung"},
-    "bone":       {"bone_marrow"},
+    "liver": {"liver"},
+    "brain": {"cerebral_cortex", "cerebellum"},
+    "lung": {"lung"},
+    "bone": {"bone_marrow"},
 }
 
 MET_SITES = tuple(MET_SITE_TISSUE_AUGMENTATION.keys())
@@ -139,17 +149,19 @@ AMPLIFICATION_MIN_FOLD = 5.0
 # tumor-cell story with caution: the matched-normal reference carries
 # average fibromuscular-stroma density for the parent tissue, and a
 # biopsy with above-average SM content leaks SM signal into tumor.
-_SMOOTH_MUSCLE_LINEAGE_MARKERS = frozenset({
-    "TAGLN",   # Transgelin / SM22α
-    "ACTA2",   # α-smooth muscle actin
-    "MYH11",   # Smooth muscle myosin heavy chain 11
-    "CNN1",    # Calponin 1
-    "MYL9",    # Myosin light chain 9
-    "CALD1",   # Caldesmon
-    "SMTN",    # Smoothelin
-    "MYLK",    # Myosin light-chain kinase
-    "TPM2",    # Tropomyosin 2 (SM-enriched isoform)
-})
+_SMOOTH_MUSCLE_LINEAGE_MARKERS = frozenset(
+    {
+        "TAGLN",  # Transgelin / SM22α
+        "ACTA2",  # α-smooth muscle actin
+        "MYH11",  # Smooth muscle myosin heavy chain 11
+        "CNN1",  # Calponin 1
+        "MYL9",  # Myosin light chain 9
+        "CALD1",  # Caldesmon
+        "SMTN",  # Smoothelin
+        "MYLK",  # Myosin light-chain kinase
+        "TPM2",  # Tropomyosin 2 (SM-enriched isoform)
+    }
+)
 # Firing thresholds. Kept conservative — this is an annotation, not a
 # refitting override, so over-annotating is cheap but under-annotating
 # misses the case.
@@ -168,8 +180,10 @@ def _sample_expression_by_symbol(df_gene_expr):
     df = df_gene_expr.copy()
     df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
 
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
+    tpm_col = (
+        "TPM"
+        if "TPM" in df.columns
+        else next((c for c in df.columns if c.lower() == "tpm"), None)
     )
     if tpm_col is None:
         raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
@@ -247,8 +261,7 @@ def estimate_tumor_expression(
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     ntpm_nonrepro = [
-        c for c in ntpm_cols
-        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
+        c for c in ntpm_cols if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
     ]
 
     # TME tissues
@@ -259,14 +272,15 @@ def estimate_tumor_expression(
     else:
         immune_cols = []
     stromal_cols = [
-        c for c in ntpm_nonrepro
-        if c.replace("nTPM_", "") in _STROMAL_TISSUES
+        c for c in ntpm_nonrepro if c.replace("nTPM_", "") in _STROMAL_TISSUES
     ]
     tme_cols = list(set(immune_cols + stromal_cols))
 
     # Cancer type origin tissue: map cancer type to closest normal tissue
     cancer_col = f"FPKM_{cancer_code}"
-    tcga_expr = ref_dedup[cancer_col].astype(float) if cancer_col in ref_dedup.columns else None
+    tcga_expr = (
+        ref_dedup[cancer_col].astype(float) if cancer_col in ref_dedup.columns else None
+    )
 
     # Build gene lookup sets
     cta_map = CTA_gene_id_to_name()  # {ensembl_id: name}
@@ -274,9 +288,15 @@ def estimate_tumor_expression(
 
     # Therapy targets across all therapy types
     _all_therapy_keys = [
-        "ADC", "ADC-approved", "CAR-T", "CAR-T-approved",
-        "TCR-T", "TCR-T-approved", "bispecific-antibodies",
-        "bispecific-antibodies-approved", "radioligand",
+        "ADC",
+        "ADC-approved",
+        "CAR-T",
+        "CAR-T-approved",
+        "TCR-T",
+        "TCR-T-approved",
+        "bispecific-antibodies",
+        "bispecific-antibodies-approved",
+        "radioligand",
     ]
     gene_therapies = {}  # symbol -> set of base therapy types
     for tt in _all_therapy_keys:
@@ -338,7 +358,14 @@ def estimate_tumor_expression(
         # Categorize
         is_cta = symbol in cta_symbols
         is_surface = symbol in surf_symbols
-        therapies, therapy_supported, therapy_support_note, therapy_support_tpm, therapy_support_fraction, therapy_supporting_transcripts = _apply_therapy_support_gate(
+        (
+            therapies,
+            therapy_supported,
+            therapy_support_note,
+            therapy_support_tpm,
+            therapy_support_fraction,
+            therapy_supporting_transcripts,
+        ) = _apply_therapy_support_gate(
             symbol,
             gene_therapies.get(symbol, set()),
             fn1_support,
@@ -359,29 +386,41 @@ def estimate_tumor_expression(
         else:
             category = "other"
 
-        eid = ref_dedup.loc[symbol, "Ensembl_Gene_ID"] if "Ensembl_Gene_ID" in ref_dedup.columns else ""
+        eid = (
+            ref_dedup.loc[symbol, "Ensembl_Gene_ID"]
+            if "Ensembl_Gene_ID" in ref_dedup.columns
+            else ""
+        )
 
-        rows.append({
-            "gene_id": eid,
-            "symbol": symbol,
-            "category": category,
-            "observed_tpm": round(observed, 2),
-            "tme_expected": round(tme_ref, 2),
-            "tumor_adjusted": round(tumor_adj, 2),
-            "tcga_median": round(tcga_med, 2),
-            "tcga_percentile": round(pctile, 3),
-            "is_surface": is_surface,
-            "is_cta": is_cta,
-            "therapy_supported": therapy_supported,
-            "therapy_support_note": therapy_support_note,
-            "therapy_support_tpm": round(therapy_support_tpm, 2) if therapy_support_tpm is not None else None,
-            "therapy_support_fraction": round(therapy_support_fraction, 3) if therapy_support_fraction is not None else None,
-            "therapy_supporting_transcripts": therapy_supporting_transcripts,
-            "therapies": ", ".join(sorted(therapies)) if therapies else "",
-        })
+        rows.append(
+            {
+                "gene_id": eid,
+                "symbol": symbol,
+                "category": category,
+                "observed_tpm": round(observed, 2),
+                "tme_expected": round(tme_ref, 2),
+                "tumor_adjusted": round(tumor_adj, 2),
+                "tcga_median": round(tcga_med, 2),
+                "tcga_percentile": round(pctile, 3),
+                "is_surface": is_surface,
+                "is_cta": is_cta,
+                "therapy_supported": therapy_supported,
+                "therapy_support_note": therapy_support_note,
+                "therapy_support_tpm": round(therapy_support_tpm, 2)
+                if therapy_support_tpm is not None
+                else None,
+                "therapy_support_fraction": round(therapy_support_fraction, 3)
+                if therapy_support_fraction is not None
+                else None,
+                "therapy_supporting_transcripts": therapy_supporting_transcripts,
+                "therapies": ", ".join(sorted(therapies)) if therapies else "",
+            }
+        )
 
     result = pd.DataFrame(rows)
-    result = result.sort_values("tumor_adjusted", ascending=False).reset_index(drop=True)
+    result = result.sort_values("tumor_adjusted", ascending=False).reset_index(
+        drop=True
+    )
     return result
 
 
@@ -454,8 +493,7 @@ def estimate_tumor_expression_ranges(
     ntpm_cols = [c for c in ref_full.columns if c.startswith("nTPM_")]
     fpkm_cols = [c for c in ref_full.columns if c.startswith("FPKM_")]
     ntpm_nonrepro = [
-        c for c in ntpm_cols
-        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
+        c for c in ntpm_cols if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
     ]
 
     # TME tissues (curated immune + stromal). Met-site aware: when the
@@ -466,7 +504,9 @@ def estimate_tumor_expression_ranges(
     effective_tme_tissues = set(_TME_TISSUES)
     if met_site:
         effective_tme_tissues |= MET_SITE_TISSUE_AUGMENTATION.get(met_site, set())
-    tme_cols = [c for c in ntpm_nonrepro if c.replace("nTPM_", "") in effective_tme_tissues]
+    tme_cols = [
+        c for c in ntpm_nonrepro if c.replace("nTPM_", "") in effective_tme_tissues
+    ]
 
     # --- HK-normalize reference columns ---
     # Each column (nTPM tissue or FPKM cancer type) gets its own HK median
@@ -513,7 +553,8 @@ def estimate_tumor_expression_ranges(
         # expressed ubiquitously have a large mean.
         _mean_top_healthy = _all_healthy.apply(
             lambda row: float(row.nlargest(BREADTH_BASELINE_TOP_N).mean())
-            if row.notna().any() else 0.0,
+            if row.notna().any()
+            else 0.0,
             axis=1,
         )
         mean_top_healthy_tpm_by_symbol = _mean_top_healthy.to_dict()
@@ -564,7 +605,9 @@ def estimate_tumor_expression_ranges(
             c for c, f in top_fractions.items() if c != "tumor" and f > 0
         ]
         matched_normal_component_name = getattr(
-            top_result, "matched_normal_tissue", None,
+            top_result,
+            "matched_normal_tissue",
+            None,
         )
         if matched_normal_component_name is not None:
             matched_normal_tissue = matched_normal_component_name
@@ -574,6 +617,7 @@ def estimate_tumor_expression_ranges(
             )
         if non_tumor_components:
             from .decomposition.signature import build_signature_matrix
+
             try:
                 _genes, sym_list, matrix, _cols = build_signature_matrix(
                     non_tumor_components,
@@ -591,8 +635,7 @@ def estimate_tumor_expression_ranges(
                 # (1 - p) multiplier needed at the formula site.
                 tme_tpm_vec = matrix @ non_tumor_fracs
                 tme_bg_tpm_by_symbol = {
-                    str(sym): float(val)
-                    for sym, val in zip(sym_list, tme_tpm_vec)
+                    str(sym): float(val) for sym, val in zip(sym_list, tme_tpm_vec)
                 }
                 # #108: keep the per-compartment breakdown so target
                 # rendering can show attribution columns instead of only
@@ -618,8 +661,7 @@ def estimate_tumor_expression_ranges(
                     mn_frac = float(non_tumor_fracs[mn_idx])
                     mn_vec = matrix[:, mn_idx] * mn_frac
                     matched_normal_tpm_by_symbol = {
-                        str(sym): float(val)
-                        for sym, val in zip(sym_list, mn_vec)
+                        str(sym): float(val) for sym, val in zip(sym_list, mn_vec)
                     }
                     tme_only_vec = tme_tpm_vec - mn_vec
                     tme_only_tpm_by_symbol = {
@@ -645,6 +687,7 @@ def estimate_tumor_expression_ranges(
     tme_bg_tpm_before_refinement = None
     if tme_bg_tpm_by_symbol is not None:
         from .decomposition.subtype_refs import refine_tme_per_gene
+
         tme_bg_tpm_before_refinement = dict(tme_bg_tpm_by_symbol)
         refined_tme, subtype_refinement_provenance = refine_tme_per_gene(
             tme_bg_tpm_by_symbol=tme_bg_tpm_by_symbol,
@@ -695,9 +738,15 @@ def estimate_tumor_expression_ranges(
     cta_symbols = set(CTA_gene_id_to_name().values())
 
     _all_therapy_keys = [
-        "ADC", "ADC-approved", "CAR-T", "CAR-T-approved",
-        "TCR-T", "TCR-T-approved", "bispecific-antibodies",
-        "bispecific-antibodies-approved", "radioligand",
+        "ADC",
+        "ADC-approved",
+        "CAR-T",
+        "CAR-T-approved",
+        "TCR-T",
+        "TCR-T-approved",
+        "bispecific-antibodies",
+        "bispecific-antibodies-approved",
+        "radioligand",
     ]
     gene_therapies = {}
     for tt in _all_therapy_keys:
@@ -824,10 +873,7 @@ def estimate_tumor_expression_ranges(
                 shrunk = raw_tumor_tpm
             else:
                 w_sample = float(purity_used) / (float(purity_used) + k_shrinkage)
-                shrunk = (
-                    w_sample * raw_tumor_tpm
-                    + (1.0 - w_sample) * cohort_prior_tpm
-                )
+                shrunk = w_sample * raw_tumor_tpm + (1.0 - w_sample) * cohort_prior_tpm
             if tme_explainable:
                 shrunk = min(shrunk, observed)
             return max(0.0, shrunk)
@@ -905,7 +951,14 @@ def estimate_tumor_expression_ranges(
         # Categorize
         is_cta = symbol in cta_symbols
         is_surface = symbol in surf_symbols
-        therapies, therapy_supported, therapy_support_note, therapy_support_tpm, therapy_support_fraction, therapy_supporting_transcripts = _apply_therapy_support_gate(
+        (
+            therapies,
+            therapy_supported,
+            therapy_support_note,
+            therapy_support_tpm,
+            therapy_support_fraction,
+            therapy_supporting_transcripts,
+        ) = _apply_therapy_support_gate(
             symbol,
             gene_therapies.get(symbol, set()),
             fn1_support,
@@ -920,7 +973,11 @@ def estimate_tumor_expression_ranges(
         else:
             category = "other"
 
-        eid = ref_dedup.loc[symbol, "Ensembl_Gene_ID"] if "Ensembl_Gene_ID" in ref_dedup.columns else ""
+        eid = (
+            ref_dedup.loc[symbol, "Ensembl_Gene_ID"]
+            if "Ensembl_Gene_ID" in ref_dedup.columns
+            else ""
+        )
 
         # Per-gene matched-normal split reporting (issue #50). Zero when
         # no matched-normal component is active or the gene isn't in the
@@ -1010,9 +1067,7 @@ def estimate_tumor_expression_ranges(
         # → tumor ~23 TPM on a 28% purity sample, vs the old
         # proportional-rescale path that reported tumor = 0).
         matched_normal_over_predicted = (
-            observed > 0
-            and attribution
-            and attr_tme_total_raw > observed
+            observed > 0 and attribution and attr_tme_total_raw > observed
         )
         if matched_normal_over_predicted and top_fractions:
             for comp in list(attribution.keys()):
@@ -1023,18 +1078,13 @@ def estimate_tumor_expression_ranges(
             # rescale so compartment display sums to observed.
             scale = observed / attr_tme_total_raw
             attribution = {
-                comp: round(val * scale, 2)
-                for comp, val in attribution.items()
+                comp: round(val * scale, 2) for comp, val in attribution.items()
             }
         attr_tme_total = sum(attribution.values())
 
         # Breadth metrics (precomputed once above).
-        n_healthy_tissues_expressed = int(
-            n_healthy_tissues_by_symbol.get(symbol, 0)
-        )
-        mean_top_healthy_tpm = float(
-            mean_top_healthy_tpm_by_symbol.get(symbol, 0.0)
-        )
+        n_healthy_tissues_expressed = int(n_healthy_tissues_by_symbol.get(symbol, 0))
+        mean_top_healthy_tpm = float(mean_top_healthy_tpm_by_symbol.get(symbol, 0.0))
         # Two-part gate for "broadly expressed":
         # 1. Detected above HK_TISSUE_NTPM_THRESHOLD in at least
         #    BROAD_TISSUE_COUNT non-reproductive HPA tissues; AND
@@ -1044,7 +1094,8 @@ def estimate_tumor_expression_ranges(
         #    because low-level detection crossed the count threshold.
         tissue_enrichment_ratio = (
             max_healthy_tpm / mean_top_healthy_tpm
-            if mean_top_healthy_tpm > 0 else float("inf")
+            if mean_top_healthy_tpm > 0
+            else float("inf")
         )
         broadly_at_baseline = (
             n_healthy_tissues_expressed >= BROAD_TISSUE_COUNT
@@ -1058,12 +1109,9 @@ def estimate_tumor_expression_ranges(
         # either way; only the warning / downgrade logic treats the
         # two differently.
         amplification_fold = (
-            observed / max(max_healthy_tpm, 0.5)
-            if observed > 0 else 0.0
+            observed / max(max_healthy_tpm, 0.5) if observed > 0 else 0.0
         )
-        amplified_over_healthy = (
-            amplification_fold >= AMPLIFICATION_MIN_FOLD
-        )
+        amplified_over_healthy = amplification_fold >= AMPLIFICATION_MIN_FOLD
 
         # The reader-facing "broadly expressed" flag ONLY fires for
         # broadly-expressed-at-baseline genes that are NOT also
@@ -1087,8 +1135,7 @@ def estimate_tumor_expression_ranges(
             }
             attr_total_candidate = sum(scaled_attr.values())
             breadth_floor_candidate = (
-                max(0.0, min(1.0, 1.0 - float(purity_used)))
-                * mean_top_healthy_tpm
+                max(0.0, min(1.0, 1.0 - float(purity_used))) * mean_top_healthy_tpm
             )
             over_predicted_candidate = observed > 0 and attr_total_candidate > observed
             if over_predicted_candidate:
@@ -1145,7 +1192,9 @@ def estimate_tumor_expression_ranges(
             if tumor_fraction_fit <= 0:
                 tumor_fraction_fit = float(p_med or 0.0)
             purity_inferred_tumor = observed * tumor_fraction_fit
-            attr_tumor_tpm = max(0.0, min(purity_inferred_tumor, observed - breadth_floor))
+            attr_tumor_tpm = max(
+                0.0, min(purity_inferred_tumor, observed - breadth_floor)
+            )
         else:
             effective_non_tumor = max(attr_tme_total, breadth_floor)
             attr_tumor_tpm = max(0.0, observed - effective_non_tumor)
@@ -1183,8 +1232,8 @@ def estimate_tumor_expression_ranges(
         attr_over_predicted_flags = []
         attr_capped_flags = []
         for purity_used in [p_lo, p_med, p_hi]:
-            tumor_candidate, fraction_candidate, over_flag, capped_flag = _attribution_candidate(
-                purity_used
+            tumor_candidate, fraction_candidate, over_flag, capped_flag = (
+                _attribution_candidate(purity_used)
             )
             attr_estimates.append(float(tumor_candidate))
             attr_fraction_estimates.append(float(fraction_candidate))
@@ -1193,29 +1242,36 @@ def estimate_tumor_expression_ranges(
         attr_tumor_tpm = float(np.median(attr_estimates))
         attr_tumor_fraction = (
             float(np.median(attr_fraction_estimates))
-            if attr_fraction_estimates else 0.0
+            if attr_fraction_estimates
+            else 0.0
         )
-        attr_tumor_tpm_low = float(min(attr_estimates)) if attr_estimates else attr_tumor_tpm
-        attr_tumor_tpm_high = float(max(attr_estimates)) if attr_estimates else attr_tumor_tpm
+        attr_tumor_tpm_low = (
+            float(min(attr_estimates)) if attr_estimates else attr_tumor_tpm
+        )
+        attr_tumor_tpm_high = (
+            float(max(attr_estimates)) if attr_estimates else attr_tumor_tpm
+        )
         attr_tumor_fraction_low = (
             float(min(attr_fraction_estimates))
-            if attr_fraction_estimates else attr_tumor_fraction
+            if attr_fraction_estimates
+            else attr_tumor_fraction
         )
         attr_tumor_fraction_high = (
             float(max(attr_fraction_estimates))
-            if attr_fraction_estimates else attr_tumor_fraction
+            if attr_fraction_estimates
+            else attr_tumor_fraction
         )
         attr_support_fraction = (
             float(
                 np.mean(
                     [
-                        1.0
-                        if (tpm >= 1.0 and frac >= 0.30) else 0.0
+                        1.0 if (tpm >= 1.0 and frac >= 0.30) else 0.0
                         for tpm, frac in zip(attr_estimates, attr_fraction_estimates)
                     ]
                 )
             )
-            if attr_estimates else 0.0
+            if attr_estimates
+            else 0.0
         )
         low_purity_cap_applied = bool(low_purity_cap_applied or any(attr_capped_flags))
         matched_normal_over_predicted = bool(
@@ -1223,9 +1279,7 @@ def estimate_tumor_expression_ranges(
         )
 
         if attribution:
-            attr_top_comp, attr_top_tpm = max(
-                attribution.items(), key=lambda kv: kv[1]
-            )
+            attr_top_comp, attr_top_tpm = max(attribution.items(), key=lambda kv: kv[1])
         else:
             attr_top_comp, attr_top_tpm = "", 0.0
 
@@ -1240,130 +1294,143 @@ def estimate_tumor_expression_ranges(
         if attribution or breadth_floor > 0:
             tme_dominant = observed > 0 and attr_tumor_fraction < 0.30
         else:
-            tme_dominant = (
-                observed > 0
-                and round(tme_fold_med, 4) * sample_hk_median >= round(0.7 * observed, 4)
-            )
+            tme_dominant = observed > 0 and round(
+                tme_fold_med, 4
+            ) * sample_hk_median >= round(0.7 * observed, 4)
         low_confidence_tumor = tme_dominant or broadly_expressed
 
-        rows.append({
-            "gene_id": eid,
-            "symbol": symbol,
-            "category": category,
-            "observed_tpm": round(observed, 2),
-            "tme_fold_lo": round(tme_fold_lo, 4),
-            "tme_fold_med": round(tme_fold_med, 4),
-            "tme_fold_hi": round(tme_fold_hi, 4),
-            "max_healthy_tpm": round(max_healthy_tpm, 2),
-            "tme_explainable": bool(tme_explainable),
-            "tme_dominant": tme_dominant,
-            "low_confidence_tumor": low_confidence_tumor,
-            "cohort_prior_tpm": round(cohort_prior_tpm, 2),
-            "tme_only_tpm": round(tme_only_tpm, 2),
-            "matched_normal_tpm": round(mn_tpm, 2),
-            "matched_normal_tissue": matched_normal_tissue or "",
-            "matched_normal_fraction": round(matched_normal_fraction_global, 4),
-            "estimation_path": estimation_path,
-            # #108: per-compartment attribution. `attribution` is a dict
-            # of {compartment: attributed_tpm}; `attr_tumor_tpm` is the
-            # residual after subtracting those compartments; the top-
-            # compartment shortcut keeps the common case cheap for
-            # markdown rendering.
-            "attribution": attribution,
-            "attr_tumor_tpm": round(attr_tumor_tpm, 2),
-            "attr_tumor_fraction": round(attr_tumor_fraction, 4),
-            "attr_tumor_tpm_low": round(attr_tumor_tpm_low, 2),
-            "attr_tumor_tpm_high": round(attr_tumor_tpm_high, 2),
-            "attr_tumor_fraction_low": round(attr_tumor_fraction_low, 4),
-            "attr_tumor_fraction_high": round(attr_tumor_fraction_high, 4),
-            "attr_support_fraction": round(attr_support_fraction, 4),
-            "attr_top_compartment": attr_top_comp,
-            "attr_top_compartment_tpm": round(float(attr_top_tpm), 2),
-            # #204: True when the low-purity cap damped attr_tumor_tpm
-            # away from the raw residual; downstream renderers can
-            # tag these rows as "low-purity-capped" so clinicians know
-            # the tumor share is bounded by purity × headroom, not
-            # fitted directly.
-            "low_purity_cap_applied": bool(low_purity_cap_applied),
-            # #128: breadth metrics used by the robust attribution.
-            # `n_healthy_tissues_expressed` counts non-reproductive HPA
-            # tissues with nTPM >= HK_TISSUE_NTPM_THRESHOLD;
-            # `mean_top_healthy_tpm` is the mean of the top-N healthy
-            # tissues. `broadly_expressed` is the reader-facing flag.
-            # `breadth_floor_tpm` records the baseline that was applied
-            # (useful for debugging / understanding why a specific
-            # gene's attr_tumor was dampened).
-            "n_healthy_tissues_expressed": n_healthy_tissues_expressed,
-            "mean_top_healthy_tpm": round(mean_top_healthy_tpm, 2),
-            "tissue_enrichment_ratio": (
-                round(tissue_enrichment_ratio, 2)
-                if tissue_enrichment_ratio != float("inf") else None
-            ),
-            "broadly_at_baseline": broadly_at_baseline,
-            "broadly_expressed": broadly_expressed,
-            "amplification_fold": round(amplification_fold, 2),
-            "amplified_over_healthy": amplified_over_healthy,
-            "breadth_floor_tpm": round(breadth_floor, 2),
-            # #131: flag when the per-compartment fit over-predicted
-            # the gene's TPM. Attribution values above have been
-            # proportionally rescaled to sum to observed; raw sum is
-            # kept for audit.
-            "matched_normal_over_predicted": matched_normal_over_predicted,
-            "attribution_raw_sum_tpm": round(attr_tme_total_raw, 2),
-            # #59 item 1: smooth-muscle stromal leakage. Matched-normal
-            # references carry average fibromuscular-stroma density for
-            # the parent tissue; a biopsy with above-average SM content
-            # leaks SM-lineage signal into the tumor column. When a
-            # canonical SM marker lands with a substantial tumor share
-            # at a non-trivial TPM, annotate rather than silently treat
-            # as tumor-cell expressed. NOT a refitting override — this
-            # is strictly a reader-facing caveat that the tumor-cell
-            # story should be read with skepticism.
-            "smooth_muscle_stromal_leakage": bool(
-                symbol in _SMOOTH_MUSCLE_LINEAGE_MARKERS
-                and observed >= _SM_LEAKAGE_MIN_OBSERVED_TPM
-                and attr_tumor_fraction >= _SM_LEAKAGE_MIN_TUMOR_FRACTION
-            ),
-            # #56: post-hoc CAF / TAM reference swap provenance.
-            # ``subtype_refined`` is True when the per-gene TME
-            # contribution got reference-swapped; the *_before column
-            # carries the TPM that would have been attributed to tumor
-            # under the generic-reference path for comparison.
-            "subtype_refined": bool(
-                subtype_refinement_provenance
-                and symbol in subtype_refinement_provenance
-            ),
-            "subtype_refinement_label": (
-                subtype_refinement_provenance.get(symbol, {}).get("subtype", "")
-                if subtype_refinement_provenance else ""
-            ),
-            "tme_tpm_before_subtype_refinement": (
-                round(float(tme_bg_tpm_before_refinement.get(symbol, 0.0)), 2)
-                if tme_bg_tpm_before_refinement is not None else None
-            ),
-            **{f"est_{i+1}": round(estimates[i], 2) for i in range(9)},
-            "median_est": round(median_est, 2),
-            "pct_cancer_median": round(vs_tcga, 2) if vs_tcga is not None and not math.isinf(vs_tcga) else vs_tcga,
-            "tcga_ref_state": tcga_ref_state,
-            "tcga_cohort_median_tpm": (
-                round(tcga_cohort_tpm_raw, 3)
-                if tcga_cohort_tpm_raw is not None else None
-            ),
-            "tcga_percentile": round(tcga_percentile, 3),
-            "is_surface": is_surface,
-            "is_cta": is_cta,
-            "excluded_from_ranking": excluded_from_ranking,
-            "therapy_supported": therapy_supported,
-            "therapy_support_note": therapy_support_note,
-            "therapy_support_tpm": round(therapy_support_tpm, 2) if therapy_support_tpm is not None else None,
-            "therapy_support_fraction": round(therapy_support_fraction, 3) if therapy_support_fraction is not None else None,
-            "therapy_supporting_transcripts": therapy_supporting_transcripts,
-            "therapies": ", ".join(sorted(therapies)) if therapies else "",
-        })
+        rows.append(
+            {
+                "gene_id": eid,
+                "symbol": symbol,
+                "category": category,
+                "observed_tpm": round(observed, 2),
+                "tme_fold_lo": round(tme_fold_lo, 4),
+                "tme_fold_med": round(tme_fold_med, 4),
+                "tme_fold_hi": round(tme_fold_hi, 4),
+                "max_healthy_tpm": round(max_healthy_tpm, 2),
+                "tme_explainable": bool(tme_explainable),
+                "tme_dominant": tme_dominant,
+                "low_confidence_tumor": low_confidence_tumor,
+                "cohort_prior_tpm": round(cohort_prior_tpm, 2),
+                "tme_only_tpm": round(tme_only_tpm, 2),
+                "matched_normal_tpm": round(mn_tpm, 2),
+                "matched_normal_tissue": matched_normal_tissue or "",
+                "matched_normal_fraction": round(matched_normal_fraction_global, 4),
+                "estimation_path": estimation_path,
+                # #108: per-compartment attribution. `attribution` is a dict
+                # of {compartment: attributed_tpm}; `attr_tumor_tpm` is the
+                # residual after subtracting those compartments; the top-
+                # compartment shortcut keeps the common case cheap for
+                # markdown rendering.
+                "attribution": attribution,
+                "attr_tumor_tpm": round(attr_tumor_tpm, 2),
+                "attr_tumor_fraction": round(attr_tumor_fraction, 4),
+                "attr_tumor_tpm_low": round(attr_tumor_tpm_low, 2),
+                "attr_tumor_tpm_high": round(attr_tumor_tpm_high, 2),
+                "attr_tumor_fraction_low": round(attr_tumor_fraction_low, 4),
+                "attr_tumor_fraction_high": round(attr_tumor_fraction_high, 4),
+                "attr_support_fraction": round(attr_support_fraction, 4),
+                "attr_top_compartment": attr_top_comp,
+                "attr_top_compartment_tpm": round(float(attr_top_tpm), 2),
+                # #204: True when the low-purity cap damped attr_tumor_tpm
+                # away from the raw residual; downstream renderers can
+                # tag these rows as "low-purity-capped" so clinicians know
+                # the tumor share is bounded by purity × headroom, not
+                # fitted directly.
+                "low_purity_cap_applied": bool(low_purity_cap_applied),
+                # #128: breadth metrics used by the robust attribution.
+                # `n_healthy_tissues_expressed` counts non-reproductive HPA
+                # tissues with nTPM >= HK_TISSUE_NTPM_THRESHOLD;
+                # `mean_top_healthy_tpm` is the mean of the top-N healthy
+                # tissues. `broadly_expressed` is the reader-facing flag.
+                # `breadth_floor_tpm` records the baseline that was applied
+                # (useful for debugging / understanding why a specific
+                # gene's attr_tumor was dampened).
+                "n_healthy_tissues_expressed": n_healthy_tissues_expressed,
+                "mean_top_healthy_tpm": round(mean_top_healthy_tpm, 2),
+                "tissue_enrichment_ratio": (
+                    round(tissue_enrichment_ratio, 2)
+                    if tissue_enrichment_ratio != float("inf")
+                    else None
+                ),
+                "broadly_at_baseline": broadly_at_baseline,
+                "broadly_expressed": broadly_expressed,
+                "amplification_fold": round(amplification_fold, 2),
+                "amplified_over_healthy": amplified_over_healthy,
+                "breadth_floor_tpm": round(breadth_floor, 2),
+                # #131: flag when the per-compartment fit over-predicted
+                # the gene's TPM. Attribution values above have been
+                # proportionally rescaled to sum to observed; raw sum is
+                # kept for audit.
+                "matched_normal_over_predicted": matched_normal_over_predicted,
+                "attribution_raw_sum_tpm": round(attr_tme_total_raw, 2),
+                # #59 item 1: smooth-muscle stromal leakage. Matched-normal
+                # references carry average fibromuscular-stroma density for
+                # the parent tissue; a biopsy with above-average SM content
+                # leaks SM-lineage signal into the tumor column. When a
+                # canonical SM marker lands with a substantial tumor share
+                # at a non-trivial TPM, annotate rather than silently treat
+                # as tumor-cell expressed. NOT a refitting override — this
+                # is strictly a reader-facing caveat that the tumor-cell
+                # story should be read with skepticism.
+                "smooth_muscle_stromal_leakage": bool(
+                    symbol in _SMOOTH_MUSCLE_LINEAGE_MARKERS
+                    and observed >= _SM_LEAKAGE_MIN_OBSERVED_TPM
+                    and attr_tumor_fraction >= _SM_LEAKAGE_MIN_TUMOR_FRACTION
+                ),
+                # #56: post-hoc CAF / TAM reference swap provenance.
+                # ``subtype_refined`` is True when the per-gene TME
+                # contribution got reference-swapped; the *_before column
+                # carries the TPM that would have been attributed to tumor
+                # under the generic-reference path for comparison.
+                "subtype_refined": bool(
+                    subtype_refinement_provenance
+                    and symbol in subtype_refinement_provenance
+                ),
+                "subtype_refinement_label": (
+                    subtype_refinement_provenance.get(symbol, {}).get("subtype", "")
+                    if subtype_refinement_provenance
+                    else ""
+                ),
+                "tme_tpm_before_subtype_refinement": (
+                    round(float(tme_bg_tpm_before_refinement.get(symbol, 0.0)), 2)
+                    if tme_bg_tpm_before_refinement is not None
+                    else None
+                ),
+                **{f"est_{i + 1}": round(estimates[i], 2) for i in range(9)},
+                "median_est": round(median_est, 2),
+                "pct_cancer_median": round(vs_tcga, 2)
+                if vs_tcga is not None and not math.isinf(vs_tcga)
+                else vs_tcga,
+                "tcga_ref_state": tcga_ref_state,
+                "tcga_cohort_median_tpm": (
+                    round(tcga_cohort_tpm_raw, 3)
+                    if tcga_cohort_tpm_raw is not None
+                    else None
+                ),
+                "tcga_percentile": round(tcga_percentile, 3),
+                "is_surface": is_surface,
+                "is_cta": is_cta,
+                "excluded_from_ranking": excluded_from_ranking,
+                "therapy_supported": therapy_supported,
+                "therapy_support_note": therapy_support_note,
+                "therapy_support_tpm": round(therapy_support_tpm, 2)
+                if therapy_support_tpm is not None
+                else None,
+                "therapy_support_fraction": round(therapy_support_fraction, 3)
+                if therapy_support_fraction is not None
+                else None,
+                "therapy_supporting_transcripts": therapy_supporting_transcripts,
+                "therapies": ", ".join(sorted(therapies)) if therapies else "",
+            }
+        )
 
     result = pd.DataFrame(rows)
     if not result.empty:
-        result = result.sort_values("median_est", ascending=False).reset_index(drop=True)
+        result = result.sort_values("median_est", ascending=False).reset_index(
+            drop=True
+        )
     return result
 
 
@@ -1443,8 +1510,7 @@ def plot_matched_normal_attribution(
             other_from_attr = sum(
                 _safe_float_value(value)
                 for name, value in attr.items()
-                if str(name) != "tumor"
-                and not str(name).startswith("matched_normal")
+                if str(name) != "tumor" and not str(name).startswith("matched_normal")
             )
             matched_value = max(matched_value, matched_from_attr)
             other_value = max(other_value, other_from_attr)
@@ -1476,7 +1542,13 @@ def plot_matched_normal_attribution(
 
     ax.barh(y, tumor_attr, color="#e74c3c", label="tumor cells")
     ax.barh(y, mn, left=tumor_attr, color="#3498db", label="matched-normal tissue")
-    ax.barh(y, tme, left=tumor_attr + mn, color="#95a5a6", label="other TME (stromal/immune)")
+    ax.barh(
+        y,
+        tme,
+        left=tumor_attr + mn,
+        color="#95a5a6",
+        label="other TME (stromal/immune)",
+    )
 
     labels = []
     for _, row in sub.iterrows():
@@ -1506,9 +1578,19 @@ def plot_matched_normal_attribution(
         priors = sub["cohort_prior_tpm"].astype(float).values
         for i, prior in enumerate(priors):
             if prior > 0:
-                ax.plot([prior], [i], marker="|", color="black", markersize=14, markeredgewidth=2)
+                ax.plot(
+                    [prior],
+                    [i],
+                    marker="|",
+                    color="black",
+                    markersize=14,
+                    markeredgewidth=2,
+                )
 
-    ax.set_xlabel("Bulk TPM attribution (stacked: tumor + matched-normal + other background)", fontsize=10)
+    ax.set_xlabel(
+        "Bulk TPM attribution (stacked: tumor + matched-normal + other background)",
+        fontsize=10,
+    )
     ax.set_xscale("symlog", linthresh=1.0)
     ax.grid(axis="x", alpha=0.2)
     ax.legend(loc="lower right", fontsize=9, framealpha=0.9)
@@ -1518,8 +1600,11 @@ def plot_matched_normal_attribution(
     # transcriptome.
     if sample_tpm_by_symbol is not None:
         from .plot_reference_lines import add_p90_reference_line
+
         add_p90_reference_line(
-            ax, sample_tpm_by_symbol, orientation="vertical",
+            ax,
+            sample_tpm_by_symbol,
+            orientation="vertical",
         )
 
     mn_tissue = ""
@@ -1650,14 +1735,17 @@ def plot_target_attribution(
     ax.barh(y, tumor_attr, color="#e74c3c", label="tumor")
     left = tumor_attr.copy()
     for comp in compartments:
-        vals = np.array([
-            float(attr.get(comp, 0.0)) if isinstance(attr, dict) else 0.0
-            for attr in sub["attribution"]
-        ])
+        vals = np.array(
+            [
+                float(attr.get(comp, 0.0)) if isinstance(attr, dict) else 0.0
+                for attr in sub["attribution"]
+            ]
+        )
         if not np.any(vals > 0):
             continue
-        ax.barh(y, vals, left=left, color=comp_colors[comp],
-                label=comp.replace("_", " "))
+        ax.barh(
+            y, vals, left=left, color=comp_colors[comp], label=comp.replace("_", " ")
+        )
         left = left + vals
 
     labels = []
@@ -1688,13 +1776,17 @@ def plot_target_attribution(
     ax.set_title(
         f"Target source breakdown — {cat_label} — {cancer_code}\n"
         "Selected to show clinically relevant genes plus mixed/background cases",
-        fontsize=10, fontweight="bold",
+        fontsize=10,
+        fontweight="bold",
     )
     # Sample-wide 90th-percentile reference line (faint dashed).
     if sample_tpm_by_symbol is not None:
         from .plot_reference_lines import add_p90_reference_line
+
         add_p90_reference_line(
-            ax, sample_tpm_by_symbol, orientation="vertical",
+            ax,
+            sample_tpm_by_symbol,
+            orientation="vertical",
         )
 
     plt.tight_layout()
@@ -1759,8 +1851,8 @@ def plot_subtype_attribution(
     fig, ax = plt.subplots(figsize=figsize)
 
     tumor_color = "#e74c3c"
-    tme_color_before = "#95a5a6"   # grey — generic reference
-    tme_color_after = "#f39c12"    # orange — tumor-activated reference
+    tme_color_before = "#95a5a6"  # grey — generic reference
+    tme_color_after = "#f39c12"  # orange — tumor-activated reference
 
     row_positions = []
     labels = []
@@ -1774,11 +1866,9 @@ def plot_subtype_attribution(
         y_before = 2 * i
         y_after = 2 * i + 0.75
         ax.barh(y_before, tumor_before, color=tumor_color)
-        ax.barh(y_before, tme_before, left=tumor_before,
-                color=tme_color_before)
+        ax.barh(y_before, tme_before, left=tumor_before, color=tme_color_before)
         ax.barh(y_after, tumor_after, color=tumor_color)
-        ax.barh(y_after, tme_after, left=tumor_after,
-                color=tme_color_after)
+        ax.barh(y_after, tme_after, left=tumor_after, color=tme_color_after)
 
         sym = str(row["symbol"])
         label_subtype = row.get("subtype_refinement_label", "") or "refined"
@@ -1797,12 +1887,11 @@ def plot_subtype_attribution(
     ax.grid(axis="x", alpha=0.2)
 
     import matplotlib.patches as mpatches
+
     handles = [
         mpatches.Patch(color=tumor_color, label="tumor"),
-        mpatches.Patch(color=tme_color_before,
-                       label="background — generic reference"),
-        mpatches.Patch(color=tme_color_after,
-                       label="background — refined reference"),
+        mpatches.Patch(color=tme_color_before, label="background — generic reference"),
+        mpatches.Patch(color=tme_color_after, label="background — refined reference"),
     ]
     ax.legend(handles=handles, loc="lower right", fontsize=8, framealpha=0.9)
     cat_label = {
@@ -1814,7 +1903,9 @@ def plot_subtype_attribution(
         f"Subtype-reference correction audit — {cat_label}\n"
         "Audit-only view: shows genes whose background estimate changed "
         "after subtype-specific refinement.",
-        fontsize=9, fontweight="bold", loc="left",
+        fontsize=9,
+        fontweight="bold",
+        loc="left",
     )
 
     plt.tight_layout()
@@ -1886,13 +1977,16 @@ def plot_tumor_expression_ranges(
         figsize = (14, sum(panel_heights) + 1.5)
 
     fig, axes = plt.subplots(
-        n_panels, 2, figsize=figsize, squeeze=False,
+        n_panels,
+        2,
+        figsize=figsize,
+        squeeze=False,
         gridspec_kw={
             "width_ratios": [3, 1],
             "height_ratios": panel_counts,
         },
     )
-    est_cols = [f"est_{i+1}" for i in range(9)]
+    est_cols = [f"est_{i + 1}" for i in range(9)]
 
     # Adaptive font/marker sizes: larger when fewer genes
     base_font = min(12, max(8, int(200 / max(total_genes, 1))))
@@ -1907,8 +2001,16 @@ def plot_tumor_expression_ranges(
 
         if sub.empty:
             ax_strip.set_title(cat_titles.get(cat, cat))
-            ax_strip.text(0.5, 0.5, "No genes", ha="center", va="center",
-                          transform=ax_strip.transAxes, fontsize=base_font, color="gray")
+            ax_strip.text(
+                0.5,
+                0.5,
+                "No genes",
+                ha="center",
+                va="center",
+                transform=ax_strip.transAxes,
+                fontsize=base_font,
+                color="gray",
+            )
             ax_pct.set_visible(False)
             continue
 
@@ -1921,13 +2023,27 @@ def plot_tumor_expression_ranges(
             vals_plot = [max(v, 0.01) for v in vals]
             median_v = max(row["median_est"], 0.01)
 
-            ax_strip.scatter(vals_plot, [i] * 9, color=color, alpha=0.4,
-                             s=marker_s, zorder=3)
-            ax_strip.scatter([median_v], [i], color=color, marker="D",
-                             s=diamond_s, edgecolors="black", linewidths=0.7,
-                             zorder=5)
-            ax_strip.plot([min(vals_plot), max(vals_plot)], [i, i],
-                          color=color, alpha=0.3, linewidth=2.5, zorder=2)
+            ax_strip.scatter(
+                vals_plot, [i] * 9, color=color, alpha=0.4, s=marker_s, zorder=3
+            )
+            ax_strip.scatter(
+                [median_v],
+                [i],
+                color=color,
+                marker="D",
+                s=diamond_s,
+                edgecolors="black",
+                linewidths=0.7,
+                zorder=5,
+            )
+            ax_strip.plot(
+                [min(vals_plot), max(vals_plot)],
+                [i, i],
+                color=color,
+                alpha=0.3,
+                linewidth=2.5,
+                zorder=2,
+            )
 
         labels = []
         for _, row in sub.iterrows():
@@ -1940,8 +2056,12 @@ def plot_tumor_expression_ranges(
         ax_strip.set_yticklabels(labels, fontsize=base_font)
         ax_strip.set_xscale("log")
         ax_strip.set_xlabel("Tumor-specific expression (TPM)", fontsize=base_font)
-        ax_strip.set_title(cat_titles.get(cat, cat), fontsize=base_font + 2,
-                           fontweight="bold", color=color)
+        ax_strip.set_title(
+            cat_titles.get(cat, cat),
+            fontsize=base_font + 2,
+            fontweight="bold",
+            color=color,
+        )
         ax_strip.set_ylim(-0.5, len(sub) - 0.5)
         ax_strip.grid(axis="x", alpha=0.2)
 
@@ -1950,9 +2070,16 @@ def plot_tumor_expression_ranges(
             pct = row.get("pct_cancer_median")
             if pct is None or (isinstance(pct, float) and np.isnan(pct)):
                 # Gene not in TCGA reference for this cancer type
-                ax_pct.text(0.5, i, "0 in TCGA", fontsize=base_font - 2,
-                            color="gray", ha="center", va="center",
-                            transform=ax_pct.get_yaxis_transform())
+                ax_pct.text(
+                    0.5,
+                    i,
+                    "0 in TCGA",
+                    fontsize=base_font - 2,
+                    color="gray",
+                    ha="center",
+                    va="center",
+                    transform=ax_pct.get_yaxis_transform(),
+                )
                 continue
             if isinstance(pct, float) and np.isinf(pct):
                 # Sample expresses the gene but the TCGA cohort reference is
@@ -1961,19 +2088,38 @@ def plot_tumor_expression_ranges(
                 # the row with white text inside so the reader can't mistake
                 # it for a tissue-decomposition claim or a general property
                 # of the cancer type.
-                ax_pct.axhspan(i - 0.35, i + 0.35, color="#6b0000",
-                               alpha=1.0, zorder=3, linewidth=0)
-                ax_pct.text(0.5, i, f"absent in TCGA {cancer_code}",
-                            fontsize=base_font - 2, color="white",
-                            fontweight="bold", ha="center", va="center",
-                            zorder=4,
-                            transform=ax_pct.get_yaxis_transform())
+                ax_pct.axhspan(
+                    i - 0.35,
+                    i + 0.35,
+                    color="#6b0000",
+                    alpha=1.0,
+                    zorder=3,
+                    linewidth=0,
+                )
+                ax_pct.text(
+                    0.5,
+                    i,
+                    f"absent in TCGA {cancer_code}",
+                    fontsize=base_font - 2,
+                    color="white",
+                    fontweight="bold",
+                    ha="center",
+                    va="center",
+                    zorder=4,
+                    transform=ax_pct.get_yaxis_transform(),
+                )
                 continue
             bar_color = color if pct >= 0.5 else "#d4a017"
             ax_pct.barh(i, max(pct, 0.001), color=bar_color, alpha=0.7, height=0.6)
             lbl = f"{pct:.1f}\u00d7" if pct < 10 else f"{pct:.0f}\u00d7"
-            ax_pct.text(max(pct, 0.001) * 1.2, i, lbl, fontsize=base_font - 1,
-                        va="center", color="black")
+            ax_pct.text(
+                max(pct, 0.001) * 1.2,
+                i,
+                lbl,
+                fontsize=base_font - 1,
+                va="center",
+                color="black",
+            )
 
         ax_pct.set_xscale("log")
         ax_pct.axvline(1.0, color="black", linestyle="--", alpha=0.4, linewidth=1)
@@ -1988,7 +2134,9 @@ def plot_tumor_expression_ranges(
         f"Purity-adjusted tumor expression \u2014 {cancer_code}\n"
         f"Purity: {p_lo:.0%} / {p_med:.0%} / {p_hi:.0%} (low / est / high)\n"
         f"Values are deconvolved estimates \u2014 may overstate expression at low purity",
-        fontsize=10, fontweight="bold", y=1.04,
+        fontsize=10,
+        fontweight="bold",
+        y=1.04,
     )
     plt.tight_layout()
 
@@ -2055,8 +2203,7 @@ def plot_purity_adjusted_targets(
     ax1.barh(y, selected["tumor_adjusted"], color=colors, alpha=0.8, height=0.7)
     # Overlay observed as dots
     ax1.scatter(
-        selected["observed_tpm"], y,
-        color="black", s=20, zorder=5, label="observed TPM"
+        selected["observed_tpm"], y, color="black", s=20, zorder=5, label="observed TPM"
     )
     ax1.set_yticks(y)
     labels = []
@@ -2070,7 +2217,9 @@ def plot_purity_adjusted_targets(
     ax1.set_yticklabels(labels, fontsize=8)
     ax1.set_xlabel("Expression (TPM)")
     ax1.set_xscale("symlog", linthresh=1)
-    ax1.set_title(f"Purity-adjusted tumor expression \u2014 {cancer_code} (purity={purity:.0%})")
+    ax1.set_title(
+        f"Purity-adjusted tumor expression \u2014 {cancer_code} (purity={purity:.0%})"
+    )
     ax1.invert_yaxis()
     ax1.legend(fontsize=8, loc="lower right")
     try:
@@ -2097,6 +2246,7 @@ def plot_purity_adjusted_targets(
 
     # Category legend
     from matplotlib.patches import Patch
+
     legend_elements = [
         Patch(facecolor="#e74c3c", label="CTA (vaccination target)"),
         Patch(facecolor="#3498db", label="Therapy target (in trials)"),

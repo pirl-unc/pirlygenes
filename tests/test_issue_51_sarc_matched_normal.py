@@ -31,25 +31,37 @@ def test_sarc_parent_without_subtype_has_no_matched_normal():
 
 
 def test_sarc_lms_subtype_picks_smooth_muscle():
-    assert matched_normal_component(
-        "SARC", winning_subtype="SARC_LMS",
-    ) == "matched_normal_smooth_muscle"
+    assert (
+        matched_normal_component(
+            "SARC",
+            winning_subtype="SARC_LMS",
+        )
+        == "matched_normal_smooth_muscle"
+    )
 
 
 def test_sarc_liposarcoma_subtypes_pick_adipose():
     for code in ("SARC_DDLPS", "SARC_WDLPS", "SARC_MYXLPS", "SARC_LPS_UNSPEC"):
-        assert matched_normal_component(
-            "SARC", winning_subtype=code,
-        ) == "matched_normal_adipose_tissue", code
+        assert (
+            matched_normal_component(
+                "SARC",
+                winning_subtype=code,
+            )
+            == "matched_normal_adipose_tissue"
+        ), code
 
 
 def test_sarc_unassigned_subtypes_have_no_matched_normal():
     """UPS / MFS / synovial / angiosarcoma / MPNST have no defensible
     benign reference in HPA and must stay on the unassigned path."""
     for code in ("SARC_UPS", "SARC_MYXFIB", "SARC_SYN", "SARC_ANGIO", "SARC_MPNST"):
-        assert matched_normal_component(
-            "SARC", winning_subtype=code,
-        ) is None, code
+        assert (
+            matched_normal_component(
+                "SARC",
+                winning_subtype=code,
+            )
+            is None
+        ), code
 
 
 def test_epithelial_primaries_unaffected_by_subtype_override():
@@ -57,9 +69,13 @@ def test_epithelial_primaries_unaffected_by_subtype_override():
     regardless of winning_subtype (which wouldn't be set for
     non-mixture parents anyway, but defend the invariant)."""
     assert matched_normal_component("PRAD") == "matched_normal_prostate"
-    assert matched_normal_component(
-        "PRAD", winning_subtype=None,
-    ) == "matched_normal_prostate"
+    assert (
+        matched_normal_component(
+            "PRAD",
+            winning_subtype=None,
+        )
+        == "matched_normal_prostate"
+    )
 
 
 def test_get_template_components_wires_subtype_through():
@@ -71,11 +87,15 @@ def test_get_template_components_wires_subtype_through():
         f"SARC parent without subtype should not add matched-normal: {comps_parent}"
     )
     comps_lms = get_template_components(
-        "solid_primary", "SARC", winning_subtype="SARC_LMS",
+        "solid_primary",
+        "SARC",
+        winning_subtype="SARC_LMS",
     )
     assert "matched_normal_smooth_muscle" in comps_lms
     comps_lps = get_template_components(
-        "solid_primary", "SARC", winning_subtype="SARC_LPS_UNSPEC",
+        "solid_primary",
+        "SARC",
+        winning_subtype="SARC_LPS_UNSPEC",
     )
     assert "matched_normal_adipose_tissue" in comps_lps
 
@@ -87,7 +107,10 @@ def test_deprecated_epithelial_alias_still_works():
     name)."""
     assert epithelial_matched_normal_component("PRAD") == "matched_normal_prostate"
     assert epithelial_matched_normal_component("SARC") is None
-    assert epithelial_matched_normal_component("SARC_LMS") == "matched_normal_smooth_muscle"
+    assert (
+        epithelial_matched_normal_component("SARC_LMS")
+        == "matched_normal_smooth_muscle"
+    )
 
 
 def test_matched_normal_map_contains_expected_codes():
@@ -95,7 +118,13 @@ def test_matched_normal_map_contains_expected_codes():
     SARC subtypes must be present."""
     for code in ("BRCA", "PRAD", "COAD", "LUAD"):
         assert code in MATCHED_NORMAL_TISSUE
-    for code in ("SARC_LMS", "SARC_DDLPS", "SARC_WDLPS", "SARC_MYXLPS", "SARC_LPS_UNSPEC"):
+    for code in (
+        "SARC_LMS",
+        "SARC_DDLPS",
+        "SARC_WDLPS",
+        "SARC_MYXLPS",
+        "SARC_LPS_UNSPEC",
+    ):
         assert code in MATCHED_NORMAL_TISSUE
     # Parent SARC must remain absent so the mixture-cohort path owns it.
     assert "SARC" not in MATCHED_NORMAL_TISSUE

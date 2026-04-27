@@ -37,11 +37,13 @@ def test_guess_gene_cols_and_pick_genes():
 
 
 def test_purity_ci_phrase_uses_text_not_warning_icon():
-    phrase = cli_mod._purity_ci_phrase({
-        "overall_estimate": 0.50,
-        "overall_lower": 0.10,
-        "overall_upper": 1.00,
-    })
+    phrase = cli_mod._purity_ci_phrase(
+        {
+            "overall_estimate": 0.50,
+            "overall_lower": 0.10,
+            "overall_upper": 1.00,
+        }
+    )
     assert "low confidence" in phrase
     assert "\u26a0" not in phrase
 
@@ -68,7 +70,9 @@ def test_plot_gene_expression_smoke(monkeypatch, tmp_path):
             "category": ["A", "A"],
         }
     )
-    monkeypatch.setattr(plot_strip_mod, "prepare_gene_expr_df", lambda *a, **k: prepared.copy())
+    monkeypatch.setattr(
+        plot_strip_mod, "prepare_gene_expr_df", lambda *a, **k: prepared.copy()
+    )
     monkeypatch.setattr(plot_strip_mod, "adjust_text", lambda *a, **k: None)
 
     class FakeAx:
@@ -103,6 +107,7 @@ def test_plot_gene_expression_smoke(monkeypatch, tmp_path):
 
     fake_cat = FakeCat()
     import pirlygenes.plot_strip as _ps
+
     monkeypatch.setattr(_ps.sns, "catplot", lambda **kwargs: fake_cat)
 
     out_path = tmp_path / "plot.png"
@@ -133,38 +138,92 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     mds_calls = []
     tissue_calls = []
     safety_calls = []
-    monkeypatch.setattr(cli_mod, "load_expression_data", lambda *a, **k: pd.DataFrame({"x": [1]}))
-    monkeypatch.setattr(cli_mod, "plot_gene_expression", lambda *a, **k: calls.append(k))
-    monkeypatch.setattr(cli_mod, "plot_sample_vs_cancer", lambda *a, **k: scatter_calls.append(k))
-    monkeypatch.setattr(cli_mod, "plot_therapy_target_tissues", lambda *a, **k: tissue_calls.append(k))
-    monkeypatch.setattr(cli_mod, "plot_therapy_target_safety", lambda *a, **k: safety_calls.append(k))
+    monkeypatch.setattr(
+        cli_mod, "load_expression_data", lambda *a, **k: pd.DataFrame({"x": [1]})
+    )
+    monkeypatch.setattr(
+        cli_mod, "plot_gene_expression", lambda *a, **k: calls.append(k)
+    )
+    monkeypatch.setattr(
+        cli_mod, "plot_sample_vs_cancer", lambda *a, **k: scatter_calls.append(k)
+    )
+    monkeypatch.setattr(
+        cli_mod, "plot_therapy_target_tissues", lambda *a, **k: tissue_calls.append(k)
+    )
+    monkeypatch.setattr(
+        cli_mod, "plot_therapy_target_safety", lambda *a, **k: safety_calls.append(k)
+    )
     # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
     # removed from the default plot set (polish/4.40.1); skip
     # monkeypatching them — they're no longer imported by cli.
-    monkeypatch.setattr(cli_mod, "plot_cancer_type_mds", lambda *a, **k: mds_calls.append(k))
-    monkeypatch.setattr(cli_mod, "therapy_target_gene_id_to_name", lambda t: {"ENSG_MOCK": t})
-    monkeypatch.setattr(cli_mod, "pMHC_TCE_target_gene_id_to_name", lambda: {"ENSG_PMHC": "PMHC"})
-    monkeypatch.setattr(cli_mod, "surface_TCE_target_gene_id_to_name", lambda: {"ENSG_SURF": "SURF"})
+    monkeypatch.setattr(
+        cli_mod, "plot_cancer_type_mds", lambda *a, **k: mds_calls.append(k)
+    )
+    monkeypatch.setattr(
+        cli_mod, "therapy_target_gene_id_to_name", lambda t: {"ENSG_MOCK": t}
+    )
+    monkeypatch.setattr(
+        cli_mod, "pMHC_TCE_target_gene_id_to_name", lambda: {"ENSG_PMHC": "PMHC"}
+    )
+    monkeypatch.setattr(
+        cli_mod, "surface_TCE_target_gene_id_to_name", lambda: {"ENSG_SURF": "SURF"}
+    )
     mock_analysis = {
-        "cancer_type": "PRAD", "cancer_name": "Prostate", "cancer_score": 0.9,
+        "cancer_type": "PRAD",
+        "cancer_name": "Prostate",
+        "cancer_score": 0.9,
         "top_cancers": [("PRAD", 0.9)],
         "purity": {
-            "overall_estimate": 0.1, "overall_lower": 0.05, "overall_upper": 0.15,
-            "components": {"stromal": {"enrichment": 4.0}, "immune": {"enrichment": 2.0}},
+            "overall_estimate": 0.1,
+            "overall_lower": 0.05,
+            "overall_upper": 0.15,
+            "components": {
+                "stromal": {"enrichment": 4.0},
+                "immune": {"enrichment": 2.0},
+            },
         },
         "tissue_scores": [("prostate", 0.9, 20)],
         "mhc1": {"HLA-A": 100, "HLA-B": 200, "HLA-C": 150, "B2M": 3000},
         "mhc2": {},
     }
     monkeypatch.setattr(cli_mod, "analyze_sample", lambda *a, **k: mock_analysis)
-    monkeypatch.setattr(cli_mod, "assess_sample_quality", lambda *a, **k: {
-        "degradation": {"mt_fraction": 0.05, "rp_fraction": 0.08, "long_short_ratio": 0.95, "n_mt_found": 13, "n_long_found": 18, "matched_tissue": "prostate", "baseline_mt": 0.29, "baseline_rp": 0.21, "mt_fold": 0.17, "rp_fold": 0.38, "level": "normal", "message": "No degradation"},
-        "culture": {"stress_score": 0.5, "tme_mean_tpm": 50.0, "tme_absent": False, "top_stress_genes": [], "n_tme_found": 15, "level": "normal", "message": "No culture signal"},
-        "flags": ["No quality concerns detected"],
-        "has_issues": False,
-    })
-    monkeypatch.setattr(cli_mod, "plot_sample_summary", lambda *a, **k: (None, mock_analysis))
-    monkeypatch.setattr(cli_mod, "plot_tumor_purity", lambda *a, **k: (None, mock_analysis["purity"]))
+    monkeypatch.setattr(
+        cli_mod,
+        "assess_sample_quality",
+        lambda *a, **k: {
+            "degradation": {
+                "mt_fraction": 0.05,
+                "rp_fraction": 0.08,
+                "long_short_ratio": 0.95,
+                "n_mt_found": 13,
+                "n_long_found": 18,
+                "matched_tissue": "prostate",
+                "baseline_mt": 0.29,
+                "baseline_rp": 0.21,
+                "mt_fold": 0.17,
+                "rp_fold": 0.38,
+                "level": "normal",
+                "message": "No degradation",
+            },
+            "culture": {
+                "stress_score": 0.5,
+                "tme_mean_tpm": 50.0,
+                "tme_absent": False,
+                "top_stress_genes": [],
+                "n_tme_found": 15,
+                "level": "normal",
+                "message": "No culture signal",
+            },
+            "flags": ["No quality concerns detected"],
+            "has_issues": False,
+        },
+    )
+    monkeypatch.setattr(
+        cli_mod, "plot_sample_summary", lambda *a, **k: (None, mock_analysis)
+    )
+    monkeypatch.setattr(
+        cli_mod, "plot_tumor_purity", lambda *a, **k: (None, mock_analysis["purity"])
+    )
     decomp_kwargs = {}
     monkeypatch.setattr(
         cli_mod,
@@ -172,25 +231,36 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
         lambda *a, **k: decomp_kwargs.update(k) or [],
     )
     monkeypatch.setattr(cli_mod, "plot_decomposition_composition", lambda *a, **k: None)
-    monkeypatch.setattr(cli_mod, "plot_decomposition_component_breakdown", lambda *a, **k: None)
+    monkeypatch.setattr(
+        cli_mod, "plot_decomposition_component_breakdown", lambda *a, **k: None
+    )
     monkeypatch.setattr(cli_mod, "plot_decomposition_candidates", lambda *a, **k: None)
 
     report_calls = []
     target_report_calls = []
-    monkeypatch.setattr(cli_mod, "_generate_text_reports", lambda *a, **k: report_calls.append(True))
+    monkeypatch.setattr(
+        cli_mod, "_generate_text_reports", lambda *a, **k: report_calls.append(True)
+    )
     monkeypatch.setattr(
         cli_mod,
         "_build_target_report",
-        lambda *a, **k: target_report_calls.append(True) or "# Therapeutic Target Analysis\n\nmock",
+        lambda *a, **k: target_report_calls.append(True)
+        or "# Therapeutic Target Analysis\n\nmock",
     )
-    monkeypatch.setattr(cli_mod, "get_embedding_feature_metadata", lambda **k: {
-        "method": "hierarchy",
-        "feature_kind": "hierarchical_scores",
-        "n_features": 5,
-        "n_types": 2,
-        "families": ["PROSTATE"],
-    })
-    monkeypatch.setattr(cli_mod, "estimate_tumor_expression_ranges", lambda *a, **k: pd.DataFrame())
+    monkeypatch.setattr(
+        cli_mod,
+        "get_embedding_feature_metadata",
+        lambda **k: {
+            "method": "hierarchy",
+            "feature_kind": "hierarchical_scores",
+            "n_features": 5,
+            "n_types": 2,
+            "families": ["PROSTATE"],
+        },
+    )
+    monkeypatch.setattr(
+        cli_mod, "estimate_tumor_expression_ranges", lambda *a, **k: pd.DataFrame()
+    )
     monkeypatch.setattr(cli_mod, "plot_tumor_expression_ranges", lambda *a, **k: None)
 
     out_dir = str(tmp_path / "test-output")
@@ -250,7 +320,9 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert not (tmp_path / "test-output" / "out-targets.md").exists()
     assert not (tmp_path / "test-output" / "out-provenance.md").exists()
     assert not (tmp_path / "test-output" / "out-brief.md").exists()
-    params = json.loads((tmp_path / "test-output" / "out-analysis-parameters.json").read_text())
+    params = json.loads(
+        (tmp_path / "test-output" / "out-analysis-parameters.json").read_text()
+    )
     assert "tumor_purity" in params
     assert "decomposition" in params
     assert params["selected_sample_mode"] == "solid"
@@ -488,7 +560,10 @@ def test_generate_text_reports_handles_missing_lineage_summary(tmp_path):
     assert "SARC (Sarcoma)" in detailed
     assert "UCS (Uterine Carcinosarcoma)" in detailed
     assert "top-level cancer-code hypothesis" in detailed
-    assert "Lineage** is a purity estimate derived only from the curated lineage genes" in detailed
+    assert (
+        "Lineage** is a purity estimate derived only from the curated lineage genes"
+        in detailed
+    )
     assert "UCS / met_bone" not in detailed
 
 
@@ -536,7 +611,9 @@ def test_summarize_sample_call_keeps_primary_site_for_weak_primary_fit():
         ),
     ]
 
-    summary = cli_mod._summarize_sample_call(analysis, decomp_results, sample_mode="solid")
+    summary = cli_mod._summarize_sample_call(
+        analysis, decomp_results, sample_mode="solid"
+    )
 
     assert summary["site_indeterminate"] is False
     assert summary["reported_context"] == "primary"
@@ -628,6 +705,7 @@ def test_generate_text_reports_mentions_analysis_constraints(tmp_path):
 
 def test_matched_normal_attribution_uses_decomposition_residual():
     import matplotlib
+
     matplotlib.use("Agg")
 
     ranges_df = pd.DataFrame(
@@ -735,7 +813,10 @@ def test_generate_target_report_is_mode_aware(tmp_path):
     pure_prefix = str(tmp_path / "pure")
     cli_mod._generate_target_report(
         ranges_df,
-        {"sample_mode": "pure", "mhc1": {"HLA-A": 100, "HLA-B": 100, "HLA-C": 100, "B2M": 500}},
+        {
+            "sample_mode": "pure",
+            "mhc1": {"HLA-A": 100, "HLA-B": 100, "HLA-C": 100, "B2M": 500},
+        },
         pure_prefix,
         "PRAD",
         purity,
@@ -747,7 +828,10 @@ def test_generate_target_report_is_mode_aware(tmp_path):
     heme_prefix = str(tmp_path / "heme-targets")
     cli_mod._generate_target_report(
         ranges_df,
-        {"sample_mode": "heme", "mhc1": {"HLA-A": 100, "HLA-B": 100, "HLA-C": 100, "B2M": 500}},
+        {
+            "sample_mode": "heme",
+            "mhc1": {"HLA-A": 100, "HLA-B": 100, "HLA-C": 100, "B2M": 500},
+        },
         heme_prefix,
         "DLBC",
         purity,
@@ -859,7 +943,10 @@ def test_generate_target_report_adds_tumor_context_and_landscape_summary(tmp_pat
     text = (tmp_path / "coad-targets.md").read_text()
     assert "## Tumor context for interpretation" in text
     assert "## Therapy landscape at a glance" in text
-    assert "provisional between **COAD (Colon Adenocarcinoma)** and **READ (Rectum Adenocarcinoma)**" in text
+    assert (
+        "provisional between **COAD (Colon Adenocarcinoma)** and **READ (Rectum Adenocarcinoma)**"
+        in text
+    )
     assert "colon-like matched-normal reference" in text
     assert "CEACAM5" in text
     assert "MAGEA4" in text
@@ -870,11 +957,27 @@ def test_decomposition_plots_accept_reader_facing_titles_and_labels():
     best = SimpleNamespace(
         cancer_type="SARC",
         template="met_bone",
-        fractions={"tumor": 0.80, "osteoblast": 0.09, "marrow_stroma": 0.09, "T_cell": 0.01, "endothelial": 0.01},
+        fractions={
+            "tumor": 0.80,
+            "osteoblast": 0.09,
+            "marrow_stroma": 0.09,
+            "T_cell": 0.01,
+            "endothelial": 0.01,
+        },
         component_trace=pd.DataFrame(
             [
-                {"component": "osteoblast", "fraction": 0.09, "marker_score": 1.2, "n_markers": 4},
-                {"component": "marrow_stroma", "fraction": 0.09, "marker_score": 1.1, "n_markers": 4},
+                {
+                    "component": "osteoblast",
+                    "fraction": 0.09,
+                    "marker_score": 1.2,
+                    "n_markers": 4,
+                },
+                {
+                    "component": "marrow_stroma",
+                    "fraction": 0.09,
+                    "marker_score": 1.1,
+                    "n_markers": 4,
+                },
             ]
         ),
     )
@@ -882,7 +985,10 @@ def test_decomposition_plots_accept_reader_facing_titles_and_labels():
         best,
         title="Sample composition — SARC (Sarcoma) (host context indeterminate)",
     )
-    assert fig.axes[0].get_title() == "Sample composition — SARC (Sarcoma) (host context indeterminate)"
+    assert (
+        fig.axes[0].get_title()
+        == "Sample composition — SARC (Sarcoma) (host context indeterminate)"
+    )
 
     row = SimpleNamespace(
         purity=0.80,
@@ -898,7 +1004,10 @@ def test_decomposition_plots_accept_reader_facing_titles_and_labels():
         [row],
         labels=["SARC (Sarcoma) bone-associated host context"],
     )
-    assert fig2.axes[0].get_yticklabels()[0].get_text() == "SARC (Sarcoma) bone-associated host context"
+    assert (
+        fig2.axes[0].get_yticklabels()[0].get_text()
+        == "SARC (Sarcoma) bone-associated host context"
+    )
 
 
 def test_generate_target_report_filters_unreliable_rows_from_headlines(tmp_path):
@@ -1040,7 +1149,9 @@ def test_generate_target_report_filters_unreliable_rows_from_headlines(tmp_path)
     )
 
     text = (tmp_path / "filtered-targets.md").read_text()
-    context_section = text.split("## Therapy landscape at a glance", 1)[1].split("##", 1)[0]
+    context_section = text.split("## Therapy landscape at a glance", 1)[1].split(
+        "##", 1
+    )[0]
     assert "GOOD1" in context_section
     assert "BAD_TME" not in context_section
     assert "BAD_BROAD" not in context_section
@@ -1049,6 +1160,7 @@ def test_generate_target_report_filters_unreliable_rows_from_headlines(tmp_path)
 
 def _tcga_sample(cancer_code):
     from pirlygenes.gene_sets_cancer import pan_cancer_expression
+
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
     return pd.DataFrame(
         {
@@ -1104,7 +1216,9 @@ def test_plot_tumor_purity_is_mode_aware(monkeypatch):
             "estimate_purity": 0.75,
         },
     }
-    monkeypatch.setattr(purity_mod, "estimate_tumor_purity", lambda *a, **k: mock_result)
+    monkeypatch.setattr(
+        purity_mod, "estimate_tumor_purity", lambda *a, **k: mock_result
+    )
 
     fig, result = purity_mod.plot_tumor_purity(
         pd.DataFrame({"gene_id": ["ENSG1"], "gene_display_name": ["A"], "TPM": [1.0]}),
@@ -1152,13 +1266,16 @@ def test_plot_sample_summary_is_mode_aware(monkeypatch):
 
 def test_hierarchy_embedding_plot_adds_family_legend_and_neighbors(monkeypatch):
     import pirlygenes.plot_embedding as _pe
+
     monkeypatch.setattr(_pe, "adjust_text", lambda *a, **k: None)
-    coords = np.array([
-        [0.0, 0.0],
-        [0.2, 0.1],
-        [1.5, 1.3],
-        [0.1, 0.05],
-    ])
+    coords = np.array(
+        [
+            [0.0, 0.0],
+            [0.2, 0.1],
+            [1.5, 1.3],
+            [0.1, 0.05],
+        ]
+    )
     labels = ["COAD", "READ", "PRAD", "SAMPLE"]
 
     fig, ax = plot_mod._plot_embedding_with_labels(
@@ -1179,14 +1296,17 @@ def test_hierarchy_embedding_plot_adds_family_legend_and_neighbors(monkeypatch):
 
 def test_embedding_plot_can_label_nearest_cancers_and_normals_only(monkeypatch):
     import pirlygenes.plot_embedding as _pe
+
     monkeypatch.setattr(_pe, "adjust_text", lambda *a, **k: None)
-    coords = np.array([
-        [0.0, 0.0],
-        [2.0, 2.0],
-        [0.1, 0.0],
-        [3.0, 3.0],
-        [0.05, 0.05],
-    ])
+    coords = np.array(
+        [
+            [0.0, 0.0],
+            [2.0, 2.0],
+            [0.1, 0.0],
+            [3.0, 3.0],
+            [0.05, 0.05],
+        ]
+    )
     labels = ["PRAD", "COAD", "normal:prostate", "normal:liver", "SAMPLE"]
 
     _fig, ax = plot_mod._plot_embedding_with_labels(
@@ -1209,11 +1329,13 @@ def test_embedding_plot_can_label_nearest_cancers_and_normals_only(monkeypatch):
 
 
 def test_embedding_matrix_sanitizes_nonfinite_features():
-    matrix = np.array([
-        [1.0, np.nan, 2.0, np.inf],
-        [2.0, np.nan, 3.0, 4.0],
-        [3.0, np.nan, 4.0, 5.0],
-    ])
+    matrix = np.array(
+        [
+            [1.0, np.nan, 2.0, np.inf],
+            [2.0, np.nan, 3.0, 4.0],
+            [3.0, np.nan, 4.0, 5.0],
+        ]
+    )
 
     clean = plot_mod._sanitize_embedding_matrix(matrix)
 
@@ -1269,6 +1391,7 @@ def test_collect_ranked_therapy_targets_tracks_multicategory_and_approval(monkey
     }
 
     import pirlygenes.plot_therapy as _pt
+
     monkeypatch.setattr(
         _pt,
         "therapy_target_gene_id_to_name",
@@ -1325,18 +1448,21 @@ def test_plot_geneset_vs_vital_tissues_saves_png(tmp_path):
     exercises (they are in pan_cancer_expression).
     """
     import matplotlib
+
     matplotlib.use("Agg")
 
-    sample = pd.DataFrame({
-        "gene_id": [
-            "ENSG00000125347",  # IRF1
-            "ENSG00000115415",  # STAT1
-            "ENSG00000081059",  # TCF7 (not in IFN set; shouldn't show)
-            "ENSG00000165949",  # IFI27
-        ],
-        "gene_name": ["IRF1", "STAT1", "TCF7", "IFI27"],
-        "TPM": [85.0, 110.0, 12.0, 40.0],
-    })
+    sample = pd.DataFrame(
+        {
+            "gene_id": [
+                "ENSG00000125347",  # IRF1
+                "ENSG00000115415",  # STAT1
+                "ENSG00000081059",  # TCF7 (not in IFN set; shouldn't show)
+                "ENSG00000165949",  # IFI27
+            ],
+            "gene_name": ["IRF1", "STAT1", "TCF7", "IFI27"],
+            "TPM": [85.0, 110.0, 12.0, 40.0],
+        }
+    )
     out = tmp_path / "ifn_vs_vitals.png"
     fig = plot_mod.plot_geneset_vs_vital_tissues(
         sample,
@@ -1351,22 +1477,26 @@ def test_plot_geneset_vs_vital_tissues_saves_png(tmp_path):
 
 def test_plot_geneset_vs_vital_tissues_empty_symbols_returns_none(capsys):
     """Empty gene list should return None and print, not raise."""
-    sample = pd.DataFrame({
-        "gene_id": ["ENSG00000125347"],
-        "gene_name": ["IRF1"],
-        "TPM": [85.0],
-    })
+    sample = pd.DataFrame(
+        {
+            "gene_id": ["ENSG00000125347"],
+            "gene_name": ["IRF1"],
+            "TPM": [85.0],
+        }
+    )
     fig = plot_mod.plot_geneset_vs_vital_tissues(sample, gene_set=[])
     assert fig is None
 
 
 def test_plot_geneset_vs_vital_tissues_all_absent_returns_none(capsys):
     """All genes absent from both sample and reference → None, not crash."""
-    sample = pd.DataFrame({
-        "gene_id": ["ENSG00000125347"],
-        "gene_name": ["IRF1"],
-        "TPM": [85.0],
-    })
+    sample = pd.DataFrame(
+        {
+            "gene_id": ["ENSG00000125347"],
+            "gene_name": ["IRF1"],
+            "TPM": [85.0],
+        }
+    )
     fig = plot_mod.plot_geneset_vs_vital_tissues(
         sample, gene_set=["SOME_GENE_THAT_DOES_NOT_EXIST_ANYWHERE_XYZ"]
     )
@@ -1374,18 +1504,23 @@ def test_plot_geneset_vs_vital_tissues_all_absent_returns_none(capsys):
 
 
 def test_plot_geneset_vs_vital_tissues_unknown_tissue_raises():
-    sample = pd.DataFrame({
-        "gene_id": ["ENSG00000125347"],
-        "gene_name": ["IRF1"],
-        "TPM": [85.0],
-    })
+    sample = pd.DataFrame(
+        {
+            "gene_id": ["ENSG00000125347"],
+            "gene_name": ["IRF1"],
+            "TPM": [85.0],
+        }
+    )
     with pytest.raises(ValueError):
         plot_mod.plot_geneset_vs_vital_tissues(
             sample, gene_set=["IRF1"], vital_tissues=["mars"]
         )
+
+
 def test_plot_ctas_vs_cancer_type_detail_saves_png(tmp_path):
     """End-to-end render with real CTA Ensembl IDs → non-empty PNG."""
     import matplotlib
+
     matplotlib.use("Agg")
     from pirlygenes.gene_sets_cancer import CTA_gene_id_to_name
 
@@ -1393,14 +1528,19 @@ def test_plot_ctas_vs_cancer_type_detail_saves_png(tmp_path):
     assert cta_map, "Reference CTA set is unexpectedly empty"
     picks = list(cta_map.items())[:8]
 
-    sample = pd.DataFrame({
-        "gene_id": [gid for gid, _ in picks],
-        "gene_name": [sym for _, sym in picks],
-        "TPM": [5.0, 25.0, 1.5, 80.0, 3.0, 12.0, 2.0, 60.0][: len(picks)],
-    })
+    sample = pd.DataFrame(
+        {
+            "gene_id": [gid for gid, _ in picks],
+            "gene_name": [sym for _, sym in picks],
+            "TPM": [5.0, 25.0, 1.5, 80.0, 3.0, 12.0, 2.0, 60.0][: len(picks)],
+        }
+    )
     out = tmp_path / "prad_cta_detail.png"
     fig = plot_mod.plot_ctas_vs_cancer_type_detail(
-        sample, cancer_type="PRAD", top_k=6, save_to_filename=str(out),
+        sample,
+        cancer_type="PRAD",
+        top_k=6,
+        save_to_filename=str(out),
     )
     assert fig is not None
     assert out.exists()
@@ -1412,6 +1552,7 @@ def test_plot_ctas_vs_cancer_type_detail_worst_vital_excludes_testis_and_thymus(
 ):
     """CTA max-vital tissue excludes reproductive/immune-privileged tissues."""
     import matplotlib
+
     matplotlib.use("Agg")
     import pirlygenes.plot_therapy as therapy_mod
 
@@ -1423,25 +1564,31 @@ def test_plot_ctas_vs_cancer_type_detail_worst_vital_excludes_testis_and_thymus(
     monkeypatch.setattr(
         therapy_mod,
         "pan_cancer_expression",
-        lambda: pd.DataFrame({
-            "Ensembl_Gene_ID": ["ENSGCTA"],
-            "Symbol": ["CTA1"],
-            "FPKM_PRAD": [1.0],
-            "nTPM_prostate": [0.5],
-            "nTPM_testis": [300.0],
-            "nTPM_thymus": [250.0],
-            "nTPM_heart_muscle": [35.0],
-            "nTPM_liver": [4.0],
-        }),
+        lambda: pd.DataFrame(
+            {
+                "Ensembl_Gene_ID": ["ENSGCTA"],
+                "Symbol": ["CTA1"],
+                "FPKM_PRAD": [1.0],
+                "nTPM_prostate": [0.5],
+                "nTPM_testis": [300.0],
+                "nTPM_thymus": [250.0],
+                "nTPM_heart_muscle": [35.0],
+                "nTPM_liver": [4.0],
+            }
+        ),
     )
 
-    sample = pd.DataFrame({
-        "gene_id": ["ENSGCTA"],
-        "gene_name": ["CTA1"],
-        "TPM": [50.0],
-    })
+    sample = pd.DataFrame(
+        {
+            "gene_id": ["ENSGCTA"],
+            "gene_name": ["CTA1"],
+            "TPM": [50.0],
+        }
+    )
     fig = therapy_mod.plot_ctas_vs_cancer_type_detail(
-        sample, cancer_type="PRAD", min_sample_tpm=1.0,
+        sample,
+        cancer_type="PRAD",
+        min_sample_tpm=1.0,
     )
 
     text = "\n".join(t.get_text() for t in fig.axes[0].texts)
@@ -1453,29 +1600,37 @@ def test_plot_ctas_vs_cancer_type_detail_worst_vital_excludes_testis_and_thymus(
 def test_plot_ctas_vs_cancer_type_detail_min_sample_tpm_filters_rows():
     """Rows below `min_sample_tpm` are dropped; all-below → None."""
     import matplotlib
+
     matplotlib.use("Agg")
     from pirlygenes.gene_sets_cancer import CTA_gene_id_to_name
 
     cta_map = CTA_gene_id_to_name()
     picks = list(cta_map.items())[:3]
-    sample = pd.DataFrame({
-        "gene_id": [gid for gid, _ in picks],
-        "gene_name": [sym for _, sym in picks],
-        "TPM": [0.1, 0.2, 0.3],
-    })
+    sample = pd.DataFrame(
+        {
+            "gene_id": [gid for gid, _ in picks],
+            "gene_name": [sym for _, sym in picks],
+            "TPM": [0.1, 0.2, 0.3],
+        }
+    )
     fig = plot_mod.plot_ctas_vs_cancer_type_detail(
-        sample, cancer_type="PRAD", min_sample_tpm=1.0,
+        sample,
+        cancer_type="PRAD",
+        min_sample_tpm=1.0,
     )
     assert fig is None
 
 
 def test_plot_ctas_vs_cancer_type_detail_unknown_type_raises():
-    sample = pd.DataFrame({
-        "gene_id": ["ENSG00000125347"],
-        "gene_name": ["IRF1"],
-        "TPM": [10.0],
-    })
+    sample = pd.DataFrame(
+        {
+            "gene_id": ["ENSG00000125347"],
+            "gene_name": ["IRF1"],
+            "TPM": [10.0],
+        }
+    )
     with pytest.raises((ValueError, KeyError)):
         plot_mod.plot_ctas_vs_cancer_type_detail(
-            sample, cancer_type="NOT_A_REAL_CANCER_TYPE_XYZ",
+            sample,
+            cancer_type="NOT_A_REAL_CANCER_TYPE_XYZ",
         )

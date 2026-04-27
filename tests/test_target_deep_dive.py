@@ -23,11 +23,13 @@ from pirlygenes.plot_subtype_signature import (
 
 def _tcga_sample(cancer_code):
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    return pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
+        }
+    )
 
 
 # ── actionable_surface_targets ───────────────────────────────────────────
@@ -60,8 +62,9 @@ def test_curated_panels_cover_major_types():
 def test_plot_actionable_targets_saves_png(tmp_path):
     df = _tcga_sample("PRAD")
     out = tmp_path / "targets.png"
-    fig = plot_actionable_targets(df, "PRAD", purity_estimate=0.6,
-                                  save_to_filename=str(out))
+    fig = plot_actionable_targets(
+        df, "PRAD", purity_estimate=0.6, save_to_filename=str(out)
+    )
     assert fig is not None
     assert out.exists()
 
@@ -79,8 +82,9 @@ def test_plot_actionable_targets_without_purity(tmp_path):
 def test_plot_tumor_attribution_surface(tmp_path):
     df = _tcga_sample("PRAD")
     out = tmp_path / "attrib.png"
-    fig = plot_tumor_attribution(df, "PRAD", purity_estimate=0.6,
-                                  save_to_filename=str(out))
+    fig = plot_tumor_attribution(
+        df, "PRAD", purity_estimate=0.6, save_to_filename=str(out)
+    )
     assert fig is not None
     assert out.exists()
 
@@ -88,9 +92,9 @@ def test_plot_tumor_attribution_surface(tmp_path):
 def test_plot_tumor_attribution_cta(tmp_path):
     df = _tcga_sample("PRAD")
     out = tmp_path / "attrib_cta.png"
-    fig = plot_tumor_attribution(df, "PRAD", purity_estimate=0.6,
-                                  category="CTA",
-                                  save_to_filename=str(out))
+    fig = plot_tumor_attribution(
+        df, "PRAD", purity_estimate=0.6, category="CTA", save_to_filename=str(out)
+    )
     # May be None if no CTAs expressed
     if fig is not None:
         assert out.exists()
@@ -102,8 +106,9 @@ def test_plot_tumor_attribution_cta(tmp_path):
 def test_plot_cta_deep_dive_saves_png(tmp_path):
     df = _tcga_sample("SKCM")  # melanoma has high CTA expression
     out = tmp_path / "cta.png"
-    fig = plot_cta_deep_dive(df, "SKCM", purity_estimate=0.65,
-                              save_to_filename=str(out))
+    fig = plot_cta_deep_dive(
+        df, "SKCM", purity_estimate=0.65, save_to_filename=str(out)
+    )
     assert fig is not None
     assert out.exists()
 

@@ -115,11 +115,13 @@ def test_ranges_df_emits_smooth_muscle_stromal_leakage_column(tmp_path):
     from pirlygenes.plot import estimate_tumor_expression_ranges
 
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    df = pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref["nTPM_prostate"].astype(float) + 1.0,
-    })
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref["nTPM_prostate"].astype(float) + 1.0,
+        }
+    )
     # Inject high TAGLN so the flag has a chance to fire.
     df.loc[df["gene_symbol"] == "TAGLN", "TPM"] = 1500.0
 
@@ -130,7 +132,9 @@ def test_ranges_df_emits_smooth_muscle_stromal_leakage_column(tmp_path):
         "components": {"stromal": {"enrichment": 1.2}, "immune": {"enrichment": 1.1}},
     }
     out = estimate_tumor_expression_ranges(
-        df_gene_expr=df, cancer_type="PRAD", purity_result=purity,
+        df_gene_expr=df,
+        cancer_type="PRAD",
+        purity_result=purity,
     )
     assert "smooth_muscle_stromal_leakage" in out.columns
     # Column dtype must be boolean-coercible (the render path calls

@@ -41,6 +41,7 @@ def test_every_gate_compartment_has_hpa_mapping():
     reference column."""
     from pirlygenes.decomposition.signature import COMPONENT_TO_HPA
     from pirlygenes.decomposition.templates import _GATE_KEY_TO_COMPONENT
+
     for gate_key in OPTIONAL_COMPARTMENT_GATES:
         compartment = _GATE_KEY_TO_COMPONENT.get(gate_key, gate_key)
         assert compartment in COMPONENT_TO_HPA, (
@@ -53,20 +54,32 @@ def test_every_gate_compartment_has_hpa_mapping():
 
 
 def test_empty_sample_returns_empty_list():
-    assert _detect_optional_compartments({}, cancer_type="BRCA", template_name="solid_primary") == []
+    assert (
+        _detect_optional_compartments(
+            {}, cancer_type="BRCA", template_name="solid_primary"
+        )
+        == []
+    )
 
 
 def test_sample_without_gate_genes_returns_empty():
     sample = {"TP53": 100.0, "MYC": 200.0}
-    assert _detect_optional_compartments(
-        sample, cancer_type="BRCA", template_name="solid_primary",
-    ) == []
+    assert (
+        _detect_optional_compartments(
+            sample,
+            cancer_type="BRCA",
+            template_name="solid_primary",
+        )
+        == []
+    )
 
 
 def test_adipocyte_fires_for_brca_solid_with_high_signal():
     sample = {"ADIPOQ": 60.0, "FABP4": 40.0, "PLIN1": 20.0}  # sum=120 >> 50
     detected = _detect_optional_compartments(
-        sample, cancer_type="BRCA", template_name="solid_primary",
+        sample,
+        cancer_type="BRCA",
+        template_name="solid_primary",
     )
     assert "adipocyte" in detected
 
@@ -74,7 +87,9 @@ def test_adipocyte_fires_for_brca_solid_with_high_signal():
 def test_adipocyte_does_not_fire_below_threshold():
     sample = {"ADIPOQ": 10.0}  # well below 50
     detected = _detect_optional_compartments(
-        sample, cancer_type="BRCA", template_name="solid_primary",
+        sample,
+        cancer_type="BRCA",
+        template_name="solid_primary",
     )
     assert "adipocyte" not in detected
 
@@ -83,7 +98,9 @@ def test_adipocyte_does_not_fire_on_wrong_cancer_type():
     """ADIPOQ etc. present but cancer_type isn't on the allowlist."""
     sample = {"ADIPOQ": 100.0, "FABP4": 100.0, "PLIN1": 100.0}
     detected = _detect_optional_compartments(
-        sample, cancer_type="COAD", template_name="solid_primary",
+        sample,
+        cancer_type="COAD",
+        template_name="solid_primary",
     )
     assert "adipocyte" not in detected
 
@@ -91,7 +108,9 @@ def test_adipocyte_does_not_fire_on_wrong_cancer_type():
 def test_schwann_fires_for_prad_with_perineural_signal():
     sample = {"MPZ": 20.0, "PMP22": 15.0, "S100B": 10.0}  # sum=45 > 30
     detected = _detect_optional_compartments(
-        sample, cancer_type="PRAD", template_name="solid_primary",
+        sample,
+        cancer_type="PRAD",
+        template_name="solid_primary",
     )
     assert "schwann" in detected
 
@@ -101,7 +120,9 @@ def test_schwann_does_not_fire_for_luad():
     not characteristic of lung adenocarcinoma."""
     sample = {"MPZ": 100.0, "PMP22": 100.0}
     detected = _detect_optional_compartments(
-        sample, cancer_type="LUAD", template_name="solid_primary",
+        sample,
+        cancer_type="LUAD",
+        template_name="solid_primary",
     )
     assert "schwann" not in detected
 
@@ -111,7 +132,9 @@ def test_erythroid_fires_on_any_solid_cancer_with_hemoglobin():
     # Any solid cancer type works — no cancer allowlist for erythroid.
     for cancer in ("COAD", "LUAD", "BRCA", "PAAD"):
         detected = _detect_optional_compartments(
-            sample, cancer_type=cancer, template_name="solid_primary",
+            sample,
+            cancer_type=cancer,
+            template_name="solid_primary",
         )
         assert "erythroid" in detected, f"{cancer} should detect erythroid"
 
@@ -121,7 +144,9 @@ def test_erythroid_does_not_fire_on_heme_template():
     compartment; the gate targets solid templates only."""
     sample = {"HBA1": 500.0, "HBA2": 500.0, "HBB": 500.0}
     detected = _detect_optional_compartments(
-        sample, cancer_type="LAML", template_name="heme_marrow",
+        sample,
+        cancer_type="LAML",
+        template_name="heme_marrow",
     )
     assert "erythroid" not in detected
 
@@ -134,17 +159,22 @@ def test_default_template_components_unchanged_when_no_detection():
     list is identical to the pre-#59 path."""
     before = get_template_components("solid_primary", "BRCA")
     with_none = get_template_components(
-        "solid_primary", "BRCA", detected_compartments=None,
+        "solid_primary",
+        "BRCA",
+        detected_compartments=None,
     )
     with_empty = get_template_components(
-        "solid_primary", "BRCA", detected_compartments=[],
+        "solid_primary",
+        "BRCA",
+        detected_compartments=[],
     )
     assert before == with_none == with_empty
 
 
 def test_detected_compartments_appended_after_matched_normal():
     components = get_template_components(
-        "solid_primary", "BRCA",
+        "solid_primary",
+        "BRCA",
         detected_compartments=["adipocyte"],
     )
     assert "adipocyte" in components
@@ -156,7 +186,8 @@ def test_duplicate_compartment_not_appended_twice():
     """If a template already carries a compartment and it's also
     detected, it must appear only once."""
     components = get_template_components(
-        "heme_marrow", None,
+        "heme_marrow",
+        None,
         detected_compartments=["erythroid"],
     )
     assert components.count("erythroid") == 1
@@ -172,18 +203,24 @@ def test_detection_signature_path_survives_through_engine_api():
     from pirlygenes.gene_sets_cancer import pan_cancer_expression
 
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    sample_tpm = dict(zip(ref["Symbol"].astype(str), ref["nTPM_prostate"].astype(float)))
+    sample_tpm = dict(
+        zip(ref["Symbol"].astype(str), ref["nTPM_prostate"].astype(float))
+    )
     # Inject Schwann markers so the gate should fire on PRAD.
     sample_tpm["MPZ"] = 50.0
     sample_tpm["PMP22"] = 40.0
     detected = _detect_optional_compartments(
-        sample_tpm, cancer_type="PRAD", template_name="solid_primary",
+        sample_tpm,
+        cancer_type="PRAD",
+        template_name="solid_primary",
     )
     assert "schwann" in detected
     # Engine's get_template_components path must accept it and
     # include the compartment.
     components = get_template_components(
-        "solid_primary", "PRAD", detected_compartments=detected,
+        "solid_primary",
+        "PRAD",
+        detected_compartments=detected,
     )
     assert "schwann" in components
 

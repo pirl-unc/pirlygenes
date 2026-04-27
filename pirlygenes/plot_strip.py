@@ -104,9 +104,12 @@ def resolve_always_label_gene_ids(
 
 # ------------------------ defaults ------------------------
 
+
 def _build_default_gene_sets():
     """Build default gene sets using pre-resolved Ensembl IDs (no pyensembl lookup)."""
-    sets = _load_gene_sets()  # APM, MHC1, TLR, Growth_receptors, Oncogenes, Immune_checkpoints
+    sets = (
+        _load_gene_sets()
+    )  # APM, MHC1, TLR, Growth_receptors, Oncogenes, Immune_checkpoints
     sets["CTAs"] = CTA_gene_id_to_name()
     sets["Cancer_surfaceome"] = cancer_surfaceome_gene_id_to_name()
     return sets
@@ -176,7 +179,11 @@ def plot_gene_expression(
     # Plot — build palette with gray for "other", tab10 for named categories
     other_name = "other"
     cat_col = df_gene_expr_annot["category"]
-    cat_order = list(cat_col.cat.categories) if hasattr(cat_col, "cat") and hasattr(cat_col.cat, "categories") else list(dict.fromkeys(cat_col))
+    cat_order = (
+        list(cat_col.cat.categories)
+        if hasattr(cat_col, "cat") and hasattr(cat_col.cat, "categories")
+        else list(dict.fromkeys(cat_col))
+    )
     named_cats_strip = [c for c in cat_order if c != other_name]
     named_palette = sns.color_palette("tab10", len(named_cats_strip))
     palette_dict = {c: color for c, color in zip(named_cats_strip, named_palette)}
@@ -223,10 +230,18 @@ def plot_gene_expression(
         cats = list(df_gene_expr_annot["category"].cat.categories)
         other_idx = cats.index(other_name) if other_name in cats else 0
         import numpy as _np
-        hk_x = other_idx + _np.random.default_rng(42).uniform(-0.01, 0.01, len(hk_in_other))
+
+        hk_x = other_idx + _np.random.default_rng(42).uniform(
+            -0.01, 0.01, len(hk_in_other)
+        )
         ax.scatter(
-            hk_x, hk_in_other["TPM"].values,
-            color="#e74c3c", alpha=0.7, s=18, zorder=5, label="Housekeeping",
+            hk_x,
+            hk_in_other["TPM"].values,
+            color="#e74c3c",
+            alpha=0.7,
+            s=18,
+            zorder=5,
+            label="Housekeeping",
             edgecolors="none",
         )
         # Label top 5, bottom 5, and always ACTB — fed through adjust_text
@@ -242,9 +257,14 @@ def plot_gene_expression(
             if row[gene_id_col] in label_ids:
                 hk_texts.append(
                     ax.text(
-                        xi, row["TPM"], row[gene_name_col],
-                        fontsize=7, color="#c0392b", alpha=0.85,
-                        ha="right", va="top",
+                        xi,
+                        row["TPM"],
+                        row[gene_name_col],
+                        fontsize=7,
+                        color="#c0392b",
+                        alpha=0.85,
+                        ha="right",
+                        va="top",
                     )
                 )
         adjust_text(

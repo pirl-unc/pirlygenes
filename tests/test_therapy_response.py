@@ -26,9 +26,14 @@ def test_load_therapy_signatures_has_ar_axis_for_prad():
 def test_all_eight_axes_present():
     sigs = load_therapy_signatures()
     expected_axes = {
-        "AR_signaling", "ER_signaling", "HER2_signaling",
-        "MAPK_EGFR_signaling", "NE_differentiation", "EMT",
-        "hypoxia", "IFN_response",
+        "AR_signaling",
+        "ER_signaling",
+        "HER2_signaling",
+        "MAPK_EGFR_signaling",
+        "NE_differentiation",
+        "EMT",
+        "hypoxia",
+        "IFN_response",
     }
     assert expected_axes.issubset(sigs.keys())
 
@@ -113,7 +118,7 @@ def test_her2_signaling_active_when_erbb2_elevated_in_brca():
 
     sample = {
         "ERBB2": cohort("ERBB2") * 10.0,
-        "GRB7":  cohort("GRB7") * 10.0,
+        "GRB7": cohort("GRB7") * 10.0,
         "STARD3": cohort("STARD3") * 10.0,
     }
     scores = score_therapy_signatures(sample, "BRCA")

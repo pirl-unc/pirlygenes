@@ -28,10 +28,8 @@ dependencies = [
 [tool.setuptools.dynamic]
 version = {attr = "pirlygenes.version.__version__"}
 
-[tool.setuptools]
-packages = ["pirlygenes"]
-
-
+[tool.setuptools.packages.find]
+include = ["pirlygenes*"]
 
 [project.optional-dependencies]
 test = [
@@ -61,4 +59,3 @@ addopts = "-n auto"
 markers = [
     "perf: performance-regression fences",
 ]
-

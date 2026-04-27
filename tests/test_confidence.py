@@ -44,7 +44,10 @@ def test_concise_call_confidence_reasons_keep_summary_skimmable():
             "Step-0 correlation favored BLCA but the classifier picked SARC",
         ],
     )
-    assert concise_confidence_reasons(tier) == "ambiguous fit; near tie with ESCA; Step-0 favors BLCA"
+    assert (
+        concise_confidence_reasons(tier)
+        == "ambiguous fit; near tie with ESCA; Step-0 favors BLCA"
+    )
 
 
 def test_low_purity_regime_bumps_tier():

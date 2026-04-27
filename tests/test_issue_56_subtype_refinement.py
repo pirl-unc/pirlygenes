@@ -146,7 +146,9 @@ def test_partition_all_to_generic_when_no_marker_evidence():
     generic."""
     sample = {"ACTB": 500.0, "GAPDH": 800.0}  # no CAF markers
     subtype_frac, generic_frac = partition_compartment(
-        sample, compartment_fraction=0.20, marker_folds=CAF_MARKER_FOLDS,
+        sample,
+        compartment_fraction=0.20,
+        marker_folds=CAF_MARKER_FOLDS,
     )
     assert subtype_frac == 0.0
     assert generic_frac == 0.20
@@ -155,7 +157,9 @@ def test_partition_all_to_generic_when_no_marker_evidence():
 def test_partition_sums_to_compartment_fraction():
     sample = {"FAP": 100.0, "POSTN": 50.0}
     subtype_frac, generic_frac = partition_compartment(
-        sample, compartment_fraction=0.30, marker_folds=CAF_MARKER_FOLDS,
+        sample,
+        compartment_fraction=0.30,
+        marker_folds=CAF_MARKER_FOLDS,
     )
     assert abs((subtype_frac + generic_frac) - 0.30) < 1e-9
     # With real CAF marker expression the subtype side must win non-
@@ -180,11 +184,13 @@ def test_estimate_tumor_expression_ranges_emits_subtype_refinement_columns(tmp_p
     # refine. The TPM floor on non-marker genes avoids the "sample HK
     # median is zero" edge case.
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    df = pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref["nTPM_colon"].astype(float) + 1.0,
-    })
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref["nTPM_colon"].astype(float) + 1.0,
+        }
+    )
     # Inject expected marker genes at high TPM so the refinement path
     # lights up.
     marker_boosts = {"FAP": 250.0, "POSTN": 400.0, "CD163": 180.0, "MRC1": 120.0}

@@ -30,8 +30,14 @@ from ..tumor_purity import CANCER_TO_TISSUE
 
 TISSUE_CATEGORIES = {
     "CNS": [
-        "cerebral_cortex", "cerebellum", "hippocampal_formation", "amygdala",
-        "basal_ganglia", "hypothalamus", "midbrain", "choroid_plexus",
+        "cerebral_cortex",
+        "cerebellum",
+        "hippocampal_formation",
+        "amygdala",
+        "basal_ganglia",
+        "hypothalamus",
+        "midbrain",
+        "choroid_plexus",
         "spinal_cord",
     ],
     "liver": ["liver"],
@@ -120,9 +126,16 @@ OPTIONAL_COMPARTMENT_GATES = {
         "markers": ["HBA1", "HBA2", "HBB", "ALAS2"],
         "min_tpm_sum": 100.0,
         "templates": {
-            "solid_primary", "met_liver", "met_brain", "met_lung",
-            "met_bone", "met_peritoneal", "met_adrenal",
-            "met_skin", "met_soft_tissue", "met_lymph_node",
+            "solid_primary",
+            "met_liver",
+            "met_brain",
+            "met_lung",
+            "met_bone",
+            "met_peritoneal",
+            "met_adrenal",
+            "met_skin",
+            "met_soft_tissue",
+            "met_lymph_node",
         },
         "cancer_types": None,  # any solid cancer
     },
@@ -136,7 +149,9 @@ _GATE_KEY_TO_COMPONENT = {
 
 
 def _detect_optional_compartments(
-    sample_tpm_by_symbol, cancer_type=None, template_name=None,
+    sample_tpm_by_symbol,
+    cancer_type=None,
+    template_name=None,
 ):
     """Return the list of optional NNLS compartments to append.
 
@@ -160,17 +175,21 @@ def _detect_optional_compartments(
             if cancer_type not in gate["cancer_types"]:
                 continue
         marker_sum = sum(
-            float(sample_tpm_by_symbol.get(g, 0.0) or 0.0)
-            for g in gate["markers"]
+            float(sample_tpm_by_symbol.get(g, 0.0) or 0.0) for g in gate["markers"]
         )
         if marker_sum >= gate["min_tpm_sum"]:
             component = _GATE_KEY_TO_COMPONENT.get(gate_key, gate_key)
             detected.append(component)
     return detected
 
+
 # Shared immune components used across most solid tumor templates
 _SOLID_IMMUNE = [
-    "T_cell", "B_cell", "plasma", "NK", "myeloid",
+    "T_cell",
+    "B_cell",
+    "plasma",
+    "NK",
+    "myeloid",
 ]
 
 _SOLID_STROMA = ["fibroblast", "endothelial"]
@@ -199,7 +218,14 @@ TEMPLATES = {
         # COMPONENT_TO_CATEGORY → "CNS".  The NNLS sees two identical
         # columns and splits the weight evenly — report their fractions
         # summed as "CNS parenchyma" rather than reading them literally.
-        "components": ["T_cell", "myeloid", "fibroblast", "endothelial", "astrocyte", "neuron"],
+        "components": [
+            "T_cell",
+            "myeloid",
+            "fibroblast",
+            "endothelial",
+            "astrocyte",
+            "neuron",
+        ],
         "host_tissue": "cerebral_cortex",
         "description": "Metastasis in brain (reduced immune diversity)",
     },
@@ -219,12 +245,26 @@ TEMPLATES = {
         "description": "Peritoneal metastasis",
     },
     "met_adrenal": {
-        "components": ["T_cell", "myeloid", "fibroblast", "endothelial", "adrenal_cortical"],
+        "components": [
+            "T_cell",
+            "myeloid",
+            "fibroblast",
+            "endothelial",
+            "adrenal_cortical",
+        ],
         "host_tissue": "adrenal_gland",
         "description": "Metastasis in adrenal gland",
     },
     "met_skin": {
-        "components": ["T_cell", "myeloid", "NK", "fibroblast", "endothelial", "keratinocyte", "melanocyte"],
+        "components": [
+            "T_cell",
+            "myeloid",
+            "NK",
+            "fibroblast",
+            "endothelial",
+            "keratinocyte",
+            "melanocyte",
+        ],
         "host_tissue": "skin",
         "description": "Metastasis in skin",
     },
@@ -234,12 +274,24 @@ TEMPLATES = {
         "description": "Metastasis in soft tissue / retroperitoneum",
     },
     "heme_marrow": {
-        "components": ["normal_myeloid", "normal_lymphoid", "erythroid",
-                       "endothelial", "marrow_stroma"],
+        "components": [
+            "normal_myeloid",
+            "normal_lymphoid",
+            "erythroid",
+            "endothelial",
+            "marrow_stroma",
+        ],
         "description": "Heme malignancy in bone marrow",
     },
     "heme_nodal": {
-        "components": ["T_cell", "B_cell", "plasma", "myeloid", "fibroblast", "endothelial"],
+        "components": [
+            "T_cell",
+            "B_cell",
+            "plasma",
+            "myeloid",
+            "fibroblast",
+            "endothelial",
+        ],
         "host_tissue": "lymph_node",
         "description": "Heme malignancy in lymph node",
     },
@@ -307,7 +359,8 @@ MATCHED_NORMAL_TISSUE = {
 # ``EPITHELIAL_MATCHED_NORMAL_TISSUE`` keep working. Reads the merged map
 # and filters out the sarcoma subtypes at access time; prefer the new name.
 EPITHELIAL_MATCHED_NORMAL_TISSUE = {
-    code: tissue for code, tissue in MATCHED_NORMAL_TISSUE.items()
+    code: tissue
+    for code, tissue in MATCHED_NORMAL_TISSUE.items()
     if not code.startswith("SARC_")
 }
 
@@ -338,6 +391,7 @@ def epithelial_matched_normal_component(cancer_type):
     subtype-aware path should use :func:`matched_normal_component`.
     """
     return matched_normal_component(cancer_type)
+
 
 _TEMPLATE_HOST_TISSUES = {
     # Retroperitoneal/deep soft tissue biopsies can look like a mix of muscle
@@ -397,7 +451,8 @@ def get_template_components(
     components = ["tumor"] + list(tmpl["components"])
     if template_name == "solid_primary":
         matched = matched_normal_component(
-            cancer_type, winning_subtype=winning_subtype,
+            cancer_type,
+            winning_subtype=winning_subtype,
         )
         if matched is not None:
             components.append(matched)
@@ -412,7 +467,11 @@ def get_template_components(
 
 def get_template_extra_components(template_name):
     """Return components beyond the shared solid immune/stroma basis."""
-    return [comp for comp in TEMPLATES[template_name]["components"] if comp not in _SOLID_IMMUNE + _SOLID_STROMA]
+    return [
+        comp
+        for comp in TEMPLATES[template_name]["components"]
+        if comp not in _SOLID_IMMUNE + _SOLID_STROMA
+    ]
 
 
 def get_template_host_tissues(template_name, cancer_type=None):

@@ -40,7 +40,10 @@ class FakeGenome:
         return list(self._gene_by_id_map.values())
 
     def transcripts(self):
-        return [SimpleNamespace(id=tid, gene_name=tx.gene_name) for tid, tx in self._tx_by_id_map.items()]
+        return [
+            SimpleNamespace(id=tid, gene_name=tx.gene_name)
+            for tid, tx in self._tx_by_id_map.items()
+        ]
 
     def genes_by_name(self, name):
         return self._by_name.get(name, [])
@@ -76,7 +79,9 @@ def test_lookup_functions_with_fake_genomes(monkeypatch):
     monkeypatch.setattr(gi, "_transcript_id_miss_cache", set())
 
     assert gi.find_gene_name_from_ensembl_gene_id("ENSGA", verbose=False) == "GENEA"
-    assert gi.find_gene_name_from_ensembl_transcript_id("ENST1", verbose=False) == "GENEA"
+    assert (
+        gi.find_gene_name_from_ensembl_transcript_id("ENST1", verbose=False) == "GENEA"
+    )
 
     genome, gene = gi.find_gene_and_ensembl_release_by_name("CD276", verbose=False)
     assert genome.release == 112
@@ -106,7 +111,10 @@ def test_lookup_functions_fall_back_to_older_release_on_latest_miss(monkeypatch)
     monkeypatch.setattr(gi, "_transcript_id_miss_cache", set())
 
     assert gi.find_gene_name_from_ensembl_gene_id("ENSGOLD", verbose=False) == "OLDER"
-    assert gi.find_gene_name_from_ensembl_transcript_id("ENSTOLD", verbose=False) == "OLDER"
+    assert (
+        gi.find_gene_name_from_ensembl_transcript_id("ENSTOLD", verbose=False)
+        == "OLDER"
+    )
 
 
 def test_find_canonical_gene_ids_and_names(monkeypatch):

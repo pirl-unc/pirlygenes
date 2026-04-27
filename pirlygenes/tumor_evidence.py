@@ -34,13 +34,13 @@ from .gene_sets_cancer import glycolysis_panel_gene_names
 # scales linearly from 0 toward 1 based on the channel-specific
 # metric. Tuned against the 6-sample battery so real tumors produce
 # total ≥ 1.0 while healthy tissues stay below 0.3.
-_CTA_SATURATION_COUNT = 5        # ≥5 CTA hits at 3+ TPM → 1.0
+_CTA_SATURATION_COUNT = 5  # ≥5 CTA hits at 3+ TPM → 1.0
 _ONCOFETAL_SATURATION_COUNT = 2  # ≥2 oncofetal hits → 1.0
-_TYPE_SPECIFIC_SATURATION = 2    # ≥2 type-specific hits → 1.0
-_PROLIF_SATURATION_LOG2 = 5.0    # panel geomean ≥5.0 log2-TPM → 1.0
-_PROLIF_BASELINE_LOG2 = 2.0      # panel geomean ≤2.0 log2-TPM → 0.0
-_CA9_SATURATION_TPM = 50.0       # CA9 ≥50 TPM → 1.0 hypoxia
-_GLYCOLYSIS_SATURATION = 3.0     # panel fold-over-median ≥3 → 1.0
+_TYPE_SPECIFIC_SATURATION = 2  # ≥2 type-specific hits → 1.0
+_PROLIF_SATURATION_LOG2 = 5.0  # panel geomean ≥5.0 log2-TPM → 1.0
+_PROLIF_BASELINE_LOG2 = 2.0  # panel geomean ≤2.0 log2-TPM → 0.0
+_CA9_SATURATION_TPM = 50.0  # CA9 ≥50 TPM → 1.0 hypoxia
+_GLYCOLYSIS_SATURATION = 3.0  # panel fold-over-median ≥3 → 1.0
 
 
 @dataclass
@@ -74,8 +74,12 @@ class TumorEvidenceScore:
     def aggregate_score(self) -> float:
         """Sum of per-channel scores (un-clamped; > 1.0 = multiple channels)."""
         return (
-            self.cta + self.oncofetal + self.type_specific
-            + self.proliferation + self.hypoxia + self.glycolysis
+            self.cta
+            + self.oncofetal
+            + self.type_specific
+            + self.proliferation
+            + self.hypoxia
+            + self.glycolysis
         )
 
     @property
@@ -83,7 +87,8 @@ class TumorEvidenceScore:
         """Channels with score ≥ 0.8 — single-channel strong evidence."""
         out = []
         for name, val in [
-            ("CTA", self.cta), ("oncofetal", self.oncofetal),
+            ("CTA", self.cta),
+            ("oncofetal", self.oncofetal),
             ("type-specific", self.type_specific),
             ("proliferation", self.proliferation),
             ("hypoxia (CA9)", self.hypoxia),
@@ -98,7 +103,8 @@ class TumorEvidenceScore:
         """Channels with 0.2 ≤ score < 0.8 — soft evidence."""
         out = []
         for name, val in [
-            ("CTA", self.cta), ("oncofetal", self.oncofetal),
+            ("CTA", self.cta),
+            ("oncofetal", self.oncofetal),
             ("type-specific", self.type_specific),
             ("proliferation", self.proliferation),
             ("hypoxia (CA9)", self.hypoxia),
@@ -117,13 +123,9 @@ class TumorEvidenceScore:
             f"(≥1.0 = tumor-consistent; ≥0.3 = some evidence; <0.3 = weak)."
         ]
         if strong:
-            parts.append(
-                f"Strong channels: {', '.join(strong)}."
-            )
+            parts.append(f"Strong channels: {', '.join(strong)}.")
         if soft:
-            parts.append(
-                f"Soft channels: {', '.join(soft)}."
-            )
+            parts.append(f"Soft channels: {', '.join(soft)}.")
         if not strong and not soft:
             parts.append("No tumor-evidence channels fired.")
         # Per-channel detail
@@ -153,7 +155,9 @@ def score_oncofetal(oncofetal_count: int) -> float:
 
 def score_type_specific(type_specific_count: int) -> float:
     return _ramp(
-        float(type_specific_count), 0.0, float(_TYPE_SPECIFIC_SATURATION),
+        float(type_specific_count),
+        0.0,
+        float(_TYPE_SPECIFIC_SATURATION),
     )
 
 

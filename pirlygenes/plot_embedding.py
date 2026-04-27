@@ -34,15 +34,15 @@ from .plot_tumor_expr import (
 
 _IG_TR_PREFIXES = ("IGH", "IGK", "IGL", "TRA", "TRB", "TRG", "TRD")
 _CURATED_CTAS = [
-    "PRAME",    # UCS/SKCM/UCEC — high-expression melanoma/uterine marker
-    "MAGEA3",   # SKCM/LUSC — melanoma and squamous cancers
-    "CTCFL",    # UCS/OV — gynecologic cancers (BORIS, CTCF paralog)
-    "SMC1B",    # CESC/LAML — meiotic cohesin, cervical cancer marker
-    "LIN28B",   # TGCT/UCS — stem cell / embryonal marker
-    "SSX1",     # THCA/UVM/SKCM — thyroid + melanomas
+    "PRAME",  # UCS/SKCM/UCEC — high-expression melanoma/uterine marker
+    "MAGEA3",  # SKCM/LUSC — melanoma and squamous cancers
+    "CTCFL",  # UCS/OV — gynecologic cancers (BORIS, CTCF paralog)
+    "SMC1B",  # CESC/LAML — meiotic cohesin, cervical cancer marker
+    "LIN28B",  # TGCT/UCS — stem cell / embryonal marker
+    "SSX1",  # THCA/UVM/SKCM — thyroid + melanomas
     "C1orf94",  # LGG/GBM — brain tumor CTA marker
-    "SYCP3",    # LAML/TGCT — synaptonemal complex, meiosis marker
-    "FATE1",    # ACC — adrenocortical CTA marker
+    "SYCP3",  # LAML/TGCT — synaptonemal complex, meiosis marker
+    "FATE1",  # ACC — adrenocortical CTA marker
 ]
 
 # Clinically important genes with low TME background.  The data-driven
@@ -50,36 +50,36 @@ _CURATED_CTAS = [
 # type or they sit just below per-type selection cutoffs.
 _CURATED_TME_BOOST = [
     # Cancer-testis antigens
-    "PRAME",      # S/N_tme≈179  UCS/UCEC/SKCM — immunotherapy target
-    "MAGEA3",     # S/N_tme≈27   SKCM — vaccine target
-    "LIN28B",     # S/N_tme≈19   TGCT — embryonal/stem marker
-    "SYCP3",      # S/N_tme≈12   LAML — meiosis marker
+    "PRAME",  # S/N_tme≈179  UCS/UCEC/SKCM — immunotherapy target
+    "MAGEA3",  # S/N_tme≈27   SKCM — vaccine target
+    "LIN28B",  # S/N_tme≈19   TGCT — embryonal/stem marker
+    "SYCP3",  # S/N_tme≈12   LAML — meiosis marker
     # Glioma / neuroendocrine (brain-restricted, TME-silent)
-    "DLL3",       # S/N_tme≈94   LGG/GBM — Rova-T & BiTE target
-    "PTPRZ1",     # S/N_tme≈29   LGG/GBM — glioma phosphatase
+    "DLL3",  # S/N_tme≈94   LGG/GBM — Rova-T & BiTE target
+    "PTPRZ1",  # S/N_tme≈29   LGG/GBM — glioma phosphatase
     # Melanocyte lineage (melanocyte-restricted)
-    "MLANA",      # S/N_tme≈1472 UVM/SKCM — MART-1, TIL/TCR target
-    "TYR",        # S/N_tme≈726  UVM/SKCM — tyrosinase
+    "MLANA",  # S/N_tme≈1472 UVM/SKCM — MART-1, TIL/TCR target
+    "TYR",  # S/N_tme≈726  UVM/SKCM — tyrosinase
     # Therapy targets with low TME expression
-    "MSLN",       # S/N_tme≈10   MESO/OV — mesothelin, CAR-T target
-    "CDKN2A",     # S/N_tme≈13   UCS/OV — p16, broad tumor marker
-    "COL11A1",    # S/N_tme≈11   MESO/BRCA/PAAD — desmoplastic, ADC target
+    "MSLN",  # S/N_tme≈10   MESO/OV — mesothelin, CAR-T target
+    "CDKN2A",  # S/N_tme≈13   UCS/OV — p16, broad tumor marker
+    "COL11A1",  # S/N_tme≈11   MESO/BRCA/PAAD — desmoplastic, ADC target
     # Lineage transcription factors
-    "FOXA1",      # S/N_tme≈5    PRAD/BRCA — luminal breast/prostate
-    "ASCL2",      # S/N_tme≈10   COAD/READ — intestinal stem cell TF
-    "DLX5",       # S/N_tme≈9    UCEC/UCS — homeobox, endometrial
-    "SOX2",       # S/N_tme≈22   LUSC/LGG — squamous & neural stem cell TF
-    "TH",         # S/N_tme≈792  PCPG — tyrosine hydroxylase, catecholamine
+    "FOXA1",  # S/N_tme≈5    PRAD/BRCA — luminal breast/prostate
+    "ASCL2",  # S/N_tme≈10   COAD/READ — intestinal stem cell TF
+    "DLX5",  # S/N_tme≈9    UCEC/UCS — homeobox, endometrial
+    "SOX2",  # S/N_tme≈22   LUSC/LGG — squamous & neural stem cell TF
+    "TH",  # S/N_tme≈792  PCPG — tyrosine hydroxylase, catecholamine
     # Therapy targets & lineage markers for additional types
-    "FLT3",       # S/N_tme≈47   LAML — gilteritinib/midostaurin target
-    "LIN28A",     # S/N_tme≈319  TGCT — embryonal pluripotency marker
-    "NANOG",      # S/N_tme≈111  TGCT — pluripotency TF, germ cell tumors
-    "PMEL",       # S/N_tme≈104  UVM/SKCM — gp100, melanoma vaccine target
-    "OLIG2",      # S/N_tme≈10   LGG/GBM — oligodendrocyte lineage TF
-    "NKX3-1",     # S/N_tme≈6    PRAD — prostate lineage TF, diagnostic
-    "STEAP2",     # S/N_tme≈4    PRAD — prostate surface antigen
-    "MITF",       # S/N_tme≈4    UVM/SKCM — master melanocyte TF
-    "FOXN1",      # S/N_tme≈8    THYM — thymic epithelial TF
+    "FLT3",  # S/N_tme≈47   LAML — gilteritinib/midostaurin target
+    "LIN28A",  # S/N_tme≈319  TGCT — embryonal pluripotency marker
+    "NANOG",  # S/N_tme≈111  TGCT — pluripotency TF, germ cell tumors
+    "PMEL",  # S/N_tme≈104  UVM/SKCM — gp100, melanoma vaccine target
+    "OLIG2",  # S/N_tme≈10   LGG/GBM — oligodendrocyte lineage TF
+    "NKX3-1",  # S/N_tme≈6    PRAD — prostate lineage TF, diagnostic
+    "STEAP2",  # S/N_tme≈4    PRAD — prostate surface antigen
+    "MITF",  # S/N_tme≈4    UVM/SKCM — master melanocyte TF
+    "FOXN1",  # S/N_tme≈8    THYM — thymic epithelial TF
 ]
 
 # Lineage markers for cancer types whose defining genes are also expressed
@@ -87,12 +87,12 @@ _CURATED_TME_BOOST = [
 # at very low purity, but they prevent these types from collapsing into a
 # featureless cluster in embedding space.
 _CURATED_LINEAGE_BOOST = [
-    "UPK2",       # BLCA — uroplakin, 120x vs other cancers
-    "APOA2",      # LIHC — liver secretory protein, 70000x vs others
-    "SFTPB",      # LUAD — surfactant protein B, 12000x vs others
-    "NAPSA",      # LUAD — napsin A, lung adeno IHC marker
-    "KRT6A",      # ESCA — squamous keratin, 214x vs others
-    "PGC",        # STAD — pepsinogen C, best available (3x vs others)
+    "UPK2",  # BLCA — uroplakin, 120x vs other cancers
+    "APOA2",  # LIHC — liver secretory protein, 70000x vs others
+    "SFTPB",  # LUAD — surfactant protein B, 12000x vs others
+    "NAPSA",  # LUAD — napsin A, lung adeno IHC marker
+    "KRT6A",  # ESCA — squamous keratin, 214x vs others
+    "PGC",  # STAD — pepsinogen C, best available (3x vs others)
 ]
 
 _signature_panel_cache = {}
@@ -199,7 +199,9 @@ def _compute_cancer_type_signature_stats(
 
     from .tumor_purity import _cached_reference_matrices
 
-    sample_raw_by_symbol, sample_hk_by_symbol = _sample_expression_by_symbol(df_gene_expr)
+    sample_raw_by_symbol, sample_hk_by_symbol = _sample_expression_by_symbol(
+        df_gene_expr
+    )
     # HK-normalize both sides so percentile comparison is on the same
     # scale (sample TPM/hk vs reference FPKM/hk). This is consistent
     # normalization, not mixed — both are divided by their own HK median.
@@ -316,8 +318,7 @@ def _select_embedding_genes_bottleneck(n_genes_per_type=5):
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     ntpm_nonrepro = [
-        c for c in ntpm_cols
-        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
+        c for c in ntpm_cols if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
     ]
 
     ref_dedup = ref.drop_duplicates(subset="Symbol")
@@ -331,8 +332,7 @@ def _select_embedding_genes_bottleneck(n_genes_per_type=5):
     else:
         immune_cols = []
     stromal_cols = [
-        c for c in ntpm_nonrepro
-        if c.replace("nTPM_", "") in _STROMAL_TISSUES
+        c for c in ntpm_nonrepro if c.replace("nTPM_", "") in _STROMAL_TISSUES
     ]
     tme_cols = list(set(immune_cols + stromal_cols))
     tme_expr = ref_dedup[tme_cols].astype(float)
@@ -360,6 +360,7 @@ def _select_embedding_genes_bottleneck(n_genes_per_type=5):
     z_tme_pos = z_tme.clip(lower=0)
     z_other_pos = z_other.clip(lower=0)
     import pandas as pd
+
     bottleneck = pd.DataFrame(
         np.minimum(z_tme_pos.values, z_other_pos.values),
         index=cancer_expr.index,
@@ -416,8 +417,7 @@ def _select_tme_low_genes(n_genes_per_type=3, sn_tme_threshold=10):
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     ntpm_nonrepro = [
-        c for c in ntpm_cols
-        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
+        c for c in ntpm_cols if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
     ]
 
     ref_dedup = ref.drop_duplicates(subset="Symbol")
@@ -432,8 +432,7 @@ def _select_tme_low_genes(n_genes_per_type=3, sn_tme_threshold=10):
     else:
         immune_cols = []
     stromal_cols = [
-        c for c in ntpm_nonrepro
-        if c.replace("nTPM_", "") in _STROMAL_TISSUES
+        c for c in ntpm_nonrepro if c.replace("nTPM_", "") in _STROMAL_TISSUES
     ]
     tme_cols = list(set(immune_cols + stromal_cols))
     tme_max = normal_expr[tme_cols].max(axis=1) if tme_cols else normal_expr.max(axis=1)
@@ -476,9 +475,12 @@ def _select_tme_low_genes(n_genes_per_type=3, sn_tme_threshold=10):
     # Final fallback: composite score for any still-missing types
     fallback_mask = base_mask & (sn_tme > 0.5)
     if fallback_mask.any():
-        fallback_score = best_z[fallback_mask] * np.log2(
-            cancer_expr.max(axis=1)[fallback_mask] + 1
-        ) * np.minimum(sn_tme[fallback_mask], 3) / 3
+        fallback_score = (
+            best_z[fallback_mask]
+            * np.log2(cancer_expr.max(axis=1)[fallback_mask] + 1)
+            * np.minimum(sn_tme[fallback_mask], 3)
+            / 3
+        )
         fallback_best = z_mat[fallback_mask].idxmax(axis=1)
         for code_col in fpkm_cols:
             code = code_col.replace("FPKM_", "")
@@ -576,8 +578,7 @@ def _select_embedding_genes(n_genes_per_type=3):
     # Exclude reproductive tissues from the normal-tissue denominator
     # so that cancer-testis antigens can pass the S/N filter.
     ntpm_nonrepro = [
-        c for c in ntpm_cols
-        if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
+        c for c in ntpm_cols if c.replace("nTPM_", "") not in _REPRODUCTIVE_TISSUES
     ]
 
     ref_dedup = ref.drop_duplicates(subset="Symbol")
@@ -652,7 +653,9 @@ def _select_embedding_genes(n_genes_per_type=3):
         selected_idx.extend(top)
 
     # --- CTA boost ---
-    selected_syms = set(ref_dedup.loc[list(dict.fromkeys(selected_idx)), "Symbol"].values)
+    selected_syms = set(
+        ref_dedup.loc[list(dict.fromkeys(selected_idx)), "Symbol"].values
+    )
     cta_added = []
     for cta in _CURATED_CTAS:
         if cta in selected_syms:
@@ -727,7 +730,8 @@ def _cancer_type_score_matrix(df_gene_expr, n_signature_genes=20):
 
     # Score the sample
     sample_stats = _compute_cancer_type_signature_stats(
-        df_gene_expr, n_signature_genes=n_signature_genes,
+        df_gene_expr,
+        n_signature_genes=n_signature_genes,
     )
     sample_scores = np.zeros(len(labels))
     for stat in sample_stats:
@@ -761,7 +765,14 @@ def _hierarchy_feature_labels():
     families = list(_CANCER_FAMILY_PANELS)
     site_labels = sorted(
         set(CANCER_TO_TISSUE.values())
-        | {"appendix", "bone_marrow", "lymph_node", "smooth_muscle", "spleen", "adipose_tissue"}
+        | {
+            "appendix",
+            "bone_marrow",
+            "lymph_node",
+            "smooth_muscle",
+            "spleen",
+            "adipose_tissue",
+        }
     )
     feature_labels = (
         [f"support::{code}" for code in codes]
@@ -772,7 +783,9 @@ def _hierarchy_feature_labels():
     return codes, families, site_labels, feature_labels
 
 
-def _hierarchy_feature_vector(df_gene_expr, candidate_codes, family_labels, site_labels):
+def _hierarchy_feature_vector(
+    df_gene_expr, candidate_codes, family_labels, site_labels
+):
     """Build one hierarchy-aware embedding vector for a sample/profile."""
     from .tumor_purity import (
         rank_cancer_type_candidates,
@@ -808,8 +821,7 @@ def _hierarchy_feature_vector(df_gene_expr, candidate_codes, family_labels, site
     max_site_score = max(site_scores.values(), default=0.0)
     if max_site_score > 0:
         site_features = [
-            float(site_scores.get(site, 0.0) / max_site_score)
-            for site in site_labels
+            float(site_scores.get(site, 0.0) / max_site_score) for site in site_labels
         ]
     else:
         site_features = [0.0 for _ in site_labels]
@@ -818,15 +830,21 @@ def _hierarchy_feature_vector(df_gene_expr, candidate_codes, family_labels, site
         float(trace_by_code.get(code, {}).get("support_norm", 0.0))
         for code in candidate_codes
     ]
-    best_purity = float(candidate_trace[0]["purity_estimate"]) if candidate_trace else 0.0
-    return np.array(support_features + family_features + site_features + [best_purity], dtype=float)
+    best_purity = (
+        float(candidate_trace[0]["purity_estimate"]) if candidate_trace else 0.0
+    )
+    return np.array(
+        support_features + family_features + site_features + [best_purity], dtype=float
+    )
 
 
 def _reference_family_feature_matrix(candidate_codes, family_labels):
     """Build normalized family-panel features for TCGA reference centroids."""
     from .tumor_purity import _CANCER_FAMILY_PANELS
 
-    ref_hk = pan_cancer_expression(normalize="housekeeping").drop_duplicates(subset="Symbol")
+    ref_hk = pan_cancer_expression(normalize="housekeeping").drop_duplicates(
+        subset="Symbol"
+    )
     ref_hk = ref_hk.set_index("Symbol")
 
     rows = []
@@ -834,10 +852,12 @@ def _reference_family_feature_matrix(candidate_codes, family_labels):
         col = f"FPKM_{code}"
         family_values = []
         for family in family_labels:
-            genes = [gene for gene in _CANCER_FAMILY_PANELS[family] if gene in ref_hk.index]
+            genes = [
+                gene for gene in _CANCER_FAMILY_PANELS[family] if gene in ref_hk.index
+            ]
             if genes:
                 values = sorted(ref_hk.loc[genes, col].astype(float).tolist())
-                upper_half = values[len(values) // 2:] if len(values) >= 3 else values
+                upper_half = values[len(values) // 2 :] if len(values) >= 3 else values
                 score = float(np.median(upper_half)) if upper_half else 0.0
             else:
                 score = 0.0
@@ -886,7 +906,9 @@ def _reference_site_feature_matrix(candidate_codes, site_labels):
 
 def _hierarchy_embedding_metadata():
     """Describe the hierarchy-aware embedding feature space."""
-    candidate_codes, family_labels, site_labels, feature_labels = _hierarchy_feature_labels()
+    candidate_codes, family_labels, site_labels, feature_labels = (
+        _hierarchy_feature_labels()
+    )
     return {
         "method": "hierarchy",
         "feature_kind": "hierarchical_scores",
@@ -906,11 +928,15 @@ def _cancer_type_hierarchy_matrix(df_gene_expr):
     import numpy as np
     from .tumor_purity import TCGA_MEDIAN_PURITY
 
-    candidate_codes, family_labels, site_labels, _feature_labels = _hierarchy_feature_labels()
+    candidate_codes, family_labels, site_labels, _feature_labels = (
+        _hierarchy_feature_labels()
+    )
     cache_key = tuple(candidate_codes)
     cached = _hierarchy_feature_cache.get(cache_key)
     if cached is None:
-        ref_scores, labels = _cancer_type_score_matrix(_reference_cancer_expression_df(candidate_codes[0]))
+        ref_scores, labels = _cancer_type_score_matrix(
+            _reference_cancer_expression_df(candidate_codes[0])
+        )
         ref_labels = labels[:-1]
         ref_matrix = ref_scores[:-1]
         ref_families = _reference_family_feature_matrix(ref_labels, family_labels)
@@ -919,11 +945,16 @@ def _cancer_type_hierarchy_matrix(df_gene_expr):
             [[float(TCGA_MEDIAN_PURITY.get(code, 0.5))] for code in ref_labels],
             dtype=float,
         )
-        cached = (np.hstack([ref_matrix, ref_families, ref_sites, ref_purity]), ref_labels)
+        cached = (
+            np.hstack([ref_matrix, ref_families, ref_sites, ref_purity]),
+            ref_labels,
+        )
         _hierarchy_feature_cache[cache_key] = cached
 
     ref_matrix, labels = cached
-    sample_vector = _hierarchy_feature_vector(df_gene_expr, candidate_codes, family_labels, site_labels)
+    sample_vector = _hierarchy_feature_vector(
+        df_gene_expr, candidate_codes, family_labels, site_labels
+    )
     matrix = np.vstack([ref_matrix, sample_vector[None, :]])
     out_labels = list(labels) + ["SAMPLE"]
     return matrix, out_labels
@@ -950,7 +981,10 @@ def _subtype_expression_values_for_ref(
         return [], np.zeros((len(ref_norm), 0), dtype=float)
 
     try:
-        from .gene_sets_cancer import subtype_deconvolved_expression, housekeeping_gene_names
+        from .gene_sets_cancer import (
+            subtype_deconvolved_expression,
+            housekeeping_gene_names,
+        )
 
         subtype_df = subtype_deconvolved_expression()
     except Exception:
@@ -965,9 +999,16 @@ def _subtype_expression_values_for_ref(
     if sub.empty:
         return [], np.zeros((len(ref_norm), 0), dtype=float)
 
-    subtype_code = sub.get("subtype", pd.Series("", index=sub.index)).fillna("").astype(str).str.strip()
+    subtype_code = (
+        sub.get("subtype", pd.Series("", index=sub.index))
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
     cancer_code = sub["cancer_code"].fillna("").astype(str).str.strip()
-    sub["_embed_code"] = subtype_code.where(subtype_code.ne("") & subtype_code.ne("nan"), cancer_code)
+    sub["_embed_code"] = subtype_code.where(
+        subtype_code.ne("") & subtype_code.ne("nan"), cancer_code
+    )
     sub = sub[sub["_embed_code"].ne("") & sub["_embed_code"].ne("nan")]
     if sub.empty:
         return [], np.zeros((len(ref_norm), 0), dtype=float)
@@ -979,7 +1020,9 @@ def _subtype_expression_values_for_ref(
         aggfunc="median",
     )
     exclude_codes = set(exclude_codes or [])
-    labels = sorted(str(label) for label in pivot.columns if str(label) not in exclude_codes)
+    labels = sorted(
+        str(label) for label in pivot.columns if str(label) not in exclude_codes
+    )
     if not labels:
         return [], np.zeros((len(ref_norm), 0), dtype=float)
 
@@ -987,9 +1030,16 @@ def _subtype_expression_values_for_ref(
         hk_symbols = set(housekeeping_gene_names())
         hk = subtype_df[subtype_df["symbol"].astype(str).isin(hk_symbols)].copy()
         if not hk.empty:
-            hk_subtype = hk.get("subtype", pd.Series("", index=hk.index)).fillna("").astype(str).str.strip()
+            hk_subtype = (
+                hk.get("subtype", pd.Series("", index=hk.index))
+                .fillna("")
+                .astype(str)
+                .str.strip()
+            )
             hk_cancer = hk["cancer_code"].fillna("").astype(str).str.strip()
-            hk["_embed_code"] = hk_subtype.where(hk_subtype.ne("") & hk_subtype.ne("nan"), hk_cancer)
+            hk["_embed_code"] = hk_subtype.where(
+                hk_subtype.ne("") & hk_subtype.ne("nan"), hk_cancer
+            )
             hk = hk[hk["_embed_code"].isin(labels)]
             hk_medians = hk.groupby("_embed_code")["tumor_tpm_median"].median()
             for label in labels:
@@ -997,7 +1047,12 @@ def _subtype_expression_values_for_ref(
                 if denom > 0:
                     pivot[label] = pivot[label].astype(float) / denom
 
-    values = pivot.reindex(index=symbols, columns=labels).fillna(0.0).astype(float).to_numpy()
+    values = (
+        pivot.reindex(index=symbols, columns=labels)
+        .fillna(0.0)
+        .astype(float)
+        .to_numpy()
+    )
     return labels, values
 
 
@@ -1072,8 +1127,10 @@ def _cancer_type_feature_matrix(
     df = df_gene_expr.copy()
     df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
 
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
+    tpm_col = (
+        "TPM"
+        if "TPM" in df.columns
+        else next((c for c in df.columns if c.lower() == "tpm"), None)
     )
 
     if method in ("hk", "hk_zscore"):
@@ -1081,14 +1138,20 @@ def _cancer_type_feature_matrix(
         hk_median = df.loc[hk_mask, tpm_col].astype(float).median()
         if not (hk_median > 0):  # catches NaN and <= 0
             hk_median = 1.0
-        sample_by_id = dict(zip(
-            df[gene_id_col].astype(str), df[tpm_col].astype(float) / hk_median,
-        ))
+        sample_by_id = dict(
+            zip(
+                df[gene_id_col].astype(str),
+                df[tpm_col].astype(float) / hk_median,
+            )
+        )
         ref_full = pan_cancer_expression(normalize="housekeeping")
     else:
-        sample_by_id = dict(zip(
-            df[gene_id_col].astype(str), df[tpm_col].astype(float),
-        ))
+        sample_by_id = dict(
+            zip(
+                df[gene_id_col].astype(str),
+                df[tpm_col].astype(float),
+            )
+        )
         ref_full = pan_cancer_expression()
 
     fpkm_cols = [c for c in ref_full.columns if c.startswith("FPKM_")]
@@ -1098,15 +1161,16 @@ def _cancer_type_feature_matrix(
     if include_normals:
         normal_cols = [c for c in ref_full.columns if c.startswith("nTPM_")]
         normal_labels = [
-            "normal:" + c.replace("nTPM_", "").replace("_", " ")
-            for c in normal_cols
+            "normal:" + c.replace("nTPM_", "").replace("_", " ") for c in normal_cols
         ]
 
     # Gene selection
     if method == "tme":
         ref_filtered, _meta = _select_tme_low_genes(n_genes_per_type=n_genes)
     elif method == "bottleneck":
-        ref_filtered, _meta = _select_embedding_genes_bottleneck(n_genes_per_type=n_genes)
+        ref_filtered, _meta = _select_embedding_genes_bottleneck(
+            n_genes_per_type=n_genes
+        )
     else:
         ref_filtered, _meta = _select_embedding_genes(n_genes_per_type=n_genes)
 
@@ -1116,14 +1180,18 @@ def _cancer_type_feature_matrix(
         subset="Ensembl_Gene_ID"
     )
     # Preserve the gene order from _select_embedding_genes
-    ref_norm = ref_norm.set_index("Ensembl_Gene_ID").loc[
-        [gid for gid in gene_ids if gid in ref_norm["Ensembl_Gene_ID"].values]
-    ].reset_index()
+    ref_norm = (
+        ref_norm.set_index("Ensembl_Gene_ID")
+        .loc[[gid for gid in gene_ids if gid in ref_norm["Ensembl_Gene_ID"].values]]
+        .reset_index()
+    )
 
-    sample_vals = np.array([
-        sample_by_id.get(row["Ensembl_Gene_ID"], 0.0)
-        for _, row in ref_norm.iterrows()
-    ])
+    sample_vals = np.array(
+        [
+            sample_by_id.get(row["Ensembl_Gene_ID"], 0.0)
+            for _, row in ref_norm.iterrows()
+        ]
+    )
     ref_vals = ref_norm[fpkm_cols].astype(float).values  # (genes, cancers)
     subtype_labels, subtype_vals = (
         _subtype_expression_values_for_ref(
@@ -1131,11 +1199,13 @@ def _cancer_type_feature_matrix(
             normalize_housekeeping=method in ("hk", "hk_zscore"),
             exclude_codes=set(labels),
         )
-        if include_subtypes else ([], np.zeros((len(ref_norm), 0), dtype=float))
+        if include_subtypes
+        else ([], np.zeros((len(ref_norm), 0), dtype=float))
     )
     normal_vals = (
         ref_norm[normal_cols].astype(float).values
-        if normal_cols else np.zeros((len(ref_norm), 0), dtype=float)
+        if normal_cols
+        else np.zeros((len(ref_norm), 0), dtype=float)
     )
 
     if method in ("zscore", "hk_zscore", "tme", "bottleneck"):
@@ -1191,7 +1261,8 @@ def _cancer_type_feature_matrix(
         combined = np.vstack(parts)
         ranked = np.apply_along_axis(
             lambda col: rankdata(col, method="average") / len(col),
-            axis=0, arr=combined,
+            axis=0,
+            arr=combined,
         )
         matrix = ranked
     else:
@@ -1257,7 +1328,9 @@ def _plot_embedding_with_labels(
             if family not in family_order:
                 family_order.append(family)
         palette = sns.color_palette("tab20", max(len(family_order), 1))
-        family_palette = {family: palette[idx] for idx, family in enumerate(family_order)}
+        family_palette = {
+            family: palette[idx] for idx, family in enumerate(family_order)
+        }
 
     nearest_neighbors = []
     if "SAMPLE" in labels:
@@ -1271,14 +1344,10 @@ def _plot_embedding_with_labels(
         nearest_neighbors.sort(key=lambda item: (item[0], item[1]))
 
     nearest_cancer_ordered = [
-        label
-        for _, label, kind in nearest_neighbors
-        if kind == "cancer"
+        label for _, label, kind in nearest_neighbors if kind == "cancer"
     ]
     nearest_normal_ordered = [
-        label
-        for _, label, kind in nearest_neighbors
-        if kind == "normal"
+        label for _, label, kind in nearest_neighbors if kind == "normal"
     ]
     nearest_cancer_labels = set(nearest_cancer_ordered)
     nearest_normal_labels = set(nearest_normal_ordered)
@@ -1335,7 +1404,9 @@ def _plot_embedding_with_labels(
                 size = 38
                 alpha = 0.52
             else:
-                point_color = family_palette.get(label_to_family.get(label), "steelblue")
+                point_color = family_palette.get(
+                    label_to_family.get(label), "steelblue"
+                )
                 edge_color = "white"
                 marker = "o"
                 size = 60
@@ -1376,8 +1447,12 @@ def _plot_embedding_with_labels(
 
     if nearest_neighbors:
         if any(kind == "normal" for _, _, kind in nearest_neighbors):
-            n_cancers = 5 if label_nearest_cancers is None else int(label_nearest_cancers)
-            n_normals = 5 if label_nearest_normals is None else int(label_nearest_normals)
+            n_cancers = (
+                5 if label_nearest_cancers is None else int(label_nearest_cancers)
+            )
+            n_normals = (
+                5 if label_nearest_normals is None else int(label_nearest_normals)
+            )
             cancer_text = "\n".join(
                 f"{_display_label(label)} ({dist:.2f})"
                 for dist, label, kind in nearest_neighbors
@@ -1408,24 +1483,68 @@ def _plot_embedding_with_labels(
             ha="right",
             va="bottom",
             fontsize=8,
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.9, edgecolor="#cccccc"),
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="white",
+                alpha=0.9,
+                edgecolor="#cccccc",
+            ),
         )
 
     if family_palette:
         handles = [
-            Line2D([0], [0], marker="o", color="none", markerfacecolor=color,
-                   markeredgecolor="white", markersize=7, label=family)
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="none",
+                markerfacecolor=color,
+                markeredgecolor="white",
+                markersize=7,
+                label=family,
+            )
             for family, color in list(family_palette.items())[:10]
         ]
-        ax.legend(handles=handles, title="Family", loc="upper left", fontsize=8, title_fontsize=9, framealpha=0.9)
+        ax.legend(
+            handles=handles,
+            title="Family",
+            loc="upper left",
+            fontsize=8,
+            title_fontsize=9,
+            framealpha=0.9,
+        )
     elif any(_label_kind(label) == "normal" for label in labels):
         handles = [
-            Line2D([0], [0], marker="o", color="none", markerfacecolor="steelblue",
-                   markeredgecolor="white", markersize=7, label="TCGA cancer"),
-            Line2D([0], [0], marker="s", color="none", markerfacecolor="#8da08d",
-                   markeredgecolor="white", markersize=6, label="normal tissue"),
-            Line2D([0], [0], marker="*", color="red", markeredgecolor="black",
-                   markersize=10, linestyle="none", label="sample"),
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="none",
+                markerfacecolor="steelblue",
+                markeredgecolor="white",
+                markersize=7,
+                label="TCGA cancer",
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="s",
+                color="none",
+                markerfacecolor="#8da08d",
+                markeredgecolor="white",
+                markersize=6,
+                label="normal tissue",
+            ),
+            Line2D(
+                [0],
+                [0],
+                marker="*",
+                color="red",
+                markeredgecolor="black",
+                markersize=10,
+                linestyle="none",
+                label="sample",
+            ),
         ]
         ax.legend(handles=handles, loc="upper left", fontsize=8, framealpha=0.9)
 
@@ -1460,12 +1579,15 @@ def plot_cancer_type_genes(
         Output path.
     """
     import numpy as np
+
     stats = _compute_cancer_type_signature_stats(df_gene_expr, n_signature_genes=20)
     if not stats:
         return None, None
 
     top_stats = stats[:n_per_tail]
-    bottom_stats = sorted(stats[-n_per_tail:], key=lambda row: (row["score"], row["code"]))
+    bottom_stats = sorted(
+        stats[-n_per_tail:], key=lambda row: (row["score"], row["code"])
+    )
     selected_stats = top_stats + bottom_stats
 
     fig, ax = plt.subplots(figsize=figsize)
@@ -1534,7 +1656,9 @@ def plot_cancer_type_genes(
             )
 
         if idx == len(top_stats) - 1 and bottom_stats:
-            ax.axhline(y=y_pos + 0.5, color="#cccccc", linewidth=0.8, alpha=0.8, zorder=0)
+            ax.axhline(
+                y=y_pos + 0.5, color="#cccccc", linewidth=0.8, alpha=0.8, zorder=0
+            )
 
         y_pos += 1
 
@@ -1552,8 +1676,14 @@ def plot_cancer_type_genes(
 
     # Reference lines
     for tpm_thresh in (10, 100):
-        ax.axvline(x=tpm_thresh, color="#cccccc", linestyle="--",
-                   linewidth=0.7, alpha=0.5, zorder=1)
+        ax.axvline(
+            x=tpm_thresh,
+            color="#cccccc",
+            linestyle="--",
+            linewidth=0.7,
+            alpha=0.5,
+            zorder=1,
+        )
 
     # Fix x-axis limits before adjustText to prevent blowout
     ax.set_xlim(left=0.005)
@@ -1638,8 +1768,14 @@ def plot_cancer_type_disjoint_genes(
         top3 = sorted(row["gene_details"], key=lambda detail: -detail["percentile"])[:3]
         top3_str = ", ".join(detail["gene"] for detail in top3)
         if top3_str:
-            ax.text(min(row["score"] + 0.01, 0.99), i, top3_str,
-                    fontsize=5.5, va="center", alpha=0.7)
+            ax.text(
+                min(row["score"] + 0.01, 0.99),
+                i,
+                top3_str,
+                fontsize=5.5,
+                va="center",
+                alpha=0.7,
+            )
 
     fig.tight_layout()
     if save_to_filename:
@@ -1690,13 +1826,21 @@ def plot_cohort_heatmap(
     matrix.columns = codes
 
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(matrix.values, aspect="auto", cmap=cmap,
-                   vmin=vmin, vmax=vmax, interpolation="nearest")
+    im = ax.imshow(
+        matrix.values,
+        aspect="auto",
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        interpolation="nearest",
+    )
     ax.set_xticks(range(len(codes)))
     ax.set_xticklabels(codes, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
     ax.set_yticklabels(present, fontsize=4)
-    ax.set_title(f"Curated cancer-type genes × TCGA cancer types — {subtitle}", fontsize=11)
+    ax.set_title(
+        f"Curated cancer-type genes × TCGA cancer types — {subtitle}", fontsize=11
+    )
     fig.colorbar(im, ax=ax, label=cbar_label, shrink=0.6)
     fig.tight_layout()
 
@@ -1783,11 +1927,20 @@ def plot_cohort_pca(
     coords = pca.fit_transform(X)
 
     fig, ax = plt.subplots(figsize=figsize)
-    ax.scatter(coords[:, 0], coords[:, 1], s=80, alpha=0.7,
-               color="steelblue", edgecolors="white", linewidths=0.5, zorder=2)
+    ax.scatter(
+        coords[:, 0],
+        coords[:, 1],
+        s=80,
+        alpha=0.7,
+        color="steelblue",
+        edgecolors="white",
+        linewidths=0.5,
+        zorder=2,
+    )
     for i, code in enumerate(codes):
-        ax.text(coords[i, 0], coords[i, 1], f" {code}",
-                fontsize=8, alpha=0.8, va="center")
+        ax.text(
+            coords[i, 0], coords[i, 1], f" {code}", fontsize=8, alpha=0.8, va="center"
+        )
 
     ax.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)", fontsize=11)
     ax.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)", fontsize=11)
@@ -1849,8 +2002,14 @@ def plot_cohort_therapy_targets(
     matrix.columns = codes
 
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(matrix.values, aspect="auto", cmap=cmap,
-                   vmin=vmin, vmax=vmax, interpolation="nearest")
+    im = ax.imshow(
+        matrix.values,
+        aspect="auto",
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        interpolation="nearest",
+    )
     ax.set_xticks(range(len(codes)))
     ax.set_xticklabels(codes, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
@@ -1921,8 +2080,14 @@ def _plot_geneset_by_cancer_heatmap(
     matrix.columns = codes
 
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(matrix.values, aspect="auto", cmap=use_cmap,
-                   vmin=vmin, vmax=vmax, interpolation="nearest")
+    im = ax.imshow(
+        matrix.values,
+        aspect="auto",
+        cmap=use_cmap,
+        vmin=vmin,
+        vmax=vmax,
+        interpolation="nearest",
+    )
     ax.set_xticks(range(len(codes)))
     ax.set_xticklabels(codes, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
@@ -1938,20 +2103,31 @@ def _plot_geneset_by_cancer_heatmap(
 
 
 def plot_cohort_surface_proteins(
-    save_to_filename=None, save_dpi=300, figsize=(16, 14), zscore=True,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(16, 14),
+    zscore=True,
 ):
     """Heatmap of cancer surfaceome targets × cancer types."""
     from .gene_sets_cancer import cancer_surfaceome_gene_names
+
     genes = sorted(cancer_surfaceome_gene_names())
     return _plot_geneset_by_cancer_heatmap(
-        genes, "Tumor-specific surface proteins (TCSA L3) × cancer types",
-        save_to_filename=save_to_filename, save_dpi=save_dpi,
-        figsize=figsize, cmap="YlOrRd", zscore=zscore,
+        genes,
+        "Tumor-specific surface proteins (TCSA L3) × cancer types",
+        save_to_filename=save_to_filename,
+        save_dpi=save_dpi,
+        figsize=figsize,
+        cmap="YlOrRd",
+        zscore=zscore,
     )
 
 
 def plot_cohort_ctas(
-    save_to_filename=None, save_dpi=300, figsize=(16, 14), zscore=True,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(16, 14),
+    zscore=True,
 ):
     """Heatmap of CTA genes × cancer types."""
     import numpy as np
@@ -1990,13 +2166,21 @@ def plot_cohort_ctas(
     matrix.columns = codes_clean
 
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(matrix.values, aspect="auto", cmap=cmap,
-                   vmin=vmin, vmax=vmax, interpolation="nearest")
+    im = ax.imshow(
+        matrix.values,
+        aspect="auto",
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        interpolation="nearest",
+    )
     ax.set_xticks(range(len(codes_clean)))
     ax.set_xticklabels(codes_clean, fontsize=7, rotation=90)
     ax.set_yticks(range(len(present)))
     ax.set_yticklabels(present, fontsize=6)
-    ax.set_title(f"Cancer-testis antigens × cancer types (top 50) — {subtitle}", fontsize=11)
+    ax.set_title(
+        f"Cancer-testis antigens × cancer types (top 50) — {subtitle}", fontsize=11
+    )
     fig.colorbar(im, ax=ax, label=cbar_label, shrink=0.6)
     fig.tight_layout()
 
@@ -2030,6 +2214,7 @@ def plot_cancer_type_pca(
 ):
     """PCA scatter showing where the sample falls among cancer-type centroids."""
     from sklearn.decomposition import PCA
+
     X, labels = _cancer_type_feature_matrix(
         df_gene_expr,
         n_genes=n_genes,
@@ -2134,8 +2319,11 @@ def plot_cancer_type_umap(
     """UMAP embedding of the sample with TCGA cancer type centroids."""
     from umap import UMAP
 
-    X, labels = _cancer_type_feature_matrix(df_gene_expr, n_genes=n_genes, method=method)
+    X, labels = _cancer_type_feature_matrix(
+        df_gene_expr, n_genes=n_genes, method=method
+    )
     import warnings
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="n_jobs value")
         coords = UMAP(

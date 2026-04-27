@@ -83,13 +83,15 @@ def concise_confidence_reasons(tier: ConfidenceTier, max_reasons: int = 3) -> st
             match = re.search(r"runner-up ([A-Za-z0-9_]+)", text)
             note = (
                 f"near tie with {match.group(1)}"
-                if match else "near tie with runner-up"
+                if match
+                else "near tie with runner-up"
             )
         elif "raw signature score favored" in low:
             match = re.search(r"raw signature score favored ([A-Za-z0-9_]+)", text)
             note = (
                 f"raw signature favors {match.group(1)}"
-                if match else "raw signature conflict"
+                if match
+                else "raw signature conflict"
             )
         elif "step-0 correlation favored" in low:
             match = re.search(r"Step-0 correlation favored ([A-Za-z0-9_]+)", text)
@@ -135,8 +137,7 @@ def compute_purity_confidence(
         return ConfidenceTier(
             tier="degenerate",
             reasons=[
-                "deterministic input (no per-gene variation) — purity "
-                "CI not estimated"
+                "deterministic input (no per-gene variation) — purity CI not estimated"
             ],
         )
     if span >= 0.35:
@@ -310,7 +311,9 @@ def compute_call_confidence(analysis) -> ConfidenceTier:
         tcga = getattr(hvt, "top_tcga_cohorts", None) or []
         if tcga:
             name, _rho = tcga[0]
-            step0_top_code = name.replace("FPKM_", "") if isinstance(name, str) else None
+            step0_top_code = (
+                name.replace("FPKM_", "") if isinstance(name, str) else None
+            )
     if step0_top_code and top_code and step0_top_code != top_code:
         if tier == "high":
             tier = "moderate"
@@ -341,7 +344,11 @@ def compute_target_confidence(
     ``attr_tumor_fraction``, and ``attribution`` (the new #108 columns).
     """
     reasons: List[str] = []
-    tier = purity_tier.tier if purity_tier.tier in {"low", "moderate", "high"} else "moderate"
+    tier = (
+        purity_tier.tier
+        if purity_tier.tier in {"low", "moderate", "high"}
+        else "moderate"
+    )
     if purity_tier.tier in {"low", "moderate"} and purity_tier.reasons:
         # Fold in the sample-level reasons so target rows carry them
         # when they're the dominant limit on confidence.

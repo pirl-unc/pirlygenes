@@ -13,20 +13,24 @@ from pirlygenes.decomposition.signature import _load_hpa_cell_types
 
 def _tcga_sample(cancer_code):
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    return pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
+        }
+    )
 
 
 def _normal_tissue_sample(tissue):
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    return pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref[f"nTPM_{tissue}"].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"nTPM_{tissue}"].astype(float),
+        }
+    )
 
 
 def test_tcga_coad_has_no_quality_issues():
@@ -53,16 +57,19 @@ def test_tcga_brca_has_no_quality_issues():
 def test_all_tcga_types_pass_quality_with_tissue_match():
     """No TCGA cohort median should flag as degraded when tissue-matched."""
     from pirlygenes.tumor_purity import CANCER_TO_TISSUE
+
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
 
     for col in fpkm_cols:
         code = col.replace("FPKM_", "")
-        df = pd.DataFrame({
-            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-            "gene_symbol": ref["Symbol"],
-            "TPM": ref[col].astype(float),
-        })
+        df = pd.DataFrame(
+            {
+                "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+                "gene_symbol": ref["Symbol"],
+                "TPM": ref[col].astype(float),
+            }
+        )
         tissue = CANCER_TO_TISSUE.get(code)
         tissue_scores = [(tissue, 0.9, 20)] if tissue else None
         result = assess_sample_quality(df, tissue_scores=tissue_scores)
@@ -206,7 +213,9 @@ def test_unknown_library_prep_still_warns_on_missing_mt():
     df["TPM"] = df["gene_symbol"].map(tpm).fillna(0.0)
 
     result = assess_sample_quality(
-        df, tissue_scores=[("prostate", 0.9, 20)], library_prep=None,
+        df,
+        tissue_scores=[("prostate", 0.9, 20)],
+        library_prep=None,
     )
     assert any("Suspicious MT fraction" in f for f in result["flags"])
     assert result["degradation"]["level"] == "unknown"
@@ -215,11 +224,13 @@ def test_unknown_library_prep_still_warns_on_missing_mt():
 def test_nan_tpm_values_do_not_cause_errors():
     """Genes with NaN TPM should be handled gracefully."""
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    df = pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref["FPKM_COAD"].astype(float),  # has 189 NaN values
-    })
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref["FPKM_COAD"].astype(float),  # has 189 NaN values
+        }
+    )
     result = assess_sample_quality(df)
 
     # Should not have NaN in any numeric field

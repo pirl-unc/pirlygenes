@@ -34,6 +34,20 @@ def test_get_all_csv_paths_contains_core_dataset():
     assert any(Path(p).name == "ADC-trials.csv" for p in paths)
 
 
+def test_expression_effect_rule_datasets_load():
+    fusion_rules = gsc.fusion_expression_effect_rules_df()
+    mutation_rules = gsc.mutation_expression_effect_rules_df()
+    direct_fusion_rules = gsc.rare_cancer_fusion_rules_df()
+
+    assert {"rule_id", "gene_a", "gene_b", "expected_up_genes"}.issubset(
+        set(fusion_rules.columns)
+    )
+    assert {"rule_id", "alteration", "expected_up_genes"}.issubset(
+        set(mutation_rules.columns)
+    )
+    assert "nutm1_rearranged_uncertain" in set(direct_fusion_rules["rule_id"])
+
+
 def test_gene_set_field_lookup_variants(monkeypatch):
     # exercises plural/lower/upper/no-underscore candidate expansion
     fake_df = pd.DataFrame({"TUMORTARGETSYMBOLS": ["A;B"]})
@@ -183,6 +197,7 @@ def test_cta_partition():
 # ── Externalized gene sets (mitochondrial / culture / TME / degradation /
 #    lineage / cancer-family) ─────────────────────────────────────────────
 
+
 def test_mitochondrial_gene_loaders():
     df = gsc.mitochondrial_genes_df()
     # 13 protein-coding OXPHOS subunits + 2 rRNAs = 15
@@ -222,6 +237,7 @@ def test_degradation_gene_pairs_loader():
 
 def test_lineage_gene_loaders_cover_all_tcga_codes():
     from pirlygenes.tumor_purity import TCGA_MEDIAN_PURITY
+
     by_code = gsc.lineage_genes_by_cancer_type()
     missing = [c for c in TCGA_MEDIAN_PURITY if c not in by_code]
     assert missing == [], f"Missing lineage genes for: {missing}"
@@ -232,8 +248,17 @@ def test_lineage_gene_loaders_cover_all_tcga_codes():
 
 def test_cancer_family_panel_loader():
     families = gsc.cancer_family_panels()
-    expected = {"PROSTATE", "CRC", "GASTRIC", "SQUAMOUS", "ESCA_SQ",
-                "MESENCHYMAL", "RENAL", "GLIAL", "MELANOCYTIC"}
+    expected = {
+        "PROSTATE",
+        "CRC",
+        "GASTRIC",
+        "SQUAMOUS",
+        "ESCA_SQ",
+        "MESENCHYMAL",
+        "RENAL",
+        "GLIAL",
+        "MELANOCYTIC",
+    }
     assert set(families) == expected
     assert "KLK3" in gsc.cancer_family_panel("PROSTATE")
     assert "GFAP" not in gsc.cancer_family_panel("PROSTATE")

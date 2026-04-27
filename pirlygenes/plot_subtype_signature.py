@@ -23,6 +23,7 @@ cancer type where the signatures are applicable.
 
 import numpy as np
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -86,20 +87,26 @@ def _score_axis_genes(sample_tpm, ref_by_sym, cancer_code, axis_genes):
     for rec in axis_genes:
         sym = rec["symbol"]
         obs = sample_tpm.get(sym, 0.0)
-        cohort_med = float(ref_by_sym.loc[sym, cancer_col]) if sym in ref_by_sym.index and cancer_col in ref_by_sym.columns else 0.0
+        cohort_med = (
+            float(ref_by_sym.loc[sym, cancer_col])
+            if sym in ref_by_sym.index and cancer_col in ref_by_sym.columns
+            else 0.0
+        )
         if cohort_med > 0.1:
             fold = obs / cohort_med
         elif obs > 0.1:
             fold = 10.0  # expressed in sample but not in cohort
         else:
             fold = 1.0
-        rows.append({
-            "symbol": sym,
-            "sample_tpm": obs,
-            "cohort_median": cohort_med,
-            "fold_change": fold,
-            "log2_fold": float(np.log2(max(fold, 0.001))),
-        })
+        rows.append(
+            {
+                "symbol": sym,
+                "sample_tpm": obs,
+                "cohort_median": cohort_med,
+                "fold_change": fold,
+                "log2_fold": float(np.log2(max(fold, 0.001))),
+            }
+        )
     return rows
 
 
@@ -134,14 +141,23 @@ def plot_subtype_signature(
 
     # Get sample TPM
     from .sample_context import _build_tpm_by_symbol
+
     sample_tpm = _build_tpm_by_symbol(df_gene_expr)
 
     ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
 
-    axis_a_up = _score_axis_genes(sample_tpm, ref, cancer_code, cancer_sigs[axis_a_name].get("up", []))
-    axis_a_down = _score_axis_genes(sample_tpm, ref, cancer_code, cancer_sigs[axis_a_name].get("down", []))
-    axis_b_up = _score_axis_genes(sample_tpm, ref, cancer_code, cancer_sigs[axis_b_name].get("up", []))
-    axis_b_down = _score_axis_genes(sample_tpm, ref, cancer_code, cancer_sigs[axis_b_name].get("down", []))
+    axis_a_up = _score_axis_genes(
+        sample_tpm, ref, cancer_code, cancer_sigs[axis_a_name].get("up", [])
+    )
+    axis_a_down = _score_axis_genes(
+        sample_tpm, ref, cancer_code, cancer_sigs[axis_a_name].get("down", [])
+    )
+    axis_b_up = _score_axis_genes(
+        sample_tpm, ref, cancer_code, cancer_sigs[axis_b_name].get("up", [])
+    )
+    axis_b_down = _score_axis_genes(
+        sample_tpm, ref, cancer_code, cancer_sigs[axis_b_name].get("down", [])
+    )
 
     # Combine up + down for each axis, tag direction
     def _tagged(rows, tag):
@@ -155,7 +171,9 @@ def plot_subtype_signature(
     if not axis_a_all and not axis_b_all:
         return None
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, max(4, 0.4 * max(len(axis_a_all), len(axis_b_all)))))
+    fig, (ax1, ax2) = plt.subplots(
+        1, 2, figsize=(14, max(4, 0.4 * max(len(axis_a_all), len(axis_b_all))))
+    )
 
     def _draw_axis_panel(ax, genes, axis_name):
         if not genes:
@@ -177,11 +195,22 @@ def plot_subtype_signature(
 
         # Annotate with TPM
         for i, g in enumerate(genes):
-            label = f"{g['sample_tpm']:.0f}" if g["sample_tpm"] >= 1 else f"{g['sample_tpm']:.1f}"
+            label = (
+                f"{g['sample_tpm']:.0f}"
+                if g["sample_tpm"] >= 1
+                else f"{g['sample_tpm']:.1f}"
+            )
             side = "left" if g["log2_fold"] > 0 else "right"
             offset = 0.1 if g["log2_fold"] > 0 else -0.1
-            ax.text(g["log2_fold"] + offset, i, f"{label} TPM",
-                    va="center", ha=side, fontsize=7, color="#555555")
+            ax.text(
+                g["log2_fold"] + offset,
+                i,
+                f"{label} TPM",
+                va="center",
+                ha=side,
+                fontsize=7,
+                color="#555555",
+            )
 
     _draw_axis_panel(ax1, axis_a_all, axis_a_name)
     _draw_axis_panel(ax2, axis_b_all, axis_b_name)
@@ -199,10 +228,20 @@ def plot_subtype_signature(
     else:
         call = interp.get("a_up_b_up", "")
 
-    fig.suptitle(f"{contrast['name']} — {cancer_code}", fontsize=13, fontweight="bold", y=1.02)
+    fig.suptitle(
+        f"{contrast['name']} — {cancer_code}", fontsize=13, fontweight="bold", y=1.02
+    )
     if call:
-        fig.text(0.5, -0.02, call, ha="center", fontsize=10, style="italic",
-                 wrap=True, color="#333333")
+        fig.text(
+            0.5,
+            -0.02,
+            call,
+            ha="center",
+            fontsize=10,
+            style="italic",
+            wrap=True,
+            color="#333333",
+        )
 
     fig.tight_layout()
 

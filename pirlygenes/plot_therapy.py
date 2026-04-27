@@ -99,7 +99,8 @@ def _fn1_edb_transcript_ids():
                 release_saw_exons = True
             try:
                 exon_ids = {
-                    str(exon.exon_id) for exon in exons
+                    str(exon.exon_id)
+                    for exon in exons
                     if getattr(exon, "exon_id", None)
                 }
             except Exception:
@@ -114,7 +115,8 @@ def _fn1_edb_transcript_ids():
             except Exception:
                 exon_intervals = set()
             if (
-                getattr(transcript, "transcript_name", None) in _FN1_EDB_TRANSCRIPT_NAMES
+                getattr(transcript, "transcript_name", None)
+                in _FN1_EDB_TRANSCRIPT_NAMES
                 or exon_ids & _FN1_EDB_EXON_IDS
                 or exon_intervals & _FN1_EDB_EXON_INTERVALS
             ):
@@ -150,7 +152,11 @@ def _summarize_fn1_edb_transcript_support(df_gene_expr):
     fn1_mask = pd.Series(False, index=tx_df.index, dtype=bool)
     if "ensembl_gene_id" in tx_df.columns:
         fn1_mask |= (
-            tx_df["ensembl_gene_id"].astype(str).str.split(".", n=1).str[0].eq(_FN1_GENE_ID)
+            tx_df["ensembl_gene_id"]
+            .astype(str)
+            .str.split(".", n=1)
+            .str[0]
+            .eq(_FN1_GENE_ID)
         )
     if "gene_symbol" in tx_df.columns:
         fn1_mask |= tx_df["gene_symbol"].fillna("").astype(str).str.upper().eq("FN1")
@@ -234,8 +240,16 @@ def _apply_therapy_support_gate(symbol, therapies, fn1_support):
 
 
 ESSENTIAL_TISSUES = [
-    "brain", "heart", "liver", "lung", "kidney",
-    "bone_marrow", "spleen", "pancreas", "colon", "stomach",
+    "brain",
+    "heart",
+    "liver",
+    "lung",
+    "kidney",
+    "bone_marrow",
+    "spleen",
+    "pancreas",
+    "colon",
+    "stomach",
 ]
 
 _THERAPY_PLOT_ORDER = [
@@ -255,9 +269,17 @@ _THERAPY_PLOT_LABELS = {
 
 # Map essential tissue labels to nTPM column names
 _ESSENTIAL_TISSUE_COLS = {
-    "brain": ["nTPM_cerebral_cortex", "nTPM_cerebellum", "nTPM_basal_ganglia",
-              "nTPM_hippocampal_formation", "nTPM_amygdala", "nTPM_midbrain",
-              "nTPM_hypothalamus", "nTPM_spinal_cord", "nTPM_choroid_plexus"],
+    "brain": [
+        "nTPM_cerebral_cortex",
+        "nTPM_cerebellum",
+        "nTPM_basal_ganglia",
+        "nTPM_hippocampal_formation",
+        "nTPM_amygdala",
+        "nTPM_midbrain",
+        "nTPM_hypothalamus",
+        "nTPM_spinal_cord",
+        "nTPM_choroid_plexus",
+    ],
     "heart": ["nTPM_heart_muscle"],
     "liver": ["nTPM_liver"],
     "lung": ["nTPM_lung"],
@@ -363,8 +385,10 @@ def _collect_ranked_therapy_targets(df_gene_expr, top_k=10, tpm_threshold=30):
     df = df_gene_expr.copy()
     df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
 
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
+    tpm_col = (
+        "TPM"
+        if "TPM" in df.columns
+        else next((c for c in df.columns if c.lower() == "tpm"), None)
     )
     if tpm_col is None:
         raise KeyError(f"No TPM column found. Columns: {list(df.columns)}")
@@ -476,7 +500,9 @@ def plot_therapy_target_tissues(
     ref = pan_cancer_expression()
     ntpm_cols = sorted([c for c in ref.columns if c.startswith("nTPM_")])
     tissue_labels = [c.replace("nTPM_", "").replace("_", " ") for c in ntpm_cols]
-    ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index("Ensembl_Gene_ID")
+    ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index(
+        "Ensembl_Gene_ID"
+    )
 
     records = _collect_ranked_therapy_targets(
         df_gene_expr, top_k=top_k, tpm_threshold=tpm_threshold
@@ -504,7 +530,10 @@ def plot_therapy_target_tissues(
 
         # Get tissue expression
         if gid in ref_by_id.index:
-            tissue_vals = [float(ref_by_id.loc[gid, c]) if c in ref_by_id.columns else 0 for c in ntpm_cols]
+            tissue_vals = [
+                float(ref_by_id.loc[gid, c]) if c in ref_by_id.columns else 0
+                for c in ntpm_cols
+            ]
         else:
             tissue_vals = [0] * len(ntpm_cols)
 
@@ -629,7 +658,9 @@ def plot_therapy_target_safety(
     from matplotlib.lines import Line2D
 
     ref = pan_cancer_expression()
-    ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index("Ensembl_Gene_ID")
+    ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index(
+        "Ensembl_Gene_ID"
+    )
 
     # Essential tissue columns
     essential_cols = []
@@ -752,7 +783,10 @@ def plot_therapy_target_safety(
     )
 
     # Diagonal reference
-    lims = [max(ax.get_xlim()[0], ax.get_ylim()[0]), min(ax.get_xlim()[1], ax.get_ylim()[1])]
+    lims = [
+        max(ax.get_xlim()[0], ax.get_ylim()[0]),
+        min(ax.get_xlim()[1], ax.get_ylim()[1]),
+    ]
     if lims[1] > lims[0]:
         ax.plot(lims, lims, ":", color="#cccccc", linewidth=0.8, alpha=0.5, zorder=0)
 
@@ -860,8 +894,10 @@ def plot_geneset_vs_vital_tissues(
     gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
     df = df_gene_expr.copy()
     df[gene_id_col] = df[gene_id_col].astype(str).map(_strip_ensembl_version)
-    tpm_col = "TPM" if "TPM" in df.columns else next(
-        (c for c in df.columns if c.lower() == "tpm"), None
+    tpm_col = (
+        "TPM"
+        if "TPM" in df.columns
+        else next((c for c in df.columns if c.lower() == "tpm"), None)
     )
     if tpm_col is None:
         raise KeyError(f"No TPM column in sample. Columns: {list(df.columns)}")
@@ -941,12 +977,24 @@ def plot_geneset_vs_vital_tissues(
     for i, (sym, sample_tpm, tissue_vals) in enumerate(rows):
         x_sample = max(sample_tpm, 0.05)
         ax.scatter(
-            [x_sample], [i], s=110, color="#1f77b4",
-            edgecolor="black", linewidth=0.8, zorder=5, label=None,
+            [x_sample],
+            [i],
+            s=110,
+            color="#1f77b4",
+            edgecolor="black",
+            linewidth=0.8,
+            zorder=5,
+            label=None,
         )
         ax.text(
-            x_sample * 1.2, i, f"{sample_tpm:.0f}", fontsize=7.5,
-            va="center", color="#1f77b4", fontweight="bold", zorder=6,
+            x_sample * 1.2,
+            i,
+            f"{sample_tpm:.0f}",
+            fontsize=7.5,
+            va="center",
+            color="#1f77b4",
+            fontweight="bold",
+            zorder=6,
         )
         for tissue, val in tissue_vals.items():
             if val is None:
@@ -964,15 +1012,27 @@ def plot_geneset_vs_vital_tissues(
                 size = 32
             x = max(val, 0.05)
             y_pos = i + jitter_map.get(tissue, 0.0)
-            ax.scatter([x], [y_pos], s=size, color=color, edgecolor=edge,
-                       linewidth=lw,
-                       zorder=4 if color == "#d62728" else 3,
-                       alpha=0.9)
+            ax.scatter(
+                [x],
+                [y_pos],
+                s=size,
+                color=color,
+                edgecolor=edge,
+                linewidth=lw,
+                zorder=4 if color == "#d62728" else 3,
+                alpha=0.9,
+            )
 
     ax.set_xscale("log")
     ax.set_xlim(0.05, 10_000)
-    ax.axvline(toxicity_tpm_threshold, linestyle="--", color="#d62728",
-               linewidth=0.8, alpha=0.5, zorder=1)
+    ax.axvline(
+        toxicity_tpm_threshold,
+        linestyle="--",
+        color="#d62728",
+        linewidth=0.8,
+        alpha=0.5,
+        zorder=1,
+    )
     try:
         from .common import build_sample_tpm_by_symbol
         from .plot_reference_lines import add_p90_reference_line
@@ -1002,26 +1062,49 @@ def plot_geneset_vs_vital_tissues(
     ax.spines["right"].set_visible(False)
 
     from matplotlib.lines import Line2D
+
     legend_entries = [
-        Line2D([], [], marker="o", color="#1f77b4", markeredgecolor="black",
-               markersize=10, linestyle="", label="sample"),
+        Line2D(
+            [],
+            [],
+            marker="o",
+            color="#1f77b4",
+            markeredgecolor="black",
+            markersize=10,
+            linestyle="",
+            label="sample",
+        ),
     ]
     for tissue in vital_tissues:
         legend_entries.append(
-            Line2D([], [], marker="o",
-                   color=tissue_colors.get(tissue, "#888888"),
-                   markersize=6, linestyle="",
-                   label=tissue.replace("_", " "))
+            Line2D(
+                [],
+                [],
+                marker="o",
+                color=tissue_colors.get(tissue, "#888888"),
+                markersize=6,
+                linestyle="",
+                label=tissue.replace("_", " "),
+            )
         )
     legend_entries.append(
-        Line2D([], [], marker="o", color="#d62728", markeredgecolor="#7a0000",
-               markersize=8, linestyle="",
-               label=f"tissue > {toxicity_tpm_threshold:g} TPM")
+        Line2D(
+            [],
+            [],
+            marker="o",
+            color="#d62728",
+            markeredgecolor="#7a0000",
+            markersize=8,
+            linestyle="",
+            label=f"tissue > {toxicity_tpm_threshold:g} TPM",
+        )
     )
     ax.legend(
-        handles=legend_entries, loc="upper center",
+        handles=legend_entries,
+        loc="upper center",
         bbox_to_anchor=(0.5, -0.08),
-        ncol=min(len(legend_entries), 6), fontsize=8,
+        ncol=min(len(legend_entries), 6),
+        fontsize=8,
         frameon=False,
     )
     fig.tight_layout()
@@ -1118,15 +1201,19 @@ def plot_ctas_vs_cancer_type_detail(
     gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
     sample = df_gene_expr.copy()
     sample[gene_id_col] = sample[gene_id_col].astype(str).map(_strip_ensembl_version)
-    tpm_col = "TPM" if "TPM" in sample.columns else next(
-        (c for c in sample.columns if c.lower() == "tpm"), None
+    tpm_col = (
+        "TPM"
+        if "TPM" in sample.columns
+        else next((c for c in sample.columns if c.lower() == "tpm"), None)
     )
     if tpm_col is None:
         raise KeyError(f"No TPM column in sample. Columns: {list(sample.columns)}")
-    sample_tpm = dict(zip(
-        sample[gene_id_col].astype(str),
-        sample[tpm_col].astype(float),
-    ))
+    sample_tpm = dict(
+        zip(
+            sample[gene_id_col].astype(str),
+            sample[tpm_col].astype(float),
+        )
+    )
 
     ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index(
         "Ensembl_Gene_ID"
@@ -1153,7 +1240,9 @@ def plot_ctas_vs_cancer_type_detail(
             continue
         ref_row = ref_by_id.loc[gid_clean]
         cohort_val = float(ref_row[cancer_col])
-        origin_val = float(ref_row[origin_col]) if origin_col and origin_col in ref_row else None
+        origin_val = (
+            float(ref_row[origin_col]) if origin_col and origin_col in ref_row else None
+        )
         testis_val = float(ref_row[testis_col]) if testis_col else None
 
         worst_vital = None
@@ -1162,19 +1251,19 @@ def plot_ctas_vs_cancer_type_detail(
             if worst_vital is None or val > worst_vital[1]:
                 worst_vital = (tissue, val, col)
 
-        rows.append({
-            "symbol": sym,
-            "sample": s_tpm,
-            "cohort": cohort_val,
-            "origin": origin_val,
-            "testis": testis_val,
-            "worst_vital": worst_vital,
-        })
+        rows.append(
+            {
+                "symbol": sym,
+                "sample": s_tpm,
+                "cohort": cohort_val,
+                "origin": origin_val,
+                "testis": testis_val,
+                "worst_vital": worst_vital,
+            }
+        )
 
     if not rows:
-        print(
-            f"No CTAs with sample TPM ≥ {min_sample_tpm} found for {cancer_code}."
-        )
+        print(f"No CTAs with sample TPM ≥ {min_sample_tpm} found for {cancer_code}.")
         return None
 
     # Rank by sample TPM descending; truncate to top_k.
@@ -1193,28 +1282,69 @@ def plot_ctas_vs_cancer_type_detail(
         # Sample — large blue circle, TPM labeled inline to the right of
         # the marker.
         x_sample = max(r["sample"], 0.05)
-        ax.scatter([x_sample], [i], s=120, color="#1f77b4",
-                   edgecolor="black", linewidth=0.8, zorder=6)
-        ax.text(x_sample * 1.2, i, f"{r['sample']:.0f}",
-                fontsize=7.5, va="center", color="#1f77b4",
-                fontweight="bold", zorder=7)
+        ax.scatter(
+            [x_sample],
+            [i],
+            s=120,
+            color="#1f77b4",
+            edgecolor="black",
+            linewidth=0.8,
+            zorder=6,
+        )
+        ax.text(
+            x_sample * 1.2,
+            i,
+            f"{r['sample']:.0f}",
+            fontsize=7.5,
+            va="center",
+            color="#1f77b4",
+            fontweight="bold",
+            zorder=7,
+        )
 
         # Cohort median — orange diamond.
         x_cohort = max(r["cohort"], 0.05)
-        ax.scatter([x_cohort], [i], s=70, marker="D", color="#ff7f0e",
-                   edgecolor="#704000", linewidth=0.6, zorder=5, alpha=0.95)
+        ax.scatter(
+            [x_cohort],
+            [i],
+            s=70,
+            marker="D",
+            color="#ff7f0e",
+            edgecolor="#704000",
+            linewidth=0.6,
+            zorder=5,
+            alpha=0.95,
+        )
 
         # Tissue-of-origin normal — green square.
         if r["origin"] is not None:
             x_origin = max(r["origin"], 0.05)
-            ax.scatter([x_origin], [i], s=65, marker="s", color="#2ca02c",
-                       edgecolor="#175417", linewidth=0.6, zorder=5, alpha=0.95)
+            ax.scatter(
+                [x_origin],
+                [i],
+                s=65,
+                marker="s",
+                color="#2ca02c",
+                edgecolor="#175417",
+                linewidth=0.6,
+                zorder=5,
+                alpha=0.95,
+            )
 
         # Testis — purple triangle (CTAs' expected reference).
         if r["testis"] is not None:
             x_testis = max(r["testis"], 0.05)
-            ax.scatter([x_testis], [i], s=65, marker="^", color="#9467bd",
-                       edgecolor="#4a285e", linewidth=0.6, zorder=5, alpha=0.95)
+            ax.scatter(
+                [x_testis],
+                [i],
+                s=65,
+                marker="^",
+                color="#9467bd",
+                edgecolor="#4a285e",
+                linewidth=0.6,
+                zorder=5,
+                alpha=0.95,
+            )
 
         # Worst non-testis vital tissue — only prominent if it crosses
         # the toxicity threshold; otherwise faint gray X.
@@ -1222,20 +1352,45 @@ def plot_ctas_vs_cancer_type_detail(
             tissue, val, _col = r["worst_vital"]
             x_vital = max(val, 0.05)
             if val >= toxicity_threshold:
-                ax.scatter([x_vital], [i], s=95, marker="X",
-                           color="#d62728", edgecolor="#7a0000",
-                           linewidth=0.9, zorder=5.5)
-                ax.text(x_vital * 1.15, i,
-                        f"  {tissue} {val:.0f}",
-                        fontsize=7, va="center", color="#d62728",
-                        zorder=6)
+                ax.scatter(
+                    [x_vital],
+                    [i],
+                    s=95,
+                    marker="X",
+                    color="#d62728",
+                    edgecolor="#7a0000",
+                    linewidth=0.9,
+                    zorder=5.5,
+                )
+                ax.text(
+                    x_vital * 1.15,
+                    i,
+                    f"  {tissue} {val:.0f}",
+                    fontsize=7,
+                    va="center",
+                    color="#d62728",
+                    zorder=6,
+                )
             else:
-                ax.scatter([x_vital], [i], s=45, marker="X",
-                           color="#999999", edgecolor="none", zorder=4,
-                           alpha=0.7)
+                ax.scatter(
+                    [x_vital],
+                    [i],
+                    s=45,
+                    marker="X",
+                    color="#999999",
+                    edgecolor="none",
+                    zorder=4,
+                    alpha=0.7,
+                )
 
-    ax.axvline(toxicity_threshold, linestyle="--", color="#d62728",
-               linewidth=0.8, alpha=0.45, zorder=1)
+    ax.axvline(
+        toxicity_threshold,
+        linestyle="--",
+        color="#d62728",
+        linewidth=0.8,
+        alpha=0.45,
+        zorder=1,
+    )
 
     ax.set_xscale("log")
     ax.set_xlim(0.05, max(1000.0, max(r["sample"] for r in rows) * 3))
@@ -1243,7 +1398,9 @@ def plot_ctas_vs_cancer_type_detail(
     ax.set_yticklabels([r["symbol"] for r in rows], fontsize=9)
     ax.invert_yaxis()
     ax.set_xlabel("TPM (log scale)")
-    origin_display = origin_tissue.replace("_", " ") if origin_tissue else "origin tissue"
+    origin_display = (
+        origin_tissue.replace("_", " ") if origin_tissue else "origin tissue"
+    )
     ax.set_title(
         f"CTA detail — {cancer_code} (sample vs cohort / {origin_display} / testis / worst vital tissue)",
         fontweight="bold",
@@ -1259,29 +1416,80 @@ def plot_ctas_vs_cancer_type_detail(
     ax.spines["right"].set_visible(False)
 
     legend = [
-        Line2D([], [], marker="o", color="#1f77b4", markeredgecolor="black",
-               markersize=10, linestyle="", label="sample"),
-        Line2D([], [], marker="D", color="#ff7f0e", markeredgecolor="#704000",
-               markersize=8, linestyle="", label=f"{cancer_code} cohort"),
+        Line2D(
+            [],
+            [],
+            marker="o",
+            color="#1f77b4",
+            markeredgecolor="black",
+            markersize=10,
+            linestyle="",
+            label="sample",
+        ),
+        Line2D(
+            [],
+            [],
+            marker="D",
+            color="#ff7f0e",
+            markeredgecolor="#704000",
+            markersize=8,
+            linestyle="",
+            label=f"{cancer_code} cohort",
+        ),
     ]
     if origin_tissue:
-        legend.append(Line2D(
-            [], [], marker="s", color="#2ca02c", markeredgecolor="#175417",
-            markersize=8, linestyle="",
-            label=f"normal {origin_display}",
-        ))
-    legend.extend([
-        Line2D([], [], marker="^", color="#9467bd", markeredgecolor="#4a285e",
-               markersize=8, linestyle="", label="testis"),
-        Line2D([], [], marker="X", color="#d62728", markeredgecolor="#7a0000",
-               markersize=9, linestyle="",
-               label=f"vital tissue > {toxicity_threshold:g} TPM"),
-        Line2D([], [], marker="X", color="#999999", markersize=6,
-               linestyle="", label="worst vital tissue (below threshold)"),
-    ])
+        legend.append(
+            Line2D(
+                [],
+                [],
+                marker="s",
+                color="#2ca02c",
+                markeredgecolor="#175417",
+                markersize=8,
+                linestyle="",
+                label=f"normal {origin_display}",
+            )
+        )
+    legend.extend(
+        [
+            Line2D(
+                [],
+                [],
+                marker="^",
+                color="#9467bd",
+                markeredgecolor="#4a285e",
+                markersize=8,
+                linestyle="",
+                label="testis",
+            ),
+            Line2D(
+                [],
+                [],
+                marker="X",
+                color="#d62728",
+                markeredgecolor="#7a0000",
+                markersize=9,
+                linestyle="",
+                label=f"vital tissue > {toxicity_threshold:g} TPM",
+            ),
+            Line2D(
+                [],
+                [],
+                marker="X",
+                color="#999999",
+                markersize=6,
+                linestyle="",
+                label="worst vital tissue (below threshold)",
+            ),
+        ]
+    )
     ax.legend(
-        handles=legend, loc="upper center", bbox_to_anchor=(0.5, -0.08),
-        ncol=min(len(legend), 3), fontsize=8, frameon=False,
+        handles=legend,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.08),
+        ncol=min(len(legend), 3),
+        fontsize=8,
+        frameon=False,
     )
     fig.tight_layout()
 
@@ -1295,9 +1503,9 @@ def plot_ctas_vs_cancer_type_detail(
 
 
 _AXIS_STATE_COLOR = {
-    "up": "#2ca25f",        # active
-    "down": "#d6604d",      # suppressed
-    "mixed": "#c9a227",     # mixed / indeterminate
+    "up": "#2ca25f",  # active
+    "down": "#d6604d",  # suppressed
+    "mixed": "#c9a227",  # mixed / indeterminate
     "indeterminate": "#8888a0",
 }
 
@@ -1362,16 +1570,18 @@ def plot_therapy_pathway_state(
         down_fold = getattr(score, "down_geomean_fold", None)
         if up_fold is None and down_fold is None:
             continue
-        items.append({
-            "cls": cls,
-            "label": _format_axis_label(cls),
-            "state": state,
-            "up_fold": up_fold,
-            "down_fold": down_fold,
-            "up_n": getattr(score, "up_genes_measured", 0),
-            "down_n": getattr(score, "down_genes_measured", 0),
-            "message": getattr(score, "message", "") or "",
-        })
+        items.append(
+            {
+                "cls": cls,
+                "label": _format_axis_label(cls),
+                "state": state,
+                "up_fold": up_fold,
+                "down_fold": down_fold,
+                "up_n": getattr(score, "up_genes_measured", 0),
+                "down_n": getattr(score, "down_genes_measured", 0),
+                "message": getattr(score, "message", "") or "",
+            }
+        )
     if not items:
         return None
 
@@ -1459,13 +1669,30 @@ def plot_therapy_pathway_state(
         if row["panel"] not in legend_seen:
             legend_label = row["legend_label"]
             legend_seen.add(row["panel"])
-        ax.plot([fold], [i], marker=row["marker"], markersize=10.5,
-                color=color, markeredgecolor="white", markeredgewidth=1.4,
-                linestyle="", zorder=3, label=legend_label)
+        ax.plot(
+            [fold],
+            [i],
+            marker=row["marker"],
+            markersize=10.5,
+            color=color,
+            markeredgecolor="white",
+            markeredgewidth=1.4,
+            linestyle="",
+            zorder=3,
+            label=legend_label,
+        )
         text_x = fold * (1.08 if fold >= 1.0 else 0.92)
         ha = "left" if fold >= 1.0 else "right"
-        ax.text(text_x, i, f"{row['arrow']} {fold:.2f}\u00d7",
-                ha=ha, va="center", fontsize=8, color=color, fontweight="bold")
+        ax.text(
+            text_x,
+            i,
+            f"{row['arrow']} {fold:.2f}\u00d7",
+            ha=ha,
+            va="center",
+            fontsize=8,
+            color=color,
+            fontweight="bold",
+        )
 
         if row["axis_last_row"] and i < n_rows - 1:
             ax.axhline(i + 0.5, color="#eeeeee", linewidth=0.8, zorder=0)
@@ -1481,16 +1708,20 @@ def plot_therapy_pathway_state(
         lo = min(0.1, min(x_vals) * 0.7)
         hi = max(10.0, max(x_vals) * 1.4)
         ax.set_xlim(lo, hi)
-    ax.set_xlabel("Fold vs TCGA cohort median  (log scale; 1.0 = baseline)",
-                  fontsize=10)
+    ax.set_xlabel(
+        "Fold vs TCGA cohort median  (log scale; 1.0 = baseline)", fontsize=10
+    )
 
     # Y-axis: label + state tag (color-coded)
     ax.set_yticks(y_positions)
     labels = []
     for row in plot_rows:
-        state_tag = {"up": "active", "down": "suppressed",
-                     "mixed": "mixed", "indeterminate": "near baseline"}.get(
-                         row["state"], row["state"])
+        state_tag = {
+            "up": "active",
+            "down": "suppressed",
+            "mixed": "mixed",
+            "indeterminate": "near baseline",
+        }.get(row["state"], row["state"])
         n_info = f" ({row['n']})" if row["n"] else ""
         panel_text = f"{row['panel_label']}{n_info}"
         if row["axis_first_row"]:
@@ -1506,21 +1737,32 @@ def plot_therapy_pathway_state(
     if cancer_code:
         title += f" \u2014 {cancer_code}"
     ax.set_title(title, fontsize=12, fontweight="bold", loc="left")
-    ax.legend(loc="lower right", fontsize=8, frameon=False,
-              markerscale=0.9, handletextpad=0.4)
+    ax.legend(
+        loc="lower right", fontsize=8, frameon=False, markerscale=0.9, handletextpad=0.4
+    )
 
     # --- Caption ---
     if ax_caption is not None and disease_state_caption:
         # Single wrapped paragraph underneath. Narrow to ~130 chars per
         # line so wrapping matches the figure width.
         import textwrap
-        wrapped = "\n".join(textwrap.wrap(
-            disease_state_caption, width=130, break_long_words=False,
-            break_on_hyphens=True,
-        ))
+
+        wrapped = "\n".join(
+            textwrap.wrap(
+                disease_state_caption,
+                width=130,
+                break_long_words=False,
+                break_on_hyphens=True,
+            )
+        )
         ax_caption.text(
-            0.0, 1.0, wrapped,
-            ha="left", va="top", fontsize=9, color="#222222",
+            0.0,
+            1.0,
+            wrapped,
+            ha="left",
+            va="top",
+            fontsize=9,
+            color="#222222",
             wrap=True,
         )
 

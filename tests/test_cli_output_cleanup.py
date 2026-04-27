@@ -65,19 +65,26 @@ def test_clean_prefix_custom_image_prefix(tmp_path):
 def test_clean_prefix_empty_or_missing_dir(tmp_path):
     # Calling on an empty / nonexistent dir should be a no-op
     assert _clean_prefix_outputs(tmp_path, str(tmp_path / "sample")) == 0
-    assert _clean_prefix_outputs(tmp_path / "doesnotexist", str(tmp_path / "doesnotexist" / "sample")) == 0
+    assert (
+        _clean_prefix_outputs(
+            tmp_path / "doesnotexist", str(tmp_path / "doesnotexist" / "sample")
+        )
+        == 0
+    )
 
 
 def test_derive_sample_display_id_prefers_case_like_path_tokens():
     assert (
-        _derive_sample_display_id("/Users/me/data/rs/gene_expression_salmon.tsv")
-        == "rs"
+        _derive_sample_display_id(
+            "/Users/me/data/TL-12-ABCD/gene_expression_salmon.tsv"
+        )
+        == "TL-12-ABCD"
     )
     assert (
         _derive_sample_display_id(
-            "/Users/me/data/pathfinder/pfo002/WashU/run/rna_stringtie_gene_expression.tsv"
+            "/Users/me/data/study/BG12345/WashU/run/rna_stringtie_gene_expression.tsv"
         )
-        == "pfo002"
+        == "BG12345"
     )
 
 

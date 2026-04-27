@@ -40,6 +40,7 @@ def _strip_ensembl_version(gid: str) -> str:
 
 # --------------------------- validation / normalization ----------------------
 
+
 def _remap_retired_gene_ids(
     cat_to_gene_id_list: Dict[str, List[str]],
     gene_id_to_name: Dict[str, str],
@@ -122,9 +123,7 @@ def check_gene_ids_in_gene_sets(
                         f"[warn] Gene ID {gid} ({expected}) (category='{cat}') not found{src}"
                     )
                 else:
-                    print(
-                        f"[warn] Gene ID {gid} (category='{cat}') not found{src}"
-                    )
+                    print(f"[warn] Gene ID {gid} (category='{cat}') not found{src}")
 
 
 def normalize_gene_sets(
@@ -164,7 +163,11 @@ def normalize_gene_sets(
         genes_list = list(genes)
 
         # Fast path: list of (ensembl_id, symbol) tuples
-        if genes_list and isinstance(genes_list[0], (tuple, list)) and len(genes_list[0]) == 2:
+        if (
+            genes_list
+            and isinstance(genes_list[0], (tuple, list))
+            and len(genes_list[0]) == 2
+        ):
             keep = []
             for gid, gname in genes_list:
                 gid = _strip_ensembl_version(str(gid))
@@ -218,7 +221,9 @@ def normalize_gene_sets(
     cat_to_gene_id_list = {cat: sorted(ids) for cat, ids in cat_to_gene_ids.items()}
     if verbose:
         n_total = sum(len(ids) for ids in cat_to_gene_id_list.values())
-        print(f"[plot] {len(cat_to_gene_id_list)} gene set categories, {n_total} genes total")
+        print(
+            f"[plot] {len(cat_to_gene_id_list)} gene set categories, {n_total} genes total"
+        )
     return cat_to_gene_id_list, gene_id_to_name
 
 
@@ -242,7 +247,9 @@ def prepare_gene_expr_df(
     priority_category: Optional[str] = None,
     TPM_offset: float = 10.0**-2,
     gene_id_col: str = "canonical_gene_id",  # ID column in df_gene_expr
-    gene_name_col: Optional[str] = "canonical_gene_name",  # optional name column in df_gene_expr
+    gene_name_col: Optional[
+        str
+    ] = "canonical_gene_name",  # optional name column in df_gene_expr
     tpm_col: str = "TPM",
     other_category_name: str = "Other",
     place_other_first: bool = True,

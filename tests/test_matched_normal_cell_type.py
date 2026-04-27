@@ -43,9 +43,7 @@ def test_proxy_confidences_in_valid_range():
 def test_proxy_entries_have_rationale():
     for tissue, entry in MATCHED_NORMAL_CELL_TYPE_PROXY.items():
         rationale = entry.get("rationale", "")
-        assert rationale and len(rationale) > 20, (
-            f"proxy {tissue!r} needs a rationale"
-        )
+        assert rationale and len(rationale) > 20, f"proxy {tissue!r} needs a rationale"
 
 
 def test_get_matched_normal_cell_type_direct():
@@ -86,6 +84,7 @@ def test_all_leaf_tissues_either_covered_or_documented():
     explicitly known to fall back to bulk. Catches new registry
     tissues that silently regress to bulk without justification."""
     from pirlygenes.gene_sets_cancer import cancer_type_registry
+
     reg = cancer_type_registry()
     leaf = reg[reg["parent_code"].fillna("").astype(str).eq("")]
     all_tissues = set(leaf["primary_tissue"].dropna().astype(str))
@@ -98,17 +97,30 @@ def test_all_leaf_tissues_either_covered_or_documented():
     # left on bulk by choice during v4.50.5 roll-out, etc).
     _ACKNOWLEDGED_BULK_FALLBACK = {
         "peripheral_blood",  # blood tumors: heme template uses bulk lymph
-        "lymph_node", "spleen", "spleen_marrow", "bone_marrow",
-        "soft_tissue",       # SARC umbrella — dispatched via subtype
-        "", "nan", "NaN",    # registry junk
+        "lymph_node",
+        "spleen",
+        "spleen_marrow",
+        "bone_marrow",
+        "soft_tissue",  # SARC umbrella — dispatched via subtype
+        "",
+        "nan",
+        "NaN",  # registry junk
         # The following are in MATCHED_NORMAL_CELL_TYPE_BLEND=0 v4.50.5
         # list — left on bulk until their synthetic tests are updated:
-        "colon", "rectum", "esophagus", "cervix", "tongue", "skin",
+        "colon",
+        "rectum",
+        "esophagus",
+        "cervix",
+        "tongue",
+        "skin",
         "small_intestine",
         # Head-neck region not yet mapped — HNSC uses tongue (already
         # acknowledged-bulk), NPC → proxy above, oral/laryngeal
         # composites not yet broken out in registry:
-        "head_neck", "oral", "oropharynx", "larynx",
+        "head_neck",
+        "oral",
+        "oropharynx",
+        "larynx",
         # Cerebellum and CNS subtypes covered by "cerebellum" /
         # "cerebrum" in the direct map; other CNS subtissues fall
         # back transparently.

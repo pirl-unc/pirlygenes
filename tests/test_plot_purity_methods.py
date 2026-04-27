@@ -91,8 +91,11 @@ def test_comparison_plot_handles_missing_components(tmp_path: Path):
     result = _purity_result()
     # Drop lineage completely — simulates a cancer type with no lineage panel.
     result["components"]["lineage"] = {
-        "purity": None, "lower": None, "upper": None,
-        "genes": [], "per_gene": [],
+        "purity": None,
+        "lower": None,
+        "upper": None,
+        "genes": [],
+        "per_gene": [],
     }
     result["components"]["signature"]["lower"] = None
     result["components"]["signature"]["upper"] = None
