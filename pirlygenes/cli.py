@@ -220,15 +220,16 @@ def print_dataset_info():
 def print_cancer_registry(
     family: str = None, tissue: str = None, show_all: bool = True
 ):
-    """List cancer types in the registry with data-availability markers.
-
-    For each code the output shows which data sources are curated:
-      bm=biomarkers   tg=targets   tcga=tcga_deconvolved   sub=subtype_deconvolved
+    """List cancer types in the registry with data-availability columns.
 
     :param family: Restrict to one family (e.g. "sarcoma", "heme-myeloid", "net").
     :param tissue: Restrict to one primary tissue (e.g. "bone", "lymph_node").
     :param show_all: Show full registry including rows without expression data.
     """
+    from collections import defaultdict
+
+    import pandas as pd
+
     from .gene_sets_cancer import (
         cancer_type_registry,
         cancer_biomarker_genes,
@@ -256,6 +257,72 @@ def print_cancer_registry(
         if sub_deconv is None
         else set(sub_deconv["cancer_code"].astype(str).unique())
     )
+    subtype_codes = set()
+    expression_sources_by_code = defaultdict(set)
+    child_subtype_refs_by_parent = defaultdict(set)
+    if tcga_deconv is not None:
+        for code, group_df in tcga_deconv.groupby("cancer_code"):
+            expression_sources_by_code[str(code)].update(
+                str(v)
+                for v in group_df.get("source_cohort", []).dropna().unique()
+                if str(v).strip()
+            )
+    if sub_deconv is not None and "subtype" in sub_deconv.columns:
+        subtype_codes = {
+            _code
+            for _code in sub_deconv["subtype"].dropna().astype(str).unique()
+            if _code and _code.lower() != "nan"
+        }
+        for code, group_df in sub_deconv.groupby("cancer_code"):
+            code_s = str(code)
+            expression_sources_by_code[code_s].update(
+                str(v)
+                for v in group_df.get("source_cohort", []).dropna().unique()
+                if str(v).strip()
+            )
+        for subtype, group_df in sub_deconv.dropna(subset=["subtype"]).groupby(
+            "subtype"
+        ):
+            subtype_s = str(subtype).strip()
+            if not subtype_s or subtype_s.lower() == "nan":
+                continue
+            expression_sources_by_code[subtype_s].update(
+                str(v)
+                for v in group_df.get("source_cohort", []).dropna().unique()
+                if str(v).strip()
+            )
+            if "_" in subtype_s:
+                child_subtype_refs_by_parent[subtype_s.split("_", 1)[0]].add(
+                    subtype_s
+                )
+
+    def _count_by_code(path, column):
+        try:
+            data = pd.read_csv(path)
+        except Exception:
+            return {}
+        if column not in data.columns:
+            return {}
+        return data[column].dropna().astype(str).value_counts().to_dict()
+
+    lineage_counts = _count_by_code("pirlygenes/data/lineage-genes.csv", "Cancer_Type")
+    matched_normal_counts = defaultdict(int)
+    for path in (
+        "pirlygenes/data/tumor-up-vs-matched-normal.csv",
+        "pirlygenes/data/heme-tumor-up-vs-matched-normal.csv",
+    ):
+        for code, count in _count_by_code(path, "cancer_code").items():
+            matched_normal_counts[code] += int(count)
+    therapy_axis_counts = defaultdict(int)
+    try:
+        therapy_axes = pd.read_csv("pirlygenes/data/therapy-response-signatures.csv")
+        for value in therapy_axes.get("cancer_context", []).dropna():
+            for part in str(value).split(";"):
+                code = part.strip()
+                if code and code != "pan_cancer":
+                    therapy_axis_counts[code] += 1
+    except Exception:
+        pass
 
     def _safe_count(fn, *args, **kwargs):
         try:
@@ -288,28 +355,115 @@ def print_cancer_registry(
             return parent_code, subtype_key
         if parent_code and code.startswith(parent_code + "_"):
             suffix = code[len(parent_code) + 1 :].lower()
-            # Only use the suffix as a subtype if the caller actually
-            # has a row for it; the _clean() above already rejects NaN.
             if suffix:
                 return parent_code, suffix
         return code, None
 
-    # Render family by family; parent codes listed before children (subtypes).
-    print(f"\nCancer-type registry — {len(df)} entries\n")
-    print(f"  {'Code':<14s} {'Name':<42s} {'Primary tissue':<18s} {'Data':<22s} Source")
-    print(f"  {'─' * 14} {'─' * 42} {'─' * 18} {'─' * 22} {'─' * 30}")
+    def _source_label(value):
+        source = _clean(value)
+        labels = {
+            "BEATAML_OHSU_2022": "BeatAML OHSU 2022",
+            "GSE118014_ALVAREZ_2018": "GEO GSE118014",
+            "ICGC": "ICGC",
+            "LITERATURE_CURATED": "curated literature",
+            "MMRF_COMMPASS": "MMRF CoMMpass",
+            "TARGET_ALL_2018": "TARGET ALL 2018",
+            "TARGET_NBL_2018": "TARGET NBL 2018",
+            "TARGET_OS_2020": "TARGET OS 2020",
+            "TARGET_RMS_2014": "TARGET RMS 2014",
+            "TARGET_RT_2017": "TARGET rhabdoid 2017",
+            "TARGET_AML_2018": "TARGET AML 2018",
+            "TARGET_UNSPECIFIED": "TARGET",
+            "TARGET_WT_2015": "TARGET Wilms 2015",
+            "SCLC_UCOLOGNE_2015": "SCLC UCologne 2015",
+            "TCGA_BRCA_PAM50": "TCGA BRCA PAM50",
+            "TCGA_HNSC": "TCGA HNSC",
+            "TCGA_HNSC_HPV": "TCGA HNSC HPV strata",
+            "TCGA_LUAD": "TCGA LUAD",
+            "TCGA_LUAD_MUT": "TCGA LUAD mutation strata",
+            "TCGA_XENA_TOIL": "TCGA/Xena/TOIL",
+            "TREEHOUSE_POLYA_25_01": "Treehouse v25.01 PolyA",
+            "TREEHOUSE_v25.01": "Treehouse v25.01",
+        }
+        return labels.get(source, source or "unknown")
 
-    # Sort within family: parents first (no parent_code), then children.
-    df = df.assign(_is_child=df["parent_code"].fillna("").astype(str).ne(""))
-    df = df.sort_values(["family", "_is_child", "code"])
+    def _expression_label(code):
+        labels = []
+        if code in tcga_codes:
+            labels.append("TCGA median")
+        if code in sub_codes or code in subtype_codes:
+            labels.append("subtype median")
+        if code in child_subtype_refs_by_parent:
+            labels.append("child subtype refs")
+        return "; ".join(labels) if labels else "none"
 
-    current_family = None
+    def _expression_source_label(code):
+        sources = set(expression_sources_by_code.get(code, set()))
+        for child_code in child_subtype_refs_by_parent.get(code, set()):
+            sources.update(expression_sources_by_code.get(child_code, set()))
+        sources = sorted(sources)
+        return "; ".join(_source_label(source) for source in sources) or "-"
+
+    def _curation_source_label(row):
+        source = _source_label(row.get("source_cohort"))
+        pmid = _clean(row.get("source_pmid"))
+        if pmid:
+            return f"{source}; {pmid}"
+        return source
+
+    def _clinical_group(row):
+        family_value = _clean(row.get("family"))
+        code = _clean(row.get("code"))
+        if family_value.startswith("carcinoma-") or code in {"NUTM", "THYM"}:
+            return "Carcinomas and epithelial tumors"
+        if family_value in {"sarcoma", "pediatric-bone", "pediatric-soft"} or code in {
+            "CHOR",
+            "CHON",
+        }:
+            return "Sarcoma, bone, and soft-tissue tumors"
+        if family_value.startswith("heme-"):
+            return "Hematologic malignancies"
+        if family_value in {"net", "pediatric-net"}:
+            return "Neuroendocrine and neural-crest tumors"
+        if family_value in {"cns", "pediatric-cns"}:
+            return "CNS tumors"
+        if family_value.startswith("pediatric-"):
+            return "Other pediatric solid tumors"
+        if family_value == "endocrine":
+            return "Endocrine tumors"
+        if family_value == "melanoma":
+            return "Melanoma"
+        if family_value == "germ-cell":
+            return "Germ-cell tumors"
+        if family_value in {"salivary"}:
+            return "Salivary tumors"
+        return family_value or "Other"
+
+    group_order = {
+        "Carcinomas and epithelial tumors": 0,
+        "Sarcoma, bone, and soft-tissue tumors": 1,
+        "Hematologic malignancies": 2,
+        "Neuroendocrine and neural-crest tumors": 3,
+        "CNS tumors": 4,
+        "Other pediatric solid tumors": 5,
+        "Endocrine tumors": 6,
+        "Melanoma": 7,
+        "Germ-cell tumors": 8,
+        "Salivary tumors": 9,
+    }
+
+    def _group_sort_key(group):
+        return group_order.get(str(group), 99)
+
+    def _md_cell(value):
+        return str(value).replace("|", "/").strip() or "-"
+
+    def _md_row(cells):
+        return "| " + " | ".join(_md_cell(cell) for cell in cells) + " |"
+
+    records = []
     for _, row in df.iterrows():
-        code = str(row["code"])
-        if row["family"] != current_family:
-            current_family = row["family"]
-            print(f"\n  [{current_family}]")
-
+        code = _clean(row["code"])
         lookup_code, subtype = _resolve_lookup(row)
         if subtype is not None:
             bm_count = _safe_count(cancer_biomarker_genes, lookup_code, subtype=subtype)
@@ -318,38 +472,155 @@ def print_cancer_registry(
             bm_count = _safe_count(cancer_biomarker_genes, lookup_code)
             tg_df = cancer_therapy_targets(lookup_code) if code else None
         tg_count = 0 if tg_df is None else len(tg_df)
-        data_flags = []
-        if bm_count:
-            data_flags.append(f"bm={bm_count}")
-        if tg_count:
-            data_flags.append(f"tg={tg_count}")
-        if code in tcga_codes:
-            data_flags.append("tcga")
-        if code in sub_codes:
-            data_flags.append("sub")
-        # Check if any subtype row below this code has sub-deconv
-        if sub_deconv is not None:
-            sub_children = sub_deconv[
-                sub_deconv.get("subtype", "").astype(str).str.startswith(code + "_")
-            ]
-            if not sub_children.empty:
-                data_flags.append("sub-child")
-        data_cell = " ".join(data_flags) if data_flags else "—"
+        expression = _expression_label(code)
+        parent = _clean(row.get("parent_code"))
+        lineage_count = int(lineage_counts.get(code, 0))
+        matched_normal_count = int(matched_normal_counts.get(code, 0))
+        therapy_axis_count = int(therapy_axis_counts.get(code, 0))
 
-        if not show_all and data_cell == "—":
+        if not show_all and expression == "none" and not bm_count and not tg_count:
             continue
 
-        indent = "    " if row["_is_child"] else "  "
-        name_s = str(row["name"])[:42]
-        tissue_s = str(row.get("primary_tissue") or "")[:18]
-        source_s = str(row.get("source_cohort") or "")[:30]
-        print(
-            f"  {indent + code:<14s} {name_s:<42s} {tissue_s:<18s} {data_cell:<22s} {source_s}"
+        records.append(
+            {
+                "group": _clinical_group(row),
+                "family": _clean(row.get("family")),
+                "is_child": bool(parent),
+                "code": code,
+                "parent": parent or "-",
+                "name": _clean(row.get("name")),
+                "tissue": _clean(row.get("primary_tissue")),
+                "template": _clean(row.get("primary_template")),
+                "expression": expression,
+                "expression_source": _expression_source_label(code),
+                "biomarkers": bm_count,
+                "targets": tg_count,
+                "lineage": lineage_count,
+                "matched_normal": matched_normal_count,
+                "therapy_axes": therapy_axis_count,
+                "curation_source": _curation_source_label(row),
+            }
         )
 
-    print(
-        "\n  Legend: bm=biomarkers  tg=therapy-targets  tcga=deconvolved-TCGA-median  sub=subtype-stratified-median  sub-child=subtype-tiles-below  — = no curation/data yet\n"
+    print(f"\nCancer-type registry — {len(records)} entries\n")
+    print("Coverage columns:")
+    print("  Expression ref: numeric expression reference shipped for this row.")
+    print("  Expression source: dataset(s) behind that numeric reference.")
+    print("  Biomarkers / Targets: curated marker and therapy-target row counts.")
+    print("  Lineage: genes used for purity and lineage calibration.")
+    print("  Matched normal: tumor-vs-parent-normal marker rows.")
+    print("  Response axes: cancer-specific therapy-response signature rows.")
+    print("  Curation source: registry/clinical curation source; it is separate from expression data.\n")
+
+    coverage_fields = [
+        ("Expression ref", lambda r: r["expression"] != "none"),
+        ("Biomarkers", lambda r: r["biomarkers"] > 0),
+        ("Targets", lambda r: r["targets"] > 0),
+        ("Lineage", lambda r: r["lineage"] > 0),
+        ("Matched normal", lambda r: r["matched_normal"] > 0),
+        ("Response axes", lambda r: r["therapy_axes"] > 0),
+    ]
+    print("Coverage audit:")
+    print(_md_row(["Layer", "Rows with data", "Missing rows"]))
+    print("|---|---:|---:|")
+    for label, predicate in coverage_fields:
+        have = sum(1 for record in records if predicate(record))
+        print(_md_row([label, have, len(records) - have]))
+
+    expression_source_examples = defaultdict(list)
+    for record in records:
+        for source in record["expression_source"].split("; "):
+            if source and source != "-":
+                expression_source_examples[source].append(record["code"])
+    if expression_source_examples:
+        print("\nExpression sources represented:")
+        for source, codes in sorted(expression_source_examples.items()):
+            examples = ", ".join(codes[:8])
+            suffix = "" if len(codes) <= 8 else f", ... (+{len(codes) - 8})"
+            print(f"- {source}: {len(codes)} rows ({examples}{suffix})")
+
+    gap_rows = []
+    for group_name in sorted({r["group"] for r in records}, key=_group_sort_key):
+        group_records = [r for r in records if r["group"] == group_name]
+        missing_expression = [r["code"] for r in group_records if r["expression"] == "none"]
+        missing_targets = [r["code"] for r in group_records if r["targets"] == 0]
+        missing_biomarkers = [r["code"] for r in group_records if r["biomarkers"] == 0]
+        if missing_expression or missing_targets or missing_biomarkers:
+            gap_rows.append(
+                [
+                    group_name,
+                    len(missing_expression),
+                    ", ".join(missing_expression[:10])
+                    + (f", ... (+{len(missing_expression) - 10})" if len(missing_expression) > 10 else ""),
+                    len(missing_biomarkers),
+                    len(missing_targets),
+                ]
+            )
+    if gap_rows:
+        print("\nLargest missing-data buckets:")
+        print(_md_row(["Clinical group", "No expression", "Expression gaps", "No biomarkers", "No targets"]))
+        print("|---|---:|---|---:|---:|")
+        for row in gap_rows:
+            print(_md_row(row))
+
+    records = sorted(
+        records,
+        key=lambda r: (
+            _group_sort_key(r["group"]),
+            r["family"],
+            r["is_child"],
+            r["code"],
+        ),
     )
+    current_group = None
+    for record in records:
+        if record["group"] != current_group:
+            current_group = record["group"]
+            group_records = [r for r in records if r["group"] == current_group]
+            families = ", ".join(sorted({r["family"] for r in group_records}))
+            print(f"\nClinical group: {current_group} ({len(group_records)} entries)")
+            print(f"Families: {families}")
+            print(
+                _md_row(
+                    [
+                        "Code",
+                        "Parent",
+                        "Family",
+                        "Name",
+                        "Tissue",
+                        "Expression ref",
+                        "Expression source",
+                        "Biomarkers",
+                        "Targets",
+                        "Lineage",
+                        "Matched normal",
+                        "Response axes",
+                        "Curation source",
+                    ]
+                )
+            )
+            print("|---|---|---|---|---|---|---|---:|---:|---:|---:|---:|---|")
+
+        print(
+            _md_row(
+                [
+                    record["code"],
+                    record["parent"],
+                    record["family"],
+                    record["name"],
+                    record["tissue"],
+                    record["expression"],
+                    record["expression_source"],
+                    record["biomarkers"],
+                    record["targets"],
+                    record["lineage"],
+                    record["matched_normal"],
+                    record["therapy_axes"],
+                    record["curation_source"],
+                ]
+            )
+        )
+    print()
 
 
 def _parse_always_label_genes(always_label_genes: Optional[str]) -> Set[str]:

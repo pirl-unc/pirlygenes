@@ -6,9 +6,6 @@ under TCGA umbrellas (BRCA × PAM50, LAML × ELN/APL, SARC × subtype,
 LUAD × mutation class, SCLC × ASCL1/NEUROD1/POU2F3/YAP1, etc.).
 """
 
-import pandas as pd
-import pytest
-
 from pirlygenes.gene_sets_cancer import (
     cancer_type_registry,
     cancer_types_in_family,
@@ -291,6 +288,23 @@ def test_subtype_key_maps_sarc_subtypes_to_key_genes_entries():
             f"no key-genes rows — either the subtype_key is wrong or "
             f"cancer-key-genes.csv is missing the tile"
         )
+
+
+def test_cancers_cli_uses_explicit_coverage_columns(capsys):
+    from pirlygenes.cli import print_cancer_registry
+
+    print_cancer_registry(family="pediatric-soft")
+    out = capsys.readouterr().out
+
+    assert "Clinical group: Sarcoma, bone, and soft-tissue tumors" in out
+    assert "Expression ref" in out
+    assert "Expression source" in out
+    assert "Curation source" in out
+    assert "RMS_ARMS" in out
+    assert "Treehouse v25.01 PolyA" in out
+    assert "bm=" not in out
+    assert "tg=" not in out
+    assert "sub-child" not in out
 
 
 def test_nutm_has_actionable_curation():

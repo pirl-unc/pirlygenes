@@ -219,6 +219,35 @@ Three data-driven catalogs power the per-cancer differentiation:
 | `degenerate-subtype-pairs.csv` + `fusion-surrogate-expression.csv` | Within-family subtype disambiguation (OS vs DDLPS, Ewing vs DSRCT vs ARMS, PANNET vs MID_NET vs lung NET, squamous trio, B-cell lymphomas, NUTM vs squamous). Activation-gated — pairs only fire when the shared signature is actually present in the sample. | Resolver: `pirlygenes.degenerate_subtype.resolve_degenerate_subtype`. |
 | `cancer-type-registry.csv` | The canonical leaf-code list with family / primary_tissue / primary_template / subtype_key / mixture_cohort columns | Registry completeness contract (#199) requires every leaf to carry expression + lineage + biomarker + therapy + matched-normal + therapy-response axis panel. Baseline gaps enumerated in `_MISSING_MATCHED_NORMAL` / `_MISSING_THERAPY_AXIS` allowlists (`tests/test_registry_completeness.py`). |
 
+Cancer-type curation is layered. For each registry row, the goal is to
+curate:
+
+- **Identity and grouping:** canonical code, display name, clinical
+  group/family, parent subtype relationship, primary tissue, and
+  decomposition template.
+- **Expression reference:** TCGA or non-TCGA tumor-expression medians
+  used for cancer-type comparison, subtype refinement, purity, and
+  target range context. This can come from multiple datasets; it is not
+  the same thing as the registry/clinical curation source.
+- **Lineage markers:** genes used for lineage/purity calibration and
+  to decide whether the sample retains or loses expected tumor identity.
+- **Biomarkers and therapy targets:** marker rows and treatment-target
+  rows in `cancer-key-genes.csv`, including agent, maturity, indication,
+  eligibility caveats, and source references where available.
+- **Matched-normal context:** tumor-vs-parent-normal marker rows used
+  to avoid mistaking benign parent-tissue signal for tumor-cell signal.
+- **Response and biology axes:** cancer-specific therapy-response or
+  activation signatures used in the disease-state narrative.
+- **Rare/subtype reasoning hooks:** fusion rules, RNA surrogates,
+  degenerate subtype pairs, mutation-expression effects, and expected
+  downstream expression effects when curated.
+
+Run `pirlygenes cancers` to see the current coverage audit and a
+per-cancer table. Its `Curation source` column is intentionally separate
+from `Expression source`: a row may be clinically/literature curated
+while its numeric expression median comes from Treehouse, TARGET, TCGA,
+BeatAML, GEO, or another public cohort.
+
 ### Conditional figures and reports — data-driven
 
 Figure emission is gated by what the registry has for the called
