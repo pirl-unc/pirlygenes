@@ -1284,6 +1284,9 @@ def _analyze_body(run: AnalyzeRun):
     )
     forced_labels = _parse_always_label_genes(label_genes)
     template_overrides = config.template_overrides()
+    expression_scale_qc = dict(df_expr.attrs.get("expression_scale_qc") or {})
+    for warning in expression_scale_qc.get("warnings") or []:
+        print(f"[load] Expression scale QC: {warning}")
 
     # Step 1 of the unified attribution flow: infer SampleContext BEFORE
     # cancer-type inference. Downstream steps (purity CIs, decomposition,
@@ -1403,6 +1406,8 @@ def _analyze_body(run: AnalyzeRun):
     fusion_findings = []
     fusion_scope_inference = None
     analysis["fusion_inputs_supplied"] = bool(fusion_paths)
+    analysis["fusion_input_paths"] = list(fusion_paths)
+    analysis["expression_scale_qc"] = expression_scale_qc
     analysis["fusion_records"] = [
         record.public_dict() if hasattr(record, "public_dict") else dict(record)
         for record in fusion_records
@@ -1440,6 +1445,14 @@ def _analyze_body(run: AnalyzeRun):
         )
         if rare_scope_inference:
             report_scope_cancer_type = rare_scope_inference["cancer_type"]
+    try:
+        from .rare_inference import infer_rare_cancer_marker_hypotheses_from_rna
+
+        analysis["rare_marker_hypotheses"] = (
+            infer_rare_cancer_marker_hypotheses_from_rna(df_expr, analysis)
+        )
+    except Exception:
+        analysis["rare_marker_hypotheses"] = []
     if report_scope_cancer_type:
         analysis["reference_cancer_type"] = rna_inferred_cancer_type
         analysis["reference_cancer_name"] = rna_inferred_cancer_name
@@ -3693,11 +3706,18 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
             )
         else:
             rare_inference = analysis.get("rare_report_scope_inference") or {}
+            fusion_inference = analysis.get("fusion_report_scope_inference") or {}
             if rare_inference:
                 bullets.append(
                     f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}`, and its top TCGA cohort match "
                     f"is {coarse_label}; the {_cancer_label(cancer_code)} label is an RNA-surrogate "
                     "rare-cancer hypothesis, so TCGA labels are expression context rather than diagnosis."
+                )
+            elif fusion_inference:
+                bullets.append(
+                    f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}`, and its top TCGA cohort match "
+                    f"is {coarse_label}; the {_cancer_label(cancer_code)} label is fusion-supported, "
+                    "so TCGA labels are expression context rather than diagnosis."
                 )
             else:
                 bullets.append(
@@ -3745,6 +3765,27 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
                 for label in hypothesis_display[:2]
             )
         )
+    rare_marker_hypotheses = [
+        finding
+        for finding in (analysis.get("rare_marker_hypotheses") or [])
+        if str(finding.get("cancer_type") or "").strip() != str(cancer_code).strip()
+    ]
+    if rare_marker_hypotheses:
+        labels = []
+        for finding in rare_marker_hypotheses[:3]:
+            label = _cancer_label(str(finding.get("cancer_type") or "rare cancer"))
+            surrogate = str(finding.get("surrogate") or "marker").strip()
+            tpm = finding.get("surrogate_tpm")
+            tpm_clause = f" {tpm:g} TPM" if isinstance(tpm, (int, float)) else ""
+            support = ", ".join(finding.get("support_genes") or [])
+            missing = ", ".join(finding.get("missing_support_genes") or [])
+            evidence_bits = [f"{surrogate}{tpm_clause}"]
+            if support:
+                evidence_bits.append(f"support {support}")
+            if missing:
+                evidence_bits.append(f"missing/low co-markers {missing}")
+            labels.append(f"{label} ({'; '.join(evidence_bits)})")
+        parallel.append("rare-marker testing prompts " + " vs ".join(labels))
     if parallel:
         bullets.append(
             "- **Parallel hypotheses still alive**: " + "; ".join(parallel) + "."
@@ -3897,7 +3938,15 @@ def _fusion_evidence_markdown(analysis, *, heading: str = "## Fusion evidence") 
     rare_inference = analysis.get("rare_report_scope_inference") or {}
     fusion_effects = analysis.get("fusion_expression_effects") or []
     fusion_hypotheses = analysis.get("fusion_expression_hypotheses") or []
-    if not records and not findings and not rare_inference and not fusion_effects and not fusion_hypotheses:
+    fusion_inputs_supplied = bool(analysis.get("fusion_inputs_supplied"))
+    if (
+        not records
+        and not findings
+        and not rare_inference
+        and not fusion_effects
+        and not fusion_hypotheses
+        and not fusion_inputs_supplied
+    ):
         return ""
 
     lines = [heading, ""]
@@ -3933,7 +3982,24 @@ def _fusion_evidence_markdown(analysis, *, heading: str = "## Fusion evidence") 
             f"{len(records)} fusion call(s) were parsed, but none matched a curated "
             "rare-cancer report-scope rule.\n"
         )
-    elif rare_inference and not analysis.get("fusion_inputs_supplied"):
+    elif fusion_inputs_supplied:
+        paths = analysis.get("fusion_input_paths") or []
+        count_text = f"{len(paths)} file(s)" if paths else "file(s)"
+        lines.append(
+            f"Fusion input {count_text} were supplied, but no usable fusion calls "
+            "were parsed. Treat direct-fusion evidence as unavailable until the "
+            "file format/content is reviewed.\n"
+        )
+        if rare_inference:
+            surrogate = str(rare_inference.get("surrogate") or "RNA marker").strip()
+            confirm = str(
+                rare_inference.get("confirmatory_tests") or "fusion testing"
+            ).strip()
+            lines.append(
+                f"Because {surrogate} RNA supports a rare-cancer hypothesis, "
+                f"confirm with {confirm} or a usable fusion/cytogenetic callset.\n"
+            )
+    elif rare_inference:
         surrogate = str(rare_inference.get("surrogate") or "RNA marker").strip()
         confirm = str(
             rare_inference.get("confirmatory_tests") or "fusion testing"
@@ -3973,6 +4039,48 @@ def _fusion_evidence_markdown(analysis, *, heading: str = "## Fusion evidence") 
                 f"{finding.get('expression_source') or '—'} | {genes} | {finding.get('caveat') or '—'} |"
             )
         lines.append("")
+    return "\n".join(lines)
+
+
+def _rare_marker_hypotheses_markdown(
+    analysis,
+    *,
+    heading: str = "## Rare-marker hypotheses",
+) -> str:
+    current_code = str(analysis.get("cancer_type") or "").strip()
+    hypotheses = [
+        finding
+        for finding in (analysis.get("rare_marker_hypotheses") or [])
+        if str(finding.get("cancer_type") or "").strip() != current_code
+    ]
+    if not hypotheses:
+        return ""
+    lines = [heading, ""]
+    lines.append(
+        "These are RNA-marker testing prompts. A primary marker can add a rare "
+        "cancer to the hypothesis set, but support co-markers, expected absences, "
+        "TCGA context, and pathology/fusion/IHC evidence determine whether it "
+        "should constrain the report scope.\n"
+    )
+    lines.append(
+        "| Candidate | Primary marker | Supporting co-markers | Missing/low expected co-markers | Expected absent genes seen absent | Confirmatory step | Caveat |"
+    )
+    lines.append("|---|---|---|---|---|---|---|")
+    for finding in hypotheses[:10]:
+        marker = str(finding.get("surrogate") or "marker")
+        tpm = finding.get("surrogate_tpm")
+        marker_cell = (
+            f"{marker} {tpm:g} TPM" if isinstance(tpm, (int, float)) else marker
+        )
+        lines.append(
+            f"| {finding.get('cancer_type') or 'rare cancer'} | {marker_cell} | "
+            f"{', '.join(finding.get('support_genes') or []) or '—'} | "
+            f"{', '.join(finding.get('missing_support_genes') or []) or '—'} | "
+            f"{', '.join(finding.get('absent_genes_confirmed') or []) or '—'} | "
+            f"{finding.get('confirmatory_tests') or 'orthogonal testing'} | "
+            f"{finding.get('caveat') or 'Hypothesis only'} |"
+        )
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -4052,6 +4160,10 @@ def _build_evidence_report(
     if fusion_body:
         lines.append(fusion_body)
         lines.append("")
+    rare_marker_body = _rare_marker_hypotheses_markdown(analysis)
+    if rare_marker_body:
+        lines.append(rare_marker_body)
+        lines.append("")
     alteration_body = _alteration_effect_markdown(analysis)
     if alteration_body:
         lines.append(alteration_body)
@@ -4125,10 +4237,23 @@ def _generate_text_reports(
     lines.append("## Sample framing\n")
     if sample_context is not None:
         prep_clause = library_prep_clause(sample_context.library_prep)
+        pres_label = sample_context.preservation.replace("_", " ")
+        if pres_label == "fresh frozen":
+            pres_label = "fresh/frozen-like"
         lines.append(
             f"- **Input type**: {prep_clause}; "
-            f"{sample_context.preservation.replace('_', ' ')} preservation."
+            f"preservation inferred as {pres_label} from RNA QC."
         )
+    scale_qc = analysis.get("expression_scale_qc") or {}
+    if scale_qc.get("converted_from") == "log2_tpm_plus_one":
+        post_sum = scale_qc.get("post_conversion_sum_tpm") or scale_qc.get("sum_tpm")
+        sum_clause = f"; post-conversion sum {post_sum/1_000_000:.2f}M" if post_sum else ""
+        lines.append(
+            "- **Expression scale QC**: input resembled log2(TPM+1); converted "
+            f"to linear TPM before interpretation{sum_clause}."
+        )
+    elif scale_qc.get("warnings"):
+        lines.append(f"- **Expression scale QC**: {scale_qc['warnings'][0]}.")
     if call_summary.get("label_options"):
         if len(call_summary["label_options"]) == 1:
             lines.append(
@@ -4167,6 +4292,10 @@ def _generate_text_reports(
     fusion_body = _fusion_evidence_markdown(analysis)
     if fusion_body:
         lines.append(fusion_body)
+        lines.append("")
+    rare_marker_body = _rare_marker_hypotheses_markdown(analysis)
+    if rare_marker_body:
+        lines.append(rare_marker_body)
         lines.append("")
     alteration_body = _alteration_effect_markdown(
         analysis,
@@ -4230,6 +4359,13 @@ def _generate_text_reports(
                 else ""
             )
         )
+        scale_qc = analysis.get("expression_scale_qc") or {}
+        if scale_qc:
+            lines.append(
+                f"- **Expression scale QC**: sum {scale_qc.get('sum_tpm', 0.0):.0f}; "
+                f"max {scale_qc.get('max_tpm', 0.0):.1f}; "
+                f"housekeeping median {scale_qc.get('housekeeping_median_tpm', 0.0):.1f}."
+            )
         n_det = ctx_signals.get("genes_detected_above_1_tpm")
         if n_det is not None:
             lines.append(

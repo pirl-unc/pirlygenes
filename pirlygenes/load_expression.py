@@ -59,6 +59,11 @@ _RAW_FPKM_PATTERNS = [
 ]
 
 _MAX_UNRESOLVED_TRANSCRIPT_TPM_FRACTION = 0.05
+_TPM_SUM_EXPECTED = 1_000_000.0
+_TPM_SUM_MIN_REASONABLE = 500_000.0
+_TPM_SUM_MAX_REASONABLE = 2_000_000.0
+_LOG2_TPM_MAX_CANDIDATE = 30.0
+_LOG2_TPM_SUM_MAX_CANDIDATE = 250_000.0
 
 
 def _guess_col(columns, patterns):
@@ -312,6 +317,91 @@ def _detect_kallisto_gene_abundance_tpm(df, verbose=True):
     if verbose:
         print("[load] Auto-detected kallisto gene-level 'abundance' column as TPM")
     return df.rename(columns={"abundance": "TPM"})
+
+
+def _expression_scale_qc(df) -> dict:
+    tpm = pd.to_numeric(df.get("TPM"), errors="coerce").fillna(0.0)
+    qc = {
+        "sum_tpm": float(tpm.sum()),
+        "max_tpm": float(tpm.max()) if len(tpm) else 0.0,
+        "genes_above_10_tpm": int((tpm > 10.0).sum()),
+        "warnings": [],
+    }
+    if "gene" in df.columns:
+        try:
+            from .gene_sets_cancer import housekeeping_gene_names
+
+            symbols = df["gene"].astype(str).str.upper()
+            hk = {gene.upper() for gene in housekeeping_gene_names(core_only=True)}
+            hk_tpm = tpm[symbols.isin(hk)]
+            if len(hk_tpm):
+                qc["housekeeping_median_tpm"] = float(hk_tpm.median())
+                qc["housekeeping_genes_observed"] = int((hk_tpm > 1.0).sum())
+        except Exception:
+            pass
+    total = qc["sum_tpm"]
+    if total and not (_TPM_SUM_MIN_REASONABLE <= total <= _TPM_SUM_MAX_REASONABLE):
+        qc["warnings"].append(
+            f"TPM-like values sum to {total:.0f}, outside the expected ~1,000,000 range"
+        )
+    if qc["max_tpm"] < 100.0 and len(tpm) >= 1000:
+        qc["warnings"].append(
+            f"maximum TPM-like value is only {qc['max_tpm']:.1f}; check whether input is log-transformed"
+        )
+    hk_median = qc.get("housekeeping_median_tpm")
+    if hk_median is not None and hk_median < 5.0:
+        qc["warnings"].append(
+            f"core housekeeping median is only {hk_median:.1f} TPM"
+        )
+    return qc
+
+
+def _detect_and_convert_log_tpm(df, verbose=True):
+    if "TPM" not in set(df.columns):
+        return df
+    tpm = pd.to_numeric(df["TPM"], errors="coerce")
+    values = tpm.dropna()
+    if len(values) < 1000:
+        df.attrs["expression_scale_qc"] = _expression_scale_qc(df)
+        return df
+    original_sum = float(values.sum())
+    original_max = float(values.max())
+    if (
+        original_sum < _LOG2_TPM_SUM_MAX_CANDIDATE
+        and original_max <= _LOG2_TPM_MAX_CANDIDATE
+    ):
+        converted = (2.0**values - 1.0).clip(lower=0.0)
+        converted_sum = float(converted.sum())
+        if _TPM_SUM_MIN_REASONABLE <= converted_sum <= _TPM_SUM_MAX_REASONABLE:
+            out = df.copy()
+            out["TPM"] = (2.0**tpm.fillna(0.0) - 1.0).clip(lower=0.0)
+            qc = _expression_scale_qc(out)
+            qc.update(
+                {
+                    "converted_from": "log2_tpm_plus_one",
+                    "input_sum_tpm_like": original_sum,
+                    "input_max_tpm_like": original_max,
+                    "post_conversion_sum_tpm": converted_sum,
+                }
+            )
+            qc["warnings"].append(
+                "input values resembled log2(TPM+1) and were converted to linear TPM"
+            )
+            out.attrs["expression_scale_qc"] = qc
+            warnings.warn(
+                "TPM column values resembled log2(TPM+1); converted to linear TPM "
+                f"(sum {original_sum:.0f} -> {converted_sum:.0f}).",
+                UserWarning,
+                stacklevel=2,
+            )
+            if verbose:
+                print(
+                    "[load] Converted log2(TPM+1)-like values to linear TPM "
+                    f"(sum {original_sum:.0f} -> {converted_sum:.0f})"
+                )
+            return out
+    df.attrs["expression_scale_qc"] = _expression_scale_qc(df)
+    return df
 
 
 def _normalize_bostongene_gene_columns(df, verbose=True):
@@ -1068,6 +1158,8 @@ def load_expression_data(
             ";".join([display_name(gene_name) for gene_name in gene_names.split(";")])
             for gene_names in iterator
         ]
+    df = _detect_and_convert_log_tpm(df, verbose=verbose)
+    scale_qc = dict(df.attrs.get("expression_scale_qc") or {})
     # Consolidate alternate-locus / retired Ensembl IDs that map to the
     # same gene symbol.  Pick the canonical ID (the one in our pan-cancer
     # reference, or highest-expressed) and aggregate TPM via max.
@@ -1077,6 +1169,28 @@ def load_expression_data(
     # Runs after symbol consolidation so either approach can consolidate
     # whatever the other missed.  Sums TPM across alt-haplotype alleles.
     df = _apply_id_aliases_and_sum(df, verbose=verbose)
+    final_scale_qc = _expression_scale_qc(df)
+    if scale_qc.get("converted_from"):
+        final_scale_qc.update(
+            {
+                "converted_from": scale_qc.get("converted_from"),
+                "input_sum_tpm_like": scale_qc.get("input_sum_tpm_like"),
+                "input_max_tpm_like": scale_qc.get("input_max_tpm_like"),
+                "post_conversion_sum_tpm": final_scale_qc.get("sum_tpm"),
+            }
+        )
+        conversion_warning = (
+            "input values resembled log2(TPM+1) and were converted to linear TPM"
+        )
+        final_scale_qc["warnings"] = [
+            conversion_warning,
+            *[
+                warning
+                for warning in final_scale_qc.get("warnings", [])
+                if warning != conversion_warning
+            ],
+        ]
+    df.attrs["expression_scale_qc"] = final_scale_qc
 
     # Attach a transcript-level frame on ``df.attrs`` so downstream
     # signals (isoform length bias, APA-3'UTR usage, etc.) can use

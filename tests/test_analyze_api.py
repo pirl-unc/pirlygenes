@@ -204,30 +204,55 @@ def test_rare_rna_surrogate_rules_are_data_backed_and_context_gated():
     import pandas as pd
 
     from pirlygenes.gene_sets_cancer import rare_cancer_rna_surrogate_rules_df
-    from pirlygenes.rare_inference import infer_rare_cancer_report_scope_from_rna
+    from pirlygenes.rare_inference import (
+        infer_rare_cancer_marker_hypotheses_from_rna,
+        infer_rare_cancer_report_scope_from_rna,
+    )
 
     rules = rare_cancer_rna_surrogate_rules_df()
     assert {"NUTM", "CHOR", "ACINIC"}.issubset(set(rules["cancer_code"]))
 
-    chordoma_like = pd.DataFrame(
+    tbxt_only = pd.DataFrame(
         {
             "ensembl_gene_id": ["ENSG00000164458"],
             "canonical_gene_name": ["TBXT"],
             "TPM": [12.0],
         }
     )
-    inference = infer_rare_cancer_report_scope_from_rna(
-        chordoma_like,
+    assert (
+        infer_rare_cancer_report_scope_from_rna(
+            tbxt_only,
+            {"candidate_trace": [{"code": "SARC"}]},
+        )
+        is None
+    )
+    marker_prompts = infer_rare_cancer_marker_hypotheses_from_rna(
+        tbxt_only,
         {"candidate_trace": [{"code": "SARC"}]},
     )
-    assert inference["cancer_type"] == "CHOR"
-    assert inference["surrogate"] == "TBXT"
+    assert marker_prompts[0]["cancer_type"] == "CHOR"
+    assert marker_prompts[0]["surrogate"] == "TBXT"
+    assert "KRT19" in marker_prompts[0]["missing_support_genes"]
 
     germ_cell_context = infer_rare_cancer_report_scope_from_rna(
-        chordoma_like,
+        tbxt_only,
         {"candidate_trace": [{"code": "TGCT"}]},
     )
     assert germ_cell_context is None
+
+    nutm_like = pd.DataFrame(
+        {
+            "ensembl_gene_id": ["ENSG00000184507"],
+            "canonical_gene_name": ["NUTM1"],
+            "TPM": [6.2],
+        }
+    )
+    inference = infer_rare_cancer_report_scope_from_rna(
+        nutm_like,
+        {"candidate_trace": [{"code": "LUSC"}]},
+    )
+    assert inference["cancer_type"] == "NUTM"
+    assert inference["surrogate"] == "NUTM1"
 
 
 def test_fusion_parser_preserves_5prime_3prime_orientation(tmp_path: Path):
@@ -250,6 +275,50 @@ def test_fusion_parser_preserves_5prime_3prime_orientation(tmp_path: Path):
     assert records[0].gene_b == "NUTM1"
     assert records[0].orientation == "5prime_3prime"
     assert records[0].support_total == 288
+
+
+def test_fusion_parser_rejects_missing_supplied_file(tmp_path: Path):
+    from pirlygenes.fusions import parse_fusion_file
+
+    missing = tmp_path / "missing-fusions.tsv"
+
+    with pytest.raises(FileNotFoundError, match="Fusion evidence file not found"):
+        parse_fusion_file(missing)
+
+
+def test_fusion_parser_reads_hash_prefixed_star_fusion_header(tmp_path: Path):
+    from pirlygenes.fusions import parse_fusion_file
+
+    fusion_file = tmp_path / "star-fusion.fusion_predictions.tsv"
+    fusion_file.write_text(
+        "\n".join(
+            [
+                "#FusionName\tJunctionReadCount\tSpanningFragCount",
+                "BRD3--NUTM1\t12\t8",
+            ]
+        )
+    )
+
+    records = parse_fusion_file(fusion_file)
+
+    assert len(records) == 1
+    assert records[0].gene_a == "BRD3"
+    assert records[0].gene_b == "NUTM1"
+    assert records[0].support_total == 20
+
+
+def test_empty_supplied_fusion_file_reports_no_usable_calls():
+    from pirlygenes.cli import _fusion_evidence_markdown
+
+    md = _fusion_evidence_markdown(
+        {
+            "fusion_inputs_supplied": True,
+            "fusion_input_paths": ["empty.tsv"],
+            "fusion_records": [],
+        }
+    )
+
+    assert "no usable fusion calls were parsed" in md
 
 
 def test_nutm1_fusion_rules_distinguish_partner_specificity():

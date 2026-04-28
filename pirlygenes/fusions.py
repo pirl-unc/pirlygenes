@@ -135,8 +135,12 @@ _GENE_A_COLUMNS = {
     "5primegene",
     "fiveprimegene",
     "gene5prime",
+    "gene15fusionpartner",
+    "gene15primefusionpartner",
+    "gene1fiveprimefusionpartner",
     "fiveprime",
     "gene1",
+    "gene1fusionpartner",
     "genea",
     "leftgene",
     "upstreamgene",
@@ -152,8 +156,12 @@ _GENE_B_COLUMNS = {
     "3primegene",
     "threeprimegene",
     "gene3prime",
+    "gene23fusionpartner",
+    "gene23primefusionpartner",
+    "gene2threeprimefusionpartner",
     "threeprime",
     "gene2",
+    "gene2fusionpartner",
     "geneb",
     "rightgene",
     "downstreamgene",
@@ -173,7 +181,13 @@ _PAIR_COLUMNS = {
     "name",
     "event",
 }
-_EFFECT_COLUMNS = {"effect", "predictedeffect", "annotation", "annots"}
+_EFFECT_COLUMNS = {
+    "effect",
+    "predictedeffect",
+    "predictedfusioneffect",
+    "annotation",
+    "annots",
+}
 _FRAME_COLUMNS = {"frame", "readingframe", "inframe", "frameshift"}
 _CALLER_COLUMNS = {"fusioncaller", "caller", "tool", "program"}
 _CONFIDENCE_COLUMNS = {"confidence", "filter", "classification", "status"}
@@ -191,6 +205,7 @@ _SUPPORT_COLUMNS = {
     "spanningfrags",
     "spanningreads",
     "spanningpairs",
+    "totalspanningreads",
     "discordantmates",
     "readcount",
     "reads",
@@ -199,8 +214,8 @@ _SUPPORT_COLUMNS = {
 _TOTAL_SUPPORT_COLUMNS = {
     "totalsupport",
     "totalreads",
+    "totalspanningreads",
     "readcount",
-    "junctionreadcount",
 }
 
 
@@ -314,9 +329,12 @@ def _read_fusion_table(path: Path) -> pd.DataFrame:
     suffix = path.suffix.lower()
     if suffix in {".tsv", ".sf", ".txt"}:
         try:
-            return pd.read_csv(path, sep="\t", comment="#", low_memory=False)
+            return pd.read_csv(path, sep="\t", low_memory=False)
         except Exception:
-            return pd.read_csv(path, sep=None, engine="python", comment="#")
+            try:
+                return pd.read_csv(path, sep="\t", comment="#", low_memory=False)
+            except Exception:
+                return pd.read_csv(path, sep=None, engine="python", comment="#")
     if suffix in {".xlsx", ".xls"}:
         return pd.read_excel(path)
     if suffix in {".json", ".jsonl"}:
@@ -355,17 +373,33 @@ def _records_from_text(path: Path) -> list[FusionRecord]:
 def parse_fusion_file(path: str | Path) -> list[FusionRecord]:
     """Parse one fusion evidence file into normalized records."""
     target = Path(path).expanduser()
+    if not target.exists():
+        raise FileNotFoundError(f"Fusion evidence file not found: {target}")
+    if not target.is_file():
+        raise ValueError(f"Fusion evidence path is not a file: {target}")
+    table_error: Exception | None = None
+    text_error: Exception | None = None
     try:
         df = _read_fusion_table(target)
         records = _records_from_dataframe(df, source_path=str(target))
         if records:
             return records
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        table_error = exc
     try:
         return _records_from_text(target)
-    except Exception:
-        return []
+    except Exception as exc:  # noqa: BLE001
+        text_error = exc
+    if table_error or text_error:
+        details = []
+        if table_error:
+            details.append(f"table parser: {table_error}")
+        if text_error:
+            details.append(f"text parser: {text_error}")
+        raise ValueError(
+            f"Could not read fusion evidence file {target}: " + "; ".join(details)
+        )
+    return []
 
 
 def parse_fusion_files(paths: object) -> list[FusionRecord]:

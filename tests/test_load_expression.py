@@ -1,3 +1,4 @@
+import math
 import warnings
 
 import pandas as pd
@@ -178,6 +179,35 @@ def test_load_expression_gene_id_only_with_tpm_alias(tmp_path, monkeypatch):
     assert list(out["canonical_gene_name"]) == ["A", "B"]
     assert list(out["gene"]) == ["A", "B"]
     assert list(out["TPM"]) == [1.5, 2.5]
+
+
+def test_load_expression_converts_log2_tpm_plus_one_alias(tmp_path, monkeypatch):
+    p = tmp_path / "expr.csv"
+    rows = []
+    for i in range(1200):
+        tpm = 1000.0 if i < 1000 else 0.0
+        rows.append(
+            {
+                "ensembl_gene": f"ENSG{i:08d}",
+                "gene_tpm_cognizant_corrector": math.log2(tpm + 1.0),
+            }
+        )
+    pd.DataFrame(rows).to_csv(p, index=False)
+
+    monkeypatch.setattr(
+        le,
+        "find_gene_name_from_ensembl_gene_id",
+        lambda gid: f"GENE{int(str(gid).replace('ENSG', ''))}",
+    )
+
+    with pytest.warns(UserWarning, match=r"log2\(TPM\+1\)"):
+        out = le.load_expression_data(str(p), verbose=False, progress=False)
+
+    assert out["TPM"].sum() == pytest.approx(1_000_000.0)
+    assert out["TPM"].max() == pytest.approx(1000.0)
+    qc = out.attrs["expression_scale_qc"]
+    assert qc["converted_from"] == "log2_tpm_plus_one"
+    assert qc["post_conversion_sum_tpm"] == pytest.approx(1_000_000.0)
 
 
 def test_load_expression_accepts_kallisto_gene_abundance_column(tmp_path, monkeypatch):

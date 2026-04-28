@@ -709,7 +709,11 @@ def _curated_target_panel_for_sample(cancer_code, analysis, ranges_df=None):
     return panel_code, panel_subtype, targets_df.reset_index(drop=True)
 
 
-def _caveats_from_purity_tier(purity_tier, sample_context) -> List[str]:
+def _caveats_from_purity_tier(
+    purity_tier,
+    sample_context,
+    analysis=None,
+) -> List[str]:
     """User-facing caveat lines for the brief.
 
     Converts the ``purity_tier.reasons`` (which are short internal
@@ -768,6 +772,9 @@ def _caveats_from_purity_tier(purity_tier, sample_context) -> List[str]:
                 "low MT fraction is expected, but measurable MT mRNAs "
                 "should not be treated as filtered out."
             )
+    scale_qc = (analysis or {}).get("expression_scale_qc") or {}
+    if scale_qc.get("warnings"):
+        out.append("Expression scale QC: " + str(scale_qc["warnings"][0]) + ".")
     return out
 
 
@@ -915,10 +922,20 @@ def _rna_crosscheck_line(analysis, cancer_code: str) -> str:
     if not (constrained_code or source == "user-specified"):
         if rare_inference:
             top_code = str(rare_inference.get("top_reference_cancer_type") or "")
+            candidate_trace = analysis.get("candidate_trace") or []
+            alternatives = _candidate_code_list(
+                candidate_trace,
+                exclude={top_code},
+                limit=2,
+            )
+            alt_clause = (
+                f"; nearby alternatives include {alternatives}" if alternatives else ""
+            )
             return (
                 f"**RNA cross-check:** {cancer_code} is a registry-only rare-cancer "
-                f"hypothesis; nearest TCGA expression reference is {top_code or 'unresolved'}. "
-                "Use the TCGA label for expression context, not as the diagnosis."
+                f"hypothesis; nearest TCGA expression reference is "
+                f"{top_code or 'unresolved'}{alt_clause}. Use these TCGA labels for "
+                "expression context, not as the diagnosis."
             )
         return ""
 
@@ -1048,11 +1065,6 @@ def build_summary(
     sample_id = _display_sample_id(sample_id)
     header_id = f": {sample_id}" if sample_id else ""
     lines.append(f"# Summary{header_id}\n")
-    lines.append(
-        "<!-- Audience: clinician skimming before tumor board. "
-        "Intended length: ≤ 40 lines. -->"
-    )
-    lines.append("")
 
     # #149: Step-0 healthy-vs-tumor banner. Above the cancer call so
     # the reader sees the caveat before anchoring on the TCGA label.
@@ -1076,6 +1088,11 @@ def build_summary(
 
     call_tier = compute_call_confidence(analysis)
     suffix = _call_confidence_suffix(call_tier, concise=True)
+    rare_scope = analysis.get("rare_report_scope_inference") or {}
+    fusion_scope = analysis.get("fusion_report_scope_inference") or {}
+    if rare_scope or fusion_scope:
+        tier = getattr(call_tier, "tier", "unknown")
+        suffix = f" — **{tier} confidence** (rare-cancer report scope; TCGA cohorts are context only)"
 
     # #171: for mixture cohorts, surface the winning subtype hypothesis
     # so the reader sees "Cancer call: SARC (subtype: rhabdomyosarcoma
@@ -1200,6 +1217,31 @@ def build_summary(
     fusion_line = _fusion_evidence_line(analysis, cancer_code)
     if fusion_line:
         lines.append(fusion_line)
+    rare_marker_hypotheses = [
+        finding
+        for finding in (analysis.get("rare_marker_hypotheses") or [])
+        if str(finding.get("cancer_type") or "").strip() != str(cancer_code).strip()
+    ]
+    if rare_marker_hypotheses:
+        finding = rare_marker_hypotheses[0]
+        surrogate = str(finding.get("surrogate") or "marker").strip()
+        tpm = finding.get("surrogate_tpm")
+        tpm_clause = f" {tpm:g} TPM" if isinstance(tpm, (int, float)) else ""
+        label = finding.get("cancer_type") or "rare cancer"
+        support = ", ".join(finding.get("support_genes") or [])
+        missing = ", ".join(finding.get("missing_support_genes") or [])
+        evidence_bits = []
+        if support:
+            evidence_bits.append(f"supporting co-markers: {support}")
+        if missing:
+            evidence_bits.append(f"missing/low expected co-markers: {missing}")
+        evidence_clause = "; " + "; ".join(evidence_bits) if evidence_bits else ""
+        top_ref = str(finding.get("top_reference_cancer_type") or "").strip()
+        context_clause = f" in {top_ref} RNA context" if top_ref else ""
+        lines.append(
+            f"**Rare-marker prompt:** {surrogate}{tpm_clause}{context_clause} raises {label} as a "
+            f"testing prompt, not the report scope{evidence_clause}."
+        )
     # Surface a subtype note only when the resolver changed the call or
     # flagged irreducible ambiguity. ``pair_inactive`` means the pair
     # didn't apply — no reader-facing note needed.
@@ -1238,7 +1280,27 @@ def build_summary(
         pres_label = str(getattr(sample_context, "preservation", "unknown")).replace(
             "_", " "
         )
-        lines.append(f"**Sample:** {prep_label}, {pres_label} preservation.")
+        pres_conf = getattr(sample_context, "preservation_confidence", 0.0)
+        if pres_label == "fresh frozen":
+            pres_label = "fresh/frozen-like"
+        lines.append(
+            f"**Sample:** {prep_label}; preservation inferred as {pres_label} "
+            f"from RNA QC (confidence {pres_conf:.0%})."
+        )
+    scale_qc = analysis.get("expression_scale_qc") or {}
+    if scale_qc.get("converted_from") == "log2_tpm_plus_one":
+        post_sum = scale_qc.get("post_conversion_sum_tpm") or scale_qc.get("sum_tpm")
+        sum_clause = f"; post-conversion sum {post_sum/1_000_000:.2f}M" if post_sum else ""
+        lines.append(
+            "**Expression scale QC:** input resembled log2(TPM+1); converted to "
+            f"linear TPM before interpretation{sum_clause}."
+        )
+    elif scale_qc.get("warnings"):
+        lines.append(
+            "**Expression scale QC:** "
+            + str((scale_qc.get("warnings") or ["check expression scale"])[0])
+            + "."
+        )
 
     lines.append("")
 
@@ -1308,6 +1370,7 @@ def build_summary(
     caveats = _caveats_from_purity_tier(
         purity_tier,
         sample_context,
+        analysis,
     ) + hla_prompts + _clinical_context_caveats(analysis)
     if caveats:
         lines.append("## Caveats")
@@ -1605,7 +1668,10 @@ def build_actionable(
         )
 
     # Caveats
-    caveats = _caveats_from_purity_tier(purity_tier, sample_context) + hla_prompts
+    caveats = (
+        _caveats_from_purity_tier(purity_tier, sample_context, analysis)
+        + hla_prompts
+    )
     if caveats:
         lines.append("## Caveats\n")
         for c in caveats:
