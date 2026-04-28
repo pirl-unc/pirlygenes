@@ -323,6 +323,23 @@ def test_cancers_cli_counts_work_outside_repo_root(capsys, monkeypatch, tmp_path
     assert "Matched normal" in out
 
 
+def test_cancers_cli_source_qualifies_expression_refs(capsys):
+    from pirlygenes.cli import print_cancer_registry
+
+    print_cancer_registry(family="sarcoma")
+    out = capsys.readouterr().out
+
+    assert "TCGA:SARC" in out
+    assert "Treehouse:SARC_SYN" in out
+    assert "sources:" not in out
+
+    print_cancer_registry(family="carcinoma-breast")
+    out = capsys.readouterr().out
+
+    assert "TCGA/PAM50:BRCA_HER2" in out
+    assert "no expr 0" in out
+
+
 def test_nutm_has_actionable_curation():
     """NUT carcinoma gets the fusion-partner biomarkers (NUTM1,
     BRD4, BRD3, NSD3) plus BET-inhibitor therapy rows — these were
