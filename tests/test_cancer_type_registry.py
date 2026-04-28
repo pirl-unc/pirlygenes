@@ -300,12 +300,18 @@ def test_cancers_cli_uses_explicit_coverage_columns(capsys):
     assert "Expression ref" in out
     assert "Expression source" in out
     assert "Curation source" in out
+    assert "Biomarkers" in out
+    assert "Targets" in out
+    assert "Lineage" in out
+    assert "Normal" in out
+    assert "Response" in out
     assert "Parent scopes:" not in out
     assert "RMS_ARMS" in out
     assert "Treehouse v25.01 PolyA" in out
     assert "| Code |" not in out
     assert "bm=" not in out
     assert "tg=" not in out
+    assert "B5 T1" not in out
     assert "sub-child" not in out
 
 
@@ -317,10 +323,11 @@ def test_cancers_cli_counts_work_outside_repo_root(capsys, monkeypatch, tmp_path
     out = capsys.readouterr().out
 
     assert "BLCA" in out
-    assert "B9 T7 L6 N9 R0" in out
+    assert "B9 T7 L6 N9 R0" not in out
     assert "Coverage audit:" in out
     assert "Lineage" in out
     assert "Matched normal" in out
+    assert "Normal" in out
 
 
 def test_cancers_cli_source_qualifies_expression_refs(capsys):

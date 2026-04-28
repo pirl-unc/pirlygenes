@@ -611,7 +611,7 @@ def print_cancer_registry(
     print("Legend:")
     print("  Expr ref: source-qualified numeric expression context, e.g. TCGA:SARC or Treehouse:SARC_SYN.")
     print("            Cancer codes stay unprefixed; source prefixes only describe the expression reference.")
-    print("  Counts: B=biomarkers, T=targets, L=lineage, N=matched-normal, R=response-axis rows.")
+    print("  Normal means matched-normal marker rows; Response means therapy-response axis rows.")
     print("  Parent rows are coarse/default reference scopes; child rows are refined labels.")
     print("  Curation source is separate from expression data; pass --details to print row-level provenance.\n")
 
@@ -680,8 +680,8 @@ def print_cancer_registry(
         ),
     )
     current_group = None
-    row_widths = [18, 8, 28, 17, 18, 40]
-    row_aligns = ["<", "<", "<", "<", "<", "<"]
+    row_widths = [18, 8, 27, 10, 7, 7, 6, 8, 16, 36]
+    row_aligns = ["<", "<", "<", ">", ">", ">", ">", ">", "<", "<"]
     current_family = None
     show_family_sections = False
     for record in records:
@@ -719,7 +719,18 @@ def print_cancer_registry(
                     )
             print(
                 _row(
-                    ["Code", "Parent", "Expr ref", "Counts", "Tissue", "Name"],
+                    [
+                        "Code",
+                        "Parent",
+                        "Expr ref",
+                        "Biomarkers",
+                        "Targets",
+                        "Lineage",
+                        "Normal",
+                        "Response",
+                        "Tissue",
+                        "Name",
+                    ],
                     row_widths,
                     row_aligns,
                 )
@@ -730,11 +741,6 @@ def print_cancer_registry(
             current_family = record["family"]
             print(f"[{current_family}] {_family_label(current_family)}")
 
-        counts = (
-            f"B{record['biomarkers']} T{record['targets']} "
-            f"L{record['lineage']} N{record['matched_normal']} "
-            f"R{record['therapy_axes']}"
-        )
         code_display = (
             f"  {record['code']}" if record["parent"] != "-" else record["code"]
         )
@@ -744,7 +750,11 @@ def print_cancer_registry(
                     code_display,
                     record["parent"],
                     record["expression"],
-                    counts,
+                    record["biomarkers"],
+                    record["targets"],
+                    record["lineage"],
+                    record["matched_normal"],
+                    record["therapy_axes"],
                     record["tissue"],
                     record["name"],
                 ],
