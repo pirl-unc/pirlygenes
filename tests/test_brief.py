@@ -172,6 +172,31 @@ def test_summary_marks_supplied_cancer_type_rna_concordance():
     assert "nearest RNA alternatives: BLCA, COAD" in md
 
 
+def test_summary_compares_registry_child_against_parent_reference():
+    analysis = _make_analysis()
+    analysis["cancer_type"] = "SARC_SYN"
+    analysis["cancer_name"] = "Synovial Sarcoma"
+    analysis["analysis_constraints"] = {"cancer_type": "Synovial Sarcoma"}
+    analysis["cancer_type_source"] = "user-specified"
+    analysis["report_scope_cancer_type"] = "SARC_SYN"
+    analysis["report_scope_parent_cancer_type"] = "SARC"
+    analysis["candidate_trace"] = [
+        {"code": "SARC", "support_geomean": 0.82},
+        {"code": "BLCA", "support_geomean": 0.31},
+    ]
+    ranges_df = _make_ranges_df()
+
+    md = build_summary(
+        analysis,
+        ranges_df,
+        cancer_code="SARC_SYN",
+        disease_state="",
+    )
+
+    assert "**RNA cross-check:** concordant with supplied SARC_SYN via parent SARC" in md
+    assert "nearest RNA alternatives: BLCA" in md
+
+
 def test_summary_marks_supplied_cancer_type_rna_discordance():
     analysis = _make_analysis()
     analysis["cancer_type"] = "COAD"

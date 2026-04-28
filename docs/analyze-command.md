@@ -57,6 +57,31 @@ pirlygenes analyze input.csv \
 | `{prefix}-vs-cancer.pdf` | Combined scatter plot PDF |
 | `{prefix}-all-figures.pdf` | All figures in one PDF |
 
+## Cancer Type Labels
+
+`--cancer-type` accepts both TCGA-style coarse labels and registry labels.
+These are deliberately separated in the analysis state:
+
+- TCGA-backed labels such as `BLCA` or `SARC` constrain the expression
+  reference directly.
+- Fine-grained registry labels with a TCGA parent, such as `SARC_SYN`,
+  keep the supplied subtype as report scope but run purity, decomposition,
+  ranges, and plots against the parent expression reference (`SARC`).
+  The summary cross-check reports this as concordance or discordance
+  through the parent reference instead of pretending the child subtype is
+  a standalone TCGA cohort.
+- Non-TCGA rare labels without a resolvable parent remain report scope
+  hypotheses. The nearest TCGA expression reference is shown only as
+  context and should not be read as the diagnosis.
+
+Fine-grained expression medians are bundled when public cohorts are already
+normalized into `subtype-deconvolved-expression.csv.gz`. Current sources
+include Treehouse Tumor Compendium v25.01 PolyA (`GSE294351`), TARGET,
+BeatAML, TCGA/PAM50, TCGA HPV and mutation strata, SCLC/UCologne, and
+PanNET `GSE118014`. Registry rows without expression medians still need
+cohort ingestion before they can behave like expression-backed refined
+categories.
+
 ## Tumor Purity Estimation
 
 Purity is estimated by combining three independent methods:

@@ -1457,6 +1457,8 @@ def _analyze_body(run: AnalyzeRun):
         analysis["reference_cancer_type"] = rna_inferred_cancer_type
         analysis["reference_cancer_name"] = rna_inferred_cancer_name
         analysis["report_scope_cancer_type"] = report_scope_cancer_type
+        if analysis_cancer_type:
+            analysis["report_scope_parent_cancer_type"] = analysis_cancer_type
         if fusion_scope_inference:
             analysis["fusion_report_scope_inference"] = fusion_scope_inference
         if rare_scope_inference:
@@ -2106,8 +2108,8 @@ def _analyze_body(run: AnalyzeRun):
     # method/algorithm combinations are available in the Python API but
     # are not emitted by default; see pirl-unc/pirlygenes#... for the
     # design rationale. The companion view appends available subtype
-    # references and normal-tissue centroids; registry-only cancer types
-    # without expression medians are not embedded.
+    # references and normal-tissue centroids; registry rows without expression
+    # medians are not embedded.
     print("[plot] Generating MDS embedding (TME-low genes)...")
     mds_png = "%s-mds-tme.png" % prefix
     plot_cancer_type_mds(
@@ -3353,7 +3355,7 @@ def _hypothesis_display_label(result, *, primary_code=None, analysis=None):
 
 
 def _report_scope_cancer_type(cancer_type):
-    """Resolve registry-only cancer labels that lack TCGA references."""
+    """Resolve non-TCGA registry labels that should remain visible in reports."""
     text = str(cancer_type or "").strip()
     if not text:
         return None
@@ -3383,11 +3385,33 @@ def _report_scope_cancer_type(cancer_type):
     return None
 
 
+def _registry_parent_analysis_scope(report_scope):
+    """Return the TCGA parent scope for a registry child label when available."""
+    if not report_scope:
+        return None
+    try:
+        from .gene_sets_cancer import cancer_type_registry
+        from .plot import resolve_cancer_type
+
+        reg = cancer_type_registry()
+        match = reg[reg["code"].astype(str) == str(report_scope)]
+        if match.empty:
+            return None
+        parent = str(match.iloc[0].get("parent_code") or "").strip()
+        if not parent:
+            return None
+        return resolve_cancer_type(parent)
+    except Exception:
+        return None
+
+
 def _analysis_input_cancer_type(cancer_type):
     """Return (composition_scope, report_scope) for an analyze label.
 
-    TCGA-backed labels can constrain the classifier directly. Registry-only
-    labels, such as NUTM, are kept as report scope while the RNA classifier
+    TCGA-backed labels can constrain the classifier directly. Registry labels
+    with a TCGA parent, such as SARC_SYN, constrain analysis to the parent
+    cohort while keeping the child label as report scope. Labels without a
+    TCGA parent, such as NUTM, remain report-only while the RNA classifier
     still runs unconstrained for cross-checking.
     """
     if not cancer_type:
@@ -3399,12 +3423,12 @@ def _analysis_input_cancer_type(cancer_type):
     except ValueError:
         report_scope = _report_scope_cancer_type(cancer_type)
         if report_scope:
-            return None, report_scope
+            return _registry_parent_analysis_scope(report_scope), report_scope
         raise
 
 
 def _infer_registry_report_scope_from_rna(df_expr, analysis):
-    """Infer rare registry-only report scopes from strong RNA surrogates.
+    """Infer rare non-TCGA report scopes from strong RNA surrogates.
 
     This is intentionally hypothesis-level. It lets expression-only runs
     surface NUT carcinoma when NUTM1 is ectopically expressed, but the

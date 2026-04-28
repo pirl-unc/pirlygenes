@@ -1,9 +1,8 @@
 """Data-backed rare cancer hypotheses from RNA expression.
 
 These rules are intentionally conservative. They promote a report scope
-for rare, registry-only cancers that lack a TCGA expression cohort, while
-keeping the TCGA classifier result as expression context and requiring
-orthogonal diagnostic confirmation.
+for rare non-TCGA cancer hypotheses, while keeping the TCGA classifier
+result as expression context and requiring orthogonal diagnostic confirmation.
 """
 
 from __future__ import annotations

@@ -1102,7 +1102,7 @@ def _cancer_type_feature_matrix(
     include_subtypes : bool
         When true, append available subtype-deconvolved tumor-TPM references
         (for example SARC_LMS, OS, EWS) in addition to TCGA parent cohorts.
-        Registry-only rows without expression medians are still not embedded.
+        Registry rows without expression medians are still not embedded.
     """
     import warnings
 

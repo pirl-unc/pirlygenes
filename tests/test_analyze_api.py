@@ -178,6 +178,24 @@ def test_registry_only_cancer_label_becomes_report_scope():
     assert report_scope == "NUTM"
 
 
+def test_registry_child_cancer_label_constrains_parent_cohort():
+    from pirlygenes.cli import _analysis_input_cancer_type
+
+    composition_scope, report_scope = _analysis_input_cancer_type("SARC_SYN")
+
+    assert composition_scope == "SARC"
+    assert report_scope == "SARC_SYN"
+
+
+def test_registry_child_cancer_name_constrains_parent_cohort():
+    from pirlygenes.cli import _analysis_input_cancer_type
+
+    composition_scope, report_scope = _analysis_input_cancer_type("Synovial Sarcoma")
+
+    assert composition_scope == "SARC"
+    assert report_scope == "SARC_SYN"
+
+
 def test_nutm1_expression_can_infer_registry_only_report_scope():
     import pandas as pd
 

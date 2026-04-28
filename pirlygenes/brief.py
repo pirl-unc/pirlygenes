@@ -932,7 +932,7 @@ def _rna_crosscheck_line(analysis, cancer_code: str) -> str:
                 f"; nearby alternatives include {alternatives}" if alternatives else ""
             )
             return (
-                f"**RNA cross-check:** {cancer_code} is a registry-only rare-cancer "
+                f"**RNA cross-check:** {cancer_code} is a non-TCGA rare-cancer "
                 f"hypothesis; nearest TCGA expression reference is "
                 f"{top_code or 'unresolved'}{alt_clause}. Use these TCGA labels for "
                 "expression context, not as the diagnosis."
@@ -940,21 +940,31 @@ def _rna_crosscheck_line(analysis, cancer_code: str) -> str:
         return ""
 
     supplied_code = constrained_code or str(cancer_code or "").strip()
+    report_scope_code = str(analysis.get("report_scope_cancer_type") or "").strip()
+    parent_scope_code = str(
+        analysis.get("report_scope_parent_cancer_type") or ""
+    ).strip()
+    comparison_code = parent_scope_code or supplied_code
+    supplied_label = supplied_code
+    if report_scope_code and parent_scope_code:
+        supplied_label = f"{report_scope_code} via parent {parent_scope_code}"
     candidate_trace = analysis.get("candidate_trace") or []
-    if not supplied_code or not candidate_trace:
+    if not comparison_code or not candidate_trace:
         return "**RNA cross-check:** no cancer-type candidate trace available."
 
     top = candidate_trace[0]
     top_code = str(top.get("code") or "").strip()
-    supplied_rank, supplied_row = _candidate_trace_rank(candidate_trace, supplied_code)
-    if top_code == supplied_code:
+    supplied_rank, supplied_row = _candidate_trace_rank(
+        candidate_trace, comparison_code
+    )
+    if top_code == comparison_code:
         alternatives = _candidate_code_list(
             candidate_trace,
-            exclude={supplied_code},
+            exclude={comparison_code},
             limit=2,
         )
         suffix = f"; nearest RNA alternatives: {alternatives}" if alternatives else ""
-        return f"**RNA cross-check:** concordant with supplied {supplied_code}{suffix}."
+        return f"**RNA cross-check:** concordant with supplied {supplied_label}{suffix}."
 
     fit_quality = str((analysis.get("fit_quality") or {}).get("label") or "").strip()
     top_score = _candidate_support_score(top)
@@ -975,8 +985,8 @@ def _rna_crosscheck_line(analysis, cancer_code: str) -> str:
         else "not in the RNA top candidates"
     )
     return (
-        f"**RNA cross-check:** {status} supplied {supplied_code}; "
-        f"top RNA candidate is {top_code or 'unresolved'} while {supplied_code} is {rank_clause}. "
+        f"**RNA cross-check:** {status} supplied {supplied_label}; "
+        f"top RNA candidate is {top_code or 'unresolved'} while {comparison_code} is {rank_clause}. "
         "Keep the supplied label as report scope and review pathology/subtype context."
     )
 
