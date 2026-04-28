@@ -228,8 +228,6 @@ def print_cancer_registry(
     """
     from collections import defaultdict
 
-    import pandas as pd
-
     from .gene_sets_cancer import (
         cancer_type_registry,
         cancer_biomarker_genes,
@@ -237,6 +235,7 @@ def print_cancer_registry(
         tcga_deconvolved_expression,
         subtype_deconvolved_expression,
     )
+    from .load_dataset import get_data
 
     df = cancer_type_registry()
     if family:
@@ -296,26 +295,26 @@ def print_cancer_registry(
                     subtype_s
                 )
 
-    def _count_by_code(path, column):
+    def _count_by_code(dataset_name, column):
         try:
-            data = pd.read_csv(path)
+            data = get_data(dataset_name)
         except Exception:
             return {}
         if column not in data.columns:
             return {}
         return data[column].dropna().astype(str).value_counts().to_dict()
 
-    lineage_counts = _count_by_code("pirlygenes/data/lineage-genes.csv", "Cancer_Type")
+    lineage_counts = _count_by_code("lineage-genes", "Cancer_Type")
     matched_normal_counts = defaultdict(int)
-    for path in (
-        "pirlygenes/data/tumor-up-vs-matched-normal.csv",
-        "pirlygenes/data/heme-tumor-up-vs-matched-normal.csv",
+    for dataset_name in (
+        "tumor-up-vs-matched-normal",
+        "heme-tumor-up-vs-matched-normal",
     ):
-        for code, count in _count_by_code(path, "cancer_code").items():
+        for code, count in _count_by_code(dataset_name, "cancer_code").items():
             matched_normal_counts[code] += int(count)
     therapy_axis_counts = defaultdict(int)
     try:
-        therapy_axes = pd.read_csv("pirlygenes/data/therapy-response-signatures.csv")
+        therapy_axes = get_data("therapy-response-signatures")
         for value in therapy_axes.get("cancer_context", []).dropna():
             for part in str(value).split(";"):
                 code = part.strip()
@@ -390,12 +389,12 @@ def print_cancer_registry(
     def _expression_label(code):
         labels = []
         if code in tcga_codes:
-            labels.append("TCGA median")
+            labels.append("TCGA")
         if code in sub_codes or code in subtype_codes:
-            labels.append("subtype median")
+            labels.append("sub")
         if code in child_subtype_refs_by_parent:
-            labels.append("child subtype refs")
-        return "; ".join(labels) if labels else "none"
+            labels.append("child")
+        return "+".join(labels) if labels else "none"
 
     def _expression_source_label(code):
         sources = set(expression_sources_by_code.get(code, set()))
@@ -455,11 +454,24 @@ def print_cancer_registry(
     def _group_sort_key(group):
         return group_order.get(str(group), 99)
 
-    def _md_cell(value):
-        return str(value).replace("|", "/").strip() or "-"
+    def _clip(value, width):
+        text = str(value).strip() or "-"
+        if len(text) <= width:
+            return text
+        if width <= 1:
+            return text[:width]
+        return text[: width - 1] + "."
 
-    def _md_row(cells):
-        return "| " + " | ".join(_md_cell(cell) for cell in cells) + " |"
+    def _row(cells, widths, aligns=None):
+        aligns = aligns or ["<"] * len(cells)
+        parts = []
+        for value, width, align in zip(cells, widths, aligns):
+            clipped = _clip(value, width)
+            parts.append(f"{clipped:{align}{width}}")
+        return "  ".join(parts).rstrip()
+
+    def _rule(widths):
+        return "  ".join("-" * width for width in widths)
 
     records = []
     for _, row in df.iterrows():
@@ -505,12 +517,13 @@ def print_cancer_registry(
     print(f"\nCancer-type registry — {len(records)} entries\n")
     print("Coverage columns:")
     print("  Expression ref: numeric expression reference shipped for this row.")
+    print("    Expr values: TCGA=coarse TCGA median; sub=exact subtype median; child=refined child refs.")
     print("  Expression source: dataset(s) behind that numeric reference.")
-    print("  Biomarkers / Targets: curated marker and therapy-target row counts.")
-    print("  Lineage: genes used for purity and lineage calibration.")
-    print("  Matched normal: tumor-vs-parent-normal marker rows.")
-    print("  Response axes: cancer-specific therapy-response signature rows.")
+    print("  Counts: B=biomarkers, T=targets, L=lineage, N=matched-normal, R=response-axis rows.")
     print("  Curation source: registry/clinical curation source; it is separate from expression data.\n")
+    print("Hierarchy:")
+    print("  Parent rows are coarse/default reference scopes.")
+    print("  Child rows are refined labels. If no child has enough evidence, the parent remains the call.\n")
 
     coverage_fields = [
         ("Expression ref", lambda r: r["expression"] != "none"),
@@ -521,11 +534,12 @@ def print_cancer_registry(
         ("Response axes", lambda r: r["therapy_axes"] > 0),
     ]
     print("Coverage audit:")
-    print(_md_row(["Layer", "Rows with data", "Missing rows"]))
-    print("|---|---:|---:|")
+    audit_widths = [24, 10, 10]
+    print(_row(["Layer", "With data", "Missing"], audit_widths, ["<", ">", ">"]))
+    print(_rule(audit_widths))
     for label, predicate in coverage_fields:
         have = sum(1 for record in records if predicate(record))
-        print(_md_row([label, have, len(records) - have]))
+        print(_row([label, have, len(records) - have], audit_widths, ["<", ">", ">"]))
 
     expression_source_examples = defaultdict(list)
     for record in records:
@@ -558,10 +572,24 @@ def print_cancer_registry(
             )
     if gap_rows:
         print("\nLargest missing-data buckets:")
-        print(_md_row(["Clinical group", "No expression", "Expression gaps", "No biomarkers", "No targets"]))
-        print("|---|---:|---|---:|---:|")
+        gap_widths = [40, 7, 7, 7, 58]
+        print(
+            _row(
+                ["Clinical group", "No expr", "No biom", "No targ", "Expression gaps"],
+                gap_widths,
+                ["<", ">", ">", ">", "<"],
+            )
+        )
+        print(_rule(gap_widths))
         for row in gap_rows:
-            print(_md_row(row))
+            group_name, no_expr, gap_examples, no_biomarkers, no_targets = row
+            print(
+                _row(
+                    [group_name, no_expr, no_biomarkers, no_targets, gap_examples],
+                    gap_widths,
+                    ["<", ">", ">", ">", "<"],
+                )
+            )
 
     records = sorted(
         records,
@@ -573,6 +601,8 @@ def print_cancer_registry(
         ),
     )
     current_group = None
+    row_widths = [16, 8, 16, 16, 17, 18, 34]
+    row_aligns = ["<", "<", "<", "<", "<", "<", "<"]
     for record in records:
         if record["group"] != current_group:
             current_group = record["group"]
@@ -580,46 +610,67 @@ def print_cancer_registry(
             families = ", ".join(sorted({r["family"] for r in group_records}))
             print(f"\nClinical group: {current_group} ({len(group_records)} entries)")
             print(f"Families: {families}")
-            print(
-                _md_row(
-                    [
-                        "Code",
-                        "Parent",
-                        "Family",
-                        "Name",
-                        "Tissue",
-                        "Expression ref",
-                        "Expression source",
-                        "Biomarkers",
-                        "Targets",
-                        "Lineage",
-                        "Matched normal",
-                        "Response axes",
-                        "Curation source",
+            parent_rows = [
+                r
+                for r in group_records
+                if any(child["parent"] == r["code"] for child in group_records)
+            ]
+            if parent_rows:
+                print("Parent scopes:")
+                for parent_row in parent_rows:
+                    child_codes = [
+                        child["code"]
+                        for child in group_records
+                        if child["parent"] == parent_row["code"]
                     ]
+                    examples = ", ".join(child_codes[:8])
+                    suffix = (
+                        ""
+                        if len(child_codes) <= 8
+                        else f", ... (+{len(child_codes) - 8})"
+                    )
+                    print(
+                        f"  {parent_row['code']}: fallback parent for "
+                        f"{len(child_codes)} refined labels ({examples}{suffix})"
+                    )
+            print(
+                _row(
+                    ["Code", "Parent", "Family", "Expr", "Counts", "Tissue", "Name"],
+                    row_widths,
+                    row_aligns,
                 )
             )
-            print("|---|---|---|---|---|---|---|---:|---:|---:|---:|---:|---|")
+            print(_rule(row_widths))
 
+        counts = (
+            f"B{record['biomarkers']} T{record['targets']} "
+            f"L{record['lineage']} N{record['matched_normal']} "
+            f"R{record['therapy_axes']}"
+        )
         print(
-            _md_row(
+            _row(
                 [
                     record["code"],
                     record["parent"],
                     record["family"],
-                    record["name"],
-                    record["tissue"],
                     record["expression"],
-                    record["expression_source"],
-                    record["biomarkers"],
-                    record["targets"],
-                    record["lineage"],
-                    record["matched_normal"],
-                    record["therapy_axes"],
-                    record["curation_source"],
-                ]
+                    counts,
+                    record["tissue"],
+                    record["name"],
+                ],
+                row_widths,
+                row_aligns,
             )
         )
+        if record["expression_source"] != "-" or record["curation_source"] != "unknown":
+            print(
+                "  "
+                + _clip(record["code"], 16).ljust(16)
+                + "  sources: expr="
+                + _clip(record["expression_source"], 46)
+                + "; curation="
+                + _clip(record["curation_source"], 52)
+            )
     print()
 
 

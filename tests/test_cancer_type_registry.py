@@ -300,11 +300,27 @@ def test_cancers_cli_uses_explicit_coverage_columns(capsys):
     assert "Expression ref" in out
     assert "Expression source" in out
     assert "Curation source" in out
+    assert "Parent scopes:" not in out
     assert "RMS_ARMS" in out
     assert "Treehouse v25.01 PolyA" in out
+    assert "| Code |" not in out
     assert "bm=" not in out
     assert "tg=" not in out
     assert "sub-child" not in out
+
+
+def test_cancers_cli_counts_work_outside_repo_root(capsys, monkeypatch, tmp_path):
+    from pirlygenes.cli import print_cancer_registry
+
+    monkeypatch.chdir(tmp_path)
+    print_cancer_registry(family="carcinoma-gu")
+    out = capsys.readouterr().out
+
+    assert "BLCA" in out
+    assert "B9 T7 L6 N9 R0" in out
+    assert "Coverage audit:" in out
+    assert "Lineage" in out
+    assert "Matched normal" in out
 
 
 def test_nutm_has_actionable_curation():
