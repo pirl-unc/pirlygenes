@@ -218,7 +218,7 @@ def print_dataset_info():
 
 @named("cancers")
 def print_cancer_registry(
-    family: str = None, tissue: str = None, show_all: bool = False
+    family: str = None, tissue: str = None, show_all: bool = True
 ):
     """List cancer types in the registry with data-availability markers.
 
