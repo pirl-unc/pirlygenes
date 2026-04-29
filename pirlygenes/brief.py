@@ -39,6 +39,8 @@ from .reporting import (
     cancer_key_genes_lookup_for_analysis,
     candidate_winning_subtype_for_analysis,
     clinical_maturity_summary,
+    indication_biomarker,
+    indication_biomarker_label,
     expression_independent_indication,
     expression_independent_interpretation,
     expression_independent_rna_context,
@@ -239,6 +241,68 @@ def _top_candidate_signature_score(analysis) -> float | None:
     return None
 
 
+def _has_direct_eligibility_input(analysis, biomarker: str) -> bool:
+    """Best-effort check for orthogonal eligibility evidence supplied to this run."""
+    if not isinstance(analysis, dict):
+        return False
+    constraints = analysis.get("analysis_constraints") or {}
+    if biomarker == "mutation":
+        return any(
+            bool(analysis.get(key))
+            for key in (
+                "fusion_inputs_supplied",
+                "variant_inputs_supplied",
+                "mutation_inputs_supplied",
+                "cnv_inputs_supplied",
+            )
+        ) or any(
+            bool(constraints.get(key))
+            for key in (
+                "fusions",
+                "fusion_file",
+                "variants",
+                "mutations",
+                "cnvs",
+            )
+        )
+    if biomarker == "msi_high":
+        return any(
+            bool(constraints.get(key))
+            for key in ("msi_status", "mmr_status", "msi", "mmr")
+        )
+    if biomarker == "tmb_high":
+        return any(bool(constraints.get(key)) for key in ("tmb", "tmb_status"))
+    if biomarker == "histology_only":
+        return bool(constraints.get("cancer_type")) or str(
+            analysis.get("cancer_type_source") or ""
+        ).strip() == "user-specified"
+    return False
+
+
+def _expression_independent_evidence_gap(target_row, analysis) -> str:
+    """Surface when a non-expression eligibility gate was not provided."""
+    if not expression_independent_indication(target_row):
+        return ""
+    biomarker = indication_biomarker(target_row)
+    if biomarker == "histology_only":
+        if _has_direct_eligibility_input(analysis, biomarker):
+            return ""
+        return (
+            "eligibility evidence not supplied to this run: confirm diagnosis/"
+            "histology before treating as eligible"
+        )
+    label = indication_biomarker_label(target_row)
+    if _has_direct_eligibility_input(analysis, biomarker):
+        return (
+            f"required eligibility evidence was supplied to this run; verify the "
+            f"{label} call matches the indication"
+        )
+    return (
+        f"required eligibility evidence not supplied to this run: confirm {label} "
+        "before treating as eligible"
+    )
+
+
 def _format_therapy_bullet(
     target_row,
     expression_row,
@@ -270,6 +334,9 @@ def _format_therapy_bullet(
     )
     maturity = clinical_maturity_summary(target_row, target_panel=target_panel)
 
+    def _eligibility_evidence_gap() -> str:
+        return _expression_independent_evidence_gap(target_row, analysis)
+
     def _sentence(parts, *, maturity: str | None = None) -> str:
         body = "; ".join(part for part in parts if part)
         if maturity:
@@ -281,6 +348,7 @@ def _format_therapy_bullet(
             parts = [
                 expression_independent_interpretation(target_row),
                 expression_independent_rna_context(None),
+                _eligibility_evidence_gap(),
             ]
             if path_context:
                 parts.append(path_context)
@@ -298,6 +366,7 @@ def _format_therapy_bullet(
             parts = [
                 expression_independent_interpretation(target_row),
                 expression_independent_rna_context(expression_row),
+                _eligibility_evidence_gap(),
             ]
             if path_context:
                 parts.append(path_context)
@@ -327,6 +396,7 @@ def _format_therapy_bullet(
         interpretation_parts = [
             expression_independent_interpretation(target_row),
             expression_independent_rna_context(expression_row),
+            _eligibility_evidence_gap(),
         ]
     else:
         interpretation_parts = [source["label"], source["band"], normal["label"]]
@@ -991,6 +1061,57 @@ def _rna_crosscheck_line(analysis, cancer_code: str) -> str:
     )
 
 
+def _signature_top_code(analysis) -> str:
+    candidates = analysis.get("signature_top_cancers") or []
+    if not candidates:
+        return ""
+    top = candidates[0]
+    if isinstance(top, dict):
+        return str(top.get("code") or top.get("cancer_type") or "").strip()
+    if isinstance(top, (list, tuple)) and top:
+        return str(top[0] or "").strip()
+    return ""
+
+
+def _rna_alternatives_line(analysis, cancer_code: str) -> str:
+    """Concise ordered alternatives for RNA-inferred, non-rare report scopes."""
+    constraints = analysis.get("analysis_constraints") or {}
+    source = str(analysis.get("cancer_type_source") or "").strip()
+    if constraints.get("cancer_type") or source == "user-specified":
+        return ""
+    if analysis.get("rare_report_scope_inference") or analysis.get(
+        "fusion_report_scope_inference"
+    ):
+        return ""
+    candidate_trace = analysis.get("candidate_trace") or []
+    if not candidate_trace:
+        return ""
+
+    top_score = _candidate_support_score(candidate_trace[0])
+    chunks: list[str] = []
+    for idx, row in enumerate(candidate_trace[:3], start=1):
+        code = str(row.get("code") or "").strip()
+        if not code:
+            continue
+        score = _candidate_support_score(row)
+        ratio = ""
+        if idx > 1 and top_score and score is not None:
+            ratio = f", {score / top_score:.2f}x top support"
+        chunks.append(f"{code} (rank {idx}{ratio})")
+    if not chunks:
+        return ""
+
+    sig_top = _signature_top_code(analysis)
+    sig_clause = ""
+    if sig_top and sig_top != str(cancer_code or "").strip():
+        sig_clause = f"; raw-signature top {sig_top}"
+    return (
+        f"**RNA alternatives:** ordered RNA candidates {', '.join(chunks)}"
+        f"{sig_clause}. Treat these as hypotheses until pathology/clinical "
+        "context resolves them."
+    )
+
+
 def _clinical_context_caveats(analysis) -> List[str]:
     constraints = analysis.get("analysis_constraints") or {}
     source = str(analysis.get("cancer_type_source") or "").strip()
@@ -1224,6 +1345,10 @@ def build_summary(
     rna_crosscheck = _rna_crosscheck_line(analysis, cancer_code)
     if rna_crosscheck:
         lines.append(rna_crosscheck)
+    else:
+        rna_alternatives = _rna_alternatives_line(analysis, cancer_code)
+        if rna_alternatives:
+            lines.append(rna_alternatives)
     fusion_line = _fusion_evidence_line(analysis, cancer_code)
     if fusion_line:
         lines.append(fusion_line)
