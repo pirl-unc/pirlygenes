@@ -306,14 +306,19 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
     # removed from the default plot set (polish/4.40.1).
     assert len(cancer_gene_calls) == 0
-    # MDS-TME plus a sample-centered reference neighborhood are emitted now;
+    # Pan-reference MDS plus a sample-centered reference neighborhood are emitted now;
     # PCA and hierarchy-method plots have been removed from the default output
     # (see pirl-unc/pirlygenes#36).
     assert len(pca_calls) == 0
     assert len(mds_calls) == 1
-    assert mds_calls[0]["method"] == "tme"
+    assert mds_calls[0]["method"] == "panref"
+    assert mds_calls[0]["include_normals"] is True
+    assert mds_calls[0]["include_subtypes"] is True
+    assert mds_calls[0]["label_nearest_cancers"] == 5
+    assert mds_calls[0]["label_nearest_normals"] == 5
+    assert mds_calls[0]["label_all"] is False
     assert len(neighborhood_calls) == 1
-    assert neighborhood_calls[0]["method"] == "bottleneck"
+    assert neighborhood_calls[0]["method"] == "panref"
     assert neighborhood_calls[0]["include_normals"] is True
     assert neighborhood_calls[0]["include_subtypes"] is True
     assert neighborhood_calls[0]["label_nearest_cancers"] == 5
@@ -336,8 +341,8 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert "decomposition" in params
     assert params["selected_sample_mode"] == "solid"
     assert params["embedding_methods"] == [
-        "tme_mds",
-        "bottleneck_reference_neighborhood",
+        "pan_reference_mds",
+        "pan_reference_neighborhood",
     ]
     assert params["input"]["tumor_context"] == "met"
     assert params["input"]["site_hint"] == "liver"
@@ -1183,6 +1188,19 @@ def _tcga_sample(cancer_code):
     )
 
 
+def _normal_tissue_reference_sample(tissue):
+    from pirlygenes.gene_sets_cancer import pan_cancer_expression
+
+    ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"nTPM_{tissue}"].astype(float),
+        }
+    )
+
+
 def test_hierarchy_embedding_keeps_coad_near_crc_family():
     df = _tcga_sample("COAD")
     matrix, labels = plot_mod._cancer_type_feature_matrix(df, method="hierarchy")
@@ -1485,6 +1503,57 @@ def test_embedding_can_include_available_subtype_references():
     assert matrix.shape[0] == len(labels)
     assert "SARC_LMS" in labels
     assert "OS" in labels
+    assert np.isfinite(matrix).all()
+
+
+def test_pan_reference_metadata_includes_normal_tissue_gene_sets():
+    meta = plot_mod.get_embedding_feature_metadata(method="panref", n_genes=4)
+
+    assert meta["method"] == "panref"
+    assert meta["feature_kind"] == "pan_reference_genes"
+    assert meta["n_types"] == 33
+    assert meta["n_normals"] >= 40
+    assert meta["per_type"]["COAD"]
+    assert meta["per_normal"]["colon"]
+    assert "PTPRC" in meta["anchor_added"] or any(
+        "PTPRC" in genes for genes in meta["per_normal"].values()
+    )
+
+
+def test_pan_reference_gene_set_api_exposes_selection_context():
+    import pirlygenes as pg
+
+    genes = pg.pan_reference_embedding_genes(n_genes_per_type=4)
+
+    assert {
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "selected_for_cancer_refs",
+        "selected_for_normal_refs",
+        "curated_anchor",
+    }.issubset(genes.columns)
+    assert genes["Symbol"].is_unique
+    assert (genes["selected_for_cancer_refs"].str.contains("COAD")).any()
+    assert (genes["selected_for_normal_refs"].str.contains("colon")).any()
+
+
+def test_pan_reference_embedding_handles_cancer_and_normal_references():
+    normal_colon = _normal_tissue_reference_sample("colon")
+    matrix, labels = plot_mod._cancer_type_feature_matrix(
+        normal_colon,
+        method="panref",
+        n_genes=4,
+        include_normals=True,
+        include_subtypes=False,
+    )
+
+    sample = matrix[labels.index("SAMPLE")]
+    colon = matrix[labels.index("normal:colon")]
+    liver = matrix[labels.index("normal:liver")]
+    prad = matrix[labels.index("PRAD")]
+
+    assert np.linalg.norm(sample - colon) < np.linalg.norm(sample - liver)
+    assert np.linalg.norm(sample - colon) < np.linalg.norm(sample - prad)
     assert np.isfinite(matrix).all()
 
 

@@ -277,8 +277,8 @@ Prefer the standalone decomposition figures when reviewing or sharing a case. Th
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-immune.png`, `*-tumor.png`, `*-antigens.png`, `*-treatments.png` | Gene expression strip plots by category |
 | `*-target-safety.png`, `*-purity-targets.png`, `*-purity-ctas.png`, `*-purity-surface.png` | Therapy target expression with normal tissue context |
-| `*-pca-hierarchy.png`, `*-mds-hierarchy.png` | Embeddings in hierarchical support space |
-| `*-pca-tme.png`, `*-mds-tme.png` | Embeddings in TME-low gene space |
+| `*-reference-mds.png` | MDS reference map: TCGA cancer medians, subtype references, normal tissues, and the sample |
+| `*-reference-neighborhood.png` | Sample-centered reference map; radius preserves full feature-space distance |
 | `*-cancer-types-genes.png`, `*-cancer-types-disjoint.png` | Cancer-type gene signature heatmaps |
 | `*-all-figures.pdf` | All figures combined into a single PDF |
 
@@ -287,6 +287,17 @@ Prefer the standalone decomposition figures when reviewing or sharing a case. Th
 ### Pan-cancer expression data
 
 Expression data for ~3,100 therapy-relevant genes across 50 normal tissues (HPA v23 consensus nTPM) and 33 TCGA cancer types (median FPKM/TPM). All data ships with the package — no downloads needed.
+
+The default cancer/normal reference embeddings use a reusable pan-reference
+gene set selected from TCGA cancer medians, HPA normal tissues, and curated
+tissue anchors:
+
+```python
+import pirlygenes as pg
+
+genes = pg.pan_reference_embedding_genes()
+meta = pg.get_embedding_feature_metadata(method="panref")
+```
 
 #### Cancer types
 

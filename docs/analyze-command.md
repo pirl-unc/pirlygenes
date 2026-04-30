@@ -49,10 +49,8 @@ pirlygenes analyze input.csv \
 | `{prefix}-purity-adjusted.png` | 9-point tumor expression ranges with % of cancer type median |
 | `{prefix}-cancer-types-genes.png` | Gene set heatmap vs TCGA cancer types |
 | `{prefix}-cancer-types-disjoint.png` | Disjoint gene counts per cancer type |
-| `{prefix}-pca-bottleneck.png` | PCA embedding (bottleneck gene set) |
-| `{prefix}-mds-bottleneck.png` | MDS embedding (bottleneck gene set) |
-| `{prefix}-pca-tme.png` | PCA embedding (TME-low gene set — preferred at low purity) |
-| `{prefix}-mds-tme.png` | MDS embedding (TME-low gene set — preferred at low purity) |
+| `{prefix}-reference-mds.png` | MDS embedding of TCGA cancer medians, subtype references, normal tissues, and the sample |
+| `{prefix}-reference-neighborhood.png` | Sample-centered reference map; radius preserves full feature-space distance |
 | `{prefix}-vs-cancer/` | Per-category scatter plots: sample vs TCGA cancer type |
 | `{prefix}-vs-cancer.pdf` | Combined scatter plot PDF |
 | `{prefix}-all-figures.pdf` | All figures in one PDF |

@@ -2531,22 +2531,29 @@ def _analyze_body(run: AnalyzeRun):
     # in analysis.md without adding interpretive value. The functions
     # remain in ``pirlygenes.plot_embedding`` for Python-API consumers.
 
-    # Sample-among-reference embedding: keep the global MDS parent-cohort view,
-    # then emit a local sample-centered neighborhood plot. The neighborhood
-    # plot preserves each reference's original feature-space distance from the
-    # sample as radius, avoiding the local-distance distortions that happen
-    # when many cancer, subtype, and normal references are squeezed into a
-    # single global 2D MDS.
-    print("[plot] Generating MDS embedding (TME-low genes)...")
-    mds_png = "%s-mds-tme.png" % prefix
+    # Sample-among-reference embedding: emit a global normal-inclusive MDS and
+    # a local sample-centered neighborhood plot. The pan-reference gene set is
+    # selected for both cancer medians and normal tissues, while the local plot
+    # preserves each reference's original feature-space distance from the
+    # sample as radius.
+    print("[plot] Generating pan-reference MDS embedding...")
+    mds_png = "%s-reference-mds.png" % prefix
     plot_cancer_type_mds(
-        df_expr, method="tme", save_to_filename=mds_png, save_dpi=output_dpi
+        df_expr,
+        method="panref",
+        include_normals=True,
+        include_subtypes=True,
+        label_nearest_cancers=5,
+        label_nearest_normals=5,
+        label_all=False,
+        save_to_filename=mds_png,
+        save_dpi=output_dpi,
     )
     neighborhood_png = "%s-reference-neighborhood.png" % prefix
     print("[plot] Generating sample-centered reference neighborhood...")
     plot_cancer_type_neighborhood(
         df_expr,
-        method="bottleneck",
+        method="panref",
         include_normals=True,
         include_subtypes=True,
         label_nearest_cancers=5,
@@ -2627,7 +2634,7 @@ def _analyze_body(run: AnalyzeRun):
 
     # Generate text reports
     print("[report] Generating text reports...")
-    _embedding_meta = get_embedding_feature_metadata(method="hierarchy")
+    _embedding_meta = get_embedding_feature_metadata(method="panref")
     _generate_text_reports(
         analysis,
         _embedding_meta,
@@ -3254,7 +3261,7 @@ def _analyze_body(run: AnalyzeRun):
                     "note": "These all support the cancer label from different angles; good candidates for consolidation when the call is already clear.",
                     "files": _existing_figure_paths(
                         "cancer-hypotheses.png",
-                        "mds-tme.png",
+                        "reference-mds.png",
                         "reference-neighborhood.png",
                         "subtype-signature.png",
                         "vs-cancer.pdf",
@@ -3442,7 +3449,7 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-purity-targets.png` | Tumor-expression ranges for therapeutic targets |
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
-| `*-mds-tme.png` | MDS: sample among TCGA cancer types (TME-low gene space) |
+| `*-reference-mds.png` | MDS: sample among TCGA cancer medians, subtype references, and normal tissues |
 | `*-reference-neighborhood.png` | Sample-centered cancer/subtype/normal reference map; radius preserves input feature distance |
 """
     readme_path.write_text(readme)
@@ -5103,6 +5110,46 @@ def _generate_text_reports(
             "context axes. The 2D embedding therefore reflects the same evidence "
             "hierarchy shown in the candidate trace rather than a flat gene-only space."
         )
+    elif feature_kind == "pan_reference_genes":
+        lines.append(f"- **Total genes**: {embedding_meta['n_genes']}")
+        lines.append(f"- **Cancer types represented**: {embedding_meta['n_types']}/33")
+        lines.append(
+            f"- **Normal tissues represented**: {embedding_meta.get('n_normals', 0)}"
+        )
+        lines.append(
+            f"- **Selection density**: {embedding_meta.get('n_genes_per_type', 'NA')} "
+            "genes per TCGA cancer type; "
+            f"{embedding_meta.get('n_genes_per_normal', 'NA')} per normal tissue"
+        )
+        if embedding_meta.get("anchor_added"):
+            lines.append(
+                f"- **Curated tissue anchors added**: "
+                f"{', '.join(embedding_meta['anchor_added'])}"
+            )
+        lines.append("")
+        lines.append(
+            "The pan-reference embedding is a shared reference-map gene set: it "
+            "selects discriminating genes for TCGA cancer medians and HPA normal "
+            "tissues, then scales cancers, subtype references, normals, and the "
+            "sample in one robust log-expression space. It is intended for visual "
+            "orientation, not as the cancer-call classifier."
+        )
+        lines.append("")
+        lines.append("### Genes per cancer type\n")
+        lines.append("| Cancer | Genes |")
+        lines.append("|--------|-------|")
+        for ct in sorted(embedding_meta["per_type"]):
+            genes = embedding_meta["per_type"][ct]
+            if genes:
+                lines.append(f"| {ct} | {', '.join(genes)} |")
+        lines.append("")
+        lines.append("### Genes per normal tissue\n")
+        lines.append("| Tissue | Genes |")
+        lines.append("|--------|-------|")
+        for tissue in sorted(embedding_meta.get("per_normal", {})):
+            genes = embedding_meta["per_normal"][tissue]
+            if genes:
+                lines.append(f"| {tissue} | {', '.join(genes)} |")
     else:
         lines.append(f"- **Total genes**: {embedding_meta['n_genes']}")
         lines.append(f"- **Cancer types represented**: {embedding_meta['n_types']}/33")

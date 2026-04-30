@@ -51,6 +51,14 @@ _LAZY_EXPORTS = {
     ),
     "plot_sample_context": ("pirlygenes.sample_context", "plot_sample_context"),
     "plot_sample_vs_cancer": ("pirlygenes.plot", "plot_sample_vs_cancer"),
+    "get_embedding_feature_metadata": (
+        "pirlygenes.plot_embedding",
+        "get_embedding_feature_metadata",
+    ),
+    "pan_reference_embedding_genes": (
+        "pirlygenes.plot_embedding",
+        "pan_reference_embedding_genes",
+    ),
 }
 
 
@@ -74,6 +82,8 @@ __all__ = [
     "plot_sample_vs_cancer",
     "plot_geneset_vs_vital_tissues",
     "plot_ctas_vs_cancer_type_detail",
+    "get_embedding_feature_metadata",
+    "pan_reference_embedding_genes",
     # Pan-cancer reference
     "pan_cancer_expression",
     # Housekeeping

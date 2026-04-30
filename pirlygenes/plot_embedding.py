@@ -95,10 +95,56 @@ _CURATED_LINEAGE_BOOST = [
     "PGC",  # STAD — pepsinogen C, best available (3x vs others)
 ]
 
+_CURATED_PAN_REFERENCE_ANCHORS = [
+    # Immune / stromal / vascular tissue axes
+    "PTPRC",
+    "CD3D",
+    "MS4A1",
+    "MZB1",
+    "COL1A1",
+    "DCN",
+    "PECAM1",
+    "VWF",
+    "ACTA2",
+    "MYH11",
+    "ADIPOQ",
+    # Epithelial and organ-lineage axes
+    "EPCAM",
+    "KRT8",
+    "KRT18",
+    "KRT5",
+    "KRT14",
+    "CDX2",
+    "MUC2",
+    "ALB",
+    "APOA1",
+    "SFTPB",
+    "NAPSA",
+    "KLK3",
+    "NKX3-1",
+    "UPK2",
+    "PAX8",
+    "TG",
+    "GATA3",
+    # Neural / endocrine / melanocytic / mesenchymal axes
+    "GFAP",
+    "OLIG2",
+    "SOX10",
+    "MLANA",
+    "PMEL",
+    "TH",
+    "CHGA",
+    "INS",
+    "TBXT",
+    "COL2A1",
+    "ACAN",
+]
+
 _signature_panel_cache = {}
 _embedding_gene_cache = {}
 _tme_gene_cache = {}
 _bottleneck_gene_cache = {}
+_pan_reference_gene_cache = {}
 _hierarchy_feature_cache = {}
 _hierarchy_site_cache = {}
 _tcga_parent_code_cache = None
@@ -404,6 +450,148 @@ def _select_embedding_genes_bottleneck(n_genes_per_type=5):
     result = (ref_filtered, metadata)
     _bottleneck_gene_cache[cache_key] = result
     return result
+
+
+def _select_pan_reference_genes(n_genes_per_type=6, n_genes_per_normal=None):
+    """Select genes for a shared cancer/subtype/normal reference embedding.
+
+    The bottleneck and TME-low selectors are optimized for tumor calling,
+    especially at low purity. A normal-inclusive dimensionality-reduction
+    plot needs a different feature space: every TCGA median and every HPA
+    normal tissue should have enough markers to become a meaningful point.
+
+    This selector therefore takes top genes for each cancer centroid and
+    each normal-tissue centroid using the same specificity score, then adds
+    a compact set of curated tissue/lineage anchors. It is meant as a
+    general reference-map gene set rather than a classifier.
+    """
+    import numpy as np
+    n_genes_per_type = int(n_genes_per_type)
+    n_genes_per_normal = (
+        max(3, n_genes_per_type // 2)
+        if n_genes_per_normal is None
+        else int(n_genes_per_normal)
+    )
+    cache_key = (n_genes_per_type, n_genes_per_normal)
+    if cache_key in _pan_reference_gene_cache:
+        return _pan_reference_gene_cache[cache_key]
+
+    ref = pan_cancer_expression()
+    fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
+    ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
+    ref_dedup = ref.drop_duplicates(subset="Symbol").copy()
+    reference_cols = fpkm_cols + ntpm_cols
+    expr = ref_dedup[reference_cols].astype(float)
+    log_expr = np.log2(expr + 1.0)
+
+    is_rearranged = ref_dedup["Symbol"].apply(
+        lambda s: any(str(s).startswith(p) for p in _IG_TR_PREFIXES)
+    )
+    base_mask = (~is_rearranged.values) & (expr.max(axis=1) > 0.2)
+
+    selected_idx = []
+    per_type = {}
+    per_normal = {}
+
+    def _top_for_column(column, n):
+        target = log_expr[column]
+        others = log_expr.drop(columns=[column])
+        other_median = others.median(axis=1)
+        other_q3 = others.quantile(0.75, axis=1)
+        other_mad = (
+            others.sub(other_median, axis=0)
+            .abs()
+            .median(axis=1)
+            .replace(0, np.nan)
+        )
+        scale = (1.4826 * other_mad).fillna(0.15).clip(lower=0.15)
+        z_specific = (target - other_median) / scale
+        delta = target - other_q3
+        score = (z_specific.clip(lower=0.0) + delta.clip(lower=0.0)) * target
+        mask = base_mask & (target > np.log2(1.2)) & (delta > 0.0)
+        top = score[mask].nlargest(n)
+        return list(top.index)
+
+    for col in fpkm_cols:
+        code = col.replace("FPKM_", "")
+        top_idx = _top_for_column(col, n_genes_per_type)
+        per_type[code] = list(ref_dedup.loc[top_idx, "Symbol"].astype(str))
+        selected_idx.extend(top_idx)
+
+    for col in ntpm_cols:
+        tissue = col.replace("nTPM_", "")
+        top_idx = _top_for_column(col, n_genes_per_normal)
+        per_normal[tissue] = list(ref_dedup.loc[top_idx, "Symbol"].astype(str))
+        selected_idx.extend(top_idx)
+
+    selected_syms = set(
+        ref_dedup.loc[list(dict.fromkeys(selected_idx)), "Symbol"].astype(str)
+        if selected_idx
+        else []
+    )
+    anchor_added = []
+    for sym in _CURATED_PAN_REFERENCE_ANCHORS:
+        if sym in selected_syms:
+            continue
+        hits = ref_dedup[ref_dedup["Symbol"].astype(str) == sym]
+        if hits.empty:
+            continue
+        idx = hits.index[0]
+        selected_idx.append(idx)
+        selected_syms.add(sym)
+        anchor_added.append(sym)
+
+    selected_idx = list(dict.fromkeys(selected_idx))
+    ref_filtered = ref_dedup.loc[selected_idx]
+
+    metadata = {
+        "method": "panref",
+        "feature_kind": "pan_reference_genes",
+        "per_type": per_type,
+        "per_normal": per_normal,
+        "anchor_added": anchor_added,
+        "n_genes": len(selected_idx),
+        "n_types": len([t for t, genes in per_type.items() if genes]),
+        "n_normals": len([t for t, genes in per_normal.items() if genes]),
+        "n_genes_per_type": n_genes_per_type,
+        "n_genes_per_normal": n_genes_per_normal,
+    }
+
+    result = (ref_filtered, metadata)
+    _pan_reference_gene_cache[cache_key] = result
+    return result
+
+
+def pan_reference_embedding_genes(n_genes_per_type=6, n_genes_per_normal=None):
+    """Return the reusable pan-reference embedding gene set.
+
+    The returned dataframe contains one row per selected gene and includes
+    provenance columns naming the TCGA cancer medians, HPA normal tissues,
+    or curated anchor list that selected the gene.
+    """
+    ref_filtered, metadata = _select_pan_reference_genes(
+        n_genes_per_type=n_genes_per_type,
+        n_genes_per_normal=n_genes_per_normal,
+    )
+    cancer_refs_by_gene = {}
+    normal_refs_by_gene = {}
+    for code, genes in metadata["per_type"].items():
+        for gene in genes:
+            cancer_refs_by_gene.setdefault(gene, []).append(code)
+    for tissue, genes in metadata["per_normal"].items():
+        for gene in genes:
+            normal_refs_by_gene.setdefault(gene, []).append(tissue)
+
+    columns = [c for c in ["Ensembl_Gene_ID", "Symbol"] if c in ref_filtered.columns]
+    result = ref_filtered.loc[:, columns].copy()
+    result["selected_for_cancer_refs"] = result["Symbol"].map(
+        lambda gene: ";".join(cancer_refs_by_gene.get(gene, []))
+    )
+    result["selected_for_normal_refs"] = result["Symbol"].map(
+        lambda gene: ";".join(normal_refs_by_gene.get(gene, []))
+    )
+    result["curated_anchor"] = result["Symbol"].isin(metadata["anchor_added"])
+    return result.reset_index(drop=True)
 
 
 def _select_tme_low_genes(n_genes_per_type=3, sn_tme_threshold=10):
@@ -1106,6 +1294,8 @@ def _cancer_type_feature_matrix(
         ``"rank"`` — percentile rank within each gene across cancer types.
         ``"score"`` — cancer-type signature scores (33-d vector).
         ``"hierarchy"`` — family-aware support-score space with purity anchor.
+        ``"panref"`` — shared cancer/subtype/normal reference genes for
+        normal-inclusive maps.
     include_normals : bool
         When true, append normal-tissue nTPM centroids to the embedded
         reference rows. Supported for expression-space methods; ignored for
@@ -1182,6 +1372,8 @@ def _cancer_type_feature_matrix(
         ref_filtered, _meta = _select_embedding_genes_bottleneck(
             n_genes_per_type=n_genes
         )
+    elif method == "panref":
+        ref_filtered, _meta = _select_pan_reference_genes(n_genes_per_type=n_genes)
     else:
         ref_filtered, _meta = _select_embedding_genes(n_genes_per_type=n_genes)
 
@@ -1219,13 +1411,30 @@ def _cancer_type_feature_matrix(
         else np.zeros((len(ref_norm), 0), dtype=float)
     )
 
-    if method in ("zscore", "hk_zscore", "tme", "bottleneck"):
+    if method in ("zscore", "hk_zscore", "tme", "bottleneck", "panref"):
         log_ref = np.log2(ref_vals + 1)
         log_sample = np.log2(sample_vals + 1)
         log_subtypes = np.log2(subtype_vals + 1) if subtype_labels else None
         log_normals = np.log2(normal_vals + 1) if normal_cols else None
-        g_std = log_ref.std(axis=1)
-        var_mask = g_std >= 0.1
+        if method == "panref":
+            scale_parts = [log_ref]
+            if log_subtypes is not None and log_subtypes.shape[1]:
+                scale_parts.append(log_subtypes)
+            if log_normals is not None and log_normals.shape[1]:
+                scale_parts.append(log_normals)
+            log_scale = np.hstack(scale_parts)
+            g_center = np.nanmedian(log_scale, axis=1)
+            q1 = np.nanpercentile(log_scale, 25, axis=1)
+            q3 = np.nanpercentile(log_scale, 75, axis=1)
+            g_std = (q3 - q1) / 1.349
+            fallback_std = np.nanstd(log_scale, axis=1)
+            g_std = np.where(g_std >= 0.08, g_std, fallback_std)
+            g_std = np.where(g_std >= 0.08, g_std, 0.08)
+            var_mask = (np.nanmax(log_scale, axis=1) - np.nanmin(log_scale, axis=1)) >= 0.2
+        else:
+            g_std = log_ref.std(axis=1)
+            g_center = log_ref.mean(axis=1)
+            var_mask = g_std >= 0.1
         log_ref = log_ref[var_mask]
         log_sample = log_sample[var_mask]
         if log_subtypes is not None:
@@ -1233,22 +1442,31 @@ def _cancer_type_feature_matrix(
         if log_normals is not None:
             log_normals = log_normals[var_mask]
         g_std = g_std[var_mask]
-        g_mean = log_ref.mean(axis=1)
-        z_ref = np.clip((log_ref - g_mean[:, None]) / g_std[:, None], -3, 3)
-        z_sample = np.clip((log_sample - g_mean) / g_std, -3, 3)
+        g_center = g_center[var_mask]
+        clip_limit = 4 if method == "panref" else 3
+        z_ref = np.clip(
+            (log_ref - g_center[:, None]) / g_std[:, None],
+            -clip_limit,
+            clip_limit,
+        )
+        z_sample = np.clip(
+            (log_sample - g_center) / g_std,
+            -clip_limit,
+            clip_limit,
+        )
         parts = [z_ref.T]
         if log_subtypes is not None and log_subtypes.shape[1]:
             z_subtypes = np.clip(
-                (log_subtypes - g_mean[:, None]) / g_std[:, None],
-                -3,
-                3,
+                (log_subtypes - g_center[:, None]) / g_std[:, None],
+                -clip_limit,
+                clip_limit,
             )
             parts.append(z_subtypes.T)
         if log_normals is not None and log_normals.shape[1]:
             z_normals = np.clip(
-                (log_normals - g_mean[:, None]) / g_std[:, None],
-                -3,
-                3,
+                (log_normals - g_center[:, None]) / g_std[:, None],
+                -clip_limit,
+                clip_limit,
             )
             parts.append(z_normals.T)
         parts.append(z_sample[None, :])
@@ -1293,6 +1511,8 @@ def get_embedding_feature_metadata(method="hierarchy", n_genes=10):
         return _select_tme_low_genes(n_genes_per_type=n_genes)[1]
     if method == "bottleneck":
         return _select_embedding_genes_bottleneck(n_genes_per_type=n_genes)[1]
+    if method == "panref":
+        return _select_pan_reference_genes(n_genes_per_type=n_genes)[1]
     return _select_embedding_genes(n_genes_per_type=n_genes)[1]
 
 
@@ -2394,6 +2614,7 @@ _METHOD_LABELS = {
     "tme": "TME-low genes",
     "score": "signature scores",
     "bottleneck": "bottleneck genes",
+    "panref": "pan-reference genes",
 }
 
 

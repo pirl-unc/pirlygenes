@@ -38,6 +38,27 @@ normal transcriptional regulation).
 
 The embedding uses z-score of log2(1 + expression) with clipping at +/-3.
 
+## Pan-Reference Gene Set
+
+When normal tissues are plotted alongside cancer medians, the bottleneck
+set is no longer sufficient: it was selected to keep tumor calls robust
+against TME dilution, not to give each normal tissue a meaningful
+landmark. The normal-inclusive MDS/neighborhood plots therefore use
+`method="panref"`.
+
+The pan-reference selector chooses:
+
+- top discriminating genes for each TCGA cancer median,
+- top discriminating genes for each HPA normal-tissue reference,
+- curated tissue anchors for immune, stromal, vascular, epithelial,
+  neural, endocrine, melanocytic, and mesenchymal axes.
+
+All TCGA medians, subtype references, normal tissues, and the sample are
+then scaled together in one robust log-expression space using median/IQR
+scaling across the reference rows. This makes the plot a general reference
+map: cancer and normal points are both real landmarks rather than normals
+being projected through a tumor-only gene set.
+
 ## Evaluation
 
 Evaluated on 160 individual TCGA RNA-seq samples (5 per cancer type,
@@ -103,7 +124,16 @@ TCGA).
 
 ## Implementation
 
-`pirlygenes.plot._select_embedding_genes_bottleneck(n_genes_per_type=5)`
+`pirlygenes.pan_reference_embedding_genes()` returns the reusable
+pan-reference gene set as a dataframe with the selected gene, the cancer
+references that selected it, the normal-tissue references that selected
+it, and whether it was added as a curated anchor.
 
-Called via `_cancer_type_feature_matrix(df, method="bottleneck")`, which
-is the default for `plot_cancer_type_pca()` and `plot_cancer_type_mds()`.
+`pirlygenes.get_embedding_feature_metadata(method="panref")` returns the
+same selection metadata grouped by TCGA cancer type and HPA normal tissue.
+Report generation uses this `panref` method for the default
+`reference-mds` and `reference-neighborhood` plots.
+
+The older bottleneck gene set remains available through
+`_cancer_type_feature_matrix(df, method="bottleneck")` for tumor-only
+experiments and low-purity robustness comparisons.
