@@ -179,6 +179,7 @@ def build_analysis_parameters(
             "decomposition_templates": template_overrides,
             "hla_types": config.hla_type_list(),
             "fusions": config.fusion_path_list(),
+            "alterations": config.alteration_input_list(),
         },
         "tumor_purity": tumor_purity_parameters,
         "decomposition": decomposition_parameters,

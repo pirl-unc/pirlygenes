@@ -43,6 +43,7 @@ class AnalyzeConfig:
     decomposition_templates: str | None = None
     hla_types: str | None = None
     fusions: str | None = None
+    alterations: str | None = None
     therapy_target_top_k: int = 10
     therapy_target_tpm_threshold: float = 30.0
     force: bool = False
@@ -68,11 +69,18 @@ class AnalyzeConfig:
 
         return split_fusion_paths(self.fusions)
 
+    def alteration_input_list(self) -> list[str]:
+        """Alteration evidence files or inline calls supplied for loose parsing."""
+        from ..alterations import split_alteration_inputs
+
+        return split_alteration_inputs(self.alterations)
+
     def public_dict(self) -> dict[str, Any]:
         """JSON-safe representation for manifests and provenance files."""
         payload = asdict(self)
         payload["hla_type_list"] = self.hla_type_list()
         payload["fusion_path_list"] = self.fusion_path_list()
+        payload["alteration_input_list"] = self.alteration_input_list()
         return payload
 
 

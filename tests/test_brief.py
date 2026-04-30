@@ -542,6 +542,72 @@ def test_expression_independent_therapy_acknowledges_supplied_fusion_input():
     assert "verify the mutation / fusion / amplification call" in line
 
 
+def test_sarc_summary_uses_supplied_egfr_kdd_and_skips_unresolved_subtype_spillover():
+    analysis = _make_analysis()
+    analysis.update(
+        {
+            "cancer_type": "SARC",
+            "cancer_name": "Sarcoma",
+            "cancer_type_source": "user-specified",
+            "analysis_constraints": {"cancer_type": "SARC"},
+            "alteration_inputs_supplied": True,
+            "alteration_records": [
+                {
+                    "gene": "EGFR",
+                    "alteration": "EGFR kinase domain duplication / KDD",
+                    "alteration_type": "kdd",
+                }
+            ],
+        }
+    )
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "EGFR",
+                "observed_tpm": 583.0,
+                "attr_tumor_tpm": 570.0,
+                "attr_tumor_fraction": 0.98,
+                "attr_top_compartment": "",
+                "attr_top_compartment_tpm": 0.0,
+                "tme_dominant": False,
+                "tme_explainable": False,
+            },
+            {
+                "symbol": "PDGFRA",
+                "observed_tpm": 200.0,
+                "attr_tumor_tpm": 180.0,
+                "attr_tumor_fraction": 0.90,
+                "attr_top_compartment": "",
+                "attr_top_compartment_tpm": 0.0,
+                "tme_dominant": False,
+                "tme_explainable": False,
+            },
+            {
+                "symbol": "NTRK1",
+                "observed_tpm": 120.0,
+                "attr_tumor_tpm": 110.0,
+                "attr_tumor_fraction": 0.92,
+                "attr_top_compartment": "",
+                "attr_top_compartment_tpm": 0.0,
+                "tme_dominant": False,
+                "tme_explainable": False,
+            },
+        ]
+    )
+
+    md = build_summary(analysis, ranges_df, cancer_code="SARC", disease_state="")
+
+    assert "**Alteration evidence:** supplied EGFR kinase domain duplication" in md
+    top_lines = [line for line in md.splitlines() if line.startswith("- **")]
+    assert top_lines[0].startswith("- **EGFR**")
+    assert "supplied alteration evidence supports this eligibility gate" in md
+    assert "- **PDGFRA**" not in md
+    assert "- **NTRK1**" not in md
+    assert "- **CDK4**" not in md
+    assert "- **PRAME**" not in md
+    assert "HLA typing needed" not in md
+
+
 def test_summary_prompts_for_hla_when_hla_gated_target_is_plausible():
     analysis = _make_analysis()
     analysis["cancer_type"] = "UVM"

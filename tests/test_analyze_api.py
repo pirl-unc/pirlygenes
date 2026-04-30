@@ -169,6 +169,29 @@ def test_build_analysis_parameters_records_fusion_paths():
     assert params["input"]["fusions"] == ["calls.tsv", "extra.jsonl"]
 
 
+def test_build_analysis_parameters_records_alteration_inputs():
+    quality = {
+        "degradation": {"level": "unknown", "long_short_ratio": None},
+        "culture": {"level": "unknown", "stress_score": None},
+        "has_issues": False,
+    }
+    config = AnalyzeConfig(input_path="gene.tsv", alterations="EGFR KDD;variants.tsv")
+    resolution = resolve_analyze_inputs(config, sniff_input_level=lambda _path: "gene")
+
+    params = build_analysis_parameters(
+        config=config,
+        resolution=resolution,
+        template_overrides=[],
+        selected_sample_mode="bulk",
+        quality=quality,
+        tumor_purity_parameters={},
+        decomposition_parameters={},
+    )
+
+    assert config.alteration_input_list() == ["EGFR KDD", "variants.tsv"]
+    assert params["input"]["alterations"] == ["EGFR KDD", "variants.tsv"]
+
+
 def test_registry_only_cancer_label_becomes_report_scope():
     from pirlygenes.cli import _analysis_input_cancer_type
 
@@ -302,6 +325,46 @@ def test_fusion_parser_rejects_missing_supplied_file(tmp_path: Path):
 
     with pytest.raises(FileNotFoundError, match="Fusion evidence file not found"):
         parse_fusion_file(missing)
+
+
+def test_alteration_parser_accepts_inline_kdd():
+    from pirlygenes.alterations import parse_alteration_inputs
+
+    records = parse_alteration_inputs("EGFR kinase domain duplication / KDD")
+
+    assert len(records) == 1
+    assert records[0].gene == "EGFR"
+    assert records[0].alteration_type == "kdd"
+
+
+def test_alteration_parser_reads_loose_table(tmp_path: Path):
+    from pirlygenes.alterations import parse_alteration_file
+
+    alterations = tmp_path / "variants.tsv"
+    alterations.write_text(
+        "\n".join(
+            [
+                "Gene\tAlteration\tVAF",
+                "EGFR\tKinase domain duplication\t0.42",
+            ]
+        )
+    )
+
+    records = parse_alteration_file(alterations)
+
+    assert len(records) == 1
+    assert records[0].gene == "EGFR"
+    assert records[0].alteration_type == "kdd"
+    assert records[0].support["VAF"] == 0.42
+
+
+def test_alteration_parser_rejects_missing_supplied_file(tmp_path: Path):
+    from pirlygenes.alterations import parse_alteration_inputs
+
+    missing = tmp_path / "missing-variants.tsv"
+
+    with pytest.raises(FileNotFoundError, match="Alteration evidence file not found"):
+        parse_alteration_inputs(str(missing))
 
 
 def test_fusion_parser_reads_hash_prefixed_star_fusion_header(tmp_path: Path):

@@ -225,8 +225,9 @@ _TARGET_EXPRESSION_INDICATION = re.compile(
 )
 _MUTATION_INDICATION = re.compile(
     r"\b("
-    r"mutation|mutant|v600|exon\s*\d+|fusion|rearrangement|"
-    r"amplification|amplified|amp\b|her2\+|brca[- ]?(mut|mutation)"
+    r"mutation|mutant|v600|[a-z]\d{2,4}[a-z]|exon\s*\d+|fusion|rearrangement|"
+    r"amplification|amplified|amp\b|kdd|kinase\s+domain\s+duplication|"
+    r"internal\s+tandem\s+duplication|itd\b|her2\+|brca[- ]?(mut|mutation)"
     r")\b",
     re.IGNORECASE,
 )
@@ -312,6 +313,106 @@ def expression_independent_rna_context(expression_row) -> str:
     return (
         f"target RNA is contextual only (bulk {observed:.1f} TPM; "
         "eligibility is not inferred from expression)"
+    )
+
+
+def supplied_alterations_for_gene(analysis, gene: str) -> list[dict]:
+    """Return supplied alteration records matching a target gene symbol."""
+    if not isinstance(analysis, dict):
+        return []
+    wanted = _clean_text(gene).upper()
+    if not wanted:
+        return []
+    records = analysis.get("alteration_records") or []
+    matches: list[dict] = []
+    for record in records:
+        if not hasattr(record, "get"):
+            continue
+        observed = _clean_text(record.get("gene")).upper()
+        if observed == wanted:
+            matches.append(dict(record))
+    return matches
+
+
+def supplied_alteration_supports_target_row(target_row, analysis) -> list[dict]:
+    """Return supplied alteration records compatible with a therapy row.
+
+    This is intentionally conservative: a row that requires EGFR KDD is not
+    supported by generic EGFR expression or a vague EGFR variant. For broader
+    mutation/fusion/amplification rows, a same-gene supplied alteration of a
+    compatible coarse class is enough to mark the eligibility evidence as
+    present, still with clinical verification language in the reports.
+    """
+    sym = _clean_text(target_row.get("symbol") if hasattr(target_row, "get") else "")
+    records = supplied_alterations_for_gene(analysis, sym)
+    if not records:
+        return []
+    text = " ".join(
+        _clean_text(target_row.get(key))
+        for key in ("indication", "rationale", "eligibility_note")
+        if hasattr(target_row, "get")
+    ).lower()
+    required_types: set[str] = set()
+    if re.search(r"\b(kdd|kinase\s+domain\s+duplication)\b", text):
+        required_types.update({"kdd", "internal_tandem_duplication"})
+    elif re.search(r"\b(itd|internal\s+tandem\s+duplication)\b", text):
+        required_types.add("internal_tandem_duplication")
+    elif re.search(r"\b(fusion|rearrang|translocation)\b", text):
+        required_types.add("fusion")
+    elif re.search(r"\b(amplification|amplified|\bamp\b|copy\s*number\s*gain)\b", text):
+        required_types.add("amplification")
+    elif indication_biomarker(target_row) == "mutation":
+        required_types.update(
+            {
+                "mutation",
+                "fusion",
+                "amplification",
+                "loss",
+                "kdd",
+                "internal_tandem_duplication",
+            }
+        )
+    if not required_types:
+        return []
+    supported: list[dict] = []
+    for record in records:
+        observed_type = _clean_text(record.get("alteration_type")).lower()
+        observed_text = " ".join(
+            _clean_text(record.get(key))
+            for key in ("alteration", "raw_name", "alteration_type")
+        ).lower()
+        if observed_type in required_types:
+            supported.append(record)
+            continue
+        if "kdd" in required_types and "kinase domain duplication" in observed_text:
+            supported.append(record)
+            continue
+        if "amplification" in required_types and "amplif" in observed_text:
+            supported.append(record)
+    return supported
+
+
+def supplied_alteration_context_for_target_row(target_row, analysis) -> str:
+    """Reader-facing summary of supplied alteration evidence for a target row."""
+    supported = supplied_alteration_supports_target_row(target_row, analysis)
+    if not supported:
+        return ""
+    labels: list[str] = []
+    for record in supported[:3]:
+        gene = _clean_text(record.get("gene"))
+        alteration = _clean_text(record.get("alteration")) or _clean_text(
+            record.get("alteration_type")
+        )
+        if gene and alteration.upper().startswith(gene.upper()):
+            labels.append(alteration)
+        else:
+            labels.append(f"{gene} {alteration}".strip())
+    suffix = "" if len(supported) <= 3 else f" (+{len(supported) - 3} more)"
+    return (
+        "supplied alteration evidence supports this eligibility gate: "
+        + ", ".join(labels)
+        + suffix
+        + "; verify against the clinical assay report"
     )
 
 
@@ -620,6 +721,7 @@ def clinical_maturity_info(target_row, target_panel=None):
         "phase_2": "mid-clinical",
         "phase_1": "early clinical",
         "preclinical": "preclinical",
+        "off_label": "off-label / transfer rationale",
     }.get(phase, phase or "curated")
     agent_class = _display_agent_class(target_row.get("agent_class"))
     summary = phase_label

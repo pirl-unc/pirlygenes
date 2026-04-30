@@ -49,6 +49,8 @@ from .reporting import (
     normal_expression_context,
     report_disease_state_text,
     same_lineage_material_target_candidate,
+    supplied_alteration_context_for_target_row,
+    supplied_alteration_supports_target_row,
     subtype_curation_scope_note,
     therapy_path_context,
     therapy_path_rank,
@@ -158,6 +160,15 @@ def _render_subtype_note(
     alternatives = [
         _display_subtype_code(code) for code in (resolution.get("alternatives") or [])
     ]
+    deduped_alternatives = []
+    seen_labels = {final_label.lower()}
+    for label in alternatives:
+        key = label.lower()
+        if key in seen_labels:
+            continue
+        seen_labels.add(key)
+        deduped_alternatives.append(label)
+    alternatives = deduped_alternatives
 
     if status == "corrected":
         if rule == "site_template":
@@ -215,6 +226,7 @@ def _phase_label(phase: str) -> str:
         "phase_2": "Phase 2",
         "phase_1": "Phase 1",
         "preclinical": "Preclinical",
+        "off_label": "Off-label / transfer rationale",
     }.get(phase, phase)
 
 
@@ -241,6 +253,28 @@ def _top_candidate_signature_score(analysis) -> float | None:
     return None
 
 
+def _subtype_specific_row_out_of_scope(target_row, analysis) -> bool:
+    """Suppress subtype-specific SARC rows when SARC is unresolved.
+
+    The full target tables can list subtype-specific rows as context. The brief
+    top-3 and summary HLA prompts should not imply Ewing/GIST/synovial-specific
+    eligibility for a broad SARC call unless that subtype was actually selected
+    or direct alteration evidence supports the row.
+    """
+    if not analysis:
+        return False
+    active_code = str(analysis.get("cancer_type") or "").strip()
+    if active_code != "SARC":
+        return False
+    target_subtype = str(target_row.get("subtype") or "").strip()
+    if not target_subtype:
+        return False
+    active_panel_subtype = str(analysis.get("_target_panel_subtype") or "").strip()
+    if active_panel_subtype and target_subtype == active_panel_subtype:
+        return False
+    return not bool(supplied_alteration_supports_target_row(target_row, analysis))
+
+
 def _has_direct_eligibility_input(analysis, biomarker: str) -> bool:
     """Best-effort check for orthogonal eligibility evidence supplied to this run."""
     if not isinstance(analysis, dict):
@@ -251,6 +285,7 @@ def _has_direct_eligibility_input(analysis, biomarker: str) -> bool:
             bool(analysis.get(key))
             for key in (
                 "fusion_inputs_supplied",
+                "alteration_inputs_supplied",
                 "variant_inputs_supplied",
                 "mutation_inputs_supplied",
                 "cnv_inputs_supplied",
@@ -263,6 +298,7 @@ def _has_direct_eligibility_input(analysis, biomarker: str) -> bool:
                 "variants",
                 "mutations",
                 "cnvs",
+                "alterations",
             )
         )
     if biomarker == "msi_high":
@@ -283,6 +319,12 @@ def _expression_independent_evidence_gap(target_row, analysis) -> str:
     """Surface when a non-expression eligibility gate was not provided."""
     if not expression_independent_indication(target_row):
         return ""
+    supplied_context = supplied_alteration_context_for_target_row(
+        target_row,
+        analysis,
+    )
+    if supplied_context:
+        return supplied_context
     biomarker = indication_biomarker(target_row)
     if biomarker == "histology_only":
         if _has_direct_eligibility_input(analysis, biomarker):
@@ -440,6 +482,7 @@ def _top_therapies(
         "phase_2": 2,
         "phase_1": 3,
         "preclinical": 4,
+        "off_label": 5,
     }
 
     scored = []
@@ -447,6 +490,11 @@ def _top_therapies(
         sym = str(t.get("symbol") or "")
         expr = sym_to_row.get(sym)
         expr_independent = expression_independent_indication(t)
+        if _subtype_specific_row_out_of_scope(t, analysis):
+            continue
+        supplied_alteration_rank = (
+            0 if supplied_alteration_supports_target_row(t, analysis) else 1
+        )
         if expr is None:
             if not hla_restricted_target_supported(t, analysis=analysis):
                 continue
@@ -455,6 +503,7 @@ def _top_therapies(
                 scored.append(
                     (
                         (
+                            supplied_alteration_rank,
                             therapy_path_rank(
                                 t,
                                 analysis=analysis,
@@ -509,6 +558,7 @@ def _top_therapies(
         reliability_rank = 0 if reliability_status == "supported" else 1
         expression_rank = 1 if expr_independent else 0
         sort_key = (
+            supplied_alteration_rank,
             therapy_path_rank(
                 t,
                 analysis=analysis,
@@ -947,6 +997,39 @@ def _fusion_evidence_line(analysis, cancer_code: str) -> str:
     return ""
 
 
+def _alteration_evidence_line(analysis) -> str:
+    records = analysis.get("alteration_records") or []
+    if records:
+        labels = []
+        for record in records[:4]:
+            if not hasattr(record, "get"):
+                continue
+            gene = str(record.get("gene") or "").strip()
+            alteration = str(
+                record.get("alteration") or record.get("alteration_type") or ""
+            ).strip()
+            if gene:
+                if alteration.upper().startswith(gene.upper()):
+                    labels.append(alteration)
+                else:
+                    labels.append(f"{gene} {alteration}".strip())
+        if labels:
+            suffix = "" if len(records) <= 4 else f" (+{len(records) - 4} more)"
+            return (
+                "**Alteration evidence:** supplied "
+                + ", ".join(labels)
+                + suffix
+                + "; used as driver/eligibility context, not inferred from RNA."
+            )
+    if analysis.get("alteration_inputs_supplied"):
+        return (
+            "**Alteration evidence:** alteration input was supplied, but no usable "
+            "calls were parsed; verify the file format before using alteration-gated "
+            "therapies."
+        )
+    return ""
+
+
 def _candidate_trace_rank(
     candidate_trace: list[dict],
     cancer_code: str,
@@ -1141,6 +1224,8 @@ def _missing_hla_prompts(targets_df, ranges_df, analysis, limit: int = 3) -> Lis
     prompts: List[str] = []
     seen = set()
     for _, target in targets_df.iterrows():
+        if _subtype_specific_row_out_of_scope(target, analysis):
+            continue
         required = hla_restrictions_for_target_row(target)
         if not required:
             continue
@@ -1352,6 +1437,9 @@ def build_summary(
     fusion_line = _fusion_evidence_line(analysis, cancer_code)
     if fusion_line:
         lines.append(fusion_line)
+    alteration_line = _alteration_evidence_line(analysis)
+    if alteration_line:
+        lines.append(alteration_line)
     rare_marker_hypotheses = [
         finding
         for finding in (analysis.get("rare_marker_hypotheses") or [])
@@ -1448,11 +1536,14 @@ def build_summary(
     )
     hla_prompts = _missing_hla_prompts(targets_df, ranges_df, analysis)
     if panel_code in cancer_key_genes_cancer_types():
+        therapy_analysis = dict(analysis)
+        if panel_subtype:
+            therapy_analysis["_target_panel_subtype"] = panel_subtype
         top = _top_therapies(
             targets_df,
             ranges_df,
             limit=3,
-            analysis=analysis,
+            analysis=therapy_analysis,
             disease_state=disease_state_display,
         )
         lines.append("## Top candidate therapies\n")
@@ -1480,7 +1571,7 @@ def build_summary(
                         target_row,
                         expression_row,
                         target_panel=targets_df,
-                        analysis=analysis,
+                        analysis=therapy_analysis,
                         disease_state=disease_state_display,
                     )
                 )

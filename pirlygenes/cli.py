@@ -979,6 +979,7 @@ def _store_alteration_effect_reasoning(
     analysis,
     *,
     fusion_records=None,
+    alteration_records=None,
     sample_tpm_by_symbol=None,
     ranges_df=None,
     cancer_code=None,
@@ -1026,10 +1027,16 @@ def _store_alteration_effect_reasoning(
     analysis["fusion_expression_effects"] = fusion_effects
     analysis["fusion_expression_hypotheses"] = fusion_hypotheses
     analysis["mutation_expression_hypotheses"] = mutation_hypotheses
+    if alteration_records is not None:
+        analysis["alteration_records"] = [
+            record.public_dict() if hasattr(record, "public_dict") else dict(record)
+            for record in alteration_records
+        ]
     analysis["alteration_effect_summary"] = {
         "fusion_effects": len(fusion_effects),
         "fusion_expression_hypotheses": len(fusion_hypotheses),
         "mutation_expression_hypotheses": len(mutation_hypotheses),
+        "supplied_alterations": len(alteration_records or []),
         "expression_source": "tumor_inferred" if tumor_tpm_by_symbol else "bulk",
     }
     return analysis["alteration_effect_summary"]
@@ -1542,6 +1549,7 @@ def analyze(
     decomposition_templates: Optional[str] = None,
     hla_types: Optional[str] = None,
     fusions: Optional[str] = None,
+    alterations: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
     force: bool = False,
@@ -1581,6 +1589,7 @@ def analyze(
         decomposition_templates=decomposition_templates,
         hla_types=hla_types,
         fusions=fusions,
+        alterations=alterations,
         therapy_target_top_k=therapy_target_top_k,
         therapy_target_tpm_threshold=therapy_target_tpm_threshold,
         force=force,
@@ -1671,6 +1680,7 @@ def _analyze_body(run: AnalyzeRun):
     met_site = config.met_site
     transcript_path = resolution.transcript_input
     fusion_paths = config.fusion_path_list()
+    alteration_inputs = config.alteration_input_list()
     therapy_target_top_k = config.therapy_target_top_k
     therapy_target_tpm_threshold = config.therapy_target_tpm_threshold
     sample_display_id = paths.sample_display_id
@@ -1704,6 +1714,15 @@ def _analyze_body(run: AnalyzeRun):
             f"[fusion] Parsed {len(fusion_records)} fusion calls from "
             f"{len(fusion_paths)} file(s)"
         )
+    alteration_records = []
+    if alteration_inputs:
+        from .alterations import parse_alteration_inputs
+
+        alteration_records = parse_alteration_inputs(alteration_inputs)
+        print(
+            f"[alteration] Parsed {len(alteration_records)} alteration calls from "
+            f"{len(alteration_inputs)} input(s)"
+        )
     run.note_step(
         "input",
         outputs={
@@ -1711,6 +1730,8 @@ def _analyze_body(run: AnalyzeRun):
             "columns": [str(c) for c in df_expr.columns],
             "fusion_files": len(fusion_paths),
             "fusion_records": len(fusion_records),
+            "alteration_inputs": len(alteration_inputs),
+            "alteration_records": len(alteration_records),
         },
     )
     forced_labels = _parse_always_label_genes(label_genes)
@@ -1838,10 +1859,16 @@ def _analyze_body(run: AnalyzeRun):
     fusion_scope_inference = None
     analysis["fusion_inputs_supplied"] = bool(fusion_paths)
     analysis["fusion_input_paths"] = list(fusion_paths)
+    analysis["alteration_inputs_supplied"] = bool(alteration_inputs)
+    analysis["alteration_inputs"] = list(alteration_inputs)
     analysis["expression_scale_qc"] = expression_scale_qc
     analysis["fusion_records"] = [
         record.public_dict() if hasattr(record, "public_dict") else dict(record)
         for record in fusion_records
+    ]
+    analysis["alteration_records"] = [
+        record.public_dict() if hasattr(record, "public_dict") else dict(record)
+        for record in alteration_records
     ]
     if fusion_records:
         from .rare_inference import (
@@ -1925,6 +1952,7 @@ def _analyze_body(run: AnalyzeRun):
         decomposition_templates=template_overrides,
         met_site=met_site,
         hla_types=config.hla_types,
+        alterations=config.alterations,
     )
     cancer_code = analysis["cancer_type"]
     reference_cancer_code = analysis.get("reference_cancer_type") or cancer_code
@@ -2703,6 +2731,7 @@ def _analyze_body(run: AnalyzeRun):
         alteration_effect_summary = _store_alteration_effect_reasoning(
             analysis,
             fusion_records=fusion_records,
+            alteration_records=alteration_records,
             sample_tpm_by_symbol=sample_tpm_by_symbol,
             ranges_df=ranges_df,
             cancer_code=report_cancer_type,
@@ -3898,6 +3927,7 @@ def _analysis_constraints(
     decomposition_templates=None,
     met_site=None,
     hla_types=None,
+    alterations=None,
 ):
     constraints = {}
     if cancer_type:
@@ -3918,6 +3948,12 @@ def _analysis_constraints(
         parsed_hla = parse_hla_types(hla_types)
         if parsed_hla:
             constraints["hla_types"] = parsed_hla
+    if alterations:
+        from .alterations import split_alteration_inputs
+
+        parsed_alterations = split_alteration_inputs(alterations)
+        if parsed_alterations:
+            constraints["alterations"] = parsed_alterations
     return constraints
 
 
@@ -4565,9 +4601,36 @@ def _alteration_effect_markdown(
     heading: str = "## Alteration-expression hypotheses",
 ) -> str:
     hypotheses = analysis.get("mutation_expression_hypotheses") or []
-    if not hypotheses:
+    records = analysis.get("alteration_records") or []
+    if not hypotheses and not records and not analysis.get("alteration_inputs_supplied"):
         return ""
     lines = [heading, ""]
+    if records:
+        lines.append(
+            "Supplied alteration calls are carried forward as orthogonal driver or "
+            "eligibility evidence. They are not inferred from RNA and should still "
+            "be verified against the source molecular report.\n"
+        )
+        lines.append("| Gene | Supplied alteration | Type | Source |")
+        lines.append("|---|---|---|---|")
+        for record in records[:12]:
+            if not hasattr(record, "get"):
+                continue
+            source = str(record.get("source_path") or "inline/user input")
+            lines.append(
+                f"| {record.get('gene') or '—'} | {record.get('alteration') or '—'} | "
+                f"{record.get('alteration_type') or '—'} | {source} |"
+            )
+        if len(records) > 12:
+            lines.append(f"| ... | {len(records) - 12} additional supplied calls | ... | ... |")
+        lines.append("")
+    elif analysis.get("alteration_inputs_supplied"):
+        lines.append(
+            "Alteration input was supplied, but no usable alteration calls were parsed. "
+            "Review the file format/content before using alteration-gated therapies.\n"
+        )
+    if not hypotheses:
+        return "\n".join(lines)
     lines.append(
         "Curated mutation/CNV expression-effect rules are interpreted as uncertain "
         "biology hypotheses. They use tumor-inferred TPM when available and bulk TPM "
@@ -6519,6 +6582,7 @@ def plot_expression(
     site_hint: Optional[str] = None,
     decomposition_templates: Optional[str] = None,
     hla_types: Optional[str] = None,
+    alterations: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
 ):
@@ -6548,6 +6612,7 @@ def plot_expression(
         site_hint=site_hint,
         decomposition_templates=decomposition_templates,
         hla_types=hla_types,
+        alterations=alterations,
         therapy_target_top_k=therapy_target_top_k,
         therapy_target_tpm_threshold=therapy_target_tpm_threshold,
     )
