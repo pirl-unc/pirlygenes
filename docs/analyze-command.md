@@ -56,6 +56,7 @@ pirlygenes analyze input.csv \
 | `{prefix}-vs-cancer/` | Per-category scatter plots: sample vs TCGA cancer type |
 | `{prefix}-vs-cancer.pdf` | Combined scatter plot PDF |
 | `{prefix}-all-figures.pdf` | All figures in one PDF |
+| `{prefix}-figure-audit.pdf` | Figure packet grouped by redundancy/value; each page carries the source filename |
 
 ## Cancer Type Labels
 
@@ -78,11 +79,45 @@ Fine-grained expression medians are bundled when public cohorts are already
 normalized into `subtype-deconvolved-expression.csv.gz`. Current sources
 include Treehouse Tumor Compendium v25.01 PolyA (`GSE294351`), TARGET,
 BeatAML, TCGA/PAM50, TCGA HPV and mutation strata, SCLC/UCologne, and
-PanNET `GSE118014`. GSE75885 adds complex-genetics sarcoma RNA-seq
-references for DDLPS, pleomorphic liposarcoma, and low-grade
-fibromyxoid sarcoma. Registry rows without expression medians still
-need cohort ingestion before they can behave like expression-backed
-refined categories.
+PanNET `GSE118014`. Treehouse v25.01 RiboD (`GSE294353`) adds
+ribodepleted references for sparse entities where it improves sample
+support. GSE299759 adds central chondrosarcoma from raw counts converted
+to approximate gene-level TPM with GENCODE v44 union-exon lengths.
+GSE75885 adds complex-genetics sarcoma RNA-seq references for DDLPS,
+pleomorphic liposarcoma, and low-grade fibromyxoid sarcoma. Log2(TPM+1)
+sources are inverted to linear TPM and must pass sample-sum QC
+(~1,000,000 TPM per sample) before their medians/IQRs are bundled.
+Raw-count sources require high count-to-length mapping coverage before
+TPM conversion. Registry rows without expression medians still need
+cohort ingestion before they can behave like expression-backed refined
+categories.
+
+## Expression Reference Distributions
+
+New expression-reference imports should preserve empirical per-gene
+distributions, not just a point estimate. The preferred bundled schema is:
+`symbol`, `cancer_code`, optional `subtype`, `source_cohort`,
+`tumor_tpm_median`, `tumor_tpm_q1`, `tumor_tpm_q3`, and `n_samples`.
+`q1`/`q3` are the 25th/75th percentiles across individual public
+samples in that cohort.
+
+Legacy broad resources are different:
+
+- `tcga-deconvolved-expression.csv.gz` already stores median/q1/q3/N
+  and should be preferred over legacy `FPKM_<TCGA>` columns when an
+  empirical distribution is needed.
+- `pan-cancer-expression.csv` remains a compatibility table with TCGA
+  and HPA point estimates. Its HPA normal `nTPM_*` columns are consensus
+  values, so empirical q1/q3 cannot be reconstructed from that file
+  alone.
+- Normal-tissue q1/q3 should be generated from sample-level normal
+  resources, such as GTEx/TOIL tissue matrices, then stored in a
+  separate normal-expression summary table rather than inferred from a
+  consensus point estimate.
+- HPA cell-type tables are aggregate cell-type references. If future
+  sample/cell-level HPA downloads are imported, their distributions
+  should be labeled by provenance; otherwise any spread is only a proxy,
+  not empirical cohort IQR.
 
 ## Tumor Purity Estimation
 

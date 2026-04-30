@@ -41,6 +41,56 @@ import numpy as np
 import pandas as pd
 
 
+def _normalise_gene_column(df: pd.DataFrame, path: str | Path) -> pd.DataFrame:
+    """Return a copy with the gene-symbol column named ``symbol``."""
+    for candidate in ("symbol", "Gene", "Hugo_Symbol"):
+        if candidate in df.columns:
+            if candidate == "symbol":
+                return df.copy()
+            return df.rename(columns={candidate: "symbol"})
+    raise ValueError(f"Expected one of symbol/Gene/Hugo_Symbol columns in {path}")
+
+
+def validate_tpm_sample_sums(
+    tpm_frame: pd.DataFrame,
+    *,
+    expected_total: float = 1_000_000.0,
+    tolerance_fraction: float = 0.01,
+) -> pd.DataFrame:
+    """Validate that sample TPM columns approximately sum to one million.
+
+    This catches the most common scale mistake when importing public
+    matrices: accidentally treating log2(TPM+1), CPM, counts, or already
+    filtered gene subsets as full TPM. The returned frame is useful for
+    logging; a ``ValueError`` is raised when any non-empty sample falls
+    outside ``expected_total ± tolerance_fraction``.
+    """
+    sample_cols = [c for c in tpm_frame.columns if c != "symbol"]
+    if not sample_cols:
+        return pd.DataFrame(columns=["sample", "total_tpm", "fraction_of_expected"])
+
+    sums = tpm_frame[sample_cols].sum(axis=0).astype(float)
+    lower = expected_total * (1.0 - tolerance_fraction)
+    upper = expected_total * (1.0 + tolerance_fraction)
+    bad = sums[(sums < lower) | (sums > upper)]
+    if not bad.empty:
+        details = ", ".join(f"{sample}={total:.0f}" for sample, total in bad.head(8).items())
+        if len(bad) > 8:
+            details += f", ... (+{len(bad) - 8})"
+        raise ValueError(
+            "TPM sample-sum QC failed: expected each sample to sum to "
+            f"{expected_total:.0f}±{tolerance_fraction:.0%}; bad samples: {details}"
+        )
+
+    return pd.DataFrame(
+        {
+            "sample": sums.index.astype(str),
+            "total_tpm": sums.values,
+            "fraction_of_expected": sums.values / expected_total,
+        }
+    )
+
+
 def load_cbioportal_rpkm(path: str | Path) -> pd.DataFrame:
     """Load a cBioPortal-datahub ``data_mrna_seq_rpkm.txt`` file.
 
@@ -60,6 +110,45 @@ def load_cbioportal_rpkm(path: str | Path) -> pd.DataFrame:
     df[sample_cols] = df[sample_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
     df = df[df["symbol"].notna() & (df["symbol"].astype(str).str.len() > 0)]
     df = df.groupby("symbol", as_index=False, sort=False)[sample_cols].sum()
+    return df
+
+
+def load_log2_tpm(
+    path: str | Path,
+    sample_ids: set[str] | list[str] | tuple[str, ...] | None = None,
+) -> pd.DataFrame:
+    """Load a gene × sample matrix encoded as log2(TPM+1).
+
+    Treehouse public compendium matrices use this representation. We
+    invert it back to linear TPM, collapse duplicate gene symbols by
+    summing, then run sample-sum QC so sparse/imported references do not
+    silently enter the bundled summaries on the wrong scale.
+    """
+    sample_id_set = set(sample_ids or [])
+    if sample_id_set:
+        keep = sample_id_set | {"symbol", "Gene", "Hugo_Symbol"}
+        df = pd.read_csv(
+            path,
+            sep="\t",
+            usecols=lambda column: column in keep,
+            low_memory=False,
+        )
+    else:
+        df = pd.read_csv(path, sep="\t", low_memory=False)
+    df = _normalise_gene_column(df, path)
+    if sample_id_set:
+        missing = sample_id_set - {c for c in df.columns if c != "symbol"}
+        if missing:
+            preview = ", ".join(sorted(missing)[:8])
+            if len(missing) > 8:
+                preview += f", ... (+{len(missing) - 8})"
+            raise ValueError(f"Missing requested sample columns in {path}: {preview}")
+    sample_cols = [c for c in df.columns if c != "symbol"]
+    df[sample_cols] = df[sample_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    df[sample_cols] = np.power(2.0, df[sample_cols]) - 1.0
+    df = df[df["symbol"].notna() & (df["symbol"].astype(str).str.len() > 0)]
+    df = df.groupby("symbol", as_index=False, sort=False)[sample_cols].sum()
+    validate_tpm_sample_sums(df)
     return df
 
 
@@ -160,9 +249,12 @@ def run(
         rpkm = load_cbioportal_rpkm(expression_path)
         tpm = rpkm_to_tpm(rpkm)
     elif input_format == "tpm_tsv":
-        tpm = pd.read_csv(expression_path, sep="\t", low_memory=False)
-        if "symbol" not in tpm.columns and "Hugo_Symbol" in tpm.columns:
-            tpm = tpm.rename(columns={"Hugo_Symbol": "symbol"})
+        tpm = _normalise_gene_column(
+            pd.read_csv(expression_path, sep="\t", low_memory=False),
+            expression_path,
+        )
+    elif input_format == "log2_tpm_tsv":
+        tpm = load_log2_tpm(expression_path)
     else:
         raise ValueError(f"Unknown input_format={input_format!r}")
 
@@ -223,7 +315,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--input-format",
         default="cbioportal_rpkm",
-        choices=["cbioportal_rpkm", "tpm_tsv"],
+        choices=["cbioportal_rpkm", "tpm_tsv", "log2_tpm_tsv"],
         help="How to parse the expression matrix",
     )
     p.add_argument(

@@ -742,6 +742,15 @@ def subtype_deconvolved_expression():
       Ewing 101, ERMS 95, ARMS 73, MBL 125, UPS 110, LMS 151, LPS 92,
       synovial 50, myxofibrosarcoma 41, rhabdoid 69, UCS 57, etc.).
       Expression scale: log2(TPM+1) un-transformed to linear TPM.
+    - **Treehouse Tumor Compendium v25.01 RiboD (GSE294353)** —
+      ribodepleted public samples for entities underpowered in PolyA
+      (currently RB and CHOR). Expression scale is also log2(TPM+1)
+      un-transformed to linear TPM, with sample-sum QC requiring
+      ~1,000,000 TPM per sample before aggregation.
+    - **GSE299759 (Meijer et al.; PMID:40976495)** central
+      chondrosarcoma RNA-seq. Raw Ensembl gene counts are converted to
+      approximate gene-level TPM with GENCODE v44 union-exon lengths;
+      >99.99% of counts map to length-backed genes before aggregation.
     - GSE75885 (Delespaul et al.; PMID:27528700) complex-genetics
       sarcoma RNA-seq, RPKM-like expression converted per sample to
       TPM for DDLPS, pleomorphic liposarcoma, and low-grade fibromyxoid

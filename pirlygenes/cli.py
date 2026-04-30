@@ -388,6 +388,7 @@ def print_cancer_registry(
         labels = {
             "BEATAML_OHSU_2022": "BeatAML OHSU 2022",
             "GSE118014_ALVAREZ_2018": "GEO GSE118014",
+            "GSE299759_MEIJER_2026": "GEO GSE299759",
             "GSE75885_DELESPAUL_2017": "GEO GSE75885",
             "ICGC": "ICGC",
             "LITERATURE_CURATED": "curated literature",
@@ -408,6 +409,7 @@ def print_cancer_registry(
             "TCGA_LUAD_MUT": "TCGA LUAD mutation strata",
             "TCGA_XENA_TOIL": "TCGA/Xena/TOIL",
             "TREEHOUSE_POLYA_25_01": "Treehouse v25.01 PolyA",
+            "TREEHOUSE_RIBOD_25_01": "Treehouse v25.01 RiboD",
             "TREEHOUSE_v25.01": "Treehouse v25.01",
         }
         return labels.get(source, source or "unknown")
@@ -417,6 +419,7 @@ def print_cancer_registry(
         prefixes = {
             "BEATAML_OHSU_2022": "BeatAML",
             "GSE118014_ALVAREZ_2018": "GEO",
+            "GSE299759_MEIJER_2026": "GEO",
             "GSE75885_DELESPAUL_2017": "GEO",
             "ICGC": "ICGC",
             "MMRF_COMMPASS": "CoMMpass",
@@ -436,6 +439,7 @@ def print_cancer_registry(
             "TCGA_LUAD_MUT": "TCGA/mut",
             "TCGA_XENA_TOIL": "TCGA",
             "TREEHOUSE_POLYA_25_01": "Treehouse",
+            "TREEHOUSE_RIBOD_25_01": "Treehouse/RiboD",
             "TREEHOUSE_v25.01": "Treehouse",
         }
         return prefixes.get(source, source or "unknown")
@@ -3097,24 +3101,33 @@ def _analyze_body(run: AnalyzeRun):
             return ImageFont.load_default()
 
     def _with_filename_caption(img, filename):
-        """Add a light-gray filename caption in a small strip below
-        the figure so readers can locate the source PNG later. Caption
-        sits in its own strip so it never overlaps the plot."""
+        """Add filename strips around the figure.
+
+        The top-left label is intentionally visible in the figure audit
+        PDF, where readers are deciding which source PNGs are good or
+        bad. The bottom-right caption is retained for the all-figures
+        packet. Both sit outside the plot area so labels never obscure
+        the figure.
+        """
         caption_font = _pdf_font(26)
-        caption_h = 46
-        new_w, new_h = img.width, img.height + caption_h
+        header_font = _pdf_font(32, bold=True)
+        header_h = 58
+        caption_h = 42
+        new_w, new_h = img.width, img.height + header_h + caption_h
         canvas = Image.new("RGB", (new_w, new_h), color="white")
-        canvas.paste(img, (0, 0))
         draw = ImageDraw.Draw(canvas)
-        # Bottom-right, light gray.
+        draw.rectangle((0, 0, new_w, header_h), fill="#f3f4f6")
         text = filename
+        draw.text((18, 12), text, fill="#333333", font=header_font)
+        canvas.paste(img, (0, header_h))
+        # Bottom-right, light gray.
         try:
             bbox = draw.textbbox((0, 0), text, font=caption_font)
             tw = bbox[2] - bbox[0]
         except AttributeError:  # pragma: no cover — very old PIL
             tw = len(text) * 14
         draw.text(
-            (max(12, new_w - tw - 18), img.height + 8),
+            (max(12, new_w - tw - 18), header_h + img.height + 6),
             text,
             fill="#888888",
             font=caption_font,
