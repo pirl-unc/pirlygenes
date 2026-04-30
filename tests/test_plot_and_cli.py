@@ -136,6 +136,7 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     cancer_gene_calls = []
     pca_calls = []
     mds_calls = []
+    neighborhood_calls = []
     tissue_calls = []
     safety_calls = []
     monkeypatch.setattr(
@@ -158,6 +159,11 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     # monkeypatching them — they're no longer imported by cli.
     monkeypatch.setattr(
         cli_mod, "plot_cancer_type_mds", lambda *a, **k: mds_calls.append(k)
+    )
+    monkeypatch.setattr(
+        cli_mod,
+        "plot_cancer_type_neighborhood",
+        lambda *a, **k: neighborhood_calls.append(k),
     )
     monkeypatch.setattr(
         cli_mod, "therapy_target_gene_id_to_name", lambda t: {"ENSG_MOCK": t}
@@ -300,18 +306,21 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
     # removed from the default plot set (polish/4.40.1).
     assert len(cancer_gene_calls) == 0
-    # MDS-TME plus the normal-inclusive nearest-label MDS are emitted now;
-    # PCA and hierarchy-method plots have
-    # been removed from the default output (see pirl-unc/pirlygenes#36).
+    # MDS-TME plus a sample-centered reference neighborhood are emitted now;
+    # PCA and hierarchy-method plots have been removed from the default output
+    # (see pirl-unc/pirlygenes#36).
     assert len(pca_calls) == 0
-    assert len(mds_calls) == 2
+    assert len(mds_calls) == 1
     assert mds_calls[0]["method"] == "tme"
-    assert mds_calls[1]["method"] == "tme"
-    assert mds_calls[1]["include_normals"] is True
-    assert mds_calls[1]["include_subtypes"] is True
-    assert mds_calls[1]["label_nearest_cancers"] == 5
-    assert mds_calls[1]["label_nearest_normals"] == 5
-    assert mds_calls[1]["label_all"] is False
+    assert len(neighborhood_calls) == 1
+    assert neighborhood_calls[0]["method"] == "bottleneck"
+    assert neighborhood_calls[0]["include_normals"] is True
+    assert neighborhood_calls[0]["include_subtypes"] is True
+    assert neighborhood_calls[0]["label_nearest_cancers"] == 5
+    assert neighborhood_calls[0]["label_nearest_normals"] == 5
+    assert neighborhood_calls[0]["label_all"] is False
+    assert neighborhood_calls[0]["focus_nearest_cancers"] == 25
+    assert neighborhood_calls[0]["focus_nearest_normals"] == 10
     assert len(report_calls) == 2
     assert len(target_report_calls) == 1
     assert (tmp_path / "test-output" / "out-summary.md").exists()
@@ -326,7 +335,10 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert "tumor_purity" in params
     assert "decomposition" in params
     assert params["selected_sample_mode"] == "solid"
-    assert params["embedding_methods"] == ["tme", "tme_with_subtypes_and_normals"]
+    assert params["embedding_methods"] == [
+        "tme_mds",
+        "bottleneck_reference_neighborhood",
+    ]
     assert params["input"]["tumor_context"] == "met"
     assert params["input"]["site_hint"] == "liver"
     assert params["input"]["decomposition_templates"] == ["met_liver"]
@@ -1290,7 +1302,7 @@ def test_hierarchy_embedding_plot_adds_family_legend_and_neighbors(monkeypatch):
     assert ax.get_legend() is not None
     assert ax.get_legend().get_title().get_text() == "Family"
     all_text = "\n".join(text.get_text() for text in ax.texts)
-    assert "Nearest TCGA centroids" in all_text
+    assert "Nearest by plotted 2D distance" in all_text
     assert "COAD" in all_text
 
 
@@ -1326,6 +1338,125 @@ def test_embedding_plot_can_label_nearest_cancers_and_normals_only(monkeypatch):
     assert "COAD" not in all_text
     assert "liver" not in all_text
     assert "Nearest normal tissues" in all_text
+    assert "Nearest by plotted 2D distance" in all_text
+
+
+def test_embedding_plot_can_use_feature_distance_neighbors(monkeypatch):
+    import pirlygenes.plot_embedding as _pe
+
+    monkeypatch.setattr(_pe, "adjust_text", lambda *a, **k: None)
+    coords = np.array(
+        [
+            [10.0, 0.0],
+            [0.1, 0.0],
+            [0.0, 0.0],
+        ]
+    )
+    labels = ["COAD", "PRAD", "SAMPLE"]
+
+    _fig, ax = plot_mod._plot_embedding_with_labels(
+        coords,
+        labels,
+        title="Test",
+        xlabel="x",
+        ylabel="y",
+        label_nearest_cancers=1,
+        label_all=False,
+        nearest_neighbors=[
+            (0.2, "COAD", "cancer"),
+            (9.0, "PRAD", "cancer"),
+        ],
+        nearest_basis="input feature distance",
+    )
+
+    all_text = "\n".join(text.get_text() for text in ax.texts)
+    assert "COAD" in all_text
+    assert "PRAD" not in all_text
+    assert "Nearest by input feature distance" in all_text
+
+
+def test_mds_can_focus_on_sample_neighborhood(monkeypatch):
+    import pirlygenes.plot_embedding as _pe
+
+    captured = {}
+
+    def fake_feature_matrix(*_args, **_kwargs):
+        return np.array(
+            [
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [20.0, 20.0],
+                [0.0, 1.0],
+                [20.0, 21.0],
+                [0.1, 0.1],
+            ]
+        ), ["COAD", "READ", "PRAD", "normal:colon", "normal:liver", "SAMPLE"]
+
+    def fake_plot(coords, labels, **kwargs):
+        captured["coords"] = coords
+        captured["labels"] = labels
+        captured["kwargs"] = kwargs
+        return None, None
+
+    monkeypatch.setattr(_pe, "_cancer_type_feature_matrix", fake_feature_matrix)
+    monkeypatch.setattr(_pe, "_plot_embedding_with_labels", fake_plot)
+
+    _pe.plot_cancer_type_mds(
+        pd.DataFrame({"gene_symbol": ["A"], "ensembl_gene_id": ["ENSG1"], "TPM": [1]}),
+        include_normals=True,
+        include_subtypes=True,
+        focus_nearest_cancers=1,
+        focus_nearest_normals=1,
+    )
+
+    assert captured["labels"] == ["COAD", "normal:colon", "SAMPLE"]
+    assert captured["coords"].shape[0] == 3
+    assert captured["kwargs"]["nearest_basis"] == "input feature distance"
+    assert captured["kwargs"]["nearest_neighbors"][0][1] == "COAD"
+
+
+def test_reference_neighborhood_preserves_sample_distances(monkeypatch):
+    import pirlygenes.plot_embedding as _pe
+
+    captured = {}
+
+    def fake_feature_matrix(*_args, **_kwargs):
+        return np.array(
+            [
+                [1.0, 0.0],
+                [4.0, 0.0],
+                [0.0, 3.0],
+                [0.0, 0.0],
+            ]
+        ), ["COAD", "READ", "normal:colon", "SAMPLE"]
+
+    def fake_plot(coords, labels, **kwargs):
+        captured["coords"] = coords
+        captured["labels"] = labels
+        captured["kwargs"] = kwargs
+        return None, None
+
+    monkeypatch.setattr(_pe, "_cancer_type_feature_matrix", fake_feature_matrix)
+    monkeypatch.setattr(_pe, "_plot_embedding_with_labels", fake_plot)
+
+    _pe.plot_cancer_type_neighborhood(
+        pd.DataFrame({"gene_symbol": ["A"], "ensembl_gene_id": ["ENSG1"], "TPM": [1]}),
+        focus_nearest_cancers=None,
+        focus_nearest_normals=None,
+    )
+
+    labels = captured["labels"]
+    coords = captured["coords"]
+    sample = coords[labels.index("SAMPLE")]
+    plotted_dist = {
+        label: float(np.linalg.norm(coords[i] - sample))
+        for i, label in enumerate(labels)
+        if label != "SAMPLE"
+    }
+
+    assert plotted_dist["COAD"] < plotted_dist["normal:colon"] < plotted_dist["READ"]
+    assert captured["kwargs"]["sample_centered_distance"] is True
+    assert captured["kwargs"]["nearest_basis"] == "input feature distance"
 
 
 def test_embedding_matrix_sanitizes_nonfinite_features():

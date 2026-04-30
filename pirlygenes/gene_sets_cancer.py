@@ -742,6 +742,10 @@ def subtype_deconvolved_expression():
       Ewing 101, ERMS 95, ARMS 73, MBL 125, UPS 110, LMS 151, LPS 92,
       synovial 50, myxofibrosarcoma 41, rhabdoid 69, UCS 57, etc.).
       Expression scale: log2(TPM+1) un-transformed to linear TPM.
+    - GSE75885 (Delespaul et al.; PMID:27528700) complex-genetics
+      sarcoma RNA-seq, RPKM-like expression converted per sample to
+      TPM for DDLPS, pleomorphic liposarcoma, and low-grade fibromyxoid
+      sarcoma references that are not split in Treehouse.
 
     Non-TCGA cohorts are processed in high-purity-passthrough mode by
     :mod:`pirlygenes.cohort_deconvolve` — appropriate for sorted heme

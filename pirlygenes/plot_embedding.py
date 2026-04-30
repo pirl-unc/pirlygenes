@@ -101,6 +101,17 @@ _tme_gene_cache = {}
 _bottleneck_gene_cache = {}
 _hierarchy_feature_cache = {}
 _hierarchy_site_cache = {}
+_tcga_parent_code_cache = None
+
+
+def _tcga_parent_codes():
+    global _tcga_parent_code_cache
+    if _tcga_parent_code_cache is None:
+        ref = pan_cancer_expression()
+        _tcga_parent_code_cache = {
+            c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_")
+        }
+    return _tcga_parent_code_cache
 
 
 def _get_cancer_type_signature_panels(n_signature_genes=20):
@@ -1296,6 +1307,10 @@ def _plot_embedding_with_labels(
     label_nearest_cancers=None,
     label_nearest_normals=None,
     label_all=True,
+    nearest_neighbors=None,
+    nearest_basis="plotted 2D distance",
+    sample_centered_distance=False,
+    footnote=None,
     save_to_filename=None,
     save_dpi=300,
     figsize=(12, 10),
@@ -1303,11 +1318,7 @@ def _plot_embedding_with_labels(
     from matplotlib.lines import Line2D
 
     def _label_kind(label):
-        if label == "SAMPLE":
-            return "sample"
-        if str(label).startswith("normal:"):
-            return "normal"
-        return "cancer"
+        return _embedding_label_kind(label)
 
     def _display_label(label):
         return str(label).replace("normal:", "")
@@ -1332,8 +1343,11 @@ def _plot_embedding_with_labels(
             family: palette[idx] for idx, family in enumerate(family_order)
         }
 
-    nearest_neighbors = []
-    if "SAMPLE" in labels:
+    if nearest_neighbors is None:
+        nearest_neighbors = []
+    else:
+        nearest_neighbors = list(nearest_neighbors)
+    if not nearest_neighbors and "SAMPLE" in labels:
         sample_idx = labels.index("SAMPLE")
         sample_coords = coords[sample_idx]
         for i, label in enumerate(labels):
@@ -1346,15 +1360,22 @@ def _plot_embedding_with_labels(
     nearest_cancer_ordered = [
         label for _, label, kind in nearest_neighbors if kind == "cancer"
     ]
+    nearest_subtype_ordered = [
+        label for _, label, kind in nearest_neighbors if kind == "subtype"
+    ]
     nearest_normal_ordered = [
         label for _, label, kind in nearest_neighbors if kind == "normal"
     ]
     nearest_cancer_labels = set(nearest_cancer_ordered)
+    nearest_subtype_labels = set(nearest_subtype_ordered)
     nearest_normal_labels = set(nearest_normal_ordered)
     if label_nearest_cancers is not None:
+        n_nearest_cancers = max(0, int(label_nearest_cancers))
         nearest_cancer_labels = set(
-            nearest_cancer_ordered[: int(label_nearest_cancers)]
+            nearest_cancer_ordered[:n_nearest_cancers]
         )
+        n_nearest_subtypes = 0 if n_nearest_cancers == 0 else min(3, n_nearest_cancers)
+        nearest_subtype_labels = set(nearest_subtype_ordered[:n_nearest_subtypes])
     if label_nearest_normals is not None:
         nearest_normal_labels = set(
             nearest_normal_ordered[: int(label_nearest_normals)]
@@ -1368,6 +1389,8 @@ def _plot_embedding_with_labels(
         kind = _label_kind(label)
         if kind == "cancer":
             return label in nearest_cancer_labels
+        if kind == "subtype":
+            return label in nearest_subtype_labels
         if kind == "normal":
             return label in nearest_normal_labels
         return False
@@ -1403,6 +1426,12 @@ def _plot_embedding_with_labels(
                 marker = "s"
                 size = 38
                 alpha = 0.52
+            elif kind == "subtype":
+                point_color = "#6da3cf"
+                edge_color = "white"
+                marker = "^"
+                size = 54
+                alpha = 0.62
             else:
                 point_color = family_palette.get(
                     label_to_family.get(label), "steelblue"
@@ -1444,6 +1473,39 @@ def _plot_embedding_with_labels(
     ax.set_ylabel(ylabel, fontsize=11)
     ax.set_title(title, fontsize=12)
     ax.grid(True, alpha=0.2)
+    if sample_centered_distance:
+        ax.set_aspect("equal", adjustable="datalim")
+        if "SAMPLE" in labels:
+            sx, sy = coords[labels.index("SAMPLE")]
+            for radius in (0.9, 1.0, 1.1):
+                ax.add_patch(
+                    plt.Circle(
+                        (sx, sy),
+                        radius,
+                        fill=False,
+                        linestyle="--",
+                        linewidth=0.7,
+                        color="#d9d9d9",
+                        zorder=1,
+                    )
+                )
+    if footnote:
+        ax.text(
+            0.01,
+            0.01,
+            footnote,
+            transform=ax.transAxes,
+            ha="left",
+            va="bottom",
+            fontsize=7.5,
+            color="#555555",
+            bbox=dict(
+                boxstyle="round,pad=0.25",
+                facecolor="white",
+                alpha=0.78,
+                edgecolor="#dddddd",
+            ),
+        )
 
     if nearest_neighbors:
         if any(kind == "normal" for _, _, kind in nearest_neighbors):
@@ -1458,23 +1520,38 @@ def _plot_embedding_with_labels(
                 for dist, label, kind in nearest_neighbors
                 if kind == "cancer"
             )
+            subtype_text = "\n".join(
+                f"{_display_label(label)} ({dist:.2f})"
+                for dist, label, kind in nearest_neighbors
+                if kind == "subtype"
+            )
             normal_text = "\n".join(
                 f"{_display_label(label)} ({dist:.2f})"
                 for dist, label, kind in nearest_neighbors
                 if kind == "normal"
             )
             nearest_text = (
-                "Nearest TCGA cancers\n"
+                f"Nearest by {nearest_basis}\n\n"
+                "TCGA parent cancers\n"
                 + "\n".join(cancer_text.splitlines()[:n_cancers])
-                + "\n\nNearest normal tissues\n"
-                + "\n".join(normal_text.splitlines()[:n_normals])
+            )
+            if subtype_text:
+                nearest_text += "\n\nSubtype references\n" + "\n".join(
+                    subtype_text.splitlines()[: max(1, min(3, n_cancers))]
+                )
+            nearest_text += "\n\nNearest normal tissues\n" + "\n".join(
+                normal_text.splitlines()[:n_normals]
             )
             nearest_title = ""
         else:
-            nearest_text = "\n".join(
-                f"{label} ({dist:.2f})" for dist, label, _kind in nearest_neighbors[:5]
+            n_cancers = (
+                5 if label_nearest_cancers is None else int(label_nearest_cancers)
             )
-            nearest_title = "Nearest TCGA centroids\n"
+            nearest_text = "\n".join(
+                f"{label} ({dist:.2f})"
+                for dist, label, _kind in nearest_neighbors[:n_cancers]
+            )
+            nearest_title = f"Nearest by {nearest_basis}\n"
         ax.text(
             0.98,
             0.02,
@@ -1528,6 +1605,16 @@ def _plot_embedding_with_labels(
             Line2D(
                 [0],
                 [0],
+                marker="^",
+                color="none",
+                markerfacecolor="#6da3cf",
+                markeredgecolor="white",
+                markersize=7,
+                label="subtype reference",
+            ),
+            Line2D(
+                [0],
+                [0],
                 marker="s",
                 color="none",
                 markerfacecolor="#8da08d",
@@ -1553,6 +1640,114 @@ def _plot_embedding_with_labels(
         fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
         print(f"Saved {save_to_filename}")
     return fig, ax
+
+
+def _embedding_label_kind(label):
+    if label == "SAMPLE":
+        return "sample"
+    if str(label).startswith("normal:"):
+        return "normal"
+    if str(label) in _tcga_parent_codes():
+        return "cancer"
+    return "subtype"
+
+
+def _nearest_neighbors_from_distances(labels, distances, sample_idx):
+    neighbors = []
+    for i, label in enumerate(labels):
+        if i == sample_idx or label == "SAMPLE":
+            continue
+        neighbors.append(
+            (float(distances[sample_idx, i]), label, _embedding_label_kind(label))
+        )
+    neighbors.sort(key=lambda item: (item[0], item[1]))
+    return neighbors
+
+
+def _sample_neighborhood_indices(
+    labels,
+    distances,
+    sample_idx,
+    *,
+    nearest_cancers=None,
+    nearest_normals=None,
+):
+    """Return row indices for a sample-centered embedding neighborhood."""
+    if nearest_cancers is None and nearest_normals is None:
+        return list(range(len(labels)))
+    neighbors = _nearest_neighbors_from_distances(labels, distances, sample_idx)
+    keep = {sample_idx}
+    n_cancers = 0
+    n_normals = 0
+    if nearest_cancers is not None:
+        for _dist, label, kind in neighbors:
+            if kind not in {"cancer", "subtype"}:
+                continue
+            keep.add(labels.index(label))
+            n_cancers += 1
+            if n_cancers >= int(nearest_cancers):
+                break
+    if nearest_normals is not None:
+        for _dist, label, kind in neighbors:
+            if kind != "normal":
+                continue
+            keep.add(labels.index(label))
+            n_normals += 1
+            if n_normals >= int(nearest_normals):
+                break
+    return [i for i in range(len(labels)) if i in keep]
+
+
+def _sample_radial_embedding(X, labels, distances):
+    """Place SAMPLE at origin and preserve sample-to-reference distances.
+
+    The angle is only a layout aid: references are arranged by the first two
+    PCA components of the reference matrix. The radius is the original input
+    feature distance from SAMPLE, scaled by the median reference distance.
+    """
+    from sklearn.decomposition import PCA
+
+    if "SAMPLE" not in labels:
+        n_components = min(2, X.shape[0], X.shape[1])
+        if n_components < 1:
+            return np.zeros((len(labels), 2), dtype=float)
+        coords = PCA(n_components=n_components, random_state=42).fit_transform(X)
+        if coords.shape[1] == 1:
+            coords = np.column_stack([coords[:, 0], np.zeros(coords.shape[0])])
+        return coords
+
+    sample_idx = labels.index("SAMPLE")
+    ref_idx = [i for i in range(len(labels)) if i != sample_idx]
+    coords = np.zeros((len(labels), 2), dtype=float)
+    if not ref_idx:
+        return coords
+
+    ref_X = X[ref_idx]
+    n_components = min(2, ref_X.shape[0], ref_X.shape[1])
+    if n_components < 1:
+        ref_layout = np.zeros((len(ref_idx), 2), dtype=float)
+    else:
+        ref_layout = PCA(n_components=n_components, random_state=42).fit_transform(
+            ref_X
+        )
+        if ref_layout.shape[1] == 1:
+            ref_layout = np.column_stack(
+                [ref_layout[:, 0], np.zeros(ref_layout.shape[0])]
+            )
+
+    angles = np.arctan2(ref_layout[:, 1], ref_layout[:, 0])
+    zero_angle = np.isclose(ref_layout[:, 0], 0.0) & np.isclose(ref_layout[:, 1], 0.0)
+    if zero_angle.any():
+        angles[zero_angle] = np.linspace(0, 2 * np.pi, zero_angle.sum(), endpoint=False)
+    sample_distances = distances[sample_idx, ref_idx]
+    positive = sample_distances[sample_distances > 0]
+    scale = float(np.median(positive)) if len(positive) else 1.0
+    if not np.isfinite(scale) or scale <= 0:
+        scale = 1.0
+    radii = sample_distances / scale
+    for j, i in enumerate(ref_idx):
+        coords[i] = [radii[j] * np.cos(angles[j]), radii[j] * np.sin(angles[j])]
+    return coords
 
 
 def plot_cancer_type_genes(
@@ -2256,6 +2451,8 @@ def plot_cancer_type_mds(
     label_nearest_cancers=None,
     label_nearest_normals=None,
     label_all=True,
+    focus_nearest_cancers=None,
+    focus_nearest_normals=None,
     save_to_filename=None,
     save_dpi=300,
     figsize=(12, 10),
@@ -2271,7 +2468,29 @@ def plot_cancer_type_mds(
         include_normals=include_normals,
         include_subtypes=include_subtypes,
     )
-    distances = pairwise_distances(X, metric="euclidean")
+    full_distances = pairwise_distances(X, metric="euclidean")
+    focused = False
+    if "SAMPLE" in labels:
+        sample_idx = labels.index("SAMPLE")
+        keep_idx = _sample_neighborhood_indices(
+            labels,
+            full_distances,
+            sample_idx,
+            nearest_cancers=focus_nearest_cancers,
+            nearest_normals=focus_nearest_normals,
+        )
+        if len(keep_idx) < len(labels):
+            X = X[keep_idx]
+            labels = [labels[i] for i in keep_idx]
+            full_distances = full_distances[np.ix_(keep_idx, keep_idx)]
+            focused = True
+    distances = full_distances
+    nearest_neighbors = None
+    if "SAMPLE" in labels:
+        sample_idx = labels.index("SAMPLE")
+        nearest_neighbors = _nearest_neighbors_from_distances(
+            labels, distances, sample_idx
+        )
     coords = MDS(
         n_components=2,
         dissimilarity="precomputed",
@@ -2285,6 +2504,8 @@ def plot_cancer_type_mds(
         title = "Sample among TCGA parent cohorts and subtype references — MDS"
     elif include_normals:
         title = "Sample among TCGA parent cancer cohorts and normal tissues — MDS"
+    if focused:
+        title = title.replace("Sample among", "Sample neighborhood among")
     if mlabel:
         title += f" ({mlabel})"
     xlabel = "MDS1"
@@ -2302,6 +2523,99 @@ def plot_cancer_type_mds(
         label_nearest_cancers=label_nearest_cancers,
         label_nearest_normals=label_nearest_normals,
         label_all=label_all,
+        nearest_neighbors=nearest_neighbors,
+        nearest_basis="input feature distance",
+        save_to_filename=save_to_filename,
+        save_dpi=save_dpi,
+        figsize=figsize,
+    )
+
+
+def plot_cancer_type_neighborhood(
+    df_gene_expr,
+    n_genes=10,
+    method="bottleneck",
+    include_normals=True,
+    include_subtypes=True,
+    label_nearest_cancers=5,
+    label_nearest_normals=5,
+    label_all=False,
+    focus_nearest_cancers=25,
+    focus_nearest_normals=10,
+    save_to_filename=None,
+    save_dpi=300,
+    figsize=(12, 10),
+):
+    """Sample-centered reference map preserving sample-to-reference distance.
+
+    Global PCA/MDS plots can distort local neighborhoods when many cancer,
+    subtype, and healthy-tissue references are squeezed into two dimensions.
+    This view is intentionally local: ``SAMPLE`` is fixed at the origin, every
+    reference point's radius is its original feature-space distance from the
+    sample, and the angle is a PCA-based layout of the reference points.
+    """
+    from sklearn.metrics import pairwise_distances
+
+    X, labels = _cancer_type_feature_matrix(
+        df_gene_expr,
+        n_genes=n_genes,
+        method=method,
+        include_normals=include_normals,
+        include_subtypes=include_subtypes,
+    )
+    distances = pairwise_distances(X, metric="euclidean")
+    focused = False
+    if "SAMPLE" in labels:
+        sample_idx = labels.index("SAMPLE")
+        keep_idx = _sample_neighborhood_indices(
+            labels,
+            distances,
+            sample_idx,
+            nearest_cancers=focus_nearest_cancers,
+            nearest_normals=focus_nearest_normals,
+        )
+        if len(keep_idx) < len(labels):
+            X = X[keep_idx]
+            labels = [labels[i] for i in keep_idx]
+            distances = distances[np.ix_(keep_idx, keep_idx)]
+            focused = True
+    nearest_neighbors = None
+    if "SAMPLE" in labels:
+        sample_idx = labels.index("SAMPLE")
+        nearest_neighbors = _nearest_neighbors_from_distances(
+            labels, distances, sample_idx
+        )
+    coords = _sample_radial_embedding(X, labels, distances)
+
+    mlabel = _METHOD_LABELS.get(method, method)
+    title = "Sample-centered reference neighborhood"
+    if include_subtypes and include_normals:
+        title += " among TCGA parent cohorts, subtype references, and normal tissues"
+    elif include_subtypes:
+        title += " among TCGA parent cohorts and subtype references"
+    elif include_normals:
+        title += " among TCGA parent cohorts and normal tissues"
+    if mlabel:
+        title += f" ({mlabel})"
+    if focused:
+        title += " — nearest references"
+    return _plot_embedding_with_labels(
+        coords,
+        labels,
+        title=title,
+        xlabel="Reference PCA angle (layout only)",
+        ylabel="Reference PCA angle (layout only); radius is sample distance",
+        method=method,
+        label_nearest_cancers=label_nearest_cancers,
+        label_nearest_normals=label_nearest_normals,
+        label_all=label_all,
+        nearest_neighbors=nearest_neighbors,
+        nearest_basis="input feature distance",
+        sample_centered_distance=True,
+        footnote=(
+            "Distance from SAMPLE is the original feature-space distance; "
+            "angle only organizes references for readability."
+        ),
         save_to_filename=save_to_filename,
         save_dpi=save_dpi,
         figsize=figsize,

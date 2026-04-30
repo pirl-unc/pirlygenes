@@ -11,6 +11,7 @@ from pirlygenes.gene_sets_cancer import (
     cancer_types_in_family,
     cancer_types_by_tissue,
     cancer_type_subtypes_of,
+    subtype_deconvolved_expression,
 )
 
 
@@ -338,6 +339,8 @@ def test_cancers_cli_source_qualifies_expression_refs(capsys):
 
     assert "TCGA:SARC" in out
     assert "Treehouse:SARC_SYN" in out
+    assert "GEO:SARC_DDLPS" in out
+    assert "GEO GSE75885" in out
     assert "sources:" not in out
 
     print_cancer_registry(family="carcinoma-breast")
@@ -345,6 +348,32 @@ def test_cancers_cli_source_qualifies_expression_refs(capsys):
 
     assert "TCGA/PAM50:BRCA_HER2" in out
     assert "no expr 0" in out
+
+
+def test_gse75885_sarcoma_expression_refs_are_bundled():
+    d = subtype_deconvolved_expression()
+    assert d is not None
+
+    expected = {
+        "SARC_DDLPS": 19,
+        "SARC_PLEOLPS": 4,
+        "SARC_LGFMS": 2,
+    }
+    for code, n_samples in expected.items():
+        rows = d[
+            (d["cancer_code"] == code)
+            & (d["source_cohort"] == "GSE75885_DELESPAUL_2017")
+        ]
+        assert not rows.empty
+        assert int(rows["n_samples"].max()) == n_samples
+
+    ddlps = d[d["cancer_code"] == "SARC_DDLPS"].set_index("symbol")
+    assert ddlps.loc["MDM2", "tumor_tpm_median"] > 1000
+    assert ddlps.loc["CDK4", "tumor_tpm_median"] > 500
+
+    lgfms = d[d["cancer_code"] == "SARC_LGFMS"].set_index("symbol")
+    assert lgfms.loc["MUC4", "tumor_tpm_median"] > 1000
+    assert lgfms.loc["CREB3L2", "tumor_tpm_median"] > 100
 
 
 def test_nutm_has_actionable_curation():

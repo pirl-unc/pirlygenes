@@ -78,9 +78,11 @@ Fine-grained expression medians are bundled when public cohorts are already
 normalized into `subtype-deconvolved-expression.csv.gz`. Current sources
 include Treehouse Tumor Compendium v25.01 PolyA (`GSE294351`), TARGET,
 BeatAML, TCGA/PAM50, TCGA HPV and mutation strata, SCLC/UCologne, and
-PanNET `GSE118014`. Registry rows without expression medians still need
-cohort ingestion before they can behave like expression-backed refined
-categories.
+PanNET `GSE118014`. GSE75885 adds complex-genetics sarcoma RNA-seq
+references for DDLPS, pleomorphic liposarcoma, and low-grade
+fibromyxoid sarcoma. Registry rows without expression medians still
+need cohort ingestion before they can behave like expression-backed
+refined categories.
 
 ## Tumor Purity Estimation
 

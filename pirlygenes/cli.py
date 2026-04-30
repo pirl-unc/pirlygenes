@@ -50,6 +50,7 @@ from .plot import (
     plot_gene_expression,
     plot_sample_vs_cancer,
     plot_cancer_type_mds,
+    plot_cancer_type_neighborhood,
     plot_therapy_target_tissues,
     plot_therapy_target_safety,
     plot_cohort_heatmap,
@@ -387,6 +388,7 @@ def print_cancer_registry(
         labels = {
             "BEATAML_OHSU_2022": "BeatAML OHSU 2022",
             "GSE118014_ALVAREZ_2018": "GEO GSE118014",
+            "GSE75885_DELESPAUL_2017": "GEO GSE75885",
             "ICGC": "ICGC",
             "LITERATURE_CURATED": "curated literature",
             "MMRF_COMMPASS": "MMRF CoMMpass",
@@ -415,6 +417,7 @@ def print_cancer_registry(
         prefixes = {
             "BEATAML_OHSU_2022": "BeatAML",
             "GSE118014_ALVAREZ_2018": "GEO",
+            "GSE75885_DELESPAUL_2017": "GEO",
             "ICGC": "ICGC",
             "MMRF_COMMPASS": "CoMMpass",
             "SCLC_UCOLOGNE_2015": "UCologne",
@@ -2524,34 +2527,33 @@ def _analyze_body(run: AnalyzeRun):
     # in analysis.md without adding interpretive value. The functions
     # remain in ``pirlygenes.plot_embedding`` for Python-API consumers.
 
-    # Sample-among-reference embedding: MDS in the TME-low gene space is the
-    # preferred view — robust at low purity (where hierarchy-method plots
-    # can cluster the sample by infiltrate instead of by tumor biology),
-    # and MDS preserves pairwise distances better than PCA for samples
-    # that sit between canonical cancer-type centroids.  Other
-    # method/algorithm combinations are available in the Python API but
-    # are not emitted by default; see pirl-unc/pirlygenes#... for the
-    # design rationale. The companion view appends available subtype
-    # references and normal-tissue centroids; registry rows without expression
-    # medians are not embedded.
+    # Sample-among-reference embedding: keep the global MDS parent-cohort view,
+    # then emit a local sample-centered neighborhood plot. The neighborhood
+    # plot preserves each reference's original feature-space distance from the
+    # sample as radius, avoiding the local-distance distortions that happen
+    # when many cancer, subtype, and normal references are squeezed into a
+    # single global 2D MDS.
     print("[plot] Generating MDS embedding (TME-low genes)...")
     mds_png = "%s-mds-tme.png" % prefix
     plot_cancer_type_mds(
         df_expr, method="tme", save_to_filename=mds_png, save_dpi=output_dpi
     )
-    mds_normals_png = "%s-mds-tme-normals.png" % prefix
-    plot_cancer_type_mds(
+    neighborhood_png = "%s-reference-neighborhood.png" % prefix
+    print("[plot] Generating sample-centered reference neighborhood...")
+    plot_cancer_type_neighborhood(
         df_expr,
-        method="tme",
+        method="bottleneck",
         include_normals=True,
         include_subtypes=True,
         label_nearest_cancers=5,
         label_nearest_normals=5,
         label_all=False,
-        save_to_filename=mds_normals_png,
+        focus_nearest_cancers=25,
+        focus_nearest_normals=10,
+        save_to_filename=neighborhood_png,
         save_dpi=output_dpi,
     )
-    embedding_pngs = [mds_png, mds_normals_png]
+    embedding_pngs = [mds_png, neighborhood_png]
     _plt.close("all")
 
     # Deep-dive therapy target + CTA + subtype plots
@@ -2823,18 +2825,19 @@ def _analyze_body(run: AnalyzeRun):
                 ranges_df=ranges_df,
             )
             target_panel = None
+            actionable_genes = None
             if panel_code in cancer_key_genes_cancer_types():
                 target_panel = (
                     cancer_therapy_targets(panel_code, subtype=panel_subtype)
                     if panel_subtype
                     else cancer_therapy_targets(panel_code)
                 )
+                actionable_genes = _select_actionable_plot_genes(
+                    ranges_df,
+                    panel_code,
+                    target_panel=target_panel,
+                )
                 if targets_deep_png:
-                    actionable_genes = _select_actionable_plot_genes(
-                        ranges_df,
-                        panel_code,
-                        target_panel=target_panel,
-                    )
                     try:
                         fig = plot_actionable_targets(
                             df_expr,
@@ -2890,6 +2893,8 @@ def _analyze_body(run: AnalyzeRun):
                     else None
                 ),
                 df_gene_expr=df_expr,
+                target_symbols=actionable_genes,
+                top_n=len(actionable_genes) if actionable_genes else 12,
                 save_to_filename=priority_targets_png,
                 save_dpi=output_dpi,
             )
@@ -2916,6 +2921,8 @@ def _analyze_body(run: AnalyzeRun):
                     else None
                 ),
                 df_gene_expr=df_expr,
+                target_symbols=actionable_genes,
+                top_n=len(actionable_genes) if actionable_genes else 12,
                 save_to_filename=priority_target_context_png,
                 save_dpi=output_dpi,
             )
@@ -3235,7 +3242,7 @@ def _analyze_body(run: AnalyzeRun):
                     "files": _existing_figure_paths(
                         "cancer-hypotheses.png",
                         "mds-tme.png",
-                        "mds-tme-normals.png",
+                        "reference-neighborhood.png",
                         "subtype-signature.png",
                         "vs-cancer.pdf",
                     ),
@@ -3416,14 +3423,14 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-treatments.png` | Therapy target expression by modality |
 | `*-target-safety.png` | Therapy target normal tissue expression |
-| `*-priority-targets.png` | Priority ranking only: integrated score across tumor support, readiness, safety, and tumor level |
-| `*-priority-target-context.png` | Separate evidence page: tumor-expression range plus tumor-source, healthy-tissue, and maturity context |
+| `*-priority-targets.png` | Actionable target priority ranking, split by approval/readiness tier |
+| `*-priority-target-context.png` | Matching actionable-target evidence page: tumor-expression range plus tumor-source and healthy-tissue context |
 | `*-curated-target-evidence.png` | Curated cancer-type targets with tumor-expression range, normal context, and maturity |
 | `*-purity-targets.png` | Tumor-expression ranges for therapeutic targets |
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
 | `*-mds-tme.png` | MDS: sample among TCGA cancer types (TME-low gene space) |
-| `*-mds-tme-normals.png` | MDS: sample among TCGA cancer and normal tissue types; labels nearest 5 cancer and 5 normal centroids |
+| `*-reference-neighborhood.png` | Sample-centered cancer/subtype/normal reference map; radius preserves input feature distance |
 """
     readme_path.write_text(readme)
     print(f"[output] Wrote {readme_path}")

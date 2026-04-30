@@ -123,6 +123,7 @@ from .plot_embedding import (  # noqa: F401
     plot_cohort_ctas,
     plot_cancer_type_pca,
     plot_cancer_type_mds,
+    plot_cancer_type_neighborhood,
     plot_cancer_type_umap,
 )
 
