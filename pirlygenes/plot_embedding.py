@@ -2731,7 +2731,7 @@ def plot_cancer_type_mds(
         title += f" ({mlabel})"
     xlabel = "MDS1"
     ylabel = "MDS2"
-    if method in {"zscore", "hk_zscore", "tme", "bottleneck", "hk"}:
+    if method in {"zscore", "hk_zscore", "tme", "bottleneck", "panref", "hk"}:
         xlabel = "MDS1 (log-expression distance)"
         ylabel = "MDS2 (log-expression distance)"
     return _plot_embedding_with_labels(
@@ -2755,7 +2755,7 @@ def plot_cancer_type_mds(
 def plot_cancer_type_neighborhood(
     df_gene_expr,
     n_genes=10,
-    method="bottleneck",
+    method="panref",
     include_normals=True,
     include_subtypes=True,
     label_nearest_cancers=5,
