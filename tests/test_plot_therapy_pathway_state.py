@@ -106,6 +106,25 @@ def test_axes_with_only_up_fold_still_render(tmp_path):
     assert fig is not None and out.exists()
 
 
+def test_mapk_axis_uses_activity_label(tmp_path):
+    scores = {
+        "MAPK_EGFR_signaling": TherapyAxisScore(
+            therapy_class="MAPK_EGFR_signaling",
+            state="up",
+            up_geomean_fold=4.2,
+            down_geomean_fold=None,
+            up_genes_measured=10,
+        ),
+    }
+    fig = plot_therapy_pathway_state(
+        therapy_response_scores=scores,
+        cancer_code="SARC",
+        save_to_filename=str(tmp_path / "mapk.png"),
+    )
+    labels = [t.get_text() for t in fig.axes[0].get_yticklabels()]
+    assert any("MAPK / ERK activity" in label for label in labels)
+
+
 def test_state_ordering_active_suppressed_first(tmp_path):
     """Active / suppressed axes sort before indeterminate — first
     row readers see is the clinically informative one."""

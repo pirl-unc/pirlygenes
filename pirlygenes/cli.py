@@ -87,7 +87,7 @@ from .sample_context import (
     plot_sample_context,
 )
 from .sample_quality import assess_sample_quality
-from .therapy_response import score_therapy_signatures
+from .therapy_response import infer_mapk_activity_sources, score_therapy_signatures
 from .format import (
     render_fold,
     render_fraction_no_decimal,
@@ -1027,6 +1027,8 @@ def _store_alteration_effect_reasoning(
     analysis["fusion_expression_effects"] = fusion_effects
     analysis["fusion_expression_hypotheses"] = fusion_hypotheses
     analysis["mutation_expression_hypotheses"] = mutation_hypotheses
+    pathway_inferences = infer_mapk_activity_sources(analysis, ranges_df=ranges_df)
+    analysis["pathway_activity_inferences"] = pathway_inferences
     if alteration_records is not None:
         analysis["alteration_records"] = [
             record.public_dict() if hasattr(record, "public_dict") else dict(record)
@@ -1036,6 +1038,7 @@ def _store_alteration_effect_reasoning(
         "fusion_effects": len(fusion_effects),
         "fusion_expression_hypotheses": len(fusion_hypotheses),
         "mutation_expression_hypotheses": len(mutation_hypotheses),
+        "pathway_activity_inferences": len(pathway_inferences),
         "supplied_alterations": len(alteration_records or []),
         "expression_source": "tumor_inferred" if tumor_tpm_by_symbol else "bulk",
     }
@@ -3273,6 +3276,71 @@ def _analyze_body(run: AnalyzeRun):
 
     audit_sections = [
         (
+            "Figure Themes",
+            [
+                {
+                    "title": "QC / Provenance",
+                    "note": "Technical context for whether the expression matrix and sample handling look usable.",
+                    "files": _existing_figure_paths(
+                        "sample-context.png",
+                        "degradation-index.png",
+                        "sample-summary.png",
+                        "provenance.png",
+                    ),
+                },
+                {
+                    "title": "Cancer-Type / Reference Context",
+                    "note": "Reference-space plots for cancer label, nearby cohorts, subtype references, and normal tissues.",
+                    "files": _existing_figure_paths(
+                        "cancer-hypotheses.png",
+                        "reference-mds.png",
+                        "reference-neighborhood.png",
+                        "background-tissues.png",
+                        "subtype-signature.png",
+                        "vs-cancer.pdf",
+                    ),
+                },
+                {
+                    "title": "Purity / Decomposition",
+                    "note": "Tumor fraction, non-tumor components, and how purity estimates affect expression interpretation.",
+                    "files": _existing_figure_paths(
+                        "decomposition.png",
+                        "composition.png",
+                        "component-breakdown.png",
+                        "candidate-comparison.png",
+                        "purity.png",
+                        "purity-methods.png",
+                    ),
+                },
+                {
+                    "title": "Active Pathways / Signatures",
+                    "note": "Pathway and state plots, including the MAPK/ERK activity score and other response/signature axes.",
+                    "files": _existing_figure_paths(
+                        "therapy-pathway-state.png",
+                        "subtype-signature.png",
+                        "MHC.png",
+                        "TLR.png",
+                        "DNA_repair.png",
+                    ),
+                },
+                {
+                    "title": "Targets / Actionability",
+                    "note": "Therapy target expression, tumor-source attribution, safety context, and prioritized target views.",
+                    "files": _existing_figure_paths(
+                        "treatments.png",
+                        "target-safety.png",
+                        "curated-target-evidence.png",
+                        "priority-targets.png",
+                        "priority-target-context.png",
+                        "target-attribution-targets.png",
+                        "target-attribution-surface.png",
+                        "matched-normal-targets.png",
+                        "matched-normal-surface.png",
+                    ),
+                },
+            ],
+        ),
+        (
             "Potentially Redundant Groups",
             [
                 {
@@ -3367,6 +3435,7 @@ def _analyze_body(run: AnalyzeRun):
             "Figure Audit",
             [
                 "This PDF groups emitted figures by likely redundancy, low-value defaults, and distinctive keepers.",
+                "It also groups the same artifacts by report theme so pathway/state plots are easier to find.",
                 "PNG pages are reproduced directly after each group cover page; PDF-only figures are listed on the cover page but not rasterized here.",
                 f"Source directory: {figures_dir}",
             ],
@@ -4303,6 +4372,27 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
         )
 
     active_biology = []
+    for finding in (analysis.get("pathway_activity_inferences") or [])[:3]:
+        label = str(finding.get("label") or finding.get("axis") or "Pathway").strip()
+        fold = finding.get("up_geomean_fold")
+        score_name = str(finding.get("score_name") or "RNA score").strip()
+        support = ", ".join(finding.get("support_genes") or [])
+        source_labels = [
+            str(source.get("label") or "").strip()
+            for source in (finding.get("candidate_sources") or [])[:3]
+            if str(source.get("label") or "").strip()
+        ]
+        unresolved = ", ".join(finding.get("unresolved_sources") or [])
+        parts = []
+        if isinstance(fold, (int, float)):
+            parts.append(f"{score_name} {fold:.2f}x context")
+        if support:
+            parts.append(f"support genes {support}")
+        if source_labels:
+            parts.append("candidate sources " + "; ".join(source_labels))
+        elif unresolved:
+            parts.append("possible sources to test: " + unresolved)
+        active_biology.append(f"{label}: active ({'; '.join(parts)})")
     for finding in (analysis.get("fusion_expression_effects") or [])[:3]:
         status = str(finding.get("status") or "")
         if status not in {"active", "partial", "not_evident"}:

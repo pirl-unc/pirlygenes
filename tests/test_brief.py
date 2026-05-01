@@ -387,6 +387,30 @@ def test_brief_renders_no_pattern_disease_state_when_scores_exist():
     assert "No strong RNA-defined therapy-exposure" in md
 
 
+def test_brief_summarizes_active_mapk_pathway_inference():
+    analysis = _make_analysis()
+    analysis["pathway_activity_inferences"] = [
+        {
+            "label": "MAPK / ERK activity",
+            "up_geomean_fold": 8.2,
+            "support_genes": ["DUSP6 15.0x", "SPRY2 12.0x"],
+            "candidate_sources": [
+                {"label": "supplied EGFR kinase domain duplication"}
+            ],
+            "caveat": "MAPK/ERK RNA activity is a convergent downstream readout.",
+        }
+    ]
+    ranges_df = _make_ranges_df()
+    md = build_brief(
+        analysis,
+        ranges_df,
+        cancer_code="PRAD",
+        disease_state="",
+    )
+    assert "**Active pathway:** MAPK / ERK activity high" in md
+    assert "supplied EGFR kinase domain duplication" in md
+
+
 def test_brief_prioritizes_ar_path_and_flags_possible_current_therapy():
     from pirlygenes.therapy_response import TherapyAxisScore
 

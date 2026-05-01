@@ -1519,6 +1519,7 @@ def _format_axis_label(therapy_class: str) -> str:
         "ER_signaling": "ER signaling",
         "HER2_signaling": "HER2 signaling",
         "MAPK_EGFR": "MAPK / EGFR",
+        "MAPK_EGFR_signaling": "MAPK / ERK activity",
         "NE_differentiation": "NE differentiation",
         "EMT": "EMT",
         "hypoxia": "Hypoxia",
@@ -1538,8 +1539,8 @@ def plot_therapy_pathway_state(
     """One-figure therapy-pathway state readout (#136).
 
     Renders the disease-state narrative visually: one row per therapy-
-    response axis (AR / NE / EMT / hypoxia / IFN / ER / HER2 where
-    applicable), dumbbell showing up-panel vs down-panel fold-vs-
+    response axis (AR / NE / EMT / hypoxia / IFN / ER / HER2 / MAPK-ERK
+    where applicable), dumbbell showing up-panel vs down-panel fold-vs-
     cohort, with state label + color. A caption underneath restates
     the disease-state sentence so the figure is self-contained for
     tumor-board review.

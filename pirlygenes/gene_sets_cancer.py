@@ -1585,12 +1585,12 @@ def CTA_unfiltered_gene_names():
     a non-CTA comparison set.  Any gene in this set was identified as
     a candidate CTA by at least one source database.
     """
-    return get_target_gene_name_set("cancer-testis-antigens")
+    return _cta_by_column("Symbol")
 
 
 def CTA_unfiltered_gene_ids():
     """All CTA Ensembl gene IDs from all source databases (unfiltered)."""
-    return get_target_gene_id_set("cancer-testis-antigens")
+    return _cta_by_column("Ensembl_Gene_ID")
 
 
 def CTA_excluded_gene_names():

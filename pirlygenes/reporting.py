@@ -432,6 +432,11 @@ def report_disease_state_text(disease_state: str | None, analysis=None) -> str:
         analysis.get("therapy_response_scores") if isinstance(analysis, dict) else None
     )
     if scores:
+        if isinstance(analysis, dict) and analysis.get("pathway_activity_inferences"):
+            return (
+                "No strong RNA-defined therapy-exposure pattern passed reporting "
+                "thresholds; active pathway evidence is summarized separately."
+            )
         return "No strong RNA-defined therapy-exposure or pathway-state pattern passed reporting thresholds."
     return ""
 

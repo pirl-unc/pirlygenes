@@ -1030,6 +1030,38 @@ def _alteration_evidence_line(analysis) -> str:
     return ""
 
 
+def _pathway_activity_line(analysis) -> str:
+    inferences = analysis.get("pathway_activity_inferences") or []
+    if not inferences:
+        return ""
+    finding = inferences[0]
+    label = str(finding.get("label") or "Pathway activity").strip()
+    fold = finding.get("up_geomean_fold")
+    support = ", ".join((finding.get("support_genes") or [])[:4])
+    source_labels = [
+        str(source.get("label") or "").strip()
+        for source in (finding.get("candidate_sources") or [])[:3]
+        if str(source.get("label") or "").strip()
+    ]
+    unresolved = ", ".join((finding.get("unresolved_sources") or [])[:2])
+    fold_clause = (
+        f" high ({fold:.2f}x context)" if isinstance(fold, (int, float)) else " high"
+    )
+    support_clause = f"; support genes: {support}" if support else ""
+    if source_labels:
+        source_clause = "; plausible sources: " + "; ".join(source_labels)
+    elif unresolved:
+        source_clause = "; possible sources to test: " + unresolved
+    else:
+        source_clause = ""
+    caveat = str(finding.get("caveat") or "").strip()
+    caveat_clause = f" {caveat}" if caveat else ""
+    return (
+        f"**Active pathway:** {label}{fold_clause}{support_clause}"
+        f"{source_clause}.{caveat_clause}"
+    )
+
+
 def _candidate_trace_rank(
     candidate_trace: list[dict],
     cancer_code: str,
@@ -1494,6 +1526,9 @@ def build_summary(
     disease_state_display = report_disease_state_text(disease_state, analysis=analysis)
     if disease_state_display:
         lines.append(f"**Disease state:** {disease_state_display}")
+    pathway_activity = _pathway_activity_line(analysis)
+    if pathway_activity:
+        lines.append(pathway_activity)
 
     # Sample context
     if sample_context is not None:

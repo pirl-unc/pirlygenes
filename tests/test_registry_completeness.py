@@ -119,8 +119,10 @@ _MISSING_MATCHED_NORMAL = frozenset(
 # Codes currently lacking a cancer-specific therapy-response axis panel
 # (rows in ``therapy-response-signatures.csv`` mentioning this code in
 # ``cancer_context``, beyond the pan_cancer fallback). As of v4.48.1,
-# only BRCA / COAD / GBM / LUAD / LUSC / NBL / PRAD / SKCM / THCA ship
-# a curated cancer-specific panel.
+# only BRCA / COAD / LUAD / LUSC / NBL / PRAD / SKCM ship a curated
+# cancer-specific panel. GBM / THCA still get the generalized pan-cancer
+# MAPK activity score at runtime, but no longer have a cancer-specific
+# therapy-axis row after the MPAS panel was generalized.
 _MISSING_THERAPY_AXIS = frozenset(
     {
         "ACC",
@@ -144,6 +146,7 @@ _MISSING_THERAPY_AXIS = frozenset(
         "EWS",
         "FL",
         "GCTB",
+        "GBM",
         "HCL",
         "HEPB",
         "HL",
@@ -184,6 +187,7 @@ _MISSING_THERAPY_AXIS = frozenset(
         "SCLC",
         "STAD",
         "TGCT",
+        "THCA",
         "THYM",
         "T_ALL",
         "UCEC",
