@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "4.50.11"
+__version__ = "4.50.12"
 
 version_string = f"v{__version__}"
 
