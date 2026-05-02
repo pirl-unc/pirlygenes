@@ -1918,6 +1918,68 @@ def _sample_neighborhood_indices(
     return [i for i in range(len(labels)) if i in keep]
 
 
+def _euclidean_distances(X):
+    """Pairwise Euclidean distances without depending on scikit-learn."""
+    X = np.asarray(X, dtype=float)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    diff = X[:, None, :] - X[None, :, :]
+    return np.sqrt(np.maximum(np.sum(diff * diff, axis=2), 0.0))
+
+
+def _pca_coordinates(X, n_components=2):
+    """Return PCA coordinates and explained-variance ratios using NumPy SVD."""
+    X = np.asarray(X, dtype=float)
+    n_rows = X.shape[0] if X.ndim else 0
+    if X.ndim != 2 or n_rows == 0:
+        return np.zeros((n_rows, n_components), dtype=float), np.zeros(n_components)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    X = X - X.mean(axis=0, keepdims=True)
+    max_components = min(n_components, X.shape[0], X.shape[1])
+    if max_components < 1 or np.allclose(X, 0.0):
+        return np.zeros((X.shape[0], n_components), dtype=float), np.zeros(n_components)
+    try:
+        u, s, _vt = np.linalg.svd(X, full_matrices=False)
+    except np.linalg.LinAlgError:
+        return np.zeros((X.shape[0], n_components), dtype=float), np.zeros(n_components)
+    coords = u[:, :max_components] * s[:max_components]
+    if max_components < n_components:
+        coords = np.column_stack(
+            [coords, np.zeros((X.shape[0], n_components - max_components))]
+        )
+    variance = s * s
+    total = float(np.sum(variance))
+    ratios = np.zeros(n_components, dtype=float)
+    if total > 0:
+        ratios[: min(n_components, len(variance))] = variance[:n_components] / total
+    return coords[:, :n_components], ratios
+
+
+def _classical_mds_coordinates(distances, n_components=2):
+    """Classical metric MDS coordinates from a precomputed distance matrix."""
+    distances = np.asarray(distances, dtype=float)
+    n = distances.shape[0] if distances.ndim == 2 else 0
+    if n == 0:
+        return np.zeros((0, n_components), dtype=float)
+    distances = np.nan_to_num(distances, nan=0.0, posinf=0.0, neginf=0.0)
+    squared = distances * distances
+    center = np.eye(n) - np.ones((n, n), dtype=float) / n
+    gram = -0.5 * center @ squared @ center
+    try:
+        values, vectors = np.linalg.eigh(gram)
+    except np.linalg.LinAlgError:
+        return np.zeros((n, n_components), dtype=float)
+    order = np.argsort(values)[::-1]
+    values = values[order]
+    vectors = vectors[:, order]
+    positive = np.maximum(values[:n_components], 0.0)
+    coords = vectors[:, : len(positive)] * np.sqrt(positive)
+    if coords.shape[1] < n_components:
+        coords = np.column_stack(
+            [coords, np.zeros((n, n_components - coords.shape[1]))]
+        )
+    return coords[:, :n_components]
+
+
 def _sample_radial_embedding(X, labels, distances):
     """Place SAMPLE at origin and preserve sample-to-reference distances.
 
@@ -1925,15 +1987,8 @@ def _sample_radial_embedding(X, labels, distances):
     PCA components of the reference matrix. The radius is the original input
     feature distance from SAMPLE, scaled by the median reference distance.
     """
-    from sklearn.decomposition import PCA
-
     if "SAMPLE" not in labels:
-        n_components = min(2, X.shape[0], X.shape[1])
-        if n_components < 1:
-            return np.zeros((len(labels), 2), dtype=float)
-        coords = PCA(n_components=n_components, random_state=42).fit_transform(X)
-        if coords.shape[1] == 1:
-            coords = np.column_stack([coords[:, 0], np.zeros(coords.shape[0])])
+        coords, _variance = _pca_coordinates(X, n_components=2)
         return coords
 
     sample_idx = labels.index("SAMPLE")
@@ -1947,13 +2002,7 @@ def _sample_radial_embedding(X, labels, distances):
     if n_components < 1:
         ref_layout = np.zeros((len(ref_idx), 2), dtype=float)
     else:
-        ref_layout = PCA(n_components=n_components, random_state=42).fit_transform(
-            ref_X
-        )
-        if ref_layout.shape[1] == 1:
-            ref_layout = np.column_stack(
-                [ref_layout[:, 0], np.zeros(ref_layout.shape[0])]
-            )
+        ref_layout, _variance = _pca_coordinates(ref_X, n_components=2)
 
     angles = np.arctan2(ref_layout[:, 1], ref_layout[:, 0])
     zero_angle = np.isclose(ref_layout[:, 0], 0.0) & np.isclose(ref_layout[:, 1], 0.0)
@@ -2311,7 +2360,6 @@ def plot_cohort_pca(
 ):
     """PCA of 33 TCGA cancer type centroids (no sample)."""
     import numpy as np
-    from sklearn.decomposition import PCA
     from .gene_sets_cancer import top_enriched_per_cancer_type, pan_cancer_expression
 
     sig = top_enriched_per_cancer_type(n=n_genes, disjoint=True)
@@ -2338,8 +2386,7 @@ def plot_cohort_pca(
     X = np.array(feature_matrix)
     X = np.log2(X + 1)
 
-    pca = PCA(n_components=2)
-    coords = pca.fit_transform(X)
+    coords, variance = _pca_coordinates(X, n_components=2)
 
     fig, ax = plt.subplots(figsize=figsize)
     ax.scatter(
@@ -2357,8 +2404,8 @@ def plot_cohort_pca(
             coords[i, 0], coords[i, 1], f" {code}", fontsize=8, alpha=0.8, va="center"
         )
 
-    ax.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)", fontsize=11)
-    ax.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)", fontsize=11)
+    ax.set_xlabel(f"PC1 ({variance[0]:.0%} variance)", fontsize=11)
+    ax.set_ylabel(f"PC2 ({variance[1]:.0%} variance)", fontsize=11)
     ax.set_title("TCGA cancer type centroids in gene-signature PCA space", fontsize=12)
     ax.grid(True, alpha=0.2)
     fig.tight_layout()
@@ -2629,8 +2676,6 @@ def plot_cancer_type_pca(
     figsize=(12, 10),
 ):
     """PCA scatter showing where the sample falls among cancer-type centroids."""
-    from sklearn.decomposition import PCA
-
     X, labels = _cancer_type_feature_matrix(
         df_gene_expr,
         n_genes=n_genes,
@@ -2638,8 +2683,7 @@ def plot_cancer_type_pca(
         include_normals=include_normals,
         include_subtypes=include_subtypes,
     )
-    pca = PCA(n_components=2)
-    coords = pca.fit_transform(X)
+    coords, variance = _pca_coordinates(X, n_components=2)
     mlabel = _METHOD_LABELS.get(method)
     title = "Sample among TCGA parent cancer cohorts — PCA"
     if include_subtypes and include_normals:
@@ -2654,8 +2698,8 @@ def plot_cancer_type_pca(
         coords,
         labels,
         title=title,
-        xlabel=f"PC1 ({pca.explained_variance_ratio_[0]:.0%} variance)",
-        ylabel=f"PC2 ({pca.explained_variance_ratio_[1]:.0%} variance)",
+        xlabel=f"PC1 ({variance[0]:.0%} variance)",
+        ylabel=f"PC2 ({variance[1]:.0%} variance)",
         method=method,
         save_to_filename=save_to_filename,
         save_dpi=save_dpi,
@@ -2679,9 +2723,6 @@ def plot_cancer_type_mds(
     figsize=(12, 10),
 ):
     """MDS embedding of the sample with TCGA cancer type centroids."""
-    from sklearn.manifold import MDS
-    from sklearn.metrics import pairwise_distances
-
     X, labels = _cancer_type_feature_matrix(
         df_gene_expr,
         n_genes=n_genes,
@@ -2689,7 +2730,7 @@ def plot_cancer_type_mds(
         include_normals=include_normals,
         include_subtypes=include_subtypes,
     )
-    full_distances = pairwise_distances(X, metric="euclidean")
+    full_distances = _euclidean_distances(X)
     focused = False
     if "SAMPLE" in labels:
         sample_idx = labels.index("SAMPLE")
@@ -2712,11 +2753,7 @@ def plot_cancer_type_mds(
         nearest_neighbors = _nearest_neighbors_from_distances(
             labels, distances, sample_idx
         )
-    coords = MDS(
-        n_components=2,
-        dissimilarity="precomputed",
-        random_state=42,
-    ).fit_transform(distances)
+    coords = _classical_mds_coordinates(distances, n_components=2)
     mlabel = _METHOD_LABELS.get(method)
     title = "Sample among TCGA parent cancer cohorts — MDS"
     if include_subtypes and include_normals:
@@ -2775,8 +2812,6 @@ def plot_cancer_type_neighborhood(
     reference point's radius is its original feature-space distance from the
     sample, and the angle is a PCA-based layout of the reference points.
     """
-    from sklearn.metrics import pairwise_distances
-
     X, labels = _cancer_type_feature_matrix(
         df_gene_expr,
         n_genes=n_genes,
@@ -2784,7 +2819,7 @@ def plot_cancer_type_neighborhood(
         include_normals=include_normals,
         include_subtypes=include_subtypes,
     )
-    distances = pairwise_distances(X, metric="euclidean")
+    distances = _euclidean_distances(X)
     focused = False
     if "SAMPLE" in labels:
         sample_idx = labels.index("SAMPLE")
