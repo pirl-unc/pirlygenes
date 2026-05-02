@@ -146,7 +146,8 @@ def test_summary_marks_supplied_cancer_type_basis():
     )
 
     assert "Cancer-type basis" in md
-    assert "externally supplied (PRAD), not RNA-inferred" in md
+    assert "externally supplied PRAD sets report scope" in md
+    assert "RNA evidence is used downstream for confidence" in md
     assert "Patient-facing LLM interpretation needs external clinical context" in md
     assert "RNA-inferred — treat it as a hypothesis" not in md
 
@@ -169,7 +170,7 @@ def test_summary_marks_supplied_cancer_type_rna_concordance():
         disease_state="",
     )
 
-    assert "**RNA cross-check:** concordant with supplied PRAD" in md
+    assert "**RNA classifier check:** concordant with supplied PRAD" in md
     assert "nearest RNA alternatives: BLCA, COAD" in md
 
 
@@ -194,7 +195,10 @@ def test_summary_compares_registry_child_against_parent_reference():
         disease_state="",
     )
 
-    assert "**RNA cross-check:** concordant with supplied SARC_SYN via parent SARC" in md
+    assert (
+        "**RNA classifier check:** concordant with supplied SARC_SYN via parent SARC"
+        in md
+    )
     assert "nearest RNA alternatives: BLCA" in md
 
 
@@ -218,7 +222,7 @@ def test_summary_marks_supplied_cancer_type_rna_discordance():
         disease_state="",
     )
 
-    assert "**RNA cross-check:** discordant with supplied COAD" in md
+    assert "**RNA classifier check:** discordant with supplied COAD" in md
     assert "top RNA candidate is SARC while COAD is rank 2" in md
     assert "Keep the supplied label as report scope" in md
 
@@ -243,7 +247,7 @@ def test_summary_marks_supplied_cancer_type_rna_ambiguity():
         disease_state="",
     )
 
-    assert "**RNA cross-check:** ambiguous against supplied COAD" in md
+    assert "**RNA classifier check:** ambiguous against supplied COAD" in md
     assert "top RNA candidate is SARC while COAD is rank 2" in md
 
 
@@ -308,7 +312,7 @@ def test_summary_does_not_list_rna_alternatives_for_supplied_label():
         disease_state="",
     )
 
-    assert "**RNA cross-check:** concordant with supplied PRAD" in md
+    assert "**RNA classifier check:** concordant with supplied PRAD" in md
     assert "**RNA alternatives:**" not in md
 
 

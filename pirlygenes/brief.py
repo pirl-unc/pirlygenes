@@ -104,15 +104,29 @@ def _display_subtype_code(code: Optional[str]) -> str:
     return text.replace("_", " ").lower()
 
 
-def _call_confidence_suffix(call_tier, *, concise: bool = True) -> str:
+def _call_confidence_suffix(
+    call_tier,
+    *,
+    concise: bool = True,
+    include_reasons: bool = True,
+) -> str:
     """Render cancer-call confidence consistently across Markdown reports."""
     if call_tier.tier not in {"low", "moderate"} or not call_tier.reasons:
         return ""
     tier_text = f"{call_tier.tier} confidence"
     if call_tier.tier == "low":
         tier_text += ", provisional"
+    if not include_reasons:
+        return f" — **{tier_text}**"
     note = concise_confidence_reasons(call_tier) if concise else call_tier.inline_note
     return f" — **{tier_text}** ({note})" if note else f" — **{tier_text}**"
+
+
+def _confidence_caveat_clause(call_tier) -> str:
+    if getattr(call_tier, "tier", "") not in {"low", "moderate"}:
+        return ""
+    note = concise_confidence_reasons(call_tier)
+    return f"; confidence caveats: {note}" if note else ""
 
 
 def _site_template_note_label(template_name: Optional[str]) -> str:
@@ -902,6 +916,10 @@ def _cancer_type_basis_line(analysis, cancer_code: str) -> str:
     constraints = analysis.get("analysis_constraints") or {}
     constrained_code = str(constraints.get("cancer_type") or "").strip()
     source = str(analysis.get("cancer_type_source") or "").strip()
+    report_scope_code = str(analysis.get("report_scope_cancer_type") or "").strip()
+    parent_scope_code = str(
+        analysis.get("report_scope_parent_cancer_type") or ""
+    ).strip()
     fusion_inference = analysis.get("fusion_report_scope_inference") or {}
     if fusion_inference and not constrained_code and source != "user-specified":
         fusion = fusion_inference.get("fusion") or {}
@@ -916,9 +934,9 @@ def _cancer_type_basis_line(analysis, cancer_code: str) -> str:
             or "orthogonal clinical testing"
         ).strip()
         return (
-            f"**Cancer-type basis:** fusion-supported rare-cancer hypothesis "
-            f"({label}) from {pair}; confirm with {confirm} "
-            "or clinical diagnosis before using the therapy shortlist."
+            f"**Cancer-type basis:** fusion-supported {label} hypothesis from "
+            f"{pair} sets provisional report scope; confirm with {confirm} or "
+            "clinical diagnosis before using the therapy shortlist."
         )
     rare_inference = analysis.get("rare_report_scope_inference") or {}
     if rare_inference and not constrained_code and source != "user-specified":
@@ -931,19 +949,22 @@ def _cancer_type_basis_line(analysis, cancer_code: str) -> str:
         ).strip()
         return (
             f"**Cancer-type basis:** RNA-inferred rare-cancer hypothesis from "
-            f"{surrogate}{tpm_clause}; confirm with {confirm} "
-            "or clinical diagnosis before using the therapy shortlist."
+            f"{surrogate}{tpm_clause} sets provisional report scope; confirm "
+            f"with {confirm} or clinical diagnosis before using the therapy shortlist."
         )
     if constrained_code or source == "user-specified":
-        supplied = constrained_code or str(cancer_code or "").strip()
-        suffix = f" ({supplied})" if supplied else ""
+        supplied = report_scope_code or constrained_code or str(cancer_code or "").strip()
+        if parent_scope_code and report_scope_code:
+            supplied = f"{report_scope_code} via parent {parent_scope_code}"
         return (
-            f"**Cancer-type basis:** externally supplied{suffix}, not RNA-inferred; "
-            "RNA evidence is used for confidence, purity, and target attribution."
+            f"**Cancer-type basis:** externally supplied {supplied} sets report "
+            "scope; RNA evidence is used downstream for confidence, "
+            "purity/decomposition, target attribution, and expression-context checks."
         )
     return (
-        "**Cancer-type basis:** RNA-inferred hypothesis; confirm with pathology "
-        "or clinical diagnosis before using the therapy shortlist."
+        "**Cancer-type basis:** RNA-inferred hypothesis sets provisional report "
+        "scope; confirm with pathology or clinical diagnosis before using the "
+        "therapy shortlist."
     )
 
 
@@ -1099,7 +1120,7 @@ def _candidate_code_list(rows: list[dict], *, exclude: set[str], limit: int) -> 
     return ", ".join(codes)
 
 
-def _rna_crosscheck_line(analysis, cancer_code: str) -> str:
+def _rna_crosscheck_line(analysis, cancer_code: str, call_tier=None) -> str:
     constraints = analysis.get("analysis_constraints") or {}
     constrained_code = str(constraints.get("cancer_type") or "").strip()
     source = str(analysis.get("cancer_type_source") or "").strip()
@@ -1117,7 +1138,7 @@ def _rna_crosscheck_line(analysis, cancer_code: str) -> str:
                 f"; nearby alternatives include {alternatives}" if alternatives else ""
             )
             return (
-                f"**RNA cross-check:** {cancer_code} is a non-TCGA rare-cancer "
+                f"**RNA classifier check:** {cancer_code} is a non-TCGA rare-cancer "
                 f"hypothesis; nearest TCGA expression reference is "
                 f"{top_code or 'unresolved'}{alt_clause}. Use these TCGA labels for "
                 "expression context, not as the diagnosis."
@@ -1135,7 +1156,7 @@ def _rna_crosscheck_line(analysis, cancer_code: str) -> str:
         supplied_label = f"{report_scope_code} via parent {parent_scope_code}"
     candidate_trace = analysis.get("candidate_trace") or []
     if not comparison_code or not candidate_trace:
-        return "**RNA cross-check:** no cancer-type candidate trace available."
+        return "**RNA classifier check:** no cancer-type candidate trace available."
 
     top = candidate_trace[0]
     top_code = str(top.get("code") or "").strip()
@@ -1149,7 +1170,11 @@ def _rna_crosscheck_line(analysis, cancer_code: str) -> str:
             limit=2,
         )
         suffix = f"; nearest RNA alternatives: {alternatives}" if alternatives else ""
-        return f"**RNA cross-check:** concordant with supplied {supplied_label}{suffix}."
+        suffix += _confidence_caveat_clause(call_tier)
+        return (
+            f"**RNA classifier check:** concordant with supplied "
+            f"{supplied_label}{suffix}."
+        )
 
     fit_quality = str((analysis.get("fit_quality") or {}).get("label") or "").strip()
     top_score = _candidate_support_score(top)
@@ -1169,10 +1194,12 @@ def _rna_crosscheck_line(analysis, cancer_code: str) -> str:
         if supplied_rank is not None
         else "not in the RNA top candidates"
     )
+    caveat_clause = _confidence_caveat_clause(call_tier)
     return (
-        f"**RNA cross-check:** {status} supplied {supplied_label}; "
+        f"**RNA classifier check:** {status} supplied {supplied_label}; "
         f"top RNA candidate is {top_code or 'unresolved'} while {comparison_code} is {rank_clause}. "
-        "Keep the supplied label as report scope and review pathology/subtype context."
+        "Keep the supplied label as report scope and review pathology/subtype context"
+        f"{caveat_clause}."
     )
 
 
@@ -1225,6 +1252,39 @@ def _rna_alternatives_line(analysis, cancer_code: str) -> str:
         f"{sig_clause}. Treat these as hypotheses until pathology/clinical "
         "context resolves them."
     )
+
+
+def _subtype_status_line(
+    *,
+    winning_subtype: Optional[str],
+    degenerate_status: Optional[str],
+    degenerate_resolution: Optional[dict],
+    original_winning_subtype: Optional[str],
+    analysis: dict,
+) -> str:
+    if degenerate_status in ("corrected", "degenerate"):
+        subtype_note = _render_subtype_note(
+            degenerate_resolution or {},
+            original_subtype=original_winning_subtype,
+            site_template=analysis_site_template_for_subtype(analysis),
+        ).strip()
+        if subtype_note:
+            if degenerate_status == "corrected":
+                final_label = _display_subtype_code(
+                    (degenerate_resolution or {}).get("final_subtype")
+                )
+                return (
+                    f"**Subtype status:** {final_label}-consistent after context "
+                    f"check; {subtype_note}"
+                )
+            return f"**Subtype status:** {subtype_note}"
+    if winning_subtype:
+        label = _display_subtype_code(winning_subtype)
+        return (
+            f"**Subtype status:** RNA subtype signal is {label}-consistent; "
+            "use as expression context unless clinically confirmed."
+        )
+    return ""
 
 
 def _clinical_context_caveats(analysis) -> List[str]:
@@ -1335,19 +1395,21 @@ def build_summary(
     from .confidence import compute_call_confidence
 
     call_tier = compute_call_confidence(analysis)
-    suffix = _call_confidence_suffix(call_tier, concise=True)
+    suffix = _call_confidence_suffix(
+        call_tier,
+        concise=True,
+        include_reasons=False,
+    )
     rare_scope = analysis.get("rare_report_scope_inference") or {}
     fusion_scope = analysis.get("fusion_report_scope_inference") or {}
     if rare_scope or fusion_scope:
         tier = getattr(call_tier, "tier", "unknown")
-        suffix = f" — **{tier} confidence** (rare-cancer report scope; TCGA cohorts are context only)"
+        suffix = f" — **{tier} confidence**"
 
-    # #171: for mixture cohorts, surface the winning subtype hypothesis
-    # so the reader sees "Cancer call: SARC (subtype: rhabdomyosarcoma
-    # -consistent)" instead of just SARC. The subtype is the registry
-    # code's ``subtype_key`` field (e.g. "leiomyosarcoma") or the code
-    # itself when no human-readable key is populated.
-    subtype_annotation = ""
+    # #171/#198: resolve subtype evidence separately from the report-scope
+    # cancer label. The subtype signal is useful context, but rendering it
+    # inside the cancer-call parenthetical made clinical labels, RNA labels,
+    # and confidence caveats look like one decision.
     winning_subtype = candidate_winning_subtype_for_analysis(analysis)
 
     # #198: before rendering, consult the degenerate-subtype registry.
@@ -1361,7 +1423,6 @@ def build_summary(
     # shared signature is actually present; high-confidence clear-
     # winner calls bypass the resolver entirely.
     degenerate_status = None
-    degenerate_alternatives = []
     degenerate_resolution = None
     original_winning_subtype = winning_subtype
     if winning_subtype:
@@ -1410,56 +1471,16 @@ def build_summary(
             if resolution["status"] == "corrected":
                 winning_subtype = resolution["final_subtype"]
             degenerate_status = resolution["status"]
-            degenerate_alternatives = resolution["alternatives"]
         except Exception:
             logger.debug(
                 "degenerate-subtype resolution failed; keeping classifier pick",
                 exc_info=True,
             )
 
-    if winning_subtype:
-        try:
-            from .gene_sets_cancer import cancer_type_registry
-
-            reg = cancer_type_registry()
-            match = reg[reg["code"] == winning_subtype]
-            if not match.empty:
-                row = match.iloc[0]
-                subtype_key = row.get("subtype_key")
-                label = None
-                if (
-                    isinstance(subtype_key, str)
-                    and subtype_key
-                    and subtype_key.lower() != "nan"
-                ):
-                    label = subtype_key.replace("_", " ")
-                else:
-                    # Fall back to the human-readable registry ``name``
-                    # so aggregate-only rows without a ``subtype_key``
-                    # still render cleanly (SARC_LPS_UNSPEC →
-                    # "liposarcoma" rather than raw code).
-                    name = row.get("name")
-                    if isinstance(name, str) and name:
-                        label = name.split("(")[0].strip().lower()
-                if not label:
-                    label = winning_subtype
-                if degenerate_status == "degenerate":
-                    subtype_annotation = (
-                        f" (subtype: degenerate — {label} vs "
-                        f"{'/'.join(degenerate_alternatives)})"
-                    )
-                else:
-                    subtype_annotation = f" (subtype: {label}-consistent)"
-        except Exception:
-            subtype_annotation = f" (subtype: {winning_subtype}-consistent)"
-
     call_punctuation = suffix or "."
-    lines.append(
-        f"**Cancer call:** {cancer_code} ({cancer_name})"
-        f"{subtype_annotation}{call_punctuation}"
-    )
+    lines.append(f"**Cancer call:** {cancer_code} ({cancer_name}){call_punctuation}")
     lines.append(_cancer_type_basis_line(analysis, cancer_code))
-    rna_crosscheck = _rna_crosscheck_line(analysis, cancer_code)
+    rna_crosscheck = _rna_crosscheck_line(analysis, cancer_code, call_tier=call_tier)
     if rna_crosscheck:
         lines.append(rna_crosscheck)
     else:
@@ -1497,17 +1518,15 @@ def build_summary(
             f"**Rare-marker prompt:** {surrogate}{tpm_clause}{context_clause} raises {label} as a "
             f"testing prompt, not the report scope{evidence_clause}."
         )
-    # Surface a subtype note only when the resolver changed the call or
-    # flagged irreducible ambiguity. ``pair_inactive`` means the pair
-    # didn't apply — no reader-facing note needed.
-    if degenerate_status in ("corrected", "degenerate"):
-        subtype_note = _render_subtype_note(
-            degenerate_resolution or {},
-            original_subtype=original_winning_subtype,
-            site_template=analysis_site_template_for_subtype(analysis),
-        ).strip()
-        if subtype_note:
-            lines.append(f"**Subtype note:** {subtype_note}")
+    subtype_line = _subtype_status_line(
+        winning_subtype=winning_subtype,
+        degenerate_status=degenerate_status,
+        degenerate_resolution=degenerate_resolution,
+        original_winning_subtype=original_winning_subtype,
+        analysis=analysis,
+    )
+    if subtype_line:
+        lines.append(subtype_line)
 
     # Purity
     overall = purity.get("overall_estimate")
