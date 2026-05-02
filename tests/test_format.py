@@ -13,6 +13,7 @@ from pirlygenes.format import (
 
 # ── render_fold ─────────────────────────────────────────────────────────
 
+
 def test_fold_two_decimals_with_multiplication_sign():
     assert render_fold(3.542) == "3.54\u00d7"
     assert render_fold(2.5) == "2.50\u00d7"
@@ -39,6 +40,7 @@ def test_fold_never_renders_lowercase_x():
 
 
 # ── render_fraction ─────────────────────────────────────────────────────
+
 
 def test_fraction_autodetects_fraction_vs_percentage():
     # Fraction in [0, 1]
@@ -68,6 +70,7 @@ def test_fraction_no_decimal_variant():
 
 
 # ── render_tpm ──────────────────────────────────────────────────────────
+
 
 def test_tpm_no_decimals_above_100():
     assert render_tpm(1852.4) == "1852"
@@ -101,6 +104,7 @@ def test_tpm_boundary_behavior():
 
 # ── render_score ────────────────────────────────────────────────────────
 
+
 def test_score_always_three_decimals():
     assert render_score(0.67) == "0.670"
     assert render_score(0.001) == "0.001"
@@ -114,6 +118,7 @@ def test_score_placeholder_for_missing():
 
 
 # ── integration: rendering a realistic row ──────────────────────────────
+
 
 def test_rendering_a_target_row_is_consistent():
     """A target row touches all four helpers; the rendered cells should
@@ -131,8 +136,13 @@ def test_rendering_a_target_row_is_consistent():
 
 
 def test_none_handling_is_uniform():
-    for fn in (render_fold, render_fraction, render_fraction_no_decimal,
-               render_tpm, render_score):
+    for fn in (
+        render_fold,
+        render_fraction,
+        render_fraction_no_decimal,
+        render_tpm,
+        render_score,
+    ):
         assert fn(None) == "\u2014"
         assert fn(float("nan")) == "\u2014"
 

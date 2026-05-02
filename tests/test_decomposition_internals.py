@@ -35,13 +35,15 @@ def test_nnls_recovers_known_mix():
     rng = np.random.default_rng(0)
     # Create well-separated component signatures
     A = np.zeros((30, 3))
-    A[:10, 0] = rng.uniform(5, 10, 10)   # component 0 markers
+    A[:10, 0] = rng.uniform(5, 10, 10)  # component 0 markers
     A[10:20, 1] = rng.uniform(5, 10, 10)  # component 1 markers
     A[20:30, 2] = rng.uniform(5, 10, 10)  # component 2 markers
     true_mix = np.array([0.6, 0.25, 0.15])
     b = A @ true_mix
     solution, residual = _weighted_constrained_nnls(A, b)
-    assert np.allclose(solution, true_mix, atol=0.05), f"Got {solution}, expected {true_mix}"
+    assert np.allclose(solution, true_mix, atol=0.05), (
+        f"Got {solution}, expected {true_mix}"
+    )
 
 
 def test_nnls_empty_matrix():
@@ -205,13 +207,18 @@ def test_low_purity_candidate_is_penalised():
 
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
     # Build a PRAD sample — should score well for PRAD, poorly for unrelated types
-    df = pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref["FPKM_PRAD"].astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref["FPKM_PRAD"].astype(float),
+        }
+    )
     results = decompose_sample(
-        df, cancer_types=["PRAD", "HNSC"], templates=["solid_primary"], top_k=2,
+        df,
+        cancer_types=["PRAD", "HNSC"],
+        templates=["solid_primary"],
+        top_k=2,
     )
     assert len(results) == 2
     prad_result = next(r for r in results if r.cancer_type == "PRAD")

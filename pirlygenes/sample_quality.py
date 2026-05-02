@@ -114,19 +114,25 @@ def _compute_tissue_baselines():
         tissue = col.replace("nTPM_", "")
         vals = ref[col].astype(float).values
         total = sum(
-            v for v, s in zip(vals, symbols)
+            v
+            for v, s in zip(vals, symbols)
             if not (np.isnan(v) if isinstance(v, float) else False) and v > 0
         )
         if total <= 0:
             continue
         mt_sum = sum(
-            v for v, s in zip(vals, symbols)
-            if s in mt_set and not (np.isnan(v) if isinstance(v, float) else False) and v > 0
+            v
+            for v, s in zip(vals, symbols)
+            if s in mt_set
+            and not (np.isnan(v) if isinstance(v, float) else False)
+            and v > 0
         )
         rp_sum = sum(
-            v for v, s in zip(vals, symbols)
+            v
+            for v, s in zip(vals, symbols)
             if any(s.startswith(p) for p in _RIBOSOMAL_PROTEIN_PREFIXES)
-            and not (np.isnan(v) if isinstance(v, float) else False) and v > 0
+            and not (np.isnan(v) if isinstance(v, float) else False)
+            and v > 0
         )
         mt_frac = mt_sum / total
         non_mt = total - mt_sum
@@ -220,7 +226,8 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None, library_prep=None):
     mt_fraction = mt_total / total_tpm
 
     rp_total = sum(
-        tpm for gene, tpm in clean_tpm.items()
+        tpm
+        for gene, tpm in clean_tpm.items()
         if any(gene.startswith(pfx) for pfx in _RIBOSOMAL_PROTEIN_PREFIXES)
     )
     # RP fraction relative to non-MT expression — prevents MT inflation
@@ -263,12 +270,8 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None, library_prep=None):
         ordered_tissues = list(tissue_scores)
         if preferred_tissues:
             ordered_tissues = [
-                row for row in tissue_scores
-                if row[0] in preferred_tissues
-            ] + [
-                row for row in tissue_scores
-                if row[0] not in preferred_tissues
-            ]
+                row for row in tissue_scores if row[0] in preferred_tissues
+            ] + [row for row in tissue_scores if row[0] not in preferred_tissues]
 
         for tissue, _score, _n in ordered_tissues:
             if tissue in baselines:
@@ -300,12 +303,16 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None, library_prep=None):
     pair_moderate = long_short_ratio is not None and long_short_ratio < 0.30
     # MT/RP tissue-matched folds as confirmation
     mt_rp_moderate = (
-        mt_fold is not None and rp_fold is not None
-        and mt_fold > fold_moderate and rp_fold > fold_moderate
+        mt_fold is not None
+        and rp_fold is not None
+        and mt_fold > fold_moderate
+        and rp_fold > fold_moderate
     )
     mt_rp_severe = (
-        mt_fold is not None and rp_fold is not None
-        and mt_fold > fold_severe and rp_fold > fold_severe
+        mt_fold is not None
+        and rp_fold is not None
+        and mt_fold > fold_severe
+        and rp_fold > fold_severe
     )
 
     ratio_str = f"{long_short_ratio:.2f}" if long_short_ratio is not None else "n/a"
@@ -342,7 +349,9 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None, library_prep=None):
     degradation = {
         "mt_fraction": round(mt_fraction, 4),
         "rp_fraction": round(rp_fraction, 4),
-        "long_short_ratio": round(long_short_ratio, 3) if long_short_ratio is not None else None,
+        "long_short_ratio": round(long_short_ratio, 3)
+        if long_short_ratio is not None
+        else None,
         "n_mt_found": n_mt,
         "n_long_found": n_long,
         "matched_tissue": matched_tissue,
@@ -447,9 +456,7 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None, library_prep=None):
     # MT-* contigs) or use a different symbol convention.  Flag this so
     # the user knows the degradation signal is not reliable.
     mt_near_zero = n_mt == 0 or mt_fraction < 0.005
-    prep_explains_mt = (
-        library_prep in _MT_EXPECTED_MISSING_PREPS
-    )
+    prep_explains_mt = library_prep in _MT_EXPECTED_MISSING_PREPS
     have_pair_signal = long_short_ratio is not None
     if mt_near_zero and prep_explains_mt and have_pair_signal:
         # #77: RNA capture / poly-A legitimately depress MT-rRNA or MT
@@ -518,7 +525,9 @@ def assess_sample_quality(df_gene_expr, tissue_scores=None, library_prep=None):
             f"(stress z={stress_score:.1f}, TME={tme_mean:.1f} TPM)"
         )
     elif culture_level == "tme_absent":
-        flags.append(f"TME absent: immune/stromal signal near zero (mean={tme_mean:.1f} TPM)")
+        flags.append(
+            f"TME absent: immune/stromal signal near zero (mean={tme_mean:.1f} TPM)"
+        )
 
     if not flags:
         flags.append("No quality concerns detected")

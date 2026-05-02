@@ -50,13 +50,15 @@ def load_extra_tx_mapping_records() -> list[dict]:
     records = []
     with open(p) as f:
         for row in csv.DictReader(f):
-            records.append({
-                "transcript_id": row["transcript_id"],
-                "gene_symbol": row["gene_symbol"],
-                "ensembl_gene_id": row.get("ensembl_gene_id") or "",
-                "biotype": row.get("biotype") or "",
-                "source_notes": row.get("source_notes") or "",
-            })
+            records.append(
+                {
+                    "transcript_id": row["transcript_id"],
+                    "gene_symbol": row["gene_symbol"],
+                    "ensembl_gene_id": row.get("ensembl_gene_id") or "",
+                    "biotype": row.get("biotype") or "",
+                    "source_notes": row.get("source_notes") or "",
+                }
+            )
     return records
 
 

@@ -66,10 +66,9 @@ def _mix_samples(parts):
     symbol_by_gene = {}
     for weight, df in parts:
         for row in df.itertuples(index=False):
-            value_by_gene[row.ensembl_gene_id] = (
-                value_by_gene.get(row.ensembl_gene_id, 0.0)
-                + weight * float(row.TPM)
-            )
+            value_by_gene[row.ensembl_gene_id] = value_by_gene.get(
+                row.ensembl_gene_id, 0.0
+            ) + weight * float(row.TPM)
             symbol_by_gene[row.ensembl_gene_id] = row.gene_symbol
     out = pd.DataFrame({"ensembl_gene_id": list(value_by_gene.keys())})
     out["gene_symbol"] = out["ensembl_gene_id"].map(symbol_by_gene)
@@ -208,7 +207,10 @@ def test_estimate_ranges_splits_parent_tissue_for_prad_mixture():
         top_k=1,
     )
     ranges = estimate_tumor_expression_ranges(
-        df, cancer_type="PRAD", purity_result=purity, decomposition_results=results,
+        df,
+        cancer_type="PRAD",
+        purity_result=purity,
+        decomposition_results=results,
     )
 
     assert "matched_normal_tpm" in ranges.columns
@@ -239,7 +241,10 @@ def test_estimate_ranges_non_epithelial_cancer_has_no_matched_normal_split():
         top_k=1,
     )
     ranges = estimate_tumor_expression_ranges(
-        df, cancer_type="SARC", purity_result=purity, decomposition_results=results,
+        df,
+        cancer_type="SARC",
+        purity_result=purity,
+        decomposition_results=results,
     )
     assert "matched_normal_tpm" in ranges.columns
     assert (ranges["matched_normal_tpm"] == 0.0).all()
@@ -318,7 +323,9 @@ def test_vs_tcga_inf_routes_for_silent_tcga_with_sample_expression():
     df.loc[mask, "TPM"] = 50.0
 
     purity = estimate_tumor_purity(df, cancer_type="PRAD")
-    ranges = estimate_tumor_expression_ranges(df, cancer_type="PRAD", purity_result=purity)
+    ranges = estimate_tumor_expression_ranges(
+        df, cancer_type="PRAD", purity_result=purity
+    )
     hit = ranges[ranges["symbol"] == target["Symbol"]]
     if hit.empty:
         pytest.skip("Target silent-PRAD gene did not survive ranges filter")

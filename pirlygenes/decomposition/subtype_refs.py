@@ -57,43 +57,43 @@ from typing import Any, Dict, List, Mapping, Tuple
 # Dominguez 2020 + Kieffer 2020 + Elyada 2019, exponentiated back to
 # linear fold. Core ECM / desmoplasia markers; NOT exhaustive.
 CAF_MARKER_FOLDS: Dict[str, float] = {
-    "FAP": 10.0,       # Fibroblast activation protein — canonical CAF marker
-    "POSTN": 8.0,      # Periostin — desmoplastic stroma
-    "S100A4": 4.0,     # FSP1 — activated fibroblast
-    "TNC": 5.0,        # Tenascin-C — desmoplastic ECM
-    "THY1": 2.5,       # CD90 — CAF subtype marker
-    "PDGFRA": 3.5,     # Myofibroblast lineage
-    "PDGFRB": 4.0,     # Pericyte-like CAF
-    "COL1A1": 5.0,     # Fibrotic ECM
+    "FAP": 10.0,  # Fibroblast activation protein — canonical CAF marker
+    "POSTN": 8.0,  # Periostin — desmoplastic stroma
+    "S100A4": 4.0,  # FSP1 — activated fibroblast
+    "TNC": 5.0,  # Tenascin-C — desmoplastic ECM
+    "THY1": 2.5,  # CD90 — CAF subtype marker
+    "PDGFRA": 3.5,  # Myofibroblast lineage
+    "PDGFRB": 4.0,  # Pericyte-like CAF
+    "COL1A1": 5.0,  # Fibrotic ECM
     "COL1A2": 5.0,
     "COL3A1": 4.0,
-    "DCN": 3.0,        # Decorin — small leucine-rich proteoglycan
-    "SPARC": 4.0,      # Osteonectin — matricellular, CAF-elevated
-    "A2M": 3.0,        # α2-macroglobulin — stromal abundance
-    "VIM": 2.0,        # Vimentin — mesenchymal lineage marker
-    "LUM": 3.0,        # Lumican — CAF ECM
+    "DCN": 3.0,  # Decorin — small leucine-rich proteoglycan
+    "SPARC": 4.0,  # Osteonectin — matricellular, CAF-elevated
+    "A2M": 3.0,  # α2-macroglobulin — stromal abundance
+    "VIM": 2.0,  # Vimentin — mesenchymal lineage marker
+    "LUM": 3.0,  # Lumican — CAF ECM
 }
 
 
 # ---------- TAM markers — M2-polarized tumor-infiltrating macrophages ----------
 
 TAM_MARKER_FOLDS: Dict[str, float] = {
-    "CD163": 5.0,      # M2 scavenger receptor
-    "MRC1": 7.0,       # CD206 — M2 mannose receptor
-    "LYVE1": 6.0,      # Lymphatic/tissue-resident macrophage
-    "STAB1": 4.0,      # Stabilin-1 — TAM scavenger
-    "MARCO": 5.0,      # M2 scavenger
-    "VSIG4": 4.0,      # CRIg — immunosuppressive TAM
-    "TREM2": 6.0,      # Lipid-associated TAM
+    "CD163": 5.0,  # M2 scavenger receptor
+    "MRC1": 7.0,  # CD206 — M2 mannose receptor
+    "LYVE1": 6.0,  # Lymphatic/tissue-resident macrophage
+    "STAB1": 4.0,  # Stabilin-1 — TAM scavenger
+    "MARCO": 5.0,  # M2 scavenger
+    "VSIG4": 4.0,  # CRIg — immunosuppressive TAM
+    "TREM2": 6.0,  # Lipid-associated TAM
     # Selenoprotein P. HGNC renamed SEPP1 → SELENOP; the bundled
     # reference data uses the new symbol. Keep both so older quant
     # files that still emit SEPP1 don't silently no-op.
-    "SELENOP": 3.0,    # Selenoprotein P — M2 polarization
-    "SEPP1": 3.0,      # (legacy alias for SELENOP)
-    "C1QA": 3.5,       # Complement — TAM-elevated
+    "SELENOP": 3.0,  # Selenoprotein P — M2 polarization
+    "SEPP1": 3.0,  # (legacy alias for SELENOP)
+    "C1QA": 3.5,  # Complement — TAM-elevated
     "C1QB": 3.5,
     "C1QC": 3.5,
-    "APOE": 3.0,       # TAM lipid-handling program
+    "APOE": 3.0,  # TAM lipid-handling program
 }
 
 
@@ -110,16 +110,16 @@ TAM_MARKER_FOLDS: Dict[str, float] = {
 # their over-attribution to tumor is a major UX failure on any
 # lymphocyte-rich sample.
 EXHAUSTED_T_MARKER_FOLDS: Dict[str, float] = {
-    "PDCD1": 8.0,      # PD-1 — canonical exhaustion marker
-    "CTLA4": 6.0,      # CTLA-4 — checkpoint
-    "LAG3": 6.0,       # LAG-3 — co-expressed with PD-1
-    "HAVCR2": 6.0,     # TIM-3
-    "TIGIT": 5.0,      # TIGIT checkpoint
-    "TOX": 5.0,        # Exhaustion transcription factor
-    "ENTPD1": 4.0,     # CD39 — tissue-resident exhausted Treg
-    "ITGAE": 4.0,      # CD103 — Trm / TIL marker
-    "LAYN": 4.0,       # Layilin — terminal exhaustion
-    "CXCL13": 5.0,     # Follicular / TLS-T cell chemokine
+    "PDCD1": 8.0,  # PD-1 — canonical exhaustion marker
+    "CTLA4": 6.0,  # CTLA-4 — checkpoint
+    "LAG3": 6.0,  # LAG-3 — co-expressed with PD-1
+    "HAVCR2": 6.0,  # TIM-3
+    "TIGIT": 5.0,  # TIGIT checkpoint
+    "TOX": 5.0,  # Exhaustion transcription factor
+    "ENTPD1": 4.0,  # CD39 — tissue-resident exhausted Treg
+    "ITGAE": 4.0,  # CD103 — Trm / TIL marker
+    "LAYN": 4.0,  # Layilin — terminal exhaustion
+    "CXCL13": 5.0,  # Follicular / TLS-T cell chemokine
 }
 
 
@@ -127,16 +127,16 @@ EXHAUSTED_T_MARKER_FOLDS: Dict[str, float] = {
 # in solid tumors. Goveia 2020 pan-cancer lung EC atlas; Kalucka 2020
 # pan-tissue EC atlas. Anti-angiogenic ADC / TKI biology.
 TUMOR_ENDOTHELIUM_MARKER_FOLDS: Dict[str, float] = {
-    "DLL4": 8.0,       # Notch ligand — tip-cell / angiogenic EC
-    "ESM1": 7.0,       # Endocan — tip-cell marker
-    "ANGPT2": 6.0,     # Angiogenic signaling
-    "PLVAP": 5.0,      # Fenestrated tumor venule
-    "ACKR1": 4.0,      # Post-capillary venule (Duffy)
-    "APLN": 5.0,       # Apelin — tumor-EC-specific ligand
-    "CXCR4": 4.0,      # Tip-cell migration
-    "INSR": 3.0,       # Metabolic tumor-EC program
-    "KDR": 4.0,        # VEGFR2 — angiogenic
-    "FLT1": 4.0,       # VEGFR1 — angiogenic
+    "DLL4": 8.0,  # Notch ligand — tip-cell / angiogenic EC
+    "ESM1": 7.0,  # Endocan — tip-cell marker
+    "ANGPT2": 6.0,  # Angiogenic signaling
+    "PLVAP": 5.0,  # Fenestrated tumor venule
+    "ACKR1": 4.0,  # Post-capillary venule (Duffy)
+    "APLN": 5.0,  # Apelin — tumor-EC-specific ligand
+    "CXCR4": 4.0,  # Tip-cell migration
+    "INSR": 3.0,  # Metabolic tumor-EC program
+    "KDR": 4.0,  # VEGFR2 — angiogenic
+    "FLT1": 4.0,  # VEGFR1 — angiogenic
 }
 
 
@@ -145,14 +145,14 @@ TUMOR_ENDOTHELIUM_MARKER_FOLDS: Dict[str, float] = {
 # Zilionis 2019 lung TAN/TAM atlas. Lives on the same ``myeloid``
 # compartment as TAM; genes don't overlap meaningfully.
 MDSC_MARKER_FOLDS: Dict[str, float] = {
-    "ARG1": 8.0,       # Arginase-1 — immunosuppressive; PMN-MDSC
-    "S100A8": 5.0,     # Calprotectin subunit — MDSC / neutrophil
-    "S100A9": 5.0,     # Calprotectin subunit
-    "CEBPB": 3.0,      # Transcription factor — MDSC polarization
-    "FCGR3B": 4.0,     # CD16b — granulocytic MDSC / neutrophil
-    "MPO": 4.0,        # Myeloperoxidase — neutrophil lineage
-    "ELANE": 4.0,      # Neutrophil elastase
-    "CAMP": 4.0,       # Cathelicidin — neutrophil
+    "ARG1": 8.0,  # Arginase-1 — immunosuppressive; PMN-MDSC
+    "S100A8": 5.0,  # Calprotectin subunit — MDSC / neutrophil
+    "S100A9": 5.0,  # Calprotectin subunit
+    "CEBPB": 3.0,  # Transcription factor — MDSC polarization
+    "FCGR3B": 4.0,  # CD16b — granulocytic MDSC / neutrophil
+    "MPO": 4.0,  # Myeloperoxidase — neutrophil lineage
+    "ELANE": 4.0,  # Neutrophil elastase
+    "CAMP": 4.0,  # Cathelicidin — neutrophil
 }
 
 
@@ -160,24 +160,24 @@ MDSC_MARKER_FOLDS: Dict[str, float] = {
 # organised into ectopic lymphoid follicles in the tumor. Meylan 2022
 # RCC TLS; Patil 2022 pan-cancer TLS atlas. Positive ICI prognostic.
 TLS_B_MARKER_FOLDS: Dict[str, float] = {
-    "CXCR5": 5.0,      # Germinal-center homing
-    "BCL6": 4.0,       # Germinal-center master TF
-    "AICDA": 6.0,      # Activation-induced deaminase — class-switch
-    "MS4A1": 3.0,      # CD20 — B-cell identity (scaled for TLS density)
-    "RGS13": 4.0,      # GC-B signature
-    "STMN1": 3.0,      # Proliferative GC-B
+    "CXCR5": 5.0,  # Germinal-center homing
+    "BCL6": 4.0,  # Germinal-center master TF
+    "AICDA": 6.0,  # Activation-induced deaminase — class-switch
+    "MS4A1": 3.0,  # CD20 — B-cell identity (scaled for TLS density)
+    "RGS13": 4.0,  # GC-B signature
+    "STMN1": 3.0,  # Proliferative GC-B
 }
 
 
 # Tumor-infiltrating plasma cells. Cheng 2021 pan-cancer B/plasma
 # atlas. IgG class-switched patterns distinct from marrow plasma.
 TI_PLASMA_MARKER_FOLDS: Dict[str, float] = {
-    "MZB1": 4.0,       # Plasma cell maturation — elevated in TI plasma
-    "JCHAIN": 3.0,     # Polymeric Ig joining chain
-    "IGHG1": 5.0,      # IgG1 heavy chain (class-switched)
-    "IGHG3": 4.0,      # IgG3 heavy chain
-    "IGHA1": 4.0,      # IgA1 heavy chain
-    "XBP1": 3.0,       # Plasma-cell UPR / ER stress
+    "MZB1": 4.0,  # Plasma cell maturation — elevated in TI plasma
+    "JCHAIN": 3.0,  # Polymeric Ig joining chain
+    "IGHG1": 5.0,  # IgG1 heavy chain (class-switched)
+    "IGHG3": 4.0,  # IgG3 heavy chain
+    "IGHA1": 4.0,  # IgA1 heavy chain
+    "XBP1": 3.0,  # Plasma-cell UPR / ER stress
 }
 
 

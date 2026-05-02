@@ -45,29 +45,33 @@ from pirlygenes.gene_sets_cancer import pan_cancer_expression
 def test_is_extended_housekeeping_covers_all_listed_families():
     # Sample representatives from each regex family in the panel.
     excluded_both = [
-        "MT-CO1",       # mitochondrial
-        "RPL13A",       # cytosolic ribosomal
-        "RPS6",         # cytosolic ribosomal
-        "MRPL12",       # mito ribosomal
-        "MRPS7",        # mito ribosomal
-        "EEF1A1",       # translation factor
-        "EIF3A",        # translation factor
-        "HNRNPA1",      # hnRNP
-        "SRSF1",        # SR splicing protein
-        "SNRPB",        # snRNP
-        "PSMA1",        # proteasome
-        "PSMB5",        # proteasome
-        "PPIA",         # cyclophilin
-        "TUBA1A",       # tubulin
-        "TUBB2A",       # tubulin
-        "IGHV1-2",      # rearranged IG
-        "TRAV1-1",      # rearranged TR
-        "ACTB",         # classic HK
-        "GAPDH",        # classic HK
+        "MT-CO1",  # mitochondrial
+        "RPL13A",  # cytosolic ribosomal
+        "RPS6",  # cytosolic ribosomal
+        "MRPL12",  # mito ribosomal
+        "MRPS7",  # mito ribosomal
+        "EEF1A1",  # translation factor
+        "EIF3A",  # translation factor
+        "HNRNPA1",  # hnRNP
+        "SRSF1",  # SR splicing protein
+        "SNRPB",  # snRNP
+        "PSMA1",  # proteasome
+        "PSMB5",  # proteasome
+        "PPIA",  # cyclophilin
+        "TUBA1A",  # tubulin
+        "TUBB2A",  # tubulin
+        "IGHV1-2",  # rearranged IG
+        "TRAV1-1",  # rearranged TR
+        "ACTB",  # classic HK
+        "GAPDH",  # classic HK
     ]
     for sym in excluded_both:
-        assert is_extended_housekeeping_symbol(sym, scope="markers"), f"{sym} missing from markers scope"
-        assert is_extended_housekeeping_symbol(sym, scope="ranking"), f"{sym} missing from ranking scope"
+        assert is_extended_housekeeping_symbol(sym, scope="markers"), (
+            f"{sym} missing from markers scope"
+        )
+        assert is_extended_housekeeping_symbol(sym, scope="ranking"), (
+            f"{sym} missing from ranking scope"
+        )
 
 
 def test_b2m_excluded_from_markers_but_kept_in_ranking():
@@ -139,15 +143,19 @@ def test_long_transcript_markers_downweighted_under_ffpe_context(monkeypatch):
     genes = [long_sym, "FOO1", "FOO2", "FOO3"]
     symbols = list(genes)
     mat = np.full((len(genes), 2), 0.1)
-    mat[0, 1] = 200.0   # long gene = strong fibroblast signal
+    mat[0, 1] = 200.0  # long gene = strong fibroblast signal
 
     _, weights_no_ctx, df_no_ctx = _select_marker_rows(
-        genes=genes, symbols=symbols, sig_matrix_hk=mat,
+        genes=genes,
+        symbols=symbols,
+        sig_matrix_hk=mat,
         comp_names=["T_cell", "fibroblast"],
         sample_context=None,
     )
     _, weights_severe, df_severe = _select_marker_rows(
-        genes=genes, symbols=symbols, sig_matrix_hk=mat,
+        genes=genes,
+        symbols=symbols,
+        sig_matrix_hk=mat,
         comp_names=["T_cell", "fibroblast"],
         sample_context=SampleContext(degradation_severity="severe"),
     )
@@ -185,9 +193,11 @@ def test_plot_degradation_index_writes_file(tmp_path):
 
 
 def test_plot_degradation_index_returns_none_when_no_pairs():
-    df = pd.DataFrame([
-        {"gene_symbol": "ACTB", "TPM": 100.0},
-    ])
+    df = pd.DataFrame(
+        [
+            {"gene_symbol": "ACTB", "TPM": 100.0},
+        ]
+    )
     ctx = SampleContext(degradation_severity="none")
     result = plot_degradation_index(df, ctx, save_to_filename="/tmp/never.png")
     assert result is None
@@ -199,14 +209,20 @@ def test_plot_degradation_index_returns_none_when_no_pairs():
 def test_estimate_tumor_expression_ranges_adds_tme_flags_and_exclusion_flag():
     df = _pan_cancer_ntpm_sample("liver")
     purity = {
-        "overall_estimate": 0.6, "overall_lower": 0.4, "overall_upper": 0.8,
+        "overall_estimate": 0.6,
+        "overall_lower": 0.4,
+        "overall_upper": 0.8,
         "components": {"stromal": {"enrichment": 1.0}, "immune": {"enrichment": 1.0}},
     }
     ranges = estimate_tumor_expression_ranges(df, "COAD", purity)
 
     # New columns from the v4.2 bundle.
-    for col in ("tme_explainable", "tme_dominant", "low_confidence_tumor",
-                "excluded_from_ranking"):
+    for col in (
+        "tme_explainable",
+        "tme_dominant",
+        "low_confidence_tumor",
+        "excluded_from_ranking",
+    ):
         assert col in ranges.columns, f"{col} missing from ranges_df"
 
     # An extended-housekeeping symbol that happens to be in the
@@ -245,13 +261,18 @@ def test_sample_context_signals_include_concentration_and_panel_heuristic():
 
 def test_sample_context_flags_likely_panel_for_sparse_input():
     """A frame with only a handful of genes should trip the heuristic."""
-    df = pd.DataFrame([
-        {"gene_symbol": sym, "TPM": tpm}
-        for sym, tpm in [
-            ("EGFR", 500.0), ("MYC", 400.0), ("TP53", 300.0),
-            ("AR", 200.0), ("KLK3", 100.0),
+    df = pd.DataFrame(
+        [
+            {"gene_symbol": sym, "TPM": tpm}
+            for sym, tpm in [
+                ("EGFR", 500.0),
+                ("MYC", 400.0),
+                ("TP53", 300.0),
+                ("AR", 200.0),
+                ("KLK3", 100.0),
+            ]
         ]
-    ])
+    )
     ctx = infer_sample_context(df)
     assert ctx.signals.get("likely_targeted_panel") is True
 

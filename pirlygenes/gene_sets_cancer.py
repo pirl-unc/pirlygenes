@@ -104,10 +104,20 @@ def get_target_gene_id_to_name(name):
     """
     df = get_data(name)
 
-    sym_candidates = ["Tumor_Target_Symbol", "Tumor_Target_Symbols", "Symbol", "Symbols", "Gene_Name"]
+    sym_candidates = [
+        "Tumor_Target_Symbol",
+        "Tumor_Target_Symbols",
+        "Symbol",
+        "Symbols",
+        "Gene_Name",
+    ]
     id_candidates = [
-        "Tumor_Target_Ensembl_Gene_ID", "Tumor_Target_Ensembl_Gene_IDs",
-        "Ensembl_Gene_ID", "Ensembl_Gene_IDs", "Ensembl_GeneIDs", "Gene_ID",
+        "Tumor_Target_Ensembl_Gene_ID",
+        "Tumor_Target_Ensembl_Gene_IDs",
+        "Ensembl_Gene_ID",
+        "Ensembl_Gene_IDs",
+        "Ensembl_GeneIDs",
+        "Gene_ID",
     ]
 
     sym_col = next((c for c in sym_candidates if c in df.columns), None)
@@ -126,7 +136,11 @@ def get_target_gene_id_to_name(name):
         if not syms_raw or syms_raw.lower() in ("nan", "none"):
             continue
         syms = [s.strip() for s in syms_raw.split(";") if s.strip()]
-        ids = [i.strip() for i in ids_raw.split(";") if i.strip() and i.strip().startswith("ENSG")]
+        ids = [
+            i.strip()
+            for i in ids_raw.split(";")
+            if i.strip() and i.strip().startswith("ENSG")
+        ]
         for i, sym in enumerate(syms):
             if i < len(ids):
                 result[ids[i]] = sym
@@ -277,7 +291,11 @@ def degradation_gene_pairs():
     """
     df = degradation_gene_pairs_df()
     return [
-        (row["Short_Gene_Symbol"], row["Long_Gene_Symbol"], float(row["Expected_Long_Over_Short_Ratio"]))
+        (
+            row["Short_Gene_Symbol"],
+            row["Long_Gene_Symbol"],
+            float(row["Expected_Long_Over_Short_Ratio"]),
+        )
         for _, row in df.iterrows()
     ]
 
@@ -385,6 +403,7 @@ def housekeeping_gene_ids(core_only=False):
 # The score is ``geomean(stable_TPM) / geomean(drops_TPM)`` after
 # pseudocounting; values >> reference suggest FFPE.
 
+
 def ffpe_sensitive_markers_df(direction=None):
     """Return the FFPE-sensitive marker panel.
 
@@ -434,18 +453,18 @@ import re as _re  # noqa: E402
 _EXTENDED_HK_FAMILIES = [
     # (family_name, compiled_regex, scope)
     # scope ∈ {"markers", "ranking", "both"}
-    ("mitochondrial_chrM",          _re.compile(r"MT-.*"),                              "both"),
-    ("cytosolic_ribosomal",         _re.compile(r"(RPL|RPS)\d.*"),                      "both"),
-    ("mito_ribosomal",              _re.compile(r"(MRPL|MRPS)\d.*"),                    "both"),
-    ("translation_factors",         _re.compile(r"(EEF|EIF)\d.*"),                      "both"),
-    ("hnRNPs",                      _re.compile(r"HNRNP[A-Z]\d?[A-Z]?\d?"),             "both"),
-    ("splicing_SR_proteins",        _re.compile(r"SRSF\d+"),                            "both"),
-    ("snRNPs",                      _re.compile(r"SNRP[A-Z]\d?"),                       "both"),
-    ("proteasome_subunits",         _re.compile(r"PSM[ABCDEF]\d+"),                     "both"),
-    ("cyclophilins",                _re.compile(r"PPI[A-Z]\d?"),                        "both"),
-    ("tubulin",                     _re.compile(r"TUB(A|B|G)\d+[A-Z]?"),                "both"),
-    ("rearranged_ig_segments",      _re.compile(r"(IGH|IGK|IGL)[VDJC]\d.*"),            "both"),
-    ("rearranged_tcr_segments",     _re.compile(r"(TRA|TRB|TRG|TRD)[VDJC]\d.*"),        "both"),
+    ("mitochondrial_chrM", _re.compile(r"MT-.*"), "both"),
+    ("cytosolic_ribosomal", _re.compile(r"(RPL|RPS)\d.*"), "both"),
+    ("mito_ribosomal", _re.compile(r"(MRPL|MRPS)\d.*"), "both"),
+    ("translation_factors", _re.compile(r"(EEF|EIF)\d.*"), "both"),
+    ("hnRNPs", _re.compile(r"HNRNP[A-Z]\d?[A-Z]?\d?"), "both"),
+    ("splicing_SR_proteins", _re.compile(r"SRSF\d+"), "both"),
+    ("snRNPs", _re.compile(r"SNRP[A-Z]\d?"), "both"),
+    ("proteasome_subunits", _re.compile(r"PSM[ABCDEF]\d+"), "both"),
+    ("cyclophilins", _re.compile(r"PPI[A-Z]\d?"), "both"),
+    ("tubulin", _re.compile(r"TUB(A|B|G)\d+[A-Z]?"), "both"),
+    ("rearranged_ig_segments", _re.compile(r"(IGH|IGK|IGL)[VDJC]\d.*"), "both"),
+    ("rearranged_tcr_segments", _re.compile(r"(TRA|TRB|TRG|TRD)[VDJC]\d.*"), "both"),
 ]
 
 # Classic housekeeping symbols that don't follow a family regex. Keep
@@ -454,17 +473,17 @@ _EXTENDED_HK_FAMILIES = [
 # biologically-meaningful genes (B2M) in the ranking output.
 _EXTENDED_HK_CLASSICS = {
     # symbol: scope
-    "ACTB":   "both",
-    "ACTG1":  "both",
-    "GAPDH":  "both",
-    "HPRT1":  "both",
-    "TPT1":   "both",
-    "RACK1":  "both",
-    "B2M":    "markers",   # MHC-I context — keep visible in ranking.
-    "PGK1":   "both",
-    "YWHAZ":  "both",
-    "UBC":    "both",
-    "PPIA":   "both",
+    "ACTB": "both",
+    "ACTG1": "both",
+    "GAPDH": "both",
+    "HPRT1": "both",
+    "TPT1": "both",
+    "RACK1": "both",
+    "B2M": "markers",  # MHC-I context — keep visible in ranking.
+    "PGK1": "both",
+    "YWHAZ": "both",
+    "UBC": "both",
+    "PPIA": "both",
 }
 
 
@@ -544,7 +563,11 @@ def surface_protein_gene_ids(validated_only=False):
     """
     cat = "CSPA_validated" if validated_only else None
     df = _surface_proteins_df(cat)
-    return set(df.loc[df["Ensembl_Gene_ID"].astype(str).str.startswith("ENSG"), "Ensembl_Gene_ID"])
+    return set(
+        df.loc[
+            df["Ensembl_Gene_ID"].astype(str).str.startswith("ENSG"), "Ensembl_Gene_ID"
+        ]
+    )
 
 
 def surface_protein_evidence():
@@ -719,6 +742,19 @@ def subtype_deconvolved_expression():
       Ewing 101, ERMS 95, ARMS 73, MBL 125, UPS 110, LMS 151, LPS 92,
       synovial 50, myxofibrosarcoma 41, rhabdoid 69, UCS 57, etc.).
       Expression scale: log2(TPM+1) un-transformed to linear TPM.
+    - **Treehouse Tumor Compendium v25.01 RiboD (GSE294353)** —
+      ribodepleted public samples for entities underpowered in PolyA
+      (currently RB and CHOR). Expression scale is also log2(TPM+1)
+      un-transformed to linear TPM, with sample-sum QC requiring
+      ~1,000,000 TPM per sample before aggregation.
+    - **GSE299759 (Meijer et al.; PMID:40976495)** central
+      chondrosarcoma RNA-seq. Raw Ensembl gene counts are converted to
+      approximate gene-level TPM with GENCODE v44 union-exon lengths;
+      >99.99% of counts map to length-backed genes before aggregation.
+    - GSE75885 (Delespaul et al.; PMID:27528700) complex-genetics
+      sarcoma RNA-seq, RPKM-like expression converted per sample to
+      TPM for DDLPS, pleomorphic liposarcoma, and low-grade fibromyxoid
+      sarcoma references that are not split in Treehouse.
 
     Non-TCGA cohorts are processed in high-purity-passthrough mode by
     :mod:`pirlygenes.cohort_deconvolve` — appropriate for sorted heme
@@ -754,19 +790,19 @@ _PROLIFERATION_PANEL_GENES = (
     # Empirically-selected from pan-cancer sweep: each gene has
     # median fold ≥ 3 across 20 epithelial cancers vs matched normal,
     # and coordinated with the rest of the mitotic program.
-    "MKI67",    # median fold 4.0x
-    "TOP2A",    # 4.3
-    "CCNB1",    # 3.1
-    "CCNB2",    # 3.7
-    "CDC20",    # 6.1
-    "CDK1",     # 2.2
-    "UBE2C",    # 5.9
-    "TPX2",     # 4.8
-    "CENPF",    # 14.3 — strongest single marker
-    "FOXM1",    # 6.3
-    "PLK1",     # 3.8
-    "AURKA",    # 2.1
-    "BIRC5",    # 3.8
+    "MKI67",  # median fold 4.0x
+    "TOP2A",  # 4.3
+    "CCNB1",  # 3.1
+    "CCNB2",  # 3.7
+    "CDC20",  # 6.1
+    "CDK1",  # 2.2
+    "UBE2C",  # 5.9
+    "TPX2",  # 4.8
+    "CENPF",  # 14.3 — strongest single marker
+    "FOXM1",  # 6.3
+    "PLK1",  # 3.8
+    "AURKA",  # 2.1
+    "BIRC5",  # 3.8
 )
 
 
@@ -788,14 +824,26 @@ _GLYCOLYSIS_PANEL_GENES = (
     # everywhere; the ABSOLUTE tumor TPM is what's striking (PKM 557,
     # ENO1 723, GAPDH 2575 across pan-cancer). SLC2A1 (GLUT1) and
     # ALDOA give the best fold-change contrast.
-    "HK2", "LDHA", "PKM", "SLC2A1", "ENO1", "PGK1", "ALDOA", "PFKP",
+    "HK2",
+    "LDHA",
+    "PKM",
+    "SLC2A1",
+    "ENO1",
+    "PGK1",
+    "ALDOA",
+    "PFKP",
 )
 
 
 _DDR_ACTIVATION_PANEL_GENES = (
     # DNA-damage-response / replication-stress markers. Modest fold-
     # change (1-2x) but co-upregulated under replication stress.
-    "RAD51", "RAD51AP1", "CHEK1", "CHEK2", "ATR", "BRCA1",
+    "RAD51",
+    "RAD51AP1",
+    "CHEK1",
+    "CHEK2",
+    "ATR",
+    "BRCA1",
 )
 
 
@@ -807,11 +855,14 @@ _ONCOFETAL_STRICT_GENES = (
     "AFP",
     "LIN28A",
     "LIN28B",
-    "TPBG",       # 5T4
+    "TPBG",  # 5T4
     "PLAC1",
-    "CGB", "CGB1", "CGB2", "CGB3",
+    "CGB",
+    "CGB1",
+    "CGB2",
+    "CGB3",
     "NANOG",
-    "POU5F1",     # OCT4
+    "POU5F1",  # OCT4
 )
 
 
@@ -1023,14 +1074,14 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
         df = df.merge(deconv_wide, on="Symbol", how="left")
     if genes is not None:
         genes_upper = {str(g).upper() for g in genes}
-        mask = (
-            df["Ensembl_Gene_ID"].str.upper().isin(genes_upper)
-            | df["Symbol"].str.upper().isin(genes_upper)
-        )
+        mask = df["Ensembl_Gene_ID"].str.upper().isin(genes_upper) | df[
+            "Symbol"
+        ].str.upper().isin(genes_upper)
         df = df[mask]
 
     value_cols = [
-        c for c in df.columns
+        c
+        for c in df.columns
         if c.startswith("nTPM_") or c.startswith("FPKM_") or c.startswith("tcga_")
     ]
 
@@ -1051,7 +1102,9 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
                 else:
                     df[col] = np.nan
         else:
-            raise ValueError(f"normalize must be 'percentile', 'housekeeping', or None, got {normalize!r}")
+            raise ValueError(
+                f"normalize must be 'percentile', 'housekeeping', or None, got {normalize!r}"
+            )
 
     if log_transform:
         df = df.copy() if normalize is None else df
@@ -1084,13 +1137,16 @@ def cancer_expression(cancer_type, genes=None):
         Columns: Ensembl_Gene_ID, Symbol, expression (housekeeping-normalized).
     """
     from .plot import resolve_cancer_type
+
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(genes=genes, normalize="housekeeping")
     col = f"FPKM_{code}"
     return df[["Ensembl_Gene_ID", "Symbol", col]].rename(columns={col: "expression"})
 
 
-def top_enriched_per_cancer_type(n=10, min_fold=3.0, min_expression=0.01, disjoint=False):
+def top_enriched_per_cancer_type(
+    n=10, min_fold=3.0, min_expression=0.01, disjoint=False
+):
     """Top N most cancer-type-specific genes vs pan-cancer median.
 
     Parameters
@@ -1116,6 +1172,7 @@ def top_enriched_per_cancer_type(n=10, min_fold=3.0, min_expression=0.01, disjoi
 
     if disjoint:
         import numpy as _np
+
         # Vectorized: compute fold-change matrix (genes x cancer types)
         expr_matrix = df[fpkm_cols].astype(float)
         symbols = df["Symbol"].values
@@ -1130,7 +1187,9 @@ def top_enriched_per_cancer_type(n=10, min_fold=3.0, min_expression=0.01, disjoi
             all_folds[code] = fold.values
 
         codes = [col.replace("FPKM_", "") for col in fpkm_cols]
-        fold_matrix = _np.column_stack([all_folds[c] for c in codes])  # (genes, cancers)
+        fold_matrix = _np.column_stack(
+            [all_folds[c] for c in codes]
+        )  # (genes, cancers)
         expr_max = expr_matrix.values  # (genes, cancers)
 
         # For each gene, find the cancer type with the highest fold-change
@@ -1179,6 +1238,7 @@ def cancer_type_gene_sets(cancer_type):
         Returns empty dict if no curated genes exist for that cancer type.
     """
     from .plot import resolve_cancer_type
+
     code = resolve_cancer_type(cancer_type)
     try:
         df = get_data("cancer-type-genes")
@@ -1212,6 +1272,7 @@ def cancer_enriched_genes(cancer_type, min_fold=3.0, min_expression=0.01):
         Sorted by fold_change descending.
     """
     from .plot import resolve_cancer_type
+
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(normalize="housekeeping")
     fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
@@ -1221,16 +1282,18 @@ def cancer_enriched_genes(cancer_type, min_fold=3.0, min_expression=0.01):
     result = df[["Ensembl_Gene_ID", "Symbol"]].copy()
     result["expression"] = df[target_col].astype(float)
     result["other_median"] = df[other_cols].astype(float).median(axis=1)
-    result["fold_change"] = (result["expression"] + 0.001) / (result["other_median"] + 0.001)
+    result["fold_change"] = (result["expression"] + 0.001) / (
+        result["other_median"] + 0.001
+    )
 
     result = result[
-        (result["expression"] >= min_expression) &
-        (result["fold_change"] >= min_fold)
+        (result["expression"] >= min_expression) & (result["fold_change"] >= min_fold)
     ].sort_values("fold_change", ascending=False)
     return result.reset_index(drop=True)
 
 
 # ---------- Multispecific T-cell Engagers (custom filtering) ----------
+
 
 def _tce_filtered_df(pmhc=None):
     """Return TCE trial rows, optionally filtered by format.
@@ -1271,8 +1334,11 @@ def _extract_genes_from_df(df, candidate_columns):
 
 _NAME_COLS = ["Tumor_Target_Symbols", "Tumor_Target_Symbol", "Symbol", "Gene_Name"]
 _ID_COLS = [
-    "Tumor_Target_Gene_IDs", "Tumor_Target_Ensembl_Gene_IDs",
-    "Tumor_Target_Ensembl_Gene_ID", "Ensembl_Gene_ID", "Gene_ID",
+    "Tumor_Target_Gene_IDs",
+    "Tumor_Target_Ensembl_Gene_IDs",
+    "Tumor_Target_Ensembl_Gene_ID",
+    "Ensembl_Gene_ID",
+    "Gene_ID",
 ]
 
 
@@ -1312,7 +1378,11 @@ def _tce_gene_id_to_name(pmhc):
         if not syms_raw or syms_raw.lower() in ("nan", "none"):
             continue
         syms = [s.strip() for s in syms_raw.split(";") if s.strip()]
-        ids = [i.strip() for i in ids_raw.split(";") if i.strip() and i.strip().startswith("ENSG")]
+        ids = [
+            i.strip()
+            for i in ids_raw.split(";")
+            if i.strip() and i.strip().startswith("ENSG")
+        ]
         for i, sym in enumerate(syms):
             if i < len(ids):
                 result[ids[i]] = sym
@@ -1332,46 +1402,89 @@ def surface_TCE_target_gene_id_to_name():
 # ---------- Deprecated therapy wrappers ----------
 # Use therapy_target_gene_names/ids/id_to_name() instead.
 
+
 def _deprecate(old_name, therapy, ret):
     def fn():
         warnings.warn(
             f"{old_name}() is deprecated, use therapy_target_gene_{ret}('{therapy}')",
-            DeprecationWarning, stacklevel=2,
+            DeprecationWarning,
+            stacklevel=2,
         )
-        return {"names": therapy_target_gene_names, "ids": therapy_target_gene_ids}[ret](therapy)
+        return {"names": therapy_target_gene_names, "ids": therapy_target_gene_ids}[
+            ret
+        ](therapy)
+
     fn.__name__ = old_name
     fn.__doc__ = f"Deprecated. Use therapy_target_gene_{ret}('{therapy}')."
     return fn
 
 
-ADC_trial_target_gene_names = _deprecate("ADC_trial_target_gene_names", "ADC-trials", "names")
+ADC_trial_target_gene_names = _deprecate(
+    "ADC_trial_target_gene_names", "ADC-trials", "names"
+)
 ADC_trial_target_gene_ids = _deprecate("ADC_trial_target_gene_ids", "ADC-trials", "ids")
-ADC_approved_target_gene_names = _deprecate("ADC_approved_target_gene_names", "ADC-approved", "names")
-ADC_approved_target_gene_ids = _deprecate("ADC_approved_target_gene_ids", "ADC-approved", "ids")
+ADC_approved_target_gene_names = _deprecate(
+    "ADC_approved_target_gene_names", "ADC-approved", "names"
+)
+ADC_approved_target_gene_ids = _deprecate(
+    "ADC_approved_target_gene_ids", "ADC-approved", "ids"
+)
 ADC_target_gene_names = _deprecate("ADC_target_gene_names", "ADC", "names")
 ADC_target_gene_ids = _deprecate("ADC_target_gene_ids", "ADC", "ids")
-TCR_T_trial_target_get_names = _deprecate("TCR_T_trial_target_get_names", "TCR-T-trials", "names")
-TCR_T_trial_target_get_ids = _deprecate("TCR_T_trial_target_get_ids", "TCR-T-trials", "ids")
-TCR_T_approved_target_gene_names = _deprecate("TCR_T_approved_target_gene_names", "TCR-T-approved", "names")
-TCR_T_approved_target_gene_ids = _deprecate("TCR_T_approved_target_gene_ids", "TCR-T-approved", "ids")
+TCR_T_trial_target_get_names = _deprecate(
+    "TCR_T_trial_target_get_names", "TCR-T-trials", "names"
+)
+TCR_T_trial_target_get_ids = _deprecate(
+    "TCR_T_trial_target_get_ids", "TCR-T-trials", "ids"
+)
+TCR_T_approved_target_gene_names = _deprecate(
+    "TCR_T_approved_target_gene_names", "TCR-T-approved", "names"
+)
+TCR_T_approved_target_gene_ids = _deprecate(
+    "TCR_T_approved_target_gene_ids", "TCR-T-approved", "ids"
+)
 TCR_T_target_gene_names = _deprecate("TCR_T_target_gene_names", "TCR-T", "names")
 TCR_T_target_gene_ids = _deprecate("TCR_T_target_gene_ids", "TCR-T", "ids")
-CAR_T_approved_target_gene_names = _deprecate("CAR_T_approved_target_gene_names", "CAR-T", "names")
-CAR_T_approved_target_gene_ids = _deprecate("CAR_T_approved_target_gene_ids", "CAR-T", "ids")
+CAR_T_approved_target_gene_names = _deprecate(
+    "CAR_T_approved_target_gene_names", "CAR-T", "names"
+)
+CAR_T_approved_target_gene_ids = _deprecate(
+    "CAR_T_approved_target_gene_ids", "CAR-T", "ids"
+)
 CAR_T_target_gene_names = _deprecate("CAR_T_target_gene_names", "CAR-T", "names")
 CAR_T_target_gene_ids = _deprecate("CAR_T_target_gene_ids", "CAR-T", "ids")
-multispecific_tcell_engager_trial_target_gene_names = _deprecate("multispecific_tcell_engager_trial_target_gene_names", "multispecific-TCE", "names")
-multispecific_tcell_engager_trial_target_gene_ids = _deprecate("multispecific_tcell_engager_trial_target_gene_ids", "multispecific-TCE", "ids")
-multispecific_tcell_engager_target_gene_names = _deprecate("multispecific_tcell_engager_target_gene_names", "multispecific-TCE", "names")
-multispecific_tcell_engager_target_gene_ids = _deprecate("multispecific_tcell_engager_target_gene_ids", "multispecific-TCE", "ids")
-bispecific_antibody_approved_target_gene_names = _deprecate("bispecific_antibody_approved_target_gene_names", "bispecific-antibodies", "names")
-bispecific_antibody_approved_target_gene_ids = _deprecate("bispecific_antibody_approved_target_gene_ids", "bispecific-antibodies", "ids")
-bispecific_antibody_target_gene_names = _deprecate("bispecific_antibody_target_gene_names", "bispecific-antibodies", "names")
-bispecific_antibody_targets_gene_ids = _deprecate("bispecific_antibody_targets_gene_ids", "bispecific-antibodies", "ids")
+multispecific_tcell_engager_trial_target_gene_names = _deprecate(
+    "multispecific_tcell_engager_trial_target_gene_names", "multispecific-TCE", "names"
+)
+multispecific_tcell_engager_trial_target_gene_ids = _deprecate(
+    "multispecific_tcell_engager_trial_target_gene_ids", "multispecific-TCE", "ids"
+)
+multispecific_tcell_engager_target_gene_names = _deprecate(
+    "multispecific_tcell_engager_target_gene_names", "multispecific-TCE", "names"
+)
+multispecific_tcell_engager_target_gene_ids = _deprecate(
+    "multispecific_tcell_engager_target_gene_ids", "multispecific-TCE", "ids"
+)
+bispecific_antibody_approved_target_gene_names = _deprecate(
+    "bispecific_antibody_approved_target_gene_names", "bispecific-antibodies", "names"
+)
+bispecific_antibody_approved_target_gene_ids = _deprecate(
+    "bispecific_antibody_approved_target_gene_ids", "bispecific-antibodies", "ids"
+)
+bispecific_antibody_target_gene_names = _deprecate(
+    "bispecific_antibody_target_gene_names", "bispecific-antibodies", "names"
+)
+bispecific_antibody_targets_gene_ids = _deprecate(
+    "bispecific_antibody_targets_gene_ids", "bispecific-antibodies", "ids"
+)
 radio_target_gene_names = _deprecate("radio_target_gene_names", "radioligand", "names")
 radio_target_gene_ids = _deprecate("radio_target_gene_ids", "radioligand", "ids")
-radioligand_target_gene_names = _deprecate("radioligand_target_gene_names", "radioligand", "names")
-radioligand_target_gene_ids = _deprecate("radioligand_target_gene_ids", "radioligand", "ids")
+radioligand_target_gene_names = _deprecate(
+    "radioligand_target_gene_names", "radioligand", "names"
+)
+radioligand_target_gene_ids = _deprecate(
+    "radioligand_target_gene_ids", "radioligand", "ids"
+)
 
 
 # ---------- Cancer-testis antigens (CTA) ----------
@@ -1418,7 +1531,9 @@ def CTA_gene_names():
 
 def CTA_gene_ids():
     """CTA Ensembl gene IDs: filtered AND expressed."""
-    return _cta_by_column("Ensembl_Gene_ID", filtered_only=True, exclude_never_expressed=True)
+    return _cta_by_column(
+        "Ensembl_Gene_ID", filtered_only=True, exclude_never_expressed=True
+    )
 
 
 def CTA_gene_id_to_name():
@@ -1470,12 +1585,12 @@ def CTA_unfiltered_gene_names():
     a non-CTA comparison set.  Any gene in this set was identified as
     a candidate CTA by at least one source database.
     """
-    return get_target_gene_name_set("cancer-testis-antigens")
+    return _cta_by_column("Symbol")
 
 
 def CTA_unfiltered_gene_ids():
     """All CTA Ensembl gene IDs from all source databases (unfiltered)."""
-    return get_target_gene_id_set("cancer-testis-antigens")
+    return _cta_by_column("Ensembl_Gene_ID")
 
 
 def CTA_excluded_gene_names():
@@ -1610,9 +1725,7 @@ def _build_partition(ensembl_release=112):
     evidence_df = CTA_evidence()
 
     all_pc_genes = {
-        g.gene_id: g.gene_name
-        for g in ensembl.genes()
-        if g.biotype == "protein_coding"
+        g.gene_id: g.gene_name for g in ensembl.genes() if g.biotype == "protein_coding"
     }
     all_pc_ids = set(all_pc_genes.keys())
 
@@ -1626,7 +1739,15 @@ def _build_partition(ensembl_release=112):
     never_expressed_ids = set(evidence_df.loc[never_expressed_mask, "Ensembl_Gene_ID"])
     non_cta_ids = all_pc_ids - cta_ids - never_expressed_ids
 
-    return all_pc_genes, evidence_df, cta_mask, never_expressed_mask, cta_ids, never_expressed_ids, non_cta_ids
+    return (
+        all_pc_genes,
+        evidence_df,
+        cta_mask,
+        never_expressed_mask,
+        cta_ids,
+        never_expressed_ids,
+        non_cta_ids,
+    )
 
 
 def CTA_partition_gene_ids(ensembl_release=112) -> CTAPartitionSets:
@@ -1644,7 +1765,9 @@ def CTA_partition_gene_ids(ensembl_release=112) -> CTAPartitionSets:
     >>> len(p.cta & p.non_cta)       # no overlap
     0
     """
-    _, _, _, _, cta_ids, never_expressed_ids, non_cta_ids = _build_partition(ensembl_release)
+    _, _, _, _, cta_ids, never_expressed_ids, non_cta_ids = _build_partition(
+        ensembl_release
+    )
     return CTAPartitionSets(
         cta=cta_ids,
         cta_never_expressed=never_expressed_ids,
@@ -1667,7 +1790,9 @@ def CTA_partition_gene_names(ensembl_release=112) -> CTAPartitionSets:
     >>> "TP53" in p.non_cta
     True
     """
-    all_pc_genes, evidence_df, cta_mask, never_expressed_mask, _, _, _ = _build_partition(ensembl_release)
+    all_pc_genes, evidence_df, cta_mask, never_expressed_mask, _, _, _ = (
+        _build_partition(ensembl_release)
+    )
     all_pc_names = set(all_pc_genes.values())
 
     cta_names = set(evidence_df.loc[cta_mask, "Symbol"])
@@ -1698,7 +1823,9 @@ def CTA_partition_dataframes(ensembl_release=112) -> CTAPartitionDataFrames:
     >>> "rna_deflated_reproductive_frac" in p.cta.columns
     True
     """
-    all_pc_genes, evidence_df, cta_mask, never_expressed_mask, _, _, non_cta_ids = _build_partition(ensembl_release)
+    all_pc_genes, evidence_df, cta_mask, never_expressed_mask, _, _, non_cta_ids = (
+        _build_partition(ensembl_release)
+    )
 
     non_cta_records = [
         {"Symbol": all_pc_genes[gid], "Ensembl_Gene_ID": gid}
@@ -1708,7 +1835,9 @@ def CTA_partition_dataframes(ensembl_release=112) -> CTAPartitionDataFrames:
 
     return CTAPartitionDataFrames(
         cta=evidence_df.loc[cta_mask].copy().reset_index(drop=True),
-        cta_never_expressed=evidence_df.loc[never_expressed_mask].copy().reset_index(drop=True),
+        cta_never_expressed=evidence_df.loc[never_expressed_mask]
+        .copy()
+        .reset_index(drop=True),
         non_cta=pd.DataFrame(non_cta_records),
     )
 
@@ -1723,7 +1852,9 @@ def CTA_partition(return_type="gene_ids", ensembl_release=112):
     elif return_type == "dataframes":
         return CTA_partition_dataframes(ensembl_release)
     else:
-        raise ValueError(f"return_type must be 'gene_ids', 'gene_names', or 'dataframes', got {return_type!r}")
+        raise ValueError(
+            f"return_type must be 'gene_ids', 'gene_names', or 'dataframes', got {return_type!r}"
+        )
 
 
 # ---------- Cancer-type key genes (biomarkers + therapy targets) #110 ----------
@@ -1801,9 +1932,7 @@ def cancer_key_genes_subtypes(cancer_code):
     """
     df = cancer_key_genes_df()
     sub = df[df["cancer_code"] == cancer_code]
-    subtypes = (
-        sub["subtype"].fillna("").astype(str).replace("nan", "").str.strip()
-    )
+    subtypes = sub["subtype"].fillna("").astype(str).replace("nan", "").str.strip()
     return sorted(s for s in set(subtypes) if s)
 
 
@@ -1823,8 +1952,10 @@ def narrative_gene_sets_df():
     ...). Use :func:`narrative_gene_set` to look up members by name.
     """
     from .disease_state_rules import narrative_gene_sets
+
     sets = narrative_gene_sets()
     import pandas as pd
+
     rows = [
         {"set_name": name, "members": ";".join(members)}
         for name, members in sets.items()
@@ -1836,12 +1967,14 @@ def narrative_gene_set(set_name):
     """Return the tuple of gene symbols in a named narrative set, or
     ``()`` when unknown. Case-sensitive."""
     from .disease_state_rules import narrative_gene_sets
+
     return narrative_gene_sets().get(set_name, ())
 
 
 def narrative_gene_set_names():
     """Return the list of known narrative gene-set names."""
     from .disease_state_rules import narrative_gene_sets
+
     return sorted(narrative_gene_sets().keys())
 
 
@@ -1850,6 +1983,7 @@ def degenerate_subtype_pairs_df():
     (#198). Members are lists of subtype codes, mappings are dicts,
     activation_signatures are ``{gene: min_tpm}`` dicts."""
     from .degenerate_subtype import degenerate_subtype_pairs
+
     return degenerate_subtype_pairs()
 
 
@@ -1858,7 +1992,41 @@ def fusion_surrogate_expression_df():
     (#198) — genes whose expression serves as a deterministic
     surrogate for a specific fusion/translocation class."""
     from .degenerate_subtype import fusion_surrogate_expression
+
     return fusion_surrogate_expression()
+
+
+def rare_cancer_rna_surrogate_rules_df():
+    """Return ``rare-cancer-rna-surrogates.csv``.
+
+    Rows encode hypothesis-level report-scope rules for rare cancers that
+    lack a bundled TCGA expression cohort but have a high-specificity RNA
+    marker, such as NUTM1 for NUT carcinoma or TBXT for chordoma.
+    """
+    from .rare_inference import rare_cancer_rna_surrogate_rules_df as _load
+
+    return _load()
+
+
+def rare_cancer_fusion_rules_df():
+    """Return ``rare-cancer-fusion-rules.csv`` direct-fusion rules."""
+    from .rare_inference import rare_cancer_fusion_rules_df as _load
+
+    return _load()
+
+
+def fusion_expression_effect_rules_df():
+    """Return ``fusion-expression-effects.csv`` downstream-expression rules."""
+    from .fusion_effects import fusion_expression_effect_rules_df as _load
+
+    return _load()
+
+
+def mutation_expression_effect_rules_df():
+    """Return ``mutation-expression-effects.csv`` expression-effect rules."""
+    from .alteration_effects import mutation_expression_effect_rules_df as _load
+
+    return _load()
 
 
 def fusion_surrogate_genes_for_cancer(cancer_code):
@@ -1866,6 +2034,7 @@ def fusion_surrogate_genes_for_cancer(cancer_code):
     dicts applicable to a cancer code (includes ``pan_cancer``
     entries)."""
     from .degenerate_subtype import fusion_surrogate_genes_for
+
     return fusion_surrogate_genes_for(cancer_code)
 
 
@@ -1874,4 +2043,5 @@ def disease_state_rules_df():
     declarative per-cancer narrative rules consumed by
     ``compose_disease_state_narrative``."""
     from .load_dataset import get_data
+
     return get_data("disease-state-rules")

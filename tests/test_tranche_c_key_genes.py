@@ -26,9 +26,7 @@ def test_thca_has_kinase_driver_biomarkers_and_approved_tkis():
         assert g in bm, f"THCA biomarker missing: {g}"
 
     tg = cancer_therapy_targets("THCA")
-    approved = set(
-        tg[tg["phase"] == "approved"]["agent"].astype(str).str.lower()
-    )
+    approved = set(tg[tg["phase"] == "approved"]["agent"].astype(str).str.lower())
     # RAI-refractory DTC backbone
     assert "lenvatinib" in approved
     assert "sorafenib" in approved

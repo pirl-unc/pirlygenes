@@ -26,6 +26,7 @@ from pirlygenes.plot_tumor_expr import (
 
 # ── threshold-sanity tests ──────────────────────────────────────────────
 
+
 def test_thresholds_are_tunable_constants():
     """Thresholds should be module-level constants so downstream
     consumers can tune them for specific tissue contexts without
@@ -118,9 +119,7 @@ def test_option_a_recovers_nonzero_tumor_when_mn_over_predicts():
     attribution_raw = {"matched_normal_prostate": 4848.0}  # HPA over-predicts
     attr_tme_total_raw = sum(attribution_raw.values())
     matched_normal_over_predicted = (
-        observed > 0
-        and attribution_raw
-        and attr_tme_total_raw > observed
+        observed > 0 and attribution_raw and attr_tme_total_raw > observed
     )
     assert matched_normal_over_predicted
 
@@ -132,9 +131,7 @@ def test_option_a_recovers_nonzero_tumor_when_mn_over_predicts():
     tumor_tpm = observed * top_fractions["tumor"]
 
     # Expected: tumor ≈ 23 TPM (not zero)
-    assert 20 < tumor_tpm < 26, (
-        f"expected ~23 TPM tumor attribution; got {tumor_tpm}"
-    )
+    assert 20 < tumor_tpm < 26, f"expected ~23 TPM tumor attribution; got {tumor_tpm}"
     assert attribution["matched_normal_prostate"] < observed, (
         "matched-normal should be scaled below observed (not absorb all)"
     )
@@ -207,8 +204,9 @@ def test_truly_broadly_expressed_still_downgrades():
 # ── breadth-gate semantics ──────────────────────────────────────────────
 
 
-def _simulate_tissue_profile(peak_tpm, n_tissues_at_peak=1,
-                             other_tissues_tpm=0.0, n_total_tissues=50):
+def _simulate_tissue_profile(
+    peak_tpm, n_tissues_at_peak=1, other_tissues_tpm=0.0, n_total_tissues=50
+):
     """Build a synthetic row of 50 nTPM values. One or more tissues at
     ``peak_tpm``, the rest at ``other_tissues_tpm``.
     """
@@ -222,9 +220,14 @@ def _breadth_call(peak_tpm, n_tissues_at_peak, other_tpm, n_total_tissues=50):
     """Compute broadly_expressed directly from a simulated profile using
     the same logic the production code applies.
     """
-    profile = np.array(_simulate_tissue_profile(
-        peak_tpm, n_tissues_at_peak, other_tpm, n_total_tissues,
-    ))
+    profile = np.array(
+        _simulate_tissue_profile(
+            peak_tpm,
+            n_tissues_at_peak,
+            other_tpm,
+            n_total_tissues,
+        )
+    )
     n_expressed = int((profile >= HK_TISSUE_NTPM_THRESHOLD).sum())
     top_n = np.sort(profile)[-BREADTH_BASELINE_TOP_N:]
     mean_top = float(top_n.mean())
@@ -232,8 +235,7 @@ def _breadth_call(peak_tpm, n_tissues_at_peak, other_tpm, n_total_tissues=50):
     ratio = peak / mean_top if mean_top > 0 else float("inf")
     return {
         "broadly_expressed": (
-            n_expressed >= BROAD_TISSUE_COUNT
-            and ratio < BROADLY_ENRICHED_MAX_RATIO
+            n_expressed >= BROAD_TISSUE_COUNT and ratio < BROADLY_ENRICHED_MAX_RATIO
         ),
         "n_expressed": n_expressed,
         "ratio": ratio,
@@ -269,10 +271,7 @@ def test_ubiquitous_housekeeping_is_broadly_expressed():
     top_n = sorted(profile)[-BREADTH_BASELINE_TOP_N:]
     mean_top = sum(top_n) / len(top_n)
     ratio = peak / mean_top
-    broadly = (
-        n_expressed >= BROAD_TISSUE_COUNT
-        and ratio < BROADLY_ENRICHED_MAX_RATIO
-    )
+    broadly = n_expressed >= BROAD_TISSUE_COUNT and ratio < BROADLY_ENRICHED_MAX_RATIO
     assert broadly, f"expected broadly-expressed; got n={n_expressed}, ratio={ratio}"
 
 
@@ -287,13 +286,8 @@ def test_broad_surface_with_mild_enrichment_is_broadly_expressed():
     top_n = np.sort(profile)[-BREADTH_BASELINE_TOP_N:]
     mean_top = float(top_n.mean())
     ratio = float(profile.max()) / mean_top
-    broadly = (
-        n_expressed >= BROAD_TISSUE_COUNT
-        and ratio < BROADLY_ENRICHED_MAX_RATIO
-    )
-    assert broadly, (
-        f"broad-surface gene not flagged: n={n_expressed}, ratio={ratio}"
-    )
+    broadly = n_expressed >= BROAD_TISSUE_COUNT and ratio < BROADLY_ENRICHED_MAX_RATIO
+    assert broadly, f"broad-surface gene not flagged: n={n_expressed}, ratio={ratio}"
 
 
 def test_borderline_tissue_count_but_strong_enrichment_not_flagged():
@@ -309,10 +303,7 @@ def test_borderline_tissue_count_but_strong_enrichment_not_flagged():
     top_n = np.sort(profile)[-BREADTH_BASELINE_TOP_N:]
     mean_top = float(top_n.mean())
     ratio = float(profile.max()) / mean_top
-    broadly = (
-        n_expressed >= BROAD_TISSUE_COUNT
-        and ratio < BROADLY_ENRICHED_MAX_RATIO
-    )
+    broadly = n_expressed >= BROAD_TISSUE_COUNT and ratio < BROADLY_ENRICHED_MAX_RATIO
     assert not broadly, (
         f"tissue-restricted (strong enrichment) flagged broadly: "
         f"n={n_expressed}, ratio={ratio}"
@@ -376,41 +367,55 @@ def test_brief_trusts_curation_over_broadly_expressed_flag():
     """
     from pirlygenes.brief import _top_therapies
 
-    targets_df = pd.DataFrame([
-        {
-            "symbol": "ERBB2", "agent": "trastuzumab",
-            "agent_class": "antibody", "phase": "approved",
-            "indication": "HER2+ BRCA",
-        },
-        {
-            "symbol": "FOLH1", "agent": "177Lu-PSMA-617",
-            "agent_class": "radioligand", "phase": "approved",
-            "indication": "mCRPC",
-        },
-    ])
-    ranges_df = pd.DataFrame([
-        {
-            "symbol": "ERBB2", "observed_tpm": 1200.0,  # HER2-amplified
-            "attribution": {"endothelial": 40.0},
-            "attr_tumor_tpm": 1100.0, "attr_tumor_fraction": 0.92,
-            "attr_top_compartment": "endothelial",
-            "attr_top_compartment_tpm": 40.0,
-            "tme_dominant": False, "tme_explainable": False,
-            # HER2 is broadly expressed in HPA but AMPLIFICATION is what
-            # drives the therapy — this flag must not drop it from the
-            # brief.
-            "broadly_expressed": True,
-        },
-        {
-            "symbol": "FOLH1", "observed_tpm": 142.0,
-            "attribution": {"endothelial": 12.0},
-            "attr_tumor_tpm": 128.0, "attr_tumor_fraction": 0.90,
-            "attr_top_compartment": "endothelial",
-            "attr_top_compartment_tpm": 12.0,
-            "tme_dominant": False, "tme_explainable": False,
-            "broadly_expressed": False,
-        },
-    ])
+    targets_df = pd.DataFrame(
+        [
+            {
+                "symbol": "ERBB2",
+                "agent": "trastuzumab",
+                "agent_class": "antibody",
+                "phase": "approved",
+                "indication": "HER2+ BRCA",
+            },
+            {
+                "symbol": "FOLH1",
+                "agent": "177Lu-PSMA-617",
+                "agent_class": "radioligand",
+                "phase": "approved",
+                "indication": "mCRPC",
+            },
+        ]
+    )
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "ERBB2",
+                "observed_tpm": 1200.0,  # HER2-amplified
+                "attribution": {"endothelial": 40.0},
+                "attr_tumor_tpm": 1100.0,
+                "attr_tumor_fraction": 0.92,
+                "attr_top_compartment": "endothelial",
+                "attr_top_compartment_tpm": 40.0,
+                "tme_dominant": False,
+                "tme_explainable": False,
+                # HER2 is broadly expressed in HPA but AMPLIFICATION is what
+                # drives the therapy — this flag must not drop it from the
+                # brief.
+                "broadly_expressed": True,
+            },
+            {
+                "symbol": "FOLH1",
+                "observed_tpm": 142.0,
+                "attribution": {"endothelial": 12.0},
+                "attr_tumor_tpm": 128.0,
+                "attr_tumor_fraction": 0.90,
+                "attr_top_compartment": "endothelial",
+                "attr_top_compartment_tpm": 12.0,
+                "tme_dominant": False,
+                "tme_explainable": False,
+                "broadly_expressed": False,
+            },
+        ]
+    )
 
     top = _top_therapies(targets_df, ranges_df, limit=3)
     symbols = [t["symbol"] for t, _ in top]
@@ -424,48 +429,66 @@ def test_brief_trusts_curation_over_broadly_expressed_flag():
 def test_brief_keeps_same_lineage_targets_but_skips_background_dominant_rows():
     from pirlygenes.brief import _format_therapy_bullet, _top_therapies
 
-    targets_df = pd.DataFrame([
-        {
-            "symbol": "FOLH1", "agent": "177Lu-PSMA-617",
-            "agent_class": "radioligand", "phase": "approved",
-            "indication": "mCRPC",
-        },
-        {
-            "symbol": "STEAP2", "agent": "experimental ADC",
-            "agent_class": "ADC", "phase": "phase_2",
-            "indication": "mCRPC",
-        },
-    ])
-    ranges_df = pd.DataFrame([
-        {
-            "symbol": "FOLH1", "observed_tpm": 87.0,
-            "attribution": {"matched_normal_prostate": 46.0},
-            "attr_tumor_tpm": 34.0, "attr_tumor_fraction": 0.39,
-            "attr_tumor_tpm_low": 28.0, "attr_tumor_tpm_high": 39.0,
-            "attr_tumor_fraction_low": 0.32, "attr_tumor_fraction_high": 0.45,
-            "attr_support_fraction": 1.0,
-            "attr_top_compartment": "matched_normal_prostate",
-            "attr_top_compartment_tpm": 46.0,
-            "tme_dominant": False, "tme_explainable": True,
-            "matched_normal_over_predicted": False,
-            "broadly_expressed": False,
-            "matched_normal_tissue": "prostate",
-            "matched_normal_tpm": 46.0,
-        },
-        {
-            "symbol": "STEAP2", "observed_tpm": 90.0,
-            "attribution": {"matched_normal_prostate": 78.0},
-            "attr_tumor_tpm": 13.0, "attr_tumor_fraction": 0.14,
-            "attr_tumor_tpm_low": 8.0, "attr_tumor_tpm_high": 17.0,
-            "attr_tumor_fraction_low": 0.09, "attr_tumor_fraction_high": 0.19,
-            "attr_support_fraction": 0.0,
-            "attr_top_compartment": "matched_normal_prostate",
-            "attr_top_compartment_tpm": 78.0,
-            "tme_dominant": True, "tme_explainable": True,
-            "matched_normal_over_predicted": False,
-            "broadly_expressed": False,
-        },
-    ])
+    targets_df = pd.DataFrame(
+        [
+            {
+                "symbol": "FOLH1",
+                "agent": "177Lu-PSMA-617",
+                "agent_class": "radioligand",
+                "phase": "approved",
+                "indication": "mCRPC",
+            },
+            {
+                "symbol": "STEAP2",
+                "agent": "experimental ADC",
+                "agent_class": "ADC",
+                "phase": "phase_2",
+                "indication": "mCRPC",
+            },
+        ]
+    )
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "FOLH1",
+                "observed_tpm": 87.0,
+                "attribution": {"matched_normal_prostate": 46.0},
+                "attr_tumor_tpm": 34.0,
+                "attr_tumor_fraction": 0.39,
+                "attr_tumor_tpm_low": 28.0,
+                "attr_tumor_tpm_high": 39.0,
+                "attr_tumor_fraction_low": 0.32,
+                "attr_tumor_fraction_high": 0.45,
+                "attr_support_fraction": 1.0,
+                "attr_top_compartment": "matched_normal_prostate",
+                "attr_top_compartment_tpm": 46.0,
+                "tme_dominant": False,
+                "tme_explainable": True,
+                "matched_normal_over_predicted": False,
+                "broadly_expressed": False,
+                "matched_normal_tissue": "prostate",
+                "matched_normal_tpm": 46.0,
+            },
+            {
+                "symbol": "STEAP2",
+                "observed_tpm": 90.0,
+                "attribution": {"matched_normal_prostate": 78.0},
+                "attr_tumor_tpm": 13.0,
+                "attr_tumor_fraction": 0.14,
+                "attr_tumor_tpm_low": 8.0,
+                "attr_tumor_tpm_high": 17.0,
+                "attr_tumor_fraction_low": 0.09,
+                "attr_tumor_fraction_high": 0.19,
+                "attr_support_fraction": 0.0,
+                "attr_top_compartment": "matched_normal_prostate",
+                "attr_top_compartment_tpm": 78.0,
+                "tme_dominant": True,
+                "tme_explainable": True,
+                "matched_normal_over_predicted": False,
+                "broadly_expressed": False,
+            },
+        ]
+    )
 
     top = _top_therapies(targets_df, ranges_df, limit=3)
     symbols = [t["symbol"] for t, _ in top]
@@ -535,49 +558,56 @@ def test_expression_independent_indication_is_not_demoted_by_target_tpm():
     from pirlygenes.brief import _format_therapy_bullet, _top_therapies
     from pirlygenes.reporting import indication_biomarker, target_reliability_status
 
-    targets_df = pd.DataFrame([
-        {
-            "symbol": "PDCD1",
-            "agent": "pembrolizumab",
-            "agent_class": "immune_checkpoint",
-            "phase": "approved",
-            "indication": "MSI-H / dMMR metastatic colorectal cancer",
-        },
-        {
-            "symbol": "STEAP2",
-            "agent": "experimental ADC",
-            "agent_class": "ADC",
-            "phase": "phase_2",
-            "indication": "mCRPC",
-        },
-    ])
-    ranges_df = pd.DataFrame([
-        {
-            "symbol": "PDCD1",
-            "observed_tpm": 0.2,
-            "attr_tumor_tpm": 0.0,
-            "attr_tumor_fraction": 0.0,
-            "attr_tumor_tpm_low": 0.0,
-            "attr_tumor_tpm_high": 0.0,
-            "attr_tumor_fraction_low": 0.0,
-            "attr_tumor_fraction_high": 0.0,
-            "attr_support_fraction": 0.0,
-            "tme_dominant": True,
-            "tme_explainable": True,
-        },
-        {
-            "symbol": "STEAP2",
-            "observed_tpm": 80.0,
-            "attr_tumor_tpm": 2.0,
-            "attr_tumor_fraction": 0.03,
-            "tme_dominant": True,
-        },
-    ])
+    targets_df = pd.DataFrame(
+        [
+            {
+                "symbol": "PDCD1",
+                "agent": "pembrolizumab",
+                "agent_class": "immune_checkpoint",
+                "phase": "approved",
+                "indication": "MSI-H / dMMR metastatic colorectal cancer",
+            },
+            {
+                "symbol": "STEAP2",
+                "agent": "experimental ADC",
+                "agent_class": "ADC",
+                "phase": "phase_2",
+                "indication": "mCRPC",
+            },
+        ]
+    )
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "PDCD1",
+                "observed_tpm": 0.2,
+                "attr_tumor_tpm": 0.0,
+                "attr_tumor_fraction": 0.0,
+                "attr_tumor_tpm_low": 0.0,
+                "attr_tumor_tpm_high": 0.0,
+                "attr_tumor_fraction_low": 0.0,
+                "attr_tumor_fraction_high": 0.0,
+                "attr_support_fraction": 0.0,
+                "tme_dominant": True,
+                "tme_explainable": True,
+            },
+            {
+                "symbol": "STEAP2",
+                "observed_tpm": 80.0,
+                "attr_tumor_tpm": 2.0,
+                "attr_tumor_fraction": 0.03,
+                "tme_dominant": True,
+            },
+        ]
+    )
 
     top = _top_therapies(targets_df, ranges_df, limit=3)
     assert [t["symbol"] for t, _ in top] == ["PDCD1"]
     assert indication_biomarker(targets_df.iloc[0]) == "msi_high"
-    assert target_reliability_status(ranges_df.iloc[0], target_row=targets_df.iloc[0]) == "provisional"
+    assert (
+        target_reliability_status(ranges_df.iloc[0], target_row=targets_df.iloc[0])
+        == "provisional"
+    )
     bullet = _format_therapy_bullet(top[0][0], top[0][1], target_panel=targets_df)
     assert "expression-independent indication" in bullet
     assert "target absent" not in bullet.lower()

@@ -15,6 +15,8 @@ from pathlib import Path
 import pandas as pd
 
 _DATA_DIR = Path(__file__).parent / "data"
+_DATASET_PATHS = None
+_CACHED_DATAFRAMES = {}
 
 
 def get_all_csv_paths() -> list:
@@ -27,9 +29,7 @@ def get_all_csv_paths() -> list:
 
     Returns a list of Path objects for each CSV file.
     """
-    return sorted(
-        list(_DATA_DIR.glob("*.csv")) + list(_DATA_DIR.glob("*.csv.gz"))
-    )
+    return sorted(list(_DATA_DIR.glob("*.csv")) + list(_DATA_DIR.glob("*.csv.gz")))
 
 
 def load_all_dataframes():
@@ -52,18 +52,42 @@ def load_all_dataframes_dict():
     return {csv_file: df for csv_file, df in load_all_dataframes()}
 
 
-_CACHED_DATAFRAMES = None
+def _dataset_paths():
+    """Map accepted dataset names to their on-disk CSV path."""
+    global _DATASET_PATHS
+    if _DATASET_PATHS is not None:
+        return _DATASET_PATHS
+
+    paths = {}
+    for csv_path in get_all_csv_paths():
+        csv_key = csv_path.name.removesuffix(".gz")
+        stem_key = csv_key.removesuffix(".csv")
+        for key in {csv_key, csv_key.lower(), stem_key, stem_key.lower()}:
+            paths[key] = csv_path
+    _DATASET_PATHS = paths
+    return paths
 
 
 def get_data(name, _dataframes_dict=None):
-    global _CACHED_DATAFRAMES
-    if _dataframes_dict is None:
-        if _CACHED_DATAFRAMES is None:
-            _CACHED_DATAFRAMES = load_all_dataframes_dict()
-        _dataframes_dict = _CACHED_DATAFRAMES
     candidates = [name, name.lower()]
     for candidate in list(candidates):
         candidates.append(candidate + ".csv")
+
+    if _dataframes_dict is None:
+        paths = _dataset_paths()
+        for candidate in candidates:
+            if candidate in paths:
+                csv_path = paths[candidate]
+                cache_key = csv_path.name.removesuffix(".gz")
+                if cache_key not in _CACHED_DATAFRAMES:
+                    _CACHED_DATAFRAMES[cache_key] = pd.read_csv(
+                        str(csv_path), low_memory=False
+                    )
+                # Return a copy so callers that mutate in place (e.g. df["c"]=...,
+                # df.fillna(0, inplace=True)) can't corrupt the shared cache.
+                return _CACHED_DATAFRAMES[cache_key].copy()
+        raise ValueError(f"Dataset {name} not found")
+
     for candidate in candidates:
         if candidate in _dataframes_dict:
             # Return a copy so callers that mutate in place (e.g. df["c"]=...,

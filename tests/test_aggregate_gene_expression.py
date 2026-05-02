@@ -62,6 +62,8 @@ def test_aggregate_gene_expression_with_unresolved_transcripts(monkeypatch):
     monkeypatch.setattr(ag, "extra_tx_mappings", {})
     monkeypatch.setattr(ag, "find_gene_and_ensembl_release_by_name", lambda g: None)
 
-    out = ag.aggregate_gene_expression(df, tx_to_gene_name={}, verbose=True, progress=False)
+    out = ag.aggregate_gene_expression(
+        df, tx_to_gene_name={}, verbose=True, progress=False
+    )
     assert list(out.columns) == ["gene", "TPM", "gene_id", "ensembl_release"]
     assert out.empty

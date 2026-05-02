@@ -18,6 +18,7 @@ Curated gene sets, pan-cancer expression references, and bulk RNA-seq decomposit
   - [Purity estimation](#tumor-purity-estimation)
   - [9-point expression ranges](#9-point-expression-ranges)
   - [Output files](#output-files)
+- [Analyze API boundary](docs/analyze-api.md) — structured contracts for the future `trufflepig` split
 - [Python API](#python-api) — expression data, surface proteins, purity, quality, decomposition, plotting
 - [Therapy modalities](#therapy-modalities) — ADC, CAR-T, TCR-T, bispecific, radioligand references
 - [Cancer-testis antigens](#cancer-testis-antigens-ctas) — curation pipeline and evidence columns
@@ -84,6 +85,10 @@ All gene sets ship as CSVs in `pirlygenes/data/` and are accessible via `pirlyge
 | Multispecific TCE (trials) | 30 | `therapy_target_gene_id_to_name("multispecific-TCE")` | TCE trials across multispecific formats |
 | Radioligand targets | 20 | `therapy_target_gene_id_to_name("radioligand")` | RLT target genes |
 | Cancer-key-genes panel | 441 (23 cancer types) | `cancer_key_genes_df()` / `cancer_biomarker_genes()` / `cancer_therapy_targets()` | Clinician-relevant biomarker + therapy-target rows per cancer type. SARC is subtype-tiled (LMS, DDLPS, myxoid LPS, synovial, DSRCT, GIST, Ewing); LAML has an APL subtype tile. |
+| Rare cancer RNA surrogates | 5 rules | `rare_cancer_rna_surrogate_rules_df()` | Hypothesis-level report-scope rules for rare cancers without bundled TCGA cohorts, e.g. NUTM1→NUT carcinoma, TBXT→chordoma, NR4A3→acinic cell carcinoma. |
+| Rare cancer direct fusions | 26 rules | `rare_cancer_fusion_rules_df()` | Optional fusion-call rules. `gene_a` is expected 5-prime partner and `gene_b` expected 3-prime partner; matching is loose for caller formats, but NUTM1 partner specificity is preserved. |
+| Fusion expression effects | 6 rules | `fusion_expression_effect_rules_df()` | Downstream-expression checks and RNA-only testing prompts for curated fusion programs (e.g. NUTM1-MYC/CTA, EWSR1-ETS, PAX3/7-FOXO1). |
+| Mutation expression effects | 13 rules | `mutation_expression_effect_rules_df()` | Hypothesis-level mutation/CNV/pathway-expression effects. Uses tumor-inferred TPM when available and asks for confirmatory testing rather than calling variants from RNA. |
 | Cancer drivers | 739 | `cancer-driver-genes.csv` | Recurrently mutated genes (Bailey et al. 2018) |
 | Housekeeping genes | 30 | `housekeeping-genes.csv` | Cross-platform normalization reference |
 | Mitochondrial genes | 15 | `mitochondrial_gene_names()` | MT-encoded transcripts (quality / FFPE signal) |
@@ -272,8 +277,8 @@ Prefer the standalone decomposition figures when reviewing or sharing a case. Th
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-immune.png`, `*-tumor.png`, `*-antigens.png`, `*-treatments.png` | Gene expression strip plots by category |
 | `*-target-safety.png`, `*-purity-targets.png`, `*-purity-ctas.png`, `*-purity-surface.png` | Therapy target expression with normal tissue context |
-| `*-pca-hierarchy.png`, `*-mds-hierarchy.png` | Embeddings in hierarchical support space |
-| `*-pca-tme.png`, `*-mds-tme.png` | Embeddings in TME-low gene space |
+| `*-reference-mds.png` | MDS reference map: TCGA cancer medians, subtype references, normal tissues, and the sample |
+| `*-reference-neighborhood.png` | Sample-centered reference map; radius preserves full feature-space distance |
 | `*-cancer-types-genes.png`, `*-cancer-types-disjoint.png` | Cancer-type gene signature heatmaps |
 | `*-all-figures.pdf` | All figures combined into a single PDF |
 
@@ -282,6 +287,17 @@ Prefer the standalone decomposition figures when reviewing or sharing a case. Th
 ### Pan-cancer expression data
 
 Expression data for ~3,100 therapy-relevant genes across 50 normal tissues (HPA v23 consensus nTPM) and 33 TCGA cancer types (median FPKM/TPM). All data ships with the package — no downloads needed.
+
+The default cancer/normal reference embeddings use a reusable pan-reference
+gene set selected from TCGA cancer medians, HPA normal tissues, and curated
+tissue anchors:
+
+```python
+import pirlygenes as pg
+
+genes = pg.pan_reference_embedding_genes()
+meta = pg.get_embedding_feature_metadata(method="panref")
+```
 
 #### Cancer types
 

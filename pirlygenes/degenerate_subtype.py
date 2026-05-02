@@ -58,8 +58,11 @@ def degenerate_subtype_pairs():
     ``refs``.
     """
     df = get_data("degenerate-subtype-pairs")
-    df["members"] = df["members"].fillna("").astype(str).apply(
-        lambda s: [m.strip() for m in s.split(";") if m.strip()]
+    df["members"] = (
+        df["members"]
+        .fillna("")
+        .astype(str)
+        .apply(lambda s: [m.strip() for m in s.split(";") if m.strip()])
     )
 
     def _parse_mapping(value):
@@ -113,8 +116,7 @@ def _pair_applicable(pair_row, site_template, tumor_tpm_by_symbol):
     return False
 
 
-def _find_pair_for_subtype(subtype_code, site_template=None,
-                           tumor_tpm_by_symbol=None):
+def _find_pair_for_subtype(subtype_code, site_template=None, tumor_tpm_by_symbol=None):
     """Return the degenerate-pair row whose ``members`` contain this
     subtype. When the subtype is listed in multiple pairs, prefer the
     first *applicable* pair (rule's context is available). Falls back
@@ -126,7 +128,8 @@ def _find_pair_for_subtype(subtype_code, site_template=None,
     if not matches:
         return None
     applicable = [
-        row for row in matches
+        row
+        for row in matches
         if _pair_applicable(row, site_template, tumor_tpm_by_symbol)
     ]
     if applicable:
@@ -205,7 +208,9 @@ def _resolve_marker_combo(pair_row, tumor_tpm_by_symbol, min_tpm=1.0):
     MCL vs CLL. Kept as a distinct rule name so the markdown reason
     text stays accurate."""
     return _resolve_fusion_surrogate(
-        pair_row, tumor_tpm_by_symbol, min_tpm=min_tpm,
+        pair_row,
+        tumor_tpm_by_symbol,
+        min_tpm=min_tpm,
     )
 
 
@@ -291,7 +296,8 @@ def resolve_degenerate_subtype(
     # just because LUSC happens to be a member of the pair.
     if not _activation_met(pair_row, tumor_tpm_by_symbol):
         activation_desc = ", ".join(
-            f"{g}>={int(t)}" for g, t in (pair_row.get("activation_signature") or {}).items()
+            f"{g}>={int(t)}"
+            for g, t in (pair_row.get("activation_signature") or {}).items()
         )
         return {
             "final_subtype": winning_subtype,
@@ -367,10 +373,12 @@ def fusion_surrogate_genes_for(cancer_code):
         cc = str(row.get("cancer_code") or "")
         codes = {c.strip() for c in cc.split(";") if c.strip()}
         if cancer_code in codes or "pan_cancer" in codes:
-            hits.append({
-                "gene": row["surrogate_gene"],
-                "fusion_class": row["fusion_class"],
-                "role": row["surrogate_role"],
-                "rationale": row.get("rationale", ""),
-            })
+            hits.append(
+                {
+                    "gene": row["surrogate_gene"],
+                    "fusion_class": row["fusion_class"],
+                    "role": row["surrogate_role"],
+                    "rationale": row.get("rationale", ""),
+                }
+            )
     return hits

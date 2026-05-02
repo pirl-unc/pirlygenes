@@ -62,7 +62,9 @@ def _build_indexes():
             _transcript_id_to_gene_name[tid] = t.gene_name
     except Exception:
         pass
-    print(f"[index] {len(_gene_id_to_name)} genes, {len(_transcript_id_to_gene_name)} transcripts indexed")
+    print(
+        f"[index] {len(_gene_id_to_name)} genes, {len(_transcript_id_to_gene_name)} transcripts indexed"
+    )
     _indexes_built = True
 
 
@@ -155,7 +157,6 @@ def find_gene_and_ensembl_release_by_name(
     name: str,
     verbose: bool = False,
 ) -> Optional[Tuple[pyensembl.Genome, pyensembl.Gene]]:
-
     for genome in genomes:
         candidates = set(
             [name, short_gene_name(name)]
@@ -186,13 +187,17 @@ def find_gene_by_name_from_ensembl(
         return gene
 
 
-def find_gene_id_by_name_from_ensembl(name: str, verbose: bool = False) -> Optional[str]:
+def find_gene_id_by_name_from_ensembl(
+    name: str, verbose: bool = False
+) -> Optional[str]:
     gene = find_gene_by_name_from_ensembl(name, verbose=verbose)
     if gene is not None:
         return gene.id
 
 
-def find_canonical_gene_id_and_name(gene_name: str) -> Tuple[Optional[str], Optional[str]]:
+def find_canonical_gene_id_and_name(
+    gene_name: str,
+) -> Tuple[Optional[str], Optional[str]]:
     gene = find_gene_by_name_from_ensembl(gene_name)
     if gene:
         return gene.id, gene.name
@@ -204,11 +209,12 @@ def find_canonical_gene_ids_and_names(
     gene_names: Sequence[str],
     verbose: bool = False,
 ) -> Tuple[List[Optional[str]], List[Optional[str]]]:
-
     gene_ids = []
     canonical_gene_names = []
 
-    for gene_name in tqdm(gene_names, "Finding canonical gene IDs and names", disable=not verbose):
+    for gene_name in tqdm(
+        gene_names, "Finding canonical gene IDs and names", disable=not verbose
+    ):
         gene_id, canonical_name = find_canonical_gene_id_and_name(gene_name)
         if verbose:
             print(

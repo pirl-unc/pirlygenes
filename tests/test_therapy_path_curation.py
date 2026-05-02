@@ -4,7 +4,10 @@ import pandas as pd
 
 from pirlygenes.reporting import (
     THERAPY_PATH_TIERS,
+    hla_eligibility_context,
+    hla_restricted_target_supported,
     subtype_curation_scope_note,
+    target_hla_eligibility,
     therapy_path_context,
     therapy_path_rank,
     therapy_path_tier,
@@ -21,20 +24,16 @@ def test_target_rows_have_structured_treatment_path_curation():
     assert len(targets) >= 300
     for column in ("treatment_path_tier", "line_of_therapy", "eligibility_note"):
         missing = targets[targets[column].astype(str).str.strip().eq("")]
-        assert missing.empty, (
-            f"{column} missing for target rows: "
-            + ", ".join(
-                f"{row.cancer_code}:{row.symbol}:{row.agent}"
-                for row in missing.head(10).itertuples()
-            )
+        assert missing.empty, f"{column} missing for target rows: " + ", ".join(
+            f"{row.cancer_code}:{row.symbol}:{row.agent}"
+            for row in missing.head(10).itertuples()
         )
 
     invalid = targets[
         ~targets["treatment_path_tier"].astype(str).isin(THERAPY_PATH_TIERS)
     ]
-    assert invalid.empty, (
-        "invalid treatment_path_tier values: "
-        + ", ".join(sorted(set(invalid["treatment_path_tier"].astype(str))))
+    assert invalid.empty, "invalid treatment_path_tier values: " + ", ".join(
+        sorted(set(invalid["treatment_path_tier"].astype(str)))
     )
 
 
@@ -110,6 +109,83 @@ def test_treatment_path_context_dedupes_curated_note_prefix():
     context = therapy_path_context(row)
     assert context == "clinical-trial follow-up; not default standard"
     assert "clinical-trial follow-up; clinical-trial follow-up" not in context
+
+
+def test_hla_restricted_therapy_rows_use_supplied_hla_gate():
+    row = {
+        "symbol": "TEST4",
+        "agent": "example TCR-T",
+        "agent_class": "TCR-T",
+        "phase": "phase_1",
+        "indication": "HLA-A*02+ target-positive solid tumors",
+        "rationale": "",
+        "treatment_path_tier": "trial_follow_up",
+        "eligibility_note": "clinical-trial follow-up; not default standard",
+    }
+    matched = {"analysis_constraints": {"hla_types": ["A*02:01"]}}
+    mismatched = {"analysis_constraints": {"hla_types": ["A*24:02"]}}
+
+    assert "HLA match" in hla_eligibility_context(row, analysis=matched)
+    assert hla_restricted_target_supported(row, analysis=matched) is True
+    assert "HLA mismatch" in hla_eligibility_context(row, analysis=mismatched)
+    assert hla_restricted_target_supported(row, analysis=mismatched) is False
+
+
+def test_low_resolution_hla_does_not_match_exact_allele_requirement():
+    row = {
+        "symbol": "TEST5",
+        "agent": "example pMHC bispecific",
+        "agent_class": "bispecific",
+        "phase": "approved",
+        "indication": "HLA-A*02:01 target-positive tumors",
+        "rationale": "",
+        "treatment_path_tier": "approved_biomarker_matched",
+        "eligibility_note": "confirm biomarker/indication-specific eligibility",
+    }
+    low_resolution = {"analysis_constraints": {"hla_types": ["A*02"]}}
+
+    eligibility = target_hla_eligibility(row, analysis=low_resolution)
+    context = hla_eligibility_context(row, analysis=low_resolution)
+
+    assert eligibility["status"] == "insufficient_resolution"
+    assert eligibility["matched_supplied"] == "A*02"
+    assert eligibility["matched_required"] == "A*02:01"
+    assert "HLA unresolved" in context
+    assert "HLA match" not in context
+    assert hla_restricted_target_supported(row, analysis=low_resolution) is True
+
+
+def test_low_resolution_hla_matches_broad_requirement_only():
+    row = {
+        "symbol": "TEST6",
+        "agent": "example broad TCR-T",
+        "agent_class": "TCR-T",
+        "phase": "phase_1",
+        "indication": "HLA-A*02+ target-positive solid tumors",
+        "rationale": "",
+        "treatment_path_tier": "trial_follow_up",
+        "eligibility_note": "clinical-trial follow-up; not default standard",
+    }
+    low_resolution = {"analysis_constraints": {"hla_types": ["A*02"]}}
+
+    assert target_hla_eligibility(row, analysis=low_resolution)["status"] == "matched"
+    assert "HLA match" in hla_eligibility_context(row, analysis=low_resolution)
+
+
+def test_trial_ids_are_not_misread_as_hla_restrictions():
+    row = {
+        "symbol": "IGF1R",
+        "agent": "ganitumab + chemo",
+        "agent_class": "antibody",
+        "phase": "phase_2",
+        "indication": "metastatic OS",
+        "rationale": "IGF1R inhibitor - SARC021 + AEWS1221 trials",
+        "treatment_path_tier": "trial_follow_up",
+        "eligibility_note": "clinical-trial follow-up; not default standard",
+    }
+
+    assert target_hla_eligibility(row)["status"] == "not_hla_restricted"
+    assert hla_eligibility_context(row) == ""
 
 
 def test_subtype_scope_note_avoids_duplicate_parent_label():

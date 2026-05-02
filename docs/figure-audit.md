@@ -32,7 +32,7 @@ should be consolidated. 42 files baseline after round-1 cleanups.
 | File | Purpose | Verdict |
 |---|---|---|
 | `sample-cancer-hypotheses.png` | Candidate cancer-type ranking chart | ✓ keep — the single best "why this call" visualization |
-| `sample-mds-tme.png` | MDS embedding: sample among TCGA cohorts (TME-low gene space) | ✓ keep — independent view, catches ambiguous calls |
+| `sample-reference-mds.png` | MDS embedding: sample among cancer, subtype, and normal references | ✓ keep — independent view, catches ambiguous calls |
 | `sample-vs-cancer.pdf` | Per-category scatter vs reference cohort (multi-page) | ~ review — large PDF, only opened occasionally; consider lazy / on-demand generation |
 | `sample-subtype-signature.png` | Therapy-response axes (AR/ER/HER2/NE/EMT/hypoxia/IFN) | ✓ keep — drives disease-state narrative |
 
@@ -137,7 +137,7 @@ any group deserves consolidation.
 | 3 | `sample-degradation-index.png` | Long/short transcript length-pair scatter |
 | 4 | `sample-background-tissues.png` | Top HPA-tissue correlations for the sample |
 | 5 | `sample-cancer-hypotheses.png` | Candidate cancer-type ranking chart |
-| 6 | `sample-mds-tme.png` | MDS embedding: sample among TCGA cohorts (TME-low gene space) |
+| 6 | `sample-reference-mds.png` | MDS embedding: sample among cancer, subtype, and normal references |
 | 7 | `sample-vs-cancer.pdf` | Per-category scatter vs reference cohort (multi-page) |
 | 8 | `sample-subtype-signature.png` | Therapy-response axes — AR/ER/HER2/NE/EMT/hypoxia/IFN |
 | 9 | `sample-purity.png` | Tumor purity detail — CI + component contributions |
@@ -191,7 +191,7 @@ Which kind of sample is this + QC? Candidates for a single-composite at glance:
 **G2: Cancer-type identification**
 What cancer, how confident?
 - `sample-cancer-hypotheses.png` (#5) — scalar ranking
-- `sample-mds-tme.png` (#6) — 2-D embedding
+- `sample-reference-mds.png` (#6) — 2-D embedding
 - `sample-vs-cancer.pdf` (#7) — per-category scatter
 - `sample-subtype-signature.png` (#8) — therapy-response axes that disambiguate subtypes
 

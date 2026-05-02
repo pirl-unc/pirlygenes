@@ -36,12 +36,30 @@ def test_absent_deconv_csv_is_graceful(monkeypatch):
 def test_present_deconv_csv_adds_tcga_columns(monkeypatch):
     synthetic = pd.DataFrame(
         [
-            {"symbol": "KLK3", "cancer_code": "PRAD", "tumor_tpm_median": 11000.0,
-             "tumor_tpm_q1": 5500.0, "tumor_tpm_q3": 16000.0, "n_samples": 30},
-            {"symbol": "KLK3", "cancer_code": "BRCA", "tumor_tpm_median": 0.1,
-             "tumor_tpm_q1": 0.0, "tumor_tpm_q3": 0.5, "n_samples": 30},
-            {"symbol": "ERBB2", "cancer_code": "BRCA", "tumor_tpm_median": 150.0,
-             "tumor_tpm_q1": 80.0, "tumor_tpm_q3": 300.0, "n_samples": 30},
+            {
+                "symbol": "KLK3",
+                "cancer_code": "PRAD",
+                "tumor_tpm_median": 11000.0,
+                "tumor_tpm_q1": 5500.0,
+                "tumor_tpm_q3": 16000.0,
+                "n_samples": 30,
+            },
+            {
+                "symbol": "KLK3",
+                "cancer_code": "BRCA",
+                "tumor_tpm_median": 0.1,
+                "tumor_tpm_q1": 0.0,
+                "tumor_tpm_q3": 0.5,
+                "n_samples": 30,
+            },
+            {
+                "symbol": "ERBB2",
+                "cancer_code": "BRCA",
+                "tumor_tpm_median": 150.0,
+                "tumor_tpm_q1": 80.0,
+                "tumor_tpm_q3": 300.0,
+                "n_samples": 30,
+            },
         ]
     )
     monkeypatch.setattr(gsc, "tcga_deconvolved_expression", lambda: synthetic)
@@ -65,10 +83,22 @@ def test_tcga_columns_participate_in_percentile_normalize(monkeypatch):
     """Percentile normalize must treat tcga_ columns the same as FPKM_."""
     synthetic = pd.DataFrame(
         [
-            {"symbol": "KLK3", "cancer_code": "PRAD", "tumor_tpm_median": 11000.0,
-             "tumor_tpm_q1": 0.0, "tumor_tpm_q3": 0.0, "n_samples": 30},
-            {"symbol": "GAPDH", "cancer_code": "PRAD", "tumor_tpm_median": 500.0,
-             "tumor_tpm_q1": 0.0, "tumor_tpm_q3": 0.0, "n_samples": 30},
+            {
+                "symbol": "KLK3",
+                "cancer_code": "PRAD",
+                "tumor_tpm_median": 11000.0,
+                "tumor_tpm_q1": 0.0,
+                "tumor_tpm_q3": 0.0,
+                "n_samples": 30,
+            },
+            {
+                "symbol": "GAPDH",
+                "cancer_code": "PRAD",
+                "tumor_tpm_median": 500.0,
+                "tumor_tpm_q1": 0.0,
+                "tumor_tpm_q3": 0.0,
+                "n_samples": 30,
+            },
         ]
     )
     monkeypatch.setattr(gsc, "tcga_deconvolved_expression", lambda: synthetic)
@@ -81,7 +111,9 @@ def test_tcga_columns_participate_in_percentile_normalize(monkeypatch):
 
 def test_tcga_deconvolved_expression_returns_none_when_missing(monkeypatch):
     """Raising ValueError from get_data must be swallowed as None."""
+
     def _missing(_name):
         raise ValueError("Dataset tcga-deconvolved-expression not found")
+
     monkeypatch.setattr(gsc, "get_data", _missing)
     assert gsc.tcga_deconvolved_expression() is None

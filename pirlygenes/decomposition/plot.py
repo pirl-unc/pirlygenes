@@ -7,8 +7,15 @@ import matplotlib.pyplot as plt
 
 
 _COMPOSITION_PALETTE = [
-    "#1f77b4", "#2ca02c", "#ff7f0e", "#9467bd", "#d62728",
-    "#8c564b", "#e377c2", "#17becf", "#7f7f7f",
+    "#1f77b4",
+    "#2ca02c",
+    "#ff7f0e",
+    "#9467bd",
+    "#d62728",
+    "#8c564b",
+    "#e377c2",
+    "#17becf",
+    "#7f7f7f",
 ]
 
 
@@ -37,8 +44,12 @@ def _render_composition_bar(ax, best, title="Sample composition (tumor + TME)"):
     ax.set_xlabel("Estimated composition (%)")
     ax.set_title(title, fontweight="bold")
     ax.legend(
-        bbox_to_anchor=(0.0, -0.25), loc="upper left",
-        fontsize=8, ncol=3, framealpha=0.9, borderaxespad=0,
+        bbox_to_anchor=(0.0, -0.25),
+        loc="upper left",
+        fontsize=8,
+        ncol=3,
+        framealpha=0.9,
+        borderaxespad=0,
     )
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -55,7 +66,14 @@ def _render_component_breakdown(ax, best, title="TME cell-type breakdown"):
     """
     comp_df = best.component_trace.copy()
     if comp_df.empty:
-        ax.text(0.5, 0.5, "No component trace", ha="center", va="center", transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "No component trace",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
         ax.set_axis_off()
         return
     comp_df = comp_df.sort_values("fraction", ascending=True).reset_index(drop=True)
@@ -96,7 +114,8 @@ def plot_decomposition_composition(
     """
     fig, ax = plt.subplots(figsize=(12, 3.5))
     _render_composition_bar(
-        ax, best,
+        ax,
+        best,
         title=title or f"Sample composition — {best.cancer_type} / {best.template}",
     )
     fig.subplots_adjust(bottom=0.35)
@@ -120,8 +139,10 @@ def plot_decomposition_component_breakdown(
     """
     fig, ax = plt.subplots(figsize=(10, 6))
     _render_component_breakdown(
-        ax, best,
-        title=title or f"TME cell-type breakdown — {best.cancer_type} / {best.template}",
+        ax,
+        best,
+        title=title
+        or f"TME cell-type breakdown — {best.cancer_type} / {best.template}",
     )
     fig.tight_layout()
     if save_to_filename:
@@ -224,7 +245,11 @@ def plot_decomposition_candidates(
 
     fig, ax = plt.subplots(figsize=figsize)
 
-    labels = list(labels) if labels is not None else [f"{row.cancer_type} / {row.template}" for row in rows]
+    labels = (
+        list(labels)
+        if labels is not None
+        else [f"{row.cancer_type} / {row.template}" for row in rows]
+    )
     y = np.arange(n)
 
     tumor_vals = np.zeros(n)
@@ -237,31 +262,55 @@ def plot_decomposition_candidates(
         shared_vals[i] = shared
 
     # Stacked horizontal bars — widths in percent of sample for readability.
-    ax.barh(y, tumor_vals * 100, color=_CANDIDATE_SEGMENT_COLORS["tumor"],
-            edgecolor="white", linewidth=0.5, height=0.6, label="Tumor")
-    ax.barh(y, tmpl_vals * 100, left=tumor_vals * 100,
-            color=_CANDIDATE_SEGMENT_COLORS["template_specific"],
-            edgecolor="white", linewidth=0.5, height=0.6,
-            label="Template-specific compartment")
-    ax.barh(y, shared_vals * 100, left=(tumor_vals + tmpl_vals) * 100,
-            color=_CANDIDATE_SEGMENT_COLORS["shared_host"],
-            edgecolor="white", linewidth=0.5, height=0.6,
-            label="Shared immune / stroma")
+    ax.barh(
+        y,
+        tumor_vals * 100,
+        color=_CANDIDATE_SEGMENT_COLORS["tumor"],
+        edgecolor="white",
+        linewidth=0.5,
+        height=0.6,
+        label="Tumor",
+    )
+    ax.barh(
+        y,
+        tmpl_vals * 100,
+        left=tumor_vals * 100,
+        color=_CANDIDATE_SEGMENT_COLORS["template_specific"],
+        edgecolor="white",
+        linewidth=0.5,
+        height=0.6,
+        label="Template-specific compartment",
+    )
+    ax.barh(
+        y,
+        shared_vals * 100,
+        left=(tumor_vals + tmpl_vals) * 100,
+        color=_CANDIDATE_SEGMENT_COLORS["shared_host"],
+        edgecolor="white",
+        linewidth=0.5,
+        height=0.6,
+        label="Shared immune / stroma",
+    )
 
     # Inline percent labels inside each segment, only if the segment is
     # wide enough to hold a readable label.
     def _annotate(vals, offsets, fmt):
         for i, (v, off) in enumerate(zip(vals, offsets)):
             if v * 100 >= 7:
-                ax.text(off * 100 + v * 100 / 2, i, fmt(v),
-                        va="center", ha="center",
-                        fontsize=8, color="white", fontweight="bold")
+                ax.text(
+                    off * 100 + v * 100 / 2,
+                    i,
+                    fmt(v),
+                    va="center",
+                    ha="center",
+                    fontsize=8,
+                    color="white",
+                    fontweight="bold",
+                )
 
     _annotate(tumor_vals, np.zeros(n), lambda v: f"tumor {v:.0%}")
-    _annotate(tmpl_vals, tumor_vals,
-              lambda v: f"site {v:.0%}")
-    _annotate(shared_vals, tumor_vals + tmpl_vals,
-              lambda v: f"immune/stroma {v:.0%}")
+    _annotate(tmpl_vals, tumor_vals, lambda v: f"site {v:.0%}")
+    _annotate(shared_vals, tumor_vals + tmpl_vals, lambda v: f"immune/stroma {v:.0%}")
 
     # Right-side per-row score text. Kept textual (not a second bar) so
     # it's not confused with a width-encoded quantity.
@@ -289,7 +338,11 @@ def plot_decomposition_candidates(
         # a component_trace (e.g. the template-incomplete early return).
         try:
             trace = getattr(row, "component_trace", None)
-            if trace is not None and not trace.empty and "marker_score" in trace.columns:
+            if (
+                trace is not None
+                and not trace.empty
+                and "marker_score" in trace.columns
+            ):
                 ms = trace["marker_score"].astype(float)
                 median_marker = float(np.nanmedian(ms)) if len(ms) else 0.0
             else:
@@ -298,14 +351,23 @@ def plot_decomposition_candidates(
             median_marker = 0.0
 
         ax.text(
-            101, i - 0.18,
+            101,
+            i - 0.18,
             f"score {score:.2f}  (cancer {cancer:.2f} · site {site:.2f})",
-            va="center", ha="left", fontsize=8.5, color="#333333",
+            va="center",
+            ha="left",
+            fontsize=8.5,
+            color="#333333",
         )
         ax.text(
-            101, i + 0.20,
+            101,
+            i + 0.20,
             f"fit err {err:.2f} · markers {median_marker:.2f}",
-            va="center", ha="left", fontsize=8, color="#555555", style="italic",
+            va="center",
+            ha="left",
+            fontsize=8,
+            color="#555555",
+            style="italic",
         )
 
         # Hatched overlay when the engine flagged this row (purity-floor
@@ -313,7 +375,9 @@ def plot_decomposition_candidates(
         warnings_list = list(getattr(row, "warnings", None) or [])
         if warnings_list:
             ax.barh(
-                [i], [100], left=[0],
+                [i],
+                [100],
+                left=[0],
                 height=0.6,
                 facecolor="none",
                 edgecolor="#555555",
@@ -325,20 +389,23 @@ def plot_decomposition_candidates(
 
     # Legend artist for the hatched "gated" pattern — the stacked bars
     # already carry the three segment labels.
-    any_warnings = any(
-        (getattr(r, "warnings", None) or []) for r in rows
-    )
+    any_warnings = any((getattr(r, "warnings", None) or []) for r in rows)
     existing_handles, existing_labels = ax.get_legend_handles_labels()
     if any_warnings:
         gated_patch = mpatches.Patch(
-            facecolor="none", edgecolor="#555555", hatch="///",
+            facecolor="none",
+            edgecolor="#555555",
+            hatch="///",
             label="gated (see row warnings)",
         )
         ax.legend(
             existing_handles + [gated_patch],
             existing_labels + ["gated (see row warnings)"],
-            loc="lower center", bbox_to_anchor=(0.5, 1.02),
-            ncol=4, frameon=False, fontsize=9,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 1.02),
+            ncol=4,
+            frameon=False,
+            fontsize=9,
         )
 
     ax.set_yticks(y)
@@ -352,8 +419,13 @@ def plot_decomposition_candidates(
     # one row has an engine-issued warning (so unaffected plots stay
     # uncluttered).
     if not any_warnings:
-        ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.02),
-                  ncol=3, frameon=False, fontsize=9)
+        ax.legend(
+            loc="lower center",
+            bbox_to_anchor=(0.5, 1.02),
+            ncol=3,
+            frameon=False,
+            fontsize=9,
+        )
     # Title kept single-line — the per-bar segments + legend already
     # explain that each row is one candidate's composition.
     ax.set_title(title, fontweight="bold", pad=28)
@@ -454,14 +526,17 @@ def plot_decomposition_summary(
         ax_mark.text(0.02, 0.98, "No marker trace", ha="left", va="top", fontsize=10)
     else:
         lines = []
-        for component in best.component_trace["component"].tolist()[: min(6, len(best.component_trace))]:
+        for component in best.component_trace["component"].tolist()[
+            : min(6, len(best.component_trace))
+        ]:
             sub = best.marker_trace[best.marker_trace["component"] == component].copy()
             if sub.empty:
                 continue
-            sub = sub.sort_values(["observed_tpm", "specificity"], ascending=[False, False]).head(top_markers_per_component)
+            sub = sub.sort_values(
+                ["observed_tpm", "specificity"], ascending=[False, False]
+            ).head(top_markers_per_component)
             entries = [
-                f"{row.symbol}={row.observed_tpm:.1f} TPM"
-                for row in sub.itertuples()
+                f"{row.symbol}={row.observed_tpm:.1f} TPM" for row in sub.itertuples()
             ]
             lines.append(f"{component}: " + ", ".join(entries))
 

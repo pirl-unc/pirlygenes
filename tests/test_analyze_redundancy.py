@@ -35,6 +35,7 @@ import pytest
 def test_plot_sample_summary_accepts_precomputed_analysis(tmp_path):
     """Passing ``analysis=...`` must skip the internal analyze_sample call."""
     import matplotlib
+
     matplotlib.use("Agg")
     import numpy as np
     import pandas as pd
@@ -50,7 +51,9 @@ def test_plot_sample_summary_accepts_precomputed_analysis(tmp_path):
         "cancer_name": "Breast Invasive Carcinoma",
         "top_cancers": [("BRCA", 0.9)],
         "signature_top_cancers": [("BRCA", 0.8)],
-        "candidate_trace": [{"code": "BRCA", "support_score": 0.9, "support_norm": 1.0}],
+        "candidate_trace": [
+            {"code": "BRCA", "support_score": 0.9, "support_norm": 1.0}
+        ],
         "purity": {
             "overall_estimate": 0.5,
             "overall_lower": 0.4,
@@ -58,7 +61,13 @@ def test_plot_sample_summary_accepts_precomputed_analysis(tmp_path):
             "cancer_type": "BRCA",
             "tcga_median_purity": 0.6,
             "components": {
-                "signature": {"purity": 0.5, "genes": ["ESR1"], "per_gene": [], "lower": 0.4, "upper": 0.6},
+                "signature": {
+                    "purity": 0.5,
+                    "genes": ["ESR1"],
+                    "per_gene": [],
+                    "lower": 0.4,
+                    "upper": 0.6,
+                },
                 "stromal": {"enrichment": 1.0, "purity": 0.6, "fold": 1.0},
                 "immune": {"enrichment": 1.0, "purity": 0.6, "fold": 1.0},
             },
@@ -89,6 +98,7 @@ def test_plot_sample_summary_accepts_precomputed_analysis(tmp_path):
 def test_plot_tumor_purity_accepts_precomputed_result(tmp_path):
     """When ``purity_result`` is supplied, estimate_tumor_purity must not run."""
     import matplotlib
+
     matplotlib.use("Agg")
     import pandas as pd
 
@@ -106,7 +116,13 @@ def test_plot_tumor_purity_accepts_precomputed_result(tmp_path):
         "overall_upper": 0.6,
         "tcga_median_purity": 0.6,
         "components": {
-            "signature": {"purity": 0.5, "genes": [], "per_gene": [], "lower": 0.4, "upper": 0.6},
+            "signature": {
+                "purity": 0.5,
+                "genes": [],
+                "per_gene": [],
+                "lower": 0.4,
+                "upper": 0.6,
+            },
             "stromal": {"enrichment": 1.0, "purity": 0.6, "fold": 1.0, "n_genes": 0},
             "immune": {"enrichment": 1.0, "purity": 0.6, "fold": 1.0, "n_genes": 0},
         },

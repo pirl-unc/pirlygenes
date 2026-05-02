@@ -77,8 +77,10 @@ def test_tied_geomean_downgrades_to_moderate():
 def test_step0_mismatch_downgrades_to_moderate():
     """Step-0 correlation favors a cohort the classifier didn't pick
     — surface the mismatch."""
+
     class _HVT:
         top_tcga_cohorts = [("FPKM_SARC", 0.77)]
+
     analysis = {
         "candidate_trace": [
             _candidate("THYM", support_geomean=0.43, lineage_concordance=0.8),
@@ -94,8 +96,10 @@ def test_step0_mismatch_downgrades_to_moderate():
 def test_multiple_contradictions_all_surface_at_low_tier():
     """Zero concordance + Step-0 mismatch + tied geomean → tier stays
     ``low`` and all three reasons appear."""
+
     class _HVT:
         top_tcga_cohorts = [("FPKM_SARC", 0.77)]
+
     analysis = {
         "candidate_trace": [
             _candidate("THYM", support_geomean=0.431, lineage_concordance=0.0),
@@ -117,8 +121,10 @@ def test_missing_candidate_trace_returns_unknown():
 
 def test_step0_match_does_not_downgrade():
     """Step-0 agreeing with the classifier keeps the tier high."""
+
     class _HVT:
         top_tcga_cohorts = [("FPKM_PRAD", 0.82)]
+
     analysis = {
         "candidate_trace": [
             _candidate("PRAD", support_geomean=0.70, lineage_concordance=0.95),

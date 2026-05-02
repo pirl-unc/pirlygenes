@@ -47,9 +47,11 @@ def compute_sample_p90_tpm(sample_tpm_by_symbol, *, min_tpm=0.0, percentile=90.0
     """
     try:
         import pandas as pd
+
         if isinstance(sample_tpm_by_symbol, dict):
             values = np.array(
-                list(sample_tpm_by_symbol.values()), dtype=float,
+                list(sample_tpm_by_symbol.values()),
+                dtype=float,
             )
         elif isinstance(sample_tpm_by_symbol, pd.Series):
             values = sample_tpm_by_symbol.astype(float).to_numpy()
@@ -92,7 +94,9 @@ def add_p90_reference_line(
     Returns the p90 TPM (float) or ``None`` when skipped.
     """
     p90 = compute_sample_p90_tpm(
-        sample_tpm_by_symbol, min_tpm=min_tpm, percentile=percentile,
+        sample_tpm_by_symbol,
+        min_tpm=min_tpm,
+        percentile=percentile,
     )
     if p90 is None or p90 <= 0:
         return None
@@ -147,9 +151,11 @@ def add_p90_reference_line(
             zorder=0.5,
         )
         ax.text(
-            line_value, ax.get_ylim()[1],
+            line_value,
+            ax.get_ylim()[1],
             " " + label_fmt.format(p90),
-            ha="left", va="top",
+            ha="left",
+            va="top",
             fontsize=_P90_LABEL_FONTSIZE,
             color=_P90_LABEL_COLOR,
             alpha=_P90_LINE_ALPHA + 0.2,
@@ -164,9 +170,11 @@ def add_p90_reference_line(
             zorder=0.5,
         )
         ax.text(
-            ax.get_xlim()[1], line_value,
+            ax.get_xlim()[1],
+            line_value,
             label_fmt.format(p90) + " ",
-            ha="right", va="bottom",
+            ha="right",
+            va="bottom",
             fontsize=_P90_LABEL_FONTSIZE,
             color=_P90_LABEL_COLOR,
             alpha=_P90_LINE_ALPHA + 0.2,

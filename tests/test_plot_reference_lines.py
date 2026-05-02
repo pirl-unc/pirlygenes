@@ -75,7 +75,8 @@ def test_add_p90_raises_on_bad_orientation():
     fig, ax = plt.subplots()
     with pytest.raises(ValueError):
         add_p90_reference_line(
-            ax, {f"G{i}": float(i) for i in range(100)},
+            ax,
+            {f"G{i}": float(i) for i in range(100)},
             orientation="diagonal",
         )
     plt.close(fig)

@@ -98,7 +98,14 @@ def test_mt_rrna_near_zero_lower_confidence():
     → exome_capture at moderate confidence (0.6)."""
     rows = [("ACTB", 50000), ("GAPDH", 49900)]
     # Tiny MT rRNA — nonzero but fraction < suspicious floor
-    rows += [(_MT_RRNA_SYMBOLS[0] if isinstance(_MT_RRNA_SYMBOLS, list) else list(_MT_RRNA_SYMBOLS)[0], 0.01)]
+    rows += [
+        (
+            _MT_RRNA_SYMBOLS[0]
+            if isinstance(_MT_RRNA_SYMBOLS, list)
+            else list(_MT_RRNA_SYMBOLS)[0],
+            0.01,
+        )
+    ]
     frame = _frame_from_pairs(rows)
     tpm = _build_tpm_by_symbol(frame)
     signals = {}
@@ -152,6 +159,7 @@ def test_expression_distribution_panel_detection():
 def test_expression_distribution_whole_transcriptome_not_flagged():
     """A normal whole-transcriptome sample should NOT flag as panel."""
     import numpy as np
+
     rng = np.random.default_rng(42)
     # 15000 expressed genes with a realistic log-normal distribution
     values = rng.lognormal(2.0, 2.0, 15000)
@@ -177,13 +185,17 @@ def test_purity_ci_widening_factor_is_one_for_none():
 
 def test_purity_ci_widening_factor_increases_with_severity():
     mild = SampleContext(
-        library_prep="poly_a", library_prep_confidence=0.8,
-        preservation="ffpe", degradation_severity="moderate",
+        library_prep="poly_a",
+        library_prep_confidence=0.8,
+        preservation="ffpe",
+        degradation_severity="moderate",
         degradation_index=0.25,
     )
     severe = SampleContext(
-        library_prep="poly_a", library_prep_confidence=0.8,
-        preservation="ffpe", degradation_severity="severe",
+        library_prep="poly_a",
+        library_prep_confidence=0.8,
+        preservation="ffpe",
+        degradation_severity="severe",
         degradation_index=0.15,
     )
     assert mild.purity_ci_widening_factor() >= 1.0

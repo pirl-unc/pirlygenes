@@ -144,7 +144,7 @@ def _evaluate_condition(
 
     # axis:NAME=STATE
     if cond.startswith("axis:"):
-        payload = cond[len("axis:"):]
+        payload = cond[len("axis:") :]
         if "=" not in payload:
             return False
         axis_name, state = payload.split("=", 1)
@@ -153,25 +153,25 @@ def _evaluate_condition(
 
     # retained:TOKEN  (any-of if TOKEN is a set)
     if cond.startswith("retained:"):
-        token = cond[len("retained:"):].strip()
+        token = cond[len("retained:") :].strip()
         genes = _resolve_gene_or_set(token)
         return any(g in retained for g in genes)
 
     # retained_all:SET
     if cond.startswith("retained_all:"):
-        token = cond[len("retained_all:"):].strip()
+        token = cond[len("retained_all:") :].strip()
         genes = _resolve_gene_or_set(token)
         return all(g in retained for g in genes)
 
     # collapsed:TOKEN  (any-of if TOKEN is a set)
     if cond.startswith("collapsed:"):
-        token = cond[len("collapsed:"):].strip()
+        token = cond[len("collapsed:") :].strip()
         genes = _resolve_gene_or_set(token)
         return any(g in collapsed for g in genes)
 
     # collapsed_ge:N=SET
     if cond.startswith("collapsed_ge:"):
-        payload = cond[len("collapsed_ge:"):].strip()
+        payload = cond[len("collapsed_ge:") :].strip()
         if "=" not in payload:
             return False
         n_str, set_name = payload.split("=", 1)
@@ -290,7 +290,9 @@ def synthesize_disease_state(
             collapsed_set,
         ):
             rendered = _render_narrative(
-                rule.narrative, retained_set, collapsed_set,
+                rule.narrative,
+                retained_set,
+                collapsed_set,
             )
             if rendered:
                 parts.append(rendered)

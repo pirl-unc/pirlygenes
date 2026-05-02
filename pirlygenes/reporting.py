@@ -13,6 +13,12 @@ from collections import Counter
 from functools import lru_cache
 import re
 
+from .hla import (
+    extract_hla_types_from_text,
+    hla_types_compatibility_status,
+    parse_hla_types,
+)
+
 
 def _truthy(value) -> bool:
     if value is None:
@@ -127,7 +133,9 @@ def tumor_attribution_context(row):
         row.get("attr_support_fraction"),
         1.0 if (mid_tpm >= 1.0 and mid_frac >= 0.30) else 0.0,
     )
-    low_tpm, mid_tpm, high_tpm = sorted([max(0.0, low_tpm), max(0.0, mid_tpm), max(0.0, high_tpm)])
+    low_tpm, mid_tpm, high_tpm = sorted(
+        [max(0.0, low_tpm), max(0.0, mid_tpm), max(0.0, high_tpm)]
+    )
     low_frac, mid_frac, high_frac = sorted(
         [
             max(0.0, min(1.0, low_frac)),
@@ -217,8 +225,9 @@ _TARGET_EXPRESSION_INDICATION = re.compile(
 )
 _MUTATION_INDICATION = re.compile(
     r"\b("
-    r"mutation|mutant|v600|exon\s*\d+|fusion|rearrangement|"
-    r"amplification|amplified|amp\b|her2\+|brca[- ]?(mut|mutation)"
+    r"mutation|mutant|v600|[a-z]\d{2,4}[a-z]|exon\s*\d+|fusion|rearrangement|"
+    r"amplification|amplified|amp\b|kdd|kinase\s+domain\s+duplication|"
+    r"internal\s+tandem\s+duplication|itd\b|her2\+|brca[- ]?(mut|mutation)"
     r")\b",
     re.IGNORECASE,
 )
@@ -241,8 +250,7 @@ def indication_biomarker(target_row) -> str:
     the approval criterion.
     """
     explicit = _clean_text(
-        target_row.get("indication_biomarker")
-        if hasattr(target_row, "get") else None
+        target_row.get("indication_biomarker") if hasattr(target_row, "get") else None
     ).lower()
     if explicit:
         return explicit
@@ -253,6 +261,12 @@ def indication_biomarker(target_row) -> str:
         if hasattr(target_row, "get")
     )
     low = text.lower()
+    cancer_code = _clean_text(
+        target_row.get("cancer_code") if hasattr(target_row, "get") else ""
+    ).upper()
+    agent_class = _agent_class_text(target_row)
+    if cancer_code == "NUTM" and "small_molecule" in agent_class:
+        return "mutation"
     if _MSI_HIGH_INDICATION.search(low) and not _MMR_PROFICIENT.search(low):
         return "msi_high"
     if "tmb" in low or "tumor mutational burden" in low:
@@ -261,7 +275,9 @@ def indication_biomarker(target_row) -> str:
         return "mutation"
 
     agent = _clean_text(target_row.get("agent") if hasattr(target_row, "get") else "")
-    if _IMMUNE_CHECKPOINT_AGENTS.search(agent) and not _TARGET_EXPRESSION_INDICATION.search(text):
+    if _IMMUNE_CHECKPOINT_AGENTS.search(
+        agent
+    ) and not _TARGET_EXPRESSION_INDICATION.search(text):
         return "histology_only"
 
     return "target_expression"
@@ -300,6 +316,106 @@ def expression_independent_rna_context(expression_row) -> str:
     )
 
 
+def supplied_alterations_for_gene(analysis, gene: str) -> list[dict]:
+    """Return supplied alteration records matching a target gene symbol."""
+    if not isinstance(analysis, dict):
+        return []
+    wanted = _clean_text(gene).upper()
+    if not wanted:
+        return []
+    records = analysis.get("alteration_records") or []
+    matches: list[dict] = []
+    for record in records:
+        if not hasattr(record, "get"):
+            continue
+        observed = _clean_text(record.get("gene")).upper()
+        if observed == wanted:
+            matches.append(dict(record))
+    return matches
+
+
+def supplied_alteration_supports_target_row(target_row, analysis) -> list[dict]:
+    """Return supplied alteration records compatible with a therapy row.
+
+    This is intentionally conservative: a row that requires EGFR KDD is not
+    supported by generic EGFR expression or a vague EGFR variant. For broader
+    mutation/fusion/amplification rows, a same-gene supplied alteration of a
+    compatible coarse class is enough to mark the eligibility evidence as
+    present, still with clinical verification language in the reports.
+    """
+    sym = _clean_text(target_row.get("symbol") if hasattr(target_row, "get") else "")
+    records = supplied_alterations_for_gene(analysis, sym)
+    if not records:
+        return []
+    text = " ".join(
+        _clean_text(target_row.get(key))
+        for key in ("indication", "rationale", "eligibility_note")
+        if hasattr(target_row, "get")
+    ).lower()
+    required_types: set[str] = set()
+    if re.search(r"\b(kdd|kinase\s+domain\s+duplication)\b", text):
+        required_types.update({"kdd", "internal_tandem_duplication"})
+    elif re.search(r"\b(itd|internal\s+tandem\s+duplication)\b", text):
+        required_types.add("internal_tandem_duplication")
+    elif re.search(r"\b(fusion|rearrang|translocation)\b", text):
+        required_types.add("fusion")
+    elif re.search(r"\b(amplification|amplified|\bamp\b|copy\s*number\s*gain)\b", text):
+        required_types.add("amplification")
+    elif indication_biomarker(target_row) == "mutation":
+        required_types.update(
+            {
+                "mutation",
+                "fusion",
+                "amplification",
+                "loss",
+                "kdd",
+                "internal_tandem_duplication",
+            }
+        )
+    if not required_types:
+        return []
+    supported: list[dict] = []
+    for record in records:
+        observed_type = _clean_text(record.get("alteration_type")).lower()
+        observed_text = " ".join(
+            _clean_text(record.get(key))
+            for key in ("alteration", "raw_name", "alteration_type")
+        ).lower()
+        if observed_type in required_types:
+            supported.append(record)
+            continue
+        if "kdd" in required_types and "kinase domain duplication" in observed_text:
+            supported.append(record)
+            continue
+        if "amplification" in required_types and "amplif" in observed_text:
+            supported.append(record)
+    return supported
+
+
+def supplied_alteration_context_for_target_row(target_row, analysis) -> str:
+    """Reader-facing summary of supplied alteration evidence for a target row."""
+    supported = supplied_alteration_supports_target_row(target_row, analysis)
+    if not supported:
+        return ""
+    labels: list[str] = []
+    for record in supported[:3]:
+        gene = _clean_text(record.get("gene"))
+        alteration = _clean_text(record.get("alteration")) or _clean_text(
+            record.get("alteration_type")
+        )
+        if gene and alteration.upper().startswith(gene.upper()):
+            labels.append(alteration)
+        else:
+            labels.append(f"{gene} {alteration}".strip())
+    suffix = "" if len(supported) <= 3 else f" (+{len(supported) - 3} more)"
+    return (
+        "supplied alteration evidence supports this eligibility gate: "
+        + ", ".join(labels)
+        + suffix
+        + "; verify against the clinical assay report"
+    )
+
+
 def report_disease_state_text(disease_state: str | None, analysis=None) -> str:
     """Consistent disease-state sentence for Markdown reports.
 
@@ -312,8 +428,15 @@ def report_disease_state_text(disease_state: str | None, analysis=None) -> str:
     text = _clean_text(disease_state)
     if text:
         return text
-    scores = analysis.get("therapy_response_scores") if isinstance(analysis, dict) else None
+    scores = (
+        analysis.get("therapy_response_scores") if isinstance(analysis, dict) else None
+    )
     if scores:
+        if isinstance(analysis, dict) and analysis.get("pathway_activity_inferences"):
+            return (
+                "No strong RNA-defined therapy-exposure pattern passed reporting "
+                "thresholds; active pathway evidence is summarized separately."
+            )
         return "No strong RNA-defined therapy-exposure or pathway-state pattern passed reporting thresholds."
     return ""
 
@@ -391,7 +514,9 @@ def same_lineage_material_target_candidate(
         return False
     if not _clean_text(target_row.get("agent")):
         return False
-    if _truthy(row.get("tme_dominant")) and not _truthy(row.get("matched_normal_over_predicted")):
+    if _truthy(row.get("tme_dominant")) and not _truthy(
+        row.get("matched_normal_over_predicted")
+    ):
         return False
     if _safe_float(row.get("attr_tumor_tpm"), 0.0) < float(min_tumor_tpm):
         return False
@@ -426,9 +551,15 @@ def target_reliability_status(row, *, category=None, target_row=None):
 
 _ESSENTIAL_TISSUE_COLS = {
     "brain": [
-        "nTPM_cerebral_cortex", "nTPM_cerebellum", "nTPM_basal_ganglia",
-        "nTPM_hippocampal_formation", "nTPM_amygdala", "nTPM_midbrain",
-        "nTPM_hypothalamus", "nTPM_spinal_cord", "nTPM_choroid_plexus",
+        "nTPM_cerebral_cortex",
+        "nTPM_cerebellum",
+        "nTPM_basal_ganglia",
+        "nTPM_hippocampal_formation",
+        "nTPM_amygdala",
+        "nTPM_midbrain",
+        "nTPM_hypothalamus",
+        "nTPM_spinal_cord",
+        "nTPM_choroid_plexus",
     ],
     "heart": ["nTPM_heart_muscle"],
     "liver": ["nTPM_liver"],
@@ -450,7 +581,9 @@ def _pan_cancer_normal_expression_index():
         df = pan_cancer_expression().copy()
         if "Ensembl_Gene_ID" not in df.columns:
             return None
-        df["Ensembl_Gene_ID"] = df["Ensembl_Gene_ID"].astype(str).str.split(".", n=1).str[0]
+        df["Ensembl_Gene_ID"] = (
+            df["Ensembl_Gene_ID"].astype(str).str.split(".", n=1).str[0]
+        )
         df = df.drop_duplicates(subset="Ensembl_Gene_ID").set_index("Ensembl_Gene_ID")
         return df
     except Exception:
@@ -515,8 +648,13 @@ def normal_expression_context(row):
         if top_value >= 10.0:
             vital_detail = f"{top_tissue.replace('_', ' ')} expression is appreciable"
 
-    if _truthy(row.get("broadly_expressed")) or _safe_int(row.get("n_healthy_tissues_expressed"), 0) >= 15:
-        details.append("broader healthy-tissue signal is present outside the likely tissue of origin")
+    if (
+        _truthy(row.get("broadly_expressed"))
+        or _safe_int(row.get("n_healthy_tissues_expressed"), 0) >= 15
+    ):
+        details.append(
+            "broader healthy-tissue signal is present outside the likely tissue of origin"
+        )
     if vital_detail:
         details.append(vital_detail)
 
@@ -545,15 +683,16 @@ def normal_expression_context(row):
         }
 
     return {
-            "tier": "restricted_outside_lineage",
-            "label": "restricted outside likely tissue of origin",
-            "summary": "limited healthy-tissue signal outside the likely tissue of origin",
+        "tier": "restricted_outside_lineage",
+        "label": "restricted outside likely tissue of origin",
+        "summary": "limited healthy-tissue signal outside the likely tissue of origin",
         "details": [],
     }
 
 
 def clinical_maturity_info(target_row, target_panel=None):
     """Summarize maturity from the current row and its curated siblings."""
+
     def _display_agent_class(value):
         text = _clean_text(value).replace("_", " ")
         if not text:
@@ -573,7 +712,9 @@ def clinical_maturity_info(target_row, target_panel=None):
             return acronym_map[lowered]
         return re.sub(
             r"\b(adc|tce|car-t|tcr-t|pmhc|mhc)\b",
-            lambda match: acronym_map.get(match.group(1).lower(), match.group(1).upper()),
+            lambda match: acronym_map.get(
+                match.group(1).lower(), match.group(1).upper()
+            ),
             text,
             flags=re.IGNORECASE,
         )
@@ -585,6 +726,7 @@ def clinical_maturity_info(target_row, target_panel=None):
         "phase_2": "mid-clinical",
         "phase_1": "early clinical",
         "preclinical": "preclinical",
+        "off_label": "off-label / transfer rationale",
     }.get(phase, phase or "curated")
     agent_class = _display_agent_class(target_row.get("agent_class"))
     summary = phase_label
@@ -622,14 +764,26 @@ def clinical_maturity_info(target_row, target_panel=None):
         }
 
     n_agents = (
-        sub["agent"].fillna("").astype(str).str.strip()
-        .replace("nan", "").loc[lambda s: s.ne("")].nunique()
-        if "agent" in sub.columns else 0
+        sub["agent"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .replace("nan", "")
+        .loc[lambda s: s.ne("")]
+        .nunique()
+        if "agent" in sub.columns
+        else 0
     )
     n_modalities = (
-        sub["agent_class"].fillna("").astype(str).str.strip()
-        .replace("nan", "").loc[lambda s: s.ne("")].nunique()
-        if "agent_class" in sub.columns else 0
+        sub["agent_class"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .replace("nan", "")
+        .loc[lambda s: s.ne("")]
+        .nunique()
+        if "agent_class" in sub.columns
+        else 0
     )
     extras = []
     if n_agents > 1:
@@ -773,9 +927,24 @@ _THERAPY_EXPOSURE_RULES = (
         "axis": "MAPK_EGFR_signaling",
         "state": "down",
         "symbols": {
-            "EGFR", "BRAF", "KRAS", "NRAS", "MAP2K1", "MAP2K2",
-            "MEK1", "MEK2", "ALK", "ROS1", "RET", "MET", "NTRK1",
-            "NTRK2", "NTRK3", "FGFR1", "FGFR2", "FGFR3",
+            "EGFR",
+            "BRAF",
+            "KRAS",
+            "NRAS",
+            "MAP2K1",
+            "MAP2K2",
+            "MEK1",
+            "MEK2",
+            "ALK",
+            "ROS1",
+            "RET",
+            "MET",
+            "NTRK1",
+            "NTRK2",
+            "NTRK3",
+            "FGFR1",
+            "FGFR2",
+            "FGFR3",
         },
         "agent_re": _MAPK_RTK_AGENTS,
         "class_re": re.compile(r"\b(tki|kinase)\b", re.IGNORECASE),
@@ -797,9 +966,7 @@ def _target_symbol(target_row) -> str:
 
 
 def _agent_text(target_row) -> str:
-    return _clean_text(
-        target_row.get("agent") if hasattr(target_row, "get") else ""
-    )
+    return _clean_text(target_row.get("agent") if hasattr(target_row, "get") else "")
 
 
 def _agent_class_text(target_row) -> str:
@@ -866,11 +1033,11 @@ def _therapy_path_context_for_tier(target_row, tier: str, note: str = "") -> str
     if suffix_lc == prefix_lc:
         suffix = ""
     elif suffix_lc.startswith(prefix_lc + ";"):
-        suffix = suffix[len(prefix):].lstrip(" ;")
+        suffix = suffix[len(prefix) :].lstrip(" ;")
     elif suffix_lc.startswith(prefix_lc + ","):
-        suffix = suffix[len(prefix):].lstrip(" ,")
+        suffix = suffix[len(prefix) :].lstrip(" ,")
     elif suffix_lc.startswith(prefix_lc + " -"):
-        suffix = suffix[len(prefix):].lstrip(" -")
+        suffix = suffix[len(prefix) :].lstrip(" -")
     if suffix:
         return f"{prefix}; {suffix}"
     return prefix
@@ -878,8 +1045,7 @@ def _therapy_path_context_for_tier(target_row, tier: str, note: str = "") -> str
 
 def _explicit_therapy_path_info(target_row) -> dict | None:
     tier = _clean_text(
-        target_row.get("treatment_path_tier")
-        if hasattr(target_row, "get") else ""
+        target_row.get("treatment_path_tier") if hasattr(target_row, "get") else ""
     ).lower()
     if not tier:
         return None
@@ -945,18 +1111,40 @@ def _inferred_therapy_path_info(target_row) -> dict:
         }
 
     phase_context = {
-        "phase_3": ("late_clinical", 3, "late-clinical follow-up, not default standard"),
-        "phase_2": ("trial_follow_up", 4, "clinical-trial follow-up, not default standard"),
-        "phase_1": ("trial_follow_up", 5, "clinical-trial follow-up, not default standard"),
-        "preclinical": ("preclinical", 6, "preclinical follow-up, not a clinical recommendation"),
-        "off_label": ("off_label", 7, "off-label follow-up; confirm rationale and alternatives"),
+        "phase_3": (
+            "late_clinical",
+            3,
+            "late-clinical follow-up, not default standard",
+        ),
+        "phase_2": (
+            "trial_follow_up",
+            4,
+            "clinical-trial follow-up, not default standard",
+        ),
+        "phase_1": (
+            "trial_follow_up",
+            5,
+            "clinical-trial follow-up, not default standard",
+        ),
+        "preclinical": (
+            "preclinical",
+            6,
+            "preclinical follow-up, not a clinical recommendation",
+        ),
+        "off_label": (
+            "off_label",
+            7,
+            "off-label follow-up; confirm rationale and alternatives",
+        ),
     }
     tier, rank, context = phase_context.get(phase, ("unknown", 99, ""))
     return {"tier": tier, "rank": rank, "context": context, "source": "inferred"}
 
 
 def _therapy_path_info(target_row) -> dict:
-    return _explicit_therapy_path_info(target_row) or _inferred_therapy_path_info(target_row)
+    return _explicit_therapy_path_info(target_row) or _inferred_therapy_path_info(
+        target_row
+    )
 
 
 def therapy_path_tier(target_row) -> str:
@@ -972,7 +1160,8 @@ def _exposure_rule_active(rule: dict, *, analysis=None, disease_state=None) -> b
     disease_re = rule.get("disease_re")
     disease_match = (
         disease_re.search(_clean_text(disease_state)) is not None
-        if disease_re is not None else False
+        if disease_re is not None
+        else False
     )
     return bool(axis_down or disease_match)
 
@@ -999,7 +1188,9 @@ def therapy_state_caution(target_row, *, analysis=None, disease_state=None) -> s
     for rule in _THERAPY_EXPOSURE_RULES:
         if not _therapy_row_matches_exposure_rule(target_row, rule):
             continue
-        if not _exposure_rule_active(rule, analysis=analysis, disease_state=disease_state):
+        if not _exposure_rule_active(
+            rule, analysis=analysis, disease_state=disease_state
+        ):
             continue
         return (
             f"{rule['axis_label']} RNA/signaling is already suppressed "
@@ -1009,9 +1200,101 @@ def therapy_state_caution(target_row, *, analysis=None, disease_state=None) -> s
     return ""
 
 
+def hla_restrictions_for_target_row(target_row) -> list[str]:
+    """Return class-I HLA restrictions encoded in a therapy row."""
+    if not hasattr(target_row, "get"):
+        return []
+    explicit = []
+    for key in ("hla_restriction", "HLA_Restriction", "hla", "HLA"):
+        value = target_row.get(key)
+        if _clean_text(value):
+            explicit.extend(parse_hla_types(value))
+    if explicit:
+        return sorted(set(explicit))
+
+    text = " ".join(
+        _clean_text(target_row.get(key))
+        for key in ("indication", "rationale", "eligibility_note")
+    )
+    return extract_hla_types_from_text(text)
+
+
+def target_hla_eligibility(target_row, *, analysis=None) -> dict:
+    """Classify supplied HLA types against a row's HLA restriction."""
+    restrictions = hla_restrictions_for_target_row(target_row)
+    supplied = []
+    if isinstance(analysis, dict):
+        constraints = analysis.get("analysis_constraints") or {}
+        supplied = parse_hla_types(constraints.get("hla_types"))
+    if not restrictions:
+        return {
+            "status": "not_hla_restricted",
+            "required": [],
+            "supplied": supplied,
+            "matched_supplied": None,
+            "matched_required": None,
+        }
+    if not supplied:
+        return {
+            "status": "unknown",
+            "required": restrictions,
+            "supplied": [],
+            "matched_supplied": None,
+            "matched_required": None,
+        }
+    status, matched_supplied, matched_required = hla_types_compatibility_status(
+        supplied, restrictions
+    )
+    return {
+        "status": status,
+        "required": restrictions,
+        "supplied": supplied,
+        "matched_supplied": matched_supplied,
+        "matched_required": matched_required,
+    }
+
+
+def hla_eligibility_context(target_row, *, analysis=None) -> str:
+    """Reader-facing HLA note for TCR/pMHC-gated rows."""
+    eligibility = target_hla_eligibility(target_row, analysis=analysis)
+    status = eligibility["status"]
+    if status == "not_hla_restricted":
+        return ""
+    required = "/".join(eligibility["required"])
+    supplied = "/".join(eligibility["supplied"])
+    if status == "matched":
+        return (
+            f"HLA match: supplied {eligibility['matched_supplied']} is compatible "
+            f"with required {eligibility['matched_required']}"
+        )
+    if status == "insufficient_resolution":
+        return (
+            f"HLA unresolved: supplied {eligibility['matched_supplied']} is lower "
+            f"resolution than required {eligibility['matched_required']}; provide "
+            "high-resolution HLA typing to assess eligibility"
+        )
+    if status == "mismatched":
+        return f"HLA mismatch: supplied {supplied} does not match required {required}"
+    agent = _clean_text(target_row.get("agent")) if hasattr(target_row, "get") else ""
+    agent_clause = f" for {agent}" if agent else ""
+    return (
+        f"HLA-gated{agent_clause}: requires {required}; supply germline/tumor "
+        "HLA type to assess eligibility"
+    )
+
+
+def hla_restricted_target_supported(target_row, *, analysis=None) -> bool:
+    """Whether an HLA-restricted therapy can be shortlisted."""
+    return target_hla_eligibility(target_row, analysis=analysis)["status"] != "mismatched"
+
+
 def therapy_path_context(target_row, *, analysis=None, disease_state=None) -> str:
     """Brief reader-facing treatment-path context for curated therapy rows."""
-    return _therapy_path_info(target_row)["context"]
+    parts = [_therapy_path_info(target_row)["context"]]
+    hla_context = hla_eligibility_context(target_row, analysis=analysis)
+    if hla_context:
+        parts.append(hla_context)
+    return "; ".join(part for part in parts if part)
 
 
 def therapy_path_rank(target_row, *, analysis=None, disease_state=None) -> int:
@@ -1032,10 +1315,11 @@ def target_interpretation_summary(
     normal = normal_expression_context(expression_row)
     maturity = (
         clinical_maturity_summary(target_row, target_panel=target_panel)
-        if target_row is not None else ""
+        if target_row is not None
+        else ""
     )
-    expr_independent = (
-        target_row is not None and expression_independent_indication(target_row)
+    expr_independent = target_row is not None and expression_independent_indication(
+        target_row
     )
     if expr_independent:
         parts = [
@@ -1050,13 +1334,17 @@ def target_interpretation_summary(
         parts.append(details[0])
     path_context = (
         therapy_path_context(target_row, analysis=analysis, disease_state=disease_state)
-        if target_row is not None else ""
+        if target_row is not None
+        else ""
     )
     if path_context:
         parts.append(path_context)
     caution = (
-        therapy_state_caution(target_row, analysis=analysis, disease_state=disease_state)
-        if target_row is not None else ""
+        therapy_state_caution(
+            target_row, analysis=analysis, disease_state=disease_state
+        )
+        if target_row is not None
+        else ""
     )
     if caution:
         parts.append(f"current-therapy check: {caution}")
@@ -1067,19 +1355,22 @@ def target_interpretation_summary(
 
 def partition_tumor_core_rows(ranges_df, min_tumor_tpm=1.0):
     """Split expression rows by report-facing tumor-inferred reliability."""
-    if ranges_df is None or len(ranges_df) == 0 or "attr_tumor_tpm" not in ranges_df.columns:
+    if (
+        ranges_df is None
+        or len(ranges_df) == 0
+        or "attr_tumor_tpm" not in ranges_df.columns
+    ):
         empty = ranges_df.iloc[0:0] if ranges_df is not None else None
         return empty, empty, empty
 
-    eligible = ranges_df[ranges_df["attr_tumor_tpm"].astype(float) >= float(min_tumor_tpm)].copy()
+    eligible = ranges_df[
+        ranges_df["attr_tumor_tpm"].astype(float) >= float(min_tumor_tpm)
+    ].copy()
     if eligible.empty:
         empty = eligible.iloc[0:0]
         return empty, empty, empty
 
-    statuses = [
-        target_reliability_status(row)
-        for _, row in eligible.iterrows()
-    ]
+    statuses = [target_reliability_status(row) for _, row in eligible.iterrows()]
     eligible["_report_reliability"] = statuses
     supported = eligible[eligible["_report_reliability"] == "supported"].copy()
     provisional = eligible[eligible["_report_reliability"] == "provisional"].copy()
@@ -1101,10 +1392,7 @@ def summarize_reliability_reasons(rows, top_n=3):
 
 def resolved_subtype_code_for_analysis(analysis, ranges_df=None):
     """Return the final subtype/cancer code implied by the analysis."""
-    candidate_trace = analysis.get("candidate_trace") or []
-    if not candidate_trace:
-        return None
-    winning_subtype = _clean_text(candidate_trace[0].get("winning_subtype"))
+    winning_subtype = candidate_winning_subtype_for_analysis(analysis)
     if not winning_subtype:
         return None
 
@@ -1122,19 +1410,115 @@ def resolved_subtype_code_for_analysis(analysis, ranges_df=None):
     try:
         from .degenerate_subtype import resolve_degenerate_subtype
 
-        decomposition = analysis.get("decomposition") or {}
-        site_template = decomposition.get("best_template")
         resolution = resolve_degenerate_subtype(
             winning_subtype,
-            site_template=site_template,
+            site_template=analysis_site_template_for_subtype(analysis),
             tumor_tpm_by_symbol=tumor_tpm_by_symbol,
         )
-        winning_subtype = _clean_text(
-            resolution.get("final_subtype")
-        ) or winning_subtype
+        winning_subtype = (
+            _clean_text(resolution.get("final_subtype")) or winning_subtype
+        )
     except Exception:
         pass
     return winning_subtype or None
+
+
+def analysis_site_template_for_subtype(analysis):
+    """Return the site template available to subtype disambiguation.
+
+    Decomposition is the strongest source because it fits the sample
+    expression against template panels. When that stage has no usable
+    best template, fall back to explicit constraints such as
+    ``--site-hint bone`` or ``--met-site bone`` so subtype labels can
+    still use supplied site context.
+    """
+    decomposition = analysis.get("decomposition") or {}
+    best_template = _clean_text(decomposition.get("best_template"))
+    if best_template:
+        return best_template
+
+    constraints = analysis.get("analysis_constraints") or {}
+    templates = constraints.get("decomposition_templates") or []
+    if isinstance(templates, str):
+        templates = [templates]
+    templates = [_clean_text(item) for item in templates if _clean_text(item)]
+    if len(templates) == 1:
+        return templates[0]
+
+    site_hint = _clean_text(constraints.get("site_hint")) or _clean_text(
+        constraints.get("met_site")
+    )
+    if not site_hint:
+        return None
+
+    norm = site_hint.lower().replace("-", "_").replace(" ", "_")
+    tumor_context = _clean_text(constraints.get("tumor_context")).lower()
+    if tumor_context == "primary":
+        primary_map = {
+            "bone": "primary_bone",
+            "bone_marrow": "primary_bone",
+            "retroperitoneal": "primary_retroperitoneum",
+            "retroperitoneum": "primary_retroperitoneum",
+            "abdomen": "primary_abdomen",
+            "abdominal": "primary_abdomen",
+            "lung": "primary_lung",
+            "pancreas": "primary_pancreas",
+            "head_neck": "primary_head_neck",
+            "head_and_neck": "primary_head_neck",
+        }
+        if norm in primary_map:
+            return primary_map[norm]
+
+    try:
+        from .decomposition.engine import DECOMPOSITION_PARAMETERS
+
+        return DECOMPOSITION_PARAMETERS["sample_mode"]["site_hint_templates"].get(norm)
+    except Exception:
+        fallback_map = {
+            "adrenal": "met_adrenal",
+            "bone": "met_bone",
+            "bone_marrow": "met_bone",
+            "brain": "met_brain",
+            "liver": "met_liver",
+            "lung": "met_lung",
+            "lymph": "met_lymph_node",
+            "lymph_node": "met_lymph_node",
+            "peritoneal": "met_peritoneal",
+            "peritoneum": "met_peritoneal",
+            "retroperitoneal": "met_soft_tissue",
+            "skin": "met_skin",
+            "soft_tissue": "met_soft_tissue",
+        }
+        return fallback_map.get(norm)
+
+
+def candidate_winning_subtype_for_analysis(analysis):
+    """Return the raw winning subtype for the analysis' active cancer code.
+
+    ``candidate_trace[0]`` is the unconstrained expression classifier pick.
+    When the user supplied ``--cancer-type``, the final report is explicitly
+    scoped to ``analysis["cancer_type"]`` and must not inherit a subtype from
+    an unrelated top classifier row (for example COAD report text adopting a
+    SARC subtype).  If the active cancer code is present in the trace, use that
+    row's subtype; otherwise leave the report un-subtyped.
+    """
+    candidate_trace = analysis.get("candidate_trace") or []
+    if not candidate_trace:
+        return None
+
+    active_code = _clean_text(analysis.get("cancer_type"))
+    row = None
+    if active_code:
+        for candidate in candidate_trace:
+            if _clean_text(candidate.get("code")) == active_code:
+                row = candidate
+                break
+        if row is None:
+            return None
+    else:
+        row = candidate_trace[0]
+
+    return _clean_text(row.get("winning_subtype")) or None
 
 
 def _match_curated_subtype(parent_code, *candidates):
@@ -1145,8 +1529,7 @@ def _match_curated_subtype(parent_code, *candidates):
         from .gene_sets_cancer import cancer_key_genes_subtypes
 
         curated_subtypes = [
-            _clean_text(item)
-            for item in cancer_key_genes_subtypes(parent_code)
+            _clean_text(item) for item in cancer_key_genes_subtypes(parent_code)
         ]
     except Exception:
         return None
@@ -1202,10 +1585,7 @@ def cancer_key_genes_lookup_for_analysis(cancer_code, analysis, ranges_df=None):
             cancer_type_registry,
         )
 
-        curated_codes = {
-            _clean_text(code)
-            for code in cancer_key_genes_cancer_types()
-        }
+        curated_codes = {_clean_text(code) for code in cancer_key_genes_cancer_types()}
         if resolved_code and resolved_code in curated_codes:
             return resolved_code, None
 
@@ -1218,7 +1598,7 @@ def cancer_key_genes_lookup_for_analysis(cancer_code, analysis, ranges_df=None):
                 subtype_key = _clean_text(row.get("subtype_key"))
                 suffix = ""
                 if parent_code and resolved_code.startswith(parent_code + "_"):
-                    suffix = resolved_code[len(parent_code) + 1:]
+                    suffix = resolved_code[len(parent_code) + 1 :]
                 matched_subtype = _match_curated_subtype(
                     parent_code,
                     subtype_key,
@@ -1258,7 +1638,7 @@ def subtype_key_for_analysis(analysis, ranges_df=None):
         parent_code = str(row.get("parent_code") or "").strip()
         code = str(row.get("code") or "").strip()
         if parent_code and code.startswith(parent_code + "_"):
-            suffix = code[len(parent_code) + 1:].strip().lower()
+            suffix = code[len(parent_code) + 1 :].strip().lower()
             return suffix or None
     except Exception:
         return None

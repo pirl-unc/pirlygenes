@@ -25,11 +25,13 @@ def _cohort_median_sample(code: str) -> pd.DataFrame:
     """Synthesize a pseudo-sample whose TPM column is the TCGA cohort
     median for ``code``. Equivalent to what the median battery uses."""
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    return pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref[f"FPKM_{code}"].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"FPKM_{code}"].astype(float),
+        }
+    )
 
 
 @pytest.mark.parametrize("code", ["BLCA"])
@@ -96,11 +98,15 @@ def test_override_rejects_orphan_with_tme_driven_raw_signal():
         index=ref["Ensembl_Gene_ID"].values,
     )
     mix = 0.3 * coad + 0.7 * lymph
-    df_mix = pd.DataFrame({
-        "ensembl_gene_id": mix.index,
-        "gene_symbol": ref.set_index("Ensembl_Gene_ID").loc[mix.index, "Symbol"].values,
-        "TPM": mix.values,
-    })
+    df_mix = pd.DataFrame(
+        {
+            "ensembl_gene_id": mix.index,
+            "gene_symbol": ref.set_index("Ensembl_Gene_ID")
+            .loc[mix.index, "Symbol"]
+            .values,
+            "TPM": mix.values,
+        }
+    )
     ranked = rank_cancer_type_candidates(
         df_mix,
         candidate_codes=["COAD", "READ", "DLBC", "THYM", "SARC", "STAD"],

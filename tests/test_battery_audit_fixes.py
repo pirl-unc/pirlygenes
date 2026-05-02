@@ -86,7 +86,11 @@ def test_render_vs_tcga_preserves_large_finite_folds_uncapped():
 def test_lineage_estimator_returns_tuple_of_estimates_and_skipped():
     """Empty panel → (empty, empty) tuple, not a bare list."""
     estimates, skipped = _lineage_purity_estimates(
-        "FAKE_TYPE", {}, {}, [], 0.7,
+        "FAKE_TYPE",
+        {},
+        {},
+        [],
+        0.7,
     )
     assert estimates == []
     assert skipped == []
@@ -108,21 +112,23 @@ def test_lineage_estimator_separates_tme_dominated_from_usable():
     # housekeeping (HK). LIN has high TME expression (smooth muscle)
     # and low cancer-cohort expression — exactly the SARC / ACTA2
     # regime.
-    ref = pd.DataFrame({
-        "Ensembl_Gene_ID": ["ENSG_LIN", "ENSG_HK"],
-        "Symbol": ["LIN", "HK"],
-        "FPKM_FAKE": [1.0, 10.0],
-        "nTPM_smooth_muscle": [200.0, 10.0],
-        "nTPM_skeletal_muscle": [200.0, 10.0],
-        "nTPM_heart_muscle": [200.0, 10.0],
-        "nTPM_adipose_tissue": [100.0, 10.0],
-        "nTPM_bone_marrow": [50.0, 10.0],
-        "nTPM_lymph_node": [50.0, 10.0],
-        "nTPM_spleen": [50.0, 10.0],
-        "nTPM_thymus": [50.0, 10.0],
-        "nTPM_tonsil": [50.0, 10.0],
-        "nTPM_appendix": [50.0, 10.0],
-    })
+    ref = pd.DataFrame(
+        {
+            "Ensembl_Gene_ID": ["ENSG_LIN", "ENSG_HK"],
+            "Symbol": ["LIN", "HK"],
+            "FPKM_FAKE": [1.0, 10.0],
+            "nTPM_smooth_muscle": [200.0, 10.0],
+            "nTPM_skeletal_muscle": [200.0, 10.0],
+            "nTPM_heart_muscle": [200.0, 10.0],
+            "nTPM_adipose_tissue": [100.0, 10.0],
+            "nTPM_bone_marrow": [50.0, 10.0],
+            "nTPM_lymph_node": [50.0, 10.0],
+            "nTPM_spleen": [50.0, 10.0],
+            "nTPM_thymus": [50.0, 10.0],
+            "nTPM_tonsil": [50.0, 10.0],
+            "nTPM_appendix": [50.0, 10.0],
+        }
+    )
 
     # Monkey-patch the two loaders the estimator uses.
     orig_pan = tp.pan_cancer_expression
@@ -134,7 +140,11 @@ def test_lineage_estimator_separates_tme_dominated_from_usable():
 
         sample_tpm = {"LIN": 190.0, "HK": 50.0}
         estimates, skipped = _lineage_purity_estimates(
-            "FAKE", sample_tpm, {}, ["HK"], 0.7,
+            "FAKE",
+            sample_tpm,
+            {},
+            ["HK"],
+            0.7,
         )
     finally:
         tp.pan_cancer_expression = orig_pan
@@ -161,11 +171,13 @@ def _tcga_sample_with_mt_override(cancer_code, mt_tpm):
     from pirlygenes.gene_sets_cancer import pan_cancer_expression
 
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    df = pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
+        }
+    )
     mt_mask = df["gene_symbol"].isin(set(_MT_GENES))
     if mt_tpm == 0:
         # Genuinely drop MT rows — models "MT symbols missing from quant
@@ -225,7 +237,7 @@ def test_decomp_purity_adoption_guard_matches_docstring():
     # Branch 1: cancer_type mismatch → guard off, don't adopt.
     best_cancer = "BRCA"
     warnings = []
-    decomp_agrees = (best_cancer == classifier_code)
+    decomp_agrees = best_cancer == classifier_code
     decomp_has_tme = not any(
         "No non-tumor components in template" in w for w in warnings
     )
@@ -235,7 +247,7 @@ def test_decomp_purity_adoption_guard_matches_docstring():
     # Branch 2: cancer agrees but template has no TME compartments.
     best_cancer = "COAD"
     warnings = ["No non-tumor components in template"]
-    decomp_agrees = (best_cancer == classifier_code)
+    decomp_agrees = best_cancer == classifier_code
     decomp_has_tme = not any(
         "No non-tumor components in template" in w for w in warnings
     )
@@ -246,7 +258,7 @@ def test_decomp_purity_adoption_guard_matches_docstring():
     # Branch 3: both OK → adoption is allowed.
     best_cancer = "COAD"
     warnings = ["Primary tissue support exceeds metastatic-site support"]
-    decomp_agrees = (best_cancer == classifier_code)
+    decomp_agrees = best_cancer == classifier_code
     decomp_has_tme = not any(
         "No non-tumor components in template" in w for w in warnings
     )

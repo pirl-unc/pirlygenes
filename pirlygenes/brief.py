@@ -34,15 +34,23 @@ from pathlib import Path
 from typing import List, Optional
 
 from .reporting import (
+    analysis_site_template_for_subtype,
     cancer_code_display_name,
     cancer_key_genes_lookup_for_analysis,
+    candidate_winning_subtype_for_analysis,
     clinical_maturity_summary,
+    indication_biomarker,
+    indication_biomarker_label,
     expression_independent_indication,
     expression_independent_interpretation,
     expression_independent_rna_context,
+    hla_restrictions_for_target_row,
+    hla_restricted_target_supported,
     normal_expression_context,
     report_disease_state_text,
     same_lineage_material_target_candidate,
+    supplied_alteration_context_for_target_row,
+    supplied_alteration_supports_target_row,
     subtype_curation_scope_note,
     therapy_path_context,
     therapy_path_rank,
@@ -82,7 +90,11 @@ def _display_subtype_code(code: Optional[str]) -> str:
         if not match.empty:
             row = match.iloc[0]
             subtype_key = row.get("subtype_key")
-            if isinstance(subtype_key, str) and subtype_key and subtype_key.lower() != "nan":
+            if (
+                isinstance(subtype_key, str)
+                and subtype_key
+                and subtype_key.lower() != "nan"
+            ):
                 return subtype_key.replace("_", " ")
             name = row.get("name")
             if isinstance(name, str) and name:
@@ -92,15 +104,29 @@ def _display_subtype_code(code: Optional[str]) -> str:
     return text.replace("_", " ").lower()
 
 
-def _call_confidence_suffix(call_tier, *, concise: bool = True) -> str:
+def _call_confidence_suffix(
+    call_tier,
+    *,
+    concise: bool = True,
+    include_reasons: bool = True,
+) -> str:
     """Render cancer-call confidence consistently across Markdown reports."""
     if call_tier.tier not in {"low", "moderate"} or not call_tier.reasons:
         return ""
     tier_text = f"{call_tier.tier} confidence"
     if call_tier.tier == "low":
         tier_text += ", provisional"
+    if not include_reasons:
+        return f" — **{tier_text}**"
     note = concise_confidence_reasons(call_tier) if concise else call_tier.inline_note
     return f" — **{tier_text}** ({note})" if note else f" — **{tier_text}**"
+
+
+def _confidence_caveat_clause(call_tier) -> str:
+    if getattr(call_tier, "tier", "") not in {"low", "moderate"}:
+        return ""
+    note = concise_confidence_reasons(call_tier)
+    return f"; confidence caveats: {note}" if note else ""
 
 
 def _site_template_note_label(template_name: Optional[str]) -> str:
@@ -146,9 +172,17 @@ def _render_subtype_note(
     final_label = _display_subtype_code(resolution.get("final_subtype"))
     original_label = _display_subtype_code(original_subtype)
     alternatives = [
-        _display_subtype_code(code)
-        for code in (resolution.get("alternatives") or [])
+        _display_subtype_code(code) for code in (resolution.get("alternatives") or [])
     ]
+    deduped_alternatives = []
+    seen_labels = {final_label.lower()}
+    for label in alternatives:
+        key = label.lower()
+        if key in seen_labels:
+            continue
+        seen_labels.add(key)
+        deduped_alternatives.append(label)
+    alternatives = deduped_alternatives
 
     if status == "corrected":
         if rule == "site_template":
@@ -173,7 +207,9 @@ def _render_subtype_note(
         )
 
     if status == "degenerate":
-        option_text = " vs ".join([final_label] + alternatives) if alternatives else final_label
+        option_text = (
+            " vs ".join([final_label] + alternatives) if alternatives else final_label
+        )
         if rule == "site_template":
             return (
                 f"Subtype remains unresolved between {option_text}; the available site context does not break the tie, "
@@ -204,6 +240,7 @@ def _phase_label(phase: str) -> str:
         "phase_2": "Phase 2",
         "phase_1": "Phase 1",
         "preclinical": "Preclinical",
+        "off_label": "Off-label / transfer rationale",
     }.get(phase, phase)
 
 
@@ -215,9 +252,7 @@ def _top_candidate_signature_score(analysis) -> float | None:
     stay silent on soft "composition-ambiguous" cases.
     """
     candidates = (
-        analysis.get("cancer_candidates")
-        or analysis.get("candidate_trace")
-        or []
+        analysis.get("cancer_candidates") or analysis.get("candidate_trace") or []
     )
     if not candidates:
         return None
@@ -230,6 +265,98 @@ def _top_candidate_signature_score(analysis) -> float | None:
             except (TypeError, ValueError):
                 continue
     return None
+
+
+def _subtype_specific_row_out_of_scope(target_row, analysis) -> bool:
+    """Suppress subtype-specific SARC rows when SARC is unresolved.
+
+    The full target tables can list subtype-specific rows as context. The brief
+    top-3 and summary HLA prompts should not imply Ewing/GIST/synovial-specific
+    eligibility for a broad SARC call unless that subtype was actually selected
+    or direct alteration evidence supports the row.
+    """
+    if not analysis:
+        return False
+    active_code = str(analysis.get("cancer_type") or "").strip()
+    if active_code != "SARC":
+        return False
+    target_subtype = str(target_row.get("subtype") or "").strip()
+    if not target_subtype:
+        return False
+    active_panel_subtype = str(analysis.get("_target_panel_subtype") or "").strip()
+    if active_panel_subtype and target_subtype == active_panel_subtype:
+        return False
+    return not bool(supplied_alteration_supports_target_row(target_row, analysis))
+
+
+def _has_direct_eligibility_input(analysis, biomarker: str) -> bool:
+    """Best-effort check for orthogonal eligibility evidence supplied to this run."""
+    if not isinstance(analysis, dict):
+        return False
+    constraints = analysis.get("analysis_constraints") or {}
+    if biomarker == "mutation":
+        return any(
+            bool(analysis.get(key))
+            for key in (
+                "fusion_inputs_supplied",
+                "alteration_inputs_supplied",
+                "variant_inputs_supplied",
+                "mutation_inputs_supplied",
+                "cnv_inputs_supplied",
+            )
+        ) or any(
+            bool(constraints.get(key))
+            for key in (
+                "fusions",
+                "fusion_file",
+                "variants",
+                "mutations",
+                "cnvs",
+                "alterations",
+            )
+        )
+    if biomarker == "msi_high":
+        return any(
+            bool(constraints.get(key))
+            for key in ("msi_status", "mmr_status", "msi", "mmr")
+        )
+    if biomarker == "tmb_high":
+        return any(bool(constraints.get(key)) for key in ("tmb", "tmb_status"))
+    if biomarker == "histology_only":
+        return bool(constraints.get("cancer_type")) or str(
+            analysis.get("cancer_type_source") or ""
+        ).strip() == "user-specified"
+    return False
+
+
+def _expression_independent_evidence_gap(target_row, analysis) -> str:
+    """Surface when a non-expression eligibility gate was not provided."""
+    if not expression_independent_indication(target_row):
+        return ""
+    supplied_context = supplied_alteration_context_for_target_row(
+        target_row,
+        analysis,
+    )
+    if supplied_context:
+        return supplied_context
+    biomarker = indication_biomarker(target_row)
+    if biomarker == "histology_only":
+        if _has_direct_eligibility_input(analysis, biomarker):
+            return ""
+        return (
+            "eligibility evidence not supplied to this run: confirm diagnosis/"
+            "histology before treating as eligible"
+        )
+    label = indication_biomarker_label(target_row)
+    if _has_direct_eligibility_input(analysis, biomarker):
+        return (
+            f"required eligibility evidence was supplied to this run; verify the "
+            f"{label} call matches the indication"
+        )
+    return (
+        f"required eligibility evidence not supplied to this run: confirm {label} "
+        "before treating as eligible"
+    )
 
 
 def _format_therapy_bullet(
@@ -259,10 +386,12 @@ def _format_therapy_bullet(
         disease_state=disease_state,
     )
     caution_suffix = (
-        f" Current-therapy check: {state_caution}."
-        if state_caution else ""
+        f" Current-therapy check: {state_caution}." if state_caution else ""
     )
     maturity = clinical_maturity_summary(target_row, target_panel=target_panel)
+
+    def _eligibility_evidence_gap() -> str:
+        return _expression_independent_evidence_gap(target_row, analysis)
 
     def _sentence(parts, *, maturity: str | None = None) -> str:
         body = "; ".join(part for part in parts if part)
@@ -275,6 +404,7 @@ def _format_therapy_bullet(
             parts = [
                 expression_independent_interpretation(target_row),
                 expression_independent_rna_context(None),
+                _eligibility_evidence_gap(),
             ]
             if path_context:
                 parts.append(path_context)
@@ -292,6 +422,7 @@ def _format_therapy_bullet(
             parts = [
                 expression_independent_interpretation(target_row),
                 expression_independent_rna_context(expression_row),
+                _eligibility_evidence_gap(),
             ]
             if path_context:
                 parts.append(path_context)
@@ -305,7 +436,10 @@ def _format_therapy_bullet(
             f"**target absent** in this sample.{caution_suffix}"
         )
     if not tumor_band_available(expression_row):
-        parts = [f"Bulk TPM {observed:.0f}", "tumor-inferred model interval unavailable"]
+        parts = [
+            f"Bulk TPM {observed:.0f}",
+            "tumor-inferred model interval unavailable",
+        ]
         if path_context:
             parts.append(path_context)
         return (
@@ -318,6 +452,7 @@ def _format_therapy_bullet(
         interpretation_parts = [
             expression_independent_interpretation(target_row),
             expression_independent_rna_context(expression_row),
+            _eligibility_evidence_gap(),
         ]
     else:
         interpretation_parts = [source["label"], source["band"], normal["label"]]
@@ -356,7 +491,12 @@ def _top_therapies(
         sym_to_row[str(rrow["symbol"])] = rrow
 
     phase_priority = {
-        "approved": 0, "phase_3": 1, "phase_2": 2, "phase_1": 3, "preclinical": 4,
+        "approved": 0,
+        "phase_3": 1,
+        "phase_2": 2,
+        "phase_1": 3,
+        "preclinical": 4,
+        "off_label": 5,
     }
 
     scored = []
@@ -364,12 +504,20 @@ def _top_therapies(
         sym = str(t.get("symbol") or "")
         expr = sym_to_row.get(sym)
         expr_independent = expression_independent_indication(t)
+        if _subtype_specific_row_out_of_scope(t, analysis):
+            continue
+        supplied_alteration_rank = (
+            0 if supplied_alteration_supports_target_row(t, analysis) else 1
+        )
         if expr is None:
+            if not hla_restricted_target_supported(t, analysis=analysis):
+                continue
             if expr_independent:
                 phase = str(t.get("phase") or "")
                 scored.append(
                     (
                         (
+                            supplied_alteration_rank,
                             therapy_path_rank(
                                 t,
                                 analysis=analysis,
@@ -385,6 +533,8 @@ def _top_therapies(
                         None,
                     )
                 )
+            continue
+        if not hla_restricted_target_supported(t, analysis=analysis):
             continue
         observed = float(expr.get("observed_tpm") or 0.0)
         if observed < 1.0 and not expr_independent:
@@ -422,6 +572,7 @@ def _top_therapies(
         reliability_rank = 0 if reliability_status == "supported" else 1
         expression_rank = 1 if expr_independent else 0
         sort_key = (
+            supplied_alteration_rank,
             therapy_path_rank(
                 t,
                 analysis=analysis,
@@ -573,7 +724,9 @@ def _source_trace_reason(target_row, expression_row, *, in_shortlist: bool) -> s
             parts.append(f"{attr_fraction:.0%} tumor fraction")
     elif reliability == "unsupported":
         parts.append(
-            f"mostly {comp_label}/background" if comp_label != "—" else "background-dominant"
+            f"mostly {comp_label}/background"
+            if comp_label != "—"
+            else "background-dominant"
         )
     elif reliability == "provisional":
         parts.append(source["label"])
@@ -592,10 +745,7 @@ def _shortlist_omission_note(targets_df, ranges_df, top_rows) -> str:
     if targets_df is None or ranges_df is None or not top_rows:
         return ""
     top_symbols = {str(t.get("symbol") or "") for t, _ in top_rows}
-    sym_to_row = {
-        str(row.get("symbol") or ""): row
-        for _, row in ranges_df.iterrows()
-    }
+    sym_to_row = {str(row.get("symbol") or ""): row for _, row in ranges_df.iterrows()}
     omitted = []
     seen = set()
     for _, target in targets_df.iterrows():
@@ -693,7 +843,11 @@ def _curated_target_panel_for_sample(cancer_code, analysis, ranges_df=None):
     return panel_code, panel_subtype, targets_df.reset_index(drop=True)
 
 
-def _caveats_from_purity_tier(purity_tier, sample_context) -> List[str]:
+def _caveats_from_purity_tier(
+    purity_tier,
+    sample_context,
+    analysis=None,
+) -> List[str]:
     """User-facing caveat lines for the brief.
 
     Converts the ``purity_tier.reasons`` (which are short internal
@@ -752,7 +906,446 @@ def _caveats_from_purity_tier(purity_tier, sample_context) -> List[str]:
                 "low MT fraction is expected, but measurable MT mRNAs "
                 "should not be treated as filtered out."
             )
+    scale_qc = (analysis or {}).get("expression_scale_qc") or {}
+    if scale_qc.get("warnings"):
+        out.append("Expression scale QC: " + str(scale_qc["warnings"][0]) + ".")
     return out
+
+
+def _cancer_type_basis_line(analysis, cancer_code: str) -> str:
+    constraints = analysis.get("analysis_constraints") or {}
+    constrained_code = str(constraints.get("cancer_type") or "").strip()
+    source = str(analysis.get("cancer_type_source") or "").strip()
+    report_scope_code = str(analysis.get("report_scope_cancer_type") or "").strip()
+    parent_scope_code = str(
+        analysis.get("report_scope_parent_cancer_type") or ""
+    ).strip()
+    fusion_inference = analysis.get("fusion_report_scope_inference") or {}
+    if fusion_inference and not constrained_code and source != "user-specified":
+        fusion = fusion_inference.get("fusion") or {}
+        pair = str(fusion.get("pair") or fusion_inference.get("expected_pair") or "")
+        label = str(
+            fusion_inference.get("label")
+            or fusion_inference.get("cancer_type")
+            or "rare cancer"
+        ).strip()
+        confirm = str(
+            fusion_inference.get("confirmatory_tests")
+            or "orthogonal clinical testing"
+        ).strip()
+        return (
+            f"**Cancer-type basis:** fusion-supported {label} hypothesis from "
+            f"{pair} sets provisional report scope; confirm with {confirm} or "
+            "clinical diagnosis before using the therapy shortlist."
+        )
+    rare_inference = analysis.get("rare_report_scope_inference") or {}
+    if rare_inference and not constrained_code and source != "user-specified":
+        surrogate = str(rare_inference.get("surrogate") or "RNA surrogate")
+        tpm = rare_inference.get("surrogate_tpm")
+        tpm_clause = f" ({tpm:g} TPM)" if isinstance(tpm, (int, float)) else ""
+        confirm = str(
+            rare_inference.get("confirmatory_tests")
+            or "orthogonal clinical testing"
+        ).strip()
+        return (
+            f"**Cancer-type basis:** RNA-inferred rare-cancer hypothesis from "
+            f"{surrogate}{tpm_clause} sets provisional report scope; confirm "
+            f"with {confirm} or clinical diagnosis before using the therapy shortlist."
+        )
+    if constrained_code or source == "user-specified":
+        supplied = report_scope_code or constrained_code or str(cancer_code or "").strip()
+        if parent_scope_code and report_scope_code:
+            supplied = f"{report_scope_code} via parent {parent_scope_code}"
+        return (
+            f"**Cancer-type basis:** externally supplied {supplied} sets report "
+            "scope; RNA evidence is used downstream for confidence, "
+            "purity/decomposition, target attribution, and expression-context checks."
+        )
+    return (
+        "**Cancer-type basis:** RNA-inferred hypothesis sets provisional report "
+        "scope; confirm with pathology or clinical diagnosis before using the "
+        "therapy shortlist."
+    )
+
+
+def _fusion_pair_display(finding: dict) -> str:
+    fusion = finding.get("fusion") or {}
+    pair = str(fusion.get("pair") or "").strip()
+    if pair:
+        return pair
+    return str(finding.get("expected_pair") or "fusion").strip()
+
+
+def _fusion_evidence_line(analysis, cancer_code: str) -> str:
+    fusion_inference = analysis.get("fusion_report_scope_inference") or {}
+    findings = analysis.get("fusion_findings") or []
+    if fusion_inference:
+        pair = _fusion_pair_display(fusion_inference)
+        label = str(
+            fusion_inference.get("label")
+            or fusion_inference.get("cancer_type")
+            or cancer_code
+        ).strip()
+        expected = str(fusion_inference.get("expected_pair") or "").strip()
+        expected_clause = f"; expected 5-prime/3-prime rule {expected}" if expected else ""
+        note = str(fusion_inference.get("orientation_note") or "").strip()
+        note_clause = f"; {note}" if note else ""
+        return (
+            f"**Fusion evidence:** {pair} supports {label}{expected_clause}"
+            f"{note_clause}."
+        )
+    if findings:
+        top = findings[0]
+        pair = _fusion_pair_display(top)
+        label = str(top.get("label") or "fusion finding").strip()
+        caveat = str(top.get("caveat") or "").strip()
+        caveat_clause = f" {caveat}" if caveat else ""
+        return (
+            f"**Fusion evidence:** {pair} matches curated {label} evidence, "
+            f"but does not by itself assign the report cancer type.{caveat_clause}"
+        )
+    rare_inference = analysis.get("rare_report_scope_inference") or {}
+    if rare_inference and not analysis.get("fusion_inputs_supplied"):
+        confirm = str(
+            rare_inference.get("confirmatory_tests") or "fusion testing"
+        ).strip()
+        surrogate = str(rare_inference.get("surrogate") or "RNA marker").strip()
+        return (
+            f"**Fusion evidence needed:** no fusion file was supplied; because "
+            f"{surrogate} RNA supports this rare-cancer hypothesis, ask whether "
+            f"{confirm} data are available."
+        )
+    return ""
+
+
+def _alteration_evidence_line(analysis) -> str:
+    records = analysis.get("alteration_records") or []
+    if records:
+        labels = []
+        for record in records[:4]:
+            if not hasattr(record, "get"):
+                continue
+            gene = str(record.get("gene") or "").strip()
+            alteration = str(
+                record.get("alteration") or record.get("alteration_type") or ""
+            ).strip()
+            if gene:
+                if alteration.upper().startswith(gene.upper()):
+                    labels.append(alteration)
+                else:
+                    labels.append(f"{gene} {alteration}".strip())
+        if labels:
+            suffix = "" if len(records) <= 4 else f" (+{len(records) - 4} more)"
+            return (
+                "**Alteration evidence:** supplied "
+                + ", ".join(labels)
+                + suffix
+                + "; used as driver/eligibility context, not inferred from RNA."
+            )
+    if analysis.get("alteration_inputs_supplied"):
+        return (
+            "**Alteration evidence:** alteration input was supplied, but no usable "
+            "calls were parsed; verify the file format before using alteration-gated "
+            "therapies."
+        )
+    return ""
+
+
+def _pathway_activity_line(analysis) -> str:
+    inferences = analysis.get("pathway_activity_inferences") or []
+    if not inferences:
+        return ""
+    finding = inferences[0]
+    label = str(finding.get("label") or "Pathway activity").strip()
+    fold = finding.get("up_geomean_fold")
+    support = ", ".join((finding.get("support_genes") or [])[:4])
+    source_labels = [
+        str(source.get("label") or "").strip()
+        for source in (finding.get("candidate_sources") or [])[:3]
+        if str(source.get("label") or "").strip()
+    ]
+    unresolved = ", ".join((finding.get("unresolved_sources") or [])[:2])
+    fold_clause = (
+        f" high ({fold:.2f}x context)" if isinstance(fold, (int, float)) else " high"
+    )
+    support_clause = f"; support genes: {support}" if support else ""
+    if source_labels:
+        source_clause = "; plausible sources: " + "; ".join(source_labels)
+    elif unresolved:
+        source_clause = "; possible sources to test: " + unresolved
+    else:
+        source_clause = ""
+    caveat = str(finding.get("caveat") or "").strip()
+    caveat_clause = f" {caveat}" if caveat else ""
+    return (
+        f"**Active pathway:** {label}{fold_clause}{support_clause}"
+        f"{source_clause}.{caveat_clause}"
+    )
+
+
+def _candidate_trace_rank(
+    candidate_trace: list[dict],
+    cancer_code: str,
+) -> tuple[int | None, dict | None]:
+    code = str(cancer_code or "").strip()
+    if not code:
+        return None, None
+    for idx, row in enumerate(candidate_trace, start=1):
+        if str(row.get("code") or "").strip() == code:
+            return idx, row
+    return None, None
+
+
+def _candidate_support_score(row: dict | None) -> float | None:
+    if not row:
+        return None
+    for key in ("support_geomean", "support_score", "support_norm"):
+        if row.get(key) is not None:
+            try:
+                return float(row.get(key))
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _candidate_code_list(rows: list[dict], *, exclude: set[str], limit: int) -> str:
+    codes: list[str] = []
+    for row in rows:
+        code = str(row.get("code") or "").strip()
+        if not code or code in exclude:
+            continue
+        codes.append(code)
+        if len(codes) >= limit:
+            break
+    return ", ".join(codes)
+
+
+def _rna_crosscheck_line(analysis, cancer_code: str, call_tier=None) -> str:
+    constraints = analysis.get("analysis_constraints") or {}
+    constrained_code = str(constraints.get("cancer_type") or "").strip()
+    source = str(analysis.get("cancer_type_source") or "").strip()
+    rare_inference = analysis.get("rare_report_scope_inference") or {}
+    if not (constrained_code or source == "user-specified"):
+        if rare_inference:
+            top_code = str(rare_inference.get("top_reference_cancer_type") or "")
+            candidate_trace = analysis.get("candidate_trace") or []
+            alternatives = _candidate_code_list(
+                candidate_trace,
+                exclude={top_code},
+                limit=2,
+            )
+            alt_clause = (
+                f"; nearby alternatives include {alternatives}" if alternatives else ""
+            )
+            return (
+                f"**RNA classifier check:** {cancer_code} is a non-TCGA rare-cancer "
+                f"hypothesis; nearest TCGA expression reference is "
+                f"{top_code or 'unresolved'}{alt_clause}. Use these TCGA labels for "
+                "expression context, not as the diagnosis."
+            )
+        return ""
+
+    supplied_code = constrained_code or str(cancer_code or "").strip()
+    report_scope_code = str(analysis.get("report_scope_cancer_type") or "").strip()
+    parent_scope_code = str(
+        analysis.get("report_scope_parent_cancer_type") or ""
+    ).strip()
+    comparison_code = parent_scope_code or supplied_code
+    supplied_label = supplied_code
+    if report_scope_code and parent_scope_code:
+        supplied_label = f"{report_scope_code} via parent {parent_scope_code}"
+    candidate_trace = analysis.get("candidate_trace") or []
+    if not comparison_code or not candidate_trace:
+        return "**RNA classifier check:** no cancer-type candidate trace available."
+
+    top = candidate_trace[0]
+    top_code = str(top.get("code") or "").strip()
+    supplied_rank, supplied_row = _candidate_trace_rank(
+        candidate_trace, comparison_code
+    )
+    if top_code == comparison_code:
+        alternatives = _candidate_code_list(
+            candidate_trace,
+            exclude={comparison_code},
+            limit=2,
+        )
+        suffix = f"; nearest RNA alternatives: {alternatives}" if alternatives else ""
+        suffix += _confidence_caveat_clause(call_tier)
+        return (
+            f"**RNA classifier check:** concordant with supplied "
+            f"{supplied_label}{suffix}."
+        )
+
+    fit_quality = str((analysis.get("fit_quality") or {}).get("label") or "").strip()
+    top_score = _candidate_support_score(top)
+    supplied_score = _candidate_support_score(supplied_row)
+    near_tie = (
+        top_score is not None
+        and supplied_score is not None
+        and abs(top_score - supplied_score) <= 0.10
+    )
+    status = (
+        "ambiguous against"
+        if fit_quality in {"weak", "ambiguous"} or near_tie
+        else "discordant with"
+    )
+    rank_clause = (
+        f"rank {supplied_rank}"
+        if supplied_rank is not None
+        else "not in the RNA top candidates"
+    )
+    caveat_clause = _confidence_caveat_clause(call_tier)
+    return (
+        f"**RNA classifier check:** {status} supplied {supplied_label}; "
+        f"top RNA candidate is {top_code or 'unresolved'} while {comparison_code} is {rank_clause}. "
+        "Keep the supplied label as report scope and review pathology/subtype context"
+        f"{caveat_clause}."
+    )
+
+
+def _signature_top_code(analysis) -> str:
+    candidates = analysis.get("signature_top_cancers") or []
+    if not candidates:
+        return ""
+    top = candidates[0]
+    if isinstance(top, dict):
+        return str(top.get("code") or top.get("cancer_type") or "").strip()
+    if isinstance(top, (list, tuple)) and top:
+        return str(top[0] or "").strip()
+    return ""
+
+
+def _rna_alternatives_line(analysis, cancer_code: str) -> str:
+    """Concise ordered alternatives for RNA-inferred, non-rare report scopes."""
+    constraints = analysis.get("analysis_constraints") or {}
+    source = str(analysis.get("cancer_type_source") or "").strip()
+    if constraints.get("cancer_type") or source == "user-specified":
+        return ""
+    if analysis.get("rare_report_scope_inference") or analysis.get(
+        "fusion_report_scope_inference"
+    ):
+        return ""
+    candidate_trace = analysis.get("candidate_trace") or []
+    if not candidate_trace:
+        return ""
+
+    top_score = _candidate_support_score(candidate_trace[0])
+    chunks: list[str] = []
+    for idx, row in enumerate(candidate_trace[:3], start=1):
+        code = str(row.get("code") or "").strip()
+        if not code:
+            continue
+        score = _candidate_support_score(row)
+        ratio = ""
+        if idx > 1 and top_score and score is not None:
+            ratio = f", {score / top_score:.2f}x top support"
+        chunks.append(f"{code} (rank {idx}{ratio})")
+    if not chunks:
+        return ""
+
+    sig_top = _signature_top_code(analysis)
+    sig_clause = ""
+    if sig_top and sig_top != str(cancer_code or "").strip():
+        sig_clause = f"; raw-signature top {sig_top}"
+    return (
+        f"**RNA alternatives:** ordered RNA candidates {', '.join(chunks)}"
+        f"{sig_clause}. Treat these as hypotheses until pathology/clinical "
+        "context resolves them."
+    )
+
+
+def _subtype_status_line(
+    *,
+    winning_subtype: Optional[str],
+    degenerate_status: Optional[str],
+    degenerate_resolution: Optional[dict],
+    original_winning_subtype: Optional[str],
+    analysis: dict,
+) -> str:
+    if degenerate_status in ("corrected", "degenerate"):
+        subtype_note = _render_subtype_note(
+            degenerate_resolution or {},
+            original_subtype=original_winning_subtype,
+            site_template=analysis_site_template_for_subtype(analysis),
+        ).strip()
+        if subtype_note:
+            if degenerate_status == "corrected":
+                final_label = _display_subtype_code(
+                    (degenerate_resolution or {}).get("final_subtype")
+                )
+                return (
+                    f"**Subtype status:** {final_label}-consistent after context "
+                    f"check; {subtype_note}"
+                )
+            return f"**Subtype status:** {subtype_note}"
+    if winning_subtype:
+        label = _display_subtype_code(winning_subtype)
+        return (
+            f"**Subtype status:** RNA subtype signal is {label}-consistent; "
+            "use as expression context unless clinically confirmed."
+        )
+    return ""
+
+
+def _clinical_context_caveats(analysis) -> List[str]:
+    constraints = analysis.get("analysis_constraints") or {}
+    source = str(analysis.get("cancer_type_source") or "").strip()
+    caveats: List[str] = []
+    if not constraints.get("cancer_type") and source != "user-specified":
+        caveats.append(
+            "Cancer type is RNA-inferred — treat it as a hypothesis, not a diagnosis."
+        )
+    caveats.append(
+        "Patient-facing LLM interpretation needs external clinical context: "
+        "diagnosis, stage, prior lines, current medications, MSI/MMR/TMB, "
+        "mutations/fusions/CNVs, relevant imaging such as HER2/PSMA, and trial availability."
+    )
+    return caveats
+
+
+def _missing_hla_prompts(targets_df, ranges_df, analysis, limit: int = 3) -> List[str]:
+    constraints = analysis.get("analysis_constraints") or {}
+    if constraints.get("hla_types") or targets_df is None or ranges_df is None:
+        return []
+    sym_to_row = {}
+    for _, row in ranges_df.iterrows():
+        sym = str(row.get("symbol") or "").strip()
+        if sym:
+            sym_to_row[sym] = row
+            sym_to_row[sym.replace("-", "")] = row
+    prompts: List[str] = []
+    seen = set()
+    for _, target in targets_df.iterrows():
+        if _subtype_specific_row_out_of_scope(target, analysis):
+            continue
+        required = hla_restrictions_for_target_row(target)
+        if not required:
+            continue
+        sym = str(target.get("symbol") or "").strip()
+        if not sym or sym.lower() == "nan":
+            continue
+        expr = sym_to_row.get(sym)
+        if expr is None:
+            expr = sym_to_row.get(sym.replace("-", ""))
+        if expr is None:
+            continue
+        observed = _brief_float(expr.get("observed_tpm"), 0.0)
+        tumor_tpm = _brief_float(expr.get("attr_tumor_tpm"), observed)
+        if max(observed, tumor_tpm) < 1.0:
+            continue
+        agent = str(target.get("agent") or "the HLA-gated therapy").strip()
+        key = (sym, agent)
+        if key in seen:
+            continue
+        seen.add(key)
+        prompts.append(
+            f"HLA typing needed for {agent} ({sym}): requires "
+            f"{'/'.join(required)}; if compatible, review eligibility alongside "
+            "target expression, diagnosis, and trial/label criteria."
+        )
+        if len(prompts) >= limit:
+            break
+    return prompts
 
 
 def build_summary(
@@ -780,11 +1373,6 @@ def build_summary(
     sample_id = _display_sample_id(sample_id)
     header_id = f": {sample_id}" if sample_id else ""
     lines.append(f"# Summary{header_id}\n")
-    lines.append(
-        "<!-- Audience: clinician skimming before tumor board. "
-        "Intended length: ≤ 40 lines. -->"
-    )
-    lines.append("")
 
     # #149: Step-0 healthy-vs-tumor banner. Above the cancer call so
     # the reader sees the caveat before anchoring on the TCGA label.
@@ -805,19 +1393,24 @@ def build_summary(
     # orthogonal signals (lineage concordance, runner-up gap, Step-0
     # top-ρ cohort) disagree with the classifier's pick.
     from .confidence import compute_call_confidence
-    call_tier = compute_call_confidence(analysis)
-    suffix = _call_confidence_suffix(call_tier, concise=True)
 
-    # #171: for mixture cohorts, surface the winning subtype hypothesis
-    # so the reader sees "Cancer call: SARC (subtype: rhabdomyosarcoma
-    # -consistent)" instead of just SARC. The subtype is the registry
-    # code's ``subtype_key`` field (e.g. "leiomyosarcoma") or the code
-    # itself when no human-readable key is populated.
-    subtype_annotation = ""
-    winning_subtype = None
-    candidate_trace = analysis.get("candidate_trace") or []
-    if candidate_trace:
-        winning_subtype = candidate_trace[0].get("winning_subtype")
+    call_tier = compute_call_confidence(analysis)
+    suffix = _call_confidence_suffix(
+        call_tier,
+        concise=True,
+        include_reasons=False,
+    )
+    rare_scope = analysis.get("rare_report_scope_inference") or {}
+    fusion_scope = analysis.get("fusion_report_scope_inference") or {}
+    if rare_scope or fusion_scope:
+        tier = getattr(call_tier, "tier", "unknown")
+        suffix = f" — **{tier} confidence**"
+
+    # #171/#198: resolve subtype evidence separately from the report-scope
+    # cancer label. The subtype signal is useful context, but rendering it
+    # inside the cancer-call parenthetical made clinical labels, RNA labels,
+    # and confidence caveats look like one decision.
+    winning_subtype = candidate_winning_subtype_for_analysis(analysis)
 
     # #198: before rendering, consult the degenerate-subtype registry.
     # Several within-family subtypes share a gene signature (OS vs DDLPS
@@ -830,14 +1423,13 @@ def build_summary(
     # shared signature is actually present; high-confidence clear-
     # winner calls bypass the resolver entirely.
     degenerate_status = None
-    degenerate_alternatives = []
     degenerate_resolution = None
     original_winning_subtype = winning_subtype
     if winning_subtype:
         try:
             from .degenerate_subtype import resolve_degenerate_subtype
-            decomposition = analysis.get("decomposition") or {}
-            site_template = decomposition.get("best_template")
+
+            site_template = analysis_site_template_for_subtype(analysis)
             tumor_tpm_by_symbol = analysis.get("tumor_tpm_by_symbol")
             if not tumor_tpm_by_symbol and ranges_df is not None:
                 # Build from ``ranges_df`` — the per-gene attribution
@@ -847,14 +1439,21 @@ def build_summary(
                 # slice.
                 try:
                     import pandas as pd
-                    if isinstance(ranges_df, pd.DataFrame) and "symbol" in ranges_df.columns and "attr_tumor_tpm" in ranges_df.columns:
+
+                    if (
+                        isinstance(ranges_df, pd.DataFrame)
+                        and "symbol" in ranges_df.columns
+                        and "attr_tumor_tpm" in ranges_df.columns
+                    ):
                         tumor_tpm_by_symbol = dict(
                             zip(
                                 ranges_df["symbol"].astype(str),
                                 pd.to_numeric(
                                     ranges_df["attr_tumor_tpm"],
                                     errors="coerce",
-                                ).fillna(0.0).astype(float),
+                                )
+                                .fillna(0.0)
+                                .astype(float),
                             )
                         )
                 except Exception:
@@ -872,67 +1471,71 @@ def build_summary(
             if resolution["status"] == "corrected":
                 winning_subtype = resolution["final_subtype"]
             degenerate_status = resolution["status"]
-            degenerate_alternatives = resolution["alternatives"]
         except Exception:
             logger.debug(
                 "degenerate-subtype resolution failed; keeping classifier pick",
                 exc_info=True,
             )
 
-    if winning_subtype:
-        try:
-            from .gene_sets_cancer import cancer_type_registry
-            reg = cancer_type_registry()
-            match = reg[reg["code"] == winning_subtype]
-            if not match.empty:
-                row = match.iloc[0]
-                subtype_key = row.get("subtype_key")
-                label = None
-                if isinstance(subtype_key, str) and subtype_key and subtype_key.lower() != "nan":
-                    label = subtype_key.replace("_", " ")
-                else:
-                    # Fall back to the human-readable registry ``name``
-                    # so aggregate-only rows without a ``subtype_key``
-                    # still render cleanly (SARC_LPS_UNSPEC →
-                    # "liposarcoma" rather than raw code).
-                    name = row.get("name")
-                    if isinstance(name, str) and name:
-                        label = name.split("(")[0].strip().lower()
-                if not label:
-                    label = winning_subtype
-                if degenerate_status == "degenerate":
-                    subtype_annotation = (
-                        f" (subtype: degenerate — {label} vs "
-                        f"{'/'.join(degenerate_alternatives)})"
-                    )
-                else:
-                    subtype_annotation = f" (subtype: {label}-consistent)"
-        except Exception:
-            subtype_annotation = f" (subtype: {winning_subtype}-consistent)"
-
     call_punctuation = suffix or "."
-    lines.append(
-        f"**Cancer call:** {cancer_code} ({cancer_name})"
-        f"{subtype_annotation}{call_punctuation}"
+    lines.append(f"**Cancer call:** {cancer_code} ({cancer_name}){call_punctuation}")
+    lines.append(_cancer_type_basis_line(analysis, cancer_code))
+    rna_crosscheck = _rna_crosscheck_line(analysis, cancer_code, call_tier=call_tier)
+    if rna_crosscheck:
+        lines.append(rna_crosscheck)
+    else:
+        rna_alternatives = _rna_alternatives_line(analysis, cancer_code)
+        if rna_alternatives:
+            lines.append(rna_alternatives)
+    fusion_line = _fusion_evidence_line(analysis, cancer_code)
+    if fusion_line:
+        lines.append(fusion_line)
+    alteration_line = _alteration_evidence_line(analysis)
+    if alteration_line:
+        lines.append(alteration_line)
+    rare_marker_hypotheses = [
+        finding
+        for finding in (analysis.get("rare_marker_hypotheses") or [])
+        if str(finding.get("cancer_type") or "").strip() != str(cancer_code).strip()
+    ]
+    if rare_marker_hypotheses:
+        finding = rare_marker_hypotheses[0]
+        surrogate = str(finding.get("surrogate") or "marker").strip()
+        tpm = finding.get("surrogate_tpm")
+        tpm_clause = f" {tpm:g} TPM" if isinstance(tpm, (int, float)) else ""
+        label = finding.get("cancer_type") or "rare cancer"
+        support = ", ".join(finding.get("support_genes") or [])
+        missing = ", ".join(finding.get("missing_support_genes") or [])
+        evidence_bits = []
+        if support:
+            evidence_bits.append(f"supporting co-markers: {support}")
+        if missing:
+            evidence_bits.append(f"missing/low expected co-markers: {missing}")
+        evidence_clause = "; " + "; ".join(evidence_bits) if evidence_bits else ""
+        top_ref = str(finding.get("top_reference_cancer_type") or "").strip()
+        context_clause = f" in {top_ref} RNA context" if top_ref else ""
+        lines.append(
+            f"**Rare-marker prompt:** {surrogate}{tpm_clause}{context_clause} raises {label} as a "
+            f"testing prompt, not the report scope{evidence_clause}."
+        )
+    subtype_line = _subtype_status_line(
+        winning_subtype=winning_subtype,
+        degenerate_status=degenerate_status,
+        degenerate_resolution=degenerate_resolution,
+        original_winning_subtype=original_winning_subtype,
+        analysis=analysis,
     )
-    # Surface a subtype note only when the resolver changed the call or
-    # flagged irreducible ambiguity. ``pair_inactive`` means the pair
-    # didn't apply — no reader-facing note needed.
-    if degenerate_status in ("corrected", "degenerate"):
-        subtype_note = _render_subtype_note(
-            degenerate_resolution or {},
-            original_subtype=original_winning_subtype,
-            site_template=(analysis.get("decomposition") or {}).get("best_template"),
-        ).strip()
-        if subtype_note:
-            lines.append(f"**Subtype note:** {subtype_note}")
+    if subtype_line:
+        lines.append(subtype_line)
 
     # Purity
     overall = purity.get("overall_estimate")
     lower = purity.get("overall_lower")
     upper = purity.get("overall_upper")
     if overall is not None and lower is not None and upper is not None:
-        tier_label = getattr(purity_tier, "tier", "unknown") if purity_tier else "unknown"
+        tier_label = (
+            getattr(purity_tier, "tier", "unknown") if purity_tier else "unknown"
+        )
         lines.append(
             f"**Purity:** {overall:.0%} (model interval {lower:.0%}–{upper:.0%}, "
             f"{tier_label} confidence)."
@@ -942,32 +1545,66 @@ def build_summary(
     disease_state_display = report_disease_state_text(disease_state, analysis=analysis)
     if disease_state_display:
         lines.append(f"**Disease state:** {disease_state_display}")
+    pathway_activity = _pathway_activity_line(analysis)
+    if pathway_activity:
+        lines.append(pathway_activity)
 
     # Sample context
     if sample_context is not None:
-        prep_label = library_prep_clause(getattr(sample_context, "library_prep", "unknown"))
-        pres_label = str(getattr(sample_context, "preservation", "unknown")).replace("_", " ")
-        lines.append(f"**Sample:** {prep_label}, {pres_label} preservation.")
+        prep_label = library_prep_clause(
+            getattr(sample_context, "library_prep", "unknown")
+        )
+        pres_label = str(getattr(sample_context, "preservation", "unknown")).replace(
+            "_", " "
+        )
+        pres_conf = getattr(sample_context, "preservation_confidence", 0.0)
+        if pres_label == "fresh frozen":
+            pres_label = "fresh/frozen-like"
+        lines.append(
+            f"**Sample:** {prep_label}; preservation inferred as {pres_label} "
+            f"from RNA QC (confidence {pres_conf:.0%})."
+        )
+    scale_qc = analysis.get("expression_scale_qc") or {}
+    if scale_qc.get("converted_from") == "log2_tpm_plus_one":
+        post_sum = scale_qc.get("post_conversion_sum_tpm") or scale_qc.get("sum_tpm")
+        sum_clause = f"; post-conversion sum {post_sum/1_000_000:.2f}M" if post_sum else ""
+        lines.append(
+            "**Expression scale QC:** input resembled log2(TPM+1); converted to "
+            f"linear TPM before interpretation{sum_clause}."
+        )
+    elif scale_qc.get("warnings"):
+        lines.append(
+            "**Expression scale QC:** "
+            + str((scale_qc.get("warnings") or ["check expression scale"])[0])
+            + "."
+        )
 
     lines.append("")
 
     # Top therapies — subtype/direct-code resolved when the umbrella
     # cancer call narrows onto a more specific curated panel.
     panel_code, panel_subtype, targets_df = _curated_target_panel_for_sample(
-        cancer_code, analysis, ranges_df=ranges_df,
+        cancer_code,
+        analysis,
+        ranges_df=ranges_df,
     )
+    hla_prompts = _missing_hla_prompts(targets_df, ranges_df, analysis)
     if panel_code in cancer_key_genes_cancer_types():
+        therapy_analysis = dict(analysis)
+        if panel_subtype:
+            therapy_analysis["_target_panel_subtype"] = panel_subtype
         top = _top_therapies(
             targets_df,
             ranges_df,
             limit=3,
-            analysis=analysis,
+            analysis=therapy_analysis,
             disease_state=disease_state_display,
         )
         lines.append("## Top candidate therapies\n")
         lines.append(
-            "*Ranked by treatment-path maturity first, then tumor-source support; "
-            "verify current therapy before acting on any row.*\n"
+            "*Static curation, not a live NCCN or trial-matching engine; ranked by "
+            "treatment-path maturity first, then tumor-source support. Verify current "
+            "NCCN/trial status and current therapy before acting on any row.*\n"
         )
         if panel_code != cancer_code or panel_subtype:
             lines.append(
@@ -988,7 +1625,7 @@ def build_summary(
                         target_row,
                         expression_row,
                         target_panel=targets_df,
-                        analysis=analysis,
+                        analysis=therapy_analysis,
                         disease_state=disease_state_display,
                     )
                 )
@@ -1010,7 +1647,11 @@ def build_summary(
         )
 
     # Caveats
-    caveats = _caveats_from_purity_tier(purity_tier, sample_context)
+    caveats = _caveats_from_purity_tier(
+        purity_tier,
+        sample_context,
+        analysis,
+    ) + hla_prompts + _clinical_context_caveats(analysis)
     if caveats:
         lines.append("## Caveats")
         for c in caveats:
@@ -1064,16 +1705,18 @@ def build_actionable(
     lines.append("## Sample and confidence\n")
     prep_label = (
         library_prep_clause(getattr(sample_context, "library_prep", "unknown"))
-        if sample_context else "unknown"
+        if sample_context
+        else "unknown"
     )
-    pres_label = str(
-        getattr(sample_context, "preservation", "unknown")
-    ).replace("_", " ") if sample_context else "unknown"
+    pres_label = (
+        str(getattr(sample_context, "preservation", "unknown")).replace("_", " ")
+        if sample_context
+        else "unknown"
+    )
     if sample_context:
         lines.append(
             f"Input: **{prep_label}**, **{pres_label}** "
-            "preservation. "
-            + _preservation_clinical_clause(sample_context)
+            "preservation. " + _preservation_clinical_clause(sample_context)
         )
 
     overall = purity.get("overall_estimate")
@@ -1095,12 +1738,20 @@ def build_actionable(
     # Cancer call + disease state
     lines.append("## Cancer call and disease state\n")
     from .confidence import compute_call_confidence
+
     call_tier = compute_call_confidence(analysis)
     call_suffix = _call_confidence_suffix(call_tier, concise=True)
     call_punctuation = call_suffix or "."
-    lines.append(
-        f"Working call: **{cancer_code}** ({cancer_name}){call_punctuation}"
-    )
+    lines.append(f"Working call: **{cancer_code}** ({cancer_name}){call_punctuation}")
+    basis_line = _cancer_type_basis_line(analysis, cancer_code)
+    rna_crosscheck = _rna_crosscheck_line(analysis, cancer_code)
+    if basis_line:
+        lines.append(f"\n{basis_line}")
+    if rna_crosscheck:
+        lines.append(f"\n{rna_crosscheck}")
+    fusion_line = _fusion_evidence_line(analysis, cancer_code)
+    if fusion_line:
+        lines.append(f"\n{fusion_line}")
     # Step-0 tissue-composition banner (if non-tumor-consistent) so
     # an actionable reader sees the Step-0 caveat attached to the
     # working call, not buried in the summary. Same evidence-gated
@@ -1120,8 +1771,11 @@ def build_actionable(
 
     # Therapy landscape
     panel_code, panel_subtype, targets_df = _curated_target_panel_for_sample(
-        cancer_code, analysis, ranges_df=ranges_df,
+        cancer_code,
+        analysis,
+        ranges_df=ranges_df,
     )
+    hla_prompts = _missing_hla_prompts(targets_df, ranges_df, analysis)
     panel_label = _panel_display_label(panel_code, panel_subtype)
     if panel_code in cancer_key_genes_cancer_types():
         sym_to_row = {}
@@ -1163,8 +1817,11 @@ def build_actionable(
                 "----------|------------|----------------|"
             )
             phase_order = {
-                "approved": 0, "phase_3": 1, "phase_2": 2,
-                "phase_1": 3, "preclinical": 4,
+                "approved": 0,
+                "phase_3": 1,
+                "phase_2": 2,
+                "phase_1": 3,
+                "preclinical": 4,
             }
             sorted_df = targets_df.assign(
                 _path_key=[
@@ -1175,10 +1832,9 @@ def build_actionable(
                     )
                     for _, t in targets_df.iterrows()
                 ],
-                _po=targets_df["phase"].map(
-                    lambda p: phase_order.get(str(p), 99)
-                )
+                _po=targets_df["phase"].map(lambda p: phase_order.get(str(p), 99)),
             ).sort_values(["_path_key", "_po", "symbol", "agent"])
+
             def _cell(value):
                 """Render a cell, turning NaN / blank / 'nan' into em-dash."""
                 if value is None:
@@ -1245,9 +1901,8 @@ def build_actionable(
                             ]
                         else:
                             interp_parts = [source["label"], normal["label"]]
-                        notes = (
-                            list(source.get("notes") or [])
-                            + list(normal.get("details") or [])
+                        notes = list(source.get("notes") or []) + list(
+                            normal.get("details") or []
                         )
                         if notes and not expr_independent:
                             interp_parts.append(notes[0])
@@ -1270,9 +1925,7 @@ def build_actionable(
                         interp_parts.append(
                             clinical_maturity_summary(t, target_panel=targets_df)
                         )
-                        interp_cell = "; ".join(
-                            part for part in interp_parts if part
-                        )
+                        interp_cell = "; ".join(part for part in interp_parts if part)
                 phase = _phase_label(str(t.get("phase") or ""))
                 bold = "**" if phase == "Approved" and sym != "—" else ""
                 lines.append(
@@ -1295,7 +1948,10 @@ def build_actionable(
         )
 
     # Caveats
-    caveats = _caveats_from_purity_tier(purity_tier, sample_context)
+    caveats = (
+        _caveats_from_purity_tier(purity_tier, sample_context, analysis)
+        + hla_prompts
+    )
     if caveats:
         lines.append("## Caveats\n")
         for c in caveats:

@@ -1,9 +1,10 @@
 """Tests for pirlygenes.therapy_response (#57)."""
 
-import pytest
-
 from pirlygenes.therapy_response import (
+    MAPK_ACTIVITY_GENES,
+    MAPK_ACTIVITY_AXIS,
     TherapyAxisScore,
+    infer_mapk_activity_sources,
     load_therapy_signatures,
     score_therapy_signatures,
     symbol_therapy_annotations,
@@ -26,9 +27,14 @@ def test_load_therapy_signatures_has_ar_axis_for_prad():
 def test_all_eight_axes_present():
     sigs = load_therapy_signatures()
     expected_axes = {
-        "AR_signaling", "ER_signaling", "HER2_signaling",
-        "MAPK_EGFR_signaling", "NE_differentiation", "EMT",
-        "hypoxia", "IFN_response",
+        "AR_signaling",
+        "ER_signaling",
+        "HER2_signaling",
+        "MAPK_EGFR_signaling",
+        "NE_differentiation",
+        "EMT",
+        "hypoxia",
+        "IFN_response",
     }
     assert expected_axes.issubset(sigs.keys())
 
@@ -113,7 +119,7 @@ def test_her2_signaling_active_when_erbb2_elevated_in_brca():
 
     sample = {
         "ERBB2": cohort("ERBB2") * 10.0,
-        "GRB7":  cohort("GRB7") * 10.0,
+        "GRB7": cohort("GRB7") * 10.0,
         "STARD3": cohort("STARD3") * 10.0,
     }
     scores = score_therapy_signatures(sample, "BRCA")
@@ -121,6 +127,77 @@ def test_her2_signaling_active_when_erbb2_elevated_in_brca():
     assert her2 is not None
     assert her2.state == "up"
     assert her2.up_geomean_fold is not None and her2.up_geomean_fold >= 5.0
+
+
+def test_mapk_activity_score_is_pan_cancer_mpas_like():
+    from pirlygenes.gene_sets_cancer import pan_cancer_expression
+
+    ref = pan_cancer_expression().drop_duplicates(subset="Symbol")
+    col = "FPKM_SARC"
+
+    def cohort(sym):
+        sub = ref[ref["Symbol"] == sym]
+        if sub.empty or col not in sub.columns:
+            return 0.0
+        return float(sub.iloc[0][col])
+
+    sample = {sym: cohort(sym) * 5.0 for sym in MAPK_ACTIVITY_GENES}
+    sample["EGFR"] = cohort("EGFR") * 20.0
+
+    scores = score_therapy_signatures(sample, "SARC")
+    mapk = scores[MAPK_ACTIVITY_AXIS]
+    assert mapk.state == "up"
+    assert mapk.up_geomean_fold is not None and mapk.up_geomean_fold >= 4.0
+    per_gene_syms = {entry["symbol"] for entry in mapk.per_gene}
+    assert {"DUSP4", "DUSP6", "EPHA4"}.issubset(per_gene_syms)
+    assert "EGFR" not in per_gene_syms
+
+
+def test_infer_mapk_activity_sources_keeps_driver_uncertainty():
+    import pandas as pd
+
+    score = TherapyAxisScore(
+        therapy_class=MAPK_ACTIVITY_AXIS,
+        state="up",
+        up_geomean_fold=8.2,
+        up_genes_measured=5,
+        per_gene=[
+            {"symbol": "DUSP6", "direction": "up", "fold_vs_cohort": 15.0},
+            {"symbol": "SPRY2", "direction": "up", "fold_vs_cohort": 12.0},
+        ],
+    )
+    analysis = {
+        "therapy_response_scores": {MAPK_ACTIVITY_AXIS: score},
+        "alteration_records": [
+            {
+                "gene": "EGFR",
+                "alteration": "kinase domain duplication",
+                "alteration_type": "kdd",
+                "source_path": "alvin.tsv",
+                "confidence": "supplied",
+            }
+        ],
+        "fusion_records": [],
+    }
+    ranges = pd.DataFrame(
+        [
+            {
+                "symbol": "EGFR",
+                "attr_tumor_tpm": 570.0,
+                "observed_tpm": 583.0,
+                "pct_cancer_median": 29.3,
+                "tcga_percentile": 0.99,
+            }
+        ]
+    )
+
+    findings = infer_mapk_activity_sources(analysis, ranges_df=ranges)
+
+    assert findings and findings[0]["label"] == "MAPK / ERK activity"
+    labels = [source["label"] for source in findings[0]["candidate_sources"]]
+    assert any("supplied EGFR kinase domain duplication" in label for label in labels)
+    assert any("RNA-high EGFR" in label for label in labels)
+    assert "not source-specific" in findings[0]["caveat"]
 
 
 def test_fold_uses_pseudocount_to_avoid_division_by_zero():

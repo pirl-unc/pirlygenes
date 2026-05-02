@@ -36,7 +36,9 @@ def _mix_samples(parts):
     symbol_by_gene = {}
     for weight, df in parts:
         for row in df.itertuples(index=False):
-            value_by_gene[row.ensembl_gene_id] = value_by_gene.get(row.ensembl_gene_id, 0.0) + weight * float(row.TPM)
+            value_by_gene[row.ensembl_gene_id] = value_by_gene.get(
+                row.ensembl_gene_id, 0.0
+            ) + weight * float(row.TPM)
             symbol_by_gene[row.ensembl_gene_id] = row.gene_symbol
     out = pd.DataFrame({"ensembl_gene_id": list(value_by_gene.keys())})
     out["gene_symbol"] = out["ensembl_gene_id"].map(symbol_by_gene)
@@ -181,7 +183,9 @@ def test_auto_heme_mode_uses_heme_templates():
     )
 
     assert results
-    assert all(row.template in {"heme_nodal", "heme_blood", "heme_marrow"} for row in results)
+    assert all(
+        row.template in {"heme_nodal", "heme_blood", "heme_marrow"} for row in results
+    )
 
 
 def test_infer_sample_mode_prefers_best_heme_candidate():
@@ -259,7 +263,9 @@ def test_synthetic_coad_colon_mix_tracks_known_purity():
 
     purity = estimate_tumor_purity(df, cancer_type="COAD")
     candidates = rank_cancer_type_candidates(df, top_k=3)
-    results = decompose_sample(df, cancer_types=[row["code"] for row in candidates], top_k=2)
+    results = decompose_sample(
+        df, cancer_types=[row["code"] for row in candidates], top_k=2
+    )
 
     assert 0.2 < purity["overall_estimate"] < 0.45
     assert candidates[0]["code"] in {"COAD", "READ"}
@@ -344,9 +350,7 @@ def test_synthetic_prad_lymph_mix_stays_primary_not_lymphoma():
     # extended-housekeeping exclusion tightened this set in v4.2), so
     # we assert on the qualitative intent — B_cell tops the fractions —
     # rather than a hard numeric threshold.
-    non_tumor_fracs = {
-        k: v for k, v in results[0].fractions.items() if k != "tumor"
-    }
+    non_tumor_fracs = {k: v for k, v in results[0].fractions.items() if k != "tumor"}
     top_component = max(non_tumor_fracs, key=non_tumor_fracs.get)
     assert top_component == "B_cell", (
         f"Expected B_cell to top non-tumor fractions in a lymph-node mix, got "
@@ -572,7 +576,9 @@ def test_laml_uses_heme_templates():
     )
 
     assert results
-    assert all(row.template in {"heme_nodal", "heme_blood", "heme_marrow"} for row in results)
+    assert all(
+        row.template in {"heme_nodal", "heme_blood", "heme_marrow"} for row in results
+    )
 
 
 def test_laml_marrow_template_fits_myeloid_components():
@@ -619,10 +625,12 @@ def test_brain_met_detects_cns_via_composite_reference():
     Both astrocyte and neuron resolve to the same bulk CNS tissue; their
     fractions should be summed and read as "CNS parenchyma."
     """
-    df = _mix_samples([
-        (0.25, _tcga_sample("LUAD")),
-        (0.75, _normal_tissue_sample("cerebral_cortex")),
-    ])
+    df = _mix_samples(
+        [
+            (0.25, _tcga_sample("LUAD")),
+            (0.75, _normal_tissue_sample("cerebral_cortex")),
+        ]
+    )
 
     results = decompose_sample(
         df,
@@ -634,19 +642,20 @@ def test_brain_met_detects_cns_via_composite_reference():
     assert results[0].template == "met_brain"
     assert results[0].score > results[1].score
     # astrocyte + neuron together represent CNS parenchyma
-    cns_frac = (
-        results[0].fractions.get("astrocyte", 0.0)
-        + results[0].fractions.get("neuron", 0.0)
+    cns_frac = results[0].fractions.get("astrocyte", 0.0) + results[0].fractions.get(
+        "neuron", 0.0
     )
     assert cns_frac > 0.4, f"CNS fraction {cns_frac} too low for 75% brain sample"
 
 
 def test_brain_met_does_not_win_for_colon_sample():
     """CRC + colon should prefer solid_primary over met_brain."""
-    df = _mix_samples([
-        (0.3, _tcga_sample("COAD")),
-        (0.7, _normal_tissue_sample("colon")),
-    ])
+    df = _mix_samples(
+        [
+            (0.3, _tcga_sample("COAD")),
+            (0.7, _normal_tissue_sample("colon")),
+        ]
+    )
 
     results = decompose_sample(
         df,
@@ -662,21 +671,28 @@ def test_plot_decomposition_candidates_saves_png(tmp_path):
     """Candidate composition bar plot writes a non-empty PNG and handles
     templates with and without a template-specific compartment."""
     import matplotlib
+
     matplotlib.use("Agg")
     from types import SimpleNamespace
     from pirlygenes.decomposition import plot_decomposition_candidates
 
     rows = [
         SimpleNamespace(
-            cancer_type="COAD", template="solid_primary",
-            purity=0.45, template_extra_fraction=0.6,
-            cancer_support_score=0.7, template_tissue_score=0.85,
+            cancer_type="COAD",
+            template="solid_primary",
+            purity=0.45,
+            template_extra_fraction=0.6,
+            cancer_support_score=0.7,
+            template_tissue_score=0.85,
             score=0.42,
         ),
         SimpleNamespace(
-            cancer_type="COAD", template="met_lymph",
-            purity=0.45, template_extra_fraction=0.0,
-            cancer_support_score=0.65, template_tissue_score=0.4,
+            cancer_type="COAD",
+            template="met_lymph",
+            purity=0.45,
+            template_extra_fraction=0.0,
+            cancer_support_score=0.65,
+            template_tissue_score=0.4,
             score=0.18,
         ),
     ]
@@ -689,6 +705,7 @@ def test_plot_decomposition_candidates_saves_png(tmp_path):
 
 def test_plot_decomposition_candidates_empty_results_returns_none():
     from pirlygenes.decomposition import plot_decomposition_candidates
+
     assert plot_decomposition_candidates([]) is None
 
 
@@ -701,36 +718,64 @@ def test_plot_decomposition_candidates_surfaces_fit_and_markers(tmp_path):
     so purity-floor / marker-support / template-incomplete candidates
     stand out visually."""
     import matplotlib
+
     matplotlib.use("Agg")
     from types import SimpleNamespace
     import pandas as pd
     from pirlygenes.decomposition import plot_decomposition_candidates
 
-    trace_strong = pd.DataFrame([
-        {"component": "T_cell", "fraction": 0.03, "marker_score": 0.42,
-         "top_markers": "TRAC,CD3D", "n_markers": 3},
-        {"component": "myeloid", "fraction": 0.02, "marker_score": 0.38,
-         "top_markers": "LYZ,CD68", "n_markers": 3},
-    ])
-    trace_weak = pd.DataFrame([
-        {"component": "T_cell", "fraction": 0.01, "marker_score": 0.08,
-         "top_markers": "", "n_markers": 1},
-    ])
+    trace_strong = pd.DataFrame(
+        [
+            {
+                "component": "T_cell",
+                "fraction": 0.03,
+                "marker_score": 0.42,
+                "top_markers": "TRAC,CD3D",
+                "n_markers": 3,
+            },
+            {
+                "component": "myeloid",
+                "fraction": 0.02,
+                "marker_score": 0.38,
+                "top_markers": "LYZ,CD68",
+                "n_markers": 3,
+            },
+        ]
+    )
+    trace_weak = pd.DataFrame(
+        [
+            {
+                "component": "T_cell",
+                "fraction": 0.01,
+                "marker_score": 0.08,
+                "top_markers": "",
+                "n_markers": 1,
+            },
+        ]
+    )
 
     rows = [
         SimpleNamespace(
-            cancer_type="PRAD", template="solid_primary",
-            purity=0.28, template_extra_fraction=0.60,
-            cancer_support_score=0.72, template_tissue_score=0.80,
-            score=0.72, reconstruction_error=0.18,
+            cancer_type="PRAD",
+            template="solid_primary",
+            purity=0.28,
+            template_extra_fraction=0.60,
+            cancer_support_score=0.72,
+            template_tissue_score=0.80,
+            score=0.72,
+            reconstruction_error=0.18,
             component_trace=trace_strong,
             warnings=[],
         ),
         SimpleNamespace(
-            cancer_type="PRAD", template="met_liver",
-            purity=0.32, template_extra_fraction=0.50,
-            cancer_support_score=0.65, template_tissue_score=0.40,
-            score=0.45, reconstruction_error=0.55,
+            cancer_type="PRAD",
+            template="met_liver",
+            purity=0.32,
+            template_extra_fraction=0.50,
+            cancer_support_score=0.65,
+            template_tissue_score=0.40,
+            score=0.45,
+            reconstruction_error=0.55,
             component_trace=trace_weak,
             warnings=["Low marker support for template fit"],
         ),
@@ -754,15 +799,19 @@ def test_plot_decomposition_candidates_handles_missing_reconstruction_error(tmp_
     component_trace) still render — the new annotation falls back to
     fit err = 0.00 and markers = 0.00."""
     import matplotlib
+
     matplotlib.use("Agg")
     from types import SimpleNamespace
     from pirlygenes.decomposition import plot_decomposition_candidates
 
     rows = [
         SimpleNamespace(
-            cancer_type="COAD", template="solid_primary",
-            purity=0.45, template_extra_fraction=0.6,
-            cancer_support_score=0.7, template_tissue_score=0.85,
+            cancer_type="COAD",
+            template="solid_primary",
+            purity=0.45,
+            template_extra_fraction=0.6,
+            cancer_support_score=0.7,
+            template_tissue_score=0.85,
             score=0.42,
         ),
     ]

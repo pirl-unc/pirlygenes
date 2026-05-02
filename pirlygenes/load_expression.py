@@ -28,8 +28,8 @@ import re
 # Patterns for fuzzy column guessing (tried in order, first match wins).
 # Each is matched case-insensitively against the full column name.
 _GENE_NAME_PATTERNS = [
-    r"^gene[_\s]?sym",        # gene_symbol, gene symbol, genesym...
-    r"^gene[_\s]?name",       # gene_name, gene name
+    r"^gene[_\s]?sym",  # gene_symbol, gene symbol, genesym...
+    r"^gene[_\s]?name",  # gene_name, gene name
     r"^symbol$",
     r"^gene$",
     r"^name$",
@@ -37,7 +37,7 @@ _GENE_NAME_PATTERNS = [
     r"^hugo[_\s]?symbol",
 ]
 _GENE_ID_PATTERNS = [
-    r"ensembl.*gene.*id",     # ensembl_gene_id, Ensembl Gene ID, ...
+    r"ensembl.*gene.*id",  # ensembl_gene_id, Ensembl Gene ID, ...
     r"^gene[_\s]?id$",
     r"^ensg$",
 ]
@@ -59,6 +59,11 @@ _RAW_FPKM_PATTERNS = [
 ]
 
 _MAX_UNRESOLVED_TRANSCRIPT_TPM_FRACTION = 0.05
+_TPM_SUM_EXPECTED = 1_000_000.0
+_TPM_SUM_MIN_REASONABLE = 500_000.0
+_TPM_SUM_MAX_REASONABLE = 2_000_000.0
+_LOG2_TPM_MAX_CANDIDATE = 30.0
+_LOG2_TPM_SUM_MAX_CANDIDATE = 250_000.0
 
 
 def _guess_col(columns, patterns):
@@ -94,7 +99,8 @@ def _select_sample_rows(
                 f"available columns include: {available_preview}"
             )
         explicit_gene_cols = {
-            col for col in (gene_name_col, gene_id_col)
+            col
+            for col in (gene_name_col, gene_id_col)
             if col is not None and str(col).strip()
         }
         keep = [
@@ -102,7 +108,9 @@ def _select_sample_rows(
             for col in df.columns
             if col == sample_col
             or col in explicit_gene_cols
-            or re.search(r"(^|[_\s])gene([_\s]?id|[_\s]?name)?$", str(col), re.IGNORECASE)
+            or re.search(
+                r"(^|[_\s])gene([_\s]?id|[_\s]?name)?$", str(col), re.IGNORECASE
+            )
             or str(col).lower() in {"gene", "symbol", "ensembl_gene_id"}
         ]
         out = df.loc[:, keep].copy()
@@ -134,8 +142,7 @@ def _select_sample_rows(
     out = df.loc[mask].copy()
     if verbose:
         print(
-            f"[load] Selected {len(out)} rows where "
-            f"{sample_id_col}={sample_id_value!r}"
+            f"[load] Selected {len(out)} rows where {sample_id_col}={sample_id_value!r}"
         )
     return out
 
@@ -172,7 +179,8 @@ def _check_installed_ensembl_releases():
         return
     try:
         installed = [
-            g for g in collect_all_installed_ensembl_releases()
+            g
+            for g in collect_all_installed_ensembl_releases()
             if g.species.latin_name == "homo_sapiens"
         ]
     except Exception:
@@ -214,15 +222,19 @@ def _load_ensembl_id_aliases():
     are detected and raise (indicates bad input data).
     """
     from .plot_data_helpers import _strip_ensembl_version
+
     try:
         from .load_dataset import get_data
+
         df = get_data("ensembl-id-aliases")
     except Exception:
         return {}
-    raw = dict(zip(
-        df["alt_haplotype_id"].astype(str).map(_strip_ensembl_version),
-        df["primary_contig_id"].astype(str).map(_strip_ensembl_version),
-    ))
+    raw = dict(
+        zip(
+            df["alt_haplotype_id"].astype(str).map(_strip_ensembl_version),
+            df["primary_contig_id"].astype(str).map(_strip_ensembl_version),
+        )
+    )
     # Transitively resolve chains so the returned dict has no A→B where B
     # is itself a key.  Cap iterations to catch cycles.
     resolved = {}
@@ -239,9 +251,7 @@ def _load_ensembl_id_aliases():
             seen.add(dst)
             dst = raw[dst]
         else:
-            raise ValueError(
-                f"Chain from {src} exceeded 16 hops in ensembl-id-aliases"
-            )
+            raise ValueError(f"Chain from {src} exceeded 16 hops in ensembl-id-aliases")
         resolved[src] = dst
     return resolved
 
@@ -285,7 +295,9 @@ def _detect_and_convert_to_tpm(df, verbose=True):
                 stacklevel=2,
             )
             if verbose:
-                print(f"[load] Converted FPKM column '{fpkm_col}' to TPM (sum was {total:.0f})")
+                print(
+                    f"[load] Converted FPKM column '{fpkm_col}' to TPM (sum was {total:.0f})"
+                )
     return df
 
 
@@ -305,6 +317,91 @@ def _detect_kallisto_gene_abundance_tpm(df, verbose=True):
     if verbose:
         print("[load] Auto-detected kallisto gene-level 'abundance' column as TPM")
     return df.rename(columns={"abundance": "TPM"})
+
+
+def _expression_scale_qc(df) -> dict:
+    tpm = pd.to_numeric(df.get("TPM"), errors="coerce").fillna(0.0)
+    qc = {
+        "sum_tpm": float(tpm.sum()),
+        "max_tpm": float(tpm.max()) if len(tpm) else 0.0,
+        "genes_above_10_tpm": int((tpm > 10.0).sum()),
+        "warnings": [],
+    }
+    if "gene" in df.columns:
+        try:
+            from .gene_sets_cancer import housekeeping_gene_names
+
+            symbols = df["gene"].astype(str).str.upper()
+            hk = {gene.upper() for gene in housekeeping_gene_names(core_only=True)}
+            hk_tpm = tpm[symbols.isin(hk)]
+            if len(hk_tpm):
+                qc["housekeeping_median_tpm"] = float(hk_tpm.median())
+                qc["housekeeping_genes_observed"] = int((hk_tpm > 1.0).sum())
+        except Exception:
+            pass
+    total = qc["sum_tpm"]
+    if total and not (_TPM_SUM_MIN_REASONABLE <= total <= _TPM_SUM_MAX_REASONABLE):
+        qc["warnings"].append(
+            f"TPM-like values sum to {total:.0f}, outside the expected ~1,000,000 range"
+        )
+    if qc["max_tpm"] < 100.0 and len(tpm) >= 1000:
+        qc["warnings"].append(
+            f"maximum TPM-like value is only {qc['max_tpm']:.1f}; check whether input is log-transformed"
+        )
+    hk_median = qc.get("housekeeping_median_tpm")
+    if hk_median is not None and hk_median < 5.0:
+        qc["warnings"].append(
+            f"core housekeeping median is only {hk_median:.1f} TPM"
+        )
+    return qc
+
+
+def _detect_and_convert_log_tpm(df, verbose=True):
+    if "TPM" not in set(df.columns):
+        return df
+    tpm = pd.to_numeric(df["TPM"], errors="coerce")
+    values = tpm.dropna()
+    if len(values) < 1000:
+        df.attrs["expression_scale_qc"] = _expression_scale_qc(df)
+        return df
+    original_sum = float(values.sum())
+    original_max = float(values.max())
+    if (
+        original_sum < _LOG2_TPM_SUM_MAX_CANDIDATE
+        and original_max <= _LOG2_TPM_MAX_CANDIDATE
+    ):
+        converted = (2.0**values - 1.0).clip(lower=0.0)
+        converted_sum = float(converted.sum())
+        if _TPM_SUM_MIN_REASONABLE <= converted_sum <= _TPM_SUM_MAX_REASONABLE:
+            out = df.copy()
+            out["TPM"] = (2.0**tpm.fillna(0.0) - 1.0).clip(lower=0.0)
+            qc = _expression_scale_qc(out)
+            qc.update(
+                {
+                    "converted_from": "log2_tpm_plus_one",
+                    "input_sum_tpm_like": original_sum,
+                    "input_max_tpm_like": original_max,
+                    "post_conversion_sum_tpm": converted_sum,
+                }
+            )
+            qc["warnings"].append(
+                "input values resembled log2(TPM+1) and were converted to linear TPM"
+            )
+            out.attrs["expression_scale_qc"] = qc
+            warnings.warn(
+                "TPM column values resembled log2(TPM+1); converted to linear TPM "
+                f"(sum {original_sum:.0f} -> {converted_sum:.0f}).",
+                UserWarning,
+                stacklevel=2,
+            )
+            if verbose:
+                print(
+                    "[load] Converted log2(TPM+1)-like values to linear TPM "
+                    f"(sum {original_sum:.0f} -> {converted_sum:.0f})"
+                )
+            return out
+    df.attrs["expression_scale_qc"] = _expression_scale_qc(df)
+    return df
 
 
 def _normalize_bostongene_gene_columns(df, verbose=True):
@@ -369,8 +466,7 @@ def _raise_if_transcript_aggregation_incomplete(df, input_path):
         f"(known TPM={known_tpm:.1f}). This usually means the sample was "
         "quantified against an older or mismatched Ensembl annotation. "
         "Refusing to continue because downstream purity/classification code "
-        "would silently treat those genes as 0 TPM."
-        + preview_text
+        "would silently treat those genes as 0 TPM." + preview_text
     )
 
 
@@ -418,7 +514,9 @@ def _apply_id_aliases_and_sum(df, verbose=True):
         df = df.groupby("ensembl_gene_id", as_index=False).agg(agg_map)
 
     if verbose:
-        print(f"[load] Remapped {n_remapped} alt-haplotype Ensembl IDs to primary contig and summed TPM")
+        print(
+            f"[load] Remapped {n_remapped} alt-haplotype Ensembl IDs to primary contig and summed TPM"
+        )
     return df
 
 
@@ -563,8 +661,13 @@ def _resolve_unknown_transcripts_for_raw_frame(df, verbose=False, progress=True)
 
     tx_col = None
     for candidate in (
-        "ensembl_transcript_id", "transcript_id", "Name", "name",
-        "transcript", "target", "target_id",
+        "ensembl_transcript_id",
+        "transcript_id",
+        "Name",
+        "name",
+        "transcript",
+        "target",
+        "target_id",
     ):
         if candidate in df.columns:
             tx_col = candidate
@@ -617,6 +720,7 @@ def _resolve_unknown_transcripts_to_genes(tx0_unique, verbose=False, progress=Tr
     once per file (#81).
     """
     from .gene_ids import find_gene_name_from_ensembl_transcript_id, _build_indexes
+
     # Build the Ensembl index *before* the progress bar starts so the
     # user doesn't see a 0% bar stuck while the index loads.
     _build_indexes()
@@ -627,7 +731,9 @@ def _resolve_unknown_transcripts_to_genes(tx0_unique, verbose=False, progress=Tr
         desc="Resolving transcript IDs",
         disable=not progress,
     )
-    return {t: find_gene_name_from_ensembl_transcript_id(t, verbose=False) for t in iterator}
+    return {
+        t: find_gene_name_from_ensembl_transcript_id(t, verbose=False) for t in iterator
+    }
 
 
 def _build_transcript_expression_frame(
@@ -653,10 +759,20 @@ def _build_transcript_expression_frame(
     """
     cols = {c.lower(): c for c in df.columns}
     tx_col = next(
-        (cols[c] for c in (
-            "ensembl_transcript_id", "transcript_id", "name",
-            "transcript", "target", "target_id", "transcriptid", "targetid",
-        ) if c in cols),
+        (
+            cols[c]
+            for c in (
+                "ensembl_transcript_id",
+                "transcript_id",
+                "name",
+                "transcript",
+                "target",
+                "target_id",
+                "transcriptid",
+                "targetid",
+            )
+            if c in cols
+        ),
         None,
     )
     len_col = next(
@@ -670,11 +786,13 @@ def _build_transcript_expression_frame(
     if tx_col is None or len_col is None or tpm_col is None:
         return None
 
-    out = pd.DataFrame({
-        "transcript_id": df[tx_col].astype(str),
-        "length": pd.to_numeric(df[len_col], errors="coerce"),
-        "TPM": pd.to_numeric(df[tpm_col], errors="coerce").fillna(0.0),
-    })
+    out = pd.DataFrame(
+        {
+            "transcript_id": df[tx_col].astype(str),
+            "length": pd.to_numeric(df[len_col], errors="coerce"),
+            "TPM": pd.to_numeric(df[tpm_col], errors="coerce").fillna(0.0),
+        }
+    )
     for src, dst in (
         ("ensembl_gene_id", "ensembl_gene_id"),
         ("gene_id", "ensembl_gene_id"),
@@ -725,8 +843,11 @@ def _build_transcript_expression_frame(
     if verbose:
         print(
             f"[load] Retained {len(out)} transcript-level rows for downstream signals"
-            + (" (no gene-id column; gene_symbol used for grouping)"
-               if "ensembl_gene_id" not in out.columns else "")
+            + (
+                " (no gene-id column; gene_symbol used for grouping)"
+                if "ensembl_gene_id" not in out.columns
+                else ""
+            )
         )
     return out
 
@@ -760,16 +881,20 @@ def _try_load_sibling_transcript_frame(input_path, verbose=False, progress=True)
     # next to ``results/../quant.sf``).
     grandparent = parent.parent
     if grandparent != parent:
-        candidates.extend([
-            grandparent / "quant.sf",
-            grandparent / "abundance.tsv",
-        ])
+        candidates.extend(
+            [
+                grandparent / "quant.sf",
+                grandparent / "abundance.tsv",
+            ]
+        )
     for c in candidates:
         if c.exists():
             try:
                 sep = "\t" if c.suffix in (".sf", ".tsv") else ","
                 raw = pd.read_csv(str(c), sep=sep)
-                tx = _build_transcript_expression_frame(raw, verbose=verbose, progress=progress)
+                tx = _build_transcript_expression_frame(
+                    raw, verbose=verbose, progress=progress
+                )
                 if tx is not None and not tx.empty:
                     if verbose:
                         print(f"[load] Picked up sibling transcript file: {c}")
@@ -824,7 +949,9 @@ def load_expression_data(
     df = _detect_kallisto_gene_abundance_tpm(df, verbose=verbose)
     if used_sidecar and aggregate_gene_expression:
         if verbose:
-            print("[load] Input is already gene-level via Gene.csv sidecar; skipping transcript aggregation")
+            print(
+                "[load] Input is already gene-level via Gene.csv sidecar; skipping transcript aggregation"
+            )
         aggregate_gene_expression = False
 
     # Preserve the transcript-level frame (if present in the input) so
@@ -847,11 +974,15 @@ def load_expression_data(
             df, verbose=verbose, progress=progress
         )
         _retained_transcript_df = _build_transcript_expression_frame(
-            df, verbose=verbose, progress=progress,
+            df,
+            verbose=verbose,
+            progress=progress,
             tx_to_gene_name=shared_tx_map,
         )
         df = tx2gene(
-            df, verbose=verbose, progress=progress,
+            df,
+            verbose=verbose,
+            progress=progress,
             tx_to_gene_name=shared_tx_map,
         )
         _raise_if_transcript_aggregation_incomplete(df, input_path)
@@ -961,7 +1092,9 @@ def load_expression_data(
                     else (
                         ""
                         if gs is None
-                        else ";".join(gs) if type(gs) in (list, tuple) else "?"
+                        else ";".join(gs)
+                        if type(gs) in (list, tuple)
+                        else "?"
                     )
                 )
                 for gs in canonical_gene_names
@@ -980,6 +1113,7 @@ def load_expression_data(
             # progress bar measures actual row resolution work rather
             # than sitting at 0% during the one-time index build.
             from .gene_ids import _build_indexes
+
             _build_indexes()
             iterator = df["ensembl_gene_id"]
             if progress:
@@ -990,7 +1124,10 @@ def load_expression_data(
                 get_canonical_gene_name_from_gene_ids_string(gene_ids_string)
                 for gene_ids_string in iterator
             ]
-        elif "gene" in set(df.columns) and df["gene"].astype(str).str.strip().ne("").any():
+        elif (
+            "gene" in set(df.columns)
+            and df["gene"].astype(str).str.strip().ne("").any()
+        ):
             if verbose:
                 print("[load] Using gene symbols as canonical gene names")
             df["canonical_gene_name"] = df["gene"].fillna("").astype(str)
@@ -998,7 +1135,9 @@ def load_expression_data(
     if "gene" not in set(df.columns):
         if verbose:
             print("[load] Using canonical gene names as gene symbols")
-        df["gene"] = df["canonical_gene_name"].fillna("").astype(str).apply(short_gene_name)
+        df["gene"] = (
+            df["canonical_gene_name"].fillna("").astype(str).apply(short_gene_name)
+        )
     elif "canonical_gene_name" in set(df.columns):
         missing_gene = df["gene"].astype(str).str.strip().eq("")
         if missing_gene.any():
@@ -1019,6 +1158,8 @@ def load_expression_data(
             ";".join([display_name(gene_name) for gene_name in gene_names.split(";")])
             for gene_names in iterator
         ]
+    df = _detect_and_convert_log_tpm(df, verbose=verbose)
+    scale_qc = dict(df.attrs.get("expression_scale_qc") or {})
     # Consolidate alternate-locus / retired Ensembl IDs that map to the
     # same gene symbol.  Pick the canonical ID (the one in our pan-cancer
     # reference, or highest-expressed) and aggregate TPM via max.
@@ -1028,6 +1169,28 @@ def load_expression_data(
     # Runs after symbol consolidation so either approach can consolidate
     # whatever the other missed.  Sums TPM across alt-haplotype alleles.
     df = _apply_id_aliases_and_sum(df, verbose=verbose)
+    final_scale_qc = _expression_scale_qc(df)
+    if scale_qc.get("converted_from"):
+        final_scale_qc.update(
+            {
+                "converted_from": scale_qc.get("converted_from"),
+                "input_sum_tpm_like": scale_qc.get("input_sum_tpm_like"),
+                "input_max_tpm_like": scale_qc.get("input_max_tpm_like"),
+                "post_conversion_sum_tpm": final_scale_qc.get("sum_tpm"),
+            }
+        )
+        conversion_warning = (
+            "input values resembled log2(TPM+1) and were converted to linear TPM"
+        )
+        final_scale_qc["warnings"] = [
+            conversion_warning,
+            *[
+                warning
+                for warning in final_scale_qc.get("warnings", [])
+                if warning != conversion_warning
+            ],
+        ]
+    df.attrs["expression_scale_qc"] = final_scale_qc
 
     # Attach a transcript-level frame on ``df.attrs`` so downstream
     # signals (isoform length bias, APA-3'UTR usage, etc.) can use
@@ -1047,7 +1210,9 @@ def load_expression_data(
             tp = Path(transcript_path)
             sep = "\t" if tp.suffix in (".sf", ".tsv") else ","
             raw = pd.read_csv(str(tp), sep=sep)
-            tx = _build_transcript_expression_frame(raw, verbose=verbose, progress=progress)
+            tx = _build_transcript_expression_frame(
+                raw, verbose=verbose, progress=progress
+            )
             if tx is not None and not tx.empty:
                 df.attrs["transcript_expression"] = tx
                 if verbose:
@@ -1056,7 +1221,9 @@ def load_expression_data(
             if verbose:
                 print(f"[load] Failed to load --transcripts {transcript_path}: {exc}")
     else:
-        sibling_tx = _try_load_sibling_transcript_frame(input_path, verbose=verbose, progress=progress)
+        sibling_tx = _try_load_sibling_transcript_frame(
+            input_path, verbose=verbose, progress=progress
+        )
         if sibling_tx is not None:
             df.attrs["transcript_expression"] = sibling_tx
 

@@ -73,39 +73,129 @@ from pirlygenes.gene_sets_cancer import (
 #     SSRMS, RT, HEPB, PANNET, CHON, NBL, WILMS (14 pediatric + NET codes
 #     whose tumor reference lives in subtype-deconvolved-expression)
 # See scripts/generate_matched_normal.py for both recipes.
-_MISSING_MATCHED_NORMAL = frozenset({
-    # Closed v4.50.4: SCLC (subtype-deconvolved, lung; ASCL1 / INSM1 /
-    # CHGA textbook NE panel), ACC (hand-curated IGF2 override;
-    # PMID:23095921). Remaining codes are blocked on tumor-expression
-    # data acquisition (#151 / #152 / #197) or need CTA / aberrantly-
-    # derepressed markers per entity (heme, NET, rare sarcomas).
-    # Rare-entity / head-neck not easily auto-generated
-    "ACINIC", "ADCC", "CHOR", "NPC", "NUTM",
-    # Heme — blocked on tumor expression data (#151 / #197)
-    "BL", "B_ALL", "CLL", "CML", "CTCL", "FL", "HCL", "HL",
-    "MCL", "MDS", "MM", "MPN", "PCN", "T_ALL",
-    # Rare sarcoma subtypes without subtype-deconvolved data
-    "ESS_HG", "ESS_LG", "GCTB", "SARC", "SARC_IFS",
-    # NET axis — blocked on expression data (#152 / #197)
-    "LUNG_NET_LC", "LUNG_NET_LCNEC", "MEC", "MID_NET", "MTC",
-})
+_MISSING_MATCHED_NORMAL = frozenset(
+    {
+        # Closed v4.50.4: SCLC (subtype-deconvolved, lung; ASCL1 / INSM1 /
+        # CHGA textbook NE panel), ACC (hand-curated IGF2 override;
+        # PMID:23095921). Remaining codes are blocked on tumor-expression
+        # data acquisition (#151 / #152 / #197) or need CTA / aberrantly-
+        # derepressed markers per entity (heme, NET, rare sarcomas).
+        # Rare-entity / head-neck not easily auto-generated
+        "ACINIC",
+        "ADCC",
+        "CHOR",
+        "NPC",
+        "NUTM",
+        # Heme — blocked on tumor expression data (#151 / #197)
+        "BL",
+        "B_ALL",
+        "CLL",
+        "CML",
+        "CTCL",
+        "FL",
+        "HCL",
+        "HL",
+        "MCL",
+        "MDS",
+        "MM",
+        "MPN",
+        "PCN",
+        "T_ALL",
+        # Rare sarcoma subtypes without subtype-deconvolved data
+        "ESS_HG",
+        "ESS_LG",
+        "GCTB",
+        "SARC",
+        "SARC_IFS",
+        # NET axis — blocked on expression data (#152 / #197)
+        "LUNG_NET_LC",
+        "LUNG_NET_LCNEC",
+        "MEC",
+        "MID_NET",
+        "MTC",
+    }
+)
 
 # Codes currently lacking a cancer-specific therapy-response axis panel
 # (rows in ``therapy-response-signatures.csv`` mentioning this code in
 # ``cancer_context``, beyond the pan_cancer fallback). As of v4.48.1,
-# only BRCA / COAD / GBM / LUAD / LUSC / NBL / PRAD / SKCM / THCA ship
-# a curated cancer-specific panel.
-_MISSING_THERAPY_AXIS = frozenset({
-    "ACC", "ACINIC", "ADCC", "ATRT", "BL", "BLCA", "B_ALL", "CESC",
-    "CHOL", "CHON", "CHOR", "CLL", "CML", "CTCL", "DLBC", "ESCA",
-    "ESS_HG", "ESS_LG", "EWS", "FL", "GCTB", "HCL", "HEPB", "HL",
-    "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC", "LUNG_NET_LC",
-    "LUNG_NET_LCNEC", "MBL", "MCL", "MDS", "MEC", "MESO", "MID_NET",
-    "MM", "MPN", "MTC", "NPC", "NUTM", "OS", "OV", "PAAD", "PANNET",
-    "PCN", "PCPG", "RB", "READ", "RMS_ARMS", "RMS_ERMS", "RMS_SSRMS",
-    "RT", "SARC", "SARC_IFS", "SCLC", "STAD", "TGCT", "THYM", "T_ALL",
-    "UCEC", "UCS", "UVM", "WILMS",
-})
+# only BRCA / COAD / LUAD / LUSC / NBL / PRAD / SKCM ship a curated
+# cancer-specific panel. GBM / THCA still get the generalized pan-cancer
+# MAPK activity score at runtime, but no longer have a cancer-specific
+# therapy-axis row after the MPAS panel was generalized.
+_MISSING_THERAPY_AXIS = frozenset(
+    {
+        "ACC",
+        "ACINIC",
+        "ADCC",
+        "ATRT",
+        "BL",
+        "BLCA",
+        "B_ALL",
+        "CESC",
+        "CHOL",
+        "CHON",
+        "CHOR",
+        "CLL",
+        "CML",
+        "CTCL",
+        "DLBC",
+        "ESCA",
+        "ESS_HG",
+        "ESS_LG",
+        "EWS",
+        "FL",
+        "GCTB",
+        "GBM",
+        "HCL",
+        "HEPB",
+        "HL",
+        "HNSC",
+        "KICH",
+        "KIRC",
+        "KIRP",
+        "LAML",
+        "LGG",
+        "LIHC",
+        "LUNG_NET_LC",
+        "LUNG_NET_LCNEC",
+        "MBL",
+        "MCL",
+        "MDS",
+        "MEC",
+        "MESO",
+        "MID_NET",
+        "MM",
+        "MPN",
+        "MTC",
+        "NPC",
+        "NUTM",
+        "OS",
+        "OV",
+        "PAAD",
+        "PANNET",
+        "PCN",
+        "PCPG",
+        "RB",
+        "READ",
+        "RMS_ARMS",
+        "RMS_ERMS",
+        "RMS_SSRMS",
+        "RT",
+        "SARC",
+        "SARC_IFS",
+        "SCLC",
+        "STAD",
+        "TGCT",
+        "THCA",
+        "THYM",
+        "T_ALL",
+        "UCEC",
+        "UCS",
+        "UVM",
+        "WILMS",
+    }
+)
 
 
 def _auto_tolerate(code, base):
@@ -123,26 +213,24 @@ def _auto_tolerate(code, base):
 _TOLERATED_GAPS_EXPLICIT = {
     # Heme entries still awaiting expression-data integration
     "CLL": {"expression", "lineage"},
-    "MM":  {"expression"},   # MMRF CoMMpass deferred
-    "HL":  {"expression"},
+    "MM": {"expression"},  # MMRF CoMMpass deferred
+    "HL": {"expression"},
     "MCL": {"expression"},
     "B_ALL": {"expression", "lineage", "biomarker", "therapy"},  # TARGET ALL deferred
     "T_ALL": {"expression"},
-    "BL":  {"expression"},
-    "FL":  {"expression"},
+    "BL": {"expression"},
+    "FL": {"expression"},
     "HCL": {"expression"},
     "CTCL": {"expression"},  # biomarker + therapy + lineage filled v4.48.0
     "CML": {"expression"},
     "MDS": {"expression", "lineage", "biomarker", "therapy"},
     "MPN": {"expression", "lineage", "biomarker", "therapy"},
-
     # NET axis — PANNET shipped v4.47.0; rest pending
-    "LUNG_NET_LC": {"expression"},        # George 2018 deferred
+    "LUNG_NET_LC": {"expression"},  # George 2018 deferred
     "LUNG_NET_LCNEC": {"expression", "lineage", "biomarker", "therapy"},
-    "MID_NET": {"expression"},            # small GEO deferred
-    "MEC": {"expression"},                # Merkel cohort deferred
-    "MTC": {"expression"},                # small GEO deferred
-
+    "MID_NET": {"expression"},  # small GEO deferred
+    "MEC": {"expression"},  # Merkel cohort deferred
+    "MTC": {"expression"},  # small GEO deferred
     # Pediatric entities — expression in subtype-deconvolved already
     # for OS/EWS/NBL/RMS_*/ATRT/MBL/RT via Treehouse; lineage panels
     # still need curation.
@@ -159,14 +247,12 @@ _TOLERATED_GAPS_EXPLICIT = {
     "RMS_ARMS": {"lineage"},
     "RMS_SSRMS": {"lineage", "biomarker", "therapy"},
     "NUTM": {"lineage"},
-
     # TGCT is chemo-dominant (BEP); the ``cancer-key-genes`` curation
     # bar explicitly leaves its therapy panel empty because no
     # clinician-validated molecular-targeted therapy exists. Pinned
     # by ``test_tgct_is_biomarker_only``; mirrored here as a tolerated
     # gap so both contracts hold.
     "TGCT": {"therapy"},
-
     # Rare entities — need dedicated curation
     "ACINIC": {"expression", "lineage"},
     "ADCC": {"expression", "lineage"},
@@ -188,6 +274,7 @@ _TOLERATED_GAPS_EXPLICIT = {
 # ``_auto_tolerate``).
 def _build_tolerated_gaps():
     from pirlygenes.gene_sets_cancer import cancer_type_registry
+
     reg = cancer_type_registry()
     leaf = reg[reg["parent_code"].fillna("").astype(str).eq("")]
     out = {}
@@ -208,21 +295,13 @@ def _leaf_codes_with_coverage():
     leaf = reg[reg["parent_code"].fillna("").astype(str).eq("")]
 
     pan = pan_cancer_expression()
-    pan_codes = {
-        c.replace("FPKM_", "")
-        for c in pan.columns if c.startswith("FPKM_")
-    }
+    pan_codes = {c.replace("FPKM_", "") for c in pan.columns if c.startswith("FPKM_")}
     sub = subtype_deconvolved_expression()
-    sub_codes = (
-        set(sub["cancer_code"].dropna().unique()) if sub is not None else set()
-    )
+    sub_codes = set(sub["cancer_code"].dropna().unique()) if sub is not None else set()
 
     # lineage
     ln = pd.read_csv("pirlygenes/data/lineage-genes.csv")
-    ln_codes = {
-        code for code, group in ln.groupby("Cancer_Type")
-        if len(group) >= 5
-    }
+    ln_codes = {code for code, group in ln.groupby("Cancer_Type") if len(group) >= 5}
 
     # key-genes
     key = pd.read_csv("pirlygenes/data/cancer-key-genes.csv")
@@ -232,9 +311,8 @@ def _leaf_codes_with_coverage():
     # matched-normal — union of solid + heme reference files
     mn_solid = pd.read_csv("pirlygenes/data/tumor-up-vs-matched-normal.csv")
     mn_heme = pd.read_csv("pirlygenes/data/heme-tumor-up-vs-matched-normal.csv")
-    matched_normal_codes = (
-        set(mn_solid["cancer_code"].dropna().unique())
-        | set(mn_heme["cancer_code"].dropna().unique())
+    matched_normal_codes = set(mn_solid["cancer_code"].dropna().unique()) | set(
+        mn_heme["cancer_code"].dropna().unique()
     )
 
     # therapy-response axis panel — ``cancer_context`` can be a
@@ -293,8 +371,14 @@ def test_tolerated_gaps_only_list_real_codes():
 
 
 def test_tolerated_fields_are_valid_names():
-    valid = {"expression", "lineage", "biomarker", "therapy",
-             "matched_normal", "therapy_axis"}
+    valid = {
+        "expression",
+        "lineage",
+        "biomarker",
+        "therapy",
+        "matched_normal",
+        "therapy_axis",
+    }
     for code, fields in _TOLERATED_GAPS.items():
         bad = fields - valid
         assert not bad, (
@@ -306,16 +390,15 @@ def test_tolerated_fields_are_valid_names():
 def test_baseline_missing_sets_only_list_real_codes():
     """The baseline missing sets must reference real registry codes."""
     from pirlygenes.gene_sets_cancer import cancer_type_registry
+
     reg_codes = set(cancer_type_registry()["code"])
     unknown_mn = set(_MISSING_MATCHED_NORMAL) - reg_codes
     unknown_ax = set(_MISSING_THERAPY_AXIS) - reg_codes
     assert not unknown_mn, (
-        f"``_MISSING_MATCHED_NORMAL`` references unknown codes: "
-        f"{sorted(unknown_mn)}"
+        f"``_MISSING_MATCHED_NORMAL`` references unknown codes: {sorted(unknown_mn)}"
     )
     assert not unknown_ax, (
-        f"``_MISSING_THERAPY_AXIS`` references unknown codes: "
-        f"{sorted(unknown_ax)}"
+        f"``_MISSING_THERAPY_AXIS`` references unknown codes: {sorted(unknown_ax)}"
     )
 
 
@@ -357,15 +440,19 @@ def test_completeness_progress_report(capsys):
     contract assertion; just a way to see progress in CI logs."""
     coverage = _leaf_codes_with_coverage()
     total = len(coverage)
-    fields = ("expression", "lineage", "biomarker", "therapy",
-              "matched_normal", "therapy_axis")
+    fields = (
+        "expression",
+        "lineage",
+        "biomarker",
+        "therapy",
+        "matched_normal",
+        "therapy_axis",
+    )
     complete = sum(
-        1 for c_fields in coverage.values()
-        if all(c_fields[f] for f in fields)
+        1 for c_fields in coverage.values() if all(c_fields[f] for f in fields)
     )
     per_field_missing = {
-        f: sum(1 for c_fields in coverage.values() if not c_fields[f])
-        for f in fields
+        f: sum(1 for c_fields in coverage.values() if not c_fields[f]) for f in fields
     }
     with capsys.disabled():
         print(

@@ -104,9 +104,7 @@ class RuleOutcome:
 
 # Type alias: rules are pure functions of (signal, flags) returning
 # a RuleOutcome (fires) or None (defers to next rule).
-Step0Rule = Callable[
-    ["TissueCompositionSignal", DerivedFlags], Optional[RuleOutcome]
-]
+Step0Rule = Callable[["TissueCompositionSignal", DerivedFlags], Optional[RuleOutcome]]
 
 
 def rule(name: str, *, structural: bool = False):
@@ -115,10 +113,12 @@ def rule(name: str, *, structural: bool = False):
     The rule runner reads the stamped name for the trace; rule bodies
     don't need to restate the name in their RuleOutcome.
     """
+
     def decorator(fn):
         fn.rule_name = name
         fn.structural = structural
         return fn
+
     return decorator
 
 
@@ -134,9 +134,7 @@ def compute_derived_flags(signal) -> DerivedFlags:
     """
     margin = 0.0
     if signal.top_normal_tissues and signal.top_tcga_cohorts:
-        margin = (
-            signal.top_normal_tissues[0][1] - signal.top_tcga_cohorts[0][1]
-        )
+        margin = signal.top_normal_tissues[0][1] - signal.top_tcga_cohorts[0][1]
     return DerivedFlags(
         lymphoid_ambiguity=False,
         mesenchymal_ambiguity=False,
@@ -256,8 +254,10 @@ def high_proliferation_panel(s, f) -> Optional[RuleOutcome]:
 def confident_healthy_tissue(s, f) -> Optional[RuleOutcome]:
     """Quiet proliferation + strong healthy-correlation margin + no
     soft tumor evidence → healthy-dominant."""
-    if not (s.evidence.prolif_log2 < _PROLIFERATION_QUIET_LOG2
-            and f.correlation_margin >= _HPA_MARGIN_STRONG):
+    if not (
+        s.evidence.prolif_log2 < _PROLIFERATION_QUIET_LOG2
+        and f.correlation_margin >= _HPA_MARGIN_STRONG
+    ):
         return None
     if f.any_tumor_marker_soft:
         return None
@@ -274,8 +274,10 @@ def healthy_with_soft_tumor_signal(s, f) -> Optional[RuleOutcome]:
     met BUT a soft tumor-marker signal (CTA ≥2 hits, or any oncofetal /
     type-specific hit) fires — demote to possibly-tumor rather than
     call healthy."""
-    if not (s.evidence.prolif_log2 < _PROLIFERATION_QUIET_LOG2
-            and f.correlation_margin >= _HPA_MARGIN_STRONG):
+    if not (
+        s.evidence.prolif_log2 < _PROLIFERATION_QUIET_LOG2
+        and f.correlation_margin >= _HPA_MARGIN_STRONG
+    ):
         return None
     if not f.any_tumor_marker_soft:
         return None
@@ -317,6 +319,7 @@ def tcga_dominant_correlation(s, f) -> Optional[RuleOutcome]:
 
 
 # ---- Helpers ----
+
 
 def _top_pair_rationale(s) -> str:
     h = s.top_normal_tissues[0][0] if s.top_normal_tissues else "-"
@@ -382,6 +385,7 @@ def run_step0_rules(
 
 
 # ---- Analysis state (composable; grows step by step) ----
+
 
 @dataclass
 class AnalysisState:

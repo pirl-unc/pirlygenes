@@ -61,11 +61,13 @@ def _smooth_muscle_pseudo_sample() -> pd.DataFrame:
     pan = pan_cancer_expression().drop_duplicates(subset="Symbol")
     merged = pan.merge(lms, left_on="Symbol", right_on="symbol", how="left")
     merged["tpm"] = merged["tumor_tpm_median"].fillna(merged["FPKM_SARC"])
-    return pd.DataFrame({
-        "ensembl_gene_id": merged["Ensembl_Gene_ID"],
-        "gene_symbol": merged["Symbol"],
-        "TPM": merged["tpm"].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": merged["Ensembl_Gene_ID"],
+            "gene_symbol": merged["Symbol"],
+            "TPM": merged["tpm"].astype(float),
+        }
+    )
 
 
 def test_smooth_muscle_sample_picks_sarc_lms_subtype():
@@ -79,13 +81,11 @@ def test_smooth_muscle_sample_picks_sarc_lms_subtype():
     # family penalties; the subtype identification is the main assertion).
     top_codes = [r["code"] for r in ranked[:3]]
     assert "SARC" in top_codes, (
-        f"SARC not in top 3 — got {top_codes} "
-        f"(top gm={top['support_geomean']:.3f})"
+        f"SARC not in top 3 — got {top_codes} (top gm={top['support_geomean']:.3f})"
     )
     sarc_row = next(r for r in ranked if r["code"] == "SARC")
     assert sarc_row.get("winning_subtype") == "SARC_LMS", (
-        f"expected winning_subtype=SARC_LMS, got "
-        f"{sarc_row.get('winning_subtype')}"
+        f"expected winning_subtype=SARC_LMS, got {sarc_row.get('winning_subtype')}"
     )
 
 
@@ -93,11 +93,13 @@ def test_winning_subtype_none_for_non_mixture():
     """Non-mixture cohorts must always report ``winning_subtype=None``
     — the subtype-aware path must not fire outside mixture parents."""
     pan = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    sample = pd.DataFrame({
-        "ensembl_gene_id": pan["Ensembl_Gene_ID"],
-        "gene_symbol": pan["Symbol"],
-        "TPM": pan["FPKM_PRAD"].astype(float),
-    })
+    sample = pd.DataFrame(
+        {
+            "ensembl_gene_id": pan["Ensembl_Gene_ID"],
+            "gene_symbol": pan["Symbol"],
+            "TPM": pan["FPKM_PRAD"].astype(float),
+        }
+    )
     ranked = rank_cancer_type_candidates(sample)
     for row in ranked:
         if row["code"] == "PRAD":

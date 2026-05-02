@@ -19,8 +19,12 @@ def test_none_evidence_returns_empty():
 
 def test_quiet_evidence_returns_empty():
     ev = TumorEvidenceScore(
-        hypoxia=0.1, glycolysis=0.2, proliferation=0.3,
-        ca9_tpm=2.0, glycolysis_geomean_fold=1.0, prolif_log2=2.5,
+        hypoxia=0.1,
+        glycolysis=0.2,
+        proliferation=0.3,
+        ca9_tpm=2.0,
+        glycolysis_geomean_fold=1.0,
+        prolif_log2=2.5,
     )
     assert _metabolic_axes_rows(ev) == []
 
@@ -65,9 +69,12 @@ def test_proliferation_surfaces_cell_cycle_axis():
 
 def test_all_three_axes_emit_in_order():
     ev = TumorEvidenceScore(
-        hypoxia=0.9, ca9_tpm=80.0,
-        glycolysis=0.7, glycolysis_geomean_fold=5.0,
-        proliferation=0.8, prolif_log2=5.5,
+        hypoxia=0.9,
+        ca9_tpm=80.0,
+        glycolysis=0.7,
+        glycolysis_geomean_fold=5.0,
+        proliferation=0.8,
+        prolif_log2=5.5,
     )
     rows = _metabolic_axes_rows(ev)
     assert len(rows) == 3

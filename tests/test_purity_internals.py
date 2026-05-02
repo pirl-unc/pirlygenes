@@ -83,11 +83,15 @@ def test_dlbc_panel_bypasses_exclusion():
     genes = _select_tumor_specific_genes_for_panel("DLBC", n=30, exclude_lineage=False)
     # At least some IG or HLA-D genes should survive
     has_ig_or_hla_d = any(
-        g.startswith("IGH") or g.startswith("IGL") or g.startswith("IGK")
+        g.startswith("IGH")
+        or g.startswith("IGL")
+        or g.startswith("IGK")
         or g.startswith("HLA-D")
         for g in genes
     )
-    assert has_ig_or_hla_d, f"DLBC panel should include IG/HLA-D genes, got: {genes[:10]}"
+    assert has_ig_or_hla_d, (
+        f"DLBC panel should include IG/HLA-D genes, got: {genes[:10]}"
+    )
 
 
 def test_laml_panel_bypasses_exclusion():
@@ -97,11 +101,15 @@ def test_laml_panel_bypasses_exclusion():
     # LAML should retain rearranged-receptor genes (IG segments) that
     # the default exclusion regexes would filter out
     has_ig_or_hla_d = any(
-        g.startswith("IGH") or g.startswith("IGL") or g.startswith("IGK")
+        g.startswith("IGH")
+        or g.startswith("IGL")
+        or g.startswith("IGK")
         or g.startswith("HLA-D")
         for g in genes
     )
-    assert has_ig_or_hla_d, f"LAML panel should include IG/HLA-D genes, got: {genes[:10]}"
+    assert has_ig_or_hla_d, (
+        f"LAML panel should include IG/HLA-D genes, got: {genes[:10]}"
+    )
 
 
 def test_thym_panel_bypasses_exclusion():
@@ -110,8 +118,12 @@ def test_thym_panel_bypasses_exclusion():
     genes = _select_tumor_specific_genes_for_panel("THYM", n=30, exclude_lineage=False)
     # THYM should retain rearranged T-cell receptor genes (TRB/TRD/TRG segments)
     has_tr = any(
-        g.startswith("TRB") or g.startswith("TRD") or g.startswith("TRG")
-        or g.startswith("TRA") and len(g) > 4 and g[3] in "VDJC"
+        g.startswith("TRB")
+        or g.startswith("TRD")
+        or g.startswith("TRG")
+        or g.startswith("TRA")
+        and len(g) > 4
+        and g[3] in "VDJC"
         for g in genes
     )
     assert has_tr, f"THYM panel should include TR receptor genes, got: {genes[:10]}"
@@ -130,9 +142,13 @@ def test_non_immune_origin_panel_excludes_ig_hla_d():
 def test_combine_purity_both_signals_geometric_anchor():
     """When both signature and lineage exist, tumor anchor is a geometric mean."""
     overall, lo, hi = _combine_purity_estimates(
-        sig_purity=0.60, sig_lower=0.50, sig_upper=0.70,
+        sig_purity=0.60,
+        sig_lower=0.50,
+        sig_upper=0.70,
         estimate_purity=0.55,
-        lineage_purity=0.65, lineage_lower=0.55, lineage_upper=0.75,
+        lineage_purity=0.65,
+        lineage_lower=0.55,
+        lineage_upper=0.75,
         sig_stability=0.8,
     )
     assert overall is not None
@@ -142,9 +158,13 @@ def test_combine_purity_both_signals_geometric_anchor():
 def test_combine_purity_lineage_only():
     """When signature is None, should use lineage directly."""
     overall, lo, hi = _combine_purity_estimates(
-        sig_purity=None, sig_lower=None, sig_upper=None,
+        sig_purity=None,
+        sig_lower=None,
+        sig_upper=None,
         estimate_purity=0.50,
-        lineage_purity=0.70, lineage_lower=0.60, lineage_upper=0.80,
+        lineage_purity=0.70,
+        lineage_lower=0.60,
+        lineage_upper=0.80,
     )
     assert overall is not None
     # Lineage-only path: combined with ESTIMATE
@@ -154,9 +174,13 @@ def test_combine_purity_lineage_only():
 def test_combine_purity_signature_only():
     """When lineage is None, should use signature with ESTIMATE floor."""
     overall, lo, hi = _combine_purity_estimates(
-        sig_purity=0.40, sig_lower=0.30, sig_upper=0.50,
+        sig_purity=0.40,
+        sig_lower=0.30,
+        sig_upper=0.50,
         estimate_purity=0.35,
-        lineage_purity=None, lineage_lower=None, lineage_upper=None,
+        lineage_purity=None,
+        lineage_lower=None,
+        lineage_upper=None,
     )
     assert overall is not None
     assert 0.0 < overall <= 1.0
@@ -165,9 +189,13 @@ def test_combine_purity_signature_only():
 def test_combine_purity_both_none_returns_none():
     """When both signature and lineage are None, returns None."""
     result = _combine_purity_estimates(
-        sig_purity=None, sig_lower=None, sig_upper=None,
+        sig_purity=None,
+        sig_lower=None,
+        sig_upper=None,
         estimate_purity=None,
-        lineage_purity=None, lineage_lower=None, lineage_upper=None,
+        lineage_purity=None,
+        lineage_lower=None,
+        lineage_upper=None,
     )
     assert result == (None, None, None)
 
@@ -175,9 +203,13 @@ def test_combine_purity_both_none_returns_none():
 def test_combine_purity_estimate_only():
     """When only ESTIMATE is available, returns it directly."""
     overall, lo, hi = _combine_purity_estimates(
-        sig_purity=None, sig_lower=None, sig_upper=None,
+        sig_purity=None,
+        sig_lower=None,
+        sig_upper=None,
         estimate_purity=0.60,
-        lineage_purity=None, lineage_lower=None, lineage_upper=None,
+        lineage_purity=None,
+        lineage_lower=None,
+        lineage_upper=None,
     )
     assert overall == pytest.approx(0.60, abs=0.01)
 
@@ -185,9 +217,13 @@ def test_combine_purity_estimate_only():
 def test_combine_purity_zero_estimate_with_lineage_is_preserved():
     """When ESTIMATE is 0 but lineage + sig exist, tumor anchor wins."""
     overall, lo, hi = _combine_purity_estimates(
-        sig_purity=0.65, sig_lower=0.55, sig_upper=0.75,
+        sig_purity=0.65,
+        sig_lower=0.55,
+        sig_upper=0.75,
         estimate_purity=0.0,
-        lineage_purity=0.60, lineage_lower=0.50, lineage_upper=0.70,
+        lineage_purity=0.60,
+        lineage_lower=0.50,
+        lineage_upper=0.70,
         sig_stability=0.7,
     )
     # Should not collapse to 0 — the tumor anchor dominates
@@ -197,9 +233,13 @@ def test_combine_purity_zero_estimate_with_lineage_is_preserved():
 def test_combine_purity_conflict_deprioritizes_signature():
     """When sig is very low but lineage is high, lineage wins."""
     overall, _, _ = _combine_purity_estimates(
-        sig_purity=0.10, sig_lower=0.05, sig_upper=0.15,
+        sig_purity=0.10,
+        sig_lower=0.05,
+        sig_upper=0.15,
         estimate_purity=0.50,
-        lineage_purity=0.70, lineage_lower=0.60, lineage_upper=0.80,
+        lineage_purity=0.70,
+        lineage_lower=0.60,
+        lineage_upper=0.80,
         sig_stability=0.3,  # low stability
     )
     # Should be closer to lineage than signature
@@ -212,9 +252,13 @@ def test_combine_purity_ci_symmetric_when_upper_candidates_depressed():
     7–16% around 16%. The fix mirrors the wider half of the interval so the
     upper bound reflects the observed spread, not the floor of the sample."""
     overall, lo, hi = _combine_purity_estimates(
-        sig_purity=0.16, sig_lower=0.07, sig_upper=0.16,
+        sig_purity=0.16,
+        sig_lower=0.07,
+        sig_upper=0.16,
         estimate_purity=0.10,
-        lineage_purity=0.16, lineage_lower=0.08, lineage_upper=0.16,
+        lineage_purity=0.16,
+        lineage_lower=0.08,
+        lineage_upper=0.16,
         sig_stability=0.5,
     )
     assert overall is not None
@@ -287,7 +331,9 @@ def test_summarize_two_values():
 def test_summarize_winsorized_clips_outliers():
     """With >= 4 values, winsorized_median clips to IQR before taking median."""
     purities = [0.01, 0.40, 0.50, 0.55, 0.60, 0.95]
-    overall, lo, hi, stability = _summarize_gene_level_purity(purities, strategy="winsorized_median")
+    overall, lo, hi, stability = _summarize_gene_level_purity(
+        purities, strategy="winsorized_median"
+    )
     # The extreme 0.01 and 0.95 should be clipped
     assert 0.35 < overall < 0.65
 

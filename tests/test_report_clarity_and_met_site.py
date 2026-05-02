@@ -4,7 +4,10 @@ import pandas as pd
 import pytest
 
 from pirlygenes.cli import _next_best_support_gap
-from pirlygenes.plot import MET_SITE_TISSUE_AUGMENTATION, estimate_tumor_expression_ranges
+from pirlygenes.plot import (
+    MET_SITE_TISSUE_AUGMENTATION,
+    estimate_tumor_expression_ranges,
+)
 from pirlygenes.gene_sets_cancer import pan_cancer_expression
 
 
@@ -23,7 +26,10 @@ def test_next_best_support_gap_returns_ratio_for_two_candidates():
 
 def test_next_best_support_gap_handles_edge_cases():
     # One candidate — no gap to measure
-    assert _next_best_support_gap([{"code": "PRAD", "support_norm": 1.0}]) == (None, None)
+    assert _next_best_support_gap([{"code": "PRAD", "support_norm": 1.0}]) == (
+        None,
+        None,
+    )
     # Empty
     assert _next_best_support_gap([]) == (None, None)
     # Runner-up has zero support — can't divide
@@ -65,16 +71,22 @@ def test_met_site_liver_includes_liver_tissue_in_tme_reference():
         }
     )
     purity = {
-        "overall_estimate": 0.6, "overall_lower": 0.4, "overall_upper": 0.8,
+        "overall_estimate": 0.6,
+        "overall_lower": 0.4,
+        "overall_upper": 0.8,
         "components": {"stromal": {"enrichment": 1.0}, "immune": {"enrichment": 1.0}},
     }
 
     baseline = estimate_tumor_expression_ranges(
-        df_gene_expr=df, cancer_type="COAD", purity_result=purity,
+        df_gene_expr=df,
+        cancer_type="COAD",
+        purity_result=purity,
         met_site=None,
     )
     augmented = estimate_tumor_expression_ranges(
-        df_gene_expr=df, cancer_type="COAD", purity_result=purity,
+        df_gene_expr=df,
+        cancer_type="COAD",
+        purity_result=purity,
         met_site="liver",
     )
 
@@ -117,13 +129,17 @@ def test_met_site_rejects_unknown_value():
         }
     )
     purity = {
-        "overall_estimate": 0.6, "overall_lower": 0.4, "overall_upper": 0.8,
+        "overall_estimate": 0.6,
+        "overall_lower": 0.4,
+        "overall_upper": 0.8,
         "components": {"stromal": {"enrichment": 1.0}, "immune": {"enrichment": 1.0}},
     }
     # Must not crash on unknown met_site (augmentation map .get default
     # is an empty set). CLI validates up front in analyze().
     ranges = estimate_tumor_expression_ranges(
-        df_gene_expr=df, cancer_type="COAD", purity_result=purity,
+        df_gene_expr=df,
+        cancer_type="COAD",
+        purity_result=purity,
         met_site="moon",
     )
     assert len(ranges) > 0
@@ -162,19 +178,29 @@ def test_summary_md_structure_for_report_clarity(tmp_path):
             {"code": "HNSC", "support_norm": 0.40, "signature_score": 0.35},
         ],
         "family_summary": {},
-        "fit_quality": {"label": "strong_separation", "message": "Top match is clearly separated from alternatives."},
+        "fit_quality": {
+            "label": "strong_separation",
+            "message": "Top match is clearly separated from alternatives.",
+        },
         "sample_mode": "solid",
         "analysis_constraints": {},
     }
 
     prefix = str(tmp_path / "sample")
     embedding_meta = {
-        "method": "hierarchy", "feature_kind": "hierarchical_scores",
-        "n_genes": 0, "n_features": 0, "n_types": 33, "families": [],
+        "method": "hierarchy",
+        "feature_kind": "hierarchical_scores",
+        "n_genes": 0,
+        "n_features": 0,
+        "n_types": 33,
+        "families": [],
     }
     _generate_text_reports(
-        analysis, embedding_meta, prefix,
-        decomp_results=[], input_path="/data/sample_BG002.tsv",
+        analysis,
+        embedding_meta,
+        prefix,
+        decomp_results=[],
+        input_path="/data/sample_BG002.tsv",
     )
 
     # The retired free-form summary.md used to carry input-filename
@@ -388,7 +414,10 @@ def test_detailed_report_uses_generic_lineage_caveat(tmp_path):
     detailed = (tmp_path / "hnsccase-analysis.md").read_text()
     assert "Lineage caveat" in detailed
     assert "prostate-lineage" not in detailed
-    assert "do NOT by themselves distinguish tumor cells from benign cells of the same lineage" in detailed
+    assert (
+        "do NOT by themselves distinguish tumor cells from benign cells of the same lineage"
+        in detailed
+    )
 
 
 def test_compose_disease_state_detects_crpc_nepc_pattern():
@@ -418,21 +447,29 @@ def test_compose_disease_state_detects_crpc_nepc_pattern():
         },
         "therapy_response_scores": {
             "AR_signaling": TherapyAxisScore(
-                therapy_class="AR_signaling", state="down",
-                up_geomean_fold=0.33, down_geomean_fold=2.54,
+                therapy_class="AR_signaling",
+                state="down",
+                up_geomean_fold=0.33,
+                down_geomean_fold=2.54,
             ),
             "NE_differentiation": TherapyAxisScore(
-                therapy_class="NE_differentiation", state="up",
+                therapy_class="NE_differentiation",
+                state="up",
                 up_geomean_fold=2.08,
             ),
             "EMT": TherapyAxisScore(
-                therapy_class="EMT", state="up", up_geomean_fold=8.95,
+                therapy_class="EMT",
+                state="up",
+                up_geomean_fold=8.95,
             ),
             "hypoxia": TherapyAxisScore(
-                therapy_class="hypoxia", state="up", up_geomean_fold=3.52,
+                therapy_class="hypoxia",
+                state="up",
+                up_geomean_fold=3.52,
             ),
             "IFN_response": TherapyAxisScore(
-                therapy_class="IFN_response", state="up",
+                therapy_class="IFN_response",
+                state="up",
                 up_geomean_fold=2.73,
             ),
         },
@@ -471,59 +508,106 @@ def test_recommended_targets_skips_tme_dominant_rows():
     from pirlygenes.cli import _generate_target_report
 
     purity = {
-        "overall_estimate": 0.6, "overall_lower": 0.5, "overall_upper": 0.7,
+        "overall_estimate": 0.6,
+        "overall_lower": 0.5,
+        "overall_upper": 0.7,
     }
     analysis = {
-        "sample_mode": "solid", "cancer_type": "PRAD",
+        "sample_mode": "solid",
+        "cancer_type": "PRAD",
         "mhc1": {"HLA-A": 100, "HLA-B": 200, "HLA-C": 80, "B2M": 300},
     }
-    ranges_df = pd.DataFrame([
-        # TME-dominant top row → must be filtered from the summary
-        {"symbol": "CD74", "median_est": 1580, "observed_tpm": 1580,
-         "est_1": 1156, "est_9": 1580, "pct_cancer_median": 1.5,
-         "tcga_percentile": 0.94, "is_surface": True, "is_cta": False,
-         "tme_explainable": True, "tme_dominant": True,
-         "excluded_from_ranking": False, "therapies": "",
-         "attr_tumor_tpm": 180.0, "attr_tumor_tpm_low": 80.0,
-         "attr_tumor_tpm_high": 240.0, "attr_tumor_fraction": 0.11,
-         "attr_tumor_fraction_low": 0.05, "attr_tumor_fraction_high": 0.16,
-         "attr_support_fraction": 0.0,
-         "attr_top_compartment": "myeloid",
-         "attr_top_compartment_tpm": 1100.0,
-         "max_healthy_tpm": 2000, "tme_fold_lo": 0.1, "tme_fold_med": 0.2,
-         "tme_fold_hi": 0.3, "cohort_prior_tpm": 1400, "tme_only_tpm": 1100,
-         "matched_normal_tpm": 0, "matched_normal_tissue": "",
-         "matched_normal_fraction": 0.0, "estimation_path": "clamped",
-         "low_confidence_tumor": True, "category": "therapy_target",
-         **{f"est_{i+1}": 1156 + i*50 for i in range(9)},
-        },
-        # Clean ADAM9 → SHOULD appear in the summary
-        {"symbol": "ADAM9", "median_est": 998, "observed_tpm": 825,
-         "est_1": 696, "est_9": 2179, "pct_cancer_median": 7.5,
-         "tcga_percentile": 1.0, "is_surface": True, "is_cta": False,
-         "tme_explainable": False, "tme_dominant": False,
-         "excluded_from_ranking": False, "therapies": "ADC",
-         "attr_tumor_tpm": 150.0, "attr_tumor_tpm_low": 130.0,
-         "attr_tumor_tpm_high": 175.0, "attr_tumor_fraction": 0.62,
-         "attr_tumor_fraction_low": 0.54, "attr_tumor_fraction_high": 0.69,
-         "attr_support_fraction": 1.0,
-         "attr_top_compartment": "tumor",
-         "attr_top_compartment_tpm": 150.0,
-         "max_healthy_tpm": 300, "tme_fold_lo": 0.1, "tme_fold_med": 0.2,
-         "tme_fold_hi": 0.3, "cohort_prior_tpm": 100, "tme_only_tpm": 150,
-         "matched_normal_tpm": 0, "matched_normal_tissue": "",
-         "matched_normal_fraction": 0.0, "estimation_path": "tme_only",
-         "low_confidence_tumor": False, "category": "therapy_target",
-         **{f"est_{i+1}": 696 + i*150 for i in range(9)},
-        },
-    ])
+    ranges_df = pd.DataFrame(
+        [
+            # TME-dominant top row → must be filtered from the summary
+            {
+                "symbol": "CD74",
+                "median_est": 1580,
+                "observed_tpm": 1580,
+                "est_1": 1156,
+                "est_9": 1580,
+                "pct_cancer_median": 1.5,
+                "tcga_percentile": 0.94,
+                "is_surface": True,
+                "is_cta": False,
+                "tme_explainable": True,
+                "tme_dominant": True,
+                "excluded_from_ranking": False,
+                "therapies": "",
+                "attr_tumor_tpm": 180.0,
+                "attr_tumor_tpm_low": 80.0,
+                "attr_tumor_tpm_high": 240.0,
+                "attr_tumor_fraction": 0.11,
+                "attr_tumor_fraction_low": 0.05,
+                "attr_tumor_fraction_high": 0.16,
+                "attr_support_fraction": 0.0,
+                "attr_top_compartment": "myeloid",
+                "attr_top_compartment_tpm": 1100.0,
+                "max_healthy_tpm": 2000,
+                "tme_fold_lo": 0.1,
+                "tme_fold_med": 0.2,
+                "tme_fold_hi": 0.3,
+                "cohort_prior_tpm": 1400,
+                "tme_only_tpm": 1100,
+                "matched_normal_tpm": 0,
+                "matched_normal_tissue": "",
+                "matched_normal_fraction": 0.0,
+                "estimation_path": "clamped",
+                "low_confidence_tumor": True,
+                "category": "therapy_target",
+                **{f"est_{i + 1}": 1156 + i * 50 for i in range(9)},
+            },
+            # Clean ADAM9 → SHOULD appear in the summary
+            {
+                "symbol": "ADAM9",
+                "median_est": 998,
+                "observed_tpm": 825,
+                "est_1": 696,
+                "est_9": 2179,
+                "pct_cancer_median": 7.5,
+                "tcga_percentile": 1.0,
+                "is_surface": True,
+                "is_cta": False,
+                "tme_explainable": False,
+                "tme_dominant": False,
+                "excluded_from_ranking": False,
+                "therapies": "ADC",
+                "attr_tumor_tpm": 150.0,
+                "attr_tumor_tpm_low": 130.0,
+                "attr_tumor_tpm_high": 175.0,
+                "attr_tumor_fraction": 0.62,
+                "attr_tumor_fraction_low": 0.54,
+                "attr_tumor_fraction_high": 0.69,
+                "attr_support_fraction": 1.0,
+                "attr_top_compartment": "tumor",
+                "attr_top_compartment_tpm": 150.0,
+                "max_healthy_tpm": 300,
+                "tme_fold_lo": 0.1,
+                "tme_fold_med": 0.2,
+                "tme_fold_hi": 0.3,
+                "cohort_prior_tpm": 100,
+                "tme_only_tpm": 150,
+                "matched_normal_tpm": 0,
+                "matched_normal_tissue": "",
+                "matched_normal_fraction": 0.0,
+                "estimation_path": "tme_only",
+                "low_confidence_tumor": False,
+                "category": "therapy_target",
+                **{f"est_{i + 1}": 696 + i * 150 for i in range(9)},
+            },
+        ]
+    )
 
     tmp_prefix = "/tmp/target_test"
     import os
+
     if os.path.exists(f"{tmp_prefix}-targets.md"):
         os.remove(f"{tmp_prefix}-targets.md")
     _generate_target_report(
-        ranges_df, analysis, tmp_prefix, cancer_type="PRAD",
+        ranges_df,
+        analysis,
+        tmp_prefix,
+        cancer_type="PRAD",
         purity_result=purity,
     )
     targets = open(f"{tmp_prefix}-targets.md").read()
@@ -545,53 +629,93 @@ def test_target_report_explains_blocked_fn1_pyx201_call():
     from pirlygenes.cli import _generate_target_report
 
     purity = {
-        "overall_estimate": 0.6, "overall_lower": 0.5, "overall_upper": 0.7,
+        "overall_estimate": 0.6,
+        "overall_lower": 0.5,
+        "overall_upper": 0.7,
     }
     analysis = {
-        "sample_mode": "solid", "cancer_type": "PRAD",
+        "sample_mode": "solid",
+        "cancer_type": "PRAD",
         "mhc1": {"HLA-A": 100, "HLA-B": 200, "HLA-C": 80, "B2M": 300},
     }
-    ranges_df = pd.DataFrame([
-        {
-            "symbol": "ADAM9", "median_est": 998, "observed_tpm": 825,
-            "est_1": 696, "est_9": 2179, "pct_cancer_median": 7.5,
-            "tcga_percentile": 1.0, "is_surface": True, "is_cta": False,
-            "tme_explainable": False, "tme_dominant": False,
-            "excluded_from_ranking": False, "therapies": "ADC",
-            "therapy_supported": True, "therapy_support_note": "",
-            "max_healthy_tpm": 300, "tme_fold_lo": 0.1, "tme_fold_med": 0.2,
-            "tme_fold_hi": 0.3, "cohort_prior_tpm": 100, "tme_only_tpm": 150,
-            "matched_normal_tpm": 0, "matched_normal_tissue": "",
-            "matched_normal_fraction": 0.0, "estimation_path": "tme_only",
-            "low_confidence_tumor": False, "category": "therapy_target",
-            **{f"est_{i+1}": 696 + i*150 for i in range(9)},
-        },
-        {
-            "symbol": "FN1", "median_est": 260, "observed_tpm": 180,
-            "est_1": 180, "est_9": 340, "pct_cancer_median": 0.9,
-            "tcga_percentile": 0.65, "is_surface": False, "is_cta": False,
-            "tme_explainable": False, "tme_dominant": False,
-            "excluded_from_ranking": False, "therapies": "",
-            "therapy_supported": False,
-            "therapy_support_note": (
-                "PYX-201 (NCT05720117) targets EDB+ FN1; bulk gene-level FN1 alone "
-                "is not sufficient evidence because transcript-level data is unavailable."
-            ),
-            "max_healthy_tpm": 500, "tme_fold_lo": 0.1, "tme_fold_med": 0.2,
-            "tme_fold_hi": 0.3, "cohort_prior_tpm": 120, "tme_only_tpm": 80,
-            "matched_normal_tpm": 0, "matched_normal_tissue": "",
-            "matched_normal_fraction": 0.0, "estimation_path": "tme_only",
-            "low_confidence_tumor": False, "category": "other",
-            **{f"est_{i+1}": 180 + i*20 for i in range(9)},
-        },
-    ])
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "ADAM9",
+                "median_est": 998,
+                "observed_tpm": 825,
+                "est_1": 696,
+                "est_9": 2179,
+                "pct_cancer_median": 7.5,
+                "tcga_percentile": 1.0,
+                "is_surface": True,
+                "is_cta": False,
+                "tme_explainable": False,
+                "tme_dominant": False,
+                "excluded_from_ranking": False,
+                "therapies": "ADC",
+                "therapy_supported": True,
+                "therapy_support_note": "",
+                "max_healthy_tpm": 300,
+                "tme_fold_lo": 0.1,
+                "tme_fold_med": 0.2,
+                "tme_fold_hi": 0.3,
+                "cohort_prior_tpm": 100,
+                "tme_only_tpm": 150,
+                "matched_normal_tpm": 0,
+                "matched_normal_tissue": "",
+                "matched_normal_fraction": 0.0,
+                "estimation_path": "tme_only",
+                "low_confidence_tumor": False,
+                "category": "therapy_target",
+                **{f"est_{i + 1}": 696 + i * 150 for i in range(9)},
+            },
+            {
+                "symbol": "FN1",
+                "median_est": 260,
+                "observed_tpm": 180,
+                "est_1": 180,
+                "est_9": 340,
+                "pct_cancer_median": 0.9,
+                "tcga_percentile": 0.65,
+                "is_surface": False,
+                "is_cta": False,
+                "tme_explainable": False,
+                "tme_dominant": False,
+                "excluded_from_ranking": False,
+                "therapies": "",
+                "therapy_supported": False,
+                "therapy_support_note": (
+                    "PYX-201 (NCT05720117) targets EDB+ FN1; bulk gene-level FN1 alone "
+                    "is not sufficient evidence because transcript-level data is unavailable."
+                ),
+                "max_healthy_tpm": 500,
+                "tme_fold_lo": 0.1,
+                "tme_fold_med": 0.2,
+                "tme_fold_hi": 0.3,
+                "cohort_prior_tpm": 120,
+                "tme_only_tpm": 80,
+                "matched_normal_tpm": 0,
+                "matched_normal_tissue": "",
+                "matched_normal_fraction": 0.0,
+                "estimation_path": "tme_only",
+                "low_confidence_tumor": False,
+                "category": "other",
+                **{f"est_{i + 1}": 180 + i * 20 for i in range(9)},
+            },
+        ]
+    )
 
     tmp_prefix = "/tmp/target_test_fn1"
     import os
+
     if os.path.exists(f"{tmp_prefix}-targets.md"):
         os.remove(f"{tmp_prefix}-targets.md")
     _generate_target_report(
-        ranges_df, analysis, tmp_prefix, cancer_type="PRAD",
+        ranges_df,
+        analysis,
+        tmp_prefix,
+        cancer_type="PRAD",
         purity_result=purity,
     )
     targets = open(f"{tmp_prefix}-targets.md").read()
@@ -655,7 +779,7 @@ def test_target_report_falls_back_to_mixed_source_surface_targets(tmp_path):
                 "matched_normal_over_predicted": False,
                 "broadly_expressed": False,
                 "n_healthy_tissues_expressed": 0,
-                **{f"est_{i+1}": 60.0 + i * 5.0 for i in range(9)},
+                **{f"est_{i + 1}": 60.0 + i * 5.0 for i in range(9)},
             }
         ]
     )
@@ -676,9 +800,9 @@ def test_target_report_falls_back_to_mixed_source_surface_targets(tmp_path):
 def test_ci_confidence_tier_buckets():
     from pirlygenes.cli import _ci_confidence_tier
 
-    assert _ci_confidence_tier(0.58, 0.70) == "high"       # span 0.12
-    assert _ci_confidence_tier(0.40, 0.70) == "moderate"   # span 0.30
-    assert _ci_confidence_tier(0.19, 1.00) == "low"        # span 0.81
+    assert _ci_confidence_tier(0.58, 0.70) == "high"  # span 0.12
+    assert _ci_confidence_tier(0.40, 0.70) == "moderate"  # span 0.30
+    assert _ci_confidence_tier(0.19, 1.00) == "low"  # span 0.81
     assert _ci_confidence_tier(None, 0.5) == "unknown"
 
 
@@ -712,7 +836,9 @@ def test_cli_analyze_rejects_invalid_met_site(monkeypatch, tmp_path):
     an unknown --met-site value rather than silently ignoring it."""
     from pirlygenes import cli as cli_mod
 
-    monkeypatch.setattr(cli_mod, "load_expression_data", lambda *a, **k: pd.DataFrame({"x": [1]}))
+    monkeypatch.setattr(
+        cli_mod, "load_expression_data", lambda *a, **k: pd.DataFrame({"x": [1]})
+    )
     out_dir = str(tmp_path / "out")
     with pytest.raises(ValueError):
         cli_mod.analyze(

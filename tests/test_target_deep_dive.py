@@ -23,11 +23,13 @@ from pirlygenes.plot_subtype_signature import (
 
 def _tcga_sample(cancer_code):
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    return pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"FPKM_{cancer_code}"].astype(float),
+        }
+    )
 
 
 # ── actionable_surface_targets ───────────────────────────────────────────
@@ -60,8 +62,9 @@ def test_curated_panels_cover_major_types():
 def test_plot_actionable_targets_saves_png(tmp_path):
     df = _tcga_sample("PRAD")
     out = tmp_path / "targets.png"
-    fig = plot_actionable_targets(df, "PRAD", purity_estimate=0.6,
-                                  save_to_filename=str(out))
+    fig = plot_actionable_targets(
+        df, "PRAD", purity_estimate=0.6, save_to_filename=str(out)
+    )
     assert fig is not None
     assert out.exists()
 
@@ -79,8 +82,9 @@ def test_plot_actionable_targets_without_purity(tmp_path):
 def test_plot_tumor_attribution_surface(tmp_path):
     df = _tcga_sample("PRAD")
     out = tmp_path / "attrib.png"
-    fig = plot_tumor_attribution(df, "PRAD", purity_estimate=0.6,
-                                  save_to_filename=str(out))
+    fig = plot_tumor_attribution(
+        df, "PRAD", purity_estimate=0.6, save_to_filename=str(out)
+    )
     assert fig is not None
     assert out.exists()
 
@@ -88,9 +92,9 @@ def test_plot_tumor_attribution_surface(tmp_path):
 def test_plot_tumor_attribution_cta(tmp_path):
     df = _tcga_sample("PRAD")
     out = tmp_path / "attrib_cta.png"
-    fig = plot_tumor_attribution(df, "PRAD", purity_estimate=0.6,
-                                  category="CTA",
-                                  save_to_filename=str(out))
+    fig = plot_tumor_attribution(
+        df, "PRAD", purity_estimate=0.6, category="CTA", save_to_filename=str(out)
+    )
     # May be None if no CTAs expressed
     if fig is not None:
         assert out.exists()
@@ -102,8 +106,9 @@ def test_plot_tumor_attribution_cta(tmp_path):
 def test_plot_cta_deep_dive_saves_png(tmp_path):
     df = _tcga_sample("SKCM")  # melanoma has high CTA expression
     out = tmp_path / "cta.png"
-    fig = plot_cta_deep_dive(df, "SKCM", purity_estimate=0.65,
-                              save_to_filename=str(out))
+    fig = plot_cta_deep_dive(
+        df, "SKCM", purity_estimate=0.65, save_to_filename=str(out)
+    )
     assert fig is not None
     assert out.exists()
 
@@ -245,6 +250,8 @@ def test_plot_priority_targets_saves_png(tmp_path):
     )
     assert fig is not None
     assert out.exists()
+    texts = "\n".join(text.get_text() for ax in fig.axes for text in ax.texts)
+    assert "Approved / disease-matched" in texts
 
 
 def test_plot_priority_target_context_saves_png(tmp_path):
@@ -318,6 +325,72 @@ def test_plot_priority_target_context_saves_png(tmp_path):
     assert ax_range.get_xscale() == "linear"
     assert "log10(TPM+1)" in ax_range.get_xlabel()
     assert fig.legends
+    texts = "\n".join(text.get_text() for ax in fig.axes for text in ax.texts)
+    assert "Approved / disease-matched" in texts
+    assert "Exploratory / expression-linked" in texts
+
+
+def test_priority_target_context_can_use_actionable_target_symbols(tmp_path):
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "EGFR",
+                "observed_tpm": 80.0,
+                "attr_tumor_tpm": 70.0,
+                "attr_tumor_tpm_low": 55.0,
+                "attr_tumor_tpm_high": 90.0,
+                "attr_tumor_fraction": 0.88,
+                "attr_tumor_fraction_low": 0.70,
+                "attr_tumor_fraction_high": 1.0,
+                "attr_support_fraction": 1.0,
+                "matched_normal_tissue": "",
+                "matched_normal_tpm": 0.0,
+                "therapy_supported": True,
+                "therapies": "antibody",
+                "tcga_percentile": 0.90,
+                "category": "therapy_target",
+            },
+            {
+                "symbol": "FAP",
+                "observed_tpm": 90.0,
+                "attr_tumor_tpm": 85.0,
+                "attr_tumor_tpm_low": 80.0,
+                "attr_tumor_tpm_high": 92.0,
+                "attr_tumor_fraction": 0.94,
+                "attr_tumor_fraction_low": 0.88,
+                "attr_tumor_fraction_high": 1.0,
+                "attr_support_fraction": 1.0,
+                "matched_normal_tissue": "",
+                "matched_normal_tpm": 0.0,
+                "therapy_supported": True,
+                "therapies": "radioligand",
+                "tcga_percentile": 1.0,
+                "category": "therapy_target",
+            },
+        ]
+    )
+    target_panel = pd.DataFrame(
+        [
+            {
+                "symbol": "EGFR",
+                "agent": "cetuximab",
+                "agent_class": "antibody",
+                "phase": "approved",
+                "indication": "CRC",
+            },
+        ]
+    )
+
+    fig = plot_priority_target_context(
+        ranges_df,
+        "READ",
+        target_panel=target_panel,
+        target_symbols=["EGFR"],
+        save_to_filename=str(tmp_path / "priority-target-context.png"),
+    )
+
+    labels = [tick.get_text() for tick in fig.axes[0].get_yticklabels()]
+    assert labels == ["EGFR"]
 
 
 # ── subtype signatures ───────────────────────────────────────────────────

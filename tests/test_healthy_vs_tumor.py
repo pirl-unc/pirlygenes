@@ -27,8 +27,7 @@ def _ref():
 
 def _as_df(sample_dict: dict[str, float]) -> pd.DataFrame:
     return pd.DataFrame(
-        {"gene_symbol": list(sample_dict.keys()),
-         "TPM": list(sample_dict.values())}
+        {"gene_symbol": list(sample_dict.keys()), "TPM": list(sample_dict.values())}
     )
 
 
@@ -53,6 +52,7 @@ def test_brain_sample_routes_to_healthy_dominant_with_brain_tissues_on_top():
     tissue (cerebral_cortex / spinal_cord / cerebellum). This is the
     coarse-to-fine signal that downstream steps read."""
     from pirlygenes.healthy_vs_tumor import _ONCOFETAL_STRICT
+
     ref = _ref()
     sample = ref["nTPM_cerebral_cortex"].astype(float).to_dict()
     for g in _PROLIFERATION_PANEL:
@@ -118,7 +118,11 @@ def test_summary_line_includes_top_tissue_top_cohort_and_hint():
     """The one-liner must carry enough detail to propagate forward:
     top tissue, top cohort, proliferation, hint."""
     r = TissueCompositionSignal(
-        top_normal_tissues=[("nTPM_prostate", 0.88), ("nTPM_seminal_vesicle", 0.85), ("nTPM_smooth_muscle", 0.82)],
+        top_normal_tissues=[
+            ("nTPM_prostate", 0.88),
+            ("nTPM_seminal_vesicle", 0.85),
+            ("nTPM_smooth_muscle", 0.82),
+        ],
         top_tcga_cohorts=[("FPKM_PRAD", 0.78), ("FPKM_BRCA", 0.75), ("FPKM_OV", 0.74)],
         proliferation_log2_mean=2.1,
         proliferation_genes_observed=5,
@@ -140,8 +144,16 @@ def test_brief_banner_fires_for_healthy_and_ambiguous_hints():
         ("healthy-dominant", True),
     ]:
         r = TissueCompositionSignal(
-            top_normal_tissues=[("nTPM_liver", 0.9), ("nTPM_gallbladder", 0.85), ("nTPM_pancreas", 0.8)],
-            top_tcga_cohorts=[("FPKM_LIHC", 0.78), ("FPKM_CHOL", 0.74), ("FPKM_PAAD", 0.72)],
+            top_normal_tissues=[
+                ("nTPM_liver", 0.9),
+                ("nTPM_gallbladder", 0.85),
+                ("nTPM_pancreas", 0.8),
+            ],
+            top_tcga_cohorts=[
+                ("FPKM_LIHC", 0.78),
+                ("FPKM_CHOL", 0.74),
+                ("FPKM_PAAD", 0.72),
+            ],
             proliferation_log2_mean=1.0,
             proliferation_genes_observed=5,
             cancer_hint=hint,

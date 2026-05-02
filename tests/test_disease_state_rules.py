@@ -29,8 +29,16 @@ def test_narrative_gene_sets_loads():
     assert "AR_targets" in sets
     ar_targets = set(sets["AR_targets"])
     for g in (
-        "KLK3", "KLK2", "NKX3-1", "HOXB13", "FOLH1",
-        "TMPRSS2", "SLC45A3", "NDRG1", "PMEPA1", "FKBP5",
+        "KLK3",
+        "KLK2",
+        "NKX3-1",
+        "HOXB13",
+        "FOLH1",
+        "TMPRSS2",
+        "SLC45A3",
+        "NDRG1",
+        "PMEPA1",
+        "FKBP5",
     ):
         assert g in ar_targets, f"AR_targets missing {g}"
     # HER2 amplicon panel used by the BRCA rule's narrative string.
@@ -55,17 +63,21 @@ def test_axis_state_condition():
     assert _conditions_match(
         "axis:AR_signaling=down",
         {"AR_signaling": "down"},
-        retained=set(), collapsed=set(),
+        retained=set(),
+        collapsed=set(),
     )
     assert not _conditions_match(
         "axis:AR_signaling=down",
         {"AR_signaling": "up"},
-        retained=set(), collapsed=set(),
+        retained=set(),
+        collapsed=set(),
     )
     # Missing axis reads as None and fails.
     assert not _conditions_match(
         "axis:AR_signaling=down",
-        {}, retained=set(), collapsed=set(),
+        {},
+        retained=set(),
+        collapsed=set(),
     )
 
 
@@ -73,55 +85,73 @@ def test_retained_and_collapsed_tokens():
     # retained:<gene> — single gene
     assert _conditions_match(
         "retained:AR",
-        axis_states={}, retained={"AR"}, collapsed=set(),
+        axis_states={},
+        retained={"AR"},
+        collapsed=set(),
     )
     # retained:<set_name> — any-of semantics
     assert _conditions_match(
         "retained:AR_targets",
-        axis_states={}, retained={"KLK3"}, collapsed=set(),
+        axis_states={},
+        retained={"KLK3"},
+        collapsed=set(),
     )
     # collapsed:<gene>
     assert _conditions_match(
         "collapsed:ESR1",
-        axis_states={}, retained=set(), collapsed={"ESR1"},
+        axis_states={},
+        retained=set(),
+        collapsed={"ESR1"},
     )
     # collapsed_ge:N=SET
     assert _conditions_match(
         "collapsed_ge:3=AR_targets",
-        axis_states={}, retained=set(),
+        axis_states={},
+        retained=set(),
         collapsed={"KLK3", "KLK2", "FKBP5"},
     )
     assert not _conditions_match(
         "collapsed_ge:3=AR_targets",
-        axis_states={}, retained=set(),
+        axis_states={},
+        retained=set(),
         collapsed={"KLK3", "KLK2"},  # only 2
     )
 
 
 def test_pipe_is_and_all_subconditions_must_match():
     """Pipe separator means AND; every subcondition must match."""
-    condition = (
-        "axis:AR_signaling=down | retained:AR | collapsed_ge:3=AR_targets"
-    )
+    condition = "axis:AR_signaling=down | retained:AR | collapsed_ge:3=AR_targets"
     axis = {"AR_signaling": "down"}
     # All three met
     assert _conditions_match(
-        condition, axis, {"AR"}, {"KLK3", "KLK2", "FKBP5", "TMPRSS2"},
+        condition,
+        axis,
+        {"AR"},
+        {"KLK3", "KLK2", "FKBP5", "TMPRSS2"},
     )
     # AR_signaling missing
     assert not _conditions_match(
-        condition, {}, {"AR"}, {"KLK3", "KLK2", "FKBP5"},
+        condition,
+        {},
+        {"AR"},
+        {"KLK3", "KLK2", "FKBP5"},
     )
     # AR not retained
     assert not _conditions_match(
-        condition, axis, set(), {"KLK3", "KLK2", "FKBP5"},
+        condition,
+        axis,
+        set(),
+        {"KLK3", "KLK2", "FKBP5"},
     )
 
 
 def test_unknown_token_fails_closed():
     """Typos in CSVs must fail the match, not silently pass."""
     assert not _conditions_match(
-        "unknown_op:AR", {}, set(), set(),
+        "unknown_op:AR",
+        {},
+        set(),
+        set(),
     )
 
 
@@ -134,7 +164,8 @@ def test_collapsed_placeholder_expands_in_declared_order():
     collapsed = {"TMPRSS2", "KLK3", "KLK2"}
     out = _render_narrative(
         "targets ({collapsed:AR_targets}) are collapsed",
-        retained=set(), collapsed=collapsed,
+        retained=set(),
+        collapsed=collapsed,
     )
     # CSV order is KLK3;KLK2;NKX3-1;HOXB13;FOLH1;TMPRSS2;... so the
     # rendered list should follow that order for the subset present.
@@ -144,7 +175,8 @@ def test_collapsed_placeholder_expands_in_declared_order():
 def test_retained_placeholder_expands():
     out = _render_narrative(
         "retained: {retained:AR_targets}",
-        retained={"KLK3"}, collapsed=set(),
+        retained={"KLK3"},
+        collapsed=set(),
     )
     assert "retained: KLK3" in out
 
@@ -152,7 +184,8 @@ def test_retained_placeholder_expands():
 def test_empty_placeholder_renders_empty_string():
     out = _render_narrative(
         "({collapsed:AR_targets})",
-        retained=set(), collapsed=set(),
+        retained=set(),
+        collapsed=set(),
     )
     assert out == "()"
 
@@ -161,7 +194,7 @@ def test_empty_placeholder_renders_empty_string():
 
 
 def test_prad_castrate_resistant_narrative():
-    """Tempus-PRAD validation case: AR retained + AR-target panel
+    """PRAD validation pattern: AR retained + AR-target panel
     collapsed + AR axis down → textbook castrate-resistant narrative."""
     result = synthesize_disease_state(
         cancer_code="PRAD",
@@ -267,7 +300,8 @@ def test_pan_ifn_fires_on_any_cancer():
     result = synthesize_disease_state(
         cancer_code="READ",
         axis_states={"IFN_response": "up"},
-        retained=set(), collapsed=set(),
+        retained=set(),
+        collapsed=set(),
     )
     assert "Active IFN response" in result
 
@@ -278,7 +312,8 @@ def test_pan_rules_apply_even_without_cancer_code():
     result = synthesize_disease_state(
         cancer_code=None,
         axis_states={"IFN_response": "up"},
-        retained=set(), collapsed=set(),
+        retained=set(),
+        collapsed=set(),
     )
     assert "Active IFN response" in result
 
@@ -292,7 +327,8 @@ def test_unknown_cancer_code_runs_only_pan_cancer_rules():
     result = synthesize_disease_state(
         cancer_code="NUTM",  # not referenced in disease-state-rules.csv
         axis_states={"EMT": "up"},
-        retained=set(), collapsed=set(),
+        retained=set(),
+        collapsed=set(),
     )
     assert "EMT program is active" in result
 
@@ -301,7 +337,8 @@ def test_empty_axes_empty_result():
     result = synthesize_disease_state(
         cancer_code="PRAD",
         axis_states={},
-        retained=set(), collapsed=set(),
+        retained=set(),
+        collapsed=set(),
     )
     assert result == ""
 
@@ -324,6 +361,7 @@ def test_no_prad_ar_target_genes_hardcoded_anymore():
     If someone reinstates it they bring back the asymmetry this PR
     was trying to remove."""
     from pirlygenes import cli
+
     assert not hasattr(cli, "_PRAD_AR_TARGET_GENES"), (
         "Hardcoded PRAD AR target set re-appeared in cli; move it to "
         "narrative-gene-sets.csv per #202."
@@ -339,6 +377,10 @@ def test_narrative_gene_sets_csv_headers():
 def test_disease_state_rules_csv_headers():
     df = pd.read_csv("pirlygenes/data/disease-state-rules.csv")
     assert set(df.columns) == {
-        "rule_id", "cancer_code", "priority", "claims",
-        "conditions", "narrative",
+        "rule_id",
+        "cancer_code",
+        "priority",
+        "claims",
+        "conditions",
+        "narrative",
     }

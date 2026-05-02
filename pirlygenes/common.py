@@ -107,11 +107,15 @@ def build_sample_tpm_by_symbol(df_gene_expr):
         gene_id_col, _gene_name_col = guess_gene_cols(df_gene_expr)
         gene_ids = df_gene_expr[gene_id_col].astype(str).map(_strip_ensembl_version)
 
-        tpm_col = "TPM" if "TPM" in df_gene_expr.columns else next(
-            (c for c in df_gene_expr.columns if c.lower() == "tpm"), None
+        tpm_col = (
+            "TPM"
+            if "TPM" in df_gene_expr.columns
+            else next((c for c in df_gene_expr.columns if c.lower() == "tpm"), None)
         )
         if tpm_col is None:
-            raise KeyError(f"No TPM column found. Columns: {list(df_gene_expr.columns)}")
+            raise KeyError(
+                f"No TPM column found. Columns: {list(df_gene_expr.columns)}"
+            )
 
         ref = pan_cancer_expression()
         id_to_sym = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))

@@ -20,19 +20,18 @@ from pirlygenes.tumor_purity import rank_cancer_type_candidates
 
 def _all_tcga_codes():
     ref = pan_cancer_expression()
-    return sorted(
-        c.replace("FPKM_", "")
-        for c in ref.columns if c.startswith("FPKM_")
-    )
+    return sorted(c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_"))
 
 
 def _cohort_median_sample(code: str) -> pd.DataFrame:
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
-    return pd.DataFrame({
-        "ensembl_gene_id": ref["Ensembl_Gene_ID"],
-        "gene_symbol": ref["Symbol"],
-        "TPM": ref[f"FPKM_{code}"].astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": ref[f"FPKM_{code}"].astype(float),
+        }
+    )
 
 
 # Parametrize over every TCGA code so pytest reports each cohort
@@ -45,8 +44,5 @@ def test_tcga_cohort_median_classifies_as_itself(code):
     top_code = ranked[0]["code"]
     assert top_code == code, (
         f"{code} median miscalled as {top_code}. Top 3: "
-        + ", ".join(
-            f"{r['code']}(gm={r['support_geomean']:.3f})"
-            for r in ranked[:3]
-        )
+        + ", ".join(f"{r['code']}(gm={r['support_geomean']:.3f})" for r in ranked[:3])
     )

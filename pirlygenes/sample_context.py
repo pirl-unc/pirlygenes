@@ -69,8 +69,15 @@ from typing import Optional
 # still emit (HIST1H2BC, etc.). A sample's histone signal is then
 # ``sum(TPM for histone symbols) / sum(TPM for all expressed symbols)``.
 _HISTONE_SYMBOL_PREFIXES: tuple[str, ...] = (
-    "H1-", "H2AC", "H2BC", "H3C", "H4C",
-    "HIST1H", "HIST2H", "HIST3H", "HIST4H",
+    "H1-",
+    "H2AC",
+    "H2BC",
+    "H3C",
+    "H4C",
+    "HIST1H",
+    "HIST2H",
+    "HIST3H",
+    "HIST4H",
 )
 # MT ribosomal RNAs — non-polyadenylated. Present in total / ribo-dep,
 # absent in poly-A and typically in exome capture. Combined with the
@@ -81,11 +88,23 @@ _MT_RRNA_SYMBOLS: frozenset[str] = frozenset({"MT-RNR1", "MT-RNR2"})
 # that retains mitochondrial transcripts (total, ribo-dep, poly-A).
 # Absence alongside absence of MT rRNAs indicates either exome capture
 # (no MT coverage) or an upstream filter that stripped MT contigs.
-_MT_MRNA_SYMBOLS: frozenset[str] = frozenset({
-    "MT-CO1", "MT-CO2", "MT-CO3",
-    "MT-ND1", "MT-ND2", "MT-ND3", "MT-ND4", "MT-ND4L", "MT-ND5", "MT-ND6",
-    "MT-CYB", "MT-ATP6", "MT-ATP8",
-})
+_MT_MRNA_SYMBOLS: frozenset[str] = frozenset(
+    {
+        "MT-CO1",
+        "MT-CO2",
+        "MT-CO3",
+        "MT-ND1",
+        "MT-ND2",
+        "MT-ND3",
+        "MT-ND4",
+        "MT-ND4L",
+        "MT-ND5",
+        "MT-ND6",
+        "MT-CYB",
+        "MT-ATP6",
+        "MT-ATP8",
+    }
+)
 
 
 def library_prep_display_label(prep: str | None, *, title_case: bool = False) -> str:
@@ -120,20 +139,17 @@ def library_prep_clause(prep: str | None, *, title_case: bool = False) -> str:
 _THRESHOLDS = {
     # Fraction of total expressed TPM that is replication-dependent
     # histone mRNA.  Poly-A libraries: <<0.1%. Total/ribo-dep: 0.3–2%.
-    "histone_fraction_polyA_ceiling": 0.002,   # below: likely poly-A
-    "histone_fraction_total_floor":   0.005,   # above: likely total / ribo-dep
-
+    "histone_fraction_polyA_ceiling": 0.002,  # below: likely poly-A
+    "histone_fraction_total_floor": 0.005,  # above: likely total / ribo-dep
     # MT rRNA fraction — fraction of all MT TPM attributed to MT-RNR1/2.
     # Total RNA: MT rRNAs dominate MT signal (>70% of MT TPM).
     # Ribo-depleted: rRNAs removed; MT rRNAs usually <10% of MT TPM.
     # Poly-A: rRNAs absent.
     "mt_rrna_fraction_of_mt_depleted_ceiling": 0.10,
-    "mt_rrna_fraction_of_mt_total_floor":      0.40,
-
+    "mt_rrna_fraction_of_mt_total_floor": 0.40,
     # Overall MT expression — expressed as fraction of all sample TPM.
     # <0.1% flagged as "MT missing" (either filtered or exome capture).
     "mt_fraction_suspicious_floor": 0.001,
-
     # Tempus xT / Twist RNA Exome and similar *hybrid capture / exome-
     # capture RNA* protocols drop MT probes entirely, so MT-total is
     # effectively zero (<0.05%) and MT-rRNA absolutely zero — much
@@ -145,7 +161,7 @@ _THRESHOLDS = {
     # median ratio). Calibrated in sample_quality.QUALITY_THRESHOLDS;
     # kept consistent here.
     "degradation_pair_moderate": 0.30,
-    "degradation_pair_severe":   0.20,
+    "degradation_pair_severe": 0.20,
     # Upper bound on the index: values >> 1.0 indicate systematic
     # over-representation of long transcripts — a dead giveaway for
     # exon capture enrichment (long genes have more probes), NOT fresh
@@ -156,6 +172,7 @@ _THRESHOLDS = {
 
 
 # ── Data class ────────────────────────────────────────────────────────────
+
 
 @dataclass
 class SampleContext:
@@ -190,11 +207,11 @@ class SampleContext:
     # expectation for a non-degraded sample; ``ffpe`` flags formalin-
     # fixed paraffin-embedded RNA; ``degraded`` catches partial
     # degradation from slow processing or thaw cycles.
-    preservation: str = "unknown"          # "fresh_frozen" | "ffpe" | "degraded" | "unknown"
+    preservation: str = "unknown"  # "fresh_frozen" | "ffpe" | "degraded" | "unknown"
     preservation_confidence: float = 0.0
 
     # Severity of degradation from the gene-length pair index.
-    degradation_severity: str = "none"     # "none" | "mild" | "moderate" | "severe"
+    degradation_severity: str = "none"  # "none" | "mild" | "moderate" | "severe"
     degradation_index: Optional[float] = None  # long/short observed/expected median
 
     # Whether mitochondrial genes are missing from the quant table.
@@ -229,10 +246,10 @@ class SampleContext:
         detected and halves progressively as severity rises.
         """
         return {
-            "severe":   0.3,
+            "severe": 0.3,
             "moderate": 0.5,
-            "mild":     0.75,
-            "none":     1.0,
+            "mild": 0.75,
+            "none": 1.0,
         }.get(self.degradation_severity, 1.0)
 
     def purity_ci_widening_factor(self) -> float:
@@ -244,10 +261,10 @@ class SampleContext:
         half-width.
         """
         return {
-            "severe":   1.6,
+            "severe": 1.6,
             "moderate": 1.3,
-            "mild":     1.1,
-            "none":     1.0,
+            "mild": 1.1,
+            "none": 1.0,
         }.get(self.degradation_severity, 1.0)
 
     def summary_line(self) -> str:
@@ -255,11 +272,15 @@ class SampleContext:
         prep = library_prep_display_label(self.library_prep)
         pres = {
             "fresh_frozen": "fresh / frozen",
-            "ffpe":         "FFPE",
-            "degraded":     "partially degraded",
-            "unknown":      "unknown preservation",
+            "ffpe": "FFPE",
+            "degraded": "partially degraded",
+            "unknown": "unknown preservation",
         }.get(self.preservation, self.preservation)
-        deg = "" if self.degradation_severity == "none" else f", {self.degradation_severity} degradation"
+        deg = (
+            ""
+            if self.degradation_severity == "none"
+            else f", {self.degradation_severity} degradation"
+        )
         return f"{prep}, {pres}{deg}"
 
 
@@ -292,7 +313,8 @@ def _infer_library_prep(tpm_by_symbol, signals):
     evidence into ``signals`` and returns ``(library_prep, confidence)``.
     """
     total_tpm = sum(
-        v for v in tpm_by_symbol.values()
+        v
+        for v in tpm_by_symbol.values()
         if v is not None and not (isinstance(v, float) and math.isnan(v)) and v > 0
     )
     if total_tpm <= 0:
@@ -305,9 +327,7 @@ def _infer_library_prep(tpm_by_symbol, signals):
     mt_mrna_tpm = _sum_tpm_for_symbols(tpm_by_symbol, _MT_MRNA_SYMBOLS)
     mt_total_tpm = mt_rrna_tpm + mt_mrna_tpm
     mt_fraction = mt_total_tpm / total_tpm
-    mt_rrna_fraction_of_mt = (
-        mt_rrna_tpm / mt_total_tpm if mt_total_tpm > 0 else None
-    )
+    mt_rrna_fraction_of_mt = mt_rrna_tpm / mt_total_tpm if mt_total_tpm > 0 else None
 
     signals["histone_fraction"] = round(histone_frac, 5)
     signals["mt_fraction"] = round(mt_fraction, 5)
@@ -319,10 +339,7 @@ def _infer_library_prep(tpm_by_symbol, signals):
     # is absent MT-rRNA plus very low total chrM fraction, not proof that
     # every MT transcript was removed. Clinical capture references may
     # still quantify MT protein-coding transcripts at low TPM.
-    if (
-        mt_fraction < _THRESHOLDS["mt_fraction_exome_ceiling"]
-        and (mt_rrna_tpm == 0.0)
-    ):
+    if mt_fraction < _THRESHOLDS["mt_fraction_exome_ceiling"] and (mt_rrna_tpm == 0.0):
         # Very high confidence when MT-rRNA is exactly zero and total chrM
         # is very low. This is a capture-enrichment signature, not a
         # statement that MT mRNAs are unmeasurable.
@@ -348,14 +365,19 @@ def _infer_library_prep(tpm_by_symbol, signals):
     if (
         histone_frac >= _THRESHOLDS["histone_fraction_total_floor"]
         and mt_rrna_fraction_of_mt is not None
-        and mt_rrna_fraction_of_mt <= _THRESHOLDS["mt_rrna_fraction_of_mt_depleted_ceiling"]
+        and mt_rrna_fraction_of_mt
+        <= _THRESHOLDS["mt_rrna_fraction_of_mt_depleted_ceiling"]
     ):
         return "ribo_depleted", 0.85
 
     # Poly-A: histones absent AND MT rRNAs absent
     if (
         histone_frac <= _THRESHOLDS["histone_fraction_polyA_ceiling"]
-        and (mt_rrna_fraction_of_mt is None or mt_rrna_fraction_of_mt <= _THRESHOLDS["mt_rrna_fraction_of_mt_depleted_ceiling"])
+        and (
+            mt_rrna_fraction_of_mt is None
+            or mt_rrna_fraction_of_mt
+            <= _THRESHOLDS["mt_rrna_fraction_of_mt_depleted_ceiling"]
+        )
         and mt_fraction >= _THRESHOLDS["mt_fraction_suspicious_floor"]
     ):
         return "poly_a", 0.8
@@ -476,12 +498,10 @@ def compute_ffpe_marker_score(tpm_by_symbol, signals=None):
     stable_syms = panel[panel["direction"] == "stable_in_ffpe"]["symbol"].tolist()
 
     drops_vals = [
-        float(tpm_by_symbol.get(s, 0.0))
-        for s in drops_syms if s in tpm_by_symbol
+        float(tpm_by_symbol.get(s, 0.0)) for s in drops_syms if s in tpm_by_symbol
     ]
     stable_vals = [
-        float(tpm_by_symbol.get(s, 0.0))
-        for s in stable_syms if s in tpm_by_symbol
+        float(tpm_by_symbol.get(s, 0.0)) for s in stable_syms if s in tpm_by_symbol
     ]
     if not drops_vals or not stable_vals:
         return None, 0
@@ -511,9 +531,17 @@ def _infer_preservation_and_degradation(tpm_by_symbol, signals):
     for short_gene, long_gene, expected in degradation_gene_pairs():
         short_tpm = tpm_by_symbol.get(short_gene)
         long_tpm = tpm_by_symbol.get(long_gene)
-        if short_tpm is None or (isinstance(short_tpm, float) and math.isnan(short_tpm)) or short_tpm <= 1:
+        if (
+            short_tpm is None
+            or (isinstance(short_tpm, float) and math.isnan(short_tpm))
+            or short_tpm <= 1
+        ):
             continue
-        if long_tpm is None or (isinstance(long_tpm, float) and math.isnan(long_tpm)) or expected <= 0:
+        if (
+            long_tpm is None
+            or (isinstance(long_tpm, float) and math.isnan(long_tpm))
+            or expected <= 0
+        ):
             continue
         n_short_expressed += 1
         observed = float(long_tpm) / float(short_tpm)
@@ -525,6 +553,7 @@ def _infer_preservation_and_degradation(tpm_by_symbol, signals):
         return "unknown", 0.0, "none", None
 
     import numpy as np
+
     index = float(np.median(ratios))
     signals["degradation_index"] = round(index, 3)
 
@@ -558,14 +587,21 @@ def _build_tpm_by_symbol(df_gene_expr):
     column.
     """
     sym_col = next(
-        (c for c in ("gene_symbol", "gene", "Symbol", "symbol", "GeneName") if c in df_gene_expr.columns),
+        (
+            c
+            for c in ("gene_symbol", "gene", "Symbol", "symbol", "GeneName")
+            if c in df_gene_expr.columns
+        ),
         None,
     )
-    tpm_col = "TPM" if "TPM" in df_gene_expr.columns else next(
-        (c for c in df_gene_expr.columns if c.lower() == "tpm"), None
+    tpm_col = (
+        "TPM"
+        if "TPM" in df_gene_expr.columns
+        else next((c for c in df_gene_expr.columns if c.lower() == "tpm"), None)
     )
     if sym_col is not None and tpm_col is not None:
         import pandas as pd
+
         with without_dataframe_attrs(df_gene_expr):
             syms = df_gene_expr[sym_col].astype(str)
             tpms = pd.to_numeric(df_gene_expr[tpm_col], errors="coerce")
@@ -577,6 +613,7 @@ def _build_tpm_by_symbol(df_gene_expr):
             )
     # Fall back to the gene-ID path (canonical home: common.py).
     from .common import build_sample_tpm_by_symbol
+
     return build_sample_tpm_by_symbol(df_gene_expr)
 
 
@@ -629,12 +666,14 @@ def _summarise_expression_distribution(tpm_by_symbol, signals):
         # Panel-vs-whole-transcriptome heuristic (#68): whole-
         # transcriptome samples carry ~10–15% of total TPM in the top
         # 50 genes; targeted panels concentrate much more sharply.
-        signals["top_50_share_of_total_tpm"] = round(
-            float(sorted_desc[:50].sum()) / total, 4
-        ) if n_genes >= 50 else None
-        signals["top_2000_share_of_total_tpm"] = round(
-            float(sorted_desc[:2000].sum()) / total, 4
-        ) if n_genes >= 2000 else None
+        signals["top_50_share_of_total_tpm"] = (
+            round(float(sorted_desc[:50].sum()) / total, 4) if n_genes >= 50 else None
+        )
+        signals["top_2000_share_of_total_tpm"] = (
+            round(float(sorted_desc[:2000].sum()) / total, 4)
+            if n_genes >= 2000
+            else None
+        )
         # Likely a targeted panel when BOTH signals fire (few detected
         # genes AND most TPM concentrated in a narrow top). Using AND
         # avoids flagging normal-tissue nTPM references (which are
@@ -655,7 +694,13 @@ def _summarise_expression_distribution(tpm_by_symbol, signals):
 
 
 def _refine_preservation_with_orthogonal_signals(
-    preservation, severity, index, tpm_by_symbol, transcript_df, signals, flags,
+    preservation,
+    severity,
+    index,
+    tpm_by_symbol,
+    transcript_df,
+    signals,
+    flags,
 ):
     """Second-pass preservation call using the FFPE marker panel and
     transcript-level isoform-length-bias index — both immune to
@@ -683,16 +728,8 @@ def _refine_preservation_with_orthogonal_signals(
 
     # Isoform length bias (within-gene, capture-immune):
     # ~1.0 fresh, < 0.6 systematic short-isoform preference (FFPE).
-    iso_strong = (
-        iso_index is not None
-        and n_iso_genes >= 50
-        and iso_index < 0.6
-    )
-    iso_moderate = (
-        iso_index is not None
-        and n_iso_genes >= 50
-        and iso_index < 0.85
-    )
+    iso_strong = iso_index is not None and n_iso_genes >= 50 and iso_index < 0.6
+    iso_moderate = iso_index is not None and n_iso_genes >= 50 and iso_index < 0.85
 
     if ffpe_strong and iso_strong:
         flags.append(
@@ -708,7 +745,8 @@ def _refine_preservation_with_orthogonal_signals(
             + (f"marker score {ffpe_score:.1f}" if ffpe_score else "")
             + (
                 f"; isoform bias {iso_index:.2f} (n={n_iso_genes})"
-                if iso_index is not None else ""
+                if iso_index is not None
+                else ""
             )
             + ". Length-pair index masked by capture enrichment."
         )
@@ -717,9 +755,7 @@ def _refine_preservation_with_orthogonal_signals(
         flags.append(
             "Possible FFPE: orthogonal signals weakly support degradation "
             + (f"(marker score {ffpe_score:.1f}" if ffpe_score else "(")
-            + (
-                f", isoform bias {iso_index:.2f})" if iso_index is not None else ")"
-            )
+            + (f", isoform bias {iso_index:.2f})" if iso_index is not None else ")")
         )
         return "degraded", "mild"
     return preservation, severity
@@ -762,7 +798,8 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
         )
     # Drop NaN
     tpm_by_symbol = {
-        s: v for s, v in tpm_by_symbol.items()
+        s: v
+        for s, v in tpm_by_symbol.items()
         if v is not None and not (isinstance(v, float) and math.isnan(v))
     }
 
@@ -780,12 +817,18 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
     print("[context]   orthogonal-signal refinement...")
     transcript_df = (
         df_gene_expr.attrs.get("transcript_expression")
-        if hasattr(df_gene_expr, "attrs") else None
+        if hasattr(df_gene_expr, "attrs")
+        else None
     )
     refined_flags: list[str] = []
     preservation, severity = _refine_preservation_with_orthogonal_signals(
-        preservation, severity, index,
-        tpm_by_symbol, transcript_df, signals, refined_flags,
+        preservation,
+        severity,
+        index,
+        tpm_by_symbol,
+        transcript_df,
+        signals,
+        refined_flags,
     )
     # If refinement updated the call, raise the confidence above 0.
     if refined_flags:
@@ -795,7 +838,8 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
     # map to any TPM > 0 in the sample. ``missing_mt`` is a distinct
     # signal from preservation — it's about the quant table, not the RNA.
     mt_found = sum(
-        1 for s in (_MT_RRNA_SYMBOLS | _MT_MRNA_SYMBOLS)
+        1
+        for s in (_MT_RRNA_SYMBOLS | _MT_MRNA_SYMBOLS)
         if s in tpm_by_symbol and tpm_by_symbol[s] > 0
     )
     signals["mt_genes_detected"] = mt_found
@@ -810,7 +854,9 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
             "back to gene-length pair index only"
         )
     if library_prep == "unknown":
-        flags.append("Library prep inconclusive — histone + MT-rRNA signals did not match any profile")
+        flags.append(
+            "Library prep inconclusive — histone + MT-rRNA signals did not match any profile"
+        )
     else:
         flags.append(
             f"Library prep: {library_prep_display_label(library_prep)} "
@@ -823,12 +869,13 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
         # one that triggered FFPE.
         if not refined_flags:
             flags.append(
-                f"Preservation: FFPE / heavily degraded "
-                f"(length-pair index {index:.2f})"
+                f"Preservation: FFPE / heavily degraded (length-pair index {index:.2f})"
             )
     elif preservation == "degraded":
         if not refined_flags:
-            flags.append(f"Preservation: partial degradation (length-pair index {index:.2f})")
+            flags.append(
+                f"Preservation: partial degradation (length-pair index {index:.2f})"
+            )
     elif preservation == "fresh_frozen":
         flags.append(f"Preservation: fresh / frozen (length-pair index {index:.2f})")
     elif preservation == "unknown" and index is not None and index > 1.0:
@@ -915,8 +962,9 @@ def _expectation_for(expectations, library_prep, preservation, gene_class):
     return None
 
 
-def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
-                        save_dpi: int = 150) -> Optional[str]:
+def plot_sample_context(
+    sample_context: SampleContext, save_to_filename: str, save_dpi: int = 150
+) -> Optional[str]:
     """Standalone PNG summarising ``sample_context`` as the first panel
     a user sees in an analyze report.
 
@@ -931,7 +979,9 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     import matplotlib.pyplot as plt
 
     fig, (ax_text, ax_bars) = plt.subplots(
-        nrows=2, ncols=1, figsize=(10, 5.5),
+        nrows=2,
+        ncols=1,
+        figsize=(10, 5.5),
         gridspec_kw={"height_ratios": [1, 1.5]},
     )
     ax_text.axis("off")
@@ -961,21 +1011,32 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
         f"Preservation:  {pres_label}",
         (
             f"Degradation:   {sample_context.degradation_severity}"
-            + (f"  (length-pair index {sample_context.degradation_index:.2f})"
-               if sample_context.degradation_index is not None else "")
+            + (
+                f"  (length-pair index {sample_context.degradation_index:.2f})"
+                if sample_context.degradation_index is not None
+                else ""
+            )
         ),
     ]
     if sample_context.missing_mt:
         header_lines.append("MT genes missing from quant table")
 
     ax_text.text(
-        0.02, 0.95, "Sample context",
-        fontsize=14, fontweight="bold", va="top",
+        0.02,
+        0.95,
+        "Sample context",
+        fontsize=14,
+        fontweight="bold",
+        va="top",
     )
     for i, line in enumerate(header_lines):
         ax_text.text(
-            0.02, 0.70 - 0.22 * i, line,
-            fontsize=11, va="top", family="monospace",
+            0.02,
+            0.70 - 0.22 * i,
+            line,
+            fontsize=11,
+            va="top",
+            family="monospace",
             color=severity_color if i == 2 else "black",
         )
 
@@ -986,15 +1047,24 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     mt_rrna_frac = signals.get("mt_rrna_fraction_of_mt") or 0.0
 
     bars = [
-        ("Histone fraction\n(replication-dependent mRNAs)",
-         hist_frac, _THRESHOLDS["histone_fraction_total_floor"],
-         "Total/ribo-dep floor"),
-        ("MT fraction\n(of total sample TPM)",
-         mt_frac, _THRESHOLDS["mt_fraction_suspicious_floor"],
-         "Suspicious-floor"),
-        ("MT-rRNA / MT-total",
-         mt_rrna_frac, _THRESHOLDS["mt_rrna_fraction_of_mt_total_floor"],
-         "Total-RNA floor"),
+        (
+            "Histone fraction\n(replication-dependent mRNAs)",
+            hist_frac,
+            _THRESHOLDS["histone_fraction_total_floor"],
+            "Total/ribo-dep floor",
+        ),
+        (
+            "MT fraction\n(of total sample TPM)",
+            mt_frac,
+            _THRESHOLDS["mt_fraction_suspicious_floor"],
+            "Suspicious-floor",
+        ),
+        (
+            "MT-rRNA / MT-total",
+            mt_rrna_frac,
+            _THRESHOLDS["mt_rrna_fraction_of_mt_total_floor"],
+            "Total-RNA floor",
+        ),
     ]
     y = [i for i in range(len(bars))]
     values = [b[1] for b in bars]
@@ -1012,30 +1082,45 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     in_band_count = 0
     for yi, sig_key in zip(y, signal_keys):
         gene_class = _GENE_CLASS_TO_SIGNAL.get(sig_key)
-        band = _expectation_for(
-            expectations,
-            sample_context.library_prep,
-            sample_context.preservation,
-            gene_class,
-        ) if gene_class else None
+        band = (
+            _expectation_for(
+                expectations,
+                sample_context.library_prep,
+                sample_context.preservation,
+                gene_class,
+            )
+            if gene_class
+            else None
+        )
         bar_bands.append(band)
         if band is not None:
             lo, hi, _ = band
             ax_bars.axhspan(
-                yi - 0.35, yi + 0.35,
-                xmin=0.0, xmax=1.0,
-                facecolor="none", edgecolor="none",  # no-op placeholder
+                yi - 0.35,
+                yi + 0.35,
+                xmin=0.0,
+                xmax=1.0,
+                facecolor="none",
+                edgecolor="none",  # no-op placeholder
             )
             # Use axvspan-shape-per-row: draw a narrow patch via bar
             # on a secondary layer to keep implementation simple.
             ax_bars.barh(
-                [yi], [hi - lo], left=[lo],
-                color="#bbd8a3", alpha=0.4, edgecolor="none",
-                height=0.75, zorder=0,
+                [yi],
+                [hi - lo],
+                left=[lo],
+                color="#bbd8a3",
+                alpha=0.4,
+                edgecolor="none",
+                height=0.75,
+                zorder=0,
             )
-            val = values[signal_keys.index(sig_key)] if sig_key in (
-                "histone_fraction", "mt_fraction", "mt_rrna_fraction_of_mt"
-            ) else None
+            val = (
+                values[signal_keys.index(sig_key)]
+                if sig_key
+                in ("histone_fraction", "mt_fraction", "mt_rrna_fraction_of_mt")
+                else None
+            )
             if val is not None and lo <= val <= hi:
                 in_band_count += 1
 
@@ -1049,22 +1134,28 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
     # the "all near zero" case with the plausible library-prep explanation.
     max_value = max(values) if values else 0.0
     max_threshold = max((b[2] for b in bars), default=0.0)
-    max_band_hi = max(
-        (band[1] for band in bar_bands if band is not None), default=0.0
-    )
+    max_band_hi = max((band[1] for band in bar_bands if band is not None), default=0.0)
     axis_floor = max(max_threshold * 4.0, max_band_hi * 1.1, 0.05)
     ax_bars.set_xlim(0, max(max_value * 1.2, axis_floor))
     ax_bars.set_xlabel("Fraction", fontsize=10)
     for yi, (thr, thr_name) in zip(y, thresholds):
         ax_bars.axvline(thr, color="#888888", linestyle="--", linewidth=0.8)
         ax_bars.text(
-            thr, yi - 0.4, thr_name,
-            fontsize=7, color="#666666", ha="left",
+            thr,
+            yi - 0.4,
+            thr_name,
+            fontsize=7,
+            color="#666666",
+            ha="left",
         )
     for yi, val, band in zip(y, values, bar_bands):
         if band is not None:
             lo, hi, _ = band
-            status = "ok" if lo <= val <= hi else ("out" if val < lo * 0.5 or val > hi * 2 else "~")
+            status = (
+                "ok"
+                if lo <= val <= hi
+                else ("out" if val < lo * 0.5 or val > hi * 2 else "~")
+            )
         else:
             status = ""
         ax_bars.text(val, yi, f"  {val:.3f} {status}", va="center", fontsize=9)
@@ -1082,9 +1173,14 @@ def plot_sample_context(sample_context: SampleContext, save_to_filename: str,
             "degradation evidence."
         )
         ax_bars.text(
-            0.98, 0.05, explanation,
+            0.98,
+            0.05,
+            explanation,
             transform=ax_bars.transAxes,
-            fontsize=8, color="#444444", ha="right", va="bottom",
+            fontsize=8,
+            color="#444444",
+            ha="right",
+            va="bottom",
             bbox=dict(
                 boxstyle="round,pad=0.4",
                 facecolor="#f5f5dc",
@@ -1155,14 +1251,23 @@ def plot_degradation_index(
     # Diagonal guide.
     diag_lo = 0.0
     diag_hi = max(expected_arr.max(), observed_arr.max()) * 1.1
-    ax.plot([diag_lo, diag_hi], [diag_lo, diag_hi],
-            linestyle="--", color="#888888", linewidth=0.8,
-            label="expected = observed (no degradation)")
+    ax.plot(
+        [diag_lo, diag_hi],
+        [diag_lo, diag_hi],
+        linestyle="--",
+        color="#888888",
+        linewidth=0.8,
+        label="expected = observed (no degradation)",
+    )
 
     sc = ax.scatter(
-        expected_arr, observed_arr,
+        expected_arr,
+        observed_arr,
         c=np.log2(np.maximum(deviation, 1e-3)),
-        cmap="RdYlGn", edgecolors="black", linewidth=0.3, s=60,
+        cmap="RdYlGn",
+        edgecolors="black",
+        linewidth=0.3,
+        s=60,
     )
     cb = plt.colorbar(sc, ax=ax, pad=0.02)
     cb.set_label("log2(observed / expected)", fontsize=9)

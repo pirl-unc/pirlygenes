@@ -21,7 +21,13 @@ COMPONENT_TO_HPA = {
     "B_cell": ["B-cells"],
     "plasma": ["Plasma cells"],
     "NK": ["NK-cells"],
-    "myeloid": ["Macrophages", "Kupffer cells", "dendritic cells", "monocytes", "granulocytes"],
+    "myeloid": [
+        "Macrophages",
+        "Kupffer cells",
+        "dendritic cells",
+        "monocytes",
+        "granulocytes",
+    ],
     # Stromal
     "fibroblast": ["Fibroblasts"],
     "endothelial": ["Endothelial cells"],
@@ -278,6 +284,7 @@ COMPONENT_MARKERS = {
     "schwann": ["MPZ", "PMP22", "S100B", "GFAP"],
 }
 
+
 def _load_hpa_cell_types():
     """Load the HPA single-cell type nTPM matrix (gene × cell type)."""
     return get_data("hpa-cell-type-expression")
@@ -307,7 +314,9 @@ def _select_best_category_tissue(category, sample_by_eid, genes, bulk_indexed):
     import numpy as np
 
     tissues = TISSUE_CATEGORIES[category]
-    available_cols = [f"nTPM_{t}" for t in tissues if f"nTPM_{t}" in bulk_indexed.columns]
+    available_cols = [
+        f"nTPM_{t}" for t in tissues if f"nTPM_{t}" in bulk_indexed.columns
+    ]
     if not available_cols:
         return tissues[0], f"nTPM_{tissues[0]}"
 
@@ -316,10 +325,12 @@ def _select_best_category_tissue(category, sample_by_eid, genes, bulk_indexed):
         return available_tissues[0], available_cols[0]
 
     # Build member matrix and identify category-enriched genes
-    member_matrix = np.column_stack([
-        bulk_indexed[col].astype(float).reindex(genes).fillna(0.0).values
-        for col in available_cols
-    ])
+    member_matrix = np.column_stack(
+        [
+            bulk_indexed[col].astype(float).reindex(genes).fillna(0.0).values
+            for col in available_cols
+        ]
+    )
     all_ntpm_cols = [c for c in bulk_indexed.columns if c.startswith("nTPM_")]
     background_median = np.median(
         bulk_indexed[all_ntpm_cols].astype(float).reindex(genes).fillna(0.0).values,
@@ -345,10 +356,12 @@ def _select_best_category_tissue(category, sample_by_eid, genes, bulk_indexed):
         mask = measured & enriched & ((sample_vec > 0.5) | (ref_vec > 0.5))
         if mask.sum() < 10:
             continue
-        corr = float(np.corrcoef(
-            np.log1p(sample_vec[mask]),
-            np.log1p(ref_vec[mask]),
-        )[0, 1])
+        corr = float(
+            np.corrcoef(
+                np.log1p(sample_vec[mask]),
+                np.log1p(ref_vec[mask]),
+            )[0, 1]
+        )
         if np.isfinite(corr) and corr > best_corr:
             best_corr = corr
             best_idx = col_idx
@@ -384,7 +397,11 @@ def build_signature_matrix(components, gene_subset=None, sample_by_eid=None):
     import numpy as np
 
     hpa = _load_hpa_cell_types().drop_duplicates(subset="Ensembl_Gene_ID").copy()
-    bulk = _load_normal_tissue_expression().drop_duplicates(subset="Ensembl_Gene_ID").copy()
+    bulk = (
+        _load_normal_tissue_expression()
+        .drop_duplicates(subset="Ensembl_Gene_ID")
+        .copy()
+    )
 
     gene_ids = set(hpa["Ensembl_Gene_ID"].astype(str))
     gene_ids |= set(bulk["Ensembl_Gene_ID"].astype(str))
@@ -392,8 +409,12 @@ def build_signature_matrix(components, gene_subset=None, sample_by_eid=None):
         gene_ids &= {str(gene_id) for gene_id in gene_subset}
 
     genes = sorted(gene_ids)
-    symbol_map = dict(zip(hpa["Ensembl_Gene_ID"].astype(str), hpa["Symbol"].astype(str)))
-    symbol_map.update(dict(zip(bulk["Ensembl_Gene_ID"].astype(str), bulk["Symbol"].astype(str))))
+    symbol_map = dict(
+        zip(hpa["Ensembl_Gene_ID"].astype(str), hpa["Symbol"].astype(str))
+    )
+    symbol_map.update(
+        dict(zip(bulk["Ensembl_Gene_ID"].astype(str), bulk["Symbol"].astype(str)))
+    )
     symbols = [symbol_map.get(gene_id, gene_id) for gene_id in genes]
 
     hpa = hpa.set_index(hpa["Ensembl_Gene_ID"].astype(str))
@@ -415,20 +436,18 @@ def build_signature_matrix(components, gene_subset=None, sample_by_eid=None):
         # without a cell-type match (thyroid, urinary_bladder, bone,
         # thymus, etc.).
         if comp.startswith("matched_normal_"):
-            tissue = comp[len("matched_normal_"):]
+            tissue = comp[len("matched_normal_") :]
 
             tissue_col = f"nTPM_{tissue}"
             bulk_vals = None
             if tissue_col in bulk.columns:
                 bulk_vals = (
-                    bulk[tissue_col]
-                    .astype(float)
-                    .reindex(genes)
-                    .fillna(0.0)
-                    .values
+                    bulk[tissue_col].astype(float).reindex(genes).fillna(0.0).values
                 )
 
-            cell_types, _proxy_confidence, _source = get_matched_normal_cell_type(tissue)
+            cell_types, _proxy_confidence, _source = get_matched_normal_cell_type(
+                tissue
+            )
             present_cell_types = [t for t in cell_types if t in hpa.columns]
             cell_type_vals = None
             if present_cell_types:
@@ -449,7 +468,8 @@ def build_signature_matrix(components, gene_subset=None, sample_by_eid=None):
                 # giving fibroblast / myeloid / endothelial
                 # compartments more room to pull their markers.
                 blend = MATCHED_NORMAL_CELL_TYPE_BLEND.get(
-                    tissue, _CELL_TYPE_BLEND_DEFAULT,
+                    tissue,
+                    _CELL_TYPE_BLEND_DEFAULT,
                 )
                 vals = blend * cell_type_vals + (1.0 - blend) * bulk_vals
                 cols.append(vals)
@@ -466,19 +486,16 @@ def build_signature_matrix(components, gene_subset=None, sample_by_eid=None):
         if category is not None:
             if sample_by_eid is not None:
                 _tissue, tissue_col = _select_best_category_tissue(
-                    category, sample_by_eid, genes, bulk,
+                    category,
+                    sample_by_eid,
+                    genes,
+                    bulk,
                 )
             else:
                 first_tissue = TISSUE_CATEGORIES[category][0]
                 tissue_col = f"nTPM_{first_tissue}"
             if tissue_col in bulk.columns:
-                vals = (
-                    bulk[tissue_col]
-                    .astype(float)
-                    .reindex(genes)
-                    .fillna(0.0)
-                    .values
-                )
+                vals = bulk[tissue_col].astype(float).reindex(genes).fillna(0.0).values
                 cols.append(vals)
                 continue
 
@@ -486,7 +503,11 @@ def build_signature_matrix(components, gene_subset=None, sample_by_eid=None):
         # components not yet migrated to COMPONENT_TO_CATEGORY)
         bulk_tissues = COMPONENT_TO_BULK_TISSUE.get(comp, [])
         if bulk_tissues:
-            bulk_cols = [f"nTPM_{tissue}" for tissue in bulk_tissues if f"nTPM_{tissue}" in bulk.columns]
+            bulk_cols = [
+                f"nTPM_{tissue}"
+                for tissue in bulk_tissues
+                if f"nTPM_{tissue}" in bulk.columns
+            ]
             if bulk_cols:
                 vals = (
                     bulk[bulk_cols]

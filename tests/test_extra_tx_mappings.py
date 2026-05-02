@@ -61,12 +61,16 @@ def test_resolver_uses_aux_map(tmp_path, capsys):
     # Only include transcripts that are in the aux map but NOT in
     # pyensembl's fast-path index (the HLA-A patch haplotype is the
     # canonical example).
-    df = pd.DataFrame({
-        "Name": ["ENST00000639891.1", "ENST00000647452.1", "ENST00000646105.1"],
-        "TPM": [9.5, 3.1, 7847.0],
-    })
+    df = pd.DataFrame(
+        {
+            "Name": ["ENST00000639891.1", "ENST00000647452.1", "ENST00000646105.1"],
+            "TPM": [9.5, 3.1, 7847.0],
+        }
+    )
     resolved = _resolve_unknown_transcripts_for_raw_frame(
-        df, verbose=True, progress=False,
+        df,
+        verbose=True,
+        progress=False,
     )
     # Aux-map entries made it into the resolved dict.
     assert resolved.get("ENST00000639891") == "HLA-A"

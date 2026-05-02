@@ -224,7 +224,10 @@ def decompose_one_sample(
             sample_mode=sample_mode,
         )
     except Exception as exc:  # noqa: BLE001
-        print(f"[tcga] {sample_barcode} ({cancer_code}): decompose failed — {exc}", flush=True)
+        print(
+            f"[tcga] {sample_barcode} ({cancer_code}): decompose failed — {exc}",
+            flush=True,
+        )
         return None
     if not results:
         return None
@@ -346,7 +349,9 @@ def run(
 ) -> None:
     patient_to_project = load_barcode_to_project(barcode_project_pkl)
 
-    print(f"[tcga] {len(patient_to_project)} patients mapped to TCGA projects", flush=True)
+    print(
+        f"[tcga] {len(patient_to_project)} patients mapped to TCGA projects", flush=True
+    )
 
     if max_samples_per_type is not None or cancer_types is not None:
         # Cheap dry path: peek at header only to subset before full load.
@@ -390,7 +395,9 @@ def run(
             pd.concat(accum, ignore_index=True).to_csv(checkpoint_path, index=False)
 
     if not accum:
-        print("[tcga] No samples decomposed successfully — nothing to write", flush=True)
+        print(
+            "[tcga] No samples decomposed successfully — nothing to write", flush=True
+        )
         return
 
     per_sample = pd.concat(accum, ignore_index=True)

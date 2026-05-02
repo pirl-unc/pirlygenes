@@ -13,7 +13,7 @@
 """Therapy-response gene signatures (issue #57).
 
 Curated per-axis panels that let a single RNA-seq sample be scored for
-the signaling state of each axis (AR, ER, HER2, MAPK/EGFR, NE
+the signaling state of each axis (AR, ER, HER2, MAPK/ERK, NE
 differentiation, EMT, hypoxia, IFN response) and — crucially —
 annotated against the cancer-type cohort median so suppressed states
 surface as divergence below cohort rather than just raw low expression.
@@ -41,9 +41,93 @@ of TME mis-attribution.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+import math
+from typing import Any, Optional
 
 from .load_dataset import get_data
+
+
+MAPK_ACTIVITY_AXIS = "MAPK_EGFR_signaling"
+MAPK_ACTIVITY_LABEL = "MAPK / ERK activity"
+MAPK_ACTIVITY_SCORE_NAME = "MPAS-like downstream transcriptional score"
+MAPK_ACTIVITY_GENES = frozenset(
+    {
+        "PHLDA1",
+        "SPRY2",
+        "SPRY4",
+        "DUSP4",
+        "DUSP6",
+        "CCND1",
+        "EPHA2",
+        "EPHA4",
+        "ETV4",
+        "ETV5",
+    }
+)
+
+_MAPK_DRIVER_SOURCE_GENES = frozenset(
+    {
+        "ABL1",
+        "ALK",
+        "ARAF",
+        "BRAF",
+        "EGFR",
+        "ERBB2",
+        "ERBB3",
+        "ERBB4",
+        "FGFR1",
+        "FGFR2",
+        "FGFR3",
+        "FGFR4",
+        "FLT3",
+        "HRAS",
+        "KIT",
+        "KRAS",
+        "MAP2K1",
+        "MAP2K2",
+        "MET",
+        "NF1",
+        "NTRK1",
+        "NTRK2",
+        "NTRK3",
+        "NRAS",
+        "PDGFRA",
+        "PDGFRB",
+        "RAF1",
+        "RET",
+        "ROS1",
+    }
+)
+
+_MAPK_RNA_SOURCE_GENES = frozenset(
+    {
+        "ALK",
+        "EGFR",
+        "ERBB2",
+        "ERBB3",
+        "ERBB4",
+        "FGFR1",
+        "FGFR2",
+        "FGFR3",
+        "FGFR4",
+        "KIT",
+        "MET",
+        "NTRK1",
+        "NTRK2",
+        "NTRK3",
+        "PDGFRA",
+        "PDGFRB",
+        "RET",
+        "ROS1",
+    }
+)
+
+_MAPK_UNRESOLVED_SOURCE_PROMPTS = (
+    "RAS/RAF/MEK hotspot mutation or NF1 loss",
+    "RTK amplification or activating kinase-domain duplication",
+    "ALK/RET/NTRK/ROS1/FGFR/RAF-family fusion",
+    "ligand-driven or microenvironmental MAPK activation",
+)
 
 
 # ── Data access ───────────────────────────────────────────────────────────
@@ -114,6 +198,276 @@ class TherapyAxisScore:
     message: str = ""
 
 
+def _as_float(value: Any) -> float | None:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(result):
+        return None
+    return result
+
+
+def _record_value(record: Any, key: str, default: Any = "") -> Any:
+    if isinstance(record, dict):
+        return record.get(key, default)
+    return getattr(record, key, default)
+
+
+def _clean_symbol(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if not text or text == "NAN":
+        return ""
+    return text
+
+
+def _short_source_path(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return text.rsplit("/", 1)[-1]
+
+
+def _support_genes_for_score(score: TherapyAxisScore, *, max_genes: int = 5) -> list[str]:
+    rows = [
+        row
+        for row in (getattr(score, "per_gene", None) or [])
+        if str(row.get("direction") or "") == "up"
+        and _as_float(row.get("fold_vs_cohort")) is not None
+    ]
+    rows.sort(key=lambda row: _as_float(row.get("fold_vs_cohort")) or 0.0, reverse=True)
+    out = []
+    for row in rows:
+        symbol = str(row.get("symbol") or "").strip()
+        fold = _as_float(row.get("fold_vs_cohort"))
+        if not symbol or fold is None:
+            continue
+        out.append(f"{symbol} {fold:.1f}x")
+        if len(out) >= max_genes:
+            break
+    return out
+
+
+def _candidate_source_from_alteration(record: Any) -> dict[str, Any] | None:
+    gene = _clean_symbol(_record_value(record, "gene"))
+    if gene not in _MAPK_DRIVER_SOURCE_GENES:
+        return None
+    alteration_type = str(_record_value(record, "alteration_type") or "").strip()
+    alteration = str(_record_value(record, "alteration") or "").strip()
+    raw_name = str(_record_value(record, "raw_name") or "").strip()
+    evidence_text = " ".join([alteration_type, alteration, raw_name]).lower()
+    if gene == "NF1" and any(
+        token in evidence_text for token in ("loss", "delet", "lof", "truncat")
+    ):
+        mechanism = "negative-regulator loss can raise RAS/MAPK signaling"
+    elif any(
+        token in evidence_text
+        for token in (
+            "kdd",
+            "kinase domain duplication",
+            "activating",
+            "hotspot",
+            "amplification",
+            "amplified",
+            "fusion",
+            "rearrang",
+            "itd",
+            "internal tandem duplication",
+        )
+    ):
+        mechanism = "supplied activating MAPK-source alteration"
+    elif alteration_type in {
+        "kdd",
+        "amplification",
+        "fusion",
+        "internal_tandem_duplication",
+        "mutation",
+        "unknown",
+    }:
+        mechanism = "supplied alteration in a MAPK-source gene"
+    else:
+        return None
+
+    detail = alteration or raw_name or alteration_type or "alteration"
+    source_path = _short_source_path(_record_value(record, "source_path"))
+    if str(detail).strip().upper().startswith(gene):
+        label = f"supplied {detail}".strip()
+    else:
+        label = f"supplied {gene} {detail}".strip()
+    if source_path:
+        label += f" ({source_path})"
+    return {
+        "kind": "supplied_alteration",
+        "gene": gene,
+        "label": label,
+        "mechanism": mechanism,
+        "confidence": str(_record_value(record, "confidence") or "supplied").strip()
+        or "supplied",
+    }
+
+
+def _candidate_source_from_fusion(record: Any) -> dict[str, Any] | None:
+    gene_a = _clean_symbol(_record_value(record, "gene_a"))
+    gene_b = _clean_symbol(_record_value(record, "gene_b"))
+    genes = [gene for gene in (gene_a, gene_b) if gene in _MAPK_DRIVER_SOURCE_GENES]
+    if not genes:
+        return None
+    pair = str(_record_value(record, "pair") or "").strip()
+    if not pair and gene_a and gene_b:
+        pair = f"{gene_a}--{gene_b}"
+    source_path = _short_source_path(_record_value(record, "source_path"))
+    label = f"supplied fusion involving {', '.join(genes)}"
+    if pair:
+        label += f" ({pair})"
+    if source_path:
+        label += f" from {source_path}"
+    return {
+        "kind": "supplied_fusion",
+        "gene": genes[0],
+        "label": label,
+        "mechanism": "kinase or MAPK-pathway fusion can drive downstream ERK output",
+        "confidence": str(_record_value(record, "confidence") or "supplied").strip()
+        or "supplied",
+    }
+
+
+def _candidate_sources_from_rna(ranges_df, *, max_sources: int = 4) -> list[dict[str, Any]]:
+    if ranges_df is None or not hasattr(ranges_df, "columns") or "symbol" not in ranges_df.columns:
+        return []
+    value_col = "attr_tumor_tpm" if "attr_tumor_tpm" in ranges_df.columns else "observed_tpm"
+    if value_col not in ranges_df.columns:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for _, row in ranges_df.iterrows():
+        symbol = _clean_symbol(row.get("symbol"))
+        if symbol not in _MAPK_RNA_SOURCE_GENES:
+            continue
+        tpm = _as_float(row.get(value_col))
+        observed = _as_float(row.get("observed_tpm"))
+        fold = _as_float(row.get("pct_cancer_median"))
+        percentile = _as_float(row.get("tcga_percentile"))
+        if tpm is None or tpm < 10.0:
+            continue
+        if fold is None and percentile is None:
+            continue
+        if (fold is not None and fold < 2.0) and (
+            percentile is None or percentile < 0.90
+        ):
+            continue
+        rows.append(
+            {
+                "symbol": symbol,
+                "tpm": tpm,
+                "observed_tpm": observed,
+                "fold": fold,
+                "percentile": percentile,
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            row["fold"] if row["fold"] is not None else 0.0,
+            row["tpm"],
+        ),
+        reverse=True,
+    )
+
+    out = []
+    for row in rows[:max_sources]:
+        fold_clause = (
+            f"; {row['fold']:.1f}x cancer median" if row["fold"] is not None else ""
+        )
+        percentile_clause = (
+            f"; TCGA percentile {row['percentile']:.0%}"
+            if row["percentile"] is not None
+            else ""
+        )
+        out.append(
+            {
+                "kind": "rna_high_source_gene",
+                "gene": row["symbol"],
+                "label": (
+                    f"RNA-high {row['symbol']} ({row['tpm']:.0f} tumor-inferred TPM"
+                    f"{fold_clause}{percentile_clause})"
+                ),
+                "mechanism": "high receptor/kinase RNA can be compatible with RTK-driven MAPK signaling but is not alteration proof",
+                "confidence": "expression-only",
+            }
+        )
+    return out
+
+
+def infer_mapk_activity_sources(
+    analysis: dict[str, Any],
+    *,
+    ranges_df=None,
+    min_activity_fold: float = 2.0,
+) -> list[dict[str, Any]]:
+    """Attach source hypotheses for high pan-cancer MAPK/ERK activity.
+
+    The MAPK score is a downstream transcriptional state. It can support
+    pathway activation, but it cannot by itself identify whether the driver is
+    EGFR KDD, RAS/RAF mutation, NF1 loss, RTK amplification, a kinase fusion, or
+    ligand/background signaling. This helper keeps that uncertainty explicit.
+    """
+    if not isinstance(analysis, dict):
+        return []
+    score = (analysis.get("therapy_response_scores") or {}).get(MAPK_ACTIVITY_AXIS)
+    if score is None or getattr(score, "state", None) != "up":
+        return []
+    fold = _as_float(getattr(score, "up_geomean_fold", None))
+    if fold is None or fold < min_activity_fold:
+        return []
+
+    candidate_sources: list[dict[str, Any]] = []
+    for record in analysis.get("alteration_records") or []:
+        source = _candidate_source_from_alteration(record)
+        if source:
+            candidate_sources.append(source)
+    for record in analysis.get("fusion_records") or []:
+        source = _candidate_source_from_fusion(record)
+        if source:
+            candidate_sources.append(source)
+    candidate_sources.extend(_candidate_sources_from_rna(ranges_df))
+
+    deduped_sources = []
+    seen = set()
+    for source in candidate_sources:
+        key = (source.get("kind"), source.get("gene"), source.get("label"))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_sources.append(source)
+
+    unresolved = list(_MAPK_UNRESOLVED_SOURCE_PROMPTS)
+    if deduped_sources:
+        source_genes = {str(source.get("gene") or "") for source in deduped_sources}
+        if source_genes & {"EGFR", "ERBB2", "ERBB3", "ERBB4", "MET", "FGFR1", "FGFR2", "FGFR3", "FGFR4"}:
+            unresolved = [
+                prompt
+                for prompt in unresolved
+                if "RTK amplification" not in prompt
+            ] + ["other RTK/RAS/RAF/NF1 or fusion drivers still possible"]
+
+    return [
+        {
+            "axis": MAPK_ACTIVITY_AXIS,
+            "label": MAPK_ACTIVITY_LABEL,
+            "score_name": MAPK_ACTIVITY_SCORE_NAME,
+            "state": "up",
+            "up_geomean_fold": round(fold, 3),
+            "support_genes": _support_genes_for_score(score),
+            "candidate_sources": deduped_sources[:6],
+            "unresolved_sources": unresolved,
+            "caveat": (
+                "MAPK/ERK RNA activity is a convergent downstream readout; it "
+                "supports active biology but is not source-specific."
+            ),
+        }
+    ]
+
+
 def _cohort_median_for_symbol(symbol, cancer_code, ref_flat):
     """Return the TCGA cohort median (FPKM) for a symbol in a cancer
     type, or None if the cohort column is missing or the symbol is
@@ -167,7 +521,10 @@ def score_therapy_signatures(
         per_gene = []
         up_folds = []
         down_folds = []
-        for direction, genes in (("up", directions["up"]), ("down", directions["down"])):
+        for direction, genes in (
+            ("up", directions["up"]),
+            ("down", directions["down"]),
+        ):
             for g in genes:
                 sym = g["symbol"]
                 sample_tpm = sample_tpm_by_symbol.get(sym)
@@ -177,15 +534,17 @@ def score_therapy_signatures(
                 # Cohort-referenced fold change. Pseudocount of 0.5 TPM
                 # keeps the ratio well-defined when either side is zero.
                 fold = (float(sample_tpm) + 0.5) / (float(cohort_med) + 0.5)
-                per_gene.append({
-                    "symbol": sym,
-                    "direction": direction,
-                    "sample_tpm": round(float(sample_tpm), 2),
-                    "cohort_median": round(float(cohort_med), 2),
-                    "fold_vs_cohort": round(fold, 3),
-                    "mechanism": g["mechanism"],
-                    "strength": g["strength"],
-                })
+                per_gene.append(
+                    {
+                        "symbol": sym,
+                        "direction": direction,
+                        "sample_tpm": round(float(sample_tpm), 2),
+                        "cohort_median": round(float(cohort_med), 2),
+                        "fold_vs_cohort": round(fold, 3),
+                        "mechanism": g["mechanism"],
+                        "strength": g["strength"],
+                    }
+                )
                 if direction == "up":
                     up_folds.append(fold)
                 else:
@@ -202,22 +561,32 @@ def score_therapy_signatures(
         if up_geo is None and down_geo is None:
             state = "indeterminate"
             message = "No cohort-resolvable genes on either side"
-        elif up_geo is not None and up_geo >= 2.0 and (down_geo is None or down_geo < 1.5):
+        elif (
+            up_geo is not None
+            and up_geo >= 2.0
+            and (down_geo is None or down_geo < 1.5)
+        ):
             state = "up"
-            message = (
-                f"Active signaling: up-panel geomean {up_geo:.2f}× cohort"
-                + (f", down-panel {down_geo:.2f}× cohort" if down_geo else "")
+            message = f"Active signaling: up-panel geomean {up_geo:.2f}× cohort" + (
+                f", down-panel {down_geo:.2f}× cohort" if down_geo else ""
             )
-        elif up_geo is not None and up_geo <= 0.5 and (down_geo is None or down_geo >= 1.5):
+        elif (
+            up_geo is not None
+            and up_geo <= 0.5
+            and (down_geo is None or down_geo >= 1.5)
+        ):
             state = "down"
-            message = (
-                f"Suppressed: up-panel geomean {up_geo:.2f}× cohort"
-                + (
-                    f", down-panel {down_geo:.2f}× cohort (therapy-response genes elevated)"
-                    if down_geo and down_geo >= 1.5 else ""
-                )
+            message = f"Suppressed: up-panel geomean {up_geo:.2f}× cohort" + (
+                f", down-panel {down_geo:.2f}× cohort (therapy-response genes elevated)"
+                if down_geo and down_geo >= 1.5
+                else ""
             )
-        elif up_geo is not None and up_geo > 1.5 and down_geo is not None and down_geo > 1.5:
+        elif (
+            up_geo is not None
+            and up_geo > 1.5
+            and down_geo is not None
+            and down_geo > 1.5
+        ):
             state = "mixed"
             message = (
                 f"Mixed: up-panel {up_geo:.2f}× and down-panel {down_geo:.2f}× "
@@ -225,9 +594,8 @@ def score_therapy_signatures(
             )
         elif up_geo is not None and 0.5 < up_geo < 2.0:
             state = "indeterminate"
-            message = (
-                f"Near-cohort baseline: up-panel {up_geo:.2f}× cohort"
-                + (f", down-panel {down_geo:.2f}× cohort" if down_geo else "")
+            message = f"Near-cohort baseline: up-panel {up_geo:.2f}× cohort" + (
+                f", down-panel {down_geo:.2f}× cohort" if down_geo else ""
             )
         else:
             state = "indeterminate"
