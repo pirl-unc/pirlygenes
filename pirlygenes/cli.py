@@ -21,6 +21,7 @@ from .analyze import (
     apply_sample_context_to_purity,
     build_analysis_parameters,
     build_analyze_paths,
+    cancer_type_context_from_analysis,
     discover_output_artifacts,
     resolve_analyze_inputs,
     should_adopt_decomposition_purity,
@@ -1929,10 +1930,10 @@ def _analyze_body(run: AnalyzeRun):
         analysis["cancer_name"] = cancer_code_display_name(
             report_scope_cancer_type, report_scope_cancer_type
         )
-    analysis["sample_context"] = sample_context
     analysis["cancer_type_source"] = (
         "user-specified" if cancer_type else "auto-detected"
     )
+    analysis["sample_context"] = sample_context
 
     # Step 1 propagation: widen purity confidence intervals under
     # detected degradation (#26). A noisier sample has a noisier purity
@@ -1958,8 +1959,13 @@ def _analyze_body(run: AnalyzeRun):
         hla_types=config.hla_types,
         alterations=config.alterations,
     )
-    cancer_code = analysis["cancer_type"]
-    reference_cancer_code = analysis.get("reference_cancer_type") or cancer_code
+    cancer_type_context = cancer_type_context_from_analysis(
+        analysis,
+        supplied_cancer_type=cancer_type,
+    )
+    analysis["cancer_type_context"] = cancer_type_context.to_dict()
+    cancer_code = cancer_type_context.code_for("report")
+    reference_cancer_code = cancer_type_context.code_for("cohort")
     purity = analysis["purity"]
     fit_quality = analysis.get("fit_quality", {})
     candidate_trace_for_print = analysis.get("candidate_trace", [])
@@ -1977,7 +1983,7 @@ def _analyze_body(run: AnalyzeRun):
             )
         if report_scope_cancer_type:
             print(
-                f"[analysis] Cancer scope: {analysis['cancer_name']} ({cancer_code}); "
+                f"[analysis] Cancer label context: {analysis['cancer_name']} ({cancer_code}); "
                 f"RNA top candidate: {rna_inferred_cancer_type}, "
                 + ", ".join(parts)
             )
@@ -2020,6 +2026,7 @@ def _analyze_body(run: AnalyzeRun):
         outputs={
             "cancer_type": cancer_code,
             "reference_cancer_type": reference_cancer_code,
+            "cancer_type_context": analysis["cancer_type_context"],
             "cancer_type_source": analysis["cancer_type_source"],
             "sample_mode": analysis["sample_mode"],
             "purity": {
@@ -2125,7 +2132,7 @@ def _analyze_body(run: AnalyzeRun):
 
         fig_ps = plot_therapy_pathway_state(
             therapy_response_scores=therapy_scores,
-            cancer_code=cancer_code,
+            cancer_code=reference_cancer_code,
             disease_state_caption=compose_disease_state_narrative(analysis),
             save_to_filename=pathway_state_png,
             save_dpi=output_dpi,
@@ -3527,7 +3534,7 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 | `*-decomposition-components.tsv` | Component-level fit for best decomposition |
 | `*-decomposition-markers.tsv` | Marker-gene evidence for best decomposition |
 | `*-decomposition-gene-attribution.tsv` | Per-gene TME/tumor attribution for best decomposition |
-| `*-tumor-expression-ranges.tsv` | Purity-adjusted tumor-expression ranges with TCGA context |
+| `*-tumor-expression-ranges.tsv` | Purity-adjusted tumor-expression ranges with broad-reference context |
 
 ## Figures (in `figures/`)
 
@@ -4149,6 +4156,33 @@ def _cancer_label(code, *, include_code=True):
     return display_name
 
 
+def _cancer_type_context_line(cancer_type_context):
+    report = cancer_type_context.label_for("report")
+    reference = cancer_type_context.label_for("reference")
+    expression = cancer_type_context.label_for("expression")
+    if not report:
+        return ""
+    if not cancer_type_context.uses_distinct_reference:
+        return (
+            f"- **Cancer label context**: {report} is used as both the report "
+            "label and the broad expression reference; no finer active subtype "
+            "is being carried."
+        )
+    line = (
+        f"- **Cancer label context**: fine/report label is {report}; "
+        f"broad/reference context is {reference}"
+    )
+    if expression and expression != reference:
+        line += (
+            f"; best exact expression reference is {expression} for modules that "
+            "support fine-grained cohorts"
+        )
+    elif expression:
+        line += f"; expression-context stages fall back to {expression}"
+    line += "."
+    return line
+
+
 def _hypothesis_label(text, *, primary_code=None, analysis=None):
     label = str(text or "").strip()
     if not label:
@@ -4239,6 +4273,8 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
     candidate_trace = analysis.get("candidate_trace", [])
     fit_quality = analysis.get("fit_quality", {})
     cancer_code = analysis.get("cancer_type")
+    cancer_type_context = cancer_type_context_from_analysis(analysis)
+    reference_cancer_code = cancer_type_context.code_for("reference") or cancer_code
     purity = analysis.get("purity") or {}
     sample_context = analysis.get("sample_context")
     hvt = analysis.get("healthy_vs_tumor")
@@ -4253,9 +4289,18 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
     if candidate_trace:
         best = candidate_trace[0]
         runner = candidate_trace[1] if len(candidate_trace) > 1 else None
-        sentence = (
-            f"- **Classifier line**: {_cancer_label(best['code'])} is the leading label"
-        )
+        distinct_reference_used = cancer_type_context.uses_distinct_reference
+        if distinct_reference_used:
+            sentence = (
+                f"- **RNA reference line**: {_cancer_label(best['code'])} is the "
+                "leading broad expression context used for cohort-normalized "
+                f"downstream analyses; {_cancer_label(cancer_code)} remains the "
+                "report label"
+            )
+        else:
+            sentence = (
+                f"- **Classifier line**: {_cancer_label(best['code'])} is the leading label"
+            )
         if runner is not None:
             runner_norm = float(runner.get("support_norm", 0.0) or 0.0)
             if runner_norm > 0:
@@ -4275,7 +4320,15 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
     if hvt is not None and getattr(hvt, "top_tcga_cohorts", None):
         coarse = str(hvt.top_tcga_cohorts[0][0]).replace("FPKM_", "")
         coarse_label = _cancer_label(coarse)
-        if coarse == cancer_code:
+        distinct_reference_used = cancer_type_context.uses_distinct_reference
+        if distinct_reference_used and coarse == reference_cancer_code:
+            bullets.append(
+                f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}` and its top "
+                f"TCGA cohort match, {coarse_label}, agrees with the broad "
+                f"reference context; {_cancer_label(cancer_code)} remains the "
+                "report label from supplied or registry-level evidence."
+            )
+        elif coarse == cancer_code:
             bullets.append(
                 f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}` and its top TCGA cohort match, "
                 f"{coarse_label}, agrees with the working call."
@@ -4300,6 +4353,13 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
                     f"is {coarse_label}; the {_cancer_label(cancer_code)} label is fusion-supported, "
                     "so TCGA labels are expression context rather than diagnosis."
                 )
+            elif distinct_reference_used:
+                bullets.append(
+                    f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}`, and its top TCGA cohort match "
+                    f"is {coarse_label}; this is broad expression context only. "
+                    f"Keep {_cancer_label(cancer_code)} as the report label unless "
+                    "orthogonal clinical/pathology evidence changes it."
+                )
             else:
                 bullets.append(
                     f"- **Coarse prior**: Step-0 is `{hvt.cancer_hint}`, but its top TCGA cohort match "
@@ -4315,9 +4375,17 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
         )
         if best_decomp.cancer_type == cancer_code:
             sentence += ", consistent with the classifier"
+        elif (
+            cancer_type_context.uses_distinct_reference
+            and best_decomp.cancer_type == reference_cancer_code
+        ):
+            sentence += (
+                ", consistent with the broad reference context rather than a "
+                "separate refined subtype call"
+            )
         else:
             sentence += (
-                f", diverging from the classifier's {_cancer_label(cancer_code)} call"
+                f", diverging from the report-label {_cancer_label(cancer_code)} call"
             )
         if call_summary.get("site_primary_compatible"):
             sentence += "; this host context is compatible with the tumor's native primary tissue and is not specific for metastasis"
@@ -4772,11 +4840,6 @@ def _build_evidence_report(
 
     lines = [f"# Evidence{header_id}\n"]
     lines.append(
-        "<!-- Less-distilled support for the summary and analysis: "
-        "stepwise deductions, attribution caveats, and full target tables. -->"
-    )
-    lines.append("")
-    lines.append(
         "This appendix keeps the stepwise and table-heavy support behind the "
         "distilled reports. Use it to audit how the call was assembled, inspect "
         "uncertainty, or review the full target evidence tables."
@@ -4826,6 +4889,12 @@ def _generate_text_reports(
     fit_quality = analysis.get("fit_quality", {})
     sample_mode = analysis.get("sample_mode", "auto")
     constraints = analysis.get("analysis_constraints", {})
+    cancer_type_context = cancer_type_context_from_analysis(analysis)
+    reference_cancer_code = cancer_type_context.code_for("reference") or cancer_code
+    reference_cancer_name = cancer_code_display_name(
+        reference_cancer_code,
+        CANCER_TYPE_NAMES.get(reference_cancer_code, reference_cancer_code),
+    )
     call_summary = analysis.get("call_summary") or _summarize_sample_call(
         analysis,
         decomp_results or [],
@@ -4895,6 +4964,24 @@ def _generate_text_reports(
                     _cancer_label(label) for label in call_summary["label_options"][:2]
                 )
                 + "."
+            )
+    context_line = _cancer_type_context_line(cancer_type_context)
+    if context_line:
+        lines.append(context_line)
+    if reference_cancer_code != cancer_code:
+        if cancer_type_context.fine_expression_available:
+            lines.append(
+                f"- **Reference expression context**: coarse cohort-normalized "
+                f"steps use {reference_cancer_code} ({reference_cancer_name}); "
+                f"subtype-aware modules may use {_cancer_label(cancer_code)} "
+                "where exact fine-grained expression references are supported."
+            )
+        else:
+            lines.append(
+                f"- **Reference expression context**: {reference_cancer_code} "
+                f"({reference_cancer_name}) is used for cohort-normalized expression, "
+                "purity/range context, pathway fold-changes, and reference-space plots; "
+                f"{_cancer_label(cancer_code)} remains the report label."
             )
     lines.append(
         f"- **{_purity_metric_label(sample_mode).title()}**: {_purity_ci_phrase(purity)}."
@@ -5145,23 +5232,37 @@ def _generate_text_reports(
     if call_summary.get("label_options"):
         if len(call_summary["label_options"]) == 1:
             lines.append(
-                f"- **Resolved label**: {_cancer_label(call_summary['label_options'][0])}"
+                f"- **Report label**: {_cancer_label(call_summary['label_options'][0])}"
             )
         else:
             lines.append(
-                "- **Possible labels**: "
+                "- **Possible report labels**: "
                 + " or ".join(
                     _cancer_label(label) for label in call_summary["label_options"][:2]
                 )
             )
     if family_display:
-        lines.append(f"- **Family-level call**: {family_display}")
+        lines.append(f"- **Broad family context**: {family_display}")
         if subtype_clause:
-            lines.append(f"- **Subtype ordering within family**: {subtype_clause}")
+            family_codes = [str(code) for code in family_summary.get("codes") or []]
+            if len(family_codes) >= 2:
+                lines.append(
+                    f"- **Broad reference candidates within family**: {subtype_clause}"
+                )
+            elif reference_cancer_code != cancer_code and family_codes:
+                lines.append(
+                    f"- **Reference cohort within family**: {_cancer_label(family_codes[0])} "
+                    "is used for broad expression context; it is not a separate "
+                    "refined report label."
+                )
+            elif family_codes:
+                lines.append(
+                    f"- **Top reference candidate within family**: {_cancer_label(family_codes[0])}"
+                )
     if constraints:
         if constraints.get("cancer_type"):
             lines.append(
-                f"- **User-constrained cancer type**: {constraints['cancer_type']}"
+                f"- **Externally supplied report label**: {constraints['cancer_type']}"
             )
         if constraints.get("sample_mode"):
             lines.append(
@@ -5197,8 +5298,8 @@ def _generate_text_reports(
         lines.append("### Cancer Type Inference — Candidate Ranking\n")
         lines.append(
             "Each row is a top-level cancer-code hypothesis considered by the classifier. "
-            "Most of these labels are broad TCGA-style cohorts, but later steps can also "
-            "use finer subtype and decomposition references. Three scores summarize the "
+            "Most of these labels are broad reference cohorts, but later steps can also "
+            "use finer subtype and decomposition references from non-TCGA sources. Three scores summarize the "
             "match; the top row is the working call.\n\n"
             "- **Signature** (0–1): raw match quality between the sample's expression and "
             "this candidate's broad reference signature, computed from z-scored expression "
@@ -5366,7 +5467,8 @@ def _generate_text_reports(
         if isinstance(comp, dict):
             enrichment = comp.get("enrichment", 0)
             lines.append(
-                f"- **{comp_name.title()}** enrichment: {render_fold(enrichment)} vs TCGA"
+                f"- **{comp_name.title()}** enrichment: {render_fold(enrichment)} "
+                f"vs {reference_cancer_code} broad reference"
             )
     integration = components.get("integration", {})
     if integration.get("signature_deprioritized"):
@@ -5643,9 +5745,13 @@ def _build_target_report(
     """Return tumor-expression range report using purity/decomposition bounds."""
     import pandas as pd
 
+    cancer_type_context = cancer_type_context_from_analysis(analysis)
     cancer_code = cancer_type
-    cancer_name = cancer_code_display_name(cancer_code, CANCER_TYPE_NAMES.get(cancer_code, cancer_code))
-    reference_cancer_code = analysis.get("reference_cancer_type") or cancer_code
+    cancer_name = cancer_code_display_name(
+        cancer_code,
+        CANCER_TYPE_NAMES.get(cancer_code, cancer_code),
+    )
+    reference_cancer_code = cancer_type_context.code_for("reference") or cancer_code
     reference_cancer_name = cancer_code_display_name(
         reference_cancer_code,
         CANCER_TYPE_NAMES.get(reference_cancer_code, reference_cancer_code),
@@ -5659,11 +5765,19 @@ def _build_target_report(
     lines = [f"# Therapeutic Target Analysis — {cancer_code} ({cancer_name})\n"]
     lines.append(_target_report_mode_intro(sample_mode, cancer_code, p_lo, p_mid, p_hi))
     if reference_cancer_code != cancer_code:
+        fine_clause = ""
+        if cancer_type_context.fine_expression_available:
+            fine_clause = (
+                f" Exact fine-grained expression references exist for {cancer_code}, "
+                "but this table still uses the broad pan-reference context unless "
+                "a downstream module explicitly supports subtype expression refs."
+            )
         lines.append(
-            f"> **RNA reference scope**: target-expression ranges and TCGA percentiles "
-            f"use {reference_cancer_code} ({reference_cancer_name}) because "
-            f"{cancer_code} has no bundled pan-cancer expression cohort. Curated "
-            f"therapy rows below remain scoped to {cancer_code}.\n"
+            f"> **RNA reference context**: target-expression ranges and broad-cohort percentiles "
+            f"use {reference_cancer_code} ({reference_cancer_name}) because this "
+            f"stage currently needs a broad pan-reference cohort while {cancer_code} is "
+            "the refined/registry report label. Curated therapy rows below remain "
+            f"keyed to {cancer_code}.{fine_clause}\n"
         )
 
     # Low-purity TME-inflation caveat (#35). Below 20% purity, every
@@ -5706,19 +5820,19 @@ def _build_target_report(
     if sample_mode == "pure":
         lines.append(
             "Each gene is reported as a bounded expression estimate around the observed sample value, "
-            f"then contextualized against the matched {reference_cancer_code} TCGA cohort.\n"
+            f"then contextualized against the matched {reference_cancer_code} broad-reference context.\n"
         )
     elif sample_mode == "heme":
         lines.append(
             "Each gene is reported as a bounded malignant-lineage-enriched expression estimate across "
             f"hematopoietic background assumptions, then contextualized against the matched {reference_cancer_code} "
-            "TCGA cohort.\n"
+            "broad-reference context.\n"
         )
     else:
         lines.append(
             "Each gene is reported as a bounded deconvolution across purity and "
             "TME-background assumptions, then contextualized against the matched "
-            f"{reference_cancer_code} TCGA cohort.\n"
+            f"{reference_cancer_code} broad-reference context.\n"
         )
     lines.append(tpm_semantics_note() + "\n")
 
@@ -6382,7 +6496,7 @@ def _build_target_report(
     )
     if len(ctas):
         lines.append(
-            f"| Gene | {value_label} | Model interval | Bulk TPM (measured) | vs TCGA | TCGA %ile | TME | Surface | Therapies |"
+            f"| Gene | {value_label} | Model interval | Bulk TPM (measured) | vs ref | Ref %ile | TME | Surface | Therapies |"
         )
         lines.append(
             "|------|-----------|----------------|---------------------|---------|-----------|-----|---------|-----------|"
@@ -6401,7 +6515,9 @@ def _build_target_report(
         high_ctas = ctas[ctas["tcga_percentile"] > 0.7]
         if len(high_ctas):
             names = ", ".join(high_ctas["symbol"].head(5))
-            lines.append(f"\n**Above TCGA median for {reference_cancer_code}**: {names}")
+            lines.append(
+                f"\n**Above broad-reference median for {reference_cancer_code}**: {names}"
+            )
         # Propagate healthy-tissue-explainability warnings across all target
         # tables, not just surface (issue #50 point 5). For a CTA this is
         # usually a false alarm (CTAs activated in a subset of tumors),
@@ -6430,7 +6546,7 @@ def _build_target_report(
     )
     if len(surface_targets):
         lines.append(
-            f"| Gene | {value_label} | Model interval | Bulk TPM (measured) | vs TCGA | TCGA %ile | TME | Attribution | Therapies |"
+            f"| Gene | {value_label} | Model interval | Bulk TPM (measured) | vs ref | Ref %ile | TME | Attribution | Therapies |"
         )
         lines.append(
             "|------|-----------|----------------|---------------------|---------|-----------|-----|-------------|-----------|"
@@ -6513,7 +6629,7 @@ def _build_target_report(
     )
     if len(intracellular):
         lines.append(
-            f"| Gene | {value_label} | Model interval | vs TCGA | TCGA %ile | TME | Attribution | CTA | Therapies |"
+            f"| Gene | {value_label} | Model interval | vs ref | Ref %ile | TME | Attribution | CTA | Therapies |"
         )
         lines.append(
             "|------|-----------|----------------|---------|-----------|-----|-------------|-----|-----------|"

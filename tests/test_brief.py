@@ -146,7 +146,7 @@ def test_summary_marks_supplied_cancer_type_basis():
     )
 
     assert "Cancer-type basis" in md
-    assert "externally supplied PRAD sets report scope" in md
+    assert "externally supplied PRAD (Prostate Adenocarcinoma) sets the report label" in md
     assert "RNA evidence is used downstream for confidence" in md
     assert "Patient-facing LLM interpretation needs external clinical context" in md
     assert "RNA-inferred — treat it as a hypothesis" not in md
@@ -170,7 +170,10 @@ def test_summary_marks_supplied_cancer_type_rna_concordance():
         disease_state="",
     )
 
-    assert "**RNA classifier check:** concordant with supplied PRAD" in md
+    assert (
+        "**RNA classifier check:** broad RNA context is concordant with supplied "
+        "PRAD (Prostate Adenocarcinoma)"
+    ) in md
     assert "nearest RNA alternatives: BLCA, COAD" in md
 
 
@@ -195,10 +198,9 @@ def test_summary_compares_registry_child_against_parent_reference():
         disease_state="",
     )
 
-    assert (
-        "**RNA classifier check:** concordant with supplied SARC_SYN via parent SARC"
-        in md
-    )
+    assert "broad RNA context is concordant at the parent level" in md
+    assert "SARC (Sarcoma) is top" in md
+    assert "refined report label remains SARC_SYN (Synovial Sarcoma)" in md
     assert "nearest RNA alternatives: BLCA" in md
 
 
@@ -222,9 +224,12 @@ def test_summary_marks_supplied_cancer_type_rna_discordance():
         disease_state="",
     )
 
-    assert "**RNA classifier check:** discordant with supplied COAD" in md
-    assert "top RNA candidate is SARC while COAD is rank 2" in md
-    assert "Keep the supplied label as report scope" in md
+    assert "broad RNA context is discordant with supplied COAD" in md
+    assert (
+        "top broad RNA candidate is SARC (Sarcoma) while "
+        "COAD (Colon Adenocarcinoma) is rank 2"
+    ) in md
+    assert "Keep the supplied label as the report label" in md
 
 
 def test_summary_marks_supplied_cancer_type_rna_ambiguity():
@@ -247,8 +252,40 @@ def test_summary_marks_supplied_cancer_type_rna_ambiguity():
         disease_state="",
     )
 
-    assert "**RNA classifier check:** ambiguous against supplied COAD" in md
-    assert "top RNA candidate is SARC while COAD is rank 2" in md
+    assert "broad RNA context is ambiguous against supplied COAD" in md
+    assert (
+        "top broad RNA candidate is SARC (Sarcoma) while "
+        "COAD (Colon Adenocarcinoma) is rank 2"
+    ) in md
+
+
+def test_summary_treats_broad_sarc_as_compatible_with_supplied_osteosarcoma():
+    analysis = _make_analysis()
+    analysis["cancer_type"] = "OS"
+    analysis["cancer_name"] = "Osteosarcoma"
+    analysis["analysis_constraints"] = {"cancer_type": "OS"}
+    analysis["cancer_type_source"] = "user-specified"
+    analysis["report_scope_cancer_type"] = "OS"
+    analysis["reference_cancer_type"] = "SARC"
+    analysis["candidate_trace"] = [
+        {"code": "SARC", "support_geomean": 0.58},
+        {"code": "UCS", "support_geomean": 0.39},
+        {"code": "BRCA", "support_geomean": 0.36},
+    ]
+    analysis["signature_top_cancers"] = [("KIRC", 0.70)]
+    ranges_df = _make_ranges_df()
+
+    md = build_summary(
+        analysis,
+        ranges_df,
+        cancer_code="OS",
+        disease_state="",
+    )
+
+    assert "externally supplied OS (Osteosarcoma) sets the fine/report label" in md
+    assert "broad RNA context is SARC (Sarcoma)" in md
+    assert "sarcoma-family broad-context support for supplied OS (Osteosarcoma)" in md
+    assert "does not independently resolve the refined label" in md
 
 
 def test_summary_marks_rna_inferred_cancer_type_as_hypothesis():
@@ -312,7 +349,7 @@ def test_summary_does_not_list_rna_alternatives_for_supplied_label():
         disease_state="",
     )
 
-    assert "**RNA classifier check:** concordant with supplied PRAD" in md
+    assert "broad RNA context is concordant with supplied PRAD" in md
     assert "**RNA alternatives:**" not in md
 
 

@@ -1392,6 +1392,15 @@ def summarize_reliability_reasons(rows, top_n=3):
 
 def resolved_subtype_code_for_analysis(analysis, ranges_df=None):
     """Return the final subtype/cancer code implied by the analysis."""
+    try:
+        from .analyze import cancer_type_context_from_analysis
+
+        cancer_type_context = cancer_type_context_from_analysis(analysis)
+        if cancer_type_context.uses_distinct_reference and cancer_type_context.report_code:
+            return cancer_type_context.report_code
+    except Exception:
+        pass
+
     winning_subtype = candidate_winning_subtype_for_analysis(analysis)
     if not winning_subtype:
         return None

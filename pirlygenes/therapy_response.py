@@ -379,7 +379,7 @@ def _candidate_sources_from_rna(ranges_df, *, max_sources: int = 4) -> list[dict
             f"; {row['fold']:.1f}x cancer median" if row["fold"] is not None else ""
         )
         percentile_clause = (
-            f"; TCGA percentile {row['percentile']:.0%}"
+            f"; reference percentile {row['percentile']:.0%}"
             if row["percentile"] is not None
             else ""
         )

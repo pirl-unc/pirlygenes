@@ -62,6 +62,7 @@ from .reporting import (
     tumor_attribution_context,
 )
 from .confidence import concise_confidence_reasons
+from .analyze import cancer_type_context_from_analysis, cancer_type_context_label
 from .sample_context import library_prep_clause, library_prep_display_label
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,59 @@ def _display_subtype_code(code: Optional[str]) -> str:
     except Exception:
         logger.debug("subtype display lookup failed", exc_info=True)
     return text.replace("_", " ").lower()
+
+
+def _registry_row_for_code(code: Optional[str]):
+    text = str(code or "").strip()
+    if not text:
+        return None
+    try:
+        from .gene_sets_cancer import cancer_type_registry
+
+        reg = cancer_type_registry()
+        match = reg[reg["code"] == text]
+        if not match.empty:
+            return match.iloc[0]
+    except Exception:
+        logger.debug("failed to load cancer-type registry row", exc_info=True)
+    return None
+
+
+def _cancer_type_context_label(code: Optional[str]) -> str:
+    return cancer_type_context_label(code)
+
+
+def _registry_family(code: Optional[str]) -> str:
+    row = _registry_row_for_code(code)
+    if row is None:
+        return ""
+    family = str(row.get("family") or "").strip()
+    return "" if family.lower() == "nan" else family
+
+
+def _clinical_supergroup(code: Optional[str]) -> str:
+    family = _registry_family(code)
+    if family in {"sarcoma", "pediatric-bone", "pediatric-soft"}:
+        return "sarcoma/bone/soft-tissue"
+    if family.startswith("carcinoma-"):
+        return family
+    return family
+
+
+def _broad_context_compatibility(top_code: str, supplied_code: str) -> str:
+    """Reader-facing relationship between broad RNA context and report scope."""
+
+    top = str(top_code or "").strip()
+    supplied = str(supplied_code or "").strip()
+    if not top or not supplied or top == supplied:
+        return ""
+    top_group = _clinical_supergroup(top)
+    supplied_group = _clinical_supergroup(supplied)
+    if top_group and supplied_group and top_group == supplied_group:
+        if top_group == "sarcoma/bone/soft-tissue":
+            return "sarcoma-family broad-context support"
+        return "same-family broad-context support"
+    return ""
 
 
 def _call_confidence_suffix(
@@ -916,10 +970,9 @@ def _cancer_type_basis_line(analysis, cancer_code: str) -> str:
     constraints = analysis.get("analysis_constraints") or {}
     constrained_code = str(constraints.get("cancer_type") or "").strip()
     source = str(analysis.get("cancer_type_source") or "").strip()
-    report_scope_code = str(analysis.get("report_scope_cancer_type") or "").strip()
-    parent_scope_code = str(
-        analysis.get("report_scope_parent_cancer_type") or ""
-    ).strip()
+    cancer_type_context = cancer_type_context_from_analysis(analysis)
+    report_context_code = cancer_type_context.code_for("report")
+    parent_context_code = cancer_type_context.code_for("parent")
     fusion_inference = analysis.get("fusion_report_scope_inference") or {}
     if fusion_inference and not constrained_code and source != "user-specified":
         fusion = fusion_inference.get("fusion") or {}
@@ -935,7 +988,7 @@ def _cancer_type_basis_line(analysis, cancer_code: str) -> str:
         ).strip()
         return (
             f"**Cancer-type basis:** fusion-supported {label} hypothesis from "
-            f"{pair} sets provisional report scope; confirm with {confirm} or "
+            f"{pair} sets a provisional report label; confirm with {confirm} or "
             "clinical diagnosis before using the therapy shortlist."
         )
     rare_inference = analysis.get("rare_report_scope_inference") or {}
@@ -949,21 +1002,39 @@ def _cancer_type_basis_line(analysis, cancer_code: str) -> str:
         ).strip()
         return (
             f"**Cancer-type basis:** RNA-inferred rare-cancer hypothesis from "
-            f"{surrogate}{tpm_clause} sets provisional report scope; confirm "
+            f"{surrogate}{tpm_clause} sets a provisional report label; confirm "
             f"with {confirm} or clinical diagnosis before using the therapy shortlist."
         )
     if constrained_code or source == "user-specified":
-        supplied = report_scope_code or constrained_code or str(cancer_code or "").strip()
-        if parent_scope_code and report_scope_code:
-            supplied = f"{report_scope_code} via parent {parent_scope_code}"
+        supplied = report_context_code or constrained_code or str(cancer_code or "").strip()
+        supplied_label = cancer_type_context.label_for("report") or _cancer_type_context_label(supplied)
+        if cancer_type_context.uses_distinct_reference:
+            reference_label = cancer_type_context.label_for("reference")
+            hierarchy = (
+                "parent expression context"
+                if parent_context_code
+                else "broad expression context"
+            )
+            fine_clause = (
+                " Exact fine-grained expression references are available for "
+                "subtype-aware modules."
+                if cancer_type_context.fine_expression_available
+                else ""
+            )
+            return (
+                f"**Cancer-type basis:** externally supplied {supplied_label} "
+                f"sets the fine/report label; {reference_label} is used as the "
+                f"{hierarchy} where downstream steps need a coarse cohort."
+                f"{fine_clause}"
+            )
         return (
-            f"**Cancer-type basis:** externally supplied {supplied} sets report "
-            "scope; RNA evidence is used downstream for confidence, "
+            f"**Cancer-type basis:** externally supplied {supplied_label} sets "
+            "the report label; RNA evidence is used downstream for confidence, "
             "purity/decomposition, target attribution, and expression-context checks."
         )
     return (
-        "**Cancer-type basis:** RNA-inferred hypothesis sets provisional report "
-        "scope; confirm with pathology or clinical diagnosis before using the "
+        "**Cancer-type basis:** RNA-inferred hypothesis sets a provisional report "
+        "label; confirm with pathology or clinical diagnosis before using the "
         "therapy shortlist."
     )
 
@@ -1145,21 +1216,22 @@ def _rna_crosscheck_line(analysis, cancer_code: str, call_tier=None) -> str:
             )
         return ""
 
-    supplied_code = constrained_code or str(cancer_code or "").strip()
-    report_scope_code = str(analysis.get("report_scope_cancer_type") or "").strip()
-    parent_scope_code = str(
-        analysis.get("report_scope_parent_cancer_type") or ""
-    ).strip()
-    comparison_code = parent_scope_code or supplied_code
-    supplied_label = supplied_code
-    if report_scope_code and parent_scope_code:
-        supplied_label = f"{report_scope_code} via parent {parent_scope_code}"
+    cancer_type_context = cancer_type_context_from_analysis(analysis)
+    report_context_code = cancer_type_context.code_for("report")
+    parent_context_code = cancer_type_context.code_for("parent")
+    supplied_code = (
+        report_context_code or constrained_code or str(cancer_code or "").strip()
+    )
+    comparison_code = parent_context_code or constrained_code or supplied_code
+    supplied_label = _cancer_type_context_label(supplied_code)
+    comparison_label = _cancer_type_context_label(comparison_code)
     candidate_trace = analysis.get("candidate_trace") or []
     if not comparison_code or not candidate_trace:
         return "**RNA classifier check:** no cancer-type candidate trace available."
 
     top = candidate_trace[0]
     top_code = str(top.get("code") or "").strip()
+    top_label = _cancer_type_context_label(top_code)
     supplied_rank, supplied_row = _candidate_trace_rank(
         candidate_trace, comparison_code
     )
@@ -1171,8 +1243,14 @@ def _rna_crosscheck_line(analysis, cancer_code: str, call_tier=None) -> str:
         )
         suffix = f"; nearest RNA alternatives: {alternatives}" if alternatives else ""
         suffix += _confidence_caveat_clause(call_tier)
+        if report_context_code and parent_context_code:
+            return (
+                f"**RNA classifier check:** broad RNA context is concordant at "
+                f"the parent level: {comparison_label} is top; refined report "
+                f"label remains {supplied_label}{suffix}."
+            )
         return (
-            f"**RNA classifier check:** concordant with supplied "
+            f"**RNA classifier check:** broad RNA context is concordant with supplied "
             f"{supplied_label}{suffix}."
         )
 
@@ -1195,10 +1273,25 @@ def _rna_crosscheck_line(analysis, cancer_code: str, call_tier=None) -> str:
         else "not in the RNA top candidates"
     )
     caveat_clause = _confidence_caveat_clause(call_tier)
+    compatibility = _broad_context_compatibility(top_code, supplied_code)
+    if compatibility:
+        alternatives = _candidate_code_list(
+            candidate_trace,
+            exclude={top_code, comparison_code},
+            limit=2,
+        )
+        alt_clause = f"; nearest broad RNA alternatives: {alternatives}" if alternatives else ""
+        return (
+            f"**RNA classifier check:** broad RNA context is {top_label}, giving "
+            f"{compatibility} for supplied {supplied_label}; the broad classifier "
+            f"does not independently resolve the refined label{alt_clause}. "
+            f"Keep {supplied_label} as the report label{caveat_clause}."
+        )
     return (
-        f"**RNA classifier check:** {status} supplied {supplied_label}; "
-        f"top RNA candidate is {top_code or 'unresolved'} while {comparison_code} is {rank_clause}. "
-        "Keep the supplied label as report scope and review pathology/subtype context"
+        f"**RNA classifier check:** broad RNA context is {status} supplied "
+        f"{supplied_label}; top broad RNA candidate is {top_label or 'unresolved'} "
+        f"while {comparison_label} is {rank_clause}. "
+        "Keep the supplied label as the report label and review pathology/subtype context"
         f"{caveat_clause}."
     )
 

@@ -438,8 +438,8 @@ def test_generate_text_reports_uses_family_and_background_language(tmp_path):
     # content below is now only checked in analysis.md.
     detailed = (tmp_path / "sample-analysis.md").read_text()
     assert "not literal" in detailed  # tissue-score caveat
-    assert "Possible labels" in detailed
-    assert "Family-level call" in detailed
+    assert "Possible report labels" in detailed
+    assert "Broad family context" in detailed
     assert "Fit quality" in detailed
     assert "Integrated evidence synthesis" in detailed
     assert "Parallel hypotheses still alive" in detailed
@@ -713,10 +713,10 @@ def test_generate_text_reports_mentions_analysis_constraints(tmp_path):
 
     # "constrained working subtype" + the one-line "Analysis constraints"
     # recap lived in the retired summary.md paragraph. Analysis.md
-    # surfaces the constraint set in its own User-constrained /
+    # surfaces the constraint set in its own externally supplied /
     # Requested-context lines.
     detailed = (tmp_path / "constrained-analysis.md").read_text()
-    assert "User-constrained cancer type" in detailed
+    assert "Externally supplied report label" in detailed
     assert "Requested tumor context" in detailed
 
 
