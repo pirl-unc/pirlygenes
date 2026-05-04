@@ -1,413 +1,271 @@
-# Reasoning pipeline — steps and information flow
+# Reasoning Pipeline
 
-`pirlygenes analyze` runs a coarse-to-fine pipeline. Each step
-produces a named result that downstream steps consume. This page
-documents the steps and the contract between them — what each step
-writes, and what each step reads from its predecessors.
+`pirlygenes analyze` builds an auditable inference state from RNA and any
+optional clinical or molecular inputs. The report is not a single
+thresholded label. It is a chain of evidence: what was supplied, what RNA
+suggests, where those sources agree or disagree, how uncertain each
+estimate is, and which downstream conclusions depend on that uncertainty.
 
-The guiding principle: **no step overrides an earlier step's
-output**. Later steps refine the reading by adding orthogonal
-evidence; if a sample is flagged as ambiguous at Step 0, that flag
-travels all the way to the brief. The reader sees the full chain.
+The main design rule is simple: **later steps add evidence; they do not
+erase earlier evidence**. If an external label disagrees with RNA, both
+remain visible. If a rare-marker rule adds a hypothesis, it widens the
+hypothesis set instead of silently replacing pathology. If purity is
+uncertain, target expression and therapy interpretation inherit that
+uncertainty.
 
-## Step inventory (coarsest → finest)
+## The State Model
+
+Every step writes named state into the in-memory `analysis` dictionary.
+Report synthesis is a reader of that state.
+
+| State layer | Main keys | What it means |
+|---|---|---|
+| Supplied context | `cancer_type_source`, `analysis_constraints`, `fusion_records`, `alteration_records` | User- or file-supplied facts and constraints. |
+| RNA context | `expression_scale_qc`, `sample_context`, `healthy_vs_tumor` | Whether the expression table looks usable, what assay context is inferred, and broad tissue/tumor evidence. |
+| Cancer hypotheses | `candidate_trace`, `fit_quality`, `reference_cancer_type`, `report_scope_cancer_type` | Ranked RNA cancer-code hypotheses, fit/confidence context, and the distinction between expression reference and report label. |
+| Rare/refined hypotheses | `rare_report_scope_inference`, `fusion_report_scope_inference`, `rare_marker_hypotheses` | Data-backed hypotheses from rare markers or direct fusion evidence. |
+| Quantitative estimates | `purity`, `purity_confidence`, `decomposition`, `expression_ranges` | Tumor fraction, tumor/TME composition, and tumor-attributed target TPM ranges. |
+| Biology state | `therapy_response_scores`, `pathway_activity_inferences`, `fusion_expression_hypotheses`, `mutation_expression_hypotheses` | Active pathways, therapy-response axes, and alteration-effect consistency checks. |
+| Report products | `call_summary`, markdown and figure outputs | The human-facing synthesis of the state above. |
+
+The important split is `reference_cancer_type` versus
+`report_scope_cancer_type`. A registry-only or rare label can be the
+report scope while a broader TCGA or Treehouse cohort remains the numeric
+expression reference used for purity, ranges, plots, and cohort-relative
+fold changes.
+
+## Step Map
 
 ```
-  Step 0   Sample context      library prep + preservation + degradation
-  Step 0   Tissue composition  top HPA normals + top TCGA cohorts + cancer-hint
-  Step 1   Cancer-type call    top-k TCGA candidates with signature + purity + lineage
-  Step 2   Tumor purity        point + CI + confidence tier
-  Step 3   Broad decomposition NNLS fit of tumor + TME compartments (template-aware)
-  Step 4   Therapy-axis state  AR / EMT / hypoxia / IFN / HER2 / ER up/down calls
-  Step 5   Tumor-value core    9-point per-gene tumor-attributed TPM with TME + purity ranges
-  Step 5b  Subtype disambiguation activation-gated degenerate-pair resolution
-  Step 6   Report synthesis    brief / actionable / summary / analysis / targets / provenance
+  Input expression + optional context
+      |
+      v
+  Preflight: expression-scale QC, fusion/alteration parsing, sample context
+      |
+      v
+  Step 0: tissue context + tumor-evidence gate
+      |
+      v
+  Step 1: ranked cancer-code hypotheses and confidence
+      |
+      v
+  Scope harmonization: supplied label, rare/fusion hypotheses, parent refs
+      |
+      v
+  Step 2: purity estimate with confidence and interval
+      |
+      v
+  Step 3: decomposition across cancer/template hypotheses
+      |
+      v
+  Step 4: biology state, pathway activity, fusion/mutation-expression checks
+      |
+      v
+  Step 5: tumor-attributed target expression and subtype/degenerate handling
+      |
+      v
+  Step 6: markdown, tables, and figures
 ```
 
-Steps 0 run before Step 1; the rest form a strictly ordered chain
-from Step 1 onward. Each step emits its result into the in-memory
-`analysis` dict under a known key, so Step 6 (report synthesis) can
-read the full chain to surface every piece of evidence the clinician
-needs.
+## Preflight
 
----
+The command first validates and annotates the input:
 
-## Step 0a — Sample context
+- **Expression-scale QC** checks whether the table looks like TPM-like
+  expression rather than log-transformed or severely truncated values.
+- **Sample context** (`pirlygenes.sample_context`) infers library prep,
+  preservation/degradation patterns, and assay caveats from expression
+  structure.
+- **Optional molecular inputs** parse fusion, alteration, and HLA data
+  when supplied. Missing optional inputs are tracked so reports can ask
+  for them only when they would change interpretation.
 
-Module: `pirlygenes.sample_context`
-Entry: `infer_sample_context(df_expr) -> SampleContext`
+Writes: `expression_scale_qc`, `sample_context`, `fusion_records`,
+`alteration_records`, input-presence flags.
 
-Reads the expression table alone and infers:
+Consumed by: every downstream step that needs assay caveats, missing-data
+prompts, or direct molecular evidence.
 
-- **library prep** — poly-A capture / ribo-depletion / total RNA /
-  exome capture, with a confidence score
-- **preservation** — fresh-frozen / FFPE / partial degradation
-  (conditional on library prep)
-- **degradation severity** — none / mild / moderate / severe
-- diagnostic signals: mitochondrial fraction, ribosomal-protein
-  fraction, transcript-length-bias index
-
-Writes: `analysis["sample_context"]`
-
-Consumed by: every downstream step reads `sample_context` as a
-keyword argument. Step 3 adjusts marker-panel weightings when prep
-is exome-capture (skip non-coding genes), Step 5 widens 9-point
-ranges when degradation is severe, Step 6 surfaces the prep-specific
-"mitochondrial and non-coding absence is expected by design" caveat.
-
----
-
-## Step 0b — Tissue composition + cancer hint
+## Step 0: Tissue Context
 
 Module: `pirlygenes.healthy_vs_tumor`
-Entry: `assess_tissue_composition(df_expr) -> TissueCompositionSignal`
 
-Races the sample against:
+Step 0 asks the coarsest RNA questions:
 
-- 50 HPA normal-tissue columns (`nTPM_<tissue>`) in
-  `pan_cancer_expression()`
-- 33 TCGA cancer columns (`FPKM_<code>`) in the same reference
+- Which HPA normal tissues are closest?
+- Which broad cancer cohorts are closest?
+- Is there tumor-associated expression from CTA, oncofetal,
+  proliferation, hypoxia, glycolysis, or tumor-up marker panels?
+- Is the result structurally ambiguous, especially lymphoid or
+  mesenchymal?
 
-Produces:
+Writes: `healthy_vs_tumor`, including ranked normal tissues, ranked TCGA
+cohorts, `cancer_hint`, tumor-evidence scores, and a named
+`reasoning_trace`.
 
-- `top_normal_tissues`: top-3 HPA tissues with Spearman ρ on log-TPM
-- `top_tcga_cohorts`: top-3 TCGA cohorts with ρ
-- `proliferation_log2_mean`: 5-gene panel geomean (MKI67, TOP2A,
-  CCNB1, BIRC5, AURKA)
-- `cancer_hint`: `"tumor-consistent"` / `"possibly-tumor"` /
-  `"healthy-dominant"`
+Consumed by: report banners, call-confidence checks, and the reader-facing
+explanation of whether RNA is acting like tumor, normal tissue, or an
+ambiguous mixture. Step 0 does not set the final cancer type.
 
-Writes: `analysis["healthy_vs_tumor"]`
+More detail: [step0-reasoning.md](step0-reasoning.md).
 
-Consumed by: Step 6 (brief / summary banner). Explicitly does NOT
-override the cancer call; it gives the reader a coarse "what kind of
-tissue + any hint of cancer" context so they can judge downstream
-confidence. Low-purity tumors and healthy tissue look similar here —
-the gate surfaces that ambiguity rather than guessing.
-
-Known limitation: lymphoid-tissue-normal correlates almost identically
-with DLBC (the TCGA reference is itself >90% lymphoid tissue + the
-malignant clone). Step 0b flags such cases as tumor-consistent /
-ambiguous rather than over-committing; Step 3's lineage-marker
-check is better positioned to distinguish.
-
----
-
-## Step 1 — Cancer-type classification
+## Step 1: Cancer Hypotheses
 
 Module: `pirlygenes.tumor_purity`
-Entry: `rank_cancer_type_candidates(df_expr, candidate_codes=None,
-top_k=6) -> list[dict]`
 
-Scores every TCGA cancer type against the sample's expression profile
-using five composable factors:
+`rank_cancer_type_candidates(...)` scores cancer-code hypotheses using
+signature fit, purity plausibility, lineage support, stability, and
+family-aware support factors. The result is a ranked `candidate_trace`.
 
-1. **signature** — z-scored match to cancer-type-enriched genes
-2. **purity** — per-candidate tumor-purity estimate (lineage-weighted)
-3. **support** — lineage-gene pattern concordance
-4. **stability** — signature-gene dispersion / stability
-5. **family-factor** — carries through to the final `geomean` score
+The top row is the working RNA expression hypothesis. The remaining rows
+are retained as alternatives, especially when scores are close, lineage
+support is weak, or Step 0's nearest TCGA cohort disagrees.
 
-Reads: `sample_context` (library prep adjusts marker weights),
-`tissue_composition` (the Step-0b top TCGA cohorts inform the
-candidate-codes set when caller doesn't override).
+Writes:
 
-Writes: `analysis["cancer_candidates"]` — a list of
-`{code, name, signature_score, purity_result, support_norm, geomean,
- normalized}` rows. Head of the list is the working call; rows 2-6
-are the alternatives surfaced in the *analysis.md* table.
+- `candidate_trace`: ranked rows with score components, purity estimate,
+  lineage evidence, and family context.
+- `fit_quality`: whether the RNA fit is strong, weak, ambiguous, or
+  contested enough to preserve alternatives. Report builders also compute
+  a concise call-confidence suffix from `candidate_trace` and related
+  state.
 
-Consumed by: Step 2 pulls the top candidate's `purity_result` as
-the starting point; Step 3 runs decomposition per (cancer_type,
-template) hypothesis across the top-k list.
+Consumed by: purity, decomposition, rare-marker cross-checks, summary RNA
+alternatives, cancer-hypothesis plots, and report caveats.
 
----
+## Scope Harmonization
 
-## Step 2 — Tumor purity refinement
+This is the step that prevents cancer labels from being mixed together
+without provenance.
+
+- If `--cancer-type` is supplied, it sets the report scope. RNA
+  classification still runs when possible and is reported as concordant,
+  discordant, or ambiguous.
+- If the supplied label is a refined registry child without its own
+  numeric expression cohort, analysis uses the parent/reference cohort
+  for quantitative work while preserving the refined label in the report.
+- If direct fusion evidence or a rare-marker RNA rule supports a rare
+  cancer hypothesis, that can set or widen report scope, but the nearest
+  expression cohort remains labeled as context rather than diagnosis.
+- If no external label or rare-scope rule applies, the top RNA candidate
+  is explicitly rendered as an RNA-inferred hypothesis.
+
+Writes: `reference_cancer_type`, `report_scope_cancer_type`,
+`report_scope_parent_cancer_type`, `rare_report_scope_inference`,
+`fusion_report_scope_inference`, and `cancer_type_source`.
+
+Consumed by: every downstream report line that names a cancer type, every
+cohort-relative expression calculation, and every plot title that needs
+to distinguish label scope from numeric reference scope.
+
+## Step 2: Purity
 
 Module: `pirlygenes.tumor_purity`
-Entry: `estimate_tumor_purity(df_expr, cancer_code, sample_context)
-         -> dict`
 
-Combines three orthogonal estimators:
+Purity combines signature-gene fit, stromal/immune penalties, and
+lineage-marker evidence. The output is a point estimate plus interval and
+confidence tier, not just a percentage.
 
-1. **signature-gene** — TCGA-cohort signature-gene fold-change
-2. **ESTIMATE-style** — stromal / immune enrichment penalty
-3. **lineage** — lineage-gene tumor-fraction estimator (per-gene
-   agreement across the curated lineage panel)
+Writes: `purity`, `purity_confidence`.
 
-Produces:
+Consumed by: decomposition anchoring, tumor-attributed TPM ranges, target
+source attribution, therapy ranking caveats, and summary-level purity
+language.
 
-- `overall_estimate` / `overall_lower` / `overall_upper` — point + CI
-- `purity_source` — which estimator dominated
-- `purity_confidence` tier — high / moderate / low / very_low with
-  per-reason explanations (wide CI, low-purity regime, inconsistency
-  across estimators)
-
-Reads: `sample_context`, top candidate from Step 1.
-
-Writes: `analysis["purity"]`, `analysis["purity_confidence"]`.
-
-Consumed by: Step 3 uses purity as the external anchor for the NNLS
-fit; Step 5 uses CI to widen 9-point ranges; Step 6 surfaces tier
-+ reasons in the brief's purity line.
-
----
-
-## Step 3 — Broad-compartment decomposition
+## Step 3: Decomposition
 
 Module: `pirlygenes.decomposition`
-Entry: `decompose_sample(df_expr, cancer_types, templates=None,
-                          purity_override=None, sample_context=None,
-                          candidate_rows=None) -> list[DecompositionResult]`
 
-For each (cancer_type, template) hypothesis in the top-k candidates:
+The decomposition engine evaluates multiple `(cancer_type, template)`
+hypotheses, such as primary solid tumor, bone metastasis, lymph-node
+metastasis, or heme/marrow contexts. It fits tumor plus TME components
+and produces per-gene source attribution.
 
-1. Select template — `solid_primary`, `met_bone`, `met_lymph_node`,
-   `heme_marrow`, etc. Templates declare what compartments to fit
-   (T_cell, B_cell, fibroblast, endothelial, matched_normal_<tissue>,
-   host-specific: osteoblast + marrow_stroma for bone, mesothelial
-   for peritoneal, etc.)
-2. Select markers per compartment (HPA-derived specificity ranks,
-   guarded against lineage-irrelevant auto-markers)
-3. Fit weighted NNLS under a soft sum-to-one constraint, with the
-   external purity from Step 2 as anchor
-4. Attribute per gene: the TME + matched-normal contributions are
-   subtracted from observed TPM to produce tumor-attributed TPM
+Writes: `decomposition_results` and `decomposition`, including the best
+hypothesis, component fractions, and gene attribution.
 
-Reads: `sample_context`, `candidate_rows` (reuses Step 1's ranking
-to avoid re-running purity estimation per candidate — #85).
+Consumed by: tumor-specific target TPM estimates, target source traces,
+composition plots, and the "parallel hypotheses still alive" report
+section.
 
-Writes: `analysis["decomp_results"]` (list of candidates),
-`best_decomp = decomp_results[0]` — the winning hypothesis has
-`gene_attribution` DataFrame + `fractions` dict + `component_trace`.
+## Step 4: Biology State
 
-Consumed by: Step 5 reads the gene_attribution for per-target tumor
-TPM; Step 6 renders the component breakdown in evidence.md.
+This layer asks what active biology is visible after cancer context and
+purity have been established:
 
----
+- `therapy_response_scores` score cancer-aware axes such as hypoxia, EMT,
+  IFN, ER, AR, HER2, glycolysis, and related panels.
+- `pathway_activity_inferences` summarize pan-cancer pathway activity,
+  including MAPK/ERK activity and possible upstream sources when relevant.
+- `fusion_expression_hypotheses` and `mutation_expression_hypotheses`
+  compare RNA patterns with curated downstream effects of fusions,
+  mutations, or CNVs.
 
-## Step 4 — Therapy-response axis state
+These are hypothesis-level findings. They can support biology narratives
+or prompt orthogonal testing, but they should not be treated as direct
+mutation or fusion calls without molecular evidence.
 
-Module: `pirlygenes.therapy_response`
-Entry: `score_therapy_signatures(sample_tpm_by_symbol, cancer_code)
-         -> dict[axis, TherapyAxisScore]`
+Consumed by: disease-state narrative, target prioritization, alteration
+consistency sections, and therapy caveats.
 
-For each therapy axis (AR, EMT, hypoxia, IFN response, HER2, ER,
-glycolysis), scores up-panel + down-panel geomean fold-change vs
-TCGA cohort and emits a state call:
+## Step 5: Tumor-Attributed Expression
 
-- `active` — up-panel elevated ≥2× cohort
-- `suppressed` — up-panel ≤0.5× AND down-panel elevated (signals
-  therapy exposure, e.g. AR-axis suppressed in ADT-treated PRAD)
-- `intact` — neither
+Target expression is reported as a tumor-attributed range rather than a
+single bulk TPM whenever decomposition and purity are available. The range
+crosses purity uncertainty and TME-background uncertainty.
 
-Writes: `analysis["therapy_response_scores"]`.
+Writes: `expression_ranges`, `tumor_tpm_by_symbol`.
 
-Consumed by: Step 6 synthesises disease-state narrative from axis
-states ("AR axis suppressed consistent with ADT exposure ...
-hypoxia active ... IFN-driven inflation of MHC-I / ISG surface
-targets").
+Consumed by: target tables, therapy shortlists, HLA-restricted therapy
+prompts, source-attribution traces, and subtype/rare-marker reasoning.
 
----
+## Step 5b: Refined And Degenerate Labels
 
-## Step 5 — Tumor-value adjustment + 9-point expression ranges
+Some distinctions cannot be resolved cleanly by bulk expression alone:
+OS versus liposarcoma with 12q amplification, squamous cohorts versus
+NUTM-rearranged cancer, neuroendocrine sites, or related sarcoma
+subtypes. The resolver treats these as a small hypothesis set until a
+tiebreaker is available.
 
-Module: `pirlygenes.cli` (inside `analyze()` after decomposition)
+Data files such as `degenerate-subtype-pairs.csv`,
+`fusion-surrogate-expression.csv`, `rare-cancer-rna-surrogates.csv`,
+`fusion-expression-effects.csv`, and `mutation-expression-effects.csv`
+encode the conditions that add, constrain, or leave those hypotheses
+unresolved.
 
-Per gene, computes a 9-point per-gene tumor-TPM range crossing
-three purity levels (low / point / high) × three TME-background
-levels. Attribution flags:
+Consumed by: the cancer-call line, subtype notes, rare-marker sections,
+and confirmatory-testing prompts.
 
-- `tme_explainable` — observed TPM dominantly explained by a TME
-  compartment; don't credit to tumor
-- `tme_dominant` — ≥70% of observed signal attributed to non-tumor
-- `matched_normal_over_predicted` — matched-normal compartment
-  over-absorbs (typical for KLK3 in CRPC PRAD at low purity); #134
-  purity-weighted fallback kicks in
-- `amplified` — observed fold over TCGA cohort median; passes
-  the breadth floor if the gene's tumor-specific signal is strong
+## Step 6: Reports
 
-Writes: `analysis["expression_ranges"]` — DataFrame with one row
-per target gene.
+Report synthesis reads the full state and writes:
 
-Consumed by: Step 6 renders evidence.md deep tables + analysis.md
-therapy landscape + summary.md top-line candidates.
+- `*-summary.md`: top-line call, basis, RNA alternatives, purity,
+  shortlist, and caveats.
+- `*-analysis.md`: interpreted analysis with reasoning trace and therapy
+  landscape.
+- `*-evidence.md`: deeper tables, source attribution, fusion/alteration
+  evidence, and deduction chain.
+- figures and TSVs: hypothesis plots, embedding plots, decomposition,
+  target context, pathway/signature panels, and figure audit entries.
 
----
+The intended reader should be able to tell:
 
-## Step 5b — Within-family subtype disambiguation
+- what was supplied externally versus inferred from RNA;
+- which cancer-type or subtype alternatives remain plausible;
+- how purity and decomposition uncertainty affect target expression;
+- which therapy or biology statements require missing molecular, HLA,
+  imaging, pathology, or clinical context.
 
-Module: `pirlygenes.degenerate_subtype`
-Entry: `resolve_degenerate_subtype(winning_subtype, site_template, tumor_tpm_by_symbol) -> dict`
+## Uniformity Principle
 
-Several within-family subtypes carry the same gene-expression
-signature and cannot be distinguished on expression alone. Examples:
+Cancer-specific behavior belongs in data, not bespoke control flow. The
+registry, expression references, marker panels, therapy-target curation,
+rare-marker rules, fusion-effect rules, mutation-effect rules, and
+response-axis panels should determine what the reports can say for each
+cancer type.
 
-- **OS vs DDLPS** — both carry the 12q13-15 amplicon (MDM2 + CDK4 + FRS2).
-- **Ewing vs DSRCT vs ARMS** — all CD99+ small-blue-round-cell tumors.
-- **PANNET vs MID_NET vs LUNG_NET** — all CHGA/SYP/ENO2-positive
-  neuroendocrine tumors; site distinguishes origin.
-- **LUSC vs HNSC vs CESC** — all KRT5/6 + TP63 + SOX2 squamous.
-- **CLL vs MCL vs FL** — all B-cell small-cell lymphomas.
-- **NUTM vs squamous** — both squamous-ish; NUTM1 mRNA is the only
-  reliable disambiguator (PRAME / MAGE-A panels are broadly expressed
-  in LUSC and are NOT NUTM-specific).
-
-Two declarative catalogs drive resolution:
-
-- `degenerate-subtype-pairs.csv` — pair members, shared signature,
-  activation signature (gene thresholds that must be met for the pair
-  to fire), tiebreaker rule (`site_template`, `fusion_surrogate`, or
-  `marker_combo`), and tiebreaker mapping.
-- `fusion-surrogate-expression.csv` — genes whose expression is a
-  deterministic surrogate for a specific fusion/translocation class
-  (FATE1/NR0B1 for EWS-FLI1; NUTM1 for BRD4-NUTM1; CCNB3 for BCOR-CCNB3;
-  ALK/NTRK/ROS1 expression as ectopic-fusion markers; etc.).
-
-### Activation gating — the "is this ambiguity actually present" check
-
-Each pair declares an `activation_signature` (e.g. `MDM2:100|CDK4:50`
-for OS_vs_DDLPS, `CD99:20` for Ewing/DSRCT/ARMS, `NUTM1:1` for
-NUTM_vs_squamous). The resolver evaluates the signature against the
-observed tumor-attributed TPMs **before** consulting the tiebreaker;
-if the shared signature isn't present, the pair is *inactive* and
-the upstream classifier's call stands unchanged. A LUSC sample with
-clear squamous lineage and silent NUTM1 is never pulled into the
-NUTM_vs_squamous resolution path.
-
-### Contextual inputs
-
-The resolver reasons over three inputs:
-
-1. `winning_subtype` — the classifier's pick (from Step 2's mixture-
-   cohort lineage summary).
-2. `site_template` — Step 3's top-ranked decomposition template
-   (`met_bone`, `primary_retroperitoneum`, `primary_lung`, ...).
-3. `tumor_tpm_by_symbol` — Step 5's per-gene tumor-attributed TPM
-   dict, built from `ranges_df` at render time.
-
-When a subtype sits in multiple pairs (e.g. HNSC ∈
-{LUSC_vs_HNSC_vs_CESC, NUTM_vs_squamous}) the resolver prefers
-pairs whose tiebreaker rule has the context inputs available. This
-makes pair selection deterministic rather than CSV-row-ordered.
-
-### Output
-
-```python
-{
-  "final_subtype":  <str>,
-  "status":         "no_pair" | "pair_inactive" | "confirmed" |
-                    "corrected" | "degenerate",
-  "reason":         <str>,
-  "pair_id":        <str | None>,
-  "alternatives":   <list[str]>,
-}
-```
-
-| Status | Meaning | Markdown rendering |
-|---|---|---|
-| `no_pair` | Subtype not in any pair | Classifier's call rendered unchanged |
-| `pair_inactive` | Pair exists but activation signature not met | Classifier's call rendered unchanged; no subtype note |
-| `confirmed` | Tiebreaker agrees with classifier | Classifier's call rendered unchanged |
-| `corrected` | Tiebreaker swapped to another pair member | Swapped label + `**Subtype note:**` explaining the swap |
-| `degenerate` | Pair active but tiebreaker inconclusive | `(subtype: degenerate — X vs Y/Z)` + `**Subtype note:**` |
-
-Reads: `analysis["candidate_trace"][0]["winning_subtype"]`,
-`analysis["decomposition"]["best_template"]`, `ranges_df` (to build
-the TPM dict).
-
-Writes: nothing to `analysis` — the resolver returns its decision to
-the caller (`build_summary`), which applies it at render time.
-
-Consumed by: Step 6's brief / summary / actionable renderers. The
-resolver's output drives the cancer-call line and the subtype note.
-
----
-
-## Step 6 — Report synthesis
-
-Modules: `pirlygenes.brief` (build_brief + build_actionable),
-`pirlygenes.cli` (summary.md, analysis.md, evidence.md)
-
-Reads the entire `analysis` dict and produces three markdown
-artefacts:
-
-- `*-summary.md` — distilled top-line read (cancer call, purity,
-  top therapies, caveats)
-- `*-analysis.md` — main interpreted report (pipeline detail +
-  therapy landscape)
-- `*-evidence.md` — step-by-step deduction chain + per-gene deep
-  tables
-
-Each of these surfaces evidence from every prior step so a reader
-can follow the reasoning from Step 0 context down to the final
-per-gene tumor-TPM call without losing intermediate evidence.
-
----
-
-## Information flow diagram
-
-```
-  df_expr
-    │
-    ├─► Step 0a: SampleContext ──────┐
-    │                                 │
-    ├─► Step 0b: TissueComposition ──┤
-    │                                 ▼
-    └─► Step 1: CancerCandidates ───► Step 2: Purity ───► Step 3: Decomp
-                                                                   │
-                                                                   ├─► Step 4: TherapyAxes
-                                                                   │
-                                                                   └─► Step 5: ExpressionRanges
-                                                                                   │
-                                                                                   ▼
-                                                                          Step 5b: SubtypeDisambiguation
-                                                                                   │
-                                                                                   ▼
-                                                                           Step 6: Reports
-```
-
-All steps write to the same `analysis` dict; Step 6 is a pure reader.
-No step mutates another step's output. This means any step's result
-can be re-run independently (e.g. to debug a bad purity call) without
-corrupting upstream reasoning.
-
----
-
-## Uniformity principle
-
-Every cancer type should get the same kind of analysis. The pipeline
-is a uniform loop over the 76 leaf codes in the registry — no
-cancer-specific code branches should gate which figures emit, which
-steps run, or what depth of report gets produced. Asymmetry belongs
-in *data* (the registry, the signature files, the pair catalog), not
-in *code*.
-
-Two consequences:
-
-1. **Registry completeness is a contract** — #199 requires every leaf
-   code to carry a minimum package (expression, lineage, biomarker,
-   therapy, matched-normal, therapy-response axis panel). Missing
-   fields are enumerated in `_MISSING_MATCHED_NORMAL` /
-   `_MISSING_THERAPY_AXIS` allowlists; shrinking those lists is the
-   measure of progress. A clinician should read the same structure of
-   markdown for a PRAD sample as for a PANNET or a NUT carcinoma
-   sample, differing only in the curated content.
-
-2. **Conditional figure emission is data-driven, not code-driven** —
-   `sample-matched-normal-*.png` emits for any code with a
-   `tumor-up-vs-matched-normal` row; `sample-subtype-signature.png`
-   emits for any code with a cancer-specific
-   `therapy-response-signatures` row; degenerate-pair resolution
-   fires for any code listed in `degenerate-subtype-pairs.csv`. The
-   rendering loop is identical across cancers; which outputs land
-   depends only on what the registry has for that code.
-
-Known asymmetry (tracked, not yet resolved): the disease-state
-synthesis in `cli._synthesize_disease_state` still contains hardcoded
-PRAD and BRCA branches (castrate-resistant pattern detection, HER2+
-BRCA pattern). These should move to a `disease-state-narratives.csv`
-data file that declares "when axis X is state S AND gene Y is
-retained, emit narrative Z" per cancer. Tracked in the follow-up
-issue for data-ification of narrative rules.
+The goal is that a common report structure appears for common TCGA
+cancers, rare cancers, sarcomas, pediatric tumors, and registry-only
+refined labels. Differences should be visible as data coverage,
+confidence, and caveats, not as missing sections or hidden special cases.

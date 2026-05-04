@@ -1765,8 +1765,9 @@ def _analyze_body(run: AnalyzeRun):
 
     # #149: Step-0 healthy-vs-tumor gate. Races the sample against
     # the 50 HPA normal-tissue columns + 33 TCGA cancer columns in
-    # pan_cancer_expression() and checks a proliferation-panel
-    # (MKI67+TOP2A+CCNB1+BIRC5+AURKA) geomean. Fixes the GTEx-style
+    # pan_cancer_expression() and checks the public mitotic
+    # proliferation panel from proliferation_panel_gene_names().
+    # Fixes the GTEx-style
     # mis-classification where a healthy sample gets force-called
     # into a TCGA cohort. Informational only — doesn't override
     # cancer-type inference; surfaces as a banner in brief/actionable
