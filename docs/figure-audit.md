@@ -25,6 +25,9 @@ Older default figures that repeated the same story (`sample-target-safety.png`,
 `sample-curated-target-evidence.png`, target tissue PNG fan-out, and
 `sample-purity-targets.png`) are retired from default output or kept only as
 appendix/provenance artifacts.
+They can still be emitted with `pirlygenes analyze --deprecated-figures`, which
+writes them under `figures/deprecated/` and keeps them out of the main figure
+packet.
 
 ---
 

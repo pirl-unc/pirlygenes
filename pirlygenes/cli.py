@@ -1486,7 +1486,7 @@ def _clean_prefix_outputs(out_dir: Path, prefix_path: str) -> int:
         return 0
     stale_prefix = f"{base}-"
     removed = 0
-    for directory in (out_dir, out_dir / "figures"):
+    for directory in (out_dir, out_dir / "figures", out_dir / "figures" / "deprecated"):
         if not directory.is_dir():
             continue
         for path in directory.iterdir():
@@ -1618,6 +1618,7 @@ def analyze(
     expression_qc_rescue: str = "auto",
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
+    deprecated_figures: bool = False,
     force: bool = False,
 ):
     """Analyze gene expression from a quantification file.
@@ -1660,6 +1661,7 @@ def analyze(
         expression_qc_rescue=expression_qc_rescue,
         therapy_target_top_k=therapy_target_top_k,
         therapy_target_tpm_threshold=therapy_target_tpm_threshold,
+        deprecated_figures=deprecated_figures,
         force=force,
     )
 
@@ -1751,6 +1753,7 @@ def _analyze_body(run: AnalyzeRun):
     alteration_inputs = config.alteration_input_list()
     therapy_target_top_k = config.therapy_target_top_k
     therapy_target_tpm_threshold = config.therapy_target_tpm_threshold
+    deprecated_figures = bool(config.deprecated_figures)
     sample_display_id = paths.sample_display_id
     prefix = paths.prefix
     analysis_cancer_type, report_scope_cancer_type = _analysis_input_cancer_type(
@@ -2795,6 +2798,40 @@ def _analyze_body(run: AnalyzeRun):
         save_to_filename=tissue_pdf,
         save_dpi=output_dpi,
     )
+    deprecated_figures_dir = Path(prefix).parent / "figures" / "deprecated"
+    if deprecated_figures:
+        deprecated_figures_dir.mkdir(parents=True, exist_ok=True)
+        deprecated_tissue_png = (
+            deprecated_figures_dir / f"{Path(prefix).name}-target-tissues.png"
+        )
+        print(
+            "[plot] Generating deprecated target-tissue PNG fan-out "
+            f"under {deprecated_figures_dir}/"
+        )
+        plot_therapy_target_tissues(
+            df_expr,
+            top_k=therapy_target_top_k,
+            tpm_threshold=therapy_target_tpm_threshold,
+            extra_symbols=curated_target_symbols,
+            save_to_filename=str(deprecated_tissue_png),
+            save_dpi=output_dpi,
+        )
+        try:
+            from .plot_therapy import plot_therapy_target_safety
+
+            deprecated_safety_png = (
+                deprecated_figures_dir / f"{Path(prefix).name}-target-safety.png"
+            )
+            plot_therapy_target_safety(
+                df_expr,
+                top_k=therapy_target_top_k,
+                tpm_threshold=therapy_target_tpm_threshold,
+                extra_symbols=curated_target_symbols,
+                save_to_filename=str(deprecated_safety_png),
+                save_dpi=output_dpi,
+            )
+        except Exception as exc:
+            print(f"[plot] deprecated target-safety failed: {exc}")
     _plt.close("all")
 
     # Cancer-type signature gene grids (``plot_cancer_type_genes`` +
@@ -3101,6 +3138,7 @@ def _analyze_body(run: AnalyzeRun):
         try:
             from .gene_sets_cancer import cancer_key_genes_cancer_types
 
+            disease_state_for_priority = compose_disease_state_narrative(analysis)
             panel_code, panel_subtype = cancer_key_genes_lookup_for_analysis(
                 report_cancer_type,
                 analysis,
@@ -3156,6 +3194,8 @@ def _analyze_body(run: AnalyzeRun):
                 df_gene_expr=df_expr,
                 target_symbols=actionable_genes,
                 top_n=len(actionable_genes) if actionable_genes else 12,
+                analysis=analysis,
+                disease_state=disease_state_for_priority,
                 save_to_filename=priority_targets_png,
                 save_dpi=output_dpi,
             )
@@ -3184,6 +3224,8 @@ def _analyze_body(run: AnalyzeRun):
                 df_gene_expr=df_expr,
                 target_symbols=actionable_genes,
                 top_n=len(actionable_genes) if actionable_genes else 12,
+                analysis=analysis,
+                disease_state=disease_state_for_priority,
                 save_to_filename=priority_target_context_png,
                 save_dpi=output_dpi,
             )
@@ -3195,6 +3237,46 @@ def _analyze_body(run: AnalyzeRun):
             else:
                 priority_target_context_png = None
             _plt.close("all")
+
+            if deprecated_figures:
+                deprecated_figures_dir.mkdir(parents=True, exist_ok=True)
+                deprecated_purity_targets_png = (
+                    deprecated_figures_dir / f"{Path(prefix).name}-purity-targets.png"
+                )
+                plot_tumor_expression_ranges(
+                    ranges_df,
+                    purity_result=purity_dict,
+                    cancer_type=effective_cancer_type,
+                    top_n=15,
+                    categories=["therapy_target"],
+                    save_to_filename=str(deprecated_purity_targets_png),
+                    save_dpi=output_dpi,
+                )
+                _plt.close("all")
+                if target_panel is not None:
+                    try:
+                        from .plot_target_deep_dive import plot_curated_target_evidence
+
+                        deprecated_curated_png = (
+                            deprecated_figures_dir
+                            / f"{Path(prefix).name}-curated-target-evidence.png"
+                        )
+                        fig = plot_curated_target_evidence(
+                            ranges_df,
+                            target_panel.reset_index(drop=True),
+                            cancer_type=panel_code,
+                            df_gene_expr=df_expr,
+                            save_to_filename=str(deprecated_curated_png),
+                            save_dpi=output_dpi,
+                        )
+                        if fig is not None:
+                            print(
+                                "[plot] Saved deprecated curated target evidence "
+                                f"to {deprecated_curated_png}"
+                            )
+                        _plt.close("all")
+                    except Exception as exc:
+                        print(f"[plot] deprecated curated target evidence failed: {exc}")
 
         except Exception as curated_err:
             print(f"[plot] priority target plots failed: {curated_err}")
@@ -3262,7 +3344,6 @@ def _analyze_body(run: AnalyzeRun):
         traceback.print_exc()
 
     # Collect all figures into one PDF (native resolution)
-    from pathlib import Path
     from PIL import Image, ImageDraw, ImageFont
 
     all_pdf = "%s-all-figures.pdf" % prefix if prefix else "all-figures.pdf"
@@ -3464,7 +3545,7 @@ def _analyze_body(run: AnalyzeRun):
         out = []
         suffixes = tuple(suffixes)
         for path in sorted(figures_dir.iterdir()):
-            if any(path.name.endswith(suffix) for suffix in suffixes):
+            if path.is_file() and any(path.name.endswith(suffix) for suffix in suffixes):
                 out.append(path)
         return out
 
@@ -3677,7 +3758,9 @@ def _analyze_body(run: AnalyzeRun):
                 audit_images.append(_artifact_page(path))
 
     remaining_files = [
-        path for path in sorted(figures_dir.iterdir()) if path.name not in audit_seen
+        path
+        for path in sorted(figures_dir.iterdir())
+        if path.is_file() and path.name not in audit_seen
     ]
     if remaining_files:
         audit_images.append(
@@ -3760,6 +3843,15 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
 | `*-reference-mds.png` | MDS: sample among TCGA cancer medians, subtype references, and normal tissues |
 | `*-reference-neighborhood.png` | Nearest cancer/subtype/normal reference distance ranking; preserves input feature distance |
+
+Optional deprecated comparison figures are only emitted with
+`--deprecated-figures` and are written under `figures/deprecated/`. They are
+kept out of the main figure packet because the canonical target figures above
+carry the integrated target, disease-context, tumor-source, eligibility, and
+uncertainty story.
+When curated agent-level `benefit_tier` / `toxicity_tier` fields are present,
+priority ranking can use them; otherwise survival benefit and toxicity are not
+inferred from expression alone.
 """
     readme_path.write_text(readme)
     print(f"[output] Wrote {readme_path}")
@@ -7344,6 +7436,7 @@ def plot_expression(
     alterations: Optional[str] = None,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
+    deprecated_figures: bool = False,
 ):
     """Deprecated: use 'analyze' instead."""
     import warnings
@@ -7374,6 +7467,7 @@ def plot_expression(
         alterations=alterations,
         therapy_target_top_k=therapy_target_top_k,
         therapy_target_tpm_threshold=therapy_target_tpm_threshold,
+        deprecated_figures=deprecated_figures,
     )
 
 

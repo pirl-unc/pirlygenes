@@ -38,7 +38,12 @@ from .gene_sets_cancer import (
 from .plot_scatter import resolve_cancer_type
 from .reporting import (
     clinical_maturity_info,
+    expression_independent_indication,
+    indication_biomarker_label,
     normal_expression_context,
+    supplied_alteration_supports_target_row,
+    target_hla_eligibility,
+    therapy_state_caution,
     tumor_attribution_context,
 )
 
@@ -973,6 +978,8 @@ def _priority_target_rows(
     top_n=12,
     target_symbols=None,
     split_by_status=True,
+    analysis=None,
+    disease_state=None,
 ):
     """Build the shared ranked target rows used by the priority plots."""
     if ranges_df is None or len(ranges_df) == 0 or "symbol" not in ranges_df.columns:
@@ -1121,6 +1128,92 @@ def _priority_target_rows(
             matched_panel = False
         return points, label.strip(), matched_panel, status_key, status_rank, status_label
 
+    def _eligibility_component(curated):
+        """Score orthogonal eligibility and therapy-state evidence.
+
+        Expression is only one piece of the actionability chain. HLA-gated,
+        alteration-gated, or currently-modulated therapy rows should carry that
+        uncertainty into the rank instead of being promoted by TPM alone.
+        """
+        if curated is None:
+            return 0.0, "generic expression-linked"
+
+        score = 0.35
+        notes = []
+
+        hla = target_hla_eligibility(curated, analysis=analysis)
+        hla_status = hla.get("status")
+        if hla_status == "matched":
+            score += 0.85
+            notes.append("HLA matched")
+        elif hla_status == "insufficient_resolution":
+            score -= 0.20
+            notes.append("HLA low-resolution")
+        elif hla_status == "unknown":
+            score -= 0.35
+            notes.append("HLA needed")
+        elif hla_status == "mismatched":
+            score -= 3.0
+            notes.append("HLA mismatch")
+
+        if expression_independent_indication(curated):
+            supported = supplied_alteration_supports_target_row(curated, analysis)
+            if supported:
+                score += 1.0
+                notes.append("required alteration supplied")
+            else:
+                label = indication_biomarker_label(curated)
+                score -= 1.0
+                notes.append(f"confirm {label}")
+        else:
+            score += 0.25
+
+        caution = therapy_state_caution(
+            curated, analysis=analysis, disease_state=disease_state
+        )
+        if caution:
+            score -= 0.55
+            notes.append("current-therapy state caveat")
+
+        return max(0.0, min(1.7, score)), "; ".join(notes)
+
+    def _tradeoff_component(curated):
+        """Optional survival-benefit/toxicity curation hook.
+
+        Most current rows do not yet carry structured outcome fields. When a
+        curated table does provide them, fold them into the rank explicitly
+        rather than deriving clinical benefit from expression, phase, or target
+        class alone.
+        """
+        if curated is None or not hasattr(curated, "get"):
+            return 0.0, ""
+        benefit = str(curated.get("benefit_tier") or "").strip().lower()
+        toxicity = str(curated.get("toxicity_tier") or "").strip().lower()
+        benefit_points = {
+            "curative": 2.0,
+            "durable_rfs": 1.8,
+            "durable_remission": 1.8,
+            "major_survival": 1.5,
+            "high_response": 1.3,
+            "meaningful_pfs": 1.0,
+            "incremental": 0.55,
+            "modest": 0.45,
+        }.get(benefit, 0.0)
+        toxicity_penalty = {
+            "minimal": 0.25,
+            "low": 0.15,
+            "moderate": 0.0,
+            "high": -0.35,
+            "very_high": -0.70,
+        }.get(toxicity, 0.0)
+        score = max(0.0, benefit_points + toxicity_penalty)
+        labels = []
+        if benefit:
+            labels.append(f"benefit={benefit.replace('_', ' ')}")
+        if toxicity:
+            labels.append(f"toxicity={toxicity.replace('_', ' ')}")
+        return min(2.0, score), "; ".join(labels)
+
     rows = []
     for _, row in ranges_df.iterrows():
         sym = str(row.get("symbol") or "").strip()
@@ -1141,6 +1234,12 @@ def _priority_target_rows(
             continue
         if row.get("therapy_supported") is False and curated is None:
             continue
+        if (
+            curated is not None
+            and target_hla_eligibility(curated, analysis=analysis).get("status")
+            == "mismatched"
+        ):
+            continue
 
         source = tumor_attribution_context(row)
         normal = normal_expression_context(row)
@@ -1152,6 +1251,9 @@ def _priority_target_rows(
             status_rank,
             status_label,
         ) = _actionability_components(sym, row)
+        curated = curated_by_symbol.get(sym, {}).get("target")
+        gate_points, gate_label = _eligibility_component(curated)
+        tradeoff_points, tradeoff_label = _tradeoff_component(curated)
         source_points = _source_component(source, row)
         normal_points = _normal_component(normal)
         strength_points = _strength_component(source, row)
@@ -1172,12 +1274,18 @@ def _priority_target_rows(
                 "clinical_label": actionability_label,
                 "source_points": source_points,
                 "actionability_points": actionability_points,
+                "gate_points": gate_points,
+                "gate_label": gate_label,
+                "tradeoff_points": tradeoff_points,
+                "tradeoff_label": tradeoff_label,
                 "normal_points": normal_points,
                 "strength_points": strength_points,
                 "curation_points": curation_points,
                 "total_score": (
                     source_points
                     + actionability_points
+                    + gate_points
+                    + tradeoff_points
                     + normal_points
                     + strength_points
                     + curation_points
@@ -1247,6 +1355,8 @@ def plot_priority_targets(
     df_gene_expr=None,
     top_n=12,
     target_symbols=None,
+    analysis=None,
+    disease_state=None,
     save_to_filename=None,
     save_dpi=300,
 ):
@@ -1258,6 +1368,8 @@ def plot_priority_targets(
         df_gene_expr=df_gene_expr,
         top_n=top_n,
         target_symbols=target_symbols,
+        analysis=analysis,
+        disease_state=disease_state,
     )
     if not rows:
         return None
@@ -1267,10 +1379,16 @@ def plot_priority_targets(
     score_parts = [
         ("Tumor support", "source_points", "#2e8b57"),
         ("Clinical readiness", "actionability_points", "#4a90d9"),
+        ("Eligibility / state fit", "gate_points", "#d35400"),
         ("Disease-matched curation", "curation_points", "#f39c12"),
         ("Healthy-tissue specificity", "normal_points", "#9b59b6"),
         ("Tumor level", "strength_points", "#8c8c8c"),
     ]
+    if any(float(row.get("tradeoff_points") or 0.0) > 0 for row in rows):
+        score_parts.insert(
+            4,
+            ("Benefit/toxicity trade-off", "tradeoff_points", "#16a085"),
+        )
     left = np.zeros(len(rows))
     for label, key, color in score_parts:
         values = [row[key] for row in rows]
@@ -1309,7 +1427,7 @@ def plot_priority_targets(
     fig.text(
         0.5,
         0.965,
-        "Higher scores reflect better tumor support, stronger clinical maturity, disease-matched curation, healthy-tissue specificity/safety, and higher estimated tumor expression.",
+        "Higher scores reflect tumor support, clinical maturity, required HLA/alteration/state fit, disease-matched curation, curated benefit/toxicity when available, healthy-tissue specificity/safety, and estimated tumor expression.",
         ha="center",
         va="top",
         fontsize=9,
@@ -1329,6 +1447,8 @@ def plot_priority_target_context(
     df_gene_expr=None,
     top_n=12,
     target_symbols=None,
+    analysis=None,
+    disease_state=None,
     save_to_filename=None,
     save_dpi=300,
 ):
@@ -1343,6 +1463,8 @@ def plot_priority_target_context(
         df_gene_expr=df_gene_expr,
         top_n=top_n,
         target_symbols=target_symbols,
+        analysis=analysis,
+        disease_state=disease_state,
     )
     if not rows:
         return None
@@ -1495,7 +1617,7 @@ def plot_priority_target_context(
     fig.text(
         0.5,
         0.955,
-        "Rows are split by approval/readiness tier; colors show healthy-tissue context and markers show tumor-source support.",
+        "Rows are split by approval/readiness tier; colors show healthy-tissue context, markers show tumor-source support, and scores include HLA/alteration/current-therapy fit plus curated benefit/toxicity when available.",
         ha="center",
         va="top",
         fontsize=9,

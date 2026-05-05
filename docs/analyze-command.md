@@ -64,6 +64,41 @@ pirlygenes analyze input.csv \
 | `{prefix}-all-figures.pdf` | All figures in one PDF |
 | `{prefix}-figure-audit.pdf` | Figure packet grouped by redundancy/value; each page carries the source filename |
 
+Use `--deprecated-figures` to also emit older comparison/debug target views
+under `figures/deprecated/` (`target-safety`, target-tissue PNG fan-out,
+`curated-target-evidence`, and `purity-targets`). They are excluded from the
+main figure packet because the canonical target figures integrate more of the
+sample context: cancer type/subtype curation, observed expression,
+tumor-source deconvolution, purity uncertainty, healthy-tissue context,
+eligibility gates such as HLA or required alterations, and therapy-state
+cautions such as expected target modulation after treatment.
+
+### Target Ranking Evidence Contract
+
+The priority target figures should be interpreted as a structured evidence
+synthesis, not a TPM ranking. The score combines:
+
+- cancer-type and subtype curation for expected lineage genes and
+  disease-matched therapy targets;
+- observed expression and tumor-source attribution across the purity interval;
+- healthy-tissue / matched-normal context;
+- HLA, fusion, mutation, amplification, or other required eligibility gates
+  when supplied;
+- therapy-state caveats, such as AR-target attenuation after ADT/ARPI in PRAD
+  or IFN-driven inflation of MHC-related targets;
+- clinical maturity and treatment-path tier;
+- optional structured `benefit_tier` / `toxicity_tier` fields when those are
+  curated for an agent.
+
+Do not infer survival benefit or toxicity from expression alone. External data
+sources that can support future curation include FDA/DailyMed structured product
+labels for approved-drug adverse reactions, openFDA label/adverse-event APIs,
+ClinicalTrials.gov results tables for response/survival/adverse events,
+CTCAE terminology for toxicity severity grading, and side-effect resources such
+as SIDER/OnSIDES. Those sources need normalization by indication, line of
+therapy, endpoint (ORR/DOR/PFS/OS/RFS), dose, and grade 3+ adverse-event rate
+before they can safely become a benefit-vs-toxicity score.
+
 ## Cancer Type Labels
 
 `--cancer-type` accepts both TCGA-style coarse labels and registry labels.

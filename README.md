@@ -293,6 +293,15 @@ Prefer the standalone decomposition figures when reviewing or sharing a case. Th
 | `*-cancer-types-genes.png`, `*-cancer-types-disjoint.png` | Cancer-type gene signature heatmaps |
 | `*-all-figures.pdf` | All figures combined into a single PDF |
 
+Pass `--deprecated-figures` to keep older duplicate-style target views under
+`figures/deprecated/` for regression/comparison. The default target figures are
+the integrated ones: they combine cancer-specific curation, observed expression,
+tumor-source attribution, purity uncertainty, healthy-tissue context, HLA or
+alteration gates where available, and treatment-state caveats.
+If curated agent-level `benefit_tier` / `toxicity_tier` fields are added, the
+priority ranking can also use those; otherwise PIRLy Genes does not infer
+survival benefit or toxicity from expression alone.
+
 ## Python API
 
 ### Pan-cancer expression data

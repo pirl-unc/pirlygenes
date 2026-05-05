@@ -305,6 +305,83 @@ def test_plot_priority_targets_saves_png(tmp_path):
     assert out.exists()
     texts = "\n".join(text.get_text() for ax in fig.axes for text in ax.texts)
     assert "Approved / disease-matched" in texts
+    assert any(
+        text.get_text() == "Eligibility / state fit"
+        for legend in fig.legends + [ax.get_legend() for ax in fig.axes]
+        if legend is not None
+        for text in legend.get_texts()
+    )
+
+
+def test_priority_targets_exclude_hla_mismatched_rows(tmp_path):
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "MAGEA4",
+                "observed_tpm": 40.0,
+                "attr_tumor_tpm": 35.0,
+                "attr_tumor_tpm_low": 25.0,
+                "attr_tumor_tpm_high": 44.0,
+                "attr_tumor_fraction": 0.88,
+                "attr_tumor_fraction_low": 0.70,
+                "attr_tumor_fraction_high": 1.0,
+                "attr_support_fraction": 1.0,
+                "matched_normal_tissue": "",
+                "matched_normal_tpm": 0.0,
+                "therapy_supported": True,
+                "therapies": "TCR-T",
+                "tcga_percentile": 0.99,
+                "category": "therapy_target",
+            },
+            {
+                "symbol": "EGFR",
+                "observed_tpm": 30.0,
+                "attr_tumor_tpm": 25.0,
+                "attr_tumor_tpm_low": 20.0,
+                "attr_tumor_tpm_high": 35.0,
+                "attr_tumor_fraction": 0.83,
+                "attr_tumor_fraction_low": 0.65,
+                "attr_tumor_fraction_high": 1.0,
+                "attr_support_fraction": 1.0,
+                "matched_normal_tissue": "",
+                "matched_normal_tpm": 0.0,
+                "therapy_supported": True,
+                "therapies": "antibody",
+                "tcga_percentile": 0.85,
+                "category": "therapy_target",
+            },
+        ]
+    )
+    target_panel = pd.DataFrame(
+        [
+            {
+                "symbol": "MAGEA4",
+                "agent": "afamitresgene autoleucel",
+                "agent_class": "TCR-T",
+                "phase": "approved",
+                "indication": "advanced synovial sarcoma; requires A*02:01",
+            },
+            {
+                "symbol": "EGFR",
+                "agent": "cetuximab",
+                "agent_class": "antibody",
+                "phase": "approved",
+                "indication": "EGFR-expressing cancer",
+            },
+        ]
+    )
+
+    fig = plot_priority_targets(
+        ranges_df,
+        "SARC",
+        target_panel=target_panel,
+        analysis={"analysis_constraints": {"hla_types": ["A*01:01"]}},
+        save_to_filename=str(tmp_path / "priority-targets.png"),
+    )
+
+    labels = [tick.get_text() for tick in fig.axes[0].get_yticklabels()]
+    assert "MAGEA4" not in labels
+    assert labels == ["EGFR"]
 
 
 def test_plot_priority_target_context_saves_png(tmp_path):
