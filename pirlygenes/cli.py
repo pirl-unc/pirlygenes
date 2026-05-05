@@ -48,7 +48,10 @@ from .gene_sets_cancer import (
 from PIL import Image
 from .load_expression import load_expression_data
 from .load_expression import apply_expression_qc_rescue
-from .expression_qc import expression_qc_rescue_summary_line
+from .expression_qc import (
+    expression_qc_rescue_summary_line,
+    technical_rna_component_phrase,
+)
 from .plot import (
     plot_gene_expression,
     plot_sample_vs_cancer,
@@ -1750,6 +1753,9 @@ def _analyze_body(run: AnalyzeRun):
     forced_labels = _parse_always_label_genes(label_genes)
     template_overrides = config.template_overrides()
     raw_expression_scale_qc = dict(df_expr_raw.attrs.get("expression_scale_qc") or {})
+    raw_technical_phrase = technical_rna_component_phrase(raw_expression_scale_qc)
+    if raw_expression_scale_qc and raw_technical_phrase:
+        print(f"[load] Technical RNA burden: {raw_technical_phrase}")
     for warning in raw_expression_scale_qc.get("warnings") or []:
         print(f"[load] Expression scale QC: {warning}")
     rna_quant_qc = collect_rna_quant_qc(
@@ -1789,7 +1795,7 @@ def _analyze_body(run: AnalyzeRun):
                 f"({top.get('qc_class')}, {float(top.get('share') or 0.0):.0%})"
             )
         print(
-            "[load] Expression QC rescue: removed mtDNA/rRNA-like features "
+            "[load] Expression QC rescue: removed mtDNA/rRNA/pseudogene-like features "
             f"covering {removed:.0%} of raw TPM and renormalized downstream TPM"
             f"{top_clause}"
         )
@@ -5285,11 +5291,16 @@ def _generate_text_reports(
                 f"max {raw_scale_qc.get('max_tpm', 0.0):.1f}; "
                 f"housekeeping median {raw_scale_qc.get('housekeeping_median_tpm', 0.0):.1f}."
             )
+            technical_phrase = technical_rna_component_phrase(raw_scale_qc)
+            if technical_phrase:
+                lines.append(
+                    f"- **Technical RNA burden (raw)**: {technical_phrase}."
+                )
         if scale_qc and analysis.get("expression_qc_rescue", {}).get("applied"):
             lines.append(
                 f"- **Expression scale QC (analysis TPM)**: sum {scale_qc.get('sum_tpm', 0.0):.0f}; "
                 f"max {scale_qc.get('max_tpm', 0.0):.1f}; "
-                "mtDNA/rRNA-like features set to zero before renormalization."
+                "mtDNA/rRNA/pseudogene-like features set to zero before renormalization."
             )
         rescue_line = expression_qc_rescue_summary_line(
             analysis.get("expression_qc_rescue")

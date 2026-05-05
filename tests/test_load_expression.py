@@ -224,6 +224,8 @@ def test_expression_scale_qc_flags_extreme_tpm_concentration():
     assert qc["dominant_genes"][0]["gene"] == "RNA5S_DOMINANT"
     assert qc["dominant_genes"][0]["qc_group"] == "rrna_like"
     assert qc["rrna_like_fraction"] == pytest.approx(0.52)
+    assert qc["nuclear_rrna_like_fraction"] == pytest.approx(0.52)
+    assert qc["rrna_pseudogene_fraction"] == pytest.approx(0.0)
     assert any("one gene" in warning for warning in qc["warnings"])
     assert any("tiny transcript set" in warning for warning in qc["warnings"])
 
@@ -241,6 +243,9 @@ def test_expression_qc_rescue_removes_rrna_like_dominator():
     assert record["applied"] is True
     assert record["removed_fraction"] == pytest.approx(0.55)
     assert record["top_removed_genes"][0]["qc_class"] == "5S rRNA pseudogene"
+    assert record["qc_class_shares"]["rrna_pseudogene_fraction"] == pytest.approx(
+        0.52
+    )
     assert rescued.loc[rescued["gene"] == "RNA5SP389", "TPM"].item() == 0.0
     assert rescued["TPM"].sum() == pytest.approx(1_000_000.0)
     assert rescued.loc[rescued["gene"] == "KLK3", "TPM"].item() == pytest.approx(

@@ -1261,7 +1261,17 @@ def _qc_fraction_from_items(items) -> dict[str, float]:
     summary = summarize_qc_class_shares(items)
     return {
         "mt_dna_fraction": float(summary.get("mt_dna_fraction") or 0.0),
+        "mitochondrial_rrna_fraction": float(
+            summary.get("mitochondrial_rrna_fraction") or 0.0
+        ),
+        "mt_non_rrna_fraction": float(summary.get("mt_non_rrna_fraction") or 0.0),
         "rrna_like_fraction": float(summary.get("rrna_like_fraction") or 0.0),
+        "nuclear_rrna_like_fraction": float(
+            summary.get("nuclear_rrna_like_fraction") or 0.0
+        ),
+        "rrna_pseudogene_fraction": float(
+            summary.get("rrna_pseudogene_fraction") or 0.0
+        ),
         "rrna_plus_mt_fraction": float(summary.get("rrna_plus_mt_fraction") or 0.0),
     }
 
@@ -1337,13 +1347,33 @@ def plot_expression_concentration_qc(
         gene if len(gene) <= 24 else gene[:21] + "..."
         for gene, _value in top
     ]
-    classes = [classify_gene_qc(gene).group for gene, _value in top]
+    def _display_class(gene: str) -> str:
+        qc = classify_gene_qc(gene)
+        if qc.group == "rrna_like" and "pseudogene" in qc.label:
+            return "rRNA pseudogene"
+        if qc.group == "rrna_like":
+            return "rRNA-like"
+        if qc.label == "mitochondrial rRNA":
+            return "mitochondrial rRNA"
+        if qc.group == "mt_dna":
+            return "other mtDNA"
+        if qc.group == "ribosomal_protein_pseudogene":
+            return "RP pseudogene"
+        if qc.group == "ribosomal_protein":
+            return "ribosomal protein"
+        if qc.group == "small_ncrna":
+            return "small ncRNA"
+        return "other"
+
+    classes = [_display_class(gene) for gene, _value in top]
     colors = {
-        "rrna_like": "#b64b3c",
-        "mt_dna": "#7a5195",
-        "ribosomal_protein": "#2f7ed8",
-        "ribosomal_protein_pseudogene": "#6aaed6",
-        "small_ncrna": "#d99b2b",
+        "rRNA pseudogene": "#b64b3c",
+        "rRNA-like": "#df7f5f",
+        "mitochondrial rRNA": "#7a5195",
+        "other mtDNA": "#b189c6",
+        "ribosomal protein": "#2f7ed8",
+        "RP pseudogene": "#6aaed6",
+        "small ncRNA": "#d99b2b",
         "other": "#6c757d",
     }
     bar_colors = [colors.get(cls, "#6c757d") for cls in classes]
@@ -1426,10 +1456,11 @@ def plot_reference_mtdna_rrna_qc(
         return None
     ref = pd.DataFrame(rows)
     sample = _sample_qc_fractions(df_gene_expr)
-    fig, axes = plt.subplots(ncols=2, figsize=(12, 4.8), sharey=True)
+    fig, axes = plt.subplots(ncols=3, figsize=(15, 4.9), sharey=True)
     specs = [
         ("mt_dna_fraction", "mtDNA fraction of total TPM"),
-        ("rrna_like_fraction", "rRNA-like fraction of total TPM"),
+        ("nuclear_rrna_like_fraction", "nuclear rRNA-like fraction"),
+        ("rrna_pseudogene_fraction", "rRNA-pseudogene fraction"),
     ]
     colors = {
         "TCGA cohort medians": "#3f6fb5",

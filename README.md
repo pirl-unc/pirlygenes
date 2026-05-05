@@ -270,7 +270,7 @@ Prefer the standalone decomposition figures when reviewing or sharing a case. Th
 |---|---|
 | `*-sample-context.png` | Step 1 diagnostic: library prep + preservation inference with thresholds used for the call |
 | `*-expression-concentration-qc.png` | Dominant-gene and cumulative TPM plot; flags rRNA/pseudogene, mtDNA, or other features consuming the TPM denominator |
-| `*-qc-reference-mtdna-rrna.png` | Sample mtDNA and rRNA-like fractions against bundled TCGA cohort-median and HPA normal-tissue reference columns |
+| `*-qc-reference-mtdna-rrna.png` | Sample mtDNA, nuclear rRNA-like, and rRNA-pseudogene fractions against bundled TCGA cohort-median and HPA normal-tissue reference columns |
 | `*-qc-reference-technical-rna-burden.png` | Combined mtDNA + rRNA-like fraction against the same reference columns |
 | `*-degradation-index.png` | Gene-pair scatter: expected vs observed long/short ratios, diagonal = no degradation |
 | `*-sample-summary.png` | Quick overview: cancer type, purity, background signatures |

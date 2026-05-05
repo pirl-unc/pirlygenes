@@ -31,7 +31,10 @@ def classify_gene_qc(symbol: str | None) -> GeneQcClass:
     - ``mt_dna``: mitochondrial genome transcripts.
     - ``rrna_like``: nuclear rRNA and rRNA-pseudogene annotations that can
       dominate TPM denominators when residual rRNA/small-RNA fragments leak
-      into a gene-level quantification.
+      into a gene-level quantification. Pseudogenes are summarized separately
+      inside this group because their failure mode is usually mapping /
+      annotation / short-fragment denominator distortion rather than intact
+      rRNA carryover.
     - ``ribosomal_protein`` / ``ribosomal_protein_pseudogene``: real RP
       biology/library complexity signals, not removed by rescue normalization.
     - ``small_ncrna``: other small noncoding RNA families.
@@ -43,6 +46,8 @@ def classify_gene_qc(symbol: str | None) -> GeneQcClass:
     if upper in _GENE_NA:
         return GeneQcClass("unlabeled feature", "other")
 
+    if upper in {"MT-RNR1", "MT-RNR2"}:
+        return GeneQcClass("mitochondrial rRNA", "mt_dna")
     if upper.startswith("MT-"):
         return GeneQcClass("mitochondrial transcript", "mt_dna")
 
@@ -61,8 +66,6 @@ def classify_gene_qc(symbol: str | None) -> GeneQcClass:
         }
         prefix = next((p for p in label if upper.startswith(p)), "RNA5S")
         return GeneQcClass(label[prefix], "rrna_like")
-    if upper in {"MT-RNR1", "MT-RNR2"}:
-        return GeneQcClass("mitochondrial rRNA", "mt_dna")
     if upper.startswith(("RNR", "MTRNR")):
         return GeneQcClass("rRNA-like", "rrna_like")
 
@@ -116,18 +119,50 @@ def summarize_qc_class_shares(
 
     group_share = _fraction_map(group_tpm)
     class_share = _fraction_map(class_tpm)
+    rrna_pseudogene_fraction = float(
+        sum(
+            val
+            for key, val in class_share.items()
+            if "rRNA pseudogene" in str(key)
+        )
+    )
+    rrna_like_fraction = float(group_share.get("rrna_like", 0.0))
+    mt_dna_fraction = float(group_share.get("mt_dna", 0.0))
+    mitochondrial_rrna_fraction = float(class_share.get("mitochondrial rRNA", 0.0))
+    nuclear_rrna_like_fraction = max(
+        0.0, rrna_like_fraction - rrna_pseudogene_fraction
+    )
     return {
         "total_tpm": float(total),
         "group_tpm": dict(sorted(group_tpm.items())),
         "class_tpm": dict(sorted(class_tpm.items())),
         "group_share": group_share,
         "class_share": class_share,
-        "mt_dna_fraction": float(group_share.get("mt_dna", 0.0)),
-        "rrna_like_fraction": float(group_share.get("rrna_like", 0.0)),
-        "rrna_plus_mt_fraction": float(
-            group_share.get("mt_dna", 0.0) + group_share.get("rrna_like", 0.0)
-        ),
+        "mt_dna_fraction": mt_dna_fraction,
+        "mitochondrial_rrna_fraction": mitochondrial_rrna_fraction,
+        "mt_non_rrna_fraction": max(0.0, mt_dna_fraction - mitochondrial_rrna_fraction),
+        "rrna_like_fraction": rrna_like_fraction,
+        "nuclear_rrna_like_fraction": nuclear_rrna_like_fraction,
+        "rrna_pseudogene_fraction": rrna_pseudogene_fraction,
+        "rrna_plus_mt_fraction": float(mt_dna_fraction + rrna_like_fraction),
     }
+
+
+def technical_rna_component_phrase(summary: Mapping[str, object] | None) -> str:
+    """Human-readable breakdown of mtDNA/rRNA-like TPM burden."""
+
+    if not summary:
+        return ""
+    components = [
+        ("rRNA pseudogene", float(summary.get("rrna_pseudogene_fraction") or 0.0)),
+        ("nuclear rRNA-like", float(summary.get("nuclear_rrna_like_fraction") or 0.0)),
+        ("mitochondrial rRNA", float(summary.get("mitochondrial_rrna_fraction") or 0.0)),
+        ("other mtDNA", float(summary.get("mt_non_rrna_fraction") or 0.0)),
+    ]
+    shown = [(label, frac) for label, frac in components if frac >= 0.005]
+    if not shown:
+        return ""
+    return ", ".join(f"{label} {frac:.0%}" for label, frac in shown)
 
 
 def dominant_class_phrase(dominant: list[dict] | None) -> str:
@@ -152,6 +187,10 @@ def expression_qc_rescue_summary_line(record: dict | None) -> str:
     if not record or not record.get("applied"):
         return ""
     removed = float(record.get("removed_fraction") or 0.0)
+    component_phrase = technical_rna_component_phrase(
+        record.get("qc_class_shares") or {}
+    )
+    component_clause = f" ({component_phrase}; {removed:.0%} removed)" if component_phrase else f" ({removed:.0%} removed)"
     top_removed = record.get("top_removed_genes") or []
     top_clause = ""
     if top_removed:
@@ -167,8 +206,8 @@ def expression_qc_rescue_summary_line(record: dict | None) -> str:
                     top_clause += f", {share:.0%} of raw TPM"
                 top_clause += ")"
     return (
-        "**Expression QC rescue:** raw TPM was dominated by mtDNA/rRNA-like "
-        f"features ({removed:.0%} removed); downstream cancer, target, and "
+        "**Expression QC rescue:** raw TPM was dominated by technical RNA "
+        f"features{component_clause}; downstream cancer, target, and "
         f"pathway calculations use rescued TPM after zeroing those features "
         f"and renormalizing the remaining genes{top_clause}."
     )

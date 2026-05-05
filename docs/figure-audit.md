@@ -25,7 +25,7 @@ should be consolidated. 45 files baseline after QC-plot additions.
 | `sample-sample-summary.png` | One-panel overview — cancer type, purity, top tissues | ✓ keep — the "first glance" frame readers want |
 | `sample-sample-context.png` | Library-prep / preservation / degradation diagnostic axes | ✓ keep — used by step-0 reasoning |
 | `sample-expression-concentration-qc.png` | Dominant-gene + cumulative TPM concentration QC, including semantic classes such as rRNA pseudogene or mtDNA | ✓ keep — explains denominator-distorting artifacts |
-| `sample-qc-reference-mtdna-rrna.png` | Sample mtDNA and rRNA-like fractions against TCGA/HPA reference-column distributions | ✓ keep — shows whether technical RNA burden is out of reference range |
+| `sample-qc-reference-mtdna-rrna.png` | Sample mtDNA, nuclear rRNA-like, and rRNA-pseudogene fractions against TCGA/HPA reference-column distributions | ✓ keep — shows whether technical RNA burden is out of reference range and separates pseudogene dominance from intact rRNA |
 | `sample-qc-reference-technical-rna-burden.png` | Combined mtDNA+rRNA-like fraction against TCGA/HPA reference-column distributions | ✓ keep — one-axis summary of the same QC risk |
 | `sample-degradation-index.png` | Long/short transcript length-pair scatter | ✓ keep — concrete preservation signal |
 | `sample-background-tissues.png` | Top HPA-tissue correlations for the sample | ~ review — overlaps with the narrative "Top tissue matches" in summary.md; consider drop if always redundant |
@@ -138,7 +138,7 @@ any group deserves consolidation.
 | 1 | `sample-sample-summary.png` | One-panel overview — cancer call, purity, top tissues |
 | 2 | `sample-sample-context.png` | Library-prep / preservation / degradation diagnostic axes |
 | 3 | `sample-expression-concentration-qc.png` | Dominant-gene and cumulative TPM concentration QC |
-| 4 | `sample-qc-reference-mtdna-rrna.png` | mtDNA/rRNA-like fractions against reference-column distributions |
+| 4 | `sample-qc-reference-mtdna-rrna.png` | mtDNA, nuclear rRNA-like, and rRNA-pseudogene fractions against reference-column distributions |
 | 5 | `sample-qc-reference-technical-rna-burden.png` | Combined mtDNA+rRNA-like burden against reference-column distributions |
 | 6 | `sample-degradation-index.png` | Long/short transcript length-pair scatter |
 | 7 | `sample-background-tissues.png` | Top HPA-tissue correlations for the sample |
