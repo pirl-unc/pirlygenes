@@ -8,6 +8,9 @@ output directory is available, especially Salmon's ``aux_info`` JSON files.
 from __future__ import annotations
 
 import json
+import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +38,51 @@ def _candidate_salmon_dirs(input_path: str | Path | None) -> list[Path]:
     for candidate in (parent, parent.parent, parent / "salmon-output"):
         if candidate not in out:
             out.append(candidate)
+    return out
+
+
+def _candidate_alignment_qc_paths(
+    input_path: str | Path | None,
+    salmon_dir: Path | None,
+) -> list[Path]:
+    """Return nearby samtools-idxstats style files, if present.
+
+    BAM/CRAM files are intentionally not auto-discovered because running an
+    external tool over a large alignment should be an explicit user choice.
+    """
+
+    dirs: list[Path] = []
+    if input_path is not None:
+        try:
+            start = Path(input_path).expanduser().resolve()
+            parent = start if start.is_dir() else start.parent
+            dirs.extend([parent, parent.parent])
+        except (OSError, RuntimeError):
+            pass
+    if salmon_dir is not None:
+        dirs.extend([salmon_dir, salmon_dir.parent])
+
+    out: list[Path] = []
+    names = (
+        "idxstats.tsv",
+        "idxstats.txt",
+        "samtools.idxstats",
+        "alignment.idxstats",
+        "chromosome-breakdown.tsv",
+        "chromosome_breakdown.tsv",
+    )
+    seen: set[Path] = set()
+    for directory in dirs:
+        if not directory.exists() or directory in seen:
+            continue
+        seen.add(directory)
+        for name in names:
+            candidate = directory / name
+            if candidate.exists() and candidate not in out:
+                out.append(candidate)
+        for candidate in sorted(directory.glob("*idxstats*")):
+            if candidate.is_file() and candidate not in out:
+                out.append(candidate)
     return out
 
 
@@ -136,6 +184,194 @@ def _transcript_stats(
     return None
 
 
+def _alignment_qc_from_path(path: str | Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    try:
+        p = Path(path).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return None
+    if not p.exists():
+        return {
+            "available": False,
+            "path": str(p),
+            "warnings": [f"Alignment QC path not found: {p}"],
+        }
+    if p.suffix.lower() in {".bam", ".cram"}:
+        return _alignment_qc_from_bam(p)
+    try:
+        text = p.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return {
+            "available": False,
+            "path": str(p),
+            "warnings": [f"Could not read alignment QC path {p}: {exc}"],
+        }
+    return _parse_idxstats_text(text, source=str(p))
+
+
+def _alignment_qc_from_bam(path: Path) -> dict[str, Any]:
+    samtools = shutil.which("samtools")
+    if not samtools:
+        return {
+            "available": False,
+            "path": str(path),
+            "warnings": ["samtools is required to read BAM/CRAM alignment QC."],
+        }
+    try:
+        proc = subprocess.run(
+            [samtools, "idxstats", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "available": False,
+            "path": str(path),
+            "warnings": [f"samtools idxstats failed for {path}: {exc}"],
+        }
+    qc = _parse_idxstats_text(proc.stdout, source=str(path))
+    stderr = [line.strip() for line in proc.stderr.splitlines() if line.strip()]
+    if proc.returncode != 0:
+        stderr.insert(0, f"samtools idxstats exited with status {proc.returncode}")
+    if stderr:
+        qc.setdefault("tool_warnings", []).extend(stderr)
+    return qc
+
+
+def _parse_idxstats_text(text: str, *, source: str) -> dict[str, Any]:
+    rows = []
+    star_unmapped = 0
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = re.split(r"\t+|\s+", stripped)
+        if len(parts) < 4:
+            continue
+        contig = parts[0]
+        try:
+            length = int(float(parts[1]))
+            mapped = int(float(parts[2]))
+            unmapped = int(float(parts[3]))
+        except ValueError:
+            continue
+        if contig == "*":
+            star_unmapped += unmapped
+            continue
+        density = mapped / length if length > 0 else 0.0
+        rows.append(
+            {
+                "contig": contig,
+                "length": length,
+                "mapped": mapped,
+                "unmapped": unmapped,
+                "density": density,
+                "category": _contig_qc_category(contig),
+            }
+        )
+
+    if not rows and star_unmapped <= 0:
+        return {
+            "available": False,
+            "path": source,
+            "warnings": ["Alignment QC file did not contain parseable idxstats rows."],
+        }
+
+    total_mapped = sum(int(row["mapped"]) for row in rows)
+    total_unmapped = star_unmapped + sum(int(row["unmapped"]) for row in rows)
+    chr1_density = next(
+        (
+            float(row["density"])
+            for row in rows
+            if str(row["contig"]).lower() == "chr1"
+        ),
+        None,
+    )
+    primary_rows = [row for row in rows if row["category"] == "primary_chromosome"]
+    rdna_rows = [row for row in rows if row["category"] == "rdna_repeat_like"]
+    top_primary = _top_rows(primary_rows, "mapped", 5)
+    top_density = _top_rows(
+        [row for row in rows if int(row["length"]) >= 10_000 and int(row["mapped"]) > 0],
+        "density",
+        8,
+    )
+    top_rdna = _top_rows(rdna_rows, "mapped", 5)
+    rdna_mapped = sum(int(row["mapped"]) for row in rdna_rows)
+    rdna_max_density = max((float(row["density"]) for row in rdna_rows), default=0.0)
+    rdna_density_over_chr1 = (
+        rdna_max_density / chr1_density
+        if chr1_density is not None and chr1_density > 0
+        else None
+    )
+    rdna_fraction = rdna_mapped / total_mapped if total_mapped > 0 else 0.0
+
+    warnings = []
+    if rdna_density_over_chr1 is not None and rdna_density_over_chr1 >= 100.0:
+        warnings.append(
+            "rDNA-like contigs have extreme read density relative to chr1; "
+            "this supports rRNA-repeat carryover or short-fragment repeat mapping."
+        )
+    elif rdna_fraction >= 0.02:
+        warnings.append(
+            "rDNA-like contigs carry a material fraction of aligned reads; "
+            "review rRNA contamination/repeat-mapping effects."
+        )
+    if top_primary and str(top_primary[0]["contig"]).lower() == "chr21" and rdna_rows:
+        warnings.append(
+            "chr21 is the top primary chromosome while rDNA-like repeat contigs are enriched; "
+            "treat this as technical rRNA-repeat evidence, not chromosome-21 biology."
+        )
+
+    return {
+        "available": True,
+        "path": source,
+        "format": "samtools_idxstats",
+        "contig_count": len(rows),
+        "total_mapped": total_mapped,
+        "total_unmapped": total_unmapped,
+        "star_unmapped": star_unmapped,
+        "chr1_density": chr1_density,
+        "rdna_mapped": rdna_mapped,
+        "rdna_fraction_of_mapped": rdna_fraction,
+        "rdna_max_density": rdna_max_density,
+        "rdna_density_over_chr1": rdna_density_over_chr1,
+        "top_primary_contigs": top_primary,
+        "top_density_contigs": top_density,
+        "top_rdna_contigs": top_rdna,
+        "warnings": warnings,
+    }
+
+
+def _contig_qc_category(contig: str) -> str:
+    upper = str(contig or "").upper()
+    if any(token in upper for token in ("GL000220", "KI270733", "RDNA", "RDN", "RNA45S")):
+        return "rdna_repeat_like"
+    if re.fullmatch(r"CHR([0-9]+|X|Y|M|MT)", upper):
+        return "primary_chromosome"
+    if "_RANDOM" in upper or upper.startswith("CHRUN") or "_KI" in upper or "_GL" in upper:
+        return "random_or_unplaced"
+    if upper.startswith("HLA-"):
+        return "hla_decoy"
+    return "other_contig"
+
+
+def _top_rows(rows: list[dict[str, Any]], key: str, n: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "contig": str(row["contig"]),
+            "length": int(row["length"]),
+            "mapped": int(row["mapped"]),
+            "unmapped": int(row["unmapped"]),
+            "density": float(row["density"]),
+            "category": str(row["category"]),
+        }
+        for row in sorted(rows, key=lambda row: (-float(row[key]), str(row["contig"])))[:n]
+    ]
+
+
 def _mapping_comment(mapping_rate: float | None) -> tuple[str, list[str]]:
     if mapping_rate is None:
         return "", []
@@ -200,6 +436,7 @@ def collect_rna_quant_qc(
     *,
     gene_df: pd.DataFrame | None = None,
     transcript_path: str | Path | None = None,
+    alignment_qc_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Collect Salmon run QC and expression-detection breadth.
 
@@ -212,6 +449,19 @@ def collect_rna_quant_qc(
     lib = _read_json(salmon_dir / "lib_format_counts.json") if salmon_dir else {}
     gene_stats = _gene_stats(salmon_dir, gene_df, input_path)
     transcript_stats = _transcript_stats(salmon_dir, transcript_path)
+    alignment_qc = _alignment_qc_from_path(alignment_qc_path)
+    if alignment_qc is None:
+        alignment_qc = next(
+            (
+                qc
+                for qc in (
+                    _alignment_qc_from_path(candidate)
+                    for candidate in _candidate_alignment_qc_paths(input_path, salmon_dir)
+                )
+                if qc and qc.get("available")
+            ),
+            None,
+        )
 
     warnings: list[str] = []
     mapping_rate = meta.get("percent_mapped")
@@ -228,6 +478,12 @@ def collect_rna_quant_qc(
     warnings.extend(gene_sum_warnings)
     tx_sum_comment, tx_sum_warnings = _tpm_sum_comment(transcript_stats, "Transcript")
     warnings.extend(tx_sum_warnings)
+    if alignment_qc:
+        warnings.extend(
+            str(w)
+            for w in alignment_qc.get("warnings", [])
+            if str(w).strip()
+        )
 
     rows: list[dict[str, str]] = []
 
@@ -296,6 +552,8 @@ def collect_rna_quant_qc(
             ),
         )
         add("Transcript TPM sum", f"{transcript_stats['sum_tpm']:,.0f}", tx_sum_comment)
+    if alignment_qc and alignment_qc.get("available"):
+        _add_alignment_qc_rows(add, alignment_qc)
 
     summary_bits = []
     if mapping_rate is not None:
@@ -306,20 +564,99 @@ def collect_rna_quant_qc(
         )
     if gene_stats and abs(float(gene_stats.get("sum_tpm") or 0.0) - 1_000_000.0) <= 10_000.0:
         summary_bits.append("gene TPM sum near 1.0M")
+    if alignment_qc and alignment_qc.get("available"):
+        ratio = _safe_float(alignment_qc.get("rdna_density_over_chr1"))
+        if ratio is not None and ratio >= 10:
+            summary_bits.append(f"rDNA-like contig density {ratio:,.0f}x chr1")
     summary = "; ".join(summary_bits)
 
+    available = bool(
+        meta
+        or lib
+        or gene_stats
+        or transcript_stats
+        or (alignment_qc and alignment_qc.get("available"))
+    )
+    source = (
+        "salmon"
+        if (meta or lib or salmon_dir)
+        else "alignment_qc"
+        if alignment_qc and alignment_qc.get("available")
+        else "expression_table"
+    )
     return {
-        "available": bool(meta or lib or gene_stats or transcript_stats),
-        "source": "salmon" if (meta or lib or salmon_dir) else "expression_table",
+        "available": available,
+        "source": source,
         "salmon_dir": str(salmon_dir) if salmon_dir else None,
         "meta_info": meta,
         "lib_format_counts": lib,
         "gene_detection": gene_stats,
         "transcript_detection": transcript_stats,
+        "alignment_qc": alignment_qc,
         "rows": rows,
         "warnings": warnings,
         "summary": summary,
     }
+
+
+def _add_alignment_qc_rows(add, alignment_qc: dict[str, Any]) -> None:
+    total_mapped = int(alignment_qc.get("total_mapped") or 0)
+    total_unmapped = int(alignment_qc.get("total_unmapped") or 0)
+    contig_count = int(alignment_qc.get("contig_count") or 0)
+    add(
+        "Alignment contigs",
+        f"{contig_count:,}; {_format_count(total_mapped)} mapped; {_format_count(total_unmapped)} unmapped",
+        "Parsed from samtools idxstats-style contig counts.",
+    )
+    top_primary = alignment_qc.get("top_primary_contigs") or []
+    if top_primary:
+        top = top_primary[0]
+        comment = "Top primary-chromosome hit by mapped read count."
+        if str(top.get("contig") or "").lower() == "chr21":
+            comment = (
+                "chr21 is the top primary chromosome; if rDNA repeat contigs are also "
+                "enriched, this supports rRNA-repeat signal rather than chromosome-21 biology."
+            )
+        add(
+            "Top primary chromosome",
+            f"{top.get('contig')} ({_format_count(top.get('mapped'))} mapped)",
+            comment,
+        )
+    rdna_mapped = int(alignment_qc.get("rdna_mapped") or 0)
+    ratio = _safe_float(alignment_qc.get("rdna_density_over_chr1"))
+    if rdna_mapped or ratio is not None:
+        ratio_text = f"; max density {ratio:,.0f}x chr1" if ratio is not None else ""
+        add(
+            "rDNA-like contig burden",
+            f"{_format_count(rdna_mapped)} mapped{ratio_text}",
+            "High density on GL000220/KI270733/rDNA-like contigs is a direct repeat-mapping/rRNA QC signal.",
+        )
+    top_rdna = alignment_qc.get("top_rdna_contigs") or []
+    if top_rdna:
+        bits = []
+        chr1_density = _safe_float(alignment_qc.get("chr1_density"))
+        for row in top_rdna[:3]:
+            density = _safe_float(row.get("density"))
+            ratio_text = ""
+            if density is not None and chr1_density and chr1_density > 0:
+                ratio_text = f", {density / chr1_density:,.0f}x chr1"
+            bits.append(f"{row.get('contig')} {_format_count(row.get('mapped'))}{ratio_text}")
+        add(
+            "Top rDNA-like contigs",
+            "; ".join(bits),
+            "These contigs represent rDNA/repeat-like sequence, not ordinary gene expression.",
+        )
+    tool_warnings = [
+        str(w).strip()
+        for w in alignment_qc.get("tool_warnings", [])
+        if str(w).strip()
+    ]
+    if tool_warnings:
+        add(
+            "Alignment tool warnings",
+            "; ".join(tool_warnings[:2]),
+            "Warnings emitted while collecting contig counts; review the BAM/index if unexpected.",
+        )
 
 
 def _first(value: Any) -> Any:

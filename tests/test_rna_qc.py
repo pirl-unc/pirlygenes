@@ -54,3 +54,33 @@ def test_collect_salmon_qc_from_output_dir(tmp_path):
     md = rna_quant_qc_markdown(qc, heading="## RNA QC")
     assert "Mapping rate" in md
     assert "Gene TPM sum" in md
+
+
+def test_collect_alignment_idxstats_qc_flags_rdna_repeat_density(tmp_path):
+    idxstats = tmp_path / "alignment.idxstats"
+    idxstats.write_text(
+        "\n".join(
+            [
+                "chr1\t100000000\t1000\t0",
+                "chr21\t40000000\t9000\t0",
+                "chr22_KI270733v1_random\t180000\t5400\t0",
+                "chrUn_GL000220v1\t160000\t4400\t0",
+                "*\t0\t0\t881",
+            ]
+        )
+    )
+
+    qc = collect_rna_quant_qc(
+        tmp_path / "quant.gene_tpm.csv",
+        alignment_qc_path=idxstats,
+    )
+
+    assert qc["available"]
+    assert qc["source"] == "alignment_qc"
+    assert qc["alignment_qc"]["rdna_mapped"] == 9800
+    assert qc["alignment_qc"]["rdna_density_over_chr1"] > 1000
+    assert any("rDNA-like contigs" in warning for warning in qc["warnings"])
+    assert any("chr21 is the top primary chromosome" in warning for warning in qc["warnings"])
+    md = rna_quant_qc_markdown(qc, heading="## RNA QC")
+    assert "rDNA-like contig burden" in md
+    assert "Top rDNA-like contigs" in md

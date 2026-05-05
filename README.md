@@ -62,6 +62,9 @@ pirlygenes analyze gene_expression.tsv --decomposition-templates "solid_primary,
 # Force-label specific genes in plots
 pirlygenes analyze gene_expression.tsv --cancer-type PRAD --label-genes "FOLH1,STEAP1,CD276"
 
+# Add optional contig-level alignment QC from samtools idxstats or BAM/CRAM
+pirlygenes analyze gene_expression.tsv --alignment-qc sample.idxstats
+
 # List all bundled datasets and cancer types
 pirlygenes data
 

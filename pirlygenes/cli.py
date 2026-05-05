@@ -1563,6 +1563,7 @@ def analyze(
     hla_types: Optional[str] = None,
     fusions: Optional[str] = None,
     alterations: Optional[str] = None,
+    alignment_qc: Optional[str] = None,
     expression_qc_rescue: str = "auto",
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
@@ -1604,6 +1605,7 @@ def analyze(
         hla_types=hla_types,
         fusions=fusions,
         alterations=alterations,
+        alignment_qc=alignment_qc,
         expression_qc_rescue=expression_qc_rescue,
         therapy_target_top_k=therapy_target_top_k,
         therapy_target_tpm_threshold=therapy_target_tpm_threshold,
@@ -1762,6 +1764,7 @@ def _analyze_body(run: AnalyzeRun):
         input_path,
         gene_df=df_expr_raw,
         transcript_path=transcript_path,
+        alignment_qc_path=config.alignment_qc,
     )
     if rna_quant_qc.get("available"):
         if rna_quant_qc.get("summary"):
