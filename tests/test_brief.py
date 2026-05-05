@@ -132,6 +132,33 @@ def test_brief_is_compact():
     assert "Top candidate therapies" in md
 
 
+def test_summary_surfaces_rna_qc_and_prad_stromal_pitfall():
+    analysis = _make_analysis()
+    analysis["cancer_call_rescue"] = {
+        "kind": "low_purity_prad_stromal_context",
+        "message": "Prostate context with stromal SARC pitfall.",
+    }
+    analysis["rna_quant_qc"] = {
+        "available": True,
+        "summary": "Salmon mapping 33.5%; 12,612/35,037 genes >=1 TPM",
+        "warnings": [
+            "Salmon mapping rate is low (33.5%). Interpret RNA-derived calls cautiously."
+        ],
+    }
+
+    md = build_summary(
+        analysis,
+        _make_ranges_df(),
+        cancer_code="PRAD",
+        disease_state="",
+        sample_id="sample_X",
+    )
+
+    assert "**RNA quant QC:** Salmon mapping 33.5%" in md
+    assert "**QC/call pitfall:** prostate tissue/context is present" in md
+    assert "RNA-inferred PRAD context rescue" in md
+
+
 def test_summary_marks_supplied_cancer_type_basis():
     analysis = _make_analysis()
     analysis["analysis_constraints"] = {"cancer_type": "PRAD"}

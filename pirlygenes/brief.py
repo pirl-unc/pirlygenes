@@ -63,6 +63,7 @@ from .reporting import (
 )
 from .confidence import concise_confidence_reasons
 from .analyze import cancer_type_context_from_analysis, cancer_type_context_label
+from .rna_qc import rna_quant_qc_summary_line
 from .sample_context import library_prep_clause, library_prep_display_label
 
 logger = logging.getLogger(__name__)
@@ -963,6 +964,9 @@ def _caveats_from_purity_tier(
     scale_qc = (analysis or {}).get("expression_scale_qc") or {}
     if scale_qc.get("warnings"):
         out.append("Expression scale QC: " + str(scale_qc["warnings"][0]) + ".")
+    rna_qc = (analysis or {}).get("rna_quant_qc") or {}
+    if rna_qc.get("warnings"):
+        out.append("RNA quantification QC: " + str(rna_qc["warnings"][0]))
     return out
 
 
@@ -1004,6 +1008,16 @@ def _cancer_type_basis_line(analysis, cancer_code: str) -> str:
             f"**Cancer-type basis:** RNA-inferred rare-cancer hypothesis from "
             f"{surrogate}{tpm_clause} sets a provisional report label; confirm "
             f"with {confirm} or clinical diagnosis before using the therapy shortlist."
+        )
+    call_rescue = analysis.get("cancer_call_rescue") or {}
+    if call_rescue and not constrained_code and source != "user-specified":
+        return (
+            "**Cancer-type basis:** RNA-inferred PRAD context rescue: prostate "
+            "tissue/marker evidence and raw PRAD signature are present, while the "
+            "epithelial PRAD lineage program is attenuated and a stromal/"
+            "smooth-muscle SARC signal dominates. Confirm pathology, tumor "
+            "cellularity, preservation/RIN, and treatment state before using the "
+            "therapy shortlist."
         )
     if constrained_code or source == "user-specified":
         supplied = report_context_code or constrained_code or str(cancer_code or "").strip()
@@ -1633,6 +1647,15 @@ def build_summary(
             f"**Purity:** {overall:.0%} (model interval {lower:.0%}–{upper:.0%}, "
             f"{tier_label} confidence)."
         )
+    call_rescue = analysis.get("cancer_call_rescue") or {}
+    if call_rescue:
+        lines.append(
+            "**QC/call pitfall:** prostate tissue/context is present, but the "
+            "PRAD epithelial lineage program is attenuated and stromal/"
+            "smooth-muscle RNA can mimic SARC; check tumor cellularity, "
+            "preservation/RIN, and treatment state before trusting an "
+            "expression-only sarcoma call."
+        )
 
     # Disease state
     disease_state_display = report_disease_state_text(disease_state, analysis=analysis)
@@ -1657,6 +1680,9 @@ def build_summary(
             f"**Sample:** {prep_label}; preservation inferred as {pres_label} "
             f"from RNA QC (confidence {pres_conf:.0%})."
         )
+    rna_qc_line = rna_quant_qc_summary_line(analysis.get("rna_quant_qc"))
+    if rna_qc_line:
+        lines.append(rna_qc_line)
     scale_qc = analysis.get("expression_scale_qc") or {}
     if scale_qc.get("converted_from") == "log2_tpm_plus_one":
         post_sum = scale_qc.get("post_conversion_sum_tpm") or scale_qc.get("sum_tpm")
@@ -1811,6 +1837,9 @@ def build_actionable(
             f"Input: **{prep_label}**, **{pres_label}** "
             "preservation. " + _preservation_clinical_clause(sample_context)
         )
+    rna_qc_line = rna_quant_qc_summary_line(analysis.get("rna_quant_qc"))
+    if rna_qc_line:
+        lines.append("\n" + rna_qc_line)
 
     overall = purity.get("overall_estimate")
     lower = purity.get("overall_lower")
@@ -1836,6 +1865,13 @@ def build_actionable(
     call_suffix = _call_confidence_suffix(call_tier, concise=True)
     call_punctuation = call_suffix or "."
     lines.append(f"Working call: **{cancer_code}** ({cancer_name}){call_punctuation}")
+    if analysis.get("cancer_call_rescue"):
+        lines.append(
+            "\nQC/call pitfall: prostate tissue/context is present, but the "
+            "PRAD epithelial lineage program is attenuated and stromal/"
+            "smooth-muscle RNA can mimic SARC. Treat a standalone sarcoma call "
+            "as unsupported unless pathology agrees."
+        )
     basis_line = _cancer_type_basis_line(analysis, cancer_code)
     rna_crosscheck = _rna_crosscheck_line(analysis, cancer_code)
     if basis_line:

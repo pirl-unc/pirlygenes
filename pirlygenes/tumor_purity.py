@@ -2360,6 +2360,169 @@ def _promote_same_family_alternatives(rows):
     return [rows[0]] + same_family + other_rows
 
 
+_PRAD_CONTEXT_MARKERS = (
+    "KLK2",
+    "KLK3",
+    "ACP3",
+    "ACPP",
+    "KLK4",
+    "FOXA1",
+    "NKX3-1",
+    "HOXB13",
+    "MSMB",
+)
+
+
+def _detect_low_purity_prad_stromal_pitfall(
+    rows,
+    sample_tpm_by_symbol,
+    *,
+    host_tissue_details=None,
+):
+    """Detect prostate-context samples where stroma can masquerade as SARC.
+
+    This is intentionally narrow: it only fires when PRAD has the strongest raw
+    cancer signature and explicit prostate tissue/marker evidence, while the
+    broad SARC call is being driven by a mesenchymal or smooth-muscle lineage
+    panel and PRAD lineage detection is attenuated.
+    """
+
+    by_code = {str(row.get("code") or ""): row for row in rows}
+    sarc = by_code.get("SARC")
+    prad = by_code.get("PRAD")
+    if not sarc or not prad:
+        return None
+
+    top_code = str(rows[0].get("code") or "") if rows else ""
+    if top_code != "SARC":
+        return None
+
+    prad_sig = float(prad.get("signature_score") or 0.0)
+    sarc_sig = float(sarc.get("signature_score") or 0.0)
+    if prad_sig < 0.70 or prad_sig < sarc_sig * 1.10:
+        return None
+
+    prad_lineage = float(prad.get("lineage_purity") or 0.0)
+    prad_detect = float(prad.get("lineage_detection_fraction") or 0.0)
+    sarc_detect = float(sarc.get("lineage_detection_fraction") or 0.0)
+    if not (prad_lineage <= 0.20 or prad_detect <= 0.35):
+        return None
+    if sarc_detect < 0.75:
+        return None
+
+    if host_tissue_details is None:
+        host_tissue_details = _score_host_tissue_details(
+            sample_tpm_by_symbol,
+            top_n=5,
+        )
+    prostate_row = next(
+        (
+            row
+            for row in host_tissue_details or []
+            if str(row.get("tissue") or "") == "prostate"
+        ),
+        None,
+    )
+    prostate_score = float((prostate_row or {}).get("score") or 0.0)
+    if prostate_score < 0.85:
+        return None
+
+    marker_values = {
+        marker: float(sample_tpm_by_symbol.get(marker, 0.0) or 0.0)
+        for marker in _PRAD_CONTEXT_MARKERS
+    }
+    marker_count = sum(1 for value in marker_values.values() if value >= 2.0)
+    canonical_count = sum(
+        1
+        for marker in ("KLK2", "KLK3", "ACP3", "ACPP", "KLK4", "FOXA1")
+        if marker_values.get(marker, 0.0) >= 2.0
+    )
+    if marker_count < 4 or canonical_count < 4:
+        return None
+
+    winning_subtype = str(sarc.get("winning_subtype") or "")
+    subtype_label = {
+        "SARC_LMS": "leiomyosarcoma-like",
+        "SARC_SYN": "synovial-sarcoma-like",
+        "SARC_UPS": "undifferentiated-pleomorphic-sarcoma-like",
+    }.get(winning_subtype, winning_subtype.replace("_", " ").strip())
+    subtype_clause = (
+        f"; SARC subtype signal was {subtype_label}"
+        if subtype_label
+        else ""
+    )
+    return {
+        "kind": "low_purity_prad_stromal_context",
+        "recommended_code": "PRAD",
+        "competing_code": "SARC",
+        "message": (
+            "Prostate tissue/context is strong and PRAD has the strongest raw "
+            "signature, but the epithelial PRAD lineage panel is attenuated while "
+            "a mesenchymal/smooth-muscle SARC panel is dominant"
+            f"{subtype_clause}."
+        ),
+        "prostate_background_score": prostate_score,
+        "prostate_marker_tpm": {
+            marker: round(value, 3)
+            for marker, value in marker_values.items()
+            if value >= 2.0
+        },
+        "prad_signature_score": prad_sig,
+        "sarc_signature_score": sarc_sig,
+        "prad_lineage_purity": prad_lineage,
+        "prad_lineage_detection_fraction": prad_detect,
+        "sarc_lineage_detection_fraction": sarc_detect,
+        "interpretation": (
+            "Treat the SARC/smooth-muscle signal as a stromal-admixture pitfall "
+            "unless pathology independently supports sarcoma. Confirm tumor "
+            "cellularity, preservation/RIN, therapy state, and prostate lineage "
+            "markers before using expression-derived therapy context."
+        ),
+    }
+
+
+def _apply_prad_stromal_rescue(rows, sample_tpm_by_symbol):
+    """Promote PRAD over SARC in the narrow stromal-prostate pitfall."""
+
+    if not rows:
+        return rows
+    host_tissue_details = _score_host_tissue_details(sample_tpm_by_symbol, top_n=5)
+    pitfall = _detect_low_purity_prad_stromal_pitfall(
+        rows,
+        sample_tpm_by_symbol,
+        host_tissue_details=host_tissue_details,
+    )
+    if not pitfall:
+        return rows
+
+    max_support = max((float(row.get("support_score") or 0.0) for row in rows), default=0.0)
+    if max_support <= 0:
+        return rows
+
+    for idx, row in enumerate(rows, start=1):
+        row.setdefault("pre_rescue_rank", idx)
+        row.setdefault("pre_rescue_support_score", row.get("support_score"))
+        row.setdefault("pre_rescue_support_geomean", row.get("support_geomean"))
+    for row in rows:
+        if row.get("code") != "PRAD":
+            continue
+        row["support_override"] = pitfall
+        row["support_score"] = max(float(row.get("support_score") or 0.0), max_support * 1.05)
+        row["support_geomean"] = (
+            float(row["support_score"] ** 0.2) if row["support_score"] > 0 else 0.0
+        )
+        break
+
+    rows.sort(
+        key=lambda row: (
+            -row["support_score"],
+            -row["signature_score"],
+            row["code"],
+        )
+    )
+    return rows
+
+
 def rank_cancer_type_candidates(
     df_gene_expr,
     candidate_codes=None,
@@ -2382,6 +2545,7 @@ def rank_cancer_type_candidates(
     stats = _compute_cancer_type_signature_stats(df_gene_expr)
     signature_score_map = {row["code"]: float(row["score"]) for row in stats}
     sample_tpm = _build_sample_tpm_by_symbol(df_gene_expr)
+    unconstrained = candidate_codes is None
     family_scores = _score_cancer_family_panels(sample_tpm)
     family_params = TUMOR_PURITY_PARAMETERS["family_scoring"]
     soft_families = set(family_params.get("non_penalizing_families", []))
@@ -2415,7 +2579,7 @@ def rank_cancer_type_candidates(
         key=lambda item: (-item[1], item[0]),
     )
 
-    if candidate_codes is None:
+    if unconstrained:
         candidate_codes = [row["code"] for row in stats[:8]]
         for family, score in ranked_families[: family_params["candidate_panel_top_n"]]:
             if score < family_params["candidate_panel_min_score"]:
@@ -2618,6 +2782,8 @@ def rank_cancer_type_candidates(
             row["code"],
         )
     )
+    if unconstrained:
+        rows = _apply_prad_stromal_rescue(rows, sample_tpm)
     rows = _promote_same_family_alternatives(rows)
 
     max_support = max((row["support_score"] for row in rows), default=0.0)
@@ -2772,6 +2938,9 @@ def analyze_sample(df_gene_expr, cancer_type=None):
     candidate_lookup = {row["code"]: row for row in candidate_trace}
     selected_candidate = candidate_lookup.get(cancer_code)
     cancer_score = selected_candidate["support_score"] if selected_candidate else None
+    cancer_call_rescue = (
+        selected_candidate.get("support_override") if selected_candidate else None
+    )
     family_summary = _summarize_candidate_family(candidate_trace)
     fit_quality = _summarize_fit_quality(candidate_trace, stats)
 
@@ -2813,6 +2982,7 @@ def analyze_sample(df_gene_expr, cancer_type=None):
         "top_cancer_geomean": top_cancer_geomean,
         "signature_top_cancers": signature_top_cancers,
         "candidate_trace": candidate_trace,
+        "cancer_call_rescue": cancer_call_rescue,
         "family_summary": family_summary,
         "fit_quality": fit_quality,
         "purity": purity,

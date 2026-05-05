@@ -213,6 +213,14 @@ def compute_call_confidence(analysis) -> ConfidenceTier:
     """
     reasons: List[str] = []
     tier = "high"
+    call_rescue = analysis.get("cancer_call_rescue") or {}
+    if call_rescue:
+        tier = "moderate"
+        message = str(call_rescue.get("message") or "").strip()
+        if message:
+            reasons.append(message)
+        else:
+            reasons.append("call depends on a documented classifier pitfall rule")
 
     candidate_trace = analysis.get("candidate_trace") or []
     if not candidate_trace:

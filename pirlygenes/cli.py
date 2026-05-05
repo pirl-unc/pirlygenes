@@ -88,6 +88,7 @@ from .sample_context import (
     plot_sample_context,
 )
 from .sample_quality import assess_sample_quality
+from .rna_qc import collect_rna_quant_qc, rna_quant_qc_markdown
 from .therapy_response import infer_mapk_activity_sources, score_therapy_signatures
 from .format import (
     render_fold,
@@ -1743,6 +1744,26 @@ def _analyze_body(run: AnalyzeRun):
     expression_scale_qc = dict(df_expr.attrs.get("expression_scale_qc") or {})
     for warning in expression_scale_qc.get("warnings") or []:
         print(f"[load] Expression scale QC: {warning}")
+    rna_quant_qc = collect_rna_quant_qc(
+        input_path,
+        gene_df=df_expr,
+        transcript_path=transcript_path,
+    )
+    if rna_quant_qc.get("available"):
+        if rna_quant_qc.get("summary"):
+            print(f"[rna-qc] {rna_quant_qc['summary']}")
+        for warning in rna_quant_qc.get("warnings") or []:
+            print(f"[rna-qc WARNING] {warning}")
+        run.note_step(
+            "rna_quant_qc",
+            status="warning" if rna_quant_qc.get("warnings") else "completed",
+            outputs={
+                "source": rna_quant_qc.get("source"),
+                "summary": rna_quant_qc.get("summary"),
+                "warnings": len(rna_quant_qc.get("warnings") or []),
+            },
+            warnings=list(rna_quant_qc.get("warnings") or []),
+        )
 
     # Step 1 of the unified attribution flow: infer SampleContext BEFORE
     # cancer-type inference. Downstream steps (purity CIs, decomposition,
@@ -1867,6 +1888,7 @@ def _analyze_body(run: AnalyzeRun):
     analysis["alteration_inputs_supplied"] = bool(alteration_inputs)
     analysis["alteration_inputs"] = list(alteration_inputs)
     analysis["expression_scale_qc"] = expression_scale_qc
+    analysis["rna_quant_qc"] = rna_quant_qc
     analysis["fusion_records"] = [
         record.public_dict() if hasattr(record, "public_dict") else dict(record)
         for record in fusion_records
@@ -2028,6 +2050,9 @@ def _analyze_body(run: AnalyzeRun):
             "reference_cancer_type": reference_cancer_code,
             "cancer_type_context": analysis["cancer_type_context"],
             "cancer_type_source": analysis["cancer_type_source"],
+            "cancer_call_rescue": (analysis.get("cancer_call_rescue") or {}).get(
+                "kind"
+            ),
             "sample_mode": analysis["sample_mode"],
             "purity": {
                 "overall_estimate": purity.get("overall_estimate"),
@@ -4285,6 +4310,25 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
     )
     best_decomp = decomp_results[0] if decomp_results else None
     bullets = []
+    call_rescue = analysis.get("cancer_call_rescue") or {}
+    if call_rescue:
+        markers = call_rescue.get("prostate_marker_tpm") or {}
+        marker_clause = ""
+        if markers:
+            top_markers = sorted(
+                markers.items(),
+                key=lambda item: (-float(item[1]), item[0]),
+            )[:5]
+            marker_clause = "; prostate markers " + ", ".join(
+                f"{gene} {value:g} TPM" for gene, value in top_markers
+            )
+        bullets.append(
+            "- **QC/call pitfall**: "
+            + str(call_rescue.get("message") or "").rstrip(".")
+            + marker_clause
+            + ". "
+            + str(call_rescue.get("interpretation") or "")
+        )
 
     if candidate_trace:
         best = candidate_trace[0]
@@ -4298,9 +4342,15 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
                 "report label"
             )
         else:
-            sentence = (
-                f"- **Classifier line**: {_cancer_label(best['code'])} is the leading label"
-            )
+            if best.get("support_override"):
+                sentence = (
+                    f"- **Classifier line**: {_cancer_label(best['code'])} is the "
+                    "leading label after pitfall-aware rescue"
+                )
+            else:
+                sentence = (
+                    f"- **Classifier line**: {_cancer_label(best['code'])} is the leading label"
+                )
         if runner is not None:
             runner_norm = float(runner.get("support_norm", 0.0) or 0.0)
             if runner_norm > 0:
@@ -4848,6 +4898,13 @@ def _build_evidence_report(
     lines.append("## Stepwise attribution chain\n")
     lines.append(provenance_body)
     lines.append("")
+    rna_qc_body = rna_quant_qc_markdown(
+        analysis.get("rna_quant_qc"),
+        heading="## RNA quantification QC",
+    )
+    if rna_qc_body:
+        lines.append(rna_qc_body)
+        lines.append("")
     fusion_body = _fusion_evidence_markdown(analysis)
     if fusion_body:
         lines.append(fusion_body)
@@ -4952,6 +5009,12 @@ def _generate_text_reports(
         )
     elif scale_qc.get("warnings"):
         lines.append(f"- **Expression scale QC**: {scale_qc['warnings'][0]}.")
+    rna_qc = analysis.get("rna_quant_qc") or {}
+    if rna_qc.get("summary"):
+        warning_clause = ""
+        if rna_qc.get("warnings"):
+            warning_clause = f"; caution: {str(rna_qc['warnings'][0]).rstrip('.')}"
+        lines.append(f"- **RNA quantification QC**: {rna_qc['summary']}{warning_clause}.")
     if call_summary.get("label_options"):
         if len(call_summary["label_options"]) == 1:
             lines.append(
@@ -5082,6 +5145,13 @@ def _generate_text_reports(
                 f"max {scale_qc.get('max_tpm', 0.0):.1f}; "
                 f"housekeeping median {scale_qc.get('housekeeping_median_tpm', 0.0):.1f}."
             )
+        rna_qc_body = rna_quant_qc_markdown(
+            analysis.get("rna_quant_qc"),
+            heading="### Run-level quantifier QC",
+        )
+        if rna_qc_body:
+            lines.append("")
+            lines.append(rna_qc_body)
         n_det = ctx_signals.get("genes_detected_above_1_tpm")
         if n_det is not None:
             lines.append(
@@ -5336,6 +5406,15 @@ def _generate_text_reports(
                 f"{row.get('purity_estimate', 0.0):.3f} | "
                 f"{'%.3f' % lineage if lineage is not None else '—'} | "
                 f"{'%.3f' % concordance if concordance is not None else '—'} |"
+            )
+        if any(row.get("support_override") for row in candidate_trace[:8]):
+            lines.append("")
+            lines.append(
+                "*Pitfall-aware ranking note*: the PRAD row was promoted above the "
+                "stromal/SARC row because prostate tissue markers and the raw PRAD "
+                "signature were strong while the epithelial PRAD lineage program was "
+                "attenuated. The SARC row remains visible as a near-tied stromal/"
+                "smooth-muscle alternative, not as a resolved diagnosis."
             )
         lines.append("")
 
