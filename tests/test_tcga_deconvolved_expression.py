@@ -79,6 +79,73 @@ def test_present_deconv_csv_adds_tcga_columns(monkeypatch):
     assert pd.isna(erbb2["tcga_PRAD"])
 
 
+def test_technical_rna_reference_normalization_is_opt_in_and_preserves_nans(monkeypatch):
+    base = pd.DataFrame(
+        [
+            {
+                "Ensembl_Gene_ID": "ENSG_RRNA",
+                "Symbol": "RNA5SP389",
+                "nTPM_prostate": 10.0,
+                "FPKM_PRAD": 10.0,
+            },
+            {
+                "Ensembl_Gene_ID": "ENSG_KLK3",
+                "Symbol": "KLK3",
+                "nTPM_prostate": 90.0,
+                "FPKM_PRAD": 90.0,
+            },
+            {
+                "Ensembl_Gene_ID": "ENSG_ERBB2",
+                "Symbol": "ERBB2",
+                "nTPM_prostate": 5.0,
+                "FPKM_PRAD": 5.0,
+            },
+        ]
+    )
+    deconv = pd.DataFrame(
+        [
+            {
+                "symbol": "RNA5SP389",
+                "cancer_code": "PRAD",
+                "tumor_tpm_median": 10.0,
+                "tumor_tpm_q1": 5.0,
+                "tumor_tpm_q3": 15.0,
+                "n_samples": 3,
+            },
+            {
+                "symbol": "KLK3",
+                "cancer_code": "PRAD",
+                "tumor_tpm_median": 90.0,
+                "tumor_tpm_q1": 45.0,
+                "tumor_tpm_q3": 135.0,
+                "n_samples": 3,
+            },
+            {
+                "symbol": "ERBB2",
+                "cancer_code": "BRCA",
+                "tumor_tpm_median": 150.0,
+                "tumor_tpm_q1": 80.0,
+                "tumor_tpm_q3": 220.0,
+                "n_samples": 3,
+            },
+        ]
+    )
+
+    monkeypatch.setattr(gsc, "get_data", lambda name: base.copy())
+    monkeypatch.setattr(gsc, "tcga_deconvolved_expression", lambda: deconv)
+
+    raw = gsc.pan_cancer_expression()
+    assert raw.loc[raw["Symbol"] == "RNA5SP389", "FPKM_PRAD"].iloc[0] == 10.0
+    assert raw.loc[raw["Symbol"] == "RNA5SP389", "tcga_PRAD"].iloc[0] == 10.0
+
+    normalized = gsc.pan_cancer_expression(technical_rna_normalize=True)
+    assert normalized.loc[normalized["Symbol"] == "RNA5SP389", "FPKM_PRAD"].iloc[0] == 0.0
+    assert normalized.loc[normalized["Symbol"] == "KLK3", "FPKM_PRAD"].iloc[0] == pytest.approx(90.0 * 105.0 / 95.0)
+    assert normalized.loc[normalized["Symbol"] == "RNA5SP389", "tcga_PRAD"].iloc[0] == 0.0
+    assert normalized.loc[normalized["Symbol"] == "KLK3", "tcga_PRAD"].iloc[0] == pytest.approx(100.0)
+    assert pd.isna(normalized.loc[normalized["Symbol"] == "ERBB2", "tcga_PRAD"].iloc[0])
+
+
 def test_tcga_columns_participate_in_percentile_normalize(monkeypatch):
     """Percentile normalize must treat tcga_ columns the same as FPKM_."""
     synthetic = pd.DataFrame(

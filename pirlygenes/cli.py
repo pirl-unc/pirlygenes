@@ -42,6 +42,8 @@ from .gene_sets_cancer import (
     therapy_target_gene_id_to_name,
     pMHC_TCE_target_gene_id_to_name,
     surface_TCE_target_gene_id_to_name,
+    cancer_biomarker_genes,
+    cancer_therapy_targets,
     cancer_types,
     cancer_type_gene_sets,
 )
@@ -2763,10 +2765,38 @@ def _analyze_body(run: AnalyzeRun):
     tissue_png_manifest = (
         "%s-target-tissues.png" % prefix if prefix else "target-tissues.png"
     )
+    curated_target_symbols = set(forced_labels or [])
+    try:
+        panel_code_for_tissues, panel_subtype_for_tissues = (
+            cancer_key_genes_lookup_for_analysis(effective_cancer_type, analysis)
+        )
+        target_panel_for_tissues = (
+            cancer_therapy_targets(
+                panel_code_for_tissues, subtype=panel_subtype_for_tissues
+            )
+            if panel_subtype_for_tissues
+            else cancer_therapy_targets(panel_code_for_tissues)
+        )
+        if target_panel_for_tissues is not None and not target_panel_for_tissues.empty:
+            curated_target_symbols.update(
+                str(sym).strip()
+                for sym in target_panel_for_tissues.get("symbol", [])
+                if str(sym).strip()
+            )
+        curated_target_symbols.update(
+            cancer_biomarker_genes(
+                panel_code_for_tissues, subtype=panel_subtype_for_tissues
+            )
+            if panel_subtype_for_tissues
+            else cancer_biomarker_genes(panel_code_for_tissues)
+        )
+    except Exception:
+        pass
     plot_therapy_target_tissues(
         df_expr,
         top_k=therapy_target_top_k,
         tpm_threshold=therapy_target_tpm_threshold,
+        extra_symbols=curated_target_symbols,
         save_to_filename=tissue_pdf,
         save_dpi=output_dpi,
     )
@@ -2774,6 +2804,7 @@ def _analyze_body(run: AnalyzeRun):
         df_expr,
         top_k=therapy_target_top_k,
         tpm_threshold=therapy_target_tpm_threshold,
+        extra_symbols=curated_target_symbols,
         save_to_filename=tissue_png_manifest,
         save_dpi=output_dpi,
     )
@@ -2784,6 +2815,7 @@ def _analyze_body(run: AnalyzeRun):
         df_expr,
         top_k=therapy_target_top_k,
         tpm_threshold=therapy_target_tpm_threshold,
+        extra_symbols=curated_target_symbols,
         save_to_filename=safety_png,
         save_dpi=output_dpi,
     )
@@ -3088,10 +3120,7 @@ def _analyze_body(run: AnalyzeRun):
         priority_targets_png = None
         priority_target_context_png = None
         try:
-            from .gene_sets_cancer import (
-                cancer_key_genes_cancer_types,
-                cancer_therapy_targets,
-            )
+            from .gene_sets_cancer import cancer_key_genes_cancer_types
 
             panel_code, panel_subtype = cancer_key_genes_lookup_for_analysis(
                 report_cancer_type,
@@ -3121,7 +3150,7 @@ def _analyze_body(run: AnalyzeRun):
                             ranges_df=ranges_df,
                             save_to_filename=targets_deep_png,
                             save_dpi=output_dpi,
-                            title=f"Actionable Targets — {panel_code}",
+                            title=f"Actionable expression screen — {panel_code}",
                         )
                         if fig is not None:
                             print(
@@ -3753,7 +3782,8 @@ Sample analyzed as **{cancer_code}** ({cancer_name}).
 Raw QC figures use the original expression table. Downstream biology uses
 technical-RNA-normalized TPM by default: mtDNA, rRNA-like, and
 rRNA-pseudogene rows are zeroed and the remaining TPM is renormalized in
-both the input sample and bundled reference columns.
+the input sample. Bundled reference matrices remain raw unless a specific
+caller explicitly requests technical-RNA-normalized references.
 
 ## Reports
 
@@ -5251,11 +5281,6 @@ def _generate_text_reports(
         # ``analyze()`` along with the rest of the analysis dict.
         lines.append(f"*Input*: `{input_path}`\n")
 
-    # Disease-state synthesis (#78) — rendered at the top so a reader
-    # sees the clinical framing before descending into pipeline detail.
-    if disease_state_display:
-        lines.append(f"**Disease state**: {disease_state_display}\n")
-
     lines.append("## Sample framing\n")
     if sample_context is not None:
         prep_clause = library_prep_clause(sample_context.library_prep)
@@ -5330,6 +5355,15 @@ def _generate_text_reports(
             f"- **Note**: {_strip_terminal_punctuation(call_summary['site_note'])}."
         )
     lines.append("")
+
+    if disease_state_display:
+        disease_state_markdown = str(disease_state_display).replace(
+            " **Active IFN response**",
+            "\n\n**Active IFN response**",
+        )
+        lines.append("## Disease and pathway state\n")
+        lines.append(disease_state_markdown)
+        lines.append("")
 
     integrated_bullets = _integrated_evidence_bullets(
         analysis,
@@ -6590,6 +6624,18 @@ def _build_target_report(
                 "the clinical-development tier. Treatment-path context flags "
                 "standard options, later-line requirements, trial follow-ups, "
                 "and possible current/prior therapy exposure.\n"
+            )
+            lines.append(
+                "The broader **actionable expression** figures are discovery "
+                "screens: they include surface/ADC/bispecific/radioligand/TCR "
+                "targets with expression signal even when the agent is generic, "
+                "approved only in another indication, or not disease-matched. "
+                "The **priority** list is intentionally narrower: it ranks the "
+                "curated cancer-specific therapy landscape by indication fit, "
+                "required alteration or HLA gates, clinical maturity, and "
+                "tumor-source attribution. A target such as HER3/ERBB3 or "
+                "ADAM9 can therefore appear in the expression screen without "
+                "being a priority recommendation for this sample.\n"
             )
             targets_df = (
                 cancer_therapy_targets(panel_code, subtype=panel_subtype)

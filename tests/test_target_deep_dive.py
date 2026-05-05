@@ -76,6 +76,59 @@ def test_plot_actionable_targets_without_purity(tmp_path):
     assert fig is not None
 
 
+def test_plot_actionable_targets_offsets_observed_and_adjusted_markers():
+    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    gid = ref.loc["FOLH1", "Ensembl_Gene_ID"]
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": [gid],
+            "gene_symbol": ["FOLH1"],
+            "TPM": [40.0],
+        }
+    )
+    ranges = pd.DataFrame(
+        [
+            {
+                "symbol": "FOLH1",
+                "observed_tpm": 40.0,
+                "attr_tumor_tpm": 20.0,
+                "attr_tumor_tpm_low": 15.0,
+                "attr_tumor_tpm_high": 25.0,
+                "attr_tumor_fraction": 0.5,
+            }
+        ]
+    )
+
+    fig = plot_actionable_targets(
+        df,
+        "PRAD",
+        purity_estimate=0.20,
+        custom_genes=["FOLH1"],
+        ranges_df=ranges,
+    )
+
+    ax = fig.axes[0]
+    scatter_offsets = [
+        collection.get_offsets()
+        for collection in ax.collections
+        if hasattr(collection, "get_offsets") and len(collection.get_offsets()) > 0
+    ]
+    y_values = {
+        round(float(offset[1]), 2)
+        for offsets in scatter_offsets
+        for offset in offsets
+        if len(offset) == 2
+    }
+    x_values = {
+        round(float(offset[0]), 1)
+        for offsets in scatter_offsets
+        for offset in offsets
+        if len(offset) == 2
+    }
+    assert {-0.11, 0.11}.issubset(y_values)
+    assert {40.0, 100.0}.issubset(x_values)
+
+
 # ── plot_tumor_attribution ───────────────────────────────────────────────
 
 

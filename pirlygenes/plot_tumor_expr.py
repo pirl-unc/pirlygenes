@@ -2206,7 +2206,7 @@ def plot_tumor_expression_ranges(
     fig.suptitle(
         f"Tumor-cell-equivalent expression \u2014 {cancer_code}\n"
         f"Purity: {p_lo:.0%} / {p_med:.0%} / {p_hi:.0%} (low / est / high)\n"
-        "Modeled non-tumor signal is subtracted before purity normalization.",
+        "Context-adjusted per-cell range; source-attributed bulk TPM is in tables.",
         fontsize=10,
         fontweight="bold",
         y=1.04,

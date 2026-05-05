@@ -270,6 +270,7 @@ def _parse_idxstats_text(text: str, *, source: str) -> dict[str, Any]:
                 "unmapped": unmapped,
                 "density": density,
                 "category": _contig_qc_category(contig),
+                "normalized_contig": _normalize_contig_name(contig),
             }
         )
 
@@ -286,7 +287,7 @@ def _parse_idxstats_text(text: str, *, source: str) -> dict[str, Any]:
         (
             float(row["density"])
             for row in rows
-            if str(row["contig"]).lower() == "chr1"
+            if str(row.get("normalized_contig")).lower() == "chr1"
         ),
         None,
     )
@@ -319,7 +320,11 @@ def _parse_idxstats_text(text: str, *, source: str) -> dict[str, Any]:
             "rDNA-like contigs carry a material fraction of aligned reads; "
             "review rRNA contamination/repeat-mapping effects."
         )
-    if top_primary and str(top_primary[0]["contig"]).lower() == "chr21" and rdna_rows:
+    if (
+        top_primary
+        and str(top_primary[0].get("normalized_contig")).lower() == "chr21"
+        and rdna_rows
+    ):
         warnings.append(
             "chr21 is the top primary chromosome while rDNA-like repeat contigs are enriched; "
             "treat this as technical rRNA-repeat evidence, not chromosome-21 biology."
@@ -349,13 +354,27 @@ def _contig_qc_category(contig: str) -> str:
     upper = str(contig or "").upper()
     if any(token in upper for token in ("GL000220", "KI270733", "RDNA", "RDN", "RNA45S")):
         return "rdna_repeat_like"
-    if re.fullmatch(r"CHR([0-9]+|X|Y|M|MT)", upper):
+    if re.fullmatch(r"(CHR)?([0-9]+|X|Y|M|MT)", upper):
         return "primary_chromosome"
     if "_RANDOM" in upper or upper.startswith("CHRUN") or "_KI" in upper or "_GL" in upper:
         return "random_or_unplaced"
     if upper.startswith("HLA-"):
         return "hla_decoy"
     return "other_contig"
+
+
+def _normalize_contig_name(contig: str) -> str:
+    """Canonicalize primary contig labels for QC comparisons."""
+
+    text = str(contig or "").strip()
+    upper = text.upper()
+    match = re.fullmatch(r"(?:CHR)?([0-9]+|X|Y|M|MT)", upper)
+    if not match:
+        return text
+    token = match.group(1)
+    if token in {"M", "MT"}:
+        return "chrM"
+    return f"chr{token}"
 
 
 def _top_rows(rows: list[dict[str, Any]], key: str, n: int) -> list[dict[str, Any]]:
@@ -367,6 +386,7 @@ def _top_rows(rows: list[dict[str, Any]], key: str, n: int) -> list[dict[str, An
             "unmapped": int(row["unmapped"]),
             "density": float(row["density"]),
             "category": str(row["category"]),
+            "normalized_contig": str(row.get("normalized_contig") or row["contig"]),
         }
         for row in sorted(rows, key=lambda row: (-float(row[key]), str(row["contig"])))[:n]
     ]

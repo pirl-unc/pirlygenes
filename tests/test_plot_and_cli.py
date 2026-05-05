@@ -301,8 +301,10 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert scatter_calls[0]["cancer_type"] == "PRAD"
     assert tissue_calls[0]["top_k"] == 12
     assert tissue_calls[0]["tpm_threshold"] == 18
+    assert {"FAP", "CD276"}.issubset(tissue_calls[0]["extra_symbols"])
     assert safety_calls[0]["top_k"] == 12
     assert safety_calls[0]["tpm_threshold"] == 18
+    assert {"FAP", "CD276"}.issubset(safety_calls[0]["extra_symbols"])
     # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
     # removed from the default plot set (polish/4.40.1).
     assert len(cancer_gene_calls) == 0
@@ -1607,6 +1609,43 @@ def test_collect_ranked_therapy_targets_tracks_multicategory_and_approval(monkey
     assert out[1]["approved_therapies"] == ("ADC",)
     assert out[2]["therapies"] == ("radioligand",)
     assert out[2]["approved_therapies"] == ("radioligand",)
+
+
+def test_collect_ranked_therapy_targets_force_includes_extra_symbols(monkeypatch):
+    df = pd.DataFrame(
+        {
+            "gene_id": ["ENSG_A", "ENSG_B"],
+            "gene_display_name": ["GENEA", "KLK2"],
+            "TPM": [120.0, 2.0],
+        }
+    )
+
+    import pirlygenes.plot_therapy as _pt
+
+    monkeypatch.setattr(
+        _pt,
+        "therapy_target_gene_id_to_name",
+        lambda therapy: {"ENSG_A": "GENEA"} if therapy == "ADC" else {},
+    )
+    monkeypatch.setattr(
+        _pt,
+        "get_data",
+        lambda name: pd.DataFrame(
+            {"Ensembl_Gene_ID": [], "Status_Bucket": []}
+        ),
+    )
+
+    out = plot_mod._collect_ranked_therapy_targets(
+        df,
+        top_k=1,
+        tpm_threshold=30,
+        extra_symbols={"KLK2"},
+    )
+
+    assert {row["symbol"] for row in out} == {"GENEA", "KLK2"}
+    klk2 = next(row for row in out if row["symbol"] == "KLK2")
+    assert klk2["sample_tpm"] == 2.0
+    assert klk2["therapies"] == ()
 
 
 def test_resolve_gene_set_symbols_by_category_name():

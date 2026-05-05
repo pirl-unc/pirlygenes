@@ -1043,7 +1043,7 @@ def pan_cancer_expression(
     genes=None,
     normalize=None,
     log_transform=False,
-    technical_rna_normalize=True,
+    technical_rna_normalize=False,
 ):
     """Expression across 50 normal tissues (nTPM) and 33 TCGA cancer types.
 
@@ -1070,11 +1070,12 @@ def pan_cancer_expression(
         If True, apply log2(x + 1) after normalization (or to raw values
         if normalize is None). Recommended for visualization.
     technical_rna_normalize : bool
-        If True (default), zero mtDNA/rRNA-like/rRNA-pseudogene rows in every
-        reference expression column and renormalize the remaining values before
-        any gene filtering or housekeeping/percentile normalization. This keeps
-        TCGA/HPA/subsequent sample comparisons independent of technical RNA
-        denominator burden.
+        If True, zero mtDNA/rRNA-like/rRNA-pseudogene rows in every reference
+        expression column and renormalize the remaining non-missing values
+        before any gene filtering or housekeeping/percentile normalization.
+        The default is False so existing QC, raw-reference matching, and
+        decomposition callers continue to see bundled TCGA/HPA values exactly
+        as stored.
 
     Returns
     -------

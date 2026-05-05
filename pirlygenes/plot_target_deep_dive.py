@@ -405,18 +405,33 @@ def plot_actionable_targets(
         central_model = False
         source_label = ""
         if range_row is not None:
-            tumor_adj = _finite_float(
-                range_row.get("tumor_cell_tpm"),
-                _finite_float(range_row.get("median_est"), 0.0),
-            )
-            tumor_low = _finite_float(
-                range_row.get("tumor_cell_tpm_low"),
-                _finite_float(range_row.get("est_1"), tumor_adj),
-            )
-            tumor_high = _finite_float(
-                range_row.get("tumor_cell_tpm_high"),
-                _finite_float(range_row.get("est_9"), tumor_adj),
-            )
+            attr_mid = _finite_float(range_row.get("attr_tumor_tpm"), None)
+            if purity_estimate and attr_mid is not None:
+                purity = max(float(purity_estimate), 0.01)
+                tumor_adj = attr_mid / purity
+                tumor_low = (
+                    _finite_float(range_row.get("attr_tumor_tpm_low"), tumor_adj * purity)
+                    / purity
+                )
+                tumor_high = (
+                    _finite_float(
+                        range_row.get("attr_tumor_tpm_high"), tumor_adj * purity
+                    )
+                    / purity
+                )
+            else:
+                tumor_adj = _finite_float(
+                    range_row.get("tumor_cell_tpm"),
+                    _finite_float(range_row.get("median_est"), 0.0),
+                )
+                tumor_low = _finite_float(
+                    range_row.get("tumor_cell_tpm_low"),
+                    _finite_float(range_row.get("est_1"), tumor_adj),
+                )
+                tumor_high = _finite_float(
+                    range_row.get("tumor_cell_tpm_high"),
+                    _finite_float(range_row.get("est_9"), tumor_adj),
+                )
             central_model = True
             try:
                 source_label = tumor_attribution_context(range_row)["label"]
@@ -470,9 +485,12 @@ def plot_actionable_targets(
     )
 
     # Sample dots
+    observed_y = y_pos - 0.11
+    adjusted_y = y_pos + 0.11
+
     ax.scatter(
         [r["observed"] for r in rows],
-        y_pos,
+        observed_y,
         color="black",
         s=60,
         zorder=5,
@@ -485,7 +503,7 @@ def plot_actionable_targets(
                 continue
             if row["tumor_low"] is not None and row["tumor_high"] is not None:
                 ax.hlines(
-                    y_pos[i],
+                    adjusted_y[i],
                     max(float(row["tumor_low"]), 0.01),
                     max(float(row["tumor_high"]), 0.01),
                     color="#E74C3C",
@@ -499,13 +517,13 @@ def plot_actionable_targets(
         ]
         ax.scatter(
             tumor_vals,
-            y_pos,
+            adjusted_y,
             color="#E74C3C",
             s=60,
             marker="D",
             zorder=5,
             label=(
-                "Tumor-cell estimate (central model)"
+                "Tumor-source normalized TPM (attribution / purity)"
                 if any(r["central_model"] for r in rows)
                 else f"Fallback tumor-cell estimate (purity={purity_estimate:.0%})"
             ),
@@ -517,11 +535,12 @@ def plot_actionable_targets(
     ax.set_xscale("symlog", linthresh=1.0)
     ax.invert_yaxis()
     ax.legend(loc="lower right", fontsize=8)
-    ax.set_title(title or f"Actionable Targets — {cancer_code}")
+    ax.set_title(title or f"Actionable target expression screen — {cancer_code}")
     ax.text(
         0.01,
         0.01,
-        "Red diamond estimates tumor-cell-equivalent TPM; black dot is measured bulk TPM.",
+        "Expression-first screen, not a recommendation list; Priority Targets applies disease curation and maturity.\n"
+        "Red diamond is tumor-source-normalized when attribution is available; black dot is measured bulk TPM.",
         transform=ax.transAxes,
         ha="left",
         va="bottom",

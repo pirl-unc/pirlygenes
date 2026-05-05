@@ -936,6 +936,7 @@ def _shortlist_omission_note(targets_df, ranges_df, top_rows) -> str:
         return ""
     lines = [
         "**Target expression source trace**",
+        "",
         "| Gene | Bulk TPM | Tumor-source bulk TPM | Tumor fraction | Top non-tumor attribution | Component TPM | Main reason |",
         "|---|---:|---:|---:|---|---:|---|",
     ]
@@ -952,6 +953,25 @@ def _shortlist_omission_note(targets_df, ranges_df, top_rows) -> str:
         "clinical maturity and eligibility still set the shortlist order.*"
     )
     return "\n".join(lines)
+
+
+def _disease_state_summary_lines(disease_state_display):
+    """Return summary lines without packing unrelated state clauses together."""
+    text = str(disease_state_display or "").strip()
+    if not text:
+        return []
+    for marker in ("**Active IFN response**", "Active IFN response"):
+        if marker in text and not text.startswith(marker):
+            before, after = text.split(marker, 1)
+            lines = []
+            before = before.strip()
+            if before:
+                lines.append(f"**Disease state:** {before}")
+            after = f"{marker}{after}".strip()
+            if after:
+                lines.append(f"**Immune/IFN state:** {after}")
+            return lines
+    return [f"**Disease state:** {text}"]
 
 
 def _panel_display_label(panel_code, panel_subtype=None):
@@ -1750,14 +1770,6 @@ def build_summary(
             "expression-only sarcoma call."
         )
 
-    # Disease state
-    disease_state_display = report_disease_state_text(disease_state, analysis=analysis)
-    if disease_state_display:
-        lines.append(f"**Disease state:** {disease_state_display}")
-    pathway_activity = _pathway_activity_line(analysis)
-    if pathway_activity:
-        lines.append(pathway_activity)
-
     # Sample context
     if sample_context is not None:
         prep_label = library_prep_clause(
@@ -1795,6 +1807,14 @@ def build_summary(
             + str((scale_qc.get("warnings") or ["check expression scale"])[0])
             + "."
         )
+
+    # Disease/pathway state comes after assay/QC framing so readers know how
+    # much weight to put on RNA-derived biology before acting on it.
+    disease_state_display = report_disease_state_text(disease_state, analysis=analysis)
+    lines.extend(_disease_state_summary_lines(disease_state_display))
+    pathway_activity = _pathway_activity_line(analysis)
+    if pathway_activity:
+        lines.append(pathway_activity)
 
     lines.append("")
 
@@ -1848,6 +1868,7 @@ def build_summary(
                 )
             omission_note = _shortlist_omission_note(targets_df, ranges_df, top)
             if omission_note:
+                lines.append("")
                 lines.append(omission_note)
             lines.append("")
         else:

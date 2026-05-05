@@ -211,8 +211,14 @@ def context_expression_context(row):
         row.get("tumor_cell_tpm"),
         _safe_float(row.get("median_est"), _safe_float(row.get("observed_tpm"), 0.0)),
     )
-    low_tpm = _safe_float(row.get("tumor_cell_tpm_low"), _safe_float(row.get("est_1"), mid_tpm))
-    high_tpm = _safe_float(row.get("tumor_cell_tpm_high"), _safe_float(row.get("est_9"), mid_tpm))
+    low_tpm = _safe_float(
+        row.get("tumor_cell_tpm_low"),
+        _safe_float(row.get("est_1"), mid_tpm),
+    )
+    high_tpm = _safe_float(
+        row.get("tumor_cell_tpm_high"),
+        _safe_float(row.get("est_9"), mid_tpm),
+    )
     low_tpm, mid_tpm, high_tpm = sorted(
         [max(0.0, low_tpm), max(0.0, mid_tpm), max(0.0, high_tpm)]
     )
@@ -225,6 +231,8 @@ def context_expression_context(row):
 
 def context_expression_band_cell(row):
     ctx = context_expression_context(row)
+    if abs(ctx["context_tpm_low"] - ctx["context_tpm_high"]) < 0.5:
+        return f"{ctx['context_tpm']:.0f}"
     return (
         f"{ctx['context_tpm']:.0f} "
         f"({ctx['context_tpm_low']:.0f}-{ctx['context_tpm_high']:.0f})"
@@ -237,10 +245,11 @@ def tpm_semantics_note() -> str:
         "**TPM semantics:** Bulk TPM is the measured RNA abundance in the mixed "
         "specimen. Tumor-attributed bulk TPM is the share of that bulk signal "
         "assigned to tumor rather than matched-normal/TME compartments. Context "
-        "TPM is the broader purity/cohort expression estimate used for cancer "
+        "TPM is a broader per-tumor-cell/cohort-context estimate used for cancer "
         "context, pathway biology, and 'is this gene high in this specimen?' "
-        "reasoning. Do not treat context TPM as tumor-source evidence when the "
-        "tumor-attribution row says background-dominant. For immune/stromal "
+        "reasoning; it can collapse to a single value when the range model has "
+        "no meaningful spread. Do not treat context TPM as tumor-source evidence "
+        "when the tumor-attribution row says background-dominant. For immune/stromal "
         "markers, agent-only rows, and expression-independent indications, bulk "
         "RNA is contextual and the clinical biomarker must come from the "
         "indicated assay."

@@ -133,9 +133,12 @@ def normalize_technical_rna_columns(
     records = {}
     any_applied = False
     for col in value_cols:
-        vals = pd.to_numeric(out[col], errors="coerce").fillna(0.0)
+        vals = pd.to_numeric(out[col], errors="coerce")
+        valid = vals.notna()
+        removable_valid = removable & valid
+        keep_valid = (~removable) & valid
         raw_sum = float(vals.sum())
-        removed = float(vals[removable].sum())
+        removed = float(vals[removable_valid].sum())
         remaining = raw_sum - removed
         removed_fraction = removed / raw_sum if raw_sum > 0 else 0.0
         records[col] = {
@@ -150,8 +153,8 @@ def normalize_technical_rna_columns(
         if raw_sum <= 0 or removed <= 0 or remaining <= 0:
             continue
         scale = raw_sum / remaining
-        out.loc[removable, col] = 0.0
-        out.loc[~removable, col] = vals.loc[~removable] * scale
+        out.loc[removable_valid, col] = 0.0
+        out.loc[keep_valid, col] = vals.loc[keep_valid] * scale
         any_applied = True
 
     return out, {
@@ -206,9 +209,12 @@ def normalize_technical_rna_long_table(
         group_records[key_label] = {}
         group_removable = removable.loc[idx]
         for col in value_cols:
-            vals = pd.to_numeric(out.loc[idx, col], errors="coerce").fillna(0.0)
+            vals = pd.to_numeric(out.loc[idx, col], errors="coerce")
+            valid = vals.notna()
+            removable_valid = group_removable & valid
+            keep_valid = (~group_removable) & valid
             raw_sum = float(vals.sum())
-            removed = float(vals[group_removable].sum())
+            removed = float(vals[removable_valid].sum())
             remaining = raw_sum - removed
             removed_fraction = removed / raw_sum if raw_sum > 0 else 0.0
             group_records[key_label][col] = {
@@ -224,8 +230,8 @@ def normalize_technical_rna_long_table(
             if raw_sum <= 0 or removed <= 0 or remaining <= 0:
                 continue
             scale = raw_sum / remaining
-            remove_idx = group_removable[group_removable].index
-            keep_idx = group_removable[~group_removable].index
+            remove_idx = removable_valid[removable_valid].index
+            keep_idx = keep_valid[keep_valid].index
             out.loc[remove_idx, col] = 0.0
             out.loc[keep_idx, col] = vals.loc[keep_idx] * scale
             any_applied = True
