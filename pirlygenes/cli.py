@@ -1166,6 +1166,53 @@ def _filter_quality_flags_against_context(flags, sample_context):
     return out
 
 
+def _technical_qc_quality_flags(
+    *,
+    expression_qc_rescue: dict | None,
+    raw_expression_scale_qc: dict | None,
+    rna_quant_qc: dict | None,
+) -> list[str]:
+    """Promote expression-scale/read-level QC into the shared quality state."""
+
+    out: list[str] = []
+    rescue = expression_qc_rescue or {}
+    raw_scale = raw_expression_scale_qc or {}
+    if rescue.get("high_burden"):
+        removed = float(rescue.get("removed_fraction") or 0.0)
+        technical_phrase = technical_rna_component_phrase(
+            rescue.get("qc_class_shares") or raw_scale
+        )
+        top_removed = rescue.get("top_removed_genes") or []
+        top_clause = ""
+        if top_removed:
+            top = top_removed[0]
+            gene = str(top.get("gene") or "").strip()
+            qc_class = str(top.get("qc_class") or "").strip()
+            share = float(top.get("share") or 0.0)
+            if gene:
+                top_clause = f"; top removed feature {gene}"
+                if qc_class:
+                    top_clause += f" ({qc_class}"
+                    if share:
+                        top_clause += f", {share:.0%} of raw TPM"
+                    top_clause += ")"
+        component_clause = (
+            f" ({technical_phrase}; {removed:.0%} removed)"
+            if technical_phrase
+            else f" ({removed:.0%} removed)"
+        )
+        out.append(
+            "Expression concentration QC: raw TPM dominated by technical RNA "
+            f"features{component_clause}{top_clause}"
+        )
+    elif raw_scale.get("warnings"):
+        out.append(f"Expression concentration QC: {raw_scale['warnings'][0]}")
+
+    for warning in (rna_quant_qc or {}).get("warnings") or []:
+        out.append(f"RNA quantification QC: {warning}")
+    return out
+
+
 def _render_vs_tcga_cell(row):
     """Render the "vs TCGA" column for a target-table row.
 
@@ -2227,7 +2274,17 @@ def _analyze_body(run: AnalyzeRun):
     filtered_flags = _filter_quality_flags_against_context(
         quality["flags"], sample_context
     )
+    technical_quality_flags = _technical_qc_quality_flags(
+        expression_qc_rescue=expression_qc_rescue,
+        raw_expression_scale_qc=raw_expression_scale_qc,
+        rna_quant_qc=rna_quant_qc,
+    )
+    if technical_quality_flags and filtered_flags == ["No quality concerns detected"]:
+        filtered_flags = []
+    filtered_flags.extend(technical_quality_flags)
     quality["filtered_flags"] = filtered_flags
+    if technical_quality_flags:
+        quality["has_issues"] = True
     for flag in filtered_flags:
         qtag = "[quality]" if not quality["has_issues"] else "[quality WARNING]"
         print(f"{qtag} {flag}")

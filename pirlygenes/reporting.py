@@ -943,6 +943,7 @@ _THERAPY_EXPOSURE_RULES = (
         ),
         "axis_label": "ER-axis",
         "exposure_label": "endocrine therapy",
+        "suppressed_explanation": "ER-low biology or current/prior endocrine therapy signal",
     },
     {
         "axis": "HER2_signaling",
@@ -1227,10 +1228,14 @@ def therapy_state_caution(target_row, *, analysis=None, disease_state=None) -> s
             rule, analysis=analysis, disease_state=disease_state
         ):
             continue
+        suppressed_explanation = rule.get(
+            "suppressed_explanation",
+            f"current/prior {rule['exposure_label']} signal",
+        )
         return (
             f"{rule['axis_label']} RNA/signaling is already suppressed "
-            f"(current/prior {rule['exposure_label']} signal); verify the "
-            "medication list before treating this as new-start therapy"
+            f"({suppressed_explanation}); verify the medication list before "
+            "treating this as new-start therapy"
         )
     return ""
 

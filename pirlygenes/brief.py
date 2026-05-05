@@ -346,6 +346,43 @@ def _subtype_specific_row_out_of_scope(target_row, analysis) -> bool:
     return not bool(supplied_alteration_supports_target_row(target_row, analysis))
 
 
+def _row_context_text(target_row) -> str:
+    if not hasattr(target_row, "get"):
+        return ""
+    return " ".join(
+        str(target_row.get(key) or "")
+        for key in ("indication", "rationale", "agent", "agent_class", "eligibility_note")
+    ).lower()
+
+
+def _therapy_axis_state_for_brief(analysis, axis: str) -> str:
+    if not isinstance(analysis, dict):
+        return ""
+    scores = analysis.get("therapy_response_scores") or {}
+    score = scores.get(axis) if hasattr(scores, "get") else None
+    if score is None:
+        return ""
+    if hasattr(score, "get"):
+        return str(score.get("state") or "").strip().lower()
+    return str(getattr(score, "state", "") or "").strip().lower()
+
+
+def _brca_er_dependent_row_inactive(target_row, analysis) -> bool:
+    """Whether an ER/HR-dependent BRCA row conflicts with ER-low RNA state."""
+    if not isinstance(analysis, dict) or not hasattr(target_row, "get"):
+        return False
+    cancer_code = str(target_row.get("cancer_code") or analysis.get("cancer_type") or "")
+    if cancer_code.strip().upper() != "BRCA":
+        return False
+    if _therapy_axis_state_for_brief(analysis, "ER_signaling") != "down":
+        return False
+    sym = str(target_row.get("symbol") or "").strip().upper()
+    if sym not in {"ESR1", "PGR", "CDK4", "CDK6"}:
+        return False
+    text = _row_context_text(target_row)
+    return any(token in text for token in ("er+", "hr+", "endocrine", "esr1-mut"))
+
+
 def _has_direct_eligibility_input(analysis, biomarker: str) -> bool:
     """Best-effort check for orthogonal eligibility evidence supplied to this run."""
     if not isinstance(analysis, dict):
@@ -386,6 +423,33 @@ def _has_direct_eligibility_input(analysis, biomarker: str) -> bool:
     return False
 
 
+def _scope_level_eligibility_context(target_row, analysis) -> str:
+    """Context for rows gated by the report diagnosis rather than target RNA."""
+    if not isinstance(analysis, dict) or not hasattr(target_row, "get"):
+        return ""
+    row_code = str(target_row.get("cancer_code") or "").strip().upper()
+    report_code = str(analysis.get("cancer_type") or "").strip().upper()
+    if row_code != "NUTM" or report_code != "NUTM":
+        return ""
+    if analysis.get("fusion_report_scope_inference"):
+        return (
+            "scope-level fusion evidence supports the NUTM report label; "
+            "verify NUT carcinoma diagnosis/fusion status before treating "
+            "as eligible"
+        )
+    if analysis.get("rare_report_scope_inference"):
+        return (
+            "NUTM report label is RNA-inferred; confirm NUTM1 fusion/IHC/"
+            "FISH/pathology before treating as eligible"
+        )
+    if str(analysis.get("cancer_type_source") or "").strip() == "user-specified":
+        return (
+            "externally supplied NUTM label supports report scope; verify "
+            "clinical diagnosis/fusion status before treating as eligible"
+        )
+    return ""
+
+
 def _expression_independent_evidence_gap(target_row, analysis) -> str:
     """Surface when a non-expression eligibility gate was not provided."""
     if not expression_independent_indication(target_row):
@@ -396,6 +460,9 @@ def _expression_independent_evidence_gap(target_row, analysis) -> str:
     )
     if supplied_context:
         return supplied_context
+    scope_context = _scope_level_eligibility_context(target_row, analysis)
+    if scope_context:
+        return scope_context
     biomarker = indication_biomarker(target_row)
     if biomarker == "histology_only":
         if _has_direct_eligibility_input(analysis, biomarker):
@@ -405,7 +472,13 @@ def _expression_independent_evidence_gap(target_row, analysis) -> str:
             "histology before treating as eligible"
         )
     label = indication_biomarker_label(target_row)
-    if _has_direct_eligibility_input(analysis, biomarker):
+    if biomarker == "mutation" and _has_direct_eligibility_input(analysis, biomarker):
+        return (
+            "orthogonal mutation/fusion/CNV evidence was supplied, but no "
+            "target-specific supporting call was recognized for this row; "
+            f"confirm {label} before treating as eligible"
+        )
+    if biomarker != "mutation" and _has_direct_eligibility_input(analysis, biomarker):
         return (
             f"required eligibility evidence was supplied to this run; verify the "
             f"{label} call matches the indication"
@@ -562,6 +635,8 @@ def _top_therapies(
         expr = sym_to_row.get(sym)
         expr_independent = expression_independent_indication(t)
         if _subtype_specific_row_out_of_scope(t, analysis):
+            continue
+        if _brca_er_dependent_row_inactive(t, analysis):
             continue
         supplied_alteration_rank = (
             0 if supplied_alteration_supports_target_row(t, analysis) else 1
@@ -1607,11 +1682,22 @@ def build_summary(
     alteration_line = _alteration_evidence_line(analysis)
     if alteration_line:
         lines.append(alteration_line)
-    rare_marker_hypotheses = [
-        finding
-        for finding in (analysis.get("rare_marker_hypotheses") or [])
-        if str(finding.get("cancer_type") or "").strip() != str(cancer_code).strip()
-    ]
+    lateral_rare_prompts_are_summary_level = not (
+        fusion_line
+        or alteration_line
+        or analysis.get("rare_report_scope_inference")
+        or analysis.get("cancer_type_source") == "user-specified"
+    )
+    rare_marker_hypotheses = (
+        [
+            finding
+            for finding in (analysis.get("rare_marker_hypotheses") or [])
+            if str(finding.get("cancer_type") or "").strip()
+            != str(cancer_code).strip()
+        ]
+        if lateral_rare_prompts_are_summary_level
+        else []
+    )
     if rare_marker_hypotheses:
         finding = rare_marker_hypotheses[0]
         surrogate = str(finding.get("surrogate") or "marker").strip()
@@ -1970,6 +2056,10 @@ def build_actionable(
                 "preclinical": 4,
             }
             sorted_df = targets_df.assign(
+                _inactive_key=[
+                    1 if _brca_er_dependent_row_inactive(t, analysis) else 0
+                    for _, t in targets_df.iterrows()
+                ],
                 _path_key=[
                     therapy_path_rank(
                         t,
@@ -1979,7 +2069,7 @@ def build_actionable(
                     for _, t in targets_df.iterrows()
                 ],
                 _po=targets_df["phase"].map(lambda p: phase_order.get(str(p), 99)),
-            ).sort_values(["_path_key", "_po", "symbol", "agent"])
+            ).sort_values(["_inactive_key", "_path_key", "_po", "symbol", "agent"])
 
             def _cell(value):
                 """Render a cell, turning NaN / blank / 'nan' into em-dash."""
@@ -2015,6 +2105,9 @@ def build_actionable(
                                 + "; "
                                 + expression_independent_rna_context(None)
                             )
+                            gap = _expression_independent_evidence_gap(t, analysis)
+                            if gap:
+                                interp_cell += "; " + gap
                         else:
                             interp_cell = "not measured"
                         path_context = therapy_path_context(
@@ -2036,6 +2129,12 @@ def build_actionable(
                             )
                         if extra_parts:
                             interp_cell += "; " + "; ".join(extra_parts)
+                        if _brca_er_dependent_row_inactive(t, analysis):
+                            interp_cell += (
+                                "; RNA-context conflict: ER axis is suppressed/"
+                                "ER-low; verify ER-positive disease and "
+                                "indication-specific eligibility before acting"
+                            )
                     else:
                         obs_cell = f"{float(expr.get('observed_tpm') or 0):.1f}"
                         tumor_source_cell = tumor_band_cell(expr)
@@ -2047,9 +2146,16 @@ def build_actionable(
                             interp_parts = [
                                 expression_independent_interpretation(t),
                                 expression_independent_rna_context(expr),
+                                _expression_independent_evidence_gap(t, analysis),
                             ]
                         else:
                             interp_parts = [source["label"], normal["label"]]
+                        if _brca_er_dependent_row_inactive(t, analysis):
+                            interp_parts.append(
+                                "RNA-context conflict: ER axis is suppressed/"
+                                "ER-low; verify ER-positive disease and "
+                                "indication-specific eligibility before acting"
+                            )
                         notes = list(source.get("notes") or []) + list(
                             normal.get("details") or []
                         )

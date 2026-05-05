@@ -616,7 +616,7 @@ def test_expression_independent_therapy_surfaces_missing_required_evidence():
     assert "confirm mutation / fusion / amplification before treating as eligible" in line
 
 
-def test_expression_independent_therapy_acknowledges_supplied_fusion_input():
+def test_expression_independent_therapy_distinguishes_generic_fusion_file_from_supporting_call():
     analysis = _make_analysis()
     analysis["fusion_inputs_supplied"] = True
     target = pd.Series(
@@ -630,8 +630,57 @@ def test_expression_independent_therapy_acknowledges_supplied_fusion_input():
     )
     line = _format_therapy_bullet(target, None, analysis=analysis)
 
-    assert "required eligibility evidence was supplied" in line
-    assert "verify the mutation / fusion / amplification call" in line
+    assert "orthogonal mutation/fusion/CNV evidence was supplied" in line
+    assert "no target-specific supporting call was recognized" in line
+
+
+def test_mutation_only_rows_do_not_treat_supplied_fusions_as_exact_evidence():
+    analysis = _make_analysis()
+    analysis["fusion_inputs_supplied"] = True
+    target = pd.Series(
+        {
+            "symbol": "ESR1",
+            "agent": "elacestrant",
+            "agent_class": "small_molecule",
+            "phase": "approved",
+            "indication": "ER+/HER2- ESR1-mut BRCA",
+            "rationale": "requires ESR1 mutation",
+        }
+    )
+
+    line = _format_therapy_bullet(target, None, analysis=analysis)
+
+    assert "orthogonal mutation/fusion/CNV evidence was supplied" in line
+    assert "no target-specific supporting call was recognized" in line
+    assert "required eligibility evidence was supplied" not in line
+
+
+def test_nutm_scope_level_rows_reference_report_scope_not_target_specific_mutation():
+    analysis = _make_analysis()
+    analysis.update(
+        {
+            "cancer_type": "NUTM",
+            "fusion_report_scope_inference": {
+                "cancer_type": "NUTM",
+                "expected_pair": "BRD3--NUTM1",
+            },
+        }
+    )
+    target = pd.Series(
+        {
+            "cancer_code": "NUTM",
+            "symbol": "BRD4",
+            "agent": "molibresib",
+            "agent_class": "small_molecule",
+            "phase": "phase_1",
+            "indication": "NUT carcinoma",
+        }
+    )
+
+    line = _format_therapy_bullet(target, None, analysis=analysis)
+
+    assert "scope-level fusion evidence supports the NUTM report label" in line
+    assert "no target-specific supporting call" not in line
 
 
 def test_sarc_summary_uses_supplied_egfr_kdd_and_skips_unresolved_subtype_spillover():
@@ -730,7 +779,7 @@ def test_summary_prompts_for_hla_when_hla_gated_target_is_plausible():
     assert "requires A*02:01" in md
 
 
-def test_brief_flags_possible_current_endocrine_therapy_beyond_prad():
+def test_brief_downranks_er_dependent_brca_therapy_when_er_axis_low():
     from pirlygenes.therapy_response import TherapyAxisScore
 
     analysis = _make_analysis()
@@ -756,16 +805,36 @@ def test_brief_flags_possible_current_endocrine_therapy_beyond_prad():
                 "tme_dominant": False,
                 "tme_explainable": False,
             },
+            {
+                "symbol": "TACSTD2",
+                "observed_tpm": 100.0,
+                "attr_tumor_tpm": 90.0,
+                "attr_tumor_fraction": 0.90,
+                "attr_top_compartment": "tumor",
+                "attr_top_compartment_tpm": 90.0,
+                "tme_dominant": False,
+                "tme_explainable": False,
+            },
         ]
     )
     md = build_brief(
         analysis,
         ranges_df,
         cancer_code="BRCA",
-        disease_state="**ER-axis suppressed / endocrine-exposed pattern**.",
+        disease_state="**ER-axis suppressed / ER-low pattern**.",
     )
-    esr1_line = next(line for line in md.splitlines() if line.startswith("- **ESR1**"))
-    assert "current/prior endocrine therapy" in esr1_line
+    top_lines = [line for line in md.splitlines() if line.startswith("- **")]
+    assert any(line.startswith("- **TACSTD2**") for line in top_lines)
+    assert all(not line.startswith("- **ESR1**") for line in top_lines)
+
+    actionable = build_actionable(
+        analysis,
+        ranges_df,
+        cancer_code="BRCA",
+        disease_state="**ER-axis suppressed / ER-low pattern**.",
+    )
+    assert "RNA-context conflict: ER axis is suppressed/ER-low" in actionable
+    assert "ER-low biology or current/prior endocrine therapy signal" in actionable
 
 
 def test_brief_explains_bulk_present_targets_that_fail_source_gate():
