@@ -327,6 +327,44 @@ def _expression_scale_qc(df) -> dict:
         "genes_above_10_tpm": int((tpm > 10.0).sum()),
         "warnings": [],
     }
+    total = qc["sum_tpm"]
+    if total > 0 and len(tpm):
+        sorted_tpm = tpm.sort_values(ascending=False)
+        qc["top_gene_share_of_total_tpm"] = float(sorted_tpm.iloc[0] / total)
+        qc["top_10_share_of_total_tpm"] = float(sorted_tpm.head(10).sum() / total)
+        qc["top_50_share_of_total_tpm"] = float(sorted_tpm.head(50).sum() / total)
+        qc["top_200_share_of_total_tpm"] = float(sorted_tpm.head(200).sum() / total)
+        qc["top_2000_share_of_total_tpm"] = float(
+            sorted_tpm.head(2000).sum() / total
+        )
+        label_col = next(
+            (
+                col
+                for col in (
+                    "gene_display_name",
+                    "canonical_gene_name",
+                    "gene",
+                    "gene_symbol",
+                    "symbol",
+                )
+                if col in df.columns
+            ),
+            None,
+        )
+        if label_col is not None:
+            dominant = []
+            for idx, value in sorted_tpm.head(10).items():
+                label = str(df.loc[idx, label_col] or "").strip()
+                if not label or label.lower() == "nan":
+                    label = str(idx)
+                dominant.append(
+                    {
+                        "gene": label,
+                        "tpm": float(value),
+                        "share": float(value / total),
+                    }
+                )
+            qc["dominant_genes"] = dominant
     if "gene" in df.columns:
         try:
             from .gene_sets_cancer import housekeeping_gene_names
@@ -339,7 +377,6 @@ def _expression_scale_qc(df) -> dict:
                 qc["housekeeping_genes_observed"] = int((hk_tpm > 1.0).sum())
         except Exception:
             pass
-    total = qc["sum_tpm"]
     if total and not (_TPM_SUM_MIN_REASONABLE <= total <= _TPM_SUM_MAX_REASONABLE):
         qc["warnings"].append(
             f"TPM-like values sum to {total:.0f}, outside the expected ~1,000,000 range"
@@ -352,6 +389,28 @@ def _expression_scale_qc(df) -> dict:
     if hk_median is not None and hk_median < 5.0:
         qc["warnings"].append(
             f"core housekeeping median is only {hk_median:.1f} TPM"
+        )
+    top_gene_share = qc.get("top_gene_share_of_total_tpm")
+    top_10_share = qc.get("top_10_share_of_total_tpm")
+    top_50_share = qc.get("top_50_share_of_total_tpm")
+    if top_gene_share is not None and top_gene_share >= 0.20:
+        gene = ""
+        dominant = qc.get("dominant_genes") or []
+        if dominant:
+            gene = f" ({dominant[0]['gene']})"
+        qc["warnings"].append(
+            f"one gene{gene} accounts for {top_gene_share:.0%} of total TPM; "
+            "expression is dominated by a tiny transcript set"
+        )
+    if top_10_share is not None and top_10_share >= 0.60:
+        qc["warnings"].append(
+            f"top 10 genes account for {top_10_share:.0%} of total TPM; "
+            "check for rRNA/pseudogene/contaminant dominance or severe library complexity loss"
+        )
+    elif top_50_share is not None and top_50_share >= 0.75:
+        qc["warnings"].append(
+            f"top 50 genes account for {top_50_share:.0%} of total TPM; "
+            "expression distribution is unusually concentrated"
         )
     return qc
 

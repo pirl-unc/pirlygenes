@@ -156,6 +156,19 @@ def test_expression_distribution_panel_detection():
     assert signals["likely_targeted_panel"] is True
 
 
+def test_expression_distribution_flags_extreme_concentration_without_panel_call():
+    """Many detected genes can still have an abnormal dominant-transcript tail."""
+    tpm = {f"GENE_{i}": 10.0 for i in range(12_000)}
+    tpm["RNA5S_DOMINANT"] = 520_000.0
+    signals = {}
+    _summarise_expression_distribution(tpm, signals)
+
+    assert signals["genes_detected_above_1_tpm"] > 4000
+    assert signals["likely_targeted_panel"] is False
+    assert signals["expression_concentration_level"] == "extreme"
+    assert signals["dominant_expression_genes"][0]["gene"] == "RNA5S_DOMINANT"
+
+
 def test_expression_distribution_whole_transcriptome_not_flagged():
     """A normal whole-transcriptome sample should NOT flag as panel."""
     import numpy as np

@@ -5168,6 +5168,23 @@ def _generate_text_reports(
             if top2000 is not None:
                 concentration += f"; top 2000 carry {top2000:.0%}"
             lines.append(concentration)
+        concentration_level = str(
+            ctx_signals.get("expression_concentration_level") or ""
+        ).strip()
+        if concentration_level in {"high", "extreme"}:
+            dominant = ctx_signals.get("dominant_expression_genes") or []
+            top_bits = []
+            for row in dominant[:5]:
+                gene = str(row.get("gene") or "").strip()
+                share = row.get("share")
+                if gene and isinstance(share, (int, float)):
+                    top_bits.append(f"{gene} {share:.0%}")
+            suffix = f"; dominant genes: {', '.join(top_bits)}" if top_bits else ""
+            lines.append(
+                f"- **Expression concentration QC**: {concentration_level}ly concentrated "
+                "TPM distribution; this can reflect rRNA/pseudogene/contaminant dominance, "
+                f"low library complexity, or assay/input issues{suffix}."
+            )
         if ctx_signals.get("likely_targeted_panel"):
             lines.append(
                 "- **Likely targeted panel** (few detected genes or >90% TPM "

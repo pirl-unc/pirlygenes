@@ -210,6 +210,22 @@ def test_load_expression_converts_log2_tpm_plus_one_alias(tmp_path, monkeypatch)
     assert qc["post_conversion_sum_tpm"] == pytest.approx(1_000_000.0)
 
 
+def test_expression_scale_qc_flags_extreme_tpm_concentration():
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5S_DOMINANT", *[f"GENE{i}" for i in range(1, 1000)]],
+            "TPM": [520_000.0, *([480_000.0 / 999] * 999)],
+        }
+    )
+
+    qc = le._expression_scale_qc(df)
+
+    assert qc["top_gene_share_of_total_tpm"] == pytest.approx(0.52)
+    assert qc["dominant_genes"][0]["gene"] == "RNA5S_DOMINANT"
+    assert any("one gene" in warning for warning in qc["warnings"])
+    assert any("tiny transcript set" in warning for warning in qc["warnings"])
+
+
 def test_load_expression_accepts_kallisto_gene_abundance_column(tmp_path, monkeypatch):
     p = tmp_path / "gene_abundance.tsv"
     pd.DataFrame(

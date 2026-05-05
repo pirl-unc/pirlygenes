@@ -660,6 +660,10 @@ def _summarise_expression_distribution(tpm_by_symbol, signals):
     if total > 0:
         sorted_desc = np.sort(values)[::-1]
         top_n = max(1, int(round(0.01 * n_genes)))
+        signals["top_gene_share_of_total_tpm"] = round(float(sorted_desc[0]) / total, 4)
+        signals["top_10_share_of_total_tpm"] = (
+            round(float(sorted_desc[:10].sum()) / total, 4) if n_genes >= 10 else None
+        )
         signals["top_1pct_share_of_total_tpm"] = round(
             float(sorted_desc[:top_n].sum()) / total, 4
         )
@@ -691,6 +695,27 @@ def _summarise_expression_distribution(tpm_by_symbol, signals):
         signals["likely_targeted_panel"] = bool(
             n_det_1 < 4000 and effective_top_2000 >= 0.95
         )
+        top_items = sorted(
+            tpm_by_symbol.items(),
+            key=lambda item: (-float(item[1]), item[0]),
+        )[:10]
+        signals["dominant_expression_genes"] = [
+            {
+                "gene": gene,
+                "tpm": round(float(value), 3),
+                "share": round(float(value) / total, 4),
+            }
+            for gene, value in top_items
+        ]
+        top_gene = signals.get("top_gene_share_of_total_tpm") or 0.0
+        top_10 = signals.get("top_10_share_of_total_tpm") or 0.0
+        top_50 = signals.get("top_50_share_of_total_tpm") or 0.0
+        if top_gene >= 0.20 or top_10 >= 0.60 or top_50 >= 0.75:
+            signals["expression_concentration_level"] = "extreme"
+        elif top_10 >= 0.35 or top_50 >= 0.50:
+            signals["expression_concentration_level"] = "high"
+        else:
+            signals["expression_concentration_level"] = "typical"
 
 
 def _refine_preservation_with_orthogonal_signals(
@@ -847,6 +872,27 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
     missing_mt = mt_found <= 1
 
     flags = []
+    concentration_level = str(
+        signals.get("expression_concentration_level") or ""
+    ).strip()
+    if concentration_level in {"high", "extreme"}:
+        top_gene = signals.get("top_gene_share_of_total_tpm")
+        top_10 = signals.get("top_10_share_of_total_tpm")
+        top_50 = signals.get("top_50_share_of_total_tpm")
+        dominant = signals.get("dominant_expression_genes") or []
+        dominant_label = ""
+        if dominant:
+            dominant_label = f"; top gene {dominant[0]['gene']}"
+        top_gene_label = f"{top_gene:.0%}" if isinstance(top_gene, (int, float)) else "n/a"
+        top_10_label = f"{top_10:.0%}" if isinstance(top_10, (int, float)) else "n/a"
+        top_50_label = f"{top_50:.0%}" if isinstance(top_50, (int, float)) else "n/a"
+        flags.append(
+            f"Expression distribution is {concentration_level}ly concentrated "
+            f"(top gene {top_gene_label}, top 10 {top_10_label}, top 50 {top_50_label}"
+            f"{dominant_label}) — check for rRNA/pseudogene/contaminant dominance, "
+            "low library complexity, or assay/input issues before over-interpreting "
+            "expression-derived calls"
+        )
     if missing_mt:
         flags.append(
             "Mitochondrial genes missing from quant table — degradation "
