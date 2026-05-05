@@ -896,6 +896,8 @@ def estimate_tumor_expression_ranges(
                     estimates.append(_apply_priors(raw, p))
         estimates.sort()
         median_est = float(np.median(estimates))
+        tumor_cell_tpm_low = float(estimates[0]) if estimates else median_est
+        tumor_cell_tpm_high = float(estimates[-1]) if estimates else median_est
 
         ref_vals = cancer_expr_all.loc[symbol].values
         n = len(ref_vals)
@@ -1154,6 +1156,8 @@ def estimate_tumor_expression_ranges(
                 )
 
             capped = False
+            tumor_candidate_pre_cap = float(tumor_candidate)
+            purity_cap = None
             if (
                 purity_used is not None
                 and float(purity_used) < LOW_PURITY_THRESHOLD
@@ -1173,6 +1177,8 @@ def estimate_tumor_expression_ranges(
                 tumor_fraction_candidate,
                 over_predicted_candidate,
                 capped,
+                tumor_candidate_pre_cap,
+                purity_cap,
             )
 
         # Effective non-tumor attribution = max of
@@ -1231,15 +1237,26 @@ def estimate_tumor_expression_ranges(
         attr_fraction_estimates = []
         attr_over_predicted_flags = []
         attr_capped_flags = []
+        attr_pre_cap_estimates = []
+        attr_cap_estimates = []
         for purity_used in [p_lo, p_med, p_hi]:
-            tumor_candidate, fraction_candidate, over_flag, capped_flag = (
-                _attribution_candidate(purity_used)
-            )
+            (
+                tumor_candidate,
+                fraction_candidate,
+                over_flag,
+                capped_flag,
+                pre_cap_candidate,
+                cap_candidate,
+            ) = _attribution_candidate(purity_used)
             attr_estimates.append(float(tumor_candidate))
             attr_fraction_estimates.append(float(fraction_candidate))
             attr_over_predicted_flags.append(bool(over_flag))
             attr_capped_flags.append(bool(capped_flag))
+            attr_pre_cap_estimates.append(float(pre_cap_candidate))
+            if cap_candidate is not None:
+                attr_cap_estimates.append(float(cap_candidate))
         attr_tumor_tpm = float(np.median(attr_estimates))
+        attr_tumor_tpm_pre_cap = float(np.median(attr_pre_cap_estimates))
         attr_tumor_fraction = (
             float(np.median(attr_fraction_estimates))
             if attr_fraction_estimates
@@ -1250,6 +1267,28 @@ def estimate_tumor_expression_ranges(
         )
         attr_tumor_tpm_high = (
             float(max(attr_estimates)) if attr_estimates else attr_tumor_tpm
+        )
+        attr_tumor_tpm_pre_cap_low = (
+            float(min(attr_pre_cap_estimates))
+            if attr_pre_cap_estimates
+            else attr_tumor_tpm_pre_cap
+        )
+        attr_tumor_tpm_pre_cap_high = (
+            float(max(attr_pre_cap_estimates))
+            if attr_pre_cap_estimates
+            else attr_tumor_tpm_pre_cap
+        )
+        low_purity_cap_tpm = (
+            float(np.median(attr_cap_estimates)) if attr_cap_estimates else None
+        )
+        low_purity_cap_tpm_low = (
+            float(min(attr_cap_estimates)) if attr_cap_estimates else None
+        )
+        low_purity_cap_tpm_high = (
+            float(max(attr_cap_estimates)) if attr_cap_estimates else None
+        )
+        low_purity_cap_delta_tpm = max(
+            0.0, float(attr_tumor_tpm_pre_cap - attr_tumor_tpm)
         )
         attr_tumor_fraction_low = (
             float(min(attr_fraction_estimates))
@@ -1324,6 +1363,18 @@ def estimate_tumor_expression_ranges(
                 # compartment shortcut keeps the common case cheap for
                 # markdown rendering.
                 "attribution": attribution,
+                "tumor_attributed_bulk_tpm": round(attr_tumor_tpm, 2),
+                "tumor_attributed_bulk_tpm_low": round(attr_tumor_tpm_low, 2),
+                "tumor_attributed_bulk_tpm_high": round(attr_tumor_tpm_high, 2),
+                "tumor_attributed_bulk_tpm_pre_low_purity_cap": round(
+                    attr_tumor_tpm_pre_cap, 2
+                ),
+                "tumor_attributed_bulk_tpm_pre_low_purity_cap_low": round(
+                    attr_tumor_tpm_pre_cap_low, 2
+                ),
+                "tumor_attributed_bulk_tpm_pre_low_purity_cap_high": round(
+                    attr_tumor_tpm_pre_cap_high, 2
+                ),
                 "attr_tumor_tpm": round(attr_tumor_tpm, 2),
                 "attr_tumor_fraction": round(attr_tumor_fraction, 4),
                 "attr_tumor_tpm_low": round(attr_tumor_tpm_low, 2),
@@ -1339,6 +1390,22 @@ def estimate_tumor_expression_ranges(
                 # the tumor share is bounded by purity × headroom, not
                 # fitted directly.
                 "low_purity_cap_applied": bool(low_purity_cap_applied),
+                "low_purity_cap_tpm": (
+                    round(low_purity_cap_tpm, 2)
+                    if low_purity_cap_tpm is not None
+                    else None
+                ),
+                "low_purity_cap_tpm_low": (
+                    round(low_purity_cap_tpm_low, 2)
+                    if low_purity_cap_tpm_low is not None
+                    else None
+                ),
+                "low_purity_cap_tpm_high": (
+                    round(low_purity_cap_tpm_high, 2)
+                    if low_purity_cap_tpm_high is not None
+                    else None
+                ),
+                "low_purity_cap_delta_tpm": round(low_purity_cap_delta_tpm, 2),
                 # #128: breadth metrics used by the robust attribution.
                 # `n_healthy_tissues_expressed` counts non-reproductive HPA
                 # tissues with nTPM >= HK_TISSUE_NTPM_THRESHOLD;
@@ -1400,6 +1467,9 @@ def estimate_tumor_expression_ranges(
                 ),
                 **{f"est_{i + 1}": round(estimates[i], 2) for i in range(9)},
                 "median_est": round(median_est, 2),
+                "tumor_cell_tpm": round(median_est, 2),
+                "tumor_cell_tpm_low": round(tumor_cell_tpm_low, 2),
+                "tumor_cell_tpm_high": round(tumor_cell_tpm_high, 2),
                 "pct_cancer_median": round(vs_tcga, 2)
                 if vs_tcga is not None and not math.isinf(vs_tcga)
                 else vs_tcga,
@@ -2055,7 +2125,10 @@ def plot_tumor_expression_ranges(
         ax_strip.set_yticks(y_positions)
         ax_strip.set_yticklabels(labels, fontsize=base_font)
         ax_strip.set_xscale("log")
-        ax_strip.set_xlabel("Tumor-specific expression (TPM)", fontsize=base_font)
+        ax_strip.set_xlabel(
+            "Tumor-cell-equivalent TPM (non-tumor subtracted, divided by purity)",
+            fontsize=base_font,
+        )
         ax_strip.set_title(
             cat_titles.get(cat, cat),
             fontsize=base_font + 2,
@@ -2131,9 +2204,9 @@ def plot_tumor_expression_ranges(
 
     # Suptitle with purity info and caveat
     fig.suptitle(
-        f"Purity-adjusted tumor expression \u2014 {cancer_code}\n"
+        f"Tumor-cell-equivalent expression \u2014 {cancer_code}\n"
         f"Purity: {p_lo:.0%} / {p_med:.0%} / {p_hi:.0%} (low / est / high)\n"
-        f"Values are deconvolved estimates \u2014 may overstate expression at low purity",
+        "Modeled non-tumor signal is subtracted before purity normalization.",
         fontsize=10,
         fontweight="bold",
         y=1.04,
@@ -2156,10 +2229,10 @@ def plot_purity_adjusted_targets(
     figsize=(14, 10),
     top_n=40,
 ):
-    """Plot purity-adjusted tumor expression for key gene categories.
+    """Plot modelled context expression for key gene categories.
 
-    Shows observed vs purity-adjusted expression for CTAs, therapy
-    targets, and surface proteins, with TCGA percentile context.
+    Shows observed vs context expression for CTAs, therapy targets,
+    and surface proteins, with TCGA percentile context.
     """
     import pandas as pd
 
@@ -2190,7 +2263,7 @@ def plot_purity_adjusted_targets(
         1, 2, figsize=figsize, gridspec_kw={"width_ratios": [2, 1]}
     )
 
-    # Left: horizontal bar chart of purity-adjusted expression
+    # Left: horizontal bar chart of context expression
     y = np.arange(len(selected))
     cat_colors = {
         "CTA": "#e74c3c",

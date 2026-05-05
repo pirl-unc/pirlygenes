@@ -14,7 +14,8 @@ round:
 **Round 2** (v4.46.0, this doc): pure enumeration + similar-purpose
 groupings — **no verdicts, no removals in this round**. The goal is a
 shared reference the reader can audit later to decide if any cluster
-should be consolidated. 45 files baseline after QC-plot additions.
+should be consolidated. 48 files baseline after QC-plot additions and
+the concentration / technical-RNA split.
 
 ---
 
@@ -24,8 +25,9 @@ should be consolidated. 45 files baseline after QC-plot additions.
 |---|---|---|
 | `sample-sample-summary.png` | One-panel overview — cancer type, purity, top tissues | ✓ keep — the "first glance" frame readers want |
 | `sample-sample-context.png` | Library-prep / preservation / degradation diagnostic axes | ✓ keep — used by step-0 reasoning |
-| `sample-expression-concentration-qc.png` | Dominant-gene + cumulative TPM concentration QC, including semantic classes such as rRNA pseudogene or mtDNA | ✓ keep — explains denominator-distorting artifacts |
-| `sample-qc-reference-mtdna-rrna.png` | Sample mtDNA, nuclear rRNA-like, and rRNA-pseudogene fractions against TCGA/HPA reference-column distributions | ✓ keep — shows whether technical RNA burden is out of reference range and separates pseudogene dominance from intact rRNA |
+| `sample-expression-top-features-qc.png` | Dominant-gene/feature TPM share QC, including semantic classes such as rRNA pseudogene or mtDNA | ✓ keep — explains which features distort the denominator |
+| `sample-expression-concentration-curve-qc.png` | Cumulative TPM concentration curve | ✓ keep — shows whether the whole expression distribution is too top-heavy |
+| `sample-qc-reference-mtdna.png` | Sample mtDNA fraction against TCGA/HPA reference-column distributions | ✓ keep — shows whether mitochondrial technical signal is out of reference range |
 | `sample-qc-reference-technical-rna-burden.png` | Combined mtDNA+rRNA-like fraction against TCGA/HPA reference-column distributions | ✓ keep — one-axis summary of the same QC risk |
 | `sample-degradation-index.png` | Long/short transcript length-pair scatter | ✓ keep — concrete preservation signal |
 | `sample-background-tissues.png` | Top HPA-tissue correlations for the sample | ~ review — overlaps with the narrative "Top tissue matches" in summary.md; consider drop if always redundant |
@@ -137,49 +139,50 @@ any group deserves consolidation.
 |---|---|---|
 | 1 | `sample-sample-summary.png` | One-panel overview — cancer call, purity, top tissues |
 | 2 | `sample-sample-context.png` | Library-prep / preservation / degradation diagnostic axes |
-| 3 | `sample-expression-concentration-qc.png` | Dominant-gene and cumulative TPM concentration QC |
-| 4 | `sample-qc-reference-mtdna-rrna.png` | mtDNA, nuclear rRNA-like, and rRNA-pseudogene fractions against reference-column distributions |
-| 5 | `sample-qc-reference-technical-rna-burden.png` | Combined mtDNA+rRNA-like burden against reference-column distributions |
-| 6 | `sample-degradation-index.png` | Long/short transcript length-pair scatter |
-| 7 | `sample-background-tissues.png` | Top HPA-tissue correlations for the sample |
-| 8 | `sample-cancer-hypotheses.png` | Candidate cancer-type ranking chart |
-| 9 | `sample-reference-mds.png` | MDS embedding: sample among cancer, subtype, and normal references |
-| 10 | `sample-vs-cancer.pdf` | Per-category scatter vs reference cohort (multi-page) |
-| 11 | `sample-subtype-signature.png` | Therapy-response axes — AR/ER/HER2/NE/EMT/hypoxia/IFN |
-| 12 | `sample-purity.png` | Tumor purity detail — CI + component contributions |
-| 13 | `sample-purity-methods.png` | All purity-estimation methods on one axis |
-| 14 | `sample-purity-targets.png` | Tumor-expression ranges (targets) |
-| 15 | `sample-purity-ctas.png` | Tumor-expression ranges (CTAs) |
-| 16 | `sample-purity-surface.png` | Tumor-expression ranges (surface proteins) |
-| 17 | `sample-decomposition-composition.png` | Composition bar — tumor + TME for best hypothesis |
-| 18 | `sample-decomposition-components.png` | TME cell-type breakdown for best hypothesis |
-| 19 | `sample-decomposition-candidates.png` | Per-candidate composition across top hypotheses |
-| 20 | `sample-target-tissues.pdf` | Therapy-target TPM across host tissues |
-| 21 | `sample-target-safety.png` | Therapy-target normal-tissue expression (safety view) |
-| 22 | `sample-target-attribution-targets.png` | Per-gene stacked attribution (targets) |
-| 23 | `sample-target-attribution-ctas.png` | Per-gene stacked attribution (CTAs) |
-| 24 | `sample-target-attribution-surface.png` | Per-gene stacked attribution (surface) |
-| 25 | `sample-matched-normal-targets.png` | Matched-normal vs tumor per target (targets) |
-| 26 | `sample-matched-normal-ctas.png` | Same (CTAs) |
-| 27 | `sample-matched-normal-surface.png` | Same (surface) |
-| 28 | `sample-subtype-attribution-targets.png` | #56/#58 before/after reference swap (targets) |
-| 29 | `sample-subtype-attribution-surface.png` | Same (surface) |
-| 30 | `sample-targets-deep-dive.png` | Top actionable targets, detailed |
-| 31 | `sample-cta-deep-dive.png` | Top CTAs, detailed |
-| 32 | `sample-mhc-expression.png` | HLA-A/B/C + B2M bar |
-| 33 | `sample-provenance.png` | 5-step attribution chain stacked bar |
-| 34 | `sample-therapy-pathway-state.png` | Dumbbell of therapy-response axes fold-change |
-| 35 | `sample-treatments.png` | Therapy-target expression by modality (ADC/TCR-T/…) |
-| 36 | `Cancer_surfaceome.png` | Strip plot — surfaceome gene set |
-| 37 | `CTAs.png` | Strip plot — CTA gene set |
-| 38 | `DNA_repair.png` | Strip plot — DNA-repair gene set |
-| 39 | `Growth_receptors.png` | Strip plot — growth-receptor gene set |
-| 40 | `Immune_checkpoints.png` | Strip plot — immune-checkpoint gene set |
-| 41 | `Interferon_response.png` | Strip plot — IFN-response gene set |
-| 42 | `MHC1_presentation.png` | Strip plot — MHC-I presentation gene set |
-| 43 | `Oncogenes.png` | Strip plot — oncogene set |
-| 44 | `TLR.png` | Strip plot — TLR gene set |
-| 45 | `Tumor_suppressors.png` | Strip plot — tumor-suppressor gene set |
+| 3 | `sample-expression-top-features-qc.png` | Dominant-gene/feature TPM share QC |
+| 4 | `sample-expression-concentration-curve-qc.png` | Cumulative TPM concentration curve |
+| 5 | `sample-qc-reference-mtdna.png` | mtDNA fraction against reference-column distributions |
+| 6 | `sample-qc-reference-technical-rna-burden.png` | Combined mtDNA+rRNA-like burden against reference-column distributions |
+| 7 | `sample-degradation-index.png` | Long/short transcript length-pair scatter |
+| 10 | `sample-background-tissues.png` | Top HPA-tissue correlations for the sample |
+| 11 | `sample-cancer-hypotheses.png` | Candidate cancer-type ranking chart |
+| 12 | `sample-reference-mds.png` | MDS embedding: sample among cancer, subtype, and normal references |
+| 13 | `sample-vs-cancer.pdf` | Per-category scatter vs reference cohort (multi-page) |
+| 14 | `sample-subtype-signature.png` | Therapy-response axes — AR/ER/HER2/NE/EMT/hypoxia/IFN |
+| 15 | `sample-purity.png` | Tumor purity detail — CI + component contributions |
+| 16 | `sample-purity-methods.png` | All purity-estimation methods on one axis |
+| 17 | `sample-purity-targets.png` | Tumor-expression ranges (targets) |
+| 18 | `sample-purity-ctas.png` | Tumor-expression ranges (CTAs) |
+| 19 | `sample-purity-surface.png` | Tumor-expression ranges (surface proteins) |
+| 20 | `sample-decomposition-composition.png` | Composition bar — tumor + TME for best hypothesis |
+| 21 | `sample-decomposition-components.png` | TME cell-type breakdown for best hypothesis |
+| 22 | `sample-decomposition-candidates.png` | Per-candidate composition across top hypotheses |
+| 23 | `sample-target-tissues.pdf` | Therapy-target TPM across host tissues |
+| 24 | `sample-target-safety.png` | Therapy-target normal-tissue expression (safety view) |
+| 25 | `sample-target-attribution-targets.png` | Per-gene stacked attribution (targets) |
+| 26 | `sample-target-attribution-ctas.png` | Per-gene stacked attribution (CTAs) |
+| 27 | `sample-target-attribution-surface.png` | Per-gene stacked attribution (surface) |
+| 28 | `sample-matched-normal-targets.png` | Matched-normal vs tumor per target (targets) |
+| 29 | `sample-matched-normal-ctas.png` | Same (CTAs) |
+| 30 | `sample-matched-normal-surface.png` | Same (surface) |
+| 31 | `sample-subtype-attribution-targets.png` | #56/#58 before/after reference swap (targets) |
+| 32 | `sample-subtype-attribution-surface.png` | Same (surface) |
+| 33 | `sample-targets-deep-dive.png` | Top actionable targets, detailed |
+| 34 | `sample-cta-deep-dive.png` | Top CTAs, detailed |
+| 35 | `sample-mhc-expression.png` | HLA-A/B/C + B2M bar |
+| 36 | `sample-provenance.png` | 5-step attribution chain stacked bar |
+| 37 | `sample-therapy-pathway-state.png` | Dumbbell of therapy-response axes fold-change |
+| 38 | `sample-treatments.png` | Therapy-target expression by modality (ADC/TCR-T/…) |
+| 39 | `Cancer_surfaceome.png` | Strip plot — surfaceome gene set |
+| 40 | `CTAs.png` | Strip plot — CTA gene set |
+| 41 | `DNA_repair.png` | Strip plot — DNA-repair gene set |
+| 42 | `Growth_receptors.png` | Strip plot — growth-receptor gene set |
+| 43 | `Immune_checkpoints.png` | Strip plot — immune-checkpoint gene set |
+| 44 | `Interferon_response.png` | Strip plot — IFN-response gene set |
+| 45 | `MHC1_presentation.png` | Strip plot — MHC-I presentation gene set |
+| 46 | `Oncogenes.png` | Strip plot — oncogene set |
+| 47 | `TLR.png` | Strip plot — TLR gene set |
+| 48 | `Tumor_suppressors.png` | Strip plot — tumor-suppressor gene set |
 
 ### Similar-purpose groupings
 
@@ -191,11 +194,12 @@ concrete starting point. No figure is being removed here.
 Which kind of sample is this + QC? Candidates for a single-composite at glance:
 - `sample-sample-summary.png` (#1)
 - `sample-sample-context.png` (#2)
-- `sample-expression-concentration-qc.png` (#3)
-- `sample-qc-reference-mtdna-rrna.png` (#4)
-- `sample-qc-reference-technical-rna-burden.png` (#5)
-- `sample-degradation-index.png` (#6)
-- `sample-background-tissues.png` (#7)
+- `sample-expression-top-features-qc.png` (#3)
+- `sample-expression-concentration-curve-qc.png` (#4)
+- `sample-qc-reference-mtdna.png` (#5)
+- `sample-qc-reference-technical-rna-burden.png` (#6)
+- `sample-degradation-index.png` (#7)
+- `sample-background-tissues.png`
 
 **G2: Cancer-type identification**
 What cancer, how confident?

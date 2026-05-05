@@ -175,12 +175,12 @@ def tumor_attribution_context(row):
 
     if observed > 0:
         band = (
-            f"{mid_tpm:.0f} TPM "
+            f"{mid_tpm:.0f} tumor-source bulk TPM "
             f"(model interval {low_tpm:.0f}-{high_tpm:.0f}; "
             f"{mid_frac:.0%} tumor, {low_frac:.0%}-{high_frac:.0%} interval)"
         )
     else:
-        band = f"{mid_tpm:.0f} TPM"
+        band = f"{mid_tpm:.0f} tumor-source bulk TPM"
 
     return {
         "tier": tier,
@@ -199,16 +199,51 @@ def tumor_attribution_context(row):
     }
 
 
+def context_expression_context(row):
+    """Return the broader tumor-context expression range.
+
+    This is intentionally separate from ``tumor_attribution_context``:
+    ``tumor_cell_tpm`` / ``median_est`` can remain useful for cohort-context
+    and pathway reasoning, but it is not proof that the observed RNA came
+    from tumor cells when the source attribution says background-dominant.
+    """
+    mid_tpm = _safe_float(
+        row.get("tumor_cell_tpm"),
+        _safe_float(row.get("median_est"), _safe_float(row.get("observed_tpm"), 0.0)),
+    )
+    low_tpm = _safe_float(row.get("tumor_cell_tpm_low"), _safe_float(row.get("est_1"), mid_tpm))
+    high_tpm = _safe_float(row.get("tumor_cell_tpm_high"), _safe_float(row.get("est_9"), mid_tpm))
+    low_tpm, mid_tpm, high_tpm = sorted(
+        [max(0.0, low_tpm), max(0.0, mid_tpm), max(0.0, high_tpm)]
+    )
+    return {
+        "context_tpm": mid_tpm,
+        "context_tpm_low": low_tpm,
+        "context_tpm_high": high_tpm,
+    }
+
+
+def context_expression_band_cell(row):
+    ctx = context_expression_context(row)
+    return (
+        f"{ctx['context_tpm']:.0f} "
+        f"({ctx['context_tpm_low']:.0f}-{ctx['context_tpm_high']:.0f})"
+    )
+
+
 def tpm_semantics_note() -> str:
-    """One reader-facing explanation of bulk vs modeled tumor-inferred TPM."""
+    """One reader-facing explanation of bulk vs modeled TPM columns."""
     return (
         "**TPM semantics:** Bulk TPM is the measured RNA abundance in the mixed "
-        "specimen. Tumor-inferred TPM is a model-derived estimate after subtracting "
-        "matched-normal and TME-attributable signal. Use tumor-inferred TPM for "
-        "tumor-cell target prioritization only when attribution is tumor-supported "
-        "or mixed-source; for immune/stromal markers, agent-only rows, and "
-        "expression-independent indications, bulk RNA is contextual and the "
-        "clinical biomarker must come from the indicated assay."
+        "specimen. Tumor-attributed bulk TPM is the share of that bulk signal "
+        "assigned to tumor rather than matched-normal/TME compartments. Context "
+        "TPM is the broader purity/cohort expression estimate used for cancer "
+        "context, pathway biology, and 'is this gene high in this specimen?' "
+        "reasoning. Do not treat context TPM as tumor-source evidence when the "
+        "tumor-attribution row says background-dominant. For immune/stromal "
+        "markers, agent-only rows, and expression-independent indications, bulk "
+        "RNA is contextual and the clinical biomarker must come from the "
+        "indicated assay."
     )
 
 
@@ -464,7 +499,7 @@ def tumor_band_available(row):
 
 
 def tumor_band_cell(row):
-    """Compact ``mid (low-high)`` cell for markdown tables."""
+    """Compact source-attributed ``mid (low-high)`` cell for markdown tables."""
     if not tumor_band_available(row):
         return "—"
     ctx = tumor_attribution_context(row)

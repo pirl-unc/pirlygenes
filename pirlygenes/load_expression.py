@@ -29,6 +29,7 @@ from .expression_qc import (
     classify_gene_qc,
     dominant_class_phrase,
     is_rescue_feature,
+    normalize_technical_rna_columns,
     summarize_qc_class_shares,
 )
 
@@ -441,17 +442,17 @@ def _expression_scale_qc(df) -> dict:
 
 
 def apply_expression_qc_rescue(df, mode: str = "auto"):
-    """Remove mtDNA/rRNA-like TPM artifacts and re-normalize when warranted.
+    """Remove mtDNA/rRNA-like TPM artifacts and re-normalize expression.
 
     Parameters
     ----------
     df : pandas.DataFrame
         Gene-level TPM table.
     mode : {"auto", "always", "off", "never", "false"}
-        ``auto`` applies only when mtDNA/rRNA-like features are so dominant
-        that raw TPM is likely unusable for downstream calls. ``always`` forces
-        the rescue whenever removable features are present. ``off``/``never``
-        disables it.
+        ``auto`` applies the same technical-RNA normalization used for
+        references whenever removable features are present, but marks the row as
+        high-burden only when mtDNA/rRNA-like features dominate raw TPM.
+        ``always`` forces the same normalization. ``off``/``never`` disables it.
 
     Returns
     -------
@@ -501,6 +502,7 @@ def apply_expression_qc_rescue(df, mode: str = "auto"):
     record = {
         "mode": mode_norm,
         "applied": False,
+        "high_burden": False,
         "input_sum_tpm": raw_sum,
         "output_sum_tpm": raw_sum,
         "removed_tpm": 0.0,
@@ -565,25 +567,33 @@ def apply_expression_qc_rescue(df, mode: str = "auto"):
             )
         )
     )
+    record["high_burden"] = bool(auto_trigger)
     if mode_norm == "always":
         should_apply = removed_tpm > 0 and remaining_tpm > 0
         record["reason"] = "forced by --expression-qc-rescue"
     else:
-        should_apply = auto_trigger and remaining_tpm > 0
+        should_apply = removed_tpm > 0 and remaining_tpm > 0
         record["reason"] = (
             "auto-rescue: mtDNA/rRNA-like features dominate raw TPM"
-            if should_apply
-            else "not applied: mtDNA/rRNA-like burden below auto-rescue threshold"
+            if auto_trigger and should_apply
+            else (
+                "auto-normalize: mtDNA/rRNA-like features zeroed for comparability"
+                if should_apply
+                else "not applied: no removable mtDNA/rRNA-like burden"
+            )
         )
 
     if not should_apply:
         return df, record
 
-    out = df.copy()
+    out, normalization_record = normalize_technical_rna_columns(
+        df,
+        label_col=label_col,
+        value_cols=["TPM"],
+    )
+    out = out.copy()
     out["TPM_raw_before_qc_rescue"] = tpm
-    out.loc[removable, "TPM"] = 0.0
     scale = raw_sum / remaining_tpm if remaining_tpm > 0 else 1.0
-    out.loc[~removable, "TPM"] = tpm[~removable] * scale
     final_qc = _expression_scale_qc(out)
     final_qc["rescued_from_qc_artifact"] = True
     out.attrs = dict(getattr(df, "attrs", {}))
@@ -592,6 +602,7 @@ def apply_expression_qc_rescue(df, mode: str = "auto"):
         "applied": True,
         "output_sum_tpm": float(pd.to_numeric(out["TPM"], errors="coerce").sum()),
         "renormalization_factor": float(scale),
+        "reference_normalization_record": normalization_record,
     }
     out.attrs["expression_scale_qc"] = final_qc
     return out, out.attrs["expression_qc_rescue"]

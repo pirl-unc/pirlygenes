@@ -8,6 +8,13 @@ or Excel) and produces:
 - A combined PDF (`{prefix}-all-figures.pdf`)
 - Text reports (`{prefix}-summary.md`, `{prefix}-analysis.md`, `{prefix}-evidence.md`)
 
+Raw sample QC is computed before any expression rescue. By default,
+downstream biology uses a technical-RNA-normalized expression view:
+mtDNA, rRNA-like, and rRNA-pseudogene rows are zeroed and the remaining
+TPM is renormalized in both the input sample and bundled reference
+columns. Use `--expression-qc-rescue off` to preserve raw TPM for
+downstream analysis.
+
 ## Usage
 
 ```bash
@@ -50,7 +57,7 @@ pirlygenes analyze input.csv \
 | `{prefix}-cancer-types-genes.png` | Gene set heatmap vs TCGA cancer types |
 | `{prefix}-cancer-types-disjoint.png` | Disjoint gene counts per cancer type |
 | `{prefix}-reference-mds.png` | MDS embedding of TCGA cancer medians, subtype references, normal tissues, and the sample |
-| `{prefix}-reference-neighborhood.png` | Sample-centered reference map; radius preserves full feature-space distance |
+| `{prefix}-reference-neighborhood.png` | Nearest cancer/subtype/normal reference distance ranking; preserves full feature-space distance |
 | `{prefix}-vs-cancer/` | Per-category scatter plots: sample vs TCGA cancer type |
 | `{prefix}-vs-cancer.pdf` | Combined scatter plot PDF |
 | `{prefix}-all-figures.pdf` | All figures in one PDF |

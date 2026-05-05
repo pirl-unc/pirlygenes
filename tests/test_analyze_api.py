@@ -546,6 +546,9 @@ def test_build_analyze_comparison_markdown_from_summary_files(tmp_path: Path):
     assert "# Longitudinal Analyze Comparison" in markdown
     assert "| case alpha baseline |" in markdown
     assert "| case alpha followup |" in markdown
+    assert "## Longitudinal Deltas" in markdown
+    assert "gained NECTIN4; lost ERBB2" in markdown
+    assert "## Biology And Response State" in markdown
     assert "## Therapy Shortlists" in markdown
     assert "Treat RNA-inferred cancer labels as hypotheses" in markdown
     assert "Patient-facing LLM use" in markdown

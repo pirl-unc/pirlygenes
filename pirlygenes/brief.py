@@ -39,6 +39,7 @@ from .reporting import (
     cancer_key_genes_lookup_for_analysis,
     candidate_winning_subtype_for_analysis,
     clinical_maturity_summary,
+    context_expression_band_cell,
     indication_biomarker,
     indication_biomarker_label,
     expression_independent_indication,
@@ -860,7 +861,7 @@ def _shortlist_omission_note(targets_df, ranges_df, top_rows) -> str:
         return ""
     lines = [
         "**Target expression source trace**",
-        "| Gene | Bulk TPM | Tumor-inferred TPM | Tumor fraction | Top non-tumor attribution | Component TPM | Main reason |",
+        "| Gene | Bulk TPM | Tumor-source bulk TPM | Tumor fraction | Top non-tumor attribution | Component TPM | Main reason |",
         "|---|---:|---:|---:|---|---:|---|",
     ]
     for row in rows:
@@ -1955,11 +1956,11 @@ def build_actionable(
             lines.append("")
             lines.append(
                 "| Target | Agent | Class | Phase | Indication | "
-                "Bulk TPM (measured) | Tumor-inferred TPM (model) | Interpretation |"
+                "Bulk TPM (measured) | Tumor-source bulk TPM (model) | Context TPM (model) | Interpretation |"
             )
             lines.append(
                 "|--------|-------|-------|-------|------------|"
-                "----------|------------|----------------|"
+                "----------|-------------------------------|---------------------|----------------|"
             )
             phase_order = {
                 "approved": 0,
@@ -1999,13 +2000,15 @@ def build_actionable(
                 # nonexistent gene.
                 if sym == "—":
                     obs_cell = "*not measured*"
-                    tumor_cell = "—"
+                    tumor_source_cell = "—"
+                    context_cell = "—"
                     interp_cell = "agent-only / no direct gene target"
                 else:
                     expr = sym_to_row.get(sym)
                     if expr is None:
                         obs_cell = "*not measured*"
-                        tumor_cell = "—"
+                        tumor_source_cell = "—"
+                        context_cell = "—"
                         if expression_independent_indication(t):
                             interp_cell = (
                                 expression_independent_interpretation(t)
@@ -2035,7 +2038,8 @@ def build_actionable(
                             interp_cell += "; " + "; ".join(extra_parts)
                     else:
                         obs_cell = f"{float(expr.get('observed_tpm') or 0):.1f}"
-                        tumor_cell = tumor_band_cell(expr)
+                        tumor_source_cell = tumor_band_cell(expr)
+                        context_cell = context_expression_band_cell(expr)
                         source = tumor_attribution_context(expr)
                         normal = normal_expression_context(expr)
                         expr_independent = expression_independent_indication(t)
@@ -2076,7 +2080,8 @@ def build_actionable(
                 lines.append(
                     f"| {bold}{sym}{bold} | {_cell(t.get('agent'))} | "
                     f"{_cell(t.get('agent_class'))} | {phase} | "
-                    f"{_cell(t.get('indication'))} | {obs_cell} | {tumor_cell} | {interp_cell} |"
+                    f"{_cell(t.get('indication'))} | {obs_cell} | "
+                    f"{tumor_source_cell} | {context_cell} | {interp_cell} |"
                 )
             lines.append("")
         else:

@@ -306,7 +306,7 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
     # removed from the default plot set (polish/4.40.1).
     assert len(cancer_gene_calls) == 0
-    # Pan-reference MDS plus a sample-centered reference neighborhood are emitted now;
+    # Pan-reference MDS plus a nearest-reference distance ranking are emitted now;
     # PCA and hierarchy-method plots have been removed from the default output
     # (see pirl-unc/pirlygenes#36).
     assert len(pca_calls) == 0
@@ -342,7 +342,7 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert params["selected_sample_mode"] == "solid"
     assert params["embedding_methods"] == [
         "pan_reference_mds",
-        "pan_reference_neighborhood",
+        "pan_reference_nearest_references",
     ]
     assert params["input"]["tumor_context"] == "met"
     assert params["input"]["site_hint"] == "liver"
@@ -840,7 +840,7 @@ def test_generate_target_report_is_mode_aware(tmp_path):
     )
     pure_text = (tmp_path / "pure-targets.md").read_text()
     assert "Population-expression range" in pure_text
-    assert "Cellular TPM" in pure_text
+    assert "Context TPM (model)" in pure_text
 
     heme_prefix = str(tmp_path / "heme-targets")
     cli_mod._generate_target_report(
@@ -855,7 +855,7 @@ def test_generate_target_report_is_mode_aware(tmp_path):
     )
     heme_text = (tmp_path / "heme-targets-targets.md").read_text()
     assert "Malignant-lineage expression range" in heme_text
-    assert "Malignant-lineage TPM (model)" in heme_text
+    assert "Context TPM (model)" in heme_text
 
 
 def test_generate_target_report_adds_tumor_context_and_landscape_summary(tmp_path):
@@ -1436,8 +1436,6 @@ def test_mds_can_focus_on_sample_neighborhood(monkeypatch):
 def test_reference_neighborhood_preserves_sample_distances(monkeypatch):
     import pirlygenes.plot_embedding as _pe
 
-    captured = {}
-
     def fake_feature_matrix(*_args, **_kwargs):
         return np.array(
             [
@@ -1448,33 +1446,22 @@ def test_reference_neighborhood_preserves_sample_distances(monkeypatch):
             ]
         ), ["COAD", "READ", "normal:colon", "SAMPLE"]
 
-    def fake_plot(coords, labels, **kwargs):
-        captured["coords"] = coords
-        captured["labels"] = labels
-        captured["kwargs"] = kwargs
-        return None, None
-
     monkeypatch.setattr(_pe, "_cancer_type_feature_matrix", fake_feature_matrix)
-    monkeypatch.setattr(_pe, "_plot_embedding_with_labels", fake_plot)
 
-    _pe.plot_cancer_type_neighborhood(
+    fig, ax = _pe.plot_cancer_type_neighborhood(
         pd.DataFrame({"gene_symbol": ["A"], "ensembl_gene_id": ["ENSG1"], "TPM": [1]}),
         focus_nearest_cancers=None,
         focus_nearest_normals=None,
     )
 
-    labels = captured["labels"]
-    coords = captured["coords"]
-    sample = coords[labels.index("SAMPLE")]
-    plotted_dist = {
-        label: float(np.linalg.norm(coords[i] - sample))
-        for i, label in enumerate(labels)
-        if label != "SAMPLE"
-    }
-
-    assert plotted_dist["COAD"] < plotted_dist["normal:colon"] < plotted_dist["READ"]
-    assert captured["kwargs"]["sample_centered_distance"] is True
-    assert captured["kwargs"]["nearest_basis"] == "input feature distance"
+    labels = [tick.get_text() for tick in ax.get_yticklabels()]
+    assert labels == ["COAD", "READ", "colon"]
+    assert "Nearest reference distances" in ax.get_title()
+    assert "Input feature-space distance" in ax.get_xlabel()
+    widths = [float(patch.get_width()) for patch in ax.patches]
+    assert widths[0] < widths[1]
+    assert widths[0] < widths[2]
+    fig.clf()
 
 
 def test_embedding_matrix_sanitizes_nonfinite_features():

@@ -14,6 +14,10 @@ from __future__ import annotations
 
 import warnings
 
+from .expression_qc import (
+    normalize_technical_rna_columns,
+    normalize_technical_rna_long_table,
+)
 from .load_dataset import get_data
 
 
@@ -625,9 +629,9 @@ def cancer_surfaceome_evidence(min_cancer_types=None):
 _PAN_CANCER_CACHE = {}
 
 
-def _pan_cancer_cache_key(genes, normalize, log_transform):
+def _pan_cancer_cache_key(genes, normalize, log_transform, technical_rna_normalize):
     genes_key = None if genes is None else frozenset(str(g).upper() for g in genes)
-    return (genes_key, normalize, bool(log_transform))
+    return (genes_key, normalize, bool(log_transform), bool(technical_rna_normalize))
 
 
 def cancer_type_registry():
@@ -720,7 +724,7 @@ def is_mixture_cohort(code):
     return code in set(mixture_cohort_codes())
 
 
-def subtype_deconvolved_expression():
+def subtype_deconvolved_expression(technical_rna_normalize=True):
     """Per-(cancer_code, subtype, symbol) tumor-only TPM from multi-cohort deconv.
 
     Subtype-stratified companion to :func:`tcga_deconvolved_expression`.
@@ -771,9 +775,14 @@ def subtype_deconvolved_expression():
         not bundled (maintainer hasn't run the offline batch).
     """
     try:
-        return get_data("subtype-deconvolved-expression")
+        df = get_data("subtype-deconvolved-expression")
     except ValueError:
         return None
+    if not technical_rna_normalize:
+        return df
+    df_norm, record = normalize_technical_rna_long_table(df)
+    df_norm.attrs["technical_rna_normalization"] = record
+    return df_norm
 
 
 # ---------- Cancer-pathway panels (tumor-evidence Step-0 signals) ----------
@@ -1030,7 +1039,12 @@ def _tcga_deconv_wide(cache={}):
     return wide
 
 
-def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
+def pan_cancer_expression(
+    genes=None,
+    normalize=None,
+    log_transform=False,
+    technical_rna_normalize=True,
+):
     """Expression across 50 normal tissues (nTPM) and 33 TCGA cancer types.
 
     Normal tissues from HPA v23 consensus nTPM. Cancer types from HPA
@@ -1055,6 +1069,12 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
     log_transform : bool
         If True, apply log2(x + 1) after normalization (or to raw values
         if normalize is None). Recommended for visualization.
+    technical_rna_normalize : bool
+        If True (default), zero mtDNA/rRNA-like/rRNA-pseudogene rows in every
+        reference expression column and renormalize the remaining values before
+        any gene filtering or housekeeping/percentile normalization. This keeps
+        TCGA/HPA/subsequent sample comparisons independent of technical RNA
+        denominator burden.
 
     Returns
     -------
@@ -1063,7 +1083,9 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
     """
     import numpy as np
 
-    cache_key = _pan_cancer_cache_key(genes, normalize, log_transform)
+    cache_key = _pan_cancer_cache_key(
+        genes, normalize, log_transform, technical_rna_normalize
+    )
     cached = _PAN_CANCER_CACHE.get(cache_key)
     if cached is not None:
         return cached.copy()
@@ -1072,6 +1094,18 @@ def pan_cancer_expression(genes=None, normalize=None, log_transform=False):
     deconv_wide = _tcga_deconv_wide()
     if deconv_wide is not None:
         df = df.merge(deconv_wide, on="Symbol", how="left")
+    value_cols = [
+        c
+        for c in df.columns
+        if c.startswith("nTPM_") or c.startswith("FPKM_") or c.startswith("tcga_")
+    ]
+    if technical_rna_normalize:
+        df, normalization_record = normalize_technical_rna_columns(
+            df,
+            label_col="Symbol",
+            value_cols=value_cols,
+        )
+        df.attrs["technical_rna_normalization"] = normalization_record
     if genes is not None:
         genes_upper = {str(g).upper() for g in genes}
         mask = df["Ensembl_Gene_ID"].str.upper().isin(genes_upper) | df[

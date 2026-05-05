@@ -185,7 +185,7 @@ def build_analysis_parameters(
         "tumor_purity": tumor_purity_parameters,
         "decomposition": decomposition_parameters,
         "selected_sample_mode": selected_sample_mode,
-        "embedding_methods": ["pan_reference_mds", "pan_reference_neighborhood"],
+        "embedding_methods": ["pan_reference_mds", "pan_reference_nearest_references"],
         "sample_quality": {
             "degradation_level": quality["degradation"]["level"],
             "degradation_pair_index": quality["degradation"]["long_short_ratio"],

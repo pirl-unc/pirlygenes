@@ -253,6 +253,26 @@ def test_expression_qc_rescue_removes_rrna_like_dominator():
     )
 
 
+def test_expression_qc_rescue_auto_normalizes_low_technical_burden():
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5SP389", "MT-ATP8", "KLK3", "ACTB"],
+            "TPM": [5_000.0, 5_000.0, 100_000.0, 890_000.0],
+        }
+    )
+
+    rescued, record = le.apply_expression_qc_rescue(df, mode="auto")
+
+    assert record["applied"] is True
+    assert record["high_burden"] is False
+    assert record["removed_fraction"] == pytest.approx(0.01)
+    assert rescued.loc[rescued["gene"] == "RNA5SP389", "TPM"].item() == 0.0
+    assert rescued["TPM"].sum() == pytest.approx(1_000_000.0)
+    assert rescued.loc[rescued["gene"] == "KLK3", "TPM"].item() == pytest.approx(
+        100_000.0 / 990_000.0 * 1_000_000.0
+    )
+
+
 def test_load_expression_accepts_kallisto_gene_abundance_column(tmp_path, monkeypatch):
     p = tmp_path / "gene_abundance.tsv"
     pd.DataFrame(

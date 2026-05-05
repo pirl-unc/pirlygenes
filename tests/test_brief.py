@@ -810,7 +810,7 @@ def test_brief_explains_bulk_present_targets_that_fail_source_gate():
         disease_state="",
     )
     assert "Target expression source trace" in md
-    assert "Tumor-inferred TPM" in md
+    assert "Tumor-source bulk TPM" in md
     assert "Top non-tumor attribution" in md
     assert "STEAP2" in md
     assert "KLK2" in md
@@ -997,7 +997,7 @@ def test_brief_uses_tumor_band_without_attribution_dict():
         disease_state="",
     )
     assert "tumor-specific decomposition was unavailable" not in md
-    assert "128 TPM (model interval 128-128" in md
+    assert "128 tumor-source bulk TPM (model interval 128-128" in md
 
 
 def test_actionable_renders_tumor_band_without_attribution_dict():

@@ -1020,6 +1020,23 @@ def _expectation_for(expectations, library_prep, preservation, gene_class):
     return None
 
 
+def _sample_context_concentration_line(sample_context: SampleContext) -> str:
+    """Short bridge from sample-context inference to expression QC."""
+
+    signals = sample_context.signals or {}
+    level = str(signals.get("expression_concentration_level") or "").strip()
+    top_10_share = signals.get("top_10_share_of_total_tpm")
+    if not level and top_10_share is None:
+        return ""
+    prefix = "TPM concentration"
+    if level:
+        prefix += f": {level}"
+    parts = [prefix]
+    if top_10_share is not None:
+        parts.append(f"top 10 {float(top_10_share):.0%}")
+    return f"{parts[0]} ({', '.join(parts[1:])})" if len(parts) > 1 else parts[0]
+
+
 def plot_sample_context(
     sample_context: SampleContext, save_to_filename: str, save_dpi: int = 150
 ) -> Optional[str]:
@@ -1064,13 +1081,12 @@ def plot_sample_context(
     }.get(sample_context.degradation_severity, "#666666")
 
     header_lines = [
-        f"Library prep:  {prep_label}   "
-        f"(confidence {sample_context.library_prep_confidence:.0%})",
+        f"Library:       {prep_label} ({sample_context.library_prep_confidence:.0%})",
         f"Preservation:  {pres_label}",
         (
-            f"Degradation:   {sample_context.degradation_severity}"
+            f"Length-pair:   {sample_context.degradation_severity}"
             + (
-                f"  (length-pair index {sample_context.degradation_index:.2f})"
+                f" ({sample_context.degradation_index:.2f})"
                 if sample_context.degradation_index is not None
                 else ""
             )
@@ -1079,6 +1095,7 @@ def plot_sample_context(
     if sample_context.missing_mt:
         header_lines.append("MT genes missing from quant table")
 
+    concentration_line = _sample_context_concentration_line(sample_context)
     ax_text.text(
         0.02,
         0.95,
@@ -1096,6 +1113,15 @@ def plot_sample_context(
             va="top",
             family="monospace",
             color=severity_color if i == 2 else "black",
+        )
+    if concentration_line:
+        ax_text.text(
+            0.02,
+            0.04,
+            concentration_line,
+            fontsize=9,
+            va="bottom",
+            color="#7a2e1f",
         )
 
     # Bottom panel: diagnostic bars
@@ -1124,6 +1150,52 @@ def plot_sample_context(
             "Total-RNA floor",
         ),
     ]
+    top_10_share = signals.get("top_10_share_of_total_tpm")
+    concentration_level = str(signals.get("expression_concentration_level") or "")
+    qc_shares = signals.get("qc_class_shares") or {}
+    rrna_pseudogene_fraction = float(
+        qc_shares.get("rrna_pseudogene_fraction") or 0.0
+    )
+    rrna_plus_mt_fraction = float(qc_shares.get("rrna_plus_mt_fraction") or 0.0)
+    nuclear_rrna_like_fraction = float(
+        qc_shares.get("nuclear_rrna_like_fraction") or 0.0
+    )
+    if top_10_share is not None:
+        bars.append(
+            (
+                "Top-10 TPM share\n(expression concentration QC)",
+                float(top_10_share),
+                0.60,
+                "QC flag",
+            )
+        )
+    if rrna_pseudogene_fraction >= 0.005:
+        bars.append(
+            (
+                "rRNA pseudogene\n(of total sample TPM)",
+                rrna_pseudogene_fraction,
+                0.01,
+                "QC flag",
+            )
+        )
+    elif nuclear_rrna_like_fraction >= 0.005:
+        bars.append(
+            (
+                "Nuclear rRNA-like\n(of total sample TPM)",
+                nuclear_rrna_like_fraction,
+                0.01,
+                "QC flag",
+            )
+        )
+    if rrna_plus_mt_fraction >= 0.10:
+        bars.append(
+            (
+                "mtDNA + rRNA-like\n(technical-RNA burden)",
+                rrna_plus_mt_fraction,
+                0.10,
+                "QC flag",
+            )
+        )
     y = [i for i in range(len(bars))]
     values = [b[1] for b in bars]
     labels = [b[0] for b in bars]
@@ -1135,7 +1207,16 @@ def plot_sample_context(
     # window instead of chasing an absolute threshold that doesn't
     # apply to every prep.
     expectations = _load_artifact_expectations()
-    signal_keys = ["histone_fraction", "mt_fraction", "mt_rrna_fraction_of_mt"]
+    signal_keys = [
+        "histone_fraction",
+        "mt_fraction",
+        "mt_rrna_fraction_of_mt",
+        "top_10_share_of_total_tpm",
+        "rrna_pseudogene_fraction"
+        if rrna_pseudogene_fraction >= 0.005
+        else "nuclear_rrna_like_fraction",
+        "rrna_plus_mt_fraction",
+    ][: len(bars)]
     bar_bands = []
     in_band_count = 0
     for yi, sig_key in zip(y, signal_keys):
@@ -1184,7 +1265,8 @@ def plot_sample_context(
 
     ax_bars.barh(y, values, color="#4682b4", alpha=0.85)
     ax_bars.set_yticks(y)
-    ax_bars.set_yticklabels(labels, fontsize=9)
+    label_fontsize = 8 if len(bars) > 4 else 9
+    ax_bars.set_yticklabels(labels, fontsize=label_fontsize)
     ax_bars.invert_yaxis()
     # #102: with exome-capture samples every value is ~0 and a raw axis
     # (xlim = 1.0) produces a chart that looks empty. Give a minimum axis
@@ -1193,8 +1275,11 @@ def plot_sample_context(
     max_value = max(values) if values else 0.0
     max_threshold = max((b[2] for b in bars), default=0.0)
     max_band_hi = max((band[1] for band in bar_bands if band is not None), default=0.0)
-    axis_floor = max(max_threshold * 4.0, max_band_hi * 1.1, 0.05)
-    ax_bars.set_xlim(0, max(max_value * 1.2, axis_floor))
+    if max_value < 0.01:
+        axis_floor = max(max_threshold * 4.0, max_band_hi * 1.1, 0.05)
+    else:
+        axis_floor = max(max_threshold * 1.15, max_band_hi * 1.1, 0.05)
+    ax_bars.set_xlim(0, min(1.0, max(max_value * 1.12, axis_floor)))
     ax_bars.set_xlabel("Fraction", fontsize=10)
     for yi, (thr, thr_name) in zip(y, thresholds):
         ax_bars.axvline(thr, color="#888888", linestyle="--", linewidth=0.8)
@@ -1216,7 +1301,25 @@ def plot_sample_context(
             )
         else:
             status = ""
-        ax_bars.text(val, yi, f"  {val:.3f} {status}", va="center", fontsize=9)
+        text_color = (
+            "#7a2e1f"
+            if (
+                (
+                    signal_keys[yi] == "top_10_share_of_total_tpm"
+                    and concentration_level in {"high", "extreme"}
+                )
+                or signal_keys[yi]
+                in {
+                    "rrna_pseudogene_fraction",
+                    "nuclear_rrna_like_fraction",
+                    "rrna_plus_mt_fraction",
+                }
+            )
+            else "black"
+        )
+        ax_bars.text(
+            val, yi, f"  {val:.3f} {status}", va="center", fontsize=9, color=text_color
+        )
 
     if max_value < 0.01:
         # Show the user what "all near zero" means rather than leaving a
@@ -1249,7 +1352,7 @@ def plot_sample_context(
 
     ax_bars.spines["top"].set_visible(False)
     ax_bars.spines["right"].set_visible(False)
-    ax_bars.set_title("Library-prep diagnostic signals", fontsize=10, loc="left")
+    ax_bars.set_title("Library-prep and degradation signals", fontsize=10, loc="left")
 
     fig.tight_layout()
     fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
@@ -1318,15 +1421,7 @@ def _reference_qc_fraction_rows():
     return rows
 
 
-def plot_expression_concentration_qc(
-    df_gene_expr,
-    save_to_filename: str,
-    save_dpi: int = 150,
-    top_n: int = 20,
-) -> Optional[str]:
-    """Plot dominant genes and cumulative TPM share for expression QC."""
-
-    import matplotlib.pyplot as plt
+def _expression_concentration_plot_data(df_gene_expr, top_n: int = 20):
     import numpy as np
 
     tpm_by_symbol = _build_tpm_by_symbol(df_gene_expr)
@@ -1341,13 +1436,8 @@ def plot_expression_concentration_qc(
     if total <= 0:
         return None
     items = sorted(items, key=lambda item: (-item[1], item[0]))
-    top = items[:top_n]
-    shares = [value / total for _, value in top]
-    labels = [
-        gene if len(gene) <= 24 else gene[:21] + "..."
-        for gene, _value in top
-    ]
-    def _display_class(gene: str) -> str:
+
+    def display_class(gene: str) -> str:
         qc = classify_gene_qc(gene)
         if qc.group == "rrna_like" and "pseudogene" in qc.label:
             return "rRNA pseudogene"
@@ -1365,8 +1455,24 @@ def plot_expression_concentration_qc(
             return "small ncRNA"
         return "other"
 
-    classes = [_display_class(gene) for gene, _value in top]
-    colors = {
+    top = items[:top_n]
+    sorted_values = np.array([value for _gene, value in items], dtype=float)
+    return {
+        "items": items,
+        "top": top,
+        "total": total,
+        "shares": [value / total for _, value in top],
+        "labels": [
+            gene if len(gene) <= 24 else gene[:21] + "..."
+            for gene, _value in top
+        ],
+        "classes": [display_class(gene) for gene, _value in top],
+        "cumulative": np.cumsum(sorted_values) / total,
+    }
+
+
+def _expression_concentration_colors() -> dict[str, str]:
+    return {
         "rRNA pseudogene": "#b64b3c",
         "rRNA-like": "#df7f5f",
         "mitochondrial rRNA": "#7a5195",
@@ -1376,10 +1482,133 @@ def plot_expression_concentration_qc(
         "small ncRNA": "#d99b2b",
         "other": "#6c757d",
     }
+
+
+def _add_expression_concentration_legend(ax, classes, colors) -> None:
+    import matplotlib.pyplot as plt
+
+    legend_handles = []
+    for group, color in colors.items():
+        if group in classes:
+            legend_handles.append(
+                plt.Line2D([0], [0], marker="s", linestyle="", color=color, label=group)
+            )
+    if legend_handles:
+        ax.legend(handles=legend_handles, loc="lower right", fontsize=8)
+
+
+def plot_expression_concentration_top_features_qc(
+    df_gene_expr,
+    save_to_filename: str,
+    save_dpi: int = 150,
+    top_n: int = 20,
+) -> Optional[str]:
+    """Plot dominant genes/features for expression-concentration QC."""
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    data = _expression_concentration_plot_data(df_gene_expr, top_n=top_n)
+    if data is None:
+        return None
+    top = data["top"]
+    shares = data["shares"]
+    labels = data["labels"]
+    classes = data["classes"]
+    colors = _expression_concentration_colors()
     bar_colors = [colors.get(cls, "#6c757d") for cls in classes]
 
-    sorted_values = np.array([value for _gene, value in items], dtype=float)
-    cumulative = np.cumsum(sorted_values) / total
+    fig, ax_bar = plt.subplots(figsize=(8.8, 6.2))
+    y = np.arange(len(top))
+    ax_bar.barh(y, shares, color=bar_colors, alpha=0.92)
+    ax_bar.set_yticks(y)
+    ax_bar.set_yticklabels(labels, fontsize=8)
+    ax_bar.invert_yaxis()
+    ax_bar.set_xlabel("Share of total TPM")
+    ax_bar.set_title("Dominant expression features", loc="left", fontsize=12)
+    ax_bar.xaxis.set_major_formatter(lambda x, _pos: f"{x:.0%}")
+    for yi, share, (gene, value) in zip(y, shares, top):
+        qc = classify_gene_qc(gene)
+        annotation = f"{share:.0%}"
+        if qc.group in {"rrna_like", "mt_dna"}:
+            annotation += f"  {qc.label}"
+        ax_bar.text(share, yi, "  " + annotation, va="center", fontsize=8)
+    ax_bar.spines["top"].set_visible(False)
+    ax_bar.spines["right"].set_visible(False)
+    _add_expression_concentration_legend(ax_bar, classes, colors)
+    fig.suptitle("Expression concentration QC: top features", x=0.01, ha="left", fontsize=14)
+    fig.tight_layout()
+    fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    plt.close(fig)
+    return save_to_filename
+
+
+def plot_expression_concentration_curve_qc(
+    df_gene_expr,
+    save_to_filename: str,
+    save_dpi: int = 150,
+    top_n: int = 20,
+) -> Optional[str]:
+    """Plot cumulative TPM concentration curve."""
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    data = _expression_concentration_plot_data(df_gene_expr, top_n=top_n)
+    if data is None:
+        return None
+    cumulative = data["cumulative"]
+    ranks = np.arange(1, len(cumulative) + 1)
+
+    fig, ax_curve = plt.subplots(figsize=(7.2, 5.8))
+    ax_curve.plot(ranks, cumulative, color="#333333", linewidth=2)
+    for n in (1, 10, 50, 200, 2000):
+        if len(cumulative) >= n:
+            ax_curve.scatter([n], [cumulative[n - 1]], color="#b64b3c", zorder=3)
+            ax_curve.text(
+                n,
+                cumulative[n - 1],
+                f" top {n}: {cumulative[n - 1]:.0%}",
+                fontsize=8,
+                va="bottom",
+            )
+    ax_curve.set_xscale("log")
+    ax_curve.set_ylim(0, 1.02)
+    ax_curve.set_xlabel("Gene rank by TPM")
+    ax_curve.set_ylabel("Cumulative share of total TPM")
+    ax_curve.set_title("TPM concentration curve", loc="left", fontsize=12)
+    ax_curve.yaxis.set_major_formatter(lambda x, _pos: f"{x:.0%}")
+    ax_curve.grid(True, axis="y", alpha=0.25)
+    ax_curve.spines["top"].set_visible(False)
+    ax_curve.spines["right"].set_visible(False)
+    fig.suptitle("Expression concentration QC: cumulative curve", x=0.01, ha="left", fontsize=14)
+    fig.tight_layout()
+    fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    plt.close(fig)
+    return save_to_filename
+
+
+def plot_expression_concentration_qc(
+    df_gene_expr,
+    save_to_filename: str,
+    save_dpi: int = 150,
+    top_n: int = 20,
+) -> Optional[str]:
+    """Compatibility wrapper for the original combined concentration QC plot."""
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    data = _expression_concentration_plot_data(df_gene_expr, top_n=top_n)
+    if data is None:
+        return None
+    top = data["top"]
+    shares = data["shares"]
+    labels = data["labels"]
+    classes = data["classes"]
+    colors = _expression_concentration_colors()
+    bar_colors = [colors.get(cls, "#6c757d") for cls in classes]
+    cumulative = data["cumulative"]
     ranks = np.arange(1, len(cumulative) + 1)
 
     fig, (ax_bar, ax_curve) = plt.subplots(
@@ -1424,16 +1653,7 @@ def plot_expression_concentration_qc(
     ax_curve.grid(True, axis="y", alpha=0.25)
     ax_curve.spines["top"].set_visible(False)
     ax_curve.spines["right"].set_visible(False)
-
-    legend_handles = []
-    for group, color in colors.items():
-        if group in classes:
-            legend_handles.append(
-                plt.Line2D([0], [0], marker="s", linestyle="", color=color, label=group)
-            )
-    if legend_handles:
-        ax_curve.legend(handles=legend_handles, loc="lower right", fontsize=8)
-
+    _add_expression_concentration_legend(ax_curve, classes, colors)
     fig.suptitle("Expression concentration QC", x=0.01, ha="left", fontsize=14)
     fig.tight_layout()
     fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
@@ -1446,7 +1666,7 @@ def plot_reference_mtdna_rrna_qc(
     save_to_filename: str,
     save_dpi: int = 150,
 ) -> Optional[str]:
-    """Plot sample mtDNA and rRNA-like fractions against bundled references."""
+    """Compatibility wrapper for the original three-panel technical-RNA plot."""
 
     import matplotlib.pyplot as plt
     import pandas as pd
@@ -1511,6 +1731,156 @@ def plot_reference_mtdna_rrna_qc(
     fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
     plt.close(fig)
     return save_to_filename
+
+
+def _plot_reference_technical_rna_metric_qc(
+    df_gene_expr,
+    *,
+    metric: str,
+    title: str,
+    sample_label: str,
+    save_to_filename: str,
+    save_dpi: int = 150,
+) -> Optional[str]:
+    """Plot one technical-RNA fraction against bundled references."""
+
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    rows = _reference_qc_fraction_rows()
+    if not rows:
+        return None
+    ref = pd.DataFrame(rows)
+    sample = _sample_qc_fractions(df_gene_expr)
+    fig, ax = plt.subplots(figsize=(8.4, 4.8))
+    colors = {
+        "TCGA cohort medians": "#3f6fb5",
+        "HPA normal tissues": "#3f8f5f",
+    }
+    sample_val = float(sample.get(metric) or 0.0)
+    all_ref_vals = ref[metric].astype(float)
+    ref_min = float(all_ref_vals.min()) if len(all_ref_vals) else 0.0
+    ref_max = float(all_ref_vals.max()) if len(all_ref_vals) else 0.0
+    degenerate_ref = bool((ref_max - ref_min) <= 1e-6)
+    if degenerate_ref:
+        ref_val = ref_min
+        ax.axvline(
+            ref_val,
+            color="#777777",
+            linestyle="-",
+            linewidth=5,
+            alpha=0.65,
+            label=f"all bundled references ({ref_val:.0%})",
+        )
+        ax.set_ylim(0, 1)
+        ax.set_yticks([])
+        ax.text(
+            0.02,
+            0.78,
+            "Bundled reference columns are degenerate for this metric.\n"
+            "This is usually an annotation-limit signal: TCGA cohort medians\n"
+            "and HPA normal tissue columns mostly omit nuclear rRNA /\n"
+            "rRNA-pseudogene features, so a histogram would collapse to one bin.",
+            transform=ax.transAxes,
+            fontsize=9,
+            color="#444444",
+            va="top",
+            bbox={
+                "boxstyle": "round,pad=0.4",
+                "facecolor": "#f7f3e8",
+                "edgecolor": "#d4c8a8",
+                "linewidth": 0.7,
+            },
+        )
+    else:
+        for source, group in ref.groupby("source"):
+            vals = group[metric].astype(float)
+            ax.hist(
+                vals,
+                bins=22,
+                alpha=0.55,
+                color=colors.get(source, "#777777"),
+                label=f"{source} (n={len(vals)})",
+            )
+    ax.axvline(
+        sample_val,
+        color="#111111",
+        linestyle=(0, (6, 3)),
+        linewidth=3,
+        label=f"sample ({sample_val:.0%})",
+    )
+    ax.set_xlabel("Fraction of total TPM")
+    ax.set_ylabel("Reference columns" if not degenerate_ref else "")
+    ax.xaxis.set_major_formatter(lambda x, _pos: f"{x:.0%}")
+    xmax = max(ref_max, sample_val, 0.01)
+    ax.set_xlim(0, min(1.0, xmax * 1.15 + 0.01))
+    ax.set_title(title, loc="left", fontsize=12)
+    ax.legend(loc="upper right", fontsize=8)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.text(
+        0.01,
+        0.01,
+        "Reference context uses TCGA cohort medians and HPA normal tissue columns; "
+        f"sample marker uses {sample_label} present in the input table.",
+        fontsize=8,
+        color="#555555",
+    )
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    plt.close(fig)
+    return save_to_filename
+
+
+def plot_reference_mtdna_fraction_qc(
+    df_gene_expr,
+    save_to_filename: str,
+    save_dpi: int = 150,
+) -> Optional[str]:
+    """Plot sample mtDNA fraction against bundled references."""
+
+    return _plot_reference_technical_rna_metric_qc(
+        df_gene_expr,
+        metric="mt_dna_fraction",
+        title="mtDNA fraction vs bundled reference columns",
+        sample_label="all MT-* genes",
+        save_to_filename=save_to_filename,
+        save_dpi=save_dpi,
+    )
+
+
+def plot_reference_nuclear_rrna_fraction_qc(
+    df_gene_expr,
+    save_to_filename: str,
+    save_dpi: int = 150,
+) -> Optional[str]:
+    """Plot sample nuclear rRNA-like fraction against bundled references."""
+
+    return _plot_reference_technical_rna_metric_qc(
+        df_gene_expr,
+        metric="nuclear_rrna_like_fraction",
+        title="Nuclear rRNA-like fraction vs bundled reference columns",
+        sample_label="nuclear rRNA-like non-pseudogene features",
+        save_to_filename=save_to_filename,
+        save_dpi=save_dpi,
+    )
+
+
+def plot_reference_rrna_pseudogene_fraction_qc(
+    df_gene_expr,
+    save_to_filename: str,
+    save_dpi: int = 150,
+) -> Optional[str]:
+    """Plot sample rRNA-pseudogene fraction against bundled references."""
+
+    return _plot_reference_technical_rna_metric_qc(
+        df_gene_expr,
+        metric="rrna_pseudogene_fraction",
+        title="rRNA-pseudogene fraction vs bundled reference columns",
+        sample_label="rRNA-pseudogene features",
+        save_to_filename=save_to_filename,
+        save_dpi=save_dpi,
+    )
 
 
 def plot_reference_technical_rna_burden_qc(
@@ -1654,7 +2024,7 @@ def plot_degradation_index(
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    title_parts = [f"Degradation index — {sample_context.degradation_severity}"]
+    title_parts = [f"Length-pair degradation index — {sample_context.degradation_severity}"]
     if sample_context.degradation_index is not None:
         title_parts.append(f"median index {sample_context.degradation_index:.2f}")
     title_parts.append(f"{len(expected_vals)} pairs")

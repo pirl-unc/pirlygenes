@@ -3384,7 +3384,7 @@ def _hla_plot_note(analysis) -> str:
 
 
 def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
-    """Standalone: cancer-type hypothesis ranking bar chart."""
+    """Standalone: cancer-type hypothesis ranking and support-factor audit."""
     import matplotlib.pyplot as plt
     from .plot import CANCER_TYPE_NAMES as CTN
 
@@ -3397,10 +3397,24 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
         if isinstance(row, dict) and row.get("code")
     }
 
-    fig, ax = plt.subplots(figsize=(10, max(3, 0.4 * len(top_cancers))))
+    n_rows = max(1, len(top_cancers))
+    fig, (ax, ax_factors) = plt.subplots(
+        1,
+        2,
+        figsize=(13.5, max(3.8, 0.46 * n_rows + 1.3)),
+        gridspec_kw={"width_ratios": [1.15, 1.0]},
+    )
     codes = [c for c, s in top_cancers]
     scores = [s for c, s in top_cancers]
-    colors = ["#2166ac" if c == cancer_code else "#92c5de" for c in codes]
+    top_code = codes[0] if codes else cancer_code
+    colors = []
+    for c in codes:
+        if c == cancer_code:
+            colors.append("#2166ac")
+        elif c == top_code:
+            colors.append("#f4a340")
+        else:
+            colors.append("#92c5de")
     y = np.arange(len(codes))
     ax.barh(y, scores, color=colors, edgecolor="none", height=0.6)
     for i, (code, score) in enumerate(top_cancers):
@@ -3411,14 +3425,95 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
             score_label += f" (geo {float(geomean):.2f})"
         ax.text(score + 0.01, i, score_label, va="center", fontsize=9)
         ax.text(-0.01, i, label, va="center", ha="right", fontsize=9)
+        if code == cancer_code and code != top_code:
+            ax.text(
+                min(score + 0.22, 1.05),
+                i,
+                "report call",
+                va="center",
+                fontsize=8,
+                color="#2166ac",
+                fontweight="bold",
+            )
     ax.set_yticks([])
     ax.set_xlim(0, 1.1)
     ax.set_xlabel("Normalized support (top = 1.0; geo = factor geomean)")
     fit_label = fit_quality.get("label")
     title = "Cancer type hypotheses"
+    if top_code != cancer_code:
+        title += f" — report call {cancer_code}; top RNA-support {top_code}"
     if fit_label in {"weak", "ambiguous"}:
         title += f" ({fit_label} fit)"
     ax.set_title(title, fontweight="bold")
+
+    factor_specs = [
+        ("Signature", "signature_score"),
+        ("Purity", "purity_estimate"),
+        ("Lineage", "lineage_detection_fraction"),
+        ("Family", "family_factor"),
+        ("Overall", "support_norm"),
+    ]
+    factor_values = []
+    for code in codes:
+        row = candidate_by_code.get(code, {})
+        values = []
+        for _label, key in factor_specs:
+            value = row.get(key)
+            if value is None and key == "support_norm":
+                value = dict(top_cancers).get(code, 0.0)
+            try:
+                value = float(value)
+            except Exception:
+                value = 0.0
+            values.append(max(0.0, min(1.0, value)))
+        factor_values.append(values)
+    factor_array = (
+        np.asarray(factor_values, dtype=float)
+        if factor_values
+        else np.zeros((0, len(factor_specs)))
+    )
+    if len(codes):
+        im = ax_factors.imshow(
+            factor_array,
+            aspect="auto",
+            vmin=0.0,
+            vmax=1.0,
+            cmap="YlGnBu",
+        )
+        ax_factors.set_xticks(np.arange(len(factor_specs)))
+        ax_factors.set_xticklabels([label for label, _key in factor_specs], fontsize=8)
+        ax_factors.set_yticks(np.arange(len(codes)))
+        ax_factors.set_yticklabels(codes, fontsize=8.5)
+        for i, code in enumerate(codes):
+            for j, value in enumerate(factor_array[i]):
+                ax_factors.text(
+                    j,
+                    i,
+                    f"{value:.2f}",
+                    ha="center",
+                    va="center",
+                    fontsize=7.5,
+                    color="white" if value > 0.58 else "#333333",
+                )
+            if code == cancer_code:
+                ax_factors.scatter(
+                    -0.62,
+                    i,
+                    marker=">",
+                    s=60,
+                    color="#2166ac",
+                    clip_on=False,
+                    zorder=5,
+                )
+        ax_factors.set_title("Support factors", fontweight="bold")
+        ax_factors.tick_params(axis="both", length=0)
+        for spine in ax_factors.spines.values():
+            spine.set_visible(False)
+        cbar = fig.colorbar(im, ax=ax_factors, fraction=0.046, pad=0.04)
+        cbar.ax.tick_params(labelsize=7)
+    else:
+        ax_factors.axis("off")
+
     fusion_note = _fusion_plot_note(analysis)
     if fusion_note:
         ax.text(
@@ -3435,7 +3530,16 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["left"].set_visible(False)
-    fig.tight_layout()
+    fig.text(
+        0.5,
+        0.965,
+        "The report call can be externally supplied or QC-rescued; support factors show why a competing RNA context ranked highly.",
+        ha="center",
+        va="top",
+        fontsize=8.5,
+        color="#555555",
+    )
+    fig.tight_layout(rect=[0.0, 0.02, 1.0, 0.93])
     if save_to_filename:
         fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
     return fig

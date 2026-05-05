@@ -90,8 +90,9 @@ from .sample_context import (
     library_prep_clause,
     library_prep_display_label,
     plot_degradation_index,
-    plot_expression_concentration_qc,
-    plot_reference_mtdna_rrna_qc,
+    plot_expression_concentration_curve_qc,
+    plot_expression_concentration_top_features_qc,
+    plot_reference_mtdna_fraction_qc,
     plot_reference_technical_rna_burden_qc,
     plot_sample_context,
 )
@@ -106,6 +107,7 @@ from .format import (
 from .reporting import (
     cancer_code_display_name,
     cancer_key_genes_lookup_for_analysis,
+    context_expression_band_cell,
     expression_independent_indication,
     expression_independent_interpretation,
     expression_independent_rna_context,
@@ -966,9 +968,11 @@ def annotate_surface_targets_with_cross_signals(ranges_df, therapy_scores):
 def _tumor_tpm_by_symbol_from_ranges(ranges_df) -> dict[str, float]:
     if ranges_df is None or "symbol" not in ranges_df.columns:
         return {}
-    value_col = "attr_tumor_tpm" if "attr_tumor_tpm" in ranges_df.columns else None
+    value_col = "tumor_cell_tpm" if "tumor_cell_tpm" in ranges_df.columns else None
     if value_col is None and "median_est" in ranges_df.columns:
         value_col = "median_est"
+    if value_col is None and "attr_tumor_tpm" in ranges_df.columns:
+        value_col = "attr_tumor_tpm"
     if value_col is None:
         return {}
     import pandas as pd
@@ -1789,6 +1793,7 @@ def _analyze_body(run: AnalyzeRun):
     expression_scale_qc = dict(df_expr.attrs.get("expression_scale_qc") or {})
     if expression_qc_rescue.get("applied"):
         removed = float(expression_qc_rescue.get("removed_fraction") or 0.0)
+        high_burden = bool(expression_qc_rescue.get("high_burden"))
         top_removed = expression_qc_rescue.get("top_removed_genes") or []
         top_clause = ""
         if top_removed:
@@ -1798,24 +1803,28 @@ def _analyze_body(run: AnalyzeRun):
                 f"({top.get('qc_class')}, {float(top.get('share') or 0.0):.0%})"
             )
         print(
-            "[load] Expression QC rescue: removed mtDNA/rRNA/pseudogene-like features "
-            f"covering {removed:.0%} of raw TPM and renormalized downstream TPM"
+            "[load] Expression technical-RNA normalization: zeroed mtDNA/rRNA/"
+            f"pseudogene-like features covering {removed:.0%} of raw TPM and "
+            "renormalized downstream TPM"
             f"{top_clause}"
         )
         run.note_step(
             "expression_qc_rescue",
-            status="warning",
+            status="warning" if high_burden else "completed",
             outputs={
                 "mode": expression_qc_rescue.get("mode"),
                 "removed_fraction": expression_qc_rescue.get("removed_fraction"),
                 "removed_gene_count": expression_qc_rescue.get("removed_gene_count"),
+                "high_burden": high_burden,
                 "renormalization_factor": expression_qc_rescue.get(
                     "renormalization_factor"
                 ),
             },
             warnings=[
                 "Downstream cancer/target/pathway calculations used mtDNA/rRNA-rescued TPM"
-            ],
+            ]
+            if high_burden
+            else [],
         )
     elif expression_qc_rescue.get("reason"):
         run.note_step(
@@ -1876,41 +1885,54 @@ def _analyze_body(run: AnalyzeRun):
     except Exception as exc:  # noqa: BLE001 — plotting must not break analyze
         print(f"[plot] sample-context plot failed: {exc}")
 
-    concentration_png = (
-        "%s-expression-concentration-qc.png" % prefix
+    concentration_top_png = (
+        "%s-expression-top-features-qc.png" % prefix
         if prefix
-        else "expression-concentration-qc.png"
+        else "expression-top-features-qc.png"
+    )
+    concentration_curve_png = (
+        "%s-expression-concentration-curve-qc.png" % prefix
+        if prefix
+        else "expression-concentration-curve-qc.png"
     )
     try:
-        out = plot_expression_concentration_qc(
+        out = plot_expression_concentration_top_features_qc(
             df_expr_raw,
-            save_to_filename=concentration_png,
+            save_to_filename=concentration_top_png,
             save_dpi=output_dpi,
         )
         if out:
             print(
-                f"[plot] Saved expression concentration QC to {concentration_png}"
+                f"[plot] Saved expression top-feature QC to {concentration_top_png}"
+            )
+        out = plot_expression_concentration_curve_qc(
+            df_expr_raw,
+            save_to_filename=concentration_curve_png,
+            save_dpi=output_dpi,
+        )
+        if out:
+            print(
+                "[plot] Saved expression concentration curve QC to "
+                f"{concentration_curve_png}"
             )
     except Exception as exc:  # noqa: BLE001
         print(f"[plot] expression concentration QC plot failed: {exc}")
 
-    reference_qc_png = (
-        "%s-qc-reference-mtdna-rrna.png" % prefix
+    reference_mtdna_qc_png = (
+        "%s-qc-reference-mtdna.png" % prefix
         if prefix
-        else "qc-reference-mtdna-rrna.png"
+        else "qc-reference-mtdna.png"
     )
     try:
-        out = plot_reference_mtdna_rrna_qc(
+        out = plot_reference_mtdna_fraction_qc(
             df_expr_raw,
-            save_to_filename=reference_qc_png,
+            save_to_filename=reference_mtdna_qc_png,
             save_dpi=output_dpi,
         )
         if out:
-            print(
-                f"[plot] Saved mtDNA/rRNA reference QC to {reference_qc_png}"
-            )
+            print(f"[plot] Saved mtDNA reference QC to {reference_mtdna_qc_png}")
     except Exception as exc:  # noqa: BLE001
-        print(f"[plot] mtDNA/rRNA reference QC plot failed: {exc}")
+        print(f"[plot] mtDNA reference QC plot failed: {exc}")
 
     burden_qc_png = (
         "%s-qc-reference-technical-rna-burden.png" % prefix
@@ -2716,11 +2738,9 @@ def _analyze_body(run: AnalyzeRun):
     # in analysis.md without adding interpretive value. The functions
     # remain in ``pirlygenes.plot_embedding`` for Python-API consumers.
 
-    # Sample-among-reference embedding: emit a global normal-inclusive MDS and
-    # a local sample-centered neighborhood plot. The pan-reference gene set is
-    # selected for both cancer medians and normal tissues, while the local plot
-    # preserves each reference's original feature-space distance from the
-    # sample as radius.
+    # Sample-among-reference context: emit a global normal-inclusive MDS plus
+    # a ranked nearest-reference distance plot. The MDS gives spatial context;
+    # the ranked plot preserves the actual sample-to-reference distances.
     print("[plot] Generating pan-reference MDS embedding...")
     mds_png = "%s-reference-mds.png" % prefix
     plot_cancer_type_mds(
@@ -2735,7 +2755,7 @@ def _analyze_body(run: AnalyzeRun):
         save_dpi=output_dpi,
     )
     neighborhood_png = "%s-reference-neighborhood.png" % prefix
-    print("[plot] Generating sample-centered reference neighborhood...")
+    print("[plot] Generating nearest-reference distance ranking...")
     plot_cancer_type_neighborhood(
         df_expr,
         method="panref",
@@ -3041,6 +3061,7 @@ def _analyze_body(run: AnalyzeRun):
                             cancer_type=effective_cancer_type,
                             purity_estimate=p_est,
                             custom_genes=actionable_genes,
+                            ranges_df=ranges_df,
                             save_to_filename=targets_deep_png,
                             save_dpi=output_dpi,
                             title=f"Actionable Targets — {panel_code}",
@@ -3212,8 +3233,9 @@ def _analyze_body(run: AnalyzeRun):
     # figures/ step.
     png_files = [
         context_png,
-        concentration_png,
-        reference_qc_png,
+        concentration_top_png,
+        concentration_curve_png,
+        reference_mtdna_qc_png,
         burden_qc_png,
         degradation_png,
         summary_png,
@@ -3440,6 +3462,9 @@ def _analyze_body(run: AnalyzeRun):
                     "note": "Technical context for whether the expression matrix and sample handling look usable.",
                     "files": _existing_figure_paths(
                         "sample-context.png",
+                        "expression-top-features-qc.png",
+                        "expression-concentration-curve-qc.png",
+                        "qc-reference-mtdna.png",
                         "degradation-index.png",
                         "sample-summary.png",
                         "provenance.png",
@@ -3668,6 +3693,11 @@ def _analyze_body(run: AnalyzeRun):
 
 Sample analyzed as **{cancer_code}** ({cancer_name}).
 
+Raw QC figures use the original expression table. Downstream biology uses
+technical-RNA-normalized TPM by default: mtDNA, rRNA-like, and
+rRNA-pseudogene rows are zeroed and the remaining TPM is renormalized in
+both the input sample and bundled reference columns.
+
 ## Reports
 
 | File | Description |
@@ -3705,7 +3735,7 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
 | `*-reference-mds.png` | MDS: sample among TCGA cancer medians, subtype references, and normal tissues |
-| `*-reference-neighborhood.png` | Sample-centered cancer/subtype/normal reference map; radius preserves input feature distance |
+| `*-reference-neighborhood.png` | Nearest cancer/subtype/normal reference distance ranking; preserves input feature distance |
 """
     readme_path.write_text(readme)
     print(f"[output] Wrote {readme_path}")
@@ -3867,10 +3897,10 @@ def _target_report_mode_intro(sample_mode, cancer_code, p_lo, p_mid, p_hi):
 
 def _target_value_label(sample_mode):
     if sample_mode == "pure":
-        return "Cellular TPM (model)"
+        return "Context TPM (model)"
     if sample_mode == "heme":
-        return "Malignant-lineage TPM (model)"
-    return "Tumor-inferred TPM (model)"
+        return "Context TPM (model)"
+    return "Context TPM (model)"
 
 
 def _mhc1_status_text(mhc1):
@@ -4366,6 +4396,20 @@ def _strip_terminal_punctuation(text):
     return str(text).strip().rstrip(".;:! ")
 
 
+def _report_expression_source_label(value):
+    source = str(value or "expression").strip().lower().replace("-", "_")
+    labels = {
+        "tumor_inferred": "tumor-source/context",
+        "tumor_source": "tumor-source",
+        "tumor_attributed": "tumor-source",
+        "bulk": "bulk TPM",
+        "mixed": "mixed source",
+        "unavailable": "unavailable",
+        "expression": "expression",
+    }
+    return labels.get(source, source.replace("_", " "))
+
+
 def _format_tissue_driver_genes(driver_rows, *, top_n=5):
     drivers = list(driver_rows or [])[:top_n]
     if not drivers:
@@ -4458,12 +4502,22 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
         best = candidate_trace[0]
         runner = candidate_trace[1] if len(candidate_trace) > 1 else None
         distinct_reference_used = cancer_type_context.uses_distinct_reference
+        supplied_discordant = (
+            analysis.get("cancer_type_source") == "user-specified"
+            and str(best.get("code") or "").strip() != str(cancer_code).strip()
+        )
         if distinct_reference_used:
             sentence = (
                 f"- **RNA reference line**: {_cancer_label(best['code'])} is the "
                 "leading broad expression context used for cohort-normalized "
                 f"downstream analyses; {_cancer_label(cancer_code)} remains the "
                 "report label"
+            )
+        elif supplied_discordant:
+            sentence = (
+                f"- **RNA classifier line**: {_cancer_label(best['code'])} is the "
+                "leading broad RNA candidate, but the supplied "
+                f"{_cancer_label(cancer_code)} label remains the report label"
             )
         else:
             if best.get("support_override"):
@@ -4475,7 +4529,25 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
                 sentence = (
                     f"- **Classifier line**: {_cancer_label(best['code'])} is the leading label"
                 )
-        if runner is not None:
+        if supplied_discordant and runner is not None:
+            runner_norm = float(runner.get("support_norm", 0.0) or 0.0)
+            if str(runner.get("code") or "").strip() == str(cancer_code).strip():
+                if runner_norm > 0:
+                    sentence += (
+                        f"; supplied label is RNA rank 2 "
+                        f"({_cancer_label(best['code'])}:{_cancer_label(cancer_code)} "
+                        f"support ratio {1.0 / runner_norm:.1f}x)"
+                    )
+                else:
+                    sentence += "; supplied label is the next RNA candidate"
+            elif runner_norm > 0:
+                sentence += (
+                    f", with {_cancer_label(runner['code'])} next by "
+                    f"{1.0 / runner_norm:.1f}x normalized support"
+                )
+            else:
+                sentence += f", with {_cancer_label(runner['code'])} the next candidate"
+        elif runner is not None:
             runner_norm = float(runner.get("support_norm", 0.0) or 0.0)
             if runner_norm > 0:
                 sentence += (
@@ -4643,17 +4715,13 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
         genes = ", ".join(finding.get("observed_genes") or [])
         if not genes:
             genes = "expected downstream markers not clearly active"
-        source = str(finding.get("expression_source") or "expression").replace(
-            "_", "-"
-        )
+        source = _report_expression_source_label(finding.get("expression_source"))
         active_biology.append(
             f"{finding.get('label')}: {status} downstream program ({genes}; {source})"
         )
     for finding in (analysis.get("fusion_expression_hypotheses") or [])[:2]:
         genes = ", ".join(finding.get("observed_genes") or [])
-        source = str(finding.get("expression_source") or "expression").replace(
-            "_", "-"
-        )
+        source = _report_expression_source_label(finding.get("expression_source"))
         active_biology.append(
             f"{finding.get('label')}: RNA-only fusion-effect testing prompt "
             f"({genes}; {source})"
@@ -4669,9 +4737,7 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
             ]
             if part
         )
-        source = str(finding.get("expression_source") or "expression").replace(
-            "_", "-"
-        )
+        source = _report_expression_source_label(finding.get("expression_source"))
         active_biology.append(
             f"{finding.get('label')}: compatible with {finding.get('alteration')} "
             f"({support}; {source})"
@@ -4863,7 +4929,7 @@ def _fusion_evidence_markdown(analysis, *, heading: str = "## Fusion evidence") 
             genes = ", ".join(finding.get("observed_genes") or []) or "—"
             lines.append(
                 f"| {fusion.get('pair') or '—'} | {finding.get('label') or '—'} | "
-                f"{finding.get('status') or '—'} | {finding.get('expression_source') or '—'} | "
+                f"{finding.get('status') or '—'} | {_report_expression_source_label(finding.get('expression_source'))} | "
                 f"{genes} | {finding.get('caveat') or '—'} |"
             )
         lines.append("")
@@ -4880,7 +4946,7 @@ def _fusion_evidence_markdown(analysis, *, heading: str = "## Fusion evidence") 
             genes = ", ".join(finding.get("observed_genes") or []) or "—"
             lines.append(
                 f"| {finding.get('label') or '—'} | {finding.get('expected_pair') or '—'} | "
-                f"{finding.get('expression_source') or '—'} | {genes} | {finding.get('caveat') or '—'} |"
+                f"{_report_expression_source_label(finding.get('expression_source'))} | {genes} | {finding.get('caveat') or '—'} |"
             )
         lines.append("")
     return "\n".join(lines)
@@ -4966,8 +5032,9 @@ def _alteration_effect_markdown(
         return "\n".join(lines)
     lines.append(
         "Curated mutation/CNV expression-effect rules are interpreted as uncertain "
-        "biology hypotheses. They use tumor-inferred TPM when available and bulk TPM "
-        "otherwise; they should prompt confirmatory DNA/RNA testing rather than replace it.\n"
+        "biology hypotheses. They use tumor-source attribution and context TPM "
+        "when available, and bulk TPM otherwise; they should prompt confirmatory "
+        "DNA/RNA testing rather than replace it.\n"
     )
     lines.append(
         "| Compatible biology | Alteration class to test | Expression source | Supporting high/low genes | Suggested assay | Caveat |"
@@ -4979,7 +5046,7 @@ def _alteration_effect_markdown(
         support = "; ".join(part for part in [f"high {high}" if high else "", f"low {low}" if low else ""] if part) or "—"
         lines.append(
             f"| {finding.get('label') or '—'} | {finding.get('alteration') or '—'} | "
-            f"{finding.get('expression_source') or '—'} | {support} | "
+            f"{_report_expression_source_label(finding.get('expression_source'))} | {support} | "
             f"{finding.get('suggested_assay') or '—'} | {finding.get('caveat') or '—'} |"
         )
     return "\n".join(lines)
@@ -5299,6 +5366,13 @@ def _generate_text_reports(
                 lines.append(
                     f"- **Technical RNA burden (raw)**: {technical_phrase}."
                 )
+                if sample_context.degradation_index is not None:
+                    lines.append(
+                        "- **QC-axis interpretation**: the degradation index is a "
+                        "long/short transcript-pair check. It does not clear "
+                        "rRNA-pseudogene or rDNA/repeat-mapping denominator artifacts; "
+                        "interpret both QC axes together."
+                    )
         if scale_qc and analysis.get("expression_qc_rescue", {}).get("applied"):
             lines.append(
                 f"- **Expression scale QC (analysis TPM)**: sum {scale_qc.get('sum_tpm', 0.0):.0f}; "
@@ -5311,8 +5385,9 @@ def _generate_text_reports(
         if rescue_line:
             lines.append("- " + rescue_line)
             lines.append(
-                "- **QC figures**: see `*-expression-concentration-qc.png`, "
-                "`*-qc-reference-mtdna-rrna.png`, and "
+                "- **QC figures**: see `*-expression-top-features-qc.png`, "
+                "`*-expression-concentration-curve-qc.png`, "
+                "`*-qc-reference-mtdna.png`, and "
                 "`*-qc-reference-technical-rna-burden.png`."
             )
         rna_qc_body = rna_quant_qc_markdown(
@@ -6064,7 +6139,7 @@ def _build_target_report(
             f"**{p_mid:.0%}**, so residual TPM is divided by a small "
             "number and amplified ≥5×. Genes heavily expressed in "
             "fibroblast / endothelial / immune compartments (FN1, "
-            "COL1A1/2, DCN, etc.) can appear as high tumor-expressed "
+            "COL1A1/2, DCN, etc.) can appear high in context-expression "
             "even when most of the signal is stromal. Treat the "
             "`tme_explainable=true` column in the TSV as the primary "
             "filter for therapy-target safety; cross-check any "
@@ -6200,6 +6275,147 @@ def _build_target_report(
                 parts.append(f"current-therapy check: {state_caution}")
         return "; ".join(part for part in parts if part)
 
+    def _low_purity_cap_audit_md(target_symbols):
+        if not target_symbols or ranges_df is None or len(ranges_df) == 0:
+            return []
+        if "symbol" not in ranges_df.columns:
+            return []
+        if (
+            "low_purity_cap_applied" not in ranges_df.columns
+            and "tumor_attributed_bulk_tpm_pre_low_purity_cap" not in ranges_df.columns
+        ):
+            return []
+
+        def _num(value, default=0.0):
+            try:
+                if value is None or pd.isna(value):
+                    return default
+                return float(value)
+            except Exception:
+                return default
+
+        target_set = {str(sym).strip() for sym in target_symbols if str(sym).strip()}
+        sub = ranges_df[ranges_df["symbol"].astype(str).isin(target_set)].copy()
+        if len(sub) == 0:
+            return []
+        sub["_cap_applied"] = _flag_series(sub, "low_purity_cap_applied").values
+        sub["_observed"] = sub["observed_tpm"].map(_num)
+        sub["_post_cap"] = sub.get(
+            "tumor_attributed_bulk_tpm", sub.get("attr_tumor_tpm", 0.0)
+        ).map(_num)
+        if "tumor_attributed_bulk_tpm_pre_low_purity_cap" in sub.columns:
+            sub["_pre_cap"] = sub[
+                "tumor_attributed_bulk_tpm_pre_low_purity_cap"
+            ].map(_num)
+        else:
+            sub["_pre_cap"] = sub["_post_cap"]
+        if "low_purity_cap_tpm" in sub.columns:
+            sub["_cap_tpm"] = sub["low_purity_cap_tpm"].map(lambda v: _num(v, None))
+        else:
+            sub["_cap_tpm"] = None
+
+        sub = sub.sort_values(
+            ["_cap_applied", "_observed", "symbol"],
+            ascending=[False, False, True],
+        ).head(12)
+        if len(sub) == 0:
+            return []
+
+        capped_n = int(sub["_cap_applied"].sum())
+        lines_out = [
+            "### Low-purity cap audit\n",
+            "When purity is low, the attribution model caps tumor-attributed "
+            "bulk TPM at `observed bulk TPM × purity × headroom`. Cap status is "
+            "tracked across the purity interval: a row can have cap activity in "
+            "a low-purity scenario even when the median post-cap value is unchanged. "
+            "The full audit is in `*-tumor-expression-ranges.tsv`.\n",
+            f"*Shown for therapy-panel genes; {capped_n} of {len(sub)} shown rows have cap activity in at least one purity scenario.*\n",
+            "| Gene | Bulk TPM | Pre-cap tumor-source bulk TPM | Post-cap tumor-source bulk TPM | Cap ceiling range | Status |",
+            "|------|---------:|-------------------------------:|--------------------------------:|------------------:|--------|",
+        ]
+        for _, row in sub.iterrows():
+            cap = row.get("_cap_tpm")
+            cap_lo = _num(row.get("low_purity_cap_tpm_low"), None)
+            cap_hi = _num(row.get("low_purity_cap_tpm_high"), None)
+            if cap_lo is not None and cap_hi is not None and abs(cap_hi - cap_lo) > 0.05:
+                cap_cell = f"{float(cap_lo):.1f}-{float(cap_hi):.1f}"
+            elif cap is not None:
+                cap_cell = f"{float(cap):.1f}"
+            else:
+                cap_cell = "—"
+            delta = max(0.0, float(row["_pre_cap"]) - float(row["_post_cap"]))
+            if bool(row.get("_cap_applied")) and delta > 0.05:
+                status = "median capped upper bound"
+            elif bool(row.get("_cap_applied")):
+                status = "cap active in interval"
+            else:
+                status = "fit below cap / not capped"
+            lines_out.append(
+                f"| {row['symbol']} | {float(row['_observed']):.1f} | "
+                f"{float(row['_pre_cap']):.1f} | {float(row['_post_cap']):.1f} | "
+                f"{cap_cell} | {status} |"
+            )
+        lines_out.append("")
+        return lines_out
+
+    def _prad_steap_contrast_md(sym_to_row, targets_df=None):
+        if cancer_code != "PRAD":
+            return []
+        steap_rows = {
+            sym: sym_to_row.get(sym)
+            for sym in ("STEAP1", "STEAP2")
+            if sym_to_row.get(sym) is not None
+        }
+        if len(steap_rows) < 2:
+            return []
+
+        def _agents(sym):
+            if targets_df is None or len(targets_df) == 0:
+                return "—"
+            if "symbol" not in targets_df.columns:
+                return "—"
+            rows = targets_df[targets_df["symbol"].astype(str) == sym]
+            labels = []
+            for _, target_row in rows.iterrows():
+                agent = str(target_row.get("agent") or "").strip()
+                phase = str(target_row.get("phase") or "").replace("_", " ").strip()
+                if agent and agent.lower() != "nan":
+                    labels.append(f"{agent} ({phase})" if phase else agent)
+            return "; ".join(labels) if labels else "—"
+
+        lines_out = [
+            "### STEAP1 / STEAP2 contrast\n",
+            "These prostate-lineage targets are interpreted separately because "
+            "they can diverge under treatment pressure and low purity. A lower "
+            "STEAP1 tumor-source estimate should not be collapsed into the "
+            "STEAP2 result, and a capped STEAP2 estimate should be read as an "
+            "upper-bound expression anchor rather than a precise fitted value.\n",
+            "| Target | Bulk TPM | Tumor-source bulk TPM | Context TPM | Tumor source | Cap status | Curated option |",
+            "|--------|---------:|----------------------:|------------:|--------------|------------|----------------|",
+        ]
+        for sym in ("STEAP1", "STEAP2"):
+            row = steap_rows[sym]
+            source = tumor_attribution_context(row)
+            obs = float(row.get("observed_tpm") or 0.0)
+            cap_status = (
+                "capped upper bound"
+                if bool(row.get("low_purity_cap_applied"))
+                else "not capped"
+            )
+            lines_out.append(
+                f"| {sym} | {obs:.1f} | {tumor_band_cell(row)} | "
+                f"{context_expression_band_cell(row)} | "
+                f"{source['label']} ({source['attr_tumor_fraction']:.0%} tumor bulk fraction) | "
+                f"{cap_status} | {_agents(sym)} |"
+            )
+        lines_out.append(
+            "\nPractical reading: prioritize the therapy row by both clinical "
+            "maturity and tumor-source support. A more mature STEAP1 therapy "
+            "can still be less sample-supported than STEAP2 if STEAP1 is "
+            "background-dominant or de-differentiated in this specimen.\n"
+        )
+        return lines_out
+
     therapy_scores = analysis.get("therapy_response_scores") or {}
     ts_to_show = [
         (cls, s)
@@ -6277,21 +6493,23 @@ def _build_target_report(
             )
             if biomarker_syms:
                 lines.append(
-                    "| Gene | Bulk TPM (measured) | Tumor-inferred TPM (model) | Attribution |"
+                    "| Gene | Bulk TPM (measured) | Tumor-source bulk TPM (model) | Context TPM (model) | Attribution |"
                 )
                 lines.append(
-                    "|------|---------------------|------------------------|-------------|"
+                    "|------|---------------------|-------------------------------|---------------------|-------------|"
                 )
                 for sym in biomarker_syms:
                     row = sym_to_row.get(sym)
                     if row is None:
-                        lines.append(f"| {sym} | *not measured* | — | — |")
+                        lines.append(f"| {sym} | *not measured* | — | — | — |")
                         continue
                     obs = float(row.get("observed_tpm") or 0.0)
                     attribution_cell = _format_attribution_cell(row)
-                    tumor_cell = tumor_band_cell(row)
+                    tumor_source = tumor_band_cell(row)
+                    context_cell = context_expression_band_cell(row)
                     lines.append(
-                        f"| {sym} | {obs:.1f} | {tumor_cell} | {attribution_cell} |"
+                        f"| {sym} | {obs:.1f} | {tumor_source} | {context_cell} | "
+                        f"{attribution_cell} |"
                     )
                 lines.append("")
             else:
@@ -6331,11 +6549,11 @@ def _build_target_report(
             if len(targets_df):
                 lines.append(
                     "| Target | Agent | Class | Phase | Indication | "
-                    "Bulk TPM (measured) | Tumor-inferred TPM (model) | Attribution | Interpretation |"
+                    "Bulk TPM (measured) | Tumor-source bulk TPM (model) | Context TPM (model) | Attribution | Interpretation |"
                 )
                 lines.append(
                     "|--------|-------|-------|-------|------------|"
-                    "----------|------------|-------------|----------------|"
+                    "----------|-------------------------------|---------------------|-------------|----------------|"
                 )
                 # Approved first, then phase_3, phase_2, phase_1,
                 # preclinical. Within phase, agent name for stability.
@@ -6380,19 +6598,22 @@ def _build_target_report(
                     # false tumor TPM claims.
                     if sym == "—":
                         obs_cell = "*not measured*"
-                        tumor_cell = "—"
+                        tumor_source_cell = "—"
+                        context_cell = "—"
                         attr_cell = "—"
                         interpretation_cell = "agent-only / no direct gene target"
                     else:
                         expr = sym_to_row.get(sym)
                         if expr is None:
                             obs_cell = "*not measured*"
-                            tumor_cell = "—"
+                            tumor_source_cell = "—"
+                            context_cell = "—"
                             attr_cell = "—"
                             interpretation_cell = "not measured"
                         else:
                             obs_cell = f"{float(expr.get('observed_tpm') or 0.0):.1f}"
-                            tumor_cell = tumor_band_cell(expr)
+                            tumor_source_cell = tumor_band_cell(expr)
+                            context_cell = context_expression_band_cell(expr)
                             attr_cell = _format_attribution_cell(expr)
                             interpretation_cell = _target_interpretation_cell(
                                 trow,
@@ -6403,9 +6624,12 @@ def _build_target_report(
                     lines.append(
                         f"| {bold}{sym}{bold} | {agent} | {agent_class} | "
                         f"{phase} | {indication} | {obs_cell} | "
-                        f"{tumor_cell} | {attr_cell} | {interpretation_cell} |"
+                        f"{tumor_source_cell} | {context_cell} | {attr_cell} | "
+                        f"{interpretation_cell} |"
                     )
                 lines.append("")
+                lines.extend(_prad_steap_contrast_md(sym_to_row, targets_df))
+                lines.extend(_low_purity_cap_audit_md(panel_target_symbols))
             else:
                 lines.append(
                     "*No clinician-validated therapy targets curated for "
@@ -6534,10 +6758,26 @@ def _build_target_report(
             )
     else:
         lines.append(f"- **Working label**: **{_cancer_label(cancer_code)}**.")
-    if family_display:
+    supplied_discordant = False
+    candidate_trace = analysis.get("candidate_trace") or []
+    if candidate_trace:
+        top_code = str(candidate_trace[0].get("code") or "").strip()
+        supplied_discordant = (
+            analysis.get("cancer_type_source") == "user-specified"
+            and top_code
+            and top_code != str(cancer_code).strip()
+        )
+    if family_display and supplied_discordant:
+        lines.append(
+            f"- **RNA family signal**: {family_display}; interpret this as "
+            "classifier-conflict/background context, not as a replacement for "
+            f"the supplied {_cancer_label(cancer_code)} label."
+        )
+    elif family_display:
         lines.append(f"- **Family-level framing**: {family_display}.")
     if fit_quality.get("label"):
-        fit_line = f"- **Fit quality**: {fit_quality['label']}"
+        fit_label = "RNA-reference fit quality" if supplied_discordant else "Fit quality"
+        fit_line = f"- **{fit_label}**: {fit_quality['label']}"
         if fit_quality.get("message"):
             fit_line += f" — {_strip_terminal_punctuation(fit_quality['message'])}"
         lines.append(fit_line + ".")
@@ -6809,10 +7049,10 @@ def _build_target_report(
     # --- Surface therapy targets ---
     # #60: drop extended-housekeeping symbols (excluded_from_ranking)
     # from the ranked output so they can't appear as spurious high
-    # tumor-expressed targets. They remain in the TSV with the flag.
+    # tumor-source-supported targets. They remain in the TSV with the flag.
     lines.append("## Surface Protein Targets (ADC / CAR-T / Bispecific)\n")
     lines.append(
-        "Surface proteins with high purity-adjusted expression. "
+        "Surface proteins with high context expression and source-attribution caveats. "
         "These can be targeted by antibody-drug conjugates, CAR-T, "
         "or bispecific T-cell engagers.\n"
     )

@@ -89,6 +89,158 @@ def is_rescue_feature(symbol: str | None) -> bool:
     return classify_gene_qc(symbol).group in {"mt_dna", "rrna_like"}
 
 
+def normalize_technical_rna_columns(
+    df,
+    *,
+    label_col: str = "Symbol",
+    value_cols: Iterable[str] | None = None,
+):
+    """Zero mtDNA/rRNA-like features and renormalize every expression column.
+
+    This is the shared comparability transform for reference matrices. It
+    preserves each column's total expression mass after removing technical RNA
+    features, so a sample/reference comparison is not driven by different
+    rRNA/mtDNA denominator burden.
+
+    Raw-expression QC should be computed before this transform.
+    """
+
+    import pandas as pd
+
+    if label_col not in df.columns:
+        return df.copy(), {
+            "applied": False,
+            "reason": f"label column {label_col!r} not present",
+            "columns": {},
+        }
+    if value_cols is None:
+        value_cols = [
+            c
+            for c in df.columns
+            if str(c).startswith(("TPM", "nTPM_", "FPKM_", "tcga_"))
+        ]
+    value_cols = [str(c) for c in value_cols if str(c) in df.columns]
+    if not value_cols:
+        return df.copy(), {
+            "applied": False,
+            "reason": "no expression value columns",
+            "columns": {},
+        }
+
+    out = df.copy()
+    labels = out[label_col].fillna("").astype(str).str.strip()
+    removable = labels.map(is_rescue_feature).astype(bool)
+    records = {}
+    any_applied = False
+    for col in value_cols:
+        vals = pd.to_numeric(out[col], errors="coerce").fillna(0.0)
+        raw_sum = float(vals.sum())
+        removed = float(vals[removable].sum())
+        remaining = raw_sum - removed
+        removed_fraction = removed / raw_sum if raw_sum > 0 else 0.0
+        records[col] = {
+            "input_sum": raw_sum,
+            "removed_tpm": removed,
+            "removed_fraction": removed_fraction,
+            "removed_gene_count": int(removable.sum()),
+            "renormalization_factor": (
+                float(raw_sum / remaining) if raw_sum > 0 and remaining > 0 else 1.0
+            ),
+        }
+        if raw_sum <= 0 or removed <= 0 or remaining <= 0:
+            continue
+        scale = raw_sum / remaining
+        out.loc[removable, col] = 0.0
+        out.loc[~removable, col] = vals.loc[~removable] * scale
+        any_applied = True
+
+    return out, {
+        "applied": any_applied,
+        "reason": (
+            "technical RNA features zeroed and remaining expression renormalized"
+            if any_applied
+            else "no removable technical RNA burden"
+        ),
+        "columns": records,
+    }
+
+
+def normalize_technical_rna_long_table(
+    df,
+    *,
+    label_col: str = "symbol",
+    group_cols: Iterable[str] = ("cancer_code", "subtype"),
+    value_cols: Iterable[str] = ("tumor_tpm_median", "tumor_tpm_q1", "tumor_tpm_q3"),
+):
+    """Apply technical-RNA normalization within each long-table cohort group."""
+
+    import pandas as pd
+
+    if df is None:
+        return None, {"applied": False, "reason": "no table", "groups": {}}
+    if label_col not in df.columns:
+        return df.copy(), {
+            "applied": False,
+            "reason": f"label column {label_col!r} not present",
+            "groups": {},
+        }
+    group_cols = [str(c) for c in group_cols if str(c) in df.columns]
+    value_cols = [str(c) for c in value_cols if str(c) in df.columns]
+    if not group_cols or not value_cols:
+        return df.copy(), {
+            "applied": False,
+            "reason": "missing grouping or expression columns",
+            "groups": {},
+        }
+
+    out = df.copy()
+    labels = out[label_col].fillna("").astype(str).str.strip()
+    removable = labels.map(is_rescue_feature).astype(bool)
+    group_records = {}
+    any_applied = False
+    grouped = out.groupby(group_cols, dropna=False).groups
+    for key, idx in grouped.items():
+        idx = list(idx)
+        key_tuple = key if isinstance(key, tuple) else (key,)
+        key_label = "|".join(str(part) for part in key_tuple)
+        group_records[key_label] = {}
+        group_removable = removable.loc[idx]
+        for col in value_cols:
+            vals = pd.to_numeric(out.loc[idx, col], errors="coerce").fillna(0.0)
+            raw_sum = float(vals.sum())
+            removed = float(vals[group_removable].sum())
+            remaining = raw_sum - removed
+            removed_fraction = removed / raw_sum if raw_sum > 0 else 0.0
+            group_records[key_label][col] = {
+                "input_sum": raw_sum,
+                "removed_tpm": removed,
+                "removed_fraction": removed_fraction,
+                "renormalization_factor": (
+                    float(raw_sum / remaining)
+                    if raw_sum > 0 and remaining > 0
+                    else 1.0
+                ),
+            }
+            if raw_sum <= 0 or removed <= 0 or remaining <= 0:
+                continue
+            scale = raw_sum / remaining
+            remove_idx = group_removable[group_removable].index
+            keep_idx = group_removable[~group_removable].index
+            out.loc[remove_idx, col] = 0.0
+            out.loc[keep_idx, col] = vals.loc[keep_idx] * scale
+            any_applied = True
+
+    return out, {
+        "applied": any_applied,
+        "reason": (
+            "technical RNA features zeroed and remaining expression renormalized"
+            if any_applied
+            else "no removable technical RNA burden"
+        ),
+        "groups": group_records,
+    }
+
+
 def summarize_qc_class_shares(
     gene_tpm_items: Iterable[tuple[str, float]],
 ) -> dict[str, object]:
@@ -182,11 +334,12 @@ def dominant_class_phrase(dominant: list[dict] | None) -> str:
 
 
 def expression_qc_rescue_summary_line(record: dict | None) -> str:
-    """One-line report summary for mtDNA/rRNA rescue normalization."""
+    """One-line report summary for mtDNA/rRNA technical normalization."""
 
     if not record or not record.get("applied"):
         return ""
     removed = float(record.get("removed_fraction") or 0.0)
+    high_burden = bool(record.get("high_burden"))
     component_phrase = technical_rna_component_phrase(
         record.get("qc_class_shares") or {}
     )
@@ -205,9 +358,13 @@ def expression_qc_rescue_summary_line(record: dict | None) -> str:
                 if share:
                     top_clause += f", {share:.0%} of raw TPM"
                 top_clause += ")"
+    prefix = (
+        "**Expression QC rescue:** raw TPM was dominated by technical RNA features"
+        if high_burden
+        else "**Technical-RNA normalization:** mtDNA/rRNA-like features were removed for reference comparability"
+    )
     return (
-        "**Expression QC rescue:** raw TPM was dominated by technical RNA "
-        f"features{component_clause}; downstream cancer, target, and "
-        f"pathway calculations use rescued TPM after zeroing those features "
-        f"and renormalizing the remaining genes{top_clause}."
+        f"{prefix}{component_clause}; downstream cancer, target, and pathway "
+        "calculations use TPM after zeroing those features and renormalizing "
+        f"the remaining genes{top_clause}."
     )
