@@ -47,6 +47,8 @@ from .gene_sets_cancer import (
 )
 from PIL import Image
 from .load_expression import load_expression_data
+from .load_expression import apply_expression_qc_rescue
+from .expression_qc import expression_qc_rescue_summary_line
 from .plot import (
     plot_gene_expression,
     plot_sample_vs_cancer,
@@ -85,6 +87,9 @@ from .sample_context import (
     library_prep_clause,
     library_prep_display_label,
     plot_degradation_index,
+    plot_expression_concentration_qc,
+    plot_reference_mtdna_rrna_qc,
+    plot_reference_technical_rna_burden_qc,
     plot_sample_context,
 )
 from .sample_quality import assess_sample_quality
@@ -1555,6 +1560,7 @@ def analyze(
     hla_types: Optional[str] = None,
     fusions: Optional[str] = None,
     alterations: Optional[str] = None,
+    expression_qc_rescue: str = "auto",
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
     force: bool = False,
@@ -1595,6 +1601,7 @@ def analyze(
         hla_types=hla_types,
         fusions=fusions,
         alterations=alterations,
+        expression_qc_rescue=expression_qc_rescue,
         therapy_target_top_k=therapy_target_top_k,
         therapy_target_tpm_threshold=therapy_target_tpm_threshold,
         force=force,
@@ -1710,6 +1717,7 @@ def _analyze_body(run: AnalyzeRun):
         sample_id_value=sample_id_value,
         transcript_path=transcript_path,
     )
+    df_expr_raw = df_expr
     fusion_records = []
     if fusion_paths:
         from .fusions import parse_fusion_files
@@ -1741,12 +1749,12 @@ def _analyze_body(run: AnalyzeRun):
     )
     forced_labels = _parse_always_label_genes(label_genes)
     template_overrides = config.template_overrides()
-    expression_scale_qc = dict(df_expr.attrs.get("expression_scale_qc") or {})
-    for warning in expression_scale_qc.get("warnings") or []:
+    raw_expression_scale_qc = dict(df_expr_raw.attrs.get("expression_scale_qc") or {})
+    for warning in raw_expression_scale_qc.get("warnings") or []:
         print(f"[load] Expression scale QC: {warning}")
     rna_quant_qc = collect_rna_quant_qc(
         input_path,
-        gene_df=df_expr,
+        gene_df=df_expr_raw,
         transcript_path=transcript_path,
     )
     if rna_quant_qc.get("available"):
@@ -1765,12 +1773,59 @@ def _analyze_body(run: AnalyzeRun):
             warnings=list(rna_quant_qc.get("warnings") or []),
         )
 
+    df_expr, expression_qc_rescue = apply_expression_qc_rescue(
+        df_expr_raw,
+        mode=config.expression_qc_rescue,
+    )
+    expression_scale_qc = dict(df_expr.attrs.get("expression_scale_qc") or {})
+    if expression_qc_rescue.get("applied"):
+        removed = float(expression_qc_rescue.get("removed_fraction") or 0.0)
+        top_removed = expression_qc_rescue.get("top_removed_genes") or []
+        top_clause = ""
+        if top_removed:
+            top = top_removed[0]
+            top_clause = (
+                f"; top removed feature {top.get('gene')} "
+                f"({top.get('qc_class')}, {float(top.get('share') or 0.0):.0%})"
+            )
+        print(
+            "[load] Expression QC rescue: removed mtDNA/rRNA-like features "
+            f"covering {removed:.0%} of raw TPM and renormalized downstream TPM"
+            f"{top_clause}"
+        )
+        run.note_step(
+            "expression_qc_rescue",
+            status="warning",
+            outputs={
+                "mode": expression_qc_rescue.get("mode"),
+                "removed_fraction": expression_qc_rescue.get("removed_fraction"),
+                "removed_gene_count": expression_qc_rescue.get("removed_gene_count"),
+                "renormalization_factor": expression_qc_rescue.get(
+                    "renormalization_factor"
+                ),
+            },
+            warnings=[
+                "Downstream cancer/target/pathway calculations used mtDNA/rRNA-rescued TPM"
+            ],
+        )
+    elif expression_qc_rescue.get("reason"):
+        run.note_step(
+            "expression_qc_rescue",
+            status="completed",
+            outputs={
+                "mode": expression_qc_rescue.get("mode"),
+                "applied": False,
+                "reason": expression_qc_rescue.get("reason"),
+                "removed_fraction": expression_qc_rescue.get("removed_fraction"),
+            },
+        )
+
     # Step 1 of the unified attribution flow: infer SampleContext BEFORE
     # cancer-type inference. Downstream steps (purity CIs, decomposition,
     # tumor-value adjustment, reporting) read from it as the base layer
     # of expression expectations.
     print("[context] Inferring sample context (library prep + preservation)...")
-    sample_context = infer_sample_context(df_expr)
+    sample_context = infer_sample_context(df_expr_raw)
     print(f"[context] {sample_context.summary_line()}")
     for flag in sample_context.flags:
         print(f"[context] {flag}")
@@ -1812,6 +1867,61 @@ def _analyze_body(run: AnalyzeRun):
     except Exception as exc:  # noqa: BLE001 — plotting must not break analyze
         print(f"[plot] sample-context plot failed: {exc}")
 
+    concentration_png = (
+        "%s-expression-concentration-qc.png" % prefix
+        if prefix
+        else "expression-concentration-qc.png"
+    )
+    try:
+        out = plot_expression_concentration_qc(
+            df_expr_raw,
+            save_to_filename=concentration_png,
+            save_dpi=output_dpi,
+        )
+        if out:
+            print(
+                f"[plot] Saved expression concentration QC to {concentration_png}"
+            )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[plot] expression concentration QC plot failed: {exc}")
+
+    reference_qc_png = (
+        "%s-qc-reference-mtdna-rrna.png" % prefix
+        if prefix
+        else "qc-reference-mtdna-rrna.png"
+    )
+    try:
+        out = plot_reference_mtdna_rrna_qc(
+            df_expr_raw,
+            save_to_filename=reference_qc_png,
+            save_dpi=output_dpi,
+        )
+        if out:
+            print(
+                f"[plot] Saved mtDNA/rRNA reference QC to {reference_qc_png}"
+            )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[plot] mtDNA/rRNA reference QC plot failed: {exc}")
+
+    burden_qc_png = (
+        "%s-qc-reference-technical-rna-burden.png" % prefix
+        if prefix
+        else "qc-reference-technical-rna-burden.png"
+    )
+    try:
+        out = plot_reference_technical_rna_burden_qc(
+            df_expr_raw,
+            save_to_filename=burden_qc_png,
+            save_dpi=output_dpi,
+        )
+        if out:
+            print(
+                "[plot] Saved combined technical-RNA burden QC to "
+                f"{burden_qc_png}"
+            )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[plot] technical-RNA burden QC plot failed: {exc}")
+
     # #27: gene-pair degradation index scatter. Emitted whenever any
     # degradation signal is available (including the "none" call, so
     # users can visually confirm a non-degraded sample lies on the
@@ -1821,7 +1931,7 @@ def _analyze_body(run: AnalyzeRun):
     )
     try:
         out = plot_degradation_index(
-            df_expr,
+            df_expr_raw,
             sample_context,
             save_to_filename=degradation_png,
             save_dpi=output_dpi,
@@ -1888,6 +1998,8 @@ def _analyze_body(run: AnalyzeRun):
     analysis["alteration_inputs_supplied"] = bool(alteration_inputs)
     analysis["alteration_inputs"] = list(alteration_inputs)
     analysis["expression_scale_qc"] = expression_scale_qc
+    analysis["raw_expression_scale_qc"] = raw_expression_scale_qc
+    analysis["expression_qc_rescue"] = expression_qc_rescue
     analysis["rna_quant_qc"] = rna_quant_qc
     analysis["fusion_records"] = [
         record.public_dict() if hasattr(record, "public_dict") else dict(record)
@@ -2069,7 +2181,7 @@ def _analyze_body(run: AnalyzeRun):
     # length-pair-derived degradation level) when MT being near-zero is
     # explained by the inferred prep.
     quality = assess_sample_quality(
-        df_expr,
+        df_expr_raw,
         tissue_scores=analysis.get("tissue_scores"),
         library_prep=getattr(sample_context, "library_prep", None)
         if sample_context is not None
@@ -3091,6 +3203,9 @@ def _analyze_body(run: AnalyzeRun):
     # figures/ step.
     png_files = [
         context_png,
+        concentration_png,
+        reference_qc_png,
+        burden_qc_png,
         degradation_png,
         summary_png,
         decomp_png,
@@ -4905,6 +5020,25 @@ def _build_evidence_report(
     if rna_qc_body:
         lines.append(rna_qc_body)
         lines.append("")
+    rescue_line = expression_qc_rescue_summary_line(
+        analysis.get("expression_qc_rescue")
+    )
+    if rescue_line:
+        lines.append("## Expression-table QC rescue\n")
+        lines.append(rescue_line)
+        top_removed = (
+            analysis.get("expression_qc_rescue", {}).get("top_removed_genes") or []
+        )
+        if top_removed:
+            lines.append("")
+            lines.append("| Feature | Raw TPM | Raw share | QC class |")
+            lines.append("|---|---:|---:|---|")
+            for row in top_removed[:10]:
+                lines.append(
+                    f"| {row.get('gene') or '—'} | {float(row.get('tpm') or 0.0):.1f} | "
+                    f"{float(row.get('share') or 0.0):.0%} | {row.get('qc_class') or '—'} |"
+                )
+        lines.append("")
     fusion_body = _fusion_evidence_markdown(analysis)
     if fusion_body:
         lines.append(fusion_body)
@@ -5015,6 +5149,11 @@ def _generate_text_reports(
         if rna_qc.get("warnings"):
             warning_clause = f"; caution: {str(rna_qc['warnings'][0]).rstrip('.')}"
         lines.append(f"- **RNA quantification QC**: {rna_qc['summary']}{warning_clause}.")
+    rescue_line = expression_qc_rescue_summary_line(
+        analysis.get("expression_qc_rescue")
+    )
+    if rescue_line:
+        lines.append("- " + rescue_line)
     if call_summary.get("label_options"):
         if len(call_summary["label_options"]) == 1:
             lines.append(
@@ -5138,12 +5277,29 @@ def _generate_text_reports(
                 else ""
             )
         )
+        raw_scale_qc = analysis.get("raw_expression_scale_qc") or {}
         scale_qc = analysis.get("expression_scale_qc") or {}
-        if scale_qc:
+        if raw_scale_qc:
             lines.append(
-                f"- **Expression scale QC**: sum {scale_qc.get('sum_tpm', 0.0):.0f}; "
+                f"- **Expression scale QC (raw)**: sum {raw_scale_qc.get('sum_tpm', 0.0):.0f}; "
+                f"max {raw_scale_qc.get('max_tpm', 0.0):.1f}; "
+                f"housekeeping median {raw_scale_qc.get('housekeeping_median_tpm', 0.0):.1f}."
+            )
+        if scale_qc and analysis.get("expression_qc_rescue", {}).get("applied"):
+            lines.append(
+                f"- **Expression scale QC (analysis TPM)**: sum {scale_qc.get('sum_tpm', 0.0):.0f}; "
                 f"max {scale_qc.get('max_tpm', 0.0):.1f}; "
-                f"housekeeping median {scale_qc.get('housekeeping_median_tpm', 0.0):.1f}."
+                "mtDNA/rRNA-like features set to zero before renormalization."
+            )
+        rescue_line = expression_qc_rescue_summary_line(
+            analysis.get("expression_qc_rescue")
+        )
+        if rescue_line:
+            lines.append("- " + rescue_line)
+            lines.append(
+                "- **QC figures**: see `*-expression-concentration-qc.png`, "
+                "`*-qc-reference-mtdna-rrna.png`, and "
+                "`*-qc-reference-technical-rna-burden.png`."
             )
         rna_qc_body = rna_quant_qc_markdown(
             analysis.get("rna_quant_qc"),
@@ -5177,8 +5333,14 @@ def _generate_text_reports(
             for row in dominant[:5]:
                 gene = str(row.get("gene") or "").strip()
                 share = row.get("share")
+                qc_class = str(row.get("qc_class") or "").strip()
                 if gene and isinstance(share, (int, float)):
-                    top_bits.append(f"{gene} {share:.0%}")
+                    class_suffix = (
+                        f" ({qc_class})"
+                        if qc_class and qc_class != "protein-coding/other"
+                        else ""
+                    )
+                    top_bits.append(f"{gene} {share:.0%}{class_suffix}")
             suffix = f"; dominant genes: {', '.join(top_bits)}" if top_bits else ""
             lines.append(
                 f"- **Expression concentration QC**: {concentration_level}ly concentrated "

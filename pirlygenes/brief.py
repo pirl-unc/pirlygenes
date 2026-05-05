@@ -64,6 +64,7 @@ from .reporting import (
 from .confidence import concise_confidence_reasons
 from .analyze import cancer_type_context_from_analysis, cancer_type_context_label
 from .rna_qc import rna_quant_qc_summary_line
+from .expression_qc import expression_qc_rescue_summary_line
 from .sample_context import library_prep_clause, library_prep_display_label
 
 logger = logging.getLogger(__name__)
@@ -962,6 +963,11 @@ def _caveats_from_purity_tier(
                 "should not be treated as filtered out."
             )
     scale_qc = (analysis or {}).get("expression_scale_qc") or {}
+    rescue_line = expression_qc_rescue_summary_line(
+        (analysis or {}).get("expression_qc_rescue")
+    )
+    if rescue_line:
+        out.append(rescue_line.replace("**", ""))
     if scale_qc.get("warnings"):
         out.append("Expression scale QC: " + str(scale_qc["warnings"][0]) + ".")
     rna_qc = (analysis or {}).get("rna_quant_qc") or {}
@@ -1683,6 +1689,11 @@ def build_summary(
     rna_qc_line = rna_quant_qc_summary_line(analysis.get("rna_quant_qc"))
     if rna_qc_line:
         lines.append(rna_qc_line)
+    rescue_line = expression_qc_rescue_summary_line(
+        analysis.get("expression_qc_rescue")
+    )
+    if rescue_line:
+        lines.append(rescue_line)
     scale_qc = analysis.get("expression_scale_qc") or {}
     if scale_qc.get("converted_from") == "log2_tpm_plus_one":
         post_sum = scale_qc.get("post_conversion_sum_tpm") or scale_qc.get("sum_tpm")
@@ -1840,6 +1851,11 @@ def build_actionable(
     rna_qc_line = rna_quant_qc_summary_line(analysis.get("rna_quant_qc"))
     if rna_qc_line:
         lines.append("\n" + rna_qc_line)
+    rescue_line = expression_qc_rescue_summary_line(
+        analysis.get("expression_qc_rescue")
+    )
+    if rescue_line:
+        lines.append("\n" + rescue_line)
 
     overall = purity.get("overall_estimate")
     lower = purity.get("overall_lower")

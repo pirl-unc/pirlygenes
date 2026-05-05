@@ -53,6 +53,7 @@ import math
 from dataclasses import dataclass, field
 
 from .common import without_dataframe_attrs
+from .expression_qc import classify_gene_qc, summarize_qc_class_shares
 from typing import Optional
 
 
@@ -704,9 +705,14 @@ def _summarise_expression_distribution(tpm_by_symbol, signals):
                 "gene": gene,
                 "tpm": round(float(value), 3),
                 "share": round(float(value) / total, 4),
+                "qc_class": classify_gene_qc(gene).label,
+                "qc_group": classify_gene_qc(gene).group,
             }
             for gene, value in top_items
         ]
+        signals["qc_class_shares"] = summarize_qc_class_shares(
+            (gene, float(value)) for gene, value in tpm_by_symbol.items()
+        )
         top_gene = signals.get("top_gene_share_of_total_tpm") or 0.0
         top_10 = signals.get("top_10_share_of_total_tpm") or 0.0
         top_50 = signals.get("top_50_share_of_total_tpm") or 0.0
@@ -882,7 +888,13 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
         dominant = signals.get("dominant_expression_genes") or []
         dominant_label = ""
         if dominant:
-            dominant_label = f"; top gene {dominant[0]['gene']}"
+            class_label = str(dominant[0].get("qc_class") or "").strip()
+            class_suffix = (
+                f" ({class_label})"
+                if class_label and class_label != "protein-coding/other"
+                else ""
+            )
+            dominant_label = f"; top gene {dominant[0]['gene']}{class_suffix}"
         top_gene_label = f"{top_gene:.0%}" if isinstance(top_gene, (int, float)) else "n/a"
         top_10_label = f"{top_10:.0%}" if isinstance(top_10, (int, float)) else "n/a"
         top_50_label = f"{top_50:.0%}" if isinstance(top_50, (int, float)) else "n/a"
@@ -1240,6 +1252,292 @@ def plot_sample_context(
     ax_bars.set_title("Library-prep diagnostic signals", fontsize=10, loc="left")
 
     fig.tight_layout()
+    fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    plt.close(fig)
+    return save_to_filename
+
+
+def _qc_fraction_from_items(items) -> dict[str, float]:
+    summary = summarize_qc_class_shares(items)
+    return {
+        "mt_dna_fraction": float(summary.get("mt_dna_fraction") or 0.0),
+        "rrna_like_fraction": float(summary.get("rrna_like_fraction") or 0.0),
+        "rrna_plus_mt_fraction": float(summary.get("rrna_plus_mt_fraction") or 0.0),
+    }
+
+
+def _sample_qc_fractions(df_gene_expr) -> dict[str, float]:
+    return _qc_fraction_from_items(_build_tpm_by_symbol(df_gene_expr).items())
+
+
+def _reference_qc_fraction_rows():
+    """Return QC fractions for bundled TCGA/HPA reference columns.
+
+    The package ships TCGA cohort medians and HPA tissue/cell-type reference
+    columns, not the full raw per-patient/per-donor matrices. These rows are
+    therefore reference-column distributions, used as a visual QC context.
+    """
+
+    from .gene_sets_cancer import pan_cancer_expression
+
+    ref = pan_cancer_expression().drop_duplicates(subset="Symbol")
+    rows = []
+    symbol_values = ref["Symbol"].fillna("").astype(str).tolist()
+    for col in [c for c in ref.columns if c.startswith("FPKM_")]:
+        fractions = _qc_fraction_from_items(
+            zip(symbol_values, ref[col].fillna(0.0).astype(float))
+        )
+        rows.append(
+            {
+                "source": "TCGA cohort medians",
+                "label": col.replace("FPKM_", ""),
+                **fractions,
+            }
+        )
+    for col in [c for c in ref.columns if c.startswith("nTPM_")]:
+        fractions = _qc_fraction_from_items(
+            zip(symbol_values, ref[col].fillna(0.0).astype(float))
+        )
+        rows.append(
+            {
+                "source": "HPA normal tissues",
+                "label": col.replace("nTPM_", "").replace("_", " "),
+                **fractions,
+            }
+        )
+    return rows
+
+
+def plot_expression_concentration_qc(
+    df_gene_expr,
+    save_to_filename: str,
+    save_dpi: int = 150,
+    top_n: int = 20,
+) -> Optional[str]:
+    """Plot dominant genes and cumulative TPM share for expression QC."""
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    tpm_by_symbol = _build_tpm_by_symbol(df_gene_expr)
+    items = [
+        (gene, float(value))
+        for gene, value in tpm_by_symbol.items()
+        if value is not None and float(value) > 0
+    ]
+    if not items:
+        return None
+    total = sum(value for _, value in items)
+    if total <= 0:
+        return None
+    items = sorted(items, key=lambda item: (-item[1], item[0]))
+    top = items[:top_n]
+    shares = [value / total for _, value in top]
+    labels = [
+        gene if len(gene) <= 24 else gene[:21] + "..."
+        for gene, _value in top
+    ]
+    classes = [classify_gene_qc(gene).group for gene, _value in top]
+    colors = {
+        "rrna_like": "#b64b3c",
+        "mt_dna": "#7a5195",
+        "ribosomal_protein": "#2f7ed8",
+        "ribosomal_protein_pseudogene": "#6aaed6",
+        "small_ncrna": "#d99b2b",
+        "other": "#6c757d",
+    }
+    bar_colors = [colors.get(cls, "#6c757d") for cls in classes]
+
+    sorted_values = np.array([value for _gene, value in items], dtype=float)
+    cumulative = np.cumsum(sorted_values) / total
+    ranks = np.arange(1, len(cumulative) + 1)
+
+    fig, (ax_bar, ax_curve) = plt.subplots(
+        ncols=2,
+        figsize=(13, 6.2),
+        gridspec_kw={"width_ratios": [1.35, 1.0]},
+    )
+    y = np.arange(len(top))
+    ax_bar.barh(y, shares, color=bar_colors, alpha=0.92)
+    ax_bar.set_yticks(y)
+    ax_bar.set_yticklabels(labels, fontsize=8)
+    ax_bar.invert_yaxis()
+    ax_bar.set_xlabel("Share of total TPM")
+    ax_bar.set_title("Dominant expression features", loc="left", fontsize=12)
+    ax_bar.xaxis.set_major_formatter(lambda x, _pos: f"{x:.0%}")
+    for yi, share, (gene, value) in zip(y, shares, top):
+        qc = classify_gene_qc(gene)
+        annotation = f"{share:.0%}"
+        if qc.group in {"rrna_like", "mt_dna"}:
+            annotation += f"  {qc.label}"
+        ax_bar.text(share, yi, "  " + annotation, va="center", fontsize=8)
+    ax_bar.spines["top"].set_visible(False)
+    ax_bar.spines["right"].set_visible(False)
+
+    ax_curve.plot(ranks, cumulative, color="#333333", linewidth=2)
+    for n in (1, 10, 50, 200, 2000):
+        if len(cumulative) >= n:
+            ax_curve.scatter([n], [cumulative[n - 1]], color="#b64b3c", zorder=3)
+            ax_curve.text(
+                n,
+                cumulative[n - 1],
+                f" top {n}: {cumulative[n - 1]:.0%}",
+                fontsize=8,
+                va="bottom",
+            )
+    ax_curve.set_xscale("log")
+    ax_curve.set_ylim(0, 1.02)
+    ax_curve.set_xlabel("Gene rank by TPM")
+    ax_curve.set_ylabel("Cumulative share of total TPM")
+    ax_curve.set_title("TPM concentration curve", loc="left", fontsize=12)
+    ax_curve.yaxis.set_major_formatter(lambda x, _pos: f"{x:.0%}")
+    ax_curve.grid(True, axis="y", alpha=0.25)
+    ax_curve.spines["top"].set_visible(False)
+    ax_curve.spines["right"].set_visible(False)
+
+    legend_handles = []
+    for group, color in colors.items():
+        if group in classes:
+            legend_handles.append(
+                plt.Line2D([0], [0], marker="s", linestyle="", color=color, label=group)
+            )
+    if legend_handles:
+        ax_curve.legend(handles=legend_handles, loc="lower right", fontsize=8)
+
+    fig.suptitle("Expression concentration QC", x=0.01, ha="left", fontsize=14)
+    fig.tight_layout()
+    fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    plt.close(fig)
+    return save_to_filename
+
+
+def plot_reference_mtdna_rrna_qc(
+    df_gene_expr,
+    save_to_filename: str,
+    save_dpi: int = 150,
+) -> Optional[str]:
+    """Plot sample mtDNA and rRNA-like fractions against bundled references."""
+
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    rows = _reference_qc_fraction_rows()
+    if not rows:
+        return None
+    ref = pd.DataFrame(rows)
+    sample = _sample_qc_fractions(df_gene_expr)
+    fig, axes = plt.subplots(ncols=2, figsize=(12, 4.8), sharey=True)
+    specs = [
+        ("mt_dna_fraction", "mtDNA fraction of total TPM"),
+        ("rrna_like_fraction", "rRNA-like fraction of total TPM"),
+    ]
+    colors = {
+        "TCGA cohort medians": "#3f6fb5",
+        "HPA normal tissues": "#3f8f5f",
+    }
+    for ax, (metric, title) in zip(axes, specs):
+        for source, group in ref.groupby("source"):
+            vals = group[metric].astype(float)
+            ax.hist(
+                vals,
+                bins=18,
+                alpha=0.55,
+                color=colors.get(source, "#777777"),
+                label=f"{source} (n={len(vals)})",
+            )
+        sample_val = float(sample.get(metric) or 0.0)
+        ax.axvline(
+            sample_val,
+            color="#111111",
+            linestyle=(0, (6, 3)),
+            linewidth=2.5,
+            label="sample",
+        )
+        ax.set_title(title, fontsize=11, loc="left")
+        ax.set_xlabel("Fraction of total TPM")
+        ax.xaxis.set_major_formatter(lambda x, _pos: f"{x:.0%}")
+        xmax = max(float(ref[metric].max()), sample_val, 0.01)
+        ax.set_xlim(0, min(1.0, xmax * 1.15 + 0.01))
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+    axes[0].set_ylabel("Reference columns")
+    axes[0].legend(loc="upper right", fontsize=8)
+    fig.suptitle(
+        "Technical-RNA fractions vs bundled reference columns",
+        x=0.01,
+        ha="left",
+        fontsize=13,
+    )
+    fig.text(
+        0.01,
+        0.01,
+        "Reference context uses TCGA cohort medians and HPA normal tissue columns; "
+        "the shipped reference table mostly omits nuclear rRNA/pseudogene annotations.",
+        fontsize=8,
+        color="#555555",
+    )
+    fig.tight_layout(rect=(0, 0.04, 1, 0.95))
+    fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+    plt.close(fig)
+    return save_to_filename
+
+
+def plot_reference_technical_rna_burden_qc(
+    df_gene_expr,
+    save_to_filename: str,
+    save_dpi: int = 150,
+) -> Optional[str]:
+    """Plot combined mtDNA+rRNA-like fraction against bundled references."""
+
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    rows = _reference_qc_fraction_rows()
+    if not rows:
+        return None
+    ref = pd.DataFrame(rows)
+    sample = _sample_qc_fractions(df_gene_expr)
+    metric = "rrna_plus_mt_fraction"
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    colors = {
+        "TCGA cohort medians": "#3f6fb5",
+        "HPA normal tissues": "#3f8f5f",
+    }
+    for source, group in ref.groupby("source"):
+        vals = group[metric].astype(float)
+        ax.hist(
+            vals,
+            bins=22,
+            alpha=0.55,
+            color=colors.get(source, "#777777"),
+            label=f"{source} (n={len(vals)})",
+        )
+    sample_val = float(sample.get(metric) or 0.0)
+    ax.axvline(
+        sample_val,
+        color="#111111",
+        linestyle=(0, (6, 3)),
+        linewidth=3,
+        label=f"sample ({sample_val:.0%})",
+    )
+    ax.set_xlabel("mtDNA + rRNA-like fraction of total TPM")
+    ax.set_ylabel("Reference columns")
+    ax.xaxis.set_major_formatter(lambda x, _pos: f"{x:.0%}")
+    xmax = max(float(ref[metric].max()), sample_val, 0.01)
+    ax.set_xlim(0, min(1.0, xmax * 1.12 + 0.01))
+    ax.set_title("Combined technical-RNA burden", loc="left", fontsize=12)
+    ax.legend(loc="upper right", fontsize=8)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.text(
+        0.01,
+        0.01,
+        "Reference context uses TCGA cohort medians and HPA normal tissue columns; "
+        "the sample marker uses every mtDNA/rRNA-like feature present in the input table.",
+        fontsize=8,
+        color="#555555",
+    )
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
     fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
     plt.close(fig)
     return save_to_filename

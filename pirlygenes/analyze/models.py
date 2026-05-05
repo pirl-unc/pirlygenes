@@ -44,6 +44,7 @@ class AnalyzeConfig:
     hla_types: str | None = None
     fusions: str | None = None
     alterations: str | None = None
+    expression_qc_rescue: str = "auto"
     therapy_target_top_k: int = 10
     therapy_target_tpm_threshold: float = 30.0
     force: bool = False

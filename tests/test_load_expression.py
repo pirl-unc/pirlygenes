@@ -222,8 +222,30 @@ def test_expression_scale_qc_flags_extreme_tpm_concentration():
 
     assert qc["top_gene_share_of_total_tpm"] == pytest.approx(0.52)
     assert qc["dominant_genes"][0]["gene"] == "RNA5S_DOMINANT"
+    assert qc["dominant_genes"][0]["qc_group"] == "rrna_like"
+    assert qc["rrna_like_fraction"] == pytest.approx(0.52)
     assert any("one gene" in warning for warning in qc["warnings"])
     assert any("tiny transcript set" in warning for warning in qc["warnings"])
+
+
+def test_expression_qc_rescue_removes_rrna_like_dominator():
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5SP389", "MT-ATP8", "KLK3", "ACTB"],
+            "TPM": [520_000.0, 30_000.0, 25_000.0, 425_000.0],
+        }
+    )
+
+    rescued, record = le.apply_expression_qc_rescue(df, mode="auto")
+
+    assert record["applied"] is True
+    assert record["removed_fraction"] == pytest.approx(0.55)
+    assert record["top_removed_genes"][0]["qc_class"] == "5S rRNA pseudogene"
+    assert rescued.loc[rescued["gene"] == "RNA5SP389", "TPM"].item() == 0.0
+    assert rescued["TPM"].sum() == pytest.approx(1_000_000.0)
+    assert rescued.loc[rescued["gene"] == "KLK3", "TPM"].item() == pytest.approx(
+        25_000.0 / 450_000.0 * 1_000_000.0
+    )
 
 
 def test_load_expression_accepts_kallisto_gene_abundance_column(tmp_path, monkeypatch):

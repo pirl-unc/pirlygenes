@@ -477,6 +477,45 @@ def test_plot_sample_context_writes_png(tmp_path):
     assert out.stat().st_size > 1000
 
 
+def test_plot_expression_concentration_qc_writes_png(tmp_path):
+    from pirlygenes.sample_context import plot_expression_concentration_qc
+
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5SP389", "RNA5-8SP6", "KLK3", "ACTB", "RPLP2"],
+            "TPM": [520_000.0, 220_000.0, 30_000.0, 160_000.0, 70_000.0],
+        }
+    )
+    out = tmp_path / "expression-concentration-qc.png"
+    plot_expression_concentration_qc(df, save_to_filename=str(out), save_dpi=80)
+    assert out.exists()
+    assert out.stat().st_size > 1000
+
+
+def test_plot_reference_technical_rna_qc_writes_pngs(tmp_path):
+    from pirlygenes.sample_context import (
+        plot_reference_mtdna_rrna_qc,
+        plot_reference_technical_rna_burden_qc,
+    )
+
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5SP389", "MT-ATP8", "KLK3", "ACTB"],
+            "TPM": [520_000.0, 30_000.0, 25_000.0, 425_000.0],
+        }
+    )
+    out1 = tmp_path / "reference-mtdna-rrna.png"
+    out2 = tmp_path / "reference-technical-rna-burden.png"
+    plot_reference_mtdna_rrna_qc(df, save_to_filename=str(out1), save_dpi=80)
+    plot_reference_technical_rna_burden_qc(
+        df, save_to_filename=str(out2), save_dpi=80
+    )
+    assert out1.exists()
+    assert out1.stat().st_size > 1000
+    assert out2.exists()
+    assert out2.stat().st_size > 1000
+
+
 def test_histone_prefixes_include_both_hgnc_old_and_new():
     # Guard against accidental deletion: we detect histones whether
     # annotations use old HIST1H* names or modern HGNC H2AC*/H3C*/H4C*.
