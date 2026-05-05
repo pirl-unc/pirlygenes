@@ -50,11 +50,11 @@ pirlygenes analyze input.csv \
 | `{prefix}-tumor.png` | Tumor marker gene expression |
 | `{prefix}-antigens.png` | Antigen gene expression (CTAs + surface) |
 | `{prefix}-treatments.png` | Therapy target gene expression |
-| `{prefix}-target-safety.png` | Therapy target normal tissue expression |
+| `{prefix}-actionable-targets.png` | Canonical actionable-target screen: observed expression, tumor-source estimate, normal-tissue context, and readiness caveats |
 | `{prefix}-priority-targets.png` | Priority ranking only: integrated score across tumor support, readiness, safety, and tumor level |
 | `{prefix}-priority-target-context.png` | Separate evidence page: tumor range plus tumor-source, healthy-tissue, and maturity context |
 | `{prefix}-target-tissues.pdf` | Per-gene tissue expression heatmaps |
-| `{prefix}-purity-adjusted.png` | 9-point tumor expression ranges with % of cancer type median |
+| `{prefix}-purity-ctas.png`, `{prefix}-purity-surface.png` | 9-point tumor expression ranges for non-target expression categories |
 | `{prefix}-cancer-types-genes.png` | Gene set heatmap vs TCGA cancer types |
 | `{prefix}-cancer-types-disjoint.png` | Disjoint gene counts per cancer type |
 | `{prefix}-reference-mds.png` | MDS embedding of TCGA cancer medians, subtype references, normal tissues, and the sample |

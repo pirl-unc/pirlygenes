@@ -283,7 +283,11 @@ Prefer the standalone decomposition figures when reviewing or sharing a case. Th
 | `*-decomposition-candidates.png` | Standalone per-candidate composition comparison |
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-immune.png`, `*-tumor.png`, `*-antigens.png`, `*-treatments.png` | Gene expression strip plots by category |
-| `*-target-safety.png`, `*-purity-targets.png`, `*-purity-ctas.png`, `*-purity-surface.png` | Therapy target expression with normal tissue context |
+| `*-actionable-targets.png` | Canonical actionable-target screen: observed expression, tumor-source estimate, normal-tissue context, and readiness caveats |
+| `*-priority-targets.png` | Ranked target shortlist, split by approval/readiness tier |
+| `*-priority-target-context.png` | Evidence companion for the priority shortlist: tumor-source, expression range, healthy-tissue, and maturity context |
+| `*-target-tissues.pdf` | Detailed per-gene tissue-expression appendix for reviewed therapy targets |
+| `*-purity-ctas.png`, `*-purity-surface.png` | Tumor-expression ranges for non-target expression categories |
 | `*-reference-mds.png` | MDS reference map: TCGA cancer medians, subtype references, normal tissues, and the sample |
 | `*-reference-neighborhood.png` | Nearest cancer/subtype/normal reference distance ranking; preserves full feature-space distance |
 | `*-cancer-types-genes.png`, `*-cancer-types-disjoint.png` | Cancer-type gene signature heatmaps |

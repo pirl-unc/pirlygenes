@@ -138,7 +138,6 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     mds_calls = []
     neighborhood_calls = []
     tissue_calls = []
-    safety_calls = []
     monkeypatch.setattr(
         cli_mod, "load_expression_data", lambda *a, **k: pd.DataFrame({"x": [1]})
     )
@@ -150,9 +149,6 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         cli_mod, "plot_therapy_target_tissues", lambda *a, **k: tissue_calls.append(k)
-    )
-    monkeypatch.setattr(
-        cli_mod, "plot_therapy_target_safety", lambda *a, **k: safety_calls.append(k)
     )
     # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
     # removed from the default plot set (polish/4.40.1); skip
@@ -299,12 +295,10 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     # #83: scatter must use the resolved cancer type (PRAD from
     # analyze_sample), not None / the raw CLI arg.
     assert scatter_calls[0]["cancer_type"] == "PRAD"
+    assert len(tissue_calls) == 1
     assert tissue_calls[0]["top_k"] == 12
     assert tissue_calls[0]["tpm_threshold"] == 18
     assert {"FAP", "CD276"}.issubset(tissue_calls[0]["extra_symbols"])
-    assert safety_calls[0]["top_k"] == 12
-    assert safety_calls[0]["tpm_threshold"] == 18
-    assert {"FAP", "CD276"}.issubset(safety_calls[0]["extra_symbols"])
     # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
     # removed from the default plot set (polish/4.40.1).
     assert len(cancer_gene_calls) == 0

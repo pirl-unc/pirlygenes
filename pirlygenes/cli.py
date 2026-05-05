@@ -60,14 +60,12 @@ from .plot import (
     plot_cancer_type_mds,
     plot_cancer_type_neighborhood,
     plot_therapy_target_tissues,
-    plot_therapy_target_safety,
     plot_cohort_heatmap,
     plot_cohort_disjoint_counts,
     plot_cohort_pca,
     plot_cohort_therapy_targets,
     plot_cohort_surface_proteins,
     plot_cohort_ctas,
-    plot_curated_target_evidence,
     plot_priority_target_context,
     plot_priority_targets,
     get_embedding_feature_metadata,
@@ -2762,9 +2760,6 @@ def _analyze_body(run: AnalyzeRun):
     # Therapy target tissue expression / safety
     print("[plot] Generating therapy target tissue expression...")
     tissue_pdf = "%s-target-tissues.pdf" % prefix if prefix else "target-tissues.pdf"
-    tissue_png_manifest = (
-        "%s-target-tissues.png" % prefix if prefix else "target-tissues.png"
-    )
     curated_target_symbols = set(forced_labels or [])
     try:
         panel_code_for_tissues, panel_subtype_for_tissues = (
@@ -2798,25 +2793,6 @@ def _analyze_body(run: AnalyzeRun):
         tpm_threshold=therapy_target_tpm_threshold,
         extra_symbols=curated_target_symbols,
         save_to_filename=tissue_pdf,
-        save_dpi=output_dpi,
-    )
-    plot_therapy_target_tissues(
-        df_expr,
-        top_k=therapy_target_top_k,
-        tpm_threshold=therapy_target_tpm_threshold,
-        extra_symbols=curated_target_symbols,
-        save_to_filename=tissue_png_manifest,
-        save_dpi=output_dpi,
-    )
-
-    print("[plot] Generating therapy target safety plot...")
-    safety_png = "%s-target-safety.png" % prefix if prefix else "target-safety.png"
-    plot_therapy_target_safety(
-        df_expr,
-        top_k=therapy_target_top_k,
-        tpm_threshold=therapy_target_tpm_threshold,
-        extra_symbols=curated_target_symbols,
-        save_to_filename=safety_png,
         save_dpi=output_dpi,
     )
     _plt.close("all")
@@ -2861,7 +2837,7 @@ def _analyze_body(run: AnalyzeRun):
     embedding_pngs = [mds_png, neighborhood_png]
     _plt.close("all")
 
-    # Deep-dive therapy target + CTA + subtype plots
+    # Canonical target screen plus CTA/subtype drill-down plots.
     from .plot_target_deep_dive import (
         plot_actionable_targets,
         plot_cta_deep_dive,
@@ -2870,7 +2846,7 @@ def _analyze_body(run: AnalyzeRun):
 
     p_est = purity.get("overall_estimate")
     try:
-        targets_deep_png = "%s-targets-deep-dive.png" % prefix
+        targets_deep_png = "%s-actionable-targets.png" % prefix
         plot_actionable_targets(
             df_expr,
             cancer_type=effective_cancer_type,
@@ -2878,9 +2854,9 @@ def _analyze_body(run: AnalyzeRun):
             save_to_filename=targets_deep_png,
             save_dpi=output_dpi,
         )
-        print(f"[plot] Saved actionable targets deep dive to {targets_deep_png}")
+        print(f"[plot] Saved actionable targets to {targets_deep_png}")
     except Exception as exc:
-        print(f"[plot] actionable targets deep dive failed: {exc}")
+        print(f"[plot] actionable targets failed: {exc}")
         targets_deep_png = None
 
     try:
@@ -2968,7 +2944,11 @@ def _analyze_body(run: AnalyzeRun):
     adj_pngs = []
     audit_only_pngs = []
     ranges_df = None
-    _adj_categories = [
+    _range_plot_categories = [
+        ("CTA", "ctas"),
+        ("surface", "surface"),
+    ]
+    _attribution_categories = [
         ("therapy_target", "targets"),
         ("CTA", "ctas"),
         ("surface", "surface"),
@@ -3006,7 +2986,7 @@ def _analyze_body(run: AnalyzeRun):
             "alteration_effects",
             outputs=alteration_effect_summary,
         )
-        for cat_key, cat_slug in _adj_categories:
+        for cat_key, cat_slug in _range_plot_categories:
             cat_png = (
                 "%s-purity-%s.png" % (prefix, cat_slug)
                 if prefix
@@ -3036,7 +3016,7 @@ def _analyze_body(run: AnalyzeRun):
             .apply(lambda v: isinstance(v, dict) and len(v) > 0)
             .any()
         ):
-            for cat_key, cat_slug in _adj_categories:
+            for cat_key, cat_slug in _attribution_categories:
                 attr_png = (
                     "%s-target-attribution-%s.png" % (prefix, cat_slug)
                     if prefix
@@ -3052,7 +3032,7 @@ def _analyze_body(run: AnalyzeRun):
                     sample_tpm_by_symbol=sample_tpm_by_symbol,
                 )
                 if fig is not None:
-                    adj_pngs.append(attr_png)
+                    audit_only_pngs.append(attr_png)
                 _plt.close("all")
 
         # Per-gene subtype-reference correction audit (#56 / #58).
@@ -3064,7 +3044,7 @@ def _analyze_body(run: AnalyzeRun):
         ):
             from .plot_tumor_expr import plot_subtype_attribution
 
-            for cat_key, cat_slug in _adj_categories:
+            for cat_key, cat_slug in _attribution_categories:
                 sub_png = (
                     "%s-subtype-attribution-%s.png" % (prefix, cat_slug)
                     if prefix
@@ -3089,7 +3069,7 @@ def _analyze_body(run: AnalyzeRun):
             "matched_normal_tpm" in ranges_df.columns
             and (ranges_df["matched_normal_tpm"].astype(float) > 0).any()
         ):
-            for cat_key, cat_slug in _adj_categories:
+            for cat_key, cat_slug in _attribution_categories:
                 mn_png = (
                     "%s-matched-normal-%s.png" % (prefix, cat_slug)
                     if prefix
@@ -3105,7 +3085,7 @@ def _analyze_body(run: AnalyzeRun):
                     sample_tpm_by_symbol=sample_tpm_by_symbol,
                 )
                 if fig is not None:
-                    adj_pngs.append(mn_png)
+                    audit_only_pngs.append(mn_png)
                 _plt.close("all")
 
         target_report_md = _build_target_report(
@@ -3116,7 +3096,6 @@ def _analyze_body(run: AnalyzeRun):
             decomp_results=decomp_results,
         )
 
-        curated_evidence_png = None
         priority_targets_png = None
         priority_target_context_png = None
         try:
@@ -3154,35 +3133,13 @@ def _analyze_body(run: AnalyzeRun):
                         )
                         if fig is not None:
                             print(
-                                f"[plot] Refreshed actionable targets deep dive to {targets_deep_png}"
+                                f"[plot] Refreshed actionable targets to {targets_deep_png}"
                             )
                         _plt.close("all")
                     except Exception as action_plot_err:
                         print(
                             f"[plot] actionable targets refresh failed: {action_plot_err}"
                         )
-                curated_evidence_png = (
-                    "%s-curated-target-evidence.png" % prefix
-                    if prefix
-                    else "curated-target-evidence.png"
-                )
-                fig = plot_curated_target_evidence(
-                    ranges_df,
-                    target_panel.reset_index(drop=True),
-                    cancer_type=panel_code,
-                    df_gene_expr=df_expr,
-                    save_to_filename=curated_evidence_png,
-                    save_dpi=output_dpi,
-                )
-                if fig is not None:
-                    adj_pngs.append(curated_evidence_png)
-                    print(
-                        f"[plot] Saved curated target evidence to {curated_evidence_png}"
-                    )
-                else:
-                    curated_evidence_png = None
-                _plt.close("all")
-
             priority_targets_png = (
                 "%s-priority-targets.png" % prefix if prefix else "priority-targets.png"
             )
@@ -3240,8 +3197,7 @@ def _analyze_body(run: AnalyzeRun):
             _plt.close("all")
 
         except Exception as curated_err:
-            print(f"[plot] curated target evidence failed: {curated_err}")
-            curated_evidence_png = None
+            print(f"[plot] priority target plots failed: {curated_err}")
             priority_targets_png = None
             priority_target_context_png = None
 
@@ -3350,7 +3306,6 @@ def _analyze_body(run: AnalyzeRun):
         # #136: therapy-pathway-state dumbbell figure.
         pathway_state_png,
         "%s-treatments.png" % prefix if prefix else "treatments.png",
-        safety_png,
     ] + embedding_pngs
     if ct_png:
         png_files.append(ct_png)
@@ -3369,10 +3324,6 @@ def _analyze_body(run: AnalyzeRun):
     scatter_dir = Path(scatter_pdf).parent / Path(scatter_pdf).stem
     if scatter_dir.is_dir():
         png_files.extend(sorted(str(p) for p in scatter_dir.glob("*.png")))
-    tissue_dir = Path(tissue_png_manifest).parent / Path(tissue_png_manifest).stem
-    if tissue_dir.is_dir():
-        png_files.extend(sorted(str(p) for p in tissue_dir.glob("*.png")))
-
     # Purity-adjusted plots go last (different RNA measure)
     for adj_p in adj_pngs:
         if Path(adj_p).exists():
@@ -3480,14 +3431,6 @@ def _analyze_body(run: AnalyzeRun):
             scatter_dir.rmdir()
         except OSError:
             pass
-    if tissue_dir.is_dir():
-        for p in tissue_dir.glob("*.png"):
-            p.rename(figures_dir / p.name)
-            moved += 1
-        try:
-            tissue_dir.rmdir()
-        except OSError:
-            pass
     for extra in [scatter_pdf, tissue_pdf]:
         p = Path(extra) if isinstance(extra, str) else extra
         if p.exists():
@@ -3593,17 +3536,13 @@ def _analyze_body(run: AnalyzeRun):
                 },
                 {
                     "title": "Targets / Actionability",
-                    "note": "Therapy target expression, tumor-source attribution, safety context, and prioritized target views.",
+                    "note": "Canonical target figures: broad actionable screen, ranked priority shortlist, and the matching evidence context.",
                     "files": _existing_figure_paths(
                         "treatments.png",
-                        "target-safety.png",
-                        "curated-target-evidence.png",
+                        "actionable-targets.png",
                         "priority-targets.png",
                         "priority-target-context.png",
-                        "target-attribution-targets.png",
-                        "target-attribution-surface.png",
-                        "matched-normal-targets.png",
-                        "matched-normal-surface.png",
+                        "target-tissues.pdf",
                     ),
                 },
             ],
@@ -3634,24 +3573,24 @@ def _analyze_body(run: AnalyzeRun):
                 },
                 {
                     "title": "Purity + Expression Range Cluster",
-                    "note": "These explain purity and then immediately apply that estimate to targets/CTAs/surface proteins.",
+                    "note": "These explain purity and then apply that estimate to non-target expression categories; targets use the canonical actionable-targets figure.",
                     "files": _existing_figure_paths(
                         "purity.png",
                         "purity-methods.png",
-                        "purity-targets.png",
                         "purity-ctas.png",
                         "purity-surface.png",
                     ),
                 },
                 {
                     "title": "Attribution / Matched-Normal Cluster",
-                    "note": "These are the most likely to feel repetitive because they all inspect the same targets from adjacent decomposition views.",
+                    "note": "Provenance/audit views for why tumor-source calls differ from observed TPM; useful for debugging, not primary decision figures.",
                     "files": _existing_figure_paths(
                         "target-attribution-targets.png",
                         "target-attribution-surface.png",
                         "matched-normal-targets.png",
                         "matched-normal-surface.png",
-                        "curated-target-evidence.png",
+                        "subtype-attribution-targets.png",
+                        "subtype-attribution-surface.png",
                         "priority-targets.png",
                         "priority-target-context.png",
                     ),
@@ -3685,8 +3624,7 @@ def _analyze_body(run: AnalyzeRun):
                         "sample-summary.png",
                         "cancer-hypotheses.png",
                         "purity-methods.png",
-                        "target-safety.png",
-                        "curated-target-evidence.png",
+                        "actionable-targets.png",
                         "priority-targets.png",
                         "priority-target-context.png",
                         "provenance.png",
@@ -3814,11 +3752,10 @@ Prefer the standalone decomposition figures for review and sharing. They replace
 | `*-decomposition-candidates.png` | Standalone per-candidate composition bars (tumor / template-specific / shared host) across top decomposition candidates |
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-treatments.png` | Therapy target expression by modality |
-| `*-target-safety.png` | Therapy target normal tissue expression |
+| `*-actionable-targets.png` | Canonical actionable-target screen: observed expression, tumor-source estimate, normal-tissue context, and readiness caveats |
 | `*-priority-targets.png` | Actionable target priority ranking, split by approval/readiness tier |
 | `*-priority-target-context.png` | Matching actionable-target evidence page: tumor-expression range plus tumor-source and healthy-tissue context |
-| `*-curated-target-evidence.png` | Curated cancer-type targets with tumor-expression range, normal context, and maturity |
-| `*-purity-targets.png` | Tumor-expression ranges for therapeutic targets |
+| `*-target-tissues.pdf` | Detailed per-gene tissue-expression appendix for reviewed therapy targets |
 | `*-purity-ctas.png` | Tumor-expression ranges for CTAs |
 | `*-purity-surface.png` | Tumor-expression ranges for surface proteins |
 | `*-reference-mds.png` | MDS: sample among TCGA cancer medians, subtype references, and normal tissues |

@@ -17,6 +17,15 @@ shared reference the reader can audit later to decide if any cluster
 should be consolidated. 48 files baseline after QC-plot additions and
 the concentration / technical-RNA split.
 
+**Current target-figure convention**: the canonical therapy-target figures are
+`sample-actionable-targets.png` (broad target screen),
+`sample-priority-targets.png` (ranked shortlist), and
+`sample-priority-target-context.png` (evidence companion for the shortlist).
+Older default figures that repeated the same story (`sample-target-safety.png`,
+`sample-curated-target-evidence.png`, target tissue PNG fan-out, and
+`sample-purity-targets.png`) are retired from default output or kept only as
+appendix/provenance artifacts.
+
 ---
 
 ## Step-0 tissue composition + QC
@@ -47,9 +56,8 @@ the concentration / technical-RNA split.
 |---|---|---|
 | `sample-purity.png` | Tumor purity detail — CI, components, integration | ✓ keep |
 | `sample-purity-methods.png` | All purity-estimation methods on one axis + direct/derived separator (polished in v4.40.1) | ✓ keep |
-| `sample-purity-targets.png` | Tumor-expression ranges for therapeutic targets | ✓ keep |
-| `sample-purity-ctas.png` | Same for CTAs | ✓ keep |
-| `sample-purity-surface.png` | Same for surface proteins | ✓ keep |
+| `sample-purity-ctas.png` | Tumor-expression ranges for CTAs | ✓ keep |
+| `sample-purity-surface.png` | Tumor-expression ranges for surface proteins | ✓ keep |
 
 ## Decomposition
 
@@ -63,18 +71,17 @@ the concentration / technical-RNA split.
 
 | File | Purpose | Verdict |
 |---|---|---|
-| `sample-target-tissues.pdf` | Therapy-target TPM across host tissues | ~ review — PDF; consider PNG-by-target or drop |
-| `sample-target-safety.png` | Therapy-target normal-tissue expression — on-target/off-tissue safety | ✓ keep |
-| `sample-target-attribution-targets.png` | Per-gene attribution stacked bars (targets) | ✓ keep |
-| `sample-target-attribution-ctas.png` | Same for CTAs | ✓ keep |
-| `sample-target-attribution-surface.png` | Same for surface | ✓ keep |
-| `sample-tumor-attribution-targets.png` | Per-gene tumor-attributed TPM (targets) | ~ review — heavy overlap with `target-attribution-*`; two names for near-identical views. **Merge or drop one.** |
-| `sample-tumor-attribution-cta.png` | Same for CTAs | ~ review (same as above) |
-| `sample-targets-deep-dive.png` | Top-N actionable targets, detailed | ✓ keep |
+| `sample-actionable-targets.png` | Canonical broad target screen: observed TPM, tumor-source estimate, normal-tissue context, and readiness caveats | ✓ keep |
+| `sample-priority-targets.png` | Ranked shortlist split by approval/readiness tier | ✓ keep |
+| `sample-priority-target-context.png` | Evidence companion for the ranked shortlist | ✓ keep |
+| `sample-target-tissues.pdf` | Detailed per-gene host-tissue expression appendix | ~ appendix — useful drill-down, not a main-screen target plot |
+| `sample-target-attribution-targets.png` | Per-gene attribution stacked bars (targets) | ~ audit/provenance |
+| `sample-target-attribution-ctas.png` | Same for CTAs | ~ audit/provenance |
+| `sample-target-attribution-surface.png` | Same for surface | ~ audit/provenance |
 | `sample-cta-deep-dive.png` | Top-N CTA deep dive | ✓ keep |
-| `sample-matched-normal-targets.png` | Matched-normal vs tumor for each target | ✓ keep — answers the #131 "matched-normal over-predicted" story |
-| `sample-matched-normal-ctas.png` | Same for CTAs | ✓ keep |
-| `sample-matched-normal-surface.png` | Same for surface | ✓ keep |
+| `sample-matched-normal-targets.png` | Matched-normal vs tumor for each target | ~ audit/provenance — answers the #131 "matched-normal over-predicted" story |
+| `sample-matched-normal-ctas.png` | Same for CTAs | ~ audit/provenance |
+| `sample-matched-normal-surface.png` | Same for surface | ~ audit/provenance |
 
 ## Gene-set strip plots (10 files — Cancer_surfaceome, CTAs, DNA_repair, Growth_receptors, Immune_checkpoints, Interferon_response, MHC1_presentation, Oncogenes, TLR, Tumor_suppressors)
 
@@ -103,19 +110,22 @@ the concentration / technical-RNA split.
 
 ## Missing / deferred
 
-- **`subtype-attribution-{cat}.png`** — per-gene before/after delta bars for the CAF / TAM / MDSC / exhausted-T refinement introduced in #56 / #58. Referenced in both issue bodies; provenance columns (`subtype_refined`, `tme_tpm_before_subtype_refinement`) already populate the TSV but no visualization has landed yet. Low/medium effort — would fit the per-category-PNG pattern the user prefers.
-- **`subtype-attribution-summary.png`** — single PNG ranking the top-N most-affected genes across all refined compartments. Useful to see "these 12 genes had their tumor-attribution corrected by X TPM" at a glance.
+- **Gene-set strip plot consolidation** — the 10 category PNGs are still useful but numerous. A `sample-genesets.pdf` one-page-per-category appendix would make the default figure directory easier to scan.
+- **Subtype-attribution summary** — the per-category audit plots exist; a single ranking of the top-N most-affected genes across refined compartments would make the provenance easier to skim.
 - **Composition subtype-split bar** — #56 issue calls out showing the CAF-vs-generic-fibroblast / TAM-vs-monocyte split inside the composition figure. Currently the partition helper exists (`partition_compartment`) but the display layer doesn't consume it.
 
 ## Top redundancies (if reducing figure count)
 
-1. **`sample-tumor-attribution-*` vs `sample-target-attribution-*`** — near-identical per-gene attribution views for the same categories. Drop one set.
+1. **Target/actionability figures** — keep `sample-actionable-targets.png`, `sample-priority-targets.png`, and `sample-priority-target-context.png` as the canonical main set; keep attribution/matched-normal views as audit/provenance rather than parallel decision figures.
 2. **`sample-immune.png` + `sample-tumor.png` + `sample-antigens.png`** — overview strip plots duplicating the curated gene-set strip plots. Either retire the overviews or retire the per-category PNGs; pick one axis of organization.
 3. **`sample-background-tissues.png`** — if the tissue-match line in the narrative is enough for clinicians, the standalone PNG is optional.
 
 ## Top missing
 
-The subtype-attribution-{cat}.png figures are the single biggest gap — the #56/#58 refinement mechanism now runs on every sample but a reader can't see its per-gene effect visually, only in the TSV.
+The biggest remaining gap is not another target figure; it is better packaging
+for audit/provenance views. The per-category attribution views exist, but a
+single summary page could show which genes were most affected by matched-normal,
+subtype, or decomposition refinements.
 
 ## Recommended next steps (PRs to open)
 
@@ -151,23 +161,22 @@ any group deserves consolidation.
 | 14 | `sample-subtype-signature.png` | Therapy-response axes — AR/ER/HER2/NE/EMT/hypoxia/IFN |
 | 15 | `sample-purity.png` | Tumor purity detail — CI + component contributions |
 | 16 | `sample-purity-methods.png` | All purity-estimation methods on one axis |
-| 17 | `sample-purity-targets.png` | Tumor-expression ranges (targets) |
-| 18 | `sample-purity-ctas.png` | Tumor-expression ranges (CTAs) |
-| 19 | `sample-purity-surface.png` | Tumor-expression ranges (surface proteins) |
+| 17 | `sample-purity-ctas.png` | Tumor-expression ranges (CTAs) |
+| 18 | `sample-purity-surface.png` | Tumor-expression ranges (surface proteins) |
 | 20 | `sample-decomposition-composition.png` | Composition bar — tumor + TME for best hypothesis |
 | 21 | `sample-decomposition-components.png` | TME cell-type breakdown for best hypothesis |
 | 22 | `sample-decomposition-candidates.png` | Per-candidate composition across top hypotheses |
-| 23 | `sample-target-tissues.pdf` | Therapy-target TPM across host tissues |
-| 24 | `sample-target-safety.png` | Therapy-target normal-tissue expression (safety view) |
-| 25 | `sample-target-attribution-targets.png` | Per-gene stacked attribution (targets) |
-| 26 | `sample-target-attribution-ctas.png` | Per-gene stacked attribution (CTAs) |
-| 27 | `sample-target-attribution-surface.png` | Per-gene stacked attribution (surface) |
-| 28 | `sample-matched-normal-targets.png` | Matched-normal vs tumor per target (targets) |
-| 29 | `sample-matched-normal-ctas.png` | Same (CTAs) |
-| 30 | `sample-matched-normal-surface.png` | Same (surface) |
-| 31 | `sample-subtype-attribution-targets.png` | #56/#58 before/after reference swap (targets) |
-| 32 | `sample-subtype-attribution-surface.png` | Same (surface) |
-| 33 | `sample-targets-deep-dive.png` | Top actionable targets, detailed |
+| 23 | `sample-actionable-targets.png` | Broad actionable-target screen |
+| 24 | `sample-priority-targets.png` | Ranked target shortlist |
+| 25 | `sample-priority-target-context.png` | Evidence companion for ranked shortlist |
+| 26 | `sample-target-tissues.pdf` | Therapy-target TPM across host tissues, appendix PDF |
+| 27 | `sample-target-attribution-targets.png` | Per-gene stacked attribution (targets), audit/provenance |
+| 28 | `sample-target-attribution-ctas.png` | Per-gene stacked attribution (CTAs), audit/provenance |
+| 29 | `sample-target-attribution-surface.png` | Per-gene stacked attribution (surface), audit/provenance |
+| 30 | `sample-matched-normal-targets.png` | Matched-normal vs tumor per target (targets), audit/provenance |
+| 31 | `sample-matched-normal-ctas.png` | Same (CTAs), audit/provenance |
+| 32 | `sample-matched-normal-surface.png` | Same (surface), audit/provenance |
+| 33 | `sample-subtype-attribution-targets.png` | #56/#58 before/after reference swap (targets), audit/provenance |
 | 34 | `sample-cta-deep-dive.png` | Top CTAs, detailed |
 | 35 | `sample-mhc-expression.png` | HLA-A/B/C + B2M bar |
 | 36 | `sample-provenance.png` | 5-step attribution chain stacked bar |
@@ -212,11 +221,10 @@ What cancer, how confident?
 How confident is the purity estimate + per-target implied expression?
 - `sample-purity.png` (#12) — overall purity detail
 - `sample-purity-methods.png` (#13) — method-comparison view
-- `sample-purity-targets.png` (#14)
-- `sample-purity-ctas.png` (#15)
-- `sample-purity-surface.png` (#16)
-(The 3 per-category "purity-*" views share their format; could be a
-single multi-panel PDF if a reader typically consults all three.)
+- `sample-purity-ctas.png` (#14)
+- `sample-purity-surface.png` (#15)
+Therapy targets moved to `sample-actionable-targets.png` so there is one
+canonical target screen rather than a second target-range plot.
 
 **G4: Decomposition / composition**
 What else is in the sample besides tumor?
@@ -227,21 +235,16 @@ What else is in the sample besides tumor?
 
 **G5: Therapy-target landscape**
 What can this sample be treated with + how reliable is each target?
-Per-category triplets are the dominant pattern here:
+Canonical main figures:
+- `sample-actionable-targets.png` — broad expression-first target screen.
+- `sample-priority-targets.png` — ranked shortlist.
+- `sample-priority-target-context.png` — evidence context for the shortlist.
 
-- **Attribution**: `sample-target-attribution-targets.png` (#22) + `-ctas` (#23) + `-surface` (#24)
-- **Matched-normal**: `sample-matched-normal-targets.png` (#25) + `-ctas` (#26) + `-surface` (#27)
-- **Subtype-refined before/after**: `sample-subtype-attribution-targets.png` (#28) + `-surface` (#29)
-
-Plus per-category singletons:
-- `sample-target-tissues.pdf` (#20) — tissue-expression PDF
-- `sample-target-safety.png` (#21) — normal-tissue safety
-- `sample-targets-deep-dive.png` (#30) + `-cta-deep-dive.png` (#31)
-
-Six files (#22-29) share the "per-gene stacked bar, one PNG per
-category" idiom. If a reader generally opens one category's
-attribution / matched-normal / subtype-refined views together, a
-per-category composite might read better than three separate PNGs.
+Appendix/provenance:
+- `sample-target-tissues.pdf` — host-tissue expression drill-down.
+- `sample-target-attribution-*`, `sample-matched-normal-*`, and
+  `sample-subtype-attribution-*` — audit views explaining why observed TPM and
+  tumor-source TPM differ.
 
 **G6: Therapy program / modality view**
 - `sample-therapy-pathway-state.png` (#34) — dumbbell of AR/ER/HER2/… axes
@@ -270,7 +273,7 @@ panel's gene-set pattern.)
 
 | Group | Why | Consolidation idea |
 |---|---|---|
-| G5 per-category triplets | 6-9 files sharing a layout, read per-category | Three composites: `{attribution+matched-normal+subtype}-{targets|ctas|surface}.png` |
+| G5 target/actionability | Several figures answered the same target ranking/context question | Canonicalize on `actionable-targets`, `priority-targets`, and `priority-target-context`; keep attribution/matched-normal as audit-only |
 | G7 gene-set strip plots | 10 files with the same idiom; readers skim not compare | `sample-genesets.pdf` with one page per category |
 | G8 MHC | Two files, same biology | Fold the curated panel into the MHC bar figure as a second row |
 
