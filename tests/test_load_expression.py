@@ -230,6 +230,18 @@ def test_expression_scale_qc_flags_extreme_tpm_concentration():
     assert any("tiny transcript set" in warning for warning in qc["warnings"])
 
 
+def test_gene_qc_classifier_red_flag_categories():
+    from pirlygenes.expression_qc import classify_gene_qc
+
+    assert classify_gene_qc("MT-CO1").group == "mt_dna"
+    assert classify_gene_qc("RNA5SP389").label == "5S rRNA pseudogene"
+    assert classify_gene_qc("RPL13AP5").group == "ribosomal_protein_pseudogene"
+    assert classify_gene_qc("SNORD3A").group == "small_ncrna"
+    assert classify_gene_qc("H2AC1").group == "histone"
+    assert classify_gene_qc("HBB").group == "hemoglobin"
+    assert classify_gene_qc("IGKC").group == "immune_receptor"
+
+
 def test_expression_qc_rescue_removes_rrna_like_dominator():
     df = pd.DataFrame(
         {
@@ -271,6 +283,52 @@ def test_expression_qc_rescue_auto_normalizes_low_technical_burden():
     assert rescued.loc[rescued["gene"] == "KLK3", "TPM"].item() == pytest.approx(
         100_000.0 / 990_000.0 * 1_000_000.0
     )
+
+
+def test_expression_qc_rescue_summary_omits_negligible_top_feature():
+    from pirlygenes.expression_qc import expression_qc_rescue_summary_line
+
+    line = expression_qc_rescue_summary_line(
+        {
+            "applied": True,
+            "high_burden": False,
+            "removed_fraction": 0.0002,
+            "top_removed_genes": [
+                {
+                    "gene": "MT-ATP8",
+                    "qc_class": "mitochondrial transcript",
+                    "share": 0.0002,
+                }
+            ],
+        }
+    )
+
+    assert "<1% removed" in line
+    assert "top removed feature" not in line
+
+
+def test_expression_qc_rescue_summary_keeps_material_top_feature():
+    from pirlygenes.expression_qc import expression_qc_rescue_summary_line
+
+    line = expression_qc_rescue_summary_line(
+        {
+            "applied": True,
+            "high_burden": True,
+            "removed_fraction": 0.52,
+            "qc_class_shares": {"rrna_pseudogene_fraction": 0.52},
+            "top_removed_genes": [
+                {
+                    "gene": "RNA5SP389",
+                    "qc_class": "5S rRNA pseudogene",
+                    "share": 0.52,
+                }
+            ],
+        }
+    )
+
+    assert "Expression QC rescue" in line
+    assert "rRNA pseudogene 52%" in line
+    assert "top removed feature RNA5SP389" in line
 
 
 def test_load_expression_accepts_kallisto_gene_abundance_column(tmp_path, monkeypatch):

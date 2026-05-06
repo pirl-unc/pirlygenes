@@ -86,7 +86,9 @@ from .decomposition import (
     plot_decomposition_composition,
 )
 from .sample_context import (
+    heuristic_support_label,
     infer_sample_context,
+    length_pair_display_label,
     library_prep_clause,
     library_prep_display_label,
     plot_degradation_index,
@@ -5461,15 +5463,11 @@ def _generate_text_reports(
             lines.append(f"- **Source file**: `{input_path}`")
         lines.append(
             f"- **Library prep**: {library_prep_display_label(sample_context.library_prep)} "
-            f"(confidence {sample_context.library_prep_confidence:.0%})"
+            f"({heuristic_support_label(sample_context.library_prep_confidence)})"
         )
         lines.append(
             f"- **Preservation**: {sample_context.preservation.replace('_', ' ')}"
-            + (
-                f" (degradation index {sample_context.degradation_index:.2f})"
-                if sample_context.degradation_index is not None
-                else ""
-            )
+            + f"; length-pair {length_pair_display_label(sample_context)}"
         )
         raw_scale_qc = analysis.get("raw_expression_scale_qc") or {}
         scale_qc = analysis.get("expression_scale_qc") or {}
@@ -5551,8 +5549,9 @@ def _generate_text_reports(
             suffix = f"; dominant genes: {', '.join(top_bits)}" if top_bits else ""
             lines.append(
                 f"- **Expression concentration QC**: {concentration_level}ly concentrated "
-                "TPM distribution; this can reflect rRNA/pseudogene/contaminant dominance, "
-                f"low library complexity, or assay/input issues{suffix}."
+                "TPM distribution; this can reflect technical RNA, "
+                "ribosomal-pseudogene/small-RNA carryover, blood or immune-clone "
+                f"dominance, low library complexity, or assay/input issues{suffix}."
             )
         if ctx_signals.get("likely_targeted_panel"):
             lines.append(
@@ -5594,8 +5593,8 @@ def _generate_text_reports(
             prep_label = prep.replace("_", " ")
             lines.append(
                 f"**Preservation**: {preservation_label} "
-                f"(library prep inferred as *{prep_label}*, confidence "
-                f"{sample_context.library_prep_confidence:.0%})"
+                f"(library prep inferred as *{prep_label}*, "
+                f"{heuristic_support_label(sample_context.library_prep_confidence)})"
             )
             if (
                 sample_context.degradation_severity

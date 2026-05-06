@@ -132,6 +132,36 @@ def library_prep_clause(prep: str | None, *, title_case: bool = False) -> str:
     return f"{label} library"
 
 
+def heuristic_support_label(value: float | int | None) -> str:
+    """Reader-facing label for heuristic support scores.
+
+    These are not assay-measured percentages. They summarize how strongly a
+    rule set supports an inferred state, so report prose should avoid calling
+    them measured probabilities.
+    """
+
+    try:
+        return f"support {float(value or 0.0):.0%}"
+    except Exception:
+        return "support unknown"
+
+
+def length_pair_display_label(sample_context: "SampleContext") -> str:
+    index = sample_context.degradation_index
+    severity = str(sample_context.degradation_severity or "none")
+    if index is not None and index > _THRESHOLDS["degradation_pair_biased_upper"]:
+        label = "capture-biased"
+        if severity and severity != "none":
+            label += f"; orthogonal {severity}"
+    elif severity == "none":
+        label = "no degradation signal"
+    else:
+        label = severity
+    if index is not None:
+        label += f" ({index:.2f})"
+    return label
+
+
 # ── Thresholds ────────────────────────────────────────────────────────────
 # Calibrated from ENCODE total-RNA vs poly-A replicates and a TCGA
 # poly-A-capture snapshot. Values are conservative — the inference
@@ -918,7 +948,7 @@ def infer_sample_context(df_gene_expr) -> SampleContext:
     else:
         flags.append(
             f"Library prep: {library_prep_display_label(library_prep)} "
-            f"(confidence {lp_conf:.0%})"
+            f"({heuristic_support_label(lp_conf)})"
         )
     if preservation == "ffpe":
         # If the FFPE call came from the orthogonal-signal refinement
@@ -1081,16 +1111,12 @@ def plot_sample_context(
     }.get(sample_context.degradation_severity, "#666666")
 
     header_lines = [
-        f"Library:       {prep_label} ({sample_context.library_prep_confidence:.0%})",
-        f"Preservation:  {pres_label}",
         (
-            f"Length-pair:   {sample_context.degradation_severity}"
-            + (
-                f" ({sample_context.degradation_index:.2f})"
-                if sample_context.degradation_index is not None
-                else ""
-            )
+            f"Library:       {prep_label} "
+            f"({heuristic_support_label(sample_context.library_prep_confidence)})"
         ),
+        f"Preservation:  {pres_label}",
+        f"Length-pair:   {length_pair_display_label(sample_context)}",
     ]
     if sample_context.missing_mt:
         header_lines.append("MT genes missing from quant table")
@@ -1447,6 +1473,12 @@ def _expression_concentration_plot_data(df_gene_expr, top_n: int = 20):
             return "ribosomal protein"
         if qc.group == "small_ncrna":
             return "small ncRNA"
+        if qc.group == "histone":
+            return "histone"
+        if qc.group == "immune_receptor":
+            return "immune receptor"
+        if qc.group == "hemoglobin":
+            return "hemoglobin"
         return "other"
 
     top = items[:top_n]
@@ -1474,8 +1506,20 @@ def _expression_concentration_colors() -> dict[str, str]:
         "ribosomal protein": "#2f7ed8",
         "RP pseudogene": "#6aaed6",
         "small ncRNA": "#d99b2b",
+        "histone": "#5f8f3f",
+        "immune receptor": "#c44e52",
+        "hemoglobin": "#8c564b",
         "other": "#6c757d",
     }
+
+
+def _format_feature_share(share: float) -> str:
+    """Readable percent label for top-feature QC plots."""
+    if share <= 0:
+        return "0%"
+    if share < 0.005:
+        return "<0.5%"
+    return f"{share:.0%}"
 
 
 def _add_expression_concentration_legend(ax, classes, colors) -> None:
@@ -1523,8 +1567,8 @@ def plot_expression_concentration_top_features_qc(
     ax_bar.xaxis.set_major_formatter(lambda x, _pos: f"{x:.0%}")
     for yi, share, (gene, value) in zip(y, shares, top):
         qc = classify_gene_qc(gene)
-        annotation = f"{share:.0%}"
-        if qc.group in {"rrna_like", "mt_dna"}:
+        annotation = _format_feature_share(float(share))
+        if qc.group != "other" and share >= 0.005:
             annotation += f"  {qc.label}"
         ax_bar.text(share, yi, "  " + annotation, va="center", fontsize=8)
     ax_bar.spines["top"].set_visible(False)
@@ -1620,8 +1664,8 @@ def plot_expression_concentration_qc(
     ax_bar.xaxis.set_major_formatter(lambda x, _pos: f"{x:.0%}")
     for yi, share, (gene, value) in zip(y, shares, top):
         qc = classify_gene_qc(gene)
-        annotation = f"{share:.0%}"
-        if qc.group in {"rrna_like", "mt_dna"}:
+        annotation = _format_feature_share(float(share))
+        if qc.group != "other" and share >= 0.005:
             annotation += f"  {qc.label}"
         ax_bar.text(share, yi, "  " + annotation, va="center", fontsize=8)
     ax_bar.spines["top"].set_visible(False)
@@ -2018,9 +2062,9 @@ def plot_degradation_index(
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    title_parts = [f"Length-pair degradation index — {sample_context.degradation_severity}"]
-    if sample_context.degradation_index is not None:
-        title_parts.append(f"median index {sample_context.degradation_index:.2f}")
+    title_parts = [
+        f"Length-pair ratio check — {length_pair_display_label(sample_context)}"
+    ]
     title_parts.append(f"{len(expected_vals)} pairs")
     ax.set_title(" · ".join(title_parts), fontsize=11, loc="left")
     ax.legend(loc="upper left", fontsize=9)

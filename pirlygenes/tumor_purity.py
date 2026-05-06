@@ -3045,11 +3045,6 @@ def plot_sample_summary(
     top_cancers = analysis["top_cancers"]
     codes = [c for c, s in top_cancers]
     scores = [s for c, s in top_cancers]
-    candidate_by_code = {
-        row["code"]: row
-        for row in analysis.get("candidate_trace", [])
-        if isinstance(row, dict) and row.get("code")
-    }
     colors = ["#2166ac" if c == cancer_code else "#92c5de" for c in codes]
     y = np.arange(len(codes))
     ax1.barh(y, scores, color=colors, edgecolor="none", height=0.6)
@@ -3057,15 +3052,12 @@ def plot_sample_summary(
         from .plot import CANCER_TYPE_NAMES as CTN
 
         label = f"{code} ({CTN.get(code, '')})"
-        geomean = candidate_by_code.get(code, {}).get("support_geomean")
         score_label = f"{score:.2f}"
-        if geomean is not None:
-            score_label += f" (geo {float(geomean):.2f})"
         ax1.text(score + 0.01, i, score_label, va="center", fontsize=9)
         ax1.text(-0.01, i, label, va="center", ha="right", fontsize=9)
     ax1.set_yticks([])
     ax1.set_xlim(0, 1.1)
-    ax1.set_xlabel("Normalized support (top = 1.0; geo = factor geomean)", fontsize=10)
+    ax1.set_xlabel("Normalized support (top = 1.0)", fontsize=10)
     fit_quality = analysis.get("fit_quality", {})
     fit_label = fit_quality.get("label")
     title = "Cancer type hypotheses"
@@ -3419,10 +3411,7 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
     ax.barh(y, scores, color=colors, edgecolor="none", height=0.6)
     for i, (code, score) in enumerate(top_cancers):
         label = f"{code} ({CTN.get(code, '')})"
-        geomean = candidate_by_code.get(code, {}).get("support_geomean")
         score_label = f"{score:.2f}"
-        if geomean is not None:
-            score_label += f" (geo {float(geomean):.2f})"
         ax.text(score + 0.01, i, score_label, va="center", fontsize=9)
         ax.text(-0.01, i, label, va="center", ha="right", fontsize=9)
         if code == cancer_code and code != top_code:
@@ -3437,7 +3426,7 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
             )
     ax.set_yticks([])
     ax.set_xlim(0, 1.1)
-    ax.set_xlabel("Normalized support (top = 1.0; geo = factor geomean)")
+    ax.set_xlabel("Normalized support (top = 1.0)")
     fit_label = fit_quality.get("label")
     title = "Cancer type hypotheses"
     if top_code != cancer_code:

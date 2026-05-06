@@ -541,17 +541,6 @@ def plot_actionable_targets(
     ax.invert_yaxis()
     ax.legend(loc="lower right", fontsize=8)
     ax.set_title(title or f"Actionable target expression screen — {cancer_code}")
-    ax.text(
-        0.01,
-        0.01,
-        "Expression-first screen, not a recommendation list; Priority Targets applies disease curation and maturity.\n"
-        "Red diamond is tumor-source-normalized when attribution is available; black dot is measured bulk TPM.",
-        transform=ax.transAxes,
-        ha="left",
-        va="bottom",
-        fontsize=8,
-        color="#555555",
-    )
 
     # Sample-wide 90th-percentile anchor (faint dashed).
     try:
@@ -1424,16 +1413,7 @@ def plot_priority_targets(
     ax.set_xlabel("Integrated priority score")
     ax.set_title(f"Priority Ranking — {cancer_code}", fontsize=13, fontweight="bold")
     ax.legend(loc="lower right", fontsize=8, frameon=False)
-    fig.text(
-        0.5,
-        0.965,
-        "Higher scores reflect tumor support, clinical maturity, required HLA/alteration/state fit, disease-matched curation, curated benefit/toxicity when available, healthy-tissue specificity/safety, and estimated tumor expression.",
-        ha="center",
-        va="top",
-        fontsize=9,
-        color="#555555",
-    )
-    fig.tight_layout(rect=[0.0, 0.03, 1.0, 0.93])
+    fig.tight_layout(rect=[0.0, 0.03, 1.0, 0.97])
 
     if save_to_filename:
         fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")

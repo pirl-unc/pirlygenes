@@ -38,6 +38,11 @@ def classify_gene_qc(symbol: str | None) -> GeneQcClass:
     - ``ribosomal_protein`` / ``ribosomal_protein_pseudogene``: real RP
       biology/library complexity signals, not removed by rescue normalization.
     - ``small_ncrna``: other small noncoding RNA families.
+    - ``histone``: non-polyadenylated replication-dependent histone mRNAs,
+      useful as a library-prep / proliferative-cell-cycle signal.
+    - ``immune_receptor``: immunoglobulin or T-cell receptor segments, often
+      pointing to immune/plasma-cell admixture or clonal repertoire signal.
+    - ``hemoglobin``: erythroid / blood-contamination signal.
     - ``other``: everything else.
     """
 
@@ -79,6 +84,20 @@ def classify_gene_qc(symbol: str | None) -> GeneQcClass:
 
     if upper.startswith(("SNORD", "SNORA", "RNU", "Y_RNA", "MIR")):
         return GeneQcClass("small noncoding RNA", "small_ncrna")
+
+    if upper.startswith(
+        ("H1-", "H2AC", "H2BC", "H3C", "H4C", "HIST1H", "HIST2H", "HIST3H", "HIST4H")
+    ):
+        return GeneQcClass("histone transcript", "histone")
+
+    if re.fullmatch(r"HB(A\d?|B|D|E\d?|G\d?|M|Q\d?|Z|ZP\d?|BP\d?)", upper):
+        return GeneQcClass("hemoglobin transcript", "hemoglobin")
+
+    if re.fullmatch(
+        r"(IGH[ADGME]\d*|IG[HKL][CVJ][A-Z0-9-]*|TR[ABDG][CVJ][A-Z0-9-]*)",
+        upper,
+    ):
+        return GeneQcClass("immune receptor segment", "immune_receptor")
 
     return GeneQcClass("protein-coding/other", "other")
 
@@ -349,10 +368,15 @@ def expression_qc_rescue_summary_line(record: dict | None) -> str:
     component_phrase = technical_rna_component_phrase(
         record.get("qc_class_shares") or {}
     )
-    component_clause = f" ({component_phrase}; {removed:.0%} removed)" if component_phrase else f" ({removed:.0%} removed)"
+    removed_label = "<1%" if 0.0 < removed < 0.005 else f"{removed:.0%}"
+    component_clause = (
+        f" ({component_phrase}; {removed_label} removed)"
+        if component_phrase
+        else f" ({removed_label} removed)"
+    )
     top_removed = record.get("top_removed_genes") or []
     top_clause = ""
-    if top_removed:
+    if top_removed and removed >= 0.005:
         top = top_removed[0]
         gene = str(top.get("gene") or "").strip()
         qc_class = str(top.get("qc_class") or "").strip()
@@ -361,7 +385,7 @@ def expression_qc_rescue_summary_line(record: dict | None) -> str:
             top_clause = f"; top removed feature {gene}"
             if qc_class:
                 top_clause += f" ({qc_class}"
-                if share:
+                if share >= 0.005:
                     top_clause += f", {share:.0%} of raw TPM"
                 top_clause += ")"
     prefix = (

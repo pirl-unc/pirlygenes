@@ -313,6 +313,8 @@ def test_summary_treats_broad_sarc_as_compatible_with_supplied_osteosarcoma():
     assert "broad RNA context is SARC (Sarcoma)" in md
     assert "sarcoma-family broad-context support for supplied OS (Osteosarcoma)" in md
     assert "does not independently resolve the refined label" in md
+    assert "raw signature favors KIRC" not in md
+    assert "confidence caveats" not in md
 
 
 def test_summary_marks_rna_inferred_cancer_type_as_hypothesis():

@@ -305,6 +305,7 @@ def refine_tme_per_gene(
             else:
                 # Fallback: no per-compartment breakdown. Scale the
                 # aggregate TME by the fold.
+                compartment_tpm = tme_before
                 tme_after = tme_before * fold
 
             # Clamp so the refined TME never exceeds what's observed —
@@ -313,11 +314,18 @@ def refine_tme_per_gene(
             tme_after = min(tme_after, observed)
 
             if tme_after > tme_before:
+                if per_compartment_tpm_by_symbol is None:
+                    compartment_after = tme_after
+                else:
+                    compartment_after = compartment_tpm + (tme_after - tme_before)
                 refined[gene] = tme_after
                 provenance[gene] = {
                     "before": tme_before,
                     "after": tme_after,
                     "subtype": subtype_label,
+                    "compartment": compartment,
+                    "compartment_before": compartment_tpm,
+                    "compartment_after": compartment_after,
                     "fold": float(fold),
                 }
 

@@ -66,7 +66,11 @@ from .confidence import concise_confidence_reasons
 from .analyze import cancer_type_context_from_analysis, cancer_type_context_label
 from .rna_qc import rna_quant_qc_summary_line
 from .expression_qc import expression_qc_rescue_summary_line
-from .sample_context import library_prep_clause, library_prep_display_label
+from .sample_context import (
+    heuristic_support_label,
+    library_prep_clause,
+    library_prep_display_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1401,7 +1405,7 @@ def _rna_crosscheck_line(analysis, cancer_code: str, call_tier=None) -> str:
             f"**RNA classifier check:** broad RNA context is {top_label}, giving "
             f"{compatibility} for supplied {supplied_label}; the broad classifier "
             f"does not independently resolve the refined label{alt_clause}. "
-            f"Keep {supplied_label} as the report label{caveat_clause}."
+            f"Keep {supplied_label} as the report label."
         )
     return (
         f"**RNA classifier check:** broad RNA context is {status} supplied "
@@ -1783,7 +1787,7 @@ def build_summary(
             pres_label = "fresh/frozen-like"
         lines.append(
             f"**Sample:** {prep_label}; preservation inferred as {pres_label} "
-            f"from RNA QC (confidence {pres_conf:.0%})."
+            f"from RNA QC ({heuristic_support_label(pres_conf)})."
         )
     rna_qc_line = rna_quant_qc_summary_line(analysis.get("rna_quant_qc"))
     if rna_qc_line:
