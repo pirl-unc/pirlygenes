@@ -36,6 +36,16 @@ def test_context_exposes_refined_child_and_parent_reference():
     assert context.uses_distinct_reference
 
 
+def test_context_defaults_refined_label_to_registry_parent_reference():
+    context = cancer_type_context_from_analysis({"cancer_type": "SARC_SYN"})
+
+    assert context.code_for("report") == "SARC_SYN"
+    assert context.code_for("reference") == "SARC"
+    assert context.code_for("parent") == "SARC"
+    assert context.relationship == "fine_child_of_reference"
+    assert context.uses_distinct_reference
+
+
 def test_context_prefers_fine_expression_reference_when_available():
     context = cancer_type_context_from_analysis(
         {

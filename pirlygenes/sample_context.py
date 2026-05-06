@@ -1130,26 +1130,34 @@ def plot_sample_context(
     mt_frac = signals.get("mt_fraction", 0.0) or 0.0
     mt_rrna_frac = signals.get("mt_rrna_fraction_of_mt") or 0.0
 
-    bars = [
-        (
-            "Histone fraction\n(replication-dependent mRNAs)",
-            hist_frac,
-            _THRESHOLDS["histone_fraction_total_floor"],
-            "Total/ribo-dep floor",
-        ),
-        (
-            "MT fraction\n(of total sample TPM)",
-            mt_frac,
-            _THRESHOLDS["mt_fraction_suspicious_floor"],
-            "Suspicious-floor",
-        ),
-        (
-            "MT-rRNA / MT-total",
-            mt_rrna_frac,
-            _THRESHOLDS["mt_rrna_fraction_of_mt_total_floor"],
-            "Total-RNA floor",
-        ),
-    ]
+    bars = []
+    signal_keys = []
+
+    def _append_bar(label, value, threshold, threshold_name, signal_key):
+        bars.append((label, value, threshold, threshold_name))
+        signal_keys.append(signal_key)
+
+    _append_bar(
+        "Histone fraction\n(replication-dependent mRNAs)",
+        hist_frac,
+        _THRESHOLDS["histone_fraction_total_floor"],
+        "Total/ribo-dep floor",
+        "histone_fraction",
+    )
+    _append_bar(
+        "MT fraction\n(of total sample TPM)",
+        mt_frac,
+        _THRESHOLDS["mt_fraction_suspicious_floor"],
+        "Suspicious-floor",
+        "mt_fraction",
+    )
+    _append_bar(
+        "MT-rRNA / MT-total",
+        mt_rrna_frac,
+        _THRESHOLDS["mt_rrna_fraction_of_mt_total_floor"],
+        "Total-RNA floor",
+        "mt_rrna_fraction_of_mt",
+    )
     top_10_share = signals.get("top_10_share_of_total_tpm")
     concentration_level = str(signals.get("expression_concentration_level") or "")
     qc_shares = signals.get("qc_class_shares") or {}
@@ -1161,40 +1169,36 @@ def plot_sample_context(
         qc_shares.get("nuclear_rrna_like_fraction") or 0.0
     )
     if top_10_share is not None:
-        bars.append(
-            (
-                "Top-10 TPM share\n(expression concentration QC)",
-                float(top_10_share),
-                0.60,
-                "QC flag",
-            )
+        _append_bar(
+            "Top-10 TPM share\n(expression concentration QC)",
+            float(top_10_share),
+            0.60,
+            "QC flag",
+            "top_10_share_of_total_tpm",
         )
     if rrna_pseudogene_fraction >= 0.005:
-        bars.append(
-            (
-                "rRNA pseudogene\n(of total sample TPM)",
-                rrna_pseudogene_fraction,
-                0.01,
-                "QC flag",
-            )
+        _append_bar(
+            "rRNA pseudogene\n(of total sample TPM)",
+            rrna_pseudogene_fraction,
+            0.01,
+            "QC flag",
+            "rrna_pseudogene_fraction",
         )
     elif nuclear_rrna_like_fraction >= 0.005:
-        bars.append(
-            (
-                "Nuclear rRNA-like\n(of total sample TPM)",
-                nuclear_rrna_like_fraction,
-                0.01,
-                "QC flag",
-            )
+        _append_bar(
+            "Nuclear rRNA-like\n(of total sample TPM)",
+            nuclear_rrna_like_fraction,
+            0.01,
+            "QC flag",
+            "nuclear_rrna_like_fraction",
         )
     if rrna_plus_mt_fraction >= 0.10:
-        bars.append(
-            (
-                "mtDNA + rRNA-like\n(technical-RNA burden)",
-                rrna_plus_mt_fraction,
-                0.10,
-                "QC flag",
-            )
+        _append_bar(
+            "mtDNA + rRNA-like\n(technical-RNA burden)",
+            rrna_plus_mt_fraction,
+            0.10,
+            "QC flag",
+            "rrna_plus_mt_fraction",
         )
     y = [i for i in range(len(bars))]
     values = [b[1] for b in bars]
@@ -1207,16 +1211,6 @@ def plot_sample_context(
     # window instead of chasing an absolute threshold that doesn't
     # apply to every prep.
     expectations = _load_artifact_expectations()
-    signal_keys = [
-        "histone_fraction",
-        "mt_fraction",
-        "mt_rrna_fraction_of_mt",
-        "top_10_share_of_total_tpm",
-        "rrna_pseudogene_fraction"
-        if rrna_pseudogene_fraction >= 0.005
-        else "nuclear_rrna_like_fraction",
-        "rrna_plus_mt_fraction",
-    ][: len(bars)]
     bar_bands = []
     in_band_count = 0
     for yi, sig_key in zip(y, signal_keys):
@@ -1255,7 +1249,7 @@ def plot_sample_context(
                 zorder=0,
             )
             val = (
-                values[signal_keys.index(sig_key)]
+                values[yi]
                 if sig_key
                 in ("histone_fraction", "mt_fraction", "mt_rrna_fraction_of_mt")
                 else None

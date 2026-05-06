@@ -48,6 +48,30 @@ def test_purity_ci_phrase_uses_text_not_warning_icon():
     assert "\u26a0" not in phrase
 
 
+def test_tumor_tpm_map_uses_source_attributed_tpm_not_context_tpm():
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "FAP",
+                "attr_tumor_tpm": 0.2,
+                "tumor_cell_tpm": 125.0,
+                "median_est": 80.0,
+            },
+            {
+                "symbol": "EGFR",
+                "attr_tumor_tpm": 42.0,
+                "tumor_cell_tpm": 50.0,
+                "median_est": 45.0,
+            },
+        ]
+    )
+
+    mapping = cli_mod._tumor_tpm_by_symbol_from_ranges(ranges_df)
+
+    assert mapping["FAP"] == 0.2
+    assert mapping["EGFR"] == 42.0
+
+
 def test_resolve_always_label_gene_ids(monkeypatch):
     df = pd.DataFrame(
         {"gene_id": ["ENSG1", "ENSG2"], "gene_display_name": ["GENE1", "B7-H3"]}

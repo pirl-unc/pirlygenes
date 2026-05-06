@@ -246,15 +246,14 @@ def cancer_type_context_from_analysis(
     report_code = _clean(
         analysis.get("report_scope_cancer_type") or analysis.get("cancer_type")
     )
-    reference_code = _clean(
-        analysis.get("reference_cancer_type")
-        or analysis.get("report_scope_parent_cancer_type")
-        or report_code
-    )
     parent_code = _clean(analysis.get("report_scope_parent_cancer_type"))
     registry_parent = registry_parent_code(report_code)
     if not parent_code and registry_parent:
         parent_code = registry_parent
+    reference_code = _clean(
+        analysis.get("reference_cancer_type")
+        or analysis.get("report_scope_parent_cancer_type")
+    )
     if not reference_code:
         reference_code = parent_code or report_code
 

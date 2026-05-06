@@ -937,7 +937,7 @@ def compose_disease_state_narrative(analysis) -> str:
         elif est < 0.05:
             collapsed.add(sym)
 
-    axis_states: dict[str, str | None] = {}
+    axis_states: dict[str, Optional[str]] = {}
     for axis_name, score in therapy_scores.items():
         axis_states[axis_name] = getattr(score, "state", None)
 
@@ -968,11 +968,9 @@ def annotate_surface_targets_with_cross_signals(ranges_df, therapy_scores):
 def _tumor_tpm_by_symbol_from_ranges(ranges_df) -> dict[str, float]:
     if ranges_df is None or "symbol" not in ranges_df.columns:
         return {}
-    value_col = "tumor_cell_tpm" if "tumor_cell_tpm" in ranges_df.columns else None
+    value_col = "attr_tumor_tpm" if "attr_tumor_tpm" in ranges_df.columns else None
     if value_col is None and "median_est" in ranges_df.columns:
         value_col = "median_est"
-    if value_col is None and "attr_tumor_tpm" in ranges_df.columns:
-        value_col = "attr_tumor_tpm"
     if value_col is None:
         return {}
     import pandas as pd
@@ -1168,9 +1166,9 @@ def _filter_quality_flags_against_context(flags, sample_context):
 
 def _technical_qc_quality_flags(
     *,
-    expression_qc_rescue: dict | None,
-    raw_expression_scale_qc: dict | None,
-    rna_quant_qc: dict | None,
+    expression_qc_rescue: Optional[dict],
+    raw_expression_scale_qc: Optional[dict],
+    rna_quant_qc: Optional[dict],
 ) -> list[str]:
     """Promote expression-scale/read-level QC into the shared quality state."""
 

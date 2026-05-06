@@ -1523,15 +1523,28 @@ radioligand_target_gene_ids = _deprecate(
 
 
 # ---------- Cancer-testis antigens (CTA) ----------
+_CTA_REQUIRED_EVIDENCE_COLUMNS = frozenset(
+    {
+        "filtered",
+        "never_expressed",
+        "rna_deflated_reproductive_frac",
+        "rna_99_pct_filter",
+    }
+)
+
+
+def _has_complete_cta_evidence_schema(df: pd.DataFrame) -> bool:
+    return _CTA_REQUIRED_EVIDENCE_COLUMNS.issubset(set(df.columns))
+
+
+def _bundled_cta_evidence() -> pd.DataFrame:
+    from .load_dataset import get_data
+
+    return get_data("cancer-testis-antigens")
+
+
 def _cta_df(filtered_only=False, exclude_never_expressed=False):
-    try:
-        from tsarina.evidence import CTA_evidence
-
-        df = CTA_evidence()
-    except ImportError:
-        from .load_dataset import get_data
-
-        df = get_data("cancer-testis-antigens")
+    df = CTA_evidence()
     mask = True
     if filtered_only and "filtered" in df.columns:
         mask = df["filtered"].astype(str).str.lower() == "true"
@@ -1700,11 +1713,12 @@ def CTA_evidence():
     try:
         from tsarina.evidence import CTA_evidence as _tsarina_evidence
 
-        return _tsarina_evidence()
+        df = _tsarina_evidence()
+        if _has_complete_cta_evidence_schema(df):
+            return df
     except ImportError:
-        from .load_dataset import get_data
-
-        return get_data("cancer-testis-antigens")
+        pass
+    return _bundled_cta_evidence()
 
 
 from dataclasses import dataclass  # noqa: E402
