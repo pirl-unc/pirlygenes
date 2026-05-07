@@ -27,6 +27,13 @@ def test_prad_shared_lineage_panel_keeps_klk3():
     assert "KLK3" in set(panel["symbol"])
 
 
+def test_prad_shared_lineage_panel_curated_klk3_survives_ratio_cliff():
+    panel = build_shared_lineage_panel("PRAD", tolerance_log2=0.1)
+    klk3 = panel[panel["symbol"] == "KLK3"].iloc[0]
+
+    assert klk3["shared_lineage_basis"] == "curated_lineage"
+
+
 def test_nnls_sum_to_one():
     """Solution fractions should sum to approximately 1.0."""
     rng = np.random.default_rng(42)
