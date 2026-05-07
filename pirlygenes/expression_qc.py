@@ -254,10 +254,16 @@ def normalize_expression(
                     float(raw_sum / remaining) if raw_sum > 0 and remaining > 0 else 1.0
                 ),
             }
-            if raw_sum <= 0 or removed <= 0 or remaining <= 0:
+            if raw_sum <= 0 or removed <= 0:
+                continue
+            remove_idx = [
+                i for i in removable_valid[removable_valid].index if i in idx_set
+            ]
+            if remaining <= 0:
+                out.loc[remove_idx, col] = 0.0
+                any_applied_inner = True
                 continue
             scale = raw_sum / remaining
-            remove_idx = [i for i in removable_valid[removable_valid].index if i in idx_set]
             keep_idx = [i for i in keep_valid[keep_valid].index if i in idx_set]
             out.loc[remove_idx, col] = 0.0
             out.loc[keep_idx, col] = vals.loc[keep_idx] * scale

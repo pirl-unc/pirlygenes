@@ -15,9 +15,16 @@ from pirlygenes.decomposition.engine import (
     _weighted_constrained_nnls,
     _is_excluded_auto_marker,
 )
+from pirlygenes.decomposition.panels import build_shared_lineage_panel
 
 
 # ── _weighted_constrained_nnls ───────────────────────────────────────────
+
+
+def test_prad_shared_lineage_panel_keeps_klk3():
+    panel = build_shared_lineage_panel("PRAD")
+
+    assert "KLK3" in set(panel["symbol"])
 
 
 def test_nnls_sum_to_one():

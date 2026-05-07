@@ -288,6 +288,23 @@ def test_normalize_expression_optional_noncoding_gate_keeps_ig_tcr():
     assert out["TPM"].sum() == pytest.approx(1_000.0)
 
 
+def test_normalize_expression_zeroes_all_technical_input():
+    from pirlygenes.expression_qc import normalize_expression
+
+    df = pd.DataFrame(
+        {
+            "Symbol": ["RNA5SP389", "MT-ATP8", "MTCO1P12"],
+            "TPM": [520_000.0, 30_000.0, 450_000.0],
+        }
+    )
+
+    out, record = normalize_expression(df, value_cols=["TPM"])
+
+    assert record["applied"] is True
+    assert record["columns"]["TPM"]["removed_fraction"] == pytest.approx(1.0)
+    assert out["TPM"].sum() == pytest.approx(0.0)
+
+
 def test_expression_qc_rescue_removes_rrna_like_dominator():
     df = pd.DataFrame(
         {
@@ -330,6 +347,23 @@ def test_expression_qc_rescue_keeps_raw_qc_before_normalized_view():
     assert rescued.loc[
         rescued["gene"] == "RNA5SP389", "TPM_raw_before_qc_rescue"
     ].item() == pytest.approx(520_000.0)
+
+
+def test_expression_qc_rescue_zeroes_all_technical_input():
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5SP389", "MT-ATP8", "MTCO1P12"],
+            "TPM": [520_000.0, 30_000.0, 450_000.0],
+        }
+    )
+
+    rescued, record = le.apply_expression_qc_rescue(df, mode="auto")
+
+    assert record["applied"] is True
+    assert record["removed_fraction"] == pytest.approx(1.0)
+    assert record["output_sum_tpm"] == pytest.approx(0.0)
+    assert rescued["TPM"].sum() == pytest.approx(0.0)
+    assert rescued.attrs["expression_scale_qc"]["sum_tpm"] == pytest.approx(0.0)
 
 
 def test_expression_qc_rescue_auto_normalizes_low_technical_burden():
