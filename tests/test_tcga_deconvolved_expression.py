@@ -146,6 +146,50 @@ def test_technical_rna_reference_normalization_is_opt_in_and_preserves_nans(monk
     assert pd.isna(normalized.loc[normalized["Symbol"] == "ERBB2", "tcga_PRAD"].iloc[0])
 
 
+def test_subtype_deconvolved_technical_rna_normalization_is_opt_in(monkeypatch):
+    synthetic = pd.DataFrame(
+        [
+            {
+                "symbol": "RNA5SP389",
+                "cancer_code": "PRAD_NEPC",
+                "subtype": "",
+                "tumor_tpm_median": 20.0,
+                "tumor_tpm_q1": 10.0,
+                "tumor_tpm_q3": 30.0,
+                "n_samples": 4,
+            },
+            {
+                "symbol": "KLK3",
+                "cancer_code": "PRAD_NEPC",
+                "subtype": "",
+                "tumor_tpm_median": 80.0,
+                "tumor_tpm_q1": 40.0,
+                "tumor_tpm_q3": 120.0,
+                "n_samples": 4,
+            },
+        ]
+    )
+
+    monkeypatch.setattr(gsc, "get_data", lambda name: synthetic.copy())
+
+    raw = gsc.subtype_deconvolved_expression()
+    assert raw.loc[raw["symbol"] == "RNA5SP389", "tumor_tpm_median"].iloc[0] == 20.0
+    assert raw.loc[raw["symbol"] == "KLK3", "tumor_tpm_median"].iloc[0] == 80.0
+
+    normalized = gsc.subtype_deconvolved_expression(technical_rna_normalize=True)
+    assert (
+        normalized.loc[
+            normalized["symbol"] == "RNA5SP389",
+            "tumor_tpm_median",
+        ].iloc[0]
+        == 0.0
+    )
+    assert normalized.loc[
+        normalized["symbol"] == "KLK3",
+        "tumor_tpm_median",
+    ].iloc[0] == pytest.approx(100.0)
+
+
 def test_tcga_columns_participate_in_percentile_normalize(monkeypatch):
     """Percentile normalize must treat tcga_ columns the same as FPKM_."""
     synthetic = pd.DataFrame(

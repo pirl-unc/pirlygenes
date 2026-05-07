@@ -724,7 +724,7 @@ def is_mixture_cohort(code):
     return code in set(mixture_cohort_codes())
 
 
-def subtype_deconvolved_expression(technical_rna_normalize=True):
+def subtype_deconvolved_expression(technical_rna_normalize=False):
     """Per-(cancer_code, subtype, symbol) tumor-only TPM from multi-cohort deconv.
 
     Subtype-stratified companion to :func:`tcga_deconvolved_expression`.
@@ -773,6 +773,9 @@ def subtype_deconvolved_expression(technical_rna_normalize=True):
         ``subtype``, ``tumor_tpm_median``, ``tumor_tpm_q1``,
         ``tumor_tpm_q3``, ``n_samples``. ``None`` when the CSV is
         not bundled (maintainer hasn't run the offline batch).
+        By default this returns the raw bundled reference. Pass
+        ``technical_rna_normalize=True`` to zero mtDNA/rRNA-like rows and
+        renormalize the remaining TPM values within each subtype group.
     """
     try:
         df = get_data("subtype-deconvolved-expression")
