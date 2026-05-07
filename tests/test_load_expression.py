@@ -311,6 +311,27 @@ def test_expression_qc_rescue_removes_rrna_like_dominator():
     )
 
 
+def test_expression_qc_rescue_keeps_raw_qc_before_normalized_view():
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5SP389", "MT-ATP8", "KLK3", "ACTB"],
+            "TPM": [520_000.0, 30_000.0, 25_000.0, 425_000.0],
+        }
+    )
+
+    rescued, record = le.apply_expression_qc_rescue(df, mode="auto")
+
+    assert record["applied"] is True
+    raw_qc = rescued.attrs["raw_expression_scale_qc"]
+    normalized_qc = rescued.attrs["expression_scale_qc"]
+    assert raw_qc["dominant_genes"][0]["gene"] == "RNA5SP389"
+    assert raw_qc["rrna_like_fraction"] == pytest.approx(0.52)
+    assert normalized_qc["rrna_like_fraction"] == pytest.approx(0.0)
+    assert rescued.loc[
+        rescued["gene"] == "RNA5SP389", "TPM_raw_before_qc_rescue"
+    ].item() == pytest.approx(520_000.0)
+
+
 def test_expression_qc_rescue_auto_normalizes_low_technical_burden():
     df = pd.DataFrame(
         {
