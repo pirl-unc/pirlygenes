@@ -1089,7 +1089,11 @@ def decompose_sample(
     from ..plot import _sample_expression_by_symbol
 
     sample_raw_by_symbol, _ = _sample_expression_by_symbol(df_gene_expr)
-    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    ref = (
+        pan_cancer_expression(technical_rna_normalize=True)
+        .drop_duplicates(subset="Symbol")
+        .set_index("Symbol")
+    )
     sym_to_eid = ref["Ensembl_Gene_ID"].to_dict()
     sample_by_eid = {}
     for symbol, tpm in sample_raw_by_symbol.items():

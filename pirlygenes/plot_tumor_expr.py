@@ -196,9 +196,9 @@ def _sample_expression_by_symbol(df_gene_expr):
     hk_values = raw_values / hk_median
 
     # Resolve symbols from Ensembl IDs via pan-cancer reference
-    ref_lookup = pan_cancer_expression()[["Ensembl_Gene_ID", "Symbol"]].drop_duplicates(
-        subset="Ensembl_Gene_ID"
-    )
+    ref_lookup = pan_cancer_expression(technical_rna_normalize=True)[
+        ["Ensembl_Gene_ID", "Symbol"]
+    ].drop_duplicates(subset="Ensembl_Gene_ID")
     id_to_symbol = dict(zip(ref_lookup["Ensembl_Gene_ID"], ref_lookup["Symbol"]))
     if "canonical_gene_name" in df.columns:
         fallback = df["canonical_gene_name"].fillna("").astype(str)
@@ -256,7 +256,7 @@ def estimate_tumor_expression(
     sample_raw, _ = _sample_expression_by_symbol(df_gene_expr)
 
     # Reference data
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
@@ -483,7 +483,7 @@ def estimate_tumor_expression_ranges(
 
     # Sample HK median (for converting back from fold-HK to TPM)
     hk_ids = housekeeping_gene_ids()
-    ref_full = pan_cancer_expression()
+    ref_full = pan_cancer_expression(technical_rna_normalize=True)
     ref_flat = ref_full.drop_duplicates(subset="Ensembl_Gene_ID")
     id_to_sym = dict(zip(ref_flat["Ensembl_Gene_ID"], ref_flat["Symbol"]))
     hk_syms = {id_to_sym[gid] for gid in hk_ids if gid in id_to_sym}

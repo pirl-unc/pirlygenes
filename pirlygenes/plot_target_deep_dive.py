@@ -255,7 +255,11 @@ def _build_reference_context(symbols, cancer_code):
     Returns {symbol: {cancer_fpkm, origin_tissue_ntpm,
     vital_tissues: {tissue: ntpm}, all_cancer_median, all_cancer_max}}.
     """
-    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    ref = (
+        pan_cancer_expression(technical_rna_normalize=True)
+        .drop_duplicates(subset="Symbol")
+        .set_index("Symbol")
+    )
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     from .tumor_purity import CANCER_TO_TISSUE
 
@@ -321,7 +325,11 @@ def _finite_float(value, default=0.0):
 
 def _get_tme_reference(symbols, cancer_code):
     """Return {symbol: tme_ntpm} — mean expression across TME tissues."""
-    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    ref = (
+        pan_cancer_expression(technical_rna_normalize=True)
+        .drop_duplicates(subset="Symbol")
+        .set_index("Symbol")
+    )
     from .plot_tumor_expr import _TME_TISSUES
 
     tme_cols = [f"nTPM_{t}" for t in _TME_TISSUES if f"nTPM_{t}" in ref.columns]

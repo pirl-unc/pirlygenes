@@ -458,9 +458,9 @@ def _extract_sample_tpm_by_symbol(df_expr: pd.DataFrame) -> dict[str, float]:
         ),
         None,
     )
-    ref = pan_cancer_expression()[["Ensembl_Gene_ID", "Symbol"]].drop_duplicates(
-        subset="Ensembl_Gene_ID"
-    )
+    ref = pan_cancer_expression(technical_rna_normalize=True)[
+        ["Ensembl_Gene_ID", "Symbol"]
+    ].drop_duplicates(subset="Ensembl_Gene_ID")
     eid_to_symbol = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
 
     symbols = None
@@ -571,7 +571,11 @@ def assess_tissue_composition(df_expr: pd.DataFrame) -> TissueCompositionSignal:
     tissue-composition prior without committing to healthy / cancer.
     """
     sample_by_symbol = _extract_sample_tpm_by_symbol(df_expr)
-    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    ref = (
+        pan_cancer_expression(technical_rna_normalize=True)
+        .drop_duplicates(subset="Symbol")
+        .set_index("Symbol")
+    )
 
     hpa_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     tcga_cols = [c for c in ref.columns if c.startswith("FPKM_")]

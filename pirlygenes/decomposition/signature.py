@@ -292,7 +292,7 @@ def _load_hpa_cell_types():
 
 def _load_normal_tissue_expression():
     """Load the bulk normal-tissue expression matrix."""
-    return pan_cancer_expression()
+    return pan_cancer_expression(technical_rna_normalize=True)
 
 
 def get_component_markers(component):

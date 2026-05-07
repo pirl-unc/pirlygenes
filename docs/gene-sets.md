@@ -70,6 +70,32 @@ Supports normalization:
 - `pan_cancer_expression(normalize="housekeeping")` — fold over housekeeping median
 - `pan_cancer_expression(normalize="percentile")` — percentile ranks
 - `pan_cancer_expression(log2=True)` — log2 transform
+- `pan_cancer_expression(technical_rna_normalize=True)` — zero mitochondrial,
+  NUMT-like, rRNA-like, and rRNA-pseudogene rows, then renormalize remaining
+  expression mass. This is the opinionated analysis view used by the reports;
+  raw references remain available for QC/provenance.
+
+`normalize_expression()` in `pirlygenes.expression_qc` implements the shared
+transform for samples and references. The default removal set is intentionally
+narrow: mitochondrial transcripts, NUMT-like mitochondrial pseudogenes, and
+rRNA/rRNA-pseudogene features. `remove_noncoding=True` additionally removes
+noncoding-biotype rows when biotype metadata is available, while keeping
+protein-coding, immunoglobulin, and TCR biotypes. That option is off by default
+because noncoding RNAs can be real biology in some assays.
+
+Current curated gene-set impact: the default transform silences the dedicated
+mitochondrial QC gene set (`MT-CO1/2/3`, `MT-ND*`, `MT-CYB`, `MT-ATP6/8`,
+`MT-RNR1/2`) in downstream biology, but raw QC still reports it. The local
+symbol audit did not find therapy-target or cancer-marker rows matching the
+default rRNA/NUMT removal rules. The optional noncoding-biotype gate can silence
+noncoding transcript annotations such as retained-intron helper mappings, so it
+should be used only when a protein-coding-centered analysis view is intended.
+
+Other useful FFPE/degradation artifact categories to track but not remove by
+default: ribosomal protein pseudogenes, small nuclear/snoRNA/Y-RNA/miRNA
+features, replication-dependent histones, hemoglobin/globin transcripts,
+extremely short transcripts, low-complexity processed pseudogenes, and
+alignment-level rDNA repeat/decoy contig enrichment.
 
 ## Embedding Gene Sets
 

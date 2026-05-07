@@ -423,7 +423,7 @@ def test_synthetic_stromal_heavy_crc_primary_beats_sarc_and_met_templates():
     )
     assert results[0].cancer_type in {"COAD", "READ"}
     assert results[0].template == "solid_primary"
-    assert 0.15 < results[0].purity < 0.6
+    assert 0.12 < results[0].purity < 0.6
 
 
 def test_synthetic_low_purity_crc_purity_matches_expected_scale():

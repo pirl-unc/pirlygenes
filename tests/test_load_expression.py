@@ -234,12 +234,58 @@ def test_gene_qc_classifier_red_flag_categories():
     from pirlygenes.expression_qc import classify_gene_qc
 
     assert classify_gene_qc("MT-CO1").group == "mt_dna"
+    assert classify_gene_qc("MTCO1P12").group == "mt_like_pseudogene"
     assert classify_gene_qc("RNA5SP389").label == "5S rRNA pseudogene"
     assert classify_gene_qc("RPL13AP5").group == "ribosomal_protein_pseudogene"
     assert classify_gene_qc("SNORD3A").group == "small_ncrna"
     assert classify_gene_qc("H2AC1").group == "histone"
     assert classify_gene_qc("HBB").group == "hemoglobin"
     assert classify_gene_qc("IGKC").group == "immune_receptor"
+
+
+def test_normalize_expression_removes_technical_rna_and_preserves_nan():
+    from pirlygenes.expression_qc import normalize_expression
+
+    df = pd.DataFrame(
+        {
+            "Symbol": ["MT-CO1", "MTCO1P12", "RNA5SP389", "KLK3", "ACTB"],
+            "TPM": [100.0, 100.0, 300.0, 100.0, 400.0],
+            "tcga_PRAD": [1.0, 2.0, 3.0, float("nan"), 4.0],
+        }
+    )
+
+    out, record = normalize_expression(df, value_cols=["TPM", "tcga_PRAD"])
+
+    assert record["applied"] is True
+    assert out.loc[out["Symbol"] == "RNA5SP389", "TPM"].item() == 0.0
+    assert out.loc[out["Symbol"] == "MTCO1P12", "TPM"].item() == 0.0
+    assert out["TPM"].sum() == pytest.approx(1_000.0)
+    assert pd.isna(out.loc[out["Symbol"] == "KLK3", "tcga_PRAD"].item())
+
+
+def test_normalize_expression_optional_noncoding_gate_keeps_ig_tcr():
+    from pirlygenes.expression_qc import normalize_expression
+
+    df = pd.DataFrame(
+        {
+            "Symbol": ["MALAT1", "KLK3", "IGKC", "TRAC"],
+            "biotype": ["lncRNA", "protein_coding", "IG_C_gene", "TR_C_gene"],
+            "TPM": [500.0, 200.0, 200.0, 100.0],
+        }
+    )
+
+    out, record = normalize_expression(
+        df,
+        value_cols=["TPM"],
+        remove_noncoding=True,
+    )
+
+    assert record["applied"] is True
+    assert out.loc[out["Symbol"] == "MALAT1", "TPM"].item() == 0.0
+    assert out.loc[out["Symbol"] == "KLK3", "TPM"].item() > 0
+    assert out.loc[out["Symbol"] == "IGKC", "TPM"].item() > 0
+    assert out.loc[out["Symbol"] == "TRAC", "TPM"].item() > 0
+    assert out["TPM"].sum() == pytest.approx(1_000.0)
 
 
 def test_expression_qc_rescue_removes_rrna_like_dominator():

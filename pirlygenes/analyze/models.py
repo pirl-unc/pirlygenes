@@ -46,6 +46,7 @@ class AnalyzeConfig:
     alterations: str | None = None
     alignment_qc: str | None = None
     expression_qc_rescue: str = "auto"
+    expression_qc_remove_noncoding: bool = False
     therapy_target_top_k: int = 10
     therapy_target_tpm_threshold: float = 30.0
     deprecated_figures: bool = False

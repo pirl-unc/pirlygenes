@@ -1616,6 +1616,7 @@ def analyze(
     alterations: Optional[str] = None,
     alignment_qc: Optional[str] = None,
     expression_qc_rescue: str = "auto",
+    expression_qc_remove_noncoding: bool = False,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
     deprecated_figures: bool = False,
@@ -1659,6 +1660,7 @@ def analyze(
         alterations=alterations,
         alignment_qc=alignment_qc,
         expression_qc_rescue=expression_qc_rescue,
+        expression_qc_remove_noncoding=expression_qc_remove_noncoding,
         therapy_target_top_k=therapy_target_top_k,
         therapy_target_tpm_threshold=therapy_target_tpm_threshold,
         deprecated_figures=deprecated_figures,
@@ -1839,6 +1841,7 @@ def _analyze_body(run: AnalyzeRun):
     df_expr, expression_qc_rescue = apply_expression_qc_rescue(
         df_expr_raw,
         mode=config.expression_qc_rescue,
+        remove_noncoding=config.expression_qc_remove_noncoding,
     )
     expression_scale_qc = dict(df_expr.attrs.get("expression_scale_qc") or {})
     if expression_qc_rescue.get("applied"):
@@ -3801,10 +3804,11 @@ def _analyze_body(run: AnalyzeRun):
 Sample analyzed as **{cancer_code}** ({cancer_name}).
 
 Raw QC figures use the original expression table. Downstream biology uses
-technical-RNA-normalized TPM by default: mtDNA, rRNA-like, and
-rRNA-pseudogene rows are zeroed and the remaining TPM is renormalized in
-the input sample. Bundled reference matrices remain raw unless a specific
-caller explicitly requests technical-RNA-normalized references.
+technical-RNA-normalized TPM by default: mitochondrial transcripts, NUMT-like
+mitochondrial pseudogenes, rRNA-like features, and rRNA-pseudogene rows are
+zeroed and the remaining TPM is renormalized. Downstream reference comparisons
+use the same normalized analysis view; raw sample/reference values remain
+available for QC and provenance.
 
 ## Reports
 

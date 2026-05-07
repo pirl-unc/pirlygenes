@@ -457,7 +457,7 @@ def _collect_ranked_therapy_targets(
 
         missing_symbols = extra_symbol_set - set(sample_symbol_to_ids)
         if missing_symbols:
-            ref_symbols = pan_cancer_expression()[
+            ref_symbols = pan_cancer_expression(technical_rna_normalize=True)[
                 ["Ensembl_Gene_ID", "Symbol"]
             ].drop_duplicates()
             for row in ref_symbols.itertuples(index=False):
@@ -530,7 +530,7 @@ def plot_therapy_target_tissues(
     from matplotlib.backends.backend_pdf import PdfPages
 
     # Load normal tissue expression
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ntpm_cols = sorted([c for c in ref.columns if c.startswith("nTPM_")])
     tissue_labels = [c.replace("nTPM_", "").replace("_", " ") for c in ntpm_cols]
     ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index(
@@ -694,7 +694,7 @@ def plot_therapy_target_safety(
     from adjustText import adjust_text
     from matplotlib.lines import Line2D
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index(
         "Ensembl_Gene_ID"
     )
@@ -942,7 +942,7 @@ def plot_geneset_vs_vital_tissues(
     if tpm_col is None:
         raise KeyError(f"No TPM column in sample. Columns: {list(df.columns)}")
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     id_to_sym = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
     sample_by_symbol = {}
     for _, row in df.iterrows():
@@ -1222,7 +1222,7 @@ def plot_ctas_vs_cancer_type_detail(
     from .tumor_purity import CANCER_TO_TISSUE
 
     cancer_code = resolve_cancer_type(cancer_type)
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     cancer_col = f"FPKM_{cancer_code}"
     if cancer_col not in ref.columns:
         raise ValueError(

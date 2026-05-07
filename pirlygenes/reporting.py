@@ -631,7 +631,7 @@ def _pan_cancer_normal_expression_index():
     try:
         from .gene_sets_cancer import pan_cancer_expression
 
-        df = pan_cancer_expression().copy()
+        df = pan_cancer_expression(technical_rna_normalize=True).copy()
         if "Ensembl_Gene_ID" not in df.columns:
             return None
         df["Ensembl_Gene_ID"] = (
