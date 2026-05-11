@@ -1808,7 +1808,7 @@ def test_plot_ctas_vs_cancer_type_detail_worst_vital_excludes_testis_and_thymus(
     monkeypatch.setattr(
         therapy_mod,
         "pan_cancer_expression",
-        lambda: pd.DataFrame(
+        lambda **_: pd.DataFrame(
             {
                 "Ensembl_Gene_ID": ["ENSGCTA"],
                 "Symbol": ["CTA1"],
