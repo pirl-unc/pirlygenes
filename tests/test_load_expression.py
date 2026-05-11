@@ -288,6 +288,30 @@ def test_normalize_expression_optional_noncoding_gate_keeps_ig_tcr():
     assert out["TPM"].sum() == pytest.approx(1_000.0)
 
 
+def test_normalize_expression_optional_noncoding_gate_keeps_missing_biotypes():
+    from pirlygenes.expression_qc import normalize_expression
+
+    df = pd.DataFrame(
+        {
+            "Symbol": ["MALAT1", "UNKNOWN1", "UNKNOWN2", "KLK3"],
+            "biotype": ["lncRNA", float("nan"), pd.NA, "protein_coding"],
+            "TPM": [500.0, 100.0, 100.0, 300.0],
+        }
+    )
+
+    out, record = normalize_expression(
+        df,
+        value_cols=["TPM"],
+        remove_noncoding=True,
+    )
+
+    assert record["applied"] is True
+    assert out.loc[out["Symbol"] == "MALAT1", "TPM"].item() == 0.0
+    assert out.loc[out["Symbol"] == "UNKNOWN1", "TPM"].item() > 0
+    assert out.loc[out["Symbol"] == "UNKNOWN2", "TPM"].item() > 0
+    assert out["TPM"].sum() == pytest.approx(1_000.0)
+
+
 def test_normalize_expression_zeroes_all_technical_input():
     from pirlygenes.expression_qc import normalize_expression
 

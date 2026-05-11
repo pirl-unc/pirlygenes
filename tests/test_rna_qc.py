@@ -112,3 +112,22 @@ def test_collect_alignment_idxstats_qc_accepts_no_chr_primary_contigs(tmp_path):
         "chr21 is the top primary chromosome" in warning
         for warning in qc["warnings"]
     )
+
+
+def test_collect_expression_table_qc_prefers_loaded_sample_frame(tmp_path):
+    raw = tmp_path / "multi-sample-expression.csv"
+    pd.DataFrame(
+        {
+            "sample_id": ["A", "A", "B", "B"],
+            "gene": ["G1", "G2", "G1", "G2"],
+            "TPM": [1.0, 2.0, 100.0, 200.0],
+        }
+    ).to_csv(raw, index=False)
+    loaded = pd.DataFrame({"gene_name": ["G1", "G2"], "TPM": [1.0, 2.0]})
+
+    qc = collect_rna_quant_qc(raw, gene_df=loaded)
+
+    stats = qc["gene_detection"]
+    assert stats["path"] == "loaded expression table"
+    assert stats["total"] == 2
+    assert stats["sum_tpm"] == 3.0

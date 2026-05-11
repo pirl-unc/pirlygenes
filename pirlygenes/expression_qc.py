@@ -153,7 +153,14 @@ def _infer_biotype_col(df, explicit: str | None = None) -> str | None:
 
 
 def _is_kept_biotype(value: object) -> bool:
-    token = str(value or "").strip().lower()
+    import pandas as pd
+
+    try:
+        if pd.isna(value):
+            return True
+    except (TypeError, ValueError):
+        pass
+    token = str(value).strip().lower()
     if not token:
         return True
     if token.startswith("protein_coding"):

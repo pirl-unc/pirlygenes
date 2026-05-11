@@ -142,27 +142,28 @@ def _gene_stats(
     gene_df: pd.DataFrame | None,
     input_path: str | Path | None,
 ) -> dict[str, Any] | None:
-    candidates: list[Path] = []
     if salmon_dir is not None:
-        candidates.extend(
-            [
-                salmon_dir / "quant.genes.sf",
-                salmon_dir / "quant.gene_tpm.csv",
-                salmon_dir / "gene_tpm.csv",
-            ]
-        )
+        for candidate in (
+            salmon_dir / "quant.genes.sf",
+            salmon_dir / "quant.gene_tpm.csv",
+            salmon_dir / "gene_tpm.csv",
+        ):
+            stats = _read_tpm_stats(candidate)
+            if stats is not None:
+                return stats
+
+    loaded_stats = _stats_from_loaded_frame(gene_df)
+    if loaded_stats is not None:
+        return loaded_stats
+
     if input_path is not None:
         try:
             p = Path(input_path).expanduser().resolve()
             if p.name != "quant.sf":
-                candidates.append(p)
+                return _read_tpm_stats(p)
         except (OSError, RuntimeError):
             pass
-    for candidate in candidates:
-        stats = _read_tpm_stats(candidate)
-        if stats is not None:
-            return stats
-    return _stats_from_loaded_frame(gene_df)
+    return None
 
 
 def _transcript_stats(
