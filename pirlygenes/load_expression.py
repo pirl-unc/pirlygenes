@@ -29,7 +29,7 @@ from .expression_qc import (
     classify_gene_qc,
     dominant_class_phrase,
     is_rescue_feature,
-    normalize_technical_rna_columns,
+    normalize_expression,
     summarize_qc_class_shares,
 )
 
@@ -441,7 +441,12 @@ def _expression_scale_qc(df) -> dict:
     return qc
 
 
-def apply_expression_qc_rescue(df, mode: str = "auto"):
+def apply_expression_qc_rescue(
+    df,
+    mode: str = "auto",
+    *,
+    remove_noncoding: bool = False,
+):
     """Remove mtDNA/rRNA-like TPM artifacts and re-normalize expression.
 
     Parameters
@@ -453,6 +458,9 @@ def apply_expression_qc_rescue(df, mode: str = "auto"):
         references whenever removable features are present, but marks the row as
         high-burden only when mtDNA/rRNA-like features dominate raw TPM.
         ``always`` forces the same normalization. ``off``/``never`` disables it.
+    remove_noncoding : bool
+        If True, also removes noncoding-biotype rows when a biotype column is
+        present, while retaining protein-coding, immunoglobulin, and TCR genes.
 
     Returns
     -------
@@ -481,6 +489,7 @@ def apply_expression_qc_rescue(df, mode: str = "auto"):
             "removed_fraction": 0.0,
             "removed_gene_count": 0,
             "top_removed_genes": [],
+            "remove_noncoding": bool(remove_noncoding),
             "warnings": [],
         }
     tpm = pd.to_numeric(df["TPM"], errors="coerce").fillna(0.0)
@@ -509,6 +518,7 @@ def apply_expression_qc_rescue(df, mode: str = "auto"):
         "removed_fraction": 0.0,
         "removed_gene_count": 0,
         "top_removed_genes": [],
+        "remove_noncoding": bool(remove_noncoding),
         "reason": "",
         "warnings": [],
     }
@@ -555,7 +565,7 @@ def apply_expression_qc_rescue(df, mode: str = "auto"):
     top_10_share = float(scale_qc.get("top_10_share_of_total_tpm") or 0.0)
     dominant = scale_qc.get("dominant_genes") or []
     top_gene_rescue_class = bool(
-        dominant and dominant[0].get("qc_group") in {"mt_dna", "rrna_like"}
+        dominant and is_rescue_feature(dominant[0].get("gene"))
     )
     auto_trigger = bool(
         removed_fraction >= 0.50
@@ -569,30 +579,38 @@ def apply_expression_qc_rescue(df, mode: str = "auto"):
     )
     record["high_burden"] = bool(auto_trigger)
     if mode_norm == "always":
-        should_apply = removed_tpm > 0 and remaining_tpm > 0
+        should_apply = raw_sum > 0 and (removed_tpm > 0 or remove_noncoding)
         record["reason"] = "forced by --expression-qc-rescue"
     else:
-        should_apply = removed_tpm > 0 and remaining_tpm > 0
+        should_apply = raw_sum > 0 and (removed_tpm > 0 or remove_noncoding)
         record["reason"] = (
             "auto-rescue: mtDNA/rRNA-like features dominate raw TPM"
             if auto_trigger and should_apply
             else (
-                "auto-normalize: mtDNA/rRNA-like features zeroed for comparability"
+                "auto-normalize: expression artifacts zeroed for comparability"
                 if should_apply
-                else "not applied: no removable mtDNA/rRNA-like burden"
+                else "not applied: no removable expression-artifact burden"
             )
         )
 
     if not should_apply:
         return df, record
 
-    out, normalization_record = normalize_technical_rna_columns(
+    out, normalization_record = normalize_expression(
         df,
         label_col=label_col,
         value_cols=["TPM"],
+        remove_noncoding=remove_noncoding,
     )
+    if not normalization_record.get("applied"):
+        record["reason"] = normalization_record.get("reason") or record["reason"]
+        return df, record
     out = out.copy()
     out["TPM_raw_before_qc_rescue"] = tpm
+    tpm_record = (normalization_record.get("columns") or {}).get("TPM") or {}
+    removed_tpm = float(tpm_record.get("removed_tpm") or removed_tpm)
+    removed_fraction = float(tpm_record.get("removed_fraction") or removed_fraction)
+    remaining_tpm = raw_sum - removed_tpm
     scale = raw_sum / remaining_tpm if remaining_tpm > 0 else 1.0
     final_qc = _expression_scale_qc(out)
     final_qc["rescued_from_qc_artifact"] = True
@@ -601,6 +619,15 @@ def apply_expression_qc_rescue(df, mode: str = "auto"):
     out.attrs["expression_qc_rescue"] = record | {
         "applied": True,
         "output_sum_tpm": float(pd.to_numeric(out["TPM"], errors="coerce").sum()),
+        "removed_tpm": removed_tpm,
+        "removed_fraction": removed_fraction,
+        "removed_gene_count": int(tpm_record.get("removed_gene_count") or 0),
+        "removed_technical_gene_count": int(
+            tpm_record.get("removed_technical_gene_count") or 0
+        ),
+        "removed_noncoding_gene_count": int(
+            tpm_record.get("removed_noncoding_gene_count") or 0
+        ),
         "renormalization_factor": float(scale),
         "reference_normalization_record": normalization_record,
     }

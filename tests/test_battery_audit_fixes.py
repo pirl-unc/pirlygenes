@@ -135,7 +135,7 @@ def test_lineage_estimator_separates_tme_dominated_from_usable():
     orig_lineage = tp.LINEAGE_GENES
 
     try:
-        tp.pan_cancer_expression = lambda: ref
+        tp.pan_cancer_expression = lambda **_: ref
         tp.LINEAGE_GENES = {"FAKE": ["LIN"]}
 
         sample_tpm = {"LIN": 190.0, "HK": 50.0}

@@ -514,7 +514,9 @@ def score_therapy_signatures(
     if not applicable:
         return {}
 
-    ref_flat = pan_cancer_expression().drop_duplicates(subset="Symbol")
+    ref_flat = pan_cancer_expression(technical_rna_normalize=True).drop_duplicates(
+        subset="Symbol"
+    )
 
     out = {}
     for cls, directions in applicable.items():

@@ -153,7 +153,7 @@ _tcga_parent_code_cache = None
 def _tcga_parent_codes():
     global _tcga_parent_code_cache
     if _tcga_parent_code_cache is None:
-        ref = pan_cancer_expression()
+        ref = pan_cancer_expression(technical_rna_normalize=True)
         _tcga_parent_code_cache = {
             c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_")
         }
@@ -371,7 +371,7 @@ def _select_embedding_genes_bottleneck(n_genes_per_type=5):
     if cache_key in _bottleneck_gene_cache:
         return _bottleneck_gene_cache[cache_key]
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     ntpm_nonrepro = [
@@ -476,7 +476,7 @@ def _select_pan_reference_genes(n_genes_per_type=6, n_genes_per_normal=None):
     if cache_key in _pan_reference_gene_cache:
         return _pan_reference_gene_cache[cache_key]
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     ref_dedup = ref.drop_duplicates(subset="Symbol").copy()
@@ -612,7 +612,7 @@ def _select_tme_low_genes(n_genes_per_type=3, sn_tme_threshold=10):
     if cache_key in _tme_gene_cache:
         return _tme_gene_cache[cache_key]
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     ntpm_nonrepro = [
@@ -770,7 +770,7 @@ def _select_embedding_genes(n_genes_per_type=3):
     if cache_key in _embedding_gene_cache:
         return _embedding_gene_cache[cache_key]
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
 
@@ -946,7 +946,9 @@ def _reference_cancer_expression_df(cancer_code):
     """Return a TCGA-median expression frame for one cancer type."""
     import pandas as pd
 
-    ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
+    ref = pan_cancer_expression(technical_rna_normalize=True).drop_duplicates(
+        subset="Ensembl_Gene_ID"
+    )
     return pd.DataFrame(
         {
             "ensembl_gene_id": ref["Ensembl_Gene_ID"],
@@ -959,7 +961,7 @@ def _reference_cancer_expression_df(cancer_code):
 def _hierarchy_feature_labels():
     from .tumor_purity import _CANCER_FAMILY_PANELS, CANCER_TO_TISSUE
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     codes = [c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_")]
     families = list(_CANCER_FAMILY_PANELS)
     site_labels = sorted(
@@ -1041,9 +1043,10 @@ def _reference_family_feature_matrix(candidate_codes, family_labels):
     """Build normalized family-panel features for TCGA reference centroids."""
     from .tumor_purity import _CANCER_FAMILY_PANELS
 
-    ref_hk = pan_cancer_expression(normalize="housekeeping").drop_duplicates(
-        subset="Symbol"
-    )
+    ref_hk = pan_cancer_expression(
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    ).drop_duplicates(subset="Symbol")
     ref_hk = ref_hk.set_index("Symbol")
 
     rows = []
@@ -1077,7 +1080,11 @@ def _reference_site_feature_matrix(candidate_codes, site_labels):
     if cached is not None:
         return cached
 
-    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    ref = (
+        pan_cancer_expression(technical_rna_normalize=True)
+        .drop_duplicates(subset="Symbol")
+        .set_index("Symbol")
+    )
     rows = []
     for code in candidate_codes:
         sample_raw_by_symbol = ref[f"FPKM_{code}"].astype(float).to_dict()
@@ -1185,7 +1192,7 @@ def _subtype_expression_values_for_ref(
             housekeeping_gene_names,
         )
 
-        subtype_df = subtype_deconvolved_expression()
+        subtype_df = subtype_deconvolved_expression(technical_rna_normalize=True)
     except Exception:
         return [], np.zeros((len(ref_norm), 0), dtype=float)
 
@@ -1345,7 +1352,10 @@ def _cancer_type_feature_matrix(
                 df[tpm_col].astype(float) / hk_median,
             )
         )
-        ref_full = pan_cancer_expression(normalize="housekeeping")
+        ref_full = pan_cancer_expression(
+            normalize="housekeeping",
+            technical_rna_normalize=True,
+        )
     else:
         sample_by_id = dict(
             zip(
@@ -1353,7 +1363,7 @@ def _cancer_type_feature_matrix(
                 df[tpm_col].astype(float),
             )
         )
-        ref_full = pan_cancer_expression()
+        ref_full = pan_cancer_expression(technical_rna_normalize=True)
 
     fpkm_cols = [c for c in ref_full.columns if c.startswith("FPKM_")]
     labels = [c.replace("FPKM_", "") for c in fpkm_cols]
@@ -2266,7 +2276,11 @@ def plot_cohort_heatmap(
     gene_symbols = sorted(ct_df["Symbol"].unique())
 
     # Get expression
-    ref = pan_cancer_expression(genes=gene_symbols, normalize="housekeeping")
+    ref = pan_cancer_expression(
+        genes=gene_symbols,
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     codes = cancer_types()
     fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
     codes = [c.replace("FPKM_", "") for c in fpkm_cols]
@@ -2367,7 +2381,10 @@ def plot_cohort_pca(
     for genes in sig.values():
         all_symbols.update(genes)
 
-    ref = pan_cancer_expression(normalize="housekeeping")
+    ref = pan_cancer_expression(
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     codes = [c.replace("FPKM_", "") for c in fpkm_cols]
 
@@ -2440,7 +2457,11 @@ def plot_cohort_therapy_targets(
         all_targets.update(d)
     target_symbols = sorted(set(all_targets.values()))
 
-    ref = pan_cancer_expression(genes=target_symbols, normalize="housekeeping")
+    ref = pan_cancer_expression(
+        genes=target_symbols,
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     codes = cancer_types()
     fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
     codes = [c.replace("FPKM_", "") for c in fpkm_cols]
@@ -2500,7 +2521,11 @@ def _plot_geneset_by_cancer_heatmap(
     import numpy as np
     from .gene_sets_cancer import pan_cancer_expression, cancer_types
 
-    ref = pan_cancer_expression(genes=gene_symbols, normalize="housekeeping")
+    ref = pan_cancer_expression(
+        genes=gene_symbols,
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     codes = cancer_types()
     fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
     codes = [c.replace("FPKM_", "") for c in fpkm_cols]
@@ -2596,7 +2621,10 @@ def plot_cohort_ctas(
     from .gene_sets_cancer import CTA_gene_names, pan_cancer_expression, cancer_types
 
     genes = sorted(CTA_gene_names())
-    ref = pan_cancer_expression(genes=genes)  # raw values, not HK-normalized
+    ref = pan_cancer_expression(
+        genes=genes,
+        technical_rna_normalize=True,
+    )  # TPM values after technical-RNA normalization
     codes = cancer_types()
     fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
     codes_clean = [c.replace("FPKM_", "") for c in fpkm_cols]

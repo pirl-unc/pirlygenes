@@ -10,11 +10,14 @@ or Excel) and produces:
 
 Raw sample QC is computed before any expression rescue. By default,
 downstream biology uses a technical-RNA-normalized expression view:
-mtDNA, rRNA-like, and rRNA-pseudogene rows are zeroed and the remaining
-sample TPM is renormalized. Bundled reference matrices remain raw unless
-a specific caller explicitly requests technical-RNA-normalized references.
+mitochondrial transcripts, NUMT-like mitochondrial pseudogenes, rRNA-like
+features, and rRNA-pseudogene rows are zeroed and the remaining sample TPM
+is renormalized. Downstream reference comparisons use the same normalized
+analysis view; raw sample/reference values are retained for QC and provenance.
 Use `--expression-qc-rescue off` to preserve raw TPM for downstream
-analysis.
+analysis. `--expression-qc-remove-noncoding` additionally removes
+noncoding-biotype rows when a biotype column is available, while keeping
+protein-coding, immunoglobulin, and TCR genes; this is off by default.
 
 ## Usage
 

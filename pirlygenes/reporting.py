@@ -150,6 +150,12 @@ def tumor_attribution_context(row):
         notes.append("matched-normal reference overshoots the sample")
     if _truthy(row.get("low_purity_cap_applied")):
         notes.append("low-purity cap is active")
+    source_marker = _truthy(row.get("source_marker_non_tumor_prior"))
+    source_marker_compartment = _clean_text(row.get("source_marker_compartment"))
+    if source_marker:
+        notes.append(
+            f"{source_marker_compartment or 'non-tumor lineage'} prior is active"
+        )
     if _truthy(row.get("tme_explainable")) and support_fraction < 1.0:
         notes.append("non-tumor tissue explanations remain plausible")
     if _truthy(row.get("tme_dominant")):
@@ -164,6 +170,7 @@ def tumor_attribution_context(row):
         and low_frac >= 0.30
         and support_fraction >= 0.67
         and not _truthy(row.get("matched_normal_over_predicted"))
+        and not source_marker
     ):
         tier = "tumor_supported"
         label = "tumor-supported"
@@ -532,6 +539,8 @@ def target_reliability_reasons(row, *, category=None):
         reasons.append("possible smooth-muscle stromal leakage")
     if _truthy(row.get("tme_explainable")) and source["tier"] != "tumor_supported":
         reasons.append("healthy-tissue-explainable")
+    if _truthy(row.get("source_marker_non_tumor_prior")):
+        reasons.append("non-tumor lineage marker")
     if _truthy(row.get("low_purity_cap_applied")):
         reasons.append("low-purity capped")
     return reasons
@@ -622,7 +631,7 @@ def _pan_cancer_normal_expression_index():
     try:
         from .gene_sets_cancer import pan_cancer_expression
 
-        df = pan_cancer_expression().copy()
+        df = pan_cancer_expression(technical_rna_normalize=True).copy()
         if "Ensembl_Gene_ID" not in df.columns:
             return None
         df["Ensembl_Gene_ID"] = (

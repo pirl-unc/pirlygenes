@@ -15,7 +15,7 @@ from __future__ import annotations
 import warnings
 
 from .expression_qc import (
-    normalize_technical_rna_columns,
+    normalize_expression,
     normalize_technical_rna_long_table,
 )
 from .load_dataset import get_data
@@ -629,9 +629,21 @@ def cancer_surfaceome_evidence(min_cancer_types=None):
 _PAN_CANCER_CACHE = {}
 
 
-def _pan_cancer_cache_key(genes, normalize, log_transform, technical_rna_normalize):
+def _pan_cancer_cache_key(
+    genes,
+    normalize,
+    log_transform,
+    technical_rna_normalize,
+    remove_noncoding,
+):
     genes_key = None if genes is None else frozenset(str(g).upper() for g in genes)
-    return (genes_key, normalize, bool(log_transform), bool(technical_rna_normalize))
+    return (
+        genes_key,
+        normalize,
+        bool(log_transform),
+        bool(technical_rna_normalize),
+        bool(remove_noncoding),
+    )
 
 
 def cancer_type_registry():
@@ -724,7 +736,10 @@ def is_mixture_cohort(code):
     return code in set(mixture_cohort_codes())
 
 
-def subtype_deconvolved_expression(technical_rna_normalize=True):
+def subtype_deconvolved_expression(
+    technical_rna_normalize=False,
+    remove_noncoding=False,
+):
     """Per-(cancer_code, subtype, symbol) tumor-only TPM from multi-cohort deconv.
 
     Subtype-stratified companion to :func:`tcga_deconvolved_expression`.
@@ -773,14 +788,28 @@ def subtype_deconvolved_expression(technical_rna_normalize=True):
         ``subtype``, ``tumor_tpm_median``, ``tumor_tpm_q1``,
         ``tumor_tpm_q3``, ``n_samples``. ``None`` when the CSV is
         not bundled (maintainer hasn't run the offline batch).
+        By default this returns the raw bundled reference. Pass
+        ``technical_rna_normalize=True`` to zero mitochondrial, NUMT-like,
+        rRNA-like, and rRNA-pseudogene rows and renormalize the remaining TPM
+        values within each subtype group. ``remove_noncoding=True`` applies an
+        additional biotype gate when a biotype column is present.
     """
     try:
         df = get_data("subtype-deconvolved-expression")
     except ValueError:
         return None
-    if not technical_rna_normalize:
+    if not technical_rna_normalize and not remove_noncoding:
         return df
-    df_norm, record = normalize_technical_rna_long_table(df)
+    if remove_noncoding:
+        df_norm, record = normalize_expression(
+            df,
+            label_col="symbol",
+            group_cols=("cancer_code", "subtype"),
+            value_cols=("tumor_tpm_median", "tumor_tpm_q1", "tumor_tpm_q3"),
+            remove_noncoding=True,
+        )
+    else:
+        df_norm, record = normalize_technical_rna_long_table(df)
     df_norm.attrs["technical_rna_normalization"] = record
     return df_norm
 
@@ -1044,6 +1073,7 @@ def pan_cancer_expression(
     normalize=None,
     log_transform=False,
     technical_rna_normalize=False,
+    remove_noncoding=False,
 ):
     """Expression across 50 normal tissues (nTPM) and 33 TCGA cancer types.
 
@@ -1070,12 +1100,17 @@ def pan_cancer_expression(
         If True, apply log2(x + 1) after normalization (or to raw values
         if normalize is None). Recommended for visualization.
     technical_rna_normalize : bool
-        If True, zero mtDNA/rRNA-like/rRNA-pseudogene rows in every reference
-        expression column and renormalize the remaining non-missing values
-        before any gene filtering or housekeeping/percentile normalization.
+        If True, zero mitochondrial, NUMT-like, rRNA-like, and
+        rRNA-pseudogene rows in every reference expression column and
+        renormalize the remaining non-missing values before any gene filtering
+        or housekeeping/percentile normalization.
         The default is False so existing QC, raw-reference matching, and
         decomposition callers continue to see bundled TCGA/HPA values exactly
         as stored.
+    remove_noncoding : bool
+        If True, also zero noncoding-biotype rows when a biotype column is
+        present, while retaining protein-coding, immunoglobulin, and TCR genes.
+        Off by default.
 
     Returns
     -------
@@ -1085,7 +1120,11 @@ def pan_cancer_expression(
     import numpy as np
 
     cache_key = _pan_cancer_cache_key(
-        genes, normalize, log_transform, technical_rna_normalize
+        genes,
+        normalize,
+        log_transform,
+        technical_rna_normalize,
+        remove_noncoding,
     )
     cached = _PAN_CANCER_CACHE.get(cache_key)
     if cached is not None:
@@ -1100,11 +1139,12 @@ def pan_cancer_expression(
         for c in df.columns
         if c.startswith("nTPM_") or c.startswith("FPKM_") or c.startswith("tcga_")
     ]
-    if technical_rna_normalize:
-        df, normalization_record = normalize_technical_rna_columns(
+    if technical_rna_normalize or remove_noncoding:
+        df, normalization_record = normalize_expression(
             df,
             label_col="Symbol",
             value_cols=value_cols,
+            remove_noncoding=remove_noncoding,
         )
         df.attrs["technical_rna_normalization"] = normalization_record
     if genes is not None:
@@ -1174,7 +1214,11 @@ def cancer_expression(cancer_type, genes=None):
     from .plot import resolve_cancer_type
 
     code = resolve_cancer_type(cancer_type)
-    df = pan_cancer_expression(genes=genes, normalize="housekeeping")
+    df = pan_cancer_expression(
+        genes=genes,
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     col = f"FPKM_{code}"
     return df[["Ensembl_Gene_ID", "Symbol", col]].rename(columns={col: "expression"})
 
@@ -1202,7 +1246,10 @@ def top_enriched_per_cancer_type(
     dict[str, list[str]]
         {TCGA_code: [gene_symbol, ...]} sorted by fold-change descending.
     """
-    df = pan_cancer_expression(normalize="housekeeping")
+    df = pan_cancer_expression(
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
 
     if disjoint:
@@ -1309,7 +1356,10 @@ def cancer_enriched_genes(cancer_type, min_fold=3.0, min_expression=0.01):
     from .plot import resolve_cancer_type
 
     code = resolve_cancer_type(cancer_type)
-    df = pan_cancer_expression(normalize="housekeeping")
+    df = pan_cancer_expression(
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
     target_col = f"FPKM_{code}"
     other_cols = [c for c in fpkm_cols if c != target_col]

@@ -291,7 +291,7 @@ def _cached_reference_matrices(normalize="housekeeping"):
     if cached is not None:
         return cached
 
-    ref = pan_cancer_expression(normalize=normalize)
+    ref = pan_cancer_expression(normalize=normalize, technical_rna_normalize=True)
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     expr_matrix = ref_by_sym[fpkm_cols].astype(float)
@@ -404,7 +404,7 @@ def _geneset_hk_ratio(genes, hk_symbols, expr_by_symbol):
 
 def _sample_hk_median(sample_tpm):
     """Return the sample housekeeping median on raw TPM scale."""
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     id_to_sym = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
     hk_syms = [id_to_sym[gid] for gid in housekeeping_gene_ids() if gid in id_to_sym]
     sample_hk_vals = [sample_tpm[g] for g in hk_syms if sample_tpm.get(g, 0) > 0]
@@ -464,7 +464,9 @@ def _cancer_specific_lineage_genes(cancer_code: str) -> list:
     if not panel:
         _LINEAGE_SPECIFIC_CACHE[cancer_code] = []
         return []
-    ref = pan_cancer_expression().drop_duplicates(subset="Symbol")
+    ref = pan_cancer_expression(technical_rna_normalize=True).drop_duplicates(
+        subset="Symbol"
+    )
     ref = ref.set_index("Symbol")
     home_col = f"FPKM_{cancer_code}"
     other_cols = [c for c in ref.columns if c.startswith("FPKM_") and c != home_col]
@@ -537,7 +539,7 @@ def _lineage_purity_estimates(
     if not genes:
         return [], []
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     _repro = {"testis", "epididymis", "seminal_vesicle", "placenta", "ovary"}
@@ -702,7 +704,7 @@ def _subtype_tumor_tpm_lookup(subtype_code):
     diluted mixture; the subtype median is a clean per-subtype tumor
     profile.
     """
-    sub_df = subtype_deconvolved_expression()
+    sub_df = subtype_deconvolved_expression(technical_rna_normalize=True)
     if sub_df is None:
         return {}
     matched = sub_df[sub_df["cancer_code"] == subtype_code]
@@ -733,7 +735,7 @@ def _subtype_lineage_purity_estimates(
     if not subtype_tpm:
         return [], []
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
 
     # Same TME tissues the parent helper uses — keeps the TME-ratio
@@ -1343,7 +1345,7 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
     sample_tpm = _build_sample_tpm_by_symbol(df_gene_expr)
 
     # Reference expression by symbol (raw FPKM, within-dataset)
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     ref_expr = ref_by_sym[f"FPKM_{cancer_code}"].to_dict()
 
@@ -2131,7 +2133,7 @@ def _score_normal_tissues(sample_tpm_by_symbol, top_n=10):
 
     Returns sorted list of (tissue, score, n_genes).
     """
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
 
@@ -2175,7 +2177,7 @@ def _score_host_tissue_details(
     immune/stromal backgrounds. This prevents lymph node from winning simply
     because a sample is immune-rich.
     """
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     expr = ref_by_sym[ntpm_cols].astype(float)
@@ -3045,11 +3047,6 @@ def plot_sample_summary(
     top_cancers = analysis["top_cancers"]
     codes = [c for c, s in top_cancers]
     scores = [s for c, s in top_cancers]
-    candidate_by_code = {
-        row["code"]: row
-        for row in analysis.get("candidate_trace", [])
-        if isinstance(row, dict) and row.get("code")
-    }
     colors = ["#2166ac" if c == cancer_code else "#92c5de" for c in codes]
     y = np.arange(len(codes))
     ax1.barh(y, scores, color=colors, edgecolor="none", height=0.6)
@@ -3057,15 +3054,12 @@ def plot_sample_summary(
         from .plot import CANCER_TYPE_NAMES as CTN
 
         label = f"{code} ({CTN.get(code, '')})"
-        geomean = candidate_by_code.get(code, {}).get("support_geomean")
         score_label = f"{score:.2f}"
-        if geomean is not None:
-            score_label += f" (geo {float(geomean):.2f})"
         ax1.text(score + 0.01, i, score_label, va="center", fontsize=9)
         ax1.text(-0.01, i, label, va="center", ha="right", fontsize=9)
     ax1.set_yticks([])
     ax1.set_xlim(0, 1.1)
-    ax1.set_xlabel("Normalized support (top = 1.0; geo = factor geomean)", fontsize=10)
+    ax1.set_xlabel("Normalized support (top = 1.0)", fontsize=10)
     fit_quality = analysis.get("fit_quality", {})
     fit_label = fit_quality.get("label")
     title = "Cancer type hypotheses"
@@ -3419,10 +3413,7 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
     ax.barh(y, scores, color=colors, edgecolor="none", height=0.6)
     for i, (code, score) in enumerate(top_cancers):
         label = f"{code} ({CTN.get(code, '')})"
-        geomean = candidate_by_code.get(code, {}).get("support_geomean")
         score_label = f"{score:.2f}"
-        if geomean is not None:
-            score_label += f" (geo {float(geomean):.2f})"
         ax.text(score + 0.01, i, score_label, va="center", fontsize=9)
         ax.text(-0.01, i, label, va="center", ha="right", fontsize=9)
         if code == cancer_code and code != top_code:
@@ -3437,7 +3428,7 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
             )
     ax.set_yticks([])
     ax.set_xlim(0, 1.1)
-    ax.set_xlabel("Normalized support (top = 1.0; geo = factor geomean)")
+    ax.set_xlabel("Normalized support (top = 1.0)")
     fit_label = fit_quality.get("label")
     title = "Cancer type hypotheses"
     if top_code != cancer_code:

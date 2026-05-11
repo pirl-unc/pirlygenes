@@ -86,7 +86,9 @@ from .decomposition import (
     plot_decomposition_composition,
 )
 from .sample_context import (
+    heuristic_support_label,
     infer_sample_context,
+    length_pair_display_label,
     library_prep_clause,
     library_prep_display_label,
     plot_degradation_index,
@@ -1614,6 +1616,7 @@ def analyze(
     alterations: Optional[str] = None,
     alignment_qc: Optional[str] = None,
     expression_qc_rescue: str = "auto",
+    expression_qc_remove_noncoding: bool = False,
     therapy_target_top_k: int = 10,
     therapy_target_tpm_threshold: float = 30.0,
     deprecated_figures: bool = False,
@@ -1657,6 +1660,7 @@ def analyze(
         alterations=alterations,
         alignment_qc=alignment_qc,
         expression_qc_rescue=expression_qc_rescue,
+        expression_qc_remove_noncoding=expression_qc_remove_noncoding,
         therapy_target_top_k=therapy_target_top_k,
         therapy_target_tpm_threshold=therapy_target_tpm_threshold,
         deprecated_figures=deprecated_figures,
@@ -1837,6 +1841,7 @@ def _analyze_body(run: AnalyzeRun):
     df_expr, expression_qc_rescue = apply_expression_qc_rescue(
         df_expr_raw,
         mode=config.expression_qc_rescue,
+        remove_noncoding=config.expression_qc_remove_noncoding,
     )
     expression_scale_qc = dict(df_expr.attrs.get("expression_scale_qc") or {})
     if expression_qc_rescue.get("applied"):
@@ -3799,10 +3804,11 @@ def _analyze_body(run: AnalyzeRun):
 Sample analyzed as **{cancer_code}** ({cancer_name}).
 
 Raw QC figures use the original expression table. Downstream biology uses
-technical-RNA-normalized TPM by default: mtDNA, rRNA-like, and
-rRNA-pseudogene rows are zeroed and the remaining TPM is renormalized in
-the input sample. Bundled reference matrices remain raw unless a specific
-caller explicitly requests technical-RNA-normalized references.
+technical-RNA-normalized TPM by default: mitochondrial transcripts, NUMT-like
+mitochondrial pseudogenes, rRNA-like features, and rRNA-pseudogene rows are
+zeroed and the remaining TPM is renormalized. Downstream reference comparisons
+use the same normalized analysis view; raw sample/reference values remain
+available for QC and provenance.
 
 ## Reports
 
@@ -5461,15 +5467,11 @@ def _generate_text_reports(
             lines.append(f"- **Source file**: `{input_path}`")
         lines.append(
             f"- **Library prep**: {library_prep_display_label(sample_context.library_prep)} "
-            f"(confidence {sample_context.library_prep_confidence:.0%})"
+            f"({heuristic_support_label(sample_context.library_prep_confidence)})"
         )
         lines.append(
             f"- **Preservation**: {sample_context.preservation.replace('_', ' ')}"
-            + (
-                f" (degradation index {sample_context.degradation_index:.2f})"
-                if sample_context.degradation_index is not None
-                else ""
-            )
+            + f"; length-pair {length_pair_display_label(sample_context)}"
         )
         raw_scale_qc = analysis.get("raw_expression_scale_qc") or {}
         scale_qc = analysis.get("expression_scale_qc") or {}
@@ -5551,8 +5553,9 @@ def _generate_text_reports(
             suffix = f"; dominant genes: {', '.join(top_bits)}" if top_bits else ""
             lines.append(
                 f"- **Expression concentration QC**: {concentration_level}ly concentrated "
-                "TPM distribution; this can reflect rRNA/pseudogene/contaminant dominance, "
-                f"low library complexity, or assay/input issues{suffix}."
+                "TPM distribution; this can reflect technical RNA, "
+                "ribosomal-pseudogene/small-RNA carryover, blood or immune-clone "
+                f"dominance, low library complexity, or assay/input issues{suffix}."
             )
         if ctx_signals.get("likely_targeted_panel"):
             lines.append(
@@ -5594,8 +5597,8 @@ def _generate_text_reports(
             prep_label = prep.replace("_", " ")
             lines.append(
                 f"**Preservation**: {preservation_label} "
-                f"(library prep inferred as *{prep_label}*, confidence "
-                f"{sample_context.library_prep_confidence:.0%})"
+                f"(library prep inferred as *{prep_label}*, "
+                f"{heuristic_support_label(sample_context.library_prep_confidence)})"
             )
             if (
                 sample_context.degradation_severity
