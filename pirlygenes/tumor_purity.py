@@ -257,6 +257,9 @@ TUMOR_PURITY_PARAMETERS = {
         "candidate_panel_top_n": 2,
         "non_penalizing_families": ["MESENCHYMAL"],
         "soft_family_penalty_gain": 0.75,
+        "orphan_context_min_signature": 0.55,
+        "orphan_context_min_raw_ratio": 0.85,
+        "orphan_context_dominant_raw_ratio": 1.30,
     },
 }
 
@@ -2525,10 +2528,159 @@ def _apply_prad_stromal_rescue(rows, sample_tpm_by_symbol):
     return rows
 
 
+def _candidate_raw_support(row, family_params):
+    """Candidate evidence before family/orphan weighting."""
+
+    return (
+        float(row.get("signature_score") or 0.0)
+        * max(
+            float(row.get("purity_estimate") or 0.0),
+            family_params["support_norm_floor"],
+        )
+        * float(row.get("lineage_support_factor") or 1.0)
+    )
+
+
+def _recompute_candidate_support(row, family_params, family_factor=None):
+    factor = float(row.get("family_factor") if family_factor is None else family_factor)
+    support_factors = (
+        float(row.get("signature_score") or 0.0),
+        max(
+            float(row.get("purity_estimate") or 0.0),
+            family_params["support_norm_floor"],
+        ),
+        float(row.get("lineage_support_factor") or 1.0),
+        max(
+            float(row.get("signature_stability") or 0.0),
+            family_params["signature_stability_floor"],
+        ),
+        max(factor, family_params["min_factor"]),
+    )
+    row["family_factor"] = max(factor, family_params["min_factor"])
+    row["support_score"] = float(np.prod(support_factors))
+    row["support_geomean"] = (
+        float(row["support_score"] ** (1.0 / len(support_factors)))
+        if row["support_score"] > 0
+        else 0.0
+    )
+
+
+def _apply_coarse_tcga_orphan_rescue(rows, family_params, tissue_signal=None):
+    """Let strong Step-0 context suspend an orphan cancer-type penalty.
+
+    BLCA, CHOL, LIHC, PAAD, etc. do not belong to the broad family panels.
+    They can therefore be penalized below a family-coded competitor even when
+    the direct cancer evidence and the coarse TCGA/normal-tissue read agree.
+    This rescue is intentionally restricted to unconstrained auto-detection:
+    it only considers the Step-0 top TCGA cohort, requires that cohort to be
+    an orphan candidate, and requires either matching normal-tissue context or
+    clear raw-signal dominance.
+    """
+
+    if not rows or tissue_signal is None:
+        return rows
+
+    cancer_hint = str(getattr(tissue_signal, "cancer_hint", "") or "")
+    if cancer_hint == "healthy-dominant":
+        return rows
+
+    top_tcga = list(getattr(tissue_signal, "top_tcga_cohorts", None) or [])
+    if not top_tcga:
+        return rows
+
+    coarse_code = str(top_tcga[0][0] or "").replace("FPKM_", "")
+    if not coarse_code:
+        return rows
+
+    by_code = {str(row.get("code") or ""): row for row in rows}
+    coarse_row = by_code.get(coarse_code)
+    if coarse_row is None:
+        return rows
+    if coarse_row.get("family_label") is not None:
+        return rows
+    if float(coarse_row.get("family_factor") or 0.0) >= 1.0:
+        return rows
+
+    sorted_rows = sorted(
+        rows,
+        key=lambda row: (
+            -float(row.get("support_score") or 0.0),
+            -float(row.get("signature_score") or 0.0),
+            str(row.get("code") or ""),
+        ),
+    )
+    current_top = sorted_rows[0]
+    if current_top.get("code") == coarse_code:
+        return rows
+    if current_top.get("family_label") is None:
+        return rows
+
+    signature = float(coarse_row.get("signature_score") or 0.0)
+    if signature < family_params["orphan_context_min_signature"]:
+        return rows
+
+    coarse_raw = _candidate_raw_support(coarse_row, family_params)
+    top_raw = _candidate_raw_support(current_top, family_params)
+    if top_raw <= 0:
+        return rows
+    if coarse_raw < family_params["orphan_context_min_raw_ratio"] * top_raw:
+        return rows
+
+    top_normals = list(getattr(tissue_signal, "top_normal_tissues", None) or [])
+    expected_tissue = CANCER_TO_TISSUE.get(coarse_code)
+    observed_tissue = (
+        str(top_normals[0][0] or "").replace("nTPM_", "") if top_normals else ""
+    )
+    tissue_matches = bool(expected_tissue and observed_tissue == expected_tissue)
+    raw_dominates = coarse_raw >= (
+        family_params["orphan_context_dominant_raw_ratio"] * top_raw
+    )
+    if not (tissue_matches or raw_dominates):
+        return rows
+
+    for idx, row in enumerate(sorted_rows, start=1):
+        row.setdefault("pre_rescue_rank", idx)
+        row.setdefault("pre_rescue_support_score", row.get("support_score"))
+        row.setdefault("pre_rescue_support_geomean", row.get("support_geomean"))
+    context_basis = "normal_tissue_match" if tissue_matches else "raw_signal_dominance"
+    if tissue_matches:
+        rescue_message = (
+            f"Step-0 TCGA correlation and expected normal-tissue context support {coarse_code}; "
+            "suspending the orphan family penalty for the auto-detected call."
+        )
+    else:
+        rescue_message = (
+            f"Step-0 TCGA correlation and direct cancer evidence support {coarse_code}; "
+            "suspending the orphan family penalty for the auto-detected call."
+        )
+
+    coarse_row["support_override"] = {
+        "kind": "coarse_tcga_orphan_context",
+        "recommended_code": coarse_code,
+        "competing_code": str(current_top.get("code") or ""),
+        "top_tcga_rho": float(top_tcga[0][1] or 0.0),
+        "top_normal_tissue": observed_tissue,
+        "expected_tissue": expected_tissue,
+        "context_basis": context_basis,
+        "raw_signal_ratio": float(coarse_raw / top_raw),
+        "message": rescue_message,
+    }
+    _recompute_candidate_support(coarse_row, family_params, family_factor=1.0)
+    rows.sort(
+        key=lambda row: (
+            -row["support_score"],
+            -row["signature_score"],
+            row["code"],
+        )
+    )
+    return rows
+
+
 def rank_cancer_type_candidates(
     df_gene_expr,
     candidate_codes=None,
     top_k=5,
+    tissue_signal=None,
 ):
     """Rank cancer-type hypotheses by signature evidence and purity plausibility.
 
@@ -2739,14 +2891,9 @@ def rank_cancer_type_candidates(
     family_matched_rows = [r for r in rows if r["family_label"] is not None]
     if family_matched_rows:
 
-        def _raw_signal(r):
-            return (
-                r["signature_score"]
-                * max(r["purity_estimate"], family_params["support_norm_floor"])
-                * r["lineage_support_factor"]
-            )
-
-        best_family_raw = max(_raw_signal(r) for r in family_matched_rows)
+        best_family_raw = max(
+            _candidate_raw_support(r, family_params) for r in family_matched_rows
+        )
         if best_family_raw > 0:
             for r in rows:
                 if r["family_label"] is not None or r["family_factor"] >= 1.0:
@@ -2755,27 +2902,14 @@ def rank_cancer_type_candidates(
                     continue
                 if r["purity_estimate"] < _ORPHAN_DOMINANCE_MIN_PURITY:
                     continue
-                if _raw_signal(r) < _ORPHAN_DOMINANCE_RATIO * best_family_raw:
+                if (
+                    _candidate_raw_support(r, family_params)
+                    < _ORPHAN_DOMINANCE_RATIO * best_family_raw
+                ):
                     continue
                 # Orphan dominates — recompute support without the
                 # family-penalty handicap.
-                r["family_factor"] = 1.0
-                support_factors = (
-                    r["signature_score"],
-                    max(r["purity_estimate"], family_params["support_norm_floor"]),
-                    r["lineage_support_factor"],
-                    max(
-                        r["signature_stability"],
-                        family_params["signature_stability_floor"],
-                    ),
-                    1.0,
-                )
-                r["support_score"] = float(np.prod(support_factors))
-                r["support_geomean"] = (
-                    float(r["support_score"] ** (1.0 / len(support_factors)))
-                    if r["support_score"] > 0
-                    else 0.0
-                )
+                _recompute_candidate_support(r, family_params, family_factor=1.0)
 
     rows.sort(
         key=lambda row: (
@@ -2785,6 +2919,28 @@ def rank_cancer_type_candidates(
         )
     )
     if unconstrained:
+        if tissue_signal is None:
+            needs_coarse_context = (
+                rows
+                and rows[0].get("family_label") is not None
+                and any(
+                    row.get("family_label") is None
+                    and float(row.get("family_factor") or 0.0) < 1.0
+                    for row in rows[1:]
+                )
+            )
+            if needs_coarse_context:
+                try:
+                    from .healthy_vs_tumor import assess_tissue_composition
+
+                    tissue_signal = assess_tissue_composition(df_gene_expr)
+                except Exception:  # noqa: BLE001
+                    tissue_signal = None
+        rows = _apply_coarse_tcga_orphan_rescue(
+            rows,
+            family_params,
+            tissue_signal=tissue_signal,
+        )
         rows = _apply_prad_stromal_rescue(rows, sample_tpm)
     rows = _promote_same_family_alternatives(rows)
 
@@ -2903,7 +3059,7 @@ def _summarize_fit_quality(candidate_trace, signature_stats):
 # -------------------- comprehensive summary --------------------
 
 
-def analyze_sample(df_gene_expr, cancer_type=None):
+def analyze_sample(df_gene_expr, cancer_type=None, tissue_signal=None):
     """Comprehensive sample composition analysis.
 
     Returns a dict with all analysis results: cancer type, purity,
@@ -2926,12 +3082,14 @@ def analyze_sample(df_gene_expr, cancer_type=None):
             df_gene_expr,
             candidate_codes=[cancer_code] + default_candidates,
             top_k=8,
+            tissue_signal=tissue_signal,
         )
     else:
         candidate_trace = rank_cancer_type_candidates(
             df_gene_expr,
             candidate_codes=None,
             top_k=8,
+            tissue_signal=tissue_signal,
         )
         cancer_code = (
             candidate_trace[0]["code"] if candidate_trace else stats[0]["code"]

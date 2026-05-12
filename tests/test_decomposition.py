@@ -80,6 +80,21 @@ def test_metastasis_template_ranking_uses_cancer_support():
     assert results[0].score > results[1].score
 
 
+def test_empty_template_override_uses_default_templates():
+    """CLI config returns [] when no override is supplied; that must mean
+    default templates, not no decomposition hypotheses."""
+
+    results = decompose_sample(
+        _tcga_sample("BLCA"),
+        cancer_types=["BLCA"],
+        templates=[],
+        top_k=3,
+    )
+
+    assert results
+    assert {row.template for row in results}
+
+
 def test_tcga_prad_uses_external_purity_anchor():
     """TCGA PRAD median should stay near the known cohort purity scale."""
     ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")

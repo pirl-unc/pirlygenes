@@ -1,5 +1,5 @@
 """Regression test for issue #160 — family-factor penalty miscalls
-orphan-family cancer types on their own cohort medians.
+orphan-family cancer types.
 
 Before the fix, the classifier's geomean multiplied a `family_factor`
 that dropped orphan cancer types (BLCA, PAAD — no family grouping) to
@@ -8,17 +8,23 @@ That made the TCGA-median of BLCA itself classify as ESCA (squamous
 family) despite BLCA having the highest signature, purity, and
 lineage scores.
 
-The fix adds a raw-signal dominance override: when an orphan's
-`signature × purity × lineage_support` product exceeds the top
-family-matched competitor's by ≥ 1.5×, the family penalty is
-suspended for that orphan.
+The fix has two guards: a raw-signal dominance override for clean cohort
+medians, and a Step-0 TCGA/normal-tissue context rescue for admixed samples
+where an orphan's direct cancer evidence is strong but family scoring would
+otherwise prefer a broad-family competitor.
 """
 
 import pandas as pd
 import pytest
 
 from pirlygenes.gene_sets_cancer import pan_cancer_expression
-from pirlygenes.tumor_purity import rank_cancer_type_candidates
+from pirlygenes.tumor_purity import (
+    TUMOR_PURITY_PARAMETERS,
+    CANCER_TO_TISSUE,
+    _CANCER_FAMILY_BY_CODE,
+    _apply_coarse_tcga_orphan_rescue,
+    rank_cancer_type_candidates,
+)
 
 
 def _cohort_median_sample(code: str) -> pd.DataFrame:
@@ -122,3 +128,189 @@ def test_override_rejects_orphan_with_tme_driven_raw_signal():
             for r in ranked[:4]
         )
     )
+
+
+def _rank_row(
+    code,
+    *,
+    support_score,
+    signature_score,
+    purity_estimate,
+    lineage_support_factor,
+    family_label=None,
+    family_factor=1.0,
+    signature_stability=0.3,
+):
+    return {
+        "code": code,
+        "support_score": support_score,
+        "support_geomean": support_score ** 0.2,
+        "signature_score": signature_score,
+        "purity_estimate": purity_estimate,
+        "lineage_support_factor": lineage_support_factor,
+        "family_label": family_label,
+        "family_factor": family_factor,
+        "signature_stability": signature_stability,
+    }
+
+
+class _TissueSignal:
+    cancer_hint = "tumor-consistent"
+
+    def __init__(self, top_tcga, top_normal):
+        self.top_tcga_cohorts = top_tcga
+        self.top_normal_tissues = top_normal
+
+
+@pytest.mark.parametrize(
+    "orphan_code,competitor_code,competitor_family",
+    [
+        ("BLCA", "ESCA", "ESCA_SQ"),
+        ("PAAD", "STAD", "GASTRIC"),
+        ("LIHC", "SARC", "MESENCHYMAL"),
+        ("LUAD", "LUSC", "SQUAMOUS"),
+    ],
+)
+def test_coarse_tcga_context_rescues_orphan_from_family_penalty(
+    orphan_code, competitor_code, competitor_family
+):
+    """An orphan TCGA code can have stronger direct evidence and Step-0
+    context, but still lose to a family-coded candidate after the orphan
+    family penalty. The context rescue must be generic, not BLCA-specific."""
+
+    rows = [
+        _rank_row(
+            competitor_code,
+            support_score=0.0379,
+            signature_score=0.741,
+            purity_estimate=0.390,
+            lineage_support_factor=0.488,
+            family_label=competitor_family,
+            family_factor=0.811,
+        ),
+        _rank_row(
+            orphan_code,
+            support_score=0.0348,
+            signature_score=0.767,
+            purity_estimate=0.741,
+            lineage_support_factor=0.923,
+            family_factor=0.150,
+            signature_stability=0.442,
+        ),
+    ]
+    tissue = CANCER_TO_TISSUE[orphan_code]
+    signal = _TissueSignal(
+        [(f"FPKM_{orphan_code}", 0.84), (f"FPKM_{competitor_code}", 0.82)],
+        [(f"nTPM_{tissue}", 0.79)],
+    )
+
+    rescued = _apply_coarse_tcga_orphan_rescue(
+        rows,
+        TUMOR_PURITY_PARAMETERS["family_scoring"],
+        tissue_signal=signal,
+    )
+
+    assert rescued[0]["code"] == orphan_code
+    assert rescued[0]["family_factor"] == 1.0
+    assert rescued[0]["support_override"]["kind"] == "coarse_tcga_orphan_context"
+    assert rescued[0]["support_override"]["context_basis"] == "normal_tissue_match"
+
+
+def test_all_tcga_codes_are_either_family_mapped_or_context_rescuable_orphans():
+    """Pin the curation contract: family panels are intentionally partial.
+
+    Codes outside ``_CANCER_FAMILY_BY_CODE`` must still have a primary tissue
+    mapping so Step-0 tissue context can rescue them from the non-family
+    penalty when appropriate.
+    """
+
+    codes = sorted(
+        c.replace("FPKM_", "")
+        for c in pan_cancer_expression().columns
+        if c.startswith("FPKM_")
+    )
+    orphans = [code for code in codes if code not in _CANCER_FAMILY_BY_CODE]
+    assert orphans, "test setup should include orphan-family TCGA codes"
+    missing_tissue = [code for code in orphans if code not in CANCER_TO_TISSUE]
+    assert not missing_tissue
+
+
+def test_coarse_tcga_context_rescue_allows_met_site_background_by_raw_dominance():
+    """PFO017-liver shape: a BLCA liver-met sample may have liver as the top
+    normal-tissue background. Strong BLCA raw evidence can still rescue the
+    orphan BLCA row without claiming urinary-bladder host tissue matched."""
+
+    rows = [
+        _rank_row(
+            "SARC",
+            support_score=0.032,
+            signature_score=0.62,
+            purity_estimate=0.45,
+            lineage_support_factor=0.60,
+            family_label="MESENCHYMAL",
+            family_factor=0.811,
+        ),
+        _rank_row(
+            "BLCA",
+            support_score=0.030,
+            signature_score=0.77,
+            purity_estimate=0.74,
+            lineage_support_factor=0.92,
+            family_factor=0.150,
+            signature_stability=0.442,
+        ),
+    ]
+    signal = _TissueSignal(
+        [("FPKM_BLCA", 0.84), ("FPKM_SARC", 0.82)],
+        [("nTPM_liver", 0.91)],
+    )
+
+    rescued = _apply_coarse_tcga_orphan_rescue(
+        rows,
+        TUMOR_PURITY_PARAMETERS["family_scoring"],
+        tissue_signal=signal,
+    )
+
+    assert rescued[0]["code"] == "BLCA"
+    assert rescued[0]["support_override"]["context_basis"] == "raw_signal_dominance"
+    assert rescued[0]["support_override"]["expected_tissue"] == "urinary_bladder"
+    assert rescued[0]["support_override"]["top_normal_tissue"] == "liver"
+
+
+def test_coarse_tcga_context_does_not_rescue_family_coded_sarc_signal():
+    """ASY shape: SARC can be the coarse TCGA/mesenchymal signal, but it is
+    not an orphan penalized by family scoring, so this rescue must not fire."""
+
+    rows = [
+        _rank_row(
+            "READ",
+            support_score=0.0537,
+            signature_score=0.545,
+            purity_estimate=0.448,
+            lineage_support_factor=0.961,
+            family_label="CRC",
+            family_factor=1.0,
+        ),
+        _rank_row(
+            "SARC",
+            support_score=0.0213,
+            signature_score=0.518,
+            purity_estimate=0.721,
+            lineage_support_factor=0.900,
+            family_label="MESENCHYMAL",
+            family_factor=0.250,
+        ),
+    ]
+    signal = _TissueSignal(
+        [("FPKM_SARC", 0.81)],
+        [("nTPM_smooth_muscle", 0.86)],
+    )
+
+    rescued = _apply_coarse_tcga_orphan_rescue(
+        rows,
+        TUMOR_PURITY_PARAMETERS["family_scoring"],
+        tissue_signal=signal,
+    )
+
+    assert rescued[0]["code"] == "READ"
+    assert "support_override" not in rescued[1]

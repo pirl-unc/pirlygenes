@@ -159,6 +159,59 @@ def test_summary_surfaces_rna_qc_and_prad_stromal_pitfall():
     assert "RNA-inferred PRAD context rescue" in md
 
 
+def test_summary_uses_generic_text_for_orphan_context_rescue():
+    analysis = _make_analysis()
+    analysis["cancer_type"] = "BLCA"
+    analysis["cancer_name"] = "Bladder Urothelial Carcinoma"
+    analysis["cancer_call_rescue"] = {
+        "kind": "coarse_tcga_orphan_context",
+        "recommended_code": "BLCA",
+        "competing_code": "ESCA",
+        "context_basis": "raw_signal_dominance",
+        "message": (
+            "Step-0 TCGA correlation and direct cancer evidence support BLCA; "
+            "suspending the orphan family penalty for the auto-detected call."
+        ),
+    }
+
+    md = build_summary(
+        analysis,
+        _make_ranges_df(),
+        cancer_code="BLCA",
+        disease_state="",
+        sample_id="sample_X",
+    )
+
+    assert "RNA-inferred BLCA (Bladder Urothelial Carcinoma) context rescue" in md
+    assert "orphan-family penalty" in md
+    assert "PRAD context rescue" not in md
+    assert "prostate tissue/context" not in md
+
+
+def test_summary_surfaces_inferred_met_site_context():
+    analysis = _make_analysis()
+    analysis["cancer_type"] = "BLCA"
+    analysis["cancer_name"] = "Bladder Urothelial Carcinoma"
+    analysis["inferred_site_context"] = {
+        "site": "liver",
+        "tissue": "liver",
+        "score": 0.964,
+        "primary_tissue": "urinary_bladder",
+        "primary_tissue_score": 0.796,
+    }
+
+    md = build_summary(
+        analysis,
+        _make_ranges_df(),
+        cancer_code="BLCA",
+        disease_state="",
+        sample_id="sample_X",
+    )
+
+    assert "**Inferred site context:** likely liver metastatic host/background" in md
+    assert "inferred from expression, not supplied as a user constraint" in md
+
+
 def test_summary_marks_supplied_cancer_type_basis():
     analysis = _make_analysis()
     analysis["analysis_constraints"] = {"cancer_type": "PRAD"}

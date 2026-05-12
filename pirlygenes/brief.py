@@ -132,6 +132,102 @@ def _cancer_type_context_label(code: Optional[str]) -> str:
     return cancer_type_context_label(code)
 
 
+def _cancer_call_rescue_kind(analysis) -> str:
+    rescue = analysis.get("cancer_call_rescue") or {}
+    return str(rescue.get("kind") or "").strip()
+
+
+def _cancer_call_rescue_basis_line(analysis, cancer_code: str) -> Optional[str]:
+    call_rescue = analysis.get("cancer_call_rescue") or {}
+    if not call_rescue:
+        return None
+
+    kind = str(call_rescue.get("kind") or "").strip()
+    if kind == "low_purity_prad_stromal_context":
+        return (
+            "**Cancer-type basis:** RNA-inferred PRAD context rescue: prostate "
+            "tissue/marker evidence and raw PRAD signature are present, while the "
+            "epithelial PRAD lineage program is attenuated and a stromal/"
+            "smooth-muscle SARC signal dominates. Confirm pathology, tumor "
+            "cellularity, preservation/RIN, and treatment state before using the "
+            "therapy shortlist."
+        )
+    if kind == "coarse_tcga_orphan_context":
+        recommended = str(
+            call_rescue.get("recommended_code") or cancer_code or ""
+        ).strip()
+        competitor = str(call_rescue.get("competing_code") or "").strip()
+        basis = str(call_rescue.get("context_basis") or "").strip()
+        label = _cancer_type_context_label(recommended)
+        if basis == "normal_tissue_match":
+            evidence = "Step-0 TCGA correlation and expected normal-tissue context"
+        else:
+            evidence = "Step-0 TCGA correlation and direct cancer evidence"
+        competitor_clause = (
+            f" over {_cancer_type_context_label(competitor)}" if competitor else ""
+        )
+        return (
+            f"**Cancer-type basis:** RNA-inferred {label} context rescue: "
+            f"{evidence} support {recommended}, so the classifier suspended the "
+            f"orphan-family penalty{competitor_clause}. Confirm pathology or "
+            "clinical diagnosis before using the therapy shortlist."
+        )
+    message = str(call_rescue.get("message") or "").strip()
+    if message:
+        return (
+            "**Cancer-type basis:** RNA-inferred context rescue: "
+            f"{message.rstrip('.')}. Confirm pathology or clinical diagnosis "
+            "before using the therapy shortlist."
+        )
+    return (
+        "**Cancer-type basis:** RNA-inferred context rescue adjusted the provisional "
+        "report label; confirm pathology or clinical diagnosis before using the "
+        "therapy shortlist."
+    )
+
+
+def _cancer_call_rescue_summary_line(analysis) -> Optional[str]:
+    if _cancer_call_rescue_kind(analysis) != "low_purity_prad_stromal_context":
+        return None
+    return (
+        "**QC/call pitfall:** prostate tissue/context is present, but the "
+        "PRAD epithelial lineage program is attenuated and stromal/"
+        "smooth-muscle RNA can mimic SARC; check tumor cellularity, "
+        "preservation/RIN, and treatment state before trusting an "
+        "expression-only sarcoma call."
+    )
+
+
+def _cancer_call_rescue_actionable_line(analysis) -> Optional[str]:
+    if _cancer_call_rescue_kind(analysis) != "low_purity_prad_stromal_context":
+        return None
+    return (
+        "\nQC/call pitfall: prostate tissue/context is present, but the "
+        "PRAD epithelial lineage program is attenuated and stromal/"
+        "smooth-muscle RNA can mimic SARC. Treat a standalone sarcoma call "
+        "as unsupported unless pathology agrees."
+    )
+
+
+def _inferred_site_context_line(analysis) -> Optional[str]:
+    inferred = analysis.get("inferred_site_context") or {}
+    if not inferred:
+        return None
+    site = str(inferred.get("site") or "").replace("_", " ")
+    tissue = str(inferred.get("tissue") or site).replace("_", " ")
+    score = float(inferred.get("score") or 0.0)
+    primary = str(inferred.get("primary_tissue") or "").replace("_", " ")
+    primary_score = inferred.get("primary_tissue_score")
+    primary_clause = ""
+    if primary and isinstance(primary_score, (int, float)):
+        primary_clause = f", above {primary} {float(primary_score):.2f}"
+    return (
+        f"**Inferred site context:** likely {site} metastatic host/background "
+        f"signal ({tissue} score {score:.2f}{primary_clause}); inferred from "
+        "expression, not supplied as a user constraint."
+    )
+
+
 def _registry_family(code: Optional[str]) -> str:
     row = _registry_row_for_code(code)
     if row is None:
@@ -1117,14 +1213,7 @@ def _cancer_type_basis_line(analysis, cancer_code: str) -> str:
         )
     call_rescue = analysis.get("cancer_call_rescue") or {}
     if call_rescue and not constrained_code and source != "user-specified":
-        return (
-            "**Cancer-type basis:** RNA-inferred PRAD context rescue: prostate "
-            "tissue/marker evidence and raw PRAD signature are present, while the "
-            "epithelial PRAD lineage program is attenuated and a stromal/"
-            "smooth-muscle SARC signal dominates. Confirm pathology, tumor "
-            "cellularity, preservation/RIN, and treatment state before using the "
-            "therapy shortlist."
-        )
+        return _cancer_call_rescue_basis_line(analysis, cancer_code)
     if constrained_code or source == "user-specified":
         supplied = report_context_code or constrained_code or str(cancer_code or "").strip()
         supplied_label = cancer_type_context.label_for("report") or _cancer_type_context_label(supplied)
@@ -1764,15 +1853,12 @@ def build_summary(
             f"**Purity:** {overall:.0%} (model interval {lower:.0%}–{upper:.0%}, "
             f"{tier_label} confidence)."
         )
-    call_rescue = analysis.get("cancer_call_rescue") or {}
-    if call_rescue:
-        lines.append(
-            "**QC/call pitfall:** prostate tissue/context is present, but the "
-            "PRAD epithelial lineage program is attenuated and stromal/"
-            "smooth-muscle RNA can mimic SARC; check tumor cellularity, "
-            "preservation/RIN, and treatment state before trusting an "
-            "expression-only sarcoma call."
-        )
+    rescue_line = _cancer_call_rescue_summary_line(analysis)
+    if rescue_line:
+        lines.append(rescue_line)
+    inferred_site_line = _inferred_site_context_line(analysis)
+    if inferred_site_line:
+        lines.append(inferred_site_line)
 
     # Sample context
     if sample_context is not None:
@@ -1993,13 +2079,12 @@ def build_actionable(
     call_suffix = _call_confidence_suffix(call_tier, concise=True)
     call_punctuation = call_suffix or "."
     lines.append(f"Working call: **{cancer_code}** ({cancer_name}){call_punctuation}")
-    if analysis.get("cancer_call_rescue"):
-        lines.append(
-            "\nQC/call pitfall: prostate tissue/context is present, but the "
-            "PRAD epithelial lineage program is attenuated and stromal/"
-            "smooth-muscle RNA can mimic SARC. Treat a standalone sarcoma call "
-            "as unsupported unless pathology agrees."
-        )
+    rescue_line = _cancer_call_rescue_actionable_line(analysis)
+    if rescue_line:
+        lines.append(rescue_line)
+    inferred_site_line = _inferred_site_context_line(analysis)
+    if inferred_site_line:
+        lines.append("\n" + inferred_site_line)
     basis_line = _cancer_type_basis_line(analysis, cancer_code)
     rna_crosscheck = _rna_crosscheck_line(analysis, cancer_code)
     if basis_line:

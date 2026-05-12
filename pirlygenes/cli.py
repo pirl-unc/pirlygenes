@@ -2072,7 +2072,11 @@ def _analyze_body(run: AnalyzeRun):
 
     # Sample composition analysis
     print("[analysis] Running sample composition analysis...")
-    analysis = analyze_sample(df_expr, cancer_type=analysis_cancer_type)
+    analysis = analyze_sample(
+        df_expr,
+        cancer_type=analysis_cancer_type,
+        tissue_signal=healthy_vs_tumor,
+    )
     rna_inferred_cancer_type = analysis.get("cancer_type")
     rna_inferred_cancer_name = analysis.get("cancer_name")
     fusion_findings = []
@@ -2184,6 +2188,15 @@ def _analyze_body(run: AnalyzeRun):
     analysis["cancer_type_context"] = cancer_type_context.to_dict()
     cancer_code = cancer_type_context.code_for("report")
     reference_cancer_code = cancer_type_context.code_for("cohort")
+    inferred_site_context = _infer_likely_met_site_context(
+        analysis,
+        explicit_site_hint=site_hint,
+        explicit_met_site=met_site,
+        tumor_context=tumor_context,
+        decomposition_templates=template_overrides,
+    )
+    if inferred_site_context:
+        analysis["inferred_site_context"] = inferred_site_context
     purity = analysis["purity"]
     fit_quality = analysis.get("fit_quality", {})
     candidate_trace_for_print = analysis.get("candidate_trace", [])
@@ -2232,6 +2245,8 @@ def _analyze_body(run: AnalyzeRun):
     top_tissues = analysis["tissue_scores"][:3]
     tissue_str = ", ".join(f"{t} ({s:.2f})" for t, s, _ in top_tissues)
     print(f"[analysis] Top background signatures: {tissue_str}")
+    if inferred_site_context:
+        print(f"[analysis] Inferred site context: {inferred_site_context['message']}")
     mhc1 = analysis["mhc1"]
     print(
         f"[analysis] MHC-I: HLA-A={mhc1.get('HLA-A', 0):.0f}, "
@@ -2255,6 +2270,7 @@ def _analyze_body(run: AnalyzeRun):
                 "overall_lower": purity.get("overall_lower"),
                 "overall_upper": purity.get("overall_upper"),
             },
+            "inferred_site_context": inferred_site_context,
         },
     )
 
@@ -2380,6 +2396,14 @@ def _analyze_body(run: AnalyzeRun):
     components_png = None
     candidates_png = None
     candidate_codes = [row["code"] for row in analysis.get("candidate_trace", [])[:4]]
+    decomposition_site_hint = site_hint or (
+        inferred_site_context.get("site") if inferred_site_context else None
+    )
+    decomposition_tumor_context = (
+        "met"
+        if inferred_site_context and tumor_context == "auto" and not template_overrides
+        else tumor_context
+    )
     candidate_tsv = (
         "%s-cancer-candidates.tsv" % prefix if prefix else "cancer-candidates.tsv"
     )
@@ -2431,9 +2455,9 @@ def _analyze_body(run: AnalyzeRun):
         cancer_types=candidate_codes or [cancer_code],
         top_k=6,
         sample_mode=analysis["sample_mode"],
-        tumor_context=tumor_context,
-        site_hint=site_hint,
-        templates=template_overrides,
+        tumor_context=decomposition_tumor_context,
+        site_hint=decomposition_site_hint,
+        templates=template_overrides or None,
         sample_context=sample_context,
         # #85: hand off the already-ranked candidate rows so
         # decompose_sample reuses analyze_sample's work instead of
@@ -2504,6 +2528,9 @@ def _analyze_body(run: AnalyzeRun):
         # propagated as the headline purity.
         if should_adopt_decomposition_purity(reference_cancer_code, best_decomp):
             effective_purity = best_decomp.purity_result
+            if isinstance(effective_purity, dict):
+                analysis["purity"] = effective_purity
+                purity = analysis["purity"]
 
         # Propagate a lineage-panel purity override back into
         # ``analysis["purity"]`` so every downstream report is
@@ -2554,6 +2581,25 @@ def _analyze_body(run: AnalyzeRun):
                 f"{analysis['purity']['overall_estimate']:.0%} "
                 f"(signature-based estimate was "
                 f"{orig_purity.get('overall_estimate', 0):.0%})"
+            )
+        if _constrain_purity_interval_with_decomposition(purity, best_decomp):
+            interval_cap = (
+                purity.get("components", {}).get("decomposition_interval_cap", {})
+            )
+            effective_purity = purity
+            print(
+                "[analysis] Purity upper bound constrained by decomposition: "
+                f"{interval_cap.get('original_upper', 0):.0%} -> "
+                f"{interval_cap.get('constrained_upper', 0):.0%}"
+            )
+            run.note_step(
+                "purity_interval_refinement",
+                outputs={
+                    "overall_estimate": purity.get("overall_estimate"),
+                    "overall_lower": purity.get("overall_lower"),
+                    "overall_upper": purity.get("overall_upper"),
+                    "decomposition_interval_cap": interval_cap,
+                },
             )
         if call_summary.get("site_indeterminate"):
             print(
@@ -2999,7 +3045,7 @@ def _analyze_body(run: AnalyzeRun):
             cancer_type=effective_cancer_type,
             purity_result=purity_dict,
             decomposition_results=decomp_results,
-            met_site=analysis.get("analysis_constraints", {}).get("met_site"),
+            met_site=_effective_met_site_for_background(analysis),
         )
         ranges_tsv = (
             "%s-tumor-expression-ranges.tsv" % prefix
@@ -3949,7 +3995,9 @@ def _summary_mode_clause(sample_mode, purity, top_tissues):
         f"and {render_fold(purity['components']['immune']['enrichment'])} immune enrichment "
         f"vs TCGA median. "
         f"Top background signatures: {tissue_str}. "
-        f"These tissue matches describe residual non-tumor background and are not literal site calls. "
+        "These tissue matches describe residual non-tumor background; strong off-primary "
+        "organ signal can support an inferred host-site context, but the scores are not "
+        "composition percentages. "
     )
 
 
@@ -3971,8 +4019,8 @@ def _background_section_config(sample_mode):
         "These scores are normalized similarity to reference nTPM profiles. "
         "They summarize residual tissue-like programs left in the sample after normalization, "
         "which can reflect host background, ectopic lineage programs, developmental/neuronal programs, "
-        "or CTA-like/testis-like signal. They are not literal site calls or composition percentages. "
-        "Host-tissue context is handled separately in the decomposition section. "
+        "or CTA-like/testis-like signal. They are not literal composition percentages. "
+        "Strong off-primary organ signal is surfaced as inferred host-site context in the decomposition section. "
         "Not every anatomic site exists as its own reference row here "
         "(for example, the panel has bone marrow but not a standalone bone/osteoblast tissue row). "
         "The `N genes` column is the size of the retained tissue-specific panel, and "
@@ -4131,6 +4179,171 @@ _TEMPLATE_PRIMARY_COMPATIBILITY = {
         "vascular",
     ),
 }
+
+
+_MET_SITE_TISSUE_TO_HINT = {
+    "adrenal_gland": "adrenal",
+    "bone_marrow": "bone",
+    "cerebellum": "brain",
+    "cerebral_cortex": "brain",
+    "hippocampal_formation": "brain",
+    "amygdala": "brain",
+    "basal_ganglia": "brain",
+    "hypothalamus": "brain",
+    "midbrain": "brain",
+    "choroid_plexus": "brain",
+    "spinal_cord": "brain",
+    "liver": "liver",
+    "lung": "lung",
+    "lymph_node": "lymph_node",
+    "skin": "skin",
+}
+
+
+def _primary_tissues_for_analysis(analysis=None, cancer_code=None):
+    lookup_code = None
+    if analysis is not None:
+        try:
+            lookup_code = resolved_subtype_code_for_analysis(analysis)
+        except Exception:
+            lookup_code = None
+    lookup_code = lookup_code or str(cancer_code or "").strip() or None
+    if not lookup_code:
+        return []
+    try:
+        from .decomposition.templates import get_template_host_tissues
+
+        return get_template_host_tissues("solid_primary", cancer_type=lookup_code)
+    except Exception:
+        return []
+
+
+def _infer_likely_met_site_context(
+    analysis,
+    *,
+    explicit_site_hint=None,
+    explicit_met_site=None,
+    tumor_context="auto",
+    decomposition_templates=None,
+):
+    """Infer likely metastatic host site from strong off-primary tissue signal.
+
+    This is intentionally not a user constraint. It is a report/decomposition
+    prior for cases like BLCA with a high liver residual program: strong host
+    tissue evidence should make the liver-met model compete even if the user did
+    not pass ``--site-hint liver``.
+    """
+
+    if not analysis or analysis.get("sample_mode") not in {None, "auto", "solid"}:
+        return None
+    if explicit_site_hint or explicit_met_site or decomposition_templates:
+        return None
+    if tumor_context == "primary":
+        return None
+
+    tissue_scores = list(analysis.get("tissue_scores") or [])
+    if not tissue_scores:
+        return None
+    top_tissue, top_score, top_n = tissue_scores[0]
+    top_tissue = str(top_tissue or "").strip()
+    top_score = float(top_score or 0.0)
+    site_hint = _MET_SITE_TISSUE_TO_HINT.get(top_tissue)
+    if not site_hint or top_score < 0.90:
+        return None
+
+    cancer_code = str(analysis.get("cancer_type") or "").strip()
+    primary_tissues = _primary_tissues_for_analysis(
+        analysis=analysis,
+        cancer_code=cancer_code,
+    )
+    if top_tissue in set(primary_tissues):
+        return None
+
+    score_by_tissue = {
+        str(tissue): float(score or 0.0) for tissue, score, _ in tissue_scores
+    }
+    primary_scores = [
+        (tissue, score_by_tissue.get(tissue, 0.0)) for tissue in primary_tissues
+    ]
+    primary_tissue, primary_score = (
+        max(primary_scores, key=lambda item: item[1])
+        if primary_scores
+        else ("", 0.0)
+    )
+    if top_score - primary_score < 0.10:
+        return None
+
+    return {
+        "site": site_hint,
+        "tissue": top_tissue,
+        "score": top_score,
+        "n_genes": int(top_n or 0),
+        "primary_tissue": primary_tissue,
+        "primary_tissue_score": float(primary_score),
+        "basis": "strong_off_primary_host_tissue",
+        "message": (
+            f"Strong {top_tissue.replace('_', ' ')} host/background program "
+            f"({top_score:.2f}) exceeds the expected primary-tissue program "
+            f"{primary_tissue.replace('_', ' ') if primary_tissue else 'unknown'} "
+            f"({primary_score:.2f}); treating {site_hint.replace('_', ' ')} as a likely "
+            "metastatic host site for decomposition and target-background modeling."
+        ),
+    }
+
+
+def _effective_met_site_for_background(analysis):
+    constraints = analysis.get("analysis_constraints") or {}
+    return constraints.get("met_site") or (
+        (analysis.get("inferred_site_context") or {}).get("site")
+    )
+
+
+def _constrain_purity_interval_with_decomposition(purity, decomp_result):
+    """Cap impossible 100% purity endpoints when TME is explicitly modeled."""
+
+    if not isinstance(purity, dict) or decomp_result is None:
+        return False
+    warnings = getattr(decomp_result, "warnings", None) or []
+    if any("No non-tumor components in template" in warning for warning in warnings):
+        return False
+    try:
+        estimate = float(purity.get("overall_estimate"))
+        old_upper = float(purity.get("overall_upper"))
+    except (TypeError, ValueError):
+        return False
+    if old_upper <= estimate:
+        return False
+
+    fractions = getattr(decomp_result, "fractions", None) or {}
+    non_tumor_fraction = 0.0
+    for component, value in fractions.items():
+        if str(component) == "tumor":
+            continue
+        try:
+            non_tumor_fraction += max(0.0, float(value))
+        except (TypeError, ValueError):
+            continue
+    if non_tumor_fraction < 0.05:
+        return False
+
+    # Conservative: require only half of the point-estimated non-tumor mass to
+    # remain possible, rather than treating decomposition as an exact bound.
+    min_non_tumor_floor = 0.5 * non_tumor_fraction
+    capped_upper = max(estimate, min(old_upper, 1.0 - min_non_tumor_floor))
+    if capped_upper >= old_upper - 1e-9:
+        return False
+
+    purity["overall_upper"] = float(capped_upper)
+    components = purity.setdefault("components", {})
+    if isinstance(components, dict):
+        components["decomposition_interval_cap"] = {
+            "original_upper": old_upper,
+            "constrained_upper": float(capped_upper),
+            "modeled_non_tumor_fraction": float(non_tumor_fraction),
+            "minimum_non_tumor_floor": float(min_non_tumor_floor),
+            "basis": "best_fit_decomposition_non_tumor_components",
+        }
+    return True
 
 
 def _analysis_primary_descriptor(analysis=None, cancer_code=None):
@@ -4598,20 +4811,44 @@ def _integrated_evidence_bullets(analysis, decomp_results=None):
     )
     best_decomp = decomp_results[0] if decomp_results else None
     bullets = []
+    inferred_site = analysis.get("inferred_site_context") or {}
+    if inferred_site:
+        tissue = str(inferred_site.get("tissue") or inferred_site.get("site") or "")
+        primary = str(inferred_site.get("primary_tissue") or "")
+        primary_clause = (
+            f", above the expected primary-tissue program {primary.replace('_', ' ')} "
+            f"({float(inferred_site.get('primary_tissue_score') or 0.0):.2f})"
+            if primary
+            else ""
+        )
+        bullets.append(
+            "- **Inferred host site**: "
+            f"{tissue.replace('_', ' ')} background is strong "
+            f"({float(inferred_site.get('score') or 0.0):.2f}){primary_clause}; "
+            f"treating {str(inferred_site.get('site') or '').replace('_', ' ')} as a "
+            "likely metastatic host context for decomposition and target-background modeling."
+        )
     call_rescue = analysis.get("cancer_call_rescue") or {}
     if call_rescue:
-        markers = call_rescue.get("prostate_marker_tpm") or {}
+        rescue_kind = str(call_rescue.get("kind") or "")
+        label = (
+            "QC/call pitfall"
+            if rescue_kind == "low_purity_prad_stromal_context"
+            else "Cancer-call rescue"
+        )
         marker_clause = ""
-        if markers:
-            top_markers = sorted(
-                markers.items(),
-                key=lambda item: (-float(item[1]), item[0]),
-            )[:5]
-            marker_clause = "; prostate markers " + ", ".join(
-                f"{gene} {value:g} TPM" for gene, value in top_markers
-            )
+        if rescue_kind == "low_purity_prad_stromal_context":
+            markers = call_rescue.get("prostate_marker_tpm") or {}
+            if markers:
+                top_markers = sorted(
+                    markers.items(),
+                    key=lambda item: (-float(item[1]), item[0]),
+                )[:5]
+                marker_clause = "; prostate markers " + ", ".join(
+                    f"{gene} {value:g} TPM" for gene, value in top_markers
+                )
         bullets.append(
-            "- **QC/call pitfall**: "
+            f"- **{label}**: "
             + str(call_rescue.get("message") or "").rstrip(".")
             + marker_clause
             + ". "
@@ -5738,6 +5975,15 @@ def _generate_text_reports(
                 "- **Requested decomposition templates**: "
                 + ", ".join(constraints["decomposition_templates"])
             )
+    inferred_site = analysis.get("inferred_site_context") or {}
+    if inferred_site:
+        lines.append(
+            "- **Inferred host site**: "
+            f"{str(inferred_site.get('site') or '').replace('_', ' ')} "
+            f"(background tissue {str(inferred_site.get('tissue') or '').replace('_', ' ')}, "
+            f"score {float(inferred_site.get('score') or 0.0):.2f}); inferred from "
+            "off-primary expression background, not supplied as a user constraint."
+        )
     if candidate_trace:
         lines.append("- **Top candidates** (geomean · normalized):")
         for row in candidate_trace[:5]:
@@ -5796,15 +6042,46 @@ def _generate_text_reports(
                 f"{'%.3f' % lineage if lineage is not None else '—'} | "
                 f"{'%.3f' % concordance if concordance is not None else '—'} |"
             )
-        if any(row.get("support_override") for row in candidate_trace[:8]):
+        rescue_row = next(
+            (row for row in candidate_trace[:8] if row.get("support_override")),
+            None,
+        )
+        if rescue_row:
+            support_override = rescue_row.get("support_override") or {}
+            rescue_kind = str(support_override.get("kind") or "")
             lines.append("")
-            lines.append(
-                "*Pitfall-aware ranking note*: the PRAD row was promoted above the "
-                "stromal/SARC row because prostate tissue markers and the raw PRAD "
-                "signature were strong while the epithelial PRAD lineage program was "
-                "attenuated. The SARC row remains visible as a near-tied stromal/"
-                "smooth-muscle alternative, not as a resolved diagnosis."
-            )
+            if rescue_kind == "low_purity_prad_stromal_context":
+                lines.append(
+                    "*Pitfall-aware ranking note*: the PRAD row was promoted above the "
+                    "stromal/SARC row because prostate tissue markers and the raw PRAD "
+                    "signature were strong while the epithelial PRAD lineage program was "
+                    "attenuated. The SARC row remains visible as a near-tied stromal/"
+                    "smooth-muscle alternative, not as a resolved diagnosis."
+                )
+            elif rescue_kind == "coarse_tcga_orphan_context":
+                recommended = str(
+                    support_override.get("recommended_code")
+                    or rescue_row.get("code")
+                    or ""
+                )
+                competitor = str(support_override.get("competing_code") or "")
+                competitor_clause = (
+                    f" over {_cancer_label(competitor)}" if competitor else ""
+                )
+                lines.append(
+                    "*Context-aware ranking note*: "
+                    f"{_cancer_label(recommended)} was promoted{competitor_clause} "
+                    "because Step-0 TCGA context and direct cancer evidence supported "
+                    "the orphan cancer type more strongly than the broad-family penalty "
+                    "allowed."
+                )
+            else:
+                lines.append(
+                    "*Context-aware ranking note*: the leading row was promoted by a "
+                    "documented cancer-call rescue rule; treat the alternatives as "
+                    "visible unresolved hypotheses until pathology/clinical context "
+                    "confirms the label."
+                )
         lines.append("")
 
     # Embedding features
@@ -5943,6 +6220,16 @@ def _generate_text_reports(
         lines.append(
             "- **Integration note**: the tumor-specific signature panel was weaker and less stable "
             "than the lineage panel, so it was downweighted rather than used as a hard lower bound."
+        )
+    interval_cap = components.get("decomposition_interval_cap", {})
+    if isinstance(interval_cap, dict) and interval_cap:
+        lines.append(
+            "- **Decomposition interval cap**: upper purity bound constrained from "
+            f"{interval_cap.get('original_upper', 0):.0%} to "
+            f"{interval_cap.get('constrained_upper', 0):.0%} because the best-fit "
+            "decomposition assigns "
+            f"{interval_cap.get('modeled_non_tumor_fraction', 0):.0%} of the sample "
+            "to non-tumor components."
         )
     if sample_mode == "pure":
         lines.append(
@@ -6920,6 +7207,15 @@ def _build_target_report(
         )
     elif call_summary.get("reported_site"):
         lines.append(f"- **Background/site model**: {call_summary['reported_site']}.")
+    inferred_site = analysis.get("inferred_site_context") or {}
+    if inferred_site:
+        lines.append(
+            "- **Inferred host site**: "
+            f"{str(inferred_site.get('site') or '').replace('_', ' ')} "
+            f"(background tissue {str(inferred_site.get('tissue') or '').replace('_', ' ')}, "
+            f"score {float(inferred_site.get('score') or 0.0):.2f}); this was inferred "
+            "from expression, not supplied as a user constraint."
+        )
     lines.append(f"- **Analysis mode**: {_sample_mode_display(sample_mode)}.")
     lines.append(
         f"- **{_purity_metric_label(sample_mode).title()}**: "

@@ -1,9 +1,16 @@
 """Tests for v4.1 report-clarity + met-site bundle (issues #13, #32, #33)."""
 
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 
-from pirlygenes.cli import _next_best_support_gap
+from pirlygenes.cli import (
+    _constrain_purity_interval_with_decomposition,
+    _effective_met_site_for_background,
+    _infer_likely_met_site_context,
+    _next_best_support_gap,
+)
 from pirlygenes.plot import (
     MET_SITE_TISSUE_AUGMENTATION,
     estimate_tumor_expression_ranges,
@@ -143,6 +150,100 @@ def test_met_site_rejects_unknown_value():
         met_site="moon",
     )
     assert len(ranges) > 0
+
+
+def test_infers_likely_met_site_from_strong_off_primary_background():
+    analysis = {
+        "cancer_type": "BLCA",
+        "sample_mode": "solid",
+        "tissue_scores": [
+            ("liver", 0.964, 20),
+            ("gallbladder", 0.807, 20),
+            ("urinary_bladder", 0.796, 20),
+        ],
+    }
+
+    inferred = _infer_likely_met_site_context(analysis)
+
+    assert inferred["site"] == "liver"
+    assert inferred["tissue"] == "liver"
+    assert inferred["primary_tissue"] == "urinary_bladder"
+    assert _effective_met_site_for_background(
+        {"analysis_constraints": {}, "inferred_site_context": inferred}
+    ) == "liver"
+
+
+def test_does_not_infer_met_site_when_background_matches_primary():
+    analysis = {
+        "cancer_type": "BLCA",
+        "sample_mode": "solid",
+        "tissue_scores": [
+            ("urinary_bladder", 0.93, 20),
+            ("liver", 0.86, 20),
+        ],
+    }
+
+    assert _infer_likely_met_site_context(analysis) is None
+
+
+def test_does_not_infer_liver_met_for_liver_primary():
+    analysis = {
+        "cancer_type": "LIHC",
+        "sample_mode": "solid",
+        "tissue_scores": [
+            ("liver", 0.96, 20),
+            ("gallbladder", 0.80, 20),
+        ],
+    }
+
+    assert _infer_likely_met_site_context(analysis) is None
+
+
+def test_decomposition_non_tumor_caps_purity_upper_bound():
+    purity = {
+        "overall_estimate": 0.685,
+        "overall_lower": 0.33,
+        "overall_upper": 1.0,
+        "components": {},
+    }
+    decomp = SimpleNamespace(
+        fractions={
+            "tumor": 0.685,
+            "endothelial": 0.109,
+            "hepatocyte": 0.093,
+            "T_cell": 0.041,
+            "B_cell": 0.039,
+            "fibroblast": 0.018,
+            "myeloid": 0.015,
+        },
+        warnings=[],
+    )
+
+    changed = _constrain_purity_interval_with_decomposition(purity, decomp)
+
+    assert changed is True
+    assert purity["overall_upper"] == pytest.approx(0.8425)
+    cap = purity["components"]["decomposition_interval_cap"]
+    assert cap["original_upper"] == pytest.approx(1.0)
+    assert cap["modeled_non_tumor_fraction"] == pytest.approx(0.315)
+
+
+def test_decomposition_interval_cap_ignores_tiny_non_tumor_assignments():
+    purity = {
+        "overall_estimate": 0.96,
+        "overall_lower": 0.90,
+        "overall_upper": 1.0,
+        "components": {},
+    }
+    decomp = SimpleNamespace(
+        fractions={"tumor": 0.96, "endothelial": 0.02, "T_cell": 0.01},
+        warnings=[],
+    )
+
+    changed = _constrain_purity_interval_with_decomposition(purity, decomp)
+
+    assert changed is False
+    assert purity["overall_upper"] == pytest.approx(1.0)
 
 
 def test_summary_md_structure_for_report_clarity(tmp_path):

@@ -257,17 +257,21 @@ def _resolve_templates(
 ):
     """Return the templates to evaluate for the selected sample mode."""
     if templates is not None:
-        unknown = [t for t in templates if t not in TEMPLATES]
-        if unknown:
-            valid = sorted(TEMPLATES)
-            raise ValueError(
-                f"Unknown template(s): {unknown}. Valid templates: {valid}"
+        template_list = list(templates)
+        if not template_list:
+            templates = None
+        else:
+            unknown = [t for t in template_list if t not in TEMPLATES]
+            if unknown:
+                valid = sorted(TEMPLATES)
+                raise ValueError(
+                    f"Unknown template(s): {unknown}. Valid templates: {valid}"
+                )
+            return template_list, infer_sample_mode(
+                candidate_rows=candidate_rows,
+                cancer_types=cancer_types,
+                sample_mode=sample_mode,
             )
-        return list(templates), infer_sample_mode(
-            candidate_rows=candidate_rows,
-            cancer_types=cancer_types,
-            sample_mode=sample_mode,
-        )
 
     resolved_mode = infer_sample_mode(
         candidate_rows=candidate_rows,
