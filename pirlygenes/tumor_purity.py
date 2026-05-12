@@ -291,7 +291,7 @@ def _cached_reference_matrices(normalize="housekeeping"):
     if cached is not None:
         return cached
 
-    ref = pan_cancer_expression(normalize=normalize)
+    ref = pan_cancer_expression(normalize=normalize, technical_rna_normalize=True)
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     expr_matrix = ref_by_sym[fpkm_cols].astype(float)
@@ -404,7 +404,7 @@ def _geneset_hk_ratio(genes, hk_symbols, expr_by_symbol):
 
 def _sample_hk_median(sample_tpm):
     """Return the sample housekeeping median on raw TPM scale."""
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     id_to_sym = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
     hk_syms = [id_to_sym[gid] for gid in housekeeping_gene_ids() if gid in id_to_sym]
     sample_hk_vals = [sample_tpm[g] for g in hk_syms if sample_tpm.get(g, 0) > 0]
@@ -464,7 +464,9 @@ def _cancer_specific_lineage_genes(cancer_code: str) -> list:
     if not panel:
         _LINEAGE_SPECIFIC_CACHE[cancer_code] = []
         return []
-    ref = pan_cancer_expression().drop_duplicates(subset="Symbol")
+    ref = pan_cancer_expression(technical_rna_normalize=True).drop_duplicates(
+        subset="Symbol"
+    )
     ref = ref.set_index("Symbol")
     home_col = f"FPKM_{cancer_code}"
     other_cols = [c for c in ref.columns if c.startswith("FPKM_") and c != home_col]
@@ -537,7 +539,7 @@ def _lineage_purity_estimates(
     if not genes:
         return [], []
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     _repro = {"testis", "epididymis", "seminal_vesicle", "placenta", "ovary"}
@@ -702,7 +704,7 @@ def _subtype_tumor_tpm_lookup(subtype_code):
     diluted mixture; the subtype median is a clean per-subtype tumor
     profile.
     """
-    sub_df = subtype_deconvolved_expression()
+    sub_df = subtype_deconvolved_expression(technical_rna_normalize=True)
     if sub_df is None:
         return {}
     matched = sub_df[sub_df["cancer_code"] == subtype_code]
@@ -733,7 +735,7 @@ def _subtype_lineage_purity_estimates(
     if not subtype_tpm:
         return [], []
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
 
     # Same TME tissues the parent helper uses — keeps the TME-ratio
@@ -1343,7 +1345,7 @@ def estimate_tumor_purity(df_gene_expr, cancer_type=None):
     sample_tpm = _build_sample_tpm_by_symbol(df_gene_expr)
 
     # Reference expression by symbol (raw FPKM, within-dataset)
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     ref_expr = ref_by_sym[f"FPKM_{cancer_code}"].to_dict()
 
@@ -2131,7 +2133,7 @@ def _score_normal_tissues(sample_tpm_by_symbol, top_n=10):
 
     Returns sorted list of (tissue, score, n_genes).
     """
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
 
@@ -2175,7 +2177,7 @@ def _score_host_tissue_details(
     immune/stromal backgrounds. This prevents lymph node from winning simply
     because a sample is immune-rich.
     """
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_by_sym = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     expr = ref_by_sym[ntpm_cols].astype(float)
@@ -2360,6 +2362,169 @@ def _promote_same_family_alternatives(rows):
     return [rows[0]] + same_family + other_rows
 
 
+_PRAD_CONTEXT_MARKERS = (
+    "KLK2",
+    "KLK3",
+    "ACP3",
+    "ACPP",
+    "KLK4",
+    "FOXA1",
+    "NKX3-1",
+    "HOXB13",
+    "MSMB",
+)
+
+
+def _detect_low_purity_prad_stromal_pitfall(
+    rows,
+    sample_tpm_by_symbol,
+    *,
+    host_tissue_details=None,
+):
+    """Detect prostate-context samples where stroma can masquerade as SARC.
+
+    This is intentionally narrow: it only fires when PRAD has the strongest raw
+    cancer signature and explicit prostate tissue/marker evidence, while the
+    broad SARC call is being driven by a mesenchymal or smooth-muscle lineage
+    panel and PRAD lineage detection is attenuated.
+    """
+
+    by_code = {str(row.get("code") or ""): row for row in rows}
+    sarc = by_code.get("SARC")
+    prad = by_code.get("PRAD")
+    if not sarc or not prad:
+        return None
+
+    top_code = str(rows[0].get("code") or "") if rows else ""
+    if top_code != "SARC":
+        return None
+
+    prad_sig = float(prad.get("signature_score") or 0.0)
+    sarc_sig = float(sarc.get("signature_score") or 0.0)
+    if prad_sig < 0.70 or prad_sig < sarc_sig * 1.10:
+        return None
+
+    prad_lineage = float(prad.get("lineage_purity") or 0.0)
+    prad_detect = float(prad.get("lineage_detection_fraction") or 0.0)
+    sarc_detect = float(sarc.get("lineage_detection_fraction") or 0.0)
+    if not (prad_lineage <= 0.20 or prad_detect <= 0.35):
+        return None
+    if sarc_detect < 0.75:
+        return None
+
+    if host_tissue_details is None:
+        host_tissue_details = _score_host_tissue_details(
+            sample_tpm_by_symbol,
+            top_n=5,
+        )
+    prostate_row = next(
+        (
+            row
+            for row in host_tissue_details or []
+            if str(row.get("tissue") or "") == "prostate"
+        ),
+        None,
+    )
+    prostate_score = float((prostate_row or {}).get("score") or 0.0)
+    if prostate_score < 0.85:
+        return None
+
+    marker_values = {
+        marker: float(sample_tpm_by_symbol.get(marker, 0.0) or 0.0)
+        for marker in _PRAD_CONTEXT_MARKERS
+    }
+    marker_count = sum(1 for value in marker_values.values() if value >= 2.0)
+    canonical_count = sum(
+        1
+        for marker in ("KLK2", "KLK3", "ACP3", "ACPP", "KLK4", "FOXA1")
+        if marker_values.get(marker, 0.0) >= 2.0
+    )
+    if marker_count < 4 or canonical_count < 4:
+        return None
+
+    winning_subtype = str(sarc.get("winning_subtype") or "")
+    subtype_label = {
+        "SARC_LMS": "leiomyosarcoma-like",
+        "SARC_SYN": "synovial-sarcoma-like",
+        "SARC_UPS": "undifferentiated-pleomorphic-sarcoma-like",
+    }.get(winning_subtype, winning_subtype.replace("_", " ").strip())
+    subtype_clause = (
+        f"; SARC subtype signal was {subtype_label}"
+        if subtype_label
+        else ""
+    )
+    return {
+        "kind": "low_purity_prad_stromal_context",
+        "recommended_code": "PRAD",
+        "competing_code": "SARC",
+        "message": (
+            "Prostate tissue/context is strong and PRAD has the strongest raw "
+            "signature, but the epithelial PRAD lineage panel is attenuated while "
+            "a mesenchymal/smooth-muscle SARC panel is dominant"
+            f"{subtype_clause}."
+        ),
+        "prostate_background_score": prostate_score,
+        "prostate_marker_tpm": {
+            marker: round(value, 3)
+            for marker, value in marker_values.items()
+            if value >= 2.0
+        },
+        "prad_signature_score": prad_sig,
+        "sarc_signature_score": sarc_sig,
+        "prad_lineage_purity": prad_lineage,
+        "prad_lineage_detection_fraction": prad_detect,
+        "sarc_lineage_detection_fraction": sarc_detect,
+        "interpretation": (
+            "Treat the SARC/smooth-muscle signal as a stromal-admixture pitfall "
+            "unless pathology independently supports sarcoma. Confirm tumor "
+            "cellularity, preservation/RIN, therapy state, and prostate lineage "
+            "markers before using expression-derived therapy context."
+        ),
+    }
+
+
+def _apply_prad_stromal_rescue(rows, sample_tpm_by_symbol):
+    """Promote PRAD over SARC in the narrow stromal-prostate pitfall."""
+
+    if not rows:
+        return rows
+    host_tissue_details = _score_host_tissue_details(sample_tpm_by_symbol, top_n=5)
+    pitfall = _detect_low_purity_prad_stromal_pitfall(
+        rows,
+        sample_tpm_by_symbol,
+        host_tissue_details=host_tissue_details,
+    )
+    if not pitfall:
+        return rows
+
+    max_support = max((float(row.get("support_score") or 0.0) for row in rows), default=0.0)
+    if max_support <= 0:
+        return rows
+
+    for idx, row in enumerate(rows, start=1):
+        row.setdefault("pre_rescue_rank", idx)
+        row.setdefault("pre_rescue_support_score", row.get("support_score"))
+        row.setdefault("pre_rescue_support_geomean", row.get("support_geomean"))
+    for row in rows:
+        if row.get("code") != "PRAD":
+            continue
+        row["support_override"] = pitfall
+        row["support_score"] = max(float(row.get("support_score") or 0.0), max_support * 1.05)
+        row["support_geomean"] = (
+            float(row["support_score"] ** 0.2) if row["support_score"] > 0 else 0.0
+        )
+        break
+
+    rows.sort(
+        key=lambda row: (
+            -row["support_score"],
+            -row["signature_score"],
+            row["code"],
+        )
+    )
+    return rows
+
+
 def rank_cancer_type_candidates(
     df_gene_expr,
     candidate_codes=None,
@@ -2382,6 +2547,7 @@ def rank_cancer_type_candidates(
     stats = _compute_cancer_type_signature_stats(df_gene_expr)
     signature_score_map = {row["code"]: float(row["score"]) for row in stats}
     sample_tpm = _build_sample_tpm_by_symbol(df_gene_expr)
+    unconstrained = candidate_codes is None
     family_scores = _score_cancer_family_panels(sample_tpm)
     family_params = TUMOR_PURITY_PARAMETERS["family_scoring"]
     soft_families = set(family_params.get("non_penalizing_families", []))
@@ -2415,7 +2581,7 @@ def rank_cancer_type_candidates(
         key=lambda item: (-item[1], item[0]),
     )
 
-    if candidate_codes is None:
+    if unconstrained:
         candidate_codes = [row["code"] for row in stats[:8]]
         for family, score in ranked_families[: family_params["candidate_panel_top_n"]]:
             if score < family_params["candidate_panel_min_score"]:
@@ -2618,6 +2784,8 @@ def rank_cancer_type_candidates(
             row["code"],
         )
     )
+    if unconstrained:
+        rows = _apply_prad_stromal_rescue(rows, sample_tpm)
     rows = _promote_same_family_alternatives(rows)
 
     max_support = max((row["support_score"] for row in rows), default=0.0)
@@ -2772,6 +2940,9 @@ def analyze_sample(df_gene_expr, cancer_type=None):
     candidate_lookup = {row["code"]: row for row in candidate_trace}
     selected_candidate = candidate_lookup.get(cancer_code)
     cancer_score = selected_candidate["support_score"] if selected_candidate else None
+    cancer_call_rescue = (
+        selected_candidate.get("support_override") if selected_candidate else None
+    )
     family_summary = _summarize_candidate_family(candidate_trace)
     fit_quality = _summarize_fit_quality(candidate_trace, stats)
 
@@ -2813,6 +2984,7 @@ def analyze_sample(df_gene_expr, cancer_type=None):
         "top_cancer_geomean": top_cancer_geomean,
         "signature_top_cancers": signature_top_cancers,
         "candidate_trace": candidate_trace,
+        "cancer_call_rescue": cancer_call_rescue,
         "family_summary": family_summary,
         "fit_quality": fit_quality,
         "purity": purity,
@@ -2875,11 +3047,6 @@ def plot_sample_summary(
     top_cancers = analysis["top_cancers"]
     codes = [c for c, s in top_cancers]
     scores = [s for c, s in top_cancers]
-    candidate_by_code = {
-        row["code"]: row
-        for row in analysis.get("candidate_trace", [])
-        if isinstance(row, dict) and row.get("code")
-    }
     colors = ["#2166ac" if c == cancer_code else "#92c5de" for c in codes]
     y = np.arange(len(codes))
     ax1.barh(y, scores, color=colors, edgecolor="none", height=0.6)
@@ -2887,15 +3054,12 @@ def plot_sample_summary(
         from .plot import CANCER_TYPE_NAMES as CTN
 
         label = f"{code} ({CTN.get(code, '')})"
-        geomean = candidate_by_code.get(code, {}).get("support_geomean")
         score_label = f"{score:.2f}"
-        if geomean is not None:
-            score_label += f" (geo {float(geomean):.2f})"
         ax1.text(score + 0.01, i, score_label, va="center", fontsize=9)
         ax1.text(-0.01, i, label, va="center", ha="right", fontsize=9)
     ax1.set_yticks([])
     ax1.set_xlim(0, 1.1)
-    ax1.set_xlabel("Normalized support (top = 1.0; geo = factor geomean)", fontsize=10)
+    ax1.set_xlabel("Normalized support (top = 1.0)", fontsize=10)
     fit_quality = analysis.get("fit_quality", {})
     fit_label = fit_quality.get("label")
     title = "Cancer type hypotheses"
@@ -3214,7 +3378,7 @@ def _hla_plot_note(analysis) -> str:
 
 
 def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
-    """Standalone: cancer-type hypothesis ranking bar chart."""
+    """Standalone: cancer-type hypothesis ranking and support-factor audit."""
     import matplotlib.pyplot as plt
     from .plot import CANCER_TYPE_NAMES as CTN
 
@@ -3227,28 +3391,120 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
         if isinstance(row, dict) and row.get("code")
     }
 
-    fig, ax = plt.subplots(figsize=(10, max(3, 0.4 * len(top_cancers))))
+    n_rows = max(1, len(top_cancers))
+    fig, (ax, ax_factors) = plt.subplots(
+        1,
+        2,
+        figsize=(13.5, max(3.8, 0.46 * n_rows + 1.3)),
+        gridspec_kw={"width_ratios": [1.15, 1.0]},
+    )
     codes = [c for c, s in top_cancers]
     scores = [s for c, s in top_cancers]
-    colors = ["#2166ac" if c == cancer_code else "#92c5de" for c in codes]
+    top_code = codes[0] if codes else cancer_code
+    colors = []
+    for c in codes:
+        if c == cancer_code:
+            colors.append("#2166ac")
+        elif c == top_code:
+            colors.append("#f4a340")
+        else:
+            colors.append("#92c5de")
     y = np.arange(len(codes))
     ax.barh(y, scores, color=colors, edgecolor="none", height=0.6)
     for i, (code, score) in enumerate(top_cancers):
         label = f"{code} ({CTN.get(code, '')})"
-        geomean = candidate_by_code.get(code, {}).get("support_geomean")
         score_label = f"{score:.2f}"
-        if geomean is not None:
-            score_label += f" (geo {float(geomean):.2f})"
         ax.text(score + 0.01, i, score_label, va="center", fontsize=9)
         ax.text(-0.01, i, label, va="center", ha="right", fontsize=9)
+        if code == cancer_code and code != top_code:
+            ax.text(
+                min(score + 0.22, 1.05),
+                i,
+                "report call",
+                va="center",
+                fontsize=8,
+                color="#2166ac",
+                fontweight="bold",
+            )
     ax.set_yticks([])
     ax.set_xlim(0, 1.1)
-    ax.set_xlabel("Normalized support (top = 1.0; geo = factor geomean)")
+    ax.set_xlabel("Normalized support (top = 1.0)")
     fit_label = fit_quality.get("label")
     title = "Cancer type hypotheses"
+    if top_code != cancer_code:
+        title += f" — report call {cancer_code}; top RNA-support {top_code}"
     if fit_label in {"weak", "ambiguous"}:
         title += f" ({fit_label} fit)"
     ax.set_title(title, fontweight="bold")
+
+    factor_specs = [
+        ("Signature", "signature_score"),
+        ("Purity", "purity_estimate"),
+        ("Lineage", "lineage_detection_fraction"),
+        ("Family", "family_factor"),
+        ("Overall", "support_norm"),
+    ]
+    factor_values = []
+    for code in codes:
+        row = candidate_by_code.get(code, {})
+        values = []
+        for _label, key in factor_specs:
+            value = row.get(key)
+            if value is None and key == "support_norm":
+                value = dict(top_cancers).get(code, 0.0)
+            try:
+                value = float(value)
+            except Exception:
+                value = 0.0
+            values.append(max(0.0, min(1.0, value)))
+        factor_values.append(values)
+    factor_array = (
+        np.asarray(factor_values, dtype=float)
+        if factor_values
+        else np.zeros((0, len(factor_specs)))
+    )
+    if len(codes):
+        im = ax_factors.imshow(
+            factor_array,
+            aspect="auto",
+            vmin=0.0,
+            vmax=1.0,
+            cmap="YlGnBu",
+        )
+        ax_factors.set_xticks(np.arange(len(factor_specs)))
+        ax_factors.set_xticklabels([label for label, _key in factor_specs], fontsize=8)
+        ax_factors.set_yticks(np.arange(len(codes)))
+        ax_factors.set_yticklabels(codes, fontsize=8.5)
+        for i, code in enumerate(codes):
+            for j, value in enumerate(factor_array[i]):
+                ax_factors.text(
+                    j,
+                    i,
+                    f"{value:.2f}",
+                    ha="center",
+                    va="center",
+                    fontsize=7.5,
+                    color="white" if value > 0.58 else "#333333",
+                )
+            if code == cancer_code:
+                ax_factors.scatter(
+                    -0.62,
+                    i,
+                    marker=">",
+                    s=60,
+                    color="#2166ac",
+                    clip_on=False,
+                    zorder=5,
+                )
+        ax_factors.set_title("Support factors", fontweight="bold")
+        ax_factors.tick_params(axis="both", length=0)
+        for spine in ax_factors.spines.values():
+            spine.set_visible(False)
+        cbar = fig.colorbar(im, ax=ax_factors, fraction=0.046, pad=0.04)
+        cbar.ax.tick_params(labelsize=7)
+    else:
+        ax_factors.axis("off")
+
     fusion_note = _fusion_plot_note(analysis)
     if fusion_note:
         ax.text(
@@ -3265,7 +3521,16 @@ def plot_cancer_type_hypotheses(analysis, save_to_filename=None, save_dpi=300):
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["left"].set_visible(False)
-    fig.tight_layout()
+    fig.text(
+        0.5,
+        0.965,
+        "The report call can be externally supplied or QC-rescued; support factors show why a competing RNA context ranked highly.",
+        ha="center",
+        va="top",
+        fontsize=8.5,
+        color="#555555",
+    )
+    fig.tight_layout(rect=[0.0, 0.02, 1.0, 0.93])
     if save_to_filename:
         fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
     return fig

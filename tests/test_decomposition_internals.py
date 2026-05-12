@@ -7,17 +7,65 @@ _fit_one_hypothesis lineage-panel stability threshold.
 """
 
 import numpy as np
+import pandas as pd
 import pytest
 
+from pirlygenes.decomposition import panels as panel_mod
 from pirlygenes.decomposition.engine import (
     DECOMPOSITION_PARAMETERS,
     _hk_normalize,
     _weighted_constrained_nnls,
     _is_excluded_auto_marker,
 )
+from pirlygenes.decomposition.panels import build_shared_lineage_panel
 
 
 # ── _weighted_constrained_nnls ───────────────────────────────────────────
+
+
+def test_prad_shared_lineage_panel_keeps_klk3():
+    panel = build_shared_lineage_panel("PRAD")
+
+    assert "KLK3" in set(panel["symbol"])
+
+
+def test_prad_shared_lineage_panel_curated_klk3_survives_ratio_cliff():
+    panel = build_shared_lineage_panel("PRAD", tolerance_log2=0.1)
+    klk3 = panel[panel["symbol"] == "KLK3"].iloc[0]
+
+    assert klk3["shared_lineage_basis"] == "curated_lineage"
+
+
+def test_shared_lineage_curated_fallback_is_cancer_agnostic(monkeypatch):
+    fake_panel = pd.DataFrame(
+        {
+            "symbol": ["CURATED_MARKER", "GENERIC_MARKER"],
+            "tumor_fpkm": [20.0, 20.0],
+            "normal_ntpm": [80.0, 80.0],
+            "tcga_bulk_fpkm": [20.0, 20.0],
+        }
+    )
+
+    monkeypatch.setattr(
+        panel_mod,
+        "_load_cohort_vs_tissue",
+        lambda cancer_code, tissue=None: (fake_panel.copy(), "fake_tissue"),
+    )
+    monkeypatch.setattr(
+        panel_mod,
+        "lineage_gene_symbols",
+        lambda cancer_code: ["CURATED_MARKER"] if cancer_code == "FAKE" else [],
+    )
+
+    panel = build_shared_lineage_panel(
+        "FAKE",
+        tolerance_log2=0.1,
+        curated_lineage_tolerance_log2=3.0,
+        min_expression=5.0,
+    )
+
+    assert panel["symbol"].tolist() == ["CURATED_MARKER"]
+    assert panel["shared_lineage_basis"].tolist() == ["curated_lineage"]
 
 
 def test_nnls_sum_to_one():

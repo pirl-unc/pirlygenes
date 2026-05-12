@@ -196,9 +196,9 @@ def _sample_expression_by_symbol(df_gene_expr):
     hk_values = raw_values / hk_median
 
     # Resolve symbols from Ensembl IDs via pan-cancer reference
-    ref_lookup = pan_cancer_expression()[["Ensembl_Gene_ID", "Symbol"]].drop_duplicates(
-        subset="Ensembl_Gene_ID"
-    )
+    ref_lookup = pan_cancer_expression(technical_rna_normalize=True)[
+        ["Ensembl_Gene_ID", "Symbol"]
+    ].drop_duplicates(subset="Ensembl_Gene_ID")
     id_to_symbol = dict(zip(ref_lookup["Ensembl_Gene_ID"], ref_lookup["Symbol"]))
     if "canonical_gene_name" in df.columns:
         fallback = df["canonical_gene_name"].fillna("").astype(str)
@@ -256,7 +256,7 @@ def estimate_tumor_expression(
     sample_raw, _ = _sample_expression_by_symbol(df_gene_expr)
 
     # Reference data
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_dedup = ref.drop_duplicates(subset="Symbol").set_index("Symbol")
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
@@ -472,16 +472,18 @@ def estimate_tumor_expression_ranges(
     )
 
     from .gene_sets_cancer import housekeeping_gene_ids
+    from .decomposition.templates import EPITHELIAL_MATCHED_NORMAL_TISSUE
     from .tumor_purity import TCGA_MEDIAN_PURITY
 
     cancer_code = resolve_cancer_type(cancer_type)
+    epithelial_context = cancer_code in EPITHELIAL_MATCHED_NORMAL_TISSUE
 
     # --- Sample expression (raw TPM and HK-normalized) ---
     sample_raw, sample_hk = _sample_expression_by_symbol(df_gene_expr)
 
     # Sample HK median (for converting back from fold-HK to TPM)
     hk_ids = housekeeping_gene_ids()
-    ref_full = pan_cancer_expression()
+    ref_full = pan_cancer_expression(technical_rna_normalize=True)
     ref_flat = ref_full.drop_duplicates(subset="Ensembl_Gene_ID")
     id_to_sym = dict(zip(ref_flat["Ensembl_Gene_ID"], ref_flat["Symbol"]))
     hk_syms = {id_to_sym[gid] for gid in hk_ids if gid in id_to_sym}
@@ -696,13 +698,26 @@ def estimate_tumor_expression_ranges(
         )
         tme_bg_tpm_by_symbol = refined_tme
         # Mirror the refinement into the TME-only view so matched-normal
-        # stays unchanged but the CAF/TAM correction propagates.
-        if tme_only_tpm_by_symbol is not None and subtype_refinement_provenance:
+        # stays unchanged but the activated-state correction propagates.
+        # The per-compartment attribution map is also updated because
+        # target evidence uses it to compute tumor-source bulk TPM.
+        if subtype_refinement_provenance:
             for gene, prov in subtype_refinement_provenance.items():
-                delta = prov["after"] - prov["before"]
-                tme_only_tpm_by_symbol[gene] = float(
-                    tme_only_tpm_by_symbol.get(gene, 0.0) + delta
-                )
+                delta = float(prov["after"]) - float(prov["before"])
+                if tme_only_tpm_by_symbol is not None:
+                    tme_only_tpm_by_symbol[gene] = float(
+                        tme_only_tpm_by_symbol.get(gene, 0.0) + delta
+                    )
+                comp = str(prov.get("compartment") or "")
+                comp_after = prov.get("compartment_after")
+                if (
+                    comp
+                    and comp_after is not None
+                    and per_compartment_tpm_by_symbol is not None
+                ):
+                    per_comp = dict(per_compartment_tpm_by_symbol.get(gene, {}) or {})
+                    per_comp[comp] = round(float(comp_after), 2)
+                    per_compartment_tpm_by_symbol[gene] = per_comp
 
     # --- Purity-adjusted TCGA (HK-normalized, then deconvolved) ---
     # For each FPKM cancer-type column, compute:
@@ -719,6 +734,67 @@ def estimate_tumor_expression_ranges(
 
     LOW_PURITY_THRESHOLD = 0.25
     LOW_PURITY_HEADROOM = 3.0
+
+    non_tumor_source_by_symbol = {}
+    if epithelial_context:
+        from .decomposition.subtype_refs import (
+            CAF_MARKER_FOLDS,
+            EXHAUSTED_T_MARKER_FOLDS,
+            MDSC_MARKER_FOLDS,
+            TAM_MARKER_FOLDS,
+            TI_PLASMA_MARKER_FOLDS,
+            TLS_B_MARKER_FOLDS,
+            TUMOR_ENDOTHELIUM_MARKER_FOLDS,
+        )
+
+        for marker in CAF_MARKER_FOLDS:
+            non_tumor_source_by_symbol[marker] = "stromal/CAF marker"
+        for marker in TUMOR_ENDOTHELIUM_MARKER_FOLDS:
+            non_tumor_source_by_symbol[marker] = "endothelial marker"
+        for marker in TAM_MARKER_FOLDS:
+            non_tumor_source_by_symbol[marker] = "myeloid/TAM marker"
+        for marker in MDSC_MARKER_FOLDS:
+            non_tumor_source_by_symbol[marker] = "myeloid/MDSC marker"
+        for marker in EXHAUSTED_T_MARKER_FOLDS:
+            non_tumor_source_by_symbol[marker] = "T-cell marker"
+        for marker in TLS_B_MARKER_FOLDS:
+            non_tumor_source_by_symbol[marker] = "B-cell/TLS marker"
+        for marker in TI_PLASMA_MARKER_FOLDS:
+            non_tumor_source_by_symbol[marker] = "plasma-cell marker"
+        for marker in (
+            "ACTA2",
+            "TAGLN",
+            "MYH11",
+            "CNN1",
+            "DES",
+            "TPM2",
+            "MYL9",
+            "COL6A1",
+            "COL6A2",
+            "COL6A3",
+        ):
+            non_tumor_source_by_symbol[marker] = "smooth-muscle/stromal marker"
+        for marker in (
+            "PTPRC",
+            "CD3D",
+            "CD3E",
+            "CD3G",
+            "CD4",
+            "CD8A",
+            "CD8B",
+            "MS4A1",
+            "CD79A",
+            "CD79B",
+            "IGHG1",
+            "IGKC",
+            "HLA-A",
+            "HLA-B",
+            "HLA-C",
+            "HLA-DRA",
+            "HLA-DRB1",
+            "B2M",
+        ):
+            non_tumor_source_by_symbol[marker] = "immune/MHC marker"
 
     def _scale_non_tumor_tpm(base_tpm, purity_used):
         denom = max(1.0 - float(p_med), 1e-3)
@@ -896,6 +972,8 @@ def estimate_tumor_expression_ranges(
                     estimates.append(_apply_priors(raw, p))
         estimates.sort()
         median_est = float(np.median(estimates))
+        tumor_cell_tpm_low = float(estimates[0]) if estimates else median_est
+        tumor_cell_tpm_high = float(estimates[-1]) if estimates else median_est
 
         ref_vals = cancer_expr_all.loc[symbol].values
         n = len(ref_vals)
@@ -1126,7 +1204,19 @@ def estimate_tumor_expression_ranges(
         # When purity isn't known yet (shouldn't happen in practice),
         # use a conservative 0.5.
         non_tumor_frac = max(0.0, min(1.0, 1.0 - p_med))
+        source_marker_compartment = non_tumor_source_by_symbol.get(symbol, "")
+        source_marker_non_tumor_prior = bool(
+            source_marker_compartment and not amplified_over_healthy
+        )
         breadth_floor = non_tumor_frac * mean_top_healthy_tpm
+        if source_marker_non_tumor_prior:
+            # In epithelial cancers, canonical CAF/immune/smooth-muscle
+            # markers are stronger priors for admixed non-tumor biology
+            # than for tumor-cell expression. Without a fitted
+            # decomposition compartment, at least the non-tumor cellular
+            # fraction should be allowed to explain these genes before the
+            # residual is called tumor-source.
+            breadth_floor = max(breadth_floor, non_tumor_frac * observed)
 
         def _attribution_candidate(purity_used):
             scaled_attr = {
@@ -1137,6 +1227,11 @@ def estimate_tumor_expression_ranges(
             breadth_floor_candidate = (
                 max(0.0, min(1.0, 1.0 - float(purity_used))) * mean_top_healthy_tpm
             )
+            if source_marker_non_tumor_prior:
+                breadth_floor_candidate = max(
+                    breadth_floor_candidate,
+                    max(0.0, min(1.0, 1.0 - float(purity_used))) * observed,
+                )
             over_predicted_candidate = observed > 0 and attr_total_candidate > observed
             if over_predicted_candidate:
                 tumor_fraction_fit = _tumor_fraction_for_purity(purity_used)
@@ -1154,6 +1249,8 @@ def estimate_tumor_expression_ranges(
                 )
 
             capped = False
+            tumor_candidate_pre_cap = float(tumor_candidate)
+            purity_cap = None
             if (
                 purity_used is not None
                 and float(purity_used) < LOW_PURITY_THRESHOLD
@@ -1173,6 +1270,8 @@ def estimate_tumor_expression_ranges(
                 tumor_fraction_candidate,
                 over_predicted_candidate,
                 capped,
+                tumor_candidate_pre_cap,
+                purity_cap,
             )
 
         # Effective non-tumor attribution = max of
@@ -1231,15 +1330,26 @@ def estimate_tumor_expression_ranges(
         attr_fraction_estimates = []
         attr_over_predicted_flags = []
         attr_capped_flags = []
+        attr_pre_cap_estimates = []
+        attr_cap_estimates = []
         for purity_used in [p_lo, p_med, p_hi]:
-            tumor_candidate, fraction_candidate, over_flag, capped_flag = (
-                _attribution_candidate(purity_used)
-            )
+            (
+                tumor_candidate,
+                fraction_candidate,
+                over_flag,
+                capped_flag,
+                pre_cap_candidate,
+                cap_candidate,
+            ) = _attribution_candidate(purity_used)
             attr_estimates.append(float(tumor_candidate))
             attr_fraction_estimates.append(float(fraction_candidate))
             attr_over_predicted_flags.append(bool(over_flag))
             attr_capped_flags.append(bool(capped_flag))
+            attr_pre_cap_estimates.append(float(pre_cap_candidate))
+            if cap_candidate is not None:
+                attr_cap_estimates.append(float(cap_candidate))
         attr_tumor_tpm = float(np.median(attr_estimates))
+        attr_tumor_tpm_pre_cap = float(np.median(attr_pre_cap_estimates))
         attr_tumor_fraction = (
             float(np.median(attr_fraction_estimates))
             if attr_fraction_estimates
@@ -1250,6 +1360,28 @@ def estimate_tumor_expression_ranges(
         )
         attr_tumor_tpm_high = (
             float(max(attr_estimates)) if attr_estimates else attr_tumor_tpm
+        )
+        attr_tumor_tpm_pre_cap_low = (
+            float(min(attr_pre_cap_estimates))
+            if attr_pre_cap_estimates
+            else attr_tumor_tpm_pre_cap
+        )
+        attr_tumor_tpm_pre_cap_high = (
+            float(max(attr_pre_cap_estimates))
+            if attr_pre_cap_estimates
+            else attr_tumor_tpm_pre_cap
+        )
+        low_purity_cap_tpm = (
+            float(np.median(attr_cap_estimates)) if attr_cap_estimates else None
+        )
+        low_purity_cap_tpm_low = (
+            float(min(attr_cap_estimates)) if attr_cap_estimates else None
+        )
+        low_purity_cap_tpm_high = (
+            float(max(attr_cap_estimates)) if attr_cap_estimates else None
+        )
+        low_purity_cap_delta_tpm = max(
+            0.0, float(attr_tumor_tpm_pre_cap - attr_tumor_tpm)
         )
         attr_tumor_fraction_low = (
             float(min(attr_fraction_estimates))
@@ -1298,6 +1430,8 @@ def estimate_tumor_expression_ranges(
                 tme_fold_med, 4
             ) * sample_hk_median >= round(0.7 * observed, 4)
         low_confidence_tumor = tme_dominant or broadly_expressed
+        if source_marker_non_tumor_prior:
+            low_confidence_tumor = True
 
         rows.append(
             {
@@ -1312,6 +1446,8 @@ def estimate_tumor_expression_ranges(
                 "tme_explainable": bool(tme_explainable),
                 "tme_dominant": tme_dominant,
                 "low_confidence_tumor": low_confidence_tumor,
+                "source_marker_non_tumor_prior": source_marker_non_tumor_prior,
+                "source_marker_compartment": source_marker_compartment,
                 "cohort_prior_tpm": round(cohort_prior_tpm, 2),
                 "tme_only_tpm": round(tme_only_tpm, 2),
                 "matched_normal_tpm": round(mn_tpm, 2),
@@ -1324,6 +1460,18 @@ def estimate_tumor_expression_ranges(
                 # compartment shortcut keeps the common case cheap for
                 # markdown rendering.
                 "attribution": attribution,
+                "tumor_attributed_bulk_tpm": round(attr_tumor_tpm, 2),
+                "tumor_attributed_bulk_tpm_low": round(attr_tumor_tpm_low, 2),
+                "tumor_attributed_bulk_tpm_high": round(attr_tumor_tpm_high, 2),
+                "tumor_attributed_bulk_tpm_pre_low_purity_cap": round(
+                    attr_tumor_tpm_pre_cap, 2
+                ),
+                "tumor_attributed_bulk_tpm_pre_low_purity_cap_low": round(
+                    attr_tumor_tpm_pre_cap_low, 2
+                ),
+                "tumor_attributed_bulk_tpm_pre_low_purity_cap_high": round(
+                    attr_tumor_tpm_pre_cap_high, 2
+                ),
                 "attr_tumor_tpm": round(attr_tumor_tpm, 2),
                 "attr_tumor_fraction": round(attr_tumor_fraction, 4),
                 "attr_tumor_tpm_low": round(attr_tumor_tpm_low, 2),
@@ -1339,6 +1487,22 @@ def estimate_tumor_expression_ranges(
                 # the tumor share is bounded by purity × headroom, not
                 # fitted directly.
                 "low_purity_cap_applied": bool(low_purity_cap_applied),
+                "low_purity_cap_tpm": (
+                    round(low_purity_cap_tpm, 2)
+                    if low_purity_cap_tpm is not None
+                    else None
+                ),
+                "low_purity_cap_tpm_low": (
+                    round(low_purity_cap_tpm_low, 2)
+                    if low_purity_cap_tpm_low is not None
+                    else None
+                ),
+                "low_purity_cap_tpm_high": (
+                    round(low_purity_cap_tpm_high, 2)
+                    if low_purity_cap_tpm_high is not None
+                    else None
+                ),
+                "low_purity_cap_delta_tpm": round(low_purity_cap_delta_tpm, 2),
                 # #128: breadth metrics used by the robust attribution.
                 # `n_healthy_tissues_expressed` counts non-reproductive HPA
                 # tissues with nTPM >= HK_TISSUE_NTPM_THRESHOLD;
@@ -1400,6 +1564,9 @@ def estimate_tumor_expression_ranges(
                 ),
                 **{f"est_{i + 1}": round(estimates[i], 2) for i in range(9)},
                 "median_est": round(median_est, 2),
+                "tumor_cell_tpm": round(median_est, 2),
+                "tumor_cell_tpm_low": round(tumor_cell_tpm_low, 2),
+                "tumor_cell_tpm_high": round(tumor_cell_tpm_high, 2),
                 "pct_cancer_median": round(vs_tcga, 2)
                 if vs_tcga is not None and not math.isinf(vs_tcga)
                 else vs_tcga,
@@ -2055,7 +2222,10 @@ def plot_tumor_expression_ranges(
         ax_strip.set_yticks(y_positions)
         ax_strip.set_yticklabels(labels, fontsize=base_font)
         ax_strip.set_xscale("log")
-        ax_strip.set_xlabel("Tumor-specific expression (TPM)", fontsize=base_font)
+        ax_strip.set_xlabel(
+            "Tumor-cell-equivalent TPM (non-tumor subtracted, divided by purity)",
+            fontsize=base_font,
+        )
         ax_strip.set_title(
             cat_titles.get(cat, cat),
             fontsize=base_font + 2,
@@ -2131,9 +2301,9 @@ def plot_tumor_expression_ranges(
 
     # Suptitle with purity info and caveat
     fig.suptitle(
-        f"Purity-adjusted tumor expression \u2014 {cancer_code}\n"
+        f"Tumor-cell-equivalent expression \u2014 {cancer_code}\n"
         f"Purity: {p_lo:.0%} / {p_med:.0%} / {p_hi:.0%} (low / est / high)\n"
-        f"Values are deconvolved estimates \u2014 may overstate expression at low purity",
+        "Context-adjusted per-cell range; source-attributed bulk TPM is in tables.",
         fontsize=10,
         fontweight="bold",
         y=1.04,
@@ -2156,10 +2326,10 @@ def plot_purity_adjusted_targets(
     figsize=(14, 10),
     top_n=40,
 ):
-    """Plot purity-adjusted tumor expression for key gene categories.
+    """Plot modelled context expression for key gene categories.
 
-    Shows observed vs purity-adjusted expression for CTAs, therapy
-    targets, and surface proteins, with TCGA percentile context.
+    Shows observed vs context expression for CTAs, therapy targets,
+    and surface proteins, with TCGA percentile context.
     """
     import pandas as pd
 
@@ -2190,7 +2360,7 @@ def plot_purity_adjusted_targets(
         1, 2, figsize=figsize, gridspec_kw={"width_ratios": [2, 1]}
     )
 
-    # Left: horizontal bar chart of purity-adjusted expression
+    # Left: horizontal bar chart of context expression
     y = np.arange(len(selected))
     cat_colors = {
         "CTA": "#e74c3c",

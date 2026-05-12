@@ -76,6 +76,59 @@ def test_plot_actionable_targets_without_purity(tmp_path):
     assert fig is not None
 
 
+def test_plot_actionable_targets_offsets_observed_and_adjusted_markers():
+    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    gid = ref.loc["FOLH1", "Ensembl_Gene_ID"]
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": [gid],
+            "gene_symbol": ["FOLH1"],
+            "TPM": [40.0],
+        }
+    )
+    ranges = pd.DataFrame(
+        [
+            {
+                "symbol": "FOLH1",
+                "observed_tpm": 40.0,
+                "attr_tumor_tpm": 20.0,
+                "attr_tumor_tpm_low": 15.0,
+                "attr_tumor_tpm_high": 25.0,
+                "attr_tumor_fraction": 0.5,
+            }
+        ]
+    )
+
+    fig = plot_actionable_targets(
+        df,
+        "PRAD",
+        purity_estimate=0.20,
+        custom_genes=["FOLH1"],
+        ranges_df=ranges,
+    )
+
+    ax = fig.axes[0]
+    scatter_offsets = [
+        collection.get_offsets()
+        for collection in ax.collections
+        if hasattr(collection, "get_offsets") and len(collection.get_offsets()) > 0
+    ]
+    y_values = {
+        round(float(offset[1]), 2)
+        for offsets in scatter_offsets
+        for offset in offsets
+        if len(offset) == 2
+    }
+    x_values = {
+        round(float(offset[0]), 1)
+        for offsets in scatter_offsets
+        for offset in offsets
+        if len(offset) == 2
+    }
+    assert {-0.11, 0.11}.issubset(y_values)
+    assert {40.0, 100.0}.issubset(x_values)
+
+
 # ── plot_tumor_attribution ───────────────────────────────────────────────
 
 
@@ -252,6 +305,83 @@ def test_plot_priority_targets_saves_png(tmp_path):
     assert out.exists()
     texts = "\n".join(text.get_text() for ax in fig.axes for text in ax.texts)
     assert "Approved / disease-matched" in texts
+    assert any(
+        text.get_text() == "Eligibility / state fit"
+        for legend in fig.legends + [ax.get_legend() for ax in fig.axes]
+        if legend is not None
+        for text in legend.get_texts()
+    )
+
+
+def test_priority_targets_exclude_hla_mismatched_rows(tmp_path):
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "MAGEA4",
+                "observed_tpm": 40.0,
+                "attr_tumor_tpm": 35.0,
+                "attr_tumor_tpm_low": 25.0,
+                "attr_tumor_tpm_high": 44.0,
+                "attr_tumor_fraction": 0.88,
+                "attr_tumor_fraction_low": 0.70,
+                "attr_tumor_fraction_high": 1.0,
+                "attr_support_fraction": 1.0,
+                "matched_normal_tissue": "",
+                "matched_normal_tpm": 0.0,
+                "therapy_supported": True,
+                "therapies": "TCR-T",
+                "tcga_percentile": 0.99,
+                "category": "therapy_target",
+            },
+            {
+                "symbol": "EGFR",
+                "observed_tpm": 30.0,
+                "attr_tumor_tpm": 25.0,
+                "attr_tumor_tpm_low": 20.0,
+                "attr_tumor_tpm_high": 35.0,
+                "attr_tumor_fraction": 0.83,
+                "attr_tumor_fraction_low": 0.65,
+                "attr_tumor_fraction_high": 1.0,
+                "attr_support_fraction": 1.0,
+                "matched_normal_tissue": "",
+                "matched_normal_tpm": 0.0,
+                "therapy_supported": True,
+                "therapies": "antibody",
+                "tcga_percentile": 0.85,
+                "category": "therapy_target",
+            },
+        ]
+    )
+    target_panel = pd.DataFrame(
+        [
+            {
+                "symbol": "MAGEA4",
+                "agent": "afamitresgene autoleucel",
+                "agent_class": "TCR-T",
+                "phase": "approved",
+                "indication": "advanced synovial sarcoma; requires A*02:01",
+            },
+            {
+                "symbol": "EGFR",
+                "agent": "cetuximab",
+                "agent_class": "antibody",
+                "phase": "approved",
+                "indication": "EGFR-expressing cancer",
+            },
+        ]
+    )
+
+    fig = plot_priority_targets(
+        ranges_df,
+        "SARC",
+        target_panel=target_panel,
+        analysis={"analysis_constraints": {"hla_types": ["A*01:01"]}},
+        save_to_filename=str(tmp_path / "priority-targets.png"),
+    )
+
+    labels = [tick.get_text() for tick in fig.axes[0].get_yticklabels()]
+    assert "MAGEA4" not in labels
+    assert labels == ["EGFR"]
 
 
 def test_plot_priority_target_context_saves_png(tmp_path):

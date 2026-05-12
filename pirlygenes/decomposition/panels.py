@@ -37,7 +37,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from ..gene_sets_cancer import pan_cancer_expression
+from ..gene_sets_cancer import lineage_gene_symbols, pan_cancer_expression
 from ..tumor_purity import TCGA_MEDIAN_PURITY
 from .signature import _load_hpa_cell_types, COMPONENT_TO_HPA
 from .templates import EPITHELIAL_MATCHED_NORMAL_TISSUE
@@ -100,6 +100,10 @@ def _load_cohort_vs_tissue(cancer_code, tissue=None):
                 f"EPITHELIAL_MATCHED_NORMAL_TISSUE."
             )
 
+    # Keep raw bundled references here. Shared-lineage panel construction
+    # intentionally compares raw TCGA bulk magnitude to matched-normal bulk
+    # magnitude; column-wise technical-RNA renormalization can move canonical
+    # retained-lineage markers such as PRAD KLK3 across the tolerance boundary.
     ref = pan_cancer_expression().drop_duplicates(subset="Symbol")
     cancer_col = f"FPKM_{cancer_code}"
     tissue_col = f"nTPM_{tissue}"
@@ -252,6 +256,7 @@ def build_shared_lineage_panel(
     cancer_code,
     tissue=None,
     tolerance_log2=1.0,
+    curated_lineage_tolerance_log2=2.0,
     min_expression=5.0,
 ):
     """Genes expressed at similar levels in tumor-cohort bulk and matched-normal bulk.
@@ -271,6 +276,11 @@ def build_shared_lineage_panel(
     ----------
     tolerance_log2 : float
         Max abs log2 ratio to count as "shared". ``1.0`` ≡ within ~2x.
+    curated_lineage_tolerance_log2 : float
+        Wider abs log2 ratio allowed for curated lineage genes already marked
+        as load-bearing biology for this cancer type. This prevents a generic
+        cliff-edge threshold from dropping retained-lineage markers such as
+        PRAD ``KLK3`` when both tumor and matched normal express the gene.
     min_expression : float
         Require both cohort bulk and normal reference to exceed this
         floor so the ratio is meaningful.
@@ -282,12 +292,25 @@ def build_shared_lineage_panel(
     """
     df, _tissue = _load_cohort_vs_tissue(cancer_code, tissue=tissue)
     df["abs_log2_ratio"] = np.abs(_log2_ratio(df["tcga_bulk_fpkm"], df["normal_ntpm"]))
-    keep = (
+    ratio_keep = (
         (df["tcga_bulk_fpkm"] >= min_expression)
         & (df["normal_ntpm"] >= min_expression)
         & (df["abs_log2_ratio"] <= tolerance_log2)
     )
-    return df[keep].sort_values("abs_log2_ratio").reset_index(drop=True)
+    curated_genes = set(lineage_gene_symbols(cancer_code))
+    curated_keep = (
+        df["symbol"].isin(curated_genes)
+        & (df["tcga_bulk_fpkm"] >= min_expression)
+        & (df["normal_ntpm"] >= min_expression)
+        & (df["abs_log2_ratio"] <= curated_lineage_tolerance_log2)
+    )
+    out = df[ratio_keep | curated_keep].copy()
+    out["shared_lineage_basis"] = np.where(
+        ratio_keep.loc[out.index],
+        "ratio",
+        "curated_lineage",
+    )
+    return out.sort_values("abs_log2_ratio").reset_index(drop=True)
 
 
 def estimate_lineage_tumor_fraction(

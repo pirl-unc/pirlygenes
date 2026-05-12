@@ -130,7 +130,7 @@ def resolve_cancer_type(cancer_type):
     if key in CANCER_TYPE_ALIASES:
         return CANCER_TYPE_ALIASES[key]
     # Check if it's already a valid TCGA code
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     fpkm_cols = {c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_")}
     if upper in fpkm_cols:
         return upper
@@ -182,7 +182,10 @@ def _prepare_sample_vs_cancer_data(
     # we then multiply back by the sample's own HK median TPM — so both
     # axes end up on a familiar TPM scale that's correctly rescaled to
     # this sample's sequencing depth.
-    ref = pan_cancer_expression(normalize="housekeeping")
+    ref = pan_cancer_expression(
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     if cancer_type is not None:
         cancer_type = resolve_cancer_type(cancer_type)
         ref_col = f"FPKM_{cancer_type}"

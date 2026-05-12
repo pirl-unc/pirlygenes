@@ -210,6 +210,258 @@ def test_load_expression_converts_log2_tpm_plus_one_alias(tmp_path, monkeypatch)
     assert qc["post_conversion_sum_tpm"] == pytest.approx(1_000_000.0)
 
 
+def test_expression_scale_qc_flags_extreme_tpm_concentration():
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5S_DOMINANT", *[f"GENE{i}" for i in range(1, 1000)]],
+            "TPM": [520_000.0, *([480_000.0 / 999] * 999)],
+        }
+    )
+
+    qc = le._expression_scale_qc(df)
+
+    assert qc["top_gene_share_of_total_tpm"] == pytest.approx(0.52)
+    assert qc["dominant_genes"][0]["gene"] == "RNA5S_DOMINANT"
+    assert qc["dominant_genes"][0]["qc_group"] == "rrna_like"
+    assert qc["rrna_like_fraction"] == pytest.approx(0.52)
+    assert qc["nuclear_rrna_like_fraction"] == pytest.approx(0.52)
+    assert qc["rrna_pseudogene_fraction"] == pytest.approx(0.0)
+    assert any("one gene" in warning for warning in qc["warnings"])
+    assert any("tiny transcript set" in warning for warning in qc["warnings"])
+
+
+def test_gene_qc_classifier_red_flag_categories():
+    from pirlygenes.expression_qc import classify_gene_qc
+
+    assert classify_gene_qc("MT-CO1").group == "mt_dna"
+    assert classify_gene_qc("MTCO1P12").group == "mt_like_pseudogene"
+    assert classify_gene_qc("RNA5SP389").label == "5S rRNA pseudogene"
+    assert classify_gene_qc("RPL13AP5").group == "ribosomal_protein_pseudogene"
+    assert classify_gene_qc("SNORD3A").group == "small_ncrna"
+    assert classify_gene_qc("H2AC1").group == "histone"
+    assert classify_gene_qc("HBB").group == "hemoglobin"
+    assert classify_gene_qc("IGKC").group == "immune_receptor"
+
+
+def test_normalize_expression_removes_technical_rna_and_preserves_nan():
+    from pirlygenes.expression_qc import normalize_expression
+
+    df = pd.DataFrame(
+        {
+            "Symbol": ["MT-CO1", "MTCO1P12", "RNA5SP389", "KLK3", "ACTB"],
+            "TPM": [100.0, 100.0, 300.0, 100.0, 400.0],
+            "tcga_PRAD": [1.0, 2.0, 3.0, float("nan"), 4.0],
+        }
+    )
+
+    out, record = normalize_expression(df, value_cols=["TPM", "tcga_PRAD"])
+
+    assert record["applied"] is True
+    assert out.loc[out["Symbol"] == "RNA5SP389", "TPM"].item() == 0.0
+    assert out.loc[out["Symbol"] == "MTCO1P12", "TPM"].item() == 0.0
+    assert out["TPM"].sum() == pytest.approx(1_000.0)
+    assert pd.isna(out.loc[out["Symbol"] == "KLK3", "tcga_PRAD"].item())
+
+
+def test_normalize_expression_optional_noncoding_gate_keeps_ig_tcr():
+    from pirlygenes.expression_qc import normalize_expression
+
+    df = pd.DataFrame(
+        {
+            "Symbol": ["MALAT1", "KLK3", "IGKC", "TRAC"],
+            "biotype": ["lncRNA", "protein_coding", "IG_C_gene", "TR_C_gene"],
+            "TPM": [500.0, 200.0, 200.0, 100.0],
+        }
+    )
+
+    out, record = normalize_expression(
+        df,
+        value_cols=["TPM"],
+        remove_noncoding=True,
+    )
+
+    assert record["applied"] is True
+    assert out.loc[out["Symbol"] == "MALAT1", "TPM"].item() == 0.0
+    assert out.loc[out["Symbol"] == "KLK3", "TPM"].item() > 0
+    assert out.loc[out["Symbol"] == "IGKC", "TPM"].item() > 0
+    assert out.loc[out["Symbol"] == "TRAC", "TPM"].item() > 0
+    assert out["TPM"].sum() == pytest.approx(1_000.0)
+
+
+def test_normalize_expression_optional_noncoding_gate_keeps_unmatched_joined_biotypes():
+    from pirlygenes.expression_qc import normalize_expression
+
+    expression = pd.DataFrame(
+        {
+            "Symbol": ["MALAT1", "UNKNOWN1", "UNKNOWN2", "KLK3"],
+            "TPM": [500.0, 100.0, 100.0, 300.0],
+        }
+    )
+    partial_annotation = pd.DataFrame(
+        {
+            "Symbol": ["MALAT1", "KLK3"],
+            "biotype": ["lncRNA", "protein_coding"],
+        }
+    )
+    df = expression.merge(partial_annotation, on="Symbol", how="left")
+
+    out, record = normalize_expression(
+        df,
+        value_cols=["TPM"],
+        remove_noncoding=True,
+    )
+
+    assert record["applied"] is True
+    assert out.loc[out["Symbol"] == "MALAT1", "TPM"].item() == 0.0
+    assert out.loc[out["Symbol"] == "UNKNOWN1", "TPM"].item() > 0
+    assert out.loc[out["Symbol"] == "UNKNOWN2", "TPM"].item() > 0
+    assert out["TPM"].sum() == pytest.approx(1_000.0)
+
+
+def test_normalize_expression_zeroes_all_technical_input():
+    from pirlygenes.expression_qc import normalize_expression
+
+    df = pd.DataFrame(
+        {
+            "Symbol": ["RNA5SP389", "MT-ATP8", "MTCO1P12"],
+            "TPM": [520_000.0, 30_000.0, 450_000.0],
+        }
+    )
+
+    out, record = normalize_expression(df, value_cols=["TPM"])
+
+    assert record["applied"] is True
+    assert record["columns"]["TPM"]["removed_fraction"] == pytest.approx(1.0)
+    assert out["TPM"].sum() == pytest.approx(0.0)
+
+
+def test_expression_qc_rescue_removes_rrna_like_dominator():
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5SP389", "MT-ATP8", "KLK3", "ACTB"],
+            "TPM": [520_000.0, 30_000.0, 25_000.0, 425_000.0],
+        }
+    )
+
+    rescued, record = le.apply_expression_qc_rescue(df, mode="auto")
+
+    assert record["applied"] is True
+    assert record["removed_fraction"] == pytest.approx(0.55)
+    assert record["top_removed_genes"][0]["qc_class"] == "5S rRNA pseudogene"
+    assert record["qc_class_shares"]["rrna_pseudogene_fraction"] == pytest.approx(
+        0.52
+    )
+    assert rescued.loc[rescued["gene"] == "RNA5SP389", "TPM"].item() == 0.0
+    assert rescued["TPM"].sum() == pytest.approx(1_000_000.0)
+    assert rescued.loc[rescued["gene"] == "KLK3", "TPM"].item() == pytest.approx(
+        25_000.0 / 450_000.0 * 1_000_000.0
+    )
+
+
+def test_expression_qc_rescue_keeps_raw_qc_before_normalized_view():
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5SP389", "MT-ATP8", "KLK3", "ACTB"],
+            "TPM": [520_000.0, 30_000.0, 25_000.0, 425_000.0],
+        }
+    )
+
+    rescued, record = le.apply_expression_qc_rescue(df, mode="auto")
+
+    assert record["applied"] is True
+    raw_qc = rescued.attrs["raw_expression_scale_qc"]
+    normalized_qc = rescued.attrs["expression_scale_qc"]
+    assert raw_qc["dominant_genes"][0]["gene"] == "RNA5SP389"
+    assert raw_qc["rrna_like_fraction"] == pytest.approx(0.52)
+    assert normalized_qc["rrna_like_fraction"] == pytest.approx(0.0)
+    assert rescued.loc[
+        rescued["gene"] == "RNA5SP389", "TPM_raw_before_qc_rescue"
+    ].item() == pytest.approx(520_000.0)
+
+
+def test_expression_qc_rescue_zeroes_all_technical_input():
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5SP389", "MT-ATP8", "MTCO1P12"],
+            "TPM": [520_000.0, 30_000.0, 450_000.0],
+        }
+    )
+
+    rescued, record = le.apply_expression_qc_rescue(df, mode="auto")
+
+    assert record["applied"] is True
+    assert record["removed_fraction"] == pytest.approx(1.0)
+    assert record["output_sum_tpm"] == pytest.approx(0.0)
+    assert rescued["TPM"].sum() == pytest.approx(0.0)
+    assert rescued.attrs["expression_scale_qc"]["sum_tpm"] == pytest.approx(0.0)
+
+
+def test_expression_qc_rescue_auto_normalizes_low_technical_burden():
+    df = pd.DataFrame(
+        {
+            "gene": ["RNA5SP389", "MT-ATP8", "KLK3", "ACTB"],
+            "TPM": [5_000.0, 5_000.0, 100_000.0, 890_000.0],
+        }
+    )
+
+    rescued, record = le.apply_expression_qc_rescue(df, mode="auto")
+
+    assert record["applied"] is True
+    assert record["high_burden"] is False
+    assert record["removed_fraction"] == pytest.approx(0.01)
+    assert rescued.loc[rescued["gene"] == "RNA5SP389", "TPM"].item() == 0.0
+    assert rescued["TPM"].sum() == pytest.approx(1_000_000.0)
+    assert rescued.loc[rescued["gene"] == "KLK3", "TPM"].item() == pytest.approx(
+        100_000.0 / 990_000.0 * 1_000_000.0
+    )
+
+
+def test_expression_qc_rescue_summary_omits_negligible_top_feature():
+    from pirlygenes.expression_qc import expression_qc_rescue_summary_line
+
+    line = expression_qc_rescue_summary_line(
+        {
+            "applied": True,
+            "high_burden": False,
+            "removed_fraction": 0.0002,
+            "top_removed_genes": [
+                {
+                    "gene": "MT-ATP8",
+                    "qc_class": "mitochondrial transcript",
+                    "share": 0.0002,
+                }
+            ],
+        }
+    )
+
+    assert "<1% removed" in line
+    assert "top removed feature" not in line
+
+
+def test_expression_qc_rescue_summary_keeps_material_top_feature():
+    from pirlygenes.expression_qc import expression_qc_rescue_summary_line
+
+    line = expression_qc_rescue_summary_line(
+        {
+            "applied": True,
+            "high_burden": True,
+            "removed_fraction": 0.52,
+            "qc_class_shares": {"rrna_pseudogene_fraction": 0.52},
+            "top_removed_genes": [
+                {
+                    "gene": "RNA5SP389",
+                    "qc_class": "5S rRNA pseudogene",
+                    "share": 0.52,
+                }
+            ],
+        }
+    )
+
+    assert "Expression QC rescue" in line
+    assert "rRNA pseudogene 52%" in line
+    assert "top removed feature RNA5SP389" in line
+
+
 def test_load_expression_accepts_kallisto_gene_abundance_column(tmp_path, monkeypatch):
     p = tmp_path / "gene_abundance.tsv"
     pd.DataFrame(

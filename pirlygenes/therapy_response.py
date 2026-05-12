@@ -379,7 +379,7 @@ def _candidate_sources_from_rna(ranges_df, *, max_sources: int = 4) -> list[dict
             f"; {row['fold']:.1f}x cancer median" if row["fold"] is not None else ""
         )
         percentile_clause = (
-            f"; TCGA percentile {row['percentile']:.0%}"
+            f"; reference percentile {row['percentile']:.0%}"
             if row["percentile"] is not None
             else ""
         )
@@ -388,7 +388,7 @@ def _candidate_sources_from_rna(ranges_df, *, max_sources: int = 4) -> list[dict
                 "kind": "rna_high_source_gene",
                 "gene": row["symbol"],
                 "label": (
-                    f"RNA-high {row['symbol']} ({row['tpm']:.0f} tumor-inferred TPM"
+                    f"RNA-high {row['symbol']} ({row['tpm']:.0f} tumor-source TPM"
                     f"{fold_clause}{percentile_clause})"
                 ),
                 "mechanism": "high receptor/kinase RNA can be compatible with RTK-driven MAPK signaling but is not alteration proof",
@@ -514,7 +514,9 @@ def score_therapy_signatures(
     if not applicable:
         return {}
 
-    ref_flat = pan_cancer_expression().drop_duplicates(subset="Symbol")
+    ref_flat = pan_cancer_expression(technical_rna_normalize=True).drop_duplicates(
+        subset="Symbol"
+    )
 
     out = {}
     for cls, directions in applicable.items():

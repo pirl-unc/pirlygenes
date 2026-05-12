@@ -150,6 +150,12 @@ def tumor_attribution_context(row):
         notes.append("matched-normal reference overshoots the sample")
     if _truthy(row.get("low_purity_cap_applied")):
         notes.append("low-purity cap is active")
+    source_marker = _truthy(row.get("source_marker_non_tumor_prior"))
+    source_marker_compartment = _clean_text(row.get("source_marker_compartment"))
+    if source_marker:
+        notes.append(
+            f"{source_marker_compartment or 'non-tumor lineage'} prior is active"
+        )
     if _truthy(row.get("tme_explainable")) and support_fraction < 1.0:
         notes.append("non-tumor tissue explanations remain plausible")
     if _truthy(row.get("tme_dominant")):
@@ -164,6 +170,7 @@ def tumor_attribution_context(row):
         and low_frac >= 0.30
         and support_fraction >= 0.67
         and not _truthy(row.get("matched_normal_over_predicted"))
+        and not source_marker
     ):
         tier = "tumor_supported"
         label = "tumor-supported"
@@ -175,12 +182,12 @@ def tumor_attribution_context(row):
 
     if observed > 0:
         band = (
-            f"{mid_tpm:.0f} TPM "
+            f"{mid_tpm:.0f} tumor-source bulk TPM "
             f"(model interval {low_tpm:.0f}-{high_tpm:.0f}; "
             f"{mid_frac:.0%} tumor, {low_frac:.0%}-{high_frac:.0%} interval)"
         )
     else:
-        band = f"{mid_tpm:.0f} TPM"
+        band = f"{mid_tpm:.0f} tumor-source bulk TPM"
 
     return {
         "tier": tier,
@@ -199,16 +206,60 @@ def tumor_attribution_context(row):
     }
 
 
+def context_expression_context(row):
+    """Return the broader tumor-context expression range.
+
+    This is intentionally separate from ``tumor_attribution_context``:
+    ``tumor_cell_tpm`` / ``median_est`` can remain useful for cohort-context
+    and pathway reasoning, but it is not proof that the observed RNA came
+    from tumor cells when the source attribution says background-dominant.
+    """
+    mid_tpm = _safe_float(
+        row.get("tumor_cell_tpm"),
+        _safe_float(row.get("median_est"), _safe_float(row.get("observed_tpm"), 0.0)),
+    )
+    low_tpm = _safe_float(
+        row.get("tumor_cell_tpm_low"),
+        _safe_float(row.get("est_1"), mid_tpm),
+    )
+    high_tpm = _safe_float(
+        row.get("tumor_cell_tpm_high"),
+        _safe_float(row.get("est_9"), mid_tpm),
+    )
+    low_tpm, mid_tpm, high_tpm = sorted(
+        [max(0.0, low_tpm), max(0.0, mid_tpm), max(0.0, high_tpm)]
+    )
+    return {
+        "context_tpm": mid_tpm,
+        "context_tpm_low": low_tpm,
+        "context_tpm_high": high_tpm,
+    }
+
+
+def context_expression_band_cell(row):
+    ctx = context_expression_context(row)
+    if abs(ctx["context_tpm_low"] - ctx["context_tpm_high"]) < 0.5:
+        return f"{ctx['context_tpm']:.0f}"
+    return (
+        f"{ctx['context_tpm']:.0f} "
+        f"({ctx['context_tpm_low']:.0f}-{ctx['context_tpm_high']:.0f})"
+    )
+
+
 def tpm_semantics_note() -> str:
-    """One reader-facing explanation of bulk vs modeled tumor-inferred TPM."""
+    """One reader-facing explanation of bulk vs modeled TPM columns."""
     return (
         "**TPM semantics:** Bulk TPM is the measured RNA abundance in the mixed "
-        "specimen. Tumor-inferred TPM is a model-derived estimate after subtracting "
-        "matched-normal and TME-attributable signal. Use tumor-inferred TPM for "
-        "tumor-cell target prioritization only when attribution is tumor-supported "
-        "or mixed-source; for immune/stromal markers, agent-only rows, and "
-        "expression-independent indications, bulk RNA is contextual and the "
-        "clinical biomarker must come from the indicated assay."
+        "specimen. Tumor-attributed bulk TPM is the share of that bulk signal "
+        "assigned to tumor rather than matched-normal/TME compartments. Context "
+        "TPM is a broader per-tumor-cell/cohort-context estimate used for cancer "
+        "context, pathway biology, and 'is this gene high in this specimen?' "
+        "reasoning; it can collapse to a single value when the range model has "
+        "no meaningful spread. Do not treat context TPM as tumor-source evidence "
+        "when the tumor-attribution row says background-dominant. For immune/stromal "
+        "markers, agent-only rows, and expression-independent indications, bulk "
+        "RNA is contextual and the clinical biomarker must come from the "
+        "indicated assay."
     )
 
 
@@ -464,7 +515,7 @@ def tumor_band_available(row):
 
 
 def tumor_band_cell(row):
-    """Compact ``mid (low-high)`` cell for markdown tables."""
+    """Compact source-attributed ``mid (low-high)`` cell for markdown tables."""
     if not tumor_band_available(row):
         return "—"
     ctx = tumor_attribution_context(row)
@@ -488,6 +539,8 @@ def target_reliability_reasons(row, *, category=None):
         reasons.append("possible smooth-muscle stromal leakage")
     if _truthy(row.get("tme_explainable")) and source["tier"] != "tumor_supported":
         reasons.append("healthy-tissue-explainable")
+    if _truthy(row.get("source_marker_non_tumor_prior")):
+        reasons.append("non-tumor lineage marker")
     if _truthy(row.get("low_purity_cap_applied")):
         reasons.append("low-purity capped")
     return reasons
@@ -578,7 +631,7 @@ def _pan_cancer_normal_expression_index():
     try:
         from .gene_sets_cancer import pan_cancer_expression
 
-        df = pan_cancer_expression().copy()
+        df = pan_cancer_expression(technical_rna_normalize=True).copy()
         if "Ensembl_Gene_ID" not in df.columns:
             return None
         df["Ensembl_Gene_ID"] = (
@@ -908,6 +961,7 @@ _THERAPY_EXPOSURE_RULES = (
         ),
         "axis_label": "ER-axis",
         "exposure_label": "endocrine therapy",
+        "suppressed_explanation": "ER-low biology or current/prior endocrine therapy signal",
     },
     {
         "axis": "HER2_signaling",
@@ -1192,10 +1246,14 @@ def therapy_state_caution(target_row, *, analysis=None, disease_state=None) -> s
             rule, analysis=analysis, disease_state=disease_state
         ):
             continue
+        suppressed_explanation = rule.get(
+            "suppressed_explanation",
+            f"current/prior {rule['exposure_label']} signal",
+        )
         return (
             f"{rule['axis_label']} RNA/signaling is already suppressed "
-            f"(current/prior {rule['exposure_label']} signal); verify the "
-            "medication list before treating this as new-start therapy"
+            f"({suppressed_explanation}); verify the medication list before "
+            "treating this as new-start therapy"
         )
     return ""
 
@@ -1392,6 +1450,15 @@ def summarize_reliability_reasons(rows, top_n=3):
 
 def resolved_subtype_code_for_analysis(analysis, ranges_df=None):
     """Return the final subtype/cancer code implied by the analysis."""
+    try:
+        from .analyze import cancer_type_context_from_analysis
+
+        cancer_type_context = cancer_type_context_from_analysis(analysis)
+        if cancer_type_context.uses_distinct_reference and cancer_type_context.report_code:
+            return cancer_type_context.report_code
+    except Exception:
+        pass
+
     winning_subtype = candidate_winning_subtype_for_analysis(analysis)
     if not winning_subtype:
         return None

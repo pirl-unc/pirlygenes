@@ -180,11 +180,12 @@ def build_analysis_parameters(
             "hla_types": config.hla_type_list(),
             "fusions": config.fusion_path_list(),
             "alterations": config.alteration_input_list(),
+            "expression_qc_rescue": config.expression_qc_rescue,
         },
         "tumor_purity": tumor_purity_parameters,
         "decomposition": decomposition_parameters,
         "selected_sample_mode": selected_sample_mode,
-        "embedding_methods": ["pan_reference_mds", "pan_reference_neighborhood"],
+        "embedding_methods": ["pan_reference_mds", "pan_reference_nearest_references"],
         "sample_quality": {
             "degradation_level": quality["degradation"]["level"],
             "degradation_pair_index": quality["degradation"]["long_short_ratio"],

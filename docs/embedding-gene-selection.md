@@ -132,7 +132,8 @@ it, and whether it was added as a curated anchor.
 `pirlygenes.get_embedding_feature_metadata(method="panref")` returns the
 same selection metadata grouped by TCGA cancer type and HPA normal tissue.
 Report generation uses this `panref` method for the default
-`reference-mds` and `reference-neighborhood` plots.
+`reference-mds` plot and the `reference-neighborhood` nearest-distance
+ranking.
 
 The older bottleneck gene set remains available through
 `_cancer_type_feature_matrix(df, method="bottleneck")` for tumor-only

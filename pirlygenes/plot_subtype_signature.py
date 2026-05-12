@@ -144,7 +144,11 @@ def plot_subtype_signature(
 
     sample_tpm = _build_tpm_by_symbol(df_gene_expr)
 
-    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    ref = (
+        pan_cancer_expression(technical_rna_normalize=True)
+        .drop_duplicates(subset="Symbol")
+        .set_index("Symbol")
+    )
 
     axis_a_up = _score_axis_genes(
         sample_tpm, ref, cancer_code, cancer_sigs[axis_a_name].get("up", [])

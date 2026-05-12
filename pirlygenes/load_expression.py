@@ -25,6 +25,14 @@ from .gene_names import display_name, short_gene_name
 
 import re
 
+from .expression_qc import (
+    classify_gene_qc,
+    dominant_class_phrase,
+    is_rescue_feature,
+    normalize_expression,
+    summarize_qc_class_shares,
+)
+
 # Patterns for fuzzy column guessing (tried in order, first match wins).
 # Each is matched case-insensitively against the full column name.
 _GENE_NAME_PATTERNS = [
@@ -320,13 +328,70 @@ def _detect_kallisto_gene_abundance_tpm(df, verbose=True):
 
 
 def _expression_scale_qc(df) -> dict:
-    tpm = pd.to_numeric(df.get("TPM"), errors="coerce").fillna(0.0)
+    if "TPM" not in set(df.columns):
+        return {
+            "sum_tpm": 0.0,
+            "max_tpm": 0.0,
+            "genes_above_10_tpm": 0,
+            "warnings": [],
+        }
+    tpm = pd.to_numeric(df["TPM"], errors="coerce").fillna(0.0)
     qc = {
         "sum_tpm": float(tpm.sum()),
         "max_tpm": float(tpm.max()) if len(tpm) else 0.0,
         "genes_above_10_tpm": int((tpm > 10.0).sum()),
         "warnings": [],
     }
+    total = qc["sum_tpm"]
+    if total > 0 and len(tpm):
+        sorted_tpm = tpm.sort_values(ascending=False)
+        qc["top_gene_share_of_total_tpm"] = float(sorted_tpm.iloc[0] / total)
+        qc["top_10_share_of_total_tpm"] = float(sorted_tpm.head(10).sum() / total)
+        qc["top_50_share_of_total_tpm"] = float(sorted_tpm.head(50).sum() / total)
+        qc["top_200_share_of_total_tpm"] = float(sorted_tpm.head(200).sum() / total)
+        qc["top_2000_share_of_total_tpm"] = float(
+            sorted_tpm.head(2000).sum() / total
+        )
+        label_col = next(
+            (
+                col
+                for col in (
+                    "gene_display_name",
+                    "canonical_gene_name",
+                    "gene",
+                    "gene_symbol",
+                    "symbol",
+                )
+                if col in df.columns
+            ),
+            None,
+        )
+        if label_col is not None:
+            dominant = []
+            for idx, value in sorted_tpm.head(10).items():
+                label = str(df.loc[idx, label_col] or "").strip()
+                if not label or label.lower() == "nan":
+                    label = str(idx)
+                qc_class = classify_gene_qc(label)
+                dominant.append(
+                    {
+                        "gene": label,
+                        "tpm": float(value),
+                        "share": float(value / total),
+                        "qc_class": qc_class.label,
+                        "qc_group": qc_class.group,
+                    }
+                )
+            qc["dominant_genes"] = dominant
+        if label_col is not None:
+            qc.update(
+                summarize_qc_class_shares(
+                    (
+                        (str(df.loc[idx, label_col] or "").strip(), float(value))
+                        for idx, value in tpm.items()
+                    )
+                )
+            )
     if "gene" in df.columns:
         try:
             from .gene_sets_cancer import housekeeping_gene_names
@@ -339,7 +404,6 @@ def _expression_scale_qc(df) -> dict:
                 qc["housekeeping_genes_observed"] = int((hk_tpm > 1.0).sum())
         except Exception:
             pass
-    total = qc["sum_tpm"]
     if total and not (_TPM_SUM_MIN_REASONABLE <= total <= _TPM_SUM_MAX_REASONABLE):
         qc["warnings"].append(
             f"TPM-like values sum to {total:.0f}, outside the expected ~1,000,000 range"
@@ -353,7 +417,222 @@ def _expression_scale_qc(df) -> dict:
         qc["warnings"].append(
             f"core housekeeping median is only {hk_median:.1f} TPM"
         )
+    top_gene_share = qc.get("top_gene_share_of_total_tpm")
+    top_10_share = qc.get("top_10_share_of_total_tpm")
+    top_50_share = qc.get("top_50_share_of_total_tpm")
+    if top_gene_share is not None and top_gene_share >= 0.20:
+        dominant = qc.get("dominant_genes") or []
+        gene = dominant_class_phrase(dominant)
+        gene = f" ({gene})" if gene else ""
+        qc["warnings"].append(
+            f"one gene{gene} accounts for {top_gene_share:.0%} of total TPM; "
+            "expression is dominated by a tiny transcript set"
+        )
+    if top_10_share is not None and top_10_share >= 0.60:
+        qc["warnings"].append(
+            f"top 10 genes account for {top_10_share:.0%} of total TPM; "
+            "check for rRNA/pseudogene/contaminant dominance or severe library complexity loss"
+        )
+    elif top_50_share is not None and top_50_share >= 0.75:
+        qc["warnings"].append(
+            f"top 50 genes account for {top_50_share:.0%} of total TPM; "
+            "expression distribution is unusually concentrated"
+        )
     return qc
+
+
+def apply_expression_qc_rescue(
+    df,
+    mode: str = "auto",
+    *,
+    remove_noncoding: bool = False,
+):
+    """Remove mtDNA/rRNA-like TPM artifacts and re-normalize expression.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Gene-level TPM table.
+    mode : {"auto", "always", "off", "never", "false"}
+        ``auto`` applies the same technical-RNA normalization used for
+        references whenever removable features are present, but marks the row as
+        high-burden only when mtDNA/rRNA-like features dominate raw TPM.
+        ``always`` forces the same normalization. ``off``/``never`` disables it.
+    remove_noncoding : bool
+        If True, also removes noncoding-biotype rows when a biotype column is
+        present, while retaining protein-coding, immunoglobulin, and TCR genes.
+
+    Returns
+    -------
+    (DataFrame, dict)
+        The original or rescued frame plus a structured decision record.
+    """
+
+    mode_norm = str(mode or "auto").strip().lower().replace("-", "_")
+    if mode_norm in {"none", "false", "0", "no", "off", "never"}:
+        mode_norm = "off"
+    elif mode_norm in {"true", "1", "yes", "on", "force", "forced"}:
+        mode_norm = "always"
+    elif mode_norm not in {"auto", "always"}:
+        raise ValueError(
+            "--expression-qc-rescue must be one of auto, always, or off"
+        )
+
+    if "TPM" not in set(df.columns):
+        return df, {
+            "mode": mode_norm,
+            "applied": False,
+            "reason": "not applied: no TPM column",
+            "input_sum_tpm": 0.0,
+            "output_sum_tpm": 0.0,
+            "removed_tpm": 0.0,
+            "removed_fraction": 0.0,
+            "removed_gene_count": 0,
+            "top_removed_genes": [],
+            "remove_noncoding": bool(remove_noncoding),
+            "warnings": [],
+        }
+    tpm = pd.to_numeric(df["TPM"], errors="coerce").fillna(0.0)
+    raw_sum = float(tpm.sum())
+    label_col = next(
+        (
+            col
+            for col in (
+                "gene_display_name",
+                "canonical_gene_name",
+                "gene",
+                "gene_symbol",
+                "symbol",
+            )
+            if col in df.columns
+        ),
+        None,
+    )
+    record = {
+        "mode": mode_norm,
+        "applied": False,
+        "high_burden": False,
+        "input_sum_tpm": raw_sum,
+        "output_sum_tpm": raw_sum,
+        "removed_tpm": 0.0,
+        "removed_fraction": 0.0,
+        "removed_gene_count": 0,
+        "top_removed_genes": [],
+        "remove_noncoding": bool(remove_noncoding),
+        "reason": "",
+        "warnings": [],
+    }
+    if label_col is None or raw_sum <= 0 or mode_norm == "off":
+        if mode_norm == "off":
+            record["reason"] = "disabled"
+        return df, record
+
+    labels = df[label_col].fillna("").astype(str).str.strip()
+    removable = labels.map(is_rescue_feature)
+    removed_tpm = float(tpm[removable].sum())
+    remaining_tpm = raw_sum - removed_tpm
+    removed_fraction = removed_tpm / raw_sum if raw_sum > 0 else 0.0
+    record.update(
+        {
+            "removed_tpm": removed_tpm,
+            "removed_fraction": removed_fraction,
+            "removed_gene_count": int(removable.sum()),
+        }
+    )
+
+    removed_rows = []
+    for idx, value in tpm[removable].sort_values(ascending=False).head(12).items():
+        gene = str(labels.loc[idx] or "").strip()
+        qc = classify_gene_qc(gene)
+        removed_rows.append(
+            {
+                "gene": gene,
+                "tpm": float(value),
+                "share": float(value / raw_sum) if raw_sum > 0 else 0.0,
+                "qc_class": qc.label,
+                "qc_group": qc.group,
+            }
+        )
+    record["top_removed_genes"] = removed_rows
+
+    class_summary = summarize_qc_class_shares(
+        (str(label), float(value)) for label, value in zip(labels, tpm)
+    )
+    record["qc_class_shares"] = class_summary
+
+    scale_qc = _expression_scale_qc(df)
+    top_gene_share = float(scale_qc.get("top_gene_share_of_total_tpm") or 0.0)
+    top_10_share = float(scale_qc.get("top_10_share_of_total_tpm") or 0.0)
+    dominant = scale_qc.get("dominant_genes") or []
+    top_gene_rescue_class = bool(
+        dominant and is_rescue_feature(dominant[0].get("gene"))
+    )
+    auto_trigger = bool(
+        removed_fraction >= 0.50
+        or (top_gene_share >= 0.20 and top_gene_rescue_class)
+        or (
+            top_10_share >= 0.60
+            and (
+                float(class_summary.get("rrna_plus_mt_fraction") or 0.0) >= 0.35
+            )
+        )
+    )
+    record["high_burden"] = bool(auto_trigger)
+    if mode_norm == "always":
+        should_apply = raw_sum > 0 and (removed_tpm > 0 or remove_noncoding)
+        record["reason"] = "forced by --expression-qc-rescue"
+    else:
+        should_apply = raw_sum > 0 and (removed_tpm > 0 or remove_noncoding)
+        record["reason"] = (
+            "auto-rescue: mtDNA/rRNA-like features dominate raw TPM"
+            if auto_trigger and should_apply
+            else (
+                "auto-normalize: expression artifacts zeroed for comparability"
+                if should_apply
+                else "not applied: no removable expression-artifact burden"
+            )
+        )
+
+    if not should_apply:
+        return df, record
+
+    out, normalization_record = normalize_expression(
+        df,
+        label_col=label_col,
+        value_cols=["TPM"],
+        remove_noncoding=remove_noncoding,
+    )
+    if not normalization_record.get("applied"):
+        record["reason"] = normalization_record.get("reason") or record["reason"]
+        return df, record
+    out = out.copy()
+    out["TPM_raw_before_qc_rescue"] = tpm
+    tpm_record = (normalization_record.get("columns") or {}).get("TPM") or {}
+    removed_tpm = float(tpm_record.get("removed_tpm") or removed_tpm)
+    removed_fraction = float(tpm_record.get("removed_fraction") or removed_fraction)
+    remaining_tpm = raw_sum - removed_tpm
+    scale = raw_sum / remaining_tpm if remaining_tpm > 0 else 1.0
+    final_qc = _expression_scale_qc(out)
+    final_qc["rescued_from_qc_artifact"] = True
+    out.attrs = dict(getattr(df, "attrs", {}))
+    out.attrs["raw_expression_scale_qc"] = scale_qc
+    out.attrs["expression_qc_rescue"] = record | {
+        "applied": True,
+        "output_sum_tpm": float(pd.to_numeric(out["TPM"], errors="coerce").sum()),
+        "removed_tpm": removed_tpm,
+        "removed_fraction": removed_fraction,
+        "removed_gene_count": int(tpm_record.get("removed_gene_count") or 0),
+        "removed_technical_gene_count": int(
+            tpm_record.get("removed_technical_gene_count") or 0
+        ),
+        "removed_noncoding_gene_count": int(
+            tpm_record.get("removed_noncoding_gene_count") or 0
+        ),
+        "renormalization_factor": float(scale),
+        "reference_normalization_record": normalization_record,
+    }
+    out.attrs["expression_scale_qc"] = final_qc
+    return out, out.attrs["expression_qc_rescue"]
 
 
 def _detect_and_convert_log_tpm(df, verbose=True):

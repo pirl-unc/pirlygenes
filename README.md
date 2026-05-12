@@ -62,6 +62,9 @@ pirlygenes analyze gene_expression.tsv --decomposition-templates "solid_primary,
 # Force-label specific genes in plots
 pirlygenes analyze gene_expression.tsv --cancer-type PRAD --label-genes "FOLH1,STEAP1,CD276"
 
+# Add optional contig-level alignment QC from samtools idxstats or BAM/CRAM
+pirlygenes analyze gene_expression.tsv --alignment-qc sample.idxstats
+
 # List all bundled datasets and cancer types
 pirlygenes data
 
@@ -88,7 +91,7 @@ All gene sets ship as CSVs in `pirlygenes/data/` and are accessible via `pirlyge
 | Rare cancer RNA surrogates | 5 rules | `rare_cancer_rna_surrogate_rules_df()` | Hypothesis-level report-scope rules for rare cancers without bundled TCGA cohorts, e.g. NUTM1→NUT carcinoma, TBXT→chordoma, NR4A3→acinic cell carcinoma. |
 | Rare cancer direct fusions | 26 rules | `rare_cancer_fusion_rules_df()` | Optional fusion-call rules. `gene_a` is expected 5-prime partner and `gene_b` expected 3-prime partner; matching is loose for caller formats, but NUTM1 partner specificity is preserved. |
 | Fusion expression effects | 6 rules | `fusion_expression_effect_rules_df()` | Downstream-expression checks and RNA-only testing prompts for curated fusion programs (e.g. NUTM1-MYC/CTA, EWSR1-ETS, PAX3/7-FOXO1). |
-| Mutation expression effects | 13 rules | `mutation_expression_effect_rules_df()` | Hypothesis-level mutation/CNV/pathway-expression effects. Uses tumor-inferred TPM when available and asks for confirmatory testing rather than calling variants from RNA. |
+| Mutation expression effects | 13 rules | `mutation_expression_effect_rules_df()` | Hypothesis-level mutation/CNV/pathway-expression effects. Uses tumor-source attribution and context TPM when available, and asks for confirmatory testing rather than calling variants from RNA. |
 | Cancer drivers | 739 | `cancer-driver-genes.csv` | Recurrently mutated genes (Bailey et al. 2018) |
 | Housekeeping genes | 30 | `housekeeping-genes.csv` | Cross-platform normalization reference |
 | Mitochondrial genes | 15 | `mitochondrial_gene_names()` | MT-encoded transcripts (quality / FFPE signal) |
@@ -142,7 +145,7 @@ Each step writes a named result into a shared `analysis` dict; downstream steps 
 
 The flow runs in five steps:
 
-1. **Sample context** (runs *first*, before any cancer-type inference). A `SampleContext` is inferred from the expression table alone — what **library prep** produced the data (poly-A capture, ribo-depletion, total RNA, or exome capture) and what **preservation / degradation** state the RNA is in (fresh-frozen, FFPE, partial degradation). This becomes a **base layer of expression expectations**: which genes are expected to be over- or under-represented for *artifactual* reasons, independent of biology. The context is propagated forward and every downstream step reads from it.
+1. **Sample context** (runs *first*, before any cancer-type inference). A `SampleContext` is inferred from the raw expression table alone — what **library prep** produced the data (poly-A capture, ribo-depletion, total RNA, or exome capture) and what **preservation / degradation** state the RNA is in (fresh-frozen, FFPE, partial degradation). This raw context remains visible in QC figures. Downstream sample biology then uses a technical-RNA-normalized expression view by default: mitochondrial transcripts, NUMT-like mitochondrial pseudogenes, rRNA-like features, and rRNA-pseudogene features are zeroed and the remaining TPM is renormalized. Downstream reference comparisons use the same normalized analysis view; raw sample/reference values remain available for QC and provenance. This becomes a **base layer of expression expectations**: which genes are expected to be over- or under-represented for *artifactual* reasons, independent of biology. The context is propagated forward and every downstream step reads from it.
 2. **Coarse healthy-tissue decomposition.** Broad non-tumor compartments (T cell, B cell, myeloid, fibroblast, endothelial, plus site-specific host tissue for met samples) are fit by weighted NNLS against curated marker panels, anchored to an externally-estimated tumor purity.
 3. **Fine TME-subtype / activation-state dissection** (in progress: CAF vs healthy fibroblast, TAM polarisation, exhausted T, tumor endothelium, etc.). Activated-state references refine the coarse compartment call into biologically actionable subsets.
 4. **Tumor-value adjustment.** Per gene, the TME and matched-normal contributions are subtracted from the observed TPM before dividing by purity. Genes whose observed signal is dominantly explained by non-tumor compartments are flagged `tme_explainable` rather than credited to the tumor.
@@ -269,6 +272,10 @@ Prefer the standalone decomposition figures when reviewing or sharing a case. Th
 | File | Description |
 |---|---|
 | `*-sample-context.png` | Step 1 diagnostic: library prep + preservation inference with thresholds used for the call |
+| `*-expression-top-features-qc.png` | Dominant-gene/feature plot; flags rRNA pseudogene, rRNA-like, mtDNA, and other features consuming the TPM denominator |
+| `*-expression-concentration-curve-qc.png` | Cumulative TPM curve showing how much expression mass is concentrated in the top 1/10/50/200/2000 genes |
+| `*-qc-reference-mtdna.png` | Sample mtDNA fraction against bundled TCGA cohort-median and HPA normal-tissue reference columns |
+| `*-qc-reference-technical-rna-burden.png` | Combined mtDNA + rRNA-like fraction against the same reference columns |
 | `*-degradation-index.png` | Gene-pair scatter: expected vs observed long/short ratios, diagonal = no degradation |
 | `*-sample-summary.png` | Quick overview: cancer type, purity, background signatures |
 | `*-decomposition-composition.png` | Standalone composition bar for the best hypothesis |
@@ -276,11 +283,24 @@ Prefer the standalone decomposition figures when reviewing or sharing a case. Th
 | `*-decomposition-candidates.png` | Standalone per-candidate composition comparison |
 | `*-purity.png` | Tumor purity estimation detail |
 | `*-immune.png`, `*-tumor.png`, `*-antigens.png`, `*-treatments.png` | Gene expression strip plots by category |
-| `*-target-safety.png`, `*-purity-targets.png`, `*-purity-ctas.png`, `*-purity-surface.png` | Therapy target expression with normal tissue context |
+| `*-actionable-targets.png` | Canonical actionable-target screen: observed expression, tumor-source estimate, normal-tissue context, and readiness caveats |
+| `*-priority-targets.png` | Ranked target shortlist, split by approval/readiness tier |
+| `*-priority-target-context.png` | Evidence companion for the priority shortlist: tumor-source, expression range, healthy-tissue, and maturity context |
+| `*-target-tissues.pdf` | Detailed per-gene tissue-expression appendix for reviewed therapy targets |
+| `*-purity-ctas.png`, `*-purity-surface.png` | Tumor-expression ranges for non-target expression categories |
 | `*-reference-mds.png` | MDS reference map: TCGA cancer medians, subtype references, normal tissues, and the sample |
-| `*-reference-neighborhood.png` | Sample-centered reference map; radius preserves full feature-space distance |
+| `*-reference-neighborhood.png` | Nearest cancer/subtype/normal reference distance ranking; preserves full feature-space distance |
 | `*-cancer-types-genes.png`, `*-cancer-types-disjoint.png` | Cancer-type gene signature heatmaps |
 | `*-all-figures.pdf` | All figures combined into a single PDF |
+
+Pass `--deprecated-figures` to keep older duplicate-style target views under
+`figures/deprecated/` for regression/comparison. The default target figures are
+the integrated ones: they combine cancer-specific curation, observed expression,
+tumor-source attribution, purity uncertainty, healthy-tissue context, HLA or
+alteration gates where available, and treatment-state caveats.
+If curated agent-level `benefit_tier` / `toxicity_tier` fields are added, the
+priority ranking can also use those; otherwise PIRLy Genes does not infer
+survival benefit or toxicity from expression alone.
 
 ## Python API
 

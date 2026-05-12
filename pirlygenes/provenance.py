@@ -23,7 +23,11 @@ from .reporting import (
     partition_tumor_core_rows,
     summarize_reliability_reasons,
 )
-from .sample_context import library_prep_display_label
+from .sample_context import (
+    heuristic_support_label,
+    length_pair_display_label,
+    library_prep_display_label,
+)
 
 
 def _compartment_label(comp: str) -> str:
@@ -89,7 +93,9 @@ def build_provenance_md(
             getattr(sample_context, "library_prep_confidence", 0.0) or 0.0
         )
         prep_label = library_prep_display_label(prep)
-        lines.append(f"Inferred: **{prep_label}** (confidence {confidence:.0%}). ")
+        lines.append(
+            f"Inferred: **{prep_label}** ({heuristic_support_label(confidence)}). "
+        )
         if prep == "exome_capture":
             lines.append(
                 "Implication: rRNA and many non-polyadenylated transcripts "
@@ -127,9 +133,10 @@ def build_provenance_md(
     if sample_context is not None:
         pres = getattr(sample_context, "preservation", "unknown").replace("_", " ")
         sev = getattr(sample_context, "degradation_severity", "none")
-        idx = getattr(sample_context, "degradation_index", None)
-        idx_str = f" (length-pair index {idx:.2f})" if idx is not None else ""
-        lines.append(f"Inferred: **{pres}**, degradation severity **{sev}**{idx_str}.")
+        lines.append(
+            f"Inferred: **{pres}**, degradation severity **{sev}**; "
+            f"length-pair check **{length_pair_display_label(sample_context)}**."
+        )
         if sev in ("moderate", "severe"):
             lines.append(
                 "\nImplication: long-transcript quantification is biased "

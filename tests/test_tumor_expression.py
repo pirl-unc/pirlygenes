@@ -492,6 +492,69 @@ def test_ranges_all_estimates_nonnegative():
             assert row[f"est_{i + 1}"] >= 0, f"est_{i + 1} is negative"
 
 
+def test_source_attribution_invariants_on_low_purity_prad_stroma_mix():
+    """Per-gene source attribution must stay on bulk-TPM semantics.
+
+    ``tumor_cell_tpm`` / ``median_est`` can exceed observed TPM after purity
+    normalization. ``attr_tumor_tpm`` is different: it is the bulk expression
+    mass attributed to tumor cells, so it must remain bounded by observed TPM
+    and keep low/median/high intervals ordered.
+    """
+    from pirlygenes.decomposition import decompose_sample
+    from pirlygenes.gene_sets_cancer import pan_cancer_expression
+    from pirlygenes.plot import estimate_tumor_expression_ranges
+    import pandas as pd
+
+    ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
+    sample_tpm = (
+        0.15 * ref["FPKM_PRAD"].astype(float)
+        + 0.85 * ref["nTPM_smooth_muscle"].astype(float)
+    )
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": ref["Ensembl_Gene_ID"],
+            "gene_symbol": ref["Symbol"],
+            "TPM": sample_tpm,
+        }
+    )
+    decomp = decompose_sample(
+        df,
+        cancer_types=["PRAD"],
+        templates=["solid_primary"],
+        top_k=1,
+    )
+    assert decomp
+    ranges = estimate_tumor_expression_ranges(
+        df,
+        "PRAD",
+        decomp[0].purity_result,
+        decomposition_results=decomp,
+    )
+    expressed = ranges[ranges["observed_tpm"] > 0].copy()
+    assert not expressed.empty
+
+    assert (
+        expressed["attr_tumor_tpm"] <= expressed["observed_tpm"] + 1e-6
+    ).all()
+    assert (
+        expressed["attr_tumor_tpm_low"] <= expressed["attr_tumor_tpm"] + 1e-6
+    ).all()
+    assert (
+        expressed["attr_tumor_tpm"] <= expressed["attr_tumor_tpm_high"] + 1e-6
+    ).all()
+    assert expressed["attr_tumor_fraction"].between(0.0, 1.0).all()
+    assert (
+        expressed["tumor_attributed_bulk_tpm"] == expressed["attr_tumor_tpm"]
+    ).all()
+
+    capped = expressed[expressed["low_purity_cap_applied"]]
+    if not capped.empty:
+        assert (
+            capped["tumor_attributed_bulk_tpm_pre_low_purity_cap"]
+            >= capped["attr_tumor_tpm"]
+        ).all()
+
+
 def test_ranges_empty_input():
     """Empty expression data should produce empty DataFrame."""
     from pirlygenes.plot import estimate_tumor_expression_ranges

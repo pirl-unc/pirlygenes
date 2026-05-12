@@ -48,6 +48,30 @@ def test_purity_ci_phrase_uses_text_not_warning_icon():
     assert "\u26a0" not in phrase
 
 
+def test_tumor_tpm_map_uses_source_attributed_tpm_not_context_tpm():
+    ranges_df = pd.DataFrame(
+        [
+            {
+                "symbol": "FAP",
+                "attr_tumor_tpm": 0.2,
+                "tumor_cell_tpm": 125.0,
+                "median_est": 80.0,
+            },
+            {
+                "symbol": "EGFR",
+                "attr_tumor_tpm": 42.0,
+                "tumor_cell_tpm": 50.0,
+                "median_est": 45.0,
+            },
+        ]
+    )
+
+    mapping = cli_mod._tumor_tpm_by_symbol_from_ranges(ranges_df)
+
+    assert mapping["FAP"] == 0.2
+    assert mapping["EGFR"] == 42.0
+
+
 def test_resolve_always_label_gene_ids(monkeypatch):
     df = pd.DataFrame(
         {"gene_id": ["ENSG1", "ENSG2"], "gene_display_name": ["GENE1", "B7-H3"]}
@@ -138,7 +162,6 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     mds_calls = []
     neighborhood_calls = []
     tissue_calls = []
-    safety_calls = []
     monkeypatch.setattr(
         cli_mod, "load_expression_data", lambda *a, **k: pd.DataFrame({"x": [1]})
     )
@@ -150,9 +173,6 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         cli_mod, "plot_therapy_target_tissues", lambda *a, **k: tissue_calls.append(k)
-    )
-    monkeypatch.setattr(
-        cli_mod, "plot_therapy_target_safety", lambda *a, **k: safety_calls.append(k)
     )
     # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
     # removed from the default plot set (polish/4.40.1); skip
@@ -299,14 +319,14 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     # #83: scatter must use the resolved cancer type (PRAD from
     # analyze_sample), not None / the raw CLI arg.
     assert scatter_calls[0]["cancer_type"] == "PRAD"
+    assert len(tissue_calls) == 1
     assert tissue_calls[0]["top_k"] == 12
     assert tissue_calls[0]["tpm_threshold"] == 18
-    assert safety_calls[0]["top_k"] == 12
-    assert safety_calls[0]["tpm_threshold"] == 18
+    assert {"FAP", "CD276"}.issubset(tissue_calls[0]["extra_symbols"])
     # plot_cancer_type_genes / plot_cancer_type_disjoint_genes were
     # removed from the default plot set (polish/4.40.1).
     assert len(cancer_gene_calls) == 0
-    # Pan-reference MDS plus a sample-centered reference neighborhood are emitted now;
+    # Pan-reference MDS plus a nearest-reference distance ranking are emitted now;
     # PCA and hierarchy-method plots have been removed from the default output
     # (see pirl-unc/pirlygenes#36).
     assert len(pca_calls) == 0
@@ -342,7 +362,7 @@ def test_cli_plot_expression_and_main(monkeypatch, tmp_path):
     assert params["selected_sample_mode"] == "solid"
     assert params["embedding_methods"] == [
         "pan_reference_mds",
-        "pan_reference_neighborhood",
+        "pan_reference_nearest_references",
     ]
     assert params["input"]["tumor_context"] == "met"
     assert params["input"]["site_hint"] == "liver"
@@ -438,8 +458,8 @@ def test_generate_text_reports_uses_family_and_background_language(tmp_path):
     # content below is now only checked in analysis.md.
     detailed = (tmp_path / "sample-analysis.md").read_text()
     assert "not literal" in detailed  # tissue-score caveat
-    assert "Possible labels" in detailed
-    assert "Family-level call" in detailed
+    assert "Possible report labels" in detailed
+    assert "Broad family context" in detailed
     assert "Fit quality" in detailed
     assert "Integrated evidence synthesis" in detailed
     assert "Parallel hypotheses still alive" in detailed
@@ -713,10 +733,10 @@ def test_generate_text_reports_mentions_analysis_constraints(tmp_path):
 
     # "constrained working subtype" + the one-line "Analysis constraints"
     # recap lived in the retired summary.md paragraph. Analysis.md
-    # surfaces the constraint set in its own User-constrained /
+    # surfaces the constraint set in its own externally supplied /
     # Requested-context lines.
     detailed = (tmp_path / "constrained-analysis.md").read_text()
-    assert "User-constrained cancer type" in detailed
+    assert "Externally supplied report label" in detailed
     assert "Requested tumor context" in detailed
 
 
@@ -840,7 +860,7 @@ def test_generate_target_report_is_mode_aware(tmp_path):
     )
     pure_text = (tmp_path / "pure-targets.md").read_text()
     assert "Population-expression range" in pure_text
-    assert "Cellular TPM" in pure_text
+    assert "Context TPM (model)" in pure_text
 
     heme_prefix = str(tmp_path / "heme-targets")
     cli_mod._generate_target_report(
@@ -855,7 +875,7 @@ def test_generate_target_report_is_mode_aware(tmp_path):
     )
     heme_text = (tmp_path / "heme-targets-targets.md").read_text()
     assert "Malignant-lineage expression range" in heme_text
-    assert "Malignant-lineage TPM (model)" in heme_text
+    assert "Context TPM (model)" in heme_text
 
 
 def test_generate_target_report_adds_tumor_context_and_landscape_summary(tmp_path):
@@ -1436,8 +1456,6 @@ def test_mds_can_focus_on_sample_neighborhood(monkeypatch):
 def test_reference_neighborhood_preserves_sample_distances(monkeypatch):
     import pirlygenes.plot_embedding as _pe
 
-    captured = {}
-
     def fake_feature_matrix(*_args, **_kwargs):
         return np.array(
             [
@@ -1448,33 +1466,22 @@ def test_reference_neighborhood_preserves_sample_distances(monkeypatch):
             ]
         ), ["COAD", "READ", "normal:colon", "SAMPLE"]
 
-    def fake_plot(coords, labels, **kwargs):
-        captured["coords"] = coords
-        captured["labels"] = labels
-        captured["kwargs"] = kwargs
-        return None, None
-
     monkeypatch.setattr(_pe, "_cancer_type_feature_matrix", fake_feature_matrix)
-    monkeypatch.setattr(_pe, "_plot_embedding_with_labels", fake_plot)
 
-    _pe.plot_cancer_type_neighborhood(
+    fig, ax = _pe.plot_cancer_type_neighborhood(
         pd.DataFrame({"gene_symbol": ["A"], "ensembl_gene_id": ["ENSG1"], "TPM": [1]}),
         focus_nearest_cancers=None,
         focus_nearest_normals=None,
     )
 
-    labels = captured["labels"]
-    coords = captured["coords"]
-    sample = coords[labels.index("SAMPLE")]
-    plotted_dist = {
-        label: float(np.linalg.norm(coords[i] - sample))
-        for i, label in enumerate(labels)
-        if label != "SAMPLE"
-    }
-
-    assert plotted_dist["COAD"] < plotted_dist["normal:colon"] < plotted_dist["READ"]
-    assert captured["kwargs"]["sample_centered_distance"] is True
-    assert captured["kwargs"]["nearest_basis"] == "input feature distance"
+    labels = [tick.get_text() for tick in ax.get_yticklabels()]
+    assert labels == ["COAD", "READ", "colon"]
+    assert "Nearest reference distances" in ax.get_title()
+    assert "Input feature-space distance" in ax.get_xlabel()
+    widths = [float(patch.get_width()) for patch in ax.patches]
+    assert widths[0] < widths[1]
+    assert widths[0] < widths[2]
+    fig.clf()
 
 
 def test_embedding_matrix_sanitizes_nonfinite_features():
@@ -1622,6 +1629,43 @@ def test_collect_ranked_therapy_targets_tracks_multicategory_and_approval(monkey
     assert out[2]["approved_therapies"] == ("radioligand",)
 
 
+def test_collect_ranked_therapy_targets_force_includes_extra_symbols(monkeypatch):
+    df = pd.DataFrame(
+        {
+            "gene_id": ["ENSG_A", "ENSG_B"],
+            "gene_display_name": ["GENEA", "KLK2"],
+            "TPM": [120.0, 2.0],
+        }
+    )
+
+    import pirlygenes.plot_therapy as _pt
+
+    monkeypatch.setattr(
+        _pt,
+        "therapy_target_gene_id_to_name",
+        lambda therapy: {"ENSG_A": "GENEA"} if therapy == "ADC" else {},
+    )
+    monkeypatch.setattr(
+        _pt,
+        "get_data",
+        lambda name: pd.DataFrame(
+            {"Ensembl_Gene_ID": [], "Status_Bucket": []}
+        ),
+    )
+
+    out = plot_mod._collect_ranked_therapy_targets(
+        df,
+        top_k=1,
+        tpm_threshold=30,
+        extra_symbols={"KLK2"},
+    )
+
+    assert {row["symbol"] for row in out} == {"GENEA", "KLK2"}
+    klk2 = next(row for row in out if row["symbol"] == "KLK2")
+    assert klk2["sample_tpm"] == 2.0
+    assert klk2["therapies"] == ()
+
+
 def test_resolve_gene_set_symbols_by_category_name():
     """String input resolves via the Category column in data/gene-sets.csv."""
     syms = plot_mod._resolve_gene_set_symbols("Interferon_response")
@@ -1764,7 +1808,7 @@ def test_plot_ctas_vs_cancer_type_detail_worst_vital_excludes_testis_and_thymus(
     monkeypatch.setattr(
         therapy_mod,
         "pan_cancer_expression",
-        lambda: pd.DataFrame(
+        lambda **_: pd.DataFrame(
             {
                 "Ensembl_Gene_ID": ["ENSGCTA"],
                 "Symbol": ["CTA1"],

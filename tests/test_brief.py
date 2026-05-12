@@ -132,6 +132,33 @@ def test_brief_is_compact():
     assert "Top candidate therapies" in md
 
 
+def test_summary_surfaces_rna_qc_and_prad_stromal_pitfall():
+    analysis = _make_analysis()
+    analysis["cancer_call_rescue"] = {
+        "kind": "low_purity_prad_stromal_context",
+        "message": "Prostate context with stromal SARC pitfall.",
+    }
+    analysis["rna_quant_qc"] = {
+        "available": True,
+        "summary": "Salmon mapping 33.5%; 12,612/35,037 genes >=1 TPM",
+        "warnings": [
+            "Salmon mapping rate is low (33.5%). Interpret RNA-derived calls cautiously."
+        ],
+    }
+
+    md = build_summary(
+        analysis,
+        _make_ranges_df(),
+        cancer_code="PRAD",
+        disease_state="",
+        sample_id="sample_X",
+    )
+
+    assert "**RNA quant QC:** Salmon mapping 33.5%" in md
+    assert "**QC/call pitfall:** prostate tissue/context is present" in md
+    assert "RNA-inferred PRAD context rescue" in md
+
+
 def test_summary_marks_supplied_cancer_type_basis():
     analysis = _make_analysis()
     analysis["analysis_constraints"] = {"cancer_type": "PRAD"}
@@ -146,7 +173,7 @@ def test_summary_marks_supplied_cancer_type_basis():
     )
 
     assert "Cancer-type basis" in md
-    assert "externally supplied PRAD sets report scope" in md
+    assert "externally supplied PRAD (Prostate Adenocarcinoma) sets the report label" in md
     assert "RNA evidence is used downstream for confidence" in md
     assert "Patient-facing LLM interpretation needs external clinical context" in md
     assert "RNA-inferred — treat it as a hypothesis" not in md
@@ -170,7 +197,10 @@ def test_summary_marks_supplied_cancer_type_rna_concordance():
         disease_state="",
     )
 
-    assert "**RNA classifier check:** concordant with supplied PRAD" in md
+    assert (
+        "**RNA classifier check:** broad RNA context is concordant with supplied "
+        "PRAD (Prostate Adenocarcinoma)"
+    ) in md
     assert "nearest RNA alternatives: BLCA, COAD" in md
 
 
@@ -195,10 +225,9 @@ def test_summary_compares_registry_child_against_parent_reference():
         disease_state="",
     )
 
-    assert (
-        "**RNA classifier check:** concordant with supplied SARC_SYN via parent SARC"
-        in md
-    )
+    assert "broad RNA context is concordant at the parent level" in md
+    assert "SARC (Sarcoma) is top" in md
+    assert "refined report label remains SARC_SYN (Synovial Sarcoma)" in md
     assert "nearest RNA alternatives: BLCA" in md
 
 
@@ -222,9 +251,12 @@ def test_summary_marks_supplied_cancer_type_rna_discordance():
         disease_state="",
     )
 
-    assert "**RNA classifier check:** discordant with supplied COAD" in md
-    assert "top RNA candidate is SARC while COAD is rank 2" in md
-    assert "Keep the supplied label as report scope" in md
+    assert "broad RNA context is discordant with supplied COAD" in md
+    assert (
+        "top broad RNA candidate is SARC (Sarcoma) while "
+        "COAD (Colon Adenocarcinoma) is rank 2"
+    ) in md
+    assert "Keep the supplied label as the report label" in md
 
 
 def test_summary_marks_supplied_cancer_type_rna_ambiguity():
@@ -247,8 +279,42 @@ def test_summary_marks_supplied_cancer_type_rna_ambiguity():
         disease_state="",
     )
 
-    assert "**RNA classifier check:** ambiguous against supplied COAD" in md
-    assert "top RNA candidate is SARC while COAD is rank 2" in md
+    assert "broad RNA context is ambiguous against supplied COAD" in md
+    assert (
+        "top broad RNA candidate is SARC (Sarcoma) while "
+        "COAD (Colon Adenocarcinoma) is rank 2"
+    ) in md
+
+
+def test_summary_treats_broad_sarc_as_compatible_with_supplied_osteosarcoma():
+    analysis = _make_analysis()
+    analysis["cancer_type"] = "OS"
+    analysis["cancer_name"] = "Osteosarcoma"
+    analysis["analysis_constraints"] = {"cancer_type": "OS"}
+    analysis["cancer_type_source"] = "user-specified"
+    analysis["report_scope_cancer_type"] = "OS"
+    analysis["reference_cancer_type"] = "SARC"
+    analysis["candidate_trace"] = [
+        {"code": "SARC", "support_geomean": 0.58},
+        {"code": "UCS", "support_geomean": 0.39},
+        {"code": "BRCA", "support_geomean": 0.36},
+    ]
+    analysis["signature_top_cancers"] = [("KIRC", 0.70)]
+    ranges_df = _make_ranges_df()
+
+    md = build_summary(
+        analysis,
+        ranges_df,
+        cancer_code="OS",
+        disease_state="",
+    )
+
+    assert "externally supplied OS (Osteosarcoma) sets the fine/report label" in md
+    assert "broad RNA context is SARC (Sarcoma)" in md
+    assert "sarcoma-family broad-context support for supplied OS (Osteosarcoma)" in md
+    assert "does not independently resolve the refined label" in md
+    assert "raw signature favors KIRC" not in md
+    assert "confidence caveats" not in md
 
 
 def test_summary_marks_rna_inferred_cancer_type_as_hypothesis():
@@ -312,7 +378,7 @@ def test_summary_does_not_list_rna_alternatives_for_supplied_label():
         disease_state="",
     )
 
-    assert "**RNA classifier check:** concordant with supplied PRAD" in md
+    assert "broad RNA context is concordant with supplied PRAD" in md
     assert "**RNA alternatives:**" not in md
 
 
@@ -552,7 +618,7 @@ def test_expression_independent_therapy_surfaces_missing_required_evidence():
     assert "confirm mutation / fusion / amplification before treating as eligible" in line
 
 
-def test_expression_independent_therapy_acknowledges_supplied_fusion_input():
+def test_expression_independent_therapy_distinguishes_generic_fusion_file_from_supporting_call():
     analysis = _make_analysis()
     analysis["fusion_inputs_supplied"] = True
     target = pd.Series(
@@ -566,8 +632,57 @@ def test_expression_independent_therapy_acknowledges_supplied_fusion_input():
     )
     line = _format_therapy_bullet(target, None, analysis=analysis)
 
-    assert "required eligibility evidence was supplied" in line
-    assert "verify the mutation / fusion / amplification call" in line
+    assert "orthogonal mutation/fusion/CNV evidence was supplied" in line
+    assert "no target-specific supporting call was recognized" in line
+
+
+def test_mutation_only_rows_do_not_treat_supplied_fusions_as_exact_evidence():
+    analysis = _make_analysis()
+    analysis["fusion_inputs_supplied"] = True
+    target = pd.Series(
+        {
+            "symbol": "ESR1",
+            "agent": "elacestrant",
+            "agent_class": "small_molecule",
+            "phase": "approved",
+            "indication": "ER+/HER2- ESR1-mut BRCA",
+            "rationale": "requires ESR1 mutation",
+        }
+    )
+
+    line = _format_therapy_bullet(target, None, analysis=analysis)
+
+    assert "orthogonal mutation/fusion/CNV evidence was supplied" in line
+    assert "no target-specific supporting call was recognized" in line
+    assert "required eligibility evidence was supplied" not in line
+
+
+def test_nutm_scope_level_rows_reference_report_scope_not_target_specific_mutation():
+    analysis = _make_analysis()
+    analysis.update(
+        {
+            "cancer_type": "NUTM",
+            "fusion_report_scope_inference": {
+                "cancer_type": "NUTM",
+                "expected_pair": "BRD3--NUTM1",
+            },
+        }
+    )
+    target = pd.Series(
+        {
+            "cancer_code": "NUTM",
+            "symbol": "BRD4",
+            "agent": "molibresib",
+            "agent_class": "small_molecule",
+            "phase": "phase_1",
+            "indication": "NUT carcinoma",
+        }
+    )
+
+    line = _format_therapy_bullet(target, None, analysis=analysis)
+
+    assert "scope-level fusion evidence supports the NUTM report label" in line
+    assert "no target-specific supporting call" not in line
 
 
 def test_sarc_summary_uses_supplied_egfr_kdd_and_skips_unresolved_subtype_spillover():
@@ -666,7 +781,7 @@ def test_summary_prompts_for_hla_when_hla_gated_target_is_plausible():
     assert "requires A*02:01" in md
 
 
-def test_brief_flags_possible_current_endocrine_therapy_beyond_prad():
+def test_brief_downranks_er_dependent_brca_therapy_when_er_axis_low():
     from pirlygenes.therapy_response import TherapyAxisScore
 
     analysis = _make_analysis()
@@ -692,16 +807,36 @@ def test_brief_flags_possible_current_endocrine_therapy_beyond_prad():
                 "tme_dominant": False,
                 "tme_explainable": False,
             },
+            {
+                "symbol": "TACSTD2",
+                "observed_tpm": 100.0,
+                "attr_tumor_tpm": 90.0,
+                "attr_tumor_fraction": 0.90,
+                "attr_top_compartment": "tumor",
+                "attr_top_compartment_tpm": 90.0,
+                "tme_dominant": False,
+                "tme_explainable": False,
+            },
         ]
     )
     md = build_brief(
         analysis,
         ranges_df,
         cancer_code="BRCA",
-        disease_state="**ER-axis suppressed / endocrine-exposed pattern**.",
+        disease_state="**ER-axis suppressed / ER-low pattern**.",
     )
-    esr1_line = next(line for line in md.splitlines() if line.startswith("- **ESR1**"))
-    assert "current/prior endocrine therapy" in esr1_line
+    top_lines = [line for line in md.splitlines() if line.startswith("- **")]
+    assert any(line.startswith("- **TACSTD2**") for line in top_lines)
+    assert all(not line.startswith("- **ESR1**") for line in top_lines)
+
+    actionable = build_actionable(
+        analysis,
+        ranges_df,
+        cancer_code="BRCA",
+        disease_state="**ER-axis suppressed / ER-low pattern**.",
+    )
+    assert "RNA-context conflict: ER axis is suppressed/ER-low" in actionable
+    assert "ER-low biology or current/prior endocrine therapy signal" in actionable
 
 
 def test_brief_explains_bulk_present_targets_that_fail_source_gate():
@@ -746,7 +881,7 @@ def test_brief_explains_bulk_present_targets_that_fail_source_gate():
         disease_state="",
     )
     assert "Target expression source trace" in md
-    assert "Tumor-inferred TPM" in md
+    assert "Tumor-source bulk TPM" in md
     assert "Top non-tumor attribution" in md
     assert "STEAP2" in md
     assert "KLK2" in md
@@ -933,7 +1068,7 @@ def test_brief_uses_tumor_band_without_attribution_dict():
         disease_state="",
     )
     assert "tumor-specific decomposition was unavailable" not in md
-    assert "128 TPM (model interval 128-128" in md
+    assert "128 tumor-source bulk TPM (model interval 128-128" in md
 
 
 def test_actionable_renders_tumor_band_without_attribution_dict():

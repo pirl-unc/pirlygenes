@@ -153,7 +153,7 @@ _tcga_parent_code_cache = None
 def _tcga_parent_codes():
     global _tcga_parent_code_cache
     if _tcga_parent_code_cache is None:
-        ref = pan_cancer_expression()
+        ref = pan_cancer_expression(technical_rna_normalize=True)
         _tcga_parent_code_cache = {
             c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_")
         }
@@ -371,7 +371,7 @@ def _select_embedding_genes_bottleneck(n_genes_per_type=5):
     if cache_key in _bottleneck_gene_cache:
         return _bottleneck_gene_cache[cache_key]
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     ntpm_nonrepro = [
@@ -476,7 +476,7 @@ def _select_pan_reference_genes(n_genes_per_type=6, n_genes_per_normal=None):
     if cache_key in _pan_reference_gene_cache:
         return _pan_reference_gene_cache[cache_key]
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     ref_dedup = ref.drop_duplicates(subset="Symbol").copy()
@@ -612,7 +612,7 @@ def _select_tme_low_genes(n_genes_per_type=3, sn_tme_threshold=10):
     if cache_key in _tme_gene_cache:
         return _tme_gene_cache[cache_key]
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
     ntpm_nonrepro = [
@@ -770,7 +770,7 @@ def _select_embedding_genes(n_genes_per_type=3):
     if cache_key in _embedding_gene_cache:
         return _embedding_gene_cache[cache_key]
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     ntpm_cols = [c for c in ref.columns if c.startswith("nTPM_")]
 
@@ -946,7 +946,9 @@ def _reference_cancer_expression_df(cancer_code):
     """Return a TCGA-median expression frame for one cancer type."""
     import pandas as pd
 
-    ref = pan_cancer_expression().drop_duplicates(subset="Ensembl_Gene_ID")
+    ref = pan_cancer_expression(technical_rna_normalize=True).drop_duplicates(
+        subset="Ensembl_Gene_ID"
+    )
     return pd.DataFrame(
         {
             "ensembl_gene_id": ref["Ensembl_Gene_ID"],
@@ -959,7 +961,7 @@ def _reference_cancer_expression_df(cancer_code):
 def _hierarchy_feature_labels():
     from .tumor_purity import _CANCER_FAMILY_PANELS, CANCER_TO_TISSUE
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     codes = [c.replace("FPKM_", "") for c in ref.columns if c.startswith("FPKM_")]
     families = list(_CANCER_FAMILY_PANELS)
     site_labels = sorted(
@@ -1041,9 +1043,10 @@ def _reference_family_feature_matrix(candidate_codes, family_labels):
     """Build normalized family-panel features for TCGA reference centroids."""
     from .tumor_purity import _CANCER_FAMILY_PANELS
 
-    ref_hk = pan_cancer_expression(normalize="housekeeping").drop_duplicates(
-        subset="Symbol"
-    )
+    ref_hk = pan_cancer_expression(
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    ).drop_duplicates(subset="Symbol")
     ref_hk = ref_hk.set_index("Symbol")
 
     rows = []
@@ -1077,7 +1080,11 @@ def _reference_site_feature_matrix(candidate_codes, site_labels):
     if cached is not None:
         return cached
 
-    ref = pan_cancer_expression().drop_duplicates(subset="Symbol").set_index("Symbol")
+    ref = (
+        pan_cancer_expression(technical_rna_normalize=True)
+        .drop_duplicates(subset="Symbol")
+        .set_index("Symbol")
+    )
     rows = []
     for code in candidate_codes:
         sample_raw_by_symbol = ref[f"FPKM_{code}"].astype(float).to_dict()
@@ -1185,7 +1192,7 @@ def _subtype_expression_values_for_ref(
             housekeeping_gene_names,
         )
 
-        subtype_df = subtype_deconvolved_expression()
+        subtype_df = subtype_deconvolved_expression(technical_rna_normalize=True)
     except Exception:
         return [], np.zeros((len(ref_norm), 0), dtype=float)
 
@@ -1345,7 +1352,10 @@ def _cancer_type_feature_matrix(
                 df[tpm_col].astype(float) / hk_median,
             )
         )
-        ref_full = pan_cancer_expression(normalize="housekeeping")
+        ref_full = pan_cancer_expression(
+            normalize="housekeeping",
+            technical_rna_normalize=True,
+        )
     else:
         sample_by_id = dict(
             zip(
@@ -1353,7 +1363,7 @@ def _cancer_type_feature_matrix(
                 df[tpm_col].astype(float),
             )
         )
-        ref_full = pan_cancer_expression()
+        ref_full = pan_cancer_expression(technical_rna_normalize=True)
 
     fpkm_cols = [c for c in ref_full.columns if c.startswith("FPKM_")]
     labels = [c.replace("FPKM_", "") for c in fpkm_cols]
@@ -1594,7 +1604,7 @@ def _plot_embedding_with_labels(
         nearest_cancer_labels = set(
             nearest_cancer_ordered[:n_nearest_cancers]
         )
-        n_nearest_subtypes = 0 if n_nearest_cancers == 0 else min(3, n_nearest_cancers)
+        n_nearest_subtypes = n_nearest_cancers
         nearest_subtype_labels = set(nearest_subtype_ordered[:n_nearest_subtypes])
     if label_nearest_normals is not None:
         nearest_normal_labels = set(
@@ -1757,7 +1767,7 @@ def _plot_embedding_with_labels(
             )
             if subtype_text:
                 nearest_text += "\n\nSubtype references\n" + "\n".join(
-                    subtype_text.splitlines()[: max(1, min(3, n_cancers))]
+                    subtype_text.splitlines()[:n_cancers]
                 )
             nearest_text += "\n\nNearest normal tissues\n" + "\n".join(
                 normal_text.splitlines()[:n_normals]
@@ -2266,7 +2276,11 @@ def plot_cohort_heatmap(
     gene_symbols = sorted(ct_df["Symbol"].unique())
 
     # Get expression
-    ref = pan_cancer_expression(genes=gene_symbols, normalize="housekeeping")
+    ref = pan_cancer_expression(
+        genes=gene_symbols,
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     codes = cancer_types()
     fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
     codes = [c.replace("FPKM_", "") for c in fpkm_cols]
@@ -2367,7 +2381,10 @@ def plot_cohort_pca(
     for genes in sig.values():
         all_symbols.update(genes)
 
-    ref = pan_cancer_expression(normalize="housekeeping")
+    ref = pan_cancer_expression(
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     fpkm_cols = [c for c in ref.columns if c.startswith("FPKM_")]
     codes = [c.replace("FPKM_", "") for c in fpkm_cols]
 
@@ -2440,7 +2457,11 @@ def plot_cohort_therapy_targets(
         all_targets.update(d)
     target_symbols = sorted(set(all_targets.values()))
 
-    ref = pan_cancer_expression(genes=target_symbols, normalize="housekeeping")
+    ref = pan_cancer_expression(
+        genes=target_symbols,
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     codes = cancer_types()
     fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
     codes = [c.replace("FPKM_", "") for c in fpkm_cols]
@@ -2500,7 +2521,11 @@ def _plot_geneset_by_cancer_heatmap(
     import numpy as np
     from .gene_sets_cancer import pan_cancer_expression, cancer_types
 
-    ref = pan_cancer_expression(genes=gene_symbols, normalize="housekeeping")
+    ref = pan_cancer_expression(
+        genes=gene_symbols,
+        normalize="housekeeping",
+        technical_rna_normalize=True,
+    )
     codes = cancer_types()
     fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
     codes = [c.replace("FPKM_", "") for c in fpkm_cols]
@@ -2596,7 +2621,10 @@ def plot_cohort_ctas(
     from .gene_sets_cancer import CTA_gene_names, pan_cancer_expression, cancer_types
 
     genes = sorted(CTA_gene_names())
-    ref = pan_cancer_expression(genes=genes)  # raw values, not HK-normalized
+    ref = pan_cancer_expression(
+        genes=genes,
+        technical_rna_normalize=True,
+    )  # TPM values after technical-RNA normalization
     codes = cancer_types()
     fpkm_cols = [f"FPKM_{c}" for c in codes if f"FPKM_{c}" in ref.columns]
     codes_clean = [c.replace("FPKM_", "") for c in fpkm_cols]
@@ -2804,13 +2832,12 @@ def plot_cancer_type_neighborhood(
     save_dpi=300,
     figsize=(12, 10),
 ):
-    """Sample-centered reference map preserving sample-to-reference distance.
+    """Rank nearest reference cohorts by original sample-to-reference distance.
 
-    Global PCA/MDS plots can distort local neighborhoods when many cancer,
-    subtype, and healthy-tissue references are squeezed into two dimensions.
-    This view is intentionally local: ``SAMPLE`` is fixed at the origin, every
-    reference point's radius is its original feature-space distance from the
-    sample, and the angle is a PCA-based layout of the reference points.
+    The global MDS plot is useful for spatial context but necessarily distorts
+    some local relationships. This plot is deliberately not an embedding: it is
+    a ranked distance chart, so the nearest cancer, subtype, and normal-tissue
+    references are readable and all labels are explicit.
     """
     X, labels = _cancer_type_feature_matrix(
         df_gene_expr,
@@ -2820,62 +2847,122 @@ def plot_cancer_type_neighborhood(
         include_subtypes=include_subtypes,
     )
     distances = _euclidean_distances(X)
-    focused = False
-    if "SAMPLE" in labels:
-        sample_idx = labels.index("SAMPLE")
-        keep_idx = _sample_neighborhood_indices(
-            labels,
-            distances,
-            sample_idx,
-            nearest_cancers=focus_nearest_cancers,
-            nearest_normals=focus_nearest_normals,
+    if "SAMPLE" not in labels:
+        return None
+    sample_idx = labels.index("SAMPLE")
+    nearest_neighbors = _nearest_neighbors_from_distances(labels, distances, sample_idx)
+
+    cancer_like_target = (
+        focus_nearest_cancers
+        if focus_nearest_cancers is not None
+        else label_nearest_cancers
+    )
+    normal_target = (
+        focus_nearest_normals
+        if focus_nearest_normals is not None
+        else label_nearest_normals
+    )
+    cancer_like_target = 10 if cancer_like_target is None else int(cancer_like_target)
+    normal_target = 5 if normal_target is None else int(normal_target)
+
+    grouped = {"cancer": [], "subtype": [], "normal": []}
+    for dist, label, kind in nearest_neighbors:
+        if kind in grouped:
+            grouped[kind].append((dist, label, kind))
+
+    cancer_like = (grouped["cancer"] + grouped["subtype"])
+    cancer_like.sort(key=lambda item: (item[0], item[1]))
+    selected = cancer_like[: max(0, cancer_like_target)]
+    selected += grouped["normal"][: max(0, normal_target)]
+    if not selected:
+        return None
+
+    kind_order = {"cancer": 0, "subtype": 1, "normal": 2}
+    selected.sort(key=lambda item: (kind_order.get(item[2], 9), item[0], item[1]))
+
+    y_positions = []
+    y_labels = []
+    colors = []
+    values = []
+    group_headers = []
+    y = 0.0
+    last_kind = None
+    kind_labels = {
+        "cancer": "TCGA parent cancers",
+        "subtype": "Subtype references",
+        "normal": "Normal tissues",
+    }
+    kind_colors = {
+        "cancer": "#4a90d9",
+        "subtype": "#6da3cf",
+        "normal": "#8da08d",
+    }
+    for dist, label, kind in selected:
+        if kind != last_kind:
+            if y_positions:
+                y += 0.65
+            group_headers.append((y - 0.62, kind_labels.get(kind, kind)))
+            last_kind = kind
+        y_positions.append(y)
+        y_labels.append(str(label).replace("normal:", ""))
+        values.append(float(dist))
+        colors.append(kind_colors.get(kind, "#777777"))
+        y += 1.0
+
+    fig, ax = plt.subplots(figsize=(11, max(4.8, 0.36 * max(y_positions) + 2.2)))
+    ax.barh(y_positions, values, color=colors, height=0.72, alpha=0.88)
+    for y_pos, value in zip(y_positions, values):
+        ax.text(value, y_pos, f"  {value:.2f}", va="center", fontsize=8.5)
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(y_labels, fontsize=9)
+    ax.invert_yaxis()
+    xmin, xmax = ax.get_xlim()
+    for header_y, label in group_headers:
+        ax.axhline(header_y + 0.18, color="#e4e4e4", linewidth=0.8, zorder=0)
+        ax.text(
+            xmin,
+            header_y,
+            label,
+            ha="left",
+            va="center",
+            fontsize=9,
+            fontweight="bold",
+            color="#555555",
+            clip_on=False,
         )
-        if len(keep_idx) < len(labels):
-            X = X[keep_idx]
-            labels = [labels[i] for i in keep_idx]
-            distances = distances[np.ix_(keep_idx, keep_idx)]
-            focused = True
-    nearest_neighbors = None
-    if "SAMPLE" in labels:
-        sample_idx = labels.index("SAMPLE")
-        nearest_neighbors = _nearest_neighbors_from_distances(
-            labels, distances, sample_idx
-        )
-    coords = _sample_radial_embedding(X, labels, distances)
+    ax.set_xlim(xmin, max(xmax, max(values) * 1.10))
+    ax.set_ylim(max(y_positions) + 0.8, -1.05)
 
     mlabel = _METHOD_LABELS.get(method, method)
-    title = "Sample-centered reference neighborhood"
+    title = "Nearest reference distances"
     if include_subtypes and include_normals:
-        title += " among TCGA parent cohorts, subtype references, and normal tissues"
+        title += " — TCGA parents, subtype refs, and normal tissues"
     elif include_subtypes:
-        title += " among TCGA parent cohorts and subtype references"
+        title += " — TCGA parents and subtype refs"
     elif include_normals:
-        title += " among TCGA parent cohorts and normal tissues"
+        title += " — TCGA parents and normal tissues"
     if mlabel:
         title += f" ({mlabel})"
-    if focused:
-        title += " — nearest references"
-    return _plot_embedding_with_labels(
-        coords,
-        labels,
-        title=title,
-        xlabel="Reference PCA angle (layout only)",
-        ylabel="Reference PCA angle (layout only); radius is sample distance",
-        method=method,
-        label_nearest_cancers=label_nearest_cancers,
-        label_nearest_normals=label_nearest_normals,
-        label_all=label_all,
-        nearest_neighbors=nearest_neighbors,
-        nearest_basis="input feature distance",
-        sample_centered_distance=True,
-        footnote=(
-            "Distance from SAMPLE is the original feature-space distance; "
-            "angle only organizes references for readability."
-        ),
-        save_to_filename=save_to_filename,
-        save_dpi=save_dpi,
-        figsize=figsize,
+    ax.set_title(title, fontsize=12, fontweight="bold")
+    ax.set_xlabel("Input feature-space distance from sample (lower = closer)")
+    ax.grid(axis="x", color="#dddddd", linewidth=0.6, alpha=0.7)
+    ax.set_axisbelow(True)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.text(
+        0.5,
+        0.965,
+        "This ranking preserves the original sample-to-reference distances; the MDS plot is only a 2-D projection.",
+        ha="center",
+        va="top",
+        fontsize=8.5,
+        color="#555555",
     )
+    fig.tight_layout(rect=[0.0, 0.03, 1.0, 0.93])
+    if save_to_filename:
+        fig.savefig(save_to_filename, dpi=save_dpi, bbox_inches="tight")
+        print(f"Saved {save_to_filename}")
+    return fig, ax
 
 
 def plot_cancer_type_umap(

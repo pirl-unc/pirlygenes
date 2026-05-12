@@ -319,7 +319,9 @@ def _therapy_combo_colors(therapy_combos):
     base_palette = _therapy_base_colors()
     combo_to_color = {}
     for combo in sorted(set(therapy_combos), key=_therapy_combo_sort_key):
-        if len(combo) == 1:
+        if len(combo) == 0:
+            combo_to_color[combo] = "gray"
+        elif len(combo) == 1:
             combo_to_color[combo] = base_palette[combo[0]]
         else:
             rgb = np.array([base_palette[t] for t in combo]).mean(axis=0)
@@ -379,7 +381,9 @@ def _approved_radioligand_gene_ids():
     return set(df.loc[mask, "Ensembl_Gene_ID"].astype(str))
 
 
-def _collect_ranked_therapy_targets(df_gene_expr, top_k=10, tpm_threshold=30):
+def _collect_ranked_therapy_targets(
+    df_gene_expr, top_k=10, tpm_threshold=30, extra_symbols=None
+):
     gene_id_col, gene_name_col = _guess_gene_cols(df_gene_expr)
 
     df = df_gene_expr.copy()
@@ -437,6 +441,34 @@ def _collect_ranked_therapy_targets(df_gene_expr, top_k=10, tpm_threshold=30):
         )
         selected_gene_ids.update(gid for gid, _ in scored[:top_k])
 
+    extra_symbol_set = {
+        str(sym).strip().upper()
+        for sym in (extra_symbols or [])
+        if str(sym).strip() and str(sym).strip().lower() != "nan"
+    }
+    if extra_symbol_set:
+        sample_symbol_to_ids = defaultdict(list)
+        for gid, sym in sample_name.items():
+            sample_symbol_to_ids[str(sym).strip().upper()].append(gid)
+        for sym_upper in sorted(extra_symbol_set):
+            for gid in sample_symbol_to_ids.get(sym_upper, []):
+                selected_gene_ids.add(gid)
+                gene_name_from_sets.setdefault(gid, sample_name.get(gid, sym_upper))
+
+        missing_symbols = extra_symbol_set - set(sample_symbol_to_ids)
+        if missing_symbols:
+            ref_symbols = pan_cancer_expression(technical_rna_normalize=True)[
+                ["Ensembl_Gene_ID", "Symbol"]
+            ].drop_duplicates()
+            for row in ref_symbols.itertuples(index=False):
+                sym = str(row.Symbol).strip()
+                if sym.upper() not in missing_symbols:
+                    continue
+                gid = _strip_ensembl_version(str(row.Ensembl_Gene_ID))
+                selected_gene_ids.add(gid)
+                sample_tpm.setdefault(gid, 0.0)
+                gene_name_from_sets.setdefault(gid, sym)
+
     records = []
     for gid in sorted(
         selected_gene_ids,
@@ -471,6 +503,7 @@ def plot_therapy_target_tissues(
     df_gene_expr,
     top_k=10,
     tpm_threshold=30,
+    extra_symbols=None,
     save_to_filename=None,
     save_dpi=300,
 ):
@@ -497,7 +530,7 @@ def plot_therapy_target_tissues(
     from matplotlib.backends.backend_pdf import PdfPages
 
     # Load normal tissue expression
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ntpm_cols = sorted([c for c in ref.columns if c.startswith("nTPM_")])
     tissue_labels = [c.replace("nTPM_", "").replace("_", " ") for c in ntpm_cols]
     ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index(
@@ -505,7 +538,10 @@ def plot_therapy_target_tissues(
     )
 
     records = _collect_ranked_therapy_targets(
-        df_gene_expr, top_k=top_k, tpm_threshold=tpm_threshold
+        df_gene_expr,
+        top_k=top_k,
+        tpm_threshold=tpm_threshold,
+        extra_symbols=extra_symbols,
     )
     if not records:
         print(f"No therapy targets above {tpm_threshold} TPM")
@@ -633,6 +669,7 @@ def plot_therapy_target_safety(
     df_gene_expr,
     top_k=10,
     tpm_threshold=30,
+    extra_symbols=None,
     save_to_filename=None,
     save_dpi=300,
     figsize=(12, 10),
@@ -657,7 +694,7 @@ def plot_therapy_target_safety(
     from adjustText import adjust_text
     from matplotlib.lines import Line2D
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     ref_by_id = ref.drop_duplicates(subset="Ensembl_Gene_ID").set_index(
         "Ensembl_Gene_ID"
     )
@@ -668,7 +705,10 @@ def plot_therapy_target_safety(
         essential_cols.extend([c for c in cols if c in ref_by_id.columns])
 
     records = _collect_ranked_therapy_targets(
-        df_gene_expr, top_k=top_k, tpm_threshold=tpm_threshold
+        df_gene_expr,
+        top_k=top_k,
+        tpm_threshold=tpm_threshold,
+        extra_symbols=extra_symbols,
     )
     if not records:
         print(f"No therapy targets above {tpm_threshold} TPM")
@@ -902,7 +942,7 @@ def plot_geneset_vs_vital_tissues(
     if tpm_col is None:
         raise KeyError(f"No TPM column in sample. Columns: {list(df.columns)}")
 
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     id_to_sym = dict(zip(ref["Ensembl_Gene_ID"], ref["Symbol"]))
     sample_by_symbol = {}
     for _, row in df.iterrows():
@@ -1182,7 +1222,7 @@ def plot_ctas_vs_cancer_type_detail(
     from .tumor_purity import CANCER_TO_TISSUE
 
     cancer_code = resolve_cancer_type(cancer_type)
-    ref = pan_cancer_expression()
+    ref = pan_cancer_expression(technical_rna_normalize=True)
     cancer_col = f"FPKM_{cancer_code}"
     if cancer_col not in ref.columns:
         raise ValueError(

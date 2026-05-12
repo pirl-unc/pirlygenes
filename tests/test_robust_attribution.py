@@ -137,6 +137,60 @@ def test_option_a_recovers_nonzero_tumor_when_mn_over_predicts():
     )
 
 
+def test_activated_tme_refinement_updates_source_attribution(monkeypatch):
+    """Activated CAF/TAM/TIL refinements must feed source attribution.
+
+    The context-TPM path uses the refined collapsed TME background, while
+    target evidence uses the per-compartment attribution map. If the latter
+    stays stale, CAF markers such as FAP can still leak into tumor-source
+    TPM even though the refinement says the fibroblast contribution is
+    higher.
+    """
+    import pirlygenes.decomposition.signature as signature
+    from pirlygenes.plot_tumor_expr import estimate_tumor_expression_ranges
+
+    def fake_signature_matrix(components, gene_subset=None, sample_by_eid=None):
+        assert components == ["fibroblast"]
+        return (
+            ["ENSG00000078098"],
+            ["FAP"],
+            np.array([[1.0]], dtype=float),
+            ["fibroblast"],
+        )
+
+    monkeypatch.setattr(
+        signature,
+        "build_signature_matrix",
+        fake_signature_matrix,
+    )
+
+    class Result:
+        fractions = {"tumor": 0.2, "fibroblast": 0.1}
+        matched_normal_tissue = None
+        matched_normal_fraction = 0.0
+
+    df = pd.DataFrame(
+        {
+            "ensembl_gene_id": ["ENSG00000078098"],
+            "gene_symbol": ["FAP"],
+            "TPM": [100.0],
+        }
+    )
+    ranges = estimate_tumor_expression_ranges(
+        df,
+        "PRAD",
+        {"overall_lower": 0.2, "overall_estimate": 0.2, "overall_upper": 0.2},
+        decomposition_results=[Result()],
+    )
+    row = ranges.set_index("symbol").loc["FAP"]
+
+    assert row["subtype_refined"]
+    assert row["subtype_refinement_label"] == "CAF"
+    assert row["tme_tpm_before_subtype_refinement"] == 0.1
+    assert row["attribution"]["fibroblast"] == 1.0
+    assert row["attr_top_compartment_tpm"] == 1.0
+
+
 def test_matched_normal_over_predicted_downgrades_and_tags():
     """When the fitted matched-normal compartment predicts more TPM
     than the sample contains (KLK3 / TACSTD2 on CRPC samples, #131),
@@ -656,3 +710,35 @@ def test_attribution_cell_no_tag_on_tissue_restricted():
     }
     cell = _format_attribution_cell(row)
     assert "broadly expr." not in cell
+
+
+def test_epithelial_context_caps_caf_marker_to_non_tumor_fraction():
+    from pirlygenes.gene_sets_cancer import pan_cancer_expression
+    from pirlygenes.plot_tumor_expr import estimate_tumor_expression_ranges
+    from pirlygenes.reporting import tumor_attribution_context
+
+    ref = pan_cancer_expression().drop_duplicates(subset="Symbol")
+    symbol_to_id = dict(zip(ref["Symbol"], ref["Ensembl_Gene_ID"]))
+    genes = ["FAP", "ACTB", "GAPDH", "RPLP0"]
+    df = pd.DataFrame(
+        {
+            "gene_id": [symbol_to_id[g] for g in genes],
+            "gene_symbol": genes,
+            "TPM": [100.0, 100.0, 100.0, 100.0],
+        }
+    )
+    purity = {
+        "overall_estimate": 0.20,
+        "overall_lower": 0.20,
+        "overall_upper": 0.20,
+    }
+
+    ranges = estimate_tumor_expression_ranges(df, "PRAD", purity)
+    row = ranges[ranges["symbol"] == "FAP"].iloc[0].to_dict()
+
+    assert row["source_marker_non_tumor_prior"] is True
+    assert row["source_marker_compartment"] == "stromal/CAF marker"
+    assert row["attr_tumor_tpm"] <= 20.0
+    assert row["attr_tumor_fraction"] <= 0.21
+    ctx = tumor_attribution_context(row)
+    assert ctx["tier"] == "background_dominant"
