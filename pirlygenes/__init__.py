@@ -35,6 +35,15 @@ from .gene_sets_cancer import (
     tme_markers_df,
 )
 from .load_dataset import load_all_dataframes, load_all_dataframes_dict, get_data
+from .qc_feature_groups import (
+    QcFeatureClass,
+    qc_class_for_ensembl_id,
+    qc_class_for_symbol,
+    qc_feature_ensembl_ids,
+    qc_feature_groups,
+    qc_feature_symbols,
+    qc_feature_table,
+)
 from .sample_context import SampleContext, infer_sample_context
 from .version import __version__
 
@@ -77,6 +86,14 @@ __all__ = [
     "load_all_dataframes",
     "load_all_dataframes_dict",
     "get_data",
+    # QC feature groups
+    "QcFeatureClass",
+    "qc_class_for_ensembl_id",
+    "qc_class_for_symbol",
+    "qc_feature_ensembl_ids",
+    "qc_feature_groups",
+    "qc_feature_symbols",
+    "qc_feature_table",
     # Plotting
     "plot_gene_expression",
     "plot_sample_vs_cancer",

@@ -1,0 +1,5 @@
+Ensembl_Gene_ID,Symbol,qc_group,qc_label,ensembl_releases,biotypes
+ENSG00000251562,MALAT1,polyadenylation_bias_lncrna,nuclear-retained ENE-stabilized lncRNA,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,lincRNA;lncRNA
+ENSG00000278217,MALAT1,polyadenylation_bias_lncrna,nuclear-retained ENE-stabilized lncRNA,77;78;79;80;81;83;87,misc_RNA
+ENSG00000279576,MALAT1,polyadenylation_bias_lncrna,nuclear-retained ENE-stabilized lncRNA,77;78;79;80;81,protein_coding
+ENSG00000245532,NEAT1,polyadenylation_bias_lncrna,nuclear-retained ENE-stabilized lncRNA,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,lincRNA;lncRNA
