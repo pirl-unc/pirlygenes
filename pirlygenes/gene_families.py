@@ -35,6 +35,7 @@ deprecated annotation no longer assigns).
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -84,13 +85,22 @@ def _strip_version(ensg: str) -> str:
 @lru_cache(maxsize=1)
 def _load_table() -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
+    missing: list[str] = []
     for family in GENE_FAMILIES:
         path = _DATA_DIR / family.filename
         if not path.is_file():
+            missing.append(family.filename)
             continue
         df = pd.read_csv(path)
         df["family"] = family.name
         frames.append(df)
+    if missing:
+        warnings.warn(
+            "pirlygenes gene-family CSVs missing from package data: "
+            f"{missing}. This is usually a packaging bug — the wheel "
+            "should include data/*. Affected families will appear empty.",
+            stacklevel=2,
+        )
     if not frames:
         return pd.DataFrame(columns=["Symbol", "Ensembl_Gene_ID", "family"])
     out = pd.concat(frames, ignore_index=True, sort=False)
@@ -230,37 +240,33 @@ def gene_family_symbols(name: str) -> set[str]:
 # ---------- ENSG / Symbol → family lookup ----------
 
 
+def _sorted_by_priority(df: pd.DataFrame) -> pd.DataFrame:
+    """Return ``df`` sorted by the canonical GENE_FAMILIES order so that
+    first-match-wins lookups pick the higher-priority family for any
+    ENSG/Symbol that appears in more than one (HGNC rename across
+    families)."""
+    priority = {f.name: i for i, f in enumerate(GENE_FAMILIES)}
+    return df.assign(
+        _priority=df["family"].map(priority).fillna(len(priority))
+    ).sort_values("_priority", kind="stable")
+
+
 @lru_cache(maxsize=1)
 def _ensembl_id_to_family() -> dict[str, str]:
-    """Build a reverse lookup ``{ENSG: family_name}`` with deterministic
-    first-match-wins ordering when an ID appears in multiple families
-    (HGNC rename across families)."""
-    df = _load_table()
-    priority = {f.name: i for i, f in enumerate(GENE_FAMILIES)}
-    df = df.assign(_priority=df["family"].map(priority).fillna(len(priority)))
-    df = df.sort_values("_priority")
-    out: dict[str, str] = {}
-    for _, row in df.iterrows():
-        ensg = row["Ensembl_Gene_ID"]
-        if ensg in out:
-            continue
-        out[ensg] = row["family"]
-    return out
+    """``{ENSG: family_name}`` with deterministic first-match-wins ordering."""
+    df = _sorted_by_priority(_load_table())
+    # drop_duplicates keeps the first row per ENSG, which after the
+    # priority sort is the higher-priority family.
+    df = df.drop_duplicates(subset="Ensembl_Gene_ID", keep="first")
+    return dict(zip(df["Ensembl_Gene_ID"], df["family"]))
 
 
 @lru_cache(maxsize=1)
 def _symbol_to_family() -> dict[str, str]:
-    df = _load_table()
-    priority = {f.name: i for i, f in enumerate(GENE_FAMILIES)}
-    df = df.assign(_priority=df["family"].map(priority).fillna(len(priority)))
-    df = df.sort_values("_priority")
-    out: dict[str, str] = {}
-    for _, row in df.iterrows():
-        sym = str(row["Symbol"]).strip().upper()
-        if sym in out:
-            continue
-        out[sym] = row["family"]
-    return out
+    """``{SYMBOL: family_name}`` with deterministic first-match-wins ordering."""
+    df = _sorted_by_priority(_load_table())
+    df = df.drop_duplicates(subset="Symbol", keep="first")
+    return dict(zip(df["Symbol"], df["family"]))
 
 
 def gene_family_for_ensembl_id(ensembl_id: str | None) -> str | None:

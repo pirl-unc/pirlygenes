@@ -16,43 +16,11 @@ import warnings
 
 from .load_dataset import get_data
 
-# TCGA cancer-type names and common aliases.
-CANCER_TYPE_NAMES = {
-    "ACC": "Adrenocortical Carcinoma",
-    "BLCA": "Bladder Urothelial Carcinoma",
-    "BRCA": "Breast Invasive Carcinoma",
-    "CESC": "Cervical Squamous Cell Carcinoma",
-    "CHOL": "Cholangiocarcinoma",
-    "COAD": "Colon Adenocarcinoma",
-    "DLBC": "Diffuse Large B-Cell Lymphoma",
-    "ESCA": "Esophageal Carcinoma",
-    "GBM": "Glioblastoma Multiforme",
-    "HNSC": "Head and Neck Squamous Cell Carcinoma",
-    "KICH": "Kidney Chromophobe",
-    "KIRC": "Kidney Renal Clear Cell Carcinoma",
-    "KIRP": "Kidney Renal Papillary Cell Carcinoma",
-    "LAML": "Acute Myeloid Leukemia",
-    "LGG": "Brain Lower Grade Glioma",
-    "LIHC": "Liver Hepatocellular Carcinoma",
-    "LUAD": "Lung Adenocarcinoma",
-    "LUSC": "Lung Squamous Cell Carcinoma",
-    "MESO": "Mesothelioma",
-    "OV": "Ovarian Serous Cystadenocarcinoma",
-    "PAAD": "Pancreatic Adenocarcinoma",
-    "PCPG": "Pheochromocytoma and Paraganglioma",
-    "PRAD": "Prostate Adenocarcinoma",
-    "READ": "Rectum Adenocarcinoma",
-    "SARC": "Sarcoma",
-    "SKCM": "Skin Cutaneous Melanoma",
-    "STAD": "Stomach Adenocarcinoma",
-    "TGCT": "Testicular Germ Cell Tumor",
-    "THCA": "Thyroid Carcinoma",
-    "THYM": "Thymoma",
-    "UCEC": "Uterine Corpus Endometrial Carcinoma",
-    "UCS": "Uterine Carcinosarcoma",
-    "UVM": "Uveal Melanoma",
-}
 
+# Hand-curated common-name aliases. Keyed by lowercase / underscored
+# variant; values are canonical codes from cancer-type-registry.csv.
+# The registry CSV is the source-of-truth for valid codes and their
+# display names — see :data:`CANCER_TYPE_NAMES` below.
 CANCER_TYPE_ALIASES = {
     "prostate": "PRAD", "breast": "BRCA", "lung_adeno": "LUAD",
     "lung_squamous": "LUSC", "melanoma": "SKCM", "skin": "SKCM",
@@ -76,26 +44,98 @@ CANCER_TYPE_ALIASES = {
 }
 
 
-def resolve_cancer_type(cancer_type):
-    """Resolve a cancer type name or alias to a TCGA code.
+class _CancerTypeNamesView:
+    """Read-only ``{code: display_name}`` view backed by the registry CSV.
 
-    Accepts TCGA codes (e.g. ``"PRAD"``), common names (e.g.
-    ``"prostate"``), or case-insensitive variants. Returns the TCGA
-    code or raises ValueError. Pure data-side resolution — no
-    expression access needed.
+    Trufflepig and downstream consumers treat ``CANCER_TYPE_NAMES`` as
+    a dict (``.get(code)``, ``code in CANCER_TYPE_NAMES``, iteration).
+    Loading from the CSV at first access keeps the dict in lock-step
+    with the registry — adding a new subtype row to
+    ``cancer-type-registry.csv`` automatically extends the dict
+    without a code change here.
+    """
+
+    def _load(self):
+        df = get_data("cancer-type-registry")
+        return {
+            str(row["code"]): str(row["name"])
+            for _, row in df.iterrows()
+            if row.get("name")
+        }
+
+    def __getitem__(self, key):
+        return self._load()[key]
+
+    def get(self, key, default=None):
+        return self._load().get(key, default)
+
+    def __contains__(self, key):
+        return key in self._load()
+
+    def __iter__(self):
+        return iter(self._load())
+
+    def __len__(self):
+        return len(self._load())
+
+    def keys(self):
+        return self._load().keys()
+
+    def values(self):
+        return self._load().values()
+
+    def items(self):
+        return self._load().items()
+
+    def __repr__(self):
+        return f"_CancerTypeNamesView({self._load()!r})"
+
+
+# Registry-backed view of cancer code → display name. Reads
+# ``cancer-type-registry.csv`` lazily so adding a new subtype row
+# automatically broadens ``resolve_cancer_type`` and trufflepig's
+# label lookups.
+CANCER_TYPE_NAMES = _CancerTypeNamesView()
+
+
+def resolve_cancer_type(cancer_type):
+    """Resolve a cancer type name or alias to a registry code.
+
+    Accepts:
+    - canonical registry codes (``"PRAD"``, ``"SARC_DDLPS"``,
+      ``"LAML_APL"``);
+    - hand-curated common-name aliases (``"prostate"``, ``"melanoma"``);
+    - the registry display name (``"Prostate Adenocarcinoma"``),
+      case-insensitive.
+
+    Returns the registry code, ``None`` if ``cancer_type`` is ``None``,
+    or raises ``ValueError`` for an unknown input.
     """
     if cancer_type is None:
         return None
-    key = cancer_type.strip().lower().replace(" ", "_").replace("-", "_")
-    if key in CANCER_TYPE_ALIASES:
-        return CANCER_TYPE_ALIASES[key]
-    upper = cancer_type.strip().upper()
-    if upper in CANCER_TYPE_NAMES:
+    raw = str(cancer_type).strip()
+    if not raw:
+        raise ValueError("Empty cancer type")
+
+    alias_key = raw.lower().replace(" ", "_").replace("-", "_")
+    if alias_key in CANCER_TYPE_ALIASES:
+        return CANCER_TYPE_ALIASES[alias_key]
+
+    registry = CANCER_TYPE_NAMES  # registry-backed view
+    if raw in registry:
+        return raw
+    upper = raw.upper()
+    if upper in registry:
         return upper
+
+    name_to_code = {v.lower(): k for k, v in registry.items()}
+    if raw.lower() in name_to_code:
+        return name_to_code[raw.lower()]
+
     raise ValueError(
-        f"Unknown cancer type {cancer_type!r}. Valid codes: "
-        f"{sorted(CANCER_TYPE_NAMES.keys())}. Aliases: "
-        f"{sorted(CANCER_TYPE_ALIASES.keys())}"
+        f"Unknown cancer type {cancer_type!r}. "
+        f"Valid registry codes: {sorted(registry.keys())}. "
+        f"Common-name aliases: {sorted(CANCER_TYPE_ALIASES.keys())}."
     )
 
 

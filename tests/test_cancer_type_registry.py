@@ -6,11 +6,16 @@ under TCGA umbrellas (BRCA × PAM50, LAML × ELN/APL, SARC × subtype,
 LUAD × mutation class, SCLC × ASCL1/NEUROD1/POU2F3/YAP1, etc.).
 """
 
+import pytest
+
 from pirlygenes.gene_sets_cancer import (
+    CANCER_TYPE_ALIASES,
+    CANCER_TYPE_NAMES,
     cancer_type_registry,
     cancer_types_in_family,
     cancer_types_by_tissue,
     cancer_type_subtypes_of,
+    resolve_cancer_type,
 )
 
 
@@ -331,3 +336,83 @@ def test_primary_templates_are_declared_or_planned():
         assert (
             t == "solid_primary" or t.startswith("primary_") or t.startswith("heme_")
         ), f"unknown primary_template convention: {t}"
+
+
+# ---------- resolve_cancer_type / CANCER_TYPE_NAMES ----------
+
+
+def test_resolve_cancer_type_canonical_codes_passthrough():
+    assert resolve_cancer_type("PRAD") == "PRAD"
+    assert resolve_cancer_type("BRCA") == "BRCA"
+    assert resolve_cancer_type("SARC") == "SARC"
+
+
+def test_resolve_cancer_type_case_insensitive():
+    assert resolve_cancer_type("prad") == "PRAD"
+    assert resolve_cancer_type("Prad") == "PRAD"
+
+
+def test_resolve_cancer_type_common_name_alias():
+    assert resolve_cancer_type("prostate") == "PRAD"
+    assert resolve_cancer_type("melanoma") == "SKCM"
+    assert resolve_cancer_type("colorectal") == "COAD"
+
+
+def test_resolve_cancer_type_subtype_codes_from_registry():
+    """Subtype codes are valid via the registry CSV, not the hand-curated
+    alias dict. Catches regressions where the resolver was capped at the
+    33-code TCGA list."""
+    assert resolve_cancer_type("BRCA_LumA") == "BRCA_LumA"
+    assert resolve_cancer_type("LAML_APL") == "LAML_APL"
+
+
+def test_resolve_cancer_type_display_name_lookup():
+    """Display names from the registry resolve back to their code."""
+    assert resolve_cancer_type("Prostate Adenocarcinoma") == "PRAD"
+
+
+def test_resolve_cancer_type_none_passthrough():
+    assert resolve_cancer_type(None) is None
+
+
+def test_resolve_cancer_type_unknown_raises():
+    with pytest.raises(ValueError):
+        resolve_cancer_type("UNKNOWN_CODE_XYZ")
+
+
+def test_resolve_cancer_type_empty_raises():
+    with pytest.raises(ValueError):
+        resolve_cancer_type("")
+
+
+def test_cancer_type_names_view_is_registry_backed():
+    """CANCER_TYPE_NAMES must cover at least all registry codes — proves
+    the view isn't capped at the old 33-code TCGA hardcoded dict."""
+    registry_codes = set(cancer_type_registry()["code"])
+    view_codes = set(CANCER_TYPE_NAMES.keys())
+    missing = registry_codes - view_codes
+    # Every registry row with a non-empty name should be exposed via
+    # CANCER_TYPE_NAMES; rows with blank names are filtered out by the
+    # view.
+    df = cancer_type_registry()
+    expected = set(df.loc[df["name"].notna() & (df["name"] != ""), "code"])
+    assert not (expected - view_codes), (
+        f"CANCER_TYPE_NAMES missing registry codes: {expected - view_codes}"
+    )
+    # And nothing extra slipped in.
+    assert view_codes <= registry_codes, (
+        f"CANCER_TYPE_NAMES has unexpected codes: {view_codes - registry_codes}. "
+        f"Diff was: missing={missing}"
+    )
+
+
+def test_cancer_type_aliases_all_resolve_to_valid_registry_codes():
+    """Every alias value must be a real registry code — guards against
+    drift between the hand-curated alias dict and the registry CSV."""
+    registry_codes = set(cancer_type_registry()["code"])
+    bad = {
+        alias: code
+        for alias, code in CANCER_TYPE_ALIASES.items()
+        if code not in registry_codes
+    }
+    assert not bad, f"alias values not in registry: {bad}"

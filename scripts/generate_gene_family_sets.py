@@ -36,16 +36,20 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-# Locate trufflepig.expression_qc — needed to pin the classifier to
-# the same regex used at runtime.
+import pandas as pd
+from pyensembl import EnsemblRelease
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TRUFFLEPIG_ROOT = REPO_ROOT.parent / "trufflepig"
-sys.path.insert(0, str(TRUFFLEPIG_ROOT))
 
-from trufflepig.expression_qc import classify_gene_qc  # noqa: E402
-
-import pandas as pd  # noqa: E402
-from pyensembl import EnsemblRelease  # noqa: E402
+try:
+    from trufflepig.expression_qc import classify_gene_qc
+except ImportError as exc:
+    sys.stderr.write(
+        "trufflepig is required to regenerate these tables — it defines the "
+        "regex panel that classifies symbols. Install it in the same env "
+        "(e.g. `pip install -e ../trufflepig`) and retry.\n"
+    )
+    raise SystemExit(2) from exc
 
 
 # QC-classifier group → on-disk slug. ``mt_dna`` is intentionally
@@ -65,18 +69,23 @@ GROUP_TO_SLUG = {
 
 
 def _installed_grch38_releases() -> list[int]:
-    """All GRCh38 Ensembl releases present in the pyensembl cache."""
-    import os
+    """All GRCh38 Ensembl releases pyensembl can actually load.
 
+    Asks pyensembl itself where its GTFs live (via ``EnsemblRelease``'s
+    own ``gtf_path``) instead of guessing macOS/XDG paths — pyensembl
+    respects ``PYENSEMBL_CACHE_DIR`` and platform-specific cache roots,
+    and we can't reproduce that mapping reliably from the outside.
+    """
     candidates: set[int] = set()
-    home_cache = Path.home() / "Library" / "Caches" / "pyensembl" / "GRCh38"
-    xdg_cache = Path.home() / ".cache" / "pyensembl" / "GRCh38"
-    for cache in (home_cache, xdg_cache):
-        if not cache.is_dir():
+    # GRCh38 spans Ensembl release 76+; cap at 200 to bound the probe.
+    for release in range(76, 200):
+        try:
+            rel = EnsemblRelease(release)
+            gtf_path = rel.gtf_path
+        except Exception:
             continue
-        for entry in os.listdir(cache):
-            if entry.startswith("ensembl") and entry[len("ensembl"):].isdigit():
-                candidates.add(int(entry[len("ensembl"):]))
+        if gtf_path and Path(gtf_path).is_file():
+            candidates.add(release)
     return sorted(candidates)
 
 

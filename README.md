@@ -173,7 +173,7 @@ Moved to trufflepig in v5.0:
 - `pirlygenes.gene_sets_cancer.subtype_deconvolved_expression` → `trufflepig.reference.subtype_deconvolved_expression`
 - `pirlygenes.gene_sets_cancer.tumor_up_vs_matched_normal` → `trufflepig.reference.tumor_up_vs_matched_normal`
 - `pirlygenes.gene_sets_cancer.heme_tumor_up_vs_matched_normal` → `trufflepig.reference.heme_tumor_up_vs_matched_normal`
-- `pirlygenes.expression_qc.classify_gene_qc` → `trufflepig.expression_qc.classify_gene_qc` *(now ENSG-aware via `pirlygenes.qc_feature_groups`)*
+- `pirlygenes.expression_qc.classify_gene_qc` → `trufflepig.expression_qc.classify_gene_qc` *(now ENSG-aware via `pirlygenes.gene_families`)*
 - `pirlygenes.expression_qc.normalize_expression` → `trufflepig.expression_normalize.normalize_expression`
 - `pirlygenes.expression_qc.normalize_technical_rna_long_table` → `trufflepig.expression_normalize.normalize_technical_rna_long_table`
 
