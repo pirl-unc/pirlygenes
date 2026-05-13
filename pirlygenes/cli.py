@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import sys
 
+from .version import __version__
+
 
 _MOVED_MESSAGE = """\
 pirlygenes no longer ships an analysis CLI as of v5.0.0.
@@ -28,15 +30,30 @@ The `analyze`, `compare-analyze`, `plot-expression`, and
 
 See https://github.com/pirl-unc/trufflepig for the full migration.
 The pirlygenes Python data API is unchanged — `from pirlygenes import
-gene_sets_cancer, load_dataset, gene_ids, gene_names, expression_qc`
-still works.
+gene_sets_cancer, load_dataset, gene_ids, gene_names, qc_feature_groups`
+still works. Expression matrices and QC normalization moved to
+`trufflepig.reference` and `trufflepig.expression_qc` respectively.
 """
 
 
-def main():
+def main(argv: list[str] | None = None) -> int:
+    """Migration-shim entry point.
+
+    ``--help`` and ``--version`` exit ``0`` so CI/wrapper scripts that
+    probe the console-script for a CLI don't see a hard failure. Any
+    real subcommand invocation exits ``2`` with the migration message
+    on stderr.
+    """
+    args = sys.argv[1:] if argv is None else list(argv)
+    if not args or args[0] in {"-h", "--help"}:
+        sys.stdout.write(_MOVED_MESSAGE)
+        return 0
+    if args[0] in {"-V", "--version"}:
+        sys.stdout.write(f"pirlygenes {__version__}\n")
+        return 0
     sys.stderr.write(_MOVED_MESSAGE)
-    sys.exit(2)
+    return 2
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

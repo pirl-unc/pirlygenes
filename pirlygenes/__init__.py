@@ -10,15 +10,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Curated cancer gene sets and reference expression data.
+"""Curated cancer gene knowledge — data-only package.
 
-Analysis, plotting, and the ``analyze`` CLI have moved to
-`trufflepig <https://github.com/pirl-unc/trufflepig>`_; this package is
-now a **data-only** dependency providing:
+Analysis, plotting, the ``analyze`` CLI, and all expression matrices
+have moved to `trufflepig <https://github.com/pirl-unc/trufflepig>`_
+in v5.0; this package is now a **data-only** dependency providing:
 
 * curated gene-set CSVs (``gene_sets_cancer``)
 * the bundled-dataset loader (``load_dataset``)
 * canonical gene-id / gene-name helpers (``gene_ids``, ``gene_names``)
+* QC feature panels keyed by Ensembl Gene ID (``qc_feature_groups``)
 
 Install ``trufflepig`` to run RNA tumor analyses; it imports the
 accessors here as a library.
@@ -42,12 +43,20 @@ from .gene_sets_cancer import (
     mitochondrial_gene_ids,
     mitochondrial_gene_names,
     mitochondrial_genes_df,
-    pan_cancer_expression,
     tme_marker_gene_ids,
     tme_marker_gene_names,
     tme_markers_df,
 )
 from .load_dataset import get_data, load_all_dataframes, load_all_dataframes_dict
+from .qc_feature_groups import (
+    QcFeatureClass,
+    qc_class_for_ensembl_id,
+    qc_class_for_symbol,
+    qc_feature_ensembl_ids,
+    qc_feature_groups,
+    qc_feature_symbols,
+    qc_feature_table,
+)
 from .version import __version__
 
 __all__ = [
@@ -55,7 +64,6 @@ __all__ = [
     "load_all_dataframes",
     "load_all_dataframes_dict",
     "get_data",
-    "pan_cancer_expression",
     "housekeeping_gene_ids",
     "housekeeping_gene_names",
     "mitochondrial_genes_df",
@@ -76,4 +84,11 @@ __all__ = [
     "cancer_family_panels_df",
     "cancer_family_panel",
     "cancer_family_panels",
+    "QcFeatureClass",
+    "qc_feature_table",
+    "qc_feature_groups",
+    "qc_feature_ensembl_ids",
+    "qc_feature_symbols",
+    "qc_class_for_ensembl_id",
+    "qc_class_for_symbol",
 ]

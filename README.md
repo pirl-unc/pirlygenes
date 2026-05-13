@@ -1,21 +1,22 @@
 # pirlygenes
 
-> Curated cancer gene sets and reference expression data.
+> Curated cancer gene-knowledge data.
 
-Analysis, plotting, and the `analyze` CLI moved to
-[`trufflepig`](https://github.com/pirl-unc/trufflepig) in v5.0. This
-package now ships **data only**:
+Analysis, plotting, the `analyze` CLI, and all expression matrices
+moved to [`trufflepig`](https://github.com/pirl-unc/trufflepig) in
+v5.0. This package now ships **gene-knowledge data only**:
 
 - curated gene-set CSVs (therapy targets, CTAs, cancer-driver genes,
   housekeeping genes, surface proteins, immune/stromal marker panels,
   lineage and matched-normal panels, fusion/mutation expression-effect
   rules, narrative gene sets, …)
-- pan-cancer TCGA expression reference (~3,100 genes × 83 columns: 50
-  normal tissues + 33 TCGA cancer types)
-- subtype-deconvolved expression references for non-TCGA cohorts
-  (Treehouse pediatric, GEO sarcoma, panNET, …)
 - the cancer-type registry and gene-symbol/Ensembl-ID resolvers
 - cohort-baseline constants (e.g. `TCGA_MEDIAN_PURITY`)
+
+Expression matrices (pan-cancer TCGA reference, subtype-deconvolved
+non-TCGA cohorts, TCGA deconvolution, HPA cell-type expression,
+tumor-up-vs-matched-normal panels, ESTIMATE signatures) ship with
+`trufflepig` — use `trufflepig.reference.<accessor>()` to read them.
 
 ## Install
 
@@ -38,9 +39,6 @@ from pirlygenes.gene_sets_cancer import (
     surface_protein_gene_names,       # 2,799 surfaceome genes
     cancer_surfaceome_gene_names,     # 147 tumor-specific surface targets
     therapy_target_gene_names,        # by modality: "ADC", "CAR-T", "TCR-T", "bispecific", ...
-    pan_cancer_expression,            # 3,100 genes x 83 columns (50 tissues + 33 cancers)
-    cancer_expression,                # one cancer type
-    cancer_enriched_genes,            # enriched genes for one cancer type
     cancer_type_registry,             # cancer-type registry DataFrame
     lineage_genes_by_cancer_type,     # lineage panels
     cancer_family_panels,             # broad-family aggregate panels
@@ -68,7 +66,36 @@ from pirlygenes.gene_ids import (
     gene_id_aliases,
 )
 from pirlygenes.gene_names import display_name, short_gene_name, aliases
-from pirlygenes.expression_qc import (
+from pirlygenes.qc_feature_groups import (
+    qc_class_for_ensembl_id,       # ENSG → QcFeatureClass (mt_dna, rrna_like, ...)
+    qc_class_for_symbol,           # Symbol → QcFeatureClass
+    qc_feature_groups,             # {group_name: DataFrame}
+    qc_feature_ensembl_ids,        # set of ENSGs for one group
+)
+```
+
+The `qc_feature_groups` panels are ENSG-keyed QC categorisations
+derived from every installed Ensembl release; `trufflepig.expression_qc`
+reads them as the source of truth for its
+:func:`classify_gene_qc` lookup. Regenerate with
+``python scripts/generate_qc_gene_sets.py`` after the upstream regex
+changes.
+
+Expression matrices and QC normalization moved to `trufflepig` in v5.0:
+
+```python
+from trufflepig.reference import (
+    pan_cancer_expression,            # 3,100 genes x 83 columns (50 tissues + 33 cancers)
+    cancer_expression,                # one cancer type
+    cancer_enriched_genes,            # enriched genes for one cancer type
+    subtype_deconvolved_expression,   # non-TCGA cohorts (Treehouse, GEO sarcoma, ...)
+    tcga_deconvolved_expression,
+    tumor_up_vs_matched_normal,
+    heme_tumor_up_vs_matched_normal,
+    hpa_cell_type_expression,
+    estimate_signatures,
+)
+from trufflepig.expression_qc import (
     normalize_expression,
     normalize_technical_rna_long_table,
 )
@@ -83,13 +110,20 @@ from pirlygenes.expression_qc import (
 | Cancer-testis antigens | `cancer-testis-antigens.csv` |
 | Driver / key genes | `cancer-driver-genes.csv`, `cancer-driver-variants.csv`, `cancer-key-genes.csv` |
 | Cancer-type registry | `cancer-type-registry.csv`, `cancer-family-panels.csv`, `cancer-type-genes.csv` |
-| Lineage / matched-normal | `lineage-genes.csv`, `tumor-up-vs-matched-normal.csv`, `heme-tumor-up-vs-matched-normal.csv` |
-| Reference expression | `pan-cancer-expression.csv`, `subtype-deconvolved-expression.csv.gz`, `tcga-deconvolved-expression.csv.gz`, `hpa-cell-type-expression.csv` |
+| Lineage panel | `lineage-genes.csv` |
 | Rule sets | `mutation-expression-effects.csv`, `fusion-expression-effects.csv`, `rare-cancer-fusion-rules.csv`, `rare-cancer-rna-surrogates.csv`, `degenerate-subtype-pairs.csv`, `fusion-surrogate-expression.csv`, `disease-state-rules.csv`, `narrative-gene-sets.csv` |
 | QC panels | `housekeeping-genes.csv`, `mitochondrial-genes.csv`, `culture-stress-genes.csv`, `tme-markers.csv`, `degradation-gene-pairs.csv`, `ffpe-sensitive-markers.csv`, `artifact-expectations.csv` |
+| QC feature groups (ENSG-keyed, derived) | `qc-mt-dna.csv`, `qc-mt-like-pseudogene.csv`, `qc-polya-bias-lncrna.csv`, `qc-rrna-like.csv`, `qc-ribosomal-protein.csv`, `qc-ribosomal-protein-pseudogene.csv`, `qc-small-ncrna.csv`, `qc-histone.csv`, `qc-hemoglobin.csv`, `qc-immune-receptor.csv` |
 | Gene-set catalog | `gene-sets.csv` |
 | Therapy response axes | `therapy-response-signatures.csv` |
-| Misc | `ensembl-id-aliases.csv`, `extra-tx-mappings.csv`, `estimate-signatures.csv` |
+| Misc | `ensembl-id-aliases.csv`, `extra-tx-mappings.csv` |
+
+Expression matrices (`pan-cancer-expression.csv`,
+`subtype-deconvolved-expression.csv.gz`, `tcga-deconvolved-expression.csv.gz`,
+`hpa-cell-type-expression.csv`, `tumor-up-vs-matched-normal.csv`,
+`heme-tumor-up-vs-matched-normal.csv`, `estimate-signatures.csv`)
+moved to `trufflepig/data/` in v5.0 — access via
+`trufflepig.reference.<accessor>()`.
 
 The full curated set is the surface area `trufflepig` calls into.
 
@@ -108,10 +142,21 @@ plotting, or sample-context inference moved to `trufflepig`:
 | `from pirlygenes.cli import analyze, compare_analyze` (Python API) | `from trufflepig.main import analyze, compare_analyze` |
 
 Unchanged (still in pirlygenes):
-- `gene_sets_cancer.*` accessors (CTAs, surfaceome, panels, etc.)
+- `gene_sets_cancer.*` accessors (CTAs, surfaceome, panels, registry, etc.) **except** the expression accessors listed below
 - `load_dataset.get_data`, `load_all_dataframes`, `load_all_dataframes_dict`
 - `gene_ids.*`, `gene_names.*`
-- `expression_qc.normalize_expression`, `normalize_technical_rna_long_table`
+
+Moved to trufflepig in v5.0:
+- `pirlygenes.gene_sets_cancer.pan_cancer_expression` → `trufflepig.reference.pan_cancer_expression`
+- `pirlygenes.gene_sets_cancer.cancer_expression` → `trufflepig.reference.cancer_expression`
+- `pirlygenes.gene_sets_cancer.cancer_enriched_genes` → `trufflepig.reference.cancer_enriched_genes`
+- `pirlygenes.gene_sets_cancer.tcga_deconvolved_expression` → `trufflepig.reference.tcga_deconvolved_expression`
+- `pirlygenes.gene_sets_cancer.subtype_deconvolved_expression` → `trufflepig.reference.subtype_deconvolved_expression`
+- `pirlygenes.gene_sets_cancer.tumor_up_vs_matched_normal` → `trufflepig.reference.tumor_up_vs_matched_normal`
+- `pirlygenes.gene_sets_cancer.heme_tumor_up_vs_matched_normal` → `trufflepig.reference.heme_tumor_up_vs_matched_normal`
+- `pirlygenes.expression_qc.classify_gene_qc` → `trufflepig.expression_qc.classify_gene_qc` *(now ENSG-aware via `pirlygenes.qc_feature_groups`)*
+- `pirlygenes.expression_qc.normalize_expression` → `trufflepig.expression_normalize.normalize_expression`
+- `pirlygenes.expression_qc.normalize_technical_rna_long_table` → `trufflepig.expression_normalize.normalize_technical_rna_long_table`
 
 If the `pirlygenes` console-script is still on PATH from a prior install, it now prints a one-line "moved to trufflepig" notice and exits 2.
 

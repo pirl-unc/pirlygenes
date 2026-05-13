@@ -1,0 +1,13 @@
+Ensembl_Gene_ID,Symbol,qc_group,qc_label,ensembl_releases,biotypes
+ENSG00000206172,HBA1,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,protein_coding
+ENSG00000188536,HBA2,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,protein_coding
+ENSG00000244734,HBB,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,protein_coding
+ENSG00000229988,HBBP1,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,transcribed_unprocessed_pseudogene
+ENSG00000223609,HBD,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,protein_coding
+ENSG00000213931,HBE1,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,protein_coding
+ENSG00000213934,HBG1,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,protein_coding
+ENSG00000196565,HBG2,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,protein_coding
+ENSG00000206177,HBM,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,protein_coding
+ENSG00000086506,HBQ1,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,protein_coding
+ENSG00000130656,HBZ,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,protein_coding
+ENSG00000206178,HBZP1,hemoglobin,hemoglobin transcript,77;78;79;80;81;83;87;93;97;103;105;107;108;109;110;111;112;114,unprocessed_pseudogene
