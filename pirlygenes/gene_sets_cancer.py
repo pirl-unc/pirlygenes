@@ -325,7 +325,8 @@ def mitochondrial_genes_df(role=None):
         ``"protein_coding"`` — the 13 OXPHOS subunits (MT-CO*, MT-ND*,
         MT-CYB, MT-ATP6/8).
         ``"rRNA"`` — MT-RNR1, MT-RNR2.
-        ``None`` (default) — all 15 rows.
+        ``"tRNA"`` — the 22 mitochondrial tRNAs (MT-TA, MT-TC, …).
+        ``None`` (default) — all 37 rows.
 
     Returns
     -------

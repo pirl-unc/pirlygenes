@@ -13,7 +13,7 @@ it is in trufflepig.
 Pass extra pytest args after the script name:
 
     ./test.sh -q
-    ./test.sh tests/test_qc_feature_groups.py
+    ./test.sh tests/test_gene_families.py
     ./test.sh -x -v
 
 ## Package boundary (5.0+)
@@ -42,7 +42,7 @@ deliberate.
 
 ENSG IDs in `data/qc-*.csv` (and any other ENSG column you add) are stored
 **unversioned** (`ENSG00000251562`, not `ENSG00000251562.5`). Strip the
-`.<n>` suffix at the boundary. `pirlygenes.qc_feature_groups._strip_version`
+`.<n>` suffix at the boundary. `pirlygenes.gene_families._strip_version`
 is the canonical helper.
 
 Symbols are uppercased on read.

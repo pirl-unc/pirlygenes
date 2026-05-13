@@ -30,7 +30,7 @@ The `analyze`, `compare-analyze`, `plot-expression`, and
 
 See https://github.com/pirl-unc/trufflepig for the full migration.
 The pirlygenes Python data API is unchanged — `from pirlygenes import
-gene_sets_cancer, load_dataset, gene_ids, gene_names, qc_feature_groups`
+gene_sets_cancer, load_dataset, gene_ids, gene_names, gene_families`
 still works. Expression matrices and QC normalization moved to
 `trufflepig.reference` and `trufflepig.expression_qc` respectively.
 """
