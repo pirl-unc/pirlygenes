@@ -236,7 +236,7 @@ def test_degradation_gene_pairs_loader():
 
 
 def test_lineage_gene_loaders_cover_all_tcga_codes():
-    from pirlygenes.tumor_purity import TCGA_MEDIAN_PURITY
+    from pirlygenes.gene_sets_cancer import TCGA_MEDIAN_PURITY
 
     by_code = gsc.lineage_genes_by_cancer_type()
     missing = [c for c in TCGA_MEDIAN_PURITY if c not in by_code]

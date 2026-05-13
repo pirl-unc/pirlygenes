@@ -20,6 +20,88 @@ from .expression_qc import (
 )
 from .load_dataset import get_data
 
+# TCGA cancer-type names and common aliases.
+CANCER_TYPE_NAMES = {
+    "ACC": "Adrenocortical Carcinoma",
+    "BLCA": "Bladder Urothelial Carcinoma",
+    "BRCA": "Breast Invasive Carcinoma",
+    "CESC": "Cervical Squamous Cell Carcinoma",
+    "CHOL": "Cholangiocarcinoma",
+    "COAD": "Colon Adenocarcinoma",
+    "DLBC": "Diffuse Large B-Cell Lymphoma",
+    "ESCA": "Esophageal Carcinoma",
+    "GBM": "Glioblastoma Multiforme",
+    "HNSC": "Head and Neck Squamous Cell Carcinoma",
+    "KICH": "Kidney Chromophobe",
+    "KIRC": "Kidney Renal Clear Cell Carcinoma",
+    "KIRP": "Kidney Renal Papillary Cell Carcinoma",
+    "LAML": "Acute Myeloid Leukemia",
+    "LGG": "Brain Lower Grade Glioma",
+    "LIHC": "Liver Hepatocellular Carcinoma",
+    "LUAD": "Lung Adenocarcinoma",
+    "LUSC": "Lung Squamous Cell Carcinoma",
+    "MESO": "Mesothelioma",
+    "OV": "Ovarian Serous Cystadenocarcinoma",
+    "PAAD": "Pancreatic Adenocarcinoma",
+    "PCPG": "Pheochromocytoma and Paraganglioma",
+    "PRAD": "Prostate Adenocarcinoma",
+    "READ": "Rectum Adenocarcinoma",
+    "SARC": "Sarcoma",
+    "SKCM": "Skin Cutaneous Melanoma",
+    "STAD": "Stomach Adenocarcinoma",
+    "TGCT": "Testicular Germ Cell Tumor",
+    "THCA": "Thyroid Carcinoma",
+    "THYM": "Thymoma",
+    "UCEC": "Uterine Corpus Endometrial Carcinoma",
+    "UCS": "Uterine Carcinosarcoma",
+    "UVM": "Uveal Melanoma",
+}
+
+CANCER_TYPE_ALIASES = {
+    "prostate": "PRAD", "breast": "BRCA", "lung_adeno": "LUAD",
+    "lung_squamous": "LUSC", "melanoma": "SKCM", "skin": "SKCM",
+    "colon": "COAD", "colorectal": "COAD", "rectal": "READ",
+    "pancreatic": "PAAD", "pancreas": "PAAD", "liver": "LIHC",
+    "kidney_clear": "KIRC", "kidney_papillary": "KIRP",
+    "kidney_chromophobe": "KICH", "kidney": "KIRC", "ovarian": "OV",
+    "ovary": "OV", "cervical": "CESC", "cervix": "CESC",
+    "bladder": "BLCA", "stomach": "STAD", "gastric": "STAD",
+    "glioblastoma": "GBM", "gbm": "GBM", "head_neck": "HNSC",
+    "hnscc": "HNSC", "thyroid": "THCA", "endometrial": "UCEC",
+    "uterine": "UCEC", "testicular": "TGCT", "testis": "TGCT",
+    "sarcoma": "SARC", "adrenocortical": "ACC", "adrenal": "ACC",
+    "cholangiocarcinoma": "CHOL", "bile_duct": "CHOL", "dlbcl": "DLBC",
+    "lymphoma": "DLBC", "esophageal": "ESCA", "esophagus": "ESCA",
+    "aml": "LAML", "leukemia": "LAML", "low_grade_glioma": "LGG",
+    "lgg": "LGG", "glioma": "LGG", "mesothelioma": "MESO",
+    "pheochromocytoma": "PCPG", "paraganglioma": "PCPG",
+    "thymoma": "THYM", "uterine_carcinosarcoma": "UCS",
+    "uveal_melanoma": "UVM",
+}
+
+
+def resolve_cancer_type(cancer_type):
+    """Resolve a cancer type name or alias to a TCGA code.
+
+    Accepts TCGA codes (e.g. ``"PRAD"``), common names (e.g.
+    ``"prostate"``), or case-insensitive variants. Returns the TCGA
+    code or raises ValueError. Pure data-side resolution — no
+    expression access needed.
+    """
+    if cancer_type is None:
+        return None
+    key = cancer_type.strip().lower().replace(" ", "_").replace("-", "_")
+    if key in CANCER_TYPE_ALIASES:
+        return CANCER_TYPE_ALIASES[key]
+    upper = cancer_type.strip().upper()
+    if upper in CANCER_TYPE_NAMES:
+        return upper
+    raise ValueError(
+        f"Unknown cancer type {cancer_type!r}. Valid codes: "
+        f"{sorted(CANCER_TYPE_NAMES.keys())}. Aliases: "
+        f"{sorted(CANCER_TYPE_ALIASES.keys())}"
+    )
+
 
 # ---------- Therapy target registry ----------
 
@@ -1211,8 +1293,6 @@ def cancer_expression(cancer_type, genes=None):
     pd.DataFrame
         Columns: Ensembl_Gene_ID, Symbol, expression (housekeeping-normalized).
     """
-    from .plot import resolve_cancer_type
-
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(
         genes=genes,
@@ -1319,8 +1399,6 @@ def cancer_type_gene_sets(cancer_type):
         {role: {ensembl_id: symbol}} for use as gene_sets in plotting.
         Returns empty dict if no curated genes exist for that cancer type.
     """
-    from .plot import resolve_cancer_type
-
     code = resolve_cancer_type(cancer_type)
     try:
         df = get_data("cancer-type-genes")
@@ -1353,8 +1431,6 @@ def cancer_enriched_genes(cancer_type, min_fold=3.0, min_expression=0.01):
         Columns: Ensembl_Gene_ID, Symbol, expression, other_median, fold_change.
         Sorted by fold_change descending.
     """
-    from .plot import resolve_cancer_type
-
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(
         normalize="housekeeping",
@@ -2042,57 +2118,56 @@ def cancer_key_genes_subtypes(cancer_code):
 # surface for every curated gene set bundled with the package.
 
 
+def _narrative_gene_sets():
+    """Return ``{set_name: tuple[str]}`` from ``narrative-gene-sets.csv``."""
+    df = get_data("narrative-gene-sets")
+    out: dict[str, tuple[str, ...]] = {}
+    for _, row in df.iterrows():
+        name = str(row.get("set_name") or "").strip()
+        members = str(row.get("members") or "")
+        parsed = tuple(m.strip() for m in members.split(";") if m.strip())
+        if name and parsed:
+            out[name] = parsed
+    return out
+
+
 def narrative_gene_sets_df():
     """Return the raw ``narrative-gene-sets.csv`` DataFrame.
 
     Columns: ``set_name``, ``members`` (``;``-delimited), ``notes``.
-    Each row is a named gene set referenced by the #202 disease-state
-    rule engine (``AR_targets``, ``HER2_amplicon``, ``NE_markers``,
-    ...). Use :func:`narrative_gene_set` to look up members by name.
+    Each row is a named gene set referenced by the disease-state rule
+    engine (``AR_targets``, ``HER2_amplicon``, ``NE_markers``, ...).
+    Use :func:`narrative_gene_set` to look up members by name.
     """
-    from .disease_state_rules import narrative_gene_sets
-
-    sets = narrative_gene_sets()
-    import pandas as pd
-
-    rows = [
-        {"set_name": name, "members": ";".join(members)}
-        for name, members in sets.items()
-    ]
-    return pd.DataFrame(rows)
+    return get_data("narrative-gene-sets")
 
 
 def narrative_gene_set(set_name):
     """Return the tuple of gene symbols in a named narrative set, or
     ``()`` when unknown. Case-sensitive."""
-    from .disease_state_rules import narrative_gene_sets
-
-    return narrative_gene_sets().get(set_name, ())
+    return _narrative_gene_sets().get(set_name, ())
 
 
 def narrative_gene_set_names():
     """Return the list of known narrative gene-set names."""
-    from .disease_state_rules import narrative_gene_sets
-
-    return sorted(narrative_gene_sets().keys())
+    return sorted(_narrative_gene_sets().keys())
 
 
 def degenerate_subtype_pairs_df():
-    """Return the parsed ``degenerate-subtype-pairs.csv`` DataFrame
-    (#198). Members are lists of subtype codes, mappings are dicts,
-    activation_signatures are ``{gene: min_tpm}`` dicts."""
-    from .degenerate_subtype import degenerate_subtype_pairs
+    """Return the raw ``degenerate-subtype-pairs.csv`` DataFrame (#198).
 
-    return degenerate_subtype_pairs()
+    Returned in raw text form — semicolon-delimited members, pipe-delimited
+    mapping strings. Analysis-side parsing lives in
+    :func:`trufflepig.degenerate_subtype.degenerate_subtype_pairs`.
+    """
+    return get_data("degenerate-subtype-pairs")
 
 
 def fusion_surrogate_expression_df():
     """Return the raw ``fusion-surrogate-expression.csv`` DataFrame
     (#198) — genes whose expression serves as a deterministic
     surrogate for a specific fusion/translocation class."""
-    from .degenerate_subtype import fusion_surrogate_expression
-
-    return fusion_surrogate_expression()
+    return get_data("fusion-surrogate-expression")
 
 
 def rare_cancer_rna_surrogate_rules_df():
@@ -2102,45 +2177,68 @@ def rare_cancer_rna_surrogate_rules_df():
     lack a bundled TCGA expression cohort but have a high-specificity RNA
     marker, such as NUTM1 for NUT carcinoma or TBXT for chordoma.
     """
-    from .rare_inference import rare_cancer_rna_surrogate_rules_df as _load
-
-    return _load()
+    return get_data("rare-cancer-rna-surrogates")
 
 
 def rare_cancer_fusion_rules_df():
     """Return ``rare-cancer-fusion-rules.csv`` direct-fusion rules."""
-    from .rare_inference import rare_cancer_fusion_rules_df as _load
-
-    return _load()
+    return get_data("rare-cancer-fusion-rules")
 
 
 def fusion_expression_effect_rules_df():
     """Return ``fusion-expression-effects.csv`` downstream-expression rules."""
-    from .fusion_effects import fusion_expression_effect_rules_df as _load
-
-    return _load()
+    return get_data("fusion-expression-effects")
 
 
 def mutation_expression_effect_rules_df():
     """Return ``mutation-expression-effects.csv`` expression-effect rules."""
-    from .alteration_effects import mutation_expression_effect_rules_df as _load
-
-    return _load()
+    return get_data("mutation-expression-effects")
 
 
 def fusion_surrogate_genes_for_cancer(cancer_code):
     """Return the list of ``{gene, fusion_class, role, rationale}``
     dicts applicable to a cancer code (includes ``pan_cancer``
-    entries)."""
-    from .degenerate_subtype import fusion_surrogate_genes_for
+    entries).
 
-    return fusion_surrogate_genes_for(cancer_code)
+    The data lives in ``fusion-surrogate-expression.csv``. The
+    parsing/joining logic moved to
+    :func:`trufflepig.degenerate_subtype.fusion_surrogate_genes_for`;
+    this thin wrapper is preserved for backwards compatibility.
+    """
+    df = get_data("fusion-surrogate-expression")
+    out = []
+    for _, row in df.iterrows():
+        scope = str(row.get("cancer_scope", "") or "")
+        scope_codes = {code.strip() for code in scope.split(";") if code.strip()}
+        if cancer_code in scope_codes or "pan_cancer" in scope_codes:
+            out.append(
+                {
+                    "gene": row.get("gene"),
+                    "fusion_class": row.get("fusion_class"),
+                    "role": row.get("role"),
+                    "rationale": row.get("rationale", ""),
+                }
+            )
+    return out
 
 
 def disease_state_rules_df():
-    """Return the raw ``disease-state-rules.csv`` DataFrame (#202) —
-    declarative per-cancer narrative rules consumed by
-    ``compose_disease_state_narrative``."""
-    from .load_dataset import get_data
-
+    """Return the raw ``disease-state-rules.csv`` DataFrame —
+    declarative per-cancer narrative rules consumed by trufflepig's
+    disease-state narrative composer."""
     return get_data("disease-state-rules")
+
+
+# Per-cohort median tumor-cell purity from TCGA (Aran et al., Nat Commun 2015).
+# Used by trufflepig's purity-confidence reasoning; published here as reference
+# data so consumers don't have to depend on the analysis package just to look
+# up the canonical cohort baseline.
+TCGA_MEDIAN_PURITY = {
+    "ACC": 0.79, "BLCA": 0.59, "BRCA": 0.73, "CESC": 0.49, "CHOL": 0.68,
+    "COAD": 0.59, "DLBC": 0.94, "ESCA": 0.50, "GBM": 0.83, "HNSC": 0.60,
+    "KICH": 0.84, "KIRC": 0.72, "KIRP": 0.78, "LAML": 0.95, "LGG": 0.87,
+    "LIHC": 0.73, "LUAD": 0.56, "LUSC": 0.67, "MESO": 0.55, "OV": 0.72,
+    "PAAD": 0.42, "PCPG": 0.69, "PRAD": 0.69, "READ": 0.60, "SARC": 0.66,
+    "SKCM": 0.65, "STAD": 0.40, "TGCT": 0.75, "THCA": 0.72, "THYM": 0.78,
+    "UCEC": 0.71, "UCS": 0.65, "UVM": 0.85,
+}

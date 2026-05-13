@@ -291,71 +291,8 @@ def test_subtype_key_maps_sarc_subtypes_to_key_genes_entries():
         )
 
 
-def test_cancers_cli_uses_explicit_coverage_columns(capsys):
-    from pirlygenes.cli import print_cancer_registry
-
-    print_cancer_registry(family="pediatric-soft")
-    out = capsys.readouterr().out
-
-    assert "Clinical group: Sarcoma, bone, and soft-tissue tumors" in out
-    assert "Expression ref" in out
-    assert "Expression source" in out
-    assert "Curation source" in out
-    assert "Biomarkers" in out
-    assert "Targets" in out
-    assert "Lineage" in out
-    assert "Normal" in out
-    assert "Response" in out
-    assert "Parent scopes:" not in out
-    assert "RMS_ARMS" in out
-    assert "Treehouse v25.01 PolyA" in out
-    assert "| Code |" not in out
-    assert "bm=" not in out
-    assert "tg=" not in out
-    assert "B5 T1" not in out
-    assert "sub-child" not in out
-
-
-def test_cancers_cli_counts_work_outside_repo_root(capsys, monkeypatch, tmp_path):
-    from pirlygenes.cli import print_cancer_registry
-
-    monkeypatch.chdir(tmp_path)
-    print_cancer_registry(family="carcinoma-gu")
-    out = capsys.readouterr().out
-
-    assert "BLCA" in out
-    assert "B9 T7 L6 N9 R0" not in out
-    assert "Coverage audit:" in out
-    assert "Lineage" in out
-    assert "Matched normal" in out
-    assert "Normal" in out
-
-
-def test_cancers_cli_source_qualifies_expression_refs(capsys):
-    from pirlygenes.cli import print_cancer_registry
-
-    print_cancer_registry(family="sarcoma")
-    out = capsys.readouterr().out
-
-    assert "TCGA:SARC" in out
-    assert "Treehouse:SARC_SYN" in out
-    assert "GEO:CHON" in out
-    assert "GEO:SARC_DDLPS" in out
-    assert "GEO GSE299759" in out
-    assert "GEO GSE75885" in out
-    assert "sources:" not in out
-
-    print_cancer_registry(family="carcinoma-breast")
-    out = capsys.readouterr().out
-
-    assert "TCGA/PAM50:BRCA_HER2" in out
-    assert "no expr 0" in out
-
-    print_cancer_registry(family="pediatric-eye")
-    out = capsys.readouterr().out
-
-    assert "Treehouse/RiboD:RB" in out
-    assert "Treehouse v25.01 RiboD" in out
+# `pirlygenes.cli` moved to `trufflepig.main`; the corresponding CLI
+# coverage tests live in trufflepig/tests/test_cancer_type_registry.py.
 
 
 def test_gse75885_sarcoma_expression_refs_are_bundled():
