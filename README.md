@@ -78,19 +78,42 @@ from pirlygenes.expression_qc import (
 
 | Category | Files |
 |---|---|
-| Therapy targets | `ADC-approved.csv`, `ADC-trials.csv`, `CAR-T-approved.csv`, `TCR-T-trials.csv`, `TCR-T-approved.csv`, `bispecific-antibodies-approved.csv`, `radioligand-approved.csv`, `radioligand-trials.csv` |
+| Therapy targets | `ADC-approved.csv`, `ADC-trials.csv`, `ADC-withdrawn.csv`, `CAR-T-approved.csv`, `TCR-T-trials.csv`, `TCR-T-approved.csv`, `bispecific-antibodies-approved.csv`, `multispecific-tcell-engager-trials.csv`, `radioligand-targets.csv` |
 | Surface proteins | `cancer-surfaceome.csv`, `surface-proteins.csv` |
 | Cancer-testis antigens | `cancer-testis-antigens.csv` |
-| Driver genes | `cancer-driver-genes.csv`, `cancer-driver-variants.csv`, `cancer-key-genes.csv` |
+| Driver / key genes | `cancer-driver-genes.csv`, `cancer-driver-variants.csv`, `cancer-key-genes.csv` |
 | Cancer-type registry | `cancer-type-registry.csv`, `cancer-family-panels.csv`, `cancer-type-genes.csv` |
 | Lineage / matched-normal | `lineage-genes.csv`, `tumor-up-vs-matched-normal.csv`, `heme-tumor-up-vs-matched-normal.csv` |
-| Reference expression | `pan-cancer-expression.csv`, `subtype-deconvolved-expression.csv.gz`, `tcga-deconvolved-expression.csv` |
+| Reference expression | `pan-cancer-expression.csv`, `subtype-deconvolved-expression.csv.gz`, `tcga-deconvolved-expression.csv.gz`, `hpa-cell-type-expression.csv` |
 | Rule sets | `mutation-expression-effects.csv`, `fusion-expression-effects.csv`, `rare-cancer-fusion-rules.csv`, `rare-cancer-rna-surrogates.csv`, `degenerate-subtype-pairs.csv`, `fusion-surrogate-expression.csv`, `disease-state-rules.csv`, `narrative-gene-sets.csv` |
-| QC panels | `housekeeping-genes.csv`, `mitochondrial-genes.csv`, `culture-stress-genes.csv`, `tme-markers.csv`, `degradation-gene-pairs.csv` |
+| QC panels | `housekeeping-genes.csv`, `mitochondrial-genes.csv`, `culture-stress-genes.csv`, `tme-markers.csv`, `degradation-gene-pairs.csv`, `ffpe-sensitive-markers.csv`, `artifact-expectations.csv` |
+| Gene-set catalog | `gene-sets.csv` |
 | Therapy response axes | `therapy-response-signatures.csv` |
-| Misc | `ensembl-id-aliases.csv`, `extra-tx-mappings.csv`, `estimate-signatures.csv`, `ffpe-sensitive-markers.csv`, `artifact-expectations.csv` |
+| Misc | `ensembl-id-aliases.csv`, `extra-tx-mappings.csv`, `estimate-signatures.csv` |
 
 The full curated set is the surface area `trufflepig` calls into.
+
+## Migrating from pirlygenes 4.x
+
+Most data-side imports are unchanged. Anything that ran analysis,
+plotting, or sample-context inference moved to `trufflepig`:
+
+| Was in pirlygenes 4.x | Now in 5.0 |
+|---|---|
+| `pirlygenes` CLI (`analyze`, `compare-analyze`, `plot-expression`, `plot-cancer-cohorts`, `data`, `cancers`) | `trufflepig run`, `trufflepig compare`, `trufflepig plot-cancer-cohorts`, `trufflepig data`, `trufflepig cancers` |
+| `from pirlygenes import infer_sample_context, SampleContext, plot_sample_context, plot_degradation_index` | `from trufflepig.sample_context import infer_sample_context, SampleContext, plot_sample_context, plot_degradation_index` |
+| `from pirlygenes import plot_gene_expression, plot_sample_vs_cancer, plot_geneset_vs_vital_tissues, plot_ctas_vs_cancer_type_detail` | `from trufflepig.plot import ...` |
+| `from pirlygenes import pan_reference_embedding_genes, get_embedding_feature_metadata` | `from trufflepig.plot_embedding import ...` |
+| `from pirlygenes.tumor_purity import TCGA_MEDIAN_PURITY` | `from pirlygenes.gene_sets_cancer import TCGA_MEDIAN_PURITY` *(moved into data-side; trufflepig re-exports)* |
+| `from pirlygenes.cli import analyze, compare_analyze` (Python API) | `from trufflepig.main import analyze, compare_analyze` |
+
+Unchanged (still in pirlygenes):
+- `gene_sets_cancer.*` accessors (CTAs, surfaceome, panels, etc.)
+- `load_dataset.get_data`, `load_all_dataframes`, `load_all_dataframes_dict`
+- `gene_ids.*`, `gene_names.*`
+- `expression_qc.normalize_expression`, `normalize_technical_rna_long_table`
+
+If the `pirlygenes` console-script is still on PATH from a prior install, it now prints a one-line "moved to trufflepig" notice and exits 2.
 
 ## Migration history
 

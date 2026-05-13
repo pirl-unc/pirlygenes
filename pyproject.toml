@@ -17,6 +17,7 @@ dependencies = [
     "numpy>=2.0.0",
     "pandas>=2.0",
     "pyensembl>=2.6.0",
+    "tqdm",
 ]
 
 [tool.setuptools.dynamic]
@@ -36,13 +37,19 @@ test = [
 "Homepage" = "https://github.com/pirl-unc/pirlygenes"
 "Bug Tracker" = "https://github.com/pirl-unc/pirlygenes"
 
+# Shim that prints a "moved to trufflepig" message and exits 2. Keeps
+# `pirlygenes` on PATH from breaking with `command not found` for users
+# whose CI/batch jobs still invoke the old analyze CLI. See pirlygenes/cli.py.
+[project.scripts]
+pirlygenes = "pirlygenes.cli:main"
+
 [build-system]
 requires = [
     "setuptools>=60",
     "setuptools-scm>=8.0"]
 
 [tool.setuptools.package-data]
-pirlygenes = ["data/*.csv"]
+pirlygenes = ["data/*"]
 
 [tool.pytest.ini_options]
 addopts = "-n auto"
