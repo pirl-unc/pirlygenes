@@ -66,20 +66,39 @@ from pirlygenes.gene_ids import (
     gene_id_aliases,
 )
 from pirlygenes.gene_names import display_name, short_gene_name, aliases
-from pirlygenes.qc_feature_groups import (
-    qc_class_for_ensembl_id,       # ENSG → QcFeatureClass (mt_dna, rrna_like, ...)
-    qc_class_for_symbol,           # Symbol → QcFeatureClass
-    qc_feature_groups,             # {group_name: DataFrame}
-    qc_feature_ensembl_ids,        # set of ENSGs for one group
+from pirlygenes.gene_families import (
+    # Generic
+    gene_family_for_ensembl_id,    # ENSG → family name (or None)
+    gene_family_for_symbol,        # Symbol → family name (or None)
+    gene_family_names,             # list of every shipped family
+    gene_family_ids,               # set of ENSGs in one named family
+    gene_family_symbols,           # set of Symbols in one named family
+    gene_family_table,             # long-form DataFrame across all families
+    # Typed per family (ID and symbol variants for each)
+    numt_pseudogene_ids,
+    numt_pseudogene_symbols,
+    nuclear_retained_lncrna_ids,   # MALAT1, NEAT1 (ENE-stabilized)
+    nuclear_retained_lncrna_symbols,
+    rrna_and_pseudogene_ids,
+    rrna_and_pseudogene_symbols,
+    ribosomal_protein_ids,
+    ribosomal_protein_pseudogene_ids,
+    small_noncoding_rna_ids,       # snoRNAs, snRNAs, miRNAs, Y RNAs, ...
+    histone_gene_ids,
+    hemoglobin_gene_ids,
+    immune_receptor_segment_ids,   # IG/TR V/D/J/C segments
 )
 ```
 
-The `qc_feature_groups` panels are ENSG-keyed QC categorisations
-derived from every installed Ensembl release; `trufflepig.expression_qc`
-reads them as the source of truth for its
-:func:`classify_gene_qc` lookup. Regenerate with
-``python scripts/generate_qc_gene_sets.py`` after the upstream regex
-changes.
+The `gene_families` panels are ENSG-keyed gene-family sets derived
+from every installed Ensembl release (`numt-pseudogenes.csv`,
+`nuclear-retained-lncrnas.csv`, etc.); `trufflepig.expression_qc`
+reads them as the source of truth for its `classify_gene_qc` lookup.
+Mitochondrial-DNA membership is sourced from the existing curated
+`mitochondrial-genes.csv` (with a semantic `Role` column).
+Regenerate the derived CSVs with
+`python scripts/generate_gene_family_sets.py` after the upstream
+regex panel changes.
 
 Expression matrices and QC normalization moved to `trufflepig` in v5.0:
 
@@ -113,7 +132,7 @@ from trufflepig.expression_qc import (
 | Lineage panel | `lineage-genes.csv` |
 | Rule sets | `mutation-expression-effects.csv`, `fusion-expression-effects.csv`, `rare-cancer-fusion-rules.csv`, `rare-cancer-rna-surrogates.csv`, `degenerate-subtype-pairs.csv`, `fusion-surrogate-expression.csv`, `disease-state-rules.csv`, `narrative-gene-sets.csv` |
 | QC panels | `housekeeping-genes.csv`, `mitochondrial-genes.csv`, `culture-stress-genes.csv`, `tme-markers.csv`, `degradation-gene-pairs.csv`, `ffpe-sensitive-markers.csv`, `artifact-expectations.csv` |
-| QC feature groups (ENSG-keyed, derived) | `qc-mt-dna.csv`, `qc-mt-like-pseudogene.csv`, `qc-polya-bias-lncrna.csv`, `qc-rrna-like.csv`, `qc-ribosomal-protein.csv`, `qc-ribosomal-protein-pseudogene.csv`, `qc-small-ncrna.csv`, `qc-histone.csv`, `qc-hemoglobin.csv`, `qc-immune-receptor.csv` |
+| Gene families (ENSG-keyed, derived) | `numt-pseudogenes.csv`, `nuclear-retained-lncrnas.csv`, `rrna-and-pseudogenes.csv`, `ribosomal-protein-genes.csv`, `ribosomal-protein-pseudogenes.csv`, `small-noncoding-rnas.csv`, `histone-genes.csv`, `hemoglobin-genes.csv`, `immune-receptor-segments.csv` |
 | Gene-set catalog | `gene-sets.csv` |
 | Therapy response axes | `therapy-response-signatures.csv` |
 | Misc | `ensembl-id-aliases.csv`, `extra-tx-mappings.csv` |

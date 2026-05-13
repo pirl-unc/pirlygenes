@@ -19,12 +19,40 @@ in v5.0; this package is now a **data-only** dependency providing:
 * curated gene-set CSVs (``gene_sets_cancer``)
 * the bundled-dataset loader (``load_dataset``)
 * canonical gene-id / gene-name helpers (``gene_ids``, ``gene_names``)
-* QC feature panels keyed by Ensembl Gene ID (``qc_feature_groups``)
+* curated gene families keyed by Ensembl ID (``gene_families``)
 
 Install ``trufflepig`` to run RNA tumor analyses; it imports the
 accessors here as a library.
 """
 
+from .gene_families import (
+    GENE_FAMILIES,
+    GeneFamily,
+    gene_family_for_ensembl_id,
+    gene_family_for_symbol,
+    gene_family_ids,
+    gene_family_names,
+    gene_family_symbols,
+    gene_family_table,
+    hemoglobin_gene_ids,
+    hemoglobin_gene_symbols,
+    histone_gene_ids,
+    histone_gene_symbols,
+    immune_receptor_segment_ids,
+    immune_receptor_segment_symbols,
+    nuclear_retained_lncrna_ids,
+    nuclear_retained_lncrna_symbols,
+    numt_pseudogene_ids,
+    numt_pseudogene_symbols,
+    ribosomal_protein_ids,
+    ribosomal_protein_pseudogene_ids,
+    ribosomal_protein_pseudogene_symbols,
+    ribosomal_protein_symbols,
+    rrna_and_pseudogene_ids,
+    rrna_and_pseudogene_symbols,
+    small_noncoding_rna_ids,
+    small_noncoding_rna_symbols,
+)
 from .gene_sets_cancer import (
     cancer_family_panel,
     cancer_family_panels,
@@ -48,15 +76,6 @@ from .gene_sets_cancer import (
     tme_markers_df,
 )
 from .load_dataset import get_data, load_all_dataframes, load_all_dataframes_dict
-from .qc_feature_groups import (
-    QcFeatureClass,
-    qc_class_for_ensembl_id,
-    qc_class_for_symbol,
-    qc_feature_ensembl_ids,
-    qc_feature_groups,
-    qc_feature_symbols,
-    qc_feature_table,
-)
 from .version import __version__
 
 __all__ = [
@@ -84,11 +103,30 @@ __all__ = [
     "cancer_family_panels_df",
     "cancer_family_panel",
     "cancer_family_panels",
-    "QcFeatureClass",
-    "qc_feature_table",
-    "qc_feature_groups",
-    "qc_feature_ensembl_ids",
-    "qc_feature_symbols",
-    "qc_class_for_ensembl_id",
-    "qc_class_for_symbol",
+    "GeneFamily",
+    "GENE_FAMILIES",
+    "gene_family_names",
+    "gene_family_table",
+    "gene_family_ids",
+    "gene_family_symbols",
+    "gene_family_for_ensembl_id",
+    "gene_family_for_symbol",
+    "numt_pseudogene_ids",
+    "numt_pseudogene_symbols",
+    "nuclear_retained_lncrna_ids",
+    "nuclear_retained_lncrna_symbols",
+    "rrna_and_pseudogene_ids",
+    "rrna_and_pseudogene_symbols",
+    "ribosomal_protein_ids",
+    "ribosomal_protein_symbols",
+    "ribosomal_protein_pseudogene_ids",
+    "ribosomal_protein_pseudogene_symbols",
+    "small_noncoding_rna_ids",
+    "small_noncoding_rna_symbols",
+    "histone_gene_ids",
+    "histone_gene_symbols",
+    "hemoglobin_gene_ids",
+    "hemoglobin_gene_symbols",
+    "immune_receptor_segment_ids",
+    "immune_receptor_segment_symbols",
 ]
