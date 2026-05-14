@@ -20,9 +20,12 @@ _MOVED_MESSAGE = """\
 pirlygenes no longer ships an analysis CLI as of v5.0.0.
 
 The `analyze`, `compare-analyze`, `plot-expression`, and
-`plot-cancer-cohorts` commands all moved to `trufflepig`:
+`plot-cancer-cohorts` commands all moved to `pirl-trufflepig`
+(distributed under that name on PyPI because the bare `trufflepig`
+name is owned by an unrelated package; the command + Python import
+are both still `trufflepig`):
 
-    pip install trufflepig
+    pip install pirl-trufflepig
     trufflepig run --sample expr.tsv --workspace out --cancer-type BLCA
     trufflepig compare --workspace out/long --inputs out/A,out/B
     trufflepig data
