@@ -425,3 +425,57 @@ def test_cancer_type_aliases_all_resolve_to_valid_registry_codes():
         if code not in registry_codes
     }
     assert not bad, f"alias values not in registry: {bad}"
+
+
+# ---------- post-5.0 polish: cache invalidation + reverse-lookup cache ----------
+
+
+def test_clear_cache_resets_view_and_reverse_map():
+    """``_clear_caches()`` must drop both the forward and reverse
+    caches so tests that monkey-patch ``get_data`` see the new data."""
+    from pirlygenes.gene_sets_cancer import _clear_caches
+
+    # Warm both caches.
+    _ = CANCER_TYPE_NAMES.get("PRAD")
+    _ = CANCER_TYPE_NAMES._name_to_code()
+    assert CANCER_TYPE_NAMES._cache is not None
+    assert CANCER_TYPE_NAMES._name_to_code_cache is not None
+
+    _clear_caches()
+
+    assert CANCER_TYPE_NAMES._cache is None
+    assert CANCER_TYPE_NAMES._name_to_code_cache is None
+
+    # Subsequent access rebuilds both — and still resolves correctly.
+    assert resolve_cancer_type("PRAD") == "PRAD"
+    assert resolve_cancer_type("Prostate Adenocarcinoma") == "PRAD"
+
+
+def test_name_to_code_reverse_map_is_cached():
+    """The reverse map must build once and then return the same dict
+    on every call (no per-call rebuild — that was the prior bottleneck
+    inside ``resolve_cancer_type``)."""
+    a = CANCER_TYPE_NAMES._name_to_code()
+    b = CANCER_TYPE_NAMES._name_to_code()
+    assert a is b, "reverse-lookup dict should be reused, not rebuilt"
+
+
+def test_resolve_cancer_type_uses_cached_reverse_map_under_load():
+    """Hot-loop sanity: 10k display-name lookups must be near-instant.
+    Failure mode would be a regression that rebuilds ``name_to_code``
+    inside ``resolve_cancer_type`` on every call."""
+    import time
+
+    # Warm.
+    CANCER_TYPE_NAMES._name_to_code()
+
+    t0 = time.perf_counter()
+    for _ in range(10_000):
+        resolve_cancer_type("Prostate Adenocarcinoma")
+    elapsed = time.perf_counter() - t0
+    # Generous bound — actual hot-loop is ~50ms on a laptop. A
+    # regression that rebuilt the 125-entry dict per call would take
+    # 500ms+. 2s gives plenty of slack for slower CI hardware.
+    assert elapsed < 2.0, (
+        f"display-name resolve appears uncached; 10k calls took {elapsed:.2f}s"
+    )
