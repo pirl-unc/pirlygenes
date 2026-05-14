@@ -14,11 +14,140 @@ from __future__ import annotations
 
 import warnings
 
-from .expression_qc import (
-    normalize_expression,
-    normalize_technical_rna_long_table,
-)
 from .load_dataset import get_data
+
+
+# Hand-curated common-name aliases. Keyed by lowercase / underscored
+# variant; values are canonical codes from cancer-type-registry.csv.
+# The registry CSV is the source-of-truth for valid codes and their
+# display names — see :data:`CANCER_TYPE_NAMES` below.
+CANCER_TYPE_ALIASES = {
+    "prostate": "PRAD", "breast": "BRCA", "lung_adeno": "LUAD",
+    "lung_squamous": "LUSC", "melanoma": "SKCM", "skin": "SKCM",
+    "colon": "COAD", "colorectal": "COAD", "rectal": "READ",
+    "pancreatic": "PAAD", "pancreas": "PAAD", "liver": "LIHC",
+    "kidney_clear": "KIRC", "kidney_papillary": "KIRP",
+    "kidney_chromophobe": "KICH", "kidney": "KIRC", "ovarian": "OV",
+    "ovary": "OV", "cervical": "CESC", "cervix": "CESC",
+    "bladder": "BLCA", "stomach": "STAD", "gastric": "STAD",
+    "glioblastoma": "GBM", "gbm": "GBM", "head_neck": "HNSC",
+    "hnscc": "HNSC", "thyroid": "THCA", "endometrial": "UCEC",
+    "uterine": "UCEC", "testicular": "TGCT", "testis": "TGCT",
+    "sarcoma": "SARC", "adrenocortical": "ACC", "adrenal": "ACC",
+    "cholangiocarcinoma": "CHOL", "bile_duct": "CHOL", "dlbcl": "DLBC",
+    "lymphoma": "DLBC", "esophageal": "ESCA", "esophagus": "ESCA",
+    "aml": "LAML", "leukemia": "LAML", "low_grade_glioma": "LGG",
+    "lgg": "LGG", "glioma": "LGG", "mesothelioma": "MESO",
+    "pheochromocytoma": "PCPG", "paraganglioma": "PCPG",
+    "thymoma": "THYM", "uterine_carcinosarcoma": "UCS",
+    "uveal_melanoma": "UVM",
+}
+
+
+class _CancerTypeNamesView:
+    """Read-only ``{code: display_name}`` view backed by the registry CSV.
+
+    Trufflepig and downstream consumers treat ``CANCER_TYPE_NAMES`` as
+    a dict (``.get(code)``, ``code in CANCER_TYPE_NAMES``, iteration).
+    Loading from the CSV at first access keeps the dict in lock-step
+    with the registry — adding a new subtype row to
+    ``cancer-type-registry.csv`` automatically extends the dict
+    without a code change here.
+
+    The loaded mapping is cached on the instance after the first
+    access; downstream callers in trufflepig hit this in tight loops
+    (``resolve_cancer_type`` per sample × per candidate).
+    """
+
+    def __init__(self):
+        self._cache: dict | None = None
+
+    def _load(self):
+        if self._cache is None:
+            df = get_data("cancer-type-registry")
+            # DataFrame-level filter: drop NaN and empty/whitespace
+            # names before building the dict so missing values never
+            # reach ``str(NaN) == "nan"``.
+            df = df[df["name"].notna()]
+            df = df[df["name"].astype(str).str.strip().ne("")]
+            self._cache = dict(zip(df["code"].astype(str), df["name"].astype(str)))
+        return self._cache
+
+    def __getitem__(self, key):
+        return self._load()[key]
+
+    def get(self, key, default=None):
+        return self._load().get(key, default)
+
+    def __contains__(self, key):
+        return key in self._load()
+
+    def __iter__(self):
+        return iter(self._load())
+
+    def __len__(self):
+        return len(self._load())
+
+    def keys(self):
+        return self._load().keys()
+
+    def values(self):
+        return self._load().values()
+
+    def items(self):
+        return self._load().items()
+
+    def __repr__(self):
+        return f"_CancerTypeNamesView({len(self._load())} codes)"
+
+
+# Registry-backed view of cancer code → display name. Reads
+# ``cancer-type-registry.csv`` lazily on first access and caches the
+# resolved mapping so adding a new subtype row automatically broadens
+# ``resolve_cancer_type`` and trufflepig's label lookups without
+# repeated CSV-parse / iterrows cost on the hot path.
+CANCER_TYPE_NAMES = _CancerTypeNamesView()
+
+
+def resolve_cancer_type(cancer_type):
+    """Resolve a cancer type name or alias to a registry code.
+
+    Accepts:
+    - canonical registry codes (``"PRAD"``, ``"SARC_DDLPS"``,
+      ``"LAML_APL"``);
+    - hand-curated common-name aliases (``"prostate"``, ``"melanoma"``);
+    - the registry display name (``"Prostate Adenocarcinoma"``),
+      case-insensitive.
+
+    Returns the registry code, ``None`` if ``cancer_type`` is ``None``,
+    or raises ``ValueError`` for an unknown input.
+    """
+    if cancer_type is None:
+        return None
+    raw = str(cancer_type).strip()
+    if not raw:
+        raise ValueError("Empty cancer type")
+
+    alias_key = raw.lower().replace(" ", "_").replace("-", "_")
+    if alias_key in CANCER_TYPE_ALIASES:
+        return CANCER_TYPE_ALIASES[alias_key]
+
+    registry = CANCER_TYPE_NAMES  # registry-backed view
+    if raw in registry:
+        return raw
+    upper = raw.upper()
+    if upper in registry:
+        return upper
+
+    name_to_code = {v.lower(): k for k, v in registry.items()}
+    if raw.lower() in name_to_code:
+        return name_to_code[raw.lower()]
+
+    raise ValueError(
+        f"Unknown cancer type {cancer_type!r}. "
+        f"Valid registry codes: {sorted(registry.keys())}. "
+        f"Common-name aliases: {sorted(CANCER_TYPE_ALIASES.keys())}."
+    )
 
 
 # ---------- Therapy target registry ----------
@@ -207,7 +336,8 @@ def mitochondrial_genes_df(role=None):
         ``"protein_coding"`` — the 13 OXPHOS subunits (MT-CO*, MT-ND*,
         MT-CYB, MT-ATP6/8).
         ``"rRNA"`` — MT-RNR1, MT-RNR2.
-        ``None`` (default) — all 15 rows.
+        ``"tRNA"`` — the 22 mitochondrial tRNAs (MT-TA, MT-TC, …).
+        ``None`` (default) — all 37 rows.
 
     Returns
     -------
@@ -619,31 +749,7 @@ def cancer_surfaceome_evidence(min_cancer_types=None):
     return _cancer_surfaceome_df(min_cancer_types)
 
 
-# ---------- Pan-cancer expression ----------
-#
-# The full pan-cancer-expression CSV is ~16k rows × 85 cols, and the
-# housekeeping normalization rescales 83 value columns. Recomputing on every
-# call is wasteful because ~every purity / ranking / plotting path asks for
-# the same `normalize="housekeeping"` snapshot. We cache on a hashable form
-# of the args and hand back `.copy()` so callers keep their mutation freedom.
-_PAN_CANCER_CACHE = {}
-
-
-def _pan_cancer_cache_key(
-    genes,
-    normalize,
-    log_transform,
-    technical_rna_normalize,
-    remove_noncoding,
-):
-    genes_key = None if genes is None else frozenset(str(g).upper() for g in genes)
-    return (
-        genes_key,
-        normalize,
-        bool(log_transform),
-        bool(technical_rna_normalize),
-        bool(remove_noncoding),
-    )
+# ---------- Cancer-type registry ----------
 
 
 def cancer_type_registry():
@@ -734,84 +840,6 @@ def mixture_cohort_codes():
 def is_mixture_cohort(code):
     """True when ``code`` is a mixture cohort per the registry (#171)."""
     return code in set(mixture_cohort_codes())
-
-
-def subtype_deconvolved_expression(
-    technical_rna_normalize=False,
-    remove_noncoding=False,
-):
-    """Per-(cancer_code, subtype, symbol) tumor-only TPM from multi-cohort deconv.
-
-    Subtype-stratified companion to :func:`tcga_deconvolved_expression`.
-    Covers:
-
-    - BRCA × PAM50 (LumA / LumB / HER2-enriched / Basal / Normal)
-      from a subtype-partitioned re-run of the TCGA deconv pipeline
-      using Ciriello 2015 Cell PAM50 calls from cBioPortal.
-    - BeatAML (Tyner 2022 OHSU cohort) × ELN2017 risk
-      (Favorable / Intermediate / Adverse) + APL (FAB-M3) breakout.
-    - TARGET AML (pediatric AML, NCI TARGET initiative).
-    - TARGET NBL (pediatric neuroblastoma) × MYCN amplification status.
-    - TARGET WT (pediatric Wilms tumor) and TARGET RT (rhabdoid tumor).
-    - SCLC Rudin/UCologne 2015 (ASCL1-dominant NE-SCLC).
-    - TCGA LUAD × mutation class (EGFR / KRAS / STK11+KEAP1 / co-mut).
-    - TCGA HNSC × HPV status (HPV+ / HPV-).
-    - **Treehouse Tumor Compendium v25.01 PolyA (GSE294351)** — 1274
-      pediatric + underrepresented samples across 20 diseases (OS 262,
-      Ewing 101, ERMS 95, ARMS 73, MBL 125, UPS 110, LMS 151, LPS 92,
-      synovial 50, myxofibrosarcoma 41, rhabdoid 69, UCS 57, etc.).
-      Expression scale: log2(TPM+1) un-transformed to linear TPM.
-    - **Treehouse Tumor Compendium v25.01 RiboD (GSE294353)** —
-      ribodepleted public samples for entities underpowered in PolyA
-      (currently RB and CHOR). Expression scale is also log2(TPM+1)
-      un-transformed to linear TPM, with sample-sum QC requiring
-      ~1,000,000 TPM per sample before aggregation.
-    - **GSE299759 (Meijer et al.; PMID:40976495)** central
-      chondrosarcoma RNA-seq. Raw Ensembl gene counts are converted to
-      approximate gene-level TPM with GENCODE v44 union-exon lengths;
-      >99.99% of counts map to length-backed genes before aggregation.
-    - GSE75885 (Delespaul et al.; PMID:27528700) complex-genetics
-      sarcoma RNA-seq, RPKM-like expression converted per sample to
-      TPM for DDLPS, pleomorphic liposarcoma, and low-grade fibromyxoid
-      sarcoma references that are not split in Treehouse.
-
-    Non-TCGA cohorts are processed in high-purity-passthrough mode by
-    :mod:`pirlygenes.cohort_deconvolve` — appropriate for sorted heme
-    malignancies (AML peripheral blood, where the malignant clone is
-    ~90%+ by construction and solid-primary TME templates would
-    mis-attribute clone signal to normal immune components).
-
-    Returns
-    -------
-    pd.DataFrame or None
-        Long-form frame with columns ``symbol``, ``cancer_code``,
-        ``subtype``, ``tumor_tpm_median``, ``tumor_tpm_q1``,
-        ``tumor_tpm_q3``, ``n_samples``. ``None`` when the CSV is
-        not bundled (maintainer hasn't run the offline batch).
-        By default this returns the raw bundled reference. Pass
-        ``technical_rna_normalize=True`` to zero mitochondrial, NUMT-like,
-        rRNA-like, and rRNA-pseudogene rows and renormalize the remaining TPM
-        values within each subtype group. ``remove_noncoding=True`` applies an
-        additional biotype gate when a biotype column is present.
-    """
-    try:
-        df = get_data("subtype-deconvolved-expression")
-    except ValueError:
-        return None
-    if not technical_rna_normalize and not remove_noncoding:
-        return df
-    if remove_noncoding:
-        df_norm, record = normalize_expression(
-            df,
-            label_col="symbol",
-            group_cols=("cancer_code", "subtype"),
-            value_cols=("tumor_tpm_median", "tumor_tpm_q1", "tumor_tpm_q3"),
-            remove_noncoding=True,
-        )
-    else:
-        df_norm, record = normalize_technical_rna_long_table(df)
-    df_norm.attrs["technical_rna_normalization"] = record
-    return df_norm
 
 
 # ---------- Cancer-pathway panels (tumor-evidence Step-0 signals) ----------
@@ -954,357 +982,6 @@ def oncofetal_strict_gene_names():
     return list(_ONCOFETAL_STRICT_GENES)
 
 
-def heme_tumor_up_vs_matched_normal(cancer_code: str | None = None):
-    """Heme analogue of :func:`tumor_up_vs_matched_normal`.
-
-    DLBC vs lymph_node (mature-B normal background), LAML vs
-    bone_marrow (myeloid-progenitor normal background). Filter is
-    looser than the solid panel because heme tumors ARE immune
-    tissue — we can't exclude immune-rich HPA columns from the
-    background. Requires low across all non-lymphoid HPA tissues
-    so ubiquitously-expressed genes don't leak through.
-
-    Known limitation: heme-vs-heme-normal differentials are
-    structurally harder than solid-vs-tissue — the malignant clone
-    shares most expression with its normal lineage counterpart. Use
-    the top hits as one signal among several, not as a definitive
-    call.
-
-    Returns
-    -------
-    pd.DataFrame or None
-    """
-    try:
-        df = get_data("heme-tumor-up-vs-matched-normal")
-    except ValueError:
-        return None
-    if cancer_code:
-        df = df[df["cancer_code"] == cancer_code]
-    return df.copy()
-
-
-def tumor_up_vs_matched_normal(cancer_code: str | None = None):
-    """Per-cancer genes dramatically up in tumor vs matched normal tissue.
-
-    Built offline by racing the shipped :func:`tcga_deconvolved_expression`
-    tumor-only medians against the matched-tissue nTPM_<tissue> columns
-    in :func:`pan_cancer_expression`, filtered so each gene is genuinely
-    low across *all* HPA normal tissues (not just the matched tissue)
-    and specific to ≤ 4 cancer codes (drops ubiquitous artefacts and
-    Ig / TCR rearrangement genes).
-
-    Useful as cancer-type-specific tumor evidence — if Step-1 says
-    the sample best matches PRAD, and one of the PRAD-specific tumor-
-    up genes (OTOP1, ANKRD34C) is expressed, that is independent
-    corroboration distinct from the correlation pass.
-
-    Parameters
-    ----------
-    cancer_code : str or None
-        Filter to a single TCGA code. ``None`` returns all rows.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: cancer_code, matched_normal_tissue, symbol,
-        ensembl_gene_id, fold_change_vs_matched_normal, tumor_tpm,
-        matched_normal_ntpm, max_any_normal_ntpm.
-    """
-    try:
-        df = get_data("tumor-up-vs-matched-normal")
-    except ValueError:
-        return None
-    if cancer_code:
-        df = df[df["cancer_code"] == cancer_code]
-    return df.copy()
-
-
-def tcga_deconvolved_expression():
-    """Per-(symbol, TCGA code) tumor-only TPM derived by #21 offline deconv.
-
-    Reads ``data/tcga-deconvolved-expression.csv`` if present. The CSV
-    is produced by :mod:`pirlygenes.tcga_decompose` on the full Xena
-    TOIL TCGA TPM matrix; it ships with the package once the
-    maintainer has run the batch.
-
-    Returns
-    -------
-    pd.DataFrame or None
-        Long-form frame with columns ``symbol``, ``cancer_code``,
-        ``tumor_tpm_median``, ``tumor_tpm_q1``, ``tumor_tpm_q3``,
-        ``n_samples``. Returns ``None`` when the CSV is not bundled
-        (e.g. a fresh checkout where the offline batch hasn't been
-        run yet). Callers must handle the ``None`` case.
-    """
-    try:
-        return get_data("tcga-deconvolved-expression")
-    except ValueError:
-        return None
-
-
-def _tcga_deconv_wide(cache={}):
-    """Wide-form (Symbol-indexed) view of the tumor-only TPM median.
-
-    Built from the long-form :func:`tcga_deconvolved_expression` frame
-    with one column per TCGA code (``tcga_PRAD``, ``tcga_BRCA`` …).
-    Cached in-process; returns ``None`` when the deconv CSV is absent.
-    """
-    if "value" in cache:
-        return cache["value"]
-    long = tcga_deconvolved_expression()
-    if long is None or long.empty:
-        cache["value"] = None
-        return None
-
-    wide = long.pivot_table(
-        index="symbol",
-        columns="cancer_code",
-        values="tumor_tpm_median",
-        aggfunc="median",
-    )
-    wide.columns = [f"tcga_{c}" for c in wide.columns]
-    wide = wide.reset_index().rename(columns={"symbol": "Symbol"})
-    cache["value"] = wide
-    return wide
-
-
-def pan_cancer_expression(
-    genes=None,
-    normalize=None,
-    log_transform=False,
-    technical_rna_normalize=False,
-    remove_noncoding=False,
-):
-    """Expression across 50 normal tissues (nTPM) and 33 TCGA cancer types.
-
-    Normal tissues from HPA v23 consensus nTPM. Cancer types from HPA
-    (21 types, median FPKM) and GDC/STAR reprocessing (12 additional types,
-    median TPM). Column names are prefixed with ``nTPM_`` or ``FPKM_``.
-
-    When the #21 offline deconv has been run and shipped
-    ``data/tcga-deconvolved-expression.csv``, tumor-only columns
-    prefixed ``tcga_`` are merged in as well (#22). They sit alongside
-    (not replacing) the FPKM_ columns until callers migrate — the
-    breaking swap is reserved for v5.0.0.
-
-    Parameters
-    ----------
-    genes : iterable of str, optional
-        Gene symbols or Ensembl IDs to filter to. If None, returns all
-        ~3,100 genes in pirlygenes gene sets.
-    normalize : str or None
-        ``"percentile"`` — within-column percentile ranks (0–100).
-        ``"housekeeping"`` — fold over median housekeeping expression.
-        ``None`` (default) — raw values.
-    log_transform : bool
-        If True, apply log2(x + 1) after normalization (or to raw values
-        if normalize is None). Recommended for visualization.
-    technical_rna_normalize : bool
-        If True, zero mitochondrial, NUMT-like, rRNA-like, and
-        rRNA-pseudogene rows in every reference expression column and
-        renormalize the remaining non-missing values before any gene filtering
-        or housekeeping/percentile normalization.
-        The default is False so existing QC, raw-reference matching, and
-        decomposition callers continue to see bundled TCGA/HPA values exactly
-        as stored.
-    remove_noncoding : bool
-        If True, also zero noncoding-biotype rows when a biotype column is
-        present, while retaining protein-coding, immunoglobulin, and TCR genes.
-        Off by default.
-
-    Returns
-    -------
-    pd.DataFrame
-        A defensive copy of an internally-cached frame. Safe to mutate.
-    """
-    import numpy as np
-
-    cache_key = _pan_cancer_cache_key(
-        genes,
-        normalize,
-        log_transform,
-        technical_rna_normalize,
-        remove_noncoding,
-    )
-    cached = _PAN_CANCER_CACHE.get(cache_key)
-    if cached is not None:
-        return cached.copy()
-
-    df = get_data("pan-cancer-expression")
-    deconv_wide = _tcga_deconv_wide()
-    if deconv_wide is not None:
-        df = df.merge(deconv_wide, on="Symbol", how="left")
-    value_cols = [
-        c
-        for c in df.columns
-        if c.startswith("nTPM_") or c.startswith("FPKM_") or c.startswith("tcga_")
-    ]
-    if technical_rna_normalize or remove_noncoding:
-        df, normalization_record = normalize_expression(
-            df,
-            label_col="Symbol",
-            value_cols=value_cols,
-            remove_noncoding=remove_noncoding,
-        )
-        df.attrs["technical_rna_normalization"] = normalization_record
-    if genes is not None:
-        genes_upper = {str(g).upper() for g in genes}
-        mask = df["Ensembl_Gene_ID"].str.upper().isin(genes_upper) | df[
-            "Symbol"
-        ].str.upper().isin(genes_upper)
-        df = df[mask]
-
-    value_cols = [
-        c
-        for c in df.columns
-        if c.startswith("nTPM_") or c.startswith("FPKM_") or c.startswith("tcga_")
-    ]
-
-    if normalize is not None:
-        df = df.copy()
-        if normalize == "percentile":
-            for col in value_cols:
-                vals = df[col].astype(float)
-                df[col] = vals.rank(pct=True) * 100
-        elif normalize == "housekeeping":
-            hk_ids = housekeeping_gene_ids()
-            hk_mask = df["Ensembl_Gene_ID"].isin(hk_ids)
-            for col in value_cols:
-                vals = df[col].astype(float)
-                hk_median = vals[hk_mask].median()
-                if not (np.isnan(hk_median) or hk_median <= 0):
-                    df[col] = vals / hk_median
-                else:
-                    df[col] = np.nan
-        else:
-            raise ValueError(
-                f"normalize must be 'percentile', 'housekeeping', or None, got {normalize!r}"
-            )
-
-    if log_transform:
-        df = df.copy() if normalize is None else df
-        for col in value_cols:
-            df[col] = np.log2(df[col].astype(float) + 1)
-
-    _PAN_CANCER_CACHE[cache_key] = df
-    return df.copy()
-
-
-def cancer_types():
-    """Return list of available TCGA cancer type codes."""
-    df = get_data("pan-cancer-expression")
-    return sorted(c.replace("FPKM_", "") for c in df.columns if c.startswith("FPKM_"))
-
-
-def cancer_expression(cancer_type, genes=None):
-    """Expression for a single cancer type as a simple gene-level DataFrame.
-
-    Parameters
-    ----------
-    cancer_type : str
-        TCGA code or alias (e.g. ``"PRAD"``, ``"prostate"``).
-    genes : iterable of str, optional
-        Gene symbols or Ensembl IDs to filter to.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: Ensembl_Gene_ID, Symbol, expression (housekeeping-normalized).
-    """
-    from .plot import resolve_cancer_type
-
-    code = resolve_cancer_type(cancer_type)
-    df = pan_cancer_expression(
-        genes=genes,
-        normalize="housekeeping",
-        technical_rna_normalize=True,
-    )
-    col = f"FPKM_{code}"
-    return df[["Ensembl_Gene_ID", "Symbol", col]].rename(columns={col: "expression"})
-
-
-def top_enriched_per_cancer_type(
-    n=10, min_fold=3.0, min_expression=0.01, disjoint=False
-):
-    """Top N most cancer-type-specific genes vs pan-cancer median.
-
-    Parameters
-    ----------
-    n : int
-        Number of genes per cancer type.
-    min_fold : float
-        Minimum fold-change over median of other cancer types.
-    min_expression : float
-        Minimum housekeeping-normalized expression.
-    disjoint : bool
-        If True, each gene is assigned to only the cancer type where it
-        has the highest fold-change. Genes shared across types are removed
-        from all but the best-matching type.
-
-    Returns
-    -------
-    dict[str, list[str]]
-        {TCGA_code: [gene_symbol, ...]} sorted by fold-change descending.
-    """
-    df = pan_cancer_expression(
-        normalize="housekeeping",
-        technical_rna_normalize=True,
-    )
-    fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
-
-    if disjoint:
-        import numpy as _np
-
-        # Vectorized: compute fold-change matrix (genes x cancer types)
-        expr_matrix = df[fpkm_cols].astype(float)
-        symbols = df["Symbol"].values
-
-        # For each cancer column, fold = expr / median(others)
-        all_folds = {}
-        for col in fpkm_cols:
-            code = col.replace("FPKM_", "")
-            other_cols = [c for c in fpkm_cols if c != col]
-            other_med = expr_matrix[other_cols].median(axis=1)
-            fold = (expr_matrix[col] + 0.001) / (other_med + 0.001)
-            all_folds[code] = fold.values
-
-        codes = [col.replace("FPKM_", "") for col in fpkm_cols]
-        fold_matrix = _np.column_stack(
-            [all_folds[c] for c in codes]
-        )  # (genes, cancers)
-        expr_max = expr_matrix.values  # (genes, cancers)
-
-        # For each gene, find the cancer type with the highest fold-change
-        best_cancer_idx = fold_matrix.argmax(axis=1)
-        best_fold = fold_matrix.max(axis=1)
-
-        # Filter: must meet fold and expression thresholds in their best cancer
-        cancer_genes = {}
-        for i in range(len(symbols)):
-            ci = best_cancer_idx[i]
-            if best_fold[i] >= min_fold and expr_max[i, ci] >= min_expression:
-                code = codes[ci]
-                cancer_genes.setdefault(code, []).append((symbols[i], best_fold[i]))
-
-        result = {}
-        for code, genes in cancer_genes.items():
-            genes.sort(key=lambda x: -x[1])
-            result[code] = [sym for sym, _ in genes[:n]]
-        return result
-    else:
-        result = {}
-        for col in fpkm_cols:
-            code = col.replace("FPKM_", "")
-            other_cols = [c for c in fpkm_cols if c != col]
-            expr = df[col].astype(float)
-            other_med = df[other_cols].astype(float).median(axis=1)
-            fold = (expr + 0.001) / (other_med + 0.001)
-            mask = (expr >= min_expression) & (fold >= min_fold)
-            top_idx = fold[mask].nlargest(n).index
-            result[code] = df.loc[top_idx, "Symbol"].tolist()
-        return result
-
-
 def cancer_type_gene_sets(cancer_type):
     """Curated gene sets for a specific cancer type, grouped by role.
 
@@ -1319,8 +996,6 @@ def cancer_type_gene_sets(cancer_type):
         {role: {ensembl_id: symbol}} for use as gene_sets in plotting.
         Returns empty dict if no curated genes exist for that cancer type.
     """
-    from .plot import resolve_cancer_type
-
     code = resolve_cancer_type(cancer_type)
     try:
         df = get_data("cancer-type-genes")
@@ -1332,49 +1007,6 @@ def cancer_type_gene_sets(cancer_type):
     result = {}
     for role, group in sub.groupby("Role"):
         result[role] = dict(zip(group["Ensembl_Gene_ID"], group["Symbol"]))
-    return result
-
-
-def cancer_enriched_genes(cancer_type, min_fold=3.0, min_expression=0.01):
-    """Genes enriched in a specific cancer type vs the pan-cancer median.
-
-    Parameters
-    ----------
-    cancer_type : str
-        TCGA code or alias (e.g. ``"PRAD"``, ``"prostate"``).
-    min_fold : float
-        Minimum fold-change over median of all other cancer types.
-    min_expression : float
-        Minimum housekeeping-normalized expression in the target cancer type.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: Ensembl_Gene_ID, Symbol, expression, other_median, fold_change.
-        Sorted by fold_change descending.
-    """
-    from .plot import resolve_cancer_type
-
-    code = resolve_cancer_type(cancer_type)
-    df = pan_cancer_expression(
-        normalize="housekeeping",
-        technical_rna_normalize=True,
-    )
-    fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
-    target_col = f"FPKM_{code}"
-    other_cols = [c for c in fpkm_cols if c != target_col]
-
-    result = df[["Ensembl_Gene_ID", "Symbol"]].copy()
-    result["expression"] = df[target_col].astype(float)
-    result["other_median"] = df[other_cols].astype(float).median(axis=1)
-    result["fold_change"] = (result["expression"] + 0.001) / (
-        result["other_median"] + 0.001
-    )
-
-    result = result[
-        (result["expression"] >= min_expression) & (result["fold_change"] >= min_fold)
-    ].sort_values("fold_change", ascending=False)
-    return result.reset_index(drop=True)
 
 
 # ---------- Multispecific T-cell Engagers (custom filtering) ----------
@@ -2042,57 +1674,56 @@ def cancer_key_genes_subtypes(cancer_code):
 # surface for every curated gene set bundled with the package.
 
 
+def _narrative_gene_sets():
+    """Return ``{set_name: tuple[str]}`` from ``narrative-gene-sets.csv``."""
+    df = get_data("narrative-gene-sets")
+    out: dict[str, tuple[str, ...]] = {}
+    for _, row in df.iterrows():
+        name = str(row.get("set_name") or "").strip()
+        members = str(row.get("members") or "")
+        parsed = tuple(m.strip() for m in members.split(";") if m.strip())
+        if name and parsed:
+            out[name] = parsed
+    return out
+
+
 def narrative_gene_sets_df():
     """Return the raw ``narrative-gene-sets.csv`` DataFrame.
 
     Columns: ``set_name``, ``members`` (``;``-delimited), ``notes``.
-    Each row is a named gene set referenced by the #202 disease-state
-    rule engine (``AR_targets``, ``HER2_amplicon``, ``NE_markers``,
-    ...). Use :func:`narrative_gene_set` to look up members by name.
+    Each row is a named gene set referenced by the disease-state rule
+    engine (``AR_targets``, ``HER2_amplicon``, ``NE_markers``, ...).
+    Use :func:`narrative_gene_set` to look up members by name.
     """
-    from .disease_state_rules import narrative_gene_sets
-
-    sets = narrative_gene_sets()
-    import pandas as pd
-
-    rows = [
-        {"set_name": name, "members": ";".join(members)}
-        for name, members in sets.items()
-    ]
-    return pd.DataFrame(rows)
+    return get_data("narrative-gene-sets")
 
 
 def narrative_gene_set(set_name):
     """Return the tuple of gene symbols in a named narrative set, or
     ``()`` when unknown. Case-sensitive."""
-    from .disease_state_rules import narrative_gene_sets
-
-    return narrative_gene_sets().get(set_name, ())
+    return _narrative_gene_sets().get(set_name, ())
 
 
 def narrative_gene_set_names():
     """Return the list of known narrative gene-set names."""
-    from .disease_state_rules import narrative_gene_sets
-
-    return sorted(narrative_gene_sets().keys())
+    return sorted(_narrative_gene_sets().keys())
 
 
 def degenerate_subtype_pairs_df():
-    """Return the parsed ``degenerate-subtype-pairs.csv`` DataFrame
-    (#198). Members are lists of subtype codes, mappings are dicts,
-    activation_signatures are ``{gene: min_tpm}`` dicts."""
-    from .degenerate_subtype import degenerate_subtype_pairs
+    """Return the raw ``degenerate-subtype-pairs.csv`` DataFrame (#198).
 
-    return degenerate_subtype_pairs()
+    Returned in raw text form — semicolon-delimited members, pipe-delimited
+    mapping strings. Analysis-side parsing lives in
+    :func:`trufflepig.degenerate_subtype.degenerate_subtype_pairs`.
+    """
+    return get_data("degenerate-subtype-pairs")
 
 
 def fusion_surrogate_expression_df():
     """Return the raw ``fusion-surrogate-expression.csv`` DataFrame
     (#198) — genes whose expression serves as a deterministic
     surrogate for a specific fusion/translocation class."""
-    from .degenerate_subtype import fusion_surrogate_expression
-
-    return fusion_surrogate_expression()
+    return get_data("fusion-surrogate-expression")
 
 
 def rare_cancer_rna_surrogate_rules_df():
@@ -2102,45 +1733,68 @@ def rare_cancer_rna_surrogate_rules_df():
     lack a bundled TCGA expression cohort but have a high-specificity RNA
     marker, such as NUTM1 for NUT carcinoma or TBXT for chordoma.
     """
-    from .rare_inference import rare_cancer_rna_surrogate_rules_df as _load
-
-    return _load()
+    return get_data("rare-cancer-rna-surrogates")
 
 
 def rare_cancer_fusion_rules_df():
     """Return ``rare-cancer-fusion-rules.csv`` direct-fusion rules."""
-    from .rare_inference import rare_cancer_fusion_rules_df as _load
-
-    return _load()
+    return get_data("rare-cancer-fusion-rules")
 
 
 def fusion_expression_effect_rules_df():
     """Return ``fusion-expression-effects.csv`` downstream-expression rules."""
-    from .fusion_effects import fusion_expression_effect_rules_df as _load
-
-    return _load()
+    return get_data("fusion-expression-effects")
 
 
 def mutation_expression_effect_rules_df():
     """Return ``mutation-expression-effects.csv`` expression-effect rules."""
-    from .alteration_effects import mutation_expression_effect_rules_df as _load
-
-    return _load()
+    return get_data("mutation-expression-effects")
 
 
 def fusion_surrogate_genes_for_cancer(cancer_code):
     """Return the list of ``{gene, fusion_class, role, rationale}``
     dicts applicable to a cancer code (includes ``pan_cancer``
-    entries)."""
-    from .degenerate_subtype import fusion_surrogate_genes_for
+    entries).
 
-    return fusion_surrogate_genes_for(cancer_code)
+    The data lives in ``fusion-surrogate-expression.csv``. The
+    parsing/joining logic moved to
+    :func:`trufflepig.degenerate_subtype.fusion_surrogate_genes_for`;
+    this thin wrapper is preserved for backwards compatibility.
+    """
+    df = get_data("fusion-surrogate-expression")
+    out = []
+    for _, row in df.iterrows():
+        scope = str(row.get("cancer_scope", "") or "")
+        scope_codes = {code.strip() for code in scope.split(";") if code.strip()}
+        if cancer_code in scope_codes or "pan_cancer" in scope_codes:
+            out.append(
+                {
+                    "gene": row.get("gene"),
+                    "fusion_class": row.get("fusion_class"),
+                    "role": row.get("role"),
+                    "rationale": row.get("rationale", ""),
+                }
+            )
+    return out
 
 
 def disease_state_rules_df():
-    """Return the raw ``disease-state-rules.csv`` DataFrame (#202) —
-    declarative per-cancer narrative rules consumed by
-    ``compose_disease_state_narrative``."""
-    from .load_dataset import get_data
-
+    """Return the raw ``disease-state-rules.csv`` DataFrame —
+    declarative per-cancer narrative rules consumed by trufflepig's
+    disease-state narrative composer."""
     return get_data("disease-state-rules")
+
+
+# Per-cohort median tumor-cell purity from TCGA (Aran et al., Nat Commun 2015).
+# Used by trufflepig's purity-confidence reasoning; published here as reference
+# data so consumers don't have to depend on the analysis package just to look
+# up the canonical cohort baseline.
+TCGA_MEDIAN_PURITY = {
+    "ACC": 0.79, "BLCA": 0.59, "BRCA": 0.73, "CESC": 0.49, "CHOL": 0.68,
+    "COAD": 0.59, "DLBC": 0.94, "ESCA": 0.50, "GBM": 0.83, "HNSC": 0.60,
+    "KICH": 0.84, "KIRC": 0.72, "KIRP": 0.78, "LAML": 0.95, "LGG": 0.87,
+    "LIHC": 0.73, "LUAD": 0.56, "LUSC": 0.67, "MESO": 0.55, "OV": 0.72,
+    "PAAD": 0.42, "PCPG": 0.69, "PRAD": 0.69, "READ": 0.60, "SARC": 0.66,
+    "SKCM": 0.65, "STAD": 0.40, "TGCT": 0.75, "THCA": 0.72, "THYM": 0.78,
+    "UCEC": 0.71, "UCS": 0.65, "UVM": 0.85,
+}

@@ -200,14 +200,20 @@ def test_cta_partition():
 
 def test_mitochondrial_gene_loaders():
     df = gsc.mitochondrial_genes_df()
-    # 13 protein-coding OXPHOS subunits + 2 rRNAs = 15
-    assert len(df) == 15
-    assert set(df["Role"]) == {"protein_coding", "rRNA"}
+    # 13 protein-coding OXPHOS subunits + 2 rRNAs + 22 tRNAs = 37
+    # (full mt-DNA gene set after #242 folded the previously-derived
+    # qc-mt-dna panel back into this curated CSV).
+    assert len(df) == 37
+    assert set(df["Role"]) == {"protein_coding", "rRNA", "tRNA"}
     assert df["Ensembl_Gene_ID"].notna().all()
     assert "MT-CO1" in gsc.mitochondrial_gene_names()
     assert "MT-RNR1" in gsc.mitochondrial_gene_names(role="rRNA")
+    assert "MT-TA" in gsc.mitochondrial_gene_names(role="tRNA")
     assert "MT-CO1" not in gsc.mitochondrial_gene_names(role="rRNA")
-    assert len(gsc.mitochondrial_gene_ids()) == 15
+    assert len(gsc.mitochondrial_gene_ids()) == 37
+    assert len(gsc.mitochondrial_gene_ids(role="protein_coding")) == 13
+    assert len(gsc.mitochondrial_gene_ids(role="rRNA")) == 2
+    assert len(gsc.mitochondrial_gene_ids(role="tRNA")) == 22
 
 
 def test_culture_stress_gene_loaders():
@@ -236,7 +242,7 @@ def test_degradation_gene_pairs_loader():
 
 
 def test_lineage_gene_loaders_cover_all_tcga_codes():
-    from pirlygenes.tumor_purity import TCGA_MEDIAN_PURITY
+    from pirlygenes.gene_sets_cancer import TCGA_MEDIAN_PURITY
 
     by_code = gsc.lineage_genes_by_cancer_type()
     missing = [c for c in TCGA_MEDIAN_PURITY if c not in by_code]

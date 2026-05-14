@@ -6,12 +6,16 @@ under TCGA umbrellas (BRCA × PAM50, LAML × ELN/APL, SARC × subtype,
 LUAD × mutation class, SCLC × ASCL1/NEUROD1/POU2F3/YAP1, etc.).
 """
 
+import pytest
+
 from pirlygenes.gene_sets_cancer import (
+    CANCER_TYPE_ALIASES,
+    CANCER_TYPE_NAMES,
     cancer_type_registry,
     cancer_types_in_family,
     cancer_types_by_tissue,
     cancer_type_subtypes_of,
-    subtype_deconvolved_expression,
+    resolve_cancer_type,
 )
 
 
@@ -291,139 +295,8 @@ def test_subtype_key_maps_sarc_subtypes_to_key_genes_entries():
         )
 
 
-def test_cancers_cli_uses_explicit_coverage_columns(capsys):
-    from pirlygenes.cli import print_cancer_registry
-
-    print_cancer_registry(family="pediatric-soft")
-    out = capsys.readouterr().out
-
-    assert "Clinical group: Sarcoma, bone, and soft-tissue tumors" in out
-    assert "Expression ref" in out
-    assert "Expression source" in out
-    assert "Curation source" in out
-    assert "Biomarkers" in out
-    assert "Targets" in out
-    assert "Lineage" in out
-    assert "Normal" in out
-    assert "Response" in out
-    assert "Parent scopes:" not in out
-    assert "RMS_ARMS" in out
-    assert "Treehouse v25.01 PolyA" in out
-    assert "| Code |" not in out
-    assert "bm=" not in out
-    assert "tg=" not in out
-    assert "B5 T1" not in out
-    assert "sub-child" not in out
-
-
-def test_cancers_cli_counts_work_outside_repo_root(capsys, monkeypatch, tmp_path):
-    from pirlygenes.cli import print_cancer_registry
-
-    monkeypatch.chdir(tmp_path)
-    print_cancer_registry(family="carcinoma-gu")
-    out = capsys.readouterr().out
-
-    assert "BLCA" in out
-    assert "B9 T7 L6 N9 R0" not in out
-    assert "Coverage audit:" in out
-    assert "Lineage" in out
-    assert "Matched normal" in out
-    assert "Normal" in out
-
-
-def test_cancers_cli_source_qualifies_expression_refs(capsys):
-    from pirlygenes.cli import print_cancer_registry
-
-    print_cancer_registry(family="sarcoma")
-    out = capsys.readouterr().out
-
-    assert "TCGA:SARC" in out
-    assert "Treehouse:SARC_SYN" in out
-    assert "GEO:CHON" in out
-    assert "GEO:SARC_DDLPS" in out
-    assert "GEO GSE299759" in out
-    assert "GEO GSE75885" in out
-    assert "sources:" not in out
-
-    print_cancer_registry(family="carcinoma-breast")
-    out = capsys.readouterr().out
-
-    assert "TCGA/PAM50:BRCA_HER2" in out
-    assert "no expr 0" in out
-
-    print_cancer_registry(family="pediatric-eye")
-    out = capsys.readouterr().out
-
-    assert "Treehouse/RiboD:RB" in out
-    assert "Treehouse v25.01 RiboD" in out
-
-
-def test_gse75885_sarcoma_expression_refs_are_bundled():
-    d = subtype_deconvolved_expression()
-    assert d is not None
-
-    expected = {
-        "SARC_DDLPS": 19,
-        "SARC_PLEOLPS": 4,
-        "SARC_LGFMS": 2,
-    }
-    for code, n_samples in expected.items():
-        rows = d[
-            (d["cancer_code"] == code)
-            & (d["source_cohort"] == "GSE75885_DELESPAUL_2017")
-        ]
-        assert not rows.empty
-        assert int(rows["n_samples"].max()) == n_samples
-
-    ddlps = d[d["cancer_code"] == "SARC_DDLPS"].set_index("symbol")
-    assert ddlps.loc["MDM2", "tumor_tpm_median"] > 1000
-    assert ddlps.loc["CDK4", "tumor_tpm_median"] > 500
-
-    lgfms = d[d["cancer_code"] == "SARC_LGFMS"].set_index("symbol")
-    assert lgfms.loc["MUC4", "tumor_tpm_median"] > 1000
-    assert lgfms.loc["CREB3L2", "tumor_tpm_median"] > 100
-
-
-def test_gse299759_chondrosarcoma_expression_ref_is_bundled():
-    d = subtype_deconvolved_expression()
-    assert d is not None
-
-    rows = d[
-        (d["cancer_code"] == "CHON")
-        & (d["source_cohort"] == "GSE299759_MEIJER_2026")
-    ]
-    assert not rows.empty
-    assert int(rows["n_samples"].max()) == 54
-
-    chon = rows.set_index("symbol")
-    assert chon.loc["COL2A1", "tumor_tpm_median"] > 1000
-    assert chon.loc["ACAN", "tumor_tpm_median"] > 1000
-    assert chon.loc["SOX9", "tumor_tpm_median"] > 100
-
-
-def test_treehouse_ribod_sparse_expression_refs_are_bundled():
-    d = subtype_deconvolved_expression()
-    assert d is not None
-
-    expected = {
-        "RB": 15,
-        "CHOR": 3,
-    }
-    for code, n_samples in expected.items():
-        rows = d[
-            (d["cancer_code"] == code)
-            & (d["source_cohort"] == "TREEHOUSE_RIBOD_25_01")
-        ]
-        assert not rows.empty
-        assert int(rows["n_samples"].max()) == n_samples
-
-    rb = d[d["cancer_code"] == "RB"].set_index("symbol")
-    assert rb.loc["CRX", "tumor_tpm_median"] > 25
-    assert rb.loc["ARR3", "tumor_tpm_median"] > 5
-
-    chor = d[d["cancer_code"] == "CHOR"].set_index("symbol")
-    assert chor.loc["COL2A1", "tumor_tpm_median"] > 25
-    assert chor.loc["ACAN", "tumor_tpm_median"] > 10
+# `pirlygenes.cli` moved to `trufflepig.main`; the corresponding CLI
+# coverage tests live in trufflepig/tests/test_cancer_type_registry.py.
 
 
 def test_nutm_has_actionable_curation():
@@ -463,3 +336,92 @@ def test_primary_templates_are_declared_or_planned():
         assert (
             t == "solid_primary" or t.startswith("primary_") or t.startswith("heme_")
         ), f"unknown primary_template convention: {t}"
+
+
+# ---------- resolve_cancer_type / CANCER_TYPE_NAMES ----------
+
+
+def test_resolve_cancer_type_canonical_codes_passthrough():
+    assert resolve_cancer_type("PRAD") == "PRAD"
+    assert resolve_cancer_type("BRCA") == "BRCA"
+    assert resolve_cancer_type("SARC") == "SARC"
+
+
+def test_resolve_cancer_type_case_insensitive():
+    assert resolve_cancer_type("prad") == "PRAD"
+    assert resolve_cancer_type("Prad") == "PRAD"
+
+
+def test_resolve_cancer_type_common_name_alias():
+    assert resolve_cancer_type("prostate") == "PRAD"
+    assert resolve_cancer_type("melanoma") == "SKCM"
+    assert resolve_cancer_type("colorectal") == "COAD"
+
+
+def test_resolve_cancer_type_subtype_codes_from_registry():
+    """Subtype codes are valid via the registry CSV, not the hand-curated
+    alias dict. Catches regressions where the resolver was capped at the
+    33-code TCGA list."""
+    assert resolve_cancer_type("BRCA_LumA") == "BRCA_LumA"
+    assert resolve_cancer_type("LAML_APL") == "LAML_APL"
+
+
+def test_resolve_cancer_type_display_name_lookup():
+    """Display names from the registry resolve back to their code."""
+    assert resolve_cancer_type("Prostate Adenocarcinoma") == "PRAD"
+
+
+def test_resolve_cancer_type_none_passthrough():
+    assert resolve_cancer_type(None) is None
+
+
+def test_resolve_cancer_type_unknown_raises():
+    with pytest.raises(ValueError):
+        resolve_cancer_type("UNKNOWN_CODE_XYZ")
+
+
+def test_resolve_cancer_type_empty_raises():
+    with pytest.raises(ValueError):
+        resolve_cancer_type("")
+
+
+def test_cancer_type_names_view_is_registry_backed():
+    """CANCER_TYPE_NAMES must equal exactly the set of registry rows
+    with a non-empty ``name`` — proves the view isn't capped at the old
+    33-code TCGA hardcoded dict AND that NaN/blank-name rows aren't
+    silently leaking through as ``"nan"`` display strings."""
+    df = cancer_type_registry()
+    expected = set(
+        df.loc[df["name"].notna() & df["name"].astype(str).str.strip().ne(""), "code"]
+    )
+    view_codes = set(CANCER_TYPE_NAMES.keys())
+    assert view_codes == expected, (
+        f"CANCER_TYPE_NAMES drifted from registry. "
+        f"missing={expected - view_codes}; extra={view_codes - expected}"
+    )
+
+
+def test_cancer_type_names_view_never_returns_nan_string():
+    """A registry row with a missing name must not surface as the
+    literal string ``"nan"`` (latent bug fixed by the DataFrame-level
+    NaN filter in ``_CancerTypeNamesView._load``)."""
+    for code, name in CANCER_TYPE_NAMES.items():
+        assert name != "nan", (
+            f"CANCER_TYPE_NAMES[{code!r}] is the literal 'nan' string — "
+            "registry row has a missing name that wasn't filtered"
+        )
+        assert name.strip() != "", (
+            f"CANCER_TYPE_NAMES[{code!r}] is empty/whitespace"
+        )
+
+
+def test_cancer_type_aliases_all_resolve_to_valid_registry_codes():
+    """Every alias value must be a real registry code — guards against
+    drift between the hand-curated alias dict and the registry CSV."""
+    registry_codes = set(cancer_type_registry()["code"])
+    bad = {
+        alias: code
+        for alias, code in CANCER_TYPE_ALIASES.items()
+        if code not in registry_codes
+    }
+    assert not bad, f"alias values not in registry: {bad}"

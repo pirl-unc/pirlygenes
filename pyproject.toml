@@ -2,7 +2,7 @@
 name = "pirlygenes"
 requires-python = ">=3.9"
 authors = [ {name="Alex Rubinsteyn", email="alex.rubinsteyn@unc.edu" } ]
-description = "Gene lists for cancer immunotherapy expression analysis"
+description = "Curated cancer gene sets and reference expression data. Analysis lives in `trufflepig`."
 classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     'Environment :: Console',
@@ -17,11 +17,6 @@ dependencies = [
     "numpy>=2.0.0",
     "pandas>=2.0",
     "pyensembl>=2.6.0",
-    "argh",
-    "openpyxl",
-    "matplotlib>=3.5.0",
-    "seaborn>=0.11.0",
-    "adjustText>=0.8",
     "tqdm",
 ]
 
@@ -42,9 +37,11 @@ test = [
 "Homepage" = "https://github.com/pirl-unc/pirlygenes"
 "Bug Tracker" = "https://github.com/pirl-unc/pirlygenes"
 
+# Shim that prints a "moved to trufflepig" message and exits 2. Keeps
+# `pirlygenes` on PATH from breaking with `command not found` for users
+# whose CI/batch jobs still invoke the old analyze CLI. See pirlygenes/cli.py.
 [project.scripts]
 pirlygenes = "pirlygenes.cli:main"
-
 
 [build-system]
 requires = [
@@ -52,7 +49,7 @@ requires = [
     "setuptools-scm>=8.0"]
 
 [tool.setuptools.package-data]
-pirlygenes = ["data/*.csv"]
+pirlygenes = ["data/*"]
 
 [tool.pytest.ini_options]
 addopts = "-n auto"

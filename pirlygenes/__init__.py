@@ -9,8 +9,50 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import importlib
 
+"""Curated cancer gene knowledge — data-only package.
+
+Analysis, plotting, the ``analyze`` CLI, and all expression matrices
+have moved to `trufflepig <https://github.com/pirl-unc/trufflepig>`_
+in v5.0; this package is now a **data-only** dependency providing:
+
+* curated gene-set CSVs (``gene_sets_cancer``)
+* the bundled-dataset loader (``load_dataset``)
+* canonical gene-id / gene-name helpers (``gene_ids``, ``gene_names``)
+* curated gene families keyed by Ensembl ID (``gene_families``)
+
+Install ``trufflepig`` to run RNA tumor analyses; it imports the
+accessors here as a library.
+"""
+
+from .gene_families import (
+    GENE_FAMILIES,
+    GeneFamily,
+    gene_family_for_ensembl_id,
+    gene_family_for_symbol,
+    gene_family_ids,
+    gene_family_names,
+    gene_family_symbols,
+    gene_family_table,
+    hemoglobin_gene_ids,
+    hemoglobin_gene_symbols,
+    histone_gene_ids,
+    histone_gene_symbols,
+    immune_receptor_segment_ids,
+    immune_receptor_segment_symbols,
+    nuclear_retained_lncrna_ids,
+    nuclear_retained_lncrna_symbols,
+    numt_pseudogene_ids,
+    numt_pseudogene_symbols,
+    ribosomal_protein_ids,
+    ribosomal_protein_pseudogene_ids,
+    ribosomal_protein_pseudogene_symbols,
+    ribosomal_protein_symbols,
+    rrna_and_pseudogene_ids,
+    rrna_and_pseudogene_symbols,
+    small_noncoding_rna_ids,
+    small_noncoding_rna_symbols,
+)
 from .gene_sets_cancer import (
     cancer_family_panel,
     cancer_family_panels,
@@ -29,93 +71,62 @@ from .gene_sets_cancer import (
     mitochondrial_gene_ids,
     mitochondrial_gene_names,
     mitochondrial_genes_df,
-    pan_cancer_expression,
     tme_marker_gene_ids,
     tme_marker_gene_names,
     tme_markers_df,
 )
-from .load_dataset import load_all_dataframes, load_all_dataframes_dict, get_data
-from .sample_context import SampleContext, infer_sample_context
+from .load_dataset import get_data, load_all_dataframes, load_all_dataframes_dict
 from .version import __version__
-
-_LAZY_EXPORTS = {
-    "plot_ctas_vs_cancer_type_detail": (
-        "pirlygenes.plot",
-        "plot_ctas_vs_cancer_type_detail",
-    ),
-    "plot_degradation_index": ("pirlygenes.sample_context", "plot_degradation_index"),
-    "plot_gene_expression": ("pirlygenes.plot", "plot_gene_expression"),
-    "plot_geneset_vs_vital_tissues": (
-        "pirlygenes.plot",
-        "plot_geneset_vs_vital_tissues",
-    ),
-    "plot_sample_context": ("pirlygenes.sample_context", "plot_sample_context"),
-    "plot_sample_vs_cancer": ("pirlygenes.plot", "plot_sample_vs_cancer"),
-    "get_embedding_feature_metadata": (
-        "pirlygenes.plot_embedding",
-        "get_embedding_feature_metadata",
-    ),
-    "pan_reference_embedding_genes": (
-        "pirlygenes.plot_embedding",
-        "pan_reference_embedding_genes",
-    ),
-}
-
-
-def __getattr__(name):
-    if name in _LAZY_EXPORTS:
-        module_name, attr_name = _LAZY_EXPORTS[name]
-        value = getattr(importlib.import_module(module_name), attr_name)
-        globals()[name] = value
-        return value
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
 
 __all__ = [
     "__version__",
-    # Dataset access
     "load_all_dataframes",
     "load_all_dataframes_dict",
     "get_data",
-    # Plotting
-    "plot_gene_expression",
-    "plot_sample_vs_cancer",
-    "plot_geneset_vs_vital_tissues",
-    "plot_ctas_vs_cancer_type_detail",
-    "get_embedding_feature_metadata",
-    "pan_reference_embedding_genes",
-    # Pan-cancer reference
-    "pan_cancer_expression",
-    # Housekeeping
     "housekeeping_gene_ids",
     "housekeeping_gene_names",
-    # Mitochondrial
     "mitochondrial_genes_df",
     "mitochondrial_gene_ids",
     "mitochondrial_gene_names",
-    # Culture stress
     "culture_stress_genes_df",
     "culture_stress_gene_ids",
     "culture_stress_gene_names",
-    # TME markers
     "tme_markers_df",
     "tme_marker_gene_ids",
     "tme_marker_gene_names",
-    # Degradation pairs
     "degradation_gene_pairs_df",
     "degradation_gene_pairs",
-    # Lineage
     "lineage_genes_df",
     "lineage_gene_symbols",
     "lineage_gene_ids",
     "lineage_genes_by_cancer_type",
-    # Family panels
     "cancer_family_panels_df",
     "cancer_family_panel",
     "cancer_family_panels",
-    # Sample context (step 1 of unified attribution flow)
-    "SampleContext",
-    "infer_sample_context",
-    "plot_sample_context",
-    "plot_degradation_index",
+    "GeneFamily",
+    "GENE_FAMILIES",
+    "gene_family_names",
+    "gene_family_table",
+    "gene_family_ids",
+    "gene_family_symbols",
+    "gene_family_for_ensembl_id",
+    "gene_family_for_symbol",
+    "numt_pseudogene_ids",
+    "numt_pseudogene_symbols",
+    "nuclear_retained_lncrna_ids",
+    "nuclear_retained_lncrna_symbols",
+    "rrna_and_pseudogene_ids",
+    "rrna_and_pseudogene_symbols",
+    "ribosomal_protein_ids",
+    "ribosomal_protein_symbols",
+    "ribosomal_protein_pseudogene_ids",
+    "ribosomal_protein_pseudogene_symbols",
+    "small_noncoding_rna_ids",
+    "small_noncoding_rna_symbols",
+    "histone_gene_ids",
+    "histone_gene_symbols",
+    "hemoglobin_gene_ids",
+    "hemoglobin_gene_symbols",
+    "immune_receptor_segment_ids",
+    "immune_receptor_segment_symbols",
 ]
