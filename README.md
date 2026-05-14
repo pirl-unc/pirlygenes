@@ -24,10 +24,13 @@ tumor-up-vs-matched-normal panels, ESTIMATE signatures) ship with
 pip install pirlygenes
 ```
 
-Run analyses with [trufflepig](https://github.com/pirl-unc/trufflepig):
+Run analyses with [trufflepig](https://github.com/pirl-unc/trufflepig)
+(distributed on PyPI as `pirl-trufflepig` — the bare `trufflepig`
+name is owned by an unrelated package; the command + Python import
+are both still `trufflepig`):
 
 ```bash
-pip install trufflepig
+pip install pirl-trufflepig
 trufflepig run --sample expr.tsv --workspace out --cancer-type PRAD
 ```
 
