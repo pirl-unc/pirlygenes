@@ -75,6 +75,10 @@ def _installed_grch38_releases() -> list[int]:
     own ``gtf_path``) instead of guessing macOS/XDG paths — pyensembl
     respects ``PYENSEMBL_CACHE_DIR`` and platform-specific cache roots,
     and we can't reproduce that mapping reliably from the outside.
+
+    Probes release numbers 76–199 because pyensembl has no enumerate
+    API for cached GRCh38 releases — every supported release ID is
+    tried and accepted only when its GTF file is actually on disk.
     """
     candidates: set[int] = set()
     # GRCh38 spans Ensembl release 76+; cap at 200 to bound the probe.

@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import threading
 import warnings
 
 from .load_dataset import get_data
@@ -56,22 +57,53 @@ class _CancerTypeNamesView:
 
     The loaded mapping is cached on the instance after the first
     access; downstream callers in trufflepig hit this in tight loops
-    (``resolve_cancer_type`` per sample × per candidate).
+    (``resolve_cancer_type`` per sample × per candidate). A second
+    cached map (``_name_to_code``) holds the lowercased reverse
+    lookup used by display-name resolution. Both are protected by a
+    ``threading.Lock`` so concurrent first-call paths don't both pay
+    the build cost.
+
+    Call ``clear_cache()`` (or the module-level
+    :func:`_clear_caches`) to drop the caches — tests that monkey-
+    patch ``get_data`` to swap fixture registries need this.
     """
 
     def __init__(self):
         self._cache: dict | None = None
+        self._name_to_code_cache: dict | None = None
+        self._lock = threading.Lock()
 
     def _load(self):
         if self._cache is None:
-            df = get_data("cancer-type-registry")
-            # DataFrame-level filter: drop NaN and empty/whitespace
-            # names before building the dict so missing values never
-            # reach ``str(NaN) == "nan"``.
-            df = df[df["name"].notna()]
-            df = df[df["name"].astype(str).str.strip().ne("")]
-            self._cache = dict(zip(df["code"].astype(str), df["name"].astype(str)))
+            with self._lock:
+                if self._cache is None:
+                    df = get_data("cancer-type-registry")
+                    # DataFrame-level filter: drop NaN and
+                    # empty/whitespace names before building the dict
+                    # so missing values never reach ``str(NaN) == "nan"``.
+                    df = df[df["name"].notna()]
+                    df = df[df["name"].astype(str).str.strip().ne("")]
+                    self._cache = dict(
+                        zip(df["code"].astype(str), df["name"].astype(str))
+                    )
         return self._cache
+
+    def _name_to_code(self):
+        """Lowercased ``display_name → code`` for case-insensitive
+        display-name resolution. Cached alongside ``_cache``."""
+        if self._name_to_code_cache is None:
+            with self._lock:
+                if self._name_to_code_cache is None:
+                    self._name_to_code_cache = {
+                        name.lower(): code for code, name in self._load().items()
+                    }
+        return self._name_to_code_cache
+
+    def clear_cache(self):
+        """Drop the cached dicts. Force a re-read on next access."""
+        with self._lock:
+            self._cache = None
+            self._name_to_code_cache = None
 
     def __getitem__(self, key):
         return self._load()[key]
@@ -109,6 +141,15 @@ class _CancerTypeNamesView:
 CANCER_TYPE_NAMES = _CancerTypeNamesView()
 
 
+def _clear_caches():
+    """Reset every registry-backed cache in this module.
+
+    Test hook for swapping the registry CSV via a monkey-patched
+    ``get_data``; not part of the public surface.
+    """
+    CANCER_TYPE_NAMES.clear_cache()
+
+
 def resolve_cancer_type(cancer_type):
     """Resolve a cancer type name or alias to a registry code.
 
@@ -139,7 +180,9 @@ def resolve_cancer_type(cancer_type):
     if upper in registry:
         return upper
 
-    name_to_code = {v.lower(): k for k, v in registry.items()}
+    # Display-name lookup (e.g. "Prostate Adenocarcinoma" → "PRAD").
+    # The reverse map is cached on the view so this is O(1).
+    name_to_code = registry._name_to_code()
     if raw.lower() in name_to_code:
         return name_to_code[raw.lower()]
 
