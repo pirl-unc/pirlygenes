@@ -78,11 +78,15 @@ def _installed_grch38_releases() -> list[int]:
     """
     candidates: set[int] = set()
     # GRCh38 spans Ensembl release 76+; cap at 200 to bound the probe.
+    # ValueError = release isn't a known pyensembl release;
+    # FileNotFoundError = the cached release-spec file isn't present.
+    # Anything else (PermissionError on the cache dir, etc.) should
+    # surface, not be silently treated as "release missing".
     for release in range(76, 200):
         try:
             rel = EnsemblRelease(release)
             gtf_path = rel.gtf_path
-        except Exception:
+        except (ValueError, FileNotFoundError):
             continue
         if gtf_path and Path(gtf_path).is_file():
             candidates.add(release)

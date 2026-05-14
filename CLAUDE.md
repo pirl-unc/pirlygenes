@@ -40,10 +40,13 @@ deliberate.
 
 ## ENSG ID convention
 
-ENSG IDs in `data/qc-*.csv` (and any other ENSG column you add) are stored
-**unversioned** (`ENSG00000251562`, not `ENSG00000251562.5`). Strip the
-`.<n>` suffix at the boundary. `pirlygenes.gene_families._strip_version`
-is the canonical helper.
+ENSG IDs in the gene-family CSVs (`data/*-genes.csv`,
+`data/*-pseudogenes.csv`, `data/nuclear-retained-lncrnas.csv`,
+`data/immune-receptor-segments.csv`, `data/small-noncoding-rnas.csv`)
+and any other ENSG column are stored **unversioned**
+(`ENSG00000251562`, not `ENSG00000251562.5`). Strip the `.<n>` suffix
+at the boundary. `pirlygenes.gene_families._strip_version` is the
+canonical helper.
 
 Symbols are uppercased on read.
 

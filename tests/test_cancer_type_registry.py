@@ -386,24 +386,33 @@ def test_resolve_cancer_type_empty_raises():
 
 
 def test_cancer_type_names_view_is_registry_backed():
-    """CANCER_TYPE_NAMES must cover at least all registry codes — proves
-    the view isn't capped at the old 33-code TCGA hardcoded dict."""
-    registry_codes = set(cancer_type_registry()["code"])
-    view_codes = set(CANCER_TYPE_NAMES.keys())
-    missing = registry_codes - view_codes
-    # Every registry row with a non-empty name should be exposed via
-    # CANCER_TYPE_NAMES; rows with blank names are filtered out by the
-    # view.
+    """CANCER_TYPE_NAMES must equal exactly the set of registry rows
+    with a non-empty ``name`` — proves the view isn't capped at the old
+    33-code TCGA hardcoded dict AND that NaN/blank-name rows aren't
+    silently leaking through as ``"nan"`` display strings."""
     df = cancer_type_registry()
-    expected = set(df.loc[df["name"].notna() & (df["name"] != ""), "code"])
-    assert not (expected - view_codes), (
-        f"CANCER_TYPE_NAMES missing registry codes: {expected - view_codes}"
+    expected = set(
+        df.loc[df["name"].notna() & df["name"].astype(str).str.strip().ne(""), "code"]
     )
-    # And nothing extra slipped in.
-    assert view_codes <= registry_codes, (
-        f"CANCER_TYPE_NAMES has unexpected codes: {view_codes - registry_codes}. "
-        f"Diff was: missing={missing}"
+    view_codes = set(CANCER_TYPE_NAMES.keys())
+    assert view_codes == expected, (
+        f"CANCER_TYPE_NAMES drifted from registry. "
+        f"missing={expected - view_codes}; extra={view_codes - expected}"
     )
+
+
+def test_cancer_type_names_view_never_returns_nan_string():
+    """A registry row with a missing name must not surface as the
+    literal string ``"nan"`` (latent bug fixed by the DataFrame-level
+    NaN filter in ``_CancerTypeNamesView._load``)."""
+    for code, name in CANCER_TYPE_NAMES.items():
+        assert name != "nan", (
+            f"CANCER_TYPE_NAMES[{code!r}] is the literal 'nan' string — "
+            "registry row has a missing name that wasn't filtered"
+        )
+        assert name.strip() != "", (
+            f"CANCER_TYPE_NAMES[{code!r}] is empty/whitespace"
+        )
 
 
 def test_cancer_type_aliases_all_resolve_to_valid_registry_codes():

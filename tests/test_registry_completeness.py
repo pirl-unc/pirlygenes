@@ -31,13 +31,8 @@ shrink it toward empty over time.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pandas as pd
-
 from pirlygenes.gene_sets_cancer import cancer_type_registry
-
-_DATA_DIR = Path(__file__).resolve().parent.parent / "pirlygenes" / "data"
+from pirlygenes.load_dataset import get_data
 
 
 # Codes lacking a cancer-specific therapy-response axis panel (rows in
@@ -123,14 +118,14 @@ def _leaf_codes_with_coverage():
     reg = cancer_type_registry()
     leaf = reg[reg["parent_code"].fillna("").astype(str).eq("")]
 
-    ln = pd.read_csv(_DATA_DIR / "lineage-genes.csv")
+    ln = get_data("lineage-genes")
     ln_codes = {code for code, group in ln.groupby("Cancer_Type") if len(group) >= 5}
 
-    key = pd.read_csv(_DATA_DIR / "cancer-key-genes.csv")
+    key = get_data("cancer-key-genes")
     biomarker_codes = set(key[key["role"] == "biomarker"]["cancer_code"].dropna())
     therapy_codes = set(key[key["role"] == "target"]["cancer_code"].dropna())
 
-    ts = pd.read_csv(_DATA_DIR / "therapy-response-signatures.csv")
+    ts = get_data("therapy-response-signatures")
     therapy_axis_codes = set()
     for value in ts["cancer_context"].dropna():
         for part in str(value).split(";"):

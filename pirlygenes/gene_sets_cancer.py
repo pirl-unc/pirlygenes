@@ -53,15 +53,25 @@ class _CancerTypeNamesView:
     with the registry — adding a new subtype row to
     ``cancer-type-registry.csv`` automatically extends the dict
     without a code change here.
+
+    The loaded mapping is cached on the instance after the first
+    access; downstream callers in trufflepig hit this in tight loops
+    (``resolve_cancer_type`` per sample × per candidate).
     """
 
+    def __init__(self):
+        self._cache: dict | None = None
+
     def _load(self):
-        df = get_data("cancer-type-registry")
-        return {
-            str(row["code"]): str(row["name"])
-            for _, row in df.iterrows()
-            if row.get("name")
-        }
+        if self._cache is None:
+            df = get_data("cancer-type-registry")
+            # DataFrame-level filter: drop NaN and empty/whitespace
+            # names before building the dict so missing values never
+            # reach ``str(NaN) == "nan"``.
+            df = df[df["name"].notna()]
+            df = df[df["name"].astype(str).str.strip().ne("")]
+            self._cache = dict(zip(df["code"].astype(str), df["name"].astype(str)))
+        return self._cache
 
     def __getitem__(self, key):
         return self._load()[key]
@@ -88,13 +98,14 @@ class _CancerTypeNamesView:
         return self._load().items()
 
     def __repr__(self):
-        return f"_CancerTypeNamesView({self._load()!r})"
+        return f"_CancerTypeNamesView({len(self._load())} codes)"
 
 
 # Registry-backed view of cancer code → display name. Reads
-# ``cancer-type-registry.csv`` lazily so adding a new subtype row
-# automatically broadens ``resolve_cancer_type`` and trufflepig's
-# label lookups.
+# ``cancer-type-registry.csv`` lazily on first access and caches the
+# resolved mapping so adding a new subtype row automatically broadens
+# ``resolve_cancer_type`` and trufflepig's label lookups without
+# repeated CSV-parse / iterrows cost on the hot path.
 CANCER_TYPE_NAMES = _CancerTypeNamesView()
 
 
@@ -738,13 +749,7 @@ def cancer_surfaceome_evidence(min_cancer_types=None):
     return _cancer_surfaceome_df(min_cancer_types)
 
 
-# ---------- Pan-cancer expression ----------
-#
-# The full pan-cancer-expression CSV is ~16k rows × 85 cols, and the
-# housekeeping normalization rescales 83 value columns. Recomputing on every
-# call is wasteful because ~every purity / ranking / plotting path asks for
-# the same `normalize="housekeeping"` snapshot. We cache on a hashable form
-# of the args and hand back `.copy()` so callers keep their mutation freedom.
+# ---------- Cancer-type registry ----------
 
 
 def cancer_type_registry():
