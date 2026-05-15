@@ -19,7 +19,7 @@ normalization helpers needed to make them comparable across columns:
 * :func:`pan_cancer_expression` — wide-form ``Symbol × tissue/cancer``
   panel: 50 HPA normal tissues (nTPM) + 33 TCGA cancer types (FPKM)
   with deterministic TPM companion columns derived from those FPKM
-  columns.
+  columns and optional added normalized analysis columns.
 * :func:`hpa_cell_type_expression` — HPA cell-type single-cell
   reference (long-form ``Symbol, cell_type, nTPM``).
 * :func:`estimate_signatures` — the ESTIMATE stromal/immune signature
@@ -85,9 +85,27 @@ from .qc import _TECHNICAL_RNA_FAMILIES
 
 _VALUE_COL_PREFIXES = ("nTPM_", "FPKM_", "TPM_")
 _PAN_ANALYSIS_VALUE_COL_PREFIXES = ("nTPM_", "TPM_")
-_PAN_RAW_ANALYSIS_VALUE_COL_PREFIXES = ("nTPM_raw_", "TPM_raw_")
-_VALUE_COL_SUFFIXES = ("_nTPM", "_FPKM", "_TPM")
-_RAW_VALUE_COL_SUFFIXES = ("_nTPM_raw", "_TPM_raw")
+_PAN_NORMALIZED_SUFFIXES = {
+    "clean_tpm": "clean",
+    "hk": "hk",
+    "percentile": "percentile",
+}
+_PAN_NORMALIZED_VALUE_COL_PREFIXES = tuple(
+    f"{prefix}{suffix}_"
+    for prefix in _PAN_ANALYSIS_VALUE_COL_PREFIXES
+    for suffix in _PAN_NORMALIZED_SUFFIXES.values()
+)
+_VALUE_COL_SUFFIXES = (
+    "_nTPM",
+    "_FPKM",
+    "_TPM",
+    "_nTPM_clean",
+    "_TPM_clean",
+    "_nTPM_hk",
+    "_TPM_hk",
+    "_nTPM_percentile",
+    "_TPM_percentile",
+)
 
 
 def _default_value_cols(df: pd.DataFrame) -> list[str]:
@@ -98,10 +116,6 @@ def _default_value_cols(df: pd.DataFrame) -> list[str]:
             c.startswith(_VALUE_COL_PREFIXES)
             or c.endswith(_VALUE_COL_SUFFIXES)
         )
-        and not (
-            c.startswith(_PAN_RAW_ANALYSIS_VALUE_COL_PREFIXES)
-            or c.endswith(_RAW_VALUE_COL_SUFFIXES)
-        )
     ]
 
 
@@ -110,34 +124,44 @@ def _pan_analysis_value_cols(df: pd.DataFrame) -> list[str]:
     return [
         c for c in df.columns
         if c.startswith(_PAN_ANALYSIS_VALUE_COL_PREFIXES)
-        and not c.startswith(_PAN_RAW_ANALYSIS_VALUE_COL_PREFIXES)
+        and not c.startswith(_PAN_NORMALIZED_VALUE_COL_PREFIXES)
     ]
 
 
-def _pan_raw_analysis_col_name(col: str) -> str:
-    """Name for preserving pre-normalization TPM/nTPM analysis values."""
+def _pan_normalized_col_name(col: str, normalize: str) -> str:
+    """Internal name for an added normalized TPM/nTPM analysis column."""
+    suffix = _PAN_NORMALIZED_SUFFIXES[normalize]
     for prefix in _PAN_ANALYSIS_VALUE_COL_PREFIXES:
         if col.startswith(prefix):
-            return f"{prefix}raw_{col[len(prefix):]}"
-    return f"{col}_raw"
+            return f"{prefix}{suffix}_{col[len(prefix):]}"
+    return f"{col}_{suffix}"
 
 
-def _add_raw_pan_analysis_value_cols(
+def _add_pan_normalized_value_cols(
     df: pd.DataFrame,
+    normalized_df: pd.DataFrame,
     value_cols: Sequence[str],
-) -> pd.DataFrame:
-    """Copy TPM/nTPM analysis columns before a normalization overwrites them."""
+    normalize: str,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Add normalized TPM/nTPM analysis columns without overwriting inputs."""
     out = df.copy()
+    target_cols = []
     for col in value_cols:
-        out[_pan_raw_analysis_col_name(col)] = out[col]
-    return out
+        target = _pan_normalized_col_name(col, normalize)
+        out[target] = normalized_df[col]
+        target_cols.append(target)
+    return out, target_cols
 
 
 def _pan_public_col_name(col: str) -> str:
     """Map internal unit-prefix columns to public entity-suffix columns."""
     prefix_to_suffix = (
-        ("nTPM_raw_", "_nTPM_raw"),
-        ("TPM_raw_", "_TPM_raw"),
+        ("nTPM_percentile_", "_nTPM_percentile"),
+        ("TPM_percentile_", "_TPM_percentile"),
+        ("nTPM_clean_", "_nTPM_clean"),
+        ("TPM_clean_", "_TPM_clean"),
+        ("nTPM_hk_", "_nTPM_hk"),
+        ("TPM_hk_", "_TPM_hk"),
         ("nTPM_", "_nTPM"),
         ("FPKM_", "_FPKM"),
         ("TPM_", "_TPM"),
@@ -188,7 +212,7 @@ def normalize_to_housekeeping(
         Columns to rescale. If ``None``, picks columns using either the
         internal unit-prefix schema (``nTPM_``, ``FPKM_``, ``TPM_``) or
         the public entity-suffix schema (``*_nTPM``, ``*_FPKM``,
-        ``*_TPM``), excluding raw companion columns.
+        ``*_TPM`` and added normalized suffixes).
 
     Returns
     -------
@@ -436,14 +460,14 @@ def pan_cancer_expression(
     normalize
         Named preset for unit scale and technical-RNA normalization:
 
-        - ``"clean_tpm"`` (default) — preserve pre-clean values as
-          ``<tissue>_nTPM_raw`` and ``<code>_TPM_raw`` columns, then zero
-          mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows
-          across TPM-scale analysis columns and pin each column's sum
-          back to 10⁶. This is the recommended view for analysis:
-          every analysis column on the same scale, technical-RNA
-          denominator drift removed. Raw ``<code>_FPKM`` columns remain
-          unchanged.
+        - ``"clean_tpm"`` (default) — add
+          ``<tissue>_nTPM_clean`` and ``<code>_TPM_clean`` columns with
+          mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows zeroed
+          and each column's sum pinned back to 10⁶. This is the
+          recommended view for analysis: every normalized analysis
+          column on the same scale, technical-RNA denominator drift
+          removed. Base ``<tissue>_nTPM`` and ``<code>_TPM`` columns,
+          plus raw ``<code>_FPKM`` columns, remain unchanged.
         - ``None`` — add ``<code>_TPM`` companion columns and otherwise
           leave values unchanged. This is the raw/provenance view:
           raw TCGA ``<code>_FPKM`` values and HPA ``<tissue>_nTPM``
@@ -451,11 +475,12 @@ def pan_cancer_expression(
           scaling, percentile-rank, or log transform.
         - ``"tpm"`` — explicit alias for the raw/provenance TPM-companion
           view.
-        - ``"hk"`` or ``"housekeeping"`` — divide TPM-scale analysis columns
-          (``<tissue>_nTPM``, ``<code>_TPM``) by their housekeeping-gene
-          median.
+        - ``"hk"`` or ``"housekeeping"`` — add
+          ``<tissue>_nTPM_hk`` and ``<code>_TPM_hk`` columns divided by
+          their housekeeping-gene median.
         - ``"percentile"`` — within-column percentile rank (0–100),
-          applied to TPM-scale analysis columns.
+          added as ``<tissue>_nTPM_percentile`` and
+          ``<code>_TPM_percentile`` columns.
     log_transform
         Apply ``log2(x + 1)`` to value columns after any normalization.
     technical_rna_normalize
@@ -472,9 +497,9 @@ def pan_cancer_expression(
     drop_technical_rna
         Drop mtDNA / NUMT / rRNA / nuclear-retained-lncRNA rows entirely
         (uses :func:`filter_technical_rna`). Distinct from
-        ``normalize="clean_tpm"``: this removes rows,
-        ``"clean_tpm"`` zeroes them in place. See Boundary note in the
-        module docstring.
+        ``normalize="clean_tpm"``: this removes rows, while
+        ``"clean_tpm"`` zeroes them in added ``*_clean`` columns. See
+        Boundary note in the module docstring.
 
     Returns
     -------
@@ -501,36 +526,48 @@ def pan_cancer_expression(
     df = get_data("pan-cancer-expression")
     df, _ = add_tpm_columns_from_fpkm(df)
     analysis_value_cols = _pan_analysis_value_cols(df)
-    if normalize == "clean_tpm" and not legacy_kwargs_used:
-        df = _add_raw_pan_analysis_value_cols(df, analysis_value_cols)
 
-    do_tech_norm = technical_rna_normalize or (
-        normalize == "clean_tpm" and not legacy_kwargs_used
-    )
-    do_renorm = renormalize_to_million or (
-        normalize == "clean_tpm" and not legacy_kwargs_used
-    )
-    normalize_value_cols = (
-        None
-        if legacy_kwargs_used
-        else analysis_value_cols
-    )
-    df = _bundled_normalize(
-        df,
-        technical_rna_normalize=do_tech_norm,
-        remove_noncoding=remove_noncoding,
-        renormalize=do_renorm,
-        value_cols=normalize_value_cols,
-    )
-    if normalize == "hk":
-        df = normalize_to_housekeeping(df, value_cols=analysis_value_cols)
+    pipeline_value_cols = analysis_value_cols
+    if legacy_kwargs_used:
+        df = _bundled_normalize(
+            df,
+            technical_rna_normalize=technical_rna_normalize,
+            remove_noncoding=remove_noncoding,
+            renormalize=renormalize_to_million,
+            value_cols=None,
+        )
+    elif normalize == "clean_tpm":
+        normalized_df = _bundled_normalize(
+            df,
+            technical_rna_normalize=True,
+            remove_noncoding=False,
+            renormalize=True,
+            value_cols=analysis_value_cols,
+        )
+        df, pipeline_value_cols = _add_pan_normalized_value_cols(
+            df, normalized_df, analysis_value_cols, normalize,
+        )
+    elif normalize == "hk":
+        normalized_df = normalize_to_housekeeping(
+            df, value_cols=analysis_value_cols,
+        )
+        df, pipeline_value_cols = _add_pan_normalized_value_cols(
+            df, normalized_df, analysis_value_cols, normalize,
+        )
+    elif normalize == "percentile":
+        normalized_df, _ = percentile_rank_expression(
+            df, value_cols=analysis_value_cols,
+        )
+        df, pipeline_value_cols = _add_pan_normalized_value_cols(
+            df, normalized_df, analysis_value_cols, normalize,
+        )
     df = _apply_pipeline(
         df,
         drop_technical_rna=drop_technical_rna,
         genes=genes,
         log_transform=log_transform,
-        percentile=normalize == "percentile",
-        value_cols=analysis_value_cols,
+        percentile=False,
+        value_cols=pipeline_value_cols,
     )
     return _rename_pan_expression_columns_entity_first(df)
 
@@ -562,10 +599,11 @@ def cancer_expression(
         normalize="hk",
         drop_technical_rna=True,
     )
-    col = f"{code}_TPM"
+    col = f"{code}_TPM_hk"
     if col not in df.columns:
         raise ValueError(
-            f"no TPM column for {cancer_type!r} (resolved to {code!r})"
+            f"no HK-normalized TPM column for {cancer_type!r} "
+            f"(resolved to {code!r})"
         )
     return df[["Ensembl_Gene_ID", "Symbol", col]].rename(
         columns={col: "expression"}
@@ -601,11 +639,12 @@ def cancer_enriched_genes(
         normalize="hk",
         drop_technical_rna=True,
     )
-    tpm_cols = [c for c in df.columns if c.endswith("_TPM")]
-    target_col = f"{code}_TPM"
+    tpm_cols = [c for c in df.columns if c.endswith("_TPM_hk")]
+    target_col = f"{code}_TPM_hk"
     if target_col not in df.columns:
         raise ValueError(
-            f"no TPM column for {cancer_type!r} (resolved to {code!r})"
+            f"no HK-normalized TPM column for {cancer_type!r} "
+            f"(resolved to {code!r})"
         )
     other_cols = [c for c in tpm_cols if c != target_col]
     result = df[["Ensembl_Gene_ID", "Symbol"]].copy()

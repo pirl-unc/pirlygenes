@@ -38,7 +38,17 @@ from .qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
 # expression_qc module for the per-group citations.
 _DEFAULT_NORMALIZE_REMOVE_GROUPS = _TECHNICAL_RNA_GROUPS
 _VALUE_COL_PREFIXES = ("TPM", "nTPM_", "FPKM_")
-_VALUE_COL_SUFFIXES = ("_TPM", "_nTPM", "_FPKM")
+_VALUE_COL_SUFFIXES = (
+    "_TPM",
+    "_nTPM",
+    "_FPKM",
+    "_TPM_clean",
+    "_nTPM_clean",
+    "_TPM_hk",
+    "_nTPM_hk",
+    "_TPM_percentile",
+    "_nTPM_percentile",
+)
 _RAW_VALUE_COL_PREFIXES = ("TPM_raw_", "nTPM_raw_")
 _RAW_VALUE_COL_SUFFIXES = ("_TPM_raw", "_nTPM_raw")
 

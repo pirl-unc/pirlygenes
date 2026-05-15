@@ -63,7 +63,7 @@ def test_pan_cancer_expression_subset_filters_to_named_genes():
 
 def test_pan_cancer_expression_housekeeping_rescales_to_unit_baseline():
     df = pan_cancer_expression(normalize="hk")
-    tpm_cols = [c for c in df.columns if c.endswith("_TPM")]
+    tpm_cols = [c for c in df.columns if c.endswith("_TPM_hk")]
     # After housekeeping rescale, the median of housekeeping rows in
     # each column should sit at ~1.0 (it's a rescale, not a centering).
     # Tolerance loose enough to survive pandas median-aggregation
@@ -329,7 +329,7 @@ def test_accessor_pipeline_applies_log_after_normalize():
     from pirlygenes import housekeeping_gene_ids
 
     hk_rows = df[df["Ensembl_Gene_ID"].isin(housekeeping_gene_ids())]
-    tpm_col = next(c for c in df.columns if c.endswith("_TPM"))
+    tpm_col = next(c for c in df.columns if c.endswith("_TPM_hk"))
     med = hk_rows[tpm_col].astype(float).median()
     assert med == pytest.approx(1.0, abs=0.1)
 
@@ -381,13 +381,13 @@ def test_pan_cancer_expression_normalize_default_is_clean_tpm():
     assert any(c.endswith("_FPKM") for c in df.columns)
     assert any(c.endswith("_TPM") for c in df.columns)
     assert any(c.endswith("_nTPM") for c in df.columns)
-    assert any(c.endswith("_TPM_raw") for c in df.columns)
-    assert any(c.endswith("_nTPM_raw") for c in df.columns)
+    assert any(c.endswith("_TPM_clean") for c in df.columns)
+    assert any(c.endswith("_nTPM_clean") for c in df.columns)
     assert not any(c.startswith("tcga_") for c in df.columns)
     mt_mask = df["Symbol"].astype(str).str.startswith("MT-")
     value_cols = [
         c for c in df.columns
-        if c.endswith(("_TPM", "_nTPM"))
+        if c.endswith(("_TPM_clean", "_nTPM_clean"))
     ]
     for col in value_cols:
         assert df.loc[mt_mask, col].astype(float).sum() == pytest.approx(0.0)
@@ -399,7 +399,10 @@ def test_pan_cancer_expression_normalize_none_keeps_raw_and_tpm_columns():
     assert any(c.endswith("_FPKM") for c in df.columns)
     assert any(c.endswith("_TPM") for c in df.columns)
     assert any(c.endswith("_nTPM") for c in df.columns)
-    assert not any(c.endswith(("_TPM_raw", "_nTPM_raw")) for c in df.columns)
+    assert not any(
+        c.endswith(("_TPM_clean", "_nTPM_clean", "_TPM_hk", "_nTPM_hk"))
+        for c in df.columns
+    )
     assert not any(c.startswith("tcga_") for c in df.columns)
 
 
@@ -409,7 +412,10 @@ def test_pan_cancer_expression_normalize_tpm_preserves_fpkm_and_adds_tpm():
     assert any(c.endswith("_FPKM") for c in df.columns)
     assert any(c.endswith("_TPM") for c in df.columns)
     assert any(c.endswith("_nTPM") for c in df.columns)
-    assert not any(c.endswith(("_TPM_raw", "_nTPM_raw")) for c in df.columns)
+    assert not any(
+        c.endswith(("_TPM_clean", "_nTPM_clean", "_TPM_hk", "_nTPM_hk"))
+        for c in df.columns
+    )
     assert not any(c.startswith("tcga_") for c in df.columns)
 
 
@@ -425,8 +431,8 @@ def test_pan_cancer_expression_normalize_tpm_rescales_fpkm_to_million():
 
 
 def test_pan_cancer_expression_normalize_percentile_keeps_native_names():
-    """``normalize="percentile"`` maps TPM-scale analysis columns onto
-    a 0-100 rank scale while leaving raw FPKM provenance untouched."""
+    """``normalize="percentile"`` adds percentile columns while leaving
+    raw FPKM and TPM-scale provenance untouched."""
     raw = pan_cancer_expression(normalize=None)
     df = pan_cancer_expression(normalize="percentile")
     assert any(c.endswith("_FPKM") for c in df.columns)
@@ -435,7 +441,12 @@ def test_pan_cancer_expression_normalize_percentile_keeps_native_names():
         raw[fpkm_col].reset_index(drop=True),
         df[fpkm_col].reset_index(drop=True),
     )
-    tpm_col = next(c for c in df.columns if c.endswith("_TPM"))
+    tpm_col = next(c for c in raw.columns if c.endswith("_TPM"))
+    pd.testing.assert_series_equal(
+        raw[tpm_col].reset_index(drop=True),
+        df[tpm_col].reset_index(drop=True),
+    )
+    tpm_col = next(c for c in df.columns if c.endswith("_TPM_percentile"))
     vals = pd.to_numeric(df[tpm_col], errors="coerce").dropna()
     assert vals.min() >= 0
     assert vals.max() <= 100
@@ -444,19 +455,19 @@ def test_pan_cancer_expression_normalize_percentile_keeps_native_names():
 def test_pan_cancer_expression_normalize_housekeeping_alias_works():
     df = pan_cancer_expression(normalize="housekeeping")
     assert not df.empty
-    assert any(c.endswith("_TPM") for c in df.columns)
+    assert any(c.endswith("_TPM_hk") for c in df.columns)
 
 
 def test_pan_cancer_expression_normalize_clean_tpm_zeroes_technical_rna():
     """``normalize="clean_tpm"`` zeroes mtDNA / rRNA / NUMT / MALAT1+NEAT1
-    rows across TPM-scale analysis columns."""
+    rows in added clean TPM-scale analysis columns."""
     raw = pan_cancer_expression(normalize=None)
     df = pan_cancer_expression(normalize="clean_tpm")
     mt_mask = df["Symbol"].astype(str).str.startswith("MT-")
     assert mt_mask.any()
     value_cols = [
         c for c in df.columns
-        if c.endswith(("_TPM", "_nTPM"))
+        if c.endswith(("_TPM_clean", "_nTPM_clean"))
     ]
     for col in value_cols:
         assert df.loc[mt_mask, col].astype(float).sum() == pytest.approx(0.0)
@@ -467,32 +478,32 @@ def test_pan_cancer_expression_normalize_clean_tpm_zeroes_technical_rna():
     )
 
 
-def test_pan_cancer_expression_normalize_clean_tpm_preserves_raw_tpm_columns():
-    """``clean_tpm`` keeps pre-clean TPM/nTPM values in raw companions."""
+def test_pan_cancer_expression_normalize_clean_tpm_preserves_base_tpm_columns():
+    """``clean_tpm`` keeps base TPM/nTPM values and adds clean companions."""
     raw = pan_cancer_expression(normalize=None)
     df = pan_cancer_expression(normalize="clean_tpm")
 
     tpm_col = next(c for c in raw.columns if c.endswith("_TPM"))
     ntpm_col = next(c for c in raw.columns if c.endswith("_nTPM"))
-    for source_col, raw_col in (
-        (tpm_col, tpm_col.replace("_TPM", "_TPM_raw", 1)),
-        (ntpm_col, ntpm_col.replace("_nTPM", "_nTPM_raw", 1)),
+    for source_col, clean_col in (
+        (tpm_col, tpm_col.replace("_TPM", "_TPM_clean", 1)),
+        (ntpm_col, ntpm_col.replace("_nTPM", "_nTPM_clean", 1)),
     ):
-        assert raw_col in df.columns
+        assert clean_col in df.columns
         pd.testing.assert_series_equal(
             raw[source_col].reset_index(drop=True),
-            df[raw_col].reset_index(drop=True),
+            df[source_col].reset_index(drop=True),
             check_names=False,
         )
 
 
 def test_pan_cancer_expression_normalize_clean_tpm_pins_cols_to_million():
-    """After ``normalize="clean_tpm"`` every TPM/nTPM analysis column
+    """After ``normalize="clean_tpm"`` every clean TPM/nTPM analysis column
     sums to 10⁶."""
     df = pan_cancer_expression(normalize="clean_tpm")
     value_cols = [
         c for c in df.columns
-        if c.endswith(("_TPM", "_nTPM"))
+        if c.endswith(("_TPM_clean", "_nTPM_clean"))
     ]
     assert value_cols
     for col in value_cols:

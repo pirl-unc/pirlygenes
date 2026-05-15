@@ -116,7 +116,7 @@ from pirlygenes.gene_families import (
 ```python
 from pirlygenes.expression import (
     # Reference matrices (long- and wide-form)
-    pan_cancer_expression,            # 19,784 genes × (50 nTPM tissues + 33 FPKM cancers + 33 TPM companions)
+    pan_cancer_expression,            # 19,784 genes × expression reference columns
     cancer_expression,                # one cancer type, housekeeping-normalized
     cancer_enriched_genes,            # genes enriched in one cancer vs the others
     hpa_cell_type_expression,         # HPA single-cell consensus
@@ -146,14 +146,14 @@ from pirlygenes.expression import (
 don't have to chain the primitives by hand. The default is
 `normalize="clean_tpm"`: TCGA `*_FPKM` columns are preserved for provenance,
 deterministic TCGA `*_TPM` companions are added, HPA `*_nTPM` columns are
-preserved, TPM-scale analysis columns are cleaned and pinned to 1e6, and
-pre-clean TPM-scale values are kept as `*_TPM_raw` / `*_nTPM_raw`.
+preserved, and cleaned TPM-scale analysis columns are added as
+`*_TPM_clean` / `*_nTPM_clean`.
 
 ```python
 # Zero mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows across TPM-scale analysis
-# columns (*_nTPM, *_TPM) and pin each column sum back at 1e6. Raw FPKM
-# columns remain unchanged as provenance; pre-clean nTPM/TPM values are kept
-# as *_nTPM_raw and *_TPM_raw companion columns.
+# columns and pin each column sum back at 1e6. Base *_nTPM, *_TPM, and
+# *_FPKM columns remain unchanged; clean values are added as *_nTPM_clean
+# and *_TPM_clean companion columns.
 pan_cancer_expression()                          # normalize="clean_tpm"
 
 # Raw/provenance view: raw <code>_FPKM from TCGA and <tissue>_nTPM from HPA,
@@ -163,8 +163,8 @@ pan_cancer_expression(normalize=None)
 # Explicit alias for the raw/provenance TPM-companion view.
 pan_cancer_expression(normalize="tpm")
 
-# Divide TPM-scale analysis columns by their housekeeping-gene median.
-# Percentile ranks are also available via normalize="percentile".
+# Add housekeeping-normalized TPM-scale columns. Percentile ranks are also
+# available via normalize="percentile" as *_percentile columns.
 pan_cancer_expression(normalize="hk")
 ```
 

@@ -62,8 +62,8 @@ and 50 HPA normal tissues (nTPM).
 
 By default, `normalize="clean_tpm"`: the accessor preserves raw TCGA
 `*_FPKM`, adds derived TCGA `*_TPM`, preserves HPA `*_nTPM`, cleans
-TPM-scale analysis columns, and keeps pre-clean TPM-scale values as
-`*_TPM_raw` / `*_nTPM_raw`.
+TPM-scale analysis columns, and adds the clean values as
+`*_TPM_clean` / `*_nTPM_clean`.
 
 ```python
 from pirlygenes.expression import pan_cancer_expression
@@ -78,16 +78,18 @@ Supports normalization:
 - `pan_cancer_expression(normalize="tpm")` — explicit alias for the
   raw/provenance TPM-companion view
 - `pan_cancer_expression(normalize="hk")` — fold TPM-scale analysis
-  columns (`*_nTPM`, `*_TPM`) over housekeeping median
+  columns over housekeeping median, added as `*_nTPM_hk` and `*_TPM_hk`
 - `pan_cancer_expression(normalize="percentile")` — percentile ranks
-  on TPM-scale analysis columns
+  on TPM-scale analysis columns, added as `*_nTPM_percentile` and
+  `*_TPM_percentile`
 - `pan_cancer_expression(log_transform=True)` — log2 transform on
-  TPM-scale analysis columns
+  the active normalized columns, or on base `*_nTPM` / `*_TPM` columns
+  when `normalize=None` or `normalize="tpm"`
 - `pan_cancer_expression(normalize="clean_tpm")` — TPM scale plus zero
   mitochondrial, NUMT-like, rRNA-like, and MALAT1/NEAT1 rows, then pin each
-  analysis column to sum to 1e6. Raw `*_FPKM` columns remain available for
-  provenance, and pre-clean TPM-scale values are preserved as
-  `*_nTPM_raw` and `*_TPM_raw` columns.
+  clean analysis column to sum to 1e6. Base `*_nTPM`, `*_TPM`, and
+  `*_FPKM` columns remain unchanged; clean values are added as
+  `*_nTPM_clean` and `*_TPM_clean`.
 
 `normalize_expression()` in `pirlygenes.expression` implements the shared
 transform for samples and references. The default removal set is intentionally
