@@ -303,60 +303,73 @@ def test_aggregate_gene_expression_sums_transcripts_to_genes():
 
 
 def test_accessor_pipeline_drops_technical_rna_before_gene_subset():
-    """``pan_cancer_expression(genes=[…], drop_technical_rna=True)`` should
-    drop MT genes regardless of whether the caller asked for them in
-    the gene subset — the family filter runs before the gene-list
-    subset. Locks in the order so a future reordering bug shows up
-    here rather than as a silent mis-ranking downstream."""
+    """The family filter must run before the gene-list subset.
+
+    Otherwise ``pan_cancer_expression(genes=["MT-CO1", ...],
+    drop_technical_rna=True)`` would happily keep MT-CO1 because it
+    matches the explicit gene list. Lock the order in so a future
+    reorder surfaces here rather than as silent mis-ranking
+    downstream.
+    """
     df = pan_cancer_expression(
         genes=["MT-CO1", "MYC", "KLK3"],
         drop_technical_rna=True,
     )
     syms = set(df["Symbol"].str.upper())
-    assert "MT-CO1" not in syms, (
-        "MT-CO1 leaked through despite drop_technical_rna=True"
-    )
-    assert syms & {"MYC", "KLK3"}, "neither MYC nor KLK3 made it through"
+    assert "MT-CO1" not in syms
+    assert {"MYC", "KLK3"} <= syms
 
 
 def test_accessor_pipeline_applies_log_after_normalize():
-    """When both ``normalize="housekeeping"`` and ``log_transform=True`` are
-    set, log2 is applied AFTER the rescale (so values around 1.0 land
-    near 0). Catches an order swap that would log-transform raw FPKM
-    first and then divide by the wrong housekeeping median."""
-    df = pan_cancer_expression(
-        normalize="housekeeping",
-        log_transform=True,
-    )
+    """log_transform runs after normalize.
+
+    A housekeeping gene rescales to 1.0; with the default pseudocount
+    of 1, log2(1.0 + 1.0) = 1.0. An order swap (log-then-rescale)
+    would log raw FPKM first, then divide by the wrong housekeeping
+    median, and the median of housekeeping rows wouldn't land at 1.0.
+    """
+    df = pan_cancer_expression(normalize="housekeeping", log_transform=True)
     from pirlygenes import housekeeping_gene_ids
-    hk = housekeeping_gene_ids()
-    hk_rows = df[df["Ensembl_Gene_ID"].isin(hk)]
+
+    hk_rows = df[df["Ensembl_Gene_ID"].isin(housekeeping_gene_ids())]
     fpkm_col = next(c for c in df.columns if c.startswith("FPKM_"))
-    # log2(1.0) == 0 — the housekeeping median in each column should
-    # be approximately log2(1.0) == 0 after rescale + log.
     med = hk_rows[fpkm_col].astype(float).median()
-    assert med == pytest.approx(1.0, abs=0.1), (
-        f"housekeeping median after normalize+log is {med}, expected ~1.0 "
-        "(log2(1+1)=1 for the +1 pseudocount on a rescaled-to-1 value)"
-    )
+    assert med == pytest.approx(1.0, abs=0.1)
 
 
 # ---------- normalize_expression: noncoding biotype path ----------
 
 
 def test_normalize_expression_remove_noncoding_with_biotype_column():
-    """remove_noncoding=True drops rows whose biotype isn't in the
-    protein-coding / Ig / TCR keep-list when a biotype column exists."""
+    """``remove_noncoding=True`` drops both technical-RNA rows and rows
+    whose biotype falls outside the protein-coding / Ig / TCR keep-list.
+
+    The two filter paths run together: MALAT1 goes via the technical-
+    RNA family (polyadenylation-bias lncRNA), and LINC123 goes via
+    the biotype gate. MYC survives both. After dropping, the kept
+    column total is renormalized back to the original 1e6.
+    """
     df = pd.DataFrame({
-        "Symbol": ["MYC", "MALAT1_NC", "LINC123"],
-        "Ensembl_Gene_ID": ["ENSG_MYC", "ENSG_NC1", "ENSG_NC2"],
+        "Symbol": ["MYC", "MALAT1", "LINC123"],
+        "Ensembl_Gene_ID": [
+            "ENSG00000136997",   # MYC
+            "ENSG00000251562",   # MALAT1 — caught as technical RNA
+            "ENSG_LINC123",      # placeholder; dropped via biotype
+        ],
         "biotype": ["protein_coding", "lincRNA", "antisense"],
         "TPM_S1": [400_000.0, 300_000.0, 300_000.0],
     })
     out, record = normalize_expression(
         df, value_cols=["TPM_S1"], remove_noncoding=True,
     )
+
     surviving = set(out.loc[out["TPM_S1"] > 0, "Symbol"])
-    assert "MYC" in surviving
-    assert "LINC123" not in surviving
-    assert record["removed_noncoding_gene_count"] >= 1
+    assert surviving == {"MYC"}
+    # MALAT1 is caught by the technical-RNA family filter. The biotype
+    # gate also catches it (lincRNA isn't on the keep-list), so its
+    # row is counted in both ``removed_technical_gene_count`` and
+    # ``removed_noncoding_gene_count`` — overlap is expected. LINC123
+    # is biotype-only.
+    assert record["removed_technical_gene_count"] == 1
+    assert record["removed_noncoding_gene_count"] == 2
+    assert out["TPM_S1"].sum() == pytest.approx(1_000_000)

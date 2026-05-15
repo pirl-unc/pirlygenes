@@ -77,6 +77,7 @@ import pandas as pd
 from ..gene_families import gene_family_ids
 from ..gene_sets_cancer import housekeeping_gene_ids
 from ..load_dataset import get_data
+from .qc import _TECHNICAL_RNA_FAMILIES
 
 
 # ---------- column-discovery helpers ----------
@@ -161,14 +162,6 @@ def log2_transform(
     for col in cols:
         out[col] = np.log2(out[col].astype(float) + pseudocount)
     return out
-
-
-# Family groups that count as "technical RNA". Imported from qc.py so
-# this set and ``_TECHNICAL_RNA_GROUPS`` (the QC-group-name view)
-# remain in lockstep via the single ``_FAMILY_TO_QC`` mapping. Both
-# are derived from the same authoritative dict — adding a family there
-# automatically updates both views.
-from .qc import _TECHNICAL_RNA_FAMILIES  # noqa: E402  (after numpy/pandas import block)
 
 
 def technical_rna_gene_ids() -> set[str]:
