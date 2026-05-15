@@ -381,6 +381,7 @@ def test_pan_cancer_expression_normalization_none_keeps_raw_and_tpm_columns():
     assert any(c.startswith("FPKM_") for c in df.columns)
     assert any(c.startswith("TPM_") for c in df.columns)
     assert any(c.startswith("nTPM_") for c in df.columns)
+    assert not any(c.startswith(("TPM_raw_", "nTPM_raw_")) for c in df.columns)
     assert not any(c.startswith("tcga_") for c in df.columns)
 
 
@@ -390,6 +391,7 @@ def test_pan_cancer_expression_normalization_tpm_preserves_fpkm_and_adds_tpm():
     assert any(c.startswith("FPKM_") for c in df.columns)
     assert any(c.startswith("TPM_") for c in df.columns)
     assert any(c.startswith("nTPM_") for c in df.columns)
+    assert not any(c.startswith(("TPM_raw_", "nTPM_raw_")) for c in df.columns)
     assert not any(c.startswith("tcga_") for c in df.columns)
 
 
@@ -428,9 +430,12 @@ def test_pan_cancer_expression_normalization_clean_tpm_zeroes_technical_rna():
     df = pan_cancer_expression(normalization="clean_tpm")
     mt_mask = df["Symbol"].astype(str).str.startswith("MT-")
     assert mt_mask.any()
-    for col in df.columns:
-        if not col.startswith(("TPM_", "nTPM_")):
-            continue
+    value_cols = [
+        c for c in df.columns
+        if c.startswith(("TPM_", "nTPM_"))
+        and not c.startswith(("TPM_raw_", "nTPM_raw_"))
+    ]
+    for col in value_cols:
         assert df.loc[mt_mask, col].astype(float).sum() == pytest.approx(0.0)
     fpkm_col = next(c for c in df.columns if c.startswith("FPKM_"))
     pd.testing.assert_series_equal(
@@ -439,12 +444,33 @@ def test_pan_cancer_expression_normalization_clean_tpm_zeroes_technical_rna():
     )
 
 
+def test_pan_cancer_expression_normalization_clean_tpm_preserves_raw_tpm_columns():
+    """``clean_tpm`` keeps pre-clean TPM/nTPM values in raw companions."""
+    raw = pan_cancer_expression()
+    df = pan_cancer_expression(normalization="clean_tpm")
+
+    tpm_col = next(c for c in raw.columns if c.startswith("TPM_"))
+    ntpm_col = next(c for c in raw.columns if c.startswith("nTPM_"))
+    for source_col, raw_col in (
+        (tpm_col, tpm_col.replace("TPM_", "TPM_raw_", 1)),
+        (ntpm_col, ntpm_col.replace("nTPM_", "nTPM_raw_", 1)),
+    ):
+        assert raw_col in df.columns
+        pd.testing.assert_series_equal(
+            raw[source_col].reset_index(drop=True),
+            df[raw_col].reset_index(drop=True),
+            check_names=False,
+        )
+
+
 def test_pan_cancer_expression_normalization_clean_tpm_pins_cols_to_million():
     """After ``normalization="clean_tpm"`` every TPM/nTPM analysis column
     sums to 10⁶."""
     df = pan_cancer_expression(normalization="clean_tpm")
     value_cols = [
-        c for c in df.columns if c.startswith(("TPM_", "nTPM_"))
+        c for c in df.columns
+        if c.startswith(("TPM_", "nTPM_"))
+        and not c.startswith(("TPM_raw_", "nTPM_raw_"))
     ]
     assert value_cols
     for col in value_cols:

@@ -155,7 +155,8 @@ pan_cancer_expression(normalization="tpm")
 
 # Zero mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows across TPM-scale analysis
 # columns (nTPM_*, TPM_*) and pin each column sum back at 1e6. Raw FPKM
-# columns remain unchanged as provenance.
+# columns remain unchanged as provenance; pre-clean nTPM/TPM values are kept
+# as nTPM_raw_* and TPM_raw_* companion columns.
 pan_cancer_expression(normalization="clean_tpm")
 
 # Divide TPM-scale analysis columns by their housekeeping-gene median.

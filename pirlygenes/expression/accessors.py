@@ -85,18 +85,44 @@ from .qc import _TECHNICAL_RNA_FAMILIES
 
 _VALUE_COL_PREFIXES = ("nTPM_", "FPKM_", "TPM_")
 _PAN_ANALYSIS_VALUE_COL_PREFIXES = ("nTPM_", "TPM_")
+_PAN_RAW_ANALYSIS_VALUE_COL_PREFIXES = ("nTPM_raw_", "TPM_raw_")
 
 
 def _default_value_cols(df: pd.DataFrame) -> list[str]:
     """Heuristic: wide-form expression frames use prefixed column names."""
-    return [c for c in df.columns if c.startswith(_VALUE_COL_PREFIXES)]
+    return [
+        c for c in df.columns
+        if c.startswith(_VALUE_COL_PREFIXES)
+        and not c.startswith(_PAN_RAW_ANALYSIS_VALUE_COL_PREFIXES)
+    ]
 
 
 def _pan_analysis_value_cols(df: pd.DataFrame) -> list[str]:
     """TPM-scale columns used by pan-cancer normalization presets."""
     return [
-        c for c in df.columns if c.startswith(_PAN_ANALYSIS_VALUE_COL_PREFIXES)
+        c for c in df.columns
+        if c.startswith(_PAN_ANALYSIS_VALUE_COL_PREFIXES)
+        and not c.startswith(_PAN_RAW_ANALYSIS_VALUE_COL_PREFIXES)
     ]
+
+
+def _pan_raw_analysis_col_name(col: str) -> str:
+    """Name for preserving pre-normalization TPM/nTPM analysis values."""
+    for prefix in _PAN_ANALYSIS_VALUE_COL_PREFIXES:
+        if col.startswith(prefix):
+            return f"{prefix}raw_{col[len(prefix):]}"
+    return f"{col}_raw"
+
+
+def _add_raw_pan_analysis_value_cols(
+    df: pd.DataFrame,
+    value_cols: Sequence[str],
+) -> pd.DataFrame:
+    """Copy TPM/nTPM analysis columns before a normalization overwrites them."""
+    out = df.copy()
+    for col in value_cols:
+        out[_pan_raw_analysis_col_name(col)] = out[col]
+    return out
 
 
 def _resolve_id_col(df: pd.DataFrame) -> Optional[str]:
@@ -377,7 +403,9 @@ def pan_cancer_expression(
           median.
         - ``"percentile"`` — within-column percentile rank (0–100),
           applied to TPM-scale analysis columns.
-        - ``"clean_tpm"`` — zero mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows
+        - ``"clean_tpm"`` — preserve pre-clean values as
+          ``nTPM_raw_<tissue>`` and ``TPM_raw_<code>`` columns, then zero
+          mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows
           across TPM-scale analysis columns and pin each column's sum
           back to 10⁶. This is the recommended view for analysis:
           every analysis column on the same scale, technical-RNA
@@ -424,6 +452,8 @@ def pan_cancer_expression(
     df = get_data("pan-cancer-expression")
     df, _ = add_tpm_columns_from_fpkm(df)
     analysis_value_cols = _pan_analysis_value_cols(df)
+    if normalization == "clean_tpm":
+        df = _add_raw_pan_analysis_value_cols(df, analysis_value_cols)
 
     do_tech_norm = technical_rna_normalize or normalization == "clean_tpm"
     do_renorm = renormalize_to_million or normalization == "clean_tpm"

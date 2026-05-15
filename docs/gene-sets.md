@@ -79,7 +79,8 @@ Supports normalization:
 - `pan_cancer_expression(normalization="clean_tpm")` — TPM scale plus zero
   mitochondrial, NUMT-like, rRNA-like, and MALAT1/NEAT1 rows, then pin each
   analysis column to sum to 1e6. Raw `FPKM_*` columns remain available for
-  provenance.
+  provenance, and pre-clean TPM-scale values are preserved as
+  `nTPM_raw_*` and `TPM_raw_*` columns.
 
 `normalize_expression()` in `pirlygenes.expression` implements the shared
 transform for samples and references. The default removal set is intentionally
