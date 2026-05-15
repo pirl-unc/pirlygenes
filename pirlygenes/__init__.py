@@ -10,21 +10,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Curated cancer gene knowledge — data-only package.
+"""Curated cancer gene knowledge + reference expression data.
 
-Analysis, plotting, the ``analyze`` CLI, and all expression matrices
-have moved to `trufflepig <https://github.com/pirl-unc/trufflepig>`_
-in v5.0; this package is now a **data-only** dependency providing:
+``pirlygenes`` is the data layer for cancer RNA analysis. It ships:
 
-* curated gene-set CSVs (``gene_sets_cancer``)
-* the bundled-dataset loader (``load_dataset``)
-* canonical gene-id / gene-name helpers (``gene_ids``, ``gene_names``)
-* curated gene families keyed by Ensembl ID (``gene_families``)
+* curated gene-set CSVs (``gene_sets_cancer``) — therapy targets,
+  CTAs, surfaceome, cancer-driver / cancer-key panels, lineage panels,
+  rule tables, the cancer-type registry, narrative gene sets.
+* curated gene families keyed by Ensembl ID (``gene_families``) —
+  mtDNA, NUMTs, rRNA + pseudogenes, ribosomal proteins, histones,
+  hemoglobins, immune-receptor segments, small ncRNAs, MALAT1/NEAT1.
+* reference expression matrices + mechanical transforms
+  (``expression``) — pan-cancer TCGA + HPA, TCGA-deconvolved and
+  subtype-deconvolved tumor-only TPM, tumor-vs-matched-normal panels,
+  HPA cell-type expression, ESTIMATE signatures; plus
+  ``normalize_expression``, ``fpkm_to_tpm``,
+  ``tpm_to_housekeeping_normalized``, ``classify_gene_qc``, and
+  ``aggregate_gene_expression``.
+* the bundled-dataset loader (``load_dataset``).
+* canonical gene-id / gene-name helpers (``gene_ids``, ``gene_names``).
 
-Install ``trufflepig`` to run RNA tumor analyses; it imports the
-accessors here as a library.
+Analysis-layer code (CLI, plotting, sample QC narration, deconvolution,
+signature scoring) lives in
+`pirl-trufflepig <https://github.com/pirl-unc/trufflepig>`_, which
+depends on this package.
 """
 
+from .expression import (
+    GeneQcClass,
+    aggregate_gene_expression,
+    cancer_enriched_genes,
+    cancer_expression,
+    classify_gene_qc,
+    estimate_signatures,
+    filter_technical_rna,
+    filter_to_genes,
+    fpkm_to_tpm,
+    heme_tumor_up_vs_matched_normal,
+    hpa_cell_type_expression,
+    is_rescue_feature,
+    log2_transform,
+    normalize_expression,
+    normalize_technical_rna_columns,
+    normalize_technical_rna_long_table,
+    normalize_to_housekeeping,
+    pan_cancer_expression,
+    renormalize_to_million,
+    subtype_deconvolved_expression,
+    tcga_deconvolved_expression,
+    technical_rna_gene_ids,
+    tpm_to_housekeeping_normalized,
+    tumor_up_vs_matched_normal,
+)
 from .gene_families import (
     GENE_FAMILIES,
     GeneFamily,
@@ -78,11 +115,14 @@ from .gene_sets_cancer import (
 from .load_dataset import get_data, load_all_dataframes, load_all_dataframes_dict
 from .version import __version__
 
+
 __all__ = [
     "__version__",
+    # data loading
     "load_all_dataframes",
     "load_all_dataframes_dict",
     "get_data",
+    # gene-set panels
     "housekeeping_gene_ids",
     "housekeeping_gene_names",
     "mitochondrial_genes_df",
@@ -103,6 +143,7 @@ __all__ = [
     "cancer_family_panels_df",
     "cancer_family_panel",
     "cancer_family_panels",
+    # gene families
     "GeneFamily",
     "GENE_FAMILIES",
     "gene_family_names",
@@ -129,4 +170,33 @@ __all__ = [
     "hemoglobin_gene_symbols",
     "immune_receptor_segment_ids",
     "immune_receptor_segment_symbols",
+    # expression: reference accessors
+    "pan_cancer_expression",
+    "cancer_expression",
+    "cancer_enriched_genes",
+    "tcga_deconvolved_expression",
+    "subtype_deconvolved_expression",
+    "tumor_up_vs_matched_normal",
+    "heme_tumor_up_vs_matched_normal",
+    "hpa_cell_type_expression",
+    "estimate_signatures",
+    # expression: rescaling primitives
+    "normalize_expression",
+    "fpkm_to_tpm",
+    "renormalize_to_million",
+    "tpm_to_housekeeping_normalized",
+    "normalize_technical_rna_columns",
+    "normalize_technical_rna_long_table",
+    # expression: reference-frame convenience
+    "normalize_to_housekeeping",
+    "log2_transform",
+    "filter_technical_rna",
+    "filter_to_genes",
+    "technical_rna_gene_ids",
+    # expression: classifier
+    "classify_gene_qc",
+    "is_rescue_feature",
+    "GeneQcClass",
+    # expression: aggregation
+    "aggregate_gene_expression",
 ]

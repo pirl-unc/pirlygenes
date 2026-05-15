@@ -4,7 +4,7 @@ Each family is a set of HGNC symbols and Ensembl gene IDs sharing a
 biological or structural origin (NUMTs, nuclear rRNA pseudogenes,
 ribosomal proteins, histones, hemoglobins, etc.). These are useful
 panels for QC, normalization, attribution, and downstream analysis —
-:mod:`trufflepig.expression_qc` reads them as the source of truth for
+:mod:`pirlygenes.expression.qc` reads them as the source of truth for
 ENSG-stable feature classification, falling back to symbol regex when
 an ID isn't present in any family.
 
@@ -23,7 +23,7 @@ Files in ``pirlygenes/data/``:
 
 Derived CSVs are produced by ``scripts/generate_gene_family_sets.py``
 walking every installed Ensembl release and applying the regex panel
-in :func:`trufflepig.expression_qc.classify_gene_qc`. Re-run after the
+in :func:`pirlygenes.expression.qc.classify_gene_qc`. Re-run after the
 regex changes.
 
 ENSG IDs are stored **unversioned** (``ENSG00000251562``); a sample
@@ -59,7 +59,7 @@ class GeneFamily:
 
 # Ordered: when an ENSG/Symbol appears in multiple families (rare HGNC
 # rename across families), the first match wins at lookup time. Order
-# reflects the QC-relevance priority used by trufflepig.expression_qc.
+# reflects the QC-relevance priority used by pirlygenes.expression.qc.
 GENE_FAMILIES: tuple[GeneFamily, ...] = (
     GeneFamily("mitochondrial", "mitochondrial-genes.csv"),
     GeneFamily("numt_pseudogene", "numt-pseudogenes.csv"),
