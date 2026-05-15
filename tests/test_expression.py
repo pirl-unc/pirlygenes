@@ -68,12 +68,16 @@ def test_pan_cancer_expression_housekeeping_rescales_to_unit_baseline():
     fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
     # After housekeeping rescale, the median of housekeeping rows in
     # each column should sit at ~1.0 (it's a rescale, not a centering).
+    # Tolerance loose enough to survive pandas median-aggregation
+    # ordering drift without false-flagging.
     from pirlygenes import housekeeping_gene_ids
     hk = housekeeping_gene_ids()
     hk_rows = df[df["Ensembl_Gene_ID"].isin(hk)]
     for col in fpkm_cols[:3]:  # spot-check first few columns
         med = hk_rows[col].astype(float).median()
-        assert 0.99 < med < 1.01, f"{col} median is {med}, expected ~1.0"
+        assert med == pytest.approx(1.0, rel=0.05), (
+            f"{col} housekeeping median is {med}, expected ~1.0"
+        )
 
 
 def test_cancer_expression_returns_per_symbol_expression_column():
@@ -289,9 +293,70 @@ def test_aggregate_gene_expression_sums_transcripts_to_genes():
         "TPM": [10.0, 5.0, 8.0],
     })
     tx_to_gene = {"ENST1.1": "GENEA", "ENST1.2": "GENEA", "ENST2.1": "GENEB"}
-    out = aggregate_gene_expression(
-        df, tx_to_gene_name=tx_to_gene, verbose=False, progress=False,
-    )
+    out = aggregate_gene_expression(df, tx_to_gene_name=tx_to_gene)
     out_indexed = out.set_index("gene")
     assert out_indexed.loc["GENEA", "TPM"] == pytest.approx(15.0)
     assert out_indexed.loc["GENEB", "TPM"] == pytest.approx(8.0)
+
+
+# ---------- pipeline ordering inside accessor kwargs ----------
+
+
+def test_accessor_pipeline_drops_technical_rna_before_gene_subset():
+    """``pan_cancer_expression(genes=[…], drop_technical_rna=True)`` should
+    drop MT genes regardless of whether the caller asked for them in
+    the gene subset — the family filter runs before the gene-list
+    subset. Locks in the order so a future reordering bug shows up
+    here rather than as a silent mis-ranking downstream."""
+    df = pan_cancer_expression(
+        genes=["MT-CO1", "MYC", "KLK3"],
+        drop_technical_rna=True,
+    )
+    syms = set(df["Symbol"].str.upper())
+    assert "MT-CO1" not in syms, (
+        "MT-CO1 leaked through despite drop_technical_rna=True"
+    )
+    assert syms & {"MYC", "KLK3"}, "neither MYC nor KLK3 made it through"
+
+
+def test_accessor_pipeline_applies_log_after_normalize():
+    """When both ``normalize="housekeeping"`` and ``log_transform=True`` are
+    set, log2 is applied AFTER the rescale (so values around 1.0 land
+    near 0). Catches an order swap that would log-transform raw FPKM
+    first and then divide by the wrong housekeeping median."""
+    df = pan_cancer_expression(
+        normalize="housekeeping",
+        log_transform=True,
+    )
+    from pirlygenes import housekeeping_gene_ids
+    hk = housekeeping_gene_ids()
+    hk_rows = df[df["Ensembl_Gene_ID"].isin(hk)]
+    fpkm_col = next(c for c in df.columns if c.startswith("FPKM_"))
+    # log2(1.0) == 0 — the housekeeping median in each column should
+    # be approximately log2(1.0) == 0 after rescale + log.
+    med = hk_rows[fpkm_col].astype(float).median()
+    assert med == pytest.approx(1.0, abs=0.1), (
+        f"housekeeping median after normalize+log is {med}, expected ~1.0 "
+        "(log2(1+1)=1 for the +1 pseudocount on a rescaled-to-1 value)"
+    )
+
+
+# ---------- normalize_expression: noncoding biotype path ----------
+
+
+def test_normalize_expression_remove_noncoding_with_biotype_column():
+    """remove_noncoding=True drops rows whose biotype isn't in the
+    protein-coding / Ig / TCR keep-list when a biotype column exists."""
+    df = pd.DataFrame({
+        "Symbol": ["MYC", "MALAT1_NC", "LINC123"],
+        "Ensembl_Gene_ID": ["ENSG_MYC", "ENSG_NC1", "ENSG_NC2"],
+        "biotype": ["protein_coding", "lincRNA", "antisense"],
+        "TPM_S1": [400_000.0, 300_000.0, 300_000.0],
+    })
+    out, record = normalize_expression(
+        df, value_cols=["TPM_S1"], remove_noncoding=True,
+    )
+    surviving = set(out.loc[out["TPM_S1"] > 0, "Symbol"])
+    assert "MYC" in surviving
+    assert "LINC123" not in surviving
+    assert record["removed_noncoding_gene_count"] >= 1

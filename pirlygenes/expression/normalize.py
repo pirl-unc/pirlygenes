@@ -272,8 +272,11 @@ def normalize_technical_rna_columns(
 
     Shared comparability transform for reference matrices. Preserves
     each column's total expression mass after removing technical-RNA
-    features. Raw-expression QC should be computed before this
-    transform (see :mod:`trufflepig.expression_qc`).
+    features. Per-sample raw-expression QC narration (TPM-share
+    summaries, top-K concentration, rescue summaries) is part of the
+    analysis layer and lives in ``trufflepig`` — record it before
+    calling this transform if you need provenance for the un-cleaned
+    state.
     """
     return normalize_expression(
         df,
@@ -371,9 +374,9 @@ def fpkm_to_tpm(
     flow is:
 
         1. :func:`fpkm_to_tpm` — convert quantifier output to TPM scale.
-        2. :func:`trufflepig.expression_qc.raw_qc_profile` — record raw
-           rRNA / mt / top-k composition for the report before any
-           filtering.
+        2. ``trufflepig.expression_qc.raw_qc_profile`` (analysis layer) —
+           record raw rRNA / mt / top-k composition for the report
+           before any filtering.
         3. :func:`normalize_expression` — drop technical RNA and
            renormalize the remaining mass.
         4. :func:`renormalize_to_million` (optional) — pin the

@@ -14,9 +14,9 @@ like entries consume a large fraction of TPM and distort all
 downstream absolute expression values.
 
 Per-sample QC narration (TPM-share-by-class summaries, top-K mass
-concentration, rescue-summary phrasing) lives in
-:mod:`trufflepig.expression_qc` — those are analysis-layer helpers
-that consume this classifier rather than belonging next to it.
+concentration, rescue-summary phrasing) lives in trufflepig's
+``expression_qc`` module — those are analysis-layer helpers that
+consume this classifier rather than belonging next to it.
 """
 
 from __future__ import annotations
@@ -115,6 +115,18 @@ _FAMILY_TO_QC = {
     "hemoglobin": ("hemoglobin transcript", "hemoglobin"),
     "immune_receptor_segment": ("immune receptor segment", "immune_receptor"),
 }
+
+
+# Gene-family names whose members count as "technical RNA" — the drop-
+# by-default set. Derived from ``_FAMILY_TO_QC`` so the family-name
+# view (used by :func:`pirlygenes.expression.filter_technical_rna`) and
+# the QC-group view (used by :func:`is_rescue_feature` /
+# :func:`normalize_expression`) stay in lockstep automatically.
+_TECHNICAL_RNA_FAMILIES = frozenset(
+    family
+    for family, (_label, group) in _FAMILY_TO_QC.items()
+    if group in _TECHNICAL_RNA_GROUPS
+)
 
 
 def _family_to_qc_class(family: str, symbol: str | None = None) -> GeneQcClass:
@@ -308,8 +320,10 @@ __all__ = [
     "GeneQcClass",
     "_POLYA_BIAS_LNCRNA_SYMBOLS",
     "_TECHNICAL_RNA_GROUPS",
+    "_TECHNICAL_RNA_FAMILIES",
     "_QC_GROUP_DISPLAY_ORDER",
     "_QC_GROUP_DISPLAY_LABEL",
+    "_FAMILY_TO_QC",
     "classify_gene_qc",
     "is_rescue_feature",
 ]

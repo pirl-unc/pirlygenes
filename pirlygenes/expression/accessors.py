@@ -31,9 +31,9 @@ normalization helpers needed to make them comparable across columns:
 * :func:`estimate_signatures` — the ESTIMATE stromal/immune signature
   gene sets (Yoshihara et al., 2013).
 
-The normalization layer is intentionally narrow — anything that needs
-per-sample QC (degradation index, FFPE rescue, library-prep
-classification) lives in ``trufflepig.expression_qc``. What's here:
+The normalization layer is intentionally narrow — anything that
+needs per-sample QC narration (degradation index, FFPE rescue,
+library-prep classification) lives in trufflepig. What's here:
 
 * :func:`normalize_to_housekeeping` — divide each column by its
   housekeeping-gene median.
@@ -44,9 +44,23 @@ classification) lives in ``trufflepig.expression_qc``. What's here:
 * :func:`filter_to_genes` — subset to a caller-provided gene list.
 
 The accessors expose ``normalize="housekeeping"``, ``log_transform=``,
-and ``filter_technical_rna=`` keyword arguments that pipeline the
-free functions in the expected order — for callers who prefer one
-call to a chain of helpers.
+and ``drop_technical_rna=`` keyword arguments that pipeline the free
+functions in the expected order — for callers who prefer one call
+to a chain of helpers.
+
+Boundary: :func:`filter_technical_rna` and the family-level filter
+inside :func:`normalize_expression` (see
+:mod:`pirlygenes.expression.normalize`) catch overlapping but not
+identical sets of genes. ``filter_technical_rna`` uses the curated
+:mod:`pirlygenes.gene_families` ENSG tables exclusively. The
+``normalize_expression`` path classifies via
+:func:`pirlygenes.expression.qc.classify_gene_qc`, which prefers the
+same curated tables but falls back to symbol regex for genes the
+tables don't yet cover (newly annotated entries, deprecated IDs).
+Prefer ``normalize_expression`` when you need both the zero-and-
+renormalize behavior and the wider symbol-regex coverage; prefer
+``filter_technical_rna`` when you only want a row-drop on the
+strictly-curated set.
 
 Returned frames are always ``.copy()``'d from the cached CSV; callers
 can mutate freely.
@@ -149,16 +163,12 @@ def log2_transform(
     return out
 
 
-# Family groups that count as "technical RNA" — high-abundance
-# transcript classes that contaminate reference panels without
-# carrying biological signal. Sourced from gene_families so the set
-# stays in lockstep with the curated CSVs.
-_TECHNICAL_RNA_FAMILIES = (
-    "mitochondrial",
-    "numt_pseudogene",
-    "rrna_and_pseudogene",
-    "nuclear_retained_lncrna",
-)
+# Family groups that count as "technical RNA". Imported from qc.py so
+# this set and ``_TECHNICAL_RNA_GROUPS`` (the QC-group-name view)
+# remain in lockstep via the single ``_FAMILY_TO_QC`` mapping. Both
+# are derived from the same authoritative dict — adding a family there
+# automatically updates both views.
+from .qc import _TECHNICAL_RNA_FAMILIES  # noqa: E402  (after numpy/pandas import block)
 
 
 def technical_rna_gene_ids() -> set[str]:
@@ -178,7 +188,7 @@ def filter_technical_rna(df: pd.DataFrame) -> pd.DataFrame:
 
     Returns a copy with those rows removed. Uses pirlygenes'
     ``gene_families`` CSVs as the source of truth — the regex panel
-    in ``trufflepig.expression_qc.classify_gene_qc`` generates those
+    in ``pirlygenes.expression.qc.classify_gene_qc`` generates those
     CSVs, but at use-time we only need the ENSG sets.
     """
     id_col = _resolve_id_col(df)
@@ -220,7 +230,7 @@ def filter_to_genes(
 def _apply_pipeline(
     df: pd.DataFrame,
     *,
-    filter_technical_rna_: bool = False,
+    drop_technical_rna: bool = False,
     genes: Optional[Iterable[str]] = None,
     normalize: Optional[str] = None,
     log_transform: bool = False,
@@ -228,7 +238,7 @@ def _apply_pipeline(
 ) -> pd.DataFrame:
     """Shared accessor-kwarg pipeline. Order matters: family filter →
     gene subset → cross-column normalization → log transform."""
-    if filter_technical_rna_:
+    if drop_technical_rna:
         df = filter_technical_rna(df)
     if genes is not None:
         df = filter_to_genes(df, genes)
@@ -254,14 +264,13 @@ def _apply_pipeline(
 
 
 @lru_cache(maxsize=1)
-def _tcga_deconv_wide_cached() -> Optional[pd.DataFrame]:
+def _tcga_deconv_wide_cached() -> pd.DataFrame:
     """Wide-form (``Symbol``-indexed) view of the tumor-only TPM medians.
 
-    Returns ``None`` when ``tcga-deconvolved-expression.csv.gz`` isn't
-    bundled (so callers can degrade gracefully)."""
+    Built by pivoting the long-form :func:`tcga_deconvolved_expression`
+    frame into one ``tcga_<code>`` column per TCGA cancer code, then
+    cached for the process lifetime since the pivot is non-trivial."""
     long = tcga_deconvolved_expression()
-    if long is None or long.empty:
-        return None
     wide = long.pivot_table(
         index="symbol",
         columns="cancer_code",
@@ -269,15 +278,14 @@ def _tcga_deconv_wide_cached() -> Optional[pd.DataFrame]:
         aggfunc="median",
     )
     wide.columns = [f"tcga_{c}" for c in wide.columns]
-    wide = wide.reset_index().rename(columns={"symbol": "Symbol"})
-    return wide
+    return wide.reset_index().rename(columns={"symbol": "Symbol"})
 
 
 def pan_cancer_expression(
     genes: Optional[Iterable[str]] = None,
     normalize: Optional[str] = None,
     log_transform: bool = False,
-    filter_technical_rna: bool = False,
+    drop_technical_rna: bool = False,
 ) -> pd.DataFrame:
     """Wide-form expression across HPA normal tissues + TCGA cancer types.
 
@@ -296,10 +304,13 @@ def pan_cancer_expression(
         ``None`` (default) — raw FPKM / nTPM / tumor-only TPM.
     log_transform
         Apply ``log2(x + 1)`` to value columns after any normalization.
-    filter_technical_rna
+    drop_technical_rna
         Drop mtDNA / NUMT / rRNA / nuclear-retained-lncRNA rows before
-        normalization. Recommended when the goal is to compare protein-
-        coding signal across cohorts.
+        normalization (uses :func:`filter_technical_rna`). Recommended
+        when the goal is to compare protein-coding signal across
+        cohorts. Unrelated to :func:`normalize_expression`'s zero-and-
+        renormalize approach — see Boundary note in the module
+        docstring.
 
     Returns
     -------
@@ -307,12 +318,10 @@ def pan_cancer_expression(
         Defensive copy — safe to mutate.
     """
     df = get_data("pan-cancer-expression")
-    deconv_wide = _tcga_deconv_wide_cached()
-    if deconv_wide is not None:
-        df = df.merge(deconv_wide, on="Symbol", how="left")
+    df = df.merge(_tcga_deconv_wide_cached(), on="Symbol", how="left")
     return _apply_pipeline(
         df,
-        filter_technical_rna_=filter_technical_rna,
+        drop_technical_rna=drop_technical_rna,
         genes=genes,
         normalize=normalize,
         log_transform=log_transform,
@@ -344,7 +353,7 @@ def cancer_expression(
     df = pan_cancer_expression(
         genes=genes,
         normalize="housekeeping",
-        filter_technical_rna=True,
+        drop_technical_rna=True,
     )
     col = f"FPKM_{code}"
     if col not in df.columns:
@@ -383,7 +392,7 @@ def cancer_enriched_genes(
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(
         normalize="housekeeping",
-        filter_technical_rna=True,
+        drop_technical_rna=True,
     )
     fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
     target_col = f"FPKM_{code}"
@@ -408,23 +417,19 @@ def cancer_enriched_genes(
 # ---------- accessors: TCGA + subtype-deconvolved tumor-only TPM ----------
 
 
-def tcga_deconvolved_expression() -> Optional[pd.DataFrame]:
+def tcga_deconvolved_expression() -> pd.DataFrame:
     """Long-form per-(symbol, TCGA code) tumor-only TPM medians.
 
     Returns
     -------
-    pd.DataFrame or None
+    pd.DataFrame
         Columns: ``symbol``, ``cancer_code``, ``tumor_tpm_median``,
-        ``tumor_tpm_q1``, ``tumor_tpm_q3``, ``n_samples``. ``None`` if
-        the CSV isn't bundled.
+        ``tumor_tpm_q1``, ``tumor_tpm_q3``, ``n_samples``.
     """
-    try:
-        return get_data("tcga-deconvolved-expression").copy()
-    except ValueError:
-        return None
+    return get_data("tcga-deconvolved-expression").copy()
 
 
-def subtype_deconvolved_expression() -> Optional[pd.DataFrame]:
+def subtype_deconvolved_expression() -> pd.DataFrame:
     """Long-form per-(cancer_code, subtype, symbol) tumor-only TPM medians.
 
     Subtype-stratified companion to :func:`tcga_deconvolved_expression`.
@@ -435,15 +440,12 @@ def subtype_deconvolved_expression() -> Optional[pd.DataFrame]:
 
     Returns
     -------
-    pd.DataFrame or None
+    pd.DataFrame
         Columns: ``symbol``, ``cancer_code``, ``subtype``,
         ``tumor_tpm_median``, ``tumor_tpm_q1``, ``tumor_tpm_q3``,
-        ``n_samples``. ``None`` if the CSV isn't bundled.
+        ``n_samples``.
     """
-    try:
-        return get_data("subtype-deconvolved-expression").copy()
-    except ValueError:
-        return None
+    return get_data("subtype-deconvolved-expression").copy()
 
 
 # ---------- accessors: tumor-up vs matched normal panels ----------
@@ -451,7 +453,7 @@ def subtype_deconvolved_expression() -> Optional[pd.DataFrame]:
 
 def tumor_up_vs_matched_normal(
     cancer_code: Optional[str] = None,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame:
     """Per-cancer genes dramatically up in tumor vs matched normal tissue.
 
     Built offline by racing the shipped :func:`tcga_deconvolved_expression`
@@ -467,15 +469,12 @@ def tumor_up_vs_matched_normal(
 
     Returns
     -------
-    pd.DataFrame or None
+    pd.DataFrame
         Columns: ``cancer_code``, ``matched_normal_tissue``, ``symbol``,
         ``ensembl_gene_id``, ``fold_change_vs_matched_normal``,
         ``tumor_tpm``, ``matched_normal_ntpm``, ``max_any_normal_ntpm``.
     """
-    try:
-        df = get_data("tumor-up-vs-matched-normal").copy()
-    except ValueError:
-        return None
+    df = get_data("tumor-up-vs-matched-normal").copy()
     if cancer_code:
         df = df[df["cancer_code"] == cancer_code].reset_index(drop=True)
     return df
@@ -483,7 +482,7 @@ def tumor_up_vs_matched_normal(
 
 def heme_tumor_up_vs_matched_normal(
     cancer_code: Optional[str] = None,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame:
     """Heme analogue of :func:`tumor_up_vs_matched_normal`.
 
     DLBC vs lymph_node (mature-B normal background), LAML vs
@@ -493,10 +492,7 @@ def heme_tumor_up_vs_matched_normal(
     normal lineage counterpart, so treat the top hits as one signal
     among several.
     """
-    try:
-        df = get_data("heme-tumor-up-vs-matched-normal").copy()
-    except ValueError:
-        return None
+    df = get_data("heme-tumor-up-vs-matched-normal").copy()
     if cancer_code:
         df = df[df["cancer_code"] == cancer_code].reset_index(drop=True)
     return df
