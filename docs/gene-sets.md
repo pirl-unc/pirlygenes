@@ -57,10 +57,10 @@ vaccination and immunotherapy targets.
 ## Pan-Cancer Expression Reference
 
 `pan_cancer_expression()` returns a DataFrame with median expression
-across 33 TCGA cancer types (raw FPKM plus deterministic TPM companions)
-and 50 HPA normal tissues (nTPM).
+across 33 TCGA cancer types (raw FPKM, with optional deterministic TPM
+companions) and 50 HPA normal tissues (nTPM).
 
-By default, `normalize="clean_tpm"`: the accessor preserves raw TCGA
+By default, `normalize="tpm_clean"`: the accessor preserves raw TCGA
 `*_FPKM`, adds derived TCGA `*_TPM`, preserves HPA `*_nTPM`, cleans
 TPM-scale analysis columns, and adds the clean values as
 `*_TPM_clean` / `*_nTPM_clean`.
@@ -72,24 +72,27 @@ ref = pan_cancer_expression()
 # Columns: Ensembl_Gene_ID, Symbol, adipose_tissue_nTPM, ..., ACC_FPKM, ..., ACC_TPM, ...
 ```
 
-Supports normalization:
+Supports normalization with `None`, a string, or a list of strings:
 - `pan_cancer_expression(normalize=None)` — raw/provenance view with
-  `*_FPKM`, derived `*_TPM`, and `*_nTPM` columns unchanged
-- `pan_cancer_expression(normalize="tpm")` — explicit alias for the
-  raw/provenance TPM-companion view
+  `*_FPKM` and `*_nTPM` columns unchanged and no derived TPM columns
+- `pan_cancer_expression(normalize="tpm")` or `normalize="TPM"` — add
+  deterministic `*_TPM` companions derived from `*_FPKM`
+- `pan_cancer_expression(normalize="tpm_clean")` — TPM scale plus zero
+  mitochondrial, NUMT-like, rRNA-like, and MALAT1/NEAT1 rows, then pin each
+  clean analysis column to sum to 1e6. Base `*_nTPM`, `*_TPM`, and
+  `*_FPKM` columns remain unchanged; clean values are added as
+  `*_nTPM_clean` and `*_TPM_clean`.
 - `pan_cancer_expression(normalize="hk")` — fold TPM-scale analysis
   columns over housekeeping median, added as `*_nTPM_hk` and `*_TPM_hk`
 - `pan_cancer_expression(normalize="percentile")` — percentile ranks
   on TPM-scale analysis columns, added as `*_nTPM_percentile` and
   `*_TPM_percentile`
+- `pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])` —
+  add all requested normalized column families in one call. `tpm_clean`,
+  `hk`, and `percentile` imply `tpm`.
 - `pan_cancer_expression(log_transform=True)` — log2 transform on
   the active normalized columns, or on base `*_nTPM` / `*_TPM` columns
-  when `normalize=None` or `normalize="tpm"`
-- `pan_cancer_expression(normalize="clean_tpm")` — TPM scale plus zero
-  mitochondrial, NUMT-like, rRNA-like, and MALAT1/NEAT1 rows, then pin each
-  clean analysis column to sum to 1e6. Base `*_nTPM`, `*_TPM`, and
-  `*_FPKM` columns remain unchanged; clean values are added as
-  `*_nTPM_clean` and `*_TPM_clean`.
+  when `normalize="tpm"`
 
 `normalize_expression()` in `pirlygenes.expression` implements the shared
 transform for samples and references. The default removal set is intentionally

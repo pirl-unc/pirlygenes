@@ -142,9 +142,10 @@ from pirlygenes.expression import (
 )
 ```
 
-`pan_cancer_expression()` exposes a single `normalize=` preset so callers
-don't have to chain the primitives by hand. The default is
-`normalize="clean_tpm"`: TCGA `*_FPKM` columns are preserved for provenance,
+`pan_cancer_expression()` exposes a single `normalize=` keyword so callers
+don't have to chain the primitives by hand. It accepts `None`, a string, or a
+list of strings. The default is `normalize="tpm_clean"` (equivalent to
+`normalize=["tpm_clean"]`): TCGA `*_FPKM` columns are preserved for provenance,
 deterministic TCGA `*_TPM` companions are added, HPA `*_nTPM` columns are
 preserved, and cleaned TPM-scale analysis columns are added as
 `*_TPM_clean` / `*_nTPM_clean`.
@@ -154,23 +155,25 @@ preserved, and cleaned TPM-scale analysis columns are added as
 # columns and pin each column sum back at 1e6. Base *_nTPM, *_TPM, and
 # *_FPKM columns remain unchanged; clean values are added as *_nTPM_clean
 # and *_TPM_clean companion columns.
-pan_cancer_expression()                          # normalize="clean_tpm"
+pan_cancer_expression()                          # normalize="tpm_clean"
 
-# Raw/provenance view: raw <code>_FPKM from TCGA and <tissue>_nTPM from HPA,
-# plus deterministic <code>_TPM companions derived from the FPKM columns.
+# Raw/provenance view: raw <code>_FPKM from TCGA and <tissue>_nTPM from HPA.
 pan_cancer_expression(normalize=None)
 
-# Explicit alias for the raw/provenance TPM-companion view.
+# Add deterministic <code>_TPM companions derived from the FPKM columns.
 pan_cancer_expression(normalize="tpm")
 
 # Add housekeeping-normalized TPM-scale columns. Percentile ranks are also
 # available via normalize="percentile" as *_percentile columns.
 pan_cancer_expression(normalize="hk")
+
+# Combine modes in one call; tpm_clean, hk, and percentile each imply "tpm".
+pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])
 ```
 
 The three older kwargs (`technical_rna_normalize`, `remove_noncoding`,
 `renormalize_to_million`) introduced in 5.1.1 still work but emit a
-`DeprecationWarning`. Use `normalize="clean_tpm"` for the new
+`DeprecationWarning`. Use `normalize="tpm_clean"` for the new
 TPM-scaled, technical-RNA-cleaned view; compose
 `normalize_expression()` / `renormalize_to_million()` when you need
 exact legacy column names or semantics. The kwargs will be removed in a

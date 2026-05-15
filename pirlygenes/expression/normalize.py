@@ -429,7 +429,8 @@ def add_tpm_columns_from_fpkm(
 
     This is useful for reference tables where raw FPKM should remain
     available for provenance, while downstream analysis wants a
-    deterministic TPM-scale view.
+    deterministic TPM-scale view. Existing target columns are left
+    unchanged unless ``overwrite=True``.
     """
     if df is None:
         return None, {"applied": False, "reason": "no table", "columns": {}}
@@ -455,10 +456,12 @@ def add_tpm_columns_from_fpkm(
         else:
             target_col = target_prefix + source_col
         if target_col in out.columns and not overwrite:
-            raise ValueError(
-                f"target TPM column {target_col!r} already exists; "
-                "pass overwrite=True to replace it"
-            )
+            columns[source_col] = {
+                "target_column": target_col,
+                "skipped": True,
+                "reason": "target column already exists",
+            }
+            continue
         out[target_col] = converted[source_col]
         columns[source_col] = {
             "target_column": target_col,
