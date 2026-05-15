@@ -63,48 +63,7 @@ def _load_extra_tx_mappings() -> dict[str, str]:
     return out
 
 
-class _LazyExtraTxMappings:
-    """Mapping proxy that reads ``extra-tx-mappings.csv`` only on first
-    access. Preserves the legacy trufflepig pattern (``extra_tx_mappings``
-    as a module-level dict-like) without paying the CSV-read cost at
-    ``import pirlygenes`` time."""
-
-    def _data(self) -> dict[str, str]:
-        return _load_extra_tx_mappings()
-
-    def __getitem__(self, key):
-        return self._data()[key]
-
-    def get(self, key, default=None):
-        return self._data().get(key, default)
-
-    def __contains__(self, key):
-        return key in self._data()
-
-    def __iter__(self):
-        return iter(self._data())
-
-    def __len__(self):
-        return len(self._data())
-
-    def items(self):
-        return self._data().items()
-
-    def keys(self):
-        return self._data().keys()
-
-    def values(self):
-        return self._data().values()
-
-    def __repr__(self):
-        return f"_LazyExtraTxMappings({len(self._data())} entries)"
-
-
-# Module-level dict-like proxy that defers the CSV read until first use.
-# Tests that monkey-patch the loader before any access still see the
-# fixture; downstream code that never touches transcript→gene rollup
-# pays zero cost.
-extra_tx_mappings = _LazyExtraTxMappings()
+extra_tx_mappings = _load_extra_tx_mappings()
 
 
 def _expanded_tx_map(tx_to_gene_name: dict[str, str]) -> dict[str, str]:
