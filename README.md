@@ -145,6 +145,22 @@ from pirlygenes.expression import (
 )
 ```
 
+`pan_cancer_expression()` and `subtype_deconvolved_expression()` take
+three bundled-rescaling kwargs so callers don't have to chain the
+primitives by hand:
+
+```python
+pan_cancer_expression(
+    technical_rna_normalize=True,   # zero mtDNA/rRNA/NUMT/MALAT1+NEAT1 rows
+    remove_noncoding=False,         # additionally zero noncoding biotypes (needs a biotype column)
+    renormalize_to_million=True,    # rescale each value column to sum to 10⁶
+)
+```
+
+For the long-form `subtype_deconvolved_expression()`, the zero-and-
+renormalize step runs per `(cancer_code, subtype)` group so each
+cohort's TPM convention is preserved independently.
+
 The gene-family panels are ENSG-keyed sets derived from every
 installed Ensembl release (`numt-pseudogenes.csv`,
 `nuclear-retained-lncrnas.csv`, etc.); `pirlygenes.expression.qc`

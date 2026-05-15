@@ -373,3 +373,68 @@ def test_normalize_expression_remove_noncoding_with_biotype_column():
     assert record["removed_technical_gene_count"] == 1
     assert record["removed_noncoding_gene_count"] == 2
     assert out["TPM_S1"].sum() == pytest.approx(1_000_000)
+
+
+# ---------- bundled-kwarg surface on the accessors ----------
+
+
+def test_pan_cancer_expression_technical_rna_normalize_zeroes_mt_rows():
+    """``technical_rna_normalize=True`` zeroes mtDNA / rRNA / NUMT /
+    nuclear-retained-lncRNA rows and renormalizes each column back to
+    the original total. Distinct from ``drop_technical_rna``, which
+    drops those rows entirely."""
+    baseline = pan_cancer_expression()
+    fpkm_col = next(c for c in baseline.columns if c.startswith("FPKM_"))
+    raw_total = float(pd.to_numeric(baseline[fpkm_col], errors="coerce").sum())
+
+    out = pan_cancer_expression(technical_rna_normalize=True)
+    mt_mask = out["Symbol"].astype(str).str.startswith("MT-")
+    assert mt_mask.any(), "expected mtDNA rows in the wide frame"
+    assert out.loc[mt_mask, fpkm_col].astype(float).sum() == pytest.approx(0.0)
+    # Total mass is preserved (within float drift) — the zero-and-
+    # renormalize transform pins the per-column total to its input.
+    out_total = float(pd.to_numeric(out[fpkm_col], errors="coerce").sum())
+    assert out_total == pytest.approx(raw_total, rel=1e-6)
+
+
+def test_pan_cancer_expression_renormalize_to_million_pins_column_sums():
+    """``renormalize_to_million=True`` rescales every value column to
+    sum to 10⁶."""
+    out = pan_cancer_expression(renormalize_to_million=True)
+    value_cols = [
+        c
+        for c in out.columns
+        if c.startswith(("FPKM_", "nTPM_", "tcga_"))
+    ]
+    assert value_cols
+    for col in value_cols:
+        col_sum = float(pd.to_numeric(out[col], errors="coerce").sum())
+        if col_sum > 0:
+            assert col_sum == pytest.approx(1_000_000, rel=1e-6)
+
+
+def test_subtype_deconvolved_expression_technical_rna_normalize_per_group():
+    """Per-(cancer_code, subtype) zero-and-renormalize: mtDNA rows in
+    each group drop to 0 in the median column."""
+    out = subtype_deconvolved_expression(technical_rna_normalize=True)
+    mt = out[out["symbol"].astype(str).str.startswith("MT-")]
+    assert not mt.empty, "expected MT- rows in the subtype table"
+    assert mt["tumor_tpm_median"].astype(float).sum() == pytest.approx(0.0)
+
+
+def test_subtype_deconvolved_expression_renormalize_to_million_per_group():
+    """With ``renormalize_to_million=True``, each (cancer_code, subtype)
+    group's tumor_tpm_median should sum to ~10⁶."""
+    out = subtype_deconvolved_expression(
+        technical_rna_normalize=True,
+        renormalize_to_million=True,
+    )
+    sums = (
+        out.groupby(["cancer_code", "subtype"], dropna=False)["tumor_tpm_median"]
+        .sum()
+    )
+    positive = sums[sums > 0]
+    assert not positive.empty
+    # Every group with positive mass should be pinned to 10⁶.
+    for total in positive:
+        assert total == pytest.approx(1_000_000, rel=1e-3)

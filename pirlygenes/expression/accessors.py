@@ -77,6 +77,7 @@ import pandas as pd
 from ..gene_families import gene_family_ids
 from ..gene_sets_cancer import housekeeping_gene_ids
 from ..load_dataset import get_data
+from .normalize import normalize_expression, renormalize_to_million
 from .qc import _TECHNICAL_RNA_FAMILIES
 
 
@@ -220,6 +221,71 @@ def filter_to_genes(
     return df[mask].reset_index(drop=True)
 
 
+def _renormalize_to_million_grouped(
+    df: pd.DataFrame,
+    *,
+    value_cols: Sequence[str],
+    group_cols: Sequence[str],
+) -> pd.DataFrame:
+    """Within each (group_cols) partition, rescale each value column so
+    its non-NaN sum is 10⁶. The whole-table version in
+    :func:`renormalize_to_million` rescales globally, which collapses
+    long-form per-group medians into per-row crumbs — long-form callers
+    want the TPM convention enforced per cohort, not across cohorts."""
+    out = df.copy()
+    for col in value_cols:
+        if col not in out.columns:
+            continue
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+    for _key, idx in out.groupby(list(group_cols), dropna=False).groups.items():
+        idx = list(idx)
+        for col in value_cols:
+            if col not in out.columns:
+                continue
+            col_sum = float(out.loc[idx, col].sum())
+            if col_sum <= 0:
+                continue
+            out.loc[idx, col] = out.loc[idx, col] * (1e6 / col_sum)
+    return out
+
+
+def _bundled_normalize(
+    df: pd.DataFrame,
+    *,
+    technical_rna_normalize: bool,
+    remove_noncoding: bool,
+    renormalize: bool,
+    label_col: str = "Symbol",
+    id_col: Optional[str] = "Ensembl_Gene_ID",
+    value_cols: Optional[Sequence[str]] = None,
+    group_cols: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
+    """Bundled rescaling: zero technical-RNA (optionally noncoding) rows
+    and renormalize each column's remaining mass, then optionally pin
+    every column to a 10⁶ total.
+
+    Matches the kwarg surface trufflepig's local reference accessors use
+    so callers can pull these transforms from pirlygenes directly.
+    """
+    if technical_rna_normalize or remove_noncoding:
+        df, _ = normalize_expression(
+            df,
+            label_col=label_col,
+            id_col=id_col,
+            value_cols=value_cols,
+            group_cols=group_cols,
+            remove_noncoding=remove_noncoding,
+        )
+    if renormalize:
+        if group_cols and value_cols:
+            df = _renormalize_to_million_grouped(
+                df, value_cols=value_cols, group_cols=group_cols,
+            )
+        else:
+            df, _ = renormalize_to_million(df, value_cols=value_cols)
+    return df
+
+
 def _apply_pipeline(
     df: pd.DataFrame,
     *,
@@ -278,6 +344,9 @@ def pan_cancer_expression(
     genes: Optional[Iterable[str]] = None,
     normalize: Optional[str] = None,
     log_transform: bool = False,
+    technical_rna_normalize: bool = False,
+    remove_noncoding: bool = False,
+    renormalize_to_million: bool = False,
     drop_technical_rna: bool = False,
 ) -> pd.DataFrame:
     """Wide-form expression across HPA normal tissues + TCGA cancer types.
@@ -297,13 +366,28 @@ def pan_cancer_expression(
         ``None`` (default) — raw FPKM / nTPM / tumor-only TPM.
     log_transform
         Apply ``log2(x + 1)`` to value columns after any normalization.
+    technical_rna_normalize
+        Zero mtDNA / NUMT / rRNA / nuclear-retained-lncRNA rows and
+        renormalize each column's remaining mass back to the original
+        per-column total. Uses :func:`normalize_expression` and so picks
+        up the same symbol-regex fallback for genes not in the curated
+        family CSVs.
+    remove_noncoding
+        Additionally zero rows with noncoding biotypes (keeping
+        protein-coding, Ig, and TCR biotypes) when a biotype column is
+        present. Only meaningful in combination with
+        ``technical_rna_normalize`` or when the upstream frame already
+        carries a ``biotype`` column.
+    renormalize_to_million
+        After any zero-and-renormalize step, rescale every column so its
+        non-NaN sum is exactly 10⁶ (the standard TPM convention). Off by
+        default so the returned magnitudes match raw FPKM / nTPM unless
+        a caller explicitly opts in.
     drop_technical_rna
-        Drop mtDNA / NUMT / rRNA / nuclear-retained-lncRNA rows before
-        normalization (uses :func:`filter_technical_rna`). Recommended
-        when the goal is to compare protein-coding signal across
-        cohorts. Unrelated to :func:`normalize_expression`'s zero-and-
-        renormalize approach — see Boundary note in the module
-        docstring.
+        Drop mtDNA / NUMT / rRNA / nuclear-retained-lncRNA rows entirely
+        (uses :func:`filter_technical_rna`). Distinct from
+        ``technical_rna_normalize``: this removes rows, the other zeroes
+        them in place. See Boundary note in the module docstring.
 
     Returns
     -------
@@ -312,6 +396,12 @@ def pan_cancer_expression(
     """
     df = get_data("pan-cancer-expression")
     df = df.merge(_tcga_deconv_wide_cached(), on="Symbol", how="left")
+    df = _bundled_normalize(
+        df,
+        technical_rna_normalize=technical_rna_normalize,
+        remove_noncoding=remove_noncoding,
+        renormalize=renormalize_to_million,
+    )
     return _apply_pipeline(
         df,
         drop_technical_rna=drop_technical_rna,
@@ -422,7 +512,19 @@ def tcga_deconvolved_expression() -> pd.DataFrame:
     return get_data("tcga-deconvolved-expression").copy()
 
 
-def subtype_deconvolved_expression() -> pd.DataFrame:
+_SUBTYPE_VALUE_COLS: tuple[str, ...] = (
+    "tumor_tpm_median",
+    "tumor_tpm_q1",
+    "tumor_tpm_q3",
+)
+_SUBTYPE_GROUP_COLS: tuple[str, ...] = ("cancer_code", "subtype")
+
+
+def subtype_deconvolved_expression(
+    technical_rna_normalize: bool = False,
+    remove_noncoding: bool = False,
+    renormalize_to_million: bool = False,
+) -> pd.DataFrame:
     """Long-form per-(cancer_code, subtype, symbol) tumor-only TPM medians.
 
     Subtype-stratified companion to :func:`tcga_deconvolved_expression`.
@@ -431,6 +533,21 @@ def subtype_deconvolved_expression() -> pd.DataFrame:
     public samples, GSE299759 chondrosarcoma, GSE75885 sarcoma splits,
     and more.
 
+    Parameters
+    ----------
+    technical_rna_normalize
+        Within each (cancer_code, subtype) group, zero technical-RNA
+        rows in the tumor TPM columns and rescale the surviving mass to
+        the original per-group total.
+    remove_noncoding
+        Additionally zero noncoding biotypes (kept: protein-coding, Ig,
+        TCR) when a biotype column is present. Only meaningful with
+        ``technical_rna_normalize``.
+    renormalize_to_million
+        After the zero-and-renormalize step, rescale every tumor TPM
+        column so its non-NaN sum is 10⁶. Off by default so the returned
+        magnitudes match the cached medians unless explicitly opted in.
+
     Returns
     -------
     pd.DataFrame
@@ -438,7 +555,17 @@ def subtype_deconvolved_expression() -> pd.DataFrame:
         ``tumor_tpm_median``, ``tumor_tpm_q1``, ``tumor_tpm_q3``,
         ``n_samples``.
     """
-    return get_data("subtype-deconvolved-expression").copy()
+    df = get_data("subtype-deconvolved-expression").copy()
+    return _bundled_normalize(
+        df,
+        technical_rna_normalize=technical_rna_normalize,
+        remove_noncoding=remove_noncoding,
+        renormalize=renormalize_to_million,
+        label_col="symbol",
+        id_col=None,
+        value_cols=_SUBTYPE_VALUE_COLS,
+        group_cols=_SUBTYPE_GROUP_COLS,
+    )
 
 
 # ---------- accessors: tumor-up vs matched normal panels ----------
