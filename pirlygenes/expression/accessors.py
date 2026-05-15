@@ -396,7 +396,10 @@ def pan_cancer_expression(
         Named preset for unit scale and technical-RNA normalization:
 
         - ``None`` (default) — add ``TPM_<code>`` companion columns and
-          otherwise leave values unchanged.
+          otherwise leave values unchanged. This preserves raw TCGA
+          ``FPKM_<code>`` values and HPA ``nTPM_<tissue>`` values; it
+          does not clean artifact genes, HK-scale, percentile-rank, or
+          log-transform the analysis columns.
         - ``"tpm"`` — explicit alias for the default TPM-companion view.
         - ``"hk"`` — divide TPM-scale analysis columns
           (``nTPM_<tissue>``, ``TPM_<code>``) by their housekeeping-gene

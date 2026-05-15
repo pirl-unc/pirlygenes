@@ -60,6 +60,10 @@ vaccination and immunotherapy targets.
 across 33 TCGA cancer types (raw FPKM plus deterministic TPM companions)
 and 50 HPA normal tissues (nTPM).
 
+By default, `normalization=None`: the accessor preserves raw TCGA
+`FPKM_*`, adds derived TCGA `TPM_*`, preserves HPA `nTPM_*`, and applies
+no cleanup, HK scaling, percentile transform, or log transform.
+
 ```python
 from pirlygenes.expression import pan_cancer_expression
 
@@ -81,6 +85,10 @@ Supports normalization:
   analysis column to sum to 1e6. Raw `FPKM_*` columns remain available for
   provenance, and pre-clean TPM-scale values are preserved as
   `nTPM_raw_*` and `TPM_raw_*` columns.
+
+The previous `normalize=` keyword is not accepted in 5.2.0. Use
+`normalization="hk"` instead of `normalize="housekeeping"`, and
+`normalization="percentile"` instead of `normalize="percentile"`.
 
 `normalize_expression()` in `pirlygenes.expression` implements the shared
 transform for samples and references. The default removal set is intentionally

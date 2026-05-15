@@ -143,7 +143,11 @@ from pirlygenes.expression import (
 ```
 
 `pan_cancer_expression()` exposes a single `normalization=` preset so
-callers don't have to chain the primitives by hand:
+callers don't have to chain the primitives by hand. The default is
+`normalization=None`: TCGA `FPKM_*` columns are preserved, deterministic
+TCGA `TPM_*` companions are added, HPA `nTPM_*` columns are preserved, and
+no artifact-gene cleanup, housekeeping scaling, percentile transform, or
+log transform is applied.
 
 ```python
 # Raw FPKM_<code> from TCGA and nTPM_<tissue> from HPA, plus deterministic
@@ -171,6 +175,10 @@ TPM-scaled, technical-RNA-cleaned view; compose
 `normalize_expression()` / `renormalize_to_million()` when you need
 exact legacy column names or semantics. The kwargs will be removed in a
 later 5.x release.
+
+The older `normalize=` keyword is intentionally not accepted in 5.2.0.
+Use `normalization="hk"` instead of `normalize="housekeeping"`, and
+`normalization="percentile"` instead of `normalize="percentile"`.
 
 The gene-family panels are ENSG-keyed sets derived from every
 installed Ensembl release (`numt-pseudogenes.csv`,
@@ -288,7 +296,9 @@ If the `pirlygenes` console-script is still on PATH from a prior install, it now
 - **v5.2.0** — add `normalization=` presets for TPM-scaled and
   technical-RNA-cleaned expression accessors, derive `TPM_<TCGA>`
   columns from the ID-keyed pan-cancer `FPKM_<TCGA>` columns, and remove
-  deconvolution-derived reference tables from the package.
+  deconvolution-derived reference tables from the package. This is a
+  breaking cleanup for the old `normalize=` keyword; use
+  `normalization="hk"` or `normalization="percentile"` instead.
 - **v5.1.0** — restore expression matrices to
   pirlygenes and add `pirlygenes.expression` with the rescaling
   primitives, the QC classifier, and the transcript→gene aggregator.
