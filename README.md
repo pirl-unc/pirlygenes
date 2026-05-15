@@ -156,7 +156,7 @@ pan_cancer_expression(normalization="tpm")
 # Zero mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows across TPM-scale analysis
 # columns (nTPM_*, TPM_*) and pin each column sum back at 1e6. Raw FPKM
 # columns remain unchanged as provenance.
-pan_cancer_expression(normalization="tpm-clean")
+pan_cancer_expression(normalization="clean_tpm")
 
 # Divide TPM-scale analysis columns by their housekeeping-gene median.
 # Percentile ranks are also available via normalization="percentile".
@@ -165,7 +165,7 @@ pan_cancer_expression(normalization="hk")
 
 The three older kwargs (`technical_rna_normalize`, `remove_noncoding`,
 `renormalize_to_million`) introduced in 5.1.1 still work but emit a
-`DeprecationWarning`. Use `normalization="tpm-clean"` for the new
+`DeprecationWarning`. Use `normalization="clean_tpm"` for the new
 TPM-scaled, technical-RNA-cleaned view; compose
 `normalize_expression()` / `renormalize_to_million()` when you need
 exact legacy column names or semantics. The kwargs will be removed in a

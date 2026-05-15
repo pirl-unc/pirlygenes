@@ -293,7 +293,7 @@ def _bundled_normalize(
     return df
 
 
-_VALID_NORMALIZATIONS_PAN = ("tpm", "hk", "percentile", "tpm-clean")
+_VALID_NORMALIZATIONS_PAN = ("tpm", "hk", "percentile", "clean_tpm")
 
 
 def _warn_legacy_normalize_kwargs(
@@ -308,7 +308,7 @@ def _warn_legacy_normalize_kwargs(
         return
     names = ", ".join(truthy)
     warnings.warn(
-        f"{names} is deprecated. Use normalization=\"tpm-clean\" for "
+        f"{names} is deprecated. Use normalization=\"clean_tpm\" for "
         "the new TPM-scaled, technical-RNA-cleaned view, or compose the "
         "normalization primitives normalize_expression()/"
         "renormalize_to_million() when you need exact legacy column "
@@ -377,7 +377,7 @@ def pan_cancer_expression(
           median.
         - ``"percentile"`` — within-column percentile rank (0–100),
           applied to TPM-scale analysis columns.
-        - ``"tpm-clean"`` — zero mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows
+        - ``"clean_tpm"`` — zero mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows
           across TPM-scale analysis columns and pin each column's sum
           back to 10⁶. This is the recommended view for analysis:
           every analysis column on the same scale, technical-RNA
@@ -399,8 +399,8 @@ def pan_cancer_expression(
     drop_technical_rna
         Drop mtDNA / NUMT / rRNA / nuclear-retained-lncRNA rows entirely
         (uses :func:`filter_technical_rna`). Distinct from
-        ``normalization="tpm-clean"``: this removes rows,
-        ``"tpm-clean"`` zeroes them in place. See Boundary note in the
+        ``normalization="clean_tpm"``: this removes rows,
+        ``"clean_tpm"`` zeroes them in place. See Boundary note in the
         module docstring.
 
     Returns
@@ -425,14 +425,14 @@ def pan_cancer_expression(
     df, _ = add_tpm_columns_from_fpkm(df)
     analysis_value_cols = _pan_analysis_value_cols(df)
 
-    do_tech_norm = technical_rna_normalize or normalization == "tpm-clean"
-    do_renorm = renormalize_to_million or normalization == "tpm-clean"
+    do_tech_norm = technical_rna_normalize or normalization == "clean_tpm"
+    do_renorm = renormalize_to_million or normalization == "clean_tpm"
     legacy_kwargs_used = any(
         (technical_rna_normalize, remove_noncoding, renormalize_to_million)
     )
     normalize_value_cols = (
         None
-        if legacy_kwargs_used and normalization != "tpm-clean"
+        if legacy_kwargs_used and normalization != "clean_tpm"
         else analysis_value_cols
     )
     df = _bundled_normalize(

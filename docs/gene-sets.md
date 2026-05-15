@@ -76,7 +76,7 @@ Supports normalization:
   on TPM-scale analysis columns
 - `pan_cancer_expression(log_transform=True)` — log2 transform on
   TPM-scale analysis columns
-- `pan_cancer_expression(normalization="tpm-clean")` — TPM scale plus zero
+- `pan_cancer_expression(normalization="clean_tpm")` — TPM scale plus zero
   mitochondrial, NUMT-like, rRNA-like, and MALAT1/NEAT1 rows, then pin each
   analysis column to sum to 1e6. Raw `FPKM_*` columns remain available for
   provenance.

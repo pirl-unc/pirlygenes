@@ -422,10 +422,10 @@ def test_pan_cancer_expression_normalization_percentile_keeps_native_names():
 
 
 def test_pan_cancer_expression_normalization_clean_tpm_zeroes_technical_rna():
-    """``normalization="tpm-clean"`` zeroes mtDNA / rRNA / NUMT / MALAT1+NEAT1
+    """``normalization="clean_tpm"`` zeroes mtDNA / rRNA / NUMT / MALAT1+NEAT1
     rows across TPM-scale analysis columns."""
     raw = pan_cancer_expression()
-    df = pan_cancer_expression(normalization="tpm-clean")
+    df = pan_cancer_expression(normalization="clean_tpm")
     mt_mask = df["Symbol"].astype(str).str.startswith("MT-")
     assert mt_mask.any()
     for col in df.columns:
@@ -440,9 +440,9 @@ def test_pan_cancer_expression_normalization_clean_tpm_zeroes_technical_rna():
 
 
 def test_pan_cancer_expression_normalization_clean_tpm_pins_cols_to_million():
-    """After ``normalization="tpm-clean"`` every TPM/nTPM analysis column
+    """After ``normalization="clean_tpm"`` every TPM/nTPM analysis column
     sums to 10⁶."""
-    df = pan_cancer_expression(normalization="tpm-clean")
+    df = pan_cancer_expression(normalization="clean_tpm")
     value_cols = [
         c for c in df.columns if c.startswith(("TPM_", "nTPM_"))
     ]
