@@ -62,8 +62,8 @@ The signal exposes:
 ### Correlation Context
 
 The sample is compared against the HPA normal-tissue columns
-(`nTPM_<tissue>`) and TCGA cancer columns (`FPKM_<code>`) in the bundled
-pan-cancer expression reference. These are broad context signals, not
+(`<tissue>_nTPM`) and TCGA cancer columns (`<code>_FPKM` / `<code>_TPM`) in
+the bundled pan-cancer expression reference. These are broad context signals, not
 diagnostic labels. A low-purity tumor, a differentiated tumor, and its
 normal parent tissue may all correlate similarly.
 

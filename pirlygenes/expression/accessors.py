@@ -86,14 +86,22 @@ from .qc import _TECHNICAL_RNA_FAMILIES
 _VALUE_COL_PREFIXES = ("nTPM_", "FPKM_", "TPM_")
 _PAN_ANALYSIS_VALUE_COL_PREFIXES = ("nTPM_", "TPM_")
 _PAN_RAW_ANALYSIS_VALUE_COL_PREFIXES = ("nTPM_raw_", "TPM_raw_")
+_VALUE_COL_SUFFIXES = ("_nTPM", "_FPKM", "_TPM")
+_RAW_VALUE_COL_SUFFIXES = ("_nTPM_raw", "_TPM_raw")
 
 
 def _default_value_cols(df: pd.DataFrame) -> list[str]:
     """Heuristic: wide-form expression frames use prefixed column names."""
     return [
         c for c in df.columns
-        if c.startswith(_VALUE_COL_PREFIXES)
-        and not c.startswith(_PAN_RAW_ANALYSIS_VALUE_COL_PREFIXES)
+        if (
+            c.startswith(_VALUE_COL_PREFIXES)
+            or c.endswith(_VALUE_COL_SUFFIXES)
+        )
+        and not (
+            c.startswith(_PAN_RAW_ANALYSIS_VALUE_COL_PREFIXES)
+            or c.endswith(_RAW_VALUE_COL_SUFFIXES)
+        )
     ]
 
 
@@ -125,6 +133,30 @@ def _add_raw_pan_analysis_value_cols(
     return out
 
 
+def _pan_public_col_name(col: str) -> str:
+    """Map internal unit-prefix columns to public entity-suffix columns."""
+    prefix_to_suffix = (
+        ("nTPM_raw_", "_nTPM_raw"),
+        ("TPM_raw_", "_TPM_raw"),
+        ("nTPM_", "_nTPM"),
+        ("FPKM_", "_FPKM"),
+        ("TPM_", "_TPM"),
+    )
+    for prefix, suffix in prefix_to_suffix:
+        if col.startswith(prefix):
+            return f"{col[len(prefix):]}{suffix}"
+    return col
+
+
+def _rename_pan_expression_columns_entity_first(df: pd.DataFrame) -> pd.DataFrame:
+    """Return the public pan-cancer column schema.
+
+    The packaged CSV and internal normalization pipeline use unit-prefix
+    names. The accessor returns entity-first names for readability.
+    """
+    return df.rename(columns={c: _pan_public_col_name(c) for c in df.columns})
+
+
 def _resolve_id_col(df: pd.DataFrame) -> Optional[str]:
     """Find the Ensembl-ID column — wide frames use ``Ensembl_Gene_ID``,
     long frames may use ``ensembl_gene_id``."""
@@ -153,8 +185,10 @@ def normalize_to_housekeeping(
         Expression frame with an ``Ensembl_Gene_ID`` column and one or
         more numeric value columns.
     value_cols
-        Columns to rescale. If ``None``, picks columns starting with
-        ``nTPM_``, ``FPKM_``, or ``TPM_``.
+        Columns to rescale. If ``None``, picks columns using either the
+        internal unit-prefix schema (``nTPM_``, ``FPKM_``, ``TPM_``) or
+        the public entity-suffix schema (``*_nTPM``, ``*_FPKM``,
+        ``*_TPM``), excluding raw companion columns.
 
     Returns
     -------
@@ -389,10 +423,10 @@ def pan_cancer_expression(
 ) -> pd.DataFrame:
     """Wide-form expression across HPA normal tissues + TCGA cancer types.
 
-    50 normal tissues from HPA v23 consensus (``nTPM_<tissue>`` columns)
+    50 normal tissues from HPA v23 consensus (``<tissue>_nTPM`` columns)
     plus 33 TCGA cancer types from HPA pathology + GDC/STAR reprocessing
-    (``FPKM_<code>`` in native units). The accessor always appends
-    deterministic ``TPM_<code>`` companion columns derived from the FPKM
+    (``<code>_FPKM`` in native units). The accessor always appends
+    deterministic ``<code>_TPM`` companion columns derived from the FPKM
     columns, preserving the raw FPKM columns for provenance.
 
     Parameters
@@ -403,22 +437,22 @@ def pan_cancer_expression(
         Named preset for unit scale and technical-RNA normalization:
 
         - ``"clean_tpm"`` (default) — preserve pre-clean values as
-          ``nTPM_raw_<tissue>`` and ``TPM_raw_<code>`` columns, then zero
+          ``<tissue>_nTPM_raw`` and ``<code>_TPM_raw`` columns, then zero
           mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows
           across TPM-scale analysis columns and pin each column's sum
           back to 10⁶. This is the recommended view for analysis:
           every analysis column on the same scale, technical-RNA
-          denominator drift removed. Raw ``FPKM_<code>`` columns remain
+          denominator drift removed. Raw ``<code>_FPKM`` columns remain
           unchanged.
-        - ``None`` — add ``TPM_<code>`` companion columns and otherwise
+        - ``None`` — add ``<code>_TPM`` companion columns and otherwise
           leave values unchanged. This is the raw/provenance view:
-          raw TCGA ``FPKM_<code>`` values and HPA ``nTPM_<tissue>``
+          raw TCGA ``<code>_FPKM`` values and HPA ``<tissue>_nTPM``
           values are preserved, with no artifact-gene cleanup, HK
           scaling, percentile-rank, or log transform.
         - ``"tpm"`` — explicit alias for the raw/provenance TPM-companion
           view.
         - ``"hk"`` or ``"housekeeping"`` — divide TPM-scale analysis columns
-          (``nTPM_<tissue>``, ``TPM_<code>``) by their housekeeping-gene
+          (``<tissue>_nTPM``, ``<code>_TPM``) by their housekeeping-gene
           median.
         - ``"percentile"`` — within-column percentile rank (0–100),
           applied to TPM-scale analysis columns.
@@ -490,7 +524,7 @@ def pan_cancer_expression(
     )
     if normalize == "hk":
         df = normalize_to_housekeeping(df, value_cols=analysis_value_cols)
-    return _apply_pipeline(
+    df = _apply_pipeline(
         df,
         drop_technical_rna=drop_technical_rna,
         genes=genes,
@@ -498,6 +532,7 @@ def pan_cancer_expression(
         percentile=normalize == "percentile",
         value_cols=analysis_value_cols,
     )
+    return _rename_pan_expression_columns_entity_first(df)
 
 
 def cancer_expression(
@@ -527,7 +562,7 @@ def cancer_expression(
         normalize="hk",
         drop_technical_rna=True,
     )
-    col = f"TPM_{code}"
+    col = f"{code}_TPM"
     if col not in df.columns:
         raise ValueError(
             f"no TPM column for {cancer_type!r} (resolved to {code!r})"
@@ -566,8 +601,8 @@ def cancer_enriched_genes(
         normalize="hk",
         drop_technical_rna=True,
     )
-    tpm_cols = [c for c in df.columns if c.startswith("TPM_")]
-    target_col = f"TPM_{code}"
+    tpm_cols = [c for c in df.columns if c.endswith("_TPM")]
+    target_col = f"{code}_TPM"
     if target_col not in df.columns:
         raise ValueError(
             f"no TPM column for {cancer_type!r} (resolved to {code!r})"

@@ -144,20 +144,20 @@ from pirlygenes.expression import (
 
 `pan_cancer_expression()` exposes a single `normalize=` preset so callers
 don't have to chain the primitives by hand. The default is
-`normalize="clean_tpm"`: TCGA `FPKM_*` columns are preserved for provenance,
-deterministic TCGA `TPM_*` companions are added, HPA `nTPM_*` columns are
+`normalize="clean_tpm"`: TCGA `*_FPKM` columns are preserved for provenance,
+deterministic TCGA `*_TPM` companions are added, HPA `*_nTPM` columns are
 preserved, TPM-scale analysis columns are cleaned and pinned to 1e6, and
-pre-clean TPM-scale values are kept as `TPM_raw_*` / `nTPM_raw_*`.
+pre-clean TPM-scale values are kept as `*_TPM_raw` / `*_nTPM_raw`.
 
 ```python
 # Zero mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows across TPM-scale analysis
-# columns (nTPM_*, TPM_*) and pin each column sum back at 1e6. Raw FPKM
+# columns (*_nTPM, *_TPM) and pin each column sum back at 1e6. Raw FPKM
 # columns remain unchanged as provenance; pre-clean nTPM/TPM values are kept
-# as nTPM_raw_* and TPM_raw_* companion columns.
+# as *_nTPM_raw and *_TPM_raw companion columns.
 pan_cancer_expression()                          # normalize="clean_tpm"
 
-# Raw/provenance view: raw FPKM_<code> from TCGA and nTPM_<tissue> from HPA,
-# plus deterministic TPM_<code> companions derived from the FPKM columns.
+# Raw/provenance view: raw <code>_FPKM from TCGA and <tissue>_nTPM from HPA,
+# plus deterministic <code>_TPM companions derived from the FPKM columns.
 pan_cancer_expression(normalize=None)
 
 # Explicit alias for the raw/provenance TPM-companion view.
@@ -290,8 +290,8 @@ If the `pirlygenes` console-script is still on PATH from a prior install, it now
 ## Migration history
 
 - **v5.2.0** — add `normalize=` presets for TPM-scaled and
-  technical-RNA-cleaned expression accessors, derive `TPM_<TCGA>`
-  columns from the ID-keyed pan-cancer `FPKM_<TCGA>` columns, and remove
+  technical-RNA-cleaned expression accessors, derive `<TCGA>_TPM`
+  columns from the ID-keyed pan-cancer `<TCGA>_FPKM` columns, and remove
   deconvolution-derived reference tables from the package.
 - **v5.1.0** — restore expression matrices to
   pirlygenes and add `pirlygenes.expression` with the rescaling

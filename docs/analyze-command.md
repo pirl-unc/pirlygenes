@@ -126,7 +126,8 @@ that owns their cohort ingestion, sample-level QC, and provenance.
 ## Expression Reference Distributions
 
 `pan-cancer-expression.csv` is a compatibility table with TCGA and HPA
-point estimates. Its HPA normal `nTPM_*` columns are consensus values,
+point estimates. Its HPA normal `*_nTPM` columns are consensus values
+when loaded through `pan_cancer_expression()` (`nTPM_*` in the raw CSV),
 so empirical q1/q3 cannot be reconstructed from that file alone.
 Sample-level distribution references should be generated and versioned in
 the analysis layer that consumes them.

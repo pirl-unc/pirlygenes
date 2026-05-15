@@ -61,33 +61,33 @@ across 33 TCGA cancer types (raw FPKM plus deterministic TPM companions)
 and 50 HPA normal tissues (nTPM).
 
 By default, `normalize="clean_tpm"`: the accessor preserves raw TCGA
-`FPKM_*`, adds derived TCGA `TPM_*`, preserves HPA `nTPM_*`, cleans
+`*_FPKM`, adds derived TCGA `*_TPM`, preserves HPA `*_nTPM`, cleans
 TPM-scale analysis columns, and keeps pre-clean TPM-scale values as
-`TPM_raw_*` / `nTPM_raw_*`.
+`*_TPM_raw` / `*_nTPM_raw`.
 
 ```python
 from pirlygenes.expression import pan_cancer_expression
 
 ref = pan_cancer_expression()
-# Columns: Ensembl_Gene_ID, Symbol, nTPM_adipose_tissue, ..., FPKM_ACC, ..., TPM_ACC, ...
+# Columns: Ensembl_Gene_ID, Symbol, adipose_tissue_nTPM, ..., ACC_FPKM, ..., ACC_TPM, ...
 ```
 
 Supports normalization:
 - `pan_cancer_expression(normalize=None)` — raw/provenance view with
-  `FPKM_*`, derived `TPM_*`, and `nTPM_*` columns unchanged
+  `*_FPKM`, derived `*_TPM`, and `*_nTPM` columns unchanged
 - `pan_cancer_expression(normalize="tpm")` — explicit alias for the
   raw/provenance TPM-companion view
 - `pan_cancer_expression(normalize="hk")` — fold TPM-scale analysis
-  columns (`nTPM_*`, `TPM_*`) over housekeeping median
+  columns (`*_nTPM`, `*_TPM`) over housekeeping median
 - `pan_cancer_expression(normalize="percentile")` — percentile ranks
   on TPM-scale analysis columns
 - `pan_cancer_expression(log_transform=True)` — log2 transform on
   TPM-scale analysis columns
 - `pan_cancer_expression(normalize="clean_tpm")` — TPM scale plus zero
   mitochondrial, NUMT-like, rRNA-like, and MALAT1/NEAT1 rows, then pin each
-  analysis column to sum to 1e6. Raw `FPKM_*` columns remain available for
+  analysis column to sum to 1e6. Raw `*_FPKM` columns remain available for
   provenance, and pre-clean TPM-scale values are preserved as
-  `nTPM_raw_*` and `TPM_raw_*` columns.
+  `*_nTPM_raw` and `*_TPM_raw` columns.
 
 `normalize_expression()` in `pirlygenes.expression` implements the shared
 transform for samples and references. The default removal set is intentionally

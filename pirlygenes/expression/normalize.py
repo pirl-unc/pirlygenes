@@ -37,6 +37,23 @@ from .qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
 # polyadenylation-bias lncRNA panel (MALAT1, NEAT1). See the
 # expression_qc module for the per-group citations.
 _DEFAULT_NORMALIZE_REMOVE_GROUPS = _TECHNICAL_RNA_GROUPS
+_VALUE_COL_PREFIXES = ("TPM", "nTPM_", "FPKM_")
+_VALUE_COL_SUFFIXES = ("_TPM", "_nTPM", "_FPKM")
+_RAW_VALUE_COL_PREFIXES = ("TPM_raw_", "nTPM_raw_")
+_RAW_VALUE_COL_SUFFIXES = ("_TPM_raw", "_nTPM_raw")
+
+
+def _is_expression_value_col(col: object) -> bool:
+    name = str(col)
+    return (
+        name.startswith(_VALUE_COL_PREFIXES)
+        or name.endswith(_VALUE_COL_SUFFIXES)
+    ) and not (
+        name.startswith(_RAW_VALUE_COL_PREFIXES)
+        or name.endswith(_RAW_VALUE_COL_SUFFIXES)
+    )
+
+
 _KEEP_NONCODING_NORMALIZATION_BIOTYPES = frozenset(
     {
         "protein_coding",
@@ -140,11 +157,7 @@ def normalize_expression(
 
     out = df.copy()
     if value_cols is None:
-        value_cols = [
-            c
-            for c in out.columns
-            if str(c).startswith(("TPM", "nTPM_", "FPKM_"))
-        ]
+        value_cols = [c for c in out.columns if _is_expression_value_col(c)]
     value_cols = [str(c) for c in value_cols if str(c) in out.columns]
     if not value_cols:
         return out, {
@@ -330,11 +343,7 @@ def renormalize_to_million(
         return None, {"applied": False, "reason": "no table", "columns": {}}
     out = df.copy()
     if value_cols is None:
-        value_cols = [
-            c
-            for c in out.columns
-            if str(c).startswith(("TPM", "nTPM_", "FPKM_"))
-        ]
+        value_cols = [c for c in out.columns if _is_expression_value_col(c)]
     value_cols = [str(c) for c in value_cols if str(c) in out.columns]
     if not value_cols:
         return out, {
@@ -467,11 +476,7 @@ def percentile_rank_expression(
         return None, {"applied": False, "reason": "no table", "columns": {}}
     out = df.copy()
     if value_cols is None:
-        value_cols = [
-            c
-            for c in out.columns
-            if str(c).startswith(("TPM", "nTPM_", "FPKM_"))
-        ]
+        value_cols = [c for c in out.columns if _is_expression_value_col(c)]
     value_cols = [str(c) for c in value_cols if str(c) in out.columns]
     if not value_cols:
         return out, {
@@ -556,11 +561,7 @@ def tpm_to_housekeeping_normalized(
 
     out = df.copy()
     if value_cols is None:
-        value_cols = [
-            c
-            for c in out.columns
-            if str(c).startswith(("TPM", "nTPM_", "FPKM_"))
-        ]
+        value_cols = [c for c in out.columns if _is_expression_value_col(c)]
     value_cols = [str(c) for c in value_cols if str(c) in out.columns]
     if not value_cols:
         return out, {
