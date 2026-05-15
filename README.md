@@ -142,43 +142,39 @@ from pirlygenes.expression import (
 )
 ```
 
-`pan_cancer_expression()` exposes a single `normalization=` preset so
-callers don't have to chain the primitives by hand. The default is
-`normalization=None`: TCGA `FPKM_*` columns are preserved, deterministic
-TCGA `TPM_*` companions are added, HPA `nTPM_*` columns are preserved, and
-no artifact-gene cleanup, housekeeping scaling, percentile transform, or
-log transform is applied.
+`pan_cancer_expression()` exposes a single `normalize=` preset so callers
+don't have to chain the primitives by hand. The default is
+`normalize="clean_tpm"`: TCGA `FPKM_*` columns are preserved for provenance,
+deterministic TCGA `TPM_*` companions are added, HPA `nTPM_*` columns are
+preserved, TPM-scale analysis columns are cleaned and pinned to 1e6, and
+pre-clean TPM-scale values are kept as `TPM_raw_*` / `nTPM_raw_*`.
 
 ```python
-# Raw FPKM_<code> from TCGA and nTPM_<tissue> from HPA, plus deterministic
-# TPM_<code> companions derived from the FPKM columns.
-pan_cancer_expression()                          # normalization=None
-
-# Explicit alias for the default TPM-companion view.
-pan_cancer_expression(normalization="tpm")
-
 # Zero mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows across TPM-scale analysis
 # columns (nTPM_*, TPM_*) and pin each column sum back at 1e6. Raw FPKM
 # columns remain unchanged as provenance; pre-clean nTPM/TPM values are kept
 # as nTPM_raw_* and TPM_raw_* companion columns.
-pan_cancer_expression(normalization="clean_tpm")
+pan_cancer_expression()                          # normalize="clean_tpm"
+
+# Raw/provenance view: raw FPKM_<code> from TCGA and nTPM_<tissue> from HPA,
+# plus deterministic TPM_<code> companions derived from the FPKM columns.
+pan_cancer_expression(normalize=None)
+
+# Explicit alias for the raw/provenance TPM-companion view.
+pan_cancer_expression(normalize="tpm")
 
 # Divide TPM-scale analysis columns by their housekeeping-gene median.
-# Percentile ranks are also available via normalization="percentile".
-pan_cancer_expression(normalization="hk")
+# Percentile ranks are also available via normalize="percentile".
+pan_cancer_expression(normalize="hk")
 ```
 
 The three older kwargs (`technical_rna_normalize`, `remove_noncoding`,
 `renormalize_to_million`) introduced in 5.1.1 still work but emit a
-`DeprecationWarning`. Use `normalization="clean_tpm"` for the new
+`DeprecationWarning`. Use `normalize="clean_tpm"` for the new
 TPM-scaled, technical-RNA-cleaned view; compose
 `normalize_expression()` / `renormalize_to_million()` when you need
 exact legacy column names or semantics. The kwargs will be removed in a
 later 5.x release.
-
-The older `normalize=` keyword is intentionally not accepted in 5.2.0.
-Use `normalization="hk"` instead of `normalize="housekeeping"`, and
-`normalization="percentile"` instead of `normalize="percentile"`.
 
 The gene-family panels are ENSG-keyed sets derived from every
 installed Ensembl release (`numt-pseudogenes.csv`,
@@ -293,12 +289,10 @@ If the `pirlygenes` console-script is still on PATH from a prior install, it now
 
 ## Migration history
 
-- **v5.2.0** — add `normalization=` presets for TPM-scaled and
+- **v5.2.0** — add `normalize=` presets for TPM-scaled and
   technical-RNA-cleaned expression accessors, derive `TPM_<TCGA>`
   columns from the ID-keyed pan-cancer `FPKM_<TCGA>` columns, and remove
-  deconvolution-derived reference tables from the package. This is a
-  breaking cleanup for the old `normalize=` keyword; use
-  `normalization="hk"` or `normalization="percentile"` instead.
+  deconvolution-derived reference tables from the package.
 - **v5.1.0** — restore expression matrices to
   pirlygenes and add `pirlygenes.expression` with the rescaling
   primitives, the QC classifier, and the transcript→gene aggregator.

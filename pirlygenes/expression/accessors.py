@@ -37,7 +37,7 @@ library-prep classification) lives in trufflepig. What's here:
   :mod:`pirlygenes.gene_families` (no symbol-regex dependency).
 * :func:`filter_to_genes` — subset to a caller-provided gene list.
 
-The accessors expose ``normalization=``, ``log_transform=``, and
+The accessors expose ``normalize=``, ``log_transform=``, and
 ``drop_technical_rna=`` keyword arguments that pipeline the free
 functions in the expected order — for callers who prefer one call to a
 chain of helpers.
@@ -319,7 +319,14 @@ def _bundled_normalize(
     return df
 
 
-_VALID_NORMALIZATIONS_PAN = ("tpm", "hk", "percentile", "clean_tpm")
+_VALID_NORMALIZE_PAN = ("tpm", "hk", "housekeeping", "percentile", "clean_tpm")
+
+
+def _canonical_pan_normalize(normalize: Optional[str]) -> Optional[str]:
+    """Normalize legacy/public tokens onto the internal short names."""
+    if normalize == "housekeeping":
+        return "hk"
+    return normalize
 
 
 def _warn_legacy_normalize_kwargs(
@@ -334,7 +341,7 @@ def _warn_legacy_normalize_kwargs(
         return
     names = ", ".join(truthy)
     warnings.warn(
-        f"{names} is deprecated. Use normalization=\"clean_tpm\" for "
+        f"{names} is deprecated. Use normalize=\"clean_tpm\" for "
         "the new TPM-scaled, technical-RNA-cleaned view, or compose the "
         "normalization primitives normalize_expression()/"
         "renormalize_to_million() when you need exact legacy column "
@@ -373,7 +380,7 @@ def _apply_pipeline(
 
 def pan_cancer_expression(
     genes: Optional[Iterable[str]] = None,
-    normalization: Optional[str] = None,
+    normalize: Optional[str] = "clean_tpm",
     log_transform: bool = False,
     technical_rna_normalize: bool = False,
     remove_noncoding: bool = False,
@@ -392,21 +399,10 @@ def pan_cancer_expression(
     ----------
     genes
         Optional iterable of gene symbols or Ensembl IDs to subset to.
-    normalization
+    normalize
         Named preset for unit scale and technical-RNA normalization:
 
-        - ``None`` (default) — add ``TPM_<code>`` companion columns and
-          otherwise leave values unchanged. This preserves raw TCGA
-          ``FPKM_<code>`` values and HPA ``nTPM_<tissue>`` values; it
-          does not clean artifact genes, HK-scale, percentile-rank, or
-          log-transform the analysis columns.
-        - ``"tpm"`` — explicit alias for the default TPM-companion view.
-        - ``"hk"`` — divide TPM-scale analysis columns
-          (``nTPM_<tissue>``, ``TPM_<code>``) by their housekeeping-gene
-          median.
-        - ``"percentile"`` — within-column percentile rank (0–100),
-          applied to TPM-scale analysis columns.
-        - ``"clean_tpm"`` — preserve pre-clean values as
+        - ``"clean_tpm"`` (default) — preserve pre-clean values as
           ``nTPM_raw_<tissue>`` and ``TPM_raw_<code>`` columns, then zero
           mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows
           across TPM-scale analysis columns and pin each column's sum
@@ -414,6 +410,18 @@ def pan_cancer_expression(
           every analysis column on the same scale, technical-RNA
           denominator drift removed. Raw ``FPKM_<code>`` columns remain
           unchanged.
+        - ``None`` — add ``TPM_<code>`` companion columns and otherwise
+          leave values unchanged. This is the raw/provenance view:
+          raw TCGA ``FPKM_<code>`` values and HPA ``nTPM_<tissue>``
+          values are preserved, with no artifact-gene cleanup, HK
+          scaling, percentile-rank, or log transform.
+        - ``"tpm"`` — explicit alias for the raw/provenance TPM-companion
+          view.
+        - ``"hk"`` or ``"housekeeping"`` — divide TPM-scale analysis columns
+          (``nTPM_<tissue>``, ``TPM_<code>``) by their housekeeping-gene
+          median.
+        - ``"percentile"`` — within-column percentile rank (0–100),
+          applied to TPM-scale analysis columns.
     log_transform
         Apply ``log2(x + 1)`` to value columns after any normalization.
     technical_rna_normalize
@@ -430,7 +438,7 @@ def pan_cancer_expression(
     drop_technical_rna
         Drop mtDNA / NUMT / rRNA / nuclear-retained-lncRNA rows entirely
         (uses :func:`filter_technical_rna`). Distinct from
-        ``normalization="clean_tpm"``: this removes rows,
+        ``normalize="clean_tpm"``: this removes rows,
         ``"clean_tpm"`` zeroes them in place. See Boundary note in the
         module docstring.
 
@@ -439,11 +447,15 @@ def pan_cancer_expression(
     pd.DataFrame
         Defensive copy — safe to mutate.
     """
-    if normalization is not None and normalization not in _VALID_NORMALIZATIONS_PAN:
+    if normalize is not None and normalize not in _VALID_NORMALIZE_PAN:
         raise ValueError(
-            "normalization must be None or one of "
-            f"{_VALID_NORMALIZATIONS_PAN!r}, got {normalization!r}"
+            "normalize must be None or one of "
+            f"{_VALID_NORMALIZE_PAN!r}, got {normalize!r}"
         )
+    normalize = _canonical_pan_normalize(normalize)
+    legacy_kwargs_used = any(
+        (technical_rna_normalize, remove_noncoding, renormalize_to_million)
+    )
     _warn_legacy_normalize_kwargs(
         {
             "technical_rna_normalize": technical_rna_normalize,
@@ -455,17 +467,18 @@ def pan_cancer_expression(
     df = get_data("pan-cancer-expression")
     df, _ = add_tpm_columns_from_fpkm(df)
     analysis_value_cols = _pan_analysis_value_cols(df)
-    if normalization == "clean_tpm":
+    if normalize == "clean_tpm" and not legacy_kwargs_used:
         df = _add_raw_pan_analysis_value_cols(df, analysis_value_cols)
 
-    do_tech_norm = technical_rna_normalize or normalization == "clean_tpm"
-    do_renorm = renormalize_to_million or normalization == "clean_tpm"
-    legacy_kwargs_used = any(
-        (technical_rna_normalize, remove_noncoding, renormalize_to_million)
+    do_tech_norm = technical_rna_normalize or (
+        normalize == "clean_tpm" and not legacy_kwargs_used
+    )
+    do_renorm = renormalize_to_million or (
+        normalize == "clean_tpm" and not legacy_kwargs_used
     )
     normalize_value_cols = (
         None
-        if legacy_kwargs_used and normalization != "clean_tpm"
+        if legacy_kwargs_used
         else analysis_value_cols
     )
     df = _bundled_normalize(
@@ -475,14 +488,14 @@ def pan_cancer_expression(
         renormalize=do_renorm,
         value_cols=normalize_value_cols,
     )
-    if normalization == "hk":
+    if normalize == "hk":
         df = normalize_to_housekeeping(df, value_cols=analysis_value_cols)
     return _apply_pipeline(
         df,
         drop_technical_rna=drop_technical_rna,
         genes=genes,
         log_transform=log_transform,
-        percentile=normalization == "percentile",
+        percentile=normalize == "percentile",
         value_cols=analysis_value_cols,
     )
 
@@ -511,7 +524,7 @@ def cancer_expression(
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(
         genes=genes,
-        normalization="hk",
+        normalize="hk",
         drop_technical_rna=True,
     )
     col = f"TPM_{code}"
@@ -550,7 +563,7 @@ def cancer_enriched_genes(
 
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(
-        normalization="hk",
+        normalize="hk",
         drop_technical_rna=True,
     )
     tpm_cols = [c for c in df.columns if c.startswith("TPM_")]
