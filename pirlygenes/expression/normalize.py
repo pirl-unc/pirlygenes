@@ -11,6 +11,10 @@ convert between common quantification scales:
 - :func:`fpkm_to_tpm` — rescale each expression column so it sums to
   10⁶, the standard TPM convention. Combine with
   :func:`normalize_expression` to get the analysis-view matrix.
+- :func:`add_tpm_columns_from_fpkm` — append TPM-scale companion columns
+  while preserving raw FPKM provenance columns.
+- :func:`percentile_rank_expression` — map expression columns to
+  within-column percentile ranks.
 - :func:`tpm_to_housekeeping_normalized` — divide each column by the
   geometric mean of a curated housekeeping panel, producing a unit-free
   ratio scale that survives library-prep totals.
@@ -139,7 +143,7 @@ def normalize_expression(
         value_cols = [
             c
             for c in out.columns
-            if str(c).startswith(("TPM", "nTPM_", "FPKM_", "tcga_"))
+            if str(c).startswith(("TPM", "nTPM_", "FPKM_"))
         ]
     value_cols = [str(c) for c in value_cols if str(c) in out.columns]
     if not value_cols:
@@ -329,7 +333,7 @@ def renormalize_to_million(
         value_cols = [
             c
             for c in out.columns
-            if str(c).startswith(("TPM", "nTPM_", "FPKM_", "tcga_"))
+            if str(c).startswith(("TPM", "nTPM_", "FPKM_"))
         ]
     value_cols = [str(c) for c in value_cols if str(c) in out.columns]
     if not value_cols:
@@ -387,6 +391,111 @@ def fpkm_to_tpm(
     entry point in the pipeline.
     """
     return renormalize_to_million(df, value_cols=value_cols)
+
+
+def add_tpm_columns_from_fpkm(
+    df,
+    *,
+    value_cols: Iterable[str] | None = None,
+    source_prefix: str = "FPKM_",
+    target_prefix: str = "TPM_",
+    overwrite: bool = False,
+):
+    """Append TPM-scale companion columns for FPKM columns.
+
+    The source FPKM columns are preserved. Each selected column is
+    independently rescaled to sum to 10⁶, then written to a target
+    column whose name is derived by replacing ``source_prefix`` with
+    ``target_prefix``. For example, ``FPKM_BRCA`` becomes ``TPM_BRCA``.
+
+    This is useful for reference tables where raw FPKM should remain
+    available for provenance, while downstream analysis wants a
+    deterministic TPM-scale view.
+    """
+    if df is None:
+        return None, {"applied": False, "reason": "no table", "columns": {}}
+
+    out = df.copy()
+    if value_cols is None:
+        value_cols = [
+            c for c in out.columns if str(c).startswith(source_prefix)
+        ]
+    value_cols = [str(c) for c in value_cols if str(c) in out.columns]
+    if not value_cols:
+        return out, {
+            "applied": False,
+            "reason": f"no {source_prefix!r} expression value columns",
+            "columns": {},
+        }
+
+    converted, record = fpkm_to_tpm(out, value_cols=value_cols)
+    columns = {}
+    for source_col in value_cols:
+        if source_col.startswith(source_prefix):
+            target_col = target_prefix + source_col[len(source_prefix):]
+        else:
+            target_col = target_prefix + source_col
+        if target_col in out.columns and not overwrite:
+            raise ValueError(
+                f"target TPM column {target_col!r} already exists; "
+                "pass overwrite=True to replace it"
+            )
+        out[target_col] = converted[source_col]
+        columns[source_col] = {
+            "target_column": target_col,
+            **record.get("columns", {}).get(source_col, {}),
+        }
+
+    return out, {
+        "applied": bool(columns),
+        "reason": "added TPM companion columns from FPKM columns",
+        "columns": columns,
+        "source_prefix": source_prefix,
+        "target_prefix": target_prefix,
+    }
+
+
+def percentile_rank_expression(
+    df,
+    *,
+    value_cols: Iterable[str] | None = None,
+):
+    """Map expression columns to within-column percentile ranks (0–100)."""
+    import pandas as pd
+
+    if df is None:
+        return None, {"applied": False, "reason": "no table", "columns": {}}
+    out = df.copy()
+    if value_cols is None:
+        value_cols = [
+            c
+            for c in out.columns
+            if str(c).startswith(("TPM", "nTPM_", "FPKM_"))
+        ]
+    value_cols = [str(c) for c in value_cols if str(c) in out.columns]
+    if not value_cols:
+        return out, {
+            "applied": False,
+            "reason": "no expression value columns",
+            "columns": {},
+        }
+
+    columns = {}
+    for col in value_cols:
+        vals = pd.to_numeric(out[col], errors="coerce")
+        out[col] = vals.rank(pct=True) * 100
+        ranked = out[col].dropna()
+        columns[col] = {
+            "n_ranked": int(ranked.shape[0]),
+            "min": float(ranked.min()) if not ranked.empty else None,
+            "max": float(ranked.max()) if not ranked.empty else None,
+        }
+    return out, {
+        "applied": True,
+        "reason": "converted expression columns to percentile ranks",
+        "columns": columns,
+        "value_cols": value_cols,
+    }
 
 
 def _housekeeping_panel_symbols(panel: Iterable[str] | None = None) -> set[str]:
@@ -450,7 +559,7 @@ def tpm_to_housekeeping_normalized(
         value_cols = [
             c
             for c in out.columns
-            if str(c).startswith(("TPM", "nTPM_", "FPKM_", "tcga_"))
+            if str(c).startswith(("TPM", "nTPM_", "FPKM_"))
         ]
     value_cols = [str(c) for c in value_cols if str(c) in out.columns]
     if not value_cols:
@@ -523,5 +632,7 @@ __all__ = [
     "normalize_technical_rna_long_table",
     "renormalize_to_million",
     "fpkm_to_tpm",
+    "add_tpm_columns_from_fpkm",
+    "percentile_rank_expression",
     "tpm_to_housekeeping_normalized",
 ]

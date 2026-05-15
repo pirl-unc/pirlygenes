@@ -11,8 +11,7 @@
   + pseudogenes, ribosomal proteins, histones, hemoglobins,
   immune-receptor segments, small ncRNAs, MALAT1/NEAT1.
 - **Reference expression matrices** — pan-cancer TCGA × HPA panel,
-  TCGA- and subtype-deconvolved tumor-only TPM, tumor-vs-matched-normal
-  panels, HPA cell-type expression, ESTIMATE signatures.
+  HPA cell-type expression, ESTIMATE signatures.
 - **Mechanical transforms on the data** — `normalize_expression`,
   `fpkm_to_tpm`, `renormalize_to_million`,
   `tpm_to_housekeeping_normalized`, `classify_gene_qc`, and
@@ -117,19 +116,17 @@ from pirlygenes.gene_families import (
 ```python
 from pirlygenes.expression import (
     # Reference matrices (long- and wide-form)
-    pan_cancer_expression,            # 19,784 genes × (50 nTPM tissues + 33 FPKM cancers + tcga_<code> deconv)
+    pan_cancer_expression,            # 19,784 genes × (50 nTPM tissues + 33 FPKM cancers + 33 TPM companions)
     cancer_expression,                # one cancer type, housekeeping-normalized
     cancer_enriched_genes,            # genes enriched in one cancer vs the others
-    tcga_deconvolved_expression,      # long-form per-(symbol, TCGA code) tumor-only TPM
-    subtype_deconvolved_expression,   # subtype-stratified — BRCA × PAM50, LAML × ELN, ...
-    tumor_up_vs_matched_normal,       # per-cancer genes up in tumor vs matched tissue
-    heme_tumor_up_vs_matched_normal,  # heme analogue
     hpa_cell_type_expression,         # HPA single-cell consensus
     estimate_signatures,              # Yoshihara 2013 stromal/immune sigs
 
     # Rescaling primitives — pure math on expression matrices
+    add_tpm_columns_from_fpkm,        # preserve FPKM and append TPM companions
     normalize_expression,             # zero technical-RNA rows + renormalize
     fpkm_to_tpm,                      # rescale each column to sum to 10⁶
+    percentile_rank_expression,       # within-column percentile ranks
     renormalize_to_million,           # bare utility for column rescaling
     tpm_to_housekeeping_normalized,   # divide each column by housekeeping geomean
     normalize_technical_rna_columns,
@@ -145,21 +142,34 @@ from pirlygenes.expression import (
 )
 ```
 
-`pan_cancer_expression()` and `subtype_deconvolved_expression()` take
-three bundled-rescaling kwargs so callers don't have to chain the
-primitives by hand:
+`pan_cancer_expression()` exposes a single `normalization=` preset so
+callers don't have to chain the primitives by hand:
 
 ```python
-pan_cancer_expression(
-    technical_rna_normalize=True,   # zero mtDNA/rRNA/NUMT/MALAT1+NEAT1 rows
-    remove_noncoding=False,         # additionally zero noncoding biotypes (needs a biotype column)
-    renormalize_to_million=True,    # rescale each value column to sum to 10⁶
-)
+# Raw FPKM_<code> from TCGA and nTPM_<tissue> from HPA, plus deterministic
+# TPM_<code> companions derived from the FPKM columns.
+pan_cancer_expression()                          # normalization=None
+
+# Explicit alias for the default TPM-companion view.
+pan_cancer_expression(normalization="tpm")
+
+# Zero mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows across TPM-scale analysis
+# columns (nTPM_*, TPM_*) and pin each column sum back at 1e6. Raw FPKM
+# columns remain unchanged as provenance.
+pan_cancer_expression(normalization="tpm-clean")
+
+# Divide TPM-scale analysis columns by their housekeeping-gene median.
+# Percentile ranks are also available via normalization="percentile".
+pan_cancer_expression(normalization="hk")
 ```
 
-For the long-form `subtype_deconvolved_expression()`, the zero-and-
-renormalize step runs per `(cancer_code, subtype)` group so each
-cohort's TPM convention is preserved independently.
+The three older kwargs (`technical_rna_normalize`, `remove_noncoding`,
+`renormalize_to_million`) introduced in 5.1.1 still work but emit a
+`DeprecationWarning`. Use `normalization="tpm-clean"` for the new
+TPM-scaled, technical-RNA-cleaned view; compose
+`normalize_expression()` / `renormalize_to_million()` when you need
+exact legacy column names or semantics. The kwargs will be removed in a
+later 5.x release.
 
 The gene-family panels are ENSG-keyed sets derived from every
 installed Ensembl release (`numt-pseudogenes.csv`,
@@ -216,10 +226,6 @@ read raw via the generic loader.
 | `hemoglobin-genes.csv` | `hemoglobin_gene_ids()`, `hemoglobin_gene_symbols()` |
 | `immune-receptor-segments.csv` | `immune_receptor_segment_ids()`, `immune_receptor_segment_symbols()` |
 | `pan-cancer-expression.csv` | `pan_cancer_expression()`, `cancer_expression(cancer_type)`, `cancer_enriched_genes(cancer_type)` |
-| `tcga-deconvolved-expression.csv.gz` | `tcga_deconvolved_expression()` |
-| `subtype-deconvolved-expression.csv.gz` | `subtype_deconvolved_expression()` |
-| `tumor-up-vs-matched-normal.csv` | `tumor_up_vs_matched_normal(cancer_code=...)` |
-| `heme-tumor-up-vs-matched-normal.csv` | `heme_tumor_up_vs_matched_normal(cancer_code=...)` |
 | `hpa-cell-type-expression.csv` | `hpa_cell_type_expression()` |
 | `estimate-signatures.csv` | `estimate_signatures()` |
 | `gene-sets.csv` | `get_data("gene-sets")` (catalog of named sets) |
@@ -278,7 +284,11 @@ If the `pirlygenes` console-script is still on PATH from a prior install, it now
 
 ## Migration history
 
-- **v5.1.0** (this release) — restore expression matrices to
+- **v5.2.0** — add `normalization=` presets for TPM-scaled and
+  technical-RNA-cleaned expression accessors, derive `TPM_<TCGA>`
+  columns from the ID-keyed pan-cancer `FPKM_<TCGA>` columns, and remove
+  deconvolution-derived reference tables from the package.
+- **v5.1.0** — restore expression matrices to
   pirlygenes and add `pirlygenes.expression` with the rescaling
   primitives, the QC classifier, and the transcript→gene aggregator.
   Closes pirlygenes#246 and #247.

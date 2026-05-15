@@ -12,13 +12,13 @@ Covers:
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
 
 from pirlygenes import load_all_dataframes_dict
 from pirlygenes.expression import (
     GeneQcClass,
+    add_tpm_columns_from_fpkm,
     aggregate_gene_expression,
     cancer_expression,
     classify_gene_qc,
@@ -26,35 +26,33 @@ from pirlygenes.expression import (
     filter_technical_rna,
     filter_to_genes,
     fpkm_to_tpm,
-    heme_tumor_up_vs_matched_normal,
     hpa_cell_type_expression,
     is_rescue_feature,
     log2_transform,
     normalize_expression,
     normalize_to_housekeeping,
     pan_cancer_expression,
+    percentile_rank_expression,
     renormalize_to_million,
-    subtype_deconvolved_expression,
-    tcga_deconvolved_expression,
     technical_rna_gene_ids,
     tpm_to_housekeeping_normalized,
-    tumor_up_vs_matched_normal,
 )
 
 
 # ---------- reference accessors ----------
 
 
-def test_pan_cancer_expression_returns_wide_frame_with_tcga_columns():
+def test_pan_cancer_expression_returns_wide_frame_with_tpm_companions():
     df = pan_cancer_expression()
     assert not df.empty
     assert "Ensembl_Gene_ID" in df.columns
     assert "Symbol" in df.columns
-    # nTPM_<tissue> from HPA, FPKM_<code> from TCGA, and tcga_<code>
-    # from the deconvolution all coexist in the wide frame.
+    # nTPM_<tissue> from HPA, raw FPKM_<code> from TCGA, and deterministic
+    # TPM_<code> companions derived from FPKM all coexist.
     assert any(c.startswith("nTPM_") for c in df.columns)
     assert any(c.startswith("FPKM_") for c in df.columns)
-    assert any(c.startswith("tcga_") for c in df.columns)
+    assert any(c.startswith("TPM_") for c in df.columns)
+    assert not any(c.startswith("tcga_") for c in df.columns)
 
 
 def test_pan_cancer_expression_subset_filters_to_named_genes():
@@ -64,8 +62,8 @@ def test_pan_cancer_expression_subset_filters_to_named_genes():
 
 
 def test_pan_cancer_expression_housekeeping_rescales_to_unit_baseline():
-    df = pan_cancer_expression(normalize="housekeeping")
-    fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
+    df = pan_cancer_expression(normalization="hk")
+    tpm_cols = [c for c in df.columns if c.startswith("TPM_")]
     # After housekeeping rescale, the median of housekeeping rows in
     # each column should sit at ~1.0 (it's a rescale, not a centering).
     # Tolerance loose enough to survive pandas median-aggregation
@@ -73,7 +71,7 @@ def test_pan_cancer_expression_housekeeping_rescales_to_unit_baseline():
     from pirlygenes import housekeeping_gene_ids
     hk = housekeeping_gene_ids()
     hk_rows = df[df["Ensembl_Gene_ID"].isin(hk)]
-    for col in fpkm_cols[:3]:  # spot-check first few columns
+    for col in tpm_cols[:3]:  # spot-check first few columns
         med = hk_rows[col].astype(float).median()
         assert med == pytest.approx(1.0, rel=0.05), (
             f"{col} housekeeping median is {med}, expected ~1.0"
@@ -84,36 +82,6 @@ def test_cancer_expression_returns_per_symbol_expression_column():
     df = cancer_expression("PRAD")
     assert {"Ensembl_Gene_ID", "Symbol", "expression"} <= set(df.columns)
     assert not df.empty
-
-
-def test_tcga_deconvolved_expression_long_form_schema():
-    df = tcga_deconvolved_expression()
-    assert df is not None
-    expected = {"symbol", "cancer_code", "tumor_tpm_median", "tumor_tpm_q1",
-                "tumor_tpm_q3", "n_samples"}
-    assert expected <= set(df.columns)
-
-
-def test_subtype_deconvolved_expression_has_subtype_column():
-    df = subtype_deconvolved_expression()
-    assert df is not None
-    assert "subtype" in df.columns
-    assert "cancer_code" in df.columns
-    # BRCA PAM50 split is the canonical subtype example.
-    assert "BRCA" in set(df["cancer_code"])
-
-
-def test_tumor_up_vs_matched_normal_returns_panel_with_fold_change():
-    df = tumor_up_vs_matched_normal()
-    assert df is not None and not df.empty
-    assert "fold_change_vs_matched_normal" in df.columns
-    assert "cancer_code" in df.columns
-
-
-def test_heme_tumor_up_vs_matched_normal_returns_panel():
-    df = heme_tumor_up_vs_matched_normal()
-    assert df is not None and not df.empty
-    assert {"DLBC", "LAML"} & set(df["cancer_code"])
 
 
 def test_hpa_cell_type_expression_long_form():
@@ -137,6 +105,14 @@ def test_topiary_load_all_dataframes_dict_pattern_works():
     assert isinstance(pce, pd.DataFrame)
     assert not pce.empty
     assert "Ensembl_Gene_ID" in pce.columns
+
+
+def test_deconvolved_reference_tables_are_not_packaged():
+    dataframes = load_all_dataframes_dict()
+    assert "tcga-deconvolved-expression.csv" not in dataframes
+    assert "subtype-deconvolved-expression.csv" not in dataframes
+    assert "tumor-up-vs-matched-normal.csv" not in dataframes
+    assert "heme-tumor-up-vs-matched-normal.csv" not in dataframes
 
 
 # ---------- rescaling primitives ----------
@@ -163,6 +139,27 @@ def test_fpkm_to_tpm_round_trip_preserves_relative_ranks():
     out, _record = fpkm_to_tpm(df, value_cols=["FPKM_S1"])
     # FPKM → TPM is monotonic per column, so rank-correlation is 1.
     assert (out["FPKM_S1"].rank() == df["FPKM_S1"].rank()).all()
+
+
+def test_add_tpm_columns_from_fpkm_preserves_source_columns():
+    df = pd.DataFrame({
+        "Symbol": ["A", "B", "C"],
+        "Ensembl_Gene_ID": ["ENSG1", "ENSG2", "ENSG3"],
+        "FPKM_S1": [1.0, 2.0, 3.0],
+    })
+    out, record = add_tpm_columns_from_fpkm(df)
+    assert "FPKM_S1" in out.columns
+    assert "TPM_S1" in out.columns
+    assert out["FPKM_S1"].tolist() == [1.0, 2.0, 3.0]
+    assert out["TPM_S1"].sum() == pytest.approx(1_000_000)
+    assert record["columns"]["FPKM_S1"]["target_column"] == "TPM_S1"
+
+
+def test_percentile_rank_expression_is_reusable():
+    df = pd.DataFrame({"TPM_S1": [10.0, 20.0, 30.0]})
+    out, record = percentile_rank_expression(df, value_cols=["TPM_S1"])
+    assert out["TPM_S1"].tolist() == pytest.approx([100 / 3, 200 / 3, 100])
+    assert record["columns"]["TPM_S1"]["n_ranked"] == 3
 
 
 def test_normalize_expression_drops_technical_rna_rows_and_renormalizes():
@@ -325,15 +322,15 @@ def test_accessor_pipeline_applies_log_after_normalize():
 
     A housekeeping gene rescales to 1.0; with the default pseudocount
     of 1, log2(1.0 + 1.0) = 1.0. An order swap (log-then-rescale)
-    would log raw FPKM first, then divide by the wrong housekeeping
+    would log raw TPM first, then divide by the wrong housekeeping
     median, and the median of housekeeping rows wouldn't land at 1.0.
     """
-    df = pan_cancer_expression(normalize="housekeeping", log_transform=True)
+    df = pan_cancer_expression(normalization="hk", log_transform=True)
     from pirlygenes import housekeeping_gene_ids
 
     hk_rows = df[df["Ensembl_Gene_ID"].isin(housekeeping_gene_ids())]
-    fpkm_col = next(c for c in df.columns if c.startswith("FPKM_"))
-    med = hk_rows[fpkm_col].astype(float).median()
+    tpm_col = next(c for c in df.columns if c.startswith("TPM_"))
+    med = hk_rows[tpm_col].astype(float).median()
     assert med == pytest.approx(1.0, abs=0.1)
 
 
@@ -375,66 +372,140 @@ def test_normalize_expression_remove_noncoding_with_biotype_column():
     assert out["TPM_S1"].sum() == pytest.approx(1_000_000)
 
 
-# ---------- bundled-kwarg surface on the accessors ----------
+# ---------- normalization= preset on the accessors ----------
 
 
-def test_pan_cancer_expression_technical_rna_normalize_zeroes_mt_rows():
-    """``technical_rna_normalize=True`` zeroes mtDNA / rRNA / NUMT /
-    nuclear-retained-lncRNA rows and renormalizes each column back to
-    the original total. Distinct from ``drop_technical_rna``, which
-    drops those rows entirely."""
+def test_pan_cancer_expression_normalization_none_keeps_raw_and_tpm_columns():
+    """The default adds TPM companions while preserving raw FPKM columns."""
+    df = pan_cancer_expression()
+    assert any(c.startswith("FPKM_") for c in df.columns)
+    assert any(c.startswith("TPM_") for c in df.columns)
+    assert any(c.startswith("nTPM_") for c in df.columns)
+    assert not any(c.startswith("tcga_") for c in df.columns)
+
+
+def test_pan_cancer_expression_normalization_tpm_preserves_fpkm_and_adds_tpm():
+    """``normalization="tpm"`` is an explicit alias for TPM companions."""
+    df = pan_cancer_expression(normalization="tpm")
+    assert any(c.startswith("FPKM_") for c in df.columns)
+    assert any(c.startswith("TPM_") for c in df.columns)
+    assert any(c.startswith("nTPM_") for c in df.columns)
+    assert not any(c.startswith("tcga_") for c in df.columns)
+
+
+def test_pan_cancer_expression_normalization_tpm_rescales_fpkm_to_million():
+    """After ``normalization="tpm"`` each former FPKM column sums to 10⁶."""
+    df = pan_cancer_expression(normalization="tpm")
+    tpm_cols = [c for c in df.columns if c.startswith("TPM_")]
+    assert tpm_cols
+    for col in tpm_cols:
+        col_sum = float(pd.to_numeric(df[col], errors="coerce").sum())
+        if col_sum > 0:
+            assert col_sum == pytest.approx(1_000_000, rel=1e-6)
+
+
+def test_pan_cancer_expression_normalization_percentile_keeps_native_names():
+    """``normalization="percentile"`` maps TPM-scale analysis columns onto
+    a 0-100 rank scale while leaving raw FPKM provenance untouched."""
+    raw = pan_cancer_expression()
+    df = pan_cancer_expression(normalization="percentile")
+    assert any(c.startswith("FPKM_") for c in df.columns)
+    fpkm_col = next(c for c in raw.columns if c.startswith("FPKM_"))
+    pd.testing.assert_series_equal(
+        raw[fpkm_col].reset_index(drop=True),
+        df[fpkm_col].reset_index(drop=True),
+    )
+    tpm_col = next(c for c in df.columns if c.startswith("TPM_"))
+    vals = pd.to_numeric(df[tpm_col], errors="coerce").dropna()
+    assert vals.min() >= 0
+    assert vals.max() <= 100
+
+
+def test_pan_cancer_expression_normalization_clean_tpm_zeroes_technical_rna():
+    """``normalization="tpm-clean"`` zeroes mtDNA / rRNA / NUMT / MALAT1+NEAT1
+    rows across TPM-scale analysis columns."""
+    raw = pan_cancer_expression()
+    df = pan_cancer_expression(normalization="tpm-clean")
+    mt_mask = df["Symbol"].astype(str).str.startswith("MT-")
+    assert mt_mask.any()
+    for col in df.columns:
+        if not col.startswith(("TPM_", "nTPM_")):
+            continue
+        assert df.loc[mt_mask, col].astype(float).sum() == pytest.approx(0.0)
+    fpkm_col = next(c for c in df.columns if c.startswith("FPKM_"))
+    pd.testing.assert_series_equal(
+        raw[fpkm_col].reset_index(drop=True),
+        df[fpkm_col].reset_index(drop=True),
+    )
+
+
+def test_pan_cancer_expression_normalization_clean_tpm_pins_cols_to_million():
+    """After ``normalization="tpm-clean"`` every TPM/nTPM analysis column
+    sums to 10⁶."""
+    df = pan_cancer_expression(normalization="tpm-clean")
+    value_cols = [
+        c for c in df.columns if c.startswith(("TPM_", "nTPM_"))
+    ]
+    assert value_cols
+    for col in value_cols:
+        col_sum = float(pd.to_numeric(df[col], errors="coerce").sum())
+        if col_sum > 0:
+            assert col_sum == pytest.approx(1_000_000, rel=1e-6)
+
+
+def test_pan_cancer_expression_normalization_rejects_invalid_token():
+    with pytest.raises(ValueError, match="normalization must be None or one of"):
+        pan_cancer_expression(normalization="raw")
+
+
+# ---------- legacy kwargs (deprecated; still work for one release) ----------
+
+
+def test_pan_cancer_expression_legacy_kwargs_emit_deprecation():
+    """The pre-5.2.0 kwargs still work but raise DeprecationWarning
+    pointing callers at the new preset or exact primitives."""
+    with pytest.warns(DeprecationWarning, match="normalization primitives"):
+        pan_cancer_expression(technical_rna_normalize=True)
+
+
+def test_pan_cancer_expression_legacy_technical_rna_normalize_still_zeroes_mt():
+    """Behaviour of the legacy kwarg is preserved — mtDNA rows go to 0
+    and per-column totals are renormalized to their input."""
     baseline = pan_cancer_expression()
     fpkm_col = next(c for c in baseline.columns if c.startswith("FPKM_"))
     raw_total = float(pd.to_numeric(baseline[fpkm_col], errors="coerce").sum())
 
-    out = pan_cancer_expression(technical_rna_normalize=True)
+    with pytest.warns(DeprecationWarning):
+        out = pan_cancer_expression(technical_rna_normalize=True)
     mt_mask = out["Symbol"].astype(str).str.startswith("MT-")
-    assert mt_mask.any(), "expected mtDNA rows in the wide frame"
     assert out.loc[mt_mask, fpkm_col].astype(float).sum() == pytest.approx(0.0)
-    # Total mass is preserved (within float drift) — the zero-and-
-    # renormalize transform pins the per-column total to its input.
     out_total = float(pd.to_numeric(out[fpkm_col], errors="coerce").sum())
     assert out_total == pytest.approx(raw_total, rel=1e-6)
 
 
-def test_pan_cancer_expression_renormalize_to_million_pins_column_sums():
-    """``renormalize_to_million=True`` rescales every value column to
-    sum to 10⁶."""
-    out = pan_cancer_expression(renormalize_to_million=True)
+def test_pan_cancer_expression_legacy_positional_kwargs_still_work():
+    """Adding ``normalization=`` must not break pre-5.2.0 positional
+    callers for the older normalization kwargs."""
+    baseline = pan_cancer_expression()
+    fpkm_col = next(c for c in baseline.columns if c.startswith("FPKM_"))
+    raw_total = float(pd.to_numeric(baseline[fpkm_col], errors="coerce").sum())
+
+    with pytest.warns(DeprecationWarning):
+        out = pan_cancer_expression(None, None, False, True)
+    mt_mask = out["Symbol"].astype(str).str.startswith("MT-")
+    assert out.loc[mt_mask, fpkm_col].astype(float).sum() == pytest.approx(0.0)
+    out_total = float(pd.to_numeric(out[fpkm_col], errors="coerce").sum())
+    assert out_total == pytest.approx(raw_total, rel=1e-6)
+
+
+def test_pan_cancer_expression_legacy_renormalize_pins_all_cols_to_million():
+    with pytest.warns(DeprecationWarning):
+        out = pan_cancer_expression(renormalize_to_million=True)
     value_cols = [
-        c
-        for c in out.columns
-        if c.startswith(("FPKM_", "nTPM_", "tcga_"))
+        c for c in out.columns if c.startswith(("FPKM_", "nTPM_", "TPM_"))
     ]
     assert value_cols
     for col in value_cols:
         col_sum = float(pd.to_numeric(out[col], errors="coerce").sum())
         if col_sum > 0:
             assert col_sum == pytest.approx(1_000_000, rel=1e-6)
-
-
-def test_subtype_deconvolved_expression_technical_rna_normalize_per_group():
-    """Per-(cancer_code, subtype) zero-and-renormalize: mtDNA rows in
-    each group drop to 0 in the median column."""
-    out = subtype_deconvolved_expression(technical_rna_normalize=True)
-    mt = out[out["symbol"].astype(str).str.startswith("MT-")]
-    assert not mt.empty, "expected MT- rows in the subtype table"
-    assert mt["tumor_tpm_median"].astype(float).sum() == pytest.approx(0.0)
-
-
-def test_subtype_deconvolved_expression_renormalize_to_million_per_group():
-    """With ``renormalize_to_million=True``, each (cancer_code, subtype)
-    group's tumor_tpm_median should sum to ~10⁶."""
-    out = subtype_deconvolved_expression(
-        technical_rna_normalize=True,
-        renormalize_to_million=True,
-    )
-    sums = (
-        out.groupby(["cancer_code", "subtype"], dropna=False)["tumor_tpm_median"]
-        .sum()
-    )
-    positive = sums[sums > 0]
-    assert not positive.empty
-    # Every group with positive mass should be pinned to 10⁶.
-    for total in positive:
-        assert total == pytest.approx(1_000_000, rel=1e-3)

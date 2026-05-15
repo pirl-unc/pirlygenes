@@ -165,8 +165,6 @@ so plots, reports, tests, and downstream tools use the same definitions:
 - `hypoxia_panel_gene_names()`
 - `glycolysis_panel_gene_names()`
 - `ddr_activation_panel_gene_names()`
-- `tumor_up_vs_matched_normal(cancer_code=None)`
-- `heme_tumor_up_vs_matched_normal(cancer_code=None)`
 
 Consumers should call these APIs rather than copying hard-coded gene
 lists. That keeps Step-0 scoring, pathway plots, and report narratives

@@ -57,31 +57,38 @@ vaccination and immunotherapy targets.
 ## Pan-Cancer Expression Reference
 
 `pan_cancer_expression()` returns a DataFrame with median expression
-across 33 TCGA cancer types (FPKM) and 50 HPA normal tissues (nTPM).
+across 33 TCGA cancer types (raw FPKM plus deterministic TPM companions)
+and 50 HPA normal tissues (nTPM).
 
 ```python
-from pirlygenes.gene_sets_cancer import pan_cancer_expression
+from pirlygenes.expression import pan_cancer_expression
 
 ref = pan_cancer_expression()
-# Columns: Ensembl_Gene_ID, Symbol, FPKM_ACC, FPKM_BLCA, ..., nTPM_adipose_tissue, nTPM_adrenal_gland, ...
+# Columns: Ensembl_Gene_ID, Symbol, nTPM_adipose_tissue, ..., FPKM_ACC, ..., TPM_ACC, ...
 ```
 
 Supports normalization:
-- `pan_cancer_expression(normalize="housekeeping")` — fold over housekeeping median
-- `pan_cancer_expression(normalize="percentile")` — percentile ranks
-- `pan_cancer_expression(log2=True)` — log2 transform
-- `pan_cancer_expression(technical_rna_normalize=True)` — zero mitochondrial,
-  NUMT-like, rRNA-like, and rRNA-pseudogene rows, then renormalize remaining
-  expression mass. This is the opinionated analysis view used by the reports;
-  raw references remain available for QC/provenance.
+- `pan_cancer_expression(normalization="tpm")` — explicit alias for the
+  default TPM-companion view
+- `pan_cancer_expression(normalization="hk")` — fold TPM-scale analysis
+  columns (`nTPM_*`, `TPM_*`) over housekeeping median
+- `pan_cancer_expression(normalization="percentile")` — percentile ranks
+  on TPM-scale analysis columns
+- `pan_cancer_expression(log_transform=True)` — log2 transform on
+  TPM-scale analysis columns
+- `pan_cancer_expression(normalization="tpm-clean")` — TPM scale plus zero
+  mitochondrial, NUMT-like, rRNA-like, and MALAT1/NEAT1 rows, then pin each
+  analysis column to sum to 1e6. Raw `FPKM_*` columns remain available for
+  provenance.
 
-`normalize_expression()` in `pirlygenes.expression_qc` implements the shared
+`normalize_expression()` in `pirlygenes.expression` implements the shared
 transform for samples and references. The default removal set is intentionally
 narrow: mitochondrial transcripts, NUMT-like mitochondrial pseudogenes, and
-rRNA/rRNA-pseudogene features. `remove_noncoding=True` additionally removes
-noncoding-biotype rows when biotype metadata is available, while keeping
-protein-coding, immunoglobulin, and TCR biotypes. That option is off by default
-because noncoding RNAs can be real biology in some assays.
+rRNA/rRNA-pseudogene features, plus the nuclear-retained lncRNAs MALAT1 and
+NEAT1. `remove_noncoding=True` additionally removes noncoding-biotype rows when
+biotype metadata is available, while keeping protein-coding, immunoglobulin, and
+TCR biotypes. That option is off by default because noncoding RNAs can be real
+biology in some assays.
 
 Current curated gene-set impact: the default transform silences the dedicated
 mitochondrial QC gene set (`MT-CO1/2/3`, `MT-ND*`, `MT-CYB`, `MT-ATP6/8`,
