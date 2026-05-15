@@ -2,7 +2,7 @@
 
 For each installed GRCh38 Ensembl release, this script walks every
 annotated gene, applies the symbol-level regex from
-:func:`trufflepig.expression_qc.classify_gene_qc`, and emits one CSV
+:func:`pirlygenes.expression.qc.classify_gene_qc`, and emits one CSV
 per gene family with rows:
 
     Symbol, Ensembl_Gene_ID
@@ -25,7 +25,7 @@ Run from the pirlygenes repo root:
 
     python scripts/generate_gene_family_sets.py [--releases 100-114]
 
-Re-run after the regex panel in ``trufflepig/expression_qc.py``
+Re-run after the regex panel in ``pirlygenes/expression/qc.py``
 changes — these CSVs are derived data, not curated.
 """
 
@@ -41,15 +41,7 @@ from pyensembl import EnsemblRelease
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-try:
-    from trufflepig.expression_qc import classify_gene_qc
-except ImportError as exc:
-    sys.stderr.write(
-        "trufflepig is required to regenerate these tables — it defines the "
-        "regex panel that classifies symbols. Install it in the same env "
-        "(e.g. `pip install -e ../trufflepig`) and retry.\n"
-    )
-    raise SystemExit(2) from exc
+from pirlygenes.expression.qc import classify_gene_qc
 
 
 # QC-classifier group → on-disk slug. ``mt_dna`` is intentionally
