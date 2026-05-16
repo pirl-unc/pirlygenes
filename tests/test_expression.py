@@ -631,55 +631,16 @@ def test_pan_cancer_expression_rejects_removed_normalization_keyword():
         pan_cancer_expression(normalization="hk")
 
 
-# ---------- legacy kwargs (deprecated; still work for one release) ----------
+def test_pan_cancer_expression_rejects_removed_legacy_kwargs():
+    for kwargs in (
+        {"technical_rna_normalize": True},
+        {"remove_noncoding": True},
+        {"renormalize_to_million": True},
+    ):
+        with pytest.raises(TypeError, match="unexpected keyword argument"):
+            pan_cancer_expression(**kwargs)
 
 
-def test_pan_cancer_expression_legacy_kwargs_emit_deprecation():
-    """The pre-5.2.0 kwargs still work but raise DeprecationWarning
-    pointing callers at the new preset or exact primitives."""
-    with pytest.warns(DeprecationWarning, match="normalization primitives"):
-        pan_cancer_expression(technical_rna_normalize=True)
-
-
-def test_pan_cancer_expression_legacy_technical_rna_normalize_still_zeroes_mt():
-    """Behaviour of the legacy kwarg is preserved — mtDNA rows go to 0
-    and per-column totals are renormalized to their input."""
-    baseline = pan_cancer_expression(normalize=None)
-    fpkm_col = next(c for c in baseline.columns if c.endswith("_FPKM"))
-    raw_total = float(pd.to_numeric(baseline[fpkm_col], errors="coerce").sum())
-
-    with pytest.warns(DeprecationWarning):
-        out = pan_cancer_expression(technical_rna_normalize=True)
-    mt_mask = out["Symbol"].astype(str).str.startswith("MT-")
-    assert out.loc[mt_mask, fpkm_col].astype(float).sum() == pytest.approx(0.0)
-    out_total = float(pd.to_numeric(out[fpkm_col], errors="coerce").sum())
-    assert out_total == pytest.approx(raw_total, rel=1e-6)
-
-
-def test_pan_cancer_expression_legacy_positional_kwargs_still_work():
-    """Adding ``normalize=`` must not break pre-5.2.0 positional
-    callers for the older normalization kwargs."""
-    baseline = pan_cancer_expression(normalize=None)
-    fpkm_col = next(c for c in baseline.columns if c.endswith("_FPKM"))
-    raw_total = float(pd.to_numeric(baseline[fpkm_col], errors="coerce").sum())
-
-    with pytest.warns(DeprecationWarning):
-        out = pan_cancer_expression(None, None, False, True)
-    mt_mask = out["Symbol"].astype(str).str.startswith("MT-")
-    assert out.loc[mt_mask, fpkm_col].astype(float).sum() == pytest.approx(0.0)
-    out_total = float(pd.to_numeric(out[fpkm_col], errors="coerce").sum())
-    assert out_total == pytest.approx(raw_total, rel=1e-6)
-
-
-def test_pan_cancer_expression_legacy_renormalize_pins_all_cols_to_million():
-    with pytest.warns(DeprecationWarning):
-        out = pan_cancer_expression(renormalize_to_million=True)
-    value_cols = [
-        c for c in out.columns
-        if c.endswith(("_FPKM", "_nTPM", "_TPM"))
-    ]
-    assert value_cols
-    for col in value_cols:
-        col_sum = float(pd.to_numeric(out[col], errors="coerce").sum())
-        if col_sum > 0:
-            assert col_sum == pytest.approx(1_000_000, rel=1e-6)
+def test_pan_cancer_expression_rejects_removed_legacy_positional_kwargs():
+    with pytest.raises(TypeError):
+        pan_cancer_expression(None, None, False, True)

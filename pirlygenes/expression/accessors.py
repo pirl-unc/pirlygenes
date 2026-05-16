@@ -62,7 +62,6 @@ can mutate freely.
 
 from __future__ import annotations
 
-import warnings
 from typing import Iterable, Optional, Sequence
 
 import numpy as np
@@ -476,30 +475,6 @@ def _resolve_pan_normalize_modes(
     return out
 
 
-def _warn_legacy_normalize_kwargs(
-    used: dict[str, bool],
-    stacklevel: int = 3,
-) -> None:
-    """Single DeprecationWarning if any of the legacy normalize kwargs is
-    set. The new preset is intentionally not described as exact legacy
-    behavior because it operates on TPM-scale analysis columns."""
-    truthy = sorted(name for name, value in used.items() if value)
-    if not truthy:
-        return
-    names = ", ".join(truthy)
-    warnings.warn(
-        f"{names} is deprecated. Use normalize=\"tpm_clean\" for "
-        "the new TPM-scaled, technical-RNA-cleaned view, or compose the "
-        "normalization primitives normalize_expression()/"
-        "renormalize_to_million() when you need exact legacy column "
-        "names or semantics. "
-        "Legacy kwargs continue to work but will be removed in a future "
-        "5.x release.",
-        DeprecationWarning,
-        stacklevel=stacklevel,
-    )
-
-
 def _apply_pipeline(
     df: pd.DataFrame,
     *,
@@ -528,10 +503,8 @@ def _apply_pipeline(
 def pan_cancer_expression(
     genes: Optional[Iterable[str]] = None,
     normalize: Optional[str | Sequence[str]] = "tpm_clean",
+    *,
     log_transform: bool = False,
-    technical_rna_normalize: bool = False,
-    remove_noncoding: bool = False,
-    renormalize_to_million: bool = False,
     drop_technical_rna: bool = False,
 ) -> pd.DataFrame:
     """Wide-form expression across HPA normal tissues + TCGA cancer types.
@@ -584,17 +557,6 @@ def pan_cancer_expression(
         adds clean, housekeeping, and percentile columns in one call.
     log_transform
         Apply ``log2(x + 1)`` to value columns after any normalization.
-    technical_rna_normalize
-        Deprecated since 5.2.0. Zero mtDNA / NUMT / rRNA /
-        nuclear-retained-lncRNA rows and renormalize each column's
-        remaining mass back to the original per-column total.
-    remove_noncoding
-        Deprecated since 5.2.0. Additionally zero rows with noncoding
-        biotypes (keeping protein-coding, Ig, and TCR biotypes) when a
-        biotype column is present.
-    renormalize_to_million
-        Deprecated since 5.2.0. After any zero-and-renormalize step,
-        rescale every column so its non-NaN sum is exactly 10⁶.
     drop_technical_rna
         Drop mtDNA / NUMT / rRNA / nuclear-retained-lncRNA rows entirely
         (uses :func:`filter_technical_rna`). Distinct from
@@ -607,78 +569,56 @@ def pan_cancer_expression(
     pd.DataFrame
         Defensive copy — safe to mutate.
     """
-    legacy_kwargs_used = any(
-        (technical_rna_normalize, remove_noncoding, renormalize_to_million)
-    )
-    normalize_modes = (
-        [] if legacy_kwargs_used else _resolve_pan_normalize_modes(normalize)
-    )
-    if not legacy_kwargs_used and "tpm" not in normalize_modes:
+    normalize_modes = _resolve_pan_normalize_modes(normalize)
+    if "tpm" not in normalize_modes:
         normalize_modes.insert(0, "tpm")
-    _warn_legacy_normalize_kwargs(
-        {
-            "technical_rna_normalize": technical_rna_normalize,
-            "remove_noncoding": remove_noncoding,
-            "renormalize_to_million": renormalize_to_million,
-        },
-    )
 
     df = get_data("pan-cancer-expression")
-    if "tpm" in normalize_modes:
-        df, _ = add_tpm_columns_from_fpkm(df)
+    df, _ = add_tpm_columns_from_fpkm(df)
     analysis_value_cols = _pan_analysis_value_cols(df)
 
     generated_value_cols: list[str] = []
     value_cols_by_mode: dict[str, list[str]] = {}
-    if legacy_kwargs_used:
-        df = _bundled_normalize(
-            df,
-            technical_rna_normalize=technical_rna_normalize,
-            remove_noncoding=remove_noncoding,
-            renormalize=renormalize_to_million,
-            value_cols=None,
-        )
-    else:
-        for mode in normalize_modes:
-            if mode == "tpm":
-                continue
-            if mode == "tpm_clean":
-                normalized_df = _bundled_normalize(
-                    df,
-                    technical_rna_normalize=True,
-                    remove_noncoding=False,
-                    renormalize=True,
-                    value_cols=analysis_value_cols,
-                )
-                source_cols = analysis_value_cols
-            elif mode == "tpm_log1p":
-                normalized_df = log1p_transform(
-                    df, value_cols=analysis_value_cols,
-                )
-                source_cols = analysis_value_cols
-            elif mode == "tpm_clean_log1p":
-                clean_value_cols = value_cols_by_mode.get("tpm_clean", [])
-                normalized_df = log1p_transform(
-                    df, value_cols=clean_value_cols,
-                )
-                source_cols = clean_value_cols
-            elif mode == "hk":
-                normalized_df = normalize_to_housekeeping(
-                    df, value_cols=analysis_value_cols,
-                )
-                source_cols = analysis_value_cols
-            elif mode == "percentile":
-                normalized_df, _ = percentile_rank_expression(
-                    df, value_cols=analysis_value_cols,
-                )
-                source_cols = analysis_value_cols
-            else:  # pragma: no cover - guarded by _resolve_pan_normalize_modes
-                continue
-            df, new_cols = _add_pan_normalized_value_cols(
-                df, normalized_df, source_cols, mode,
+    for mode in normalize_modes:
+        if mode == "tpm":
+            continue
+        if mode == "tpm_clean":
+            normalized_df = _bundled_normalize(
+                df,
+                technical_rna_normalize=True,
+                remove_noncoding=False,
+                renormalize=True,
+                value_cols=analysis_value_cols,
             )
-            value_cols_by_mode[mode] = new_cols
-            generated_value_cols.extend(new_cols)
+            source_cols = analysis_value_cols
+        elif mode == "tpm_log1p":
+            normalized_df = log1p_transform(
+                df, value_cols=analysis_value_cols,
+            )
+            source_cols = analysis_value_cols
+        elif mode == "tpm_clean_log1p":
+            clean_value_cols = value_cols_by_mode.get("tpm_clean", [])
+            normalized_df = log1p_transform(
+                df, value_cols=clean_value_cols,
+            )
+            source_cols = clean_value_cols
+        elif mode == "hk":
+            normalized_df = normalize_to_housekeeping(
+                df, value_cols=analysis_value_cols,
+            )
+            source_cols = analysis_value_cols
+        elif mode == "percentile":
+            normalized_df, _ = percentile_rank_expression(
+                df, value_cols=analysis_value_cols,
+            )
+            source_cols = analysis_value_cols
+        else:  # pragma: no cover - guarded by _resolve_pan_normalize_modes
+            continue
+        df, new_cols = _add_pan_normalized_value_cols(
+            df, normalized_df, source_cols, mode,
+        )
+        value_cols_by_mode[mode] = new_cols
+        generated_value_cols.extend(new_cols)
     pipeline_value_cols = generated_value_cols or analysis_value_cols
     df = _apply_pipeline(
         df,

@@ -177,13 +177,11 @@ pan_cancer_expression(normalize="hk")
 pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])
 ```
 
-The three older kwargs (`technical_rna_normalize`, `remove_noncoding`,
-`renormalize_to_million`) introduced in 5.1.1 still work but emit a
-`DeprecationWarning`. Use `normalize="tpm_clean"` for the new
-TPM-scaled, technical-RNA-cleaned view; compose
-`normalize_expression()` / `renormalize_to_million()` when you need
-exact legacy column names or semantics. The kwargs will be removed in a
-later 5.x release.
+The older `pan_cancer_expression()` kwargs (`technical_rna_normalize`,
+`remove_noncoding`, and `renormalize_to_million`) have been removed. Use
+`normalize="tpm_clean"` for the TPM-scaled, technical-RNA-cleaned view;
+compose `normalize_expression()` / `renormalize_to_million()` directly when
+you need lower-level transforms.
 
 The gene-family panels are ENSG-keyed sets derived from every
 installed Ensembl release (`numt-pseudogenes.csv`,
