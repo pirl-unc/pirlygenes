@@ -7,7 +7,7 @@ PAGE2B,,,cancer-testis antigen,ENSG00000238269,CTpedia;CTexploreR_CTP;daSilva201
 PAGE3,,,cancer-testis antigen,ENSG00000204279,CTpedia;daSilva2017,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,ENST00000374951,protein_coding,True,True,True,True,True,7.4,False
 PAGE5,,,cancer-testis antigen,ENSG00000158639,CTpedia;CTexploreR_CT;daSilva2017,True,False,Supported,False,False,testis,0.8805,0.881,1.0,1.0,ENST00000374955,protein_coding,True,True,True,True,True,25.8,False
 XAGE1A,,,cancer-testis antigen,ENSG00000204379,CTpedia;CTexploreR_CT,no data,no data,no data,True,False,no data,0.9913,0.9913,1.0,1.0,ENST00000375602,protein_coding,True,True,True,True,True,45.7,False
-XAGE1B,,,cancer-testis antigen,ENSG00000204382,CTpedia;CTexploreR_CT;daSilva2017,no data,no data,no data,False,False,no data,0.8806,0.8808,0.987,0.987,ENST00000518075,protein_coding,True,True,True,False,False,53.1,False
+XAGE1B,,,cancer-testis antigen,ENSG00000204382,CTpedia;CTexploreR_CT;daSilva2017,no data,no data,no data,False,False,no data,0.8806,0.8808,0.987,0.987,ENST00000518075,protein_coding,True,True,True,False,True,53.1,False
 XAGE3,,,cancer-testis antigen,ENSG00000171402,CTpedia,True,False,Supported,False,False,placenta,0.9804,0.9804,0.9922,0.9922,ENST00000346279,protein_coding,True,True,True,True,True,368.3,False
 XAGE5,,,cancer-testis antigen,ENSG00000171405,CTpedia;CTexploreR_CT;daSilva2017,no data,no data,no data,True,False,no data,1.0,1.0,1.0,1.0,ENST00000375501,protein_coding,True,True,True,True,True,1.1,True
 GAGE2A,,,cancer-testis antigen,ENSG00000189064,CTpedia;CTexploreR_CT;daSilva2017;daSilva2017_protein,True,False,Supported,True,False,testis,0.9893,0.9893,1.0,1.0,ENST00000362097,protein_coding,True,True,True,True,True,92.6,False

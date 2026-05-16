@@ -123,6 +123,15 @@ def test_cta_filtered_and_evidence():
     excluded_names = gsc.CTA_excluded_gene_names()
 
     assert expressed_names
+    assert "XAGE1B" in expressed_names
+
+    bundled_evidence = gsc._bundled_cta_evidence()
+    bundled_filtered = bundled_evidence["filtered"].astype(str).str.lower() == "true"
+    bundled_expressed = bundled_filtered & ~(
+        bundled_evidence["never_expressed"].astype(str).str.lower() == "true"
+    )
+    assert "XAGE1B" in set(bundled_evidence.loc[bundled_expressed, "Symbol"])
+
     assert filtered_names
     assert all_names
     assert expressed_names < filtered_names  # expressed is strict subset of filtered
