@@ -42,8 +42,12 @@ _VALUE_COL_SUFFIXES = (
     "_TPM",
     "_nTPM",
     "_FPKM",
+    "_TPM_log1p",
+    "_nTPM_log1p",
     "_TPM_clean",
     "_nTPM_clean",
+    "_TPM_clean_log1p",
+    "_nTPM_clean_log1p",
     "_TPM_hk",
     "_nTPM_hk",
     "_TPM_percentile",
@@ -412,12 +416,41 @@ def fpkm_to_tpm(
     return renormalize_to_million(df, value_cols=value_cols)
 
 
+def _default_fpkm_value_cols(
+    df,
+    *,
+    source_prefix: str,
+    source_suffix: str,
+) -> list[str]:
+    return [
+        str(c) for c in df.columns
+        if str(c).startswith(source_prefix) or str(c).endswith(source_suffix)
+    ]
+
+
+def _tpm_target_col_from_fpkm(
+    source_col: str,
+    *,
+    source_prefix: str,
+    target_prefix: str,
+    source_suffix: str,
+    target_suffix: str,
+) -> str:
+    if source_col.startswith(source_prefix):
+        return target_prefix + source_col[len(source_prefix):]
+    if source_col.endswith(source_suffix):
+        return source_col[:-len(source_suffix)] + target_suffix
+    return target_prefix + source_col
+
+
 def add_tpm_columns_from_fpkm(
     df,
     *,
     value_cols: Iterable[str] | None = None,
     source_prefix: str = "FPKM_",
     target_prefix: str = "TPM_",
+    source_suffix: str = "_FPKM",
+    target_suffix: str = "_TPM",
     overwrite: bool = False,
 ):
     """Append TPM-scale companion columns for FPKM columns.
@@ -425,7 +458,9 @@ def add_tpm_columns_from_fpkm(
     The source FPKM columns are preserved. Each selected column is
     independently rescaled to sum to 10⁶, then written to a target
     column whose name is derived by replacing ``source_prefix`` with
-    ``target_prefix``. For example, ``FPKM_BRCA`` becomes ``TPM_BRCA``.
+    ``target_prefix`` or ``source_suffix`` with ``target_suffix``. For
+    example, ``FPKM_BRCA`` becomes ``TPM_BRCA`` and ``BRCA_FPKM``
+    becomes ``BRCA_TPM``.
 
     This is useful for reference tables where raw FPKM should remain
     available for provenance, while downstream analysis wants a
@@ -437,24 +472,29 @@ def add_tpm_columns_from_fpkm(
 
     out = df.copy()
     if value_cols is None:
-        value_cols = [
-            c for c in out.columns if str(c).startswith(source_prefix)
-        ]
+        value_cols = _default_fpkm_value_cols(
+            out,
+            source_prefix=source_prefix,
+            source_suffix=source_suffix,
+        )
     value_cols = [str(c) for c in value_cols if str(c) in out.columns]
     if not value_cols:
         return out, {
             "applied": False,
-            "reason": f"no {source_prefix!r} expression value columns",
+            "reason": "no FPKM expression value columns",
             "columns": {},
         }
 
     converted, record = fpkm_to_tpm(out, value_cols=value_cols)
     columns = {}
     for source_col in value_cols:
-        if source_col.startswith(source_prefix):
-            target_col = target_prefix + source_col[len(source_prefix):]
-        else:
-            target_col = target_prefix + source_col
+        target_col = _tpm_target_col_from_fpkm(
+            source_col,
+            source_prefix=source_prefix,
+            target_prefix=target_prefix,
+            source_suffix=source_suffix,
+            target_suffix=target_suffix,
+        )
         if target_col in out.columns and not overwrite:
             columns[source_col] = {
                 "target_column": target_col,
@@ -474,6 +514,8 @@ def add_tpm_columns_from_fpkm(
         "columns": columns,
         "source_prefix": source_prefix,
         "target_prefix": target_prefix,
+        "source_suffix": source_suffix,
+        "target_suffix": target_suffix,
     }
 
 

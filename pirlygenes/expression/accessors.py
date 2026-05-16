@@ -87,11 +87,15 @@ _VALUE_COL_PREFIXES = ("nTPM_", "FPKM_", "TPM_")
 _PAN_ANALYSIS_VALUE_COL_PREFIXES = ("nTPM_", "TPM_")
 _PAN_NORMALIZED_SUFFIXES = {
     "tpm_clean": "clean",
+    "tpm_log1p": "log1p",
+    "tpm_clean_log1p": "clean_log1p",
     "hk": "hk",
     "percentile": "percentile",
 }
 _PAN_NORMALIZE_DEPENDENCIES = {
     "tpm_clean": ("tpm",),
+    "tpm_log1p": ("tpm",),
+    "tpm_clean_log1p": ("tpm_clean",),
     "hk": ("tpm",),
     "percentile": ("tpm",),
 }
@@ -104,8 +108,12 @@ _VALUE_COL_SUFFIXES = (
     "_nTPM",
     "_FPKM",
     "_TPM",
+    "_nTPM_log1p",
+    "_TPM_log1p",
     "_nTPM_clean",
     "_TPM_clean",
+    "_nTPM_clean_log1p",
+    "_TPM_clean_log1p",
     "_nTPM_hk",
     "_TPM_hk",
     "_nTPM_percentile",
@@ -135,6 +143,10 @@ def _pan_analysis_value_cols(df: pd.DataFrame) -> list[str]:
 
 def _pan_normalized_col_name(col: str, normalize: str) -> str:
     """Internal name for an added normalized TPM/nTPM analysis column."""
+    if normalize == "tpm_clean_log1p":
+        for prefix in ("nTPM_clean_", "TPM_clean_"):
+            if col.startswith(prefix):
+                return f"{prefix}log1p_{col[len(prefix):]}"
     suffix = _PAN_NORMALIZED_SUFFIXES[normalize]
     for prefix in _PAN_ANALYSIS_VALUE_COL_PREFIXES:
         if col.startswith(prefix):
@@ -161,6 +173,10 @@ def _add_pan_normalized_value_cols(
 def _pan_public_col_name(col: str) -> str:
     """Map internal unit-prefix columns to public entity-suffix columns."""
     prefix_to_suffix = (
+        ("nTPM_clean_log1p_", "_nTPM_clean_log1p"),
+        ("TPM_clean_log1p_", "_TPM_clean_log1p"),
+        ("nTPM_log1p_", "_nTPM_log1p"),
+        ("TPM_log1p_", "_TPM_log1p"),
         ("nTPM_percentile_", "_nTPM_percentile"),
         ("TPM_percentile_", "_TPM_percentile"),
         ("nTPM_clean_", "_nTPM_clean"),
@@ -258,6 +274,18 @@ def log2_transform(
     out = df.copy()
     for col in cols:
         out[col] = np.log2(out[col].astype(float) + pseudocount)
+    return out
+
+
+def log1p_transform(
+    df: pd.DataFrame,
+    value_cols: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
+    """Apply natural ``log1p(x)`` to expression columns."""
+    cols = list(value_cols) if value_cols is not None else _default_value_cols(df)
+    out = df.copy()
+    for col in cols:
+        out[col] = np.log1p(out[col].astype(float))
     return out
 
 
@@ -382,8 +410,16 @@ def _bundled_normalize(
     return df
 
 
-_VALID_NORMALIZE_PAN = ("tpm", "tpm_clean", "hk", "housekeeping", "percentile")
-_VALID_NORMALIZE_PAN_DISPLAY = ("tpm", "tpm_clean", "hk", "housekeeping", "percentile")
+_VALID_NORMALIZE_PAN = (
+    "tpm",
+    "tpm_clean",
+    "tpm_log1p",
+    "tpm_clean_log1p",
+    "hk",
+    "housekeeping",
+    "percentile",
+)
+_VALID_NORMALIZE_PAN_DISPLAY = _VALID_NORMALIZE_PAN
 
 
 def _canonical_pan_normalize_token(token: str) -> str:
@@ -413,7 +449,14 @@ def _resolve_pan_normalize_modes(
                 f"got element {token!r}"
             )
         canonical = _canonical_pan_normalize_token(token)
-        if canonical not in {"tpm", "tpm_clean", "hk", "percentile"}:
+        if canonical not in {
+            "tpm",
+            "tpm_clean",
+            "tpm_log1p",
+            "tpm_clean_log1p",
+            "hk",
+            "percentile",
+        }:
             raise ValueError(
                 "normalize must be None, a string, or a sequence containing "
                 f"{_VALID_NORMALIZE_PAN_DISPLAY!r}; got {token!r}"
@@ -518,17 +561,24 @@ def pan_cancer_expression(
           removed. Base ``<tissue>_nTPM`` and ``<code>_TPM`` columns,
           plus raw ``<code>_FPKM`` columns, remain unchanged.
         - ``None`` — raw/provenance view: raw TCGA ``<code>_FPKM``
-          values and HPA ``<tissue>_nTPM`` values are preserved, with no
-          TPM derivation, artifact-gene cleanup, HK scaling,
-          percentile-rank, or log transform.
+          values and HPA ``<tissue>_nTPM`` values are preserved, while
+          deterministic ``<code>_TPM`` analysis columns are generated
+          from ``<code>_FPKM``. No artifact-gene cleanup, HK scaling,
+          percentile-rank, or log transform is applied.
         - ``"tpm"`` / ``"TPM"`` — add missing ``<code>_TPM`` companion
           columns from ``<code>_FPKM`` while preserving raw FPKM.
+        - ``"tpm_log1p"`` — add ``<tissue>_nTPM_log1p`` and
+          ``<code>_TPM_log1p`` columns using natural ``log1p`` over the
+          TPM-scale analysis columns. Implies ``"tpm"``.
         - ``"hk"`` or ``"housekeeping"`` — add
           ``<tissue>_nTPM_hk`` and ``<code>_TPM_hk`` columns divided by
           their housekeeping-gene median. Implies ``"tpm"``.
         - ``"percentile"`` — within-column percentile rank (0–100),
           added as ``<tissue>_nTPM_percentile`` and
           ``<code>_TPM_percentile`` columns. Implies ``"tpm"``.
+        - ``"tpm_clean_log1p"`` — first add clean TPM/nTPM columns, then
+          add natural-log ``<tissue>_nTPM_clean_log1p`` and
+          ``<code>_TPM_clean_log1p`` columns. Implies ``"tpm_clean"``.
 
         For example, ``normalize=["tpm_clean", "hk", "percentile"]``
         adds clean, housekeeping, and percentile columns in one call.
@@ -560,7 +610,11 @@ def pan_cancer_expression(
     legacy_kwargs_used = any(
         (technical_rna_normalize, remove_noncoding, renormalize_to_million)
     )
-    normalize_modes = [] if legacy_kwargs_used else _resolve_pan_normalize_modes(normalize)
+    normalize_modes = (
+        [] if legacy_kwargs_used else _resolve_pan_normalize_modes(normalize)
+    )
+    if not legacy_kwargs_used and "tpm" not in normalize_modes:
+        normalize_modes.insert(0, "tpm")
     _warn_legacy_normalize_kwargs(
         {
             "technical_rna_normalize": technical_rna_normalize,
@@ -575,6 +629,7 @@ def pan_cancer_expression(
     analysis_value_cols = _pan_analysis_value_cols(df)
 
     generated_value_cols: list[str] = []
+    value_cols_by_mode: dict[str, list[str]] = {}
     if legacy_kwargs_used:
         df = _bundled_normalize(
             df,
@@ -595,19 +650,34 @@ def pan_cancer_expression(
                     renormalize=True,
                     value_cols=analysis_value_cols,
                 )
+                source_cols = analysis_value_cols
+            elif mode == "tpm_log1p":
+                normalized_df = log1p_transform(
+                    df, value_cols=analysis_value_cols,
+                )
+                source_cols = analysis_value_cols
+            elif mode == "tpm_clean_log1p":
+                clean_value_cols = value_cols_by_mode.get("tpm_clean", [])
+                normalized_df = log1p_transform(
+                    df, value_cols=clean_value_cols,
+                )
+                source_cols = clean_value_cols
             elif mode == "hk":
                 normalized_df = normalize_to_housekeeping(
                     df, value_cols=analysis_value_cols,
                 )
+                source_cols = analysis_value_cols
             elif mode == "percentile":
                 normalized_df, _ = percentile_rank_expression(
                     df, value_cols=analysis_value_cols,
                 )
+                source_cols = analysis_value_cols
             else:  # pragma: no cover - guarded by _resolve_pan_normalize_modes
                 continue
             df, new_cols = _add_pan_normalized_value_cols(
-                df, normalized_df, analysis_value_cols, mode,
+                df, normalized_df, source_cols, mode,
             )
+            value_cols_by_mode[mode] = new_cols
             generated_value_cols.extend(new_cols)
     pipeline_value_cols = generated_value_cols or analysis_value_cols
     df = _apply_pipeline(

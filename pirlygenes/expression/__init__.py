@@ -46,6 +46,7 @@ from .accessors import (
     filter_technical_rna,
     filter_to_genes,
     hpa_cell_type_expression,
+    log1p_transform,
     log2_transform,
     normalize_to_housekeeping,
     pan_cancer_expression,
@@ -90,6 +91,7 @@ __all__ = [
     "normalize_technical_rna_long_table",
     # Reference-frame convenience wrappers
     "normalize_to_housekeeping",
+    "log1p_transform",
     "log2_transform",
     "filter_technical_rna",
     "filter_to_genes",

@@ -129,6 +129,7 @@ from pirlygenes.expression import (
     percentile_rank_expression,       # within-column percentile ranks
     renormalize_to_million,           # bare utility for column rescaling
     tpm_to_housekeeping_normalized,   # divide each column by housekeeping geomean
+    log1p_transform,                  # natural log1p over selected value columns
     normalize_technical_rna_columns,
     normalize_technical_rna_long_table,
 
@@ -157,11 +158,16 @@ preserved, and cleaned TPM-scale analysis columns are added as
 # and *_TPM_clean companion columns.
 pan_cancer_expression()                          # normalize="tpm_clean"
 
-# Raw/provenance view: raw <code>_FPKM from TCGA and <tissue>_nTPM from HPA.
+# Raw/provenance view: raw <code>_FPKM from TCGA, <tissue>_nTPM from HPA,
+# and deterministic <code>_TPM companions for analysis.
 pan_cancer_expression(normalize=None)
 
 # Add deterministic <code>_TPM companions derived from the FPKM columns.
 pan_cancer_expression(normalize="tpm")
+
+# Add explicit natural-log analysis columns while preserving raw/base values.
+pan_cancer_expression(normalize="tpm_log1p")
+pan_cancer_expression(normalize="tpm_clean_log1p")
 
 # Add housekeeping-normalized TPM-scale columns. Percentile ranks are also
 # available via normalize="percentile" as *_percentile columns.

@@ -12,6 +12,7 @@ Covers:
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -28,6 +29,7 @@ from pirlygenes.expression import (
     fpkm_to_tpm,
     hpa_cell_type_expression,
     is_rescue_feature,
+    log1p_transform,
     log2_transform,
     normalize_expression,
     normalize_to_housekeeping,
@@ -155,11 +157,31 @@ def test_add_tpm_columns_from_fpkm_preserves_source_columns():
     assert record["columns"]["FPKM_S1"]["target_column"] == "TPM_S1"
 
 
+def test_add_tpm_columns_from_fpkm_accepts_entity_first_columns():
+    df = pd.DataFrame({
+        "Symbol": ["A", "B", "C"],
+        "Ensembl_Gene_ID": ["ENSG1", "ENSG2", "ENSG3"],
+        "BRCA_FPKM": [1.0, 2.0, 3.0],
+    })
+    out, record = add_tpm_columns_from_fpkm(df)
+    assert "BRCA_FPKM" in out.columns
+    assert "BRCA_TPM" in out.columns
+    assert out["BRCA_FPKM"].tolist() == [1.0, 2.0, 3.0]
+    assert out["BRCA_TPM"].sum() == pytest.approx(1_000_000)
+    assert record["columns"]["BRCA_FPKM"]["target_column"] == "BRCA_TPM"
+
+
 def test_percentile_rank_expression_is_reusable():
     df = pd.DataFrame({"TPM_S1": [10.0, 20.0, 30.0]})
     out, record = percentile_rank_expression(df, value_cols=["TPM_S1"])
     assert out["TPM_S1"].tolist() == pytest.approx([100 / 3, 200 / 3, 100])
     assert record["columns"]["TPM_S1"]["n_ranked"] == 3
+
+
+def test_log1p_transform_is_reusable():
+    df = pd.DataFrame({"TPM_S1": [0.0, 1.0, 9.0]})
+    out = log1p_transform(df, value_cols=["TPM_S1"])
+    assert out["TPM_S1"].tolist() == pytest.approx(np.log1p([0.0, 1.0, 9.0]))
 
 
 def test_normalize_expression_drops_technical_rna_rows_and_renormalizes():
@@ -394,16 +416,38 @@ def test_pan_cancer_expression_normalize_default_is_tpm_clean():
 
 
 def test_pan_cancer_expression_normalize_none_keeps_raw_and_tpm_columns():
-    """``normalize=None`` leaves the raw/provenance columns unchanged."""
+    """``normalize=None`` keeps provenance FPKM and adds TPM analysis columns."""
     df = pan_cancer_expression(normalize=None)
     assert any(c.endswith("_FPKM") for c in df.columns)
-    assert not any(c.endswith("_TPM") for c in df.columns)
+    assert any(c.endswith("_TPM") for c in df.columns)
     assert any(c.endswith("_nTPM") for c in df.columns)
     assert not any(
         c.endswith(("_TPM_clean", "_nTPM_clean", "_TPM_hk", "_nTPM_hk"))
         for c in df.columns
     )
     assert not any(c.startswith("tcga_") for c in df.columns)
+
+
+def test_pan_cancer_expression_normalize_none_log_transform_uses_tpm_values():
+    """The raw log path transforms TPM/nTPM analysis columns, not FPKM."""
+    raw = pan_cancer_expression(normalize=None)
+    logged = pan_cancer_expression(normalize=None, log_transform=True)
+
+    fpkm_col = next(c for c in raw.columns if c.endswith("_FPKM"))
+    tpm_col = next(c for c in raw.columns if c.endswith("_TPM"))
+    ntpm_col = next(c for c in raw.columns if c.endswith("_nTPM"))
+
+    pd.testing.assert_series_equal(
+        raw[fpkm_col].reset_index(drop=True),
+        logged[fpkm_col].reset_index(drop=True),
+        check_names=False,
+    )
+    assert logged[tpm_col].iloc[:20].tolist() == pytest.approx(
+        np.log2(raw[tpm_col].astype(float).iloc[:20] + 1.0)
+    )
+    assert logged[ntpm_col].iloc[:20].tolist() == pytest.approx(
+        np.log2(raw[ntpm_col].astype(float).iloc[:20] + 1.0)
+    )
 
 
 def test_pan_cancer_expression_normalize_tpm_preserves_fpkm_and_adds_tpm():
@@ -517,6 +561,38 @@ def test_pan_cancer_expression_normalize_tpm_clean_pins_cols_to_million():
         col_sum = float(pd.to_numeric(df[col], errors="coerce").sum())
         if col_sum > 0:
             assert col_sum == pytest.approx(1_000_000, rel=1e-6)
+
+
+def test_pan_cancer_expression_normalize_tpm_log1p_adds_columns():
+    raw = pan_cancer_expression(normalize="tpm")
+    df = pan_cancer_expression(normalize="tpm_log1p")
+
+    tpm_col = next(c for c in raw.columns if c.endswith("_TPM"))
+    log_col = tpm_col.replace("_TPM", "_TPM_log1p", 1)
+    assert log_col in df.columns
+    assert df[log_col].iloc[:20].tolist() == pytest.approx(
+        np.log1p(raw[tpm_col].astype(float).iloc[:20])
+    )
+
+    fpkm_col = next(c for c in raw.columns if c.endswith("_FPKM"))
+    pd.testing.assert_series_equal(
+        raw[fpkm_col].reset_index(drop=True),
+        df[fpkm_col].reset_index(drop=True),
+        check_names=False,
+    )
+
+
+def test_pan_cancer_expression_normalize_tpm_clean_log1p_adds_columns():
+    clean = pan_cancer_expression(normalize="tpm_clean")
+    df = pan_cancer_expression(normalize="tpm_clean_log1p")
+
+    clean_col = next(c for c in clean.columns if c.endswith("_TPM_clean"))
+    log_col = clean_col.replace("_TPM_clean", "_TPM_clean_log1p", 1)
+    assert clean_col in df.columns
+    assert log_col in df.columns
+    assert df[log_col].iloc[:20].tolist() == pytest.approx(
+        np.log1p(clean[clean_col].astype(float).iloc[:20])
+    )
 
 
 def test_pan_cancer_expression_normalize_default_matches_singleton_list():
