@@ -148,7 +148,9 @@ def test_cta_filtered_and_evidence():
         "rna_80_pct_filter",
         "rna_90_pct_filter",
         "rna_95_pct_filter",
+        "rna_98_pct_filter",
         "rna_99_pct_filter",
+        "passes_filters",
         "filtered",
         "source_databases",
         "biotype",
@@ -158,6 +160,30 @@ def test_cta_filtered_and_evidence():
     ]
     for col in expected_cols:
         assert col in evidence_df.columns, f"Missing column: {col}"
+    assert (
+        evidence_df["passes_filters"].astype(str).str.lower()
+        == evidence_df["filtered"].astype(str).str.lower()
+    ).all()
+    assert "XAGE1B" in filtered_names
+
+
+def test_cta_accepts_passes_filters_only_schema(monkeypatch):
+    df = pd.DataFrame(
+        {
+            "Symbol": ["SHOULD_PASS", "SHOULD_FAIL"],
+            "Ensembl_Gene_ID": ["ENSG00000000001", "ENSG00000000002"],
+            "passes_filters": [True, False],
+            "never_expressed": [False, False],
+            "rna_deflated_reproductive_frac": [0.99, 0.20],
+            "rna_98_pct_filter": [True, False],
+            "rna_99_pct_filter": [False, False],
+        }
+    )
+
+    assert gsc._has_complete_cta_evidence_schema(df)
+    monkeypatch.setattr(gsc, "CTA_evidence", lambda: df)
+
+    assert gsc.CTA_filtered_gene_names() == {"SHOULD_PASS"}
 
 
 def test_cta_gene_id_to_name_preserves_row_pairing():
