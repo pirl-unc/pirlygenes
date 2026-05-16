@@ -16,7 +16,7 @@
 panels and the data-side operations needed to put two expression
 columns on the same scale. Anything that requires interpretive
 judgment (per-sample QC narration, library-prep classification,
-deconvolution, signature scoring) lives in :mod:`trufflepig`.
+signature scoring) lives in :mod:`trufflepig`.
 
 Subpackage layout::
 
@@ -45,25 +45,24 @@ from .accessors import (
     estimate_signatures,
     filter_technical_rna,
     filter_to_genes,
-    heme_tumor_up_vs_matched_normal,
     hpa_cell_type_expression,
+    log1p_transform,
     log2_transform,
     normalize_to_housekeeping,
     pan_cancer_expression,
-    subtype_deconvolved_expression,
-    tcga_deconvolved_expression,
     technical_rna_gene_ids,
-    tumor_up_vs_matched_normal,
 )
 from .aggregate import (
     aggregate_gene_expression,
     extra_tx_mappings,
 )
 from .normalize import (
+    add_tpm_columns_from_fpkm,
     fpkm_to_tpm,
     normalize_expression,
     normalize_technical_rna_columns,
     normalize_technical_rna_long_table,
+    percentile_rank_expression,
     renormalize_to_million,
     tpm_to_housekeeping_normalized,
 )
@@ -79,21 +78,20 @@ __all__ = [
     "pan_cancer_expression",
     "cancer_expression",
     "cancer_enriched_genes",
-    "tcga_deconvolved_expression",
-    "subtype_deconvolved_expression",
-    "tumor_up_vs_matched_normal",
-    "heme_tumor_up_vs_matched_normal",
     "hpa_cell_type_expression",
     "estimate_signatures",
     # Rescaling primitives
     "normalize_expression",
     "fpkm_to_tpm",
+    "add_tpm_columns_from_fpkm",
+    "percentile_rank_expression",
     "renormalize_to_million",
     "tpm_to_housekeeping_normalized",
     "normalize_technical_rna_columns",
     "normalize_technical_rna_long_table",
     # Reference-frame convenience wrappers
     "normalize_to_housekeeping",
+    "log1p_transform",
     "log2_transform",
     "filter_technical_rna",
     "filter_to_genes",

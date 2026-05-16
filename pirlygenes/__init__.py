@@ -21,23 +21,23 @@
   mtDNA, NUMTs, rRNA + pseudogenes, ribosomal proteins, histones,
   hemoglobins, immune-receptor segments, small ncRNAs, MALAT1/NEAT1.
 * reference expression matrices + mechanical transforms
-  (``expression``) — pan-cancer TCGA + HPA, TCGA-deconvolved and
-  subtype-deconvolved tumor-only TPM, tumor-vs-matched-normal panels,
-  HPA cell-type expression, ESTIMATE signatures; plus
+  (``expression``) — pan-cancer TCGA + HPA, HPA cell-type expression,
+  ESTIMATE signatures; plus
   ``normalize_expression``, ``fpkm_to_tpm``,
   ``tpm_to_housekeeping_normalized``, ``classify_gene_qc``, and
   ``aggregate_gene_expression``.
 * the bundled-dataset loader (``load_dataset``).
 * canonical gene-id / gene-name helpers (``gene_ids``, ``gene_names``).
 
-Analysis-layer code (CLI, plotting, sample QC narration, deconvolution,
-signature scoring) lives in
+Analysis-layer code (CLI, plotting, sample QC narration, signature
+scoring) lives in
 `pirl-trufflepig <https://github.com/pirl-unc/trufflepig>`_, which
 depends on this package.
 """
 
 from .expression import (
     GeneQcClass,
+    add_tpm_columns_from_fpkm,
     aggregate_gene_expression,
     cancer_enriched_genes,
     cancer_expression,
@@ -46,7 +46,6 @@ from .expression import (
     filter_technical_rna,
     filter_to_genes,
     fpkm_to_tpm,
-    heme_tumor_up_vs_matched_normal,
     hpa_cell_type_expression,
     is_rescue_feature,
     log2_transform,
@@ -55,12 +54,10 @@ from .expression import (
     normalize_technical_rna_long_table,
     normalize_to_housekeeping,
     pan_cancer_expression,
+    percentile_rank_expression,
     renormalize_to_million,
-    subtype_deconvolved_expression,
-    tcga_deconvolved_expression,
     technical_rna_gene_ids,
     tpm_to_housekeeping_normalized,
-    tumor_up_vs_matched_normal,
 )
 from .gene_families import (
     GENE_FAMILIES,
@@ -174,15 +171,13 @@ __all__ = [
     "pan_cancer_expression",
     "cancer_expression",
     "cancer_enriched_genes",
-    "tcga_deconvolved_expression",
-    "subtype_deconvolved_expression",
-    "tumor_up_vs_matched_normal",
-    "heme_tumor_up_vs_matched_normal",
     "hpa_cell_type_expression",
     "estimate_signatures",
     # expression: rescaling primitives
     "normalize_expression",
     "fpkm_to_tpm",
+    "add_tpm_columns_from_fpkm",
+    "percentile_rank_expression",
     "renormalize_to_million",
     "tpm_to_housekeeping_normalized",
     "normalize_technical_rna_columns",

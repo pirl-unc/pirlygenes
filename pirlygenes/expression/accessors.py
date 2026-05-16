@@ -18,14 +18,8 @@ normalization helpers needed to make them comparable across columns:
 
 * :func:`pan_cancer_expression` — wide-form ``Symbol × tissue/cancer``
   panel: 50 HPA normal tissues (nTPM) + 33 TCGA cancer types (FPKM)
-  + the per-cancer tumor-only deconvolved medians from
-  :func:`tcga_deconvolved_expression` (``tcga_<CODE>`` columns).
-* :func:`tcga_deconvolved_expression`,
-  :func:`subtype_deconvolved_expression` — long-form tumor-only TPM
-  medians (full-cohort + subtype-stratified).
-* :func:`tumor_up_vs_matched_normal`,
-  :func:`heme_tumor_up_vs_matched_normal` — per-cancer
-  tumor-vs-tissue-of-origin enrichment panels.
+  with optional deterministic TPM companion columns derived from those
+  FPKM columns and optional added normalized analysis columns.
 * :func:`hpa_cell_type_expression` — HPA cell-type single-cell
   reference (long-form ``Symbol, cell_type, nTPM``).
 * :func:`estimate_signatures` — the ESTIMATE stromal/immune signature
@@ -43,10 +37,10 @@ library-prep classification) lives in trufflepig. What's here:
   :mod:`pirlygenes.gene_families` (no symbol-regex dependency).
 * :func:`filter_to_genes` — subset to a caller-provided gene list.
 
-The accessors expose ``normalize="housekeeping"``, ``log_transform=``,
-and ``drop_technical_rna=`` keyword arguments that pipeline the free
-functions in the expected order — for callers who prefer one call
-to a chain of helpers.
+The accessors expose ``normalize=``, ``log_transform=``, and
+``drop_technical_rna=`` keyword arguments that pipeline the free
+functions in the expected order — for callers who prefer one call to a
+chain of helpers.
 
 Boundary: :func:`filter_technical_rna` and the family-level filter
 inside :func:`normalize_expression` (see
@@ -68,7 +62,6 @@ can mutate freely.
 
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import Iterable, Optional, Sequence
 
 import numpy as np
@@ -77,19 +70,135 @@ import pandas as pd
 from ..gene_families import gene_family_ids
 from ..gene_sets_cancer import housekeeping_gene_ids
 from ..load_dataset import get_data
-from .normalize import normalize_expression, renormalize_to_million
+from .normalize import (
+    add_tpm_columns_from_fpkm,
+    normalize_expression,
+    percentile_rank_expression,
+    renormalize_to_million,
+)
 from .qc import _TECHNICAL_RNA_FAMILIES
 
 
 # ---------- column-discovery helpers ----------
 
 
-_VALUE_COL_PREFIXES = ("nTPM_", "FPKM_", "tcga_", "TPM_")
+_VALUE_COL_PREFIXES = ("nTPM_", "FPKM_", "TPM_")
+_PAN_ANALYSIS_VALUE_COL_PREFIXES = ("nTPM_", "TPM_")
+_PAN_NORMALIZED_SUFFIXES = {
+    "tpm_clean": "clean",
+    "tpm_log1p": "log1p",
+    "tpm_clean_log1p": "clean_log1p",
+    "hk": "hk",
+    "percentile": "percentile",
+}
+_PAN_NORMALIZE_DEPENDENCIES = {
+    "tpm_clean": ("tpm",),
+    "tpm_log1p": ("tpm",),
+    "tpm_clean_log1p": ("tpm_clean",),
+    "hk": ("tpm",),
+    "percentile": ("tpm",),
+}
+_PAN_NORMALIZED_VALUE_COL_PREFIXES = tuple(
+    f"{prefix}{suffix}_"
+    for prefix in _PAN_ANALYSIS_VALUE_COL_PREFIXES
+    for suffix in _PAN_NORMALIZED_SUFFIXES.values()
+)
+_VALUE_COL_SUFFIXES = (
+    "_nTPM",
+    "_FPKM",
+    "_TPM",
+    "_nTPM_log1p",
+    "_TPM_log1p",
+    "_nTPM_clean",
+    "_TPM_clean",
+    "_nTPM_clean_log1p",
+    "_TPM_clean_log1p",
+    "_nTPM_hk",
+    "_TPM_hk",
+    "_nTPM_percentile",
+    "_TPM_percentile",
+)
 
 
 def _default_value_cols(df: pd.DataFrame) -> list[str]:
     """Heuristic: wide-form expression frames use prefixed column names."""
-    return [c for c in df.columns if c.startswith(_VALUE_COL_PREFIXES)]
+    return [
+        c for c in df.columns
+        if (
+            c.startswith(_VALUE_COL_PREFIXES)
+            or c.endswith(_VALUE_COL_SUFFIXES)
+        )
+    ]
+
+
+def _pan_analysis_value_cols(df: pd.DataFrame) -> list[str]:
+    """TPM-scale columns used by pan-cancer normalization presets."""
+    return [
+        c for c in df.columns
+        if c.startswith(_PAN_ANALYSIS_VALUE_COL_PREFIXES)
+        and not c.startswith(_PAN_NORMALIZED_VALUE_COL_PREFIXES)
+    ]
+
+
+def _pan_normalized_col_name(col: str, normalize: str) -> str:
+    """Internal name for an added normalized TPM/nTPM analysis column."""
+    if normalize == "tpm_clean_log1p":
+        for prefix in ("nTPM_clean_", "TPM_clean_"):
+            if col.startswith(prefix):
+                return f"{prefix}log1p_{col[len(prefix):]}"
+    suffix = _PAN_NORMALIZED_SUFFIXES[normalize]
+    for prefix in _PAN_ANALYSIS_VALUE_COL_PREFIXES:
+        if col.startswith(prefix):
+            return f"{prefix}{suffix}_{col[len(prefix):]}"
+    return f"{col}_{suffix}"
+
+
+def _add_pan_normalized_value_cols(
+    df: pd.DataFrame,
+    normalized_df: pd.DataFrame,
+    value_cols: Sequence[str],
+    normalize: str,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Add normalized TPM/nTPM analysis columns without overwriting inputs."""
+    out = df.copy()
+    target_cols = []
+    for col in value_cols:
+        target = _pan_normalized_col_name(col, normalize)
+        out[target] = normalized_df[col]
+        target_cols.append(target)
+    return out, target_cols
+
+
+def _pan_public_col_name(col: str) -> str:
+    """Map internal unit-prefix columns to public entity-suffix columns."""
+    prefix_to_suffix = (
+        ("nTPM_clean_log1p_", "_nTPM_clean_log1p"),
+        ("TPM_clean_log1p_", "_TPM_clean_log1p"),
+        ("nTPM_log1p_", "_nTPM_log1p"),
+        ("TPM_log1p_", "_TPM_log1p"),
+        ("nTPM_percentile_", "_nTPM_percentile"),
+        ("TPM_percentile_", "_TPM_percentile"),
+        ("nTPM_clean_", "_nTPM_clean"),
+        ("TPM_clean_", "_TPM_clean"),
+        ("nTPM_hk_", "_nTPM_hk"),
+        ("TPM_hk_", "_TPM_hk"),
+        ("nTPM_", "_nTPM"),
+        ("FPKM_", "_FPKM"),
+        ("TPM_", "_TPM"),
+    )
+    for prefix, suffix in prefix_to_suffix:
+        if col.startswith(prefix):
+            return f"{col[len(prefix):]}{suffix}"
+    return col
+
+
+def _rename_pan_expression_columns_entity_first(df: pd.DataFrame) -> pd.DataFrame:
+    """Return the public pan-cancer column schema.
+
+    The packaged CSV and internal normalization pipeline use unit-prefix
+    names. The accessor returns entity-first names for readability.
+    """
+    return df.rename(columns={c: _pan_public_col_name(c) for c in df.columns})
 
 
 def _resolve_id_col(df: pd.DataFrame) -> Optional[str]:
@@ -120,8 +229,10 @@ def normalize_to_housekeeping(
         Expression frame with an ``Ensembl_Gene_ID`` column and one or
         more numeric value columns.
     value_cols
-        Columns to rescale. If ``None``, picks columns starting with
-        ``nTPM_``, ``FPKM_``, ``tcga_``, or ``TPM_``.
+        Columns to rescale. If ``None``, picks columns using either the
+        internal unit-prefix schema (``nTPM_``, ``FPKM_``, ``TPM_``) or
+        the public entity-suffix schema (``*_nTPM``, ``*_FPKM``,
+        ``*_TPM`` and added normalized suffixes).
 
     Returns
     -------
@@ -162,6 +273,18 @@ def log2_transform(
     out = df.copy()
     for col in cols:
         out[col] = np.log2(out[col].astype(float) + pseudocount)
+    return out
+
+
+def log1p_transform(
+    df: pd.DataFrame,
+    value_cols: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
+    """Apply natural ``log1p(x)`` to expression columns."""
+    cols = list(value_cols) if value_cols is not None else _default_value_cols(df)
+    out = df.copy()
+    for col in cols:
+        out[col] = np.log1p(out[col].astype(float))
     return out
 
 
@@ -286,34 +409,89 @@ def _bundled_normalize(
     return df
 
 
+_VALID_NORMALIZE_PAN = (
+    "tpm",
+    "tpm_clean",
+    "tpm_log1p",
+    "tpm_clean_log1p",
+    "hk",
+    "housekeeping",
+    "percentile",
+)
+_VALID_NORMALIZE_PAN_DISPLAY = _VALID_NORMALIZE_PAN
+
+
+def _canonical_pan_normalize_token(token: str) -> str:
+    """Normalize public tokens onto the internal short names."""
+    token = token.lower()
+    if token == "housekeeping":
+        return "hk"
+    return token
+
+
+def _resolve_pan_normalize_modes(
+    normalize: Optional[str | Sequence[str]],
+) -> list[str]:
+    """Canonicalize ``normalize=`` into an ordered, dependency-expanded list."""
+    if normalize is None:
+        requested: list[str] = []
+    elif isinstance(normalize, str):
+        requested = [normalize]
+    else:
+        requested = list(normalize)
+
+    canonical_requested: list[str] = []
+    for token in requested:
+        if not isinstance(token, str):
+            raise ValueError(
+                "normalize must be None, a string, or a sequence of strings; "
+                f"got element {token!r}"
+            )
+        canonical = _canonical_pan_normalize_token(token)
+        if canonical not in {
+            "tpm",
+            "tpm_clean",
+            "tpm_log1p",
+            "tpm_clean_log1p",
+            "hk",
+            "percentile",
+        }:
+            raise ValueError(
+                "normalize must be None, a string, or a sequence containing "
+                f"{_VALID_NORMALIZE_PAN_DISPLAY!r}; got {token!r}"
+            )
+        canonical_requested.append(canonical)
+
+    out: list[str] = []
+
+    def add_with_deps(mode: str) -> None:
+        for dep in _PAN_NORMALIZE_DEPENDENCIES.get(mode, ()):
+            add_with_deps(dep)
+        if mode not in out:
+            out.append(mode)
+
+    for mode in canonical_requested:
+        add_with_deps(mode)
+    return out
+
+
 def _apply_pipeline(
     df: pd.DataFrame,
     *,
     drop_technical_rna: bool = False,
     genes: Optional[Iterable[str]] = None,
-    normalize: Optional[str] = None,
     log_transform: bool = False,
+    percentile: bool = False,
     value_cols: Optional[Sequence[str]] = None,
 ) -> pd.DataFrame:
     """Shared accessor-kwarg pipeline. Order matters: family filter →
-    gene subset → cross-column normalization → log transform."""
+    gene subset → optional percentile transform → log transform."""
     if drop_technical_rna:
         df = filter_technical_rna(df)
     if genes is not None:
         df = filter_to_genes(df, genes)
-    if normalize is not None:
-        if normalize == "housekeeping":
-            df = normalize_to_housekeeping(df, value_cols=value_cols)
-        elif normalize == "percentile":
-            cols = list(value_cols) if value_cols else _default_value_cols(df)
-            df = df.copy()
-            for col in cols:
-                df[col] = df[col].astype(float).rank(pct=True) * 100
-        else:
-            raise ValueError(
-                f"normalize must be 'housekeeping', 'percentile', or None — "
-                f"got {normalize!r}"
-            )
+    if percentile:
+        df, _ = percentile_rank_expression(df, value_cols=value_cols)
     if log_transform:
         df = log2_transform(df, value_cols=value_cols)
     return df
@@ -322,93 +500,135 @@ def _apply_pipeline(
 # ---------- accessors: pan-cancer expression ----------
 
 
-@lru_cache(maxsize=1)
-def _tcga_deconv_wide_cached() -> pd.DataFrame:
-    """Wide-form (``Symbol``-indexed) view of the tumor-only TPM medians.
-
-    Built by pivoting the long-form :func:`tcga_deconvolved_expression`
-    frame into one ``tcga_<code>`` column per TCGA cancer code, then
-    cached for the process lifetime since the pivot is non-trivial."""
-    long = tcga_deconvolved_expression()
-    wide = long.pivot_table(
-        index="symbol",
-        columns="cancer_code",
-        values="tumor_tpm_median",
-        aggfunc="median",
-    )
-    wide.columns = [f"tcga_{c}" for c in wide.columns]
-    return wide.reset_index().rename(columns={"symbol": "Symbol"})
-
-
 def pan_cancer_expression(
     genes: Optional[Iterable[str]] = None,
-    normalize: Optional[str] = None,
+    normalize: Optional[str | Sequence[str]] = "tpm_clean",
+    *,
     log_transform: bool = False,
-    technical_rna_normalize: bool = False,
-    remove_noncoding: bool = False,
-    renormalize_to_million: bool = False,
     drop_technical_rna: bool = False,
 ) -> pd.DataFrame:
     """Wide-form expression across HPA normal tissues + TCGA cancer types.
 
-    50 normal tissues from HPA v23 consensus (``nTPM_<tissue>`` columns)
-    plus 33 TCGA cancer types (``FPKM_<code>`` columns from HPA pathology
-    + GDC/STAR reprocessing) plus per-cancer tumor-only deconvolved
-    medians from :func:`tcga_deconvolved_expression` (``tcga_<code>``).
+    50 normal tissues from HPA v23 consensus (``<tissue>_nTPM`` columns)
+    plus 33 TCGA cancer types from HPA pathology + GDC/STAR reprocessing
+    (``<code>_FPKM`` in native units). The accessor always appends
+    deterministic ``<code>_TPM`` companion columns derived from the FPKM
+    columns, preserving the raw FPKM columns for provenance.
 
     Parameters
     ----------
     genes
         Optional iterable of gene symbols or Ensembl IDs to subset to.
     normalize
-        ``"housekeeping"`` — divide each column by its housekeeping median.
-        ``"percentile"`` — within-column percentile rank (0–100).
-        ``None`` (default) — raw FPKM / nTPM / tumor-only TPM.
+        Normalization mode or list of modes. Modes are additive and may be
+        combined; dependencies are inserted automatically. ``"TPM"`` and
+        ``"tpm"`` are equivalent.
+
+        - ``"tpm_clean"`` (default) — first ensure deterministic
+          ``<code>_TPM`` columns exist from ``<code>_FPKM``, then add
+          ``<tissue>_nTPM_clean`` and ``<code>_TPM_clean`` columns with
+          mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows zeroed
+          and each column's sum pinned back to 10⁶. This is the
+          recommended view for analysis: every normalized analysis
+          column on the same scale, technical-RNA denominator drift
+          removed. Base ``<tissue>_nTPM`` and ``<code>_TPM`` columns,
+          plus raw ``<code>_FPKM`` columns, remain unchanged.
+        - ``None`` — raw/provenance view: raw TCGA ``<code>_FPKM``
+          values and HPA ``<tissue>_nTPM`` values are preserved, while
+          deterministic ``<code>_TPM`` analysis columns are generated
+          from ``<code>_FPKM``. No artifact-gene cleanup, HK scaling,
+          percentile-rank, or log transform is applied.
+        - ``"tpm"`` / ``"TPM"`` — add missing ``<code>_TPM`` companion
+          columns from ``<code>_FPKM`` while preserving raw FPKM.
+        - ``"tpm_log1p"`` — add ``<tissue>_nTPM_log1p`` and
+          ``<code>_TPM_log1p`` columns using natural ``log1p`` over the
+          TPM-scale analysis columns. Implies ``"tpm"``.
+        - ``"hk"`` or ``"housekeeping"`` — add
+          ``<tissue>_nTPM_hk`` and ``<code>_TPM_hk`` columns divided by
+          their housekeeping-gene median. Implies ``"tpm"``.
+        - ``"percentile"`` — within-column percentile rank (0–100),
+          added as ``<tissue>_nTPM_percentile`` and
+          ``<code>_TPM_percentile`` columns. Implies ``"tpm"``.
+        - ``"tpm_clean_log1p"`` — first add clean TPM/nTPM columns, then
+          add natural-log ``<tissue>_nTPM_clean_log1p`` and
+          ``<code>_TPM_clean_log1p`` columns. Implies ``"tpm_clean"``.
+
+        For example, ``normalize=["tpm_clean", "hk", "percentile"]``
+        adds clean, housekeeping, and percentile columns in one call.
     log_transform
         Apply ``log2(x + 1)`` to value columns after any normalization.
-    technical_rna_normalize
-        Zero mtDNA / NUMT / rRNA / nuclear-retained-lncRNA rows and
-        renormalize each column's remaining mass back to the original
-        per-column total. Uses :func:`normalize_expression` and so picks
-        up the same symbol-regex fallback for genes not in the curated
-        family CSVs.
-    remove_noncoding
-        Additionally zero rows with noncoding biotypes (keeping
-        protein-coding, Ig, and TCR biotypes) when a biotype column is
-        present. Only meaningful in combination with
-        ``technical_rna_normalize`` or when the upstream frame already
-        carries a ``biotype`` column.
-    renormalize_to_million
-        After any zero-and-renormalize step, rescale every column so its
-        non-NaN sum is exactly 10⁶ (the standard TPM convention). Off by
-        default so the returned magnitudes match raw FPKM / nTPM unless
-        a caller explicitly opts in.
     drop_technical_rna
         Drop mtDNA / NUMT / rRNA / nuclear-retained-lncRNA rows entirely
         (uses :func:`filter_technical_rna`). Distinct from
-        ``technical_rna_normalize``: this removes rows, the other zeroes
-        them in place. See Boundary note in the module docstring.
+        ``normalize="tpm_clean"``: this removes rows, while
+        ``"tpm_clean"`` zeroes them in added ``*_clean`` columns. See
+        Boundary note in the module docstring.
 
     Returns
     -------
     pd.DataFrame
         Defensive copy — safe to mutate.
     """
+    normalize_modes = _resolve_pan_normalize_modes(normalize)
+    if "tpm" not in normalize_modes:
+        normalize_modes.insert(0, "tpm")
+
     df = get_data("pan-cancer-expression")
-    df = df.merge(_tcga_deconv_wide_cached(), on="Symbol", how="left")
-    df = _bundled_normalize(
-        df,
-        technical_rna_normalize=technical_rna_normalize,
-        remove_noncoding=remove_noncoding,
-        renormalize=renormalize_to_million,
-    )
-    return _apply_pipeline(
+    df, _ = add_tpm_columns_from_fpkm(df)
+    analysis_value_cols = _pan_analysis_value_cols(df)
+
+    generated_value_cols: list[str] = []
+    value_cols_by_mode: dict[str, list[str]] = {}
+    for mode in normalize_modes:
+        if mode == "tpm":
+            continue
+        if mode == "tpm_clean":
+            normalized_df = _bundled_normalize(
+                df,
+                technical_rna_normalize=True,
+                remove_noncoding=False,
+                renormalize=True,
+                value_cols=analysis_value_cols,
+            )
+            source_cols = analysis_value_cols
+        elif mode == "tpm_log1p":
+            normalized_df = log1p_transform(
+                df, value_cols=analysis_value_cols,
+            )
+            source_cols = analysis_value_cols
+        elif mode == "tpm_clean_log1p":
+            clean_value_cols = value_cols_by_mode.get("tpm_clean", [])
+            normalized_df = log1p_transform(
+                df, value_cols=clean_value_cols,
+            )
+            source_cols = clean_value_cols
+        elif mode == "hk":
+            normalized_df = normalize_to_housekeeping(
+                df, value_cols=analysis_value_cols,
+            )
+            source_cols = analysis_value_cols
+        elif mode == "percentile":
+            normalized_df, _ = percentile_rank_expression(
+                df, value_cols=analysis_value_cols,
+            )
+            source_cols = analysis_value_cols
+        else:  # pragma: no cover - guarded by _resolve_pan_normalize_modes
+            continue
+        df, new_cols = _add_pan_normalized_value_cols(
+            df, normalized_df, source_cols, mode,
+        )
+        value_cols_by_mode[mode] = new_cols
+        generated_value_cols.extend(new_cols)
+    pipeline_value_cols = generated_value_cols or analysis_value_cols
+    df = _apply_pipeline(
         df,
         drop_technical_rna=drop_technical_rna,
         genes=genes,
-        normalize=normalize,
         log_transform=log_transform,
+        percentile=False,
+        value_cols=pipeline_value_cols,
     )
+    return _rename_pan_expression_columns_entity_first(df)
 
 
 def cancer_expression(
@@ -435,13 +655,14 @@ def cancer_expression(
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(
         genes=genes,
-        normalize="housekeeping",
+        normalize="hk",
         drop_technical_rna=True,
     )
-    col = f"FPKM_{code}"
+    col = f"{code}_TPM_hk"
     if col not in df.columns:
         raise ValueError(
-            f"no FPKM column for {cancer_type!r} (resolved to {code!r})"
+            f"no HK-normalized TPM column for {cancer_type!r} "
+            f"(resolved to {code!r})"
         )
     return df[["Ensembl_Gene_ID", "Symbol", col]].rename(
         columns={col: "expression"}
@@ -474,16 +695,17 @@ def cancer_enriched_genes(
 
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(
-        normalize="housekeeping",
+        normalize="hk",
         drop_technical_rna=True,
     )
-    fpkm_cols = [c for c in df.columns if c.startswith("FPKM_")]
-    target_col = f"FPKM_{code}"
+    tpm_cols = [c for c in df.columns if c.endswith("_TPM_hk")]
+    target_col = f"{code}_TPM_hk"
     if target_col not in df.columns:
         raise ValueError(
-            f"no FPKM column for {cancer_type!r} (resolved to {code!r})"
+            f"no HK-normalized TPM column for {cancer_type!r} "
+            f"(resolved to {code!r})"
         )
-    other_cols = [c for c in fpkm_cols if c != target_col]
+    other_cols = [c for c in tpm_cols if c != target_col]
     result = df[["Ensembl_Gene_ID", "Symbol"]].copy()
     result["expression"] = df[target_col].astype(float)
     result["other_median"] = df[other_cols].astype(float).median(axis=1)
@@ -495,127 +717,6 @@ def cancer_enriched_genes(
         & (result["fold_change"] >= min_fold)
     ].sort_values("fold_change", ascending=False)
     return result.reset_index(drop=True)
-
-
-# ---------- accessors: TCGA + subtype-deconvolved tumor-only TPM ----------
-
-
-def tcga_deconvolved_expression() -> pd.DataFrame:
-    """Long-form per-(symbol, TCGA code) tumor-only TPM medians.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: ``symbol``, ``cancer_code``, ``tumor_tpm_median``,
-        ``tumor_tpm_q1``, ``tumor_tpm_q3``, ``n_samples``.
-    """
-    return get_data("tcga-deconvolved-expression").copy()
-
-
-_SUBTYPE_VALUE_COLS: tuple[str, ...] = (
-    "tumor_tpm_median",
-    "tumor_tpm_q1",
-    "tumor_tpm_q3",
-)
-_SUBTYPE_GROUP_COLS: tuple[str, ...] = ("cancer_code", "subtype")
-
-
-def subtype_deconvolved_expression(
-    technical_rna_normalize: bool = False,
-    remove_noncoding: bool = False,
-    renormalize_to_million: bool = False,
-) -> pd.DataFrame:
-    """Long-form per-(cancer_code, subtype, symbol) tumor-only TPM medians.
-
-    Subtype-stratified companion to :func:`tcga_deconvolved_expression`.
-    Covers BRCA × PAM50, BeatAML × ELN2017, TARGET pediatric cohorts,
-    SCLC, LUAD × mutation class, HNSC × HPV, Treehouse PolyA/RiboD
-    public samples, GSE299759 chondrosarcoma, GSE75885 sarcoma splits,
-    and more.
-
-    Parameters
-    ----------
-    technical_rna_normalize
-        Within each (cancer_code, subtype) group, zero technical-RNA
-        rows in the tumor TPM columns and rescale the surviving mass to
-        the original per-group total.
-    remove_noncoding
-        Additionally zero noncoding biotypes (kept: protein-coding, Ig,
-        TCR) when a biotype column is present. Only meaningful with
-        ``technical_rna_normalize``.
-    renormalize_to_million
-        After the zero-and-renormalize step, rescale every tumor TPM
-        column so its non-NaN sum is 10⁶. Off by default so the returned
-        magnitudes match the cached medians unless explicitly opted in.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: ``symbol``, ``cancer_code``, ``subtype``,
-        ``tumor_tpm_median``, ``tumor_tpm_q1``, ``tumor_tpm_q3``,
-        ``n_samples``.
-    """
-    df = get_data("subtype-deconvolved-expression").copy()
-    return _bundled_normalize(
-        df,
-        technical_rna_normalize=technical_rna_normalize,
-        remove_noncoding=remove_noncoding,
-        renormalize=renormalize_to_million,
-        label_col="symbol",
-        id_col=None,
-        value_cols=_SUBTYPE_VALUE_COLS,
-        group_cols=_SUBTYPE_GROUP_COLS,
-    )
-
-
-# ---------- accessors: tumor-up vs matched normal panels ----------
-
-
-def tumor_up_vs_matched_normal(
-    cancer_code: Optional[str] = None,
-) -> pd.DataFrame:
-    """Per-cancer genes dramatically up in tumor vs matched normal tissue.
-
-    Built offline by racing the shipped :func:`tcga_deconvolved_expression`
-    tumor-only medians against the matched-tissue ``nTPM_<tissue>``
-    columns in :func:`pan_cancer_expression`, filtered so each gene
-    is genuinely low across *all* HPA normal tissues and specific to
-    ≤ 4 cancer codes.
-
-    Parameters
-    ----------
-    cancer_code
-        Filter to a single TCGA code. ``None`` returns all rows.
-
-    Returns
-    -------
-    pd.DataFrame
-        Columns: ``cancer_code``, ``matched_normal_tissue``, ``symbol``,
-        ``ensembl_gene_id``, ``fold_change_vs_matched_normal``,
-        ``tumor_tpm``, ``matched_normal_ntpm``, ``max_any_normal_ntpm``.
-    """
-    df = get_data("tumor-up-vs-matched-normal").copy()
-    if cancer_code:
-        df = df[df["cancer_code"] == cancer_code].reset_index(drop=True)
-    return df
-
-
-def heme_tumor_up_vs_matched_normal(
-    cancer_code: Optional[str] = None,
-) -> pd.DataFrame:
-    """Heme analogue of :func:`tumor_up_vs_matched_normal`.
-
-    DLBC vs lymph_node (mature-B normal background), LAML vs
-    bone_marrow (myeloid-progenitor normal background). Filter is
-    looser than the solid panel because heme tumors *are* immune
-    tissue — the malignant clone shares most expression with its
-    normal lineage counterpart, so treat the top hits as one signal
-    among several.
-    """
-    df = get_data("heme-tumor-up-vs-matched-normal").copy()
-    if cancer_code:
-        df = df[df["cancer_code"] == cancer_code].reset_index(drop=True)
-    return df
 
 
 # ---------- accessors: HPA cell-type + ESTIMATE signatures ----------
@@ -646,10 +747,6 @@ __all__ = [
     "pan_cancer_expression",
     "cancer_expression",
     "cancer_enriched_genes",
-    "tcga_deconvolved_expression",
-    "subtype_deconvolved_expression",
-    "tumor_up_vs_matched_normal",
-    "heme_tumor_up_vs_matched_normal",
     "hpa_cell_type_expression",
     "estimate_signatures",
     # normalization

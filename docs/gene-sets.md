@@ -57,31 +57,59 @@ vaccination and immunotherapy targets.
 ## Pan-Cancer Expression Reference
 
 `pan_cancer_expression()` returns a DataFrame with median expression
-across 33 TCGA cancer types (FPKM) and 50 HPA normal tissues (nTPM).
+across 33 TCGA cancer types (raw FPKM plus deterministic TPM companions)
+and 50 HPA normal tissues (nTPM).
+
+By default, `normalize="tpm_clean"`: the accessor preserves raw TCGA
+`*_FPKM`, adds derived TCGA `*_TPM`, preserves HPA `*_nTPM`, cleans
+TPM-scale analysis columns, and adds the clean values as
+`*_TPM_clean` / `*_nTPM_clean`.
 
 ```python
-from pirlygenes.gene_sets_cancer import pan_cancer_expression
+from pirlygenes.expression import pan_cancer_expression
 
 ref = pan_cancer_expression()
-# Columns: Ensembl_Gene_ID, Symbol, FPKM_ACC, FPKM_BLCA, ..., nTPM_adipose_tissue, nTPM_adrenal_gland, ...
+# Columns: Ensembl_Gene_ID, Symbol, adipose_tissue_nTPM, ..., ACC_FPKM, ..., ACC_TPM, ...
 ```
 
-Supports normalization:
-- `pan_cancer_expression(normalize="housekeeping")` — fold over housekeeping median
+Supports normalization with `None`, a string, or a list of strings:
+- `pan_cancer_expression(normalize=None)` — raw/provenance view with
+  `*_FPKM` and `*_nTPM` columns unchanged, plus derived `*_TPM` analysis
+  columns
+- `pan_cancer_expression(normalize="tpm")` or `normalize="TPM"` — add
+  deterministic `*_TPM` companions derived from `*_FPKM`
+- `pan_cancer_expression(normalize="tpm_log1p")` — add natural-log
+  `*_TPM_log1p` and `*_nTPM_log1p` analysis columns
+- `pan_cancer_expression(normalize="tpm_clean")` — TPM scale plus zero
+  mitochondrial, NUMT-like, rRNA-like, and MALAT1/NEAT1 rows, then pin each
+  clean analysis column to sum to 1e6. Base `*_nTPM`, `*_TPM`, and
+  `*_FPKM` columns remain unchanged; clean values are added as
+  `*_nTPM_clean` and `*_TPM_clean`.
+- `pan_cancer_expression(normalize="tpm_clean_log1p")` — add clean
+  TPM/nTPM columns, then add natural-log `*_TPM_clean_log1p` and
+  `*_nTPM_clean_log1p` columns
+- `pan_cancer_expression(normalize="hk")` — fold TPM-scale analysis
+  columns over housekeeping median, added as `*_nTPM_hk` and `*_TPM_hk`
 - `pan_cancer_expression(normalize="percentile")` — percentile ranks
-- `pan_cancer_expression(log2=True)` — log2 transform
-- `pan_cancer_expression(technical_rna_normalize=True)` — zero mitochondrial,
-  NUMT-like, rRNA-like, and rRNA-pseudogene rows, then renormalize remaining
-  expression mass. This is the opinionated analysis view used by the reports;
-  raw references remain available for QC/provenance.
+  on TPM-scale analysis columns, added as `*_nTPM_percentile` and
+  `*_TPM_percentile`
+- `pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])` —
+  add all requested normalized column families in one call. `tpm_clean`,
+  `hk`, and `percentile` imply `tpm`.
+- `pan_cancer_expression(log_transform=True)` — log2 transform on
+  the active normalized columns, or on base `*_nTPM` / `*_TPM` columns
+  when `normalize=None` or `normalize="tpm"`. Raw `*_FPKM` provenance
+  columns stay raw; prefer the `*_log1p` normalize modes for additive
+  logged columns.
 
-`normalize_expression()` in `pirlygenes.expression_qc` implements the shared
+`normalize_expression()` in `pirlygenes.expression` implements the shared
 transform for samples and references. The default removal set is intentionally
 narrow: mitochondrial transcripts, NUMT-like mitochondrial pseudogenes, and
-rRNA/rRNA-pseudogene features. `remove_noncoding=True` additionally removes
-noncoding-biotype rows when biotype metadata is available, while keeping
-protein-coding, immunoglobulin, and TCR biotypes. That option is off by default
-because noncoding RNAs can be real biology in some assays.
+rRNA/rRNA-pseudogene features, plus the nuclear-retained lncRNAs MALAT1 and
+NEAT1. `remove_noncoding=True` additionally removes noncoding-biotype rows when
+biotype metadata is available, while keeping protein-coding, immunoglobulin, and
+TCR biotypes. That option is off by default because noncoding RNAs can be real
+biology in some assays.
 
 Current curated gene-set impact: the default transform silences the dedicated
 mitochondrial QC gene set (`MT-CO1/2/3`, `MT-ND*`, `MT-CYB`, `MT-ATP6/8`,

@@ -2,4 +2,4 @@
 set -o errexit
 
 ./lint.sh
-pytest --cov=pirlygenes/ --cov-report=term-missing tests
+python -m pytest -n 0 --cov=pirlygenes/ --cov-report=term-missing tests

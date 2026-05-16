@@ -21,7 +21,7 @@ Pass extra pytest args after the script name:
 
 This package is **curated reference data + the mechanical operations on
 it**. Analysis-layer code (CLI, plotting, sample-QC narration,
-deconvolution, signature scoring) lives in
+signature scoring) lives in
 [`pirl-trufflepig`](https://github.com/pirl-unc/trufflepig).
 
 Things that belong here:
@@ -30,9 +30,7 @@ Things that belong here:
 - Symbol/ENSG resolvers (`gene_ids.py`, `gene_names.py`)
 - Gene-family panels (`gene_families.py` + `data/{numt-pseudogenes,nuclear-retained-lncrnas,…}.csv`)
 - Reference expression matrices (`pirlygenes/expression/accessors.py` +
-  `data/pan-cancer-expression.csv`, `tcga-deconvolved-expression.csv.gz`,
-  `subtype-deconvolved-expression.csv.gz`, `hpa-cell-type-expression.csv`,
-  `tumor-up-vs-matched-normal.csv`, `heme-tumor-up-vs-matched-normal.csv`,
+  `data/pan-cancer-expression.csv`, `hpa-cell-type-expression.csv`,
   `estimate-signatures.csv`)
 - Mechanical transforms on expression matrices
   (`pirlygenes/expression/normalize.py`: `normalize_expression`,

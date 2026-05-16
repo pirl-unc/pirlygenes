@@ -23,9 +23,8 @@ def get_all_csv_paths() -> list:
     """
     Get paths to all CSV files in the data directory.
 
-    Picks up both plain ``.csv`` and gzipped ``.csv.gz`` — the latter is used
-    for references that would otherwise bloat the package (e.g. the #22
-    tcga-deconvolved-expression reference, ~13 MB → ~4 MB gzipped).
+    Picks up both plain ``.csv`` and gzipped ``.csv.gz`` files, keyed
+    consistently by their underlying ``.csv`` name.
 
     Returns a list of Path objects for each CSV file.
     """
