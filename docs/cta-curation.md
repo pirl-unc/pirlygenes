@@ -130,14 +130,14 @@ A gene's `protein_reproductive` flag is True when all tissues with detected prot
 
 ## Filter logic
 
-The `filtered` column uses tiered deflated RNA reproductive fraction thresholds that scale with protein data confidence. Higher-confidence protein data in reproductive tissues provides corroborating evidence, allowing a more permissive RNA threshold:
+The `passes_filters` column uses tiered deflated RNA reproductive fraction thresholds that scale with protein data confidence. Higher-confidence protein data in reproductive tissues provides corroborating evidence, allowing a more permissive RNA threshold:
 
 | Protein evidence | Required deflated RNA fraction |
 |---|---|
 | Enhanced (orthogonal validation) + reproductive only | >= 80% |
 | Supported (consistent characterization) + reproductive only | >= 90% |
 | Approved (basic validation) + reproductive only | >= 95% |
-| Uncertain or no protein data available | >= 99% |
+| Uncertain or no protein data available | >= 98% |
 
 **Additional filter criteria**:
 - Gene must be protein-coding (Ensembl biotype = `protein_coding`)
@@ -202,8 +202,10 @@ All Ensembl Gene IDs are validated against Ensembl release 112. Canonical transc
 | `rna_80_pct_filter` | Deflated reproductive fraction >= 80% |
 | `rna_90_pct_filter` | Deflated reproductive fraction >= 90% |
 | `rna_95_pct_filter` | Deflated reproductive fraction >= 95% |
+| `rna_98_pct_filter` | Deflated reproductive fraction >= 98% |
 | `rna_99_pct_filter` | Deflated reproductive fraction >= 99% |
-| `filtered` | Final inclusion flag (see filter logic above) |
+| `passes_filters` | Final inclusion flag (see filter logic above) |
+| `filtered` | Historical alias for `passes_filters` |
 | `never_expressed` | No HPA protein data AND max RNA nTPM < 2 |
 
 ## Python API
@@ -231,7 +233,7 @@ df = CTA_evidence()
 
 # Example: strict CTAs from CTpedia with Enhanced protein evidence
 strict = df[
-    (df['filtered'] == True) &
+    (df['passes_filters'] == True) &
     (df['source_databases'].str.contains('CTpedia')) &
     (df['protein_reliability'] == 'Enhanced') &
     (~df['never_expressed'])

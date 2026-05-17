@@ -1248,10 +1248,11 @@ radioligand_target_gene_ids = _deprecate(
 
 
 # ---------- Cancer-testis antigens (CTA) ----------
+_CTA_FILTER_COLUMN_CANDIDATES = ("passes_filters", "filtered")
 _CTA_REQUIRED_EVIDENCE_COLUMNS = frozenset(
     {
-        "filtered",
         "never_expressed",
+        "rna_98_pct_filter",
         "rna_deflated_reproductive_frac",
         "rna_99_pct_filter",
     }
@@ -1259,7 +1260,40 @@ _CTA_REQUIRED_EVIDENCE_COLUMNS = frozenset(
 
 
 def _has_complete_cta_evidence_schema(df: pd.DataFrame) -> bool:
-    return _CTA_REQUIRED_EVIDENCE_COLUMNS.issubset(set(df.columns))
+    return _CTA_REQUIRED_EVIDENCE_COLUMNS.issubset(
+        set(df.columns)
+    ) and _cta_filter_column(df) is not None
+
+
+def _cta_filter_column(df: pd.DataFrame) -> str | None:
+    for column in _CTA_FILTER_COLUMN_CANDIDATES:
+        if column in df.columns:
+            return column
+    return None
+
+
+def _bool_mask(series: pd.Series) -> pd.Series:
+    return series.astype(str).str.strip().str.lower() == "true"
+
+
+def _cta_filter_mask(df: pd.DataFrame) -> pd.Series:
+    column = _cta_filter_column(df)
+    if column is None:
+        return pd.Series(False, index=df.index)
+    return _bool_mask(df[column])
+
+
+def _with_cta_filter_aliases(df: pd.DataFrame) -> pd.DataFrame:
+    """Expose both canonical and historical CTA filter names."""
+    filter_column = _cta_filter_column(df)
+    if filter_column is None:
+        return df
+    df = df.copy()
+    if "passes_filters" not in df.columns:
+        df["passes_filters"] = df[filter_column]
+    if "filtered" not in df.columns:
+        df["filtered"] = df[filter_column]
+    return df
 
 
 def _bundled_cta_evidence() -> pd.DataFrame:
@@ -1270,12 +1304,12 @@ def _bundled_cta_evidence() -> pd.DataFrame:
 
 def _cta_df(filtered_only=False, exclude_never_expressed=False):
     df = CTA_evidence()
-    mask = True
-    if filtered_only and "filtered" in df.columns:
-        mask = df["filtered"].astype(str).str.lower() == "true"
+    mask = pd.Series(True, index=df.index)
+    if filtered_only:
+        mask = mask & _cta_filter_mask(df)
     if exclude_never_expressed and "never_expressed" in df.columns:
-        mask = mask & ~(df["never_expressed"].astype(str).str.lower() == "true")
-    return df[mask] if not isinstance(mask, bool) else df
+        mask = mask & ~_bool_mask(df["never_expressed"])
+    return df[mask]
 
 
 def _cta_by_column(column, filtered_only=False, exclude_never_expressed=False):
@@ -1421,13 +1455,15 @@ def CTA_evidence():
     rna_80_pct_filter, rna_90_pct_filter, rna_95_pct_filter : bool
         Whether deflated reproductive fraction >= 80/90/95%.
     filtered : bool
+        Historical alias for passes_filters.
+    passes_filters : bool
         Final inclusion flag with tiered RNA thresholds based on protein
         antibody reliability.  True when protein is reproductive-only
         (or absent) and deflated RNA fraction meets the tier threshold:
         - Enhanced → RNA >=80%
         - Supported → RNA >=90%
         - Approved → RNA >=95%
-        - Uncertain or no protein data → RNA >=99%
+        - Uncertain or no protein data → RNA >=98%
         Genes with protein in non-reproductive tissues always fail.
         Non-protein-coding genes (biotype != protein_coding) always fail.
     rna_max_ntpm : float
@@ -1440,10 +1476,10 @@ def CTA_evidence():
 
         df = _tsarina_evidence()
         if _has_complete_cta_evidence_schema(df):
-            return df
+            return _with_cta_filter_aliases(df)
     except ImportError:
         pass
-    return _bundled_cta_evidence()
+    return _with_cta_filter_aliases(_bundled_cta_evidence())
 
 
 from dataclasses import dataclass  # noqa: E402
@@ -1503,8 +1539,8 @@ def _build_partition(ensembl_release=112):
     }
     all_pc_ids = set(all_pc_genes.keys())
 
-    filtered_mask = evidence_df["filtered"].astype(str).str.lower() == "true"
-    never_expr_mask = evidence_df["never_expressed"].astype(str).str.lower() == "true"
+    filtered_mask = _cta_filter_mask(evidence_df)
+    never_expr_mask = _bool_mask(evidence_df["never_expressed"])
 
     cta_mask = filtered_mask & ~never_expr_mask
     never_expressed_mask = filtered_mask & never_expr_mask
