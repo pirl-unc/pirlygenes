@@ -64,6 +64,7 @@ from pirlygenes.gene_sets_cancer import (
                                       #   CRC, GASTRIC, ESCA_SQ, SQUAMOUS, MESENCHYMAL,
                                       #   RENAL, GLIAL, MELANOCYTIC)
     cancer_family_panel,              # e.g. cancer_family_panel("MESENCHYMAL")
+    therapy_benefit_toxicity_evidence,# curated clinical benefit/toxicity rows
     housekeeping_gene_ids,
     mitochondrial_gene_ids,
     tme_marker_gene_ids,              # tumor microenvironment markers
@@ -209,6 +210,7 @@ read raw via the generic loader.
 | `cancer-driver-genes.csv` | `get_data("cancer-driver-genes")` |
 | `cancer-driver-variants.csv` | `get_data("cancer-driver-variants")` |
 | `cancer-key-genes.csv` | `cancer_key_genes_df()` |
+| `therapy-benefit-toxicity-evidence.csv` | `therapy_benefit_toxicity_evidence()` |
 | `cancer-type-registry.csv` | `cancer_type_registry()`, `CANCER_TYPE_NAMES`, `resolve_cancer_type()`, `cancer_types_in_family()`, `cancer_types_by_tissue()`, `cancer_type_subtypes_of()` |
 | `cancer-family-panels.csv` | `cancer_family_panels()`, `cancer_family_panel(name)`, `cancer_family_panels_df()` |
 | `cancer-type-genes.csv` | `cancer_type_gene_sets(cancer_type)` |

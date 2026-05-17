@@ -19,6 +19,11 @@ Each therapy type has trial and approved variants. Access via
 | Radioligand | `"radioligand"` | Radioligand therapy |
 | Multispecific TCE | `"multispecific-TCE"` | Multispecific T-cell engagers |
 
+Use `therapy_benefit_toxicity_evidence()` for curated clinical
+benefit/toxicity rows keyed by agent, cancer code, subtype, and line of
+therapy. These rows are separate from expression data; target expression is
+not evidence of survival benefit or toxicity by itself.
+
 ## Cancer-Testis Antigens (CTAs)
 
 CTAs are genes normally expressed only in germline tissues (testis,

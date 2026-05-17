@@ -90,17 +90,17 @@ synthesis, not a TPM ranking. The score combines:
 - therapy-state caveats, such as AR-target attenuation after ADT/ARPI in PRAD
   or IFN-driven inflation of MHC-related targets;
 - clinical maturity and treatment-path tier;
-- optional structured `benefit_tier` / `toxicity_tier` fields when those are
-  curated for an agent.
+- optional structured `benefit_tier` / `toxicity_tier` fields from
+  `therapy_benefit_toxicity_evidence()` when those are curated for an agent
+  and disease context.
 
-Do not infer survival benefit or toxicity from expression alone. External data
-sources that can support future curation include FDA/DailyMed structured product
-labels for approved-drug adverse reactions, openFDA label/adverse-event APIs,
-ClinicalTrials.gov results tables for response/survival/adverse events,
-CTCAE terminology for toxicity severity grading, and side-effect resources such
-as SIDER/OnSIDES. Those sources need normalization by indication, line of
-therapy, endpoint (ORR/DOR/PFS/OS/RFS), dose, and grade 3+ adverse-event rate
-before they can safely become a benefit-vs-toxicity score.
+Do not infer survival benefit or toxicity from expression alone.
+`therapy-benefit-toxicity-evidence.csv` is the normalized curation surface for
+those fields. FDA/DailyMed labels, ClinicalTrials.gov results, publications,
+openFDA/FAERS signals, CTCAE terminology, and extracted label resources can
+contribute rows only after normalization by indication, line of therapy,
+endpoint (ORR/DOR/PFS/OS/RFS), dose, and adverse-event severity. FAERS rows are
+signal context only and are not incidence estimates.
 
 ## Cancer Type Labels
 
