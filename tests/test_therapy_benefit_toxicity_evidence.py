@@ -49,9 +49,21 @@ def test_disease_matched_benefit_row_for_gist_imatinib():
     assert row["agent"] in set(targets["agent"].astype(str))
 
 
+def test_subtype_only_filter_does_not_include_blank_subtype_rows():
+    rows = therapy_benefit_toxicity_evidence(subtype="gist")
+
+    assert len(rows) == 1
+    assert rows.iloc[0]["agent"] == "imatinib"
+    assert rows.iloc[0]["cancer_code"] == "SARC"
+    assert rows.iloc[0]["subtype"] == "gist"
+
+
 def test_high_toxicity_row_keeps_boxed_warning_context():
+    targets = cancer_therapy_targets("SARC", subtype="synovial_sarcoma")
+    target_agent = targets.loc[targets["symbol"] == "MAGE-A4", "agent"].iloc[0]
+
     rows = therapy_benefit_toxicity_evidence(
-        agent="afamitresgene autoleucel",
+        agent=target_agent,
         cancer_code="SARC",
         subtype="synovial_sarcoma",
     )

@@ -1794,12 +1794,13 @@ def therapy_benefit_toxicity_evidence(
     values: target expression must never be used to infer survival
     benefit or toxicity on its own.
 
-    Parameters filter exact text values case-insensitively. When
-    ``subtype`` is supplied, parent cancer-code rows with blank subtype
-    are kept alongside exact subtype rows because those broader rows can
-    still apply to the subtype. Set ``include_transferred=False`` to
-    drop cross-indication rows that require an explicit eligibility
-    caveat before use.
+    Parameters filter exact text values case-insensitively. When both
+    ``cancer_code`` and ``subtype`` are supplied, parent cancer-code rows
+    with blank subtype are kept alongside exact subtype rows because
+    those broader rows can still apply to the subtype. Subtype-only
+    filtering returns only exact subtype rows. Set
+    ``include_transferred=False`` to drop cross-indication rows that
+    require an explicit eligibility caveat before use.
     """
     from .load_dataset import get_data
 
@@ -1814,7 +1815,10 @@ def therapy_benefit_toxicity_evidence(
     if subtype is not None:
         wanted = str(subtype).strip().casefold()
         values = df["subtype"].fillna("").astype(str).str.strip().str.casefold()
-        df = df[(values == "") | (values == wanted)]
+        if cancer_code is None:
+            df = df[values == wanted]
+        else:
+            df = df[(values == "") | (values == wanted)]
 
     if not include_transferred:
         transfer = (
