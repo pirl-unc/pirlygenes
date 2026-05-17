@@ -105,6 +105,7 @@ from .gene_sets_cancer import (
     mitochondrial_gene_ids,
     mitochondrial_gene_names,
     mitochondrial_genes_df,
+    therapy_benefit_toxicity_evidence,
     tme_marker_gene_ids,
     tme_marker_gene_names,
     tme_markers_df,
@@ -140,6 +141,7 @@ __all__ = [
     "cancer_family_panels_df",
     "cancer_family_panel",
     "cancer_family_panels",
+    "therapy_benefit_toxicity_evidence",
     # gene families
     "GeneFamily",
     "GENE_FAMILIES",
