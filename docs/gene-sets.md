@@ -107,6 +107,12 @@ Supports normalization with `None`, a string, or a list of strings:
   columns stay raw; prefer the `*_log1p` normalize modes for additive
   logged columns.
 
+`cancer_expression(cancer_type)` presents the same default analysis view for a
+single cancer type, regardless of source. TCGA-backed cancers and packaged
+non-TCGA references both default to clean TPM (`normalize="tpm_clean"`).
+Housekeeping-normalized TCGA values are returned only when callers explicitly
+request `normalize="hk"` or `normalize="housekeeping"`.
+
 `normalize_expression()` in `pirlygenes.expression` implements the shared
 transform for samples and references. The default removal set is intentionally
 narrow: mitochondrial transcripts, NUMT-like mitochondrial pseudogenes, and

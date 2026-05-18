@@ -118,7 +118,7 @@ from pirlygenes.gene_families import (
 from pirlygenes.expression import (
     # Reference matrices (long- and wide-form)
     pan_cancer_expression,            # 19,784 genes × expression reference columns
-    cancer_expression,                # one cancer type, housekeeping-normalized
+    cancer_expression,                # one cancer type, clean TPM by default
     cancer_enriched_genes,            # genes enriched in one cancer vs the others
     hpa_cell_type_expression,         # HPA single-cell consensus
     estimate_signatures,              # Yoshihara 2013 stromal/immune sigs
@@ -177,6 +177,11 @@ pan_cancer_expression(normalize="hk")
 # Combine modes in one call; tpm_clean, hk, and percentile each imply "tpm".
 pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])
 ```
+
+`cancer_expression(cancer_type)` uses the same default analysis view across
+reference sources: clean TPM (`normalize="tpm_clean"`). For TCGA-backed cancer
+types, housekeeping-normalized values are available only when explicitly
+requested with `normalize="hk"` or `normalize="housekeeping"`.
 
 The older `pan_cancer_expression()` kwargs (`technical_rna_normalize`,
 `remove_noncoding`, and `renormalize_to_million`) have been removed. Use
