@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from pyensembl import EnsemblRelease
 
 from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
 
@@ -36,8 +37,11 @@ SOURCE_URL = (
     "https://data.broadinstitute.org/cllmap/data/downloads/"
     "cllmap_rnaseq_tpms_full.tsv.gz"
 )
-PIPELINE = "cllmap_raw_tpm_gencode19_clean_tpm_v1"
-SOURCE_VERSION = "CLL-map RNA-SeQC v2.3.6 GENCODE19; downloaded 2026-05-18"
+PIPELINE = "cllmap_raw_tpm_gencode19_ensembl112_clean_tpm_v1"
+SOURCE_VERSION = (
+    "CLL-map RNA-SeQC v2.3.6 GENCODE19; Ensembl IDs harmonized to "
+    "Ensembl release 112; downloaded 2026-05-18"
+)
 
 
 def _strip_version(value: object) -> str:
@@ -51,6 +55,78 @@ def _read_tpm_matrix(path: Path) -> pd.DataFrame:
     df["Ensembl_Gene_ID"] = df["Ensembl_Gene_ID"].map(_strip_version)
     df["Symbol"] = df["Symbol"].fillna("").astype(str)
     return df
+
+
+def _gene_by_id(genome: EnsemblRelease, gene_id: str):
+    try:
+        return genome.gene_by_id(gene_id)
+    except Exception:
+        return None
+
+
+def _unique_gene_by_symbol(genome: EnsemblRelease, symbol: str):
+    if not symbol:
+        return None
+    try:
+        genes = genome.genes_by_name(symbol)
+    except Exception:
+        return None
+    gene_ids = {gene.gene_id.split(".", 1)[0] for gene in genes}
+    if len(gene_ids) != 1:
+        return None
+    return genes[0]
+
+
+def _harmonize_gene_ids(
+    df: pd.DataFrame,
+    *,
+    ensembl_release: int,
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Map source GENCODE19 IDs to an Ensembl release used by CI/tests.
+
+    CLL-map's raw matrix is GENCODE19-keyed. Most stable IDs still resolve in
+    modern Ensembl; for retired IDs with an unambiguous current symbol, remap
+    to the current Ensembl ID. Retired anonymous loci that cannot be resolved
+    by ID or unique symbol are dropped from the packaged summary.
+    """
+    genome = EnsemblRelease(ensembl_release)
+    by_id_cache = {}
+    by_symbol_cache = {}
+    canonical_ids: list[str | None] = []
+    canonical_symbols: list[str | None] = []
+    counts = {"source_id": 0, "symbol": 0, "dropped": 0}
+
+    for source_id, symbol in zip(df["Ensembl_Gene_ID"], df["Symbol"]):
+        gene = by_id_cache.get(source_id)
+        if source_id not in by_id_cache:
+            gene = _gene_by_id(genome, str(source_id))
+            by_id_cache[source_id] = gene
+        if gene is not None:
+            canonical_ids.append(gene.gene_id.split(".", 1)[0])
+            canonical_symbols.append(gene.gene_name or str(symbol))
+            counts["source_id"] += 1
+            continue
+
+        symbol_key = str(symbol)
+        gene = by_symbol_cache.get(symbol_key)
+        if symbol_key not in by_symbol_cache:
+            gene = _unique_gene_by_symbol(genome, symbol_key)
+            by_symbol_cache[symbol_key] = gene
+        if gene is not None:
+            canonical_ids.append(gene.gene_id.split(".", 1)[0])
+            canonical_symbols.append(gene.gene_name or symbol_key)
+            counts["symbol"] += 1
+            continue
+
+        canonical_ids.append(None)
+        canonical_symbols.append(None)
+        counts["dropped"] += 1
+
+    out = df.copy()
+    out["Ensembl_Gene_ID"] = canonical_ids
+    out["Symbol"] = canonical_symbols
+    out = out[out["Ensembl_Gene_ID"].notna()].reset_index(drop=True)
+    return out, counts
 
 
 def _sample_manifest(sample_cols: list[str]) -> pd.DataFrame:
@@ -141,7 +217,8 @@ def _summarize(df: pd.DataFrame, included_cols: list[str]) -> pd.DataFrame:
     out["processing_pipeline"] = PIPELINE
     out["notes"] = (
         "Raw CLL-map TPMs; portal duplicate exclusions applied; "
-        "GCLL-0136 excluded as suspected MCL."
+        "GCLL-0136 excluded as suspected MCL; GENCODE19 IDs harmonized "
+        "to Ensembl release 112 by source ID or unique symbol."
     )
     numeric_cols = [
         "TPM_median",
@@ -161,6 +238,7 @@ def main() -> None:
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--summary-output", required=True, type=Path)
     parser.add_argument("--samples-output", required=True, type=Path)
+    parser.add_argument("--ensembl-release", default=112, type=int)
     args = parser.parse_args()
 
     df = _read_tpm_matrix(args.input)
@@ -171,6 +249,10 @@ def main() -> None:
     }]
     manifest = _sample_manifest(sample_cols)
     included = manifest.loc[manifest["included"], "sample_id"].tolist()
+    df, harmonized = _harmonize_gene_ids(
+        df,
+        ensembl_release=args.ensembl_release,
+    )
     collapsed = _collapse_duplicate_genes(df, sample_cols)
     summary = _summarize(collapsed, included)
     args.summary_output.parent.mkdir(parents=True, exist_ok=True)
@@ -181,6 +263,12 @@ def main() -> None:
     print(
         f"Wrote {len(summary)} genes from {len(included)} included CLL samples "
         f"({len(sample_cols)} total source columns)."
+    )
+    print(
+        "Gene ID harmonization: "
+        f"{harmonized['source_id']} source IDs retained, "
+        f"{harmonized['symbol']} remapped by unique symbol, "
+        f"{harmonized['dropped']} unresolved rows dropped."
     )
 
 
