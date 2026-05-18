@@ -17,11 +17,14 @@ import pandas as pd
 import pytest
 
 from pirlygenes import load_all_dataframes_dict
+import pirlygenes.expression.accessors as expression_accessors
 from pirlygenes.expression import (
     GeneQcClass,
     add_tpm_columns_from_fpkm,
     aggregate_gene_expression,
+    available_cancer_expression_references,
     cancer_expression,
+    cancer_reference_expression,
     classify_gene_qc,
     estimate_signatures,
     filter_technical_rna,
@@ -86,6 +89,31 @@ def test_cancer_expression_returns_per_symbol_expression_column():
     assert not df.empty
 
 
+def test_cancer_expression_tcga_default_is_clean_tpm_not_housekeeping():
+    default = cancer_expression("PRAD", genes=["KLK3"])
+    pan = pan_cancer_expression(
+        genes=["KLK3"],
+        normalize=["tpm_clean", "hk"],
+    )
+    expected_clean = pan[["Ensembl_Gene_ID", "Symbol", "PRAD_TPM_clean"]].rename(
+        columns={"PRAD_TPM_clean": "expression"}
+    )
+    explicit_hk = cancer_expression("PRAD", genes=["KLK3"], normalize="hk")
+    expected_hk = pan[["Ensembl_Gene_ID", "Symbol", "PRAD_TPM_hk"]].rename(
+        columns={"PRAD_TPM_hk": "expression"}
+    )
+
+    pd.testing.assert_frame_equal(
+        default.reset_index(drop=True),
+        expected_clean.reset_index(drop=True),
+    )
+    pd.testing.assert_frame_equal(
+        explicit_hk.reset_index(drop=True),
+        expected_hk.reset_index(drop=True),
+    )
+    assert not np.allclose(default["expression"], explicit_hk["expression"])
+
+
 def test_hpa_cell_type_expression_long_form():
     df = hpa_cell_type_expression()
     assert not df.empty
@@ -94,6 +122,211 @@ def test_hpa_cell_type_expression_long_form():
 def test_estimate_signatures_has_stromal_and_immune_classes():
     df = estimate_signatures()
     assert not df.empty
+
+
+def test_available_cancer_expression_references_includes_cllmap():
+    df = available_cancer_expression_references()
+    cll = df[df["cancer_code"] == "CLL"]
+    assert not cll.empty
+    row = cll.iloc[0]
+    assert row["source_cohort"] == "CLLMAP_2022"
+    assert row["n_samples"] == 708
+
+
+def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():
+    df = cancer_reference_expression(cancer_types=["CLL"], genes=["MS4A1", "MALAT1"])
+    assert {"Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"} <= set(
+        df.columns
+    )
+    assert set(df["normalization"]) == {"TPM_clean"}
+    ms4a1 = df[df["Symbol"] == "MS4A1"].iloc[0]
+    malat1 = df[df["Symbol"] == "MALAT1"].iloc[0]
+    assert ms4a1["expression"] > 100
+    assert malat1["expression"] == 0
+
+
+def test_cancer_reference_expression_can_return_raw_and_clean_wide():
+    df = cancer_reference_expression(
+        cancer_types="CLL",
+        genes=["MS4A1"],
+        normalize=["tpm", "tpm_clean"],
+        format="wide",
+    )
+    assert {"CLL_TPM", "CLL_TPM_clean"} <= set(df.columns)
+    row = df.iloc[0]
+    assert row["CLL_TPM"] > 100
+    assert row["CLL_TPM_clean"] > row["CLL_TPM"]
+
+
+def test_cancer_reference_expression_empty_gene_subset_keeps_long_schema():
+    df = cancer_reference_expression(cancer_types="CLL", genes=["NO_SUCH_GENE"])
+    assert df.empty
+    assert list(df.columns) == [
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "cancer_code",
+        "source_cohort",
+        "source_project",
+        "source_version",
+        "n_samples",
+        "n_detected",
+        "processing_pipeline",
+        "notes",
+        "normalization",
+        "expression",
+        "q1",
+        "q3",
+    ]
+    assert "TPM_clean_median" not in df.columns
+
+
+def test_cancer_reference_expression_empty_gene_subset_keeps_wide_schema():
+    df = cancer_reference_expression(
+        cancer_types="CLL",
+        genes=["NO_SUCH_GENE"],
+        normalize=["tpm", "tpm_clean"],
+        format="wide",
+    )
+    assert df.empty
+    assert list(df.columns) == [
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "CLL_TPM",
+        "CLL_TPM_clean",
+    ]
+
+
+def test_cancer_reference_expression_validates_format_for_empty_filters():
+    with pytest.raises(ValueError, match="format must be 'long' or 'wide'"):
+        cancer_reference_expression(
+            cancer_types="CLL",
+            genes=["NO_SUCH_GENE"],
+            format="matrix",
+        )
+
+
+def test_cancer_expression_resolves_non_tcga_reference():
+    df = cancer_expression("CLL", genes=["FCER2"])
+    assert list(df["Symbol"]) == ["FCER2"]
+    assert df["expression"].iloc[0] > 100
+
+
+def test_cancer_expression_defaults_to_clean_tpm_for_all_packaged_references():
+    refs = available_cancer_expression_references()
+    assert not refs.empty
+
+    for code in refs["cancer_code"].drop_duplicates():
+        ref = cancer_reference_expression(
+            cancer_types=code,
+            normalize="tpm_clean",
+            include_provenance=False,
+        )
+        gene_id = ref["Ensembl_Gene_ID"].iloc[0]
+        expected = ref[ref["Ensembl_Gene_ID"] == gene_id][
+            ["Ensembl_Gene_ID", "Symbol", "expression"]
+        ].reset_index(drop=True)
+
+        actual = cancer_expression(code, genes=[gene_id]).reset_index(drop=True)
+        pd.testing.assert_frame_equal(actual, expected)
+
+
+def test_reference_expression_default_is_source_generic(monkeypatch):
+    fake = pd.DataFrame(
+        [
+            {
+                "Ensembl_Gene_ID": "ENSG000001",
+                "Symbol": "FAKE1",
+                "cancer_code": "CLL",
+                "source_cohort": "FAKE_CLL",
+                "source_project": "fake",
+                "source_version": "test",
+                "TPM_median": 7.0,
+                "TPM_q1": 5.0,
+                "TPM_q3": 9.0,
+                "TPM_mean": 7.5,
+                "TPM_clean_median": 11.0,
+                "TPM_clean_q1": 10.0,
+                "TPM_clean_q3": 12.0,
+                "n_samples": 3,
+                "n_detected": 3,
+                "processing_pipeline": "test",
+                "notes": "",
+            },
+            {
+                "Ensembl_Gene_ID": "ENSG000002",
+                "Symbol": "FAKE2",
+                "cancer_code": "MM",
+                "source_cohort": "FAKE_MM",
+                "source_project": "fake",
+                "source_version": "test",
+                "TPM_median": 13.0,
+                "TPM_q1": 12.0,
+                "TPM_q3": 14.0,
+                "TPM_mean": 13.5,
+                "TPM_clean_median": 17.0,
+                "TPM_clean_q1": 16.0,
+                "TPM_clean_q3": 18.0,
+                "n_samples": 4,
+                "n_detected": 4,
+                "processing_pipeline": "test",
+                "notes": "",
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        expression_accessors,
+        "_load_cancer_reference_expression",
+        lambda: fake.copy(),
+    )
+
+    mm = cancer_expression("MM", genes=["FAKE2"])
+    assert mm["expression"].tolist() == [17.0]
+
+    wide = cancer_reference_expression(
+        cancer_types=["CLL", "MM"],
+        genes=["NO_SUCH_GENE"],
+        format="wide",
+    )
+    assert wide.empty
+    assert list(wide.columns) == [
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "CLL_TPM_clean",
+        "MM_TPM_clean",
+    ]
+
+
+def test_cancer_expression_empty_gene_subset_is_uniform_across_sources():
+    expected_cols = ["Ensembl_Gene_ID", "Symbol", "expression"]
+
+    cll = cancer_expression("CLL", genes=["NO_SUCH_GENE"])
+    assert cll.empty
+    assert list(cll.columns) == expected_cols
+
+    prad = cancer_expression("PRAD", genes=["NO_SUCH_GENE"])
+    assert prad.empty
+    assert list(prad.columns) == expected_cols
+
+
+def test_cancer_reference_expression_sample_manifest_tracks_exclusions():
+    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+    included = samples["included"].astype(str).str.lower().eq("true")
+    excluded = samples[~included]
+    assert len(samples) == 715
+    assert len(excluded) == 7
+    assert set(excluded["sample_id"]) == {
+        "CRC-0007",
+        "CRC-0011",
+        "CRC-0028",
+        "CRC-0033",
+        "DFCI-5053",
+        "JB-0010",
+        "GCLL-0136",
+    }
+    assert (
+        excluded.set_index("sample_id").loc["GCLL-0136", "exclusion_reason"]
+        == "suspected_mcl"
+    )
 
 
 # ---------- topiary call pattern ----------

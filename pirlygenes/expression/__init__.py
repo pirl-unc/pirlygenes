@@ -31,6 +31,7 @@ imports are flat::
 
     from pirlygenes.expression import (
         pan_cancer_expression,
+        cancer_reference_expression,
         normalize_expression,
         fpkm_to_tpm,
         tpm_to_housekeeping_normalized,
@@ -40,8 +41,10 @@ imports are flat::
 """
 
 from .accessors import (
+    available_cancer_expression_references,
     cancer_enriched_genes,
     cancer_expression,
+    cancer_reference_expression,
     estimate_signatures,
     filter_technical_rna,
     filter_to_genes,
@@ -76,6 +79,8 @@ from .qc import (
 __all__ = [
     # Reference-data accessors
     "pan_cancer_expression",
+    "cancer_reference_expression",
+    "available_cancer_expression_references",
     "cancer_expression",
     "cancer_enriched_genes",
     "hpa_cell_type_expression",

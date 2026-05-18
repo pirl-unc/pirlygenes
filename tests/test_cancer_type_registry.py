@@ -230,6 +230,7 @@ def test_source_cohort_values_are_canonical():
         "TARGET_AML_2018",
         "SCLC_UCOLOGNE_2015",
         "MMRF_COMMPASS",
+        "CLLMAP_2022",
         "ICGC",
         "LITERATURE_CURATED",
         "TREEHOUSE_v25.01",
