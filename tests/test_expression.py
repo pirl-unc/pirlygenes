@@ -132,10 +132,69 @@ def test_cancer_reference_expression_can_return_raw_and_clean_wide():
     assert row["CLL_TPM_clean"] > row["CLL_TPM"]
 
 
+def test_cancer_reference_expression_empty_gene_subset_keeps_long_schema():
+    df = cancer_reference_expression(cancer_types="CLL", genes=["NO_SUCH_GENE"])
+    assert df.empty
+    assert list(df.columns) == [
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "cancer_code",
+        "source_cohort",
+        "source_project",
+        "source_version",
+        "n_samples",
+        "n_detected",
+        "processing_pipeline",
+        "notes",
+        "normalization",
+        "expression",
+        "q1",
+        "q3",
+    ]
+    assert "TPM_clean_median" not in df.columns
+
+
+def test_cancer_reference_expression_empty_gene_subset_keeps_wide_schema():
+    df = cancer_reference_expression(
+        cancer_types="CLL",
+        genes=["NO_SUCH_GENE"],
+        normalize=["tpm", "tpm_clean"],
+        format="wide",
+    )
+    assert df.empty
+    assert list(df.columns) == [
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "CLL_TPM",
+        "CLL_TPM_clean",
+    ]
+
+
+def test_cancer_reference_expression_validates_format_for_empty_filters():
+    with pytest.raises(ValueError, match="format must be 'long' or 'wide'"):
+        cancer_reference_expression(
+            cancer_types="CLL",
+            genes=["NO_SUCH_GENE"],
+            format="matrix",
+        )
+
+
 def test_cancer_expression_resolves_non_tcga_reference():
     df = cancer_expression("CLL", genes=["FCER2"])
     assert list(df["Symbol"]) == ["FCER2"]
     assert df["expression"].iloc[0] > 100
+
+
+def test_cancer_expression_empty_gene_subset_is_uniform_across_sources():
+    expected_cols = ["Ensembl_Gene_ID", "Symbol", "expression"]
+
+    cll = cancer_expression("CLL", genes=["NO_SUCH_GENE"])
+    assert cll.empty
+    assert list(cll.columns) == expected_cols
+
+    prad = cancer_expression("PRAD", genes=["NO_SUCH_GENE"])
+    assert prad.empty
+    assert list(prad.columns) == expected_cols
 
 
 def test_cancer_reference_expression_sample_manifest_tracks_exclusions():

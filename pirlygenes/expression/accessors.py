@@ -557,6 +557,11 @@ def _resolve_reference_normalize_modes(
     return out
 
 
+def _validate_reference_format(format: str) -> None:
+    if format not in {"long", "wide"}:
+        raise ValueError("format must be 'long' or 'wide'")
+
+
 def _resolve_cancer_types(
     cancer_types: Optional[str | Iterable[str]],
 ) -> list[str] | None:
@@ -573,6 +578,11 @@ def _resolve_cancer_types(
 
 def _load_cancer_reference_expression() -> pd.DataFrame:
     return get_data("cancer-reference-expression")
+
+
+def _has_cancer_reference(code: str) -> bool:
+    df = _load_cancer_reference_expression()
+    return code in set(df["cancer_code"].astype(str))
 
 
 def _reference_expr_value(
@@ -651,18 +661,18 @@ def cancer_reference_expression(
         Defensive copy suitable for downstream mutation.
     """
     modes = _resolve_reference_normalize_modes(normalize)
+    _validate_reference_format(format)
     df = _load_cancer_reference_expression()
     codes = _resolve_cancer_types(cancer_types)
     if codes is not None:
         df = df[df["cancer_code"].astype(str).isin(codes)]
+    available_codes = list(df["cancer_code"].astype(str).drop_duplicates())
+    if codes is not None:
+        wide_codes = [code for code in codes if code in set(available_codes)]
+    else:
+        wide_codes = available_codes
     if genes is not None:
         df = filter_to_genes(df, genes)
-
-    if df.empty:
-        base = ["Ensembl_Gene_ID", "Symbol"]
-        if format == "wide":
-            return df[base].copy()
-        return df.copy()
 
     base_cols = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"]
     provenance_cols = [
@@ -703,7 +713,15 @@ def cancer_reference_expression(
             on="Ensembl_Gene_ID",
             how="left",
         )
-    return wide
+    expected_value_cols = [
+        f"{code}_{_REFERENCE_VALUE_COLUMNS[mode][3]}"
+        for code in wide_codes
+        for mode in modes
+    ]
+    for col in expected_value_cols:
+        if col not in wide.columns:
+            wide[col] = np.nan
+    return wide[["Ensembl_Gene_ID", "Symbol", *expected_value_cols]]
 
 
 # ---------- accessors: pan-cancer expression ----------
@@ -870,17 +888,16 @@ def cancer_expression(
     ref_mode = _REFERENCE_NORMALIZE_ALIASES.get(normalize)
     if ref_mode is None:
         ref_mode = _REFERENCE_NORMALIZE_ALIASES.get(str(normalize).lower())
-    if ref_mode in ref_modes:
+    if ref_mode in ref_modes and _has_cancer_reference(code):
         ref = cancer_reference_expression(
             cancer_types=[code],
             genes=genes,
             normalize=ref_mode,
             include_provenance=False,
         )
-        if not ref.empty:
-            return ref[["Ensembl_Gene_ID", "Symbol", "expression"]].reset_index(
-                drop=True,
-            )
+        return ref[["Ensembl_Gene_ID", "Symbol", "expression"]].reset_index(
+            drop=True,
+        )
 
     pan_mode = _canonical_pan_normalize_token(str(normalize))
     df = pan_cancer_expression(
