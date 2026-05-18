@@ -20,6 +20,9 @@ normalization helpers needed to make them comparable across columns:
   panel: 50 HPA normal tissues (nTPM) + 33 TCGA cancer types (FPKM)
   with optional deterministic TPM companion columns derived from those
   FPKM columns and optional added normalized analysis columns.
+* :func:`cancer_reference_expression` — long- or wide-form non-TCGA
+  tumor reference summaries (CLL-map, MMRF, TARGET, GEO, etc.) exposed
+  on a common TPM / clean-TPM contract for downstream consumers.
 * :func:`hpa_cell_type_expression` — HPA cell-type single-cell
   reference (long-form ``Symbol, cell_type, nTPM``).
 * :func:`estimate_signatures` — the ESTIMATE stromal/immune signature
@@ -497,6 +500,212 @@ def _apply_pipeline(
     return df
 
 
+# ---------- accessors: source-agnostic tumor references ----------
+
+
+_REFERENCE_NORMALIZE_ALIASES = {
+    "tpm": "tpm",
+    "TPM": "tpm",
+    "tpm_clean": "tpm_clean",
+    "clean_tpm": "tpm_clean",
+    "tpm_log1p": "tpm_log1p",
+    "tpm_clean_log1p": "tpm_clean_log1p",
+    "clean_tpm_log1p": "tpm_clean_log1p",
+}
+_REFERENCE_VALUE_COLUMNS = {
+    "tpm": ("TPM_median", "TPM_q1", "TPM_q3", "TPM"),
+    "tpm_clean": (
+        "TPM_clean_median",
+        "TPM_clean_q1",
+        "TPM_clean_q3",
+        "TPM_clean",
+    ),
+    "tpm_log1p": ("TPM_median", "TPM_q1", "TPM_q3", "TPM_log1p"),
+    "tpm_clean_log1p": (
+        "TPM_clean_median",
+        "TPM_clean_q1",
+        "TPM_clean_q3",
+        "TPM_clean_log1p",
+    ),
+}
+
+
+def _resolve_reference_normalize_modes(
+    normalize: str | Sequence[str],
+) -> list[str]:
+    if isinstance(normalize, str):
+        requested = [normalize]
+    else:
+        requested = list(normalize)
+    out: list[str] = []
+    for token in requested:
+        if not isinstance(token, str):
+            raise ValueError(
+                "normalize must be a string or a sequence of strings; "
+                f"got element {token!r}"
+            )
+        canonical = _REFERENCE_NORMALIZE_ALIASES.get(token)
+        if canonical is None:
+            canonical = _REFERENCE_NORMALIZE_ALIASES.get(token.lower())
+        if canonical is None:
+            raise ValueError(
+                "normalize must contain one of "
+                f"{tuple(_REFERENCE_NORMALIZE_ALIASES)!r}; got {token!r}"
+            )
+        if canonical not in out:
+            out.append(canonical)
+    return out
+
+
+def _resolve_cancer_types(
+    cancer_types: Optional[str | Iterable[str]],
+) -> list[str] | None:
+    if cancer_types is None:
+        return None
+    from ..gene_sets_cancer import resolve_cancer_type
+
+    if isinstance(cancer_types, str):
+        requested = [cancer_types]
+    else:
+        requested = list(cancer_types)
+    return [resolve_cancer_type(code) for code in requested]
+
+
+def _load_cancer_reference_expression() -> pd.DataFrame:
+    return get_data("cancer-reference-expression")
+
+
+def _reference_expr_value(
+    df: pd.DataFrame,
+    mode: str,
+) -> tuple[pd.Series, pd.Series, pd.Series, str]:
+    median_col, q1_col, q3_col, label = _REFERENCE_VALUE_COLUMNS[mode]
+    expr = pd.to_numeric(df[median_col], errors="coerce")
+    q1 = pd.to_numeric(df[q1_col], errors="coerce")
+    q3 = pd.to_numeric(df[q3_col], errors="coerce")
+    if mode.endswith("_log1p"):
+        expr = np.log1p(expr)
+        q1 = np.log1p(q1)
+        q3 = np.log1p(q3)
+    return expr, q1, q3, label
+
+
+def available_cancer_expression_references() -> pd.DataFrame:
+    """Packaged non-TCGA tumor reference cohorts available by cancer code.
+
+    Returns one row per ``(cancer_code, source_cohort)`` with sample-count
+    and processing provenance. Downstream consumers can use this to decide
+    which non-TCGA references are available without inspecting data files.
+    """
+    df = _load_cancer_reference_expression()
+    keep = [
+        "cancer_code",
+        "source_cohort",
+        "source_project",
+        "source_version",
+        "n_samples",
+        "processing_pipeline",
+    ]
+    present = [c for c in keep if c in df.columns]
+    out = df[present].drop_duplicates().sort_values(
+        ["cancer_code", "source_cohort"],
+    )
+    return out.reset_index(drop=True)
+
+
+def cancer_reference_expression(
+    cancer_types: Optional[str | Iterable[str]] = None,
+    genes: Optional[Iterable[str]] = None,
+    normalize: str | Sequence[str] = "tpm_clean",
+    *,
+    format: str = "long",
+    include_provenance: bool = True,
+) -> pd.DataFrame:
+    """Source-agnostic packaged tumor expression references.
+
+    This accessor is for non-TCGA references such as CLL-map, MMRF
+    CoMMpass, TARGET, and future GEO cohorts. Values are TPM-scale
+    cohort summaries; ``normalize="tpm_clean"`` is the default analysis
+    view and uses per-sample technical-RNA cleanup before aggregation.
+
+    Parameters
+    ----------
+    cancer_types
+        Optional registry code, alias, or iterable of codes/aliases.
+    genes
+        Optional gene-symbol / Ensembl-ID subset.
+    normalize
+        One mode or a list of modes: ``"tpm"``, ``"tpm_clean"``,
+        ``"tpm_log1p"``, or ``"tpm_clean_log1p"``. ``"clean_tpm"`` is
+        accepted as an alias for ``"tpm_clean"``.
+    format
+        ``"long"`` returns one row per gene/cancer/source/normalization.
+        ``"wide"`` returns one row per gene and columns like
+        ``CLL_TPM_clean``.
+    include_provenance
+        Include source/sample/provenance columns in long-form output.
+
+    Returns
+    -------
+    pd.DataFrame
+        Defensive copy suitable for downstream mutation.
+    """
+    modes = _resolve_reference_normalize_modes(normalize)
+    df = _load_cancer_reference_expression()
+    codes = _resolve_cancer_types(cancer_types)
+    if codes is not None:
+        df = df[df["cancer_code"].astype(str).isin(codes)]
+    if genes is not None:
+        df = filter_to_genes(df, genes)
+
+    if df.empty:
+        base = ["Ensembl_Gene_ID", "Symbol"]
+        if format == "wide":
+            return df[base].copy()
+        return df.copy()
+
+    base_cols = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"]
+    provenance_cols = [
+        "source_project",
+        "source_version",
+        "n_samples",
+        "n_detected",
+        "processing_pipeline",
+        "notes",
+    ]
+    frames = []
+    for mode in modes:
+        expr, q1, q3, label = _reference_expr_value(df, mode)
+        cols = list(base_cols)
+        if include_provenance:
+            cols += [c for c in provenance_cols if c in df.columns]
+        part = df[cols].copy()
+        part["normalization"] = label
+        part["expression"] = expr
+        part["q1"] = q1
+        part["q3"] = q3
+        frames.append(part)
+    long = pd.concat(frames, ignore_index=True)
+
+    if format == "long":
+        return long
+    if format != "wide":
+        raise ValueError("format must be 'long' or 'wide'")
+
+    wide = long[["Ensembl_Gene_ID", "Symbol"]].drop_duplicates().copy()
+    for (code, label), group in long.groupby(["cancer_code", "normalization"]):
+        col = f"{code}_{label}"
+        values = group[["Ensembl_Gene_ID", "expression"]].drop_duplicates(
+            subset=["Ensembl_Gene_ID"],
+        )
+        wide = wide.merge(
+            values.rename(columns={"expression": col}),
+            on="Ensembl_Gene_ID",
+            how="left",
+        )
+    return wide
+
+
 # ---------- accessors: pan-cancer expression ----------
 
 
@@ -634,34 +843,67 @@ def pan_cancer_expression(
 def cancer_expression(
     cancer_type: str,
     genes: Optional[Iterable[str]] = None,
+    normalize: str = "tpm_clean",
 ) -> pd.DataFrame:
-    """Housekeeping-normalized expression for a single cancer type.
+    """Expression for a single cancer type from the best packaged reference.
 
     Parameters
     ----------
     cancer_type
-        TCGA code or alias (e.g. ``"PRAD"``, ``"prostate"``).
+        Registry code or alias (e.g. ``"PRAD"``, ``"prostate"``, ``"CLL"``).
     genes
         Optional gene-symbol / Ensembl-ID subset.
+    normalize
+        Normalization mode. Defaults to ``"tpm_clean"``. TCGA-backed
+        references also support ``"hk"`` / ``"housekeeping"`` through
+        :func:`pan_cancer_expression`.
 
     Returns
     -------
     pd.DataFrame
-        Columns: ``Ensembl_Gene_ID``, ``Symbol``, ``expression``
-        (housekeeping-normalized, technical-RNA-filtered).
+        Columns: ``Ensembl_Gene_ID``, ``Symbol``, ``expression``.
     """
     from ..gene_sets_cancer import resolve_cancer_type
 
     code = resolve_cancer_type(cancer_type)
+    ref_modes = set(_REFERENCE_NORMALIZE_ALIASES.values())
+    ref_mode = _REFERENCE_NORMALIZE_ALIASES.get(normalize)
+    if ref_mode is None:
+        ref_mode = _REFERENCE_NORMALIZE_ALIASES.get(str(normalize).lower())
+    if ref_mode in ref_modes:
+        ref = cancer_reference_expression(
+            cancer_types=[code],
+            genes=genes,
+            normalize=ref_mode,
+            include_provenance=False,
+        )
+        if not ref.empty:
+            return ref[["Ensembl_Gene_ID", "Symbol", "expression"]].reset_index(
+                drop=True,
+            )
+
+    pan_mode = _canonical_pan_normalize_token(str(normalize))
     df = pan_cancer_expression(
         genes=genes,
-        normalize="hk",
-        drop_technical_rna=True,
+        normalize=pan_mode,
+        drop_technical_rna=False,
     )
-    col = f"{code}_TPM_hk"
+    suffix_by_mode = {
+        "tpm": "TPM",
+        "tpm_clean": "TPM_clean",
+        "tpm_log1p": "TPM_log1p",
+        "tpm_clean_log1p": "TPM_clean_log1p",
+        "hk": "TPM_hk",
+        "percentile": "TPM_percentile",
+    }
+    if pan_mode not in suffix_by_mode:
+        raise ValueError(
+            f"unsupported normalize mode for cancer_expression: {normalize!r}"
+        )
+    col = f"{code}_{suffix_by_mode[pan_mode]}"
     if col not in df.columns:
         raise ValueError(
-            f"no HK-normalized TPM column for {cancer_type!r} "
+            f"no {normalize!r} expression column for {cancer_type!r} "
             f"(resolved to {code!r})"
         )
     return df[["Ensembl_Gene_ID", "Symbol", col]].rename(
@@ -745,6 +987,8 @@ def estimate_signatures() -> pd.DataFrame:
 __all__ = [
     # accessors
     "pan_cancer_expression",
+    "cancer_reference_expression",
+    "available_cancer_expression_references",
     "cancer_expression",
     "cancer_enriched_genes",
     "hpa_cell_type_expression",

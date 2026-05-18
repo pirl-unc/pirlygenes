@@ -21,7 +21,9 @@ from pirlygenes.expression import (
     GeneQcClass,
     add_tpm_columns_from_fpkm,
     aggregate_gene_expression,
+    available_cancer_expression_references,
     cancer_expression,
+    cancer_reference_expression,
     classify_gene_qc,
     estimate_signatures,
     filter_technical_rna,
@@ -94,6 +96,67 @@ def test_hpa_cell_type_expression_long_form():
 def test_estimate_signatures_has_stromal_and_immune_classes():
     df = estimate_signatures()
     assert not df.empty
+
+
+def test_available_cancer_expression_references_includes_cllmap():
+    df = available_cancer_expression_references()
+    cll = df[df["cancer_code"] == "CLL"]
+    assert not cll.empty
+    row = cll.iloc[0]
+    assert row["source_cohort"] == "CLLMAP_2022"
+    assert row["n_samples"] == 708
+
+
+def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():
+    df = cancer_reference_expression(cancer_types=["CLL"], genes=["MS4A1", "MALAT1"])
+    assert {"Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"} <= set(
+        df.columns
+    )
+    assert set(df["normalization"]) == {"TPM_clean"}
+    ms4a1 = df[df["Symbol"] == "MS4A1"].iloc[0]
+    malat1 = df[df["Symbol"] == "MALAT1"].iloc[0]
+    assert ms4a1["expression"] > 100
+    assert malat1["expression"] == 0
+
+
+def test_cancer_reference_expression_can_return_raw_and_clean_wide():
+    df = cancer_reference_expression(
+        cancer_types="CLL",
+        genes=["MS4A1"],
+        normalize=["tpm", "tpm_clean"],
+        format="wide",
+    )
+    assert {"CLL_TPM", "CLL_TPM_clean"} <= set(df.columns)
+    row = df.iloc[0]
+    assert row["CLL_TPM"] > 100
+    assert row["CLL_TPM_clean"] > row["CLL_TPM"]
+
+
+def test_cancer_expression_resolves_non_tcga_reference():
+    df = cancer_expression("CLL", genes=["FCER2"])
+    assert list(df["Symbol"]) == ["FCER2"]
+    assert df["expression"].iloc[0] > 100
+
+
+def test_cancer_reference_expression_sample_manifest_tracks_exclusions():
+    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+    included = samples["included"].astype(str).str.lower().eq("true")
+    excluded = samples[~included]
+    assert len(samples) == 715
+    assert len(excluded) == 7
+    assert set(excluded["sample_id"]) == {
+        "CRC-0007",
+        "CRC-0011",
+        "CRC-0028",
+        "CRC-0033",
+        "DFCI-5053",
+        "JB-0010",
+        "GCLL-0136",
+    }
+    assert (
+        excluded.set_index("sample_id").loc["GCLL-0136", "exclusion_reason"]
+        == "suspected_mcl"
+    )
 
 
 # ---------- topiary call pattern ----------

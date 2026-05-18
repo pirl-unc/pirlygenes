@@ -75,7 +75,7 @@ MBL_G3,Medulloblastoma Group 3,pediatric-cns,cerebellum,solid_primary,MBL,,curat
 MBL_G4,Medulloblastoma Group 4,pediatric-cns,cerebellum,solid_primary,MBL,,curated,LITERATURE_CURATED,,Most common; MYCN/CDK6,False
 RB,Retinoblastoma,pediatric-eye,retina,solid_primary,,,curated,LITERATURE_CURATED,,RB1 loss; pediatric eye,False
 HEPB,Hepatoblastoma,pediatric-liver,liver,solid_primary,,,curated,LITERATURE_CURATED,,CTNNB1; pediatric liver,False
-CLL,Chronic Lymphocytic Leukemia,heme-bcell,peripheral_blood,heme_blood,,,ICGC,ICGC,,IGHV mutation status; BTK/BCL2 inhibitors,False
+CLL,Chronic Lymphocytic Leukemia,heme-bcell,peripheral_blood,heme_blood,,,CLL-map,CLLMAP_2022,,IGHV mutation status; BTK/BCL2 inhibitors,False
 MCL,Mantle Cell Lymphoma,heme-bcell,lymph_node,heme_nodal,,,curated,LITERATURE_CURATED,,CCND1-IgH; blastoid variant aggressive,False
 FL,Follicular Lymphoma,heme-bcell,lymph_node,heme_nodal,,,curated,LITERATURE_CURATED,,BCL2-IgH; indolent; transforms to DLBCL,False
 HL,Hodgkin Lymphoma,heme-bcell,lymph_node,heme_nodal,,,curated,LITERATURE_CURATED,,Reed-Sternberg cells; CD30+; brentuximab,False
