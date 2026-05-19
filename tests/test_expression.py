@@ -142,6 +142,16 @@ def test_available_cancer_expression_references_includes_mmrf():
     assert row["n_samples"] == 764
 
 
+def test_available_cancer_expression_references_includes_target_all_lineages():
+    df = available_cancer_expression_references()
+    refs = df[df["cancer_code"].isin(["B_ALL", "T_ALL"])].set_index("cancer_code")
+    assert {"B_ALL", "T_ALL"} <= set(refs.index)
+    assert refs.loc["B_ALL", "source_cohort"] == "TARGET_ALL_2018"
+    assert refs.loc["T_ALL", "source_cohort"] == "TARGET_ALL_2018"
+    assert refs.loc["B_ALL", "n_samples"] == 154
+    assert refs.loc["T_ALL", "n_samples"] == 264
+
+
 def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():
     df = cancer_reference_expression(cancer_types=["CLL"], genes=["MS4A1", "MALAT1"])
     assert {"Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"} <= set(
@@ -256,6 +266,36 @@ def test_cancer_reference_expression_mm_markers_and_clean_artifacts():
     assert clean.loc["GPRC5D", "expression"] > 100
     assert clean.loc["MALAT1", "expression"] == 0
     assert clean.loc["MT-CO1", "expression"] == 0
+
+
+def test_cancer_expression_resolves_target_all_references():
+    b_all = cancer_expression("B_ALL", genes=["CD79A", "PAX5", "MALAT1"])
+    b_values = dict(zip(b_all["Symbol"], b_all["expression"]))
+    assert b_values["CD79A"] > 1000
+    assert b_values["PAX5"] > 100
+    assert b_values["MALAT1"] == 0
+
+    t_all = cancer_expression("T_ALL", genes=["CD3D", "BCL11B", "MALAT1"])
+    t_values = dict(zip(t_all["Symbol"], t_all["expression"]))
+    assert t_values["CD3D"] > 1000
+    assert t_values["BCL11B"] > 100
+    assert t_values["MALAT1"] == 0
+
+
+def test_cancer_reference_expression_target_all_lineage_markers_separate():
+    df = cancer_reference_expression(
+        cancer_types=["B_ALL", "T_ALL"],
+        genes=["CD79A", "CD3D"],
+        include_provenance=False,
+    )
+    pivot = df.pivot_table(
+        index="Symbol",
+        columns="cancer_code",
+        values="expression",
+        aggfunc="first",
+    )
+    assert pivot.loc["CD79A", "B_ALL"] > pivot.loc["CD79A", "T_ALL"] * 10
+    assert pivot.loc["CD3D", "T_ALL"] > pivot.loc["CD3D", "B_ALL"] * 10
 
 
 def test_expression_gene_filters_accept_aliases():
@@ -403,6 +443,37 @@ def test_cancer_reference_expression_mm_sample_manifest_tracks_exclusions():
     ).all()
     assert samples.loc[included, "sample_id"].str.endswith("BM_CD138pos").all()
     assert set(samples.loc[included, "lineage_label"]) == {"MM"}
+
+
+def test_cancer_reference_expression_target_all_sample_manifest_tracks_lineage():
+    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+    samples = samples[samples["source_cohort"] == "TARGET_ALL_2018"]
+    included = samples["included"].astype(str).str.lower().eq("true")
+    excluded = samples[~included]
+
+    assert len(samples) == 679
+    assert included.sum() == 418
+    assert samples.loc[included, "cancer_code"].value_counts().to_dict() == {
+        "T_ALL": 264,
+        "B_ALL": 154,
+    }
+    assert excluded["exclusion_reason"].value_counts().to_dict() == {
+        "no_b_or_t_lineage": 181,
+        "not_primary_diagnostic_blood_or_marrow": 69,
+        "duplicate_primary_sample": 11,
+    }
+    assert set(samples.loc[included, "source_project_id"]) <= {
+        "TARGET-ALL-P1",
+        "TARGET-ALL-P2",
+    }
+    assert not samples.loc[included, "source_project_id"].eq("TARGET-ALL-P3").any()
+    assert samples.loc[included, "sample_type"].isin(
+        {
+            "Primary Blood Derived Cancer - Bone Marrow",
+            "Primary Blood Derived Cancer - Peripheral Blood",
+        }
+    ).all()
+    assert set(samples.loc[included, "lineage_label"]) == {"B_ALL", "T_ALL"}
 
 
 # ---------- topiary call pattern ----------

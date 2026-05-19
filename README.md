@@ -186,7 +186,7 @@ types, housekeeping-normalized values are available only when explicitly
 requested with `normalize="hk"` or `normalize="housekeeping"`.
 `cancer_reference_expression()` exposes packaged non-TCGA tumor references
 through the same raw TPM / clean TPM contract; current bundled sources include
-CLL-map (`CLL`) and MMRF CoMMpass (`MM`).
+CLL-map (`CLL`), MMRF CoMMpass (`MM`), and TARGET ALL (`B_ALL`, `T_ALL`).
 
 The older `pan_cancer_expression()` kwargs (`technical_rna_normalize`,
 `remove_noncoding`, and `renormalize_to_million`) have been removed. Use
