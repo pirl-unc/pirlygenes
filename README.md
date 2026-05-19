@@ -122,6 +122,8 @@ from pirlygenes.expression import (
     pan_cancer_expression,            # 19,784 genes × expression reference columns
     cancer_expression,                # one cancer type, clean TPM by default
     cancer_enriched_genes,            # genes enriched in one cancer vs the others
+    tumor_up_vs_matched_normal,       # compact solid tumor-vs-normal markers
+    heme_tumor_up_vs_matched_normal,  # compact heme tumor-vs-normal markers
     hpa_cell_type_expression,         # HPA single-cell consensus
     estimate_signatures,              # Yoshihara 2013 stromal/immune sigs
 
@@ -186,7 +188,16 @@ types, housekeeping-normalized values are available only when explicitly
 requested with `normalize="hk"` or `normalize="housekeeping"`.
 `cancer_reference_expression()` exposes packaged non-TCGA tumor references
 through the same raw TPM / clean TPM contract; current bundled sources include
-CLL-map (`CLL`), MMRF CoMMpass (`MM`), and TARGET ALL (`B_ALL`, `T_ALL`).
+CLL-map (`CLL`), MMRF CoMMpass (`MM`), TARGET ALL (`B_ALL`, `T_ALL`),
+BeatAML/TARGET subtype summaries, and selected Treehouse/GEO cancer-specific
+cohorts such as `OS`, `PANNET`, `CHON`, `SCLC`, `RB`, and sarcoma subtypes.
+Imported symbol-only summaries are exposed only for genes that map
+unambiguously to current Ensembl IDs, including conservative rescues through
+older Ensembl gene names whose IDs still resolve in the current release. The
+full source list is documented in `docs/gene-sets.md` and is available
+programmatically with `available_cancer_expression_references()`.
+`tumor_up_vs_matched_normal()` and `heme_tumor_up_vs_matched_normal()` expose
+compact marker panels for tumor-up-vs-matched-normal comparisons.
 
 The older `pan_cancer_expression()` kwargs (`technical_rna_normalize`,
 `remove_noncoding`, and `renormalize_to_million`) have been removed. Use
@@ -250,6 +261,9 @@ read raw via the generic loader.
 | `hemoglobin-genes.csv` | `hemoglobin_gene_ids()`, `hemoglobin_gene_symbols()` |
 | `immune-receptor-segments.csv` | `immune_receptor_segment_ids()`, `immune_receptor_segment_symbols()` |
 | `pan-cancer-expression.csv` | `pan_cancer_expression()`, `cancer_expression(cancer_type)`, `cancer_enriched_genes(cancer_type)` |
+| `cancer-reference-expression.csv.gz` | `cancer_reference_expression()`, `available_cancer_expression_references()` |
+| `tumor-up-vs-matched-normal.csv` | `tumor_up_vs_matched_normal()` |
+| `heme-tumor-up-vs-matched-normal.csv` | `heme_tumor_up_vs_matched_normal()` |
 | `hpa-cell-type-expression.csv` | `hpa_cell_type_expression()` |
 | `estimate-signatures.csv` | `estimate_signatures()` |
 | `gene-sets.csv` | `get_data("gene-sets")` (catalog of named sets) |
