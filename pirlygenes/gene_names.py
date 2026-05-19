@@ -53,6 +53,7 @@ aliases = {
     "CTAG1B": "NY-ESO-1",
     "TP53": "p53",
     "FOLR1": "FRα",
+    "FCRL5": "FCRH5",
 }
 
 

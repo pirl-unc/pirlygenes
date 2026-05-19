@@ -117,6 +117,8 @@ from pirlygenes.gene_families import (
 ```python
 from pirlygenes.expression import (
     # Reference matrices (long- and wide-form)
+    available_cancer_expression_references,
+    cancer_reference_expression,       # source-agnostic non-TCGA references
     pan_cancer_expression,            # 19,784 genes × expression reference columns
     cancer_expression,                # one cancer type, clean TPM by default
     cancer_enriched_genes,            # genes enriched in one cancer vs the others
@@ -182,6 +184,9 @@ pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])
 reference sources: clean TPM (`normalize="tpm_clean"`). For TCGA-backed cancer
 types, housekeeping-normalized values are available only when explicitly
 requested with `normalize="hk"` or `normalize="housekeeping"`.
+`cancer_reference_expression()` exposes packaged non-TCGA tumor references
+through the same raw TPM / clean TPM contract; current bundled sources include
+CLL-map (`CLL`) and MMRF CoMMpass (`MM`).
 
 The older `pan_cancer_expression()` kwargs (`technical_rna_normalize`,
 `remove_noncoding`, and `renormalize_to_million`) have been removed. Use

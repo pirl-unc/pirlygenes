@@ -133,6 +133,15 @@ def test_available_cancer_expression_references_includes_cllmap():
     assert row["n_samples"] == 708
 
 
+def test_available_cancer_expression_references_includes_mmrf():
+    df = available_cancer_expression_references()
+    mm = df[df["cancer_code"] == "MM"]
+    assert not mm.empty
+    row = mm.iloc[0]
+    assert row["source_cohort"] == "MMRF_COMMPASS"
+    assert row["n_samples"] == 764
+
+
 def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():
     df = cancer_reference_expression(cancer_types=["CLL"], genes=["MS4A1", "MALAT1"])
     assert {"Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"} <= set(
@@ -209,6 +218,52 @@ def test_cancer_expression_resolves_non_tcga_reference():
     df = cancer_expression("CLL", genes=["FCER2"])
     assert list(df["Symbol"]) == ["FCER2"]
     assert df["expression"].iloc[0] > 100
+
+
+def test_cancer_expression_resolves_mmrf_reference():
+    df = cancer_expression("MM", genes=["TNFRSF17", "SDC1", "GPRC5D"])
+    assert set(df["Symbol"]) == {"TNFRSF17", "SDC1", "GPRC5D"}
+    values = dict(zip(df["Symbol"], df["expression"]))
+    assert values["TNFRSF17"] > 300
+    assert values["SDC1"] > 300
+    assert values["GPRC5D"] > 100
+
+
+def test_cancer_reference_expression_mm_markers_and_clean_artifacts():
+    markers = [
+        "SDC1",
+        "TNFRSF17",
+        "CD38",
+        "SLAMF7",
+        "MZB1",
+        "XBP1",
+        "FCRH5",
+        "GPRC5D",
+        "MALAT1",
+        "MT-CO1",
+    ]
+    df = cancer_reference_expression(
+        cancer_types="MM",
+        genes=markers,
+        normalize=["tpm", "tpm_clean"],
+    )
+    clean = df[df["normalization"] == "TPM_clean"].set_index("Symbol")
+    expected_symbols = set(markers) - {"FCRH5"} | {"FCRL5"}
+    assert expected_symbols <= set(clean.index)
+    for marker in ["SDC1", "TNFRSF17", "CD38", "SLAMF7", "MZB1", "XBP1"]:
+        assert clean.loc[marker, "expression"] > 50
+    assert clean.loc["FCRL5", "expression"] > 1
+    assert clean.loc["GPRC5D", "expression"] > 100
+    assert clean.loc["MALAT1", "expression"] == 0
+    assert clean.loc["MT-CO1", "expression"] == 0
+
+
+def test_expression_gene_filters_accept_aliases():
+    df = cancer_expression("MM", genes=["BCMA", "FCRH5"])
+    assert set(df["Symbol"]) == {"TNFRSF17", "FCRL5"}
+    values = dict(zip(df["Symbol"], df["expression"]))
+    assert values["TNFRSF17"] > 300
+    assert values["FCRL5"] > 1
 
 
 def test_cancer_expression_defaults_to_clean_tpm_for_all_packaged_references():
@@ -303,13 +358,18 @@ def test_cancer_expression_empty_gene_subset_is_uniform_across_sources():
     assert cll.empty
     assert list(cll.columns) == expected_cols
 
+    mm = cancer_expression("MM", genes=["NO_SUCH_GENE"])
+    assert mm.empty
+    assert list(mm.columns) == expected_cols
+
     prad = cancer_expression("PRAD", genes=["NO_SUCH_GENE"])
     assert prad.empty
     assert list(prad.columns) == expected_cols
 
 
-def test_cancer_reference_expression_sample_manifest_tracks_exclusions():
+def test_cancer_reference_expression_cll_sample_manifest_tracks_exclusions():
     samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+    samples = samples[samples["source_cohort"] == "CLLMAP_2022"]
     included = samples["included"].astype(str).str.lower().eq("true")
     excluded = samples[~included]
     assert len(samples) == 715
@@ -327,6 +387,22 @@ def test_cancer_reference_expression_sample_manifest_tracks_exclusions():
         excluded.set_index("sample_id").loc["GCLL-0136", "exclusion_reason"]
         == "suspected_mcl"
     )
+
+
+def test_cancer_reference_expression_mm_sample_manifest_tracks_exclusions():
+    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+    samples = samples[samples["source_cohort"] == "MMRF_COMMPASS"]
+    included = samples["included"].astype(str).str.lower().eq("true")
+    excluded = samples[~included]
+    assert len(samples) == 859
+    assert included.sum() == 764
+    assert len(excluded) == 95
+    assert set(excluded["exclusion_reason"]) == {"not_primary_bm_cd138pos"}
+    assert samples.loc[included, "sample_type"].eq(
+        "Primary Blood Derived Cancer - Bone Marrow"
+    ).all()
+    assert samples.loc[included, "sample_id"].str.endswith("BM_CD138pos").all()
+    assert set(samples.loc[included, "lineage_label"]) == {"MM"}
 
 
 # ---------- topiary call pattern ----------

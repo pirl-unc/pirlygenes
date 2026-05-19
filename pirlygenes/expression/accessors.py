@@ -71,6 +71,7 @@ import numpy as np
 import pandas as pd
 
 from ..gene_families import gene_family_ids
+from ..gene_names import get_alias_as_list, get_reverse_alias_as_list
 from ..gene_sets_cancer import housekeeping_gene_ids
 from ..load_dataset import get_data
 from .normalize import (
@@ -329,7 +330,12 @@ def filter_to_genes(
     Match is case-insensitive against both ``Symbol`` (or ``symbol``)
     and the Ensembl-ID column.
     """
-    targets = {str(g).upper() for g in genes}
+    targets = set()
+    for gene in genes:
+        name = str(gene).strip()
+        targets.add(name.upper())
+        targets.update(alias.upper() for alias in get_alias_as_list(name))
+        targets.update(alias.upper() for alias in get_reverse_alias_as_list(name))
     id_col = _resolve_id_col(df)
     sym_col = next(
         (c for c in ("Symbol", "symbol", "Gene_Symbol") if c in df.columns),

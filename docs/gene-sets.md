@@ -113,6 +113,11 @@ non-TCGA references both default to clean TPM (`normalize="tpm_clean"`).
 Housekeeping-normalized TCGA values are returned only when callers explicitly
 request `normalize="hk"` or `normalize="housekeeping"`.
 
+`cancer_reference_expression()` exposes non-TCGA tumor references in long or
+wide form with the same normalization names. Current packaged references
+include CLL-map (`CLL`) and MMRF CoMMpass (`MM`); callers can inspect available
+sources with `available_cancer_expression_references()`.
+
 `normalize_expression()` in `pirlygenes.expression` implements the shared
 transform for samples and references. The default removal set is intentionally
 narrow: mitochondrial transcripts, NUMT-like mitochondrial pseudogenes, and
