@@ -116,8 +116,71 @@ request `normalize="hk"` or `normalize="housekeeping"`.
 `cancer_reference_expression()` exposes non-TCGA tumor references in long or
 wide form with the same normalization names. Current packaged references
 include CLL-map (`CLL`), MMRF CoMMpass (`MM`), and TARGET ALL (`B_ALL`,
-`T_ALL`); callers can inspect available sources with
-`available_cancer_expression_references()`.
+`T_ALL`), plus BeatAML/TARGET subtype summaries and selected Treehouse/GEO
+cancer-specific cohorts such as osteosarcoma (`OS`), `PANNET`, `CHON`, `SCLC`,
+`RB`, and sarcoma subtypes. Callers can inspect available sources with
+`available_cancer_expression_references()`. Imported symbol-only cohort
+summaries are exposed only for genes that map unambiguously to current Ensembl
+IDs, including conservative rescues through older Ensembl gene names whose IDs
+still resolve in the current release. Those sources provide median/Q1/Q3 but
+not recoverable per-sample min/max.
+
+Packaged cancer expression coverage:
+
+- TCGA/HPA pan-cancer reference via `pan_cancer_expression()`:
+  `ACC`, `BLCA`, `BRCA`, `CESC`, `CHOL`, `COAD`, `DLBC`, `ESCA`, `GBM`,
+  `HNSC`, `KICH`, `KIRC`, `KIRP`, `LAML`, `LGG`, `LIHC`, `LUAD`, `LUSC`,
+  `MESO`, `OV`, `PAAD`, `PCPG`, `PRAD`, `READ`, `SARC`, `SKCM`, `STAD`,
+  `TGCT`, `THCA`, `THYM`, `UCEC`, `UCS`, `UVM`.
+
+| Code | Source project | Source cohort | Samples |
+|---|---|---|---:|
+| `ATRT` | Treehouse | `TREEHOUSE_POLYA_25_01` | 4 |
+| `B_ALL` | TARGET ALL | `TARGET_ALL_2018` | 154 |
+| `CHON` | GEO | `GSE299759_MEIJER_2026` | 54 |
+| `CHOR` | Treehouse/RiboD | `TREEHOUSE_RIBOD_25_01` | 3 |
+| `CLL` | CLL-map | `CLLMAP_2022` | 708 |
+| `EWS` | Treehouse | `TREEHOUSE_POLYA_25_01` | 101 |
+| `HEPB` | Treehouse | `TREEHOUSE_POLYA_25_01` | 20 |
+| `LAML_APL` | BeatAML | `BEATAML_OHSU_2022` | 18 |
+| `LAML_ELN_Adv` | BeatAML | `BEATAML_OHSU_2022` | 175 |
+| `LAML_ELN_Fav` | BeatAML | `BEATAML_OHSU_2022` | 140 |
+| `LAML_ELN_Int` | BeatAML | `BEATAML_OHSU_2022` | 100 |
+| `MBL` | Treehouse | `TREEHOUSE_POLYA_25_01` | 125 |
+| `MM` | MMRF CoMMpass | `MMRF_COMMPASS` | 764 |
+| `NBL_MYCN_amp` | TARGET | `TARGET_NBL_2018` | 29 |
+| `NBL_MYCN_nonamp` | TARGET | `TARGET_NBL_2018` | 113 |
+| `NUTM` | Treehouse | `TREEHOUSE_POLYA_25_01` | 1 |
+| `OS` | Treehouse | `TREEHOUSE_POLYA_25_01` | 262 |
+| `PANNET` | GEO | `GSE118014_ALVAREZ_2018` | 33 |
+| `RB` | Treehouse/RiboD | `TREEHOUSE_RIBOD_25_01` | 15 |
+| `RMS_ARMS` | Treehouse | `TREEHOUSE_POLYA_25_01` | 73 |
+| `RMS_ERMS` | Treehouse | `TREEHOUSE_POLYA_25_01` | 95 |
+| `RMS_PRMS` | Treehouse | `TREEHOUSE_POLYA_25_01` | 6 |
+| `RMS_SSRMS` | Treehouse | `TREEHOUSE_POLYA_25_01` | 8 |
+| `RT` | TARGET | `TARGET_RT_2017` | 43 |
+| `SARC_DDLPS` | GEO | `GSE75885_DELESPAUL_2017` | 19 |
+| `SARC_LGFMS` | GEO | `GSE75885_DELESPAUL_2017` | 2 |
+| `SARC_LMS` | Treehouse | `TREEHOUSE_POLYA_25_01` | 151 |
+| `SARC_LPS_UNSPEC` | Treehouse | `TREEHOUSE_POLYA_25_01` | 92 |
+| `SARC_MYXFIB` | Treehouse | `TREEHOUSE_POLYA_25_01` | 41 |
+| `SARC_PLEOLPS` | GEO | `GSE75885_DELESPAUL_2017` | 4 |
+| `SARC_SYN` | Treehouse | `TREEHOUSE_POLYA_25_01` | 50 |
+| `SARC_UPS` | Treehouse | `TREEHOUSE_POLYA_25_01` | 110 |
+| `SCLC` | University of Cologne | `SCLC_UCOLOGNE_2015` | 81 |
+| `T_ALL` | TARGET ALL | `TARGET_ALL_2018` | 264 |
+| `WILMS` | TARGET | `TARGET_WT_2015` | 130 |
+
+`tumor_up_vs_matched_normal()` and
+`heme_tumor_up_vs_matched_normal()` expose compact marker panels for
+tumor-up-vs-matched-normal comparisons. They are marker tables, not full
+expression matrices. Solid-tumor marker codes are `ACC`, `ATRT`, `BLCA`,
+`BRCA`, `CESC`, `CHOL`, `CHON`, `COAD`, `ESCA`, `EWS`, `GBM`, `HEPB`,
+`HNSC`, `KICH`, `KIRC`, `KIRP`, `LGG`, `LIHC`, `LUAD`, `LUSC`, `MBL`,
+`MESO`, `NBL`, `OS`, `OV`, `PAAD`, `PANNET`, `PCPG`, `PRAD`, `RB`, `READ`,
+`RMS_ARMS`, `RMS_ERMS`, `RMS_SSRMS`, `RT`, `SCLC`, `SKCM`, `STAD`, `TGCT`,
+`THCA`, `THYM`, `UCEC`, `UCS`, `UVM`, and `WILMS`; heme marker codes are
+`DLBC` and `LAML`.
 
 `normalize_expression()` in `pirlygenes.expression` implements the shared
 transform for samples and references. The default removal set is intentionally

@@ -48,12 +48,14 @@ from .accessors import (
     estimate_signatures,
     filter_technical_rna,
     filter_to_genes,
+    heme_tumor_up_vs_matched_normal,
     hpa_cell_type_expression,
     log1p_transform,
     log2_transform,
     normalize_to_housekeeping,
     pan_cancer_expression,
     technical_rna_gene_ids,
+    tumor_up_vs_matched_normal,
 )
 from .aggregate import (
     aggregate_gene_expression,
@@ -81,6 +83,8 @@ __all__ = [
     "pan_cancer_expression",
     "cancer_reference_expression",
     "available_cancer_expression_references",
+    "tumor_up_vs_matched_normal",
+    "heme_tumor_up_vs_matched_normal",
     "cancer_expression",
     "cancer_enriched_genes",
     "hpa_cell_type_expression",

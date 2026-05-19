@@ -30,6 +30,7 @@ from pirlygenes.expression import (
     filter_technical_rna,
     filter_to_genes,
     fpkm_to_tpm,
+    heme_tumor_up_vs_matched_normal,
     hpa_cell_type_expression,
     is_rescue_feature,
     log1p_transform,
@@ -40,6 +41,7 @@ from pirlygenes.expression import (
     percentile_rank_expression,
     renormalize_to_million,
     technical_rna_gene_ids,
+    tumor_up_vs_matched_normal,
     tpm_to_housekeeping_normalized,
 )
 
@@ -150,6 +152,27 @@ def test_available_cancer_expression_references_includes_target_all_lineages():
     assert refs.loc["T_ALL", "source_cohort"] == "TARGET_ALL_2018"
     assert refs.loc["B_ALL", "n_samples"] == 154
     assert refs.loc["T_ALL", "n_samples"] == 264
+
+
+def test_available_cancer_expression_references_includes_imported_specific_cohorts():
+    df = available_cancer_expression_references()
+    refs = df.set_index("cancer_code")
+
+    assert refs.loc["OS", "source_cohort"] == "TREEHOUSE_POLYA_25_01"
+    assert refs.loc["OS", "n_samples"] == 262
+    assert refs.loc["PANNET", "source_cohort"] == "GSE118014_ALVAREZ_2018"
+    assert refs.loc["CHON", "source_cohort"] == "GSE299759_MEIJER_2026"
+    assert refs.loc["SARC_DDLPS", "source_cohort"] == "GSE75885_DELESPAUL_2017"
+    assert refs.loc["LAML_APL", "source_cohort"] == "BEATAML_OHSU_2022"
+    assert refs.loc["RB", "source_cohort"] == "TREEHOUSE_RIBOD_25_01"
+
+
+def test_imported_specific_reference_keeps_one_default_source_per_code():
+    df = available_cancer_expression_references()
+    assert df[df["cancer_code"] == "RT"]["source_cohort"].tolist() == [
+        "TARGET_RT_2017"
+    ]
+    assert df[df["cancer_code"] == "UCS"].empty
 
 
 def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():
@@ -296,6 +319,65 @@ def test_cancer_reference_expression_target_all_lineage_markers_separate():
     )
     assert pivot.loc["CD79A", "B_ALL"] > pivot.loc["CD79A", "T_ALL"] * 10
     assert pivot.loc["CD3D", "T_ALL"] > pivot.loc["CD3D", "B_ALL"] * 10
+
+
+def test_cancer_reference_expression_imported_os_reference_is_clean_by_default():
+    df = cancer_reference_expression(
+        cancer_types="OS",
+        genes=["COL1A2", "RUNX2", "MALAT1", "MT-CO1", "AARS1", "PRXL2C"],
+        normalize=["tpm", "tpm_clean"],
+    )
+    pivot = df.pivot_table(
+        index="Symbol",
+        columns="normalization",
+        values="expression",
+        aggfunc="first",
+    )
+    assert pivot.loc["COL1A2", "TPM"] > 7000
+    assert pivot.loc["COL1A2", "TPM_clean"] > pivot.loc["COL1A2", "TPM"]
+    assert pivot.loc["RUNX2", "TPM_clean"] > 80
+    assert pivot.loc["AARS1", "TPM_clean"] > 50
+    assert pivot.loc["PRXL2C", "TPM_clean"] > 10
+    assert pivot.loc["MALAT1", "TPM_clean"] == 0
+    assert pivot.loc["MT-CO1", "TPM_clean"] == 0
+
+    out = cancer_expression("OS", genes=["COL1A2", "MALAT1"])
+    values = dict(zip(out["Symbol"], out["expression"]))
+    assert values["COL1A2"] == pivot.loc["COL1A2", "TPM_clean"]
+    assert values["MALAT1"] == 0
+
+
+def test_imported_symbol_only_references_use_historical_symbol_rescue():
+    refs = load_all_dataframes_dict()["cancer-reference-expression.csv"]
+    os_ref = refs[refs["cancer_code"].eq("OS")]
+    assert len(os_ref) > 24_000
+    assert {
+        "ENSG00000090861",  # source symbol AARS -> current AARS1
+        "ENSG00000158122",  # source symbol AAED1 -> current PRXL2C
+    } <= set(os_ref["Ensembl_Gene_ID"])
+    symbols = os_ref.set_index("Ensembl_Gene_ID")["Symbol"].to_dict()
+    assert symbols["ENSG00000090861"] == "AARS1"
+    assert symbols["ENSG00000158122"] == "PRXL2C"
+
+
+def test_imported_specific_reference_recovers_expected_cohort_markers():
+    df = cancer_reference_expression(
+        cancer_types=["SARC_DDLPS", "CHON", "PANNET"],
+        genes=["MDM2", "CDK4", "COL2A1", "ACAN", "CHGA"],
+        normalize="tpm_clean",
+        include_provenance=False,
+    )
+    pivot = df.pivot_table(
+        index="Symbol",
+        columns="cancer_code",
+        values="expression",
+        aggfunc="first",
+    )
+    assert pivot.loc["MDM2", "SARC_DDLPS"] > 1000
+    assert pivot.loc["CDK4", "SARC_DDLPS"] > 1000
+    assert pivot.loc["COL2A1", "CHON"] > 1000
+    assert pivot.loc["ACAN", "CHON"] > 1000
+    assert pivot.loc["CHGA", "PANNET"] > 1000
 
 
 def test_expression_gene_filters_accept_aliases():
@@ -489,12 +571,24 @@ def test_topiary_load_all_dataframes_dict_pattern_works():
     assert "Ensembl_Gene_ID" in pce.columns
 
 
-def test_deconvolved_reference_tables_are_not_packaged():
+def test_matched_normal_marker_tables_are_packaged_and_filterable():
     dataframes = load_all_dataframes_dict()
-    assert "tcga-deconvolved-expression.csv" not in dataframes
-    assert "subtype-deconvolved-expression.csv" not in dataframes
-    assert "tumor-up-vs-matched-normal.csv" not in dataframes
-    assert "heme-tumor-up-vs-matched-normal.csv" not in dataframes
+    assert "tumor-up-vs-matched-normal.csv" in dataframes
+    assert "heme-tumor-up-vs-matched-normal.csv" in dataframes
+
+    os_markers = tumor_up_vs_matched_normal("OS")
+    assert len(os_markers) == 10
+    assert os_markers["cancer_code"].eq("OS").all()
+    assert os_markers.iloc[0]["symbol"] == "COL1A2"
+    assert os_markers.iloc[0]["ensembl_gene_id"] == "ENSG00000164692"
+    assert os_markers.iloc[0]["fold_change_vs_matched_normal"] > 4000
+
+    laml_markers = heme_tumor_up_vs_matched_normal("LAML")
+    assert len(laml_markers) == 10
+    assert laml_markers["cancer_code"].eq("LAML").all()
+    assert {"tumor_tpm", "matched_normal_ntpm", "max_non_lymphoid_ntpm"} <= set(
+        laml_markers.columns
+    )
 
 
 # ---------- rescaling primitives ----------

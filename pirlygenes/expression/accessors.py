@@ -23,6 +23,9 @@ normalization helpers needed to make them comparable across columns:
 * :func:`cancer_reference_expression` — long- or wide-form non-TCGA
   tumor reference summaries (CLL-map, MMRF, TARGET, GEO, etc.) exposed
   on a common TPM / clean-TPM contract for downstream consumers.
+* :func:`tumor_up_vs_matched_normal` and
+  :func:`heme_tumor_up_vs_matched_normal` — compact marker panels for
+  cancer-vs-matched-normal comparisons.
 * :func:`hpa_cell_type_expression` — HPA cell-type single-cell
   reference (long-form ``Symbol, cell_type, nTPM``).
 * :func:`estimate_signatures` — the ESTIMATE stromal/immune signature
@@ -629,6 +632,34 @@ def available_cancer_expression_references() -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
+def _filter_cancer_code(df: pd.DataFrame, cancer_code: str | None) -> pd.DataFrame:
+    if cancer_code is None:
+        return df.reset_index(drop=True)
+    from ..gene_sets_cancer import resolve_cancer_type
+
+    code = resolve_cancer_type(cancer_code)
+    return df[df["cancer_code"].astype(str).eq(code)].reset_index(drop=True)
+
+
+def tumor_up_vs_matched_normal(cancer_code: str | None = None) -> pd.DataFrame:
+    """Cancer-specific solid-tumor markers up vs matched normal tissue.
+
+    The bundled table is a compact marker panel, not a full expression
+    matrix. It includes one row per selected tumor-up gene with Ensembl ID,
+    tumor TPM, matched-normal HPA nTPM, and broad normal-tissue guardrail
+    columns used by downstream analysis packages.
+    """
+    return _filter_cancer_code(get_data("tumor-up-vs-matched-normal"), cancer_code)
+
+
+def heme_tumor_up_vs_matched_normal(cancer_code: str | None = None) -> pd.DataFrame:
+    """Heme analogue of :func:`tumor_up_vs_matched_normal`."""
+    return _filter_cancer_code(
+        get_data("heme-tumor-up-vs-matched-normal"),
+        cancer_code,
+    )
+
+
 def cancer_reference_expression(
     cancer_types: Optional[str | Iterable[str]] = None,
     genes: Optional[Iterable[str]] = None,
@@ -1012,6 +1043,8 @@ __all__ = [
     "pan_cancer_expression",
     "cancer_reference_expression",
     "available_cancer_expression_references",
+    "tumor_up_vs_matched_normal",
+    "heme_tumor_up_vs_matched_normal",
     "cancer_expression",
     "cancer_enriched_genes",
     "hpa_cell_type_expression",
