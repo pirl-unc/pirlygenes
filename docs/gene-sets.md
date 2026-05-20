@@ -116,7 +116,8 @@ request `normalize="hk"` or `normalize="housekeeping"`.
 `cancer_reference_expression()` exposes non-TCGA tumor references in long or
 wide form with the same normalization names. Current packaged references
 include CLL-map (`CLL`), MMRF CoMMpass (`MM`), and TARGET ALL (`B_ALL`,
-`T_ALL`), plus BeatAML/TARGET subtype summaries and selected Treehouse/GEO
+`T_ALL`), GEO/CGCI heme references including CTCL scRNA/TCR pseudobulk nTPM,
+plus BeatAML/TARGET subtype summaries and selected Treehouse/GEO
 cancer-specific cohorts such as osteosarcoma (`OS`), `PANNET`, `CHON`, `SCLC`,
 `RB`, and sarcoma subtypes. Callers can inspect available sources with
 `available_cancer_expression_references()`. Imported symbol-only cohort
@@ -142,6 +143,7 @@ Packaged cancer expression coverage:
 | `CHOR` | Treehouse/RiboD | `TREEHOUSE_RIBOD_25_01` | 3 |
 | `CLL` | CLL-map | `CLLMAP_2022` | 708 |
 | `CML` | GEO | `GSE100026_DING_2017` | 5 |
+| `CTCL` | GEO | `GSE171811_ECCITE_CTCL` | 7 |
 | `EWS` | Treehouse | `TREEHOUSE_POLYA_25_01` | 101 |
 | `HEPB` | Treehouse | `TREEHOUSE_POLYA_25_01` | 20 |
 | `LAML_APL` | BeatAML | `BEATAML_OHSU_2022` | 18 |

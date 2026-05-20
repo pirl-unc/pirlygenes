@@ -174,6 +174,7 @@ def test_available_cancer_expression_references_includes_acquirable_heme_cohorts
     expected = {
         "BL": ("CGCI_BLGSP", 184),
         "CML": ("GSE100026_DING_2017", 5),
+        "CTCL": ("GSE171811_ECCITE_CTCL", 7),
         "MCL": ("GSE271664_BODOR_2025", 51),
         "MDS": ("GSE114922_SHIOZAWA_2018", 82),
         "MPN": ("GSE283710_WASHU_2024", 45),
@@ -399,6 +400,29 @@ def test_cancer_reference_expression_acquirable_heme_markers_are_distinct():
     assert pivot.loc["CD34", "MPN"] > 50
     assert pivot.loc["MPL", "MPN"] > 100
     assert (pivot.loc["MALAT1"] == 0).all()
+
+
+def test_cancer_reference_expression_ctcl_scrna_markers_and_artifacts():
+    df = cancer_reference_expression(
+        cancer_types="CTCL",
+        genes=["CD3D", "CD3E", "CCR4", "KIR3DL2", "TOX", "MALAT1", "MS4A1"],
+        normalize=["tpm", "tpm_clean"],
+    )
+    pivot = df.pivot_table(
+        index="Symbol",
+        columns="normalization",
+        values="expression",
+        aggfunc="first",
+    )
+
+    assert pivot.loc["CD3D", "TPM_clean"] > 1000
+    assert pivot.loc["CD3E", "TPM_clean"] > 1000
+    assert pivot.loc["KIR3DL2", "TPM_clean"] > 200
+    assert pivot.loc["TOX", "TPM_clean"] > 200
+    assert pivot.loc["CCR4", "TPM_clean"] > 50
+    assert pivot.loc["MS4A1", "TPM_clean"] < 20
+    assert pivot.loc["MALAT1", "TPM"] > 1000
+    assert pivot.loc["MALAT1", "TPM_clean"] == 0
 
 
 def test_imported_symbol_only_references_use_historical_symbol_rescue():
@@ -632,6 +656,27 @@ def test_cancer_reference_expression_heme_sample_manifest_tracks_inclusions():
         excluded["exclusion_reason"]
     )
     assert "not_primary_burkitt_tumor" in set(excluded["exclusion_reason"])
+
+
+def test_cancer_reference_expression_ctcl_scrna_manifest_tracks_clones():
+    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+    samples = samples[samples["source_cohort"] == "GSE171811_ECCITE_CTCL"]
+    included = samples["included"].astype(str).str.lower().eq("true")
+    excluded = samples[~included]
+
+    assert len(samples) == 14
+    assert included.sum() == 12
+    assert samples.loc[included, "case_id"].nunique() == 7
+    assert set(samples.loc[included, "primary_diagnosis"]) == {"SS", "leukemic MF"}
+    assert set(samples.loc[included, "raw_unit"]) == {"scRNA UMI counts"}
+    assert excluded["sample_id"].tolist() == [
+        "GSM5234576_HC1_Blood",
+        "GSM5234577_HC1_Skin",
+    ]
+    assert set(excluded["exclusion_reason"]) == {"healthy_control"}
+    assert samples.loc[included, "lineage_evidence_source"].str.contains(
+        "dominant TCR beta clone",
+    ).all()
 
 
 # ---------- topiary call pattern ----------

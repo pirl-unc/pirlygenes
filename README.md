@@ -190,7 +190,8 @@ requested with `normalize="hk"` or `normalize="housekeeping"`.
 through the same raw TPM / clean TPM contract; current bundled sources include
 CLL-map (`CLL`), MMRF CoMMpass (`MM`), TARGET ALL (`B_ALL`, `T_ALL`),
 CGCI/GDC Burkitt lymphoma (`BL`), GEO heme cohorts (`CML`, `MCL`, `MDS`,
-`MPN`), BeatAML/TARGET subtype summaries, and selected Treehouse/GEO
+`MPN`), a CTCL scRNA/TCR pseudobulk nTPM reference (`CTCL`),
+BeatAML/TARGET subtype summaries, and selected Treehouse/GEO
 cancer-specific cohorts such as `OS`, `PANNET`, `CHON`, `SCLC`, `RB`, and
 sarcoma subtypes.
 Imported symbol-only summaries are exposed only for genes that map
