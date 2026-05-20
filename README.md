@@ -118,6 +118,8 @@ from pirlygenes.gene_families import (
 from pirlygenes.expression import (
     # Reference matrices (long- and wide-form)
     available_cancer_expression_references,
+    cancer_expression_reference_status, # direct/parent/candidate coverage
+    cancer_expression_source_candidates,# candidate source acquisition register
     cancer_reference_expression,       # source-agnostic non-TCGA references
     pan_cancer_expression,            # 19,784 genes × expression reference columns
     cancer_expression,                # one cancer type, clean TPM by default

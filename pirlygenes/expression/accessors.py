@@ -594,6 +594,85 @@ def _has_cancer_reference(code: str) -> bool:
     return code in set(df["cancer_code"].astype(str))
 
 
+def _load_cancer_expression_source_candidates() -> pd.DataFrame:
+    df = get_data("cancer-expression-source-candidates")
+    string_cols = [c for c in df.columns if c != "estimated_samples"]
+    df[string_cols] = df[string_cols].fillna("")
+    return df
+
+
+def _pan_expression_codes() -> set[str]:
+    df = get_data("pan-cancer-expression")
+    return {
+        str(col).removeprefix("FPKM_")
+        for col in df.columns
+        if str(col).startswith("FPKM_")
+    }
+
+
+def _registry_parent_codes(value) -> list[str]:
+    if value is None:
+        return []
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return []
+    return [
+        part.strip()
+        for part in text.replace(";", ",").split(",")
+        if part.strip()
+    ]
+
+
+def _reference_cohort_summary(code: str) -> dict[str, object]:
+    refs = available_cancer_expression_references()
+    ref = refs[refs["cancer_code"].astype(str).eq(code)]
+    if ref.empty:
+        if code in _pan_expression_codes():
+            return {
+                "source_project": "TCGA/HPA",
+                "source_cohort": "TCGA_XENA_TOIL",
+                "n_samples": np.nan,
+                "processing_pipeline": "pan_cancer_expression_tpm_clean",
+            }
+        return {
+            "source_project": "",
+            "source_cohort": "",
+            "n_samples": np.nan,
+            "processing_pipeline": "",
+        }
+    first = ref.iloc[0]
+    return {
+        "source_project": first.get("source_project", ""),
+        "source_cohort": first.get("source_cohort", ""),
+        "n_samples": first.get("n_samples", np.nan),
+        "processing_pipeline": first.get("processing_pipeline", ""),
+    }
+
+
+def _resolve_expression_reference_code(code: str) -> str | None:
+    """Return the packaged direct or parent expression reference for a code."""
+    from ..gene_sets_cancer import cancer_type_registry
+
+    registry = cancer_type_registry().set_index("code")
+    pan_codes = _pan_expression_codes()
+
+    def visit(current: str, path: set[str]) -> str | None:
+        if current in path:
+            return None
+        if _has_cancer_reference(current) or current in pan_codes:
+            return current
+        if current not in registry.index:
+            return None
+        path.add(current)
+        for parent in _registry_parent_codes(registry.loc[current, "parent_code"]):
+            resolved = visit(parent, path)
+            if resolved is not None:
+                return resolved
+        return None
+
+    return visit(code, set())
+
+
 def _reference_expr_value(
     df: pd.DataFrame,
     mode: str,
@@ -630,6 +709,87 @@ def available_cancer_expression_references() -> pd.DataFrame:
         ["cancer_code", "source_cohort"],
     )
     return out.reset_index(drop=True)
+
+
+def cancer_expression_source_candidates(
+    cancer_types: Optional[str | Iterable[str]] = None,
+) -> pd.DataFrame:
+    """Candidate sources for missing or parent-backed expression references.
+
+    The table is a planning/provenance surface, not an expression matrix. It
+    records accession URLs, assay type, intended processing, gene-ID strategy,
+    and current import status for registry codes whose direct observed cohort
+    reference is still missing or should be refined.
+    """
+    df = _load_cancer_expression_source_candidates()
+    codes = _resolve_cancer_types(cancer_types)
+    if codes is not None:
+        df = df[df["cancer_code"].astype(str).isin(codes)]
+    return df.reset_index(drop=True)
+
+
+def cancer_expression_reference_status(
+    cancer_types: Optional[str | Iterable[str]] = None,
+) -> pd.DataFrame:
+    """Uniform expression-reference status for registry cancer codes.
+
+    Returns one row per registry code with the packaged reference code used by
+    :func:`cancer_expression`, direct/parent/TCGA status, and the best current
+    acquisition candidate when a direct reference is not yet packaged.
+    """
+    from ..gene_sets_cancer import cancer_type_registry
+
+    registry = cancer_type_registry()
+    codes = _resolve_cancer_types(cancer_types)
+    if codes is not None:
+        registry = registry[registry["code"].astype(str).isin(codes)]
+
+    candidates = _load_cancer_expression_source_candidates()
+    candidate_first = (
+        candidates.drop_duplicates(subset=["cancer_code"])
+        .set_index("cancer_code")
+        .to_dict(orient="index")
+    )
+    pan_codes = _pan_expression_codes()
+
+    def _text(value) -> str:
+        if value is None or pd.isna(value):
+            return ""
+        return str(value)
+
+    rows = []
+    for _, reg in registry.iterrows():
+        code = str(reg["code"])
+        reference_code = _resolve_expression_reference_code(code)
+        if _has_cancer_reference(code):
+            status = "direct_reference"
+        elif code in pan_codes:
+            status = "tcga_pan_cancer"
+        elif reference_code is not None:
+            status = "parent_reference"
+        else:
+            status = "candidate_or_missing"
+
+        ref_info = _reference_cohort_summary(reference_code) if reference_code else {}
+        candidate = candidate_first.get(code, {})
+        rows.append({
+            "cancer_code": code,
+            "name": _text(reg.get("name", "")),
+            "family": _text(reg.get("family", "")),
+            "parent_code": _text(reg.get("parent_code", "")),
+            "reference_status": status,
+            "reference_code": reference_code or "",
+            "reference_source_project": _text(ref_info.get("source_project", "")),
+            "reference_source_cohort": _text(ref_info.get("source_cohort", "")),
+            "reference_n_samples": ref_info.get("n_samples", np.nan),
+            "candidate_status": _text(candidate.get("source_status", "")),
+            "candidate_source_project": _text(candidate.get("source_project", "")),
+            "candidate_source_cohort": _text(candidate.get("source_cohort", "")),
+            "candidate_accession": _text(candidate.get("accession", "")),
+            "candidate_url": _text(candidate.get("source_url", "")),
+            "candidate_processing_plan": _text(candidate.get("processing_plan", "")),
+        })
+    return pd.DataFrame(rows).reset_index(drop=True)
 
 
 def _filter_cancer_code(df: pd.DataFrame, cancer_code: str | None) -> pd.DataFrame:
@@ -921,13 +1081,17 @@ def cancer_expression(
     from ..gene_sets_cancer import resolve_cancer_type
 
     code = resolve_cancer_type(cancer_type)
+    reference_code = _resolve_expression_reference_code(code)
+    if reference_code is None:
+        reference_code = code
+
     ref_modes = set(_REFERENCE_NORMALIZE_ALIASES.values())
     ref_mode = _REFERENCE_NORMALIZE_ALIASES.get(normalize)
     if ref_mode is None:
         ref_mode = _REFERENCE_NORMALIZE_ALIASES.get(str(normalize).lower())
-    if ref_mode in ref_modes and _has_cancer_reference(code):
+    if ref_mode in ref_modes and _has_cancer_reference(reference_code):
         ref = cancer_reference_expression(
-            cancer_types=[code],
+            cancer_types=[reference_code],
             genes=genes,
             normalize=ref_mode,
             include_provenance=False,
@@ -954,7 +1118,7 @@ def cancer_expression(
         raise ValueError(
             f"unsupported normalize mode for cancer_expression: {normalize!r}"
         )
-    col = f"{code}_{suffix_by_mode[pan_mode]}"
+    col = f"{reference_code}_{suffix_by_mode[pan_mode]}"
     if col not in df.columns:
         raise ValueError(
             f"no {normalize!r} expression column for {cancer_type!r} "
@@ -1043,6 +1207,8 @@ __all__ = [
     "pan_cancer_expression",
     "cancer_reference_expression",
     "available_cancer_expression_references",
+    "cancer_expression_reference_status",
+    "cancer_expression_source_candidates",
     "tumor_up_vs_matched_normal",
     "heme_tumor_up_vs_matched_normal",
     "cancer_expression",

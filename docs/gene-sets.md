@@ -111,7 +111,12 @@ Supports normalization with `None`, a string, or a list of strings:
 single cancer type, regardless of source. TCGA-backed cancers and packaged
 non-TCGA references both default to clean TPM (`normalize="tpm_clean"`).
 Housekeeping-normalized TCGA values are returned only when callers explicitly
-request `normalize="hk"` or `normalize="housekeeping"`.
+request `normalize="hk"` or `normalize="housekeeping"`. Fine-grained registry
+labels without their own packaged cohort, such as `BRCA_Basal`, `SARC_GIST`,
+or `PCN`, load through their documented parent expression reference. Use
+`cancer_expression_reference_status()` to see whether a code is backed by a
+direct reference, TCGA pan-cancer column, parent reference, or only a candidate
+source.
 
 `cancer_reference_expression()` exposes non-TCGA tumor references in long or
 wide form with the same normalization names. Current packaged references
@@ -125,6 +130,37 @@ summaries are exposed only for genes that map unambiguously to current Ensembl
 IDs, including conservative rescues through older Ensembl gene names whose IDs
 still resolve in the current release. Those sources provide median/Q1/Q3 but
 not recoverable per-sample min/max.
+
+`cancer_expression_source_candidates()` exposes the source-acquisition register
+for missing or parent-backed references. Each row records `cancer_code`,
+`source_status`, parent/reference code, accession/URL, assay, source scope,
+estimated samples when known, and the intended processing/gene-ID/normalization
+scheme. The register is intentionally loadable data rather than prose so
+downstream consumers can distinguish `parent_sample_split_ready`,
+`bulk_candidate_ready`, `scRNA_candidate_ready`,
+`scRNA_candidate_needs_malignant_selection`, `parent_reference_only`, and
+`source_needed`.
+
+Current high-confidence candidates include:
+
+| Codes | Candidate | Plan |
+|---|---|---|
+| `BRCA_Basal`, `BRCA_HER2`, `BRCA_LumA`, `BRCA_LumB`, `BRCA_Normal` | TCGA BRCA + PAM50 labels | sample-level GDC STAR-count TPM aggregation by PAM50 subtype |
+| `HNSC_HPV_pos`, `HNSC_HPV_neg` | TCGA HNSC + HPV labels | sample-level GDC STAR-count TPM aggregation by HPV status |
+| `LUAD_EGFR`, `LUAD_KRAS`, `LUAD_STK11` | TCGA LUAD + mutation labels | sample-level GDC STAR-count TPM aggregation by mutation class |
+| `MBL_G3`, `MBL_G4`, `MBL_SHH`, `MBL_WNT` | GEO `GSE155446` | scRNA neoplastic-cell pseudobulk by medulloblastoma subgroup |
+| `FL` | GEO `GSE261917` | scRNA pseudobulk after reproducible malignant B-cell selection |
+| `NPC` | GEO `GSE102349` | bulk RNA-seq import of treatment-naive NPC tumors |
+| `MEC` | GEO `GSE235092` | Merkel-cell carcinoma bulk RNA-seq import; note this registry code is not salivary mucoepidermoid carcinoma |
+| `ADCC`, `ACINIC` | GEO `GSE294016` | salivary gland bulk TPM import by sample-table histology |
+| `SARC_ASPS` | GEO `GSE54729` | bulk RNA-seq import of human ASPS tumor rows only |
+| `SARC_GIST` | GEO `GSE162115` | scRNA tumor-cell pseudobulk from GIST tumor samples |
+| `SARC_MPNST` | GEO `GSE207400` | bulk RNA-seq import of malignant PNST rows |
+
+Rows marked `source_needed` are explicitly documented gaps, not silent
+omissions. They still load via parent reference where the registry has a
+defensible parent; otherwise `cancer_expression_reference_status()` reports
+`candidate_or_missing`.
 
 Packaged cancer expression coverage:
 

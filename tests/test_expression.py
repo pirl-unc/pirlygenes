@@ -24,6 +24,8 @@ from pirlygenes.expression import (
     aggregate_gene_expression,
     available_cancer_expression_references,
     cancer_expression,
+    cancer_expression_reference_status,
+    cancer_expression_source_candidates,
     cancer_reference_expression,
     classify_gene_qc,
     estimate_signatures,
@@ -565,6 +567,111 @@ def test_cancer_expression_empty_gene_subset_is_uniform_across_sources():
     prad = cancer_expression("PRAD", genes=["NO_SUCH_GENE"])
     assert prad.empty
     assert list(prad.columns) == expected_cols
+
+
+def test_cancer_expression_uses_parent_reference_for_child_labels():
+    basal = cancer_expression("BRCA_Basal", genes=["ERBB2"])
+    parent = cancer_expression("BRCA", genes=["ERBB2"])
+    assert basal.reset_index(drop=True).equals(parent.reset_index(drop=True))
+
+    pcn = cancer_expression("PCN", genes=["TNFRSF17"])
+    mm = cancer_expression("MM", genes=["TNFRSF17"])
+    assert pcn.reset_index(drop=True).equals(mm.reset_index(drop=True))
+
+
+def test_cancer_expression_source_candidates_cover_requested_gaps():
+    requested = {
+        "BRCA_Basal",
+        "BRCA_HER2",
+        "BRCA_LumA",
+        "BRCA_LumB",
+        "BRCA_Normal",
+        "HNSC_HPV_pos",
+        "HNSC_HPV_neg",
+        "LUAD_EGFR",
+        "LUAD_KRAS",
+        "LUAD_STK11",
+        "MBL_G3",
+        "MBL_G4",
+        "MBL_SHH",
+        "MBL_WNT",
+        "SCLC_ASCL1",
+        "SCLC_NEUROD1",
+        "SCLC_POU2F3",
+        "SCLC_YAP1",
+        "FL",
+        "HCL",
+        "HL",
+        "PCN",
+        "LUNG_NET_LC",
+        "LUNG_NET_LCNEC",
+        "MID_NET",
+        "MTC",
+        "NPC",
+        "MEC",
+        "ADCC",
+        "ACINIC",
+        "ESS_HG",
+        "ESS_LG",
+        "GCTB",
+        "SARC_ANGIO",
+        "SARC_ASPS",
+        "SARC_CCS",
+        "SARC_DFSP",
+        "SARC_DSRCT",
+        "SARC_EHE",
+        "SARC_EMC",
+        "SARC_EPITH",
+        "SARC_GIST",
+        "SARC_IFS",
+        "SARC_IMT",
+        "SARC_KS",
+        "SARC_MPNST",
+        "SARC_MYXLPS",
+        "SARC_PEC",
+        "SARC_SFT",
+        "SARC_WDLPS",
+    }
+    df = cancer_expression_source_candidates()
+    required_cols = {
+        "cancer_code",
+        "source_status",
+        "reference_code",
+        "source_project",
+        "source_cohort",
+        "accession",
+        "source_url",
+        "assay",
+        "source_scope",
+        "estimated_samples",
+        "processing_plan",
+        "gene_id_plan",
+        "normalization_plan",
+        "notes",
+    }
+    assert required_cols.issubset(df.columns)
+    assert not (requested - set(df["cancer_code"]))
+    assert df["source_status"].notna().all()
+    assert df["processing_plan"].fillna("").str.len().gt(0).all()
+    text_cols = [c for c in df.columns if c != "estimated_samples"]
+    assert not df[text_cols].isna().any().any()
+
+    ready = df[df["source_status"].str.contains("candidate_ready")]
+    assert ready["source_url"].str.startswith("https://").all()
+    assert ready["accession"].str.len().gt(0).all()
+
+
+def test_cancer_expression_reference_status_is_uniform_for_parent_labels():
+    status = cancer_expression_reference_status(
+        ["BRCA_Basal", "PCN", "SARC_GIST", "CLL"],
+    ).set_index("cancer_code")
+
+    assert status.loc["BRCA_Basal", "reference_status"] == "parent_reference"
+    assert status.loc["BRCA_Basal", "reference_code"] == "BRCA"
+    assert status.loc["PCN", "reference_status"] == "parent_reference"
+    assert status.loc["PCN", "reference_code"] == "MM"
+    assert status.loc["SARC_GIST", "reference_code"] == "SARC"
+    assert status.loc["CLL", "reference_status"] == "direct_reference"
 
 
 def test_cancer_reference_expression_cll_sample_manifest_tracks_exclusions():
