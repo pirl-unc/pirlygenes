@@ -167,6 +167,22 @@ def test_available_cancer_expression_references_includes_imported_specific_cohor
     assert refs.loc["RB", "source_cohort"] == "TREEHOUSE_RIBOD_25_01"
 
 
+def test_available_cancer_expression_references_includes_acquirable_heme_cohorts():
+    df = available_cancer_expression_references()
+    refs = df.set_index("cancer_code")
+
+    expected = {
+        "BL": ("CGCI_BLGSP", 184),
+        "CML": ("GSE100026_DING_2017", 5),
+        "MCL": ("GSE271664_BODOR_2025", 51),
+        "MDS": ("GSE114922_SHIOZAWA_2018", 82),
+        "MPN": ("GSE283710_WASHU_2024", 45),
+    }
+    for code, (source_cohort, n_samples) in expected.items():
+        assert refs.loc[code, "source_cohort"] == source_cohort
+        assert refs.loc[code, "n_samples"] == n_samples
+
+
 def test_imported_specific_reference_keeps_one_default_source_per_code():
     df = available_cancer_expression_references()
     assert df[df["cancer_code"] == "RT"]["source_cohort"].tolist() == [
@@ -345,6 +361,44 @@ def test_cancer_reference_expression_imported_os_reference_is_clean_by_default()
     values = dict(zip(out["Symbol"], out["expression"]))
     assert values["COL1A2"] == pivot.loc["COL1A2", "TPM_clean"]
     assert values["MALAT1"] == 0
+
+
+def test_cancer_reference_expression_acquirable_heme_markers_are_distinct():
+    df = cancer_reference_expression(
+        cancer_types=["BL", "CML", "MCL", "MDS", "MPN"],
+        genes=[
+            "MS4A1",
+            "CD79A",
+            "MYC",
+            "CCND1",
+            "SOX11",
+            "ABL1",
+            "MPO",
+            "CD34",
+            "MPL",
+            "MALAT1",
+        ],
+        normalize="tpm_clean",
+        include_provenance=False,
+    )
+    pivot = df.pivot_table(
+        index="Symbol",
+        columns="cancer_code",
+        values="expression",
+        aggfunc="first",
+    )
+    assert pivot.loc["MS4A1", "BL"] > 100
+    assert pivot.loc["CD79A", "BL"] > 500
+    assert pivot.loc["MYC", "BL"] > 100
+    assert pivot.loc["CCND1", "MCL"] > 100
+    assert pivot.loc["SOX11", "MCL"] > 50
+    assert pivot.loc["MPO", "CML"] > 1000
+    assert pivot.loc["ABL1", "CML"] > 10
+    assert pivot.loc["CD34", "MDS"] > 100
+    assert pivot.loc["MPO", "MDS"] > 1000
+    assert pivot.loc["CD34", "MPN"] > 50
+    assert pivot.loc["MPL", "MPN"] > 100
+    assert (pivot.loc["MALAT1"] == 0).all()
 
 
 def test_imported_symbol_only_references_use_historical_symbol_rescue():
@@ -556,6 +610,28 @@ def test_cancer_reference_expression_target_all_sample_manifest_tracks_lineage()
         }
     ).all()
     assert set(samples.loc[included, "lineage_label"]) == {"B_ALL", "T_ALL"}
+
+
+def test_cancer_reference_expression_heme_sample_manifest_tracks_inclusions():
+    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+    samples = samples[samples["cancer_code"].isin(["BL", "CML", "MCL", "MDS", "MPN"])]
+    included = samples["included"].astype(str).str.lower().eq("true")
+
+    assert samples.loc[included, "cancer_code"].value_counts().to_dict() == {
+        "BL": 184,
+        "MDS": 82,
+        "MCL": 51,
+        "MPN": 45,
+        "CML": 5,
+    }
+
+    excluded = samples[~included]
+    assert not excluded.empty
+    assert "healthy_control" in set(excluded["exclusion_reason"])
+    assert "secondary_aml_not_chronic_phase_mpn" in set(
+        excluded["exclusion_reason"]
+    )
+    assert "not_primary_burkitt_tumor" in set(excluded["exclusion_reason"])
 
 
 # ---------- topiary call pattern ----------

@@ -136,10 +136,12 @@ Packaged cancer expression coverage:
 | Code | Source project | Source cohort | Samples |
 |---|---|---|---:|
 | `ATRT` | Treehouse | `TREEHOUSE_POLYA_25_01` | 4 |
+| `BL` | CGCI Burkitt Lymphoma Genome Sequencing Project | `CGCI_BLGSP` | 184 |
 | `B_ALL` | TARGET ALL | `TARGET_ALL_2018` | 154 |
 | `CHON` | GEO | `GSE299759_MEIJER_2026` | 54 |
 | `CHOR` | Treehouse/RiboD | `TREEHOUSE_RIBOD_25_01` | 3 |
 | `CLL` | CLL-map | `CLLMAP_2022` | 708 |
+| `CML` | GEO | `GSE100026_DING_2017` | 5 |
 | `EWS` | Treehouse | `TREEHOUSE_POLYA_25_01` | 101 |
 | `HEPB` | Treehouse | `TREEHOUSE_POLYA_25_01` | 20 |
 | `LAML_APL` | BeatAML | `BEATAML_OHSU_2022` | 18 |
@@ -147,7 +149,10 @@ Packaged cancer expression coverage:
 | `LAML_ELN_Fav` | BeatAML | `BEATAML_OHSU_2022` | 140 |
 | `LAML_ELN_Int` | BeatAML | `BEATAML_OHSU_2022` | 100 |
 | `MBL` | Treehouse | `TREEHOUSE_POLYA_25_01` | 125 |
+| `MCL` | GEO | `GSE271664_BODOR_2025` | 51 |
+| `MDS` | GEO | `GSE114922_SHIOZAWA_2018` | 82 |
 | `MM` | MMRF CoMMpass | `MMRF_COMMPASS` | 764 |
+| `MPN` | GEO | `GSE283710_WASHU_2024` | 45 |
 | `NBL_MYCN_amp` | TARGET | `TARGET_NBL_2018` | 29 |
 | `NBL_MYCN_nonamp` | TARGET | `TARGET_NBL_2018` | 113 |
 | `NUTM` | Treehouse | `TREEHOUSE_POLYA_25_01` | 1 |

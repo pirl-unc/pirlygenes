@@ -189,8 +189,10 @@ requested with `normalize="hk"` or `normalize="housekeeping"`.
 `cancer_reference_expression()` exposes packaged non-TCGA tumor references
 through the same raw TPM / clean TPM contract; current bundled sources include
 CLL-map (`CLL`), MMRF CoMMpass (`MM`), TARGET ALL (`B_ALL`, `T_ALL`),
-BeatAML/TARGET subtype summaries, and selected Treehouse/GEO cancer-specific
-cohorts such as `OS`, `PANNET`, `CHON`, `SCLC`, `RB`, and sarcoma subtypes.
+CGCI/GDC Burkitt lymphoma (`BL`), GEO heme cohorts (`CML`, `MCL`, `MDS`,
+`MPN`), BeatAML/TARGET subtype summaries, and selected Treehouse/GEO
+cancer-specific cohorts such as `OS`, `PANNET`, `CHON`, `SCLC`, `RB`, and
+sarcoma subtypes.
 Imported symbol-only summaries are exposed only for genes that map
 unambiguously to current Ensembl IDs, including conservative rescues through
 older Ensembl gene names whose IDs still resolve in the current release. The
