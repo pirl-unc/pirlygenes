@@ -19,6 +19,19 @@ from pirlygenes.gene_sets_cancer import (
 )
 
 
+def _parent_codes(value):
+    if value is None:
+        return []
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return []
+    return [
+        part.strip()
+        for part in text.replace(";", ",").split(",")
+        if part.strip()
+    ]
+
+
 def test_registry_has_required_columns():
     df = cancer_type_registry()
     required = {
@@ -195,9 +208,101 @@ def test_parent_codes_reference_registry_entries():
     """Every non-null parent_code must reference an existing code."""
     df = cancer_type_registry()
     codes = set(df["code"])
-    parents = df["parent_code"].dropna().astype(str)
-    orphan = [p for p in parents if p and p not in codes]
+    parents = [p for value in df["parent_code"] for p in _parent_codes(value)]
+    orphan = [p for p in parents if p not in codes]
     assert not orphan, f"parent_codes not in registry: {set(orphan)}"
+
+
+def test_parent_graph_is_acyclic():
+    """Subtype links are a tree/forest, not an arbitrary graph with cycles."""
+    df = cancer_type_registry()
+    parent_map = {
+        str(row["code"]): _parent_codes(row["parent_code"])
+        for _, row in df.iterrows()
+    }
+
+    def visit(code, path):
+        for parent in parent_map.get(code, []):
+            assert parent != code, f"{code} cannot be its own parent"
+            assert parent not in path, (
+                "cycle in cancer-type parent graph: "
+                + " -> ".join(path + [code, parent])
+            )
+            visit(parent, path + [code])
+
+    for code in parent_map:
+        visit(code, [])
+
+
+def test_child_rows_share_parent_family():
+    """Child rows can refine tissue/template, but not jump cancer family."""
+    df = cancer_type_registry()
+    by_code = df.set_index("code")
+    mismatches = []
+    for _, row in df.iterrows():
+        for parent in _parent_codes(row["parent_code"]):
+            parent_row = by_code.loc[parent]
+            if row["family"] != parent_row["family"]:
+                mismatches.append((row["code"], row["family"], parent, parent_row["family"]))
+    assert not mismatches, f"parent/child family mismatches: {mismatches}"
+
+
+def test_sarc_prefixed_codes_are_in_sarc_subtree():
+    """Codes in the SARC namespace should not become disconnected leaves."""
+    df = cancer_type_registry()
+    disconnected = []
+    for _, row in df.iterrows():
+        code = row["code"]
+        if code.startswith("SARC_") and "SARC" not in _parent_codes(row["parent_code"]):
+            disconnected.append(code)
+    assert not disconnected, f"SARC_* codes without SARC parent: {disconnected}"
+
+
+def test_known_parent_reference_labels_are_connected():
+    """Fine labels without direct references should retain parent fallback links."""
+    expected = {
+        "BRCA_Basal": "BRCA",
+        "BRCA_HER2": "BRCA",
+        "BRCA_LumA": "BRCA",
+        "BRCA_LumB": "BRCA",
+        "BRCA_Normal": "BRCA",
+        "HNSC_HPV_neg": "HNSC",
+        "HNSC_HPV_pos": "HNSC",
+        "LUAD_EGFR": "LUAD",
+        "LUAD_KRAS": "LUAD",
+        "LUAD_STK11": "LUAD",
+        "MBL_G3": "MBL",
+        "MBL_G4": "MBL",
+        "MBL_SHH": "MBL",
+        "MBL_WNT": "MBL",
+        "PCN": "MM",
+        "SCLC_ASCL1": "SCLC",
+        "SCLC_NEUROD1": "SCLC",
+        "SCLC_POU2F3": "SCLC",
+        "SCLC_YAP1": "SCLC",
+    }
+    df = cancer_type_registry().set_index("code")
+    missing = []
+    for code, parent in expected.items():
+        if parent not in _parent_codes(df.loc[code, "parent_code"]):
+            missing.append((code, parent))
+    assert not missing, f"expected parent links missing: {missing}"
+
+
+def test_registry_expression_sources_match_packaged_references():
+    """Rows with direct non-TCGA references must point at the packaged cohort."""
+    from pirlygenes.expression import available_cancer_expression_references
+
+    df = cancer_type_registry().set_index("code")
+    refs = available_cancer_expression_references()
+    mismatches = []
+    for _, ref in refs.iterrows():
+        code = ref["cancer_code"]
+        registry_cohort = str(df.loc[code, "source_cohort"])
+        reference_cohort = str(ref["source_cohort"])
+        if registry_cohort != reference_cohort:
+            mismatches.append((code, registry_cohort, reference_cohort))
+    assert not mismatches, f"registry/reference source_cohort mismatch: {mismatches}"
 
 
 def test_registry_has_source_cohort_column():
@@ -220,6 +325,12 @@ def test_source_cohort_values_are_canonical():
         "TCGA_HNSC",
         "TCGA_LUAD",
         "BEATAML_OHSU_2022",
+        "CGCI_BLGSP",
+        "GSE100026_DING_2017",
+        "GSE114922_SHIOZAWA_2018",
+        "GSE171811_ECCITE_CTCL",
+        "GSE271664_BODOR_2025",
+        "GSE283710_WASHU_2024",
         "TARGET_NBL_2018",
         "TARGET_OS_2020",
         "TARGET_RMS_2014",
@@ -234,7 +345,12 @@ def test_source_cohort_values_are_canonical():
         "ICGC",
         "LITERATURE_CURATED",
         "TREEHOUSE_v25.01",
+        "TREEHOUSE_POLYA_25_01",
+        "TREEHOUSE_RIBOD_25_01",
         "GSE118014_ALVAREZ_2018",
+        "GSE299759_MEIJER_2026",
+        "GSE75885_DELESPAUL_2017",
+        "SCLC_UCOLOGNE_2015",
     }
     present = set(df["source_cohort"].fillna("").astype(str).unique())
     unknown = present - valid

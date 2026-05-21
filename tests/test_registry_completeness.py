@@ -47,8 +47,8 @@ _MISSING_THERAPY_AXIS = frozenset(
         "HL", "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC",
         "LUNG_NET_LC", "LUNG_NET_LCNEC", "MBL", "MCL", "MDS", "MEC",
         "MESO", "MID_NET", "MM", "MPN", "MTC", "NPC", "NUTM", "OS",
-        "OV", "PAAD", "PANNET", "PCN", "PCPG", "RB", "READ",
-        "RMS_ARMS", "RMS_ERMS", "RMS_SSRMS", "RT", "SARC", "SARC_IFS",
+        "OV", "PAAD", "PANNET", "PCPG", "RB", "READ",
+        "RMS_ARMS", "RMS_ERMS", "RMS_SSRMS", "RT", "SARC",
         "SCLC", "STAD", "TGCT", "THCA", "THYM", "T_ALL", "UCEC", "UCS",
         "UVM", "WILMS",
     }
@@ -89,11 +89,9 @@ _TOLERATED_GAPS_EXPLICIT = {
     "NPC": {"lineage"},
     "CHOR": {"lineage"},
     "CHON": {"lineage"},
-    "SARC_IFS": {"lineage", "biomarker", "therapy"},
     "GCTB": {"lineage", "biomarker", "therapy"},
     "ESS_LG": {"lineage", "biomarker", "therapy"},
     "ESS_HG": {"lineage", "biomarker", "therapy"},
-    "PCN": {"lineage", "biomarker", "therapy"},
 }
 
 

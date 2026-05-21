@@ -24,6 +24,8 @@ from pirlygenes.expression import (
     aggregate_gene_expression,
     available_cancer_expression_references,
     cancer_expression,
+    cancer_expression_reference_status,
+    cancer_expression_source_candidates,
     cancer_reference_expression,
     classify_gene_qc,
     estimate_signatures,
@@ -165,6 +167,23 @@ def test_available_cancer_expression_references_includes_imported_specific_cohor
     assert refs.loc["SARC_DDLPS", "source_cohort"] == "GSE75885_DELESPAUL_2017"
     assert refs.loc["LAML_APL", "source_cohort"] == "BEATAML_OHSU_2022"
     assert refs.loc["RB", "source_cohort"] == "TREEHOUSE_RIBOD_25_01"
+
+
+def test_available_cancer_expression_references_includes_acquirable_heme_cohorts():
+    df = available_cancer_expression_references()
+    refs = df.set_index("cancer_code")
+
+    expected = {
+        "BL": ("CGCI_BLGSP", 184),
+        "CML": ("GSE100026_DING_2017", 5),
+        "CTCL": ("GSE171811_ECCITE_CTCL", 7),
+        "MCL": ("GSE271664_BODOR_2025", 51),
+        "MDS": ("GSE114922_SHIOZAWA_2018", 82),
+        "MPN": ("GSE283710_WASHU_2024", 45),
+    }
+    for code, (source_cohort, n_samples) in expected.items():
+        assert refs.loc[code, "source_cohort"] == source_cohort
+        assert refs.loc[code, "n_samples"] == n_samples
 
 
 def test_imported_specific_reference_keeps_one_default_source_per_code():
@@ -347,6 +366,67 @@ def test_cancer_reference_expression_imported_os_reference_is_clean_by_default()
     assert values["MALAT1"] == 0
 
 
+def test_cancer_reference_expression_acquirable_heme_markers_are_distinct():
+    df = cancer_reference_expression(
+        cancer_types=["BL", "CML", "MCL", "MDS", "MPN"],
+        genes=[
+            "MS4A1",
+            "CD79A",
+            "MYC",
+            "CCND1",
+            "SOX11",
+            "ABL1",
+            "MPO",
+            "CD34",
+            "MPL",
+            "MALAT1",
+        ],
+        normalize="tpm_clean",
+        include_provenance=False,
+    )
+    pivot = df.pivot_table(
+        index="Symbol",
+        columns="cancer_code",
+        values="expression",
+        aggfunc="first",
+    )
+    assert pivot.loc["MS4A1", "BL"] > 100
+    assert pivot.loc["CD79A", "BL"] > 500
+    assert pivot.loc["MYC", "BL"] > 100
+    assert pivot.loc["CCND1", "MCL"] > 100
+    assert pivot.loc["SOX11", "MCL"] > 50
+    assert pivot.loc["MPO", "CML"] > 1000
+    assert pivot.loc["ABL1", "CML"] > 10
+    assert pivot.loc["CD34", "MDS"] > 100
+    assert pivot.loc["MPO", "MDS"] > 1000
+    assert pivot.loc["CD34", "MPN"] > 50
+    assert pivot.loc["MPL", "MPN"] > 100
+    assert (pivot.loc["MALAT1"] == 0).all()
+
+
+def test_cancer_reference_expression_ctcl_scrna_markers_and_artifacts():
+    df = cancer_reference_expression(
+        cancer_types="CTCL",
+        genes=["CD3D", "CD3E", "CCR4", "KIR3DL2", "TOX", "MALAT1", "MS4A1"],
+        normalize=["tpm", "tpm_clean"],
+    )
+    pivot = df.pivot_table(
+        index="Symbol",
+        columns="normalization",
+        values="expression",
+        aggfunc="first",
+    )
+
+    assert pivot.loc["CD3D", "TPM_clean"] > 1000
+    assert pivot.loc["CD3E", "TPM_clean"] > 1000
+    assert pivot.loc["KIR3DL2", "TPM_clean"] > 200
+    assert pivot.loc["TOX", "TPM_clean"] > 200
+    assert pivot.loc["CCR4", "TPM_clean"] > 50
+    assert pivot.loc["MS4A1", "TPM_clean"] < 20
+    assert pivot.loc["MALAT1", "TPM"] > 1000
+    assert pivot.loc["MALAT1", "TPM_clean"] == 0
+
+
 def test_imported_symbol_only_references_use_historical_symbol_rescue():
     refs = load_all_dataframes_dict()["cancer-reference-expression.csv"]
     os_ref = refs[refs["cancer_code"].eq("OS")]
@@ -489,6 +569,194 @@ def test_cancer_expression_empty_gene_subset_is_uniform_across_sources():
     assert list(prad.columns) == expected_cols
 
 
+def test_cancer_expression_uses_parent_reference_for_child_labels():
+    basal = cancer_expression("BRCA_Basal", genes=["ERBB2"])
+    parent = cancer_expression("BRCA", genes=["ERBB2"])
+    assert basal.reset_index(drop=True).equals(parent.reset_index(drop=True))
+
+    pcn = cancer_expression("PCN", genes=["TNFRSF17"])
+    mm = cancer_expression("MM", genes=["TNFRSF17"])
+    assert pcn.reset_index(drop=True).equals(mm.reset_index(drop=True))
+
+
+def test_cancer_expression_source_candidates_cover_requested_gaps():
+    requested = {
+        "BRCA_Basal",
+        "BRCA_HER2",
+        "BRCA_LumA",
+        "BRCA_LumB",
+        "BRCA_Normal",
+        "HNSC_HPV_pos",
+        "HNSC_HPV_neg",
+        "LUAD_EGFR",
+        "LUAD_KRAS",
+        "LUAD_STK11",
+        "MBL_G3",
+        "MBL_G4",
+        "MBL_SHH",
+        "MBL_WNT",
+        "SCLC_ASCL1",
+        "SCLC_NEUROD1",
+        "SCLC_POU2F3",
+        "SCLC_YAP1",
+        "FL",
+        "HCL",
+        "HL",
+        "PCN",
+        "LUNG_NET_LC",
+        "LUNG_NET_LCNEC",
+        "MID_NET",
+        "MTC",
+        "NPC",
+        "MEC",
+        "ADCC",
+        "ACINIC",
+        "ESS_HG",
+        "ESS_LG",
+        "GCTB",
+        "SARC_ANGIO",
+        "SARC_ASPS",
+        "SARC_CCS",
+        "SARC_DFSP",
+        "SARC_DSRCT",
+        "SARC_EHE",
+        "SARC_EMC",
+        "SARC_EPITH",
+        "SARC_GIST",
+        "SARC_IFS",
+        "SARC_IMT",
+        "SARC_KS",
+        "SARC_MPNST",
+        "SARC_MYXLPS",
+        "SARC_PEC",
+        "SARC_SFT",
+        "SARC_WDLPS",
+    }
+    df = cancer_expression_source_candidates()
+    required_cols = {
+        "cancer_code",
+        "source_status",
+        "reference_code",
+        "source_project",
+        "source_cohort",
+        "accession",
+        "source_url",
+        "assay",
+        "source_scope",
+        "estimated_samples",
+        "processing_plan",
+        "gene_id_plan",
+        "normalization_plan",
+        "notes",
+    }
+    assert required_cols.issubset(df.columns)
+    assert not (requested - set(df["cancer_code"]))
+    assert df["source_status"].notna().all()
+    assert df["processing_plan"].fillna("").str.len().gt(0).all()
+    text_cols = [c for c in df.columns if c != "estimated_samples"]
+    assert not df[text_cols].isna().any().any()
+
+    ready = df[df["source_status"].str.contains("candidate_ready")]
+    assert ready["source_url"].str.startswith("https://").all()
+    assert ready["accession"].str.len().gt(0).all()
+
+
+def test_cancer_expression_reference_status_is_uniform_for_parent_labels():
+    status = cancer_expression_reference_status(
+        ["BRCA_Basal", "PCN", "SARC_GIST", "CLL"],
+    ).set_index("cancer_code")
+
+    assert status.loc["BRCA_Basal", "reference_status"] == "parent_reference"
+    assert status.loc["BRCA_Basal", "reference_code"] == "BRCA"
+    assert status.loc["PCN", "reference_status"] == "parent_reference"
+    assert status.loc["PCN", "reference_code"] == "MM"
+    assert status.loc["SARC_GIST", "reference_code"] == "SARC"
+    assert status.loc["CLL", "reference_status"] == "direct_reference"
+
+
+def test_cancer_expression_reference_status_precomputes_reference_lookups(
+    monkeypatch,
+):
+    calls = {"reference_loads": 0}
+    fake_refs = pd.DataFrame(
+        [
+            {
+                "Ensembl_Gene_ID": "ENSG000001",
+                "Symbol": "FAKE1",
+                "cancer_code": "CLL",
+                "source_cohort": "CLLMAP_2022",
+                "source_project": "CLL-map",
+                "source_version": "test",
+                "TPM_median": 1.0,
+                "TPM_q1": 0.5,
+                "TPM_q3": 1.5,
+                "TPM_mean": 1.0,
+                "TPM_clean_median": 1.0,
+                "TPM_clean_q1": 0.5,
+                "TPM_clean_q3": 1.5,
+                "n_samples": 2,
+                "n_detected": 2,
+                "processing_pipeline": "test",
+                "notes": "",
+            },
+            {
+                "Ensembl_Gene_ID": "ENSG000002",
+                "Symbol": "FAKE2",
+                "cancer_code": "MM",
+                "source_cohort": "MMRF_COMMPASS",
+                "source_project": "MMRF CoMMpass",
+                "source_version": "test",
+                "TPM_median": 2.0,
+                "TPM_q1": 1.5,
+                "TPM_q3": 2.5,
+                "TPM_mean": 2.0,
+                "TPM_clean_median": 2.0,
+                "TPM_clean_q1": 1.5,
+                "TPM_clean_q3": 2.5,
+                "n_samples": 3,
+                "n_detected": 3,
+                "processing_pipeline": "test",
+                "notes": "",
+            },
+        ]
+    )
+
+    def fake_load_reference_expression():
+        calls["reference_loads"] += 1
+        return fake_refs.copy()
+
+    def raise_if_used(*_args, **_kwargs):
+        raise AssertionError("status should use precomputed reference lookups")
+
+    monkeypatch.setattr(
+        expression_accessors,
+        "_load_cancer_reference_expression",
+        fake_load_reference_expression,
+    )
+    monkeypatch.setattr(
+        expression_accessors,
+        "_pan_expression_codes",
+        lambda: {"BRCA", "SARC"},
+    )
+    monkeypatch.setattr(
+        expression_accessors,
+        "_has_cancer_reference",
+        raise_if_used,
+    )
+    monkeypatch.setattr(
+        expression_accessors,
+        "_reference_cohort_summary",
+        raise_if_used,
+    )
+
+    status = cancer_expression_reference_status().set_index("cancer_code")
+
+    assert calls["reference_loads"] == 1
+    assert status.loc["CLL", "reference_status"] == "direct_reference"
+    assert status.loc["PCN", "reference_code"] == "MM"
+    assert status.loc["BRCA_Basal", "reference_code"] == "BRCA"
+
+
 def test_cancer_reference_expression_cll_sample_manifest_tracks_exclusions():
     samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
     samples = samples[samples["source_cohort"] == "CLLMAP_2022"]
@@ -556,6 +824,49 @@ def test_cancer_reference_expression_target_all_sample_manifest_tracks_lineage()
         }
     ).all()
     assert set(samples.loc[included, "lineage_label"]) == {"B_ALL", "T_ALL"}
+
+
+def test_cancer_reference_expression_heme_sample_manifest_tracks_inclusions():
+    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+    samples = samples[samples["cancer_code"].isin(["BL", "CML", "MCL", "MDS", "MPN"])]
+    included = samples["included"].astype(str).str.lower().eq("true")
+
+    assert samples.loc[included, "cancer_code"].value_counts().to_dict() == {
+        "BL": 184,
+        "MDS": 82,
+        "MCL": 51,
+        "MPN": 45,
+        "CML": 5,
+    }
+
+    excluded = samples[~included]
+    assert not excluded.empty
+    assert "healthy_control" in set(excluded["exclusion_reason"])
+    assert "secondary_aml_not_chronic_phase_mpn" in set(
+        excluded["exclusion_reason"]
+    )
+    assert "not_primary_burkitt_tumor" in set(excluded["exclusion_reason"])
+
+
+def test_cancer_reference_expression_ctcl_scrna_manifest_tracks_clones():
+    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+    samples = samples[samples["source_cohort"] == "GSE171811_ECCITE_CTCL"]
+    included = samples["included"].astype(str).str.lower().eq("true")
+    excluded = samples[~included]
+
+    assert len(samples) == 14
+    assert included.sum() == 12
+    assert samples.loc[included, "case_id"].nunique() == 7
+    assert set(samples.loc[included, "primary_diagnosis"]) == {"SS", "leukemic MF"}
+    assert set(samples.loc[included, "raw_unit"]) == {"scRNA UMI counts"}
+    assert excluded["sample_id"].tolist() == [
+        "GSM5234576_HC1_Blood",
+        "GSM5234577_HC1_Skin",
+    ]
+    assert set(excluded["exclusion_reason"]) == {"healthy_control"}
+    assert samples.loc[included, "lineage_evidence_source"].str.contains(
+        "dominant TCR beta clone",
+    ).all()
 
 
 # ---------- topiary call pattern ----------

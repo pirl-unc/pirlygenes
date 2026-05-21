@@ -118,6 +118,8 @@ from pirlygenes.gene_families import (
 from pirlygenes.expression import (
     # Reference matrices (long- and wide-form)
     available_cancer_expression_references,
+    cancer_expression_reference_status, # direct/parent/candidate coverage
+    cancer_expression_source_candidates,# candidate source acquisition register
     cancer_reference_expression,       # source-agnostic non-TCGA references
     pan_cancer_expression,            # 19,784 genes × expression reference columns
     cancer_expression,                # one cancer type, clean TPM by default
@@ -189,8 +191,11 @@ requested with `normalize="hk"` or `normalize="housekeeping"`.
 `cancer_reference_expression()` exposes packaged non-TCGA tumor references
 through the same raw TPM / clean TPM contract; current bundled sources include
 CLL-map (`CLL`), MMRF CoMMpass (`MM`), TARGET ALL (`B_ALL`, `T_ALL`),
-BeatAML/TARGET subtype summaries, and selected Treehouse/GEO cancer-specific
-cohorts such as `OS`, `PANNET`, `CHON`, `SCLC`, `RB`, and sarcoma subtypes.
+CGCI/GDC Burkitt lymphoma (`BL`), GEO heme cohorts (`CML`, `MCL`, `MDS`,
+`MPN`), a CTCL scRNA/TCR pseudobulk nTPM reference (`CTCL`),
+BeatAML/TARGET subtype summaries, and selected Treehouse/GEO
+cancer-specific cohorts such as `OS`, `PANNET`, `CHON`, `SCLC`, `RB`, and
+sarcoma subtypes.
 Imported symbol-only summaries are exposed only for genes that map
 unambiguously to current Ensembl IDs, including conservative rescues through
 older Ensembl gene names whose IDs still resolve in the current release. The
