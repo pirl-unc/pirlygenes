@@ -625,41 +625,51 @@ def _registry_parent_codes(value) -> list[str]:
 
 def _reference_cohort_summary(code: str) -> dict[str, object]:
     refs = available_cancer_expression_references()
-    ref = refs[refs["cancer_code"].astype(str).eq(code)]
-    if ref.empty:
-        if code in _pan_expression_codes():
-            return {
-                "source_project": "TCGA/HPA",
-                "source_cohort": "TCGA_XENA_TOIL",
-                "n_samples": np.nan,
-                "processing_pipeline": "pan_cancer_expression_tpm_clean",
-            }
-        return {
-            "source_project": "",
-            "source_cohort": "",
-            "n_samples": np.nan,
-            "processing_pipeline": "",
+    summaries = _reference_cohort_summaries(refs, _pan_expression_codes())
+    return summaries.get(code, {
+        "source_project": "",
+        "source_cohort": "",
+        "n_samples": np.nan,
+        "processing_pipeline": "",
+    })
+
+
+def _reference_cohort_summaries(
+    refs: pd.DataFrame,
+    pan_codes: set[str],
+) -> dict[str, dict[str, object]]:
+    summaries: dict[str, dict[str, object]] = {}
+    for _, first in refs.drop_duplicates(subset=["cancer_code"]).iterrows():
+        code = str(first.get("cancer_code", ""))
+        summaries[code] = {
+            "source_project": first.get("source_project", ""),
+            "source_cohort": first.get("source_cohort", ""),
+            "n_samples": first.get("n_samples", np.nan),
+            "processing_pipeline": first.get("processing_pipeline", ""),
         }
-    first = ref.iloc[0]
-    return {
-        "source_project": first.get("source_project", ""),
-        "source_cohort": first.get("source_cohort", ""),
-        "n_samples": first.get("n_samples", np.nan),
-        "processing_pipeline": first.get("processing_pipeline", ""),
-    }
+    for code in pan_codes - set(summaries):
+        summaries[code] = {
+            "source_project": "TCGA/HPA",
+            "source_cohort": "TCGA_XENA_TOIL",
+            "n_samples": np.nan,
+            "processing_pipeline": "pan_cancer_expression_tpm_clean",
+        }
+    return summaries
 
 
-def _resolve_expression_reference_code(code: str) -> str | None:
+def _resolve_expression_reference_code_from_lookups(
+    code: str,
+    *,
+    registry: pd.DataFrame,
+    reference_codes: set[str],
+    pan_codes: set[str],
+) -> str | None:
     """Return the packaged direct or parent expression reference for a code."""
-    from ..gene_sets_cancer import cancer_type_registry
-
-    registry = cancer_type_registry().set_index("code")
-    pan_codes = _pan_expression_codes()
 
     def visit(current: str, path: set[str]) -> str | None:
         if current in path:
             return None
-        if _has_cancer_reference(current) or current in pan_codes:
+        if current in reference_codes or current in pan_codes:
             return current
         if current not in registry.index:
             return None
@@ -671,6 +681,22 @@ def _resolve_expression_reference_code(code: str) -> str | None:
         return None
 
     return visit(code, set())
+
+
+def _resolve_expression_reference_code(code: str) -> str | None:
+    """Return the packaged direct or parent expression reference for a code."""
+    from ..gene_sets_cancer import cancer_type_registry
+
+    registry = cancer_type_registry().set_index("code")
+    refs = available_cancer_expression_references()
+    reference_codes = set(refs["cancer_code"].astype(str))
+    pan_codes = _pan_expression_codes()
+    return _resolve_expression_reference_code_from_lookups(
+        code,
+        registry=registry,
+        reference_codes=reference_codes,
+        pan_codes=pan_codes,
+    )
 
 
 def _reference_expr_value(
@@ -750,7 +776,11 @@ def cancer_expression_reference_status(
         .set_index("cancer_code")
         .to_dict(orient="index")
     )
+    refs = available_cancer_expression_references()
+    reference_codes = set(refs["cancer_code"].astype(str))
     pan_codes = _pan_expression_codes()
+    reference_summaries = _reference_cohort_summaries(refs, pan_codes)
+    registry_by_code = registry.set_index("code")
 
     def _text(value) -> str:
         if value is None or pd.isna(value):
@@ -760,8 +790,13 @@ def cancer_expression_reference_status(
     rows = []
     for _, reg in registry.iterrows():
         code = str(reg["code"])
-        reference_code = _resolve_expression_reference_code(code)
-        if _has_cancer_reference(code):
+        reference_code = _resolve_expression_reference_code_from_lookups(
+            code,
+            registry=registry_by_code,
+            reference_codes=reference_codes,
+            pan_codes=pan_codes,
+        )
+        if code in reference_codes:
             status = "direct_reference"
         elif code in pan_codes:
             status = "tcga_pan_cancer"
@@ -770,7 +805,7 @@ def cancer_expression_reference_status(
         else:
             status = "candidate_or_missing"
 
-        ref_info = _reference_cohort_summary(reference_code) if reference_code else {}
+        ref_info = reference_summaries.get(reference_code, {}) if reference_code else {}
         candidate = candidate_first.get(code, {})
         rows.append({
             "cancer_code": code,
