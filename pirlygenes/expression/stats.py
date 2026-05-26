@@ -195,6 +195,58 @@ def round_stat_columns(
     return df
 
 
+def upsert_to_shard(
+    summary_output,
+    new_rows: pd.DataFrame,
+    *,
+    source_cohort: str,
+    cancer_codes: list[str],
+) -> pd.DataFrame:
+    """Upsert ``new_rows`` into the per-source shard for ``source_cohort``.
+
+    ``summary_output`` is the
+    ``pirlygenes/data/cancer-reference-expression/`` directory. The
+    per-source shard ``<dir>/<source_cohort>.csv.gz`` holds every row
+    for that source; this function replaces the rows for every
+    ``cancer_code`` in ``cancer_codes`` and preserves rows for every
+    other cancer code in that source.
+
+    Backwards-compat: if ``summary_output`` looks like the legacy
+    single-file path
+    (``pirlygenes/data/cancer-reference-expression.csv.gz``), the
+    shard dir is derived from its parent so existing builders don't
+    need to update their --summary-output default in one go.
+    """
+    from pathlib import Path as _Path
+
+    out_path = _Path(str(summary_output))
+    if out_path.suffix == ".gz" or out_path.is_file():
+        shard_dir = out_path.parent / "cancer-reference-expression"
+    else:
+        shard_dir = out_path
+    shard_dir.mkdir(parents=True, exist_ok=True)
+    shard_path = shard_dir / f"{source_cohort}.csv.gz"
+
+    if shard_path.exists():
+        existing = pd.read_csv(shard_path, low_memory=False)
+        keep = ~existing["cancer_code"].astype(str).isin(cancer_codes)
+        merged = pd.concat(
+            [
+                existing.loc[keep].reindex(columns=list(REFERENCE_COLUMNS)),
+                new_rows,
+            ],
+            ignore_index=True,
+        )
+    else:
+        merged = new_rows.copy()
+
+    merged = merged.reindex(columns=list(REFERENCE_COLUMNS)).sort_values(
+        ["cancer_code", "Ensembl_Gene_ID"], na_position="last",
+    )
+    merged.to_csv(shard_path, index=False, compression="gzip")
+    return merged
+
+
 __all__ = [
     "STAT_COLUMNS",
     "CLEAN_STAT_COLUMNS",
@@ -208,4 +260,5 @@ __all__ = [
     "assign_stats",
     "numeric_stat_columns",
     "round_stat_columns",
+    "upsert_to_shard",
 ]

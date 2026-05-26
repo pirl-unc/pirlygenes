@@ -346,6 +346,7 @@ def test_source_cohort_values_are_canonical():
         "LITERATURE_CURATED",
         "TREEHOUSE_v25.01",
         "TREEHOUSE_POLYA_25_01",
+        "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
         "TREEHOUSE_RIBOD_25_01",
         "GSE118014_ALVAREZ_2018",
         "GSE299759_MEIJER_2026",

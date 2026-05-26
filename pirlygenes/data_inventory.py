@@ -23,8 +23,8 @@ import pandas as pd
 from .downloads import load_registry
 
 
-_REFERENCE_PATH = (
-    Path(__file__).parent / "data" / "cancer-reference-expression.csv.gz"
+_REFERENCE_DIR = (
+    Path(__file__).parent / "data" / "cancer-reference-expression"
 )
 
 
@@ -45,6 +45,7 @@ class InventorySnapshot:
     unique_genes: int
     cohort_rows: tuple[CohortRowCount, ...]
     registered_sources: int
+    shard_files: int = 0
 
 
 def _coerce_int(value) -> int | None:
@@ -56,21 +57,39 @@ def _coerce_int(value) -> int | None:
         return None
 
 
-def _bundled_size_bytes(path: Path) -> int:
-    try:
-        return path.stat().st_size
-    except OSError:
-        return 0
+def _shard_total_bytes(shard_dir: Path) -> int:
+    total = 0
+    for child in shard_dir.glob("*.csv.gz"):
+        try:
+            total += child.stat().st_size
+        except OSError:
+            continue
+    for child in shard_dir.glob("*.csv"):
+        try:
+            total += child.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _shard_count(shard_dir: Path) -> int:
+    return sum(1 for _ in shard_dir.glob("*.csv.gz")) + sum(
+        1 for _ in shard_dir.glob("*.csv")
+    )
 
 
 def summarize_inventory() -> InventorySnapshot:
     """Snapshot the bundled cancer-reference-expression table.
 
-    Reads the gzipped CSV once and reduces to per-(cancer_code,
-    source_cohort) row counts so consumers don't pay the full read on
-    every CLI invocation when only the summary is needed.
+    Reads every per-source shard under
+    ``pirlygenes/data/cancer-reference-expression/`` (one .csv.gz per
+    ``source_cohort``) and reduces to per-(cancer_code, source_cohort)
+    row counts so consumers don't pay the full read on every CLI
+    invocation when only the summary is needed.
     """
-    df = pd.read_csv(_REFERENCE_PATH, low_memory=False)
+    from .load_dataset import get_data
+
+    df = get_data("cancer-reference-expression")
     grouped = (
         df.groupby(
             ["cancer_code", "source_cohort", "source_project"],
@@ -93,12 +112,13 @@ def summarize_inventory() -> InventorySnapshot:
         ).itertuples(index=False)
     )
     return InventorySnapshot(
-        bundled_path=_REFERENCE_PATH,
-        bundled_size_bytes=_bundled_size_bytes(_REFERENCE_PATH),
+        bundled_path=_REFERENCE_DIR,
+        bundled_size_bytes=_shard_total_bytes(_REFERENCE_DIR),
         total_rows=int(len(df)),
         unique_genes=int(df["Ensembl_Gene_ID"].nunique(dropna=True)),
         cohort_rows=cohort_rows,
         registered_sources=len(load_registry()),
+        shard_files=_shard_count(_REFERENCE_DIR),
     )
 
 
@@ -116,8 +136,9 @@ def _format_bytes(size: int) -> str:
 
 def render_inventory(snapshot: InventorySnapshot) -> str:
     lines = [
-        f"cancer-reference-expression.csv.gz: {snapshot.bundled_path}",
-        f"  size on disk: {_format_bytes(snapshot.bundled_size_bytes)}",
+        f"cancer-reference-expression/: {snapshot.bundled_path}",
+        f"  size on disk: {_format_bytes(snapshot.bundled_size_bytes)} "
+        f"across {snapshot.shard_files} per-source shards",
         f"  total rows:   {snapshot.total_rows:,}",
         f"  unique genes: {snapshot.unique_genes:,}",
         f"  cohorts:      {len(snapshot.cohort_rows)}",

@@ -26,7 +26,7 @@ This script:
    (:func:`pirlygenes.expression.stats.assign_stats`) over the raw
    and technical-RNA-zeroed-renormalized matrices.
 6. Upserts the resulting per-gene rows into
-   ``pirlygenes/data/cancer-reference-expression.csv.gz``,
+   ``pirlygenes/data/cancer-reference-expression``,
    replacing any prior rows for the same
    ``(cancer_code, source_cohort)`` pair.
 
@@ -217,31 +217,44 @@ def _summarize(
 
 
 def _upsert(
-    summary_path: Path,
+    summary_output: Path,
     new_rows: pd.DataFrame,
     *,
     cancer_code: str,
     source_cohort: str,
 ) -> pd.DataFrame:
-    if summary_path.exists():
-        existing = pd.read_csv(summary_path, low_memory=False)
-        keep = ~(
-            existing["cancer_code"].astype(str).eq(cancer_code)
-            & existing["source_cohort"].astype(str).eq(source_cohort)
-        )
-        out = pd.concat(
+    """Write/update a single cancer_code's rows in the per-source shard.
+
+    ``summary_output`` is the
+    ``pirlygenes/data/cancer-reference-expression/`` directory. The
+    per-source shard ``<dir>/<source_cohort>.csv.gz`` holds every row
+    for that source; this function replaces the rows for
+    ``cancer_code`` and preserves rows for every other cancer code in
+    that source.
+    """
+    summary_output = Path(summary_output)
+    if summary_output.suffix == ".gz" or summary_output.is_file():
+        shard_dir = summary_output.parent / "cancer-reference-expression"
+    else:
+        shard_dir = summary_output
+    shard_dir.mkdir(parents=True, exist_ok=True)
+    shard_path = shard_dir / f"{source_cohort}.csv.gz"
+
+    if shard_path.exists():
+        existing = pd.read_csv(shard_path, low_memory=False)
+        keep = ~existing["cancer_code"].astype(str).eq(cancer_code)
+        merged = pd.concat(
             [existing.loc[keep].reindex(columns=list(REFERENCE_COLUMNS)), new_rows],
             ignore_index=True,
         )
     else:
-        out = new_rows.copy()
-    out = out.reindex(columns=list(REFERENCE_COLUMNS)).sort_values(
-        ["cancer_code", "source_cohort", "Ensembl_Gene_ID"],
-        na_position="last",
+        merged = new_rows.copy()
+
+    merged = merged.reindex(columns=list(REFERENCE_COLUMNS)).sort_values(
+        ["cancer_code", "Ensembl_Gene_ID"], na_position="last",
     )
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(summary_path, index=False, compression="gzip")
-    return out
+    merged.to_csv(shard_path, index=False, compression="gzip")
+    return merged
 
 
 def build(args: argparse.Namespace) -> int:
@@ -384,7 +397,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--summary-output",
         type=Path,
-        default=Path("pirlygenes/data/cancer-reference-expression.csv.gz"),
+        default=Path("pirlygenes/data/cancer-reference-expression"),
     )
     parser.add_argument("--ensembl-release", default=112, type=int)
     args = parser.parse_args(argv)

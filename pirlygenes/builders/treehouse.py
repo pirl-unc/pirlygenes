@@ -52,6 +52,7 @@ from ..expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
+    upsert_to_shard,
 )
 
 
@@ -331,32 +332,9 @@ def _summarize_cohort(
     return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
 
 
-def _upsert_many(
-    summary_path: Path,
-    new_rows: pd.DataFrame,
-    *,
-    source_cohort: str,
-    cancer_codes: list[str],
-) -> pd.DataFrame:
-    if summary_path.exists():
-        existing = pd.read_csv(summary_path, low_memory=False)
-        keep = ~(
-            existing["cancer_code"].astype(str).isin(cancer_codes)
-            & existing["source_cohort"].astype(str).eq(source_cohort)
-        )
-        out = pd.concat(
-            [existing.loc[keep].reindex(columns=list(REFERENCE_COLUMNS)), new_rows],
-            ignore_index=True,
-        )
-    else:
-        out = new_rows.copy()
-    out = out.reindex(columns=list(REFERENCE_COLUMNS)).sort_values(
-        ["cancer_code", "source_cohort", "Ensembl_Gene_ID"],
-        na_position="last",
-    )
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(summary_path, index=False, compression="gzip")
-    return out
+# Thin alias kept so the existing call site keeps its descriptive
+# name; the shared implementation lives in pirlygenes.expression.stats.
+_upsert_many = upsert_to_shard
 
 
 def run_sweep(
@@ -432,13 +410,16 @@ def run_sweep(
         f"writing {len(combined_new):,} new rows across "
         f"{len(per_cohort_summaries)} cohorts into {summary_output}..."
     )
-    combined = _upsert_many(
+    shard_total = _upsert_many(
         Path(summary_output),
         combined_new,
         source_cohort=release.source_cohort,
         cancer_codes=[c.cancer_code for c in cohorts],
     )
-    _log(f"  {len(combined):,} total rows in {summary_output}")
+    _log(
+        f"  {len(shard_total):,} rows in shard "
+        f"{release.source_cohort}.csv.gz (within {summary_output})"
+    )
     return counts
 
 

@@ -1,51 +1,51 @@
 code,name,family,primary_tissue,primary_template,parent_code,subtype_key,expression_source,source_cohort,source_pmid,notes,mixture_cohort
-ACC,Adrenocortical Carcinoma,endocrine,adrenal_cortex,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,,False
-BLCA,Bladder Urothelial Carcinoma,carcinoma-gu,bladder,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,,False
-BRCA,Breast Invasive Carcinoma,carcinoma-breast,breast,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Umbrella — use PAM50 subtypes for subtype-aware inference,False
+ACC,Adrenocortical Carcinoma,endocrine,adrenal_cortex,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False
+BLCA,Bladder Urothelial Carcinoma,carcinoma-gu,bladder,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False
+BRCA,Breast Invasive Carcinoma,carcinoma-breast,breast,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Umbrella — use PAM50 subtypes for subtype-aware inference,False
 BRCA_LumA,Luminal A,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TCGA_BRCA_PAM50,PMID:26451490,ER+/PR+ HER2-; endocrine-first,False
 BRCA_LumB,Luminal B,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TCGA_BRCA_PAM50,PMID:26451490,ER+ proliferative; endocrine + chemo,False
 BRCA_HER2,HER2-enriched,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TCGA_BRCA_PAM50,PMID:26451490,ERBB2-amp; HER2-directed therapy,False
 BRCA_Basal,Basal-like,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TCGA_BRCA_PAM50,PMID:26451490,TNBC proxy; chemo + sacituzumab,False
 BRCA_Normal,Normal-like,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TCGA_BRCA_PAM50,PMID:26451490,rare; low-confidence stratum,False
-CESC,Cervical Squamous / Adenocarcinoma,carcinoma-gu,cervix,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,HPV-driven,False
-CHOL,Cholangiocarcinoma,carcinoma-gi,bile_duct,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Intrahepatic + extrahepatic + gallbladder lumped,False
-COAD,Colon Adenocarcinoma,carcinoma-gi,colon,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,CMS1-4 molecular subtypes + MSI-H axis,False
-DLBC,Diffuse Large B-cell Lymphoma,heme-bcell,lymph_node,heme_nodal,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,ABC vs GCB subtypes,False
-ESCA,Esophageal Carcinoma,carcinoma-gi,esophagus,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Adenocarcinoma + squamous lumped — biologically distinct,False
+CESC,Cervical Squamous / Adenocarcinoma,carcinoma-gu,cervix,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HPV-driven,False
+CHOL,Cholangiocarcinoma,carcinoma-gi,bile_duct,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Intrahepatic + extrahepatic + gallbladder lumped,False
+COAD,Colon Adenocarcinoma,carcinoma-gi,colon,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,CMS1-4 molecular subtypes + MSI-H axis,False
+DLBC,Diffuse Large B-cell Lymphoma,heme-bcell,lymph_node,heme_nodal,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,ABC vs GCB subtypes,False
+ESCA,Esophageal Carcinoma,carcinoma-gi,esophagus,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Adenocarcinoma + squamous lumped — biologically distinct,False
 GBM,Glioblastoma Multiforme,cns,cerebrum,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,IDH-wildtype per 2021 WHO; mes/classical/proneural subtypes,False
-HNSC,Head and Neck Squamous Cell Carcinoma,carcinoma-head-neck,pharynx,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,HPV+ vs HPV- — two distinct diseases,False
+HNSC,Head and Neck Squamous Cell Carcinoma,carcinoma-head-neck,pharynx,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HPV+ vs HPV- — two distinct diseases,False
 HNSC_HPV_pos,HPV+ HNSC,carcinoma-head-neck,oropharynx,solid_primary,HNSC,,TCGA/HPV,TCGA_HNSC,PMID:25631445,Better prognosis; p16+; E6/E7-driven,False
 HNSC_HPV_neg,HPV- HNSC,carcinoma-head-neck,oral_cavity,solid_primary,HNSC,,TCGA/HPV,TCGA_HNSC,PMID:25631445,Smoking/alcohol; TP53-mutant,False
-KICH,Kidney Chromophobe,carcinoma-gu,kidney,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,,False
-KIRC,Kidney Renal Clear Cell,carcinoma-gu,kidney,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,VHL-driven,False
-KIRP,Kidney Renal Papillary,carcinoma-gu,kidney,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Type 1 (MET) + Type 2 lumped,False
-LAML,Acute Myeloid Leukemia,heme-myeloid,bone_marrow,heme_marrow,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Umbrella — see APL / ELN subtypes,False
+KICH,Kidney Chromophobe,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False
+KIRC,Kidney Renal Clear Cell,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,VHL-driven,False
+KIRP,Kidney Renal Papillary,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Type 1 (MET) + Type 2 lumped,False
+LAML,Acute Myeloid Leukemia,heme-myeloid,bone_marrow,heme_marrow,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Umbrella — see APL / ELN subtypes,False
 LAML_APL,Acute Promyelocytic Leukemia,heme-myeloid,bone_marrow,heme_marrow,LAML,apl,BEATAML,BEATAML_OHSU_2022,PMID:36109543,PML-RARA; ATRA + ATO chemo-free cure,False
 LAML_ELN_Fav,AML ELN2017 Favorable,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,NPM1+/FLT3- or CBF; chemo-sensitive,False
 LAML_ELN_Int,AML ELN2017 Intermediate,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,Mixed; individualized therapy,False
 LAML_ELN_Adv,AML ELN2017 Adverse,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,TP53/complex karyo; transplant-first,False
 LGG,Lower Grade Glioma,cns,cerebrum,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,IDH-mutant (per 2021 WHO); vorasidenib-eligible,False
-LIHC,Liver Hepatocellular Carcinoma,carcinoma-gi,liver,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,HBV/HCV/NASH etiologies,False
-LUAD,Lung Adenocarcinoma,carcinoma-lung,lung,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,EGFR / KRAS / STK11-KEAP1 axes — therapy-gating,False
+LIHC,Liver Hepatocellular Carcinoma,carcinoma-gi,liver,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HBV/HCV/NASH etiologies,False
+LUAD,Lung Adenocarcinoma,carcinoma-lung,lung,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,EGFR / KRAS / STK11-KEAP1 axes — therapy-gating,False
 LUAD_EGFR,EGFR-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TCGA_LUAD,PMID:25079552,Osimertinib-first; often never-smoker,False
 LUAD_KRAS,KRAS-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TCGA_LUAD,PMID:25079552,Sotorasib (G12C); smoker-associated,False
 LUAD_STK11,STK11/KEAP1 LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TCGA_LUAD,PMID:25079552,Cold-immune; IO-refractory axis,False
-LUSC,Lung Squamous Cell Carcinoma,carcinoma-lung,lung,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,,False
-MESO,Mesothelioma,carcinoma-mesothelial,pleura,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Pleural + peritoneal; BAP1/NF2,False
-OV,Ovarian Serous Cystadenocarcinoma,carcinoma-gu,ovary,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,HGSOC-dominant; BRCA/HRD + PARP,False
-PAAD,Pancreatic Adenocarcinoma,carcinoma-gi,pancreas,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Adenocarcinoma only; panNET/acinar separate,False
-PCPG,Pheochromocytoma and Paraganglioma,endocrine,adrenal_medulla,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Extra-adrenal paragangliomas + pheos,False
-PRAD,Prostate Adenocarcinoma,carcinoma-gu,prostate,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,AR-driven; CRPC / NEPC disease states,False
-READ,Rectum Adenocarcinoma,carcinoma-gi,rectum,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Similar to COAD; MSI-H matters,False
-SARC,Sarcoma,sarcoma,soft_tissue,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Umbrella — soft-tissue only (no OS/Ewing/RMS),True
-SKCM,Skin Cutaneous Melanoma,melanoma,skin,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,BRAF/NRAS/KIT/triple-WT mutation classes,False
-STAD,Stomach Adenocarcinoma,carcinoma-gi,stomach,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,EBV+ / MSI-H / CIN / GS molecular subtypes,False
-TGCT,Testicular Germ Cell Tumors,germ-cell,testis,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Seminoma + non-seminoma; chemo-cure,False
-THCA,Thyroid Carcinoma,endocrine,thyroid,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Papillary-dominant; follicular / anaplastic separate; medullary distinct,False
-THYM,Thymoma,thymic,thymus,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,,False
-UCEC,Uterine Corpus Endometrial Carcinoma,carcinoma-gu,endometrium,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Endometrioid + serous — different therapy,False
-UCS,Uterine Carcinosarcoma,carcinoma-gu,endometrium,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,Mixed epithelial + sarcomatoid,False
-UVM,Uveal Melanoma,melanoma,eye,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,GNAQ/GNA11; liver met tropism,False
+LUSC,Lung Squamous Cell Carcinoma,carcinoma-lung,lung,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False
+MESO,Mesothelioma,carcinoma-mesothelial,pleura,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Pleural + peritoneal; BAP1/NF2,False
+OV,Ovarian Serous Cystadenocarcinoma,carcinoma-gu,ovary,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HGSOC-dominant; BRCA/HRD + PARP,False
+PAAD,Pancreatic Adenocarcinoma,carcinoma-gi,pancreas,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Adenocarcinoma only; panNET/acinar separate,False
+PCPG,Pheochromocytoma and Paraganglioma,endocrine,adrenal_medulla,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Extra-adrenal paragangliomas + pheos,False
+PRAD,Prostate Adenocarcinoma,carcinoma-gu,prostate,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,AR-driven; CRPC / NEPC disease states,False
+READ,Rectum Adenocarcinoma,carcinoma-gi,rectum,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Similar to COAD; MSI-H matters,False
+SARC,Sarcoma,sarcoma,soft_tissue,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Umbrella — soft-tissue only (no OS/Ewing/RMS),True
+SKCM,Skin Cutaneous Melanoma,melanoma,skin,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,BRAF/NRAS/KIT/triple-WT mutation classes,False
+STAD,Stomach Adenocarcinoma,carcinoma-gi,stomach,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,EBV+ / MSI-H / CIN / GS molecular subtypes,False
+TGCT,Testicular Germ Cell Tumors,germ-cell,testis,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Seminoma + non-seminoma; chemo-cure,False
+THCA,Thyroid Carcinoma,endocrine,thyroid,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Papillary-dominant; follicular / anaplastic separate; medullary distinct,False
+THYM,Thymoma,thymic,thymus,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False
+UCEC,Uterine Corpus Endometrial Carcinoma,carcinoma-gu,endometrium,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Endometrioid + serous — different therapy,False
+UCS,Uterine Carcinosarcoma,carcinoma-gu,endometrium,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Mixed epithelial + sarcomatoid,False
+UVM,Uveal Melanoma,melanoma,eye,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,GNAQ/GNA11; liver met tropism,False
 SARC_LMS,Leiomyosarcoma,sarcoma,smooth_muscle,primary_smooth_muscle,SARC,leiomyosarcoma,Treehouse,TREEHOUSE_POLYA_25_01,PMID:24071852,Uterine + extrauterine; chemo + trabectedin,False
 SARC_DDLPS,Dedifferentiated Liposarcoma,sarcoma,adipose,primary_adipose,SARC,dedifferentiated_liposarcoma,GEO,GSE75885_DELESPAUL_2017,PMID:24071852,MDM2-amp; brigimadlin / milademetan trials,False
 SARC_WDLPS,Well-Differentiated Liposarcoma,sarcoma,adipose,primary_adipose,SARC,dedifferentiated_liposarcoma,TCGA,TCGA_XENA_TOIL,PMID:24071852,MDM2-amp; surgery-first,False

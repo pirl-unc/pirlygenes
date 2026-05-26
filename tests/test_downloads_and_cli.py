@@ -28,8 +28,11 @@ def test_registry_loads_and_has_expected_categories():
     assert "mmrf-commpass" in by_id
     assert "tcga-blca" in by_id
     assert "treehouse-polya-25-01" in by_id
-    # TCGA cohorts should use TCGA_ prefix to avoid collisions with
-    # curated pirlygenes codes (eg TCGA_SARC vs SARC_LMS).
+    # TCGA cohorts in the YAML registry use the unprefixed registry
+    # codes (BLCA, BRCA, ...) so they match cancer-type-registry.csv.
+    # The TCGA-via-Treehouse build tags rows with source_cohort
+    # TREEHOUSE_POLYA_25_01_TCGA_SUBSET to distinguish from a future
+    # GDC-direct build under the same cancer_code.
     tcga_codes = {
         code
         for s in sources
@@ -37,7 +40,9 @@ def test_registry_loads_and_has_expected_categories():
         for code in s.cancer_codes
     }
     assert tcga_codes
-    assert all(code.startswith("TCGA_") for code in tcga_codes)
+    assert "BLCA" in tcga_codes
+    assert "BRCA" in tcga_codes
+    assert not any(code.startswith("TCGA_") for code in tcga_codes)
 
 
 def test_cache_root_honors_env_var(monkeypatch, tmp_path: Path):

@@ -50,7 +50,7 @@ def main() -> int:
     parser.add_argument(
         "--summary-output",
         type=Path,
-        default=Path("pirlygenes/data/cancer-reference-expression.csv.gz"),
+        default=Path("pirlygenes/data/cancer-reference-expression"),
     )
     parser.add_argument("--refresh-cache", action="store_true")
     parser.add_argument("--only", default=None)

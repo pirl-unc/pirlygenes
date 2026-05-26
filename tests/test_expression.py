@@ -94,27 +94,30 @@ def test_cancer_expression_returns_per_symbol_expression_column():
 
 
 def test_cancer_expression_tcga_default_is_clean_tpm_not_housekeeping():
+    # PRAD now has bundled per-sample data via Treehouse 25.01 PolyA
+    # TCGA subset (source_cohort=TREEHOUSE_POLYA_25_01_TCGA_SUBSET);
+    # cancer_expression prefers that over the legacy pan-cancer FPKM
+    # medians. Default should still be TPM_clean (not housekeeping).
     default = cancer_expression("PRAD", genes=["KLK3"])
-    pan = pan_cancer_expression(
-        genes=["KLK3"],
-        normalize=["tpm_clean", "hk"],
-    )
-    expected_clean = pan[["Ensembl_Gene_ID", "Symbol", "PRAD_TPM_clean"]].rename(
-        columns={"PRAD_TPM_clean": "expression"}
-    )
+    assert {"Ensembl_Gene_ID", "Symbol", "expression"} <= set(default.columns)
+    # KLK3 is the canonical prostate-secreted gene; should be highly
+    # expressed in the PRAD reference.
+    klk3 = default[default["Symbol"] == "KLK3"]
+    assert not klk3.empty
+    assert float(klk3["expression"].iloc[0]) > 100
+
+    # `normalize="hk"` should fall through to pan_cancer_expression
+    # because TPM_hk is not a column on the per-sample-built reference.
     explicit_hk = cancer_expression("PRAD", genes=["KLK3"], normalize="hk")
+    pan = pan_cancer_expression(genes=["KLK3"], normalize=["hk"])
     expected_hk = pan[["Ensembl_Gene_ID", "Symbol", "PRAD_TPM_hk"]].rename(
         columns={"PRAD_TPM_hk": "expression"}
-    )
-
-    pd.testing.assert_frame_equal(
-        default.reset_index(drop=True),
-        expected_clean.reset_index(drop=True),
     )
     pd.testing.assert_frame_equal(
         explicit_hk.reset_index(drop=True),
         expected_hk.reset_index(drop=True),
     )
+    # Default (clean TPM from Treehouse) ≠ HK-normalized.
     assert not np.allclose(default["expression"], explicit_hk["expression"])
 
 
@@ -188,10 +191,16 @@ def test_available_cancer_expression_references_includes_acquirable_heme_cohorts
 
 def test_imported_specific_reference_keeps_one_default_source_per_code():
     df = available_cancer_expression_references()
+    # RT remains a single-source code (TARGET_RT_2017 summary import).
     assert df[df["cancer_code"] == "RT"]["source_cohort"].tolist() == [
         "TARGET_RT_2017"
     ]
-    assert df[df["cancer_code"] == "UCS"].empty
+    # GBM and LGG are the two TCGA codes we deliberately skipped in
+    # the TCGA-via-Treehouse sweep (Treehouse uses one "glioma"
+    # bucket; needs a TSS-code-based split). They should still be
+    # unrepresented in the bundled references.
+    assert df[df["cancer_code"] == "GBM"].empty
+    assert df[df["cancer_code"] == "LGG"].empty
 
 
 def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():
@@ -341,9 +350,15 @@ def test_cancer_reference_expression_target_all_lineage_markers_separate():
 
 
 def test_cancer_reference_expression_imported_os_reference_is_clean_by_default():
+    # OS now built from Treehouse 25.01 PolyA per-sample data (262
+    # samples). AARS1 / PRXL2C used to come in via the historical-
+    # symbol-rescue path in the old summary import (AARS → AARS1,
+    # AAED1 → PRXL2C); the new Treehouse builder uses strict
+    # pyensembl 112 mapping so old symbols are dropped. Historical
+    # rescue for Treehouse is queued (see audit "Open questions").
     df = cancer_reference_expression(
         cancer_types="OS",
-        genes=["COL1A2", "RUNX2", "MALAT1", "MT-CO1", "AARS1", "PRXL2C"],
+        genes=["COL1A2", "RUNX2", "MALAT1", "MT-CO1"],
         normalize=["tpm", "tpm_clean"],
     )
     pivot = df.pivot_table(
@@ -355,8 +370,6 @@ def test_cancer_reference_expression_imported_os_reference_is_clean_by_default()
     assert pivot.loc["COL1A2", "TPM"] > 7000
     assert pivot.loc["COL1A2", "TPM_clean"] > pivot.loc["COL1A2", "TPM"]
     assert pivot.loc["RUNX2", "TPM_clean"] > 80
-    assert pivot.loc["AARS1", "TPM_clean"] > 50
-    assert pivot.loc["PRXL2C", "TPM_clean"] > 10
     assert pivot.loc["MALAT1", "TPM_clean"] == 0
     assert pivot.loc["MT-CO1", "TPM_clean"] == 0
 
@@ -428,14 +441,21 @@ def test_cancer_reference_expression_ctcl_scrna_markers_and_artifacts():
 
 
 def test_imported_symbol_only_references_use_historical_symbol_rescue():
+    # SCLC remains a summary-only import (SCLC_UCOLOGNE_2015 via
+    # scripts/import_cancer_specific_expression.py) and still
+    # benefits from the historical symbol rescue in that import path.
+    # OS / RMS / SARC etc. moved to per-sample Treehouse builds and
+    # use strict pyensembl 112 matching (no historical rescue yet).
     refs = load_all_dataframes_dict()["cancer-reference-expression.csv"]
-    os_ref = refs[refs["cancer_code"].eq("OS")]
-    assert len(os_ref) > 24_000
+    nbl_ref = refs[refs["cancer_code"].eq("NBL_MYCN_nonamp")]
+    assert len(nbl_ref) > 12_000
+    # AARS1 (formerly AARS) and PRXL2C (formerly AAED1) are recovered
+    # by the historical-Ensembl-name lookup in the summary importer.
     assert {
         "ENSG00000090861",  # source symbol AARS -> current AARS1
         "ENSG00000158122",  # source symbol AAED1 -> current PRXL2C
-    } <= set(os_ref["Ensembl_Gene_ID"])
-    symbols = os_ref.set_index("Ensembl_Gene_ID")["Symbol"].to_dict()
+    } <= set(nbl_ref["Ensembl_Gene_ID"])
+    symbols = nbl_ref.set_index("Ensembl_Gene_ID")["Symbol"].to_dict()
     assert symbols["ENSG00000090861"] == "AARS1"
     assert symbols["ENSG00000158122"] == "PRXL2C"
 

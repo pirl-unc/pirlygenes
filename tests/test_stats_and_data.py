@@ -171,7 +171,7 @@ def test_summarize_inventory_smoke():
 def test_render_inventory_contains_expected_lines():
     snapshot = data_inventory.summarize_inventory()
     rendered = data_inventory.render_inventory(snapshot)
-    assert "cancer-reference-expression.csv.gz" in rendered
+    assert "cancer-reference-expression" in rendered
     assert "size on disk" in rendered
     assert "Per-cohort row counts" in rendered
     assert "BL" in rendered
@@ -188,7 +188,7 @@ def _run_cli(args):
 def test_cli_data_list_smoke():
     rc, out, _ = _run_cli(["data", "list"])
     assert rc == 0
-    assert "cancer-reference-expression.csv.gz" in out
+    assert "cancer-reference-expression" in out
     assert "BL" in out
 
 
