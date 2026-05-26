@@ -164,29 +164,53 @@ sources:
        RMS_ARMS, RMS_ERMS, RMS_PRMS, RMS_SSRMS,
        SARC_LMS, SARC_LPS_UNSPEC, SARC_MYXFIB, SARC_SYN, SARC_UPS]
     source_type: treehouse-compendium
-    url: https://treehousegenomics.soe.ucsc.edu/public-data/
-    builder: scripts/import_cancer_specific_expression.py
-    unit: TPM
-    expected_size_gb: 20
-    citation: Treehouse Childhood Cancer Initiative, POLYA 25.01
+    url: https://public.gi.ucsc.edu/~ekephart/public-data/#tumor_25.01_polya
+    builder: scripts/build_treehouse_reference_expression.py
+    unit: log2(TPM+1)
+    expected_size_gb: 6.2
+    citation: >
+      Treehouse Childhood Cancer Initiative, Tumor Compendium 25.01
+      PolyA (released Jan 2025; clinical 20250131v1, TPM matrix
+      2025-02-27). GSE294351.
+    files:
+      tpm: Tumor-25.01-Polya_hugo_log2tpm_58581genes_2025-02-27.tsv
+      clinical: clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv
+      tpm_url: https://xena.treehouse.gi.ucsc.edu/download/Tumor-25.01-Polya_hugo_log2tpm_58581genes_2025-02-27.tsv
+      clinical_url: https://xena.treehouse.gi.ucsc.edu/download/clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv
     special_handling: >
-      Public Treehouse pediatric pan-cancer compendium, poly(A)
-      release 25.01. Subset by Treehouse disease label per cancer
-      code. Currently imported as cohort medians only; per-sample
-      fetch is queued (plan milestone 6).
+      13,359 samples × 58,581 genes; matrix is RSEM log2(TPM+1) keyed
+      by HUGO symbol. Builder inverse-transforms to TPM, subsets by
+      `clinical.disease == <label>`, harmonizes HUGO to Ensembl
+      release 112, sums TPM across symbols that collapse to the same
+      ENSG, then runs the standard tech-RNA zero + per-sample
+      renormalize before stat summarization. Same builder is
+      parameterized for every Treehouse cancer code listed above.
 
   - id: treehouse-ribod-25-01
     category: expression
     cancer_codes: [CHOR, RB]
     source_type: treehouse-compendium
-    url: https://treehousegenomics.soe.ucsc.edu/public-data/
-    builder: scripts/import_cancer_specific_expression.py
-    unit: TPM
-    expected_size_gb: 5
-    citation: Treehouse Childhood Cancer Initiative, RiboD 25.01
+    url: https://public.gi.ucsc.edu/~ekephart/public-data/#tumor_25.01_ribodeplete
+    builder: scripts/build_treehouse_reference_expression.py
+    unit: log2(TPM+1)
+    expected_size_gb: 1
+    citation: >
+      Treehouse Childhood Cancer Initiative, Tumor Compendium 25.01
+      RiboDeplete (released Jan 2025; TPM matrix 2025-03-19).
+      GSE294353.
+    files:
+      tpm: Tumor-25.01-Ribodeplete_hugo_log2tpm_58581genes_2025-03-19.tsv
+      clinical: clinical_Treehouse-Tumor-Compendium-25.01-RiboD_20250306v1.tsv
+      tpm_url: https://xena.treehouse.gi.ucsc.edu/download/Tumor-25.01-Ribodeplete_hugo_log2tpm_58581genes_2025-03-19.tsv
+      clinical_url: https://xena.treehouse.gi.ucsc.edu/download/clinical_Treehouse-Tumor-Compendium-25.01-RiboD_20250306v1.tsv
     special_handling: >
-      RiboD (ribo-depleted) Treehouse release; same subset-by-label
-      pattern as POLYA.
+      RiboD (ribo-depleted) sibling of treehouse-polya-25-01; 2,079
+      samples. Same builder works after pointing `--cache-dir` /
+      `--tpm-file` / `--clinical-file` at the RiboD files. For
+      genes in the technical-RNA panel (rRNA / mtRNA), values from
+      the ribo-depleted library are not directly comparable to PolyA
+      cohorts — keep these cohorts in separate source_cohort tags so
+      consumers can hold the assay difference.
 
   - id: beataml-ohsu-2022
     category: expression
