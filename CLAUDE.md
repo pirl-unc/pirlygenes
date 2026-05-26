@@ -17,11 +17,10 @@ Pass extra pytest args after the script name:
     ./test.sh tests/test_gene_families.py
     ./test.sh -x -v
 
-## Package boundary (5.1+)
+## Package boundary (5.2+)
 
-This package is **curated reference data + the mechanical operations on
-it**. Analysis-layer code (CLI, plotting, sample-QC narration,
-signature scoring) lives in
+This package is **curated reference data + the mechanical and
+cohort-level operations on it**. Per-sample analysis lives in
 [`pirl-trufflepig`](https://github.com/pirl-unc/trufflepig).
 
 Things that belong here:
@@ -31,7 +30,7 @@ Things that belong here:
 - Gene-family panels (`gene_families.py` + `data/{numt-pseudogenes,nuclear-retained-lncrnas,…}.csv`)
 - Reference expression matrices (`pirlygenes/expression/accessors.py` +
   `data/pan-cancer-expression.csv`, `hpa-cell-type-expression.csv`,
-  `estimate-signatures.csv`)
+  `estimate-signatures.csv`, `cancer-reference-expression.csv.gz`)
 - Mechanical transforms on expression matrices
   (`pirlygenes/expression/normalize.py`: `normalize_expression`,
   `fpkm_to_tpm`, `renormalize_to_million`, `tpm_to_housekeeping_normalized`,
@@ -40,8 +39,30 @@ Things that belong here:
   `classify_gene_qc`, `GeneQcClass`, `is_rescue_feature`)
 - Transcript→gene rollup (`pirlygenes/expression/aggregate.py`)
 - Cohort-baseline constants (`TCGA_MEDIAN_PURITY`)
+- **Cohort-level CLI surface** (`pirlygenes/cli.py`, console script
+  `pirlygenes`) hosting `downloads` / `build` / `plot`:
+  - `pirlygenes downloads {list,cache-dir,fetch,prune}` — the local
+    cache of per-source raw quantifications. Backed by
+    `pirlygenes.downloads` and the registry
+    `pirlygenes/data/expression_sources.yaml`. Every CLI subcommand
+    is a thin wrapper around a public Python API so trufflepig and
+    notebooks can call the same code without going through the
+    shell.
+  - `pirlygenes build <source-id>` — regenerate per-gene-per-cohort
+    summary rows in `cancer-reference-expression.csv.gz` from
+    per-sample quantifications. Currently the existing
+    `scripts/build_*_reference_expression.py` files; these will be
+    hoisted into `pirlygenes/builders/` and registered against the
+    YAML registry (plan milestone 2).
+  - `pirlygenes plot <…>` — cohort-level plots: gene-or-set
+    expression across cohorts, panel coverage across the cancer-type
+    registry, etc. Per-sample plots stay in trufflepig.
 
 Things that **don't** belong here (route to trufflepig):
+- Per-sample analysis (`pirlygenes analyze`, `compare-analyze`,
+  `plot-expression`, `plot-cancer-cohorts`-from-a-sample-context).
+  The `analyze` subcommand name on the pirlygenes CLI exists only as
+  a "moved to trufflepig" pointer.
 - Per-sample QC narration (`summarize_qc_class_shares`,
   `top_gene_concentration`, `raw_qc_profile`,
   `technical_rna_component_phrase`, etc.)
@@ -50,14 +71,16 @@ Things that **don't** belong here (route to trufflepig):
 - Anything that does hypothesis testing, statistical inference, or
   model fitting on a sample
 
-The dividing line: "is this a transformation step on the data, or is
-it a *judgment* about a sample?" Transformations belong here;
-judgments belong in trufflepig.
+The dividing line: "is this acting on a single patient sample, or on
+the cohort-level reference data?" Per-sample → trufflepig.
+Cohort-level (data, transforms, downloads, builders, panel plots) →
+pirlygenes.
 
-5.0.x briefly drew the boundary tighter (no expression data, no
-normalization) — that broke downstream consumers like topiary that
-relied on the data + obvious-transforms API. 5.1.0 restored both;
-this section reflects the post-correction layout.
+History: 5.0.x removed pirlygenes' CLI entirely; 5.1.x restored
+expression data + transforms; 5.2.x (in progress) restored the CLI
+*for cohort-level operations only*, while keeping the per-sample
+`analyze` family in trufflepig. The expression-data refresh project
+in `docs/expression-data-refresh-plan.md` drives the build-out.
 
 ## ENSG ID convention
 
