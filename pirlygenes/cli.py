@@ -35,7 +35,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import downloads
+from . import data_inventory, downloads
 from .version import __version__
 
 
@@ -57,6 +57,7 @@ Cohort-level subcommands (which DO live in pirlygenes) are:
 
     pirlygenes downloads list
     pirlygenes downloads cache-dir
+    pirlygenes data list
     pirlygenes build <source-id>
     pirlygenes plot <...>
 
@@ -123,6 +124,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Cap total cache size at this many GB.",
     )
 
+    data_parser = subparsers.add_parser(
+        "data",
+        help="Inspect bundled cohort-level reference data.",
+    )
+    data_sub = data_parser.add_subparsers(dest="data_action")
+    data_sub.add_parser(
+        "list",
+        help="Summarize cancer-reference-expression bundled rows by cohort.",
+    )
+
     build_parser = subparsers.add_parser(
         "build",
         help="Rebuild per-gene-per-cohort summaries (NotImplemented; see plan milestone 2).",
@@ -182,6 +193,12 @@ def cmd_downloads_prune(_args: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_data_list(_args: argparse.Namespace) -> int:
+    snapshot = data_inventory.summarize_inventory()
+    sys.stdout.write(data_inventory.render_inventory(snapshot) + "\n")
+    return 0
+
+
 def cmd_build(_args: argparse.Namespace) -> int:
     sys.stderr.write(
         _NOT_IMPLEMENTED_MESSAGE.format(subcommand="build", milestone=2) + "\n"
@@ -209,6 +226,11 @@ _DOWNLOADS_DISPATCH = {
 }
 
 
+_DATA_DISPATCH = {
+    "list": cmd_data_list,
+}
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = sys.argv[1:] if argv is None else list(argv)
     if raw and raw[0] in _ANALYSIS_SUBCOMMANDS:
@@ -231,6 +253,13 @@ def main(argv: list[str] | None = None) -> int:
             sys.stderr.write(
                 "usage: pirlygenes downloads {list,cache-dir,fetch,prune}\n"
             )
+            return 2
+        return handler(args)
+
+    if subcommand == "data":
+        handler = _DATA_DISPATCH.get(args.data_action)
+        if handler is None:
+            sys.stderr.write("usage: pirlygenes data {list}\n")
             return 2
         return handler(args)
 

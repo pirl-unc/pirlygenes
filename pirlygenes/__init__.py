@@ -115,7 +115,7 @@ from .gene_sets_cancer import (
     tme_markers_df,
 )
 from .load_dataset import get_data, load_all_dataframes, load_all_dataframes_dict
-from . import downloads
+from . import data_inventory, downloads
 from .version import __version__
 
 
@@ -207,4 +207,6 @@ __all__ = [
     "aggregate_gene_expression",
     # cohort-level downloads + cache
     "downloads",
+    # cohort-level bundled-data inventory
+    "data_inventory",
 ]

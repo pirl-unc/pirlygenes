@@ -15,9 +15,9 @@ missing from the long-format reference table.
 Driven by a `pirlygenes downloads / build / plot` CLI backed by a
 single YAML registry of data sources.
 
-## Status (session 1, 2026-05-26)
+## Status
 
-Landed:
+**Session 1, 2026-05-26 — landed:**
 
 - Package-boundary clarification memorialized (pirlygenes CAN have a
   CLI for cohort-level ops; only `analyze` stays in trufflepig).
@@ -34,14 +34,34 @@ Landed:
   post-v5.2 split.
 - PyYAML added to dependencies.
 
+**Session 2, 2026-05-26 — landed:**
+
+- **Milestone 1 (schema extension).** Added 15 new columns to
+  `cancer-reference-expression.csv.gz` (raw: std/min/max/p5/p10/p90/p95;
+  clean: mean/std/min/max/p5/p10/p90/p95). Append-only — existing
+  17-column legacy order preserved. New columns are NaN for every
+  existing row; future builder re-runs will populate them.
+- `pirlygenes/expression/stats.py` — shared `REFERENCE_COLUMNS`
+  constant + `assign_stats(out, raw, clean)` /
+  `compute_cohort_stats()` / `round_stat_columns()` helpers so every
+  builder lands rows with the same shape.
+- All 6 per-cohort builders (`build_bl_gdc`, `build_cllmap`,
+  `build_ctcl_scrna`, `build_geo_heme`, `build_mmrf`,
+  `build_target_all`) updated to use the shared helpers.
+  `import_cancer_specific_expression.py` updated too — summary-only
+  imports keep extended-stat columns NaN.
+- `pirlygenes data list` + `pirlygenes/data_inventory.py` — read-only
+  inventory of the bundled `cancer-reference-expression.csv.gz`,
+  grouped per source cohort with per-cancer-code row counts and
+  n_samples.
+
+**Note on data state:** the schema is extended, but no builder has
+been *re-run*. Every row's new-column values are NaN until the
+relevant `build_*` script runs end-to-end against its data source.
+That's milestones 3-4 (TCGA fresh) and 8 (existing-cohort sweep).
+
 Queued for follow-up sessions, in priority order:
 
-1. **Schema extension.** Add `TPM_std / TPM_min / TPM_max / TPM_p5 /
-   TPM_p10 / TPM_p90 / TPM_p95` (and `TPM_clean_*` companions) to
-   `cancer-reference-expression.csv.gz`. Update every `_summarize` in
-   `scripts/build_*_reference_expression.py` and the
-   `REFERENCE_COLUMNS` constant in `scripts/import_cancer_specific_expression.py`.
-   Existing rows: leave new columns NaN until a re-run lands.
 2. **`pirlygenes build <source-id>` dispatcher.** Read the YAML
    registry, dispatch to the matching builder (existing scripts/
    modules, hoisted into `pirlygenes/builders/`). `pirlygenes build all`
