@@ -20,6 +20,11 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
+from pirlygenes.expression.stats import (
+    REFERENCE_COLUMNS,
+    assign_stats,
+    round_stat_columns,
+)
 
 
 PORTAL_NONREDUNDANT_EXCLUSIONS = {
@@ -205,32 +210,14 @@ def _summarize(df: pd.DataFrame, included_cols: list[str]) -> pd.DataFrame:
     out["source_cohort"] = "CLLMAP_2022"
     out["source_project"] = "CLL-map"
     out["source_version"] = SOURCE_VERSION
-    out["TPM_median"] = values.median(axis=1)
-    out["TPM_q1"] = values.quantile(0.25, axis=1)
-    out["TPM_q3"] = values.quantile(0.75, axis=1)
-    out["TPM_mean"] = values.mean(axis=1)
-    out["TPM_clean_median"] = clean.median(axis=1)
-    out["TPM_clean_q1"] = clean.quantile(0.25, axis=1)
-    out["TPM_clean_q3"] = clean.quantile(0.75, axis=1)
-    out["n_samples"] = len(included_cols)
-    out["n_detected"] = (values > 0).sum(axis=1)
+    assign_stats(out, values, clean)
     out["processing_pipeline"] = PIPELINE
     out["notes"] = (
         "Raw CLL-map TPMs; portal duplicate exclusions applied; "
         "GCLL-0136 excluded as suspected MCL; GENCODE19 IDs harmonized "
         "to Ensembl release 112 by source ID or unique symbol."
     )
-    numeric_cols = [
-        "TPM_median",
-        "TPM_q1",
-        "TPM_q3",
-        "TPM_mean",
-        "TPM_clean_median",
-        "TPM_clean_q1",
-        "TPM_clean_q3",
-    ]
-    out[numeric_cols] = out[numeric_cols].round(6)
-    return out
+    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
 
 
 def main() -> None:

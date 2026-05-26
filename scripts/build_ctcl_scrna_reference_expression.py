@@ -30,27 +30,11 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
-
-
-REFERENCE_COLUMNS = [
-    "Ensembl_Gene_ID",
-    "Symbol",
-    "cancer_code",
-    "source_cohort",
-    "source_project",
-    "source_version",
-    "TPM_median",
-    "TPM_q1",
-    "TPM_q3",
-    "TPM_mean",
-    "TPM_clean_median",
-    "TPM_clean_q1",
-    "TPM_clean_q3",
-    "n_samples",
-    "n_detected",
-    "processing_pipeline",
-    "notes",
-]
+from pirlygenes.expression.stats import (
+    REFERENCE_COLUMNS,
+    assign_stats,
+    round_stat_columns,
+)
 SAMPLE_COLUMNS = [
     "cancer_code",
     "source_cohort",
@@ -385,28 +369,10 @@ def _summarize(gene_table: pd.DataFrame, values: pd.DataFrame) -> pd.DataFrame:
     out["source_cohort"] = SOURCE_COHORT
     out["source_project"] = SOURCE_PROJECT
     out["source_version"] = SOURCE_VERSION
-    out["TPM_median"] = values.median(axis=1).to_numpy()
-    out["TPM_q1"] = values.quantile(0.25, axis=1).to_numpy()
-    out["TPM_q3"] = values.quantile(0.75, axis=1).to_numpy()
-    out["TPM_mean"] = values.mean(axis=1).to_numpy()
-    out["TPM_clean_median"] = clean.median(axis=1).to_numpy()
-    out["TPM_clean_q1"] = clean.quantile(0.25, axis=1).to_numpy()
-    out["TPM_clean_q3"] = clean.quantile(0.75, axis=1).to_numpy()
-    out["n_samples"] = values.shape[1]
-    out["n_detected"] = (values > 0).sum(axis=1).to_numpy()
+    assign_stats(out, values, clean)
     out["processing_pipeline"] = PIPELINE
     out["notes"] = NOTES
-    numeric_cols = [
-        "TPM_median",
-        "TPM_q1",
-        "TPM_q3",
-        "TPM_mean",
-        "TPM_clean_median",
-        "TPM_clean_q1",
-        "TPM_clean_q3",
-    ]
-    out[numeric_cols] = out[numeric_cols].round(6)
-    return out[REFERENCE_COLUMNS]
+    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
 
 
 def _upsert_reference(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
