@@ -165,7 +165,10 @@ sources:
        SARC_LMS, SARC_LPS_UNSPEC, SARC_MYXFIB, SARC_SYN, SARC_UPS]
     source_type: treehouse-compendium
     url: https://public.gi.ucsc.edu/~ekephart/public-data/#tumor_25.01_polya
-    builder: scripts/build_treehouse_reference_expression.py
+    builder: scripts/sweep_treehouse_polya_cohorts.py
+    sibling_builders:
+      - scripts/sweep_treehouse_tcga_cohorts.py  # TCGA subset of this file
+      - scripts/build_treehouse_reference_expression.py  # single-cohort CLI
     unit: log2(TPM+1)
     expected_size_gb: 6.2
     citation: >
@@ -185,13 +188,17 @@ sources:
       ENSG, then runs the standard tech-RNA zero + per-sample
       renormalize before stat summarization. Same builder is
       parameterized for every Treehouse cancer code listed above.
+      The TCGA subset (~9,800 samples) of this same file is extracted
+      by `scripts/sweep_treehouse_tcga_cohorts.py` and tagged
+      `source_cohort=TREEHOUSE_POLYA_25_01_TCGA_SUBSET` so a future
+      authoritative GDC build can land alongside without clobbering.
 
   - id: treehouse-ribod-25-01
     category: expression
     cancer_codes: [CHOR, RB]
     source_type: treehouse-compendium
     url: https://public.gi.ucsc.edu/~ekephart/public-data/#tumor_25.01_ribodeplete
-    builder: scripts/build_treehouse_reference_expression.py
+    builder: scripts/sweep_treehouse_ribod_cohorts.py
     unit: log2(TPM+1)
     expected_size_gb: 1
     citation: >
@@ -313,7 +320,7 @@ sources:
 
   - id: tcga-acc
     category: expression
-    cancer_codes: [TCGA_ACC]
+    cancer_codes: [ACC]
     source_type: gdc
     project_id: TCGA-ACC
     builder: pirlygenes/builders/tcga.py
@@ -323,7 +330,7 @@ sources:
 
   - id: tcga-blca
     category: expression
-    cancer_codes: [TCGA_BLCA]
+    cancer_codes: [BLCA]
     source_type: gdc
     project_id: TCGA-BLCA
     builder: pirlygenes/builders/tcga.py
@@ -333,7 +340,7 @@ sources:
 
   - id: tcga-brca
     category: expression
-    cancer_codes: [TCGA_BRCA]
+    cancer_codes: [BRCA]
     source_type: gdc
     project_id: TCGA-BRCA
     builder: pirlygenes/builders/tcga.py
@@ -343,7 +350,7 @@ sources:
 
   - id: tcga-cesc
     category: expression
-    cancer_codes: [TCGA_CESC]
+    cancer_codes: [CESC]
     source_type: gdc
     project_id: TCGA-CESC
     builder: pirlygenes/builders/tcga.py
@@ -353,7 +360,7 @@ sources:
 
   - id: tcga-chol
     category: expression
-    cancer_codes: [TCGA_CHOL]
+    cancer_codes: [CHOL]
     source_type: gdc
     project_id: TCGA-CHOL
     builder: pirlygenes/builders/tcga.py
@@ -363,7 +370,7 @@ sources:
 
   - id: tcga-coad
     category: expression
-    cancer_codes: [TCGA_COAD]
+    cancer_codes: [COAD]
     source_type: gdc
     project_id: TCGA-COAD
     builder: pirlygenes/builders/tcga.py
@@ -373,7 +380,7 @@ sources:
 
   - id: tcga-dlbc
     category: expression
-    cancer_codes: [TCGA_DLBC]
+    cancer_codes: [DLBC]
     source_type: gdc
     project_id: TCGA-DLBC
     builder: pirlygenes/builders/tcga.py
@@ -383,7 +390,7 @@ sources:
 
   - id: tcga-esca
     category: expression
-    cancer_codes: [TCGA_ESCA]
+    cancer_codes: [ESCA]
     source_type: gdc
     project_id: TCGA-ESCA
     builder: pirlygenes/builders/tcga.py
@@ -393,7 +400,7 @@ sources:
 
   - id: tcga-gbm
     category: expression
-    cancer_codes: [TCGA_GBM]
+    cancer_codes: [GBM]
     source_type: gdc
     project_id: TCGA-GBM
     builder: pirlygenes/builders/tcga.py
@@ -403,7 +410,7 @@ sources:
 
   - id: tcga-hnsc
     category: expression
-    cancer_codes: [TCGA_HNSC]
+    cancer_codes: [HNSC]
     source_type: gdc
     project_id: TCGA-HNSC
     builder: pirlygenes/builders/tcga.py
@@ -413,7 +420,7 @@ sources:
 
   - id: tcga-kich
     category: expression
-    cancer_codes: [TCGA_KICH]
+    cancer_codes: [KICH]
     source_type: gdc
     project_id: TCGA-KICH
     builder: pirlygenes/builders/tcga.py
@@ -423,7 +430,7 @@ sources:
 
   - id: tcga-kirc
     category: expression
-    cancer_codes: [TCGA_KIRC]
+    cancer_codes: [KIRC]
     source_type: gdc
     project_id: TCGA-KIRC
     builder: pirlygenes/builders/tcga.py
@@ -433,7 +440,7 @@ sources:
 
   - id: tcga-kirp
     category: expression
-    cancer_codes: [TCGA_KIRP]
+    cancer_codes: [KIRP]
     source_type: gdc
     project_id: TCGA-KIRP
     builder: pirlygenes/builders/tcga.py
@@ -443,7 +450,7 @@ sources:
 
   - id: tcga-laml
     category: expression
-    cancer_codes: [TCGA_LAML]
+    cancer_codes: [LAML]
     source_type: gdc
     project_id: TCGA-LAML
     builder: pirlygenes/builders/tcga.py
@@ -453,7 +460,7 @@ sources:
 
   - id: tcga-lgg
     category: expression
-    cancer_codes: [TCGA_LGG]
+    cancer_codes: [LGG]
     source_type: gdc
     project_id: TCGA-LGG
     builder: pirlygenes/builders/tcga.py
@@ -463,7 +470,7 @@ sources:
 
   - id: tcga-lihc
     category: expression
-    cancer_codes: [TCGA_LIHC]
+    cancer_codes: [LIHC]
     source_type: gdc
     project_id: TCGA-LIHC
     builder: pirlygenes/builders/tcga.py
@@ -473,7 +480,7 @@ sources:
 
   - id: tcga-luad
     category: expression
-    cancer_codes: [TCGA_LUAD]
+    cancer_codes: [LUAD]
     source_type: gdc
     project_id: TCGA-LUAD
     builder: pirlygenes/builders/tcga.py
@@ -483,7 +490,7 @@ sources:
 
   - id: tcga-lusc
     category: expression
-    cancer_codes: [TCGA_LUSC]
+    cancer_codes: [LUSC]
     source_type: gdc
     project_id: TCGA-LUSC
     builder: pirlygenes/builders/tcga.py
@@ -493,7 +500,7 @@ sources:
 
   - id: tcga-meso
     category: expression
-    cancer_codes: [TCGA_MESO]
+    cancer_codes: [MESO]
     source_type: gdc
     project_id: TCGA-MESO
     builder: pirlygenes/builders/tcga.py
@@ -503,7 +510,7 @@ sources:
 
   - id: tcga-ov
     category: expression
-    cancer_codes: [TCGA_OV]
+    cancer_codes: [OV]
     source_type: gdc
     project_id: TCGA-OV
     builder: pirlygenes/builders/tcga.py
@@ -513,7 +520,7 @@ sources:
 
   - id: tcga-paad
     category: expression
-    cancer_codes: [TCGA_PAAD]
+    cancer_codes: [PAAD]
     source_type: gdc
     project_id: TCGA-PAAD
     builder: pirlygenes/builders/tcga.py
@@ -523,7 +530,7 @@ sources:
 
   - id: tcga-pcpg
     category: expression
-    cancer_codes: [TCGA_PCPG]
+    cancer_codes: [PCPG]
     source_type: gdc
     project_id: TCGA-PCPG
     builder: pirlygenes/builders/tcga.py
@@ -533,7 +540,7 @@ sources:
 
   - id: tcga-prad
     category: expression
-    cancer_codes: [TCGA_PRAD]
+    cancer_codes: [PRAD]
     source_type: gdc
     project_id: TCGA-PRAD
     builder: pirlygenes/builders/tcga.py
@@ -543,7 +550,7 @@ sources:
 
   - id: tcga-read
     category: expression
-    cancer_codes: [TCGA_READ]
+    cancer_codes: [READ]
     source_type: gdc
     project_id: TCGA-READ
     builder: pirlygenes/builders/tcga.py
@@ -553,7 +560,7 @@ sources:
 
   - id: tcga-sarc
     category: expression
-    cancer_codes: [TCGA_SARC]
+    cancer_codes: [SARC]
     source_type: gdc
     project_id: TCGA-SARC
     builder: pirlygenes/builders/tcga.py
@@ -563,7 +570,7 @@ sources:
 
   - id: tcga-skcm
     category: expression
-    cancer_codes: [TCGA_SKCM]
+    cancer_codes: [SKCM]
     source_type: gdc
     project_id: TCGA-SKCM
     builder: pirlygenes/builders/tcga.py
@@ -573,7 +580,7 @@ sources:
 
   - id: tcga-stad
     category: expression
-    cancer_codes: [TCGA_STAD]
+    cancer_codes: [STAD]
     source_type: gdc
     project_id: TCGA-STAD
     builder: pirlygenes/builders/tcga.py
@@ -583,7 +590,7 @@ sources:
 
   - id: tcga-tgct
     category: expression
-    cancer_codes: [TCGA_TGCT]
+    cancer_codes: [TGCT]
     source_type: gdc
     project_id: TCGA-TGCT
     builder: pirlygenes/builders/tcga.py
@@ -593,7 +600,7 @@ sources:
 
   - id: tcga-thca
     category: expression
-    cancer_codes: [TCGA_THCA]
+    cancer_codes: [THCA]
     source_type: gdc
     project_id: TCGA-THCA
     builder: pirlygenes/builders/tcga.py
@@ -603,7 +610,7 @@ sources:
 
   - id: tcga-thym
     category: expression
-    cancer_codes: [TCGA_THYM]
+    cancer_codes: [THYM]
     source_type: gdc
     project_id: TCGA-THYM
     builder: pirlygenes/builders/tcga.py
@@ -613,7 +620,7 @@ sources:
 
   - id: tcga-ucec
     category: expression
-    cancer_codes: [TCGA_UCEC]
+    cancer_codes: [UCEC]
     source_type: gdc
     project_id: TCGA-UCEC
     builder: pirlygenes/builders/tcga.py
@@ -623,7 +630,7 @@ sources:
 
   - id: tcga-ucs
     category: expression
-    cancer_codes: [TCGA_UCS]
+    cancer_codes: [UCS]
     source_type: gdc
     project_id: TCGA-UCS
     builder: pirlygenes/builders/tcga.py
@@ -633,7 +640,7 @@ sources:
 
   - id: tcga-uvm
     category: expression
-    cancer_codes: [TCGA_UVM]
+    cancer_codes: [UVM]
     source_type: gdc
     project_id: TCGA-UVM
     builder: pirlygenes/builders/tcga.py
