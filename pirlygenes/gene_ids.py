@@ -41,6 +41,64 @@ _gene_id_miss_cache: set[str] = set()
 _transcript_id_miss_cache: set[str] = set()
 
 
+def _index_cache_path(release: int):
+    """Cache location for the prebuilt Ensembl id→name dicts.
+
+    Honors ``XDG_CACHE_HOME`` (Linux convention) and falls back to
+    ``~/.cache/pirlygenes/``. Returns a Path; the directory is created
+    lazily by the writer.
+    """
+    import os as _os
+    from pathlib import Path as _Path
+    base = _os.environ.get("XDG_CACHE_HOME") or str(_Path.home() / ".cache")
+    return _Path(base) / "pirlygenes" / f"ensembl-{release}-id-index.pkl"
+
+
+def _load_index_cache(release: int):
+    """Return (gene_dict, transcript_dict) from the pickle cache, or None.
+
+    Each subprocess pays ~2s to walk pyensembl's gene/transcript tables
+    when first resolving Ensembl IDs. Loading the prebuilt dicts from
+    a single ~5MB pickle is sub-300ms and is shared across the OS page
+    cache when many processes mmap the same file."""
+    import pickle as _pickle
+    path = _index_cache_path(release)
+    if not path.exists():
+        return None
+    try:
+        with path.open("rb") as f:
+            payload = _pickle.load(f)
+        if not isinstance(payload, dict):
+            return None
+        if payload.get("release") != release:
+            return None
+        return payload["gene_id_to_name"], payload["transcript_id_to_gene_name"]
+    except Exception:
+        return None
+
+
+def _store_index_cache(release: int, gene_map: dict, transcript_map: dict) -> None:
+    import pickle as _pickle
+    path = _index_cache_path(release)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with tmp.open("wb") as f:
+            _pickle.dump(
+                {
+                    "release": release,
+                    "gene_id_to_name": gene_map,
+                    "transcript_id_to_gene_name": transcript_map,
+                },
+                f,
+                protocol=_pickle.HIGHEST_PROTOCOL,
+            )
+        tmp.replace(path)
+    except Exception:
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
+
+
 def _build_indexes():
     global _gene_id_to_name, _transcript_id_to_gene_name, _indexes_built
     if _indexes_built:
@@ -49,6 +107,16 @@ def _build_indexes():
         _indexes_built = True
         return
     g = genomes[0]
+    cached = _load_index_cache(g.release)
+    if cached is not None:
+        _gene_id_to_name, _transcript_id_to_gene_name = cached
+        print(
+            f"[index] Loaded {len(_gene_id_to_name)} genes, "
+            f"{len(_transcript_id_to_gene_name)} transcripts from cache "
+            f"(release {g.release})"
+        )
+        _indexes_built = True
+        return
     print(f"[index] Building gene/transcript index from Ensembl release {g.release}...")
     try:
         for gene in g.genes():
@@ -65,6 +133,7 @@ def _build_indexes():
     print(
         f"[index] {len(_gene_id_to_name)} genes, {len(_transcript_id_to_gene_name)} transcripts indexed"
     )
+    _store_index_cache(g.release, _gene_id_to_name, _transcript_id_to_gene_name)
     _indexes_built = True
 
 
