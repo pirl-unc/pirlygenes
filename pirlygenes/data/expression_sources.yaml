@@ -1,0 +1,618 @@
+# Registry of every cohort-level expression data source consumed by
+# pirlygenes. Drives `pirlygenes downloads`, `pirlygenes build`, and
+# the cache layout under ~/.cache/pirlygenes/expression/<id>/.
+#
+# Field reference:
+#   id                 — stable identifier; matches the cache subdir.
+#   category           — expression | (future) protein, etc.
+#   cancer_codes       — pirlygenes cancer codes this source feeds.
+#   source_type        — gdc | geo | broad-cllmap | treehouse-compendium
+#                        | summary-only-import | pan-cancer-fpkm-table
+#   builder            — Python module/script that knows how to build
+#                        per-gene-per-cohort summaries from this source.
+#                        Today these are scripts/build_*.py; will move
+#                        to pirlygenes/builders/ when the
+#                        `pirlygenes build` dispatcher lands
+#                        (see docs/expression-data-refresh-plan.md
+#                        milestone 2).
+#   project_id         — GDC project, when source_type == gdc.
+#   accession          — GEO series accession, when source_type == geo.
+#   url                — Direct download URL for single-file sources.
+#   unit               — Native quantification unit at the source.
+#   expected_size_gb   — Rough estimate of cached size after fetch.
+#                        Used to summarize total disk usage. Treated
+#                        as a hint, not a hard cap.
+#   citation           — PMID / DOI / project URL for the source.
+#   special_handling   — Inclusion/exclusion or interpretation quirks
+#                        a re-runner needs to remember.
+
+schema_version: 1
+
+sources:
+  # ---- existing GDC builders ----
+
+  - id: cgci-blgsp
+    category: expression
+    cancer_codes: [BL]
+    source_type: gdc
+    project_id: CGCI-BLGSP
+    builder: scripts/build_bl_gdc_reference_expression.py
+    unit: TPM
+    expected_size_gb: 2
+    citation: https://portal.gdc.cancer.gov/projects/CGCI-BLGSP
+    special_handling: >
+      Open GDC STAR-counts; one deterministic primary-tumor sample per
+      case. GENCODE v36 → Ensembl 112.
+
+  - id: mmrf-commpass
+    category: expression
+    cancer_codes: [MM]
+    source_type: gdc
+    project_id: MMRF-COMMPASS
+    builder: scripts/build_mmrf_reference_expression.py
+    unit: TPM
+    expected_size_gb: 5
+    citation: https://portal.gdc.cancer.gov/projects/MMRF-COMMPASS
+    special_handling: >
+      Inclusion: primary Bone Marrow CD138+ samples only
+      (sample_type == 'Primary Blood Derived Cancer - Bone Marrow' AND
+      sample_id endswith 'BM_CD138pos'); one deterministic sample per
+      case ordered by visit number.
+
+  - id: target-all
+    category: expression
+    cancer_codes: [B_ALL, T_ALL]
+    source_type: gdc
+    project_id: TARGET-ALL-P1+P2+P3
+    builder: scripts/build_target_all_reference_expression.py
+    unit: TPM
+    expected_size_gb: 6
+    citation: https://portal.gdc.cancer.gov/projects/TARGET-ALL-P2
+    special_handling: >
+      Three TARGET ALL phases merged; split B-cell vs T-cell ALL by
+      diagnosis fields.
+
+  # ---- existing non-GDC builders ----
+
+  - id: cllmap
+    category: expression
+    cancer_codes: [CLL]
+    source_type: broad-cllmap
+    url: https://data.broadinstitute.org/cllmap/data/downloads/cllmap_rnaseq_tpms_full.tsv.gz
+    builder: scripts/build_cllmap_reference_expression.py
+    unit: TPM
+    expected_size_gb: 1
+    citation: https://www.broadinstitute.org/cllmap
+    special_handling: >
+      Single bundled TPM TSV; GENCODE v19 IDs harmonized to Ensembl 112.
+
+  - id: gse100026-cml
+    category: expression
+    cancer_codes: [CML]
+    source_type: geo
+    accession: GSE100026
+    builder: scripts/build_geo_heme_reference_expression.py
+    unit: RPKM
+    expected_size_gb: 0.1
+    citation: GSE100026 (Ding 2017)
+    special_handling: >
+      Peripheral blood mononuclear cells; chronic-phase CML samples
+      only (title prefix CML-CP); RPKM → TPM within retained,
+      uniquely Ensembl-harmonized genes.
+
+  - id: gse114922-mds
+    category: expression
+    cancer_codes: [MDS]
+    source_type: geo
+    accession: GSE114922
+    builder: scripts/build_geo_heme_reference_expression.py
+    unit: TPM
+    expected_size_gb: 0.1
+    citation: GSE114922 (Shiozawa 2018)
+    special_handling: >
+      Bone-marrow CD34+ HSPCs; disease status == 'Myelodysplastic
+      Syndrome' samples only.
+
+  - id: gse271664-mcl
+    category: expression
+    cancer_codes: [MCL]
+    source_type: geo
+    accession: GSE271664
+    builder: scripts/build_geo_heme_reference_expression.py
+    unit: HTSeq counts
+    expected_size_gb: 0.1
+    citation: GSE271664 (Bodor 2025)
+    special_handling: >
+      FFPE lymph-biopsy HTSeq counts; length-normalized to TPM with
+      Ensembl 112 gene spans.
+
+  - id: gse283710-mpn
+    category: expression
+    cancer_codes: [MPN]
+    source_type: geo
+    accession: GSE283710
+    builder: scripts/build_geo_heme_reference_expression.py
+    unit: raw counts
+    expected_size_gb: 0.1
+    citation: GSE283710 (WashU 2024)
+    special_handling: >
+      Sorted CD34+; chronic-phase Polycythemia vera, Essential
+      thrombocythemia, and Myelofibrosis only; length-normalized to TPM.
+
+  - id: gse171811-ctcl
+    category: expression
+    cancer_codes: [CTCL]
+    source_type: geo
+    accession: GSE171811
+    builder: scripts/build_ctcl_scrna_reference_expression.py
+    unit: nTPM (pseudobulk)
+    expected_size_gb: 1
+    citation: GSE171811 (ECCITE-seq CTCL)
+    special_handling: >
+      scRNA + TCR-β ECCITE-seq; pseudobulk per donor; output is nTPM.
+
+  # ---- imported via scripts/import_cancer_specific_expression.py ----
+  # These come from external neutral-summary tables, not per-sample
+  # quantifications. Extended-stat columns (std/min/max/p5/p10/p90/p95)
+  # are NaN here until the relevant per-sample fetcher lands —
+  # see docs/expression-data-refresh-plan.md milestone 6.
+
+  - id: treehouse-polya-25-01
+    category: expression
+    cancer_codes:
+      [ATRT, EWS, HEPB, MBL, NUTM, OS,
+       RMS_ARMS, RMS_ERMS, RMS_PRMS, RMS_SSRMS,
+       SARC_LMS, SARC_LPS_UNSPEC, SARC_MYXFIB, SARC_SYN, SARC_UPS]
+    source_type: treehouse-compendium
+    url: https://treehousegenomics.soe.ucsc.edu/public-data/
+    builder: scripts/import_cancer_specific_expression.py
+    unit: TPM
+    expected_size_gb: 20
+    citation: Treehouse Childhood Cancer Initiative, POLYA 25.01
+    special_handling: >
+      Public Treehouse pediatric pan-cancer compendium, poly(A)
+      release 25.01. Subset by Treehouse disease label per cancer
+      code. Currently imported as cohort medians only; per-sample
+      fetch is queued (plan milestone 6).
+
+  - id: treehouse-ribod-25-01
+    category: expression
+    cancer_codes: [CHOR, RB]
+    source_type: treehouse-compendium
+    url: https://treehousegenomics.soe.ucsc.edu/public-data/
+    builder: scripts/import_cancer_specific_expression.py
+    unit: TPM
+    expected_size_gb: 5
+    citation: Treehouse Childhood Cancer Initiative, RiboD 25.01
+    special_handling: >
+      RiboD (ribo-depleted) Treehouse release; same subset-by-label
+      pattern as POLYA.
+
+  - id: beataml-ohsu-2022
+    category: expression
+    cancer_codes: [LAML_APL, LAML_ELN_Adv, LAML_ELN_Fav, LAML_ELN_Int]
+    source_type: summary-only-import
+    url: https://biodev.github.io/BeatAML2/
+    builder: scripts/import_cancer_specific_expression.py
+    unit: TPM
+    expected_size_gb: 0
+    citation: BeatAML 2.0 (Bottomly 2022)
+    special_handling: >
+      Summary-only import; subgrouped by ELN risk and APL. Per-sample
+      data is available from BeatAML2 — backfill candidate for the
+      full rebuild.
+
+  - id: gse118014-pannet
+    category: expression
+    cancer_codes: [PANNET]
+    source_type: summary-only-import
+    accession: GSE118014
+    builder: scripts/import_cancer_specific_expression.py
+    unit: TPM
+    expected_size_gb: 0
+    citation: GSE118014 (Alvarez 2018)
+    special_handling: Pancreatic neuroendocrine tumors.
+
+  - id: gse299759-chon
+    category: expression
+    cancer_codes: [CHON]
+    source_type: summary-only-import
+    accession: GSE299759
+    builder: scripts/import_cancer_specific_expression.py
+    unit: TPM
+    expected_size_gb: 0
+    citation: GSE299759 (Meijer 2026)
+    special_handling: Chondrosarcoma.
+
+  - id: gse75885-sarc
+    category: expression
+    cancer_codes: [SARC_DDLPS, SARC_LGFMS, SARC_PLEOLPS]
+    source_type: summary-only-import
+    accession: GSE75885
+    builder: scripts/import_cancer_specific_expression.py
+    unit: TPM
+    expected_size_gb: 0
+    citation: GSE75885 (Delespaul 2017)
+    special_handling: >
+      Soft-tissue sarcoma subtypes (DDLPS, LGFMS, PLEOLPS).
+
+  - id: sclc-ucologne-2015
+    category: expression
+    cancer_codes: [SCLC]
+    source_type: summary-only-import
+    url: https://www.nature.com/articles/nature14664
+    builder: scripts/import_cancer_specific_expression.py
+    unit: TPM
+    expected_size_gb: 0
+    citation: SCLC U.Cologne 2015 (George 2015, PMID 26168399)
+    special_handling: Small-cell lung cancer summary import.
+
+  - id: target-nbl
+    category: expression
+    cancer_codes: [NBL_MYCN_amp, NBL_MYCN_nonamp]
+    source_type: summary-only-import
+    project_id: TARGET-NBL
+    builder: scripts/import_cancer_specific_expression.py
+    unit: TPM
+    expected_size_gb: 0
+    citation: TARGET Neuroblastoma 2018
+    special_handling: >
+      Neuroblastoma split by MYCN amplification status. Per-sample
+      data is on GDC — backfill candidate.
+
+  - id: target-rt
+    category: expression
+    cancer_codes: [RT]
+    source_type: summary-only-import
+    project_id: TARGET-RT
+    builder: scripts/import_cancer_specific_expression.py
+    unit: TPM
+    expected_size_gb: 0
+    citation: TARGET Rhabdoid Tumor 2017
+    special_handling: Backfill candidate from GDC.
+
+  - id: target-wt
+    category: expression
+    cancer_codes: [WILMS]
+    source_type: summary-only-import
+    project_id: TARGET-WT
+    builder: scripts/import_cancer_specific_expression.py
+    unit: TPM
+    expected_size_gb: 0
+    citation: TARGET Wilms Tumor 2015
+    special_handling: Backfill candidate from GDC.
+
+  # ---- net-new: TCGA bulk-adult cohorts via GDC ----
+  # All 32 cohorts currently in pan-cancer-expression.csv as
+  # FPKM_<code> columns (median only). Backfilled per-sample via the
+  # parameterized GDC builder under plan milestone 3.
+
+  - id: tcga-acc
+    category: expression
+    cancer_codes: [TCGA_ACC]
+    source_type: gdc
+    project_id: TCGA-ACC
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.5
+    citation: TCGA Adrenocortical carcinoma
+
+  - id: tcga-blca
+    category: expression
+    cancer_codes: [TCGA_BLCA]
+    source_type: gdc
+    project_id: TCGA-BLCA
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2
+    citation: TCGA Bladder urothelial carcinoma
+
+  - id: tcga-brca
+    category: expression
+    cancer_codes: [TCGA_BRCA]
+    source_type: gdc
+    project_id: TCGA-BRCA
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 6
+    citation: TCGA Breast invasive carcinoma
+
+  - id: tcga-cesc
+    category: expression
+    cancer_codes: [TCGA_CESC]
+    source_type: gdc
+    project_id: TCGA-CESC
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 1.5
+    citation: TCGA Cervical squamous cell carcinoma
+
+  - id: tcga-chol
+    category: expression
+    cancer_codes: [TCGA_CHOL]
+    source_type: gdc
+    project_id: TCGA-CHOL
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.3
+    citation: TCGA Cholangiocarcinoma
+
+  - id: tcga-coad
+    category: expression
+    cancer_codes: [TCGA_COAD]
+    source_type: gdc
+    project_id: TCGA-COAD
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2.5
+    citation: TCGA Colon adenocarcinoma
+
+  - id: tcga-dlbc
+    category: expression
+    cancer_codes: [TCGA_DLBC]
+    source_type: gdc
+    project_id: TCGA-DLBC
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.3
+    citation: TCGA Diffuse large B-cell lymphoma
+
+  - id: tcga-esca
+    category: expression
+    cancer_codes: [TCGA_ESCA]
+    source_type: gdc
+    project_id: TCGA-ESCA
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 1
+    citation: TCGA Esophageal carcinoma
+
+  - id: tcga-gbm
+    category: expression
+    cancer_codes: [TCGA_GBM]
+    source_type: gdc
+    project_id: TCGA-GBM
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 1
+    citation: TCGA Glioblastoma multiforme
+
+  - id: tcga-hnsc
+    category: expression
+    cancer_codes: [TCGA_HNSC]
+    source_type: gdc
+    project_id: TCGA-HNSC
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2.5
+    citation: TCGA Head and neck squamous cell carcinoma
+
+  - id: tcga-kich
+    category: expression
+    cancer_codes: [TCGA_KICH]
+    source_type: gdc
+    project_id: TCGA-KICH
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.3
+    citation: TCGA Kidney chromophobe
+
+  - id: tcga-kirc
+    category: expression
+    cancer_codes: [TCGA_KIRC]
+    source_type: gdc
+    project_id: TCGA-KIRC
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2.5
+    citation: TCGA Kidney renal clear cell carcinoma
+
+  - id: tcga-kirp
+    category: expression
+    cancer_codes: [TCGA_KIRP]
+    source_type: gdc
+    project_id: TCGA-KIRP
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 1.5
+    citation: TCGA Kidney renal papillary cell carcinoma
+
+  - id: tcga-laml
+    category: expression
+    cancer_codes: [TCGA_LAML]
+    source_type: gdc
+    project_id: TCGA-LAML
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 1
+    citation: TCGA Acute myeloid leukemia
+
+  - id: tcga-lgg
+    category: expression
+    cancer_codes: [TCGA_LGG]
+    source_type: gdc
+    project_id: TCGA-LGG
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2.5
+    citation: TCGA Brain lower-grade glioma
+
+  - id: tcga-lihc
+    category: expression
+    cancer_codes: [TCGA_LIHC]
+    source_type: gdc
+    project_id: TCGA-LIHC
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2
+    citation: TCGA Liver hepatocellular carcinoma
+
+  - id: tcga-luad
+    category: expression
+    cancer_codes: [TCGA_LUAD]
+    source_type: gdc
+    project_id: TCGA-LUAD
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 3
+    citation: TCGA Lung adenocarcinoma
+
+  - id: tcga-lusc
+    category: expression
+    cancer_codes: [TCGA_LUSC]
+    source_type: gdc
+    project_id: TCGA-LUSC
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 3
+    citation: TCGA Lung squamous cell carcinoma
+
+  - id: tcga-meso
+    category: expression
+    cancer_codes: [TCGA_MESO]
+    source_type: gdc
+    project_id: TCGA-MESO
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.4
+    citation: TCGA Mesothelioma
+
+  - id: tcga-ov
+    category: expression
+    cancer_codes: [TCGA_OV]
+    source_type: gdc
+    project_id: TCGA-OV
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2
+    citation: TCGA Ovarian serous cystadenocarcinoma
+
+  - id: tcga-paad
+    category: expression
+    cancer_codes: [TCGA_PAAD]
+    source_type: gdc
+    project_id: TCGA-PAAD
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 1
+    citation: TCGA Pancreatic adenocarcinoma
+
+  - id: tcga-pcpg
+    category: expression
+    cancer_codes: [TCGA_PCPG]
+    source_type: gdc
+    project_id: TCGA-PCPG
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.8
+    citation: TCGA Pheochromocytoma and Paraganglioma
+
+  - id: tcga-prad
+    category: expression
+    cancer_codes: [TCGA_PRAD]
+    source_type: gdc
+    project_id: TCGA-PRAD
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2.5
+    citation: TCGA Prostate adenocarcinoma
+
+  - id: tcga-read
+    category: expression
+    cancer_codes: [TCGA_READ]
+    source_type: gdc
+    project_id: TCGA-READ
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.8
+    citation: TCGA Rectum adenocarcinoma
+
+  - id: tcga-sarc
+    category: expression
+    cancer_codes: [TCGA_SARC]
+    source_type: gdc
+    project_id: TCGA-SARC
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 1.5
+    citation: TCGA Sarcoma
+
+  - id: tcga-skcm
+    category: expression
+    cancer_codes: [TCGA_SKCM]
+    source_type: gdc
+    project_id: TCGA-SKCM
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2.5
+    citation: TCGA Skin cutaneous melanoma
+
+  - id: tcga-stad
+    category: expression
+    cancer_codes: [TCGA_STAD]
+    source_type: gdc
+    project_id: TCGA-STAD
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2
+    citation: TCGA Stomach adenocarcinoma
+
+  - id: tcga-tgct
+    category: expression
+    cancer_codes: [TCGA_TGCT]
+    source_type: gdc
+    project_id: TCGA-TGCT
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.6
+    citation: TCGA Testicular germ cell tumors
+
+  - id: tcga-thca
+    category: expression
+    cancer_codes: [TCGA_THCA]
+    source_type: gdc
+    project_id: TCGA-THCA
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 2.5
+    citation: TCGA Thyroid carcinoma
+
+  - id: tcga-thym
+    category: expression
+    cancer_codes: [TCGA_THYM]
+    source_type: gdc
+    project_id: TCGA-THYM
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.6
+    citation: TCGA Thymoma
+
+  - id: tcga-ucec
+    category: expression
+    cancer_codes: [TCGA_UCEC]
+    source_type: gdc
+    project_id: TCGA-UCEC
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 3
+    citation: TCGA Uterine corpus endometrial carcinoma
+
+  - id: tcga-ucs
+    category: expression
+    cancer_codes: [TCGA_UCS]
+    source_type: gdc
+    project_id: TCGA-UCS
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.3
+    citation: TCGA Uterine carcinosarcoma
+
+  - id: tcga-uvm
+    category: expression
+    cancer_codes: [TCGA_UVM]
+    source_type: gdc
+    project_id: TCGA-UVM
+    builder: pirlygenes/builders/tcga.py
+    unit: TPM
+    expected_size_gb: 0.3
+    citation: TCGA Uveal melanoma
