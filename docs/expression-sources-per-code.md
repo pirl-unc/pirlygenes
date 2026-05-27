@@ -51,7 +51,7 @@ microarray probe→gene mapper, or (c) controlled-access credentials.
 |---|---|---|---|
 | **MEC** (Merkel Cell Carcinoma) | SRA **PRJNA775071** (Sundqvist 2022, n=102) | FASTQ only on SRA — no processed matrix | Add a FASTQ→Salmon quant pipeline (~1 day; or use ARCHS4 if it has the runs) |
 | **MTC** (Medullary Thyroid Carcinoma) | GSA-Human **HRA002698** (Shi 2022, n=101) | Controlled-access (Chinese GSA-Human application required) | Apply for GSA-Human access; or use the small 2026 E-MTAB-15198 (n=72) once its data files become available |
-| **MID_NET** (Midgut Carcinoid) | GEO **GSE98894** RAW.tar (Alvarez 2018, 212 per-sample files; n=81 SI-NET) | RAW.tar of per-sample HTSeq files + need to parse series matrix for primary-site routing | Write a RAW.tar extractor + series_matrix parser (~3-4 hr); SI-NET would emerge as one cohort |
+| ~~MID_NET~~ (Midgut Carcinoid) | **DONE** 2026-05-27 via `scripts/build_gse98894_midgut_net.py` (GSE98894 RAW.tar Entrez→ENSG via NCBI gene_info → length-norm TPM). 81 SI-NET liver mets tagged `tumor_origin=metastasis, metastasis_site=liver`. Also wrote PANNET and REC_NET shards from the same cohort. | resolved | n/a |
 | **GCTB** (Giant Cell Tumor of Bone) | GEO **GSE149209** (Khazaei 2020, n=38) | Cell lines, not primary tumors | Use anyway with explicit cell-line caveat in notes, or wait for a primary-GCTB cohort to be deposited |
 | **HCL** (Hairy Cell Leukemia) | GEO **GSE63790** (n=6) | Microarray (Affy U133+2), not RNA-seq | Add a microarray builder with RMA + probe→gene mapper (the Affy annotation table is available; ~3-4 hr per platform) |
 | **SARC_MYXLPS** (Myxoid Liposarcoma) | GEO **GSE21050** (n=~20 MLPS subset of 310 STS) | Microarray (Affy HG-U133+2); the audit's GSE128064 was methylation (wrong); GSE28866 is 3SEQ peak counts (not gene expression) | Microarray builder needed; or wait for a public bulk RNA-seq MLPS cohort |
@@ -66,14 +66,19 @@ microarray probe→gene mapper, or (c) controlled-access credentials.
 ### Truly blocked: 5
 - **PCN**, **SARC_DFSP**: no public per-sample RNA-seq source identified
 
-### Blocked on adding a missing infrastructure piece: 8
+### Blocked on adding a missing infrastructure piece: 7
 - FASTQ→TPM pipeline (Salmon/STAR-RSEM): would unlock **MEC**, **ACINIC**
-- Microarray probe→gene mapper: would unlock **HCL**, **SARC_MYXLPS**, **SARC_EMC**, **ESS_HG**, **ESS_LG**
+- **GPL570 microarray builder** (built 2026-05-27 in `pirlygenes/builders/affy_gpl570.py` + `scripts/build_gpl570_microarray.py`; awaiting a vetted GEO source for each — initial candidates GSE63790 [HCL: drug timecourse] and GSE21050 [SARC_MYXLPS: cohort is UPS/LMS/DDLPS, zero MLPS] were dropped on audit). Would unlock **HCL**, **SARC_MYXLPS** when a real primary-tumor cohort is found.
+- Other-platform microarray support (Affy GPL2937 / Agilent GPL22303): would unlock **SARC_EMC**, **ESS_HG**, **ESS_LG**
 - Controlled-access credentials (Chinese GSA-Human): would unlock **MTC**, **SARC_SFT**
 
-### Blocked on per-cohort custom work: 3
-- **MID_NET**: GSE98894 RAW.tar series-matrix parser
+### Blocked on per-cohort custom work: 1
 - **GCTB**: accept cell-line GSE149209 with caveat, or wait for primary-tumor cohort
+
+### Resolved 2026-05-27
+- **MID_NET**, **PANNET** (liver-met variant), **REC_NET**: built via `scripts/build_gse98894_midgut_net.py` from GSE98894 (Alvarez 2018). All tagged `tumor_origin=metastasis, metastasis_site=liver` since the cohort is liver biopsies. REC_NET registry code added with this build.
+- **Schema v5.4**: added `tumor_origin` and `metastasis_site` columns to every shard. All 33 existing shards backfilled (primary | mixed) via `scripts/backfill_tumor_origin.py`.
+- **NCBI Entrez↔HUGO helper** (`pirlygenes/builders/ncbi_gene_info.py`): caches `Homo_sapiens.gene_info.gz` once, exposes `harmonize_entrez_via_ncbi(matrix, …)` for any Entrez-keyed GEO matrix going forward.
 
 Grouped by blocker type.
 
