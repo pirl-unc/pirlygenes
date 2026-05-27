@@ -47,7 +47,7 @@ _MISSING_THERAPY_AXIS = frozenset(
         "HL", "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC",
         "LUNG_NET_LC", "LUNG_NET_LCNEC", "MBL", "MCL", "MDS", "MEC",
         "MESO", "MID_NET", "MM", "MPN", "MTC", "NPC", "NUTM", "OS",
-        "OV", "PAAD", "PANNET", "PCPG", "RB", "READ",
+        "OV", "PAAD", "PANNET", "PCPG", "RB", "READ", "REC_NET",
         "RMS_ARMS", "RMS_ERMS", "RMS_SSRMS", "RT", "SARC",
         "SCLC", "STAD", "TGCT", "THCA", "THYM", "T_ALL", "UCEC", "UCS",
         "UVM", "WILMS",
@@ -66,6 +66,7 @@ _TOLERATED_GAPS_EXPLICIT = {
     "MPN": {"lineage", "biomarker", "therapy"},
     # NET axis — PANNET shipped v4.47.0; rest pending
     "LUNG_NET_LCNEC": {"lineage", "biomarker", "therapy"},
+    "REC_NET": {"lineage", "biomarker", "therapy"},
     # Pediatric entities — lineage panels still need curation
     "NBL": {"lineage"},
     "WILMS": {"lineage"},

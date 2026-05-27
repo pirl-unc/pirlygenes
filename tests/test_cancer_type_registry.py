@@ -290,19 +290,32 @@ def test_known_parent_reference_labels_are_connected():
 
 
 def test_registry_expression_sources_match_packaged_references():
-    """Rows with direct non-TCGA references must point at the packaged cohort."""
+    """The registry's source_cohort for each code must appear among the
+    packaged references for that code. Additional cohorts (e.g. liver
+    metastases beyond the primary-tumor reference) are allowed: the
+    registry tracks only the canonical primary reference, not every
+    shard. So this test checks 'registry-canonical cohort is present'
+    rather than 'every packaged shard matches the registry'."""
     from pirlygenes.expression import available_cancer_expression_references
 
     df = cancer_type_registry().set_index("code")
     refs = available_cancer_expression_references()
-    mismatches = []
+    packaged_by_code: dict[str, set[str]] = {}
     for _, ref in refs.iterrows():
-        code = ref["cancer_code"]
+        packaged_by_code.setdefault(str(ref["cancer_code"]), set()).add(
+            str(ref["source_cohort"])
+        )
+
+    mismatches = []
+    for code, shards in packaged_by_code.items():
+        if code not in df.index:
+            continue
         registry_cohort = str(df.loc[code, "source_cohort"])
-        reference_cohort = str(ref["source_cohort"])
-        if registry_cohort != reference_cohort:
-            mismatches.append((code, registry_cohort, reference_cohort))
-    assert not mismatches, f"registry/reference source_cohort mismatch: {mismatches}"
+        if registry_cohort and registry_cohort not in shards:
+            mismatches.append((code, registry_cohort, sorted(shards)))
+    assert not mismatches, (
+        f"registry source_cohort missing from packaged references: {mismatches}"
+    )
 
 
 def test_registry_has_source_cohort_column():
@@ -352,8 +365,18 @@ def test_source_cohort_values_are_canonical():
         "TREEHOUSE_POLYA_25_01_TCGA_HNSC_HPV",
         "TREEHOUSE_RIBOD_25_01",
         "GSE118014_ALVAREZ_2018",
+        "GSE98894_ALVAREZ_2018_NET",
         "GSE299759_MEIJER_2026",
         "GSE75885_DELESPAUL_2017",
+        "GSE120328_LAMPRECHT_2018",
+        "GSE142334_FL_TFL_2021",
+        "GSE241095_KS_SKIN_2023",
+        "GSE248751_HUMAN_CCS_2023",
+        "GSE294016_BARTL_2025_SGC",
+        "GSE328026_PECOMA_2026",
+        "DRMETRICS_ALCALA_2019_LNEN",
+        "TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS",
+        "SCLC_UCOLOGNE_2015_TF_DOMINANCE",
         "SCLC_UCOLOGNE_2015",
     }
     present = set(df["source_cohort"].fillna("").astype(str).unique())

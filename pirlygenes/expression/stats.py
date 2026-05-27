@@ -73,6 +73,29 @@ METADATA_COLUMNS: tuple[str, ...] = (
 )
 
 
+# Cohort-level tumor-source annotation (v5.4+).
+#
+# tumor_origin: one of ``primary`` | ``metastasis`` | ``recurrence``
+#               | ``cell_line`` | ``pdx`` | ``normal_tissue`` | ``mixed``.
+#               NaN means "unknown / not curated for this source yet";
+#               new builders MUST set it explicitly. The backfill script
+#               populates legacy shards from a curated source-to-origin
+#               map.
+#
+# metastasis_site: free-text site when tumor_origin == 'metastasis'
+#                  (e.g. ``liver``, ``brain``, ``lung``, ``bone``,
+#                  ``lymph_node``). NaN otherwise.
+#
+# Use these to filter the per-gene reference matrix when a downstream
+# tool needs strictly primary-tumor expression — e.g. tumor-specific
+# computations should default to ``tumor_origin == 'primary'`` and fall
+# back to mets only when no primary cohort exists for the cancer_code.
+COHORT_ANNOTATION_COLUMNS: tuple[str, ...] = (
+    "tumor_origin",
+    "metastasis_site",
+)
+
+
 # Canonical column order for cancer-reference-expression.csv.gz rows.
 # Every `build_*_reference_expression.py` and
 # `import_cancer_specific_expression.py` writes this exact ordering so
@@ -93,6 +116,8 @@ REFERENCE_COLUMNS: tuple[str, ...] = (
     "TPM_p5", "TPM_p10", "TPM_p90", "TPM_p95",
     "TPM_clean_mean", "TPM_clean_std", "TPM_clean_min", "TPM_clean_max",
     "TPM_clean_p5", "TPM_clean_p10", "TPM_clean_p90", "TPM_clean_p95",
+    # v5.4 extension — primary vs metastasis annotation.
+    *COHORT_ANNOTATION_COLUMNS,
 )
 
 
@@ -254,6 +279,7 @@ __all__ = [
     "IDENTIFIER_COLUMNS",
     "PROVENANCE_COLUMNS",
     "METADATA_COLUMNS",
+    "COHORT_ANNOTATION_COLUMNS",
     "REFERENCE_COLUMNS",
     "compute_cohort_stats",
     "compute_count_columns",

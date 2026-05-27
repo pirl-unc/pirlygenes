@@ -161,15 +161,26 @@ def test_available_cancer_expression_references_includes_target_all_lineages():
 
 def test_available_cancer_expression_references_includes_imported_specific_cohorts():
     df = available_cancer_expression_references()
-    refs = df.set_index("cancer_code")
 
-    assert refs.loc["OS", "source_cohort"] == "TREEHOUSE_POLYA_25_01"
-    assert refs.loc["OS", "n_samples"] == 262
-    assert refs.loc["PANNET", "source_cohort"] == "GSE118014_ALVAREZ_2018"
-    assert refs.loc["CHON", "source_cohort"] == "GSE299759_MEIJER_2026"
-    assert refs.loc["SARC_DDLPS", "source_cohort"] == "GSE75885_DELESPAUL_2017"
-    assert refs.loc["LAML_APL", "source_cohort"] == "BEATAML_OHSU_2022"
-    assert refs.loc["RB", "source_cohort"] == "TREEHOUSE_RIBOD_25_01"
+    def _canonical(code: str) -> str:
+        # available_cancer_expression_references orders rows so primary
+        # cohorts come before mixed/metastasis within a cancer_code, so
+        # taking the first row yields the canonical reference.
+        rows = df[df["cancer_code"] == code]
+        assert not rows.empty, f"no packaged reference for {code}"
+        return str(rows.iloc[0]["source_cohort"])
+
+    def _n_samples(code: str) -> int:
+        rows = df[df["cancer_code"] == code]
+        return int(rows.iloc[0]["n_samples"])
+
+    assert _canonical("OS") == "TREEHOUSE_POLYA_25_01"
+    assert _n_samples("OS") == 262
+    assert _canonical("PANNET") == "GSE118014_ALVAREZ_2018"
+    assert _canonical("CHON") == "GSE299759_MEIJER_2026"
+    assert _canonical("SARC_DDLPS") == "GSE75885_DELESPAUL_2017"
+    assert _canonical("LAML_APL") == "BEATAML_OHSU_2022"
+    assert _canonical("RB") == "TREEHOUSE_RIBOD_25_01"
 
 
 def test_available_cancer_expression_references_includes_acquirable_heme_cohorts():

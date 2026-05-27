@@ -282,9 +282,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     builder_name = builder_path.name
     if "sweep_treehouse" in builder_name:
         cmd += ["--summary-output", summary_out]
-    elif builder_name == "build_geo_matrix.py":
-        # Generic YAML-driven GEO matrix builder; needs the source id
-        # so it can look up the config block in expression_sources.yaml.
+    elif builder_name in {"build_geo_matrix.py", "build_gpl570_microarray.py"}:
+        # YAML-driven builders that look up their config block by source id.
         cmd += [
             "--source-id", src.id,
             "--summary-output", summary_out,

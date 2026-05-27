@@ -805,3 +805,51 @@ sources:
       Carcinoid/Supra_carcinoid (n=118) → LUNG_NET_LC; LCNEC (n=69)
       → LUNG_NET_LCNEC; SCLC (n=51) skipped (covered by SCLC
       UCologne 2015).
+
+  # ─── GPL570 Affymetrix HG-U133 Plus 2.0 microarray sources ────────────
+  # Generic builder lives in pirlygenes/builders/affy_gpl570.py +
+  # scripts/build_gpl570_microarray.py. Produces a TPM-PROXY (probe-max →
+  # anti-log2 → per-sample sum-to-1e6) — not directly comparable to
+  # RNA-seq TPM in absolute magnitude; within-sample gene rank order is
+  # preserved. processing_pipeline is tagged 'gpl570_microarray_tpm_proxy_...'
+  # so consumers can hold the caveat.
+  #
+  # NOTE: no GPL570 source entries are currently registered. Both
+  # candidate cohorts audited in May 2026 turned out wrong:
+  #   - GSE63790 (Dürig HCL) is a Vemurafenib drug-treatment timecourse
+  #     (24 samples, 4 patients × DMSO/drug × time × replicates), not a
+  #     clinical reference. Dropped.
+  #   - GSE21050 (Chibon CINSARC) is 310 STS samples — UPS / LMS /
+  #     dedifferentiated liposarcoma only, zero myxoid liposarcoma —
+  #     so it cannot supply SARC_MYXLPS. Dropped.
+  # The builder + YAML schema are kept in place for the next audited
+  # GPL570 cohort.
+
+  # ─── GEO RAW.tar series-matrix-routed sources ─────────────────────────
+  # Custom one-off builder; the RAW.tar contains many per-sample HTSeq
+  # count files keyed by GSM, and the series_matrix is parsed for the
+  # primary-site / tissue characteristic to route samples to cancer codes.
+
+  - id: gse98894-midnet
+    category: expression
+    cancer_codes: [MID_NET, PANNET, REC_NET]
+    source_type: geo-raw-tar
+    builder: scripts/build_gse98894_midgut_net.py
+    url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE98nnn/GSE98894/suppl/GSE98894_RAW.tar
+    expected_size_gb: 0.5
+    citation: PMID 30013182 (Alvarez 2018 NET master regulator analysis)
+    files:
+      raw_tar: GSE98894_RAW.tar
+      series_matrix: GSE98894_series_matrix.txt.gz
+    special_handling: >
+      GSE98894 ships RAW.tar of 212 per-sample HTSeq count files;
+      builder extracts in memory, routes by series_matrix char_origin
+      (primary site), Entrez→ENSG via NCBI gene_info → pyensembl,
+      length-normalizes to TPM via Ensembl 112 gene lengths.
+      Cohort: ~81 SI-NET → MID_NET, ~113 PNET → PANNET, ~18 rectal
+      NET → REC_NET. EVERY sample is a liver metastasis (not primary
+      tumor); all shards are tagged tumor_origin=metastasis,
+      metastasis_site=liver. The PANNET shard here is distinct from
+      the primary-tumor GSE118014_ALVAREZ_2018 PANNET shard — both
+      coexist (one primary, one liver-met). REC_NET registry code
+      was added with this build.

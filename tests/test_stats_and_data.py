@@ -51,6 +51,10 @@ def test_reference_columns_starts_with_legacy_order():
 
 
 def test_reference_columns_appends_v53_extension():
+    # The v5.3 extension is followed by the v5.4 cohort-annotation
+    # extension (tumor_origin / metastasis_site). Locate the v5.3 block
+    # by its first column ("TPM_std") and verify the exact 15-column
+    # extension lives at that position.
     extension = (
         "TPM_std",
         "TPM_min",
@@ -68,7 +72,16 @@ def test_reference_columns_appends_v53_extension():
         "TPM_clean_p90",
         "TPM_clean_p95",
     )
-    assert REFERENCE_COLUMNS[-len(extension):] == extension
+    start = REFERENCE_COLUMNS.index("TPM_std")
+    assert REFERENCE_COLUMNS[start : start + len(extension)] == extension
+
+
+def test_reference_columns_appends_v54_cohort_annotation():
+    # The v5.4 extension carries tumor_origin / metastasis_site at the
+    # very end of REFERENCE_COLUMNS so existing positional consumers
+    # keep working unchanged.
+    annotation = ("tumor_origin", "metastasis_site")
+    assert REFERENCE_COLUMNS[-len(annotation):] == annotation
 
 
 def test_stat_columns_have_raw_and_clean_parity():
