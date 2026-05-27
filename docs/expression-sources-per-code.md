@@ -13,13 +13,13 @@ the expression-data refresh project. See also:
 
 ## Headline counts (after current session)
 
-- **104 / 125 codes** with v5.3 extended stats populated (+103 since
-  session start, 83% coverage).
-- **21 codes** still need work. All have identified sources
-  (or are documented as no-robust-source rare entities); none are
-  blocked by missing knowledge.
+- **112 / 125 codes** with v5.3 extended stats populated
+  (+111 since session start, **90% coverage**).
+- **13 codes** still need work. Each is documented below with the
+  specific blocker (controlled-access source / FASTQ-only requiring
+  alignment / microarray-only / no public per-sample data at all).
 
-## Status A — v5.3 populated (104 codes)
+## Status A — v5.3 populated (112 codes)
 
 Bundled via per-sample builders. Re-runnable via
 `pirlygenes build <source-id>` or `pirlygenes build <cancer-code>`.
@@ -34,11 +34,46 @@ Bundled via per-sample builders. Re-runnable via
 | Treehouse MBL marker-gene subgroups | MBL_WNT, MBL_SHH, MBL_G3, MBL_G4 | `scripts/build_mbl_subgroups_marker_classifier.py` (approximate) |
 | SCLC TF-dominance subtypes | SCLC_ASCL1, SCLC_NEUROD1, SCLC_POU2F3, SCLC_YAP1 | `scripts/build_sclc_subtypes_tf_dominance.py` (approximate) |
 | Treehouse pediatric/other | NPC (n=4), NBL umbrella | `scripts/sweep_sarc_rare_subtypes.py`, `build_target_subprojects.py` |
+| Generic GEO matrix (Tier A) | HL (n=5), FL (n=6), SARC_CCS (n=5), SARC_PEC (n=69), SARC_KS (n=10), ADCC (n=99) | `scripts/build_geo_matrix.py` (YAML-driven generic builder); per-source config in expression_sources.yaml |
+| IARC DRMetrics LNEN | LUNG_NET_LC (n=118), LUNG_NET_LCNEC (n=69) | `scripts/build_lnen_drmetrics_reference_expression.py` |
 | GDC per-project | BL, MM, B_ALL, T_ALL, NBL_MYCN_amp, NBL_MYCN_nonamp, RT, WILMS | `scripts/build_bl_gdc_*`, `build_mmrf_*`, `build_target_all_*`, `build_target_subprojects.py` |
 | BeatAML (GDC + ELN approx) | LAML_APL, LAML_ELN_Fav, LAML_ELN_Int, LAML_ELN_Adv | `scripts/build_beataml_reference_expression.py` |
 | Other per-sample | CLL (Broad CLLMAP), CTCL (GSE171811 scRNA), CML/MDS/MCL/MPN (GEO heme builders), PANNET (GSE118014), CHON (GSE299759), SCLC (cBioPortal UCologne datahub) | various build_*.py |
 
-## Status B — missing (21 codes)
+## Status B — still missing (13 codes)
+
+Each row below explains why this code can't be built from a clean
+single-file public per-sample RNA-seq source. Almost all could be
+filled if we add either (a) a FASTQ alignment pipeline, (b) a
+microarray probe→gene mapper, or (c) controlled-access credentials.
+
+| code | candidate source | blocker | rough effort to unblock |
+|---|---|---|---|
+| **MEC** (Merkel Cell Carcinoma) | SRA **PRJNA775071** (Sundqvist 2022, n=102) | FASTQ only on SRA — no processed matrix | Add a FASTQ→Salmon quant pipeline (~1 day; or use ARCHS4 if it has the runs) |
+| **MTC** (Medullary Thyroid Carcinoma) | GSA-Human **HRA002698** (Shi 2022, n=101) | Controlled-access (Chinese GSA-Human application required) | Apply for GSA-Human access; or use the small 2026 E-MTAB-15198 (n=72) once its data files become available |
+| **MID_NET** (Midgut Carcinoid) | GEO **GSE98894** RAW.tar (Alvarez 2018, 212 per-sample files; n=81 SI-NET) | RAW.tar of per-sample HTSeq files + need to parse series matrix for primary-site routing | Write a RAW.tar extractor + series_matrix parser (~3-4 hr); SI-NET would emerge as one cohort |
+| **GCTB** (Giant Cell Tumor of Bone) | GEO **GSE149209** (Khazaei 2020, n=38) | Cell lines, not primary tumors | Use anyway with explicit cell-line caveat in notes, or wait for a primary-GCTB cohort to be deposited |
+| **HCL** (Hairy Cell Leukemia) | GEO **GSE63790** (n=6) | Microarray (Affy U133+2), not RNA-seq | Add a microarray builder with RMA + probe→gene mapper (the Affy annotation table is available; ~3-4 hr per platform) |
+| **SARC_MYXLPS** (Myxoid Liposarcoma) | GEO **GSE21050** (n=~20 MLPS subset of 310 STS) | Microarray (Affy HG-U133+2); the audit's GSE128064 was methylation (wrong); GSE28866 is 3SEQ peak counts (not gene expression) | Microarray builder needed; or wait for a public bulk RNA-seq MLPS cohort |
+| **SARC_EMC** (Extraskeletal Myxoid Chondrosarcoma) | GEO **GSE4303** (Subramanian 2005, n=10) | Old-school microarray (mixed cDNA platforms GPL2937-3335) | Microarray builder + multi-platform annotation; rare so low priority |
+| **SARC_DFSP** (Dermatofibrosarcoma Protuberans) | None public | Zhang 2022 cohort (n=14) never deposited; closest fallback is GSE3930 microarray | Aggregate small case-series; flag as low-n |
+| **SARC_SFT** (Solitary Fibrous Tumor) | GSA-Human **HRA008581** (Zhao 2025, n=88 CNS-SFT) | Controlled-access (Chinese GSA-Human application required) | Apply for GSA-Human access |
+| **ESS_HG** (High-grade Endometrial Stromal Sarcoma) | GEO **GSE85383** (Yoshida 2017, n=4) | Microarray (Agilent SurePrint G3) | Microarray builder needed |
+| **ESS_LG** (Low-grade Endometrial Stromal Sarcoma) | Same GSE85383 (n=9) | Microarray | Same as ESS_HG |
+| **PCN** (Solitary Plasmacytoma) | None | No public bulk RNA-seq cohort of solitary plasmacytoma exists (distinct from MM CoMMpass) | Aggregate small case-series; or accept MMRF as proxy with disease-distinction caveat |
+| **ACINIC** (Acinic Cell Carcinoma) | SRA **PRJNA433667** (Lee 2020, n=21) | FASTQ only on SRA — agent's earlier GSE76354 candidate was cell-line, not patient tumors | Add FASTQ→Salmon pipeline |
+
+### Truly blocked: 5
+- **PCN**, **SARC_DFSP**: no public per-sample RNA-seq source identified
+
+### Blocked on adding a missing infrastructure piece: 8
+- FASTQ→TPM pipeline (Salmon/STAR-RSEM): would unlock **MEC**, **ACINIC**
+- Microarray probe→gene mapper: would unlock **HCL**, **SARC_MYXLPS**, **SARC_EMC**, **ESS_HG**, **ESS_LG**
+- Controlled-access credentials (Chinese GSA-Human): would unlock **MTC**, **SARC_SFT**
+
+### Blocked on per-cohort custom work: 3
+- **MID_NET**: GSE98894 RAW.tar series-matrix parser
+- **GCTB**: accept cell-line GSE149209 with caveat, or wait for primary-tumor cohort
 
 Grouped by blocker type.
 
