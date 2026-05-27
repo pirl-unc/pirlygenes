@@ -449,6 +449,17 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
         print(f"  MYCN split: amp={len(amp_cols)}, nonamp={len(nonamp_cols)} "
               f"(includes {unk_n} unknown defaulted to nonamp)")
         summaries = []
+        # Umbrella NBL cohort: all samples, no MYCN split
+        summaries.append(_summarize_one(
+            gene_table, values,
+            cancer_code="NBL", project=project,
+            extra_notes=(
+                "Umbrella aggregate over all TARGET-NBL samples; "
+                f"children NBL_MYCN_amp (n={len(amp_cols)}) and "
+                f"NBL_MYCN_nonamp (n={len(nonamp_cols)}) carry the "
+                "subtype-specific rows."
+            ),
+        ))
         if amp_cols:
             summaries.append(_summarize_one(
                 gene_table, values[amp_cols],
@@ -472,7 +483,7 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
             args.summary_output,
             combined,
             source_cohort=project.source_cohort,
-            cancer_codes=["NBL_MYCN_amp", "NBL_MYCN_nonamp"],
+            cancer_codes=["NBL", "NBL_MYCN_amp", "NBL_MYCN_nonamp"],
         )
     else:
         summary = _summarize_one(
