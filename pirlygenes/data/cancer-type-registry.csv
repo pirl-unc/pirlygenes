@@ -2,11 +2,11 @@ code,name,family,primary_tissue,primary_template,parent_code,subtype_key,express
 ACC,Adrenocortical Carcinoma,endocrine,adrenal_cortex,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False
 BLCA,Bladder Urothelial Carcinoma,carcinoma-gu,bladder,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False
 BRCA,Breast Invasive Carcinoma,carcinoma-breast,breast,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Umbrella — use PAM50 subtypes for subtype-aware inference,False
-BRCA_LumA,Luminal A,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TCGA_BRCA_PAM50,PMID:26451490,ER+/PR+ HER2-; endocrine-first,False
-BRCA_LumB,Luminal B,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TCGA_BRCA_PAM50,PMID:26451490,ER+ proliferative; endocrine + chemo,False
-BRCA_HER2,HER2-enriched,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TCGA_BRCA_PAM50,PMID:26451490,ERBB2-amp; HER2-directed therapy,False
-BRCA_Basal,Basal-like,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TCGA_BRCA_PAM50,PMID:26451490,TNBC proxy; chemo + sacituzumab,False
-BRCA_Normal,Normal-like,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TCGA_BRCA_PAM50,PMID:26451490,rare; low-confidence stratum,False
+BRCA_LumA,Luminal A,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50,PMID:26451490,ER+/PR+ HER2-; endocrine-first,False
+BRCA_LumB,Luminal B,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50,PMID:26451490,ER+ proliferative; endocrine + chemo,False
+BRCA_HER2,HER2-enriched,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50,PMID:26451490,ERBB2-amp; HER2-directed therapy,False
+BRCA_Basal,Basal-like,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50,PMID:26451490,TNBC proxy; chemo + sacituzumab,False
+BRCA_Normal,Normal-like,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50,PMID:26451490,rare; low-confidence stratum,False
 CESC,Cervical Squamous / Adenocarcinoma,carcinoma-gu,cervix,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HPV-driven,False
 CHOL,Cholangiocarcinoma,carcinoma-gi,bile_duct,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Intrahepatic + extrahepatic + gallbladder lumped,False
 COAD,Colon Adenocarcinoma,carcinoma-gi,colon,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,CMS1-4 molecular subtypes + MSI-H axis,False
@@ -48,11 +48,11 @@ UCS,Uterine Carcinosarcoma,carcinoma-gu,endometrium,solid_primary,,,TCGA,TREEHOU
 UVM,Uveal Melanoma,melanoma,eye,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,GNAQ/GNA11; liver met tropism,False
 SARC_LMS,Leiomyosarcoma,sarcoma,smooth_muscle,primary_smooth_muscle,SARC,leiomyosarcoma,Treehouse,TREEHOUSE_POLYA_25_01,PMID:24071852,Uterine + extrauterine; chemo + trabectedin,False
 SARC_DDLPS,Dedifferentiated Liposarcoma,sarcoma,adipose,primary_adipose,SARC,dedifferentiated_liposarcoma,GEO,GSE75885_DELESPAUL_2017,PMID:24071852,MDM2-amp; brigimadlin / milademetan trials,False
-SARC_WDLPS,Well-Differentiated Liposarcoma,sarcoma,adipose,primary_adipose,SARC,dedifferentiated_liposarcoma,TCGA,TCGA_XENA_TOIL,PMID:24071852,MDM2-amp; surgery-first,False
+SARC_WDLPS,Well-Differentiated Liposarcoma,sarcoma,adipose,primary_adipose,SARC,dedifferentiated_liposarcoma,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,MDM2-amp; surgery-first,False
 SARC_MYXLPS,Myxoid Liposarcoma,sarcoma,adipose,primary_adipose,SARC,myxoid_liposarcoma,TCGA,TCGA_XENA_TOIL,PMID:24071852,FUS-DDIT3; NY-ESO-1 TCR-T target,False
 SARC_SYN,Synovial Sarcoma,sarcoma,soft_tissue,solid_primary,SARC,synovial_sarcoma,Treehouse,TREEHOUSE_POLYA_25_01,PMID:24071852,SS18-SSX; afami-cel (MAGE-A4 TCR-T) approved,False
 SARC_DSRCT,Desmoplastic Small Round Cell Tumor,sarcoma,peritoneum,primary_peritoneal_mesenchymal,SARC,dsrct,curated,LITERATURE_CURATED,,EWSR1-WT1; WT1 TCR-T trials,False
-SARC_GIST,Gastrointestinal Stromal Tumor,sarcoma,gi_wall,primary_gi_wall,SARC,gist,TCGA,TCGA_XENA_TOIL,PMID:24071852,KIT/PDGFRA; imatinib ladder + avapritinib,False
+SARC_GIST,Gastrointestinal Stromal Tumor,sarcoma,gi_wall,primary_gi_wall,SARC,gist,TCGA,TREEHOUSE_POLYA_25_01,PMID:24071852,KIT/PDGFRA; imatinib ladder + avapritinib,False
 SARC_MPNST,Malignant Peripheral Nerve Sheath Tumor,sarcoma,nerve_sheath,primary_nerve_sheath,SARC,,curated,LITERATURE_CURATED,,NF1-associated; SMARCB1/EED/SUZ12 loss,False
 SARC_ANGIO,Angiosarcoma,sarcoma,vascular_endothelium,primary_vascular,SARC,,curated,LITERATURE_CURATED,,Tumor IS endothelial — constrained deduct,False
 SARC_UPS,Undifferentiated Pleomorphic Sarcoma,sarcoma,soft_tissue,solid_primary,SARC,,Treehouse,TREEHOUSE_POLYA_25_01,PMID:24071852,Previously MFH; diagnosis of exclusion,False
