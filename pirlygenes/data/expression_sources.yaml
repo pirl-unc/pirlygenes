@@ -786,3 +786,22 @@ sources:
       routes ALL samples to ADCC; per-sample histology split (ACC
       vs AcCC vs MEC) needs Bartl 2025 Supplementary Table 1
       sample-→-diagnosis lookup — pending.
+
+  - id: drmetrics-lnen-2020
+    category: expression
+    cancer_codes: [LUNG_NET_LC, LUNG_NET_LCNEC]
+    source_type: github-release
+    builder: scripts/build_lnen_drmetrics_reference_expression.py
+    url: https://github.com/IARCbioinfo/DRMetrics
+    expected_size_gb: 0.05
+    citation: PMID 31431620 (Alcala 2019) + PMID 33203751 (Gabriel 2020)
+    files:
+      counts_zip: read_counts_all.txt.zip
+      attributes_zip: Attributes.txt.zip
+    special_handling: >
+      IARC pan-LNEN cohort, 238 samples uniformly processed (STAR +
+      featureCounts, GENCODE v33, GRCh38). Histology routed via
+      Attributes.txt Histopathology_simplified — Typical/Atypical/
+      Carcinoid/Supra_carcinoid (n=118) → LUNG_NET_LC; LCNEC (n=69)
+      → LUNG_NET_LCNEC; SCLC (n=51) skipped (covered by SCLC
+      UCologne 2015).

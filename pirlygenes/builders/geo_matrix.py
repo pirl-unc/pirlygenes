@@ -114,12 +114,19 @@ def read_matrix(path: Path, *, sep: str, gene_id_col: str, drop_cols: tuple[str,
 
     ``gene_id_col=""`` treats the first column as the gene-ID index
     even if its header is blank (common in GEO supplementaries).
+    Supports any pandas-accepted ``sep`` including regex like ``r"\\s+"``
+    for whitespace-separated files (pandas needs engine='python' for
+    multi-char or regex separators).
     """
+    # Multi-char or regex separators need the python engine.
+    engine = "python" if (len(sep) > 1 or "\\" in sep) else "c"
+    read_kwargs = {"sep": sep, "engine": engine}
+    if engine == "python":
+        read_kwargs.pop("low_memory", None)
     if gene_id_col == "":
-        index_col = 0
-        df = pd.read_csv(path, sep=sep, index_col=index_col, low_memory=False)
+        df = pd.read_csv(path, index_col=0, **read_kwargs)
     else:
-        df = pd.read_csv(path, sep=sep, low_memory=False)
+        df = pd.read_csv(path, **read_kwargs)
         if gene_id_col not in df.columns:
             raise RuntimeError(
                 f"gene_id_col={gene_id_col!r} not in columns: {list(df.columns)[:10]}"
