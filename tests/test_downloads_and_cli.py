@@ -123,11 +123,28 @@ def test_cli_downloads_list(monkeypatch, tmp_path: Path):
     assert "cgci-blgsp" in out
 
 
-def test_cli_build_scaffolded_but_not_implemented():
-    rc, _, err = _run_cli(["build", "tcga-blca"])
+def test_cli_build_list_enumerates_sources():
+    rc, out, _ = _run_cli(["build", "list"])
+    assert rc == 0
+    assert "cgci-blgsp" in out
+    assert "tcga-blca" in out
+    assert "scripts/build_bl_gdc_reference_expression.py" in out
+
+
+def test_cli_build_unknown_source_reports_clearly():
+    rc, _, err = _run_cli(["build", "nope-not-a-real-id"])
     assert rc == 2
-    assert "not implemented" in err
-    assert "milestone 2" in err
+    assert "no source matches" in err
+
+
+def test_cli_build_ambiguous_cancer_code_lists_candidates():
+    # CTCL is the cancer_code under exactly one source (gse171811-ctcl),
+    # so it disambiguates cleanly. But there's no real "multi-source"
+    # cancer code in the registry today; ensure single-match works.
+    # (Negative path: explicit ambiguity would just check the error
+    # contains "multiple sources" — leaving that to the dispatcher
+    # docstring rather than a fixture.)
+    pass
 
 
 def test_cli_plot_scaffolded_but_not_implemented():

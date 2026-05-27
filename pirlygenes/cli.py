@@ -136,11 +136,18 @@ def _build_parser() -> argparse.ArgumentParser:
 
     build_parser = subparsers.add_parser(
         "build",
-        help="Rebuild per-gene-per-cohort summaries (NotImplemented; see plan milestone 2).",
+        help="Rebuild per-gene-per-cohort summaries by source-id or cancer-code.",
     )
     build_parser.add_argument(
         "source_id",
-        help="Source id from expression_sources.yaml, or 'all'.",
+        help="Source id (e.g. 'cgci-blgsp', 'treehouse-polya-25-01') or "
+             "cancer_code (e.g. 'BL', 'EWS'). Special: 'list' prints "
+             "all known source ids; 'all' runs every builder (slow!).",
+    )
+    build_parser.add_argument(
+        "build_args",
+        nargs=argparse.REMAINDER,
+        help="Extra args passed through to the underlying builder.",
     )
 
     plot_parser = subparsers.add_parser(
@@ -199,11 +206,119 @@ def cmd_data_list(_args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_build(_args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        _NOT_IMPLEMENTED_MESSAGE.format(subcommand="build", milestone=2) + "\n"
-    )
-    return 2
+def cmd_build(args: argparse.Namespace) -> int:
+    """Dispatch to scripts/build_*.py per the YAML registry's `builder` field.
+
+    Lookup order:
+      1. exact source_id match (lowercase)
+      2. cancer_code membership in any registered source's cancer_codes
+      3. 'list' / 'all' meta-commands
+
+    Standard --summary-output / --samples-output / --cache-dir defaults
+    are inferred from the source's id. Extra args passed via REMAINDER.
+    """
+    import subprocess
+    from pathlib import Path
+
+    sources = downloads.load_registry()
+    requested = args.source_id
+
+    if requested == "list":
+        for s in sorted(sources, key=lambda x: x.id):
+            codes = ",".join(s.cancer_codes) or "-"
+            builder = s.builder or "(no builder)"
+            sys.stdout.write(f"  {s.id:32}  {codes:40}  {builder}\n")
+        return 0
+
+    if requested == "all":
+        sys.stderr.write(
+            "build all: not yet implemented (would run every source's "
+            "builder; expect hours of GDC/GEO/Treehouse downloads). "
+            "For now, invoke per-source.\n"
+        )
+        return 2
+
+    # Exact id match, else cancer_code lookup
+    src = next((s for s in sources if s.id == requested), None)
+    if src is None:
+        candidates = [s for s in sources if requested.upper() in {c.upper() for c in s.cancer_codes}]
+        if not candidates:
+            sys.stderr.write(
+                f"no source matches {requested!r}. Run "
+                "`pirlygenes build list` to see all source ids.\n"
+            )
+            return 2
+        if len(candidates) > 1:
+            sys.stderr.write(
+                f"cancer code {requested!r} is covered by multiple sources: "
+                f"{[c.id for c in candidates]}. Pick one of those source-ids.\n"
+            )
+            return 2
+        src = candidates[0]
+
+    if not src.builder:
+        sys.stderr.write(
+            f"source {src.id!r} has no `builder` field in the YAML registry.\n"
+        )
+        return 2
+
+    builder_path = Path(src.builder)
+    if not builder_path.exists():
+        sys.stderr.write(
+            f"builder script not found: {builder_path}\n"
+        )
+        return 2
+
+    # Conventional defaults; each script honors at least --summary-output.
+    summary_out = "pirlygenes/data/cancer-reference-expression"
+    samples_out = "pirlygenes/data/cancer-reference-expression-samples.csv.gz"
+    cache_dir = str(downloads.source_cache_dir(src.id, category=src.category))
+
+    cmd = [sys.executable, str(builder_path)]
+
+    # Heuristic arg-passing based on what each builder accepts.
+    # Sweep scripts: --summary-output and --refresh-cache.
+    # Build scripts: --summary-output, --samples-output, and --cache-dir.
+    builder_name = builder_path.name
+    if "sweep_treehouse" in builder_name:
+        cmd += ["--summary-output", summary_out]
+    elif builder_name == "build_target_subprojects.py":
+        cmd += [
+            "--summary-output", summary_out,
+            "--samples-output", samples_out,
+            "--cache-root", str(downloads.cache_root() / "expression"),
+        ]
+    elif builder_name == "build_cllmap_reference_expression.py":
+        # CLLMAP needs --input pointing at the downloaded TPM file
+        input_file = Path(cache_dir) / "cllmap_rnaseq_tpms_full.tsv.gz"
+        if not input_file.exists():
+            sys.stderr.write(
+                f"CLLMAP input not yet downloaded: {input_file}\n"
+                f"Download from {src.url!r} first.\n"
+            )
+            return 2
+        cmd += [
+            "--input", str(input_file),
+            "--summary-output", summary_out,
+            "--samples-output", samples_out,
+        ]
+    else:
+        cmd += [
+            "--summary-output", summary_out,
+            "--samples-output", samples_out,
+            "--cache-dir", cache_dir,
+        ]
+
+    # Pass through any extra user-supplied args
+    extra = list(args.build_args or [])
+    if extra and extra[0] == "--":
+        extra = extra[1:]
+    cmd += extra
+
+    sys.stdout.write(f"running: {' '.join(cmd)}\n")
+    sys.stdout.flush()
+    result = subprocess.run(cmd)
+    return int(result.returncode)
 
 
 def cmd_plot(_args: argparse.Namespace) -> int:

@@ -224,7 +224,7 @@ sources:
     cancer_codes: [LAML_APL, LAML_ELN_Adv, LAML_ELN_Fav, LAML_ELN_Int]
     source_type: summary-only-import
     url: https://biodev.github.io/BeatAML2/
-    builder: scripts/import_cancer_specific_expression.py
+    builder: scripts/build_beataml_reference_expression.py
     unit: TPM
     expected_size_gb: 0
     citation: BeatAML 2.0 (Bottomly 2022)
@@ -283,7 +283,7 @@ sources:
     cancer_codes: [NBL_MYCN_amp, NBL_MYCN_nonamp]
     source_type: summary-only-import
     project_id: TARGET-NBL
-    builder: scripts/import_cancer_specific_expression.py
+    builder: scripts/build_target_subprojects.py
     unit: TPM
     expected_size_gb: 0
     citation: TARGET Neuroblastoma 2018
@@ -296,7 +296,7 @@ sources:
     cancer_codes: [RT]
     source_type: summary-only-import
     project_id: TARGET-RT
-    builder: scripts/import_cancer_specific_expression.py
+    builder: scripts/build_target_subprojects.py
     unit: TPM
     expected_size_gb: 0
     citation: TARGET Rhabdoid Tumor 2017
@@ -307,7 +307,7 @@ sources:
     cancer_codes: [WILMS]
     source_type: summary-only-import
     project_id: TARGET-WT
-    builder: scripts/import_cancer_specific_expression.py
+    builder: scripts/build_target_subprojects.py
     unit: TPM
     expected_size_gb: 0
     citation: TARGET Wilms Tumor 2015
@@ -323,7 +323,7 @@ sources:
     cancer_codes: [ACC]
     source_type: gdc
     project_id: TCGA-ACC
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.5
     citation: TCGA Adrenocortical carcinoma
@@ -333,7 +333,7 @@ sources:
     cancer_codes: [BLCA]
     source_type: gdc
     project_id: TCGA-BLCA
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2
     citation: TCGA Bladder urothelial carcinoma
@@ -343,7 +343,7 @@ sources:
     cancer_codes: [BRCA]
     source_type: gdc
     project_id: TCGA-BRCA
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 6
     citation: TCGA Breast invasive carcinoma
@@ -353,7 +353,7 @@ sources:
     cancer_codes: [CESC]
     source_type: gdc
     project_id: TCGA-CESC
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 1.5
     citation: TCGA Cervical squamous cell carcinoma
@@ -363,7 +363,7 @@ sources:
     cancer_codes: [CHOL]
     source_type: gdc
     project_id: TCGA-CHOL
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.3
     citation: TCGA Cholangiocarcinoma
@@ -373,7 +373,7 @@ sources:
     cancer_codes: [COAD]
     source_type: gdc
     project_id: TCGA-COAD
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2.5
     citation: TCGA Colon adenocarcinoma
@@ -383,7 +383,7 @@ sources:
     cancer_codes: [DLBC]
     source_type: gdc
     project_id: TCGA-DLBC
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.3
     citation: TCGA Diffuse large B-cell lymphoma
@@ -393,7 +393,7 @@ sources:
     cancer_codes: [ESCA]
     source_type: gdc
     project_id: TCGA-ESCA
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 1
     citation: TCGA Esophageal carcinoma
@@ -403,7 +403,7 @@ sources:
     cancer_codes: [GBM]
     source_type: gdc
     project_id: TCGA-GBM
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 1
     citation: TCGA Glioblastoma multiforme
@@ -413,7 +413,7 @@ sources:
     cancer_codes: [HNSC]
     source_type: gdc
     project_id: TCGA-HNSC
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2.5
     citation: TCGA Head and neck squamous cell carcinoma
@@ -423,7 +423,7 @@ sources:
     cancer_codes: [KICH]
     source_type: gdc
     project_id: TCGA-KICH
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.3
     citation: TCGA Kidney chromophobe
@@ -433,7 +433,7 @@ sources:
     cancer_codes: [KIRC]
     source_type: gdc
     project_id: TCGA-KIRC
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2.5
     citation: TCGA Kidney renal clear cell carcinoma
@@ -443,7 +443,7 @@ sources:
     cancer_codes: [KIRP]
     source_type: gdc
     project_id: TCGA-KIRP
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 1.5
     citation: TCGA Kidney renal papillary cell carcinoma
@@ -453,7 +453,7 @@ sources:
     cancer_codes: [LAML]
     source_type: gdc
     project_id: TCGA-LAML
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 1
     citation: TCGA Acute myeloid leukemia
@@ -463,7 +463,7 @@ sources:
     cancer_codes: [LGG]
     source_type: gdc
     project_id: TCGA-LGG
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2.5
     citation: TCGA Brain lower-grade glioma
@@ -473,7 +473,7 @@ sources:
     cancer_codes: [LIHC]
     source_type: gdc
     project_id: TCGA-LIHC
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2
     citation: TCGA Liver hepatocellular carcinoma
@@ -483,7 +483,7 @@ sources:
     cancer_codes: [LUAD]
     source_type: gdc
     project_id: TCGA-LUAD
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 3
     citation: TCGA Lung adenocarcinoma
@@ -493,7 +493,7 @@ sources:
     cancer_codes: [LUSC]
     source_type: gdc
     project_id: TCGA-LUSC
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 3
     citation: TCGA Lung squamous cell carcinoma
@@ -503,7 +503,7 @@ sources:
     cancer_codes: [MESO]
     source_type: gdc
     project_id: TCGA-MESO
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.4
     citation: TCGA Mesothelioma
@@ -513,7 +513,7 @@ sources:
     cancer_codes: [OV]
     source_type: gdc
     project_id: TCGA-OV
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2
     citation: TCGA Ovarian serous cystadenocarcinoma
@@ -523,7 +523,7 @@ sources:
     cancer_codes: [PAAD]
     source_type: gdc
     project_id: TCGA-PAAD
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 1
     citation: TCGA Pancreatic adenocarcinoma
@@ -533,7 +533,7 @@ sources:
     cancer_codes: [PCPG]
     source_type: gdc
     project_id: TCGA-PCPG
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.8
     citation: TCGA Pheochromocytoma and Paraganglioma
@@ -543,7 +543,7 @@ sources:
     cancer_codes: [PRAD]
     source_type: gdc
     project_id: TCGA-PRAD
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2.5
     citation: TCGA Prostate adenocarcinoma
@@ -553,7 +553,7 @@ sources:
     cancer_codes: [READ]
     source_type: gdc
     project_id: TCGA-READ
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.8
     citation: TCGA Rectum adenocarcinoma
@@ -563,7 +563,7 @@ sources:
     cancer_codes: [SARC]
     source_type: gdc
     project_id: TCGA-SARC
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 1.5
     citation: TCGA Sarcoma
@@ -573,7 +573,7 @@ sources:
     cancer_codes: [SKCM]
     source_type: gdc
     project_id: TCGA-SKCM
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2.5
     citation: TCGA Skin cutaneous melanoma
@@ -583,7 +583,7 @@ sources:
     cancer_codes: [STAD]
     source_type: gdc
     project_id: TCGA-STAD
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2
     citation: TCGA Stomach adenocarcinoma
@@ -593,7 +593,7 @@ sources:
     cancer_codes: [TGCT]
     source_type: gdc
     project_id: TCGA-TGCT
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.6
     citation: TCGA Testicular germ cell tumors
@@ -603,7 +603,7 @@ sources:
     cancer_codes: [THCA]
     source_type: gdc
     project_id: TCGA-THCA
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 2.5
     citation: TCGA Thyroid carcinoma
@@ -613,7 +613,7 @@ sources:
     cancer_codes: [THYM]
     source_type: gdc
     project_id: TCGA-THYM
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.6
     citation: TCGA Thymoma
@@ -623,7 +623,7 @@ sources:
     cancer_codes: [UCEC]
     source_type: gdc
     project_id: TCGA-UCEC
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 3
     citation: TCGA Uterine corpus endometrial carcinoma
@@ -633,7 +633,7 @@ sources:
     cancer_codes: [UCS]
     source_type: gdc
     project_id: TCGA-UCS
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.3
     citation: TCGA Uterine carcinosarcoma
@@ -643,7 +643,7 @@ sources:
     cancer_codes: [UVM]
     source_type: gdc
     project_id: TCGA-UVM
-    builder: pirlygenes/builders/tcga.py
+    builder: scripts/sweep_treehouse_tcga_cohorts.py
     unit: TPM
     expected_size_gb: 0.3
     citation: TCGA Uveal melanoma
