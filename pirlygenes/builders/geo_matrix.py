@@ -68,6 +68,12 @@ class GeoMatrixSource:
     sample_to_cancer_code: Callable[[str], str | None] | None = None
     notes: str = ""
     pipeline_stem: str = ""  # for processing_pipeline; defaults to source_cohort.lower()
+    # v5.4 schema: cohort-level provenance. Defaults are correct for
+    # the Tier-A GEO-matrix sources currently registered (all primary
+    # tumor cohorts). Sources covering metastatic or mixed material
+    # should override.
+    tumor_origin: str = "primary"
+    metastasis_site: str | None = None
 
 
 # ─── ID type detection ──────────────────────────────────────────────────────
@@ -491,6 +497,8 @@ def build_source(
             f"Per-sample expression from {source.source_cohort} (n={len(cols)}). "
             f"Unit-normalized to TPM; tech-RNA-zeroed; v5.3 stats."
         )
+        out["tumor_origin"] = source.tumor_origin
+        out["metastasis_site"] = source.metastasis_site if source.metastasis_site else pd.NA
         out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
         summaries.append(out)
         counts_by_code[code] = len(cols)

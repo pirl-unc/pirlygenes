@@ -58,7 +58,19 @@ from ..expression.stats import (
 
 @dataclass(frozen=True)
 class TreehouseRelease:
-    """One Treehouse compendium release (PolyA, RiboD, ...)."""
+    """One Treehouse compendium release (PolyA, RiboD, ...).
+
+    ``tumor_origin`` defaults to ``"mixed"`` because Treehouse
+    compendia combine primary, recurrence, and metastasis samples
+    without per-sample staging in their clinical table. A subclass
+    that can identify primary-only subsets may override this.
+
+    ``per_cancer_code_shards`` defaults to False; set True for any
+    release that emits a multi-cancer-code shard which would otherwise
+    push past GitHub's 100 MiB hard limit (motivating case: the
+    TCGA-via-Treehouse sweep that landed at 99.47 MiB after the v5.4
+    schema and got re-sharded per cancer_code).
+    """
 
     source_id: str
     source_cohort: str          # cancer-reference-expression source_cohort tag
@@ -68,6 +80,8 @@ class TreehouseRelease:
     clinical_filename: str
     cache_dir: Path
     pipeline_prefix: str        # e.g. "treehouse_polya_25_01_log2tpm_to_tpm"
+    tumor_origin: str = "mixed"
+    per_cancer_code_shards: bool = False
 
     @property
     def tpm_path(self) -> Path:
@@ -329,6 +343,8 @@ def _summarize_cohort(
     assign_stats(out, values, clean)
     out["processing_pipeline"] = pipeline
     out["notes"] = notes
+    out["tumor_origin"] = release.tumor_origin
+    out["metastasis_site"] = pd.NA
     return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
 
 
@@ -415,11 +431,19 @@ def run_sweep(
         combined_new,
         source_cohort=release.source_cohort,
         cancer_codes=[c.cancer_code for c in cohorts],
+        per_cancer_code_shards=release.per_cancer_code_shards,
     )
-    _log(
-        f"  {len(shard_total):,} rows in shard "
-        f"{release.source_cohort}.csv.gz (within {summary_output})"
-    )
+    if release.per_cancer_code_shards:
+        _log(
+            f"  {len(shard_total):,} rows written across "
+            f"{len(cohorts)} per-code shards "
+            f"({release.source_cohort}__<CODE>.csv.gz within {summary_output})"
+        )
+    else:
+        _log(
+            f"  {len(shard_total):,} rows in shard "
+            f"{release.source_cohort}.csv.gz (within {summary_output})"
+        )
     return counts
 
 

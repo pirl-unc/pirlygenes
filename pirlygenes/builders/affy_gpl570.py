@@ -2,21 +2,36 @@
 
 Microarray expression is not the same scale as RNA-seq TPM. GPL570
 arrays measure 54,675 probes; each probe maps to 0..1 genes. Multi-
-probe genes are usually summarized by max (most expressed probe) or
-average. The output is normalized (RMA / GC-RMA / MAS5) intensity on
-a log2 scale, NOT counts and NOT a TPM-like proportion of total
-transcript pool.
+probe genes are usually summarized here by *max* (most expressed
+probe set wins).
 
-For the pirlygenes pipeline we want clean TPM that sums to 1e6 per
-sample. The honest approach: take the per-sample series_matrix
-log2-normalized intensities, exponentiate to linear scale, sum-to-1e6
-per sample. This is a TPM-PROXY — it preserves rank order across
-genes within a sample but is NOT comparable to RNA-seq TPM in absolute
-magnitude. We tag this in the ``notes`` cell and use a distinct
-``processing_pipeline`` prefix so consumers can hold the caveat.
+GEO's series_matrix files typically ship intensities that have been
+RMA- or GC-RMA-normalized, which means they're already on a **log2**
+scale. A handful of older studies ship MAS5 instead, which is on a
+*linear* scale. The builder sniffs which one a given matrix uses
+(values mostly < 50 → assume log2; otherwise leave linear), and
+exponentiates only when needed. Either way the post-exponentiation
+matrix is then per-sample sum-to-1e6 to produce a TPM PROXY.
 
-Probe→gene mapping uses GPL570's standard GEO annot.gz table (HUGO
-``Gene symbol`` column).
+**Caveats baked into the output:**
+- This is *not* directly comparable to RNA-seq TPM in absolute
+  magnitude — microarray dynamic range, probe-design saturation, and
+  whole-transcriptome coverage all differ.
+- Within-sample gene *rank* is preserved (useful for "which genes are
+  expressed at all in this sample?" questions) but absolute TPM
+  values should not be cross-compared to RNA-seq cohorts.
+- Sniffing log2 vs linear is heuristic; if you know the input is
+  MAS5 (or some other linear-scale variant), this builder will leave
+  it linear and the sum-to-1e6 result is still a valid TPM proxy.
+
+The caveat is encoded in two places: the ``notes`` column carries a
+human-readable warning, and ``processing_pipeline`` is tagged
+``gpl570_microarray_tpm_proxy_...`` so programmatic consumers can
+detect-and-filter.
+
+Probe→gene mapping uses GPL570's standard GEO platform-table
+(downloaded via GEO's ``acc.cgi`` text view) — the ``Gene symbol``
+column gives HUGO symbols.
 """
 
 from __future__ import annotations
@@ -184,6 +199,8 @@ def build_gpl570_source(
     sample_include_regex: str | None = None,
     sample_exclude_regex: str | None = None,
     extra_notes: str = "",
+    tumor_origin: str = "primary",
+    metastasis_site: str | None = None,
 ) -> int:
     cache_dir.mkdir(parents=True, exist_ok=True)
     series_path = cache_dir / series_matrix_filename
@@ -287,6 +304,8 @@ def build_gpl570_source(
         f"in absolute magnitude — preserves within-sample gene rank only. "
         f"Citation: {citation}. {extra_notes}"
     ).strip()
+    out["tumor_origin"] = tumor_origin
+    out["metastasis_site"] = metastasis_site if metastasis_site else pd.NA
     out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
 
     upsert_to_shard(

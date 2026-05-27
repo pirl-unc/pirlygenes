@@ -93,6 +93,8 @@ def main() -> int:
         sample_include_regex=sample_filter.get("include_match"),
         sample_exclude_regex=sample_filter.get("exclude_match"),
         extra_notes=entry.get("notes", ""),
+        tumor_origin=entry.get("tumor_origin", "primary"),
+        metastasis_site=entry.get("metastasis_site"),
     )
     print(f"done: {source_id} ({n} samples)")
     return 0

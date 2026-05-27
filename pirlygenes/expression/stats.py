@@ -5,6 +5,12 @@ per-gene-per-cohort summary from a per-sample TPM matrix; this module
 defines the exact stat suite and column names so every cohort lands
 in ``cancer-reference-expression.csv.gz`` with the same shape.
 
+Schema additions in v5.4 — ``tumor_origin`` (one of the values in
+:data:`TUMOR_ORIGIN_VALUES`) and ``metastasis_site`` (free-text site
+when ``tumor_origin == 'metastasis'``). Every builder MUST set
+``tumor_origin``; :func:`upsert_to_shard` raises if it's missing or
+holds an unrecognised value.
+
 Stat suite (raw and ``_clean`` companions, raw applied to the input
 TPM matrix and clean applied after technical-RNA features are zeroed
 and the remaining mass renormalized):
@@ -26,7 +32,7 @@ are the canonical column-name tuples for schema work.
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Literal
 
 import numpy as np
 import pandas as pd
@@ -94,6 +100,34 @@ COHORT_ANNOTATION_COLUMNS: tuple[str, ...] = (
     "tumor_origin",
     "metastasis_site",
 )
+
+
+# Valid values for the ``tumor_origin`` column. ``upsert_to_shard``
+# rejects any row whose ``tumor_origin`` falls outside this set —
+# catches typos like 'metastatic' (vs 'metastasis') at write time
+# rather than at downstream-analysis time. NaN is allowed only when
+# explicitly opted into via ``upsert_to_shard(..., allow_unset_tumor_origin=True)``
+# (used by the schema-backfill script during the v5.4 migration; new
+# builders should always set it).
+TUMOR_ORIGIN_VALUES: frozenset[str] = frozenset({
+    "primary",
+    "metastasis",
+    "recurrence",
+    "cell_line",
+    "pdx",
+    "normal_tissue",
+    "mixed",
+})
+
+TumorOrigin = Literal[
+    "primary",
+    "metastasis",
+    "recurrence",
+    "cell_line",
+    "pdx",
+    "normal_tissue",
+    "mixed",
+]
 
 
 # Canonical column order for cancer-reference-expression.csv.gz rows.
@@ -220,29 +254,91 @@ def round_stat_columns(
     return df
 
 
+def _validate_tumor_origin(
+    rows: pd.DataFrame,
+    *,
+    source_cohort: str,
+    allow_unset: bool,
+) -> None:
+    """Reject rows whose ``tumor_origin`` is missing or out-of-enum.
+
+    Catches typos like ``'metastatic'`` (vs ``'metastasis'``) and silently
+    skipped ``tumor_origin = …`` assignments at write time, rather than
+    at downstream-analysis time. When ``allow_unset=True``, NaN values
+    pass (used by the v5.4 migration backfill); the validity check still
+    runs on any non-null values.
+    """
+    if "tumor_origin" not in rows.columns:
+        if allow_unset:
+            return
+        raise ValueError(
+            f"upsert_to_shard({source_cohort!r}): rows are missing the "
+            "'tumor_origin' column. Every builder must set this — see "
+            "TUMOR_ORIGIN_VALUES for the allowed enum."
+        )
+    series = rows["tumor_origin"]
+    null_mask = series.isna()
+    if null_mask.any() and not allow_unset:
+        raise ValueError(
+            f"upsert_to_shard({source_cohort!r}): {int(null_mask.sum())} "
+            f"of {len(rows)} rows have null tumor_origin. Set it "
+            "explicitly in the builder (or pass allow_unset_tumor_origin"
+            "=True if this is a legacy-data backfill)."
+        )
+    non_null = series.dropna().astype(str)
+    invalid = sorted(set(non_null) - TUMOR_ORIGIN_VALUES)
+    if invalid:
+        raise ValueError(
+            f"upsert_to_shard({source_cohort!r}): unrecognised "
+            f"tumor_origin values {invalid}. Allowed: "
+            f"{sorted(TUMOR_ORIGIN_VALUES)}."
+        )
+
+
 def upsert_to_shard(
     summary_output,
     new_rows: pd.DataFrame,
     *,
     source_cohort: str,
     cancer_codes: list[str],
+    per_cancer_code_shards: bool = False,
+    allow_unset_tumor_origin: bool = False,
 ) -> pd.DataFrame:
     """Upsert ``new_rows`` into the per-source shard for ``source_cohort``.
 
     ``summary_output`` is the
-    ``pirlygenes/data/cancer-reference-expression/`` directory. The
-    per-source shard ``<dir>/<source_cohort>.csv.gz`` holds every row
-    for that source; this function replaces the rows for every
-    ``cancer_code`` in ``cancer_codes`` and preserves rows for every
-    other cancer code in that source.
+    ``pirlygenes/data/cancer-reference-expression/`` directory. By
+    default the per-source shard ``<dir>/<source_cohort>.csv.gz`` holds
+    every row for that source; this function replaces the rows for
+    every ``cancer_code`` in ``cancer_codes`` and preserves rows for
+    every other cancer code in that source.
+
+    When ``per_cancer_code_shards=True`` the source is sharded one
+    file per cancer_code at ``<dir>/<source_cohort>__<cancer_code>.csv.gz``.
+    Use this for sources that span many large per-code groups and
+    would otherwise push the combined file past GitHub's 100 MiB
+    hard limit (Treehouse TCGA subset is the motivating case).
+    The reader (``_load_shard_directory``) transparently concats all
+    matching files so no consumer needs to know about the split.
 
     Backwards-compat: if ``summary_output`` looks like the legacy
     single-file path
     (``pirlygenes/data/cancer-reference-expression.csv.gz``), the
     shard dir is derived from its parent so existing builders don't
     need to update their --summary-output default in one go.
+
+    Raises ``ValueError`` if ``tumor_origin`` is missing or holds a
+    value outside :data:`TUMOR_ORIGIN_VALUES`. Pass
+    ``allow_unset_tumor_origin=True`` to skip the non-null check (the
+    v5.4 migration backfill needs this; new builders should not).
     """
     from pathlib import Path as _Path
+
+    _validate_tumor_origin(
+        new_rows,
+        source_cohort=source_cohort,
+        allow_unset=allow_unset_tumor_origin,
+    )
 
     out_path = _Path(str(summary_output))
     if out_path.suffix == ".gz" or out_path.is_file():
@@ -250,8 +346,36 @@ def upsert_to_shard(
     else:
         shard_dir = out_path
     shard_dir.mkdir(parents=True, exist_ok=True)
-    shard_path = shard_dir / f"{source_cohort}.csv.gz"
 
+    new_rows = new_rows.reindex(columns=list(REFERENCE_COLUMNS))
+
+    if per_cancer_code_shards:
+        # One file per code; each file holds rows for that code only.
+        # No cross-code upsert needed because there's no shared file.
+        present_codes = (
+            new_rows["cancer_code"].dropna().astype(str).unique().tolist()
+        )
+        written_frames: list[pd.DataFrame] = []
+        for code in present_codes:
+            code_rows = new_rows[new_rows["cancer_code"].astype(str) == code]
+            code_rows = code_rows.sort_values(
+                ["cancer_code", "Ensembl_Gene_ID"], na_position="last",
+            )
+            shard_path = shard_dir / f"{source_cohort}__{code}.csv.gz"
+            code_rows.to_csv(shard_path, index=False, compression="gzip")
+            written_frames.append(code_rows)
+        # Defensive: warn if the caller passed a cancer_codes list that
+        # doesn't match what's in the dataframe (mostly to catch typos).
+        missing = set(cancer_codes) - set(present_codes)
+        if missing:
+            raise ValueError(
+                f"upsert_to_shard({source_cohort!r}, per_cancer_code_shards"
+                f"=True): cancer_codes lists {sorted(missing)} but no "
+                "rows in new_rows carry that code."
+            )
+        return pd.concat(written_frames, ignore_index=True)
+
+    shard_path = shard_dir / f"{source_cohort}.csv.gz"
     if shard_path.exists():
         existing = pd.read_csv(shard_path, low_memory=False)
         keep = ~existing["cancer_code"].astype(str).isin(cancer_codes)
@@ -280,6 +404,8 @@ __all__ = [
     "PROVENANCE_COLUMNS",
     "METADATA_COLUMNS",
     "COHORT_ANNOTATION_COLUMNS",
+    "TUMOR_ORIGIN_VALUES",
+    "TumorOrigin",
     "REFERENCE_COLUMNS",
     "compute_cohort_stats",
     "compute_count_columns",

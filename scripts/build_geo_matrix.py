@@ -110,6 +110,8 @@ def _build_geo_source(entry: dict) -> GeoMatrixSource:
         sample_to_cancer_code=sample_to_cancer_code,
         notes=entry.get("notes", ""),
         pipeline_stem=entry.get("pipeline_stem", ""),
+        tumor_origin=entry.get("tumor_origin", "primary"),
+        metastasis_site=entry.get("metastasis_site"),
     )
 
 

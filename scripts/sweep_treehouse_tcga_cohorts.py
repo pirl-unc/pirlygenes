@@ -46,6 +46,11 @@ RELEASE = TreehouseRelease(
     clinical_filename="clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv",
     cache_dir=CACHE_ROOT / "treehouse-polya-25-01",
     pipeline_prefix="treehouse_polya_25_01_tcga_subset_log2tpm_to_tpm",
+    # 36 TCGA cohorts in one source — combined shard hit 99.47 MiB
+    # after the v5.4 schema and was re-sharded per cancer_code via
+    # scripts/reshard_tcga_subset.py. Keep this flag true so re-runs
+    # of the sweep preserve the split.
+    per_cancer_code_shards=True,
 )
 
 

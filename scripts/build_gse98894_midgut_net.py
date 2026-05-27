@@ -127,6 +127,17 @@ def _extract_counts_matrix(tar_path: Path) -> pd.DataFrame:
     return matrix
 
 
+# Match the ``char_<key>`` portion exactly (after stripping the
+# ``char_`` prefix) against any of these tokens. Whole-token match
+# avoids surprises like ``char_originator_email`` accidentally being
+# used as a primary-site field.
+_ORIGIN_FIELD_TOKENS: frozenset[str] = frozenset({
+    "origin", "primary", "primary_site", "site",
+    "tissue", "tissue_of_origin", "primary_tissue",
+    "histology", "diagnosis", "anatomic", "anatomic_site",
+})
+
+
 def _route_samples(
     sample_meta: dict[str, dict[str, str]],
 ) -> dict[str, str]:
@@ -134,19 +145,18 @@ def _route_samples(
 
     For GSE98894 the relevant char_* field is ``char_origin`` (the
     primary tumor site); ``char_type`` is constant ``liver metastasis``.
-    Routes on any char_* whose name suggests origin/site/tissue/primary.
+    We only consult ``char_<key>`` fields whose key (after the
+    ``char_`` prefix) is in :data:`_ORIGIN_FIELD_TOKENS` — that way
+    something like ``char_originator_email`` (a hypothetical contact
+    field) wouldn't accidentally feed into the routing.
     """
     routing: dict[str, str] = {}
     unmatched: list[tuple[str, dict[str, str]]] = []
     for gsm, fields in sample_meta.items():
         origin_values = [
             v for k, v in fields.items()
-            if k.startswith("char_") and any(
-                token in k for token in (
-                    "origin", "primary", "site", "tissue",
-                    "histology", "diagnosis", "anatomic",
-                )
-            )
+            if k.startswith("char_")
+            and k.removeprefix("char_") in _ORIGIN_FIELD_TOKENS
         ]
         code: str | None = None
         for raw in origin_values:
