@@ -60,6 +60,27 @@ been *re-run*. Every row's new-column values are NaN until the
 relevant `build_*` script runs end-to-end against its data source.
 That's milestones 3-4 (TCGA fresh) and 8 (existing-cohort sweep).
 
+**Session 3, 2026-05-26 evening — landed:**
+
+- **Milestone 6 (Treehouse compendium fetcher).** Downloaded the
+  Treehouse 25.01 PolyA + RiboD compendia (6.19 GB + 1.1 GB), built
+  per-cohort summarizer (`pirlygenes/builders/treehouse.py`), added
+  thin sweep wrappers for PolyA / RiboD / TCGA-subset. 47 cohorts
+  built via this path total: 15 pediatric PolyA + 2 RiboD (CHOR/RB)
+  + 31 TCGA bulk-adult (ACC, BLCA, ..., UVM).
+- **Milestone 8 (per-cohort re-runs) — partial.** GEO heme (CML /
+  MDS / MCL / MPN), CLLMAP (CLL), CTCL re-ran with v5.3 stats. GDC
+  builders BL / MMRF / TARGET-ALL queued in background.
+- **Sharded data layout.** GitHub rejected pushing a 147 MB CSV (over
+  the 100 MB hard limit). Split into per-source-cohort shards under
+  `pirlygenes/data/cancer-reference-expression/<source_cohort>.csv.gz`;
+  largest 90 MB. New shared `pirlygenes.expression.stats.upsert_to_shard`
+  helper; every per-cohort builder + the Treehouse sweep use it.
+  Loader updated to glob + concat shards transparently.
+- **TCGA cancer codes registry sync.** 31 TCGA codes' `source_cohort`
+  in `cancer-type-registry.csv` updated from `TCGA_XENA_TOIL` →
+  `TREEHOUSE_POLYA_25_01_TCGA_SUBSET` to match actually-bundled data.
+
 Queued for follow-up sessions, in priority order:
 
 2. **`pirlygenes build <source-id>` dispatcher.** Read the YAML

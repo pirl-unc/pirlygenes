@@ -5,6 +5,66 @@ expression data and the YAML source registry. Companion to
 `docs/expression-data-refresh-plan.md` — the audit defines the work
 queue for plan milestones 1–8.
 
+## Update — 2026-05-26 evening (post Status-B sweep)
+
+Session-2 work landed the Treehouse sweep (15 cohorts), TCGA-via-
+Treehouse (31 cohorts), Treehouse RiboD (2 cohorts), GEO heme rebuild
+(4 cohorts) — plus the per-source-shard split of
+`cancer-reference-expression.csv.gz`. Session-3 (in progress) ran
+CLLMAP + CTCL and queued the GDC re-runs (BL / TARGET-ALL / MMRF) in
+background.
+
+**Post-sweep snapshot (54 codes with v5.3):**
+
+| status | count | notes |
+|---|---|---|
+| **A — v5.3 populated** | 54 / 125 (43%) | up from 1 at session start |
+| **B — legacy 17 cols only** | 18 / 125 (14%) | 4 will become v5.3 once the background GDC re-runs finish (BL, MM, B_ALL, T_ALL); the other 14 are summary-only imports needing per-sample builders |
+| **C/D/E — no data** | 53 / 125 (42%) | 5 BRCA PAM50 subtypes + 2 HNSC HPV split + 3 LUAD mutation split + GBM/LGG split + 3 SARC sub-histology + 37 literature-curated |
+| umbrella | 7 | aggregate codes; don't need their own rows |
+
+**Status-B 14 codes still summary-only (need per-sample fetchers):**
+- BeatAML (LAML_APL / LAML_ELN_Adv / Fav / Int) → per-sample data exists on BeatAML2 portal
+- TARGET-NBL (NBL_MYCN_amp / nonamp), TARGET-RT (RT), TARGET-WT (WILMS) → per-sample data exists on GDC; needs same GDC builder pattern as MMRF/TARGET-ALL
+- GSE299759 (CHON), GSE118014 (PANNET), GSE75885 (SARC_DDLPS / LGFMS / PLEOLPS) → per-sample on GEO; needs per-accession builders
+- SCLC UCologne 2015 → per-sample available
+
+**Status-C/D/E 53 codes broken down:**
+- **5 BRCA PAM50 subtypes** — write a PAM50 centroid classifier
+  (Parker 2009 PMID 19204204) that splits TCGA-BRCA samples in the
+  Treehouse cache + writes per-subtype rows.
+- **2 HNSC HPV split** — TCGA pan-cancer HPV paper (Cao 2016 PMID
+  27568064) supplies per-sample HPV calls; overlay on TCGA-HNSC
+  samples already in cache.
+- **3 LUAD mutation subtypes** (EGFR / KRAS / STK11) — TCGA MAF (open
+  via GDC API) → overlay mutation calls on TCGA-LUAD samples in cache.
+- **GBM, LGG (2)** — Treehouse uses one "glioma" bucket; need
+  TSS-code-based split (TCGA barcode → project mapping) of the 689
+  glioma samples to break into TCGA-LGG (~530) vs TCGA-GBM (~150).
+- **SARC_GIST, SARC_MYXLPS, SARC_WDLPS (3)** — TCGA-SARC sub-histology
+  not in Treehouse's `disease` label; need TCGA-SARC biospecimen
+  annotation overlay.
+- **37 literature-curated** — per-code research (HL → GSE12453, FL →
+  GSE65135, MEC → GSE161517, MTC → GSE32662, MBL subgroups via Cavalli
+  2017 PMID 28617753 on the existing MBL n=125, SCLC subtypes via Gay
+  2021 PMID 33442380 on the existing SCLC n=81, etc.). See the
+  "Status E — tractable" table further down.
+
+**Cache state:**
+- `~/.cache/pirlygenes/expression/treehouse-polya-25-01/` — 5.86 GB
+  (6.19 GB raw TPM + 97 MB derived parquet for 15 PolyA cohorts +
+  31 TCGA-subset cohorts + 1 symbol mapping)
+- `~/.cache/pirlygenes/expression/treehouse-ribod-25-01/` — 1.1 GB
+- `~/.cache/pirlygenes/expression/geo-heme-shared/` — small
+- After background sequence: `~/.cache/pirlygenes/expression/cllmap/`,
+  `cgci-blgsp/`, `target-all/`, `mmrf-commpass/`, `gse171811-ctcl/`
+  will fill up (~7 GB more).
+
+---
+
+## Original snapshot (start of session, 2026-05-26):
+
+
 ## Universe + headline counts
 
 - **125 codes** in `pirlygenes/data/cancer-type-registry.csv`
