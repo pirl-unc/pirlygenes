@@ -12,10 +12,10 @@ CHOL,Cholangiocarcinoma,carcinoma-gi,bile_duct,solid_primary,,,TCGA,TREEHOUSE_PO
 COAD,Colon Adenocarcinoma,carcinoma-gi,colon,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,CMS1-4 molecular subtypes + MSI-H axis,False
 DLBC,Diffuse Large B-cell Lymphoma,heme-bcell,lymph_node,heme_nodal,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,ABC vs GCB subtypes,False
 ESCA,Esophageal Carcinoma,carcinoma-gi,esophagus,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Adenocarcinoma + squamous lumped — biologically distinct,False
-GBM,Glioblastoma Multiforme,cns,cerebrum,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,IDH-wildtype per 2021 WHO; mes/classical/proneural subtypes,False
+GBM,Glioblastoma Multiforme,cns,cerebrum,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,IDH-wildtype per 2021 WHO; mes/classical/proneural subtypes,False
 HNSC,Head and Neck Squamous Cell Carcinoma,carcinoma-head-neck,pharynx,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HPV+ vs HPV- — two distinct diseases,False
-HNSC_HPV_pos,HPV+ HNSC,carcinoma-head-neck,oropharynx,solid_primary,HNSC,,TCGA/HPV,TCGA_HNSC,PMID:25631445,Better prognosis; p16+; E6/E7-driven,False
-HNSC_HPV_neg,HPV- HNSC,carcinoma-head-neck,oral_cavity,solid_primary,HNSC,,TCGA/HPV,TCGA_HNSC,PMID:25631445,Smoking/alcohol; TP53-mutant,False
+HNSC_HPV_pos,HPV+ HNSC,carcinoma-head-neck,oropharynx,solid_primary,HNSC,,TCGA/HPV,TREEHOUSE_POLYA_25_01_TCGA_HNSC_HPV,PMID:25631445,Better prognosis; p16+; E6/E7-driven,False
+HNSC_HPV_neg,HPV- HNSC,carcinoma-head-neck,oral_cavity,solid_primary,HNSC,,TCGA/HPV,TREEHOUSE_POLYA_25_01_TCGA_HNSC_HPV,PMID:25631445,Smoking/alcohol; TP53-mutant,False
 KICH,Kidney Chromophobe,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False
 KIRC,Kidney Renal Clear Cell,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,VHL-driven,False
 KIRP,Kidney Renal Papillary,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Type 1 (MET) + Type 2 lumped,False
@@ -24,12 +24,12 @@ LAML_APL,Acute Promyelocytic Leukemia,heme-myeloid,bone_marrow,heme_marrow,LAML,
 LAML_ELN_Fav,AML ELN2017 Favorable,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,NPM1+/FLT3- or CBF; chemo-sensitive,False
 LAML_ELN_Int,AML ELN2017 Intermediate,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,Mixed; individualized therapy,False
 LAML_ELN_Adv,AML ELN2017 Adverse,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,TP53/complex karyo; transplant-first,False
-LGG,Lower Grade Glioma,cns,cerebrum,solid_primary,,,TCGA,TCGA_XENA_TOIL,PMID:24071852,IDH-mutant (per 2021 WHO); vorasidenib-eligible,False
+LGG,Lower Grade Glioma,cns,cerebrum,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,IDH-mutant (per 2021 WHO); vorasidenib-eligible,False
 LIHC,Liver Hepatocellular Carcinoma,carcinoma-gi,liver,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HBV/HCV/NASH etiologies,False
 LUAD,Lung Adenocarcinoma,carcinoma-lung,lung,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,EGFR / KRAS / STK11-KEAP1 axes — therapy-gating,False
-LUAD_EGFR,EGFR-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TCGA_LUAD,PMID:25079552,Osimertinib-first; often never-smoker,False
-LUAD_KRAS,KRAS-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TCGA_LUAD,PMID:25079552,Sotorasib (G12C); smoker-associated,False
-LUAD_STK11,STK11/KEAP1 LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TCGA_LUAD,PMID:25079552,Cold-immune; IO-refractory axis,False
+LUAD_EGFR,EGFR-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TREEHOUSE_POLYA_25_01_TCGA_LUAD_MUT,PMID:25079552,Osimertinib-first; often never-smoker,False
+LUAD_KRAS,KRAS-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TREEHOUSE_POLYA_25_01_TCGA_LUAD_MUT,PMID:25079552,Sotorasib (G12C); smoker-associated,False
+LUAD_STK11,STK11/KEAP1 LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TREEHOUSE_POLYA_25_01_TCGA_LUAD_MUT,PMID:25079552,Cold-immune; IO-refractory axis,False
 LUSC,Lung Squamous Cell Carcinoma,carcinoma-lung,lung,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False
 MESO,Mesothelioma,carcinoma-mesothelial,pleura,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Pleural + peritoneal; BAP1/NF2,False
 OV,Ovarian Serous Cystadenocarcinoma,carcinoma-gu,ovary,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HGSOC-dominant; BRCA/HRD + PARP,False
