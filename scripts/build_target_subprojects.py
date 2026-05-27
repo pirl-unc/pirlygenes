@@ -381,19 +381,32 @@ def _upsert_samples_manifest(path: Path, manifest: pd.DataFrame, source_cohort: 
 
 
 def _fetch_nbl_mycn(cache_path: Path) -> dict[str, str]:
-    """Return case_submitter_id → 'amp' | 'nonamp' | 'unknown'."""
-    if cache_path.exists():
+    """Return TARGET-NBL case_submitter_id → 'amp' | 'nonamp' | 'unknown'.
+
+    MYCN is a sample-level attribute in cBioPortal study
+    ``nbl_target_2018_pub`` (patientAttribute: False). Sample IDs
+    look like ``TARGET-30-PAUDVA-09``; the case submitter_id is the
+    first three fields. Each patient has at most one MYCN call so
+    deduping is safe.
+    """
+    if cache_path.exists() and cache_path.stat().st_size > 100:
         df = pd.read_csv(cache_path)
     else:
         url = (
             "https://www.cbioportal.org/api/studies/nbl_target_2018_pub"
-            "/clinical-data?clinicalDataType=PATIENT&attributeId=MYCN"
+            "/clinical-data?clinicalDataType=SAMPLE&attributeId=MYCN"
         )
         with urllib.request.urlopen(url, timeout=60) as r:
             data = json.load(r)
-        df = pd.DataFrame(
-            [{"patientId": d["patientId"], "mycn": d["value"]} for d in data]
-        )
+        rows = [
+            {
+                "patientId": d.get("patientId")
+                or "-".join(str(d["sampleId"]).split("-")[:3]),
+                "mycn": d["value"],
+            }
+            for d in data
+        ]
+        df = pd.DataFrame(rows).drop_duplicates("patientId")
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(cache_path, index=False)
 
