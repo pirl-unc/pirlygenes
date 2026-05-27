@@ -585,10 +585,36 @@ def _upsert_source_cohort(
     *,
     source_cohort: str,
 ) -> pd.DataFrame:
+    """Sharded write for per-gene reference frames.
+
+    Used only for the summary (per-gene-per-cohort) frame which has
+    the REFERENCE_COLUMNS schema. The samples manifest write must
+    NOT use this — it's a single-file write, see _upsert_samples.
+    """
     codes = sorted(new_rows["cancer_code"].astype(str).unique())
     return upsert_to_shard(
         path, new_rows, source_cohort=source_cohort, cancer_codes=codes,
     )
+
+
+def _upsert_samples(path: Path, new_rows: pd.DataFrame, *, source_cohort: str) -> pd.DataFrame:
+    """Single-file upsert for the samples manifest (legacy schema).
+
+    The samples file is not sharded — it's one CSV tracking which
+    samples were included per source_cohort. Read-modify-write.
+    """
+    if path.exists():
+        existing = pd.read_csv(path)
+        keep = ~existing["source_cohort"].astype(str).eq(source_cohort)
+        out = pd.concat(
+            [existing[keep].reindex(columns=new_rows.columns), new_rows],
+            ignore_index=True,
+        )
+    else:
+        out = new_rows.copy()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(path, index=False)
+    return out
 
 
 def main() -> None:
@@ -615,7 +641,7 @@ def main() -> None:
         summary,
         source_cohort=SOURCE_COHORT,
     )
-    _upsert_source_cohort(
+    _upsert_samples(
         args.samples_output,
         manifest,
         source_cohort=SOURCE_COHORT,
