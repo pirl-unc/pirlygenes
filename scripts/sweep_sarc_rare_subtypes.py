@@ -92,6 +92,7 @@ TREEHOUSE_DIRECT = [
     ("SARC_IFS", "infantile fibrosarcoma"),
     ("SARC_MPNST", "malignant peripheral nerve sheath tumor"),
     ("SARC_EHE", "epithelioid hemangioendothelioma"),
+    ("SARC_LGFMS", "low grade fibromyxoid sarcoma"),
 ]
 
 # TCGA-SARC primary_diagnosis → registry code
