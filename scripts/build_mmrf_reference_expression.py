@@ -26,6 +26,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
+    upsert_to_shard,
 )
 
 
@@ -406,12 +407,18 @@ def _upsert(
     cancer_code: str,
     source_cohort: str,
 ) -> pd.DataFrame:
+    if "source_cohort" in new_rows.columns:
+        return upsert_to_shard(
+            path,
+            new_rows,
+            source_cohort=source_cohort,
+            cancer_codes=[cancer_code],
+        )
+    # Samples manifest (no source_cohort column): keep the legacy
+    # single-file upsert behavior for the per-sample manifest path.
     if path.exists():
         existing = pd.read_csv(path)
-        keep = ~(
-            existing["cancer_code"].astype(str).eq(cancer_code)
-            & existing["source_cohort"].astype(str).eq(source_cohort)
-        )
+        keep = ~existing["cancer_code"].astype(str).eq(cancer_code)
         out = pd.concat([existing[keep], new_rows], ignore_index=True)
     else:
         out = new_rows.copy()

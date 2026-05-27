@@ -30,6 +30,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
+    upsert_to_shard,
 )
 
 
@@ -584,18 +585,10 @@ def _upsert_source_cohort(
     *,
     source_cohort: str,
 ) -> pd.DataFrame:
-    if path.exists():
-        existing = pd.read_csv(path)
-        keep = ~existing["source_cohort"].astype(str).eq(source_cohort)
-        out = pd.concat(
-            [existing[keep].reindex(columns=new_rows.columns), new_rows],
-            ignore_index=True,
-        )
-    else:
-        out = new_rows.copy()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
-    return out
+    codes = sorted(new_rows["cancer_code"].astype(str).unique())
+    return upsert_to_shard(
+        path, new_rows, source_cohort=source_cohort, cancer_codes=codes,
+    )
 
 
 def main() -> None:

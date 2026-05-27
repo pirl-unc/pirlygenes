@@ -27,6 +27,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
+    upsert_to_shard,
 )
 
 
@@ -418,21 +419,12 @@ def _summarize(gene_table: pd.DataFrame, values: pd.DataFrame) -> pd.DataFrame:
 
 
 def _upsert_reference(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
-    existing = pd.read_csv(path, low_memory=False) if path.exists() else pd.DataFrame()
-    if existing.empty:
-        out = new_rows.copy()
-    else:
-        keep = ~(
-            existing["cancer_code"].astype(str).eq(CANCER_CODE)
-            & existing["source_cohort"].astype(str).eq(SOURCE_COHORT)
-        )
-        out = pd.concat([existing[keep], new_rows], ignore_index=True)
-    out = out[REFERENCE_COLUMNS].sort_values(
-        ["cancer_code", "source_cohort", "Ensembl_Gene_ID"],
+    return upsert_to_shard(
+        path,
+        new_rows,
+        source_cohort=SOURCE_COHORT,
+        cancer_codes=[CANCER_CODE],
     )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
-    return out
 
 
 def _upsert_samples(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:

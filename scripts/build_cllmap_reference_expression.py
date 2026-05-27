@@ -24,6 +24,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
+    upsert_to_shard,
 )
 
 
@@ -242,9 +243,13 @@ def main() -> None:
     )
     collapsed = _collapse_duplicate_genes(df, sample_cols)
     summary = _summarize(collapsed, included)
-    args.summary_output.parent.mkdir(parents=True, exist_ok=True)
     args.samples_output.parent.mkdir(parents=True, exist_ok=True)
-    summary.to_csv(args.summary_output, index=False)
+    upsert_to_shard(
+        args.summary_output,
+        summary,
+        source_cohort="CLLMAP_2022",
+        cancer_codes=["CLL"],
+    )
     manifest.to_csv(args.samples_output, index=False)
 
     print(
