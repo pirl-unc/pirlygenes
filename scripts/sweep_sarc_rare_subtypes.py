@@ -93,6 +93,9 @@ TREEHOUSE_DIRECT = [
     ("SARC_MPNST", "malignant peripheral nerve sheath tumor"),
     ("SARC_EHE", "epithelioid hemangioendothelioma"),
     ("SARC_LGFMS", "low grade fibromyxoid sarcoma"),
+    # Not a sarcoma but uses the same Treehouse-direct pattern — kept
+    # here for code reuse. Low n but populates the registry code.
+    ("NPC", "nasopharyngeal carcinoma"),
 ]
 
 # TCGA-SARC primary_diagnosis → registry code
