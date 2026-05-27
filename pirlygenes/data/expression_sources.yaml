@@ -647,3 +647,142 @@ sources:
     unit: TPM
     expected_size_gb: 0.3
     citation: TCGA Uveal melanoma
+
+  # ─── Generic GEO-matrix Tier-A sources ─────────────────────────────────
+  # All built via scripts/build_geo_matrix.py + the YAML config below.
+  # Each carries the source-id, the direct-download URL, the unit
+  # (TPM/FPKM/RPKM/log2-TPM/raw_counts), the gene-id type, and any
+  # special handling. `pirlygenes build <source-id>` dispatches to
+  # scripts/build_geo_matrix.py which reads this block.
+
+  - id: gse120328-hl
+    category: expression
+    cancer_codes: [HL]
+    source_type: geo-matrix
+    builder: scripts/build_geo_matrix.py
+    file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE120nnn/GSE120328/suppl/GSE120328_DESeq2_fpkm.tsv.gz
+    file_name: GSE120328_DESeq2_fpkm.tsv.gz
+    unit: FPKM
+    gene_id_col: ""
+    gene_id_type: hugo
+    sample_filter:
+      include_match: "_TU$"   # tumor LCM only; drop _NTC controls
+    source_cohort: GSE120328_LAMPRECHT_2018
+    source_project: GEO
+    citation: Lamprecht 2018 PMID 30546079 (cHL LCM bulk RNA-seq)
+    expected_size_gb: 0.01
+    notes: >
+      Lamprecht 2018 (cHL): LCM-enriched HRS cells from 5 cHL biopsies
+      (sample IDs end _TU; 5 paired non-tumor _NTC excluded by
+      sample_filter). FPKM → per-sample sum-to-1e6 → clean TPM. n=5;
+      HRS-cell-specific not whole-tumor — flag for TME comparisons.
+
+  - id: gse142334-fl
+    category: expression
+    cancer_codes: [FL]
+    source_type: geo-matrix
+    builder: scripts/build_geo_matrix.py
+    file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE142nnn/GSE142334/suppl/GSE142334_Proj_3970_htseq_all_samples.txt.gz
+    file_name: GSE142334_Proj_3970_htseq_all_samples.txt.gz
+    unit: raw_counts
+    gene_id_col: GeneID
+    gene_id_type: ensembl
+    drop_cols: [GeneSymbol]
+    sample_filter:
+      include_match: "F$"    # FL samples (suffix F); drop _T (transformed-FL)
+    source_cohort: GSE142334_FL_TFL_2021
+    source_project: GEO
+    citation: PMID 33569544 (FL/tFL paired bulk RNA-seq)
+    expected_size_gb: 0.01
+    notes: >
+      Paired biopsies; 6 FL (sample IDs end F) used; 6 transformed-FL
+      (suffix T) excluded by sample_filter. HTSeq raw counts (Ensembl
+      with version suffix) → length-normalized → per-sample TPM.
+
+  - id: gse248751-sarc-ccs
+    category: expression
+    cancer_codes: [SARC_CCS]
+    source_type: geo-matrix
+    builder: scripts/build_geo_matrix.py
+    file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE248nnn/GSE248751/suppl/GSE248751_human_CCS_counts.txt.gz
+    file_name: GSE248751_human_CCS_counts.txt.gz
+    unit: raw_counts
+    gene_id_col: ""
+    gene_id_type: ensembl
+    sample_filter:
+      include_match: "^hCCS_"    # tumor only; drop muscle1/2/3 controls
+    source_cohort: GSE248751_HUMAN_CCS_2023
+    source_project: GEO
+    citation: PMID 38136296 (Clear Cell Sarcoma frozen primary RNA-seq)
+    expected_size_gb: 0.01
+    notes: >
+      n=5 primary CCS tumors (hCCS_1..5). 3 muscle normal controls
+      excluded by sample_filter. Raw counts → length-norm TPM. Low n.
+
+  - id: gse328026-sarc-pec
+    category: expression
+    cancer_codes: [SARC_PEC]
+    source_type: geo-matrix
+    builder: scripts/build_geo_matrix.py
+    file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE328nnn/GSE328026/suppl/GSE328026_TPMs_all_Samples.txt.gz
+    file_name: GSE328026_TPMs_all_Samples.txt.gz
+    unit: TPM
+    gene_id_col: ""
+    gene_id_type: auto
+    source_cohort: GSE328026_PECOMA_2026
+    source_project: GEO
+    citation: GSE328026 (PEComa TPMs, public Apr 2026)
+    expected_size_gb: 0.01
+    notes: >
+      n=69 PEComa tumors. TPM directly; harmonized to Ensembl 112.
+
+  - id: gse241095-sarc-ks-skin
+    category: expression
+    cancer_codes: [SARC_KS]
+    source_type: geo-matrix
+    builder: scripts/build_geo_matrix.py
+    file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE241nnn/GSE241095/suppl/GSE241095_Final_skin_asperpapersamplecode.csv.gz
+    file_name: GSE241095_Final_skin_asperpapersamplecode.csv.gz
+    unit: TPM
+    gene_id_col: ""
+    gene_id_type: auto
+    sep: ","
+    sample_filter:
+      include_match: "T$"     # tumor samples (suffix T); drop matched normals (suffix N)
+    source_cohort: GSE241095_KS_SKIN_2023
+    source_project: GEO
+    citation: PMID 37740179 (Kaposi sarcoma skin lesions, Lidenge 2023)
+    expected_size_gb: 0.01
+    notes: >
+      n=10 cutaneous KS lesions (sample IDs start KS_); 10 matched
+      normals excluded by sample_filter. Companion GI shard adds
+      another n=12 KS lesions if needed.
+
+  # GSE76354 turned out to be NIH3T3 mouse cell-line ± MSANTD3
+  # transfection, NOT primary AcCC tumor RNA-seq. The agent's recon
+  # mismatched. Removing the entry; ACINIC stays in the
+  # "no clean public RNA-seq" bucket (closest is Lee 2020
+  # PRJNA433667 raw FASTQ for 21 AcCC — needs an alignment pipeline).
+
+  - id: gse294016-adcc
+    category: expression
+    cancer_codes: [ADCC]
+    source_type: geo-matrix
+    builder: scripts/build_geo_matrix.py
+    file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE294nnn/GSE294016/suppl/GSE294016_TPM_mat.tsv.gz
+    file_name: GSE294016_TPM_mat.tsv.gz
+    unit: TPM
+    gene_id_col: ""
+    gene_id_type: ensembl
+    transposed: true   # matrix is samples-as-rows × genes-as-cols (ENSG headers)
+    source_cohort: GSE294016_BARTL_2025_SGC
+    source_project: GEO
+    citation: PMID 40506428 (Bartl 2025 salivary gland cancer panel)
+    expected_size_gb: 0.02
+    notes: >
+      Bartl 2025 salivary-gland cancer bulk RNA-seq panel (n=95
+      total: includes ACC, AcCC, MEC, etc.). Matrix is transposed
+      (rows = samples, cols = Ensembl IDs versioned). Currently
+      routes ALL samples to ADCC; per-sample histology split (ACC
+      vs AcCC vs MEC) needs Bartl 2025 Supplementary Table 1
+      sample-→-diagnosis lookup — pending.
