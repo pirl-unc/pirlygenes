@@ -32,6 +32,7 @@ are the canonical column-name tuples for schema work.
 
 from __future__ import annotations
 
+import warnings
 from typing import Iterable, Literal
 
 import numpy as np
@@ -370,8 +371,7 @@ def upsert_to_shard(
             )
         unexpected = set(present_codes) - set(cancer_codes)
         if unexpected:
-            import warnings as _w
-            _w.warn(
+            warnings.warn(
                 f"upsert_to_shard({source_cohort!r}, per_cancer_code_shards"
                 f"=True): new_rows contains cancer_codes {sorted(unexpected)} "
                 "that were NOT listed in the cancer_codes argument. Writing "

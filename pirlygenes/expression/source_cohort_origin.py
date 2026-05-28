@@ -83,7 +83,29 @@ SELF_ANNOTATED_SOURCES: frozenset[str] = frozenset({
 })
 
 
-_YAML_PATH = Path(__file__).resolve().parent.parent / "data" / "expression_sources.yaml"
+_DEFAULT_YAML_PATH = (
+    Path(__file__).resolve().parent.parent / "data" / "expression_sources.yaml"
+)
+
+# Mutable so :func:`set_yaml_path` (a test hook) can redirect lookups
+# at the YAML registry without monkey-patching a private constant.
+# Production code should NOT mutate this — use ``set_yaml_path`` from
+# a test, paired with ``clear_cache()``.
+_YAML_PATH = _DEFAULT_YAML_PATH
+
+
+def set_yaml_path(path: Path | None) -> None:
+    """Redirect (or reset) the YAML registry path used by the classifier.
+
+    Test hook: a test that wants to swap in a fixture YAML calls
+    ``set_yaml_path(tmp_path / "fake.yaml")`` then ``clear_cache()``,
+    and resets via ``set_yaml_path(None)`` (or ``clear_cache()``-only
+    if relying on autouse-fixture cleanup) at teardown.
+    Passing ``None`` restores the bundled default.
+    """
+    global _YAML_PATH
+    _YAML_PATH = _DEFAULT_YAML_PATH if path is None else Path(path)
+    clear_cache()
 
 
 @lru_cache(maxsize=1)
@@ -118,13 +140,17 @@ def _yaml_overlay() -> dict[str, tuple[str, str | None]]:
             (str(entry["metastasis_site"]) if entry.get("metastasis_site") else None),
         )
     if incomplete:
+        # stacklevel=3 so the warning points past _yaml_overlay() AND
+        # past classify_source_cohort() at the actual caller (a
+        # builder, test, or notebook) — that's the audience who needs
+        # to see what triggered the lookup.
         warnings.warn(
             "expression_sources.yaml: entries with tumor_origin: but "
             f"no source_cohort: are ignored by classify_source_cohort: "
             f"{incomplete}. Add `source_cohort: <SHARD_NAME>` to make "
             "the classification apply.",
             UserWarning,
-            stacklevel=2,
+            stacklevel=3,
         )
     return out
 
@@ -177,4 +203,5 @@ __all__ = [
     "classify_source_cohort",
     "known_source_cohorts",
     "clear_cache",
+    "set_yaml_path",
 ]
