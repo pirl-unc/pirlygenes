@@ -29,6 +29,7 @@ passes against legacy data.
 
 from __future__ import annotations
 
+import warnings
 from functools import lru_cache
 from pathlib import Path
 
@@ -88,24 +89,42 @@ _YAML_PATH = Path(__file__).resolve().parent.parent / "data" / "expression_sourc
 @lru_cache(maxsize=1)
 def _yaml_overlay() -> dict[str, tuple[str, str | None]]:
     """Return ``{source_cohort: (tumor_origin, metastasis_site_or_None)}``
-    parsed from any YAML source that declares those fields."""
+    parsed from any YAML source that declares those fields.
+
+    Entries that declare ``tumor_origin:`` but no ``source_cohort:``
+    are skipped (the classifier is source_cohort-keyed) — and a
+    ``UserWarning`` is emitted listing them, so a contributor who
+    half-completes the YAML schema sees an explicit signal rather
+    than silent inaction.
+    """
     if not _YAML_PATH.exists():
         return {}
     payload = yaml.safe_load(_YAML_PATH.read_text()) or {}
     out: dict[str, tuple[str, str | None]] = {}
+    incomplete: list[str] = []
     for entry in payload.get("sources", []) or []:
         origin = entry.get("tumor_origin")
         if not origin:
             continue
         cohort = entry.get("source_cohort")
         if not cohort:
-            # Some entries produce per-code shards via the build script
-            # but don't pin source_cohort in YAML (legacy convention).
-            # Skip those — fall back to the hardcoded maps.
+            # tumor_origin declared but source_cohort missing — the
+            # classifier can't apply this, so warn the contributor.
+            entry_id = str(entry.get("id", "<no id>"))
+            incomplete.append(entry_id)
             continue
         out[str(cohort)] = (
             str(origin),
             (str(entry["metastasis_site"]) if entry.get("metastasis_site") else None),
+        )
+    if incomplete:
+        warnings.warn(
+            "expression_sources.yaml: entries with tumor_origin: but "
+            f"no source_cohort: are ignored by classify_source_cohort: "
+            f"{incomplete}. Add `source_cohort: <SHARD_NAME>` to make "
+            "the classification apply.",
+            UserWarning,
+            stacklevel=2,
         )
     return out
 
@@ -138,8 +157,16 @@ def known_source_cohorts() -> frozenset[str]:
     ) | PRIMARY_SOURCES | MIXED_SOURCES | SELF_ANNOTATED_SOURCES
 
 
-def _clear_caches() -> None:
-    """Test-helper: drop the YAML overlay cache after a monkeypatch."""
+def clear_cache() -> None:
+    """Drop the YAML-overlay cache.
+
+    Tests that monkey-patch ``_YAML_PATH`` (or replace the YAML file
+    contents on disk) need to call this so the next
+    :func:`classify_source_cohort` lookup re-reads from the new
+    location. Matches the public ``clear_cache()`` pattern that
+    :class:`pirlygenes.gene_sets_cancer._CancerTypeNamesView` uses
+    for the same purpose.
+    """
     _yaml_overlay.cache_clear()
 
 
@@ -149,4 +176,5 @@ __all__ = [
     "SELF_ANNOTATED_SOURCES",
     "classify_source_cohort",
     "known_source_cohorts",
+    "clear_cache",
 ]

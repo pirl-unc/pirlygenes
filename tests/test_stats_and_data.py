@@ -211,6 +211,65 @@ def test_upsert_to_shard_per_cancer_code_shards_writes_one_file_per_code(tmp_pat
     assert files == ["TEST_SPLIT__CODE_A.csv.gz", "TEST_SPLIT__CODE_B.csv.gz"]
 
 
+def test_per_cancer_code_shards_concat_back_via_loader(tmp_path):
+    """Round-trip: when ``per_cancer_code_shards=True`` splits a
+    cohort across per-code files, the shard loader
+    (:func:`pirlygenes.load_dataset._load_shard_directory`) must
+    transparently concat them so downstream consumers see the same
+    logical dataset as a single combined shard would have produced.
+
+    This is the safety net behind the TCGA-subset re-shard: without
+    this guarantee, splitting any source past the GitHub size limit
+    silently breaks every cancer-reference-expression reader.
+    """
+    from pirlygenes.load_dataset import _load_shard_directory
+
+    rows_a = _minimal_rows(cancer_code="CODE_A", tumor_origin="primary")
+    rows_b = _minimal_rows(cancer_code="CODE_B", tumor_origin="mixed")
+    rows = pd.concat([rows_a, rows_b], ignore_index=True)
+    upsert_to_shard(
+        tmp_path, rows,
+        source_cohort="ROUNDTRIP",
+        cancer_codes=["CODE_A", "CODE_B"],
+        per_cancer_code_shards=True,
+    )
+    # Two files on disk, one per code
+    files = sorted(p.name for p in tmp_path.glob("ROUNDTRIP*.csv.gz"))
+    assert files == ["ROUNDTRIP__CODE_A.csv.gz", "ROUNDTRIP__CODE_B.csv.gz"]
+
+    # Loader concats both into a single logical frame, preserving the
+    # per-code tumor_origin annotations
+    loaded = _load_shard_directory(tmp_path)
+    assert set(loaded["cancer_code"]) == {"CODE_A", "CODE_B"}
+    by_code = loaded.set_index("cancer_code")["tumor_origin"].to_dict()
+    assert by_code == {"CODE_A": "primary", "CODE_B": "mixed"}
+    # Row count = sum of per-code shards (2 genes × 2 codes = 4 rows)
+    assert len(loaded) == len(rows)
+
+
+def test_upsert_to_shard_per_cancer_code_warns_on_unexpected_codes(tmp_path):
+    """Codes present in new_rows but missing from the cancer_codes list
+    usually indicate accidental cross-contamination in the input
+    frame — surface a warning so the builder author notices."""
+    import pytest as _pt
+    rows_a = _minimal_rows(cancer_code="CODE_A", tumor_origin="primary")
+    rows_b = _minimal_rows(cancer_code="STRAY", tumor_origin="primary")
+    rows = pd.concat([rows_a, rows_b], ignore_index=True)
+    with _pt.warns(UserWarning, match="STRAY"):
+        upsert_to_shard(
+            tmp_path, rows,
+            source_cohort="TEST_SPLIT_WARN",
+            cancer_codes=["CODE_A"],   # 'STRAY' not listed
+            per_cancer_code_shards=True,
+        )
+    # Both files written — the warning surfaces the surprise but
+    # doesn't block the data, matching the docstring's "writing them
+    # anyway" promise.
+    files = sorted(p.name for p in tmp_path.glob("TEST_SPLIT_WARN*.csv.gz"))
+    assert "TEST_SPLIT_WARN__CODE_A.csv.gz" in files
+    assert "TEST_SPLIT_WARN__STRAY.csv.gz" in files
+
+
 def test_upsert_to_shard_allow_unset_for_legacy_backfill(tmp_path):
     """The v5.4 migration backfill rewrites legacy rows; ``allow_unset_tumor_origin``
     lets it pass NaN through during that one-time migration."""

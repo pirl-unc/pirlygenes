@@ -1,24 +1,16 @@
 #!/usr/bin/env python
 """Backfill ``tumor_origin`` / ``metastasis_site`` on existing shards.
 
-The v5.4 schema adds primary-vs-metastasis annotation. Every shard in
-``pirlygenes/data/cancer-reference-expression/`` already has the two
-new columns (via the upsert helper's reindex), but legacy shards have
-NaN for both. This script walks each shard, looks up its
-``source_cohort`` via :func:`pirlygenes.expression.source_cohort_origin.classify_source_cohort`,
+The v5.4 schema adds primary-vs-metastasis annotation. Legacy shards
+have NaN for these columns; this script walks each shard, looks up
+its ``source_cohort`` via
+:func:`pirlygenes.expression.source_cohort_origin.classify_source_cohort`,
 and writes the right values.
 
-The classification table is the package-level
-:mod:`pirlygenes.expression.source_cohort_origin` module — it consults
-the YAML registry first (any source entry that declares
-``tumor_origin:`` + ``source_cohort:``) and falls back to a hardcoded
-audit map for legacy entries. Future builders should set
-``tumor_origin`` per-row and add it to their YAML entry; the validation
-in :func:`pirlygenes.expression.stats.upsert_to_shard` enforces
-non-null values at write time.
-
 Going forward this script is only needed for one-time schema-migration
-passes against legacy data.
+passes against legacy data — new builders set ``tumor_origin`` per-row
+and ``upsert_to_shard`` rejects unset / unrecognised values at write
+time.
 """
 
 from __future__ import annotations

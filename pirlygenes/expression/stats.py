@@ -355,6 +355,32 @@ def upsert_to_shard(
         present_codes = (
             new_rows["cancer_code"].dropna().astype(str).unique().tolist()
         )
+
+        # Defensive: catch caller typos in BOTH directions. A code in
+        # cancer_codes but missing from new_rows is almost always a
+        # bug (typo, dropped during filtering); a code in new_rows but
+        # not in cancer_codes is usually accidental cross-contamination
+        # in the input frame and worth surfacing too.
+        missing = set(cancer_codes) - set(present_codes)
+        if missing:
+            raise ValueError(
+                f"upsert_to_shard({source_cohort!r}, per_cancer_code_shards"
+                f"=True): cancer_codes lists {sorted(missing)} but no "
+                "rows in new_rows carry that code."
+            )
+        unexpected = set(present_codes) - set(cancer_codes)
+        if unexpected:
+            import warnings as _w
+            _w.warn(
+                f"upsert_to_shard({source_cohort!r}, per_cancer_code_shards"
+                f"=True): new_rows contains cancer_codes {sorted(unexpected)} "
+                "that were NOT listed in the cancer_codes argument. Writing "
+                "them anyway, but this usually indicates accidental cross-"
+                "contamination in the input frame — double-check the builder.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         written_frames: list[pd.DataFrame] = []
         for code in present_codes:
             code_rows = new_rows[new_rows["cancer_code"].astype(str) == code]
@@ -364,15 +390,6 @@ def upsert_to_shard(
             shard_path = shard_dir / f"{source_cohort}__{code}.csv.gz"
             code_rows.to_csv(shard_path, index=False, compression="gzip")
             written_frames.append(code_rows)
-        # Defensive: warn if the caller passed a cancer_codes list that
-        # doesn't match what's in the dataframe (mostly to catch typos).
-        missing = set(cancer_codes) - set(present_codes)
-        if missing:
-            raise ValueError(
-                f"upsert_to_shard({source_cohort!r}, per_cancer_code_shards"
-                f"=True): cancer_codes lists {sorted(missing)} but no "
-                "rows in new_rows carry that code."
-            )
         return pd.concat(written_frames, ignore_index=True)
 
     shard_path = shard_dir / f"{source_cohort}.csv.gz"

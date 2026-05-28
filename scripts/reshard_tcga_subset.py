@@ -13,10 +13,10 @@ The reader (:func:`pirlygenes.load_dataset._load_shard_directory`) globs
 ``*.csv.gz`` and concatenates everything in the directory so no
 consumer needs to know about the split.
 
-After this lands, the Treehouse TCGA sweep
-(``scripts/sweep_treehouse_polya_tcga_cohorts.py``) needs to invoke
-``upsert_to_shard`` with ``per_cancer_code_shards=True`` so future
-rebuilds preserve the split — a follow-up update.
+The Treehouse TCGA sweep (``scripts/sweep_treehouse_tcga_cohorts.py``)
+already sets ``per_cancer_code_shards=True`` on its release config
+so re-runs preserve the split rather than rebuilding a giant
+combined file.
 
 Safe to re-run: idempotent, but if the per-code shards already exist
 they get re-written from the combined file (or skipped if combined is
