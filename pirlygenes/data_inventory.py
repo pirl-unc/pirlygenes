@@ -1,13 +1,13 @@
-"""Public inventory of the bundled cohort-level reference data.
+"""Public inventory of the cohort-level reference data.
 
 Backs the ``pirlygenes data`` CLI surface. This module is the
 read-side counterpart to :mod:`pirlygenes.downloads`:
 
 - ``downloads`` describes what's *fetchable* (raw inputs from GDC /
   GEO / etc.) and how much disk those raw inputs occupy locally.
-- ``data_inventory`` describes what's *bundled* in the installed
-  pirlygenes package — the per-gene-per-cohort summary tables that
-  build steps write into ``pirlygenes/data/``.
+- ``data_inventory`` describes the per-gene-per-cohort summary
+  tables — wherever they currently live (bundled in the wheel for
+  a git checkout, or downloaded into the cache for a pip install).
 
 Trufflepig and ad-hoc notebooks can call :func:`summarize_inventory`
 directly without going through the CLI.
@@ -20,12 +20,31 @@ from pathlib import Path
 
 import pandas as pd
 
+from . import data_bundle
 from .downloads import load_registry
 
 
-_REFERENCE_DIR = (
+_BUNDLED_REFERENCE_DIR = (
     Path(__file__).parent / "data" / "cancer-reference-expression"
 )
+
+
+def _active_reference_dir() -> Path:
+    """Pick whichever cancer-reference-expression dir actually has files.
+
+    Priority order matches :func:`pirlygenes.load_dataset._shard_directories`:
+      1. Bundled in-wheel / git-checkout location
+      2. Downloaded cache populated by :mod:`pirlygenes.data_bundle`
+
+    Returns the bundled path as a fallback even when neither exists
+    so callers always get a sensible Path to display.
+    """
+    if any(_BUNDLED_REFERENCE_DIR.glob("*.csv.gz")):
+        return _BUNDLED_REFERENCE_DIR
+    cached = data_bundle.cache_dir() / "cancer-reference-expression"
+    if any(cached.glob("*.csv.gz")):
+        return cached
+    return _BUNDLED_REFERENCE_DIR
 
 
 @dataclass(frozen=True)
@@ -39,8 +58,18 @@ class CohortRowCount:
 
 @dataclass(frozen=True)
 class InventorySnapshot:
-    bundled_path: Path
-    bundled_size_bytes: int
+    """Snapshot of the cancer-reference-expression dataset state.
+
+    ``data_path`` points at whichever on-disk directory actually
+    supplies the data (bundled or downloaded; see
+    :func:`_active_reference_dir`). ``data_source`` distinguishes
+    the two so consumers can tell whether the user is in a dev
+    checkout or a wheel install.
+    """
+
+    data_path: Path
+    data_source: str          # "bundled" | "downloaded" | "missing"
+    data_size_bytes: int
     total_rows: int
     unique_genes: int
     cohort_rows: tuple[CohortRowCount, ...]
@@ -78,18 +107,28 @@ def _shard_count(shard_dir: Path) -> int:
     )
 
 
-def summarize_inventory() -> InventorySnapshot:
-    """Snapshot the bundled cancer-reference-expression table.
+def _classify_path(active: Path) -> str:
+    """Tag the active directory as bundled / downloaded / missing."""
+    if active == _BUNDLED_REFERENCE_DIR:
+        return "bundled" if active.exists() else "missing"
+    return "downloaded"
 
-    Reads every per-source shard under
-    ``pirlygenes/data/cancer-reference-expression/`` (one .csv.gz per
-    ``source_cohort``) and reduces to per-(cancer_code, source_cohort)
-    row counts so consumers don't pay the full read on every CLI
-    invocation when only the summary is needed.
+
+def summarize_inventory() -> InventorySnapshot:
+    """Snapshot the cancer-reference-expression table.
+
+    Reads every per-source shard (.csv.gz) under whichever data
+    directory currently holds the data and reduces to per-(cancer_code,
+    source_cohort) row counts so consumers don't pay the full read
+    on every CLI invocation when only the summary is needed.
+
+    Triggers a one-time auto-fetch from the GitHub Release if the data
+    isn't local (wheel install, fresh cache).
     """
     from .load_dataset import get_data
 
     df = get_data("cancer-reference-expression")
+    active = _active_reference_dir()
     grouped = (
         df.groupby(
             ["cancer_code", "source_cohort", "source_project"],
@@ -112,13 +151,14 @@ def summarize_inventory() -> InventorySnapshot:
         ).itertuples(index=False)
     )
     return InventorySnapshot(
-        bundled_path=_REFERENCE_DIR,
-        bundled_size_bytes=_shard_total_bytes(_REFERENCE_DIR),
+        data_path=active,
+        data_source=_classify_path(active),
+        data_size_bytes=_shard_total_bytes(active),
         total_rows=int(len(df)),
         unique_genes=int(df["Ensembl_Gene_ID"].nunique(dropna=True)),
         cohort_rows=cohort_rows,
         registered_sources=len(load_registry()),
-        shard_files=_shard_count(_REFERENCE_DIR),
+        shard_files=_shard_count(active),
     )
 
 
@@ -136,8 +176,9 @@ def _format_bytes(size: int) -> str:
 
 def render_inventory(snapshot: InventorySnapshot) -> str:
     lines = [
-        f"cancer-reference-expression/: {snapshot.bundled_path}",
-        f"  size on disk: {_format_bytes(snapshot.bundled_size_bytes)} "
+        f"cancer-reference-expression/  [{snapshot.data_source}]",
+        f"  path:         {snapshot.data_path}",
+        f"  size on disk: {_format_bytes(snapshot.data_size_bytes)} "
         f"across {snapshot.shard_files} per-source shards",
         f"  total rows:   {snapshot.total_rows:,}",
         f"  unique genes: {snapshot.unique_genes:,}",
