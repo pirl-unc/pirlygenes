@@ -717,9 +717,12 @@ def _reference_expr_value(
 def available_cancer_expression_references() -> pd.DataFrame:
     """Packaged non-TCGA tumor reference cohorts available by cancer code.
 
-    Returns one row per ``(cancer_code, source_cohort)`` with sample-count
-    and processing provenance. Downstream consumers can use this to decide
-    which non-TCGA references are available without inspecting data files.
+    Returns one row per ``(cancer_code, source_cohort)`` with sample-count,
+    processing provenance, and primary-vs-metastasis annotation. Within
+    each cancer_code, rows are ordered with ``tumor_origin == 'primary'``
+    first so consumers that take ``.iloc[0]`` get the canonical reference
+    cohort. Downstream consumers can use this to decide which non-TCGA
+    references are available without inspecting data files.
     """
     df = _load_cancer_reference_expression()
     keep = [
@@ -729,11 +732,23 @@ def available_cancer_expression_references() -> pd.DataFrame:
         "source_version",
         "n_samples",
         "processing_pipeline",
+        "tumor_origin",
+        "metastasis_site",
     ]
     present = [c for c in keep if c in df.columns]
-    out = df[present].drop_duplicates().sort_values(
-        ["cancer_code", "source_cohort"],
-    )
+    out = df[present].drop_duplicates()
+    # Sort so primary > mixed > metastasis > everything else within
+    # each cancer_code; ties broken by source_cohort.
+    origin_priority = {"primary": 0, "mixed": 1, "metastasis": 2}
+    if "tumor_origin" in out.columns:
+        out = out.assign(
+            _origin_rank=out["tumor_origin"].map(origin_priority).fillna(9),
+        )
+        out = out.sort_values(
+            ["cancer_code", "_origin_rank", "source_cohort"],
+        ).drop(columns="_origin_rank")
+    else:
+        out = out.sort_values(["cancer_code", "source_cohort"])
     return out.reset_index(drop=True)
 
 

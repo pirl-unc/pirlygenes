@@ -23,27 +23,12 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
-
-
-REFERENCE_COLUMNS = [
-    "Ensembl_Gene_ID",
-    "Symbol",
-    "cancer_code",
-    "source_cohort",
-    "source_project",
-    "source_version",
-    "TPM_median",
-    "TPM_q1",
-    "TPM_q3",
-    "TPM_mean",
-    "TPM_clean_median",
-    "TPM_clean_q1",
-    "TPM_clean_q3",
-    "n_samples",
-    "n_detected",
-    "processing_pipeline",
-    "notes",
-]
+from pirlygenes.expression.stats import (
+    REFERENCE_COLUMNS,
+    assign_stats,
+    round_stat_columns,
+    upsert_to_shard,
+)
 SAMPLE_COLUMNS = [
     "cancer_code",
     "source_cohort",
@@ -440,28 +425,10 @@ def _summarize(
         f"{source.accession} {source.source_file}; Ensembl IDs harmonized "
         "to Ensembl release 112; downloaded 2026-05-19"
     )
-    out["TPM_median"] = values.median(axis=1).to_numpy()
-    out["TPM_q1"] = values.quantile(0.25, axis=1).to_numpy()
-    out["TPM_q3"] = values.quantile(0.75, axis=1).to_numpy()
-    out["TPM_mean"] = values.mean(axis=1).to_numpy()
-    out["TPM_clean_median"] = clean.median(axis=1).to_numpy()
-    out["TPM_clean_q1"] = clean.quantile(0.25, axis=1).to_numpy()
-    out["TPM_clean_q3"] = clean.quantile(0.75, axis=1).to_numpy()
-    out["n_samples"] = values.shape[1]
-    out["n_detected"] = (values > 0).sum(axis=1).to_numpy()
+    assign_stats(out, values, clean)
     out["processing_pipeline"] = PIPELINE_PREFIX
     out["notes"] = source.notes
-    numeric_cols = [
-        "TPM_median",
-        "TPM_q1",
-        "TPM_q3",
-        "TPM_mean",
-        "TPM_clean_median",
-        "TPM_clean_q1",
-        "TPM_clean_q3",
-    ]
-    out[numeric_cols] = out[numeric_cols].round(6)
-    return out[REFERENCE_COLUMNS]
+    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
 
 
 def _build_source(
@@ -511,27 +478,23 @@ def _build_source(
 
 
 def _upsert_reference(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
-    existing = pd.read_csv(path, low_memory=False) if path.exists() else pd.DataFrame()
-    if existing.empty:
-        out = new_rows.copy()
-    else:
-        keys = set(
-            zip(
-                new_rows["cancer_code"].astype(str),
-                new_rows["source_cohort"].astype(str),
-            )
+    """Write each source_cohort group to its own shard under ``path``.
+
+    ``path`` is the sharded data directory
+    (``pirlygenes/data/cancer-reference-expression/``); each unique
+    ``source_cohort`` in ``new_rows`` becomes one shard.
+    """
+    written = []
+    for source_cohort, group in new_rows.groupby("source_cohort", sort=False):
+        codes = sorted(group["cancer_code"].astype(str).unique())
+        shard = upsert_to_shard(
+            path,
+            group.reset_index(drop=True),
+            source_cohort=str(source_cohort),
+            cancer_codes=codes,
         )
-        keep = ~existing[["cancer_code", "source_cohort"]].apply(
-            lambda row: (str(row["cancer_code"]), str(row["source_cohort"])) in keys,
-            axis=1,
-        )
-        out = pd.concat([existing[keep], new_rows], ignore_index=True)
-    out = out[REFERENCE_COLUMNS].sort_values(
-        ["cancer_code", "source_cohort", "Ensembl_Gene_ID"],
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
-    return out
+        written.append(shard)
+    return pd.concat(written, ignore_index=True) if written else new_rows.iloc[0:0]
 
 
 def _upsert_samples(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:

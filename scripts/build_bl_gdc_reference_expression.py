@@ -23,6 +23,12 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
+from pirlygenes.expression.stats import (
+    REFERENCE_COLUMNS,
+    assign_stats,
+    round_stat_columns,
+    upsert_to_shard,
+)
 
 
 GDC_FILES_ENDPOINT = "https://api.gdc.cancer.gov/files"
@@ -38,25 +44,6 @@ SOURCE_VERSION = (
     "Ensembl release 112; queried 2026-05-19"
 )
 STAR_TPM_COL = "tpm_unstranded"
-REFERENCE_COLUMNS = [
-    "Ensembl_Gene_ID",
-    "Symbol",
-    "cancer_code",
-    "source_cohort",
-    "source_project",
-    "source_version",
-    "TPM_median",
-    "TPM_q1",
-    "TPM_q3",
-    "TPM_mean",
-    "TPM_clean_median",
-    "TPM_clean_q1",
-    "TPM_clean_q3",
-    "n_samples",
-    "n_detected",
-    "processing_pipeline",
-    "notes",
-]
 SAMPLE_COLUMNS = [
     "cancer_code",
     "source_cohort",
@@ -421,50 +408,23 @@ def _summarize(gene_table: pd.DataFrame, values: pd.DataFrame) -> pd.DataFrame:
     out["source_cohort"] = SOURCE_COHORT
     out["source_project"] = SOURCE_PROJECT
     out["source_version"] = SOURCE_VERSION
-    out["TPM_median"] = values.median(axis=1).to_numpy()
-    out["TPM_q1"] = values.quantile(0.25, axis=1).to_numpy()
-    out["TPM_q3"] = values.quantile(0.75, axis=1).to_numpy()
-    out["TPM_mean"] = values.mean(axis=1).to_numpy()
-    out["TPM_clean_median"] = clean.median(axis=1).to_numpy()
-    out["TPM_clean_q1"] = clean.quantile(0.25, axis=1).to_numpy()
-    out["TPM_clean_q3"] = clean.quantile(0.75, axis=1).to_numpy()
-    out["n_samples"] = values.shape[1]
-    out["n_detected"] = (values > 0).sum(axis=1).to_numpy()
+    assign_stats(out, values, clean)
     out["processing_pipeline"] = PIPELINE
     out["notes"] = (
         "Open GDC CGCI-BLGSP STAR-counts TPMs; one deterministic primary "
         "Burkitt/Burkitt-like tumor sample per case; GENCODE v36 IDs "
         "harmonized to Ensembl release 112."
     )
-    numeric_cols = [
-        "TPM_median",
-        "TPM_q1",
-        "TPM_q3",
-        "TPM_mean",
-        "TPM_clean_median",
-        "TPM_clean_q1",
-        "TPM_clean_q3",
-    ]
-    out[numeric_cols] = out[numeric_cols].round(6)
-    return out[REFERENCE_COLUMNS]
+    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
 
 
 def _upsert_reference(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
-    existing = pd.read_csv(path, low_memory=False) if path.exists() else pd.DataFrame()
-    if existing.empty:
-        out = new_rows.copy()
-    else:
-        keep = ~(
-            existing["cancer_code"].astype(str).eq(CANCER_CODE)
-            & existing["source_cohort"].astype(str).eq(SOURCE_COHORT)
-        )
-        out = pd.concat([existing[keep], new_rows], ignore_index=True)
-    out = out[REFERENCE_COLUMNS].sort_values(
-        ["cancer_code", "source_cohort", "Ensembl_Gene_ID"],
+    return upsert_to_shard(
+        path,
+        new_rows,
+        source_cohort=SOURCE_COHORT,
+        cancer_codes=[CANCER_CODE],
     )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
-    return out
 
 
 def _upsert_samples(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:

@@ -18,6 +18,7 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
+from pirlygenes.expression.stats import REFERENCE_COLUMNS
 
 
 DEFAULT_SUMMARY_INPUT = "cancer-specific-expression-summary.csv.gz"
@@ -40,25 +41,6 @@ NOTES = (
     "historical Ensembl lookup are omitted."
 )
 HISTORICAL_ENSEMBL_RELEASES = [75, 77, 80, 107, 109, 110, 111]
-REFERENCE_COLUMNS = [
-    "Ensembl_Gene_ID",
-    "Symbol",
-    "cancer_code",
-    "source_cohort",
-    "source_project",
-    "source_version",
-    "TPM_median",
-    "TPM_q1",
-    "TPM_q3",
-    "TPM_mean",
-    "TPM_clean_median",
-    "TPM_clean_q1",
-    "TPM_clean_q3",
-    "n_samples",
-    "n_detected",
-    "processing_pipeline",
-    "notes",
-]
 
 
 @dataclass(frozen=True)
@@ -330,6 +312,10 @@ def build_reference_rows(
     out["processing_pipeline"] = PIPELINE
     out["notes"] = NOTES
     out = _add_summary_clean_tpm(out)
+    # Summary-only imports don't carry per-sample data, so the v5.3
+    # extended stats (std/min/max/p5/p10/p90/p95 + clean companions
+    # incl. clean_mean) stay NaN. Schema parity with builder rows is
+    # enforced by reindex against REFERENCE_COLUMNS below.
     numeric_cols = [
         "TPM_median",
         "TPM_q1",
@@ -342,7 +328,7 @@ def build_reference_rows(
         "n_detected",
     ]
     out[numeric_cols] = out[numeric_cols].round(6)
-    out = out[REFERENCE_COLUMNS].sort_values(
+    out = out.reindex(columns=list(REFERENCE_COLUMNS)).sort_values(
         ["cancer_code", "source_cohort", "Ensembl_Gene_ID"]
     )
     counts["imported_rows"] = len(out)
@@ -358,10 +344,10 @@ def upsert_reference_rows(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
         is_imported = existing["source_cohort"].astype(str).isin(IMPORT_SOURCE_COHORTS)
         is_imported &= existing["cancer_code"].astype(str).isin(IMPORT_OUTPUT_CODES)
         out = pd.concat(
-            [existing.loc[~is_imported].reindex(columns=REFERENCE_COLUMNS), new_rows],
+            [existing.loc[~is_imported].reindex(columns=list(REFERENCE_COLUMNS)), new_rows],
             ignore_index=True,
         )
-    out = out[REFERENCE_COLUMNS].sort_values(
+    out = out.reindex(columns=list(REFERENCE_COLUMNS)).sort_values(
         ["cancer_code", "source_cohort", "Ensembl_Gene_ID"],
         na_position="last",
     )

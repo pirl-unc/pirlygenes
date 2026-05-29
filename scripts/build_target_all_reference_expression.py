@@ -26,6 +26,12 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
+from pirlygenes.expression.stats import (
+    REFERENCE_COLUMNS,
+    assign_stats,
+    round_stat_columns,
+    upsert_to_shard,
+)
 
 
 GDC_FILES_ENDPOINT = "https://api.gdc.cancer.gov/files"
@@ -528,28 +534,10 @@ def _summarize_one(
     out["source_cohort"] = SOURCE_COHORT
     out["source_project"] = SOURCE_PROJECT
     out["source_version"] = SOURCE_VERSION
-    out["TPM_median"] = values.median(axis=1).to_numpy()
-    out["TPM_q1"] = values.quantile(0.25, axis=1).to_numpy()
-    out["TPM_q3"] = values.quantile(0.75, axis=1).to_numpy()
-    out["TPM_mean"] = values.mean(axis=1).to_numpy()
-    out["TPM_clean_median"] = clean.median(axis=1).to_numpy()
-    out["TPM_clean_q1"] = clean.quantile(0.25, axis=1).to_numpy()
-    out["TPM_clean_q3"] = clean.quantile(0.75, axis=1).to_numpy()
-    out["n_samples"] = values.shape[1]
-    out["n_detected"] = (values > 0).sum(axis=1).to_numpy()
+    assign_stats(out, values, clean)
     out["processing_pipeline"] = PIPELINE
     out["notes"] = notes
-    numeric_cols = [
-        "TPM_median",
-        "TPM_q1",
-        "TPM_q3",
-        "TPM_mean",
-        "TPM_clean_median",
-        "TPM_clean_q1",
-        "TPM_clean_q3",
-    ]
-    out[numeric_cols] = out[numeric_cols].round(6)
-    return out
+    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
 
 
 def _summarize(
@@ -597,6 +585,24 @@ def _upsert_source_cohort(
     *,
     source_cohort: str,
 ) -> pd.DataFrame:
+    """Sharded write for per-gene reference frames.
+
+    Used only for the summary (per-gene-per-cohort) frame which has
+    the REFERENCE_COLUMNS schema. The samples manifest write must
+    NOT use this — it's a single-file write, see _upsert_samples.
+    """
+    codes = sorted(new_rows["cancer_code"].astype(str).unique())
+    return upsert_to_shard(
+        path, new_rows, source_cohort=source_cohort, cancer_codes=codes,
+    )
+
+
+def _upsert_samples(path: Path, new_rows: pd.DataFrame, *, source_cohort: str) -> pd.DataFrame:
+    """Single-file upsert for the samples manifest (legacy schema).
+
+    The samples file is not sharded — it's one CSV tracking which
+    samples were included per source_cohort. Read-modify-write.
+    """
     if path.exists():
         existing = pd.read_csv(path)
         keep = ~existing["source_cohort"].astype(str).eq(source_cohort)
@@ -635,7 +641,7 @@ def main() -> None:
         summary,
         source_cohort=SOURCE_COHORT,
     )
-    _upsert_source_cohort(
+    _upsert_samples(
         args.samples_output,
         manifest,
         source_cohort=SOURCE_COHORT,

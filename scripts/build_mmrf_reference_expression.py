@@ -22,6 +22,12 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
+from pirlygenes.expression.stats import (
+    REFERENCE_COLUMNS,
+    assign_stats,
+    round_stat_columns,
+    upsert_to_shard,
+)
 
 
 GDC_FILES_ENDPOINT = "https://api.gdc.cancer.gov/files"
@@ -384,48 +390,50 @@ def _summarize(gene_table: pd.DataFrame, values: pd.DataFrame) -> pd.DataFrame:
     out["source_cohort"] = SOURCE_COHORT
     out["source_project"] = SOURCE_PROJECT
     out["source_version"] = SOURCE_VERSION
-    out["TPM_median"] = values.median(axis=1).to_numpy()
-    out["TPM_q1"] = values.quantile(0.25, axis=1).to_numpy()
-    out["TPM_q3"] = values.quantile(0.75, axis=1).to_numpy()
-    out["TPM_mean"] = values.mean(axis=1).to_numpy()
-    out["TPM_clean_median"] = clean.median(axis=1).to_numpy()
-    out["TPM_clean_q1"] = clean.quantile(0.25, axis=1).to_numpy()
-    out["TPM_clean_q3"] = clean.quantile(0.75, axis=1).to_numpy()
-    out["n_samples"] = values.shape[1]
-    out["n_detected"] = (values > 0).sum(axis=1).to_numpy()
+    assign_stats(out, values, clean)
     out["processing_pipeline"] = PIPELINE
     out["notes"] = (
         "Open GDC MMRF-COMMPASS STAR-counts TPMs; one deterministic "
         "primary bone-marrow CD138+ sample per case; GENCODE v36 IDs "
         "harmonized to Ensembl release 112."
     )
-    numeric_cols = [
-        "TPM_median",
-        "TPM_q1",
-        "TPM_q3",
-        "TPM_mean",
-        "TPM_clean_median",
-        "TPM_clean_q1",
-        "TPM_clean_q3",
-    ]
-    out[numeric_cols] = out[numeric_cols].round(6)
-    return out
+    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
 
 
-def _upsert(
+def _upsert_summary(
     path: Path,
     new_rows: pd.DataFrame,
     *,
     cancer_code: str,
     source_cohort: str,
 ) -> pd.DataFrame:
+    """Per-gene reference write — uses the sharded layout."""
+    return upsert_to_shard(
+        path,
+        new_rows,
+        source_cohort=source_cohort,
+        cancer_codes=[cancer_code],
+    )
+
+
+def _upsert_samples(
+    path: Path,
+    new_rows: pd.DataFrame,
+    *,
+    cancer_code: str,
+    source_cohort: str,
+) -> pd.DataFrame:
+    """Samples manifest write — single CSV, not sharded."""
     if path.exists():
         existing = pd.read_csv(path)
         keep = ~(
             existing["cancer_code"].astype(str).eq(cancer_code)
             & existing["source_cohort"].astype(str).eq(source_cohort)
         )
-        out = pd.concat([existing[keep], new_rows], ignore_index=True)
+        out = pd.concat(
+            [existing[keep].reindex(columns=new_rows.columns), new_rows],
+            ignore_index=True,
+        )
     else:
         out = new_rows.copy()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -452,13 +460,13 @@ def main() -> None:
         ensembl_release=args.ensembl_release,
     )
     summary = _summarize(gene_table, values)
-    _upsert(
+    _upsert_summary(
         args.summary_output,
         summary,
         cancer_code=CANCER_CODE,
         source_cohort=SOURCE_COHORT,
     )
-    _upsert(
+    _upsert_samples(
         args.samples_output,
         manifest,
         cancer_code=CANCER_CODE,
