@@ -547,6 +547,65 @@ def cancer_family_panels():
     }
 
 
+# ---------- Cancer lineage panels (parent → child discrimination) ----------
+#
+# Sibling to ``cancer_family_panels`` but at the child level. Once the
+# parent family wins (e.g. SQUAMOUS), the lineage panel for each child
+# (BRCA_BASAL vs ESCA vs LUSC vs CESC vs HNSC vs BLCA_BASAL) picks the
+# right child cohort using tissue-of-origin markers rather than the
+# basal-keratin set every squamous cancer shares.
+#
+# Schema: Family, Child_Code, Symbol, Ensembl_Gene_ID, Direction
+#   Direction is "high" (gene elevated in the child) or "low" (gene
+#   depressed — e.g. NKX2-1 low in LUSC discriminates from LUAD).
+#
+# Curated per GitHub issue #266 and regenerated via
+# ``scripts/generate_cancer_lineage_panels.py``.
+
+
+def cancer_lineage_panels_df(family=None, child_code=None):
+    """DataFrame of child-level lineage-discriminating markers.
+
+    ``family`` filters to one parent family (e.g. ``"SQUAMOUS"``);
+    ``child_code`` filters to one child cohort (e.g. ``"BRCA_BASAL"``).
+    Pass both for the panel of one specific child.
+    """
+    df = get_data("cancer-lineage-panels")
+    if family is not None:
+        df = df[df["Family"] == family]
+    if child_code is not None:
+        df = df[df["Child_Code"] == child_code]
+    return df
+
+
+def cancer_lineage_panel(child_code):
+    """List of (Symbol, Direction) tuples for one child cohort.
+
+    Returns ``[("KLK3", "high"), ("KLK2", "high"), …]``. Pair this
+    with cohort expression to score a candidate child cohort during
+    the second pass of parent-then-child cancer-type scoring.
+    """
+    df = cancer_lineage_panels_df(child_code=child_code)
+    return list(zip(df["Symbol"], df["Direction"]))
+
+
+def cancer_lineage_panels():
+    """Nested dict: ``{family: {child_code: [(Symbol, Direction), …]}}``.
+
+    Use for the second-pass child-resolution step after a parent
+    family has won the first-pass cancer-type scoring.
+    """
+    df = get_data("cancer-lineage-panels")
+    out: dict[str, dict[str, list[tuple[str, str]]]] = {}
+    for (family, child), group in df.groupby(
+        ["Family", "Child_Code"], sort=False,
+    ):
+        out.setdefault(str(family), {})[str(child)] = list(
+            zip(group["Symbol"], group["Direction"])
+        )
+    return out
+
+
 # ---------- Housekeeping genes ----------
 def housekeeping_gene_names(core_only=False):
     df = get_data("housekeeping-genes")

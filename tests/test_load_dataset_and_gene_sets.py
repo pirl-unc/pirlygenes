@@ -296,6 +296,42 @@ def test_cancer_family_panel_loader():
     assert "GFAP" not in gsc.cancer_family_panel("PROSTATE")
 
 
+def test_cancer_lineage_panel_loader():
+    """Issue #266 lineage discrimination panels — pick the right
+    child cohort once a parent family has won the first-pass scoring."""
+    panels = gsc.cancer_lineage_panels()
+    # Every parent family from issue #266 should be present
+    assert {
+        "SQUAMOUS", "GI_ADENO", "HEPATOBILIARY", "LUNG",
+        "ENDOCRINE", "GU_RENAL", "GYNECOLOGIC_GLANDULAR",
+        "NET", "BONE_EWS", "MESENCHYMAL",
+    } <= set(panels)
+
+    # BRCA_BASAL is the canonical demo from the issue — SCGB2A2 /
+    # mammaglobin should be its top mammary discriminator from
+    # other squamous cancers.
+    brca_basal = dict(gsc.cancer_lineage_panel("BRCA_BASAL"))
+    assert brca_basal["SCGB2A2"] == "high"
+    assert brca_basal["FOXA1"] == "high"
+
+    # PRAD lineage panel: kallikreins + TMPRSS2 + FOLH1 (PSMA)
+    prad = dict(gsc.cancer_lineage_panel("PRAD"))
+    assert prad["KLK3"] == "high"
+    assert prad["FOLH1"] == "high"
+
+    # Negative-discrimination: LUSC has NKX2-1 LOW (distinguishes
+    # from LUAD where NKX2-1 / TTF-1 is high).
+    lusc = dict(gsc.cancer_lineage_panel("LUSC"))
+    assert lusc["NKX2-1"] == "low"
+    assert lusc["SOX2"] == "high"
+
+    # Filter-by-family DataFrame view
+    squamous = gsc.cancer_lineage_panels_df(family="SQUAMOUS")
+    assert set(squamous["Child_Code"]) == {
+        "BRCA_BASAL", "BLCA_BASAL", "ESCA", "HNSC", "LUSC", "CESC",
+    }
+
+
 def test_gene_loaders_are_exported_from_package():
     """Core panel loaders should be reachable via `from pirlygenes import ...`."""
     import pirlygenes
