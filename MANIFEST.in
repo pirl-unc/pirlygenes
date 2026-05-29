@@ -1,0 +1,10 @@
+# sdist content control. Mirror exclusions in pyproject.toml's
+# [tool.setuptools.exclude-package-data] for the WHEEL — without this
+# MANIFEST.in the sdist auto-includes every git-tracked file and
+# the resulting .tar.gz balloons past PyPI's 100 MiB limit.
+#
+# Large reference data is downloaded on first use from the GitHub
+# Release matching the installed version. See pirlygenes/data_bundle.py.
+recursive-exclude pirlygenes/data/cancer-reference-expression *
+exclude pirlygenes/data/pan-cancer-expression.csv
+exclude pirlygenes/data/hpa-cell-type-expression.csv

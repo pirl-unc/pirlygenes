@@ -28,6 +28,14 @@ version = {attr = "pirlygenes.version.__version__"}
 [tool.setuptools.packages.find]
 include = ["pirlygenes*"]
 
+# Disable VCS auto-discovery of files. Without this, setuptools defaults
+# to include_package_data=True when git is detected, which auto-ships
+# every git-tracked file and IGNORES the package-data positive list
+# below — that's how the 5.3.0 wheel ballooned to 331 MB before we
+# caught it. Forcing False makes the package-data list authoritative.
+[tool.setuptools]
+include-package-data = false
+
 [project.optional-dependencies]
 test = [
     "pytest",
@@ -46,12 +54,36 @@ test = [
 pirlygenes = "pirlygenes.cli:main"
 
 [build-system]
-requires = [
-    "setuptools>=60",
-    "setuptools-scm>=8.0"]
+# setuptools-scm was removed in v5.3.0 because it was auto-including
+# every git-tracked file in the wheel, which overrode our explicit
+# exclude-package-data rules and pushed the wheel past PyPI's 100 MiB
+# limit. Version comes from pirlygenes/version.py via the
+# [tool.setuptools.dynamic] attr lookup, so scm isn't needed.
+requires = ["setuptools>=60"]
 
 [tool.setuptools.package-data]
-pirlygenes = ["data/*"]
+# Only small curated panels ship in the wheel — the heavy per-cohort
+# expression summaries (cancer-reference-expression/*, pan-cancer-
+# expression.csv, hpa-cell-type-expression.csv; ~340 MB total) are
+# downloaded on first access from the GitHub Release matching the
+# installed version. See pirlygenes/data_bundle.py.
+pirlygenes = [
+    "data/*.csv",            # small curated panels (cancer-key-genes, CTAs, etc.)
+    "data/*.csv.gz",         # samples-manifest + any tiny gzipped panel
+    "data/*.yaml",           # expression_sources.yaml
+]
+
+# What we deliberately DO NOT ship in the wheel (these get fetched
+# lazily by pirlygenes.data_bundle):
+#   data/cancer-reference-expression/*      ~325 MB
+#   data/pan-cancer-expression.csv          ~11 MB
+#   data/hpa-cell-type-expression.csv       ~7 MB
+[tool.setuptools.exclude-package-data]
+pirlygenes = [
+    "data/cancer-reference-expression/*",
+    "data/pan-cancer-expression.csv",
+    "data/hpa-cell-type-expression.csv",
+]
 
 [tool.pytest.ini_options]
 addopts = "-n auto"

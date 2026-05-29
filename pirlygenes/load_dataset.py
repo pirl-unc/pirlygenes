@@ -10,32 +10,85 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Loader for bundled + downloaded data files.
+
+Two data roots are checked in order:
+
+  1. ``_BUNDLED_DATA_DIR`` — files shipped in the wheel (small panels,
+     registries) AND files present in a git-checkout's
+     ``pirlygenes/data/`` (the dev workflow keeps everything here).
+  2. ``_DOWNLOADED_DATA_DIR`` — the cache populated by
+     :mod:`pirlygenes.data_bundle` (large per-cohort summaries fetched
+     from the GitHub Release matching the installed version).
+
+Any file present in (1) wins over (2) — this keeps dev iteration on
+the cancer-reference-expression shards working without forcing a re-
+download. In a fresh wheel install, (1) will only have the small
+panels and (2) supplies the heavy data.
+
+When a callable here requests one of the
+:data:`pirlygenes.data_bundle.DOWNLOADABLE_PATHS` items and it's
+missing from both roots, :func:`pirlygenes.data_bundle.ensure_local`
+triggers a one-time download from the GitHub Release.
+"""
+
 from pathlib import Path
 
 import pandas as pd
 
-_DATA_DIR = Path(__file__).parent / "data"
+from . import data_bundle
+
+_BUNDLED_DATA_DIR = Path(__file__).parent / "data"
+_DOWNLOADED_DATA_DIR = data_bundle.cache_dir()
 _DATASET_PATHS = None
 _CACHED_DATAFRAMES = {}
 
 
-def _shard_directories() -> list[Path]:
-    """Subdirectories under ``data/`` that hold sharded CSV datasets.
+# Back-compat alias — many call sites still import _DATA_DIR.
+_DATA_DIR = _BUNDLED_DATA_DIR
 
-    A shard directory ``data/<name>/`` containing one or more
+
+def _data_roots() -> list[Path]:
+    """Roots checked when resolving a data file, in priority order."""
+    return [_BUNDLED_DATA_DIR, _DOWNLOADED_DATA_DIR]
+
+
+def _ensure_downloadable(name: str) -> None:
+    """If ``name`` (a file or dir basename) maps to a downloadable
+    bundle item missing from disk, fetch it. No-op otherwise."""
+    stem_with_csv = name if name.endswith(".csv") else f"{name}.csv"
+    stem = name.removesuffix(".csv").removesuffix(".gz")
+    candidates = {name, stem, stem_with_csv, stem_with_csv.removesuffix(".csv")}
+    for cand in candidates:
+        if data_bundle.is_downloadable(cand):
+            # Only fetch if missing — keep the fast path hot.
+            if data_bundle.find(cand) is None:
+                data_bundle.ensure_local()
+            return
+
+
+def _shard_directories() -> list[Path]:
+    """Subdirectories holding sharded CSV datasets, gathered from both
+    the bundled and downloaded data roots.
+
+    A shard directory ``<root>/<name>/`` containing one or more
     ``*.csv.gz`` files acts as a single logical dataset addressable
     as ``<name>`` via :func:`get_data` — its shards are loaded and
     concatenated transparently. Used to keep individual file sizes
     under GitHub's 100 MB push limit; cancer-reference-expression is
     sharded per ``source_cohort``.
     """
-    out: list[Path] = []
-    for child in sorted(_DATA_DIR.iterdir()):
-        if not child.is_dir():
+    seen: dict[str, Path] = {}
+    for root in _data_roots():
+        if not root.exists():
             continue
-        if any(child.glob("*.csv")) or any(child.glob("*.csv.gz")):
-            out.append(child)
-    return out
+        for child in sorted(root.iterdir()):
+            if not child.is_dir():
+                continue
+            if any(child.glob("*.csv")) or any(child.glob("*.csv.gz")):
+                # Bundled root wins over downloaded root on name conflicts.
+                seen.setdefault(child.name, child)
+    return [seen[name] for name in sorted(seen)]
 
 
 def _shard_paths(shard_dir: Path) -> list[Path]:
@@ -43,17 +96,21 @@ def _shard_paths(shard_dir: Path) -> list[Path]:
 
 
 def get_all_csv_paths() -> list:
-    """
-    Get paths to all CSV files in the data directory.
+    """Paths to every top-level CSV file across both data roots.
 
-    Picks up both plain ``.csv`` and gzipped ``.csv.gz`` files, keyed
-    consistently by their underlying ``.csv`` name. Sharded datasets
-    (see :func:`_shard_directories`) are not enumerated here — they
-    are loaded as a single logical CSV by :func:`get_data`.
+    Picks up both plain ``.csv`` and gzipped ``.csv.gz`` files. Sharded
+    datasets (see :func:`_shard_directories`) are not enumerated here —
+    they are loaded as a single logical CSV by :func:`get_data`.
 
-    Returns a list of Path objects for each CSV file.
+    On name conflicts, the bundled root wins over the downloaded root.
     """
-    return sorted(list(_DATA_DIR.glob("*.csv")) + list(_DATA_DIR.glob("*.csv.gz")))
+    seen: dict[str, Path] = {}
+    for root in _data_roots():
+        if not root.exists():
+            continue
+        for p in sorted(list(root.glob("*.csv")) + list(root.glob("*.csv.gz"))):
+            seen.setdefault(p.name, p)
+    return list(seen.values())
 
 
 def _load_shard_directory(shard_dir: Path) -> pd.DataFrame:
@@ -73,7 +130,11 @@ def load_all_dataframes():
     under their underlying ``.csv`` name so callers don't need to know
     the on-disk compression format. Sharded directories yield once as the
     full concatenated frame, keyed under ``<dirname>.csv``.
+
+    Triggers a one-time download of the heavy data bundle if needed.
     """
+    data_bundle.ensure_local()
+    _invalidate_dataset_paths()
     for csv_path in get_all_csv_paths():
         df = pd.read_csv(str(csv_path), low_memory=False)
         key = csv_path.name.removesuffix(".gz")
@@ -87,6 +148,11 @@ def load_all_dataframes_dict():
     Dictionary of csv_file -> df for all CSV files in the data directory
     """
     return {csv_file: df for csv_file, df in load_all_dataframes()}
+
+
+def _invalidate_dataset_paths() -> None:
+    global _DATASET_PATHS
+    _DATASET_PATHS = None
 
 
 def _dataset_paths():
@@ -116,7 +182,19 @@ def get_data(name, _dataframes_dict=None):
         candidates.append(candidate + ".csv")
 
     if _dataframes_dict is None:
+        # Trigger download for downloadable items before resolving paths,
+        # so the _dataset_paths cache sees the newly-extracted files.
+        _ensure_downloadable(name)
         paths = _dataset_paths()
+
+        # If the lookup misses but the requested name is a downloadable
+        # item, force a path-cache rebuild after the fetch and retry once.
+        miss = not any(c in paths for c in candidates)
+        if miss and data_bundle.is_downloadable(name):
+            data_bundle.ensure_local()
+            _invalidate_dataset_paths()
+            paths = _dataset_paths()
+
         for candidate in candidates:
             if candidate in paths:
                 resolved = paths[candidate]

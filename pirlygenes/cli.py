@@ -35,7 +35,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import data_inventory, downloads
+from . import data_bundle, data_inventory, downloads
 from .version import __version__
 
 
@@ -126,12 +126,29 @@ def _build_parser() -> argparse.ArgumentParser:
 
     data_parser = subparsers.add_parser(
         "data",
-        help="Inspect bundled cohort-level reference data.",
+        help="Inspect + manage the packaged reference data (bundled "
+             "panels + downloadable cohort summaries).",
     )
     data_sub = data_parser.add_subparsers(dest="data_action")
     data_sub.add_parser(
         "list",
-        help="Summarize cancer-reference-expression bundled rows by cohort.",
+        help="Summarize cancer-reference-expression rows by cohort "
+             "(triggers a download if the bundle isn't local yet).",
+    )
+    data_sub.add_parser(
+        "status",
+        help="Report which downloadable bundle paths are present in "
+             "the local cache for this package version.",
+    )
+    data_sub.add_parser(
+        "cache-dir",
+        help="Print the on-disk cache dir for the downloaded data "
+             "bundle (override via PIRLYGENES_BUNDLED_DATA).",
+    )
+    data_sub.add_parser(
+        "fetch",
+        help="Explicitly download the data bundle from the GitHub "
+             "Release matching the installed version.",
     )
 
     build_parser = subparsers.add_parser(
@@ -204,6 +221,48 @@ def cmd_data_list(_args: argparse.Namespace) -> int:
     snapshot = data_inventory.summarize_inventory()
     sys.stdout.write(data_inventory.render_inventory(snapshot) + "\n")
     return 0
+
+
+def _format_bytes(n: int) -> str:
+    units = ["B", "KB", "MB", "GB"]
+    f = float(n)
+    for u in units:
+        if f < 1024 or u == units[-1]:
+            return f"{f:6.1f} {u}"
+        f /= 1024
+    return f"{f:.1f} TB"
+
+
+def cmd_data_status(_args: argparse.Namespace) -> int:
+    snap = data_bundle.status()
+    sys.stdout.write(f"pirlygenes data bundle for v{snap['version']}\n")
+    sys.stdout.write(f"  cache dir   : {snap['cache_dir']}\n")
+    sys.stdout.write(f"  release URL : {snap['release_url']}\n")
+    sys.stdout.write(f"  all local?  : {snap['all_local']}\n")
+    sys.stdout.write("  items:\n")
+    for name, info in snap["items"].items():
+        mark = "✓" if info["present"] else "✗"
+        size = _format_bytes(info["size_bytes"]) if info["present"] else "       "
+        sys.stdout.write(f"    {mark}  {size}  {name}\n")
+    if not snap["all_local"]:
+        sys.stdout.write(
+            "\nRun `pirlygenes data fetch` to download missing items.\n"
+        )
+    return 0
+
+
+def cmd_data_cache_dir(_args: argparse.Namespace) -> int:
+    sys.stdout.write(str(data_bundle.cache_dir()) + "\n")
+    return 0
+
+
+def cmd_data_fetch(_args: argparse.Namespace) -> int:
+    try:
+        data_bundle.fetch(verbose=True)
+        return 0
+    except Exception as exc:
+        sys.stderr.write(f"pirlygenes data fetch failed: {exc}\n")
+        return 1
 
 
 def cmd_build(args: argparse.Namespace) -> int:
@@ -351,6 +410,9 @@ _DOWNLOADS_DISPATCH = {
 
 _DATA_DISPATCH = {
     "list": cmd_data_list,
+    "status": cmd_data_status,
+    "cache-dir": cmd_data_cache_dir,
+    "fetch": cmd_data_fetch,
 }
 
 
@@ -382,7 +444,9 @@ def main(argv: list[str] | None = None) -> int:
     if subcommand == "data":
         handler = _DATA_DISPATCH.get(args.data_action)
         if handler is None:
-            sys.stderr.write("usage: pirlygenes data {list}\n")
+            sys.stderr.write(
+                "usage: pirlygenes data {list,status,cache-dir,fetch}\n"
+            )
             return 2
         return handler(args)
 
