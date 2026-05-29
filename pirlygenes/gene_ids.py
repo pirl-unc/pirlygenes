@@ -54,6 +54,17 @@ def _index_cache_path(release: int):
     return _Path(base) / "pirlygenes" / f"ensembl-{release}-id-index.pkl"
 
 
+# Minimum expected dictionary size. A real human Ensembl release has
+# ~20k–80k genes and ~200k–400k transcripts. Anything below this
+# threshold is presumed to be a test-fixture or partial-build cache
+# (e.g. a fake-genome unit test that accidentally wrote into the real
+# user cache) and is treated as corrupt — the cache is rebuilt from
+# pyensembl. Fixed in 5.4.1 after such a 1-entry fixture cache was
+# found in a developer's home cache during release prep.
+_MIN_SANE_GENE_COUNT = 1000
+_MIN_SANE_TRANSCRIPT_COUNT = 5000
+
+
 def _load_index_cache(release: int):
     """Return (gene_dict, transcript_dict) from the pickle cache, or None.
 
@@ -72,7 +83,15 @@ def _load_index_cache(release: int):
             return None
         if payload.get("release") != release:
             return None
-        return payload["gene_id_to_name"], payload["transcript_id_to_gene_name"]
+        gene_map = payload["gene_id_to_name"]
+        transcript_map = payload["transcript_id_to_gene_name"]
+        if (
+            len(gene_map) < _MIN_SANE_GENE_COUNT
+            or len(transcript_map) < _MIN_SANE_TRANSCRIPT_COUNT
+        ):
+            # Suspiciously tiny — treat as corrupt + rebuild.
+            return None
+        return gene_map, transcript_map
     except Exception:
         return None
 

@@ -55,7 +55,7 @@ def test_pick_best_gene_prefers_more_protein_coding():
     assert gi.pick_best_gene([g1, g2]).id == "ENSG2"
 
 
-def test_lookup_functions_with_fake_genomes(monkeypatch):
+def test_lookup_functions_with_fake_genomes(monkeypatch, tmp_path):
     gene_a = FakeGene("ENSGA", "GENEA")
     tx_a = SimpleNamespace(gene_name="GENEA")
     by_name_gene = FakeGene("ENSGX", "CD276", gene_name="CD276")
@@ -77,6 +77,15 @@ def test_lookup_functions_with_fake_genomes(monkeypatch):
     monkeypatch.setattr(gi, "_transcript_id_to_gene_name", {})
     monkeypatch.setattr(gi, "_gene_id_miss_cache", set())
     monkeypatch.setattr(gi, "_transcript_id_miss_cache", set())
+    # Redirect the on-disk pickle cache so the fake-genome's fixture
+    # data ({ENSGA: GENEA}) doesn't leak into the user's real
+    # ~/.cache/pirlygenes/ensembl-<release>-id-index.pkl. Bug fixed
+    # in 5.4.1 after a stale fixture cache was found in the
+    # developer's home cache during release prep.
+    monkeypatch.setattr(
+        gi, "_index_cache_path",
+        lambda release: tmp_path / f"fake-ensembl-{release}-id-index.pkl",
+    )
 
     assert gi.find_gene_name_from_ensembl_gene_id("ENSGA", verbose=False) == "GENEA"
     assert (
@@ -92,7 +101,9 @@ def test_lookup_functions_with_fake_genomes(monkeypatch):
     assert gi.find_canonical_gene_id_and_name("CD276") == ("ENSGX", "CD276")
 
 
-def test_lookup_functions_fall_back_to_older_release_on_latest_miss(monkeypatch):
+def test_lookup_functions_fall_back_to_older_release_on_latest_miss(
+    monkeypatch, tmp_path,
+):
     older_gene = FakeGene("ENSGOLD", "OLDER")
     older_tx = SimpleNamespace(gene_name="OLDER")
     genomes = [
@@ -109,6 +120,11 @@ def test_lookup_functions_fall_back_to_older_release_on_latest_miss(monkeypatch)
     monkeypatch.setattr(gi, "_transcript_id_to_gene_name", {})
     monkeypatch.setattr(gi, "_gene_id_miss_cache", set())
     monkeypatch.setattr(gi, "_transcript_id_miss_cache", set())
+    # See test_lookup_functions_with_fake_genomes for context.
+    monkeypatch.setattr(
+        gi, "_index_cache_path",
+        lambda release: tmp_path / f"fake-ensembl-{release}-id-index.pkl",
+    )
 
     assert gi.find_gene_name_from_ensembl_gene_id("ENSGOLD", verbose=False) == "OLDER"
     assert (
