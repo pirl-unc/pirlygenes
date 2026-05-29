@@ -428,6 +428,12 @@ def _summarize(
     assign_stats(out, values, clean)
     out["processing_pipeline"] = PIPELINE_PREFIX
     out["notes"] = source.notes
+    # v5.4 schema requires this be set. All four heme cohorts (CML,
+    # MDS, MCL, MPN) are primary-disease diagnostic samples
+    # (PBMC / BM aspirate / lymph biopsy) — no metastasis variants,
+    # no cell lines.
+    out["tumor_origin"] = "primary"
+    out["metastasis_site"] = pd.NA
     return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
 
 

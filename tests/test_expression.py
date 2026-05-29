@@ -206,12 +206,13 @@ def test_imported_specific_reference_keeps_one_default_source_per_code():
     assert df[df["cancer_code"] == "RT"]["source_cohort"].tolist() == [
         "TARGET_RT_2017"
     ]
-    # GBM and LGG are the two TCGA codes we deliberately skipped in
-    # the TCGA-via-Treehouse sweep (Treehouse uses one "glioma"
-    # bucket; needs a TSS-code-based split). They should still be
-    # unrepresented in the bundled references.
-    assert df[df["cancer_code"] == "GBM"].empty
-    assert df[df["cancer_code"] == "LGG"].empty
+    # GBM and LGG are populated via the TCGA-via-Treehouse glioma
+    # split (sweep_treehouse_tcga_glioma_split.py landed in commit
+    # c45b9ca). Both should have exactly one packaged source row each.
+    gbm_sources = df[df["cancer_code"] == "GBM"]["source_cohort"].tolist()
+    lgg_sources = df[df["cancer_code"] == "LGG"]["source_cohort"].tolist()
+    assert gbm_sources == ["TREEHOUSE_POLYA_25_01_TCGA_SUBSET"]
+    assert lgg_sources == ["TREEHOUSE_POLYA_25_01_TCGA_SUBSET"]
 
 
 def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():
@@ -601,13 +602,30 @@ def test_cancer_expression_empty_gene_subset_is_uniform_across_sources():
 
 
 def test_cancer_expression_uses_parent_reference_for_child_labels():
-    basal = cancer_expression("BRCA_Basal", genes=["ERBB2"])
-    parent = cancer_expression("BRCA", genes=["ERBB2"])
-    assert basal.reset_index(drop=True).equals(parent.reset_index(drop=True))
-
+    # PCN (Solitary Plasmacytoma) has no direct reference cohort and
+    # should fall back to its parent MM (CoMMpass). This is the
+    # canonical parent-fallback test.
     pcn = cancer_expression("PCN", genes=["TNFRSF17"])
     mm = cancer_expression("MM", genes=["TNFRSF17"])
     assert pcn.reset_index(drop=True).equals(mm.reset_index(drop=True))
+
+
+def test_cancer_expression_prefers_direct_reference_over_parent():
+    # BRCA_Basal has its own direct reference cohort
+    # (TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50, from the PAM50 split
+    # landed in commit f358f5e). It should NOT fall back to the BRCA
+    # umbrella — that would dilute the basal-specific signal with
+    # luminal/HER2/etc. samples. ERBB2 expression differs sharply
+    # between basal (~60 TPM) and the BRCA umbrella average (~135
+    # TPM, driven by HER2-enriched cases).
+    basal = cancer_expression("BRCA_Basal", genes=["ERBB2"])
+    parent = cancer_expression("BRCA", genes=["ERBB2"])
+    assert not basal.reset_index(drop=True).equals(
+        parent.reset_index(drop=True)
+    ), (
+        "BRCA_Basal should use its direct PAM50 reference, not fall "
+        "back to the BRCA umbrella."
+    )
 
 
 def test_cancer_expression_source_candidates_cover_requested_gaps():
@@ -697,11 +715,16 @@ def test_cancer_expression_reference_status_is_uniform_for_parent_labels():
         ["BRCA_Basal", "PCN", "SARC_GIST", "CLL"],
     ).set_index("cancer_code")
 
-    assert status.loc["BRCA_Basal", "reference_status"] == "parent_reference"
-    assert status.loc["BRCA_Basal", "reference_code"] == "BRCA"
+    # BRCA_Basal has its own PAM50 direct-reference shard since
+    # commit f358f5e — should NOT fall back to BRCA parent.
+    assert status.loc["BRCA_Basal", "reference_status"] == "direct_reference"
+    assert status.loc["BRCA_Basal", "reference_code"] == "BRCA_Basal"
+    # PCN still has no direct cohort, falls back to MM.
     assert status.loc["PCN", "reference_status"] == "parent_reference"
     assert status.loc["PCN", "reference_code"] == "MM"
-    assert status.loc["SARC_GIST", "reference_code"] == "SARC"
+    # SARC_GIST has its own direct reference since commit e3cc372.
+    assert status.loc["SARC_GIST", "reference_status"] == "direct_reference"
+    assert status.loc["SARC_GIST", "reference_code"] == "SARC_GIST"
     assert status.loc["CLL", "reference_status"] == "direct_reference"
 
 
