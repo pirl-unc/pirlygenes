@@ -1,17 +1,15 @@
-"""GPL570 (Affymetrix HG-U133 Plus 2.0) microarray → TPM-proxy builder.
+"""Generic GEO microarray → TPM-proxy builder.
 
-Microarray expression is not the same scale as RNA-seq TPM. GPL570
-arrays measure 54,675 probes; each probe maps to 0..1 genes. Multi-
-probe genes are usually summarized here by *max* (most expressed
-probe set wins).
+Originally written for Affymetrix GPL570 (HG-U133 Plus 2.0); v5.5.0
+generalized to any GEO microarray platform whose ``acc.cgi`` text
+view exposes a probe→gene-symbol table (Affymetrix, Agilent, Illumina
+BeadChip, etc.). The pipeline is unchanged across platforms:
 
-GEO's series_matrix files typically ship intensities that have been
-RMA- or GC-RMA-normalized, which means they're already on a **log2**
-scale. A handful of older studies ship MAS5 instead, which is on a
-*linear* scale. The builder sniffs which one a given matrix uses
-(values mostly < 50 → assume log2; otherwise leave linear), and
-exponentiates only when needed. Either way the post-exponentiation
-matrix is then per-sample sum-to-1e6 to produce a TPM PROXY.
+  1. Parse the series_matrix.txt.gz → per-sample probe-intensity table
+  2. Sniff log2 vs linear (values mostly < 50 → log2; else linear)
+  3. Probe → gene rollup via *max* (most-expressed probe wins)
+  4. Anti-log2 (if needed) → per-sample sum-to-1e6 = TPM PROXY
+  5. HUGO → Ensembl harmonization
 
 **Caveats baked into the output:**
 - This is *not* directly comparable to RNA-seq TPM in absolute
@@ -21,17 +19,22 @@ matrix is then per-sample sum-to-1e6 to produce a TPM PROXY.
   expressed at all in this sample?" questions) but absolute TPM
   values should not be cross-compared to RNA-seq cohorts.
 - Sniffing log2 vs linear is heuristic; if you know the input is
-  MAS5 (or some other linear-scale variant), this builder will leave
+  MAS5 (Affy) / linear-scale Agilent / etc., this builder will leave
   it linear and the sum-to-1e6 result is still a valid TPM proxy.
 
 The caveat is encoded in two places: the ``notes`` column carries a
 human-readable warning, and ``processing_pipeline`` is tagged
-``gpl570_microarray_tpm_proxy_...`` so programmatic consumers can
-detect-and-filter.
+``<platform_lower>_microarray_tpm_proxy_...`` so programmatic consumers
+can detect-and-filter.
 
-Probe→gene mapping uses GPL570's standard GEO platform-table
-(downloaded via GEO's ``acc.cgi`` text view) — the ``Gene symbol``
-column gives HUGO symbols.
+Symbol-column detection covers the common platform conventions:
+``Gene symbol`` (Affymetrix), ``GeneSymbol`` (Agilent), ``Symbol``,
+``GENE_SYMBOL``, ``ILMN_Gene`` (Illumina).
+
+Tested platforms:
+- GPL570  — Affymetrix HG-U133 Plus 2.0
+- GPL22303 — Agilent SurePrint G3 Human GE v3
+- GPL6480  — Agilent Human GE 4x44K
 """
 
 from __future__ import annotations
@@ -54,11 +57,22 @@ from ..expression.stats import (
     upsert_to_shard,
 )
 
-GPL570_ANNOT_URL = (
-    "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi"
-    "?targ=self&form=text&view=full&acc=GPL570"
-)
-GPL570_ANNOT_LOCAL = "GPL570.platform_table.txt"
+
+def annot_url_for(platform_id: str) -> str:
+    """Build the GEO ``acc.cgi`` text-view URL for a platform table."""
+    return (
+        "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi"
+        f"?targ=self&form=text&view=full&acc={platform_id}"
+    )
+
+
+def annot_local_filename(platform_id: str) -> str:
+    return f"{platform_id}.platform_table.txt"
+
+
+# Back-compat aliases for the GPL570-only entry points used pre-v5.5.0
+GPL570_ANNOT_URL = annot_url_for("GPL570")
+GPL570_ANNOT_LOCAL = annot_local_filename("GPL570")
 
 
 def _download(url: str, dest: Path) -> Path:
@@ -79,8 +93,21 @@ def _open_maybe_gzip(path: Path):
     return path.open("r", encoding="utf-8", errors="replace")
 
 
-def _parse_gpl570_annot(annot_path: Path) -> pd.DataFrame:
-    """Return DataFrame with columns: probe_id, gene_symbol."""
+def parse_geo_platform_table(annot_path: Path) -> pd.DataFrame:
+    """Return DataFrame with columns ``probe_id``, ``gene_symbol`` from
+    a GEO platform-table text dump.
+
+    Covers the common platform conventions:
+      - probe column:  ``ID`` / ``ID_REF`` / ``Probe Set ID`` /
+                       ``ProbeName`` (Agilent) / ``ProbeID``
+      - symbol column: ``Gene symbol`` / ``Gene Symbol`` (Affymetrix) /
+                       ``GeneSymbol`` (Agilent) / ``Symbol`` /
+                       ``GENE_SYMBOL`` / ``ILMN_Gene`` (Illumina)
+
+    Multi-symbol cells (e.g. Affymetrix's ``DDR1 /// MIR4640``) are
+    split on ``///`` and the first symbol is kept (most-expressed
+    paralog wins after the per-gene max rollup downstream).
+    """
     with _open_maybe_gzip(annot_path) as f:
         for line in f:
             if line.startswith("!platform_table_begin"):
@@ -96,19 +123,38 @@ def _parse_gpl570_annot(annot_path: Path) -> pd.DataFrame:
             rows.append(parts[: len(header)])
     df = pd.DataFrame(rows, columns=header)
     probe_col = next(
-        (c for c in ("ID", "ID_REF", "Probe Set ID") if c in df.columns), None
-    )
-    symbol_col = next(
-        (c for c in ("Gene symbol", "Gene Symbol", "Symbol") if c in df.columns),
+        (c for c in (
+            "ID", "ID_REF", "Probe Set ID", "ProbeName", "ProbeID",
+        ) if c in df.columns),
         None,
     )
-    if probe_col is None or symbol_col is None:
-        raise RuntimeError(
-            f"GPL570 annot missing probe/symbol cols: {list(df.columns)[:15]}"
-        )
-    out = df[[probe_col, symbol_col]].rename(
-        columns={probe_col: "probe_id", symbol_col: "gene_symbol"}
+    symbol_col = next(
+        (c for c in (
+            "Gene symbol", "Gene Symbol", "GeneSymbol",
+            "Symbol", "GENE_SYMBOL", "ILMN_Gene",
+        ) if c in df.columns),
+        None,
     )
+    if probe_col is None:
+        raise RuntimeError(
+            f"GEO platform table missing probe id column: "
+            f"{list(df.columns)[:15]}"
+        )
+
+    # Some Agilent "SystematicName Version" platforms (e.g. GPL22303)
+    # ship NO separate symbol column — the ``ID`` column itself holds
+    # the SystematicName, which is HUGO for known genes and a GenBank
+    # accession or systematic name for unannotated probes. Use the
+    # probe id AS the symbol; downstream HUGO→ENSG harmonization will
+    # filter out non-HUGO entries naturally (pyensembl returns None
+    # for accession IDs).
+    if symbol_col is None:
+        out = df[[probe_col]].rename(columns={probe_col: "probe_id"})
+        out["gene_symbol"] = out["probe_id"]
+    else:
+        out = df[[probe_col, symbol_col]].rename(
+            columns={probe_col: "probe_id", symbol_col: "gene_symbol"}
+        )
     out["gene_symbol"] = (
         out["gene_symbol"].astype(str).str.split("///").str[0].str.strip()
     )
@@ -118,6 +164,10 @@ def _parse_gpl570_annot(annot_path: Path) -> pd.DataFrame:
         & out["probe_id"].ne("")
     ].copy()
     return out
+
+
+# Back-compat alias for the GPL570-only name from the original builder.
+_parse_gpl570_annot = parse_geo_platform_table
 
 
 def parse_series_matrix(
@@ -185,7 +235,7 @@ def parse_series_matrix(
     return matrix, sample_meta
 
 
-def build_gpl570_source(
+def build_microarray_source(
     *,
     series_matrix_url: str,
     series_matrix_filename: str,
@@ -195,6 +245,8 @@ def build_gpl570_source(
     source_project: str,
     citation: str,
     summary_output: Path,
+    platform_id: str = "GPL570",
+    platform_name: str | None = None,
     ensembl_release: int = 112,
     sample_include_regex: str | None = None,
     sample_exclude_regex: str | None = None,
@@ -202,14 +254,29 @@ def build_gpl570_source(
     tumor_origin: str = "primary",
     metastasis_site: str | None = None,
 ) -> int:
+    """Build a single-cohort microarray TPM-proxy shard from a GEO
+    ``series_matrix.txt.gz`` for any platform whose ``acc.cgi`` text
+    view exposes a probe→gene-symbol table.
+
+    ``platform_id`` (e.g. ``"GPL570"``, ``"GPL22303"``, ``"GPL6480"``)
+    drives the annot URL and the on-disk cache key. ``platform_name``
+    is a human-readable label that lands in the ``notes`` column —
+    defaults to ``platform_id`` if not given.
+
+    For multi-cohort series (e.g. GSE85383 = LG-ESS + HG-ESS + UUS +
+    LMS in one platform table), call this once per cancer_code with
+    a different ``sample_include_regex`` that matches the relevant
+    rows' Sample_characteristics_ch1 field (e.g. ``"(?i)low.?grade"``).
+    """
+    platform_name = platform_name or platform_id
     cache_dir.mkdir(parents=True, exist_ok=True)
     series_path = cache_dir / series_matrix_filename
-    annot_path = cache_dir / GPL570_ANNOT_LOCAL
+    annot_path = cache_dir / annot_local_filename(platform_id)
 
     print(f"downloading {series_matrix_filename}...")
     _download(series_matrix_url, series_path)
-    print("downloading GPL570 annotation (via GEO acc.cgi)...")
-    _download(GPL570_ANNOT_URL, annot_path)
+    print(f"downloading {platform_id} annotation (via GEO acc.cgi)...")
+    _download(annot_url_for(platform_id), annot_path)
 
     print("parsing series_matrix...")
     intensities, sample_meta = parse_series_matrix(series_path)
@@ -242,8 +309,8 @@ def build_gpl570_source(
     if intensities.shape[1] == 0:
         raise RuntimeError("no samples after filter")
 
-    print("parsing GPL570 probe→gene annotation...")
-    annot = _parse_gpl570_annot(annot_path)
+    print(f"parsing {platform_id} probe→gene annotation...")
+    annot = parse_geo_platform_table(annot_path)
     print(f"  {len(annot)} probes with HUGO assignment")
 
     print("aggregating probe → gene (max) and converting to TPM-proxy...")
@@ -290,16 +357,17 @@ def build_gpl570_source(
     out["source_cohort"] = source_cohort
     out["source_project"] = source_project
     out["source_version"] = (
-        f"GPL570 microarray; series_matrix log2 intensity → probe-max → "
-        f"anti-log2 → per-sample sum-to-1e6 (TPM proxy); HUGO "
-        f"harmonized to Ensembl release {ensembl_release}"
+        f"{platform_id} microarray; series_matrix log2 intensity → "
+        f"probe-max → anti-log2 → per-sample sum-to-1e6 (TPM proxy); "
+        f"HUGO harmonized to Ensembl release {ensembl_release}"
     )
     assign_stats(out, by_ensg, clean)
     out["processing_pipeline"] = (
-        f"gpl570_microarray_tpm_proxy_ensembl{ensembl_release}_clean_tpm_v1"
+        f"{platform_id.lower()}_microarray_tpm_proxy_ensembl"
+        f"{ensembl_release}_clean_tpm_v1"
     )
     out["notes"] = (
-        f"GPL570 (Affy HG-U133 Plus 2.0) microarray-derived TPM-proxy "
+        f"{platform_name} microarray-derived TPM-proxy "
         f"(n={by_ensg.shape[1]}). Not directly comparable to RNA-seq TPM "
         f"in absolute magnitude — preserves within-sample gene rank only. "
         f"Citation: {citation}. {extra_notes}"
@@ -318,4 +386,21 @@ def build_gpl570_source(
     return by_ensg.shape[1]
 
 
-__all__ = ["build_gpl570_source", "parse_series_matrix"]
+def build_gpl570_source(**kwargs) -> int:
+    """Back-compat thin wrapper — pins ``platform_id="GPL570"`` and
+    ``platform_name="Affymetrix HG-U133 Plus 2.0"`` for the original
+    pre-v5.5.0 callers. New cohorts should call
+    :func:`build_microarray_source` directly with the right platform."""
+    kwargs.setdefault("platform_id", "GPL570")
+    kwargs.setdefault("platform_name", "Affymetrix HG-U133 Plus 2.0 (GPL570)")
+    return build_microarray_source(**kwargs)
+
+
+__all__ = [
+    "build_microarray_source",
+    "build_gpl570_source",
+    "parse_series_matrix",
+    "parse_geo_platform_table",
+    "annot_url_for",
+    "annot_local_filename",
+]

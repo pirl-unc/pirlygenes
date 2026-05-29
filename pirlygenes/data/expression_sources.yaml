@@ -853,3 +853,29 @@ sources:
       the primary-tumor GSE118014_ALVAREZ_2018 PANNET shard — both
       coexist (one primary, one liver-met). REC_NET registry code
       was added with this build.
+
+  # ─── v5.5.0 microarray cohorts ────────────────────────────────────────
+  # First production use of the generalized microarray builder
+  # (build_microarray_source) — previously GPL570-only, now handles
+  # any GEO platform whose acc.cgi text view exposes a probe→gene-
+  # symbol table.
+
+  - id: gse32662-mtc
+    category: expression
+    cancer_codes: [MTC]
+    source_type: geo-microarray
+    builder: scripts/build_v5_5_microarray_cohorts.py
+    accession: GSE32662
+    platform: GPL6480
+    citation: GSE32662 (Pringle 2012 medullary thyroid carcinoma)
+    expected_size_gb: 0.05
+    source_cohort: GSE32662_PRINGLE_2012_MTC
+    tumor_origin: primary
+    special_handling: >
+      Agilent Human Genome 4x44K v1 (GPL6480) microarray series; 49
+      primary MTC cases × ~3 hybridization replicates = 52 samples.
+      series_matrix log2 intensity → probe-max → anti-log2 → per-
+      sample sum-to-1e6 (TPM-proxy). Within-sample gene rank
+      preserved; absolute TPM-proxy NOT comparable to RNA-seq cohorts.
+      Biology sanity check: CALCA (calcitonin, defining MTC marker)
+      p95 ~3400 TPM-proxy; CHGA ~948; CEACAM5 ~481.

@@ -378,6 +378,8 @@ def test_source_cohort_values_are_canonical():
         "TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS",
         "SCLC_UCOLOGNE_2015_TF_DOMINANCE",
         "SCLC_UCOLOGNE_2015",
+        # v5.5.0 microarray cohorts (build_microarray_source)
+        "GSE32662_PRINGLE_2012_MTC",
     }
     present = set(df["source_cohort"].fillna("").astype(str).unique())
     unknown = present - valid

@@ -124,13 +124,38 @@ def test_parse_gpl570_annot_splits_multi_symbol(tmp_path):
     assert by_probe == {"1007_s_at": "DDR1", "1053_at": "RFC2"}
 
 
-def test_parse_gpl570_annot_rejects_bad_file(tmp_path):
-    from pirlygenes.builders.affy_gpl570 import _parse_gpl570_annot
+def test_parse_geo_platform_table_rejects_missing_probe_column(tmp_path):
+    """The probe id column is mandatory. v5.5.0 made the symbol column
+    optional (Agilent SystematicName platforms use the probe id as the
+    symbol), so the error message changed from "missing probe/symbol
+    cols" to "missing probe id column"."""
+    from pirlygenes.builders.affy_gpl570 import parse_geo_platform_table
 
     bad = "!platform_table_begin\nFOO\tBAR\nrow\tdata\n!platform_table_end\n"
     path = _write_annot(tmp_path / "bad.txt", bad)
-    with pytest.raises(RuntimeError, match="missing probe/symbol cols"):
-        _parse_gpl570_annot(path)
+    with pytest.raises(RuntimeError, match="missing probe id column"):
+        parse_geo_platform_table(path)
+
+
+def test_parse_geo_platform_table_falls_back_to_id_when_no_symbol(tmp_path):
+    """Agilent "SystematicName Version" platforms (e.g. GPL22303) ship
+    no separate symbol column — the probe id IS the gene name. The
+    parser uses the probe id as both probe_id and gene_symbol; the
+    downstream HUGO→ENSG harmonization filters out non-HUGO accessions."""
+    from pirlygenes.builders.affy_gpl570 import parse_geo_platform_table
+
+    annot = (
+        "!platform_table_begin\n"
+        "ID\tControlType\tGB_ACC\tSPOT_ID\n"
+        "TP53\t0\tNM_000546\t\n"
+        "A23747\t0\tA23747\t\n"
+        "ERBB2\t0\tNM_004448\t\n"
+        "!platform_table_end\n"
+    )
+    path = _write_annot(tmp_path / "fake_systematic_name.txt", annot)
+    df = parse_geo_platform_table(path)
+    assert set(df["probe_id"]) == {"TP53", "A23747", "ERBB2"}
+    assert (df["gene_symbol"] == df["probe_id"]).all()
 
 
 # ─── harmonize_entrez_via_ncbi ────────────────────────────────────────

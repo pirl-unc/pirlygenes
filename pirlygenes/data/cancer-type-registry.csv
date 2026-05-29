@@ -101,7 +101,7 @@ MEC,Merkel Cell Carcinoma,net,skin,solid_primary,,,curated,LITERATURE_CURATED,,M
 NUTM,NUT Carcinoma,rare,midline_structures,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,NUT-BRD3/4 fusion; midline aggressive,False
 ACINIC,Acinic Cell Carcinoma,salivary,salivary_gland,solid_primary,,,curated,LITERATURE_CURATED,,Salivary gland low-grade,False
 ADCC,Adenoid Cystic Carcinoma,salivary,salivary_gland,solid_primary,,,GEO,GSE294016_BARTL_2025_SGC,PMID:40506428,MYB-NFIB; salivary + lacrimal + breast,False
-MTC,Medullary Thyroid Carcinoma,endocrine,thyroid_c_cell,solid_primary,,,curated,LITERATURE_CURATED,,Calcitonin; RET-driven; separate from TCGA THCA (follicular-cell),False
+MTC,Medullary Thyroid Carcinoma,endocrine,thyroid_c_cell,solid_primary,,,GEO,GSE32662_PRINGLE_2012_MTC,GSE32662,"Calcitonin; RET-driven; separate from TCGA THCA (follicular-cell). Pringle 2012 GPL6480 Agilent microarray TPM-proxy (n=52 hybridizations across 49 primary cases). CALCA p95 ~3400 TPM-proxy confirms cohort.",False
 NPC,Nasopharyngeal Carcinoma,carcinoma-head-neck,nasopharynx,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,EBV-driven; distinct from TCGA HNSC,False
 HCL,Hairy Cell Leukemia,heme-bcell,spleen_marrow,heme_marrow,,,curated,LITERATURE_CURATED,,BRAF V600E; vemurafenib effective,False
 PCN,Plasmacytoma,heme-plasma,soft_tissue,solid_primary,MM,,curated,LITERATURE_CURATED,,Solitary plasma-cell mass (solitary bone / extramedullary),False
