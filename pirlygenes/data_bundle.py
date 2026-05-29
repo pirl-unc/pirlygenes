@@ -75,15 +75,23 @@ DOWNLOADABLE_PATHS: tuple[str, ...] = (
 )
 
 
+def cache_root() -> Path:
+    """Parent of all version-pinned cache dirs (``v<version>/`` lives
+    inside this). Used by :func:`list_cache_versions` and
+    :func:`prune_cache` to enumerate sibling versions for cleanup."""
+    override = os.environ.get("PIRLYGENES_BUNDLED_DATA")
+    if override:
+        # Override points at the version-pinned dir; its parent is the root.
+        return Path(override).expanduser().parent
+    return Path.home() / ".cache" / "pirlygenes" / "bundled_data"
+
+
 def cache_dir() -> Path:
     """Where the downloaded bundle lives on disk for this version."""
     override = os.environ.get("PIRLYGENES_BUNDLED_DATA")
     if override:
         return Path(override).expanduser()
-    return (
-        Path.home() / ".cache" / "pirlygenes" / "bundled_data"
-        / f"v{__version__}"
-    )
+    return cache_root() / f"v{__version__}"
 
 
 def is_local() -> bool:
@@ -196,11 +204,93 @@ def is_downloadable(relative_path: str) -> bool:
     return first in DOWNLOADABLE_PATHS or relative_path in DOWNLOADABLE_PATHS
 
 
+def _dir_size_bytes(path: Path) -> int:
+    if not path.exists():
+        return 0
+    if path.is_file():
+        try:
+            return path.stat().st_size
+        except OSError:
+            return 0
+    total = 0
+    for child in path.rglob("*"):
+        if child.is_file():
+            try:
+                total += child.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
+def list_cache_versions() -> list[dict]:
+    """Enumerate every version-pinned cache dir under :func:`cache_root`.
+
+    Returns a list of ``{"version", "path", "size_bytes", "is_current"}``
+    dicts, sorted by version label (lexicographic). Used by
+    ``pirlygenes data prune`` to identify which dirs are upgrade
+    leftovers.
+    """
+    root = cache_root()
+    if not root.exists():
+        return []
+    current = cache_dir()
+    out: list[dict] = []
+    for child in sorted(root.iterdir()):
+        if not child.is_dir() or not child.name.startswith("v"):
+            continue
+        out.append({
+            "version": child.name,
+            "path": child,
+            "size_bytes": _dir_size_bytes(child),
+            "is_current": child.resolve() == current.resolve(),
+        })
+    return out
+
+
+def prune_cache(*, keep_current: bool = True, dry_run: bool = False) -> list[dict]:
+    """Delete every version-pinned cache dir EXCEPT the one for the
+    installed version (when ``keep_current=True``). The current dir
+    is always kept by default — pass ``keep_current=False`` to also
+    nuke it (e.g. for a full reset).
+
+    With ``dry_run=True`` returns the candidate-for-deletion list
+    without touching disk.
+
+    Returns the list of dirs deleted (or planned, in dry-run mode).
+    Each entry is the same shape as :func:`list_cache_versions`
+    output.
+    """
+    candidates = []
+    for entry in list_cache_versions():
+        if keep_current and entry["is_current"]:
+            continue
+        candidates.append(entry)
+    if dry_run:
+        return candidates
+    for entry in candidates:
+        # Delete files first then empty dirs. Walk bottom-up.
+        path = entry["path"]
+        for child in sorted(path.rglob("*"), reverse=True):
+            try:
+                if child.is_file() or child.is_symlink():
+                    child.unlink()
+                else:
+                    child.rmdir()
+            except OSError:
+                pass
+        try:
+            path.rmdir()
+        except OSError:
+            pass
+    return candidates
+
+
 __all__ = [
     "GITHUB_REPO",
     "TARBALL_FILENAME",
     "RELEASE_URL",
     "DOWNLOADABLE_PATHS",
+    "cache_root",
     "cache_dir",
     "is_local",
     "find",
@@ -208,4 +298,6 @@ __all__ = [
     "ensure_local",
     "status",
     "is_downloadable",
+    "list_cache_versions",
+    "prune_cache",
 ]

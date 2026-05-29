@@ -150,6 +150,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Explicitly download the data bundle from the GitHub "
              "Release matching the installed version.",
     )
+    prune_parser = data_sub.add_parser(
+        "prune",
+        help="Delete stale v<old-version>/ bundled-data cache dirs "
+             "left behind by previous installs; keeps the current "
+             "version's dir by default.",
+    )
+    prune_parser.add_argument(
+        "--yes", action="store_true",
+        help="Actually delete (default is dry-run that just lists).",
+    )
+    prune_parser.add_argument(
+        "--include-current", action="store_true",
+        help="Also delete the current version's cache dir (forces a "
+             "re-fetch on next data access).",
+    )
 
     build_parser = subparsers.add_parser(
         "build",
@@ -263,6 +278,48 @@ def cmd_data_fetch(_args: argparse.Namespace) -> int:
     except Exception as exc:
         sys.stderr.write(f"pirlygenes data fetch failed: {exc}\n")
         return 1
+
+
+def cmd_data_prune(args: argparse.Namespace) -> int:
+    versions = data_bundle.list_cache_versions()
+    if not versions:
+        sys.stdout.write(
+            f"pirlygenes: no cache dirs under "
+            f"{data_bundle.cache_root()}; nothing to prune.\n"
+        )
+        return 0
+    keep_current = not getattr(args, "include_current", False)
+    dry_run = not getattr(args, "yes", False)
+    candidates = data_bundle.prune_cache(
+        keep_current=keep_current, dry_run=True,
+    )
+    sys.stdout.write(
+        f"pirlygenes: bundled-data cache at {data_bundle.cache_root()}\n"
+    )
+    for entry in versions:
+        marker = "(current)" if entry["is_current"] else ""
+        will_delete = entry in candidates
+        action = "DELETE" if will_delete else "keep  "
+        size_mb = entry["size_bytes"] / 1e6
+        sys.stdout.write(
+            f"  {action}  {entry['version']:<10s}  "
+            f"{size_mb:7.1f} MB  {marker}\n"
+        )
+    if not candidates:
+        sys.stdout.write("nothing to prune.\n")
+        return 0
+    total_mb = sum(c["size_bytes"] for c in candidates) / 1e6
+    if dry_run:
+        sys.stdout.write(
+            f"\ndry run — would free {total_mb:.1f} MB across "
+            f"{len(candidates)} dir(s). Re-run with --yes to delete.\n"
+        )
+        return 0
+    data_bundle.prune_cache(keep_current=keep_current, dry_run=False)
+    sys.stdout.write(
+        f"\ndeleted {len(candidates)} cache dir(s), freed {total_mb:.1f} MB.\n"
+    )
+    return 0
 
 
 def cmd_build(args: argparse.Namespace) -> int:
@@ -413,6 +470,7 @@ _DATA_DISPATCH = {
     "status": cmd_data_status,
     "cache-dir": cmd_data_cache_dir,
     "fetch": cmd_data_fetch,
+    "prune": cmd_data_prune,
 }
 
 
@@ -445,7 +503,7 @@ def main(argv: list[str] | None = None) -> int:
         handler = _DATA_DISPATCH.get(args.data_action)
         if handler is None:
             sys.stderr.write(
-                "usage: pirlygenes data {list,status,cache-dir,fetch}\n"
+                "usage: pirlygenes data {list,status,cache-dir,fetch,prune}\n"
             )
             return 2
         return handler(args)

@@ -270,6 +270,40 @@ def test_upsert_to_shard_per_cancer_code_warns_on_unexpected_codes(tmp_path):
     assert "TEST_SPLIT_WARN__STRAY.csv.gz" in files
 
 
+def test_data_bundle_prune_lists_and_deletes_stale_dirs(tmp_path, monkeypatch):
+    """``pirlygenes data prune`` should list every cache dir, keep the
+    current version's, and delete the rest."""
+    from pirlygenes import data_bundle
+
+    # Build a fake cache root with two stale version dirs + the
+    # current-version dir.
+    monkeypatch.setenv(
+        "PIRLYGENES_BUNDLED_DATA", str(tmp_path / f"v{data_bundle.__version__}"),
+    )
+    for v in ["v5.0.0", "v5.1.0", f"v{data_bundle.__version__}"]:
+        d = tmp_path / v
+        d.mkdir()
+        (d / "marker.csv").write_text("x")
+
+    versions = data_bundle.list_cache_versions()
+    by_v = {e["version"]: e for e in versions}
+    assert {"v5.0.0", "v5.1.0", f"v{data_bundle.__version__}"} <= set(by_v)
+    assert by_v[f"v{data_bundle.__version__}"]["is_current"] is True
+    assert by_v["v5.0.0"]["is_current"] is False
+
+    # Dry-run: returns candidates but leaves disk alone
+    candidates = data_bundle.prune_cache(keep_current=True, dry_run=True)
+    candidate_versions = {c["version"] for c in candidates}
+    assert candidate_versions == {"v5.0.0", "v5.1.0"}
+    assert (tmp_path / "v5.0.0").exists()  # still there
+
+    # Real prune
+    data_bundle.prune_cache(keep_current=True, dry_run=False)
+    assert not (tmp_path / "v5.0.0").exists()
+    assert not (tmp_path / "v5.1.0").exists()
+    assert (tmp_path / f"v{data_bundle.__version__}").exists()
+
+
 def test_upsert_to_shard_allow_unset_for_legacy_backfill(tmp_path):
     """The v5.4 migration backfill rewrites legacy rows; ``allow_unset_tumor_origin``
     lets it pass NaN through during that one-time migration."""
