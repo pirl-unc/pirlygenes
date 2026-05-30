@@ -55,16 +55,29 @@ def _data_roots() -> list[Path]:
 
 def _ensure_downloadable(name: str) -> None:
     """If ``name`` (a file or dir basename) maps to a downloadable
-    bundle item missing from disk, fetch it. No-op otherwise."""
+    bundle item missing from BOTH the bundled checkout AND the cache,
+    fetch it. No-op when the file/dir exists in either location.
+
+    Why we check the bundled path first: in a git-dev checkout the
+    full data is sitting at ``pirlygenes/data/<name>/`` already and
+    triggering a fetch from the GitHub Release that doesn't exist yet
+    (when version bumps before release-creation) breaks test.sh."""
     stem_with_csv = name if name.endswith(".csv") else f"{name}.csv"
     stem = name.removesuffix(".csv").removesuffix(".gz")
     candidates = {name, stem, stem_with_csv, stem_with_csv.removesuffix(".csv")}
     for cand in candidates:
-        if data_bundle.is_downloadable(cand):
-            # Only fetch if missing — keep the fast path hot.
-            if data_bundle.find(cand) is None:
-                data_bundle.ensure_local()
+        if not data_bundle.is_downloadable(cand):
+            continue
+        # Bundled-checkout fast path: dev pip-installed --editable
+        # or in-repo work has the file at pirlygenes/data/<cand>.
+        if (_BUNDLED_DATA_DIR / cand).exists():
             return
+        # Already cached — fast path hot.
+        if data_bundle.find(cand) is not None:
+            return
+        # Neither bundled nor cached → fetch from this version's release.
+        data_bundle.ensure_local()
+        return
 
 
 def _shard_directories() -> list[Path]:

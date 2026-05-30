@@ -380,6 +380,8 @@ def test_source_cohort_values_are_canonical():
         "SCLC_UCOLOGNE_2015",
         # v5.5.0 microarray cohorts (build_microarray_source)
         "GSE32662_PRINGLE_2012_MTC",
+        # v5.6.0 LPS: 4 subtypes from one Singer 2007 MSKCC microarray
+        "GSE30929_SINGER_2007_LPS",
     }
     present = set(df["source_cohort"].fillna("").astype(str).unique())
     unknown = present - valid

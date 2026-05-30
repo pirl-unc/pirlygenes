@@ -879,3 +879,26 @@ sources:
       preserved; absolute TPM-proxy NOT comparable to RNA-seq cohorts.
       Biology sanity check: CALCA (calcitonin, defining MTC marker)
       p95 ~3400 TPM-proxy; CHGA ~948; CEACAM5 ~481.
+
+  - id: gse30929-lps
+    category: expression
+    cancer_codes: [SARC_WDLPS, SARC_DDLPS, SARC_PLEOLPS, SARC_MYXLPS]
+    source_type: geo-microarray
+    builder: scripts/build_v5_5_microarray_cohorts.py
+    accession: GSE30929
+    platform: GPL96
+    citation: PMID 22241786 (Singer 2007 MSKCC 140-sample LPS classifier)
+    expected_size_gb: 0.1
+    source_cohort: GSE30929_SINGER_2007_LPS
+    tumor_origin: primary
+    special_handling: >
+      Affymetrix HG-U133A (GPL96) microarray; 140 primary liposarcomas
+      from MSKCC, explicitly histology-tagged via char_subtype: 52 WD-LPS,
+      40 DD-LPS, 20 pleomorphic, 17 myxoid, 11 myxoid/round-cell. The
+      round-cell variant IS high-grade myxoid LPS (WHO grade III, same
+      FUS::DDIT3 fusion entity), so both collapse to SARC_MYXLPS (n=28).
+      Builds 4 shards from one cohort via sample_include_regex
+      (matched against char_subtype). MYXLPS biology validates:
+      FABP4 2799 / ADIPOQ 917 / PPARG 424 (adipogenic program),
+      FUS+DDIT3 both ~165 (fusion partners both expressed), STAT3 253 +
+      JAK1 207 (FUS-DDIT3/JAK-STAT axis per PMC8851354).
