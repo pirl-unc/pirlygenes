@@ -113,15 +113,27 @@ def test_parse_series_matrix_handles_missing_characteristics(tmp_path):
 # ─── _parse_gpl570_annot ──────────────────────────────────────────────
 
 
-def test_parse_gpl570_annot_splits_multi_symbol(tmp_path):
-    from pirlygenes.builders.affy_gpl570 import _parse_gpl570_annot
+def test_parse_geo_platform_table_explodes_multi_symbol(tmp_path):
+    """Multi-gene probe annotations (``GeneA /// GeneB``) target shared
+    paralog sequence and genuinely measure both genes — so v5.6.1 changed
+    the parser from keep-first to explode-both. Without this fix ~970
+    paralog symbols per platform were silently dropped, including
+    CTAG1B (NY-ESO-1B), MAGEA2B, and several GAGE / PAGE / XAGE
+    paralogs.
+
+    The fixture probe ``1007_s_at`` is annotated ``DDR1 /// MIR4640``;
+    both should now appear as separate rows with the same probe id."""
+    from pirlygenes.builders.affy_gpl570 import parse_geo_platform_table
 
     path = _write_annot(tmp_path / "GPL570.platform_table.txt", GPL570_ANNOT_FIXTURE)
-    df = _parse_gpl570_annot(path)
+    df = parse_geo_platform_table(path)
 
-    # DDR1 /// MIR4640 → DDR1 (first symbol); RFC2 stays; empty/dashed row dropped.
-    by_probe = df.set_index("probe_id")["gene_symbol"].to_dict()
-    assert by_probe == {"1007_s_at": "DDR1", "1053_at": "RFC2"}
+    rows = sorted(zip(df["probe_id"], df["gene_symbol"]))
+    assert rows == [
+        ("1007_s_at", "DDR1"),
+        ("1007_s_at", "MIR4640"),
+        ("1053_at", "RFC2"),
+    ]
 
 
 def test_parse_geo_platform_table_rejects_missing_probe_column(tmp_path):

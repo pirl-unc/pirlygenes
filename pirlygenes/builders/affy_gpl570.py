@@ -155,9 +155,20 @@ def parse_geo_platform_table(annot_path: Path) -> pd.DataFrame:
         out = df[[probe_col, symbol_col]].rename(
             columns={probe_col: "probe_id", symbol_col: "gene_symbol"}
         )
+
+    # Multi-gene probes (annotated as ``GeneA /// GeneB`` in Affymetrix
+    # convention) target sequence shared between paralogs and genuinely
+    # measure both — so we attribute the intensity to BOTH genes via
+    # explode rather than dropping one. Before this fix (pre-5.6.1)
+    # we kept only the first symbol, silently losing ~970 paralog
+    # symbols per platform — including CTAG1B (NY-ESO-1B), MAGEA2B,
+    # and several GAGE/PAGE/XAGE paralogs that share probes with their
+    # canonical-name siblings.
     out["gene_symbol"] = (
-        out["gene_symbol"].astype(str).str.split("///").str[0].str.strip()
+        out["gene_symbol"].astype(str).str.split("///")
     )
+    out = out.explode("gene_symbol")
+    out["gene_symbol"] = out["gene_symbol"].str.strip()
     out = out[
         out["gene_symbol"].ne("")
         & out["gene_symbol"].ne("---")
