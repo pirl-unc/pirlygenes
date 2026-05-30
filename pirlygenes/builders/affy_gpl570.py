@@ -49,7 +49,11 @@ import numpy as np
 import pandas as pd
 
 from .geo_matrix import _clean_tpm, _technical_mask
-from .ncbi_gene_info import cached_entrez_to_symbol
+from .ncbi_gene_info import (
+    cached_entrez_history,
+    cached_entrez_to_ensembl,
+    cached_entrez_to_symbol,
+)
 from .treehouse import _build_or_load_symbol_mapping
 from ..expression.stats import (
     REFERENCE_COLUMNS,
@@ -396,46 +400,98 @@ def build_microarray_source(
     )
 
     # Second-pass recovery: any symbol that didn't resolve via pyensembl's
-    # direct name lookup gets re-tried via Entrez → NCBI current symbol →
-    # pyensembl. Recovers HGNC-renamed legacy symbols.
-    resolved_symbols = set(mapping["source_symbol"])
+    # direct name lookup gets re-tried via the Entrez ID through a
+    # three-tier chain:
+    #   1. Entrez → ENSG directly via gene_info dbXrefs
+    #      (rescues current-symbol-not-in-pyensembl cases like HLA-DRB4,
+    #      CCL3L1, GSTT1, *-IT1)
+    #   2. Entrez → current HUGO symbol via gene_info → pyensembl name
+    #      (rescues HGNC-renamed legacy symbols like SEPT2→SEPTIN2)
+    #   3. Entrez → live Entrez via gene_history, then retry tier 1/2
+    #      (rescues withdrawn IDs from 2003-era platforms)
+    resolved_symbols = (
+        set(mapping["source_symbol"]) if "source_symbol" in mapping.columns
+        else set()
+    )
     unresolved = [s for s in tpm_proxy.index if s not in resolved_symbols]
     recovered_rows: list[dict] = []
     if unresolved and symbol_to_entrez:
         from pyensembl import EnsemblRelease as _EnsemblRelease
         genome = _EnsemblRelease(ensembl_release)
         entrez_to_symbol = cached_entrez_to_symbol()
-        n_tried = n_recovered = 0
+        entrez_to_ensembl = cached_entrez_to_ensembl()
+        entrez_history = cached_entrez_history()
+        n_tried = n_tier1 = n_tier2 = n_tier3 = 0
+
+        def _try_via_entrez(eid: str, legacy_sym: str) -> tuple[str, str] | None:
+            """Return (ensembl_id, symbol) or None. Walks tier 1 then 2."""
+            # Tier 1: direct dbXrefs lookup.
+            ensg = entrez_to_ensembl.get(eid)
+            if ensg:
+                # Prefer the current HUGO symbol; fall back to pyensembl's
+                # gene.gene_name; final fallback is the legacy symbol.
+                cur_sym = entrez_to_symbol.get(eid)
+                try:
+                    g = genome.gene_by_id(ensg)
+                    name = (cur_sym or g.gene_name or legacy_sym)
+                except Exception:
+                    name = cur_sym or legacy_sym
+                return ensg, name
+            # Tier 2: current symbol → pyensembl name lookup.
+            cur_sym = entrez_to_symbol.get(eid)
+            if cur_sym and cur_sym != legacy_sym:
+                try:
+                    genes = genome.genes_by_name(cur_sym)
+                except Exception:
+                    genes = []
+                ids = {g.gene_id.split(".", 1)[0] for g in genes}
+                if len(ids) == 1:
+                    return next(iter(ids)), cur_sym
+            return None
+
         for legacy_sym in unresolved:
             eid = symbol_to_entrez.get(legacy_sym, "").strip()
-            if not eid or eid not in entrez_to_symbol:
+            if not eid:
                 continue
             n_tried += 1
-            current_sym = entrez_to_symbol[eid]
-            if current_sym == legacy_sym:
-                continue   # already-tried name; skip
-            try:
-                genes = genome.genes_by_name(current_sym)
-            except Exception:
+
+            # Tier 1 / 2 on the original Entrez ID.
+            result = _try_via_entrez(eid, legacy_sym)
+            tier = 1 if result and entrez_to_ensembl.get(eid) else (2 if result else 0)
+
+            # Tier 3: if not yet resolved, try gene_history → live Entrez.
+            if not result:
+                live_eid = entrez_history.get(eid)
+                if live_eid:
+                    result = _try_via_entrez(live_eid, legacy_sym)
+                    if result:
+                        tier = 3
+
+            if not result:
                 continue
-            ids = {g.gene_id.split(".", 1)[0] for g in genes}
-            if len(ids) != 1:
-                continue
-            gene = genes[0]
+            ensg, sym_for_row = result
             recovered_rows.append({
                 "source_symbol": legacy_sym,
-                "Ensembl_Gene_ID": gene.gene_id.split(".", 1)[0],
-                "Symbol": current_sym,
+                "Ensembl_Gene_ID": ensg,
+                "Symbol": sym_for_row,
             })
-            n_recovered += 1
+            if tier == 1:
+                n_tier1 += 1
+            elif tier == 2:
+                n_tier2 += 1
+            else:
+                n_tier3 += 1
+
+        n_recovered = n_tier1 + n_tier2 + n_tier3
         if recovered_rows:
             mapping = pd.concat(
                 [mapping, pd.DataFrame(recovered_rows)], ignore_index=True,
             )
         print(
-            f"  Entrez-fallback rescue: {n_recovered} of {n_tried} "
-            f"unresolved symbols recovered via current-HUGO name "
-            f"(e.g. SEPT2→SEPTIN2, TCEB2→ELOB)"
+            f"  Entrez-fallback rescue: {n_recovered} of {n_tried} unresolved "
+            f"symbols recovered (tier1 dbXrefs={n_tier1}, "
+            f"tier2 current-symbol={n_tier2}, "
+            f"tier3 gene_history={n_tier3})"
         )
     flat = tpm_proxy.reset_index().rename(
         columns={"gene_symbol": "source_symbol"}

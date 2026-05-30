@@ -1,18 +1,29 @@
-"""Entrez Gene ID ↔ HUGO symbol mapping from NCBI's gene_info table.
+"""Entrez Gene ID ↔ HUGO symbol / Ensembl mapping from NCBI gene_info
+and gene_history.
 
 Pyensembl doesn't expose Entrez IDs on its Gene objects, so we
-download the canonical NCBI mapping once and cache it. Used by any
+download the canonical NCBI mappings once and cache them. Used by any
 GEO builder whose source matrix is keyed by Entrez Gene IDs (HTSeq +
-GENCODE Entrez output is common; e.g. GSE98894).
+GENCODE Entrez output is common; e.g. GSE98894) AND by the
+microarray builder's symbol-rescue chain for pre-2010 platforms
+whose HUGO column has since been renamed by HGNC.
 
-Source file:
+Source files:
   https://ftp.ncbi.nlm.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz
+  https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene_history.gz
 
-Columns (NCBI standard, tab-separated):
-  #tax_id  GeneID  Symbol  LocusTag  Synonyms  dbXrefs  ...
+``gene_info`` (one row per *live* Entrez ID) carries the current
+canonical HUGO symbol plus a ``dbXrefs`` column with cross-references
+including ``Ensembl:ENSGxxxxx`` for the ~38k well-curated genes.
+That gives us TWO independent Entrez→ENSG paths: name-lookup via
+pyensembl, OR direct ENSG extraction from dbXrefs. The latter wins
+when pyensembl's release doesn't know the current symbol (HLA region,
+copy-number-variable loci, intronic transcripts).
 
-This file is the canonical NCBI Gene → HUGO symbol map. Combined with
-pyensembl's ``genes_by_name``, that gives Entrez → ENSG.
+``gene_history`` (one row per *discontinued* Entrez ID) maps every
+withdrawn or merged Entrez ID to its replacement (or "-" for
+permanently withdrawn). This rescues pre-2010 platforms that ship
+Entrez IDs which have since been merged into other records.
 """
 
 from __future__ import annotations
@@ -29,12 +40,22 @@ NCBI_GENE_INFO_URL = (
     "https://ftp.ncbi.nlm.nih.gov/gene/DATA/GENE_INFO/Mammalia/"
     "Homo_sapiens.gene_info.gz"
 )
+NCBI_GENE_HISTORY_URL = "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene_history.gz"
+
+HUMAN_TAX_ID = "9606"
 
 
 def _default_cache_path() -> Path:
     return (
         Path.home() / ".cache" / "pirlygenes" / "ncbi_gene_info"
         / "Homo_sapiens.gene_info.gz"
+    )
+
+
+def _default_history_cache_path() -> Path:
+    return (
+        Path.home() / ".cache" / "pirlygenes" / "ncbi_gene_info"
+        / "gene_history.gz"
     )
 
 
@@ -75,6 +96,89 @@ def load_entrez_to_symbol(
 def cached_entrez_to_symbol() -> dict[str, str]:
     """Module-level cached singleton (in-process)."""
     return load_entrez_to_symbol()
+
+
+def load_entrez_to_ensembl(
+    cache_path: Path | None = None, *, refresh: bool = False,
+) -> dict[str, str]:
+    """Return {entrez_id (str): ENSG (unversioned)} from gene_info dbXrefs.
+
+    dbXrefs is pipe-separated; the Ensembl reference looks like
+    ``Ensembl:ENSG00000121410``. About 38k of NCBI's 194k human genes
+    have one, covering the well-curated protein-coding + lncRNA set.
+
+    Lets the microarray builder skip pyensembl's name lookup for
+    Entrez IDs whose current symbol pyensembl doesn't know
+    (HLA-DRB4, CCL3L1, intronic ``*-IT1`` transcripts, etc.).
+    """
+    path = cache_path or _default_cache_path()
+    if refresh and path.exists():
+        path.unlink()
+    _download(NCBI_GENE_INFO_URL, path)
+    print(f"loading NCBI Entrez→Ensembl map from {path.name}...")
+    with gzip.open(path, "rt") as f:
+        df = pd.read_csv(
+            f, sep="\t", usecols=["GeneID", "dbXrefs"],
+            dtype={"GeneID": "string", "dbXrefs": "string"},
+            low_memory=False,
+        )
+    df = df.dropna(subset=["GeneID", "dbXrefs"])
+    df = df[df["dbXrefs"].str.contains("Ensembl:ENSG", na=False, regex=False)]
+    ensg = df["dbXrefs"].str.extract(r"Ensembl:(ENSG\d+)", expand=False)
+    out = dict(zip(df["GeneID"].tolist(), ensg.tolist()))
+    out = {k: v for k, v in out.items() if isinstance(v, str)}
+    print(f"  {len(out):,} Entrez → Ensembl entries")
+    return out
+
+
+@lru_cache(maxsize=1)
+def cached_entrez_to_ensembl() -> dict[str, str]:
+    return load_entrez_to_ensembl()
+
+
+def load_entrez_history(
+    cache_path: Path | None = None, *, refresh: bool = False,
+) -> dict[str, str]:
+    """Return {discontinued_entrez_id (str): live_entrez_id (str)}.
+
+    Skips permanently-withdrawn IDs (where the live column is "-").
+    Of NCBI's 166k human discontinued IDs, ~28k have a live
+    replacement; the rest were deleted outright (LOC* placeholders
+    that never got promoted to a real symbol).
+
+    Used by the microarray-builder's symbol-rescue chain: when an
+    Entrez ID from a 2003-era platform table isn't in the current
+    gene_info, we look it up here and retry the lookup with the
+    replacement ID.
+    """
+    path = cache_path or _default_history_cache_path()
+    if refresh and path.exists():
+        path.unlink()
+    _download(NCBI_GENE_HISTORY_URL, path)
+    print(f"loading NCBI Entrez history from {path.name}...")
+    with gzip.open(path, "rt") as f:
+        df = pd.read_csv(
+            f, sep="\t",
+            usecols=["#tax_id", "GeneID", "Discontinued_GeneID"],
+            dtype={
+                "#tax_id": "string",
+                "GeneID": "string",
+                "Discontinued_GeneID": "string",
+            },
+            low_memory=False,
+        )
+    df = df[df["#tax_id"] == HUMAN_TAX_ID]
+    df = df[df["GeneID"].ne("-") & df["Discontinued_GeneID"].ne("-")]
+    out = dict(zip(
+        df["Discontinued_GeneID"].tolist(), df["GeneID"].tolist(),
+    ))
+    print(f"  {len(out):,} discontinued → live Entrez IDs")
+    return out
+
+
+@lru_cache(maxsize=1)
+def cached_entrez_history() -> dict[str, str]:
+    return load_entrez_history()
 
 
 def harmonize_entrez_via_ncbi(
@@ -149,7 +253,12 @@ def harmonize_entrez_via_ncbi(
 
 __all__ = [
     "NCBI_GENE_INFO_URL",
+    "NCBI_GENE_HISTORY_URL",
     "load_entrez_to_symbol",
     "cached_entrez_to_symbol",
+    "load_entrez_to_ensembl",
+    "cached_entrez_to_ensembl",
+    "load_entrez_history",
+    "cached_entrez_history",
     "harmonize_entrez_via_ncbi",
 ]
