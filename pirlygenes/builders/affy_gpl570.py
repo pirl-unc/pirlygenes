@@ -49,6 +49,7 @@ import numpy as np
 import pandas as pd
 
 from .geo_matrix import _clean_tpm, _technical_mask
+from .ncbi_gene_info import cached_entrez_to_symbol
 from .treehouse import _build_or_load_symbol_mapping
 from ..expression.stats import (
     REFERENCE_COLUMNS,
@@ -148,6 +149,24 @@ def parse_geo_platform_table(annot_path: Path) -> pd.DataFrame:
     # probe id AS the symbol; downstream HUGO→ENSG harmonization will
     # filter out non-HUGO entries naturally (pyensembl returns None
     # for accession IDs).
+    # Entrez ID column is optional but very useful: when a HUGO symbol
+    # has been renamed by HGNC since the platform was annotated (e.g.
+    # SEPT2 → SEPTIN2, NARS → NARS1, H3F3A → H3-3A, TCEB2 → ELOB),
+    # pyensembl's name lookup fails on the legacy symbol but the Entrez
+    # ID is stable. Carrying it through lets the builder fall back to
+    # Entrez → current HUGO → ENSG when the direct lookup misses.
+    entrez_col = next(
+        (c for c in (
+            "ENTREZ_GENE_ID", "Entrez Gene ID", "Entrez_Gene_ID",
+            "EntrezGeneID", "ENTREZID",
+            # Agilent convention: plain "GENE" holds the Entrez ID
+            # (not the symbol — that's "GENE_SYMBOL"). Verified on
+            # GPL6480 (Human 4x44K v1), GPL13497 (v2).
+            "GENE",
+        ) if c in df.columns),
+        None,
+    )
+
     if symbol_col is None:
         out = df[[probe_col]].rename(columns={probe_col: "probe_id"})
         out["gene_symbol"] = out["probe_id"]
@@ -155,6 +174,10 @@ def parse_geo_platform_table(annot_path: Path) -> pd.DataFrame:
         out = df[[probe_col, symbol_col]].rename(
             columns={probe_col: "probe_id", symbol_col: "gene_symbol"}
         )
+    if entrez_col is not None:
+        out["entrez_id"] = df[entrez_col].values
+    else:
+        out["entrez_id"] = ""
 
     # Multi-gene probes (annotated as ``GeneA /// GeneB`` in Affymetrix
     # convention) target sequence shared between paralogs and genuinely
@@ -164,11 +187,26 @@ def parse_geo_platform_table(annot_path: Path) -> pd.DataFrame:
     # symbols per platform — including CTAG1B (NY-ESO-1B), MAGEA2B,
     # and several GAGE/PAGE/XAGE paralogs that share probes with their
     # canonical-name siblings.
-    out["gene_symbol"] = (
-        out["gene_symbol"].astype(str).str.split("///")
+    #
+    # The gene_symbol and entrez_id columns must explode in parallel
+    # so each (probe, symbol, entrez) triple stays paired. We zip
+    # them per-row before exploding.
+    def _zip_lists(row):
+        syms = [s.strip() for s in str(row["gene_symbol"]).split("///")]
+        eids = [e.strip() for e in str(row["entrez_id"]).split("///")]
+        # When Entrez list is shorter than symbol list (or empty), pad
+        # with empty strings — better to lose the Entrez fallback for
+        # the trailing paralogs than crash on misalignment.
+        if len(eids) < len(syms):
+            eids = eids + [""] * (len(syms) - len(eids))
+        return list(zip(syms, eids[: len(syms)]))
+
+    out["pairs"] = out.apply(_zip_lists, axis=1)
+    out = out.explode("pairs")
+    out[["gene_symbol", "entrez_id"]] = pd.DataFrame(
+        out["pairs"].tolist(), index=out.index
     )
-    out = out.explode("gene_symbol")
-    out["gene_symbol"] = out["gene_symbol"].str.strip()
+    out = out.drop(columns="pairs")
     out = out[
         out["gene_symbol"].ne("")
         & out["gene_symbol"].ne("---")
@@ -336,6 +374,19 @@ def build_microarray_source(
         linear.div(sums.where(sums > 0), axis=1).fillna(0.0) * 1_000_000.0
     )
 
+    # Build a per-symbol Entrez ID lookup so symbols that fail the
+    # pyensembl name-lookup (typically HGNC-renamed since the platform
+    # was annotated) can be re-resolved via Entrez → current HUGO → ENSG.
+    # Worth ~1,000 extra genes per pre-2010 platform (SEPT2→SEPTIN2,
+    # NARS→NARS1, H3F3A→H3-3A, TCEB2→ELOB, GNB2L1→RACK1, PHB→PHB1, ...).
+    symbol_to_entrez = (
+        annot[annot["entrez_id"].astype(str).ne("")]
+        .drop_duplicates("gene_symbol")
+        .set_index("gene_symbol")["entrez_id"]
+        .astype(str)
+        .to_dict()
+    )
+
     print(f"harmonizing HUGO → Ensembl release {ensembl_release}...")
     mapping = _build_or_load_symbol_mapping(
         tpm_proxy.index,
@@ -343,6 +394,49 @@ def build_microarray_source(
         cache_path=cache_dir / f"symbol_to_ensembl_{ensembl_release}.parquet",
         refresh=False,
     )
+
+    # Second-pass recovery: any symbol that didn't resolve via pyensembl's
+    # direct name lookup gets re-tried via Entrez → NCBI current symbol →
+    # pyensembl. Recovers HGNC-renamed legacy symbols.
+    resolved_symbols = set(mapping["source_symbol"])
+    unresolved = [s for s in tpm_proxy.index if s not in resolved_symbols]
+    recovered_rows: list[dict] = []
+    if unresolved and symbol_to_entrez:
+        from pyensembl import EnsemblRelease as _EnsemblRelease
+        genome = _EnsemblRelease(ensembl_release)
+        entrez_to_symbol = cached_entrez_to_symbol()
+        n_tried = n_recovered = 0
+        for legacy_sym in unresolved:
+            eid = symbol_to_entrez.get(legacy_sym, "").strip()
+            if not eid or eid not in entrez_to_symbol:
+                continue
+            n_tried += 1
+            current_sym = entrez_to_symbol[eid]
+            if current_sym == legacy_sym:
+                continue   # already-tried name; skip
+            try:
+                genes = genome.genes_by_name(current_sym)
+            except Exception:
+                continue
+            ids = {g.gene_id.split(".", 1)[0] for g in genes}
+            if len(ids) != 1:
+                continue
+            gene = genes[0]
+            recovered_rows.append({
+                "source_symbol": legacy_sym,
+                "Ensembl_Gene_ID": gene.gene_id.split(".", 1)[0],
+                "Symbol": current_sym,
+            })
+            n_recovered += 1
+        if recovered_rows:
+            mapping = pd.concat(
+                [mapping, pd.DataFrame(recovered_rows)], ignore_index=True,
+            )
+        print(
+            f"  Entrez-fallback rescue: {n_recovered} of {n_tried} "
+            f"unresolved symbols recovered via current-HUGO name "
+            f"(e.g. SEPT2→SEPTIN2, TCEB2→ELOB)"
+        )
     flat = tpm_proxy.reset_index().rename(
         columns={"gene_symbol": "source_symbol"}
     )
