@@ -17,7 +17,6 @@ single-supplementary-file pattern go through this module so the
 from __future__ import annotations
 
 import gzip
-import re
 import shutil
 import urllib.request
 from dataclasses import dataclass
@@ -35,9 +34,16 @@ from ..expression.stats import (
     round_stat_columns,
     upsert_to_shard,
 )
+from .gene_mapping import (
+    GeneIdType,
+    aggregate_matrix_by_mapping,
+    detect_id_type,
+    gene_from_ensembl_id,
+    gene_from_symbol,
+    harmonize_entrez_matrix,
+    strip_version,
+)
 
-
-GeneIdType = Literal["ensembl", "hugo", "entrez", "auto"]
 Unit = Literal["TPM", "FPKM", "RPKM", "log2(TPM+1)", "raw_counts"]
 
 
@@ -78,22 +84,9 @@ class GeoMatrixSource:
 
 # ─── ID type detection ──────────────────────────────────────────────────────
 
-_ENSEMBL_RE = re.compile(r"^ENS[A-Z]*G\d+(?:\.\d+)?$")
-_ENTREZ_RE = re.compile(r"^\d+$")
-
-
-def detect_gene_id_type(ids: Iterable[str], sample_size: int = 200) -> GeneIdType:
-    """Sniff whether the index is Ensembl IDs, Entrez IDs, or HUGO symbols."""
-    sampled = list(ids)[:sample_size]
-    if not sampled:
-        return "hugo"
-    ensembl = sum(1 for x in sampled if _ENSEMBL_RE.match(str(x)))
-    entrez = sum(1 for x in sampled if _ENTREZ_RE.match(str(x)))
-    if ensembl / len(sampled) > 0.5:
-        return "ensembl"
-    if entrez / len(sampled) > 0.5:
-        return "entrez"
-    return "hugo"
+# Canonical implementation lives in gene_mapping; kept here under the
+# historical name so existing callers (and __all__) keep working.
+detect_gene_id_type = detect_id_type
 
 
 # ─── Reading + cleanup ──────────────────────────────────────────────────────
@@ -218,22 +211,17 @@ def _harmonize_by_ensembl_id(
     genome = EnsemblRelease(ensembl_release)
     rows = []
     for raw in matrix.index:
-        sid = str(raw).split(".", 1)[0].strip()
-        if not sid:
+        result = gene_from_ensembl_id(genome, raw)
+        if result is None:
             continue
-        try:
-            gene = genome.gene_by_id(sid)
-        except Exception:
-            gene = None
-        if gene is None:
-            continue
+        ensembl_id, name = result
         rows.append({
             "source_id": str(raw),
-            "Ensembl_Gene_ID": gene.gene_id.split(".", 1)[0],
-            "Symbol": gene.gene_name or sid,
+            "Ensembl_Gene_ID": ensembl_id,
+            "Symbol": name,
         })
     mapping = pd.DataFrame(rows)
-    return mapping, _aggregate_by_mapping(matrix, mapping)
+    return mapping, aggregate_matrix_by_mapping(matrix, mapping)
 
 
 def _harmonize_by_symbol(
@@ -243,68 +231,17 @@ def _harmonize_by_symbol(
     genome = EnsemblRelease(ensembl_release)
     rows = []
     for raw in matrix.index:
-        sym = str(raw).strip()
-        if not sym:
+        result = gene_from_symbol(genome, raw)
+        if result is None:
             continue
-        try:
-            genes = genome.genes_by_name(sym)
-        except Exception:
-            genes = []
-        ids = {g.gene_id.split(".", 1)[0] for g in genes}
-        if len(ids) == 1:
-            g = genes[0]
-            rows.append({
-                "source_id": sym,
-                "Ensembl_Gene_ID": g.gene_id.split(".", 1)[0],
-                "Symbol": g.gene_name or sym,
-            })
-    mapping = pd.DataFrame(rows)
-    return mapping, _aggregate_by_mapping(matrix, mapping)
-
-
-def _harmonize_by_entrez(
-    matrix: pd.DataFrame, ensembl_release: int,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Look up each Entrez ID via pyensembl. Pyensembl uses entrez_id attribute."""
-    genome = EnsemblRelease(ensembl_release)
-    rows = []
-    # Build a one-time entrez → gene index. Pyensembl doesn't expose
-    # a direct entrez lookup, so iterate genes once.
-    entrez_to_gene: dict[str, object] = {}
-    try:
-        for gene in genome.genes():
-            ext = (getattr(gene, "entrez_id", None)
-                   or getattr(gene, "external_name", None))
-            if isinstance(ext, str) and ext.isdigit():
-                entrez_to_gene.setdefault(ext, gene)
-    except Exception:
-        pass
-    for raw in matrix.index:
-        eid = str(raw).strip()
-        if not eid.isdigit():
-            continue
-        gene = entrez_to_gene.get(eid)
-        if gene is None:
-            continue
+        ensembl_id, name = result
         rows.append({
-            "source_id": eid,
-            "Ensembl_Gene_ID": gene.gene_id.split(".", 1)[0],
-            "Symbol": gene.gene_name or eid,
+            "source_id": str(raw).strip(),
+            "Ensembl_Gene_ID": ensembl_id,
+            "Symbol": name,
         })
     mapping = pd.DataFrame(rows)
-    return mapping, _aggregate_by_mapping(matrix, mapping)
-
-
-def _aggregate_by_mapping(matrix: pd.DataFrame, mapping: pd.DataFrame) -> pd.DataFrame:
-    """Sum-aggregate per Ensembl_Gene_ID using the source_id → ENSG mapping."""
-    if mapping.empty:
-        return pd.DataFrame(columns=matrix.columns)
-    flat = matrix.reset_index().rename(columns={matrix.index.name or "index": "source_id"})
-    flat["source_id"] = flat["source_id"].astype(str)
-    merged = mapping.merge(flat, on="source_id", how="inner")
-    sample_cols = [c for c in merged.columns if c not in {"source_id", "Ensembl_Gene_ID", "Symbol"}]
-    by_gene = merged.groupby("Ensembl_Gene_ID", as_index=True, sort=False)[sample_cols].sum()
-    return by_gene
+    return mapping, aggregate_matrix_by_mapping(matrix, mapping)
 
 
 def harmonize_gene_ids(
@@ -313,18 +250,18 @@ def harmonize_gene_ids(
     """Detect ID type if needed, then dispatch to the right harmonizer.
 
     Returns (mapping_table, gene_indexed_tpm_matrix). The mapping has
-    columns (source_id, Ensembl_Gene_ID, Symbol).
+    columns (source_id, Ensembl_Gene_ID, Symbol). Entrez input goes
+    through the shared NCBI-backed chain (dbXrefs → current-symbol →
+    gene_history); Ensembl/HUGO go through pyensembl.
     """
     actual = gene_id_type
     if gene_id_type == "auto":
         actual = detect_gene_id_type(matrix.index)
     if actual == "ensembl":
-        mapping, agg = _harmonize_by_ensembl_id(matrix, ensembl_release)
-    elif actual == "entrez":
-        mapping, agg = _harmonize_by_entrez(matrix, ensembl_release)
-    else:
-        mapping, agg = _harmonize_by_symbol(matrix, ensembl_release)
-    return mapping, agg
+        return _harmonize_by_ensembl_id(matrix, ensembl_release)
+    if actual == "entrez":
+        return harmonize_entrez_matrix(matrix, ensembl_release=ensembl_release)
+    return _harmonize_by_symbol(matrix, ensembl_release)
 
 
 def _gene_lengths_kb_for_index(
@@ -344,9 +281,8 @@ def _gene_lengths_kb_for_index(
             continue
         gene = None
         if gene_id_type == "ensembl":
-            sid = rid.split(".", 1)[0]
             try:
-                gene = genome.gene_by_id(sid)
+                gene = genome.gene_by_id(strip_version(rid))
             except Exception:
                 pass
         else:
@@ -354,7 +290,7 @@ def _gene_lengths_kb_for_index(
                 gs = genome.genes_by_name(rid)
             except Exception:
                 gs = []
-            ids = {g.gene_id.split(".", 1)[0] for g in gs}
+            ids = {strip_version(g.gene_id) for g in gs}
             if len(ids) == 1:
                 gene = gs[0]
         if gene is None:

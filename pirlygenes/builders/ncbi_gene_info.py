@@ -31,6 +31,7 @@ from __future__ import annotations
 import gzip
 import shutil
 import urllib.request
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -43,6 +44,24 @@ NCBI_GENE_INFO_URL = (
 NCBI_GENE_HISTORY_URL = "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene_history.gz"
 
 HUMAN_TAX_ID = "9606"
+GENE_INFO_SYNONYM_CONFIDENCE = 80
+
+
+@dataclass(frozen=True)
+class SymbolAliasCandidate:
+    """One possible alias → official-symbol mapping from an external source."""
+
+    official_symbol: str
+    source: str
+    confidence: int
+
+
+@dataclass(frozen=True)
+class SymbolAliasIndex:
+    """Current official symbols plus all alias candidates keyed by alias."""
+
+    official_symbols: frozenset[str]
+    alias_candidates: dict[str, tuple[SymbolAliasCandidate, ...]]
 
 
 def _default_cache_path() -> Path:
@@ -181,6 +200,71 @@ def cached_entrez_history() -> dict[str, str]:
     return load_entrez_history()
 
 
+def load_symbol_alias_index(
+    cache_path: Path | None = None, *, refresh: bool = False,
+) -> SymbolAliasIndex:
+    """Return broad NCBI symbol-alias candidates plus live official symbols.
+
+    ``gene_info`` carries a live official ``Symbol`` column and a
+    pipe-separated ``Synonyms`` column. We preserve every synonym
+    candidate instead of doing a first-wins inversion, so downstream
+    callers can choose confidence thresholds and reject ambiguous
+    aliases. The official-symbol set lets callers block cases where an
+    unresolved platform symbol is already owned by a current Entrez
+    record, even if that current record has no Ensembl cross-reference.
+    """
+    path = cache_path or _default_cache_path()
+    if refresh and path.exists():
+        path.unlink()
+    _download(NCBI_GENE_INFO_URL, path)
+    print(f"loading NCBI symbol alias index from {path.name}...")
+    with gzip.open(path, "rt") as f:
+        df = pd.read_csv(
+            f, sep="\t", usecols=["Symbol", "Synonyms"],
+            dtype={"Symbol": "string", "Synonyms": "string"},
+            low_memory=False,
+        )
+    df = df[df["Symbol"].notna() & df["Symbol"].ne("")]
+    df = df[df["Symbol"].ne("NEWENTRY")]
+    official_symbols = frozenset(df["Symbol"].tolist())
+
+    rows = df[df["Synonyms"].notna() & df["Synonyms"].ne("-")]
+    tmp: dict[str, list[SymbolAliasCandidate]] = {}
+    seen: set[tuple[str, str, str]] = set()
+    source = "ncbi_gene_info.Synonyms"
+    for sym, syn_str in zip(rows["Symbol"].tolist(), rows["Synonyms"].tolist()):
+        for alias in syn_str.split("|"):
+            alias = alias.strip()
+            if not alias or alias == sym:
+                continue
+            key = (alias, sym, source)
+            if key in seen:
+                continue
+            seen.add(key)
+            tmp.setdefault(alias, []).append(
+                SymbolAliasCandidate(
+                    official_symbol=sym,
+                    source=source,
+                    confidence=GENE_INFO_SYNONYM_CONFIDENCE,
+                )
+            )
+
+    alias_candidates = {alias: tuple(cands) for alias, cands in tmp.items()}
+    print(
+        f"  {len(official_symbols):,} official symbols; "
+        f"{len(alias_candidates):,} alias candidate keys"
+    )
+    return SymbolAliasIndex(
+        official_symbols=official_symbols,
+        alias_candidates=alias_candidates,
+    )
+
+
+@lru_cache(maxsize=1)
+def cached_symbol_alias_index() -> SymbolAliasIndex:
+    return load_symbol_alias_index()
+
+
 def harmonize_entrez_via_ncbi(
     matrix: pd.DataFrame,
     *,
@@ -188,67 +272,17 @@ def harmonize_entrez_via_ncbi(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Entrez-indexed matrix → (mapping, ENSG-indexed matrix).
 
-    Returns the same shape as ``geo_matrix.harmonize_gene_ids``:
-    a mapping table with columns ``(source_id, Ensembl_Gene_ID, Symbol)``
-    and the matrix re-aggregated (sum) per Ensembl_Gene_ID. Multi-Entrez
-    → single-symbol collisions are summed; ambiguous symbols (pyensembl
-    returns multiple ENSG for one symbol) are dropped.
+    Backward-compatible name for the shared
+    :func:`pirlygenes.builders.gene_mapping.harmonize_entrez_matrix`.
+    Returns the same shape as ``geo_matrix.harmonize_gene_ids``: a
+    mapping table with columns ``(source_id, Ensembl_Gene_ID, Symbol)``
+    and the matrix re-aggregated (sum) per Ensembl_Gene_ID. The
+    import is function-level because ``gene_mapping`` imports this
+    module's table loaders.
     """
-    from pyensembl import EnsemblRelease
+    from .gene_mapping import harmonize_entrez_matrix
 
-    entrez_to_sym = cached_entrez_to_symbol()
-    genome = EnsemblRelease(ensembl_release)
-
-    rows: list[dict[str, str]] = []
-    resolved = unresolved_entrez = ambiguous_symbol = 0
-    for raw in matrix.index:
-        eid = str(raw).strip()
-        if not eid.isdigit():
-            unresolved_entrez += 1
-            continue
-        sym = entrez_to_sym.get(eid)
-        if not sym:
-            unresolved_entrez += 1
-            continue
-        try:
-            genes = genome.genes_by_name(sym)
-        except Exception:
-            genes = []
-        ids = {g.gene_id.split(".", 1)[0] for g in genes}
-        if len(ids) == 1:
-            g = genes[0]
-            rows.append({
-                "source_id": eid,
-                "Ensembl_Gene_ID": g.gene_id.split(".", 1)[0],
-                "Symbol": g.gene_name or sym,
-            })
-            resolved += 1
-        elif not ids:
-            unresolved_entrez += 1
-        else:
-            ambiguous_symbol += 1
-    print(
-        f"  Entrez→ENSG: resolved={resolved:,}, "
-        f"unresolved={unresolved_entrez:,}, "
-        f"ambiguous_symbol={ambiguous_symbol:,}"
-    )
-    mapping = pd.DataFrame(rows)
-    if mapping.empty:
-        return mapping, pd.DataFrame(columns=matrix.columns)
-
-    flat = matrix.reset_index().rename(
-        columns={matrix.index.name or "index": "source_id"}
-    )
-    flat["source_id"] = flat["source_id"].astype(str)
-    merged = mapping.merge(flat, on="source_id", how="inner")
-    sample_cols = [
-        c for c in merged.columns
-        if c not in {"source_id", "Ensembl_Gene_ID", "Symbol"}
-    ]
-    by_gene = merged.groupby(
-        "Ensembl_Gene_ID", as_index=True, sort=False,
-    )[sample_cols].sum()
-    return mapping, by_gene
+    return harmonize_entrez_matrix(matrix, ensembl_release=ensembl_release)
 
 
 __all__ = [
@@ -260,5 +294,10 @@ __all__ = [
     "cached_entrez_to_ensembl",
     "load_entrez_history",
     "cached_entrez_history",
+    "GENE_INFO_SYNONYM_CONFIDENCE",
+    "SymbolAliasCandidate",
+    "SymbolAliasIndex",
+    "load_symbol_alias_index",
+    "cached_symbol_alias_index",
     "harmonize_entrez_via_ncbi",
 ]

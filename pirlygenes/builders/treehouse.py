@@ -54,6 +54,7 @@ from ..expression.stats import (
     round_stat_columns,
     upsert_to_shard,
 )
+from .gene_mapping import gene_from_symbol
 
 
 @dataclass(frozen=True)
@@ -178,36 +179,24 @@ def _build_or_load_symbol_mapping(
     )
     genome = EnsemblRelease(ensembl_release)
     rows: list[dict[str, str]] = []
-    resolved = ambiguous = unresolved = 0
+    resolved = dropped = 0
     for sym in all_symbols:
-        s = str(sym).strip()
-        if not s:
-            unresolved += 1
+        result = gene_from_symbol(genome, sym)
+        if result is None:
+            # Unknown or ambiguous (>1 gene for the symbol) — dropped.
+            dropped += 1
             continue
-        try:
-            genes = genome.genes_by_name(s)
-        except Exception:
-            genes = []
-        ids = {g.gene_id.split(".", 1)[0] for g in genes}
-        if len(ids) == 1:
-            gene = genes[0]
-            rows.append(
-                {
-                    "source_symbol": s,
-                    "Ensembl_Gene_ID": gene.gene_id.split(".", 1)[0],
-                    "Symbol": gene.gene_name or s,
-                }
-            )
-            resolved += 1
-        elif not ids:
-            unresolved += 1
-        else:
-            ambiguous += 1
+        ensembl_id, name = result
+        rows.append(
+            {
+                "source_symbol": str(sym).strip(),
+                "Ensembl_Gene_ID": ensembl_id,
+                "Symbol": name,
+            }
+        )
+        resolved += 1
     mapping = pd.DataFrame(rows)
-    _log(
-        f"  resolved={resolved}, ambiguous={ambiguous} (dropped), "
-        f"unresolved={unresolved} (dropped)"
-    )
+    _log(f"  resolved={resolved}, unresolved/ambiguous={dropped} (dropped)")
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     mapping.to_parquet(cache_path, index=False)
     _log(f"  wrote symbol mapping cache to {cache_path}")
