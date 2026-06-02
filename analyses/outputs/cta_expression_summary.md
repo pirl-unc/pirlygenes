@@ -6,8 +6,8 @@ Top 30 cancer cohorts (n≥10) × top 30 CTAs. Values are median TPM unless note
 
 | CTA | peak median TPM | peak cohort | cohorts measured |
 | --- | ---: | --- | ---: |
-| CTAG1B | 466.6 | SARC_MYXLPS | 28/30 |
 | CTAG1A | 466.6 | SARC_MYXLPS | 27/30 |
+| CTAG1B | 466.6 | SARC_MYXLPS | 28/30 |
 | PRAME | 361.7 | NBL_MYCN_amp | 30/30 |
 | DPPA5 | 341.1 | TGCT | 27/30 |
 | FKBP6 | 229.4 | PANNET | 30/30 |

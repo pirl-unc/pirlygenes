@@ -39,6 +39,7 @@ import pirlygenes.gene_sets_cancer as gsc
 N_CANCER_TYPES = 30
 N_CTAS = 30
 MIN_SAMPLES = 10
+HIGH_TPM = 30.0  # "highly expressed" threshold for the column-breadth sort
 TPM_FLOOR = 0.01  # LogNorm needs strictly positive values
 OUT_DIR = Path(__file__).resolve().parent / "outputs"
 
@@ -114,12 +115,19 @@ def cta_rows(df: pd.DataFrame, rep: pd.DataFrame) -> pd.DataFrame:
 
 
 def order_and_trim(mat: pd.DataFrame) -> pd.DataFrame:
-    """Top CTAs by column-max; rows sorted by their max CTA, cols by col-max
-    — both axes ordered by 'max across the other'."""
+    """Top CTAs by column-max; rows sorted by their max CTA; columns sorted
+    by *breadth of high expression* — the number of cohorts expressing the
+    CTA above HIGH_TPM — tie-broken by peak. (NaN cells don't count as high.)
+    """
     top_cols = mat.max(axis=0).sort_values(ascending=False).head(N_CTAS).index
     mat = mat[top_cols]
     row_order = mat.max(axis=1).sort_values(ascending=False).index
-    col_order = mat.max(axis=0).sort_values(ascending=False).index
+    breadth = (mat > HIGH_TPM).sum(axis=0)
+    col_order = (
+        pd.DataFrame({"breadth": breadth, "peak": mat.max(axis=0)})
+        .sort_values(["breadth", "peak"], ascending=False)
+        .index
+    )
     return mat.loc[row_order, col_order]
 
 
