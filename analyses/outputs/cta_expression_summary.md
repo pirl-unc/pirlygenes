@@ -1,28 +1,23 @@
 # CTA expression — top cohorts × top CTAs
 
-Top 30 cancer cohorts (n≥10) × top 30 CTAs. Values are median TPM unless noted; see the per-stat CSVs for Q1/Q3. White cells in the heatmaps are genes **not measured** in that cohort (NaN), not zero.
+Cohorts: top 30 by max CTA TPM (n≥10); CTAs ordered by breadth (# cohorts with median >30 TPM). White heatmap cells = gene not measured in that cohort (NaN), not zero.
 
-## Standout CTAs (by peak median TPM across these cohorts)
+## Broadest CTAs (# cohorts with median >30 TPM)
 
-| CTA | peak median TPM | peak cohort | cohorts measured |
-| --- | ---: | --- | ---: |
-| CTAG1A | 466.6 | SARC_MYXLPS | 27/30 |
-| CTAG1B | 466.6 | SARC_MYXLPS | 28/30 |
-| PRAME | 361.7 | NBL_MYCN_amp | 30/30 |
-| DPPA5 | 341.1 | TGCT | 27/30 |
-| FKBP6 | 229.4 | PANNET | 30/30 |
-| XAGE1A | 222.5 | LUAD_KRAS | 26/30 |
-| XAGE1B | 143.4 | LUAD_KRAS | 25/30 |
-| RGPD4 | 107.1 | SARC_PLEOLPS | 29/30 |
-| MAGEA3 | 95.6 | LUNG_NET_LCNEC | 29/30 |
-| EGFL6 | 92.0 | SARC_MYXLPS | 30/30 |
-| MAGEA6 | 77.0 | LUNG_NET_LCNEC | 30/30 |
-| OOEP | 75.9 | REC_NET | 27/30 |
-| CT47B1 | 67.9 | MTC | 27/30 |
-| SPATA4 | 61.2 | MTC | 27/30 |
-| TRIML2 | 60.3 | TGCT | 27/30 |
-
-Notes:
-- PRAME is the single highest-expressed CTA here (peak in SKCM), measured in every cohort — the clearest broad target signal.
-- The MAGE-A cluster (MAGEA3/A6/A4/A12/…) is the next tier, strongest in melanoma / lung / HNSC / bladder.
-- A column like H1-6 (a testis histone) ranks high by *max* but is NaN in most cohorts — read it as sparsely-measured, not broadly on.
+| CTA | # cohorts >30 | peak median TPM | peak cohort |
+| --- | ---: | ---: | --- |
+| PRAME | 16 | 361.7 | NBL_MYCN_amp |
+| XAGE1A | 4 | 214.8 | LUAD_KRAS |
+| XAGE1B | 4 | 138.6 | LUAD_KRAS |
+| FKBP6 | 4 | 229.4 | PANNET |
+| RGPD4 | 3 | 107.1 | SARC_PLEOLPS |
+| OOEP | 3 | 75.9 | REC_NET |
+| TUBA3C | 3 | 45.5 | SARC_PLEOLPS |
+| EGFL6 | 2 | 92.0 | SARC_MYXLPS |
+| UTF1 | 2 | 52.9 | TGCT |
+| DPPA5 | 2 | 328.7 | TGCT |
+| CTAG1A | 2 | 466.6 | SARC_MYXLPS |
+| ZPBP | 1 | 42.2 | MTC |
+| RNF148 | 1 | 36.5 | MTC |
+| SYCP3 | 1 | 36.8 | TGCT |
+| CTAGE1 | 1 | 37.0 | MTC |
