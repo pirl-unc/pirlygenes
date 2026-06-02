@@ -43,20 +43,12 @@ import gzip
 import re
 import shutil
 import urllib.request
-from collections import Counter
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from .geo_matrix import _clean_tpm, _technical_mask
-from .gene_mapping import (
-    METHOD_ENTREZ_CURRENT_SYMBOL,
-    METHOD_ENTREZ_DBXREFS,
-    METHOD_GENE_HISTORY,
-    METHOD_SYNONYM,
-    rescue_symbol,
-)
 from .treehouse import _build_or_load_symbol_mapping
 from ..expression.stats import (
     REFERENCE_COLUMNS,
@@ -291,46 +283,6 @@ def parse_series_matrix(
     return matrix, sample_meta
 
 
-# Ordered rescue methods, used only for the build-log breakdown.
-_RESCUE_METHODS = (
-    METHOD_ENTREZ_DBXREFS,
-    METHOD_ENTREZ_CURRENT_SYMBOL,
-    METHOD_GENE_HISTORY,
-    METHOD_SYNONYM,
-)
-
-
-def _rescue_unresolved_symbols(
-    unresolved: list[str],
-    *,
-    symbol_to_entrez: dict[str, str],
-    genome,
-) -> tuple[list[dict[str, str]], int, Counter]:
-    """Second-pass recovery for probe symbols pyensembl couldn't map.
-
-    Each unresolved symbol is re-tried through the shared
-    :func:`gene_mapping.rescue_symbol` chain — Entrez dbXrefs → Entrez
-    current-symbol → gene_history → synonym/curated-display — using the
-    probe's Entrez ID when the platform table carries one. Returns
-    ``(recovered_rows, n_tried, counts_by_method)``.
-    """
-    rows: list[dict[str, str]] = []
-    counts: Counter = Counter()
-    for legacy_sym in unresolved:
-        entrez_id = symbol_to_entrez.get(legacy_sym, "").strip()
-        result = rescue_symbol(genome, legacy_sym, entrez_id=entrez_id or None)
-        if not result:
-            continue
-        ensembl_id, sym_for_row, method = result
-        rows.append({
-            "source_symbol": legacy_sym,
-            "Ensembl_Gene_ID": ensembl_id,
-            "Symbol": sym_for_row,
-        })
-        counts[method] += 1
-    return rows, len(unresolved), counts
-
-
 def build_microarray_source(
     *,
     series_matrix_url: str,
@@ -434,53 +386,21 @@ def build_microarray_source(
         .to_dict()
     )
 
+    # One pass through the shared resolver: direct pyensembl lookup →
+    # Entrez chain (dbXrefs → current-symbol → gene_history, using the
+    # probe's Entrez ID) → synonym/curated-display rescue. Identical to
+    # the path every other builder uses; the Entrez map is the only
+    # microarray-specific input. The "_rescued" cache suffix invalidates
+    # the older direct-only parquet.
     print(f"harmonizing HUGO → Ensembl release {ensembl_release}...")
     mapping = _build_or_load_symbol_mapping(
         tpm_proxy.index,
         ensembl_release=ensembl_release,
-        cache_path=cache_dir / f"symbol_to_ensembl_{ensembl_release}.parquet",
+        cache_path=cache_dir / f"symbol_to_ensembl_{ensembl_release}_rescued.parquet",
         refresh=False,
+        symbol_to_entrez=symbol_to_entrez,
     )
 
-    # Second-pass recovery: any symbol that didn't resolve via pyensembl's
-    # direct name lookup gets re-tried through a four-tier rescue chain:
-    #   1. Entrez → ENSG directly via gene_info dbXrefs
-    #      (rescues current-symbol-not-in-pyensembl cases like HLA-DRB4,
-    #      CCL3L1, GSTT1, *-IT1)
-    #   2. Entrez → current HUGO symbol via gene_info → pyensembl name
-    #      (rescues HGNC-renamed legacy symbols like SEPT2→SEPTIN2)
-    #   3. Entrez → live Entrez via gene_history, then retry tier 1/2
-    #      (rescues withdrawn IDs from 2003-era platforms)
-    #   4. legacy_symbol → official symbol via gene_info Synonyms
-    #      (rescues no-Entrez probes that still happen to be HGNC
-    #      synonyms — small but free; mostly TCR/Ig segments and
-    #      pseudogenes)
-    resolved_symbols = (
-        set(mapping["source_symbol"]) if "source_symbol" in mapping.columns
-        else set()
-    )
-    unresolved = [s for s in tpm_proxy.index if s not in resolved_symbols]
-    recovered_rows: list[dict] = []
-    if unresolved:
-        from pyensembl import EnsemblRelease as _EnsemblRelease
-        genome = _EnsemblRelease(ensembl_release)
-        recovered_rows, n_tried, method_counts = _rescue_unresolved_symbols(
-            unresolved,
-            symbol_to_entrez=symbol_to_entrez,
-            genome=genome,
-        )
-        if recovered_rows:
-            mapping = pd.concat(
-                [mapping, pd.DataFrame(recovered_rows)], ignore_index=True,
-            )
-        breakdown = ", ".join(
-            f"{method}={method_counts.get(method, 0)}"
-            for method in _RESCUE_METHODS
-        )
-        print(
-            f"  Rescue chain: {sum(method_counts.values())} of {n_tried} "
-            f"unresolved symbols recovered ({breakdown})"
-        )
     flat = tpm_proxy.reset_index().rename(
         columns={"gene_symbol": "source_symbol"}
     )

@@ -218,6 +218,60 @@ def test_rescue_symbol_via_curated_display_name(monkeypatch):
         gm.cached_combined_alias_index.cache_clear()
 
 
+# ─── resolve_symbol: the one entry point every builder uses ──────────
+
+
+def test_resolve_symbol_direct_hit_returns_symbol_method(monkeypatch):
+    """A direct pyensembl hit short-circuits — no Entrez cache load."""
+    def fail():
+        raise AssertionError("Entrez cache must not load on a direct hit")
+    monkeypatch.setattr(gm, "cached_entrez_to_symbol", fail)
+    monkeypatch.setattr(gm, "cached_entrez_to_ensembl", fail)
+    genome = FakeGenome(by_name={"TP53": [FakeGene("ENSG00000141510.1", "TP53")]})
+    assert gm.resolve_symbol(genome, "TP53") == (
+        "ENSG00000141510", "TP53", gm.METHOD_SYMBOL,
+    )
+
+
+def test_resolve_symbol_synonym_fallback_without_entrez(monkeypatch):
+    """A renamed symbol with no Entrez ID resolves via the synonym pool
+    and never touches the Entrez caches — the uniform path that makes
+    HIST1H1T→H1-6 resolve the same in every builder."""
+    base = SymbolAliasIndex(
+        official_symbols=frozenset({"H1-6"}),
+        alias_candidates={
+            "HIST1H1T": (
+                SymbolAliasCandidate("H1-6", "ncbi", GENE_INFO_SYNONYM_CONFIDENCE),
+            ),
+        },
+    )
+    monkeypatch.setattr(gm, "cached_symbol_alias_index", lambda: base)
+
+    def fail():
+        raise AssertionError("Entrez cache must not load for symbol-only resolve")
+    monkeypatch.setattr(gm, "cached_entrez_to_symbol", fail)
+    monkeypatch.setattr(gm, "cached_entrez_to_ensembl", fail)
+    monkeypatch.setattr(gm, "cached_entrez_history", fail)
+
+    gm.cached_combined_alias_index.cache_clear()
+    genome = FakeGenome(by_name={"H1-6": [FakeGene("ENSG00000187475.1", "H1-6")]})
+    try:
+        assert gm.resolve_symbol(genome, "HIST1H1T") == (
+            "ENSG00000187475", "H1-6", gm.METHOD_SYNONYM,
+        )
+    finally:
+        gm.cached_combined_alias_index.cache_clear()
+
+
+def test_resolve_symbol_uses_entrez_when_id_present(monkeypatch):
+    """When a direct hit fails but an Entrez ID is supplied, the chain runs."""
+    _patch_entrez(monkeypatch, to_ensembl={"9": "ENSG00000000009"}, to_symbol={"9": "GENE9"})
+    genome = FakeGenome()  # direct lookup misses
+    assert gm.resolve_symbol(genome, "LEGACY9", entrez_id="9") == (
+        "ENSG00000000009", "GENE9", gm.METHOD_ENTREZ_DBXREFS,
+    )
+
+
 # ─── matrix aggregation ──────────────────────────────────────────────
 
 
