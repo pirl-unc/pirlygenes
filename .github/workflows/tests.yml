@@ -35,6 +35,10 @@ jobs:
           echo "Before installing Ensembl release 112" && df -h
           pyensembl install --release 112 --species homo_sapiens
           echo "After installing Ensembl release 112" && df -h
+          # Fail fast if release 112 isn't usable — the gene-resolution
+          # tests depend on it and would otherwise silently *skip* (a
+          # green CI run that never actually exercised them).
+          python -c "from pyensembl import EnsemblRelease; assert EnsemblRelease(112).genes_by_name('TP53'); print('Ensembl release 112 ready')"
       - name: Run linting script and unit tests
         run: |
           source .venv/bin/activate

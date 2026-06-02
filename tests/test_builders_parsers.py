@@ -170,19 +170,114 @@ def test_parse_geo_platform_table_falls_back_to_id_when_no_symbol(tmp_path):
     assert (df["gene_symbol"] == df["probe_id"]).all()
 
 
+# ─── microarray symbol rescue ─────────────────────────────────────────
+
+
+def test_load_symbol_alias_index_preserves_ambiguous_candidates(tmp_path):
+    from pirlygenes.builders.ncbi_gene_info import (
+        GENE_INFO_SYNONYM_CONFIDENCE,
+        load_symbol_alias_index,
+    )
+
+    path = tmp_path / "gene_info.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        f.write(
+            "Symbol\tSynonyms\n"
+            "GENE1\tOLD\n"
+            "GENE2\tOLD|ALIAS2\n"
+            "TTTY21\t-\n"
+            "TTTY7B\tTTTY21\n"
+        )
+
+    index = load_symbol_alias_index(path)
+
+    assert "TTTY21" in index.official_symbols
+    old_targets = {c.official_symbol for c in index.alias_candidates["OLD"]}
+    assert old_targets == {"GENE1", "GENE2"}
+    assert {
+        c.confidence for c in index.alias_candidates["OLD"]
+    } == {GENE_INFO_SYNONYM_CONFIDENCE}
+
+
+def test_symbol_only_rescue_does_not_load_entrez_caches(monkeypatch):
+    """affy._rescue_unresolved_symbols composes gene_mapping.rescue_symbol;
+    a symbol-only probe (no Entrez ID) must resolve via the synonym pool
+    without ever loading the Entrez caches."""
+    from pirlygenes.builders import affy_gpl570, gene_mapping
+    from pirlygenes.builders.ncbi_gene_info import (
+        GENE_INFO_SYNONYM_CONFIDENCE,
+        SymbolAliasCandidate,
+        SymbolAliasIndex,
+    )
+
+    class FakeGene:
+        gene_id = "ENSG00000123456.7"
+        gene_name = "GENE1"
+
+    class FakeGenome:
+        def genes_by_name(self, symbol):
+            if symbol == "GENE1":
+                return [FakeGene()]
+            return []
+
+    alias_index = SymbolAliasIndex(
+        official_symbols=frozenset({"GENE1"}),
+        alias_candidates={
+            "OLD": (
+                SymbolAliasCandidate(
+                    "GENE1", "test", GENE_INFO_SYNONYM_CONFIDENCE,
+                ),
+            ),
+        },
+    )
+
+    monkeypatch.setattr(
+        gene_mapping, "cached_symbol_alias_index", lambda: alias_index,
+    )
+
+    def fail_if_called():
+        raise AssertionError("Entrez cache should not load for symbol-only rescue")
+
+    monkeypatch.setattr(gene_mapping, "cached_entrez_to_symbol", fail_if_called)
+    monkeypatch.setattr(gene_mapping, "cached_entrez_to_ensembl", fail_if_called)
+    monkeypatch.setattr(gene_mapping, "cached_entrez_history", fail_if_called)
+
+    gene_mapping.cached_combined_alias_index.cache_clear()
+    try:
+        rows, n_tried, counts = affy_gpl570._rescue_unresolved_symbols(
+            ["OLD"],
+            symbol_to_entrez={},
+            genome=FakeGenome(),
+        )
+    finally:
+        gene_mapping.cached_combined_alias_index.cache_clear()
+
+    assert rows == [
+        {
+            "source_symbol": "OLD",
+            "Ensembl_Gene_ID": "ENSG00000123456",
+            "Symbol": "GENE1",
+        }
+    ]
+    assert n_tried == 1
+    assert counts[gene_mapping.METHOD_SYNONYM] == 1
+
+
 # ─── harmonize_entrez_via_ncbi ────────────────────────────────────────
 
 
 def test_harmonize_entrez_via_ncbi_resolves_via_ncbi_map(monkeypatch):
     """Inject a tiny entrez→symbol map and confirm the helper routes
     Entrez-keyed counts through pyensembl to ENSG."""
-    from pirlygenes.builders import ncbi_gene_info
+    from pirlygenes.builders import gene_mapping, ncbi_gene_info
 
     # Fake NCBI lookup: 780 → DDR1, 5982 → RFC2, 99999 → unmappable.
+    # dbXrefs/history are empty so resolution goes via current-symbol →
+    # pyensembl, and nothing touches the network.
     fake_map = {"780": "DDR1", "5982": "RFC2", "99999": "ZZZZNOTAGENE"}
-    monkeypatch.setattr(
-        ncbi_gene_info, "cached_entrez_to_symbol", lambda: fake_map
-    )
+    monkeypatch.setattr(gene_mapping, "cached_entrez_to_symbol", lambda: fake_map)
+    monkeypatch.setattr(gene_mapping, "cached_entrez_to_ensembl", lambda: {})
+    monkeypatch.setattr(gene_mapping, "cached_entrez_history", lambda: {})
 
     counts = pd.DataFrame(
         {"sampleA": [100, 200, 300, 50], "sampleB": [110, 220, 330, 55]},
@@ -212,12 +307,14 @@ def test_harmonize_entrez_via_ncbi_resolves_via_ncbi_map(monkeypatch):
 def test_harmonize_entrez_via_ncbi_returns_empty_on_no_matches(monkeypatch):
     """All-unresolvable input returns empty mapping + empty matrix —
     doesn't crash with a KeyError or NaN dataframe."""
-    from pirlygenes.builders import ncbi_gene_info
+    from pirlygenes.builders import gene_mapping, ncbi_gene_info
 
     monkeypatch.setattr(
-        ncbi_gene_info, "cached_entrez_to_symbol",
+        gene_mapping, "cached_entrez_to_symbol",
         lambda: {"99998": "ZZZBOGUS", "99999": "ZZZZNOTAGENE"},
     )
+    monkeypatch.setattr(gene_mapping, "cached_entrez_to_ensembl", lambda: {})
+    monkeypatch.setattr(gene_mapping, "cached_entrez_history", lambda: {})
 
     counts = pd.DataFrame(
         {"sampleA": [1, 2], "sampleB": [3, 4]},

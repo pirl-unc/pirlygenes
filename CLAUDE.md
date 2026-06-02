@@ -112,6 +112,30 @@ regex panel changes:
 distinguishing protein-coding, rRNA, and tRNA entries) and not touched
 by the script.
 
+`ncbi-symbol-synonyms.csv.gz` is also **derived**: a static, offline
+`{alias: official_symbol}` snapshot of NCBI `gene_info` `Synonyms` that
+backs the *lowest tier* of symbol resolution in
+`pirlygenes.gene_ids.find_gene_and_ensembl_release_by_name` (the last
+resort when a name matches no installed Ensembl release and isn't a
+curated display alias — `GNB2L1`→`RACK1`, `TCEB2`→`ELOB`, …). Only
+unambiguous, guard-checked aliases are kept; the pruning reuses
+`pirlygenes.builders.gene_mapping.synonym_to_official` so the bundled
+snapshot and the builders' live lookup share one guard. Re-run after a
+major NCBI `gene_info` refresh:
+
+    python scripts/generate_ncbi_symbol_synonyms.py
+
+## Symbol/identifier mapping — one path per task
+
+Identifier mapping has a single home per semantic task. The pure
+primitives — `strip_version` and `gene_for_ensembl_id` (resolve an
+Ensembl gene ID against one genome) — live in core `pirlygenes.gene_ids`.
+The builders' harmonizers (`pirlygenes.builders.gene_mapping`) import
+those and add the NCBI-table-backed layer (Entrez chain, synonym
+rescue, matrix aggregation). Dependency direction is builders → core,
+never the reverse. `gene_names.display_name()` remains the sole display
+authority; its curated aliases also feed the mapping synonym pool.
+
 ## Test fixtures for the cancer-type registry
 
 `pirlygenes.gene_sets_cancer.CANCER_TYPE_NAMES` is a registry-backed

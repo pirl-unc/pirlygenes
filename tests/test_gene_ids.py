@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+import pytest
 from pyensembl.shell import collect_all_installed_ensembl_releases
 
+import pirlygenes.gene_ids as gi
 from pirlygenes import load_all_dataframes
 from pirlygenes.load_dataset import get_data
 
@@ -147,3 +149,62 @@ def test_all_gene_ids_resolve_in_ensembl():
             )
 
     assert not failures, "\n".join(failures)
+
+
+# Weird/old/alternate names → the stable ENSG of the current gene, through
+# the full tiered resolver (direct current symbol / curated display alias /
+# bundled NCBI-synonym lowest tier). The ENSG is asserted rather than the
+# returned symbol: which symbol comes back depends on which Ensembl
+# releases happen to be installed (an old release may still carry the old
+# spelling), whereas the gene's ENSG is stable across releases and tiers.
+_WEIRD_NAME_TO_ENSG = {
+    # current symbols — resolve directly
+    "TP53": "ENSG00000141510",
+    "EGFR": "ENSG00000146648",
+    "MYC": "ENSG00000136997",
+    # curated literature display names (gene_names aliases)
+    "p53": "ENSG00000141510",
+    "NY-ESO-1": "ENSG00000184033",
+    "gp100": "ENSG00000185664",
+    "PSMA": "ENSG00000086205",
+    "B7-H3": "ENSG00000103855",
+    "PD-L1": "ENSG00000120217",
+    "TROP2": "ENSG00000184292",
+    # legacy renames recovered via the bundled NCBI-synonym lowest tier
+    "MMSET": "ENSG00000109685",   # → NSD2
+    "HER2": "ENSG00000141736",    # → ERBB2
+    "GNB2L1": "ENSG00000204628",  # → RACK1
+    "KIAA1524": "ENSG00000163507",  # → CIP2A
+    "ODZ1": "ENSG00000009694",    # → TENM1
+    "C11orf30": "ENSG00000158636",  # → EMSY
+    "PARK2": "ENSG00000185345",   # → PRKN
+    "CASC5": "ENSG00000137812",   # → KNL1
+}
+
+
+# Resolution is pinned to a single known Ensembl release so the result is
+# deterministic regardless of which other releases happen to be installed —
+# and so the NCBI-synonym lowest tier genuinely fires for the legacy names
+# (an older installed release would otherwise still carry the old spelling
+# and short-circuit it). CI installs this release in a cached step.
+_BASELINE_RELEASE = 112
+_BASELINE_GENOME = next(
+    (g for g in _human_genomes if g.release == _BASELINE_RELEASE), None
+)
+
+
+@pytest.mark.skipif(
+    _BASELINE_GENOME is None,
+    reason=(
+        f"Ensembl release {_BASELINE_RELEASE} not installed — run "
+        f"`pyensembl install --release {_BASELINE_RELEASE} --species homo_sapiens`"
+    ),
+)
+@pytest.mark.parametrize("name,ensg", sorted(_WEIRD_NAME_TO_ENSG.items()))
+def test_weird_old_names_resolve_to_expected_gene(name, ensg, monkeypatch):
+    """End-to-end: gnarly historical symbols resolve to the right gene
+    through the common helper, against a pinned release (112)."""
+    monkeypatch.setattr(gi, "genomes", [_BASELINE_GENOME])
+    gene_id, _resolved_name = gi.find_canonical_gene_id_and_name(name)
+    assert gene_id is not None, f"{name} did not resolve"
+    assert gene_id.split(".")[0] == ensg
