@@ -170,3 +170,6 @@ cython_debug/
 
 # Built data-bundle artifacts (uploaded to GitHub Releases, never committed)
 pirlygenes-data-v*.tar.gz
+
+# Generated analysis plots (regenerable; CSV/md outputs are tracked)
+analyses/outputs/*.png
