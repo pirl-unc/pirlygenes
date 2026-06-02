@@ -6,21 +6,21 @@ Top 30 cancer cohorts (n≥10) × top 30 CTAs. Values are median TPM unless note
 
 | CTA | peak median TPM | peak cohort | cohorts measured |
 | --- | ---: | --- | ---: |
-| PRAME | 350.1 | SKCM | 30/30 |
-| XAGE1A | 183.9 | LUAD | 30/30 |
-| XAGE1B | 133.4 | LUAD | 30/30 |
-| MAGEA3 | 28.1 | SKCM | 30/30 |
-| PHF7 | 26.9 | LAML_ELN_Fav | 30/30 |
-| MAGEA6 | 18.4 | SKCM | 30/30 |
-| EGFL6 | 15.2 | LUSC | 30/30 |
-| MAGEA12 | 15.0 | SKCM | 30/30 |
-| YBX2 | 13.3 | COAD | 30/30 |
-| MAGEA4 | 10.0 | LUSC | 30/30 |
-| H1-6 | 7.9 | T_ALL | 6/30 |
-| MAGEA2 | 7.7 | SKCM | 30/30 |
-| MAGEC1 | 6.9 | MM | 30/30 |
-| SYCE2 | 6.6 | LAML_ELN_Fav | 30/30 |
-| SYCP3 | 6.5 | CLL | 30/30 |
+| CTAG1B | 466.6 | SARC_MYXLPS | 28/30 |
+| CTAG1A | 466.6 | SARC_MYXLPS | 27/30 |
+| PRAME | 361.7 | NBL_MYCN_amp | 30/30 |
+| DPPA5 | 341.1 | TGCT | 27/30 |
+| FKBP6 | 229.4 | PANNET | 30/30 |
+| XAGE1A | 222.5 | LUAD_KRAS | 26/30 |
+| XAGE1B | 143.4 | LUAD_KRAS | 25/30 |
+| RGPD4 | 107.1 | SARC_PLEOLPS | 29/30 |
+| MAGEA3 | 95.6 | LUNG_NET_LCNEC | 29/30 |
+| EGFL6 | 92.0 | SARC_MYXLPS | 30/30 |
+| MAGEA6 | 77.0 | LUNG_NET_LCNEC | 30/30 |
+| OOEP | 75.9 | REC_NET | 27/30 |
+| CT47B1 | 67.9 | MTC | 27/30 |
+| SPATA4 | 61.2 | MTC | 27/30 |
+| TRIML2 | 60.3 | TGCT | 27/30 |
 
 Notes:
 - PRAME is the single highest-expressed CTA here (peak in SKCM), measured in every cohort — the clearest broad target signal.

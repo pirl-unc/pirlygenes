@@ -52,7 +52,9 @@ STATS = [
 
 def representative_cohorts(df: pd.DataFrame) -> pd.DataFrame:
     """One row-set per cancer_code: the source_cohort with the most samples,
-    keeping only codes with n>=MIN_SAMPLES, then the top N by sample count."""
+    keeping only codes with n>=MIN_SAMPLES, then the top N by *CTA
+    expression* — the max over CTAs of the cohort's median TPM — so rows
+    are the cohorts that most express CTAs, not simply the biggest."""
     cohort_sizes = (
         df[["cancer_code", "source_cohort", "n_samples"]]
         .drop_duplicates()
@@ -60,7 +62,18 @@ def representative_cohorts(df: pd.DataFrame) -> pd.DataFrame:
     )
     rep = cohort_sizes.drop_duplicates("cancer_code", keep="first")
     rep = rep[rep["n_samples"] >= MIN_SAMPLES]
-    return rep.head(N_CANCER_TYPES)
+
+    # Score each representative cohort by its single highest-expressed CTA
+    # (max over all CTAs of the median TPM), then keep the top N.
+    cta_ids = set(gsc.CTA_gene_ids())
+    keep = set(zip(rep["cancer_code"], rep["source_cohort"]))
+    cta = df[df["Ensembl_Gene_ID"].isin(cta_ids)]
+    cta = cta[
+        [(c, s) in keep for c, s in zip(cta["cancer_code"], cta["source_cohort"])]
+    ]
+    score = cta.groupby("cancer_code")["expression"].max()
+    rep = rep.assign(cta_score=rep["cancer_code"].map(score).fillna(0.0))
+    return rep.sort_values("cta_score", ascending=False).head(N_CANCER_TYPES)
 
 
 def _parent_name_by_code() -> dict:
@@ -101,10 +114,11 @@ def cta_rows(df: pd.DataFrame, rep: pd.DataFrame) -> pd.DataFrame:
 
 
 def order_and_trim(mat: pd.DataFrame) -> pd.DataFrame:
-    """Top CTAs by column-max; rows sorted by row-mean, cols by col-max."""
+    """Top CTAs by column-max; rows sorted by their max CTA, cols by col-max
+    — both axes ordered by 'max across the other'."""
     top_cols = mat.max(axis=0).sort_values(ascending=False).head(N_CTAS).index
     mat = mat[top_cols]
-    row_order = mat.mean(axis=1).sort_values(ascending=False).index
+    row_order = mat.max(axis=1).sort_values(ascending=False).index
     col_order = mat.max(axis=0).sort_values(ascending=False).index
     return mat.loc[row_order, col_order]
 
