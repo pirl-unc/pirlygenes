@@ -27,7 +27,10 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
-from ..expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
+from ..expression.normalize import (
+    clean_tpm_matrix as _clean_tpm,
+    technical_rna_mask as _technical_mask,
+)
 from ..expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -304,23 +307,8 @@ def _gene_lengths_kb_for_index(
     return pd.Series(out, name="gene_length_kb")
 
 
-# ─── Tech-RNA filter + clean TPM ────────────────────────────────────────────
-
-def _technical_mask(gene_table: pd.DataFrame) -> pd.Series:
-    remove = {str(g) for g in _TECHNICAL_RNA_GROUPS}
-    qc = [classify_gene_qc(sym, ensembl_id=ensg)
-          for sym, ensg in zip(gene_table["Symbol"], gene_table["Ensembl_Gene_ID"])]
-    return pd.Series([k.group in remove for k in qc], index=gene_table.index)
-
-
-def _clean_tpm(values: pd.DataFrame, removable: pd.Series) -> pd.DataFrame:
-    clean = values.copy()
-    clean.loc[removable.to_numpy(), :] = 0.0
-    remaining = clean.sum(axis=0)
-    scale = pd.Series(np.nan, index=remaining.index, dtype=float)
-    pos = remaining > 0
-    scale.loc[pos] = 1_000_000.0 / remaining.loc[pos]
-    return clean.mul(scale, axis=1).fillna(0.0)
+# ─── Tech-RNA filter + clean TPM: imported from expression.normalize ────────
+# (_clean_tpm / _technical_mask are aliases of the shared helper above.)
 
 
 # ─── End-to-end build ───────────────────────────────────────────────────────

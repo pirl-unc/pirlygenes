@@ -334,6 +334,53 @@ def normalize_technical_rna_long_table(
     )
 
 
+# ---------- builder clean-TPM (wide gene×sample matrix) ----------
+#
+# The single definition of the reference "clean TPM" transform that every
+# cohort builder shares: zero the technical-RNA rows, then renormalize
+# each sample column to 1e6. Previously copy-pasted into ~12 builders and
+# scripts; this is now the one home.
+
+
+def technical_rna_mask(gene_table):
+    """Boolean Series — True for rows whose gene is a technical-RNA feature
+    (mtDNA / mt-like pseudogene / rRNA-like / polyA-bias lncRNA), i.e. the
+    set zeroed by :func:`clean_tpm_matrix`.
+
+    ``gene_table`` is any frame with ``Symbol`` and ``Ensembl_Gene_ID``
+    columns; the returned mask is indexed like it.
+    """
+    import pandas as pd
+
+    remove = {str(group) for group in _TECHNICAL_RNA_GROUPS}
+    qc = [
+        classify_gene_qc(symbol, ensembl_id=ensg)
+        for symbol, ensg in zip(gene_table["Symbol"], gene_table["Ensembl_Gene_ID"])
+    ]
+    return pd.Series([klass.group in remove for klass in qc], index=gene_table.index)
+
+
+def clean_tpm_matrix(values, removable):
+    """Reference clean-TPM transform on a gene×sample matrix: zero the
+    ``removable`` (technical-RNA) rows, then renormalize each sample column
+    so its remaining mass sums to 1e6.
+
+    ``values`` is genes (rows) × samples (cols); ``removable`` is a boolean
+    mask aligned to ``values.index`` (see :func:`technical_rna_mask`).
+    Columns whose post-removal sum is <= 0 become all-zero.
+    """
+    import numpy as np
+    import pandas as pd
+
+    clean = values.copy()
+    clean.loc[removable.to_numpy(), :] = 0.0
+    remaining = clean.sum(axis=0)
+    scale = pd.Series(np.nan, index=remaining.index, dtype=float)
+    positive = remaining > 0
+    scale.loc[positive] = 1_000_000.0 / remaining.loc[positive]
+    return clean.mul(scale, axis=1).fillna(0.0)
+
+
 # ---------- conversions ----------
 
 

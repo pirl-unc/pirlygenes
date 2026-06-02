@@ -19,13 +19,13 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
-from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
     upsert_to_shard,
 )
+from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
 
 
 PORTAL_NONREDUNDANT_EXCLUSIONS = {
@@ -181,26 +181,6 @@ def _collapse_duplicate_genes(df: pd.DataFrame, sample_cols: list[str]) -> pd.Da
     )
     values = work.groupby("Ensembl_Gene_ID", sort=False)[sample_cols].sum()
     return pd.concat([symbol, source_gene_id, values], axis=1).reset_index()
-
-
-def _technical_mask(df: pd.DataFrame) -> pd.Series:
-    remove_groups = {str(group) for group in _TECHNICAL_RNA_GROUPS}
-    qc = [
-        classify_gene_qc(symbol, ensembl_id=ensg)
-        for symbol, ensg in zip(df["Symbol"], df["Ensembl_Gene_ID"])
-    ]
-    return pd.Series([klass.group in remove_groups for klass in qc], index=df.index)
-
-
-def _clean_tpm(values: pd.DataFrame, removable: pd.Series) -> pd.DataFrame:
-    clean = values.copy()
-    clean.loc[removable, :] = 0.0
-    remaining = clean.sum(axis=0)
-    scale = pd.Series(np.nan, index=remaining.index, dtype=float)
-    positive = remaining > 0
-    scale.loc[positive] = 1_000_000.0 / remaining.loc[positive]
-    clean = clean.mul(scale, axis=1)
-    return clean.fillna(0.0)
 
 
 def _summarize(df: pd.DataFrame, included_cols: list[str]) -> pd.DataFrame:
