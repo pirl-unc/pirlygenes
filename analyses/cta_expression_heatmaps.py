@@ -31,7 +31,7 @@ import pandas as pd
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
-from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, Normalize
 
 import pirlygenes.expression.accessors as accessors
 import pirlygenes.gene_sets_cancer as gsc
@@ -63,8 +63,25 @@ def representative_cohorts(df: pd.DataFrame) -> pd.DataFrame:
     return rep.head(N_CANCER_TYPES)
 
 
-def _row_label(code: str, n_by_code: dict) -> str:
+def _parent_name_by_code() -> dict:
+    """code → parent display name, for subtype rows whose own name is a bare
+    molecular label (e.g. BRCA_LumB's name is just 'Luminal B')."""
+    reg = gsc.cancer_type_registry()
+    name_by_code = dict(zip(reg["code"], reg["name"]))
+    out = {}
+    for code, parent in zip(reg["code"], reg["parent_code"]):
+        if isinstance(parent, str) and parent in name_by_code:
+            out[code] = name_by_code[parent]
+    return out
+
+
+def _row_label(code: str, n_by_code: dict, parent_name: dict) -> str:
     name = gsc.CANCER_TYPE_NAMES.get(code) or code
+    parent = parent_name.get(code)
+    # Prefix the parent lineage for subtypes whose name doesn't already
+    # convey it (so "Luminal B" reads as "Breast … — Luminal B").
+    if parent and parent.lower() not in name.lower() and name.lower() not in parent.lower():
+        name = f"{parent} — {name}"
     return f"{name} [{code}] (n={int(n_by_code[code])})"
 
 
@@ -77,7 +94,10 @@ def cta_rows(df: pd.DataFrame, rep: pd.DataFrame) -> pd.DataFrame:
         [(c, s) in keep for c, s in zip(sub["cancer_code"], sub["source_cohort"])]
     ]
     n_by_code = dict(zip(rep["cancer_code"], rep["n_samples"]))
-    return sub.assign(row=sub["cancer_code"].map(lambda c: _row_label(c, n_by_code)))
+    parent_name = _parent_name_by_code()
+    return sub.assign(
+        row=sub["cancer_code"].map(lambda c: _row_label(c, n_by_code, parent_name))
+    )
 
 
 def order_and_trim(mat: pd.DataFrame) -> pd.DataFrame:
@@ -89,17 +109,25 @@ def order_and_trim(mat: pd.DataFrame) -> pd.DataFrame:
     return mat.loc[row_order, col_order]
 
 
-def plot(mat: pd.DataFrame, label: str, fname: str) -> None:
-    floored = mat.clip(lower=TPM_FLOOR)
-    norm = LogNorm(vmin=TPM_FLOOR, vmax=float(np.nanmax(floored.to_numpy())))
+def plot(mat: pd.DataFrame, label: str, fname: str, *, log_scale: bool = True) -> None:
+    if log_scale:
+        data = mat.clip(lower=TPM_FLOOR)
+        norm = LogNorm(vmin=TPM_FLOOR, vmax=float(np.nanmax(data.to_numpy())))
+        scale_txt = "log scale"
+    else:
+        # Linear: dominated by the few high-expressers (PRAME, XAGE1, …);
+        # most cells read near-floor. Complements the log view.
+        data = mat
+        norm = Normalize(vmin=0.0, vmax=float(np.nanmax(data.to_numpy())))
+        scale_txt = "linear scale"
     fig, ax = plt.subplots(figsize=(15, 11))
     sns.heatmap(
-        floored, ax=ax, cmap="magma", norm=norm,
-        cbar_kws={"label": f"{label}  (log scale, TPM)", "shrink": 0.6},
+        data, ax=ax, cmap="magma", norm=norm,
+        cbar_kws={"label": f"{label}  ({scale_txt}, TPM)", "shrink": 0.6},
         linewidths=0.3, linecolor="0.9",
     )
     ax.set_title(
-        f"Cancer-testis antigen expression — {label}\n"
+        f"Cancer-testis antigen expression — {label} ({scale_txt})\n"
         f"top {N_CANCER_TYPES} cohorts (n≥{MIN_SAMPLES}) × top {N_CTAS} CTAs",
         fontsize=13,
     )
@@ -182,9 +210,10 @@ def main() -> None:
         mat = order_and_trim(full)
         matrices[slug] = mat
         shown_symbols.update(mat.columns)
-        plot(mat, label, f"cta_{slug}.png")
+        plot(mat, label, f"cta_{slug}.png", log_scale=True)
+        plot(mat, label, f"cta_{slug}_linear.png", log_scale=False)
         mat.to_csv(OUT_DIR / f"cta_{slug}.csv", index_label="cohort")
-        print(f"  wrote cta_{slug}.png + cta_{slug}.csv "
+        print(f"  wrote cta_{slug}.png + cta_{slug}_linear.png + cta_{slug}.csv "
               f"({mat.shape[0]}×{mat.shape[1]})")
 
     write_long_csv(rows, shown_symbols, OUT_DIR / "cta_expression_long.csv")
