@@ -85,18 +85,22 @@ class SymbolAliasIndex:
     alias_candidates: dict[str, tuple[SymbolAliasCandidate, ...]]
 
 
-def _default_cache_path() -> Path:
+def _cache_dir() -> Path:
+    """Tag-pinned cache dir, so bumping ``GENE_DATA_MIRROR_TAG`` forces a
+    fresh fetch instead of silently reusing a stale snapshot. Old tags'
+    dirs coexist (and can be pruned manually)."""
     return (
         Path.home() / ".cache" / "pirlygenes" / "ncbi_gene_info"
-        / "Homo_sapiens.gene_info.gz"
+        / GENE_DATA_MIRROR_TAG
     )
+
+
+def _default_cache_path() -> Path:
+    return _cache_dir() / "Homo_sapiens.gene_info.gz"
 
 
 def _default_history_cache_path() -> Path:
-    return (
-        Path.home() / ".cache" / "pirlygenes" / "ncbi_gene_info"
-        / "gene_history.gz"
-    )
+    return _cache_dir() / "gene_history.gz"
 
 
 def _download(url: str, dest: Path) -> Path:

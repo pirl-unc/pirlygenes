@@ -188,6 +188,19 @@ def test_ncbi_gene_data_loads_from_github_mirror_not_ncbi():
         assert "ftp.ncbi.nlm.nih.gov" in url
 
 
+def test_ncbi_cache_path_is_keyed_by_mirror_tag():
+    """The on-disk cache is namespaced by the mirror tag, so bumping
+    GENE_DATA_MIRROR_TAG forces a fresh fetch instead of reusing a stale
+    snapshot. gene_info and gene_history share the tag-pinned dir."""
+    from pirlygenes.builders import ncbi_gene_info as ngi
+
+    info = ngi._default_cache_path()
+    history = ngi._default_history_cache_path()
+    assert info.parent.name == ngi.GENE_DATA_MIRROR_TAG
+    assert history.parent.name == ngi.GENE_DATA_MIRROR_TAG
+    assert info.parent == history.parent
+
+
 # ─── microarray symbol rescue ─────────────────────────────────────────
 
 
