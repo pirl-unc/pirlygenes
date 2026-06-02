@@ -170,6 +170,37 @@ def test_parse_geo_platform_table_falls_back_to_id_when_no_symbol(tmp_path):
     assert (df["gene_symbol"] == df["probe_id"]).all()
 
 
+# ─── NCBI gene-data source wiring ─────────────────────────────────────
+
+
+def test_ncbi_gene_data_loads_from_github_mirror_not_ncbi():
+    """The builders fetch gene_info / gene_history from the pinned GitHub
+    mirror (cached), not NCBI's FTP; the upstream NCBI URLs survive only
+    for the refresh script."""
+    from pirlygenes.builders import ncbi_gene_info as ngi
+
+    for url in (ngi.NCBI_GENE_INFO_URL, ngi.NCBI_GENE_HISTORY_URL):
+        assert "github.com/pirl-unc/pirlygenes/releases" in url
+        assert ngi.GENE_DATA_MIRROR_TAG in url
+        assert "ncbi.nlm.nih.gov" not in url
+
+    for url in (ngi.NCBI_GENE_INFO_UPSTREAM_URL, ngi.NCBI_GENE_HISTORY_UPSTREAM_URL):
+        assert "ftp.ncbi.nlm.nih.gov" in url
+
+
+def test_ncbi_cache_path_is_keyed_by_mirror_tag():
+    """The on-disk cache is namespaced by the mirror tag, so bumping
+    GENE_DATA_MIRROR_TAG forces a fresh fetch instead of reusing a stale
+    snapshot. gene_info and gene_history share the tag-pinned dir."""
+    from pirlygenes.builders import ncbi_gene_info as ngi
+
+    info = ngi._default_cache_path()
+    history = ngi._default_history_cache_path()
+    assert info.parent.name == ngi.GENE_DATA_MIRROR_TAG
+    assert history.parent.name == ngi.GENE_DATA_MIRROR_TAG
+    assert info.parent == history.parent
+
+
 # ─── microarray symbol rescue ─────────────────────────────────────────
 
 

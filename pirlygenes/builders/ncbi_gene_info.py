@@ -8,9 +8,16 @@ GENCODE Entrez output is common; e.g. GSE98894) AND by the
 microarray builder's symbol-rescue chain for pre-2010 platforms
 whose HUGO column has since been renamed by HGNC.
 
-Source files:
+Source files (upstream, NCBI):
   https://ftp.ncbi.nlm.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz
   https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene_history.gz
+
+At runtime we don't hit NCBI directly: both files are fetched from a
+**pinned GitHub release mirror** (``GENE_DATA_MIRROR_TAG``) and cached to
+``~/.cache/pirlygenes/ncbi_gene_info/``, so a build is reproducible and
+doesn't depend on NCBI's FTP availability. Refresh the mirror with
+``scripts/refresh_ncbi_gene_data.py`` (re-pulls upstream, uploads under a
+new dated tag) and bump ``GENE_DATA_MIRROR_TAG`` here.
 
 ``gene_info`` (one row per *live* Entrez ID) carries the current
 canonical HUGO symbol plus a ``dbXrefs`` column with cross-references
@@ -37,11 +44,25 @@ from pathlib import Path
 
 import pandas as pd
 
-NCBI_GENE_INFO_URL = (
+# Upstream NCBI sources — authoritative, but only contacted to *refresh*
+# the mirror (scripts/refresh_ncbi_gene_data.py), never at build time.
+NCBI_GENE_INFO_UPSTREAM_URL = (
     "https://ftp.ncbi.nlm.nih.gov/gene/DATA/GENE_INFO/Mammalia/"
     "Homo_sapiens.gene_info.gz"
 )
-NCBI_GENE_HISTORY_URL = "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene_history.gz"
+NCBI_GENE_HISTORY_UPSTREAM_URL = (
+    "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene_history.gz"
+)
+
+# Pinned GitHub mirror the builders actually load from (cached to
+# ~/.cache). Bump this tag after re-running the refresh script.
+GENE_DATA_MIRROR_TAG = "ncbi-gene-data-20260601"
+_GENE_DATA_MIRROR_BASE = (
+    f"https://github.com/pirl-unc/pirlygenes/releases/download/"
+    f"{GENE_DATA_MIRROR_TAG}"
+)
+NCBI_GENE_INFO_URL = f"{_GENE_DATA_MIRROR_BASE}/Homo_sapiens.gene_info.gz"
+NCBI_GENE_HISTORY_URL = f"{_GENE_DATA_MIRROR_BASE}/gene_history.gz"
 
 HUMAN_TAX_ID = "9606"
 GENE_INFO_SYNONYM_CONFIDENCE = 80
@@ -64,18 +85,22 @@ class SymbolAliasIndex:
     alias_candidates: dict[str, tuple[SymbolAliasCandidate, ...]]
 
 
-def _default_cache_path() -> Path:
+def _cache_dir() -> Path:
+    """Tag-pinned cache dir, so bumping ``GENE_DATA_MIRROR_TAG`` forces a
+    fresh fetch instead of silently reusing a stale snapshot. Old tags'
+    dirs coexist (and can be pruned manually)."""
     return (
         Path.home() / ".cache" / "pirlygenes" / "ncbi_gene_info"
-        / "Homo_sapiens.gene_info.gz"
+        / GENE_DATA_MIRROR_TAG
     )
+
+
+def _default_cache_path() -> Path:
+    return _cache_dir() / "Homo_sapiens.gene_info.gz"
 
 
 def _default_history_cache_path() -> Path:
-    return (
-        Path.home() / ".cache" / "pirlygenes" / "ncbi_gene_info"
-        / "gene_history.gz"
-    )
+    return _cache_dir() / "gene_history.gz"
 
 
 def _download(url: str, dest: Path) -> Path:
@@ -288,6 +313,9 @@ def harmonize_entrez_via_ncbi(
 __all__ = [
     "NCBI_GENE_INFO_URL",
     "NCBI_GENE_HISTORY_URL",
+    "NCBI_GENE_INFO_UPSTREAM_URL",
+    "NCBI_GENE_HISTORY_UPSTREAM_URL",
+    "GENE_DATA_MIRROR_TAG",
     "load_entrez_to_symbol",
     "cached_entrez_to_symbol",
     "load_entrez_to_ensembl",
