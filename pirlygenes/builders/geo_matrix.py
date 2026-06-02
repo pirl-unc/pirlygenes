@@ -39,8 +39,8 @@ from .gene_mapping import (
     aggregate_matrix_by_mapping,
     detect_id_type,
     gene_from_ensembl_id,
-    gene_from_symbol,
     harmonize_entrez_matrix,
+    resolve_symbol,
     strip_version,
 )
 
@@ -227,14 +227,15 @@ def _harmonize_by_ensembl_id(
 def _harmonize_by_symbol(
     matrix: pd.DataFrame, ensembl_release: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Look up each HUGO symbol; drop ambiguous (>1 gene) and unresolved."""
+    """Resolve each HUGO symbol via the shared resolver (direct → synonym
+    rescue); drop ambiguous (>1 gene) and unresolved."""
     genome = EnsemblRelease(ensembl_release)
     rows = []
     for raw in matrix.index:
-        result = gene_from_symbol(genome, raw)
+        result = resolve_symbol(genome, str(raw).strip())
         if result is None:
             continue
-        ensembl_id, name = result
+        ensembl_id, name, _method = result
         rows.append({
             "source_id": str(raw).strip(),
             "Ensembl_Gene_ID": ensembl_id,

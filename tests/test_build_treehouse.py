@@ -144,3 +144,57 @@ def test_clean_tpm_zeroes_removable_and_renormalizes():
     assert (clean.iloc[0] == 0).all()
     # Each sample sums to ~1e6
     np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
+
+
+def test_symbol_mapping_rescues_renamed_symbol(monkeypatch, tmp_path):
+    """The Treehouse symbol mapper now routes through the shared resolver,
+    so a symbol the compendium spells with its *old* HGNC name (e.g.
+    HIST1H1T, which pyensembl 112 doesn't know) is rescued via the synonym
+    pool instead of being silently dropped."""
+    from pirlygenes.builders import gene_mapping, treehouse
+    from pirlygenes.builders.ncbi_gene_info import (
+        GENE_INFO_SYNONYM_CONFIDENCE,
+        SymbolAliasCandidate,
+        SymbolAliasIndex,
+    )
+
+    class FakeGene:
+        def __init__(self, gene_id, gene_name):
+            self.gene_id = gene_id
+            self.gene_name = gene_name
+
+    class FakeGenome:
+        def genes_by_name(self, symbol):
+            table = {
+                "H1-6": [FakeGene("ENSG00000187475.1", "H1-6")],
+                "TP53": [FakeGene("ENSG00000141510.1", "TP53")],
+            }
+            return table.get(symbol, [])
+
+    monkeypatch.setattr(treehouse, "EnsemblRelease", lambda release: FakeGenome())
+    monkeypatch.setattr(
+        gene_mapping, "cached_symbol_alias_index",
+        lambda: SymbolAliasIndex(
+            official_symbols=frozenset({"H1-6", "TP53"}),
+            alias_candidates={
+                "HIST1H1T": (
+                    SymbolAliasCandidate("H1-6", "ncbi", GENE_INFO_SYNONYM_CONFIDENCE),
+                ),
+            },
+        ),
+    )
+    gene_mapping.cached_combined_alias_index.cache_clear()
+    try:
+        mapping = treehouse._build_or_load_symbol_mapping(
+            pd.Index(["HIST1H1T", "TP53"]),
+            ensembl_release=112,
+            cache_path=tmp_path / "m.parquet",
+            refresh=True,
+        )
+    finally:
+        gene_mapping.cached_combined_alias_index.cache_clear()
+
+    by_src = dict(zip(mapping["source_symbol"], mapping["Ensembl_Gene_ID"]))
+    # The old symbol was kept (source_symbol) but mapped to H1-6's ENSG.
+    assert by_src["HIST1H1T"] == "ENSG00000187475"
+    assert by_src["TP53"] == "ENSG00000141510"

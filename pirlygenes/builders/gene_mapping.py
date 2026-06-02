@@ -295,6 +295,31 @@ def rescue_symbol(
     return None
 
 
+def resolve_symbol(
+    genome,
+    symbol: str,
+    *,
+    entrez_id: str | None = None,
+    alias_index: SymbolAliasIndex | None = None,
+) -> tuple[str, str, str] | None:
+    """THE symbol → (ENSG, symbol, method) resolver every builder routes through.
+
+    Direct pyensembl lookup → Entrez chain (only if an ID is available) →
+    synonym rescue (NCBI ``Synonyms`` + curated display aliases). Because
+    every symbol-keyed dataset calls this one function, a symbol resolves
+    the *same way* regardless of which builder sees it — the only
+    per-dataset difference is whether an Entrez ID is on hand. Returns
+    (ENSG, symbol, method) or None.
+    """
+    direct = gene_from_symbol(genome, symbol)
+    if direct is not None:
+        ensembl_id, name = direct
+        return ensembl_id, name, METHOD_SYMBOL
+    return rescue_symbol(
+        genome, symbol, entrez_id=entrez_id, alias_index=alias_index,
+    )
+
+
 # ─── matrix aggregation ──────────────────────────────────────────────────────
 
 def aggregate_matrix_by_mapping(
@@ -381,6 +406,7 @@ __all__ = [
     "cached_combined_alias_index",
     "synonym_to_official",
     "rescue_symbol",
+    "resolve_symbol",
     "aggregate_matrix_by_mapping",
     "harmonize_entrez_matrix",
 ]

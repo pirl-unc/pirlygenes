@@ -39,6 +39,7 @@ The thin CLI wrappers in ``scripts/sweep_treehouse_*.py`` instantiate
 from __future__ import annotations
 
 import time
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
@@ -54,7 +55,7 @@ from ..expression.stats import (
     round_stat_columns,
     upsert_to_shard,
 )
-from .gene_mapping import gene_from_symbol
+from .gene_mapping import resolve_symbol
 
 
 @dataclass(frozen=True)
@@ -169,7 +170,18 @@ def _build_or_load_symbol_mapping(
     ensembl_release: int,
     cache_path: Path,
     refresh: bool,
+    symbol_to_entrez: dict[str, str] | None = None,
 ) -> pd.DataFrame:
+    """Symbol → (Ensembl_Gene_ID, Symbol) mapping table, parquet-cached.
+
+    Every symbol goes through the shared :func:`gene_mapping.resolve_symbol`
+    — direct pyensembl lookup, then synonym rescue (and the Entrez chain
+    when ``symbol_to_entrez`` supplies an ID). This is the *same* resolver
+    the GEO-matrix and microarray builders use, so a renamed symbol like
+    ``HIST1H1T``→``H1-6`` resolves identically here instead of being
+    silently dropped. Shared by the Treehouse sweep (no Entrez) and the
+    microarray builder (Entrez per probe).
+    """
     if cache_path.exists() and not refresh:
         _log(f"loading cached symbol mapping from {cache_path}")
         return pd.read_parquet(cache_path)
@@ -178,25 +190,32 @@ def _build_or_load_symbol_mapping(
         f"symbols (release {ensembl_release})..."
     )
     genome = EnsemblRelease(ensembl_release)
+    entrez = symbol_to_entrez or {}
     rows: list[dict[str, str]] = []
-    resolved = dropped = 0
+    method_counts: Counter = Counter()
+    dropped = 0
     for sym in all_symbols:
-        result = gene_from_symbol(genome, sym)
+        key = str(sym).strip()
+        result = resolve_symbol(genome, key, entrez_id=entrez.get(key) or None)
         if result is None:
             # Unknown or ambiguous (>1 gene for the symbol) — dropped.
             dropped += 1
             continue
-        ensembl_id, name = result
+        ensembl_id, name, method = result
         rows.append(
             {
-                "source_symbol": str(sym).strip(),
+                "source_symbol": key,
                 "Ensembl_Gene_ID": ensembl_id,
                 "Symbol": name,
             }
         )
-        resolved += 1
+        method_counts[method] += 1
     mapping = pd.DataFrame(rows)
-    _log(f"  resolved={resolved}, unresolved/ambiguous={dropped} (dropped)")
+    breakdown = ", ".join(f"{m}={n}" for m, n in sorted(method_counts.items()))
+    _log(
+        f"  resolved={sum(method_counts.values())} ({breakdown}), "
+        f"unresolved/ambiguous={dropped} (dropped)"
+    )
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     mapping.to_parquet(cache_path, index=False)
     _log(f"  wrote symbol mapping cache to {cache_path}")
@@ -375,7 +394,12 @@ def run_sweep(
     log2_values = _read_tpm_columns(release.tpm_path, all_samples)
     _log(f"  TPM frame shape: {log2_values.shape}")
 
-    symbol_cache = release.derived_dir / f"symbol_to_ensembl_{ensembl_release}.parquet"
+    # The "_rescued" suffix invalidates the older direct-only mapping
+    # caches: this build now applies the shared synonym rescue, so a stale
+    # parquet would silently re-drop the renamed symbols it now recovers.
+    symbol_cache = (
+        release.derived_dir / f"symbol_to_ensembl_{ensembl_release}_rescued.parquet"
+    )
     mapping = _build_or_load_symbol_mapping(
         log2_values.index,
         ensembl_release=ensembl_release,
