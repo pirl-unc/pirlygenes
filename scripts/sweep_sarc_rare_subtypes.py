@@ -80,6 +80,9 @@ RELEASE_TCGA = TreehouseRelease(
     clinical_filename="clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv",
     cache_dir=RELEASE_DIR,
     pipeline_prefix="treehouse_polya_25_01_tcga_sarc_histology_log2tpm_to_tpm",
+    # Per-code to match the TCGA_SUBSET source_cohort layout (else collides
+    # with the per-code __SARC_DDLPS / __SARC_PLEOLPS shards).
+    per_cancer_code_shards=True,
 )
 
 

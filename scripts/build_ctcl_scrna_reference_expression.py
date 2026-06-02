@@ -29,13 +29,13 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
-from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
     upsert_to_shard,
 )
+from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
 SAMPLE_COLUMNS = [
     "cancer_code",
     "source_cohort",
@@ -336,31 +336,6 @@ def _collapse_to_ntpm(mapped: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]
     ntpm = collapsed.div(sums.where(sums > 0), axis=1).fillna(0.0) * 1_000_000.0
     gene_table = symbol.reindex(ntpm.index).reset_index()
     return gene_table, ntpm
-
-
-def _technical_mask(gene_table: pd.DataFrame) -> pd.Series:
-    remove_groups = {str(group) for group in _TECHNICAL_RNA_GROUPS}
-    qc = [
-        classify_gene_qc(symbol, ensembl_id=ensg)
-        for symbol, ensg in zip(
-            gene_table["Symbol"],
-            gene_table["Ensembl_Gene_ID"],
-        )
-    ]
-    return pd.Series(
-        [klass.group in remove_groups for klass in qc],
-        index=gene_table.index,
-    )
-
-
-def _clean_tpm(values: pd.DataFrame, removable: pd.Series) -> pd.DataFrame:
-    clean = values.copy()
-    clean.loc[removable.to_numpy(), :] = 0.0
-    remaining = clean.sum(axis=0)
-    scale = pd.Series(np.nan, index=remaining.index, dtype=float)
-    positive = remaining > 0
-    scale.loc[positive] = 1_000_000.0 / remaining.loc[positive]
-    return clean.mul(scale, axis=1).fillna(0.0)
 
 
 def _summarize(gene_table: pd.DataFrame, values: pd.DataFrame) -> pd.DataFrame:

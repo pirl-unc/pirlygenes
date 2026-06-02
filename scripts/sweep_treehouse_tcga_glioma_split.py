@@ -47,6 +47,10 @@ RELEASE = TreehouseRelease(
     clinical_filename="clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv",
     cache_dir=RELEASE_DIR,
     pipeline_prefix="treehouse_polya_25_01_tcga_glioma_split_log2tpm_to_tpm",
+    # Shares source_cohort with the per-code TCGA_SUBSET sweep, so it must
+    # shard per-code too — otherwise GBM/LGG land in a combined shard that
+    # duplicates the per-code __GBM/__LGG shards.
+    per_cancer_code_shards=True,
 )
 
 

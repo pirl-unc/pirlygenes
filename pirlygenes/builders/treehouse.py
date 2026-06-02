@@ -48,7 +48,10 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
-from ..expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
+from ..expression.normalize import (
+    clean_tpm_matrix as _clean_tpm,
+    technical_rna_mask as _technical_mask,
+)
 from ..expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -265,28 +268,6 @@ def _aggregate_by_ensembl(
     gene_table = by_gene[["Ensembl_Gene_ID", "Symbol"]].copy()
     values = by_gene.set_index("Ensembl_Gene_ID")[sample_cols]
     return gene_table, values
-
-
-def _technical_mask(gene_table: pd.DataFrame) -> pd.Series:
-    remove_groups = {str(group) for group in _TECHNICAL_RNA_GROUPS}
-    qc = [
-        classify_gene_qc(symbol, ensembl_id=ensg)
-        for symbol, ensg in zip(gene_table["Symbol"], gene_table["Ensembl_Gene_ID"])
-    ]
-    return pd.Series(
-        [klass.group in remove_groups for klass in qc],
-        index=gene_table.index,
-    )
-
-
-def _clean_tpm(values: pd.DataFrame, removable: pd.Series) -> pd.DataFrame:
-    clean = values.copy()
-    clean.loc[removable.to_numpy(), :] = 0.0
-    remaining = clean.sum(axis=0)
-    scale = pd.Series(np.nan, index=remaining.index, dtype=float)
-    positive = remaining > 0
-    scale.loc[positive] = 1_000_000.0 / remaining.loc[positive]
-    return clean.mul(scale, axis=1).fillna(0.0)
 
 
 def _build_or_load_per_cohort_tpm(

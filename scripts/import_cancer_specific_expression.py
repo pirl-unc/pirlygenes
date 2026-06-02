@@ -17,8 +17,8 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
-from pirlygenes.expression.qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
 from pirlygenes.expression.stats import REFERENCE_COLUMNS
+from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
 
 
 DEFAULT_SUMMARY_INPUT = "cancer-specific-expression-summary.csv.gz"
@@ -228,15 +228,6 @@ def _symbol_mapping(
         counts[f"resolved_{source}"] += 1
     mapping = pd.DataFrame(rows)
     return mapping, counts
-
-
-def _technical_mask(df: pd.DataFrame) -> pd.Series:
-    remove_groups = {str(group) for group in _TECHNICAL_RNA_GROUPS}
-    qc = [
-        classify_gene_qc(symbol, ensembl_id=ensg)
-        for symbol, ensg in zip(df["Symbol"], df["Ensembl_Gene_ID"])
-    ]
-    return pd.Series([klass.group in remove_groups for klass in qc], index=df.index)
 
 
 def _add_summary_clean_tpm(df: pd.DataFrame) -> pd.DataFrame:
