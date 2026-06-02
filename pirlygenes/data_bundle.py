@@ -54,13 +54,15 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-from .version import __version__
+from .version import DATA_VERSION
 
 
 GITHUB_REPO = "pirl-unc/pirlygenes"
-TARBALL_FILENAME = f"pirlygenes-data-v{__version__}.tar.gz"
+# Pinned to DATA_VERSION (not __version__) so code-only package releases
+# reuse the last uploaded bundle — see version.py.
+TARBALL_FILENAME = f"pirlygenes-data-v{DATA_VERSION}.tar.gz"
 RELEASE_URL = (
-    f"https://github.com/{GITHUB_REPO}/releases/download/v{__version__}/"
+    f"https://github.com/{GITHUB_REPO}/releases/download/v{DATA_VERSION}/"
     f"{TARBALL_FILENAME}"
 )
 
@@ -91,7 +93,7 @@ def cache_dir() -> Path:
     override = os.environ.get("PIRLYGENES_BUNDLED_DATA")
     if override:
         return Path(override).expanduser()
-    return cache_root() / f"v{__version__}"
+    return cache_root() / f"v{DATA_VERSION}"
 
 
 def is_local() -> bool:
@@ -120,8 +122,8 @@ def fetch(*, verbose: bool = True) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     if verbose:
         sys.stderr.write(
-            f"pirlygenes: downloading data bundle for v{__version__} "
-            "(~340 MB, one-time)\n"
+            f"pirlygenes: downloading data bundle for v{DATA_VERSION} "
+            "(~350 MB, one-time)\n"
             f"  from {RELEASE_URL}\n"
             f"  to   {root}\n"
         )
@@ -187,7 +189,7 @@ def status() -> dict:
             "size_bytes": size_bytes,
         }
     return {
-        "version": __version__,
+        "data_version": DATA_VERSION,
         "cache_dir": str(root),
         "release_url": RELEASE_URL,
         "items": items,
