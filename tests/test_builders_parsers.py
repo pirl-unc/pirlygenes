@@ -170,6 +170,24 @@ def test_parse_geo_platform_table_falls_back_to_id_when_no_symbol(tmp_path):
     assert (df["gene_symbol"] == df["probe_id"]).all()
 
 
+# ─── NCBI gene-data source wiring ─────────────────────────────────────
+
+
+def test_ncbi_gene_data_loads_from_github_mirror_not_ncbi():
+    """The builders fetch gene_info / gene_history from the pinned GitHub
+    mirror (cached), not NCBI's FTP; the upstream NCBI URLs survive only
+    for the refresh script."""
+    from pirlygenes.builders import ncbi_gene_info as ngi
+
+    for url in (ngi.NCBI_GENE_INFO_URL, ngi.NCBI_GENE_HISTORY_URL):
+        assert "github.com/pirl-unc/pirlygenes/releases" in url
+        assert ngi.GENE_DATA_MIRROR_TAG in url
+        assert "ncbi.nlm.nih.gov" not in url
+
+    for url in (ngi.NCBI_GENE_INFO_UPSTREAM_URL, ngi.NCBI_GENE_HISTORY_UPSTREAM_URL):
+        assert "ftp.ncbi.nlm.nih.gov" in url
+
+
 # ─── microarray symbol rescue ─────────────────────────────────────────
 
 

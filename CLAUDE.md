@@ -125,6 +125,23 @@ major NCBI `gene_info` refresh:
 
     python scripts/generate_ncbi_symbol_synonyms.py
 
+## NCBI gene-data mirror (build-time)
+
+The builders' full Entrez tables — `Homo_sapiens.gene_info.gz` (~5 MB)
+and `gene_history.gz` (~160 MB) — are **not** fetched from NCBI's FTP at
+build time. `pirlygenes.builders.ncbi_gene_info` loads them from a
+**pinned GitHub release** (`GENE_DATA_MIRROR_TAG`, e.g.
+`ncbi-gene-data-20260601`), cached to `~/.cache/pirlygenes/ncbi_gene_info/`.
+This makes `pirlygenes build` reproducible and FTP-independent. The
+upstream NCBI URLs survive as `*_UPSTREAM_URL` constants, used only to
+refresh the mirror:
+
+    python scripts/refresh_ncbi_gene_data.py --tag ncbi-gene-data-YYYYMMDD
+
+After refreshing, bump `GENE_DATA_MIRROR_TAG` and regenerate the synonym
+snapshot. (Only `pirlygenes build` touches these; normal analysis uses
+the in-wheel `ncbi-symbol-synonyms.csv.gz` above.)
+
 ## Symbol/identifier mapping — one path per task
 
 Identifier mapping has a single home per semantic task. The pure
