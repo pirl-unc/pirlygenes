@@ -250,7 +250,7 @@ def _format_bytes(n: int) -> str:
 
 def cmd_data_status(_args: argparse.Namespace) -> int:
     snap = data_bundle.status()
-    sys.stdout.write(f"pirlygenes data bundle for v{snap['version']}\n")
+    sys.stdout.write(f"pirlygenes data bundle for v{snap['data_version']}\n")
     sys.stdout.write(f"  cache dir   : {snap['cache_dir']}\n")
     sys.stdout.write(f"  release URL : {snap['release_url']}\n")
     sys.stdout.write(f"  all local?  : {snap['all_local']}\n")

@@ -278,17 +278,17 @@ def test_data_bundle_prune_lists_and_deletes_stale_dirs(tmp_path, monkeypatch):
     # Build a fake cache root with two stale version dirs + the
     # current-version dir.
     monkeypatch.setenv(
-        "PIRLYGENES_BUNDLED_DATA", str(tmp_path / f"v{data_bundle.__version__}"),
+        "PIRLYGENES_BUNDLED_DATA", str(tmp_path / f"v{data_bundle.DATA_VERSION}"),
     )
-    for v in ["v5.0.0", "v5.1.0", f"v{data_bundle.__version__}"]:
+    for v in ["v5.0.0", "v5.1.0", f"v{data_bundle.DATA_VERSION}"]:
         d = tmp_path / v
         d.mkdir()
         (d / "marker.csv").write_text("x")
 
     versions = data_bundle.list_cache_versions()
     by_v = {e["version"]: e for e in versions}
-    assert {"v5.0.0", "v5.1.0", f"v{data_bundle.__version__}"} <= set(by_v)
-    assert by_v[f"v{data_bundle.__version__}"]["is_current"] is True
+    assert {"v5.0.0", "v5.1.0", f"v{data_bundle.DATA_VERSION}"} <= set(by_v)
+    assert by_v[f"v{data_bundle.DATA_VERSION}"]["is_current"] is True
     assert by_v["v5.0.0"]["is_current"] is False
 
     # Dry-run: returns candidates but leaves disk alone
@@ -301,7 +301,7 @@ def test_data_bundle_prune_lists_and_deletes_stale_dirs(tmp_path, monkeypatch):
     data_bundle.prune_cache(keep_current=True, dry_run=False)
     assert not (tmp_path / "v5.0.0").exists()
     assert not (tmp_path / "v5.1.0").exists()
-    assert (tmp_path / f"v{data_bundle.__version__}").exists()
+    assert (tmp_path / f"v{data_bundle.DATA_VERSION}").exists()
 
 
 def test_upsert_to_shard_allow_unset_for_legacy_backfill(tmp_path):
