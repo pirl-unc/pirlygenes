@@ -15,8 +15,11 @@ directly without going through the CLI.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
-from dataclasses import dataclass
+import sys
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -57,6 +60,7 @@ class CohortRowCount:
     n_samples: int | None
     processing_pipeline: str = ""
     tumor_origin: str = ""
+    cancer_type_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -83,23 +87,24 @@ class InventorySnapshot:
 
 
 def native_unit_from_pipeline(pipeline: str) -> str:
-    """Human-readable quantification method from a shard's
-    ``processing_pipeline`` provenance tag (shared by the CLI's
-    ``data sources`` and ``data list``)."""
+    """The NATIVE source quantification a cohort started as, from its
+    ``processing_pipeline`` tag. Every cohort is normalized to clean TPM in
+    the packaged data — this names the *input* unit, not the output (so no
+    '→TPM'). Shared by the CLI's ``data sources`` and ``data list``."""
     p = (pipeline or "").lower()
     table = [
-        ("microarray", "microarray intensity (TPM-proxy)"),
-        ("recount3", "recount3 Gencode-v26 coverage"),
-        ("gdc_star_counts", "GDC STAR counts (TPM)"),
-        ("star", "STAR counts (TPM)"),
-        ("log2tpm", "RSEM log2(TPM+1)"),
-        ("treehouse", "RSEM log2(TPM+1)"),
-        ("pseudobulk", "scRNA pseudobulk (nTPM)"),
-        ("ntpm", "scRNA pseudobulk (nTPM)"),
-        ("rpkm", "RPKM→TPM"),
-        ("fpkm", "FPKM→TPM"),
-        ("raw_counts", "raw counts→TPM"),
-        ("htseq", "HTSeq counts→TPM"),
+        ("microarray", "microarray intensity"),
+        ("recount3", "recount3 coverage"),
+        ("gdc_star_counts", "STAR read counts"),
+        ("star", "STAR read counts"),
+        ("log2tpm", "RSEM TPM"),
+        ("treehouse", "RSEM TPM"),
+        ("pseudobulk", "scRNA UMI counts"),
+        ("ntpm", "scRNA UMI counts"),
+        ("rpkm", "RPKM"),
+        ("fpkm", "FPKM"),
+        ("htseq", "HTSeq read counts"),
+        ("raw_counts", "read counts"),
     ]
     for needle, label in table:
         if needle in p:
@@ -185,35 +190,102 @@ def _classify_path(active: Path) -> str:
     return "downloaded"
 
 
-def summarize_inventory() -> InventorySnapshot:
+# Only the columns the summary needs — reading these 7 instead of the full
+# ~33-column shard is the bulk of the speedup.
+_SUMMARY_COLS = (
+    "Ensembl_Gene_ID", "cancer_code", "source_cohort", "source_project",
+    "n_samples", "processing_pipeline", "tumor_origin",
+)
+_SUMMARY_CACHE = Path.home() / ".cache" / "pirlygenes" / "inventory_summary.json"
+
+
+def _shard_signature(paths: list[Path]) -> str:
+    """Fingerprint the shard set by (name, size, mtime) so the cached summary
+    is reused only while the shards are unchanged."""
+    parts = sorted((p.name, p.stat().st_size, int(p.stat().st_mtime)) for p in paths)
+    return hashlib.md5(repr(parts).encode()).hexdigest()  # noqa: S324 (non-crypto)
+
+
+def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
     """Snapshot the cancer-reference-expression table.
 
-    Reads every per-source shard (.csv.gz) under whichever data
-    directory currently holds the data and reduces to per-(cancer_code,
-    source_cohort) row counts so consumers don't pay the full read
-    on every CLI invocation when only the summary is needed.
-
-    Triggers a one-time auto-fetch from the GitHub Release if the data
-    isn't local (wheel install, fresh cache).
+    Reads only the few columns the summary needs from each per-source shard
+    (with a progress bar), and caches the result keyed on a shard fingerprint
+    so repeat invocations are instant. Triggers a one-time auto-fetch from the
+    GitHub Release if the data isn't local.
     """
-    from .load_dataset import get_data
+    import pandas as pd
 
-    df = get_data("cancer-reference-expression")
+    from . import data_bundle
+    from .load_dataset import _shard_paths
+
+    data_bundle.ensure_local()
     active = _active_reference_dir()
-    grouped = (
-        df.groupby(
-            ["cancer_code", "source_cohort", "source_project"],
-            dropna=False,
-            sort=False,
+    paths = _shard_paths(active)
+
+    # cheap, environment-specific fields are always recomputed live
+    env = dict(
+        data_path=active,
+        data_source=_classify_path(active),
+        data_size_bytes=_shard_total_bytes(active),
+        registered_sources=len(load_registry()),
+        shard_files=_shard_count(active),
+    )
+    sig = _shard_signature(paths)
+    cached = _read_cache(sig)
+    if cached is not None:
+        return _snapshot_from(cached, env)
+
+    usecols = set(_SUMMARY_COLS)
+    parts, gene_ids, total_rows = [], set(), 0
+    bar = paths
+    try:
+        from tqdm import tqdm
+        bar = tqdm(
+            paths, desc="reading cohort summaries", unit="shard",
+            disable=not (progress and sys.stderr.isatty()),
         )
+    except Exception:
+        pass
+    for p in bar:
+        sd = pd.read_csv(p, usecols=lambda c: c in usecols, low_memory=False)
+        for col in _SUMMARY_COLS:
+            if col not in sd.columns:
+                sd[col] = None if col == "n_samples" else ""
+        total_rows += len(sd)
+        gene_ids.update(sd["Ensembl_Gene_ID"].astype(str).unique())
+        parts.append(
+            sd.groupby(
+                ["cancer_code", "source_cohort", "source_project"],
+                dropna=False, sort=False,
+            ).agg(
+                n_rows=("Ensembl_Gene_ID", "size"),
+                n_samples=("n_samples", "max"),
+                processing_pipeline=("processing_pipeline", "first"),
+                tumor_origin=("tumor_origin", "first"),
+            ).reset_index()
+        )
+    # a source_cohort can span shards (per_cancer_code_shards) → re-aggregate
+    grouped = (
+        pd.concat(parts, ignore_index=True)
+        .groupby(["cancer_code", "source_cohort", "source_project"], dropna=False, sort=False)
         .agg(
-            n_rows=("Ensembl_Gene_ID", "size"),
+            n_rows=("n_rows", "sum"),
             n_samples=("n_samples", "max"),
             processing_pipeline=("processing_pipeline", "first"),
             tumor_origin=("tumor_origin", "first"),
         )
         .reset_index()
+        .sort_values(["source_cohort", "cancer_code"])
     )
+    try:
+        from .gene_sets_cancer import CANCER_TYPE_NAMES
+        name_for = {
+            c: (CANCER_TYPE_NAMES.get(c) or "")
+            for c in grouped["cancer_code"].astype(str).unique()
+        }
+    except Exception:
+        name_for = {}
     cohort_rows = tuple(
         CohortRowCount(
             cancer_code=str(row.cancer_code),
@@ -223,25 +295,50 @@ def summarize_inventory() -> InventorySnapshot:
             n_samples=_coerce_int(row.n_samples),
             processing_pipeline=str(getattr(row, "processing_pipeline", "") or ""),
             tumor_origin=str(getattr(row, "tumor_origin", "") or ""),
+            cancer_type_name=name_for.get(str(row.cancer_code), ""),
         )
-        for row in grouped.sort_values(
-            ["source_cohort", "cancer_code"]
-        ).itertuples(index=False)
+        for row in grouped.itertuples(index=False)
     )
-    total_samples = int(
-        sum(c.n_samples for c in cohort_rows if c.n_samples is not None)
+    computed = dict(
+        total_rows=int(total_rows),
+        unique_genes=len(gene_ids),
+        total_samples=int(
+            sum(c.n_samples for c in cohort_rows if c.n_samples is not None)
+        ),
+        cancer_codes=int(grouped["cancer_code"].astype(str).nunique()),
+        cohort_rows=[asdict(c) for c in cohort_rows],
     )
+    _write_cache(sig, computed)
+    return _snapshot_from(computed, env)
+
+
+def _read_cache(sig: str) -> dict | None:
+    try:
+        payload = json.loads(_SUMMARY_CACHE.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return payload.get("data") if payload.get("signature") == sig else None
+
+
+def _write_cache(sig: str, computed: dict) -> None:
+    try:
+        _SUMMARY_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _SUMMARY_CACHE.write_text(
+            json.dumps({"signature": sig, "data": computed}), encoding="utf-8"
+        )
+    except OSError:
+        pass
+
+
+def _snapshot_from(computed: dict, env: dict) -> InventorySnapshot:
+    cohort_rows = tuple(CohortRowCount(**c) for c in computed["cohort_rows"])
     return InventorySnapshot(
-        data_path=active,
-        data_source=_classify_path(active),
-        data_size_bytes=_shard_total_bytes(active),
-        total_rows=int(len(df)),
-        unique_genes=int(df["Ensembl_Gene_ID"].nunique(dropna=True)),
+        total_rows=computed["total_rows"],
+        unique_genes=computed["unique_genes"],
+        total_samples=computed["total_samples"],
+        cancer_codes=computed["cancer_codes"],
         cohort_rows=cohort_rows,
-        registered_sources=len(load_registry()),
-        shard_files=_shard_count(active),
-        total_samples=total_samples,
-        cancer_codes=int(df["cancer_code"].astype(str).nunique()),
+        **env,
     )
 
 
@@ -343,10 +440,12 @@ def render_inventory(
 
     lines += [
         "",
-        "Per source cohort — the header carries the source-level genes & "
-        "quantification;",
-        "each indented row is one cancer code (n = tumor samples; genes shown "
-        "only when they differ by code).",
+        "All values are normalized to clean TPM; the 'quantification' on each "
+        "source header is the NATIVE source unit (read counts, microarray "
+        "intensity, …), not the output.",
+        "Header: source-level genes & quantification.  Indented rows: one per "
+        "cancer code — <code>  <cancer type>  n=<samples>  (genes only when "
+        "they differ by code).",
         "",
     ]
     if sort_by == "samples":
@@ -385,7 +484,12 @@ def render_inventory(
             n = "n=NaN" if e.n_samples is None else f"n={e.n_samples}"
             extra = f"   {e.n_rows:>7,} genes" if genes_vary else ""
             n_field = f"{n:<7}" if genes_vary else n
-            lines.append(f"      {e.cancer_code:<20} {n_field}{extra}")
+            name = e.cancer_type_name
+            if len(name) > 40:
+                name = name[:39] + "…"
+            lines.append(
+                f"      {e.cancer_code:<18} {name:<41} {n_field}{extra}"
+            )
     return "\n".join(lines)
 
 

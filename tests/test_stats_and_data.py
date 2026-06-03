@@ -405,9 +405,10 @@ def test_render_inventory_contains_expected_lines():
     rendered = data_inventory.render_inventory(snapshot)
     assert "cancer-reference-expression" in rendered
     assert "size on disk" in rendered
-    assert "total samples:" in rendered          # totals now include samples
-    assert "Per source cohort" in rendered
+    assert "total samples:" in rendered          # totals include samples
+    assert "normalized to clean TPM" in rendered  # the native-unit note
     assert "genes" in rendered                   # counts labelled genes, not "rows"
+    assert "Burkitt Lymphoma" in rendered        # cancer-type name shown per code
     assert "BL" in rendered
 
 
