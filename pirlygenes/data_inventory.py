@@ -128,6 +128,23 @@ def comparability_class(pipeline: str) -> tuple[str, str]:
 
 
 
+def _assay(source_cohort: str, pipeline: str) -> str:
+    """Library prep / platform for a cohort: microarray · scRNA ·
+    ribo-depleted RNA-seq · polyA RNA-seq · RNA-seq. Only claims a specific
+    bulk prep (polyA / ribo-depleted) when the source explicitly encodes it
+    (Treehouse PolyA vs RiboDeplete); otherwise the honest 'RNA-seq'."""
+    p, sc = (pipeline or "").lower(), source_cohort.upper()
+    if "microarray" in p:
+        return "microarray"
+    if "pseudobulk" in p or "ntpm" in p:
+        return "scRNA"
+    if "RIBOD" in sc:
+        return "ribo-depleted RNA-seq"
+    if "POLYA" in sc:
+        return "polyA RNA-seq"
+    return "RNA-seq"
+
+
 def _origin_label(tumor_origin: str) -> str:
     o = (tumor_origin or "").lower()
     if o.startswith("met"):
@@ -480,9 +497,9 @@ def render_inventory(
         "All values are normalized to clean TPM; the 'quantification' on each "
         "source header is the NATIVE source unit (read counts, microarray "
         "intensity, …), not the output.",
-        "Header: source-level genes · quantification · [origin] · reference.  "
+        "Header: cohorts · samples · assay · genes · quantification · "
+        "[metastasis] · reference.",
         "Indented rows: one per cancer code — <code> <cancer type> n=<samples>.",
-        "'mixed' origin = the cohort pools samples of more than one tumor origin.",
         "",
     ]
     if sort_by == "samples":
@@ -496,10 +513,11 @@ def render_inventory(
         entries = sorted(by_source[source_cohort], key=lambda e: e.cancer_code)
         n_samples = sum(e.n_samples or 0 for e in entries)
         citation = entries[0].reference
-        if len(citation) > 72:
-            citation = citation[:71] + "…"
+        if len(citation) > 78:                       # truncate at a word boundary
+            citation = citation[:78].rsplit(" ", 1)[0] + "…"
         origin = _origin_label(entries[0].tumor_origin)
         quant = native_unit_from_pipeline(entries[0].processing_pipeline)
+        assay = _assay(source_cohort, entries[0].processing_pipeline)
         gene_set = {e.n_rows for e in entries}
         genes_vary = len(gene_set) > 1
         genes_str = (
@@ -507,14 +525,15 @@ def render_inventory(
             if genes_vary
             else f"{next(iter(gene_set)):,}"
         )
-        # source header: cohorts · samples · genes · quantification · [origin] · [citation]
+        # header: cohorts · samples · assay · genes · quantification · [met] · reference
         parts = [
             f"{len(entries)} {'cohort' if len(entries) == 1 else 'cohorts'}",
             f"{n_samples:,} samples",
+            assay,
             f"{genes_str} genes",
             quant,
         ]
-        if origin != "primary":
+        if origin == "metastasis":                   # only the notable origin
             parts.append(origin)
         if citation:
             parts.append(citation)
