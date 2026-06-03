@@ -61,6 +61,7 @@ class CohortRowCount:
     processing_pipeline: str = ""
     tumor_origin: str = ""
     cancer_type_name: str = ""
+    reference: str = ""
 
 
 @dataclass(frozen=True)
@@ -125,32 +126,48 @@ def comparability_class(pipeline: str) -> tuple[str, str]:
     return ("rnaseq", "RNA-seq → TPM · cross-cohort comparable")
 
 
-# tokens that sit where a surname would but are descriptors, not authors
-_NON_AUTHOR_TOKENS = {"PECOMA", "HUMAN", "MOUSE", "TUMOR"}
-
-
-def _clean_citation(source_cohort: str, source_project: str) -> str:
-    """Drop the redundant '— recount3 …' suffix (the quant column covers it).
-    For a bare 'GEO' project, recover the study's 'Author Year' ONLY when the
-    id reliably encodes it as <accession>_<Surname>_<year> (GSE100026_DING_2017
-    → 'Ding 2017'); otherwise return '' (the header id already carries the
-    accession) rather than guess from a descriptor token."""
-    cit = re.split(r"\s+[—-]+\s+recount3", source_project)[0].strip()
-    if cit.upper() in {"GEO", ""}:
-        m = re.match(r"GSE\d+_([A-Za-z]{3,})_((?:19|20)\d{2})", source_cohort)
-        if m and m.group(1).upper() not in _NON_AUTHOR_TOKENS:
-            return f"{m.group(1).title()} {m.group(2)}"
-        return ""
-    return cit
 
 
 def _origin_label(tumor_origin: str) -> str:
     o = (tumor_origin or "").lower()
     if o.startswith("met"):
         return "metastasis"
+    if o == "mixed":
+        return "mixed origin"
     if o in {"primary", ""}:
         return "primary"
     return o
+
+
+def _reference_for(
+    source_cohort: str, source_project: str, reg_by_acc: dict, reg_by_id: dict
+) -> str:
+    """Always return a human-meaningful reference for a source cohort.
+
+    Looks up the authoritative registry citation — by GEO accession, or by the
+    registry source-id matched as a prefix of the normalized cohort id (so
+    ``TREEHOUSE_POLYA_25_01_TCGA_SUBSET`` → the ``treehouse-polya-25-01``
+    citation). Prefers a rich registry citation when ``source_project`` is just
+    a bare name (e.g. 'Treehouse'); keeps a descriptive multi-word
+    ``source_project`` (e.g. 'CGCI Burkitt … Project') over a bare URL; always
+    falls back so the reference is never empty."""
+    cleaned = re.split(r"\s+[—-]+\s+recount3", source_project)[0].strip()
+    m = re.match(r"(GSE\d+|[A-Z]+\d+)", source_cohort)
+    reg = reg_by_acc.get(m.group(1)) if m else None
+    if not reg:
+        norm = source_cohort.lower().replace("_", "-")
+        cands = [rid for rid in reg_by_id if norm.startswith(rid)]
+        if cands:
+            reg = reg_by_id[max(cands, key=len)]
+    sp_rich = bool(cleaned) and cleaned.upper() != "GEO" and len(cleaned.split()) >= 2
+    reg_rich = bool(reg) and not str(reg).lower().startswith("http")
+    if reg_rich and not sp_rich:
+        return reg
+    if cleaned and cleaned.upper() != "GEO":
+        return cleaned
+    if reg:
+        return reg
+    return m.group(1) if m else source_cohort
 
 
 def _coerce_int(value) -> int | None:
@@ -197,13 +214,20 @@ _SUMMARY_COLS = (
     "n_samples", "processing_pipeline", "tumor_origin",
 )
 _SUMMARY_CACHE = Path.home() / ".cache" / "pirlygenes" / "inventory_summary.json"
+# Bump when the cached snapshot's fields/shape change, so stale caches from an
+# older code version are ignored (the shard fingerprint alone wouldn't catch a
+# pure-code schema change like adding the `reference` field).
+_SUMMARY_SCHEMA = "3"
 
 
 def _shard_signature(paths: list[Path]) -> str:
-    """Fingerprint the shard set by (name, size, mtime) so the cached summary
-    is reused only while the shards are unchanged."""
+    """Fingerprint the shard set by (name, size, mtime) — plus the summary
+    schema version — so the cached summary is reused only while both are
+    unchanged."""
     parts = sorted((p.name, p.stat().st_size, int(p.stat().st_mtime)) for p in paths)
-    return hashlib.md5(repr(parts).encode()).hexdigest()  # noqa: S324 (non-crypto)
+    return hashlib.md5(  # noqa: S324 (non-crypto)
+        (_SUMMARY_SCHEMA + repr(parts)).encode()
+    ).hexdigest()
 
 
 def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
@@ -236,14 +260,20 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
     if cached is not None:
         return _snapshot_from(cached, env)
 
+    show = progress and sys.stderr.isatty()
+    if show:
+        sys.stderr.write(
+            f"Summarizing {len(paths)} cohort shards to build the data overview "
+            "(first run only — cached afterward)…\n"
+        )
+        sys.stderr.flush()
     usecols = set(_SUMMARY_COLS)
     parts, gene_ids, total_rows = [], set(), 0
     bar = paths
     try:
         from tqdm import tqdm
         bar = tqdm(
-            paths, desc="reading cohort summaries", unit="shard",
-            disable=not (progress and sys.stderr.isatty()),
+            paths, desc="reading cohort summaries", unit="shard", disable=not show,
         )
     except Exception:
         pass
@@ -286,6 +316,9 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
         }
     except Exception:
         name_for = {}
+    registry = load_registry()
+    reg_by_acc = {s.accession: s.citation for s in registry if s.accession and s.citation}
+    reg_by_id = {s.id: s.citation for s in registry if s.id and s.citation}
     cohort_rows = tuple(
         CohortRowCount(
             cancer_code=str(row.cancer_code),
@@ -296,6 +329,10 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
             processing_pipeline=str(getattr(row, "processing_pipeline", "") or ""),
             tumor_origin=str(getattr(row, "tumor_origin", "") or ""),
             cancer_type_name=name_for.get(str(row.cancer_code), ""),
+            reference=_reference_for(
+                str(row.source_cohort), str(row.source_project),
+                reg_by_acc, reg_by_id,
+            ),
         )
         for row in grouped.itertuples(index=False)
     )
@@ -443,9 +480,9 @@ def render_inventory(
         "All values are normalized to clean TPM; the 'quantification' on each "
         "source header is the NATIVE source unit (read counts, microarray "
         "intensity, …), not the output.",
-        "Header: source-level genes & quantification.  Indented rows: one per "
-        "cancer code — <code>  <cancer type>  n=<samples>  (genes only when "
-        "they differ by code).",
+        "Header: source-level genes · quantification · [origin] · reference.  "
+        "Indented rows: one per cancer code — <code> <cancer type> n=<samples>.",
+        "'mixed' origin = the cohort pools samples of more than one tumor origin.",
         "",
     ]
     if sort_by == "samples":
@@ -458,7 +495,9 @@ def render_inventory(
     for source_cohort in order:
         entries = sorted(by_source[source_cohort], key=lambda e: e.cancer_code)
         n_samples = sum(e.n_samples or 0 for e in entries)
-        citation = _clean_citation(source_cohort, entries[0].source_project)
+        citation = entries[0].reference
+        if len(citation) > 72:
+            citation = citation[:71] + "…"
         origin = _origin_label(entries[0].tumor_origin)
         quant = native_unit_from_pipeline(entries[0].processing_pipeline)
         gene_set = {e.n_rows for e in entries}
