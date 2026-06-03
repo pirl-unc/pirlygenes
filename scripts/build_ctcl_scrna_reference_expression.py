@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
+from pirlygenes.builders.gene_mapping import resolve_symbol
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -281,16 +282,18 @@ def _build_case_counts(
 
 
 def _gene_by_symbol(genome: EnsemblRelease, symbol: str):
+    """Symbol → Ensembl gene object via the shared resolver (direct → Entrez
+    → NCBI-synonym/alias rescue), so renamed symbols are recovered the same
+    way as in every other builder. None if unresolved/ambiguous."""
     if not symbol:
         return None
+    resolved = resolve_symbol(genome, symbol)
+    if resolved is None:
+        return None
     try:
-        genes = genome.genes_by_name(symbol)
+        return genome.gene_by_id(resolved[0])
     except Exception:
         return None
-    gene_ids = {gene.gene_id.split(".", 1)[0] for gene in genes}
-    if len(gene_ids) != 1:
-        return None
-    return genes[0]
 
 
 def _harmonize_symbols(
@@ -347,8 +350,10 @@ def _summarize(gene_table: pd.DataFrame, values: pd.DataFrame) -> pd.DataFrame:
     out["source_version"] = SOURCE_VERSION
     assign_stats(out, values, clean)
     out["processing_pipeline"] = PIPELINE
+    out["tumor_origin"] = "primary"   # CTCL skin/blood diagnostic samples
+    out["metastasis_site"] = pd.NA
     out["notes"] = NOTES
-    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    return round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
 
 
 def _upsert_reference(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:

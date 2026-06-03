@@ -48,24 +48,28 @@ symbols (`HIST1H1T`→`H1-6`, `GNB2L1`→`RACK1`). It is used by:
 - the generic GEO-matrix builder (`geo_matrix._harmonize_by_symbol`), and
 - the Treehouse builder (`builders/treehouse.py`).
 
-But several **older symbol-keyed builders still call raw
-`genome.genes_by_name(symbol)`** with no synonym rescue:
-`build_geo_heme_reference_expression.py` (CML), `build_cllmap_*` (CLL),
-`build_ctcl_*` (CTCL), `import_cancer_specific_expression.py` (summary
-imports), and the standalone `build_treehouse_reference_expression.py`.
-The GDC builders also call `genes_by_name`, but they are **ENSG-keyed**
-(STAR `tpm_unstranded` by Ensembl ID), so synonym rescue doesn't apply to
-their aggregation — lower risk.
+**Fixed in v5.10.0:** `build_geo_heme` (CML/MCL/MPN), `build_cllmap` (CLL),
+and `build_ctcl` (CTCL) now route their symbol resolution through the shared
+`resolve_symbol` and were rebuilt. Recovered genes that retired HGNC symbols
+had silently dropped — e.g. CML **+1454 genes** (RACK1←GNB2L1 at 1424 TPM,
+H3-3A←H3F3A, H1-10, ATP5F1E, …), CTCL +951, MPN +524, MCL +462, CLL +88.
+Those builders were also brought to current schema (`tumor_origin` set,
+`reindex` not strict column-select).
 
-**Impact:** in those symbol-keyed cohorts, a gene whose source uses a
-retired HGNC symbol absent from Ensembl 112 is silently dropped (becomes
-`not_measurable`) instead of rescued — the same class of gap the recount3
-work fixed for NET. Mostly rare-cancer cohorts (CLL/CML/CTCL) and small
-summary imports.
+**Still on the local resolver (documented, lower risk):**
+- `import_cancer_specific_expression.py` (CHON / SARC subtypes / SCLC) —
+  already does its *own* historical-Ensembl-release rescue (a different
+  mechanism), and its summary input table isn't in the tree, so it's left
+  pending a re-supply of that input.
+- GDC builders (`build_target_all`, `build_mmrf`, `build_bl_gdc`,
+  `build_target_subprojects`) call `genes_by_name` only as a **fallback**;
+  they are ENSG-keyed (STAR `tpm_unstranded` by Ensembl ID), so the fallback
+  rarely fires and rebuilding needs full GDC downloads. Unify at the next
+  GDC rebuild.
 
-**Recommended fix (follow-up):** route every symbol-keyed builder through
-`resolve_symbol`, then rebuild the affected cohorts. ENSG-keyed (GDC,
-recount3) and already-migrated (Treehouse, GEO-matrix) paths need no change.
+Every cohort's shard is keyed by **unversioned ENSG** — verified across all
+shards — so the references share one compatible identifier space regardless
+of source (Ensembl 112 vs recount3 Gencode v26).
 
 ## 3. Multi-source cohorts — semantics & visibility
 

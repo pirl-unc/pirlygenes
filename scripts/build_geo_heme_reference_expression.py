@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
+from pirlygenes.builders.gene_mapping import resolve_symbol
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -259,16 +260,14 @@ def _gene_by_id(genome: EnsemblRelease, gene_id: str):
 
 
 def _unique_gene_by_symbol(genome: EnsemblRelease, symbol: str):
+    """Resolve a symbol to its Ensembl gene object via the shared resolver
+    (direct → Entrez → NCBI-synonym/alias rescue), so renamed symbols are
+    recovered the same way as in every other builder. Returns the gene object
+    (callers need it for length); None if unresolved/ambiguous."""
     if not symbol:
         return None
-    try:
-        genes = genome.genes_by_name(symbol)
-    except Exception:
-        return None
-    gene_ids = {gene.gene_id.split(".", 1)[0] for gene in genes}
-    if len(gene_ids) != 1:
-        return None
-    return genes[0]
+    resolved = resolve_symbol(genome, symbol)
+    return _gene_by_id(genome, resolved[0]) if resolved else None
 
 
 def _gene_length(gene) -> int:
