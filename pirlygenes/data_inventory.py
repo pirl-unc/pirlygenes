@@ -114,6 +114,14 @@ def native_unit_from_pipeline(pipeline: str) -> str:
     return "TPM"
 
 
+def _quant_short(pipeline: str) -> str:
+    """Quantification UNIT only — drops the platform word that the assay
+    column already shows (microarray intensity → intensity, scRNA UMI counts
+    → UMI counts). Used in the listing where assay is a separate field."""
+    q = native_unit_from_pipeline(pipeline)
+    return {"microarray intensity": "intensity", "scRNA UMI counts": "UMI counts"}.get(q, q)
+
+
 # Cross-cohort comparability classes: RNA-seq→TPM cohorts are roughly
 # comparable in magnitude; microarray TPM-proxy and scRNA nTPM are NOT
 # comparable to RNA-seq TPM (the most decision-relevant grouping).
@@ -174,9 +182,17 @@ def _concise_reference(ref: str) -> str:
     clause, and cap length. URLs pass through unchanged."""
     if not ref or ref.lower().startswith("http"):
         return ref
+    # 'PMID 1234 (Singer 2007 …)' → 'Singer 2007 (PMID 1234)'; bare → 'PMID 1234'
+    pm = re.match(r"PMID\s*(\d+)\s*\((.+)\)\s*$", ref)
+    if pm:
+        am = re.match(r"([A-Z][a-z]+)\s+((?:19|20)\d{2})", pm.group(2))
+        return f"{am.group(1)} {am.group(2)} (PMID {pm.group(1)})" if am else f"PMID {pm.group(1)}"
     r = re.sub(r"\s*\([^)]*(released|matrix|version|v\d)[^)]*\)", "", ref, flags=re.I)
     r = r.replace("Childhood Cancer Initiative, ", "")
     r = re.sub(r"\b(PolyA|RiboDeplete|RiboD)\b", "", r)
+    # consistent Treehouse versioning: always 'Treehouse 25.01 …'
+    r = r.replace("Tumor Compendium 25.01", "25.01")
+    r = re.sub(r"^Treehouse (?=\()", "Treehouse 25.01 ", r)
     r = re.sub(r"\s{2,}", " ", r.split(". ")[0]).strip().rstrip(".").strip()
     if len(r) > 52:
         r = r[:52].rsplit(" ", 1)[0] + "…"
@@ -263,7 +279,7 @@ _SUMMARY_CACHE = Path.home() / ".cache" / "pirlygenes" / "inventory_summary.json
 # Bump when the cached snapshot's fields/shape change, so stale caches from an
 # older code version are ignored (the shard fingerprint alone wouldn't catch a
 # pure-code schema change like adding the `reference` field).
-_SUMMARY_SCHEMA = "5"
+_SUMMARY_SCHEMA = "6"
 
 
 def _shard_signature(paths: list[Path]) -> str:
@@ -459,7 +475,7 @@ def _render_flat(rows: list[CohortRowCount]) -> str:
     for r in entries:
         name = (r.cancer_type_name or "")[:31]
         assay = _assay(r.source_cohort, r.processing_pipeline)
-        quant = native_unit_from_pipeline(r.processing_pipeline)
+        quant = _quant_short(r.processing_pipeline)
         n = "—" if r.n_samples is None else f"{r.n_samples}"
         lines.append(
             f"{r.cancer_code:<16}{name:<32}{n:>6}  {r.n_rows:>8,}  "
@@ -594,7 +610,7 @@ def render_inventory(
         if len(citation) > 78:                       # truncate at a word boundary
             citation = citation[:78].rsplit(" ", 1)[0] + "…"
         origin = _origin_label(entries[0].tumor_origin)
-        quant = native_unit_from_pipeline(entries[0].processing_pipeline)
+        quant = _quant_short(entries[0].processing_pipeline)
         assay = _assay(source_cohort, entries[0].processing_pipeline)
         gene_set = {e.n_rows for e in entries}
         genes_vary = len(gene_set) > 1
