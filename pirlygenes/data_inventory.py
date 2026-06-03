@@ -64,6 +64,7 @@ class CohortRowCount:
     reference: str = ""
     parent_code: str = ""
     assay: str = ""
+    unit: str = ""
 
 
 @dataclass(frozen=True)
@@ -133,7 +134,9 @@ def _quant_tool(pipeline: str) -> str:
 
 
 def _quant_unit(pipeline: str) -> str:
-    """The quantification UNIT (the source's native scale)."""
+    """Fallback unit from the pipeline tag when the registry doesn't curate
+    one. Note GDC is NOT here — we ingest GDC's tpm_unstranded (TPM), so the
+    registry's curated 'unit: TPM' is authoritative for it."""
     p = (pipeline or "").lower()
     if "microarray" in p:
         return "intensity"
@@ -145,9 +148,44 @@ def _quant_unit(pipeline: str) -> str:
         return "RPKM"
     if "fpkm" in p:
         return "FPKM"
-    if "raw_counts" in p or "htseq" in p or "star" in p:
+    if "raw_counts" in p or "htseq" in p:
         return "read counts"
     return "TPM"
+
+
+def _norm_unit(registry_unit: str) -> str:
+    """Normalize a registry ``unit`` string to a display unit (the source's
+    NATIVE scale — what we ingest, before our clean-TPM normalization)."""
+    u = (registry_unit or "").lower()
+    if "rpkm" in u:
+        return "RPKM"
+    if "fpkm" in u:
+        return "FPKM"
+    if "coverage" in u or "gene-sum" in u or "gene sum" in u:
+        return "coverage"
+    if "ntpm" in u or "pseudobulk" in u:
+        return "UMI (pseudobulk)"
+    if "htseq" in u or "raw count" in u or "raw_count" in u:
+        return "read counts"
+    if "intensity" in u or "microarray" in u:
+        return "intensity"
+    return "TPM"
+
+
+def _unit_for(
+    source_cohort: str, pipeline: str, unit_by_acc: dict, unit_by_id: dict
+) -> str:
+    """Native unit: the curated registry ``unit`` (matched by accession or
+    source-id prefix, so derived cohorts inherit their parent's unit) when
+    present, else the pipeline heuristic."""
+    m = re.match(r"(GSE\d+|[A-Z]+\d+)", source_cohort)
+    u = unit_by_acc.get(m.group(1)) if m else None
+    if not u:
+        norm = source_cohort.lower().replace("_", "-")
+        cands = [rid for rid in unit_by_id if norm.startswith(rid)]
+        if cands:
+            u = unit_by_id[max(cands, key=len)]
+    return _norm_unit(u) if u else _quant_unit(pipeline)
 
 
 def _quant_short(pipeline: str) -> str:
@@ -338,7 +376,7 @@ _SUMMARY_CACHE = Path.home() / ".cache" / "pirlygenes" / "inventory_summary.json
 # Bump when the cached snapshot's fields/shape change, so stale caches from an
 # older code version are ignored (the shard fingerprint alone wouldn't catch a
 # pure-code schema change like adding the `reference` field).
-_SUMMARY_SCHEMA = "9"
+_SUMMARY_SCHEMA = "10"
 
 
 def _shard_signature(paths: list[Path]) -> str:
@@ -451,6 +489,8 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
     reg_by_id = {s.id: s.citation for s in registry if s.id and s.citation}
     prep_by_acc = {s.accession: s.library_prep for s in registry if s.accession and s.library_prep}
     prep_by_id = {s.id: s.library_prep for s in registry if s.id and s.library_prep}
+    unit_by_acc = {s.accession: s.unit for s in registry if s.accession and s.unit}
+    unit_by_id = {s.id: s.unit for s in registry if s.id and s.unit}
     cohort_rows = tuple(
         CohortRowCount(
             cancer_code=str(row.cancer_code),
@@ -470,6 +510,11 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
                 str(row.source_cohort),
                 str(getattr(row, "processing_pipeline", "") or ""),
                 prep_by_acc, prep_by_id,
+            ),
+            unit=_unit_for(
+                str(row.source_cohort),
+                str(getattr(row, "processing_pipeline", "") or ""),
+                unit_by_acc, unit_by_id,
             ),
         )
         for row in grouped.itertuples(index=False)
@@ -534,19 +579,24 @@ def _render_flat(rows: list[CohortRowCount]) -> str:
     quantification / reference as columns."""
     entries = sorted(rows, key=lambda r: -(r.n_samples or 0))
     hdr = (
-        f"{'code':<16}{'cancer type':<32}{'n':>6}  {'genes':>8}  "
-        f"{'assay':<22}{'tool':<10}{'unit':<16}reference"
+        f"{'code':<16}{'cancer type':<30}{'n':>6}  {'genes':>8}  "
+        f"{'assay':<22}{'tool':<9}{'unit':<13}{'stratified by':<19}source"
     )
     lines = [hdr, "─" * len(hdr)]
     for r in entries:
-        name = (r.cancer_type_name or "")[:31]
+        name = (r.cancer_type_name or "")[:29]
         assay = r.assay or _assay_heuristic(r.source_cohort, r.processing_pipeline)
         tool = _quant_tool(r.processing_pipeline)
-        unit = _quant_unit(r.processing_pipeline)
+        unit = r.unit or _quant_unit(r.processing_pipeline)
+        # split 'Source × <method>' → source + how the sub-cohort was derived
+        if " × " in r.reference:
+            source, strat = (p.strip() for p in r.reference.split(" × ", 1))
+        else:
+            source, strat = r.reference, "—"
         n = "—" if r.n_samples is None else f"{r.n_samples}"
         lines.append(
-            f"{r.cancer_code:<16}{name:<32}{n:>6}  {r.n_rows:>8,}  "
-            f"{assay:<22}{tool:<10}{unit:<16}{r.reference}"
+            f"{r.cancer_code:<16}{name:<30}{n:>6}  {r.n_rows:>8,}  "
+            f"{assay:<22}{tool:<9}{unit:<13}{strat:<19}{source}"
         )
     return "\n".join(lines)
 
@@ -677,7 +727,9 @@ def render_inventory(
         if len(citation) > 78:                       # truncate at a word boundary
             citation = citation[:78].rsplit(" ", 1)[0] + "…"
         origin = _origin_label(entries[0].tumor_origin)
-        quant = _quant_short(entries[0].processing_pipeline)
+        _tool = _quant_tool(entries[0].processing_pipeline)
+        _unit = entries[0].unit or _quant_unit(entries[0].processing_pipeline)
+        quant = f"{_tool} {_unit}" if _tool != "—" else _unit
         assay = entries[0].assay or _assay_heuristic(
             source_cohort, entries[0].processing_pipeline
         )

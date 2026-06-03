@@ -290,7 +290,7 @@ sources:
     source_type: summary-only-import
     url: https://www.nature.com/articles/nature14664
     builder: scripts/import_cancer_specific_expression.py
-    unit: TPM
+    unit: FPKM   # George 2015 published FPKM; our builder is fpkm_to_tpm
     expected_size_gb: 0
     citation: SCLC U.Cologne 2015 (George 2015, PMID 26168399)
     special_handling: Small-cell lung cancer summary import.
