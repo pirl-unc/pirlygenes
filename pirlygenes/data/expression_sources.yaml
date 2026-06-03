@@ -267,7 +267,7 @@ sources:
     source_type: summary-only-import
     accession: GSE299759
     builder: scripts/import_cancer_specific_expression.py
-    unit: TPM
+    unit: raw counts   # builder is raw_counts→TPM (GEO supplementary counts)
     expected_size_gb: 0
     citation: GSE299759 (Meijer 2026)
     special_handling: Chondrosarcoma.
