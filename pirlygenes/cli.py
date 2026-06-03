@@ -140,6 +140,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Report which downloadable bundle paths are present in "
              "the local cache for this package version.",
     )
+    sources_parser = data_sub.add_parser(
+        "sources",
+        help="List the expression source(s) feeding each cancer code "
+             "(n_samples, gene count, native unit, tumor origin) so "
+             "multi-source cohorts and their provenance are visible.",
+    )
+    sources_parser.add_argument(
+        "code", nargs="?",
+        help="Restrict to one cancer code (e.g. PANNET). Omit to list "
+             "every code; --multi to show only codes with >1 source.",
+    )
+    sources_parser.add_argument(
+        "--multi", action="store_true",
+        help="Only show cancer codes that have more than one source.",
+    )
     data_sub.add_parser(
         "cache-dir",
         help="Print the on-disk cache dir for the downloaded data "
@@ -235,6 +250,91 @@ def cmd_downloads_prune(_args: argparse.Namespace) -> int:
 def cmd_data_list(_args: argparse.Namespace) -> int:
     snapshot = data_inventory.summarize_inventory()
     sys.stdout.write(data_inventory.render_inventory(snapshot) + "\n")
+    return 0
+
+
+def _native_unit_from_pipeline(pipeline: str) -> str:
+    """Human-readable native quantification unit inferred from a shard's
+    ``processing_pipeline`` tag (the per-source provenance string)."""
+    p = pipeline.lower()
+    table = [
+        ("microarray", "microarray intensity (TPM-proxy)"),
+        ("recount3", "recount3 coverage gene-sums"),
+        ("gdc_star_counts", "GDC STAR counts (TPM)"),
+        ("log2tpm", "RSEM log2(TPM+1)"),
+        ("treehouse", "RSEM log2(TPM+1)"),
+        ("pseudobulk", "scRNA pseudobulk (nTPM)"),
+        ("ntpm", "scRNA pseudobulk (nTPM)"),
+        ("rpkm", "RPKM"),
+        ("fpkm", "FPKM"),
+        ("raw_counts", "raw counts"),
+        ("htseq", "raw counts"),
+    ]
+    for needle, label in table:
+        if needle in p:
+            return label
+    return "TPM"
+
+
+def cmd_data_sources(args: argparse.Namespace) -> int:
+    """List the expression source(s) per cancer code, with their native unit,
+    sample count, and gene count, so multi-source cohorts are visible.
+
+    Semantics: when a cancer code has more than one source, the shards are
+    kept SEPARATE (different assays / quantification scales) and are NOT
+    averaged together. Consumers select or compare them explicitly — e.g.
+    the CTA heatmaps pick the most-gene-rich source per code. A microarray
+    TPM-proxy is not comparable in absolute magnitude to RNA-seq TPM; see
+    docs/recount3-integration.md and the `normalization` column.
+    """
+    import pirlygenes.expression.accessors as accessors
+
+    df = accessors.cancer_reference_expression()
+    native_unit = {
+        s.source_cohort: s.unit
+        for s in downloads.load_registry()
+        if s.source_cohort and s.unit
+    }
+    grouped = (
+        df.groupby(["cancer_code", "source_cohort"])
+        .agg(
+            n_samples=("n_samples", "first"),
+            n_genes=("Ensembl_Gene_ID", "nunique"),
+            pipeline=("processing_pipeline", "first"),
+        )
+        .reset_index()
+    )
+
+    all_codes = sorted(grouped["cancer_code"].astype(str).unique())
+    if args.code:
+        want = args.code.upper()
+        if want not in set(all_codes):
+            sys.stderr.write(f"no cancer code {want!r} in the reference data.\n")
+            return 2
+        codes = [want]
+    else:
+        codes = all_codes
+
+    shown = 0
+    for code in codes:
+        sub = grouped[grouped["cancer_code"] == code].sort_values(
+            "n_genes", ascending=False
+        )
+        if args.multi and len(sub) < 2:
+            continue
+        shown += 1
+        tag = "  (multi-source — kept separate, not merged)" if len(sub) > 1 else ""
+        sys.stdout.write(f"\n{code}{tag}\n")
+        for _, r in sub.iterrows():
+            unit = native_unit.get(r["source_cohort"]) or _native_unit_from_pipeline(
+                str(r["pipeline"])
+            )
+            sys.stdout.write(
+                f"    {r['source_cohort']:34} n={int(r['n_samples']):<4} "
+                f"genes={int(r['n_genes']):<6} {unit}\n"
+            )
+    if shown == 0:
+        sys.stdout.write("no matching cancer codes.\n")
     return 0
 
 
@@ -398,6 +498,10 @@ def cmd_build(args: argparse.Namespace) -> int:
     builder_name = builder_path.name
     if "sweep_treehouse" in builder_name:
         cmd += ["--summary-output", summary_out]
+    elif builder_name == "build_recount3_source.py":
+        # recount3 builder takes the source id positionally and self-fetches
+        # the SRP gene-sums from S3 (no local download cache needed).
+        cmd += [src.id, "--summary-output", summary_out]
     elif builder_name in {"build_geo_matrix.py", "build_gpl570_microarray.py"}:
         # YAML-driven builders that look up their config block by source id.
         cmd += [
@@ -467,6 +571,7 @@ _DOWNLOADS_DISPATCH = {
 
 _DATA_DISPATCH = {
     "list": cmd_data_list,
+    "sources": cmd_data_sources,
     "status": cmd_data_status,
     "cache-dir": cmd_data_cache_dir,
     "fetch": cmd_data_fetch,

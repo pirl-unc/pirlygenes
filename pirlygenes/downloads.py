@@ -55,6 +55,11 @@ class ExpressionSource:
     expected_size_gb: float | None
     citation: str | None
     special_handling: str | None
+    # recount3 sources: the SRA study id the builder re-quantifies, and the
+    # shard tag it writes (so the registry, the builder, and the on-disk
+    # source_cohort all agree). None for non-recount3 sources.
+    recount3_srp: str | None = None
+    source_cohort: str | None = None
 
 
 def _coerce_tuple(value) -> tuple[str, ...]:
@@ -105,6 +110,8 @@ def load_registry(path: Path | None = None) -> list[ExpressionSource]:
                 expected_size_gb=_coerce_float(entry.get("expected_size_gb")),
                 citation=_coerce_str(entry.get("citation")),
                 special_handling=_coerce_str(entry.get("special_handling")),
+                recount3_srp=_coerce_str(entry.get("recount3_srp")),
+                source_cohort=_coerce_str(entry.get("source_cohort")),
             )
         )
     return out

@@ -46,6 +46,9 @@ class Recount3Source:
     note: str                   # cohort-level provenance note (per code, n filled in)
     metastasis_site: str | None = None
     codes: list[str] = field(default_factory=list)
+    # expected per-code sample count; a mismatch means recount3 metadata
+    # strings drifted and routing silently dropped/added samples -> warn loudly.
+    expected_n: dict[str, int] = field(default_factory=dict)
 
 
 def _net_route(a: dict, title: str) -> str | None:
@@ -68,6 +71,7 @@ SOURCES: dict[str, Recount3Source] = {
         citation="PMID 30013182 (Alvarez 2018)",
         route=_net_route, tumor_origin="metastasis", metastasis_site="liver",
         codes=["MID_NET", "PANNET", "REC_NET"],
+        expected_n={"MID_NET": 81, "PANNET": 113, "REC_NET": 18},
         note="liver metastases of GEP-NET; primary site routed from recount3 "
              "sample origin attribute",
     ),
@@ -80,7 +84,7 @@ SOURCES: dict[str, Recount3Source] = {
             a.get("cell type", "").startswith("CD34+")
             and a.get("disease status") == "Myelodysplastic Syndrome"
         ) else None,
-        tumor_origin="primary", codes=["MDS"],
+        tumor_origin="primary", codes=["MDS"], expected_n={"MDS": 82},
         note="bone-marrow CD34+ HSPCs, disease status == Myelodysplastic "
              "Syndrome (healthy controls and non-CD34+ precursors dropped)",
     ),
@@ -90,6 +94,7 @@ SOURCES: dict[str, Recount3Source] = {
         source_project="Alvarez 2018 primary PanNET (GSE118014) — recount3 Gencode v26",
         citation="GSE118014 (Alvarez 2018)",
         route=lambda a, t: "PANNET", tumor_origin="primary", codes=["PANNET"],
+        expected_n={"PANNET": 33},
         note="well-differentiated primary pancreatic neuroendocrine tumors",
     ),
     "gse120328-hl": Recount3Source(
@@ -98,7 +103,7 @@ SOURCES: dict[str, Recount3Source] = {
         source_project="Lamprecht 2018 cHL LCM (GSE120328) — recount3 Gencode v26",
         citation="PMID 30546079 (Lamprecht 2018)",
         route=lambda a, t: "HL" if str(t).endswith("_TU") else None,
-        tumor_origin="primary", codes=["HL"],
+        tumor_origin="primary", codes=["HL"], expected_n={"HL": 5},
         note="LCM-enriched HRS tumour cells (sample titles _TU; non-tumour "
              "_NTC controls dropped) — HRS-cell-specific, not whole-tumour",
     ),
@@ -121,6 +126,8 @@ def build(src: Recount3Source, summary_output: Path) -> int:
         r: src.route(attrs[r], title[r]) for r in attrs
     }
     keep = {r for r, c in run_code.items() if c is not None}
+    dropped = len(run_code) - len(keep)
+    print(f"  routed {len(keep)}/{len(run_code)} runs ({dropped} unroutable, dropped)")
     sample_gs, sample_meta = rc3.aggregate_runs_to_samples(
         gene_sums, meta, keep_runs=keep,
     )
@@ -130,6 +137,14 @@ def build(src: Recount3Source, summary_output: Path) -> int:
         sample_code[sample_id] = run_code[str(row["external_id"])]
     counts = pd.Series(list(sample_code.values())).value_counts().to_dict()
     print(f"  samples by code: {counts}")
+    # Guard against silent routing drift (recount3 metadata strings changing).
+    for code, want in src.expected_n.items():
+        got = counts.get(code, 0)
+        if got != want:
+            print(
+                f"  WARNING: {code} routed n={got} but expected {want} — "
+                "recount3 sample attributes may have changed; check routing."
+            )
 
     tpm = rc3.gene_sums_to_tpm(sample_gs, annotation["bp_length"])
     clean = rc3.to_clean_tpm(tpm, annotation)

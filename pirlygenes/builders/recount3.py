@@ -80,11 +80,13 @@ from __future__ import annotations
 import gzip
 import re
 import urllib.request
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
 
 from pirlygenes.builders.gene_mapping import strip_version
+from pirlygenes.builders.geo_matrix import normalize_to_tpm
 from pirlygenes.expression.normalize import clean_tpm_matrix, technical_rna_mask
 
 ANNOTATION = "G026"  # Gencode v26 gene summaries
@@ -127,6 +129,7 @@ def _download(url: str, dest: Path) -> Path:
     return dest
 
 
+@lru_cache(maxsize=2)
 def fetch_gene_annotation(cache_dir: Path) -> pd.DataFrame:
     """Gencode-v26 gene annotation: unversioned ENSG → ``bp_length`` (exonic)
     + ``Symbol``.
@@ -134,7 +137,10 @@ def fetch_gene_annotation(cache_dir: Path) -> pd.DataFrame:
     Read from recount3's gene-sums annotation GTF, where the score column
     (field 6) holds the disjoint-exon ``bp_length`` and the ``gene_name``
     attribute holds the HGNC symbol. Collisions after version/``_PAR_Y``
-    stripping are summed (bp_length) / first-wins (symbol).
+    stripping are summed (bp_length) / first-wins (symbol) — a handful of
+    PAR genes on chrY; the matching gene-sums rows are summed too, so the
+    coverage/length rate stays consistent. Cached so a multi-source
+    ``--all`` run parses the ~60k-row GTF once.
     """
     path = _download(_ANNOTATION_GTF, cache_dir / f"human.gene_sums.{ANNOTATION}.gtf.gz")
     rows: list[tuple[str, int, str]] = []
@@ -171,16 +177,18 @@ def gene_sums_to_tpm(gene_sums: pd.DataFrame, bp_length: pd.Series) -> pd.DataFr
 
     Returns an unversioned-ENSG × sample TPM matrix (each column sums to 1e6
     over genes with a known length). See the module docstring for the math.
+
+    Coverage-over-exonic-bases divided by exonic length is mathematically the
+    same shape as read-counts divided by length, so this delegates to the
+    shared :func:`pirlygenes.builders.geo_matrix.normalize_to_tpm`
+    ``raw_counts`` path — recount3 takes the *same* length-normalization
+    route as every count-based GEO/GDC builder, not a private one.
     """
     gs = gene_sums.copy()
     gs.index = [strip_version(i) for i in gs.index]
     gs = gs.groupby(level=0).sum()                     # collapse version/_PAR_Y dups
-    lengths = bp_length.reindex(gs.index)
-    gs = gs.loc[lengths.notna()]                       # drop genes with no length
-    rate = gs.div(lengths.loc[gs.index].to_numpy(), axis=0)
-    col_sums = rate.sum(axis=0)
-    tpm = rate.div(col_sums.where(col_sums > 0, 1.0), axis=1) * 1_000_000.0
-    return tpm.fillna(0.0)
+    lengths_kb = (bp_length / 1000.0).rename("gene_length_kb")
+    return normalize_to_tpm(gs, unit="raw_counts", gene_lengths_kb=lengths_kb)
 
 
 def to_clean_tpm(tpm: pd.DataFrame, annotation: pd.DataFrame) -> pd.DataFrame:

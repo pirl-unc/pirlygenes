@@ -103,15 +103,20 @@ sources:
   - id: gse114922-mds
     category: expression
     cancer_codes: [MDS]
-    source_type: geo
+    source_type: recount3
     accession: GSE114922
-    builder: scripts/build_geo_heme_reference_expression.py
-    unit: TPM
+    recount3_srp: SRP149374
+    source_cohort: GSE114922_SHIOZAWA_2018
+    builder: scripts/build_recount3_source.py
+    unit: recount3 Gencode-v26 coverage gene-sums
     expected_size_gb: 0.1
     citation: GSE114922 (Shiozawa 2018)
     special_handling: >
-      Bone-marrow CD34+ HSPCs; disease status == 'Myelodysplastic
-      Syndrome' samples only.
+      Rebuilt from recount3 (SRP149374, Gencode v26) for coverage-complete
+      gene universe — see docs/recount3-integration.md. Selection: bone-marrow
+      CD34+ HSPCs, disease status == 'Myelodysplastic Syndrome' (runs summed
+      per biological sample → n=82). Supersedes the author-HTSeq build
+      (scripts/build_geo_heme_reference_expression.py), kept in git history.
 
   - id: gse271664-mcl
     category: expression
@@ -236,13 +241,20 @@ sources:
   - id: gse118014-pannet
     category: expression
     cancer_codes: [PANNET]
-    source_type: summary-only-import
+    source_type: recount3
     accession: GSE118014
-    builder: scripts/import_cancer_specific_expression.py
-    unit: TPM
-    expected_size_gb: 0
+    recount3_srp: SRP156049
+    source_cohort: GSE118014_ALVAREZ_2018
+    builder: scripts/build_recount3_source.py
+    unit: recount3 Gencode-v26 coverage gene-sums
+    expected_size_gb: 0.1
     citation: GSE118014 (Alvarez 2018)
-    special_handling: Pancreatic neuroendocrine tumors.
+    special_handling: >
+      Well-differentiated PRIMARY pancreatic neuroendocrine tumors (n=33),
+      rebuilt from recount3 (SRP156049, Gencode v26) for coverage-complete
+      genes — see docs/recount3-integration.md. Distinct from the liver-met
+      PANNET shard (gse98894-midnet). Supersedes the summary-only import
+      (scripts/import_cancer_specific_expression.py).
 
   - id: gse299759-chon
     category: expression
@@ -658,24 +670,22 @@ sources:
   - id: gse120328-hl
     category: expression
     cancer_codes: [HL]
-    source_type: geo-matrix
-    builder: scripts/build_geo_matrix.py
-    file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE120nnn/GSE120328/suppl/GSE120328_DESeq2_fpkm.tsv.gz
-    file_name: GSE120328_DESeq2_fpkm.tsv.gz
-    unit: FPKM
-    gene_id_col: ""
-    gene_id_type: hugo
-    sample_filter:
-      include_match: "_TU$"   # tumor LCM only; drop _NTC controls
+    source_type: recount3
+    accession: GSE120328
+    recount3_srp: SRP162356
     source_cohort: GSE120328_LAMPRECHT_2018
     source_project: GEO
+    builder: scripts/build_recount3_source.py
+    unit: recount3 Gencode-v26 coverage gene-sums
     citation: Lamprecht 2018 PMID 30546079 (cHL LCM bulk RNA-seq)
-    expected_size_gb: 0.01
-    notes: >
-      Lamprecht 2018 (cHL): LCM-enriched HRS cells from 5 cHL biopsies
-      (sample IDs end _TU; 5 paired non-tumor _NTC excluded by
-      sample_filter). FPKM → per-sample sum-to-1e6 → clean TPM. n=5;
-      HRS-cell-specific not whole-tumor — flag for TME comparisons.
+    expected_size_gb: 0.05
+    special_handling: >
+      Lamprecht 2018 (cHL): LCM-enriched HRS tumour cells (sample titles
+      _TU; 5 paired non-tumour _NTC dropped → n=5). Rebuilt from recount3
+      (SRP162356, Gencode v26) for coverage-complete genes — see
+      docs/recount3-integration.md. HRS-cell-specific not whole-tumour —
+      flag for TME comparisons. Supersedes the FPKM author-matrix build
+      (scripts/build_geo_matrix.py).
 
   - id: gse142334-fl
     category: expression
@@ -833,26 +843,25 @@ sources:
   - id: gse98894-midnet
     category: expression
     cancer_codes: [MID_NET, PANNET, REC_NET]
-    source_type: geo-raw-tar
-    builder: scripts/build_gse98894_midgut_net.py
-    url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE98nnn/GSE98894/suppl/GSE98894_RAW.tar
-    expected_size_gb: 0.5
+    source_type: recount3
+    accession: GSE98894
+    recount3_srp: SRP107025
+    source_cohort: GSE98894_ALVAREZ_2018_NET
+    builder: scripts/build_recount3_source.py
+    unit: recount3 Gencode-v26 coverage gene-sums
+    expected_size_gb: 0.1
     citation: PMID 30013182 (Alvarez 2018 NET master regulator analysis)
-    files:
-      raw_tar: GSE98894_RAW.tar
-      series_matrix: GSE98894_series_matrix.txt.gz
     special_handling: >
-      GSE98894 ships RAW.tar of 212 per-sample HTSeq count files;
-      builder extracts in memory, routes by series_matrix char_origin
-      (primary site), Entrez→ENSG via NCBI gene_info → pyensembl,
-      length-normalizes to TPM via Ensembl 112 gene lengths.
-      Cohort: ~81 SI-NET → MID_NET, ~113 PNET → PANNET, ~18 rectal
-      NET → REC_NET. EVERY sample is a liver metastasis (not primary
-      tumor); all shards are tagged tumor_origin=metastasis,
-      metastasis_site=liver. The PANNET shard here is distinct from
-      the primary-tumor GSE118014_ALVAREZ_2018 PANNET shard — both
-      coexist (one primary, one liver-met). REC_NET registry code
-      was added with this build.
+      Rebuilt from recount3 (SRP107025, Gencode v26) for coverage-complete
+      genes — the author HTSeq counts dropped XAGE1A/XAGE1B; recount3
+      recovers them (see docs/recount3-integration.md). Routed by recount3
+      sample 'origin' attribute: ~81 SI-NET → MID_NET, ~113 PNET → PANNET,
+      ~18 rectal NET → REC_NET. EVERY sample is a liver metastasis; all
+      shards tagged tumor_origin=metastasis, metastasis_site=liver. The
+      PANNET shard here is distinct from the primary-tumor
+      GSE118014_ALVAREZ_2018 PANNET shard — both coexist. Supersedes the
+      RAW.tar HTSeq build (scripts/build_gse98894_midgut_net.py). REC_NET
+      registry code was added with the original build.
 
   # ─── v5.5.0 microarray cohorts ────────────────────────────────────────
   # First production use of the generalized microarray builder

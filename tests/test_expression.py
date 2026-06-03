@@ -422,7 +422,12 @@ def test_cancer_reference_expression_acquirable_heme_markers_are_distinct():
     assert pivot.loc["SOX11", "MCL"] > 50
     assert pivot.loc["MPO", "CML"] > 1000
     assert pivot.loc["ABL1", "CML"] > 10
-    assert pivot.loc["CD34", "MDS"] > 100
+    # CD34+ sorted HSPCs: CD34 is distinctly elevated (vs bulk CML ~4 TPM).
+    # The v5.9 recount3 rebuild (STAR coverage / Gencode v26) puts the median
+    # at ~66 TPM vs the prior author-HTSeq build's >100; both mark MDS as
+    # CD34-high. Threshold tracks the recount3 source.
+    assert pivot.loc["CD34", "MDS"] > 50
+    assert pivot.loc["CD34", "MDS"] > 5 * pivot.loc["CD34", "CML"]
     assert pivot.loc["MPO", "MDS"] > 1000
     assert pivot.loc["CD34", "MPN"] > 50
     assert pivot.loc["MPL", "MPN"] > 100
