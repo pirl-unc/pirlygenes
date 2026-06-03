@@ -15,6 +15,7 @@ directly without going through the CLI.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,6 +56,7 @@ class CohortRowCount:
     n_rows: int          # one row per measured gene → this is the gene count
     n_samples: int | None
     processing_pipeline: str = ""
+    tumor_origin: str = ""
 
 
 @dataclass(frozen=True)
@@ -103,6 +105,40 @@ def native_unit_from_pipeline(pipeline: str) -> str:
         if needle in p:
             return label
     return "TPM"
+
+
+# Cross-cohort comparability classes: RNA-seq→TPM cohorts are roughly
+# comparable in magnitude; microarray TPM-proxy and scRNA nTPM are NOT
+# comparable to RNA-seq TPM (the most decision-relevant grouping).
+def comparability_class(pipeline: str) -> tuple[str, str]:
+    """Return (key, label) bucketing a cohort by cross-cohort comparability."""
+    p = (pipeline or "").lower()
+    if "microarray" in p:
+        return ("microarray", "microarray TPM-proxy · NOT RNA-seq-comparable")
+    if "pseudobulk" in p or "ntpm" in p:
+        return ("scrna", "scRNA pseudobulk nTPM · NOT RNA-seq-comparable")
+    return ("rnaseq", "RNA-seq → TPM · cross-cohort comparable")
+
+
+def _clean_citation(source_cohort: str, source_project: str) -> str:
+    """Drop the redundant '— recount3 …' suffix (the quant column covers it),
+    and turn a bare 'GEO' into the study's 'Author Year' parsed from the
+    source-cohort id (GSE100026_DING_2017 → 'Ding 2017')."""
+    cit = re.split(r"\s+[—-]+\s+recount3", source_project)[0].strip()
+    if cit.upper() in {"GEO", ""}:
+        m = re.search(r"_([A-Z][A-Za-z]+)_((?:19|20)\d{2})", source_cohort)
+        if m:
+            return f"{m.group(1).title()} {m.group(2)}"
+    return cit
+
+
+def _origin_label(tumor_origin: str) -> str:
+    o = (tumor_origin or "").lower()
+    if o.startswith("met"):
+        return "metastasis"
+    if o in {"primary", ""}:
+        return "primary"
+    return o
 
 
 def _coerce_int(value) -> int | None:
@@ -167,6 +203,7 @@ def summarize_inventory() -> InventorySnapshot:
             n_rows=("Ensembl_Gene_ID", "size"),
             n_samples=("n_samples", "max"),
             processing_pipeline=("processing_pipeline", "first"),
+            tumor_origin=("tumor_origin", "first"),
         )
         .reset_index()
     )
@@ -178,6 +215,7 @@ def summarize_inventory() -> InventorySnapshot:
             n_rows=int(row.n_rows),
             n_samples=_coerce_int(row.n_samples),
             processing_pipeline=str(getattr(row, "processing_pipeline", "") or ""),
+            tumor_origin=str(getattr(row, "tumor_origin", "") or ""),
         )
         for row in grouped.sort_values(
             ["source_cohort", "cancer_code"]
@@ -212,38 +250,113 @@ def _format_bytes(size: int) -> str:
     return f"{value:.2f} TB"
 
 
-def render_inventory(snapshot: InventorySnapshot) -> str:
+def render_inventory(
+    snapshot: InventorySnapshot,
+    *,
+    sort_by: str = "name",
+    code_filter: str | None = None,
+) -> str:
+    """Render the inventory. ``sort_by`` ∈ {name, samples} orders source
+    cohorts; ``code_filter`` restricts to source cohorts feeding that cancer
+    code (case-insensitive)."""
+    rows = list(snapshot.cohort_rows)
+    if code_filter:
+        wanted = code_filter.upper()
+        keep = {r.source_cohort for r in rows if r.cancer_code.upper() == wanted}
+        rows = [r for r in rows if r.source_cohort in keep]
+
     by_source: dict[str, list[CohortRowCount]] = {}
-    for row in snapshot.cohort_rows:
+    for row in rows:
         by_source.setdefault(row.source_cohort, []).append(row)
+
+    # ---- aggregate signal for the summary ----
+    codes_to_sources: dict[str, set[str]] = {}
+    class_cohorts: dict[str, set[str]] = {}
+    class_samples: dict[str, int] = {}
+    class_label: dict[str, str] = {}
+    origin_samples: dict[str, int] = {}
+    small_n = 0
+    gene_counts = [r.n_rows for r in rows] or [0]
+    for r in rows:
+        codes_to_sources.setdefault(r.cancer_code, set()).add(r.source_cohort)
+        key, label = comparability_class(r.processing_pipeline)
+        class_label[key] = label
+        class_cohorts.setdefault(key, set()).add(r.source_cohort)
+        class_samples[key] = class_samples.get(key, 0) + (r.n_samples or 0)
+        origin_samples[_origin_label(r.tumor_origin)] = (
+            origin_samples.get(_origin_label(r.tumor_origin), 0) + (r.n_samples or 0)
+        )
+        if r.n_samples is not None and r.n_samples < 10:
+            small_n += 1
+    multi = sorted(c for c, s in codes_to_sources.items() if len(s) > 1)
 
     lines = [
         f"cancer-reference-expression  [{snapshot.data_source}]",
         f"  path:            {snapshot.data_path}",
         f"  size on disk:    {_format_bytes(snapshot.data_size_bytes).strip()} "
         f"across {snapshot.shard_files} per-source shards",
-        f"  cancer codes:    {snapshot.cancer_codes:,}",
+        f"  cancer codes:    {snapshot.cancer_codes:,}   "
+        f"({len(multi)} fed by ≥2 sources)",
         f"  source cohorts:  {len(by_source):,}",
         f"  distinct genes:  {snapshot.unique_genes:,}   "
-        f"(the gene universe; each cohort measures a subset)",
+        f"(universe; per-cohort coverage {min(gene_counts):,}–{max(gene_counts):,})",
         f"  total samples:   {snapshot.total_samples:,}   "
-        f"(summed across cohorts; a sample shared by subtype cohorts is "
-        f"counted in each)",
+        f"(summed; a sample shared by subtype cohorts is counted in each)",
+        "",
+        "  quantification (cross-cohort comparability):",
+    ]
+    for key in ("rnaseq", "microarray", "scrna"):
+        if key in class_cohorts:
+            n_c = len(class_cohorts[key])
+            lines.append(
+                f"      {class_label[key]:<46} "
+                f"{n_c:>2} {'cohort ' if n_c == 1 else 'cohorts'} · "
+                f"{class_samples[key]:,} samples"
+            )
+    _origin_order = {"primary": 0, "metastasis": 1, "mixed": 2}
+    lines.append(
+        "  tumor origin:    "
+        + " · ".join(
+            f"{o} {n:,} samples"
+            for o, n in sorted(
+                origin_samples.items(), key=lambda kv: (_origin_order.get(kv[0], 9), kv[0])
+            )
+        )
+    )
+    lines.append(f"  cohorts with n<10 samples: {small_n}")
+    if multi and not code_filter:
+        lines += [
+            "",
+            "Cancer codes with multiple sources (compare on the comparable scale, "
+            "don't merge):",
+            "  " + " · ".join(
+                f"{c} ({len(codes_to_sources[c])})" for c in multi
+            ),
+        ]
+
+    lines += [
         "",
         "Per source cohort   ·   one row per cancer code "
-        "(n = tumor samples · genes measured · quantification method).",
-        "Source-cohort id encodes the origin — GSE… = GEO accession; "
-        "TCGA/TARGET/MMRF/Treehouse = consortium datasets.",
+        "(n = tumor samples · genes measured · quantification).",
         "",
     ]
-    for source_cohort in sorted(by_source):
+    if sort_by == "samples":
+        order = sorted(
+            by_source,
+            key=lambda s: -sum(e.n_samples or 0 for e in by_source[s]),
+        )
+    else:
+        order = sorted(by_source)
+    for source_cohort in order:
         entries = sorted(by_source[source_cohort], key=lambda e: e.cancer_code)
         n_samples = sum(e.n_samples or 0 for e in entries)
-        citation = entries[0].source_project
+        citation = _clean_citation(source_cohort, entries[0].source_project)
+        origin = _origin_label(entries[0].tumor_origin)
         cohort_word = "cohort" if len(entries) == 1 else "cohorts"
+        origin_str = f" · {origin}" if origin != "primary" else ""
         lines.append(
             f"  {source_cohort}   —   {len(entries)} {cohort_word} · "
-            f"{n_samples:,} samples · {citation}"
+            f"{n_samples:,} samples · {citation}{origin_str}"
         )
         for e in entries:
             n = "n=NaN" if e.n_samples is None else f"n={e.n_samples}"

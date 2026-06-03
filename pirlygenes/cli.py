@@ -172,10 +172,18 @@ def _build_parser() -> argparse.ArgumentParser:
     data_sub = data_parser.add_subparsers(
         dest="data_action", metavar="<action>", title="actions",
     )
-    data_sub.add_parser(
+    list_parser = data_sub.add_parser(
         "list",
         help="Overview of every cohort — samples, genes measured, and "
              "quantification method (downloads the bundle if not local yet).",
+    )
+    list_parser.add_argument(
+        "--sort", choices=["name", "samples"], default="name",
+        help="Order source cohorts by id (default) or by sample count.",
+    )
+    list_parser.add_argument(
+        "--code", metavar="CANCER_CODE",
+        help="Show only the source cohort(s) feeding this cancer code.",
     )
     data_sub.add_parser(
         "status",
@@ -313,9 +321,16 @@ def cmd_downloads_prune(_args: argparse.Namespace) -> int:
     return 2
 
 
-def cmd_data_list(_args: argparse.Namespace) -> int:
+def cmd_data_list(args: argparse.Namespace) -> int:
     snapshot = data_inventory.summarize_inventory()
-    sys.stdout.write(data_inventory.render_inventory(snapshot) + "\n")
+    sys.stdout.write(
+        data_inventory.render_inventory(
+            snapshot,
+            sort_by=getattr(args, "sort", "name"),
+            code_filter=getattr(args, "code", None),
+        )
+        + "\n"
+    )
     return 0
 
 
