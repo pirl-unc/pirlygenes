@@ -296,8 +296,32 @@ def _concise_reference(ref: str) -> str:
     return r
 
 
+# The 33 TCGA project codes. When a TCGA_SUBSET cohort's cancer_code is one of
+# these, the generic "(TCGA samples)" credit is rewritten to the specific
+# "(TCGA-<code>)" project — matching how the per-project subtype slices read.
+# Histology splits inside the subset (e.g. SARC_DDLPS) aren't TCGA projects, so
+# they fall through and keep the generic "(TCGA samples)".
+_TCGA_PROJECT_CODES = frozenset({
+    "LAML", "ACC", "BLCA", "LGG", "BRCA", "CESC", "CHOL", "COAD", "ESCA",
+    "GBM", "HNSC", "KICH", "KIRC", "KIRP", "LIHC", "LUAD", "LUSC", "DLBC",
+    "MESO", "OV", "PAAD", "PCPG", "PRAD", "READ", "SARC", "SKCM", "STAD",
+    "TGCT", "THYM", "THCA", "UCS", "UCEC", "UVM",
+})
+
+
+def _specialize_tcga_credit(reference: str, cancer_code: str) -> str:
+    """Rewrite a generic ``(TCGA samples)`` credit to ``(TCGA-<code>)``.
+
+    Only fires for real TCGA project codes; histology subtypes keep the
+    generic form."""
+    if "(TCGA samples)" in reference and cancer_code.upper() in _TCGA_PROJECT_CODES:
+        return reference.replace("(TCGA samples)", f"(TCGA-{cancer_code.upper()})")
+    return reference
+
+
 def _reference_for(
-    source_cohort: str, source_project: str, reg_by_acc: dict, reg_by_id: dict
+    source_cohort: str, source_project: str, reg_by_acc: dict, reg_by_id: dict,
+    cancer_code: str = "",
 ) -> str:
     """Always return a human-meaningful reference for a source cohort.
 
@@ -326,7 +350,7 @@ def _reference_for(
         raw = reg
     else:
         raw = m.group(1) if m else source_cohort
-    return _concise_reference(str(raw))
+    return _specialize_tcga_credit(_concise_reference(str(raw)), cancer_code)
 
 
 def _coerce_int(value) -> int | None:
@@ -376,7 +400,7 @@ _SUMMARY_CACHE = Path.home() / ".cache" / "pirlygenes" / "inventory_summary.json
 # Bump when the cached snapshot's fields/shape change, so stale caches from an
 # older code version are ignored (the shard fingerprint alone wouldn't catch a
 # pure-code schema change like adding the `reference` field).
-_SUMMARY_SCHEMA = "10"
+_SUMMARY_SCHEMA = "11"
 
 
 def _shard_signature(paths: list[Path]) -> str:
@@ -503,7 +527,7 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
             cancer_type_name=name_for.get(str(row.cancer_code), ""),
             reference=_reference_for(
                 str(row.source_cohort), str(row.source_project),
-                reg_by_acc, reg_by_id,
+                reg_by_acc, reg_by_id, str(row.cancer_code),
             ),
             parent_code=parent_for.get(str(row.cancer_code), ""),
             assay=_assay_for(
