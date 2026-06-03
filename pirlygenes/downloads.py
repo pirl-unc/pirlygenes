@@ -60,6 +60,10 @@ class ExpressionSource:
     # source_cohort all agree). None for non-recount3 sources.
     recount3_srp: str | None = None
     source_cohort: str | None = None
+    # Curated library prep / platform (what the inventory shows as 'assay'):
+    # 'polyA RNA-seq' | 'ribo-depleted RNA-seq' | 'microarray' | 'scRNA' |
+    # 'RNA-seq' (prep not recorded). Only set when documented — see the YAML.
+    library_prep: str | None = None
 
 
 def _coerce_tuple(value) -> tuple[str, ...]:
@@ -112,6 +116,7 @@ def load_registry(path: Path | None = None) -> list[ExpressionSource]:
                 special_handling=_coerce_str(entry.get("special_handling")),
                 recount3_srp=_coerce_str(entry.get("recount3_srp")),
                 source_cohort=_coerce_str(entry.get("source_cohort")),
+                library_prep=_coerce_str(entry.get("library_prep")),
             )
         )
     return out

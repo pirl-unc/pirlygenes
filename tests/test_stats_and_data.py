@@ -408,7 +408,7 @@ def test_render_inventory_contains_expected_lines():
     assert "samples:" in rendered                # totals include a sample count
     # flat columnar view is one row per cohort sorted by samples
     flat = data_inventory.render_inventory(snapshot, flat=True)
-    assert "reference" in flat and "quantification" in flat
+    assert "reference" in flat and "tool" in flat and "unit" in flat
     assert "normalized to clean TPM" in rendered  # the native-unit note
     assert "genes" in rendered                   # counts labelled genes, not "rows"
     assert "Burkitt Lymphoma" in rendered        # cancer-type name shown per code

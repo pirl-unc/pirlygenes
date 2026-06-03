@@ -38,6 +38,7 @@ sources:
     project_id: CGCI-BLGSP
     builder: scripts/build_bl_gdc_reference_expression.py
     unit: TPM
+    library_prep: polyA RNA-seq   # CGCI Illumina TruSeq mRNA (polyA)
     expected_size_gb: 2
     citation: https://portal.gdc.cancer.gov/projects/CGCI-BLGSP
     special_handling: >
@@ -51,6 +52,7 @@ sources:
     project_id: MMRF-COMMPASS
     builder: scripts/build_mmrf_reference_expression.py
     unit: TPM
+    library_prep: polyA RNA-seq   # CoMMpass Illumina TruSeq stranded mRNA (polyA)
     expected_size_gb: 5
     citation: https://portal.gdc.cancer.gov/projects/MMRF-COMMPASS
     special_handling: >
@@ -66,6 +68,7 @@ sources:
     project_id: TARGET-ALL-P1+P2+P3
     builder: scripts/build_target_all_reference_expression.py
     unit: TPM
+    library_prep: polyA RNA-seq   # TARGET Illumina TruSeq mRNA (polyA)
     expected_size_gb: 6
     citation: https://portal.gdc.cancer.gov/projects/TARGET-ALL-P2
     special_handling: >
@@ -81,6 +84,7 @@ sources:
     url: https://data.broadinstitute.org/cllmap/data/downloads/cllmap_rnaseq_tpms_full.tsv.gz
     builder: scripts/build_cllmap_reference_expression.py
     unit: TPM
+    library_prep: polyA RNA-seq   # CLL-map Broad Illumina TruSeq mRNA (polyA)
     expected_size_gb: 1
     citation: https://www.broadinstitute.org/cllmap
     special_handling: >
@@ -231,6 +235,7 @@ sources:
     url: https://biodev.github.io/BeatAML2/
     builder: scripts/build_beataml_reference_expression.py
     unit: TPM
+    library_prep: polyA RNA-seq   # OHSU BeatAML Illumina TruSeq stranded mRNA (polyA)
     expected_size_gb: 0
     citation: BeatAML 2.0 (Bottomly 2022)
     special_handling: >
@@ -297,6 +302,7 @@ sources:
     project_id: TARGET-NBL
     builder: scripts/build_target_subprojects.py
     unit: TPM
+    library_prep: polyA RNA-seq   # TARGET Illumina TruSeq mRNA (polyA)
     expected_size_gb: 0
     citation: TARGET Neuroblastoma 2018
     special_handling: >
@@ -310,6 +316,7 @@ sources:
     project_id: TARGET-RT
     builder: scripts/build_target_subprojects.py
     unit: TPM
+    library_prep: polyA RNA-seq   # TARGET Illumina TruSeq mRNA (polyA)
     expected_size_gb: 0
     citation: TARGET Rhabdoid Tumor 2017
     special_handling: Backfill candidate from GDC.
@@ -321,6 +328,7 @@ sources:
     project_id: TARGET-WT
     builder: scripts/build_target_subprojects.py
     unit: TPM
+    library_prep: polyA RNA-seq   # TARGET Illumina TruSeq mRNA (polyA)
     expected_size_gb: 0
     citation: TARGET Wilms Tumor 2015
     special_handling: Backfill candidate from GDC.
@@ -802,6 +810,7 @@ sources:
     cancer_codes: [LUNG_NET_LC, LUNG_NET_LCNEC]
     source_type: github-release
     builder: scripts/build_lnen_drmetrics_reference_expression.py
+    source_cohort: DRMETRICS_ALCALA_2019_LNEN
     url: https://github.com/IARCbioinfo/DRMetrics
     expected_size_gb: 0.05
     citation: PMID 31431620 (Alcala 2019) + PMID 33203751 (Gabriel 2020)

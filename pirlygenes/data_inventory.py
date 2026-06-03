@@ -63,6 +63,7 @@ class CohortRowCount:
     cancer_type_name: str = ""
     reference: str = ""
     parent_code: str = ""
+    assay: str = ""
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,41 @@ def native_unit_from_pipeline(pipeline: str) -> str:
     return "TPM"
 
 
+def _quant_tool(pipeline: str) -> str:
+    """The quantification TOOL when we know it, else '—'. We know it for
+    pipelines we ran/normalized (RSEM via Treehouse, STAR via GDC, recount3
+    Monorail, HTSeq); for a GEO-published TPM/FPKM matrix the tool (salmon /
+    kallisto / RSEM / …) isn't recorded, so '—'."""
+    p = (pipeline or "").lower()
+    if "treehouse" in p or "log2tpm" in p:
+        return "RSEM"
+    if "gdc_star" in p or "star" in p:
+        return "STAR"
+    if "recount3" in p:          # recount3/Monorail aligns with STAR
+        return "STAR"
+    if "htseq" in p:
+        return "HTSeq"
+    return "—"
+
+
+def _quant_unit(pipeline: str) -> str:
+    """The quantification UNIT (the source's native scale)."""
+    p = (pipeline or "").lower()
+    if "microarray" in p:
+        return "intensity"
+    if "pseudobulk" in p or "ntpm" in p:
+        return "UMI (pseudobulk)"
+    if "recount3" in p:
+        return "coverage"
+    if "rpkm" in p:
+        return "RPKM"
+    if "fpkm" in p:
+        return "FPKM"
+    if "raw_counts" in p or "htseq" in p or "star" in p:
+        return "read counts"
+    return "TPM"
+
+
 def _quant_short(pipeline: str) -> str:
     """Quantification UNIT only — drops the platform word that the assay
     column already shows (microarray intensity → intensity, scRNA UMI counts
@@ -137,11 +173,11 @@ def comparability_class(pipeline: str) -> tuple[str, str]:
 
 
 
-def _assay(source_cohort: str, pipeline: str) -> str:
-    """Library prep / platform for a cohort: microarray · scRNA ·
-    ribo-depleted RNA-seq · polyA RNA-seq · RNA-seq. Only claims a specific
-    bulk prep (polyA / ribo-depleted) when the source explicitly encodes it
-    (Treehouse PolyA vs RiboDeplete); otherwise the honest 'RNA-seq'."""
+def _assay_heuristic(source_cohort: str, pipeline: str) -> str:
+    """Fallback library prep / platform when the registry doesn't curate one:
+    microarray · scRNA from the pipeline; polyA / ribo-depleted only when the
+    cohort id explicitly encodes it (Treehouse PolyA vs RiboDeplete); else the
+    honest 'RNA-seq' (prep not recorded)."""
     p, sc = (pipeline or "").lower(), source_cohort.upper()
     if "microarray" in p:
         return "microarray"
@@ -164,6 +200,22 @@ def _is_derived_slice(source_cohort: str) -> bool:
     return any(m in source_cohort.upper() for m in _DERIVED_SLICE_MARKERS)
 
 
+def _assay_for(
+    source_cohort: str, pipeline: str, prep_by_acc: dict, prep_by_id: dict
+) -> str:
+    """Assay/library prep for a cohort: the curated registry ``library_prep``
+    (matched by accession or source-id prefix) when present, else the
+    heuristic. Keeps the prep YAML-driven, not hard-coded in the tool."""
+    m = re.match(r"(GSE\d+|[A-Z]+\d+)", source_cohort)
+    prep = prep_by_acc.get(m.group(1)) if m else None
+    if not prep:
+        norm = source_cohort.lower().replace("_", "-")
+        cands = [rid for rid in prep_by_id if norm.startswith(rid)]
+        if cands:
+            prep = prep_by_id[max(cands, key=len)]
+    return prep or _assay_heuristic(source_cohort, pipeline)
+
+
 def _origin_label(tumor_origin: str) -> str:
     o = (tumor_origin or "").lower()
     if o.startswith("met"):
@@ -182,6 +234,12 @@ def _concise_reference(ref: str) -> str:
     clause, and cap length. URLs pass through unchanged."""
     if not ref or ref.lower().startswith("http"):
         return ref
+    # Make OUR derived slices read consistently with the cBioPortal ones —
+    # '× <method>' signals it's a stratification we layered on, not provided.
+    ref = ref.replace("Treehouse (MBL subgroup markers)",
+                      "Treehouse 25.01 × marker classifier")
+    ref = ref.replace("University of Cologne (TF-dominance)",
+                      "U. Cologne × SCLC TF-dominance")
     # 'PMID 1234 (Singer 2007 …)' → 'Singer 2007 (PMID 1234)'; bare → 'PMID 1234'
     pm = re.match(r"PMID\s*(\d+)\s*\((.+)\)\s*$", ref)
     if pm:
@@ -193,7 +251,8 @@ def _concise_reference(ref: str) -> str:
     # consistent Treehouse versioning: always 'Treehouse 25.01 …'
     r = r.replace("Tumor Compendium 25.01", "25.01")
     r = re.sub(r"^Treehouse (?=\()", "Treehouse 25.01 ", r)
-    r = re.sub(r"\s{2,}", " ", r.split(". ")[0]).strip().rstrip(".").strip()
+    r = re.sub(r"\s*\.\s*GSE\d+\.?\s*$", "", r)   # drop trailing '. GSE12345.'
+    r = re.sub(r"\s{2,}", " ", r).strip().rstrip(".").strip()
     if len(r) > 52:
         r = r[:52].rsplit(" ", 1)[0] + "…"
     return r
@@ -279,7 +338,7 @@ _SUMMARY_CACHE = Path.home() / ".cache" / "pirlygenes" / "inventory_summary.json
 # Bump when the cached snapshot's fields/shape change, so stale caches from an
 # older code version are ignored (the shard fingerprint alone wouldn't catch a
 # pure-code schema change like adding the `reference` field).
-_SUMMARY_SCHEMA = "6"
+_SUMMARY_SCHEMA = "9"
 
 
 def _shard_signature(paths: list[Path]) -> str:
@@ -390,6 +449,8 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
     registry = load_registry()
     reg_by_acc = {s.accession: s.citation for s in registry if s.accession and s.citation}
     reg_by_id = {s.id: s.citation for s in registry if s.id and s.citation}
+    prep_by_acc = {s.accession: s.library_prep for s in registry if s.accession and s.library_prep}
+    prep_by_id = {s.id: s.library_prep for s in registry if s.id and s.library_prep}
     cohort_rows = tuple(
         CohortRowCount(
             cancer_code=str(row.cancer_code),
@@ -405,6 +466,11 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
                 reg_by_acc, reg_by_id,
             ),
             parent_code=parent_for.get(str(row.cancer_code), ""),
+            assay=_assay_for(
+                str(row.source_cohort),
+                str(getattr(row, "processing_pipeline", "") or ""),
+                prep_by_acc, prep_by_id,
+            ),
         )
         for row in grouped.itertuples(index=False)
     )
@@ -469,17 +535,18 @@ def _render_flat(rows: list[CohortRowCount]) -> str:
     entries = sorted(rows, key=lambda r: -(r.n_samples or 0))
     hdr = (
         f"{'code':<16}{'cancer type':<32}{'n':>6}  {'genes':>8}  "
-        f"{'assay':<22}{'quantification':<18}reference"
+        f"{'assay':<22}{'tool':<10}{'unit':<16}reference"
     )
     lines = [hdr, "─" * len(hdr)]
     for r in entries:
         name = (r.cancer_type_name or "")[:31]
-        assay = _assay(r.source_cohort, r.processing_pipeline)
-        quant = _quant_short(r.processing_pipeline)
+        assay = r.assay or _assay_heuristic(r.source_cohort, r.processing_pipeline)
+        tool = _quant_tool(r.processing_pipeline)
+        unit = _quant_unit(r.processing_pipeline)
         n = "—" if r.n_samples is None else f"{r.n_samples}"
         lines.append(
             f"{r.cancer_code:<16}{name:<32}{n:>6}  {r.n_rows:>8,}  "
-            f"{assay:<22}{quant:<18}{r.reference}"
+            f"{assay:<22}{tool:<10}{unit:<16}{r.reference}"
         )
     return "\n".join(lines)
 
@@ -611,7 +678,9 @@ def render_inventory(
             citation = citation[:78].rsplit(" ", 1)[0] + "…"
         origin = _origin_label(entries[0].tumor_origin)
         quant = _quant_short(entries[0].processing_pipeline)
-        assay = _assay(source_cohort, entries[0].processing_pipeline)
+        assay = entries[0].assay or _assay_heuristic(
+            source_cohort, entries[0].processing_pipeline
+        )
         gene_set = {e.n_rows for e in entries}
         genes_vary = len(gene_set) > 1
         genes_str = (
