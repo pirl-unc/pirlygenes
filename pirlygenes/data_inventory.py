@@ -52,8 +52,9 @@ class CohortRowCount:
     cancer_code: str
     source_cohort: str
     source_project: str
-    n_rows: int
+    n_rows: int          # one row per measured gene → this is the gene count
     n_samples: int | None
+    processing_pipeline: str = ""
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,33 @@ class InventorySnapshot:
     cohort_rows: tuple[CohortRowCount, ...]
     registered_sources: int
     shard_files: int = 0
+    total_samples: int = 0    # summed across cohort assignments
+    cancer_codes: int = 0     # distinct cancer codes
+
+
+def native_unit_from_pipeline(pipeline: str) -> str:
+    """Human-readable quantification method from a shard's
+    ``processing_pipeline`` provenance tag (shared by the CLI's
+    ``data sources`` and ``data list``)."""
+    p = (pipeline or "").lower()
+    table = [
+        ("microarray", "microarray intensity (TPM-proxy)"),
+        ("recount3", "recount3 Gencode-v26 coverage"),
+        ("gdc_star_counts", "GDC STAR counts (TPM)"),
+        ("star", "STAR counts (TPM)"),
+        ("log2tpm", "RSEM log2(TPM+1)"),
+        ("treehouse", "RSEM log2(TPM+1)"),
+        ("pseudobulk", "scRNA pseudobulk (nTPM)"),
+        ("ntpm", "scRNA pseudobulk (nTPM)"),
+        ("rpkm", "RPKM→TPM"),
+        ("fpkm", "FPKM→TPM"),
+        ("raw_counts", "raw counts→TPM"),
+        ("htseq", "HTSeq counts→TPM"),
+    ]
+    for needle, label in table:
+        if needle in p:
+            return label
+    return "TPM"
 
 
 def _coerce_int(value) -> int | None:
@@ -135,7 +163,11 @@ def summarize_inventory() -> InventorySnapshot:
             dropna=False,
             sort=False,
         )
-        .agg(n_rows=("Ensembl_Gene_ID", "size"), n_samples=("n_samples", "max"))
+        .agg(
+            n_rows=("Ensembl_Gene_ID", "size"),
+            n_samples=("n_samples", "max"),
+            processing_pipeline=("processing_pipeline", "first"),
+        )
         .reset_index()
     )
     cohort_rows = tuple(
@@ -145,10 +177,14 @@ def summarize_inventory() -> InventorySnapshot:
             source_project=str(row.source_project),
             n_rows=int(row.n_rows),
             n_samples=_coerce_int(row.n_samples),
+            processing_pipeline=str(getattr(row, "processing_pipeline", "") or ""),
         )
         for row in grouped.sort_values(
             ["source_cohort", "cancer_code"]
         ).itertuples(index=False)
+    )
+    total_samples = int(
+        sum(c.n_samples for c in cohort_rows if c.n_samples is not None)
     )
     return InventorySnapshot(
         data_path=active,
@@ -159,6 +195,8 @@ def summarize_inventory() -> InventorySnapshot:
         cohort_rows=cohort_rows,
         registered_sources=len(load_registry()),
         shard_files=_shard_count(active),
+        total_samples=total_samples,
+        cancer_codes=int(df["cancer_code"].astype(str).nunique()),
     )
 
 
@@ -175,34 +213,44 @@ def _format_bytes(size: int) -> str:
 
 
 def render_inventory(snapshot: InventorySnapshot) -> str:
-    lines = [
-        f"cancer-reference-expression/  [{snapshot.data_source}]",
-        f"  path:         {snapshot.data_path}",
-        f"  size on disk: {_format_bytes(snapshot.data_size_bytes)} "
-        f"across {snapshot.shard_files} per-source shards",
-        f"  total rows:   {snapshot.total_rows:,}",
-        f"  unique genes: {snapshot.unique_genes:,}",
-        f"  cohorts:      {len(snapshot.cohort_rows)}",
-        f"  registry:     {snapshot.registered_sources} sources",
-        "",
-        "Per-cohort row counts:",
-    ]
     by_source: dict[str, list[CohortRowCount]] = {}
     for row in snapshot.cohort_rows:
         by_source.setdefault(row.source_cohort, []).append(row)
+
+    lines = [
+        f"cancer-reference-expression  [{snapshot.data_source}]",
+        f"  path:            {snapshot.data_path}",
+        f"  size on disk:    {_format_bytes(snapshot.data_size_bytes).strip()} "
+        f"across {snapshot.shard_files} per-source shards",
+        f"  cancer codes:    {snapshot.cancer_codes:,}",
+        f"  source cohorts:  {len(by_source):,}",
+        f"  distinct genes:  {snapshot.unique_genes:,}   "
+        f"(the gene universe; each cohort measures a subset)",
+        f"  total samples:   {snapshot.total_samples:,}   "
+        f"(summed across cohorts; a sample shared by subtype cohorts is "
+        f"counted in each)",
+        "",
+        "Per source cohort   ·   one row per cancer code "
+        "(n = tumor samples · genes measured · quantification method).",
+        "Source-cohort id encodes the origin — GSE… = GEO accession; "
+        "TCGA/TARGET/MMRF/Treehouse = consortium datasets.",
+        "",
+    ]
     for source_cohort in sorted(by_source):
-        entries = by_source[source_cohort]
-        total_rows = sum(e.n_rows for e in entries)
-        lines.append(f"  {source_cohort}  ({total_rows:,} rows)")
-        for entry in sorted(entries, key=lambda e: e.cancer_code):
-            sample_str = (
-                f"  n_samples={entry.n_samples}"
-                if entry.n_samples is not None
-                else "  n_samples=NaN"
-            )
+        entries = sorted(by_source[source_cohort], key=lambda e: e.cancer_code)
+        n_samples = sum(e.n_samples or 0 for e in entries)
+        citation = entries[0].source_project
+        cohort_word = "cohort" if len(entries) == 1 else "cohorts"
+        lines.append(
+            f"  {source_cohort}   —   {len(entries)} {cohort_word} · "
+            f"{n_samples:,} samples · {citation}"
+        )
+        for e in entries:
+            n = "n=NaN" if e.n_samples is None else f"n={e.n_samples}"
             lines.append(
-                f"    {entry.cancer_code:<20} {entry.n_rows:>7,} rows"
-                f"{sample_str}   ({entry.source_project})"
+                f"      {e.cancer_code:<20} {n:<7} "
+                f"{e.n_rows:>7,} genes   "
+                f"{native_unit_from_pipeline(e.processing_pipeline)}"
             )
     return "\n".join(lines)
 

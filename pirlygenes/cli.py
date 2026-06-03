@@ -83,7 +83,25 @@ _ANALYSIS_SUBCOMMANDS = frozenset({
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pirlygenes",
-        description="Pirlygenes cohort-level reference-data CLI.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "pirlygenes — curated cancer reference-expression data and the\n"
+            "cohort-level tools to inspect, build, and plot it.\n\n"
+            "The data lifecycle has three stages:\n"
+            "  downloads   raw per-source quantifications (the build INPUTS)\n"
+            "  build       turn those into per-gene-per-cohort summaries\n"
+            "  data        inspect the packaged reference data (the OUTPUTS)\n"
+        ),
+        epilog=(
+            "Examples:\n"
+            "  pirlygenes data list                 # what cohorts/genes/samples are packaged\n"
+            "  pirlygenes data sources PANNET       # which sources feed a cancer code\n"
+            "  pirlygenes data status               # is the data bundle downloaded?\n"
+            "  pirlygenes build list                # all buildable source ids\n"
+            "\n"
+            "The Python data API is unchanged: `from pirlygenes import\n"
+            "gene_sets_cancer, gene_ids, gene_names, gene_families`.\n"
+        ),
     )
     parser.add_argument(
         "-V",
@@ -91,13 +109,24 @@ def _build_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"pirlygenes {__version__}",
     )
-    subparsers = parser.add_subparsers(dest="subcommand")
+    subparsers = parser.add_subparsers(
+        dest="subcommand", metavar="<command>", title="commands",
+    )
 
     downloads_parser = subparsers.add_parser(
         "downloads",
-        help="Manage the local cache of per-source expression downloads.",
+        help="Manage the local cache of raw per-source quantifications (build inputs).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "The local cache of RAW per-source data that builders read from —\n"
+            "the inputs to `pirlygenes build`. (For the packaged OUTPUT data,\n"
+            "use `pirlygenes data` instead.)"
+        ),
+        epilog="Example:\n  pirlygenes downloads list      # registered sources by on-disk size\n",
     )
-    downloads_sub = downloads_parser.add_subparsers(dest="downloads_action")
+    downloads_sub = downloads_parser.add_subparsers(
+        dest="downloads_action", metavar="<action>", title="actions",
+    )
     downloads_sub.add_parser(
         "list",
         help="List registered sources grouped by category, sorted by on-disk size.",
@@ -126,14 +155,27 @@ def _build_parser() -> argparse.ArgumentParser:
 
     data_parser = subparsers.add_parser(
         "data",
-        help="Inspect + manage the packaged reference data (bundled "
-             "panels + downloadable cohort summaries).",
+        help="Inspect + manage the packaged reference data (the build outputs).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "The packaged cancer reference-expression data: per-gene-per-cohort\n"
+            "summaries plus the small bundled panels. Heavy summaries download\n"
+            "on first use from the version-pinned GitHub release."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  pirlygenes data list                 # cohorts, genes, samples at a glance\n"
+            "  pirlygenes data sources PANNET       # the source(s) feeding one cancer code\n"
+            "  pirlygenes data status               # is the bundle downloaded locally?\n"
+        ),
     )
-    data_sub = data_parser.add_subparsers(dest="data_action")
+    data_sub = data_parser.add_subparsers(
+        dest="data_action", metavar="<action>", title="actions",
+    )
     data_sub.add_parser(
         "list",
-        help="Summarize cancer-reference-expression rows by cohort "
-             "(triggers a download if the bundle isn't local yet).",
+        help="Overview of every cohort — samples, genes measured, and "
+             "quantification method (downloads the bundle if not local yet).",
     )
     data_sub.add_parser(
         "status",
@@ -142,9 +184,20 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sources_parser = data_sub.add_parser(
         "sources",
-        help="List the expression source(s) feeding each cancer code "
-             "(n_samples, gene count, native unit, tumor origin) so "
-             "multi-source cohorts and their provenance are visible.",
+        help="Show the expression source(s) feeding each cancer code "
+             "(samples, gene count, quantification method).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "For each cancer code, list its source cohort(s) with sample count,\n"
+            "genes measured, and native quantification. When a code has more\n"
+            "than one source they are kept SEPARATE (different assays/scales)\n"
+            "and never merged — you pick or compare them explicitly."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  pirlygenes data sources PANNET   # one code (here: 2 sources)\n"
+            "  pirlygenes data sources --multi  # only codes with >1 source\n"
+        ),
     )
     sources_parser.add_argument(
         "code", nargs="?",
@@ -183,13 +236,26 @@ def _build_parser() -> argparse.ArgumentParser:
 
     build_parser = subparsers.add_parser(
         "build",
-        help="Rebuild per-gene-per-cohort summaries by source-id or cancer-code.",
+        help="Rebuild per-gene-per-cohort summaries from a source's raw data.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Regenerate the packaged reference summaries for one source (or one\n"
+            "cancer code) from its raw quantifications, writing the updated\n"
+            "per-source shard. Downloads inputs first if needed."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  pirlygenes build list                # show every buildable source id\n"
+            "  pirlygenes build gse98894-midnet     # rebuild one source\n"
+            "  pirlygenes build BL                  # rebuild whatever feeds a cancer code\n"
+        ),
     )
     build_parser.add_argument(
         "source_id",
-        help="Source id (e.g. 'cgci-blgsp', 'treehouse-polya-25-01') or "
-             "cancer_code (e.g. 'BL', 'EWS'). Special: 'list' prints "
-             "all known source ids; 'all' runs every builder (slow!).",
+        metavar="<source-id|cancer-code|list|all>",
+        help="A source id (e.g. 'cgci-blgsp', 'treehouse-polya-25-01') or a "
+             "cancer code (e.g. 'BL', 'EWS'). Use 'list' to print all source "
+             "ids, or 'all' to run every builder (slow!).",
     )
     build_parser.add_argument(
         "build_args",
@@ -253,29 +319,6 @@ def cmd_data_list(_args: argparse.Namespace) -> int:
     return 0
 
 
-def _native_unit_from_pipeline(pipeline: str) -> str:
-    """Human-readable native quantification unit inferred from a shard's
-    ``processing_pipeline`` tag (the per-source provenance string)."""
-    p = pipeline.lower()
-    table = [
-        ("microarray", "microarray intensity (TPM-proxy)"),
-        ("recount3", "recount3 coverage gene-sums"),
-        ("gdc_star_counts", "GDC STAR counts (TPM)"),
-        ("log2tpm", "RSEM log2(TPM+1)"),
-        ("treehouse", "RSEM log2(TPM+1)"),
-        ("pseudobulk", "scRNA pseudobulk (nTPM)"),
-        ("ntpm", "scRNA pseudobulk (nTPM)"),
-        ("rpkm", "RPKM"),
-        ("fpkm", "FPKM"),
-        ("raw_counts", "raw counts"),
-        ("htseq", "raw counts"),
-    ]
-    for needle, label in table:
-        if needle in p:
-            return label
-    return "TPM"
-
-
 def cmd_data_sources(args: argparse.Namespace) -> int:
     """List the expression source(s) per cancer code, with their native unit,
     sample count, and gene count, so multi-source cohorts are visible.
@@ -326,8 +369,8 @@ def cmd_data_sources(args: argparse.Namespace) -> int:
         tag = "  (multi-source — kept separate, not merged)" if len(sub) > 1 else ""
         sys.stdout.write(f"\n{code}{tag}\n")
         for _, r in sub.iterrows():
-            unit = native_unit.get(r["source_cohort"]) or _native_unit_from_pipeline(
-                str(r["pipeline"])
+            unit = native_unit.get(r["source_cohort"]) or (
+                data_inventory.native_unit_from_pipeline(str(r["pipeline"]))
             )
             sys.stdout.write(
                 f"    {r['source_cohort']:34} n={int(r['n_samples']):<4} "
