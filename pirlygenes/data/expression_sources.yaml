@@ -272,6 +272,20 @@ sources:
     citation: GSE299759 (Meijer 2026)
     special_handling: Chondrosarcoma.
 
+  - id: gse239531-chordoma
+    category: expression
+    cancer_codes: [CHOR]
+    source_type: summary-only-import
+    accession: GSE239531
+    builder: scripts/build_chordoma_gse239531_reference_expression.py
+    unit: raw counts   # builder is raw_counts→TPM (GEO supplementary counts)
+    expected_size_gb: 0
+    citation: GSE239531 (van Oost 2024, PMID 38272563)
+    special_handling: >
+      20 primary chordoma tumors; augments the 3-sample Treehouse
+      ribo-depleted CHOR cohort. Ensembl-keyed raw counts,
+      length-normalized to TPM by the shared CHON builder core.
+
   - id: gse75885-sarc
     category: expression
     cancer_codes: [SARC_DDLPS, SARC_LGFMS, SARC_PLEOLPS]
