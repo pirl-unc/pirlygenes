@@ -520,11 +520,20 @@ def cmd_build(args: argparse.Namespace) -> int:
         # CLLMAP needs --input pointing at the downloaded TPM file
         input_file = Path(cache_dir) / "cllmap_rnaseq_tpms_full.tsv.gz"
         if not input_file.exists():
-            sys.stderr.write(
-                f"CLLMAP input not yet downloaded: {input_file}\n"
-                f"Download from {src.url!r} first.\n"
-            )
-            return 2
+            # Fetch from the GitHub source-data mirror (copy of the Broad TSV),
+            # falling back to the Broad upstream — so the build is reproducible.
+            from .builders import source_data_mirror
+            try:
+                fetched = source_data_mirror.fetch(
+                    "cllmap_rnaseq_tpms_full.tsv.gz", upstream_url=src.url or "",
+                )
+                input_file = fetched
+            except Exception as exc:
+                sys.stderr.write(
+                    f"CLLMAP input not available from mirror or upstream "
+                    f"({src.url!r}): {exc}\n"
+                )
+                return 2
         cmd += [
             "--input", str(input_file),
             "--summary-output", summary_out,

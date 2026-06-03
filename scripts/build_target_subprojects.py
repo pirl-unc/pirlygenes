@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
+from pirlygenes.builders.gene_mapping import resolve_symbol
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -252,6 +253,17 @@ def _read_star_tpm(path: Path) -> pd.DataFrame:
     return df[["source_gene_id", "Symbol", "gene_type", "TPM"]]
 
 
+def _resolved_gene(genome, resolved):
+    """The Ensembl gene object for a (ENSG, symbol, method) resolve_symbol
+    result, or None."""
+    if resolved is None:
+        return None
+    try:
+        return genome.gene_by_id(resolved[0])
+    except Exception:
+        return None
+
+
 def _harmonize_gene_table(template: pd.DataFrame, ensembl_release: int):
     genome = EnsemblRelease(ensembl_release)
     rows: list[dict[str, str]] = []
@@ -270,13 +282,10 @@ def _harmonize_gene_table(template: pd.DataFrame, ensembl_release: int):
                          "gene_type": r.gene_type})
             counts["source_id"] += 1
             continue
-        try:
-            genes = genome.genes_by_name(sym)
-        except Exception:
-            genes = []
-        ids = {g.gene_id.split(".", 1)[0] for g in genes}
-        if len(ids) == 1:
-            g = genes[0]
+        # shared resolver: direct → Entrez → NCBI-synonym/alias rescue
+        resolved = resolve_symbol(genome, sym)
+        g = _resolved_gene(genome, resolved)
+        if g is not None:
             rows.append({"source_gene_id": sid,
                          "Ensembl_Gene_ID": g.gene_id.split(".", 1)[0],
                          "Symbol": g.gene_name or sym,
@@ -339,14 +348,17 @@ def _summarize_one(
     )
     assign_stats(out, values, clean)
     out["processing_pipeline"] = project.pipeline_id
+    out["tumor_origin"] = "primary"
+    out["metastasis_site"] = pd.NA
     out["notes"] = (
         f"Open GDC {project.project_id} STAR-counts TPMs; one "
-        f"deterministic primary-tumor sample per case; "
-        f"GENCODE v36 IDs harmonized to Ensembl release 112."
+        f"deterministic primary-tumor sample per case; GENCODE v36 IDs "
+        f"harmonized to Ensembl release 112 (shared resolver: direct → "
+        f"Entrez → NCBI-synonym/alias rescue)."
     )
     if extra_notes:
         out["notes"] = out["notes"] + " " + extra_notes
-    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    return round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
 
 
 def _upsert_samples_manifest(path: Path, manifest: pd.DataFrame, source_cohort: str):

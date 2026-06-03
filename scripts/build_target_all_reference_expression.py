@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
+from pirlygenes.builders.gene_mapping import resolve_symbol
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -386,16 +387,13 @@ def _gene_by_id(genome: EnsemblRelease, gene_id: str):
 
 
 def _unique_gene_by_symbol(genome: EnsemblRelease, symbol: str):
+    """Symbol → Ensembl gene object via the shared resolver (direct → Entrez
+    → NCBI-synonym/alias rescue), so the GENCODE-v36→Ensembl-112 fallback
+    recovers renamed symbols the same way as every other builder."""
     if not symbol:
         return None
-    try:
-        genes = genome.genes_by_name(symbol)
-    except Exception:
-        return None
-    gene_ids = {gene.gene_id.split(".", 1)[0] for gene in genes}
-    if len(gene_ids) != 1:
-        return None
-    return genes[0]
+    resolved = resolve_symbol(genome, symbol)
+    return _gene_by_id(genome, resolved[0]) if resolved else None
 
 
 def _harmonize_gene_table(
@@ -511,8 +509,10 @@ def _summarize_one(
     out["source_version"] = SOURCE_VERSION
     assign_stats(out, values, clean)
     out["processing_pipeline"] = PIPELINE
+    out["tumor_origin"] = "primary"
+    out["metastasis_site"] = pd.NA
     out["notes"] = notes
-    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    return round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
 
 
 def _summarize(

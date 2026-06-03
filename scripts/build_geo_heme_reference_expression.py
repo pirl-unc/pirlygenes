@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
+from pirlygenes.builders import source_data_mirror
 from pirlygenes.builders.gene_mapping import resolve_symbol
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
@@ -214,16 +215,24 @@ def _geo_url(source: GeoSource, kind: str) -> str:
 
 
 def _download(url: str, path: Path) -> Path:
+    """Fetch ``path`` (by filename) from the GitHub source-data mirror first,
+    falling back to the GEO upstream ``url`` if it isn't mirrored — so builds
+    don't depend on GEO FTP availability. Keeps the per-source cache layout."""
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.stat().st_size > 0:
         return path
     tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with urllib.request.urlopen(url, timeout=180) as response, tmp_path.open(
-        "wb",
-    ) as handle:
-        shutil.copyfileobj(response, handle)
-    tmp_path.replace(path)
-    return path
+    last_err: Exception | None = None
+    for candidate in (source_data_mirror.mirror_url(path.name), url):
+        try:
+            with urllib.request.urlopen(candidate, timeout=180) as response, \
+                    tmp_path.open("wb") as handle:
+                shutil.copyfileobj(response, handle)
+            tmp_path.replace(path)
+            return path
+        except Exception as exc:  # mirror 404 / network → try upstream
+            last_err = exc
+    raise last_err  # type: ignore[misc]
 
 
 def _parse_soft_samples(path: Path) -> dict[str, dict[str, str]]:

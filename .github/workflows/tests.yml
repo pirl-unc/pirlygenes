@@ -29,6 +29,29 @@ jobs:
         with:
           path: ~/.cache/pyensembl/
           key: pyensembl-112-${{ runner.os }}
+      - name: Cache NCBI gene-data mirror
+        # Build-time Entrez tables (Homo_sapiens.gene_info.gz + gene_history.gz)
+        # pulled from the pinned GitHub release. Keyed on the module that pins
+        # GENE_DATA_MIRROR_TAG so bumping the tag invalidates the cache.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pirlygenes/ncbi_gene_info/
+          key: ncbi-gene-data-${{ runner.os }}-${{ hashFiles('pirlygenes/builders/ncbi_gene_info.py') }}
+      - name: Cache pirlygenes data bundle
+        # The ~367 MB downloadable cohort summaries the expression tests fetch
+        # from the version-pinned release. Keyed on version.py (DATA_VERSION) so
+        # a data release re-fetches; otherwise reused across CI runs.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pirlygenes/bundled_data/
+          key: pirlygenes-bundle-${{ runner.os }}-${{ hashFiles('pirlygenes/version.py') }}
+      - name: Cache source-data mirror
+        # Raw per-source inputs (small/medium: GEO, CLL-map) mirrored to a
+        # pinned release for FTP-independent builds. Keyed on the mirror module.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pirlygenes/source_data/
+          key: pirlygenes-source-data-${{ runner.os }}-${{ hashFiles('pirlygenes/builders/source_data_mirror.py') }}
       - name: Install Ensembl genome data
         run: |
           source .venv/bin/activate
