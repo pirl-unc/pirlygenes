@@ -120,15 +120,22 @@ def comparability_class(pipeline: str) -> tuple[str, str]:
     return ("rnaseq", "RNA-seq → TPM · cross-cohort comparable")
 
 
+# tokens that sit where a surname would but are descriptors, not authors
+_NON_AUTHOR_TOKENS = {"PECOMA", "HUMAN", "MOUSE", "TUMOR"}
+
+
 def _clean_citation(source_cohort: str, source_project: str) -> str:
-    """Drop the redundant '— recount3 …' suffix (the quant column covers it),
-    and turn a bare 'GEO' into the study's 'Author Year' parsed from the
-    source-cohort id (GSE100026_DING_2017 → 'Ding 2017')."""
+    """Drop the redundant '— recount3 …' suffix (the quant column covers it).
+    For a bare 'GEO' project, recover the study's 'Author Year' ONLY when the
+    id reliably encodes it as <accession>_<Surname>_<year> (GSE100026_DING_2017
+    → 'Ding 2017'); otherwise return '' (the header id already carries the
+    accession) rather than guess from a descriptor token."""
     cit = re.split(r"\s+[—-]+\s+recount3", source_project)[0].strip()
     if cit.upper() in {"GEO", ""}:
-        m = re.search(r"_([A-Z][A-Za-z]+)_((?:19|20)\d{2})", source_cohort)
-        if m:
+        m = re.match(r"GSE\d+_([A-Za-z]{3,})_((?:19|20)\d{2})", source_cohort)
+        if m and m.group(1).upper() not in _NON_AUTHOR_TOKENS:
             return f"{m.group(1).title()} {m.group(2)}"
+        return ""
     return cit
 
 
@@ -336,8 +343,10 @@ def render_inventory(
 
     lines += [
         "",
-        "Per source cohort   ·   one row per cancer code "
-        "(n = tumor samples · genes measured · quantification).",
+        "Per source cohort — the header carries the source-level genes & "
+        "quantification;",
+        "each indented row is one cancer code (n = tumor samples; genes shown "
+        "only when they differ by code).",
         "",
     ]
     if sort_by == "samples":
@@ -352,19 +361,31 @@ def render_inventory(
         n_samples = sum(e.n_samples or 0 for e in entries)
         citation = _clean_citation(source_cohort, entries[0].source_project)
         origin = _origin_label(entries[0].tumor_origin)
-        cohort_word = "cohort" if len(entries) == 1 else "cohorts"
-        origin_str = f" · {origin}" if origin != "primary" else ""
-        lines.append(
-            f"  {source_cohort}   —   {len(entries)} {cohort_word} · "
-            f"{n_samples:,} samples · {citation}{origin_str}"
+        quant = native_unit_from_pipeline(entries[0].processing_pipeline)
+        gene_set = {e.n_rows for e in entries}
+        genes_vary = len(gene_set) > 1
+        genes_str = (
+            f"{min(gene_set):,}–{max(gene_set):,}"
+            if genes_vary
+            else f"{next(iter(gene_set)):,}"
         )
+        # source header: cohorts · samples · genes · quantification · [origin] · [citation]
+        parts = [
+            f"{len(entries)} {'cohort' if len(entries) == 1 else 'cohorts'}",
+            f"{n_samples:,} samples",
+            f"{genes_str} genes",
+            quant,
+        ]
+        if origin != "primary":
+            parts.append(origin)
+        if citation:
+            parts.append(citation)
+        lines.append(f"  {source_cohort}   —   " + " · ".join(parts))
         for e in entries:
             n = "n=NaN" if e.n_samples is None else f"n={e.n_samples}"
-            lines.append(
-                f"      {e.cancer_code:<20} {n:<7} "
-                f"{e.n_rows:>7,} genes   "
-                f"{native_unit_from_pipeline(e.processing_pipeline)}"
-            )
+            extra = f"   {e.n_rows:>7,} genes" if genes_vary else ""
+            n_field = f"{n:<7}" if genes_vary else n
+            lines.append(f"      {e.cancer_code:<20} {n_field}{extra}")
     return "\n".join(lines)
 
 
