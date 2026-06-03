@@ -406,9 +406,11 @@ def test_render_inventory_contains_expected_lines():
     assert "cancer-reference-expression" in rendered
     assert "size on disk" in rendered
     assert "samples:" in rendered                # totals include a sample count
-    # flat columnar view is one row per cohort sorted by samples
+    # flat columnar view is one row per cohort sorted by samples, with
+    # distinct tool/unit/derivation/source columns
     flat = data_inventory.render_inventory(snapshot, flat=True)
-    assert "reference" in flat and "tool" in flat and "unit" in flat
+    for col in ("tool", "unit", "stratified by", "source"):
+        assert col in flat
     assert "normalized to clean TPM" in rendered  # the native-unit note
     assert "genes" in rendered                   # counts labelled genes, not "rows"
     assert "Burkitt Lymphoma" in rendered        # cancer-type name shown per code
