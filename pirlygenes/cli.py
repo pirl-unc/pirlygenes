@@ -185,6 +185,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--code", metavar="CANCER_CODE",
         help="Show only the source cohort(s) feeding this cancer code.",
     )
+    list_parser.add_argument(
+        "--flat", action="store_true",
+        help="One flat table of every cohort sorted by sample count, with "
+             "assay / quantification / reference as columns.",
+    )
     data_sub.add_parser(
         "status",
         help="Report which downloadable bundle paths are present in "
@@ -328,6 +333,7 @@ def cmd_data_list(args: argparse.Namespace) -> int:
             snapshot,
             sort_by=getattr(args, "sort", "name"),
             code_filter=getattr(args, "code", None),
+            flat=getattr(args, "flat", False),
         )
         + "\n"
     )

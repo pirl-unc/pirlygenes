@@ -62,6 +62,7 @@ class CohortRowCount:
     tumor_origin: str = ""
     cancer_type_name: str = ""
     reference: str = ""
+    parent_code: str = ""
 
 
 @dataclass(frozen=True)
@@ -145,6 +146,16 @@ def _assay(source_cohort: str, pipeline: str) -> str:
     return "RNA-seq"
 
 
+# Source cohorts that are SLICES we layered on top of a primary source's
+# samples (re-using them): TCGA subtype/mutation/HPV splits, MBL subgroups,
+# SCLC TF-dominance. They must not be added to a sample total.
+_DERIVED_SLICE_MARKERS = ("PAM50", "_HPV", "_MUT", "SUBGROUP", "DOMINANCE")
+
+
+def _is_derived_slice(source_cohort: str) -> bool:
+    return any(m in source_cohort.upper() for m in _DERIVED_SLICE_MARKERS)
+
+
 def _origin_label(tumor_origin: str) -> str:
     o = (tumor_origin or "").lower()
     if o.startswith("met"):
@@ -154,6 +165,22 @@ def _origin_label(tumor_origin: str) -> str:
     if o in {"primary", ""}:
         return "primary"
     return o
+
+
+def _concise_reference(ref: str) -> str:
+    """Trim a verbose citation to a compact header reference: drop a trailing
+    release/version parenthetical, the 'Childhood Cancer Initiative,' filler,
+    and the PolyA/RiboDeplete prep (now shown as the assay), keep the first
+    clause, and cap length. URLs pass through unchanged."""
+    if not ref or ref.lower().startswith("http"):
+        return ref
+    r = re.sub(r"\s*\([^)]*(released|matrix|version|v\d)[^)]*\)", "", ref, flags=re.I)
+    r = r.replace("Childhood Cancer Initiative, ", "")
+    r = re.sub(r"\b(PolyA|RiboDeplete|RiboD)\b", "", r)
+    r = re.sub(r"\s{2,}", " ", r.split(". ")[0]).strip().rstrip(".").strip()
+    if len(r) > 52:
+        r = r[:52].rsplit(" ", 1)[0] + "…"
+    return r
 
 
 def _reference_for(
@@ -179,12 +206,14 @@ def _reference_for(
     sp_rich = bool(cleaned) and cleaned.upper() != "GEO" and len(cleaned.split()) >= 2
     reg_rich = bool(reg) and not str(reg).lower().startswith("http")
     if reg_rich and not sp_rich:
-        return reg
-    if cleaned and cleaned.upper() != "GEO":
-        return cleaned
-    if reg:
-        return reg
-    return m.group(1) if m else source_cohort
+        raw = reg
+    elif cleaned and cleaned.upper() != "GEO":
+        raw = cleaned
+    elif reg:
+        raw = reg
+    else:
+        raw = m.group(1) if m else source_cohort
+    return _concise_reference(str(raw))
 
 
 def _coerce_int(value) -> int | None:
@@ -234,7 +263,7 @@ _SUMMARY_CACHE = Path.home() / ".cache" / "pirlygenes" / "inventory_summary.json
 # Bump when the cached snapshot's fields/shape change, so stale caches from an
 # older code version are ignored (the shard fingerprint alone wouldn't catch a
 # pure-code schema change like adding the `reference` field).
-_SUMMARY_SCHEMA = "3"
+_SUMMARY_SCHEMA = "5"
 
 
 def _shard_signature(paths: list[Path]) -> str:
@@ -333,6 +362,15 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
         }
     except Exception:
         name_for = {}
+    try:
+        from .gene_sets_cancer import cancer_type_registry
+        reg = cancer_type_registry()
+        parent_for = {
+            str(c): (str(p) if isinstance(p, str) else "")
+            for c, p in zip(reg["code"], reg["parent_code"])
+        }
+    except Exception:
+        parent_for = {}
     registry = load_registry()
     reg_by_acc = {s.accession: s.citation for s in registry if s.accession and s.citation}
     reg_by_id = {s.id: s.citation for s in registry if s.id and s.citation}
@@ -350,6 +388,7 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
                 str(row.source_cohort), str(row.source_project),
                 reg_by_acc, reg_by_id,
             ),
+            parent_code=parent_for.get(str(row.cancer_code), ""),
         )
         for row in grouped.itertuples(index=False)
     )
@@ -408,20 +447,47 @@ def _format_bytes(size: int) -> str:
     return f"{value:.2f} TB"
 
 
+def _render_flat(rows: list[CohortRowCount]) -> str:
+    """One flat table, one row per cohort, sorted by sample count, with assay /
+    quantification / reference as columns."""
+    entries = sorted(rows, key=lambda r: -(r.n_samples or 0))
+    hdr = (
+        f"{'code':<16}{'cancer type':<32}{'n':>6}  {'genes':>8}  "
+        f"{'assay':<22}{'quantification':<18}reference"
+    )
+    lines = [hdr, "─" * len(hdr)]
+    for r in entries:
+        name = (r.cancer_type_name or "")[:31]
+        assay = _assay(r.source_cohort, r.processing_pipeline)
+        quant = native_unit_from_pipeline(r.processing_pipeline)
+        n = "—" if r.n_samples is None else f"{r.n_samples}"
+        lines.append(
+            f"{r.cancer_code:<16}{name:<32}{n:>6}  {r.n_rows:>8,}  "
+            f"{assay:<22}{quant:<18}{r.reference}"
+        )
+    return "\n".join(lines)
+
+
 def render_inventory(
     snapshot: InventorySnapshot,
     *,
     sort_by: str = "name",
     code_filter: str | None = None,
+    flat: bool = False,
 ) -> str:
     """Render the inventory. ``sort_by`` ∈ {name, samples} orders source
     cohorts; ``code_filter`` restricts to source cohorts feeding that cancer
-    code (case-insensitive)."""
+    code (case-insensitive). ``flat=True`` returns one flat columnar table of
+    every cohort sorted by sample count (assay/quantification/reference as
+    columns) instead of the source-grouped layout."""
     rows = list(snapshot.cohort_rows)
     if code_filter:
         wanted = code_filter.upper()
         keep = {r.source_cohort for r in rows if r.cancer_code.upper() == wanted}
         rows = [r for r in rows if r.source_cohort in keep]
+
+    if flat:
+        return _render_flat(rows)
 
     by_source: dict[str, list[CohortRowCount]] = {}
     for row in rows:
@@ -434,7 +500,6 @@ def render_inventory(
     class_label: dict[str, str] = {}
     origin_samples: dict[str, int] = {}
     small_n = 0
-    gene_counts = [r.n_rows for r in rows] or [0]
     for r in rows:
         codes_to_sources.setdefault(r.cancer_code, set()).add(r.source_cohort)
         key, label = comparability_class(r.processing_pipeline)
@@ -448,18 +513,31 @@ def render_inventory(
             small_n += 1
     multi = sorted(c for c, s in codes_to_sources.items() if len(s) > 1)
 
+    # Downloaded sample count without double-counting the slices we layered on:
+    # skip derived subtype-slice sources entirely, and within a source skip a
+    # code whose parent code is also present (its samples are in the parent).
+    derived_sources = {s for s in by_source if _is_derived_slice(s)}
+    downloaded = 0
+    for s, ents in by_source.items():
+        if s in derived_sources:
+            continue
+        codes_here = {e.cancer_code for e in ents}
+        for e in ents:
+            if e.parent_code and e.parent_code in codes_here:
+                continue
+            downloaded += e.n_samples or 0
+
     lines = [
         f"cancer-reference-expression  [{snapshot.data_source}]",
         f"  path:            {snapshot.data_path}",
         f"  size on disk:    {_format_bytes(snapshot.data_size_bytes).strip()} "
         f"across {snapshot.shard_files} per-source shards",
-        f"  cancer codes:    {snapshot.cancer_codes:,}   "
-        f"({len(multi)} fed by ≥2 sources)",
+        f"  cancer codes:    {snapshot.cancer_codes:,}",
         f"  source cohorts:  {len(by_source):,}",
-        f"  distinct genes:  {snapshot.unique_genes:,}   "
-        f"(universe; per-cohort coverage {min(gene_counts):,}–{max(gene_counts):,})",
-        f"  total samples:   {snapshot.total_samples:,}   "
-        f"(summed; a sample shared by subtype cohorts is counted in each)",
+        f"  distinct genes:  {snapshot.unique_genes:,}",
+        f"  samples:         {downloaded:,}   "
+        f"(downloaded, de-duplicated; {len(derived_sources)} derived "
+        f"subtype-slice cohorts re-use these and aren't added)",
         "",
         "  quantification (cross-cohort comparability):",
     ]
