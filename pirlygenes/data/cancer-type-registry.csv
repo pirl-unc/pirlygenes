@@ -101,7 +101,7 @@ MEC,Merkel Cell Carcinoma,net,skin,solid_primary,,,curated,LITERATURE_CURATED,,M
 NUTM,NUT Carcinoma,rare,midline_structures,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,NUT-BRD3/4 fusion; midline aggressive,False
 ACINIC,Acinic Cell Carcinoma,salivary,salivary_gland,solid_primary,,,curated,LITERATURE_CURATED,,Salivary gland low-grade,False
 ADCC,Adenoid Cystic Carcinoma,salivary,salivary_gland,solid_primary,,,GEO,GSE294016_BARTL_2025_SGC,PMID:40506428,MYB-NFIB; salivary + lacrimal + breast,False
-MTC,Medullary Thyroid Carcinoma,endocrine,thyroid_c_cell,solid_primary,,,GEO,GSE32662_PRINGLE_2012_MTC,GSE32662,"Calcitonin; RET-driven; separate from TCGA THCA (follicular-cell). Pringle 2012 GPL6480 Agilent microarray TPM-proxy (n=52 hybridizations across 49 primary cases). CALCA p95 ~3400 TPM-proxy confirms cohort.",False
+MTC,Medullary Thyroid Carcinoma,endocrine,thyroid_c_cell,solid_primary,,,GEO,GSE32662_PRINGLE_2012_MTC,GSE32662,Calcitonin; RET-driven; separate from TCGA THCA (follicular-cell). Pringle 2012 GPL6480 Agilent microarray TPM-proxy (n=52 hybridizations across 49 primary cases). CALCA p95 ~3400 TPM-proxy confirms cohort.,False
 NPC,Nasopharyngeal Carcinoma,carcinoma-head-neck,nasopharynx,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,EBV-driven; distinct from TCGA HNSC,False
 HCL,Hairy Cell Leukemia,heme-bcell,spleen_marrow,heme_marrow,,,curated,LITERATURE_CURATED,,BRAF V600E; vemurafenib effective,False
 PCN,Plasmacytoma,heme-plasma,soft_tissue,solid_primary,MM,,curated,LITERATURE_CURATED,,Solitary plasma-cell mass (solitary bone / extramedullary),False
@@ -125,3 +125,7 @@ SARC_PLEOLPS,Pleomorphic Liposarcoma,sarcoma,adipose,primary_adipose,SARC,,GEO,G
 RMS_PRMS,Pleomorphic Rhabdomyosarcoma,sarcoma,skeletal_muscle,primary_skeletal_muscle,SARC,,Treehouse,TREEHOUSE_POLYA_25_01,PMID:18829983,Adult; distinct from pediatric ERMS/ARMS; no fusion,False
 RMS_SSRMS,Spindle Cell / Sclerosing Rhabdomyosarcoma,pediatric-soft,skeletal_muscle,primary_skeletal_muscle,,,Treehouse,TREEHOUSE_POLYA_25_01,PMID:24054308,MYOD1 (congenital) or VGLL2/NCOA2 (infantile); distinct from ERMS/ARMS,False
 SARC_LPS_UNSPEC,Liposarcoma (Unspecified / Aggregate),sarcoma,adipose,primary_adipose,SARC,,Treehouse,TREEHOUSE_POLYA_25_01,,Treehouse v25.01 LPS aggregate (n=92); DDLPS/WDLPS/MYXLPS mixed,False
+SARC_CIC,CIC-rearranged Sarcoma,sarcoma,soft_tissue,solid_primary,SARC,,Treehouse,TREEHOUSE_POLYA_25_01,,Ewing-like undifferentiated round cell sarcoma (n=5 Treehouse); CIC-DUX4 majority; ETV4/PEA3 + WT1 activation; more aggressive than Ewing,False
+SARC_BCOR,BCOR-rearranged Sarcoma,sarcoma,soft_tissue,solid_primary,SARC,,Treehouse,TREEHOUSE_POLYA_25_01,,Undifferentiated round cell sarcoma (n=2 Treehouse); BCOR-CCNB3 (Xp11) majority; BCOR-ITD in infantile,False
+SARC_MYOEP,Soft Tissue Myoepithelial Carcinoma,sarcoma,soft_tissue,solid_primary,SARC,,Treehouse,TREEHOUSE_POLYA_25_01,,Myoepithelioma/myoepithelial carcinoma (n=5 Treehouse); EWSR1-POU5F1/PBX1 or FUS-POU5F1,False
+SARC_SMARCA4,SMARCA4-deficient Thoracic Sarcoma,sarcoma,thorax,solid_primary,SARC,,Treehouse,TREEHOUSE_POLYA_25_01,,SMARCA4/BRG1 loss (n=13 Treehouse); undifferentiated thoracic; smoking-associated; not fusion-driven,False
