@@ -75,3 +75,17 @@ def test_skcm_is_highest_among_common_types():
     assert mapping["SKCM"] == max(
         mapping[c] for c in ("SKCM", "LUAD", "LUSC", "BLCA", "BRCA", "PRAD")
     )
+
+
+def test_subtype_inherits_parent_tmb():
+    """Molecular / histology subtypes with no curated row inherit the nearest
+    ancestor's TMB by walking parent_code (default inherit=True)."""
+    # LUAD_EGFR has no own row -> inherits LUAD; SCLC_ASCL1 -> SCLC.
+    assert cancer_tmb("LUAD_EGFR") == cancer_tmb("LUAD")
+    assert cancer_tmb("SCLC_ASCL1") == cancer_tmb("SCLC")
+    # rare sarcoma histology -> pan-SARC value
+    assert cancer_tmb("SARC_CIC") == cancer_tmb("SARC")
+    # inherit=False is the strict direct-only lookup (no parent walk)
+    assert cancer_tmb("LUAD_EGFR", inherit=False) is None
+    # a top-level code with a genuinely blank value stays None even with inherit
+    assert cancer_tmb("MPN") is None

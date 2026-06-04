@@ -2168,20 +2168,37 @@ def cancer_tmb_df():
     return get_data("cancer-tmb")
 
 
-def cancer_tmb(cancer_type=None):
+def cancer_tmb(cancer_type=None, *, inherit=True):
     """Median TMB (mut/Mb) for one cancer type, or the whole
     ``{code: median_tmb}`` map (codes with no published value omitted).
 
-    ``cancer_type`` is resolved through :func:`resolve_cancer_type`, so
-    aliases and display names work; returns ``None`` if the type has no
-    curated TMB value."""
+    ``cancer_type`` is resolved through :func:`resolve_cancer_type`, so aliases
+    and display names work. When ``inherit`` (default), a code with no curated
+    value of its own inherits its nearest ancestor's TMB by walking the registry
+    ``parent_code`` chain — so molecular / histology subtypes (``LUAD_EGFR`` ->
+    ``LUAD``, ``SCLC_ASCL1`` -> ``SCLC``, rare ``SARC_*`` -> ``SARC``) resolve
+    without a curated row each. Returns ``None`` if neither the code nor any
+    ancestor has a value."""
     df = cancer_tmb_df()
     vals = df.dropna(subset=["median_tmb_mut_mb"])
     mapping = dict(zip(vals["cancer_code"].astype(str),
                        vals["median_tmb_mut_mb"].astype(float)))
     if cancer_type is None:
         return mapping
-    return mapping.get(resolve_cancer_type(cancer_type))
+    code = resolve_cancer_type(cancer_type)
+    if code in mapping or not inherit:
+        return mapping.get(code)
+    # walk the registry parent chain to inherit an ancestor's value
+    reg = cancer_type_registry().set_index("code")
+    cur, seen = code, set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        if cur in mapping:
+            return mapping[cur]
+        if cur not in reg.index:
+            break
+        cur = str(reg.loc[cur].get("parent_code", "") or "").strip() or None
+    return None
 
 
 def cancer_fusions_df():
