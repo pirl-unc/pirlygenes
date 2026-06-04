@@ -888,8 +888,9 @@ def cancer_type_registry():
 def cancer_types_in_family(family):
     """Return cancer-type codes belonging to a registry family.
 
-    Families span more than TCGA — ``sarcoma`` includes TCGA SARC
-    subtype-tiles and the pediatric-bone / pediatric-soft cohorts;
+    Families are lineage/organ-system only (age is a separate ``pediatric``
+    flag): ``sarcoma`` spans soft-tissue + bone + rhabdomyosarcomas regardless
+    of patient age; ``neuroendocrine`` spans NET + NEC across organs;
     ``heme-myeloid`` covers LAML + MDS + MPN + CML etc.
     """
     df = cancer_type_registry()
@@ -942,6 +943,29 @@ def mixture_cohort_codes():
 def is_mixture_cohort(code):
     """True when ``code`` is a mixture cohort per the registry (#171)."""
     return code in set(mixture_cohort_codes())
+
+
+def sarcoma_lineage_codes(*, with_expression_only=False):
+    """Return every registry code that is a sarcoma by lineage.
+
+    After the Phase-C ontology refactor the sarcoma lineage is a single
+    ``family == "sarcoma"`` bucket: soft-tissue (``SARC``/``SARC_*``, ``CHON``),
+    bone (``OS``, ``EWS``, ``GCTB``), rhabdomyosarcomas (``RMS_*``), endometrial
+    stromal sarcomas (``ESS_LG``/``ESS_HG``), and chordoma (``CHOR``) — bone and
+    pediatric sarcomas were folded in from the retired ``pediatric-bone`` /
+    ``pediatric-soft`` families (age is now a separate ``pediatric`` flag). This
+    is the membership the ``SARC`` grand-union aggregate pools over.
+
+    ``with_expression_only`` drops codes with no per-sample expression source
+    (the ``LITERATURE_CURATED`` entries — e.g. ESS_LG/HG, GCTB, SARC_SFT),
+    leaving only codes that actually contribute samples to a pooled aggregate.
+    """
+    df = cancer_type_registry()
+    sub = df[df["family"].astype(str) == "sarcoma"]
+    if with_expression_only:
+        src = sub["expression_source"].astype(str).str.lower()
+        sub = sub[~src.isin(["curated", "nan", ""])]
+    return sub["code"].tolist()
 
 
 # ---------- Cancer-pathway panels (tumor-evidence Step-0 signals) ----------
@@ -2092,6 +2116,73 @@ def cancer_tmb(cancer_type=None):
     if cancer_type is None:
         return mapping
     return mapping.get(resolve_cancer_type(cancer_type))
+
+
+def cancer_fusions_df():
+    """Return the curated ``cancer-fusions.csv`` reference: characteristic gene
+    fusions / oncogenic translocations per cancer-type code.
+
+    One row per concrete pairing (so promiscuous partner sets are explicit),
+    with the 5'/3' partner genes and their protein families annotated
+    (``gene_5prime_family`` / ``gene_3prime_family`` — e.g. FET, ETS, BET,
+    MiT/TFE, PAX, FOX, RTK, Ig locus). ``is_defining`` marks the characteristic
+    lesion of the entity; ``pathognomonic`` is the stronger claim that the
+    gene-pair maps to a single entity (diagnostic in context). Characteristically
+    fusion-negative entities carry a single ``fusion_family="(none)"`` row naming
+    the real driver. ``mechanism`` distinguishes chimeric ``fusion_transcript``
+    from ``ig_enhancer_hijack`` / ``promoter_swap`` / ``enhancer_hijack`` (which
+    have no chimeric transcript — see ``rnaseq_detectable``)."""
+    return get_data("cancer-fusions")
+
+
+def cancer_fusions(cancer_type=None, *, defining_only=False, pathognomonic_only=False):
+    """Fusion rows for one cancer type (resolved via :func:`resolve_cancer_type`),
+    or the whole table when ``cancer_type`` is None. ``defining_only`` /
+    ``pathognomonic_only`` filter to the characteristic / diagnostic rows."""
+    df = cancer_fusions_df()
+    if cancer_type is not None:
+        df = df[df["cancer_code"].astype(str) == resolve_cancer_type(cancer_type)]
+    # is_defining / pathognomonic load as bool (get_data coerces true/false);
+    # compare via lowercased string so the filter works whether bool or str.
+    if defining_only:
+        df = df[df["is_defining"].astype(str).str.lower() == "true"]
+    if pathognomonic_only:
+        df = df[df["pathognomonic"].astype(str).str.lower() == "true"]
+    return df.reset_index(drop=True)
+
+
+def fusion_partners(gene, *, side=None):
+    """Return the set of fusion partners of ``gene`` observed in the table.
+
+    ``side=None`` returns all partners (gene on either end); ``side="5prime"``
+    returns partners when ``gene`` is the 5' member (i.e. the observed 3'
+    partners); ``side="3prime"`` returns the observed 5' partners. Useful for
+    making sense of promiscuous sets — e.g. ``fusion_partners("EWSR1")`` spans
+    FLI1/ERG/WT1/ATF1/NR4A3/POU5F1/…, ``fusion_partners("NR4A3", side="3prime")``
+    returns EWSR1/TAF15/TCF12."""
+    g = str(gene).strip().upper()
+    df = cancer_fusions_df()
+    out = set()
+    if side in (None, "5prime"):
+        out |= set(df.loc[df["gene_5prime"].astype(str).str.upper() == g, "gene_3prime"])
+    if side in (None, "3prime"):
+        out |= set(df.loc[df["gene_3prime"].astype(str).str.upper() == g, "gene_5prime"])
+    return {p for p in out if isinstance(p, str) and p.strip()}
+
+
+def protein_family(gene):
+    """Protein/gene family of a fusion partner (e.g. EWSR1->FET, FLI1->ETS,
+    BRD4->BET, PAX3->PAX, FOXO1->FOX, ALK->RTK), or ``None`` if the gene has no
+    clear family annotation in ``cancer-fusions.csv``."""
+    g = str(gene).strip().upper()
+    df = cancer_fusions_df()
+    for col, fam in (("gene_5prime", "gene_5prime_family"),
+                     ("gene_3prime", "gene_3prime_family")):
+        hit = df.loc[df[col].astype(str).str.upper() == g, fam]
+        for v in hit:
+            if isinstance(v, str) and v.strip():
+                return v
+    return None
 
 
 # Per-cohort median tumor-cell purity from TCGA (Aran et al., Nat Commun 2015).
