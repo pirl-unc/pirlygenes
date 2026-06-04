@@ -1359,6 +1359,35 @@ def _bool_mask(series: pd.Series) -> pd.Series:
     return series.astype(str).str.strip().str.lower() == "true"
 
 
+def _manually_expressed_cta() -> frozenset:
+    """tsarina's per-gene "expressed" rescue set (single source of truth).
+
+    Borderline-but-real CTAs (e.g. XAGE5) are flagged ``never_expressed`` in the
+    bundled table (HPA truth) but curated back into the expressed set by tsarina
+    via ``tsarina.tissues.MANUALLY_EXPRESSED_CTA``.  Honor it here so the
+    curation decision flows through to pirlygenes instead of being dropped by
+    this module's local ``never_expressed`` filter.  See tsarina#78 / #279.
+    """
+    try:
+        from tsarina.tissues import MANUALLY_EXPRESSED_CTA
+
+        return frozenset(MANUALLY_EXPRESSED_CTA)
+    except Exception:
+        return frozenset()
+
+
+def _never_expressed_mask(df: pd.DataFrame) -> pd.Series:
+    """``never_expressed`` rows, minus tsarina's manually rescued CTAs."""
+    if "never_expressed" not in df.columns:
+        return pd.Series(False, index=df.index)
+    mask = _bool_mask(df["never_expressed"])
+    rescued_ids = _manually_expressed_cta()
+    if rescued_ids and "Ensembl_Gene_ID" in df.columns:
+        rescued = df["Ensembl_Gene_ID"].astype(str).str.split(".").str[0].isin(rescued_ids)
+        mask = mask & ~rescued
+    return mask
+
+
 def _cta_filter_mask(df: pd.DataFrame) -> pd.Series:
     column = _cta_filter_column(df)
     if column is None:
@@ -1391,7 +1420,7 @@ def _cta_df(filtered_only=False, exclude_never_expressed=False):
     if filtered_only:
         mask = mask & _cta_filter_mask(df)
     if exclude_never_expressed and "never_expressed" in df.columns:
-        mask = mask & ~_bool_mask(df["never_expressed"])
+        mask = mask & ~_never_expressed_mask(df)
     return df[mask]
 
 
@@ -1623,7 +1652,7 @@ def _build_partition(ensembl_release=112):
     all_pc_ids = set(all_pc_genes.keys())
 
     filtered_mask = _cta_filter_mask(evidence_df)
-    never_expr_mask = _bool_mask(evidence_df["never_expressed"])
+    never_expr_mask = _never_expressed_mask(evidence_df)
 
     cta_mask = filtered_mask & ~never_expr_mask
     never_expressed_mask = filtered_mask & never_expr_mask
