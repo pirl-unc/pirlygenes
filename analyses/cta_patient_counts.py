@@ -601,10 +601,8 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, threshold):
     SWEET_TMB, SWEET_COV = 3.0, 50.0
     ax.fill_between([x_lo, SWEET_TMB], SWEET_COV, 100, color="#ffd166",
                     alpha=0.18, zorder=0)
-    ax.text(x_lo * 1.08, 98.5,
-            "antigen-rich / mutation-poor\n(CTA-therapy sweet spot:\n"
-            "≥50% coverage, ≤3 mut/Mb)",
-            fontsize=7, va="top", ha="left", color="#9c6f00", style="italic")
+    ax.text(x_lo * 1.08, 98.5, "antigen-rich / mutation-poor",
+            fontsize=8, va="top", ha="left", color="#9c6f00", style="italic")
 
     ax.scatter(xs, ys, s=34, c=[_LINEAGE_COLORS[g] for g in groups],
                alpha=0.9, edgecolor="white", linewidth=0.4, zorder=3)
