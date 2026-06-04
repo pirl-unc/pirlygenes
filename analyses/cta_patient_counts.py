@@ -221,6 +221,34 @@ def _add_parquet_cohorts(mat, cohorts, ctas):
     return mat, cohorts
 
 
+def _add_aggregate_cohorts(cohorts):
+    """Materialise computed-aggregate cohorts (SARC_RMS, SARC_LPS, TCGA_SARC,
+    SARC_PAN) by pooling the per-sample columns of their member atoms that are
+    actually present — so e.g. the four rhabdomyosarcoma subtypes show up as one
+    'SARC_RMS' cohort. A patient is pooled once even if a member overlaps."""
+    added = []
+    for agg, members in gsc.cohort_aggregates().items():
+        if agg in cohorts:
+            continue  # don't shadow a real cohort of the same code
+        pooled = []
+        seen = set()
+        present = 0
+        for m in members:
+            if m in cohorts:
+                present += 1
+                for s in cohorts[m]:
+                    if s not in seen:
+                        seen.add(s)
+                        pooled.append(s)
+        # only synthesize an aggregate that pools >=2 member cohorts of samples
+        if present >= 2 and pooled:
+            cohorts[agg] = pooled
+            added.append(f"{agg}(n={len(pooled)}<-{present})")
+    if added:
+        print(f"      + aggregate cohorts: {', '.join(added)}", flush=True)
+    return cohorts
+
+
 def _merge_proteins(mat, ensg_to_sym):
     """Collapse near-identical CTA paralogs (>=90% AA identity, + curated
     NY-ESO-1 / XAGE1) into one protein per group, SUMMING per-sample TPM (total
@@ -320,6 +348,7 @@ def main():
     print("[3/5] extract CTA per-sample TPM matrix (awk slice + log2 inverse)", flush=True)
     mat = extract_cta_matrix(ensg_to_sym)
     mat, cohorts = _add_parquet_cohorts(mat, cohorts, ctas)
+    cohorts = _add_aggregate_cohorts(cohorts)
     mat, ensg_to_sym = _merge_proteins(mat, ensg_to_sym)
     print(f"      matrix {mat.shape[0]} CTA proteins × {mat.shape[1]} samples, "
           f"{len(cohorts)} cohorts", flush=True)

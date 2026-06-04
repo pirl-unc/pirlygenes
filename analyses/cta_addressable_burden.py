@@ -35,10 +35,12 @@ METRICS = {
     "world_incidence": ("world_incidence_pct", "worldwide incidence"),
     "world_mortality": ("world_mortality_pct", "worldwide deaths"),
 }
-# Subtype cohorts whose patients are already counted by a parent cohort in the
-# same burden category — drop them so a category's burden isn't double-weighted.
+# Subtype / aggregate cohorts whose patients are already counted by another
+# cohort in the same burden category — drop them so a category's burden isn't
+# double-weighted (the finer atom cohorts are kept; the rollups are dropped).
 _REDUNDANT = {"BRCA_LumA", "BRCA_LumB", "BRCA_HER2", "BRCA_Basal", "BRCA_Normal",
-              "HNSC_HPVpos", "HNSC_HPVneg"}
+              "HNSC_HPVpos", "HNSC_HPVneg",
+              "SARC_RMS", "SARC_LPS", "TCGA_SARC", "SARC_PAN"}
 
 
 def _is_mage(sym):

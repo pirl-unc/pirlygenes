@@ -948,13 +948,15 @@ def is_mixture_cohort(code):
 def sarcoma_lineage_codes(*, with_expression_only=False):
     """Return every registry code that is a sarcoma by lineage.
 
-    After the Phase-C ontology refactor the sarcoma lineage is a single
-    ``family == "sarcoma"`` bucket: soft-tissue (``SARC``/``SARC_*``, ``CHON``),
-    bone (``OS``, ``EWS``, ``GCTB``), rhabdomyosarcomas (``RMS_*``), endometrial
-    stromal sarcomas (``ESS_LG``/``ESS_HG``), and chordoma (``CHOR``) — bone and
-    pediatric sarcomas were folded in from the retired ``pediatric-bone`` /
-    ``pediatric-soft`` families (age is now a separate ``pediatric`` flag). This
-    is the membership the ``SARC`` grand-union aggregate pools over.
+    After the Phase-C ontology refactor every sarcoma is in the ``SARC_``
+    namespace under one ``family == "sarcoma"`` bucket: soft-tissue
+    (``SARC``/``SARC_LMS``/``SARC_UPS``/…), bone (``SARC_OS``, ``SARC_EWS``,
+    ``SARC_CHON``, ``SARC_CHOR``, ``SARC_GCTB``), rhabdomyosarcomas
+    (``SARC_RMS_*``) and endometrial stromal sarcomas (``SARC_ESS_LG/HG``) —
+    bone and pediatric sarcomas were folded in from the retired
+    ``pediatric-bone`` / ``pediatric-soft`` families (age is now a separate
+    ``pediatric`` flag). This is the membership the ``SARC`` grand-union
+    aggregate pools over.
 
     ``with_expression_only`` drops codes with no per-sample expression source
     (the ``LITERATURE_CURATED`` entries — e.g. ESS_LG/HG, GCTB, SARC_SFT),
@@ -966,6 +968,41 @@ def sarcoma_lineage_codes(*, with_expression_only=False):
         src = sub["expression_source"].astype(str).str.lower()
         sub = sub[~src.isin(["curated", "nan", ""])]
     return sub["code"].tolist()
+
+
+# Computed cohort aggregates: "view" cohorts that pool the per-sample values of
+# several atom cohorts by histology or source, rather than being a single frozen
+# matrix. Backed by ``cancer-cohort-aggregates.csv`` ({aggregate_code:
+# [member_code,...]}); the pan-sarcoma ``SARC`` grand union is computed from the
+# registry family (so it tracks new atoms automatically) rather than enumerated.
+def cohort_aggregates_df():
+    """Return the curated ``cancer-cohort-aggregates.csv`` long table
+    (``aggregate_code, member_code, basis``) — the explicit histology/source
+    rollup cohorts (e.g. ``SARC_RMS`` ← the four rhabdomyosarcoma subtypes;
+    ``TCGA_SARC`` ← the TCGA-SARC project atoms)."""
+    return get_data("cancer-cohort-aggregates")
+
+
+def cohort_aggregates():
+    """``{aggregate_code: [member_code, ...]}`` for every explicit rollup cohort,
+    plus the computed pan-sarcoma ``SARC`` grand union (every ``family ==
+    'sarcoma'`` atom that is not itself an aggregate)."""
+    df = cohort_aggregates_df()
+    out = {}
+    for agg, grp in df.groupby("aggregate_code"):
+        out[str(agg)] = list(dict.fromkeys(grp["member_code"].astype(str)))
+    # pan-sarcoma grand union, computed from family (excludes the aggregates).
+    aggs = set(out)
+    out["SARC_PAN"] = [c for c in sarcoma_lineage_codes() if c not in aggs]
+    return out
+
+
+def cohort_aggregate_members(aggregate_code):
+    """Member atom codes pooled by a computed-aggregate cohort, or ``None`` if
+    ``aggregate_code`` is not an aggregate. ``SARC_PAN`` is the pan-sarcoma
+    grand union; ``SARC_RMS`` / ``SARC_LPS`` / ``TCGA_SARC`` are the curated
+    histology/source rollups."""
+    return cohort_aggregates().get(str(aggregate_code))
 
 
 # ---------- Cancer-pathway panels (tumor-evidence Step-0 signals) ----------
