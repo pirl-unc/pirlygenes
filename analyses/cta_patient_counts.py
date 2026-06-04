@@ -180,6 +180,37 @@ def extract_cta_matrix(symbols: dict[str, str]) -> pd.DataFrame:
     return out
 
 
+# Extra per-sample cohorts pulled from other cached per-cohort parquets (linear
+# TPM) so coverage isn't confined to a single compendium. The set expands as
+# more sources gain materialized per-sample data (see issue #275).
+_EXTRA_PARQUET_COHORTS = [
+    ("treehouse-ribod-25-01", "CHOR"),
+    ("treehouse-ribod-25-01", "RB"),
+]
+
+
+def _add_parquet_cohorts(mat, cohorts, ctas):
+    """Merge extra per-sample cohorts (from cached per-cohort parquets) into the
+    CTA matrix + cohort buckets, aligned to the existing CTA index."""
+    cache = Path.home() / ".cache" / "pirlygenes" / "expression"
+    added = []
+    for source_id, code in _EXTRA_PARQUET_COHORTS:
+        p = cache / source_id / "derived" / f"{code}_per_sample_tpm.parquet"
+        if not p.exists():
+            continue
+        df = pd.read_parquet(p)
+        df = df[df["Ensembl_Gene_ID"].astype(str).isin(set(ctas))]
+        sample_cols = [c for c in df.columns if c not in ("Ensembl_Gene_ID", "Symbol")]
+        sub = df.set_index("Ensembl_Gene_ID")[sample_cols].reindex(mat.index).fillna(0.0)
+        sub.columns = [f"{code}::{c}" for c in sub.columns]  # avoid id collisions
+        mat = pd.concat([mat, sub], axis=1)
+        cohorts[code] = list(sub.columns)
+        added.append(f"{code}(n={len(sample_cols)})")
+    if added:
+        print(f"      + extra per-sample cohorts: {', '.join(added)}", flush=True)
+    return mat, cohorts
+
+
 def per_cohort_counts(mat, cohorts, ensg_to_sym):
     """Long table: CTA × cohort × threshold -> n patients, pct."""
     rows = []
@@ -260,7 +291,9 @@ def main():
 
     print("[3/5] extract CTA per-sample TPM matrix (awk slice + log2 inverse)", flush=True)
     mat = extract_cta_matrix(ensg_to_sym)
-    print(f"      matrix {mat.shape[0]} CTAs × {mat.shape[1]} samples", flush=True)
+    mat, cohorts = _add_parquet_cohorts(mat, cohorts, ctas)
+    print(f"      matrix {mat.shape[0]} CTAs × {mat.shape[1]} samples, "
+          f"{len(cohorts)} cohorts", flush=True)
 
     print("[4/5] per (CTA × cohort) threshold counts -> CSV", flush=True)
     counts = per_cohort_counts(mat, cohorts, ensg_to_sym)
@@ -403,7 +436,7 @@ def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
         Patch(color="#e85d04", label="sub-divided (derived) cohort"),
     ], loc="lower right", fontsize=9)
     ax.set_title(f"CTA coverage ceiling by cancer type "
-                 f"(> {threshold} TPM, Treehouse 25.01 PolyA)", fontsize=11)
+                 f"(> {threshold} TPM)", fontsize=11)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
     fig.savefig(OUT / f"cta_peak_coverage_by_parent_child_t{threshold}.png", dpi=150)
@@ -507,8 +540,9 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, threshold,
               title="antigen family", ncol=2, handlelength=1.1,
               labelspacing=0.25, columnspacing=1.0)
     ax.set_title(f"CTA coverage by cancer type, split into each CTA's marginal "
-                 f"new-patient contribution (> {threshold} TPM, "
-                 f"Treehouse 25.01 PolyA)", fontsize=11)
+                 f"new-patient contribution (> {threshold} TPM)", fontsize=11)
+    fig.text(0.99, 0.005, f"{len(rows)} per-sample cohorts (others summary-only)",
+             ha="right", fontsize=6, color="gray")
     fig.tight_layout()
     fig.savefig(OUT / f"cta_stacked_coverage_t{threshold}.png", dpi=150)
     plt.close(fig)
@@ -520,9 +554,10 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, threshold,
 _TMB_CODE = {"SARC": "SARC_LMS"}
 
 # Coarse tissue-lineage groups for coloring the CTA-vs-TMB scatter, collapsed
-# from the registry `family` column so the legend stays readable.
+# from the registry `family` column (lineage-only after the Phase-C refactor;
+# age is a separate `pediatric` flag, so pediatric sarcomas color as sarcoma).
 _LINEAGE_COLORS = {
-    "sarcoma": "#e85d04", "pediatric": "#d00000", "carcinoma": "#1d4e89",
+    "sarcoma": "#e85d04", "embryonal": "#d00000", "carcinoma": "#1d4e89",
     "melanoma": "#6a040f", "neuroendocrine": "#2a9d8f", "heme": "#9d4edd",
     "CNS": "#3a86ff", "germ cell": "#ffb703", "endocrine": "#588157",
     "other": "#9a9a9a",
@@ -537,13 +572,13 @@ def _registry_family_map():
 
 def _lineage_group(family: str) -> str:
     f = (family or "").lower()
-    if f.startswith("pediatric"):
-        return "pediatric"
     if f == "sarcoma":
         return "sarcoma"
+    if f == "embryonal":
+        return "embryonal"
     if f == "melanoma":
         return "melanoma"
-    if f == "net" or "neuroendocrine" in f:
+    if "neuroendocrine" in f:
         return "neuroendocrine"
     if f.startswith("heme"):
         return "heme"
@@ -553,7 +588,7 @@ def _lineage_group(family: str) -> str:
         return "germ cell"
     if f == "endocrine":
         return "endocrine"
-    if f.startswith("carcinoma"):
+    if f.startswith("carcinoma"):  # incl carcinoma-other
         return "carcinoma"
     return "other"
 
@@ -637,8 +672,10 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, threshold):
         sub = f"; Pearson r(log TMB, coverage)={r:.2f}"
     ax.set_title(f"CTA coverage vs TMB by cancer type "
                  f"(> {threshold} TPM, n={len(pts)} cohorts{sub})", fontsize=10)
+    n_registry = len(_registry_family_map())
     ax.text(0.99, 0.01,
-            f"{len(missing)} cohort(s) dropped (no curated TMB)",
+            f"{len(pts)} per-sample cohorts shown (of {n_registry} registry "
+            f"types; others summary-only); {len(missing)} dropped (no curated TMB)",
             transform=ax.transAxes, fontsize=6, color="gray", ha="right")
     fig.tight_layout()
     fig.savefig(OUT / f"cta_coverage_vs_tmb_t{threshold}.png", dpi=150)
@@ -742,7 +779,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     ax.set_yticks(range(len(piv.index)))
     ax.set_yticklabels(piv.index, fontsize=6)
     ax.set_title(f"# patients with CTA > {threshold} TPM "
-                 f"(top 40 CTAs × cohorts, Treehouse 25.01 PolyA)", fontsize=9)
+                 f"(top 40 CTAs × cohorts)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="patients")
     fig.tight_layout()
     fig.savefig(OUT / f"cta_patient_count_heatmap_t{threshold}.png", dpi=150)

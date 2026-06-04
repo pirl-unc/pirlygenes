@@ -888,8 +888,9 @@ def cancer_type_registry():
 def cancer_types_in_family(family):
     """Return cancer-type codes belonging to a registry family.
 
-    Families span more than TCGA — ``sarcoma`` includes TCGA SARC
-    subtype-tiles and the pediatric-bone / pediatric-soft cohorts;
+    Families are lineage/organ-system only (age is a separate ``pediatric``
+    flag): ``sarcoma`` spans soft-tissue + bone + rhabdomyosarcomas regardless
+    of patient age; ``neuroendocrine`` spans NET + NEC across organs;
     ``heme-myeloid`` covers LAML + MDS + MPN + CML etc.
     """
     df = cancer_type_registry()
@@ -944,32 +945,23 @@ def is_mixture_cohort(code):
     return code in set(mixture_cohort_codes())
 
 
-# Registry `family` values that denote a sarcoma lineage, plus prefix-agnostic
-# extras. This is the membership the `SARC` grand-union aggregate pools over —
-# it deliberately spans soft-tissue (family=sarcoma, incl. the SARC_* codes),
-# bone/pediatric (OS, EWS; family=pediatric-bone), and pediatric soft-tissue
-# rhabdomyosarcomas (family=pediatric-soft), regardless of code prefix (OS/EWS/
-# RMS_* keep their established codes; see the prefix-normalization follow-up).
-_SARCOMA_FAMILIES = {"sarcoma", "pediatric-bone", "pediatric-soft"}
-_SARCOMA_EXTRA_CODES = {"CHOR"}  # chordoma: notochordal, family="rare"
-
-
 def sarcoma_lineage_codes(*, with_expression_only=False):
-    """Return every registry code that is a sarcoma by lineage, prefix-agnostic.
+    """Return every registry code that is a sarcoma by lineage.
 
-    Spans soft-tissue (``SARC``/``SARC_*``, ``CHON``), bone/pediatric (``OS``,
-    ``EWS``), pediatric rhabdomyosarcomas (``RMS_*``), endometrial stromal
-    sarcomas (``ESS_LG``/``ESS_HG``), and chordoma (``CHOR``). This is the
-    membership the ``SARC`` grand-union aggregate pools over.
+    After the Phase-C ontology refactor the sarcoma lineage is a single
+    ``family == "sarcoma"`` bucket: soft-tissue (``SARC``/``SARC_*``, ``CHON``),
+    bone (``OS``, ``EWS``, ``GCTB``), rhabdomyosarcomas (``RMS_*``), endometrial
+    stromal sarcomas (``ESS_LG``/``ESS_HG``), and chordoma (``CHOR``) — bone and
+    pediatric sarcomas were folded in from the retired ``pediatric-bone`` /
+    ``pediatric-soft`` families (age is now a separate ``pediatric`` flag). This
+    is the membership the ``SARC`` grand-union aggregate pools over.
 
     ``with_expression_only`` drops codes with no per-sample expression source
     (the ``LITERATURE_CURATED`` entries — e.g. ESS_LG/HG, GCTB, SARC_SFT),
     leaving only codes that actually contribute samples to a pooled aggregate.
     """
     df = cancer_type_registry()
-    fam = df["family"].astype(str)
-    is_sarc = fam.isin(_SARCOMA_FAMILIES) | df["code"].isin(_SARCOMA_EXTRA_CODES)
-    sub = df[is_sarc]
+    sub = df[df["family"].astype(str) == "sarcoma"]
     if with_expression_only:
         src = sub["expression_source"].astype(str).str.lower()
         sub = sub[~src.isin(["curated", "nan", ""])]

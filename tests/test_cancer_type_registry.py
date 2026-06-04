@@ -197,11 +197,14 @@ def test_heme_myeloid_family_contains_laml_and_related():
         assert need in myeloid
 
 
-def test_net_family_contains_sclc_and_pannet():
-    net = set(cancer_types_in_family("net"))
-    assert "SCLC" in net
-    assert "PANNET" in net
-    assert "MEC" in net  # Merkel cell carcinoma
+def test_neuroendocrine_family_contains_sclc_and_pannet():
+    # Phase-C: the `net` family was renamed `neuroendocrine` (it spans both
+    # well-diff NET and poorly-diff NEC; the differentiation column carries
+    # that split). SCLC/PANNET keep their famous codes.
+    ne = set(cancer_types_in_family("neuroendocrine"))
+    assert "SCLC" in ne
+    assert "PANNET" in ne
+    assert "MEC" in ne  # Merkel cell carcinoma (NEC)
 
 
 def test_parent_codes_reference_registry_entries():

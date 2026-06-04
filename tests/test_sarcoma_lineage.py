@@ -11,7 +11,7 @@ def test_spans_soft_tissue_bone_and_pediatric():
     assert {"OS", "EWS"} <= codes
     # pediatric rhabdomyosarcomas
     assert {"RMS_ERMS", "RMS_ARMS"} <= codes
-    # chordoma (notochordal, family="rare") included via the extra-codes set
+    # chordoma (notochordal) folded into the sarcoma family in the refactor
     assert "CHOR" in codes
 
 
