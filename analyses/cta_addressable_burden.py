@@ -41,11 +41,18 @@ _REDUNDANT = {"BRCA_LumA", "BRCA_LumB", "BRCA_HER2", "BRCA_Basal", "BRCA_Normal"
               "HNSC_HPV_pos", "HNSC_HPV_neg"}
 
 
-def _prepare():
+def _is_mage(sym):
+    return str(sym).upper().startswith(("MAGEA", "MAGEB", "MAGEC"))
+
+
+def _prepare(drop_mage=False):
     """Return (counts, cat_n, breadth): per-(category,Symbol) hit counts joined
-    to category patient totals, plus per-CTA breadth (# cancer types expressed in)."""
+    to category patient totals, plus per-CTA breadth (# cancer types expressed in).
+    With drop_mage, MAGE-A/B/C proteins are excluded (the 'without MAGE' panel)."""
     counts = pd.read_csv(COUNTS)
     counts = counts[~counts.cancer_code.isin(_REDUNDANT)].copy()
+    if drop_mage:
+        counts = counts[~counts.Symbol.map(_is_mage)].copy()
     # Robust resolution (alias -> explicit map -> parent chain -> tissue -> family);
     # warn loudly on anything unmapped rather than silently dropping it.
     cat = {c: gsc.burden_category(c) for c in counts.cancer_code.unique()}
@@ -65,13 +72,12 @@ def _prepare():
 
 
 def _label(cats):
-    """top-2 contributing cancer types, with ', &c' when 3+ contribute."""
+    """Contributing cancer types in descending order: list up to 4; if more than
+    4 contribute, list the top 3 and count the rest ('+N more')."""
     cats = list(cats)
-    if len(cats) == 1:
-        return cats[0]
-    if len(cats) == 2:
-        return f"{cats[0]}, {cats[1]}"
-    return f"{cats[0]}, {cats[1]}, &c"
+    if len(cats) <= 4:
+        return ", ".join(cats)
+    return ", ".join(cats[:3]) + f", +{len(cats) - 3} more"
 
 
 def _addressable(counts, cat_n, threshold, burden_metric):
@@ -90,27 +96,29 @@ def _addressable(counts, cat_n, threshold, burden_metric):
     return per, burden
 
 
-def _union_addressable(threshold, burden_metric, cat_n):
+def _union_addressable(threshold, burden_metric, cat_n, drop_mage=False):
     """Burden-weighted fraction of patients expressing >=1 CTA protein over the
-    threshold (the whole-panel union — 'sum of all CTAs')."""
+    threshold (the whole-panel union — 'All CTAs'). Each patient is counted once
+    however many CTAs they express. With drop_mage, uses the MAGE-excluded union."""
     u = pd.read_csv(OUT / "cta_union_counts.csv")
     u = u[~u.cancer_code.isin(_REDUNDANT)].copy()
     u["category"] = [gsc.burden_category(c) for c in u.cancer_code]
     u = u[u.category.notna()]
-    cat_hits = u.groupby("category")[f"n_any_gt{threshold}"].sum()
+    col = f"n_any_gt{threshold}_nomage" if drop_mage else f"n_any_gt{threshold}"
+    cat_hits = u.groupby("category")[col].sum()
     burden = gsc.cancer_burden(metric=burden_metric)
     return sum(burden.get(c, 0.0) * (h / cat_n[c])
                for c, h in cat_hits.items() if c in cat_n and cat_n[c] > 0)
 
 
-def main():
+def _render(drop_mage, suffix, title_tag):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import matplotlib.cm as cm
     import matplotlib.colors as mcolors
 
-    counts, cat_n, breadth = _prepare()
+    counts, cat_n, breadth = _prepare(drop_mage=drop_mage)
     n_cohorts = counts.cancer_code.nunique()
     n_cats = counts.category.nunique()
     bmax = int(breadth.max()) if len(breadth) else 1
@@ -122,7 +130,7 @@ def main():
                       for c in counts.category.unique())
         for t in THRESHOLDS:
             per, _ = _addressable(counts, cat_n, t, bcol)
-            union = _union_addressable(t, bcol, cat_n)
+            union = _union_addressable(t, bcol, cat_n, drop_mage=drop_mage)
             top = per.head(TOPN).iloc[::-1]  # ascending for barh (max on top)
             colors = [cmap(norm(int(breadth.get(s, 1)))) for s in top.Symbol]
             fig, ax = plt.subplots(figsize=(10, max(6, (len(top) + 2) * 0.27)))
@@ -131,17 +139,19 @@ def main():
             ax.set_yticklabels(top.Symbol, fontsize=6)
             for y, (val, lab) in enumerate(zip(top.addressable, top.label)):
                 ax.text(val, y, f" {lab}", va="center", fontsize=5, color="0.3")
-            # whole-panel union ("sum of all CTAs"): >=1 CTA protein over threshold
+            # whole-panel union ("All CTAs"): patient expresses >=1 CTA protein
+            # over threshold, counted once however many CTAs they express.
             uy = len(top) + 0.8
             ax.barh(uy, union, color="#d4a017", edgecolor="black", height=0.9)
-            ax.text(union, uy, f"  ALL CTAs ≥1 ({union:.0f}%)", va="center",
+            ax.text(union, uy, f"  All CTAs ({union:.0f}%)", va="center",
                     fontsize=6, fontweight="bold", color="#7a5c00")
             ax.set_yticks(list(range(len(top))) + [uy])
-            ax.set_yticklabels(list(top.Symbol) + ["ALL CTAs (≥1)"], fontsize=6)
+            ax.set_yticklabels(list(top.Symbol) + ["All CTAs"], fontsize=6)
             ax.set_xlabel(f"% of annual {blabel} addressable "
                           f"(patient expresses this CTA > {t} TPM)")
-            ax.set_title(f"CTA population addressability — {blabel} (> {t} TPM)\n"
-                         f"top {len(top)} CTA proteins + whole-panel union", fontsize=10)
+            ax.set_title(f"CTA population addressability{title_tag} — {blabel} "
+                         f"(> {t} TPM)\ntop {len(top)} CTA proteins + whole-panel "
+                         f"union", fontsize=10)
             ax.set_xlim(0, max(top.addressable.max(), union) * 1.22)
             ax.grid(axis="x", alpha=0.3)
             sm = cm.ScalarMappable(norm=norm, cmap=cmap)
@@ -153,12 +163,67 @@ def main():
                     f"categories = {ceiling:.0f}% of {blabel} (uncovered types not scored)",
                     transform=ax.transAxes, ha="right", fontsize=6, color="gray")
             fig.tight_layout()
-            fig.savefig(OUT / f"cta_addressable_{mkey}_t{t}.png", dpi=150)
+            fig.savefig(OUT / f"cta_addressable_{mkey}_t{t}{suffix}.png", dpi=150)
             plt.close(fig)
-            print(f"  {mkey} t{t}: top CTA {per.iloc[0].Symbol} "
+            print(f"  {mkey} t{t}{suffix}: top CTA {per.iloc[0].Symbol} "
                   f"({per.iloc[0].addressable:.1f}% of {blabel}); ceiling {ceiling:.0f}%",
                   flush=True)
-    print(f"done -> 12 plots in {OUT}", flush=True)
+
+
+def _burden_category_plot():
+    """Separate reference plot: the burden categories that our cohorts map into,
+    their US incidence + mortality share, and which cohort codes land in each —
+    so the grouping driving addressability is transparent."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    counts = pd.read_csv(COUNTS)
+    counts = counts[~counts.cancer_code.isin(_REDUNDANT)].copy()
+    counts["category"] = counts.cancer_code.map(
+        lambda c: gsc.burden_category(c))
+    counts = counts[counts.category.notna()]
+    # member cohort codes per category (deduped, registry display where short)
+    members = (counts.groupby("category").cancer_code.unique()
+               .apply(lambda xs: sorted(set(xs))))
+    inc = gsc.cancer_burden(metric="us_incidence_pct")
+    mort = gsc.cancer_burden(metric="us_mortality_pct")
+    cats = sorted(members.index, key=lambda c: inc.get(c, 0.0))
+    y = np.arange(len(cats))
+    h = 0.4
+    fig, ax = plt.subplots(figsize=(11, max(6, len(cats) * 0.42)))
+    ax.barh(y + h / 2, [inc.get(c, 0.0) for c in cats], height=h,
+            color="#4878a8", label="US incidence")
+    ax.barh(y - h / 2, [mort.get(c, 0.0) for c in cats], height=h,
+            color="#c44e52", label="US deaths")
+    ax.set_yticks(y)
+    ax.set_yticklabels(cats, fontsize=7)
+    for i, c in enumerate(cats):
+        n_coh = len(members[c])
+        codes = ", ".join(members[c][:6]) + (f", +{n_coh - 6}" if n_coh > 6 else "")
+        x = max(inc.get(c, 0.0), mort.get(c, 0.0))
+        ax.text(x + 0.15, i, f"{codes}", va="center", fontsize=5, color="0.35")
+    ax.set_xlabel("% of annual US cancer cases / deaths")
+    ax.set_title("Burden categories our cohorts map into (US incidence & deaths)\n"
+                 "labels list the cohort codes assigned to each category "
+                 "(registry-driven)", fontsize=10)
+    ax.set_xlim(0, max(max(inc.values()), max(mort.values())) * 1.35)
+    ax.legend(loc="lower right", fontsize=8)
+    ax.grid(axis="x", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(OUT / "cta_burden_categories.png", dpi=150)
+    plt.close(fig)
+    print(f"  burden-category reference: {len(cats)} categories "
+          f"({counts.cancer_code.nunique()} cohorts)", flush=True)
+
+
+def main():
+    _render(drop_mage=False, suffix="", title_tag="")
+    _render(drop_mage=True, suffix="_noMAGE", title_tag=" (excl. MAGE-A/B/C)")
+    _burden_category_plot()
+    print(f"done -> 24 addressability plots + 1 burden-category plot in {OUT}",
+          flush=True)
 
 
 if __name__ == "__main__":

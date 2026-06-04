@@ -40,29 +40,42 @@ def test_accessor_and_metric_validation():
         pass
 
 
-def test_code_map_covers_coverage_cohorts():
+def test_code_map_is_overrides_only():
+    # The hand-map now carries only the registry-ontology exceptions; common
+    # codes (LUAD, COAD, OS, ...) resolve from the registry, not this map.
     m = cancer_code_burden_map()
-    # representative codes map to the expected broad categories
-    assert m["LUAD"] == "lung" and m["LUSC"] == "lung"
-    assert m["COAD"] == "colorectal" and m["READ"] == "colorectal"
-    assert m["OS"] == "soft_tissue_and_bone_sarcoma"
-    assert m["DLBC"] == "non_hodgkin_lymphoma"
-    # every mapped category exists in the burden table
+    assert m["SARC_KS"] == "kaposi_sarcoma"
+    assert m["LAML"] == "leukemia_AML"
+    assert m["HL"] == "hodgkin_lymphoma"
+    assert "LUAD" not in m and "OS" not in m
+    # every override category exists in the burden table
     cats = set(cancer_burden_df()["burden_category"])
     assert set(m.values()) <= cats
 
 
-def test_burden_category_robust_resolution():
-    # explicit code
+def test_burden_category_registry_driven():
+    cats = set(cancer_burden_df()["burden_category"])
+    # primary-tissue driven (no explicit map entry)
     assert burden_category("LUAD") == "lung"
-    # alias + display name (synonym space — don't give up on one code)
-    assert burden_category("melanoma") == "melanoma"
     assert burden_category("Lung Adenocarcinoma") == "lung"
-    # subtype -> parent chain
-    assert burden_category("BRCA_LumA") == "breast"
-    # primary_tissue fallback (not in explicit map)
-    assert burden_category("PANNET") == "pancreas"
-    # family fallback
+    assert burden_category("PANNET") == "pancreas"   # NET -> its organ
+    assert burden_category("BRCA_LumA") == "breast"  # subtype -> parent tissue
+    # sarcoma family splits bone vs soft tissue on primary_tissue
+    assert burden_category("OS") == "bone_and_joint"
+    assert burden_category("EWS") == "bone_and_joint"
+    assert burden_category("SARC_LMS") == "soft_tissue_sarcoma"
+    # Kaposi / AML / Hodgkin are the curated overrides
+    assert burden_category("SARC_KS") == "kaposi_sarcoma"
+    assert burden_category("LAML") == "leukemia_AML"
+    assert burden_category("HL") == "hodgkin_lymphoma"
+    # plasma-cell by family; ALL is leukemia, not lymphoma
     assert burden_category("MM") == "multiple_myeloma"
-    # unresolvable input returns None (no crash) rather than dropping silently
+    assert burden_category("B_ALL") == "leukemia_all_other"
+    # every registry code resolves to a real burden category (no silent gaps)
+    import pandas as pd
+    reg = pd.read_csv("pirlygenes/data/cancer-type-registry.csv")
+    resolved = {c: burden_category(c) for c in reg["code"]}
+    assert all(v is not None for v in resolved.values())
+    assert set(resolved.values()) <= cats
+    # unresolvable input returns None (no crash)
     assert burden_category("not-a-cancer-xyz") is None

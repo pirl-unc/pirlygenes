@@ -34,7 +34,4 @@ vagina,0.07,0.07,0.1,0.1,low,ACS-CFF2024;GLOBOCAN2022,rare HPV-driven
 penis,0.05,0.01,0.2,0.1,low,ACS-CFF2024;GLOBOCAN2022,world higher
 eye_ocular,0.17,0.06,0.05,0.04,low,ACS-CFF2024;GLOBOCAN2022,uveal melanoma + retinoblastoma
 kaposi_sarcoma,0.02,0.02,0.2,0.2,low,GLOBOCAN2022;literature,HIV/HHV8; world>>US
-other_and_unknown_primary,1.94,11.15,4.0,7.61,medium,ACS-CFF2024;GLOBOCAN2022,ill-defined/unknown primary + minor untabulated sites (residual to 100%)
-soft_tissue_and_bone_sarcoma,1.0,0.8,1.0,0.8,low,ACS-CFF2024;literature,ROLLUP of bone_and_joint + soft_tissue_sarcoma (do not sum)
-pediatric_cancers,1.0,0.2,1.0,0.3,low,ACS-CFF2024;NCI,ROLLUP across childhood histologies (do not sum)
-nut_carcinoma,0.005,0.005,0.005,0.005,low,case-series,ultra-rare midline; subset of head_and_neck/thoracic
+other_and_unknown_primary,3.94,12.15,6.0,8.71,medium,ACS-CFF2024;GLOBOCAN2022,ill-defined/unknown primary + minor untabulated sites (residual to 100%)
