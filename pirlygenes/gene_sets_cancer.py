@@ -1359,6 +1359,35 @@ def _bool_mask(series: pd.Series) -> pd.Series:
     return series.astype(str).str.strip().str.lower() == "true"
 
 
+def _manually_expressed_cta() -> frozenset:
+    """tsarina's per-gene "expressed" rescue set (single source of truth).
+
+    Borderline-but-real CTAs (e.g. XAGE5) are flagged ``never_expressed`` in the
+    bundled table (HPA truth) but curated back into the expressed set by tsarina
+    via ``tsarina.tissues.MANUALLY_EXPRESSED_CTA``.  Honor it here so the
+    curation decision flows through to pirlygenes instead of being dropped by
+    this module's local ``never_expressed`` filter.  See tsarina#78 / #279.
+    """
+    try:
+        from tsarina.tissues import MANUALLY_EXPRESSED_CTA
+
+        return frozenset(MANUALLY_EXPRESSED_CTA)
+    except Exception:
+        return frozenset()
+
+
+def _never_expressed_mask(df: pd.DataFrame) -> pd.Series:
+    """``never_expressed`` rows, minus tsarina's manually rescued CTAs."""
+    if "never_expressed" not in df.columns:
+        return pd.Series(False, index=df.index)
+    mask = _bool_mask(df["never_expressed"])
+    rescued_ids = _manually_expressed_cta()
+    if rescued_ids and "Ensembl_Gene_ID" in df.columns:
+        rescued = df["Ensembl_Gene_ID"].astype(str).str.split(".").str[0].isin(rescued_ids)
+        mask = mask & ~rescued
+    return mask
+
+
 def _cta_filter_mask(df: pd.DataFrame) -> pd.Series:
     column = _cta_filter_column(df)
     if column is None:
@@ -1391,7 +1420,7 @@ def _cta_df(filtered_only=False, exclude_never_expressed=False):
     if filtered_only:
         mask = mask & _cta_filter_mask(df)
     if exclude_never_expressed and "never_expressed" in df.columns:
-        mask = mask & ~_bool_mask(df["never_expressed"])
+        mask = mask & ~_never_expressed_mask(df)
     return df[mask]
 
 
@@ -1623,7 +1652,7 @@ def _build_partition(ensembl_release=112):
     all_pc_ids = set(all_pc_genes.keys())
 
     filtered_mask = _cta_filter_mask(evidence_df)
-    never_expr_mask = _bool_mask(evidence_df["never_expressed"])
+    never_expr_mask = _never_expressed_mask(evidence_df)
 
     cta_mask = filtered_mask & ~never_expr_mask
     never_expressed_mask = filtered_mask & never_expr_mask
@@ -2203,10 +2232,11 @@ def cancer_burden_df():
 
 def cancer_code_burden_map():
     """Return ``{cancer_code: burden_category}`` from
-    ``cancer-code-burden-map.csv`` — maps registry codes onto the broad burden
-    categories (e.g. LUAD/LUSC -> lung; COAD/READ -> colorectal; the sarcoma
-    codes -> soft_tissue_and_bone_sarcoma). Many codes share a category, so
-    don't double-count a category's burden across its codes."""
+    ``cancer-code-burden-map.csv``. This is now only the small set of **overrides**
+    the registry ontology can't express on its own (e.g. ``SARC_KS`` -> Kaposi
+    rather than soft-tissue; ``LAML`` -> AML rather than other-leukemia;
+    ``HL`` -> Hodgkin; ``CTCL`` -> non-Hodgkin). Everything else is resolved by
+    :func:`burden_category` from the registry's family + primary_tissue."""
     df = get_data("cancer-code-burden-map")
     return dict(zip(df["cancer_code"].astype(str),
                     df["burden_category"].astype(str)))
@@ -2226,63 +2256,107 @@ def cancer_burden(category=None, *, metric="us_incidence_pct"):
     return mapping.get(category)
 
 
-# Fallbacks for resolving a code to a burden category when it isn't in the
-# explicit map — keyed on the registry primary_tissue, then (coarser) family —
-# so subtypes / new codes / synonyms resolve instead of silently dropping.
+# Burden categories are anatomic-site shares (how ACS/GLOBOCAN tabulate), so a
+# cohort is resolved to its category straight from the **cancer-type registry
+# ontology** — one source of truth — rather than a parallel hand-map: the
+# sarcoma family splits bone vs soft tissue on primary_tissue, plasma-cell and
+# a handful of leukemia/lymphoma exceptions resolve by family, and primary
+# tissue decides everything else. ``cancer-code-burden-map.csv`` now holds only
+# the few true exceptions the ontology can't express.
+
+# Sarcoma family -> bone_and_joint when its primary_tissue is skeletal, else
+# soft_tissue_sarcoma (covers the 40+ SARC_* / RMS_* / OS / EWS / CHOR codes).
+_BONE_SARCOMA_TISSUES = {"bone", "cartilage", "notochord"}
+
+# Registry primary_tissue -> burden category. Covers every non-heme tissue in
+# the registry; heme tissues are routed by :data:`_HEME_TISSUE_BURDEN` below.
 _PRIMARY_TISSUE_BURDEN = {
     "lung": "lung", "breast": "breast", "prostate": "prostate",
-    "colon": "colorectal", "rectum": "colorectal", "pancreas": "pancreas",
-    "liver": "liver", "bile_duct": "liver", "stomach": "stomach",
-    "esophagus": "esophagus", "bladder": "bladder", "kidney": "kidney",
+    "colon": "colorectal", "rectum": "colorectal",
+    "pancreas": "pancreas", "liver": "liver", "bile_duct": "gallbladder_biliary",
+    "stomach": "stomach", "esophagus": "esophagus",
+    "small_intestine": "small_intestine",
+    "bladder": "bladder", "kidney": "kidney", "kidney_cns_soft": "kidney",
     "ovary": "ovary", "endometrium": "uterus_endometrium", "cervix": "cervix",
     "thyroid": "thyroid", "thyroid_c_cell": "thyroid",
-    "testis": "testicular_germ_cell", "pleura": "mesothelioma",
-    "pharynx": "head_and_neck", "oropharynx": "head_and_neck",
-    "oral_cavity": "head_and_neck", "nasopharynx": "head_and_neck",
+    "testis": "testicular_germ_cell",
+    "pleura": "mesothelioma", "peritoneum": "mesothelioma",
+    "oral_cavity": "head_and_neck", "oropharynx": "head_and_neck",
+    "pharynx": "head_and_neck", "nasopharynx": "head_and_neck",
     "larynx": "head_and_neck", "salivary_gland": "head_and_neck",
+    "midline_structures": "head_and_neck", "thymus": "head_and_neck",
+    "thorax": "head_and_neck",
     "cerebrum": "brain_cns", "cerebellum": "brain_cns",
+    "eye": "eye_ocular", "retina": "eye_ocular", "skin": "melanoma",
+    "adrenal_cortex": "adrenal", "adrenal_medulla": "adrenal",
+    "sympathetic_ganglia": "adrenal",
+    "bone": "bone_and_joint", "cartilage": "bone_and_joint",
+    "notochord": "bone_and_joint",
+    "soft_tissue": "soft_tissue_sarcoma", "smooth_muscle": "soft_tissue_sarcoma",
+    "skeletal_muscle": "soft_tissue_sarcoma", "adipose": "soft_tissue_sarcoma",
+    "nerve_sheath": "soft_tissue_sarcoma",
+    "vascular_endothelium": "soft_tissue_sarcoma", "gi_wall": "soft_tissue_sarcoma",
 }
+# Heme (non-plasma): lymph node -> lymphoma; marrow/blood/spleen -> leukemia.
+# AML and Hodgkin are exceptions carried in cancer-code-burden-map.csv.
+_HEME_TISSUE_BURDEN = {
+    "lymph_node": "non_hodgkin_lymphoma",
+    "bone_marrow": "leukemia_all_other", "peripheral_blood": "leukemia_all_other",
+    "spleen_marrow": "leukemia_all_other",
+}
+# Last-resort family fallback when primary_tissue is blank/unmapped.
 _FAMILY_BURDEN = {
-    "sarcoma": "soft_tissue_and_bone_sarcoma", "melanoma": "melanoma",
-    "neuroendocrine": "neuroendocrine_aggregate", "cns": "brain_cns",
-    "embryonal": "pediatric_cancers", "heme-bcell": "non_hodgkin_lymphoma",
-    "heme-tcell": "non_hodgkin_lymphoma", "heme-myeloid": "leukemia_AML",
-    "heme-plasma": "multiple_myeloma",
+    "sarcoma": "soft_tissue_sarcoma", "melanoma": "melanoma", "cns": "brain_cns",
 }
 
 
 def burden_category(cancer_type):
-    """Robustly resolve a cancer type (code, alias, or display name) to a burden
-    category. Order: normalize via :func:`resolve_cancer_type`; explicit
-    ``cancer-code-burden-map``; walk the registry ``parent_code`` chain (so
-    subtypes inherit their parent); then ``primary_tissue``; then ``family``.
-    Returns ``None`` only when nothing matches — callers should **warn**, not
-    silently skip (an unmapped cohort is a coverage gap, not a no-op)."""
+    """Robustly resolve a cancer type (code, alias, or display name) to an
+    anatomic burden category, driven by the cancer-type registry ontology.
+    Order: normalize via :func:`resolve_cancer_type`; the small explicit
+    ``cancer-code-burden-map`` *override* (walking the ``parent_code`` chain);
+    then registry-driven — sarcoma family splits bone vs soft tissue, plasma
+    cell -> myeloma, other heme by tissue, then ``primary_tissue``, then
+    ``family``. Returns ``None`` only when nothing matches — callers should
+    **warn**, not silently skip (an unmapped cohort is a coverage gap)."""
     try:
         code = resolve_cancer_type(cancer_type)
     except ValueError:
         return None
     if code is None:
         return None
-    explicit = cancer_code_burden_map()
+    override = cancer_code_burden_map()
     reg = cancer_type_registry().set_index("code")
-    # explicit map, walking up the parent chain
+    # 1. explicit override (true exceptions only), walking up the parent chain
     cur, seen = code, set()
     while cur and cur not in seen:
         seen.add(cur)
-        if cur in explicit:
-            return explicit[cur]
+        if cur in override:
+            return override[cur]
         if cur not in reg.index:
             break
-        parent = str(reg.loc[cur].get("parent_code", "") or "").strip()
-        cur = parent or None
-    # primary_tissue then family fallback (on the resolved code)
-    if code in reg.index:
-        row = reg.loc[code]
+        cur = str(reg.loc[cur].get("parent_code", "") or "").strip() or None
+    # 2. registry-driven, walking up the parent chain for blank tissue/family
+    cur, seen = code, set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        if cur not in reg.index:
+            break
+        row = reg.loc[cur]
+        family = str(row.get("family", "") or "")
         tissue = str(row.get("primary_tissue", "") or "")
+        if family == "sarcoma":
+            return ("bone_and_joint" if tissue in _BONE_SARCOMA_TISSUES
+                    else "soft_tissue_sarcoma")
+        if family == "heme-plasma":
+            return "multiple_myeloma"
+        if family.startswith("heme") and tissue in _HEME_TISSUE_BURDEN:
+            return _HEME_TISSUE_BURDEN[tissue]
         if tissue in _PRIMARY_TISSUE_BURDEN:
             return _PRIMARY_TISSUE_BURDEN[tissue]
-        return _FAMILY_BURDEN.get(str(row.get("family", "") or ""))
+        if family in _FAMILY_BURDEN:
+            return _FAMILY_BURDEN[family]
+        cur = str(row.get("parent_code", "") or "").strip() or None
     return None
 
 
