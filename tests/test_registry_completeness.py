@@ -41,14 +41,17 @@ from pirlygenes.load_dataset import get_data
 # cancer-specific axis panels get curated per family.
 _MISSING_THERAPY_AXIS = frozenset(
     {
+        # Phase C: the bone / RMS / ESS sarcomas (SARC_OS, SARC_EWS,
+        # SARC_CHON/CHOR, SARC_GCTB, SARC_ESS_*, SARC_RMS_*) are now parented
+        # under SARC and inherit its therapy axis, so they are no longer gaps.
         "ACC", "ACINIC", "ADCC", "ATRT", "BL", "BLCA", "B_ALL", "CESC",
-        "CHOL", "SARC_CHON", "SARC_CHOR", "CLL", "CML", "CTCL", "DLBC", "ESCA",
-        "SARC_ESS_HG", "SARC_ESS_LG", "SARC_EWS", "FL", "SARC_GCTB", "GBM", "HCL", "HEPB",
+        "CHOL", "CLL", "CML", "CTCL", "DLBC", "ESCA",
+        "FL", "GBM", "HCL", "HEPB",
         "HL", "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC",
         "LUNG_NET_LC", "LUNG_NET_LCNEC", "MBL", "MCL", "MDS", "MEC",
-        "MESO", "MID_NET", "MM", "MPN", "MTC", "NPC", "NUTM", "SARC_OS",
+        "MESO", "MID_NET", "MM", "MPN", "MTC", "NPC", "NUTM",
         "OV", "PAAD", "PANNET", "PCPG", "RB", "READ", "REC_NET",
-        "SARC_RMS_ARMS", "SARC_RMS_ERMS", "SARC_RMS_SSRMS", "RT", "SARC",
+        "RT", "SARC",
         "SCLC", "STAD", "TGCT", "THCA", "THYM", "T_ALL", "UCEC", "UCS",
         "UVM", "WILMS",
     }
