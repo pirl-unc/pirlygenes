@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -266,6 +267,37 @@ def main():
     print(f"done -> {OUT}", flush=True)
 
 
+# CTA family prefixes, longest/most-specific first so e.g. MAGEA wins over a
+# bare "MAGE" and SPANXN over SPANX.
+_FAMILY_PREFIXES = [
+    "MAGEA", "MAGEB", "MAGEC", "XAGE", "GAGE", "PAGE", "SPANXN", "SPANX",
+    "SSX", "CTAG", "CT45", "CT47", "CT83", "DAZ", "SYCP", "SYCE", "SPATA",
+    "CSAG", "TSPY", "PASD", "HORMAD", "PRAME", "NUTM", "GAGE12", "LUZP4",
+    "ACTL", "DPPA", "DPEP", "TKTL", "PHF", "SPO", "MEIOC", "SYCN",
+]
+_FAMILY_LABEL = {"MAGEA": "MAGE-A", "MAGEB": "MAGE-B", "MAGEC": "MAGE-C"}
+
+
+def _cta_family(symbol: str) -> str:
+    """Group a CTA symbol into its antigen family (MAGE-A, GAGE, XAGE, SSX,
+    CTAG, SPANX, PAGE, DAZ, …); singletons (PRAME, NUTM1) map to themselves."""
+    s = symbol.upper()
+    for p in _FAMILY_PREFIXES:
+        if s.startswith(p):
+            return _FAMILY_LABEL.get(p, p)
+    stem = re.sub(r"[0-9].*$", "", s)
+    return stem or s
+
+
+def _shade(rgb, k):
+    """Lighten (k>0) / darken (k<0) an RGB color, keeping its hue — used to
+    distinguish members within one family."""
+    import colorsys
+    r, g, b = rgb[:3]
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+    return colorsys.hls_to_rgb(h, min(1.0, max(0.0, l + k)), s)
+
+
 def _parent_map():
     """code -> parent_code from the cancer-type registry (derived sub-cohorts
     only)."""
@@ -323,14 +355,34 @@ def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
                  f"(> {threshold} TPM, Treehouse 25.01 PolyA)", fontsize=11)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(OUT / "cta_peak_coverage_by_parent_child.png", dpi=150)
+    fig.savefig(OUT / f"cta_peak_coverage_by_parent_child_t{threshold}.png", dpi=150)
     plt.close(fig)
 
-    # ---- (b) colored by top CTA ----
+    # ---- (b) colored by top CTA, grouped by antigen family ----
+    # distinct base hue per family; members shaded within the family hue.
+    distinct = [
+        "#e6194B", "#3cb44b", "#4363d8", "#f58231", "#911eb4", "#42d4f4",
+        "#f032e6", "#bfef45", "#469990", "#9A6324", "#800000", "#808000",
+        "#000075", "#e6beff", "#aaffc3", "#ffd8b1", "#a9a9a9", "#fabed4",
+    ]
     ctas = list(dict.fromkeys(df.sort_values("peak", ascending=False)["top_cta"]))
-    cmap = plt.get_cmap("tab20")
-    cta_color = {c: cmap(i % 20) for i, c in enumerate(ctas)}
-    fig, ax = plt.subplots(figsize=(11, h))
+    fam_of = {c: _cta_family(c) for c in ctas}
+    # families ordered by first (highest-coverage) appearance
+    fam_order = list(dict.fromkeys(fam_of[c] for c in ctas))
+    fam_base = {f: distinct[i % len(distinct)] for i, f in enumerate(fam_order)}
+    members = {}
+    for c in ctas:
+        members.setdefault(fam_of[c], []).append(c)
+    import matplotlib.colors as mcolors
+    cta_color = {}
+    for f, ms in members.items():
+        base = mcolors.to_rgb(fam_base[f])
+        ks = ([0.0] if len(ms) == 1
+              else [(-0.18 + 0.36 * j / (len(ms) - 1)) for j in range(len(ms))])
+        for c, k in zip(ms, ks):
+            cta_color[c] = _shade(base, k)
+
+    fig, ax = plt.subplots(figsize=(12, h))
     ax.barh(range(len(df)), df["peak"], color=[cta_color[c] for c in df["top_cta"]])
     ax.set_yticks(range(len(df)))
     ax.set_yticklabels(labels, fontsize=7)
@@ -338,13 +390,20 @@ def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
     ax.set_xlim(0, 100)
     for y, (p, c) in enumerate(zip(df["peak"], df["top_cta"])):
         ax.text(p + 0.6, y, c, va="center", fontsize=6)
-    ax.legend(handles=[Patch(color=cta_color[c], label=c) for c in ctas],
-              loc="lower right", fontsize=7, title="top CTA", ncol=2)
-    ax.set_title(f"CTA coverage ceiling by cancer type, colored by dominant CTA "
-                 f"(> {threshold} TPM)", fontsize=11)
+    # legend grouped by family: a family header swatch + its members
+    handles = []
+    for f in fam_order:
+        handles.append(Patch(color=fam_base[f], label=f"{f}:"))
+        for c in members[f]:
+            handles.append(Patch(color=cta_color[c], label=f"   {c}"))
+    ax.legend(handles=handles, loc="lower right", fontsize=6,
+              title="top CTA by family", ncol=2, handlelength=1.1,
+              labelspacing=0.25, columnspacing=1.0)
+    ax.set_title(f"CTA coverage ceiling by cancer type, dominant CTA colored by "
+                 f"antigen family (> {threshold} TPM)", fontsize=11)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(OUT / "cta_peak_coverage_by_top_cta.png", dpi=150)
+    fig.savefig(OUT / f"cta_peak_coverage_by_top_cta_t{threshold}.png", dpi=150)
     plt.close(fig)
     print(f"      {len(df)} cohorts ({int(df['is_derived'].sum())} derived) "
           "-> 2 bar charts", flush=True)
@@ -358,7 +417,7 @@ def _coverage_every_cohort(mat, cohorts, ensg_to_sym, threshold):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    sub = OUT / "cta_coverage"
+    sub = OUT / f"cta_coverage_t{threshold}"
     sub.mkdir(parents=True, exist_ok=True)
     summary = []  # (code, n, curve, names) for the overview + a saturation stat
     for code in sorted(cohorts):
@@ -411,7 +470,7 @@ def _coverage_every_cohort(mat, cohorts, ensg_to_sym, threshold):
     fig.supxlabel("# CTAs added (greedy)", fontsize=8)
     fig.supylabel("% patients covered", fontsize=8)
     fig.tight_layout(rect=(0.01, 0.01, 1, 0.98))
-    fig.savefig(OUT / "cta_coverage_all_cohorts_overview.png", dpi=150)
+    fig.savefig(OUT / f"cta_coverage_all_cohorts_overview_t{threshold}.png", dpi=150)
     plt.close(fig)
     print(f"      wrote {len(summary)} per-cohort coverage PNGs + overview",
           flush=True)
@@ -442,7 +501,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
                  f"(top 40 CTAs × cohorts, Treehouse 25.01 PolyA)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="patients")
     fig.tight_layout()
-    fig.savefig(OUT / "cta_patient_count_heatmap.png", dpi=150)
+    fig.savefig(OUT / f"cta_patient_count_heatmap_t{threshold}.png", dpi=150)
     plt.close(fig)
 
     # also a %-of-cohort version (breadth, normalized for cohort size)
@@ -459,7 +518,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
                  f"(top 40 CTAs × cohorts)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="% patients")
     fig.tight_layout()
-    fig.savefig(OUT / "cta_patient_pct_heatmap.png", dpi=150)
+    fig.savefig(OUT / f"cta_patient_pct_heatmap_t{threshold}.png", dpi=150)
     plt.close(fig)
 
     # ---- (3) sorted %-expressing bar for the focus cohort ----
@@ -476,7 +535,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
         for y, (p, k) in enumerate(zip(fc[pcol], fc[tcol])):
             ax.text(p, y, f" {k}", va="center", fontsize=6)
         fig.tight_layout()
-        fig.savefig(OUT / f"cta_pct_bar_{focus}.png", dpi=150)
+        fig.savefig(OUT / f"cta_pct_bar_{focus}_t{threshold}.png", dpi=150)
         plt.close(fig)
 
     # ---- (4) co-occurrence-aware coverage curves ----
@@ -497,7 +556,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     ax.legend(fontsize=8)
     ax.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(OUT / "cta_coverage_curves.png", dpi=150)
+    fig.savefig(OUT / f"cta_coverage_curves_t{threshold}.png", dpi=150)
     plt.close(fig)
 
     # focus-cohort coverage with the CTA names annotated at each step
@@ -517,7 +576,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
         ax.set_xlim(0, min(30, len(cum) + 1))
         ax.grid(alpha=0.3)
         fig.tight_layout()
-        fig.savefig(OUT / f"cta_coverage_{focus}.png", dpi=150)
+        fig.savefig(OUT / f"cta_coverage_{focus}_t{threshold}.png", dpi=150)
         plt.close(fig)
 
 
