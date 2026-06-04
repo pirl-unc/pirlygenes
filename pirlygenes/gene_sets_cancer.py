@@ -1437,6 +1437,21 @@ def _cta_by_column(column, filtered_only=False, exclude_never_expressed=False):
     return result
 
 
+def cta_symbol_for_alias(name):
+    """Resolve a CTA gene name or synonym to its official symbol.
+
+    Case- and punctuation-insensitive, so ``"NY-ESO-1"``, ``"ESO1"`` and
+    ``"CTAG1B"`` all resolve to ``"CTAG1B"``; returns ``None`` for unknown
+    names.  Delegates to tsarina (the curation source of truth); see
+    tsarina#77.  Returns ``None`` if tsarina is too old to provide it.
+    """
+    try:
+        from tsarina.gene_sets import cta_symbol_for_alias as _resolve
+    except Exception:
+        return None
+    return _resolve(name)
+
+
 def CTA_gene_names():
     """CTA gene symbols: filtered AND expressed (>= 2 nTPM somewhere).
 
