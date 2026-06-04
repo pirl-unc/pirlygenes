@@ -2185,6 +2185,107 @@ def protein_family(gene):
     return None
 
 
+_BURDEN_METRICS = ("us_incidence_pct", "us_mortality_pct",
+                   "world_incidence_pct", "world_mortality_pct")
+
+
+def cancer_burden_df():
+    """Return the curated ``cancer-incidence-mortality.csv`` reference: each
+    cancer **burden category**'s share (%) of annual cancer incidence and
+    mortality, for the US and worldwide, cited per row (ACS Cancer Facts &
+    Figures 2024 / GLOBOCAN 2022). Rows flagged in ``notes`` as subsets/rollups
+    (e.g. small_cell_lung, leukemia subtypes, sarcoma/pediatric aggregates)
+    overlap others — don't sum them blindly. Incidence vs mortality diverge
+    sharply (pancreas/lung high mortality:incidence; prostate/thyroid low), as
+    do US vs worldwide (stomach/liver/cervix far larger globally)."""
+    return get_data("cancer-incidence-mortality")
+
+
+def cancer_code_burden_map():
+    """Return ``{cancer_code: burden_category}`` from
+    ``cancer-code-burden-map.csv`` — maps registry codes onto the broad burden
+    categories (e.g. LUAD/LUSC -> lung; COAD/READ -> colorectal; the sarcoma
+    codes -> soft_tissue_and_bone_sarcoma). Many codes share a category, so
+    don't double-count a category's burden across its codes."""
+    df = get_data("cancer-code-burden-map")
+    return dict(zip(df["cancer_code"].astype(str),
+                    df["burden_category"].astype(str)))
+
+
+def cancer_burden(category=None, *, metric="us_incidence_pct"):
+    """Burden share (%) for one category and metric, or the whole
+    ``{category: pct}`` map. ``metric`` is one of ``us_incidence_pct``,
+    ``us_mortality_pct``, ``world_incidence_pct``, ``world_mortality_pct``."""
+    if metric not in _BURDEN_METRICS:
+        raise ValueError(f"metric must be one of {_BURDEN_METRICS}")
+    df = cancer_burden_df()
+    mapping = dict(zip(df["burden_category"].astype(str),
+                       df[metric].astype(float)))
+    if category is None:
+        return mapping
+    return mapping.get(category)
+
+
+# Fallbacks for resolving a code to a burden category when it isn't in the
+# explicit map — keyed on the registry primary_tissue, then (coarser) family —
+# so subtypes / new codes / synonyms resolve instead of silently dropping.
+_PRIMARY_TISSUE_BURDEN = {
+    "lung": "lung", "breast": "breast", "prostate": "prostate",
+    "colon": "colorectal", "rectum": "colorectal", "pancreas": "pancreas",
+    "liver": "liver", "bile_duct": "liver", "stomach": "stomach",
+    "esophagus": "esophagus", "bladder": "bladder", "kidney": "kidney",
+    "ovary": "ovary", "endometrium": "uterus_endometrium", "cervix": "cervix",
+    "thyroid": "thyroid", "thyroid_c_cell": "thyroid",
+    "testis": "testicular_germ_cell", "pleura": "mesothelioma",
+    "pharynx": "head_and_neck", "oropharynx": "head_and_neck",
+    "oral_cavity": "head_and_neck", "nasopharynx": "head_and_neck",
+    "larynx": "head_and_neck", "salivary_gland": "head_and_neck",
+    "cerebrum": "brain_cns", "cerebellum": "brain_cns",
+}
+_FAMILY_BURDEN = {
+    "sarcoma": "soft_tissue_and_bone_sarcoma", "melanoma": "melanoma",
+    "neuroendocrine": "neuroendocrine_aggregate", "cns": "brain_cns",
+    "embryonal": "pediatric_cancers", "heme-bcell": "non_hodgkin_lymphoma",
+    "heme-tcell": "non_hodgkin_lymphoma", "heme-myeloid": "leukemia_AML",
+    "heme-plasma": "multiple_myeloma",
+}
+
+
+def burden_category(cancer_type):
+    """Robustly resolve a cancer type (code, alias, or display name) to a burden
+    category. Order: normalize via :func:`resolve_cancer_type`; explicit
+    ``cancer-code-burden-map``; walk the registry ``parent_code`` chain (so
+    subtypes inherit their parent); then ``primary_tissue``; then ``family``.
+    Returns ``None`` only when nothing matches — callers should **warn**, not
+    silently skip (an unmapped cohort is a coverage gap, not a no-op)."""
+    try:
+        code = resolve_cancer_type(cancer_type)
+    except ValueError:
+        return None
+    if code is None:
+        return None
+    explicit = cancer_code_burden_map()
+    reg = cancer_type_registry().set_index("code")
+    # explicit map, walking up the parent chain
+    cur, seen = code, set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        if cur in explicit:
+            return explicit[cur]
+        if cur not in reg.index:
+            break
+        parent = str(reg.loc[cur].get("parent_code", "") or "").strip()
+        cur = parent or None
+    # primary_tissue then family fallback (on the resolved code)
+    if code in reg.index:
+        row = reg.loc[code]
+        tissue = str(row.get("primary_tissue", "") or "")
+        if tissue in _PRIMARY_TISSUE_BURDEN:
+            return _PRIMARY_TISSUE_BURDEN[tissue]
+        return _FAMILY_BURDEN.get(str(row.get("family", "") or ""))
+    return None
+
+
 # Per-cohort median tumor-cell purity from TCGA (Aran et al., Nat Commun 2015).
 # Used by trufflepig's purity-confidence reasoning; published here as reference
 # data so consumers don't have to depend on the analysis package just to look
