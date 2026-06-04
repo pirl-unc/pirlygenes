@@ -278,10 +278,54 @@ def _build_parser() -> argparse.ArgumentParser:
 
     plot_parser = subparsers.add_parser(
         "plot",
-        help="Cohort-level plots (NotImplemented; see plan milestone 7).",
+        help="Cohort-level plots over the reference data.",
+        description=(
+            "Cohort-level plots over the packaged reference data.\n\n"
+            "actions:\n"
+            "  patient-coverage   per-cohort patient coverage of a gene set\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    plot_parser.add_argument(
-        "target", help="What to plot (e.g. a gene symbol or panel name)."
+    plot_sub = plot_parser.add_subparsers(
+        dest="plot_action", metavar="<action>", title="actions",
+    )
+    pc = plot_sub.add_parser(
+        "patient-coverage",
+        help="Per-cohort patient coverage of a gene set (counts CSV + plots).",
+        description=(
+            "For each cancer cohort with cached per-sample data, count how many\n"
+            "patients express each gene of a panel above TPM thresholds, and\n"
+            "compute greedy co-occurrence-aware coverage. Writes a counts CSV +\n"
+            "a stacked coverage bar + a coverage-curve small-multiples."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  pirlygenes plot patient-coverage --gene-set cta\n"
+            "  pirlygenes plot patient-coverage --gene-set lineage:PRAD --cohort PRAD\n"
+            "  pirlygenes plot patient-coverage --gene-set ./my_symbols.csv\n"
+        ),
+    )
+    pc.add_argument(
+        "--gene-set", required=True,
+        help=("panel to score: cta | surfaceome | mito | housekeeping | "
+              "therapy:<type> | lineage:<code> | a path to a CSV of symbols/ENSG ids"),
+    )
+    pc.add_argument(
+        "--source", default="treehouse-polya-25-01",
+        help="expression source id with cached per-sample data (default: %(default)s)",
+    )
+    pc.add_argument(
+        "--threshold", type=int, default=25,
+        help="TPM cutoff for the coverage plots (default: %(default)s)",
+    )
+    pc.add_argument(
+        "--cohort", action="append", default=None, metavar="CODE",
+        help="restrict to specific cancer-type code(s); repeatable (default: all)",
+    )
+    pc.add_argument(
+        "--out", default="coverage_out",
+        help="output directory for the CSV + PNGs (default: %(default)s)",
     )
 
     for name in sorted(_ANALYSIS_SUBCOMMANDS):
@@ -622,11 +666,37 @@ def cmd_build(args: argparse.Namespace) -> int:
     return int(result.returncode)
 
 
-def cmd_plot(_args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        _NOT_IMPLEMENTED_MESSAGE.format(subcommand="plot", milestone=7) + "\n"
+def cmd_plot_patient_coverage(args: argparse.Namespace) -> int:
+    from . import coverage
+
+    try:
+        result = coverage.render(
+            args.gene_set, source_id=args.source, codes=args.cohort,
+            threshold=args.threshold, out_dir=args.out,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        return 2
+    if result["n_cohorts"] == 0:
+        sys.stderr.write(
+            f"no cohorts with cached per-sample data for source "
+            f"'{args.source}' (and gene set '{result['label']}'). "
+            f"Run `pirlygenes downloads fetch {args.source}` / "
+            f"`pirlygenes build {args.source}` first.\n"
+        )
+        return 2
+    sys.stdout.write(
+        f"{result['label']}: {result['n_cohorts']} cohorts "
+        f"(> {args.threshold} TPM)\n"
     )
-    return 2
+    for kind, path in result["paths"].items():
+        sys.stdout.write(f"  {kind}: {path}\n")
+    return 0
+
+
+_PLOT_DISPATCH = {
+    "patient-coverage": cmd_plot_patient_coverage,
+}
 
 
 def cmd_analysis_moved(_args: argparse.Namespace) -> int:
@@ -686,9 +756,15 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         return handler(args)
 
+    if subcommand == "plot":
+        handler = _PLOT_DISPATCH.get(args.plot_action)
+        if handler is None:
+            sys.stderr.write("usage: pirlygenes plot {patient-coverage}\n")
+            return 2
+        return handler(args)
+
     dispatch = {
         "build": cmd_build,
-        "plot": cmd_plot,
     }
     handler = dispatch.get(subcommand)
     if handler is None:

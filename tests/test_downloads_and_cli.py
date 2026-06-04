@@ -2,8 +2,9 @@
 
 Covers the foundation shipped in the expression-data refresh project
 (see docs/expression-data-refresh-plan.md). Heavy behavior (build,
-fetch, plot) is scaffolded only — those subcommands return a clear
-NotImplemented pointer and are not exercised here.
+fetch) is scaffolded only — those subcommands return a clear
+NotImplemented pointer and are not exercised here. `plot
+patient-coverage` is implemented and covered in test_coverage.py.
 """
 
 from __future__ import annotations
@@ -147,11 +148,12 @@ def test_cli_build_ambiguous_cancer_code_lists_candidates():
     pass
 
 
-def test_cli_plot_scaffolded_but_not_implemented():
-    rc, _, err = _run_cli(["plot", "FATE1"])
+def test_cli_plot_requires_an_action():
+    # `plot` is now implemented (patient-coverage); with no action it prints a
+    # usage line naming the available action and exits non-zero.
+    rc, _, err = _run_cli(["plot"])
     assert rc == 2
-    assert "not implemented" in err
-    assert "milestone 7" in err
+    assert "patient-coverage" in err
 
 
 def test_cli_analyze_redirects_to_trufflepig():
