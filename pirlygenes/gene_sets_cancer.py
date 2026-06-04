@@ -2064,6 +2064,36 @@ def disease_state_rules_df():
     return get_data("disease-state-rules")
 
 
+def cancer_tmb_df():
+    """Return the curated ``cancer-tmb.csv`` reference: median tumor
+    mutational burden (mut/Mb) per cancer-type code, with a per-row
+    published source/PMID and a confidence flag.
+
+    Cohorts with no defensible published per-Mb median are present with a
+    blank ``median_tmb_mut_mb`` (and a ``confidence`` of ``none``) so the
+    gap is explicit rather than silently absent. Values mix WES-anchored
+    medians (Lawrence 2013) with panel-based medians (Chalmers 2017) and
+    disease-specific studies; see the ``source``/``notes`` columns — panel
+    and WES TMB are not strictly comparable in the low-TMB range."""
+    return get_data("cancer-tmb")
+
+
+def cancer_tmb(cancer_type=None):
+    """Median TMB (mut/Mb) for one cancer type, or the whole
+    ``{code: median_tmb}`` map (codes with no published value omitted).
+
+    ``cancer_type`` is resolved through :func:`resolve_cancer_type`, so
+    aliases and display names work; returns ``None`` if the type has no
+    curated TMB value."""
+    df = cancer_tmb_df()
+    vals = df.dropna(subset=["median_tmb_mut_mb"])
+    mapping = dict(zip(vals["cancer_code"].astype(str),
+                       vals["median_tmb_mut_mb"].astype(float)))
+    if cancer_type is None:
+        return mapping
+    return mapping.get(resolve_cancer_type(cancer_type))
+
+
 # Per-cohort median tumor-cell purity from TCGA (Aran et al., Nat Commun 2015).
 # Used by trufflepig's purity-confidence reasoning; published here as reference
 # data so consumers don't have to depend on the analysis package just to look
