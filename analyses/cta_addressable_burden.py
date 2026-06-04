@@ -40,7 +40,7 @@ METRICS = {
 # double-weighted (the finer atom cohorts are kept; the rollups are dropped).
 _REDUNDANT = {"BRCA_LumA", "BRCA_LumB", "BRCA_HER2", "BRCA_Basal", "BRCA_Normal",
               "HNSC_HPVpos", "HNSC_HPVneg",
-              "SARC_RMS", "SARC_LPS", "TCGA_SARC", "SARC_PAN"}
+              "SARC", "SARC_RMS", "SARC_LPS"}
 
 
 def _is_mage(sym):

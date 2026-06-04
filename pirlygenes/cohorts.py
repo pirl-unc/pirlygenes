@@ -54,9 +54,12 @@ _TH_DIRECT = [
 _TH_TCGA = [
     "ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM",
     "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC", "LUAD", "LUSC",
-    "MESO", "OV", "PAAD", "PCPG", "PRAD", "READ", "SARC", "SKCM", "STAD",
+    "MESO", "OV", "PAAD", "PCPG", "PRAD", "READ", "SKCM", "STAD",
     "TGCT", "THCA", "THYM", "UCEC", "UCS", "UVM",
 ]
+# NB: no "SARC" — the bare SARC code is the computed pan-sarcoma grand union (its
+# TCGA-SARC leiomyosarcoma samples are already in the SARC_LMS atom), not a
+# concrete per-sample cohort.
 # Molecular / histology sub-cohorts (mixed-case codes -> explicit stems).
 _TH_DERIVED = {
     "BRCA_Basal": "tcga_brca_basal", "BRCA_HER2": "tcga_brca_her2",

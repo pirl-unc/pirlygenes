@@ -984,24 +984,27 @@ def cohort_aggregates_df():
 
 
 def cohort_aggregates():
-    """``{aggregate_code: [member_code, ...]}`` for every explicit rollup cohort,
-    plus the computed pan-sarcoma ``SARC`` grand union (every ``family ==
-    'sarcoma'`` atom that is not itself an aggregate)."""
+    """``{aggregate_code: [member_code, ...]}`` for every computed-aggregate
+    cohort: the curated histology rollups (``SARC_RMS``, ``SARC_LPS``) plus the
+    pan-sarcoma ``SARC`` grand union — every ``family == 'sarcoma'`` atom that is
+    not itself an aggregate (``SARC`` is itself a registry code but resolves to
+    the computed union; its TCGA-SARC samples are already folded into the
+    histology atoms, so there is no separate frozen ``SARC`` shard)."""
     df = cohort_aggregates_df()
     out = {}
     for agg, grp in df.groupby("aggregate_code"):
         out[str(agg)] = list(dict.fromkeys(grp["member_code"].astype(str)))
-    # pan-sarcoma grand union, computed from family (excludes the aggregates).
-    aggs = set(out)
-    out["SARC_PAN"] = [c for c in sarcoma_lineage_codes() if c not in aggs]
+    # pan-sarcoma grand union under the bare SARC code, computed from family;
+    # exclude the aggregates AND SARC itself (no self-membership / circularity).
+    aggs = set(out) | {"SARC"}
+    out["SARC"] = [c for c in sarcoma_lineage_codes() if c not in aggs]
     return out
 
 
 def cohort_aggregate_members(aggregate_code):
     """Member atom codes pooled by a computed-aggregate cohort, or ``None`` if
-    ``aggregate_code`` is not an aggregate. ``SARC_PAN`` is the pan-sarcoma
-    grand union; ``SARC_RMS`` / ``SARC_LPS`` / ``TCGA_SARC`` are the curated
-    histology/source rollups."""
+    ``aggregate_code`` is not an aggregate. ``SARC`` is the pan-sarcoma grand
+    union; ``SARC_RMS`` / ``SARC_LPS`` are the curated histology rollups."""
     return cohort_aggregates().get(str(aggregate_code))
 
 

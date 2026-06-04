@@ -336,6 +336,9 @@ def test_source_cohort_values_are_canonical():
     df = cancer_type_registry()
     valid = {
         "",
+        # Phase C: the bare SARC code is a computed pan-sarcoma grand union
+        # (no frozen shard), not a materialised cohort.
+        "COMPUTED_PAN_SARCOMA",
         "TCGA_XENA_TOIL",
         "TCGA_BRCA_PAM50",
         "TCGA_HNSC",

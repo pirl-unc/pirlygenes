@@ -22,19 +22,20 @@ def test_rms_rollup_pools_the_four_subtypes():
                       "SARC_RMS_SSRMS"}
 
 
-def test_lps_and_tcga_rollups():
+def test_lps_rollup():
     assert "SARC_DDLPS" in cohort_aggregate_members("SARC_LPS")
-    # TCGA-SARC source rollup includes the leiomyosarcoma slice (code "SARC")
-    assert "SARC" in cohort_aggregate_members("TCGA_SARC")
 
 
-def test_pan_sarcoma_is_family_union_excluding_aggregates():
-    pan = cohort_aggregate_members("SARC_PAN")
+def test_sarc_is_pan_sarcoma_union_excluding_aggregates_and_self():
+    # The bare SARC code resolves to the pan-sarcoma grand union (its TCGA-SARC
+    # leiomyosarcoma samples are already folded into SARC_LMS).
+    pan = cohort_aggregate_members("SARC")
     lineage = set(sarcoma_lineage_codes())
-    aggregates = set(cohort_aggregates()) - {"SARC_PAN"}
-    # every pan member is a real sarcoma atom, and no aggregate leaks in
+    aggregates = set(cohort_aggregates())
+    # every pan member is a real sarcoma atom; no aggregate (incl SARC) leaks in
     assert set(pan) <= lineage
     assert not (set(pan) & aggregates)
+    assert "SARC" not in pan  # no self-membership / circularity
     # the curated rollup members themselves are atoms in the pan union
     assert "SARC_RMS_ERMS" in pan and "SARC_LMS" in pan
 
