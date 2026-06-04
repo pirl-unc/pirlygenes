@@ -303,7 +303,10 @@ def _cta_family(symbol: str) -> str:
         if s.startswith(p):
             return _FAMILY_LABEL.get(p, p)
     stem = re.sub(r"[0-9].*$", "", s)
-    return stem or s
+    # Guard against degenerate stems: symbols like C12orf42 / H2BC1 / ZC3H11B
+    # strip to "C"/"H"/"ZC", which are not real antigen families. Below a 3-char
+    # stem, treat the CTA as its own (singleton) family instead of a fake group.
+    return stem if len(stem) >= 3 else s
 
 
 def _shade(rgb, k):
