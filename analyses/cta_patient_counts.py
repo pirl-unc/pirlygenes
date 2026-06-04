@@ -124,7 +124,7 @@ def _cbioportal_derived_cohorts() -> list[TreehouseCohort]:
         + _tcga_case_subtype_cohorts(
             _DERIVED_DIR / "cbioportal_hnsc_hpv.csv",
             "head & neck squamous cell carcinoma", "patientId", "hpv_subtype",
-            recode={"HNSC_HPV-": "HNSC_HPV_neg", "HNSC_HPV+": "HNSC_HPV_pos"})
+            recode={"HNSC_HPV-": "HNSC_HPVneg", "HNSC_HPV+": "HNSC_HPVpos"})
     )
 
 
@@ -194,7 +194,7 @@ def extract_cta_matrix(symbols: dict[str, str]) -> pd.DataFrame:
 # TPM) so coverage isn't confined to a single compendium. The set expands as
 # more sources gain materialized per-sample data (see issue #275).
 _EXTRA_PARQUET_COHORTS = [
-    ("treehouse-ribod-25-01", "CHOR"),
+    ("treehouse-ribod-25-01", "SARC_CHOR"),
     ("treehouse-ribod-25-01", "RB"),
 ]
 

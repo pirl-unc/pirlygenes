@@ -47,7 +47,7 @@ def test_code_map_is_overrides_only():
     assert m["SARC_KS"] == "kaposi_sarcoma"
     assert m["LAML"] == "leukemia_AML"
     assert m["HL"] == "hodgkin_lymphoma"
-    assert "LUAD" not in m and "OS" not in m
+    assert "LUAD" not in m and "SARC_OS" not in m
     # every override category exists in the burden table
     cats = set(cancer_burden_df()["burden_category"])
     assert set(m.values()) <= cats
@@ -61,8 +61,8 @@ def test_burden_category_registry_driven():
     assert burden_category("PANNET") == "pancreas"   # NET -> its organ
     assert burden_category("BRCA_LumA") == "breast"  # subtype -> parent tissue
     # sarcoma family splits bone vs soft tissue on primary_tissue
-    assert burden_category("OS") == "bone_and_joint"
-    assert burden_category("EWS") == "bone_and_joint"
+    assert burden_category("SARC_OS") == "bone_and_joint"
+    assert burden_category("SARC_EWS") == "bone_and_joint"
     assert burden_category("SARC_LMS") == "soft_tissue_sarcoma"
     # Kaposi / AML / Hodgkin are the curated overrides
     assert burden_category("SARC_KS") == "kaposi_sarcoma"

@@ -38,7 +38,7 @@ METRICS = {
 # Subtype cohorts whose patients are already counted by a parent cohort in the
 # same burden category — drop them so a category's burden isn't double-weighted.
 _REDUNDANT = {"BRCA_LumA", "BRCA_LumB", "BRCA_HER2", "BRCA_Basal", "BRCA_Normal",
-              "HNSC_HPV_pos", "HNSC_HPV_neg"}
+              "HNSC_HPVpos", "HNSC_HPVneg"}
 
 
 def _is_mage(sym):

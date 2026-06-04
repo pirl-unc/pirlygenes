@@ -259,18 +259,18 @@ LINEAGE_PANELS: dict[str, dict[str, list[tuple[str, str]]]] = {
         # Osteosarcoma: osteoblast lineage (RUNX2 / COL1A1 / ALPL),
         # bone-matrix sialoproteins (SPP1, IBSP), DLX5 + DMP1 + MEPE
         # round out the panel that trufflepig already uses.
-        "OS": [
+        "SARC_OS": [
             ("RUNX2", "high"), ("COL1A1", "high"), ("ALPL", "high"),
             ("SPP1", "high"), ("IBSP", "high"),
             ("DLX5", "high"), ("DMP1", "high"), ("MEPE", "high"),
         ],
         # Ewing: EWSR1-FLI1 target genes (NKX2-2, CAV1) + CD99 (MIC2).
-        "EWS": [
+        "SARC_EWS": [
             ("NKX2-2", "high"), ("CD99", "high"), ("CAV1", "high"),
         ],
         # Chondrosarcoma: cartilage matrix (COL2A1, ACAN, COMP) + SOX9
         # + COL11A1.
-        "CHON": [
+        "SARC_CHON": [
             ("COL2A1", "high"), ("SOX9", "high"), ("ACAN", "high"),
             ("COMP", "high"), ("COL11A1", "high"),
         ],
@@ -278,11 +278,11 @@ LINEAGE_PANELS: dict[str, dict[str, list[tuple[str, str]]]] = {
     "MESENCHYMAL": {
         # Rhabdomyosarcoma: skeletal-muscle differentiation TFs +
         # desmin. Trufflepig already curates these.
-        "RMS_ERMS": [
+        "SARC_RMS_ERMS": [
             ("MYOD1", "high"), ("MYOG", "high"), ("DES", "high"),
             ("MYF5", "high"), ("MYF6", "high"),
         ],
-        "RMS_ARMS": [
+        "SARC_RMS_ARMS": [
             ("MYOD1", "high"), ("MYOG", "high"), ("DES", "high"),
             ("MYF5", "high"), ("MYF6", "high"),
         ],

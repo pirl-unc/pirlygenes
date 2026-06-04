@@ -109,10 +109,10 @@ def test_registry_includes_pediatric():
     df = cancer_type_registry()
     codes = set(df["code"])
     for need in (
-        "OS",
-        "EWS",
-        "RMS_ERMS",
-        "RMS_ARMS",
+        "SARC_OS",
+        "SARC_EWS",
+        "SARC_RMS_ERMS",
+        "SARC_RMS_ARMS",
         "NBL",
         "WILMS",
         "RT",
@@ -134,7 +134,7 @@ def test_registry_includes_net_axis():
 def test_registry_includes_rare_entities():
     df = cancer_type_registry()
     codes = set(df["code"])
-    for need in ("NUTM", "ADCC", "MTC", "CHOR", "NPC"):
+    for need in ("NUTM", "ADCC", "MTC", "SARC_CHOR", "NPC"):
         assert need in codes, f"missing rare code: {need}"
 
 
@@ -184,8 +184,8 @@ def test_bone_tissue_returns_osteosarcoma_and_ewing():
     """Site-aware hypothesis: any sample suspected of bone origin
     should be able to enumerate OS + Ewing as candidates."""
     bone_cancers = set(cancer_types_by_tissue("bone"))
-    assert "OS" in bone_cancers
-    assert "EWS" in bone_cancers
+    assert "SARC_OS" in bone_cancers
+    assert "SARC_EWS" in bone_cancers
 
 
 def test_heme_myeloid_family_contains_laml_and_related():
@@ -269,8 +269,8 @@ def test_known_parent_reference_labels_are_connected():
         "BRCA_LumA": "BRCA",
         "BRCA_LumB": "BRCA",
         "BRCA_Normal": "BRCA",
-        "HNSC_HPV_neg": "HNSC",
-        "HNSC_HPV_pos": "HNSC",
+        "HNSC_HPVneg": "HNSC",
+        "HNSC_HPVpos": "HNSC",
         "LUAD_EGFR": "LUAD",
         "LUAD_KRAS": "LUAD",
         "LUAD_STK11": "LUAD",
@@ -409,14 +409,14 @@ def test_expanded_sarcomas_present():
         "SARC_MYXFIB",
         "SARC_SFT",
         "SARC_IMT",
-        "GCTB",
-        "ESS_LG",
-        "ESS_HG",
+        "SARC_GCTB",
+        "SARC_ESS_LG",
+        "SARC_ESS_HG",
         "SARC_LGFMS",
         "SARC_EMC",
         "SARC_PLEOLPS",
-        "RMS_PRMS",
-        "RMS_SSRMS",
+        "SARC_RMS_PRMS",
+        "SARC_RMS_SSRMS",
     }
     missing = required - codes
     assert not missing, f"expanded-sarcoma codes missing: {missing}"

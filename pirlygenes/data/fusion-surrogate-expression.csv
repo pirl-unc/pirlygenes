@@ -1,14 +1,14 @@
 fusion_class,surrogate_gene,surrogate_role,cancer_code,rationale,refs
-EWSR1-FLI1,NR0B1,activated_ectopic,EWS,EWS-FLI1 directly binds GGAA microsatellite in NR0B1 promoter → ectopic expression in ~90% of Ewing sarcoma. Normally silent outside adrenal.,PMID:17035403
-EWSR1-FLI1,FATE1,activated_ectopic,EWS,EWS-FLI1 target; GGAA microsatellite in promoter; ectopic expression in Ewing sarcoma. Normally silent outside testis.,PMID:20194724
-EWSR1-FLI1,GLG1,activated,EWS,EWS-FLI1 downstream target; part of the Ewing signature expression panel.,PMID:17035403
-EWSR1-FLI1,PHOX2B,activated_ectopic,EWS,EWS-FLI1 target; not normally expressed in mesenchymal tissue — its expression narrows candidates to Ewing or neuroblastoma.,PMID:17035403
+EWSR1-FLI1,NR0B1,activated_ectopic,SARC_EWS,EWS-FLI1 directly binds GGAA microsatellite in NR0B1 promoter → ectopic expression in ~90% of Ewing sarcoma. Normally silent outside adrenal.,PMID:17035403
+EWSR1-FLI1,FATE1,activated_ectopic,SARC_EWS,EWS-FLI1 target; GGAA microsatellite in promoter; ectopic expression in Ewing sarcoma. Normally silent outside testis.,PMID:20194724
+EWSR1-FLI1,GLG1,activated,SARC_EWS,EWS-FLI1 downstream target; part of the Ewing signature expression panel.,PMID:17035403
+EWSR1-FLI1,PHOX2B,activated_ectopic,SARC_EWS,EWS-FLI1 target; not normally expressed in mesenchymal tissue — its expression narrows candidates to Ewing or neuroblastoma.,PMID:17035403
 EWSR1-WT1,WT1,activated,SARC_DSRCT,DSRCT expresses the C-terminal WT1 portion from the EWSR1-WT1 fusion; WT1 expression in a small-blue-round-cell tumor + abdominal site narrows to DSRCT.,PMID:24535093
-PAX3-FOXO1,MYOD1,myogenic_lineage,RMS_ARMS,PAX3-FOXO1 locks myogenic lineage; MYOD1 expression is a defining marker of rhabdomyosarcoma.,PMID:26300585
-PAX3-FOXO1,MYOG,myogenic_lineage,RMS_ARMS,Same as MYOD1 — myogenic lineage.,PMID:26300585
-PAX3-FOXO1,SOX10,activated,RMS_ARMS,PAX3-FOXO1 target; SOX10 aberrantly expressed in alveolar-RMS.,PMID:22328973
-PAX3-FOXO1,PIPOX,activated,RMS_ARMS,PAX3-FOXO1 signature gene; used in multi-gene ARMS classifiers.,PMID:22328973
-PAX3-FOXO1,ASS1,activated,RMS_ARMS,PAX3-FOXO1 signature gene.,PMID:22328973
+PAX3-FOXO1,MYOD1,myogenic_lineage,SARC_RMS_ARMS,PAX3-FOXO1 locks myogenic lineage; MYOD1 expression is a defining marker of rhabdomyosarcoma.,PMID:26300585
+PAX3-FOXO1,MYOG,myogenic_lineage,SARC_RMS_ARMS,Same as MYOD1 — myogenic lineage.,PMID:26300585
+PAX3-FOXO1,SOX10,activated,SARC_RMS_ARMS,PAX3-FOXO1 target; SOX10 aberrantly expressed in alveolar-RMS.,PMID:22328973
+PAX3-FOXO1,PIPOX,activated,SARC_RMS_ARMS,PAX3-FOXO1 signature gene; used in multi-gene ARMS classifiers.,PMID:22328973
+PAX3-FOXO1,ASS1,activated,SARC_RMS_ARMS,PAX3-FOXO1 signature gene.,PMID:22328973
 SS18-SSX,SSX1,activated_ectopic,SARC_SYN,SS18-SSX fusion directly derepresses the SSX paralogs. Normally silent outside testis.,PMID:19155519
 SS18-SSX,SSX2,activated_ectopic,SARC_SYN,Same — SS18-SSX derepresses SSX2.,PMID:19155519
 SS18-SSX,SSX4,activated_ectopic,SARC_SYN,Same — SS18-SSX derepresses SSX4.,PMID:19155519
@@ -47,6 +47,6 @@ WNT_pathway,DKK1,activated,MBL_WNT,WNT-driven medulloblastoma expresses the WNT-
 WNT_pathway,AXIN2,activated,MBL_WNT,Same.,PMID:22102580
 WNT_pathway,WIF1,activated,MBL_WNT,Same.,PMID:22102580
 MYC_amp,MYC,activated,MBL_MYC;B_ALL;NUTM,MYC amplification shows up as simple hyperexpression. In the NUTM context MYC is downstream of BRD4-NUTM1.,PMID:22102580
-KMT2A_rearrangement,MEIS1,activated,LAML;B_ALL,"KMT2A (MLL) rearrangement locks the HOXA9/MEIS1 transcriptional program; MEIS1 expression is a surrogate.",PMID:17360954
+KMT2A_rearrangement,MEIS1,activated,LAML;B_ALL,KMT2A (MLL) rearrangement locks the HOXA9/MEIS1 transcriptional program; MEIS1 expression is a surrogate.,PMID:17360954
 KMT2A_rearrangement,HOXA9,activated,LAML;B_ALL,Same.,PMID:17360954
 KMT2A_rearrangement,HOXA10,activated,LAML;B_ALL,Same.,PMID:17360954

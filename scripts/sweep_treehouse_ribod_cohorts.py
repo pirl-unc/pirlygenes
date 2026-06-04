@@ -39,7 +39,7 @@ RELEASE = TreehouseRelease(
 )
 
 COHORTS = [
-    TreehouseCohort("CHOR", "chordoma"),
+    TreehouseCohort("SARC_CHOR", "chordoma"),
     TreehouseCohort("RB", "retinoblastoma"),
 ]
 

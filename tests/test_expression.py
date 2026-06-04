@@ -174,10 +174,10 @@ def test_available_cancer_expression_references_includes_imported_specific_cohor
         rows = df[df["cancer_code"] == code]
         return int(rows.iloc[0]["n_samples"])
 
-    assert _canonical("OS") == "TREEHOUSE_POLYA_25_01"
-    assert _n_samples("OS") == 262
+    assert _canonical("SARC_OS") == "TREEHOUSE_POLYA_25_01"
+    assert _n_samples("SARC_OS") == 262
     assert _canonical("PANNET") == "GSE118014_ALVAREZ_2018"
-    assert _canonical("CHON") == "GSE299759_MEIJER_2026"
+    assert _canonical("SARC_CHON") == "GSE299759_MEIJER_2026"
     assert _canonical("SARC_DDLPS") == "GSE30929_SINGER_2007_LPS"
     assert _canonical("LAML_APL") == "BEATAML_OHSU_2022"
     assert _canonical("RB") == "TREEHOUSE_RIBOD_25_01"
@@ -369,7 +369,7 @@ def test_cancer_reference_expression_imported_os_reference_is_clean_by_default()
     # pyensembl 112 mapping so old symbols are dropped. Historical
     # rescue for Treehouse is queued (see audit "Open questions").
     df = cancer_reference_expression(
-        cancer_types="OS",
+        cancer_types="SARC_OS",
         genes=["COL1A2", "RUNX2", "MALAT1", "MT-CO1"],
         normalize=["tpm", "tpm_clean"],
     )
@@ -385,7 +385,7 @@ def test_cancer_reference_expression_imported_os_reference_is_clean_by_default()
     assert pivot.loc["MALAT1", "TPM_clean"] == 0
     assert pivot.loc["MT-CO1", "TPM_clean"] == 0
 
-    out = cancer_expression("OS", genes=["COL1A2", "MALAT1"])
+    out = cancer_expression("SARC_OS", genes=["COL1A2", "MALAT1"])
     values = dict(zip(out["Symbol"], out["expression"]))
     assert values["COL1A2"] == pivot.loc["COL1A2", "TPM_clean"]
     assert values["MALAT1"] == 0
@@ -479,7 +479,7 @@ def test_imported_symbol_only_references_use_historical_symbol_rescue():
 
 def test_imported_specific_reference_recovers_expected_cohort_markers():
     df = cancer_reference_expression(
-        cancer_types=["SARC_DDLPS", "CHON", "PANNET"],
+        cancer_types=["SARC_DDLPS", "SARC_CHON", "PANNET"],
         genes=["MDM2", "CDK4", "COL2A1", "ACAN", "CHGA"],
         normalize="tpm_clean",
         include_provenance=False,
@@ -498,8 +498,8 @@ def test_imported_specific_reference_recovers_expected_cohort_markers():
     # >1000 thresholds.
     assert pivot.loc["MDM2", "SARC_DDLPS"] > 50
     assert pivot.loc["CDK4", "SARC_DDLPS"] > 1000
-    assert pivot.loc["COL2A1", "CHON"] > 1000
-    assert pivot.loc["ACAN", "CHON"] > 1000
+    assert pivot.loc["COL2A1", "SARC_CHON"] > 1000
+    assert pivot.loc["ACAN", "SARC_CHON"] > 1000
     assert pivot.loc["CHGA", "PANNET"] > 1000
 
 
@@ -646,8 +646,8 @@ def test_cancer_expression_source_candidates_cover_requested_gaps():
         "BRCA_LumA",
         "BRCA_LumB",
         "BRCA_Normal",
-        "HNSC_HPV_pos",
-        "HNSC_HPV_neg",
+        "HNSC_HPVpos",
+        "HNSC_HPVneg",
         "LUAD_EGFR",
         "LUAD_KRAS",
         "LUAD_STK11",
@@ -671,9 +671,9 @@ def test_cancer_expression_source_candidates_cover_requested_gaps():
         "MEC",
         "ADCC",
         "ACINIC",
-        "ESS_HG",
-        "ESS_LG",
-        "GCTB",
+        "SARC_ESS_HG",
+        "SARC_ESS_LG",
+        "SARC_GCTB",
         "SARC_ANGIO",
         "SARC_ASPS",
         "SARC_CCS",
@@ -952,9 +952,9 @@ def test_matched_normal_marker_tables_are_packaged_and_filterable():
     assert "tumor-up-vs-matched-normal.csv" in dataframes
     assert "heme-tumor-up-vs-matched-normal.csv" in dataframes
 
-    os_markers = tumor_up_vs_matched_normal("OS")
+    os_markers = tumor_up_vs_matched_normal("SARC_OS")
     assert len(os_markers) == 10
-    assert os_markers["cancer_code"].eq("OS").all()
+    assert os_markers["cancer_code"].eq("SARC_OS").all()
     assert os_markers.iloc[0]["symbol"] == "COL1A2"
     assert os_markers.iloc[0]["ensembl_gene_id"] == "ENSG00000164692"
     assert os_markers.iloc[0]["fold_change_vs_matched_normal"] > 4000

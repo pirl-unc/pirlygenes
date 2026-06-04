@@ -39,7 +39,7 @@ SOURCE_URL = (
     "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE239nnn/GSE239531/suppl/"
     "GSE239531_raw_counts.tsv.gz"
 )
-CANCER_CODE = "CHOR"
+CANCER_CODE = "SARC_CHOR"
 SOURCE_COHORT = "GSE239531_VANOOST_2024"
 SOURCE_PROJECT = "GEO"
 PIPELINE = "gse239531_chordoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_v1"

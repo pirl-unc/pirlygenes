@@ -32,7 +32,7 @@ SOURCE_URL = (
     "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE299nnn/GSE299759/suppl/"
     "GSE299759_raw_counts.tsv.gz"
 )
-CANCER_CODE = "CHON"
+CANCER_CODE = "SARC_CHON"
 SOURCE_COHORT = "GSE299759_MEIJER_2026"
 SOURCE_PROJECT = "GEO"
 PIPELINE = "gse299759_chondrosarcoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_v1"
