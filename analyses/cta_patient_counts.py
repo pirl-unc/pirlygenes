@@ -211,6 +211,24 @@ def _add_parquet_cohorts(mat, cohorts, ctas):
     return mat, cohorts
 
 
+def _merge_proteins(mat, ensg_to_sym):
+    """Collapse near-identical CTA paralogs (>=90% AA identity, + curated
+    NY-ESO-1 / XAGE1) into one protein per group, SUMMING per-sample TPM (total
+    expression of that protein — RNA-seq can't disambiguate identical paralogs,
+    and one TCR/antibody/vaccine addresses the group). Returns the merged matrix
+    indexed by protein name + an identity {name: name} display map."""
+    from pirlygenes.load_dataset import get_data
+    grp = get_data("cta-protein-groups")
+    group_of = dict(zip(grp["member_symbol"].astype(str),
+                        grp["protein_group"].astype(str)))
+    row_protein = [group_of.get(s, s)
+                   for s in (ensg_to_sym.get(e, e) for e in mat.index)]
+    merged = mat.groupby(pd.Index(row_protein, name="protein")).sum()
+    print(f"      merged {len(mat) - len(merged)} paralog rows into protein "
+          f"groups -> {len(merged)} proteins", flush=True)
+    return merged, {name: name for name in merged.index}
+
+
 def per_cohort_counts(mat, cohorts, ensg_to_sym):
     """Long table: CTA × cohort × threshold -> n patients, pct."""
     rows = []
@@ -292,13 +310,26 @@ def main():
     print("[3/5] extract CTA per-sample TPM matrix (awk slice + log2 inverse)", flush=True)
     mat = extract_cta_matrix(ensg_to_sym)
     mat, cohorts = _add_parquet_cohorts(mat, cohorts, ctas)
-    print(f"      matrix {mat.shape[0]} CTAs × {mat.shape[1]} samples, "
+    mat, ensg_to_sym = _merge_proteins(mat, ensg_to_sym)
+    print(f"      matrix {mat.shape[0]} CTA proteins × {mat.shape[1]} samples, "
           f"{len(cohorts)} cohorts", flush=True)
 
     print("[4/5] per (CTA × cohort) threshold counts -> CSV", flush=True)
     counts = per_cohort_counts(mat, cohorts, ensg_to_sym)
     counts = counts.sort_values(["cancer_code", "n_gt25"], ascending=[True, False])
     counts.to_csv(OUT / "cta_patient_counts.csv", index=False)
+    # per-cohort union: # patients expressing >=1 CTA protein over each threshold
+    urows = []
+    for code, samples in cohorts.items():
+        cols = [s for s in samples if s in mat.columns]
+        if not cols:
+            continue
+        sub = mat[cols].to_numpy()
+        rec = {"cancer_code": code, "n_samples": len(cols)}
+        for t in THRESHOLDS:
+            rec[f"n_any_gt{t}"] = int((sub > t).any(axis=0).sum())
+        urows.append(rec)
+    pd.DataFrame(urows).to_csv(OUT / "cta_union_counts.csv", index=False)
 
     print("[5/9] plots", flush=True)
     _plots(mat, cohorts, counts, ensg_to_sym, args.threshold, args.cohort)

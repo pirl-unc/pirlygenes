@@ -64,18 +64,43 @@ def _prepare():
     return counts, cat_n, breadth
 
 
+def _label(cats):
+    """top-2 contributing cancer types, with ', &c' when 3+ contribute."""
+    cats = list(cats)
+    if len(cats) == 1:
+        return cats[0]
+    if len(cats) == 2:
+        return f"{cats[0]}, {cats[1]}"
+    return f"{cats[0]}, {cats[1]}, &c"
+
+
 def _addressable(counts, cat_n, threshold, burden_metric):
-    """Per-CTA addressable % for one threshold + burden metric, with the
-    top-contributing category. Returns a DataFrame sorted descending."""
+    """Per-CTA addressable % for one threshold + burden metric, with a label of
+    the top-contributing cancer types. Returns a DataFrame sorted descending."""
     col = f"n_gt{threshold}"
     g = counts.groupby(["category", "Symbol"], as_index=False)[col].sum()
     g["pooled_frac"] = g[col] / g.category.map(cat_n)
     burden = gsc.cancer_burden(metric=burden_metric)  # {category: pct of all cancer}
     g["contrib"] = g.category.map(lambda c: burden.get(c, 0.0)) * g.pooled_frac
     per = g.groupby("Symbol").contrib.sum().rename("addressable").reset_index()
-    top = g.loc[g.groupby("Symbol").contrib.idxmax(), ["Symbol", "category"]]
-    per = per.merge(top, on="Symbol").sort_values("addressable", ascending=False)
+    gp = g[g.contrib > 0].sort_values(["Symbol", "contrib"], ascending=[True, False])
+    lab = gp.groupby("Symbol", sort=False).category.apply(_label).rename("label")
+    per = per.merge(lab, on="Symbol", how="left").sort_values("addressable", ascending=False)
+    per["label"] = per["label"].fillna("")
     return per, burden
+
+
+def _union_addressable(threshold, burden_metric, cat_n):
+    """Burden-weighted fraction of patients expressing >=1 CTA protein over the
+    threshold (the whole-panel union — 'sum of all CTAs')."""
+    u = pd.read_csv(OUT / "cta_union_counts.csv")
+    u = u[~u.cancer_code.isin(_REDUNDANT)].copy()
+    u["category"] = [gsc.burden_category(c) for c in u.cancer_code]
+    u = u[u.category.notna()]
+    cat_hits = u.groupby("category")[f"n_any_gt{threshold}"].sum()
+    burden = gsc.cancer_burden(metric=burden_metric)
+    return sum(burden.get(c, 0.0) * (h / cat_n[c])
+               for c, h in cat_hits.items() if c in cat_n and cat_n[c] > 0)
 
 
 def main():
@@ -97,19 +122,27 @@ def main():
                       for c in counts.category.unique())
         for t in THRESHOLDS:
             per, _ = _addressable(counts, cat_n, t, bcol)
+            union = _union_addressable(t, bcol, cat_n)
             top = per.head(TOPN).iloc[::-1]  # ascending for barh (max on top)
             colors = [cmap(norm(int(breadth.get(s, 1)))) for s in top.Symbol]
-            fig, ax = plt.subplots(figsize=(10, max(6, len(top) * 0.27)))
+            fig, ax = plt.subplots(figsize=(10, max(6, (len(top) + 2) * 0.27)))
             ax.barh(range(len(top)), top.addressable, color=colors)
             ax.set_yticks(range(len(top)))
             ax.set_yticklabels(top.Symbol, fontsize=6)
-            for y, (val, cat) in enumerate(zip(top.addressable, top.category)):
-                ax.text(val, y, f" {cat}", va="center", fontsize=5, color="0.3")
+            for y, (val, lab) in enumerate(zip(top.addressable, top.label)):
+                ax.text(val, y, f" {lab}", va="center", fontsize=5, color="0.3")
+            # whole-panel union ("sum of all CTAs"): >=1 CTA protein over threshold
+            uy = len(top) + 0.8
+            ax.barh(uy, union, color="#d4a017", edgecolor="black", height=0.9)
+            ax.text(union, uy, f"  ALL CTAs ≥1 ({union:.0f}%)", va="center",
+                    fontsize=6, fontweight="bold", color="#7a5c00")
+            ax.set_yticks(list(range(len(top))) + [uy])
+            ax.set_yticklabels(list(top.Symbol) + ["ALL CTAs (≥1)"], fontsize=6)
             ax.set_xlabel(f"% of annual {blabel} addressable "
                           f"(patient expresses this CTA > {t} TPM)")
             ax.set_title(f"CTA population addressability — {blabel} (> {t} TPM)\n"
-                         f"top {len(top)} CTAs by addressable {blabel}", fontsize=10)
-            ax.set_xlim(0, max(top.addressable) * 1.18)
+                         f"top {len(top)} CTA proteins + whole-panel union", fontsize=10)
+            ax.set_xlim(0, max(top.addressable.max(), union) * 1.22)
             ax.grid(axis="x", alpha=0.3)
             sm = cm.ScalarMappable(norm=norm, cmap=cmap)
             sm.set_array([])
