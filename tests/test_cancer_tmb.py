@@ -1,0 +1,77 @@
+"""Tests for the curated per-cancer-type median-TMB reference (cancer-tmb.csv)."""
+
+import math
+
+import pandas as pd
+
+from pirlygenes.gene_sets_cancer import cancer_tmb, cancer_tmb_df, resolve_cancer_type
+
+_EXPECTED_COLS = [
+    "cancer_code",
+    "median_tmb_mut_mb",
+    "source",
+    "pmid_doi",
+    "confidence",
+    "notes",
+]
+
+
+def test_schema_and_unique_codes():
+    df = cancer_tmb_df()
+    assert list(df.columns) == _EXPECTED_COLS
+    codes = df["cancer_code"].astype(str)
+    assert codes.is_unique
+    # Every code must be a real registry code.
+    for code in codes:
+        assert resolve_cancer_type(code) is not None
+
+
+def test_values_positive_and_plausible():
+    df = cancer_tmb_df()
+    vals = df.dropna(subset=["median_tmb_mut_mb"])["median_tmb_mut_mb"].astype(float)
+    assert (vals > 0).all()
+    # Median TMB by type should sit in a sane range (mut/Mb); melanoma is the
+    # high end (~13), pheo/retinoblastoma the low end (<0.1).
+    assert vals.max() < 50
+    assert vals.min() >= 0.01
+
+
+def test_every_value_is_cited():
+    """A non-blank TMB value must carry a source + PMID/DOI; a blank value must
+    be explicitly flagged confidence=none (an honest gap, not a silent absence)."""
+    df = cancer_tmb_df()
+    for row in df.itertuples():
+        has_value = isinstance(row.median_tmb_mut_mb, float) and not math.isnan(
+            row.median_tmb_mut_mb
+        )
+        if has_value:
+            assert isinstance(row.source, str) and row.source.strip()
+            assert isinstance(row.pmid_doi, str) and row.pmid_doi.strip()
+            assert row.confidence in {"high", "medium", "low"}
+        else:
+            assert row.confidence == "none"
+
+
+def test_accessor_map_omits_blanks():
+    mapping = cancer_tmb()
+    assert isinstance(mapping, dict)
+    # Blank-value codes (no published median) are absent from the map.
+    assert "MPN" not in mapping
+    assert "CML" not in mapping
+    # Well-established values are present.
+    assert "SKCM" in mapping and "PRAD" in mapping
+
+
+def test_accessor_resolves_aliases():
+    # melanoma -> SKCM (high TMB), prostate -> PRAD (low TMB)
+    assert cancer_tmb("melanoma") == cancer_tmb("SKCM")
+    assert cancer_tmb("melanoma") > cancer_tmb("prostate")
+    # A code with no curated value returns None rather than raising.
+    assert cancer_tmb("MPN") is None
+
+
+def test_skcm_is_highest_among_common_types():
+    mapping = cancer_tmb()
+    assert mapping["SKCM"] == max(
+        mapping[c] for c in ("SKCM", "LUAD", "LUSC", "BLCA", "BRCA", "PRAD")
+    )
