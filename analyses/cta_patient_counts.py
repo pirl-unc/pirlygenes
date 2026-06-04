@@ -74,12 +74,57 @@ def _glioma_split_cohorts() -> list[TreehouseCohort]:
     ]
 
 
+_DERIVED_DIR = CACHE / "derived"
+
+
+def _tcga_case_subtype_cohorts(cache_csv, disease_label, key_col, code_col,
+                               recode=None):
+    """Build derived sub-cohorts from a cached cBioPortal patientId->code map:
+    one TreehouseCohort per distinct code, matching TCGA samples whose case id
+    maps to that code (same logic the sweep builders use). ``recode`` maps the
+    cached label to the canonical registry code."""
+    if not cache_csv.exists():
+        return []
+    recode = recode or {}
+    m = pd.read_csv(cache_csv)
+    out = []
+    for raw in sorted(m[code_col].dropna().unique()):
+        code = recode.get(str(raw), str(raw))
+        cases = set(m.loc[m[code_col] == raw, key_col].astype(str))
+
+        def _pred(row, cases=cases):
+            dsid = str(row.get("th_dataset_id", ""))
+            if not dsid.startswith("TCGA"):
+                return False
+            return "-".join(dsid.split("-")[:3]) in cases
+
+        out.append(TreehouseCohort(str(code), disease_label, sample_predicate=_pred))
+    return out
+
+
+def _cbioportal_derived_cohorts() -> list[TreehouseCohort]:
+    """BRCA PAM50 (5) + HNSC HPV (2) sub-cohorts from the cached cBioPortal
+    maps — the per-sample-reconstructable sub-divisions of TCGA parents."""
+    return (
+        _tcga_case_subtype_cohorts(
+            _DERIVED_DIR / "cbioportal_brca_pam50.csv",
+            "breast invasive carcinoma", "patientId", "pam50",
+            recode={"BRCA_Her2": "BRCA_HER2"})
+        + _tcga_case_subtype_cohorts(
+            _DERIVED_DIR / "cbioportal_hnsc_hpv.csv",
+            "head & neck squamous cell carcinoma", "patientId", "hpv_subtype",
+            recode={"HNSC_HPV-": "HNSC_HPV_neg", "HNSC_HPV+": "HNSC_HPV_pos"})
+    )
+
+
 def build_cohorts() -> list[TreehouseCohort]:
-    """Pediatric/sarcoma + TCGA-subset + GBM/LGG split — the comparable
-    PolyA cohorts, using the builders' own filters."""
-    cohorts = list(polya.COHORTS) + list(tcga.COHORTS) + _glioma_split_cohorts()
-    # TCGA glioma is otherwise unsplit; drop a raw combined glioma if present.
-    return cohorts
+    """Pediatric/sarcoma + TCGA-subset + GBM/LGG split + cBioPortal sub-cohorts
+    (BRCA PAM50, HNSC HPV) — parents AND their sub-divisions, all via the
+    builders' own per-sample filters."""
+    return (
+        list(polya.COHORTS) + list(tcga.COHORTS)
+        + _glioma_split_cohorts() + _cbioportal_derived_cohorts()
+    )
 
 
 def cohort_samples(clinical: pd.DataFrame) -> dict[str, list[str]]:
@@ -99,13 +144,18 @@ def extract_cta_matrix(symbols: dict[str, str]) -> pd.DataFrame:
     symfile = OUT / "_cta_symbols.txt"
     symfile.write_text("\n".join(sym_to_ensg) + "\n")
     small = OUT / "_cta_rows.tsv"
-    # awk: keep header (NR==1) + rows whose first column is a CTA symbol.
-    awk = (
-        'BEGIN{while((getline l < "%s")>0) S[l]=1}'
-        "NR==1||($1 in S)" % symfile
-    )
-    with small.open("w") as fh:
-        subprocess.run(["awk", "-F\t", awk, str(TPM_TSV)], stdout=fh, check=True)
+    # Reuse the cached extraction if it's newer than the source matrix — the
+    # awk pass over the 6.9 GB compendium is the slow step (skip it on re-runs).
+    if small.exists() and small.stat().st_mtime >= TPM_TSV.stat().st_mtime:
+        print("      reusing cached _cta_rows.tsv (skip awk)", flush=True)
+    else:
+        # awk: keep header (NR==1) + rows whose first column is a CTA symbol.
+        awk = (
+            'BEGIN{while((getline l < "%s")>0) S[l]=1}'
+            "NR==1||($1 in S)" % symfile
+        )
+        with small.open("w") as fh:
+            subprocess.run(["awk", "-F\t", awk, str(TPM_TSV)], stdout=fh, check=True)
     raw = pd.read_csv(small, sep="\t")
     raw = raw.rename(columns={raw.columns[0]: "Symbol"})
     raw = raw[raw["Symbol"].isin(sym_to_ensg)].set_index("Symbol")
@@ -205,9 +255,166 @@ def main():
     counts = counts.sort_values(["cancer_code", "n_gt25"], ascending=[True, False])
     counts.to_csv(OUT / "cta_patient_counts.csv", index=False)
 
-    print("[5/5] plots", flush=True)
+    print("[5/6] plots", flush=True)
     _plots(mat, cohorts, counts, ensg_to_sym, args.threshold, args.cohort)
+
+    print("[6/7] per-cohort coverage curves (one PNG each)", flush=True)
+    _coverage_every_cohort(mat, cohorts, ensg_to_sym, args.threshold)
+
+    print("[7/7] peak-coverage bar charts (parent/child + top-CTA colored)", flush=True)
+    _peak_coverage_bars(mat, cohorts, ensg_to_sym, args.threshold)
     print(f"done -> {OUT}", flush=True)
+
+
+def _parent_map():
+    """code -> parent_code from the cancer-type registry (derived sub-cohorts
+    only)."""
+    from pirlygenes.load_dataset import get_data
+    df = get_data("cancer-type-registry.csv")
+    return {
+        str(r.code): str(r.parent_code)
+        for r in df.itertuples()
+        if isinstance(r.parent_code, str) and r.parent_code.strip()
+    }
+
+
+def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
+    """Two sorted horizontal bar charts of each cohort's PEAK coverage % (the
+    greedy plateau — share of patients with >=1 CTA over threshold):
+      (a) colored by parent-cohort vs sub-divided (derived) cohort;
+      (b) colored by the cohort's top CTA (the single most-covering CTA).
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
+
+    parent_of = _parent_map()
+    rows = []
+    for code in cohorts:
+        order, cum, n = greedy_coverage(mat, cohorts[code], threshold)
+        if not cum:
+            continue
+        top_cta = ensg_to_sym.get(mat.index[order[0]], mat.index[order[0]])
+        rows.append({
+            "code": code, "n": n, "peak": cum[-1] * 100,
+            "is_derived": code in parent_of, "top_cta": top_cta,
+        })
+    df = pd.DataFrame(rows).sort_values("peak", ascending=True)  # ascending -> top at top after barh
+    labels = [f"{c}  (n={n})" for c, n in zip(df["code"], df["n"])]
+    h = max(6, len(df) * 0.26)
+
+    # ---- (a) parent vs derived ----
+    fig, ax = plt.subplots(figsize=(11, h))
+    colors = ["#e85d04" if d else "#1d4e89" for d in df["is_derived"]]
+    ax.barh(range(len(df)), df["peak"], color=colors)
+    ax.set_yticks(range(len(df)))
+    ax.set_yticklabels(labels, fontsize=7)
+    ax.set_xlabel(f"peak % of patients with ≥1 CTA > {threshold} TPM "
+                  "(greedy plateau, co-occurrence-aware)")
+    ax.set_xlim(0, 100)
+    for y, p in enumerate(df["peak"]):
+        ax.text(p + 0.6, y, f"{p:.0f}", va="center", fontsize=6)
+    ax.legend(handles=[
+        Patch(color="#1d4e89", label="parent / base cohort"),
+        Patch(color="#e85d04", label="sub-divided (derived) cohort"),
+    ], loc="lower right", fontsize=9)
+    ax.set_title(f"CTA coverage ceiling by cancer type "
+                 f"(> {threshold} TPM, Treehouse 25.01 PolyA)", fontsize=11)
+    ax.grid(axis="x", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(OUT / "cta_peak_coverage_by_parent_child.png", dpi=150)
+    plt.close(fig)
+
+    # ---- (b) colored by top CTA ----
+    ctas = list(dict.fromkeys(df.sort_values("peak", ascending=False)["top_cta"]))
+    cmap = plt.get_cmap("tab20")
+    cta_color = {c: cmap(i % 20) for i, c in enumerate(ctas)}
+    fig, ax = plt.subplots(figsize=(11, h))
+    ax.barh(range(len(df)), df["peak"], color=[cta_color[c] for c in df["top_cta"]])
+    ax.set_yticks(range(len(df)))
+    ax.set_yticklabels(labels, fontsize=7)
+    ax.set_xlabel(f"peak % of patients with ≥1 CTA > {threshold} TPM")
+    ax.set_xlim(0, 100)
+    for y, (p, c) in enumerate(zip(df["peak"], df["top_cta"])):
+        ax.text(p + 0.6, y, c, va="center", fontsize=6)
+    ax.legend(handles=[Patch(color=cta_color[c], label=c) for c in ctas],
+              loc="lower right", fontsize=7, title="top CTA", ncol=2)
+    ax.set_title(f"CTA coverage ceiling by cancer type, colored by dominant CTA "
+                 f"(> {threshold} TPM)", fontsize=11)
+    ax.grid(axis="x", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(OUT / "cta_peak_coverage_by_top_cta.png", dpi=150)
+    plt.close(fig)
+    print(f"      {len(df)} cohorts ({int(df['is_derived'].sum())} derived) "
+          "-> 2 bar charts", flush=True)
+
+
+def _coverage_every_cohort(mat, cohorts, ensg_to_sym, threshold):
+    """One annotated greedy co-occurrence-aware coverage PNG per cancer type,
+    into outputs/cta_coverage/, plus a small-multiples overview sorted by how
+    fast each cohort saturates."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    sub = OUT / "cta_coverage"
+    sub.mkdir(parents=True, exist_ok=True)
+    summary = []  # (code, n, curve, names) for the overview + a saturation stat
+    for code in sorted(cohorts):
+        order, cum, n = greedy_coverage(mat, cohorts[code], threshold)
+        if not cum:
+            continue
+        names = [ensg_to_sym.get(mat.index[i], mat.index[i]) for i in order]
+        summary.append((code, n, cum, names))
+
+        fig, ax = plt.subplots(figsize=(9, 5.5))
+        xs = range(1, len(cum) + 1)
+        ax.plot(xs, [c * 100 for c in cum], marker="o", ms=3, color="#3a0ca3")
+        for x, (nm, c) in enumerate(zip(names[:15], cum[:15]), start=1):
+            ax.annotate(nm, (x, c * 100), fontsize=6, rotation=45,
+                        textcoords="offset points", xytext=(2, 4))
+        ax.set_xlabel("# CTAs added (greedy, co-occurrence-aware)")
+        ax.set_ylabel(f"% of {code} patients with ≥1 CTA > {threshold} TPM")
+        ax.set_title(f"{code}: cumulative distinct-patient coverage "
+                     f"(> {threshold} TPM, n={n}); plateau "
+                     f"{cum[-1]*100:.0f}%", fontsize=10)
+        ax.set_xlim(0, min(30, len(cum) + 1))
+        ax.set_ylim(0, 100)
+        ax.grid(alpha=0.3)
+        fig.tight_layout()
+        fig.savefig(sub / f"cta_coverage_{code}.png", dpi=130)
+        plt.close(fig)
+
+    # ---- small-multiples overview, sorted by plateau (broadest first) ----
+    summary.sort(key=lambda t: t[2][-1], reverse=True)
+    ncol = 6
+    nrow = (len(summary) + ncol - 1) // ncol
+    fig, axes = plt.subplots(nrow, ncol, figsize=(ncol * 2.5, nrow * 1.9),
+                             sharex=True, sharey=True)
+    axes = axes.ravel()
+    for ax, (code, n, cum, _names) in zip(axes, summary):
+        ax.plot(range(1, len(cum) + 1), [c * 100 for c in cum],
+                color="#b5179e", lw=1.2)
+        ax.fill_between(range(1, len(cum) + 1), [c * 100 for c in cum],
+                        alpha=0.15, color="#b5179e")
+        ax.set_title(f"{code} (n={n}) {cum[-1]*100:.0f}%", fontsize=7)
+        ax.set_xlim(0, 25)
+        ax.set_ylim(0, 100)
+        ax.tick_params(labelsize=5)
+        ax.grid(alpha=0.25)
+    for ax in axes[len(summary):]:
+        ax.axis("off")
+    fig.suptitle(f"CTA panel coverage by cancer type — distinct patients "
+                 f"with ≥1 CTA > {threshold} TPM (sorted by plateau)",
+                 fontsize=11)
+    fig.supxlabel("# CTAs added (greedy)", fontsize=8)
+    fig.supylabel("% patients covered", fontsize=8)
+    fig.tight_layout(rect=(0.01, 0.01, 1, 0.98))
+    fig.savefig(OUT / "cta_coverage_all_cohorts_overview.png", dpi=150)
+    plt.close(fig)
+    print(f"      wrote {len(summary)} per-cohort coverage PNGs + overview",
+          flush=True)
 
 
 def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
