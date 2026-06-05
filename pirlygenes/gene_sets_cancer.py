@@ -1643,14 +1643,24 @@ def CTA_evidence():
     never_expressed : bool
         True if no HPA protein data AND maximum RNA nTPM < 2.
     """
+    import warnings
     try:
         from tsarina.evidence import CTA_evidence as _tsarina_evidence
 
         df = _tsarina_evidence()
         if _has_complete_cta_evidence_schema(df):
             return _with_cta_filter_aliases(df)
+        warnings.warn(
+            "tsarina CTA_evidence returned an incomplete schema; falling back to "
+            "the bundled CTA snapshot, which may be stale. Update tsarina.",
+            RuntimeWarning, stacklevel=2,
+        )
     except ImportError:
-        pass
+        warnings.warn(
+            "tsarina is not installed; using the bundled CTA snapshot, which may "
+            "be stale. Install `pirlygenes[cta]` for live CTA evidence.",
+            RuntimeWarning, stacklevel=2,
+        )
     return _with_cta_filter_aliases(_bundled_cta_evidence())
 
 

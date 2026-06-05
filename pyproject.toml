@@ -42,6 +42,12 @@ test = [
     "pytest-cov",
     "pytest-xdist",
 ]
+# CTA gene-set curation is delegated to tsarina; it's imported lazily with a
+# graceful fallback to the bundled snapshot, so it's an OPTIONAL dependency
+# (install `pirlygenes[cta]` for the live, up-to-date CTA evidence). (#289)
+cta = [
+    "tsarina @ git+https://github.com/pirl-unc/tsarina.git",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/pirl-unc/pirlygenes"
