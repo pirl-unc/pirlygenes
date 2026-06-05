@@ -27,6 +27,7 @@ from there; this module never reclassifies genes.
 
 from __future__ import annotations
 
+import functools
 from typing import Iterable
 
 from .qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
@@ -342,13 +343,14 @@ def normalize_technical_rna_long_table(
 # scripts; this is now the one home.
 
 
-# Ribosomal-protein mRNA (RPL*/RPS*/RACK1/FAU) + their processed pseudogenes.
-# Among the most-expressed genes AND the most multi-mapping-sensitive (huge
-# pseudogene families), so different quantifiers split the zero-sum TPM budget
-# into them very differently (RSEM vs STAR can differ ~3-4x per RP gene). Since
-# TPM is closed, that variable "tax" deflates/inflates every other gene and
-# breaks cross-source comparability. They are not tumor-specific signal, so the
-# clean-TPM denominator excludes them by default (see clean_tpm_removal_mask).
+# The clean-TPM censored set is restricted to the MITOCHONDRIAL and RIBOSOMAL
+# families and nothing else — the most-expressed, most multi-mapping-sensitive
+# genes (huge pseudogene families) that split the zero-sum TPM budget very
+# differently across quantifiers (RSEM vs STAR ~3-4x per gene) and are not
+# tumor-specific signal. Other housekeeping (translation factors, ferritin,
+# ubiquitin, polyA-bias lncRNA like MALAT1/NEAT1) is deliberately NOT censored.
+_MITOCHONDRIAL_GROUPS = frozenset({"mt_dna", "mt_like_pseudogene"})
+_RIBOSOMAL_RNA_GROUPS = frozenset({"rrna_like"})
 _RIBOSOMAL_PROTEIN_GROUPS = frozenset(
     {"ribosomal_protein", "ribosomal_protein_pseudogene"}
 )
@@ -378,50 +380,107 @@ def technical_rna_mask(gene_table):
     return _qc_group_mask(gene_table, _TECHNICAL_RNA_GROUPS)
 
 
-def clean_tpm_removal_mask(gene_table, *, exclude_ribosomal_proteins: bool = True):
-    """Boolean Series of rows zeroed by the default clean-TPM transform: the
-    technical-RNA set (always) plus, when ``exclude_ribosomal_proteins`` (the
-    default), ribosomal-protein mRNA and its pseudogenes.
+@functools.lru_cache(maxsize=1)
+def _default_protected_symbols():
+    """Curated cancer-target symbols that must NEVER be censored even if their
+    symbol matches a censored QC group — they are signal we score on. The
+    canonical case is ``RPL10L`` (a testis CTA that is a ribosomal-protein
+    paralog). Union of the CTA panel + surfaceome / key-gene / lineage / fusion
+    panels; degrades gracefully if a source is unavailable."""
+    protected: set[str] = set()
+    try:
+        from .. import gene_sets_cancer as gsc
+        protected |= set(gsc.CTA_evidence()["Symbol"].astype(str))
+    except Exception:
+        pass
+    try:
+        from ..load_dataset import get_data
+        for ds, cols in [("surface-proteins", ["Symbol"]),
+                         ("cancer-key-genes", ["Symbol"]),
+                         ("cancer-lineage-panels", ["Symbol", "Child_Code"]),
+                         ("cancer-fusions", ["gene_5prime", "gene_3prime"])]:
+            try:
+                df = get_data(ds)
+            except Exception:
+                continue
+            for c in cols:
+                if c in df.columns:
+                    protected |= set(df[c].dropna().astype(str))
+    except Exception:
+        pass
+    return frozenset(protected)
 
-    Excluding ribosomal proteins is the default because they are housekeeping,
-    not tumor-specific, and — being the most-expressed, most multi-mapping-prone
-    genes — they dominate and destabilize the zero-sum TPM denominator across
-    quantification pipelines (see :data:`_RIBOSOMAL_PROTEIN_GROUPS`). Pass
-    ``exclude_ribosomal_proteins=False`` for the strict technical-only set
-    (equivalent to :func:`technical_rna_mask`).
+
+def clean_tpm_removal_mask(gene_table, *, exclude_ribosomal_proteins: bool = True,
+                           protect=None):
+    """Boolean Series of rows zeroed by the default clean-TPM transform: the
+    **mitochondrial** family (mtDNA + mt-like pseudogenes) and the **ribosomal**
+    family (rRNA-like, always; ribosomal-protein mRNA + pseudogenes when
+    ``exclude_ribosomal_proteins``, the default) — and **nothing else** — minus
+    any curated cancer-target gene (a target is never censored even if its
+    symbol matches a censored group; e.g. the CTA ``RPL10L``).
+
+    These two families are restricted-to because they are housekeeping, not
+    tumor-specific, and — being the most-expressed, most multi-mapping-prone
+    genes — they destabilize the zero-sum TPM denominator across quantification
+    pipelines. Other housekeeping (translation factors, ferritin, ubiquitin) and
+    the polyA-bias lncRNA group are intentionally NOT censored. Pass
+    ``exclude_ribosomal_proteins=False`` for mitochondrial + rRNA only; the
+    ``protect`` set overrides the default protected-target symbols.
     """
-    groups = set(_TECHNICAL_RNA_GROUPS)
+    groups = set(_MITOCHONDRIAL_GROUPS) | set(_RIBOSOMAL_RNA_GROUPS)
     if exclude_ribosomal_proteins:
         groups |= set(_RIBOSOMAL_PROTEIN_GROUPS)
-    return _qc_group_mask(gene_table, groups)
+    mask = _qc_group_mask(gene_table, groups)
+    prot = _default_protected_symbols() if protect is None else set(protect)
+    if prot:
+        keep = ~gene_table["Symbol"].astype(str).isin(prot).to_numpy()
+        mask = mask & keep
+    return mask
+
+
+def censored_gene_reference():
+    """``{Symbol: reference_tpm}`` — each censored gene's fixed surrogate value,
+    its median TPM across the Treehouse 25.01 PolyA compendium (the reference
+    cohort). Used by :func:`clean_tpm_matrix` ``censored_fill="reference"`` so a
+    censored gene holds the **same** value in every cohort/pipeline. Generated
+    by ``scripts/generate_censored_gene_reference.py``."""
+    from ..load_dataset import get_data
+    df = get_data("censored-gene-reference-tpm")
+    return dict(zip(df["Symbol"].astype(str), df["reference_tpm"].astype(float)))
 
 
 def clean_tpm_matrix(values, removable=None, *, gene_table=None,
                      exclude_ribosomal_proteins: bool = True,
-                     censored_fill: str = "typical", censored_budget=None):
+                     censored_fill: str = "reference", censored_budget=None,
+                     reference=None):
     """Reference clean-TPM transform on a gene×sample matrix.
 
     ``values`` is genes (rows) × samples (cols). Provide either an explicit
     boolean ``removable`` mask (aligned to ``values.index``) or a ``gene_table``
-    — in which case the mask is built via :func:`clean_tpm_removal_mask`, which
-    **excludes ribosomal proteins by default**.
+    (``Symbol`` + ``Ensembl_Gene_ID``, row-aligned to ``values``) — in which
+    case the mask is built via :func:`clean_tpm_removal_mask`, which **excludes
+    ribosomal proteins by default**.
 
     ``censored_fill`` controls what happens to the censored (removable) rows:
 
-    - ``"typical"`` (default): hold the censored block at a **constant typical
-      polyA-capture budget** ``censored_budget`` (a single TPM total split
-      equally across the censored genes), then renormalize each column to 1e6.
-      Because the censored slot is sample-independent, the kept genes are scaled
-      by ``1e6 / (kept_sum + budget)`` instead of ``1e6 / kept_sum`` — so a
-      sample with an unusually large (often pipeline-driven) technical/ribosomal
-      fraction no longer **inflates** its other genes. If ``censored_budget`` is
-      ``None`` it defaults to the median censored TPM sum across ``values``'
-      columns (the cohort's typical capture); pass a stored reference constant
-      when cleaning a single sample.
-    - ``"zero"`` (legacy): drop the censored rows entirely and renormalize the
-      remainder to 1e6 (inflates survivors by ``1/(1-censored_fraction)``).
+    - ``"reference"`` (default): replace **each** censored gene with its own
+      **fixed reference value** — its median TPM across the Treehouse PolyA
+      compendium (:func:`censored_gene_reference`) — then renormalize each
+      column to 1e6. Because the censored block is per-gene and identical in
+      every cohort/pipeline, the kept genes are scaled by ``1e6 / (kept_sum +
+      reference_sum)`` with ``reference_sum`` constant, so a sample's variable
+      (often pipeline-driven) technical/ribosomal fraction no longer inflates
+      its other genes, and the censored values are comparable across sources.
+      Requires ``gene_table`` (or an explicit ``reference`` Symbol->TPM map) for
+      the per-gene lookup; genes absent from the reference get 0.
+    - ``"typical"``: hold the censored block at one constant ``censored_budget``
+      (median censored TPM sum across ``values`` if ``None``) split equally
+      across censored genes — cohort-derived, single value.
+    - ``"zero"`` (legacy): drop the censored rows and renormalize the remainder
+      (inflates survivors by ``1/(1-censored_fraction)``).
 
-    Columns whose post-removal denominator is <= 0 become all-zero.
+    Columns whose post-fill denominator is <= 0 collapse to zero.
     """
     if removable is None:
         if gene_table is None:
@@ -432,6 +491,28 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
     import pandas as pd
 
     rem = removable.to_numpy()
+    if censored_fill == "reference":
+        # Censored genes are pinned to their FIXED per-gene reference value
+        # (identical in every cohort/pipeline) and NOT renormalized; the kept
+        # genes are scaled to fill the remaining budget (1e6 - reference_sum).
+        if reference is None:
+            reference = censored_gene_reference()
+        if gene_table is None:
+            raise ValueError("censored_fill='reference' needs gene_table (or "
+                             "reference=) for the per-gene surrogate lookup")
+        ref_row = gene_table["Symbol"].astype(str).map(reference).fillna(0.0).to_numpy()
+        ref_sum = float(ref_row[rem].sum())
+        kept_raw_sum = values.loc[~rem].sum(axis=0)
+        kept_scale = pd.Series(0.0, index=values.columns, dtype=float)
+        pos = kept_raw_sum > 0
+        kept_scale.loc[pos] = max(0.0, 1_000_000.0 - ref_sum) / kept_raw_sum.loc[pos]
+        clean = values.astype(float).copy()
+        clean.loc[~rem] = values.loc[~rem].mul(kept_scale, axis=1)
+        ci = np.where(rem)[0]
+        if len(ci):  # exact reference value, broadcast across sample columns
+            clean.iloc[ci, :] = ref_row[ci][:, None]
+        return clean.fillna(0.0)
+
     if censored_fill == "zero":
         clean = values.copy()
         clean.loc[rem, :] = 0.0
@@ -440,16 +521,12 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
         kept_sum = values.loc[~rem].sum(axis=0)
         if censored_budget is None:
             censored_budget = float(values.loc[rem].sum(axis=0).median()) if rem.any() else 0.0
-        n_cens = int(rem.sum())
         clean = values.copy()
-        # constant typical value per censored gene (sample-independent budget):
-        # every censored gene always receives the surrogate value (it is never
-        # zeroed), so even an all-censored column keeps its surrogate signal.
-        if n_cens:
-            clean.loc[rem, :] = censored_budget / n_cens
+        if rem.any():
+            clean.loc[rem, :] = censored_budget / int(rem.sum())
         denom = kept_sum + censored_budget
     else:
-        raise ValueError("censored_fill must be 'typical' or 'zero'")
+        raise ValueError("censored_fill must be 'reference', 'typical', or 'zero'")
 
     # only a genuinely empty column (no mass at all) collapses to zero
     positive = denom > 0
@@ -817,5 +894,6 @@ __all__ = [
     "tpm_to_housekeeping_normalized",
     "technical_rna_mask",
     "clean_tpm_removal_mask",
+    "censored_gene_reference",
     "clean_tpm_matrix",
 ]
