@@ -6,7 +6,7 @@ Cohorts: top 30 by max CTA TPM (n≥10); CTAs ordered by breadth (# cohorts with
 
 | CTA | # cohorts >30 | peak median TPM | peak cohort |
 | --- | ---: | ---: | --- |
-| PRAME | 16 | 361.7 | NBL_MYCN_amp |
+| PRAME | 16 | 361.7 | NBL_MYCNamp |
 | XAGE1B | 4 | 138.6 | LUAD_KRAS |
 | XAGE1A | 4 | 214.8 | LUAD_KRAS |
 | CTAG1A | 2 | 466.6 | SARC_MYXLPS |
