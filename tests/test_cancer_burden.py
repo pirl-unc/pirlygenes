@@ -58,7 +58,7 @@ def test_burden_category_registry_driven():
     # primary-tissue driven (no explicit map entry)
     assert burden_category("LUAD") == "lung"
     assert burden_category("Lung Adenocarcinoma") == "lung"
-    assert burden_category("PANNET") == "pancreas"   # NET -> its organ
+    assert burden_category("NET_PANCREAS") == "pancreas"   # NET -> its organ
     assert burden_category("BRCA_LumA") == "breast"  # subtype -> parent tissue
     # sarcoma family splits bone vs soft tissue on primary_tissue
     assert burden_category("SARC_OS") == "bone_and_joint"

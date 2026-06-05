@@ -127,7 +127,7 @@ def test_registry_includes_pediatric():
 def test_registry_includes_net_axis():
     df = cancer_type_registry()
     codes = set(df["code"])
-    for need in ("PANNET", "NET_MIDGUT", "NET_LUNG", "SCLC", "NEC_MERKEL"):
+    for need in ("NET_PANCREAS", "NET_MIDGUT", "NET_LUNG", "SCLC", "NEC_MERKEL"):
         assert need in codes, f"missing NET code: {need}"
 
 
@@ -200,10 +200,12 @@ def test_heme_myeloid_family_contains_laml_and_related():
 def test_neuroendocrine_family_contains_sclc_and_pannet():
     # Phase-C: the `net` family was renamed `neuroendocrine` (it spans both
     # well-diff NET and poorly-diff NEC; the differentiation column carries
-    # that split). SCLC/PANNET keep their famous codes.
+    # that split). SCLC keeps its famous code; pancreatic NET is NET_PANCREAS
+    # (PANNET resolves via alias; PNET avoided — it means primitive
+    # neuroectodermal tumor).
     ne = set(cancer_types_in_family("neuroendocrine"))
     assert "SCLC" in ne
-    assert "PANNET" in ne
+    assert "NET_PANCREAS" in ne
     assert "NEC_MERKEL" in ne  # Merkel cell carcinoma (NEC)
 
 

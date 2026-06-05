@@ -372,7 +372,7 @@ def build_source(
 
     # Build per-gene-per-cohort rows. The cancer_code may be a list when
     # the same matrix splits across multiple codes (e.g. NET_LUNG vs
-    # NEC_LUNG_LC) via sample_to_cancer_code.
+    # NEC_LUNG_LARGECELL) via sample_to_cancer_code.
     gene_table = (
         mapping.drop_duplicates("Ensembl_Gene_ID")[["Ensembl_Gene_ID", "Symbol"]]
         .reset_index(drop=True)

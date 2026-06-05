@@ -176,7 +176,7 @@ def test_available_cancer_expression_references_includes_imported_specific_cohor
 
     assert _canonical("SARC_OS") == "TREEHOUSE_POLYA_25_01"
     assert _n_samples("SARC_OS") == 262
-    assert _canonical("PANNET") == "GSE118014_ALVAREZ_2018"
+    assert _canonical("NET_PANCREAS") == "GSE118014_ALVAREZ_2018"
     assert _canonical("SARC_CHON") == "GSE299759_MEIJER_2026"
     assert _canonical("SARC_DDLPS") == "GSE30929_SINGER_2007_LPS"
     assert _canonical("LAML_APL") == "BEATAML_OHSU_2022"
@@ -479,7 +479,7 @@ def test_imported_symbol_only_references_use_historical_symbol_rescue():
 
 def test_imported_specific_reference_recovers_expected_cohort_markers():
     df = cancer_reference_expression(
-        cancer_types=["SARC_DDLPS", "SARC_CHON", "PANNET"],
+        cancer_types=["SARC_DDLPS", "SARC_CHON", "NET_PANCREAS"],
         genes=["MDM2", "CDK4", "COL2A1", "ACAN", "CHGA"],
         normalize="tpm_clean",
         include_provenance=False,
@@ -494,13 +494,13 @@ def test_imported_specific_reference_recovers_expected_cohort_markers():
     # of GSE30929 (Affymetrix HG-U133A), where the 12q13-15 amplicon shows
     # at the median as CDK4 ~1400 and MDM2 ~70 (vs ~10 in non-amplified
     # MYXLPS/PLEOLPS); thresholds chosen to discriminate amp vs non-amp.
-    # CHON / PANNET assertions use RNA-seq sources and keep the original
+    # CHON / NET_PANCREAS assertions use RNA-seq sources and keep the original
     # >1000 thresholds.
     assert pivot.loc["MDM2", "SARC_DDLPS"] > 50
     assert pivot.loc["CDK4", "SARC_DDLPS"] > 1000
     assert pivot.loc["COL2A1", "SARC_CHON"] > 1000
     assert pivot.loc["ACAN", "SARC_CHON"] > 1000
-    assert pivot.loc["CHGA", "PANNET"] > 1000
+    assert pivot.loc["CHGA", "NET_PANCREAS"] > 1000
 
 
 def test_expression_gene_filters_accept_aliases():
@@ -664,7 +664,7 @@ def test_cancer_expression_source_candidates_cover_requested_gaps():
         "HL",
         "PCN",
         "NET_LUNG",
-        "NEC_LUNG_LC",
+        "NEC_LUNG_LARGECELL",
         "NET_MIDGUT",
         "MTC",
         "NPC",

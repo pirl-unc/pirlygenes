@@ -95,7 +95,7 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Examples:\n"
             "  pirlygenes data list                 # what cohorts/genes/samples are packaged\n"
-            "  pirlygenes data sources PANNET       # which sources feed a cancer code\n"
+            "  pirlygenes data sources NET_PANCREAS       # which sources feed a cancer code\n"
             "  pirlygenes data status               # is the data bundle downloaded?\n"
             "  pirlygenes build list                # all buildable source ids\n"
             "\n"
@@ -165,7 +165,7 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Examples:\n"
             "  pirlygenes data list                 # cohorts, genes, samples at a glance\n"
-            "  pirlygenes data sources PANNET       # the source(s) feeding one cancer code\n"
+            "  pirlygenes data sources NET_PANCREAS       # the source(s) feeding one cancer code\n"
             "  pirlygenes data status               # is the bundle downloaded locally?\n"
         ),
     )
@@ -208,13 +208,13 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         epilog=(
             "Examples:\n"
-            "  pirlygenes data sources PANNET   # one code (here: 2 sources)\n"
+            "  pirlygenes data sources NET_PANCREAS   # one code (here: 2 sources)\n"
             "  pirlygenes data sources --multi  # only codes with >1 source\n"
         ),
     )
     sources_parser.add_argument(
         "code", nargs="?",
-        help="Restrict to one cancer code (e.g. PANNET). Omit to list "
+        help="Restrict to one cancer code (e.g. NET_PANCREAS). Omit to list "
              "every code; --multi to show only codes with >1 source.",
     )
     sources_parser.add_argument(

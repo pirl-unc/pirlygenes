@@ -62,7 +62,7 @@ MDS,0.3,Walter 2013,PMC3897298,medium,MDS ~9 somatic mutations/exome; rises with
 MPN,,,,none,Myeloproliferative neoplasm; driver-defined (JAK2/CALR/MPL); no published per-Mb median.
 CML,,,,none,Chronic myeloid leukemia; BCR-ABL1-defined; very few additional mutations in chronic phase.
 CTCL,3.0,Park 2021,PMID:33574607,low,CTCL/mycosis fungoides; UV-signature; stage-dependent; advanced much higher.
-PANNET,1.9,Backman 2021,PMID:34326338,medium,Pancreatic NET well-diff median ~1.9 (vs NEC ~5.0); low.
+NET_PANCREAS,1.9,Backman 2021,PMID:34326338,medium,Pancreatic NET well-diff median ~1.9 (vs NEC ~5.0); low.
 SCLC,8.6,George 2015,PMID:26168399,high,Small cell lung; high ~8.6; smoking signature.
 NEC_MERKEL,5.3,Knepper 2019,PMID:30482774,medium,Merkel cell carcinoma median ~5.3; bimodal MCPyV-neg(UV) high vs MCPyV-pos low.
 MTC,,,,none,Medullary thyroid; single-driver RET/RAS; no clean published per-Mb median.
