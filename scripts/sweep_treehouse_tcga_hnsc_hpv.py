@@ -48,8 +48,8 @@ RELEASE = TreehouseRelease(
 
 
 HPV_TO_REGISTRY = {
-    "HNSC_HPV+": "HNSC_HPV_pos",
-    "HNSC_HPV-": "HNSC_HPV_neg",
+    "HNSC_HPV+": "HNSC_HPVpos",
+    "HNSC_HPV-": "HNSC_HPVneg",
 }
 
 

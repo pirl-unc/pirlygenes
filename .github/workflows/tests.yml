@@ -28,7 +28,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pyensembl/
-          key: pyensembl-112-${{ runner.os }}
+          key: pyensembl-81-112-${{ runner.os }}
       - name: Cache NCBI gene-data mirror
         # Build-time Entrez tables (Homo_sapiens.gene_info.gz + gene_history.gz)
         # pulled from the pinned GitHub release. Keyed on the module that pins
@@ -55,13 +55,19 @@ jobs:
       - name: Install Ensembl genome data
         run: |
           source .venv/bin/activate
-          echo "Before installing Ensembl release 112" && df -h
+          # Two releases: 112 (current) for modern IDs, and 81 (2015) because the
+          # cancer-reference-expression aggregate pools source cohorts annotated
+          # at that vintage — ~4.6k of its ENSG IDs were retired from Ensembl
+          # after release 81, so release 112 alone fails test_gene_ids at 8.7%.
+          # 81 + 112 covers all but 0.8% (533 genuinely-dead IDs, under tolerance).
+          echo "Before installing Ensembl releases 81 + 112" && df -h
           pyensembl install --release 112 --species homo_sapiens
-          echo "After installing Ensembl release 112" && df -h
-          # Fail fast if release 112 isn't usable — the gene-resolution
-          # tests depend on it and would otherwise silently *skip* (a
+          pyensembl install --release 81 --species homo_sapiens
+          echo "After installing Ensembl releases 81 + 112" && df -h
+          # Fail fast if either release isn't usable — the gene-resolution
+          # tests depend on them and would otherwise silently *skip* (a
           # green CI run that never actually exercised them).
-          python -c "from pyensembl import EnsemblRelease; assert EnsemblRelease(112).genes_by_name('TP53'); print('Ensembl release 112 ready')"
+          python -c "from pyensembl import EnsemblRelease; assert EnsemblRelease(112).genes_by_name('TP53'); assert EnsemblRelease(81).genes_by_name('TP53'); print('Ensembl releases 81 + 112 ready')"
       - name: Run linting script and unit tests
         run: |
           source .venv/bin/activate

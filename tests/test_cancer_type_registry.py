@@ -109,10 +109,10 @@ def test_registry_includes_pediatric():
     df = cancer_type_registry()
     codes = set(df["code"])
     for need in (
-        "OS",
-        "EWS",
-        "RMS_ERMS",
-        "RMS_ARMS",
+        "SARC_OS",
+        "SARC_EWS",
+        "SARC_RMS_ERMS",
+        "SARC_RMS_ARMS",
         "NBL",
         "WILMS",
         "RT",
@@ -134,7 +134,7 @@ def test_registry_includes_net_axis():
 def test_registry_includes_rare_entities():
     df = cancer_type_registry()
     codes = set(df["code"])
-    for need in ("NUTM", "ADCC", "MTC", "CHOR", "NPC"):
+    for need in ("NUTM", "ADCC", "MTC", "SARC_CHOR", "NPC"):
         assert need in codes, f"missing rare code: {need}"
 
 
@@ -184,8 +184,8 @@ def test_bone_tissue_returns_osteosarcoma_and_ewing():
     """Site-aware hypothesis: any sample suspected of bone origin
     should be able to enumerate OS + Ewing as candidates."""
     bone_cancers = set(cancer_types_by_tissue("bone"))
-    assert "OS" in bone_cancers
-    assert "EWS" in bone_cancers
+    assert "SARC_OS" in bone_cancers
+    assert "SARC_EWS" in bone_cancers
 
 
 def test_heme_myeloid_family_contains_laml_and_related():
@@ -261,6 +261,24 @@ def test_sarc_prefixed_codes_are_in_sarc_subtree():
     assert not disconnected, f"SARC_* codes without SARC parent: {disconnected}"
 
 
+def test_phase_c_renamed_codes_resolve_via_backward_compat_alias():
+    """Old codes retired by the Phase-C rename still resolve to their new code
+    (case-insensitive), so external callers don't hard-break (issue #286)."""
+    from pirlygenes.gene_sets_cancer import resolve_cancer_type
+    pairs = {
+        "OS": "SARC_OS", "EWS": "SARC_EWS", "CHON": "SARC_CHON",
+        "CHOR": "SARC_CHOR", "GCTB": "SARC_GCTB", "ESS_LG": "SARC_ESS_LG",
+        "ESS_HG": "SARC_ESS_HG", "RMS_ERMS": "SARC_RMS_ERMS",
+        "RMS_ARMS": "SARC_RMS_ARMS", "RMS_PRMS": "SARC_RMS_PRMS",
+        "RMS_SSRMS": "SARC_RMS_SSRMS", "HNSC_HPV_pos": "HNSC_HPVpos",
+        "HNSC_HPV_neg": "HNSC_HPVneg",
+    }
+    for old, new in pairs.items():
+        assert resolve_cancer_type(old) == new
+        assert resolve_cancer_type(old.lower()) == new   # case-insensitive
+        assert resolve_cancer_type(new) == new           # new code still resolves
+
+
 def test_known_parent_reference_labels_are_connected():
     """Fine labels without direct references should retain parent fallback links."""
     expected = {
@@ -269,8 +287,8 @@ def test_known_parent_reference_labels_are_connected():
         "BRCA_LumA": "BRCA",
         "BRCA_LumB": "BRCA",
         "BRCA_Normal": "BRCA",
-        "HNSC_HPV_neg": "HNSC",
-        "HNSC_HPV_pos": "HNSC",
+        "HNSC_HPVneg": "HNSC",
+        "HNSC_HPVpos": "HNSC",
         "LUAD_EGFR": "LUAD",
         "LUAD_KRAS": "LUAD",
         "LUAD_STK11": "LUAD",
@@ -336,6 +354,9 @@ def test_source_cohort_values_are_canonical():
     df = cancer_type_registry()
     valid = {
         "",
+        # Phase C: the bare SARC code is a computed pan-sarcoma grand union
+        # (no frozen shard), not a materialised cohort.
+        "COMPUTED_PAN_SARCOMA",
         "TCGA_XENA_TOIL",
         "TCGA_BRCA_PAM50",
         "TCGA_HNSC",
@@ -409,14 +430,14 @@ def test_expanded_sarcomas_present():
         "SARC_MYXFIB",
         "SARC_SFT",
         "SARC_IMT",
-        "GCTB",
-        "ESS_LG",
-        "ESS_HG",
+        "SARC_GCTB",
+        "SARC_ESS_LG",
+        "SARC_ESS_HG",
         "SARC_LGFMS",
         "SARC_EMC",
         "SARC_PLEOLPS",
-        "RMS_PRMS",
-        "RMS_SSRMS",
+        "SARC_RMS_PRMS",
+        "SARC_RMS_SSRMS",
     }
     missing = required - codes
     assert not missing, f"expanded-sarcoma codes missing: {missing}"

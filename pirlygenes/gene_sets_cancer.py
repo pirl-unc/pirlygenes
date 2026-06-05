@@ -44,6 +44,19 @@ CANCER_TYPE_ALIASES = {
     "uveal_melanoma": "UVM",
 }
 
+# Backward-compat aliases for the Phase-C code renames (old code -> new code).
+# resolve_cancer_type consults these so trufflepig / external callers keep
+# working without a literal migration. Keep entries here permanently for every
+# rename wave (the audit doc promises old codes never hard-break).
+_RENAMED_CODE_ALIASES = {
+    "OS": "SARC_OS", "EWS": "SARC_EWS", "CHON": "SARC_CHON", "CHOR": "SARC_CHOR",
+    "GCTB": "SARC_GCTB", "ESS_LG": "SARC_ESS_LG", "ESS_HG": "SARC_ESS_HG",
+    "RMS_ERMS": "SARC_RMS_ERMS", "RMS_ARMS": "SARC_RMS_ARMS",
+    "RMS_PRMS": "SARC_RMS_PRMS", "RMS_SSRMS": "SARC_RMS_SSRMS",
+    "HNSC_HPV_pos": "HNSC_HPVpos", "HNSC_HPV_neg": "HNSC_HPVneg",
+}
+_RENAMED_CODE_ALIASES_UPPER = {k.upper(): v for k, v in _RENAMED_CODE_ALIASES.items()}
+
 
 class _CancerTypeNamesView:
     """Read-only ``{code: display_name}`` view backed by the registry CSV.
@@ -172,6 +185,13 @@ def resolve_cancer_type(cancer_type):
     alias_key = raw.lower().replace(" ", "_").replace("-", "_")
     if alias_key in CANCER_TYPE_ALIASES:
         return CANCER_TYPE_ALIASES[alias_key]
+
+    # Backward-compat: old codes renamed in a Phase-C wave resolve to the new
+    # code (case-insensitive), so external callers don't hard-break.
+    if raw in _RENAMED_CODE_ALIASES:
+        return _RENAMED_CODE_ALIASES[raw]
+    if raw.upper() in _RENAMED_CODE_ALIASES_UPPER:
+        return _RENAMED_CODE_ALIASES_UPPER[raw.upper()]
 
     registry = CANCER_TYPE_NAMES  # registry-backed view
     if raw in registry:
@@ -948,13 +968,15 @@ def is_mixture_cohort(code):
 def sarcoma_lineage_codes(*, with_expression_only=False):
     """Return every registry code that is a sarcoma by lineage.
 
-    After the Phase-C ontology refactor the sarcoma lineage is a single
-    ``family == "sarcoma"`` bucket: soft-tissue (``SARC``/``SARC_*``, ``CHON``),
-    bone (``OS``, ``EWS``, ``GCTB``), rhabdomyosarcomas (``RMS_*``), endometrial
-    stromal sarcomas (``ESS_LG``/``ESS_HG``), and chordoma (``CHOR``) — bone and
-    pediatric sarcomas were folded in from the retired ``pediatric-bone`` /
-    ``pediatric-soft`` families (age is now a separate ``pediatric`` flag). This
-    is the membership the ``SARC`` grand-union aggregate pools over.
+    After the Phase-C ontology refactor every sarcoma is in the ``SARC_``
+    namespace under one ``family == "sarcoma"`` bucket: soft-tissue
+    (``SARC``/``SARC_LMS``/``SARC_UPS``/…), bone (``SARC_OS``, ``SARC_EWS``,
+    ``SARC_CHON``, ``SARC_CHOR``, ``SARC_GCTB``), rhabdomyosarcomas
+    (``SARC_RMS_*``) and endometrial stromal sarcomas (``SARC_ESS_LG/HG``) —
+    bone and pediatric sarcomas were folded in from the retired
+    ``pediatric-bone`` / ``pediatric-soft`` families (age is now a separate
+    ``pediatric`` flag). This is the membership the ``SARC`` grand-union
+    aggregate pools over.
 
     ``with_expression_only`` drops codes with no per-sample expression source
     (the ``LITERATURE_CURATED`` entries — e.g. ESS_LG/HG, GCTB, SARC_SFT),
@@ -966,6 +988,44 @@ def sarcoma_lineage_codes(*, with_expression_only=False):
         src = sub["expression_source"].astype(str).str.lower()
         sub = sub[~src.isin(["curated", "nan", ""])]
     return sub["code"].tolist()
+
+
+# Computed cohort aggregates: "view" cohorts that pool the per-sample values of
+# several atom cohorts by histology or source, rather than being a single frozen
+# matrix. Backed by ``cancer-cohort-aggregates.csv`` ({aggregate_code:
+# [member_code,...]}); the pan-sarcoma ``SARC`` grand union is computed from the
+# registry family (so it tracks new atoms automatically) rather than enumerated.
+def cohort_aggregates_df():
+    """Return the curated ``cancer-cohort-aggregates.csv`` long table
+    (``aggregate_code, member_code, basis``) — the explicit histology/source
+    rollup cohorts (e.g. ``SARC_RMS`` ← the four rhabdomyosarcoma subtypes;
+    ``TCGA_SARC`` ← the TCGA-SARC project atoms)."""
+    return get_data("cancer-cohort-aggregates")
+
+
+def cohort_aggregates():
+    """``{aggregate_code: [member_code, ...]}`` for every computed-aggregate
+    cohort: the curated histology rollups (``SARC_RMS``, ``SARC_LPS``) plus the
+    pan-sarcoma ``SARC`` grand union — every ``family == 'sarcoma'`` atom that is
+    not itself an aggregate (``SARC`` is itself a registry code but resolves to
+    the computed union; its TCGA-SARC samples are already folded into the
+    histology atoms, so there is no separate frozen ``SARC`` shard)."""
+    df = cohort_aggregates_df()
+    out = {}
+    for agg, grp in df.groupby("aggregate_code"):
+        out[str(agg)] = list(dict.fromkeys(grp["member_code"].astype(str)))
+    # pan-sarcoma grand union under the bare SARC code, computed from family;
+    # exclude the aggregates AND SARC itself (no self-membership / circularity).
+    aggs = set(out) | {"SARC"}
+    out["SARC"] = [c for c in sarcoma_lineage_codes() if c not in aggs]
+    return out
+
+
+def cohort_aggregate_members(aggregate_code):
+    """Member atom codes pooled by a computed-aggregate cohort, or ``None`` if
+    ``aggregate_code`` is not an aggregate. ``SARC`` is the pan-sarcoma grand
+    union; ``SARC_RMS`` / ``SARC_LPS`` are the curated histology rollups."""
+    return cohort_aggregates().get(str(aggregate_code))
 
 
 # ---------- Cancer-pathway panels (tumor-evidence Step-0 signals) ----------
@@ -1331,408 +1391,64 @@ radioligand_target_gene_ids = _deprecate(
 
 
 # ---------- Cancer-testis antigens (CTA) ----------
-_CTA_FILTER_COLUMN_CANDIDATES = ("passes_filters", "filtered")
-_CTA_REQUIRED_EVIDENCE_COLUMNS = frozenset(
-    {
-        "never_expressed",
-        "rna_98_pct_filter",
-        "rna_deflated_reproductive_frac",
-        "rna_99_pct_filter",
-    }
+# CTA curation is owned by tsarina — the single source of truth. pirlygenes
+# re-exports tsarina's evidence table, gene-set accessors, and protein-coding
+# partition so downstream consumers (trufflepig, analyses, normalize) keep one
+# stable import path while the filter / never-expressed / partition logic lives
+# in exactly one place. tsarina is a hard dependency (#289/#290/#291); the only
+# pirlygenes-local addition is CTA_gene_id_to_name(), a convenience mapping with
+# no tsarina equivalent.
+from tsarina.evidence import CTA_evidence as _tsarina_CTA_evidence  # noqa: E402
+from tsarina.gene_sets import (  # noqa: E402,F401
+    CTA_excluded_gene_ids,
+    CTA_excluded_gene_names,
+    CTA_filtered_gene_ids,
+    CTA_filtered_gene_names,
+    CTA_gene_ids,
+    CTA_gene_names,
+    CTA_never_expressed_gene_ids,
+    CTA_never_expressed_gene_names,
+    CTA_unfiltered_gene_ids,
+    CTA_unfiltered_gene_names,
+)
+from tsarina.partition import (  # noqa: E402,F401
+    CTAPartitionDataFrames,
+    CTAPartitionSets,
+    CTA_partition_dataframes,
+    CTA_partition_gene_ids,
+    CTA_partition_gene_names,
 )
 
 
-def _has_complete_cta_evidence_schema(df: pd.DataFrame) -> bool:
-    return _CTA_REQUIRED_EVIDENCE_COLUMNS.issubset(
-        set(df.columns)
-    ) and _cta_filter_column(df) is not None
+def CTA_evidence():
+    """Full CTA evidence DataFrame with HPA tissue-restriction columns.
 
-
-def _cta_filter_column(df: pd.DataFrame) -> str | None:
-    for column in _CTA_FILTER_COLUMN_CANDIDATES:
-        if column in df.columns:
-            return column
-    return None
-
-
-def _bool_mask(series: pd.Series) -> pd.Series:
-    return series.astype(str).str.strip().str.lower() == "true"
-
-
-def _cta_filter_mask(df: pd.DataFrame) -> pd.Series:
-    column = _cta_filter_column(df)
-    if column is None:
-        return pd.Series(False, index=df.index)
-    return _bool_mask(df[column])
-
-
-def _with_cta_filter_aliases(df: pd.DataFrame) -> pd.DataFrame:
-    """Expose both canonical and historical CTA filter names."""
-    filter_column = _cta_filter_column(df)
-    if filter_column is None:
-        return df
-    df = df.copy()
-    if "passes_filters" not in df.columns:
-        df["passes_filters"] = df[filter_column]
-    if "filtered" not in df.columns:
-        df["filtered"] = df[filter_column]
-    return df
-
-
-def _bundled_cta_evidence() -> pd.DataFrame:
-    from .load_dataset import get_data
-
-    return get_data("cancer-testis-antigens")
-
-
-def _cta_df(filtered_only=False, exclude_never_expressed=False):
-    df = CTA_evidence()
-    mask = pd.Series(True, index=df.index)
-    if filtered_only:
-        mask = mask & _cta_filter_mask(df)
-    if exclude_never_expressed and "never_expressed" in df.columns:
-        mask = mask & ~_bool_mask(df["never_expressed"])
-    return df[mask]
-
-
-def _cta_by_column(column, filtered_only=False, exclude_never_expressed=False):
-    subset = _cta_df(
-        filtered_only=filtered_only,
-        exclude_never_expressed=exclude_never_expressed,
-    )
-    result = set()
-    if column in subset.columns:
-        for x in subset[column]:
-            if isinstance(x, str):
-                result.update([xi.strip() for xi in x.split(";")])
-    return result
-
-
-def CTA_gene_names():
-    """CTA gene symbols: filtered AND expressed (>= 2 nTPM somewhere).
-
-    This is the recommended default for pMHC discovery. Excludes
-    never-expressed CTAs (no protein data + max RNA < 2 nTPM).
-    For the full filtered set including never-expressed, use
-    ``CTA_filtered_gene_names()``.
+    Delegates to :func:`tsarina.evidence.CTA_evidence` — tsarina is the single
+    source of truth for CTA curation. See tsarina for the column semantics
+    (``passes_filters`` / ``filtered``, ``never_expressed``,
+    ``rna_*_pct_filter``, ``rna_deflated_reproductive_frac``, ``rna_max_ntpm``,
+    the per-tissue nTPM columns, …).
     """
-    return _cta_by_column("Symbol", filtered_only=True, exclude_never_expressed=True)
-
-
-def CTA_gene_ids():
-    """CTA Ensembl gene IDs: filtered AND expressed."""
-    return _cta_by_column(
-        "Ensembl_Gene_ID", filtered_only=True, exclude_never_expressed=True
-    )
+    return _tsarina_CTA_evidence()
 
 
 def CTA_gene_id_to_name():
-    """CTA {Ensembl_Gene_ID: Symbol} dict: filtered AND expressed."""
-    subset = _cta_df(filtered_only=True, exclude_never_expressed=True)
-    if "Ensembl_Gene_ID" not in subset.columns or "Symbol" not in subset.columns:
-        return {}
+    """CTA ``{Ensembl_Gene_ID: Symbol}`` for the filtered + expressed set.
 
+    pirlygenes convenience over tsarina's :func:`CTA_gene_ids` /
+    :func:`CTA_gene_names`: tsarina exposes the id and symbol sets but not the
+    id→symbol mapping. Restricted to the same filtered-and-expressed CTAs as
+    :func:`CTA_gene_ids`.
+    """
+    ids = CTA_gene_ids()
+    ev = CTA_evidence()
     result = {}
-    for _, row in subset[["Ensembl_Gene_ID", "Symbol"]].dropna().iterrows():
-        gene_id = str(row["Ensembl_Gene_ID"]).strip()
-        symbol = str(row["Symbol"]).strip()
-        if not gene_id or gene_id.lower() in {"nan", "none"}:
-            continue
-        if not symbol or symbol.lower() in {"nan", "none"}:
-            continue
-        result[gene_id] = symbol
+    for gid, sym in zip(ev["Ensembl_Gene_ID"].astype(str), ev["Symbol"].astype(str)):
+        gid = gid.strip()
+        sym = sym.strip()
+        if gid in ids and sym and sym.lower() not in {"nan", "none"}:
+            result[gid] = sym
     return result
-
-
-def CTA_filtered_gene_names():
-    """All CTA gene symbols that pass the HPA filter (including never-expressed)."""
-    return _cta_by_column("Symbol", filtered_only=True)
-
-
-def CTA_filtered_gene_ids():
-    """All CTA Ensembl gene IDs that pass the HPA filter (including never-expressed)."""
-    return _cta_by_column("Ensembl_Gene_ID", filtered_only=True)
-
-
-def CTA_never_expressed_gene_names():
-    """CTA genes that pass filter but have no meaningful HPA expression.
-
-    No protein data AND max RNA nTPM < 2. These are in source databases
-    but lack positive evidence of tissue restriction from HPA.
-    """
-    return CTA_filtered_gene_names() - CTA_gene_names()
-
-
-def CTA_never_expressed_gene_ids():
-    """CTA Ensembl gene IDs that pass filter but have no meaningful HPA expression."""
-    return CTA_filtered_gene_ids() - CTA_gene_ids()
-
-
-def CTA_unfiltered_gene_names():
-    """All CTA gene symbols from all source databases (unfiltered).
-
-    This is the full CTA universe — use for excluding CTA genes from
-    a non-CTA comparison set.  Any gene in this set was identified as
-    a candidate CTA by at least one source database.
-    """
-    return _cta_by_column("Symbol")
-
-
-def CTA_unfiltered_gene_ids():
-    """All CTA Ensembl gene IDs from all source databases (unfiltered)."""
-    return _cta_by_column("Ensembl_Gene_ID")
-
-
-def CTA_excluded_gene_names():
-    """CTA genes that FAIL the reproductive-tissue filter.
-
-    These are candidate CTAs with evidence of somatic tissue expression.
-    Use this set to exclude from a non-CTA comparison set: they should
-    not be in the clean CTA set (they leak into healthy tissue) but also
-    should not be in a non-CTA set (they are still CTA candidates).
-    """
-    return CTA_unfiltered_gene_names() - CTA_filtered_gene_names()
-
-
-def CTA_excluded_gene_ids():
-    """CTA Ensembl gene IDs that FAIL the reproductive-tissue filter."""
-    return CTA_unfiltered_gene_ids() - CTA_filtered_gene_ids()
-
-
-def CTA_evidence():
-    """Return the full CTA evidence DataFrame with HPA tissue-restriction columns.
-
-    Columns
-    -------
-    Symbol, Aliases, Full_Name, Function, Ensembl_Gene_ID,
-    source_databases, biotype, Canonical_Transcript_ID
-        Gene identity fields.
-    protein_reproductive : bool or "no data"
-        True if all IHC-detected tissues (excluding thymus) are in
-        {testis, ovary, placenta}.
-    protein_thymus : bool or "no data"
-        True if protein detected in thymus.
-    rna_reproductive : bool
-        True if every tissue with >=1 nTPM (excluding thymus) is in
-        {testis, ovary, placenta}.
-    rna_thymus : bool
-        True if thymus nTPM >= 1.
-    protein_reliability : str
-        Best HPA antibody reliability for this gene: "Enhanced",
-        "Supported", "Approved", "Uncertain", or "no data".
-    protein_strict_expression : str
-        Semicolon-separated list of tissues where protein is detected
-        (excluding thymus), or "no data" / "not detected".
-    rna_reproductive_frac : float
-        Fraction of total nTPM (excluding thymus) in core reproductive
-        tissues, computed from raw nTPM values.
-    rna_reproductive_and_thymus_frac : float
-        Same but with thymus nTPM added to numerator and denominator.
-    rna_deflated_reproductive_frac : float
-        (1 + repro_deflated) / (1 + total_deflated) where each tissue
-        is deflated via max(0, nTPM - 1).  The +1 pseudocount prevents
-        0/0 for very-low-expression genes.
-    rna_deflated_reproductive_and_thymus_frac : float
-        Same but with thymus deflated nTPM added to the reproductive
-        numerator.
-    rna_80_pct_filter, rna_90_pct_filter, rna_95_pct_filter : bool
-        Whether deflated reproductive fraction >= 80/90/95%.
-    filtered : bool
-        Historical alias for passes_filters.
-    passes_filters : bool
-        Final inclusion flag with tiered RNA thresholds based on protein
-        antibody reliability.  True when protein is reproductive-only
-        (or absent) and deflated RNA fraction meets the tier threshold:
-        - Enhanced → RNA >=80%
-        - Supported → RNA >=90%
-        - Approved → RNA >=95%
-        - Uncertain or no protein data → RNA >=98%
-        Genes with protein in non-reproductive tissues always fail.
-        Non-protein-coding genes (biotype != protein_coding) always fail.
-    rna_max_ntpm : float
-        Maximum nTPM across all tissues for this gene.
-    never_expressed : bool
-        True if no HPA protein data AND maximum RNA nTPM < 2.
-    """
-    try:
-        from tsarina.evidence import CTA_evidence as _tsarina_evidence
-
-        df = _tsarina_evidence()
-        if _has_complete_cta_evidence_schema(df):
-            return _with_cta_filter_aliases(df)
-    except ImportError:
-        pass
-    return _with_cta_filter_aliases(_bundled_cta_evidence())
-
-
-from dataclasses import dataclass  # noqa: E402
-
-import pandas as pd  # noqa: E402
-
-
-@dataclass(frozen=True)
-class CTAPartitionSets:
-    """Three-way partition of protein-coding genes as sets.
-
-    Attributes
-    ----------
-    cta : set[str]
-        Expressed, reproductive-restricted CTAs. Source of CTA pMHCs.
-    cta_never_expressed : set[str]
-        CTAs from source databases with no meaningful HPA expression
-        (no protein data + max RNA < 2 nTPM).
-    non_cta : set[str]
-        All other protein-coding genes, including CTAs that fail the
-        reproductive-tissue filter (somatic expression detected).
-    """
-
-    cta: set
-    cta_never_expressed: set
-    non_cta: set
-
-
-@dataclass(frozen=True)
-class CTAPartitionDataFrames:
-    """Three-way partition of protein-coding genes as DataFrames.
-
-    Attributes
-    ----------
-    cta : pd.DataFrame
-        Expressed, reproductive-restricted CTAs with full evidence columns.
-    cta_never_expressed : pd.DataFrame
-        Never-expressed CTAs with full evidence columns.
-    non_cta : pd.DataFrame
-        All other protein-coding genes (Symbol, Ensembl_Gene_ID).
-    """
-
-    cta: pd.DataFrame
-    cta_never_expressed: pd.DataFrame
-    non_cta: pd.DataFrame
-
-
-def _build_partition(ensembl_release=112):
-    """Shared logic for building the three-way partition."""
-    from pyensembl import EnsemblRelease
-
-    ensembl = EnsemblRelease(ensembl_release)
-    evidence_df = CTA_evidence()
-
-    all_pc_genes = {
-        g.gene_id: g.gene_name for g in ensembl.genes() if g.biotype == "protein_coding"
-    }
-    all_pc_ids = set(all_pc_genes.keys())
-
-    filtered_mask = _cta_filter_mask(evidence_df)
-    never_expr_mask = _bool_mask(evidence_df["never_expressed"])
-
-    cta_mask = filtered_mask & ~never_expr_mask
-    never_expressed_mask = filtered_mask & never_expr_mask
-
-    cta_ids = set(evidence_df.loc[cta_mask, "Ensembl_Gene_ID"])
-    never_expressed_ids = set(evidence_df.loc[never_expressed_mask, "Ensembl_Gene_ID"])
-    non_cta_ids = all_pc_ids - cta_ids - never_expressed_ids
-
-    return (
-        all_pc_genes,
-        evidence_df,
-        cta_mask,
-        never_expressed_mask,
-        cta_ids,
-        never_expressed_ids,
-        non_cta_ids,
-    )
-
-
-def CTA_partition_gene_ids(ensembl_release=112) -> CTAPartitionSets:
-    """Partition all protein-coding genes into CTA / never-expressed / non-CTA
-    as sets of Ensembl gene IDs.
-
-    CTAs that fail the reproductive-tissue filter (somatic expression)
-    are included in ``non_cta``.
-
-    Examples
-    --------
-    >>> p = CTA_partition_gene_ids()
-    >>> "ENSG00000147381" in p.cta   # MAGEA4
-    True
-    >>> len(p.cta & p.non_cta)       # no overlap
-    0
-    """
-    _, _, _, _, cta_ids, never_expressed_ids, non_cta_ids = _build_partition(
-        ensembl_release
-    )
-    return CTAPartitionSets(
-        cta=cta_ids,
-        cta_never_expressed=never_expressed_ids,
-        non_cta=non_cta_ids,
-    )
-
-
-def CTA_partition_gene_names(ensembl_release=112) -> CTAPartitionSets:
-    """Partition all protein-coding genes into CTA / never-expressed / non-CTA
-    as sets of gene symbols.
-
-    CTAs that fail the reproductive-tissue filter (somatic expression)
-    are included in ``non_cta``.
-
-    Examples
-    --------
-    >>> p = CTA_partition_gene_names()
-    >>> "MAGEA4" in p.cta
-    True
-    >>> "TP53" in p.non_cta
-    True
-    """
-    all_pc_genes, evidence_df, cta_mask, never_expressed_mask, _, _, _ = (
-        _build_partition(ensembl_release)
-    )
-    all_pc_names = set(all_pc_genes.values())
-
-    cta_names = set(evidence_df.loc[cta_mask, "Symbol"])
-    never_expressed_names = set(evidence_df.loc[never_expressed_mask, "Symbol"])
-    non_cta_names = all_pc_names - cta_names - never_expressed_names
-
-    return CTAPartitionSets(
-        cta=cta_names,
-        cta_never_expressed=never_expressed_names,
-        non_cta=non_cta_names,
-    )
-
-
-def CTA_partition_dataframes(ensembl_release=112) -> CTAPartitionDataFrames:
-    """Partition all protein-coding genes into CTA / never-expressed / non-CTA
-    as DataFrames.
-
-    The ``cta`` and ``cta_never_expressed`` DataFrames include all CTA
-    evidence columns. The ``non_cta`` DataFrame has Symbol and
-    Ensembl_Gene_ID columns.
-
-    CTAs that fail the reproductive-tissue filter (somatic expression)
-    are included in ``non_cta``.
-
-    Examples
-    --------
-    >>> p = CTA_partition_dataframes()
-    >>> "rna_deflated_reproductive_frac" in p.cta.columns
-    True
-    """
-    all_pc_genes, evidence_df, cta_mask, never_expressed_mask, _, _, non_cta_ids = (
-        _build_partition(ensembl_release)
-    )
-
-    non_cta_records = [
-        {"Symbol": all_pc_genes[gid], "Ensembl_Gene_ID": gid}
-        for gid in sorted(non_cta_ids)
-        if gid in all_pc_genes
-    ]
-
-    return CTAPartitionDataFrames(
-        cta=evidence_df.loc[cta_mask].copy().reset_index(drop=True),
-        cta_never_expressed=evidence_df.loc[never_expressed_mask]
-        .copy()
-        .reset_index(drop=True),
-        non_cta=pd.DataFrame(non_cta_records),
-    )
 
 
 def CTA_partition(return_type="gene_ids", ensembl_release=112):
@@ -2102,20 +1818,37 @@ def cancer_tmb_df():
     return get_data("cancer-tmb")
 
 
-def cancer_tmb(cancer_type=None):
+def cancer_tmb(cancer_type=None, *, inherit=True):
     """Median TMB (mut/Mb) for one cancer type, or the whole
     ``{code: median_tmb}`` map (codes with no published value omitted).
 
-    ``cancer_type`` is resolved through :func:`resolve_cancer_type`, so
-    aliases and display names work; returns ``None`` if the type has no
-    curated TMB value."""
+    ``cancer_type`` is resolved through :func:`resolve_cancer_type`, so aliases
+    and display names work. When ``inherit`` (default), a code with no curated
+    value of its own inherits its nearest ancestor's TMB by walking the registry
+    ``parent_code`` chain — so molecular / histology subtypes (``LUAD_EGFR`` ->
+    ``LUAD``, ``SCLC_ASCL1`` -> ``SCLC``, rare ``SARC_*`` -> ``SARC``) resolve
+    without a curated row each. Returns ``None`` if neither the code nor any
+    ancestor has a value."""
     df = cancer_tmb_df()
     vals = df.dropna(subset=["median_tmb_mut_mb"])
     mapping = dict(zip(vals["cancer_code"].astype(str),
                        vals["median_tmb_mut_mb"].astype(float)))
     if cancer_type is None:
         return mapping
-    return mapping.get(resolve_cancer_type(cancer_type))
+    code = resolve_cancer_type(cancer_type)
+    if code in mapping or not inherit:
+        return mapping.get(code)
+    # walk the registry parent chain to inherit an ancestor's value
+    reg = cancer_type_registry().set_index("code")
+    cur, seen = code, set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        if cur in mapping:
+            return mapping[cur]
+        if cur not in reg.index:
+            break
+        cur = str(reg.loc[cur].get("parent_code", "") or "").strip() or None
+    return None
 
 
 def cancer_fusions_df():
@@ -2182,6 +1915,152 @@ def protein_family(gene):
         for v in hit:
             if isinstance(v, str) and v.strip():
                 return v
+    return None
+
+
+_BURDEN_METRICS = ("us_incidence_pct", "us_mortality_pct",
+                   "world_incidence_pct", "world_mortality_pct")
+
+
+def cancer_burden_df():
+    """Return the curated ``cancer-incidence-mortality.csv`` reference: each
+    cancer **burden category**'s share (%) of annual cancer incidence and
+    mortality, for the US and worldwide, cited per row (ACS Cancer Facts &
+    Figures 2024 / GLOBOCAN 2022). Rows flagged in ``notes`` as subsets/rollups
+    (e.g. small_cell_lung, leukemia subtypes, sarcoma/pediatric aggregates)
+    overlap others — don't sum them blindly. Incidence vs mortality diverge
+    sharply (pancreas/lung high mortality:incidence; prostate/thyroid low), as
+    do US vs worldwide (stomach/liver/cervix far larger globally)."""
+    return get_data("cancer-incidence-mortality")
+
+
+def cancer_code_burden_map():
+    """Return ``{cancer_code: burden_category}`` from
+    ``cancer-code-burden-map.csv``. This is now only the small set of **overrides**
+    the registry ontology can't express on its own (e.g. ``SARC_KS`` -> Kaposi
+    rather than soft-tissue; ``LAML`` -> AML rather than other-leukemia;
+    ``HL`` -> Hodgkin; ``CTCL`` -> non-Hodgkin). Everything else is resolved by
+    :func:`burden_category` from the registry's family + primary_tissue."""
+    df = get_data("cancer-code-burden-map")
+    return dict(zip(df["cancer_code"].astype(str),
+                    df["burden_category"].astype(str)))
+
+
+def cancer_burden(category=None, *, metric="us_incidence_pct"):
+    """Burden share (%) for one category and metric, or the whole
+    ``{category: pct}`` map. ``metric`` is one of ``us_incidence_pct``,
+    ``us_mortality_pct``, ``world_incidence_pct``, ``world_mortality_pct``."""
+    if metric not in _BURDEN_METRICS:
+        raise ValueError(f"metric must be one of {_BURDEN_METRICS}")
+    df = cancer_burden_df()
+    mapping = dict(zip(df["burden_category"].astype(str),
+                       df[metric].astype(float)))
+    if category is None:
+        return mapping
+    return mapping.get(category)
+
+
+# Burden categories are anatomic-site shares (how ACS/GLOBOCAN tabulate), so a
+# cohort is resolved to its category straight from the **cancer-type registry
+# ontology** — one source of truth — rather than a parallel hand-map: the
+# sarcoma family splits bone vs soft tissue on primary_tissue, plasma-cell and
+# a handful of leukemia/lymphoma exceptions resolve by family, and primary
+# tissue decides everything else. ``cancer-code-burden-map.csv`` now holds only
+# the few true exceptions the ontology can't express.
+
+# Sarcoma family -> bone_and_joint when its primary_tissue is skeletal, else
+# soft_tissue_sarcoma (covers the 40+ SARC_* / RMS_* / OS / EWS / CHOR codes).
+_BONE_SARCOMA_TISSUES = {"bone", "cartilage", "notochord"}
+
+# Registry primary_tissue -> burden category. Covers every non-heme tissue in
+# the registry; heme tissues are routed by :data:`_HEME_TISSUE_BURDEN` below.
+_PRIMARY_TISSUE_BURDEN = {
+    "lung": "lung", "breast": "breast", "prostate": "prostate",
+    "colon": "colorectal", "rectum": "colorectal",
+    "pancreas": "pancreas", "liver": "liver", "bile_duct": "gallbladder_biliary",
+    "stomach": "stomach", "esophagus": "esophagus",
+    "small_intestine": "small_intestine",
+    "bladder": "bladder", "kidney": "kidney", "kidney_cns_soft": "kidney",
+    "ovary": "ovary", "endometrium": "uterus_endometrium", "cervix": "cervix",
+    "thyroid": "thyroid", "thyroid_c_cell": "thyroid",
+    "testis": "testicular_germ_cell",
+    "pleura": "mesothelioma", "peritoneum": "mesothelioma",
+    "oral_cavity": "head_and_neck", "oropharynx": "head_and_neck",
+    "pharynx": "head_and_neck", "nasopharynx": "head_and_neck",
+    "larynx": "head_and_neck", "salivary_gland": "head_and_neck",
+    "midline_structures": "head_and_neck", "thymus": "head_and_neck",
+    "thorax": "head_and_neck",
+    "cerebrum": "brain_cns", "cerebellum": "brain_cns",
+    "eye": "eye_ocular", "retina": "eye_ocular", "skin": "melanoma",
+    "adrenal_cortex": "adrenal", "adrenal_medulla": "adrenal",
+    "sympathetic_ganglia": "adrenal",
+    "bone": "bone_and_joint", "cartilage": "bone_and_joint",
+    "notochord": "bone_and_joint",
+    "soft_tissue": "soft_tissue_sarcoma", "smooth_muscle": "soft_tissue_sarcoma",
+    "skeletal_muscle": "soft_tissue_sarcoma", "adipose": "soft_tissue_sarcoma",
+    "nerve_sheath": "soft_tissue_sarcoma",
+    "vascular_endothelium": "soft_tissue_sarcoma", "gi_wall": "soft_tissue_sarcoma",
+}
+# Heme (non-plasma): lymph node -> lymphoma; marrow/blood/spleen -> leukemia.
+# AML and Hodgkin are exceptions carried in cancer-code-burden-map.csv.
+_HEME_TISSUE_BURDEN = {
+    "lymph_node": "non_hodgkin_lymphoma",
+    "bone_marrow": "leukemia_all_other", "peripheral_blood": "leukemia_all_other",
+    "spleen_marrow": "leukemia_all_other",
+}
+# Last-resort family fallback when primary_tissue is blank/unmapped.
+_FAMILY_BURDEN = {
+    "sarcoma": "soft_tissue_sarcoma", "melanoma": "melanoma", "cns": "brain_cns",
+}
+
+
+def burden_category(cancer_type):
+    """Robustly resolve a cancer type (code, alias, or display name) to an
+    anatomic burden category, driven by the cancer-type registry ontology.
+    Order: normalize via :func:`resolve_cancer_type`; the small explicit
+    ``cancer-code-burden-map`` *override* (walking the ``parent_code`` chain);
+    then registry-driven — sarcoma family splits bone vs soft tissue, plasma
+    cell -> myeloma, other heme by tissue, then ``primary_tissue``, then
+    ``family``. Returns ``None`` only when nothing matches — callers should
+    **warn**, not silently skip (an unmapped cohort is a coverage gap)."""
+    try:
+        code = resolve_cancer_type(cancer_type)
+    except ValueError:
+        return None
+    if code is None:
+        return None
+    override = cancer_code_burden_map()
+    reg = cancer_type_registry().set_index("code")
+    # 1. explicit override (true exceptions only), walking up the parent chain
+    cur, seen = code, set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        if cur in override:
+            return override[cur]
+        if cur not in reg.index:
+            break
+        cur = str(reg.loc[cur].get("parent_code", "") or "").strip() or None
+    # 2. registry-driven, walking up the parent chain for blank tissue/family
+    cur, seen = code, set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        if cur not in reg.index:
+            break
+        row = reg.loc[cur]
+        family = str(row.get("family", "") or "")
+        tissue = str(row.get("primary_tissue", "") or "")
+        if family == "sarcoma":
+            return ("bone_and_joint" if tissue in _BONE_SARCOMA_TISSUES
+                    else "soft_tissue_sarcoma")
+        if family == "heme-plasma":
+            return "multiple_myeloma"
+        if family.startswith("heme") and tissue in _HEME_TISSUE_BURDEN:
+            return _HEME_TISSUE_BURDEN[tissue]
+        if tissue in _PRIMARY_TISSUE_BURDEN:
+            return _PRIMARY_TISSUE_BURDEN[tissue]
+        if family in _FAMILY_BURDEN:
+            return _FAMILY_BURDEN[family]
+        cur = str(row.get("parent_code", "") or "").strip() or None
     return None
 
 

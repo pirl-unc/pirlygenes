@@ -189,7 +189,17 @@ def _dataset_paths():
     return paths
 
 
-def get_data(name, _dataframes_dict=None):
+def get_data(name, _dataframes_dict=None, *, copy=True):
+    """Load a packaged dataset as a DataFrame.
+
+    By default returns a defensive ``.copy()`` so callers that mutate in
+    place (``df["c"] = ...``, ``df.fillna(0, inplace=True)``) can't corrupt
+    the shared cache. Pass ``copy=False`` to get the cached frame directly —
+    only for read-only callers that filter/copy a small slice before any
+    mutation. This skips the full-frame copy, which for the large
+    ``cancer-reference-expression`` table (~367 MB, ~1M string rows)
+    dominated test-suite time (#278).
+    """
     candidates = [name, name.lower()]
     for candidate in list(candidates):
         candidates.append(candidate + ".csv")
@@ -223,12 +233,14 @@ def get_data(name, _dataframes_dict=None):
                         )
                 # Return a copy so callers that mutate in place (e.g. df["c"]=...,
                 # df.fillna(0, inplace=True)) can't corrupt the shared cache.
-                return _CACHED_DATAFRAMES[cache_key].copy()
+                # copy=False skips this for read-only callers (#278).
+                cached = _CACHED_DATAFRAMES[cache_key]
+                return cached.copy() if copy else cached
         raise ValueError(f"Dataset {name} not found")
 
     for candidate in candidates:
         if candidate in _dataframes_dict:
             # Return a copy so callers that mutate in place (e.g. df["c"]=...,
             # df.fillna(0, inplace=True)) can't corrupt the shared cache.
-            return _dataframes_dict[candidate].copy()
+            return _dataframes_dict[candidate].copy() if copy else _dataframes_dict[candidate]
     raise ValueError(f"Dataset {name} not found")

@@ -14,12 +14,17 @@ classifiers = [
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
+    "matplotlib>=3.7.0",
     "numpy>=2.0.0",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     "pyensembl>=2.6.0",
     "PyYAML>=6.0",
     "tqdm",
+    # tsarina is the single source of truth for CTA curation; pirlygenes
+    # re-exports its evidence/gene-set/partition accessors (no bundled CTA
+    # snapshot to drift). Published on PyPI as of 1.4.x. (#289/#290/#291)
+    "tsarina>=1.4.8",
 ]
 
 [tool.setuptools.dynamic]
@@ -42,7 +47,6 @@ test = [
     "pytest-cov",
     "pytest-xdist",
 ]
-
 [project.urls]
 "Homepage" = "https://github.com/pirl-unc/pirlygenes"
 "Bug Tracker" = "https://github.com/pirl-unc/pirlygenes"

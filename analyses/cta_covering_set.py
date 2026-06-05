@@ -50,10 +50,10 @@ INCIDENCE_K = {
     "MM": 35, "MDS": 20, "MPN": 20, "CML": 9, "CLL": 21, "MCL": 4, "FL": 15,
     "HL": 8, "BL": 1.5, "MESO": 3, "THYM": 1.5, "ACC": 0.2, "PCPG": 0.8,
     "UVM": 1.5, "UCS": 3, "TGCT": 9, "CHOL": 8, "B_ALL": 5, "T_ALL": 1.5,
-    "CTCL": 3, "MTC": 1.5, "ADCC": 1.5, "CHON": 0.6, "SCLC": 30,
+    "CTCL": 3, "MTC": 1.5, "ADCC": 1.5, "SARC_CHON": 0.6, "SCLC": 30,
     "SCLC_POU2F3": 4, "SCLC_ASCL1": 12, "SCLC_NEUROD1": 7,
     "NBL_MYCN_amp": 0.2, "NBL_MYCN_nonamp": 0.6, "WILMS": 0.65, "RT": 0.05,
-    "OS": 1, "EWS": 0.2, "MBL": 0.5, "RB": 0.3, "ATRT": 0.1, "HEPB": 0.1,
+    "SARC_OS": 1, "SARC_EWS": 0.2, "MBL": 0.5, "RB": 0.3, "ATRT": 0.1, "HEPB": 0.1,
     "PANNET": 4, "MID_NET": 4, "REC_NET": 2, "LUNG_NET_LC": 4, "LUNG_NET_LCNEC": 2,
 }
 DEFAULT_INCIDENCE_K = 0.5   # rare/sub-typed codes not in the table
@@ -187,8 +187,8 @@ def main() -> None:
         ys = [100 * cum_w / total for (_c, _n, cum_w, _cn) in order]
         ax.plot(xs, ys, "o-", ms=4, label=f"{stat_label}")
     ax.axhline(80, color="0.7", ls="--", lw=0.8)
-    ax.set_xlabel(f"# CTAs in panel (greedy, >{ACTIONABLE_TPM:g} TPM)")
-    ax.set_ylabel("% patients covered (≈incidence-weighted)")
+    ax.set_xlabel(f"# CTAs in panel (> {ACTIONABLE_TPM:g} TPM)")
+    ax.set_ylabel("% patients covered (incidence-weighted)")
     ax.set_title("CTA covering set — cumulative patient coverage")
     ax.set_xlim(left=1)
     ax.legend(title="actionable if TPM> bar at:")

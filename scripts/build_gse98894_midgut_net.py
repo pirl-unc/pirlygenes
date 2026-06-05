@@ -263,7 +263,7 @@ def main() -> int:
             print(f"  {code}: no samples — skipping")
             continue
         sub = tpm[gsms]
-        clean = _clean_tpm(sub, _technical_mask(gene_table))
+        clean = _clean_tpm(sub, gene_table=gene_table)
         out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
         out["cancer_code"] = code
         out["source_cohort"] = SOURCE_COHORT

@@ -83,10 +83,12 @@ TCGA_MAPPING: list[tuple[str, str]] = [
     ("PCPG", "pheochromocytoma & paraganglioma"),
     ("PRAD", "prostate adenocarcinoma"),
     ("READ", "rectum adenocarcinoma"),
-    ("SARC", "leiomyosarcoma"),  # Note: TCGA-SARC includes multiple histologies; this
-                                  # is the largest histology in the TCGA-SARC project. Real
-                                  # TCGA-SARC umbrella build needs all histologies merged —
-                                  # see audit "Open questions". Tagged here as a placeholder.
+    # No bare "SARC" cohort: the TCGA-SARC leiomyosarcoma samples it used to
+    # capture are already in SARC_LMS (the Treehouse "leiomyosarcoma" atom keeps
+    # TCGA + non-TCGA samples), and the other TCGA-SARC histologies are likewise
+    # already in their SARC_UPS / SARC_MYXFIB / SARC_SYN / SARC_MPNST atoms. So
+    # "SARC" was a redundant leiomyosarcoma slice; the bare SARC code is now the
+    # computed pan-sarcoma grand union (cancer-cohort-aggregates.csv).
     ("SKCM", "skin cutaneous melanoma"),
     ("STAD", "stomach adenocarcinoma"),
     ("TGCT", "testicular germ cell tumor"),

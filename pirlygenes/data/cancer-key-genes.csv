@@ -608,39 +608,39 @@ B_ALL,,CD19,target,blinatumomab,bispecific,approved,approved_later_line,later_li
 B_ALL,,CD19,target,tisagenlecleucel (tisa-cel),CAR-T,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,R/R pediatric / young adult B-ALL,CD19 CAR-T — first-of-kind FDA approval 2017,PMID:28562253
 B_ALL,,CD19,target,brexucabtagene autoleucel (brexu-cel),CAR-T,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,R/R adult B-ALL,CD19 CAR-T — approved 2021; ZUMA-3 trial,PMID:34214213
 B_ALL,,CD22,target,inotuzumab ozogamicin,ADC,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,R/R B-ALL,CD22 calicheamicin ADC — approved 2017; INO-VATE trial,PMID:27386334
-OS,,RB1,biomarker,,,,,,,,Loss (~50%) — tumor suppressor; germline RB1 loss predisposes to OS,PMID:29156804
-OS,,TP53,biomarker,,,,,,,,Mutation / Li-Fraumeni germline — ubiquitous driver,PMID:29156804
-OS,,ATRX,biomarker,,,,,,,,Loss — ALT telomere-maintenance phenotype,PMID:29156804
-OS,,MDM2,biomarker,,,,,,,,Amplification in parosteal OS variant — MDM2-p53 axis,PMID:24909179
-OS,,CDK4,biomarker,,,,,,,,Co-amplified with MDM2 in parosteal OS; palbociclib rationale,PMID:24909179
-OS,,RUNX2,biomarker,,,,,,,,Osteoblast master TF — lineage marker; retained in OS tumors,PMID:29156804
-OS,,COL1A1,biomarker,,,,,,,,Osteoid matrix production — tumor-intrinsic (not TME) in OS,PMID:29156804
-OS,,GD2_SYN,biomarker,,,,,,,,ST8SIA1 encodes GD2 synthase — variable surface GD2 expression,PMID:34648686
-OS,,B4GALNT1,target,dinutuximab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced / metastatic OS,Anti-GD2 — AOST1421 trial; active in subset,PMID:34648686
-OS,,ERBB2,target,trastuzumab deruxtecan,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,HER2-expressing OS,Trastuzumab + chemo backbone trials in HER2+ OS,PMID:22271477
-OS,,IGF1R,target,ganitumab + chemo,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,metastatic OS,IGF1R inhibitor — SARC021 + AEWS1221 trials,PMID:32762005
-OS,,VEGFA,target,cabozantinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R OS,CABONE / CABOSARC trials — activity documented,PMID:33008784
-EWS,,EWSR1,biomarker,,,,,,,,EWSR1 fusion partner — defines Ewing family; translocation partner FLI1 (most) / ERG (~10%),PMID:26009011
-EWS,,FLI1,biomarker,,,,,,,,EWSR1-FLI1 fusion — pathognomonic; EWS master driver,PMID:26009011
-EWS,,ERG,biomarker,,,,,,,,EWSR1-ERG fusion in ~10% — alternative to FLI1; indistinguishable clinically,PMID:26009011
-EWS,,CD99,biomarker,,,,,,,,MIC2 — diffuse membrane IHC; diagnostic for Ewing,PMID:2185739
-EWS,,NKX2-2,biomarker,,,,,,,,Downstream EWS-FLI1 target; diagnostic IHC,PMID:18812539
-EWS,,STAG2,biomarker,,,,,,,,Recurrent loss in Ewing — cohesin complex; poor prognosis subset,PMID:24814251
-EWS,,IGF1R,target,ganitumab,antibody,phase_3,late_clinical,late_clinical,late-clinical follow-up; confirm trial or local availability,high-risk EWS,AEWS1221 phase 3 — IGF1R inhibitor + VDC/IE in high-risk EWS,PMID:32762005
-EWS,,ERG,target,TK216,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R EWS,EWS-FLI1 direct inhibitor (small molecule) — phase 2 trials,PMID:33712479
-EWS,,KDM1A,target,seclidemstat,small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R Ewing,LSD1 inhibitor — EWS-FLI1-dependent program,PMID:29438748
-EWS,,PRAME,target,IMA203,TCR-T,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,PRAME+ HLA-A*02+ Ewing,PRAME-directed TCR-T in EWS-expressing samples,PMID:38197793
-RMS_ERMS,,MYOD1,biomarker,,,,,,,,Myogenic regulatory factor — embryonal skeletal-muscle program; diagnostic IHC,PMID:22290179
-RMS_ERMS,,MYOG,biomarker,,,,,,,,Myogenin — downstream MYOD1; focal IHC pattern (vs diffuse in ARMS),PMID:22290179
-RMS_ERMS,,DES,biomarker,,,,,,,,Desmin — skeletal-muscle lineage IHC,PMID:22290179
-RMS_ERMS,,NRAS,biomarker,,,,,,,,Recurrent activating mutation in ERMS — RAS-pathway driver,PMID:24703002
-RMS_ERMS,,TYMS,target,vincristine + actinomycin + cyclophosphamide (VAC),small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,ERMS first-line,VAC is pediatric RMS chemotherapy backbone — IRS/COG trials,PMID:19901112
-RMS_ARMS,,FOXO1,biomarker,,,,,,,,PAX3-FOXO1 or PAX7-FOXO1 fusion — pathognomonic for fusion-positive RMS,PMID:19901112
-RMS_ARMS,,PAX3,biomarker,,,,,,,,Majority PAX3-FOXO1 variant — worst prognosis,PMID:19901112
-RMS_ARMS,,PAX7,biomarker,,,,,,,,PAX7-FOXO1 variant — better prognosis than PAX3,PMID:19901112
-RMS_ARMS,,MYOG,biomarker,,,,,,,,Diffuse myogenin IHC (vs focal in ERMS) — diagnostic,PMID:22290179
-RMS_ARMS,,FGFR4,biomarker,,,,,,,,Recurrent activating mutation in fusion-negative RMS — erdafitinib candidate,PMID:24703002
-RMS_ARMS,,FGFR4,target,erdafitinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,FGFR4-mut fusion-neg RMS,FGFR-selective TKI — activity in FGFR-altered tumors,PMID:31378236
+SARC_OS,,RB1,biomarker,,,,,,,,Loss (~50%) — tumor suppressor; germline RB1 loss predisposes to OS,PMID:29156804
+SARC_OS,,TP53,biomarker,,,,,,,,Mutation / Li-Fraumeni germline — ubiquitous driver,PMID:29156804
+SARC_OS,,ATRX,biomarker,,,,,,,,Loss — ALT telomere-maintenance phenotype,PMID:29156804
+SARC_OS,,MDM2,biomarker,,,,,,,,Amplification in parosteal OS variant — MDM2-p53 axis,PMID:24909179
+SARC_OS,,CDK4,biomarker,,,,,,,,Co-amplified with MDM2 in parosteal OS; palbociclib rationale,PMID:24909179
+SARC_OS,,RUNX2,biomarker,,,,,,,,Osteoblast master TF — lineage marker; retained in OS tumors,PMID:29156804
+SARC_OS,,COL1A1,biomarker,,,,,,,,Osteoid matrix production — tumor-intrinsic (not TME) in OS,PMID:29156804
+SARC_OS,,GD2_SYN,biomarker,,,,,,,,ST8SIA1 encodes GD2 synthase — variable surface GD2 expression,PMID:34648686
+SARC_OS,,B4GALNT1,target,dinutuximab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced / metastatic OS,Anti-GD2 — AOST1421 trial; active in subset,PMID:34648686
+SARC_OS,,ERBB2,target,trastuzumab deruxtecan,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,HER2-expressing OS,Trastuzumab + chemo backbone trials in HER2+ OS,PMID:22271477
+SARC_OS,,IGF1R,target,ganitumab + chemo,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,metastatic OS,IGF1R inhibitor — SARC021 + AEWS1221 trials,PMID:32762005
+SARC_OS,,VEGFA,target,cabozantinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R OS,CABONE / CABOSARC trials — activity documented,PMID:33008784
+SARC_EWS,,EWSR1,biomarker,,,,,,,,EWSR1 fusion partner — defines Ewing family; translocation partner FLI1 (most) / ERG (~10%),PMID:26009011
+SARC_EWS,,FLI1,biomarker,,,,,,,,EWSR1-FLI1 fusion — pathognomonic; EWS master driver,PMID:26009011
+SARC_EWS,,ERG,biomarker,,,,,,,,EWSR1-ERG fusion in ~10% — alternative to FLI1; indistinguishable clinically,PMID:26009011
+SARC_EWS,,CD99,biomarker,,,,,,,,MIC2 — diffuse membrane IHC; diagnostic for Ewing,PMID:2185739
+SARC_EWS,,NKX2-2,biomarker,,,,,,,,Downstream EWS-FLI1 target; diagnostic IHC,PMID:18812539
+SARC_EWS,,STAG2,biomarker,,,,,,,,Recurrent loss in Ewing — cohesin complex; poor prognosis subset,PMID:24814251
+SARC_EWS,,IGF1R,target,ganitumab,antibody,phase_3,late_clinical,late_clinical,late-clinical follow-up; confirm trial or local availability,high-risk EWS,AEWS1221 phase 3 — IGF1R inhibitor + VDC/IE in high-risk EWS,PMID:32762005
+SARC_EWS,,ERG,target,TK216,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R EWS,EWS-FLI1 direct inhibitor (small molecule) — phase 2 trials,PMID:33712479
+SARC_EWS,,KDM1A,target,seclidemstat,small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R Ewing,LSD1 inhibitor — EWS-FLI1-dependent program,PMID:29438748
+SARC_EWS,,PRAME,target,IMA203,TCR-T,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,PRAME+ HLA-A*02+ Ewing,PRAME-directed TCR-T in EWS-expressing samples,PMID:38197793
+SARC_RMS_ERMS,,MYOD1,biomarker,,,,,,,,Myogenic regulatory factor — embryonal skeletal-muscle program; diagnostic IHC,PMID:22290179
+SARC_RMS_ERMS,,MYOG,biomarker,,,,,,,,Myogenin — downstream MYOD1; focal IHC pattern (vs diffuse in ARMS),PMID:22290179
+SARC_RMS_ERMS,,DES,biomarker,,,,,,,,Desmin — skeletal-muscle lineage IHC,PMID:22290179
+SARC_RMS_ERMS,,NRAS,biomarker,,,,,,,,Recurrent activating mutation in ERMS — RAS-pathway driver,PMID:24703002
+SARC_RMS_ERMS,,TYMS,target,vincristine + actinomycin + cyclophosphamide (VAC),small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,ERMS first-line,VAC is pediatric RMS chemotherapy backbone — IRS/COG trials,PMID:19901112
+SARC_RMS_ARMS,,FOXO1,biomarker,,,,,,,,PAX3-FOXO1 or PAX7-FOXO1 fusion — pathognomonic for fusion-positive RMS,PMID:19901112
+SARC_RMS_ARMS,,PAX3,biomarker,,,,,,,,Majority PAX3-FOXO1 variant — worst prognosis,PMID:19901112
+SARC_RMS_ARMS,,PAX7,biomarker,,,,,,,,PAX7-FOXO1 variant — better prognosis than PAX3,PMID:19901112
+SARC_RMS_ARMS,,MYOG,biomarker,,,,,,,,Diffuse myogenin IHC (vs focal in ERMS) — diagnostic,PMID:22290179
+SARC_RMS_ARMS,,FGFR4,biomarker,,,,,,,,Recurrent activating mutation in fusion-negative RMS — erdafitinib candidate,PMID:24703002
+SARC_RMS_ARMS,,FGFR4,target,erdafitinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,FGFR4-mut fusion-neg RMS,FGFR-selective TKI — activity in FGFR-altered tumors,PMID:31378236
 WILMS,,WT1,biomarker,,,,,,,,Wilms tumor gene — recurrent loss; metanephric lineage,PMID:18612257
 WILMS,,CTNNB1,biomarker,,,,,,,,Activating mutation — Wnt pathway; co-occurs with WT1 mutation,PMID:18612257
 WILMS,,AMER1,biomarker,,,,,,,,Loss — Wnt-pathway component; recurrent,PMID:18612257
@@ -735,20 +735,20 @@ ADCC,,NOTCH1,biomarker,,,,,,,,Recurrent activating mutation — subset has aggre
 ADCC,,KIT,biomarker,,,,,,,,Near-universal expression — historically imatinib trialed (largely negative),PMID:17762320
 ADCC,,MYB,target,brontictuzumab,antibody,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,NOTCH1-mut ADCC,Anti-NOTCH1 monoclonal — limited activity; high-toxicity,PMID:31064789
 ADCC,,FGF2,target,lenvatinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced ADCC,Multikinase TKI — modest activity in advanced ADCC,PMID:30496135
-CHOR,,T,biomarker,,,,,,,,Brachyury (TBXT) — pathognomonic for chordoma; defining nuclear IHC,PMID:18094074
-CHOR,,CDKN2A,biomarker,,,,,,,,Frequent homozygous deletion — prognostic,PMID:24509719
-CHOR,,LYST,biomarker,,,,,,,,Recurrent loss — subset of chordoma,PMID:30266954
-CHOR,,EGFR,target,erlotinib / gefitinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced chordoma,EGFR inhibitors — activity observed in subset; small series,PMID:21775476
-CHOR,,PDGFRB,target,imatinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced chordoma,Case reports + small series of durable responses in PDGFR-expressing chordoma,PMID:15751962
-CHOR,,T,target,brachyury vaccine,vaccine,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,resectable chordoma,GI-6301 brachyury yeast vaccine — immunotherapy trials,PMID:29391359
-CHON,,IDH1,biomarker,,,,,,,,Recurrent mutation in conventional chondrosarcoma — driver; potential ivosidenib-eligible,PMID:22057233
-CHON,,IDH2,biomarker,,,,,,,,Recurrent mutation; complementary to IDH1; enasidenib rationale,PMID:22057233
-CHON,,EXT1,biomarker,,,,,,,,Germline inactivation — hereditary multiple exostoses + secondary chondrosarcoma risk,PMID:19255577
-CHON,,EXT2,biomarker,,,,,,,,Germline inactivation — hereditary multiple exostoses,PMID:19255577
-CHON,,COL2A1,biomarker,,,,,,,,Mutation in small subset; cartilage-lineage driver in hereditary enchondromatosis,PMID:21643004
-CHON,,HEY1,biomarker,,,,,,,,HEY1-NCOA2 fusion — defining for mesenchymal chondrosarcoma variant,PMID:22836606
-CHON,,IDH1,target,ivosidenib,small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,IDH1-mut advanced chondrosarcoma,Selective IDH1 inhibitor — activity in IDH1-R132 chondrosarcoma subset,PMID:32679069
-CHON,,VEGFA,target,pazopanib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced chondrosarcoma,VEGFR multi-TKI — modest PFS benefit; pan-sarcoma data,PMID:22749852
+SARC_CHOR,,T,biomarker,,,,,,,,Brachyury (TBXT) — pathognomonic for chordoma; defining nuclear IHC,PMID:18094074
+SARC_CHOR,,CDKN2A,biomarker,,,,,,,,Frequent homozygous deletion — prognostic,PMID:24509719
+SARC_CHOR,,LYST,biomarker,,,,,,,,Recurrent loss — subset of chordoma,PMID:30266954
+SARC_CHOR,,EGFR,target,erlotinib / gefitinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced chordoma,EGFR inhibitors — activity observed in subset; small series,PMID:21775476
+SARC_CHOR,,PDGFRB,target,imatinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced chordoma,Case reports + small series of durable responses in PDGFR-expressing chordoma,PMID:15751962
+SARC_CHOR,,T,target,brachyury vaccine,vaccine,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,resectable chordoma,GI-6301 brachyury yeast vaccine — immunotherapy trials,PMID:29391359
+SARC_CHON,,IDH1,biomarker,,,,,,,,Recurrent mutation in conventional chondrosarcoma — driver; potential ivosidenib-eligible,PMID:22057233
+SARC_CHON,,IDH2,biomarker,,,,,,,,Recurrent mutation; complementary to IDH1; enasidenib rationale,PMID:22057233
+SARC_CHON,,EXT1,biomarker,,,,,,,,Germline inactivation — hereditary multiple exostoses + secondary chondrosarcoma risk,PMID:19255577
+SARC_CHON,,EXT2,biomarker,,,,,,,,Germline inactivation — hereditary multiple exostoses,PMID:19255577
+SARC_CHON,,COL2A1,biomarker,,,,,,,,Mutation in small subset; cartilage-lineage driver in hereditary enchondromatosis,PMID:21643004
+SARC_CHON,,HEY1,biomarker,,,,,,,,HEY1-NCOA2 fusion — defining for mesenchymal chondrosarcoma variant,PMID:22836606
+SARC_CHON,,IDH1,target,ivosidenib,small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,IDH1-mut advanced chondrosarcoma,Selective IDH1 inhibitor — activity in IDH1-R132 chondrosarcoma subset,PMID:32679069
+SARC_CHON,,VEGFA,target,pazopanib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced chondrosarcoma,VEGFR multi-TKI — modest PFS benefit; pan-sarcoma data,PMID:22749852
 BL,,MYC,biomarker,,,,,,,,"Defining oncogene — t(8;14) IGH-MYC (~80%), t(2;8) or t(8;22) variants; drives aggressive proliferation",PMID:16760443
 BL,,MS4A1,biomarker,,,,,,,,CD20 — B-cell lineage; rituximab target,PMID:11807147
 BL,,CD79A,biomarker,,,,,,,,B-cell receptor — BCR pathway component,PMID:19194475

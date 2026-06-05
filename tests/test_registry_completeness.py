@@ -41,14 +41,17 @@ from pirlygenes.load_dataset import get_data
 # cancer-specific axis panels get curated per family.
 _MISSING_THERAPY_AXIS = frozenset(
     {
+        # Phase C: the bone / RMS / ESS sarcomas (SARC_OS, SARC_EWS,
+        # SARC_CHON/CHOR, SARC_GCTB, SARC_ESS_*, SARC_RMS_*) are now parented
+        # under SARC and inherit its therapy axis, so they are no longer gaps.
         "ACC", "ACINIC", "ADCC", "ATRT", "BL", "BLCA", "B_ALL", "CESC",
-        "CHOL", "CHON", "CHOR", "CLL", "CML", "CTCL", "DLBC", "ESCA",
-        "ESS_HG", "ESS_LG", "EWS", "FL", "GCTB", "GBM", "HCL", "HEPB",
+        "CHOL", "CLL", "CML", "CTCL", "DLBC", "ESCA",
+        "FL", "GBM", "HCL", "HEPB",
         "HL", "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC",
         "LUNG_NET_LC", "LUNG_NET_LCNEC", "MBL", "MCL", "MDS", "MEC",
-        "MESO", "MID_NET", "MM", "MPN", "MTC", "NPC", "NUTM", "OS",
+        "MESO", "MID_NET", "MM", "MPN", "MTC", "NPC", "NUTM",
         "OV", "PAAD", "PANNET", "PCPG", "RB", "READ", "REC_NET",
-        "RMS_ARMS", "RMS_ERMS", "RMS_SSRMS", "RT", "SARC",
+        "RT", "SARC",
         "SCLC", "STAD", "TGCT", "THCA", "THYM", "T_ALL", "UCEC", "UCS",
         "UVM", "WILMS",
     }
@@ -75,11 +78,11 @@ _TOLERATED_GAPS_EXPLICIT = {
     "RB": {"lineage", "biomarker", "therapy"},
     "MBL": {"lineage"},
     "RT": {"lineage", "biomarker", "therapy"},
-    "OS": {"lineage"},
-    "EWS": {"lineage"},
-    "RMS_ERMS": {"lineage"},
-    "RMS_ARMS": {"lineage"},
-    "RMS_SSRMS": {"lineage", "biomarker", "therapy"},
+    "SARC_OS": {"lineage"},
+    "SARC_EWS": {"lineage"},
+    "SARC_RMS_ERMS": {"lineage"},
+    "SARC_RMS_ARMS": {"lineage"},
+    "SARC_RMS_SSRMS": {"lineage", "biomarker", "therapy"},
     "NUTM": {"lineage"},
     # TGCT is chemo-dominant (BEP); no clinician-validated targeted
     # therapy exists, so the panel is intentionally empty.
@@ -88,11 +91,11 @@ _TOLERATED_GAPS_EXPLICIT = {
     "ACINIC": {"lineage"},
     "ADCC": {"lineage"},
     "NPC": {"lineage"},
-    "CHOR": {"lineage"},
-    "CHON": {"lineage"},
-    "GCTB": {"lineage", "biomarker", "therapy"},
-    "ESS_LG": {"lineage", "biomarker", "therapy"},
-    "ESS_HG": {"lineage", "biomarker", "therapy"},
+    "SARC_CHOR": {"lineage"},
+    "SARC_CHON": {"lineage"},
+    "SARC_GCTB": {"lineage", "biomarker", "therapy"},
+    "SARC_ESS_LG": {"lineage", "biomarker", "therapy"},
+    "SARC_ESS_HG": {"lineage", "biomarker", "therapy"},
 }
 
 

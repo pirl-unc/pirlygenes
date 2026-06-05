@@ -32,7 +32,7 @@ SOURCE_URL = (
     "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE299nnn/GSE299759/suppl/"
     "GSE299759_raw_counts.tsv.gz"
 )
-CANCER_CODE = "CHON"
+CANCER_CODE = "SARC_CHON"
 SOURCE_COHORT = "GSE299759_MEIJER_2026"
 SOURCE_PROJECT = "GEO"
 PIPELINE = "gse299759_chondrosarcoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_v1"
@@ -142,7 +142,7 @@ def main() -> int:
     print(f"  canonical genes: {len(gene_table)}")
 
     print("computing stats...")
-    clean = _clean_tpm(tpm, _technical_mask(gene_table))
+    clean = _clean_tpm(tpm, gene_table=gene_table)
     out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
     out["cancer_code"] = CANCER_CODE
     out["source_cohort"] = SOURCE_COHORT

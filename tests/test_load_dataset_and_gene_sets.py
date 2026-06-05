@@ -29,6 +29,17 @@ def test_get_data_returns_copy_not_cached_reference():
     assert len(second) > 0
 
 
+def test_get_data_copy_false_returns_shared_cached_frame():
+    # copy=False is the read-only fast path (#278): it must return the SAME
+    # cached object (no full-frame copy), while the default still defends the
+    # cache. Read-only callers rely on this; mutating callers must not use it.
+    shared = ld.get_data("ADC-trials", copy=False)
+    shared_again = ld.get_data("ADC-trials", copy=False)
+    assert shared is shared_again  # identity: no copy taken
+    defensive = ld.get_data("ADC-trials")
+    assert defensive is not shared  # default path still copies
+
+
 def test_get_all_csv_paths_contains_core_dataset():
     paths = ld.get_all_csv_paths()
     assert any(Path(p).name == "ADC-trials.csv" for p in paths)
@@ -167,23 +178,22 @@ def test_cta_filtered_and_evidence():
     assert "XAGE1B" in filtered_names
 
 
-def test_cta_accepts_passes_filters_only_schema(monkeypatch):
-    df = pd.DataFrame(
-        {
-            "Symbol": ["SHOULD_PASS", "SHOULD_FAIL"],
-            "Ensembl_Gene_ID": ["ENSG00000000001", "ENSG00000000002"],
-            "passes_filters": [True, False],
-            "never_expressed": [False, False],
-            "rna_deflated_reproductive_frac": [0.99, 0.20],
-            "rna_98_pct_filter": [True, False],
-            "rna_99_pct_filter": [False, False],
-        }
-    )
+def test_cta_accessors_delegate_to_tsarina():
+    # tsarina is the single source of truth (#289/#290/#291); pirlygenes
+    # re-exports its evidence / gene-set / partition accessors. Assert the
+    # delegation is identity, not a re-implementation that could drift.
+    import tsarina.evidence as _tev
+    import tsarina.gene_sets as _tgs
+    import tsarina.partition as _tp
 
-    assert gsc._has_complete_cta_evidence_schema(df)
-    monkeypatch.setattr(gsc, "CTA_evidence", lambda: df)
-
-    assert gsc.CTA_filtered_gene_names() == {"SHOULD_PASS"}
+    assert gsc.CTA_gene_names() == _tgs.CTA_gene_names()
+    assert gsc.CTA_filtered_gene_names() == _tgs.CTA_filtered_gene_names()
+    assert gsc.CTA_unfiltered_gene_names() == _tgs.CTA_unfiltered_gene_names()
+    assert gsc.CTA_gene_names is _tgs.CTA_gene_names
+    assert gsc.CTAPartitionSets is _tp.CTAPartitionSets
+    # CTA_evidence() returns tsarina's table verbatim
+    pd_testing = __import__("pandas").testing
+    pd_testing.assert_frame_equal(gsc.CTA_evidence(), _tev.CTA_evidence())
 
 
 def test_cta_gene_id_to_name_preserves_row_pairing():

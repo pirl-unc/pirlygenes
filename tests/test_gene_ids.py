@@ -112,8 +112,12 @@ def test_all_gene_ids_resolve_in_ensembl():
     unresolvable IDs is tolerated (retirements, alt-haplotype-only genes).
 
     Checks all installed human Ensembl releases, not just the default GRCh38.
-    Recommend having at least Ensembl 110 installed for reasonable coverage
-    of alt-haplotype genes that have been added/revised since earlier releases.
+    Install BOTH a current release (e.g. 112) and release 81: the
+    cancer-reference-expression aggregate pools source cohorts annotated at
+    the 2015 (release-81) vintage, and ~4.6k of its ENSG IDs were retired from
+    Ensembl after release 81 — so a current release alone fails at ~8.7%, while
+    81 + 112 leaves only ~0.8% genuinely-dead IDs (under tolerance). CI
+    (.github/workflows/tests.yml) installs both for this reason.
     """
     aliases = _load_ensembl_id_aliases()
 

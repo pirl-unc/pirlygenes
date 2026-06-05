@@ -44,8 +44,8 @@ class Cohort:
 # --- treehouse-polya-25-01 -------------------------------------------------
 # Pediatric / sarcoma / rare cohorts: parquet stem == cancer code.
 _TH_DIRECT = [
-    "ATRT", "EWS", "HEPB", "MBL", "NPC", "NUTM", "OS",
-    "RMS_ARMS", "RMS_ERMS", "RMS_PRMS", "RMS_SSRMS",
+    "ATRT", "SARC_EWS", "HEPB", "MBL", "NPC", "NUTM", "SARC_OS",
+    "SARC_RMS_ARMS", "SARC_RMS_ERMS", "SARC_RMS_PRMS", "SARC_RMS_SSRMS",
     "SARC_ANGIO", "SARC_ASPS", "SARC_DSRCT", "SARC_EHE", "SARC_EPITH",
     "SARC_GIST", "SARC_IFS", "SARC_IMT", "SARC_LGFMS", "SARC_LMS",
     "SARC_LPS_UNSPEC", "SARC_MPNST", "SARC_MYXFIB", "SARC_SYN", "SARC_UPS",
@@ -54,15 +54,18 @@ _TH_DIRECT = [
 _TH_TCGA = [
     "ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM",
     "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC", "LUAD", "LUSC",
-    "MESO", "OV", "PAAD", "PCPG", "PRAD", "READ", "SARC", "SKCM", "STAD",
+    "MESO", "OV", "PAAD", "PCPG", "PRAD", "READ", "SKCM", "STAD",
     "TGCT", "THCA", "THYM", "UCEC", "UCS", "UVM",
 ]
+# NB: no "SARC" — the bare SARC code is the computed pan-sarcoma grand union (its
+# TCGA-SARC leiomyosarcoma samples are already in the SARC_LMS atom), not a
+# concrete per-sample cohort.
 # Molecular / histology sub-cohorts (mixed-case codes -> explicit stems).
 _TH_DERIVED = {
     "BRCA_Basal": "tcga_brca_basal", "BRCA_HER2": "tcga_brca_her2",
     "BRCA_LumA": "tcga_brca_luma", "BRCA_LumB": "tcga_brca_lumb",
     "BRCA_Normal": "tcga_brca_normal",
-    "HNSC_HPV_neg": "tcga_hnsc_hpv_neg", "HNSC_HPV_pos": "tcga_hnsc_hpv_pos",
+    "HNSC_HPVneg": "tcga_hnsc_hpv_neg", "HNSC_HPVpos": "tcga_hnsc_hpv_pos",
     "LUAD_EGFR": "tcga_luad_egfr", "LUAD_KRAS": "tcga_luad_kras",
     "LUAD_STK11": "tcga_luad_stk11",
     "SARC_DDLPS": "tcga_sarc_ddlps", "SARC_PLEOLPS": "tcga_sarc_pleolps",

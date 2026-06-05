@@ -501,7 +501,7 @@ def _summarize_one(
     cancer_code: str,
     notes: str,
 ) -> pd.DataFrame:
-    clean = _clean_tpm(values, _technical_mask(gene_table))
+    clean = _clean_tpm(values, gene_table=gene_table)
     out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
     out["cancer_code"] = cancer_code
     out["source_cohort"] = SOURCE_COHORT

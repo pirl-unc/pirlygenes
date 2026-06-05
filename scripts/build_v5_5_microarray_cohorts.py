@@ -78,7 +78,7 @@ def build_ess_lg(summary_output: Path, ensembl_release: int) -> int:
     return build_microarray_source(
         **GSE85383,
         cache_dir=CACHE_ROOT / "gse85383-ess",
-        cancer_code="ESS_LG",
+        cancer_code="SARC_ESS_LG",
         source_cohort="GSE85383_YOSHIDA_2017_ESS",
         summary_output=summary_output,
         ensembl_release=ensembl_release,
@@ -98,7 +98,7 @@ def build_ess_hg(summary_output: Path, ensembl_release: int) -> int:
     return build_microarray_source(
         **GSE85383,
         cache_dir=CACHE_ROOT / "gse85383-ess",
-        cancer_code="ESS_HG",
+        cancer_code="SARC_ESS_HG",
         source_cohort="GSE85383_YOSHIDA_2017_ESS",
         summary_output=summary_output,
         ensembl_release=ensembl_release,
@@ -200,10 +200,10 @@ def main() -> int:
     counts = {}
     if "ess_lg" in wanted:
         print("\n=== ESS_LG via GSE85383 ===")
-        counts["ESS_LG"] = build_ess_lg(args.summary_output, args.ensembl_release)
+        counts["SARC_ESS_LG"] = build_ess_lg(args.summary_output, args.ensembl_release)
     if "ess_hg" in wanted:
         print("\n=== ESS_HG via GSE85383 ===")
-        counts["ESS_HG"] = build_ess_hg(args.summary_output, args.ensembl_release)
+        counts["SARC_ESS_HG"] = build_ess_hg(args.summary_output, args.ensembl_release)
     if "mtc" in wanted:
         print("\n=== MTC via GSE32662 ===")
         counts["MTC"] = build_mtc(args.summary_output, args.ensembl_release)

@@ -267,7 +267,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "source_id",
         metavar="<source-id|cancer-code|list|all>",
         help="A source id (e.g. 'cgci-blgsp', 'treehouse-polya-25-01') or a "
-             "cancer code (e.g. 'BL', 'EWS'). Use 'list' to print all source "
+             "cancer code (e.g. 'BL', 'SARC_EWS'). Use 'list' to print all source "
              "ids, or 'all' to run every builder (slow!).",
     )
     build_parser.add_argument(
