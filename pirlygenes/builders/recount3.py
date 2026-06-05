@@ -45,14 +45,16 @@ Step 2 — harmonize identifiers: strip the ``.<version>`` (and ``_PAR_Y``)
   suffix from the Gencode IDs and sum any collisions, yielding one row per
   unversioned ENSG (our standard ID convention).
 
-Step 3 — clean TPM (v2): zero the technical-RNA groups (mtDNA, rRNA-like,
+Step 3 — clean TPM (v3): pin the technical-RNA groups (mtDNA, rRNA-like,
   mt-like pseudogene, polyA-bias lncRNA) **and ribosomal-protein mRNA +
-  pseudogenes**, then renormalize the remainder to 1e6, via the ONE shared
-  helper used everywhere else
+  pseudogenes** to fixed per-gene reference values (Treehouse-PolyA medians,
+  cohort-independent) and rescale the remaining genes to fill the 1e6 budget,
+  via the ONE shared helper used everywhere else
   (:func:`pirlygenes.expression.normalize.clean_tpm_matrix` +
-  :func:`clean_tpm_removal_mask`). Ribosomal proteins are now excluded by
+  :func:`clean_tpm_removal_mask`). Ribosomal proteins are excluded by
   default (housekeeping, not tumor-specific, and the dominant multi-mapping
-  destabilizer of the zero-sum TPM denominator across pipelines).
+  destabilizer of the zero-sum TPM denominator across pipelines); curated
+  cancer targets are never censored.
 
 The result is an ENSG × sample clean-TPM matrix on the same scale and with
 the same technical-RNA treatment as our GDC/Treehouse/GEO shards, ready for
@@ -194,7 +196,8 @@ def gene_sums_to_tpm(gene_sums: pd.DataFrame, bp_length: pd.Series) -> pd.DataFr
 
 
 def to_clean_tpm(tpm: pd.DataFrame, annotation: pd.DataFrame) -> pd.DataFrame:
-    """Apply the shared technical-RNA zero + renormalize (step 3).
+    """Apply the shared clean-TPM transform (step 3): pin censored genes to
+    per-gene reference values, rescale the rest to fill 1e6.
 
     ``annotation`` supplies Symbol per ENSG (from
     :func:`fetch_gene_annotation`); rows missing from it fall back to the

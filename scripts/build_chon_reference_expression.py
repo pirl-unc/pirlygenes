@@ -142,7 +142,7 @@ def main() -> int:
     print(f"  canonical genes: {len(gene_table)}")
 
     print("computing stats...")
-    clean = _clean_tpm(tpm, _technical_mask(gene_table))
+    clean = _clean_tpm(tpm, gene_table=gene_table)
     out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
     out["cancer_code"] = CANCER_CODE
     out["source_cohort"] = SOURCE_COHORT

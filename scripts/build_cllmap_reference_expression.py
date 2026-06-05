@@ -183,7 +183,7 @@ def _collapse_duplicate_genes(df: pd.DataFrame, sample_cols: list[str]) -> pd.Da
 
 def _summarize(df: pd.DataFrame, included_cols: list[str]) -> pd.DataFrame:
     values = df[included_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
-    clean = _clean_tpm(values, _technical_mask(df))
+    clean = _clean_tpm(values, gene_table=df)
     out = df[["Ensembl_Gene_ID", "Symbol"]].copy()
     out["cancer_code"] = "CLL"
     out["source_cohort"] = "CLLMAP_2022"

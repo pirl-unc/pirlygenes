@@ -395,7 +395,7 @@ def _default_protected_symbols():
     try:
         from ..load_dataset import get_data
         for ds, cols in [("surface-proteins", ["Symbol"]),
-                         ("cancer-key-genes", ["Symbol"]),
+                         ("cancer-key-genes", ["symbol"]),
                          ("cancer-lineage-panels", ["Symbol", "Child_Code"]),
                          ("cancer-fusions", ["gene_5prime", "gene_3prime"])]:
             try:

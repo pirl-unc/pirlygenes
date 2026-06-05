@@ -115,7 +115,7 @@ def main() -> int:
             print(f"  skipping {code}: 0 samples")
             continue
         sub_values = values[cols]
-        clean = _clean_tpm(sub_values, _technical_mask(gene_table))
+        clean = _clean_tpm(sub_values, gene_table=gene_table)
         out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
         out["cancer_code"] = code
         out["source_cohort"] = SOURCE_COHORT

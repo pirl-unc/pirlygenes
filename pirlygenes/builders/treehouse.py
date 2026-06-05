@@ -314,10 +314,11 @@ def _summarize_cohort(
         f"Per-sample TPMs from {release.release_label}. Sample selection: "
         f"clinical.disease == '{cohort.disease_label}'. "
         f"HUGO symbols mapped to Ensembl release {ensembl_release}; "
-        f"duplicate symbol mappings dropped. TPM_clean (v2) is computed "
-        f"per-sample by zeroing technical-RNA + ribosomal-protein genes and "
-        f"rescaling the remaining mass to 1e6 (ribosomal proteins excluded for "
-        f"cross-source comparability)."
+        f"duplicate symbol mappings dropped. TPM_clean (v3) pins technical-RNA "
+        f"+ ribosomal-protein genes to fixed per-gene reference values "
+        f"(Treehouse-PolyA medians, cohort-independent) and rescales the "
+        f"remaining genes to fill the 1e6 budget (ribosomal proteins excluded "
+        f"for cross-source comparability; curated cancer targets never censored)."
     )
     if cohort.extra_notes:
         notes = notes + " " + cohort.extra_notes
