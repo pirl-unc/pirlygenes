@@ -452,7 +452,7 @@ def censored_gene_reference():
 def clean_tpm_matrix(values, removable=None, *, gene_table=None,
                      exclude_ribosomal_proteins: bool = True,
                      censored_fill: str = "reference", censored_budget=None,
-                     reference=None):
+                     reference=None, technical_fraction: float = 0.25):
     """Reference clean-TPM transform on a gene×sample matrix.
 
     ``values`` is genes (rows) × samples (cols). Provide either an explicit
@@ -476,6 +476,18 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
     - ``"typical"``: hold the censored block at one constant ``censored_budget``
       (median censored TPM sum across ``values`` if ``None``) split equally
       across censored genes — cohort-derived, single value.
+    - ``"fixed_fraction"``: two-compartment normalization — force the censored
+      (technical) block to a constant ``technical_fraction`` of the 1e6 budget
+      (default 25%) and the kept (biological) block to the remaining
+      ``1 - technical_fraction`` (75%), **renormalizing within each group** so
+      relative expression inside each compartment is preserved. This removes the
+      cross-sample/pipeline *technical-fraction* confound (every sample is 25%
+      technical) while keeping each sample's real within-compartment ratios —
+      unlike ``"reference"``, which erases within-technical variation by pinning
+      each gene to a fixed value. Cohort-independent (no reference table). The
+      biological compartment lands on a constant 750k budget in every sample, so
+      kept genes are directly comparable across samples and sources. A sample
+      with no technical mass keeps technical at 0 (biological still fills 75%).
     - ``"zero"`` (legacy): drop the censored rows and renormalize the remainder
       (inflates survivors by ``1/(1-censored_fraction)``).
 
@@ -510,6 +522,28 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
         ci = np.where(rem)[0]
         if len(ci):  # exact reference value, broadcast across sample columns
             clean.iloc[ci, :] = ref_row[ci][:, None]
+        return clean.fillna(0.0)
+
+    if censored_fill == "fixed_fraction":
+        # Two-compartment: technical -> technical_fraction*1e6, biological ->
+        # the rest, each renormalized WITHIN its group (relative expression
+        # preserved). Removes the technical-fraction confound without erasing
+        # within-compartment signal; cohort-independent (no reference table).
+        if not 0.0 < technical_fraction < 1.0:
+            raise ValueError("technical_fraction must be in (0, 1)")
+        tech_budget = technical_fraction * 1_000_000.0
+        bio_budget = (1.0 - technical_fraction) * 1_000_000.0
+        tech_sum = values.loc[rem].sum(axis=0)
+        bio_sum = values.loc[~rem].sum(axis=0)
+        tscale = pd.Series(0.0, index=values.columns, dtype=float)
+        tpos = tech_sum > 0
+        tscale.loc[tpos] = tech_budget / tech_sum.loc[tpos]
+        bscale = pd.Series(0.0, index=values.columns, dtype=float)
+        bpos = bio_sum > 0
+        bscale.loc[bpos] = bio_budget / bio_sum.loc[bpos]
+        clean = values.astype(float).copy()
+        clean.loc[rem] = values.loc[rem].mul(tscale, axis=1)
+        clean.loc[~rem] = values.loc[~rem].mul(bscale, axis=1)
         return clean.fillna(0.0)
 
     if censored_fill == "zero":

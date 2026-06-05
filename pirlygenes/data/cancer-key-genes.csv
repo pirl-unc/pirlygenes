@@ -838,3 +838,6 @@ CRANIO,adamantinomatous,CTNNB1,biomarker,,,,,,,,Beta-catenin activating mutation
 DIPG,,H3F3A,biomarker,,,,,,,,Histone H3.3 K27M is the defining alteration of diffuse midline glioma,PMID:22389665
 DIPG,,ACVR1,biomarker,,,,,,,,Recurrent ACVR1 activating mutation in a DIPG subset,PMID:24705250
 EPN,,ZFTA,biomarker,,,,,,,,ZFTA (C11orf95)-RELA fusion defines supratentorial ependymoma,PMID:24553141
+SARC,well_differentiated_liposarcoma,MDM2,biomarker,,,,,,,,12q13-15 amplification — diagnostic for WDLPS (distinguishes atypical lipomatous tumor / WDLPS from benign lipoma),PMID:20181787
+SARC,well_differentiated_liposarcoma,CDK4,biomarker,,,,,,,,Co-amplified with MDM2 on the 12q amplicon; supports WDLPS diagnosis,PMID:20181787
+SARC,well_differentiated_liposarcoma,HMGA2,biomarker,,,,,,,,12q amplicon lipogenic-lineage marker in WDLPS/DDLPS,PMID:20181787

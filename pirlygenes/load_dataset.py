@@ -127,13 +127,39 @@ def get_all_csv_paths() -> list:
 
 
 def _load_shard_directory(shard_dir: Path) -> pd.DataFrame:
-    """Concatenate every ``*.csv[.gz]`` shard in a sharded dataset directory."""
-    frames = [
-        pd.read_csv(str(p), low_memory=False) for p in _shard_paths(shard_dir)
-    ]
-    if not frames:
+    """Concatenate every ``*.csv[.gz]`` shard in a sharded dataset directory.
+
+    Parsing ~70 gzipped CSVs into a ~1M-row frame is the slowest single step in
+    the test suite, and a fresh process repeats it every run. So we keep a
+    best-effort **parquet cache** of the concatenated frame in
+    ``~/.cache/pirlygenes/shard_cache/``, keyed on a signature of the shard
+    files (count + total size + newest mtime). A subsequent run reads one parquet
+    (~5-10x faster) instead of re-parsing every gzip; the cache auto-invalidates
+    when any shard changes, and any cache error silently falls back to the CSVs.
+    """
+    paths = _shard_paths(shard_dir)
+    if not paths:
         raise FileNotFoundError(f"no CSV shards found under {shard_dir}")
-    return pd.concat(frames, ignore_index=True)
+    sig = repr((len(paths), sum(p.stat().st_size for p in paths),
+                max(p.stat().st_mtime_ns for p in paths)))
+    cache_dir = Path.home() / ".cache" / "pirlygenes" / "shard_cache"
+    cache_file = cache_dir / f"{shard_dir.name}.parquet"
+    sig_file = cache_dir / f"{shard_dir.name}.sig"
+    try:
+        if (cache_file.exists() and sig_file.exists()
+                and sig_file.read_text() == sig):
+            return pd.read_parquet(cache_file)
+    except Exception:
+        pass  # any cache-read problem -> rebuild from the authoritative CSVs
+    df = pd.concat([pd.read_csv(str(p), low_memory=False) for p in paths],
+                   ignore_index=True)
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(cache_file, index=False)
+        sig_file.write_text(sig)
+    except Exception:
+        pass  # caching is best-effort; never fail the load on a write error
+    return df
 
 
 def load_all_dataframes():

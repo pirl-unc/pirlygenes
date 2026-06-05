@@ -496,6 +496,11 @@ def main():
 
     print("[9/9] CTA coverage vs cohort TMB", flush=True)
     _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr)
+    # HEPB (hepatoblastoma) sits at TMB ~0.02 — an extreme low outlier that
+    # stretches the log-x axis for one point; emit a no-HEPB variant (legend
+    # auto-prunes the now-empty embryonal group, x-axis auto-rescales).
+    _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr,
+                exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB")
 
     # Within-sample percentile-rank thresholds (after clean-TPM): a CTA is "on"
     # in a sample if its TPM is at/above that sample's Nth-percentile across all
@@ -512,6 +517,8 @@ def main():
             _peak_coverage_bars(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _stacked_coverage_bars(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs)
+            _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs,
+                        exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB")
     print(f"done -> {OUT}", flush=True)
 
 
@@ -795,7 +802,8 @@ def _lineage_group(family: str) -> str:
     return "other"
 
 
-def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
+def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
+                exclude=frozenset(), slug_suffix=""):
     """Scatter: each cancer type's CTA coverage plateau (% of patients with ≥1
     CTA over threshold) vs its published median TMB (mut/Mb, log x). Tumors with
     high CTA coverage but low TMB are the interesting quadrant for CTA-directed
@@ -822,7 +830,7 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
     aggregate_codes = set(gsc.cohort_aggregates().keys())
     pts, missing = [], []
     for code in cohorts:
-        if code in aggregate_codes:
+        if code in aggregate_codes or code in exclude:
             continue
         order, cum, n = greedy_coverage(mat, cohorts[code], thr, pctile_cutoffs)
         if not cum:
@@ -889,18 +897,19 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
     ax.legend(handles=handles, loc="center left", bbox_to_anchor=(1.01, 0.5),
               fontsize=7, title="lineage", frameon=False)
 
+    ex_note = f"; excludes {', '.join(sorted(exclude))}" if exclude else ""
     ax.set_title(f"CTA coverage vs TMB by cancer type "
-                 f"({thr.xlabel}, n={len(pts)} cohorts)", fontsize=10)
+                 f"({thr.xlabel}, n={len(pts)} cohorts{ex_note})", fontsize=10)
     n_registry = len(_registry_family_map())
     ax.text(0.99, 0.01,
             f"{len(pts)} per-sample cohorts shown (of {n_registry} registry "
             f"types; others summary-only); {len(missing)} dropped (no curated TMB)",
             transform=ax.transAxes, fontsize=6, color="gray", ha="right")
     fig.tight_layout()
-    fig.savefig(OUT / f"cta_coverage_vs_tmb_{thr.slug}.png", dpi=150)
+    fig.savefig(OUT / f"cta_coverage_vs_tmb_{thr.slug}{slug_suffix}.png", dpi=150)
     plt.close(fig)
-    print(f"      {len(pts)} cohorts plotted, {len(missing)} dropped (no TMB)",
-          flush=True)
+    print(f"      {len(pts)} cohorts plotted{ex_note}, "
+          f"{len(missing)} dropped (no TMB)", flush=True)
 
 
 def _coverage_every_cohort(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):

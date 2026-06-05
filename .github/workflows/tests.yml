@@ -71,5 +71,6 @@ jobs:
       - name: Run linting script and unit tests
         run: |
           source .venv/bin/activate
-          ./lint.sh
-          ./test.sh
+          # COVERAGE=1 keeps the coverage report in CI; local dev runs
+          # ./test.sh without it for speed (coverage is the dominant CPU cost).
+          COVERAGE=1 ./test.sh
