@@ -54,17 +54,17 @@ MM,1.6,Lawrence 2013,PMID:23770567,high,Multiple myeloma WES median ~1.6; increa
 CLL,0.6,Lawrence 2013,PMID:23770567,high,CLL WES median ~0.6; low.
 MCL,1.0,Bea 2013,PMID:23770587,medium,Mantle cell lymphoma WES ~1; approximate per-Mb.
 FL,1.35,Follicular-lymphoma TMB 2026,DOI:10.3390/cancers18050737,medium,WES-scale mean 1.35; high-TMB(>2.55) better PFS/OS.
-HL,2.0,Wienand 2019,PMID:30108156,low,Hodgkin; panel TMB inflated vs WES; approximate.
+HL,2.0,Liang 2019,PMID:30108156,low,Hodgkin; panel TMB inflated vs WES; approximate.
 BL,2.0,Love 2012,PMID:23143597,medium,Burkitt; AID/MYC-driven moderate burden; ~2 approximate WES.
 B_ALL,0.3,Grobner 2018,PMID:29489754,low,B-ALL; very low pediatric TMB; CMMRD/relapse cases far higher.
 T_ALL,0.5,Grobner 2018,PMID:29489754,low,T-ALL; low; slightly higher than B-ALL; approximate.
-MDS,0.3,Walter 2013,PMC3897298,medium,MDS ~9 somatic mutations/exome; rises with IPSS risk.
+MDS,0.3,MDS genomics review,PMC3897298,medium,MDS ~9 somatic mutations/exome; rises with IPSS risk.
 MPN,,,,none,Myeloproliferative neoplasm; driver-defined (JAK2/CALR/MPL); no published per-Mb median.
 CML,,,,none,Chronic myeloid leukemia; BCR-ABL1-defined; very few additional mutations in chronic phase.
 CTCL,3.0,Park 2021,PMID:33574607,low,CTCL/mycosis fungoides; UV-signature; stage-dependent; advanced much higher.
 NET_PANCREAS,1.9,Backman 2021,PMID:34326338,medium,Pancreatic NET well-diff median ~1.9 (vs NEC ~5.0); low.
 SCLC,8.6,George 2015,PMID:26168399,high,Small cell lung; high ~8.6; smoking signature.
-NEC_MERKEL,5.3,Knepper 2019,PMID:30482774,medium,Merkel cell carcinoma median ~5.3; bimodal MCPyV-neg(UV) high vs MCPyV-pos low.
+NEC_MERKEL,5.3,Knepper 2019,PMID:31399473,medium,Merkel cell carcinoma median ~5.3; bimodal MCPyV-neg(UV) high vs MCPyV-pos low.
 MTC,,,,none,Medullary thyroid; single-driver RET/RAS; no clean published per-Mb median.
 ADCC,0.31,Ho 2013,PMID:23685749,high,Adenoid cystic carcinoma ~0.31; MYB-NFIB fusion-driven; very low.
 NPC,0.95,Nasopharyngeal WES,PMC9498130,medium,Nasopharyngeal carcinoma median ~0.95-1.0; EBV-driven low SNV burden.
@@ -88,7 +88,7 @@ VSCC,5.6,Han 2018,PMID:29328067,medium,Vulvar SCC; HPV-neg (TP53/CDKN2A) higher 
 VAGC,,,,none,Vaginal SCC; HPV-associated; ~5 mut/Mb estimate; no cited median curated.
 PENSCC,4.5,Jacob 2024,DOI:10.1200/PO.23.00406,low,Penile SCC; 15% TMB-H>=10; HPV-neg+PD-L1 higher TMB.
 ANSC,5.0,Cacheux 2018,PMID:29133614,medium,"HPV-driven anal SCC; mean ~8.6, median ~5."
-GBC,5.5,Comprehensive GBC 2023,DOI:10.1158/1078-0432.CCR-22-1714,high,Median 5.5 (range 0-161); 17.7% TMB-H>10.
+GBC,5.5,Comprehensive GBC 2023,DOI:10.1038/s41698-022-00327-y,high,Median 5.5 (range 0-161); 17.7% TMB-H>10.
 CRANIO,,,,none,Craniopharyngioma; very low TMB (single CTNNB1 or BRAF driver); no cited median curated.
 PITNET,,,,none,Pituitary NET; very low TMB; no cited median curated.
 SARC_DSRCT,0.72,Bertucci 2022,PMID:35379887,high,EWSR1-WT1-driven; immune-cold; among lowest STS TMB.
