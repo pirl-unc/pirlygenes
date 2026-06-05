@@ -586,7 +586,12 @@ def _resolve_cancer_types(
 
 
 def _load_cancer_reference_expression() -> pd.DataFrame:
-    return get_data("cancer-reference-expression")
+    # Read-only shared view. All callers (_has_cancer_reference,
+    # cancer_reference_summary, cancer_reference_expression) filter to a
+    # cancer_code / gene slice and .copy() that subset before returning or
+    # mutating, so the full-frame defensive copy is pure waste — and for this
+    # ~367 MB, ~1M-string-row table it dominated test-suite wall time (#278).
+    return get_data("cancer-reference-expression", copy=False)
 
 
 def _has_cancer_reference(code: str) -> bool:
@@ -602,7 +607,7 @@ def _load_cancer_expression_source_candidates() -> pd.DataFrame:
 
 
 def _pan_expression_codes() -> set[str]:
-    df = get_data("pan-cancer-expression")
+    df = get_data("pan-cancer-expression", copy=False)  # read-only: columns only (#278)
     return {
         str(col).removeprefix("FPKM_")
         for col in df.columns
