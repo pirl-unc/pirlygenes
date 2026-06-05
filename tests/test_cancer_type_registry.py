@@ -524,6 +524,30 @@ def test_resolve_cancer_type_case_insensitive():
     assert resolve_cancer_type("Prad") == "PRAD"
 
 
+def test_cancer_type_info_returns_canonical_record():
+    from pirlygenes.gene_sets_cancer import cancer_type_info
+
+    # any synonym/alias/display-name -> one canonical info dict
+    for q in ("prostate", "Prostate Adenocarcinoma", "PRAD", "prad"):
+        info = cancer_type_info(q)
+        assert info["code"] == "PRAD"
+        assert info["name"] == "Prostate Adenocarcinoma"
+        assert info["family"] == "carcinoma-gu"
+        assert info["primary_tissue"] == "prostate"
+        assert info["burden_category"] == "prostate"
+        assert isinstance(info["tmb"], float)  # parent-inherited where needed
+    # renamed-code back-compat flows through
+    assert cancer_type_info("OS")["code"] == "SARC_OS"
+    # a newly-added (#294/#295) curated type resolves end-to-end
+    bcc = cancer_type_info("BCC")
+    assert bcc["family"] == "carcinoma-skin"
+    assert bcc["burden_category"] == "non_melanoma_skin"
+    # contract matches resolve_cancer_type: None passthrough, ValueError on junk
+    assert cancer_type_info(None) is None
+    with pytest.raises(ValueError):
+        cancer_type_info("not-a-cancer-xyz")
+
+
 def test_resolve_cancer_type_common_name_alias():
     assert resolve_cancer_type("prostate") == "PRAD"
     assert resolve_cancer_type("melanoma") == "SKCM"

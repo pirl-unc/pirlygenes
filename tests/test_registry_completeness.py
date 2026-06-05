@@ -54,6 +54,10 @@ _MISSING_THERAPY_AXIS = frozenset(
         "RT", "SARC",
         "SCLC", "STAD", "TGCT", "THCA", "THYM", "T_ALL", "UCEC", "UCS",
         "UVM", "WILMS",
+        # #294/#295 NCI-gap additions — curated registry entries; expression
+        # data not yet built, so no therapy-axis panel is materialised yet.
+        "BCC", "cSCC", "VSCC", "PENSCC", "VAGC", "URETH", "ANSC", "GBC",
+        "EPN", "CRANIO", "DIPG", "PITNET",
     }
 )
 
@@ -96,6 +100,22 @@ _TOLERATED_GAPS_EXPLICIT = {
     "SARC_GCTB": {"lineage", "biomarker", "therapy"},
     "SARC_ESS_LG": {"lineage", "biomarker", "therapy"},
     "SARC_ESS_HG": {"lineage", "biomarker", "therapy"},
+    # #294/#295 NCI-gap additions — curated registry entries; lineage panels
+    # and (where noted) biomarker/therapy curation still pending. BCC/cSCC/
+    # CRANIO carry curated biomarker+target; GBC carries a target; DIPG/EPN
+    # carry biomarkers only.
+    "BCC": {"lineage"},
+    "cSCC": {"lineage"},
+    "VSCC": {"lineage", "biomarker", "therapy"},
+    "PENSCC": {"lineage", "biomarker", "therapy"},
+    "VAGC": {"lineage", "biomarker", "therapy"},
+    "URETH": {"lineage", "biomarker", "therapy"},
+    "ANSC": {"lineage", "biomarker", "therapy"},
+    "GBC": {"lineage", "biomarker"},
+    "EPN": {"lineage", "therapy"},
+    "CRANIO": {"lineage"},
+    "DIPG": {"lineage", "therapy"},
+    "PITNET": {"lineage", "biomarker", "therapy"},
 }
 
 

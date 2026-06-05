@@ -30,9 +30,10 @@ def test_values_positive_and_plausible():
     df = cancer_tmb_df()
     vals = df.dropna(subset=["median_tmb_mut_mb"])["median_tmb_mut_mb"].astype(float)
     assert (vals > 0).all()
-    # Median TMB by type should sit in a sane range (mut/Mb); melanoma is the
-    # high end (~13), pheo/retinoblastoma the low end (<0.1).
-    assert vals.max() < 50
+    # Median TMB by type should sit in a sane range (mut/Mb); UV-driven
+    # non-melanoma skin (BCC ~65, cSCC ~45) is the high end, melanoma ~13,
+    # pheo/retinoblastoma the low end (<0.1).
+    assert vals.max() < 100
     assert vals.min() >= 0.01
 
 

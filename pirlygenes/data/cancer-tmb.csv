@@ -80,3 +80,14 @@ SARC,1.8,TCGA-SARC 2017,DOI:10.1016/j.cell.2017.10.014,medium,pan soft-tissue sa
 SARC_LPS_UNSPEC,1.5,TCGA-SARC 2017,DOI:10.1016/j.cell.2017.10.014,low,liposarcoma NOS ~ dedifferentiated
 SARC_RMS_PRMS,1.2,Grobner 2018,PMID:29489754,low,pleomorphic RMS (adult): higher than pediatric RMS
 SARC_RMS_SSRMS,0.6,Grobner 2018,PMID:29489754,low,spindle/sclerosing RMS
+BCC,65,Bonilla 2016,PMID:27158114,medium,Basal cell carcinoma; UV signature; among the highest TMB of any tumor.
+cSCC,45,Pickering 2014,PMID:24927297,medium,Cutaneous SCC; UV-driven; very high TMB.
+EPN,0.5,Grobner 2018,PMID:29489754,medium,Ependymoma; very low SNV TMB; fusion/epigenetic-driven.
+DIPG,1.0,Mackay 2017,PMID:28966033,medium,Diffuse midline glioma; low TMB; H3 K27M epigenetic driver.
+VSCC,,,,none,Vulvar SCC; literature ~3-7 mut/Mb (HPV+ lower / TP53-pathway higher); no single cited median curated.
+VAGC,,,,none,Vaginal SCC; HPV-associated; ~5 mut/Mb estimate; no cited median curated.
+PENSCC,,,,none,Penile SCC; ~4-7 mut/Mb estimate; no cited median curated.
+ANSC,,,,none,Anal SCC; HPV-driven; ~5 mut/Mb estimate; no cited median curated.
+GBC,,,,none,Gallbladder carcinoma; ~2-4 mut/Mb; ERBB2/MSI subset higher; no cited median curated.
+CRANIO,,,,none,Craniopharyngioma; very low TMB (single CTNNB1 or BRAF driver); no cited median curated.
+PITNET,,,,none,Pituitary NET; very low TMB; no cited median curated.

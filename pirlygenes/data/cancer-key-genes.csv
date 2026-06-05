@@ -827,3 +827,14 @@ SARC,MPNST,MDM2,target,brigimadlin (BI 907828),small_molecule,phase_1,trial_foll
 SARC,MPNST,EZH2,target,tazemetostat,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,PRC2-null / SMARCB1-null MPNST,Synthetic lethal with PRC2 loss; FDA-approved for epithelioid sarcoma (SMARCB1-null) precedent,PMID:32507290
 SARC,MPNST,PTPN11,target,SHP2 inhibitors (trials),small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,RAS-driven MPNST (MEK-combo trials),SHP2 inhibition as MEK-resistance mitigator,PMID:37173835
 SARC,MPNST,BRD4,target,BET inhibitors (trials),small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,MPNST (preclinical / early-phase),BRD4 dependency in PRC2-null contexts — synergy with MEK inhibition,PMID:29203800
+BCC,,SMO,target,vismodegib,small_molecule,approved,approved_standard,standard_or_frontline,confirm locally-advanced or metastatic eligibility,locally advanced / metastatic BCC,Hedgehog SMO inhibitor; first approved targeted therapy for advanced BCC,PMID:22670903
+BCC,,SMO,target,sonidegib,small_molecule,approved,approved_indication_matched,standard_or_frontline,confirm locally-advanced eligibility,locally advanced BCC,Second SMO inhibitor for advanced BCC,PMID:26159756
+BCC,,PTCH1,biomarker,,,,,,,,Hedgehog-pathway tumor suppressor; loss drives constitutive SMO/GLI signaling in BCC,PMID:33997165
+cSCC,,PDCD1,target,cemiplimab,antibody,approved,approved_standard,standard_or_frontline,confirm advanced/unresectable eligibility,advanced / metastatic cSCC,Anti-PD-1; high response in UV-hypermutated cSCC,PMID:29863979
+cSCC,,CD274,biomarker,,,,,,,,PD-L1 expression; UV-driven high TMB underlies immune-checkpoint sensitivity,PMID:29863979
+GBC,,ERBB2,target,trastuzumab,antibody,phase_2,investigational_biomarker_matched,later_line_or_investigational,confirm HER2 amplification/overexpression,HER2+ gallbladder / biliary,HER2 amplified in a gallbladder subset; basket-trial activity (MyPathway),PMID:34022130
+CRANIO,papillary,BRAF,target,dabrafenib+trametinib,small_molecule,phase_2,investigational_biomarker_matched,later_line_or_investigational,confirm BRAF V600E (papillary CP),BRAF V600E papillary craniopharyngioma,BRAF/MEK inhibition shrinks papillary CP; near-universal BRAF V600E,PMID:36546659
+CRANIO,adamantinomatous,CTNNB1,biomarker,,,,,,,,Beta-catenin activating mutation defines adamantinomatous craniopharyngioma,PMID:28859336
+DIPG,,H3F3A,biomarker,,,,,,,,Histone H3.3 K27M is the defining alteration of diffuse midline glioma,PMID:22389665
+DIPG,,ACVR1,biomarker,,,,,,,,Recurrent ACVR1 activating mutation in a DIPG subset,PMID:24705250
+EPN,,ZFTA,biomarker,,,,,,,,ZFTA (C11orf95)-RELA fusion defines supratentorial ependymoma,PMID:24553141
