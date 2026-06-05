@@ -51,6 +51,104 @@ CLINICAL = CACHE / "clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.t
 GLIOMA_MAP = CACHE / "derived" / "tcga_glioma_case_to_project.csv"
 OUT = Path(__file__).resolve().parent / "outputs"
 THRESHOLDS = [25, 50, 100, 200]
+PERCENTILES = [80, 90, 95]
+
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Threshold:
+    """A CTA-positivity cutoff that is either an absolute TPM level
+    (``kind='tpm'``) or a within-sample percentile rank after clean-TPM
+    (``kind='pctile'``: a CTA is "on" in a sample if its TPM is at/above that
+    sample's Nth-percentile TPM across all genes). The percentile cutoff is
+    per-sample, so :meth:`cutoff` returns a vector aligned to the sample
+    columns; greedy_coverage compares each column to its own cutoff via
+    NumPy broadcasting."""
+    kind: str   # 'tpm' | 'pctile'
+    value: int
+
+    @property
+    def slug(self) -> str:
+        return (f"t{self.value}" if self.kind == "tpm" else f"p{self.value}")
+
+    @property
+    def xlabel(self) -> str:
+        return (f"> {self.value} TPM" if self.kind == "tpm"
+                else f"≥ {self.value}th within-sample percentile")
+
+    def cutoff(self, cols, pctile_cutoffs=None):
+        """Scalar TPM (tpm mode) or per-sample cutoff array aligned to ``cols``
+        (pctile mode). Samples without a percentile cutoff get +inf so no CTA
+        is ever called positive there (rather than a silent false positive)."""
+        if self.kind == "tpm":
+            return self.value
+        col = f"p{self.value}"
+        series = pctile_cutoffs[col] if pctile_cutoffs is not None else None
+        return np.array([
+            (series.get(c, np.inf) if series is not None else np.inf)
+            for c in cols
+        ], dtype=float)
+
+
+def per_sample_percentile_cutoffs(percentiles=PERCENTILES, *, nbins=2000,
+                                  vmax_log2=20.0, cache=True) -> pd.DataFrame:
+    """Per-sample TPM value at each within-sample percentile, computed over ALL
+    genes in the compendium (not just CTAs) so a CTA's rank is relative to the
+    whole transcriptome. Memory-bounded histogram pass over the full
+    log2(TPM+1) TSV (+ the linear-TPM parquet cohorts); cached to
+    ``outputs/_per_sample_pctile_cutoffs.parquet`` (keyed on TSV mtime)."""
+    cachef = OUT / "_per_sample_pctile_cutoffs.parquet"
+    if (cache and cachef.exists()
+            and cachef.stat().st_mtime >= TPM_TSV.stat().st_mtime):
+        return pd.read_parquet(cachef)
+
+    edges = np.linspace(0.0, vmax_log2, nbins + 1)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    hist = None
+    cols = None
+    for chunk in pd.read_csv(TPM_TSV, sep="\t", chunksize=4000):
+        vals = chunk.iloc[:, 1:]
+        if cols is None:
+            cols = list(vals.columns)
+            hist = np.zeros((len(cols), nbins), dtype=np.int64)
+        arr = vals.to_numpy(dtype=np.float32)            # genes(chunk) × samples
+        idx = np.clip(np.searchsorted(edges, arr, side="right") - 1, 0, nbins - 1)
+        # accumulate per-sample histograms: add 1 per (sample, bin) occurrence
+        for j in range(idx.shape[1]):
+            hist[j] += np.bincount(idx[:, j], minlength=nbins)
+
+    cum = np.cumsum(hist, axis=1)
+    total = cum[:, -1].astype(float)
+    out = {"sample": cols}
+    for p in percentiles:
+        bins = (cum >= (total * (p / 100.0))[:, None]).argmax(axis=1)
+        out[f"p{p}"] = np.power(2.0, centers[bins]) - 1.0   # log2 cutoff -> TPM
+    df = pd.DataFrame(out).set_index("sample")
+
+    # parquet cohorts ship linear TPM over their own gene set — compute their
+    # per-sample percentiles directly and append.
+    extra = []
+    cache_dir = Path.home() / ".cache" / "pirlygenes" / "expression"
+    for source_id, code in _EXTRA_PARQUET_COHORTS:
+        p = cache_dir / source_id / "derived" / f"{code}_per_sample_tpm.parquet"
+        if not p.exists():
+            continue
+        pf = pd.read_parquet(p)
+        sample_cols = [c for c in pf.columns
+                       if c not in ("Ensembl_Gene_ID", "Symbol")]
+        m = pf[sample_cols].to_numpy(dtype=float)
+        rec = {}
+        for col, vec in zip(sample_cols, m.T):
+            rec[col] = {f"p{q}": float(np.percentile(vec, q)) for q in percentiles}
+        extra.append(pd.DataFrame(rec).T)
+    if extra:
+        df = pd.concat([df] + extra)
+        df = df[~df.index.duplicated(keep="first")]
+    if cache:
+        df.to_parquet(cachef)
+    return df
 
 # Plot tick labels: the registry code is now authoritative (Phase C made SARC
 # the honest pan-sarcoma grand union and split the histology atoms), so no
@@ -292,12 +390,18 @@ def per_cohort_counts(mat, cohorts, ensg_to_sym):
     return pd.DataFrame(rows)
 
 
-def greedy_coverage(mat, samples, threshold):
+def greedy_coverage(mat, samples, threshold, pctile_cutoffs=None):
     """Co-occurrence-aware: greedily order CTAs by marginal NEW patients (>thr).
-    Returns (ordered_symbols_idx, cumulative_fraction, n_total)."""
+    Returns (ordered_symbols_idx, cumulative_fraction, n_total).
+
+    ``threshold`` is either a scalar TPM, or a :class:`Threshold` (TPM or
+    within-sample percentile). For a percentile Threshold each sample column
+    is compared to its own cutoff (NumPy broadcasting)."""
     cols = [s for s in samples if s in mat.columns]
     n = len(cols)
-    hit = (mat[cols].to_numpy() > threshold)  # CTA × patient boolean
+    cut = (threshold.cutoff(cols, pctile_cutoffs)
+           if isinstance(threshold, Threshold) else threshold)
+    hit = (mat[cols].to_numpy() > cut)  # CTA × patient boolean
     covered = np.zeros(n, dtype=bool)
     order, cum = [], []
     remaining = set(range(mat.shape[0]))
@@ -323,6 +427,8 @@ def main():
                     help="TPM cutoff for the heatmap / bar / coverage plots")
     ap.add_argument("--cohort", default="GBM",
                     help="cohort for the %%-bar and coverage plots")
+    ap.add_argument("--no-percentiles", action="store_true",
+                    help="skip the within-sample percentile-rank threshold plots")
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
 
@@ -378,17 +484,34 @@ def main():
     print("[5/9] plots", flush=True)
     _plots(mat, cohorts, counts, ensg_to_sym, args.threshold, args.cohort)
 
+    tpm_thr = Threshold("tpm", args.threshold)
     print("[6/9] per-cohort coverage curves (one PNG each)", flush=True)
-    _coverage_every_cohort(mat, cohorts, ensg_to_sym, args.threshold)
+    _coverage_every_cohort(mat, cohorts, ensg_to_sym, tpm_thr)
 
     print("[7/9] peak-coverage bar charts (parent/child + top-CTA colored)", flush=True)
-    _peak_coverage_bars(mat, cohorts, ensg_to_sym, args.threshold)
+    _peak_coverage_bars(mat, cohorts, ensg_to_sym, tpm_thr)
 
     print("[8/9] stacked coverage bar (per-CTA marginal contribution)", flush=True)
-    _stacked_coverage_bars(mat, cohorts, ensg_to_sym, args.threshold)
+    _stacked_coverage_bars(mat, cohorts, ensg_to_sym, tpm_thr)
 
     print("[9/9] CTA coverage vs cohort TMB", flush=True)
-    _cta_vs_tmb(mat, cohorts, ensg_to_sym, args.threshold)
+    _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr)
+
+    # Within-sample percentile-rank thresholds (after clean-TPM): a CTA is "on"
+    # in a sample if its TPM is at/above that sample's Nth-percentile across all
+    # genes. Pipeline-robust (rank harmonizes across quantification pipelines).
+    # Generated once (gated on the base TPM threshold) since they don't depend
+    # on --threshold; the cutoffs are cached after the first compute.
+    if not args.no_percentiles and args.threshold == THRESHOLDS[0]:
+        print(f"[+] within-sample percentile thresholds {PERCENTILES}", flush=True)
+        cutoffs = per_sample_percentile_cutoffs()
+        for p in PERCENTILES:
+            pthr = Threshold("pctile", p)
+            print(f"    p{p}: coverage curves + peak/stacked bars + vs-TMB", flush=True)
+            _coverage_every_cohort(mat, cohorts, ensg_to_sym, pthr, cutoffs)
+            _peak_coverage_bars(mat, cohorts, ensg_to_sym, pthr, cutoffs)
+            _stacked_coverage_bars(mat, cohorts, ensg_to_sym, pthr, cutoffs)
+            _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs)
     print(f"done -> {OUT}", flush=True)
 
 
@@ -472,7 +595,7 @@ def _parent_map():
     }
 
 
-def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
+def _peak_coverage_bars(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
     """Two sorted horizontal bar charts of each cohort's PEAK coverage % (the
     greedy plateau — share of patients with >=1 CTA over threshold):
       (a) colored by parent-cohort vs sub-divided (derived) cohort;
@@ -486,7 +609,7 @@ def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
     parent_of = _parent_map()
     rows = []
     for code in cohorts:
-        order, cum, n = greedy_coverage(mat, cohorts[code], threshold)
+        order, cum, n = greedy_coverage(mat, cohorts[code], thr, pctile_cutoffs)
         if not cum:
             continue
         top_cta = ensg_to_sym.get(mat.index[order[0]], mat.index[order[0]])
@@ -504,7 +627,7 @@ def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
     ax.barh(range(len(df)), df["peak"], color=colors)
     ax.set_yticks(range(len(df)))
     ax.set_yticklabels(labels, fontsize=7)
-    ax.set_xlabel(f"peak % of patients with ≥1 CTA > {threshold} TPM")
+    ax.set_xlabel(f"peak % of patients with ≥1 CTA {thr.xlabel}")
     ax.set_xlim(0, 100)
     for y, p in enumerate(df["peak"]):
         ax.text(p + 0.6, y, f"{p:.0f}", va="center", fontsize=6)
@@ -513,10 +636,10 @@ def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
         Patch(color="#e85d04", label="sub-divided (derived) cohort"),
     ], loc="lower right", fontsize=9)
     ax.set_title(f"CTA coverage ceiling by cancer type "
-                 f"(> {threshold} TPM)", fontsize=11)
+                 f"({thr.xlabel})", fontsize=11)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(OUT / f"cta_peak_coverage_by_parent_child_t{threshold}.png", dpi=150)
+    fig.savefig(OUT / f"cta_peak_coverage_by_parent_child_{thr.slug}.png", dpi=150)
     plt.close(fig)
 
     # ---- (b) colored by top CTA, grouped by antigen family ----
@@ -529,7 +652,7 @@ def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
     ax.barh(range(len(df)), df["peak"], color=[cta_color[c] for c in df["top_cta"]])
     ax.set_yticks(range(len(df)))
     ax.set_yticklabels(labels, fontsize=7)
-    ax.set_xlabel(f"peak % of patients with ≥1 CTA > {threshold} TPM")
+    ax.set_xlabel(f"peak % of patients with ≥1 CTA {thr.xlabel}")
     ax.set_xlim(0, 100)
     for y, (p, c) in enumerate(zip(df["peak"], df["top_cta"])):
         ax.text(p + 0.6, y, c, va="center", fontsize=6)
@@ -543,16 +666,16 @@ def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
               title="top CTA by family", ncol=2, handlelength=1.1,
               labelspacing=0.25, columnspacing=1.0)
     ax.set_title(f"CTA coverage ceiling by cancer type — top CTA colored by "
-                 f"family (> {threshold} TPM)", fontsize=11)
+                 f"family ({thr.xlabel})", fontsize=11)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(OUT / f"cta_peak_coverage_by_top_cta_t{threshold}.png", dpi=150)
+    fig.savefig(OUT / f"cta_peak_coverage_by_top_cta_{thr.slug}.png", dpi=150)
     plt.close(fig)
     print(f"      {len(df)} cohorts ({int(df['is_derived'].sum())} derived) "
           "-> 2 bar charts", flush=True)
 
 
-def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, threshold,
+def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
                            max_label_segments=8, min_label_pct=3.0):
     """Horizontal STACKED bar per cohort: the greedy plateau split into each
     CTA's marginal NEW-patient contribution. Because the contributions are
@@ -569,7 +692,7 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, threshold,
     # Per cohort: ordered (cta_symbol, marginal_pct) contributions.
     rows = []
     for code in cohorts:
-        order, cum, n = greedy_coverage(mat, cohorts[code], threshold)
+        order, cum, n = greedy_coverage(mat, cohorts[code], thr, pctile_cutoffs)
         if not cum:
             continue
         segs, prev = [], 0.0
@@ -608,7 +731,7 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, threshold,
             left += marg
     ax.set_yticks(range(len(rows)))
     ax.set_yticklabels(labels, fontsize=7)
-    ax.set_xlabel(f"% of patients with ≥1 CTA > {threshold} TPM "
+    ax.set_xlabel(f"% of patients with ≥1 CTA {thr.xlabel} "
                   "(stacked by each CTA's new-patient share)")
     ax.set_xlim(0, 100)
     ax.grid(axis="x", alpha=0.3)
@@ -617,11 +740,11 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, threshold,
               title="antigen family", ncol=2, handlelength=1.1,
               labelspacing=0.25, columnspacing=1.0)
     ax.set_title(f"CTA coverage by cancer type, by each CTA's new-patient "
-                 f"share (> {threshold} TPM)", fontsize=11)
+                 f"share ({thr.xlabel})", fontsize=11)
     fig.text(0.99, 0.005, f"{len(rows)} per-sample cohorts (others summary-only)",
              ha="right", fontsize=6, color="gray")
     fig.tight_layout()
-    fig.savefig(OUT / f"cta_stacked_coverage_t{threshold}.png", dpi=150)
+    fig.savefig(OUT / f"cta_stacked_coverage_{thr.slug}.png", dpi=150)
     plt.close(fig)
     print(f"      {len(rows)} cohorts -> stacked coverage bar", flush=True)
 
@@ -672,7 +795,7 @@ def _lineage_group(family: str) -> str:
     return "other"
 
 
-def _cta_vs_tmb(mat, cohorts, ensg_to_sym, threshold):
+def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
     """Scatter: each cancer type's CTA coverage plateau (% of patients with ≥1
     CTA over threshold) vs its published median TMB (mut/Mb, log x). Tumors with
     high CTA coverage but low TMB are the interesting quadrant for CTA-directed
@@ -701,7 +824,7 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, threshold):
     for code in cohorts:
         if code in aggregate_codes:
             continue
-        order, cum, n = greedy_coverage(mat, cohorts[code], threshold)
+        order, cum, n = greedy_coverage(mat, cohorts[code], thr, pctile_cutoffs)
         if not cum:
             continue
         key = _TMB_CODE.get(code, code)
@@ -742,7 +865,7 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, threshold):
     ax.scatter(xs, ys, s=34, c=[_LINEAGE_COLORS[g] for g in groups],
                alpha=0.9, edgecolor="white", linewidth=0.4, zorder=3)
     ax.set_xlabel("median tumor mutational burden (mut/Mb, log scale)")
-    ax.set_ylabel(f"% of patients with ≥1 CTA > {threshold} TPM "
+    ax.set_ylabel(f"% of patients with ≥1 CTA {thr.xlabel} "
                   "(coverage plateau)")
     ax.grid(alpha=0.3, which="both")
 
@@ -767,32 +890,32 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, threshold):
               fontsize=7, title="lineage", frameon=False)
 
     ax.set_title(f"CTA coverage vs TMB by cancer type "
-                 f"(> {threshold} TPM, n={len(pts)} cohorts)", fontsize=10)
+                 f"({thr.xlabel}, n={len(pts)} cohorts)", fontsize=10)
     n_registry = len(_registry_family_map())
     ax.text(0.99, 0.01,
             f"{len(pts)} per-sample cohorts shown (of {n_registry} registry "
             f"types; others summary-only); {len(missing)} dropped (no curated TMB)",
             transform=ax.transAxes, fontsize=6, color="gray", ha="right")
     fig.tight_layout()
-    fig.savefig(OUT / f"cta_coverage_vs_tmb_t{threshold}.png", dpi=150)
+    fig.savefig(OUT / f"cta_coverage_vs_tmb_{thr.slug}.png", dpi=150)
     plt.close(fig)
     print(f"      {len(pts)} cohorts plotted, {len(missing)} dropped (no TMB)",
           flush=True)
 
 
-def _coverage_every_cohort(mat, cohorts, ensg_to_sym, threshold):
+def _coverage_every_cohort(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
     """One annotated greedy co-occurrence-aware coverage PNG per cancer type,
-    into outputs/cta_coverage/gt<threshold>/, plus a small-multiples overview
+    into outputs/cta_coverage/<slug>/, plus a small-multiples overview
     sorted by how fast each cohort saturates."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    sub = OUT / "cta_coverage" / f"gt{threshold}"
+    sub = OUT / "cta_coverage" / thr.slug
     sub.mkdir(parents=True, exist_ok=True)
     n_written = 0
     for code in sorted(cohorts):
-        order, cum, n = greedy_coverage(mat, cohorts[code], threshold)
+        order, cum, n = greedy_coverage(mat, cohorts[code], thr, pctile_cutoffs)
         if not cum:
             continue
         names = [ensg_to_sym.get(mat.index[i], mat.index[i]) for i in order]
@@ -804,9 +927,9 @@ def _coverage_every_cohort(mat, cohorts, ensg_to_sym, threshold):
                         textcoords="offset points", xytext=(2, 4))
         ax.set_xlabel("# CTAs added")
         ax.set_ylabel(f"% of {_display_code(code)} patients with ≥1 CTA "
-                      f"> {threshold} TPM")
+                      f"{thr.xlabel}")
         ax.set_title(f"{_display_code(code)}: cumulative patient coverage "
-                     f"(> {threshold} TPM, n={n})", fontsize=10)
+                     f"({thr.xlabel}, n={n})", fontsize=10)
         ax.set_xlim(0, len(cum) + 1)  # go to this cohort's full plateau
         ax.set_ylim(0, 100)
         ax.grid(alpha=0.3)
