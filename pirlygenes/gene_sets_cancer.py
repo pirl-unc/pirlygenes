@@ -56,7 +56,11 @@ _RENAMED_CODE_ALIASES = {
     "HNSC_HPV_pos": "HNSC_HPVpos", "HNSC_HPV_neg": "HNSC_HPVneg",
     # #288 neuroendocrine wave: NET_ (well-diff) / NEC_ (poorly-diff) scheme.
     "MID_NET": "NET_MIDGUT", "REC_NET": "NET_RECTAL", "LUNG_NET_LC": "NET_LUNG",
-    "LUNG_NET_LCNEC": "NEC_LUNG_LC", "MEC": "NEC_MERKEL",
+    "MEC": "NEC_MERKEL",
+    # #288 follow-up: full NET_<site> consistency + spell out the ambiguous "LC"
+    # (lung-carcinoid vs large-cell). Chain the pre-5.16 codes to the final name.
+    "PANNET": "NET_PANCREAS",
+    "LUNG_NET_LCNEC": "NEC_LUNG_LARGECELL", "NEC_LUNG_LC": "NEC_LUNG_LARGECELL",
     # #288 one-separator normalization (subtype token has no internal underscore)
     "NBL_MYCN_amp": "NBL_MYCNamp", "NBL_MYCN_nonamp": "NBL_MYCNnonamp",
     "LAML_ELN_Fav": "LAML_ELNfav", "LAML_ELN_Int": "LAML_ELNint",

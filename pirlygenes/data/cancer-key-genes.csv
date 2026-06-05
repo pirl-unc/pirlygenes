@@ -679,18 +679,18 @@ HEPB,,CTNNB1,biomarker,,,,,,,,Activating mutation — Wnt-pathway driver in ~70%
 HEPB,,AFP,biomarker,,,,,,,,Alpha-fetoprotein — near-universal serum elevation in hepatoblastoma,PMID:24691097
 HEPB,,TP53,biomarker,,,,,,,,Rare in HEPB — high-risk subset; hepatocellular carcinoma overlap,PMID:24691097
 HEPB,,TYMS,target,cisplatin + doxorubicin (PLADO),small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,newly-diagnosed HEPB,International cooperative backbone — SIOPEL / COG regimens,PMID:28445040
-PANNET,,MEN1,biomarker,,,,,,,,Most common driver — ~45% panNETs; MEN1 syndrome predisposition,PMID:28280049
-PANNET,,ATRX,biomarker,,,,,,,,Loss — ALT phenotype; associated with larger tumors / worse prognosis,PMID:28280049
-PANNET,,DAXX,biomarker,,,,,,,,Loss — alternative to ATRX; ALT/chromatin axis,PMID:28280049
-PANNET,,MTOR,biomarker,,,,,,,,Pathway activation frequent — everolimus rationale,PMID:21306238
-PANNET,,CHGA,biomarker,,,,,,,,Chromogranin A — serum marker + NE lineage IHC,PMID:26398321
-PANNET,,SYP,biomarker,,,,,,,,Synaptophysin — NE lineage IHC,PMID:26398321
-PANNET,,SSTR2,biomarker,,,,,,,,Somatostatin receptor 2 — octreotide / 177Lu-DOTATATE target,PMID:28185094
-PANNET,,SSTR2,target,octreotide long-acting,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,advanced panNET,Somatostatin analog — first-line antiproliferative,PMID:19726064
-PANNET,,SSTR2,target,lanreotide,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced panNET,Somatostatin analog — CLARINET trial; PFS benefit,PMID:25014687
-PANNET,,SSTR2,target,[177Lu]Lu-DOTA-TATE,radioligand,approved,approved_later_line,later_line_approved,confirm imaging/eligibility and prior-line requirements,SSTR2+ advanced GEP-NET,NETTER-1 — first approved radioligand therapy,PMID:28076709
-PANNET,,MTOR,target,everolimus,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced panNET,mTOR inhibitor — RADIANT-3; PFS benefit,PMID:21306238
-PANNET,,VEGFA,target,sunitinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced panNET,VEGFR/PDGFR TKI — approved 2011; PFS benefit,PMID:21306235
+NET_PANCREAS,,MEN1,biomarker,,,,,,,,Most common driver — ~45% panNETs; MEN1 syndrome predisposition,PMID:28280049
+NET_PANCREAS,,ATRX,biomarker,,,,,,,,Loss — ALT phenotype; associated with larger tumors / worse prognosis,PMID:28280049
+NET_PANCREAS,,DAXX,biomarker,,,,,,,,Loss — alternative to ATRX; ALT/chromatin axis,PMID:28280049
+NET_PANCREAS,,MTOR,biomarker,,,,,,,,Pathway activation frequent — everolimus rationale,PMID:21306238
+NET_PANCREAS,,CHGA,biomarker,,,,,,,,Chromogranin A — serum marker + NE lineage IHC,PMID:26398321
+NET_PANCREAS,,SYP,biomarker,,,,,,,,Synaptophysin — NE lineage IHC,PMID:26398321
+NET_PANCREAS,,SSTR2,biomarker,,,,,,,,Somatostatin receptor 2 — octreotide / 177Lu-DOTATATE target,PMID:28185094
+NET_PANCREAS,,SSTR2,target,octreotide long-acting,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,advanced panNET,Somatostatin analog — first-line antiproliferative,PMID:19726064
+NET_PANCREAS,,SSTR2,target,lanreotide,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced panNET,Somatostatin analog — CLARINET trial; PFS benefit,PMID:25014687
+NET_PANCREAS,,SSTR2,target,[177Lu]Lu-DOTA-TATE,radioligand,approved,approved_later_line,later_line_approved,confirm imaging/eligibility and prior-line requirements,SSTR2+ advanced GEP-NET,NETTER-1 — first approved radioligand therapy,PMID:28076709
+NET_PANCREAS,,MTOR,target,everolimus,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced panNET,mTOR inhibitor — RADIANT-3; PFS benefit,PMID:21306238
+NET_PANCREAS,,VEGFA,target,sunitinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced panNET,VEGFR/PDGFR TKI — approved 2011; PFS benefit,PMID:21306235
 NET_MIDGUT,,CHGA,biomarker,,,,,,,,Chromogranin A — serum marker in midgut carcinoid,PMID:26398321
 NET_MIDGUT,,SYP,biomarker,,,,,,,,Synaptophysin — NE lineage IHC,PMID:26398321
 NET_MIDGUT,,SSTR2,biomarker,,,,,,,,Somatostatin receptor 2 — defining for octreoscan / 177Lu-DOTATATE eligibility,PMID:28185094
