@@ -1477,8 +1477,8 @@ bispecific_antibody_approved_target_gene_ids = _deprecate(
 bispecific_antibody_target_gene_names = _deprecate(
     "bispecific_antibody_target_gene_names", "bispecific-antibodies", "names"
 )
-bispecific_antibody_targets_gene_ids = _deprecate(
-    "bispecific_antibody_targets_gene_ids", "bispecific-antibodies", "ids"
+bispecific_antibody_target_gene_ids = _deprecate(
+    "bispecific_antibody_target_gene_ids", "bispecific-antibodies", "ids"
 )
 radio_target_gene_names = _deprecate("radio_target_gene_names", "radioligand", "names")
 radio_target_gene_ids = _deprecate("radio_target_gene_ids", "radioligand", "ids")
@@ -1500,6 +1500,7 @@ radioligand_target_gene_ids = _deprecate(
 # no tsarina equivalent.
 from tsarina.evidence import CTA_evidence as _tsarina_CTA_evidence  # noqa: E402
 from tsarina.gene_sets import (  # noqa: E402,F401
+    CTA_by_axes,
     CTA_excluded_gene_ids,
     CTA_excluded_gene_names,
     CTA_filtered_gene_ids,
@@ -1508,8 +1509,13 @@ from tsarina.gene_sets import (  # noqa: E402,F401
     CTA_gene_names,
     CTA_never_expressed_gene_ids,
     CTA_never_expressed_gene_names,
+    CTA_placental_restricted_gene_ids,
+    CTA_placental_restricted_gene_names,
+    CTA_testis_restricted_gene_ids,
+    CTA_testis_restricted_gene_names,
     CTA_unfiltered_gene_ids,
     CTA_unfiltered_gene_names,
+    cta_symbol_for_alias,
 )
 from tsarina.partition import (  # noqa: E402,F401
     CTAPartitionDataFrames,
