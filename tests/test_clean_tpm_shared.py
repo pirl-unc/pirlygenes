@@ -42,26 +42,22 @@ def test_technical_rna_mask_is_strict_technical_only():
     assert mask.tolist() == [True, True, True, False, False, False]
 
 
-def test_default_removal_mask_is_mitochondrial_and_ribosomal_only():
+def test_default_removal_mask_is_technical_plus_ribosomal_protein():
     gene_table, _ = _fixture()
-    # default: mitochondrial (MT-CO1, MT-RNR1) + ribosomal protein (RPL13A) are
-    # censored; MALAT1 (polyA-bias lncRNA) and normal genes are NOT (only the
-    # mitochondrial + ribosomal families, nothing else).
+    # default: technical RNA (MT-CO1, MT-RNR1, MALAT1) + ribosomal protein
+    # (RPL13A) censored; normal genes kept. Nothing else.
     assert clean_tpm_removal_mask(gene_table).tolist() == \
-        [True, True, False, True, False, False]
-    # exclude_ribosomal_proteins=False -> mitochondrial + rRNA only (RPL13A kept)
+        [True, True, True, True, False, False]
+    # exclude_ribosomal_proteins=False -> strict technical-only (RPL13A kept)
     assert clean_tpm_removal_mask(gene_table, exclude_ribosomal_proteins=False).tolist() == \
-        [True, True, False, False, False, False]
-    # only the strict technical set still flags MALAT1
-    assert technical_rna_mask(gene_table).tolist() == \
-        [True, True, True, False, False, False]
+        technical_rna_mask(gene_table).tolist() == [True, True, True, False, False, False]
 
 
 def test_clean_tpm_zero_fill_drops_censored_and_renormalizes():
     gene_table, values = _fixture()
     clean = clean_tpm_matrix(values, gene_table=gene_table, censored_fill="zero")
-    assert (clean.loc[[0, 1, 3]] == 0).all().all()    # mito + RPL13A censored
-    assert (clean.loc[[2, 4, 5]] > 0).all().all()      # MALAT1, TP53, ACTB kept
+    assert (clean.loc[[0, 1, 2, 3]] == 0).all().all()   # technical + RPL13A
+    assert (clean.loc[[4, 5]] > 0).all().all()           # TP53, ACTB kept
     np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
 
 
@@ -69,7 +65,7 @@ def test_clean_tpm_typical_fill_constant_budget_avoids_inflation():
     gene_table, values = _fixture()
     clean = clean_tpm_matrix(values, gene_table=gene_table, censored_fill="typical")
     np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
-    cens = clean.loc[[0, 1, 3]]                         # censored share one value
+    cens = clean.loc[[0, 1, 2, 3]]                      # censored share one value
     for col in clean.columns:
         assert cens[col].nunique() == 1
     z = clean_tpm_matrix(values, gene_table=gene_table, censored_fill="zero")
@@ -79,28 +75,28 @@ def test_clean_tpm_typical_fill_constant_budget_avoids_inflation():
 def test_clean_tpm_reference_fill_pins_per_gene_and_fills_remainder():
     gene_table, values = _fixture()
     # explicit per-gene reference constants (deterministic, cohort-independent)
-    ref = {"MT-CO1": 100.0, "MT-RNR1": 50.0, "RPL13A": 80.0}   # sum 230
+    ref = {"MT-CO1": 100.0, "MT-RNR1": 50.0, "MALAT1": 40.0, "RPL13A": 80.0}  # 270
     clean = clean_tpm_matrix(values, gene_table=gene_table,
                              censored_fill="reference", reference=ref)
     # each censored gene pinned EXACTLY to its reference, identical every sample
     assert clean.loc[0].tolist() == [100.0, 100.0]
-    assert clean.loc[1].tolist() == [50.0, 50.0]
+    assert clean.loc[2].tolist() == [40.0, 40.0]
     assert clean.loc[3].tolist() == [80.0, 80.0]
-    # non-censored genes (incl. MALAT1) fill the remaining 1e6 - 230 budget
-    np.testing.assert_allclose(clean.loc[[2, 4, 5]].sum(axis=0).to_numpy(),
-                               [1e6 - 230.0, 1e6 - 230.0])
+    # the kept genes (TP53, ACTB) fill the remaining 1e6 - 270 budget
+    np.testing.assert_allclose(clean.loc[[4, 5]].sum(axis=0).to_numpy(),
+                               [1e6 - 270.0, 1e6 - 270.0])
     np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
 
 
 def test_reference_fill_is_cohort_independent():
     gene_table, values = _fixture()
-    ref = {"MT-CO1": 100.0, "MT-RNR1": 50.0, "RPL13A": 80.0}
+    ref = {"MT-CO1": 100.0, "MT-RNR1": 50.0, "MALAT1": 40.0, "RPL13A": 80.0}
     a = clean_tpm_matrix(values, gene_table=gene_table,
                          censored_fill="reference", reference=ref)
     b = clean_tpm_matrix(values * 7, gene_table=gene_table,
                          censored_fill="reference", reference=ref)
     # censored genes hold the same value regardless of the (scaled) input cohort
-    for i in (0, 1, 3):
+    for i in (0, 1, 2, 3):
         assert a.loc[i].tolist() == b.loc[i].tolist()
 
 

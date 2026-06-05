@@ -309,7 +309,7 @@ def _summarize_cohort(
         f"{release.release_label}; HUGO symbols harmonized to Ensembl "
         f"release {ensembl_release}; log2(TPM+1) inverse-transformed"
     )
-    pipeline = f"{release.pipeline_prefix}_ensembl{ensembl_release}_clean_tpm_v2"
+    pipeline = f"{release.pipeline_prefix}_ensembl{ensembl_release}_clean_tpm_v3"
     notes = (
         f"Per-sample TPMs from {release.release_label}. Sample selection: "
         f"clinical.disease == '{cohort.disease_label}'. "

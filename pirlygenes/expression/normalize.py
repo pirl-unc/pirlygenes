@@ -343,14 +343,13 @@ def normalize_technical_rna_long_table(
 # scripts; this is now the one home.
 
 
-# The clean-TPM censored set is restricted to the MITOCHONDRIAL and RIBOSOMAL
-# families and nothing else — the most-expressed, most multi-mapping-sensitive
-# genes (huge pseudogene families) that split the zero-sum TPM budget very
-# differently across quantifiers (RSEM vs STAR ~3-4x per gene) and are not
-# tumor-specific signal. Other housekeeping (translation factors, ferritin,
-# ubiquitin, polyA-bias lncRNA like MALAT1/NEAT1) is deliberately NOT censored.
-_MITOCHONDRIAL_GROUPS = frozenset({"mt_dna", "mt_like_pseudogene"})
-_RIBOSOMAL_RNA_GROUPS = frozenset({"rrna_like"})
+# The clean-TPM censored set = the technical-RNA groups (mtDNA + mt-like
+# pseudogene + rRNA-like + the two polyA-bias lncRNAs MALAT1/NEAT1) PLUS the
+# ribosomal-protein family (mRNA + pseudogenes). These are the most-expressed,
+# most multi-mapping-sensitive genes (huge pseudogene families) that split the
+# zero-sum TPM budget very differently across quantifiers (RSEM vs STAR ~3-4x
+# per gene) and are not tumor-specific signal. Nothing else is censored —
+# other housekeeping (translation factors, ferritin, ubiquitin) is kept.
 _RIBOSOMAL_PROTEIN_GROUPS = frozenset(
     {"ribosomal_protein", "ribosomal_protein_pseudogene"}
 )
@@ -414,21 +413,21 @@ def _default_protected_symbols():
 def clean_tpm_removal_mask(gene_table, *, exclude_ribosomal_proteins: bool = True,
                            protect=None):
     """Boolean Series of rows zeroed by the default clean-TPM transform: the
-    **mitochondrial** family (mtDNA + mt-like pseudogenes) and the **ribosomal**
-    family (rRNA-like, always; ribosomal-protein mRNA + pseudogenes when
-    ``exclude_ribosomal_proteins``, the default) — and **nothing else** — minus
-    any curated cancer-target gene (a target is never censored even if its
+    technical-RNA groups (mtDNA + mt-like pseudogene + rRNA-like + the two
+    polyA-bias lncRNAs MALAT1/NEAT1) plus, when ``exclude_ribosomal_proteins``
+    (the default), ribosomal-protein mRNA + pseudogenes — and **nothing else** —
+    minus any curated cancer-target gene (a target is never censored even if its
     symbol matches a censored group; e.g. the CTA ``RPL10L``).
 
-    These two families are restricted-to because they are housekeeping, not
-    tumor-specific, and — being the most-expressed, most multi-mapping-prone
-    genes — they destabilize the zero-sum TPM denominator across quantification
-    pipelines. Other housekeeping (translation factors, ferritin, ubiquitin) and
-    the polyA-bias lncRNA group are intentionally NOT censored. Pass
-    ``exclude_ribosomal_proteins=False`` for mitochondrial + rRNA only; the
-    ``protect`` set overrides the default protected-target symbols.
+    These are housekeeping, not tumor-specific, and — being the most-expressed,
+    most multi-mapping-prone genes — they destabilize the zero-sum TPM
+    denominator across quantification pipelines. Other housekeeping (translation
+    factors, ferritin, ubiquitin) is intentionally NOT censored. Pass
+    ``exclude_ribosomal_proteins=False`` for the strict technical-only set
+    (equivalent to :func:`technical_rna_mask`); ``protect`` overrides the default
+    protected-target symbols.
     """
-    groups = set(_MITOCHONDRIAL_GROUPS) | set(_RIBOSOMAL_RNA_GROUPS)
+    groups = set(_TECHNICAL_RNA_GROUPS)  # mtDNA/mt-pseudogene + rRNA + polyA-lncRNA
     if exclude_ribosomal_proteins:
         groups |= set(_RIBOSOMAL_PROTEIN_GROUPS)
     mask = _qc_group_mask(gene_table, groups)
