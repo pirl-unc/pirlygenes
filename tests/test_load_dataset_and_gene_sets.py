@@ -355,3 +355,26 @@ def test_gene_loaders_are_exported_from_package():
         "cancer_family_panels",
     ]:
         assert hasattr(pirlygenes, name), f"{name} not re-exported"
+
+
+def test_cta_symbol_for_alias_reexported_from_tsarina():
+    """pirlygenes re-exports tsarina's alias resolver so callers can resolve
+    CTA names/synonyms without importing tsarina directly."""
+    from pirlygenes.gene_sets_cancer import cta_symbol_for_alias
+
+    assert cta_symbol_for_alias("NY-ESO-1") == "CTAG1B"
+    assert cta_symbol_for_alias("CT12.2") == "XAGE2"
+    assert cta_symbol_for_alias("not-a-gene") is None
+
+
+def test_cta_axis_accessors_reexported_from_tsarina():
+    """The CTA restriction-axis + by-axes accessors are re-exported too."""
+    from pirlygenes.gene_sets_cancer import (
+        CTA_by_axes,
+        CTA_placental_restricted_gene_names,
+        CTA_testis_restricted_gene_names,
+    )
+
+    assert "CTAG1B" in CTA_testis_restricted_gene_names()
+    assert len(CTA_placental_restricted_gene_names()) > 0
+    assert callable(CTA_by_axes)
