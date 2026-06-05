@@ -464,7 +464,7 @@ def test_imported_symbol_only_references_use_historical_symbol_rescue():
     # OS / RMS / SARC etc. moved to per-sample Treehouse builds and
     # use strict pyensembl 112 matching (no historical rescue yet).
     refs = load_all_dataframes_dict()["cancer-reference-expression.csv"]
-    nbl_ref = refs[refs["cancer_code"].eq("NBL_MYCN_nonamp")]
+    nbl_ref = refs[refs["cancer_code"].eq("NBL_MYCNnonamp")]
     assert len(nbl_ref) > 12_000
     # AARS1 (formerly AARS) and PRXL2C (formerly AAED1) are recovered
     # by the historical-Ensembl-name lookup in the summary importer.
@@ -663,12 +663,12 @@ def test_cancer_expression_source_candidates_cover_requested_gaps():
         "HCL",
         "HL",
         "PCN",
-        "LUNG_NET_LC",
-        "LUNG_NET_LCNEC",
-        "MID_NET",
+        "NET_LUNG",
+        "NEC_LUNG_LC",
+        "NET_MIDGUT",
         "MTC",
         "NPC",
-        "MEC",
+        "NEC_MERKEL",
         "ADCC",
         "ACINIC",
         "SARC_ESS_HG",

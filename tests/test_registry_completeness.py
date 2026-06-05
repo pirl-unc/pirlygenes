@@ -48,9 +48,9 @@ _MISSING_THERAPY_AXIS = frozenset(
         "CHOL", "CLL", "CML", "CTCL", "DLBC", "ESCA",
         "FL", "GBM", "HCL", "HEPB",
         "HL", "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC",
-        "LUNG_NET_LC", "LUNG_NET_LCNEC", "MBL", "MCL", "MDS", "MEC",
-        "MESO", "MID_NET", "MM", "MPN", "MTC", "NPC", "NUTM",
-        "OV", "PAAD", "PANNET", "PCPG", "RB", "READ", "REC_NET",
+        "NET_LUNG", "NEC_LUNG_LC", "MBL", "MCL", "MDS", "NEC_MERKEL",
+        "MESO", "NET_MIDGUT", "MM", "MPN", "MTC", "NPC", "NUTM",
+        "OV", "PAAD", "PANNET", "PCPG", "RB", "READ", "NET_RECTAL",
         "RT", "SARC",
         "SCLC", "STAD", "TGCT", "THCA", "THYM", "T_ALL", "UCEC", "UCS",
         "UVM", "WILMS",
@@ -72,8 +72,8 @@ _TOLERATED_GAPS_EXPLICIT = {
     "MDS": {"lineage", "biomarker", "therapy"},
     "MPN": {"lineage", "biomarker", "therapy"},
     # NET axis — PANNET shipped v4.47.0; rest pending
-    "LUNG_NET_LCNEC": {"lineage", "biomarker", "therapy"},
-    "REC_NET": {"lineage", "biomarker", "therapy"},
+    "NEC_LUNG_LC": {"lineage", "biomarker", "therapy"},
+    "NET_RECTAL": {"lineage", "biomarker", "therapy"},
     # Pediatric entities — lineage panels still need curation
     "NBL": {"lineage"},
     "WILMS": {"lineage"},

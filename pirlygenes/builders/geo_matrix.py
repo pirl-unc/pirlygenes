@@ -371,8 +371,8 @@ def build_source(
           f"{len(values)} canonical genes")
 
     # Build per-gene-per-cohort rows. The cancer_code may be a list when
-    # the same matrix splits across multiple codes (e.g. LUNG_NET_LC vs
-    # LUNG_NET_LCNEC) via sample_to_cancer_code.
+    # the same matrix splits across multiple codes (e.g. NET_LUNG vs
+    # NEC_LUNG_LC) via sample_to_cancer_code.
     gene_table = (
         mapping.drop_duplicates("Ensembl_Gene_ID")[["Ensembl_Gene_ID", "Symbol"]]
         .reset_index(drop=True)

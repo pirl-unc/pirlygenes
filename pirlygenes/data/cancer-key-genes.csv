@@ -691,26 +691,26 @@ PANNET,,SSTR2,target,lanreotide,small_molecule,approved,approved_indication_matc
 PANNET,,SSTR2,target,[177Lu]Lu-DOTA-TATE,radioligand,approved,approved_later_line,later_line_approved,confirm imaging/eligibility and prior-line requirements,SSTR2+ advanced GEP-NET,NETTER-1 — first approved radioligand therapy,PMID:28076709
 PANNET,,MTOR,target,everolimus,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced panNET,mTOR inhibitor — RADIANT-3; PFS benefit,PMID:21306238
 PANNET,,VEGFA,target,sunitinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced panNET,VEGFR/PDGFR TKI — approved 2011; PFS benefit,PMID:21306235
-MID_NET,,CHGA,biomarker,,,,,,,,Chromogranin A — serum marker in midgut carcinoid,PMID:26398321
-MID_NET,,SYP,biomarker,,,,,,,,Synaptophysin — NE lineage IHC,PMID:26398321
-MID_NET,,SSTR2,biomarker,,,,,,,,Somatostatin receptor 2 — defining for octreoscan / 177Lu-DOTATATE eligibility,PMID:28185094
-MID_NET,,TPH1,biomarker,,,,,,,,Tryptophan hydroxylase — serotonin synthesis enzyme; carcinoid-specific,PMID:25538161
-MID_NET,,SSTR2,target,octreotide long-acting,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,midgut carcinoid (carcinoid syndrome + antiproliferative),First-line for functional and nonfunctional midgut NETs,PMID:19726064
-MID_NET,,SSTR2,target,[177Lu]Lu-DOTA-TATE,radioligand,approved,approved_later_line,later_line_approved,confirm imaging/eligibility and prior-line requirements,SSTR2+ advanced midgut NET,NETTER-1 — approved for progressive midgut NETs,PMID:28076709
-MID_NET,,TPH1,target,telotristat ethyl,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,carcinoid syndrome diarrhea,Oral inhibitor of TPH — approved 2017 for carcinoid-syndrome diarrhea,PMID:28444947
-LUNG_NET_LC,,CHGA,biomarker,,,,,,,,Chromogranin A — serum + IHC; lung carcinoid diagnostic,PMID:26398321
-LUNG_NET_LC,,SYP,biomarker,,,,,,,,Synaptophysin — NE lineage,PMID:26398321
-LUNG_NET_LC,,SSTR2,biomarker,,,,,,,,Somatostatin receptor 2 — octreotide-scan positivity,PMID:28185094
-LUNG_NET_LC,,MEN1,biomarker,,,,,,,,MEN1 loss — subset of atypical lung carcinoid,PMID:24584669
-LUNG_NET_LC,,SSTR2,target,octreotide long-acting,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced well-differentiated lung NET,Antiproliferative + symptom control,PMID:19726064
-LUNG_NET_LC,,MTOR,target,everolimus,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced well-differentiated lung NET,RADIANT-4 — approved 2016 for non-functional NETs incl lung,PMID:26703889
-MEC,,TNFRSF9,biomarker,,,,,,,,Merkel cell lineage — CK20-positive perinuclear dot-like IHC characteristic,PMID:17189037
-MEC,,CD274,biomarker,,,,,,,,PD-L1 expression — predictive for avelumab response,PMID:27093365
-MEC,,CHGA,biomarker,,,,,,,,Chromogranin A — NE lineage; diffuse in MEC,PMID:17189037
-MEC,,SYP,biomarker,,,,,,,,Synaptophysin — NE lineage,PMID:17189037
-MEC,,PDCD1,target,avelumab,antibody,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,metastatic Merkel cell carcinoma,Anti-PD-L1 — JAVELIN-200; approved 2017; first MEC IO approval,PMID:27093365
-MEC,,PDCD1,target,pembrolizumab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,advanced MEC,Anti-PD1 — approved in first-line MEC,PMID:31158039
-MEC,,PDCD1,target,nivolumab + ipilimumab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced MEC,Combination IO — improved responses in IO-refractory subset,PMID:30242127
+NET_MIDGUT,,CHGA,biomarker,,,,,,,,Chromogranin A — serum marker in midgut carcinoid,PMID:26398321
+NET_MIDGUT,,SYP,biomarker,,,,,,,,Synaptophysin — NE lineage IHC,PMID:26398321
+NET_MIDGUT,,SSTR2,biomarker,,,,,,,,Somatostatin receptor 2 — defining for octreoscan / 177Lu-DOTATATE eligibility,PMID:28185094
+NET_MIDGUT,,TPH1,biomarker,,,,,,,,Tryptophan hydroxylase — serotonin synthesis enzyme; carcinoid-specific,PMID:25538161
+NET_MIDGUT,,SSTR2,target,octreotide long-acting,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,midgut carcinoid (carcinoid syndrome + antiproliferative),First-line for functional and nonfunctional midgut NETs,PMID:19726064
+NET_MIDGUT,,SSTR2,target,[177Lu]Lu-DOTA-TATE,radioligand,approved,approved_later_line,later_line_approved,confirm imaging/eligibility and prior-line requirements,SSTR2+ advanced midgut NET,NETTER-1 — approved for progressive midgut NETs,PMID:28076709
+NET_MIDGUT,,TPH1,target,telotristat ethyl,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,carcinoid syndrome diarrhea,Oral inhibitor of TPH — approved 2017 for carcinoid-syndrome diarrhea,PMID:28444947
+NET_LUNG,,CHGA,biomarker,,,,,,,,Chromogranin A — serum + IHC; lung carcinoid diagnostic,PMID:26398321
+NET_LUNG,,SYP,biomarker,,,,,,,,Synaptophysin — NE lineage,PMID:26398321
+NET_LUNG,,SSTR2,biomarker,,,,,,,,Somatostatin receptor 2 — octreotide-scan positivity,PMID:28185094
+NET_LUNG,,MEN1,biomarker,,,,,,,,MEN1 loss — subset of atypical lung carcinoid,PMID:24584669
+NET_LUNG,,SSTR2,target,octreotide long-acting,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced well-differentiated lung NET,Antiproliferative + symptom control,PMID:19726064
+NET_LUNG,,MTOR,target,everolimus,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced well-differentiated lung NET,RADIANT-4 — approved 2016 for non-functional NETs incl lung,PMID:26703889
+NEC_MERKEL,,TNFRSF9,biomarker,,,,,,,,Merkel cell lineage — CK20-positive perinuclear dot-like IHC characteristic,PMID:17189037
+NEC_MERKEL,,CD274,biomarker,,,,,,,,PD-L1 expression — predictive for avelumab response,PMID:27093365
+NEC_MERKEL,,CHGA,biomarker,,,,,,,,Chromogranin A — NE lineage; diffuse in MEC,PMID:17189037
+NEC_MERKEL,,SYP,biomarker,,,,,,,,Synaptophysin — NE lineage,PMID:17189037
+NEC_MERKEL,,PDCD1,target,avelumab,antibody,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,metastatic Merkel cell carcinoma,Anti-PD-L1 — JAVELIN-200; approved 2017; first MEC IO approval,PMID:27093365
+NEC_MERKEL,,PDCD1,target,pembrolizumab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,advanced MEC,Anti-PD1 — approved in first-line MEC,PMID:31158039
+NEC_MERKEL,,PDCD1,target,nivolumab + ipilimumab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced MEC,Combination IO — improved responses in IO-refractory subset,PMID:30242127
 MTC,,RET,biomarker,,,,,,,,Germline (MEN2A/B) or somatic RET mutation — driver; gates selpercatinib/pralsetinib,PMID:23590294
 MTC,,CALCA,biomarker,,,,,,,,Calcitonin — diagnostic + treatment-response serum marker,PMID:24488796
 MTC,,CEACAM5,biomarker,,,,,,,,CEA — adjunct serum marker; prognostic when calcitonin elevated,PMID:24488796

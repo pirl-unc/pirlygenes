@@ -21,9 +21,9 @@ KIRC,Kidney Renal Clear Cell,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_
 KIRP,Kidney Renal Papillary,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Type 1 (MET) + Type 2 lumped,False,False,
 LAML,Acute Myeloid Leukemia,heme-myeloid,bone_marrow,heme_marrow,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Umbrella — see APL / ELN subtypes,False,False,
 LAML_APL,Acute Promyelocytic Leukemia,heme-myeloid,bone_marrow,heme_marrow,LAML,apl,BEATAML,BEATAML_OHSU_2022,PMID:36109543,PML-RARA; ATRA + ATO chemo-free cure,False,False,
-LAML_ELN_Fav,AML ELN2017 Favorable,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,NPM1+/FLT3- or CBF; chemo-sensitive,False,False,
-LAML_ELN_Int,AML ELN2017 Intermediate,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,Mixed; individualized therapy,False,False,
-LAML_ELN_Adv,AML ELN2017 Adverse,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,TP53/complex karyo; transplant-first,False,False,
+LAML_ELNfav,AML ELN2017 Favorable,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,NPM1+/FLT3- or CBF; chemo-sensitive,False,False,
+LAML_ELNint,AML ELN2017 Intermediate,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,Mixed; individualized therapy,False,False,
+LAML_ELNadv,AML ELN2017 Adverse,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,TP53/complex karyo; transplant-first,False,False,
 LGG,Lower Grade Glioma,cns,cerebrum,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,IDH-mutant (per 2021 WHO); vorasidenib-eligible,False,False,
 LIHC,Liver Hepatocellular Carcinoma,carcinoma-gi,liver,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HBV/HCV/NASH etiologies,False,False,
 LUAD,Lung Adenocarcinoma,carcinoma-lung,lung,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,EGFR / KRAS / STK11-KEAP1 axes — therapy-gating,False,False,
@@ -63,8 +63,8 @@ SARC_CHOR,Chordoma,sarcoma,notochord,primary_notochord,SARC,,Treehouse/RiboD,TRE
 SARC_RMS_ERMS,Embryonal Rhabdomyosarcoma,sarcoma,skeletal_muscle,primary_skeletal_muscle,SARC,,Treehouse,TREEHOUSE_POLYA_25_01,PMID:24436047,MYOD1/MYOG; better prognosis than ARMS,False,True,
 SARC_RMS_ARMS,Alveolar Rhabdomyosarcoma,sarcoma,skeletal_muscle,primary_skeletal_muscle,SARC,,Treehouse,TREEHOUSE_POLYA_25_01,PMID:24436047,PAX3-FOXO1 or PAX7-FOXO1; aggressive,False,True,
 NBL,Neuroblastoma,neuroendocrine,sympathetic_ganglia,primary_neural_crest,,,TARGET,TARGET_NBL_2018,PMID:30019323,MYCN amp vs non-amp — therapy-gating,False,True,
-NBL_MYCN_amp,Neuroblastoma MYCN-amplified,neuroendocrine,sympathetic_ganglia,primary_neural_crest,NBL,,TARGET,TARGET_NBL_2018,PMID:30019323,High-risk; dinutuximab + chemo,False,True,
-NBL_MYCN_nonamp,Neuroblastoma MYCN-non-amplified,neuroendocrine,sympathetic_ganglia,primary_neural_crest,NBL,,TARGET,TARGET_NBL_2018,PMID:30019323,Intermediate/low-risk; better prognosis,False,True,
+NBL_MYCNamp,Neuroblastoma MYCN-amplified,neuroendocrine,sympathetic_ganglia,primary_neural_crest,NBL,,TARGET,TARGET_NBL_2018,PMID:30019323,High-risk; dinutuximab + chemo,False,True,
+NBL_MYCNnonamp,Neuroblastoma MYCN-non-amplified,neuroendocrine,sympathetic_ganglia,primary_neural_crest,NBL,,TARGET,TARGET_NBL_2018,PMID:30019323,Intermediate/low-risk; better prognosis,False,True,
 WILMS,Wilms Tumor / Nephroblastoma,embryonal,kidney,primary_embryonal,,,TARGET,TARGET_WT_2015,PMID:25622910,WT1/CTNNB1/AMER1; favorable vs anaplastic,False,True,
 RT,Rhabdoid Tumor,embryonal,kidney_cns_soft,primary_embryonal,,,TARGET,TARGET_RT_2017,PMID:29568089,SMARCB1 loss; malignant; CNS AT/RT subset,False,True,
 ATRT,Atypical Teratoid/Rhabdoid Tumor,cns,cerebellum,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,SMARCB1 loss; CNS-only rhabdoid,False,True,
@@ -88,16 +88,16 @@ B_ALL,B-cell Acute Lymphoblastic Leukemia,heme-bcell,bone_marrow,heme_marrow,,,T
 T_ALL,T-cell Acute Lymphoblastic Leukemia,heme-tcell,bone_marrow,heme_marrow,,,TARGET,TARGET_ALL_2018,PMID:30046113,NOTCH1; nelarabine,False,False,
 CTCL,Cutaneous T-cell Lymphoma,heme-tcell,skin,heme_skin,,,GEO,GSE171811_ECCITE_CTCL,,Mycosis fungoides / Sezary; mogamulizumab,False,False,
 PANNET,Pancreatic Neuroendocrine Tumor,neuroendocrine,pancreas,solid_primary,,,GEO,GSE118014_ALVAREZ_2018,PMID:30296526,"PanNET — Alvarez 2018 (GSE118014, 33 samples log2-TPM); octreotide/lanreotide, 177Lu-DOTATATE, everolimus",False,False,NET
-MID_NET,Midgut / Small Bowel Carcinoid,neuroendocrine,small_intestine,solid_primary,,,GEO,GSE98894_ALVAREZ_2018_NET,PMID:30013182,"Serotonin-secreting; 177Lu-DOTATATE; reference cohort is GSE98894 liver metastases (not primary), tagged tumor_origin=metastasis",False,False,NET
-REC_NET,Rectal Neuroendocrine Tumor,neuroendocrine,rectum,solid_primary,,,GEO,GSE98894_ALVAREZ_2018_NET,PMID:30013182,Most common GI-NET in some Asian cohorts; reference is GSE98894 liver mets (tumor_origin=metastasis),False,False,NET
-LUNG_NET_LC,Lung Typical/Atypical Carcinoid,neuroendocrine,lung,solid_primary,,,GEO,DRMETRICS_ALCALA_2019_LNEN,PMID:31431620,Low-grade lung NE; distinct from SCLC,False,False,NET
-LUNG_NET_LCNEC,Large-Cell Neuroendocrine Carcinoma Lung,neuroendocrine,lung,solid_primary,,,GEO,DRMETRICS_ALCALA_2019_LNEN,PMID:33203751,Intermediate between carcinoid and SCLC,False,False,NEC
+NET_MIDGUT,Midgut / Small Bowel Carcinoid,neuroendocrine,small_intestine,solid_primary,,,GEO,GSE98894_ALVAREZ_2018_NET,PMID:30013182,"Serotonin-secreting; 177Lu-DOTATATE; reference cohort is GSE98894 liver metastases (not primary), tagged tumor_origin=metastasis",False,False,NET
+NET_RECTAL,Rectal Neuroendocrine Tumor,neuroendocrine,rectum,solid_primary,,,GEO,GSE98894_ALVAREZ_2018_NET,PMID:30013182,Most common GI-NET in some Asian cohorts; reference is GSE98894 liver mets (tumor_origin=metastasis),False,False,NET
+NET_LUNG,Lung Typical/Atypical Carcinoid,neuroendocrine,lung,solid_primary,,,GEO,DRMETRICS_ALCALA_2019_LNEN,PMID:31431620,Low-grade lung NE; distinct from SCLC,False,False,NET
+NEC_LUNG_LC,Large-Cell Neuroendocrine Carcinoma Lung,neuroendocrine,lung,solid_primary,,,GEO,DRMETRICS_ALCALA_2019_LNEN,PMID:33203751,Intermediate between carcinoid and SCLC,False,False,NEC
 SCLC,Small Cell Lung Cancer,neuroendocrine,lung,solid_primary,,,University of Cologne,SCLC_UCOLOGNE_2015,,Rudin/George 2015; ASCL1/NEUROD1/POU2F3/YAP1 subtypes,False,False,NEC
 SCLC_ASCL1,SCLC ASCL1-dominant,neuroendocrine,lung,solid_primary,SCLC,,University of Cologne,SCLC_UCOLOGNE_2015_TF_DOMINANCE,PMID:26168399,Classic neuroendocrine; DLL3 target,False,False,NEC
 SCLC_NEUROD1,SCLC NEUROD1-dominant,neuroendocrine,lung,solid_primary,SCLC,,University of Cologne,SCLC_UCOLOGNE_2015_TF_DOMINANCE,PMID:26168399,Neural; ASCL1-low,False,False,NEC
 SCLC_POU2F3,SCLC POU2F3-dominant,neuroendocrine,lung,solid_primary,SCLC,,University of Cologne,SCLC_UCOLOGNE_2015_TF_DOMINANCE,PMID:26168399,Tuft-cell-like; non-NE,False,False,NEC
 SCLC_YAP1,SCLC YAP1-dominant,neuroendocrine,lung,solid_primary,SCLC,,University of Cologne,SCLC_UCOLOGNE_2015_TF_DOMINANCE,PMID:26168399,Inflamed; proposed IO-responsive,False,False,NEC
-MEC,Merkel Cell Carcinoma,neuroendocrine,skin,solid_primary,,,curated,LITERATURE_CURATED,,MCPyV+ vs UV; avelumab-sensitive,False,False,NEC
+NEC_MERKEL,Merkel Cell Carcinoma,neuroendocrine,skin,solid_primary,,,curated,LITERATURE_CURATED,,MCPyV+ vs UV; avelumab-sensitive,False,False,NEC
 NUTM,NUT Carcinoma,carcinoma-other,midline_structures,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,NUT-BRD3/4 fusion; midline aggressive,False,False,
 ACINIC,Acinic Cell Carcinoma,salivary,salivary_gland,solid_primary,,,curated,LITERATURE_CURATED,,Salivary gland low-grade,False,False,
 ADCC,Adenoid Cystic Carcinoma,salivary,salivary_gland,solid_primary,,,GEO,GSE294016_BARTL_2025_SGC,PMID:40506428,MYB-NFIB; salivary + lacrimal + breast,False,False,

@@ -64,7 +64,7 @@ CML,,,,none,Chronic myeloid leukemia; BCR-ABL1-defined; very few additional muta
 CTCL,3.0,Park 2021,PMID:33574607,low,CTCL/mycosis fungoides; UV-signature; stage-dependent; advanced much higher.
 PANNET,1.9,Backman 2021,PMID:34326338,medium,Pancreatic NET well-diff median ~1.9 (vs NEC ~5.0); low.
 SCLC,8.6,George 2015,PMID:26168399,high,Small cell lung; high ~8.6; smoking signature.
-MEC,5.3,Knepper 2019,PMID:30482774,medium,Merkel cell carcinoma median ~5.3; bimodal MCPyV-neg(UV) high vs MCPyV-pos low.
+NEC_MERKEL,5.3,Knepper 2019,PMID:30482774,medium,Merkel cell carcinoma median ~5.3; bimodal MCPyV-neg(UV) high vs MCPyV-pos low.
 MTC,,,,none,Medullary thyroid; single-driver RET/RAS; no clean published per-Mb median.
 ADCC,0.31,Ho 2013,PMID:23685749,high,Adenoid cystic carcinoma ~0.31; MYB-NFIB fusion-driven; very low.
 NPC,0.95,Nasopharyngeal WES,PMC9498130,medium,Nasopharyngeal carcinoma median ~0.95-1.0; EBV-driven low SNV burden.

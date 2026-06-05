@@ -54,6 +54,13 @@ _RENAMED_CODE_ALIASES = {
     "RMS_ERMS": "SARC_RMS_ERMS", "RMS_ARMS": "SARC_RMS_ARMS",
     "RMS_PRMS": "SARC_RMS_PRMS", "RMS_SSRMS": "SARC_RMS_SSRMS",
     "HNSC_HPV_pos": "HNSC_HPVpos", "HNSC_HPV_neg": "HNSC_HPVneg",
+    # #288 neuroendocrine wave: NET_ (well-diff) / NEC_ (poorly-diff) scheme.
+    "MID_NET": "NET_MIDGUT", "REC_NET": "NET_RECTAL", "LUNG_NET_LC": "NET_LUNG",
+    "LUNG_NET_LCNEC": "NEC_LUNG_LC", "MEC": "NEC_MERKEL",
+    # #288 one-separator normalization (subtype token has no internal underscore)
+    "NBL_MYCN_amp": "NBL_MYCNamp", "NBL_MYCN_nonamp": "NBL_MYCNnonamp",
+    "LAML_ELN_Fav": "LAML_ELNfav", "LAML_ELN_Int": "LAML_ELNint",
+    "LAML_ELN_Adv": "LAML_ELNadv",
 }
 _RENAMED_CODE_ALIASES_UPPER = {k.upper(): v for k, v in _RENAMED_CODE_ALIASES.items()}
 
@@ -970,7 +977,7 @@ def cancer_type_subtypes_of(parent_code):
     """Return registry subtypes of a given parent cancer code.
 
     For example ``cancer_type_subtypes_of("LAML")`` returns
-    ``["LAML_APL", "LAML_ELN_Fav", "LAML_ELN_Int", "LAML_ELN_Adv"]``.
+    ``["LAML_APL", "LAML_ELNfav", "LAML_ELNint", "LAML_ELNadv"]``.
     Lets the second-pass subtype classifier enumerate candidates.
     """
     df = cancer_type_registry()

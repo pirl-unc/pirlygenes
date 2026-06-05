@@ -143,10 +143,10 @@ LGG,(none),,,,,,false,false,no,other,high,,diffuse adult LGG driven by IDH1/2 mu
 CHOL,FGFR2-BICC1,FGFR2,RTK,BICC1,,subset,false,false,yes,fusion_transcript,high,PMID:23558953,intrahepatic cholangiocarcinoma; FGFR2 fusions (~10-15% iCCA); FGFR-inhibitor (pemigatinib) target; promiscuous 3' partners
 CHOL,FGFR2-AHCYL1,FGFR2,RTK,AHCYL1,,subset,false,false,yes,fusion_transcript,medium,PMID:24122810,recurrent FGFR2 3' partner in iCCA
 MTC,(none),,,,,,false,false,no,other,high,,medullary thyroid carcinoma: RET germline/somatic POINT mutations (M918T etc.) or RAS; NOT a fusion
-MEC,(none),,,,,,false,false,no,other,high,,Merkel cell carcinoma: MCPyV clonal integration (virus-positive) or UV-mutation (virus-negative); not a chromosomal fusion
+NEC_MERKEL,(none),,,,,,false,false,no,other,high,,Merkel cell carcinoma: MCPyV clonal integration (virus-positive) or UV-mutation (virus-negative); not a chromosomal fusion
 SCLC,(none),,,,,,false,false,no,other,high,,"small cell lung cancer: near-universal TP53 + RB1 loss, MYC family amp; no recurrent fusion"
 PANNET,(none),,,,,,false,false,no,other,high,,"pancreatic neuroendocrine tumor: MEN1, DAXX/ATRX, mTOR-pathway mutations; not fusion-driven"
-MID_NET,(none),,,,,,false,false,no,other,high,,"midgut/small-bowel NET: CDKN1B mutation, chr18 LOH; not fusion-driven"
+NET_MIDGUT,(none),,,,,,false,false,no,other,high,,"midgut/small-bowel NET: CDKN1B mutation, chr18 LOH; not fusion-driven"
 LIHC,DNAJB1-PRKACA,DNAJB1,,PRKACA,non-RTK kinase,~100% of FLC,true,true,yes,fusion_transcript,high,PMID:24578576,"fibrolamellar HCC subtype; ~400kb deletion chr19 fuses DNAJB1 to PRKACA; defining for FLC (young, non-cirrhotic)"
 LIHC,(none),,,,,,false,false,no,other,high,,"conventional HCC: TERT promoter, CTNNB1, TP53; not fusion-driven"
 BRCA,ETV6-NTRK3,ETV6,ETS,NTRK3,RTK,~100% of secretory,true,false,yes,fusion_transcript,high,PMID:12244301,secretory carcinoma of breast (MASC analogue); t(12;15); rare subtype but defining; TRK-inhibitor target
