@@ -263,9 +263,7 @@ def plot(mat, stat_label, metric_label, fname, *, log_scale=True) -> None:
     )
     ax.set_title(
         f"CTA expression — {stat_label} ({scale_txt} scale)\n"
-        f"top {N_CANCER_TYPES} {metric_label} × {N_CTAS} coverage-maximizing "
-        f"CTAs (every cohort contributes its best; set maximizes # cohorts "
-        f">{HIGH_TPM:g} TPM); most-gene-rich source per cohort",
+        f"top {N_CANCER_TYPES} {metric_label} × {N_CTAS} CTAs",
         fontsize=12,
     )
     ax.set_xlabel("Cancer-testis antigen")
@@ -310,8 +308,7 @@ def plot_coarse(mat, stat_label, metric_label, fname) -> None:
     cbar.set_ticklabels([f"{a:g}" for a in COARSE_ANCHORS])
     ax.set_title(
         f"CTA expression — {stat_label} (coarse scale)\n"
-        f"top {N_CANCER_TYPES} {metric_label} × top {N_CTAS} CTAs   "
-        "(<10 useless · 30 actionable · >100 very interesting)",
+        f"top {N_CANCER_TYPES} {metric_label} × {N_CTAS} CTAs",
         fontsize=12,
     )
     ax.set_xlabel("Cancer-testis antigen")

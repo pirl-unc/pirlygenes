@@ -187,8 +187,8 @@ def main() -> None:
         ys = [100 * cum_w / total for (_c, _n, cum_w, _cn) in order]
         ax.plot(xs, ys, "o-", ms=4, label=f"{stat_label}")
     ax.axhline(80, color="0.7", ls="--", lw=0.8)
-    ax.set_xlabel(f"# CTAs in panel (greedy, >{ACTIONABLE_TPM:g} TPM)")
-    ax.set_ylabel("% patients covered (≈incidence-weighted)")
+    ax.set_xlabel(f"# CTAs in panel (> {ACTIONABLE_TPM:g} TPM)")
+    ax.set_ylabel("% patients covered (incidence-weighted)")
     ax.set_title("CTA covering set — cumulative patient coverage")
     ax.set_xlim(left=1)
     ax.legend(title="actionable if TPM> bar at:")

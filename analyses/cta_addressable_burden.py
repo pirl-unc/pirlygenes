@@ -68,8 +68,11 @@ def _prepare(drop_mage=False):
     per_cohort = counts.groupby("cancer_code").agg(
         n=("n_samples", "first"), category=("category", "first"))
     cat_n = per_cohort.groupby("category").n.sum()
-    # breadth: # cancer-type cohorts each CTA is detectable in (>25 TPM in >=1 patient)
-    breadth = (counts[counts.n_gt25 > 0].groupby("Symbol").cancer_code.nunique())
+    # breadth: # burden CATEGORIES each CTA is detectable in (>25 TPM in >=1
+    # patient). Category-level (not cohort-level) so the color matches the
+    # "+N more" label, which lists contributing categories — the whole plot is
+    # then in one unit (e.g. PRAME's many lung cohorts collapse to one "lung").
+    breadth = (counts[counts.n_gt25 > 0].groupby("Symbol").category.nunique())
     return counts, cat_n, breadth
 
 
@@ -152,14 +155,13 @@ def _render(drop_mage, suffix, title_tag):
             ax.set_xlabel(f"% of annual {blabel} addressable "
                           f"(patient expresses this CTA > {t} TPM)")
             ax.set_title(f"CTA population addressability{title_tag} — {blabel} "
-                         f"(> {t} TPM)\ntop {len(top)} CTA proteins + whole-panel "
-                         f"union", fontsize=10)
+                         f"(> {t} TPM)", fontsize=11)
             ax.set_xlim(0, max(top.addressable.max(), union) * 1.22)
             ax.grid(axis="x", alpha=0.3)
             sm = cm.ScalarMappable(norm=norm, cmap=cmap)
             sm.set_array([])
             cb = fig.colorbar(sm, ax=ax, shrink=0.5, pad=0.02)
-            cb.set_label("# cancer types expressed in", fontsize=7)
+            cb.set_label("# cancer categories expressed in", fontsize=7)
             ax.text(0.99, 0.01,
                     f"lower bound: {n_cohorts} per-sample cohorts → {n_cats} burden "
                     f"categories = {ceiling:.0f}% of {blabel} (uncovered types not scored)",
@@ -207,9 +209,7 @@ def _burden_category_plot():
         x = max(inc.get(c, 0.0), mort.get(c, 0.0))
         ax.text(x + 0.15, i, f"{codes}", va="center", fontsize=5, color="0.35")
     ax.set_xlabel("% of annual US cancer cases / deaths")
-    ax.set_title("Burden categories our cohorts map into (US incidence & deaths)\n"
-                 "labels list the cohort codes assigned to each category "
-                 "(registry-driven)", fontsize=10)
+    ax.set_title("Cancer burden by category (US incidence & deaths)", fontsize=11)
     ax.set_xlim(0, max(max(inc.values()), max(mort.values())) * 1.35)
     ax.legend(loc="lower right", fontsize=8)
     ax.grid(axis="x", alpha=0.3)

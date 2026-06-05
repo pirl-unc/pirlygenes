@@ -504,8 +504,7 @@ def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
     ax.barh(range(len(df)), df["peak"], color=colors)
     ax.set_yticks(range(len(df)))
     ax.set_yticklabels(labels, fontsize=7)
-    ax.set_xlabel(f"peak % of patients with ≥1 CTA > {threshold} TPM "
-                  "(greedy plateau, co-occurrence-aware)")
+    ax.set_xlabel(f"peak % of patients with ≥1 CTA > {threshold} TPM")
     ax.set_xlim(0, 100)
     for y, p in enumerate(df["peak"]):
         ax.text(p + 0.6, y, f"{p:.0f}", va="center", fontsize=6)
@@ -543,8 +542,8 @@ def _peak_coverage_bars(mat, cohorts, ensg_to_sym, threshold):
     ax.legend(handles=handles, loc="lower right", fontsize=6,
               title="top CTA by family", ncol=2, handlelength=1.1,
               labelspacing=0.25, columnspacing=1.0)
-    ax.set_title(f"CTA coverage ceiling by cancer type, dominant CTA colored by "
-                 f"antigen family (> {threshold} TPM)", fontsize=11)
+    ax.set_title(f"CTA coverage ceiling by cancer type — top CTA colored by "
+                 f"family (> {threshold} TPM)", fontsize=11)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
     fig.savefig(OUT / f"cta_peak_coverage_by_top_cta_t{threshold}.png", dpi=150)
@@ -610,15 +609,15 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, threshold,
     ax.set_yticks(range(len(rows)))
     ax.set_yticklabels(labels, fontsize=7)
     ax.set_xlabel(f"% of patients with ≥1 CTA > {threshold} TPM "
-                  "(stacked by each CTA's marginal new-patient share, greedy order)")
+                  "(stacked by each CTA's new-patient share)")
     ax.set_xlim(0, 100)
     ax.grid(axis="x", alpha=0.3)
     handles = [Patch(color=fam_base[f], label=f) for f in fam_order]
     ax.legend(handles=handles, loc="lower right", fontsize=6,
               title="antigen family", ncol=2, handlelength=1.1,
               labelspacing=0.25, columnspacing=1.0)
-    ax.set_title(f"CTA coverage by cancer type, split into each CTA's marginal "
-                 f"new-patient contribution (> {threshold} TPM)", fontsize=11)
+    ax.set_title(f"CTA coverage by cancer type, by each CTA's new-patient "
+                 f"share (> {threshold} TPM)", fontsize=11)
     fig.text(0.99, 0.005, f"{len(rows)} per-sample cohorts (others summary-only)",
              ha="right", fontsize=6, color="gray")
     fig.tight_layout()
@@ -767,12 +766,8 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, threshold):
     ax.legend(handles=handles, loc="center left", bbox_to_anchor=(1.01, 0.5),
               fontsize=7, title="lineage", frameon=False)
 
-    sub = ""
-    if len(pts) >= 3:
-        r = np.corrcoef(np.log10(xs), ys)[0, 1]
-        sub = f"; Pearson r(log TMB, coverage)={r:.2f}"
     ax.set_title(f"CTA coverage vs TMB by cancer type "
-                 f"(> {threshold} TPM, n={len(pts)} cohorts{sub})", fontsize=10)
+                 f"(> {threshold} TPM, n={len(pts)} cohorts)", fontsize=10)
     n_registry = len(_registry_family_map())
     ax.text(0.99, 0.01,
             f"{len(pts)} per-sample cohorts shown (of {n_registry} registry "
@@ -807,12 +802,11 @@ def _coverage_every_cohort(mat, cohorts, ensg_to_sym, threshold):
         for x, (nm, c) in enumerate(zip(names[:15], cum[:15]), start=1):
             ax.annotate(nm, (x, c * 100), fontsize=6, rotation=45,
                         textcoords="offset points", xytext=(2, 4))
-        ax.set_xlabel("# CTAs added (greedy, co-occurrence-aware)")
+        ax.set_xlabel("# CTAs added")
         ax.set_ylabel(f"% of {_display_code(code)} patients with ≥1 CTA "
                       f"> {threshold} TPM")
-        ax.set_title(f"{_display_code(code)}: cumulative distinct-patient "
-                     f"coverage (> {threshold} TPM, n={n}); plateau "
-                     f"{cum[-1]*100:.0f}%", fontsize=10)
+        ax.set_title(f"{_display_code(code)}: cumulative patient coverage "
+                     f"(> {threshold} TPM, n={n})", fontsize=10)
         ax.set_xlim(0, len(cum) + 1)  # go to this cohort's full plateau
         ax.set_ylim(0, 100)
         ax.grid(alpha=0.3)
@@ -845,8 +839,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
                        rotation=90, fontsize=6)
     ax.set_yticks(range(len(piv.index)))
     ax.set_yticklabels(piv.index, fontsize=6)
-    ax.set_title(f"# patients with CTA > {threshold} TPM "
-                 f"(top 40 CTAs × cohorts)", fontsize=9)
+    ax.set_title(f"# patients expressing each CTA (> {threshold} TPM)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="patients")
     fig.tight_layout()
     fig.savefig(OUT / f"cta_patient_count_heatmap_t{threshold}.png", dpi=150)
@@ -863,8 +856,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
                        rotation=90, fontsize=6)
     ax.set_yticks(range(len(pivp.index)))
     ax.set_yticklabels(pivp.index, fontsize=6)
-    ax.set_title(f"% of cohort with CTA > {threshold} TPM "
-                 f"(top 40 CTAs × cohorts)", fontsize=9)
+    ax.set_title(f"% of cohort expressing each CTA (> {threshold} TPM)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="% patients")
     fig.tight_layout()
     fig.savefig(OUT / f"cta_patient_pct_heatmap_t{threshold}.png", dpi=150)
@@ -906,10 +898,10 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
                 marker="o", ms=2, lw=1.1, color=cmap(i % 20),
                 label=f"{_display_code(code)} (n={n})")
     max_x = max(len(cum) for _, _, cum in keep) + 1  # most CTAs any cohort needs
-    ax.set_xlabel("# CTAs in panel (greedy, co-occurrence-aware)")
+    ax.set_xlabel("# CTAs in panel")
     ax.set_ylabel(f"% of patients with ≥1 CTA > {threshold} TPM")
-    ax.set_title(f"CTA panel coverage: distinct patients picked up "
-                 f"(> {threshold} TPM; top {len(keep)} cohorts by plateau)",
+    ax.set_title(f"CTA panel coverage by cancer type "
+                 f"(> {threshold} TPM; top {len(keep)} cohorts)",
                  fontsize=10)
     ax.set_xlim(0, max_x)
     ax.set_ylim(0, 100)
@@ -929,10 +921,10 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
         for x, (nm, c) in enumerate(zip(names[:15], cum[:15]), start=1):
             ax.annotate(nm, (x, c * 100), fontsize=6, rotation=45,
                         textcoords="offset points", xytext=(2, 4))
-        ax.set_xlabel("# CTAs added (greedy order)")
+        ax.set_xlabel("# CTAs added")
         ax.set_ylabel(f"% of {_display_code(focus)} patients covered")
-        ax.set_title(f"{_display_code(focus)}: cumulative patient coverage as "
-                     f"CTAs are added (> {threshold} TPM, n={n})", fontsize=10)
+        ax.set_title(f"{_display_code(focus)}: cumulative patient coverage "
+                     f"(> {threshold} TPM, n={n})", fontsize=10)
         ax.set_xlim(0, min(30, len(cum) + 1))
         ax.grid(alpha=0.3)
         fig.tight_layout()
