@@ -53,7 +53,7 @@ HEPB,0.02,Grobner 2018,PMID:29489754,medium,Hepatoblastoma; lowest pediatric TMB
 MM,1.6,Lawrence 2013,PMID:23770567,high,Multiple myeloma WES median ~1.6; increases at relapse.
 CLL,0.6,Lawrence 2013,PMID:23770567,high,CLL WES median ~0.6; low.
 MCL,1.0,Bea 2013,PMID:23770587,medium,Mantle cell lymphoma WES ~1; approximate per-Mb.
-FL,,,,none,Follicular lymphoma; AID/SHM-driven; no clean published per-Mb median.
+FL,1.35,Follicular-lymphoma TMB 2026,DOI:10.3390/cancers18050737,medium,WES-scale mean 1.35; high-TMB(>2.55) better PFS/OS.
 HL,2.0,Wienand 2019,PMID:30108156,low,Hodgkin; panel TMB inflated vs WES; approximate.
 BL,2.0,Love 2012,PMID:23143597,medium,Burkitt; AID/MYC-driven moderate burden; ~2 approximate WES.
 B_ALL,0.3,Grobner 2018,PMID:29489754,low,B-ALL; very low pediatric TMB; CMMRD/relapse cases far higher.
@@ -68,7 +68,7 @@ NEC_MERKEL,5.3,Knepper 2019,PMID:30482774,medium,Merkel cell carcinoma median ~5
 MTC,,,,none,Medullary thyroid; single-driver RET/RAS; no clean published per-Mb median.
 ADCC,0.31,Ho 2013,PMID:23685749,high,Adenoid cystic carcinoma ~0.31; MYB-NFIB fusion-driven; very low.
 NPC,0.95,Nasopharyngeal WES,PMC9498130,medium,Nasopharyngeal carcinoma median ~0.95-1.0; EBV-driven low SNV burden.
-NUTM,,,,none,NUT carcinoma; BRD4-NUT fusion-driven near-silent; no well-cited per-Mb median.
+NUTM,1.0,Stathis 2019,PMID:31180909,high,NUTM1 fusion sole driver; very low TMB (range 0-16).
 BRCA_Basal,1.8,TCGA-Breast;Barroso-Sousa 2020,PMID:23000897;PMID:31504112,low,TNBC/basal-like: highest TMB among breast subtypes
 BRCA_HER2,1.6,TCGA-Breast;Barroso-Sousa 2020,PMID:23000897;PMID:31504112,low,HER2-enriched: elevated vs luminal
 BRCA_LumB,1.2,TCGA-Breast,PMID:23000897,low,luminal B
@@ -84,10 +84,25 @@ BCC,65,Bonilla 2016,PMID:27158114,medium,Basal cell carcinoma; UV signature; amo
 cSCC,45,Pickering 2014,PMID:24927297,medium,Cutaneous SCC; UV-driven; very high TMB.
 EPN,0.5,Grobner 2018,PMID:29489754,medium,Ependymoma; very low SNV TMB; fusion/epigenetic-driven.
 DIPG,1.0,Mackay 2017,PMID:28966033,medium,Diffuse midline glioma; low TMB; H3 K27M epigenetic driver.
-VSCC,,,,none,Vulvar SCC; literature ~3-7 mut/Mb (HPV+ lower / TP53-pathway higher); no single cited median curated.
+VSCC,5.6,Han 2018,PMID:29328067,medium,Vulvar SCC; HPV-neg (TP53/CDKN2A) higher TMB than HPV-pos.
 VAGC,,,,none,Vaginal SCC; HPV-associated; ~5 mut/Mb estimate; no cited median curated.
-PENSCC,,,,none,Penile SCC; ~4-7 mut/Mb estimate; no cited median curated.
-ANSC,,,,none,Anal SCC; HPV-driven; ~5 mut/Mb estimate; no cited median curated.
-GBC,,,,none,Gallbladder carcinoma; ~2-4 mut/Mb; ERBB2/MSI subset higher; no cited median curated.
+PENSCC,4.5,Jacob 2024,DOI:10.1200/PO.23.00406,low,Penile SCC; 15% TMB-H>=10; HPV-neg+PD-L1 higher TMB.
+ANSC,5.0,Cacheux 2018,PMID:29133614,medium,"HPV-driven anal SCC; mean ~8.6, median ~5."
+GBC,5.5,Comprehensive GBC 2023,DOI:10.1158/1078-0432.CCR-22-1714,high,Median 5.5 (range 0-161); 17.7% TMB-H>10.
 CRANIO,,,,none,Craniopharyngioma; very low TMB (single CTNNB1 or BRAF driver); no cited median curated.
 PITNET,,,,none,Pituitary NET; very low TMB; no cited median curated.
+SARC_DSRCT,0.72,Bertucci 2022,PMID:35379887,high,EWSR1-WT1-driven; immune-cold; among lowest STS TMB.
+SARC_GIST,0.67,Wu 2024 Nat Commun,PMID:39489749,high,KIT/PDGFRA-driven; very low SNV TMB but high CNV. Overrides pan-SARC.
+NEC_LUNG_LARGECELL,8.6,George 2018 Nat Commun,PMID:29535388,high,LCNEC; smoking signature; TMB-high tier with SCLC.
+SARC_SMARCA4,10.6,Cooper 2024,PMID:39802817,high,SMARCA4-deficient thoracic; smoking signature (really an undiff carcinoma); TMB-H. Overrides pan-SARC.
+NET_MIDGUT,1.09,GEP-NEN TMB 2023,PMID:37720428,medium,Well-diff GEP-NET; low TMB (~1) vs NEC ~5.5.
+NET_RECTAL,1.09,GEP-NEN TMB 2023,PMID:37720428,medium,Well-diff hindgut NET; ~GEP-NET low TMB.
+NET_LUNG,0.4,Fernandez-Cuesta 2014,PMID:24670920,medium,Typical/atypical pulmonary carcinoid; very low (chromatin-remodeling driven).
+SARC_CIC,1.2,Antonescu 2017,PMID:29901569,medium,CIC-DUX4-driven; low TMB (range 0.8-1.6). Overrides pan-SARC.
+NBL_MYCNamp,0.6,Wang 2018 JNCI,PMID:30307503,medium,Pediatric; very low TMB; MYCN amp does NOT raise total TMB.
+NBL_MYCNnonamp,0.6,Wang 2018 JNCI,PMID:30307503,medium,Pediatric; very low TMB (~= MYCN-amp).
+MBL_WNT,0.6,Northcott 2017,PMID:28726821,low,MB subgroup; near baseline ~0.5; excellent prognosis.
+MBL_SHH,0.8,Northcott 2017,PMID:28726821,low,Higher than other MB subgroups; adult/TP53-mut SHH can be hypermutated.
+MBL_G3,0.5,Northcott 2017,PMID:28726821,low,MB Group 3; baseline low TMB.
+MBL_G4,0.5,Northcott 2017,PMID:28726821,low,MB Group 4; lowest mutation rate of the four.
+LUAD_EGFR,3.5,Wang 2021,PMID:33846346,medium,Never-smoker; LOWER TMB than parent LUAD (8.1).
