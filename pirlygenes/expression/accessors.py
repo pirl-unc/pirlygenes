@@ -757,6 +757,52 @@ def available_cancer_expression_references() -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
+def source_prefixed_references() -> pd.DataFrame:
+    """Source-prefixed cohort atoms (#292): the per-``(cancer_code,
+    source_cohort)`` manifest annotated with ``kind`` (pipeline family, from the
+    cohort registry) and an addressable ``cohort_atom = "<kind>:<cancer_code>"``
+    (e.g. ``treehouse:NET_PANCREAS``, ``geo:SARC_DDLPS``, ``beataml:LAML_ELNfav``).
+
+    A cancer category is the **union of its source-prefixed atoms across kinds**;
+    :func:`available_cancer_expression_references` gives the per-(code, cohort)
+    rows and this adds the addressable atom + kind so a consumer can keep the
+    sources separate and slot a new pipeline (e.g. GDC) in as a parallel ``kind``.
+
+    **Cross-source combining rule** — absolute TPMs are NOT comparable across
+    pipelines (per-gene offsets ~0.3–4.4×, r≈0.99 only on rank): pool absolute
+    clean-TPM **within** one kind/cohort; combine **across** kinds in rank /
+    z-space (or a per-gene calibration), never average raw TPM across kinds.
+    """
+    from ..gene_sets_cancer import cohort_registry_df
+
+    refs = available_cancer_expression_references()
+    reg = cohort_registry_df()
+    kind = dict(zip(reg["cohort_id"].astype(str), reg["kind"].astype(str)))
+    out = refs.copy()
+    out["kind"] = out["source_cohort"].astype(str).map(kind).fillna("other")
+    out["cohort_atom"] = out["kind"] + ":" + out["cancer_code"].astype(str)
+    return out
+
+
+def cancer_code_sources(cancer_code: Optional[str] = None) -> dict:
+    """Cross-source rollup (#292): ``{cancer_code: {kind: [cohort_id, ...]}}`` —
+    which source kinds/cohorts back each cancer code. Pass a code (alias/synonym
+    accepted) for just that one; ``None`` returns the whole map. This is the
+    "category rolls up across sources" view: the keys of the inner dict are the
+    parallel sources a code draws from."""
+    spr = source_prefixed_references()
+    if cancer_code is not None:
+        from ..gene_sets_cancer import resolve_cancer_type
+        code = resolve_cancer_type(cancer_code)
+        spr = spr[spr["cancer_code"].astype(str) == str(code)]
+    out: dict = {}
+    for _, r in spr.iterrows():
+        out.setdefault(str(r["cancer_code"]), {}).setdefault(
+            str(r["kind"]), []
+        ).append(str(r["source_cohort"]))
+    return out
+
+
 def cancer_expression_source_candidates(
     cancer_types: Optional[str | Iterable[str]] = None,
 ) -> pd.DataFrame:

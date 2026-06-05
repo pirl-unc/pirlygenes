@@ -1053,6 +1053,56 @@ def cohort_aggregates_df():
     return get_data("cancer-cohort-aggregates")
 
 
+# ---------- Cohort vocabulary (first-class registry, #296) ----------
+#
+# ``cohort-registry.csv`` is the single authority for "what cohorts exist, what
+# kind are they, which cancer types draw from them." Unlike
+# ``available_cancer_expression_references`` (a per-``(cancer_code,
+# source_cohort)`` manifest of *shards*), it also lists the **computed
+# aggregates** (``COMPUTED_PAN_SARCOMA``) and the **literature-curated**
+# placeholder — so every ``source_cohort`` value anywhere validates against one
+# list. Regenerate with ``scripts/generate_cohort_registry.py``.
+#
+# ``kind`` prefixes (the cross-source combining rule keys off this — see
+# :func:`source_prefixed_references`):
+#   treehouse  — Treehouse compendium (RSEM); incl. TCGA-reprocessed subsets
+#   tcga/target/beataml/mmrf/cllmap/cgci/ucologne — named bulk-RNA-seq projects
+#   geo        — GEO/SRA/recount3-sourced series (bulk RNA-seq or microarray)
+#   computed   — computed aggregate (no frozen shard; pools member cohorts)
+#   curated    — registry entry with no built expression matrix
+
+
+def cohort_registry_df():
+    """The first-class cohort vocabulary (#296): one row per ``cohort_id`` with
+    ``prefix, kind, source_project, assay, n_samples, n_codes, is_computed,
+    member_cohorts, provenance``. The authority to validate any ``source_cohort``
+    against — includes the computed aggregates and literature-curated cohorts
+    that are absent from :func:`available_cancer_expression_references`."""
+    return get_data("cohort-registry")
+
+
+def cohort_registry():
+    """``{cohort_id: {column: value}}`` view of :func:`cohort_registry_df`."""
+    df = cohort_registry_df()
+    return {str(r["cohort_id"]): {k: r[k] for k in df.columns if k != "cohort_id"}
+            for _, r in df.iterrows()}
+
+
+def cohort_kind(cohort_id):
+    """The ``kind`` (pipeline family) of a cohort_id (``treehouse``, ``geo``,
+    ``computed``, …), or ``None`` if unknown. The cross-source combining rule
+    keys off this: pool absolute clean-TPM only *within* one kind/cohort; combine
+    *across* kinds in rank / z-space (TPM is not comparable across pipelines)."""
+    df = cohort_registry_df()
+    hit = df.loc[df["cohort_id"].astype(str) == str(cohort_id), "kind"]
+    return str(hit.iloc[0]) if len(hit) else None
+
+
+def known_cohort_ids():
+    """Frozenset of every valid ``cohort_id`` (the validation authority)."""
+    return frozenset(cohort_registry_df()["cohort_id"].astype(str))
+
+
 def cohort_aggregates():
     """``{aggregate_code: [member_code, ...]}`` for every computed-aggregate
     cohort: the curated histology rollups (``SARC_RMS``, ``SARC_LPS``) plus the

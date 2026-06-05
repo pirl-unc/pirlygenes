@@ -40,6 +40,22 @@ class Cohort:
     stem: str        # per-sample parquet stem (filename minus _per_sample_tpm.parquet)
     source_id: str   # expression source id (downloads registry)
 
+    @property
+    def source_kind(self) -> str:
+        """Pipeline-family prefix derived from ``source_id`` (e.g.
+        ``treehouse-polya-25-01`` -> ``treehouse``). Parallels the cohort
+        registry ``kind`` so per-sample cohorts address the same way as the
+        reference-manifest atoms."""
+        return self.source_id.split("-")[0]
+
+    @property
+    def atom(self) -> str:
+        """Source-prefixed cohort atom ``"<source_kind>:<code>"`` (#292), e.g.
+        ``treehouse:SARC_LMS``. Lets a new pipeline (GDC, …) slot in as a
+        parallel ``gdc:<code>`` without disturbing existing cohorts; a cancer
+        category is the union of its source-prefixed atoms across kinds."""
+        return f"{self.source_kind}:{self.code}"
+
 
 # --- treehouse-polya-25-01 -------------------------------------------------
 # Pediatric / sarcoma / rare cohorts: parquet stem == cancer code.
