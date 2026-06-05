@@ -213,6 +213,45 @@ def resolve_cancer_type(cancer_type):
     )
 
 
+def cancer_type_info(cancer_type):
+    """Resolve any synonym/alias/display-name to a cancer type and return its
+    **canonical info** as a dict — the one call to go from a messy input to
+    everything the registry knows about that type.
+
+    Routes the input through :func:`resolve_cancer_type` (so ``"prostate"``,
+    ``"Prostate Adenocarcinoma"``, an old renamed code, or ``"PRAD"`` all
+    work), then assembles the registry row plus the derived fields that live
+    in their own tables: ``burden_category`` and ``tmb`` (parent-inherited).
+
+    Returns ``None`` if ``cancer_type`` is ``None``; raises ``ValueError`` for
+    an unknown input (same contract as :func:`resolve_cancer_type`).
+
+    Keys: ``code``, ``name``, ``family``, ``primary_tissue``,
+    ``primary_template``, ``parent_code``, ``subtype_key``, ``pediatric``,
+    ``differentiation``, ``expression_source``, ``source_cohort``,
+    ``source_pmid``, ``notes``, ``burden_category``, ``tmb``.
+    """
+    import pandas as pd
+
+    code = resolve_cancer_type(cancer_type)
+    if code is None:
+        return None
+    reg = cancer_type_registry().set_index("code")
+    row = reg.loc[code] if code in reg.index else None
+    info = {"code": code, "name": CANCER_TYPE_NAMES.get(code) or code}
+    for col in ("family", "primary_tissue", "primary_template", "parent_code",
+                "subtype_key", "pediatric", "differentiation",
+                "expression_source", "source_cohort", "source_pmid", "notes"):
+        val = None if row is None else row.get(col)
+        if val is not None and (isinstance(val, str) or not pd.isna(val)):
+            info[col] = val
+        else:
+            info[col] = None
+    info["burden_category"] = burden_category(code)
+    info["tmb"] = cancer_tmb(code)
+    return info
+
+
 # ---------- Therapy target registry ----------
 
 _THERAPY_REGISTRY = {
@@ -1982,6 +2021,10 @@ _PRIMARY_TISSUE_BURDEN = {
     "small_intestine": "small_intestine",
     "bladder": "bladder", "kidney": "kidney", "kidney_cns_soft": "kidney",
     "ovary": "ovary", "endometrium": "uterus_endometrium", "cervix": "cervix",
+    "vulva": "vulva", "vagina": "vagina", "penis": "penis",
+    "urethra": "bladder", "anal_canal": "anus",
+    "fallopian_tube": "ovary", "peritoneum_serous": "ovary",  # HGSC pooled with OV
+    "gallbladder": "gallbladder_biliary",
     "thyroid": "thyroid", "thyroid_c_cell": "thyroid",
     "testis": "testicular_germ_cell",
     "pleura": "mesothelioma", "peritoneum": "mesothelioma",
@@ -1992,6 +2035,9 @@ _PRIMARY_TISSUE_BURDEN = {
     "thorax": "head_and_neck",
     "cerebrum": "brain_cns", "cerebellum": "brain_cns",
     "eye": "eye_ocular", "retina": "eye_ocular", "skin": "melanoma",
+    "epidermis": "non_melanoma_skin",  # BCC / cSCC keratinocyte carcinomas
+    "ependyma": "brain_cns", "sellar_suprasellar": "brain_cns",
+    "pons_midline": "brain_cns", "pituitary": "brain_cns",
     "adrenal_cortex": "adrenal", "adrenal_medulla": "adrenal",
     "sympathetic_ganglia": "adrenal",
     "bone": "bone_and_joint", "cartilage": "bone_and_joint",
@@ -2011,6 +2057,7 @@ _HEME_TISSUE_BURDEN = {
 # Last-resort family fallback when primary_tissue is blank/unmapped.
 _FAMILY_BURDEN = {
     "sarcoma": "soft_tissue_sarcoma", "melanoma": "melanoma", "cns": "brain_cns",
+    "carcinoma-skin": "non_melanoma_skin",
 }
 
 

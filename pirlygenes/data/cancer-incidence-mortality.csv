@@ -35,3 +35,4 @@ penis,0.05,0.01,0.2,0.1,low,ACS-CFF2024;GLOBOCAN2022,world higher
 eye_ocular,0.17,0.06,0.05,0.04,low,ACS-CFF2024;GLOBOCAN2022,uveal melanoma + retinoblastoma
 kaposi_sarcoma,0.02,0.02,0.2,0.2,low,GLOBOCAN2022;literature,HIV/HHV8; world>>US
 other_and_unknown_primary,3.94,12.15,6.0,8.71,medium,ACS-CFF2024;GLOBOCAN2022,ill-defined/unknown primary + minor untabulated sites (residual to 100%)
+non_melanoma_skin,0.0,0.3,0.0,0.2,low,ACS-CFF2024,keratinocyte BCC/cSCC; excluded from standard incidence registries (not reportable); small mortality share
