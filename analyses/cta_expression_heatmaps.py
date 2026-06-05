@@ -173,11 +173,68 @@ def cta_rows(df: pd.DataFrame, rep: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     return sub, row_order
 
 
+def _select_max_coverage_ctas(mat: pd.DataFrame, k: int) -> list:
+    """Choose <=k CTA columns so that (1) every cohort contributes its single
+    best CTA (guaranteed representation — no cancer is left without a column),
+    and (2) the chosen set maximizes the number of cohorts that *highly*
+    express at least one chosen CTA (greedy max-coverage over the HIGH_TPM
+    threshold). Leftover budget is filled by peak expression.
+
+    This replaces the old "top-k by global peak", which let a handful of
+    pan-cancer high-expressers (MAGEA cluster, PRAME, CTAG1B) eat the column
+    budget and hid the signature antigen of any cancer whose best CTA wasn't
+    globally loud.
+    """
+    chosen: list = []
+    seen: set = set()
+    # 1. representation: each cohort's argmax CTA (even if below HIGH_TPM)
+    for cohort in mat.index:
+        row = mat.loc[cohort]
+        if not row.notna().any():
+            continue
+        best = row.idxmax()
+        if best not in seen:
+            seen.add(best)
+            chosen.append(best)
+        if len(chosen) >= k:
+            return chosen[:k]
+    # 2. greedy max-coverage of cohorts with >=1 highly-expressed chosen CTA
+    hi = mat > HIGH_TPM
+    cohort_sets = {cta: set(hi.index[hi[cta]]) for cta in mat.columns}
+    covered: set = set()
+    for cta in chosen:
+        covered |= cohort_sets.get(cta, set())
+    while len(chosen) < k:
+        best_cta, best_gain = None, 0
+        for cta in mat.columns:
+            if cta in seen:
+                continue
+            gain = len(cohort_sets[cta] - covered)
+            if gain > best_gain:
+                best_gain, best_cta = gain, cta
+        if best_cta is None or best_gain == 0:
+            break
+        seen.add(best_cta)
+        chosen.append(best_cta)
+        covered |= cohort_sets[best_cta]
+    # 3. fill any remaining budget by peak expression (use the full column set)
+    if len(chosen) < k:
+        for cta in mat.max(axis=0).sort_values(ascending=False).index:
+            if cta not in seen:
+                seen.add(cta)
+                chosen.append(cta)
+            if len(chosen) >= k:
+                break
+    return chosen[:k]
+
+
 def order_and_trim(mat: pd.DataFrame, row_order: list) -> pd.DataFrame:
-    """Top CTAs by peak; columns ordered by breadth (# cohorts > HIGH_TPM),
-    tie-broken by peak. Rows ordered by the caller's cohort metric."""
-    top_cols = mat.max(axis=0).sort_values(ascending=False).head(N_CTAS).index
-    mat = mat[top_cols]
+    """Coverage-maximizing CTA columns (every cohort contributes >=1; the set
+    maximizes # cohorts highly expressing a chosen CTA — see
+    :func:`_select_max_coverage_ctas`); columns then ordered by breadth
+    (# cohorts > HIGH_TPM), tie-broken by peak. Rows in the caller's order."""
+    cols = _select_max_coverage_ctas(mat, N_CTAS)
+    mat = mat[cols]
     breadth = (mat > HIGH_TPM).sum(axis=0)
     col_order = (
         pd.DataFrame({"breadth": breadth, "peak": mat.max(axis=0)})
@@ -206,8 +263,9 @@ def plot(mat, stat_label, metric_label, fname, *, log_scale=True) -> None:
     )
     ax.set_title(
         f"CTA expression — {stat_label} ({scale_txt} scale)\n"
-        f"top {N_CANCER_TYPES} {metric_label} × top {N_CTAS} "
-        f"CTAs (by breadth >{HIGH_TPM:g}); most-gene-rich source per cohort",
+        f"top {N_CANCER_TYPES} {metric_label} × {N_CTAS} coverage-maximizing "
+        f"CTAs (every cohort contributes its best; set maximizes # cohorts "
+        f">{HIGH_TPM:g} TPM); most-gene-rich source per cohort",
         fontsize=12,
     )
     ax.set_xlabel("Cancer-testis antigen")

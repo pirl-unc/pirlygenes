@@ -692,12 +692,20 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, threshold):
         except ValueError:
             rc = c
         tmb_map.setdefault(rc, v)
+    # Computed sarcoma aggregates (SARC, SARC_RMS, SARC_LPS, TCGA_SARC, …) have
+    # no single honest TMB: their expression is a grand union over subtypes but
+    # published TMB spans 0.6–2.2 mut/Mb across those subtypes, so one umbrella
+    # number conflates a 4× spread. Plot only subtype-level points; the atoms
+    # each carry their own curated TMB. (SARC-TMB scope fix, option C.)
+    aggregate_codes = set(gsc.cohort_aggregates().keys())
     pts, missing = [], []
     for code in cohorts:
+        if code in aggregate_codes:
+            continue
         order, cum, n = greedy_coverage(mat, cohorts[code], threshold)
         if not cum:
             continue
-        key = _TMB_CODE.get(code, code)  # SARC cohort is the TCGA-LMS slice
+        key = _TMB_CODE.get(code, code)
         try:
             key = gsc.resolve_cancer_type(key) or key
         except ValueError:
