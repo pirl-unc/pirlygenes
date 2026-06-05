@@ -36,7 +36,7 @@ Coverable: 25/96 codes (23% of weight). Full cover needs 6 CTAs.
 
 **Milestones:** target not reached
 
-**No actionable CTA (>30 TPM at this statistic):** ACC, BL, BLCA, BRCA, BRCA_Basal, BRCA_HER2, BRCA_LumA, BRCA_LumB, BRCA_Normal, B_ALL, CESC, CHOL, CHON, CLL, COAD, DLBC, ESCA, EWS, GBM, HEPB, HNSC, HNSC_HPV_neg, HNSC_HPV_pos, KICH, KIRC, KIRP, LAML, LAML_ELN_Adv, LAML_ELN_Fav, LAML_ELN_Int, LGG, LIHC, LUNG_NET_LC, MBL, MBL_G3, MBL_G4, MBL_SHH, MBL_WNT, MCL, MDS, MESO, MID_NET, MM, MPN, OS, PAAD, PANNET, PCPG, PRAD, RB, READ, REC_NET, RMS_ARMS, SARC, SARC_DDLPS, SARC_GIST, SARC_KS, SARC_LMS, SARC_LPS_UNSPEC, SARC_MPNST, SARC_MYXFIB, SARC_PEC, SARC_UPS, SARC_WDLPS, SCLC, SCLC_ASCL1, STAD, THCA, THYM, T_ALL, UVM.
+**No actionable CTA (>30 TPM at this statistic):** ACC, BL, BLCA, BRCA, BRCA_Basal, BRCA_HER2, BRCA_LumA, BRCA_LumB, BRCA_Normal, B_ALL, CESC, CHOL, CLL, COAD, DLBC, ESCA, GBM, HEPB, HNSC, HNSC_HPVneg, HNSC_HPVpos, KICH, KIRC, KIRP, LAML, LAML_ELN_Adv, LAML_ELN_Fav, LAML_ELN_Int, LGG, LIHC, LUNG_NET_LC, MBL, MBL_G3, MBL_G4, MBL_SHH, MBL_WNT, MCL, MDS, MESO, MID_NET, MM, MPN, PAAD, PANNET, PCPG, PRAD, RB, READ, REC_NET, SARC_CHON, SARC_CHOR, SARC_DDLPS, SARC_EWS, SARC_GIST, SARC_KS, SARC_LMS, SARC_LPS_UNSPEC, SARC_MPNST, SARC_MYXFIB, SARC_OS, SARC_PEC, SARC_RMS_ARMS, SARC_UPS, SARC_WDLPS, SCLC, SCLC_ASCL1, STAD, THCA, THYM, T_ALL, UVM.
 
 # Statistic: q3 (≥25% of patients)
 
@@ -47,8 +47,8 @@ Coverable: 47/96 codes (49% of weight). Full cover needs 8 CTAs.
 | # | CTA | cum. coverage | newly covered codes |
 | ---: | --- | ---: | --- |
 | 1 | PRAME | 28% (27 codes) | ADCC, BRCA_Basal, LAML_APL, LUSC, MBL, MBL_G3… |
-| 2 | XAGE1A | 35% (34 codes) | EWS, LIHC, LUAD, LUAD_EGFR, LUAD_KRAS, LUAD_STK11… |
-| 3 | MAGEA3 | 41% (39 codes) | BLCA, ESCA, HNSC, HNSC_HPV_neg, LUNG_NET_LCNEC |
+| 2 | XAGE1A | 35% (34 codes) | LIHC, LUAD, LUAD_EGFR, LUAD_KRAS, LUAD_STK11, SARC_EWS… |
+| 3 | MAGEA3 | 41% (39 codes) | BLCA, ESCA, HNSC, HNSC_HPVneg, LUNG_NET_LCNEC |
 | 4 | PHF7 | 45% (43 codes) | LAML, LAML_ELN_Fav, LAML_ELN_Int, MTC |
 | 5 | ACTL8 | 46% (44 codes) | SARC_PLEOLPS |
 | 6 | FATE1 | 47% (45 codes) | ACC |
@@ -63,8 +63,8 @@ Coverable: 47/96 codes (40% of weight). Full cover needs 8 CTAs.
 
 | # | CTA | cum. coverage | newly covered codes |
 | ---: | --- | ---: | --- |
-| 1 | MAGEA6 | 18% (10 codes) | BLCA, ESCA, HNSC, HNSC_HPV_neg, LUNG_NET_LCNEC, LUSC… |
-| 2 | XAGE1A | 29% (19 codes) | EWS, LIHC, LUAD, LUAD_EGFR, LUAD_KRAS, LUAD_STK11… |
+| 1 | MAGEA6 | 18% (10 codes) | BLCA, ESCA, HNSC, HNSC_HPVneg, LUNG_NET_LCNEC, LUSC… |
+| 2 | XAGE1A | 29% (19 codes) | LIHC, LUAD, LUAD_EGFR, LUAD_KRAS, LUAD_STK11, SARC_EWS… |
 | 3 | PRAME | 36% (39 codes) | ADCC, BRCA_Basal, LAML_APL, MBL, MBL_G3, NBL… |
 | 4 | PHF7 | 38% (43 codes) | LAML, LAML_ELN_Fav, LAML_ELN_Int, MTC |
 | 5 | MAGEA9B | 40% (44 codes) | DLBC |
@@ -74,4 +74,4 @@ Coverable: 47/96 codes (40% of weight). Full cover needs 8 CTAs.
 
 **Milestones:** target not reached
 
-**No actionable CTA (>30 TPM at this statistic):** BL, BRCA, BRCA_HER2, BRCA_LumA, BRCA_LumB, BRCA_Normal, B_ALL, CESC, CHOL, CHON, CLL, COAD, GBM, HEPB, HNSC_HPV_pos, KIRC, KIRP, LAML_ELN_Adv, LGG, LUNG_NET_LC, MBL_G4, MBL_SHH, MBL_WNT, MCL, MDS, MESO, MID_NET, MM, MPN, PAAD, PANNET, PCPG, PRAD, RB, READ, REC_NET, SARC, SARC_DDLPS, SARC_GIST, SARC_KS, SARC_LMS, SARC_LPS_UNSPEC, SARC_MYXFIB, SARC_PEC, SARC_UPS, SARC_WDLPS, STAD, THCA, T_ALL.
+**No actionable CTA (>30 TPM at this statistic):** BL, BRCA, BRCA_HER2, BRCA_LumA, BRCA_LumB, BRCA_Normal, B_ALL, CESC, CHOL, CLL, COAD, GBM, HEPB, HNSC_HPVpos, KIRC, KIRP, LAML_ELN_Adv, LGG, LUNG_NET_LC, MBL_G4, MBL_SHH, MBL_WNT, MCL, MDS, MESO, MID_NET, MM, MPN, PAAD, PANNET, PCPG, PRAD, RB, READ, REC_NET, SARC_CHON, SARC_CHOR, SARC_DDLPS, SARC_GIST, SARC_KS, SARC_LMS, SARC_LPS_UNSPEC, SARC_MYXFIB, SARC_PEC, SARC_UPS, SARC_WDLPS, STAD, THCA, T_ALL.
