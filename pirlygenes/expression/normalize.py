@@ -342,42 +342,119 @@ def normalize_technical_rna_long_table(
 # scripts; this is now the one home.
 
 
-def technical_rna_mask(gene_table):
-    """Boolean Series — True for rows whose gene is a technical-RNA feature
-    (mtDNA / mt-like pseudogene / rRNA-like / polyA-bias lncRNA), i.e. the
-    set zeroed by :func:`clean_tpm_matrix`.
+# Ribosomal-protein mRNA (RPL*/RPS*/RACK1/FAU) + their processed pseudogenes.
+# Among the most-expressed genes AND the most multi-mapping-sensitive (huge
+# pseudogene families), so different quantifiers split the zero-sum TPM budget
+# into them very differently (RSEM vs STAR can differ ~3-4x per RP gene). Since
+# TPM is closed, that variable "tax" deflates/inflates every other gene and
+# breaks cross-source comparability. They are not tumor-specific signal, so the
+# clean-TPM denominator excludes them by default (see clean_tpm_removal_mask).
+_RIBOSOMAL_PROTEIN_GROUPS = frozenset(
+    {"ribosomal_protein", "ribosomal_protein_pseudogene"}
+)
 
-    ``gene_table`` is any frame with ``Symbol`` and ``Ensembl_Gene_ID``
-    columns; the returned mask is indexed like it.
-    """
+
+def _qc_group_mask(gene_table, groups):
+    """Boolean Series — True for rows whose gene QC group is in ``groups``."""
     import pandas as pd
 
-    remove = {str(group) for group in _TECHNICAL_RNA_GROUPS}
+    want = {str(g) for g in groups}
     qc = [
         classify_gene_qc(symbol, ensembl_id=ensg)
         for symbol, ensg in zip(gene_table["Symbol"], gene_table["Ensembl_Gene_ID"])
     ]
-    return pd.Series([klass.group in remove for klass in qc], index=gene_table.index)
+    return pd.Series([k.group in want for k in qc], index=gene_table.index)
 
 
-def clean_tpm_matrix(values, removable):
-    """Reference clean-TPM transform on a gene×sample matrix: zero the
-    ``removable`` (technical-RNA) rows, then renormalize each sample column
-    so its remaining mass sums to 1e6.
+def technical_rna_mask(gene_table):
+    """Boolean Series — True for *technical-RNA* rows only (mtDNA / mt-like
+    pseudogene / rRNA-like / polyA-bias lncRNA). This is the strict technical
+    set; for the default clean-TPM removal set (which also drops ribosomal
+    proteins) use :func:`clean_tpm_removal_mask`.
 
-    ``values`` is genes (rows) × samples (cols); ``removable`` is a boolean
-    mask aligned to ``values.index`` (see :func:`technical_rna_mask`).
-    Columns whose post-removal sum is <= 0 become all-zero.
+    ``gene_table`` is any frame with ``Symbol`` and ``Ensembl_Gene_ID``
+    columns; the returned mask is indexed like it.
     """
+    return _qc_group_mask(gene_table, _TECHNICAL_RNA_GROUPS)
+
+
+def clean_tpm_removal_mask(gene_table, *, exclude_ribosomal_proteins: bool = True):
+    """Boolean Series of rows zeroed by the default clean-TPM transform: the
+    technical-RNA set (always) plus, when ``exclude_ribosomal_proteins`` (the
+    default), ribosomal-protein mRNA and its pseudogenes.
+
+    Excluding ribosomal proteins is the default because they are housekeeping,
+    not tumor-specific, and — being the most-expressed, most multi-mapping-prone
+    genes — they dominate and destabilize the zero-sum TPM denominator across
+    quantification pipelines (see :data:`_RIBOSOMAL_PROTEIN_GROUPS`). Pass
+    ``exclude_ribosomal_proteins=False`` for the strict technical-only set
+    (equivalent to :func:`technical_rna_mask`).
+    """
+    groups = set(_TECHNICAL_RNA_GROUPS)
+    if exclude_ribosomal_proteins:
+        groups |= set(_RIBOSOMAL_PROTEIN_GROUPS)
+    return _qc_group_mask(gene_table, groups)
+
+
+def clean_tpm_matrix(values, removable=None, *, gene_table=None,
+                     exclude_ribosomal_proteins: bool = True,
+                     censored_fill: str = "typical", censored_budget=None):
+    """Reference clean-TPM transform on a gene×sample matrix.
+
+    ``values`` is genes (rows) × samples (cols). Provide either an explicit
+    boolean ``removable`` mask (aligned to ``values.index``) or a ``gene_table``
+    — in which case the mask is built via :func:`clean_tpm_removal_mask`, which
+    **excludes ribosomal proteins by default**.
+
+    ``censored_fill`` controls what happens to the censored (removable) rows:
+
+    - ``"typical"`` (default): hold the censored block at a **constant typical
+      polyA-capture budget** ``censored_budget`` (a single TPM total split
+      equally across the censored genes), then renormalize each column to 1e6.
+      Because the censored slot is sample-independent, the kept genes are scaled
+      by ``1e6 / (kept_sum + budget)`` instead of ``1e6 / kept_sum`` — so a
+      sample with an unusually large (often pipeline-driven) technical/ribosomal
+      fraction no longer **inflates** its other genes. If ``censored_budget`` is
+      ``None`` it defaults to the median censored TPM sum across ``values``'
+      columns (the cohort's typical capture); pass a stored reference constant
+      when cleaning a single sample.
+    - ``"zero"`` (legacy): drop the censored rows entirely and renormalize the
+      remainder to 1e6 (inflates survivors by ``1/(1-censored_fraction)``).
+
+    Columns whose post-removal denominator is <= 0 become all-zero.
+    """
+    if removable is None:
+        if gene_table is None:
+            raise ValueError("clean_tpm_matrix needs either removable or gene_table")
+        removable = clean_tpm_removal_mask(
+            gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins)
     import numpy as np
     import pandas as pd
 
-    clean = values.copy()
-    clean.loc[removable.to_numpy(), :] = 0.0
-    remaining = clean.sum(axis=0)
-    scale = pd.Series(np.nan, index=remaining.index, dtype=float)
-    positive = remaining > 0
-    scale.loc[positive] = 1_000_000.0 / remaining.loc[positive]
+    rem = removable.to_numpy()
+    if censored_fill == "zero":
+        clean = values.copy()
+        clean.loc[rem, :] = 0.0
+        denom = clean.sum(axis=0)
+    elif censored_fill == "typical":
+        kept_sum = values.loc[~rem].sum(axis=0)
+        if censored_budget is None:
+            censored_budget = float(values.loc[rem].sum(axis=0).median()) if rem.any() else 0.0
+        n_cens = int(rem.sum())
+        clean = values.copy()
+        # constant typical value per censored gene (sample-independent budget):
+        # every censored gene always receives the surrogate value (it is never
+        # zeroed), so even an all-censored column keeps its surrogate signal.
+        if n_cens:
+            clean.loc[rem, :] = censored_budget / n_cens
+        denom = kept_sum + censored_budget
+    else:
+        raise ValueError("censored_fill must be 'typical' or 'zero'")
+
+    # only a genuinely empty column (no mass at all) collapses to zero
+    positive = denom > 0
+    scale = pd.Series(np.nan, index=denom.index, dtype=float)
+    scale.loc[positive] = 1_000_000.0 / denom.loc[positive]
     return clean.mul(scale, axis=1).fillna(0.0)
 
 
@@ -738,4 +815,7 @@ __all__ = [
     "add_tpm_columns_from_fpkm",
     "percentile_rank_expression",
     "tpm_to_housekeeping_normalized",
+    "technical_rna_mask",
+    "clean_tpm_removal_mask",
+    "clean_tpm_matrix",
 ]

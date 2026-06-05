@@ -139,11 +139,17 @@ def test_clean_tpm_zeroes_removable_and_renormalizes():
         columns=["S1", "S2"],
     )
     removable = pd.Series([True, False, False, False], index=values.index)
-    clean = builder._clean_tpm(values, removable)
-    # g0 should be 0 in every sample
+    # legacy zero fill: removable g0 dropped to 0, remainder renormalized
+    clean = builder._clean_tpm(values, removable, censored_fill="zero")
     assert (clean.iloc[0] == 0).all()
-    # Each sample sums to ~1e6
     np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
+    # default "typical" fill (now used by the builder): g0 holds a constant
+    # budget (not zero), columns still sum to 1e6, and kept genes are less
+    # inflated than under zero fill (g0 dominates raw mass here).
+    typ = builder._clean_tpm(values, removable)
+    assert (typ.iloc[0] > 0).all()
+    np.testing.assert_allclose(typ.sum(axis=0).to_numpy(), [1e6, 1e6])
+    assert (typ.iloc[1] < clean.iloc[1]).all()
 
 
 def test_symbol_mapping_rescues_renamed_symbol(monkeypatch, tmp_path):

@@ -48,7 +48,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .geo_matrix import _clean_tpm, _technical_mask
+from .geo_matrix import _clean_tpm
 from .treehouse import _build_or_load_symbol_mapping
 from ..expression.stats import (
     REFERENCE_COLUMNS,
@@ -420,7 +420,7 @@ def build_microarray_source(
     by_ensg = by_ensg.reindex(gene_table["Ensembl_Gene_ID"]).fillna(0.0)
     print(f"  canonical genes: {len(gene_table)}")
 
-    clean = _clean_tpm(by_ensg, _technical_mask(gene_table))
+    clean = _clean_tpm(by_ensg, gene_table=gene_table)
     out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
     out["cancer_code"] = cancer_code
     out["source_cohort"] = source_cohort
@@ -433,7 +433,7 @@ def build_microarray_source(
     assign_stats(out, by_ensg, clean)
     out["processing_pipeline"] = (
         f"{platform_id.lower()}_microarray_tpm_proxy_ensembl"
-        f"{ensembl_release}_clean_tpm_v1"
+        f"{ensembl_release}_clean_tpm_v2"
     )
     out["notes"] = (
         f"{platform_name} microarray-derived TPM-proxy "

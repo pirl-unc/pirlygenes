@@ -261,6 +261,24 @@ def test_sarc_prefixed_codes_are_in_sarc_subtree():
     assert not disconnected, f"SARC_* codes without SARC parent: {disconnected}"
 
 
+def test_phase_c_renamed_codes_resolve_via_backward_compat_alias():
+    """Old codes retired by the Phase-C rename still resolve to their new code
+    (case-insensitive), so external callers don't hard-break (issue #286)."""
+    from pirlygenes.gene_sets_cancer import resolve_cancer_type
+    pairs = {
+        "OS": "SARC_OS", "EWS": "SARC_EWS", "CHON": "SARC_CHON",
+        "CHOR": "SARC_CHOR", "GCTB": "SARC_GCTB", "ESS_LG": "SARC_ESS_LG",
+        "ESS_HG": "SARC_ESS_HG", "RMS_ERMS": "SARC_RMS_ERMS",
+        "RMS_ARMS": "SARC_RMS_ARMS", "RMS_PRMS": "SARC_RMS_PRMS",
+        "RMS_SSRMS": "SARC_RMS_SSRMS", "HNSC_HPV_pos": "HNSC_HPVpos",
+        "HNSC_HPV_neg": "HNSC_HPVneg",
+    }
+    for old, new in pairs.items():
+        assert resolve_cancer_type(old) == new
+        assert resolve_cancer_type(old.lower()) == new   # case-insensitive
+        assert resolve_cancer_type(new) == new           # new code still resolves
+
+
 def test_known_parent_reference_labels_are_connected():
     """Fine labels without direct references should retain parent fallback links."""
     expected = {

@@ -52,12 +52,11 @@ GLIOMA_MAP = CACHE / "derived" / "tcga_glioma_case_to_project.csv"
 OUT = Path(__file__).resolve().parent / "outputs"
 THRESHOLDS = [25, 50, 100, 200]
 
-# Honest display labels for cohorts whose registry code is misleading about the
-# actual sample composition. The bare "SARC" cohort here is the TCGA
-# "leiomyosarcoma" slice (n=100, ~90% leiomyosarcoma by GDC histology), NOT the
-# multi-histology TCGA-SARC umbrella its code implies — so label it as such
-# until the sarcoma taxonomy rebuild makes this canonical in the registry.
-_DISPLAY_CODE = {"SARC": "TCGA-LMS"}
+# Plot tick labels: the registry code is now authoritative (Phase C made SARC
+# the honest pan-sarcoma grand union and split the histology atoms), so no
+# special-case relabelling is needed — codes are used as-is. Kept as a thin
+# hook in case a future cohort code needs an honest display override.
+_DISPLAY_CODE: dict[str, str] = {}
 
 
 def _display_code(code: str) -> str:
@@ -628,9 +627,11 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, threshold,
     print(f"      {len(rows)} cohorts -> stacked coverage bar", flush=True)
 
 
-# Cohorts whose registry code is the wrong TMB key for their actual samples.
-# The bare "SARC" cohort is the TCGA leiomyosarcoma slice, so look up SARC_LMS.
-_TMB_CODE = {"SARC": "SARC_LMS"}
+# Per-cohort TMB is looked up through gsc.cancer_tmb (centralized resolver +
+# parent inheritance); no cohort-specific TMB key overrides are needed now that
+# SARC is the honest pan-sarcoma aggregate (it resolves to its own curated
+# pan-sarcoma TMB rather than borrowing leiomyosarcoma's).
+_TMB_CODE: dict[str, str] = {}
 
 # Coarse tissue-lineage groups for coloring the CTA-vs-TMB scatter, collapsed
 # from the registry `family` column (lineage-only after the Phase-C refactor;

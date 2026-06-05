@@ -44,6 +44,19 @@ CANCER_TYPE_ALIASES = {
     "uveal_melanoma": "UVM",
 }
 
+# Backward-compat aliases for the Phase-C code renames (old code -> new code).
+# resolve_cancer_type consults these so trufflepig / external callers keep
+# working without a literal migration. Keep entries here permanently for every
+# rename wave (the audit doc promises old codes never hard-break).
+_RENAMED_CODE_ALIASES = {
+    "OS": "SARC_OS", "EWS": "SARC_EWS", "CHON": "SARC_CHON", "CHOR": "SARC_CHOR",
+    "GCTB": "SARC_GCTB", "ESS_LG": "SARC_ESS_LG", "ESS_HG": "SARC_ESS_HG",
+    "RMS_ERMS": "SARC_RMS_ERMS", "RMS_ARMS": "SARC_RMS_ARMS",
+    "RMS_PRMS": "SARC_RMS_PRMS", "RMS_SSRMS": "SARC_RMS_SSRMS",
+    "HNSC_HPV_pos": "HNSC_HPVpos", "HNSC_HPV_neg": "HNSC_HPVneg",
+}
+_RENAMED_CODE_ALIASES_UPPER = {k.upper(): v for k, v in _RENAMED_CODE_ALIASES.items()}
+
 
 class _CancerTypeNamesView:
     """Read-only ``{code: display_name}`` view backed by the registry CSV.
@@ -172,6 +185,13 @@ def resolve_cancer_type(cancer_type):
     alias_key = raw.lower().replace(" ", "_").replace("-", "_")
     if alias_key in CANCER_TYPE_ALIASES:
         return CANCER_TYPE_ALIASES[alias_key]
+
+    # Backward-compat: old codes renamed in a Phase-C wave resolve to the new
+    # code (case-insensitive), so external callers don't hard-break.
+    if raw in _RENAMED_CODE_ALIASES:
+        return _RENAMED_CODE_ALIASES[raw]
+    if raw.upper() in _RENAMED_CODE_ALIASES_UPPER:
+        return _RENAMED_CODE_ALIASES_UPPER[raw.upper()]
 
     registry = CANCER_TYPE_NAMES  # registry-backed view
     if raw in registry:

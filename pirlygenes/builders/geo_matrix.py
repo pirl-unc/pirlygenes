@@ -27,10 +27,7 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
-from ..expression.normalize import (
-    clean_tpm_matrix as _clean_tpm,
-    technical_rna_mask as _technical_mask,
-)
+from ..expression.normalize import clean_tpm_matrix as _clean_tpm
 from ..expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -402,7 +399,7 @@ def build_source(
         if not cols:
             continue
         sub_values = values[cols]
-        clean = _clean_tpm(sub_values, _technical_mask(gene_table))
+        clean = _clean_tpm(sub_values, gene_table=gene_table)
         out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
         out["cancer_code"] = code
         out["source_cohort"] = source.source_cohort
@@ -416,7 +413,7 @@ def build_source(
         pipeline_stem = source.pipeline_stem or source.source_cohort.lower()
         out["processing_pipeline"] = (
             f"{pipeline_stem}_{source.unit.lower().replace('(','').replace(')','').replace('+','plus')}"
-            f"_to_tpm_ensembl{ensembl_release}_clean_tpm_v1"
+            f"_to_tpm_ensembl{ensembl_release}_clean_tpm_v2"
         )
         out["notes"] = source.notes or (
             f"Per-sample expression from {source.source_cohort} (n={len(cols)}). "
