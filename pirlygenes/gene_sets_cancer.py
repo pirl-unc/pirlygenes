@@ -260,7 +260,8 @@ def cancer_type_info(cancer_type):
     Keys: ``code``, ``name``, ``family``, ``primary_tissue``,
     ``primary_template``, ``parent_code``, ``subtype_key``, ``pediatric``,
     ``differentiation``, ``expression_source``, ``source_cohort``,
-    ``source_pmid``, ``notes``, ``burden_category``, ``tmb``.
+    ``source_pmid``, ``notes``, ``viral_etiology``, ``viral_agent``,
+    ``fusion_driven``, ``fusion_driver``, ``burden_category``, ``tmb``.
     """
     import pandas as pd
 
@@ -272,7 +273,9 @@ def cancer_type_info(cancer_type):
     info = {"code": code, "name": CANCER_TYPE_NAMES.get(code) or code}
     for col in ("family", "primary_tissue", "primary_template", "parent_code",
                 "subtype_key", "pediatric", "differentiation",
-                "expression_source", "source_cohort", "source_pmid", "notes"):
+                "expression_source", "source_cohort", "source_pmid", "notes",
+                "viral_etiology", "viral_agent", "fusion_driven",
+                "fusion_driver"):
         val = None if row is None else row.get(col)
         if val is not None and (isinstance(val, str) or not pd.isna(val)):
             info[col] = val
@@ -281,6 +284,73 @@ def cancer_type_info(cancer_type):
     info["burden_category"] = burden_category(code)
     info["tmb"] = cancer_tmb(code)
     return info
+
+
+def cancer_type_synonyms(cancer_type):
+    """Reverse synonym lookup: every alias that resolves TO a cancer code.
+
+    Returns a sorted list of the common-name aliases (``CANCER_TYPE_ALIASES``),
+    registry display name, and pre-rename old codes (``_RENAMED_CODE_ALIASES``)
+    that all resolve to the canonical code — the inverse of
+    :func:`resolve_cancer_type`. ``[]`` for an unknown input rather than raising.
+    """
+    try:
+        code = resolve_cancer_type(cancer_type)
+    except ValueError:
+        return []
+    if code is None:
+        return []
+    syns = {a for a, c in CANCER_TYPE_ALIASES.items() if c == code}
+    syns |= {o for o, n in _RENAMED_CODE_ALIASES.items() if n == code}
+    name = CANCER_TYPE_NAMES.get(code)
+    if name:
+        syns.add(name)
+    syns.discard(code)
+    return sorted(syns)
+
+
+def viral_status(cancer_type):
+    """``{'etiology': ..., 'agent': ...}`` for a cancer type.
+
+    ``etiology`` ∈ {``'defining'``, ``'subset'``, ``'none'``} — whether a virus
+    defines the entity/subtype (HPV→cervical/HPV+ HNSC, EBV→nasopharyngeal,
+    MCPyV→Merkel, HHV8→Kaposi), drives a meaningful subset (EBV→gastric/DLBC,
+    HBV/HCV→HCC), or has no established role. ``agent`` names the virus (or
+    ``''``). Synonym-resolved; raises ``ValueError`` on unknown input.
+    """
+    info = cancer_type_info(cancer_type)
+    if info is None:
+        return None
+    return {
+        "etiology": info.get("viral_etiology") or "none",
+        "agent": info.get("viral_agent") or "",
+    }
+
+
+def fusion_status(cancer_type):
+    """``{'status': ..., 'driver': ...}`` for a cancer type.
+
+    ``status`` ∈ {``'defining'``, ``'subtype'``, ``'rare'``, ``'none'``} —
+    whether a gene fusion defines the entity (EWSR1-FLI1→Ewing, SS18-SSX→
+    synovial), defines a recurrent subtype within it (TMPRSS2-ERG→prostate),
+    occurs rarely, or has no established role. ``driver`` lists the canonical
+    fusion(s) (sourced from / cross-checked against ``cancer-fusions.csv``).
+    Synonym-resolved; raises ``ValueError`` on unknown input.
+    """
+    info = cancer_type_info(cancer_type)
+    if info is None:
+        return None
+    return {
+        "status": info.get("fusion_driven") or "none",
+        "driver": info.get("fusion_driver") or "",
+    }
+
+
+def tissue_of_origin(cancer_type):
+    """The cancer type's tissue/cell of origin (registry ``primary_tissue``).
+    Synonym-resolved; ``None`` for unknown tissue, raises on unknown input."""
+    info = cancer_type_info(cancer_type)
+    return None if info is None else info.get("primary_tissue")
 
 
 # ---------- Therapy target registry ----------
