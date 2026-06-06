@@ -364,8 +364,14 @@ def _merge_proteins(mat, ensg_to_sym):
     return merged, {name: name for name in merged.index}
 
 
-def per_cohort_counts(mat, cohorts, ensg_to_sym):
-    """Long table: CTA × cohort × threshold -> n patients, pct."""
+def per_cohort_counts(mat, cohorts, ensg_to_sym, pctile_cutoffs=None):
+    """Long table: CTA × cohort × threshold -> n patients, pct.
+
+    Columns ``n_gt{t}``/``pct_gt{t}`` for the absolute TPM thresholds, and (when
+    ``pctile_cutoffs`` is supplied) ``n_p{q}``/``pct_p{q}`` for the WITHIN-SAMPLE
+    percentile thresholds — a CTA is 'on' in a sample if its TPM is at/above that
+    sample's qth-percentile across all genes (each sample compared to its own
+    cutoff), not a per-cohort threshold."""
     rows = []
     for code, samples in cohorts.items():
         cols = [s for s in samples if s in mat.columns]
@@ -373,6 +379,10 @@ def per_cohort_counts(mat, cohorts, ensg_to_sym):
             continue
         sub = mat[cols]
         n = len(cols)
+        pcuts = {}
+        if pctile_cutoffs is not None:
+            for q in PERCENTILES:
+                pcuts[q] = Threshold("pctile", q).cutoff(cols, pctile_cutoffs)
         for ensg in mat.index:
             vals = sub.loc[ensg].to_numpy()
             rec = {
@@ -384,6 +394,11 @@ def per_cohort_counts(mat, cohorts, ensg_to_sym):
                 k = int((vals > t).sum())
                 rec[f"n_gt{t}"] = k
                 rec[f"pct_gt{t}"] = round(100 * k / n, 2)
+                any_hit = any_hit or k > 0
+            for q, cut in pcuts.items():
+                k = int((vals > cut).sum())
+                rec[f"n_p{q}"] = k
+                rec[f"pct_p{q}"] = round(100 * k / n, 2)
                 any_hit = any_hit or k > 0
             if any_hit:
                 rows.append(rec)
@@ -458,8 +473,13 @@ def main():
     print(f"      matrix {mat.shape[0]} CTA proteins × {mat.shape[1]} samples, "
           f"{len(cohorts)} cohorts", flush=True)
 
+    # Within-sample percentile cutoffs (computed once, cached) so the counts
+    # CSVs carry n_p80/90/95 alongside n_gt25/50/100/200 — downstream plots
+    # (addressability) can then offer percentile versions too.
+    pctile_cuts = None if args.no_percentiles else per_sample_percentile_cutoffs()
+
     print("[4/5] per (CTA × cohort) threshold counts -> CSV", flush=True)
-    counts = per_cohort_counts(mat, cohorts, ensg_to_sym)
+    counts = per_cohort_counts(mat, cohorts, ensg_to_sym, pctile_cuts)
     counts = counts.sort_values(["cancer_code", "n_gt25"], ascending=[True, False])
     counts.to_csv(OUT / "cta_patient_counts.csv", index=False)
     # per-cohort union: # patients expressing >=1 CTA protein over each threshold
@@ -478,6 +498,11 @@ def main():
         for t in THRESHOLDS:
             rec[f"n_any_gt{t}"] = int((sub > t).any(axis=0).sum())
             rec[f"n_any_gt{t}_nomage"] = int((sub_nomage > t).any(axis=0).sum())
+        if pctile_cuts is not None:
+            for q in PERCENTILES:
+                cut = Threshold("pctile", q).cutoff(cols, pctile_cuts)  # per-sample
+                rec[f"n_any_p{q}"] = int((sub > cut).any(axis=0).sum())
+                rec[f"n_any_p{q}_nomage"] = int((sub_nomage > cut).any(axis=0).sum())
         urows.append(rec)
     pd.DataFrame(urows).to_csv(OUT / "cta_union_counts.csv", index=False)
 
@@ -905,20 +930,20 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
           f"{len(missing)} dropped (no TMB)", flush=True)
 
 
-def cta_specific_9mer_counts(*, ensembl_release=112, k=9, paralog_overlap=0.8,
-                             refresh=False):
+def cta_specific_9mer_counts(*, ensembl_release=112, k=9, refresh=False):
     """Per expressed-CTA count of k-mers (default 9mer) that occur in the CTA's
     protein but in NO non-CTA protein — a sequence-level tumor-specificity score.
 
-    Negative set = every protein-coding gene's canonical (longest) protein,
-    EXCLUDING (a) the full CTA universe (``CTA_unfiltered_gene_ids`` — so the
-    low-expression "in-between" CTAs are kept out) AND (b) near-identical
-    **paralog copies** of universe genes, defined as any non-universe gene with
-    ≥ ``paralog_overlap`` of its 9mers already in the universe proteome. Without
-    (b), un-curated amplicon copies (DAZ2/DAZ4 vs DAZ1/DAZ3, CT47A8-10 vs the
-    CT47 CTAs, CT45A5/6/8/9, MAGEA2B, …) sit in the negative set and 100%-cancel
-    their family's specificity. For each expressed CTA we count its 9mers absent
-    from the (cleaned) negative set. Cached to ``outputs/cta_specific_9mers.csv``.
+    Negative set = every protein-coding gene's canonical (longest) protein EXCEPT
+    the full CTA universe (``CTA_unfiltered_gene_ids``), so the low-expression
+    "in-between" CTAs are kept out of the negative (per the spec). **tsarina is
+    the authority on CTA membership** — it already weighs paralogs and normal-
+    tissue expression — so we trust its universe verbatim and do NOT second-guess
+    it here: if a near-identical paralog copy (e.g. DAZ2/DAZ4, CT47A8-10) is
+    absent from the universe, its 9mers count as background and its CTA sibling
+    scores low. That is the honest result for the current curation; missing
+    paralog copies are a tsarina curation question (filed upstream), not a
+    pirlygenes workaround. Cached to ``outputs/cta_specific_9mers.csv``.
     """
     cache = OUT / "cta_specific_9mers.csv"
     if cache.exists() and not refresh:
@@ -942,24 +967,11 @@ def cta_specific_9mer_counts(*, ensembl_release=112, k=9, paralog_overlap=0.8,
     def kmers(s):
         return {s[i:i + k] for i in range(len(s) - k + 1)}
 
-    # (1) union of universe 9mers, used both as the specificity reference and to
-    # detect paralog copies that should not count as "normal" background.
-    universe_kmers = set()
-    for gid in universe:
-        seq = longest.get(gid)
-        if seq:
-            universe_kmers |= kmers(seq)
-    # (2) negative = non-universe genes that are NOT near-identical paralogs.
     negative = set()
-    n_paralogs = 0
     for gid, seq in longest.items():
         if gid in universe:
             continue
-        km = kmers(seq)
-        if km and sum(1 for x in km if x in universe_kmers) / len(km) >= paralog_overlap:
-            n_paralogs += 1   # amplicon/paralog copy of a CTA -> not background
-            continue
-        negative |= km
+        negative |= kmers(seq)
     rows = []
     for gid in sorted(pos):
         seq = longest.get(gid)
@@ -974,8 +986,7 @@ def cta_specific_9mer_counts(*, ensembl_release=112, k=9, paralog_overlap=0.8,
     OUT.mkdir(parents=True, exist_ok=True)
     df.to_csv(cache, index=False)
     print(f"      CTA-specific 9mers: {len(df)} CTAs vs {len(negative):,} "
-          f"non-CTA 9mers ({n_paralogs} paralog copies excluded; "
-          f"median {int(df.n_specific_9mers.median())})", flush=True)
+          f"non-CTA 9mers (median {int(df.n_specific_9mers.median())})", flush=True)
     return df
 
 

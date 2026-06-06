@@ -26,8 +26,44 @@ from pirlygenes import gene_sets_cancer as gsc
 
 OUT = Path(__file__).resolve().parent / "outputs"
 COUNTS = OUT / "cta_patient_counts.csv"
-THRESHOLDS = [25, 50, 100]
+TPM_THRESHOLDS = [25, 50, 100]
+PERCENTILES = [80, 90, 95]
 TOPN = 40
+
+
+class Thr:
+    """An addressability threshold: absolute TPM (``kind='tpm'``) or a
+    within-sample percentile of the gene (``kind='pctile'``). Maps to the
+    matching count columns in cta_patient_counts.csv / cta_union_counts.csv."""
+
+    def __init__(self, kind, value):
+        self.kind, self.value = kind, value
+
+    @property
+    def count_col(self):
+        return f"n_gt{self.value}" if self.kind == "tpm" else f"n_p{self.value}"
+
+    def union_col(self, drop_mage):
+        base = f"n_any_gt{self.value}" if self.kind == "tpm" else f"n_any_p{self.value}"
+        return base + ("_nomage" if drop_mage else "")
+
+    @property
+    def slug(self):
+        return f"t{self.value}" if self.kind == "tpm" else f"p{self.value}"
+
+    @property
+    def label(self):
+        return (f"> {self.value} TPM" if self.kind == "tpm"
+                else f"≥ {self.value}th within-sample percentile")
+
+
+def _available_thresholds():
+    """TPM thresholds always; percentile thresholds only if the counts CSV
+    carries their columns (i.e. cta_patient_counts was built with percentiles)."""
+    cols = set(pd.read_csv(COUNTS, nrows=1).columns)
+    thrs = [Thr("tpm", t) for t in TPM_THRESHOLDS if f"n_gt{t}" in cols]
+    thrs += [Thr("pctile", q) for q in PERCENTILES if f"n_p{q}" in cols]
+    return thrs
 # {plot-key: (burden metric column, axis label)}
 METRICS = {
     "us_incidence": ("us_incidence_pct", "US incidence"),
@@ -88,7 +124,7 @@ def _label(cats):
 def _addressable(counts, cat_n, threshold, burden_metric):
     """Per-CTA addressable % for one threshold + burden metric, with a label of
     the top-contributing cancer types. Returns a DataFrame sorted descending."""
-    col = f"n_gt{threshold}"
+    col = threshold.count_col
     g = counts.groupby(["category", "Symbol"], as_index=False)[col].sum()
     g["pooled_frac"] = g[col] / g.category.map(cat_n)
     burden = gsc.cancer_burden(metric=burden_metric)  # {category: pct of all cancer}
@@ -109,7 +145,7 @@ def _union_addressable(threshold, burden_metric, cat_n, drop_mage=False):
     u = u[~u.cancer_code.isin(_REDUNDANT)].copy()
     u["category"] = [gsc.burden_category(c) for c in u.cancer_code]
     u = u[u.category.notna()]
-    col = f"n_any_gt{threshold}_nomage" if drop_mage else f"n_any_gt{threshold}"
+    col = threshold.union_col(drop_mage)
     cat_hits = u.groupby("category")[col].sum()
     burden = gsc.cancer_burden(metric=burden_metric)
     return sum(burden.get(c, 0.0) * (h / cat_n[c])
@@ -133,7 +169,7 @@ def _render(drop_mage, suffix, title_tag):
     for mkey, (bcol, blabel) in METRICS.items():
         ceiling = sum(gsc.cancer_burden(metric=bcol).get(c, 0.0)
                       for c in counts.category.unique())
-        for t in THRESHOLDS:
+        for t in _available_thresholds():
             per, _ = _addressable(counts, cat_n, t, bcol)
             union = _union_addressable(t, bcol, cat_n, drop_mage=drop_mage)
             top = per.head(TOPN).iloc[::-1]  # ascending for barh (max on top)
@@ -153,9 +189,9 @@ def _render(drop_mage, suffix, title_tag):
             ax.set_yticks(list(range(len(top))) + [uy])
             ax.set_yticklabels(list(top.Symbol) + ["All CTAs"], fontsize=6)
             ax.set_xlabel(f"% of annual {blabel} addressable "
-                          f"(patient expresses this CTA > {t} TPM)")
+                          f"(patient expresses this CTA {t.label})")
             ax.set_title(f"CTA population addressability{title_tag} — {blabel} "
-                         f"(> {t} TPM)", fontsize=11)
+                         f"({t.label})", fontsize=11)
             ax.set_xlim(0, max(top.addressable.max(), union) * 1.22)
             ax.grid(axis="x", alpha=0.3)
             sm = cm.ScalarMappable(norm=norm, cmap=cmap)
@@ -167,9 +203,9 @@ def _render(drop_mage, suffix, title_tag):
                     f"categories = {ceiling:.0f}% of {blabel} (uncovered types not scored)",
                     transform=ax.transAxes, ha="right", fontsize=6, color="gray")
             fig.tight_layout()
-            fig.savefig(OUT / f"cta_addressable_{mkey}_t{t}{suffix}.png", dpi=150)
+            fig.savefig(OUT / f"cta_addressable_{mkey}_{t.slug}{suffix}.png", dpi=150)
             plt.close(fig)
-            print(f"  {mkey} t{t}{suffix}: top CTA {per.iloc[0].Symbol} "
+            print(f"  {mkey} {t.slug}{suffix}: top CTA {per.iloc[0].Symbol} "
                   f"({per.iloc[0].addressable:.1f}% of {blabel}); ceiling {ceiling:.0f}%",
                   flush=True)
 
