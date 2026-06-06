@@ -765,3 +765,46 @@ def test_resolve_cancer_type_uses_cached_reverse_map_under_load():
     assert elapsed < 2.0, (
         f"display-name resolve appears uncached; 10k calls took {elapsed:.2f}s"
     )
+
+
+def test_lineage_genes_direction_vocab_and_schema():
+    """lineage-genes carries the optional expected-high/surprising 'direction'
+    (high|low) + 'reference' columns (pass-2 schema extension)."""
+    from pirlygenes.load_dataset import get_data
+
+    d = get_data("lineage-genes")
+    assert {"direction", "reference"} <= set(d.columns)
+    assert set(d["direction"].astype(str)) <= {"high", "low"}
+
+
+def test_marker_symbol_ensg_consistency():
+    """Every (Symbol, Ensembl_Gene_ID) pair in the marker datasets must agree
+    with the gene's current Ensembl symbol (allowing curated display aliases).
+    Locks the 5 stale-symbol fixes (NIS->SLC5A5, PVRL1->NECTIN1, ...) found in
+    the gene audit and prevents regression."""
+    from pyensembl import EnsemblRelease
+    from pirlygenes.gene_ids import strip_version
+    from pirlygenes.gene_names import display_name
+    from pirlygenes.load_dataset import get_data
+
+    g = EnsemblRelease(112)
+    mism = []
+    for name in ("lineage-genes", "cancer-type-genes",
+                 "cancer-lineage-panels", "cancer-surfaceome"):
+        d = get_data(name)
+        for sym, ensg in zip(d["Symbol"].astype(str), d["Ensembl_Gene_ID"].astype(str)):
+            ensg = ensg.strip()
+            if not ensg.startswith("ENSG"):
+                continue
+            try:
+                cur = g.gene_by_id(strip_version(ensg)).gene_name
+            except Exception:
+                continue
+            if cur.upper() != sym.strip().upper():
+                try:
+                    ok = display_name(cur).upper() == sym.strip().upper()
+                except Exception:
+                    ok = False
+                if not ok:
+                    mism.append(f"{name}: {sym} vs ENSG {ensg} ({cur})")
+    assert not mism, "symbol↔ENSG mismatches:\n  " + "\n  ".join(mism)
