@@ -151,20 +151,20 @@ LIHC,DNAJB1-PRKACA,DNAJB1,,PRKACA,non-RTK kinase,~100% of FLC,true,true,yes,fusi
 LIHC,(none),,,,,,false,false,no,other,high,,"conventional HCC: TERT promoter, CTNNB1, TP53; not fusion-driven"
 BRCA,ETV6-NTRK3,ETV6,ETS,NTRK3,RTK,~100% of secretory,true,false,yes,fusion_transcript,high,PMID:12244301,secretory carcinoma of breast (MASC analogue); t(12;15); rare subtype but defining; TRK-inhibitor target
 BRCA,(none),,,,,,false,false,no,other,high,,common breast cancer (luminal/HER2/basal): driven by ER/HER2/CN events; no defining fusion (secretory carcinoma excepted)
-SARC_RMS_ARMS,PAX-FOXO/alt,PAX3,PAX,NCOA1,NR coactivator,rare,true,true,yes,fusion_transcript,low,,PAX3 alternative 3' partner (NCOA1); fusion-positive ARMS variant
-SARC_RMS_ARMS,PAX-FOXO/alt,PAX3,PAX,NCOA2,NR coactivator,rare,true,true,yes,fusion_transcript,low,,PAX3 alternative 3' partner (NCOA2)
+SARC_RMS_ARMS,PAX-FOXO/alt,PAX3,PAX,NCOA1,NR coactivator,rare,true,true,yes,fusion_transcript,low,PMID:19953635,PAX3 alternative 3' partner (NCOA1); fusion-positive ARMS variant
+SARC_RMS_ARMS,PAX-FOXO/alt,PAX3,PAX,NCOA2,NR coactivator,rare,true,true,yes,fusion_transcript,low,PMID:19953635,PAX3 alternative 3' partner (NCOA2)
 SARC_RMS_ARMS,PAX-FOXO/alt,PAX3,PAX,FOXO4,FOX,rare,true,true,yes,fusion_transcript,low,,rare PAX3-FOXO4 (AFX) variant; still a PAX->FOX fusion
 SARC_RMS_SSRMS,FET-TFCP2,EWSR1,FET,TFCP2,CP2 TF,subset,true,true,yes,fusion_transcript,medium,PMID:30138265,"sclerosing/spindle-cell RMS, often intraosseous; FET-TFCP2"
 SARC_RMS_SSRMS,FET-TFCP2,FUS,FET,TFCP2,CP2 TF,minority,true,true,yes,fusion_transcript,low,,FUS alternative to EWSR1 in spindle/sclerosing RMS
 SARC_RMS_SSRMS,NCOA2-fusion,SRF,MADS-box TF,NCOA2,NR coactivator,rare,true,true,yes,fusion_transcript,low,,infantile spindle cell RMS variant (SRF-NCOA2)
-SARC_CIC,CIC-DUX4,CIC,HMG-box (capicua),DUX4,homeobox,~95%,true,true,surrogate,fusion_transcript,medium,,CIC-rearranged sarcoma; t(4;19)/t(10;19); DUX4 D4Z4 macrosatellite is hard to call by RNA-seq -> ETV4/PEA3 + WT1 overexpression surrogate
+SARC_CIC,CIC-DUX4,CIC,HMG-box (capicua),DUX4,homeobox,~95%,true,true,surrogate,fusion_transcript,medium,PMID:16717057,CIC-rearranged sarcoma; t(4;19)/t(10;19); DUX4 D4Z4 macrosatellite is hard to call by RNA-seq -> ETV4/PEA3 + WT1 overexpression surrogate
 SARC_CIC,CIC-FOXO4,CIC,HMG-box (capicua),FOXO4,FOX,minority,true,true,yes,fusion_transcript,low,,t(X;19) variant
 SARC_CIC,CIC-NUTM1,CIC,HMG-box (capicua),NUTM1,NUT,rare,true,true,yes,fusion_transcript,low,,rare CIC 3' partner
-SARC_BCOR,BCOR-CCNB3,BCOR,PRC2/Polycomb,CCNB3,cyclin,majority,true,true,yes,fusion_transcript,medium,,"BCOR-rearranged sarcoma; Xp11 paracentric inversion (cryptic by FISH, RNA-seq detectable)"
+SARC_BCOR,BCOR-CCNB3,BCOR,PRC2/Polycomb,CCNB3,cyclin,majority,true,true,yes,fusion_transcript,medium,PMID:22387997,"BCOR-rearranged sarcoma; Xp11 paracentric inversion (cryptic by FISH, RNA-seq detectable)"
 SARC_BCOR,ZC3H7B-BCOR,ZC3H7B,,BCOR,PRC2/Polycomb,minority,true,false,yes,fusion_transcript,low,,also occurs in high-grade endometrial stromal sarcoma (not entity-specific)
 SARC_BCOR,BCOR-MAML3,BCOR,PRC2/Polycomb,MAML3,Mastermind,rare,true,true,yes,fusion_transcript,low,,variant BCOR fusion
 SARC_BCOR,(none-ITD),,,,,subset,true,false,no,other,medium,,"infantile primitive myxoid mesenchymal tumor / undifferentiated round cell: BCOR internal tandem duplication (ITD), not a fusion"
-SARC_MYOEP,EWSR1-POU5F1,EWSR1,FET,POU5F1,POU-homeobox,subset,true,true,yes,fusion_transcript,medium,,soft-tissue myoepithelial carcinoma; POU5F1=OCT4 pluripotency factor
+SARC_MYOEP,EWSR1-POU5F1,EWSR1,FET,POU5F1,POU-homeobox,subset,true,true,yes,fusion_transcript,medium,PMID:20815032,soft-tissue myoepithelial carcinoma; POU5F1=OCT4 pluripotency factor
 SARC_MYOEP,FUS-POU5F1,FUS,FET,POU5F1,POU-homeobox,minority,true,true,yes,fusion_transcript,low,,FET-family alternative (FUS)
 SARC_MYOEP,EWSR1-PBX1,EWSR1,FET,PBX1,homeobox(TALE),subset,true,true,yes,fusion_transcript,low,,myoepithelioma EWSR1 partner
 SARC_MYOEP,EWSR1-ZNF444,EWSR1,FET,ZNF444,,rare,true,true,yes,fusion_transcript,low,,rare myoepithelial partner
