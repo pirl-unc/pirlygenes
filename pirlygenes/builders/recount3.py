@@ -45,10 +45,11 @@ Step 2 — harmonize identifiers: strip the ``.<version>`` (and ``_PAR_Y``)
   suffix from the Gencode IDs and sum any collisions, yielding one row per
   unversioned ENSG (our standard ID convention).
 
-Step 3 — clean TPM (v3): pin the technical-RNA groups (mtDNA, rRNA-like,
-  mt-like pseudogene, polyA-bias lncRNA) **and ribosomal-protein mRNA +
-  pseudogenes** to fixed per-gene reference values (Treehouse-PolyA medians,
-  cohort-independent) and rescale the remaining genes to fill the 1e6 budget,
+Step 3 — clean TPM (v4): two-compartment fixed-fraction — force the technical-RNA
+  groups (mtDNA, rRNA-like, mt-like pseudogene, polyA-bias lncRNA) **and
+  ribosomal-protein mRNA + pseudogenes** to 25% of the 1e6 budget and the
+  remaining (biological) genes to 75%, each renormalized within its group
+  (within-compartment ratios preserved; cohort-independent),
   via the ONE shared helper used everywhere else
   (:func:`pirlygenes.expression.normalize.clean_tpm_matrix` +
   :func:`clean_tpm_removal_mask`). Ribosomal proteins are excluded by

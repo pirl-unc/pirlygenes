@@ -24,7 +24,7 @@ from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, tech
 DEFAULT_SUMMARY_INPUT = "cancer-specific-expression-summary.csv.gz"
 SOLID_MARKERS = "tumor-up-vs-matched-normal.csv"
 HEME_MARKERS = "heme-tumor-up-vs-matched-normal.csv"
-PIPELINE = "cohort_summary_tpm_symbol_to_ensembl112_clean_tpm_v1"
+PIPELINE = "cohort_summary_tpm_symbol_to_ensembl112_clean_tpm_v4"
 SOURCE_VERSION = (
     "Imported from cohort-level tumor-TPM summaries; source rows are "
     "symbol-only median/Q1/Q3 summaries; symbols harmonized to current "
@@ -36,7 +36,7 @@ NOTES = (
     "TPM_* preserves source values for mapped genes without redistributing "
     "omitted symbol-only rows; "
     "raw per-sample values are not bundled, so TPM_clean is computed by "
-    "summary-level technical-RNA zeroing with per-summary denominator "
+    "summary-level two-compartment fixed-fraction clean-TPM (technical 25% / biological 75%, each renormalized within its group) with per-summary denominator "
     "rescaling. Symbol-only genes unresolved or ambiguous after current and "
     "historical Ensembl lookup are omitted."
 )

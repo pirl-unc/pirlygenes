@@ -67,7 +67,7 @@ SOURCE_URL = f"https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc={ACCESSION}"
 GEO_FTP = "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE171nnn/GSE171811"
 RAW_TAR = f"{ACCESSION}_RAW.tar"
 SOFT_GZ = f"{ACCESSION}_family.soft.gz"
-PIPELINE = "gse171811_ctcl_scrna_tcrb_pseudobulk_ntpm_ensembl112_clean_tpm_v1"
+PIPELINE = "gse171811_ctcl_scrna_tcrb_pseudobulk_ntpm_ensembl112_clean_tpm_v4"
 SOURCE_VERSION = (
     "GSE171811 ECCITE-seq GEX/TCR beta matrices; dominant disease TCR beta "
     "clonotype pseudobulked per case; symbols harmonized to Ensembl release "
