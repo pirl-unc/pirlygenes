@@ -43,8 +43,6 @@ Curation provenance:
   fabricated.
 """
 
-from __future__ import annotations
-
 from ..gene_sets_cancer import (
     cancer_type_info as info,
     cancer_type_synonyms as synonyms,
@@ -60,6 +58,8 @@ from ..gene_sets_cancer import (
     cancer_fusions as fusions,
     fusion_partners,
     protein_family,
+    family_display_name as family_name,
+    cancer_type_families as families,
     burden_category,
     cancer_tmb as tmb,
     cancer_type_registry as registry,
@@ -77,6 +77,8 @@ __all__ = [
     "fusions",
     "fusion_partners",
     "protein_family",
+    "family_name",
+    "families",
     "subtypes_of",
     "in_family",
     "by_tissue",

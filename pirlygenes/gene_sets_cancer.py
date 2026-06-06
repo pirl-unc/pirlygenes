@@ -174,7 +174,7 @@ def _clear_caches():
     CANCER_TYPE_NAMES.clear_cache()
 
 
-def resolve_cancer_type(cancer_type):
+def resolve_cancer_type(cancer_type, *, strict=True):
     """Resolve a cancer type name or alias to a registry code.
 
     Accepts:
@@ -184,14 +184,18 @@ def resolve_cancer_type(cancer_type):
     - the registry display name (``"Prostate Adenocarcinoma"``),
       case-insensitive.
 
-    Returns the registry code, ``None`` if ``cancer_type`` is ``None``,
-    or raises ``ValueError`` for an unknown input.
+    Returns the registry code, or ``None`` if ``cancer_type`` is ``None``.
+    For an unknown input: raises ``ValueError`` when ``strict=True`` (default),
+    or returns ``None`` when ``strict=False`` (a non-raising lookup for callers
+    that want to branch instead of catch).
     """
     if cancer_type is None:
         return None
     raw = str(cancer_type).strip()
     if not raw:
-        raise ValueError("Empty cancer type")
+        if strict:
+            raise ValueError("Empty cancer type")
+        return None
 
     alias_key = raw.lower().replace(" ", "_").replace("-", "_")
     if alias_key in CANCER_TYPE_ALIASES:
@@ -217,6 +221,8 @@ def resolve_cancer_type(cancer_type):
     if raw.lower() in name_to_code:
         return name_to_code[raw.lower()]
 
+    if not strict:
+        return None
     raise ValueError(
         f"Unknown cancer type {cancer_type!r}. "
         f"Valid registry codes: {sorted(registry.keys())}. "
@@ -278,11 +284,14 @@ def cancer_type_info(cancer_type):
                 "fusion_driver"):
         val = None if row is None else row.get(col)
         if val is not None and (isinstance(val, str) or not pd.isna(val)):
-            info[col] = val
+            # Coerce numpy scalars (e.g. numpy.bool_ for pediatric) to native
+            # Python types so the dict is JSON-serializable.
+            info[col] = val.item() if hasattr(val, "item") else val
         else:
             info[col] = None
     info["burden_category"] = burden_category(code)
-    info["tmb"] = cancer_tmb(code)
+    tmb = cancer_tmb(code)
+    info["tmb"] = float(tmb) if tmb is not None else None
     return info
 
 
@@ -351,6 +360,54 @@ def tissue_of_origin(cancer_type):
     Synonym-resolved; ``None`` for unknown tissue, raises on unknown input."""
     info = cancer_type_info(cancer_type)
     return None if info is None else info.get("primary_tissue")
+
+
+# Human-readable display names for the registry's ``family`` slugs, so
+# consumers (e.g. trufflepig) don't hardcode the labels. See #309.
+_FAMILY_DISPLAY_NAMES = {
+    "carcinoma-breast": "Breast carcinoma",
+    "carcinoma-gi": "Gastrointestinal carcinoma",
+    "carcinoma-gu": "Genitourinary carcinoma",
+    "carcinoma-head-neck": "Head & neck carcinoma",
+    "carcinoma-lung": "Lung carcinoma",
+    "carcinoma-mesothelial": "Mesothelioma",
+    "carcinoma-other": "Other carcinoma",
+    "carcinoma-skin": "Non-melanoma skin carcinoma",
+    "cns": "CNS tumor",
+    "embryonal": "Embryonal tumor",
+    "endocrine": "Endocrine tumor",
+    "germ-cell": "Germ cell tumor",
+    "heme-bcell": "B-cell neoplasm",
+    "heme-myeloid": "Myeloid neoplasm",
+    "heme-plasma": "Plasma cell neoplasm",
+    "heme-tcell": "T-cell neoplasm",
+    "melanoma": "Melanoma",
+    "neuroendocrine": "Neuroendocrine neoplasm",
+    "salivary": "Salivary gland carcinoma",
+    "sarcoma": "Sarcoma",
+    "thymic": "Thymic epithelial tumor",
+}
+
+
+def family_display_name(family):
+    """Human-readable label for a registry ``family`` slug (e.g.
+    ``"heme-bcell"`` -> ``"B-cell neoplasm"``). Falls back to a title-cased
+    de-slugged form for any family without a curated label."""
+    if family is None:
+        return None
+    key = str(family).strip()
+    if key in _FAMILY_DISPLAY_NAMES:
+        return _FAMILY_DISPLAY_NAMES[key]
+    return key.replace("-", " ").replace("_", " ").strip().capitalize()
+
+
+def cancer_type_families():
+    """``{family_slug: display_name}`` for every family present in the registry,
+    so callers can render a family picker without hardcoding labels (#309)."""
+    fams = (
+        cancer_type_registry()["family"].dropna().astype(str).unique().tolist()
+    )
+    return {f: family_display_name(f) for f in sorted(fams)}
 
 
 # ---------- Therapy target registry ----------
