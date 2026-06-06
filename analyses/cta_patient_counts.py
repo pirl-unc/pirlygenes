@@ -504,6 +504,37 @@ def main():
                 exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB_subtypesonly",
                 drop_covered_parents=True)
 
+    # CTA load metrics vs TMB: (a) mean # CTAs expressed per sample, (b) mean
+    # per-sample CTA-specific-9mer payload (Σ over the CTAs a sample expresses of
+    # each CTA's count of 9mers absent from the whole non-CTA proteome). Weights
+    # are mat-index-aligned; merged paralog groups take their best member's count
+    # (one TCR/antibody addresses the group).
+    from pirlygenes.load_dataset import get_data as _get_data
+    spec_df = cta_specific_9mer_counts()
+    sym2spec = dict(zip(spec_df["Symbol"].astype(str), spec_df["n_specific_9mers"]))
+    try:
+        _grp = _get_data("cta-protein-groups")
+        for gname, members in _grp.groupby("protein_group"):
+            vals = [sym2spec.get(m, 0) for m in members["member_symbol"].astype(str)]
+            if vals:
+                sym2spec.setdefault(str(gname), max(vals))
+    except Exception:
+        pass
+    weights = np.array([float(sym2spec.get(str(name), 0)) for name in mat.index])
+    payload_fn = _mean_specific_9mer_payload(weights)
+
+    def _emit_load_metrics(thr, cutoffs=None):
+        _metric_vs_tmb(mat, cohorts, thr, _mean_ctas_per_sample,
+                       "mean # CTAs expressed per sample", "cta_mean_count_vs_tmb",
+                       pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
+                       slug_suffix="_noHEPB")
+        _metric_vs_tmb(mat, cohorts, thr, payload_fn,
+                       "mean CTA-specific 9mers per sample", "cta_9mer_payload_vs_tmb",
+                       pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
+                       slug_suffix="_noHEPB")
+
+    _emit_load_metrics(tpm_thr)
+
     # Within-sample percentile-rank thresholds (after clean-TPM): a CTA is "on"
     # in a sample if its TPM is at/above that sample's Nth-percentile across all
     # genes. Pipeline-robust (rank harmonizes across quantification pipelines).
@@ -524,6 +555,7 @@ def main():
                         exclude=frozenset({"HEPB"}),
                         slug_suffix="_noHEPB_subtypesonly",
                         drop_covered_parents=True)
+            _emit_load_metrics(pthr, cutoffs)
     print(f"done -> {OUT}", flush=True)
 
 
@@ -871,6 +903,178 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
     plt.close(fig)
     print(f"      {len(pts)} cohorts plotted{ex_note}, "
           f"{len(missing)} dropped (no TMB)", flush=True)
+
+
+def cta_specific_9mer_counts(*, ensembl_release=112, k=9, paralog_overlap=0.8,
+                             refresh=False):
+    """Per expressed-CTA count of k-mers (default 9mer) that occur in the CTA's
+    protein but in NO non-CTA protein — a sequence-level tumor-specificity score.
+
+    Negative set = every protein-coding gene's canonical (longest) protein,
+    EXCLUDING (a) the full CTA universe (``CTA_unfiltered_gene_ids`` — so the
+    low-expression "in-between" CTAs are kept out) AND (b) near-identical
+    **paralog copies** of universe genes, defined as any non-universe gene with
+    ≥ ``paralog_overlap`` of its 9mers already in the universe proteome. Without
+    (b), un-curated amplicon copies (DAZ2/DAZ4 vs DAZ1/DAZ3, CT47A8-10 vs the
+    CT47 CTAs, CT45A5/6/8/9, MAGEA2B, …) sit in the negative set and 100%-cancel
+    their family's specificity. For each expressed CTA we count its 9mers absent
+    from the (cleaned) negative set. Cached to ``outputs/cta_specific_9mers.csv``.
+    """
+    cache = OUT / "cta_specific_9mers.csv"
+    if cache.exists() and not refresh:
+        return pd.read_csv(cache)
+    from pyensembl import EnsemblRelease
+    genome = EnsemblRelease(ensembl_release)
+    pos = set(gsc.CTA_gene_ids())
+    universe = set(gsc.CTA_unfiltered_gene_ids())
+    id2name = gsc.CTA_gene_id_to_name()
+    longest: dict[str, str] = {}
+    for tr in genome.transcripts():
+        if tr.biotype != "protein_coding":
+            continue
+        seq = tr.protein_sequence
+        if not seq or len(seq) < k:
+            continue
+        seq = seq.rstrip("*")
+        if tr.gene_id not in longest or len(seq) > len(longest[tr.gene_id]):
+            longest[tr.gene_id] = seq
+
+    def kmers(s):
+        return {s[i:i + k] for i in range(len(s) - k + 1)}
+
+    # (1) union of universe 9mers, used both as the specificity reference and to
+    # detect paralog copies that should not count as "normal" background.
+    universe_kmers = set()
+    for gid in universe:
+        seq = longest.get(gid)
+        if seq:
+            universe_kmers |= kmers(seq)
+    # (2) negative = non-universe genes that are NOT near-identical paralogs.
+    negative = set()
+    n_paralogs = 0
+    for gid, seq in longest.items():
+        if gid in universe:
+            continue
+        km = kmers(seq)
+        if km and sum(1 for x in km if x in universe_kmers) / len(km) >= paralog_overlap:
+            n_paralogs += 1   # amplicon/paralog copy of a CTA -> not background
+            continue
+        negative |= km
+    rows = []
+    for gid in sorted(pos):
+        seq = longest.get(gid)
+        km = kmers(seq) if seq else set()
+        rows.append({
+            "Ensembl_Gene_ID": gid,
+            "Symbol": id2name.get(gid, gid),
+            "n_9mers": len(km),
+            "n_specific_9mers": sum(1 for x in km if x not in negative),
+        })
+    df = pd.DataFrame(rows).sort_values("n_specific_9mers", ascending=False)
+    OUT.mkdir(parents=True, exist_ok=True)
+    df.to_csv(cache, index=False)
+    print(f"      CTA-specific 9mers: {len(df)} CTAs vs {len(negative):,} "
+          f"non-CTA 9mers ({n_paralogs} paralog copies excluded; "
+          f"median {int(df.n_specific_9mers.median())})", flush=True)
+    return df
+
+
+def _cohort_on_matrix(mat, cols, thr, pctile_cutoffs):
+    """Boolean CTA × patient 'on' matrix for one cohort at a Threshold."""
+    cut = (thr.cutoff(cols, pctile_cutoffs)
+           if isinstance(thr, Threshold) else thr)
+    return mat[cols].to_numpy() > cut
+
+
+def _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug, *,
+                   pctile_cutoffs=None, exclude=frozenset(), slug_suffix=""):
+    """Generic scatter of a per-cohort per-sample CTA metric vs median TMB
+    (log-x), styled like :func:`_cta_vs_tmb` but with a free (auto) y-axis and
+    no sweet-spot band. ``value_fn(mat, cols, thr, pctile_cutoffs) -> float`` is
+    the cohort's metric (e.g. mean CTAs/sample, mean CTA-specific-9mer payload)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    tmb_map = {}
+    for c, v in gsc.cancer_tmb().items():
+        try:
+            rc = gsc.resolve_cancer_type(c) or c
+        except ValueError:
+            rc = c
+        tmb_map.setdefault(rc, v)
+    aggregate_codes = set(gsc.cohort_aggregates().keys())
+    pts = []
+    for code, samples in cohorts.items():
+        if code in aggregate_codes or code in exclude:
+            continue
+        cols = [s for s in samples if s in mat.columns]
+        if not cols:
+            continue
+        key = _TMB_CODE.get(code, code)
+        try:
+            key = gsc.resolve_cancer_type(key) or key
+        except ValueError:
+            pass
+        tmb = tmb_map.get(key)
+        if tmb is None:
+            continue
+        pts.append((code, len(cols), value_fn(mat, cols, thr, pctile_cutoffs), tmb))
+    if not pts:
+        print("      no cohorts with metric + TMB; skip", flush=True)
+        return
+    xs = [p[3] for p in pts]
+    ys = [p[2] for p in pts]
+    fam_map = _registry_family_map()
+    groups = [_lineage_group(fam_map.get(code, "")) for code, *_ in pts]
+    fig, ax = plt.subplots(figsize=(12, 7.5))
+    ax.set_xscale("log")
+    ax.set_xlim(min(xs) * 0.7, max(xs) * 1.5)
+    ax.set_ylim(0, max(ys) * 1.08)
+    ax.scatter(xs, ys, s=34, c=[_LINEAGE_COLORS[g] for g in groups],
+               alpha=0.9, edgecolor="white", linewidth=0.4, zorder=3)
+    ax.set_xlabel("median tumor mutational burden (mut/Mb, log scale)")
+    ax.set_ylabel(ylabel)
+    ax.grid(alpha=0.3, which="both")
+    texts = [ax.text(tmb, y, _display_code(code), fontsize=6)
+             for code, n, y, tmb in pts]
+    try:
+        from adjustText import adjust_text
+        adjust_text(texts, x=list(xs), y=list(ys), ax=ax,
+                    arrowprops=dict(arrowstyle="-", color="0.6", lw=0.4))
+    except ImportError:
+        for t, (code, n, y, tmb) in zip(texts, pts):
+            t.set_fontsize(5)
+            t.set_position((tmb * 1.02, y))
+    present = [g for g in _LINEAGE_COLORS if g in set(groups)]
+    handles = [Line2D([0], [0], marker="o", linestyle="", markersize=6,
+                      markerfacecolor=_LINEAGE_COLORS[g], markeredgecolor="white",
+                      label=g) for g in present]
+    ax.legend(handles=handles, loc="center left", bbox_to_anchor=(1.01, 0.5),
+              fontsize=7, title="lineage", frameon=False)
+    ex_note = f"; excludes {', '.join(sorted(exclude))}" if exclude else ""
+    ax.set_title(f"{ylabel} vs TMB by cancer type "
+                 f"({thr.xlabel}, n={len(pts)} cohorts{ex_note})", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(OUT / f"{slug}_{thr.slug}{slug_suffix}.png", dpi=150)
+    plt.close(fig)
+    print(f"      {slug}: {len(pts)} cohorts plotted{ex_note}", flush=True)
+
+
+def _mean_ctas_per_sample(mat, cols, thr, pctile_cutoffs):
+    on = _cohort_on_matrix(mat, cols, thr, pctile_cutoffs)
+    return float(on.sum(axis=0).mean())
+
+
+def _mean_specific_9mer_payload(weights):
+    """Build a value_fn: mean over patients of the summed CTA-specific-9mer
+    count across the CTAs that patient expresses. ``weights`` is a per-CTA
+    (mat-index-aligned) vector of specific-9mer counts."""
+    def value_fn(mat, cols, thr, pctile_cutoffs):
+        on = _cohort_on_matrix(mat, cols, thr, pctile_cutoffs)
+        return float((on * weights[:, None]).sum(axis=0).mean())
+    return value_fn
 
 
 def _coverage_every_cohort(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
