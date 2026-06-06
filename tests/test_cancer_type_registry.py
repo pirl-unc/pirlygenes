@@ -67,6 +67,28 @@ def test_no_registry_code_is_a_pre_rename_alias():
     assert not offenders, f"registry still carries pre-rename codes: {sorted(offenders)}"
 
 
+def test_degenerate_subtype_pairs_use_canonical_codes():
+    """Every cancer code referenced in degenerate-subtype-pairs (members and
+    tiebreaker_mapping) must be canonical — no pre-rename aliases that resolve
+    away to a different code. Guards #287 (the NET tiebreaker_mapping still held
+    PANNET/MID_NET/LUNG_NET_LC after the Phase-C rename)."""
+    import re
+    from pirlygenes.load_dataset import get_data
+    from pirlygenes.gene_sets_cancer import _RENAMED_CODE_ALIASES
+
+    d = get_data("degenerate-subtype-pairs")
+    # Scan the code-bearing columns only (pair_id is an opaque identifier).
+    blob = "\n".join(
+        d[col].astype(str).str.cat(sep="\n")
+        for col in ("members", "tiebreaker_mapping") if col in d.columns
+    )
+    offenders = sorted(
+        old for old in _RENAMED_CODE_ALIASES
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(old)}(?![A-Za-z0-9_])", blob)
+    )
+    assert not offenders, f"degenerate-subtype-pairs holds pre-rename codes: {offenders}"
+
+
 def test_expression_sources_yaml_uses_canonical_cancer_codes():
     """The expression-sources registry must reference canonical cancer codes
     only — no pre-rename aliases in any source's cancer_codes. See #302."""
