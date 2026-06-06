@@ -485,22 +485,24 @@ def main():
     _plots(mat, cohorts, counts, ensg_to_sym, args.threshold, args.cohort)
 
     tpm_thr = Threshold("tpm", args.threshold)
-    print("[6/9] per-cohort coverage curves (one PNG each)", flush=True)
+    print("[6/8] per-cohort coverage curves (one PNG each)", flush=True)
     _coverage_every_cohort(mat, cohorts, ensg_to_sym, tpm_thr)
 
-    print("[7/9] peak-coverage bar charts (parent/child + top-CTA colored)", flush=True)
-    _peak_coverage_bars(mat, cohorts, ensg_to_sym, tpm_thr)
-
-    print("[8/9] stacked coverage bar (per-CTA marginal contribution)", flush=True)
+    print("[7/8] stacked coverage bar (per-CTA marginal contribution)", flush=True)
     _stacked_coverage_bars(mat, cohorts, ensg_to_sym, tpm_thr)
 
-    print("[9/9] CTA coverage vs cohort TMB", flush=True)
+    print("[8/8] CTA coverage vs cohort TMB", flush=True)
     _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr)
     # HEPB (hepatoblastoma) sits at TMB ~0.02 — an extreme low outlier that
     # stretches the log-x axis for one point; emit a no-HEPB variant (legend
     # auto-prunes the now-empty embryonal group, x-axis auto-rescales).
     _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr,
                 exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB")
+    # Subtype-resolved variant: drop a parent category when its subtypes are
+    # also plotted (no bulk BRCA/HNSC/SARC alongside their subtypes).
+    _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr,
+                exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB_subtypesonly",
+                drop_covered_parents=True)
 
     # Within-sample percentile-rank thresholds (after clean-TPM): a CTA is "on"
     # in a sample if its TPM is at/above that sample's Nth-percentile across all
@@ -512,13 +514,16 @@ def main():
         cutoffs = per_sample_percentile_cutoffs()
         for p in PERCENTILES:
             pthr = Threshold("pctile", p)
-            print(f"    p{p}: coverage curves + peak/stacked bars + vs-TMB", flush=True)
+            print(f"    p{p}: coverage curves + stacked bars + vs-TMB", flush=True)
             _coverage_every_cohort(mat, cohorts, ensg_to_sym, pthr, cutoffs)
-            _peak_coverage_bars(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _stacked_coverage_bars(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs,
                         exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB")
+            _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs,
+                        exclude=frozenset({"HEPB"}),
+                        slug_suffix="_noHEPB_subtypesonly",
+                        drop_covered_parents=True)
     print(f"done -> {OUT}", flush=True)
 
 
@@ -588,98 +593,6 @@ def _family_color_map(ctas_ordered):
         for c, k in zip(ms, ks):
             cta_color[c] = _shade(base, k)
     return cta_color, fam_order, fam_base, members
-
-
-def _parent_map():
-    """code -> parent_code from the cancer-type registry (derived sub-cohorts
-    only)."""
-    from pirlygenes.load_dataset import get_data
-    df = get_data("cancer-type-registry.csv")
-    return {
-        str(r.code): str(r.parent_code)
-        for r in df.itertuples()
-        if isinstance(r.parent_code, str) and r.parent_code.strip()
-    }
-
-
-def _peak_coverage_bars(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
-    """Two sorted horizontal bar charts of each cohort's PEAK coverage % (the
-    greedy plateau — share of patients with >=1 CTA over threshold):
-      (a) colored by parent-cohort vs sub-divided (derived) cohort;
-      (b) colored by the cohort's top CTA (the single most-covering CTA).
-    """
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Patch
-
-    parent_of = _parent_map()
-    rows = []
-    for code in cohorts:
-        order, cum, n = greedy_coverage(mat, cohorts[code], thr, pctile_cutoffs)
-        if not cum:
-            continue
-        top_cta = ensg_to_sym.get(mat.index[order[0]], mat.index[order[0]])
-        rows.append({
-            "code": code, "n": n, "peak": cum[-1] * 100,
-            "is_derived": code in parent_of, "top_cta": top_cta,
-        })
-    df = pd.DataFrame(rows).sort_values("peak", ascending=True)  # ascending -> top at top after barh
-    labels = [f"{_display_code(c)}  (n={n})" for c, n in zip(df["code"], df["n"])]
-    h = max(6, len(df) * 0.26)
-
-    # ---- (a) parent vs derived ----
-    fig, ax = plt.subplots(figsize=(11, h))
-    colors = ["#e85d04" if d else "#1d4e89" for d in df["is_derived"]]
-    ax.barh(range(len(df)), df["peak"], color=colors)
-    ax.set_yticks(range(len(df)))
-    ax.set_yticklabels(labels, fontsize=7)
-    ax.set_xlabel(f"peak % of patients with ≥1 CTA {thr.xlabel}")
-    ax.set_xlim(0, 100)
-    for y, p in enumerate(df["peak"]):
-        ax.text(p + 0.6, y, f"{p:.0f}", va="center", fontsize=6)
-    ax.legend(handles=[
-        Patch(color="#1d4e89", label="parent / base cohort"),
-        Patch(color="#e85d04", label="sub-divided (derived) cohort"),
-    ], loc="lower right", fontsize=9)
-    ax.set_title(f"CTA coverage ceiling by cancer type "
-                 f"({thr.xlabel})", fontsize=11)
-    ax.grid(axis="x", alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(OUT / f"cta_peak_coverage_by_parent_child_{thr.slug}.png", dpi=150)
-    plt.close(fig)
-
-    # ---- (b) colored by top CTA, grouped by antigen family ----
-    # distinct base hue per family; members shaded within the family hue,
-    # ordered by first (highest-coverage) appearance.
-    cta_color, fam_order, fam_base, members = _family_color_map(
-        df.sort_values("peak", ascending=False)["top_cta"])
-
-    fig, ax = plt.subplots(figsize=(12, h))
-    ax.barh(range(len(df)), df["peak"], color=[cta_color[c] for c in df["top_cta"]])
-    ax.set_yticks(range(len(df)))
-    ax.set_yticklabels(labels, fontsize=7)
-    ax.set_xlabel(f"peak % of patients with ≥1 CTA {thr.xlabel}")
-    ax.set_xlim(0, 100)
-    for y, (p, c) in enumerate(zip(df["peak"], df["top_cta"])):
-        ax.text(p + 0.6, y, c, va="center", fontsize=6)
-    # legend grouped by family: a family header swatch + its members
-    handles = []
-    for f in fam_order:
-        handles.append(Patch(color=fam_base[f], label=f"{f}:"))
-        for c in members[f]:
-            handles.append(Patch(color=cta_color[c], label=f"   {c}"))
-    ax.legend(handles=handles, loc="lower right", fontsize=6,
-              title="top CTA by family", ncol=2, handlelength=1.1,
-              labelspacing=0.25, columnspacing=1.0)
-    ax.set_title(f"CTA coverage ceiling by cancer type — top CTA colored by "
-                 f"family ({thr.xlabel})", fontsize=11)
-    ax.grid(axis="x", alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(OUT / f"cta_peak_coverage_by_top_cta_{thr.slug}.png", dpi=150)
-    plt.close(fig)
-    print(f"      {len(df)} cohorts ({int(df['is_derived'].sum())} derived) "
-          "-> 2 bar charts", flush=True)
 
 
 def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
@@ -802,13 +715,56 @@ def _lineage_group(family: str) -> str:
     return "other"
 
 
+def _parent_code_map():
+    """code -> parent_code (first parent) from the cancer-type registry."""
+    from pirlygenes.load_dataset import get_data
+    df = get_data("cancer-type-registry.csv")
+    out = {}
+    for r in df.itertuples():
+        parents = _registry_parents(getattr(r, "parent_code", None))
+        if parents:
+            out[str(r.code)] = parents[0]
+    return out
+
+
+def _registry_parents(value):
+    if not isinstance(value, str) or not value.strip() or value.lower() == "nan":
+        return []
+    return [p.strip() for p in value.replace(";", ",").split(",") if p.strip()]
+
+
+def _drop_covered_parents(pts, parent_of):
+    """Drop any code that is a (transitive) ancestor of another code in the
+    plotted set — keeping only the deepest subtype actually present. So with
+    BRCA_LumA… present, BRCA is dropped; with HNSC_HPVpos present, HNSC is
+    dropped; with SARC_LMS present, SARC is dropped; if only SARC_RMS_ARMS has
+    TMB (no SARC_RMS / SARC point), SARC_RMS_ARMS stays. Pure subtractive
+    filter: a code with no plotted descendant is untouched."""
+    plotted = {p[0] for p in pts}
+    covered = set()
+    for code in plotted:
+        cur = parent_of.get(code)
+        seen = set()
+        while cur and cur not in seen:
+            seen.add(cur)
+            if cur in plotted:
+                covered.add(cur)
+            cur = parent_of.get(cur)
+    return [p for p in pts if p[0] not in covered]
+
+
 def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
-                exclude=frozenset(), slug_suffix=""):
+                exclude=frozenset(), slug_suffix="", drop_covered_parents=False):
     """Scatter: each cancer type's CTA coverage plateau (% of patients with ≥1
     CTA over threshold) vs its published median TMB (mut/Mb, log x). Tumors with
     high CTA coverage but low TMB are the interesting quadrant for CTA-directed
     therapy (antigen present without relying on a high neoantigen load). Cohorts
-    with no curated TMB value are dropped and counted in the caption."""
+    with no curated TMB value are dropped and counted in the caption.
+
+    ``drop_covered_parents=True`` emits the subtype-resolved variant: a parent
+    category is dropped whenever one of its subtypes is also plotted (no bulk
+    BRCA when PAM50 subtypes show, no HNSC without HPV status, no bulk SARC),
+    falling back to whatever level actually carries a curated TMB."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -845,6 +801,8 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
             missing.append(code)
             continue
         pts.append((code, n, cum[-1] * 100, tmb))
+    if drop_covered_parents:
+        pts = _drop_covered_parents(pts, _parent_code_map())
     if not pts:
         print("      no cohorts with both coverage and TMB; skip", flush=True)
         return
@@ -859,15 +817,21 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
     ax.set_xscale("log")
     x_lo, x_hi = min(xs) * 0.7, max(xs) * 1.5
     ax.set_xlim(x_lo, x_hi)
-    ax.set_ylim(0, 100)
+    # Headroom above 100% so cohorts at the coverage ceiling (e.g. ATRT, NUTM)
+    # show their full marker instead of a clipped half-dot.
+    Y_TOP = 105
+    ax.set_ylim(0, Y_TOP)
 
     # Shade the "antigen-rich / mutation-poor" sweet spot: high CTA coverage
     # (>=50%) at low TMB (<=3 mut/Mb), where CTA-directed therapy is attractive
     # precisely because the low neoantigen load makes checkpoint blockade weak.
+    # Fill to the top of the (extended) y-axis so the band isn't capped at 100.
     SWEET_TMB, SWEET_COV = 3.0, 50.0
-    ax.fill_between([x_lo, SWEET_TMB], SWEET_COV, 100, color="#ffd166",
+    ax.fill_between([x_lo, SWEET_TMB], SWEET_COV, Y_TOP, color="#ffd166",
                     alpha=0.18, zorder=0)
-    ax.text(x_lo * 1.08, 98.5, "antigen-rich / mutation-poor",
+    # Sit the label a little below the band's top edge so it clears the
+    # ceiling-coverage dots (ATRT/NUTM) that now sit near y=100.
+    ax.text(x_lo * 1.08, 93, "antigen-rich / mutation-poor",
             fontsize=8, va="top", ha="left", color="#9c6f00", style="italic")
 
     ax.scatter(xs, ys, s=34, c=[_LINEAGE_COLORS[g] for g in groups],
@@ -898,13 +862,10 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
               fontsize=7, title="lineage", frameon=False)
 
     ex_note = f"; excludes {', '.join(sorted(exclude))}" if exclude else ""
+    sub_note = "; subtype-resolved" if drop_covered_parents else ""
     ax.set_title(f"CTA coverage vs TMB by cancer type "
-                 f"({thr.xlabel}, n={len(pts)} cohorts{ex_note})", fontsize=10)
-    n_registry = len(_registry_family_map())
-    ax.text(0.99, 0.01,
-            f"{len(pts)} per-sample cohorts shown (of {n_registry} registry "
-            f"types; others summary-only); {len(missing)} dropped (no curated TMB)",
-            transform=ax.transAxes, fontsize=6, color="gray", ha="right")
+                 f"({thr.xlabel}, n={len(pts)} cohorts{ex_note}{sub_note})",
+                 fontsize=10)
     fig.tight_layout()
     fig.savefig(OUT / f"cta_coverage_vs_tmb_{thr.slug}{slug_suffix}.png", dpi=150)
     plt.close(fig)
