@@ -51,7 +51,7 @@ from pyensembl import EnsemblRelease
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
 )
 from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
 
@@ -190,7 +190,8 @@ def _summarize(
     assign_stats(out, values, clean)
     out["processing_pipeline"] = pipeline
     out["notes"] = notes
-    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    # Treehouse compendium cohorts are mixed primary/met origin.
+    return finalize_reference_rows(out, tumor_origin="mixed")
 
 
 def _upsert(

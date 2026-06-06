@@ -25,9 +25,8 @@ from pyensembl import EnsemblRelease
 from pirlygenes.builders import source_data_mirror
 from pirlygenes.builders.gene_mapping import resolve_symbol
 from pirlygenes.expression.stats import (
-    REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
     upsert_to_shard,
 )
 from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
@@ -415,9 +414,8 @@ def _summarize(
     # MDS, MCL, MPN) are primary-disease diagnostic samples
     # (PBMC / BM aspirate / lymph biopsy) — no metastasis variants,
     # no cell lines.
-    out["tumor_origin"] = "primary"
     out["metastasis_site"] = pd.NA
-    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    return finalize_reference_rows(out, tumor_origin="primary")
 
 
 def _build_source(

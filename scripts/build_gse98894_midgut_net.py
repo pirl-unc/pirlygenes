@@ -42,9 +42,8 @@ from pirlygenes.builders.geo_matrix import (
 )
 from pirlygenes.builders.ncbi_gene_info import harmonize_entrez_via_ncbi
 from pirlygenes.expression.stats import (
-    REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
     upsert_to_shard,
 )
 
@@ -280,7 +279,6 @@ def main() -> int:
             f"gse98894_alvarez_2018_net_raw_counts_to_tpm_ensembl"
             f"{args.ensembl_release}_clean_tpm_v4"
         )
-        out["tumor_origin"] = "metastasis"
         out["metastasis_site"] = "liver"
         out["notes"] = (
             f"{code} from Alvarez 2018 GEP-NET cohort GSE98894 "
@@ -290,7 +288,7 @@ def main() -> int:
             f"Symbol → pyensembl ENSG → length-norm TPM → tech-RNA "
             f"zero. {CITATION}."
         )
-        out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+        out = finalize_reference_rows(out, tumor_origin="metastasis")
         summaries.append(out)
         written_codes.append(code)
         print(f"  {code}: n={len(gsms)} → {len(out)} gene rows")

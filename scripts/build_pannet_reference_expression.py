@@ -28,9 +28,8 @@ from pirlygenes.builders.treehouse import (
     _technical_mask,
 )
 from pirlygenes.expression.stats import (
-    REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
     upsert_to_shard,
 )
 
@@ -120,7 +119,9 @@ def main() -> int:
         "duplicate symbol mappings dropped. TPM_clean computed per-sample "
         "by two-compartment fixed-fraction clean-TPM (technical 25% / biological 75%, each renormalized within its group)."
     )
-    out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    # GSE118014 is a primary panNET cohort; set tumor_origin so the lenient
+    # finalize can't leave it unset for the upsert validator.
+    out = finalize_reference_rows(out, tumor_origin="primary")
     print(f"  built {len(out)} gene rows for {CANCER_CODE}")
 
     upsert_to_shard(
