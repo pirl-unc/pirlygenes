@@ -399,22 +399,11 @@ def _upsert_samples(
     cancer_code: str,
     source_cohort: str,
 ) -> pd.DataFrame:
-    """Samples manifest write — single CSV, not sharded."""
-    if path.exists():
-        existing = pd.read_csv(path)
-        keep = ~(
-            existing["cancer_code"].astype(str).eq(cancer_code)
-            & existing["source_cohort"].astype(str).eq(source_cohort)
-        )
-        out = pd.concat(
-            [existing[keep].reindex(columns=new_rows.columns), new_rows],
-            ignore_index=True,
-        )
-    else:
-        out = new_rows.copy()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
-    return out
+    """Delegates to the shared, column-union-preserving samples-manifest upsert
+    (replaces every source_cohort present in new_rows; MMRF writes its whole
+    cohort in one call so per-cancer_code keying is unnecessary)."""
+    from pirlygenes.expression.stats import upsert_samples_manifest
+    return upsert_samples_manifest(path, new_rows)
 
 
 def main() -> None:

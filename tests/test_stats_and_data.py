@@ -224,6 +224,50 @@ def test_upsert_to_shard_canonicalizes_renamed_codes(tmp_path):
     assert "MID_NET" not in set(on_disk["cancer_code"])
 
 
+def test_upsert_samples_manifest_preserves_other_cohorts_rows_and_columns(tmp_path):
+    """A builder rebuilding cohort A must not drop cohort B's rows — nor strip
+    columns B carries that A's manifest lacks (the v5.20.0 truncation/column-
+    stripping bug). Replacement is keyed on the source_cohorts present in the
+    new rows; everything else is preserved verbatim."""
+    from pirlygenes.expression.stats import upsert_samples_manifest
+
+    path = tmp_path / "samples.csv.gz"
+    # Cohort B carries a 'lineage_label' column that cohort A's builder omits.
+    cohort_b = pd.DataFrame({
+        "cancer_code": ["B", "B"],
+        "source_cohort": ["COHORT_B", "COHORT_B"],
+        "sample_id": ["b1", "b2"],
+        "included": [True, True],
+        "lineage_label": ["lin_b", "lin_b"],
+    })
+    upsert_samples_manifest(path, cohort_b)
+
+    # Rebuild cohort A with a NARROWER column set (no lineage_label) + stale A row
+    # already present to prove replacement.
+    cohort_a_v1 = pd.DataFrame({
+        "cancer_code": ["A"], "source_cohort": ["COHORT_A"],
+        "sample_id": ["a_old"], "included": [False],
+    })
+    upsert_samples_manifest(path, cohort_a_v1)
+    cohort_a_v2 = pd.DataFrame({
+        "cancer_code": ["A", "A"], "source_cohort": ["COHORT_A", "COHORT_A"],
+        "sample_id": ["a1", "a2"], "included": [True, True],
+    })
+    out = upsert_samples_manifest(path, cohort_a_v2)
+
+    on_disk = pd.read_csv(path)
+    # Cohort B fully preserved, including its lineage_label values.
+    b = on_disk[on_disk["source_cohort"] == "COHORT_B"]
+    assert len(b) == 2
+    assert set(b["lineage_label"]) == {"lin_b"}
+    # Cohort A replaced (stale a_old gone, a1/a2 present); union columns kept.
+    a = on_disk[on_disk["source_cohort"] == "COHORT_A"]
+    assert set(a["sample_id"]) == {"a1", "a2"}
+    assert "a_old" not in set(on_disk["sample_id"])
+    assert "lineage_label" in on_disk.columns
+    assert out["source_cohort"].value_counts().to_dict() == {"COHORT_A": 2, "COHORT_B": 2}
+
+
 def test_upsert_to_shard_per_cancer_code_shards_writes_one_file_per_code(tmp_path):
     """When per_cancer_code_shards=True, write `<source>__<code>.csv.gz`
     per code so a multi-code source can stay under GitHub's 100 MiB
