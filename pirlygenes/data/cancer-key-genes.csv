@@ -13,22 +13,22 @@ PRAD,,INSM1,biomarker,,,,,,,,NE transcription factor; preferred marker over CHGA
 PRAD,,FOLH1,target,177Lu-PSMA-617,radioligand,approved,approved_later_line,later_line_approved,confirm imaging/eligibility and prior-line requirements,mCRPC,PSMA — lutetium radioligand approved for PSMA-PET positive mCRPC post-ARPI,PMID:34161051
 PRAD,,FOLH1,target,225Ac-PSMA-617,radioligand,phase_3,late_clinical,late_clinical,late-clinical follow-up; confirm trial or local availability,mCRPC,PSMA alpha-emitter in late-stage trials for PSMA-PET positive mCRPC,PMID:35930720
 PRAD,,STEAP1,target,AMG-509 (xaluritamig),TCE,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,STEAP1×CD3 bispecific T-cell engager in mCRPC; encouraging phase 1 responses,PMID:37812792
-PRAD,,STEAP2,target,,ADC,preclinical,preclinical,preclinical,preclinical follow-up; not a clinical recommendation,mCRPC,STEAP2 ADCs in discovery; coexpressed with STEAP1,
+PRAD,,STEAP2,target,,ADC,preclinical,preclinical,preclinical,preclinical follow-up; not a clinical recommendation,mCRPC,STEAP2 ADCs in discovery; coexpressed with STEAP1,PMID:37966111
 PRAD,,DLL3,target,tarlatamab,TCE,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,NEPC,DLL3×CD3 BiTE initially approved for SCLC; active trials in NEPC where DLL3 is retained,PMID:36417474
 PRAD,,KLK2,target,JNJ-69086420,bispecific,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,KLK2-targeting bispecific in early-phase trials,PMID:38110199
-PRAD,,TACSTD2,target,sacituzumab govitecan,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,Trop-2 ADC trials in CRPC following breast and urothelial approvals,
+PRAD,,TACSTD2,target,sacituzumab govitecan,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,Trop-2 ADC trials in CRPC following breast and urothelial approvals,PMID:38895886
 PRAD,,AR,target,enzalutamide,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,mCRPC,Second-generation AR antagonist; standard of care in CRPC,PMID:22894553
 PRAD,,AR,target,apalutamide,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,nmCRPC,Approved for non-metastatic CRPC and mHSPC,PMID:29420164
 PRAD,,PSCA,biomarker,,,,,,,,Prostate stem cell antigen — PRAD-adenocarcinoma-enriched lineage marker; co-expressed with PSMA / STEAP1 / TROP-2 in AR-retained disease,PMID:9653118
 PRAD,,PSCA,target,BPX-601,CAR-T,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,PSCA-directed autologous CAR-T with rimiducid (GoCAR-T) — early-phase PRAD trial,PMID:32961293
-PRAD,,PSCA,target,PSMA-PSCA bispecific,bispecific,preclinical,preclinical,preclinical,preclinical follow-up; not a clinical recommendation,mCRPC,PSMA×PSCA dual-targeting bispecifics in preclinical / early trials — leverage co-expression to narrow on-target / off-tumor toxicity,
+PRAD,,PSCA,target,PSMA-PSCA bispecific,bispecific,preclinical,preclinical,preclinical,preclinical follow-up; not a clinical recommendation,mCRPC,PSMA×PSCA dual-targeting bispecifics in preclinical / early trials — leverage co-expression to narrow on-target / off-tumor toxicity,PMID:28971496
 PRAD,,CD276,biomarker,,,,,,,,B7-H3 — surface protein positively correlated with AR expression in PRAD; overexpressed in AR-retained mCRPC and a subset of NEPC,PMID:35839033
 PRAD,,CD276,target,ifinatamab deruxtecan (DS-7300),ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,B7-H3 DXd-payload ADC — active in pretreated mCRPC regardless of PSMA status; positively correlated with AR expression,PMID:35839033
 PRAD,,CD276,target,vobramitamab duocarmazine (MGC018),ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,B7-H3 ADC — TAMARACK trial in pretreated mCRPC,PMID:38061024
-PRAD,,CD276,target,enoblituzumab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,Anti-B7-H3 antibody — neoadjuvant and combination trials,
+PRAD,,CD276,target,enoblituzumab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,Anti-B7-H3 antibody — neoadjuvant and combination trials,PMID:37012549
 PRAD,,CEACAM5,biomarker,,,,,,,,CEA — negatively correlated with AR expression in PRAD; enriched in AR-suppressed / NEPC-trending disease where PSMA is lost,PMID:30333172
-PRAD,,CEACAM5,target,labetuzumab govitecan,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,AR-low / NEPC mCRPC,CEACAM5 ADC — basket activity; candidate for AR-suppressed mCRPC where PSMA is low,
-PRAD,,CEACAM5,target,tusamitamab ravtansine,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,CEACAM5+ mCRPC,CEACAM5 ADC extending from NSCLC; trials in AR-low / NE-differentiated mCRPC,
+PRAD,,CEACAM5,target,labetuzumab govitecan,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,AR-low / NEPC mCRPC,CEACAM5 ADC — basket activity; candidate for AR-suppressed mCRPC where PSMA is low,PMID:28817371
+PRAD,,CEACAM5,target,tusamitamab ravtansine,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,CEACAM5+ mCRPC,CEACAM5 ADC extending from NSCLC; trials in AR-low / NE-differentiated mCRPC,PMID:35026412
 PRAD,,FAP,biomarker,,,,,,,,Fibroblast activation protein — marks cancer-associated fibroblasts in PRAD stroma; expression **not strongly correlated** with PSMA because it's CAF-origin rather than tumor-cell,PMID:36898755
 PRAD,,FAP,target,[68Ga]FAPI-46,radioligand,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,FAP-directed PET imaging — detects PSMA-negative / NEPC disease by imaging tumor stroma,PMID:36898755
 PRAD,,FAP,target,[177Lu]FAPI-46,radioligand,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,mCRPC,FAP-directed radioligand therapy — early-phase trials for PSMA-low or PSMA-refractory mCRPC,PMID:36898755
@@ -70,7 +70,7 @@ LUAD,,MET,target,capmatinib,small_molecule,approved,approved_indication_matched,
 LUAD,,RET,target,selpercatinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,RET fusion LUAD,Selective RET inhibitor,PMID:32846060
 LUAD,,CD274,target,pembrolizumab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,PD-L1 high LUAD,Anti-PD-1; first-line for TPS ≥50%,PMID:27718847
 LUAD,,CEACAM5,target,tusamitamab ravtansine,ADC,phase_3,late_clinical,late_clinical,late-clinical follow-up; confirm trial or local availability,CEACAM5+ NSCLC,Phase 3 CARMEN-LC03 trial,PMID:36070567
-LUAD,,TROP2,target,datopotamab deruxtecan,ADC,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,NSCLC,Dato-DXd approved in advanced/metastatic nsqNSCLC,
+LUAD,,TROP2,target,datopotamab deruxtecan,ADC,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,NSCLC,Dato-DXd approved in advanced/metastatic nsqNSCLC,PMID:39250535
 COAD,,KRAS,biomarker,,,,,,,,KRAS wild-type required for EGFR antibody (cetuximab / panitumumab) response,PMID:18316791
 COAD,,NRAS,biomarker,,,,,,,,Must be wild-type for EGFR-antibody response; pan-RAS testing standard,PMID:20921462
 COAD,,BRAF,biomarker,,,,,,,,V600E — poor prognosis; triple combo encorafenib+cetuximab+MEK eligible,PMID:24637364
@@ -85,12 +85,12 @@ COAD,,TP53,biomarker,,,,,,,,Prognostic / predictive; mutation common and linked 
 COAD,,APC,biomarker,,,,,,,,Gatekeeper driver of adenoma-carcinoma sequence; Wnt pathway activation,PMID:20180050
 COAD,,BRAF,target,encorafenib + cetuximab,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,BRAF V600E mCRC,BEACON triplet / doublet for BRAF V600E mCRC,PMID:31566309
 COAD,,KRAS,target,sotorasib,small_molecule,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,KRAS G12C mCRC,Approved in pretreated KRAS G12C mCRC (CodeBreaK 300),PMID:37882531
-COAD,,KRAS,target,adagrasib,small_molecule,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,KRAS G12C mCRC,Approved with cetuximab for pretreated KRAS G12C mCRC,
+COAD,,KRAS,target,adagrasib,small_molecule,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,KRAS G12C mCRC,Approved with cetuximab for pretreated KRAS G12C mCRC,PMID:36546659
 COAD,,ERBB2,target,trastuzumab + tucatinib,antibody,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,HER2+ RAS-WT mCRC,MOUNTAINEER trial result; HER2+ mCRC,PMID:37084732
 COAD,,EGFR,target,cetuximab,antibody,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,RAS-WT mCRC,Anti-EGFR in RAS/BRAF wild-type mCRC,PMID:19339720
 COAD,,EGFR,target,panitumumab,antibody,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,RAS-WT mCRC,Fully human anti-EGFR antibody,PMID:20921462
 COAD,,CD274,target,pembrolizumab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,MSI-H / dMMR mCRC,Frontline IO in MSI-H / dMMR mCRC (KEYNOTE-177),PMID:33264544
-COAD,,CEACAM5,target,labetuzumab govitecan,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,CEACAM5+ mCRC,CEACAM5 ADC in clinical trials,
+COAD,,CEACAM5,target,labetuzumab govitecan,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,CEACAM5+ mCRC,CEACAM5 ADC in clinical trials,PMID:28817371
 SKCM,,BRAF,biomarker,,,,,,,,V600E/K — gates BRAF/MEK inhibition,PMID:22460905
 SKCM,,NRAS,biomarker,,,,,,,,Q61 mutations — MEK / ERK-directed trials,PMID:23410882
 SKCM,,MITF,biomarker,,,,,,,,Melanocyte lineage transcription factor; amplification in some resistance phenotypes,PMID:16172454
@@ -109,7 +109,7 @@ SKCM,,CTLA4,target,ipilimumab,antibody,approved,approved_standard,standard_or_fr
 SKCM,,LAG3,target,relatlimab,antibody,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced melanoma,LAG-3 + PD-1 combination (nivolumab-relatlimab),PMID:35063055
 SKCM,,PRAME,target,IMA203,TCR-T,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced melanoma,PRAME-directed TCR-T trials,PMID:34428009
 SKCM,,PMEL,target,IMCgp100 / tebentafusp,TCE,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,uveal melanoma,gp100 ImmTAC — approved for HLA-A*02:01 uveal melanoma,PMID:33053284
-SKCM,,TYR,target,,TCR-T,preclinical,preclinical,preclinical,preclinical follow-up; not a clinical recommendation,melanoma,Historical tyrosinase TCRs; active cell-therapy research,
+SKCM,,TYR,target,,TCR-T,preclinical,preclinical,preclinical,preclinical follow-up; not a clinical recommendation,melanoma,Historical tyrosinase TCRs; active cell-therapy research,PMID:31054264
 HNSC,,CDKN2A,biomarker,,,,,,,,p16 — elevated in HPV-driven HNSC (surrogate for E6/E7 inactivation),PMID:21079132
 HNSC,,EGFR,biomarker,,,,,,,,Overexpression / mutation — cetuximab eligibility,PMID:11309435
 HNSC,,CD274,biomarker,,,,,,,,PD-L1 CPS gates first-line pembrolizumab monotherapy or combo,PMID:30509740
@@ -151,7 +151,7 @@ LAML,,RUNX1,biomarker,,,,,,,,Mutation — adverse prognosis; included in WHO cla
 LAML,,TP53,biomarker,,,,,,,,Mutation — adverse prognosis; APR-246 trials,PMID:27959686
 LAML,,DNMT3A,biomarker,,,,,,,,Mutation — adverse prognosis,PMID:21067377
 LAML,,KMT2A,biomarker,,,,,,,,Rearrangement — menin-inhibitor eligibility; adverse prognosis,PMID:37018480
-LAML,,MPO,biomarker,,,,,,,,Myeloid granulocytic lineage confirmation (cytochemistry / IHC),
+LAML,,MPO,biomarker,,,,,,,,Myeloid granulocytic lineage confirmation (cytochemistry / IHC),PMID:35716019
 LAML,,CD33,target,gemtuzumab ozogamicin,ADC,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,CD33+ AML,First ADC approved; combined with chemo in newly diagnosed AML,PMID:15178638
 LAML,,FLT3,target,midostaurin,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,FLT3-mut AML,Type I FLT3 inhibitor — newly diagnosed FLT3-mut AML,PMID:28644114
 LAML,,FLT3,target,gilteritinib,small_molecule,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,R/R FLT3-mut AML,Type I FLT3 inhibitor — relapsed/refractory setting,PMID:31634902
@@ -221,7 +221,7 @@ KIRC,,CD274,biomarker,,,,,,,,PD-L1 enriched in sarcomatoid; prognostic for IO re
 KIRC,,PBRM1,biomarker,,,,,,,,Loss common in ccRCC; candidate IO-response biomarker,PMID:29301960
 KIRC,,BAP1,biomarker,,,,,,,,Loss — adverse prognosis; differential biology,PMID:22683710
 KIRC,,VHL,biomarker,,,,,,,,Inactivation drives HIF axis; universal in sporadic ccRCC,PMID:22683710
-KIRC,,HIF1A,biomarker,,,,,,,,HIF axis activation marker downstream of VHL loss,
+KIRC,,HIF1A,biomarker,,,,,,,,HIF axis activation marker downstream of VHL loss,PMID:38698165
 KIRC,,CA9,biomarker,,,,,,,,CAIX — HIF-driven surface marker; diagnostic and theranostic target,PMID:18483390
 KIRC,,PAX8,biomarker,,,,,,,,Kidney epithelial lineage — diagnostic in difficult cases,PMID:21577204
 KIRC,,KDR,target,sunitinib,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,advanced RCC,Multikinase TKI — historic first-line backbone,PMID:17215530
@@ -237,14 +237,14 @@ KIRC,,CA9,target,girentuximab,antibody,phase_3,late_clinical,late_clinical,late-
 CESC,,CDKN2A,biomarker,,,,,,,,p16 — surrogate marker for HPV-driven cervical / head-and-neck,PMID:12649158
 CESC,,CD274,biomarker,,,,,,,,PD-L1 CPS — gates first-line pembrolizumab,PMID:32795402
 CESC,,F3,biomarker,,,,,,,,Tissue factor expression — gates tisotumab vedotin,PMID:32882178
-CESC,,MUC16,biomarker,,,,,,,,Elevated in adenocarcinoma subset; emerging target,
+CESC,,MUC16,biomarker,,,,,,,,Elevated in adenocarcinoma subset; emerging target,PMID:31736008
 CESC,,CD274,target,pembrolizumab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,recurrent/metastatic CESC,Anti-PD-1 — first-line with chemo (KEYNOTE-826),PMID:34534429
 CESC,,CD274,target,cemiplimab,antibody,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,recurrent/metastatic CESC,Anti-PD-1 — post-progression (EMPOWER-Cervical 1),PMID:35179851
 CESC,,F3,target,tisotumab vedotin,ADC,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,recurrent/metastatic CESC,Tivdak — tissue-factor ADC,PMID:33497583
 CESC,,CD274,target,nivolumab,antibody,phase_3,late_clinical,late_clinical,late-clinical follow-up; confirm trial or local availability,recurrent/metastatic CESC,Anti-PD-1 — CheckMate 358 activity,PMID:31116649
 ESCA,,ERBB2,biomarker,,,,,,,,HER2 amplification in adenocarcinoma — trastuzumab eligibility,PMID:20728210
 ESCA,,CD274,biomarker,,,,,,,,PD-L1 CPS — first-line IO,PMID:32178703
-ESCA,,MLH1,biomarker,,,,,,,,MSI-H marker — uncommon but eligible for IO,
+ESCA,,MLH1,biomarker,,,,,,,,MSI-H marker — uncommon but eligible for IO,PMID:11267981
 ESCA,,TP53,biomarker,,,,,,,,Mutation common; prognostic,PMID:28052061
 ESCA,,CLDN18,biomarker,,,,,,,,CLDN18.2 expression in GEJ / lower-esophageal adeno,PMID:37256819
 ESCA,,FGFR2,biomarker,,,,,,,,Amplification subset; FGFR-inhibitor eligibility,PMID:23674492
@@ -263,13 +263,13 @@ PAAD,,SMAD4,biomarker,,,,,,,,Loss associated with metastatic phenotype / adverse
 PAAD,,CLDN18,biomarker,,,,,,,,CLDN18.2 expression subset — emerging target for zolbetuximab / ADCs,PMID:37256819
 PAAD,,NRG1,biomarker,,,,,,,,NRG1 fusion — actionable subset with zenocutuzumab,PMID:34521628
 PAAD,,KRT19,biomarker,,,,,,,,Pancreatic ductal adenocarcinoma lineage marker,PMID:18239683
-PAAD,,PDX1,biomarker,,,,,,,,Pancreatic lineage transcription factor,
+PAAD,,PDX1,biomarker,,,,,,,,Pancreatic lineage transcription factor,PMID:17056599
 PAAD,,BRCA1,target,olaparib,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,gBRCA-mut metastatic PAAD,PARP inhibitor maintenance after platinum response (POLO),PMID:31157963
 PAAD,,NRG1,target,zenocutuzumab,antibody,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,NRG1-fusion PAAD and NSCLC,Bispecific HER2/HER3 in NRG1-fusion tumours,PMID:34521628
 PAAD,,KRAS,target,adagrasib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,KRAS G12C PAAD,KRAS G12C inhibitor — basket activity,PMID:35658005
 PAAD,,KRAS,target,sotorasib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,KRAS G12C PAAD,KRAS G12C inhibitor — basket activity,PMID:34252278
 PAAD,,KRAS,target,MRTX1133,small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,KRAS G12D PAAD,Selective KRAS G12D inhibitor in early clinical development,PMID:36446367
-PAAD,,CLDN18,target,zolbetuximab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,CLDN18.2+ PAAD,CLDN18.2 antibody extending from gastric into PAAD trials,
+PAAD,,CLDN18,target,zolbetuximab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,CLDN18.2+ PAAD,CLDN18.2 antibody extending from gastric into PAAD trials,PMID:30546962
 PAAD,,ERBB2,target,trastuzumab deruxtecan,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,HER2+ PAAD,Enhertu basket activity in HER2-expressing PAAD,PMID:36423325
 LIHC,,AFP,biomarker,,,,,,,,Alpha-fetoprotein — diagnostic and prognostic serum marker,PMID:14985538
 LIHC,,GPC3,biomarker,,,,,,,,Glypican-3 — HCC-enriched surface antigen; diagnostic and target,PMID:14985538
@@ -278,7 +278,7 @@ LIHC,,TERT,biomarker,,,,,,,,Promoter mutation — the most frequent somatic alte
 LIHC,,TP53,biomarker,,,,,,,,Mutation marks HBV-associated and more aggressive disease,PMID:28187286
 LIHC,,AXIN1,biomarker,,,,,,,,Wnt pathway alteration — subset of HCC,PMID:28187286
 LIHC,,FGF19,biomarker,,,,,,,,11q13 amplification with CCND1 — FGFR4 pathway,PMID:24474064
-LIHC,,VEGFA,biomarker,,,,,,,,Elevated in HCC; rationale for VEGF-axis therapy,
+LIHC,,VEGFA,biomarker,,,,,,,,Elevated in HCC; rationale for VEGF-axis therapy,PMID:36157115
 LIHC,,MET,biomarker,,,,,,,,Overexpression subset; tivantinib / cabozantinib interest,PMID:26436913
 LIHC,,CD274,biomarker,,,,,,,,PD-L1 prognostic in some cohorts; role in IO response,PMID:32185388
 LIHC,,CD274,target,atezolizumab + bevacizumab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,advanced HCC,First-line IO + VEGF (IMbrave150),PMID:32402160
