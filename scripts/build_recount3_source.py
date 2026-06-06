@@ -54,9 +54,9 @@ class Recount3Source:
 def _net_route(a: dict, title: str) -> str | None:
     origin = a.get("origin", "").lower()
     for needle, code in (
-        ("small intest", "MID_NET"), ("ileum", "MID_NET"),
-        ("jejunum", "MID_NET"), ("duodenum", "MID_NET"),
-        ("pancrea", "PANNET"), ("rect", "REC_NET"),
+        ("small intest", "NET_MIDGUT"), ("ileum", "NET_MIDGUT"),
+        ("jejunum", "NET_MIDGUT"), ("duodenum", "NET_MIDGUT"),
+        ("pancrea", "NET_PANCREAS"), ("rect", "NET_RECTAL"),
     ):
         if needle in origin:
             return code
@@ -70,8 +70,8 @@ SOURCES: dict[str, Recount3Source] = {
         source_project="Alvarez 2018 GEP-NET (GSE98894) — recount3 Gencode v26",
         citation="PMID 30013182 (Alvarez 2018)",
         route=_net_route, tumor_origin="metastasis", metastasis_site="liver",
-        codes=["MID_NET", "PANNET", "REC_NET"],
-        expected_n={"MID_NET": 81, "PANNET": 113, "REC_NET": 18},
+        codes=["NET_MIDGUT", "NET_PANCREAS", "NET_RECTAL"],
+        expected_n={"NET_MIDGUT": 81, "NET_PANCREAS": 113, "NET_RECTAL": 18},
         note="liver metastases of GEP-NET; primary site routed from recount3 "
              "sample origin attribute",
     ),
@@ -93,8 +93,8 @@ SOURCES: dict[str, Recount3Source] = {
         source_cohort="GSE118014_ALVAREZ_2018",
         source_project="Alvarez 2018 primary PanNET (GSE118014) — recount3 Gencode v26",
         citation="GSE118014 (Alvarez 2018)",
-        route=lambda a, t: "PANNET", tumor_origin="primary", codes=["PANNET"],
-        expected_n={"PANNET": 33},
+        route=lambda a, t: "NET_PANCREAS", tumor_origin="primary", codes=["NET_PANCREAS"],
+        expected_n={"NET_PANCREAS": 33},
         note="well-differentiated primary pancreatic neuroendocrine tumors",
     ),
     "gse120328-hl": Recount3Source(

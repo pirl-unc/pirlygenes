@@ -54,6 +54,33 @@ def test_registry_codes_are_unique():
     assert not dupes, f"duplicate codes in registry: {dupes}"
 
 
+def test_no_registry_code_is_a_pre_rename_alias():
+    """Every registry code must be canonical — never a key of
+    _RENAMED_CODE_ALIASES (the old name that resolves to a new one). Guards
+    against a builder/registry re-introducing a pre-rename code (e.g. MID_NET,
+    NBL_MYCN_amp, LAML_ELN_Fav) that the canonicalizer would otherwise have to
+    keep mopping up at write time. See #302."""
+    from pirlygenes.gene_sets_cancer import _RENAMED_CODE_ALIASES
+
+    codes = set(cancer_type_registry()["code"].astype(str))
+    offenders = codes & set(_RENAMED_CODE_ALIASES)
+    assert not offenders, f"registry still carries pre-rename codes: {sorted(offenders)}"
+
+
+def test_expression_sources_yaml_uses_canonical_cancer_codes():
+    """The expression-sources registry must reference canonical cancer codes
+    only — no pre-rename aliases in any source's cancer_codes. See #302."""
+    from pirlygenes import downloads
+    from pirlygenes.gene_sets_cancer import _RENAMED_CODE_ALIASES
+
+    offenders = {}
+    for src in downloads.load_registry():
+        bad = set(src.cancer_codes) & set(_RENAMED_CODE_ALIASES)
+        if bad:
+            offenders[src.id] = sorted(bad)
+    assert not offenders, f"sources still list pre-rename cancer_codes: {offenders}"
+
+
 def test_registry_covers_all_33_tcga_codes():
     """Every TCGA code must appear in the registry or we'll lose
     compatibility with existing cancer-type detection code paths."""

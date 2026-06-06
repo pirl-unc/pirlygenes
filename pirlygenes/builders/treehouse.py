@@ -53,9 +53,8 @@ from ..expression.normalize import (
     technical_rna_mask as _technical_mask,
 )
 from ..expression.stats import (
-    REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
     upsert_to_shard,
 )
 from .gene_mapping import resolve_symbol
@@ -336,9 +335,8 @@ def _summarize_cohort(
     assign_stats(out, values, clean)
     out["processing_pipeline"] = pipeline
     out["notes"] = notes
-    out["tumor_origin"] = release.tumor_origin
     out["metastasis_site"] = pd.NA
-    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    return finalize_reference_rows(out, tumor_origin=release.tumor_origin)
 
 
 # Thin alias kept so the existing call site keeps its descriptive
