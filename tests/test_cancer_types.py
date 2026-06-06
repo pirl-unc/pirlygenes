@@ -82,6 +82,29 @@ def test_synonyms_reverse_resolution():
     assert ct.synonyms("not-a-cancer") == []
 
 
+def test_reverse_fusion_lookup():
+    # by exact fusion
+    assert ct.with_fusion("EWSR1-FLI1") == ["SARC_EWS"]
+    assert ct.with_fusion("EWSR1::FLI1") == ["SARC_EWS"]  # :: notation accepted
+    # by partner gene (either end)
+    by_ewsr1 = ct.with_fusion(partner="EWSR1")
+    assert "SARC_EWS" in by_ewsr1 and "SARC_DSRCT" in by_ewsr1
+    # by partner family
+    fet = ct.with_fusion(partner_family="FET")
+    assert "SARC_EWS" in fet and "SARC_DSRCT" in fet
+    ets = ct.with_fusion(partner_family="ETS")
+    assert {"PRAD", "SARC_EWS"} <= set(ets)
+    # defining_only narrows
+    assert ct.with_fusion(partner="ALK", defining_only=True) == ["SARC_IMT"]
+    # returns canonical codes that round-trip through the registry
+    for code in by_ewsr1:
+        assert ct.resolve(code) == code
+
+    import pytest
+    with pytest.raises(ValueError):
+        ct.with_fusion("EWSR1-FLI1", partner="EWSR1")  # exactly one selector
+
+
 def test_synonym_input_flows_through_accessors():
     # Old/alias inputs resolve through every accessor.
     assert ct.fusion_status("MID_NET") == ct.fusion_status("NET_MIDGUT")

@@ -2093,6 +2093,52 @@ def fusion_partners(gene, *, side=None):
     return {p for p in out if isinstance(p, str) and p.strip()}
 
 
+def cancer_types_with_fusion(
+    fusion=None, *, partner=None, partner_family=None,
+    defining_only=False, as_rows=False,
+):
+    """Reverse fusion lookup: cancer types matching a fusion, a partner gene, or
+    a partner *family* — the inverse of :func:`fusion_status` / :func:`cancer_fusions`.
+
+    Exactly one of:
+    - ``fusion="EWSR1-FLI1"`` — a directional ``5'-3'`` fusion string (case-
+      insensitive) -> types carrying that fusion (``SARC_EWS``);
+    - ``partner="EWSR1"`` — a partner gene on either end -> every type with a
+      fusion involving it (``SARC_EWS``, ``SARC_DSRCT``, ``SARC_CCS``, …);
+    - ``partner_family="FET"`` (or ``"ETS"``) — a partner-family tag from
+      ``gene_5prime_family`` / ``gene_3prime_family``.
+
+    ``defining_only`` restricts to is_defining rows. Returns sorted canonical
+    cancer codes, or the matching fusion-table rows when ``as_rows=True``.
+    """
+    given = [x for x in (fusion, partner, partner_family) if x is not None]
+    if len(given) != 1:
+        raise ValueError(
+            "pass exactly one of fusion=, partner=, or partner_family="
+        )
+    df = cancer_fusions(defining_only=defining_only)
+    g5 = df["gene_5prime"].astype(str).str.upper()
+    g3 = df["gene_3prime"].astype(str).str.upper()
+    if fusion is not None:
+        parts = str(fusion).upper().replace("::", "-").split("-")
+        if len(parts) != 2:
+            raise ValueError(f"fusion must look like '5GENE-3GENE'; got {fusion!r}")
+        a, b = (p.strip() for p in parts)
+        mask = (g5 == a) & (g3 == b)
+    elif partner is not None:
+        p = str(partner).strip().upper()
+        mask = (g5 == p) | (g3 == p)
+    else:
+        fam = str(partner_family).strip().upper()
+        f5 = df["gene_5prime_family"].astype(str).str.upper()
+        f3 = df["gene_3prime_family"].astype(str).str.upper()
+        mask = (f5 == fam) | (f3 == fam)
+    hits = df[mask]
+    if as_rows:
+        return hits.reset_index(drop=True)
+    return sorted({str(c) for c in hits["cancer_code"] if str(c).strip()})
+
+
 def protein_family(gene):
     """Protein/gene family of a fusion partner (e.g. EWSR1->FET, FLI1->ETS,
     BRD4->BET, PAX3->PAX, FOXO1->FOX, ALK->RTK), or ``None`` if the gene has no
