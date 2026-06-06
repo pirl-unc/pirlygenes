@@ -451,14 +451,14 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
         if amp_cols:
             summaries.append(_summarize_one(
                 gene_table, values[amp_cols],
-                cancer_code="NBL_MYCN_amp", project=project,
+                cancer_code="NBL_MYCNamp", project=project,
                 extra_notes=("MYCN status = Amplified per cBioPortal "
                              "nbl_target_2018_pub MYCN attribute."),
             ))
         if nonamp_cols:
             summaries.append(_summarize_one(
                 gene_table, values[nonamp_cols],
-                cancer_code="NBL_MYCN_nonamp", project=project,
+                cancer_code="NBL_MYCNnonamp", project=project,
                 extra_notes=(
                     f"MYCN status = Not Amplified per cBioPortal "
                     f"nbl_target_2018_pub MYCN attribute "
@@ -471,7 +471,7 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
             args.summary_output,
             combined,
             source_cohort=project.source_cohort,
-            cancer_codes=["NBL", "NBL_MYCN_amp", "NBL_MYCN_nonamp"],
+            cancer_codes=["NBL", "NBL_MYCNamp", "NBL_MYCNnonamp"],
         )
     else:
         summary = _summarize_one(

@@ -255,6 +255,26 @@ def round_stat_columns(
     return df
 
 
+def finalize_reference_rows(
+    rows: pd.DataFrame, *, tumor_origin: str | None = None,
+) -> pd.DataFrame:
+    """Round stat columns and project a builder's rows onto ``REFERENCE_COLUMNS``.
+
+    Replaces the copy-pasted ``round_stat_columns(out)[list(REFERENCE_COLUMNS)]``
+    idiom. Sets ``tumor_origin`` when given, then a **lenient** reindex onto
+    ``REFERENCE_COLUMNS`` — backfilling any schema column the builder predates
+    (e.g. ``metastasis_site``) as NaN instead of the strict ``[list(...)]``
+    select that ``KeyError``s when a column isn't present. ``upsert_to_shard``
+    still validates ``tumor_origin``, so a row can never reach the shard with it
+    unset.
+    """
+    out = rows
+    if tumor_origin is not None:
+        out = out.copy()
+        out["tumor_origin"] = tumor_origin
+    return round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
+
+
 def _validate_tumor_origin(
     rows: pd.DataFrame,
     *,
@@ -496,6 +516,7 @@ __all__ = [
     "assign_stats",
     "numeric_stat_columns",
     "round_stat_columns",
+    "finalize_reference_rows",
     "upsert_to_shard",
     "upsert_samples_manifest",
 ]

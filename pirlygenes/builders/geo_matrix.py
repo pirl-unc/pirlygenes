@@ -32,9 +32,8 @@ from ..expression.normalize import (
     technical_rna_mask as _technical_mask,
 )
 from ..expression.stats import (
-    REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
     upsert_to_shard,
 )
 from .gene_mapping import (
@@ -423,9 +422,8 @@ def build_source(
             f"Per-sample expression from {source.source_cohort} (n={len(cols)}). "
             f"Unit-normalized to TPM; tech-RNA-zeroed; v5.3 stats."
         )
-        out["tumor_origin"] = source.tumor_origin
         out["metastasis_site"] = source.metastasis_site if source.metastasis_site else pd.NA
-        out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+        out = finalize_reference_rows(out, tumor_origin=source.tumor_origin)
         summaries.append(out)
         counts_by_code[code] = len(cols)
         print(f"    {code}: n={len(cols)} → {len(out)} gene rows")

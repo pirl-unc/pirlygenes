@@ -51,9 +51,8 @@ import pandas as pd
 from .geo_matrix import _clean_tpm
 from .treehouse import _build_or_load_symbol_mapping
 from ..expression.stats import (
-    REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
     upsert_to_shard,
 )
 
@@ -441,9 +440,8 @@ def build_microarray_source(
         f"in absolute magnitude — preserves within-sample gene rank only. "
         f"Citation: {citation}. {extra_notes}"
     ).strip()
-    out["tumor_origin"] = tumor_origin
     out["metastasis_site"] = metastasis_site if metastasis_site else pd.NA
-    out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    out = finalize_reference_rows(out, tumor_origin=tumor_origin)
 
     upsert_to_shard(
         summary_output,

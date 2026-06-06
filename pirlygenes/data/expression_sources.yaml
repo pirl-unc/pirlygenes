@@ -169,8 +169,8 @@ sources:
   - id: treehouse-polya-25-01
     category: expression
     cancer_codes:
-      [ATRT, EWS, HEPB, MBL, NUTM, OS,
-       RMS_ARMS, RMS_ERMS, RMS_PRMS, RMS_SSRMS,
+      [ATRT, SARC_EWS, HEPB, MBL, NUTM, SARC_OS,
+       SARC_RMS_ARMS, SARC_RMS_ERMS, SARC_RMS_PRMS, SARC_RMS_SSRMS,
        SARC_LMS, SARC_LPS_UNSPEC, SARC_MYXFIB, SARC_SYN, SARC_UPS]
     source_type: treehouse-compendium
     url: https://public.gi.ucsc.edu/~ekephart/public-data/#tumor_25.01_polya
@@ -204,7 +204,7 @@ sources:
 
   - id: treehouse-ribod-25-01
     category: expression
-    cancer_codes: [CHOR, RB]
+    cancer_codes: [SARC_CHOR, RB]
     source_type: treehouse-compendium
     url: https://public.gi.ucsc.edu/~ekephart/public-data/#tumor_25.01_ribodeplete
     builder: scripts/sweep_treehouse_ribod_cohorts.py
@@ -230,7 +230,7 @@ sources:
 
   - id: beataml-ohsu-2022
     category: expression
-    cancer_codes: [LAML_APL, LAML_ELN_Adv, LAML_ELN_Fav, LAML_ELN_Int]
+    cancer_codes: [LAML_APL, LAML_ELNadv, LAML_ELNfav, LAML_ELNint]
     source_type: summary-only-import
     url: https://biodev.github.io/BeatAML2/
     builder: scripts/build_beataml_reference_expression.py
@@ -245,7 +245,7 @@ sources:
 
   - id: gse118014-pannet
     category: expression
-    cancer_codes: [PANNET]
+    cancer_codes: [NET_PANCREAS]
     source_type: recount3
     accession: GSE118014
     recount3_srp: SRP156049
@@ -263,7 +263,7 @@ sources:
 
   - id: gse299759-chon
     category: expression
-    cancer_codes: [CHON]
+    cancer_codes: [SARC_CHON]
     source_type: summary-only-import
     accession: GSE299759
     builder: scripts/build_chon_reference_expression.py
@@ -274,7 +274,7 @@ sources:
 
   - id: gse239531-chordoma
     category: expression
-    cancer_codes: [CHOR]
+    cancer_codes: [SARC_CHOR]
     source_type: summary-only-import
     accession: GSE239531
     builder: scripts/build_chordoma_gse239531_reference_expression.py
@@ -311,7 +311,7 @@ sources:
 
   - id: target-nbl
     category: expression
-    cancer_codes: [NBL_MYCN_amp, NBL_MYCN_nonamp]
+    cancer_codes: [NBL_MYCNamp, NBL_MYCNnonamp]
     source_type: summary-only-import
     project_id: TARGET-NBL
     builder: scripts/build_target_subprojects.py
@@ -821,7 +821,7 @@ sources:
 
   - id: drmetrics-lnen-2020
     category: expression
-    cancer_codes: [LUNG_NET_LC, LUNG_NET_LCNEC]
+    cancer_codes: [NET_LUNG, NEC_LUNG_LARGECELL]
     source_type: github-release
     builder: scripts/build_lnen_drmetrics_reference_expression.py
     source_cohort: DRMETRICS_ALCALA_2019_LNEN
@@ -865,7 +865,7 @@ sources:
 
   - id: gse98894-midnet
     category: expression
-    cancer_codes: [MID_NET, PANNET, REC_NET]
+    cancer_codes: [NET_MIDGUT, NET_PANCREAS, NET_RECTAL]
     source_type: recount3
     accession: GSE98894
     recount3_srp: SRP107025

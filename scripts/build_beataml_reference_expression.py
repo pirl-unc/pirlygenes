@@ -137,11 +137,11 @@ def _classify(diag: str) -> str | None:
     if diag in APL_DIAGS:
         return "LAML_APL"
     if diag in FAV_DIAGS:
-        return "LAML_ELN_Fav"
+        return "LAML_ELNfav"
     if diag in ADV_DIAGS:
-        return "LAML_ELN_Adv"
+        return "LAML_ELNadv"
     if diag in INT_DIAGS:
-        return "LAML_ELN_Int"
+        return "LAML_ELNint"
     return None
 
 
@@ -261,7 +261,7 @@ def main() -> int:
     # Per-subtype summarize + upsert
     summaries = []
     cancer_codes = []
-    for subtype in ("LAML_APL", "LAML_ELN_Fav", "LAML_ELN_Int", "LAML_ELN_Adv"):
+    for subtype in ("LAML_APL", "LAML_ELNfav", "LAML_ELNint", "LAML_ELNadv"):
         cols = sub_series[sub_series == subtype].index.tolist()
         if not cols:
             print(f"  skipping {subtype}: no samples")
