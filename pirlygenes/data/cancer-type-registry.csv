@@ -1,7 +1,7 @@
 code,name,family,primary_tissue,primary_template,parent_code,subtype_key,expression_source,source_cohort,source_pmid,notes,mixture_cohort,pediatric,differentiation,viral_etiology,viral_agent,fusion_driven,fusion_driver
 ACC,Adrenocortical Carcinoma,endocrine,adrenal_cortex,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False,False,,none,,none,
 BLCA,Bladder Urothelial Carcinoma,carcinoma-gu,bladder,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False,False,,none,,none,
-BRCA,Breast Invasive Carcinoma,carcinoma-breast,breast,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Umbrella — use PAM50 subtypes for subtype-aware inference,False,False,,none,,defining,ETV6-NTRK3
+BRCA,Breast Invasive Carcinoma,carcinoma-breast,breast,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Umbrella — use PAM50 subtypes for subtype-aware inference,False,False,,none,,subtype,ETV6-NTRK3
 BRCA_LumA,Luminal A,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50,PMID:26451490,ER+/PR+ HER2-; endocrine-first,False,False,,none,,none,
 BRCA_LumB,Luminal B,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50,PMID:26451490,ER+ proliferative; endocrine + chemo,False,False,,none,,none,
 BRCA_HER2,HER2-enriched,carcinoma-breast,breast,solid_primary,BRCA,,TCGA/PAM50,TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50,PMID:26451490,ERBB2-amp; HER2-directed therapy,False,False,,none,,none,
@@ -19,13 +19,13 @@ HNSC_HPVneg,HPV- HNSC,carcinoma-head-neck,oral_cavity,solid_primary,HNSC,,TCGA/H
 KICH,Kidney Chromophobe,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,,False,False,,none,,none,
 KIRC,Kidney Renal Clear Cell,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,VHL-driven,False,False,,none,,none,
 KIRP,Kidney Renal Papillary,carcinoma-gu,kidney,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Type 1 (MET) + Type 2 lumped,False,False,,none,,none,
-LAML,Acute Myeloid Leukemia,heme-myeloid,bone_marrow,heme_marrow,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Umbrella — see APL / ELN subtypes,False,False,,none,,defining,RUNX1-RUNX1T1; CBFB-MYH11; KMT2A-MLLT3; KMT2A-MLLT10; KMT2A-ELL; KMT2A-MLLT1; DEK-NUP214; NUP98-NSD1; NUP98-KDM5A; RBM15-MKL1
+LAML,Acute Myeloid Leukemia,heme-myeloid,bone_marrow,heme_marrow,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Umbrella — see APL / ELN subtypes,False,False,,none,,subtype,RUNX1-RUNX1T1; CBFB-MYH11; KMT2A-MLLT3; KMT2A-MLLT10; KMT2A-ELL; KMT2A-MLLT1; DEK-NUP214; NUP98-NSD1; NUP98-KDM5A; RBM15-MKL1
 LAML_APL,Acute Promyelocytic Leukemia,heme-myeloid,bone_marrow,heme_marrow,LAML,apl,BEATAML,BEATAML_OHSU_2022,PMID:36109543,PML-RARA; ATRA + ATO chemo-free cure,False,False,,none,,defining,PML-RARA; ZBTB16-RARA; NPM1-RARA
 LAML_ELNfav,AML ELN2017 Favorable,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,NPM1+/FLT3- or CBF; chemo-sensitive,False,False,,none,,none,
 LAML_ELNint,AML ELN2017 Intermediate,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,Mixed; individualized therapy,False,False,,none,,none,
 LAML_ELNadv,AML ELN2017 Adverse,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,TP53/complex karyo; transplant-first,False,False,,none,,none,
-LGG,Lower Grade Glioma,cns,cerebrum,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,IDH-mutant (per 2021 WHO); vorasidenib-eligible,False,False,,none,,defining,KIAA1549-BRAF
-LIHC,Liver Hepatocellular Carcinoma,carcinoma-gi,liver,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HBV/HCV/NASH etiologies,False,False,,subset,HBV;HCV,defining,DNAJB1-PRKACA
+LGG,Lower Grade Glioma,cns,cerebrum,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,IDH-mutant (per 2021 WHO); vorasidenib-eligible,False,False,,none,,subtype,KIAA1549-BRAF
+LIHC,Liver Hepatocellular Carcinoma,carcinoma-gi,liver,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HBV/HCV/NASH etiologies,False,False,,subset,HBV;HCV,subtype,DNAJB1-PRKACA
 LUAD,Lung Adenocarcinoma,carcinoma-lung,lung,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,EGFR / KRAS / STK11-KEAP1 axes — therapy-gating,False,False,,none,,subtype,EML4-ALK; CD74-ROS1; EZR-ROS1; SLC34A2-ROS1; KIF5B-RET; CCDC6-RET; CD74-NRG1; SLC3A2-NRG1
 LUAD_EGFR,EGFR-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TREEHOUSE_POLYA_25_01_TCGA_LUAD_MUT,PMID:25079552,Osimertinib-first; often never-smoker,False,False,,none,,none,
 LUAD_KRAS,KRAS-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TREEHOUSE_POLYA_25_01_TCGA_LUAD_MUT,PMID:25079552,Sotorasib (G12C); smoker-associated,False,False,,none,,none,

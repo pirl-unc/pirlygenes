@@ -82,6 +82,54 @@ def test_synonyms_reverse_resolution():
     assert ct.synonyms("not-a-cancer") == []
 
 
+def test_info_is_json_serializable():
+    """info() must be JSON-serializable — numpy scalars (e.g. numpy.bool_ for
+    pediatric) coerced to native Python types (#307)."""
+    import json
+    info = ct.info("SARC_RMS_ARMS")
+    json.dumps(info)  # raises TypeError if a numpy scalar leaked through
+    assert isinstance(info["pediatric"], bool)
+    assert info["tmb"] is None or isinstance(info["tmb"], float)
+
+
+def test_resolve_strict_flag():
+    """resolve(strict=False) is the non-raising lookup; strict=True (default)
+    raises on unknown (#307)."""
+    assert ct.resolve("not-a-cancer-type", strict=False) is None
+    assert ct.resolve("", strict=False) is None
+    import pytest
+    with pytest.raises(ValueError):
+        ct.resolve("not-a-cancer-type")
+
+
+def test_no_annotations_namespace_leak():
+    """`from __future__ import annotations` must not leak `annotations` into the
+    package namespace (#307)."""
+    assert not hasattr(ct, "annotations")
+
+
+def test_fusion_subtype_not_defining_for_bulk_umbrellas():
+    """Bulk umbrellas whose fusion defines a rare SUBTYPE are 'subtype', not
+    'defining' (#308): BRCA (secretory), LIHC (fibrolamellar), LGG (pilocytic),
+    LAML (CBF/KMT2A AML)."""
+    for code in ("BRCA", "LIHC", "LGG", "LAML"):
+        assert ct.fusion_status(code)["status"] == "subtype"
+    # genuine fusion-defined entities stay 'defining'
+    assert ct.fusion_status("SARC_EWS")["status"] == "defining"
+
+
+def test_family_display_names():
+    """Families expose human-readable display names (#309)."""
+    assert ct.family_name("heme-bcell") == "B-cell neoplasm"
+    assert ct.family_name("sarcoma") == "Sarcoma"
+    fams = ct.families()
+    assert len(fams) >= 20
+    # every registry family resolves to a non-empty display label
+    assert all(isinstance(v, str) and v for v in fams.values())
+    # unknown family falls back to a de-slugged title, never raises
+    assert ct.family_name("some-new-slug") == "Some new slug"
+
+
 def test_reverse_fusion_lookup():
     # by exact fusion
     assert ct.with_fusion("EWSR1-FLI1") == ["SARC_EWS"]

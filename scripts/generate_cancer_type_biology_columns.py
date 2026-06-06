@@ -34,6 +34,12 @@ REGISTRY = Path("pirlygenes/data/cancer-type-registry.csv")
 # driver to name) — curated, cited in cancer-fusions.csv notes.
 FUSION_RARE = {"SARC_GIST"}  # NTRK/FGFR-rearranged in the KIT/PDGFRA-WT subset
 
+# Bulk umbrella codes whose cancer-fusions.csv ``is_defining`` rows actually
+# define a rare SUBTYPE, not the bulk entity, so the bulk code is 'subtype' not
+# 'defining' (#308): BRCA→secretory carcinoma (ETV6-NTRK3), LIHC→fibrolamellar
+# (DNAJB1-PRKACA), LGG→pilocytic astrocytoma (KIAA1549-BRAF), LAML→CBF/KMT2A AML.
+FUSION_SUBTYPE_OVERRIDE = {"BRCA", "LIHC", "LGG", "LAML"}
+
 # Well-established viral etiologies: code -> (etiology, agent). etiology is
 # 'defining' (virus defines the entity/subtype) or 'subset' (drives a
 # meaningful minority). Everything not listed is ('none', '').
@@ -69,6 +75,9 @@ def _fusion_columns(fus: pd.DataFrame) -> tuple[dict, dict]:
         drivers = list(dict.fromkeys(drivers))
         driven[code] = "defining" if is_def.any() else ("subtype" if drivers else "none")
         driver[code] = "; ".join(drivers)
+    for c in FUSION_SUBTYPE_OVERRIDE:
+        if driven.get(c) == "defining":
+            driven[c] = "subtype"  # fusion defines a rare subtype, not the bulk
     for c in FUSION_RARE:
         driven[c] = "rare"
     return driven, driver
