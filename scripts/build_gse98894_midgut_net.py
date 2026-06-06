@@ -278,7 +278,7 @@ def main() -> int:
         assign_stats(out, sub, clean)
         out["processing_pipeline"] = (
             f"gse98894_alvarez_2018_net_raw_counts_to_tpm_ensembl"
-            f"{args.ensembl_release}_clean_tpm_v1"
+            f"{args.ensembl_release}_clean_tpm_v4"
         )
         out["tumor_origin"] = "metastasis"
         out["metastasis_site"] = "liver"

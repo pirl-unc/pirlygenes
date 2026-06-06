@@ -1,10 +1,13 @@
 """The single shared clean-TPM helper (expression.normalize).
 
 Previously copy-pasted into ~12 builders/scripts; these lock the one
-definition. The default clean-TPM removal set (v2) zeroes technical-RNA rows
-(mtDNA / rRNA-like / mt-like pseudogene / polyA-bias lncRNA) **and**
-ribosomal-protein mRNA + pseudogenes, then renormalizes each sample column to
-1e6. ``technical_rna_mask`` remains the strict technical-only subset.
+definition. The clean-TPM removal set is technical-RNA rows (mtDNA / rRNA-like
+/ mt-like pseudogene / polyA-bias lncRNA) **and** ribosomal-protein mRNA +
+pseudogenes. As of clean_tpm_v4 the **default** transform is
+``censored_fill="fixed_fraction"``: that removal (technical) block is forced to
+25% of the 1e6 budget and the kept (biological) block to 75%, each renormalized
+within its group (the ``"reference"`` / ``"typical"`` / ``"zero"`` modes remain
+available). ``technical_rna_mask`` is the strict technical-only subset.
 """
 from __future__ import annotations
 

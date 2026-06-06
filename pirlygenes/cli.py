@@ -530,6 +530,37 @@ def cmd_data_prune(args: argparse.Namespace) -> int:
     return 0
 
 
+def _builder_accepted_flags(builder_path) -> set[str]:
+    """Return the set of long ``--flags`` a builder script's argparse accepts.
+
+    Discovered by running the script with ``--help`` and scraping the usage
+    text. Cached per path. Lets the dispatcher pass only flags a given builder
+    actually declares (they share a conventional vocabulary but not uniformly).
+    """
+    import re
+    import subprocess
+
+    cached = _builder_accepted_flags._cache.get(str(builder_path))
+    if cached is not None:
+        return cached
+    flags: set[str] = set()
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(builder_path), "--help"],
+            capture_output=True, text=True, timeout=120,
+        )
+        flags = set(re.findall(r"(--[a-zA-Z][a-zA-Z0-9-]+)", proc.stdout))
+    except Exception:
+        # On any failure, fall back to the conventional trio so behavior
+        # matches the historical uniform-args dispatch.
+        flags = {"--summary-output", "--samples-output", "--cache-dir"}
+    _builder_accepted_flags._cache[str(builder_path)] = flags
+    return flags
+
+
+_builder_accepted_flags._cache = {}
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     """Dispatch to scripts/build_*.py per the YAML registry's `builder` field.
 
@@ -648,11 +679,25 @@ def cmd_build(args: argparse.Namespace) -> int:
             "--samples-output", samples_out,
         ]
     else:
-        cmd += [
-            "--summary-output", summary_out,
-            "--samples-output", samples_out,
-            "--cache-dir", cache_dir,
-        ]
+        # Generic per-sample builders. They share a small, heterogeneous set of
+        # conventional flags (--summary-output / --samples-output / --cache-dir)
+        # but not every script declares all three. Introspect the script's
+        # accepted flags via --help and pass only the supported subset, so a
+        # builder that omits e.g. --samples-output isn't handed an arg it would
+        # reject. Source-specific selection flags come from the YAML
+        # `builder_args` (e.g. ["--only", "lps"]).
+        accepted = _builder_accepted_flags(builder_path)
+        candidates = {
+            "--summary-output": summary_out,
+            "--samples-output": samples_out,
+            "--cache-dir": cache_dir,
+        }
+        for flag, value in candidates.items():
+            if flag in accepted:
+                cmd += [flag, value]
+
+    # Source-specific fixed args declared in the registry (e.g. --only lps).
+    cmd += list(src.builder_args)
 
     # Pass through any extra user-supplied args
     extra = list(args.build_args or [])

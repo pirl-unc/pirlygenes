@@ -451,7 +451,7 @@ def censored_gene_reference():
 
 def clean_tpm_matrix(values, removable=None, *, gene_table=None,
                      exclude_ribosomal_proteins: bool = True,
-                     censored_fill: str = "reference", censored_budget=None,
+                     censored_fill: str = "fixed_fraction", censored_budget=None,
                      reference=None, technical_fraction: float = 0.25):
     """Reference clean-TPM transform on a gene×sample matrix.
 
@@ -461,9 +461,10 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
     case the mask is built via :func:`clean_tpm_removal_mask`, which **excludes
     ribosomal proteins by default**.
 
-    ``censored_fill`` controls what happens to the censored (removable) rows:
+    ``censored_fill`` controls what happens to the censored (removable) rows
+    (``"fixed_fraction"`` is the default as of clean_tpm_v4 — see below):
 
-    - ``"reference"`` (default): replace **each** censored gene with its own
+    - ``"reference"``: replace **each** censored gene with its own
       **fixed reference value** — its median TPM across the Treehouse PolyA
       compendium (:func:`censored_gene_reference`) — then renormalize each
       column to 1e6. Because the censored block is per-gene and identical in
@@ -476,9 +477,10 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
     - ``"typical"``: hold the censored block at one constant ``censored_budget``
       (median censored TPM sum across ``values`` if ``None``) split equally
       across censored genes — cohort-derived, single value.
-    - ``"fixed_fraction"``: two-compartment normalization — force the censored
-      (technical) block to a constant ``technical_fraction`` of the 1e6 budget
-      (default 25%) and the kept (biological) block to the remaining
+    - ``"fixed_fraction"`` (**default**, clean_tpm_v4): two-compartment
+      normalization — force the censored (technical) block to a constant
+      ``technical_fraction`` of the 1e6 budget (default 25%) and the kept
+      (biological) block to the remaining
       ``1 - technical_fraction`` (75%), **renormalizing within each group** so
       relative expression inside each compartment is preserved. This removes the
       cross-sample/pipeline *technical-fraction* confound (every sample is 25%

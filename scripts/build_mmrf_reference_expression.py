@@ -38,7 +38,7 @@ CANCER_CODE = "MM"
 SOURCE_COHORT = "MMRF_COMMPASS"
 SOURCE_PROJECT = "MMRF CoMMpass"
 SOURCE_URL = "https://portal.gdc.cancer.gov/projects/MMRF-COMMPASS"
-PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v1"
+PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v4"
 SOURCE_VERSION = (
     "GDC STAR - Counts, GENCODE v36; Ensembl IDs harmonized to "
     "Ensembl release 112; queried 2026-05-18"

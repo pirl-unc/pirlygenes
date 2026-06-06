@@ -5,7 +5,7 @@ Replaces the summary-only imports for NBL_MYCN_amp / nonamp, RT,
 and WILMS with per-sample TPM rollups. Pattern mirrors
 ``scripts/build_mmrf_reference_expression.py`` — open GDC STAR-counts
 download, deterministic one-sample-per-case filter, harmonize to
-Ensembl 112, technical-RNA zero + per-sample renormalize, compute
+Ensembl 112, two-compartment fixed-fraction clean-TPM (technical 25% / biological 75%, each renormalized within its group), compute
 the v5.3 stat suite, upsert to the shard directory.
 
 NBL split: MYCN amplification status from cBioPortal
@@ -61,7 +61,7 @@ PROJECTS = [
         project_id="TARGET-NBL",
         source_cohort="TARGET_NBL_2018",
         source_project="TARGET Neuroblastoma",
-        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v1",
+        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v4",
         cancer_code="NBL",  # subtype-split into NBL_MYCN_amp / NBL_MYCN_nonamp
         primary_diagnosis_keywords=("neuroblastoma", "ganglioneuroblastoma"),
         cache_subdir="target-nbl",
@@ -70,7 +70,7 @@ PROJECTS = [
         project_id="TARGET-RT",
         source_cohort="TARGET_RT_2017",
         source_project="TARGET Rhabdoid Tumor",
-        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v1",
+        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v4",
         cancer_code="RT",
         primary_diagnosis_keywords=("rhabdoid",),
         cache_subdir="target-rt",
@@ -79,7 +79,7 @@ PROJECTS = [
         project_id="TARGET-WT",
         source_cohort="TARGET_WT_2015",
         source_project="TARGET Wilms Tumor",
-        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v1",
+        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v4",
         cancer_code="WILMS",
         primary_diagnosis_keywords=("nephroblastoma", "wilms"),
         cache_subdir="target-wt",

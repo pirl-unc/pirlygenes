@@ -171,7 +171,7 @@ def build(src: Recount3Source, summary_output: Path) -> int:
         )
         assign_stats(out, tpm[cols], clean[cols])
         out["processing_pipeline"] = (
-            f"recount3_{src.srp.lower()}_gencode_v26_gene_sums_to_clean_tpm_v1"
+            f"recount3_{src.srp.lower()}_gencode_v26_gene_sums_to_clean_tpm_v4"
         )
         out["tumor_origin"] = src.tumor_origin
         if src.metastasis_site:

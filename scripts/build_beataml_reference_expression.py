@@ -87,7 +87,7 @@ GDC_DATA_ENDPOINT = "https://api.gdc.cancer.gov/data"
 
 SOURCE_COHORT = "BEATAML_OHSU_2022"
 SOURCE_PROJECT = "BeatAML 1.0"
-PIPELINE = "gdc_beataml_star_counts_tpm_ensembl112_clean_tpm_v1"
+PIPELINE = "gdc_beataml_star_counts_tpm_ensembl112_clean_tpm_v4"
 
 # A TargetProject-shaped record reused for _summarize_one's signature.
 BEATAML_PROJECT = TargetProject(

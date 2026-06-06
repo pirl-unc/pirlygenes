@@ -266,7 +266,7 @@ sources:
     cancer_codes: [CHON]
     source_type: summary-only-import
     accession: GSE299759
-    builder: scripts/import_cancer_specific_expression.py
+    builder: scripts/build_chon_reference_expression.py
     unit: raw counts   # builder is raw_counts→TPM (GEO supplementary counts)
     expected_size_gb: 0
     citation: GSE299759 (Meijer 2026)
@@ -303,7 +303,7 @@ sources:
     cancer_codes: [SCLC]
     source_type: summary-only-import
     url: https://www.nature.com/articles/nature14664
-    builder: scripts/import_cancer_specific_expression.py
+    builder: scripts/build_sclc_reference_expression.py
     unit: FPKM   # George 2015 published FPKM; our builder is fpkm_to_tpm
     expected_size_gb: 0
     citation: SCLC U.Cologne 2015 (George 2015, PMID 26168399)
@@ -897,6 +897,7 @@ sources:
     cancer_codes: [MTC]
     source_type: geo-microarray
     builder: scripts/build_v5_5_microarray_cohorts.py
+    builder_args: ["--only", "mtc"]
     accession: GSE32662
     platform: GPL6480
     citation: GSE32662 (Pringle 2012 medullary thyroid carcinoma)
@@ -917,6 +918,7 @@ sources:
     cancer_codes: [SARC_WDLPS, SARC_DDLPS, SARC_PLEOLPS, SARC_MYXLPS]
     source_type: geo-microarray
     builder: scripts/build_v5_5_microarray_cohorts.py
+    builder_args: ["--only", "lps"]
     accession: GSE30929
     platform: GPL96
     citation: PMID 22241786 (Singer 2007 MSKCC 140-sample LPS classifier)

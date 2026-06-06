@@ -27,7 +27,10 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
-from ..expression.normalize import clean_tpm_matrix as _clean_tpm
+from ..expression.normalize import (
+    clean_tpm_matrix as _clean_tpm,
+    technical_rna_mask as _technical_mask,
+)
 from ..expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -305,7 +308,8 @@ def _gene_lengths_kb_for_index(
 
 
 # ─── Tech-RNA filter + clean TPM: imported from expression.normalize ────────
-# (_clean_tpm / _technical_mask are aliases of the shared helper above.)
+# (_clean_tpm / _technical_mask are aliases of the shared helpers, re-exported
+# at the top of this module so builders can pull both from one place.)
 
 
 # ─── End-to-end build ───────────────────────────────────────────────────────
@@ -413,7 +417,7 @@ def build_source(
         pipeline_stem = source.pipeline_stem or source.source_cohort.lower()
         out["processing_pipeline"] = (
             f"{pipeline_stem}_{source.unit.lower().replace('(','').replace(')','').replace('+','plus')}"
-            f"_to_tpm_ensembl{ensembl_release}_clean_tpm_v3"
+            f"_to_tpm_ensembl{ensembl_release}_clean_tpm_v4"
         )
         out["notes"] = source.notes or (
             f"Per-sample expression from {source.source_cohort} (n={len(cols)}). "
@@ -448,4 +452,7 @@ __all__ = [
     "normalize_to_tpm",
     "harmonize_gene_ids",
     "build_source",
+    # Re-exported shared clean-TPM helpers (builders import them from here).
+    "_clean_tpm",
+    "_technical_mask",
 ]

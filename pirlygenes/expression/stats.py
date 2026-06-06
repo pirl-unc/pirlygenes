@@ -341,6 +341,21 @@ def upsert_to_shard(
         allow_unset=allow_unset_tumor_origin,
     )
 
+    # Canonicalize cancer codes on write so a builder still emitting a
+    # pre-rename code (e.g. recount3 routing → "MID_NET"/"PANNET") lands
+    # under the current registry code ("NET_MIDGUT"/"NET_PANCREAS"). This
+    # is the single chokepoint that keeps shards free of rename-orphan
+    # rows: the cross-code upsert below then replaces the canonical rows
+    # instead of leaving a stale copy under the old name. Lazy import to
+    # avoid coupling the expression layer to the registry at module load.
+    from ..gene_sets_cancer import canonical_cancer_code
+
+    new_rows = new_rows.copy()
+    new_rows["cancer_code"] = (
+        new_rows["cancer_code"].map(canonical_cancer_code)
+    )
+    cancer_codes = [canonical_cancer_code(c) for c in cancer_codes]
+
     out_path = _Path(str(summary_output))
     if out_path.suffix == ".gz" or out_path.is_file():
         shard_dir = out_path.parent / "cancer-reference-expression"
@@ -395,6 +410,11 @@ def upsert_to_shard(
     shard_path = shard_dir / f"{source_cohort}.csv.gz"
     if shard_path.exists():
         existing = pd.read_csv(shard_path, low_memory=False)
+        # Canonicalize the existing shard's codes too, so a stale row written
+        # under a pre-rename name (e.g. an earlier build's "MID_NET") is folded
+        # into the canonical namespace and matched by the (already canonical)
+        # cancer_codes removal list — otherwise it survives as a rename-orphan.
+        existing["cancer_code"] = existing["cancer_code"].map(canonical_cancer_code)
         keep = ~existing["cancer_code"].astype(str).isin(cancer_codes)
         merged = pd.concat(
             [

@@ -133,7 +133,7 @@ def main() -> int:
         assign_stats(out, sub_values, clean)
         out["processing_pipeline"] = (
             f"sclc_ucologne_2015_tf_dominance_ensembl"
-            f"{args.ensembl_release}_clean_tpm_v1"
+            f"{args.ensembl_release}_clean_tpm_v4"
         )
         out["notes"] = (
             f"SCLC {code.removeprefix('SCLC_')}-dominant subtype "
@@ -143,7 +143,10 @@ def main() -> int:
             "NMF-derived classifier; rigorous version would replace "
             "this with their published per-sample labels."
         )
-        out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+        out["tumor_origin"] = "primary"  # George 2015 SCLC is a primary-tumor cohort
+        # reindex (not strict select): tumor_origin / metastasis_site aren't set
+        # by assign_stats; reindex backfills metastasis_site as NaN.
+        out = round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
         summaries.append(out)
         print(f"  {code}: n={len(cols)} → {len(out)} gene rows")
 

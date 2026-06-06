@@ -5,8 +5,8 @@ Replaces the summary-only import for PANNET with per-sample
 log2(TPM+1) → TPM rollup. Source file is a single HUGO-keyed
 log2(TPM+1) TSV (33 samples), same shape as the Treehouse matrix
 just smaller, so we reuse the Treehouse-builder primitives
-(inverse log2, HUGO → Ensembl harmonization, technical-RNA zero +
-per-sample renormalize, full v5.3 stat suite).
+(inverse log2, HUGO → Ensembl harmonization, two-compartment fixed-fraction
+clean-TPM, full v5.3 stat suite).
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ SOURCE_URL = (
 CANCER_CODE = "PANNET"
 SOURCE_COHORT = "GSE118014_ALVAREZ_2018"
 SOURCE_PROJECT = "GEO"
-PIPELINE = "gse118014_pannet_log2tpm_to_tpm_ensembl{ensembl}_clean_tpm_v1"
+PIPELINE = "gse118014_pannet_log2tpm_to_tpm_ensembl{ensembl}_clean_tpm_v4"
 
 
 def _download(url: str, dest: Path) -> Path:
@@ -118,7 +118,7 @@ def main() -> int:
         "Source data is RSEM/STAR log2(TPM+1) keyed by HUGO symbol. "
         f"HUGO symbols mapped to Ensembl release {args.ensembl_release}; "
         "duplicate symbol mappings dropped. TPM_clean computed per-sample "
-        "by technical-RNA zeroing + denominator rescaling."
+        "by two-compartment fixed-fraction clean-TPM (technical 25% / biological 75%, each renormalized within its group)."
     )
     out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
     print(f"  built {len(out)} gene rows for {CANCER_CODE}")

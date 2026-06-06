@@ -224,6 +224,26 @@ def resolve_cancer_type(cancer_type):
     )
 
 
+def canonical_cancer_code(code):
+    """Map a possibly-renamed cancer code to its canonical current code.
+
+    Pure, registry-free alias lookup over :data:`_RENAMED_CODE_ALIASES`
+    (case-insensitive): a pre-rename code like ``"MID_NET"`` or
+    ``"PANNET"`` returns its current name (``"NET_MIDGUT"`` /
+    ``"NET_PANCREAS"``); any other value — including already-canonical
+    codes and non-codes — is returned unchanged. Unlike
+    :func:`resolve_cancer_type` this never validates against the registry
+    or raises, so the shard-writer can normalize codes on every upsert
+    without coupling the expression layer to the registry view.
+    """
+    if code is None or code != code:  # None or NaN (NaN != NaN)
+        return code
+    raw = str(code).strip()
+    if raw in _RENAMED_CODE_ALIASES:
+        return _RENAMED_CODE_ALIASES[raw]
+    return _RENAMED_CODE_ALIASES_UPPER.get(raw.upper(), raw)
+
+
 def cancer_type_info(cancer_type):
     """Resolve any synonym/alias/display-name to a cancer type and return its
     **canonical info** as a dict — the one call to go from a messy input to

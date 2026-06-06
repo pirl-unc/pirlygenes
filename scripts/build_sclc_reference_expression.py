@@ -3,8 +3,8 @@
 
 Source: SCLC UCologne 2015 (George 2015, PMID 26168399). Per-sample
 RNA-seq FPKM matrix downloaded via cBioPortal datahub (Git LFS), then
-converted to TPM by per-column sum-to-1e6, then technical-RNA zero +
-renormalize, then v5.3 stat suite.
+converted to TPM by per-column sum-to-1e6, then two-compartment fixed-fraction
+clean-TPM, then v5.3 stat suite.
 
 Replaces the old summary-only import for SCLC.
 """
@@ -40,7 +40,7 @@ SOURCE_URL = (
 CANCER_CODE = "SCLC"
 SOURCE_COHORT = "SCLC_UCOLOGNE_2015"
 SOURCE_PROJECT = "University of Cologne"
-PIPELINE = "sclc_ucologne_2015_fpkm_to_tpm_ensembl{ensembl}_clean_tpm_v1"
+PIPELINE = "sclc_ucologne_2015_fpkm_to_tpm_ensembl{ensembl}_clean_tpm_v4"
 
 
 def _download(url: str, dest: Path) -> Path:
@@ -129,10 +129,13 @@ def main() -> int:
         "FPKM → TPM by per-sample sum-to-1e6 (the per-sample TPM "
         f"identity). HUGO symbols harmonized to Ensembl release "
         f"{args.ensembl_release}; duplicate symbol mappings dropped. "
-        "TPM_clean computed per-sample by technical-RNA zeroing + "
+        "TPM_clean computed per-sample by two-compartment fixed-fraction clean-TPM (technical 25% / biological 75%, each renormalized within its group) + "
         "denominator rescaling."
     )
-    out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    out["tumor_origin"] = "primary"  # George 2015 is a primary-tumor cohort
+    # reindex (not strict select): tumor_origin / metastasis_site aren't set
+    # by assign_stats; reindex backfills metastasis_site as NaN.
+    out = round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
     print(f"  built {len(out)} gene rows for {CANCER_CODE}")
 
     upsert_to_shard(

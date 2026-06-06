@@ -39,7 +39,7 @@ CANCER_CODE = "BL"
 SOURCE_COHORT = "CGCI_BLGSP"
 SOURCE_PROJECT = "CGCI Burkitt Lymphoma Genome Sequencing Project"
 SOURCE_URL = "https://portal.gdc.cancer.gov/projects/CGCI-BLGSP"
-PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v1"
+PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v4"
 SOURCE_VERSION = (
     "GDC STAR - Counts, GENCODE v36; Ensembl IDs harmonized to "
     "Ensembl release 112; queried 2026-05-19"

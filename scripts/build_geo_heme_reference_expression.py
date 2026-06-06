@@ -54,7 +54,7 @@ SAMPLE_COLUMNS = [
     "lineage_label",
 ]
 GEO_FTP = "https://ftp.ncbi.nlm.nih.gov/geo/series"
-PIPELINE_PREFIX = "geo_heme_expression_ensembl112_clean_tpm_v1"
+PIPELINE_PREFIX = "geo_heme_expression_ensembl112_clean_tpm_v4"
 
 
 @dataclass(frozen=True)
