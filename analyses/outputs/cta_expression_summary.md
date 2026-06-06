@@ -6,18 +6,18 @@ Cohorts: top 30 by max CTA TPM (n≥10); CTAs ordered by breadth (# cohorts with
 
 | CTA | # cohorts >30 | peak median TPM | peak cohort |
 | --- | ---: | ---: | --- |
-| PRAME | 16 | 361.7 | NBL_MYCNamp |
-| XAGE1B | 4 | 138.6 | LUAD_KRAS |
-| XAGE1A | 4 | 214.8 | LUAD_KRAS |
-| CTAG1A | 2 | 466.6 | SARC_MYXLPS |
-| DPPA5 | 2 | 328.7 | TGCT |
-| RGPD4 | 2 | 107.1 | SARC_PLEOLPS |
-| EGFL6 | 2 | 92.0 | SARC_MYXLPS |
-| UTF1 | 2 | 52.9 | TGCT |
-| TUBA3C | 2 | 45.5 | SARC_PLEOLPS |
-| CTAGE6 | 1 | 37.5 | MTC |
-| RIMBP3 | 1 | 38.8 | MTC |
-| DPEP3 | 1 | 38.0 | MTC |
-| SPACA3 | 1 | 37.9 | MTC |
-| TEX35 | 1 | 36.2 | MTC |
-| CTAGE1 | 1 | 37.0 | MTC |
+| PRAME | 15 | 338.1 | NBL_MYCNamp |
+| XAGE1B | 4 | 125.6 | LUAD_KRAS |
+| XAGE1A | 4 | 201.4 | LUAD_KRAS |
+| CTAG1A | 2 | 413.1 | SARC_MYXLPS |
+| RGPD4 | 2 | 90.3 | SARC_PLEOLPS |
+| TUBA3C | 2 | 38.4 | SARC_PLEOLPS |
+| CT47B1 | 1 | 51.1 | MTC |
+| PRM3 | 1 | 30.5 | MTC |
+| LRRC36 | 1 | 30.8 | SARC_MYXLPS |
+| CT47A11 | 1 | 31.2 | MTC |
+| ZPBP | 1 | 31.7 | MTC |
+| CTAGE9 | 1 | 34.2 | MTC |
+| GOLGA6L6 | 1 | 36.2 | MTC |
+| SYCP3 | 1 | 38.1 | TGCT |
+| SPATA4 | 1 | 46.1 | MTC |
