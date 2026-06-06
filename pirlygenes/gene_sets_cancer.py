@@ -2030,14 +2030,14 @@ def fusion_surrogate_genes_for_cancer(cancer_code):
     df = get_data("fusion-surrogate-expression")
     out = []
     for _, row in df.iterrows():
-        scope = str(row.get("cancer_scope", "") or "")
+        scope = str(row.get("cancer_code", "") or "")
         scope_codes = {code.strip() for code in scope.split(";") if code.strip()}
         if cancer_code in scope_codes or "pan_cancer" in scope_codes:
             out.append(
                 {
-                    "gene": row.get("gene"),
+                    "gene": row.get("surrogate_gene"),
                     "fusion_class": row.get("fusion_class"),
-                    "role": row.get("role"),
+                    "role": row.get("surrogate_role"),
                     "rationale": row.get("rationale", ""),
                 }
             )
