@@ -82,6 +82,22 @@ def test_synonyms_reverse_resolution():
     assert ct.synonyms("not-a-cancer") == []
 
 
+def test_alcl_curated_consistently():
+    """ALCL (anaplastic large cell lymphoma) added as a registry entity, curated
+    consistently across registry + markers + fusion tables."""
+    info = ct.info("ALCL")
+    assert info["family"] == "heme-tcell"
+    assert info["primary_tissue"] == "lymph_node"
+    assert info["fusion_driven"] == "subtype" and info["fusion_driver"] == "NPM1-ALK"
+    assert info["burden_category"] == "non_hodgkin_lymphoma"
+    # defining markers present (CD30=TNFRSF8, ALK)
+    from pirlygenes.gene_sets_cancer import lineage_gene_symbols
+    assert {"TNFRSF8", "ALK"} <= set(lineage_gene_symbols("ALCL"))
+    # fusion detail table + reverse lookup agree with the registry
+    assert "ALCL" in ct.with_fusion(partner="ALK")
+    assert ct.with_fusion("NPM1-ALK") == ["ALCL"]
+
+
 def test_info_is_json_serializable():
     """info() must be JSON-serializable — numpy scalars (e.g. numpy.bool_ for
     pediatric) coerced to native Python types (#307)."""
@@ -142,8 +158,9 @@ def test_reverse_fusion_lookup():
     assert "SARC_EWS" in fet and "SARC_DSRCT" in fet
     ets = ct.with_fusion(partner_family="ETS")
     assert {"PRAD", "SARC_EWS"} <= set(ets)
-    # defining_only narrows
-    assert ct.with_fusion(partner="ALK", defining_only=True) == ["SARC_IMT"]
+    # defining_only narrows to entities where the ALK fusion is defining
+    # (inflammatory myofibroblastic tumor + ALK+ ALCL)
+    assert ct.with_fusion(partner="ALK", defining_only=True) == ["ALCL", "SARC_IMT"]
     # returns canonical codes that round-trip through the registry
     for code in by_ewsr1:
         assert ct.resolve(code) == code

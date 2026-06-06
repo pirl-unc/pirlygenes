@@ -58,6 +58,9 @@ _MISSING_THERAPY_AXIS = frozenset(
         # data not yet built, so no therapy-axis panel is materialised yet.
         "BCC", "cSCC", "VSCC", "PENSCC", "VAGC", "URETH", "ANSC", "GBC",
         "EPN", "CRANIO", "DIPG", "PITNET",
+        # ALCL — curated entity (lineage/CD30+ALK biomarker+therapy present); no
+        # therapy-response signature materialised yet.
+        "ALCL",
     }
 )
 
