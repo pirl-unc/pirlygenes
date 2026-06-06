@@ -289,14 +289,19 @@ sources:
   - id: gse75885-sarc
     category: expression
     cancer_codes: [SARC_DDLPS, SARC_LGFMS, SARC_PLEOLPS]
-    source_type: summary-only-import
+    source_type: geo-rnaseq
     accession: GSE75885
-    builder: scripts/import_cancer_specific_expression.py
-    unit: TPM
-    expected_size_gb: 0
-    citation: GSE75885 (Delespaul 2017)
+    builder: scripts/build_gse75885_sarc_reference_expression.py
+    unit: RPKM   # processed matrix is RPKM-like; builder renormalizes to TPM
+    expected_size_gb: 0.02
+    citation: GSE75885 (Delespaul 2017, PMID 28278311)
+    library_prep: polyA RNA-seq   # Illumina HiSeq 2000
     special_handling: >
-      Soft-tissue sarcoma subtypes (DDLPS, LGFMS, PLEOLPS).
+      Soft-tissue sarcoma subtypes (DDLPS n=19, PLEOLPS n=4, LGFMS n=2) from the
+      GEO processed RNA-seq matrix (GSE75885_Expression_117_sarcomas.tsv.gz),
+      per-sample subtype from series-matrix !Sample_title. Per-sample build (#305)
+      replacing the lost summary-only import. The 117-sample matrix also holds
+      LMS/UPS/MFS/pleomorphic-RMS other sources already cover.
 
   - id: sclc-ucologne-2015
     category: expression
