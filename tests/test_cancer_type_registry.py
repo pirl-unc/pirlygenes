@@ -67,6 +67,45 @@ def test_no_registry_code_is_a_pre_rename_alias():
     assert not offenders, f"registry still carries pre-rename codes: {sorted(offenders)}"
 
 
+def test_fusion_surrogate_scope_codes_are_canonical():
+    """Every code in fusion-surrogate-expression.csv's ';'-separated cancer_code
+    scope must resolve to the registry, except the documented allowlist: the
+    'pan_cancer' sentinel and 'ALCL' (a real ALK+ entity not yet modeled —
+    tracked gap). Consumers match scope by exact string, so a non-canonical
+    code (e.g. 'EHE' vs 'SARC_EHE') silently misses the rule."""
+    from pirlygenes.load_dataset import get_data
+    from pirlygenes.gene_sets_cancer import resolve_cancer_type
+
+    allow = {"pan_cancer", "ALCL"}
+    df = get_data("fusion-surrogate-expression")
+    offenders = set()
+    for scope in df["cancer_code"].astype(str):
+        for code in (c.strip() for c in scope.split(";")):
+            if not code or code in allow:
+                continue
+            try:
+                resolve_cancer_type(code)
+            except ValueError:
+                offenders.add(code)
+    assert not offenders, f"non-canonical fusion-surrogate scope codes: {sorted(offenders)}"
+
+
+def test_fusion_surrogate_accessor_reads_current_schema():
+    """Regression: the accessor's column names must match the CSV
+    (cancer_code/surrogate_gene/surrogate_role). They had drifted to
+    cancer_scope/gene/role, so the accessor silently returned [] for every
+    input. A known cohort must yield its curated surrogates + the pan_cancer
+    NTRK fallback."""
+    from pirlygenes.gene_sets_cancer import fusion_surrogate_genes_for_cancer
+
+    ews = {d["gene"] for d in fusion_surrogate_genes_for_cancer("SARC_EWS")}
+    assert {"FATE1", "NR0B1"} <= ews            # EWSR1-FLI1 ectopic surrogates
+    assert {"NTRK1", "NTRK2", "NTRK3"} <= ews   # pan_cancer NTRK fallback
+    # canonicalized scope now reachable by the registry code
+    ehe = {d["gene"] for d in fusion_surrogate_genes_for_cancer("SARC_EHE")}
+    assert {"CTGF", "CYR61"} <= ehe
+
+
 def test_degenerate_subtype_pairs_use_canonical_codes():
     """Every cancer code referenced in degenerate-subtype-pairs (members and
     tiebreaker_mapping) must be canonical — no pre-rename aliases that resolve
