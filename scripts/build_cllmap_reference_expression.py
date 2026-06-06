@@ -230,7 +230,10 @@ def main() -> None:
         source_cohort="CLLMAP_2022",
         cancer_codes=["CLL"],
     )
-    manifest.to_csv(args.samples_output, index=False)
+    # Upsert (not bare overwrite): a plain to_csv here wiped every cohort built
+    # before CLLMAP from the shared samples manifest (the v5.20.0 truncation).
+    from pirlygenes.expression.stats import upsert_samples_manifest
+    upsert_samples_manifest(args.samples_output, manifest)
 
     print(
         f"Wrote {len(summary)} genes from {len(included)} included CLL samples "

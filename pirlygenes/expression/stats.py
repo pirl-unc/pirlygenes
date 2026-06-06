@@ -433,6 +433,53 @@ def upsert_to_shard(
     return merged
 
 
+_SAMPLE_MANIFEST_SORT = ["cancer_code", "source_cohort", "sample_id"]
+
+
+def upsert_samples_manifest(path, new_rows: pd.DataFrame) -> pd.DataFrame:
+    """Upsert per-sample provenance rows into the shared samples manifest.
+
+    The samples manifest
+    (``pirlygenes/data/cancer-reference-expression-samples.csv.gz``) is a single
+    un-sharded CSV recording which samples were included/excluded per
+    ``source_cohort``. Every sample-writing builder funnels through here so the
+    contract is enforced in one place (previously ~6 copy-pasted variants with
+    subtly different keys and a column-stripping bug).
+
+    Contract:
+    - **Replace** all rows for every ``source_cohort`` present in ``new_rows``;
+      **preserve** every other cohort's rows untouched.
+    - **Union the columns** of the existing manifest and ``new_rows`` so a
+      builder whose manifest carries a narrower column set never strips columns
+      (e.g. ``lineage_label``) from the cohorts it does not own — the bug that
+      let partial rebuilds silently corrupt foreign-cohort provenance.
+    """
+    from pathlib import Path as _Path
+
+    out_path = _Path(str(path))
+    new_rows = new_rows.copy()
+    cohorts = set(new_rows["source_cohort"].astype(str))
+
+    if out_path.exists():
+        existing = pd.read_csv(out_path, low_memory=False)
+        keep = ~existing["source_cohort"].astype(str).isin(cohorts)
+        # Order-preserving union: existing columns first, then any new ones.
+        cols = list(dict.fromkeys(list(existing.columns) + list(new_rows.columns)))
+        out = pd.concat(
+            [existing.loc[keep].reindex(columns=cols), new_rows.reindex(columns=cols)],
+            ignore_index=True,
+        )
+    else:
+        out = new_rows
+
+    sort_cols = [c for c in _SAMPLE_MANIFEST_SORT if c in out.columns]
+    if sort_cols:
+        out = out.sort_values(sort_cols, na_position="last").reset_index(drop=True)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(out_path, index=False)
+    return out
+
+
 __all__ = [
     "STAT_COLUMNS",
     "CLEAN_STAT_COLUMNS",
@@ -450,4 +497,5 @@ __all__ = [
     "numeric_stat_columns",
     "round_stat_columns",
     "upsert_to_shard",
+    "upsert_samples_manifest",
 ]

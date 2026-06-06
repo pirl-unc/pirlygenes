@@ -573,23 +573,10 @@ def _upsert_source_cohort(
 
 
 def _upsert_samples(path: Path, new_rows: pd.DataFrame, *, source_cohort: str) -> pd.DataFrame:
-    """Single-file upsert for the samples manifest (legacy schema).
-
-    The samples file is not sharded — it's one CSV tracking which
-    samples were included per source_cohort. Read-modify-write.
-    """
-    if path.exists():
-        existing = pd.read_csv(path)
-        keep = ~existing["source_cohort"].astype(str).eq(source_cohort)
-        out = pd.concat(
-            [existing[keep].reindex(columns=new_rows.columns), new_rows],
-            ignore_index=True,
-        )
-    else:
-        out = new_rows.copy()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
-    return out
+    """Delegates to the shared, column-union-preserving samples-manifest upsert
+    (cohorts to replace are derived from new_rows' own source_cohort values)."""
+    from pirlygenes.expression.stats import upsert_samples_manifest
+    return upsert_samples_manifest(path, new_rows)
 
 
 def main() -> None:

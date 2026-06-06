@@ -362,17 +362,10 @@ def _summarize_one(
 
 
 def _upsert_samples_manifest(path: Path, manifest: pd.DataFrame, source_cohort: str):
-    if path.exists():
-        existing = pd.read_csv(path)
-        keep = ~existing["source_cohort"].astype(str).eq(source_cohort)
-        out = pd.concat(
-            [existing[keep].reindex(columns=manifest.columns), manifest],
-            ignore_index=True,
-        )
-    else:
-        out = manifest.copy()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
+    # Delegates to the shared, column-union-preserving upsert (cohorts to
+    # replace are derived from the manifest's own source_cohort values).
+    from pirlygenes.expression.stats import upsert_samples_manifest
+    return upsert_samples_manifest(path, manifest)
 
 
 def _fetch_nbl_mycn(cache_path: Path) -> dict[str, str]:
