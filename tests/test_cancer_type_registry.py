@@ -76,7 +76,7 @@ def test_fusion_surrogate_scope_codes_are_canonical():
     from pirlygenes.load_dataset import get_data
     from pirlygenes.gene_sets_cancer import resolve_cancer_type
 
-    allow = {"pan_cancer", "ALCL"}
+    allow = {"pan_cancer"}  # the only legitimate non-registry scope sentinel
     df = get_data("fusion-surrogate-expression")
     offenders = set()
     for scope in df["cancer_code"].astype(str):
