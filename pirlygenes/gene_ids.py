@@ -299,23 +299,63 @@ def find_gene_name_from_ensembl_transcript_id(
     return name
 
 
+def _best_canonical_cds_length(gene) -> int:
+    """Longest CDS length (nt) among the gene's protein-coding transcripts — a
+    proxy for 'longer CDS on the canonical transcript' (pyensembl doesn't flag
+    canonical, and the canonical is ~always the longest complete CDS)."""
+    best = 0
+    for t in gene.transcripts:
+        if not t.is_protein_coding:
+            continue
+        try:
+            cds = t.coding_sequence
+            if cds:
+                best = max(best, len(cds))
+        except Exception:
+            continue
+    return best
+
+
+def _best_transcript_support(gene) -> int:
+    """Quality of the gene's best transcript as a sortable score (higher is
+    better). Ensembl TSL is 1 (best) .. 5 (worst); we invert to -min(TSL), and
+    fall back to 0 when no TSL is annotated."""
+    levels = []
+    for t in gene.transcripts:
+        sl = getattr(t, "support_level", None)
+        try:
+            levels.append(int(sl))
+        except (TypeError, ValueError):
+            continue
+    return -min(levels) if levels else 0
+
+
 def pick_best_gene(genes):
+    """Choose one gene when a symbol maps to several. Preference order
+    (most→least important): (1) a protein-coding gene over a non-coding one;
+    (2) higher-quality best transcript (lowest Ensembl TSL); (3) longer CDS on
+    the canonical (longest-CDS) transcript; (4) more coding transcripts; then a
+    stable name tie-break. Symbols resolve to ONE Ensembl gene id; that id is
+    the only key used for joins/comparisons downstream."""
     if len(genes) == 0:
         raise ValueError("Expected at least one gene, got none")
+    if len(genes) == 1:
+        return genes[0]  # fast path: no collision, skip the (costly) CDS probe
 
     def sort_key(g):
-        num_protein_coding = sum([t.is_protein_coding for t in g.transcripts])
+        coding = 1 if getattr(g, "biotype", "") == "protein_coding" else 0
+        num_protein_coding = sum(t.is_protein_coding for t in g.transcripts)
         return (
-            num_protein_coding,
+            coding,                          # (1) prefer the coding gene
+            _best_transcript_support(g),     # (2) higher-quality transcript
+            _best_canonical_cds_length(g),   # (3) longer canonical CDS
+            num_protein_coding,              # (4) more coding transcripts
             -g.name.count("."),
             len(g.name),
             g.name,
         )
 
-    sorted_genes = sorted(genes, key=sort_key, reverse=True)
-    if len(sorted_genes) == 0:
-        raise ValueError("Lost genes after sorting: %s" % genes)
-    return sorted_genes[0]
+    return sorted(genes, key=sort_key, reverse=True)[0]
 
 
 def find_gene_and_ensembl_release_by_name(
