@@ -221,31 +221,14 @@ def _extended_fixture():
     return gene_table, values
 
 
-def test_extended_level_adds_extended_housekeeping():
-    from pirlygenes.expression.normalize import clean_tpm_matrix as ctm
-    gene_table, values = _extended_fixture()
-    default = clean_tpm_removal_mask(gene_table).tolist()
-    extended = clean_tpm_removal_mask(gene_table, level="extended").tolist()
-    syms = gene_table["Symbol"].tolist()
-    # default = technical (MT-CO1) + ribosomal protein (RPL13A)
-    assert {syms[i] for i, m in enumerate(default) if m} == {"MT-CO1", "RPL13A"}
-    # extended also removes translation factor (EEF1A1), splicing (SRSF1),
-    # classic HK (ACTB); keeps real biology (TP53, MYC)
-    ext_removed = {syms[i] for i, m in enumerate(extended) if m}
-    assert {"EEF1A1", "SRSF1", "ACTB"} <= ext_removed
-    assert "TP53" not in ext_removed and "MYC" not in ext_removed
-    # extended clean still lands biological on the 750k v4 budget
-    import numpy as np
-    clean = ctm(values, gene_table=gene_table, level="extended")
-    em = np.array(extended)
-    np.testing.assert_allclose(clean.to_numpy()[~em].sum(axis=0), [750_000.0] * 2)
-
-
-def test_clean_tpm_invalid_level_raises():
+def test_default_mask_is_technical_plus_ribosomal_only():
+    # Translation factor (EEF1A1) and splicing (SRSF1) are NOT in the clean-TPM
+    # removal set — only technical + ribosomal protein are (no extended level).
     gene_table, _ = _extended_fixture()
-    import pytest
-    with pytest.raises(ValueError):
-        clean_tpm_removal_mask(gene_table, level="bogus")
+    removed = {gene_table["Symbol"][i] for i, m
+               in enumerate(clean_tpm_removal_mask(gene_table).tolist()) if m}
+    assert removed == {"MT-CO1", "RPL13A"}
+    assert "EEF1A1" not in removed and "SRSF1" not in removed
 
 
 def test_rank_normalize_within_sample_percentile():
@@ -265,12 +248,13 @@ def test_drop_technical_genes_biology_only_view():
     frame = gene_table.copy()
     for c in values.columns:
         frame[c] = values[c].values
-    # default: drops technical (MT-CO1) + ribosomal protein (RPL13A)
+    # drops technical (MT-CO1) + ribosomal protein (RPL13A); keeps biology
+    # (translation/splicing are not censored — no extended level)
     bio = drop_technical_genes(frame)
     assert set(bio["Symbol"]) == {"EEF1A1", "SRSF1", "TP53", "ACTB", "MYC"}
-    # extended: also drops translation/splicing/classic-HK
-    bio_ext = drop_technical_genes(frame, level="extended")
-    assert set(bio_ext["Symbol"]) == {"TP53", "MYC"}
+    # technical-only keeps the ribosomal protein too
+    bio_tech = drop_technical_genes(frame, exclude_ribosomal_proteins=False)
+    assert "RPL13A" in set(bio_tech["Symbol"])
     # sample columns pass through untouched
     assert list(values.columns) == [c for c in bio.columns
                                     if c not in ("Symbol", "Ensembl_Gene_ID")]
@@ -286,3 +270,51 @@ def test_zscore_normalize_standardizes_each_column():
     # zero-variance column -> all zeros (no NaN/inf)
     flat = pd.DataFrame({"S1": [7.0, 7.0, 7.0]})
     assert (zscore_normalize(flat)["S1"] == 0.0).all()
+
+
+# ---- canonical censored-gene list: single source of truth + CTA-safe ----
+
+def test_canonical_list_schema_and_categories():
+    from pirlygenes.load_dataset import get_data
+    df = get_data("clean-tpm-censored-genes")
+    assert {"Ensembl_Gene_ID", "Symbol", "category"} <= set(df.columns)
+    assert set(df["category"]) == {"technical", "ribosomal_protein"}
+    assert len(df) > 2000
+
+
+def test_canonical_list_is_cta_safe():
+    """The list is CTA-excluded by construction, so the ribosomal-protein CTA
+    (RPL10L) and the histone CTA (H1-6) are never censored — no runtime
+    protect-subtract needed."""
+    import pandas as pd
+    from pirlygenes.load_dataset import get_data
+    from pirlygenes.gene_sets_cancer import CTA_evidence
+
+    censored = get_data("clean-tpm-censored-genes")
+    censored_ens = set(censored["Ensembl_Gene_ID"].astype(str))
+    cta_ens = set(CTA_evidence()["Ensembl_Gene_ID"].dropna().astype(str)
+                  .str.split(".").str[0])
+    assert censored_ens.isdisjoint(cta_ens)
+    # RPL10L (ENSG00000165496) and H1-6 (ENSG00000187475) specifically kept
+    gt = pd.DataFrame({"Symbol": ["RPL10L", "H1-6", "RPL13A"],
+                       "Ensembl_Gene_ID": ["ENSG00000165496", "ENSG00000187475",
+                                           "ENSG00000142541"]})
+    mask = clean_tpm_removal_mask(gt).tolist()
+    assert mask == [False, False, True]  # CTAs kept, real ribosomal censored
+
+
+def test_removal_mask_membership_matches_canonical_list():
+    """clean_tpm_removal_mask is exactly the canonical list (ENSG membership),
+    so there is one source of truth used everywhere."""
+    import pandas as pd
+    from pirlygenes.load_dataset import get_data
+    df = get_data("clean-tpm-censored-genes")
+    gt = df.rename(columns={"category": "_cat"})[["Symbol", "Ensembl_Gene_ID"]].copy()
+    # add a couple of biological genes that must NOT be censored
+    gt = pd.concat([gt, pd.DataFrame({
+        "Symbol": ["TP53", "EGFR"],
+        "Ensembl_Gene_ID": ["ENSG00000141510", "ENSG00000146648"]})],
+        ignore_index=True)
+    mask = clean_tpm_removal_mask(gt)
+    removed = set(gt.loc[mask.to_numpy(), "Ensembl_Gene_ID"])
+    assert removed == set(df["Ensembl_Gene_ID"].astype(str))

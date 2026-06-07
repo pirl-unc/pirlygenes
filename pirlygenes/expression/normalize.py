@@ -498,28 +498,36 @@ _RIBOSOMAL_PROTEIN_GROUPS = frozenset(
 )
 
 
-def _qc_group_mask(gene_table, groups):
-    """Boolean Series — True for rows whose gene QC group is in ``groups``."""
-    import pandas as pd
+@functools.lru_cache(maxsize=2)
+def _clean_tpm_censored_ids(include_ribosomal: bool) -> frozenset:
+    """Unversioned ENSGs censored by the clean-TPM transform, read from the
+    single canonical explicit list ``clean-tpm-censored-genes.csv`` (materialized
+    once from :func:`classify_gene_qc`, categorized, and CTA-excluded — see
+    ``scripts/generate_clean_tpm_censored_genes.py``). ``include_ribosomal``
+    toggles the ``ribosomal_protein`` category on top of the always-included
+    ``technical`` category."""
+    from ..load_dataset import get_data
+    df = get_data("clean-tpm-censored-genes", copy=False)
+    if not include_ribosomal:
+        df = df[df["category"].astype(str) == "technical"]
+    return frozenset(df["Ensembl_Gene_ID"].astype(str).str.split(".").str[0])
 
-    want = {str(g) for g in groups}
-    qc = [
-        classify_gene_qc(symbol, ensembl_id=ensg)
-        for symbol, ensg in zip(gene_table["Symbol"], gene_table["Ensembl_Gene_ID"])
-    ]
-    return pd.Series([k.group in want for k in qc], index=gene_table.index)
+
+def _ensg_unversioned(gene_table):
+    return gene_table["Ensembl_Gene_ID"].astype(str).str.split(".").str[0]
 
 
 def technical_rna_mask(gene_table):
     """Boolean Series — True for *technical-RNA* rows only (mtDNA / mt-like
-    pseudogene / rRNA-like / polyA-bias lncRNA). This is the strict technical
-    set; for the default clean-TPM removal set (which also drops ribosomal
-    proteins) use :func:`clean_tpm_removal_mask`.
+    pseudogene / rRNA-like / polyA-bias lncRNA), via the canonical censored-gene
+    list (the ``technical`` category). The strict technical set; for the default
+    clean-TPM removal set (which also drops ribosomal proteins) use
+    :func:`clean_tpm_removal_mask`.
 
-    ``gene_table`` is any frame with ``Symbol`` and ``Ensembl_Gene_ID``
-    columns; the returned mask is indexed like it.
+    ``gene_table`` is any frame with an ``Ensembl_Gene_ID`` column; the returned
+    mask is indexed like it.
     """
-    return _qc_group_mask(gene_table, _TECHNICAL_RNA_GROUPS)
+    return _ensg_unversioned(gene_table).isin(_clean_tpm_censored_ids(False))
 
 
 @functools.lru_cache(maxsize=1)
@@ -554,64 +562,47 @@ def _default_protected_symbols():
 
 
 def clean_tpm_removal_mask(gene_table, *, exclude_ribosomal_proteins: bool = True,
-                           protect=None, level: str = "default"):
-    """Boolean Series of rows zeroed by the clean-TPM transform.
+                           protect=None):
+    """Boolean Series of rows zeroed by the clean-TPM transform — the genes in
+    the canonical censored-gene list (:func:`_clean_tpm_censored_ids`).
 
-    ``level="default"`` censors the technical-RNA groups (mtDNA + mt-like
-    pseudogene + rRNA-like + the two polyA-bias lncRNAs MALAT1/NEAT1) plus, when
-    ``exclude_ribosomal_proteins`` (the default), ribosomal-protein mRNA +
-    pseudogenes — and **nothing else**.
+    The list is the **single source of truth** for the technical/biological
+    split: technical-RNA (mtDNA + mt-like pseudogene + rRNA-like + the polyA-bias
+    lncRNAs MALAT1/NEAT1) plus, when ``exclude_ribosomal_proteins`` (the
+    default), ribosomal-protein mRNA + pseudogenes — and nothing else. It is
+    CTA-safe by construction: curated cancer targets are excluded at generation,
+    so a CTA ribosomal-protein paralog (``RPL10L``) or histone CTA (``H1-6``) is
+    never censored (no runtime special-case needed).
 
-    ``level="extended"`` additionally censors the **extended-housekeeping** set
-    (#293): translation factors (EEF/EIF), mito-ribosomal (MRPL/MRPS), hnRNPs,
-    SR/snRNP splicing factors, proteasome subunits, cyclophilins, tubulins,
-    rearranged Ig/TR segments, and the classic housekeeping symbols
-    (ACTB/GAPDH/…) — via :func:`gene_sets_cancer.is_extended_housekeeping_symbol`.
-    These survive the technical-only step (they're protein-coding) but are the
-    most-expressed, most multi-mapping-sensitive genes, so RSEM vs STAR split
-    the zero-sum TPM budget into them very differently; removing them from the
-    denominator strips the **compositional** part of the cross-pipeline offset
-    identically for both sources (PRAME 0.55×→0.68×, genome-wide median |log2|
-    0.87→0.74 on the paired TCGA test). Use this for cross-source work, then
-    compare in :func:`zscore_normalize` / :func:`rank_normalize` space.
-
-    Either way the result is minus any curated cancer-target gene (a target is
-    never censored even if its symbol matches a censored group; e.g. the CTA
-    ``RPL10L``). ``exclude_ribosomal_proteins=False`` gives the strict
-    technical-only set (== :func:`technical_rna_mask`); ``protect`` overrides the
-    protected-target symbols.
+    ``exclude_ribosomal_proteins=False`` gives the strict technical-only set
+    (== :func:`technical_rna_mask`). ``protect`` optionally protects *additional*
+    symbols beyond the list's baked-in cancer targets (it can only keep more
+    genes, never censor a target).
     """
-    if level not in ("default", "extended"):
-        raise ValueError("level must be 'default' or 'extended'")
-    groups = set(_TECHNICAL_RNA_GROUPS)  # mtDNA/mt-pseudogene + rRNA + polyA-lncRNA
-    if exclude_ribosomal_proteins:
-        groups |= set(_RIBOSOMAL_PROTEIN_GROUPS)
-    mask = _qc_group_mask(gene_table, groups)
-    if level == "extended":
-        from .. import gene_sets_cancer as gsc
-        ext = gene_table["Symbol"].astype(str).map(
-            lambda s: gsc.is_extended_housekeeping_symbol(s, scope="both"))
-        mask = mask | ext.to_numpy().astype(bool)
-    prot = _default_protected_symbols() if protect is None else set(protect)
-    if prot:
-        keep = ~gene_table["Symbol"].astype(str).isin(prot).to_numpy()
+    if "Ensembl_Gene_ID" not in gene_table.columns:
+        raise ValueError(
+            "clean_tpm_removal_mask needs an 'Ensembl_Gene_ID' column — the "
+            "canonical censored-gene list is keyed on ENSG (resolve symbols to "
+            "Ensembl ids first)")
+    ids = _clean_tpm_censored_ids(bool(exclude_ribosomal_proteins))
+    mask = _ensg_unversioned(gene_table).isin(ids)
+    if protect:
+        keep = ~gene_table["Symbol"].astype(str).isin(set(protect))
         mask = mask & keep
     return mask
 
 
 def drop_technical_genes(df, *, label_col: str = "Symbol",
-                         id_col: str = "Ensembl_Gene_ID", level: str = "default",
+                         id_col: str = "Ensembl_Gene_ID",
                          exclude_ribosomal_proteins: bool = True, protect=None):
     """Return ``df`` with the clean-TPM censored rows removed — the biology-only
     view of a gene×value frame.
 
-    Uses the same :func:`clean_tpm_removal_mask` as the clean-TPM transform, so
-    the dropped set is exactly what clean-TPM censors: technical RNA (mtDNA /
-    rRNA-like / mt-pseudogene / polyA-bias lncRNA) plus ribosomal proteins by
-    default, plus the full extended-housekeeping block when
-    ``level="extended"``, minus any curated target in ``protect``. ``df`` must
-    carry ``label_col`` (Symbol) and ``id_col`` (Ensembl_Gene_ID); all other
-    columns pass through untouched.
+    Uses the same canonical censored-gene list as the clean-TPM transform
+    (:func:`clean_tpm_removal_mask`): technical RNA plus ribosomal proteins by
+    default (``exclude_ribosomal_proteins=False`` keeps the technical-only set),
+    CTA-safe by construction. ``df`` must carry ``id_col`` (Ensembl_Gene_ID);
+    all other columns pass through untouched.
 
     Intended for distance/clustering and cross-sample comparison that should
     ride on biological signal rather than the technical compartment — in
@@ -622,19 +613,19 @@ def drop_technical_genes(df, *, label_col: str = "Symbol",
     """
     import pandas as pd
 
-    if label_col not in df.columns:
-        raise ValueError(f"drop_technical_genes needs a {label_col!r} column")
+    if id_col not in df.columns:
+        raise ValueError(f"drop_technical_genes needs an {id_col!r} column")
     gene_table = pd.DataFrame(
         {
-            "Symbol": df[label_col].astype(str),
-            "Ensembl_Gene_ID": (df[id_col].astype(str) if id_col in df.columns
-                                else pd.Series([""] * len(df), index=df.index)),
+            "Symbol": (df[label_col].astype(str) if label_col in df.columns
+                       else pd.Series([""] * len(df), index=df.index)),
+            "Ensembl_Gene_ID": df[id_col].astype(str),
         },
         index=df.index,
     )
     removable = clean_tpm_removal_mask(
         gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins,
-        protect=protect, level=level)
+        protect=protect)
     return df.loc[~removable.to_numpy()].reset_index(drop=True)
 
 
@@ -652,14 +643,8 @@ def censored_gene_reference():
 def clean_tpm_matrix(values, removable=None, *, gene_table=None,
                      exclude_ribosomal_proteins: bool = True,
                      censored_fill: str = "fixed_fraction", censored_budget=None,
-                     reference=None, technical_fraction: float = 0.25,
-                     level: str = "default"):
+                     reference=None, technical_fraction: float = 0.25):
     """Reference clean-TPM transform on a gene×sample matrix.
-
-    ``level`` (``"default"`` / ``"extended"``) selects the censored set when the
-    mask is built from ``gene_table`` — see :func:`clean_tpm_removal_mask`.
-    ``"extended"`` additionally removes the extended-housekeeping compositional
-    block for cross-pipeline comparability (#293).
 
     ``values`` is genes (rows) × samples (cols). Provide either an explicit
     boolean ``removable`` mask (aligned to ``values.index``) or a ``gene_table``
@@ -705,8 +690,7 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
         if gene_table is None:
             raise ValueError("clean_tpm_matrix needs either removable or gene_table")
         removable = clean_tpm_removal_mask(
-            gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins,
-            level=level)
+            gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins)
     import numpy as np
     import pandas as pd
 
@@ -783,10 +767,9 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
 # RSEM vs GDC/STAR): the per-gene offset is gene-specific and multiplicative
 # (genome-wide median ~1.7x), so renormalizing to 1e6 doesn't fix it. But
 # *rank* is preserved (log2(TPM+1) rank r~0.99). The documented rule:
-#   - within a source: absolute clean TPM (technical-only) is fine;
-#   - across sources:  clean_tpm_matrix(level="extended") to strip the
-#     compositional offset, then compare in rank/z space (below). Never
-#     average raw TPM across pipelines.
+#   - within a source: absolute clean TPM is fine;
+#   - across sources:  compare in rank/z space (below), never average raw TPM
+#     across pipelines.
 
 
 def rank_normalize(values):
