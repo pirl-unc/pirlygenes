@@ -23,6 +23,7 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.builders.gene_mapping import resolve_symbol
+from pirlygenes.gene_ids import strip_version as _strip_version
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -71,10 +72,6 @@ BL_DIAGNOSES = {
     "Burkitt lymphoma, NOS (Includes all variants)",
     "Burkitt-like lymphoma",
 }
-
-
-def _strip_version(value: object) -> str:
-    return str(value).split(".", 1)[0]
 
 
 def _gdc_filters() -> dict:
