@@ -52,6 +52,10 @@ CACHE = Path.home() / ".cache" / "pirlygenes" / "expression"
 _SOURCES = [
     ("treehouse-polya-25-01", "TREEHOUSE_POLYA_25_01", "Treehouse"),
     ("treehouse-ribod-25-01", "TREEHOUSE_RIBOD_25_01", "Treehouse"),
+    # Neuroendocrine axis (#318) — per-sample parquets built by
+    # scripts/build_ne_per_sample_parquets.py from the cached NE source data.
+    ("gse118014-pannet", "GSE118014_ALVAREZ_2018", "GEO"),
+    ("sclc-ucologne-2015", "SCLC_UCOLOGNE_2015", "UCologne"),
 ]
 
 
