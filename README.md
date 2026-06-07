@@ -42,14 +42,14 @@ trufflepig run --sample expr.tsv --workspace out --cancer-type PRAD
 
 Most accessors are re-exported from the top-level package, so
 `from pirlygenes import pan_cancer_expression` works for any of the
-~75 names in `pirlygenes.__all__`. The submodule paths below are the
+~85 names in `pirlygenes.__all__`. The submodule paths below are the
 canonical home and stay stable across versions.
 
 ### Gene-set panels and resolvers
 
 ```python
 from pirlygenes.gene_sets_cancer import (
-    CTA_gene_names,                   # ~258 cancer-testis antigens
+    CTA_gene_names,                   # ~260 cancer-testis antigens
     surface_protein_gene_names,       # 2,799 surfaceome genes
     cancer_surfaceome_gene_names,     # 147 tumor-specific surface targets
     therapy_target_gene_names,        # modality: "ADC", "CAR-T", "TCR-T",
