@@ -180,7 +180,7 @@ def main() -> int:
 
     print()
     print("SARC_MYXLPS: deferred. TCGA-SARC has no myxoid liposarcoma; "
-          "needs external GEO source (see docs/expression-data-audit.md).")
+          "needs external GEO source (see docs/archive/expression-data-audit-2026-05.md).")
     return 0
 
 
