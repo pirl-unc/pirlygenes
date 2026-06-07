@@ -42,6 +42,7 @@ imports are flat::
 
 from .accessors import (
     available_cancer_expression_references,
+    available_representative_cohorts,
     cancer_enriched_genes,
     cancer_expression,
     cancer_expression_reference_status,
@@ -56,6 +57,7 @@ from .accessors import (
     log2_transform,
     normalize_to_housekeeping,
     pan_cancer_expression,
+    representative_cohort_samples,
     technical_rna_gene_ids,
     tumor_up_vs_matched_normal,
 )
@@ -90,6 +92,8 @@ __all__ = [
     "available_cancer_expression_references",
     "cancer_expression_reference_status",
     "cancer_expression_source_candidates",
+    "representative_cohort_samples",
+    "available_representative_cohorts",
     "tumor_up_vs_matched_normal",
     "heme_tumor_up_vs_matched_normal",
     "cancer_expression",
