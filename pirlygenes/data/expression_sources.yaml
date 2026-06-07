@@ -86,7 +86,7 @@ sources:
     unit: TPM
     library_prep: polyA RNA-seq   # CLL-map Broad Illumina TruSeq mRNA (polyA)
     expected_size_gb: 1
-    citation: https://www.broadinstitute.org/cllmap
+    citation: https://data.broadinstitute.org/cllmap/downloads.html
     special_handling: >
       Single bundled TPM TSV; GENCODE v19 IDs harmonized to Ensembl 112.
 
