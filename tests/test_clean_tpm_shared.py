@@ -17,6 +17,8 @@ import pandas as pd
 from pirlygenes.expression.normalize import (
     clean_tpm_matrix,
     clean_tpm_removal_mask,
+    normalize_technical_rna_columns,
+    normalize_technical_rna_long_table,
     technical_rna_mask,
 )
 
@@ -129,3 +131,73 @@ def test_technical_only_mask_keeps_ribo_protein():
     gene_table, values = _fixture()
     tech = clean_tpm_matrix(values, technical_rna_mask(gene_table), censored_fill="zero")
     assert (tech.loc[3] > 0).all()   # RPL13A kept under the strict technical set
+
+
+# ---- runtime path consistency with the builder transform (#311) ----
+
+def _wide_df():
+    gene_table, values = _fixture()
+    vals = values.rename(columns={"S1": "TPM_S1", "S2": "TPM_S2"})
+    return pd.concat([gene_table, vals], axis=1)
+
+
+def test_runtime_wrapper_v4_matches_builder_clean_tpm():
+    """normalize_technical_rna_columns(censored_fill='fixed_fraction') produces
+    the SAME values as the builder's clean_tpm_matrix — the runtime path now
+    matches how packaged references are built (#311)."""
+    gene_table, values = _fixture()
+    ref = clean_tpm_matrix(values, gene_table=gene_table,
+                           censored_fill="fixed_fraction")
+    out, info = normalize_technical_rna_columns(_wide_df(),
+                                                censored_fill="fixed_fraction")
+    rt = out[["TPM_S1", "TPM_S2"]].to_numpy()
+    np.testing.assert_allclose(rt, ref.to_numpy())
+    # biological compartment lands on the 750k v4 budget; technical on 250k
+    mask = clean_tpm_removal_mask(gene_table).to_numpy()
+    np.testing.assert_allclose(out[["TPM_S1", "TPM_S2"]][~mask].sum().to_numpy(),
+                               [750_000.0, 750_000.0])
+    assert info["removed_feature_mode"] == "fixed_fraction"
+
+
+def test_runtime_wrapper_default_is_legacy_zero_unchanged():
+    """Default censored_fill='zero' keeps the legacy zero-and-renormalize on the
+    technical-only set (no regression): RPL13A (ribosomal protein) is NOT in the
+    zero path's removal set, so it stays nonzero."""
+    out, info = normalize_technical_rna_columns(_wide_df())
+    assert info["removed_feature_mode"] == "zeroed_then_renormalized"
+    # technical RNA zeroed (MT-CO1 row 0); ribosomal protein RPL13A (row 3) kept
+    assert (out.loc[0, ["TPM_S1", "TPM_S2"]] == 0).all()
+    assert (out.loc[3, ["TPM_S1", "TPM_S2"]] > 0).all()
+
+
+def test_runtime_long_table_v4_per_group_budget():
+    """The long-table wrapper applies the v4 transform within each cohort group:
+    every group's biological compartment lands on 750k."""
+    gene_table, values = _fixture()
+    rows = []
+    for code in ("AAA", "BBB"):
+        for i in range(len(gene_table)):
+            rows.append({
+                "symbol": gene_table.loc[i, "Symbol"],
+                "Ensembl_Gene_ID": gene_table.loc[i, "Ensembl_Gene_ID"],
+                "cancer_code": code,
+                "subtype": "",
+                "tumor_tpm_median": float(values.iloc[i, 0] * (1 if code == "AAA" else 2)),
+            })
+    long = pd.DataFrame(rows)
+    out, info = normalize_technical_rna_long_table(
+        long, value_cols=("tumor_tpm_median",), censored_fill="fixed_fraction")
+    mask_by_code = {}
+    for code, g in out.groupby("cancer_code"):
+        gt = g[["symbol", "Ensembl_Gene_ID"]].rename(columns={"symbol": "Symbol"})
+        mask = clean_tpm_removal_mask(gt.reset_index(drop=True)).to_numpy()
+        bio = g["tumor_tpm_median"].to_numpy()[~mask].sum()
+        mask_by_code[code] = bio
+    for code, bio in mask_by_code.items():
+        assert abs(bio - 750_000.0) < 1.0, (code, bio)
+
+
+def test_clean_tpm_helpers_exported_at_top_level():
+    import pirlygenes as pg
+    assert pg.clean_tpm_matrix is clean_tpm_matrix
+    assert pg.clean_tpm_removal_mask is clean_tpm_removal_mask
