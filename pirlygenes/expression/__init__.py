@@ -74,9 +74,11 @@ from .normalize import (
     normalize_technical_rna_columns,
     normalize_technical_rna_long_table,
     percentile_rank_expression,
+    rank_normalize,
     renormalize_to_million,
     technical_rna_mask,
     tpm_to_housekeeping_normalized,
+    zscore_normalize,
 )
 from .qc import (
     GeneQcClass,
@@ -112,6 +114,8 @@ __all__ = [
     "clean_tpm_matrix",
     "clean_tpm_removal_mask",
     "technical_rna_mask",
+    "rank_normalize",
+    "zscore_normalize",
     # Reference-frame convenience wrappers
     "normalize_to_housekeeping",
     "log1p_transform",

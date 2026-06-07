@@ -61,10 +61,12 @@ from .expression import (
     normalize_to_housekeeping,
     pan_cancer_expression,
     percentile_rank_expression,
+    rank_normalize,
     renormalize_to_million,
     representative_cohort_samples,
     technical_rna_gene_ids,
     tumor_up_vs_matched_normal,
+    zscore_normalize,
     tpm_to_housekeeping_normalized,
 )
 from .gene_families import (
@@ -207,6 +209,8 @@ __all__ = [
     "normalize_technical_rna_long_table",
     "clean_tpm_matrix",
     "clean_tpm_removal_mask",
+    "rank_normalize",
+    "zscore_normalize",
     # expression: reference-frame convenience
     "normalize_to_housekeeping",
     "log2_transform",
