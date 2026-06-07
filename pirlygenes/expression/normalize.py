@@ -554,26 +554,44 @@ def _default_protected_symbols():
 
 
 def clean_tpm_removal_mask(gene_table, *, exclude_ribosomal_proteins: bool = True,
-                           protect=None):
-    """Boolean Series of rows zeroed by the default clean-TPM transform: the
-    technical-RNA groups (mtDNA + mt-like pseudogene + rRNA-like + the two
-    polyA-bias lncRNAs MALAT1/NEAT1) plus, when ``exclude_ribosomal_proteins``
-    (the default), ribosomal-protein mRNA + pseudogenes — and **nothing else** —
-    minus any curated cancer-target gene (a target is never censored even if its
-    symbol matches a censored group; e.g. the CTA ``RPL10L``).
+                           protect=None, level: str = "default"):
+    """Boolean Series of rows zeroed by the clean-TPM transform.
 
-    These are housekeeping, not tumor-specific, and — being the most-expressed,
-    most multi-mapping-prone genes — they destabilize the zero-sum TPM
-    denominator across quantification pipelines. Other housekeeping (translation
-    factors, ferritin, ubiquitin) is intentionally NOT censored. Pass
-    ``exclude_ribosomal_proteins=False`` for the strict technical-only set
-    (equivalent to :func:`technical_rna_mask`); ``protect`` overrides the default
+    ``level="default"`` censors the technical-RNA groups (mtDNA + mt-like
+    pseudogene + rRNA-like + the two polyA-bias lncRNAs MALAT1/NEAT1) plus, when
+    ``exclude_ribosomal_proteins`` (the default), ribosomal-protein mRNA +
+    pseudogenes — and **nothing else**.
+
+    ``level="extended"`` additionally censors the **extended-housekeeping** set
+    (#293): translation factors (EEF/EIF), mito-ribosomal (MRPL/MRPS), hnRNPs,
+    SR/snRNP splicing factors, proteasome subunits, cyclophilins, tubulins,
+    rearranged Ig/TR segments, and the classic housekeeping symbols
+    (ACTB/GAPDH/…) — via :func:`gene_sets_cancer.is_extended_housekeeping_symbol`.
+    These survive the technical-only step (they're protein-coding) but are the
+    most-expressed, most multi-mapping-sensitive genes, so RSEM vs STAR split
+    the zero-sum TPM budget into them very differently; removing them from the
+    denominator strips the **compositional** part of the cross-pipeline offset
+    identically for both sources (PRAME 0.55×→0.68×, genome-wide median |log2|
+    0.87→0.74 on the paired TCGA test). Use this for cross-source work, then
+    compare in :func:`zscore_normalize` / :func:`rank_normalize` space.
+
+    Either way the result is minus any curated cancer-target gene (a target is
+    never censored even if its symbol matches a censored group; e.g. the CTA
+    ``RPL10L``). ``exclude_ribosomal_proteins=False`` gives the strict
+    technical-only set (== :func:`technical_rna_mask`); ``protect`` overrides the
     protected-target symbols.
     """
+    if level not in ("default", "extended"):
+        raise ValueError("level must be 'default' or 'extended'")
     groups = set(_TECHNICAL_RNA_GROUPS)  # mtDNA/mt-pseudogene + rRNA + polyA-lncRNA
     if exclude_ribosomal_proteins:
         groups |= set(_RIBOSOMAL_PROTEIN_GROUPS)
     mask = _qc_group_mask(gene_table, groups)
+    if level == "extended":
+        from .. import gene_sets_cancer as gsc
+        ext = gene_table["Symbol"].astype(str).map(
+            lambda s: gsc.is_extended_housekeeping_symbol(s, scope="both"))
+        mask = mask | ext.to_numpy().astype(bool)
     prot = _default_protected_symbols() if protect is None else set(protect)
     if prot:
         keep = ~gene_table["Symbol"].astype(str).isin(prot).to_numpy()
@@ -595,8 +613,14 @@ def censored_gene_reference():
 def clean_tpm_matrix(values, removable=None, *, gene_table=None,
                      exclude_ribosomal_proteins: bool = True,
                      censored_fill: str = "fixed_fraction", censored_budget=None,
-                     reference=None, technical_fraction: float = 0.25):
+                     reference=None, technical_fraction: float = 0.25,
+                     level: str = "default"):
     """Reference clean-TPM transform on a gene×sample matrix.
+
+    ``level`` (``"default"`` / ``"extended"``) selects the censored set when the
+    mask is built from ``gene_table`` — see :func:`clean_tpm_removal_mask`.
+    ``"extended"`` additionally removes the extended-housekeeping compositional
+    block for cross-pipeline comparability (#293).
 
     ``values`` is genes (rows) × samples (cols). Provide either an explicit
     boolean ``removable`` mask (aligned to ``values.index``) or a ``gene_table``
@@ -642,7 +666,8 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
         if gene_table is None:
             raise ValueError("clean_tpm_matrix needs either removable or gene_table")
         removable = clean_tpm_removal_mask(
-            gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins)
+            gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins,
+            level=level)
     import numpy as np
     import pandas as pd
 
@@ -711,6 +736,57 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
     scale = pd.Series(np.nan, index=denom.index, dtype=float)
     scale.loc[positive] = 1_000_000.0 / denom.loc[positive]
     return clean.mul(scale, axis=1).fillna(0.0)
+
+
+# ---------- cross-source transforms (#293) ----------
+#
+# Absolute clean TPM is NOT comparable across quantification pipelines (Toil/
+# RSEM vs GDC/STAR): the per-gene offset is gene-specific and multiplicative
+# (genome-wide median ~1.7x), so renormalizing to 1e6 doesn't fix it. But
+# *rank* is preserved (log2(TPM+1) rank r~0.99). The documented rule:
+#   - within a source: absolute clean TPM (technical-only) is fine;
+#   - across sources:  clean_tpm_matrix(level="extended") to strip the
+#     compositional offset, then compare in rank/z space (below). Never
+#     average raw TPM across pipelines.
+
+
+def rank_normalize(values):
+    """Within-sample percentile rank per gene (0-100), pipeline-robust (#293).
+
+    ``values`` is genes (rows) × samples (cols); each column is ranked
+    independently so a gene's value is its percentile among that sample's genes.
+    On paired GDC-vs-Treehouse samples this agreed to within ~0.2 percentile
+    points — the right representation for "is this gene high in this sample?"
+    across pipelines (loses absolute units). NaNs are left as NaN."""
+    import pandas as pd
+
+    values = values if isinstance(values, pd.DataFrame) else pd.DataFrame(values)
+    num = values.apply(pd.to_numeric, errors="coerce")
+    return num.rank(axis=0, pct=True) * 100.0
+
+
+def zscore_normalize(values, *, log: bool = True):
+    """Within-sample z-score per gene, on log2(x+1) by default (#293).
+
+    ``values`` is genes × samples; each column is standardized
+    ``(x - mean) / std`` independently (population std, ddof=0). With
+    ``log=True`` (default) the standardization is on ``log2(values + 1)`` — the
+    recommended continuous representation for cross-source pooling (paired
+    GDC-vs-Treehouse agreed to within ~0.1 sd). Zero-variance columns map to 0.
+    """
+    import numpy as np
+    import pandas as pd
+
+    values = values if isinstance(values, pd.DataFrame) else pd.DataFrame(values)
+    x = values.apply(pd.to_numeric, errors="coerce")
+    if log:
+        x = np.log2(x + 1.0)
+    mean = x.mean(axis=0)
+    std = x.std(axis=0, ddof=0)
+    z = x.sub(mean, axis=1)
+    safe = std.replace(0.0, np.nan)
+    z = z.div(safe, axis=1)
+    return z.fillna(0.0)
 
 
 # ---------- conversions ----------

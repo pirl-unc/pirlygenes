@@ -201,3 +201,71 @@ def test_clean_tpm_helpers_exported_at_top_level():
     import pirlygenes as pg
     assert pg.clean_tpm_matrix is clean_tpm_matrix
     assert pg.clean_tpm_removal_mask is clean_tpm_removal_mask
+
+
+# ---- cross-source transforms: extended level + rank/zscore (#293) ----
+
+def _extended_fixture():
+    gene_table = pd.DataFrame({
+        "Symbol": ["MT-CO1", "RPL13A", "EEF1A1", "SRSF1", "TP53", "ACTB", "MYC"],
+        "Ensembl_Gene_ID": [
+            "ENSG00000198804", "ENSG00000142541", "ENSG00000156508",
+            "ENSG00000136450", "ENSG00000141510", "ENSG00000075624",
+            "ENSG00000136997",
+        ],
+    })
+    values = pd.DataFrame(
+        {"S1": [5e5, 3e5, 2e5, 1e5, 5e4, 2e5, 8e4],
+         "S2": [8e5, 2e5, 1e5, 5e4, 6e4, 1e5, 3e4]},
+        index=gene_table.index)
+    return gene_table, values
+
+
+def test_extended_level_adds_extended_housekeeping():
+    from pirlygenes.expression.normalize import clean_tpm_matrix as ctm
+    gene_table, values = _extended_fixture()
+    default = clean_tpm_removal_mask(gene_table).tolist()
+    extended = clean_tpm_removal_mask(gene_table, level="extended").tolist()
+    syms = gene_table["Symbol"].tolist()
+    # default = technical (MT-CO1) + ribosomal protein (RPL13A)
+    assert {syms[i] for i, m in enumerate(default) if m} == {"MT-CO1", "RPL13A"}
+    # extended also removes translation factor (EEF1A1), splicing (SRSF1),
+    # classic HK (ACTB); keeps real biology (TP53, MYC)
+    ext_removed = {syms[i] for i, m in enumerate(extended) if m}
+    assert {"EEF1A1", "SRSF1", "ACTB"} <= ext_removed
+    assert "TP53" not in ext_removed and "MYC" not in ext_removed
+    # extended clean still lands biological on the 750k v4 budget
+    import numpy as np
+    clean = ctm(values, gene_table=gene_table, level="extended")
+    em = np.array(extended)
+    np.testing.assert_allclose(clean.to_numpy()[~em].sum(axis=0), [750_000.0] * 2)
+
+
+def test_clean_tpm_invalid_level_raises():
+    gene_table, _ = _extended_fixture()
+    import pytest
+    with pytest.raises(ValueError):
+        clean_tpm_removal_mask(gene_table, level="bogus")
+
+
+def test_rank_normalize_within_sample_percentile():
+    from pirlygenes.expression.normalize import rank_normalize
+    _gt, values = _extended_fixture()
+    r = rank_normalize(values)
+    # top gene in each sample ranks at 100; ranks are within (0, 100]
+    assert r["S1"].max() == 100.0 and r["S2"].max() == 100.0
+    assert (r.to_numpy() > 0).all() and (r.to_numpy() <= 100).all()
+    # rank is monotone with value within a column (MT-CO1 highest in S1)
+    assert r["S1"].idxmax() == values["S1"].idxmax()
+
+
+def test_zscore_normalize_standardizes_each_column():
+    import numpy as np
+    from pirlygenes.expression.normalize import zscore_normalize
+    _gt, values = _extended_fixture()
+    z = zscore_normalize(values)
+    np.testing.assert_allclose(z.mean(axis=0).to_numpy(), [0.0, 0.0], atol=1e-9)
+    np.testing.assert_allclose(z.std(axis=0, ddof=0).to_numpy(), [1.0, 1.0], atol=1e-9)
+    # zero-variance column -> all zeros (no NaN/inf)
+    flat = pd.DataFrame({"S1": [7.0, 7.0, 7.0]})
+    assert (zscore_normalize(flat)["S1"] == 0.0).all()
