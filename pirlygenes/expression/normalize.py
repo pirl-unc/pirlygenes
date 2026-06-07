@@ -579,6 +579,11 @@ def clean_tpm_removal_mask(gene_table, *, exclude_ribosomal_proteins: bool = Tru
     symbols beyond the list's baked-in cancer targets (it can only keep more
     genes, never censor a target).
     """
+    if "Ensembl_Gene_ID" not in gene_table.columns:
+        raise ValueError(
+            "clean_tpm_removal_mask needs an 'Ensembl_Gene_ID' column — the "
+            "canonical censored-gene list is keyed on ENSG (resolve symbols to "
+            "Ensembl ids first)")
     ids = _clean_tpm_censored_ids(bool(exclude_ribosomal_proteins))
     mask = _ensg_unversioned(gene_table).isin(ids)
     if protect:
