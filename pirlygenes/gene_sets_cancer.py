@@ -2131,6 +2131,54 @@ def cancer_fusions(cancer_type=None, *, defining_only=False, pathognomonic_only=
     return df.reset_index(drop=True)
 
 
+def cancer_viral_antigens_df():
+    """Return the curated ``cancer-viral-antigens.csv`` reference: per-oncovirus
+    targetable viral antigens for virally-driven cancers.
+
+    Columns: ``virus`` (HPV, EBV, HBV, MCPyV, HHV8, HTLV-1, …),
+    ``integration_mode`` (``integrated`` / ``episomal``),
+    ``targetable_antigens`` (``;``-separated viral genes, e.g. ``E6;E7``),
+    ``associated_cohorts`` (``;``-separated registry codes), ``notes``,
+    ``source`` (PMID/DOI). Complements the registry ``viral_etiology`` /
+    ``viral_agent`` columns with the antigen-level detail — viral oncoantigens
+    are a distinct targetable class (foreign, constitutively expressed,
+    sometimes clonally integrated)."""
+    return get_data("cancer-viral-antigens")
+
+
+def cancer_viral_antigens(virus=None):
+    """Targetable viral antigens. With ``virus`` given (case-insensitive),
+    returns that virus's list of antigens (``[]`` if unknown); otherwise a
+    ``{virus: [antigen, ...]}`` map over the whole table."""
+    df = cancer_viral_antigens_df()
+    def _split(s):
+        return [a.strip() for a in str(s).split(";") if a.strip()]
+    if virus is not None:
+        v = str(virus).strip().lower()
+        hit = df[df["virus"].astype(str).str.lower() == v]
+        if hit.empty:
+            return []
+        return _split(hit.iloc[0]["targetable_antigens"])
+    return {str(r.virus): _split(r.targetable_antigens) for r in df.itertuples()}
+
+
+def viral_antigens_for_cancer(cancer_type):
+    """``[(virus, [antigen, ...]), ...]`` for a registry cancer code (resolved
+    via :func:`resolve_cancer_type`) — the reverse lookup over
+    ``associated_cohorts``. Empty when the cancer has no curated viral antigen
+    (i.e. not a virally-driven entity in the table)."""
+    code = resolve_cancer_type(cancer_type)
+    df = cancer_viral_antigens_df()
+    out = []
+    for r in df.itertuples():
+        cohorts = {c.strip() for c in str(r.associated_cohorts).split(";")
+                   if c.strip() and c.strip().lower() != "nan"}
+        if code in cohorts:
+            ants = [a.strip() for a in str(r.targetable_antigens).split(";") if a.strip()]
+            out.append((str(r.virus), ants))
+    return out
+
+
 def fusion_partners(gene, *, side=None):
     """Return the set of fusion partners of ``gene`` observed in the table.
 
