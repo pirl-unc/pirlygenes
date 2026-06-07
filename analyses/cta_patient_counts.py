@@ -41,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from pirlygenes import gene_sets_cancer as gsc
 from pirlygenes.builders.treehouse import _filter_samples, TreehouseCohort
+from pirlygenes.coverage import greedy_coverage as _pkg_greedy_coverage
 
 import sweep_treehouse_polya_cohorts as polya
 import sweep_treehouse_tcga_cohorts as tcga
@@ -407,33 +408,20 @@ def per_cohort_counts(mat, cohorts, ensg_to_sym, pctile_cutoffs=None):
 
 def greedy_coverage(mat, samples, threshold, pctile_cutoffs=None):
     """Co-occurrence-aware: greedily order CTAs by marginal NEW patients (>thr).
-    Returns (ordered_symbols_idx, cumulative_fraction, n_total).
+    Returns (ordered_row_positions, cumulative_fraction, n_total).
 
-    ``threshold`` is either a scalar TPM, or a :class:`Threshold` (TPM or
-    within-sample percentile). For a percentile Threshold each sample column
-    is compared to its own cutoff (NumPy broadcasting)."""
+    Thin CTA-specific wrapper around :func:`pirlygenes.coverage.greedy_coverage`
+    (the single source of truth for the greedy marginal-gain loop): it subsets
+    the matrix to this cohort's sample columns and resolves ``threshold`` —
+    either a scalar TPM, or a :class:`Threshold` (TPM / within-sample
+    percentile) whose per-sample cutoff vector broadcasts against the matrix —
+    then delegates the loop. Row positions are relative to ``mat`` (the column
+    subset preserves row order), so existing ``mat.index[i]`` callers are
+    unaffected."""
     cols = [s for s in samples if s in mat.columns]
-    n = len(cols)
     cut = (threshold.cutoff(cols, pctile_cutoffs)
            if isinstance(threshold, Threshold) else threshold)
-    hit = (mat[cols].to_numpy() > cut)  # CTA × patient boolean
-    covered = np.zeros(n, dtype=bool)
-    order, cum = [], []
-    remaining = set(range(mat.shape[0]))
-    while remaining:
-        # marginal new coverage per remaining CTA
-        best, best_gain = None, -1
-        for i in remaining:
-            gain = int((hit[i] & ~covered).sum())
-            if gain > best_gain:
-                best, best_gain = i, gain
-        if best_gain <= 0:
-            break
-        covered |= hit[best]
-        order.append(best)
-        cum.append(covered.sum() / n)
-        remaining.discard(best)
-    return order, cum, n
+    return _pkg_greedy_coverage(mat[cols], cut)
 
 
 def main():
