@@ -32,6 +32,7 @@ imports are flat::
     from pirlygenes.expression import (
         pan_cancer_expression,
         cancer_reference_expression,
+        cohort_expression_views,
         normalize_expression,
         fpkm_to_tpm,
         tpm_to_housekeeping_normalized,
@@ -41,6 +42,7 @@ imports are flat::
 """
 
 from .accessors import (
+    CohortExpressionViews,
     available_cancer_expression_references,
     available_representative_cohorts,
     cancer_enriched_genes,
@@ -48,6 +50,7 @@ from .accessors import (
     cancer_expression_reference_status,
     cancer_expression_source_candidates,
     cancer_reference_expression,
+    cohort_expression_views,
     estimate_signatures,
     filter_technical_rna,
     filter_to_genes,
@@ -97,6 +100,8 @@ __all__ = [
     "cancer_expression_reference_status",
     "cancer_expression_source_candidates",
     "representative_cohort_samples",
+    "cohort_expression_views",
+    "CohortExpressionViews",
     "available_representative_cohorts",
     "tumor_up_vs_matched_normal",
     "heme_tumor_up_vs_matched_normal",
