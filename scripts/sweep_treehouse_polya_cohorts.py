@@ -2,7 +2,7 @@
 """Thin wrapper around pirlygenes.builders.treehouse for the 25.01 PolyA sweep.
 
 Builds the 15 pediatric / sarcoma cancer codes the Treehouse PolyA
-compendium covers. See docs/expression-data-audit.md Status B
+compendium covers. See docs/archive/expression-data-audit-2026-05.md Status B
 Treehouse-PolyA section for the disease-label mapping.
 """
 

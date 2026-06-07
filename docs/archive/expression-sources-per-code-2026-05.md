@@ -23,8 +23,8 @@ fetcher/builder script.
 
 This is the "find one or more sources for each one" deliverable for
 the expression-data refresh project. See also:
-- `docs/expression-data-audit.md` for the bucket-level summary.
-- `docs/expression-data-refresh-plan.md` for the rolling milestone
+- `expression-data-audit-2026-05.md` for the bucket-level summary.
+- `../expression-data-refresh-plan.md` for the rolling milestone
   plan.
 
 ## Headline counts (after current session)
