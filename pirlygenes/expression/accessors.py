@@ -1159,16 +1159,26 @@ def _bundle_subdir(name: str):
     return data_bundle.cache_dir() / name
 
 
+def _available_shard_codes(root) -> list[str]:
+    """Sorted cohort codes that ship a parquet shard under ``root`` (the shared
+    body of the ``available_*_cohorts`` accessors). ``root`` is resolved by the
+    per-artifact root function so test monkeypatches on those still apply."""
+    if not root.exists():
+        return []
+    return sorted(p.stem for p in root.glob("*.parquet"))
+
+
 def _representatives_root():
     return _bundle_subdir(_REPRESENTATIVES_DIR)
 
 
+def _percentiles_root():
+    return _bundle_subdir(_PERCENTILES_DIR)
+
+
 def available_representative_cohorts() -> list[str]:
     """Registry codes that ship a representative-samples shard (sorted)."""
-    root = _representatives_root()
-    if not root.exists():
-        return []
-    return sorted(p.stem for p in root.glob("*.parquet"))
+    return _available_shard_codes(_representatives_root())
 
 
 def representative_cohort_samples(
@@ -1276,10 +1286,7 @@ _PERCENTILES_DIR = "cancer-reference-expression-percentiles"
 
 def available_percentile_cohorts() -> list[str]:
     """Cohort codes that ship a per-gene percentile-vector shard (sorted)."""
-    root = _bundle_subdir(_PERCENTILES_DIR)
-    if not root.exists():
-        return []
-    return sorted(p.stem for p in root.glob("*.parquet"))
+    return _available_shard_codes(_percentiles_root())
 
 
 def cohort_gene_percentiles(cancer_type, *, as_tpm: bool = True) -> pd.DataFrame:
@@ -1300,7 +1307,7 @@ def cohort_gene_percentiles(cancer_type, *, as_tpm: bool = True) -> pd.DataFrame
     """
     from ..gene_sets_cancer import resolve_cancer_type
     code = resolve_cancer_type(cancer_type)
-    shard = _bundle_subdir(_PERCENTILES_DIR) / f"{code}.parquet"
+    shard = _percentiles_root() / f"{code}.parquet"
     if not shard.exists():
         raise ValueError(
             f"no percentile vector for {code!r} — only cohorts with per-sample "
