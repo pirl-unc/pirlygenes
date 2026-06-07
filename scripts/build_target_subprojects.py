@@ -31,6 +31,7 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.builders.gene_mapping import resolve_symbol
+from pirlygenes.gene_ids import strip_version as _strip_version
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -85,10 +86,6 @@ PROJECTS = [
         cache_subdir="target-wt",
     ),
 ]
-
-
-def _strip_version(v: object) -> str:
-    return str(v).split(".", 1)[0]
 
 
 def _gdc_filters(project_id: str) -> dict:

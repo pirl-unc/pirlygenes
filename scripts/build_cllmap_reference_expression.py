@@ -20,6 +20,7 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.builders.gene_mapping import resolve_symbol
+from pirlygenes.gene_ids import strip_version as _strip_version
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -49,10 +50,6 @@ SOURCE_VERSION = (
     "CLL-map RNA-SeQC v2.3.6 GENCODE19; Ensembl IDs harmonized to "
     "Ensembl release 112; downloaded 2026-05-18"
 )
-
-
-def _strip_version(value: object) -> str:
-    return str(value).split(".", 1)[0]
 
 
 def _read_tpm_matrix(path: Path) -> pd.DataFrame:
