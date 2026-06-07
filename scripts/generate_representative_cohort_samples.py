@@ -56,6 +56,7 @@ _SOURCES = [
     # scripts/build_ne_per_sample_parquets.py from the cached NE source data.
     ("gse118014-pannet", "GSE118014_ALVAREZ_2018", "GEO"),
     ("sclc-ucologne-2015", "SCLC_UCOLOGNE_2015", "UCologne"),
+    ("drmetrics-lnen-2020", "DRMETRICS_ALCALA_2019_LNEN", "IARC LNEN"),
 ]
 
 
