@@ -80,10 +80,48 @@ def build_sclc() -> None:
     _write(gene_table, values, d, "SCLC")
 
 
+def build_lung_ne() -> None:
+    """Lung NE (NET_LUNG carcinoid + NEC_LUNG_LARGECELL) from the IARC DRMetrics
+    pan-LNEN counts, reusing the LNEN builder's counts→TPM + histology split."""
+    from pirlygenes.builders.geo_matrix import (
+        _gene_lengths_kb_for_index,
+        harmonize_gene_ids,
+        normalize_to_tpm,
+        read_matrix,
+    )
+    from pirlygenes.gene_sets_cancer import canonical_cancer_code
+
+    import build_lnen_drmetrics_reference_expression as lnen
+
+    d = CACHE / "drmetrics-lnen-2020"
+    attrs = pd.read_csv(d / "Attributes.txt", sep="\t",
+                        usecols=["Sample_ID", "Histopathology_simplified"])
+    matrix = read_matrix(d / "read_counts_all.txt", sep=r"\s+",
+                         gene_id_col="gene_id", drop_cols=())
+    lengths = _gene_lengths_kb_for_index(matrix.index, gene_id_type="ensembl",
+                                         ensembl_release=ENSEMBL)
+    tpm = normalize_to_tpm(matrix, unit="raw_counts", gene_lengths_kb=lengths)
+    mapping, values = harmonize_gene_ids(tpm, gene_id_type="ensembl",
+                                         ensembl_release=ENSEMBL)
+    gene_table = (mapping.drop_duplicates("Ensembl_Gene_ID")
+                  [["Ensembl_Gene_ID", "Symbol"]].reset_index(drop=True))
+    values = values.reindex(gene_table["Ensembl_Gene_ID"]).fillna(0.0)
+    sample_to_code = {r.Sample_ID: lnen.HISTOLOGY_TO_CODE.get(
+        r.Histopathology_simplified) for r in attrs.itertuples(index=False)}
+    by_code: dict[str, list[str]] = {}
+    for col in values.columns:
+        raw_code = sample_to_code.get(col)
+        if raw_code:
+            by_code.setdefault(canonical_cancer_code(raw_code), []).append(col)
+    for code, cols in by_code.items():
+        _write(gene_table, values[cols], d, code)
+
+
 def main() -> int:
     print("building NE per-sample TPM parquets...", flush=True)
     build_net_pancreas()
     build_sclc()
+    build_lung_ne()
     print("done", flush=True)
     return 0
 
