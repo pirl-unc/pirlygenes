@@ -229,6 +229,41 @@ def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():
     assert malat1["expression"] > 0
 
 
+def test_cancer_reference_expression_expands_sarc_aggregate_to_subtype_union():
+    """The pan-sarcoma ``SARC`` aggregate has no frozen shard; asking for it
+    returns the UNION of its member subtype rows (each keeping its own subtype
+    cancer_code + source_cohort), not an empty frame or a fabricated pooled
+    row (Phase C union view)."""
+    df = cancer_reference_expression(cancer_types="SARC", genes=["TP53"])
+    codes = set(df["cancer_code"].astype(str))
+    # the umbrella code itself never appears as a row (no SARC shard)
+    assert "SARC" not in codes
+    # several real histology atoms are present
+    assert {"SARC_LMS", "SARC_DDLPS", "SARC_OS"} <= codes
+    # the common-name alias expands identically
+    via_alias = cancer_reference_expression(cancer_types="sarcoma", genes=["TP53"])
+    assert set(via_alias["cancer_code"].astype(str)) == codes
+
+
+def test_cancer_reference_expression_expands_histology_rollups():
+    """``SARC_RMS`` / ``SARC_LPS`` are aggregate-only codes (not registry
+    codes); the accessor expands them to their member subtypes' rows."""
+    rms = cancer_reference_expression(cancer_types="SARC_RMS", genes=["TP53"])
+    assert set(rms["cancer_code"].astype(str)) <= {
+        "SARC_RMS_ERMS", "SARC_RMS_ARMS", "SARC_RMS_PRMS", "SARC_RMS_SSRMS",
+    }
+    assert not rms.empty
+    lps = cancer_reference_expression(cancer_types="SARC_LPS", genes=["TP53"])
+    assert "SARC_DDLPS" in set(lps["cancer_code"].astype(str))
+
+
+def test_cancer_reference_expression_non_aggregate_code_unaffected():
+    """A plain leaf code resolves to exactly itself (aggregate expansion does
+    not leak into ordinary single-cohort lookups)."""
+    df = cancer_reference_expression(cancer_types="SARC_LMS", genes=["TP53"])
+    assert set(df["cancer_code"].astype(str)) == {"SARC_LMS"}
+
+
 def test_cancer_reference_expression_can_return_raw_and_clean_wide():
     df = cancer_reference_expression(
         cancer_types="CLL",

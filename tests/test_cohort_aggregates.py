@@ -1,5 +1,5 @@
-"""Tests for computed cohort aggregates (SARC_RMS / SARC_LPS / TCGA_SARC + the
-pan-sarcoma grand union)."""
+"""Tests for computed cohort aggregates (SARC_RMS / SARC_LPS + the pan-sarcoma
+grand union)."""
 
 from pirlygenes.gene_sets_cancer import (
     cohort_aggregate_members,

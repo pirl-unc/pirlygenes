@@ -1194,9 +1194,9 @@ def sarcoma_lineage_codes(*, with_expression_only=False):
 # registry family (so it tracks new atoms automatically) rather than enumerated.
 def cohort_aggregates_df():
     """Return the curated ``cancer-cohort-aggregates.csv`` long table
-    (``aggregate_code, member_code, basis``) — the explicit histology/source
+    (``aggregate_code, member_code, basis``) — the explicit histology
     rollup cohorts (e.g. ``SARC_RMS`` ← the four rhabdomyosarcoma subtypes;
-    ``TCGA_SARC`` ← the TCGA-SARC project atoms)."""
+    ``SARC_LPS`` ← the liposarcoma subtypes)."""
     return get_data("cancer-cohort-aggregates")
 
 
