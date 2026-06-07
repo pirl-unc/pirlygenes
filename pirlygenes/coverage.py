@@ -304,7 +304,7 @@ def _stacked_bar(per, label, threshold, path, plt):
     fig, ax = plt.subplots(figsize=(13, max(6, len(per) * 0.28)))
     labels = []
     for y, (code, n, cum, names) in enumerate(per):
-        labels.append(f"{code}  (n={n})")
+        labels.append(f"{gsc.format_cancer_code_label(code)}  (n={n})")
         left, prev = 0.0, 0.0
         for j, (nm, c) in enumerate(zip(names, cum)):
             marg = (c - prev) * 100
@@ -348,7 +348,8 @@ def _coverage_curves(per, label, threshold, path, plt):
         for x, (nm, c) in enumerate(zip(names[:3], cum[:3]), start=1):
             ax.annotate(nm, (x, c * 100), fontsize=4, rotation=45,
                         textcoords="offset points", xytext=(1, 2))
-        ax.set_title(f"{code} (n={n}) {cum[-1]*100:.0f}%", fontsize=7)
+        ax.set_title(f"{gsc.format_cancer_code_label(code)} (n={n}) "
+                     f"{cum[-1]*100:.0f}%", fontsize=7)
         ax.set_xlim(0, 25)
         ax.set_ylim(0, 100)
         ax.tick_params(labelsize=5)

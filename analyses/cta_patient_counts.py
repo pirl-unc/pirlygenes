@@ -153,13 +153,10 @@ def per_sample_percentile_cutoffs(percentiles=PERCENTILES, *, nbins=2000,
 
 # Plot tick labels: the registry code is now authoritative (Phase C made SARC
 # the honest pan-sarcoma grand union and split the histology atoms), so no
-# special-case relabelling is needed — codes are used as-is. Kept as a thin
-# hook in case a future cohort code needs an honest display override.
-_DISPLAY_CODE: dict[str, str] = {}
-
-
+# special-case relabelling is needed. The only transform is the shared
+# pos/neg -> superscript formatting (HNSC_HPVpos -> HNSC_HPV⁺).
 def _display_code(code: str) -> str:
-    return _DISPLAY_CODE.get(code, code)
+    return gsc.format_cancer_code_label(code)
 
 
 def _glioma_split_cohorts() -> list[TreehouseCohort]:
