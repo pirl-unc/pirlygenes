@@ -170,6 +170,20 @@ def test_runtime_wrapper_default_is_legacy_zero_unchanged():
     assert (out.loc[3, ["TPM_S1", "TPM_S2"]] > 0).all()
 
 
+def test_clean_tpm_runtime_rejects_symbol_only_input():
+    """A symbol-only frame can't be censored (the list is ENSG-keyed), so the
+    clean-TPM runtime path RAISES rather than silently censoring nothing while
+    still rescaling to the fixed-fraction budget (#317 follow-up). The legacy
+    zero path stays symbol-capable."""
+    import pytest
+    df = pd.DataFrame({"Symbol": ["MT-CO1", "TP53"], "TPM_S1": [5e5, 1e5]})
+    with pytest.raises(ValueError):
+        normalize_technical_rna_columns(df, censored_fill="fixed_fraction")
+    # legacy zero path (classify_gene_qc, symbol-capable) does not raise
+    out, info = normalize_technical_rna_columns(df)  # default censored_fill="zero"
+    assert "removed_feature_mode" in info
+
+
 def test_runtime_long_table_v4_per_group_budget():
     """The long-table wrapper applies the v4 transform within each cohort group:
     every group's biological compartment lands on 750k."""
