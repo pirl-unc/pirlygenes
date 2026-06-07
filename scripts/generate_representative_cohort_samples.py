@@ -37,7 +37,11 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes import cohorts as _cohorts
-from pirlygenes.expression.normalize import clean_tpm_matrix
+from pirlygenes.expression import (
+    clean_tpm_matrix,
+    drop_technical_genes,
+    select_representative_samples,
+)
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "pirlygenes" / "data" \
     / "cancer-reference-expression-representatives"
@@ -56,55 +60,6 @@ def _stem_to_code(source_id: str) -> dict[str, str]:
     present, else identity (uppercased) for sources with no registry yet."""
     reg = _cohorts.cohorts_for_source(source_id)
     return {c.stem: c.code for c in reg.values()}
-
-
-def select_representatives(clean: pd.DataFrame, k: int, *, seed: int = 0) -> list[str]:
-    """Pick up to ``k`` representative sample columns of ``clean`` (genes ×
-    samples, clean_tpm_v4) — k-means in log1p-PCA space, medoid per cluster.
-
-    Deterministic for a fixed ``seed``. Returns the chosen column labels in
-    cohort order. Fewer than ``k`` may be returned if clusters collapse."""
-    cols = list(clean.columns)
-    n = len(cols)
-    if n <= k:
-        return cols
-    X = np.log1p(clean.T.to_numpy(dtype=np.float64))  # samples × genes
-    Xc = X - X.mean(axis=0)
-    # economy SVD -> top-d PCA scores for stable, fast clustering
-    U, S, _Vt = np.linalg.svd(Xc, full_matrices=False)
-    d = int(min(50, U.shape[0] - 1, S.shape[0]))
-    Y = U[:, :d] * S[:d]  # samples × d
-    rng = np.random.default_rng(seed)
-    # k-means++ seeding
-    centers = [int(rng.integers(n))]
-    dist = ((Y - Y[centers[0]]) ** 2).sum(axis=1)
-    while len(centers) < k:
-        total = dist.sum()
-        nxt = (int(rng.choice(n, p=dist / total)) if total > 0
-               else int(rng.integers(n)))
-        centers.append(nxt)
-        dist = np.minimum(dist, ((Y - Y[nxt]) ** 2).sum(axis=1))
-    cent = Y[np.array(centers)].copy()
-    assign = np.zeros(n, dtype=int)
-    for _ in range(25):  # Lloyd iterations
-        assign = np.argmin(((Y[:, None, :] - cent[None, :, :]) ** 2).sum(axis=2),
-                           axis=1)
-        new = np.array([Y[assign == j].mean(axis=0) if (assign == j).any()
-                        else cent[j] for j in range(k)])
-        if np.allclose(new, cent):
-            cent = new
-            break
-        cent = new
-    # medoid per cluster = real sample nearest the cluster centroid
-    medoids = []
-    for j in range(k):
-        members = np.where(assign == j)[0]
-        if len(members) == 0:
-            continue
-        dd = ((Y[members] - cent[j]) ** 2).sum(axis=1)
-        medoids.append(int(members[int(np.argmin(dd))]))
-    medoids = sorted(set(medoids))
-    return [cols[i] for i in medoids]
 
 
 def build(k: int = 12) -> None:
@@ -128,7 +83,16 @@ def build(k: int = 12) -> None:
             gene_table = df[["Symbol", "Ensembl_Gene_ID"]]
             clean = clean_tpm_matrix(df[sample_cols], gene_table=gene_table,
                                      censored_fill="fixed_fraction")
-            chosen = select_representatives(clean, k)
+            # Select medoids on the BIOLOGY-ONLY view so the choice rides on
+            # biological signal and is insensitive to the clean_tpm_v4
+            # fixed-fraction technical floor (#304); store the full clean_tpm_v4
+            # vectors for the chosen samples (matching the aggregate references).
+            sel_frame = clean.copy()
+            sel_frame.insert(0, "Ensembl_Gene_ID",
+                             df["Ensembl_Gene_ID"].astype(str).values)
+            sel_frame.insert(0, "Symbol", df["Symbol"].astype(str).values)
+            bio = drop_technical_genes(sel_frame)
+            chosen = select_representative_samples(bio[sample_cols], k)
             reps = clean[chosen]
             rep_ids = [f"{code}_rep{i:02d}" for i in range(1, len(chosen) + 1)]
             out = pd.DataFrame({

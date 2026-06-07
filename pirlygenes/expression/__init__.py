@@ -69,6 +69,7 @@ from .normalize import (
     add_tpm_columns_from_fpkm,
     clean_tpm_matrix,
     clean_tpm_removal_mask,
+    drop_technical_genes,
     fpkm_to_tpm,
     normalize_expression,
     normalize_technical_rna_columns,
@@ -85,6 +86,7 @@ from .qc import (
     classify_gene_qc,
     is_rescue_feature,
 )
+from .representatives import select_representative_samples
 
 
 __all__ = [
@@ -113,9 +115,11 @@ __all__ = [
     "normalize_technical_rna_long_table",
     "clean_tpm_matrix",
     "clean_tpm_removal_mask",
+    "drop_technical_genes",
     "technical_rna_mask",
     "rank_normalize",
     "zscore_normalize",
+    "select_representative_samples",
     # Reference-frame convenience wrappers
     "normalize_to_housekeeping",
     "log1p_transform",

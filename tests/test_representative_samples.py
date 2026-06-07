@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 from pirlygenes.expression import accessors
+from pirlygenes.expression import select_representative_samples
 
 
 _GENES = pd.DataFrame({
@@ -95,6 +96,39 @@ def test_missing_cohort_skipped(synth_reps):
     out = accessors.representative_cohort_samples("ACC")  # no synth shard
     assert list(out.columns) == ["Ensembl_Gene_ID", "Symbol"]
     assert out.empty
+
+
+# --- select_representative_samples (the clustering/medoid helper) ---
+
+def test_select_returns_all_when_n_le_k():
+    m = pd.DataFrame(np.random.default_rng(0).random((20, 3)),
+                     columns=["a", "b", "c"])
+    assert select_representative_samples(m, k=5) == ["a", "b", "c"]
+
+
+def test_select_picks_real_columns_and_is_deterministic():
+    rng = np.random.default_rng(1)
+    # three well-separated blobs of samples in gene space: 5 samples x 30 genes
+    # positive centers (expression is non-negative; log1p needs >= 0)
+    blocks = [rng.normal(center, 1.0, size=(5, 30)) for center in (10.0, 100.0, 1000.0)]
+    samples_by_genes = np.vstack(blocks)         # 15 samples x 30 genes
+    X = samples_by_genes.T                        # genes(30) x samples(15)
+    cols = [f"s{i:02d}" for i in range(15)]
+    m = pd.DataFrame(X, columns=cols)
+    a = select_representative_samples(m, k=3)
+    b = select_representative_samples(m, k=3)
+    assert a == b                      # deterministic
+    assert set(a) <= set(cols)         # real columns
+    assert len(a) == 3
+    # one representative from each of the three separated blobs
+    blobs = {i // 5 for i in (cols.index(c) for c in a)}
+    assert blobs == {0, 1, 2}
+
+
+def test_select_rejects_nonpositive_k():
+    m = pd.DataFrame(np.ones((4, 4)))
+    with pytest.raises(ValueError):
+        select_representative_samples(m, k=0)
 
 
 # --- light check against the real bundled artifact (public reference) ---

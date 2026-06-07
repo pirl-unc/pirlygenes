@@ -259,6 +259,23 @@ def test_rank_normalize_within_sample_percentile():
     assert r["S1"].idxmax() == values["S1"].idxmax()
 
 
+def test_drop_technical_genes_biology_only_view():
+    from pirlygenes.expression.normalize import drop_technical_genes
+    gene_table, values = _extended_fixture()
+    frame = gene_table.copy()
+    for c in values.columns:
+        frame[c] = values[c].values
+    # default: drops technical (MT-CO1) + ribosomal protein (RPL13A)
+    bio = drop_technical_genes(frame)
+    assert set(bio["Symbol"]) == {"EEF1A1", "SRSF1", "TP53", "ACTB", "MYC"}
+    # extended: also drops translation/splicing/classic-HK
+    bio_ext = drop_technical_genes(frame, level="extended")
+    assert set(bio_ext["Symbol"]) == {"TP53", "MYC"}
+    # sample columns pass through untouched
+    assert list(values.columns) == [c for c in bio.columns
+                                    if c not in ("Symbol", "Ensembl_Gene_ID")]
+
+
 def test_zscore_normalize_standardizes_each_column():
     import numpy as np
     from pirlygenes.expression.normalize import zscore_normalize
