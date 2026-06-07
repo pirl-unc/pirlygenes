@@ -1054,6 +1054,136 @@ def cancer_reference_expression(
     return wide[["Ensembl_Gene_ID", "Symbol", *expected_value_cols]]
 
 
+# ---------- accessors: representative per-sample vectors (#312) ----------
+
+_REPRESENTATIVES_DIR = "cancer-reference-expression-representatives"
+
+
+def _representatives_root():
+    """Locate the representative-samples shard directory: an in-repo checkout
+    (``pirlygenes/data/…``) wins, else the downloaded bundle cache; the bundle
+    is fetched if the directory is absent from both."""
+    from pathlib import Path
+
+    from .. import data_bundle
+    from ..load_dataset import _BUNDLED_DATA_DIR
+
+    in_repo = Path(_BUNDLED_DATA_DIR) / _REPRESENTATIVES_DIR
+    if in_repo.exists():
+        return in_repo
+    cached = data_bundle.find(_REPRESENTATIVES_DIR)
+    if cached is not None:
+        return cached
+    data_bundle.ensure_local()
+    return data_bundle.cache_dir() / _REPRESENTATIVES_DIR
+
+
+def available_representative_cohorts() -> list[str]:
+    """Registry codes that ship a representative-samples shard (sorted)."""
+    root = _representatives_root()
+    if not root.exists():
+        return []
+    return sorted(p.stem for p in root.glob("*.parquet"))
+
+
+def representative_cohort_samples(
+    cancer_types: Optional[str | Iterable[str]] = None,
+    *,
+    k: Optional[int] = None,
+    normalize: str = "tpm_clean",
+    format: str = "wide",
+    include_provenance: bool = False,
+) -> pd.DataFrame:
+    """Representative real per-sample expression vectors per cohort (#312).
+
+    The packaged cohort references are per-cohort aggregates (median /
+    quantiles), so downstream can only validate classification / normalization
+    against the cohort *median* — which overstates accuracy and can't
+    reconstruct a physiological sample. This accessor returns a **bounded** set
+    of real joint per-sample vectors per cohort — medoids spanning the
+    within-cohort variation — in the same ``clean_tpm_v4`` basis as the
+    aggregates, for the honest sample-level self-classification battery and for
+    validating normalization / representation changes on realistic samples.
+
+    Parameters
+    ----------
+    cancer_types
+        Registry code, alias, or iterable. A computed-aggregate code expands to
+        the union of its member subtypes (e.g. ``"SARC"``). ``None`` returns
+        every cohort that ships representatives. Codes without a representatives
+        shard are skipped.
+    k
+        Keep at most the first ``k`` representatives per cohort (``None`` = all,
+        currently up to 5). Representatives are anonymized (``<CODE>_rep01`` …).
+    normalize
+        ``"tpm_clean"`` (clean_tpm_v4, as stored) or ``"tpm_clean_log1p"``
+        (log1p of the stored values).
+    format
+        ``"wide"`` → one ``Ensembl_Gene_ID`` / ``Symbol`` row per gene with one
+        column per representative (genes × samples). ``"long"`` → one row per
+        gene × representative with ``cancer_code`` + ``representative_id``;
+        ``include_provenance=True`` adds ``source_cohort`` / ``source_project``
+        / ``n_cohort_samples``.
+
+    Returns
+    -------
+    pd.DataFrame
+    """
+    if normalize not in ("tpm_clean", "tpm_clean_log1p"):
+        raise ValueError(
+            "representative_cohort_samples normalize must be 'tpm_clean' or "
+            "'tpm_clean_log1p' (the artifact ships only in clean_tpm_v4)"
+        )
+    if format not in ("wide", "long"):
+        raise ValueError("format must be 'wide' or 'long'")
+
+    root = _representatives_root()
+    available = set(available_representative_cohorts())
+    if cancer_types is None:
+        codes = sorted(available)
+    else:
+        requested = _resolve_cancer_types(cancer_types, expand_aggregates=True)
+        codes = [c for c in dict.fromkeys(requested) if c in available]
+
+    base = ["Ensembl_Gene_ID", "Symbol"]
+    wide = None
+    long_parts = []
+    for code in codes:
+        shard = pd.read_parquet(root / f"{code}.parquet")
+        rep_cols = [c for c in shard.columns if c not in base]
+        if k is not None:
+            rep_cols = rep_cols[:k]
+        if normalize == "tpm_clean_log1p":
+            shard[rep_cols] = np.log1p(shard[rep_cols].to_numpy(dtype=float))
+        if format == "wide":
+            part = shard[base + rep_cols]
+            wide = part if wide is None else wide.merge(part, on=base, how="outer")
+        else:
+            melted = shard[base + rep_cols].melt(
+                id_vars=base, var_name="representative_id", value_name="expression")
+            melted.insert(2, "cancer_code", code)
+            long_parts.append(melted)
+
+    if format == "wide":
+        if wide is None:
+            return pd.DataFrame(columns=base)
+        return wide
+
+    if not long_parts:
+        cols = base + ["cancer_code", "representative_id", "expression"]
+        return pd.DataFrame(columns=cols)
+    long = pd.concat(long_parts, ignore_index=True)
+    if include_provenance:
+        prov_path = root / "_provenance.csv"
+        if prov_path.exists():
+            prov = pd.read_csv(prov_path)
+            keep = ["representative_id", "source_cohort", "source_project",
+                    "n_cohort_samples"]
+            long = long.merge(prov[[c for c in keep if c in prov.columns]],
+                              on="representative_id", how="left")
+    return long
+
+
 # ---------- accessors: pan-cancer expression ----------
 
 
