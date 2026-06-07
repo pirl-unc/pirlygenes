@@ -79,6 +79,7 @@ from ..gene_sets_cancer import housekeeping_gene_ids
 from ..load_dataset import get_data
 from .normalize import (
     add_tpm_columns_from_fpkm,
+    drop_technical_genes,
     normalize_expression,
     percentile_rank_expression,
     renormalize_to_million,
@@ -1052,6 +1053,86 @@ def cancer_reference_expression(
         if col not in wide.columns:
             wide[col] = np.nan
     return wide[["Ensembl_Gene_ID", "Symbol", *expected_value_cols]]
+
+
+# ---------- accessors: unified normalization views (#319) ----------
+
+
+class CohortExpressionViews:
+    """The canonical normalization stages of a cohort reference in **one
+    object**, so a consumer never re-normalizes inconsistently (#319).
+
+    Attributes (each a gene × cohort DataFrame, ``Ensembl_Gene_ID`` + ``Symbol``
+    index columns):
+
+    * ``tpm`` — TPM-harmonized cohort summary (median).
+    * ``clean_tpm`` — clean_tpm_v4 (technical compartment **included**, pinned
+      to the fixed fraction).
+    * ``clean_tpm_biological`` — ``clean_tpm`` with the technical/ribosomal
+      genes (the canonical censored-gene list) **dropped** — the
+      biologically-actionable view.
+    * ``provenance`` — one row per cohort: ``source_cohort``,
+      ``processing_pipeline`` (records the native unit, e.g. STAR-counts→TPM),
+      ``n_samples``.
+
+    Note: the bundled references are TPM-harmonized at build time, so the
+    **raw native** units (FPKM / microarray nTPM / counts) are not retained
+    here — only recorded in ``provenance.processing_pipeline``. All three value
+    views are on the TPM scale; the only differences are the censoring stage,
+    so they are directly comparable and can't be accidentally re-normalized.
+    """
+
+    __slots__ = ("tpm", "clean_tpm", "clean_tpm_biological", "provenance")
+
+    def __init__(self, tpm, clean_tpm, clean_tpm_biological, provenance):
+        self.tpm = tpm
+        self.clean_tpm = clean_tpm
+        self.clean_tpm_biological = clean_tpm_biological
+        self.provenance = provenance
+
+    def __repr__(self):
+        cohorts = list(self.provenance["source_cohort"]) if len(
+            self.provenance) else []
+        return (f"CohortExpressionViews(genes={self.tpm.shape[0]}, "
+                f"cohorts={self.provenance.shape[0]}, "
+                f"biological_genes={self.clean_tpm_biological.shape[0]}, "
+                f"sources={cohorts[:3]}{'…' if len(cohorts) > 3 else ''})")
+
+
+def cohort_expression_views(
+    cancer_types: Optional[str | Iterable[str]] = None,
+    genes: Optional[Iterable[str]] = None,
+) -> "CohortExpressionViews":
+    """Bundle a cohort's normalization stages into one
+    :class:`CohortExpressionViews` (tpm / clean_tpm / clean_tpm_biological +
+    provenance) so downstream never re-normalizes inconsistently (#319).
+
+    ``cancer_types`` / ``genes`` are passed through to
+    :func:`cancer_reference_expression` (so aggregate codes like ``SARC`` expand
+    to their subtypes). Values are the per-cohort medians.
+    """
+    long = cancer_reference_expression(
+        cancer_types, genes=genes, normalize=["tpm", "tpm_clean"],
+        format="long", include_provenance=True)
+    base = ["Ensembl_Gene_ID", "Symbol"]
+
+    def _pivot(label):
+        sub = long[long["normalization"] == label]
+        if sub.empty:
+            return pd.DataFrame(columns=base)
+        wide = (sub.pivot_table(index=base, columns="cancer_code",
+                                values="expression", aggfunc="first")
+                .reset_index())
+        wide.columns.name = None
+        return wide
+
+    tpm = _pivot("TPM")
+    clean = _pivot("TPM_clean")
+    biological = drop_technical_genes(clean) if not clean.empty else clean
+    prov_cols = ["source_cohort", "processing_pipeline", "n_samples"]
+    provenance = (long[[c for c in prov_cols if c in long.columns]]
+                  .drop_duplicates().reset_index(drop=True))
+    return CohortExpressionViews(tpm, clean, biological, provenance)
 
 
 # ---------- accessors: representative per-sample vectors (#312) ----------
