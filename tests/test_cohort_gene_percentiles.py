@@ -1,5 +1,8 @@
 """Per-gene × cohort tail-weighted percentile vectors (#298)."""
 
+import sys
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -8,7 +11,11 @@ from pirlygenes.expression import (
     cohort_gene_percentiles,
 )
 
-_BP = [f"p{b}" for b in ([0, 1] + list(range(5, 91, 5)) + [95, 96, 97, 98, 99, 100])]
+# single source of truth for the breakpoints: the generator defines them.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+from generate_cohort_gene_percentiles import BREAKPOINTS  # noqa: E402
+
+_BP = [f"p{b}" for b in BREAKPOINTS]
 
 
 def _skip_if_absent():
