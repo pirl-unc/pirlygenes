@@ -250,6 +250,22 @@ def canonical_cancer_code(code):
     return _RENAMED_CODE_ALIASES_UPPER.get(raw.upper(), raw)
 
 
+def format_cancer_code_label(code):
+    """Plot-friendly display label for a cancer-type code.
+
+    A trailing ``pos`` / ``neg`` molecular-status suffix becomes a superscript
+    ``⁺`` / ``⁻`` (``HNSC_HPVpos`` → ``HNSC_HPV⁺``, ``HNSC_HPVneg`` →
+    ``HNSC_HPV⁻``); every other code is returned unchanged. Uses Unicode
+    superscript glyphs so it renders in any matplotlib text without mathtext
+    escaping."""
+    s = str(code)
+    if s.endswith("pos"):
+        return s[:-3] + "⁺"  # superscript plus
+    if s.endswith("neg"):
+        return s[:-3] + "⁻"  # superscript minus
+    return s
+
+
 def cancer_type_info(cancer_type):
     """Resolve any synonym/alias/display-name to a cancer type and return its
     **canonical info** as a dict — the one call to go from a messy input to
