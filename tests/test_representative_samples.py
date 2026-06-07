@@ -147,3 +147,16 @@ def test_bundled_artifact_schema_and_v4_scale():
     mask = clean_tpm_removal_mask(w[["Symbol", "Ensembl_Gene_ID"]]).to_numpy()
     bio = w[reps[0]].to_numpy()[~mask].sum()
     assert abs(bio - 750_000.0) < 5_000.0
+
+
+def test_neuroendocrine_axis_has_representatives():
+    """The NE axis is represented (#318) — trufflepig's sample-level battery no
+    longer leaves it unscored. NET_PANCREAS + SCLC (the canonical NE poles) ship
+    representatives."""
+    cohorts = accessors.available_representative_cohorts()
+    if not cohorts:
+        pytest.skip("representatives artifact not present in this checkout/cache")
+    ne = [c for c in cohorts if c.startswith(("NET_", "NEC_", "SCLC", "MTC"))]
+    assert {"NET_PANCREAS", "SCLC"} <= set(ne), f"NE axis under-covered: {ne}"
+    w = accessors.representative_cohort_samples("NET_PANCREAS")
+    assert [c for c in w.columns if c.startswith("NET_PANCREAS_rep")]
