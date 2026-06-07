@@ -33,17 +33,12 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from generate_representative_cohort_samples import (  # noqa: E402
-    _SOURCES,
-    _stem_to_code,
-)
-
+from pirlygenes import cohorts as _cohorts  # noqa: E402
 from pirlygenes.expression.normalize import (  # noqa: E402
     clean_tpm_matrix,
     drop_technical_genes,
 )
 
-CACHE = Path.home() / ".cache" / "pirlygenes" / "expression"
 OUT_DIR = Path(__file__).resolve().parent.parent / "pirlygenes" / "data" \
     / "cancer-reference-expression-percentiles"
 
@@ -56,35 +51,27 @@ def build() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     cols = [f"p{b}" for b in BREAKPOINTS]
     n_cohorts = 0
-    for source_id, _label, _project in _SOURCES:
-        derived = CACHE / source_id / "derived"
-        if not derived.exists():
+    for cohort, df in _cohorts.iter_per_sample_cohorts():
+        code = cohort.code
+        sample_cols = _cohorts.sample_columns(df)
+        if len(sample_cols) < 2:
             continue
-        stem_to_code = _stem_to_code(source_id)
-        for parquet in sorted(derived.glob("*_per_sample_tpm.parquet")):
-            stem = parquet.name[: -len("_per_sample_tpm.parquet")]
-            code = stem_to_code.get(stem, stem.upper())
-            df = pd.read_parquet(parquet)
-            sample_cols = [c for c in df.columns
-                           if c not in ("Ensembl_Gene_ID", "Symbol")]
-            if len(sample_cols) < 2:
-                continue
-            clean = clean_tpm_matrix(df[sample_cols],
-                                     gene_table=df[["Symbol", "Ensembl_Gene_ID"]],
-                                     censored_fill="fixed_fraction")
-            clean.insert(0, "Ensembl_Gene_ID", df["Ensembl_Gene_ID"].astype(str).values)
-            clean.insert(0, "Symbol", df["Symbol"].astype(str).values)
-            bio = drop_technical_genes(clean)
-            biovals = bio[sample_cols].to_numpy(dtype=np.float64)
-            pct = np.percentile(biovals, BREAKPOINTS, axis=1).T  # genes × 26
-            out = pd.DataFrame(np.log1p(pct).astype(np.float16), columns=cols)
-            out.insert(0, "Ensembl_Gene_ID", bio["Ensembl_Gene_ID"].values)
-            out.insert(0, "Symbol", bio["Symbol"].values)
-            out.to_parquet(OUT_DIR / f"{code}.parquet", index=False,
-                           compression="zstd")
-            n_cohorts += 1
-            print(f"  {code}: {len(out)} genes × {len(BREAKPOINTS)} breakpoints "
-                  f"(n={len(sample_cols)})", flush=True)
+        clean = clean_tpm_matrix(df[sample_cols],
+                                 gene_table=df[["Symbol", "Ensembl_Gene_ID"]],
+                                 censored_fill="fixed_fraction")
+        clean.insert(0, "Ensembl_Gene_ID", df["Ensembl_Gene_ID"].astype(str).values)
+        clean.insert(0, "Symbol", df["Symbol"].astype(str).values)
+        bio = drop_technical_genes(clean)
+        biovals = bio[sample_cols].to_numpy(dtype=np.float64)
+        pct = np.percentile(biovals, BREAKPOINTS, axis=1).T  # genes × 26
+        out = pd.DataFrame(np.log1p(pct).astype(np.float16), columns=cols)
+        out.insert(0, "Ensembl_Gene_ID", bio["Ensembl_Gene_ID"].values)
+        out.insert(0, "Symbol", bio["Symbol"].values)
+        out.to_parquet(OUT_DIR / f"{code}.parquet", index=False,
+                       compression="zstd")
+        n_cohorts += 1
+        print(f"  {code}: {len(out)} genes × {len(BREAKPOINTS)} breakpoints "
+              f"(n={len(sample_cols)})", flush=True)
     total_mb = sum(f.stat().st_size for f in OUT_DIR.glob("*.parquet")) / 1e6
     print(f"\ndone: {n_cohorts} cohorts, {total_mb:.0f} MB -> {OUT_DIR}", flush=True)
 

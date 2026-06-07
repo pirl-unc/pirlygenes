@@ -143,18 +143,13 @@ def cohort_matrix(cohort, ensgs=None) -> pd.DataFrame:
     a ``{ensg: symbol}`` display map is stashed in ``df.attrs['symbols']`` so
     downstream rendering can label rows without ever joining on the symbol.
     """
-    path = _cohorts.parquet_path(cohort)
-    if not path.exists():
-        raise FileNotFoundError(
-            f"no per-sample parquet for {cohort.code} at {path} — run "
-            f"`pirlygenes build {cohort.source_id}` or `downloads fetch` first")
-    df = pd.read_parquet(path)
+    df = _cohorts.read_per_sample(cohort)
     ensgs = ensgs or set()
     ensg_col = df["Ensembl_Gene_ID"].astype(str).str.split(".").str[0]
     mask = ensg_col.isin(ensgs) if ensgs else pd.Series(False, index=df.index)
     sub = df.loc[mask].copy()
     sub["Ensembl_Gene_ID"] = ensg_col[mask]
-    sample_cols = [c for c in sub.columns if c not in ("Ensembl_Gene_ID", "Symbol")]
+    sample_cols = _cohorts.sample_columns(sub)
     symbol_map = {}
     if "Symbol" in sub.columns:
         symbol_map = dict(zip(sub["Ensembl_Gene_ID"], sub["Symbol"].astype(str)))
