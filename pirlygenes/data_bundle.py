@@ -73,6 +73,7 @@ RELEASE_URL = (
 DOWNLOADABLE_PATHS: tuple[str, ...] = (
     "cancer-reference-expression",     # directory of per-source shards
     "cancer-reference-expression-representatives",  # per-cohort medoid parquets (#312)
+    "cancer-reference-expression-percentiles",  # per-gene percentile vectors (#298)
     "pan-cancer-expression.csv",
     "hpa-cell-type-expression.csv",
 )
