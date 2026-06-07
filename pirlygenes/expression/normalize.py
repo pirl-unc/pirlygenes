@@ -145,14 +145,22 @@ def _clean_tpm_normalize(
     """
     import pandas as pd
 
+    # Clean-TPM censoring is ENSG-keyed (the canonical censored-gene list). A
+    # symbol-only frame can't be censored, and silently censoring nothing while
+    # still rescaling to the fixed-fraction budget would misnormalize — so
+    # require a real Ensembl_Gene_ID column for any non-zero censored_fill. The
+    # legacy censored_fill="zero" path (classify_gene_qc, symbol-capable) does
+    # not reach here.
+    if not id_col or id_col not in out.columns:
+        raise ValueError(
+            f"clean-TPM normalization (censored_fill={censored_fill!r}) needs an "
+            f"'{id_col}' Ensembl-gene-id column — the censored-gene list is "
+            "ENSG-keyed; resolve symbols to Ensembl ids first, or use "
+            "censored_fill='zero' for the legacy symbol-based transform")
     gene_table = pd.DataFrame(
         {
             "Symbol": out[label_col].fillna("").astype(str),
-            "Ensembl_Gene_ID": (
-                out[id_col].fillna("").astype(str)
-                if id_col and id_col in out.columns
-                else pd.Series([""] * len(out), index=out.index)
-            ),
+            "Ensembl_Gene_ID": out[id_col].fillna("").astype(str),
         },
         index=out.index,
     )
@@ -649,8 +657,9 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
     ``values`` is genes (rows) × samples (cols). Provide either an explicit
     boolean ``removable`` mask (aligned to ``values.index``) or a ``gene_table``
     (``Symbol`` + ``Ensembl_Gene_ID``, row-aligned to ``values``) — in which
-    case the mask is built via :func:`clean_tpm_removal_mask`, which **excludes
-    ribosomal proteins by default**.
+    case the mask is built via :func:`clean_tpm_removal_mask`, which **censors
+    ribosomal proteins by default** (``exclude_ribosomal_proteins=True`` removes
+    them from the biological signal; pass ``False`` for technical-only).
 
     ``censored_fill`` controls what happens to the censored (removable) rows
     (``"fixed_fraction"`` is the default as of clean_tpm_v4 — see below):
