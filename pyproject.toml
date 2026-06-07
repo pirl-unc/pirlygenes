@@ -87,6 +87,7 @@ pirlygenes = [
 pirlygenes = [
     "data/cancer-reference-expression/*",
     "data/cancer-reference-expression-representatives/*",
+    "data/cancer-reference-expression-percentiles/*",
     "data/pan-cancer-expression.csv",
     "data/hpa-cell-type-expression.csv",
 ]

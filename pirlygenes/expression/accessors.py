@@ -1140,23 +1140,27 @@ def cohort_expression_views(
 _REPRESENTATIVES_DIR = "cancer-reference-expression-representatives"
 
 
-def _representatives_root():
-    """Locate the representative-samples shard directory: an in-repo checkout
-    (``pirlygenes/data/…``) wins, else the downloaded bundle cache; the bundle
-    is fetched if the directory is absent from both."""
+def _bundle_subdir(name: str):
+    """Locate a bundle shard directory: an in-repo checkout (``pirlygenes/data/…``)
+    wins, else the downloaded bundle cache; the bundle is fetched if the
+    directory is absent from both."""
     from pathlib import Path
 
     from .. import data_bundle
     from ..load_dataset import _BUNDLED_DATA_DIR
 
-    in_repo = Path(_BUNDLED_DATA_DIR) / _REPRESENTATIVES_DIR
+    in_repo = Path(_BUNDLED_DATA_DIR) / name
     if in_repo.exists():
         return in_repo
-    cached = data_bundle.find(_REPRESENTATIVES_DIR)
+    cached = data_bundle.find(name)
     if cached is not None:
         return cached
     data_bundle.ensure_local()
-    return data_bundle.cache_dir() / _REPRESENTATIVES_DIR
+    return data_bundle.cache_dir() / name
+
+
+def _representatives_root():
+    return _bundle_subdir(_REPRESENTATIVES_DIR)
 
 
 def available_representative_cohorts() -> list[str]:
@@ -1263,6 +1267,52 @@ def representative_cohort_samples(
             long = long.merge(prov[[c for c in keep if c in prov.columns]],
                               on="representative_id", how="left")
     return long
+
+
+# ---------- accessors: per-gene × cohort percentile vectors (#298) ----------
+
+_PERCENTILES_DIR = "cancer-reference-expression-percentiles"
+
+
+def available_percentile_cohorts() -> list[str]:
+    """Cohort codes that ship a per-gene percentile-vector shard (sorted)."""
+    root = _bundle_subdir(_PERCENTILES_DIR)
+    if not root.exists():
+        return []
+    return sorted(p.stem for p in root.glob("*.parquet"))
+
+
+def cohort_gene_percentiles(cancer_type, *, as_tpm: bool = True) -> pd.DataFrame:
+    """Tail-weighted per-gene percentile vector for one cohort (#298).
+
+    Returns one row per gene (``Ensembl_Gene_ID`` + ``Symbol``) with 26
+    breakpoint columns — ``p0, p1, p5, p10 … p90, p95, p96, p97, p98, p99,
+    p100`` — dense in the actionable upper tail. Lets a consumer place a
+    sample's gene as a **percentile rank within the cohort** instead of an
+    absolute TPM (the producer side of trufflepig#54).
+
+    Computed on the **biological clean_tpm_v4 view** (technical genes dropped,
+    so the fixed-fraction inflation #304 doesn't apply). Stored compactly as
+    ``log1p`` + float16; ``as_tpm=True`` (default) ``expm1``-restores clean-TPM
+    values, ``as_tpm=False`` returns the stored log1p values. Raises if the
+    cohort has no per-sample data (summary-only cohorts have no vector — their
+    coarse percentiles are in :func:`cancer_reference_expression`).
+    """
+    from ..gene_sets_cancer import resolve_cancer_type
+    code = resolve_cancer_type(cancer_type)
+    shard = _bundle_subdir(_PERCENTILES_DIR) / f"{code}.parquet"
+    if not shard.exists():
+        raise ValueError(
+            f"no percentile vector for {code!r} — only cohorts with per-sample "
+            f"data ship one; see available_percentile_cohorts(). Summary-only "
+            "cohorts expose coarse p5/p10/p90/p95 via cancer_reference_expression."
+        )
+    df = pd.read_parquet(shard)
+    bp_cols = [c for c in df.columns if c not in ("Ensembl_Gene_ID", "Symbol")]
+    df[bp_cols] = df[bp_cols].astype("float32")
+    if as_tpm:
+        df[bp_cols] = np.expm1(df[bp_cols])
+    return df
 
 
 # ---------- accessors: pan-cancer expression ----------
