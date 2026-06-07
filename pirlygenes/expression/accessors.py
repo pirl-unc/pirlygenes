@@ -573,6 +573,8 @@ def _validate_reference_format(format: str) -> None:
 
 def _resolve_cancer_types(
     cancer_types: Optional[str | Iterable[str]],
+    *,
+    expand_aggregates: bool = False,
 ) -> list[str] | None:
     if cancer_types is None:
         return None
@@ -582,7 +584,30 @@ def _resolve_cancer_types(
         requested = [cancer_types]
     else:
         requested = list(cancer_types)
-    return [resolve_cancer_type(code) for code in requested]
+    if not expand_aggregates:
+        return [resolve_cancer_type(code) for code in requested]
+
+    # Union view: a computed-aggregate code (the pan-sarcoma ``SARC`` grand
+    # union, or the ``SARC_RMS`` / ``SARC_LPS`` histology rollups) expands to
+    # the union of its member subtype codes. ``SARC_RMS`` / ``SARC_LPS`` are
+    # aggregate-only (not registry codes), so the raw token is checked before
+    # resolving; ``SARC`` resolves to itself and is also an aggregate. No
+    # fabricated pooled stats — literature-curated members with no built shard
+    # simply contribute no rows.
+    from ..gene_sets_cancer import cohort_aggregates
+
+    aggregates = cohort_aggregates()
+    out: list[str] = []
+    for code in requested:
+        members = aggregates.get(str(code))
+        if members is None:
+            resolved = resolve_cancer_type(code)
+            members = aggregates.get(resolved)
+            if members is None:
+                out.append(resolved)
+                continue
+        out.extend(members)
+    return list(dict.fromkeys(out))
 
 
 def _load_cancer_reference_expression() -> pd.DataFrame:
@@ -939,7 +964,14 @@ def cancer_reference_expression(
     Parameters
     ----------
     cancer_types
-        Optional registry code, alias, or iterable of codes/aliases.
+        Optional registry code, alias, or iterable of codes/aliases. A
+        computed-aggregate code expands to the **union** of its member
+        subtypes' rows (each row keeps its own subtype ``cancer_code`` and
+        ``source_cohort``): ``"SARC"`` returns every sarcoma histology atom,
+        ``"SARC_RMS"`` the four rhabdomyosarcoma subtypes, ``"SARC_LPS"`` the
+        liposarcoma subtypes. No pooled summary row is fabricated — pool the
+        returned subtype rows (or use the per-sample coverage path) if a single
+        aggregate statistic is needed.
     genes
         Optional gene-symbol / Ensembl-ID subset.
     normalize
@@ -961,7 +993,7 @@ def cancer_reference_expression(
     modes = _resolve_reference_normalize_modes(normalize)
     _validate_reference_format(format)
     df = _load_cancer_reference_expression()
-    codes = _resolve_cancer_types(cancer_types)
+    codes = _resolve_cancer_types(cancer_types, expand_aggregates=True)
     if codes is not None:
         df = df[df["cancer_code"].astype(str).isin(codes)]
     available_codes = list(df["cancer_code"].astype(str).drop_duplicates())
