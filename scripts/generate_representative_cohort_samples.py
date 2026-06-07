@@ -47,24 +47,17 @@ OUT_DIR = Path(__file__).resolve().parent.parent / "pirlygenes" / "data" \
     / "cancer-reference-expression-representatives"
 CACHE = Path.home() / ".cache" / "pirlygenes" / "expression"
 
-# (source_id, source_cohort label, source_project) for every source that ships
-# per-sample parquets. The label mirrors the reference-expression source_cohort.
-_SOURCES = [
-    ("treehouse-polya-25-01", "TREEHOUSE_POLYA_25_01", "Treehouse"),
-    ("treehouse-ribod-25-01", "TREEHOUSE_RIBOD_25_01", "Treehouse"),
-    # Neuroendocrine axis (#318) — per-sample parquets built by
-    # scripts/build_ne_per_sample_parquets.py from the cached NE source data.
-    ("gse118014-pannet", "GSE118014_ALVAREZ_2018", "GEO"),
-    ("sclc-ucologne-2015", "SCLC_UCOLOGNE_2015", "UCologne"),
-    ("drmetrics-lnen-2020", "DRMETRICS_ALCALA_2019_LNEN", "IARC LNEN"),
-]
+# (source_id, source_cohort label, source_project) per per-sample source — the
+# single source of truth lives in pirlygenes.cohorts.PER_SAMPLE_SOURCES; this is
+# just a view of it (imported by the percentile generator too).
+_SOURCES = [(sid, label, project)
+            for sid, (label, project) in _cohorts.PER_SAMPLE_SOURCES.items()]
 
 
 def _stem_to_code(source_id: str) -> dict[str, str]:
-    """{parquet_stem: cancer_code} for a source — via the cohort registry where
-    present, else identity (uppercased) for sources with no registry yet."""
-    reg = _cohorts.cohorts_for_source(source_id)
-    return {c.stem: c.code for c in reg.values()}
+    """{parquet_stem: cancer_code} for a source, via the centralized cohort
+    registry (explicit map for treehouse-polya; code==stem discovery elsewhere)."""
+    return {c.stem: c.code for c in _cohorts.cohorts_for_source(source_id).values()}
 
 
 def build(k: int = 12) -> None:
