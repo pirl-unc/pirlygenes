@@ -344,7 +344,7 @@ SARC,gist,KIT,target,sunitinib,small_molecule,approved,approved_later_line,later
 SARC,gist,KIT,target,regorafenib,small_molecule,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,third-line GIST,Multikinase — post-imatinib/sunitinib failure,PMID:23177515
 SARC,gist,KIT,target,ripretinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,fourth-line GIST,Switch-control KIT/PDGFRA inhibitor — INVICTUS trial,PMID:32511981
 SARC,gist,PDGFRA,target,avapritinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,PDGFRA D842V GIST,Selective PDGFRA D842V inhibitor — NAVIGATOR trial,PMID:32078923
-SARC,gist,NTRK1,target,larotrectinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,NTRK-fusion GIST,Tumor-agnostic NTRK inhibitor — relevant to NTRK-fusion WT GIST,PMID:29466156
+SARC,gist,NTRK1,target,larotrectinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,NTRK gene-fusion-positive solid tumors (tumor-agnostic),Tumor-agnostic NTRK inhibitor — relevant here to NTRK-fusion WT GIST,PMID:29466156
 SARC,ewing_sarcoma,EWSR1,biomarker,,,,,,,,EWSR1-FLI1 t(11;22) fusion (~85%) or EWSR1-ERG — pathognomonic for Ewing sarcoma,PMID:20142596
 SARC,ewing_sarcoma,FLI1,biomarker,,,,,,,,Fusion partner — IHC positive in Ewing,PMID:20142596
 SARC,ewing_sarcoma,NKX2-2,biomarker,,,,,,,,Downstream EWSR1-FLI1 target; lineage marker,PMID:21339729
@@ -373,7 +373,7 @@ THCA,,KDR,target,cabozantinib,small_molecule,approved,approved_later_line,later_
 THCA,,BRAF,target,dabrafenib + trametinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,BRAF V600E anaplastic thyroid,BRAF/MEK combination — tumor-agnostic plus specific ATC approval,PMID:30161798
 THCA,,RET,target,selpercatinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,RET-altered thyroid cancer,Selective RET inhibitor — approved for medullary + RET-fusion DTC,PMID:32846060
 THCA,,RET,target,pralsetinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,RET-altered thyroid cancer,Selective RET inhibitor,PMID:32615108
-THCA,,NTRK1,target,larotrectinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,NTRK-fusion thyroid cancer,Tumor-agnostic NTRK inhibitor,PMID:29466156
+THCA,,NTRK1,target,larotrectinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,NTRK gene-fusion-positive solid tumors (tumor-agnostic),Tumor-agnostic NTRK inhibitor — thyroid is a recurrent NTRK-fusion site,PMID:29466156
 LGG,,IDH1,biomarker,,,,,,,,R132H mutation — majority of adult LGG; defines IDH-mutant class; gates vorasidenib eligibility,PMID:37272516
 LGG,,IDH2,biomarker,,,,,,,,R172 mutation — less common than IDH1; also targeted by vorasidenib,PMID:37272516
 LGG,,ATRX,biomarker,,,,,,,,Loss — astrocytoma lineage marker (combined with IDH-mutant and 1p/19q retained),PMID:24105470
@@ -415,7 +415,7 @@ CHOL,,FGFR2,target,futibatinib,small_molecule,approved,approved_indication_match
 CHOL,,IDH1,target,ivosidenib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,IDH1-mutant cholangiocarcinoma,IDH1 inhibitor — ClarIDHy trial,PMID:32474412
 CHOL,,BRAF,target,dabrafenib + trametinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,BRAF V600E cholangiocarcinoma,Tumor-agnostic BRAF/MEK,PMID:32818466
 CHOL,,ERBB2,target,trastuzumab + pertuzumab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,HER2-amplified cholangiocarcinoma,HER2-targeted antibody combo — MyPathway basket,PMID:31843955
-CHOL,,NTRK1,target,larotrectinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,NTRK-fusion cholangiocarcinoma,Tumor-agnostic NTRK inhibitor,PMID:29466156
+CHOL,,NTRK1,target,larotrectinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,NTRK gene-fusion-positive solid tumors (tumor-agnostic),Tumor-agnostic NTRK inhibitor — cholangiocarcinoma is a recurrent NTRK-fusion site,PMID:29466156
 CHOL,,CD274,target,pembrolizumab,antibody,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,MSI-H / dMMR cholangiocarcinoma,Tumor-agnostic checkpoint IO,PMID:32914748
 OV,,BRCA1,biomarker,,,,,,,,Germline/somatic mutation — PARP inhibitor maintenance eligibility; 20-25% of HGSOC,PMID:22452356
 OV,,BRCA2,biomarker,,,,,,,,Germline/somatic mutation — PARP inhibitor maintenance eligibility,PMID:22452356
