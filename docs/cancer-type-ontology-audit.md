@@ -1,5 +1,13 @@
 # Cancer-type registry ontology audit (Phase C)
 
+> **Historical / largely implemented (Phase C).** This is the Phase-C planning
+> audit; the restructure it proposes has since SHIPPED. Where the plan and the
+> implementation diverge, the **code is authoritative**: `PANNET` was retired
+> (`PANNET`→`NET_PANCREAS`; old code resolves via alias), and the AML-ELN
+> codes shipped lowercase (`LAML_ELNadv/fav/int`, not `LAML_ELNAdv`). The
+> `(130 codes)` figure is the May-2026 snapshot; the live registry has grown
+> since — query `cancer_type_registry()` for current codes/counts. See #315.
+
 Audit of `pirlygenes/data/cancer-type-registry.csv` (130 codes) against the
 **WHO Classification of Tumours, 5th edition** series, and the resulting
 restructure plan. Grounded in the WHO volumes (cited by volume; no fabricated

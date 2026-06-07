@@ -1,5 +1,12 @@
 # Expression data audit — all cancer codes (2026-05-26)
 
+> **Historical snapshot (2026-05-26).** Counts below (`125 codes`,
+> `116 leaf + 9 umbrella`, the `v5.3` coverage figures) predate the Phase-C
+> renames and later registry/source growth. For current numbers run the repro
+> snippet in issue #315, or query `cancer_type_registry()` /
+> `available_cancer_expression_references()` directly. Kept as the
+> point-in-time work-queue that drove the refresh-plan milestones.
+
 Cross-reference of the cancer-type registry against actual bundled
 expression data and the YAML source registry. Companion to
 `docs/expression-data-refresh-plan.md` — the audit defines the work

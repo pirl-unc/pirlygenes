@@ -1,5 +1,21 @@
 # Expression-source manifest — per cancer code
 
+> **Historical snapshot (May 2026).** The per-code table below predates the
+> Phase-C cancer-type renames and the later source expansion, so some rows use
+> retired codes (`EWS`→`SARC_EWS`, `OS`→`SARC_OS`, `RMS_*`→`SARC_RMS_*`,
+> `CHOR`→`SARC_CHOR`, `PANNET`→`NET_PANCREAS`, `MID_NET`→`NET_MIDGUT`,
+> `REC_NET`→`NET_RECTAL`, `LUNG_NET_LC`→`NET_LUNG`,
+> `LUNG_NET_LCNEC`→`NEC_LUNG_LARGECELL`, `NBL_MYCN_*`→`NBL_MYCN*`,
+> `LAML_ELN_*`→`LAML_ELN*`) and stale counts. For the **current** inventory
+> query the live accessors instead:
+> ```python
+> from pirlygenes.gene_sets_cancer import cancer_type_registry
+> from pirlygenes.expression import available_cancer_expression_references
+> cancer_type_registry()                     # registry codes (source of truth)
+> available_cancer_expression_references()   # packaged per-cohort references
+> ```
+> Old codes still resolve via `resolve_cancer_type` aliases. See issue #315.
+
 One row per cancer code in `pirlygenes/data/cancer-type-registry.csv`
 giving the best-identified public source of per-sample expression
 data, the implementation status, and a pointer to the
