@@ -29,7 +29,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pandas as pd
+
 from . import downloads
+
+# Canonical per-sample-parquet layout — the single source of truth for the
+# filename suffix and the non-sample id columns, so every reader/writer agrees.
+PER_SAMPLE_SUFFIX = "_per_sample_tpm.parquet"
+ID_COLS = ("Ensembl_Gene_ID", "Symbol")
 
 
 @dataclass(frozen=True)
@@ -141,8 +148,8 @@ def _discovered_cohorts(source_id: str) -> dict[str, Cohort]:
     derived = downloads.source_cache_dir(source_id) / "derived"
     out: dict[str, Cohort] = {}
     if derived.exists():
-        for p in sorted(derived.glob("*_per_sample_tpm.parquet")):
-            stem = p.name[: -len("_per_sample_tpm.parquet")]
+        for p in sorted(derived.glob(f"*{PER_SAMPLE_SUFFIX}")):
+            stem = p.name[: -len(PER_SAMPLE_SUFFIX)]
             out[stem] = Cohort(stem, stem, source_id)
     return out
 
@@ -162,7 +169,7 @@ def cohorts_for_source(source_id: str) -> dict[str, Cohort]:
 def parquet_path(cohort: Cohort):
     """Path to a cohort's per-sample TPM parquet (may not exist on disk)."""
     return (downloads.source_cache_dir(cohort.source_id) / "derived"
-            / f"{cohort.stem}_per_sample_tpm.parquet")
+            / f"{cohort.stem}{PER_SAMPLE_SUFFIX}")
 
 
 def available_cohorts(source_id: str) -> dict[str, Cohort]:
@@ -181,3 +188,53 @@ def all_available_cohorts() -> dict[str, Cohort]:
         for code, cohort in available_cohorts(source_id).items():
             out.setdefault(code, cohort)
     return out
+
+
+# --- canonical per-sample matrix I/O (single source of truth) --------------
+
+def sample_columns(df: pd.DataFrame) -> list[str]:
+    """The per-sample value columns of a per-sample frame (everything that
+    isn't an :data:`ID_COLS` id column)."""
+    return [c for c in df.columns if c not in ID_COLS]
+
+
+def read_per_sample(cohort: Cohort) -> pd.DataFrame:
+    """Read a cohort's per-sample TPM parquet (the canonical open + error).
+
+    Returns the raw frame: ``ID_COLS`` + one column per sample (linear TPM).
+    Use :func:`sample_columns` to get the value columns. Raises a helpful
+    ``FileNotFoundError`` if the matrix isn't cached."""
+    path = parquet_path(cohort)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"no per-sample parquet for {cohort.code} at {path} — run "
+            f"`pirlygenes build {cohort.source_id}` or `downloads fetch` first")
+    return pd.read_parquet(path)
+
+
+def iter_per_sample_cohorts(*, sources=None):
+    """Yield ``(cohort, df)`` for every per-sample cohort present on disk across
+    ``sources`` (default: all :data:`PER_SAMPLE_SOURCES`, in registration order).
+    The single iteration point shared by the representatives / percentile
+    generators so the source list and parquet layout live in one place."""
+    for source_id in (sources or list(PER_SAMPLE_SOURCES)):
+        for _code, cohort in available_cohorts(source_id).items():
+            yield cohort, read_per_sample(cohort)
+
+
+def write_per_sample(gene_table: pd.DataFrame, values: pd.DataFrame,
+                     source_id: str, code: str):
+    """Write a cohort's per-sample TPM parquet in the canonical layout
+    (``ID_COLS`` + sample columns) to ``<source-cache>/derived/``; returns the
+    path. Shared by the per-sample builders so the on-disk format has one
+    writer."""
+    derived = downloads.source_cache_dir(source_id) / "derived"
+    derived.mkdir(parents=True, exist_ok=True)
+    out = pd.concat(
+        [gene_table[list(ID_COLS)].reset_index(drop=True),
+         values.reset_index(drop=True)],
+        axis=1,
+    )
+    path = derived / f"{code}{PER_SAMPLE_SUFFIX}"
+    out.to_parquet(path, index=False)
+    return path

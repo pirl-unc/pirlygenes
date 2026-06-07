@@ -28,6 +28,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from pirlygenes import cohorts as _cohorts  # noqa: E402
 from pirlygenes.builders.treehouse import (  # noqa: E402
     _aggregate_by_ensembl,
     _build_or_load_symbol_mapping,
@@ -43,17 +44,10 @@ ENSEMBL = 112
 
 def _write(gene_table: pd.DataFrame, values: pd.DataFrame, source_dir: Path,
            code: str) -> int:
-    derived = source_dir / "derived"
-    derived.mkdir(parents=True, exist_ok=True)
-    out = pd.concat(
-        [gene_table[["Ensembl_Gene_ID", "Symbol"]].reset_index(drop=True),
-         values.reset_index(drop=True)],
-        axis=1,
-    )
-    out.to_parquet(derived / f"{code}_per_sample_tpm.parquet", index=False)
+    # source_dir is CACHE/<source_id>; the canonical writer is keyed on source_id
+    path = _cohorts.write_per_sample(gene_table, values, source_dir.name, code)
     n = values.shape[1]
-    print(f"  {code}: {len(out)} genes × {n} samples -> "
-          f"{derived / f'{code}_per_sample_tpm.parquet'}", flush=True)
+    print(f"  {code}: {len(gene_table)} genes × {n} samples -> {path}", flush=True)
     return n
 
 

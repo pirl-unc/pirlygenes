@@ -45,74 +45,52 @@ from pirlygenes.expression import (
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "pirlygenes" / "data" \
     / "cancer-reference-expression-representatives"
-CACHE = Path.home() / ".cache" / "pirlygenes" / "expression"
-
-# (source_id, source_cohort label, source_project) per per-sample source — the
-# single source of truth lives in pirlygenes.cohorts.PER_SAMPLE_SOURCES; this is
-# just a view of it (imported by the percentile generator too).
-_SOURCES = [(sid, label, project)
-            for sid, (label, project) in _cohorts.PER_SAMPLE_SOURCES.items()]
-
-
-def _stem_to_code(source_id: str) -> dict[str, str]:
-    """{parquet_stem: cancer_code} for a source, via the centralized cohort
-    registry (explicit map for treehouse-polya; code==stem discovery elsewhere)."""
-    return {c.stem: c.code for c in _cohorts.cohorts_for_source(source_id).values()}
 
 
 def build(k: int = 12) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     provenance = []
     n_cohorts = 0
-    for source_id, source_cohort, source_project in _SOURCES:
-        derived = CACHE / source_id / "derived"
-        if not derived.exists():
-            print(f"[skip] no cache for {source_id}", flush=True)
+    for cohort, df in _cohorts.iter_per_sample_cohorts():
+        code = cohort.code
+        sample_cols = _cohorts.sample_columns(df)
+        if not sample_cols:
             continue
-        stem_to_code = _stem_to_code(source_id)
-        for parquet in sorted(derived.glob("*_per_sample_tpm.parquet")):
-            stem = parquet.name[: -len("_per_sample_tpm.parquet")]
-            code = stem_to_code.get(stem, stem.upper())
-            df = pd.read_parquet(parquet)
-            sample_cols = [c for c in df.columns
-                           if c not in ("Ensembl_Gene_ID", "Symbol")]
-            if not sample_cols:
-                continue
-            gene_table = df[["Symbol", "Ensembl_Gene_ID"]]
-            clean = clean_tpm_matrix(df[sample_cols], gene_table=gene_table,
-                                     censored_fill="fixed_fraction")
-            # Select medoids on the BIOLOGY-ONLY view so the choice rides on
-            # biological signal and is insensitive to the clean_tpm_v4
-            # fixed-fraction technical floor (#304); store the full clean_tpm_v4
-            # vectors for the chosen samples (matching the aggregate references).
-            sel_frame = clean.copy()
-            sel_frame.insert(0, "Ensembl_Gene_ID",
-                             df["Ensembl_Gene_ID"].astype(str).values)
-            sel_frame.insert(0, "Symbol", df["Symbol"].astype(str).values)
-            bio = drop_technical_genes(sel_frame)
-            chosen = select_representative_samples(bio[sample_cols], k)
-            reps = clean[chosen]
-            rep_ids = [f"{code}_rep{i:02d}" for i in range(1, len(chosen) + 1)]
-            out = pd.DataFrame({
-                "Ensembl_Gene_ID": df["Ensembl_Gene_ID"].astype(str).values,
-                "Symbol": df["Symbol"].astype(str).values,
+        gene_table = df[["Symbol", "Ensembl_Gene_ID"]]
+        clean = clean_tpm_matrix(df[sample_cols], gene_table=gene_table,
+                                 censored_fill="fixed_fraction")
+        # Select medoids on the BIOLOGY-ONLY view so the choice rides on
+        # biological signal and is insensitive to the clean_tpm_v4
+        # fixed-fraction technical floor (#304); store the full clean_tpm_v4
+        # vectors for the chosen samples (matching the aggregate references).
+        sel_frame = clean.copy()
+        sel_frame.insert(0, "Ensembl_Gene_ID",
+                         df["Ensembl_Gene_ID"].astype(str).values)
+        sel_frame.insert(0, "Symbol", df["Symbol"].astype(str).values)
+        bio = drop_technical_genes(sel_frame)
+        chosen = select_representative_samples(bio[sample_cols], k)
+        reps = clean[chosen]
+        rep_ids = [f"{code}_rep{i:02d}" for i in range(1, len(chosen) + 1)]
+        out = pd.DataFrame({
+            "Ensembl_Gene_ID": df["Ensembl_Gene_ID"].astype(str).values,
+            "Symbol": df["Symbol"].astype(str).values,
+        })
+        for rid, col in zip(rep_ids, chosen):
+            out[rid] = reps[col].to_numpy(dtype=np.float32)
+        out.to_parquet(OUT_DIR / f"{code}.parquet", index=False,
+                       compression="zstd")
+        for rank, rid in enumerate(rep_ids, start=1):
+            provenance.append({
+                "cancer_code": code,
+                "representative_id": rid,
+                "source_cohort": _cohorts.source_label(cohort.source_id),
+                "source_project": _cohorts.source_project(cohort.source_id),
+                "n_cohort_samples": len(sample_cols),
+                "cluster_rank": rank,
             })
-            for rid, col in zip(rep_ids, chosen):
-                out[rid] = reps[col].to_numpy(dtype=np.float32)
-            out.to_parquet(OUT_DIR / f"{code}.parquet", index=False,
-                           compression="zstd")
-            for rank, rid in enumerate(rep_ids, start=1):
-                provenance.append({
-                    "cancer_code": code,
-                    "representative_id": rid,
-                    "source_cohort": source_cohort,
-                    "source_project": source_project,
-                    "n_cohort_samples": len(sample_cols),
-                    "cluster_rank": rank,
-                })
-            n_cohorts += 1
-            print(f"  {code}: {len(sample_cols)} samples -> {len(chosen)} reps",
-                  flush=True)
+        n_cohorts += 1
+        print(f"  {code}: {len(sample_cols)} samples -> {len(chosen)} reps",
+              flush=True)
     prov = pd.DataFrame(provenance).sort_values(["cancer_code", "cluster_rank"])
     prov.to_csv(OUT_DIR / "_provenance.csv", index=False)
     total_mb = sum(f.stat().st_size for f in OUT_DIR.glob("*.parquet")) / 1e6
