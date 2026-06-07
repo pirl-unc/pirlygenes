@@ -124,6 +124,91 @@ def _is_kept_biotype(value: object) -> bool:
     return token in _KEEP_NONCODING_NORMALIZATION_BIOTYPES
 
 
+def _clean_tpm_normalize(
+    out,
+    *,
+    label_col,
+    id_col,
+    value_cols,
+    group_cols,
+    censored_fill,
+    technical_fraction,
+    exclude_ribosomal_proteins,
+    protect,
+    reference,
+):
+    """Apply the shared reference clean-TPM transform (:func:`clean_tpm_matrix`)
+    to ``out`` in place, per (group × value column), and return
+    ``(out, info)``. Each value column is a per-gene vector; treating it as a
+    one-sample gene×sample matrix lets the runtime path reuse the identical
+    builder transform so the result lands on the v4 basis (biological 750k).
+    """
+    import pandas as pd
+
+    gene_table = pd.DataFrame(
+        {
+            "Symbol": out[label_col].fillna("").astype(str),
+            "Ensembl_Gene_ID": (
+                out[id_col].fillna("").astype(str)
+                if id_col and id_col in out.columns
+                else pd.Series([""] * len(out), index=out.index)
+            ),
+        },
+        index=out.index,
+    )
+    removable = clean_tpm_removal_mask(
+        gene_table,
+        exclude_ribosomal_proteins=exclude_ribosomal_proteins,
+        protect=protect,
+    )
+
+    def _apply(indices):
+        idx = list(indices)
+        block = out.loc[idx, value_cols].apply(pd.to_numeric, errors="coerce")
+        cleaned = clean_tpm_matrix(
+            block,
+            removable=removable.loc[idx],
+            gene_table=gene_table.loc[idx],
+            exclude_ribosomal_proteins=exclude_ribosomal_proteins,
+            censored_fill=censored_fill,
+            technical_fraction=technical_fraction,
+            reference=reference,
+        )
+        out.loc[idx, value_cols] = cleaned
+
+    resolved_group_cols: list[str] = []
+    if group_cols is None:
+        _apply(out.index)
+    else:
+        resolved_group_cols = [str(c) for c in group_cols if str(c) in out.columns]
+        if not resolved_group_cols:
+            return out, {
+                "applied": False,
+                "reason": "missing grouping columns",
+                "columns": {},
+                "groups": {},
+            }
+        for _key, idx in out.groupby(resolved_group_cols, dropna=False).groups.items():
+            _apply(idx)
+
+    return out, {
+        "applied": True,
+        "reason": f"clean-TPM ({censored_fill}) reference transform applied",
+        "columns": {},
+        "groups": {},
+        "label_col": label_col,
+        "value_cols": list(value_cols),
+        "group_cols": resolved_group_cols,
+        "censored_fill": censored_fill,
+        "technical_fraction": (
+            technical_fraction if censored_fill == "fixed_fraction" else None
+        ),
+        "exclude_ribosomal_proteins": bool(exclude_ribosomal_proteins),
+        "removed_technical_gene_count": int(removable.sum()),
+        "removed_feature_mode": censored_fill,
+    }
+
+
 def normalize_expression(
     df,
     *,
@@ -134,16 +219,43 @@ def normalize_expression(
     biotype_col: str | None = None,
     remove_noncoding: bool = False,
     remove_groups: Iterable[str] = _DEFAULT_NORMALIZE_REMOVE_GROUPS,
+    censored_fill: str = "zero",
+    technical_fraction: float = 0.25,
+    exclude_ribosomal_proteins: bool = True,
+    protect=None,
+    reference=None,
 ):
-    """Zero technical-RNA features and rescale each column's remaining mass.
+    """Normalize technical-RNA features and rescale each column's mass.
 
-    The default transform zeroes mitochondrial transcripts, NUMT-like
-    mitochondrial pseudogenes, rRNA/rRNA-pseudogene rows, and the
-    polyadenylation-bias lncRNA panel (MALAT1, NEAT1), then rescales
-    every expression vector so the remaining non-missing TPM mass
-    stays on the original per-column total. Raw expression should be
-    kept for QC and provenance; this helper defines the comparable
-    biology view used after QC.
+    The default (``censored_fill="zero"``, legacy) transform zeroes
+    mitochondrial transcripts, NUMT-like mitochondrial pseudogenes,
+    rRNA/rRNA-pseudogene rows, and the polyadenylation-bias lncRNA panel
+    (MALAT1, NEAT1), then rescales every expression vector so the remaining
+    non-missing TPM mass stays on the original per-column total. Raw
+    expression should be kept for QC and provenance; this helper defines the
+    comparable biology view used after QC.
+
+    Set ``censored_fill`` to a non-``"zero"`` mode to apply the **same**
+    reference clean-TPM transform the cohort builders use
+    (:func:`clean_tpm_matrix`), so a consumer normalizing its own inputs
+    matches how the packaged ``cancer_reference_expression`` references were
+    built (#311):
+
+    - ``"fixed_fraction"`` (clean_tpm_v4) — two-compartment: the censored
+      (technical) block is pinned to ``technical_fraction`` of the 1e6 budget
+      (default 25%) and the biological block to the rest (75%), each
+      renormalized within its group. This is the basis the references ship on.
+    - ``"reference"`` / ``"typical"`` — the other :func:`clean_tpm_matrix`
+      modes.
+
+    In every non-``"zero"`` mode the censored set is the **clean-TPM removal
+    set** (:func:`clean_tpm_removal_mask`: technical RNA **plus**
+    ribosomal-protein mRNA/pseudogenes, minus curated targets), not the
+    technical-only ``remove_groups`` of the legacy zero path — matching the
+    references by construction. ``exclude_ribosomal_proteins=False`` narrows
+    it to technical-only; ``protect`` overrides the protected-target symbols;
+    ``remove_noncoding`` / ``remove_groups`` / ``biotype_col`` apply only to
+    the legacy zero path.
 
     Classification is done via :func:`classify_gene_qc`, which prefers
     ENSG-id lookup against the curated pirlygenes QC tables and falls
@@ -181,6 +293,20 @@ def normalize_expression(
             "columns": {},
             "groups": {},
         }
+
+    if censored_fill != "zero":
+        return _clean_tpm_normalize(
+            out,
+            label_col=label_col,
+            id_col=id_col,
+            value_cols=value_cols,
+            group_cols=group_cols,
+            censored_fill=censored_fill,
+            technical_fraction=technical_fraction,
+            exclude_ribosomal_proteins=exclude_ribosomal_proteins,
+            protect=protect,
+            reference=reference,
+        )
 
     labels = out[label_col].fillna("").astype(str).str.strip()
     remove_group_set = {str(group) for group in remove_groups}
@@ -299,22 +425,30 @@ def normalize_technical_rna_columns(
     *,
     label_col: str = "Symbol",
     value_cols: Iterable[str] | None = None,
+    censored_fill: str = "zero",
+    technical_fraction: float = 0.25,
 ):
-    """Zero mtDNA/rRNA-like features and renormalize every expression column.
+    """Normalize mtDNA/rRNA-like features and renormalize every expression column.
 
-    Shared comparability transform for reference matrices. Preserves
-    each column's total expression mass after removing technical-RNA
-    features. Per-sample raw-expression QC narration (TPM-share
-    summaries, top-K concentration, rescue summaries) is part of the
-    analysis layer and lives in ``trufflepig`` — record it before
-    calling this transform if you need provenance for the un-cleaned
-    state.
+    Shared comparability transform for reference matrices. With the default
+    ``censored_fill="zero"`` it zeroes technical-RNA features and preserves
+    each column's total mass (legacy behavior). Set
+    ``censored_fill="fixed_fraction"`` to apply the clean_tpm_v4 two-compartment
+    transform the cohort builders use, so your normalized inputs match how the
+    packaged references were built (#311) — see :func:`normalize_expression`.
+
+    Per-sample raw-expression QC narration (TPM-share summaries, top-K
+    concentration, rescue summaries) is part of the analysis layer and lives in
+    ``trufflepig`` — record it before calling this transform if you need
+    provenance for the un-cleaned state.
     """
     return normalize_expression(
         df,
         label_col=label_col,
         value_cols=value_cols,
         remove_noncoding=False,
+        censored_fill=censored_fill,
+        technical_fraction=technical_fraction,
     )
 
 
@@ -324,14 +458,23 @@ def normalize_technical_rna_long_table(
     label_col: str = "symbol",
     group_cols: Iterable[str] = ("cancer_code", "subtype"),
     value_cols: Iterable[str] = ("tumor_tpm_median", "tumor_tpm_q1", "tumor_tpm_q3"),
+    censored_fill: str = "zero",
+    technical_fraction: float = 0.25,
 ):
-    """Apply technical-RNA normalization within each long-table cohort group."""
+    """Apply technical-RNA normalization within each long-table cohort group.
+
+    ``censored_fill="fixed_fraction"`` applies the clean_tpm_v4 reference
+    transform per cohort group (matching the packaged references) instead of
+    the legacy zero-and-renormalize (#311); see :func:`normalize_expression`.
+    """
     return normalize_expression(
         df,
         label_col=label_col,
         group_cols=group_cols,
         value_cols=value_cols,
         remove_noncoding=False,
+        censored_fill=censored_fill,
+        technical_fraction=technical_fraction,
     )
 
 

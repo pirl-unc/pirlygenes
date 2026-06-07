@@ -65,12 +65,15 @@ from .aggregate import (
 )
 from .normalize import (
     add_tpm_columns_from_fpkm,
+    clean_tpm_matrix,
+    clean_tpm_removal_mask,
     fpkm_to_tpm,
     normalize_expression,
     normalize_technical_rna_columns,
     normalize_technical_rna_long_table,
     percentile_rank_expression,
     renormalize_to_million,
+    technical_rna_mask,
     tpm_to_housekeeping_normalized,
 )
 from .qc import (
@@ -102,6 +105,9 @@ __all__ = [
     "tpm_to_housekeeping_normalized",
     "normalize_technical_rna_columns",
     "normalize_technical_rna_long_table",
+    "clean_tpm_matrix",
+    "clean_tpm_removal_mask",
+    "technical_rna_mask",
     # Reference-frame convenience wrappers
     "normalize_to_housekeeping",
     "log1p_transform",

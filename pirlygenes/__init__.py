@@ -44,6 +44,8 @@ from .expression import (
     cancer_expression,
     cancer_reference_expression,
     classify_gene_qc,
+    clean_tpm_matrix,
+    clean_tpm_removal_mask,
     estimate_signatures,
     filter_technical_rna,
     filter_to_genes,
@@ -199,6 +201,8 @@ __all__ = [
     "tpm_to_housekeeping_normalized",
     "normalize_technical_rna_columns",
     "normalize_technical_rna_long_table",
+    "clean_tpm_matrix",
+    "clean_tpm_removal_mask",
     # expression: reference-frame convenience
     "normalize_to_housekeeping",
     "log2_transform",
