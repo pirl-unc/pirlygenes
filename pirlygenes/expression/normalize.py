@@ -599,6 +599,45 @@ def clean_tpm_removal_mask(gene_table, *, exclude_ribosomal_proteins: bool = Tru
     return mask
 
 
+def drop_technical_genes(df, *, label_col: str = "Symbol",
+                         id_col: str = "Ensembl_Gene_ID", level: str = "default",
+                         exclude_ribosomal_proteins: bool = True, protect=None):
+    """Return ``df`` with the clean-TPM censored rows removed — the biology-only
+    view of a gene×value frame.
+
+    Uses the same :func:`clean_tpm_removal_mask` as the clean-TPM transform, so
+    the dropped set is exactly what clean-TPM censors: technical RNA (mtDNA /
+    rRNA-like / mt-pseudogene / polyA-bias lncRNA) plus ribosomal proteins by
+    default, plus the full extended-housekeeping block when
+    ``level="extended"``, minus any curated target in ``protect``. ``df`` must
+    carry ``label_col`` (Symbol) and ``id_col`` (Ensembl_Gene_ID); all other
+    columns pass through untouched.
+
+    Intended for distance/clustering and cross-sample comparison that should
+    ride on biological signal rather than the technical compartment — in
+    particular it is **insensitive to the clean_tpm_v4 fixed-fraction floor**
+    (#304), since the inflated technical rows are removed before any distance is
+    computed. (Distinct from :func:`pirlygenes.expression.filter_technical_rna`,
+    which drops only the strict curated technical-RNA family set.)
+    """
+    import pandas as pd
+
+    if label_col not in df.columns:
+        raise ValueError(f"drop_technical_genes needs a {label_col!r} column")
+    gene_table = pd.DataFrame(
+        {
+            "Symbol": df[label_col].astype(str),
+            "Ensembl_Gene_ID": (df[id_col].astype(str) if id_col in df.columns
+                                else pd.Series([""] * len(df), index=df.index)),
+        },
+        index=df.index,
+    )
+    removable = clean_tpm_removal_mask(
+        gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins,
+        protect=protect, level=level)
+    return df.loc[~removable.to_numpy()].reset_index(drop=True)
+
+
 def censored_gene_reference():
     """``{Symbol: reference_tpm}`` — each censored gene's fixed surrogate value,
     its median TPM across the Treehouse 25.01 PolyA compendium (the reference
