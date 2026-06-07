@@ -42,6 +42,16 @@ from . import gene_sets_cancer as gsc
 DEFAULT_SOURCE = "treehouse-polya-25-01"
 DEFAULT_THRESHOLDS = (25, 50, 100, 200)
 
+
+def _available(source_id):
+    """Cohorts with cached per-sample matrices for ``source_id``, or — when
+    ``source_id == "all"`` — across every registered per-sample source (#275).
+    Cross-source is safe because each cohort carries its own ``source_id`` and
+    :func:`cohort_matrix` reads that cohort's own parquet."""
+    if source_id == "all":
+        return _cohorts.all_available_cohorts()
+    return _cohorts.available_cohorts(source_id)
+
 # --- gene-set resolution ---------------------------------------------------
 
 # A panel is an **ENSG set**. Gene symbols are only ever used to *look up* an
@@ -189,7 +199,7 @@ def patient_coverage(gene_set: str, source_id: str = DEFAULT_SOURCE,
     a cached per-sample matrix for ``source_id``.
     """
     _label, ensgs = resolve_gene_set(gene_set)
-    avail = _cohorts.available_cohorts(source_id)
+    avail = _available(source_id)
     if codes:
         want = {gsc.resolve_cancer_type(c) for c in codes}
         avail = {k: v for k, v in avail.items() if k in want}
@@ -254,7 +264,7 @@ def render(gene_set: str, source_id: str = DEFAULT_SOURCE, codes=None,
 
     # Per-cohort greedy coverage (reuse the loaded matrices once). Greedy order
     # is computed on ENSG-indexed rows; symbols are mapped in only for display.
-    avail = _cohorts.available_cohorts(source_id)
+    avail = _available(source_id)
     if codes:
         want = {gsc.resolve_cancer_type(c) for c in codes}
         avail = {k: v for k, v in avail.items() if k in want}

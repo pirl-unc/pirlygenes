@@ -101,15 +101,62 @@ def _treehouse_polya_25_01() -> dict[str, Cohort]:
     return out
 
 
+# Single source of truth for the per-sample expression sources: ``source_id ->
+# (source_cohort label, project)``. The generators and the package accessors all
+# read this — don't duplicate the list in scripts. ``label`` is the
+# ``source_cohort`` value used in provenance; ``project`` is the data origin.
+PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
+    "treehouse-polya-25-01": ("TREEHOUSE_POLYA_25_01", "Treehouse"),
+    "treehouse-ribod-25-01": ("TREEHOUSE_RIBOD_25_01", "Treehouse"),
+    # Neuroendocrine axis (#318/#326) — per-sample parquets built by
+    # scripts/build_ne_per_sample_parquets.py from the cached NE source data.
+    "gse118014-pannet": ("GSE118014_ALVAREZ_2018", "GEO"),
+    "sclc-ucologne-2015": ("SCLC_UCOLOGNE_2015", "UCologne"),
+    "drmetrics-lnen-2020": ("DRMETRICS_ALCALA_2019_LNEN", "IARC LNEN"),
+}
+
+# Sources with an explicit code→Cohort map (mixed-case stems that don't
+# round-trip from the parquet name). Every other source in PER_SAMPLE_SOURCES
+# discovers its cohorts from disk with ``code == stem``.
 _REGISTRY: dict[str, dict[str, Cohort]] = {
     "treehouse-polya-25-01": _treehouse_polya_25_01(),
 }
 
 
+def source_label(source_id: str) -> str | None:
+    """The ``source_cohort`` provenance label for a per-sample source."""
+    entry = PER_SAMPLE_SOURCES.get(source_id)
+    return entry[0] if entry else None
+
+
+def source_project(source_id: str) -> str | None:
+    """The data-origin project for a per-sample source (Treehouse/GEO/…)."""
+    entry = PER_SAMPLE_SOURCES.get(source_id)
+    return entry[1] if entry else None
+
+
+def _discovered_cohorts(source_id: str) -> dict[str, Cohort]:
+    """Cohorts inferred from a source's cached ``derived`` parquet stems, with
+    ``code == stem`` — for sources without an explicit registry map."""
+    derived = downloads.source_cache_dir(source_id) / "derived"
+    out: dict[str, Cohort] = {}
+    if derived.exists():
+        for p in sorted(derived.glob("*_per_sample_tpm.parquet")):
+            stem = p.name[: -len("_per_sample_tpm.parquet")]
+            out[stem] = Cohort(stem, stem, source_id)
+    return out
+
+
 def cohorts_for_source(source_id: str) -> dict[str, Cohort]:
-    """All registered cohorts for ``source_id`` ({code: Cohort}); empty if the
-    source has no per-sample cohort registry."""
-    return dict(_REGISTRY.get(source_id, {}))
+    """All cohorts for ``source_id`` ({code: Cohort}). Explicit-map sources
+    (treehouse-polya) return their registered map; other per-sample sources
+    discover cohorts from the cached ``derived`` parquets (code == stem); an
+    unknown source returns empty."""
+    if source_id in _REGISTRY:
+        return dict(_REGISTRY[source_id])
+    if source_id in PER_SAMPLE_SOURCES:
+        return _discovered_cohorts(source_id)
+    return {}
 
 
 def parquet_path(cohort: Cohort):
@@ -123,3 +170,14 @@ def available_cohorts(source_id: str) -> dict[str, Cohort]:
     local cache (i.e. usable right now without a build/download)."""
     return {code: c for code, c in cohorts_for_source(source_id).items()
             if parquet_path(c).exists()}
+
+
+def all_available_cohorts() -> dict[str, Cohort]:
+    """Every per-sample cohort present on disk across **all**
+    :data:`PER_SAMPLE_SOURCES`. On a code collision the first source in
+    registration order wins (treehouse-polya is canonical)."""
+    out: dict[str, Cohort] = {}
+    for source_id in PER_SAMPLE_SOURCES:
+        for code, cohort in available_cohorts(source_id).items():
+            out.setdefault(code, cohort)
+    return out
