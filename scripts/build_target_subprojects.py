@@ -334,7 +334,14 @@ def _summarize_one(
     cancer_code: str,
     project: TargetProject,
     extra_notes: str = "",
+    source_id: str | None = None,
 ) -> pd.DataFrame:
+    if source_id:
+        # Persist the per-code per-sample matrix for medoids + percentiles, from
+        # the same (code, values) the summary is computed from (one source of
+        # truth). Every code this builder emits flows through here.
+        from pirlygenes import cohorts as _cohorts
+        _cohorts.write_per_sample(gene_table, values, source_id, cancer_code)
     clean = _clean_tpm(values, gene_table=gene_table)
     out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
     out["cancer_code"] = cancer_code
@@ -437,7 +444,7 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
         # Umbrella NBL cohort: all samples, no MYCN split
         summaries.append(_summarize_one(
             gene_table, values,
-            cancer_code="NBL", project=project,
+            cancer_code="NBL", project=project, source_id=cache_dir.name,
             extra_notes=(
                 "Umbrella aggregate over all TARGET-NBL samples; "
                 f"children NBL_MYCN_amp (n={len(amp_cols)}) and "
@@ -448,14 +455,14 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
         if amp_cols:
             summaries.append(_summarize_one(
                 gene_table, values[amp_cols],
-                cancer_code="NBL_MYCNamp", project=project,
+                cancer_code="NBL_MYCNamp", project=project, source_id=cache_dir.name,
                 extra_notes=("MYCN status = Amplified per cBioPortal "
                              "nbl_target_2018_pub MYCN attribute."),
             ))
         if nonamp_cols:
             summaries.append(_summarize_one(
                 gene_table, values[nonamp_cols],
-                cancer_code="NBL_MYCNnonamp", project=project,
+                cancer_code="NBL_MYCNnonamp", project=project, source_id=cache_dir.name,
                 extra_notes=(
                     f"MYCN status = Not Amplified per cBioPortal "
                     f"nbl_target_2018_pub MYCN attribute "
@@ -473,7 +480,7 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
     else:
         summary = _summarize_one(
             gene_table, values,
-            cancer_code=project.cancer_code, project=project,
+            cancer_code=project.cancer_code, project=project, source_id=cache_dir.name,
         )
         upsert_to_shard(
             args.summary_output,

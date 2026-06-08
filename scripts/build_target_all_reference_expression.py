@@ -516,6 +516,8 @@ def _summarize(
     gene_table: pd.DataFrame,
     values: pd.DataFrame,
     included: pd.DataFrame,
+    *,
+    source_id: str | None = None,
 ) -> pd.DataFrame:
     frames = []
     notes_by_code = {
@@ -538,10 +540,16 @@ def _summarize(
         sample_ids = included.loc[included["cancer_code"].eq(code), "sample_id"]
         if sample_ids.empty:
             continue
+        code_values = values.loc[:, list(sample_ids)]
+        if source_id:
+            # Persist the per-code per-sample matrix for medoids + percentiles
+            # (same selection that drives the summary — one source of truth).
+            from pirlygenes import cohorts as _cohorts
+            _cohorts.write_per_sample(gene_table, code_values, source_id, code)
         frames.append(
             _summarize_one(
                 gene_table,
-                values.loc[:, list(sample_ids)],
+                code_values,
                 cancer_code=code,
                 notes=notes_by_code[code],
             )
@@ -594,7 +602,8 @@ def main() -> None:
         cache_dir=args.cache_dir,
         ensembl_release=args.ensembl_release,
     )
-    summary = _summarize(gene_table, values, included)
+    summary = _summarize(gene_table, values, included,
+                         source_id=args.cache_dir.name)
     _upsert_source_cohort(
         args.summary_output,
         summary,

@@ -455,6 +455,9 @@ def _build_source(
         included_cols,
         raw_unit=source.raw_unit,
     )
+    from pirlygenes import cohorts as _cohorts
+    _cohorts.write_per_sample(gene_table, values, cache_dir.name,
+                              source.cancer_code)
     summary = _summarize(source, gene_table, values)
     manifest = _build_sample_manifest(source, samples, metadata_sample_cols)
     print(

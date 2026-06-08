@@ -62,6 +62,33 @@ def test_unknown_source_empty():
     assert cohorts.cohorts_for_source("nope") == {}
 
 
+def test_iter_per_sample_dedups_by_code_richest_source_wins(tmp_path, monkeypatch):
+    """The medoid/percentile bundle is keyed by code; when two sources both have
+    a code on disk, iter_per_sample_cohorts yields it once — the richest source
+    (most samples) wins, so e.g. chordoma resolves to GSE239531 (n=23) over
+    treehouse-ribod (n=2), and a later source can't clobber a richer one."""
+    def _mk(sub, n_samples):
+        d = tmp_path / sub / "derived"
+        d.mkdir(parents=True)
+        cols = {"Ensembl_Gene_ID": ["ENSG00000141510"], "Symbol": ["TP53"]}
+        for i in range(n_samples):
+            cols[f"s{i}"] = [float(i + 1)]
+        pd.DataFrame(cols).to_parquet(
+            d / "SARC_CHOR_per_sample_tpm.parquet", index=False)
+    _mk("src-small", 2)
+    _mk("src-big", 5)
+    monkeypatch.setattr(cohorts.downloads, "source_cache_dir",
+                        lambda source_id, **k: tmp_path / source_id)
+    # src-small is registered FIRST, but src-big has more samples and must win.
+    monkeypatch.setattr(cohorts, "PER_SAMPLE_SOURCES",
+                        {"src-small": ("S", "x"), "src-big": ("B", "x")})
+    pairs = list(cohorts.iter_per_sample_cohorts())
+    assert [c.source_id for c, _ in pairs] == ["src-big"]   # richest wins
+    # opt out -> both (source-registration order)
+    pairs_all = list(cohorts.iter_per_sample_cohorts(unique_by_code=False))
+    assert {c.source_id for c, _ in pairs_all} == {"src-small", "src-big"}
+
+
 # --- the single declarative registry of every Treehouse per-sample cohort -----
 
 def test_registry_has_no_duplicate_codes():

@@ -425,6 +425,11 @@ def main() -> None:
         cache_dir=args.cache_dir,
         ensembl_release=args.ensembl_release,
     )
+    # Persist the per-sample raw-TPM matrix so this cohort gets medoid
+    # representatives + percentiles like every other per-sample cohort
+    # (registry source id == cache-dir name). The generators apply clean_tpm_v4.
+    from pirlygenes import cohorts as _cohorts
+    _cohorts.write_per_sample(gene_table, values, args.cache_dir.name, CANCER_CODE)
     summary = _summarize(gene_table, values)
     combined_summary = _upsert_reference(args.summary_output, summary)
     combined_samples = _upsert_samples(args.samples_output, manifest)

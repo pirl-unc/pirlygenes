@@ -267,6 +267,9 @@ def main() -> int:
             print(f"  skipping {subtype}: no samples")
             continue
         sub_values = values[cols]
+        from pirlygenes import cohorts as _cohorts
+        _cohorts.write_per_sample(canonical, sub_values, args.cache_dir.name,
+                                  subtype)
         summary = _summarize_one(
             canonical, sub_values,
             cancer_code=subtype, project=BEATAML_PROJECT,
