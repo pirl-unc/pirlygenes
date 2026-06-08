@@ -534,14 +534,26 @@ def main():
     payload_fn = _mean_specific_9mer_payload(weights)
 
     def _emit_load_metrics(thr, cutoffs=None):
-        _metric_vs_tmb(mat, cohorts, thr, _mean_ctas_per_sample,
-                       "mean # CTAs expressed per sample", "cta_mean_count_vs_tmb",
-                       pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
-                       slug_suffix="_noHEPB")
-        _metric_vs_tmb(mat, cohorts, thr, payload_fn,
-                       "mean CTA-specific 9mers per sample", "cta_9mer_payload_vs_tmb",
-                       pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
-                       slug_suffix="_noHEPB")
+        # Same variant matrix as the coverage-vs-TMB plot (_cta_vs_tmb): base
+        # (all cohorts incl. HEPB), no-HEPB (drops the TMB~0.02 outlier), and
+        # no-HEPB subtypes-only (drop a parent category when its subtypes are
+        # also plotted) — for BOTH load metrics: mean #CTAs/sample and mean
+        # CTA-specific-9mer payload/sample.
+        for value_fn, ylabel, slug in (
+            (_mean_ctas_per_sample, "mean # CTAs expressed per sample",
+             "cta_mean_count_vs_tmb"),
+            (payload_fn, "mean CTA-specific 9mers per sample",
+             "cta_9mer_payload_vs_tmb"),
+        ):
+            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug,
+                           pctile_cutoffs=cutoffs)
+            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug,
+                           pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
+                           slug_suffix="_noHEPB")
+            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug,
+                           pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
+                           slug_suffix="_noHEPB_subtypesonly",
+                           drop_covered_parents=True)
 
     _emit_load_metrics(tpm_thr)
 
@@ -983,7 +995,8 @@ def _cohort_on_matrix(mat, cols, thr, pctile_cutoffs):
 
 
 def _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug, *,
-                   pctile_cutoffs=None, exclude=frozenset(), slug_suffix=""):
+                   pctile_cutoffs=None, exclude=frozenset(), slug_suffix="",
+                   drop_covered_parents=False):
     """Generic scatter of a per-cohort per-sample CTA metric vs median TMB
     (log-x), styled like :func:`_cta_vs_tmb` but with a free (auto) y-axis and
     no sweet-spot band. ``value_fn(mat, cols, thr, pctile_cutoffs) -> float`` is
@@ -1017,6 +1030,8 @@ def _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug, *,
         if tmb is None:
             continue
         pts.append((code, len(cols), value_fn(mat, cols, thr, pctile_cutoffs), tmb))
+    if drop_covered_parents:
+        pts = _drop_covered_parents(pts, _parent_code_map())
     if not pts:
         print("      no cohorts with metric + TMB; skip", flush=True)
         return
