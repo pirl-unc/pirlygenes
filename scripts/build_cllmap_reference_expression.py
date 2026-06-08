@@ -178,8 +178,15 @@ def _collapse_duplicate_genes(df: pd.DataFrame, sample_cols: list[str]) -> pd.Da
     return pd.concat([symbol, source_gene_id, values], axis=1).reset_index()
 
 
-def _summarize(df: pd.DataFrame, included_cols: list[str]) -> pd.DataFrame:
+def _summarize(df: pd.DataFrame, included_cols: list[str],
+               *, source_id: str | None = None) -> pd.DataFrame:
     values = df[included_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    if source_id:
+        # Persist the per-sample raw-TPM matrix (included samples) for medoids +
+        # percentiles, from the same values the summary uses.
+        from pirlygenes import cohorts as _cohorts
+        _cohorts.write_per_sample(
+            df[["Ensembl_Gene_ID", "Symbol"]], values, source_id, "CLL")
     clean = _clean_tpm(values, gene_table=df)
     out = df[["Ensembl_Gene_ID", "Symbol"]].copy()
     out["cancer_code"] = "CLL"
@@ -219,7 +226,7 @@ def main() -> None:
         ensembl_release=args.ensembl_release,
     )
     collapsed = _collapse_duplicate_genes(df, sample_cols)
-    summary = _summarize(collapsed, included)
+    summary = _summarize(collapsed, included, source_id="cllmap")
     args.samples_output.parent.mkdir(parents=True, exist_ok=True)
     upsert_to_shard(
         args.summary_output,

@@ -402,6 +402,12 @@ def build_source(
         if not cols:
             continue
         sub_values = values[cols]
+        # Persist the per-code per-sample matrix for medoids + percentiles
+        # (uniform with every other per-sample cohort; the read path discovers
+        # it by code==stem under this source's cache). One hook covers every
+        # geo_matrix source.
+        from ..cohorts import write_per_sample as _write_per_sample
+        _write_per_sample(gene_table, sub_values, cache_dir.name, code)
         clean = _clean_tpm(sub_values, gene_table=gene_table)
         out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
         out["cancer_code"] = code

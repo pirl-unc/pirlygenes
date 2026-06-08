@@ -406,6 +406,8 @@ def main() -> None:
         ensembl_release=args.ensembl_release,
     )
     gene_table, values = _collapse_to_ntpm(mapped)
+    from pirlygenes import cohorts as _cohorts
+    _cohorts.write_per_sample(gene_table, values, args.cache_dir.name, "CTCL")
     summary = _summarize(gene_table, values)
     combined_summary = _upsert_reference(args.summary_output, summary)
     combined_samples = _upsert_samples(args.samples_output, manifest)

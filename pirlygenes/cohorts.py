@@ -118,6 +118,13 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "mmrf-commpass": ("MMRF_COMMPASS", "MMRF"),
     "gse299759-chon": ("GSE299759_MEIJER_2026", "GEO"),
     "gse239531-chordoma": ("GSE239531_VANOOST_2024", "GEO"),
+    "beataml-ohsu": ("BEATAML_OHSU_2022", "BeatAML"),
+    "target-all": ("TARGET_ALL_2018", "TARGET"),
+    "target-nbl": ("TARGET_NBL_2018", "TARGET"),
+    "target-rt": ("TARGET_RT_2017", "TARGET"),
+    "target-wt": ("TARGET_WT_2015", "TARGET"),
+    "cllmap": ("CLLMAP_2022", "CLL-map"),
+    "gse171811-ctcl": ("GSE171811_ECCITE_CTCL", "GEO"),
 }
 
 
