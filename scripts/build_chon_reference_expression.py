@@ -141,6 +141,9 @@ def main() -> int:
     gene_table, tpm = _counts_to_tpm(counts_df, mapping)
     print(f"  canonical genes: {len(gene_table)}")
 
+    from pirlygenes import cohorts as _cohorts
+    _cohorts.write_per_sample(gene_table, tpm, args.cache_dir.name, CANCER_CODE)
+
     print("computing stats...")
     clean = _clean_tpm(tpm, gene_table=gene_table)
     out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()

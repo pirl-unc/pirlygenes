@@ -104,6 +104,19 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "gse118014-pannet": ("GSE118014_ALVAREZ_2018", "GEO"),
     "sclc-ucologne-2015": ("SCLC_UCOLOGNE_2015", "UCologne"),
     "drmetrics-lnen-2020": ("DRMETRICS_ALCALA_2019_LNEN", "IARC LNEN"),
+    # Summary-builder sources that now also persist a per-sample TPM matrix so
+    # their cohorts get medoid representatives + percentiles like every other
+    # per-sample cohort. These are *discovery* sources: the builder is the
+    # single source of truth for which cancer codes it emits (many derive codes
+    # dynamically — lineage, risk group, MYCN status, histology), so the read
+    # path discovers them from the cached derived parquets (code == stem) rather
+    # than re-enumerating that logic here. Ordered after treehouse/NE so that on
+    # a cross-source code collision the established cohort wins the (code-keyed)
+    # medoid/percentile artifact; genuine "the summary source is richer" cases
+    # (e.g. chordoma GSE239531) are handled by explicit preference, not order.
+    "cgci-blgsp": ("CGCI_BLGSP", "CGCI"),
+    "mmrf-commpass": ("MMRF_COMMPASS", "MMRF"),
+    "gse299759-chon": ("GSE299759_MEIJER_2026", "GEO"),
 }
 
 
@@ -380,14 +393,42 @@ def read_per_sample(cohort: Cohort) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
-def iter_per_sample_cohorts(*, sources=None):
+def _parquet_sample_count(cohort: Cohort) -> int:
+    """Number of per-sample value columns in a cohort's parquet, read from the
+    file's metadata only (no data load) — used to pick the richest source for a
+    code on a cross-source collision."""
+    import pyarrow.parquet as _pq
+    return max(0, _pq.read_metadata(parquet_path(cohort)).num_columns - len(ID_COLS))
+
+
+def iter_per_sample_cohorts(*, sources=None, unique_by_code=True):
     """Yield ``(cohort, df)`` for every per-sample cohort present on disk across
     ``sources`` (default: all :data:`PER_SAMPLE_SOURCES`, in registration order).
     The single iteration point shared by the representatives / percentile
-    generators so the source list and parquet layout live in one place."""
-    for source_id in (sources or list(PER_SAMPLE_SOURCES)):
-        for _code, cohort in available_cohorts(source_id).items():
-            yield cohort, read_per_sample(cohort)
+    generators so the source list and parquet layout live in one place.
+
+    ``unique_by_code`` (default True) yields **one cohort per cancer code**. The
+    medoid / percentile bundle is keyed by code (one file per code), so a code
+    carried by more than one source (e.g. ``SARC_CHOR`` in treehouse-ribod and
+    the GSE239531 chordoma source, ``NET_PANCREAS`` in the GEO and recount3
+    sources) must resolve to a single cohort. The **richest source wins** — the
+    one with the most samples (the most representative for medoids/percentiles),
+    ties broken by source registration order. Pass False to iterate every
+    (source, code) pair."""
+    src_list = sources or list(PER_SAMPLE_SOURCES)
+    if not unique_by_code:
+        for source_id in src_list:
+            for _code, cohort in available_cohorts(source_id).items():
+                yield cohort, read_per_sample(cohort)
+        return
+    best: dict[str, tuple[int, Cohort]] = {}
+    for source_id in src_list:
+        for code, cohort in available_cohorts(source_id).items():
+            n = _parquet_sample_count(cohort)
+            if code not in best or n > best[code][0]:
+                best[code] = (n, cohort)
+    for _code, (_n, cohort) in best.items():
+        yield cohort, read_per_sample(cohort)
 
 
 def write_per_sample(gene_table: pd.DataFrame, values: pd.DataFrame,

@@ -421,6 +421,10 @@ def main() -> None:
         cache_dir=args.cache_dir,
         ensembl_release=args.ensembl_release,
     )
+    # Persist the per-sample raw-TPM matrix for medoids + percentiles (uniform
+    # with every other per-sample cohort; generators apply clean_tpm_v4).
+    from pirlygenes import cohorts as _cohorts
+    _cohorts.write_per_sample(gene_table, values, args.cache_dir.name, CANCER_CODE)
     summary = _summarize(gene_table, values)
     _upsert_summary(
         args.summary_output,
