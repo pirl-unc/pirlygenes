@@ -90,14 +90,6 @@ def _cml_exclusion(title: str, sample: dict[str, str]) -> str:
     return "not_chronic_phase_cml"
 
 
-def _mds_included(_title: str, sample: dict[str, str]) -> bool:
-    return _char(sample, "disease status") == "Myelodysplastic Syndrome"
-
-
-def _mds_exclusion(title: str, sample: dict[str, str]) -> str:
-    return "" if _mds_included(title, sample) else "not_mds"
-
-
 def _all_included(_title: str, _sample: dict[str, str]) -> bool:
     return True
 
@@ -146,23 +138,8 @@ GEO_SOURCES = [
             "within retained, uniquely Ensembl-harmonized genes."
         ),
     ),
-    GeoSource(
-        accession="GSE114922",
-        source_file="GSE114922_TPM_table.txt.gz",
-        cancer_code="MDS",
-        source_cohort="GSE114922_SHIOZAWA_2018",
-        source_project="GEO",
-        gene_col="ensembl_ID",
-        sep="\t",
-        raw_unit="TPM",
-        sample_predicate=_mds_included,
-        exclusion_reason=_mds_exclusion,
-        notes=(
-            "GEO GSE114922 bone-marrow CD34+ HSPC TPM matrix; "
-            "myelodysplastic-syndrome samples only; Ensembl IDs harmonized "
-            "to Ensembl release 112."
-        ),
-    ),
+    # MDS (GSE114922) is built by the canonical recount3 source (gse114922-mds),
+    # not here — removed to keep one builder per cohort.
     GeoSource(
         accession="GSE271664",
         source_file="GSE271664_HTSeq_counts.csv.gz",
