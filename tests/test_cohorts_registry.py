@@ -128,7 +128,8 @@ def test_neuroendocrine_cohorts_declared_for_all_ne_sources():
                  ("gse118014-pannet", "sclc-ucologne-2015", "drmetrics-lnen-2020")}
     assert by_source == {
         "gse118014-pannet": {"NET_PANCREAS"},
-        "sclc-ucologne-2015": {"SCLC"},
+        "sclc-ucologne-2015": {"SCLC", "SCLC_ASCL1", "SCLC_NEUROD1",
+                               "SCLC_POU2F3", "SCLC_YAP1"},
         "drmetrics-lnen-2020": {"NET_LUNG", "NEC_LUNG_LARGECELL"}}
     # NE stems are code==stem
     for sid in by_source:
@@ -147,7 +148,7 @@ def test_groups_partition_the_registry():
         "polya_pediatric", "sarc_rare_direct", "sarc_subtypes",
         "sarc_rare_overlay", "tcga_direct", "tcga_glioma",
         "tcga_brca_pam50", "tcga_hnsc_hpv", "tcga_luad_mut", "ribod",
-        "neuroendocrine"}
+        "neuroendocrine", "sclc_tf_subtype"}
 
 
 def test_cohorts_for_group_filters_by_group():

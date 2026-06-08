@@ -54,8 +54,13 @@ def build() -> None:
     for cohort, df in _cohorts.iter_per_sample_cohorts():
         code = cohort.code
         sample_cols = _cohorts.sample_columns(df)
-        if len(sample_cols) < 2:
+        if not sample_cols:
             continue
+        # n==1 cohorts (e.g. NUTM, SARC_EHE) get a degenerate vector — every
+        # breakpoint equals the single sample's value (the empirical CDF of one
+        # observation). Emitted so percentile coverage matches the representative
+        # set exactly (one artifact per per-sample cohort); consumers that need a
+        # real spread should check n_samples.
         clean = clean_tpm_matrix(df[sample_cols],
                                  gene_table=df[["Symbol", "Ensembl_Gene_ID"]],
                                  censored_fill="fixed_fraction")

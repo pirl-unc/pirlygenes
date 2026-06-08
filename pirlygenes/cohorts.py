@@ -134,6 +134,7 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "gse328026-sarc-pec": ("GSE328026_PECOMA_2026", "GEO"),
     "gse241095-sarc-ks-skin": ("GSE241095_KS_SKIN_2023", "GEO"),
     "gse294016-adcc": ("GSE294016_BARTL_2025_SGC", "GEO"),
+    "gse235092-merkel": ("GSE235092_MERKEL_2024", "GEO"),
     # recount3 (gene_sums → TPM); HL is unique, others tie-break by sample count.
     "gse120328-hl": ("GSE120328_LAMPRECHT_2018", "recount3"),
     "gse114922-mds": ("GSE114922_SHIOZAWA_2018", "recount3"),
@@ -306,6 +307,12 @@ _TREEHOUSE_COHORTS: tuple[Cohort, ...] = _treehouse_registry()
 _NE_COHORTS: tuple[Cohort, ...] = (
     Cohort("NET_PANCREAS", "NET_PANCREAS", "gse118014-pannet", group="neuroendocrine"),
     Cohort("SCLC", "SCLC", "sclc-ucologne-2015", group="neuroendocrine"),
+    # SCLC molecular subtypes — TF-dominance split of the UCologne samples
+    # (build_sclc_subtypes_tf_dominance.py), same source/cache as SCLC.
+    Cohort("SCLC_ASCL1", "SCLC_ASCL1", "sclc-ucologne-2015", group="sclc_tf_subtype"),
+    Cohort("SCLC_NEUROD1", "SCLC_NEUROD1", "sclc-ucologne-2015", group="sclc_tf_subtype"),
+    Cohort("SCLC_POU2F3", "SCLC_POU2F3", "sclc-ucologne-2015", group="sclc_tf_subtype"),
+    Cohort("SCLC_YAP1", "SCLC_YAP1", "sclc-ucologne-2015", group="sclc_tf_subtype"),
     Cohort("NET_LUNG", "NET_LUNG", "drmetrics-lnen-2020", group="neuroendocrine"),
     Cohort("NEC_LUNG_LARGECELL", "NEC_LUNG_LARGECELL", "drmetrics-lnen-2020",
            group="neuroendocrine"),

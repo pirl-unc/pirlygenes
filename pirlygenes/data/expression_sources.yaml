@@ -824,6 +824,27 @@ sources:
       vs AcCC vs MEC) needs Bartl 2025 Supplementary Table 1
       sample-→-diagnosis lookup — pending.
 
+  - id: gse235092-merkel
+    category: expression
+    cancer_codes: [NEC_MERKEL]
+    source_type: geo-matrix
+    builder: scripts/build_geo_matrix.py
+    file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE235nnn/GSE235092/suppl/GSE235092_all_bulk_counts.csv.gz
+    file_name: GSE235092_all_bulk_counts.csv.gz
+    unit: raw_counts
+    gene_id_col: Symbol
+    gene_id_type: symbol
+    sep: ","
+    source_cohort: GSE235092_MERKEL_2024
+    source_project: GEO
+    citation: GSE235092 (Merkel cell carcinoma bulk RNA-seq panel)
+    expected_size_gb: 0.01
+    notes: >
+      All 91 bulk-RNA Merkel cell carcinoma tumor samples
+      (Sample_source_name == "Merkel Cell Carcinoma (MCC)"); symbol-keyed
+      raw counts → length-normalized → per-sample TPM. The MCPyV viral
+      transcripts (57kT / ALTO / …) drop out as non-human at harmonization.
+
   - id: drmetrics-lnen-2020
     category: expression
     cancer_codes: [NET_LUNG, NEC_LUNG_LARGECELL]
