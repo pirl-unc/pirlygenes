@@ -28,6 +28,7 @@ lived only in ``scripts/sweep_treehouse_*`` — the cohort-level CLI
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 import pandas as pd
 
@@ -133,6 +134,13 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "gse328026-sarc-pec": ("GSE328026_PECOMA_2026", "GEO"),
     "gse241095-sarc-ks-skin": ("GSE241095_KS_SKIN_2023", "GEO"),
     "gse294016-adcc": ("GSE294016_BARTL_2025_SGC", "GEO"),
+    # recount3 (gene_sums → TPM); HL is unique, others tie-break by sample count.
+    "gse120328-hl": ("GSE120328_LAMPRECHT_2018", "recount3"),
+    "gse114922-mds": ("GSE114922_SHIOZAWA_2018", "recount3"),
+    # microarray TPM-proxy cohorts (Affy/Agilent series_matrix).
+    "gse85383-ess": ("GSE85383_YOSHIDA_2017_ESS", "GEO"),
+    "gse32662-mtc": ("GSE32662_PRINGLE_2012", "GEO"),
+    "gse30929-lps": ("GSE30929_SINGER_2007_LPS", "GEO"),
 }
 
 
@@ -417,6 +425,30 @@ def _parquet_sample_count(cohort: Cohort) -> int:
     return max(0, _pq.read_metadata(parquet_path(cohort)).num_columns - len(ID_COLS))
 
 
+# Microarray "TPM-proxy" sources — usable when a code has no RNA-seq source, but
+# always out-ranked by an RNA-seq source for the same code (the proxy basis isn't
+# directly comparable). See pirlygenes.builders.affy_gpl570.
+_PROXY_SOURCES: frozenset[str] = frozenset({
+    "gse30929-lps", "gse32662-mtc", "gse85383-ess",
+})
+
+
+@lru_cache(maxsize=1)
+def _primary_source_codes() -> frozenset:
+    """``(source_cohort, code)`` pairs whose summary ``tumor_origin`` is
+    ``primary`` — used to prefer a primary-tumor cohort over a metastasis one
+    for the same code (e.g. NET_PANCREAS: primary GSE118014 over the GSE98894
+    liver-metastasis cohort), regardless of sample count."""
+    from .load_dataset import get_data
+    try:
+        df = get_data("cancer-reference-expression", copy=False)
+    except Exception:
+        return frozenset()
+    m = df[df["tumor_origin"].astype(str) == "primary"]
+    return frozenset(zip(m["source_cohort"].astype(str),
+                         m["cancer_code"].astype(str)))
+
+
 def iter_per_sample_cohorts(*, sources=None, unique_by_code=True):
     """Yield ``(cohort, df)`` for every per-sample cohort present on disk across
     ``sources`` (default: all :data:`PER_SAMPLE_SOURCES`, in registration order).
@@ -427,23 +459,31 @@ def iter_per_sample_cohorts(*, sources=None, unique_by_code=True):
     medoid / percentile bundle is keyed by code (one file per code), so a code
     carried by more than one source (e.g. ``SARC_CHOR`` in treehouse-ribod and
     the GSE239531 chordoma source, ``NET_PANCREAS`` in the GEO and recount3
-    sources) must resolve to a single cohort. The **richest source wins** — the
-    one with the most samples (the most representative for medoids/percentiles),
-    ties broken by source registration order. Pass False to iterate every
-    (source, code) pair."""
+    sources) must resolve to a single cohort. Resolution prefers an **RNA-seq
+    source over a microarray TPM-proxy** (:data:`_PROXY_SOURCES`), then the
+    **richest** (most samples, most representative for medoids/percentiles), ties
+    by source registration order. So microarray-only codes (MTC, SARC_MYXLPS)
+    still win, but a code with both (SARC_WDLPS: RNA-seq n=5 vs microarray n=52)
+    keeps the RNA-seq cohort. Pass False to iterate every (source, code) pair."""
     src_list = sources or list(PER_SAMPLE_SOURCES)
     if not unique_by_code:
         for source_id in src_list:
             for _code, cohort in available_cohorts(source_id).items():
                 yield cohort, read_per_sample(cohort)
         return
-    best: dict[str, tuple[int, Cohort]] = {}
+    prim = _primary_source_codes()
+    best: dict[str, tuple[tuple[int, int, int], Cohort]] = {}
     for source_id in src_list:
+        rnaseq = 0 if source_id in _PROXY_SOURCES else 1
+        label = source_label(source_id) or ""
         for code, cohort in available_cohorts(source_id).items():
-            n = _parquet_sample_count(cohort)
-            if code not in best or n > best[code][0]:
-                best[code] = (n, cohort)
-    for _code, (_n, cohort) in best.items():
+            # prefer RNA-seq over microarray proxy, then primary over metastasis,
+            # then the richest (most samples).
+            primary = 1 if (label, code) in prim else 0
+            key = (rnaseq, primary, _parquet_sample_count(cohort))
+            if code not in best or key > best[code][0]:
+                best[code] = (key, cohort)
+    for _code, (_key, cohort) in best.items():
         yield cohort, read_per_sample(cohort)
 
 

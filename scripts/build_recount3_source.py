@@ -161,6 +161,11 @@ def build(src: Recount3Source, summary_output: Path) -> int:
         out = pd.DataFrame({
             "Ensembl_Gene_ID": tpm.index, "Symbol": symbol.to_numpy(),
         })
+        # Persist the per-code per-sample matrix (raw TPM) for medoids +
+        # percentiles (uniform hook; write_per_sample canonicalises the stem).
+        from pirlygenes import cohorts as _cohorts
+        _cohorts.write_per_sample(out[["Ensembl_Gene_ID", "Symbol"]], tpm[cols],
+                                  src.source_id, code)
         out["cancer_code"] = code
         out["source_cohort"] = src.source_cohort
         out["source_project"] = src.source_project

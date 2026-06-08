@@ -419,6 +419,12 @@ def build_microarray_source(
     by_ensg = by_ensg.reindex(gene_table["Ensembl_Gene_ID"]).fillna(0.0)
     print(f"  canonical genes: {len(gene_table)}")
 
+    # Persist the per-sample TPM-proxy matrix for medoids + percentiles (uniform
+    # hook; called once per cancer_code, so each microarray subtype lands its own
+    # parquet). write_per_sample canonicalises the stem.
+    from ..cohorts import write_per_sample as _write_per_sample
+    _write_per_sample(gene_table, by_ensg, cache_dir.name, cancer_code)
+
     clean = _clean_tpm(by_ensg, gene_table=gene_table)
     out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
     out["cancer_code"] = cancer_code
