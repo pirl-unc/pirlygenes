@@ -142,11 +142,11 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "gse85383-ess": ("GSE85383_YOSHIDA_2017_ESS", "GEO"),
     "gse32662-mtc": ("GSE32662_PRINGLE_2012", "GEO"),
     "gse30929-lps": ("GSE30929_SINGER_2007_LPS", "GEO"),
-    # NUT carcinoma case series (UNC NUTM1; Tempus xT whole-transcriptome) — the
+    # NUT carcinoma case series (UNC NUTM1; whole-transcriptome RNA-seq) — the
     # only usable per-sample NUTM expression (public NUT data is cell-line /
     # controlled-access only). Per-sample parquet is cache-only; the bundle ships
     # anonymized medoids. Takes NUTM from n=1 (Treehouse) to n=3.
-    "tempus-unc-nutm1": ("TEMPUS_UNC_NUTM1", "UNC/Tempus"),
+    "unc-nutm1": ("UNC_NUTM1", "UNC"),
 }
 
 

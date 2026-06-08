@@ -19,6 +19,7 @@ Run:  python analyses/apd1_response_plots.py
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 import matplotlib
@@ -33,9 +34,15 @@ OUT = Path(__file__).resolve().parent / "outputs"
 _PAIRS = [("COAD_MSI", "COAD_MSS"), ("READ_MSI", "READ_MSS")]
 
 
+@lru_cache(maxsize=1)
+def _family_map() -> dict:
+    """{code: family} over the cancer-type registry, read + indexed once."""
+    fam = gsc.cancer_type_registry().set_index("code")["family"]
+    return {str(code): str(family) for code, family in fam.items()}
+
+
 def _family(code: str) -> str:
-    reg = gsc.cancer_type_registry().set_index("code")
-    return str(reg.loc[code, "family"]) if code in reg.index else "other"
+    return _family_map().get(code, "other")
 
 
 def _color_map(codes):
@@ -62,7 +69,7 @@ def _plot_tmb_vs_apd1(orr, tmb, colors):
     ax.set_ylabel("anti-PD-1 monotherapy ORR (%)")
     ax.set_title("Tumor mutational burden vs anti-PD-1 response, by cancer type")
     ax.grid(alpha=0.3, which="both")
-    ax.set_ylim(-3, max(orr.values()) * 1.08)
+    ax.set_ylim(-3, (max(orr.values()) * 1.08) if orr else 1.0)
     fig.tight_layout()
     fig.savefig(OUT / "apd1_vs_tmb.png", dpi=150)
     plt.close(fig)

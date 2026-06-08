@@ -28,12 +28,7 @@ import pandas as pd
 
 from pirlygenes import cohorts as _cohorts
 from pirlygenes.downloads import source_cache_dir
-from pirlygenes.expression.normalize import clean_tpm_matrix
-from pirlygenes.expression.stats import (
-    assign_stats,
-    finalize_reference_rows,
-    upsert_to_shard,
-)
+from pirlygenes.expression.stats import build_reference_rows, upsert_to_shard
 
 SOURCE_ID = "treehouse-polya-25-01"
 SUMMARY_COHORT = "TREEHOUSE_POLYA_25_01_TCGA_COADREAD_MSI"
@@ -41,22 +36,21 @@ MSI_H_CUTOFF = 10.0  # MSIsensor score >= 10 = MSI-H (Niu 2014 / TCGA convention
 
 
 def _summary_row(gene_table, values, code: str):
-    clean = clean_tpm_matrix(values, gene_table=gene_table,
-                             censored_fill="fixed_fraction")
-    out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
-    out["cancer_code"] = code
-    out["source_cohort"] = SUMMARY_COHORT
-    out["source_project"] = "Treehouse (TCGA-COADREAD) × cBioPortal MSI"
-    out["source_version"] = (
-        "Treehouse 25.01 PolyA TCGA-COAD/READ × cBioPortal "
-        "coadread_tcga_pan_can_atlas_2018 MSIsensor score (>=10 = MSI-H)")
-    assign_stats(out, values, clean)
-    out["processing_pipeline"] = (
-        "treehouse_polya_25_01_tcga_coadread_msi_log2tpm_to_tpm_clean_tpm_v4")
-    out["notes"] = (
-        f"{code}: TCGA {code.split('_')[0]} samples in Treehouse 25.01 PolyA "
-        "split by cBioPortal MSIsensor score (>=10 = MSI-H).")
-    return finalize_reference_rows(out, tumor_origin="primary")
+    return build_reference_rows(
+        gene_table, values,
+        cancer_code=code,
+        source_cohort=SUMMARY_COHORT,
+        source_project="Treehouse (TCGA-COADREAD) × cBioPortal MSI",
+        source_version=(
+            "Treehouse 25.01 PolyA TCGA-COAD/READ × cBioPortal "
+            "coadread_tcga_pan_can_atlas_2018 MSIsensor score (>=10 = MSI-H)"),
+        processing_pipeline=(
+            "treehouse_polya_25_01_tcga_coadread_msi_log2tpm_to_tpm_clean_tpm_v4"),
+        notes=(
+            f"{code}: TCGA {code.split('_')[0]} samples in Treehouse 25.01 "
+            "PolyA split by cBioPortal MSIsensor score (>=10 = MSI-H)."),
+        tumor_origin="primary",
+    )
 
 
 def _fetch_msi(cache_path: Path) -> dict[str, float]:
@@ -123,9 +117,16 @@ def main() -> int:
             summaries.append(_summary_row(gene_table, df[cols], code))
             written.append(code)
             print(f"  {code}: {len(cols)} samples", flush=True)
+        # Every registered {parent}_MSI / {parent}_MSS cohort must get data; a
+        # status with zero matched samples would silently leave a registered
+        # cohort unbuilt (a dangling registry/medoid entry). Surface it loudly.
+        missing = sorted({c.code for c in targets.values()
+                          if c.code.startswith(f"{parent}_")} - set(written))
+        if missing:
+            print(f"  WARNING: no samples matched for {missing} (parent "
+                  f"{parent}); registered cohort(s) left unbuilt", flush=True)
         if summaries:
-            import pandas as _pd
-            upsert_to_shard(args.summary_output, _pd.concat(summaries, ignore_index=True),
+            upsert_to_shard(args.summary_output, pd.concat(summaries, ignore_index=True),
                             source_cohort=SUMMARY_COHORT, cancer_codes=written,
                             per_cancer_code_shards=True)
     return 0
