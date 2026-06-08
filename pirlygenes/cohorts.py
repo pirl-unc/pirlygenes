@@ -125,6 +125,9 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "target-wt": ("TARGET_WT_2015", "TARGET"),
     "cllmap": ("CLLMAP_2022", "CLL-map"),
     "gse171811-ctcl": ("GSE171811_ECCITE_CTCL", "GEO"),
+    "gse98894-midnet": ("GSE98894_ALVAREZ_2018_NET", "GEO"),
+    "gse75885-sarc": ("GSE75885_DELESPAUL_2017", "GEO"),
+    "geo-heme": ("GEO_HEME_2022", "GEO"),
 }
 
 
@@ -443,8 +446,17 @@ def write_per_sample(gene_table: pd.DataFrame, values: pd.DataFrame,
                      source_id: str, code: str):
     """Write a cohort's per-sample TPM parquet in the canonical layout
     (``ID_COLS`` + sample columns) to ``<source-cache>/derived/``; returns the
-    path. Shared by the per-sample builders so the on-disk format has one
-    writer."""
+    path. Shared by every per-sample builder so the on-disk format has one
+    writer.
+
+    The ``code`` is canonicalised for the filename stem (the single
+    canonicalisation point, mirroring ``upsert_to_shard``): a builder still
+    emitting a pre-rename code (e.g. ``MID_NET`` -> ``NET_MIDGUT``,
+    ``PANNET`` -> ``NET_PANCREAS``) lands its parquet under the current
+    registry code, so the discovery read path (stem == code) sees the canonical
+    code rather than a rename-orphan."""
+    from .gene_sets_cancer import canonical_cancer_code
+    code = canonical_cancer_code(code)
     derived = downloads.source_cache_dir(source_id) / "derived"
     derived.mkdir(parents=True, exist_ok=True)
     out = pd.concat(

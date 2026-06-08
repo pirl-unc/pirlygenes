@@ -128,6 +128,8 @@ def main() -> int:
         # RPKM-like -> TPM: renormalize each sample to 1e6, then v4 clean-TPM.
         sub = values[cols]
         sub = sub.div(sub.sum(axis=0), axis=1) * 1_000_000.0
+        from pirlygenes import cohorts as _cohorts
+        _cohorts.write_per_sample(gene_table, sub, args.cache_dir.name, code)
         clean = _clean_tpm(sub, gene_table=gene_table)
         out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
         out["cancer_code"] = code

@@ -262,6 +262,8 @@ def main() -> int:
             print(f"  {code}: no samples — skipping")
             continue
         sub = tpm[gsms]
+        from pirlygenes import cohorts as _cohorts
+        _cohorts.write_per_sample(gene_table, sub, args.cache_dir.name, code)
         clean = _clean_tpm(sub, gene_table=gene_table)
         out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
         out["cancer_code"] = code
