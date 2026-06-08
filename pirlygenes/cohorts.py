@@ -41,11 +41,38 @@ ID_COLS = ("Ensembl_Gene_ID", "Symbol")
 
 @dataclass(frozen=True)
 class Cohort:
-    """One materialised per-sample cohort within a build source."""
+    """One materialised per-sample cohort within a build source.
+
+    The first three fields (``code``, ``stem``, ``source_id``) are all the
+    read path needs. The remaining fields are the **build-time** definition
+    that previously lived only in the ``scripts/sweep_treehouse_*`` scripts;
+    hoisting them here makes this registry the single source of truth that
+    *both* the read accessors and the build sweeps consume (so the two can
+    never drift):
+
+    * ``group`` — which build sweep materialises this cohort (the sweep
+      filters the registry by it via :func:`cohorts_for_group`).
+    * ``disease_label`` — the Treehouse clinical ``disease`` label the sweep
+      filters samples on.
+    * ``selection`` — a declarative subset selector the sweep turns into a
+      ``sample_predicate``. Grammar (``""`` = no predicate, take every sample
+      with ``disease_label``):
+
+        ``tcga``                    TCGA-only subset (th_dataset_id startswith TCGA)
+        ``gdc_project:TCGA-GBM``    TCGA-only + GDC case→project membership
+        ``pam50:BRCA_Basal``        TCGA-only + cBioPortal PAM50 call
+        ``hpv:HNSC_HPV+``           TCGA-only + cBioPortal HPV call
+        ``mutation:STK11,KEAP1``    TCGA-only + cBioPortal mutation in ANY gene
+        ``histology:Dedifferentiated liposarcoma``
+                                    TCGA-only + GDC primary_diagnosis
+    """
 
     code: str        # registry cancer-type code (e.g. "GBM", "BRCA_LumA")
     stem: str        # per-sample parquet stem (filename minus _per_sample_tpm.parquet)
     source_id: str   # expression source id (downloads registry)
+    group: str = "direct"      # build sweep that materialises it
+    disease_label: str = ""    # Treehouse clinical `disease` label to filter on
+    selection: str = ""        # declarative subset selector (see class docstring)
 
     @property
     def source_kind(self) -> str:
@@ -64,50 +91,7 @@ class Cohort:
         return f"{self.source_kind}:{self.code}"
 
 
-# --- treehouse-polya-25-01 -------------------------------------------------
-# Pediatric / sarcoma / rare cohorts: parquet stem == cancer code.
-_TH_DIRECT = [
-    "ATRT", "SARC_EWS", "HEPB", "MBL", "NPC", "NUTM", "SARC_OS",
-    "SARC_RMS_ARMS", "SARC_RMS_ERMS", "SARC_RMS_PRMS", "SARC_RMS_SSRMS",
-    "SARC_ANGIO", "SARC_ASPS", "SARC_DSRCT", "SARC_EHE", "SARC_EPITH",
-    "SARC_GIST", "SARC_IFS", "SARC_IMT", "SARC_LGFMS", "SARC_LMS",
-    "SARC_LPS_UNSPEC", "SARC_MPNST", "SARC_MYXFIB", "SARC_SYN", "SARC_UPS",
-]
-# TCGA-via-Treehouse direct projects: stem == "tcga_<lower(code)>".
-_TH_TCGA = [
-    "ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM",
-    "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC", "LUAD", "LUSC",
-    "MESO", "OV", "PAAD", "PCPG", "PRAD", "READ", "SKCM", "STAD",
-    "TGCT", "THCA", "THYM", "UCEC", "UCS", "UVM",
-]
-# NB: no "SARC" — the bare SARC code is the computed pan-sarcoma grand union (its
-# TCGA-SARC leiomyosarcoma samples are already in the SARC_LMS atom), not a
-# concrete per-sample cohort.
-# Molecular / histology sub-cohorts (mixed-case codes -> explicit stems).
-_TH_DERIVED = {
-    "BRCA_Basal": "tcga_brca_basal", "BRCA_HER2": "tcga_brca_her2",
-    "BRCA_LumA": "tcga_brca_luma", "BRCA_LumB": "tcga_brca_lumb",
-    "BRCA_Normal": "tcga_brca_normal",
-    "HNSC_HPVneg": "tcga_hnsc_hpv_neg", "HNSC_HPVpos": "tcga_hnsc_hpv_pos",
-    "LUAD_EGFR": "tcga_luad_egfr", "LUAD_KRAS": "tcga_luad_kras",
-    "LUAD_STK11": "tcga_luad_stk11",
-    "SARC_DDLPS": "tcga_sarc_ddlps", "SARC_PLEOLPS": "tcga_sarc_pleolps",
-    "SARC_WDLPS": "tcga_sarc_wdlps",
-}
-
-
-def _treehouse_polya_25_01() -> dict[str, Cohort]:
-    src = "treehouse-polya-25-01"
-    out: dict[str, Cohort] = {}
-    for code in _TH_DIRECT:
-        out[code] = Cohort(code, code, src)
-    for code in _TH_TCGA:
-        out[code] = Cohort(code, f"tcga_{code.lower()}", src)
-    for code, stem in _TH_DERIVED.items():
-        out[code] = Cohort(code, stem, src)
-    return out
-
-
+# ---------------------------------------------------------------------------
 # Single source of truth for the per-sample expression sources: ``source_id ->
 # (source_cohort label, project)``. The generators and the package accessors all
 # read this — don't duplicate the list in scripts. ``label`` is the
@@ -122,12 +106,196 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "drmetrics-lnen-2020": ("DRMETRICS_ALCALA_2019_LNEN", "IARC LNEN"),
 }
 
-# Sources with an explicit code→Cohort map (mixed-case stems that don't
-# round-trip from the parquet name). Every other source in PER_SAMPLE_SOURCES
-# discovers its cohorts from disk with ``code == stem``.
+
+# ---------------------------------------------------------------------------
+# The single declarative registry of every Treehouse per-sample cohort —
+# (code, stem, disease_label, selection) per build group. This is the one
+# source of truth the read accessors AND the ``scripts/sweep_treehouse_*``
+# build sweeps both consume; neither side enumerates cohorts independently, so
+# they can't drift. ``group`` names the sweep that materialises the rows.
+# ---------------------------------------------------------------------------
+
+_POLYA = "treehouse-polya-25-01"
+_RIBOD = "treehouse-ribod-25-01"
+
+# Pediatric / sarcoma / rare cohorts registered as their own Treehouse disease
+# label; parquet stem == code, no sample predicate (whole disease label).
+# group "polya_pediatric" -> scripts/sweep_treehouse_polya_cohorts.py
+_POLYA_PEDIATRIC = [
+    ("ATRT", "atypical teratoid/rhabdoid tumor"),
+    ("SARC_EWS", "Ewing sarcoma"),
+    ("HEPB", "hepatoblastoma"),
+    ("MBL", "medulloblastoma"),
+    ("NUTM", "NUT midline carcinoma"),
+    ("SARC_OS", "osteosarcoma"),
+    ("SARC_RMS_ARMS", "alveolar rhabdomyosarcoma"),
+    ("SARC_RMS_ERMS", "embryonal rhabdomyosarcoma"),
+    ("SARC_RMS_PRMS", "pleomorphic rhabdomyosarcoma"),
+    ("SARC_RMS_SSRMS", "spindle cell/sclerosing rhabdomyosarcoma"),
+    ("SARC_LMS", "leiomyosarcoma"),
+    ("SARC_LPS_UNSPEC", "liposarcoma"),
+    ("SARC_MYXFIB", "myxofibrosarcoma"),
+    ("SARC_SYN", "synovial sarcoma"),
+    ("SARC_UPS", "undifferentiated pleomorphic sarcoma"),
+]
+# Rare-subtype Treehouse-direct codes (zero-download, own disease labels).
+# group "sarc_rare_direct" -> scripts/sweep_sarc_rare_subtypes.py (direct path).
+# NPC is not a sarcoma but uses the same Treehouse-direct pattern.
+_SARC_RARE_DIRECT = [
+    ("SARC_ANGIO", "angiosarcoma"),
+    ("SARC_ASPS", "alveolar soft part sarcoma"),
+    ("SARC_DSRCT", "desmoplastic small round cell tumor"),
+    ("SARC_EPITH", "epithelioid sarcoma"),
+    ("SARC_IMT", "inflammatory myofibroblastic tumor"),
+    ("SARC_IFS", "infantile fibrosarcoma"),
+    ("SARC_MPNST", "malignant peripheral nerve sheath tumor"),
+    ("SARC_EHE", "epithelioid hemangioendothelioma"),
+    ("SARC_LGFMS", "low grade fibromyxoid sarcoma"),
+    ("NPC", "nasopharyngeal carcinoma"),
+]
+# TCGA-via-Treehouse direct projects: stem == "tcga_<lower(code)>", TCGA-only.
+# group "tcga_direct" -> scripts/sweep_treehouse_tcga_cohorts.py.
+# NB: GBM/LGG are split out (tcga_glioma group); the bare "SARC" code is the
+# computed pan-sarcoma grand union, not a concrete per-sample cohort.
+_TCGA_DIRECT = [
+    ("ACC", "adrenocortical carcinoma"),
+    ("BLCA", "bladder urothelial carcinoma"),
+    ("BRCA", "breast invasive carcinoma"),
+    ("CESC", "cervical & endocervical cancer"),
+    ("CHOL", "cholangiocarcinoma"),
+    ("COAD", "colon adenocarcinoma"),
+    ("DLBC", "diffuse large B-cell lymphoma"),
+    ("ESCA", "esophageal carcinoma"),
+    ("HNSC", "head & neck squamous cell carcinoma"),
+    ("KICH", "kidney chromophobe"),
+    ("KIRC", "kidney clear cell carcinoma"),
+    ("KIRP", "kidney papillary cell carcinoma"),
+    ("LAML", "acute myeloid leukemia"),
+    ("LIHC", "hepatocellular carcinoma"),
+    ("LUAD", "lung adenocarcinoma"),
+    ("LUSC", "lung squamous cell carcinoma"),
+    ("MESO", "mesothelioma"),
+    ("OV", "ovarian serous cystadenocarcinoma"),
+    ("PAAD", "pancreatic adenocarcinoma"),
+    ("PCPG", "pheochromocytoma & paraganglioma"),
+    ("PRAD", "prostate adenocarcinoma"),
+    ("READ", "rectum adenocarcinoma"),
+    ("SKCM", "skin cutaneous melanoma"),
+    ("STAD", "stomach adenocarcinoma"),
+    ("TGCT", "testicular germ cell tumor"),
+    ("THCA", "thyroid carcinoma"),
+    ("THYM", "thymoma"),
+    ("UCEC", "uterine corpus endometrioid carcinoma"),
+    ("UCS", "uterine carcinosarcoma"),
+    ("UVM", "uveal melanoma"),
+]
+
+
+def _treehouse_registry() -> tuple[Cohort, ...]:
+    rows: list[Cohort] = []
+    for code, label in _POLYA_PEDIATRIC:
+        rows.append(Cohort(code, code, _POLYA, group="polya_pediatric",
+                           disease_label=label))
+    for code, label in _SARC_RARE_DIRECT:
+        rows.append(Cohort(code, code, _POLYA, group="sarc_rare_direct",
+                           disease_label=label))
+    # gastrointestinal stromal tumour: Treehouse-direct (not in TCGA-SARC).
+    rows.append(Cohort("SARC_GIST", "SARC_GIST", _POLYA, group="sarc_subtypes",
+                       disease_label="gastrointestinal stromal tumor"))
+    for code, label in _TCGA_DIRECT:
+        rows.append(Cohort(code, f"tcga_{code.lower()}", _POLYA,
+                           group="tcga_direct", disease_label=label,
+                           selection="tcga"))
+    # glioma: Treehouse's single "glioma" label split TCGA-GBM vs TCGA-LGG.
+    for code in ("GBM", "LGG"):
+        rows.append(Cohort(code, f"tcga_{code.lower()}", _POLYA,
+                           group="tcga_glioma", disease_label="glioma",
+                           selection=f"gdc_project:TCGA-{code}"))
+    # TCGA-BRCA PAM50 molecular subtypes (cBioPortal calls). selection holds the
+    # cBioPortal PAM50 label (case differs from the registry code, e.g. Her2).
+    for code, pam50 in [("BRCA_Basal", "BRCA_Basal"), ("BRCA_HER2", "BRCA_Her2"),
+                        ("BRCA_LumA", "BRCA_LumA"), ("BRCA_LumB", "BRCA_LumB"),
+                        ("BRCA_Normal", "BRCA_Normal")]:
+        suffix = code.removeprefix("BRCA_").lower()
+        rows.append(Cohort(code, f"tcga_brca_{suffix}", _POLYA,
+                           group="tcga_brca_pam50",
+                           disease_label="breast invasive carcinoma",
+                           selection=f"pam50:{pam50}"))
+    # TCGA-HNSC HPV split (cBioPortal calls).
+    for code, hpv, suffix in [("HNSC_HPVpos", "HNSC_HPV+", "hpv_pos"),
+                              ("HNSC_HPVneg", "HNSC_HPV-", "hpv_neg")]:
+        rows.append(Cohort(code, f"tcga_hnsc_{suffix}", _POLYA,
+                           group="tcga_hnsc_hpv",
+                           disease_label="head & neck squamous cell carcinoma",
+                           selection=f"hpv:{hpv}"))
+    # TCGA-LUAD driver-mutation subtypes (cBioPortal MAF; any gene in the set).
+    for code, genes in [("LUAD_EGFR", "EGFR"), ("LUAD_KRAS", "KRAS"),
+                        ("LUAD_STK11", "STK11,KEAP1")]:
+        suffix = code.removeprefix("LUAD_").lower()
+        rows.append(Cohort(code, f"tcga_luad_{suffix}", _POLYA,
+                           group="tcga_luad_mut",
+                           disease_label="lung adenocarcinoma",
+                           selection=f"mutation:{genes}"))
+    # TCGA-SARC histology overlays (GDC primary_diagnosis). WDLPS is built by
+    # the sarc_subtypes sweep; DDLPS/PLEOLPS by the sarc_rare overlay path.
+    for code, diagnosis, grp in [
+            ("SARC_WDLPS", "Liposarcoma, well differentiated", "sarc_subtypes"),
+            ("SARC_DDLPS", "Dedifferentiated liposarcoma", "sarc_rare_overlay"),
+            ("SARC_PLEOLPS", "Pleomorphic liposarcoma", "sarc_rare_overlay")]:
+        suffix = code.removeprefix("SARC_").lower()
+        rows.append(Cohort(code, f"tcga_sarc_{suffix}", _POLYA, group=grp,
+                           disease_label="liposarcoma",
+                           selection=f"histology:{diagnosis}"))
+    # treehouse-ribod-25-01 (ribo-depleted release): stem == code.
+    rows.append(Cohort("SARC_CHOR", "SARC_CHOR", _RIBOD, group="ribod",
+                       disease_label="chordoma"))
+    rows.append(Cohort("RB", "RB", _RIBOD, group="ribod",
+                       disease_label="retinoblastoma"))
+    return tuple(rows)
+
+
+_TREEHOUSE_COHORTS: tuple[Cohort, ...] = _treehouse_registry()
+
+
+# Neuroendocrine per-sample cohorts, built by
+# scripts/build_ne_per_sample_parquets.py from cached NE source data (GEO
+# log2TPM pancreatic NET, UCologne FPKM small-cell lung, IARC LNEN counts lung
+# NET/NEC). Declared here — with ``stem == code`` — so the registry is the
+# *complete* per-sample source of truth: the read path can enumerate them
+# without the cache present, rather than only discovering them from disk. Their
+# sample→code *selection* lives in the source-specific builders (e.g. the LNEN
+# histology map), exactly as the Treehouse predicates do; the registry owns the
+# cohort *list*, not the per-source build mechanism.
+_NE_COHORTS: tuple[Cohort, ...] = (
+    Cohort("NET_PANCREAS", "NET_PANCREAS", "gse118014-pannet", group="neuroendocrine"),
+    Cohort("SCLC", "SCLC", "sclc-ucologne-2015", group="neuroendocrine"),
+    Cohort("NET_LUNG", "NET_LUNG", "drmetrics-lnen-2020", group="neuroendocrine"),
+    Cohort("NEC_LUNG_LARGECELL", "NEC_LUNG_LARGECELL", "drmetrics-lnen-2020",
+           group="neuroendocrine"),
+)
+
+# The single declarative registry of EVERY per-sample cohort across all sources.
+_PER_SAMPLE_COHORTS: tuple[Cohort, ...] = _TREEHOUSE_COHORTS + _NE_COHORTS
+
+
+def _registry_for_source(source_id: str) -> dict[str, Cohort]:
+    return {c.code: c for c in _PER_SAMPLE_COHORTS if c.source_id == source_id}
+
+
+# Sources with an explicit code→Cohort map. A source that has rows in the
+# registry above uses that map; any other source in PER_SAMPLE_SOURCES (e.g. a
+# newly added one) still discovers its cohorts from disk with ``code == stem``.
 _REGISTRY: dict[str, dict[str, Cohort]] = {
-    "treehouse-polya-25-01": _treehouse_polya_25_01(),
+    sid: _registry_for_source(sid)
+    for sid in {c.source_id for c in _PER_SAMPLE_COHORTS}
 }
+
+
+def cohorts_for_group(group: str) -> list[Cohort]:
+    """All registry cohorts in a given build group (in registry order). The
+    build sweeps call this instead of enumerating cohorts inline, so the
+    (code, stem, disease_label, selection) of every cohort lives here once."""
+    return [c for c in _PER_SAMPLE_COHORTS if c.group == group]
 
 
 def source_label(source_id: str) -> str | None:

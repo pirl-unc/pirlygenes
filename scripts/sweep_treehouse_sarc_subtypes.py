@@ -38,11 +38,17 @@ from pirlygenes.builders.treehouse import (
     TreehouseCohort,
     TreehouseRelease,
     run_sweep,
+    tcga_case_predicate,
 )
+from pirlygenes.cohorts import cohorts_for_group
 
 
 CACHE_ROOT = Path.home() / ".cache" / "pirlygenes" / "expression"
 RELEASE_DIR = CACHE_ROOT / "treehouse-polya-25-01"
+
+# Cohort definitions (code, stem, disease_label, selection) come from the
+# single registry in pirlygenes.cohorts (group "sarc_subtypes").
+_SUBTYPES = {c.code: c for c in cohorts_for_group("sarc_subtypes")}
 
 # Two distinct source_cohort tags = two distinct shards.
 RELEASE_TREEHOUSE = TreehouseRelease(
@@ -103,21 +109,12 @@ def _fetch_sarc_histology(cache_path: Path) -> pd.DataFrame:
     return df
 
 
-def _build_wdlps_predicate(histology: pd.DataFrame):
-    wdlps_cases = set(
-        histology.loc[
-            histology["primary_diagnosis"].eq("Liposarcoma, well differentiated"),
-            "submitter_id",
-        ].astype(str)
-    )
-
-    def _pred(row: dict) -> bool:
-        dsid = str(row.get("th_dataset_id", ""))
-        if not dsid.startswith("TCGA"):
-            return False
-        case_id = "-".join(dsid.split("-")[:3])
-        return case_id in wdlps_cases
-    return _pred
+def _build_histology_predicate(histology: pd.DataFrame, primary_diagnosis: str):
+    cases = histology.loc[
+        histology["primary_diagnosis"].eq(primary_diagnosis),
+        "submitter_id",
+    ].astype(str)
+    return tcga_case_predicate(cases)
 
 
 def main() -> int:
@@ -132,18 +129,20 @@ def main() -> int:
     args = parser.parse_args()
 
     # --- GIST: non-TCGA Treehouse samples under disease label ---
+    gist = _SUBTYPES["SARC_GIST"]
     print("=== SARC_GIST: Treehouse direct (n=19) ===")
     run_sweep(
         RELEASE_TREEHOUSE,
         [
             TreehouseCohort(
-                cancer_code="SARC_GIST",
-                disease_label="gastrointestinal stromal tumor",
+                cancer_code=gist.code,
+                disease_label=gist.disease_label,
                 extra_notes=(
                     "All 19 GIST samples in Treehouse 25.01 PolyA. "
                     "Not from TCGA-SARC (TCGA-SARC excluded GIST); "
                     "Treehouse-internal + publicly-available repositories."
                 ),
+                cache_stem=gist.stem,
             ),
         ],
         summary_output=args.summary_output,
@@ -152,25 +151,26 @@ def main() -> int:
     )
 
     # --- WDLPS: TCGA-SARC histology overlay ---
+    wdlps = _SUBTYPES["SARC_WDLPS"]
+    primary_diagnosis = wdlps.selection.split(":", 1)[1]
     print()
     print("=== SARC_WDLPS: TCGA-SARC histology overlay (n=5) ===")
     histology_cache = RELEASE_DIR / "derived" / "tcga_sarc_histology.csv"
     histology = _fetch_sarc_histology(histology_cache)
-    pred = _build_wdlps_predicate(histology)
+    pred = _build_histology_predicate(histology, primary_diagnosis)
     run_sweep(
         RELEASE_TCGA,
         [
             TreehouseCohort(
-                cancer_code="SARC_WDLPS",
-                disease_label="liposarcoma",
+                cancer_code=wdlps.code,
+                disease_label=wdlps.disease_label,
                 sample_predicate=pred,
                 extra_notes=(
-                    "TCGA-SARC histology = 'Liposarcoma, well "
-                    "differentiated' (n=5). Routed out of the "
-                    "TCGA-SARC project via GDC primary_diagnosis "
-                    "lookup on the case submitter_id."
+                    f"TCGA-SARC histology = '{primary_diagnosis}' (n=5). "
+                    "Routed out of the TCGA-SARC project via GDC "
+                    "primary_diagnosis lookup on the case submitter_id."
                 ),
-                cache_stem="tcga_sarc_wdlps",
+                cache_stem=wdlps.stem,
             ),
         ],
         summary_output=args.summary_output,

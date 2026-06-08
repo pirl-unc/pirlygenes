@@ -58,12 +58,19 @@ def _mapping(symbols, source_dir: Path):
         refresh=False)
 
 
+def _only_code(source_id: str) -> str:
+    """The single registered cohort code for a source — the registry in
+    pirlygenes.cohorts is the source of truth for the code, not a literal here."""
+    (code,) = _cohorts.cohorts_for_source(source_id)
+    return code
+
+
 def build_net_pancreas() -> None:
     d = CACHE / "gse118014-pannet"
     log2v = pannet._read_log2tpm(d / "GSE118014_PanNETs_log2TPM.txt.gz")
     tpm = _inverse_log2(log2v)
     gene_table, values = _aggregate_by_ensembl(tpm, _mapping(log2v.index, d))
-    _write(gene_table, values, d, "NET_PANCREAS")
+    _write(gene_table, values, d, _only_code(d.name))
 
 
 def build_sclc() -> None:
@@ -71,7 +78,7 @@ def build_sclc() -> None:
     fpkm = sclc._read_fpkm(d / "data_mrna_seq_fpkm.txt")
     tpm = sclc._fpkm_to_tpm(fpkm)
     gene_table, values = _aggregate_by_ensembl(tpm, _mapping(fpkm.index, d))
-    _write(gene_table, values, d, "SCLC")
+    _write(gene_table, values, d, _only_code(d.name))
 
 
 def build_lung_ne() -> None:
@@ -107,6 +114,10 @@ def build_lung_ne() -> None:
         raw_code = sample_to_code.get(col)
         if raw_code:
             by_code.setdefault(canonical_cancer_code(raw_code), []).append(col)
+    # The LNEN histology map (+ canonical_cancer_code) is the sample->code
+    # *selection*; the registry owns the cohort *list*. Guard they agree.
+    registered = set(_cohorts.cohorts_for_source(d.name))
+    assert set(by_code) <= registered, (set(by_code), registered)
     for code, cols in by_code.items():
         _write(gene_table, values[cols], d, code)
 

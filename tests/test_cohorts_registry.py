@@ -4,9 +4,21 @@ cohorts.py is the single source of truth for which per-sample expression sources
 exist and which cohorts they hold (explicit map for treehouse-polya; code==stem
 discovery from the cached derived parquets elsewhere)."""
 
+import importlib.util
+from pathlib import Path
+
 import pandas as pd
 
 from pirlygenes import cohorts
+
+_SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+
+
+def _load_script(name):
+    spec = importlib.util.spec_from_file_location(name, _SCRIPTS / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def test_per_sample_sources_complete():
@@ -48,3 +60,86 @@ def test_discovery_source_uses_stem_equals_code(tmp_path, monkeypatch):
 
 def test_unknown_source_empty():
     assert cohorts.cohorts_for_source("nope") == {}
+
+
+# --- the single declarative registry of every Treehouse per-sample cohort -----
+
+def test_registry_has_no_duplicate_codes():
+    codes = [c.code for c in cohorts._PER_SAMPLE_COHORTS]
+    assert len(codes) == len(set(codes)), "duplicate cohort code in registry"
+
+
+def test_registry_covers_the_expected_cohort_set():
+    """Lock the exact (code -> stem) set per source so any add/rename/restem is
+    a deliberate, reviewed registry edit (the read path and the sweeps both read
+    this — neither enumerates cohorts independently)."""
+    polya = {c.code: c.stem for c in cohorts._PER_SAMPLE_COHORTS
+             if c.source_id == "treehouse-polya-25-01"}
+    # 26 polya-direct (stem==code) + 30 tcga-direct + 2 glioma + 13 molecular/
+    # histology splits = 71.
+    assert len(polya) == 71
+    # spot-check each stem rule
+    assert polya["ATRT"] == "ATRT"                  # pediatric direct
+    assert polya["NPC"] == "NPC"                    # rare-subtype direct
+    assert polya["SARC_GIST"] == "SARC_GIST"        # treehouse-direct GIST
+    assert polya["PRAD"] == "tcga_prad"             # tcga direct
+    assert polya["GBM"] == "tcga_gbm"               # glioma split
+    assert polya["BRCA_LumA"] == "tcga_brca_luma"   # pam50
+    assert polya["HNSC_HPVpos"] == "tcga_hnsc_hpv_pos"  # hpv
+    assert polya["LUAD_STK11"] == "tcga_luad_stk11"     # mutation
+    assert polya["SARC_WDLPS"] == "tcga_sarc_wdlps"     # histology overlay
+    ribod = {c.code: c.stem for c in cohorts._PER_SAMPLE_COHORTS
+             if c.source_id == "treehouse-ribod-25-01"}
+    assert ribod == {"SARC_CHOR": "SARC_CHOR", "RB": "RB"}
+
+
+def test_neuroendocrine_cohorts_declared_for_all_ne_sources():
+    """The NE per-sample cohorts are declared in the registry (not only
+    discovered from disk), so cohorts.py can enumerate every per-sample cohort
+    without the cache present."""
+    by_source = {sid: set(cohorts.cohorts_for_source(sid)) for sid in
+                 ("gse118014-pannet", "sclc-ucologne-2015", "drmetrics-lnen-2020")}
+    assert by_source == {
+        "gse118014-pannet": {"NET_PANCREAS"},
+        "sclc-ucologne-2015": {"SCLC"},
+        "drmetrics-lnen-2020": {"NET_LUNG", "NEC_LUNG_LARGECELL"}}
+    # NE stems are code==stem
+    for sid in by_source:
+        for c in cohorts.cohorts_for_source(sid).values():
+            assert c.stem == c.code
+
+
+def test_groups_partition_the_registry():
+    """Every cohort belongs to exactly one build group; the groups together
+    cover the whole registry (no orphan rows a sweep would never build)."""
+    by_group = {}
+    for c in cohorts._PER_SAMPLE_COHORTS:
+        by_group.setdefault(c.group, []).append(c.code)
+    assert sum(len(v) for v in by_group.values()) == len(cohorts._PER_SAMPLE_COHORTS)
+    assert set(by_group) == {
+        "polya_pediatric", "sarc_rare_direct", "sarc_subtypes",
+        "sarc_rare_overlay", "tcga_direct", "tcga_glioma",
+        "tcga_brca_pam50", "tcga_hnsc_hpv", "tcga_luad_mut", "ribod",
+        "neuroendocrine"}
+
+
+def test_cohorts_for_group_filters_by_group():
+    pam50 = cohorts.cohorts_for_group("tcga_brca_pam50")
+    assert {c.code for c in pam50} == {
+        "BRCA_Basal", "BRCA_HER2", "BRCA_LumA", "BRCA_LumB", "BRCA_Normal"}
+    assert all(c.selection.startswith("pam50:") for c in pam50)
+    assert cohorts.cohorts_for_group("not-a-group") == []
+
+
+def test_static_sweeps_consume_the_registry():
+    """The build sweeps build their cohort list FROM the registry (not an inline
+    copy) — so the two can't drift. Verified for the three network-free sweeps
+    whose COHORTS are built at import time."""
+    for script, group in [
+            ("sweep_treehouse_polya_cohorts", "polya_pediatric"),
+            ("sweep_treehouse_ribod_cohorts", "ribod"),
+            ("sweep_treehouse_tcga_cohorts", "tcga_direct")]:
+        mod = _load_script(script)
+        built = {c.cancer_code: c.effective_cache_stem for c in mod.COHORTS}
+        expected = {c.code: c.stem for c in cohorts.cohorts_for_group(group)}
+        assert built == expected, (script, built, expected)
