@@ -33,6 +33,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -501,7 +502,7 @@ def main():
     print("[7/8] stacked coverage bar (per-CTA marginal contribution)", flush=True)
     _stacked_coverage_bars(mat, cohorts, ensg_to_sym, tpm_thr)
 
-    print("[8/8] CTA coverage vs cohort TMB", flush=True)
+    print("[8/8] CTA coverage vs cohort TMB / anti-PD-1 response", flush=True)
     _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr)
     # HEPB (hepatoblastoma) sits at TMB ~0.02 — an extreme low outlier that
     # stretches the log-x axis for one point; emit a no-HEPB variant (legend
@@ -513,6 +514,11 @@ def main():
     _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr,
                 exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB_subtypesonly",
                 drop_covered_parents=True)
+    # CTA coverage vs curated anti-PD-1 ORR (linear x): the low-ORR / high-coverage
+    # quadrant is the CTA-therapy-attractive zone (checkpoint blockade refractory
+    # yet antigen-rich). Only the ~curated aPD-1 cohorts carry an ORR, so the
+    # point set is sparse; no HEPB variant (HEPB has no curated ORR).
+    _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr, xaxis=_apd1_axis())
 
     # CTA load metrics vs TMB: (a) mean # CTAs expressed per sample, (b) mean
     # per-sample CTA-specific-9mer payload (Σ over the CTAs a sample expresses of
@@ -539,21 +545,28 @@ def main():
         # no-HEPB subtypes-only (drop a parent category when its subtypes are
         # also plotted) — for BOTH load metrics: mean #CTAs/sample and mean
         # CTA-specific-9mer payload/sample.
-        for value_fn, ylabel, slug in (
+        for value_fn, ylabel, slug_base in (
             (_mean_ctas_per_sample, "mean # CTAs expressed per sample",
-             "cta_mean_count_vs_tmb"),
+             "cta_mean_count"),
             (payload_fn, "mean CTA-specific 9mers per sample",
-             "cta_9mer_payload_vs_tmb"),
+             "cta_9mer_payload"),
         ):
-            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug,
+            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug_base,
                            pctile_cutoffs=cutoffs)
-            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug,
+            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug_base,
                            pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
                            slug_suffix="_noHEPB")
-            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug,
+            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug_base,
                            pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
                            slug_suffix="_noHEPB_subtypesonly",
                            drop_covered_parents=True)
+        # CTA-specific-9mer payload vs curated anti-PD-1 ORR (linear x): the
+        # vaccine-payload analogue of the coverage-vs-aPD1 plot — how much
+        # CTA-specific 9mer load a cohort carries vs how well checkpoint blockade
+        # already works. Sparse (only curated aPD-1 cohorts); base variant only.
+        _metric_vs_tmb(mat, cohorts, thr, payload_fn,
+                       "mean CTA-specific 9mers per sample", "cta_9mer_payload",
+                       pctile_cutoffs=cutoffs, xaxis=_apd1_axis())
 
     _emit_load_metrics(tpm_thr)
 
@@ -577,6 +590,8 @@ def main():
                         exclude=frozenset({"HEPB"}),
                         slug_suffix="_noHEPB_subtypesonly",
                         drop_covered_parents=True)
+            _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs,
+                        xaxis=_apd1_axis())
             _emit_load_metrics(pthr, cutoffs)
     print(f"done -> {OUT}", flush=True)
 
@@ -723,12 +738,6 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
     print(f"      {len(rows)} cohorts -> stacked coverage bar", flush=True)
 
 
-# Per-cohort TMB is looked up through gsc.cancer_tmb (centralized resolver +
-# parent inheritance); no cohort-specific TMB key overrides are needed now that
-# SARC is the honest pan-sarcoma aggregate (it resolves to its own curated
-# pan-sarcoma TMB rather than borrowing leiomyosarcoma's).
-_TMB_CODE: dict[str, str] = {}
-
 # Coarse tissue-lineage groups for coloring the CTA-vs-TMB scatter, collapsed
 # from the registry `family` column (lineage-only after the Phase-C refactor;
 # age is a separate `pediatric` flag, so pediatric sarcomas color as sarcoma).
@@ -807,36 +816,84 @@ def _drop_covered_parents(pts, parent_of):
     return [p for p in pts if p[0] not in covered]
 
 
+class _XAxis(NamedTuple):
+    """An x-axis for the per-cohort CTA scatters — either published median TMB
+    (log) or curated anti-PD-1 ORR (linear). ``values`` maps canonical cancer
+    code -> x value; ``sweet_x_max`` is the right edge of the shaded
+    "antigen-rich / therapy-attractive" band (low TMB, or low aPD-1 response),
+    the quadrant where CTA-directed therapy is attractive because the
+    alternative (checkpoint blockade riding a high neoantigen load) is weak."""
+    short: str          # slug/title fragment: "tmb" / "apd1"
+    title: str          # title phrase: "TMB" / "anti-PD-1 response"
+    label: str          # x-axis label
+    log: bool
+    values: dict        # {canonical_code: x_value}
+    sweet_x_max: float
+    sweet_label: str
+
+
+def _resolve_code(code: str) -> str:
+    try:
+        return gsc.resolve_cancer_type(code) or code
+    except ValueError:
+        return code
+
+
+def _axis_value_map(raw: dict) -> dict:
+    """Resolve every curated code to its canonical registry code (synonym-proof);
+    first value wins on a collision."""
+    out: dict = {}
+    for c, v in raw.items():
+        out.setdefault(_resolve_code(c), v)
+    return out
+
+
+def _tmb_axis() -> _XAxis:
+    # Computed sarcoma aggregates (SARC, SARC_RMS, …) have no single honest TMB —
+    # their expression is a grand union over subtypes spanning a ~4× TMB range —
+    # so they are excluded by the aggregate-code filter and only subtype-level
+    # atoms (each with its own curated TMB) are plotted. (SARC-TMB scope fix.)
+    return _XAxis(
+        "tmb", "TMB",
+        "median tumor mutational burden (mut/Mb, log scale)", True,
+        _axis_value_map(gsc.cancer_tmb()), 3.0, "antigen-rich / mutation-poor")
+
+
+def _apd1_axis() -> _XAxis:
+    return _XAxis(
+        "apd1", "anti-PD-1 response",
+        "anti-PD-1 monotherapy ORR (%)", False,
+        _axis_value_map(gsc.cancer_apd1_response()), 10.0,
+        "antigen-rich / checkpoint-refractory")
+
+
+def _xlim(xs, xaxis: _XAxis):
+    if xaxis.log:
+        return min(xs) * 0.7, max(xs) * 1.5
+    pad = max(1.0, 0.04 * (max(xs) - min(xs)))
+    return min(xs) - pad, max(xs) + pad
+
+
 def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
-                exclude=frozenset(), slug_suffix="", drop_covered_parents=False):
+                exclude=frozenset(), slug_suffix="", drop_covered_parents=False,
+                xaxis=None):
     """Scatter: each cancer type's CTA coverage plateau (% of patients with ≥1
-    CTA over threshold) vs its published median TMB (mut/Mb, log x). Tumors with
-    high CTA coverage but low TMB are the interesting quadrant for CTA-directed
-    therapy (antigen present without relying on a high neoantigen load). Cohorts
-    with no curated TMB value are dropped and counted in the caption.
+    CTA over threshold) vs an x-axis metric (``xaxis``, default published median
+    TMB; pass :func:`_apd1_axis` for anti-PD-1 ORR). Tumors with high CTA
+    coverage but a low x value (low TMB / low aPD-1 response) are the interesting
+    quadrant for CTA-directed therapy. Cohorts with no x value are dropped and
+    counted in the caption.
 
     ``drop_covered_parents=True`` emits the subtype-resolved variant: a parent
     category is dropped whenever one of its subtypes is also plotted (no bulk
     BRCA when PAM50 subtypes show, no HNSC without HPV status, no bulk SARC),
-    falling back to whatever level actually carries a curated TMB."""
+    falling back to whatever level actually carries a curated x value."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    # Resolve every curated TMB code to its canonical registry code so cohort
-    # lookups are synonym-proof (catch-all, nothing dropped on a spelling).
-    tmb_map = {}
-    for c, v in gsc.cancer_tmb().items():
-        try:
-            rc = gsc.resolve_cancer_type(c) or c
-        except ValueError:
-            rc = c
-        tmb_map.setdefault(rc, v)
-    # Computed sarcoma aggregates (SARC, SARC_RMS, SARC_LPS, TCGA_SARC, …) have
-    # no single honest TMB: their expression is a grand union over subtypes but
-    # published TMB spans 0.6–2.2 mut/Mb across those subtypes, so one umbrella
-    # number conflates a 4× spread. Plot only subtype-level points; the atoms
-    # each carry their own curated TMB. (SARC-TMB scope fix, option C.)
+    xaxis = xaxis or _tmb_axis()
+    val_map = xaxis.values
     aggregate_codes = set(gsc.cohort_aggregates().keys())
     pts, missing = [], []
     for code in cohorts:
@@ -845,20 +902,16 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
         order, cum, n = greedy_coverage(mat, cohorts[code], thr, pctile_cutoffs)
         if not cum:
             continue
-        key = _TMB_CODE.get(code, code)
-        try:
-            key = gsc.resolve_cancer_type(key) or key
-        except ValueError:
-            pass
-        tmb = tmb_map.get(key)
-        if tmb is None:
+        val = val_map.get(_resolve_code(code))
+        if val is None:
             missing.append(code)
             continue
-        pts.append((code, n, cum[-1] * 100, tmb))
+        pts.append((code, n, cum[-1] * 100, val))
     if drop_covered_parents:
         pts = _drop_covered_parents(pts, _parent_code_map())
     if not pts:
-        print("      no cohorts with both coverage and TMB; skip", flush=True)
+        print(f"      no cohorts with both coverage and {xaxis.short}; skip",
+              flush=True)
         return
 
     xs = [p[3] for p in pts]
@@ -868,44 +921,45 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
 
     from matplotlib.lines import Line2D
     fig, ax = plt.subplots(figsize=(12, 7.5))
-    ax.set_xscale("log")
-    x_lo, x_hi = min(xs) * 0.7, max(xs) * 1.5
+    if xaxis.log:
+        ax.set_xscale("log")
+    x_lo, x_hi = _xlim(xs, xaxis)
     ax.set_xlim(x_lo, x_hi)
     # Headroom above 100% so cohorts at the coverage ceiling (e.g. ATRT, NUTM)
     # show their full marker instead of a clipped half-dot.
     Y_TOP = 105
     ax.set_ylim(0, Y_TOP)
 
-    # Shade the "antigen-rich / mutation-poor" sweet spot: high CTA coverage
-    # (>=50%) at low TMB (<=3 mut/Mb), where CTA-directed therapy is attractive
-    # precisely because the low neoantigen load makes checkpoint blockade weak.
-    # Fill to the top of the (extended) y-axis so the band isn't capped at 100.
-    SWEET_TMB, SWEET_COV = 3.0, 50.0
-    ax.fill_between([x_lo, SWEET_TMB], SWEET_COV, Y_TOP, color="#ffd166",
+    # Shade the "antigen-rich / therapy-attractive" sweet spot: high CTA coverage
+    # (>=50%) at a low x value (<= xaxis.sweet_x_max), where CTA-directed therapy
+    # is attractive precisely because checkpoint blockade is weak there.
+    SWEET_COV = 50.0
+    ax.fill_between([x_lo, xaxis.sweet_x_max], SWEET_COV, Y_TOP, color="#ffd166",
                     alpha=0.18, zorder=0)
     # Sit the label a little below the band's top edge so it clears the
     # ceiling-coverage dots (ATRT/NUTM) that now sit near y=100.
-    ax.text(x_lo * 1.08, 93, "antigen-rich / mutation-poor",
+    label_x = x_lo * 1.08 if xaxis.log else x_lo + 0.01 * (x_hi - x_lo)
+    ax.text(label_x, 93, xaxis.sweet_label,
             fontsize=8, va="top", ha="left", color="#9c6f00", style="italic")
 
     ax.scatter(xs, ys, s=34, c=[_LINEAGE_COLORS[g] for g in groups],
                alpha=0.9, edgecolor="white", linewidth=0.4, zorder=3)
-    ax.set_xlabel("median tumor mutational burden (mut/Mb, log scale)")
+    ax.set_xlabel(xaxis.label)
     ax.set_ylabel(f"% of patients with ≥1 CTA {thr.xlabel} "
                   "(coverage plateau)")
     ax.grid(alpha=0.3, which="both")
 
     # Repel labels so they don't overlap (thin leader lines back to points).
-    texts = [ax.text(tmb, cov, _display_code(code), fontsize=6)
-             for code, n, cov, tmb in pts]
+    texts = [ax.text(val, cov, _display_code(code), fontsize=6)
+             for code, n, cov, val in pts]
     try:
         from adjustText import adjust_text
         adjust_text(texts, x=list(xs), y=list(ys), ax=ax,
                     arrowprops=dict(arrowstyle="-", color="0.6", lw=0.4))
     except ImportError:  # fallback: small fixed offset (may overlap)
-        for t, (code, n, cov, tmb) in zip(texts, pts):
+        for t, (code, n, cov, val) in zip(texts, pts):
             t.set_fontsize(5)
-            t.set_position((tmb * 1.02, cov + 0.6))
+            t.set_position((val * 1.02 if xaxis.log else val + 0.5, cov + 0.6))
 
     # Lineage legend (only groups present), placed outside the axes.
     present = [g for g in _LINEAGE_COLORS if g in set(groups)]
@@ -917,14 +971,15 @@ def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
 
     ex_note = f"; excludes {', '.join(sorted(exclude))}" if exclude else ""
     sub_note = "; subtype-resolved" if drop_covered_parents else ""
-    ax.set_title(f"CTA coverage vs TMB by cancer type "
+    ax.set_title(f"CTA coverage vs {xaxis.title} by cancer type "
                  f"({thr.xlabel}, n={len(pts)} cohorts{ex_note}{sub_note})",
                  fontsize=10)
     fig.tight_layout()
-    fig.savefig(OUT / f"cta_coverage_vs_tmb_{thr.slug}{slug_suffix}.png", dpi=150)
+    fig.savefig(OUT / f"cta_coverage_vs_{xaxis.short}_{thr.slug}{slug_suffix}.png",
+                dpi=150)
     plt.close(fig)
     print(f"      {len(pts)} cohorts plotted{ex_note}, "
-          f"{len(missing)} dropped (no TMB)", flush=True)
+          f"{len(missing)} dropped (no {xaxis.short})", flush=True)
 
 
 def cta_specific_9mer_counts(*, ensembl_release=112, k=9, refresh=False):
@@ -994,25 +1049,22 @@ def _cohort_on_matrix(mat, cols, thr, pctile_cutoffs):
     return mat[cols].to_numpy() > cut
 
 
-def _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug, *,
+def _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
                    pctile_cutoffs=None, exclude=frozenset(), slug_suffix="",
-                   drop_covered_parents=False):
-    """Generic scatter of a per-cohort per-sample CTA metric vs median TMB
-    (log-x), styled like :func:`_cta_vs_tmb` but with a free (auto) y-axis and
-    no sweet-spot band. ``value_fn(mat, cols, thr, pctile_cutoffs) -> float`` is
-    the cohort's metric (e.g. mean CTAs/sample, mean CTA-specific-9mer payload)."""
+                   drop_covered_parents=False, xaxis=None):
+    """Generic scatter of a per-cohort per-sample CTA metric vs an x-axis metric
+    (``xaxis``, default median TMB log-x; pass :func:`_apd1_axis` for anti-PD-1
+    ORR), styled like :func:`_cta_vs_tmb` but with a free (auto) y-axis and no
+    sweet-spot band. ``value_fn(mat, cols, thr, pctile_cutoffs) -> float`` is the
+    cohort's metric (e.g. mean CTAs/sample, mean CTA-specific-9mer payload). The
+    figure is written to ``{slug_base}_vs_{xaxis.short}_{thr.slug}{suffix}.png``."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
-    tmb_map = {}
-    for c, v in gsc.cancer_tmb().items():
-        try:
-            rc = gsc.resolve_cancer_type(c) or c
-        except ValueError:
-            rc = c
-        tmb_map.setdefault(rc, v)
+    xaxis = xaxis or _tmb_axis()
+    val_map = xaxis.values
     aggregate_codes = set(gsc.cohort_aggregates().keys())
     pts = []
     for code, samples in cohorts.items():
@@ -1021,43 +1073,39 @@ def _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug, *,
         cols = [s for s in samples if s in mat.columns]
         if not cols:
             continue
-        key = _TMB_CODE.get(code, code)
-        try:
-            key = gsc.resolve_cancer_type(key) or key
-        except ValueError:
-            pass
-        tmb = tmb_map.get(key)
-        if tmb is None:
+        val = val_map.get(_resolve_code(code))
+        if val is None:
             continue
-        pts.append((code, len(cols), value_fn(mat, cols, thr, pctile_cutoffs), tmb))
+        pts.append((code, len(cols), value_fn(mat, cols, thr, pctile_cutoffs), val))
     if drop_covered_parents:
         pts = _drop_covered_parents(pts, _parent_code_map())
     if not pts:
-        print("      no cohorts with metric + TMB; skip", flush=True)
+        print(f"      no cohorts with metric + {xaxis.short}; skip", flush=True)
         return
     xs = [p[3] for p in pts]
     ys = [p[2] for p in pts]
     fam_map = _registry_family_map()
     groups = [_lineage_group(fam_map.get(code, "")) for code, *_ in pts]
     fig, ax = plt.subplots(figsize=(12, 7.5))
-    ax.set_xscale("log")
-    ax.set_xlim(min(xs) * 0.7, max(xs) * 1.5)
+    if xaxis.log:
+        ax.set_xscale("log")
+    ax.set_xlim(*_xlim(xs, xaxis))
     ax.set_ylim(0, max(ys) * 1.08)
     ax.scatter(xs, ys, s=34, c=[_LINEAGE_COLORS[g] for g in groups],
                alpha=0.9, edgecolor="white", linewidth=0.4, zorder=3)
-    ax.set_xlabel("median tumor mutational burden (mut/Mb, log scale)")
+    ax.set_xlabel(xaxis.label)
     ax.set_ylabel(ylabel)
     ax.grid(alpha=0.3, which="both")
-    texts = [ax.text(tmb, y, _display_code(code), fontsize=6)
-             for code, n, y, tmb in pts]
+    texts = [ax.text(val, y, _display_code(code), fontsize=6)
+             for code, n, y, val in pts]
     try:
         from adjustText import adjust_text
         adjust_text(texts, x=list(xs), y=list(ys), ax=ax,
                     arrowprops=dict(arrowstyle="-", color="0.6", lw=0.4))
     except ImportError:
-        for t, (code, n, y, tmb) in zip(texts, pts):
+        for t, (code, n, y, val) in zip(texts, pts):
             t.set_fontsize(5)
-            t.set_position((tmb * 1.02, y))
+            t.set_position((val * 1.02 if xaxis.log else val + 0.5, y))
     present = [g for g in _LINEAGE_COLORS if g in set(groups)]
     handles = [Line2D([0], [0], marker="o", linestyle="", markersize=6,
                       markerfacecolor=_LINEAGE_COLORS[g], markeredgecolor="white",
@@ -1065,9 +1113,10 @@ def _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug, *,
     ax.legend(handles=handles, loc="center left", bbox_to_anchor=(1.01, 0.5),
               fontsize=7, title="lineage", frameon=False)
     ex_note = f"; excludes {', '.join(sorted(exclude))}" if exclude else ""
-    ax.set_title(f"{ylabel} vs TMB by cancer type "
+    ax.set_title(f"{ylabel} vs {xaxis.title} by cancer type "
                  f"({thr.xlabel}, n={len(pts)} cohorts{ex_note})", fontsize=10)
     fig.tight_layout()
+    slug = f"{slug_base}_vs_{xaxis.short}"
     fig.savefig(OUT / f"{slug}_{thr.slug}{slug_suffix}.png", dpi=150)
     plt.close(fig)
     print(f"      {slug}: {len(pts)} cohorts plotted{ex_note}", flush=True)
