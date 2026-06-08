@@ -32,6 +32,7 @@ import json
 import re
 import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
 
@@ -503,22 +504,22 @@ def main():
     _stacked_coverage_bars(mat, cohorts, ensg_to_sym, tpm_thr)
 
     print("[8/8] CTA coverage vs cohort TMB / anti-PD-1 response", flush=True)
-    _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr)
+    _cta_vs_x(mat, cohorts, ensg_to_sym, tpm_thr)
     # HEPB (hepatoblastoma) sits at TMB ~0.02 — an extreme low outlier that
     # stretches the log-x axis for one point; emit a no-HEPB variant (legend
     # auto-prunes the now-empty embryonal group, x-axis auto-rescales).
-    _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr,
+    _cta_vs_x(mat, cohorts, ensg_to_sym, tpm_thr,
                 exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB")
     # Subtype-resolved variant: drop a parent category when its subtypes are
     # also plotted (no bulk BRCA/HNSC/SARC alongside their subtypes).
-    _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr,
+    _cta_vs_x(mat, cohorts, ensg_to_sym, tpm_thr,
                 exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB_subtypesonly",
                 drop_covered_parents=True)
     # CTA coverage vs curated anti-PD-1 ORR (linear x): the low-ORR / high-coverage
     # quadrant is the CTA-therapy-attractive zone (checkpoint blockade refractory
     # yet antigen-rich). Only the ~curated aPD-1 cohorts carry an ORR, so the
     # point set is sparse; no HEPB variant (HEPB has no curated ORR).
-    _cta_vs_tmb(mat, cohorts, ensg_to_sym, tpm_thr, xaxis=_apd1_axis())
+    _cta_vs_x(mat, cohorts, ensg_to_sym, tpm_thr, xaxis=_apd1_axis())
 
     # CTA load metrics vs TMB: (a) mean # CTAs expressed per sample, (b) mean
     # per-sample CTA-specific-9mer payload (Σ over the CTAs a sample expresses of
@@ -540,7 +541,7 @@ def main():
     payload_fn = _mean_specific_9mer_payload(weights)
 
     def _emit_load_metrics(thr, cutoffs=None):
-        # Same variant matrix as the coverage-vs-TMB plot (_cta_vs_tmb): base
+        # Same variant matrix as the coverage-vs-TMB plot (_cta_vs_x): base
         # (all cohorts incl. HEPB), no-HEPB (drops the TMB~0.02 outlier), and
         # no-HEPB subtypes-only (drop a parent category when its subtypes are
         # also plotted) — for BOTH load metrics: mean #CTAs/sample and mean
@@ -551,12 +552,12 @@ def main():
             (payload_fn, "mean CTA-specific 9mers per sample",
              "cta_9mer_payload"),
         ):
-            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug_base,
+            _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
                            pctile_cutoffs=cutoffs)
-            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug_base,
+            _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
                            pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
                            slug_suffix="_noHEPB")
-            _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug_base,
+            _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
                            pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
                            slug_suffix="_noHEPB_subtypesonly",
                            drop_covered_parents=True)
@@ -564,7 +565,7 @@ def main():
         # vaccine-payload analogue of the coverage-vs-aPD1 plot — how much
         # CTA-specific 9mer load a cohort carries vs how well checkpoint blockade
         # already works. Sparse (only curated aPD-1 cohorts); base variant only.
-        _metric_vs_tmb(mat, cohorts, thr, payload_fn,
+        _metric_vs_x(mat, cohorts, thr, payload_fn,
                        "mean CTA-specific 9mers per sample", "cta_9mer_payload",
                        pctile_cutoffs=cutoffs, xaxis=_apd1_axis())
 
@@ -583,14 +584,14 @@ def main():
             print(f"    p{p}: coverage curves + stacked bars + vs-TMB", flush=True)
             _coverage_every_cohort(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _stacked_coverage_bars(mat, cohorts, ensg_to_sym, pthr, cutoffs)
-            _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs)
-            _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs,
+            _cta_vs_x(mat, cohorts, ensg_to_sym, pthr, cutoffs)
+            _cta_vs_x(mat, cohorts, ensg_to_sym, pthr, cutoffs,
                         exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB")
-            _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs,
+            _cta_vs_x(mat, cohorts, ensg_to_sym, pthr, cutoffs,
                         exclude=frozenset({"HEPB"}),
                         slug_suffix="_noHEPB_subtypesonly",
                         drop_covered_parents=True)
-            _cta_vs_tmb(mat, cohorts, ensg_to_sym, pthr, cutoffs,
+            _cta_vs_x(mat, cohorts, ensg_to_sym, pthr, cutoffs,
                         xaxis=_apd1_axis())
             _emit_load_metrics(pthr, cutoffs)
     print(f"done -> {OUT}", flush=True)
@@ -833,10 +834,7 @@ class _XAxis(NamedTuple):
 
 
 def _resolve_code(code: str) -> str:
-    try:
-        return gsc.resolve_cancer_type(code) or code
-    except ValueError:
-        return code
+    return gsc.resolve_cancer_type(code, strict=False) or code
 
 
 def _axis_value_map(raw: dict) -> dict:
@@ -848,6 +846,7 @@ def _axis_value_map(raw: dict) -> dict:
     return out
 
 
+@lru_cache(maxsize=1)
 def _tmb_axis() -> _XAxis:
     # Computed sarcoma aggregates (SARC, SARC_RMS, …) have no single honest TMB —
     # their expression is a grand union over subtypes spanning a ~4× TMB range —
@@ -859,6 +858,7 @@ def _tmb_axis() -> _XAxis:
         _axis_value_map(gsc.cancer_tmb()), 3.0, "antigen-rich / mutation-poor")
 
 
+@lru_cache(maxsize=1)
 def _apd1_axis() -> _XAxis:
     return _XAxis(
         "apd1", "anti-PD-1 response",
@@ -874,7 +874,7 @@ def _xlim(xs, xaxis: _XAxis):
     return min(xs) - pad, max(xs) + pad
 
 
-def _cta_vs_tmb(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
+def _cta_vs_x(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
                 exclude=frozenset(), slug_suffix="", drop_covered_parents=False,
                 xaxis=None):
     """Scatter: each cancer type's CTA coverage plateau (% of patients with ≥1
@@ -1049,12 +1049,12 @@ def _cohort_on_matrix(mat, cols, thr, pctile_cutoffs):
     return mat[cols].to_numpy() > cut
 
 
-def _metric_vs_tmb(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
+def _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
                    pctile_cutoffs=None, exclude=frozenset(), slug_suffix="",
                    drop_covered_parents=False, xaxis=None):
     """Generic scatter of a per-cohort per-sample CTA metric vs an x-axis metric
     (``xaxis``, default median TMB log-x; pass :func:`_apd1_axis` for anti-PD-1
-    ORR), styled like :func:`_cta_vs_tmb` but with a free (auto) y-axis and no
+    ORR), styled like :func:`_cta_vs_x` but with a free (auto) y-axis and no
     sweet-spot band. ``value_fn(mat, cols, thr, pctile_cutoffs) -> float`` is the
     cohort's metric (e.g. mean CTAs/sample, mean CTA-specific-9mer payload). The
     figure is written to ``{slug_base}_vs_{xaxis.short}_{thr.slug}{suffix}.png``."""
