@@ -579,6 +579,13 @@ def main():
         _metric_vs_x(mat, cohorts, thr, payload_fn,
                        "mean CTA-specific 9mers per sample", "cta_9mer_payload",
                        pctile_cutoffs=cutoffs, xaxis=_apd1_axis())
+        # Log-scaled-y companions of the 9mer-payload plots (vs TMB and vs aPD-1):
+        # the payload spans ~90x (PAAD ~15 → SKCM ~1300), so a log y separates the
+        # low-payload cohorts that bunch against the axis on the linear version.
+        for xa in (None, _apd1_axis()):   # None -> default TMB axis
+            _metric_vs_x(mat, cohorts, thr, payload_fn,
+                           "mean CTA-specific 9mers per sample", "cta_9mer_payload",
+                           pctile_cutoffs=cutoffs, xaxis=xa, log_y=True)
 
     _emit_load_metrics(tpm_thr)
 
@@ -1062,13 +1069,17 @@ def _cohort_on_matrix(mat, cols, thr, pctile_cutoffs):
 
 def _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
                    pctile_cutoffs=None, exclude=frozenset(), slug_suffix="",
-                   drop_covered_parents=False, xaxis=None):
+                   drop_covered_parents=False, xaxis=None, log_y=False):
     """Generic scatter of a per-cohort per-sample CTA metric vs an x-axis metric
     (``xaxis``, default median TMB log-x; pass :func:`_apd1_axis` for anti-PD-1
     ORR), styled like :func:`_cta_vs_x` but with a free (auto) y-axis and no
     sweet-spot band. ``value_fn(mat, cols, thr, pctile_cutoffs) -> float`` is the
-    cohort's metric (e.g. mean CTAs/sample, mean CTA-specific-9mer payload). The
-    figure is written to ``{slug_base}_vs_{xaxis.short}_{thr.slug}{suffix}.png``."""
+    cohort's metric (e.g. mean CTAs/sample, mean CTA-specific-9mer payload).
+
+    ``log_y=True`` plots the y-axis on a log scale (useful when the metric spans
+    orders of magnitude, e.g. CTA-specific-9mer payload runs ~15→1300) and adds a
+    ``_logy`` filename suffix. The figure is written to
+    ``{slug_base}_vs_{xaxis.short}/{thr.slug}{suffix}[_logy].png``."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -1101,7 +1112,12 @@ def _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
     if xaxis.log:
         ax.set_xscale("log")
     ax.set_xlim(*_xlim(xs, xaxis))
-    ax.set_ylim(0, max(ys) * 1.08)
+    if log_y:
+        ax.set_yscale("log")
+        pos = [y for y in ys if y > 0]
+        ax.set_ylim((min(pos) * 0.7) if pos else 1.0, max(ys) * 1.5)
+    else:
+        ax.set_ylim(0, max(ys) * 1.08)
     ax.scatter(xs, ys, s=34, c=[_LINEAGE_COLORS[g] for g in groups],
                alpha=0.9, edgecolor="white", linewidth=0.4, zorder=3)
     ax.set_xlabel(xaxis.label)
@@ -1124,11 +1140,14 @@ def _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
     ax.legend(handles=handles, loc="center left", bbox_to_anchor=(1.01, 0.5),
               fontsize=7, title="lineage", frameon=False)
     ex_note = f"; excludes {', '.join(sorted(exclude))}" if exclude else ""
+    log_note = "; log y" if log_y else ""
     ax.set_title(f"{ylabel} vs {xaxis.title} by cancer type "
-                 f"({thr.xlabel}, n={len(pts)} cohorts{ex_note})", fontsize=10)
+                 f"({thr.xlabel}, n={len(pts)} cohorts{ex_note}{log_note})",
+                 fontsize=10)
     fig.tight_layout()
     slug = f"{slug_base}_vs_{xaxis.short}"
-    fig.savefig(_out_path(slug, f"{thr.slug}{slug_suffix}"), dpi=150)
+    name = f"{thr.slug}{slug_suffix}{'_logy' if log_y else ''}"
+    fig.savefig(_out_path(slug, name), dpi=150)
     plt.close(fig)
     print(f"      {slug}: {len(pts)} cohorts plotted{ex_note}", flush=True)
 
