@@ -44,6 +44,27 @@ def test_concrete_source_has_reference_or_candidate():
     )
 
 
+def test_every_reference_source_cohort_is_registered():
+    """Reverse direction of the check above: every ``source_cohort`` appearing
+    in the packaged reference frame must be a registered ``cohort_id`` in
+    cohort-registry.csv. Catches an orphan/stale shard left in
+    ``cancer-reference-expression/`` after a rename — the shard loader globs all
+    ``*.csv.gz`` and concatenates, so an unregistered leftover would silently
+    re-enter the frame (e.g. a renamed ``TEMPUS_UNC_NUTM1.csv.gz`` sitting beside
+    its replacement ``UNC_NUTM1.csv.gz`` double-counted NUTM)."""
+    data_sources = set(
+        available_cancer_expression_references()["source_cohort"].astype(str))
+    registered = set(get_data("cohort-registry.csv")["cohort_id"].astype(str))
+    orphans = sorted(data_sources - registered)
+    assert not orphans, (
+        "Reference-expression shards carry source_cohort(s) absent from "
+        "cohort-registry.csv:\n  " + "\n  ".join(orphans)
+        + "\n\nLikely a stale/renamed shard left in "
+        "pirlygenes/data/cancer-reference-expression/. Delete the orphan "
+        "shard or register the cohort."
+    )
+
+
 def test_sarc_round_cell_atoms_are_consistent():
     """The four atoms from #316 are now consistent: marked curated (not
     Treehouse), with a candidate row recording the unbuilt Treehouse samples."""

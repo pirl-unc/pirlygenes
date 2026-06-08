@@ -142,6 +142,11 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "gse85383-ess": ("GSE85383_YOSHIDA_2017_ESS", "GEO"),
     "gse32662-mtc": ("GSE32662_PRINGLE_2012", "GEO"),
     "gse30929-lps": ("GSE30929_SINGER_2007_LPS", "GEO"),
+    # NUT carcinoma case series (UNC NUTM1; whole-transcriptome RNA-seq) — the
+    # only usable per-sample NUTM expression (public NUT data is cell-line /
+    # controlled-access only). Per-sample parquet is cache-only; the bundle ships
+    # anonymized medoids. Takes NUTM from n=1 (Treehouse) to n=3.
+    "unc-nutm1": ("UNC_NUTM1", "UNC"),
 }
 
 
@@ -274,6 +279,15 @@ def _treehouse_registry() -> tuple[Cohort, ...]:
                            group="tcga_luad_mut",
                            disease_label="lung adenocarcinoma",
                            selection=f"mutation:{genes}"))
+    # TCGA-COAD/READ microsatellite-instability split (cBioPortal coadread
+    # MSI_SENSOR_SCORE >= 10 = MSI-H). The immune-hot/cold axis with the largest
+    # known aPD-1 differential (MSI-H ~45% vs MSS ~0% ORR).
+    for parent, dl in [("COAD", "colon adenocarcinoma"),
+                       ("READ", "rectum adenocarcinoma")]:
+        for status in ("MSI-H", "MSS"):
+            code = f"{parent}_{'MSI' if status == 'MSI-H' else 'MSS'}"
+            rows.append(Cohort(code, code, _POLYA, group="tcga_coadread_msi",
+                               disease_label=dl, selection=f"msi:{status}"))
     # TCGA-SARC histology overlays (GDC primary_diagnosis). WDLPS is built by
     # the sarc_subtypes sweep; DDLPS/PLEOLPS by the sarc_rare overlay path.
     for code, diagnosis, grp in [

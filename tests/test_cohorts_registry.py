@@ -103,8 +103,8 @@ def test_registry_covers_the_expected_cohort_set():
     polya = {c.code: c.stem for c in cohorts._PER_SAMPLE_COHORTS
              if c.source_id == "treehouse-polya-25-01"}
     # 26 polya-direct (stem==code) + 30 tcga-direct + 2 glioma + 13 molecular/
-    # histology splits = 71.
-    assert len(polya) == 71
+    # histology splits + 4 COAD/READ MSI splits = 75.
+    assert len(polya) == 75
     # spot-check each stem rule
     assert polya["ATRT"] == "ATRT"                  # pediatric direct
     assert polya["NPC"] == "NPC"                    # rare-subtype direct
@@ -148,7 +148,7 @@ def test_groups_partition_the_registry():
         "polya_pediatric", "sarc_rare_direct", "sarc_subtypes",
         "sarc_rare_overlay", "tcga_direct", "tcga_glioma",
         "tcga_brca_pam50", "tcga_hnsc_hpv", "tcga_luad_mut", "ribod",
-        "neuroendocrine", "sclc_tf_subtype"}
+        "neuroendocrine", "sclc_tf_subtype", "tcga_coadread_msi"}
 
 
 def test_cohorts_for_group_filters_by_group():

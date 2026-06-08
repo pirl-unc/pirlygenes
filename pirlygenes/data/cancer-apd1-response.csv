@@ -1,5 +1,5 @@
 cancer_code,apd1_orr_pct,drug,trial,setting,pmid_doi,confidence,notes
-SKCM,33,pembrolizumab,KEYNOTE-006,advanced; <=1 prior tx; all-comers,PMID:25891173,high,ORR ~33% (Q2W/Q3W pooled) vs ipilimumab 12%
+SKCM,42,nivolumab,CheckMate-067,first-line advanced; nivo monotherapy arm,PMID:28889792,high,Nivo mono ~42-45% (CheckMate-067); pembro KEYNOTE-006 primary 33-37% / longer-FU ~42% (PMID:25891173); aPD1 monotherapy ~40-45% in melanoma
 LUAD,45,pembrolizumab,KEYNOTE-024,first-line; PD-L1 TPS>=50% selected,PMID:27718847,high,PD-L1>=50% selected; all-comers/low-PD-L1 ~18% (KEYNOTE-042 PMID:30955977)
 LUSC,45,pembrolizumab,KEYNOTE-024,first-line; PD-L1 TPS>=50% selected,PMID:27718847,medium,NSCLC pooled in KN-024; squamous subset similar to adeno
 LUAD_STK11,10,pembrolizumab,KEYNOTE-042 subgroup,STK11/KEAP1-mutant immune-cold subset,PMID:30955977,low,Approximate; STK11/KEAP1-mutant LUAD is immune-cold with markedly lower aPD1 benefit (reported mainly as PFS/OS HRs)
@@ -22,3 +22,7 @@ NPC,25,pembrolizumab,KEYNOTE-028,pretreated; PD-L1+ selected,PMID:28837405,mediu
 PRAD,4,pembrolizumab,KEYNOTE-199,pretreated mCRPC,PMID:31774688,high,Near-zero anchor; ~5% PD-L1+ / ~3% PD-L1-
 PAAD,1,pembrolizumab,pooled/basket,pretreated; MSS,,low,Near-zero anchor (~0-3%); no single clean monotherapy trial; rare dMMR/MSI-H PDAC responds (~37%) but is a tiny subset
 GBM,8,nivolumab,CheckMate-143,recurrent; all-comers,PMID:32437507,high,Near-zero anchor; vs bevacizumab 23%
+COAD_MSI,45,pembrolizumab,KEYNOTE-177,first-line; MSI-H/dMMR,PMID:33264544,high,MSI-H/dMMR colon; immune-hot; the canonical aPD1-responsive subtype
+COAD_MSS,0,pembrolizumab,KEYNOTE-016/-028,MSS,PMID:26028255,high,Microsatellite-stable colon; immune-cold; ~0% response
+READ_MSI,45,pembrolizumab,KEYNOTE-177,first-line; MSI-H/dMMR,PMID:33264544,medium,MSI-H/dMMR rectal; small subset; same biology as COAD_MSI
+READ_MSS,0,pembrolizumab,KEYNOTE-016,MSS,PMID:26028255,high,Microsatellite-stable rectal; immune-cold

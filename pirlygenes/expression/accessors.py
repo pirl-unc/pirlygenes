@@ -620,9 +620,52 @@ def _load_cancer_reference_expression() -> pd.DataFrame:
     return get_data("cancer-reference-expression", copy=False)
 
 
-def _has_cancer_reference(code: str) -> bool:
+# Identity-keyed memo of read-only views derived purely from the (shared,
+# process-wide) reference frame. The frame is a singleton — get_data(copy=False)
+# returns the same object every call — so any view computed from it is stable
+# until the data reloads. Keying each cache entry on the frame's *identity*
+# makes it self-invalidate the moment a test monkeypatches
+# _load_cancer_reference_expression to return a different frame. Without this,
+# available_cancer_expression_references() factorized the ~1M-row frame once per
+# cancer code, which alone was ~300 s of the serial suite (#278 follow-up).
+_REFERENCE_VIEW_CACHE: dict[str, tuple] = {}
+
+
+def _reference_view(key: str, builder):
+    """Return ``builder(reference_frame)``, memoized on the frame's identity."""
     df = _load_cancer_reference_expression()
-    return code in set(df["cancer_code"].astype(str))
+    cached = _REFERENCE_VIEW_CACHE.get(key)
+    if cached is not None and cached[0] is df:
+        return cached[1]
+    value = builder(df)
+    _REFERENCE_VIEW_CACHE[key] = (df, value)
+    return value
+
+
+def _reference_code_set() -> frozenset:
+    """Cached ``{cancer_code}`` set over the packaged reference frame."""
+    return _reference_view(
+        "reference_code_set",
+        lambda df: frozenset(df["cancer_code"].astype(str)),
+    )
+
+
+def _reference_indices_by_code() -> dict:
+    """Cached ``{cancer_code: positional-row-index array}`` over the reference
+    frame, so per-code slicing avoids a full-frame ``astype(str).isin`` scan."""
+    return _reference_view(
+        "indices_by_code",
+        lambda df: {
+            str(code): idx
+            for code, idx in df.groupby(
+                df["cancer_code"].astype(str), sort=False
+            ).indices.items()
+        },
+    )
+
+
+def _has_cancer_reference(code: str) -> bool:
+    return code in _reference_code_set()
 
 
 def _load_cancer_expression_source_candidates() -> pd.DataFrame:
@@ -719,8 +762,7 @@ def _resolve_expression_reference_code(code: str) -> str | None:
     from ..gene_sets_cancer import cancer_type_registry
 
     registry = cancer_type_registry().set_index("code")
-    refs = available_cancer_expression_references()
-    reference_codes = set(refs["cancer_code"].astype(str))
+    reference_codes = _reference_code_set()
     pan_codes = _pan_expression_codes()
     return _resolve_expression_reference_code_from_lookups(
         code,
@@ -754,8 +796,19 @@ def available_cancer_expression_references() -> pd.DataFrame:
     first so consumers that take ``.iloc[0]`` get the canonical reference
     cohort. Downstream consumers can use this to decide which non-TCGA
     references are available without inspecting data files.
+
+    The expensive projection (drop_duplicates over the ~1M-row frame) is
+    memoized on the reference frame's identity; this returns a fresh ``.copy()``
+    of that cached view each call, so callers may mutate the result freely
+    without corrupting the cache. The copy is cheap — the cached frame is the
+    deduplicated cohort list (one row per ``(cancer_code, source_cohort)``).
     """
-    df = _load_cancer_reference_expression()
+    return _reference_view(
+        "available_references", _build_available_references
+    ).copy()
+
+
+def _build_available_references(df: pd.DataFrame) -> pd.DataFrame:
     keep = [
         "cancer_code",
         "source_cohort",
@@ -869,7 +922,10 @@ def cancer_expression_reference_status(
         .to_dict(orient="index")
     )
     refs = available_cancer_expression_references()
-    reference_codes = set(refs["cancer_code"].astype(str))
+    # Derive the code set from the already-loaded `refs` rather than
+    # _reference_code_set() — the available-references view dedups by cohort but
+    # retains every cancer_code, so this avoids a second reference-frame load.
+    reference_codes = frozenset(refs["cancer_code"].astype(str))
     pan_codes = _pan_expression_codes()
     reference_summaries = _reference_cohort_summaries(refs, pan_codes)
     registry_by_code = registry.set_index("code")
@@ -995,12 +1051,20 @@ def cancer_reference_expression(
     _validate_reference_format(format)
     df = _load_cancer_reference_expression()
     codes = _resolve_cancer_types(cancer_types, expand_aggregates=True)
+    idx_by_code = _reference_indices_by_code()
     if codes is not None:
-        df = df[df["cancer_code"].astype(str).isin(codes)]
-    available_codes = list(df["cancer_code"].astype(str).drop_duplicates())
-    if codes is not None:
+        # Slice via the cached code→row-positions index instead of an
+        # .astype(str).isin() scan of the full ~1M-row frame — the latter cost
+        # ~15 s across the suite when called once per cancer code (#278 f/u).
+        available_codes = [c for c in dict.fromkeys(codes) if c in idx_by_code]
+        if available_codes:
+            positions = np.concatenate([idx_by_code[c] for c in available_codes])
+            df = df.iloc[positions]
+        else:
+            df = df.iloc[0:0]
         wide_codes = [code for code in codes if code in set(available_codes)]
     else:
+        available_codes = list(idx_by_code.keys())
         wide_codes = available_codes
     if genes is not None:
         df = filter_to_genes(df, genes)

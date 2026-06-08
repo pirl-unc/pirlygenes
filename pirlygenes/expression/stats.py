@@ -275,6 +275,47 @@ def finalize_reference_rows(
     return round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
 
 
+def build_reference_rows(
+    gene_table: pd.DataFrame,
+    raw_values: pd.DataFrame,
+    *,
+    cancer_code: str,
+    source_cohort: str,
+    source_project: str,
+    source_version: str,
+    processing_pipeline: str,
+    notes: str,
+    tumor_origin: str,
+    clean_values: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Assemble finalized reference rows from a gene table + raw TPM matrix.
+
+    Bundles the per-builder boilerplate that every ``scripts/build_*.py``
+    repeats: clean the raw matrix, carry the gene ids, stamp the provenance
+    columns, compute the full stat suite (:func:`assign_stats`), and project
+    onto ``REFERENCE_COLUMNS`` (:func:`finalize_reference_rows`). ``gene_table``
+    must carry ``Ensembl_Gene_ID`` + ``Symbol``; ``raw_values`` is the
+    gene×sample TPM matrix aligned to it. Pass ``clean_values`` to reuse an
+    already-cleaned matrix; otherwise it is computed with
+    ``clean_tpm_matrix(..., censored_fill="fixed_fraction")``.
+    """
+    from .normalize import clean_tpm_matrix
+
+    if clean_values is None:
+        clean_values = clean_tpm_matrix(
+            raw_values, gene_table=gene_table, censored_fill="fixed_fraction"
+        )
+    out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
+    out["cancer_code"] = cancer_code
+    out["source_cohort"] = source_cohort
+    out["source_project"] = source_project
+    out["source_version"] = source_version
+    assign_stats(out, raw_values, clean_values)
+    out["processing_pipeline"] = processing_pipeline
+    out["notes"] = notes
+    return finalize_reference_rows(out, tumor_origin=tumor_origin)
+
+
 def _validate_tumor_origin(
     rows: pd.DataFrame,
     *,
