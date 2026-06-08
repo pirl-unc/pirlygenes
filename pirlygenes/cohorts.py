@@ -117,6 +117,7 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "cgci-blgsp": ("CGCI_BLGSP", "CGCI"),
     "mmrf-commpass": ("MMRF_COMMPASS", "MMRF"),
     "gse299759-chon": ("GSE299759_MEIJER_2026", "GEO"),
+    "gse239531-chordoma": ("GSE239531_VANOOST_2024", "GEO"),
 }
 
 
