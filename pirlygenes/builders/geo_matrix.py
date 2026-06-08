@@ -382,6 +382,21 @@ def build_source(
     )
     values = values.reindex(gene_table["Ensembl_Gene_ID"]).fillna(0.0)
 
+    # Some source matrices repeat a sample id across columns (e.g. GSE294016
+    # ADCC has P-58/P-77 ×15). Uniquify so each is a distinct per-sample column
+    # — required for the per-sample parquet (and harmless for the summary).
+    if values.columns.duplicated().any():
+        seen: dict[str, int] = {}
+        uniq = []
+        for c in values.columns:
+            if c in seen:
+                seen[c] += 1
+                uniq.append(f"{c}.{seen[c]}")
+            else:
+                seen[c] = 0
+                uniq.append(c)
+        values.columns = uniq
+
     if source.sample_to_cancer_code is not None:
         cohort_to_cols: dict[str, list[str]] = {}
         for col in values.columns:

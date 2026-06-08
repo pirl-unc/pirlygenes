@@ -57,7 +57,8 @@ def test_neuroendocrine_cohorts_have_percentiles():
 
 def test_summary_only_cohort_raises():
     _skip_if_absent()
-    # MTC (GSE32662 microarray) is summary-only — no per-sample matrix, so no
-    # percentile vector. (CLL/MM/BL etc. now DO have per-sample data.)
+    # MBL_WNT (a medulloblastoma molecular subtype) is summary-only / literature
+    # -curated — no per-sample matrix, so no percentile vector. (CLL/MM/BL/MTC
+    # etc. now DO have per-sample data.)
     with pytest.raises(ValueError):
-        cohort_gene_percentiles("MTC")
+        cohort_gene_percentiles("MBL_WNT")
