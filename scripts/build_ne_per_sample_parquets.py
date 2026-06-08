@@ -9,10 +9,11 @@ were aggregated from) and writing them in the standard
 ``<source>/derived/<CODE>_per_sample_tpm.parquet`` location (linear raw TPM;
 the representatives generator applies clean_tpm_v4 + medoid selection).
 
-Covers the two cleanly TPM-scale NE sources (the canonical NE poles): pancreatic
-NET (GSE118014 log2TPM) and small-cell lung cancer (UCologne FPKM). The
-counts-based NE sources (GSE98894 midgut NET; IARC LNEN lung carcinoid / LCNEC)
-need Entrez + gene-length TPM conversion and are a follow-up.
+Covers the NE cohorts that have no other canonical per-sample builder: small-cell
+lung cancer (UCologne FPKM) and lung NET/NEC (IARC LNEN counts). Pancreatic NET
+(NET_PANCREAS) and the GSE98894 midgut/rectal NET cohorts are built by the
+canonical recount3 source (gse98894-midnet / gse118014-pannet), so they are not
+duplicated here.
 
 These parquets live in the local cache only (build artifacts) — they are NOT
 shipped; only the resulting representative medoids are bundled.
@@ -32,10 +33,8 @@ from pirlygenes import cohorts as _cohorts  # noqa: E402
 from pirlygenes.builders.treehouse import (  # noqa: E402
     _aggregate_by_ensembl,
     _build_or_load_symbol_mapping,
-    _inverse_log2,
 )
 
-import build_pannet_reference_expression as pannet  # noqa: E402
 import build_sclc_reference_expression as sclc  # noqa: E402
 
 CACHE = Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -63,14 +62,6 @@ def _only_code(source_id: str) -> str:
     pirlygenes.cohorts is the source of truth for the code, not a literal here."""
     (code,) = _cohorts.cohorts_for_source(source_id)
     return code
-
-
-def build_net_pancreas() -> None:
-    d = CACHE / "gse118014-pannet"
-    log2v = pannet._read_log2tpm(d / "GSE118014_PanNETs_log2TPM.txt.gz")
-    tpm = _inverse_log2(log2v)
-    gene_table, values = _aggregate_by_ensembl(tpm, _mapping(log2v.index, d))
-    _write(gene_table, values, d, _only_code(d.name))
 
 
 def build_sclc() -> None:
@@ -124,7 +115,9 @@ def build_lung_ne() -> None:
 
 def main() -> int:
     print("building NE per-sample TPM parquets...", flush=True)
-    build_net_pancreas()
+    # NET_PANCREAS is built by the canonical recount3 source (gse118014-pannet),
+    # not here. This builder covers the NE cohorts recount3 doesn't: SCLC
+    # (UCologne FPKM) and lung NET/NEC (IARC LNEN counts).
     build_sclc()
     build_lung_ne()
     print("done", flush=True)
