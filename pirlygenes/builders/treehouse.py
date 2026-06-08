@@ -124,6 +124,30 @@ class TreehouseCohort:
         return self.cache_stem or self.cancer_code
 
 
+def _tcga_case_id(row: dict) -> str | None:
+    """The TCGA case submitter-id prefix (e.g. ``TCGA-AB-1234``) for a Treehouse
+    clinical row, or None if the sample isn't a TCGA sample."""
+    dsid = str(row.get("th_dataset_id", ""))
+    if not dsid.startswith("TCGA"):
+        return None
+    return "-".join(dsid.split("-")[:3])
+
+
+def tcga_only_predicate() -> Callable[[dict], bool]:
+    """Sample predicate: keep only TCGA samples (``th_dataset_id`` starts with
+    ``TCGA``). The one definition the TCGA-subset sweeps share."""
+    return lambda row: _tcga_case_id(row) is not None
+
+
+def tcga_case_predicate(cases: Iterable[str]) -> Callable[[dict], bool]:
+    """Sample predicate: keep TCGA samples whose case submitter-id is in
+    ``cases`` (a set fetched per-sweep from cBioPortal / GDC). The one
+    definition the molecular/histology-split sweeps share, so the
+    TCGA-only + case-membership logic isn't copy-pasted into each script."""
+    wanted = set(cases)
+    return lambda row: (cid := _tcga_case_id(row)) is not None and cid in wanted
+
+
 def _log(msg: str) -> None:
     print(f"[treehouse {time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
