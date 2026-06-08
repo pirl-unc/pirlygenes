@@ -107,20 +107,7 @@ def parse_geo_platform_table(annot_path: Path) -> pd.DataFrame:
     split on ``///`` and the first symbol is kept (most-expressed
     paralog wins after the per-gene max rollup downstream).
     """
-    with _open_maybe_gzip(annot_path) as f:
-        for line in f:
-            if line.startswith("!platform_table_begin"):
-                break
-        header = f.readline().rstrip("\n").split("\t")
-        rows = []
-        for line in f:
-            if line.startswith("!platform_table_end"):
-                break
-            parts = line.rstrip("\n").split("\t")
-            if len(parts) < len(header):
-                parts = parts + [""] * (len(header) - len(parts))
-            rows.append(parts[: len(header)])
-    df = pd.DataFrame(rows, columns=header)
+    df = _read_geo_platform_raw(annot_path)
     probe_col = next(
         (c for c in (
             "ID", "ID_REF", "Probe Set ID", "ProbeName", "ProbeID",
@@ -217,6 +204,70 @@ def parse_geo_platform_table(annot_path: Path) -> pd.DataFrame:
 _parse_gpl570_annot = parse_geo_platform_table
 
 
+def _read_geo_platform_raw(annot_path: Path) -> pd.DataFrame:
+    """Full GEO platform-table dump as a DataFrame (all columns, as strings)."""
+    with _open_maybe_gzip(annot_path) as f:
+        for line in f:
+            if line.startswith("!platform_table_begin"):
+                break
+        header = f.readline().rstrip("\n").split("\t")
+        rows = []
+        for line in f:
+            if line.startswith("!platform_table_end"):
+                break
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < len(header):
+                parts = parts + [""] * (len(header) - len(parts))
+            rows.append(parts[: len(header)])
+    return pd.DataFrame(rows, columns=header)
+
+
+def _strip_acc_version(acc: str) -> str:
+    """``NM_001234.5`` → ``NM_001234`` (RefSeq/GenBank version-stripped join key)."""
+    return str(acc).split(".", 1)[0].strip()
+
+
+def parse_platform_via_gb_acc(
+    primary_annot_path: Path, sibling_annot_path: Path,
+) -> pd.DataFrame:
+    """probe_id → gene_symbol/entrez for a "SystematicName version" Agilent
+    platform (e.g. GPL22303) whose own table has **no** gene-symbol column —
+    only ``GB_ACC`` RefSeq/GenBank accessions. Bridges to a symbol-bearing
+    sibling annotation of the *same physical design* (e.g. GPL13497 for Agilent
+    028004) by joining on the accession: primary ``ID``/``GB_ACC`` →
+    sibling ``GB_ACC`` → ``GENE_SYMBOL`` (+ ``GENE`` Entrez id).
+
+    Without this, ~21k RefSeq-annotated probes resolve to nothing (the probe ID
+    is an accession, not a symbol) and the cohort can't be built.
+    """
+    primary = _read_geo_platform_raw(primary_annot_path)
+    sibling = _read_geo_platform_raw(sibling_annot_path)
+    pid = next((c for c in ("ID", "ID_REF", "ProbeName") if c in primary.columns), None)
+    pacc = next((c for c in ("GB_ACC", "SystematicName", "ID") if c in primary.columns), None)
+    sacc = next((c for c in ("GB_ACC", "SystematicName") if c in sibling.columns), None)
+    ssym = next((c for c in ("GENE_SYMBOL", "Gene Symbol", "GeneSymbol")
+                 if c in sibling.columns), None)
+    if not (pid and pacc and sacc and ssym):
+        raise RuntimeError(
+            "parse_platform_via_gb_acc: missing join columns "
+            f"(primary id={pid} acc={pacc}; sibling acc={sacc} sym={ssym})")
+    sib = sibling[[sacc, ssym]].copy()
+    sib["_k"] = sib[sacc].map(_strip_acc_version)
+    seid = next((c for c in ("GENE", "ENTREZ_GENE_ID", "Entrez Gene ID")
+                 if c in sibling.columns), None)
+    sib["_entrez"] = sibling[seid].values if seid else ""
+    sib = sib[sib[ssym].astype(str).str.strip().ne("")]
+    sib = sib.drop_duplicates("_k")
+    acc_to_sym = dict(zip(sib["_k"], sib[ssym].astype(str).str.strip()))
+    acc_to_eid = dict(zip(sib["_k"], sib["_entrez"].astype(str).str.strip()))
+    out = primary[[pid, pacc]].rename(columns={pid: "probe_id"})
+    keys = out[pacc].map(_strip_acc_version)
+    out["gene_symbol"] = keys.map(acc_to_sym).fillna("")
+    out["entrez_id"] = keys.map(acc_to_eid).fillna("")
+    out = out[["probe_id", "gene_symbol", "entrez_id"]]
+    return out[out["gene_symbol"].ne("") & out["probe_id"].astype(str).ne("")].copy()
+
+
 def parse_series_matrix(
     series_matrix_path: Path,
 ) -> tuple[pd.DataFrame, dict[str, dict[str, str]]]:
@@ -294,6 +345,7 @@ def build_microarray_source(
     summary_output: Path,
     platform_id: str = "GPL570",
     platform_name: str | None = None,
+    symbol_source_platform_id: str | None = None,
     ensembl_release: int = 112,
     sample_include_regex: str | None = None,
     sample_exclude_regex: str | None = None,
@@ -324,6 +376,12 @@ def build_microarray_source(
     _download(series_matrix_url, series_path)
     print(f"downloading {platform_id} annotation (via GEO acc.cgi)...")
     _download(annot_url_for(platform_id), annot_path)
+    sibling_annot_path = None
+    if symbol_source_platform_id:
+        sibling_annot_path = cache_dir / annot_local_filename(symbol_source_platform_id)
+        print(f"downloading {symbol_source_platform_id} sibling annotation "
+              f"(symbol source for {platform_id})...")
+        _download(annot_url_for(symbol_source_platform_id), sibling_annot_path)
 
     print("parsing series_matrix...")
     intensities, sample_meta = parse_series_matrix(series_path)
@@ -356,8 +414,13 @@ def build_microarray_source(
     if intensities.shape[1] == 0:
         raise RuntimeError("no samples after filter")
 
-    print(f"parsing {platform_id} probe→gene annotation...")
-    annot = parse_geo_platform_table(annot_path)
+    if sibling_annot_path is not None:
+        print(f"parsing {platform_id} → {symbol_source_platform_id} GB_ACC "
+              "bridge (RefSeq accession → gene symbol)...")
+        annot = parse_platform_via_gb_acc(annot_path, sibling_annot_path)
+    else:
+        print(f"parsing {platform_id} probe→gene annotation...")
+        annot = parse_geo_platform_table(annot_path)
     print(f"  {len(annot)} probes with HUGO assignment")
 
     print("aggregating probe → gene (max) and converting to TPM-proxy...")
