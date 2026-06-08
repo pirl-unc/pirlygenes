@@ -128,6 +128,11 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "gse98894-midnet": ("GSE98894_ALVAREZ_2018_NET", "GEO"),
     "gse75885-sarc": ("GSE75885_DELESPAUL_2017", "GEO"),
     "geo-heme": ("GEO_HEME_2022", "GEO"),
+    "gse142334-fl": ("GSE142334_FL_TFL_2021", "GEO"),
+    "gse248751-sarc-ccs": ("GSE248751_HUMAN_CCS_2023", "GEO"),
+    "gse328026-sarc-pec": ("GSE328026_PECOMA_2026", "GEO"),
+    "gse241095-sarc-ks-skin": ("GSE241095_KS_SKIN_2023", "GEO"),
+    "gse294016-adcc": ("GSE294016_BARTL_2025_SGC", "GEO"),
 }
 
 
