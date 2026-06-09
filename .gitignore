@@ -171,8 +171,10 @@ cython_debug/
 # Built data-bundle artifacts (uploaded to GitHub Releases, never committed)
 pirlygenes-data-v*.tar.gz
 
-# Generated analysis plots (regenerable; CSV/md outputs are tracked).
-# PNGs at any depth, plus the per-run timestamped plot folders (run_YYYYMMDD-…).
+# Generated analysis artifacts (regenerable). Plots + per-run tables live in
+# timestamped run_*/ folders; the _cache/ holds reusable caches (percentile
+# cutoffs, CTA-specific-9mer counts, symbol intermediates). PNGs at any depth.
 analyses/outputs/*.png
 analyses/outputs/**/*.png
 analyses/outputs/run_*/
+analyses/outputs/_cache/
