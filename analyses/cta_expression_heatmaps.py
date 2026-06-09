@@ -274,7 +274,7 @@ def plot(mat, stat_label, metric_label, fname, *, log_scale=True) -> None:
     ax.tick_params(axis="x", labelsize=8, rotation=90)
     ax.tick_params(axis="y", labelsize=8, rotation=0)
     fig.tight_layout()
-    fig.savefig(FIGDIR / fname, dpi=150, bbox_inches="tight")
+    fig.savefig(FIGDIR / fname, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -319,7 +319,7 @@ def plot_coarse(mat, stat_label, metric_label, fname) -> None:
     ax.tick_params(axis="x", labelsize=8, rotation=90)
     ax.tick_params(axis="y", labelsize=8, rotation=0)
     fig.tight_layout()
-    fig.savefig(FIGDIR / fname, dpi=150, bbox_inches="tight")
+    fig.savefig(FIGDIR / fname, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 

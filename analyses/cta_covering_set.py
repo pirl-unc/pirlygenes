@@ -199,7 +199,7 @@ def main() -> None:
     ax.legend(title="actionable if TPM> bar at:")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    fig.savefig(figdir / "cta_covering_set.png", dpi=150, bbox_inches="tight")
+    fig.savefig(figdir / "cta_covering_set.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"wrote cta_covering_set.md + .png to {figdir}")
 

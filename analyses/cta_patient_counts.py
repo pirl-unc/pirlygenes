@@ -81,6 +81,27 @@ def _out_path(group: str, name: str) -> Path:
     return d / f"{name}.png"
 
 
+def _flatten_singletons(figdir):
+    """Collapse any plot subfolder that ended up holding exactly one file into a
+    flat ``<foldername><ext>`` (e.g. ``foo/only.png`` -> ``foo.png``), so a lone
+    plot isn't buried in its own directory. Skips folders that contain
+    subfolders. Run as a final pass (after all invocations into a run dir) so
+    per-threshold folders that accumulate >=2 files aren't prematurely flattened."""
+    figdir = Path(figdir)
+    if not figdir.is_dir():
+        return
+    for d in sorted(p for p in figdir.iterdir() if p.is_dir()):
+        entries = list(d.iterdir())
+        if len(entries) == 1 and entries[0].is_file():
+            f = entries[0]
+            dest = figdir / f"{d.name}{f.suffix}"
+            if not dest.exists():
+                f.rename(dest)
+                d.rmdir()
+                print(f"      flattened {d.name}/{f.name} -> {dest.name}",
+                      flush=True)
+
+
 def _tqdm(iterable, desc, **kw):
     """tqdm progress bar with a graceful no-op fallback if tqdm isn't installed.
     ``desc`` labels the category currently being rendered."""
@@ -478,6 +499,10 @@ def main():
     ap.add_argument("--no-timestamp", action="store_true",
                     help="write plots straight into the plot dir (no per-run "
                          "subfolder) — flat layout, mixes with prior runs")
+    ap.add_argument("--flatten", action="store_true",
+                    help="final pass: collapse any plot folder left with a single "
+                         "file into <folder>.png. Pass on the LAST invocation into "
+                         "a run dir (after t25+t50 etc.), not a mid-run one.")
     args = ap.parse_args()
 
     # CACHE is the FIXED stable cache dir (OUT/_cache) — never moved by --out-dir,
@@ -573,7 +598,7 @@ def main():
     _tmb_vs_apd1()   # cohort-level TMB-vs-aPD-1 context scatter (once per run)
 
     # CTA load metrics vs TMB: (a) mean # CTAs expressed per sample, (b) mean
-    # per-sample CTA-specific-9mer payload (Σ over the CTAs a sample expresses of
+    # per-sample CTA-specific-9mer load (Σ over the CTAs a sample expresses of
     # each CTA's count of 9mers absent from the whole non-CTA proteome). Weights
     # are mat-index-aligned; merged paralog groups take their best member's count
     # (one TCR/antibody addresses the group).
@@ -589,20 +614,20 @@ def main():
     except Exception:
         pass
     weights = np.array([float(sym2spec.get(str(name), 0)) for name in mat.index])
-    payload_fn = _mean_specific_9mer_payload(weights)
+    load_fn = _mean_specific_9mer_load(weights)
 
     def _emit_load_metrics(thr, cutoffs=None):
         # Full matrix: each load metric (mean #CTAs/sample, mean CTA-specific-9mer
-        # payload/sample) vs every x-axis (TMB, aPD-1, the four burden axes). Each
+        # load/sample) vs every x-axis (TMB, aPD-1, the four burden axes). Each
         # gets base + collapsed (molecular leaf subtypes -> one-level joint
         # cohorts). TMB additionally gets no-HEPB variants (the TMB~0.02 outlier),
-        # a TMB plot colored by aPD-1 ORR, and — for the 9mer payload — a log-y
-        # companion (payload spans ~90x: PAAD ~15 → SKCM ~1300).
+        # a TMB plot colored by aPD-1 ORR, and — for the 9mer load — a log-y
+        # companion (load spans ~90x: PAAD ~15 → SKCM ~1300).
         for value_fn, ylabel, slug_base in (
             (_mean_ctas_per_sample, "mean # CTAs expressed per sample",
              "cta_mean_count"),
-            (payload_fn, "mean CTA-specific 9mers per sample",
-             "cta_9mer_payload"),
+            (load_fn, "mean CTA-specific 9mers per sample",
+             "cta_9mer_load"),
         ):
             for xa in _tqdm(_all_axes(), f"{slug_base} {thr.slug}"):
                 _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
@@ -610,16 +635,23 @@ def main():
                 _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
                                pctile_cutoffs=cutoffs, xaxis=xa,
                                slug_suffix="_collapsed", collapse_subtypes=True)
+                is_load = slug_base == "cta_9mer_load"
                 if xa.short == "tmb":
                     _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
                                    pctile_cutoffs=cutoffs, xaxis=xa,
                                    exclude=frozenset({"HEPB"}),
                                    slug_suffix="_noHEPB")
-                    # metric vs TMB, points colored by anti-PD-1 ORR
+                    # metric vs TMB, points colored by anti-PD-1 ORR (+ log-y for
+                    # the 9mer load, which spans ~90x)
                     _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
                                    pctile_cutoffs=cutoffs, xaxis=xa,
                                    color_by=_apd1_axis())
-                if slug_base == "cta_9mer_payload":
+                    if is_load:
+                        _metric_vs_x(mat, cohorts, thr, value_fn, ylabel,
+                                       slug_base, pctile_cutoffs=cutoffs, xaxis=xa,
+                                       color_by=_apd1_axis(), log_y=True)
+                # log-y companion of the 9mer load on every axis (regular)
+                if is_load:
                     _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
                                    pctile_cutoffs=cutoffs, xaxis=xa, log_y=True)
 
@@ -639,6 +671,8 @@ def main():
             _stacked_coverage_bars(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _emit_coverage(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _emit_load_metrics(pthr, cutoffs)
+    if args.flatten:
+        _flatten_singletons(FIGDIR)
     print(f"done -> plots in {FIGDIR}", flush=True)
 
 
@@ -779,7 +813,7 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
     fig.text(0.99, 0.005, f"{len(rows)} per-sample cohorts (others summary-only)",
              ha="right", fontsize=6, color="gray")
     fig.tight_layout()
-    fig.savefig(_out_path("cta_stacked_coverage", thr.slug), dpi=150)
+    fig.savefig(_out_path("cta_stacked_coverage", thr.slug), dpi=300)
     plt.close(fig)
     print(f"      {len(rows)} cohorts -> stacked coverage bar", flush=True)
 
@@ -1050,11 +1084,11 @@ def _tmb_axis() -> _XAxis:
 
 @lru_cache(maxsize=1)
 def _apd1_axis() -> _XAxis:
+    # Empty sweet_label -> no shaded sweet-spot band on the aPD-1 axis.
     return _XAxis(
         "apd1", "anti-PD-1 response",
         "anti-PD-1 monotherapy ORR (%)", False,
-        _axis_value_map(gsc.cancer_apd1_response()), 10.0,
-        "antigen-rich / checkpoint-refractory")
+        _axis_value_map(gsc.cancer_apd1_response()), 10.0, "")
 
 
 # Disease-burden x-axes: each cancer type's share (%) of annual cancer
@@ -1186,22 +1220,24 @@ def _cta_vs_x(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
     ax.set_ylim(0, Y_TOP)
 
     # Shade the "therapy-attractive" sweet spot: high CTA coverage (>=50%) at the
-    # attractive x side. Low-x for TMB/aPD-1 (CTA therapy wins where checkpoint
-    # blockade is weak); high-x for incidence (large addressable population).
+    # attractive x side. Low-x for TMB (CTA therapy wins where the tumor is
+    # mutation-poor); high-x for incidence/mortality (large / high-unmet-need
+    # population). Axes with an empty sweet_label (e.g. aPD-1) draw no band.
     SWEET_COV = 50.0
-    if xaxis.sweet_high:
-        band_x, label_x, ha = [xaxis.sweet_x_max, x_hi], x_hi, "right"
-        label_x = x_hi - 0.01 * (x_hi - x_lo)
-    else:
-        band_x = [x_lo, xaxis.sweet_x_max]
-        label_x = x_lo * 1.08 if xaxis.log else x_lo + 0.01 * (x_hi - x_lo)
-        ha = "left"
-    ax.fill_between(band_x, SWEET_COV, Y_TOP, color="#ffd166",
-                    alpha=0.18, zorder=0)
-    # Sit the label a little below the band's top edge so it clears the
-    # ceiling-coverage dots (ATRT/NUTM) that now sit near y=100.
-    ax.text(label_x, 93, xaxis.sweet_label,
-            fontsize=8, va="top", ha=ha, color="#9c6f00", style="italic")
+    if xaxis.sweet_label:
+        if xaxis.sweet_high:
+            band_x, ha = [xaxis.sweet_x_max, x_hi], "right"
+            label_x = x_hi - 0.01 * (x_hi - x_lo)
+        else:
+            band_x = [x_lo, xaxis.sweet_x_max]
+            label_x = x_lo * 1.08 if xaxis.log else x_lo + 0.01 * (x_hi - x_lo)
+            ha = "left"
+        ax.fill_between(band_x, SWEET_COV, Y_TOP, color="#ffd166",
+                        alpha=0.18, zorder=0)
+        # Sit the label a little below the band's top edge so it clears the
+        # ceiling-coverage dots (ATRT/NUTM) that now sit near y=100.
+        ax.text(label_x, 93, xaxis.sweet_label,
+                fontsize=8, va="top", ha=ha, color="#9c6f00", style="italic")
 
     _scatter_points(fig, ax, xs, ys, pts, color_by)
     ax.set_xlabel(xaxis.label)
@@ -1231,7 +1267,7 @@ def _cta_vs_x(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
     slug_dir = f"cta_coverage_vs_{xaxis.short}"
     if color_by is not None:
         slug_dir += f"_colorby_{color_by.short}"
-    fig.savefig(_out_path(slug_dir, f"{thr.slug}{slug_suffix}"), dpi=150)
+    fig.savefig(_out_path(slug_dir, f"{thr.slug}{slug_suffix}"), dpi=300)
     plt.close(fig)
     print(f"      {slug_dir}: {len(pts)} cohorts plotted{ex_note}", flush=True)
 
@@ -1312,10 +1348,10 @@ def _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
     (``xaxis``, default median TMB log-x; pass :func:`_apd1_axis` for anti-PD-1
     ORR), styled like :func:`_cta_vs_x` but with a free (auto) y-axis and no
     sweet-spot band. ``value_fn(mat, cols, thr, pctile_cutoffs) -> float`` is the
-    cohort's metric (e.g. mean CTAs/sample, mean CTA-specific-9mer payload).
+    cohort's metric (e.g. mean CTAs/sample, mean CTA-specific-9mer load).
 
     ``log_y=True`` plots the y-axis on a log scale (useful when the metric spans
-    orders of magnitude, e.g. CTA-specific-9mer payload runs ~15→1300) and adds a
+    orders of magnitude, e.g. CTA-specific-9mer load runs ~15→1300) and adds a
     ``_logy`` filename suffix. The figure is written to
     ``{slug_base}_vs_{xaxis.short}/{thr.slug}{suffix}[_logy].png``."""
     import matplotlib
@@ -1372,7 +1408,7 @@ def _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
     if color_by is not None:
         slug += f"_colorby_{color_by.short}"
     name = f"{thr.slug}{slug_suffix}{'_logy' if log_y else ''}"
-    fig.savefig(_out_path(slug, name), dpi=150)
+    fig.savefig(_out_path(slug, name), dpi=300)
     plt.close(fig)
     print(f"      {slug}: {len(pts)} cohorts plotted{ex_note}", flush=True)
 
@@ -1411,7 +1447,9 @@ def _tmb_vs_apd1():
     ax.set_title(f"anti-PD-1 ORR vs TMB by cancer type (n={len(pts)} cohorts)",
                  fontsize=10)
     fig.tight_layout()
-    fig.savefig(_out_path("apd1_vs_tmb", "cohorts"), dpi=150)
+    # single-plot output: write flat (apd1_vs_tmb.png), no one-file folder
+    FIGDIR.mkdir(parents=True, exist_ok=True)
+    fig.savefig(FIGDIR / "apd1_vs_tmb.png", dpi=300)
     plt.close(fig)
     print(f"      apd1_vs_tmb: {len(pts)} cohorts", flush=True)
 
@@ -1421,7 +1459,7 @@ def _mean_ctas_per_sample(mat, cols, thr, pctile_cutoffs):
     return float(on.sum(axis=0).mean())
 
 
-def _mean_specific_9mer_payload(weights):
+def _mean_specific_9mer_load(weights):
     """Build a value_fn: mean over patients of the summed CTA-specific-9mer
     count across the CTAs that patient expresses. ``weights`` is a per-CTA
     (mat-index-aligned) vector of specific-9mer counts."""
@@ -1462,7 +1500,7 @@ def _coverage_every_cohort(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
         ax.set_ylim(0, 100)
         ax.grid(alpha=0.3)
         fig.tight_layout()
-        fig.savefig(sub / f"cta_coverage_{code}.png", dpi=130)
+        fig.savefig(sub / f"cta_coverage_{code}.png", dpi=300)
         plt.close(fig)
         n_written += 1
     print(f"      wrote {n_written} per-cohort coverage PNGs -> {sub}", flush=True)
@@ -1493,7 +1531,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     ax.set_title(f"# patients expressing each CTA (> {threshold} TPM)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="patients")
     fig.tight_layout()
-    fig.savefig(_out_path("cta_patient_count_heatmap", f"t{threshold}"), dpi=150)
+    fig.savefig(_out_path("cta_patient_count_heatmap", f"t{threshold}"), dpi=300)
     plt.close(fig)
 
     # also a %-of-cohort version (breadth, normalized for cohort size)
@@ -1510,7 +1548,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     ax.set_title(f"% of cohort expressing each CTA (> {threshold} TPM)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="% patients")
     fig.tight_layout()
-    fig.savefig(_out_path("cta_patient_pct_heatmap", f"t{threshold}"), dpi=150)
+    fig.savefig(_out_path("cta_patient_pct_heatmap", f"t{threshold}"), dpi=300)
     plt.close(fig)
 
     # ---- (3) sorted %-expressing bar for the focus cohort ----
@@ -1527,7 +1565,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
         for y, (p, k) in enumerate(zip(fc[pcol], fc[tcol])):
             ax.text(p, y, f" {k}", va="center", fontsize=6)
         fig.tight_layout()
-        fig.savefig(_out_path("cta_pct_bar", f"{focus}_t{threshold}"), dpi=150)
+        fig.savefig(_out_path("cta_pct_bar", f"{focus}_t{threshold}"), dpi=300)
         plt.close(fig)
 
     # ---- (4) co-occurrence-aware coverage curves: one overlaid, multi-colour
@@ -1559,7 +1597,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     ax.legend(fontsize=6, ncol=3, loc="lower right")
     ax.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(_out_path("cta_coverage_curves", f"t{threshold}"), dpi=150)
+    fig.savefig(_out_path("cta_coverage_curves", f"t{threshold}"), dpi=300)
     plt.close(fig)
 
     # focus-cohort coverage with the CTA names annotated at each step
@@ -1579,7 +1617,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
         ax.set_xlim(0, min(30, len(cum) + 1))
         ax.grid(alpha=0.3)
         fig.tight_layout()
-        fig.savefig(_out_path("cta_coverage_curves", f"{focus}_t{threshold}"), dpi=150)
+        fig.savefig(_out_path("cta_coverage_curves", f"{focus}_t{threshold}"), dpi=300)
         plt.close(fig)
 
 
