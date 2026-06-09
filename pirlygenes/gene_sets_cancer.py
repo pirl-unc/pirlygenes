@@ -806,6 +806,38 @@ def cancer_family_display_names():
                 .itertuples(index=False, name=None))
 
 
+# ---------- Stem-cell marker panels (cell STATE, orthogonal to lineage) ------
+#
+# A SEPARATE concept from cancer_family_panels: those answer "which lineage is
+# this tumor"; these answer "how stem-like is this sample, via which program".
+# Stemness is not one program — split into a core ``PLURIPOTENT`` panel and
+# tissue-specific stem programs (NEURAL_STEM / HEMATOPOIETIC_STEM / NEURAL_CREST
+# / MESENCHYMAL_EMT). Intended to be SCORED on top of the lineage call (a
+# stemness / late-dedifferentiation signature), never used in the family veto
+# gate. Markers overlap the EMBRYONAL/GERM_CELL/CNS_EMBRYONAL family panels by
+# design (there the stem program IS the lineage) — that overlap is expected.
+
+def stem_cell_panels_df(panel=None):
+    """DataFrame of stem-cell marker panels: ``Panel, program, Symbol,
+    Ensembl_Gene_ID`` (``program`` ∈ {pluripotent, tissue_specific})."""
+    df = get_data("stem-cell-marker-panels")
+    if panel is not None:
+        df = df[df["Panel"] == panel]
+    return df
+
+
+def stem_cell_panel(panel):
+    """List of Symbols for one stem-cell panel. See `stem_cell_panels_df`."""
+    return stem_cell_panels_df(panel=panel)["Symbol"].tolist()
+
+
+def stem_cell_panels():
+    """Dict of ``{panel: [Symbol, ...]}`` for all stem-cell marker panels."""
+    df = get_data("stem-cell-marker-panels")
+    return {p: g["Symbol"].tolist()
+            for p, g in df.groupby("Panel", sort=False)}
+
+
 # ---------- Cancer lineage panels (parent → child discrimination) ----------
 #
 # Sibling to ``cancer_family_panels`` but at the child level. Once the
