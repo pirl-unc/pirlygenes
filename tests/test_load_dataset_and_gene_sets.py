@@ -464,3 +464,20 @@ def test_cta_paralog_symbols_singleton_returns_self():
     grouped = set(get_data("cta-protein-groups")["member_symbol"].astype(str))
     singleton = next(c for c in CTA_gene_names() if c not in grouped)
     assert cta_paralog_symbols(singleton) == [singleton]
+
+
+def test_stem_cell_marker_panels_355():
+    """Stem-cell marker panels (#355) — a cell-STATE layer orthogonal to the
+    lineage family gate: a core PLURIPOTENT panel + tissue-specific stem
+    programs, each with resolvable unversioned ENSG ids."""
+    panels = gsc.stem_cell_panels()
+    assert set(panels) == {
+        "PLURIPOTENT", "NEURAL_STEM", "HEMATOPOIETIC_STEM",
+        "NEURAL_CREST", "MESENCHYMAL_EMT",
+    }
+    assert "POU5F1" in gsc.stem_cell_panel("PLURIPOTENT")
+    assert "SOX10" in gsc.stem_cell_panel("NEURAL_CREST")
+    assert "CD34" in gsc.stem_cell_panel("HEMATOPOIETIC_STEM")
+    df = gsc.stem_cell_panels_df()
+    assert (df["Ensembl_Gene_ID"].str.match(r"^ENSG\d+$")).all()
+    assert set(df["program"]) == {"pluripotent", "tissue_specific"}
