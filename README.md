@@ -60,9 +60,12 @@ from pirlygenes.gene_sets_cancer import (
     resolve_cancer_type,              # "prostate" / "PRAD" / "SARC_DDLPS" → registry code
     CANCER_TYPE_NAMES,                # registry-backed {code: display_name} view
     lineage_genes_by_cancer_type,     # lineage panels
-    cancer_family_panels,             # broad-family aggregate panels (keys: PROSTATE,
+    cancer_family_panels,             # broad-family lineage panels (keys: PROSTATE,
                                       #   CRC, GASTRIC, ESCA_SQ, SQUAMOUS, MESENCHYMAL,
-                                      #   RENAL, GLIAL, MELANOCYTIC)
+                                      #   RENAL, GLIAL, MELANOCYTIC, NEUROENDOCRINE,
+                                      #   HEME_BCELL, HEME_TCELL, HEME_MYELOID,
+                                      #   HEME_PLASMA, EMBRYONAL, GERM_CELL,
+                                      #   CNS_EMBRYONAL)
     cancer_family_panel,              # e.g. cancer_family_panel("MESENCHYMAL")
     therapy_benefit_toxicity_evidence,# curated clinical benefit/toxicity rows
     housekeeping_gene_ids,

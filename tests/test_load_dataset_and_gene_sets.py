@@ -291,6 +291,7 @@ def test_lineage_gene_loaders_cover_all_tcga_codes():
 def test_cancer_family_panel_loader():
     families = gsc.cancer_family_panels()
     expected = {
+        # adult carcinoma / mesenchymal (original 9)
         "PROSTATE",
         "CRC",
         "GASTRIC",
@@ -300,10 +301,39 @@ def test_cancer_family_panel_loader():
         "RENAL",
         "GLIAL",
         "MELANOCYTIC",
+        # lineage families added for #351 (neuroendocrine / hematolymphoid /
+        # embryonal / germ-cell / CNS-embryonal) — previously-unanchored classes
+        "NEUROENDOCRINE",
+        "HEME_BCELL",
+        "HEME_TCELL",
+        "HEME_MYELOID",
+        "HEME_PLASMA",
+        "EMBRYONAL",
+        "GERM_CELL",
+        "CNS_EMBRYONAL",
     }
     assert set(families) == expected
     assert "KLK3" in gsc.cancer_family_panel("PROSTATE")
     assert "GFAP" not in gsc.cancer_family_panel("PROSTATE")
+
+
+def test_lineage_family_panels_351_have_expected_markers():
+    """The #351 lineage panels carry canonical lineage markers and resolvable
+    unversioned ENSG ids (so trufflepig can family-gate NE / heme / embryonal /
+    germ-cell / CNS-embryonal tumors that previously had no family anchor)."""
+    assert "SYP" in gsc.cancer_family_panel("NEUROENDOCRINE")
+    assert "INSM1" in gsc.cancer_family_panel("NEUROENDOCRINE")
+    assert "MS4A1" in gsc.cancer_family_panel("HEME_BCELL")
+    assert "CD3D" in gsc.cancer_family_panel("HEME_TCELL")
+    assert "MPO" in gsc.cancer_family_panel("HEME_MYELOID")
+    assert "SDC1" in gsc.cancer_family_panel("HEME_PLASMA")
+    assert "POU5F1" in gsc.cancer_family_panel("GERM_CELL")
+    # every member of the new families resolves to an unversioned ENSG id
+    new_fams = ["NEUROENDOCRINE", "HEME_BCELL", "HEME_TCELL", "HEME_MYELOID",
+                "HEME_PLASMA", "EMBRYONAL", "GERM_CELL", "CNS_EMBRYONAL"]
+    df = gsc.cancer_family_panels_df()
+    sub = df[df["Family"].isin(new_fams)]
+    assert (sub["Ensembl_Gene_ID"].str.match(r"^ENSG\d+$")).all()
 
 
 def test_cancer_lineage_panel_loader():

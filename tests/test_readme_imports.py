@@ -79,6 +79,8 @@ def test_readme_cancer_family_panel_example_returns_genes():
     documented = {
         "PROSTATE", "CRC", "GASTRIC", "ESCA_SQ", "SQUAMOUS",
         "MESENCHYMAL", "RENAL", "GLIAL", "MELANOCYTIC",
+        "NEUROENDOCRINE", "HEME_BCELL", "HEME_TCELL", "HEME_MYELOID",
+        "HEME_PLASMA", "EMBRYONAL", "GERM_CELL", "CNS_EMBRYONAL",
     }
     actual = set(cancer_family_panels().keys())
     assert documented == actual, (
