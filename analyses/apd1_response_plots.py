@@ -19,6 +19,7 @@ Run:  python analyses/apd1_response_plots.py
 """
 from __future__ import annotations
 
+import argparse
 from functools import lru_cache
 from pathlib import Path
 
@@ -27,8 +28,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from pirlygenes import gene_sets_cancer as gsc  # noqa: E402
+from _run_layout import add_layout_args, resolve_dirs  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "outputs"
+FIGDIR = OUT   # per-run output dir; set in main() via _run_layout
 
 # Documented aPD1-differential subtype pairs (immune-hot vs immune-cold).
 _PAIRS = [("COAD_MSI", "COAD_MSS"), ("READ_MSI", "READ_MSS")]
@@ -71,7 +74,7 @@ def _plot_tmb_vs_apd1(orr, tmb, colors):
     ax.grid(alpha=0.3, which="both")
     ax.set_ylim(-3, (max(orr.values()) * 1.08) if orr else 1.0)
     fig.tight_layout()
-    fig.savefig(OUT / "apd1_vs_tmb.png", dpi=150)
+    fig.savefig(FIGDIR / "apd1_vs_tmb.png", dpi=150)
     plt.close(fig)
     return len(pts)
 
@@ -89,19 +92,23 @@ def _plot_orr_bars(orr, colors):
     ax.set_title("Anti-PD-1 response rate by cancer type (curated)")
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(OUT / "apd1_orr_bars.png", dpi=150)
+    fig.savefig(FIGDIR / "apd1_orr_bars.png", dpi=150)
     plt.close(fig)
 
 
 def main() -> int:
-    OUT.mkdir(parents=True, exist_ok=True)
+    global FIGDIR
+    ap = argparse.ArgumentParser()
+    add_layout_args(ap)
+    args = ap.parse_args()
+    _, FIGDIR = resolve_dirs(args, OUT)
     orr = gsc.cancer_apd1_response()           # {code: ORR%}
     tmb = {c: gsc.cancer_tmb(c) for c in orr if gsc.cancer_tmb(c) is not None}
     colors = _color_map(orr)
     n = _plot_tmb_vs_apd1(orr, tmb, colors)
     _plot_orr_bars(orr, colors)
     print(f"wrote apd1_vs_tmb.png ({n} cancers with TMB+ORR) and "
-          f"apd1_orr_bars.png ({len(orr)} cancers) -> {OUT}", flush=True)
+          f"apd1_orr_bars.png ({len(orr)} cancers) -> {FIGDIR}", flush=True)
     return 0
 
 

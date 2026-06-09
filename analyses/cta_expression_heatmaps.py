@@ -16,6 +16,7 @@ high expression (# cohorts > HIGH_TPM), tie-broken by peak.
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import matplotlib
@@ -28,6 +29,7 @@ import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 
 import pirlygenes.expression.accessors as accessors
+from _run_layout import add_layout_args, resolve_dirs
 import pirlygenes.gene_sets_cancer as gsc
 
 N_CANCER_TYPES = 30
@@ -37,6 +39,7 @@ MIN_DISPLAY_SAMPLES = 5  # but we only display a source with at least this many
 HIGH_TPM = 30.0   # "highly expressed" threshold for breadth metrics
 TPM_FLOOR = 0.01  # LogNorm needs strictly positive values
 OUT_DIR = Path(__file__).resolve().parent / "outputs"
+FIGDIR = OUT_DIR   # per-run output dir; set in main() via _run_layout
 
 # (value column, file slug, axis label)
 STATS = [
@@ -271,7 +274,7 @@ def plot(mat, stat_label, metric_label, fname, *, log_scale=True) -> None:
     ax.tick_params(axis="x", labelsize=8, rotation=90)
     ax.tick_params(axis="y", labelsize=8, rotation=0)
     fig.tight_layout()
-    fig.savefig(OUT_DIR / fname, dpi=150, bbox_inches="tight")
+    fig.savefig(FIGDIR / fname, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -316,7 +319,7 @@ def plot_coarse(mat, stat_label, metric_label, fname) -> None:
     ax.tick_params(axis="x", labelsize=8, rotation=90)
     ax.tick_params(axis="y", labelsize=8, rotation=0)
     fig.tight_layout()
-    fig.savefig(OUT_DIR / fname, dpi=150, bbox_inches="tight")
+    fig.savefig(FIGDIR / fname, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -347,7 +350,11 @@ def write_summary_md(matrices: dict, path: Path) -> None:
 
 
 def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    global FIGDIR
+    ap = argparse.ArgumentParser()
+    add_layout_args(ap)
+    args = ap.parse_args()
+    _, FIGDIR = resolve_dirs(args, OUT_DIR)
     print("loading cancer reference expression...")
     df = accessors.cancer_reference_expression()
 
@@ -368,12 +375,12 @@ def main() -> None:
                 plot_coarse(
                     mat, stat_label, metric_label, f"cta_{metric}_{slug}_coarse.png"
                 )
-            mat.to_csv(OUT_DIR / f"cta_{metric}_{slug}.csv", index_label="cohort")
+            mat.to_csv(FIGDIR / f"cta_{metric}_{slug}.csv", index_label="cohort")
         print(f"  wrote 7 PNGs + 3 CSVs for [{metric}]")
 
-    write_summary_md(matrices, OUT_DIR / "cta_expression_summary.md")
+    write_summary_md(matrices, FIGDIR / "cta_expression_summary.md")
     n_png = len(COHORT_METRICS) * (len(STATS) * 2 + 1)  # +1 actionable per metric
-    print(f"wrote {n_png} PNGs total to {OUT_DIR}")
+    print(f"wrote {n_png} PNGs total to {FIGDIR}")
 
 
 if __name__ == "__main__":

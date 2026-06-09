@@ -17,15 +17,21 @@ Run:  python analyses/cta_addressable_burden.py
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from pirlygenes import gene_sets_cancer as gsc
+from _run_layout import latest_run_dir
 
 OUT = Path(__file__).resolve().parent / "outputs"
+# Set in main() to the run_<ts>/ that holds cta_patient_counts' tables; this
+# script both reads those tables and writes its plots into that same run dir.
 COUNTS = OUT / "cta_patient_counts.csv"
+UNION = OUT / "cta_union_counts.csv"
+FIGDIR = OUT
 TPM_THRESHOLDS = [25, 50, 100]
 PERCENTILES = [80, 90, 95]
 TOPN = 40
@@ -141,7 +147,7 @@ def _union_addressable(threshold, burden_metric, cat_n, drop_mage=False):
     """Burden-weighted fraction of patients expressing >=1 CTA protein over the
     threshold (the whole-panel union — 'All CTAs'). Each patient is counted once
     however many CTAs they express. With drop_mage, uses the MAGE-excluded union."""
-    u = pd.read_csv(OUT / "cta_union_counts.csv")
+    u = pd.read_csv(UNION)
     u = u[~u.cancer_code.isin(_REDUNDANT)].copy()
     u["category"] = [gsc.burden_category(c) for c in u.cancer_code]
     u = u[u.category.notna()]
@@ -203,7 +209,7 @@ def _render(drop_mage, suffix, title_tag):
                     f"categories = {ceiling:.0f}% of {blabel} (uncovered types not scored)",
                     transform=ax.transAxes, ha="right", fontsize=6, color="gray")
             fig.tight_layout()
-            fig.savefig(OUT / f"cta_addressable_{mkey}_{t.slug}{suffix}.png", dpi=150)
+            fig.savefig(FIGDIR / f"cta_addressable_{mkey}_{t.slug}{suffix}.png", dpi=150)
             plt.close(fig)
             print(f"  {mkey} {t.slug}{suffix}: top CTA {per.iloc[0].Symbol} "
                   f"({per.iloc[0].addressable:.1f}% of {blabel}); ceiling {ceiling:.0f}%",
@@ -250,17 +256,33 @@ def _burden_category_plot():
     ax.legend(loc="lower right", fontsize=8)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(OUT / "cta_burden_categories.png", dpi=150)
+    fig.savefig(FIGDIR / "cta_burden_categories.png", dpi=150)
     plt.close(fig)
     print(f"  burden-category reference: {len(cats)} categories "
           f"({counts.cancer_code.nunique()} cohorts)", flush=True)
 
 
 def main():
+    global COUNTS, UNION, FIGDIR
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--run-dir", type=Path, default=None,
+                    help="run_<ts>/ holding cta_patient_counts.csv + "
+                         "cta_union_counts.csv (default: latest run under "
+                         "analyses/outputs). Plots are written into this dir.")
+    args = ap.parse_args()
+    run = args.run_dir or latest_run_dir(OUT)
+    if run is None:
+        raise SystemExit(
+            "no run_<ts>/ with cta_patient_counts.csv found — run "
+            "cta_patient_counts.py first (or pass --run-dir).")
+    COUNTS = run / "cta_patient_counts.csv"
+    UNION = run / "cta_union_counts.csv"
+    FIGDIR = run
+    print(f"reading tables + writing plots in {FIGDIR}", flush=True)
     _render(drop_mage=False, suffix="", title_tag="")
     _render(drop_mage=True, suffix="_noMAGE", title_tag=" (excl. MAGE-A/B/C)")
     _burden_category_plot()
-    print(f"done -> 24 addressability plots + 1 burden-category plot in {OUT}",
+    print(f"done -> 24 addressability plots + 1 burden-category plot in {FIGDIR}",
           flush=True)
 
 
