@@ -336,6 +336,28 @@ def test_lineage_family_panels_351_have_expected_markers():
     assert (sub["Ensembl_Gene_ID"].str.match(r"^ENSG\d+$")).all()
 
 
+def test_cancer_family_group_hierarchy_353():
+    """family_group makes the fine->coarse taxonomy explicit (#353): fine panels
+    score, family_group is the penalty boundary. ESCA_SQ rolls into SQUAMOUS, the
+    four heme panels into HEMATOLYMPHOID; CNS_EMBRYONAL is its own group (kept
+    separate from GLIAL/CNS for the embryonal-vs-glial hard veto)."""
+    groups = gsc.cancer_family_groups()
+    # every fine Family has a group; distinct tissues group to themselves
+    assert groups["PROSTATE"] == "PROSTATE"
+    assert groups["NEUROENDOCRINE"] == "NEUROENDOCRINE"
+    # roll-ups
+    assert groups["ESCA_SQ"] == "SQUAMOUS"
+    assert {groups[f] for f in
+            ("HEME_BCELL", "HEME_TCELL", "HEME_MYELOID", "HEME_PLASMA")} == {"HEMATOLYMPHOID"}
+    assert groups["GLIAL"] == "CNS"
+    # CNS_EMBRYONAL deliberately separate from GLIAL's group -> hard veto
+    assert groups["CNS_EMBRYONAL"] == "CNS_EMBRYONAL"
+    assert groups["CNS_EMBRYONAL"] != groups["GLIAL"]
+    # every fine family is mapped + has a display name
+    assert set(groups) == set(gsc.cancer_family_panels())
+    assert gsc.cancer_family_display_names()["HEME_BCELL"]
+
+
 def test_cancer_lineage_panel_loader():
     """Issue #266 lineage discrimination panels — pick the right
     child cohort once a parent family has won the first-pass scoring."""
