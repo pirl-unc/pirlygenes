@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import threading
 import warnings
+from functools import lru_cache
 
 from .load_dataset import get_data
 
@@ -172,6 +173,7 @@ def _clear_caches():
     ``get_data``; not part of the public surface.
     """
     CANCER_TYPE_NAMES.clear_cache()
+    _cta_protein_group_index.cache_clear()
 
 
 def resolve_cancer_type(cancer_type, *, strict=True):
@@ -1687,6 +1689,46 @@ from tsarina.partition import (  # noqa: E402,F401
     CTA_partition_gene_ids,
     CTA_partition_gene_names,
 )
+
+
+@lru_cache(maxsize=1)
+def _cta_protein_group_index():
+    """``({protein_group: [member_symbol, ...]}, {member_symbol: protein_group})``
+    over ``cta-protein-groups`` — the curated identical / near-identical CTA
+    paralog families (e.g. NY-ESO-1 = CTAG1A + CTAG1B). Members are sorted."""
+    g = get_data("cta-protein-groups")
+    by_group: dict[str, list[str]] = {}
+    member_to_group: dict[str, str] = {}
+    for grp, sub in g.groupby("protein_group"):
+        members = sorted({str(m) for m in sub["member_symbol"]})
+        by_group[str(grp)] = members
+        for m in members:
+            member_to_group[m] = str(grp)
+    return by_group, member_to_group
+
+
+def cta_paralog_symbols(name: str) -> list[str]:
+    """Every CTA gene symbol encoding the same antigen as ``name`` (its protein
+    group), including ``name`` itself.
+
+    Where :func:`cta_symbol_for_alias` (tsarina) returns the single *canonical*
+    symbol for an alias (``"NY-ESO-1" -> "CTAG1B"``), this returns the whole
+    interchangeable set from ``cta-protein-groups``:
+    ``"NY-ESO-1" -> ["CTAG1A", "CTAG1B"]``, ``"XAGE1" -> ["XAGE1A", "XAGE1B"]``,
+    ``"MAGEA3" -> ["MAGEA3", "MAGEA6"]``. A CTA with no paralog group resolves to
+    just its own official symbol; an input that is not a recognized CTA returns
+    ``[]``. Accepts aliases, official symbols, or protein-group names.
+    """
+    if not name:
+        return []
+    by_group, member_to_group = _cta_protein_group_index()
+    sym = cta_symbol_for_alias(name)
+    key = sym or str(name).strip()
+    if key in member_to_group:
+        return list(by_group[member_to_group[key]])
+    if key in by_group:  # a protein-group name with no member alias
+        return list(by_group[key])
+    return [sym] if sym else []
 
 
 def CTA_evidence():
