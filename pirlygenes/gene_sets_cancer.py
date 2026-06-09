@@ -759,8 +759,12 @@ def lineage_genes_by_cancer_type():
 def cancer_family_panels_df(family=None):
     """DataFrame of broad-family signature panels used for cancer-type scoring.
 
-    Family labels include ``PROSTATE``, ``CRC``, ``GASTRIC``, ``ESCA_SQ``,
-    ``SQUAMOUS``, ``MESENCHYMAL``, ``RENAL``, ``GLIAL``, ``MELANOCYTIC``.
+    Columns ``Family, family_group, display_name, Symbol, Ensembl_Gene_ID``.
+    ``Family`` is the fine panel that *scores* (PROSTATE, CRC, GASTRIC, ESCA_SQ,
+    SQUAMOUS, MESENCHYMAL, RENAL, GLIAL, MELANOCYTIC, NEUROENDOCRINE,
+    HEME_BCELL/TCELL/MYELOID/PLASMA, EMBRYONAL, GERM_CELL, CNS_EMBRYONAL);
+    ``family_group`` is the coarse penalty boundary the fine panel rolls up into
+    (see :func:`cancer_family_groups`).
     """
     df = get_data("cancer-family-panels")
     if family is not None:
@@ -780,6 +784,26 @@ def cancer_family_panels():
         family: group["Symbol"].tolist()
         for family, group in df.groupby("Family", sort=False)
     }
+
+
+def cancer_family_groups():
+    """Dict of ``{Family: family_group}`` — the coarse penalty-boundary group
+    each fine panel rolls up into (e.g. ``ESCA_SQ -> SQUAMOUS``, the four
+    ``HEME_* -> HEMATOLYMPHOID``, ``GLIAL -> CNS``). Fine panels score on their
+    own; cross-family vetoes apply at the ``family_group`` level, so members of
+    the same group don't hard-veto each other (scoring picks the sub-lineage).
+    ``CNS_EMBRYONAL`` is its own group (kept separate from ``GLIAL``/``CNS`` so
+    embryonal vs glial CNS still hard-veto — the strong MBL≠GBM guarantee)."""
+    df = get_data("cancer-family-panels")
+    return dict(df[["Family", "family_group"]].drop_duplicates()
+                .itertuples(index=False, name=None))
+
+
+def cancer_family_display_names():
+    """Dict of ``{Family: display_name}`` (human-readable fine-panel labels)."""
+    df = get_data("cancer-family-panels")
+    return dict(df[["Family", "display_name"]].drop_duplicates()
+                .itertuples(index=False, name=None))
 
 
 # ---------- Cancer lineage panels (parent → child discrimination) ----------
