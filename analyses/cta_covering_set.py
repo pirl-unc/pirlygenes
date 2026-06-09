@@ -20,6 +20,7 @@ Outputs a markdown report + a coverage-curve PNG to analyses/outputs/.
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import matplotlib
@@ -31,6 +32,7 @@ import matplotlib.pyplot as plt
 import pirlygenes.expression.accessors as accessors
 import pirlygenes.gene_sets_cancer as gsc
 from cta_expression_heatmaps import _representative_source
+from _run_layout import add_layout_args, resolve_dirs
 
 ACTIONABLE_TPM = 30.0     # "actionable" target threshold (per user intuition)
 SECONDARY_TPM = 10.0      # also report coverage at a looser bar
@@ -159,7 +161,10 @@ def _section(mat: pd.DataFrame, stat_label: str, codes, type_w, pat_w) -> list[s
 
 
 def main() -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    ap = argparse.ArgumentParser()
+    add_layout_args(ap)
+    args = ap.parse_args()
+    _, figdir = resolve_dirs(args, OUT_DIR)
     mats = cta_matrices()
     codes = list(next(iter(mats.values())).index)
     type_w = pd.Series(1.0, index=codes)              # each cancer type = 1
@@ -176,7 +181,7 @@ def main() -> None:
     ]
     for stat_label, mat in mats.items():
         lines += _section(mat, stat_label, codes, type_w, pat_w)
-    (OUT_DIR / "cta_covering_set.md").write_text("\n".join(lines) + "\n", "utf-8")
+    (figdir / "cta_covering_set.md").write_text("\n".join(lines) + "\n", "utf-8")
 
     # coverage curve: median vs q3, patient-weighted
     fig, ax = plt.subplots(figsize=(9, 6))
@@ -194,9 +199,9 @@ def main() -> None:
     ax.legend(title="actionable if TPM> bar at:")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    fig.savefig(OUT_DIR / "cta_covering_set.png", dpi=150, bbox_inches="tight")
+    fig.savefig(figdir / "cta_covering_set.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"wrote cta_covering_set.md + .png to {OUT_DIR}")
+    print(f"wrote cta_covering_set.md + .png to {figdir}")
 
 
 if __name__ == "__main__":
