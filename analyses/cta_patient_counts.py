@@ -461,29 +461,33 @@ def main():
     ap.add_argument("--no-percentiles", action="store_true",
                     help="skip the within-sample percentile-rank threshold plots")
     ap.add_argument("--out-dir", type=Path, default=None,
-                    help="base output directory (default: analyses/outputs). "
-                         "Caches and summary tables live directly here.")
+                    help="directory for the PNG plots (default: analyses/outputs). "
+                         "Only the plots move here — the caches "
+                         "(_per_sample_pctile_cutoffs.parquet, cta_specific_9mers.csv) "
+                         "and summary tables always stay in analyses/outputs, so a "
+                         "new --out-dir never forces a recompute.")
     ap.add_argument("--run-name", default=None,
-                    help="name of the per-run plot subfolder under the base "
+                    help="name of the per-run plot subfolder under the plot dir "
                          "(default: a timestamp, run_YYYYMMDD-HHMMSS)")
     ap.add_argument("--no-timestamp", action="store_true",
-                    help="write plots straight into the base dir (no per-run "
+                    help="write plots straight into the plot dir (no per-run "
                          "subfolder) — flat layout, mixes with prior runs")
     args = ap.parse_args()
 
-    global OUT, FIGDIR
-    if args.out_dir is not None:
-        OUT = args.out_dir.resolve()
+    # OUT is the FIXED stable base (caches + tracked summary tables) — never moved
+    # by --out-dir, so reruns reuse the cached cutoffs/9mers. Only the plots
+    # (FIGDIR) are redirectable, into a per-run subfolder so a fresh run never
+    # overwrites/mixes with an older one.
+    global FIGDIR
     OUT.mkdir(parents=True, exist_ok=True)
-    # Plots go to a per-run subfolder so a fresh run never overwrites/mixes with
-    # an older one; caches + summary tables stay in the stable base (OUT).
+    fig_base = args.out_dir.resolve() if args.out_dir is not None else OUT
     if args.no_timestamp:
-        FIGDIR = OUT
+        FIGDIR = fig_base
     else:
         run = args.run_name or f"run_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        FIGDIR = OUT / run
+        FIGDIR = fig_base / run
     FIGDIR.mkdir(parents=True, exist_ok=True)
-    print(f"[0/5] base={OUT}\n      plots -> {FIGDIR}", flush=True)
+    print(f"[0/5] caches+tables -> {OUT}\n      plots -> {FIGDIR}", flush=True)
 
     # Authoritative ENSG->Symbol straight from the CTA evidence table (tsarina),
     # so every CTA in the set gets a symbol — including ones absent from the
