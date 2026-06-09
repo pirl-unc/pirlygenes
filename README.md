@@ -65,7 +65,9 @@ from pirlygenes.gene_sets_cancer import (
                                       #   RENAL, GLIAL, MELANOCYTIC, NEUROENDOCRINE,
                                       #   HEME_BCELL, HEME_TCELL, HEME_MYELOID,
                                       #   HEME_PLASMA, EMBRYONAL, GERM_CELL,
-                                      #   CNS_EMBRYONAL)
+                                      #   CNS_EMBRYONAL, EPENDYMAL,
+                                      #   SELLAR_EPITHELIAL, MENINGIOMA,
+                                      #   NERVE_SHEATH, CHOROID_PLEXUS)
     cancer_family_panel,              # e.g. cancer_family_panel("MESENCHYMAL")
     therapy_benefit_toxicity_evidence,# curated clinical benefit/toxicity rows
     housekeeping_gene_ids,

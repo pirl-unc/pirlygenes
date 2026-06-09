@@ -311,6 +311,12 @@ def test_cancer_family_panel_loader():
         "EMBRYONAL",
         "GERM_CELL",
         "CNS_EMBRYONAL",
+        # CNS fill-in (#357): ependymal + non-glial CNS-location lineages
+        "EPENDYMAL",
+        "SELLAR_EPITHELIAL",
+        "MENINGIOMA",
+        "NERVE_SHEATH",
+        "CHOROID_PLEXUS",
     }
     assert set(families) == expected
     assert "KLK3" in gsc.cancer_family_panel("PROSTATE")
@@ -349,10 +355,19 @@ def test_cancer_family_group_hierarchy_353():
     assert groups["ESCA_SQ"] == "SQUAMOUS"
     assert {groups[f] for f in
             ("HEME_BCELL", "HEME_TCELL", "HEME_MYELOID", "HEME_PLASMA")} == {"HEMATOLYMPHOID"}
+    # CNS coarse group holds the glial-adjacent fine panels (GLIAL + EPENDYMAL):
+    # ependymoma doesn't hard-veto glioma; scoring (L1CAM/EMA/NHERF1) separates.
     assert groups["GLIAL"] == "CNS"
-    # CNS_EMBRYONAL deliberately separate from GLIAL's group -> hard veto
-    assert groups["CNS_EMBRYONAL"] == "CNS_EMBRYONAL"
-    assert groups["CNS_EMBRYONAL"] != groups["GLIAL"]
+    assert groups["EPENDYMAL"] == "CNS"
+    # #357: the primitive/stem lineages share a group (least-separable cluster ->
+    # scoring picks, no internal hard-veto) but stay != CNS so MBL still vetoes GBM.
+    assert {groups[f] for f in ("EMBRYONAL", "GERM_CELL", "CNS_EMBRYONAL")} == {"PRIMITIVE"}
+    assert groups["CNS_EMBRYONAL"] != groups["GLIAL"]   # MBL != GBM preserved
+    # non-glial CNS-location lineages hard-veto glioma (own groups)
+    for f in ("SELLAR_EPITHELIAL", "MENINGIOMA", "NERVE_SHEATH", "CHOROID_PLEXUS"):
+        assert groups[f] == f and groups[f] != "CNS"
+    # SOX2 dropped from GLIAL (shared with squamous/embryonal — not discriminating)
+    assert "SOX2" not in gsc.cancer_family_panel("GLIAL")
     # every fine family is mapped + has a display name
     assert set(groups) == set(gsc.cancer_family_panels())
     assert gsc.cancer_family_display_names()["HEME_BCELL"]
