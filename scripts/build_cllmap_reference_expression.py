@@ -20,6 +20,7 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.builders.gene_mapping import resolve_symbol
+from pirlygenes.gene_ids import strip_version as _strip_version
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -44,15 +45,11 @@ SOURCE_URL = (
     "https://data.broadinstitute.org/cllmap/data/downloads/"
     "cllmap_rnaseq_tpms_full.tsv.gz"
 )
-PIPELINE = "cllmap_raw_tpm_gencode19_ensembl112_clean_tpm_v1"
+PIPELINE = "cllmap_raw_tpm_gencode19_ensembl112_clean_tpm_v4"
 SOURCE_VERSION = (
     "CLL-map RNA-SeQC v2.3.6 GENCODE19; Ensembl IDs harmonized to "
     "Ensembl release 112; downloaded 2026-05-18"
 )
-
-
-def _strip_version(value: object) -> str:
-    return str(value).split(".", 1)[0]
 
 
 def _read_tpm_matrix(path: Path) -> pd.DataFrame:
@@ -181,8 +178,15 @@ def _collapse_duplicate_genes(df: pd.DataFrame, sample_cols: list[str]) -> pd.Da
     return pd.concat([symbol, source_gene_id, values], axis=1).reset_index()
 
 
-def _summarize(df: pd.DataFrame, included_cols: list[str]) -> pd.DataFrame:
+def _summarize(df: pd.DataFrame, included_cols: list[str],
+               *, source_id: str | None = None) -> pd.DataFrame:
     values = df[included_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    if source_id:
+        # Persist the per-sample raw-TPM matrix (included samples) for medoids +
+        # percentiles, from the same values the summary uses.
+        from pirlygenes import cohorts as _cohorts
+        _cohorts.write_per_sample(
+            df[["Ensembl_Gene_ID", "Symbol"]], values, source_id, "CLL")
     clean = _clean_tpm(values, gene_table=df)
     out = df[["Ensembl_Gene_ID", "Symbol"]].copy()
     out["cancer_code"] = "CLL"
@@ -222,7 +226,7 @@ def main() -> None:
         ensembl_release=args.ensembl_release,
     )
     collapsed = _collapse_duplicate_genes(df, sample_cols)
-    summary = _summarize(collapsed, included)
+    summary = _summarize(collapsed, included, source_id="cllmap")
     args.samples_output.parent.mkdir(parents=True, exist_ok=True)
     upsert_to_shard(
         args.summary_output,
@@ -230,7 +234,10 @@ def main() -> None:
         source_cohort="CLLMAP_2022",
         cancer_codes=["CLL"],
     )
-    manifest.to_csv(args.samples_output, index=False)
+    # Upsert (not bare overwrite): a plain to_csv here wiped every cohort built
+    # before CLLMAP from the shared samples manifest (the v5.20.0 truncation).
+    from pirlygenes.expression.stats import upsert_samples_manifest
+    upsert_samples_manifest(args.samples_output, manifest)
 
     print(
         f"Wrote {len(summary)} genes from {len(included)} included CLL samples "

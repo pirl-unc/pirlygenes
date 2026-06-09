@@ -128,7 +128,7 @@ def main() -> int:
         assign_stats(out, sub_values, clean)
         out["processing_pipeline"] = (
             f"treehouse_polya_25_01_mbl_subgroup_markers_ensembl"
-            f"{args.ensembl_release}_clean_tpm_v1"
+            f"{args.ensembl_release}_clean_tpm_v4"
         )
         out["notes"] = (
             f"MBL subgroup = '{code.removeprefix('MBL_')}' (n={len(cols)}) "
@@ -138,7 +138,10 @@ def main() -> int:
             "22-gene classifier; rigorous version would replace this "
             "with their published per-sample labels."
         )
-        out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+        out["tumor_origin"] = "primary"  # Treehouse MBL is a primary-tumor cohort
+        # reindex (not strict select): tumor_origin / metastasis_site aren't set
+        # by assign_stats; reindex backfills metastasis_site as NaN.
+        out = round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
         summaries.append(out)
         print(f"  {code}: n={len(cols)} → {len(out)} gene rows")
 

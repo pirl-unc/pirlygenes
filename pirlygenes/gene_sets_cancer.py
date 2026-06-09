@@ -174,7 +174,7 @@ def _clear_caches():
     CANCER_TYPE_NAMES.clear_cache()
 
 
-def resolve_cancer_type(cancer_type):
+def resolve_cancer_type(cancer_type, *, strict=True):
     """Resolve a cancer type name or alias to a registry code.
 
     Accepts:
@@ -184,14 +184,18 @@ def resolve_cancer_type(cancer_type):
     - the registry display name (``"Prostate Adenocarcinoma"``),
       case-insensitive.
 
-    Returns the registry code, ``None`` if ``cancer_type`` is ``None``,
-    or raises ``ValueError`` for an unknown input.
+    Returns the registry code, or ``None`` if ``cancer_type`` is ``None``.
+    For an unknown input: raises ``ValueError`` when ``strict=True`` (default),
+    or returns ``None`` when ``strict=False`` (a non-raising lookup for callers
+    that want to branch instead of catch).
     """
     if cancer_type is None:
         return None
     raw = str(cancer_type).strip()
     if not raw:
-        raise ValueError("Empty cancer type")
+        if strict:
+            raise ValueError("Empty cancer type")
+        return None
 
     alias_key = raw.lower().replace(" ", "_").replace("-", "_")
     if alias_key in CANCER_TYPE_ALIASES:
@@ -217,11 +221,49 @@ def resolve_cancer_type(cancer_type):
     if raw.lower() in name_to_code:
         return name_to_code[raw.lower()]
 
+    if not strict:
+        return None
     raise ValueError(
         f"Unknown cancer type {cancer_type!r}. "
         f"Valid registry codes: {sorted(registry.keys())}. "
         f"Common-name aliases: {sorted(CANCER_TYPE_ALIASES.keys())}."
     )
+
+
+def canonical_cancer_code(code):
+    """Map a possibly-renamed cancer code to its canonical current code.
+
+    Pure, registry-free alias lookup over :data:`_RENAMED_CODE_ALIASES`
+    (case-insensitive): a pre-rename code like ``"MID_NET"`` or
+    ``"PANNET"`` returns its current name (``"NET_MIDGUT"`` /
+    ``"NET_PANCREAS"``); any other value — including already-canonical
+    codes and non-codes — is returned unchanged. Unlike
+    :func:`resolve_cancer_type` this never validates against the registry
+    or raises, so the shard-writer can normalize codes on every upsert
+    without coupling the expression layer to the registry view.
+    """
+    if code is None or code != code:  # None or NaN (NaN != NaN)
+        return code
+    raw = str(code).strip()
+    if raw in _RENAMED_CODE_ALIASES:
+        return _RENAMED_CODE_ALIASES[raw]
+    return _RENAMED_CODE_ALIASES_UPPER.get(raw.upper(), raw)
+
+
+def format_cancer_code_label(code):
+    """Plot-friendly display label for a cancer-type code.
+
+    A trailing ``pos`` / ``neg`` molecular-status suffix becomes a superscript
+    ``⁺`` / ``⁻`` (``HNSC_HPVpos`` → ``HNSC_HPV⁺``, ``HNSC_HPVneg`` →
+    ``HNSC_HPV⁻``); every other code is returned unchanged. Uses Unicode
+    superscript glyphs so it renders in any matplotlib text without mathtext
+    escaping."""
+    s = str(code)
+    if s.endswith("pos"):
+        return s[:-3] + "⁺"  # superscript plus
+    if s.endswith("neg"):
+        return s[:-3] + "⁻"  # superscript minus
+    return s
 
 
 def cancer_type_info(cancer_type):
@@ -240,7 +282,8 @@ def cancer_type_info(cancer_type):
     Keys: ``code``, ``name``, ``family``, ``primary_tissue``,
     ``primary_template``, ``parent_code``, ``subtype_key``, ``pediatric``,
     ``differentiation``, ``expression_source``, ``source_cohort``,
-    ``source_pmid``, ``notes``, ``burden_category``, ``tmb``.
+    ``source_pmid``, ``notes``, ``viral_etiology``, ``viral_agent``,
+    ``fusion_driven``, ``fusion_driver``, ``burden_category``, ``tmb``.
     """
     import pandas as pd
 
@@ -252,15 +295,135 @@ def cancer_type_info(cancer_type):
     info = {"code": code, "name": CANCER_TYPE_NAMES.get(code) or code}
     for col in ("family", "primary_tissue", "primary_template", "parent_code",
                 "subtype_key", "pediatric", "differentiation",
-                "expression_source", "source_cohort", "source_pmid", "notes"):
+                "expression_source", "source_cohort", "source_pmid", "notes",
+                "viral_etiology", "viral_agent", "fusion_driven",
+                "fusion_driver"):
         val = None if row is None else row.get(col)
         if val is not None and (isinstance(val, str) or not pd.isna(val)):
-            info[col] = val
+            # Coerce numpy scalars (e.g. numpy.bool_ for pediatric) to native
+            # Python types so the dict is JSON-serializable.
+            info[col] = val.item() if hasattr(val, "item") else val
         else:
             info[col] = None
     info["burden_category"] = burden_category(code)
-    info["tmb"] = cancer_tmb(code)
+    tmb = cancer_tmb(code)
+    info["tmb"] = float(tmb) if tmb is not None else None
     return info
+
+
+def cancer_type_synonyms(cancer_type):
+    """Reverse synonym lookup: every alias that resolves TO a cancer code.
+
+    Returns a sorted list of the common-name aliases (``CANCER_TYPE_ALIASES``),
+    registry display name, and pre-rename old codes (``_RENAMED_CODE_ALIASES``)
+    that all resolve to the canonical code — the inverse of
+    :func:`resolve_cancer_type`. ``[]`` for an unknown input rather than raising.
+    """
+    try:
+        code = resolve_cancer_type(cancer_type)
+    except ValueError:
+        return []
+    if code is None:
+        return []
+    syns = {a for a, c in CANCER_TYPE_ALIASES.items() if c == code}
+    syns |= {o for o, n in _RENAMED_CODE_ALIASES.items() if n == code}
+    name = CANCER_TYPE_NAMES.get(code)
+    if name:
+        syns.add(name)
+    syns.discard(code)
+    return sorted(syns)
+
+
+def viral_status(cancer_type):
+    """``{'etiology': ..., 'agent': ...}`` for a cancer type.
+
+    ``etiology`` ∈ {``'defining'``, ``'subset'``, ``'none'``} — whether a virus
+    defines the entity/subtype (HPV→cervical/HPV+ HNSC, EBV→nasopharyngeal,
+    MCPyV→Merkel, HHV8→Kaposi), drives a meaningful subset (EBV→gastric/DLBC,
+    HBV/HCV→HCC), or has no established role. ``agent`` names the virus (or
+    ``''``). Synonym-resolved; raises ``ValueError`` on unknown input.
+    """
+    info = cancer_type_info(cancer_type)
+    if info is None:
+        return None
+    return {
+        "etiology": info.get("viral_etiology") or "none",
+        "agent": info.get("viral_agent") or "",
+    }
+
+
+def fusion_status(cancer_type):
+    """``{'status': ..., 'driver': ...}`` for a cancer type.
+
+    ``status`` ∈ {``'defining'``, ``'subtype'``, ``'rare'``, ``'none'``} —
+    whether a gene fusion defines the entity (EWSR1-FLI1→Ewing, SS18-SSX→
+    synovial), defines a recurrent subtype within it (TMPRSS2-ERG→prostate),
+    occurs rarely, or has no established role. ``driver`` lists the canonical
+    fusion(s) (sourced from / cross-checked against ``cancer-fusions.csv``).
+    Synonym-resolved; raises ``ValueError`` on unknown input.
+    """
+    info = cancer_type_info(cancer_type)
+    if info is None:
+        return None
+    return {
+        "status": info.get("fusion_driven") or "none",
+        "driver": info.get("fusion_driver") or "",
+    }
+
+
+def tissue_of_origin(cancer_type):
+    """The cancer type's tissue/cell of origin (registry ``primary_tissue``).
+    Synonym-resolved; ``None`` for unknown tissue, raises on unknown input."""
+    info = cancer_type_info(cancer_type)
+    return None if info is None else info.get("primary_tissue")
+
+
+# Human-readable display names for the registry's ``family`` slugs, so
+# consumers (e.g. trufflepig) don't hardcode the labels. See #309.
+_FAMILY_DISPLAY_NAMES = {
+    "carcinoma-breast": "Breast carcinoma",
+    "carcinoma-gi": "Gastrointestinal carcinoma",
+    "carcinoma-gu": "Genitourinary carcinoma",
+    "carcinoma-head-neck": "Head & neck carcinoma",
+    "carcinoma-lung": "Lung carcinoma",
+    "carcinoma-mesothelial": "Mesothelioma",
+    "carcinoma-other": "Other carcinoma",
+    "carcinoma-skin": "Non-melanoma skin carcinoma",
+    "cns": "CNS tumor",
+    "embryonal": "Embryonal tumor",
+    "endocrine": "Endocrine tumor",
+    "germ-cell": "Germ cell tumor",
+    "heme-bcell": "B-cell neoplasm",
+    "heme-myeloid": "Myeloid neoplasm",
+    "heme-plasma": "Plasma cell neoplasm",
+    "heme-tcell": "T-cell neoplasm",
+    "melanoma": "Melanoma",
+    "neuroendocrine": "Neuroendocrine neoplasm",
+    "salivary": "Salivary gland carcinoma",
+    "sarcoma": "Sarcoma",
+    "thymic": "Thymic epithelial tumor",
+}
+
+
+def family_display_name(family):
+    """Human-readable label for a registry ``family`` slug (e.g.
+    ``"heme-bcell"`` -> ``"B-cell neoplasm"``). Falls back to a title-cased
+    de-slugged form for any family without a curated label."""
+    if family is None:
+        return None
+    key = str(family).strip()
+    if key in _FAMILY_DISPLAY_NAMES:
+        return _FAMILY_DISPLAY_NAMES[key]
+    return key.replace("-", " ").replace("_", " ").strip().capitalize()
+
+
+def cancer_type_families():
+    """``{family_slug: display_name}`` for every family present in the registry,
+    so callers can render a family picker without hardcoding labels (#309)."""
+    fams = (
+        cancer_type_registry()["family"].dropna().astype(str).unique().tolist()
+    )
+    return {f: family_display_name(f) for f in sorted(fams)}
 
 
 # ---------- Therapy target registry ----------
@@ -1047,9 +1210,9 @@ def sarcoma_lineage_codes(*, with_expression_only=False):
 # registry family (so it tracks new atoms automatically) rather than enumerated.
 def cohort_aggregates_df():
     """Return the curated ``cancer-cohort-aggregates.csv`` long table
-    (``aggregate_code, member_code, basis``) — the explicit histology/source
+    (``aggregate_code, member_code, basis``) — the explicit histology
     rollup cohorts (e.g. ``SARC_RMS`` ← the four rhabdomyosarcoma subtypes;
-    ``TCGA_SARC`` ← the TCGA-SARC project atoms)."""
+    ``SARC_LPS`` ← the liposarcoma subtypes)."""
     return get_data("cancer-cohort-aggregates")
 
 
@@ -1889,14 +2052,14 @@ def fusion_surrogate_genes_for_cancer(cancer_code):
     df = get_data("fusion-surrogate-expression")
     out = []
     for _, row in df.iterrows():
-        scope = str(row.get("cancer_scope", "") or "")
+        scope = str(row.get("cancer_code", "") or "")
         scope_codes = {code.strip() for code in scope.split(";") if code.strip()}
         if cancer_code in scope_codes or "pan_cancer" in scope_codes:
             out.append(
                 {
-                    "gene": row.get("gene"),
+                    "gene": row.get("surrogate_gene"),
                     "fusion_class": row.get("fusion_class"),
-                    "role": row.get("role"),
+                    "role": row.get("surrogate_role"),
                     "rationale": row.get("rationale", ""),
                 }
             )
@@ -1957,6 +2120,52 @@ def cancer_tmb(cancer_type=None, *, inherit=True):
     return None
 
 
+def cancer_apd1_response_df():
+    """Return the curated ``cancer-apd1-response.csv`` reference: representative
+    objective response rate (ORR, %) to anti-PD-1 **monotherapy**
+    (pembrolizumab / nivolumab) per cancer-type code, with the drug, pivotal
+    trial, treatment setting, a published source PMID/DOI, and a confidence
+    flag.
+
+    Intended as a per-cancer-type plotting axis (e.g. TMB vs aPD1 ORR, CTA
+    burden vs aPD1 ORR). Values are representative anchors, not exact
+    reproducible constants — they shift with data cutoff, line of therapy, and
+    biomarker selection (PD-L1 / MSI / MMR); the ``setting`` and ``notes``
+    columns record that context. Several cancers are strongly biomarker-
+    dependent (COAD/READ MSI-H ~45% vs MSS ~0%; UCEC dMMR ~50% vs pMMR ~6%) —
+    the row carries the all-comer blend and the split is noted."""
+    return get_data("cancer-apd1-response")
+
+
+def cancer_apd1_response(cancer_type=None, *, inherit=True):
+    """Anti-PD-1 monotherapy ORR (%) for one cancer type, or the whole
+    ``{code: orr_pct}`` map. ``cancer_type`` is resolved through
+    :func:`resolve_cancer_type`; with ``inherit`` (default) a code with no
+    curated row of its own inherits its nearest ancestor's value via the
+    registry ``parent_code`` chain (so ``SCLC_ASCL1`` -> ``SCLC``,
+    ``LUAD_KRAS`` -> ``LUAD``). Returns ``None`` if neither the code nor any
+    ancestor has a value. Mirrors :func:`cancer_tmb`."""
+    df = cancer_apd1_response_df()
+    vals = df.dropna(subset=["apd1_orr_pct"])
+    mapping = dict(zip(vals["cancer_code"].astype(str),
+                       vals["apd1_orr_pct"].astype(float)))
+    if cancer_type is None:
+        return mapping
+    code = resolve_cancer_type(cancer_type)
+    if code in mapping or not inherit:
+        return mapping.get(code)
+    reg = cancer_type_registry().set_index("code")
+    cur, seen = code, set()
+    while cur and cur not in seen:
+        seen.add(cur)
+        if cur in mapping:
+            return mapping[cur]
+        if cur not in reg.index:
+            break
+        cur = str(reg.loc[cur].get("parent_code", "") or "").strip() or None
+    return None
+
+
 def cancer_fusions_df():
     """Return the curated ``cancer-fusions.csv`` reference: characteristic gene
     fusions / oncogenic translocations per cancer-type code.
@@ -1990,6 +2199,54 @@ def cancer_fusions(cancer_type=None, *, defining_only=False, pathognomonic_only=
     return df.reset_index(drop=True)
 
 
+def cancer_viral_antigens_df():
+    """Return the curated ``cancer-viral-antigens.csv`` reference: per-oncovirus
+    targetable viral antigens for virally-driven cancers.
+
+    Columns: ``virus`` (HPV, EBV, HBV, MCPyV, HHV8, HTLV-1, …),
+    ``integration_mode`` (``integrated`` / ``episomal``),
+    ``targetable_antigens`` (``;``-separated viral genes, e.g. ``E6;E7``),
+    ``associated_cohorts`` (``;``-separated registry codes), ``notes``,
+    ``source`` (PMID/DOI). Complements the registry ``viral_etiology`` /
+    ``viral_agent`` columns with the antigen-level detail — viral oncoantigens
+    are a distinct targetable class (foreign, constitutively expressed,
+    sometimes clonally integrated)."""
+    return get_data("cancer-viral-antigens")
+
+
+def cancer_viral_antigens(virus=None):
+    """Targetable viral antigens. With ``virus`` given (case-insensitive),
+    returns that virus's list of antigens (``[]`` if unknown); otherwise a
+    ``{virus: [antigen, ...]}`` map over the whole table."""
+    df = cancer_viral_antigens_df()
+    def _split(s):
+        return [a.strip() for a in str(s).split(";") if a.strip()]
+    if virus is not None:
+        v = str(virus).strip().lower()
+        hit = df[df["virus"].astype(str).str.lower() == v]
+        if hit.empty:
+            return []
+        return _split(hit.iloc[0]["targetable_antigens"])
+    return {str(r.virus): _split(r.targetable_antigens) for r in df.itertuples()}
+
+
+def viral_antigens_for_cancer(cancer_type):
+    """``[(virus, [antigen, ...]), ...]`` for a registry cancer code (resolved
+    via :func:`resolve_cancer_type`) — the reverse lookup over
+    ``associated_cohorts``. Empty when the cancer has no curated viral antigen
+    (i.e. not a virally-driven entity in the table)."""
+    code = resolve_cancer_type(cancer_type)
+    df = cancer_viral_antigens_df()
+    out = []
+    for r in df.itertuples():
+        cohorts = {c.strip() for c in str(r.associated_cohorts).split(";")
+                   if c.strip() and c.strip().lower() != "nan"}
+        if code in cohorts:
+            ants = [a.strip() for a in str(r.targetable_antigens).split(";") if a.strip()]
+            out.append((str(r.virus), ants))
+    return out
+
+
 def fusion_partners(gene, *, side=None):
     """Return the set of fusion partners of ``gene`` observed in the table.
 
@@ -2007,6 +2264,52 @@ def fusion_partners(gene, *, side=None):
     if side in (None, "3prime"):
         out |= set(df.loc[df["gene_3prime"].astype(str).str.upper() == g, "gene_5prime"])
     return {p for p in out if isinstance(p, str) and p.strip()}
+
+
+def cancer_types_with_fusion(
+    fusion=None, *, partner=None, partner_family=None,
+    defining_only=False, as_rows=False,
+):
+    """Reverse fusion lookup: cancer types matching a fusion, a partner gene, or
+    a partner *family* — the inverse of :func:`fusion_status` / :func:`cancer_fusions`.
+
+    Exactly one of:
+    - ``fusion="EWSR1-FLI1"`` — a directional ``5'-3'`` fusion string (case-
+      insensitive) -> types carrying that fusion (``SARC_EWS``);
+    - ``partner="EWSR1"`` — a partner gene on either end -> every type with a
+      fusion involving it (``SARC_EWS``, ``SARC_DSRCT``, ``SARC_CCS``, …);
+    - ``partner_family="FET"`` (or ``"ETS"``) — a partner-family tag from
+      ``gene_5prime_family`` / ``gene_3prime_family``.
+
+    ``defining_only`` restricts to is_defining rows. Returns sorted canonical
+    cancer codes, or the matching fusion-table rows when ``as_rows=True``.
+    """
+    given = [x for x in (fusion, partner, partner_family) if x is not None]
+    if len(given) != 1:
+        raise ValueError(
+            "pass exactly one of fusion=, partner=, or partner_family="
+        )
+    df = cancer_fusions(defining_only=defining_only)
+    g5 = df["gene_5prime"].astype(str).str.upper()
+    g3 = df["gene_3prime"].astype(str).str.upper()
+    if fusion is not None:
+        parts = str(fusion).upper().replace("::", "-").split("-")
+        if len(parts) != 2:
+            raise ValueError(f"fusion must look like '5GENE-3GENE'; got {fusion!r}")
+        a, b = (p.strip() for p in parts)
+        mask = (g5 == a) & (g3 == b)
+    elif partner is not None:
+        p = str(partner).strip().upper()
+        mask = (g5 == p) | (g3 == p)
+    else:
+        fam = str(partner_family).strip().upper()
+        f5 = df["gene_5prime_family"].astype(str).str.upper()
+        f3 = df["gene_3prime_family"].astype(str).str.upper()
+        mask = (f5 == fam) | (f3 == fam)
+    hits = df[mask]
+    if as_rows:
+        return hits.reset_index(drop=True)
+    return sorted({str(c) for c in hits["cancer_code"] if str(c).strip()})
 
 
 def protein_family(gene):

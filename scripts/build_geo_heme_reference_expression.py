@@ -25,9 +25,8 @@ from pyensembl import EnsemblRelease
 from pirlygenes.builders import source_data_mirror
 from pirlygenes.builders.gene_mapping import resolve_symbol
 from pirlygenes.expression.stats import (
-    REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
     upsert_to_shard,
 )
 from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
@@ -54,7 +53,7 @@ SAMPLE_COLUMNS = [
     "lineage_label",
 ]
 GEO_FTP = "https://ftp.ncbi.nlm.nih.gov/geo/series"
-PIPELINE_PREFIX = "geo_heme_expression_ensembl112_clean_tpm_v1"
+PIPELINE_PREFIX = "geo_heme_expression_ensembl112_clean_tpm_v4"
 
 
 @dataclass(frozen=True)
@@ -89,14 +88,6 @@ def _cml_exclusion(title: str, sample: dict[str, str]) -> str:
     if "healthy" in disease:
         return "healthy_control"
     return "not_chronic_phase_cml"
-
-
-def _mds_included(_title: str, sample: dict[str, str]) -> bool:
-    return _char(sample, "disease status") == "Myelodysplastic Syndrome"
-
-
-def _mds_exclusion(title: str, sample: dict[str, str]) -> str:
-    return "" if _mds_included(title, sample) else "not_mds"
 
 
 def _all_included(_title: str, _sample: dict[str, str]) -> bool:
@@ -147,23 +138,8 @@ GEO_SOURCES = [
             "within retained, uniquely Ensembl-harmonized genes."
         ),
     ),
-    GeoSource(
-        accession="GSE114922",
-        source_file="GSE114922_TPM_table.txt.gz",
-        cancer_code="MDS",
-        source_cohort="GSE114922_SHIOZAWA_2018",
-        source_project="GEO",
-        gene_col="ensembl_ID",
-        sep="\t",
-        raw_unit="TPM",
-        sample_predicate=_mds_included,
-        exclusion_reason=_mds_exclusion,
-        notes=(
-            "GEO GSE114922 bone-marrow CD34+ HSPC TPM matrix; "
-            "myelodysplastic-syndrome samples only; Ensembl IDs harmonized "
-            "to Ensembl release 112."
-        ),
-    ),
+    # MDS (GSE114922) is built by the canonical recount3 source (gse114922-mds),
+    # not here — removed to keep one builder per cohort.
     GeoSource(
         accession="GSE271664",
         source_file="GSE271664_HTSeq_counts.csv.gz",
@@ -415,9 +391,8 @@ def _summarize(
     # MDS, MCL, MPN) are primary-disease diagnostic samples
     # (PBMC / BM aspirate / lymph biopsy) — no metastasis variants,
     # no cell lines.
-    out["tumor_origin"] = "primary"
     out["metastasis_site"] = pd.NA
-    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    return finalize_reference_rows(out, tumor_origin="primary")
 
 
 def _build_source(
@@ -457,6 +432,9 @@ def _build_source(
         included_cols,
         raw_unit=source.raw_unit,
     )
+    from pirlygenes import cohorts as _cohorts
+    _cohorts.write_per_sample(gene_table, values, cache_dir.name,
+                              source.cancer_code)
     summary = _summarize(source, gene_table, values)
     manifest = _build_sample_manifest(source, samples, metadata_sample_cols)
     print(
@@ -487,27 +465,12 @@ def _upsert_reference(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
 
 
 def _upsert_samples(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
-    existing = pd.read_csv(path, low_memory=False) if path.exists() else pd.DataFrame()
-    if existing.empty:
-        out = new_rows.copy()
-    else:
-        keys = set(
-            zip(
-                new_rows["cancer_code"].astype(str),
-                new_rows["source_cohort"].astype(str),
-            )
-        )
-        keep = ~existing[["cancer_code", "source_cohort"]].apply(
-            lambda row: (str(row["cancer_code"]), str(row["source_cohort"])) in keys,
-            axis=1,
-        )
-        out = pd.concat([existing[keep], new_rows], ignore_index=True)
-    out = out[SAMPLE_COLUMNS].sort_values(
-        ["cancer_code", "source_cohort", "sample_id"],
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
-    return out
+    """Delegates to the shared, column-union-preserving samples-manifest upsert.
+    geo-heme writes every cohort it builds in one call, so replacing by the
+    source_cohorts present in new_rows preserves all other cohorts' rows AND
+    columns."""
+    from pirlygenes.expression.stats import upsert_samples_manifest
+    return upsert_samples_manifest(path, new_rows)
 
 
 def main() -> None:

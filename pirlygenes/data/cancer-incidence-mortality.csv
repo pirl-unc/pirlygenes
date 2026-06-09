@@ -9,7 +9,7 @@ stomach,1.5,1.8,4.9,6.8,high,ACS-CFF2024;GLOBOCAN2022,world>>US
 esophagus,1.0,2.7,4.6,4.6,medium,ACS-CFF2024;GLOBOCAN2022,adeno(West)/squamous(Asia)
 bladder,4.0,3.0,3.0,2.0,medium,ACS-CFF2024;GLOBOCAN2022,
 kidney,4.0,2.0,2.5,1.8,medium,ACS-CFF2024;GLOBOCAN2022,kidney+renal pelvis
-melanoma,5.0,1.0,1.7,0.6,high,ACS-CFF2024;GLOBOCAN2022,cutaneous; low mortality share
+melanoma,5.0,1.3,1.7,0.6,high,ACS-CFF2024;GLOBOCAN2022,cutaneous; low mortality share
 ovary,1.6,2.6,1.6,2.1,medium,ACS-CFF2024;GLOBOCAN2022,HGSOC-dominant
 uterus_endometrium,3.0,2.0,2.2,1.0,medium,ACS-CFF2024;GLOBOCAN2022,corpus uteri
 cervix,0.8,0.7,3.3,3.6,high,ACS-CFF2024;GLOBOCAN2022,world>>US (screening/HPV gap)

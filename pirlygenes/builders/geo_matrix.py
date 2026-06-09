@@ -27,11 +27,13 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
-from ..expression.normalize import clean_tpm_matrix as _clean_tpm
+from ..expression.normalize import (
+    clean_tpm_matrix as _clean_tpm,
+    technical_rna_mask as _technical_mask,
+)
 from ..expression.stats import (
-    REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
     upsert_to_shard,
 )
 from .gene_mapping import (
@@ -305,7 +307,8 @@ def _gene_lengths_kb_for_index(
 
 
 # ─── Tech-RNA filter + clean TPM: imported from expression.normalize ────────
-# (_clean_tpm / _technical_mask are aliases of the shared helper above.)
+# (_clean_tpm / _technical_mask are aliases of the shared helpers, re-exported
+# at the top of this module so builders can pull both from one place.)
 
 
 # ─── End-to-end build ───────────────────────────────────────────────────────
@@ -379,6 +382,21 @@ def build_source(
     )
     values = values.reindex(gene_table["Ensembl_Gene_ID"]).fillna(0.0)
 
+    # Some source matrices repeat a sample id across columns (e.g. GSE294016
+    # ADCC has P-58/P-77 ×15). Uniquify so each is a distinct per-sample column
+    # — required for the per-sample parquet (and harmless for the summary).
+    if values.columns.duplicated().any():
+        seen: dict[str, int] = {}
+        uniq = []
+        for c in values.columns:
+            if c in seen:
+                seen[c] += 1
+                uniq.append(f"{c}.{seen[c]}")
+            else:
+                seen[c] = 0
+                uniq.append(c)
+        values.columns = uniq
+
     if source.sample_to_cancer_code is not None:
         cohort_to_cols: dict[str, list[str]] = {}
         for col in values.columns:
@@ -399,6 +417,12 @@ def build_source(
         if not cols:
             continue
         sub_values = values[cols]
+        # Persist the per-code per-sample matrix for medoids + percentiles
+        # (uniform with every other per-sample cohort; the read path discovers
+        # it by code==stem under this source's cache). One hook covers every
+        # geo_matrix source.
+        from ..cohorts import write_per_sample as _write_per_sample
+        _write_per_sample(gene_table, sub_values, cache_dir.name, code)
         clean = _clean_tpm(sub_values, gene_table=gene_table)
         out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
         out["cancer_code"] = code
@@ -413,15 +437,14 @@ def build_source(
         pipeline_stem = source.pipeline_stem or source.source_cohort.lower()
         out["processing_pipeline"] = (
             f"{pipeline_stem}_{source.unit.lower().replace('(','').replace(')','').replace('+','plus')}"
-            f"_to_tpm_ensembl{ensembl_release}_clean_tpm_v3"
+            f"_to_tpm_ensembl{ensembl_release}_clean_tpm_v4"
         )
         out["notes"] = source.notes or (
             f"Per-sample expression from {source.source_cohort} (n={len(cols)}). "
             f"Unit-normalized to TPM; tech-RNA-zeroed; v5.3 stats."
         )
-        out["tumor_origin"] = source.tumor_origin
         out["metastasis_site"] = source.metastasis_site if source.metastasis_site else pd.NA
-        out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+        out = finalize_reference_rows(out, tumor_origin=source.tumor_origin)
         summaries.append(out)
         counts_by_code[code] = len(cols)
         print(f"    {code}: n={len(cols)} → {len(out)} gene rows")
@@ -448,4 +471,7 @@ __all__ = [
     "normalize_to_tpm",
     "harmonize_gene_ids",
     "build_source",
+    # Re-exported shared clean-TPM helpers (builders import them from here).
+    "_clean_tpm",
+    "_technical_mask",
 ]

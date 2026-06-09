@@ -41,7 +41,9 @@ from pirlygenes.builders.treehouse import (
     TreehouseCohort,
     TreehouseRelease,
     run_sweep,
+    tcga_case_predicate,
 )
+from pirlygenes.cohorts import cohorts_for_group
 
 
 CACHE_ROOT = Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -63,13 +65,8 @@ RELEASE = TreehouseRelease(
 )
 
 
-PAM50_TO_REGISTRY = {
-    "BRCA_Basal": "BRCA_Basal",
-    "BRCA_Her2": "BRCA_HER2",
-    "BRCA_LumA": "BRCA_LumA",
-    "BRCA_LumB": "BRCA_LumB",
-    "BRCA_Normal": "BRCA_Normal",
-}
+# Cohort definitions (code, stem, selection="pam50:<cBioPortal label>") come
+# from the single registry in pirlygenes.cohorts (group "tcga_brca_pam50").
 
 
 def _fetch_cbioportal_pam50(cache_path: Path) -> pd.DataFrame:
@@ -89,16 +86,6 @@ def _fetch_cbioportal_pam50(cache_path: Path) -> pd.DataFrame:
     return df
 
 
-def _build_pam50_predicate(cases_for_subtype: set[str]):
-    def _pred(row: dict) -> bool:
-        dsid = str(row.get("th_dataset_id", ""))
-        if not dsid.startswith("TCGA"):
-            return False
-        case_id = "-".join(dsid.split("-")[:3])
-        return case_id in cases_for_subtype
-    return _pred
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ensembl-release", default=112, type=int)
@@ -116,18 +103,19 @@ def main() -> int:
     print(f"loaded cBioPortal PAM50 calls: {counts}")
 
     cohorts = []
-    for pam50_label, registry_code in PAM50_TO_REGISTRY.items():
+    for c in cohorts_for_group("tcga_brca_pam50"):
+        pam50_label = c.selection.split(":", 1)[1]
         cases = set(
             pam50.loc[pam50["pam50"] == pam50_label, "patientId"].astype(str)
         )
         if not cases:
-            print(f"  skipping {registry_code}: no cases")
+            print(f"  skipping {c.code}: no cases")
             continue
         cohorts.append(
             TreehouseCohort(
-                cancer_code=registry_code,
-                disease_label="breast invasive carcinoma",
-                sample_predicate=_build_pam50_predicate(cases),
+                cancer_code=c.code,
+                disease_label=c.disease_label,
+                sample_predicate=tcga_case_predicate(cases),
                 extra_notes=(
                     f"PAM50 subtype = '{pam50_label}' per cBioPortal "
                     "brca_tcga_pan_can_atlas_2018 (Hoadley 2018 "
@@ -136,7 +124,7 @@ def main() -> int:
                     "submitter_id is classified as this PAM50 subtype "
                     "in the cBioPortal study."
                 ),
-                cache_stem=f"tcga_brca_{pam50_label.replace('BRCA_', '').lower()}",
+                cache_stem=c.stem,
             )
         )
 

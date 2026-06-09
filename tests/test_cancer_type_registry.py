@@ -54,6 +54,94 @@ def test_registry_codes_are_unique():
     assert not dupes, f"duplicate codes in registry: {dupes}"
 
 
+def test_no_registry_code_is_a_pre_rename_alias():
+    """Every registry code must be canonical — never a key of
+    _RENAMED_CODE_ALIASES (the old name that resolves to a new one). Guards
+    against a builder/registry re-introducing a pre-rename code (e.g. MID_NET,
+    NBL_MYCN_amp, LAML_ELN_Fav) that the canonicalizer would otherwise have to
+    keep mopping up at write time. See #302."""
+    from pirlygenes.gene_sets_cancer import _RENAMED_CODE_ALIASES
+
+    codes = set(cancer_type_registry()["code"].astype(str))
+    offenders = codes & set(_RENAMED_CODE_ALIASES)
+    assert not offenders, f"registry still carries pre-rename codes: {sorted(offenders)}"
+
+
+def test_fusion_surrogate_scope_codes_are_canonical():
+    """Every code in fusion-surrogate-expression.csv's ';'-separated cancer_code
+    scope must resolve to the registry, except the documented allowlist: the
+    'pan_cancer' sentinel and 'ALCL' (a real ALK+ entity not yet modeled —
+    tracked gap). Consumers match scope by exact string, so a non-canonical
+    code (e.g. 'EHE' vs 'SARC_EHE') silently misses the rule."""
+    from pirlygenes.load_dataset import get_data
+    from pirlygenes.gene_sets_cancer import resolve_cancer_type
+
+    allow = {"pan_cancer"}  # the only legitimate non-registry scope sentinel
+    df = get_data("fusion-surrogate-expression")
+    offenders = set()
+    for scope in df["cancer_code"].astype(str):
+        for code in (c.strip() for c in scope.split(";")):
+            if not code or code in allow:
+                continue
+            try:
+                resolve_cancer_type(code)
+            except ValueError:
+                offenders.add(code)
+    assert not offenders, f"non-canonical fusion-surrogate scope codes: {sorted(offenders)}"
+
+
+def test_fusion_surrogate_accessor_reads_current_schema():
+    """Regression: the accessor's column names must match the CSV
+    (cancer_code/surrogate_gene/surrogate_role). They had drifted to
+    cancer_scope/gene/role, so the accessor silently returned [] for every
+    input. A known cohort must yield its curated surrogates + the pan_cancer
+    NTRK fallback."""
+    from pirlygenes.gene_sets_cancer import fusion_surrogate_genes_for_cancer
+
+    ews = {d["gene"] for d in fusion_surrogate_genes_for_cancer("SARC_EWS")}
+    assert {"FATE1", "NR0B1"} <= ews            # EWSR1-FLI1 ectopic surrogates
+    assert {"NTRK1", "NTRK2", "NTRK3"} <= ews   # pan_cancer NTRK fallback
+    # canonicalized scope now reachable by the registry code
+    ehe = {d["gene"] for d in fusion_surrogate_genes_for_cancer("SARC_EHE")}
+    assert {"CTGF", "CYR61"} <= ehe
+
+
+def test_degenerate_subtype_pairs_use_canonical_codes():
+    """Every cancer code referenced in degenerate-subtype-pairs (members and
+    tiebreaker_mapping) must be canonical — no pre-rename aliases that resolve
+    away to a different code. Guards #287 (the NET tiebreaker_mapping still held
+    PANNET/MID_NET/LUNG_NET_LC after the Phase-C rename)."""
+    import re
+    from pirlygenes.load_dataset import get_data
+    from pirlygenes.gene_sets_cancer import _RENAMED_CODE_ALIASES
+
+    d = get_data("degenerate-subtype-pairs")
+    # Scan the code-bearing columns only (pair_id is an opaque identifier).
+    blob = "\n".join(
+        d[col].astype(str).str.cat(sep="\n")
+        for col in ("members", "tiebreaker_mapping") if col in d.columns
+    )
+    offenders = sorted(
+        old for old in _RENAMED_CODE_ALIASES
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(old)}(?![A-Za-z0-9_])", blob)
+    )
+    assert not offenders, f"degenerate-subtype-pairs holds pre-rename codes: {offenders}"
+
+
+def test_expression_sources_yaml_uses_canonical_cancer_codes():
+    """The expression-sources registry must reference canonical cancer codes
+    only — no pre-rename aliases in any source's cancer_codes. See #302."""
+    from pirlygenes import downloads
+    from pirlygenes.gene_sets_cancer import _RENAMED_CODE_ALIASES
+
+    offenders = {}
+    for src in downloads.load_registry():
+        bad = set(src.cancer_codes) & set(_RENAMED_CODE_ALIASES)
+        if bad:
+            offenders[src.id] = sorted(bad)
+    assert not offenders, f"sources still list pre-rename cancer_codes: {offenders}"
+
+
 def test_registry_covers_all_33_tcga_codes():
     """Every TCGA code must appear in the registry or we'll lose
     compatibility with existing cancer-type detection code paths."""
@@ -389,7 +477,9 @@ def test_source_cohort_values_are_canonical():
         "TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50",
         "TREEHOUSE_POLYA_25_01_TCGA_LUAD_MUT",
         "TREEHOUSE_POLYA_25_01_TCGA_HNSC_HPV",
+        "TREEHOUSE_POLYA_25_01_TCGA_COADREAD_MSI",
         "TREEHOUSE_RIBOD_25_01",
+        "UNC_NUTM1",
         "GSE118014_ALVAREZ_2018",
         "GSE98894_ALVAREZ_2018_NET",
         "GSE299759_MEIJER_2026",
@@ -677,3 +767,46 @@ def test_resolve_cancer_type_uses_cached_reverse_map_under_load():
     assert elapsed < 2.0, (
         f"display-name resolve appears uncached; 10k calls took {elapsed:.2f}s"
     )
+
+
+def test_lineage_genes_direction_vocab_and_schema():
+    """lineage-genes carries the optional expected-high/surprising 'direction'
+    (high|low) + 'reference' columns (pass-2 schema extension)."""
+    from pirlygenes.load_dataset import get_data
+
+    d = get_data("lineage-genes")
+    assert {"direction", "reference"} <= set(d.columns)
+    assert set(d["direction"].astype(str)) <= {"high", "low"}
+
+
+def test_marker_symbol_ensg_consistency():
+    """Every (Symbol, Ensembl_Gene_ID) pair in the marker datasets must agree
+    with the gene's current Ensembl symbol (allowing curated display aliases).
+    Locks the 5 stale-symbol fixes (NIS->SLC5A5, PVRL1->NECTIN1, ...) found in
+    the gene audit and prevents regression."""
+    from pyensembl import EnsemblRelease
+    from pirlygenes.gene_ids import strip_version
+    from pirlygenes.gene_names import display_name
+    from pirlygenes.load_dataset import get_data
+
+    g = EnsemblRelease(112)
+    mism = []
+    for name in ("lineage-genes", "cancer-type-genes",
+                 "cancer-lineage-panels", "cancer-surfaceome"):
+        d = get_data(name)
+        for sym, ensg in zip(d["Symbol"].astype(str), d["Ensembl_Gene_ID"].astype(str)):
+            ensg = ensg.strip()
+            if not ensg.startswith("ENSG"):
+                continue
+            try:
+                cur = g.gene_by_id(strip_version(ensg)).gene_name
+            except Exception:
+                continue
+            if cur.upper() != sym.strip().upper():
+                try:
+                    ok = display_name(cur).upper() == sym.strip().upper()
+                except Exception:
+                    ok = False
+                if not ok:
+                    mism.append(f"{name}: {sym} vs ENSG {ensg} ({cur})")
+    assert not mism, "symbol↔ENSG mismatches:\n  " + "\n  ".join(mism)

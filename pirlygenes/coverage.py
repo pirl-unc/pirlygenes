@@ -42,13 +42,24 @@ from . import gene_sets_cancer as gsc
 DEFAULT_SOURCE = "treehouse-polya-25-01"
 DEFAULT_THRESHOLDS = (25, 50, 100, 200)
 
+
+def _available(source_id):
+    """Cohorts with cached per-sample matrices for ``source_id``, or — when
+    ``source_id == "all"`` — across every registered per-sample source (#275).
+    Cross-source is safe because each cohort carries its own ``source_id`` and
+    :func:`cohort_matrix` reads that cohort's own parquet."""
+    if source_id == "all":
+        return _cohorts.all_available_cohorts()
+    return _cohorts.available_cohorts(source_id)
+
 # --- gene-set resolution ---------------------------------------------------
 
-# Tokens that map to an ENSG accessor in gene_sets_cancer. A cohort matrix row
-# is "in the panel" if its Ensembl_Gene_ID is in ``ensgs`` OR its Symbol is in
-# ``symbols`` — so panels keyed by either identifier resolve uniformly.
+# A panel is an **ENSG set**. Gene symbols are only ever used to *look up* an
+# Ensembl gene id (resolved here, at the boundary) — never as a join/comparison
+# key downstream. Every cohort-matrix match below is on Ensembl_Gene_ID alone.
 def resolve_gene_set(name: str):
-    """Resolve a ``--gene-set`` token to ``(label, ensgs, symbols)``.
+    """Resolve a ``--gene-set`` token to ``(label, ensgs)`` — a set of
+    unversioned Ensembl gene ids.
 
     Supported tokens::
 
@@ -57,27 +68,30 @@ def resolve_gene_set(name: str):
         lineage:<code>     per-cancer-type lineage panel (e.g. lineage:PRAD)
         <path>             a CSV/TXT with Symbol and/or Ensembl_Gene_ID column(s),
                            or a single first column of symbols / ENSG ids
+
+    Any symbol-only input is resolved to an ENSG via
+    :func:`pirlygenes.gene_ids.find_gene_id_by_name_from_ensembl`; symbols that
+    don't resolve are dropped (never silently matched by name downstream).
     """
     token = str(name).strip()
     low = token.lower()
     if low == "cta":
-        return "CTA", set(gsc.CTA_gene_ids()), set()
+        return "CTA", set(gsc.CTA_gene_ids())
     if low in ("surfaceome", "cancer-surfaceome"):
-        return "cancer-surfaceome", set(gsc.cancer_surfaceome_gene_ids()), set()
+        return "cancer-surfaceome", set(gsc.cancer_surfaceome_gene_ids())
     if low in ("mito", "mitochondrial"):
-        return "mitochondrial", set(gsc.mitochondrial_gene_ids()), set()
+        return "mitochondrial", set(gsc.mitochondrial_gene_ids())
     if low == "housekeeping":
-        return "housekeeping", set(gsc.housekeeping_gene_ids()), set()
+        return "housekeeping", set(gsc.housekeeping_gene_ids())
     if low.startswith("therapy:"):
         t = token.split(":", 1)[1]
-        return f"therapy:{t}", set(gsc.therapy_target_gene_ids(t)), set()
+        return f"therapy:{t}", set(gsc.therapy_target_gene_ids(t))
     if low.startswith("lineage:"):
         code = gsc.resolve_cancer_type(token.split(":", 1)[1])
         df = gsc.lineage_genes_df(code)
         ensgs = set(df["Ensembl_Gene_ID"].dropna().astype(str).str.split(".").str[0])
-        syms = (set(df["Symbol"].dropna().astype(str).str.upper())
-                if "Symbol" in df.columns else set())
-        return f"lineage:{code}", ensgs, syms
+        # lineage panels are ENSG-backed; symbols are display-only, not joined.
+        return f"lineage:{code}", ensgs
     p = Path(token).expanduser()
     if p.exists():
         return _gene_set_from_file(p)
@@ -86,6 +100,18 @@ def resolve_gene_set(name: str):
         "housekeeping, therapy:<type>, lineage:<code>, or a path to a CSV of "
         "symbols/ENSG ids."
     )
+
+
+def _symbols_to_ensgs(symbols) -> set:
+    """Resolve a set of gene symbols to unversioned ENSGs (symbol used only for
+    this lookup; unresolved symbols are dropped)."""
+    from .gene_ids import find_gene_id_by_name_from_ensembl, strip_version
+    out = set()
+    for s in symbols:
+        gid = find_gene_id_by_name_from_ensembl(str(s))
+        if gid:
+            out.add(strip_version(gid))
+    return out
 
 
 def _gene_set_from_file(path: Path):
@@ -102,30 +128,34 @@ def _gene_set_from_file(path: Path):
             v = v.strip()
             (ensgs.add(v.split(".")[0]) if v.upper().startswith("ENSG")
              else symbols.add(v.upper()))
-    return path.name, ensgs, symbols
+    # Resolve any symbol-only entries to ENSG up front, so matching is ENSG-only.
+    ensgs |= _symbols_to_ensgs(symbols)
+    return path.name, ensgs
 
 
 # --- per-sample access + counting ------------------------------------------
 
-def cohort_matrix(cohort, ensgs=None, symbols=None) -> pd.DataFrame:
+def cohort_matrix(cohort, ensgs=None) -> pd.DataFrame:
     """Per-sample TPM matrix for ``cohort``, restricted to the panel rows.
 
-    Returns a Symbol-indexed, sample-columned DataFrame (linear TPM)."""
-    path = _cohorts.parquet_path(cohort)
-    if not path.exists():
-        raise FileNotFoundError(
-            f"no per-sample parquet for {cohort.code} at {path} — run "
-            f"`pirlygenes build {cohort.source_id}` or `downloads fetch` first")
-    df = pd.read_parquet(path)
-    ensgs, symbols = ensgs or set(), {s.upper() for s in (symbols or set())}
-    mask = pd.Series(False, index=df.index)
-    if ensgs:
-        mask |= df["Ensembl_Gene_ID"].astype(str).str.split(".").str[0].isin(ensgs)
-    if symbols:
-        mask |= df["Symbol"].astype(str).str.upper().isin(symbols)
-    sub = df.loc[mask]
-    sample_cols = [c for c in sub.columns if c not in ("Ensembl_Gene_ID", "Symbol")]
-    return sub.set_index("Symbol")[sample_cols]
+    Matching is on the unversioned Ensembl gene id only — symbols are never a
+    join key. Returns an ENSG-indexed, sample-columned DataFrame (linear TPM);
+    a ``{ensg: symbol}`` display map is stashed in ``df.attrs['symbols']`` so
+    downstream rendering can label rows without ever joining on the symbol.
+    """
+    df = _cohorts.read_per_sample(cohort)
+    ensgs = ensgs or set()
+    ensg_col = df["Ensembl_Gene_ID"].astype(str).str.split(".").str[0]
+    mask = ensg_col.isin(ensgs) if ensgs else pd.Series(False, index=df.index)
+    sub = df.loc[mask].copy()
+    sub["Ensembl_Gene_ID"] = ensg_col[mask]
+    sample_cols = _cohorts.sample_columns(sub)
+    symbol_map = {}
+    if "Symbol" in sub.columns:
+        symbol_map = dict(zip(sub["Ensembl_Gene_ID"], sub["Symbol"].astype(str)))
+    out = sub.set_index("Ensembl_Gene_ID")[sample_cols]
+    out.attrs["symbols"] = symbol_map
+    return out
 
 
 def greedy_coverage(mat: pd.DataFrame, threshold: float):
@@ -163,19 +193,21 @@ def patient_coverage(gene_set: str, source_id: str = DEFAULT_SOURCE,
     :func:`gene_sets_cancer.resolve_cancer_type`); default is every cohort with
     a cached per-sample matrix for ``source_id``.
     """
-    _label, ensgs, symbols = resolve_gene_set(gene_set)
-    avail = _cohorts.available_cohorts(source_id)
+    _label, ensgs = resolve_gene_set(gene_set)
+    avail = _available(source_id)
     if codes:
         want = {gsc.resolve_cancer_type(c) for c in codes}
         avail = {k: v for k, v in avail.items() if k in want}
     rows = []
     for code, cohort in avail.items():
-        mat = cohort_matrix(cohort, ensgs, symbols)
+        mat = cohort_matrix(cohort, ensgs)
         n = mat.shape[1]
         if n == 0:
             continue
-        for sym, vals in zip(mat.index, mat.to_numpy()):
-            rec = {"cancer_code": code, "n_samples": n, "Symbol": sym}
+        symbols = mat.attrs.get("symbols", {})
+        for ensg, vals in zip(mat.index, mat.to_numpy()):
+            rec = {"cancer_code": code, "n_samples": n,
+                   "Ensembl_Gene_ID": ensg, "Symbol": symbols.get(ensg, "")}
             any_hit = False
             for t in thresholds:
                 k = int((vals > t).sum())
@@ -184,7 +216,7 @@ def patient_coverage(gene_set: str, source_id: str = DEFAULT_SOURCE,
                 any_hit = any_hit or k > 0
             if any_hit:
                 rows.append(rec)
-    cols = (["cancer_code", "n_samples", "Symbol"]
+    cols = (["cancer_code", "n_samples", "Ensembl_Gene_ID", "Symbol"]
             + [f"{p}_gt{t}" for t in thresholds for p in ("n", "pct")])
     return pd.DataFrame(rows, columns=cols)
 
@@ -215,7 +247,7 @@ def render(gene_set: str, source_id: str = DEFAULT_SOURCE, codes=None,
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    label, ensgs, symbols = resolve_gene_set(gene_set)
+    label, ensgs = resolve_gene_set(gene_set)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     slug = _slug(label)
@@ -225,17 +257,20 @@ def render(gene_set: str, source_id: str = DEFAULT_SOURCE, codes=None,
     counts.sort_values(["cancer_code", f"n_gt{threshold}"],
                        ascending=[True, False]).to_csv(csv_path, index=False)
 
-    # Per-cohort greedy coverage (reuse the loaded matrices once).
-    avail = _cohorts.available_cohorts(source_id)
+    # Per-cohort greedy coverage (reuse the loaded matrices once). Greedy order
+    # is computed on ENSG-indexed rows; symbols are mapped in only for display.
+    avail = _available(source_id)
     if codes:
         want = {gsc.resolve_cancer_type(c) for c in codes}
         avail = {k: v for k, v in avail.items() if k in want}
-    per = []  # (code, n, cum, gene_names_in_greedy_order)
+    per = []  # (code, n, cum, gene_display_names_in_greedy_order)
     for code, cohort in avail.items():
-        mat = cohort_matrix(cohort, ensgs, symbols)
+        mat = cohort_matrix(cohort, ensgs)
         order, cum, n = greedy_coverage(mat, threshold)
         if cum:
-            per.append((code, n, cum, [mat.index[i] for i in order]))
+            symbols = mat.attrs.get("symbols", {})
+            names = [symbols.get(mat.index[i]) or mat.index[i] for i in order]
+            per.append((code, n, cum, names))
     per.sort(key=lambda t: t[2][-1])  # ascending plateau -> broadest at top
 
     paths = {"counts_csv": str(csv_path)}
@@ -274,7 +309,7 @@ def _stacked_bar(per, label, threshold, path, plt):
     fig, ax = plt.subplots(figsize=(13, max(6, len(per) * 0.28)))
     labels = []
     for y, (code, n, cum, names) in enumerate(per):
-        labels.append(f"{code}  (n={n})")
+        labels.append(f"{gsc.format_cancer_code_label(code)}  (n={n})")
         left, prev = 0.0, 0.0
         for j, (nm, c) in enumerate(zip(names, cum)):
             marg = (c - prev) * 100
@@ -318,7 +353,8 @@ def _coverage_curves(per, label, threshold, path, plt):
         for x, (nm, c) in enumerate(zip(names[:3], cum[:3]), start=1):
             ax.annotate(nm, (x, c * 100), fontsize=4, rotation=45,
                         textcoords="offset points", xytext=(1, 2))
-        ax.set_title(f"{code} (n={n}) {cum[-1]*100:.0f}%", fontsize=7)
+        ax.set_title(f"{gsc.format_cancer_code_label(code)} (n={n}) "
+                     f"{cum[-1]*100:.0f}%", fontsize=7)
         ax.set_xlim(0, 25)
         ax.set_ylim(0, 100)
         ax.tick_params(labelsize=5)

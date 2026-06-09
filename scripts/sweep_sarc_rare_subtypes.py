@@ -47,7 +47,9 @@ from pirlygenes.builders.treehouse import (
     TreehouseCohort,
     TreehouseRelease,
     run_sweep,
+    tcga_case_predicate,
 )
+from pirlygenes.cohorts import cohorts_for_group
 
 
 CACHE_ROOT = Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -86,43 +88,17 @@ RELEASE_TCGA = TreehouseRelease(
 )
 
 
-TREEHOUSE_DIRECT = [
-    ("SARC_ANGIO", "angiosarcoma"),
-    ("SARC_ASPS", "alveolar soft part sarcoma"),
-    ("SARC_DSRCT", "desmoplastic small round cell tumor"),
-    ("SARC_EPITH", "epithelioid sarcoma"),
-    ("SARC_IMT", "inflammatory myofibroblastic tumor"),
-    ("SARC_IFS", "infantile fibrosarcoma"),
-    ("SARC_MPNST", "malignant peripheral nerve sheath tumor"),
-    ("SARC_EHE", "epithelioid hemangioendothelioma"),
-    ("SARC_LGFMS", "low grade fibromyxoid sarcoma"),
-    # Not a sarcoma but uses the same Treehouse-direct pattern — kept
-    # here for code reuse. Low n but populates the registry code.
-    ("NPC", "nasopharyngeal carcinoma"),
-]
-
-# TCGA-SARC primary_diagnosis → registry code
-TCGA_SARC_OVERLAYS = [
-    ("SARC_DDLPS", "Dedifferentiated liposarcoma", "liposarcoma"),
-    ("SARC_PLEOLPS", "Pleomorphic liposarcoma", "liposarcoma"),
-]
+# Cohort definitions (code, stem, disease_label, selection) come from the
+# single registry in pirlygenes.cohorts: group "sarc_rare_direct" (Treehouse
+# direct) and group "sarc_rare_overlay" (TCGA-SARC histology overlays).
 
 
 def _build_histology_predicate(histology: pd.DataFrame, primary_diagnosis: str):
-    cases = set(
-        histology.loc[
-            histology["primary_diagnosis"].eq(primary_diagnosis),
-            "submitter_id",
-        ].astype(str)
-    )
-
-    def _pred(row: dict) -> bool:
-        dsid = str(row.get("th_dataset_id", ""))
-        if not dsid.startswith("TCGA"):
-            return False
-        case_id = "-".join(dsid.split("-")[:3])
-        return case_id in cases
-    return _pred
+    cases = histology.loc[
+        histology["primary_diagnosis"].eq(primary_diagnosis),
+        "submitter_id",
+    ].astype(str)
+    return tcga_case_predicate(cases)
 
 
 def main() -> int:
@@ -137,18 +113,19 @@ def main() -> int:
     args = parser.parse_args()
 
     # (a) Treehouse direct
-    print("=== Treehouse direct (8 codes) ===")
+    print("=== Treehouse direct ===")
     cohorts_direct = [
         TreehouseCohort(
-            cancer_code=code,
-            disease_label=label,
+            cancer_code=c.code,
+            disease_label=c.disease_label,
             extra_notes=(
-                f"All Treehouse samples labelled disease == '{label}'. "
+                f"All Treehouse samples labelled disease == '{c.disease_label}'. "
                 "Mostly Treehouse-internal + publicly-available "
                 "non-TCGA repositories."
             ),
+            cache_stem=c.stem,
         )
-        for code, label in TREEHOUSE_DIRECT
+        for c in cohorts_for_group("sarc_rare_direct")
     ]
     run_sweep(
         RELEASE_TREEHOUSE,
@@ -175,11 +152,12 @@ def main() -> int:
     histology = pd.read_csv(histology_cache)
 
     cohorts_tcga = []
-    for code, primary_diagnosis, disease_label in TCGA_SARC_OVERLAYS:
+    for c in cohorts_for_group("sarc_rare_overlay"):
+        primary_diagnosis = c.selection.split(":", 1)[1]
         cohorts_tcga.append(
             TreehouseCohort(
-                cancer_code=code,
-                disease_label=disease_label,
+                cancer_code=c.code,
+                disease_label=c.disease_label,
                 sample_predicate=_build_histology_predicate(
                     histology, primary_diagnosis,
                 ),
@@ -188,7 +166,7 @@ def main() -> int:
                     f"'{primary_diagnosis}'. Routed out of the "
                     "TCGA-SARC project via GDC histology lookup."
                 ),
-                cache_stem=f"tcga_sarc_{code.removeprefix('SARC_').lower()}",
+                cache_stem=c.stem,
             )
         )
     run_sweep(

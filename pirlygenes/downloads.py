@@ -48,6 +48,10 @@ class ExpressionSource:
     cancer_codes: tuple[str, ...]
     source_type: str
     builder: str | None
+    # Extra fixed CLI args appended to the builder invocation for this source
+    # (e.g. ["--only", "lps"] to select one cohort group from a multi-cohort
+    # microarray builder). Empty for builders that need no source-specific args.
+    builder_args: tuple[str, ...]
     project_id: str | None
     accession: str | None
     url: str | None
@@ -107,6 +111,7 @@ def load_registry(path: Path | None = None) -> list[ExpressionSource]:
                 cancer_codes=_coerce_tuple(entry.get("cancer_codes")),
                 source_type=str(entry.get("source_type", "")),
                 builder=_coerce_str(entry.get("builder")),
+                builder_args=_coerce_tuple(entry.get("builder_args")),
                 project_id=_coerce_str(entry.get("project_id")),
                 accession=_coerce_str(entry.get("accession")),
                 url=_coerce_str(entry.get("url")),

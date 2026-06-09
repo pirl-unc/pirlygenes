@@ -255,6 +255,67 @@ def round_stat_columns(
     return df
 
 
+def finalize_reference_rows(
+    rows: pd.DataFrame, *, tumor_origin: str | None = None,
+) -> pd.DataFrame:
+    """Round stat columns and project a builder's rows onto ``REFERENCE_COLUMNS``.
+
+    Replaces the copy-pasted ``round_stat_columns(out)[list(REFERENCE_COLUMNS)]``
+    idiom. Sets ``tumor_origin`` when given, then a **lenient** reindex onto
+    ``REFERENCE_COLUMNS`` — backfilling any schema column the builder predates
+    (e.g. ``metastasis_site``) as NaN instead of the strict ``[list(...)]``
+    select that ``KeyError``s when a column isn't present. ``upsert_to_shard``
+    still validates ``tumor_origin``, so a row can never reach the shard with it
+    unset.
+    """
+    out = rows
+    if tumor_origin is not None:
+        out = out.copy()
+        out["tumor_origin"] = tumor_origin
+    return round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
+
+
+def build_reference_rows(
+    gene_table: pd.DataFrame,
+    raw_values: pd.DataFrame,
+    *,
+    cancer_code: str,
+    source_cohort: str,
+    source_project: str,
+    source_version: str,
+    processing_pipeline: str,
+    notes: str,
+    tumor_origin: str,
+    clean_values: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Assemble finalized reference rows from a gene table + raw TPM matrix.
+
+    Bundles the per-builder boilerplate that every ``scripts/build_*.py``
+    repeats: clean the raw matrix, carry the gene ids, stamp the provenance
+    columns, compute the full stat suite (:func:`assign_stats`), and project
+    onto ``REFERENCE_COLUMNS`` (:func:`finalize_reference_rows`). ``gene_table``
+    must carry ``Ensembl_Gene_ID`` + ``Symbol``; ``raw_values`` is the
+    gene×sample TPM matrix aligned to it. Pass ``clean_values`` to reuse an
+    already-cleaned matrix; otherwise it is computed with
+    ``clean_tpm_matrix(..., censored_fill="fixed_fraction")``.
+    """
+    from .normalize import clean_tpm_matrix
+
+    if clean_values is None:
+        clean_values = clean_tpm_matrix(
+            raw_values, gene_table=gene_table, censored_fill="fixed_fraction"
+        )
+    out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
+    out["cancer_code"] = cancer_code
+    out["source_cohort"] = source_cohort
+    out["source_project"] = source_project
+    out["source_version"] = source_version
+    assign_stats(out, raw_values, clean_values)
+    out["processing_pipeline"] = processing_pipeline
+    out["notes"] = notes
+    return finalize_reference_rows(out, tumor_origin=tumor_origin)
+
+
 def _validate_tumor_origin(
     rows: pd.DataFrame,
     *,
@@ -341,6 +402,21 @@ def upsert_to_shard(
         allow_unset=allow_unset_tumor_origin,
     )
 
+    # Canonicalize cancer codes on write so a builder still emitting a
+    # pre-rename code (e.g. recount3 routing → "MID_NET"/"PANNET") lands
+    # under the current registry code ("NET_MIDGUT"/"NET_PANCREAS"). This
+    # is the single chokepoint that keeps shards free of rename-orphan
+    # rows: the cross-code upsert below then replaces the canonical rows
+    # instead of leaving a stale copy under the old name. Lazy import to
+    # avoid coupling the expression layer to the registry at module load.
+    from ..gene_sets_cancer import canonical_cancer_code
+
+    new_rows = new_rows.copy()
+    new_rows["cancer_code"] = (
+        new_rows["cancer_code"].map(canonical_cancer_code)
+    )
+    cancer_codes = [canonical_cancer_code(c) for c in cancer_codes]
+
     out_path = _Path(str(summary_output))
     if out_path.suffix == ".gz" or out_path.is_file():
         shard_dir = out_path.parent / "cancer-reference-expression"
@@ -395,6 +471,11 @@ def upsert_to_shard(
     shard_path = shard_dir / f"{source_cohort}.csv.gz"
     if shard_path.exists():
         existing = pd.read_csv(shard_path, low_memory=False)
+        # Canonicalize the existing shard's codes too, so a stale row written
+        # under a pre-rename name (e.g. an earlier build's "MID_NET") is folded
+        # into the canonical namespace and matched by the (already canonical)
+        # cancer_codes removal list — otherwise it survives as a rename-orphan.
+        existing["cancer_code"] = existing["cancer_code"].map(canonical_cancer_code)
         keep = ~existing["cancer_code"].astype(str).isin(cancer_codes)
         merged = pd.concat(
             [
@@ -413,6 +494,53 @@ def upsert_to_shard(
     return merged
 
 
+_SAMPLE_MANIFEST_SORT = ["cancer_code", "source_cohort", "sample_id"]
+
+
+def upsert_samples_manifest(path, new_rows: pd.DataFrame) -> pd.DataFrame:
+    """Upsert per-sample provenance rows into the shared samples manifest.
+
+    The samples manifest
+    (``pirlygenes/data/cancer-reference-expression-samples.csv.gz``) is a single
+    un-sharded CSV recording which samples were included/excluded per
+    ``source_cohort``. Every sample-writing builder funnels through here so the
+    contract is enforced in one place (previously ~6 copy-pasted variants with
+    subtly different keys and a column-stripping bug).
+
+    Contract:
+    - **Replace** all rows for every ``source_cohort`` present in ``new_rows``;
+      **preserve** every other cohort's rows untouched.
+    - **Union the columns** of the existing manifest and ``new_rows`` so a
+      builder whose manifest carries a narrower column set never strips columns
+      (e.g. ``lineage_label``) from the cohorts it does not own — the bug that
+      let partial rebuilds silently corrupt foreign-cohort provenance.
+    """
+    from pathlib import Path as _Path
+
+    out_path = _Path(str(path))
+    new_rows = new_rows.copy()
+    cohorts = set(new_rows["source_cohort"].astype(str))
+
+    if out_path.exists():
+        existing = pd.read_csv(out_path, low_memory=False)
+        keep = ~existing["source_cohort"].astype(str).isin(cohorts)
+        # Order-preserving union: existing columns first, then any new ones.
+        cols = list(dict.fromkeys(list(existing.columns) + list(new_rows.columns)))
+        out = pd.concat(
+            [existing.loc[keep].reindex(columns=cols), new_rows.reindex(columns=cols)],
+            ignore_index=True,
+        )
+    else:
+        out = new_rows
+
+    sort_cols = [c for c in _SAMPLE_MANIFEST_SORT if c in out.columns]
+    if sort_cols:
+        out = out.sort_values(sort_cols, na_position="last").reset_index(drop=True)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(out_path, index=False)
+    return out
+
+
 __all__ = [
     "STAT_COLUMNS",
     "CLEAN_STAT_COLUMNS",
@@ -429,5 +557,7 @@ __all__ = [
     "assign_stats",
     "numeric_stat_columns",
     "round_stat_columns",
+    "finalize_reference_rows",
     "upsert_to_shard",
+    "upsert_samples_manifest",
 ]

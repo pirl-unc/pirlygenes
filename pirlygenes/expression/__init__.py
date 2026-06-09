@@ -32,6 +32,7 @@ imports are flat::
     from pirlygenes.expression import (
         pan_cancer_expression,
         cancer_reference_expression,
+        cohort_expression_views,
         normalize_expression,
         fpkm_to_tpm,
         tpm_to_housekeeping_normalized,
@@ -41,12 +42,17 @@ imports are flat::
 """
 
 from .accessors import (
+    CohortExpressionViews,
     available_cancer_expression_references,
+    available_percentile_cohorts,
+    available_representative_cohorts,
     cancer_enriched_genes,
     cancer_expression,
     cancer_expression_reference_status,
     cancer_expression_source_candidates,
     cancer_reference_expression,
+    cohort_expression_views,
+    cohort_gene_percentiles,
     estimate_signatures,
     filter_technical_rna,
     filter_to_genes,
@@ -56,6 +62,7 @@ from .accessors import (
     log2_transform,
     normalize_to_housekeeping,
     pan_cancer_expression,
+    representative_cohort_samples,
     technical_rna_gene_ids,
     tumor_up_vs_matched_normal,
 )
@@ -65,19 +72,26 @@ from .aggregate import (
 )
 from .normalize import (
     add_tpm_columns_from_fpkm,
+    clean_tpm_matrix,
+    clean_tpm_removal_mask,
+    drop_technical_genes,
     fpkm_to_tpm,
     normalize_expression,
     normalize_technical_rna_columns,
     normalize_technical_rna_long_table,
     percentile_rank_expression,
+    rank_normalize,
     renormalize_to_million,
+    technical_rna_mask,
     tpm_to_housekeeping_normalized,
+    zscore_normalize,
 )
 from .qc import (
     GeneQcClass,
     classify_gene_qc,
     is_rescue_feature,
 )
+from .representatives import select_representative_samples
 
 
 __all__ = [
@@ -87,6 +101,12 @@ __all__ = [
     "available_cancer_expression_references",
     "cancer_expression_reference_status",
     "cancer_expression_source_candidates",
+    "representative_cohort_samples",
+    "cohort_expression_views",
+    "CohortExpressionViews",
+    "available_representative_cohorts",
+    "cohort_gene_percentiles",
+    "available_percentile_cohorts",
     "tumor_up_vs_matched_normal",
     "heme_tumor_up_vs_matched_normal",
     "cancer_expression",
@@ -102,6 +122,13 @@ __all__ = [
     "tpm_to_housekeeping_normalized",
     "normalize_technical_rna_columns",
     "normalize_technical_rna_long_table",
+    "clean_tpm_matrix",
+    "clean_tpm_removal_mask",
+    "drop_technical_genes",
+    "technical_rna_mask",
+    "rank_normalize",
+    "zscore_normalize",
+    "select_representative_samples",
     # Reference-frame convenience wrappers
     "normalize_to_housekeeping",
     "log1p_transform",

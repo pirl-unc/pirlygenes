@@ -5,7 +5,7 @@ Replaces the summary-only imports for NBL_MYCN_amp / nonamp, RT,
 and WILMS with per-sample TPM rollups. Pattern mirrors
 ``scripts/build_mmrf_reference_expression.py`` — open GDC STAR-counts
 download, deterministic one-sample-per-case filter, harmonize to
-Ensembl 112, technical-RNA zero + per-sample renormalize, compute
+Ensembl 112, two-compartment fixed-fraction clean-TPM (technical 25% / biological 75%, each renormalized within its group), compute
 the v5.3 stat suite, upsert to the shard directory.
 
 NBL split: MYCN amplification status from cBioPortal
@@ -31,6 +31,7 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.builders.gene_mapping import resolve_symbol
+from pirlygenes.gene_ids import strip_version as _strip_version
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -61,7 +62,7 @@ PROJECTS = [
         project_id="TARGET-NBL",
         source_cohort="TARGET_NBL_2018",
         source_project="TARGET Neuroblastoma",
-        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v1",
+        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v4",
         cancer_code="NBL",  # subtype-split into NBL_MYCN_amp / NBL_MYCN_nonamp
         primary_diagnosis_keywords=("neuroblastoma", "ganglioneuroblastoma"),
         cache_subdir="target-nbl",
@@ -70,7 +71,7 @@ PROJECTS = [
         project_id="TARGET-RT",
         source_cohort="TARGET_RT_2017",
         source_project="TARGET Rhabdoid Tumor",
-        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v1",
+        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v4",
         cancer_code="RT",
         primary_diagnosis_keywords=("rhabdoid",),
         cache_subdir="target-rt",
@@ -79,16 +80,12 @@ PROJECTS = [
         project_id="TARGET-WT",
         source_cohort="TARGET_WT_2015",
         source_project="TARGET Wilms Tumor",
-        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v1",
+        pipeline_id="gdc_star_counts_tpm_ensembl112_clean_tpm_v4",
         cancer_code="WILMS",
         primary_diagnosis_keywords=("nephroblastoma", "wilms"),
         cache_subdir="target-wt",
     ),
 ]
-
-
-def _strip_version(v: object) -> str:
-    return str(v).split(".", 1)[0]
 
 
 def _gdc_filters(project_id: str) -> dict:
@@ -337,7 +334,14 @@ def _summarize_one(
     cancer_code: str,
     project: TargetProject,
     extra_notes: str = "",
+    source_id: str | None = None,
 ) -> pd.DataFrame:
+    if source_id:
+        # Persist the per-code per-sample matrix for medoids + percentiles, from
+        # the same (code, values) the summary is computed from (one source of
+        # truth). Every code this builder emits flows through here.
+        from pirlygenes import cohorts as _cohorts
+        _cohorts.write_per_sample(gene_table, values, source_id, cancer_code)
     clean = _clean_tpm(values, gene_table=gene_table)
     out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
     out["cancer_code"] = cancer_code
@@ -362,17 +366,10 @@ def _summarize_one(
 
 
 def _upsert_samples_manifest(path: Path, manifest: pd.DataFrame, source_cohort: str):
-    if path.exists():
-        existing = pd.read_csv(path)
-        keep = ~existing["source_cohort"].astype(str).eq(source_cohort)
-        out = pd.concat(
-            [existing[keep].reindex(columns=manifest.columns), manifest],
-            ignore_index=True,
-        )
-    else:
-        out = manifest.copy()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
+    # Delegates to the shared, column-union-preserving upsert (cohorts to
+    # replace are derived from the manifest's own source_cohort values).
+    from pirlygenes.expression.stats import upsert_samples_manifest
+    return upsert_samples_manifest(path, manifest)
 
 
 def _fetch_nbl_mycn(cache_path: Path) -> dict[str, str]:
@@ -447,7 +444,7 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
         # Umbrella NBL cohort: all samples, no MYCN split
         summaries.append(_summarize_one(
             gene_table, values,
-            cancer_code="NBL", project=project,
+            cancer_code="NBL", project=project, source_id=cache_dir.name,
             extra_notes=(
                 "Umbrella aggregate over all TARGET-NBL samples; "
                 f"children NBL_MYCN_amp (n={len(amp_cols)}) and "
@@ -458,14 +455,14 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
         if amp_cols:
             summaries.append(_summarize_one(
                 gene_table, values[amp_cols],
-                cancer_code="NBL_MYCN_amp", project=project,
+                cancer_code="NBL_MYCNamp", project=project, source_id=cache_dir.name,
                 extra_notes=("MYCN status = Amplified per cBioPortal "
                              "nbl_target_2018_pub MYCN attribute."),
             ))
         if nonamp_cols:
             summaries.append(_summarize_one(
                 gene_table, values[nonamp_cols],
-                cancer_code="NBL_MYCN_nonamp", project=project,
+                cancer_code="NBL_MYCNnonamp", project=project, source_id=cache_dir.name,
                 extra_notes=(
                     f"MYCN status = Not Amplified per cBioPortal "
                     f"nbl_target_2018_pub MYCN attribute "
@@ -478,12 +475,12 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
             args.summary_output,
             combined,
             source_cohort=project.source_cohort,
-            cancer_codes=["NBL", "NBL_MYCN_amp", "NBL_MYCN_nonamp"],
+            cancer_codes=["NBL", "NBL_MYCNamp", "NBL_MYCNnonamp"],
         )
     else:
         summary = _summarize_one(
             gene_table, values,
-            cancer_code=project.cancer_code, project=project,
+            cancer_code=project.cancer_code, project=project, source_id=cache_dir.name,
         )
         upsert_to_shard(
             args.summary_output,

@@ -26,6 +26,7 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.builders.gene_mapping import resolve_symbol
+from pirlygenes.gene_ids import strip_version as _strip_version
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -41,7 +42,7 @@ PROJECT_IDS = ["TARGET-ALL-P1", "TARGET-ALL-P2", "TARGET-ALL-P3"]
 SOURCE_COHORT = "TARGET_ALL_2018"
 SOURCE_PROJECT = "TARGET ALL"
 SOURCE_URL = "https://portal.gdc.cancer.gov/projects/TARGET-ALL-P2"
-PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v1"
+PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v4"
 SOURCE_VERSION = (
     "GDC STAR - Counts, GENCODE v36; TARGET ALL Phase 1/2 sample "
     "matrices 2019-06-06; Ensembl IDs harmonized to Ensembl release "
@@ -65,10 +66,6 @@ PRIMARY_SAMPLE_TYPES = {
     "Primary Blood Derived Cancer - Bone Marrow": 0,
     "Primary Blood Derived Cancer - Peripheral Blood": 1,
 }
-
-
-def _strip_version(value: object) -> str:
-    return str(value).split(".", 1)[0]
 
 
 def _gdc_filters() -> dict:
@@ -519,6 +516,8 @@ def _summarize(
     gene_table: pd.DataFrame,
     values: pd.DataFrame,
     included: pd.DataFrame,
+    *,
+    source_id: str | None = None,
 ) -> pd.DataFrame:
     frames = []
     notes_by_code = {
@@ -541,10 +540,16 @@ def _summarize(
         sample_ids = included.loc[included["cancer_code"].eq(code), "sample_id"]
         if sample_ids.empty:
             continue
+        code_values = values.loc[:, list(sample_ids)]
+        if source_id:
+            # Persist the per-code per-sample matrix for medoids + percentiles
+            # (same selection that drives the summary — one source of truth).
+            from pirlygenes import cohorts as _cohorts
+            _cohorts.write_per_sample(gene_table, code_values, source_id, code)
         frames.append(
             _summarize_one(
                 gene_table,
-                values.loc[:, list(sample_ids)],
+                code_values,
                 cancer_code=code,
                 notes=notes_by_code[code],
             )
@@ -573,23 +578,10 @@ def _upsert_source_cohort(
 
 
 def _upsert_samples(path: Path, new_rows: pd.DataFrame, *, source_cohort: str) -> pd.DataFrame:
-    """Single-file upsert for the samples manifest (legacy schema).
-
-    The samples file is not sharded — it's one CSV tracking which
-    samples were included per source_cohort. Read-modify-write.
-    """
-    if path.exists():
-        existing = pd.read_csv(path)
-        keep = ~existing["source_cohort"].astype(str).eq(source_cohort)
-        out = pd.concat(
-            [existing[keep].reindex(columns=new_rows.columns), new_rows],
-            ignore_index=True,
-        )
-    else:
-        out = new_rows.copy()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
-    return out
+    """Delegates to the shared, column-union-preserving samples-manifest upsert
+    (cohorts to replace are derived from new_rows' own source_cohort values)."""
+    from pirlygenes.expression.stats import upsert_samples_manifest
+    return upsert_samples_manifest(path, new_rows)
 
 
 def main() -> None:
@@ -610,7 +602,8 @@ def main() -> None:
         cache_dir=args.cache_dir,
         ensembl_release=args.ensembl_release,
     )
-    summary = _summarize(gene_table, values, included)
+    summary = _summarize(gene_table, values, included,
+                         source_id=args.cache_dir.name)
     _upsert_source_cohort(
         args.summary_output,
         summary,

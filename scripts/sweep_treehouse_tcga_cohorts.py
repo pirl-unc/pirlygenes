@@ -28,7 +28,9 @@ from pirlygenes.builders.treehouse import (
     TreehouseCohort,
     TreehouseRelease,
     run_sweep,
+    tcga_only_predicate,
 )
+from pirlygenes.cohorts import cohorts_for_group
 
 
 CACHE_ROOT = Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -54,66 +56,25 @@ RELEASE = TreehouseRelease(
 )
 
 
-def _is_tcga(row: dict) -> bool:
-    return str(row.get("th_dataset_id", "")).startswith("TCGA")
-
-
-# (cancer_code, Treehouse disease label). One row per direct TCGA
-# project mapping. GBM/LGG and SARC sub-histology splits are deferred.
-TCGA_MAPPING: list[tuple[str, str]] = [
-    ("ACC", "adrenocortical carcinoma"),
-    ("BLCA", "bladder urothelial carcinoma"),
-    ("BRCA", "breast invasive carcinoma"),
-    ("CESC", "cervical & endocervical cancer"),
-    ("CHOL", "cholangiocarcinoma"),
-    ("COAD", "colon adenocarcinoma"),
-    ("DLBC", "diffuse large B-cell lymphoma"),
-    ("ESCA", "esophageal carcinoma"),
-    ("HNSC", "head & neck squamous cell carcinoma"),
-    ("KICH", "kidney chromophobe"),
-    ("KIRC", "kidney clear cell carcinoma"),
-    ("KIRP", "kidney papillary cell carcinoma"),
-    ("LAML", "acute myeloid leukemia"),
-    ("LIHC", "hepatocellular carcinoma"),
-    ("LUAD", "lung adenocarcinoma"),
-    ("LUSC", "lung squamous cell carcinoma"),
-    ("MESO", "mesothelioma"),
-    ("OV", "ovarian serous cystadenocarcinoma"),
-    ("PAAD", "pancreatic adenocarcinoma"),
-    ("PCPG", "pheochromocytoma & paraganglioma"),
-    ("PRAD", "prostate adenocarcinoma"),
-    ("READ", "rectum adenocarcinoma"),
-    # No bare "SARC" cohort: the TCGA-SARC leiomyosarcoma samples it used to
-    # capture are already in SARC_LMS (the Treehouse "leiomyosarcoma" atom keeps
-    # TCGA + non-TCGA samples), and the other TCGA-SARC histologies are likewise
-    # already in their SARC_UPS / SARC_MYXFIB / SARC_SYN / SARC_MPNST atoms. So
-    # "SARC" was a redundant leiomyosarcoma slice; the bare SARC code is now the
-    # computed pan-sarcoma grand union (cancer-cohort-aggregates.csv).
-    ("SKCM", "skin cutaneous melanoma"),
-    ("STAD", "stomach adenocarcinoma"),
-    ("TGCT", "testicular germ cell tumor"),
-    ("THCA", "thyroid carcinoma"),
-    ("THYM", "thymoma"),
-    ("UCEC", "uterine corpus endometrioid carcinoma"),
-    ("UCS", "uterine carcinosarcoma"),
-    ("UVM", "uveal melanoma"),
-]
-
-
+# (cancer_code, stem, disease_label) come from the single registry in
+# pirlygenes.cohorts (group "tcga_direct"); GBM/LGG (glioma split) and the
+# SARC sub-histologies live under their own groups. The bare "SARC" code is
+# the computed pan-sarcoma grand union (cancer-cohort-aggregates.csv), not a
+# concrete per-sample cohort, so it is intentionally absent.
 COHORTS = [
     TreehouseCohort(
-        cancer_code=code,
-        disease_label=label,
-        sample_predicate=_is_tcga,
+        cancer_code=c.code,
+        disease_label=c.disease_label,
+        sample_predicate=tcga_only_predicate(),
         extra_notes=(
             "TCGA subset only: filtered via "
             "`th_dataset_id.startswith('TCGA')` against Treehouse's "
             "compendium-wide disease label. Treehouse-internal "
             "samples with the same disease are excluded from this row."
         ),
-        cache_stem=f"tcga_{code.lower()}",
+        cache_stem=c.stem,
     )
-    for code, label in TCGA_MAPPING
+    for c in cohorts_for_group("tcga_direct")
 ]
 
 

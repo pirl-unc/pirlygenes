@@ -120,6 +120,10 @@ def main() -> int:
             print(f"  skipping {code}: no samples (TF not dominant in any sample)")
             continue
         sub_values = values[cols]
+        # Persist the per-subtype per-sample matrix for medoids + percentiles
+        # (under the SCLC source; discovery finds SCLC + the 4 subtypes).
+        from pirlygenes import cohorts as _cohorts
+        _cohorts.write_per_sample(gene_table, sub_values, SOURCE_CACHE.name, code)
         clean = _clean_tpm(sub_values, gene_table=gene_table)
         out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
         out["cancer_code"] = code
@@ -133,7 +137,7 @@ def main() -> int:
         assign_stats(out, sub_values, clean)
         out["processing_pipeline"] = (
             f"sclc_ucologne_2015_tf_dominance_ensembl"
-            f"{args.ensembl_release}_clean_tpm_v1"
+            f"{args.ensembl_release}_clean_tpm_v4"
         )
         out["notes"] = (
             f"SCLC {code.removeprefix('SCLC_')}-dominant subtype "
@@ -143,7 +147,10 @@ def main() -> int:
             "NMF-derived classifier; rigorous version would replace "
             "this with their published per-sample labels."
         )
-        out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+        out["tumor_origin"] = "primary"  # George 2015 SCLC is a primary-tumor cohort
+        # reindex (not strict select): tumor_origin / metastasis_site aren't set
+        # by assign_stats; reindex backfills metastasis_site as NaN.
+        out = round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
         summaries.append(out)
         print(f"  {code}: n={len(cols)} → {len(out)} gene rows")
 

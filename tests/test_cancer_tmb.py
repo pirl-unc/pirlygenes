@@ -81,12 +81,16 @@ def test_skcm_is_highest_among_common_types():
 def test_subtype_inherits_parent_tmb():
     """Molecular / histology subtypes with no curated row inherit the nearest
     ancestor's TMB by walking parent_code (default inherit=True)."""
-    # LUAD_EGFR has no own row -> inherits LUAD; SCLC_ASCL1 -> SCLC.
-    assert cancer_tmb("LUAD_EGFR") == cancer_tmb("LUAD")
+    # subtypes with NO curated row inherit the parent: LUAD_KRAS/STK11 -> LUAD
+    # (smoking, ~= parent), SCLC_ASCL1 -> SCLC, SARC_EPITH -> pan-SARC.
+    assert cancer_tmb("LUAD_KRAS") == cancer_tmb("LUAD")
     assert cancer_tmb("SCLC_ASCL1") == cancer_tmb("SCLC")
-    # rare sarcoma histology -> pan-SARC value
-    assert cancer_tmb("SARC_CIC") == cancer_tmb("SARC")
+    assert cancer_tmb("SARC_EPITH") == cancer_tmb("SARC")
+    # but a subtype that genuinely DIFFERS gets its own cited row and overrides
+    # the parent: LUAD_EGFR (never-smoker, lower) and SARC_CIC (CIC-driven, low).
+    assert cancer_tmb("LUAD_EGFR") == 3.5 and cancer_tmb("LUAD_EGFR") != cancer_tmb("LUAD")
+    assert cancer_tmb("SARC_CIC") == 1.2 and cancer_tmb("SARC_CIC") != cancer_tmb("SARC")
     # inherit=False is the strict direct-only lookup (no parent walk)
-    assert cancer_tmb("LUAD_EGFR", inherit=False) is None
+    assert cancer_tmb("LUAD_KRAS", inherit=False) is None
     # a top-level code with a genuinely blank value stays None even with inherit
     assert cancer_tmb("MPN") is None

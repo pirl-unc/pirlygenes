@@ -28,7 +28,9 @@ from pirlygenes.builders.treehouse import (
     TreehouseCohort,
     TreehouseRelease,
     run_sweep,
+    tcga_case_predicate,
 )
+from pirlygenes.cohorts import cohorts_for_group
 
 
 CACHE_ROOT = Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -84,14 +86,10 @@ def _fetch_case_to_project_map(cache_path: Path) -> pd.DataFrame:
     return df
 
 
-def _build_predicate(project_id: str, case_to_project: dict[str, str]):
-    def _pred(row: dict) -> bool:
-        dsid = str(row.get("th_dataset_id", ""))
-        if not dsid.startswith("TCGA"):
-            return False
-        case_id = "-".join(dsid.split("-")[:3])
-        return case_to_project.get(case_id) == project_id
-    return _pred
+def _project_predicate(project_id: str, case_to_project: dict[str, str]):
+    """Predicate for the TCGA samples whose case maps to ``project_id``."""
+    cases = {cid for cid, proj in case_to_project.items() if proj == project_id}
+    return tcga_case_predicate(cases)
 
 
 def main() -> int:
@@ -114,30 +112,24 @@ def main() -> int:
         f"{(case_map_df['project_id']=='TCGA-LGG').sum()} LGG"
     )
 
-    cohorts = [
-        TreehouseCohort(
-            cancer_code="GBM",
-            disease_label="glioma",
-            sample_predicate=_build_predicate("TCGA-GBM", case_to_project),
-            extra_notes=(
-                "TCGA-GBM split from Treehouse's compendium-wide 'glioma' "
-                "bucket via GDC case→project lookup on the TCGA submitter "
-                "ID prefix."
-            ),
-            cache_stem="tcga_gbm",
-        ),
-        TreehouseCohort(
-            cancer_code="LGG",
-            disease_label="glioma",
-            sample_predicate=_build_predicate("TCGA-LGG", case_to_project),
-            extra_notes=(
-                "TCGA-LGG split from Treehouse's compendium-wide 'glioma' "
-                "bucket via GDC case→project lookup on the TCGA submitter "
-                "ID prefix."
-            ),
-            cache_stem="tcga_lgg",
-        ),
-    ]
+    # Cohort definitions (code, stem, selection="gdc_project:TCGA-*") come from
+    # the single registry in pirlygenes.cohorts (group "tcga_glioma").
+    cohorts = []
+    for c in cohorts_for_group("tcga_glioma"):
+        project_id = c.selection.split(":", 1)[1]
+        cohorts.append(
+            TreehouseCohort(
+                cancer_code=c.code,
+                disease_label=c.disease_label,
+                sample_predicate=_project_predicate(project_id, case_to_project),
+                extra_notes=(
+                    f"{project_id} split from Treehouse's compendium-wide "
+                    "'glioma' bucket via GDC case→project lookup on the TCGA "
+                    "submitter ID prefix."
+                ),
+                cache_stem=c.stem,
+            )
+        )
 
     run_sweep(
         RELEASE,

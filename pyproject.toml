@@ -79,12 +79,15 @@ pirlygenes = [
 
 # What we deliberately DO NOT ship in the wheel (these get fetched
 # lazily by pirlygenes.data_bundle):
-#   data/cancer-reference-expression/*      ~325 MB
-#   data/pan-cancer-expression.csv          ~11 MB
-#   data/hpa-cell-type-expression.csv       ~7 MB
+#   data/cancer-reference-expression/*                  ~325 MB
+#   data/cancer-reference-expression-representatives/*   ~48 MB  (#312)
+#   data/pan-cancer-expression.csv                       ~11 MB
+#   data/hpa-cell-type-expression.csv                    ~7 MB
 [tool.setuptools.exclude-package-data]
 pirlygenes = [
     "data/cancer-reference-expression/*",
+    "data/cancer-reference-expression-representatives/*",
+    "data/cancer-reference-expression-percentiles/*",
     "data/pan-cancer-expression.csv",
     "data/hpa-cell-type-expression.csv",
 ]

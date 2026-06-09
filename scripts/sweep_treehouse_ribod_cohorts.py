@@ -19,6 +19,7 @@ from pirlygenes.builders.treehouse import (
     TreehouseRelease,
     run_sweep,
 )
+from pirlygenes.cohorts import cohorts_for_group
 
 
 CACHE_ROOT = Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -38,9 +39,11 @@ RELEASE = TreehouseRelease(
     pipeline_prefix="treehouse_ribod_25_01_log2tpm_to_tpm",
 )
 
+# Cohort definitions come from the single registry in pirlygenes.cohorts
+# (group "ribod"); not enumerated here.
 COHORTS = [
-    TreehouseCohort("SARC_CHOR", "chordoma"),
-    TreehouseCohort("RB", "retinoblastoma"),
+    TreehouseCohort(c.code, c.disease_label, cache_stem=c.stem)
+    for c in cohorts_for_group("ribod")
 ]
 
 

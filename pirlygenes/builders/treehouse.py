@@ -48,11 +48,13 @@ import numpy as np
 import pandas as pd
 from pyensembl import EnsemblRelease
 
-from ..expression.normalize import clean_tpm_matrix as _clean_tpm
+from ..expression.normalize import (
+    clean_tpm_matrix as _clean_tpm,
+    technical_rna_mask as _technical_mask,
+)
 from ..expression.stats import (
-    REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
     upsert_to_shard,
 )
 from .gene_mapping import resolve_symbol
@@ -120,6 +122,30 @@ class TreehouseCohort:
     @property
     def effective_cache_stem(self) -> str:
         return self.cache_stem or self.cancer_code
+
+
+def _tcga_case_id(row: dict) -> str | None:
+    """The TCGA case submitter-id prefix (e.g. ``TCGA-AB-1234``) for a Treehouse
+    clinical row, or None if the sample isn't a TCGA sample."""
+    dsid = str(row.get("th_dataset_id", ""))
+    if not dsid.startswith("TCGA"):
+        return None
+    return "-".join(dsid.split("-")[:3])
+
+
+def tcga_only_predicate() -> Callable[[dict], bool]:
+    """Sample predicate: keep only TCGA samples (``th_dataset_id`` starts with
+    ``TCGA``). The one definition the TCGA-subset sweeps share."""
+    return lambda row: _tcga_case_id(row) is not None
+
+
+def tcga_case_predicate(cases: Iterable[str]) -> Callable[[dict], bool]:
+    """Sample predicate: keep TCGA samples whose case submitter-id is in
+    ``cases`` (a set fetched per-sweep from cBioPortal / GDC). The one
+    definition the molecular/histology-split sweeps share, so the
+    TCGA-only + case-membership logic isn't copy-pasted into each script."""
+    wanted = set(cases)
+    return lambda row: (cid := _tcga_case_id(row)) is not None and cid in wanted
 
 
 def _log(msg: str) -> None:
@@ -309,16 +335,17 @@ def _summarize_cohort(
         f"{release.release_label}; HUGO symbols harmonized to Ensembl "
         f"release {ensembl_release}; log2(TPM+1) inverse-transformed"
     )
-    pipeline = f"{release.pipeline_prefix}_ensembl{ensembl_release}_clean_tpm_v3"
+    pipeline = f"{release.pipeline_prefix}_ensembl{ensembl_release}_clean_tpm_v4"
     notes = (
         f"Per-sample TPMs from {release.release_label}. Sample selection: "
         f"clinical.disease == '{cohort.disease_label}'. "
         f"HUGO symbols mapped to Ensembl release {ensembl_release}; "
-        f"duplicate symbol mappings dropped. TPM_clean (v3) pins technical-RNA "
-        f"+ ribosomal-protein genes to fixed per-gene reference values "
-        f"(Treehouse-PolyA medians, cohort-independent) and rescales the "
-        f"remaining genes to fill the 1e6 budget (ribosomal proteins excluded "
-        f"for cross-source comparability; curated cancer targets never censored)."
+        f"duplicate symbol mappings dropped. TPM_clean (v4) is two-compartment "
+        f"fixed-fraction: technical-RNA + ribosomal-protein genes are forced to "
+        f"25% of the 1e6 budget and the remaining (biological) genes to 75%, "
+        f"each renormalized within its group (within-compartment ratios "
+        f"preserved; cohort-independent; curated cancer targets never censored). "
+        f"The biological compartment lands on a constant 750k in every sample."
     )
     if cohort.extra_notes:
         notes = notes + " " + cohort.extra_notes
@@ -332,9 +359,8 @@ def _summarize_cohort(
     assign_stats(out, values, clean)
     out["processing_pipeline"] = pipeline
     out["notes"] = notes
-    out["tumor_origin"] = release.tumor_origin
     out["metastasis_site"] = pd.NA
-    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    return finalize_reference_rows(out, tumor_origin=release.tumor_origin)
 
 
 # Thin alias kept so the existing call site keeps its descriptive
@@ -445,4 +471,7 @@ __all__ = [
     "TreehouseRelease",
     "TreehouseCohort",
     "run_sweep",
+    # Re-exported shared clean-TPM helpers (builders import them from here).
+    "_clean_tpm",
+    "_technical_mask",
 ]

@@ -79,6 +79,7 @@ from ..gene_sets_cancer import housekeeping_gene_ids
 from ..load_dataset import get_data
 from .normalize import (
     add_tpm_columns_from_fpkm,
+    drop_technical_genes,
     normalize_expression,
     percentile_rank_expression,
     renormalize_to_million,
@@ -573,6 +574,8 @@ def _validate_reference_format(format: str) -> None:
 
 def _resolve_cancer_types(
     cancer_types: Optional[str | Iterable[str]],
+    *,
+    expand_aggregates: bool = False,
 ) -> list[str] | None:
     if cancer_types is None:
         return None
@@ -582,7 +585,30 @@ def _resolve_cancer_types(
         requested = [cancer_types]
     else:
         requested = list(cancer_types)
-    return [resolve_cancer_type(code) for code in requested]
+    if not expand_aggregates:
+        return [resolve_cancer_type(code) for code in requested]
+
+    # Union view: a computed-aggregate code (the pan-sarcoma ``SARC`` grand
+    # union, or the ``SARC_RMS`` / ``SARC_LPS`` histology rollups) expands to
+    # the union of its member subtype codes. ``SARC_RMS`` / ``SARC_LPS`` are
+    # aggregate-only (not registry codes), so the raw token is checked before
+    # resolving; ``SARC`` resolves to itself and is also an aggregate. No
+    # fabricated pooled stats — literature-curated members with no built shard
+    # simply contribute no rows.
+    from ..gene_sets_cancer import cohort_aggregates
+
+    aggregates = cohort_aggregates()
+    out: list[str] = []
+    for code in requested:
+        members = aggregates.get(str(code))
+        if members is None:
+            resolved = resolve_cancer_type(code)
+            members = aggregates.get(resolved)
+            if members is None:
+                out.append(resolved)
+                continue
+        out.extend(members)
+    return list(dict.fromkeys(out))
 
 
 def _load_cancer_reference_expression() -> pd.DataFrame:
@@ -594,9 +620,52 @@ def _load_cancer_reference_expression() -> pd.DataFrame:
     return get_data("cancer-reference-expression", copy=False)
 
 
-def _has_cancer_reference(code: str) -> bool:
+# Identity-keyed memo of read-only views derived purely from the (shared,
+# process-wide) reference frame. The frame is a singleton — get_data(copy=False)
+# returns the same object every call — so any view computed from it is stable
+# until the data reloads. Keying each cache entry on the frame's *identity*
+# makes it self-invalidate the moment a test monkeypatches
+# _load_cancer_reference_expression to return a different frame. Without this,
+# available_cancer_expression_references() factorized the ~1M-row frame once per
+# cancer code, which alone was ~300 s of the serial suite (#278 follow-up).
+_REFERENCE_VIEW_CACHE: dict[str, tuple] = {}
+
+
+def _reference_view(key: str, builder):
+    """Return ``builder(reference_frame)``, memoized on the frame's identity."""
     df = _load_cancer_reference_expression()
-    return code in set(df["cancer_code"].astype(str))
+    cached = _REFERENCE_VIEW_CACHE.get(key)
+    if cached is not None and cached[0] is df:
+        return cached[1]
+    value = builder(df)
+    _REFERENCE_VIEW_CACHE[key] = (df, value)
+    return value
+
+
+def _reference_code_set() -> frozenset:
+    """Cached ``{cancer_code}`` set over the packaged reference frame."""
+    return _reference_view(
+        "reference_code_set",
+        lambda df: frozenset(df["cancer_code"].astype(str)),
+    )
+
+
+def _reference_indices_by_code() -> dict:
+    """Cached ``{cancer_code: positional-row-index array}`` over the reference
+    frame, so per-code slicing avoids a full-frame ``astype(str).isin`` scan."""
+    return _reference_view(
+        "indices_by_code",
+        lambda df: {
+            str(code): idx
+            for code, idx in df.groupby(
+                df["cancer_code"].astype(str), sort=False
+            ).indices.items()
+        },
+    )
+
+
+def _has_cancer_reference(code: str) -> bool:
+    return code in _reference_code_set()
 
 
 def _load_cancer_expression_source_candidates() -> pd.DataFrame:
@@ -693,8 +762,7 @@ def _resolve_expression_reference_code(code: str) -> str | None:
     from ..gene_sets_cancer import cancer_type_registry
 
     registry = cancer_type_registry().set_index("code")
-    refs = available_cancer_expression_references()
-    reference_codes = set(refs["cancer_code"].astype(str))
+    reference_codes = _reference_code_set()
     pan_codes = _pan_expression_codes()
     return _resolve_expression_reference_code_from_lookups(
         code,
@@ -728,8 +796,19 @@ def available_cancer_expression_references() -> pd.DataFrame:
     first so consumers that take ``.iloc[0]`` get the canonical reference
     cohort. Downstream consumers can use this to decide which non-TCGA
     references are available without inspecting data files.
+
+    The expensive projection (drop_duplicates over the ~1M-row frame) is
+    memoized on the reference frame's identity; this returns a fresh ``.copy()``
+    of that cached view each call, so callers may mutate the result freely
+    without corrupting the cache. The copy is cheap — the cached frame is the
+    deduplicated cohort list (one row per ``(cancer_code, source_cohort)``).
     """
-    df = _load_cancer_reference_expression()
+    return _reference_view(
+        "available_references", _build_available_references
+    ).copy()
+
+
+def _build_available_references(df: pd.DataFrame) -> pd.DataFrame:
     keep = [
         "cancer_code",
         "source_cohort",
@@ -843,7 +922,10 @@ def cancer_expression_reference_status(
         .to_dict(orient="index")
     )
     refs = available_cancer_expression_references()
-    reference_codes = set(refs["cancer_code"].astype(str))
+    # Derive the code set from the already-loaded `refs` rather than
+    # _reference_code_set() — the available-references view dedups by cohort but
+    # retains every cancer_code, so this avoids a second reference-frame load.
+    reference_codes = frozenset(refs["cancer_code"].astype(str))
     pan_codes = _pan_expression_codes()
     reference_summaries = _reference_cohort_summaries(refs, pan_codes)
     registry_by_code = registry.set_index("code")
@@ -939,7 +1021,14 @@ def cancer_reference_expression(
     Parameters
     ----------
     cancer_types
-        Optional registry code, alias, or iterable of codes/aliases.
+        Optional registry code, alias, or iterable of codes/aliases. A
+        computed-aggregate code expands to the **union** of its member
+        subtypes' rows (each row keeps its own subtype ``cancer_code`` and
+        ``source_cohort``): ``"SARC"`` returns every sarcoma histology atom,
+        ``"SARC_RMS"`` the four rhabdomyosarcoma subtypes, ``"SARC_LPS"`` the
+        liposarcoma subtypes. No pooled summary row is fabricated — pool the
+        returned subtype rows (or use the per-sample coverage path) if a single
+        aggregate statistic is needed.
     genes
         Optional gene-symbol / Ensembl-ID subset.
     normalize
@@ -961,13 +1050,21 @@ def cancer_reference_expression(
     modes = _resolve_reference_normalize_modes(normalize)
     _validate_reference_format(format)
     df = _load_cancer_reference_expression()
-    codes = _resolve_cancer_types(cancer_types)
+    codes = _resolve_cancer_types(cancer_types, expand_aggregates=True)
+    idx_by_code = _reference_indices_by_code()
     if codes is not None:
-        df = df[df["cancer_code"].astype(str).isin(codes)]
-    available_codes = list(df["cancer_code"].astype(str).drop_duplicates())
-    if codes is not None:
+        # Slice via the cached code→row-positions index instead of an
+        # .astype(str).isin() scan of the full ~1M-row frame — the latter cost
+        # ~15 s across the suite when called once per cancer code (#278 f/u).
+        available_codes = [c for c in dict.fromkeys(codes) if c in idx_by_code]
+        if available_codes:
+            positions = np.concatenate([idx_by_code[c] for c in available_codes])
+            df = df.iloc[positions]
+        else:
+            df = df.iloc[0:0]
         wide_codes = [code for code in codes if code in set(available_codes)]
     else:
+        available_codes = list(idx_by_code.keys())
         wide_codes = available_codes
     if genes is not None:
         df = filter_to_genes(df, genes)
@@ -1020,6 +1117,273 @@ def cancer_reference_expression(
         if col not in wide.columns:
             wide[col] = np.nan
     return wide[["Ensembl_Gene_ID", "Symbol", *expected_value_cols]]
+
+
+# ---------- accessors: unified normalization views (#319) ----------
+
+
+class CohortExpressionViews:
+    """The canonical normalization stages of a cohort reference in **one
+    object**, so a consumer never re-normalizes inconsistently (#319).
+
+    Attributes (each a gene × cohort DataFrame, ``Ensembl_Gene_ID`` + ``Symbol``
+    index columns):
+
+    * ``tpm`` — TPM-harmonized cohort summary (median).
+    * ``clean_tpm`` — clean_tpm_v4 (technical compartment **included**, pinned
+      to the fixed fraction).
+    * ``clean_tpm_biological`` — ``clean_tpm`` with the technical/ribosomal
+      genes (the canonical censored-gene list) **dropped** — the
+      biologically-actionable view.
+    * ``provenance`` — one row per cohort: ``source_cohort``,
+      ``processing_pipeline`` (records the native unit, e.g. STAR-counts→TPM),
+      ``n_samples``.
+
+    Note: the bundled references are TPM-harmonized at build time, so the
+    **raw native** units (FPKM / microarray nTPM / counts) are not retained
+    here — only recorded in ``provenance.processing_pipeline``. All three value
+    views are on the TPM scale; the only differences are the censoring stage,
+    so they are directly comparable and can't be accidentally re-normalized.
+    """
+
+    __slots__ = ("tpm", "clean_tpm", "clean_tpm_biological", "provenance")
+
+    def __init__(self, tpm, clean_tpm, clean_tpm_biological, provenance):
+        self.tpm = tpm
+        self.clean_tpm = clean_tpm
+        self.clean_tpm_biological = clean_tpm_biological
+        self.provenance = provenance
+
+    def __repr__(self):
+        cohorts = list(self.provenance["source_cohort"]) if len(
+            self.provenance) else []
+        return (f"CohortExpressionViews(genes={self.tpm.shape[0]}, "
+                f"cohorts={self.provenance.shape[0]}, "
+                f"biological_genes={self.clean_tpm_biological.shape[0]}, "
+                f"sources={cohorts[:3]}{'…' if len(cohorts) > 3 else ''})")
+
+
+def cohort_expression_views(
+    cancer_types: Optional[str | Iterable[str]] = None,
+    genes: Optional[Iterable[str]] = None,
+) -> "CohortExpressionViews":
+    """Bundle a cohort's normalization stages into one
+    :class:`CohortExpressionViews` (tpm / clean_tpm / clean_tpm_biological +
+    provenance) so downstream never re-normalizes inconsistently (#319).
+
+    ``cancer_types`` / ``genes`` are passed through to
+    :func:`cancer_reference_expression` (so aggregate codes like ``SARC`` expand
+    to their subtypes). Values are the per-cohort medians.
+    """
+    long = cancer_reference_expression(
+        cancer_types, genes=genes, normalize=["tpm", "tpm_clean"],
+        format="long", include_provenance=True)
+    base = ["Ensembl_Gene_ID", "Symbol"]
+
+    def _pivot(label):
+        sub = long[long["normalization"] == label]
+        if sub.empty:
+            return pd.DataFrame(columns=base)
+        wide = (sub.pivot_table(index=base, columns="cancer_code",
+                                values="expression", aggfunc="first")
+                .reset_index())
+        wide.columns.name = None
+        return wide
+
+    tpm = _pivot("TPM")
+    clean = _pivot("TPM_clean")
+    biological = drop_technical_genes(clean) if not clean.empty else clean
+    prov_cols = ["source_cohort", "processing_pipeline", "n_samples"]
+    provenance = (long[[c for c in prov_cols if c in long.columns]]
+                  .drop_duplicates().reset_index(drop=True))
+    return CohortExpressionViews(tpm, clean, biological, provenance)
+
+
+# ---------- accessors: representative per-sample vectors (#312) ----------
+
+_REPRESENTATIVES_DIR = "cancer-reference-expression-representatives"
+
+
+def _bundle_subdir(name: str):
+    """Locate a bundle shard directory: an in-repo checkout (``pirlygenes/data/…``)
+    wins, else the downloaded bundle cache; the bundle is fetched if the
+    directory is absent from both."""
+    from pathlib import Path
+
+    from .. import data_bundle
+    from ..load_dataset import _BUNDLED_DATA_DIR
+
+    in_repo = Path(_BUNDLED_DATA_DIR) / name
+    if in_repo.exists():
+        return in_repo
+    cached = data_bundle.find(name)
+    if cached is not None:
+        return cached
+    data_bundle.ensure_local()
+    return data_bundle.cache_dir() / name
+
+
+def _available_shard_codes(root) -> list[str]:
+    """Sorted cohort codes that ship a parquet shard under ``root`` (the shared
+    body of the ``available_*_cohorts`` accessors). ``root`` is resolved by the
+    per-artifact root function so test monkeypatches on those still apply."""
+    if not root.exists():
+        return []
+    return sorted(p.stem for p in root.glob("*.parquet"))
+
+
+def _representatives_root():
+    return _bundle_subdir(_REPRESENTATIVES_DIR)
+
+
+def _percentiles_root():
+    return _bundle_subdir(_PERCENTILES_DIR)
+
+
+def available_representative_cohorts() -> list[str]:
+    """Registry codes that ship a representative-samples shard (sorted)."""
+    return _available_shard_codes(_representatives_root())
+
+
+def representative_cohort_samples(
+    cancer_types: Optional[str | Iterable[str]] = None,
+    *,
+    k: Optional[int] = None,
+    normalize: str = "tpm_clean",
+    format: str = "wide",
+    include_provenance: bool = False,
+) -> pd.DataFrame:
+    """Representative real per-sample expression vectors per cohort (#312).
+
+    The packaged cohort references are per-cohort aggregates (median /
+    quantiles), so downstream can only validate classification / normalization
+    against the cohort *median* — which overstates accuracy and can't
+    reconstruct a physiological sample. This accessor returns a **bounded** set
+    of real joint per-sample vectors per cohort — medoids spanning the
+    within-cohort variation — in the same ``clean_tpm_v4`` basis as the
+    aggregates, for the honest sample-level self-classification battery and for
+    validating normalization / representation changes on realistic samples.
+
+    Parameters
+    ----------
+    cancer_types
+        Registry code, alias, or iterable. A computed-aggregate code expands to
+        the union of its member subtypes (e.g. ``"SARC"``). ``None`` returns
+        every cohort that ships representatives. Codes without a representatives
+        shard are skipped.
+    k
+        Keep at most the first ``k`` representatives per cohort (``None`` = all,
+        currently up to 5). Representatives are anonymized (``<CODE>_rep01`` …).
+    normalize
+        ``"tpm_clean"`` (clean_tpm_v4, as stored) or ``"tpm_clean_log1p"``
+        (log1p of the stored values).
+    format
+        ``"wide"`` → one ``Ensembl_Gene_ID`` / ``Symbol`` row per gene with one
+        column per representative (genes × samples). ``"long"`` → one row per
+        gene × representative with ``cancer_code`` + ``representative_id``;
+        ``include_provenance=True`` adds ``source_cohort`` / ``source_project``
+        / ``n_cohort_samples``.
+
+    Returns
+    -------
+    pd.DataFrame
+    """
+    if normalize not in ("tpm_clean", "tpm_clean_log1p"):
+        raise ValueError(
+            "representative_cohort_samples normalize must be 'tpm_clean' or "
+            "'tpm_clean_log1p' (the artifact ships only in clean_tpm_v4)"
+        )
+    if format not in ("wide", "long"):
+        raise ValueError("format must be 'wide' or 'long'")
+
+    root = _representatives_root()
+    available = set(available_representative_cohorts())
+    if cancer_types is None:
+        codes = sorted(available)
+    else:
+        requested = _resolve_cancer_types(cancer_types, expand_aggregates=True)
+        codes = [c for c in dict.fromkeys(requested) if c in available]
+
+    base = ["Ensembl_Gene_ID", "Symbol"]
+    wide = None
+    long_parts = []
+    for code in codes:
+        shard = pd.read_parquet(root / f"{code}.parquet")
+        rep_cols = [c for c in shard.columns if c not in base]
+        if k is not None:
+            rep_cols = rep_cols[:k]
+        if normalize == "tpm_clean_log1p":
+            shard[rep_cols] = np.log1p(shard[rep_cols].to_numpy(dtype=float))
+        if format == "wide":
+            part = shard[base + rep_cols]
+            wide = part if wide is None else wide.merge(part, on=base, how="outer")
+        else:
+            melted = shard[base + rep_cols].melt(
+                id_vars=base, var_name="representative_id", value_name="expression")
+            melted.insert(2, "cancer_code", code)
+            long_parts.append(melted)
+
+    if format == "wide":
+        if wide is None:
+            return pd.DataFrame(columns=base)
+        return wide
+
+    if not long_parts:
+        cols = base + ["cancer_code", "representative_id", "expression"]
+        return pd.DataFrame(columns=cols)
+    long = pd.concat(long_parts, ignore_index=True)
+    if include_provenance:
+        prov_path = root / "_provenance.csv"
+        if prov_path.exists():
+            prov = pd.read_csv(prov_path)
+            keep = ["representative_id", "source_cohort", "source_project",
+                    "n_cohort_samples"]
+            long = long.merge(prov[[c for c in keep if c in prov.columns]],
+                              on="representative_id", how="left")
+    return long
+
+
+# ---------- accessors: per-gene × cohort percentile vectors (#298) ----------
+
+_PERCENTILES_DIR = "cancer-reference-expression-percentiles"
+
+
+def available_percentile_cohorts() -> list[str]:
+    """Cohort codes that ship a per-gene percentile-vector shard (sorted)."""
+    return _available_shard_codes(_percentiles_root())
+
+
+def cohort_gene_percentiles(cancer_type, *, as_tpm: bool = True) -> pd.DataFrame:
+    """Tail-weighted per-gene percentile vector for one cohort (#298).
+
+    Returns one row per gene (``Ensembl_Gene_ID`` + ``Symbol``) with 26
+    breakpoint columns — ``p0, p1, p5, p10 … p90, p95, p96, p97, p98, p99,
+    p100`` — dense in the actionable upper tail. Lets a consumer place a
+    sample's gene as a **percentile rank within the cohort** instead of an
+    absolute TPM (the producer side of trufflepig#54).
+
+    Computed on the **biological clean_tpm_v4 view** (technical genes dropped,
+    so the fixed-fraction inflation #304 doesn't apply). Stored compactly as
+    ``log1p`` + float16; ``as_tpm=True`` (default) ``expm1``-restores clean-TPM
+    values, ``as_tpm=False`` returns the stored log1p values. Raises if the
+    cohort has no per-sample data (summary-only cohorts have no vector — their
+    coarse percentiles are in :func:`cancer_reference_expression`).
+    """
+    from ..gene_sets_cancer import resolve_cancer_type
+    code = resolve_cancer_type(cancer_type)
+    shard = _percentiles_root() / f"{code}.parquet"
+    if not shard.exists():
+        raise ValueError(
+            f"no percentile vector for {code!r} — only cohorts with per-sample "
+            f"data ship one; see available_percentile_cohorts(). Summary-only "
+            "cohorts expose coarse p5/p10/p90/p95 via cancer_reference_expression."
+        )
+    df = pd.read_parquet(shard)
+    bp_cols = [c for c in df.columns if c not in ("Ensembl_Gene_ID", "Symbol")]
+    df[bp_cols] = df[bp_cols].astype("float32")
+    if as_tpm:
+        df[bp_cols] = np.expm1(df[bp_cols])
+    return df
 
 
 # ---------- accessors: pan-cancer expression ----------

@@ -194,6 +194,80 @@ def test_upsert_to_shard_accepts_valid_tumor_origin(tmp_path):
     assert set(written["tumor_origin"]) == {"primary"}
 
 
+def test_upsert_to_shard_canonicalizes_renamed_codes(tmp_path):
+    """A builder still emitting a pre-rename code (e.g. recount3 routing →
+    'MID_NET') must land under the current registry code ('NET_MIDGUT'),
+    and the cross-code upsert must REPLACE any existing canonical-name rows
+    rather than leaving a stale rename-orphan copy alongside it."""
+    from pirlygenes.gene_sets_cancer import canonical_cancer_code
+    assert canonical_cancer_code("MID_NET") == "NET_MIDGUT"
+    assert canonical_cancer_code("PRAD") == "PRAD"  # untouched
+
+    # Seed the shard with a stale canonical-name row (as a prior in-place
+    # rename migration would have left it).
+    stale = _minimal_rows(cancer_code="NET_MIDGUT", tumor_origin="primary")
+    stale["source_version"] = "stale_v1"
+    upsert_to_shard(
+        tmp_path, stale, source_cohort="TEST_SOURCE", cancer_codes=["NET_MIDGUT"],
+    )
+    # New build emits the OLD code name; cancer_codes also uses the old name.
+    fresh = _minimal_rows(cancer_code="MID_NET", tumor_origin="primary")
+    fresh["source_version"] = "fresh_v4"
+    merged = upsert_to_shard(
+        tmp_path, fresh, source_cohort="TEST_SOURCE", cancer_codes=["MID_NET"],
+    )
+    # Result: only the canonical code survives, carrying the fresh data.
+    assert set(merged["cancer_code"]) == {"NET_MIDGUT"}
+    assert set(merged["source_version"]) == {"fresh_v4"}
+    on_disk = pd.read_csv(tmp_path / "TEST_SOURCE.csv.gz")
+    assert set(on_disk["cancer_code"]) == {"NET_MIDGUT"}
+    assert "MID_NET" not in set(on_disk["cancer_code"])
+
+
+def test_upsert_samples_manifest_preserves_other_cohorts_rows_and_columns(tmp_path):
+    """A builder rebuilding cohort A must not drop cohort B's rows — nor strip
+    columns B carries that A's manifest lacks (the v5.20.0 truncation/column-
+    stripping bug). Replacement is keyed on the source_cohorts present in the
+    new rows; everything else is preserved verbatim."""
+    from pirlygenes.expression.stats import upsert_samples_manifest
+
+    path = tmp_path / "samples.csv.gz"
+    # Cohort B carries a 'lineage_label' column that cohort A's builder omits.
+    cohort_b = pd.DataFrame({
+        "cancer_code": ["B", "B"],
+        "source_cohort": ["COHORT_B", "COHORT_B"],
+        "sample_id": ["b1", "b2"],
+        "included": [True, True],
+        "lineage_label": ["lin_b", "lin_b"],
+    })
+    upsert_samples_manifest(path, cohort_b)
+
+    # Rebuild cohort A with a NARROWER column set (no lineage_label) + stale A row
+    # already present to prove replacement.
+    cohort_a_v1 = pd.DataFrame({
+        "cancer_code": ["A"], "source_cohort": ["COHORT_A"],
+        "sample_id": ["a_old"], "included": [False],
+    })
+    upsert_samples_manifest(path, cohort_a_v1)
+    cohort_a_v2 = pd.DataFrame({
+        "cancer_code": ["A", "A"], "source_cohort": ["COHORT_A", "COHORT_A"],
+        "sample_id": ["a1", "a2"], "included": [True, True],
+    })
+    out = upsert_samples_manifest(path, cohort_a_v2)
+
+    on_disk = pd.read_csv(path)
+    # Cohort B fully preserved, including its lineage_label values.
+    b = on_disk[on_disk["source_cohort"] == "COHORT_B"]
+    assert len(b) == 2
+    assert set(b["lineage_label"]) == {"lin_b"}
+    # Cohort A replaced (stale a_old gone, a1/a2 present); union columns kept.
+    a = on_disk[on_disk["source_cohort"] == "COHORT_A"]
+    assert set(a["sample_id"]) == {"a1", "a2"}
+    assert "a_old" not in set(on_disk["sample_id"])
+    assert "lineage_label" in on_disk.columns
+    assert out["source_cohort"].value_counts().to_dict() == {"COHORT_A": 2, "COHORT_B": 2}
+
+
 def test_upsert_to_shard_per_cancer_code_shards_writes_one_file_per_code(tmp_path):
     """When per_cancer_code_shards=True, write `<source>__<code>.csv.gz`
     per code so a multi-code source can stay under GitHub's 100 MiB

@@ -25,7 +25,9 @@ from pirlygenes.builders.treehouse import (
     TreehouseCohort,
     TreehouseRelease,
     run_sweep,
+    tcga_case_predicate,
 )
+from pirlygenes.cohorts import cohorts_for_group
 
 
 CACHE_ROOT = Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -47,10 +49,8 @@ RELEASE = TreehouseRelease(
 )
 
 
-HPV_TO_REGISTRY = {
-    "HNSC_HPV+": "HNSC_HPVpos",
-    "HNSC_HPV-": "HNSC_HPVneg",
-}
+# Cohort definitions (code, stem, selection="hpv:<cBioPortal label>") come from
+# the single registry in pirlygenes.cohorts (group "tcga_hnsc_hpv").
 
 
 def _fetch_cbioportal_hpv(cache_path: Path) -> pd.DataFrame:
@@ -70,16 +70,6 @@ def _fetch_cbioportal_hpv(cache_path: Path) -> pd.DataFrame:
     return df
 
 
-def _build_predicate(cases_for_subtype: set[str]):
-    def _pred(row: dict) -> bool:
-        dsid = str(row.get("th_dataset_id", ""))
-        if not dsid.startswith("TCGA"):
-            return False
-        case_id = "-".join(dsid.split("-")[:3])
-        return case_id in cases_for_subtype
-    return _pred
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ensembl-release", default=112, type=int)
@@ -96,15 +86,16 @@ def main() -> int:
     print(f"loaded HPV calls: {hpv['hpv_subtype'].value_counts().to_dict()}")
 
     cohorts = []
-    for hpv_label, registry_code in HPV_TO_REGISTRY.items():
+    for c in cohorts_for_group("tcga_hnsc_hpv"):
+        hpv_label = c.selection.split(":", 1)[1]
         cases = set(
             hpv.loc[hpv["hpv_subtype"] == hpv_label, "patientId"].astype(str)
         )
         cohorts.append(
             TreehouseCohort(
-                cancer_code=registry_code,
-                disease_label="head & neck squamous cell carcinoma",
-                sample_predicate=_build_predicate(cases),
+                cancer_code=c.code,
+                disease_label=c.disease_label,
+                sample_predicate=tcga_case_predicate(cases),
                 extra_notes=(
                     f"HPV subtype = '{hpv_label}' per cBioPortal "
                     "hnsc_tcga_pan_can_atlas_2018 (Cao 2016 "
@@ -113,7 +104,7 @@ def main() -> int:
                     "submitter_id is classified as this HPV subtype "
                     "in the cBioPortal study."
                 ),
-                cache_stem=f"tcga_hnsc_{'hpv_pos' if hpv_label.endswith('+') else 'hpv_neg'}",
+                cache_stem=c.stem,
             )
         )
 

@@ -42,7 +42,7 @@ SOURCE_URL = (
 CANCER_CODE = "SARC_CHOR"
 SOURCE_COHORT = "GSE239531_VANOOST_2024"
 SOURCE_PROJECT = "GEO"
-PIPELINE = "gse239531_chordoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_v1"
+PIPELINE = "gse239531_chordoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_v4"
 
 
 def main() -> int:
@@ -75,6 +75,9 @@ def main() -> int:
     gene_table, tpm = _counts_to_tpm(counts_df, mapping)
     print(f"  canonical genes: {len(gene_table)}")
 
+    from pirlygenes import cohorts as _cohorts
+    _cohorts.write_per_sample(gene_table, tpm, args.cache_dir.name, CANCER_CODE)
+
     print("computing stats...")
     clean = _clean_tpm(tpm, gene_table=gene_table)
     out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
@@ -94,7 +97,7 @@ def main() -> int:
         f"n={tpm.shape[1]} primary chordoma; PMID 38272563). Source data is "
         "raw counts keyed by Ensembl ID; length-normalized to TPM with "
         f"Ensembl release {args.ensembl_release} gene lengths. TPM_clean "
-        "computed per-sample by technical-RNA zeroing + denominator rescaling."
+        "computed per-sample by two-compartment fixed-fraction clean-TPM (technical 25% / biological 75%, each renormalized within its group)."
     )
     # reindex (not strict select): tumor_origin / metastasis_site aren't set
     # by this source and should land as empty rather than KeyError.

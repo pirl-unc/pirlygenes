@@ -224,7 +224,44 @@ def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():
     ms4a1 = df[df["Symbol"] == "MS4A1"].iloc[0]
     malat1 = df[df["Symbol"] == "MALAT1"].iloc[0]
     assert ms4a1["expression"] > 100
-    assert malat1["expression"] == 0
+    # clean_tpm_v4 normalizes the technical block to a fixed 25% fraction
+    # (not zeroed as in v1), so MALAT1 carries a suppressed-but-nonzero value.
+    assert malat1["expression"] > 0
+
+
+def test_cancer_reference_expression_expands_sarc_aggregate_to_subtype_union():
+    """The pan-sarcoma ``SARC`` aggregate has no frozen shard; asking for it
+    returns the UNION of its member subtype rows (each keeping its own subtype
+    cancer_code + source_cohort), not an empty frame or a fabricated pooled
+    row (Phase C union view)."""
+    df = cancer_reference_expression(cancer_types="SARC", genes=["TP53"])
+    codes = set(df["cancer_code"].astype(str))
+    # the umbrella code itself never appears as a row (no SARC shard)
+    assert "SARC" not in codes
+    # several real histology atoms are present
+    assert {"SARC_LMS", "SARC_DDLPS", "SARC_OS"} <= codes
+    # the common-name alias expands identically
+    via_alias = cancer_reference_expression(cancer_types="sarcoma", genes=["TP53"])
+    assert set(via_alias["cancer_code"].astype(str)) == codes
+
+
+def test_cancer_reference_expression_expands_histology_rollups():
+    """``SARC_RMS`` / ``SARC_LPS`` are aggregate-only codes (not registry
+    codes); the accessor expands them to their member subtypes' rows."""
+    rms = cancer_reference_expression(cancer_types="SARC_RMS", genes=["TP53"])
+    assert set(rms["cancer_code"].astype(str)) <= {
+        "SARC_RMS_ERMS", "SARC_RMS_ARMS", "SARC_RMS_PRMS", "SARC_RMS_SSRMS",
+    }
+    assert not rms.empty
+    lps = cancer_reference_expression(cancer_types="SARC_LPS", genes=["TP53"])
+    assert "SARC_DDLPS" in set(lps["cancer_code"].astype(str))
+
+
+def test_cancer_reference_expression_non_aggregate_code_unaffected():
+    """A plain leaf code resolves to exactly itself (aggregate expansion does
+    not leak into ordinary single-cohort lookups)."""
+    df = cancer_reference_expression(cancer_types="SARC_LMS", genes=["TP53"])
+    assert set(df["cancer_code"].astype(str)) == {"SARC_LMS"}
 
 
 def test_cancer_reference_expression_can_return_raw_and_clean_wide():
@@ -297,7 +334,10 @@ def test_cancer_expression_resolves_mmrf_reference():
     df = cancer_expression("MM", genes=["TNFRSF17", "SDC1", "GPRC5D"])
     assert set(df["Symbol"]) == {"TNFRSF17", "SDC1", "GPRC5D"}
     values = dict(zip(df["Symbol"], df["expression"]))
-    assert values["TNFRSF17"] > 300
+    # Thresholds reflect clean_tpm_v4 two-compartment renormalization (the
+    # biological block shares 75% of the budget, slightly below the v1 zeroing
+    # levels): TNFRSF17 ~296, SDC1 ~317, GPRC5D ~130.
+    assert values["TNFRSF17"] > 250
     assert values["SDC1"] > 300
     assert values["GPRC5D"] > 100
 
@@ -327,8 +367,12 @@ def test_cancer_reference_expression_mm_markers_and_clean_artifacts():
         assert clean.loc[marker, "expression"] > 50
     assert clean.loc["FCRL5", "expression"] > 1
     assert clean.loc["GPRC5D", "expression"] > 100
-    assert clean.loc["MALAT1", "expression"] == 0
-    assert clean.loc["MT-CO1", "expression"] == 0
+    # clean_tpm_v4 renormalizes the technical block to a fixed 25% fraction
+    # rather than zeroing it, so MALAT1 / MT-CO1 are nonzero (and in a
+    # technically-light cohort like CD138-sorted MM, even inflated toward the
+    # 25% floor) — but they no longer ride the raw library-prep variation.
+    assert clean.loc["MALAT1", "expression"] > 0
+    assert clean.loc["MT-CO1", "expression"] > 0
 
 
 def test_cancer_expression_resolves_target_all_references():
@@ -336,13 +380,15 @@ def test_cancer_expression_resolves_target_all_references():
     b_values = dict(zip(b_all["Symbol"], b_all["expression"]))
     assert b_values["CD79A"] > 1000
     assert b_values["PAX5"] > 100
-    assert b_values["MALAT1"] == 0
+    # clean_tpm_v4 normalizes technical RNA to a fixed 25% fraction (not zeroed).
+    assert b_values["MALAT1"] > 0
 
     t_all = cancer_expression("T_ALL", genes=["CD3D", "BCL11B", "MALAT1"])
     t_values = dict(zip(t_all["Symbol"], t_all["expression"]))
-    assert t_values["CD3D"] > 1000
+    # CD3D ~972 under v4's 75% biological budget (was >1000 under v1 zeroing).
+    assert t_values["CD3D"] > 900
     assert t_values["BCL11B"] > 100
-    assert t_values["MALAT1"] == 0
+    assert t_values["MALAT1"] > 0
 
 
 def test_cancer_reference_expression_target_all_lineage_markers_separate():
@@ -382,13 +428,15 @@ def test_cancer_reference_expression_imported_os_reference_is_clean_by_default()
     assert pivot.loc["COL1A2", "TPM"] > 7000
     assert pivot.loc["COL1A2", "TPM_clean"] > pivot.loc["COL1A2", "TPM"]
     assert pivot.loc["RUNX2", "TPM_clean"] > 80
-    assert pivot.loc["MALAT1", "TPM_clean"] == 0
-    assert pivot.loc["MT-CO1", "TPM_clean"] == 0
+    # clean_tpm_v4 normalizes the technical block to a fixed 25% fraction
+    # (not zeroed), so MALAT1 / MT-CO1 are suppressed but nonzero.
+    assert pivot.loc["MALAT1", "TPM_clean"] > 0
+    assert pivot.loc["MT-CO1", "TPM_clean"] > 0
 
     out = cancer_expression("SARC_OS", genes=["COL1A2", "MALAT1"])
     values = dict(zip(out["Symbol"], out["expression"]))
     assert values["COL1A2"] == pivot.loc["COL1A2", "TPM_clean"]
-    assert values["MALAT1"] == 0
+    assert values["MALAT1"] > 0
 
 
 def test_cancer_reference_expression_acquirable_heme_markers_are_distinct():
@@ -431,7 +479,9 @@ def test_cancer_reference_expression_acquirable_heme_markers_are_distinct():
     assert pivot.loc["MPO", "MDS"] > 1000
     assert pivot.loc["CD34", "MPN"] > 50
     assert pivot.loc["MPL", "MPN"] > 100
-    assert (pivot.loc["MALAT1"] == 0).all()
+    # clean_tpm_v4 normalizes the technical block to a fixed 25% fraction
+    # (not zeroed), so MALAT1 is nonzero across every heme cohort.
+    assert (pivot.loc["MALAT1"] > 0).all()
 
 
 def test_cancer_reference_expression_ctcl_scrna_markers_and_artifacts():
@@ -447,14 +497,16 @@ def test_cancer_reference_expression_ctcl_scrna_markers_and_artifacts():
         aggfunc="first",
     )
 
-    assert pivot.loc["CD3D", "TPM_clean"] > 1000
+    # CD3D ~964 under v4's 75% biological budget (was >1000 under v1 zeroing).
+    assert pivot.loc["CD3D", "TPM_clean"] > 900
     assert pivot.loc["CD3E", "TPM_clean"] > 1000
     assert pivot.loc["KIR3DL2", "TPM_clean"] > 200
     assert pivot.loc["TOX", "TPM_clean"] > 200
     assert pivot.loc["CCR4", "TPM_clean"] > 50
     assert pivot.loc["MS4A1", "TPM_clean"] < 20
     assert pivot.loc["MALAT1", "TPM"] > 1000
-    assert pivot.loc["MALAT1", "TPM_clean"] == 0
+    # clean_tpm_v4 normalizes technical RNA to a fixed 25% fraction (not zeroed).
+    assert pivot.loc["MALAT1", "TPM_clean"] > 0
 
 
 def test_imported_symbol_only_references_use_historical_symbol_rescue():
@@ -507,7 +559,8 @@ def test_expression_gene_filters_accept_aliases():
     df = cancer_expression("MM", genes=["BCMA", "FCRH5"])
     assert set(df["Symbol"]) == {"TNFRSF17", "FCRL5"}
     values = dict(zip(df["Symbol"], df["expression"]))
-    assert values["TNFRSF17"] > 300
+    # TNFRSF17 ~296 under clean_tpm_v4's 75% biological budget (was >300 under v1).
+    assert values["TNFRSF17"] > 250
     assert values["FCRL5"] > 1
 
 

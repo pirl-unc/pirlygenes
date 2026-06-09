@@ -57,6 +57,10 @@ GSE85383 = dict(
     platform_name=(
         "Agilent SurePrint G3 Human Gene Expression v3 8x60K (GPL22303)"
     ),
+    # GPL22303 is the "SystematicName Version" of the Agilent 028004 design and
+    # ships only RefSeq/GenBank accessions (no gene-symbol column). Bridge to the
+    # symbol-bearing sibling annotation of the same design (GPL13497) via GB_ACC.
+    symbol_source_platform_id="GPL13497",
     source_project="GEO",
     citation="PMID 29066508 (Yoshida 2017 ESS / UUS)",
 )

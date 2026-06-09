@@ -1,0 +1,128 @@
+"""Emit per-sample TPM parquets for the neuroendocrine cohorts (#318).
+
+The packaged NE references are summary-only (per-cohort medians), so the
+representative-samples artifact (#312) had no NE coverage and trufflepig's
+sample-level battery left the NE axis unscored. This produces the per-sample
+joint matrices the representatives generator needs, **reusing the existing NE
+builders' parsing** (so the per-sample TPM is identical to what the summaries
+were aggregated from) and writing them in the standard
+``<source>/derived/<CODE>_per_sample_tpm.parquet`` location (linear raw TPM;
+the representatives generator applies clean_tpm_v4 + medoid selection).
+
+Covers the NE cohorts that have no other canonical per-sample builder: small-cell
+lung cancer (UCologne FPKM) and lung NET/NEC (IARC LNEN counts). Pancreatic NET
+(NET_PANCREAS) and the GSE98894 midgut/rectal NET cohorts are built by the
+canonical recount3 source (gse98894-midnet / gse118014-pannet), so they are not
+duplicated here.
+
+These parquets live in the local cache only (build artifacts) — they are NOT
+shipped; only the resulting representative medoids are bundled.
+
+Run:  python scripts/build_ne_per_sample_parquets.py
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from pirlygenes import cohorts as _cohorts  # noqa: E402
+from pirlygenes.builders.treehouse import (  # noqa: E402
+    _aggregate_by_ensembl,
+    _build_or_load_symbol_mapping,
+)
+
+import build_sclc_reference_expression as sclc  # noqa: E402
+
+CACHE = Path.home() / ".cache" / "pirlygenes" / "expression"
+ENSEMBL = 112
+
+
+def _write(gene_table: pd.DataFrame, values: pd.DataFrame, source_dir: Path,
+           code: str) -> int:
+    # source_dir is CACHE/<source_id>; the canonical writer is keyed on source_id
+    path = _cohorts.write_per_sample(gene_table, values, source_dir.name, code)
+    n = values.shape[1]
+    print(f"  {code}: {len(gene_table)} genes × {n} samples -> {path}", flush=True)
+    return n
+
+
+def _mapping(symbols, source_dir: Path):
+    return _build_or_load_symbol_mapping(
+        symbols, ensembl_release=ENSEMBL,
+        cache_path=source_dir / f"symbol_to_ensembl_{ENSEMBL}.parquet",
+        refresh=False)
+
+
+def _only_code(source_id: str) -> str:
+    """The single registered cohort code for a source — the registry in
+    pirlygenes.cohorts is the source of truth for the code, not a literal here."""
+    (code,) = _cohorts.cohorts_for_source(source_id)
+    return code
+
+
+def build_sclc() -> None:
+    d = CACHE / "sclc-ucologne-2015"
+    fpkm = sclc._read_fpkm(d / "data_mrna_seq_fpkm.txt")
+    tpm = sclc._fpkm_to_tpm(fpkm)
+    gene_table, values = _aggregate_by_ensembl(tpm, _mapping(fpkm.index, d))
+    _write(gene_table, values, d, _only_code(d.name))
+
+
+def build_lung_ne() -> None:
+    """Lung NE (NET_LUNG carcinoid + NEC_LUNG_LARGECELL) from the IARC DRMetrics
+    pan-LNEN counts, reusing the LNEN builder's counts→TPM + histology split."""
+    from pirlygenes.builders.geo_matrix import (
+        _gene_lengths_kb_for_index,
+        harmonize_gene_ids,
+        normalize_to_tpm,
+        read_matrix,
+    )
+    from pirlygenes.gene_sets_cancer import canonical_cancer_code
+
+    import build_lnen_drmetrics_reference_expression as lnen
+
+    d = CACHE / "drmetrics-lnen-2020"
+    attrs = pd.read_csv(d / "Attributes.txt", sep="\t",
+                        usecols=["Sample_ID", "Histopathology_simplified"])
+    matrix = read_matrix(d / "read_counts_all.txt", sep=r"\s+",
+                         gene_id_col="gene_id", drop_cols=())
+    lengths = _gene_lengths_kb_for_index(matrix.index, gene_id_type="ensembl",
+                                         ensembl_release=ENSEMBL)
+    tpm = normalize_to_tpm(matrix, unit="raw_counts", gene_lengths_kb=lengths)
+    mapping, values = harmonize_gene_ids(tpm, gene_id_type="ensembl",
+                                         ensembl_release=ENSEMBL)
+    gene_table = (mapping.drop_duplicates("Ensembl_Gene_ID")
+                  [["Ensembl_Gene_ID", "Symbol"]].reset_index(drop=True))
+    values = values.reindex(gene_table["Ensembl_Gene_ID"]).fillna(0.0)
+    sample_to_code = {r.Sample_ID: lnen.HISTOLOGY_TO_CODE.get(
+        r.Histopathology_simplified) for r in attrs.itertuples(index=False)}
+    by_code: dict[str, list[str]] = {}
+    for col in values.columns:
+        raw_code = sample_to_code.get(col)
+        if raw_code:
+            by_code.setdefault(canonical_cancer_code(raw_code), []).append(col)
+    # The LNEN histology map (+ canonical_cancer_code) is the sample->code
+    # *selection*; the registry owns the cohort *list*. Guard they agree.
+    registered = set(_cohorts.cohorts_for_source(d.name))
+    assert set(by_code) <= registered, (set(by_code), registered)
+    for code, cols in by_code.items():
+        _write(gene_table, values[cols], d, code)
+
+
+def main() -> int:
+    print("building NE per-sample TPM parquets...", flush=True)
+    # NET_PANCREAS is built by the canonical recount3 source (gse118014-pannet),
+    # not here. This builder covers the NE cohorts recount3 doesn't: SCLC
+    # (UCologne FPKM) and lung NET/NEC (IARC LNEN counts).
+    build_sclc()
+    build_lung_ne()
+    print("done", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -2,7 +2,7 @@
 """Thin wrapper around pirlygenes.builders.treehouse for the 25.01 PolyA sweep.
 
 Builds the 15 pediatric / sarcoma cancer codes the Treehouse PolyA
-compendium covers. See docs/expression-data-audit.md Status B
+compendium covers. See docs/archive/expression-data-audit-2026-05.md Status B
 Treehouse-PolyA section for the disease-label mapping.
 """
 
@@ -16,6 +16,7 @@ from pirlygenes.builders.treehouse import (
     TreehouseRelease,
     run_sweep,
 )
+from pirlygenes.cohorts import cohorts_for_group
 
 
 CACHE_ROOT = Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -35,22 +36,12 @@ RELEASE = TreehouseRelease(
     pipeline_prefix="treehouse_polya_25_01_log2tpm_to_tpm",
 )
 
+# Cohort definitions come from the single registry in pirlygenes.cohorts
+# (group "polya_pediatric") — not enumerated here, so the read accessors and
+# this build sweep can't drift. Whole-disease-label cohorts (no predicate).
 COHORTS = [
-    TreehouseCohort("ATRT", "atypical teratoid/rhabdoid tumor"),
-    TreehouseCohort("SARC_EWS", "Ewing sarcoma"),
-    TreehouseCohort("HEPB", "hepatoblastoma"),
-    TreehouseCohort("MBL", "medulloblastoma"),
-    TreehouseCohort("NUTM", "NUT midline carcinoma"),
-    TreehouseCohort("SARC_OS", "osteosarcoma"),
-    TreehouseCohort("SARC_RMS_ARMS", "alveolar rhabdomyosarcoma"),
-    TreehouseCohort("SARC_RMS_ERMS", "embryonal rhabdomyosarcoma"),
-    TreehouseCohort("SARC_RMS_PRMS", "pleomorphic rhabdomyosarcoma"),
-    TreehouseCohort("SARC_RMS_SSRMS", "spindle cell/sclerosing rhabdomyosarcoma"),
-    TreehouseCohort("SARC_LMS", "leiomyosarcoma"),
-    TreehouseCohort("SARC_LPS_UNSPEC", "liposarcoma"),
-    TreehouseCohort("SARC_MYXFIB", "myxofibrosarcoma"),
-    TreehouseCohort("SARC_SYN", "synovial sarcoma"),
-    TreehouseCohort("SARC_UPS", "undifferentiated pleomorphic sarcoma"),
+    TreehouseCohort(c.code, c.disease_label, cache_stem=c.stem)
+    for c in cohorts_for_group("polya_pediatric")
 ]
 
 

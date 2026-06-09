@@ -34,7 +34,9 @@ from pirlygenes.builders.treehouse import (
     TreehouseCohort,
     TreehouseRelease,
     run_sweep,
+    tcga_case_predicate,
 )
+from pirlygenes.cohorts import cohorts_for_group
 
 
 CACHE_ROOT = Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -99,26 +101,17 @@ def _cases_with_any_mutation(mut: pd.DataFrame, genes: list[str]) -> set[str]:
     return set(case_ids)
 
 
-def _build_predicate(cases: set[str]):
-    def _pred(row: dict) -> bool:
-        dsid = str(row.get("th_dataset_id", ""))
-        if not dsid.startswith("TCGA"):
-            return False
-        case_id = "-".join(dsid.split("-")[:3])
-        return case_id in cases
-    return _pred
-
-
-SUBTYPES = [
-    ("LUAD_EGFR", ["EGFR"], "EGFR-mutant: any cBioPortal-called EGFR coding mutation"),
-    ("LUAD_KRAS", ["KRAS"], "KRAS-mutant: any cBioPortal-called KRAS coding mutation"),
-    (
-        "LUAD_STK11",
-        ["STK11", "KEAP1"],
+# Cohort definitions (code, stem, selection="mutation:<gene[,gene]>") come from
+# the single registry in pirlygenes.cohorts (group "tcga_luad_mut"). Notes are
+# build-specific prose, kept here keyed by code.
+_NOTE_BY_CODE = {
+    "LUAD_EGFR": "EGFR-mutant: any cBioPortal-called EGFR coding mutation",
+    "LUAD_KRAS": "KRAS-mutant: any cBioPortal-called KRAS coding mutation",
+    "LUAD_STK11": (
         "STK11/KEAP1-mutant: any cBioPortal-called STK11 OR KEAP1 coding "
-        "mutation (canonical K/L axis; immune-cold subset).",
+        "mutation (canonical K/L axis; immune-cold subset)."
     ),
-]
+}
 
 
 def main() -> int:
@@ -138,18 +131,19 @@ def main() -> int:
     print(f"cBioPortal LUAD mutation counts: {counts_by_gene}")
 
     cohorts = []
-    for cancer_code, genes, note in SUBTYPES:
+    for c in cohorts_for_group("tcga_luad_mut"):
+        genes = c.selection.split(":", 1)[1].split(",")
         cases = _cases_with_any_mutation(mut, genes)
         if not cases:
-            print(f"skipping {cancer_code}: no cases")
+            print(f"skipping {c.code}: no cases")
             continue
         cohorts.append(
             TreehouseCohort(
-                cancer_code=cancer_code,
-                disease_label="lung adenocarcinoma",
-                sample_predicate=_build_predicate(cases),
-                extra_notes=note,
-                cache_stem=f"tcga_luad_{cancer_code.removeprefix('LUAD_').lower()}",
+                cancer_code=c.code,
+                disease_label=c.disease_label,
+                sample_predicate=tcga_case_predicate(cases),
+                extra_notes=_NOTE_BY_CODE[c.code],
+                cache_stem=c.stem,
             )
         )
 

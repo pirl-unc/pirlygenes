@@ -51,7 +51,7 @@ from pyensembl import EnsemblRelease
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
-    round_stat_columns,
+    finalize_reference_rows,
 )
 from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
 
@@ -71,13 +71,13 @@ DEFAULT_SOURCE_VERSION = (
     "log2(TPM+1) inverse-transformed; "
     "HUGO symbols harmonized to Ensembl release {ensembl_release}"
 )
-PIPELINE = "treehouse_polya_25_01_log2tpm_to_tpm_ensembl{ensembl}_clean_tpm_v1"
+PIPELINE = "treehouse_polya_25_01_log2tpm_to_tpm_ensembl{ensembl}_clean_tpm_v4"
 DEFAULT_NOTES = (
     "Per-sample TPMs from the Treehouse Tumor Compendium 25.01 PolyA "
     "(hugo_log2tpm matrix, inverse-log2 transformed). Sample selection: "
     "clinical.disease == '{disease_label}'. HUGO symbols mapped to "
     "Ensembl release {ensembl_release}; duplicate symbol mappings dropped. "
-    "TPM_clean is computed per-sample by technical-RNA zeroing + "
+    "TPM_clean is computed per-sample by two-compartment fixed-fraction clean-TPM (technical 25% / biological 75%, each renormalized within its group) + "
     "denominator rescaling."
 )
 
@@ -190,7 +190,8 @@ def _summarize(
     assign_stats(out, values, clean)
     out["processing_pipeline"] = pipeline
     out["notes"] = notes
-    return round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    # Treehouse compendium cohorts are mixed primary/met origin.
+    return finalize_reference_rows(out, tumor_origin="mixed")
 
 
 def _upsert(

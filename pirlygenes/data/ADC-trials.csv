@@ -555,7 +555,7 @@ NCT06161025,Ovary,Advanced/Metastatic,Raludotatug_deruxtecan,CDH6,0,Camptothecin
 NCT06619236,Ovary,Advanced/Metastatic,Rinatabart_sesutecan,FOLR1,0,Camptothecin,3.0,RAINFOL-02;platinum-resistant;Genmab,ENSG00000110195
 NCT07166094,Endometrium,Advanced/Metastatic,Rinatabart_sesutecan,FOLR1,0,Camptothecin,3.0,RAINFOL-03;post-platinum+PD(L)1;Genmab,ENSG00000110195
 NCT07099898,Lung,Relapsed_SCLC,Risvutatug_rezetecan,CD276,0,Topoisomerase_inhibitor,3.0,vs_topotecan;GSK,ENSG00000103855
-NCT06496479,Lung,Relapsed_SCLC,Risvutatug_rezetecan,CD276,0,Topoisomerase_inhibitor,3.0,ARTEMIS-008;vs_topotecan;Hansoh/GSK,ENSG00000103855
+NCT06498479,Lung,Relapsed_SCLC,Risvutatug_rezetecan,CD276,0,Topoisomerase_inhibitor,3.0,ARTEMIS-008;vs_topotecan;Hansoh/GSK,ENSG00000103855
 NCT06265428,Breast,Advanced/Metastatic,Trastuzumab_pamirtecan,ERBB2,0,Topoisomerase_inhibitor,3.0,DYNASTY-Breast01;HER2+;BioNTech/DualityBio,ENSG00000141736
 NCT06018337,Breast,Advanced/Metastatic,Trastuzumab_pamirtecan,ERBB2,0,Topoisomerase_inhibitor,3.0,DYNASTY-Breast02;HER2-low;BioNTech/DualityBio,ENSG00000141736
 NCT06346392,Gastric,Advanced/Metastatic,AZD0901,CLDN18,0,Auristatin_derivative,3.0,CLARITY-Gastric01;2L+_gastric/GEJ;AstraZeneca,ENSG00000066405

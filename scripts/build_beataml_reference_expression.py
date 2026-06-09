@@ -87,7 +87,7 @@ GDC_DATA_ENDPOINT = "https://api.gdc.cancer.gov/data"
 
 SOURCE_COHORT = "BEATAML_OHSU_2022"
 SOURCE_PROJECT = "BeatAML 1.0"
-PIPELINE = "gdc_beataml_star_counts_tpm_ensembl112_clean_tpm_v1"
+PIPELINE = "gdc_beataml_star_counts_tpm_ensembl112_clean_tpm_v4"
 
 # A TargetProject-shaped record reused for _summarize_one's signature.
 BEATAML_PROJECT = TargetProject(
@@ -137,11 +137,11 @@ def _classify(diag: str) -> str | None:
     if diag in APL_DIAGS:
         return "LAML_APL"
     if diag in FAV_DIAGS:
-        return "LAML_ELN_Fav"
+        return "LAML_ELNfav"
     if diag in ADV_DIAGS:
-        return "LAML_ELN_Adv"
+        return "LAML_ELNadv"
     if diag in INT_DIAGS:
-        return "LAML_ELN_Int"
+        return "LAML_ELNint"
     return None
 
 
@@ -261,12 +261,15 @@ def main() -> int:
     # Per-subtype summarize + upsert
     summaries = []
     cancer_codes = []
-    for subtype in ("LAML_APL", "LAML_ELN_Fav", "LAML_ELN_Int", "LAML_ELN_Adv"):
+    for subtype in ("LAML_APL", "LAML_ELNfav", "LAML_ELNint", "LAML_ELNadv"):
         cols = sub_series[sub_series == subtype].index.tolist()
         if not cols:
             print(f"  skipping {subtype}: no samples")
             continue
         sub_values = values[cols]
+        from pirlygenes import cohorts as _cohorts
+        _cohorts.write_per_sample(canonical, sub_values, args.cache_dir.name,
+                                  subtype)
         summary = _summarize_one(
             canonical, sub_values,
             cancer_code=subtype, project=BEATAML_PROJECT,

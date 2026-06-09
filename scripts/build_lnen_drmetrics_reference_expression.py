@@ -166,7 +166,7 @@ def main() -> int:
         assign_stats(out, sub_values, clean)
         out["processing_pipeline"] = (
             f"drmetrics_alcala_2019_lnen_raw_counts_to_tpm_ensembl"
-            f"{args.ensembl_release}_clean_tpm_v1"
+            f"{args.ensembl_release}_clean_tpm_v4"
         )
         histos = (
             attrs.loc[attrs["Sample_ID"].isin(cols), "Histopathology_simplified"]
@@ -178,7 +178,10 @@ def main() -> int:
             f"Raw counts → length-norm TPM; tech-RNA zero; v5.3 stats. "
             f"{CITATION}."
         )
-        out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+        out["tumor_origin"] = "primary"  # IARC LNEN is a primary-tumor cohort
+        # reindex (not strict select): tumor_origin / metastasis_site aren't set
+        # by assign_stats; reindex backfills metastasis_site as NaN.
+        out = round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
         summaries.append(out)
         print(f"  {code}: n={len(cols)} → {len(out)} gene rows")
 

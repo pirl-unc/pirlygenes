@@ -42,6 +42,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .gene_ids import strip_version as _strip_version
+
 
 _DATA_DIR = Path(__file__).resolve().parent / "data"
 
@@ -75,11 +77,6 @@ GENE_FAMILIES: tuple[GeneFamily, ...] = (
 
 
 # ---------- helpers ----------
-
-
-def _strip_version(ensg: str) -> str:
-    """``ENSG00000251562.5`` → ``ENSG00000251562``."""
-    return str(ensg or "").split(".", 1)[0].strip()
 
 
 @lru_cache(maxsize=1)

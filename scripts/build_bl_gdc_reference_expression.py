@@ -23,6 +23,7 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from pirlygenes.builders.gene_mapping import resolve_symbol
+from pirlygenes.gene_ids import strip_version as _strip_version
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
@@ -39,7 +40,7 @@ CANCER_CODE = "BL"
 SOURCE_COHORT = "CGCI_BLGSP"
 SOURCE_PROJECT = "CGCI Burkitt Lymphoma Genome Sequencing Project"
 SOURCE_URL = "https://portal.gdc.cancer.gov/projects/CGCI-BLGSP"
-PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v1"
+PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v4"
 SOURCE_VERSION = (
     "GDC STAR - Counts, GENCODE v36; Ensembl IDs harmonized to "
     "Ensembl release 112; queried 2026-05-19"
@@ -71,10 +72,6 @@ BL_DIAGNOSES = {
     "Burkitt lymphoma, NOS (Includes all variants)",
     "Burkitt-like lymphoma",
 }
-
-
-def _strip_version(value: object) -> str:
-    return str(value).split(".", 1)[0]
 
 
 def _gdc_filters() -> dict:
@@ -404,21 +401,11 @@ def _upsert_reference(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
 
 
 def _upsert_samples(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
-    existing = pd.read_csv(path, low_memory=False) if path.exists() else pd.DataFrame()
-    if existing.empty:
-        out = new_rows.copy()
-    else:
-        keep = ~(
-            existing["cancer_code"].astype(str).eq(CANCER_CODE)
-            & existing["source_cohort"].astype(str).eq(SOURCE_COHORT)
-        )
-        out = pd.concat([existing[keep], new_rows], ignore_index=True)
-    out = out[SAMPLE_COLUMNS].sort_values(
-        ["cancer_code", "source_cohort", "sample_id"],
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(path, index=False)
-    return out
+    """Delegates to the shared, column-union-preserving samples-manifest upsert
+    (replaces every source_cohort present in new_rows, preserving others' rows
+    AND columns)."""
+    from pirlygenes.expression.stats import upsert_samples_manifest
+    return upsert_samples_manifest(path, new_rows)
 
 
 def main() -> None:
@@ -438,6 +425,11 @@ def main() -> None:
         cache_dir=args.cache_dir,
         ensembl_release=args.ensembl_release,
     )
+    # Persist the per-sample raw-TPM matrix so this cohort gets medoid
+    # representatives + percentiles like every other per-sample cohort
+    # (registry source id == cache-dir name). The generators apply clean_tpm_v4.
+    from pirlygenes import cohorts as _cohorts
+    _cohorts.write_per_sample(gene_table, values, args.cache_dir.name, CANCER_CODE)
     summary = _summarize(gene_table, values)
     combined_summary = _upsert_reference(args.summary_output, summary)
     combined_samples = _upsert_samples(args.samples_output, manifest)

@@ -86,7 +86,7 @@ sources:
     unit: TPM
     library_prep: polyA RNA-seq   # CLL-map Broad Illumina TruSeq mRNA (polyA)
     expected_size_gb: 1
-    citation: https://www.broadinstitute.org/cllmap
+    citation: https://data.broadinstitute.org/cllmap/downloads.html
     special_handling: >
       Single bundled TPM TSV; GENCODE v19 IDs harmonized to Ensembl 112.
 
@@ -169,8 +169,8 @@ sources:
   - id: treehouse-polya-25-01
     category: expression
     cancer_codes:
-      [ATRT, EWS, HEPB, MBL, NUTM, OS,
-       RMS_ARMS, RMS_ERMS, RMS_PRMS, RMS_SSRMS,
+      [ATRT, SARC_EWS, HEPB, MBL, NUTM, SARC_OS,
+       SARC_RMS_ARMS, SARC_RMS_ERMS, SARC_RMS_PRMS, SARC_RMS_SSRMS,
        SARC_LMS, SARC_LPS_UNSPEC, SARC_MYXFIB, SARC_SYN, SARC_UPS]
     source_type: treehouse-compendium
     url: https://public.gi.ucsc.edu/~ekephart/public-data/#tumor_25.01_polya
@@ -204,7 +204,7 @@ sources:
 
   - id: treehouse-ribod-25-01
     category: expression
-    cancer_codes: [CHOR, RB]
+    cancer_codes: [SARC_CHOR, RB]
     source_type: treehouse-compendium
     url: https://public.gi.ucsc.edu/~ekephart/public-data/#tumor_25.01_ribodeplete
     builder: scripts/sweep_treehouse_ribod_cohorts.py
@@ -230,7 +230,7 @@ sources:
 
   - id: beataml-ohsu-2022
     category: expression
-    cancer_codes: [LAML_APL, LAML_ELN_Adv, LAML_ELN_Fav, LAML_ELN_Int]
+    cancer_codes: [LAML_APL, LAML_ELNadv, LAML_ELNfav, LAML_ELNint]
     source_type: summary-only-import
     url: https://biodev.github.io/BeatAML2/
     builder: scripts/build_beataml_reference_expression.py
@@ -245,7 +245,7 @@ sources:
 
   - id: gse118014-pannet
     category: expression
-    cancer_codes: [PANNET]
+    cancer_codes: [NET_PANCREAS]
     source_type: recount3
     accession: GSE118014
     recount3_srp: SRP156049
@@ -263,10 +263,10 @@ sources:
 
   - id: gse299759-chon
     category: expression
-    cancer_codes: [CHON]
+    cancer_codes: [SARC_CHON]
     source_type: summary-only-import
     accession: GSE299759
-    builder: scripts/import_cancer_specific_expression.py
+    builder: scripts/build_chon_reference_expression.py
     unit: raw counts   # builder is raw_counts→TPM (GEO supplementary counts)
     expected_size_gb: 0
     citation: GSE299759 (Meijer 2026)
@@ -274,7 +274,7 @@ sources:
 
   - id: gse239531-chordoma
     category: expression
-    cancer_codes: [CHOR]
+    cancer_codes: [SARC_CHOR]
     source_type: summary-only-import
     accession: GSE239531
     builder: scripts/build_chordoma_gse239531_reference_expression.py
@@ -289,21 +289,26 @@ sources:
   - id: gse75885-sarc
     category: expression
     cancer_codes: [SARC_DDLPS, SARC_LGFMS, SARC_PLEOLPS]
-    source_type: summary-only-import
+    source_type: geo-rnaseq
     accession: GSE75885
-    builder: scripts/import_cancer_specific_expression.py
-    unit: TPM
-    expected_size_gb: 0
-    citation: GSE75885 (Delespaul 2017)
+    builder: scripts/build_gse75885_sarc_reference_expression.py
+    unit: RPKM   # processed matrix is RPKM-like; builder renormalizes to TPM
+    expected_size_gb: 0.02
+    citation: GSE75885 (Delespaul 2017, PMID 28278311)
+    library_prep: polyA RNA-seq   # Illumina HiSeq 2000
     special_handling: >
-      Soft-tissue sarcoma subtypes (DDLPS, LGFMS, PLEOLPS).
+      Soft-tissue sarcoma subtypes (DDLPS n=19, PLEOLPS n=4, LGFMS n=2) from the
+      GEO processed RNA-seq matrix (GSE75885_Expression_117_sarcomas.tsv.gz),
+      per-sample subtype from series-matrix !Sample_title. Per-sample build (#305)
+      replacing the lost summary-only import. The 117-sample matrix also holds
+      LMS/UPS/MFS/pleomorphic-RMS other sources already cover.
 
   - id: sclc-ucologne-2015
     category: expression
     cancer_codes: [SCLC]
     source_type: summary-only-import
     url: https://www.nature.com/articles/nature14664
-    builder: scripts/import_cancer_specific_expression.py
+    builder: scripts/build_sclc_reference_expression.py
     unit: FPKM   # George 2015 published FPKM; our builder is fpkm_to_tpm
     expected_size_gb: 0
     citation: SCLC U.Cologne 2015 (George 2015, PMID 26168399)
@@ -311,7 +316,7 @@ sources:
 
   - id: target-nbl
     category: expression
-    cancer_codes: [NBL_MYCN_amp, NBL_MYCN_nonamp]
+    cancer_codes: [NBL_MYCNamp, NBL_MYCNnonamp]
     source_type: summary-only-import
     project_id: TARGET-NBL
     builder: scripts/build_target_subprojects.py
@@ -819,9 +824,30 @@ sources:
       vs AcCC vs MEC) needs Bartl 2025 Supplementary Table 1
       sample-→-diagnosis lookup — pending.
 
+  - id: gse235092-merkel
+    category: expression
+    cancer_codes: [NEC_MERKEL]
+    source_type: geo-matrix
+    builder: scripts/build_geo_matrix.py
+    file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE235nnn/GSE235092/suppl/GSE235092_all_bulk_counts.csv.gz
+    file_name: GSE235092_all_bulk_counts.csv.gz
+    unit: raw_counts
+    gene_id_col: Symbol
+    gene_id_type: symbol
+    sep: ","
+    source_cohort: GSE235092_MERKEL_2024
+    source_project: GEO
+    citation: GSE235092 (Merkel cell carcinoma bulk RNA-seq panel)
+    expected_size_gb: 0.01
+    notes: >
+      All 91 bulk-RNA Merkel cell carcinoma tumor samples
+      (Sample_source_name == "Merkel Cell Carcinoma (MCC)"); symbol-keyed
+      raw counts → length-normalized → per-sample TPM. The MCPyV viral
+      transcripts (57kT / ALTO / …) drop out as non-human at harmonization.
+
   - id: drmetrics-lnen-2020
     category: expression
-    cancer_codes: [LUNG_NET_LC, LUNG_NET_LCNEC]
+    cancer_codes: [NET_LUNG, NEC_LUNG_LARGECELL]
     source_type: github-release
     builder: scripts/build_lnen_drmetrics_reference_expression.py
     source_cohort: DRMETRICS_ALCALA_2019_LNEN
@@ -865,7 +891,7 @@ sources:
 
   - id: gse98894-midnet
     category: expression
-    cancer_codes: [MID_NET, PANNET, REC_NET]
+    cancer_codes: [NET_MIDGUT, NET_PANCREAS, NET_RECTAL]
     source_type: recount3
     accession: GSE98894
     recount3_srp: SRP107025
@@ -897,6 +923,7 @@ sources:
     cancer_codes: [MTC]
     source_type: geo-microarray
     builder: scripts/build_v5_5_microarray_cohorts.py
+    builder_args: ["--only", "mtc"]
     accession: GSE32662
     platform: GPL6480
     citation: GSE32662 (Pringle 2012 medullary thyroid carcinoma)
@@ -917,6 +944,7 @@ sources:
     cancer_codes: [SARC_WDLPS, SARC_DDLPS, SARC_PLEOLPS, SARC_MYXLPS]
     source_type: geo-microarray
     builder: scripts/build_v5_5_microarray_cohorts.py
+    builder_args: ["--only", "lps"]
     accession: GSE30929
     platform: GPL96
     citation: PMID 22241786 (Singer 2007 MSKCC 140-sample LPS classifier)

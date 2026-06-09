@@ -35,7 +35,7 @@ SOURCE_URL = (
 CANCER_CODE = "SARC_CHON"
 SOURCE_COHORT = "GSE299759_MEIJER_2026"
 SOURCE_PROJECT = "GEO"
-PIPELINE = "gse299759_chondrosarcoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_v1"
+PIPELINE = "gse299759_chondrosarcoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_v4"
 
 
 def _download(url: str, dest: Path) -> Path:
@@ -141,6 +141,9 @@ def main() -> int:
     gene_table, tpm = _counts_to_tpm(counts_df, mapping)
     print(f"  canonical genes: {len(gene_table)}")
 
+    from pirlygenes import cohorts as _cohorts
+    _cohorts.write_per_sample(gene_table, tpm, args.cache_dir.name, CANCER_CODE)
+
     print("computing stats...")
     clean = _clean_tpm(tpm, gene_table=gene_table)
     out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
@@ -162,7 +165,10 @@ def main() -> int:
         "lengths. TPM_clean computed per-sample by technical-RNA "
         "zeroing + denominator rescaling."
     )
-    out = round_stat_columns(out)[list(REFERENCE_COLUMNS)]
+    out["tumor_origin"] = "primary"  # GSE299759 is a primary-tumor cohort
+    # reindex (not strict select): tumor_origin / metastasis_site aren't set
+    # by assign_stats; reindex backfills metastasis_site as NaN.
+    out = round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
     print(f"  built {len(out)} gene rows for {CANCER_CODE}")
 
     upsert_to_shard(
