@@ -74,7 +74,7 @@ def _plot_tmb_vs_apd1(orr, tmb, colors):
     ax.grid(alpha=0.3, which="both")
     ax.set_ylim(-3, (max(orr.values()) * 1.08) if orr else 1.0)
     fig.tight_layout()
-    fig.savefig(FIGDIR / "apd1_vs_tmb.png", dpi=150)
+    fig.savefig(FIGDIR / "apd1_vs_tmb.png", dpi=300)
     plt.close(fig)
     return len(pts)
 
@@ -92,7 +92,7 @@ def _plot_orr_bars(orr, colors):
     ax.set_title("Anti-PD-1 response rate by cancer type (curated)")
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(FIGDIR / "apd1_orr_bars.png", dpi=150)
+    fig.savefig(FIGDIR / "apd1_orr_bars.png", dpi=300)
     plt.close(fig)
 
 

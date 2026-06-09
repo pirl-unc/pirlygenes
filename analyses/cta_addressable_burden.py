@@ -209,7 +209,7 @@ def _render(drop_mage, suffix, title_tag):
                     f"categories = {ceiling:.0f}% of {blabel} (uncovered types not scored)",
                     transform=ax.transAxes, ha="right", fontsize=6, color="gray")
             fig.tight_layout()
-            fig.savefig(FIGDIR / f"cta_addressable_{mkey}_{t.slug}{suffix}.png", dpi=150)
+            fig.savefig(FIGDIR / f"cta_addressable_{mkey}_{t.slug}{suffix}.png", dpi=300)
             plt.close(fig)
             print(f"  {mkey} {t.slug}{suffix}: top CTA {per.iloc[0].Symbol} "
                   f"({per.iloc[0].addressable:.1f}% of {blabel}); ceiling {ceiling:.0f}%",
@@ -256,7 +256,7 @@ def _burden_category_plot():
     ax.legend(loc="lower right", fontsize=8)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(FIGDIR / "cta_burden_categories.png", dpi=150)
+    fig.savefig(FIGDIR / "cta_burden_categories.png", dpi=300)
     plt.close(fig)
     print(f"  burden-category reference: {len(cats)} categories "
           f"({counts.cancer_code.nunique()} cohorts)", flush=True)
