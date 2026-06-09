@@ -58,6 +58,10 @@ _MISSING_THERAPY_AXIS = frozenset(
         # data not yet built, so no therapy-axis panel is materialised yet.
         "BCC", "cSCC", "VSCC", "PENSCC", "VAGC", "URETH", "ANSC", "GBC",
         "EPN", "CRANIO", "DIPG", "PITNET",
+        # #358 CNS panel anchors — curated registry entries that anchor the
+        # MENINGIOMA / CHOROID_PLEXUS family panels (#357); expression data and
+        # therapy curation not yet built.
+        "MENINGIOMA", "CHOROID_PLEXUS",
         # ALCL — curated entity (lineage/CD30+ALK biomarker+therapy present); no
         # therapy-response signature materialised yet.
         "ALCL",
@@ -119,6 +123,10 @@ _TOLERATED_GAPS_EXPLICIT = {
     "CRANIO": {"lineage"},
     "DIPG": {"lineage", "therapy"},
     "PITNET": {"lineage", "biomarker", "therapy"},
+    # #358 CNS panel anchors — family panel provides the lineage markers, but
+    # the lineage-genes table / key-genes curation isn't built yet.
+    "MENINGIOMA": {"lineage", "biomarker", "therapy"},
+    "CHOROID_PLEXUS": {"lineage", "biomarker", "therapy"},
 }
 
 
