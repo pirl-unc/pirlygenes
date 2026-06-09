@@ -173,6 +173,7 @@ def _clear_caches():
     ``get_data``; not part of the public surface.
     """
     CANCER_TYPE_NAMES.clear_cache()
+    _cta_protein_group_index.cache_clear()
 
 
 def resolve_cancer_type(cancer_type, *, strict=True):
