@@ -32,6 +32,7 @@ import json
 import re
 import subprocess
 import sys
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
@@ -52,20 +53,37 @@ CACHE = Path.home() / ".cache" / "pirlygenes" / "expression" / "treehouse-polya-
 TPM_TSV = CACHE / "Tumor-25.01-Polya_hugo_log2tpm_58581genes_2025-02-27.tsv"
 CLINICAL = CACHE / "clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv"
 GLIOMA_MAP = CACHE / "derived" / "tcga_glioma_case_to_project.csv"
+# OUT is the *stable* base: caches (``_per_sample_pctile_cutoffs.parquet``,
+# ``cta_specific_9mers.csv``) and the tracked summary tables (``cta_*.csv/.md``)
+# live here and are reused/overwritten in place across runs. FIGDIR is where the
+# PNG plots go — by default a timestamped run subfolder so a fresh run never
+# mixes with an older one. Both are (re)assigned in main() from CLI args.
 OUT = Path(__file__).resolve().parent / "outputs"
+FIGDIR = OUT
 THRESHOLDS = [25, 50, 100, 200]
 PERCENTILES = [80, 90, 95]
 
 
 def _out_path(group: str, name: str) -> Path:
-    """``outputs/<group>/<name>.png``, creating ``<group>/``.
+    """``<FIGDIR>/<group>/<name>.png``, creating ``<group>/``.
 
     Plot families that differ only by threshold / percentile / focus cohort /
     x-axis (``t25``, ``t50``, ``p90``, ``GBM_t25`` …) live together in a folder
-    named for what the plot shows, instead of a flat soup of suffixed filenames."""
-    d = OUT / group
+    named for what the plot shows, instead of a flat soup of suffixed filenames.
+    FIGDIR is the (optionally timestamped) per-run plot destination."""
+    d = FIGDIR / group
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{name}.png"
+
+
+def _tqdm(iterable, desc, **kw):
+    """tqdm progress bar with a graceful no-op fallback if tqdm isn't installed.
+    ``desc`` labels the category currently being rendered."""
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        return iterable
+    return tqdm(iterable, desc=desc, leave=False, **kw)
 
 
 from dataclasses import dataclass
@@ -442,8 +460,34 @@ def main():
                     help="cohort for the %%-bar and coverage plots")
     ap.add_argument("--no-percentiles", action="store_true",
                     help="skip the within-sample percentile-rank threshold plots")
+    ap.add_argument("--out-dir", type=Path, default=None,
+                    help="directory for the PNG plots (default: analyses/outputs). "
+                         "Only the plots move here — the caches "
+                         "(_per_sample_pctile_cutoffs.parquet, cta_specific_9mers.csv) "
+                         "and summary tables always stay in analyses/outputs, so a "
+                         "new --out-dir never forces a recompute.")
+    ap.add_argument("--run-name", default=None,
+                    help="name of the per-run plot subfolder under the plot dir "
+                         "(default: a timestamp, run_YYYYMMDD-HHMMSS)")
+    ap.add_argument("--no-timestamp", action="store_true",
+                    help="write plots straight into the plot dir (no per-run "
+                         "subfolder) — flat layout, mixes with prior runs")
     args = ap.parse_args()
+
+    # OUT is the FIXED stable base (caches + tracked summary tables) — never moved
+    # by --out-dir, so reruns reuse the cached cutoffs/9mers. Only the plots
+    # (FIGDIR) are redirectable, into a per-run subfolder so a fresh run never
+    # overwrites/mixes with an older one.
+    global FIGDIR
     OUT.mkdir(parents=True, exist_ok=True)
+    fig_base = args.out_dir.resolve() if args.out_dir is not None else OUT
+    if args.no_timestamp:
+        FIGDIR = fig_base
+    else:
+        run = args.run_name or f"run_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        FIGDIR = fig_base / run
+    FIGDIR.mkdir(parents=True, exist_ok=True)
+    print(f"[0/5] caches+tables -> {OUT}\n      plots -> {FIGDIR}", flush=True)
 
     # Authoritative ENSG->Symbol straight from the CTA evidence table (tsarina),
     # so every CTA in the set gets a symbol — including ones absent from the
@@ -576,15 +620,13 @@ def main():
     if not args.no_percentiles and args.threshold == THRESHOLDS[0]:
         print(f"[+] within-sample percentile thresholds {PERCENTILES}", flush=True)
         cutoffs = per_sample_percentile_cutoffs()
-        for p in PERCENTILES:
+        for p in _tqdm(PERCENTILES, "percentile thresholds"):
             pthr = Threshold("pctile", p)
-            print(f"    p{p}: coverage curves + stacked bars + scatters",
-                  flush=True)
             _coverage_every_cohort(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _stacked_coverage_bars(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _emit_coverage(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _emit_load_metrics(pthr, cutoffs)
-    print(f"done -> {OUT}", flush=True)
+    print(f"done -> plots in {FIGDIR}", flush=True)
 
 
 # CTA family prefixes, longest/most-specific first so e.g. MAGEA wins over a
@@ -1197,10 +1239,10 @@ def _coverage_every_cohort(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    sub = OUT / "cta_coverage" / thr.slug
+    sub = FIGDIR / "cta_coverage" / thr.slug
     sub.mkdir(parents=True, exist_ok=True)
     n_written = 0
-    for code in sorted(cohorts):
+    for code in _tqdm(sorted(cohorts), f"coverage curves {thr.slug}"):
         order, cum, n = greedy_coverage(mat, cohorts[code], thr, pctile_cutoffs)
         if not cum:
             continue
