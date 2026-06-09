@@ -9,11 +9,23 @@ from pirlygenes.gene_sets_cancer import cancer_tmb, cancer_tmb_df, resolve_cance
 _EXPECTED_COLS = [
     "cancer_code",
     "median_tmb_mut_mb",
+    "n_samples",
     "source",
     "pmid_doi",
     "confidence",
     "notes",
 ]
+
+
+def test_n_samples_present_for_small_cohort_estimates():
+    """The cohort size behind each estimate is tracked in n_samples; the
+    rare/weak-n entities added from the literature audit carry an explicit n
+    (e.g. CRANIO n=3, HCL n=1) so low-precision estimates are transparent."""
+    df = cancer_tmb_df().set_index("cancer_code")
+    for code in ("CRANIO", "MTC", "HCL"):
+        assert df.loc[code, "median_tmb_mut_mb"] > 0
+        assert df.loc[code, "n_samples"] > 0
+        assert df.loc[code, "confidence"] in {"high", "medium", "low"}
 
 
 def test_schema_and_unique_codes():

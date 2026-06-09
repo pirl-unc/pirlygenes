@@ -5,7 +5,7 @@ LUSC,45,pembrolizumab,KEYNOTE-024,first-line; PD-L1 TPS>=50% selected,PMID:27718
 LUAD_STK11,10,pembrolizumab,KEYNOTE-042 subgroup,STK11/KEAP1-mutant immune-cold subset,PMID:30955977,low,Approximate; STK11/KEAP1-mutant LUAD is immune-cold with markedly lower aPD1 benefit (reported mainly as PFS/OS HRs)
 HNSC,19,pembrolizumab,KEYNOTE-048,first-line R/M; CPS>=1; monotherapy arm,PMID:33052747,high,CPS>=20 ~23%; total population ~17%; HPV+/HPV- differential not cleanly established in KN-048
 KIRC,25,nivolumab,CheckMate-025,pretreated (post-VEGF TKI); all-comers,PMID:26406148,high,vs everolimus 5%
-BLCA,24,pembrolizumab,KEYNOTE-052,first-line cisplatin-ineligible; all-comers,PMID:32552471,high,CheckMate-275 pretreated ~20%
+BLCA,28.6,pembrolizumab,KEYNOTE-052,first-line cisplatin-ineligible; all-comers,PMID:32552471,high,Mature KEYNOTE-052 final ORR 28.6% (Vuky 2020); CPS>=10 ~47%; 2017 interim was 24%; CheckMate-275 pretreated ~20%
 COAD,5,pembrolizumab,KEYNOTE-177/-164,all-comers (response is MSI-dependent),PMID:33264544,medium,All-comer ~5%; only the ~13% MSI-H/dMMR respond (MSI-H ~45%; MSS ~0%)
 READ,5,pembrolizumab,KEYNOTE-177/-164,all-comers (response is MSI-dependent),PMID:33264544,medium,All-comer ~5%; MSI-H ~45% and MSS ~0%
 STAD,12,pembrolizumab,KEYNOTE-059,third-line; all-comers,PMID:29260193,medium,CPS>=1 ~16%; monotherapy indication later withdrawn
