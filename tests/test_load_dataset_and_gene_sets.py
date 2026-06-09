@@ -386,3 +386,29 @@ def test_bispecific_antibody_target_gene_ids_name_is_consistent():
 
     assert hasattr(gsc, "bispecific_antibody_target_gene_ids")
     assert not hasattr(gsc, "bispecific_antibody_targets_gene_ids")
+
+
+def test_cta_paralog_symbols_expands_alias_to_protein_group():
+    """cta_paralog_symbols returns the whole interchangeable CTA family that
+    cta_symbol_for_alias collapses to one canonical symbol."""
+    from pirlygenes.gene_sets_cancer import cta_paralog_symbols
+
+    # alias, official symbol, and the second paralog all map to the full group
+    assert cta_paralog_symbols("NY-ESO-1") == ["CTAG1A", "CTAG1B"]
+    assert cta_paralog_symbols("CTAG1B") == ["CTAG1A", "CTAG1B"]
+    assert cta_paralog_symbols("CTAG1A") == ["CTAG1A", "CTAG1B"]
+    assert cta_paralog_symbols("XAGE1") == ["XAGE1A", "XAGE1B"]
+    assert set(cta_paralog_symbols("MAGEA3")) == {"MAGEA3", "MAGEA6"}
+    # non-CTA / unknown -> empty
+    assert cta_paralog_symbols("not-a-gene") == []
+    assert cta_paralog_symbols("") == []
+
+
+def test_cta_paralog_symbols_singleton_returns_self():
+    """A CTA with no paralog group resolves to just its own official symbol."""
+    from pirlygenes.gene_sets_cancer import cta_paralog_symbols, CTA_gene_names
+    from pirlygenes.load_dataset import get_data
+
+    grouped = set(get_data("cta-protein-groups")["member_symbol"].astype(str))
+    singleton = next(c for c in CTA_gene_names() if c not in grouped)
+    assert cta_paralog_symbols(singleton) == [singleton]
