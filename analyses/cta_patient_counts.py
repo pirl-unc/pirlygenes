@@ -514,23 +514,9 @@ def main():
     print("[7/8] stacked coverage bar (per-CTA marginal contribution)", flush=True)
     _stacked_coverage_bars(mat, cohorts, ensg_to_sym, tpm_thr)
 
-    print("[8/8] CTA coverage vs cohort TMB / anti-PD-1 response", flush=True)
-    _cta_vs_x(mat, cohorts, ensg_to_sym, tpm_thr)
-    # HEPB (hepatoblastoma) sits at TMB ~0.02 — an extreme low outlier that
-    # stretches the log-x axis for one point; emit a no-HEPB variant (legend
-    # auto-prunes the now-empty embryonal group, x-axis auto-rescales).
-    _cta_vs_x(mat, cohorts, ensg_to_sym, tpm_thr,
-                exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB")
-    # Subtype-resolved variant: drop a parent category when its subtypes are
-    # also plotted (no bulk BRCA/HNSC/SARC alongside their subtypes).
-    _cta_vs_x(mat, cohorts, ensg_to_sym, tpm_thr,
-                exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB_subtypesonly",
-                drop_covered_parents=True)
-    # CTA coverage vs curated anti-PD-1 ORR (linear x): the low-ORR / high-coverage
-    # quadrant is the CTA-therapy-attractive zone (checkpoint blockade refractory
-    # yet antigen-rich). Only the ~curated aPD-1 cohorts carry an ORR, so the
-    # point set is sparse; no HEPB variant (HEPB has no curated ORR).
-    _cta_vs_x(mat, cohorts, ensg_to_sym, tpm_thr, xaxis=_apd1_axis())
+    print("[8/8] CTA coverage vs cohort TMB / anti-PD-1 response / incidence",
+          flush=True)
+    _emit_coverage(mat, cohorts, ensg_to_sym, tpm_thr)
 
     # CTA load metrics vs TMB: (a) mean # CTAs expressed per sample, (b) mean
     # per-sample CTA-specific-9mer payload (Σ over the CTAs a sample expresses of
@@ -552,40 +538,33 @@ def main():
     payload_fn = _mean_specific_9mer_payload(weights)
 
     def _emit_load_metrics(thr, cutoffs=None):
-        # Same variant matrix as the coverage-vs-TMB plot (_cta_vs_x): base
-        # (all cohorts incl. HEPB), no-HEPB (drops the TMB~0.02 outlier), and
-        # no-HEPB subtypes-only (drop a parent category when its subtypes are
-        # also plotted) — for BOTH load metrics: mean #CTAs/sample and mean
-        # CTA-specific-9mer payload/sample.
+        # Full matrix: each load metric (mean #CTAs/sample, mean CTA-specific-9mer
+        # payload/sample) vs each x-axis (TMB log-x, anti-PD-1 ORR, world
+        # incidence). TMB additionally gets the no-HEPB / no-HEPB-subtypes-only
+        # variants (HEPB is the TMB~0.02 log-x outlier); the 9mer payload gets a
+        # log-y companion on every axis (payload spans ~90x: PAAD ~15 → SKCM ~1300).
         for value_fn, ylabel, slug_base in (
             (_mean_ctas_per_sample, "mean # CTAs expressed per sample",
              "cta_mean_count"),
             (payload_fn, "mean CTA-specific 9mers per sample",
              "cta_9mer_payload"),
         ):
-            _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
-                           pctile_cutoffs=cutoffs)
-            _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
-                           pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
-                           slug_suffix="_noHEPB")
-            _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
-                           pctile_cutoffs=cutoffs, exclude=frozenset({"HEPB"}),
-                           slug_suffix="_noHEPB_subtypesonly",
-                           drop_covered_parents=True)
-        # CTA-specific-9mer payload vs curated anti-PD-1 ORR (linear x): the
-        # vaccine-payload analogue of the coverage-vs-aPD1 plot — how much
-        # CTA-specific 9mer load a cohort carries vs how well checkpoint blockade
-        # already works. Sparse (only curated aPD-1 cohorts); base variant only.
-        _metric_vs_x(mat, cohorts, thr, payload_fn,
-                       "mean CTA-specific 9mers per sample", "cta_9mer_payload",
-                       pctile_cutoffs=cutoffs, xaxis=_apd1_axis())
-        # Log-scaled-y companions of the 9mer-payload plots (vs TMB and vs aPD-1):
-        # the payload spans ~90x (PAAD ~15 → SKCM ~1300), so a log y separates the
-        # low-payload cohorts that bunch against the axis on the linear version.
-        for xa in (None, _apd1_axis()):   # None -> default TMB axis
-            _metric_vs_x(mat, cohorts, thr, payload_fn,
-                           "mean CTA-specific 9mers per sample", "cta_9mer_payload",
-                           pctile_cutoffs=cutoffs, xaxis=xa, log_y=True)
+            for xa in (_tmb_axis(), _apd1_axis(), _incidence_axis()):
+                _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
+                               pctile_cutoffs=cutoffs, xaxis=xa)
+                if xa.short == "tmb":
+                    _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
+                                   pctile_cutoffs=cutoffs, xaxis=xa,
+                                   exclude=frozenset({"HEPB"}),
+                                   slug_suffix="_noHEPB")
+                    _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
+                                   pctile_cutoffs=cutoffs, xaxis=xa,
+                                   exclude=frozenset({"HEPB"}),
+                                   slug_suffix="_noHEPB_subtypesonly",
+                                   drop_covered_parents=True)
+                if slug_base == "cta_9mer_payload":
+                    _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
+                                   pctile_cutoffs=cutoffs, xaxis=xa, log_y=True)
 
     _emit_load_metrics(tpm_thr)
 
@@ -599,18 +578,11 @@ def main():
         cutoffs = per_sample_percentile_cutoffs()
         for p in PERCENTILES:
             pthr = Threshold("pctile", p)
-            print(f"    p{p}: coverage curves + stacked bars + vs-TMB", flush=True)
+            print(f"    p{p}: coverage curves + stacked bars + scatters",
+                  flush=True)
             _coverage_every_cohort(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _stacked_coverage_bars(mat, cohorts, ensg_to_sym, pthr, cutoffs)
-            _cta_vs_x(mat, cohorts, ensg_to_sym, pthr, cutoffs)
-            _cta_vs_x(mat, cohorts, ensg_to_sym, pthr, cutoffs,
-                        exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB")
-            _cta_vs_x(mat, cohorts, ensg_to_sym, pthr, cutoffs,
-                        exclude=frozenset({"HEPB"}),
-                        slug_suffix="_noHEPB_subtypesonly",
-                        drop_covered_parents=True)
-            _cta_vs_x(mat, cohorts, ensg_to_sym, pthr, cutoffs,
-                        xaxis=_apd1_axis())
+            _emit_coverage(mat, cohorts, ensg_to_sym, pthr, cutoffs)
             _emit_load_metrics(pthr, cutoffs)
     print(f"done -> {OUT}", flush=True)
 
@@ -842,13 +814,17 @@ class _XAxis(NamedTuple):
     "antigen-rich / therapy-attractive" band (low TMB, or low aPD-1 response),
     the quadrant where CTA-directed therapy is attractive because the
     alternative (checkpoint blockade riding a high neoantigen load) is weak."""
-    short: str          # slug/title fragment: "tmb" / "apd1"
+    short: str          # slug/title fragment: "tmb" / "apd1" / "incidence"
     title: str          # title phrase: "TMB" / "anti-PD-1 response"
     label: str          # x-axis label
     log: bool
     values: dict        # {canonical_code: x_value}
-    sweet_x_max: float
+    sweet_x_max: float  # band edge: x <= this (sweet_high=False) or x >= this (True)
     sweet_label: str
+    # When False the therapy-attractive band is the LOW-x side (low TMB / low
+    # aPD-1 ORR). When True it's the HIGH-x side — for incidence the attractive
+    # quadrant is a *large* patient population (high incidence) at high coverage.
+    sweet_high: bool = False
 
 
 def _resolve_code(code: str) -> str:
@@ -885,11 +861,51 @@ def _apd1_axis() -> _XAxis:
         "antigen-rich / checkpoint-refractory")
 
 
+@lru_cache(maxsize=1)
+def _incidence_axis() -> _XAxis:
+    """Each cancer type's share (%) of annual *world* cancer incidence
+    (GLOBOCAN 2022), keyed by code via the registry burden-category crosswalk.
+    Incidence is curated per tissue ``burden_category``, so every code under a
+    category inherits that category's share. Unlike TMB/aPD-1, the
+    therapy-attractive band is the HIGH-x side: a large addressable population
+    (high incidence) with high CTA coverage is the commercially/clinically
+    compelling quadrant. Linear x (shares run ~0.1–16%)."""
+    burden = gsc.cancer_burden(metric="world_incidence_pct")  # {category: pct}
+    raw = {}
+    for code in gsc.cancer_type_registry()["code"].astype(str):
+        cat = gsc.burden_category(code)
+        pct = burden.get(cat) if cat else None
+        if pct is not None and pd.notna(pct):
+            raw[code] = float(pct)
+    return _XAxis(
+        "incidence", "world incidence",
+        "share of annual cancer incidence, world (%)", False,
+        _axis_value_map(raw), 5.0, "high-incidence / large-population",
+        sweet_high=True)
+
+
 def _xlim(xs, xaxis: _XAxis):
     if xaxis.log:
         return min(xs) * 0.7, max(xs) * 1.5
     pad = max(1.0, 0.04 * (max(xs) - min(xs)))
     return min(xs) - pad, max(xs) + pad
+
+
+def _emit_coverage(mat, cohorts, ensg_to_sym, thr, cutoffs=None):
+    """CTA coverage-plateau scatter vs each x-axis. TMB (log-x) gets the full
+    variant set — base, no-HEPB (drops the TMB~0.02 outlier), and no-HEPB
+    subtypes-only; aPD-1 and world-incidence (linear) get base + subtypes-only
+    (no log-x outlier to strip)."""
+    _cta_vs_x(mat, cohorts, ensg_to_sym, thr, cutoffs)
+    _cta_vs_x(mat, cohorts, ensg_to_sym, thr, cutoffs,
+                exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB")
+    _cta_vs_x(mat, cohorts, ensg_to_sym, thr, cutoffs,
+                exclude=frozenset({"HEPB"}), slug_suffix="_noHEPB_subtypesonly",
+                drop_covered_parents=True)
+    for xa in (_apd1_axis(), _incidence_axis()):
+        _cta_vs_x(mat, cohorts, ensg_to_sym, thr, cutoffs, xaxis=xa)
+        _cta_vs_x(mat, cohorts, ensg_to_sym, thr, cutoffs, xaxis=xa,
+                    slug_suffix="_subtypesonly", drop_covered_parents=True)
 
 
 def _cta_vs_x(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
@@ -948,17 +964,23 @@ def _cta_vs_x(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
     Y_TOP = 105
     ax.set_ylim(0, Y_TOP)
 
-    # Shade the "antigen-rich / therapy-attractive" sweet spot: high CTA coverage
-    # (>=50%) at a low x value (<= xaxis.sweet_x_max), where CTA-directed therapy
-    # is attractive precisely because checkpoint blockade is weak there.
+    # Shade the "therapy-attractive" sweet spot: high CTA coverage (>=50%) at the
+    # attractive x side. Low-x for TMB/aPD-1 (CTA therapy wins where checkpoint
+    # blockade is weak); high-x for incidence (large addressable population).
     SWEET_COV = 50.0
-    ax.fill_between([x_lo, xaxis.sweet_x_max], SWEET_COV, Y_TOP, color="#ffd166",
+    if xaxis.sweet_high:
+        band_x, label_x, ha = [xaxis.sweet_x_max, x_hi], x_hi, "right"
+        label_x = x_hi - 0.01 * (x_hi - x_lo)
+    else:
+        band_x = [x_lo, xaxis.sweet_x_max]
+        label_x = x_lo * 1.08 if xaxis.log else x_lo + 0.01 * (x_hi - x_lo)
+        ha = "left"
+    ax.fill_between(band_x, SWEET_COV, Y_TOP, color="#ffd166",
                     alpha=0.18, zorder=0)
     # Sit the label a little below the band's top edge so it clears the
     # ceiling-coverage dots (ATRT/NUTM) that now sit near y=100.
-    label_x = x_lo * 1.08 if xaxis.log else x_lo + 0.01 * (x_hi - x_lo)
     ax.text(label_x, 93, xaxis.sweet_label,
-            fontsize=8, va="top", ha="left", color="#9c6f00", style="italic")
+            fontsize=8, va="top", ha=ha, color="#9c6f00", style="italic")
 
     ax.scatter(xs, ys, s=34, c=[_LINEAGE_COLORS[g] for g in groups],
                alpha=0.9, edgecolor="white", linewidth=0.4, zorder=3)
