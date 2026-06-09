@@ -842,5 +842,5 @@ SARC,well_differentiated_liposarcoma,MDM2,biomarker,,,,,,,,12q13-15 amplificatio
 SARC,well_differentiated_liposarcoma,CDK4,biomarker,,,,,,,,Co-amplified with MDM2 on the 12q amplicon; supports WDLPS diagnosis,PMID:20181787
 SARC,well_differentiated_liposarcoma,HMGA2,biomarker,,,,,,,,12q amplicon lipogenic-lineage marker in WDLPS/DDLPS,PMID:20181787
 ALCL,,TNFRSF8,biomarker,,,,,,,systemic ALCL,CD30 (TNFRSF8) uniformly expressed in ALCL — defining IHC biomarker and anti-CD30 ADC target,PMID:22614995
-ALCL,,TNFRSF8,target,brentuximab vedotin,ADC,approved,approved_first_line,frontline_and_relapsed,CD30+ (universal in sALCL),systemic ALCL,"Anti-CD30 ADC; approved for sALCL (frontline BV-CHP, ECHELON-2; R/R per Pro 2012)",PMID:22614995
-ALCL,ALK-positive,ALK,target,crizotinib,ALK-inhibitor,trial,investigational,relapsed,ALK+ (NPM1-ALK),ALK+ ALCL,ALK TKI active in ALK+ ALCL (NPM1-ALK),PMID:21345110
+ALCL,,TNFRSF8,target,brentuximab vedotin,ADC,approved,approved_standard,frontline_and_relapsed,CD30+ (universal in sALCL),systemic ALCL,"Anti-CD30 ADC; approved for sALCL (frontline BV-CHP, ECHELON-2; R/R per Pro 2012)",PMID:22614995
+ALCL,ALK-positive,ALK,target,crizotinib,ALK-inhibitor,phase_2,investigational_biomarker_matched,relapsed,ALK+ (NPM1-ALK),ALK+ ALCL,ALK TKI active in ALK+ ALCL (NPM1-ALK),PMID:21345110
