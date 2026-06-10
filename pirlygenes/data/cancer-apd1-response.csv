@@ -15,7 +15,6 @@ CESC,15,pembrolizumab,KEYNOTE-158,pretreated; PD-L1+ (CPS>=1) selected,PMID:3094
 HL,71,nivolumab,CheckMate-205,relapsed/refractory post-ASCT,PMID:29584546,high,Very high responder; KEYNOTE-087 pembro ~69%
 NEC_MERKEL,56,pembrolizumab,KEYNOTE-017,first-line advanced; all-comers,PMID:30726175,high,Very high responder; CR ~24%
 BRCA_Basal,5,pembrolizumab,KEYNOTE-086,pretreated metastatic TNBC; all-comers,PMID:30475950,medium,Cohort A (pretreated) ~5%; PD-L1+ untreated cohort B ~21%
-UCEC,8,pembrolizumab,KEYNOTE-158,all-comers (response is MMR-dependent),PMID:34990208,medium,dMMR/MSI-H ~50% vs pMMR ~6% (KN-158); all-comer is a weighted blend
 SCLC,13,nivolumab,CheckMate-032,pretreated; all-comers,PMID:27269732,medium,~10-19%; nivo mono ~10%; KEYNOTE-028 PD-L1-selected was higher (~33%) but not representative
 MESO,10,pembrolizumab,KEYNOTE-158,pretreated; all-comers,PMID:33125908,low,Reported ~8-20% across studies
 NPC,25,pembrolizumab,KEYNOTE-028,pretreated; PD-L1+ selected,PMID:28837405,medium,KN-028 NPC cohort ~26%
@@ -26,3 +25,6 @@ COAD_MSI,45,pembrolizumab,KEYNOTE-177,first-line; MSI-H/dMMR,PMID:33264544,high,
 COAD_MSS,0,pembrolizumab,KEYNOTE-016/-028,MSS,PMID:26028255,high,Microsatellite-stable colon; immune-cold; ~0% response
 READ_MSI,45,pembrolizumab,KEYNOTE-177,first-line; MSI-H/dMMR,PMID:33264544,medium,MSI-H/dMMR rectal; small subset; same biology as COAD_MSI
 READ_MSS,0,pembrolizumab,KEYNOTE-016,MSS,PMID:26028255,high,Microsatellite-stable rectal; immune-cold
+UCEC_MSI,50,pembrolizumab,KEYNOTE-158,dMMR/MSI-H advanced EC,PMID:34990208,high,ORR 50% (95% CI 40-61); MSI-H/dMMR cohort n=94
+UCEC_CNL,6,pembrolizumab,KEYNOTE-158,pMMR/MSS NSMP,PMID:34990208,medium,non-MSI-H ORR ~7% (3-14); MSS NSMP arm
+UCEC_CNH,6,pembrolizumab,KEYNOTE-158,pMMR/MSS p53-abnormal,PMID:34990208,medium,non-MSI-H ORR ~7%; p53-abnormal most immune-cold

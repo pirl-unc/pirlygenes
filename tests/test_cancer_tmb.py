@@ -42,10 +42,12 @@ def test_values_positive_and_plausible():
     df = cancer_tmb_df()
     vals = df.dropna(subset=["median_tmb_mut_mb"])["median_tmb_mut_mb"].astype(float)
     assert (vals > 0).all()
-    # Median TMB by type should sit in a sane range (mut/Mb); UV-driven
-    # non-melanoma skin (BCC ~65, cSCC ~45) is the high end, melanoma ~13,
-    # pheo/retinoblastoma the low end (<0.1).
-    assert vals.max() < 100
+    # Median TMB by type should sit in a sane range (mut/Mb); the genuine high
+    # end is the *ultramutated* subtypes — POLE-mutant endometrial (UCEC_POLE) is
+    # >100 mut/Mb by definition — then UV-driven non-melanoma skin (BCC ~65,
+    # cSCC ~45), melanoma ~13; pheo/retinoblastoma the low end (<0.1). The
+    # ceiling still catches scale/typo errors (e.g. a 50000 fat-finger).
+    assert vals.max() < 1000
     assert vals.min() >= 0.01
 
 

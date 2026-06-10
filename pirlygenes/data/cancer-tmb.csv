@@ -110,3 +110,7 @@ HCL,0.2,1,Tiacci 2011,PMID:22072557,low,"Hairy cell leukemia; BRAF V600E-driven,
 ACINIC,,,,,none,Acinic cell carcinoma (salivary); low TMB; no published per-Mb median.
 ALCL,,,,,none,Anaplastic large cell lymphoma; ALK+ has the lowest lymphoma mutation burden; no published per-Mb median.
 URETH,,,,,none,Urethral carcinoma; rare; no published per-Mb median.
+UCEC_POLE,100,,TCGA endometrial (Kandoth 2013),PMID:23636398,low,POLE-ultramutated; median TMB very high (>100 mut/Mb) - order-of-magnitude estimate
+UCEC_MSI,18,,TCGA endometrial (Kandoth 2013),PMID:23636398,low,MSI-H hypermutated; elevated TMB estimate
+UCEC_CNL,2.5,,TCGA endometrial (Kandoth 2013),PMID:23636398,low,copy-number-low endometrioid; low TMB
+UCEC_CNH,2.8,,TCGA endometrial (Kandoth 2013),PMID:23636398,low,copy-number-high serous-like; low TMB

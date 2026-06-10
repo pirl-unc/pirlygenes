@@ -278,6 +278,43 @@ def test_sarc_subtypes_cover_main_entities():
     assert not missing, f"SARC subtypes missing: {missing}"
 
 
+def test_sarc_intermediate_tiers_present():
+    """One-level subtype tiers (SARC_RMS / SARC_LPS / SARC_ESS) exist as real
+    registry codes (family=sarcoma, parent=SARC, computed), so the parent
+    subtype is a first-class, consistently-typed entity — not just a plot-time
+    synthesis. The molecular leaves are intentionally NOT re-parented (leaf->tier
+    membership lives in cancer-cohort-aggregates), so subtypes_of('SARC') still
+    enumerates the atoms."""
+    reg = cancer_type_registry().set_index("code")
+    for tier in ("SARC_RMS", "SARC_LPS", "SARC_ESS"):
+        assert tier in reg.index, f"missing intermediate tier {tier}"
+        assert reg.loc[tier, "family"] == "sarcoma"
+        assert reg.loc[tier, "parent_code"] == "SARC"
+        assert reg.loc[tier, "expression_source"] == "computed"
+        assert resolve_cancer_type(tier) == tier
+    # leaves still enumerate under SARC (no re-parenting / trufflepig breakage)
+    assert {"SARC_DDLPS", "SARC_MYXLPS"} <= set(cancer_type_subtypes_of("SARC"))
+
+
+def test_ucec_molecular_subtypes_split_apd1_368():
+    """#368: UCEC is split into its TCGA molecular classes so the conflated bulk
+    aPD-1 ORR is replaced by subtype-specific values — MSI-H/MMRd responds
+    (~50%) while the MSS classes (CNL/CNH) do not (~6%)."""
+    from pirlygenes.gene_sets_cancer import cancer_apd1_response
+
+    subs = set(cancer_type_subtypes_of("UCEC"))
+    assert {"UCEC_POLE", "UCEC_MSI", "UCEC_CNL", "UCEC_CNH"} <= subs
+    reg = cancer_type_registry().set_index("code")
+    for s in ("UCEC_POLE", "UCEC_MSI", "UCEC_CNL", "UCEC_CNH"):
+        assert reg.loc[s, "family"] == "carcinoma-gu"
+        assert reg.loc[s, "parent_code"] == "UCEC"
+    orr = cancer_apd1_response()
+    assert "UCEC" not in orr            # conflated bulk value removed
+    assert orr["UCEC_MSI"] >= 45        # responder
+    assert orr["UCEC_CNH"] <= 15        # MSS non-responder
+    assert orr["UCEC_MSI"] > orr["UCEC_CNH"]
+
+
 def test_laml_has_apl_and_eln_tiles():
     subs = set(cancer_type_subtypes_of("LAML"))
     assert "LAML_APL" in subs
