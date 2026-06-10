@@ -113,6 +113,12 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
     dropped). When ``ucec_subtypes`` and the per-sample artifacts exist, bulk
     UCEC is replaced by its four molecular subtypes; otherwise bulk UCEC and
     UCS are kept as-is.
+
+    Caveat: the UCEC subtype rows are summarised from the per-sample TCGA-UCEC
+    parquet, a *different* pipeline than the reference-summary cohorts, so their
+    absolute TPM is not strictly cross-pipeline comparable. Downstream analyses
+    z-score each gene across cohorts, so this affects cohort *ranking* only
+    marginally; do not compare raw subtype TPM to other cohorts' raw TPM.
     """
     fetch = list(dict.fromkeys(list(codes) + ["UCEC", "UCS"]))
     long = cancer_reference_expression(cancer_types=fetch, normalize="tpm_clean")

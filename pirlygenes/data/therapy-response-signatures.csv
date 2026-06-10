@@ -89,33 +89,33 @@ SP5,ENSG00000204335,aPD1_exclusion_Wnt_target,up,beta-catenin target transcripti
 TBX3,ENSG00000135111,aPD1_exclusion_Wnt_target,up,beta-catenin target; Wnt-active (HCC),pan_cancer,emerging,PMID:25970248
 GLUL,ENSG00000135821,aPD1_exclusion_Wnt_target,up,glutamine synthetase; classic beta-catenin-active HCC marker (catches Wnt+ LIHC),pan_cancer,supported,PMID:25970248
 LECT2,ENSG00000145826,aPD1_exclusion_Wnt_target,up,beta-catenin-target hepatokine; Wnt-active HCC,pan_cancer,emerging,PMID:25970248
-VEGFA,ENSG00000112715,aPD1_exclusion_angiogenesis,up,VEGF-A; abnormal vasculature + T-cell exclusion; anti-VEGF+ICB synergy (RCC/HCC/endometrial),pan_cancer,supported,
-KDR,ENSG00000128052,aPD1_exclusion_angiogenesis,up,VEGFR2; angiogenic endothelium,pan_cancer,supported,
-ANGPT2,ENSG00000091879,aPD1_exclusion_angiogenesis,up,angiopoietin-2; vascular destabilization and immunosuppression,pan_cancer,emerging,
-PECAM1,ENSG00000261371,aPD1_exclusion_angiogenesis,up,CD31 endothelial content; vascular barrier proxy,pan_cancer,emerging,
-ESM1,ENSG00000164283,aPD1_exclusion_angiogenesis,up,endocan; endothelial tip-cell/angiogenesis marker,pan_cancer,emerging,
-ENTPD1,ENSG00000138185,aPD1_exclusion_adenosine,up,CD39; ATP-to-AMP first step of immunosuppressive adenosine,pan_cancer,supported,
-NT5E,ENSG00000135318,aPD1_exclusion_adenosine,up,CD73; AMP-to-adenosine; suppresses CD8 effector function,pan_cancer,supported,
-ADORA2A,ENSG00000128271,aPD1_exclusion_adenosine,up,adenosine A2A receptor; T-cell suppression,pan_cancer,emerging,
-ADORA2B,ENSG00000170425,aPD1_exclusion_adenosine,up,adenosine A2B receptor; myeloid immunosuppression,pan_cancer,emerging,
-B2M,ENSG00000166710,aPD1_antigen_presentation,up,beta-2-microglobulin; MHC-I light chain; loss is a canonical aPD1 resistance mechanism,pan_cancer,canonical,
-HLA-A,ENSG00000206503,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,
-HLA-B,ENSG00000234745,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,
-HLA-C,ENSG00000204525,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,
-TAP1,ENSG00000168394,aPD1_antigen_presentation,up,peptide transporter; antigen processing (IFN-inducible),pan_cancer,canonical,
-TAP2,ENSG00000204267,aPD1_antigen_presentation,up,peptide transporter; antigen processing,pan_cancer,canonical,
-TAPBP,ENSG00000231925,aPD1_antigen_presentation,up,tapasin; MHC-I peptide loading,pan_cancer,supported,
-NLRC5,ENSG00000140853,aPD1_antigen_presentation,up,master transcriptional activator of MHC-I genes,pan_cancer,supported,
-PSMB8,ENSG00000204264,aPD1_antigen_presentation,up,immunoproteasome subunit LMP7,pan_cancer,supported,
-PSMB9,ENSG00000240065,aPD1_antigen_presentation,up,immunoproteasome subunit LMP2,pan_cancer,supported,
-HLA-E,ENSG00000204592,aPD1_antigen_presentation,up,non-classical MHC-I; NK inhibitory ligand (context-dependent),pan_cancer,emerging,
-HLA-F,ENSG00000204642,aPD1_antigen_presentation,up,non-classical MHC-I,pan_cancer,emerging,
-CD274,ENSG00000120217,aPD1_circular_checkpoints,up,PD-L1; IFN-induced; a READOUT of ongoing immune engagement (not causal),pan_cancer,canonical,
-IDO1,ENSG00000131203,aPD1_circular_checkpoints,up,IFN-induced tryptophan catabolism; response readout (not causal),pan_cancer,canonical,
-LAG3,ENSG00000089692,aPD1_circular_checkpoints,up,exhaustion checkpoint; infiltrate readout,pan_cancer,supported,
-HAVCR2,ENSG00000135077,aPD1_circular_checkpoints,up,TIM-3 exhaustion checkpoint; infiltrate readout,pan_cancer,supported,
-PDCD1,ENSG00000188389,aPD1_circular_checkpoints,up,PD-1; T-cell exhaustion; infiltrate readout,pan_cancer,canonical,
-FOXP3,ENSG00000049768,aPD1_circular_treg,up,regulatory T-cell master TF; suppressive-infiltrate readout (not causal),pan_cancer,canonical,
-CTLA4,ENSG00000163599,aPD1_circular_treg,up,Treg/activation checkpoint; infiltrate readout,pan_cancer,canonical,
-IL2RA,ENSG00000134460,aPD1_circular_treg,up,CD25; Treg marker,pan_cancer,supported,
-IKZF2,ENSG00000030419,aPD1_circular_treg,up,Helios; Treg stability marker,pan_cancer,emerging,
+VEGFA,ENSG00000112715,aPD1_exclusion_angiogenesis,up,VEGF-A; abnormal vasculature + T-cell exclusion; anti-VEGF+ICB synergy (RCC/HCC/endometrial),pan_cancer,supported,PMID:25601652
+KDR,ENSG00000128052,aPD1_exclusion_angiogenesis,up,VEGFR2; angiogenic endothelium,pan_cancer,supported,PMID:25601652
+ANGPT2,ENSG00000091879,aPD1_exclusion_angiogenesis,up,angiopoietin-2; vascular destabilization and immunosuppression,pan_cancer,emerging,PMID:25601652
+PECAM1,ENSG00000261371,aPD1_exclusion_angiogenesis,up,CD31 endothelial content; vascular barrier proxy,pan_cancer,emerging,PMID:25601652
+ESM1,ENSG00000164283,aPD1_exclusion_angiogenesis,up,endocan; endothelial tip-cell/angiogenesis marker,pan_cancer,emerging,PMID:25601652
+ENTPD1,ENSG00000138185,aPD1_exclusion_adenosine,up,CD39; ATP-to-AMP first step of immunosuppressive adenosine,pan_cancer,supported,DOI:10.1038/nrc.2017.86
+NT5E,ENSG00000135318,aPD1_exclusion_adenosine,up,CD73; AMP-to-adenosine; suppresses CD8 effector function,pan_cancer,supported,DOI:10.1038/nrc.2017.86
+ADORA2A,ENSG00000128271,aPD1_exclusion_adenosine,up,adenosine A2A receptor; T-cell suppression,pan_cancer,emerging,DOI:10.1038/nrc.2017.86
+ADORA2B,ENSG00000170425,aPD1_exclusion_adenosine,up,adenosine A2B receptor; myeloid immunosuppression,pan_cancer,emerging,DOI:10.1038/nrc.2017.86
+B2M,ENSG00000166710,aPD1_antigen_presentation,up,beta-2-microglobulin; MHC-I light chain; loss is a canonical aPD1 resistance mechanism,pan_cancer,canonical,PMID:29070816
+HLA-A,ENSG00000206503,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,PMID:29070816
+HLA-B,ENSG00000234745,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,PMID:29070816
+HLA-C,ENSG00000204525,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,PMID:29070816
+TAP1,ENSG00000168394,aPD1_antigen_presentation,up,peptide transporter; antigen processing (IFN-inducible),pan_cancer,canonical,PMID:29070816
+TAP2,ENSG00000204267,aPD1_antigen_presentation,up,peptide transporter; antigen processing,pan_cancer,canonical,PMID:29070816
+TAPBP,ENSG00000231925,aPD1_antigen_presentation,up,tapasin; MHC-I peptide loading,pan_cancer,supported,PMID:29070816
+NLRC5,ENSG00000140853,aPD1_antigen_presentation,up,master transcriptional activator of MHC-I genes,pan_cancer,supported,PMID:29070816
+PSMB8,ENSG00000204264,aPD1_antigen_presentation,up,immunoproteasome subunit LMP7,pan_cancer,supported,PMID:29070816
+PSMB9,ENSG00000240065,aPD1_antigen_presentation,up,immunoproteasome subunit LMP2,pan_cancer,supported,PMID:29070816
+HLA-E,ENSG00000204592,aPD1_antigen_presentation,up,non-classical MHC-I; NK inhibitory ligand (context-dependent),pan_cancer,emerging,PMID:29070816
+HLA-F,ENSG00000204642,aPD1_antigen_presentation,up,non-classical MHC-I,pan_cancer,emerging,PMID:29070816
+CD274,ENSG00000120217,aPD1_circular_checkpoints,up,PD-L1; IFN-induced; a READOUT of ongoing immune engagement (not causal),pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504
+IDO1,ENSG00000131203,aPD1_circular_checkpoints,up,IFN-induced tryptophan catabolism; response readout (not causal),pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504
+LAG3,ENSG00000089692,aPD1_circular_checkpoints,up,exhaustion checkpoint; infiltrate readout,pan_cancer,supported,DOI:10.1126/scitranslmed.3006504
+HAVCR2,ENSG00000135077,aPD1_circular_checkpoints,up,TIM-3 exhaustion checkpoint; infiltrate readout,pan_cancer,supported,DOI:10.1126/scitranslmed.3006504
+PDCD1,ENSG00000188389,aPD1_circular_checkpoints,up,PD-1; T-cell exhaustion; infiltrate readout,pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504
+FOXP3,ENSG00000049768,aPD1_circular_treg,up,regulatory T-cell master TF; suppressive-infiltrate readout (not causal),pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504
+CTLA4,ENSG00000163599,aPD1_circular_treg,up,Treg/activation checkpoint; infiltrate readout,pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504
+IL2RA,ENSG00000134460,aPD1_circular_treg,up,CD25; Treg marker,pan_cancer,supported,DOI:10.1126/scitranslmed.3006504
+IKZF2,ENSG00000030419,aPD1_circular_treg,up,Helios; Treg stability marker,pan_cancer,emerging,DOI:10.1126/scitranslmed.3006504
