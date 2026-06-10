@@ -54,6 +54,14 @@ def _tmb_map() -> dict[str, float]:
     return dict(zip(df["cancer_code"], df["median_tmb_mut_mb"].astype(float)))
 
 
+def _indel_map() -> dict[str, float]:
+    """Ordinal frameshift/indel-enrichment class (0 baseline / 1 intermediate /
+    2 high). A mechanistic flag, NOT a measured per-Mb value: high = RCC lineage
+    (Turajlic 2017) + dMMR/MSI-H (frameshift-at-microsatellites by definition)."""
+    df = get_data("cancer-frameshift-burden.csv")
+    return dict(zip(df["cancer_code"], df["indel_score"].astype(float)))
+
+
 def _viral_score(code: str, reg: pd.DataFrame) -> float:
     for c in (code, code.split("_")[0]):
         if c in reg.index:
@@ -73,6 +81,7 @@ def main() -> int:
 
     reg = cancer_type_registry().set_index("code")
     tmb = _tmb_map()
+    indel = _indel_map()
     sig = curated_exclusion_genes()
     excl_genes = [g for g in sig["TGFb_response"] + sig["Wnt"]
                   if g in mat.columns]
@@ -92,17 +101,18 @@ def main() -> int:
     # (mean TPM >= 5), not a mean over 263 mostly-silent genes.
     F["CTA"] = (mat[cta_genes] >= np.log10(6)).sum(axis=1)
     F["viral"] = [_viral_score(c, reg) for c in mat.index]
+    F["indel"] = [indel.get(c, indel.get(c.split("_")[0], 0.0)) for c in mat.index]
     F["exclusion"] = mat[excl_genes].apply(_z).mean(axis=1)
     F = F.dropna(subset=["logTMB", "CTA", "exclusion"])
     # The two conceptual axes the user wants kept distinct:
-    #   ANTIGEN AVAILABILITY = TMB + CTA + viral (is there anything to see?)
-    #   IMMUNE EXCLUSION     = TGF-beta-response + Wnt (will a T cell get in?)
-    F["antigen"] = F[["logTMB", "CTA", "viral"]].apply(_z).mean(axis=1)
+    #   ANTIGEN AVAILABILITY = TMB + CTA + viral + indel (anything to see?)
+    #   IMMUNE EXCLUSION     = TGF-beta-response + Wnt  (will a T cell get in?)
+    F["antigen"] = F[["logTMB", "CTA", "viral", "indel"]].apply(_z).mean(axis=1)
     print(f"cohorts modeled: {len(F)}\n")
 
     # ---- univariate Spearman of each causal factor -----------------------
     print("=== Univariate Spearman vs aPD1 ORR (causal factors) ===")
-    for col in ["logTMB", "CTA", "viral", "exclusion"]:
+    for col in ["logTMB", "CTA", "viral", "indel", "exclusion"]:
         rho, p = spearmanr(F[col], F["ORR"])
         print(f"  {col:10s} rho={rho:+.2f} (p={p:.3f})")
 
@@ -117,7 +127,7 @@ def main() -> int:
           f"beta[exclusion]={ba[2]:+.2f}")
 
     # ---- standardized multiple regression (factor breakdown) -------------
-    feats = ["logTMB", "CTA", "viral", "exclusion"]
+    feats = ["logTMB", "CTA", "viral", "indel", "exclusion"]
     X = np.column_stack([_z(F[c]) for c in feats])
     X = np.column_stack([np.ones(len(F)), X])
     y = _z(F["ORR"]).to_numpy()
@@ -201,7 +211,7 @@ def _plot(F, feats, betas, r2):
                      color=col, fontweight=w, alpha=0.85)
     axC.axhline(0, color="gray", lw=0.6, ls=":")
     axC.axvline(0, color="gray", lw=0.6, ls=":")
-    axC.set_xlabel("antigen availability  (z: TMB + CTA + viral)  ->")
+    axC.set_xlabel("antigen availability  (z: TMB + CTA + viral + indel)  ->")
     axC.set_ylabel("immune exclusion  (TGF-beta-response + Wnt)  ->")
     axC.set_title("Antigen x exclusion map\ngreen=gyn (cold), red=RCC "
                   "(low-antigen responders)", fontsize=10)
