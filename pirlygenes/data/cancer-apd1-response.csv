@@ -28,3 +28,10 @@ READ_MSS,0,pembrolizumab,KEYNOTE-016,MSS,PMID:26028255,high,Microsatellite-stabl
 UCEC_MSI,50,pembrolizumab,KEYNOTE-158,dMMR/MSI-H advanced EC,PMID:34990208,high,ORR 50% (95% CI 40-61); MSI-H/dMMR cohort n=94
 UCEC_CNL,6,pembrolizumab,KEYNOTE-158,pMMR/MSS NSMP,PMID:34990208,medium,non-MSI-H ORR ~7% (3-14); MSS NSMP arm
 UCEC_CNH,6,pembrolizumab,KEYNOTE-158,pMMR/MSS p53-abnormal,PMID:34990208,medium,non-MSI-H ORR ~7%; p53-abnormal most immune-cold
+OV,8,pembrolizumab,KEYNOTE-100,recurrent ovarian (all-comers),PMID:31218020,medium,pembro monotherapy ORR 8.0%
+HNSC_HPVpos,24,pembrolizumab,KEYNOTE-012,R/M HNSCC HPV+,PMID:27646946,medium,HPV+ subgroup; pooled monotherapy HPV+ > HPV- (overall KN-012 ORR 18%)
+HNSC_HPVneg,16,pembrolizumab,KEYNOTE-012,R/M HNSCC HPV-,PMID:27646946,medium,HPV- subgroup
+KIRP,25,pembrolizumab,KEYNOTE-427 cohort B,papillary RCC 1L,PMID:34272311,medium,papillary nccRCC ORR 25.4%
+KICH,10,pembrolizumab,KEYNOTE-427 cohort B,chromophobe RCC 1L,PMID:34272311,low,chromophobe ORR 9.5% (small n)
+CHOL,6,pembrolizumab,KEYNOTE-158,advanced biliary,PMID:32319072,medium,biliary ORR 5.8% (6/104)
+UVM,4,nivolumab,pooled uveal series,metastatic uveal melanoma,PMID:27533448,low,uveal anti-PD-1 monotherapy ORR ~3-6% (checkpoint-refractory)
