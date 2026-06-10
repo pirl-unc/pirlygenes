@@ -1,0 +1,14 @@
+mechanism,tag,n,rho,p,expect,agrees,KIRC_pctile,LIHC_pctile,why
+exclusion:TGFb_response,causal,5,-0.43069206378195024,0.015575695218745494,-,True,84,6,curated aPD1_exclusion_TGFb_response
+exclusion:Wnt,causal,4,-0.41615393504669457,0.019881435104982446,-,True,16,6,curated aPD1_exclusion_Wnt
+exclusion:Wnt_target,causal,9,-0.3061083772589951,0.0939780236270616,-,True,6,90,curated aPD1_exclusion_Wnt_target
+exclusion:angiogenesis,causal,5,-0.09631510287106905,0.6062570609181436,-,True,100,19,curated aPD1_exclusion_angiogenesis
+exclude:hypoxia,borderline,5,0.06764268230987029,0.7176836905140633,-,True,100,6,"hypoxia (CA9 is also a ccRCC lineage marker - confounded, NOT curated)"
+antigen:ERV_annotated,causal,8,0.08197889259046967,0.6610808445221295,+,True,35,3,Ensembl-annotated ERVs (mostly placental syncytins - FAILS)
+exclusion:adenosine,causal,4,0.12680478952417476,0.49665779410766236,-,False,97,16,curated aPD1_exclusion_adenosine
+exclude:myeloid_tolerance,borderline,8,0.16274627445300135,0.3817105939590619,-,False,90,58,resident tolerogenic myeloid (WRONG-SIGN: indexes infiltrate; NOT curated)
+circular:IFN_response,circular,10,0.1766786478242881,0.34171162242740927,+,True,68,23,curated IFN_response
+antigen:presentation,borderline,12,0.24856161768194127,0.17755098651634016,+,True,100,13,curated aPD1_antigen_presentation
+antigen:CTA,causal,10,0.25522492668560015,0.1658352770412321,+,True,35,94,"cancer-testis antigen expression (representative MAGEs; CTA panel owned by tsarina, not this CSV)"
+circular:treg,circular,4,0.4195865487758521,0.018785182534162694,+,True,42,10,curated aPD1_circular_treg
+circular:checkpoints,circular,5,0.5744580034972566,0.0007257500430569602,+,True,90,6,curated aPD1_circular_checkpoints

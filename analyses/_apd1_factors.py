@@ -39,10 +39,39 @@ _UCEC_RECODE = {
 }
 
 
+# Rectum is curated as colorectal (READ inherits COAD's aPD1 ORR + TMB at every
+# tier), so COAD/READ are NOT independent clinical anchors. We pool the
+# microsatellite subtypes COAD/READ x {MSI,MSS} -> CRC_MSI / CRC_MSS (averaging
+# the COAD+READ expression shards, as TCGA's COADREAD does) and DROP the bulk
+# all-comer COAD/READ entirely (the bulk ORR is just a mixture of its MSI/MSS
+# components, which we already model separately).
+_COLORECTAL_POOL = {
+    "COAD_MSI": "CRC_MSI", "READ_MSI": "CRC_MSI",
+    "COAD_MSS": "CRC_MSS", "READ_MSS": "CRC_MSS",
+}
+_COLORECTAL_DROP = ("COAD", "READ")  # bulk all-comer = MSI/MSS mixture
+_CRC_TIERS = set(_COLORECTAL_POOL.values())
+
+
+def _pool_dict(d: dict) -> dict:
+    """Pool COAD/READ subtype values into CRC_MSI/CRC_MSS (mean) and drop the
+    bulk all-comer COAD/READ entries, in a code->value map."""
+    groups: dict = {}
+    for src, tgt in _COLORECTAL_POOL.items():
+        if src in d and pd.notna(d[src]):
+            groups.setdefault(tgt, []).append(d[src])
+    for tgt, vals in groups.items():
+        d[tgt] = sum(vals) / len(vals)
+    for bulk in _COLORECTAL_DROP:
+        d.pop(bulk, None)
+    return d
+
+
 def apd1_map() -> dict[str, float]:
-    """``{cancer_code: aPD1 ORR %}`` from the curated response table."""
+    """``{cancer_code: aPD1 ORR %}`` from the curated response table (colorectal
+    pooled to CRC tiers)."""
     df = get_data("cancer-apd1-response.csv")
-    return dict(zip(df["cancer_code"], df["apd1_orr_pct"].astype(float)))
+    return _pool_dict(dict(zip(df["cancer_code"], df["apd1_orr_pct"].astype(float))))
 
 
 _VIRAL_SCORE = {"defining": 1.0, "subset": 0.5, "none": 0.0}
@@ -58,9 +87,9 @@ def with_parent(d: dict, code: str, default=None):
 
 
 def tmb_map() -> dict[str, float]:
-    """``{cancer_code: median TMB mut/Mb}`` from ``cancer-tmb.csv``."""
+    """``{cancer_code: median TMB mut/Mb}`` from ``cancer-tmb.csv`` (CRC pooled)."""
     df = get_data("cancer-tmb.csv")
-    return dict(zip(df["cancer_code"], df["median_tmb_mut_mb"]))
+    return _pool_dict(dict(zip(df["cancer_code"], df["median_tmb_mut_mb"])))
 
 
 def indel_map() -> dict[str, float]:
@@ -69,7 +98,7 @@ def indel_map() -> dict[str, float]:
     A mechanistic class, NOT a measured per-Mb value: high = RCC lineage
     (Turajlic 2017) + dMMR/MSI-H. See ``cancer-frameshift-burden.csv``."""
     df = get_data("cancer-frameshift-burden.csv")
-    return dict(zip(df["cancer_code"], df["indel_score"].astype(float)))
+    return _pool_dict(dict(zip(df["cancer_code"], df["indel_score"].astype(float))))
 
 
 def viral_score(code: str, reg) -> float:
@@ -120,7 +149,10 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
     z-score each gene across cohorts, so this affects cohort *ranking* only
     marginally; do not compare raw subtype TPM to other cohorts' raw TPM.
     """
-    fetch = list(dict.fromkeys(list(codes) + ["UCEC", "UCS"]))
+    # CRC_* are analysis-only pooled codes (not registry codes); fetch the real
+    # COAD/READ subtype shards and pool them after.
+    fetch = list(dict.fromkeys(
+        [c for c in codes if c not in _CRC_TIERS] + ["UCEC", "UCS"]))
     long = cancer_reference_expression(cancer_types=fetch, normalize="tpm_clean")
     long = long[~long["processing_pipeline"].str.contains(
         "microarray_tpm_proxy", na=False)]
@@ -136,6 +168,10 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
     if sub is not None:
         wide = wide.drop(index="UCEC", errors="ignore")  # replace bulk w/ split
         wide = pd.concat([wide, sub.reindex(columns=wide.columns)])
+    # pool colorectal: COAD/READ shards -> CRC tiers (mean), de-duplicating the
+    # shared clinical anchors (see _COLORECTAL_POOL).
+    pooled_idx = [_COLORECTAL_POOL.get(c, c) for c in wide.index]
+    wide = wide.groupby(pooled_idx).mean()
     return np.log10(wide + 1.0)
 
 

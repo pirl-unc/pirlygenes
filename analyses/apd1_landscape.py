@@ -122,7 +122,7 @@ def _heatmap(Z, orr, axes_of, rho):
 
 
 def _balance_sheet(Z, orr, axes_of):
-    archetypes = ["SKCM", "COAD_MSI", "KIRC", "HL", "OV", "UCEC_CNH",
+    archetypes = ["SKCM", "CRC_MSI", "KIRC", "HL", "OV", "UCEC_CNH",
                   "LIHC", "PRAD"]
     archetypes = [c for c in archetypes if c in Z.index]
     # only causal antigen/exclusion factors (drop circular)

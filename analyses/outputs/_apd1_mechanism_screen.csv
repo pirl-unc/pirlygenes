@@ -1,0 +1,14 @@
+mechanism,tag,n,rho,p,expect,agrees,KIRC_pctile,LIHC_pctile,why
+exclusion:Wnt,causal,4,-0.5042434811406014,0.0020108921409033196,-,True,17,6,curated aPD1_exclusion_Wnt
+exclusion:TGFb_response,causal,5,-0.45669451309980474,0.0058194689395151674,-,True,86,6,curated aPD1_exclusion_TGFb_response
+exclusion:Wnt_target,causal,9,-0.35079636893814853,0.038815025057540656,-,True,14,86,curated aPD1_exclusion_Wnt_target
+exclusion:angiogenesis,causal,5,-0.117259402012112,0.5023210589211055,-,True,100,17,curated aPD1_exclusion_angiogenesis
+exclude:hypoxia,borderline,5,0.0029455112945626226,0.9866017323378053,-,True,100,6,"hypoxia (CA9 is also a ccRCC lineage marker - confounded, NOT curated)"
+exclusion:adenosine,causal,4,0.065642823135967,0.7079215765014948,-,True,97,11,curated aPD1_exclusion_adenosine
+antigen:ERV_annotated,causal,8,0.1441897909909703,0.4085831195174167,+,True,49,3,Ensembl-annotated ERVs (mostly placental syncytins - FAILS)
+antigen:presentation,borderline,12,0.19538558253932062,0.2606653030941683,+,True,100,11,curated aPD1_antigen_presentation
+circular:IFN_response,circular,10,0.2521918717915998,0.14386574822578121,+,True,71,20,curated IFN_response
+exclude:myeloid_tolerance,borderline,8,0.30969947325687,0.0702228681127466,-,False,91,69,resident tolerogenic myeloid (WRONG-SIGN: indexes infiltrate; NOT curated)
+antigen:CTA,causal,10,0.3312998894169959,0.05188162275395582,+,True,43,94,"cancer-testis antigen expression (representative MAGEs; CTA panel owned by tsarina, not this CSV)"
+circular:treg,circular,4,0.43523435938227706,0.008973105461046483,+,True,46,9,curated aPD1_circular_treg
+circular:checkpoints,circular,5,0.6388954260348926,3.618266933310226e-05,+,True,91,6,curated aPD1_circular_checkpoints
