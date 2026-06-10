@@ -50,14 +50,20 @@ _COLORECTAL_POOL = {
     "COAD_MSS": "CRC_MSS", "READ_MSS": "CRC_MSS",
 }
 _COLORECTAL_DROP = ("COAD", "READ")  # bulk all-comer = MSI/MSS mixture
-_CRC_TIERS = set(_COLORECTAL_POOL.values())
+# analysis-only pooled codes (NOT registry codes) - must be kept out of any
+# cancer_reference_expression fetch.
+_POOLED_CODES = set(_COLORECTAL_POOL.values()) | {"CRC"}
+_CRC_TIERS = _POOLED_CODES
 
 
 def _pool_dict(d: dict) -> dict:
-    """Pool COAD/READ subtype values into CRC_MSI/CRC_MSS (mean) and drop the
-    bulk all-comer COAD/READ entries, in a code->value map."""
+    """Pool COAD/READ subtypes into CRC_MSI/CRC_MSS (mean), and the bulk
+    all-comer COAD/READ into a CRC fallback value, then drop the bulk keys.
+    CRC is a *fallback* (e.g. CRC_MSS TMB has no explicit row, so it resolves to
+    base CRC), not a modeled cohort (the matrix only carries CRC_MSI/CRC_MSS)."""
+    pool = {**_COLORECTAL_POOL, "COAD": "CRC", "READ": "CRC"}
     groups: dict = {}
-    for src, tgt in _COLORECTAL_POOL.items():
+    for src, tgt in pool.items():
         if src in d and pd.notna(d[src]):
             groups.setdefault(tgt, []).append(d[src])
     for tgt, vals in groups.items():
