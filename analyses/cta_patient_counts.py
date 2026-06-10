@@ -49,10 +49,13 @@ from pirlygenes.coverage import greedy_coverage as _pkg_greedy_coverage
 import sweep_treehouse_polya_cohorts as polya
 import sweep_treehouse_tcga_cohorts as tcga
 
-CACHE = Path.home() / ".cache" / "pirlygenes" / "expression" / "treehouse-polya-25-01"
-TPM_TSV = CACHE / "Tumor-25.01-Polya_hugo_log2tpm_58581genes_2025-02-27.tsv"
-CLINICAL = CACHE / "clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv"
-GLIOMA_MAP = CACHE / "derived" / "tcga_glioma_case_to_project.csv"
+# Expression source cache (Treehouse compendium TPM + clinical + cBioPortal
+# derived maps). Distinct from the output CACHE below — keep the names separate
+# (a 5.22.18 collision silently broke _DERIVED_DIR / the cBioPortal splits).
+EXPR_CACHE = Path.home() / ".cache" / "pirlygenes" / "expression" / "treehouse-polya-25-01"
+TPM_TSV = EXPR_CACHE / "Tumor-25.01-Polya_hugo_log2tpm_58581genes_2025-02-27.tsv"
+CLINICAL = EXPR_CACHE / "clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv"
+GLIOMA_MAP = EXPR_CACHE / "derived" / "tcga_glioma_case_to_project.csv"
 # Three roles, three locations:
 #  * OUT     — the stable base directory.
 #  * CACHE   — OUT/_cache: expensive, regenerable, reused across runs (percentile
@@ -245,7 +248,7 @@ def _glioma_split_cohorts() -> list[TreehouseCohort]:
     ]
 
 
-_DERIVED_DIR = CACHE / "derived"
+_DERIVED_DIR = EXPR_CACHE / "derived"
 
 
 def _tcga_case_subtype_cohorts(cache_csv, disease_label, key_col, code_col,
@@ -285,6 +288,10 @@ def _cbioportal_derived_cohorts() -> list[TreehouseCohort]:
             _DERIVED_DIR / "cbioportal_hnsc_hpv.csv",
             "head & neck squamous cell carcinoma", "patientId", "hpv_subtype",
             recode={"HNSC_HPV-": "HNSC_HPVneg", "HNSC_HPV+": "HNSC_HPVpos"})
+        + _tcga_case_subtype_cohorts(
+            _DERIVED_DIR / "cbioportal_ucec_subtype.csv",
+            "uterine corpus endometrioid carcinoma", "patientId", "ucec_subtype",
+            recode={"UCEC_CN_LOW": "UCEC_CNL", "UCEC_CN_HIGH": "UCEC_CNH"})
     )
 
 
