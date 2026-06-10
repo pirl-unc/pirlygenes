@@ -672,6 +672,18 @@ def main():
 
     _emit_load_metrics(tpm_thr)
 
+    # Total CTA transcriptional burden (mean per-sample sum of ALL CTA TPM) vs
+    # every axis, log-y. Threshold-independent (no on/off cutoff), so emitted
+    # once with the --no-timestamp-safe `t` slug rather than per threshold.
+    for xa in _tqdm(_all_axes(), "cta_total_tpm"):
+        _metric_vs_x(mat, cohorts, tpm_thr, _mean_total_cta_tpm,
+                       "mean total CTA TPM per sample", "cta_total_tpm",
+                       xaxis=xa, log_y=True)
+        if xa.short == "tmb":
+            _metric_vs_x(mat, cohorts, tpm_thr, _mean_total_cta_tpm,
+                           "mean total CTA TPM per sample", "cta_total_tpm",
+                           xaxis=xa, log_y=True, color_by=_apd1_axis())
+
     # Within-sample percentile-rank thresholds (after clean-TPM): a CTA is "on"
     # in a sample if its TPM is at/above that sample's Nth-percentile across all
     # genes. Pipeline-robust (rank harmonizes across quantification pipelines).
@@ -1480,6 +1492,14 @@ def _tmb_vs_apd1():
 def _mean_ctas_per_sample(mat, cols, thr, pctile_cutoffs):
     on = _cohort_on_matrix(mat, cols, thr, pctile_cutoffs)
     return float(on.sum(axis=0).mean())
+
+
+def _mean_total_cta_tpm(mat, cols, thr, pctile_cutoffs):
+    """Mean over patients of the summed TPM across ALL CTA proteins — the total
+    CTA transcriptional burden per sample (threshold-independent: no on/off
+    cutoff, every CTA's TPM is summed). Spans orders of magnitude, so plotted
+    log-y."""
+    return float(mat[cols].sum(axis=0).mean())
 
 
 def _mean_specific_9mer_load(weights):
