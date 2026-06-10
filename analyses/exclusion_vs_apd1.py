@@ -41,7 +41,8 @@ from scipy.stats import spearmanr
 from _apd1_factors import (apd1_map, cohort_gene_matrix,
                            curated_exclusion_genes)
 
-OUT = Path(__file__).resolve().parent / "outputs"
+OUT = Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors"
+OUT.mkdir(parents=True, exist_ok=True)
 MIN_COHORTS = 18  # gene must be present in >= this many aPD1 cohorts
 
 # Curated, literature-grounded *causal exclusion* panel (NOT IFN-inducible).
@@ -330,7 +331,7 @@ def main() -> int:
     fig.savefig(OUT / "exclusion_composite_vs_apd1.png", dpi=130)
     print(f"\nwrote {OUT/'exclusion_composite_vs_apd1.png'}")
 
-    OUT.mkdir(exist_ok=True)
+    OUT.mkdir(parents=True, exist_ok=True)
     screen.to_csv(OUT / "_apd1_gene_screen.csv", index=False)
     contrast.rename("gyn_minus_skcm_log10").to_csv(
         OUT / "_apd1_gyn_vs_skcm.csv")

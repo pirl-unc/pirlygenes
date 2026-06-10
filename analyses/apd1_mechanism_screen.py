@@ -34,7 +34,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 from _apd1_factors import (SIGNATURE_META, apd1_map,  # noqa: E402
                            cohort_gene_matrix, curated_signatures)
 
-OUT = Path(__file__).resolve().parent / "outputs"
+OUT = Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors"
+OUT.mkdir(parents=True, exist_ok=True)
 
 # Curated signatures (therapy-response-signatures.csv) are the source of truth;
 # these are the NON-curated extras tested as controls / known failures:
