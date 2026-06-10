@@ -51,7 +51,6 @@ _VIRAL_SCORE = {"defining": 1.0, "subset": 0.5, "none": 0.0}
 def with_parent(d: dict, code: str, default=None):
     """Look up ``code`` in ``d``, falling back to its base code (before the
     first ``_``) — e.g. ``COAD_MSI`` -> ``COAD`` for a coarse-grained value."""
-    import pandas as pd  # local: keep top-level imports lean
     for k in (code, code.split("_")[0]):
         if k in d and pd.notna(d[k]):
             return d[k]
