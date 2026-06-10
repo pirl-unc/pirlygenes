@@ -31,62 +31,47 @@ from scipy.stats import spearmanr
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from _apd1_factors import apd1_map, cohort_gene_matrix  # noqa: E402
+from _apd1_factors import (SIGNATURE_META, apd1_map,  # noqa: E402
+                           cohort_gene_matrix, curated_signatures)
 
 OUT = Path(__file__).resolve().parent / "outputs"
 
-# mechanism -> (gene list, expected sign, circularity tag, one-line rationale)
-MECHANISMS = {
-    # ---- antigen availability (expected POSITIVE) ----
+# Curated signatures (therapy-response-signatures.csv) are the source of truth;
+# these are the NON-curated extras tested as controls / known failures:
+# name -> (gene list, expected sign, circularity tag, one-line rationale)
+_EXTRA_CONTROLS = {
     "antigen:CTA": (
         ["MAGEA1", "MAGEA3", "MAGEA4", "MAGEC2", "CTAG1B", "CTAG2", "PRAME",
          "SSX2", "GAGE1", "XAGE1B"], +1, "causal",
-        "cancer-testis antigen expression"),
+        "cancer-testis antigen expression (representative MAGEs; CTA panel owned "
+        "by tsarina, not this CSV)"),
     "antigen:ERV_annotated": (
         ["ERV3-1", "ERVK-28", "ERVK3-1", "ERVMER34-1", "ERVW-1", "ERVFRD-1",
          "ERVH-1", "ERVV-1"], +1, "causal",
-        "Ensembl-annotated ERVs (mostly placental syncytins - expected to FAIL)"),
-    "antigen:APM_MHCI": (
-        ["B2M", "HLA-A", "HLA-B", "HLA-C", "TAP1", "TAP2", "TAPBP", "NLRC5",
-         "PSMB8", "PSMB9", "HLA-E", "HLA-F"], +1, "borderline",
-        "MHC-I antigen-presentation machinery (IFN-inducible -> borderline)"),
-    # ---- tumor-intrinsic exclusion / resistance (expected NEGATIVE) ----
-    "exclude:TGFb_response": (
-        ["PMEPA1", "TGFB2", "ACTA2", "MYL9", "ELN"], -1, "causal",
-        "TGF-beta response / myCAF barrier (curated)"),
-    "exclude:Wnt_ligand": (
-        ["CTNNB1", "WNT11", "TLE2", "DKK1"], -1, "causal",
-        "Wnt ligand/CTNNB1 level (curated; bulk TPM weak activation proxy)"),
-    "exclude:Wnt_TARGET": (
-        ["AXIN2", "LGR5", "NKD1", "RNF43", "NOTUM", "SP5", "TBX3", "GLUL",
-         "LECT2"], -1, "causal",
-        "beta-catenin TRANSCRIPTIONAL targets (true activation readout)"),
-    "exclude:angiogenesis": (
-        ["VEGFA", "KDR", "ANGPT2", "PECAM1", "ESM1"], -1, "causal",
-        "angiogenic vascular barrier"),
+        "Ensembl-annotated ERVs (mostly placental syncytins - FAILS)"),
     "exclude:hypoxia": (
         ["CA9", "SLC2A1", "LDHA", "VEGFA", "PGK1"], -1, "borderline",
-        "hypoxia (CA9 is also a ccRCC lineage marker - confounded)"),
-    "exclude:adenosine": (
-        ["ENTPD1", "NT5E", "ADORA2A", "ADORA2B"], -1, "causal",
-        "adenosine immunosuppression axis"),
+        "hypoxia (CA9 is also a ccRCC lineage marker - confounded, NOT curated)"),
     "exclude:myeloid_tolerance": (
         ["VSIG4", "MARCO", "CD163", "C1QA", "C1QB", "ARG1", "ALDH1A1", "IL10"],
         -1, "borderline",
-        "resident tolerogenic myeloid (CONFOUNDED with total infiltrate)"),
-    # ---- circular controls (a readout of the response; NEVER a predictor) ----
-    "circular:IFN_cytotoxic": (
-        ["CXCL9", "CXCL10", "CD8A", "GZMB", "PRF1", "IFNG", "STAT1"], +1,
-        "circular", "IFN/cytotoxic infiltrate (the outcome, not a cause)"),
-    "circular:checkpoints": (
-        ["CD274", "IDO1", "LAG3", "HAVCR2", "PDCD1"], +1, "circular",
-        "checkpoint/exhaustion (IFN-induced; downstream of engagement)"),
-    "circular:Treg": (
-        ["FOXP3", "CTLA4", "IL2RA", "IKZF2"], +1, "circular",
-        "Treg markers (accumulate due to ongoing immune activity)"),
+        "resident tolerogenic myeloid (WRONG-SIGN: indexes infiltrate; NOT curated)"),
 }
-
+# axis -> expected response sign (antigen up, exclusion down, circular up)
+_AXIS_SIGN = {"antigen": +1, "exclusion": -1, "circular": +1}
 _TAG_COLOR = {"causal": "#2c7fb8", "borderline": "#d95f0e", "circular": "#999999"}
+
+
+def _mechanisms() -> dict:
+    """Build the test catalog: curated signatures (from CSV) + extra controls."""
+    out = {}
+    for cls, genes in curated_signatures().items():
+        axis, sign, tag = SIGNATURE_META[cls]
+        short = cls.replace("aPD1_", "").replace("exclusion_", "").replace(
+            "circular_", "").replace("antigen_", "")
+        out[f"{axis}:{short}"] = (genes, sign, tag, f"curated {cls}")
+    out.update(_EXTRA_CONTROLS)
+    return out
 
 
 def main() -> int:
@@ -96,7 +81,7 @@ def main() -> int:
     orr = pd.Series({c: apd1[c] for c in mat.index})
 
     rows = []
-    for name, (genes, sign, tag, why) in MECHANISMS.items():
+    for name, (genes, sign, tag, why) in _mechanisms().items():
         present = [g for g in genes if g in mat.columns]
         if len(present) < 2:
             print(f"  SKIP {name}: <2 genes present ({present})")

@@ -98,11 +98,38 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
 
 
 def curated_exclusion_genes() -> dict[str, list[str]]:
-    """The two curated aPD1-exclusion signatures, from
+    """The curated aPD1-exclusion signatures, from
     ``therapy-response-signatures.csv`` (single source of truth)."""
     sigs = get_data("therapy-response-signatures.csv")
     return {
         cls.replace("aPD1_exclusion_", ""): grp["symbol"].tolist()
         for cls, grp in sigs.groupby("therapy_class")
         if cls.startswith("aPD1_exclusion_")
+    }
+
+
+# axis + expected response-direction + circularity tag, keyed by therapy_class.
+# axis: antigen (drives response UP) / exclusion (DOWN) / circular (outcome).
+SIGNATURE_META = {
+    "aPD1_antigen_presentation":   ("antigen",   +1, "borderline"),
+    "aPD1_exclusion_TGFb_response": ("exclusion", -1, "causal"),
+    "aPD1_exclusion_Wnt":          ("exclusion", -1, "causal"),
+    "aPD1_exclusion_Wnt_target":   ("exclusion", -1, "causal"),
+    "aPD1_exclusion_angiogenesis": ("exclusion", -1, "causal"),
+    "aPD1_exclusion_adenosine":    ("exclusion", -1, "causal"),
+    "aPD1_circular_checkpoints":   ("circular",  +1, "circular"),
+    "aPD1_circular_treg":          ("circular",  +1, "circular"),
+    "IFN_response":                ("circular",  +1, "circular"),
+}
+
+
+def curated_signatures() -> dict[str, list[str]]:
+    """All curated aPD1 pathway signatures (+ IFN_response), as
+    ``{therapy_class: [symbols]}``, from ``therapy-response-signatures.csv``."""
+    sigs = get_data("therapy-response-signatures.csv")
+    keep = set(SIGNATURE_META)
+    return {
+        cls: grp["symbol"].tolist()
+        for cls, grp in sigs.groupby("therapy_class")
+        if cls in keep
     }
