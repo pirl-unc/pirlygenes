@@ -32,6 +32,8 @@ Caveats (reported, not hidden):
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import numpy as np
@@ -41,7 +43,8 @@ from scipy.stats import spearmanr
 from _apd1_factors import (apd1_map, cohort_gene_matrix,
                            curated_exclusion_genes)
 
-OUT = Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors"
+OUT = Path(os.environ.get("APD1_RUN_DIR",
+          str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
 OUT.mkdir(parents=True, exist_ok=True)
 MIN_COHORTS = 18  # gene must be present in >= this many aPD1 cohorts
 

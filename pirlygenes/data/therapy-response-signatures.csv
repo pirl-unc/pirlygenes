@@ -71,14 +71,8 @@ STAT1,ENSG00000115415,IFN_response,up,IFN-signal transducer,pan_cancer,canonical
 IRF7,ENSG00000185507,IFN_response,up,IFN-regulatory factor,pan_cancer,canonical,
 CXCL10,ENSG00000169245,IFN_response,up,IFN-stimulated chemokine,pan_cancer,canonical,
 CXCL9,ENSG00000138755,IFN_response,up,IFN-stimulated chemokine,pan_cancer,canonical,
-PMEPA1,ENSG00000124225,aPD1_exclusion_TGFb_response,up,TGF-beta target gene (SMAD-induced); high = active TGF-beta signaling / T-cell exclusion,pan_cancer,supported,PMID:29443960
 TGFB2,ENSG00000092969,aPD1_exclusion_TGFb_response,up,TGF-beta2 ligand; stromal T-cell-exclusion cytokine,pan_cancer,supported,PMID:29443960
-ACTA2,ENSG00000107796,aPD1_exclusion_TGFb_response,up,myofibroblast/myCAF contractile barrier (alpha-SMA),pan_cancer,supported,PMID:29443960
-MYL9,ENSG00000101335,aPD1_exclusion_TGFb_response,up,myCAF contractile (myosin light chain 9); desmoplastic barrier,pan_cancer,emerging,PMID:29443960
-ELN,ENSG00000049540,aPD1_exclusion_TGFb_response,up,elastin; TGF-beta-driven matrix barrier,pan_cancer,emerging,PMID:29443960
-CTNNB1,ENSG00000168036,aPD1_exclusion_Wnt,up,beta-catenin; tumor-intrinsic Wnt -> loss of CCL4 -> no BATF3 cDC1 -> cold tumor (bulk TPM is a weak activation proxy),pan_cancer,supported,PMID:25970248
 WNT11,ENSG00000085741,aPD1_exclusion_Wnt,up,non-canonical Wnt ligand; T-cell-excluded phenotype,pan_cancer,emerging,PMID:25970248
-TLE2,ENSG00000065717,aPD1_exclusion_Wnt,up,Groucho/TLE Wnt transcriptional corepressor; Wnt-pathway readout,pan_cancer,emerging,PMID:25970248
 DKK1,ENSG00000107984,aPD1_exclusion_Wnt,up,Wnt modulator (DKK1); immunosuppressive in T-cell-excluded tumors,pan_cancer,emerging,PMID:25970248
 AXIN2,ENSG00000168646,aPD1_exclusion_Wnt_target,up,beta-catenin transcriptional target; true Wnt-ON activation readout (vs ligand/CTNNB1 level),pan_cancer,supported,PMID:25970248
 LGR5,ENSG00000139292,aPD1_exclusion_Wnt_target,up,beta-catenin target; stem/Wnt-active marker,pan_cancer,supported,PMID:25970248
@@ -87,7 +81,6 @@ RNF43,ENSG00000108375,aPD1_exclusion_Wnt_target,up,beta-catenin target E3 ligase
 NOTUM,ENSG00000185269,aPD1_exclusion_Wnt_target,up,beta-catenin target; secreted Wnt feedback; Wnt-ON marker,pan_cancer,emerging,PMID:25970248
 SP5,ENSG00000204335,aPD1_exclusion_Wnt_target,up,beta-catenin target transcription factor,pan_cancer,emerging,PMID:25970248
 TBX3,ENSG00000135111,aPD1_exclusion_Wnt_target,up,beta-catenin target; Wnt-active (HCC),pan_cancer,emerging,PMID:25970248
-GLUL,ENSG00000135821,aPD1_exclusion_Wnt_target,up,glutamine synthetase; classic beta-catenin-active HCC marker (catches Wnt+ LIHC),pan_cancer,supported,PMID:25970248
 LECT2,ENSG00000145826,aPD1_exclusion_Wnt_target,up,beta-catenin-target hepatokine; Wnt-active HCC,pan_cancer,emerging,PMID:25970248
 VEGFA,ENSG00000112715,aPD1_exclusion_angiogenesis,up,VEGF-A; abnormal vasculature + T-cell exclusion; anti-VEGF+ICB synergy (RCC/HCC/endometrial),pan_cancer,supported,PMID:25601652
 KDR,ENSG00000128052,aPD1_exclusion_angiogenesis,up,VEGFR2; angiogenic endothelium,pan_cancer,supported,PMID:25601652

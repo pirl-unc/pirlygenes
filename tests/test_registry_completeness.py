@@ -50,8 +50,8 @@ _MISSING_THERAPY_AXIS = frozenset(
         "HL", "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC",
         "NET_LUNG", "NEC_LUNG_LARGECELL", "MBL", "MCL", "MDS", "NEC_MERKEL",
         "MESO", "NET_MIDGUT", "MM", "MPN", "MTC", "NPC", "NUTM",
-        "OV", "PAAD", "NET_PANCREAS", "PCPG", "RB", "READ", "NET_RECTAL",
-        "RT", "SARC",
+        "OV", "PAAD", "NET_PANCREAS", "PCPG", "RB", "NET_RECTAL",
+        "RT", "SARC", "CRC",
         "SCLC", "STAD", "TGCT", "THCA", "THYM", "T_ALL", "UCEC", "UCS",
         "UVM", "WILMS",
         # #294/#295 NCI-gap additions — curated registry entries; expression
@@ -127,6 +127,9 @@ _TOLERATED_GAPS_EXPLICIT = {
     # the lineage-genes table / key-genes curation isn't built yet.
     "MENINGIOMA": {"lineage", "biomarker", "therapy"},
     "CHOROID_PLEXUS": {"lineage", "biomarker", "therapy"},
+    # CRC: computed colorectal union (parent of COAD+READ); an abstract node
+    # with no panels of its own — its children carry lineage/biomarker/therapy.
+    "CRC": {"lineage", "biomarker", "therapy"},
 }
 
 

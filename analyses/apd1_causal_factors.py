@@ -28,6 +28,8 @@ they should appear as large POSITIVE residuals (under-predicted by the model).
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import matplotlib
@@ -45,7 +47,8 @@ from _apd1_factors import (apd1_map, cohort_gene_matrix,  # noqa: E402
                            curated_exclusion_genes, indel_map, tmb_map,
                            viral_score, with_parent)
 
-OUT = Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors"
+OUT = Path(os.environ.get("APD1_RUN_DIR",
+          str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
 OUT.mkdir(parents=True, exist_ok=True)
 
 

@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes.expression.accessors import cancer_reference_expression
+from pirlygenes.gene_sets_cancer import cancer_subtype_group
 from pirlygenes.load_dataset import get_data
 
 _EXPR_CACHE = (Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -45,9 +46,14 @@ _UCEC_RECODE = {
 # the COAD+READ expression shards, as TCGA's COADREAD does) and DROP the bulk
 # all-comer COAD/READ entirely (the bulk ORR is just a mixture of its MSI/MSS
 # components, which we already model separately).
+# Derived from the registry hierarchy (CRC -> COAD/READ) + the MSI/MSS
+# cross-cutting groupings (cancer-subtype-groupings.csv), so the pool is a
+# single source of truth, not a hardcoded list:
+#   {COAD_MSI: CRC_MSI, READ_MSI: CRC_MSI, COAD_MSS: CRC_MSS, READ_MSS: CRC_MSS}
 _COLORECTAL_POOL = {
-    "COAD_MSI": "CRC_MSI", "READ_MSI": "CRC_MSI",
-    "COAD_MSS": "CRC_MSS", "READ_MSS": "CRC_MSS",
+    member: f"CRC_{grp}"
+    for grp in ("MSI", "MSS")
+    for member in cancer_subtype_group(grp, under="CRC")
 }
 _COLORECTAL_DROP = ("COAD", "READ")  # bulk all-comer = MSI/MSS mixture
 # analysis-only pooled codes (NOT registry codes) - must be kept out of any

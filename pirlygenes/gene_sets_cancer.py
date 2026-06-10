@@ -1209,6 +1209,49 @@ def cancer_type_subtypes_of(parent_code):
     return df[df["parent_code"] == parent_code]["code"].tolist()
 
 
+def cancer_subtype_groupings():
+    """Orthogonal cross-cutting subtype groupings
+    (``data/cancer-subtype-groupings.csv``).
+
+    Axes such as microsatellite (MSI/MSS), hypermutation (POLE), viral_hpv, and
+    copy_number_mycn cut *across* the organ ``parent_code`` tree — a leaf belongs
+    to its organ parent AND to a mechanism group. Returns the long-form
+    ``group_code, axis, member_code, basis`` table.
+    """
+    return get_data("cancer-subtype-groupings.csv")
+
+
+def _walk_ancestors(code, parent_of):
+    """Codes on the parent_code chain above ``code`` (excluding itself)."""
+    import pandas as pd
+
+    seen, cur = [], code
+    while cur in parent_of and pd.notna(parent_of[cur]) and str(parent_of[cur]):
+        cur = parent_of[cur]
+        if cur in seen:
+            break
+        seen.append(cur)
+    return seen
+
+
+def cancer_subtype_group(group_code, *, under=None):
+    """Member registry codes of a cross-cutting group (e.g. ``"MSI"``, ``"MSS"``,
+    ``"POLE"``, ``"HPV_POS"``, ``"MYCN_AMP"``).
+
+    With ``under``, restrict to members that are descendants of that hierarchy
+    node — ``cancer_subtype_group("MSI", under="CRC")`` -> ``["COAD_MSI",
+    "READ_MSI"]`` (the colorectal MSI cross-cut), while
+    ``cancer_subtype_group("MSI")`` returns every MSI subtype across cancers.
+    """
+    df = cancer_subtype_groupings()
+    members = df[df["group_code"] == group_code]["member_code"].tolist()
+    if under is not None:
+        parent_of = (cancer_type_registry()
+                     .set_index("code")["parent_code"].to_dict())
+        members = [m for m in members if under in _walk_ancestors(m, parent_of)]
+    return members
+
+
 def mixture_cohort_codes():
     """Return parent codes flagged as mixture cohorts in the registry (#171).
 
@@ -2483,7 +2526,7 @@ _BONE_SARCOMA_TISSUES = {"bone", "cartilage", "notochord"}
 # the registry; heme tissues are routed by :data:`_HEME_TISSUE_BURDEN` below.
 _PRIMARY_TISSUE_BURDEN = {
     "lung": "lung", "breast": "breast", "prostate": "prostate",
-    "colon": "colorectal", "rectum": "colorectal",
+    "colon": "colorectal", "rectum": "colorectal", "colorectum": "colorectal",
     "pancreas": "pancreas", "liver": "liver", "bile_duct": "gallbladder_biliary",
     "stomach": "stomach", "esophagus": "esophagus",
     "small_intestine": "small_intestine",
