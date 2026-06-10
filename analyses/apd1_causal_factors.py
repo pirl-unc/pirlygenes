@@ -40,33 +40,12 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from pirlygenes.gene_sets_cancer import CTA_gene_names  # noqa: E402
 from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
-from pirlygenes.load_dataset import get_data  # noqa: E402
 
 from _apd1_factors import (apd1_map, cohort_gene_matrix,  # noqa: E402
-                           curated_exclusion_genes)
+                           curated_exclusion_genes, indel_map, tmb_map,
+                           viral_score, with_parent)
 
 OUT = Path(__file__).resolve().parent / "outputs"
-_VIRAL = {"defining": 1.0, "subset": 0.5, "none": 0.0}
-
-
-def _tmb_map() -> dict[str, float]:
-    df = get_data("cancer-tmb.csv")
-    return dict(zip(df["cancer_code"], df["median_tmb_mut_mb"].astype(float)))
-
-
-def _indel_map() -> dict[str, float]:
-    """Ordinal frameshift/indel-enrichment class (0 baseline / 1 intermediate /
-    2 high). A mechanistic flag, NOT a measured per-Mb value: high = RCC lineage
-    (Turajlic 2017) + dMMR/MSI-H (frameshift-at-microsatellites by definition)."""
-    df = get_data("cancer-frameshift-burden.csv")
-    return dict(zip(df["cancer_code"], df["indel_score"].astype(float)))
-
-
-def _viral_score(code: str, reg: pd.DataFrame) -> float:
-    for c in (code, code.split("_")[0]):
-        if c in reg.index:
-            return _VIRAL.get(str(reg.loc[c, "viral_etiology"]), 0.0)
-    return 0.0
 
 
 def _z(s: pd.Series) -> pd.Series:
@@ -80,28 +59,22 @@ def main() -> int:
     orr = pd.Series({c: apd1[c] for c in mat.index})
 
     reg = cancer_type_registry().set_index("code")
-    tmb = _tmb_map()
-    indel = _indel_map()
+    tmb = tmb_map()
+    indel = indel_map()
     sig = curated_exclusion_genes()
     excl_genes = [g for g in sig["TGFb_response"] + sig["Wnt"]
                   if g in mat.columns]
     cta_genes = [g for g in CTA_gene_names() if g in mat.columns]
 
-    def tmb_for(code: str) -> float:
-        for c in (code, code.split("_")[0]):
-            if c in tmb:
-                return tmb[c]
-        return np.nan
-
     F = pd.DataFrame(index=mat.index)
     F["ORR"] = orr
-    F["TMB"] = [tmb_for(c) for c in mat.index]
+    F["TMB"] = [with_parent(tmb, c, np.nan) for c in mat.index]
     F["logTMB"] = np.log10(F["TMB"])
     # CTA burden = how many CTA antigens are actually ON in the cohort
     # (mean TPM >= 5), not a mean over 263 mostly-silent genes.
     F["CTA"] = (mat[cta_genes] >= np.log10(6)).sum(axis=1)
-    F["viral"] = [_viral_score(c, reg) for c in mat.index]
-    F["indel"] = [indel.get(c, indel.get(c.split("_")[0], 0.0)) for c in mat.index]
+    F["viral"] = [viral_score(c, reg) for c in mat.index]
+    F["indel"] = [with_parent(indel, c, 0.0) for c in mat.index]
     F["exclusion"] = mat[excl_genes].apply(_z).mean(axis=1)
     F = F.dropna(subset=["logTMB", "CTA", "exclusion"])
     # The two conceptual axes the user wants kept distinct:

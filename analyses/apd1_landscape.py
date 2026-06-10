@@ -36,13 +36,12 @@ from matplotlib.colors import TwoSlopeNorm  # noqa: E402
 
 from pirlygenes.gene_sets_cancer import CTA_gene_names  # noqa: E402
 from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
-from pirlygenes.load_dataset import get_data  # noqa: E402
 
 from _apd1_factors import (SIGNATURE_META, apd1_map,  # noqa: E402
-                           cohort_gene_matrix, curated_signatures)
+                           cohort_gene_matrix, curated_signatures, indel_map,
+                           tmb_map, viral_score, with_parent)
 
 OUT = Path(__file__).resolve().parent / "outputs"
-_VIRAL = {"defining": 1.0, "subset": 0.5, "none": 0.0}
 # column order within each axis (label -> therapy_class or special token)
 _AXIS_ORDER = ["antigen", "exclusion", "circular"]
 
@@ -58,29 +57,17 @@ def _build():
     orr = pd.Series({c: apd1[c] for c in mat.index})
 
     reg = cancer_type_registry().set_index("code")
-    tmb = dict(zip(get_data("cancer-tmb.csv")["cancer_code"],
-                   get_data("cancer-tmb.csv")["median_tmb_mut_mb"]))
-    ind = dict(zip(get_data("cancer-frameshift-burden.csv")["cancer_code"],
-                   get_data("cancer-frameshift-burden.csv")["indel_score"]))
-
-    def lookup(d, c, default=np.nan):
-        for k in (c, c.split("_")[0]):
-            if k in d and pd.notna(d[k]):
-                return float(d[k])
-        return default
-
-    def viral(c):
-        for k in (c, c.split("_")[0]):
-            if k in reg.index:
-                return _VIRAL.get(str(reg.loc[k, "viral_etiology"]), 0.0)
-        return 0.0
+    tmb, ind = tmb_map(), indel_map()
 
     cta = [g for g in CTA_gene_names() if g in mat.columns]
     cols = {}  # display label -> (axis, raw per-cohort series)
     # antigen factors that aren't expression signatures
-    cols["TMB"] = ("antigen", np.log10(pd.Series({c: lookup(tmb, c) for c in mat.index})))
-    cols["indel"] = ("antigen", pd.Series({c: lookup(ind, c, 0.0) for c in mat.index}))
-    cols["viral"] = ("antigen", pd.Series({c: viral(c) for c in mat.index}))
+    cols["TMB"] = ("antigen", np.log10(pd.Series(
+        {c: with_parent(tmb, c, np.nan) for c in mat.index})))
+    cols["indel"] = ("antigen", pd.Series(
+        {c: with_parent(ind, c, 0.0) for c in mat.index}))
+    cols["viral"] = ("antigen", pd.Series(
+        {c: viral_score(c, reg) for c in mat.index}))
     cols["CTA"] = ("antigen", (mat[cta] >= np.log10(6)).sum(axis=1))
     # curated expression signatures
     for cls, genes in curated_signatures().items():

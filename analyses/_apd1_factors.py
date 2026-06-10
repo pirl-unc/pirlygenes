@@ -45,6 +45,43 @@ def apd1_map() -> dict[str, float]:
     return dict(zip(df["cancer_code"], df["apd1_orr_pct"].astype(float)))
 
 
+_VIRAL_SCORE = {"defining": 1.0, "subset": 0.5, "none": 0.0}
+
+
+def with_parent(d: dict, code: str, default=None):
+    """Look up ``code`` in ``d``, falling back to its base code (before the
+    first ``_``) — e.g. ``COAD_MSI`` -> ``COAD`` for a coarse-grained value."""
+    import pandas as pd  # local: keep top-level imports lean
+    for k in (code, code.split("_")[0]):
+        if k in d and pd.notna(d[k]):
+            return d[k]
+    return default
+
+
+def tmb_map() -> dict[str, float]:
+    """``{cancer_code: median TMB mut/Mb}`` from ``cancer-tmb.csv``."""
+    df = get_data("cancer-tmb.csv")
+    return dict(zip(df["cancer_code"], df["median_tmb_mut_mb"]))
+
+
+def indel_map() -> dict[str, float]:
+    """``{cancer_code: ordinal frameshift/indel-enrichment score (0/1/2)}``.
+
+    A mechanistic class, NOT a measured per-Mb value: high = RCC lineage
+    (Turajlic 2017) + dMMR/MSI-H. See ``cancer-frameshift-burden.csv``."""
+    df = get_data("cancer-frameshift-burden.csv")
+    return dict(zip(df["cancer_code"], df["indel_score"].astype(float)))
+
+
+def viral_score(code: str, reg) -> float:
+    """Ordinal viral-antigen score from the registry ``viral_etiology``
+    (defining=1.0 / subset=0.5 / none=0.0), with base-code fallback."""
+    for k in (code, code.split("_")[0]):
+        if k in reg.index:
+            return _VIRAL_SCORE.get(str(reg.loc[k, "viral_etiology"]), 0.0)
+    return 0.0
+
+
 def _ucec_subtype_tpm(genes=None) -> pd.DataFrame | None:
     """Per-subtype median TPM (rows = UCEC_* codes, cols = Symbol) from the
     per-sample TCGA-UCEC parquet split by the cBioPortal molecular class.
