@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 import pirlygenes.expression.accessors as accessors
 import pirlygenes.gene_sets_cancer as gsc
 from cta_expression_heatmaps import _representative_source
-from _run_layout import add_layout_args, resolve_dirs
+from _run_layout import add_layout_args, resolve_dirs, pct_axis
 
 ACTIONABLE_TPM = 30.0     # "actionable" target threshold (per user intuition)
 SECONDARY_TPM = 10.0      # also report coverage at a looser bar
@@ -193,7 +193,8 @@ def main() -> None:
         ax.plot(xs, ys, "o-", ms=4, label=f"{stat_label}")
     ax.axhline(80, color="0.7", ls="--", lw=0.8)
     ax.set_xlabel(f"# CTAs in panel (> {ACTIONABLE_TPM:g} TPM)")
-    ax.set_ylabel("% patients covered (incidence-weighted)")
+    ax.set_ylabel("patients covered (incidence-weighted)")
+    pct_axis(ax, "y")
     ax.set_title("CTA covering set — cumulative patient coverage")
     ax.set_xlim(left=1)
     ax.legend(title="actionable if TPM> bar at:")
