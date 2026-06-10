@@ -59,7 +59,7 @@ LUAD,,MET,biomarker,,,,,,,,Exon 14 skipping — capmatinib / tepotinib eligible,
 LUAD,,NTRK1,biomarker,,,,,,,,NTRK fusion — larotrectinib / entrectinib eligible (basket),PMID:29466156
 LUAD,,CD274,biomarker,,,,,,,,PD-L1 expression gates first-line pembrolizumab monotherapy,PMID:27718847
 LUAD,,KEAP1,biomarker,,,,,,,,Co-mutation with STK11 predicts immunotherapy resistance,PMID:30275273
-LUAD,,STK11,biomarker,,,,,,,,Loss predicts immunotherapy resistance in KRAS-mutant LUAD,PMID:30287575
+LUAD,,STK11,biomarker,,,,,,,,Loss predicts immunotherapy resistance in KRAS-mutant LUAD,DOI:10.1158/2159-8290.CD-18-0099
 LUAD,,NKX2-1,biomarker,,,,,,,,TTF-1 — adenocarcinoma lineage confirmation,PMID:20686206
 LUAD,,EGFR,target,osimertinib,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,EGFR-mut LUAD,Third-generation EGFR TKI — frontline and resistance setting,PMID:31733398
 LUAD,,ALK,target,alectinib,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,ALK-rearranged LUAD,Second-generation ALK TKI — frontline standard,PMID:28586279
@@ -92,7 +92,7 @@ COAD,,EGFR,target,panitumumab,antibody,approved,approved_indication_matched,appr
 COAD,,CD274,target,pembrolizumab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,MSI-H / dMMR mCRC,Frontline IO in MSI-H / dMMR mCRC (KEYNOTE-177),PMID:33264544
 COAD,,CEACAM5,target,labetuzumab govitecan,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,CEACAM5+ mCRC,CEACAM5 ADC in clinical trials,PMID:28817371
 SKCM,,BRAF,biomarker,,,,,,,,V600E/K — gates BRAF/MEK inhibition,PMID:22460905
-SKCM,,NRAS,biomarker,,,,,,,,Q61 mutations — MEK / ERK-directed trials,PMID:23410882
+SKCM,,NRAS,biomarker,,,,,,,,Q61 mutations — MEK / ERK-directed trials,PMID:23414587
 SKCM,,MITF,biomarker,,,,,,,,Melanocyte lineage transcription factor; amplification in some resistance phenotypes,PMID:16172454
 SKCM,,S100B,biomarker,,,,,,,,Serum biomarker for melanoma progression,PMID:19380449
 SKCM,,MLANA,biomarker,,,,,,,,Melan-A / MART-1 — melanocyte lineage antigen and TCR target,PMID:7539751
@@ -459,14 +459,14 @@ NUTM,,EP300,target,EP31670 (NEO2734),small_molecule,phase_1,trial_follow_up,clin
 NUTM,,PRAME,target,IMA203,TCR-T,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; HLA-A*02 and PRAME expression required; NUT carcinoma use is a transfer hypothesis not a diagnosis-specific standard,PRAME+ HLA-A*02+ recurrent/refractory advanced solid tumors,PRAME-directed TCR-T showed phase 1 activity across solid tumors; PRAME can be derepressed in NUT carcinoma,PMID:40205198;PMID:24491763
 NUTM,,MAGEA4,target,afami-cel (afamitresgene autoleucel),TCR-T,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; HLA-A*02 and MAGE-A4 expression required; NUT carcinoma use is a transfer hypothesis not a diagnosis-specific standard,MAGE-A4+ HLA-A*02+ advanced solid tumors,MAGE-A4-directed TCR-T has solid-tumor phase 1 evidence and an approved synovial-sarcoma path; apply to NUT carcinoma only as trial/transfer rationale,PMID:36624315;PMID:39141605
 NUTM,,HDAC1,target,vorinostat,small_molecule,off_label,off_label,off_label,off-label follow-up; confirm rationale and alternatives,NUT carcinoma,HDAC inhibitor — synergizes with BET-i preclinically; case reports of clinical benefit,PMID:23152362
-ACC,,INHA,biomarker,,,,,,,,Inhibin α — adrenal cortex lineage marker; diagnostic IHC,PMID:22684458
-ACC,,NR5A1,biomarker,,,,,,,,SF1 / steroidogenic factor 1 — adrenocortical differentiation marker,PMID:22684458
-ACC,,STAR,biomarker,,,,,,,,Steroidogenic acute regulatory protein — adrenal-restricted,PMID:22684458
+ACC,,INHA,biomarker,,,,,,,,Inhibin α — adrenal cortex lineage marker; diagnostic IHC,
+ACC,,NR5A1,biomarker,,,,,,,,SF1 / steroidogenic factor 1 — adrenocortical differentiation marker,
+ACC,,STAR,biomarker,,,,,,,,Steroidogenic acute regulatory protein — adrenal-restricted,
 ACC,,TP53,biomarker,,,,,,,,Somatic and germline (Li-Fraumeni) inactivation — predicts aggressive course,PMID:25932744
 ACC,,CTNNB1,biomarker,,,,,,,,Activating mutations — Wnt pathway driver; worse prognosis,PMID:18974114
 ACC,,IGF2,biomarker,,,,,,,,Overexpressed in ~90% ACC; proposed but unproven therapy target,PMID:19861546
 ACC,,MKI67,biomarker,,,,,,,,Ki-67 >10% proliferation index — independent predictor of recurrence,PMID:19299547
-ACC,,NR5A1,target,mitotane,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,advanced/metastatic ACC,Adrenolytic — standard first-line single-agent therapy in ACC,PMID:17551153
+ACC,,NR5A1,target,mitotane,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,advanced/metastatic ACC,Adrenolytic — standard first-line single-agent therapy in ACC,PMID:17554118
 ACC,,CTLA4,target,ipilimumab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced ACC,Anti-CTLA4; modest activity in trials; limited without nivolumab combo,PMID:30528525
 ACC,,PDCD1,target,pembrolizumab,antibody,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,PD-L1+ / MSI-H ACC,Anti-PD1; limited activity overall but responders documented in MSI-H subset,PMID:30763180
 KICH,,KIT,biomarker,,,,,,,,CD117 diffuse IHC — defining KICH; distinguishes from KIRC oncocytoma,PMID:25241740
@@ -736,7 +736,7 @@ ADCC,,KIT,biomarker,,,,,,,,Near-universal expression — historically imatinib t
 ADCC,,MYB,target,brontictuzumab,antibody,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,NOTCH1-mut ADCC,Anti-NOTCH1 monoclonal — limited activity; high-toxicity,PMID:31064789
 ADCC,,FGF2,target,lenvatinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced ADCC,Multikinase TKI — modest activity in advanced ADCC,PMID:30496135
 SARC_CHOR,,T,biomarker,,,,,,,,Brachyury (TBXT) — pathognomonic for chordoma; defining nuclear IHC,PMID:18094074
-SARC_CHOR,,CDKN2A,biomarker,,,,,,,,Frequent homozygous deletion — prognostic,PMID:24509719
+SARC_CHOR,,CDKN2A,biomarker,,,,,,,,Frequent homozygous deletion — prognostic,PMID:18071362
 SARC_CHOR,,LYST,biomarker,,,,,,,,Recurrent loss — subset of chordoma,PMID:30266954
 SARC_CHOR,,EGFR,target,erlotinib / gefitinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced chordoma,EGFR inhibitors — activity observed in subset; small series,PMID:21775476
 SARC_CHOR,,PDGFRB,target,imatinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,advanced chordoma,Case reports + small series of durable responses in PDGFR-expressing chordoma,PMID:15751962
@@ -762,7 +762,7 @@ FL,,BCL2,biomarker,,,,,,,,t(14;18) IGH-BCL2 (~85%) — defining cytogenetic — 
 FL,,BCL6,biomarker,,,,,,,,Germinal-center TF; retained in FL vs lost in transformed aggressive variants,PMID:11432899
 FL,,CD10,biomarker,,,,,,,,MME — germinal-center marker; differentiates FL from other B-NHLs,PMID:11432899
 FL,,EZH2,biomarker,,,,,,,,Gain-of-function mutations (~25%); tazemetostat-sensitive subset,PMID:30692609
-FL,,MS4A1,target,rituximab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,FL (first-line maintenance + R/R),"Anti-CD20 — R-bendamustine / R-CHOP backbone, rituximab maintenance extends PFS",PMID:21890466
+FL,,MS4A1,target,rituximab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,FL (first-line maintenance + R/R),"Anti-CD20 — R-bendamustine / R-CHOP backbone, rituximab maintenance extends PFS",PMID:21176949
 FL,,MS4A1,target,obinutuzumab,antibody,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,FL (R/R rituximab-refractory),Type-2 anti-CD20 — GADOLIN trial in rituximab-refractory FL,PMID:27686830
 FL,,EZH2,target,tazemetostat,small_molecule,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,R/R EZH2-mutant FL,EZH2 inhibitor — approved 2020; response enriched in EZH2-mutant subset,PMID:33035457
 FL,,MS4A1,target,mosunetuzumab,bispecific,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,R/R FL (≥2 prior lines),CD20xCD3 bispecific — approved 2022; GO29781 trial,PMID:36463577
