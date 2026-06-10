@@ -56,3 +56,10 @@ def latest_run_dir(base, must_contain="cta_patient_counts.csv"):
     runs = sorted(d for d in base.glob("run_*")
                   if d.is_dir() and (d / must_contain).exists())
     return runs[-1] if runs else None
+
+
+def pct_axis(ax, which):
+    """Format an axis' tick numbers as percentages (50 -> '50%'), for axes whose
+    values are already a 0-100 percentage. ``which`` is 'x' or 'y'."""
+    from matplotlib.ticker import PercentFormatter
+    getattr(ax, f"{which}axis").set_major_formatter(PercentFormatter(xmax=100, decimals=0))

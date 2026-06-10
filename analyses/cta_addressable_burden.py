@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes import gene_sets_cancer as gsc
-from _run_layout import latest_run_dir
+from _run_layout import latest_run_dir, pct_axis
 
 OUT = Path(__file__).resolve().parent / "outputs"
 # Set in main() to the run_<ts>/ that holds cta_patient_counts' tables; this
@@ -194,8 +194,8 @@ def _render(drop_mage, suffix, title_tag):
                     fontsize=6, fontweight="bold", color="#7a5c00")
             ax.set_yticks(list(range(len(top))) + [uy])
             ax.set_yticklabels(list(top.Symbol) + ["All CTAs"], fontsize=6)
-            ax.set_xlabel(f"% of annual {blabel} addressable "
-                          f"(patient expresses this CTA {t.label})")
+            ax.set_xlabel(f"annual {blabel} addressable")
+            pct_axis(ax, "x")
             ax.set_title(f"CTA population addressability{title_tag} — {blabel} "
                          f"({t.label})", fontsize=11)
             ax.set_xlim(0, max(top.addressable.max(), union) * 1.22)
@@ -250,7 +250,8 @@ def _burden_category_plot():
         codes = ", ".join(members[c][:6]) + (f", +{n_coh - 6}" if n_coh > 6 else "")
         x = max(inc.get(c, 0.0), mort.get(c, 0.0))
         ax.text(x + 0.15, i, f"{codes}", va="center", fontsize=5, color="0.35")
-    ax.set_xlabel("% of annual US cancer cases / deaths")
+    ax.set_xlabel("annual US cancer cases / deaths")
+    pct_axis(ax, "x")
     ax.set_title("Cancer burden by category (US incidence & deaths)", fontsize=11)
     ax.set_xlim(0, max(max(inc.values()), max(mort.values())) * 1.35)
     ax.legend(loc="lower right", fontsize=8)

@@ -112,6 +112,14 @@ def _tqdm(iterable, desc, **kw):
     return tqdm(iterable, desc=desc, leave=False, **kw)
 
 
+def _pct_axis(ax, which):
+    """Format an axis' tick numbers as percentages (50 -> '50%'), for axes whose
+    values are already a 0-100 percentage (coverage plateau, aPD-1 ORR, burden
+    share). ``which`` is 'x' or 'y'."""
+    from matplotlib.ticker import PercentFormatter
+    getattr(ax, f"{which}axis").set_major_formatter(PercentFormatter(xmax=100, decimals=0))
+
+
 from dataclasses import dataclass
 
 
@@ -800,9 +808,9 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
             left += marg
     ax.set_yticks(range(len(rows)))
     ax.set_yticklabels(labels, fontsize=7)
-    ax.set_xlabel(f"% of patients with ≥1 CTA {thr.xlabel} "
-                  "(stacked by each CTA's new-patient share)")
+    ax.set_xlabel(f"Patients with ≥1 CTA {thr.xlabel}")
     ax.set_xlim(0, 100)
+    _pct_axis(ax, "x")
     ax.grid(axis="x", alpha=0.3)
     handles = [Patch(color=fam_base[f], label=f) for f in fam_order]
     ax.legend(handles=handles, loc="lower right", fontsize=6,
@@ -1055,6 +1063,9 @@ class _XAxis(NamedTuple):
     # aPD-1 ORR). When True it's the HIGH-x side — for incidence the attractive
     # quadrant is a *large* patient population (high incidence) at high coverage.
     sweet_high: bool = False
+    # pct=True -> the axis values are percentages: format the tick numbers with a
+    # trailing "%" (and the label drops the "(%)" suffix).
+    pct: bool = False
 
 
 def _resolve_code(code: str) -> str:
@@ -1078,7 +1089,7 @@ def _tmb_axis() -> _XAxis:
     # atoms (each with its own curated TMB) are plotted. (SARC-TMB scope fix.)
     return _XAxis(
         "tmb", "TMB",
-        "median tumor mutational burden (mut/Mb, log scale)", True,
+        "median tumor mutational burden (mut/Mb)", True,
         _axis_value_map(gsc.cancer_tmb()), 3.0, "antigen-rich / mutation-poor")
 
 
@@ -1087,8 +1098,8 @@ def _apd1_axis() -> _XAxis:
     # Empty sweet_label -> no shaded sweet-spot band on the aPD-1 axis.
     return _XAxis(
         "apd1", "anti-PD-1 response",
-        "anti-PD-1 monotherapy ORR (%)", False,
-        _axis_value_map(gsc.cancer_apd1_response()), 10.0, "")
+        "anti-PD-1 monotherapy ORR", False,
+        _axis_value_map(gsc.cancer_apd1_response()), 10.0, "", pct=True)
 
 
 # Disease-burden x-axes: each cancer type's share (%) of annual cancer
@@ -1121,8 +1132,8 @@ def _burden_axis(metric: str, scope: str) -> _XAxis:
         else "high-mortality / unmet-need"
     return _XAxis(
         f"{metric}_{scope}", f"{region} {metric}",
-        f"share of annual cancer {metric}, {region} (%)", False,
-        _axis_value_map(raw), 5.0, band, sweet_high=True)
+        f"share of annual cancer {metric}, {region}", False,
+        _axis_value_map(raw), 5.0, band, sweet_high=True, pct=True)
 
 
 def _incidence_axis() -> _XAxis:           # back-compat alias
@@ -1241,8 +1252,10 @@ def _cta_vs_x(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
 
     _scatter_points(fig, ax, xs, ys, pts, color_by)
     ax.set_xlabel(xaxis.label)
-    ax.set_ylabel(f"% of patients with ≥1 CTA {thr.xlabel} "
-                  "(coverage plateau)")
+    ax.set_ylabel(f"Patients with ≥1 CTA {thr.xlabel}")
+    _pct_axis(ax, "y")                       # coverage plateau is a percentage
+    if xaxis.pct:
+        _pct_axis(ax, "x")
     ax.grid(alpha=0.3, which="both")
 
     # Repel labels so they don't overlap (thin leader lines back to points).
@@ -1386,6 +1399,8 @@ def _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
     _scatter_points(fig, ax, xs, ys, pts, color_by)
     ax.set_xlabel(xaxis.label)
     ax.set_ylabel(ylabel)
+    if xaxis.pct:                            # aPD-1 / burden x-axis is a percentage
+        _pct_axis(ax, "x")
     ax.grid(alpha=0.3, which="both")
     texts = [ax.text(val, y, _display_code(code), fontsize=6)
              for code, n, y, val in pts]
@@ -1436,6 +1451,7 @@ def _tmb_vs_apd1():
     _scatter_points(fig, ax, xs, ys, pts, None)
     ax.set_xlabel(_tmb_axis().label)
     ax.set_ylabel(_apd1_axis().label)
+    _pct_axis(ax, "y")                       # aPD-1 ORR is a percentage
     ax.grid(alpha=0.3, which="both")
     texts = [ax.text(x, y, _display_code(c), fontsize=6) for c, n, y, x in pts]
     try:
@@ -1492,12 +1508,12 @@ def _coverage_every_cohort(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
             ax.annotate(nm, (x, c * 100), fontsize=6, rotation=45,
                         textcoords="offset points", xytext=(2, 4))
         ax.set_xlabel("# CTAs added")
-        ax.set_ylabel(f"% of {_display_code(code)} patients with ≥1 CTA "
-                      f"{thr.xlabel}")
+        ax.set_ylabel(f"{_display_code(code)} patients with ≥1 CTA {thr.xlabel}")
         ax.set_title(f"{_display_code(code)}: cumulative patient coverage "
                      f"({thr.xlabel}, n={n})", fontsize=10)
         ax.set_xlim(0, len(cum) + 1)  # go to this cohort's full plateau
         ax.set_ylim(0, 100)
+        _pct_axis(ax, "y")
         ax.grid(alpha=0.3)
         fig.tight_layout()
         fig.savefig(sub / f"cta_coverage_{code}.png", dpi=300)
@@ -1558,7 +1574,8 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
         fig, ax = plt.subplots(figsize=(10, max(4, len(fc) * 0.28)))
         ax.barh(fc["Symbol"], fc[pcol], color="#b5179e")
         ax.invert_yaxis()
-        ax.set_xlabel(f"% of {_display_code(focus)} patients > {threshold} TPM")
+        ax.set_xlabel(f"{_display_code(focus)} patients > {threshold} TPM")
+        _pct_axis(ax, "x")
         n = int(fc["n_samples"].iloc[0])
         ax.set_title(f"{_display_code(focus)}: CTA expression breadth "
                      f"(> {threshold} TPM, n={n})", fontsize=10)
@@ -1588,12 +1605,13 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
                 label=f"{_display_code(code)} (n={n})")
     max_x = max(len(cum) for _, _, cum in keep) + 1  # most CTAs any cohort needs
     ax.set_xlabel("# CTAs in panel")
-    ax.set_ylabel(f"% of patients with ≥1 CTA > {threshold} TPM")
+    ax.set_ylabel(f"Patients with ≥1 CTA > {threshold} TPM")
     ax.set_title(f"CTA panel coverage by cancer type "
                  f"(> {threshold} TPM; top {len(keep)} cohorts)",
                  fontsize=10)
     ax.set_xlim(0, max_x)
     ax.set_ylim(0, 100)
+    _pct_axis(ax, "y")
     ax.legend(fontsize=6, ncol=3, loc="lower right")
     ax.grid(alpha=0.3)
     fig.tight_layout()

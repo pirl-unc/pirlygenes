@@ -28,7 +28,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from pirlygenes import gene_sets_cancer as gsc  # noqa: E402
-from _run_layout import add_layout_args, resolve_dirs  # noqa: E402
+from _run_layout import add_layout_args, resolve_dirs, pct_axis  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "outputs"
 FIGDIR = OUT   # per-run output dir; set in main() via _run_layout
@@ -68,8 +68,9 @@ def _plot_tmb_vs_apd1(orr, tmb, colors):
         if hi in tmb and hi in orr and lo in tmb and lo in orr:
             ax.plot([tmb[hi], tmb[lo]], [orr[hi], orr[lo]], color="0.5",
                     lw=0.8, ls="--", zorder=2)
-    ax.set_xlabel("median tumor mutational burden (mut/Mb, log scale)")
-    ax.set_ylabel("anti-PD-1 monotherapy ORR (%)")
+    ax.set_xlabel("median tumor mutational burden (mut/Mb)")
+    ax.set_ylabel("anti-PD-1 monotherapy ORR")
+    pct_axis(ax, "y")
     ax.set_title("Tumor mutational burden vs anti-PD-1 response, by cancer type")
     ax.grid(alpha=0.3, which="both")
     ax.set_ylim(-3, (max(orr.values()) * 1.08) if orr else 1.0)
@@ -88,7 +89,8 @@ def _plot_orr_bars(orr, colors):
             color=[colors[_family(c)] for c in codes], edgecolor="white")
     ax.set_yticks(range(len(codes)))
     ax.set_yticklabels(codes, fontsize=7)
-    ax.set_xlabel("anti-PD-1 monotherapy ORR (%)")
+    ax.set_xlabel("anti-PD-1 monotherapy ORR")
+    pct_axis(ax, "x")
     ax.set_title("Anti-PD-1 response rate by cancer type (curated)")
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
