@@ -41,7 +41,8 @@ from _apd1_factors import (SIGNATURE_META, apd1_map,  # noqa: E402
                            cohort_gene_matrix, curated_signatures, indel_map,
                            tmb_map, viral_score, with_parent)
 
-OUT = Path(__file__).resolve().parent / "outputs"
+OUT = Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors"
+OUT.mkdir(parents=True, exist_ok=True)
 # column order within each axis (label -> therapy_class or special token)
 _AXIS_ORDER = ["antigen", "exclusion", "circular"]
 
@@ -121,7 +122,7 @@ def _heatmap(Z, orr, axes_of, rho):
 
 
 def _balance_sheet(Z, orr, axes_of):
-    archetypes = ["SKCM", "COAD_MSI", "KIRC", "HL", "OV", "UCEC_CNH",
+    archetypes = ["SKCM", "CRC_MSI", "KIRC", "HL", "OV", "UCEC_CNH",
                   "LIHC", "PRAD"]
     archetypes = [c for c in archetypes if c in Z.index]
     # only causal antigen/exclusion factors (drop circular)
