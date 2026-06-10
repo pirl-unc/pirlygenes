@@ -69,7 +69,7 @@ LAML,KMT2A-MLLT10,KMT2A,KMT/HMTase,MLLT10,MLL partner,subset,true,false,yes,fusi
 LAML,KMT2A-ELL,KMT2A,KMT/HMTase,ELL,,subset,true,true,yes,fusion_transcript,medium,PMID:8161785,t(11;19)(q23;p13.1)
 LAML,KMT2A-MLLT1,KMT2A,KMT/HMTase,MLLT1,YEATS,subset,true,true,yes,fusion_transcript,medium,PMID:1825142,t(11;19)(q23;p13.3); MLLT1=ENL
 LAML,DEK-NUP214,DEK,,NUP214,nucleoporin,rare,true,true,yes,fusion_transcript,high,PMID:1565502,t(6;9)(p23;q34); FLT3-ITD-associated; poor prognosis; NUP214=CAN
-LAML,NUP98-NSD1,NUP98,nucleoporin,NSD1,KMT/HMTase,rare,true,true,yes,fusion_transcript,medium,PMID:11532778,t(5;11); cryptic; pediatric AML; poor prognosis
+LAML,NUP98-NSD1,NUP98,nucleoporin,NSD1,KMT/HMTase,rare,true,true,yes,fusion_transcript,medium,PMID:11493482,t(5;11); cryptic; pediatric AML; poor prognosis
 LAML,NUP98-KDM5A,NUP98,nucleoporin,KDM5A,,rare,true,true,yes,fusion_transcript,low,PMID:23531517,t(11;12); KDM5A=JARID1A; acute megakaryoblastic
 LAML,RBM15-MKL1,RBM15,,MKL1,MRTF,rare,true,true,yes,fusion_transcript,medium,PMID:11753601,"t(1;22); infant acute megakaryoblastic leukemia; MKL1=MRTFA, RBM15=OTT"
 LAML_APL,PML-RARA,PML,TRIM/PML,RARA,nuclear receptor,~95%,true,true,yes,fusion_transcript,high,PMID:1652369,acute promyelocytic leukemia; t(15;17)(q24;q21); ATRA/ATO responsive
