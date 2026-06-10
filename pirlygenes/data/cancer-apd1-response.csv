@@ -1,7 +1,7 @@
 cancer_code,apd1_orr_pct,drug,trial,setting,pmid_doi,confidence,notes
 SKCM,42,nivolumab,CheckMate-067,first-line advanced; nivo monotherapy arm,PMID:28889792,high,Nivo mono ~42-45% (CheckMate-067); pembro KEYNOTE-006 primary 33-37% / longer-FU ~42% (PMID:25891173); aPD1 monotherapy ~40-45% in melanoma
-LUAD,45,pembrolizumab,KEYNOTE-024,first-line; PD-L1 TPS>=50% selected,PMID:27718847,high,PD-L1>=50% selected; all-comers/low-PD-L1 ~18% (KEYNOTE-042 PMID:30955977)
-LUSC,45,pembrolizumab,KEYNOTE-024,first-line; PD-L1 TPS>=50% selected,PMID:27718847,medium,NSCLC pooled in KN-024; squamous subset similar to adeno
+LUAD,19,nivolumab,CheckMate-057,pretreated non-squamous; PD-L1 unselected (all-comer),PMID:26412456,high,All-comer mono ORR 19.2% (Borghaei 2015); PD-L1>=1% ~31% / >=50% ~36%; KEYNOTE-024 PD-L1 TPS>=50% 1L was 45% (PMID:27718847) — population-matched to all-comer TMB/expression per audit
+LUSC,20,nivolumab,CheckMate-017,pretreated squamous; PD-L1 unselected (all-comer),PMID:26028407,high,All-comer mono ORR 20% (Brahmer 2015); PD-L1-independent in squamous; KEYNOTE-024 PD-L1>=50% 1L was 45% (PMID:27718847)
 LUAD_STK11,10,pembrolizumab,KEYNOTE-042 subgroup,STK11/KEAP1-mutant immune-cold subset,PMID:30955977,low,Approximate; STK11/KEAP1-mutant LUAD is immune-cold with markedly lower aPD1 benefit (reported mainly as PFS/OS HRs)
 HNSC,19,pembrolizumab,KEYNOTE-048,first-line R/M; CPS>=1; monotherapy arm,PMID:33052747,high,CPS>=20 ~23%; total population ~17%; HPV+/HPV- differential not cleanly established in KN-048
 KIRC,25,nivolumab,CheckMate-025,pretreated (post-VEGF TKI); all-comers,PMID:26406148,high,vs everolimus 5%

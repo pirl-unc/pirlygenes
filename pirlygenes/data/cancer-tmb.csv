@@ -114,3 +114,5 @@ UCEC_POLE,100,,TCGA endometrial (Kandoth 2013),PMID:23636398,low,POLE-ultramutat
 UCEC_MSI,18,,TCGA endometrial (Kandoth 2013),PMID:23636398,low,MSI-H hypermutated; elevated TMB estimate
 UCEC_CNL,2.5,,TCGA endometrial (Kandoth 2013),PMID:23636398,low,copy-number-low endometrioid; low TMB
 UCEC_CNH,2.8,,TCGA endometrial (Kandoth 2013),PMID:23636398,low,copy-number-high serous-like; low TMB
+COAD_MSI,46,,Chalmers 2017,PMID:28420421,medium,MSI-H/dMMR hypermutated colon; median much greater than 20/Mb (TCGA >12); MSS bulk COAD is 3.1
+READ_MSI,46,,Chalmers 2017,PMID:28420421,medium,MSI-H/dMMR hypermutated rectal; identical dMMR biology to COAD_MSI
