@@ -40,12 +40,11 @@ from scipy.stats import spearmanr
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from pirlygenes.gene_sets_cancer import CTA_gene_names  # noqa: E402
 from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 
 from _apd1_factors import (apd1_map, cohort_gene_matrix,  # noqa: E402
-                           curated_exclusion_genes, indel_map, tmb_map,
-                           viral_score, with_parent)
+                           cta_burden, curated_exclusion_genes, indel_map,
+                           tmb_map, viral_score, with_parent)
 
 OUT = Path(os.environ.get("APD1_RUN_DIR",
           str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
@@ -68,15 +67,14 @@ def main() -> int:
     sig = curated_exclusion_genes()
     excl_genes = [g for g in sig["TGFb_response"] + sig["Wnt"]
                   if g in mat.columns]
-    cta_genes = [g for g in CTA_gene_names() if g in mat.columns]
 
     F = pd.DataFrame(index=mat.index)
     F["ORR"] = orr
     F["TMB"] = [with_parent(tmb, c, np.nan) for c in mat.index]
     F["logTMB"] = np.log10(F["TMB"])
-    # CTA burden = how many CTA antigens are actually ON in the cohort
-    # (mean TPM >= 5), not a mean over 263 mostly-silent genes.
-    F["CTA"] = (mat[cta_genes] >= np.log10(6)).sum(axis=1)
+    # CTA burden = how many CTA antigens are actually ON in the cohort (TPM>=6),
+    # coverage-aware so unmeasured CTAs aren't counted as off (missing != zero).
+    F["CTA"] = cta_burden(mat)
     F["viral"] = [viral_score(c, reg) for c in mat.index]
     F["indel"] = [with_parent(indel, c, 0.0) for c in mat.index]
     F["exclusion"] = mat[excl_genes].apply(_z).mean(axis=1)

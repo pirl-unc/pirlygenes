@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes.expression.accessors import cancer_reference_expression
-from pirlygenes.gene_sets_cancer import cancer_subtype_group
+from pirlygenes.gene_sets_cancer import CTA_gene_names, cancer_subtype_group
 from pirlygenes.load_dataset import get_data
 
 _EXPR_CACHE = (Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -199,6 +199,36 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
         if bulk in wide.index and all(s in wide.index for s in subs):
             wide = wide.drop(index=bulk)
     return np.log10(wide + 1.0)
+
+
+# "ON" threshold for a cancer-testis antigen: TPM >= 6 (the matrix is
+# log10(TPM+1), so log10(6) ~ 0.778). Shared by the count helper below.
+CTA_ON_LOG10 = np.log10(6)
+
+
+def cta_burden(mat: pd.DataFrame, *, thr: float = CTA_ON_LOG10,
+               min_coverage: float = 0.5) -> pd.Series:
+    """Coverage-aware count of "ON" cancer-testis antigens per cohort.
+
+    Respects *missing != zero*: a CTA gene a cohort never measured (NaN in the
+    matrix) is excluded from BOTH the ON count and the denominator, not silently
+    counted as off (``NaN >= thr`` is ``False``). We take the ON-*rate* among the
+    genes a cohort actually measured, then rescale to the median measured panel
+    size so the feature stays on a count-like scale for display/z-scoring. A
+    cohort that measured fewer than ``min_coverage`` of the panel gets ``NaN``
+    (too little measured to trust) rather than a coverage-deflated count.
+
+    Without this, low-coverage cohorts (e.g. SCLC measures ~201/271 CTAs) have
+    systematically deflated CTA burden — a measurement artifact masquerading as
+    low antigen load.
+    """
+    genes = [g for g in CTA_gene_names() if g in mat.columns]
+    sub = mat[genes]
+    measured = sub.notna().sum(axis=1)
+    on = (sub >= thr).sum(axis=1)  # NaN >= thr -> False, so only ON-among-measured
+    rate = on / measured.replace(0, np.nan)
+    rate[measured < min_coverage * len(genes)] = np.nan
+    return rate * measured.median()
 
 
 def curated_exclusion_genes() -> dict[str, list[str]]:
