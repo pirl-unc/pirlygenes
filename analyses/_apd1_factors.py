@@ -175,11 +175,13 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
     # COAD/READ subtype shards and pool them after.
     fetch = list(dict.fromkeys(
         [c for c in codes if c not in _CRC_TIERS] + ["UCEC", "UCS"]))
-    # NB: protein-identical paralogs are NOT collapsed here (that would also sum
-    # housekeeping clusters like histones). CTA paralog summing is scoped to the
-    # CTA panel inside cta_burden via the curated cta-protein-groups; nothing
-    # else collapses. Exclusion/antigen/signature genes are single-copy (audited).
-    long = cancer_reference_expression(cancer_types=fetch, normalize="tpm_clean")
+    # collapse_cta_proteoforms: roll CTA paralogs up into their curated
+    # proteoform groups (cta-protein-groups, >=90% aa) CENTRALLY in the accessor,
+    # so a multi-locus antigen is one column everywhere — done in one place, not
+    # re-implemented per analysis. CTA-scoped: histones / single-copy genes are
+    # untouched (exclusion/antigen/signature genes are single-copy, audited).
+    long = cancer_reference_expression(cancer_types=fetch, normalize="tpm_clean",
+                                       collapse_cta_proteoforms=True)
     long = long[~long["processing_pipeline"].str.contains(
         "microarray_tpm_proxy", na=False)]
     src_n = (long.groupby(["cancer_code", "source_cohort"])["n_samples"]
@@ -247,12 +249,14 @@ def cta_burden(mat: pd.DataFrame, *, thr_tpm: float = CTA_ON_TPM,
     if not groups:
         return pd.Series(np.nan, index=mat.index)
     lin = np.power(10.0, mat) - 1.0  # de-log to linear TPM before summing loci
-    on = pd.DataFrame(index=mat.index)
-    measured = pd.DataFrame(index=mat.index)
-    for key, members in groups.items():
-        summed = lin[members].sum(axis=1, min_count=1)   # NaN members ignored
-        measured[key] = summed.notna()
-        on[key] = summed >= thr_tpm
+    # one DataFrame built at once (no per-column insert / fragmentation). The
+    # matrix CTAs are already proteoform-rolled-up upstream, so most groups are a
+    # single column here; the sum is robust either way (min_count=1: NaN ignored).
+    summed = pd.DataFrame(
+        {key: lin[members].sum(axis=1, min_count=1)
+         for key, members in groups.items()})
+    measured = summed.notna()
+    on = summed >= thr_tpm
     n_meas = measured.sum(axis=1)
     n_on = (on & measured).sum(axis=1)
     rate = n_on / n_meas.replace(0, np.nan)

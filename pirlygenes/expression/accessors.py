@@ -1053,6 +1053,7 @@ def cancer_reference_expression(
     source_kind: Optional[str | Iterable[str]] = None,
     source_cohort: Optional[str | Iterable[str]] = None,
     collapse_protein_identical: bool = False,
+    collapse_cta_proteoforms: bool = False,
     pool: bool = False,
 ) -> pd.DataFrame:
     """Source-agnostic packaged tumor expression references.
@@ -1128,6 +1129,17 @@ def cancer_reference_expression(
         aren't under-counted. Off by default (preserves the per-locus rows and
         the shipped reference semantics). See
         :func:`pirlygenes.expression.protein_groups.collapse_protein_identical_loci_long`.
+    collapse_cta_proteoforms
+        When ``True``, roll **cancer-testis-antigen** paralogs up into their
+        curated proteoform groups (``cta-protein-groups``, near-identical
+        **>=90% aa** — the CT47A cluster, MAGEA3/MAGEA6, NY-ESO CTAG1A/CTAG1B,
+        …), summing members in linear TPM per (group, cancer_code,
+        source_cohort). CTA-**scoped**: only antigens roll up, never housekeeping
+        clusters (histones etc.). Use this for any CTA antigen-abundance view so
+        a multi-locus antigen counts once, consistently, across every consumer
+        (the central, single-source rollup — not re-implemented per analysis).
+        Distinct from ``collapse_protein_identical`` (genome-wide, byte-identical
+        only — which would miss the 95.9%-identical MAGEA3/6).
     pool
         When ``True``, collapse the ``all:``-union's per-(gene, cancer_code,
         source_cohort) rows into **one heterogeneity-safe pooled row per (gene,
@@ -1226,6 +1238,15 @@ def cancer_reference_expression(
     if collapse_protein_identical:
         from .protein_groups import collapse_protein_identical_loci_long
         long = collapse_protein_identical_loci_long(
+            long,
+            group_keys=["cancer_code", "source_cohort", "normalization"],
+            sum_cols=["expression", "q1", "q3"],
+            max_cols=("n_detected",),
+        )
+
+    if collapse_cta_proteoforms:
+        from .protein_groups import collapse_cta_proteoforms_long
+        long = collapse_cta_proteoforms_long(
             long,
             group_keys=["cancer_code", "source_cohort", "normalization"],
             sum_cols=["expression", "q1", "q3"],

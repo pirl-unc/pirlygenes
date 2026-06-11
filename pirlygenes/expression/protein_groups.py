@@ -189,3 +189,69 @@ def collapse_protein_identical_loci_long(
     out[symbol_col] = [csym.get(c, s)
                        for c, s in zip(out["_canon"], out[symbol_col])]
     return out.sort_values("_ord").reset_index(drop=True)[list(df.columns)]
+
+
+@lru_cache(maxsize=1)
+def _cta_symbol_to_group() -> dict[str, str]:
+    """``{member_symbol: proteoform_group}`` over the curated CTA protein groups
+    (``cta-protein-groups``, identical/near-identical >=90% aa)."""
+    g = get_data("cta-protein-groups")
+    return {str(m): str(grp)
+            for m, grp in zip(g["member_symbol"], g["protein_group"])}
+
+
+def collapse_cta_proteoforms_long(
+    df: pd.DataFrame,
+    *,
+    group_keys: list[str],
+    sum_cols: list[str],
+    id_col: str = "Ensembl_Gene_ID",
+    symbol_col: str = "Symbol",
+    max_cols: tuple[str, ...] = (),
+) -> pd.DataFrame:
+    """CTA-scoped sibling of :func:`collapse_protein_identical_loci_long`.
+
+    Sums the curated CTA proteoform-group members (``cta-protein-groups``,
+    identical/near-identical **>=90% aa** — the CT47A cluster, MAGEA3/MAGEA6,
+    NY-ESO CTAG1A/CTAG1B, …) in **linear space** per (proteoform group,
+    ``*group_keys``); non-CTA genes pass through unchanged (only antigens roll
+    up, never housekeeping clusters). The merged row keeps a **representative
+    member**'s symbol + id (the member whose symbol equals the group key when the
+    key is itself a symbol — e.g. ``MAGEA9`` — else the lowest-id member). The
+    group key may be an *alias* (``NY-ESO-1``), so the merged row deliberately
+    keeps a real member **symbol** (e.g. ``CTAG1B``), not the alias, so that
+    ``cta_paralog_symbols`` / matrix-column lookups still resolve it. >=90%
+    identity is the right grain for antigen abundance and catches paralogs a
+    strict byte-identical rule misses (MAGEA3/6 are 95.9%).
+    """
+    if df.empty:
+        return df
+    s2g = _cta_symbol_to_group()
+    work = df.reset_index(drop=True).copy()
+    work["_ord"] = range(len(work))
+    sym = work[symbol_col].astype(str)
+    # CTA members -> their proteoform group; NON-CTA rows -> their own ENSG (NOT
+    # their symbol), so a CTA member whose symbol maps to several ENSGs still
+    # sums (HNRNPCL1/2 etc.), but two distinct-protein genes that merely SHARE a
+    # symbol (e.g. HERC3's two ENSGs) are NOT collapsed together.
+    work["_grp"] = sym.map(s2g).fillna(work[id_col].astype(str))
+    work["_is_rep"] = sym == work["_grp"]
+    full_keys = ["_grp", *group_keys]
+    present_sum = [c for c in sum_cols if c in work.columns]
+    present_max = [c for c in max_cols if c in work.columns]
+    rep = (work.sort_values(full_keys + ["_is_rep", id_col],
+                            ascending=[True] * len(full_keys) + [False, True])
+               .drop_duplicates(full_keys, keep="first")
+               .drop(columns=present_sum + present_max, errors="ignore"))
+    out = rep
+    if present_sum:
+        out = out.merge(
+            work.groupby(full_keys, as_index=False)[present_sum].sum(min_count=1),
+            on=full_keys, how="left")
+    if present_max:
+        out = out.merge(
+            work.groupby(full_keys, as_index=False)[present_max].max(),
+            on=full_keys, how="left")
+    # NB: keep the representative member's symbol+id (do NOT relabel to _grp,
+    # which may be a non-symbol alias like 'NY-ESO-1').
+    return out.sort_values("_ord").reset_index(drop=True)[list(df.columns)]
