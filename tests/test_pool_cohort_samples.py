@@ -131,6 +131,18 @@ def test_mask_membership_vs_notna_on_dropout():
     assert int(available_count_columns(pool.values)["n_available"][0]) == 2
 
 
+def test_gene_rows_are_canonically_sorted_and_order_independent():
+    """Union gene rows are sorted (lexical id) so the pool is reproducible
+    regardless of input cohort order; sample columns stay grouped by cohort."""
+    p_ab = PooledCohorts.from_cohorts([_cohort_a(), _cohort_b()])
+    p_ba = PooledCohorts.from_cohorts([_cohort_b(), _cohort_a()])
+    assert list(p_ab.values.index) == ["A", "B", "C", "D"]      # sorted union
+    assert list(p_ab.values.index) == list(p_ba.values.index)   # order-independent
+    # columns follow input order (grouped by cohort), not sorted
+    assert list(p_ab.values.columns) == ["a1", "a2", "a3", "b1", "b2"]
+    assert list(p_ba.values.columns) == ["b1", "b2", "a1", "a2", "a3"]
+
+
 def test_centralized_helpers_agree_with_functional_frontdoor():
     pool = PooledCohorts.from_cohorts([_cohort_a(), _cohort_b()])
     am, summary = pool_cohort_samples([_cohort_a(), _cohort_b()])
