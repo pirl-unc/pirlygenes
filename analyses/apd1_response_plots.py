@@ -34,7 +34,24 @@ OUT = Path(__file__).resolve().parent / "outputs"
 FIGDIR = OUT   # per-run output dir; set in main() via _run_layout
 
 # Documented aPD1-differential subtype pairs (immune-hot vs immune-cold).
-_PAIRS = [("COAD_MSI", "COAD_MSS"), ("READ_MSI", "READ_MSS")]
+_PAIRS = [("CRC_MSI", "CRC_MSS")]
+
+# Colorectal pooling: KEYNOTE-177 (and the MSS series) report *colorectal*, so
+# COAD_MSI+READ_MSI are one CRC_MSI point (identical ORR/TMB), not two — mirrors
+# the causal-factors plots' CRC pooling so every aPD1 plot agrees.
+_CRC_POOL = {"COAD_MSI": "CRC_MSI", "READ_MSI": "CRC_MSI",
+             "COAD_MSS": "CRC_MSS", "READ_MSS": "CRC_MSS",
+             "COAD": "CRC", "READ": "CRC"}
+
+
+def _pool_crc(d: dict) -> dict:
+    """Average the colorectal members into their CRC tier (the duplicated
+    COAD/READ values are identical, so the mean is just that value); every other
+    cancer code passes through unchanged."""
+    groups: dict[str, list] = {}
+    for code, val in d.items():
+        groups.setdefault(_CRC_POOL.get(code, code), []).append(val)
+    return {k: sum(v) / len(v) for k, v in groups.items()}
 
 
 @lru_cache(maxsize=1)
@@ -104,8 +121,11 @@ def main() -> int:
     add_layout_args(ap)
     args = ap.parse_args()
     _, FIGDIR = resolve_dirs(args, OUT)
-    orr = gsc.cancer_apd1_response()           # {code: ORR%}
-    tmb = {c: gsc.cancer_tmb(c) for c in orr if gsc.cancer_tmb(c) is not None}
+    orr_raw = gsc.cancer_apd1_response()       # {code: ORR%}
+    tmb_raw = {c: gsc.cancer_tmb(c) for c in orr_raw
+               if gsc.cancer_tmb(c) is not None}
+    orr = _pool_crc(orr_raw)                   # COAD/READ MSI+MSS -> CRC tiers
+    tmb = _pool_crc(tmb_raw)
     colors = _color_map(orr)
     n = _plot_tmb_vs_apd1(orr, tmb, colors)
     _plot_orr_bars(orr, colors)

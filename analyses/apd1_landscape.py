@@ -74,7 +74,7 @@ def _build():
     # curated expression signatures
     for cls, genes in curated_signatures().items():
         present = [g for g in genes if g in mat.columns]
-        if len(present) < 2:
+        if len(present) < 1:        # allow single-gene signatures (TGF-β = TGFB2)
             continue
         axis = SIGNATURE_META[cls][0]
         label = cls.replace("aPD1_", "").replace("exclusion_", "").replace(
@@ -129,29 +129,35 @@ def _balance_sheet(Z, orr, axes_of):
     # only causal antigen/exclusion factors (drop circular)
     feats = [c for c in Z.columns if axes_of[c] in ("antigen", "exclusion")]
     # signed contribution toward response: antigen as +z, exclusion as -z, so a
-    # rightward bar is always FAVOURABLE regardless of factor type.
+    # rightward bar is always FAVOURABLE regardless of factor type. Position
+    # carries the meaning; colour (colourblind-safe blue/orange, NOT red/green)
+    # just tags the factor type, and a dashed marker shows the NET balance.
     sign = {f: (1 if axes_of[f] == "antigen" else -1) for f in feats}
-    fig, axs = plt.subplots(2, 4, figsize=(17, 8), sharex=True)
+    ANTIGEN, EXCLUSION = "#2166ac", "#b35806"   # PuOr blue / orange (CB-safe)
+    fig, axs = plt.subplots(2, 4, figsize=(17, 8.4), sharex=True)
     for ax, code in zip(axs.flat, archetypes):
         contrib = (Z.loc[code, feats] * pd.Series(sign)).sort_values()
-        colors = ["#2ca02c" if axes_of[f] == "antigen" else "#d62728"
+        colors = [ANTIGEN if axes_of[f] == "antigen" else EXCLUSION
                   for f in contrib.index]
         ax.barh(range(len(contrib)), contrib.values, color=colors)
         ax.set_yticks(range(len(contrib)))
         ax.set_yticklabels(contrib.index, fontsize=6)
         ax.axvline(0, color="k", lw=0.7)
-        ax.set_title(f"{code}  (ORR {orr[code]:.0f}%)", fontsize=10)
+        net = float(contrib.sum())
+        ax.axvline(net, color="#222", lw=1.8, ls="--")   # NET balance marker
+        ax.set_title(f"{code}   ORR {orr[code]:.0f}%   net {net:+.1f}",
+                     fontsize=10)
         ax.tick_params(axis="x", labelsize=7)
     for ax in axs.flat[len(archetypes):]:
         ax.axis("off")
-    fig.suptitle("Causal balance sheet per cancer type  -  signed contribution "
-                 "toward response (right = favourable)\n"
-                 "green = antigen availability (TMB/indel/viral/CTA/MHC-I)   "
-                 "red = immune exclusion (TGF-beta/Wnt/angio/adenosine)",
-                 fontsize=12)
-    fig.supxlabel("contribution toward aPD-1 response  "
-                  "(z; antigen as +z, exclusion as -z)", fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    fig.suptitle("Causal balance sheet per cancer type — each factor's signed "
+                 "contribution toward anti-PD-1 response\n"
+                 "blue = antigen availability (TMB/indel/viral/CTA/MHC-I)    "
+                 "orange = immune exclusion (TGF-β/Wnt/angio/adenosine)    "
+                 "dashed = net", fontsize=12)
+    fig.supxlabel("←  less favourable        contribution toward aPD-1 response "
+                  "(z)        more favourable  →", fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(OUT / "apd1_balance_sheet.png", dpi=130)
     plt.close(fig)
 
