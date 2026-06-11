@@ -48,3 +48,18 @@ def test_source_kind_selector_filters_by_cohort_kind():
     both = cancer_reference_expression(
         cancer_types="SARC", genes=["TP53"], source_kind=["geo", "treehouse"])
     assert both["source_cohort"].nunique() == allu["source_cohort"].nunique()
+
+
+def test_tcga_selects_as_treehouse_not_a_fake_kind():
+    """TCGA is Treehouse-reprocessed, so it selects under source_kind='treehouse'
+    (the processing source) — there is no 'tcga' kind. source_cohort= gives the
+    finer origin-level precision (the specific Treehouse TCGA subset)."""
+    th = cancer_reference_expression(
+        cancer_types="SARC", genes=["TP53"], source_kind="treehouse")
+    assert any("TCGA" in s for s in th["source_cohort"].unique())  # TCGA in treehouse:
+    assert cancer_reference_expression(
+        cancer_types="SARC", genes=["TP53"], source_kind="tcga").empty  # no tcga kind
+    sub = cancer_reference_expression(
+        cancer_types="SARC", genes=["TP53"],
+        source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SUBSET")
+    assert set(sub["source_cohort"].unique()) == {"TREEHOUSE_POLYA_25_01_TCGA_SUBSET"}

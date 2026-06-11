@@ -1012,17 +1012,23 @@ def cancer_reference_expression(
     include_provenance: bool = True,
     exclude_microarray_proxy: bool = False,
     source_kind: Optional[str | Iterable[str]] = None,
+    source_cohort: Optional[str | Iterable[str]] = None,
 ) -> pd.DataFrame:
     """Source-agnostic packaged tumor expression references.
 
     ``source_kind`` is the ``source:node`` cohort-grammar selector (#366): keep
-    only the union members whose source is of the given cohort kind(s) — one or
-    a list of ``cohort-registry`` ``kind`` values (``treehouse``, ``geo``,
-    ``target``, ``beataml``, ``cgci``, ``cllmap``, ``mmrf``, ``ucologne``,
-    ``unc``). ``None`` (default) = ``all:`` (every source). NOTE: ``tcga`` is not
-    yet a first-class kind — TCGA data ships inside the ``treehouse`` cohort
-    (``*_TCGA_SUBSET``); a literal ``tcga:`` selector needs the cohort-registry
-    TCGA break-out (the larger #366 evidence-axis work).
+    only the union members whose **processing source** is of the given kind(s) —
+    one or a list of ``cohort-registry`` ``kind`` values (``treehouse``,
+    ``geo``, ``target``, ``beataml``, ``cgci``, ``cllmap``, ``mmrf``,
+    ``ucologne``, ``unc``, ``curated``, ``computed``). ``None`` (default) =
+    ``all:`` (every source). The kind is the *processing* source, not the sample
+    origin — there is deliberately **no ``tcga`` kind**: our TCGA data is
+    Treehouse-reprocessed, so it selects under ``source_kind="treehouse"`` (a
+    ``tcga`` kind would falsely conflate it with GDC-pipeline TCGA, which the
+    package does not carry). For sample-origin / cohort-level precision (e.g.
+    just the Treehouse TCGA subset) use ``source_cohort=`` with the exact
+    ``cohort-registry`` cohort id(s), e.g.
+    ``source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SUBSET"``.
 
     Cross-cohort (``all:`` union) heterogeneity contract — IMPORTANT when a
     computed-aggregate code (``SARC``, ``CRC``, …) expands to many member
@@ -1110,6 +1116,11 @@ def cancer_reference_expression(
         cohort_kind = dict(zip(cr["cohort_id"].astype(str),
                                cr["kind"].astype(str)))
         df = df[df["source_cohort"].astype(str).map(cohort_kind).isin(kinds)]
+    if source_cohort is not None:
+        # origin/cohort-level precision (e.g. the Treehouse TCGA subset).
+        cohorts = ({source_cohort} if isinstance(source_cohort, str)
+                   else set(source_cohort))
+        df = df[df["source_cohort"].astype(str).isin(cohorts)]
 
     base_cols = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"]
     provenance_cols = [
