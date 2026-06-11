@@ -275,6 +275,19 @@ def fold_to_cdna_canonical_symbol(symbols) -> list[str]:
     return out
 
 
+def cdna_member_to_canonical() -> dict[str, str]:
+    """Public ``{member_ensg: canonical_ensg}`` for the cDNA-identical collapse
+    (+ curated overrides) — for consumers that collapse an ENSG-indexed matrix
+    directly (e.g. per-sample CTA matrices)."""
+    return dict(_cdna_member_to_canonical())
+
+
+def cdna_canonical_to_symbol() -> dict[str, str]:
+    """Public ``{canonical_ensg: canonical_symbol}`` companion to
+    :func:`cdna_member_to_canonical`."""
+    return dict(_cdna_canonical_to_symbol())
+
+
 def collapse_cdna_identical_loci_long(
     df: pd.DataFrame,
     *,
