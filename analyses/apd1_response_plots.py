@@ -72,23 +72,37 @@ def _color_map(codes):
     return {f: cmap(i % 20) for i, f in enumerate(fams)}
 
 
-def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None):
+def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None):
     proxy = proxy or set()
+    dual = dual or set()
     pts = [(c, tmb[c], orr[c]) for c in orr if c in tmb]
     fig, ax = plt.subplots(figsize=(12, 7.5))
     ax.set_xscale("log")
     for code, x, y in pts:
-        # PD-L1 proxies (no anti-PD-1 ORR) drawn as an open diamond, denoted "*"
-        is_proxy = code in proxy
-        ax.scatter(x, y, s=58 if is_proxy else 42, color=colors[_family(code)],
-                   alpha=0.9, edgecolor="black" if is_proxy else "white",
-                   linewidth=1.1 if is_proxy else 0.4,
-                   marker="D" if is_proxy else "o", zorder=3)
-        ax.annotate(f"{code}*" if is_proxy else code, (x, y), fontsize=6.5,
+        # anti-PD-1 monotherapy = filled circle; the two fallback classes are
+        # drawn with distinct open markers and a glyph suffix on the label:
+        #   PD-L1 proxy (no anti-PD-1 ORR) -> open diamond, "*"
+        #   dual ipi+nivo (no single-agent ORR) -> open triangle, "+"
+        is_proxy, is_dual = code in proxy, code in dual
+        marker = "D" if is_proxy else "^" if is_dual else "o"
+        special = is_proxy or is_dual
+        ax.scatter(x, y, s=58 if special else 42, color=colors[_family(code)],
+                   alpha=0.9, edgecolor="black" if special else "white",
+                   linewidth=1.1 if special else 0.4, marker=marker, zorder=3)
+        suffix = "*" if is_proxy else "+" if is_dual else ""
+        ax.annotate(f"{code}{suffix}", (x, y), fontsize=6.5,
                     xytext=(3, 3), textcoords="offset points")
-    if proxy & {c for c, _, _ in pts}:
-        ax.scatter([], [], marker="D", facecolor="0.6", edgecolor="black",
-                   label="* PD-L1 proxy (no anti-PD-1 monotherapy data)")
+    seen = {c for c, _, _ in pts}
+    handles = []
+    if proxy & seen:
+        handles.append(ax.scatter([], [], marker="D", facecolor="0.6",
+                       edgecolor="black",
+                       label="* PD-L1 proxy (no anti-PD-1 monotherapy data)"))
+    if dual & seen:
+        handles.append(ax.scatter([], [], marker="^", facecolor="0.6",
+                       edgecolor="black",
+                       label="+ dual checkpoint, ipi+nivo (no single-agent data)"))
+    if handles:
         ax.legend(loc="lower right", fontsize=8)
     # connect the subtype pairs with a thin line to show the differential
     for hi, lo in _PAIRS:
@@ -136,10 +150,11 @@ def main() -> int:
                if gsc.cancer_tmb(c) is not None}
     orr = _pool_crc(orr_raw)                   # COAD/READ MSI+MSS -> CRC tiers
     tmb = _pool_crc(tmb_raw)
-    rdf = get_data("cancer-apd1-response")     # PD-L1-proxy codes (denoted)
+    rdf = get_data("cancer-apd1-response")     # denoted fallback classes
     proxy = set(rdf.loc[rdf["drug_target"] == "PD-L1", "cancer_code"].astype(str))
+    dual = set(rdf.loc[rdf["drug_target"] == "PD-1+CTLA-4", "cancer_code"].astype(str))
     colors = _color_map(orr)
-    n = _plot_tmb_vs_apd1(orr, tmb, colors, proxy=proxy)
+    n = _plot_tmb_vs_apd1(orr, tmb, colors, proxy=proxy, dual=dual)
     _plot_orr_bars(orr, colors)
     print(f"wrote apd1_vs_tmb.png ({n} cancers with TMB+ORR) and "
           f"apd1_orr_bars.png ({len(orr)} cancers) -> {FIGDIR}", flush=True)
