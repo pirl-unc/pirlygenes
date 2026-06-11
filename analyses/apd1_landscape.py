@@ -36,12 +36,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.colors import TwoSlopeNorm  # noqa: E402
 
-from pirlygenes.gene_sets_cancer import CTA_gene_names  # noqa: E402
 from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 
 from _apd1_factors import (SIGNATURE_META, apd1_map,  # noqa: E402
-                           cohort_gene_matrix, curated_signatures, indel_map,
-                           tmb_map, viral_score, with_parent)
+                           cohort_gene_matrix, cta_burden, curated_signatures,
+                           indel_map, tmb_map, viral_score, with_parent)
 
 OUT = Path(os.environ.get("APD1_RUN_DIR",
           str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
@@ -63,7 +62,6 @@ def _build():
     reg = cancer_type_registry().set_index("code")
     tmb, ind = tmb_map(), indel_map()
 
-    cta = [g for g in CTA_gene_names() if g in mat.columns]
     cols = {}  # display label -> (axis, raw per-cohort series)
     # antigen factors that aren't expression signatures
     cols["TMB"] = ("antigen", np.log10(pd.Series(
@@ -72,7 +70,7 @@ def _build():
         {c: with_parent(ind, c, 0.0) for c in mat.index}))
     cols["viral"] = ("antigen", pd.Series(
         {c: viral_score(c, reg) for c in mat.index}))
-    cols["CTA"] = ("antigen", (mat[cta] >= np.log10(6)).sum(axis=1))
+    cols["CTA"] = ("antigen", cta_burden(mat))
     # curated expression signatures
     for cls, genes in curated_signatures().items():
         present = [g for g in genes if g in mat.columns]
