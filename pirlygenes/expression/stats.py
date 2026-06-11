@@ -33,8 +33,9 @@ are the canonical column-name tuples for schema work.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Iterable, Literal
+from typing import Iterable, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -248,16 +249,27 @@ class PooledCohorts:
     and are **never filled** (missing != zero). Every pooled operation routes
     through this object (``analysis_matrix`` / :meth:`counts` / :meth:`stats` /
     :meth:`summary`) so the availability semantics live in exactly one place.
+
+    When built from **labelled** cohorts (a ``{name: matrix}`` mapping), the
+    optional ``sample_cohort`` (sample-column -> cohort name) unlocks the
+    per-cohort availability accounting needed to pool correctly:
+    :attr:`cohort_measured` (``is_measured[gene, cohort]``),
+    :attr:`n_measured_genes` (per cohort), and :attr:`n_measured_samples`
+    (``[gene, cohort]`` observed-sample count — the weight for a per-gene mean).
     """
 
     values: pd.DataFrame
     measured: pd.DataFrame
+    sample_cohort: Optional[pd.Series] = None
 
     def __post_init__(self) -> None:
         # The mask can only be trusted if it shares the EXACT gene index and
         # sample columns of values, by label. This forbids ever pairing a mask
         # with a value matrix whose rows/cols are in a different order (the
         # "matched by position, not id" bug the whole design exists to avoid).
+        if (self.sample_cohort is not None and len(self.values.columns)
+                and not self.values.columns.equals(self.sample_cohort.index)):
+            raise ValueError("sample_cohort index must match values columns")
         if not self.values.index.equals(self.measured.index):
             raise ValueError("values/measured gene index mismatch (must be "
                              "identical and identically ordered, by id)")
@@ -265,8 +277,12 @@ class PooledCohorts:
             raise ValueError("values/measured sample columns mismatch")
 
     @classmethod
-    def from_cohorts(cls, matrices: Iterable[pd.DataFrame]) -> "PooledCohorts":
+    def from_cohorts(cls, matrices) -> "PooledCohorts":
         """Build the pool from ``(n_genes, n_samples)`` per-cohort matrices.
+
+        ``matrices`` is either an iterable of matrices (cohorts auto-labelled
+        ``cohort_0``, ``cohort_1``, …) or a ``{cohort_name: matrix}`` mapping
+        (labels preserved — pass this to use the per-cohort availability views).
 
         Each matrix's index is its **row mask** (the genes that cohort measures)
         and its columns are its **column mask** (that cohort's samples); the
@@ -282,10 +298,16 @@ class PooledCohorts:
         deterministic order keeps any persisted pooled artifact diff-stable.
         Sample **columns stay in input order** (grouped by cohort).
         """
-        mats = [m for m in matrices if m is not None and m.shape[1] > 0]
-        if not mats:
+        if isinstance(matrices, Mapping):
+            items = [(str(n), m) for n, m in matrices.items()
+                     if m is not None and m.shape[1] > 0]
+        else:
+            items = [(f"cohort_{i}", m) for i, m in enumerate(matrices)
+                     if m is not None and m.shape[1] > 0]
+        if not items:
             empty = pd.DataFrame()
-            return cls(empty, empty.copy())
+            return cls(empty, empty.copy(), None)
+        mats = [m for _, m in items]
         values = pd.concat(mats, axis=1, join="outer").sort_index()
         # Each block is all-True over its cohort's genes x samples; after an
         # outer join, a cell is present (True) iff some cohort covers it and NaN
@@ -298,7 +320,11 @@ class PooledCohorts:
             .reindex(index=values.index, columns=values.columns)
             .notna()
         )
-        return cls(values, measured)
+        sample_cohort = pd.Series(
+            {col: name for name, m in items for col in m.columns},
+        ).reindex(values.columns)
+        sample_cohort.name = "cohort"
+        return cls(values, measured, sample_cohort)
 
     @property
     def analysis_matrix(self) -> pd.DataFrame:
@@ -320,6 +346,35 @@ class PooledCohorts:
     def gene_index(self) -> pd.Index:
         """The authoritative gene-id (Ensembl) index every result is keyed by."""
         return self.values.index
+
+    def _require_cohorts(self) -> pd.Series:
+        if self.sample_cohort is None:
+            raise ValueError("per-cohort availability needs labelled cohorts — "
+                             "build with PooledCohorts.from_cohorts({name: matrix})")
+        return self.sample_cohort
+
+    @property
+    def cohort_measured(self) -> pd.DataFrame:
+        """``is_measured[gene, cohort]`` — gene x cohort bool, ``True`` where that
+        cohort's panel carries the gene (membership; independent of dropouts)."""
+        sc = self._require_cohorts()
+        return self.measured.T.groupby(sc, sort=False).any().T
+
+    @property
+    def n_measured_genes(self) -> pd.Series:
+        """``n_measured_genes[cohort]`` — how many genes each cohort measures."""
+        return self.cohort_measured.sum(axis=0)
+
+    @property
+    def n_measured_samples(self) -> pd.DataFrame:
+        """``n_measured_samples[gene, cohort]`` — the count of each cohort's
+        samples that **observed** the gene (non-``NaN`` after masking). This is
+        the correct per-cohort, per-gene weight for combining means: a cohort's
+        contribution to a gene's pooled mean is weighted by how many of its
+        samples actually carried a value for that gene (dropout-aware)."""
+        sc = self._require_cohorts()
+        observed = self.analysis_matrix.notna()
+        return observed.T.groupby(sc, sort=False).sum().T
 
     def counts(self) -> pd.DataFrame:
         """Gene-indexed ``{n_samples, n_available, n_detected}`` (see
