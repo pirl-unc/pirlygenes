@@ -316,55 +316,49 @@ class PooledCohorts:
         """
         return self.values.where(self.measured)
 
-    def counts(self) -> dict[str, np.ndarray]:
-        """``{n_samples, n_available, n_detected}`` (see
+    @property
+    def gene_index(self) -> pd.Index:
+        """The authoritative gene-id (Ensembl) index every result is keyed by."""
+        return self.values.index
+
+    def counts(self) -> pd.DataFrame:
+        """Gene-indexed ``{n_samples, n_available, n_detected}`` (see
         :data:`POOLED_COUNT_COLUMNS`). ``n_available`` is the per-gene measured
         (membership) count — the correct cross-cohort denominator; ``n_detected``
         counts measured-and-``> 0`` only, never treating a not-measured cell as
         a zero.
         """
         am = self.analysis_matrix
-        return {
-            "n_samples": np.full(self.values.shape[0], self.values.shape[1],
-                                 dtype=int),
-            "n_available": self.measured.sum(axis=1).to_numpy(),
-            "n_detected": ((am > 0) & self.measured).sum(axis=1).to_numpy(),
-        }
+        return pd.DataFrame(
+            {
+                "n_samples": np.full(self.values.shape[0], self.values.shape[1],
+                                     dtype=int),
+                "n_available": self.measured.sum(axis=1).to_numpy(),
+                "n_detected": ((am > 0) & self.measured).sum(axis=1).to_numpy(),
+            },
+            index=self.gene_index,
+        )
 
-    def stats(self, *, prefix: str = "TPM_") -> dict[str, np.ndarray]:
-        """The :func:`compute_cohort_stats` suite over the masked matrix.
+    def stats(self, *, prefix: str = "TPM_") -> pd.DataFrame:
+        """The :func:`compute_cohort_stats` suite as a gene-indexed DataFrame.
 
         Per-gene ``std`` is ``NaN`` where fewer than two samples measured the
         gene.
         """
-        return compute_cohort_stats(self.analysis_matrix, prefix=prefix)
+        return pd.DataFrame(
+            compute_cohort_stats(self.analysis_matrix, prefix=prefix),
+            index=self.gene_index,
+        )
 
-    def summary(self, *, prefix: str = "TPM_") -> dict[str, np.ndarray]:
-        """:meth:`stats` merged with :meth:`counts` as bare per-gene arrays.
+    def summary(self, *, prefix: str = "TPM_") -> pd.DataFrame:
+        """:meth:`stats` + :meth:`counts` as one **gene-indexed** DataFrame.
 
-        Low-level surface, matching the :func:`compute_cohort_stats` /
-        :func:`assign_stats` convention. The arrays carry **no gene labels** —
-        ``array[i]`` corresponds to ``self.gene_index[i]`` *positionally*. Prefer
-        :meth:`summary_frame` whenever you don't already hold ``gene_index`` in
-        lockstep, so identity travels with the values (label-aligned, like the
-        rest of the package) instead of riding on row position.
+        The single output surface. Every column is label-aligned to
+        :attr:`gene_index`, so which row is which ENSG is explicit — there is no
+        bare, position-only array to mis-pair with a foreign gene list. This is
+        what a future bundle-persistence step should serialise.
         """
-        return {**self.stats(prefix=prefix), **self.counts()}
-
-    @property
-    def gene_index(self) -> pd.Index:
-        """The gene-id (Ensembl) index that every per-gene array aligns to."""
-        return self.values.index
-
-    def summary_frame(self, *, prefix: str = "TPM_") -> pd.DataFrame:
-        """:meth:`summary` as a **gene-indexed** DataFrame.
-
-        Each stat/count column is label-aligned to the Ensembl-id index, so
-        which row is which ENSG is explicit rather than a positional contract.
-        This is the safe public surface for pooled output (and what a future
-        bundle-persistence step should serialise).
-        """
-        return pd.DataFrame(self.summary(prefix=prefix), index=self.gene_index)
+        return pd.concat([self.stats(prefix=prefix), self.counts()], axis=1)
 
 
 def align_ragged_matrices(matrices: Iterable[pd.DataFrame]) -> pd.DataFrame:
@@ -397,7 +391,7 @@ def pool_cohort_samples(
     matrices: Iterable[pd.DataFrame],
     *,
     prefix: str = "TPM_",
-) -> tuple[pd.DataFrame, dict[str, np.ndarray]]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Heterogeneity-safe pool of ragged per-cohort sample matrices.
 
     Functional front door to :class:`PooledCohorts`: a gene measured by one
@@ -405,13 +399,13 @@ def pool_cohort_samples(
     patients, with a per-gene ``n_available`` denominator — never imputed to
     zero, never inner-joined down to the lowest-common gene set.
 
-    Returns ``(analysis_matrix, summary)`` where ``analysis_matrix`` is the
-    union matrix with not-measured cells ``NaN`` and ``summary`` merges the
-    ``compute_cohort_stats`` suite with the availability counts.
+    Returns ``(analysis_matrix, summary)``, both **gene-indexed** DataFrames:
+    ``analysis_matrix`` is the union matrix with not-measured cells ``NaN`` and
+    ``summary`` is the per-gene stat + availability-count suite.
     """
     pool = PooledCohorts.from_cohorts(matrices)
     if pool.values.empty:
-        return pool.values, {}
+        return pool.values, pd.DataFrame()
     return pool.analysis_matrix, pool.summary(prefix=prefix)
 
 
