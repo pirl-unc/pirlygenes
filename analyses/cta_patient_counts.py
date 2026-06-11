@@ -172,7 +172,7 @@ def per_sample_percentile_cutoffs(percentiles=PERCENTILES, *, nbins=2000,
     so the ranking universe holds one XAGE1 (=XAGE1A+XAGE1B), not the individual
     members — otherwise a collapsed CTA would be ranked against a universe that
     still contains its own components (#21)."""
-    cachef = CACHE / "_per_sample_pctile_cutoffs_v2.parquet"   # v2: cDNA-collapsed
+    cachef = CACHE / "_per_sample_pctile_cutoffs_v3.parquet"   # v2: cDNA-collapsed
     if (cache and cachef.exists()
             and cachef.stat().st_mtime >= TPM_TSV.stat().st_mtime):
         return pd.read_parquet(cachef)
@@ -237,7 +237,11 @@ def per_sample_percentile_cutoffs(percentiles=PERCENTILES, *, nbins=2000,
         m = pf.groupby("_g")[sample_cols].sum().to_numpy(dtype=float)
         rec = {}
         for col, vec in zip(sample_cols, m.T):
-            rec[col] = {f"p{q}": float(np.percentile(vec, q)) for q in percentiles}
+            # match the prefixed column names _add_parquet_cohorts assigns
+            # ("{code}::{sample}"), else the cutoff lookup misses -> +inf -> the
+            # cohort's within-sample-percentile coverage is wrongly zero.
+            rec[f"{code}::{col}"] = {f"p{q}": float(np.percentile(vec, q))
+                                     for q in percentiles}
         extra.append(pd.DataFrame(rec).T)
     if extra:
         df = pd.concat([df] + extra)
@@ -391,7 +395,38 @@ def extract_cta_matrix(symbols: dict[str, str]) -> pd.DataFrame:
 _EXTRA_PARQUET_COHORTS = [
     ("treehouse-ribod-25-01", "SARC_CHOR"),
     ("treehouse-ribod-25-01", "RB"),
+    # colorectal MSI/MSS subtypes (per-sample) so the coverage plots can resolve
+    # CRC_MSI / CRC_MSS (pooled from these by _add_crc_subtype_cohorts)
+    ("treehouse-polya-25-01", "COAD_MSI"),
+    ("treehouse-polya-25-01", "READ_MSI"),
+    ("treehouse-polya-25-01", "COAD_MSS"),
+    ("treehouse-polya-25-01", "READ_MSS"),
 ]
+
+# KEYNOTE-177 etc. report *colorectal*, so COAD+READ of a given microsatellite
+# status are one CRC tier (the causal-factors / apd1 plots pool the same way).
+_CRC_SUBTYPE_POOL = {"CRC_MSI": ["COAD_MSI", "READ_MSI"],
+                     "CRC_MSS": ["COAD_MSS", "READ_MSS"]}
+
+
+def _add_crc_subtype_cohorts(cohorts):
+    """Synthesize CRC_MSI / CRC_MSS by pooling the per-sample COAD/READ MSI/MSS
+    cohorts (de-duplicated). Bulk CRC=[COAD,READ] is already a registry
+    aggregate; this adds the microsatellite-resolved tiers."""
+    added = []
+    for agg, members in _CRC_SUBTYPE_POOL.items():
+        pooled, seen = [], set()
+        for m in members:
+            for s in cohorts.get(m, []):
+                if s not in seen:
+                    seen.add(s)
+                    pooled.append(s)
+        if pooled:
+            cohorts[agg] = pooled
+            added.append(f"{agg}(n={len(pooled)})")
+    if added:
+        print(f"      + CRC subtype cohorts: {', '.join(added)}", flush=True)
+    return cohorts
 
 
 def _add_parquet_cohorts(mat, cohorts, ctas):
@@ -590,6 +625,7 @@ def main():
     print("[3/5] extract CTA per-sample TPM matrix (awk slice + log2 inverse)", flush=True)
     mat = extract_cta_matrix(ensg_to_sym)
     mat, cohorts = _add_parquet_cohorts(mat, cohorts, ctas)
+    cohorts = _add_crc_subtype_cohorts(cohorts)
     cohorts = _add_aggregate_cohorts(cohorts)
     cohorts = _add_subtype_intermediates(cohorts)
     mat, ensg_to_sym = _merge_proteins(mat, ensg_to_sym)
