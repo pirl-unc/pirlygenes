@@ -1013,6 +1013,7 @@ def cancer_reference_expression(
     exclude_microarray_proxy: bool = False,
     source_kind: Optional[str | Iterable[str]] = None,
     source_cohort: Optional[str | Iterable[str]] = None,
+    collapse_protein_identical: bool = False,
 ) -> pd.DataFrame:
     """Source-agnostic packaged tumor expression references.
 
@@ -1077,6 +1078,16 @@ def cancer_reference_expression(
         ``CLL_TPM_clean``.
     include_provenance
         Include source/sample/provenance columns in long-form output.
+    collapse_protein_identical
+        When ``True``, sum protein-identical gene loci (segmental-duplication
+        paralogs, histone clusters, the CT47A cancer-testis cluster, …) into one
+        row per group **per (cancer_code, source_cohort)**, in linear TPM space
+        (``NaN`` members ignored). Reads split across loci that encode the
+        identical protein are recombined, so the value is a faithful
+        protein-abundance proxy and per-gene thresholds (e.g. CTA "ON" counting)
+        aren't under-counted. Off by default (preserves the per-locus rows and
+        the shipped reference semantics). See
+        :func:`pirlygenes.expression.protein_groups.collapse_protein_identical_loci_long`.
 
     Returns
     -------
@@ -1144,6 +1155,15 @@ def cancer_reference_expression(
         part["q3"] = q3
         frames.append(part)
     long = pd.concat(frames, ignore_index=True)
+
+    if collapse_protein_identical:
+        from .protein_groups import collapse_protein_identical_loci_long
+        long = collapse_protein_identical_loci_long(
+            long,
+            group_keys=["cancer_code", "source_cohort", "normalization"],
+            sum_cols=["expression", "q1", "q3"],
+            max_cols=("n_detected",),
+        )
 
     if format == "long":
         return long

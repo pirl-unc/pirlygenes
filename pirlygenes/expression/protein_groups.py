@@ -47,6 +47,41 @@ def _member_to_canonical() -> dict[str, str]:
                     df["group_canonical_ensembl_gene_id"].astype(str)))
 
 
+@lru_cache(maxsize=1)
+def _canonical_id_to_symbol() -> dict[str, str]:
+    df = protein_identical_groups()
+    return dict(zip(df["group_canonical_ensembl_gene_id"].astype(str),
+                    df["group_canonical_symbol"].astype(str)))
+
+
+@lru_cache(maxsize=1)
+def canonical_symbol_map() -> dict[str, str]:
+    """``{member_symbol_upper: group_canonical_symbol}`` for folding a gene-symbol
+    set (e.g. a CTA panel) onto its protein-identical representatives, so a
+    panel and a collapsed matrix agree on which symbol carries the group."""
+    df = protein_identical_groups()
+    out = {}
+    for sym, canon in zip(df["symbol"], df["group_canonical_symbol"]):
+        s = str(sym).strip().upper()
+        if s:
+            out[s] = str(canon)
+    return out
+
+
+def fold_symbols_to_canonical(symbols) -> list[str]:
+    """Map each symbol to its protein-identical group's canonical symbol
+    (identity if ungrouped) and de-duplicate, preserving order. Use to collapse
+    a panel (CTA, lineage, …) the same way the matrix was collapsed."""
+    m = canonical_symbol_map()
+    seen, out = set(), []
+    for s in symbols:
+        c = m.get(str(s).strip().upper(), s)
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
+
+
 def _strip_version(ensg: str) -> str:
     return str(ensg).split(".")[0]
 
@@ -99,3 +134,58 @@ def collapse_protein_identical_loci(
     out = (rep.sort_values("_ord")
               .reset_index(drop=True)[list(df.columns)])
     return out
+
+
+def collapse_protein_identical_loci_long(
+    df: pd.DataFrame,
+    *,
+    id_col: str = "Ensembl_Gene_ID",
+    symbol_col: str = "Symbol",
+    group_keys: list[str],
+    sum_cols: list[str],
+    max_cols: tuple[str, ...] = (),
+) -> pd.DataFrame:
+    """Collapse protein-identical loci in a **long** table (one row per gene per
+    context).
+
+    ``group_keys`` are the columns that, together with the gene, identify a row
+    (e.g. ``["cancer_code", "source_cohort", "normalization"]``). Within each
+    (protein-group canonical id, ``*group_keys``) the ``sum_cols`` are summed in
+    **linear space** (``min_count=1``: ``NaN`` members ignored, all-``NaN`` stays
+    ``NaN``); ``max_cols`` take the max (e.g. a per-gene detection count); every
+    other column is taken from the canonical member's row. The merged row is
+    keyed by the group's canonical Ensembl id + symbol. Genes in no multi-member
+    group are unchanged. Returns a new long DataFrame with the same columns.
+    """
+    if df.empty:
+        return df
+    m2c = _member_to_canonical()
+    csym = _canonical_id_to_symbol()
+    work = df.reset_index(drop=True).copy()
+    work["_ord"] = range(len(work))
+    sid = work[id_col].map(_strip_version)
+    work["_canon"] = sid.map(m2c).fillna(sid)
+    work["_is_canon"] = sid == work["_canon"]
+    full_keys = ["_canon", *group_keys]
+
+    present_sum = [c for c in sum_cols if c in work.columns]
+    present_max = [c for c in max_cols if c in work.columns]
+
+    rep = (work.sort_values(full_keys + ["_is_canon", id_col],
+                            ascending=[True] * len(full_keys) + [False, True])
+               .drop_duplicates(full_keys, keep="first")
+               .drop(columns=present_sum + present_max, errors="ignore"))
+    out = rep
+    if present_sum:
+        out = out.merge(
+            work.groupby(full_keys, as_index=False)[present_sum].sum(min_count=1),
+            on=full_keys, how="left")
+    if present_max:
+        out = out.merge(
+            work.groupby(full_keys, as_index=False)[present_max].max(),
+            on=full_keys, how="left")
+    # key the merged row by the canonical id + symbol
+    out[id_col] = out["_canon"]
+    out[symbol_col] = [csym.get(c, s)
+                       for c, s in zip(out["_canon"], out[symbol_col])]
+    return out.sort_values("_ord").reset_index(drop=True)[list(df.columns)]

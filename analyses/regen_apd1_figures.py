@@ -11,7 +11,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SCRIPTS = ["exclusion_vs_apd1", "apd1_causal_factors",
-           "apd1_mechanism_screen", "apd1_landscape"]
+           "apd1_mechanism_screen", "apd1_landscape",
+           "apd1_exclusion_scatters"]
 
 
 def main() -> int:

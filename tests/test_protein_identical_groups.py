@@ -6,6 +6,8 @@ import pandas as pd
 
 from pirlygenes.expression.protein_groups import (
     collapse_protein_identical_loci,
+    collapse_protein_identical_loci_long,
+    fold_symbols_to_canonical,
     protein_identical_groups,
 )
 
@@ -97,6 +99,56 @@ def test_collapse_noop_when_single_member_present():
         out.sort_values("Ensembl_Gene_ID").reset_index(drop=True),
         frame.sort_values("Ensembl_Gene_ID").reset_index(drop=True),
     )
+
+
+def test_long_collapse_sums_per_context_not_across():
+    """The long collapse sums a group within each (cohort) context separately,
+    keying the merged row by the canonical id/symbol."""
+    df = protein_identical_groups()
+    grp = df[df["n_members"] == 2].iloc[0]
+    canon = grp["group_canonical_ensembl_gene_id"]
+    members = df[df["group_canonical_ensembl_gene_id"] == canon]["ensembl_gene_id"].tolist()
+    # two cohorts; member-0 NaN in cohort B
+    long = pd.DataFrame({
+        "Ensembl_Gene_ID": members * 2 + ["ENSG00000000003", "ENSG00000000003"],
+        "Symbol": ["A", "Ab"] * 2 + ["U", "U"],
+        "cancer_code": ["CA", "CA", "CB", "CB", "CA", "CB"],
+        "expression": [10.0, 5.0, 7.0, np.nan, 99.0, 88.0],
+    })
+    out = collapse_protein_identical_loci_long(
+        long, group_keys=["cancer_code"], sum_cols=["expression"])
+    val = out.set_index(["Ensembl_Gene_ID", "cancer_code"])["expression"]
+    assert val[(canon, "CA")] == 15.0          # 10 + 5 within cohort CA
+    assert val[(canon, "CB")] == 7.0           # 7 + NaN -> 7 (NaN ignored)
+    assert val[("ENSG00000000003", "CA")] == 99.0   # ungrouped untouched
+    # merged row carries the canonical symbol
+    assert out[out["Ensembl_Gene_ID"] == canon]["Symbol"].iloc[0] == grp["group_canonical_symbol"]
+
+
+def test_fold_symbols_to_canonical():
+    df = protein_identical_groups()
+    grp = df[df["n_members"] >= 2].iloc[0]
+    members = df[df["group_canonical_ensembl_gene_id"] ==
+                 grp["group_canonical_ensembl_gene_id"]]["symbol"].tolist()
+    canon_sym = grp["group_canonical_symbol"]
+    folded = fold_symbols_to_canonical([m for m in members if m] + ["UNRELATEDXYZ"])
+    # all members collapse to the single canonical symbol; unrelated passes through
+    assert canon_sym in folded
+    assert "UNRELATEDXYZ" in folded
+    assert folded.count(canon_sym) == 1        # de-duplicated
+
+
+def test_accessor_collapse_option_sums_paralogs():
+    from pirlygenes.expression.accessors import cancer_reference_expression
+    base = cancer_reference_expression(cancer_types=["SKCM"], normalize="tpm_clean")
+    coll = cancer_reference_expression(cancer_types=["SKCM"], normalize="tpm_clean",
+                                       collapse_protein_identical=True)
+    assert len(coll) < len(base)               # loci merged
+    # MAGEA9/MAGEA9B -> one canonical row whose value is their sum
+    b = base[base["Symbol"].isin(["MAGEA9", "MAGEA9B"])]["expression"]
+    c = coll[coll["Symbol"].isin(["MAGEA9", "MAGEA9B"])]["expression"]
+    assert len(c) == 1
+    assert abs(float(c.iloc[0]) - float(b.sum())) < 1e-6
 
 
 def test_collapse_is_idempotent():
