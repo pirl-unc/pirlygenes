@@ -418,21 +418,26 @@ def _add_aggregate_cohorts(cohorts):
 
 
 def _merge_proteins(mat, ensg_to_sym):
-    """Collapse near-identical CTA paralogs (>=90% AA identity, + curated
-    NY-ESO-1 / XAGE1) into one protein per group, SUMMING per-sample TPM (total
-    expression of that protein — RNA-seq can't disambiguate identical paralogs,
-    and one TCR/antibody/vaccine addresses the group). Returns the merged matrix
-    indexed by protein name + an identity {name: name} display map."""
-    from pirlygenes.load_dataset import get_data
-    grp = get_data("cta-protein-groups")
-    group_of = dict(zip(grp["member_symbol"].astype(str),
-                        grp["protein_group"].astype(str)))
-    row_protein = [group_of.get(s, s)
-                   for s in (ensg_to_sym.get(e, e) for e in mat.index)]
-    merged = mat.groupby(pd.Index(row_protein, name="protein")).sum()
-    print(f"      merged {len(mat) - len(merged)} paralog rows into protein "
-          f"groups -> {len(merged)} proteins", flush=True)
-    return merged, {name: name for name in merged.index}
+    """Collapse **cDNA-identical** loci (byte-identical canonical CDS, + the
+    curated overrides such as CT47A) into one entry per group, SUMMING per-sample
+    TPM — the universal read-recovery collapse (a quantifier can't disambiguate
+    identical-CDS paralogs, so each is split and only the sum is reliable). This
+    is the SAME collapse the reference accessor uses (``collapse_cdna_identical``,
+    pirlygenes #417), so the per-sample and cohort-summary pipelines agree. NOT a
+    >=90% near-identical rollup — distinct proteins (MAGEA3 vs MAGEA6) stay
+    separate. Returns the merged matrix (canonical-Ensembl-indexed) + a
+    ``{ensg: symbol}`` display map."""
+    from pirlygenes.expression.protein_groups import (cdna_canonical_to_symbol,
+                                                      cdna_member_to_canonical)
+    m2c = cdna_member_to_canonical()
+    c2s = cdna_canonical_to_symbol()
+    row_canon = [m2c.get(str(e).split(".")[0], str(e).split(".")[0])
+                 for e in mat.index]
+    merged = mat.groupby(pd.Index(row_canon, name="gene")).sum()
+    print(f"      merged {len(mat) - len(merged)} cDNA-identical rows -> "
+          f"{len(merged)} genes", flush=True)
+    display = {e: c2s.get(e, ensg_to_sym.get(e, e)) for e in merged.index}
+    return merged, display
 
 
 def per_cohort_counts(mat, cohorts, ensg_to_sym, pctile_cutoffs=None):
