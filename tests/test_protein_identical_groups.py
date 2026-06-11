@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes.expression.protein_groups import (
+    collapse_cta_proteoforms_long,
     collapse_protein_identical_loci,
     collapse_protein_identical_loci_long,
     fold_symbols_to_canonical,
@@ -149,6 +150,52 @@ def test_accessor_collapse_option_sums_paralogs():
     c = coll[coll["Symbol"].isin(["MAGEA9", "MAGEA9B"])]["expression"]
     assert len(c) == 1
     assert abs(float(c.iloc[0]) - float(b.sum())) < 1e-6
+
+
+def test_cta_proteoform_rollup_edge_cases():
+    """CTA-scoped rollup: members (incl. multi-ENSG ones) sum into one row keyed
+    by a real member symbol; the alias group name (NY-ESO-1) is NOT used; and
+    non-CTA genes that merely share a symbol are NOT collapsed."""
+    long = pd.DataFrame({
+        # NY-ESO group: members CTAG1A/CTAG1B (group key is the ALIAS 'NY-ESO-1')
+        "Ensembl_Gene_ID": ["ENSGA", "ENSGB",
+                            # MAGEA9 'member' appearing as TWO ENSGs (same symbol)
+                            "ENSGM1", "ENSGM2",
+                            # non-CTA distinct genes that merely share a symbol
+                            "ENSGH1", "ENSGH2"],
+        "Symbol": ["CTAG1A", "CTAG1B", "MAGEA9", "MAGEA9", "HERC3", "HERC3"],
+        "cancer_code": ["CA"] * 6,
+        "expression": [1.0, 2.0, 4.0, 6.0, 100.0, 200.0],
+    })
+    out = collapse_cta_proteoforms_long(long, group_keys=["cancer_code"],
+                                        sum_cols=["expression"])
+    # NY-ESO: one row, summed, keyed by a member symbol (not the alias)
+    nyeso = out[out["Symbol"].isin(["CTAG1A", "CTAG1B"])]
+    assert len(nyeso) == 1
+    assert nyeso["expression"].iloc[0] == 3.0
+    assert not (out["Symbol"] == "NY-ESO-1").any()
+    # MAGEA9 across two ENSGs (same symbol, same CTA group) -> one summed row
+    mage = out[out["Symbol"] == "MAGEA9"]
+    assert len(mage) == 1 and mage["expression"].iloc[0] == 10.0
+    # HERC3: non-CTA, two distinct ENSGs sharing a symbol -> NOT collapsed
+    herc = out[out["Symbol"] == "HERC3"]
+    assert herc["Ensembl_Gene_ID"].nunique() == 2
+    assert set(herc["expression"]) == {100.0, 200.0}
+
+
+def test_accessor_collapse_cta_proteoforms_sums_and_keeps_member_symbol():
+    from pirlygenes.expression.accessors import cancer_reference_expression
+    base = cancer_reference_expression(cancer_types=["SKCM"], normalize="tpm")
+    roll = cancer_reference_expression(cancer_types=["SKCM"], normalize="tpm",
+                                       collapse_cta_proteoforms=True)
+    assert len(roll) < len(base)                       # CTA paralogs rolled up
+    # XAGE1A + XAGE1B -> one member-keyed row whose value is their sum
+    b = base[base["Symbol"].isin(["XAGE1A", "XAGE1B"])]["expression"]
+    r = roll[roll["Symbol"].isin(["XAGE1A", "XAGE1B"])]
+    assert len(r) == 1 and abs(float(r["expression"].iloc[0]) - float(b.sum())) < 1e-6
+    # histones (non-CTA) are untouched by the CTA-scoped rollup
+    assert (roll["Symbol"].astype(str).str.startswith("H4C")).sum() == \
+           (base["Symbol"].astype(str).str.startswith("H4C")).sum()
 
 
 def test_collapse_is_idempotent():
