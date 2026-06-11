@@ -17,6 +17,7 @@ _EXPECTED_COLS = [
     "pmid_doi",
     "confidence",
     "notes",
+    "drug_target",
 ]
 
 
@@ -39,9 +40,18 @@ def test_values_are_response_rates():
     assert m["GBM"] < 15 and m["PRAD"] < 15
 
 
-def test_drug_is_an_antiPD1_monotherapy():
+def test_drug_matches_its_checkpoint_target():
+    """Anti-PD-1 rows use pembrolizumab/nivolumab; PD-L1 *proxy* rows (used only
+    where no anti-PD-1 monotherapy ORR exists, and denoted by
+    ``drug_target='PD-L1'``) use an anti-PD-L1 agent."""
     df = cancer_apd1_response_df()
-    assert set(df["drug"]).issubset({"pembrolizumab", "nivolumab"})
+    assert set(df["drug_target"]) <= {"PD-1", "PD-L1"}
+    pd1 = df[df["drug_target"] == "PD-1"]
+    pdl1 = df[df["drug_target"] == "PD-L1"]
+    assert set(pd1["drug"]).issubset({"pembrolizumab", "nivolumab"})
+    assert set(pdl1["drug"]).issubset({"atezolizumab", "durvalumab", "avelumab"})
+    # PD-L1 proxies must carry a citation (no unsourced proxies)
+    assert pdl1["pmid_doi"].astype(str).str.startswith(("PMID", "DOI", "10.")).all()
 
 
 def test_every_value_is_cited_or_flagged():
