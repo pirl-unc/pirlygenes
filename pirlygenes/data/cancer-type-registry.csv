@@ -13,7 +13,7 @@ CRC,Colorectal Adenocarcinoma,carcinoma-gi,colorectum,solid_primary,,,computed,C
 COAD,Colon Adenocarcinoma,carcinoma-gi,colon,solid_primary,CRC,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,CMS1-4 molecular subtypes + MSI-H axis,False,False,,none,,none,
 DLBC,Diffuse Large B-cell Lymphoma,heme-bcell,lymph_node,heme_nodal,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,ABC vs GCB subtypes,False,False,,subset,EBV,subtype,IGH-BCL6; IGH-MYC; IGH-BCL2
 ESCA,Esophageal Carcinoma,carcinoma-gi,esophagus,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,Adenocarcinoma + squamous lumped — biologically distinct,False,False,,none,,none,
-GBM,Glioblastoma Multiforme,cns,cerebrum,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,IDH-wildtype per 2021 WHO; mes/classical/proneural subtypes,False,False,,none,,subtype,FGFR3-TACC3
+GBM,Glioblastoma Multiforme,cns-glial,cerebrum,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,IDH-wildtype per 2021 WHO; mes/classical/proneural subtypes,False,False,,none,,subtype,FGFR3-TACC3
 HNSC,Head and Neck Squamous Cell Carcinoma,carcinoma-head-neck,pharynx,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HPV+ vs HPV- — two distinct diseases,False,False,,none,,none,
 HNSC_HPVpos,HPV+ HNSC,carcinoma-head-neck,oropharynx,solid_primary,HNSC,,TCGA/HPV,TREEHOUSE_POLYA_25_01_TCGA_HNSC_HPV,PMID:25631445,Better prognosis; p16+; E6/E7-driven,False,False,,defining,HPV,none,
 HNSC_HPVneg,HPV- HNSC,carcinoma-head-neck,oral_cavity,solid_primary,HNSC,,TCGA/HPV,TREEHOUSE_POLYA_25_01_TCGA_HNSC_HPV,PMID:25631445,Smoking/alcohol; TP53-mutant,False,False,,none,,none,
@@ -25,7 +25,7 @@ LAML_APL,Acute Promyelocytic Leukemia,heme-myeloid,bone_marrow,heme_marrow,LAML,
 LAML_ELNfav,AML ELN2017 Favorable,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,NPM1+/FLT3- or CBF; chemo-sensitive,False,False,,none,,none,
 LAML_ELNint,AML ELN2017 Intermediate,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,Mixed; individualized therapy,False,False,,none,,none,
 LAML_ELNadv,AML ELN2017 Adverse,heme-myeloid,bone_marrow,heme_marrow,LAML,,BEATAML,BEATAML_OHSU_2022,PMID:36109543,TP53/complex karyo; transplant-first,False,False,,none,,none,
-LGG,Lower Grade Glioma,cns,cerebrum,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,IDH-mutant (per 2021 WHO); vorasidenib-eligible,False,False,,none,,subtype,KIAA1549-BRAF
+LGG,Lower Grade Glioma,cns-glial,cerebrum,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,IDH-mutant (per 2021 WHO); vorasidenib-eligible,False,False,,none,,subtype,KIAA1549-BRAF
 LIHC,Liver Hepatocellular Carcinoma,carcinoma-gi,liver,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,HBV/HCV/NASH etiologies,False,False,,subset,HBV;HCV,subtype,DNAJB1-PRKACA
 LUAD,Lung Adenocarcinoma,carcinoma-lung,lung,solid_primary,,,TCGA,TREEHOUSE_POLYA_25_01_TCGA_SUBSET,PMID:24071852,EGFR / KRAS / STK11-KEAP1 axes — therapy-gating,False,False,,none,,subtype,EML4-ALK; CD74-ROS1; EZR-ROS1; SLC34A2-ROS1; KIF5B-RET; CCDC6-RET; CD74-NRG1; SLC3A2-NRG1
 LUAD_EGFR,EGFR-mutant LUAD,carcinoma-lung,lung,solid_primary,LUAD,,TCGA/mut,TREEHOUSE_POLYA_25_01_TCGA_LUAD_MUT,PMID:25079552,Osimertinib-first; often never-smoker,False,False,,none,,none,
@@ -68,12 +68,12 @@ NBL_MYCNamp,Neuroblastoma MYCN-amplified,neuroendocrine,sympathetic_ganglia,prim
 NBL_MYCNnonamp,Neuroblastoma MYCN-non-amplified,neuroendocrine,sympathetic_ganglia,primary_neural_crest,NBL,,TARGET,TARGET_NBL_2018,PMID:30019323,Intermediate/low-risk; better prognosis,False,True,,none,,none,
 WILMS,Wilms Tumor / Nephroblastoma,embryonal,kidney,primary_embryonal,,,TARGET,TARGET_WT_2015,PMID:25622910,WT1/CTNNB1/AMER1; favorable vs anaplastic,False,True,,none,,none,
 RT,Rhabdoid Tumor,embryonal,kidney_cns_soft,primary_embryonal,,,TARGET,TARGET_RT_2017,PMID:29568089,SMARCB1 loss; malignant; CNS AT/RT subset,False,True,,none,,none,
-ATRT,Atypical Teratoid/Rhabdoid Tumor,cns,cerebellum,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,SMARCB1 loss; CNS-only rhabdoid,False,True,,none,,none,
-MBL,Medulloblastoma,cns,cerebellum,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,SHH / WNT / Group 3 / Group 4 subgroups,False,True,,none,,none,
-MBL_WNT,Medulloblastoma WNT,cns,cerebellum,solid_primary,MBL,,Treehouse,TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS,PMID:35709076,Excellent prognosis; CTNNB1,False,True,,none,,none,
-MBL_SHH,Medulloblastoma SHH,cns,cerebellum,solid_primary,MBL,,Treehouse,TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS,PMID:35709076,PTCH1/SMO; vismodegib-eligible,False,True,,none,,none,
-MBL_G3,Medulloblastoma Group 3,cns,cerebellum,solid_primary,MBL,,Treehouse,TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS,PMID:35709076,MYC-amp; worst prognosis,False,True,,none,,none,
-MBL_G4,Medulloblastoma Group 4,cns,cerebellum,solid_primary,MBL,,Treehouse,TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS,PMID:35709076,Most common; MYCN/CDK6,False,True,,none,,none,
+ATRT,Atypical Teratoid/Rhabdoid Tumor,cns-embryonal,cerebellum,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,SMARCB1 loss; CNS-only rhabdoid,False,True,,none,,none,
+MBL,Medulloblastoma,cns-embryonal,cerebellum,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,SHH / WNT / Group 3 / Group 4 subgroups,False,True,,none,,none,
+MBL_WNT,Medulloblastoma WNT,cns-embryonal,cerebellum,solid_primary,MBL,,Treehouse,TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS,PMID:35709076,Excellent prognosis; CTNNB1,False,True,,none,,none,
+MBL_SHH,Medulloblastoma SHH,cns-embryonal,cerebellum,solid_primary,MBL,,Treehouse,TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS,PMID:35709076,PTCH1/SMO; vismodegib-eligible,False,True,,none,,none,
+MBL_G3,Medulloblastoma Group 3,cns-embryonal,cerebellum,solid_primary,MBL,,Treehouse,TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS,PMID:35709076,MYC-amp; worst prognosis,False,True,,none,,none,
+MBL_G4,Medulloblastoma Group 4,cns-embryonal,cerebellum,solid_primary,MBL,,Treehouse,TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS,PMID:35709076,Most common; MYCN/CDK6,False,True,,none,,none,
 RB,Retinoblastoma,embryonal,retina,solid_primary,,,Treehouse/RiboD,TREEHOUSE_RIBOD_25_01,,RB1 loss; pediatric eye,False,True,,none,,none,
 HEPB,Hepatoblastoma,embryonal,liver,solid_primary,,,Treehouse,TREEHOUSE_POLYA_25_01,,CTNNB1; pediatric liver,False,True,,none,,none,
 CLL,Chronic Lymphocytic Leukemia,heme-bcell,peripheral_blood,heme_blood,,,CLL-map,CLLMAP_2022,,IGHV mutation status; BTK/BCL2 inhibitors,False,False,,none,,none,
@@ -140,11 +140,11 @@ FTC,Fallopian Tube Carcinoma,carcinoma-gu,fallopian_tube,solid_primary,OV,,curat
 PPC,Primary Peritoneal Carcinoma,carcinoma-gu,peritoneum_serous,solid_primary,OV,,curated,LITERATURE_CURATED,,HGSC of peritoneal origin; pooled in TCGA-OV.,False,False,,none,,none,
 ANSC,Anal Squamous Cell Carcinoma,carcinoma-gi,anal_canal,solid_primary,,,curated,LITERATURE_CURATED,PMID:39024554,HPV-driven anal SCC; GSE253560 bulk RNA-seq (n=70) not yet built.,False,False,,defining,HPV,none,
 GBC,Gallbladder Carcinoma,carcinoma-gi,gallbladder,solid_primary,,,curated,LITERATURE_CURATED,PMID:33578820,Distinct from intrahepatic CHOL; ERBB2/TP53; DDBJ SAMD00254734-781 (n=36) not yet built.,False,False,,none,,none,
-EPN,Ependymoma,cns,ependyma,solid_primary,,,curated,LITERATURE_CURATED,PMID:25965575,Molecular groups (ZFTA/RELA-fusion supratentorial; PF-A/PF-B); OpenPBTA/CBTN + GSE64415 not yet built.,False,True,,none,,none,
-CRANIO,Craniopharyngioma,cns,sellar_suprasellar,solid_primary,,,curated,LITERATURE_CURATED,PMID:28859336,Adamantinomatous (CTNNB1) vs papillary (BRAF V600E); OpenPBTA/CBTN + GSE94349 not yet built.,False,True,,none,,none,
-DIPG,Diffuse Midline Glioma H3 K27-altered,cns,pons_midline,solid_primary,,,curated,LITERATURE_CURATED,PMID:29954445,H3 K27M (H3F3A/HIST1H3B); pediatric brainstem DMG; OpenPBTA/PNOC003 + GSE115397 not yet built.,False,True,,none,,none,
-MENINGIOMA,Meningioma,cns,meninges,solid_primary,,,curated,LITERATURE_CURATED,PMID:34185076,Anchors the MENINGIOMA family panel (SSTR2A+ ~95%/EMA+); NF2 / SMARCE1 / KLF4-TRAF7 molecular subtypes; not yet built.,False,False,,none,,none,
-CHOROID_PLEXUS,Choroid Plexus Tumor,cns,choroid_plexus,solid_primary,,,curated,LITERATURE_CURATED,PMID:34185076,Anchors the CHOROID_PLEXUS family panel (TTR+/KCNJ13+/AQP1+ epithelium); papilloma vs carcinoma; not yet built.,False,True,,none,,none,
+EPN,Ependymoma,cns-ependymal,ependyma,solid_primary,,,curated,LITERATURE_CURATED,PMID:25965575,Molecular groups (ZFTA/RELA-fusion supratentorial; PF-A/PF-B); OpenPBTA/CBTN + GSE64415 not yet built.,False,True,,none,,none,
+CRANIO,Craniopharyngioma,cns-sellar,sellar_suprasellar,solid_primary,,,curated,LITERATURE_CURATED,PMID:28859336,Adamantinomatous (CTNNB1) vs papillary (BRAF V600E); OpenPBTA/CBTN + GSE94349 not yet built.,False,True,,none,,none,
+DIPG,Diffuse Midline Glioma H3 K27-altered,cns-glial,pons_midline,solid_primary,,,curated,LITERATURE_CURATED,PMID:29954445,H3 K27M (H3F3A/HIST1H3B); pediatric brainstem DMG; OpenPBTA/PNOC003 + GSE115397 not yet built.,False,True,,none,,none,
+MENINGIOMA,Meningioma,cns-meningeal,meninges,solid_primary,,,curated,LITERATURE_CURATED,PMID:34185076,Anchors the MENINGIOMA family panel (SSTR2A+ ~95%/EMA+); NF2 / SMARCE1 / KLF4-TRAF7 molecular subtypes; not yet built.,False,False,,none,,none,
+CHOROID_PLEXUS,Choroid Plexus Tumor,cns-choroid,choroid_plexus,solid_primary,,,curated,LITERATURE_CURATED,PMID:34185076,Anchors the CHOROID_PLEXUS family panel (TTR+/KCNJ13+/AQP1+ epithelium); papilloma vs carcinoma; not yet built.,False,True,,none,,none,
 PITNET,Pituitary Neuroendocrine Tumor,endocrine,pituitary,solid_primary,,,curated,LITERATURE_CURATED,,PIT1/TPIT/SF1 transcription-factor lineages; hormone-secreting; GSE147786 not yet built.,False,False,,none,,none,
 ALCL,Anaplastic Large Cell Lymphoma,heme-tcell,lymph_node,heme_nodal,,,curated,LITERATURE_CURATED,PMID:8122112,"CD30+ T-cell lymphoma; ALK+ (NPM1-ALK, younger) vs ALK- subtypes; brentuximab vedotin (anti-CD30); ALK inhibitors for ALK+",,False,,none,,subtype,NPM1-ALK
 COAD_MSI,MSI-H Colon Adenocarcinoma,carcinoma-gi,colon,solid_primary,COAD,,TCGA/MSI,TREEHOUSE_POLYA_25_01_TCGA_COADREAD_MSI,PMID:26028255,MSI-H/dMMR; immune-hot; aPD1-responsive (~45% ORR); MSIsensor>=10,False,False,,none,,none,

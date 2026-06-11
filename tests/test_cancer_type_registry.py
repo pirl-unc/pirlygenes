@@ -228,17 +228,20 @@ def test_registry_includes_rare_entities():
 
 def test_cns_panel_anchor_codes_present_358():
     """#358: the MENINGIOMA and CHOROID_PLEXUS family panels added in #357 were
-    inert without a registry code to anchor them. Both codes now exist (family
-    'cns', curated/not-yet-built) and their code matches the panel Family name
-    so trufflepig can resolve a sample to the panel by name until the finer
-    'cns' family split lands (#359)."""
+    inert without a registry code to anchor them. Both codes now exist
+    (curated/not-yet-built) and their code matches the panel Family name so
+    trufflepig can resolve a sample to the panel by name. The coarse 'cns'
+    family was split into finer sub-families (#359), so these anchor under
+    cns-meningeal / cns-choroid."""
     from pirlygenes.gene_sets_cancer import cancer_family_panels
 
     df = cancer_type_registry().set_index("code")
     panels = cancer_family_panels()
+    _cns_subfamily = {"MENINGIOMA": "cns-meningeal",
+                      "CHOROID_PLEXUS": "cns-choroid"}
     for code in ("MENINGIOMA", "CHOROID_PLEXUS"):
         assert code in df.index, f"missing CNS anchor code: {code}"
-        assert df.loc[code, "family"] == "cns"
+        assert df.loc[code, "family"] == _cns_subfamily[code]
         # curated placeholder, not over-claiming a concrete built shard
         assert df.loc[code, "expression_source"] == "curated"
         # the registry code anchors the same-named family panel
