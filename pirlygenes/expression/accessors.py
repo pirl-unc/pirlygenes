@@ -1011,8 +1011,18 @@ def cancer_reference_expression(
     format: str = "long",
     include_provenance: bool = True,
     exclude_microarray_proxy: bool = False,
+    source_kind: Optional[str | Iterable[str]] = None,
 ) -> pd.DataFrame:
     """Source-agnostic packaged tumor expression references.
+
+    ``source_kind`` is the ``source:node`` cohort-grammar selector (#366): keep
+    only the union members whose source is of the given cohort kind(s) — one or
+    a list of ``cohort-registry`` ``kind`` values (``treehouse``, ``geo``,
+    ``target``, ``beataml``, ``cgci``, ``cllmap``, ``mmrf``, ``ucologne``,
+    ``unc``). ``None`` (default) = ``all:`` (every source). NOTE: ``tcga`` is not
+    yet a first-class kind — TCGA data ships inside the ``treehouse`` cohort
+    (``*_TCGA_SUBSET``); a literal ``tcga:`` selector needs the cohort-registry
+    TCGA break-out (the larger #366 evidence-axis work).
 
     Cross-cohort (``all:`` union) heterogeneity contract — IMPORTANT when a
     computed-aggregate code (``SARC``, ``CRC``, …) expands to many member
@@ -1093,6 +1103,13 @@ def cancer_reference_expression(
         # remaining all:-union view is pipeline-homogeneous and poolable.
         df = df[~df["processing_pipeline"].astype(str)
                 .str.contains("microarray_tpm_proxy", na=False)]
+    if source_kind is not None:
+        # source:node selector — keep only members of the given cohort kind(s).
+        kinds = {source_kind} if isinstance(source_kind, str) else set(source_kind)
+        cr = get_data("cohort-registry")
+        cohort_kind = dict(zip(cr["cohort_id"].astype(str),
+                               cr["kind"].astype(str)))
+        df = df[df["source_cohort"].astype(str).map(cohort_kind).isin(kinds)]
 
     base_cols = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"]
     provenance_cols = [

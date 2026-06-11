@@ -31,3 +31,20 @@ def test_absent_genes_are_absent_not_zero():
     assert (d["expression"].fillna(0) >= 0).all()
     # every returned row is a real measurement (has a source cohort)
     assert d["source_cohort"].notna().all()
+
+
+def test_source_kind_selector_filters_by_cohort_kind():
+    """#366 source:node selector — source_kind keeps only members of the given
+    cohort kind(s); None (default) is the full all:-union."""
+    allu = cancer_reference_expression(cancer_types="SARC", genes=["TP53"])
+    geo = cancer_reference_expression(
+        cancer_types="SARC", genes=["TP53"], source_kind="geo")
+    th = cancer_reference_expression(
+        cancer_types="SARC", genes=["TP53"], source_kind="treehouse")
+    assert geo["source_cohort"].nunique() < allu["source_cohort"].nunique()
+    assert geo["source_cohort"].str.startswith("GSE").all()        # geo only
+    assert th["source_cohort"].str.startswith("TREEHOUSE").all()   # treehouse only
+    # a list of kinds unions them
+    both = cancer_reference_expression(
+        cancer_types="SARC", genes=["TP53"], source_kind=["geo", "treehouse"])
+    assert both["source_cohort"].nunique() == allu["source_cohort"].nunique()
