@@ -391,7 +391,12 @@ _FAMILY_DISPLAY_NAMES = {
     "carcinoma-mesothelial": "Mesothelioma",
     "carcinoma-other": "Other carcinoma",
     "carcinoma-skin": "Non-melanoma skin carcinoma",
-    "cns": "CNS tumor",
+    "cns-glial": "Glial tumor",
+    "cns-embryonal": "Embryonal CNS tumor",
+    "cns-ependymal": "Ependymal tumor",
+    "cns-sellar": "Sellar tumor",
+    "cns-meningeal": "Meningeal tumor",
+    "cns-choroid": "Choroid plexus tumor",
     "embryonal": "Embryonal tumor",
     "endocrine": "Endocrine tumor",
     "germ-cell": "Germ cell tumor",
@@ -2567,7 +2572,11 @@ _HEME_TISSUE_BURDEN = {
 }
 # Last-resort family fallback when primary_tissue is blank/unmapped.
 _FAMILY_BURDEN = {
-    "sarcoma": "soft_tissue_sarcoma", "melanoma": "melanoma", "cns": "brain_cns",
+    "sarcoma": "soft_tissue_sarcoma", "melanoma": "melanoma",
+    # CNS family was split into finer sub-families (#359); all map to brain_cns.
+    "cns-glial": "brain_cns", "cns-embryonal": "brain_cns",
+    "cns-ependymal": "brain_cns", "cns-sellar": "brain_cns",
+    "cns-meningeal": "brain_cns", "cns-choroid": "brain_cns",
     "carcinoma-skin": "non_melanoma_skin",
 }
 
