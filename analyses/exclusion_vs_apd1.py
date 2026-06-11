@@ -93,6 +93,8 @@ def main() -> int:
         ok = col.notna()
         if ok.sum() < MIN_COHORTS:
             continue
+        if col[ok].nunique() < 2:
+            continue  # constant column (silent in every cohort) -> Spearman undefined
         rho, p = spearmanr(col[ok], orr[ok])
         rows.append((g, rho, p, int(ok.sum()), float(col[ok].median())))
     screen = pd.DataFrame(rows, columns=["gene", "rho", "p", "n", "med_log10tpm"])
