@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "5.22.33"
+__version__ = "5.22.34"
 
 # Version of the downloadable data bundle (pirlygenes.data_bundle). Bump
 # this ONLY when the reference data changes — it pins the bundle filename,
