@@ -209,7 +209,9 @@ def _clean_tpm_normalize(
         "group_cols": resolved_group_cols,
         "censored_fill": censored_fill,
         "technical_fraction": (
-            technical_fraction if censored_fill == "fixed_fraction" else None
+            technical_fraction
+            if censored_fill in ("fixed_fraction", "fixed_fraction_cap")
+            else None
         ),
         "exclude_ribosomal_proteins": bool(exclude_ribosomal_proteins),
         "removed_technical_gene_count": int(removable.sum()),
@@ -726,23 +728,39 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
             clean.iloc[ci, :] = ref_row[ci][:, None]
         return clean.fillna(0.0)
 
-    if censored_fill == "fixed_fraction":
-        # Two-compartment: technical -> technical_fraction*1e6, biological ->
-        # the rest, each renormalized WITHIN its group (relative expression
-        # preserved). Removes the technical-fraction confound without erasing
-        # within-compartment signal; cohort-independent (no reference table).
+    if censored_fill in ("fixed_fraction", "fixed_fraction_cap"):
+        # Two-compartment technical/biological split. The technical block is
+        # mtDNA / rRNA-like / mt-pseudogene / polyA-bias lncRNA + ribosomal-
+        # protein mRNA & pseudogenes. Within each compartment relative
+        # expression is preserved; cohort-independent (no reference table).
+        #   "fixed_fraction"     (clean_tpm_v4): technical block FORCED to
+        #       technical_fraction of the 1e6 budget — inflates technical genes
+        #       UP when they're naturally below the target (#304).
+        #   "fixed_fraction_cap" (clean_tpm_v5, #304): technical block CAPPED at
+        #       technical_fraction — compressed when above, NEVER inflated above
+        #       its natural level (suppress-only). Below the cap, expression is
+        #       left as-is (renormalised to 1e6).
         if not 0.0 < technical_fraction < 1.0:
             raise ValueError("technical_fraction must be in (0, 1)")
         tech_budget = technical_fraction * 1_000_000.0
-        bio_budget = (1.0 - technical_fraction) * 1_000_000.0
         tech_sum = values.loc[rem].sum(axis=0)
         bio_sum = values.loc[~rem].sum(axis=0)
         tscale = pd.Series(0.0, index=values.columns, dtype=float)
-        tpos = tech_sum > 0
-        tscale.loc[tpos] = tech_budget / tech_sum.loc[tpos]
         bscale = pd.Series(0.0, index=values.columns, dtype=float)
-        bpos = bio_sum > 0
-        bscale.loc[bpos] = bio_budget / bio_sum.loc[bpos]
+        if censored_fill == "fixed_fraction":
+            bio_budget = (1.0 - technical_fraction) * 1_000_000.0
+            tpos = tech_sum > 0
+            tscale.loc[tpos] = tech_budget / tech_sum.loc[tpos]
+            bpos = bio_sum > 0
+            bscale.loc[bpos] = bio_budget / bio_sum.loc[bpos]
+        else:  # fixed_fraction_cap (v5): cap-only, never inflate
+            total = tech_sum + bio_sum
+            over = (tech_sum > tech_budget) & (bio_sum > 0)
+            tscale.loc[over] = tech_budget / tech_sum.loc[over]
+            bscale.loc[over] = (1_000_000.0 - tech_budget) / bio_sum.loc[over]
+            keep = ~over & (total > 0)
+            tscale.loc[keep] = 1_000_000.0 / total.loc[keep]
+            bscale.loc[keep] = 1_000_000.0 / total.loc[keep]
         clean = values.astype(float).copy()
         clean.loc[rem] = values.loc[rem].mul(tscale, axis=1)
         clean.loc[~rem] = values.loc[~rem].mul(bscale, axis=1)
