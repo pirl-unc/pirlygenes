@@ -67,21 +67,36 @@ def test_computed_aggregates_have_members():
 
 
 def test_coverage_report():
-    """Non-failing: print per-axis coverage so gaps are visible. Data gaps are
-    often irreducible (indel/aPD1 only exist for ~TCGA / trialled cancers); this
-    surfaces them rather than hiding them."""
+    """Non-failing: print per-axis coverage. Denominator is the set of
+    cancer types that SHOULD carry their own value — real top-level codes
+    (not subtypes, which inherit from their parent, nor computed/curated-
+    placeholder nodes). Raw all-159-code percentages understate coverage badly.
+
+    indel/aPD1 are intentionally sparse: published indel-load and anti-PD-1
+    *monotherapy* ORR only exist for ~TCGA / trialled cancers, so those gaps are
+    largely irreducible (and must never be fabricated)."""
     reg = _reg()
-    codes = set(reg.index)
+    real_top = {c for c, r in reg.iterrows()
+                if (pd.isna(r["parent_code"]) or not str(r["parent_code"]).strip())
+                and str(r["expression_source"]) not in ("computed", "curated")}
+    from pirlygenes.gene_sets_cancer import cancer_tmb
+
     lin = get_data("lineage-genes")
     lin_ct = {c for c, g in lin.groupby("Cancer_Type") if len(g) >= 5}
-    tmb = get_data("cancer-tmb")
-    tmb_ct = set(tmb[tmb["median_tmb_mut_mb"].notna()]["cancer_code"])
+    tmb_ct = {c for c in real_top if cancer_tmb(c) is not None}  # parent-inherits
     ind_ct = set(get_data("cancer-frameshift-burden")["cancer_code"])
     apd1_ct = set(get_data("cancer-apd1-response")["cancer_code"])
-    n = len(codes)
-    print("\n[ontology coverage] %d registry codes" % n)
+    n = len(real_top)
+    print("\n[ontology coverage] %d real top-level cancer types" % n)
     for label, s in [("lineage(>=5)", lin_ct), ("TMB", tmb_ct),
-                     ("indel", ind_ct), ("aPD1", apd1_ct)]:
-        have = len(s & codes)
+                     ("indel", ind_ct), ("aPD1(mono)", apd1_ct)]:
+        have = len(s & real_top)
         print(f"  {label:13s} {have:3d}/{n} ({100 * have // n}%)")
-    assert n > 100  # sanity
+    # lineage is complete for every real top-level type.
+    assert lin_ct >= real_top, f"real types missing a lineage panel: {sorted(real_top - lin_ct)}"
+    # TMB is complete except the documented single-driver heme neoplasms with no
+    # reliable entity-median TMB (CML BCR-ABL / MPN JAK2-CALR-MPL) - deliberately
+    # blank per the oncology-table lit audit, NOT fabricated.
+    _TMB_IRREDUCIBLE = {"CML", "MPN"}
+    assert (real_top - tmb_ct) <= _TMB_IRREDUCIBLE, \
+        f"real types missing TMB (beyond documented blanks): {sorted(real_top - tmb_ct - _TMB_IRREDUCIBLE)}"
