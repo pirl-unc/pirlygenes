@@ -384,10 +384,11 @@ def test_cancer_lineage_panel_loader():
         "NET", "BONE_EWS", "MESENCHYMAL",
     } <= set(panels)
 
-    # BRCA_BASAL is the canonical demo from the issue — SCGB2A2 /
+    # BRCA_Basal is the canonical demo from the issue — SCGB2A2 /
     # mammaglobin should be its top mammary discriminator from
-    # other squamous cancers.
-    brca_basal = dict(gsc.cancer_lineage_panel("BRCA_BASAL"))
+    # other squamous cancers. (Child_Code matches the registry's PAM50
+    # code BRCA_Basal; the bladder discriminators use the registry BLCA.)
+    brca_basal = dict(gsc.cancer_lineage_panel("BRCA_Basal"))
     assert brca_basal["SCGB2A2"] == "high"
     assert brca_basal["FOXA1"] == "high"
 
@@ -405,7 +406,7 @@ def test_cancer_lineage_panel_loader():
     # Filter-by-family DataFrame view
     squamous = gsc.cancer_lineage_panels_df(family="SQUAMOUS")
     assert set(squamous["Child_Code"]) == {
-        "BRCA_BASAL", "BLCA_BASAL", "ESCA", "HNSC", "LUSC", "CESC",
+        "BRCA_Basal", "BLCA", "ESCA", "HNSC", "LUSC", "CESC",
     }
 
 

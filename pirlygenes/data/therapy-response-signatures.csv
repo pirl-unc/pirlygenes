@@ -1,10 +1,10 @@
 symbol,ensembl_gene_id,therapy_class,direction,mechanism,cancer_context,strength,refs
 KLK3,ENSG00000142515,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:20220176
-KLK2,ENSG00000167759,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:20220176
+KLK2,ENSG00000167751,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:20220176
 TMPRSS2,ENSG00000184012,AR_signaling,up,AR-transactivated (TMPRSS2-ERG fusion driver),PRAD,canonical,PMID:16254181
 NKX3-1,ENSG00000167034,AR_signaling,up,AR-transactivated homeobox tumor suppressor,PRAD,canonical,PMID:14530290
 FKBP5,ENSG00000096060,AR_signaling,up,AR-transactivated chaperone,PRAD,canonical,PMID:20220176
-STEAP4,ENSG00000183196,AR_signaling,up,AR-transactivated,PRAD,supported,
+STEAP4,ENSG00000127954,AR_signaling,up,AR-transactivated,PRAD,supported,
 NDRG1,ENSG00000104419,AR_signaling,up,AR-transactivated,PRAD,supported,
 PMEPA1,ENSG00000124225,AR_signaling,up,AR-transactivated,PRAD,supported,
 SLC45A3,ENSG00000158715,AR_signaling,up,AR-transactivated prostein,PRAD,supported,
@@ -24,7 +24,7 @@ CCND1,ENSG00000110092,ER_signaling,up,ER-transactivated cyclin D1,BRCA,supported
 MYB,ENSG00000118513,ER_signaling,up,ER-transactivated,BRCA,supported,
 ERBB2,ENSG00000141736,HER2_signaling,up,HER2 amplification / receptor overexpression,BRCA,canonical,PMID:22149876
 GRB7,ENSG00000141738,HER2_signaling,up,Co-amplified with ERBB2,BRCA,canonical,PMID:22149876
-STARD3,ENSG00000092850,HER2_signaling,up,Co-amplified (17q12 amplicon),BRCA,canonical,PMID:22149876
+STARD3,ENSG00000131748,HER2_signaling,up,Co-amplified (17q12 amplicon),BRCA,canonical,PMID:22149876
 PNMT,ENSG00000141744,HER2_signaling,up,Co-amplified (17q12 amplicon),BRCA,supported,
 PHLDA1,ENSG00000139289,MAPK_EGFR_signaling,up,MPAS downstream MAPK/ERK transcriptional output,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4
 SPRY2,ENSG00000136158,MAPK_EGFR_signaling,up,MPAS MAPK-transcribed feedback regulator,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4
@@ -63,7 +63,7 @@ NDRG1,ENSG00000104419,hypoxia,up,HIF-transactivated,pan_cancer,supported,
 BNIP3,ENSG00000176171,hypoxia,up,HIF-transactivated pro-autophagic,pan_cancer,supported,
 ISG15,ENSG00000187608,IFN_response,up,IFN-stimulated gene (ISG),pan_cancer,canonical,
 IFIT1,ENSG00000185745,IFN_response,up,IFN-stimulated antiviral,pan_cancer,canonical,
-IFIT3,ENSG00000119922,IFN_response,up,IFN-stimulated antiviral,pan_cancer,canonical,
+IFIT3,ENSG00000119917,IFN_response,up,IFN-stimulated antiviral,pan_cancer,canonical,
 MX1,ENSG00000157601,IFN_response,up,IFN-stimulated (Mx1),pan_cancer,canonical,
 OAS1,ENSG00000089127,IFN_response,up,IFN-stimulated (2-5A synthetase),pan_cancer,canonical,
 OAS2,ENSG00000111335,IFN_response,up,IFN-stimulated (2-5A synthetase),pan_cancer,canonical,
