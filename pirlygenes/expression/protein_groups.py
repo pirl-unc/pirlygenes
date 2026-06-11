@@ -144,23 +144,30 @@ def collapse_protein_identical_loci_long(
     group_keys: list[str],
     sum_cols: list[str],
     max_cols: tuple[str, ...] = (),
+    member_to_canonical: dict[str, str] | None = None,
+    canonical_to_symbol: dict[str, str] | None = None,
 ) -> pd.DataFrame:
-    """Collapse protein-identical loci in a **long** table (one row per gene per
-    context).
+    """Collapse identical loci in a **long** table (one row per gene per context).
 
     ``group_keys`` are the columns that, together with the gene, identify a row
     (e.g. ``["cancer_code", "source_cohort", "normalization"]``). Within each
-    (protein-group canonical id, ``*group_keys``) the ``sum_cols`` are summed in
-    **linear space** (``min_count=1``: ``NaN`` members ignored, all-``NaN`` stays
-    ``NaN``); ``max_cols`` take the max (e.g. a per-gene detection count); every
-    other column is taken from the canonical member's row. The merged row is
-    keyed by the group's canonical Ensembl id + symbol. Genes in no multi-member
-    group are unchanged. Returns a new long DataFrame with the same columns.
+    (group canonical id, ``*group_keys``) the ``sum_cols`` are summed in **linear
+    space** (``min_count=1``: ``NaN`` members ignored, all-``NaN`` stays ``NaN``);
+    ``max_cols`` take the max (e.g. a per-gene detection count); every other
+    column is taken from the canonical member's row. The merged row is keyed by
+    the group's canonical Ensembl id + symbol. Genes in no multi-member group are
+    unchanged. Returns a new long DataFrame with the same columns.
+
+    ``member_to_canonical`` / ``canonical_to_symbol`` override the default
+    genome-wide **protein**-identical grouping — pass the cDNA-identical maps for
+    the read-recovery collapse (:func:`collapse_cdna_identical_loci_long`).
     """
     if df.empty:
         return df
-    m2c = _member_to_canonical()
-    csym = _canonical_id_to_symbol()
+    m2c = member_to_canonical if member_to_canonical is not None \
+        else _member_to_canonical()
+    csym = canonical_to_symbol if canonical_to_symbol is not None \
+        else _canonical_id_to_symbol()
     work = df.reset_index(drop=True).copy()
     work["_ord"] = range(len(work))
     sid = work[id_col].map(_strip_version)
@@ -191,16 +198,84 @@ def collapse_protein_identical_loci_long(
     return out.sort_values("_ord").reset_index(drop=True)[list(df.columns)]
 
 
+# ---- cDNA-identical (read-recovery) collapse: the universal, principled one ----
+#
+# Two loci with byte-identical canonical CDS multi-map (a quantifier can't assign
+# reads between them), so each is split / under-counted and only the SUM is
+# reliable. This is the universal, transcriptome-wide collapse. A small curated
+# override (``proteoform-collapse-overrides``) force-collapses a few 100%-protein
+# /cDNA-distinct groups whose members should still be one entity (e.g. the CT47A
+# antigen). NOT a >=90% near-identical grouping — distinct proteins (MAGEA3 vs
+# MAGEA6) stay separate.
+
+
 @lru_cache(maxsize=1)
-def _cta_symbol_to_group() -> dict[str, str]:
-    """``{member_symbol: proteoform_group}`` over the curated CTA protein groups
-    (``cta-protein-groups``, identical/near-identical >=90% aa)."""
-    g = get_data("cta-protein-groups")
-    return {str(m): str(grp)
-            for m, grp in zip(g["member_symbol"], g["protein_group"])}
+def cdna_identical_groups() -> pd.DataFrame:
+    """The derived cDNA-identical gene-group table (one row per member)."""
+    return get_data("cdna-identical-gene-groups")
 
 
-def collapse_cta_proteoforms_long(
+@lru_cache(maxsize=1)
+def _cdna_member_to_canonical() -> dict[str, str]:
+    """``{member_ensg: canonical_ensg}`` from the cDNA-identical groups, with the
+    curated overrides applied last (they force-collapse whole protein-identical
+    groups, superseding any cDNA-subgroup split)."""
+    cd = cdna_identical_groups()
+    m = dict(zip(cd["ensembl_gene_id"].astype(str),
+                 cd["group_canonical_ensembl_gene_id"].astype(str)))
+    overrides = set(get_data("proteoform-collapse-overrides")
+                    ["group_canonical_ensembl_gene_id"].astype(str))
+    if overrides:
+        pg = protein_identical_groups()
+        for canon, sub in pg.groupby("group_canonical_ensembl_gene_id"):
+            if str(canon) in overrides:
+                for member in sub["ensembl_gene_id"].astype(str):
+                    m[member] = str(canon)
+    return m
+
+
+@lru_cache(maxsize=1)
+def _cdna_canonical_to_symbol() -> dict[str, str]:
+    cd = cdna_identical_groups()
+    out = dict(zip(cd["group_canonical_ensembl_gene_id"].astype(str),
+                   cd["group_canonical_symbol"].astype(str)))
+    ov = get_data("proteoform-collapse-overrides")
+    out.update(dict(zip(ov["group_canonical_ensembl_gene_id"].astype(str),
+                        ov["group_symbol"].astype(str))))
+    return out
+
+
+@lru_cache(maxsize=1)
+def _cdna_symbol_to_canonical_symbol() -> dict[str, str]:
+    """``{member_symbol_upper: canonical_symbol}`` for folding a panel (e.g. CTA)
+    onto the cDNA-collapsed matrix's canonical symbols."""
+    m2c = _cdna_member_to_canonical()
+    c2s = _cdna_canonical_to_symbol()
+    cd = cdna_identical_groups()
+    pg = protein_identical_groups()
+    out = {}
+    for df in (cd, pg):
+        for sym, ensg in zip(df["symbol"], df["ensembl_gene_id"].astype(str)):
+            s = str(sym).strip().upper()
+            if s and ensg in m2c:
+                out[s] = c2s.get(m2c[ensg], sym)
+    return out
+
+
+def fold_to_cdna_canonical_symbol(symbols) -> list[str]:
+    """Map symbols onto their cDNA-identical (+override) canonical symbol and
+    de-duplicate, preserving order — fold a panel the way the matrix collapsed."""
+    m = _cdna_symbol_to_canonical_symbol()
+    seen, out = set(), []
+    for s in symbols:
+        c = m.get(str(s).strip().upper(), s)
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
+
+
+def collapse_cdna_identical_loci_long(
     df: pd.DataFrame,
     *,
     group_keys: list[str],
@@ -209,49 +284,11 @@ def collapse_cta_proteoforms_long(
     symbol_col: str = "Symbol",
     max_cols: tuple[str, ...] = (),
 ) -> pd.DataFrame:
-    """CTA-scoped sibling of :func:`collapse_protein_identical_loci_long`.
-
-    Sums the curated CTA proteoform-group members (``cta-protein-groups``,
-    identical/near-identical **>=90% aa** — the CT47A cluster, MAGEA3/MAGEA6,
-    NY-ESO CTAG1A/CTAG1B, …) in **linear space** per (proteoform group,
-    ``*group_keys``); non-CTA genes pass through unchanged (only antigens roll
-    up, never housekeeping clusters). The merged row keeps a **representative
-    member**'s symbol + id (the member whose symbol equals the group key when the
-    key is itself a symbol — e.g. ``MAGEA9`` — else the lowest-id member). The
-    group key may be an *alias* (``NY-ESO-1``), so the merged row deliberately
-    keeps a real member **symbol** (e.g. ``CTAG1B``), not the alias, so that
-    ``cta_paralog_symbols`` / matrix-column lookups still resolve it. >=90%
-    identity is the right grain for antigen abundance and catches paralogs a
-    strict byte-identical rule misses (MAGEA3/6 are 95.9%).
-    """
-    if df.empty:
-        return df
-    s2g = _cta_symbol_to_group()
-    work = df.reset_index(drop=True).copy()
-    work["_ord"] = range(len(work))
-    sym = work[symbol_col].astype(str)
-    # CTA members -> their proteoform group; NON-CTA rows -> their own ENSG (NOT
-    # their symbol), so a CTA member whose symbol maps to several ENSGs still
-    # sums (HNRNPCL1/2 etc.), but two distinct-protein genes that merely SHARE a
-    # symbol (e.g. HERC3's two ENSGs) are NOT collapsed together.
-    work["_grp"] = sym.map(s2g).fillna(work[id_col].astype(str))
-    work["_is_rep"] = sym == work["_grp"]
-    full_keys = ["_grp", *group_keys]
-    present_sum = [c for c in sum_cols if c in work.columns]
-    present_max = [c for c in max_cols if c in work.columns]
-    rep = (work.sort_values(full_keys + ["_is_rep", id_col],
-                            ascending=[True] * len(full_keys) + [False, True])
-               .drop_duplicates(full_keys, keep="first")
-               .drop(columns=present_sum + present_max, errors="ignore"))
-    out = rep
-    if present_sum:
-        out = out.merge(
-            work.groupby(full_keys, as_index=False)[present_sum].sum(min_count=1),
-            on=full_keys, how="left")
-    if present_max:
-        out = out.merge(
-            work.groupby(full_keys, as_index=False)[present_max].max(),
-            on=full_keys, how="left")
-    # NB: keep the representative member's symbol+id (do NOT relabel to _grp,
-    # which may be a non-symbol alias like 'NY-ESO-1').
-    return out.sort_values("_ord").reset_index(drop=True)[list(df.columns)]
+    """Sum cDNA-identical loci (+curated overrides) in a long table — the
+    universal read-recovery collapse. Thin wrapper over
+    :func:`collapse_protein_identical_loci_long` with the cDNA maps."""
+    return collapse_protein_identical_loci_long(
+        df, group_keys=group_keys, sum_cols=sum_cols, id_col=id_col,
+        symbol_col=symbol_col, max_cols=max_cols,
+        member_to_canonical=_cdna_member_to_canonical(),
+        canonical_to_symbol=_cdna_canonical_to_symbol())
