@@ -123,10 +123,11 @@ _TOLERATED_GAPS_EXPLICIT = {
     "CRANIO": {"lineage"},
     "DIPG": {"lineage", "therapy"},
     "PITNET": {"lineage", "biomarker", "therapy"},
-    # #358 CNS panel anchors — family panel provides the lineage markers, but
-    # the lineage-genes table / key-genes curation isn't built yet.
-    "MENINGIOMA": {"lineage", "biomarker", "therapy"},
-    "CHOROID_PLEXUS": {"lineage", "biomarker", "therapy"},
+    # #358/#369 CNS panel anchors — lineage panels + biomarkers now curated.
+    # MENINGIOMA also has a target (SSTR2/177Lu-DOTATATE) so it's fully covered
+    # (only therapy_axis remains, via _MISSING_THERAPY_AXIS). CHOROID_PLEXUS
+    # carcinoma has no approved targeted therapy -> therapy gap stays tolerated.
+    "CHOROID_PLEXUS": {"therapy"},
     # CRC: computed colorectal union (parent of COAD+READ); an abstract node
     # with no panels of its own — its children carry lineage/biomarker/therapy.
     "CRC": {"lineage", "biomarker", "therapy"},

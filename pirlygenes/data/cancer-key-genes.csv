@@ -844,3 +844,9 @@ SARC,well_differentiated_liposarcoma,HMGA2,biomarker,,,,,,,,12q amplicon lipogen
 ALCL,,TNFRSF8,biomarker,,,,,,,systemic ALCL,CD30 (TNFRSF8) uniformly expressed in ALCL — defining IHC biomarker and anti-CD30 ADC target,PMID:22614995
 ALCL,,TNFRSF8,target,brentuximab vedotin,ADC,approved,approved_standard,frontline_and_relapsed,CD30+ (universal in sALCL),systemic ALCL,"Anti-CD30 ADC; approved for sALCL (frontline BV-CHP, ECHELON-2; R/R per Pro 2012)",PMID:22614995
 ALCL,ALK-positive,ALK,target,crizotinib,ALK-inhibitor,phase_2,investigational_biomarker_matched,relapsed,ALK+ (NPM1-ALK),ALK+ ALCL,ALK TKI active in ALK+ ALCL (NPM1-ALK),PMID:21345110
+MENINGIOMA,,NF2,biomarker,,,,,,,,Most common driver (22q/NF2 loss); sporadic and NF2-syndrome meningiomas,
+MENINGIOMA,,SSTR2,biomarker,,,,,,,,Somatostatin receptor 2 — near-universal; basis of 68Ga-DOTATATE PET imaging,
+MENINGIOMA,,PGR,biomarker,,,,,,,,Progesterone receptor — expressed in most grade I; prognostic,
+MENINGIOMA,,SSTR2,target,177Lu-DOTATATE,radioligand,emerging,,,,progressive/refractory meningioma,SSTR2-directed peptide receptor radionuclide therapy — emerging for surgery/RT-refractory disease,
+CHOROID_PLEXUS,,TP53,biomarker,,,,,,,,TP53 mutation — strong Li-Fraumeni association in choroid plexus carcinoma; prompts germline testing,
+CHOROID_PLEXUS,,TTR,biomarker,,,,,,,,Transthyretin — definitive choroid-plexus differentiation marker (diagnostic IHC),
