@@ -41,17 +41,23 @@ def test_values_are_response_rates():
 
 
 def test_drug_matches_its_checkpoint_target():
-    """Anti-PD-1 rows use pembrolizumab/nivolumab; PD-L1 *proxy* rows (used only
-    where no anti-PD-1 monotherapy ORR exists, and denoted by
-    ``drug_target='PD-L1'``) use an anti-PD-L1 agent."""
+    """Each row's drug must match its ``drug_target`` class:
+      - ``PD-1``        — anti-PD-1 monotherapy (pembrolizumab/nivolumab/cemiplimab).
+      - ``PD-L1``       — anti-PD-L1 *proxy*, used only where no anti-PD-1 ORR exists.
+      - ``PD-1+CTLA-4`` — dual checkpoint *fallback* (nivolumab+ipilimumab), used
+                          where no single-agent anti-PD-1/PD-L1 ORR exists.
+    Both fallback classes (PD-L1, PD-1+CTLA-4) must carry a citation."""
     df = cancer_apd1_response_df()
-    assert set(df["drug_target"]) <= {"PD-1", "PD-L1"}
+    assert set(df["drug_target"]) <= {"PD-1", "PD-L1", "PD-1+CTLA-4"}
     pd1 = df[df["drug_target"] == "PD-1"]
     pdl1 = df[df["drug_target"] == "PD-L1"]
-    assert set(pd1["drug"]).issubset({"pembrolizumab", "nivolumab"})
+    dual = df[df["drug_target"] == "PD-1+CTLA-4"]
+    assert set(pd1["drug"]).issubset({"pembrolizumab", "nivolumab", "cemiplimab"})
     assert set(pdl1["drug"]).issubset({"atezolizumab", "durvalumab", "avelumab"})
-    # PD-L1 proxies must carry a citation (no unsourced proxies)
-    assert pdl1["pmid_doi"].astype(str).str.startswith(("PMID", "DOI", "10.")).all()
+    assert set(dual["drug"]).issubset({"nivolumab+ipilimumab"})
+    # fallback classes must carry a citation (no unsourced proxies)
+    for fallback in (pdl1, dual):
+        assert fallback["pmid_doi"].astype(str).str.startswith(("PMID", "DOI", "10.")).all()
 
 
 def test_every_value_is_cited_or_flagged():
