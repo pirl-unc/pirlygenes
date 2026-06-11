@@ -288,6 +288,13 @@ def cdna_canonical_to_symbol() -> dict[str, str]:
     return dict(_cdna_canonical_to_symbol())
 
 
+def cdna_symbol_to_canonical_symbol() -> dict[str, str]:
+    """Public ``{member_symbol_upper: canonical_symbol}`` for collapsing a
+    **symbol**-keyed matrix (e.g. the percentile-reference transcriptome TSV) so
+    a cDNA-identical group is one entry in the ranking universe."""
+    return dict(_cdna_symbol_to_canonical_symbol())
+
+
 def collapse_cdna_identical_loci_long(
     df: pd.DataFrame,
     *,

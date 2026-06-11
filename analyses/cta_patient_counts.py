@@ -166,27 +166,51 @@ def per_sample_percentile_cutoffs(percentiles=PERCENTILES, *, nbins=2000,
     """Per-sample TPM value at each within-sample percentile, computed over ALL
     genes in the compendium (not just CTAs) so a CTA's rank is relative to the
     whole transcriptome. Memory-bounded histogram pass over the full
-    log2(TPM+1) TSV (+ the linear-TPM parquet cohorts); cached to
-    ``outputs/_per_sample_pctile_cutoffs.parquet`` (keyed on TSV mtime)."""
-    cachef = CACHE / "_per_sample_pctile_cutoffs.parquet"
+    log2(TPM+1) TSV (+ the linear-TPM parquet cohorts); cached.
+
+    cDNA-identical loci are **collapsed (summed) into one entry before ranking**,
+    so the ranking universe holds one XAGE1 (=XAGE1A+XAGE1B), not the individual
+    members — otherwise a collapsed CTA would be ranked against a universe that
+    still contains its own components (#21)."""
+    cachef = CACHE / "_per_sample_pctile_cutoffs_v2.parquet"   # v2: cDNA-collapsed
     if (cache and cachef.exists()
             and cachef.stat().st_mtime >= TPM_TSV.stat().st_mtime):
         return pd.read_parquet(cachef)
+    from pirlygenes.expression.protein_groups import (
+        cdna_symbol_to_canonical_symbol)
+    sym2canon = {k.upper(): v for k, v in cdna_symbol_to_canonical_symbol().items()}
 
     edges = np.linspace(0.0, vmax_log2, nbins + 1)
     centers = 0.5 * (edges[:-1] + edges[1:])
     hist = None
     cols = None
+    accum: dict[str, np.ndarray] = {}      # canonical symbol -> per-sample LINEAR sum
     for chunk in pd.read_csv(TPM_TSV, sep="\t", chunksize=4000):
+        genes = chunk.iloc[:, 0].astype(str).str.upper()
         vals = chunk.iloc[:, 1:]
         if cols is None:
             cols = list(vals.columns)
             hist = np.zeros((len(cols), nbins), dtype=np.int64)
-        arr = vals.to_numpy(dtype=np.float32)            # genes(chunk) × samples
-        idx = np.clip(np.searchsorted(edges, arr, side="right") - 1, 0, nbins - 1)
-        # accumulate per-sample histograms: add 1 per (sample, bin) occurrence
-        for j in range(idx.shape[1]):
-            hist[j] += np.bincount(idx[:, j], minlength=nbins)
+        arr = vals.to_numpy(dtype=np.float32)            # genes(chunk) × samples (log2)
+        canon = genes.map(sym2canon)                     # canonical symbol or NaN
+        member = canon.notna().to_numpy()
+        # histogram the genes that are NOT in a cDNA-identical group, as-is
+        if (~member).any():
+            nm_idx = np.clip(np.searchsorted(edges, arr[~member], side="right") - 1,
+                             0, nbins - 1)
+            for j in range(nm_idx.shape[1]):
+                hist[j] += np.bincount(nm_idx[:, j], minlength=nbins)
+        # accumulate group members (linear) into their canonical's per-sample sum
+        if member.any():
+            lin = np.power(2.0, arr[member].astype(np.float64)) - 1.0
+            for gi, cs in enumerate(canon[member].to_numpy()):
+                accum.setdefault(cs, np.zeros(len(cols)))
+                accum[cs] += lin[gi]
+    # each collapsed group contributes ONE entry per sample (its summed value)
+    for linsum in accum.values():
+        log2v = np.log2(linsum + 1.0)
+        bins_c = np.clip(np.searchsorted(edges, log2v, side="right") - 1, 0, nbins - 1)
+        hist[np.arange(len(cols)), bins_c] += 1
 
     cum = np.cumsum(hist, axis=1)
     total = cum[:, -1].astype(float)
@@ -207,7 +231,10 @@ def per_sample_percentile_cutoffs(percentiles=PERCENTILES, *, nbins=2000,
         pf = pd.read_parquet(p)
         sample_cols = [c for c in pf.columns
                        if c not in ("Ensembl_Gene_ID", "Symbol")]
-        m = pf[sample_cols].to_numpy(dtype=float)
+        # collapse cDNA-identical loci (sum) before ranking, same as the TSV pass
+        canon = pf["Symbol"].astype(str).str.upper().map(sym2canon)
+        pf = pf.assign(_g=canon.fillna(pf["Symbol"].astype(str)))
+        m = pf.groupby("_g")[sample_cols].sum().to_numpy(dtype=float)
         rec = {}
         for col, vec in zip(sample_cols, m.T):
             rec[col] = {f"p{q}": float(np.percentile(vec, q)) for q in percentiles}
