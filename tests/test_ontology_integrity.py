@@ -26,11 +26,69 @@ def test_all_data_table_codes_resolve_to_registry():
     for name, col in [("cancer-tmb", "cancer_code"),
                       ("cancer-frameshift-burden", "cancer_code"),
                       ("cancer-apd1-response", "cancer_code"),
-                      ("cancer-subtype-groupings", "member_code")]:
+                      ("cancer-subtype-groupings", "member_code"),
+                      ("cancer-lineage-panels", "Child_Code")]:
         for code in get_data(name)[col]:
-            if resolve_cancer_type(code) is None:
+            if resolve_cancer_type(code, strict=False) is None:
                 bad.append((name, code))
     assert not bad, f"data tables reference unknown cancer codes: {bad}"
+
+
+def test_curated_panel_symbol_ensg_not_swapped():
+    """Hand-curated gene-set CSVs pair a symbol with an ENSG by hand; guard the
+    *swap* class (#377/#379 sibling) where the ENSG silently points at a
+    different gene. A swap is: the listed symbol is itself a current symbol of a
+    DIFFERENT Ensembl gene than the listed ENSG. (Stale-but-correct aliases like
+    WHSC1->NSD2, where the ENSG is right and the symbol is just an old name, do
+    NOT trip this — the old name does not resolve by-name in a current release.)
+
+    Caught the KLK2/STEAP4/STARD3/IFIT3 ENSG corruption in
+    therapy-response-signatures.csv (each pointed at KLK13/CHST6/TEKT2/IFIT2).
+    """
+    try:
+        from pyensembl import EnsemblRelease
+    except Exception:  # pragma: no cover - pyensembl always present in CI
+        import pytest
+        pytest.skip("pyensembl not installed")
+    # Newest installed GRCh38 release; fall back through a few.
+    data = None
+    for rel in (111, 110, 109, 108, 107, 106, 105, 104, 102, 100, 98, 96):
+        try:
+            cand = EnsemblRelease(rel)
+            cand.gene_ids()  # force-load; raises if not downloaded
+            data = cand
+            break
+        except Exception:
+            continue
+    if data is None:  # pragma: no cover
+        import pytest
+        pytest.skip("no installed GRCh38 Ensembl release")
+
+    curated = [
+        ("therapy-response-signatures", "symbol", "ensembl_gene_id"),
+        ("cancer-lineage-panels", "Symbol", "Ensembl_Gene_ID"),
+        ("lineage-genes", "Symbol", "Ensembl_Gene_ID"),
+    ]
+    swaps = []
+    for name, sc, ec in curated:
+        df = get_data(name)
+        for _, row in df.iterrows():
+            sym = str(row[sc]).strip().upper()
+            ensg = str(row[ec]).split(".")[0].strip()
+            if not ensg.startswith("ENSG") or sym in ("", "NAN"):
+                continue
+            try:
+                by_name = data.gene_ids_of_gene_name(sym)
+            except Exception:
+                by_name = []
+            # symbol is a real current symbol, but for a DIFFERENT gene
+            if by_name and ensg not in by_name:
+                try:
+                    actual = data.gene_by_id(ensg).gene_name
+                except Exception:
+                    actual = "(unknown)"
+                swaps.append((name, sym, ensg, f"->{actual}", f"symbol->{by_name}"))
+    assert not swaps, f"symbol/ENSG swap in curated panels: {swaps}"
 
 
 def test_viral_etiology_has_agent():

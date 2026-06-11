@@ -848,7 +848,7 @@ def stem_cell_panels():
 #
 # Sibling to ``cancer_family_panels`` but at the child level. Once the
 # parent family wins (e.g. SQUAMOUS), the lineage panel for each child
-# (BRCA_BASAL vs ESCA vs LUSC vs CESC vs HNSC vs BLCA_BASAL) picks the
+# (BRCA_Basal vs ESCA vs LUSC vs CESC vs HNSC vs BLCA) picks the
 # right child cohort using tissue-of-origin markers rather than the
 # basal-keratin set every squamous cancer shares.
 #
@@ -864,7 +864,7 @@ def cancer_lineage_panels_df(family=None, child_code=None):
     """DataFrame of child-level lineage-discriminating markers.
 
     ``family`` filters to one parent family (e.g. ``"SQUAMOUS"``);
-    ``child_code`` filters to one child cohort (e.g. ``"BRCA_BASAL"``).
+    ``child_code`` filters to one child cohort (e.g. ``"BRCA_Basal"``).
     Pass both for the panel of one specific child.
     """
     df = get_data("cancer-lineage-panels")

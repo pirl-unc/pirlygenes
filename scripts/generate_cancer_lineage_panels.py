@@ -6,7 +6,7 @@ Per GitHub issue #266 (link). The existing
 RENAL, etc.) and distinguishes a family from non-family codes —
 but once the parent family wins, picking the right CHILD requires
 lineage-discriminating markers (e.g. SCGB2A2 / mammaglobin
-discriminates BRCA_BASAL from non-mammary squamous cancers, even
+discriminates BRCA_Basal from non-mammary squamous cancers, even
 though both express the basal-keratin set).
 
 This script:
@@ -54,14 +54,14 @@ LINEAGE_PANELS: dict[str, dict[str, list[tuple[str, str]]]] = {
         # BRCA. Combined with the GATA3/FOXA1 axis it cleanly
         # discriminates basal BRCA from the rest of the squamous
         # family.
-        "BRCA_BASAL": [
+        "BRCA_Basal": [
             ("SCGB2A2", "high"), ("SCGB2A1", "high"), ("SCGB1D2", "high"),
             ("FOXA1", "high"), ("GATA3", "high"),
             ("MUCL1", "high"), ("MLPH", "high"), ("ANKRD30A", "high"),
         ],
         # Urothelial: uroplakins are urothelium-specific; GATA3+FOXA1
         # combo distinguishes from squamous epithelia.
-        "BLCA_BASAL": [
+        "BLCA": [
             ("UPK1A", "high"), ("UPK1B", "high"), ("UPK2", "high"),
             ("UPK3A", "high"), ("UPK3B", "high"), ("S100P", "high"),
             ("GATA3", "high"), ("FOXA1", "high"),
@@ -199,7 +199,7 @@ LINEAGE_PANELS: dict[str, dict[str, list[tuple[str, str]]]] = {
         ],
         # Bladder luminal: uroplakins + KRT20 + GATA3 + FOXA1 high +
         # PPARG-driven luminal program (ELF3 as proxy).
-        "BLCA_LUMINAL": [
+        "BLCA": [
             ("UPK1A", "high"), ("UPK1B", "high"), ("UPK2", "high"),
             ("UPK3A", "high"), ("KRT20", "high"),
             ("GATA3", "high"), ("FOXA1", "high"), ("PPARG", "high"),

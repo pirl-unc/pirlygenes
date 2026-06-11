@@ -56,6 +56,15 @@ _COLORECTAL_POOL = {
     for member in cancer_subtype_group(grp, under="CRC")
 }
 _COLORECTAL_DROP = ("COAD", "READ")  # bulk all-comer = MSI/MSS mixture
+
+# A bulk all-comer code whose finer clinical anchors carry distinct aPD1
+# ORR/TMB is a *mixture* of those anchors (like bulk COAD/READ over MSI/MSS).
+# When every listed subtype is present in the cohort x gene matrix, drop the
+# bulk row so it is not counted ~Nx alongside its near-duplicate subtype rows
+# in the cross-cohort Spearman/OLS. HNSC_HPVpos/HNSC_HPVneg respond very
+# differently to anti-PD-1, so the HPV split is the right grain; bulk HNSC is
+# the mixture. (UCEC's bulk is already replaced by its subtypes upstream.)
+_BULK_DROP_IF_SUBTYPES = {"HNSC": ("HNSC_HPVpos", "HNSC_HPVneg")}
 # analysis-only pooled codes (NOT registry codes) - must be kept out of any
 # cancer_reference_expression fetch.
 _POOLED_CODES = set(_COLORECTAL_POOL.values()) | {"CRC"}
@@ -184,6 +193,11 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
     # shared clinical anchors (see _COLORECTAL_POOL).
     pooled_idx = [_COLORECTAL_POOL.get(c, c) for c in wide.index]
     wide = wide.groupby(pooled_idx).mean()
+    # drop bulk all-comer rows whose distinct subtype anchors are all present,
+    # so the mixture is not double/triple-counted (see _BULK_DROP_IF_SUBTYPES).
+    for bulk, subs in _BULK_DROP_IF_SUBTYPES.items():
+        if bulk in wide.index and all(s in wide.index for s in subs):
+            wide = wide.drop(index=bulk)
     return np.log10(wide + 1.0)
 
 

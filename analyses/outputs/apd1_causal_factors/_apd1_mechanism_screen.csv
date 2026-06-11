@@ -1,7 +1,6 @@
 mechanism,tag,n,rho,p,expect,agrees,KIRC_pctile,LIHC_pctile,why
-exclusion:TGFb_response,causal,5,-0.43069206378195024,0.015575695218745494,-,True,84,6,curated aPD1_exclusion_TGFb_response
-exclusion:Wnt,causal,4,-0.41615393504669457,0.019881435104982446,-,True,16,6,curated aPD1_exclusion_Wnt
-exclusion:Wnt_target,causal,9,-0.3061083772589951,0.0939780236270616,-,True,6,90,curated aPD1_exclusion_Wnt_target
+exclusion:Wnt,causal,2,-0.28571461333870585,0.11920932348286012,-,True,10,19,curated aPD1_exclusion_Wnt
+exclusion:Wnt_target,causal,8,-0.26330166487185336,0.15238612803701662,-,True,6,87,curated aPD1_exclusion_Wnt_target
 exclusion:angiogenesis,causal,5,-0.09631510287106905,0.6062570609181436,-,True,100,19,curated aPD1_exclusion_angiogenesis
 exclude:hypoxia,borderline,5,0.06764268230987029,0.7176836905140633,-,True,100,6,"hypoxia (CA9 is also a ccRCC lineage marker - confounded, NOT curated)"
 antigen:ERV_annotated,causal,8,0.08197889259046967,0.6610808445221295,+,True,35,3,Ensembl-annotated ERVs (mostly placental syncytins - FAILS)
