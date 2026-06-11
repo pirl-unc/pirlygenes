@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes.expression.protein_groups import (
-    collapse_cta_proteoforms_long,
     collapse_protein_identical_loci,
     collapse_protein_identical_loci_long,
     fold_symbols_to_canonical,
@@ -152,50 +151,39 @@ def test_accessor_collapse_option_sums_paralogs():
     assert abs(float(c.iloc[0]) - float(b.sum())) < 1e-6
 
 
-def test_cta_proteoform_rollup_edge_cases():
-    """CTA-scoped rollup: members (incl. multi-ENSG ones) sum into one row keyed
-    by a real member symbol; the alias group name (NY-ESO-1) is NOT used; and
-    non-CTA genes that merely share a symbol are NOT collapsed."""
-    long = pd.DataFrame({
-        # NY-ESO group: members CTAG1A/CTAG1B (group key is the ALIAS 'NY-ESO-1')
-        "Ensembl_Gene_ID": ["ENSGA", "ENSGB",
-                            # MAGEA9 'member' appearing as TWO ENSGs (same symbol)
-                            "ENSGM1", "ENSGM2",
-                            # non-CTA distinct genes that merely share a symbol
-                            "ENSGH1", "ENSGH2"],
-        "Symbol": ["CTAG1A", "CTAG1B", "MAGEA9", "MAGEA9", "HERC3", "HERC3"],
-        "cancer_code": ["CA"] * 6,
-        "expression": [1.0, 2.0, 4.0, 6.0, 100.0, 200.0],
-    })
-    out = collapse_cta_proteoforms_long(long, group_keys=["cancer_code"],
-                                        sum_cols=["expression"])
-    # NY-ESO: one row, summed, keyed by a member symbol (not the alias)
-    nyeso = out[out["Symbol"].isin(["CTAG1A", "CTAG1B"])]
-    assert len(nyeso) == 1
-    assert nyeso["expression"].iloc[0] == 3.0
-    assert not (out["Symbol"] == "NY-ESO-1").any()
-    # MAGEA9 across two ENSGs (same symbol, same CTA group) -> one summed row
-    mage = out[out["Symbol"] == "MAGEA9"]
-    assert len(mage) == 1 and mage["expression"].iloc[0] == 10.0
-    # HERC3: non-CTA, two distinct ENSGs sharing a symbol -> NOT collapsed
-    herc = out[out["Symbol"] == "HERC3"]
-    assert herc["Ensembl_Gene_ID"].nunique() == 2
-    assert set(herc["expression"]) == {100.0, 200.0}
+def test_cdna_groups_table_invariants():
+    from pirlygenes.expression.protein_groups import cdna_identical_groups
+    df = cdna_identical_groups()
+    assert (df["n_members"] >= 2).all()
+    assert (df["cds_nt"] >= 90).all()
+    for canon, grp in df.groupby("group_canonical_ensembl_gene_id"):
+        assert canon in set(grp["ensembl_gene_id"])
+        assert canon == min(grp["ensembl_gene_id"])
 
 
-def test_accessor_collapse_cta_proteoforms_sums_and_keeps_member_symbol():
-    from pirlygenes.expression.accessors import cancer_reference_expression
-    base = cancer_reference_expression(cancer_types=["SKCM"], normalize="tpm")
-    roll = cancer_reference_expression(cancer_types=["SKCM"], normalize="tpm",
-                                       collapse_cta_proteoforms=True)
-    assert len(roll) < len(base)                       # CTA paralogs rolled up
-    # XAGE1A + XAGE1B -> one member-keyed row whose value is their sum
-    b = base[base["Symbol"].isin(["XAGE1A", "XAGE1B"])]["expression"]
-    r = roll[roll["Symbol"].isin(["XAGE1A", "XAGE1B"])]
+def test_accessor_collapse_cdna_identical_behaviour():
+    """The universal read-recovery collapse: cDNA-identical antigens merge,
+    cDNA-DISTINCT paralogs (MAGEA3 vs MAGEA6) stay separate, the CT47A override
+    unifies the whole antigen, and the histone *cluster* is NOT swept (only its
+    exact-duplicate pairs)."""
+    from pirlygenes.expression.accessors import cancer_reference_expression as cre
+    base = cre(cancer_types=["SKCM"], normalize="tpm")
+    roll = cre(cancer_types=["SKCM"], normalize="tpm", collapse_cdna_identical=True)
+    assert len(roll) < len(base)
+
+    def nrows(df, pat):
+        return int(df["Symbol"].astype(str).str.match(pat).sum())
+
+    # NY-ESO CTAG1A/CTAG1B are cDNA-identical -> one row, summed
+    b = base[base["Symbol"].isin(["CTAG1A", "CTAG1B"])]["expression"]
+    r = roll[roll["Symbol"].isin(["CTAG1A", "CTAG1B"])]
     assert len(r) == 1 and abs(float(r["expression"].iloc[0]) - float(b.sum())) < 1e-6
-    # histones (non-CTA) are untouched by the CTA-scoped rollup
-    assert (roll["Symbol"].astype(str).str.startswith("H4C")).sum() == \
-           (base["Symbol"].astype(str).str.startswith("H4C")).sum()
+    # MAGEA3 vs MAGEA6 are cDNA-DISTINCT (95.9% aa) -> stay separate
+    assert roll["Symbol"].isin(["MAGEA3", "MAGEA6"]).sum() == 2
+    # CT47A: override unifies all 12 loci into one (CT47B1 is a different antigen)
+    assert nrows(roll, "CT47A") == 1
+    # histone cluster: only exact-duplicate pairs merge, NOT the whole cluster
+    assert nrows(base, "H4C") - nrows(roll, "H4C") <= 3
 
 
 def test_collapse_is_idempotent():

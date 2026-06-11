@@ -1053,7 +1053,7 @@ def cancer_reference_expression(
     source_kind: Optional[str | Iterable[str]] = None,
     source_cohort: Optional[str | Iterable[str]] = None,
     collapse_protein_identical: bool = False,
-    collapse_cta_proteoforms: bool = False,
+    collapse_cdna_identical: bool = False,
     pool: bool = False,
 ) -> pd.DataFrame:
     """Source-agnostic packaged tumor expression references.
@@ -1129,17 +1129,19 @@ def cancer_reference_expression(
         aren't under-counted. Off by default (preserves the per-locus rows and
         the shipped reference semantics). See
         :func:`pirlygenes.expression.protein_groups.collapse_protein_identical_loci_long`.
-    collapse_cta_proteoforms
-        When ``True``, roll **cancer-testis-antigen** paralogs up into their
-        curated proteoform groups (``cta-protein-groups``, near-identical
-        **>=90% aa** — the CT47A cluster, MAGEA3/MAGEA6, NY-ESO CTAG1A/CTAG1B,
-        …), summing members in linear TPM per (group, cancer_code,
-        source_cohort). CTA-**scoped**: only antigens roll up, never housekeeping
-        clusters (histones etc.). Use this for any CTA antigen-abundance view so
-        a multi-locus antigen counts once, consistently, across every consumer
-        (the central, single-source rollup — not re-implemented per analysis).
-        Distinct from ``collapse_protein_identical`` (genome-wide, byte-identical
-        only — which would miss the 95.9%-identical MAGEA3/6).
+    collapse_cdna_identical
+        When ``True``, sum **cDNA-identical** loci (byte-identical canonical
+        coding sequence) per (gene group, cancer_code, source_cohort) in linear
+        TPM — the universal **read-recovery** collapse. Such loci multi-map (a
+        quantifier can't assign reads between them), so each is split /
+        under-counted and only the sum is reliable. A small curated override
+        (``proteoform-collapse-overrides``, e.g. the CT47A antigen) force
+        -collapses a few 100%-protein/cDNA-distinct groups. This is the
+        principled, single-source collapse for any abundance/percentile view —
+        it leaves cDNA-*distinct* paralogs alone (histone clusters stay split,
+        MAGEA3 vs MAGEA6 stay distinct). Distinct from
+        ``collapse_protein_identical`` (groups on protein identity, which would
+        also sweep the histone clusters).
     pool
         When ``True``, collapse the ``all:``-union's per-(gene, cancer_code,
         source_cohort) rows into **one heterogeneity-safe pooled row per (gene,
@@ -1244,9 +1246,9 @@ def cancer_reference_expression(
             max_cols=("n_detected",),
         )
 
-    if collapse_cta_proteoforms:
-        from .protein_groups import collapse_cta_proteoforms_long
-        long = collapse_cta_proteoforms_long(
+    if collapse_cdna_identical:
+        from .protein_groups import collapse_cdna_identical_loci_long
+        long = collapse_cdna_identical_loci_long(
             long,
             group_keys=["cancer_code", "source_cohort", "normalization"],
             sum_cols=["expression", "q1", "q3"],

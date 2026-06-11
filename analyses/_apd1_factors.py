@@ -25,8 +25,8 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes.expression.accessors import cancer_reference_expression
-from pirlygenes.gene_sets_cancer import (CTA_gene_names, cancer_subtype_group,
-                                         cta_paralog_symbols)
+from pirlygenes.expression.protein_groups import fold_to_cdna_canonical_symbol
+from pirlygenes.gene_sets_cancer import CTA_gene_names, cancer_subtype_group
 from pirlygenes.load_dataset import get_data
 
 _EXPR_CACHE = (Path.home() / ".cache" / "pirlygenes" / "expression"
@@ -175,13 +175,13 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
     # COAD/READ subtype shards and pool them after.
     fetch = list(dict.fromkeys(
         [c for c in codes if c not in _CRC_TIERS] + ["UCEC", "UCS"]))
-    # collapse_cta_proteoforms: roll CTA paralogs up into their curated
-    # proteoform groups (cta-protein-groups, >=90% aa) CENTRALLY in the accessor,
-    # so a multi-locus antigen is one column everywhere — done in one place, not
-    # re-implemented per analysis. CTA-scoped: histones / single-copy genes are
-    # untouched (exclusion/antigen/signature genes are single-copy, audited).
+    # collapse_cdna_identical: sum cDNA-identical loci (+ curated overrides like
+    # CT47A) CENTRALLY in the accessor — the universal read-recovery collapse,
+    # applied consistently everywhere. cDNA-distinct paralogs (MAGEA3 vs MAGEA6,
+    # histone clusters) stay separate; exclusion/antigen/signature genes are
+    # single-copy (audited), so unaffected.
     long = cancer_reference_expression(cancer_types=fetch, normalize="tpm_clean",
-                                       collapse_cta_proteoforms=True)
+                                       collapse_cdna_identical=True)
     long = long[~long["processing_pipeline"].str.contains(
         "microarray_tpm_proxy", na=False)]
     src_n = (long.groupby(["cancer_code", "source_cohort"])["n_samples"]
@@ -212,55 +212,33 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
 CTA_ON_TPM = 6.0
 
 
-def _cta_protein_groups_in(mat: pd.DataFrame) -> dict[str, list[str]]:
-    """``{representative: [member symbols present in mat]}`` over the curated CTA
-    protein groups (``cta-protein-groups``, identical/near-identical >=90% aa —
-    NY-ESO-1 = CTAG1A+CTAG1B, MAGEA3+MAGEA6, the CT47A cluster, …). CTA-scoped:
-    only CTA antigens group; nothing else (histones etc.) is touched."""
-    groups, seen = {}, set()
-    for sym in CTA_gene_names():
-        if sym in seen:
-            continue
-        members = cta_paralog_symbols(sym) or [sym]
-        seen.update(members)
-        present = [m for m in members if m in mat.columns]
-        if present:
-            groups[sorted(members)[0]] = present
-    return groups
-
-
 def cta_burden(mat: pd.DataFrame, *, thr_tpm: float = CTA_ON_TPM,
                min_coverage: float = 0.5) -> pd.Series:
-    """Coverage-aware count of "ON" cancer-testis-antigen **proteins** per cohort.
+    """Coverage-aware count of "ON" cancer-testis antigens per cohort.
 
-    A multi-locus antigen (the CT47A cluster, MAGEA3/MAGEA6, NY-ESO CTAG1A/B, …)
-    is summed in **linear TPM** across its curated protein-group members so it
-    counts as ONE protein, not N near-identical paralogs whose reads were split.
-    The grouping is CTA-scoped (``cta-protein-groups``) — only antigens collapse,
-    never housekeeping clusters (histones etc.).
+    The matrix is already cDNA-identical-collapsed (+ overrides) upstream, so a
+    read-split antigen (NY-ESO CTAG1A/B, the CT47A cluster, XAGE1A/B) is one
+    column; cDNA-*distinct* paralogs (MAGEA3 vs MAGEA6) stay separate and count
+    as the distinct antigens they are. The CTA panel is folded onto the same
+    canonical symbols so each surviving antigen is counted once.
 
-    Respects *missing != zero*: a CTA group a cohort never measured (no member
-    present) is excluded from both the ON count and the denominator. We take the
-    ON-*rate* among the antigen groups a cohort actually measured, rescaled to
-    the median measured-group count so it stays count-like for display/z-scoring;
-    a cohort below ``min_coverage`` of the groups gets ``NaN``.
+    Respects *missing != zero*: a CTA a cohort never measured is excluded from
+    both the ON count and the denominator. We take the ON-rate among the antigens
+    a cohort actually measured (TPM >= ``thr_tpm``), rescaled to the median
+    measured count so it stays count-like; a cohort below ``min_coverage`` of the
+    panel gets ``NaN``.
     """
-    groups = _cta_protein_groups_in(mat)
-    if not groups:
+    genes = [g for g in fold_to_cdna_canonical_symbol(CTA_gene_names())
+             if g in mat.columns]
+    if not genes:
         return pd.Series(np.nan, index=mat.index)
-    lin = np.power(10.0, mat) - 1.0  # de-log to linear TPM before summing loci
-    # one DataFrame built at once (no per-column insert / fragmentation). The
-    # matrix CTAs are already proteoform-rolled-up upstream, so most groups are a
-    # single column here; the sum is robust either way (min_count=1: NaN ignored).
-    summed = pd.DataFrame(
-        {key: lin[members].sum(axis=1, min_count=1)
-         for key, members in groups.items()})
-    measured = summed.notna()
-    on = summed >= thr_tpm
+    lin = np.power(10.0, mat[genes]) - 1.0   # de-log to linear TPM
+    measured = lin.notna()
+    on = (lin >= thr_tpm) & measured
     n_meas = measured.sum(axis=1)
-    n_on = (on & measured).sum(axis=1)
+    n_on = on.sum(axis=1)
     rate = n_on / n_meas.replace(0, np.nan)
-    rate[n_meas < min_coverage * len(groups)] = np.nan
+    rate[n_meas < min_coverage * len(genes)] = np.nan
     return rate * n_meas.median()
 
 
