@@ -260,14 +260,22 @@ class PooledCohorts:
         Each matrix's index is its **row mask** (the genes that cohort measures)
         and its columns are its **column mask** (that cohort's samples); the
         pooled measurement mask is the OR of each cohort's ``row x column``
-        block. Sample (column) labels must be globally unique across inputs —
-        prefix them by source cohort upstream if they collide.
+        block, with ``measured`` the single authority (a not-measured cell is
+        ``False`` here regardless of what ``values`` holds). Sample (column)
+        labels must be globally unique across inputs — prefix them by source
+        cohort upstream if they collide.
+
+        The union **gene rows are sorted canonically (lexical Ensembl id)** so
+        the pool is reproducible regardless of input cohort order — there is no
+        global gene order elsewhere (everything aligns by label), but a
+        deterministic order keeps any persisted pooled artifact diff-stable.
+        Sample **columns stay in input order** (grouped by cohort).
         """
         mats = [m for m in matrices if m is not None and m.shape[1] > 0]
         if not mats:
             empty = pd.DataFrame()
             return cls(empty, empty.copy())
-        values = pd.concat(mats, axis=1, join="outer")
+        values = pd.concat(mats, axis=1, join="outer").sort_index()
         # Each block is all-True over its cohort's genes x samples; after an
         # outer join, a cell is present (True) iff some cohort covers it and NaN
         # otherwise, so ``.notna()`` is exactly the membership mask (bool dtype,
@@ -283,8 +291,17 @@ class PooledCohorts:
 
     @property
     def analysis_matrix(self) -> pd.DataFrame:
-        """``values`` with every not-measured cell forced to ``NaN`` so every
-        reduction is taken only over the samples whose cohort measured the gene.
+        """``values`` projected through the (authoritative) ``measured`` mask:
+        every not-measured cell is forced to ``NaN`` so each **marginal** (per
+        gene, ``axis=1``) reduction is taken only over the samples whose cohort
+        measured the gene.
+
+        For the :meth:`from_cohorts` outer-join this equals ``values`` (already
+        ``NaN`` off-panel), but the projection is what makes correctness depend
+        on the mask rather than on how ``values`` was filled — essential if
+        ``values`` is ever a dense backing store. **Cross-sample / pairwise**
+        operations (distances, correlations) must consult ``measured`` directly
+        instead, since they need pairwise co-availability, not per-cell ``NaN``.
         """
         return self.values.where(self.measured)
 
