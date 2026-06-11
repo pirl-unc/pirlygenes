@@ -33,6 +33,7 @@ are the canonical column-name tuples for schema work.
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass
 from typing import Iterable, Literal
 
 import numpy as np
@@ -216,6 +217,151 @@ def compute_count_columns(values: pd.DataFrame) -> dict[str, np.ndarray]:
         "n_samples": n_samples,
         "n_detected": n_detected,
     }
+
+
+# Availability-aware count columns for a *pooled* (cross-cohort) matrix, where
+# different source cohorts measured different gene sets. ``n_available`` is the
+# per-gene count that ``n_samples`` (cohort-wide constant) and ``n_detected``
+# (measured AND > 0) cannot express on their own.
+POOLED_COUNT_COLUMNS: tuple[str, ...] = ("n_samples", "n_available", "n_detected")
+
+
+@dataclass(frozen=True)
+class PooledCohorts:
+    """Heterogeneity-safe pool of ragged per-cohort sample matrices.
+
+    The single, centralized representation for cross-cohort mixing. ``values``
+    spans the **union** gene set x all pooled samples; ``measured`` is a
+    parallel boolean mask that is ``True`` exactly where the sample's source
+    cohort carries that gene in its panel.
+
+    Crucially the mask is built from per-cohort **row (gene) and column
+    (sample) membership**, NOT from ``values.notna()``. That keeps two cases
+    correct that a notna mask gets wrong:
+
+    - a *measured-but-zero* gene (value ``0.0``) is ``measured=True``;
+    - a *measured-but-dropout* gene (an intra-cohort ``NaN``) still counts in
+      that cohort's ``n_available`` denominator — the cohort measured it, this
+      sample just had no value — even though it's excluded from the reductions.
+
+    Not-measured cells are ``NaN`` in ``values`` and ``False`` in ``measured``
+    and are **never filled** (missing != zero). Every pooled operation routes
+    through this object (``analysis_matrix`` / :meth:`counts` / :meth:`stats` /
+    :meth:`summary`) so the availability semantics live in exactly one place.
+    """
+
+    values: pd.DataFrame
+    measured: pd.DataFrame
+
+    @classmethod
+    def from_cohorts(cls, matrices: Iterable[pd.DataFrame]) -> "PooledCohorts":
+        """Build the pool from ``(n_genes, n_samples)`` per-cohort matrices.
+
+        Each matrix's index is its **row mask** (the genes that cohort measures)
+        and its columns are its **column mask** (that cohort's samples); the
+        pooled measurement mask is the OR of each cohort's ``row x column``
+        block. Sample (column) labels must be globally unique across inputs —
+        prefix them by source cohort upstream if they collide.
+        """
+        mats = [m for m in matrices if m is not None and m.shape[1] > 0]
+        if not mats:
+            empty = pd.DataFrame()
+            return cls(empty, empty.copy())
+        values = pd.concat(mats, axis=1, join="outer")
+        # Each block is all-True over its cohort's genes x samples; after an
+        # outer join, a cell is present (True) iff some cohort covers it and NaN
+        # otherwise, so ``.notna()`` is exactly the membership mask (bool dtype,
+        # no fill/downcast).
+        blocks = [pd.DataFrame(True, index=m.index, columns=m.columns)
+                  for m in mats]
+        measured = (
+            pd.concat(blocks, axis=1, join="outer")
+            .reindex(index=values.index, columns=values.columns)
+            .notna()
+        )
+        return cls(values, measured)
+
+    @property
+    def analysis_matrix(self) -> pd.DataFrame:
+        """``values`` with every not-measured cell forced to ``NaN`` so every
+        reduction is taken only over the samples whose cohort measured the gene.
+        """
+        return self.values.where(self.measured)
+
+    def counts(self) -> dict[str, np.ndarray]:
+        """``{n_samples, n_available, n_detected}`` (see
+        :data:`POOLED_COUNT_COLUMNS`). ``n_available`` is the per-gene measured
+        (membership) count — the correct cross-cohort denominator; ``n_detected``
+        counts measured-and-``> 0`` only, never treating a not-measured cell as
+        a zero.
+        """
+        am = self.analysis_matrix
+        return {
+            "n_samples": np.full(self.values.shape[0], self.values.shape[1],
+                                 dtype=int),
+            "n_available": self.measured.sum(axis=1).to_numpy(),
+            "n_detected": ((am > 0) & self.measured).sum(axis=1).to_numpy(),
+        }
+
+    def stats(self, *, prefix: str = "TPM_") -> dict[str, np.ndarray]:
+        """The :func:`compute_cohort_stats` suite over the masked matrix.
+
+        Per-gene ``std`` is ``NaN`` where fewer than two samples measured the
+        gene.
+        """
+        return compute_cohort_stats(self.analysis_matrix, prefix=prefix)
+
+    def summary(self, *, prefix: str = "TPM_") -> dict[str, np.ndarray]:
+        """:meth:`stats` merged with :meth:`counts` — the full pooled summary."""
+        return {**self.stats(prefix=prefix), **self.counts()}
+
+
+def align_ragged_matrices(matrices: Iterable[pd.DataFrame]) -> pd.DataFrame:
+    """Outer-join ``(n_genes, n_samples)`` matrices on the gene-id index.
+
+    Thin convenience wrapper over :meth:`PooledCohorts.from_cohorts` returning
+    just the union value matrix (not-measured cells ``NaN``, never filled).
+    Prefer :class:`PooledCohorts` when you also need the measurement mask.
+    """
+    return PooledCohorts.from_cohorts(matrices).values
+
+
+def available_count_columns(values: pd.DataFrame) -> dict[str, np.ndarray]:
+    """Availability counts for a single matrix where ``NaN`` means not-measured.
+
+    Degenerate (single-panel) case of :meth:`PooledCohorts.counts`: with no
+    per-cohort blocks the only mask available is ``values.notna()``. Use
+    :class:`PooledCohorts` for a real cross-cohort pool, where membership and
+    notna can differ (measured-but-dropout cells).
+    """
+    measured = values.notna()
+    return {
+        "n_samples": np.full(values.shape[0], values.shape[1], dtype=int),
+        "n_available": measured.sum(axis=1).to_numpy(),
+        "n_detected": ((values > 0) & measured).sum(axis=1).to_numpy(),
+    }
+
+
+def pool_cohort_samples(
+    matrices: Iterable[pd.DataFrame],
+    *,
+    prefix: str = "TPM_",
+) -> tuple[pd.DataFrame, dict[str, np.ndarray]]:
+    """Heterogeneity-safe pool of ragged per-cohort sample matrices.
+
+    Functional front door to :class:`PooledCohorts`: a gene measured by one
+    cohort but not another is summarised over just the measuring cohort's
+    patients, with a per-gene ``n_available`` denominator — never imputed to
+    zero, never inner-joined down to the lowest-common gene set.
+
+    Returns ``(analysis_matrix, summary)`` where ``analysis_matrix`` is the
+    union matrix with not-measured cells ``NaN`` and ``summary`` merges the
+    ``compute_cohort_stats`` suite with the availability counts.
+    """
+    pool = PooledCohorts.from_cohorts(matrices)
+    if pool.values.empty:
+        return pool.values, {}
+    return pool.analysis_matrix, pool.summary(prefix=prefix)
 
 
 def assign_stats(
