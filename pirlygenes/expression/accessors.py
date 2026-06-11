@@ -1010,8 +1010,28 @@ def cancer_reference_expression(
     *,
     format: str = "long",
     include_provenance: bool = True,
+    exclude_microarray_proxy: bool = False,
 ) -> pd.DataFrame:
     """Source-agnostic packaged tumor expression references.
+
+    Cross-cohort (``all:`` union) heterogeneity contract — IMPORTANT when a
+    computed-aggregate code (``SARC``, ``CRC``, …) expands to many member
+    cohorts:
+
+    - **Mixed assays/pipelines.** Members may originate as microarray, FPKM,
+      RPKM, or raw counts and are each converted to clean TPM **independently,
+      per cohort, at build time** (see the ``processing_pipeline`` column).
+      Microarray-proxy TPM (``*_microarray_tpm_proxy_*``) is NOT magnitude-
+      comparable across platforms (a smaller probe universe inflates per-gene
+      TPM); pass ``exclude_microarray_proxy=True`` to drop those members for a
+      pipeline-homogeneous, poolable view.
+    - **Different gene universes.** Members measure different gene sets (here
+      ~13k–61k genes); a gene absent from a member is ``not_measurable`` for
+      that cohort, **never 0**. Rows are returned **per-(gene, cancer_code,
+      source_cohort)** — the reference deliberately does NOT pre-pool the union
+      into one fabricated summary, so a consumer can pool correctly (per-gene
+      availability mask, ``n_samples`` weighting) instead of averaging
+      incomparable scales.
 
     This accessor is for non-TCGA references such as CLL-map, MMRF
     CoMMpass, TARGET, and future GEO cohorts. Values are TPM-scale
@@ -1068,6 +1088,11 @@ def cancer_reference_expression(
         wide_codes = available_codes
     if genes is not None:
         df = filter_to_genes(df, genes)
+    if exclude_microarray_proxy:
+        # drop cross-platform-incomparable microarray-proxy members so the
+        # remaining all:-union view is pipeline-homogeneous and poolable.
+        df = df[~df["processing_pipeline"].astype(str)
+                .str.contains("microarray_tpm_proxy", na=False)]
 
     base_cols = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"]
     provenance_cols = [
