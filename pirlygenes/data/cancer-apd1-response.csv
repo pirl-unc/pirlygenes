@@ -35,3 +35,10 @@ KIRP,25,pembrolizumab,KEYNOTE-427 cohort B,papillary RCC 1L,PMID:34272311,medium
 KICH,10,pembrolizumab,KEYNOTE-427 cohort B,chromophobe RCC 1L,PMID:34272311,low,chromophobe ORR 9.5% (small n)
 CHOL,6,pembrolizumab,KEYNOTE-158,advanced biliary,PMID:32319072,medium,biliary ORR 5.8% (6/104)
 UVM,4,nivolumab,pooled uveal series,metastatic uveal melanoma,PMID:27533448,low,uveal anti-PD-1 monotherapy ORR ~3-6% (checkpoint-refractory)
+SARC_UPS,23,pembrolizumab,SARC028,advanced/metastatic 2L+,PMID:28988646,medium,undifferentiated pleomorphic sarcoma; most ICI-responsive STS; expansion cohort ~23% (Burgess 2019)
+SARC_DDLPS,10,pembrolizumab,SARC028,advanced/metastatic 2L+,PMID:28988646,low,dedifferentiated liposarcoma; SARC028 STS subset
+SARC_SYN,10,pembrolizumab,SARC028,advanced/metastatic 2L+,PMID:28988646,low,synovial sarcoma 1/10; translocation sarcoma; immune-cold
+SARC_LMS,0,pembrolizumab,SARC028,advanced/metastatic 2L+,PMID:28988646,low,leiomyosarcoma 0/10; immune-cold
+SARC_OS,5,pembrolizumab,SARC028,advanced/metastatic bone cohort,PMID:28988646,low,osteosarcoma 1/22 in the bone cohort
+SARC_EWS,0,pembrolizumab,SARC028,advanced/metastatic bone cohort,PMID:28988646,low,Ewing sarcoma 0/13; immune-cold
+SARC_CHON,0,pembrolizumab,SARC028,advanced/metastatic bone cohort,PMID:28988646,low,chondrosarcoma 0/5
