@@ -19,6 +19,7 @@ e.g. SARC rolls up to whatever coarse code has a response number (none, here).
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -212,32 +213,45 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
 CTA_ON_TPM = 6.0
 
 
+@lru_cache(maxsize=1)
+def _cta_coverage_p95() -> dict:
+    """``{cancer_code: %% patients with >=1 CTA at the >=95th within-sample
+    percentile}`` from cta_patient_counts' stable ``cta_union_counts.csv``. This
+    is the DEFAULT CTA-burden metric. Empty dict if the table hasn't been
+    generated (run ``cta_patient_counts.py`` once)."""
+    path = Path(__file__).resolve().parent / "outputs" / "_cta_union_counts.csv"
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path)
+    return {str(c): 100.0 * a / n
+            for c, a, n in zip(df["cancer_code"], df["n_any_p95"],
+                               df["n_samples"]) if n}
+
+
 def cta_burden(mat: pd.DataFrame, *, thr_tpm: float = CTA_ON_TPM,
                min_coverage: float = 0.5) -> pd.Series:
-    """Coverage-aware count of "ON" cancer-testis antigens per cohort.
+    """CTA burden = **% of patients in the cohort with >=1 CTA at the >=95th
+    within-sample percentile** (the per-sample coverage from cta_patient_counts,
+    proteoform-collapsed before ranking). Cohorts absent from that table (not in
+    the poly-A compendium, e.g. NPC/SCLC) get ``NaN``.
 
-    The matrix is already cDNA-identical-collapsed (+ overrides) upstream, so a
-    read-split antigen (NY-ESO CTAG1A/B, the CT47A cluster, XAGE1A/B) is one
-    column; cDNA-*distinct* paralogs (MAGEA3 vs MAGEA6) stay separate and count
-    as the distinct antigens they are. The CTA panel is folded onto the same
-    canonical symbols so each surviving antigen is counted once.
-
-    Respects *missing != zero*: a CTA a cohort never measured is excluded from
-    both the ON count and the denominator. We take the ON-rate among the antigens
-    a cohort actually measured (TPM >= ``thr_tpm``), rescaled to the median
-    measured count so it stays count-like; a cohort below ``min_coverage`` of the
-    panel gets ``NaN``.
+    Falls back to a cohort-summary ON-antigen count (the matrix is already
+    cDNA-collapsed; CTA panel folded onto canonical symbols) only when the
+    per-sample coverage table hasn't been generated, so the analysis still runs.
     """
+    cov = _cta_coverage_p95()
+    if cov:
+        return pd.Series({c: cov.get(c, np.nan) for c in mat.index})
+    # fallback (no coverage table): ON-antigen count over the cohort summary
     genes = [g for g in fold_to_cdna_canonical_symbol(CTA_gene_names())
              if g in mat.columns]
     if not genes:
         return pd.Series(np.nan, index=mat.index)
-    lin = np.power(10.0, mat[genes]) - 1.0   # de-log to linear TPM
+    lin = np.power(10.0, mat[genes]) - 1.0
     measured = lin.notna()
     on = (lin >= thr_tpm) & measured
     n_meas = measured.sum(axis=1)
-    n_on = on.sum(axis=1)
-    rate = n_on / n_meas.replace(0, np.nan)
+    rate = on.sum(axis=1) / n_meas.replace(0, np.nan)
     rate[n_meas < min_coverage * len(genes)] = np.nan
     return rate * n_meas.median()
 
