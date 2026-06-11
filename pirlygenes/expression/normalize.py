@@ -740,6 +740,19 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
         #       technical_fraction — compressed when above, NEVER inflated above
         #       its natural level (suppress-only). Below the cap, expression is
         #       left as-is (renormalised to 1e6).
+        #       CAVEAT: this is NOT a strict improvement on v4. Within a 1e6
+        #       budget "biology comparable across samples" and "technical block
+        #       untouched" are complementary. v4 fixes the BIOLOGICAL compartment
+        #       to a constant (1-fraction) budget, so biological clean-TPM is
+        #       cross-sample comparable and only the suppressed technical/QC
+        #       block (incl. MALAT1/NEAT1 nuclear-QC markers) is rescaled. v5
+        #       instead lets low-technical samples keep a LARGER biological
+        #       budget, so biological genes are inflated there (a 10%-technical
+        #       sample reads ~1.2x a 25%-technical one for the same true biology)
+        #       — it moves the distortion onto the biological comparison you
+        #       actually use. Prefer v4 for a cross-cohort biological reference;
+        #       use v5 only WITHIN a technically-uniform set, or read QC genes
+        #       from raw TPM instead.
         if not 0.0 < technical_fraction < 1.0:
             raise ValueError("technical_fraction must be in (0, 1)")
         tech_budget = technical_fraction * 1_000_000.0
