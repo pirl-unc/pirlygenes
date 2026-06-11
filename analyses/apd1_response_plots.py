@@ -28,6 +28,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from pirlygenes import gene_sets_cancer as gsc  # noqa: E402
+from pirlygenes.load_dataset import get_data  # noqa: E402
 from _run_layout import add_layout_args, resolve_dirs, pct_axis  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "outputs"
@@ -71,15 +72,24 @@ def _color_map(codes):
     return {f: cmap(i % 20) for i, f in enumerate(fams)}
 
 
-def _plot_tmb_vs_apd1(orr, tmb, colors):
+def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None):
+    proxy = proxy or set()
     pts = [(c, tmb[c], orr[c]) for c in orr if c in tmb]
     fig, ax = plt.subplots(figsize=(12, 7.5))
     ax.set_xscale("log")
     for code, x, y in pts:
-        ax.scatter(x, y, s=42, color=colors[_family(code)], alpha=0.9,
-                   edgecolor="white", linewidth=0.4, zorder=3)
-        ax.annotate(code, (x, y), fontsize=6.5, xytext=(3, 3),
-                    textcoords="offset points")
+        # PD-L1 proxies (no anti-PD-1 ORR) drawn as an open diamond, denoted "*"
+        is_proxy = code in proxy
+        ax.scatter(x, y, s=58 if is_proxy else 42, color=colors[_family(code)],
+                   alpha=0.9, edgecolor="black" if is_proxy else "white",
+                   linewidth=1.1 if is_proxy else 0.4,
+                   marker="D" if is_proxy else "o", zorder=3)
+        ax.annotate(f"{code}*" if is_proxy else code, (x, y), fontsize=6.5,
+                    xytext=(3, 3), textcoords="offset points")
+    if proxy & {c for c, _, _ in pts}:
+        ax.scatter([], [], marker="D", facecolor="0.6", edgecolor="black",
+                   label="* PD-L1 proxy (no anti-PD-1 monotherapy data)")
+        ax.legend(loc="lower right", fontsize=8)
     # connect the subtype pairs with a thin line to show the differential
     for hi, lo in _PAIRS:
         if hi in tmb and hi in orr and lo in tmb and lo in orr:
@@ -126,8 +136,10 @@ def main() -> int:
                if gsc.cancer_tmb(c) is not None}
     orr = _pool_crc(orr_raw)                   # COAD/READ MSI+MSS -> CRC tiers
     tmb = _pool_crc(tmb_raw)
+    rdf = get_data("cancer-apd1-response")     # PD-L1-proxy codes (denoted)
+    proxy = set(rdf.loc[rdf["drug_target"] == "PD-L1", "cancer_code"].astype(str))
     colors = _color_map(orr)
-    n = _plot_tmb_vs_apd1(orr, tmb, colors)
+    n = _plot_tmb_vs_apd1(orr, tmb, colors, proxy=proxy)
     _plot_orr_bars(orr, colors)
     print(f"wrote apd1_vs_tmb.png ({n} cancers with TMB+ORR) and "
           f"apd1_orr_bars.png ({len(orr)} cancers) -> {FIGDIR}", flush=True)
