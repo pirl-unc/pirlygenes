@@ -169,7 +169,7 @@ sources:
   - id: treehouse-polya-25-01
     category: expression
     cancer_codes:
-      [ATRT, SARC_EWS, HEPB, MBL, NUTM, SARC_OS,
+      [ATRT, SARC_EWS, HEPB, MBL, SARC_OS,
        SARC_RMS_ARMS, SARC_RMS_ERMS, SARC_RMS_PRMS, SARC_RMS_SSRMS,
        SARC_LMS, SARC_LPS_UNSPEC, SARC_MYXFIB, SARC_SYN, SARC_UPS]
     source_type: treehouse-compendium
