@@ -847,6 +847,6 @@ ALCL,ALK-positive,ALK,target,crizotinib,ALK-inhibitor,phase_2,investigational_bi
 MENINGIOMA,,NF2,biomarker,,,,,,,,Most common driver (22q/NF2 loss); sporadic and NF2-syndrome meningiomas,
 MENINGIOMA,,SSTR2,biomarker,,,,,,,,Somatostatin receptor 2 — near-universal; basis of 68Ga-DOTATATE PET imaging,
 MENINGIOMA,,PGR,biomarker,,,,,,,,Progesterone receptor — expressed in most grade I; prognostic,
-MENINGIOMA,,SSTR2,target,177Lu-DOTATATE,radioligand,emerging,,,,progressive/refractory meningioma,SSTR2-directed peptide receptor radionuclide therapy — emerging for surgery/RT-refractory disease,
+MENINGIOMA,,SSTR2,target,177Lu-DOTATATE,radioligand,phase_2,investigational_biomarker_matched,later_line_or_investigational,confirm SSTR2 expression (DOTATATE-PET-avid),progressive/refractory meningioma,SSTR2-directed peptide receptor radionuclide therapy — investigational for surgery/RT-refractory disease,
 CHOROID_PLEXUS,,TP53,biomarker,,,,,,,,TP53 mutation — strong Li-Fraumeni association in choroid plexus carcinoma; prompts germline testing,
 CHOROID_PLEXUS,,TTR,biomarker,,,,,,,,Transthyretin — definitive choroid-plexus differentiation marker (diagnostic IHC),
