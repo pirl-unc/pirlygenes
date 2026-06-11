@@ -314,7 +314,8 @@ def main() -> int:
     for ax, comp_s, title in [
         (axes[0], combined,
          f"curated TGF-beta-response + Wnt ({len(tgfb_response+wnt)} genes)"),
-        (axes[1], comp, f"greedy composite ({len(chosen)} genes)")]:
+        (axes[1], comp, f"greedy composite ({len(chosen)} genes) "
+         "— IN-SAMPLE OPTIMIZED, not predictive")]:
         ok = comp_s.notna()
         x, y = comp_s[ok], orr[ok]
         ax.scatter(x, y, s=28, alpha=0.8)
