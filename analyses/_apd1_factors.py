@@ -25,6 +25,8 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes.expression.accessors import cancer_reference_expression
+from pirlygenes.expression.protein_groups import (canonical_symbol_map,
+                                                   fold_symbols_to_canonical)
 from pirlygenes.gene_sets_cancer import CTA_gene_names, cancer_subtype_group
 from pirlygenes.load_dataset import get_data
 
@@ -131,6 +133,17 @@ def viral_score(code: str, reg) -> float:
     return 0.0
 
 
+def _fold_symbol_columns(mat: pd.DataFrame) -> pd.DataFrame:
+    """Sum protein-identical Symbol columns into their group canonical symbol,
+    so a Symbol-keyed matrix matches the reference's protein-identical collapse.
+    Linear-space sum (min_count=1): NaN columns ignored, all-NaN stays NaN."""
+    cmap = canonical_symbol_map()
+    new_cols = [cmap.get(str(c).strip().upper(), c) for c in mat.columns]
+    if new_cols == list(mat.columns):
+        return mat
+    return mat.T.groupby(new_cols).sum(min_count=1).T
+
+
 def _ucec_subtype_tpm(genes=None) -> pd.DataFrame | None:
     """Per-subtype median TPM (rows = UCEC_* codes, cols = Symbol) from the
     per-sample TCGA-UCEC parquet split by the cBioPortal molecular class.
@@ -174,7 +187,12 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
     # COAD/READ subtype shards and pool them after.
     fetch = list(dict.fromkeys(
         [c for c in codes if c not in _CRC_TIERS] + ["UCEC", "UCS"]))
-    long = cancer_reference_expression(cancer_types=fetch, normalize="tpm_clean")
+    # collapse_protein_identical: sum protein-identical loci (CTA paralogs like
+    # MAGEA9/MAGEA9B, histone clusters, …) in linear TPM BEFORE the Symbol pivot,
+    # so reads split across identical-protein loci are recombined and CTA burden
+    # isn't under-counted. The matrix then carries one canonical symbol per group.
+    long = cancer_reference_expression(cancer_types=fetch, normalize="tpm_clean",
+                                       collapse_protein_identical=True)
     long = long[~long["processing_pipeline"].str.contains(
         "microarray_tpm_proxy", na=False)]
     src_n = (long.groupby(["cancer_code", "source_cohort"])["n_samples"]
@@ -187,6 +205,10 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
                             values="expression", aggfunc="max")  # TPM scale
     sub = _ucec_subtype_tpm() if ucec_subtypes else None
     if sub is not None:
+        # fold protein-identical columns (sum) so the UCEC subtype rows match the
+        # collapsed reference cohorts (one canonical symbol per group), else
+        # UCEC's MAGEA9 would miss the MAGEA9B contribution the others summed in.
+        sub = _fold_symbol_columns(sub)
         wide = wide.drop(index="UCEC", errors="ignore")  # replace bulk w/ split
         wide = pd.concat([wide, sub.reindex(columns=wide.columns)])
     # pool colorectal: COAD/READ shards -> CRC tiers (mean), de-duplicating the
@@ -222,7 +244,10 @@ def cta_burden(mat: pd.DataFrame, *, thr: float = CTA_ON_LOG10,
     systematically deflated CTA burden — a measurement artifact masquerading as
     low antigen load.
     """
-    genes = [g for g in CTA_gene_names() if g in mat.columns]
+    # fold the CTA panel onto protein-identical canonical symbols so each CTA
+    # group is counted once via the (summed) canonical column the matrix carries.
+    genes = [g for g in fold_symbols_to_canonical(CTA_gene_names())
+             if g in mat.columns]
     sub = mat[genes]
     measured = sub.notna().sum(axis=1)
     on = (sub >= thr).sum(axis=1)  # NaN >= thr -> False, so only ON-among-measured
