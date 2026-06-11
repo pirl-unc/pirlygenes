@@ -143,6 +143,49 @@ def test_gene_rows_are_canonically_sorted_and_order_independent():
     assert list(p_ba.values.columns) == ["b1", "b2", "a1", "a2", "a3"]
 
 
+def test_summary_frame_is_gene_indexed_not_positional():
+    """The safe public surface: identity travels with the values. Looking up a
+    gene's stats is by ENSG label, not by guessing its row position."""
+    pool = PooledCohorts.from_cohorts([_cohort_a(), _cohort_b()])
+    frame = pool.summary_frame()
+    # gene-indexed, aligned to the (sorted) union gene set
+    assert list(frame.index) == ["A", "B", "C", "D"]
+    assert frame.index.equals(pool.gene_index)
+    # label lookup gives the right gene's stats (B measured only by cohort A)
+    assert frame.loc["B", "TPM_median"] == 200.0
+    assert frame.loc["B", "n_available"] == 3
+    # every bare summary() array aligns positionally to gene_index
+    for key, arr in pool.summary().items():
+        assert np.allclose(frame[key].to_numpy(), arr, equal_nan=True)
+
+
+def test_genes_matched_by_id_never_by_position():
+    """Scramble each cohort's gene row order and the per-gene pooled stats are
+    unchanged — genes align by id label (concat/reindex), never by position."""
+    a, b = _cohort_a(), _cohort_b()
+    a_scrambled = a.loc[["C", "A", "B"]]            # reorder rows
+    b_scrambled = b.loc[["D", "A"]]
+    base = PooledCohorts.from_cohorts([a, b]).summary_frame()
+    scram = PooledCohorts.from_cohorts([a_scrambled, b_scrambled]).summary_frame()
+    pd.testing.assert_frame_equal(base, scram)      # identical, by id
+    # and the cohorts disagreeing on a SHARED gene's row position is harmless:
+    a2 = a.loc[["B", "C", "A"]]                      # A's gene A now last
+    b2 = b                                           # B's gene A still first
+    pooled = PooledCohorts.from_cohorts([a2, b2]).summary_frame()
+    # gene A pooled over all 5 samples {10,20,30(? no)...} -> same as base
+    assert pooled.loc["A", "TPM_median"] == base.loc["A", "TPM_median"]
+
+
+def test_mask_value_axis_mismatch_is_rejected():
+    """A hand-built pool whose mask doesn't share values' gene index/order is
+    rejected — you cannot accidentally pair a mask with mis-ordered values."""
+    import pytest
+    vals = pd.DataFrame({"s1": [1.0, 2.0]}, index=["A", "B"])
+    bad_mask = pd.DataFrame({"s1": [True, True]}, index=["B", "A"])  # reordered
+    with pytest.raises(ValueError, match="gene index mismatch"):
+        PooledCohorts(vals, bad_mask)
+
+
 def test_centralized_helpers_agree_with_functional_frontdoor():
     pool = PooledCohorts.from_cohorts([_cohort_a(), _cohort_b()])
     am, summary = pool_cohort_samples([_cohort_a(), _cohort_b()])

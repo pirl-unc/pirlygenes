@@ -253,6 +253,17 @@ class PooledCohorts:
     values: pd.DataFrame
     measured: pd.DataFrame
 
+    def __post_init__(self) -> None:
+        # The mask can only be trusted if it shares the EXACT gene index and
+        # sample columns of values, by label. This forbids ever pairing a mask
+        # with a value matrix whose rows/cols are in a different order (the
+        # "matched by position, not id" bug the whole design exists to avoid).
+        if not self.values.index.equals(self.measured.index):
+            raise ValueError("values/measured gene index mismatch (must be "
+                             "identical and identically ordered, by id)")
+        if not self.values.columns.equals(self.measured.columns):
+            raise ValueError("values/measured sample columns mismatch")
+
     @classmethod
     def from_cohorts(cls, matrices: Iterable[pd.DataFrame]) -> "PooledCohorts":
         """Build the pool from ``(n_genes, n_samples)`` per-cohort matrices.
@@ -329,8 +340,31 @@ class PooledCohorts:
         return compute_cohort_stats(self.analysis_matrix, prefix=prefix)
 
     def summary(self, *, prefix: str = "TPM_") -> dict[str, np.ndarray]:
-        """:meth:`stats` merged with :meth:`counts` — the full pooled summary."""
+        """:meth:`stats` merged with :meth:`counts` as bare per-gene arrays.
+
+        Low-level surface, matching the :func:`compute_cohort_stats` /
+        :func:`assign_stats` convention. The arrays carry **no gene labels** —
+        ``array[i]`` corresponds to ``self.gene_index[i]`` *positionally*. Prefer
+        :meth:`summary_frame` whenever you don't already hold ``gene_index`` in
+        lockstep, so identity travels with the values (label-aligned, like the
+        rest of the package) instead of riding on row position.
+        """
         return {**self.stats(prefix=prefix), **self.counts()}
+
+    @property
+    def gene_index(self) -> pd.Index:
+        """The gene-id (Ensembl) index that every per-gene array aligns to."""
+        return self.values.index
+
+    def summary_frame(self, *, prefix: str = "TPM_") -> pd.DataFrame:
+        """:meth:`summary` as a **gene-indexed** DataFrame.
+
+        Each stat/count column is label-aligned to the Ensembl-id index, so
+        which row is which ENSG is explicit rather than a positional contract.
+        This is the safe public surface for pooled output (and what a future
+        bundle-persistence step should serialise).
+        """
+        return pd.DataFrame(self.summary(prefix=prefix), index=self.gene_index)
 
 
 def align_ragged_matrices(matrices: Iterable[pd.DataFrame]) -> pd.DataFrame:
