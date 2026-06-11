@@ -663,7 +663,11 @@ def main():
                 rec[f"n_any_p{q}"] = int((sub > cut).any(axis=0).sum())
                 rec[f"n_any_p{q}_nomage"] = int((sub_nomage > cut).any(axis=0).sum())
         urows.append(rec)
-    pd.DataFrame(urows).to_csv(FIGDIR / "cta_union_counts.csv", index=False)
+    union_df = pd.DataFrame(urows)
+    union_df.to_csv(FIGDIR / "cta_union_counts.csv", index=False)
+    # also a STABLE, tracked copy so other analyses (the aPD1 cta_burden) can read
+    # the %-patients->=1-CTA->=95th-percentile coverage without hunting run dirs.
+    union_df.to_csv(OUT / "_cta_union_counts.csv", index=False)
 
     print("[5/9] plots", flush=True)
     _plots(mat, cohorts, counts, ensg_to_sym, args.threshold, args.cohort)
