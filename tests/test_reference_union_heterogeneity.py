@@ -63,3 +63,41 @@ def test_tcga_selects_as_treehouse_not_a_fake_kind():
         cancer_types="SARC", genes=["TP53"],
         source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SUBSET")
     assert set(sub["source_cohort"].unique()) == {"TREEHOUSE_POLYA_25_01_TCGA_SUBSET"}
+
+
+def test_pool_collapses_multisource_n_weighted_per_gene_availability():
+    """pool=True collapses a multi-source code's per-cohort rows into one
+    n-weighted pooled row per gene, pooling only the cohorts that measured the
+    gene (per-gene availability)."""
+    base = cancer_reference_expression(cancer_types="NUTM", normalize="tpm")
+    pooled = cancer_reference_expression(cancer_types="NUTM", normalize="tpm",
+                                         pool=True)
+    assert base["source_cohort"].nunique() > 1            # genuinely multi-source
+    assert pooled.groupby("Ensembl_Gene_ID").size().max() == 1   # one row per gene
+    assert (pooled["source_cohort"] == "POOLED").all()
+    assert pooled["q1"].isna().all() and pooled["q3"].isna().all()  # quantiles dropped
+
+    # a gene measured in BOTH cohorts: n_samples-weighted mean of per-cohort values
+    avail = base.dropna(subset=["expression"])
+    both = avail.groupby("Symbol")["source_cohort"].nunique()
+    sym = both[both == 2].index[0]
+    rows = base[base["Symbol"] == sym]
+    w = rows["n_samples"]
+    expect = (w * rows["expression"]).sum() / w.sum()
+    got = pooled.loc[pooled["Symbol"] == sym, "expression"].iloc[0]
+    assert abs(got - expect) < 1e-6
+    # pooled n_samples = summed sample count of the measuring cohorts
+    assert pooled.loc[pooled["Symbol"] == sym, "n_samples"].iloc[0] == w.sum()
+
+
+def test_pool_is_noop_for_single_source_code():
+    base = cancer_reference_expression(cancer_types="SKCM", normalize="tpm",
+                                       genes=["TP53", "MLANA"])
+    pooled = cancer_reference_expression(cancer_types="SKCM", normalize="tpm",
+                                         genes=["TP53", "MLANA"], pool=True)
+    # single source -> same gene count, values unchanged (just relabelled POOLED)
+    assert len(pooled) == base["Ensembl_Gene_ID"].nunique()
+    for sym in ["TP53", "MLANA"]:
+        b = base.loc[base["Symbol"] == sym, "expression"].iloc[0]
+        p = pooled.loc[pooled["Symbol"] == sym, "expression"].iloc[0]
+        assert abs(b - p) < 1e-6

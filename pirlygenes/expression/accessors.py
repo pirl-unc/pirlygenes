@@ -1003,6 +1003,45 @@ def heme_tumor_up_vs_matched_normal(cancer_code: str | None = None) -> pd.DataFr
     )
 
 
+def _pool_union_rows(long: pd.DataFrame, *,
+                     include_provenance: bool) -> pd.DataFrame:
+    """Collapse per-(gene, cancer_code, source_cohort) union rows to one
+    heterogeneity-safe pooled row per (gene, cancer_code, normalization).
+
+    Per-gene availability: only source-cohort rows with a non-NaN ``expression``
+    (a cohort that measured the gene) are pooled; the central value is
+    ``n_samples``-weighted and the pooled ``n_samples`` is the summed
+    measuring-cohort sample count. ``q1``/``q3`` -> ``NaN`` (quantiles aren't
+    recombinable from summaries). Vectorised (no per-group Python) so it is cheap
+    even on the full union.
+    """
+    keys = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "normalization"]
+    w = long["n_samples"].where(long["expression"].notna()) \
+        if "n_samples" in long.columns else long["expression"].notna().astype(float)
+    tmp = long.assign(_w=w, _wx=w * long["expression"])
+    agg_spec = {"_wx": ("_wx", "sum"), "_w": ("_w", "sum")}
+    if "n_detected" in long.columns:
+        # samples detecting the gene, summed over measuring cohorts
+        agg_spec["n_detected"] = ("n_detected", "sum")
+    g = tmp.groupby(keys, as_index=False, sort=False).agg(**agg_spec)
+    g["expression"] = g["_wx"] / g["_w"].replace(0, np.nan)
+    g["n_samples"] = g["_w"]
+    g["q1"] = np.nan
+    g["q3"] = np.nan
+    g["source_cohort"] = "POOLED"
+    out_cols = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"]
+    if include_provenance:
+        if "n_samples" in long.columns:
+            out_cols.append("n_samples")
+        if "n_detected" in g.columns:
+            out_cols.append("n_detected")
+        g["processing_pipeline"] = "pooled_n_weighted"
+        g["source_project"] = "pooled"
+        out_cols += ["source_project", "processing_pipeline"]
+    out_cols += ["normalization", "expression", "q1", "q3"]
+    return g[[c for c in out_cols if c in g.columns]]
+
+
 def cancer_reference_expression(
     cancer_types: Optional[str | Iterable[str]] = None,
     genes: Optional[Iterable[str]] = None,
@@ -1014,6 +1053,7 @@ def cancer_reference_expression(
     source_kind: Optional[str | Iterable[str]] = None,
     source_cohort: Optional[str | Iterable[str]] = None,
     collapse_protein_identical: bool = False,
+    pool: bool = False,
 ) -> pd.DataFrame:
     """Source-agnostic packaged tumor expression references.
 
@@ -1088,6 +1128,33 @@ def cancer_reference_expression(
         aren't under-counted. Off by default (preserves the per-locus rows and
         the shipped reference semantics). See
         :func:`pirlygenes.expression.protein_groups.collapse_protein_identical_loci_long`.
+    pool
+        When ``True``, collapse the ``all:``-union's per-(gene, cancer_code,
+        source_cohort) rows into **one heterogeneity-safe pooled row per (gene,
+        cancer_code)**. Each gene is pooled over **only the source cohorts that
+        measured it** (per-gene availability — a cohort missing the gene is
+        excluded, not treated as 0), with the per-cohort value **n_samples
+        -weighted**. ``source_cohort`` becomes ``"POOLED"`` and the pooled
+        ``n_samples`` is the summed sample count of the cohorts that measured the
+        gene.
+
+        Granularity caveat: at summary level per-gene availability is **binary at
+        cohort grain** — a cohort either carries the gene (a row) or not. The
+        reference ``n_samples`` is a cohort-wide constant, not per-gene, so the
+        pooled ``n_samples`` is "samples in cohorts that measured the gene", NOT
+        a dropout-aware per-(gene, sample) ``n_available`` (that requires the
+        per-sample matrices — :class:`pirlygenes.expression.stats.PooledCohorts`
+        at build time, where ``n_available`` is computed properly).
+
+        This is the read-time, summary-level analogue of ``PooledCohorts``. The
+        n-weighting is **exact for a mean** central value and an **approximation
+        for a median** (quantiles cannot be recombined from per-cohort summaries
+        — ``q1``/``q3`` are returned ``NaN``; for exact pooled quantiles use the
+        per-sample ``PooledCohorts`` path). Only ~7 codes are multi-source today,
+        so this is a no-op (one row in → one row out) for the rest. **Pool within
+        a pipeline-homogeneous set** — pooling absolute TPM across microarray
+        -proxy and RNA-seq members is not magnitude-comparable (pass
+        ``exclude_microarray_proxy=True`` first).
 
     Returns
     -------
@@ -1164,6 +1231,9 @@ def cancer_reference_expression(
             sum_cols=["expression", "q1", "q3"],
             max_cols=("n_detected",),
         )
+
+    if pool:
+        long = _pool_union_rows(long, include_provenance=include_provenance)
 
     if format == "long":
         return long

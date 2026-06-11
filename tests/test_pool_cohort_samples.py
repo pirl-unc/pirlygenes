@@ -175,6 +175,30 @@ def test_mask_value_axis_mismatch_is_rejected():
         PooledCohorts(vals, bad_mask)
 
 
+def test_per_cohort_availability_views():
+    """Labelled cohorts expose is_measured[gene,cohort], n_measured_genes, and
+    n_measured_samples (observed, dropout-aware) for correct per-gene weighting."""
+    A = pd.DataFrame({"a1": [10., 100., 0.], "a2": [20., np.nan, 5.],
+                      "a3": [30., 300., 0.]}, index=["A", "B", "C"])
+    B = pd.DataFrame({"b1": [40., 7.], "b2": [50., 9.]}, index=["A", "D"])
+    pool = PooledCohorts.from_cohorts({"cohortA": A, "cohortB": B})
+    cm = pool.cohort_measured
+    assert cm.loc["A", "cohortA"] and cm.loc["A", "cohortB"]        # in both
+    assert cm.loc["B", "cohortA"] and not cm.loc["B", "cohortB"]    # A only
+    assert cm.loc["D", "cohortB"] and not cm.loc["D", "cohortA"]    # B only
+    assert pool.n_measured_genes.to_dict() == {"cohortA": 3, "cohortB": 2}
+    nms = pool.n_measured_samples
+    assert nms.loc["A", "cohortA"] == 3 and nms.loc["A", "cohortB"] == 2
+    assert nms.loc["B", "cohortA"] == 2   # membership True but 1 sample dropped out
+    assert nms.loc["C", "cohortB"] == 0   # cohortB never measured C
+
+
+def test_per_cohort_views_require_labels():
+    pool = PooledCohorts.from_cohorts([_cohort_a()])   # iterable -> auto-labelled
+    assert pool.sample_cohort is not None               # auto-labelled cohort_0
+    assert list(pool.n_measured_genes.index) == ["cohort_0"]
+
+
 def test_functional_frontdoor_matches_class():
     am, summary = pool_cohort_samples([_cohort_a(), _cohort_b()])
     pool = PooledCohorts.from_cohorts([_cohort_a(), _cohort_b()])
