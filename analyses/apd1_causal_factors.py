@@ -77,11 +77,16 @@ def main() -> int:
     F["CTA"] = cta_burden(mat)
     F["viral"] = [viral_score(c, reg) for c in mat.index]
     F["indel"] = [with_parent(indel, c, 0.0) for c in mat.index]
-    F["exclusion"] = mat[excl_genes].apply(_z).mean(axis=1)
-    F = F.dropna(subset=["logTMB", "CTA", "exclusion"])
+    # drop cohorts missing a required factor, then z-score BOTH composites over
+    # the SAME final modeled cohort set (so antigen and exclusion share a
+    # reference distribution; previously exclusion was z-scored pre-dropna).
+    has_excl = mat[excl_genes].notna().any(axis=1)
+    F = F.assign(_has_excl=has_excl).dropna(subset=["logTMB", "CTA"])
+    F = F[F["_has_excl"]].drop(columns="_has_excl")
     # The two conceptual axes the user wants kept distinct:
     #   ANTIGEN AVAILABILITY = TMB + CTA + viral + indel (anything to see?)
     #   IMMUNE EXCLUSION     = TGF-beta-response + Wnt  (will a T cell get in?)
+    F["exclusion"] = mat.loc[F.index, excl_genes].apply(_z).mean(axis=1)
     F["antigen"] = F[["logTMB", "CTA", "viral", "indel"]].apply(_z).mean(axis=1)
     print(f"cohorts modeled: {len(F)}\n")
 
@@ -149,8 +154,8 @@ def _plot(F, feats, betas, r2):
     colors = ["#2c7fb8" if b >= 0 else "#d95f0e" for b in betas]
     axA.barh(feats, betas, color=colors)
     axA.axvline(0, color="k", lw=0.8)
-    axA.set_title(f"Standardized drivers of aPD1 ORR\n(OLS R2={r2:.2f}, "
-                  f"n={len(F)})", fontsize=10)
+    axA.set_title(f"Standardized drivers of aPD1 ORR\n(in-sample OLS R2={r2:.2f}, "
+                  f"n={len(F)}; descriptive, no held-out)", fontsize=10)
     axA.set_xlabel("standardized beta (signed)")
     for i, b in enumerate(betas):
         axA.annotate(f"{b:+.2f}", (b, i), fontsize=8,
