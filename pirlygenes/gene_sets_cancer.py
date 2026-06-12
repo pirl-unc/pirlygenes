@@ -820,8 +820,8 @@ def cancer_lineage_groups():
     the lineage *gene panels* need that resolution), so it ranges from a whole
     organ system (``carcinoma-gu``, 20 codes) down to single tumours
     (``cns-choroid``, 1). This rolls the 27 families up to ~8 cell-of-origin
-    classes — **Epithelial, Mesenchymal, Hematolymphoid, CNS, Neuroendocrine,
-    Melanocytic, Germ cell, Embryonal** — the consistent level for broad
+    classes — **Epithelial, Sarcoma, Heme, CNS, Neuroendocrine,
+    Melanoma, Germ cell, Embryonal** — the consistent level for broad
     cross-lineage reasoning and plot colouring. Distinct from
     :func:`cancer_family_groups`, which rolls up *gene-panel* families for
     scoring vetoes; this rolls up *registry* families by histogenesis."""
@@ -831,7 +831,7 @@ def cancer_lineage_groups():
 
 
 def cancer_lineage_group(cancer_type):
-    """Coarse histogenesis group (Epithelial / Mesenchymal / …) for a code,
+    """Coarse histogenesis group (Epithelial / Sarcoma / Melanoma / …) for a code,
     alias, or display name, resolved via its registry ``family``. Returns
     ``None`` if the type or its family doesn't resolve."""
     try:

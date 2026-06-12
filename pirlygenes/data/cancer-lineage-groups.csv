@@ -10,12 +10,12 @@ carcinoma-skin,Epithelial
 salivary,Epithelial
 thymic,Epithelial
 endocrine-epithelial,Epithelial
-sarcoma,Mesenchymal
-heme-bcell,Hematolymphoid
-heme-tcell,Hematolymphoid
-heme-myeloid,Hematolymphoid
-heme-plasma,Hematolymphoid
-melanoma,Melanocytic
+sarcoma,Sarcoma
+heme-bcell,Heme
+heme-tcell,Heme
+heme-myeloid,Heme
+heme-plasma,Heme
+melanoma,Melanoma
 neuroendocrine,Neuroendocrine
 endocrine-neuroendocrine,Neuroendocrine
 germ-cell,Germ cell
