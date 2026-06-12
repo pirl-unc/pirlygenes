@@ -28,6 +28,7 @@ import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 import pirlygenes.expression.accessors as accessors
 import pirlygenes.gene_sets_cancer as gsc
@@ -72,7 +73,9 @@ def cta_matrices() -> dict[str, pd.DataFrame]:
     type), so q3 is the clinically relevant bar for "a meaningful fraction
     of patients have this target" — median alone hides them.
     """
-    df = accessors.cancer_reference_expression()
+    # collapse cDNA-identical loci (centralized proteoform collapse) so a covering
+    # set counts one XAGE1 (=XAGE1A+XAGE1B), not split paralogs.
+    df = accessors.cancer_reference_expression(collapse_cdna_identical=True)
     rep = _representative_source(df)
     keep = set(zip(rep["cancer_code"], rep["source_cohort"]))
     cta_ids = set(gsc.CTA_gene_ids())
@@ -197,6 +200,7 @@ def main() -> None:
     pct_axis(ax, "y")
     ax.set_title("CTA covering set — cumulative patient coverage")
     ax.set_xlim(left=1)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # panel size is a count
     ax.legend(title="actionable if TPM> bar at:")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
