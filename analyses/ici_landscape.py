@@ -47,11 +47,16 @@ FIGDIR = OUT
 
 _TGFB = "aPD1_exclusion_TGFb_response"
 _WNT = "aPD1_exclusion_Wnt"
-# A secreted pair of inhibitory genes: TGFB1 + IL10 are the two canonical
-# *secreted* immunosuppressive cytokines (both directly dampen T-cell / DC
-# anti-tumour immunity). Used as the suppression term (rank-inverted) in the
-# net ICI-favourability composite.
-_SECRETED_INHIBITORY = ["TGFB1", "IL10"]
+# A secreted pair of immune-EXCLUSION genes (the suppression term, rank-inverted,
+# in the net ICI-favourability composite):
+#   TGFB1 — fibroblast/stromal TGF-beta traps T cells in peritumoral stroma (the
+#           "excluded" phenotype; Mariathasan 2018, Nature, PMID 29443960).
+#   WNT11 — secreted Wnt drives beta-catenin CD8 exclusion (down CXCL10/CCL4) and
+#           anti-PD-1 resistance (Lu et al. 2025, Nat Commun, 10.1038/s41467-025-56714-z);
+#           upregulated in ovarian-serous / gastric / papillary-RCC.
+# (WNT5A — Holtzhausen 2015 tolerogenic-DC Wnt — is the obvious third if a panel
+# is preferred over a strict pair.)
+_SECRETED_INHIBITORY = ["TGFB1", "WNT11"]
 
 
 def _z(s):
@@ -167,7 +172,7 @@ def _antigen_load(df):
 def _favorability(df):
     """Net ICI-favourability composite = mean of the DIRECTIONAL percentile-ranks
     of the antigen drivers (CTA burden, TMB, viral — high is favourable) and the
-    secreted suppression term (TGFB1+IL10 — high is UNfavourable, so its rank is
+    secreted suppression term (TGFB1+WNT11 — high is UNfavourable, so its rank is
     inverted). A single 0-100 score combining 'how much antigen' with 'how much
     secreted brake'."""
     pos = df[["CTA burden", "TMB", "viral"]].rank(pct=True)
@@ -182,11 +187,11 @@ def _favorability(df):
     ax.set_yticks(range(len(score)))
     ax.set_yticklabels(score.index, fontsize=7)
     ax.set_xlabel("ICI-favourability  (mean directional rank: +CTA +TMB +viral "
-                  "−secreted TGFB1/IL10)")
+                  "−secreted TGFB1/WNT11)")
     ax.set_xlim(0, 100)
     ax.set_title("Net ICI-favourability composite by cancer type\n"
-                 "antigen load (CTA + TMB + viral) minus secreted suppression "
-                 "(TGFB1 + IL10)", fontsize=10)
+                 "antigen load (CTA + TMB + viral) minus secreted exclusion "
+                 "(TGFB1 + WNT11)", fontsize=10)
     ax.grid(axis="x", alpha=0.3)
     handles = [Line2D([], [], marker="o", linestyle="", color=colors[g], label=g)
                for g in sorted(colors)]
