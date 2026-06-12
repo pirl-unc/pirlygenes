@@ -47,6 +47,11 @@ FIGDIR = OUT
 
 _TGFB = "aPD1_exclusion_TGFb_response"
 _WNT = "aPD1_exclusion_Wnt"
+# A secreted pair of inhibitory genes: TGFB1 + IL10 are the two canonical
+# *secreted* immunosuppressive cytokines (both directly dampen T-cell / DC
+# anti-tumour immunity). Used as the suppression term (rank-inverted) in the
+# net ICI-favourability composite.
+_SECRETED_INHIBITORY = ["TGFB1", "IL10"]
 
 
 def _z(s):
@@ -93,6 +98,9 @@ def _factors():
         "TGFβ": sigscore(_TGFB),
         "Wnt/β-catenin": sigscore(_WNT),
     })
+    inhib = [g for g in _SECRETED_INHIBITORY if g in mat.columns]
+    df["secreted inhibitory"] = (mat[inhib].apply(_z).mean(axis=1) if inhib
+                                 else np.nan)
     return df
 
 
@@ -156,6 +164,39 @@ def _antigen_load(df):
     return len(load)
 
 
+def _favorability(df):
+    """Net ICI-favourability composite = mean of the DIRECTIONAL percentile-ranks
+    of the antigen drivers (CTA burden, TMB, viral — high is favourable) and the
+    secreted suppression term (TGFB1+IL10 — high is UNfavourable, so its rank is
+    inverted). A single 0-100 score combining 'how much antigen' with 'how much
+    secreted brake'."""
+    pos = df[["CTA burden", "TMB", "viral"]].rank(pct=True)
+    neg = 1.0 - df[["secreted inhibitory"]].rank(pct=True)   # high suppression -> low
+    score = (pd.concat([pos, neg], axis=1).mean(axis=1, skipna=True) * 100.0)
+    score = score.dropna().sort_values()
+    colors = _lineage_colors(score.index)
+    fig, ax = plt.subplots(figsize=(9, max(6, 0.30 * len(score))))
+    ax.barh(range(len(score)), score.values, edgecolor="white",
+            color=[colors[_lin(c)] for c in score.index])
+    ax.axvline(50, color="0.5", lw=0.8, ls="--")
+    ax.set_yticks(range(len(score)))
+    ax.set_yticklabels(score.index, fontsize=7)
+    ax.set_xlabel("ICI-favourability  (mean directional rank: +CTA +TMB +viral "
+                  "−secreted TGFB1/IL10)")
+    ax.set_xlim(0, 100)
+    ax.set_title("Net ICI-favourability composite by cancer type\n"
+                 "antigen load (CTA + TMB + viral) minus secreted suppression "
+                 "(TGFB1 + IL10)", fontsize=10)
+    ax.grid(axis="x", alpha=0.3)
+    handles = [Line2D([], [], marker="o", linestyle="", color=colors[g], label=g)
+               for g in sorted(colors)]
+    ax.legend(handles=handles, title="lineage", fontsize=6.5, title_fontsize=7,
+              loc="lower right")
+    fig.savefig(FIGDIR / "ici_favorability.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return len(score)
+
+
 def _cta_metrics_heatmap():
     path = OUT / "_cta_union_counts.csv"
     if not path.exists():
@@ -196,9 +237,11 @@ def main() -> int:
     df = _factors()
     n1 = _causal_heatmap(df)
     n2 = _antigen_load(df)
+    n4 = _favorability(df)
     n3 = _cta_metrics_heatmap()
-    print(f"wrote ici_causal_heatmap.png ({n1} cancers), ici_antigen_load.png "
-          f"({n2}), ici_cta_metrics_heatmap.png ({n3}) -> {FIGDIR}", flush=True)
+    print(f"wrote ici_causal_heatmap.png ({n1}), ici_antigen_load.png ({n2}), "
+          f"ici_favorability.png ({n4}), ici_cta_metrics_heatmap.png ({n3}) "
+          f"-> {FIGDIR}", flush=True)
     return 0
 
 
