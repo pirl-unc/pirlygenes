@@ -1,13 +1,20 @@
-"""Anti-PD-1 response-rate plots (curated cancer-apd1-response.csv).
+"""Immune-checkpoint response-rate plots (curated cancer-apd1-response.csv).
 
-Two figures (per the new aPD1 plotting axis):
-  1. apd1_vs_tmb.png        — median TMB (log x) vs aPD1 monotherapy ORR (y),
-                              one labelled point per cancer type, coloured by
+Each figure is emitted in TWO variants:
+  * ``_ici``        — full immune-checkpoint view: anti-PD-1 monotherapy
+                      (filled circle) + anti-PD-L1 proxies (open circle, "*")
+                      + dual ipi+nivo fallbacks (filled diamond, "+").
+  * ``_strict_pd1`` — only true single-agent anti-PD-1 ORRs (PD-L1 proxies and
+                      dual-checkpoint fallbacks dropped); all filled circles.
+
+Figures:
+  1. apd1_vs_tmb_{ici,strict_pd1}.png   — median TMB (log x) vs ORR (y), one
+                              labelled point per cancer type, coloured by
                               lineage family. The immune-logic quadrant: high
                               TMB → high ORR (melanoma, MSI-H), low TMB → low
                               ORR (PRAD, GBM, MSS CRC).
-  2. apd1_orr_bars.png      — aPD1 ORR by cancer type, sorted, coloured by
-                              lineage; the documented subtype PAIRS
+  2. apd1_orr_bars_{ici,strict_pd1}.png — ORR by cancer type, sorted, coloured
+                              by lineage; the documented subtype PAIRS
                               (MSI-H vs MSS CRC) are drawn adjacent so the
                               differential is visible.
 
@@ -72,7 +79,8 @@ def _color_map(codes):
     return {f: cmap(i % 20) for i, f in enumerate(fams)}
 
 
-def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None):
+def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None, *,
+                      fname="apd1_vs_tmb.png", kind="immune-checkpoint (ICI)"):
     proxy = proxy or set()
     dual = dual or set()
     pts = [(c, tmb[c], orr[c]) for c in orr if c in tmb]
@@ -117,18 +125,19 @@ def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None):
             ax.plot([tmb[hi], tmb[lo]], [orr[hi], orr[lo]], color="0.5",
                     lw=0.8, ls="--", zorder=2)
     ax.set_xlabel("median tumor mutational burden (mut/Mb)")
-    ax.set_ylabel("immune-checkpoint (ICI) objective response rate")
+    ax.set_ylabel(f"{kind} objective response rate")
     pct_axis(ax, "y")
-    ax.set_title("Tumor mutational burden vs immune-checkpoint (ICI) response, by cancer type")
+    ax.set_title(f"Tumor mutational burden vs {kind} response, by cancer type")
     ax.grid(alpha=0.3, which="both")
     ax.set_ylim(-3, (max(orr.values()) * 1.08) if orr else 1.0)
     fig.tight_layout()
-    fig.savefig(FIGDIR / "apd1_vs_tmb.png", dpi=300)
+    fig.savefig(FIGDIR / fname, dpi=300)
     plt.close(fig)
     return len(pts)
 
 
-def _plot_orr_bars(orr, colors):
+def _plot_orr_bars(orr, colors, *, fname="apd1_orr_bars.png",
+                   kind="immune-checkpoint (ICI)"):
     items = sorted(orr.items(), key=lambda kv: kv[1])
     codes = [c for c, _ in items]
     vals = [v for _, v in items]
@@ -137,12 +146,12 @@ def _plot_orr_bars(orr, colors):
             color=[colors[_family(c)] for c in codes], edgecolor="white")
     ax.set_yticks(range(len(codes)))
     ax.set_yticklabels(codes, fontsize=7)
-    ax.set_xlabel("immune-checkpoint (ICI) objective response rate")
+    ax.set_xlabel(f"{kind} objective response rate")
     pct_axis(ax, "x")
-    ax.set_title("Immune-checkpoint (ICI) response rate by cancer type (curated)")
+    ax.set_title(f"{kind[0].upper()}{kind[1:]} response rate by cancer type (curated)")
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(FIGDIR / "apd1_orr_bars.png", dpi=300)
+    fig.savefig(FIGDIR / fname, dpi=300)
     plt.close(fig)
 
 
@@ -160,11 +169,33 @@ def main() -> int:
     rdf = get_data("cancer-apd1-response")     # denoted fallback classes
     proxy = set(rdf.loc[rdf["drug_target"] == "PD-L1", "cancer_code"].astype(str))
     dual = set(rdf.loc[rdf["drug_target"] == "PD-1+CTLA-4", "cancer_code"].astype(str))
-    colors = _color_map(orr)
-    n = _plot_tmb_vs_apd1(orr, tmb, colors, proxy=proxy, dual=dual)
-    _plot_orr_bars(orr, colors)
-    print(f"wrote apd1_vs_tmb.png ({n} cancers with TMB+ORR) and "
-          f"apd1_orr_bars.png ({len(orr)} cancers) -> {FIGDIR}", flush=True)
+    colors = _color_map(orr)                   # shared palette across variants
+
+    # Variant 1 — full ICI: anti-PD-1 monotherapy + anti-PD-L1 proxies + dual
+    # ipi+nivo, each drawn with its evidence-class marker.
+    n_ici = _plot_tmb_vs_apd1(orr, tmb, colors, proxy=proxy, dual=dual,
+                              fname="apd1_vs_tmb_ici.png",
+                              kind="immune-checkpoint (ICI)")
+    _plot_orr_bars(orr, colors, fname="apd1_orr_bars_ici.png",
+                   kind="immune-checkpoint (ICI)")
+
+    # Variant 2 — strict anti-PD-1 monotherapy: drop the PD-L1 proxies and the
+    # dual-checkpoint fallbacks so every point is a true single-agent anti-PD-1
+    # ORR (all filled circles; no fallback markers).
+    keep = {c for c in orr if c not in proxy and c not in dual}
+    orr_s = {c: orr[c] for c in keep}
+    tmb_s = {c: tmb[c] for c in keep if c in tmb}
+    n_strict = _plot_tmb_vs_apd1(orr_s, tmb_s, colors,
+                                 fname="apd1_vs_tmb_strict_pd1.png",
+                                 kind="anti-PD-1 monotherapy")
+    _plot_orr_bars(orr_s, colors, fname="apd1_orr_bars_strict_pd1.png",
+                   kind="anti-PD-1 monotherapy")
+
+    print(f"wrote ICI variant (apd1_vs_tmb_ici.png, {n_ici} cancers; "
+          f"apd1_orr_bars_ici.png, {len(orr)} cancers) and strict-aPD1 variant "
+          f"(apd1_vs_tmb_strict_pd1.png, {n_strict} cancers; "
+          f"apd1_orr_bars_strict_pd1.png, {len(orr_s)} cancers) -> {FIGDIR}",
+          flush=True)
     return 0
 
 
