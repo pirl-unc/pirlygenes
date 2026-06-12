@@ -428,6 +428,10 @@ def extract_cta_matrix(symbols: dict[str, str]) -> pd.DataFrame:
 _EXTRA_PARQUET_COHORTS = [
     ("treehouse-ribod-25-01", "SARC_CHOR"),
     ("treehouse-ribod-25-01", "RB"),
+    # NUT carcinoma: the UNC case series (n=3); UNIONED with the single Treehouse
+    # NUT sample already in the matrix -> NUTM n=4 (the prefixed parquet sample
+    # ids can't collide with the raw Treehouse id, so no double-count).
+    ("unc-nutm1", "NUTM"),
     # colorectal MSI/MSS subtypes (per-sample) so the coverage plots can resolve
     # CRC_MSI / CRC_MSS (pooled from these by _add_crc_subtype_cohorts)
     ("treehouse-polya-25-01", "COAD_MSI"),
@@ -486,8 +490,12 @@ def _add_parquet_cohorts(mat, cohorts, ctas):
         sub = df.set_index("Ensembl_Gene_ID")[sample_cols].reindex(mat.index).fillna(0.0)
         sub.columns = [f"{code}::{c}" for c in sub.columns]  # avoid id collisions
         mat = pd.concat([mat, sub], axis=1)
-        cohorts[code] = list(sub.columns)
-        added.append(f"{code}(n={len(sample_cols)})")
+        # UNION with any samples this code already has (e.g. NUTM's single
+        # Treehouse sample) — the "{code}::" prefix guarantees no id collision,
+        # so this pools rather than replaces. Codes with no prior cohort (the
+        # MSI/MSS tiers) are unaffected.
+        cohorts[code] = cohorts.get(code, []) + list(sub.columns)
+        added.append(f"{code}(n={len(cohorts[code])})")
     if added:
         print(f"      + extra per-sample cohorts: {', '.join(added)}", flush=True)
     return mat, cohorts
