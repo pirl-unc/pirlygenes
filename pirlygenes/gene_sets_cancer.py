@@ -820,9 +820,8 @@ def cancer_lineage_groups():
     the lineage *gene panels* need that resolution), so it ranges from a whole
     organ system (``carcinoma-gu``, 20 codes) down to single tumours
     (``cns-choroid``, 1). This rolls the 27 families up to ~8 cell-of-origin
-    classes — **Epithelial, Sarcoma, Heme, CNS, NEC, NET, Melanoma,
-    Germ cell, Embryonal** (the neuroendocrine family is split NEC vs NET, see
-    cancer_lineage_group_overrides) — the consistent level for broad
+    classes — **Epithelial, Sarcoma, Heme, CNS, Neuroendocrine, Melanoma,
+    Germ cell, Embryonal** — the consistent level for broad
     cross-lineage reasoning and plot colouring. Distinct from
     :func:`cancer_family_groups`, which rolls up *gene-panel* families for
     scoring vetoes; this rolls up *registry* families by histogenesis."""
@@ -833,20 +832,17 @@ def cancer_lineage_groups():
 
 def cancer_lineage_group_overrides():
     """Dict ``{code -> lineage_group}`` for codes whose coarse group differs from
-    their registry ``family`` default. The ``neuroendocrine`` family spans
-    histogenetically distinct entities, so it defaults to well-differentiated
-    ``NET`` and these rows pull out the exceptions: the high-grade neuroendocrine
-    carcinomas (SCLC, Merkel, lung LCNEC) -> ``NEC`` — a split that tracks
-    immunotherapy response (NEC immune-responsive vs NET immune-cold) — and
-    neuroblastoma -> ``Embryonal`` (a peripheral neuroblastic / neural-crest
-    embryonal tumour, not an epithelial NEN). Overrides inherit down the
-    ``parent_code`` chain, so e.g. SCLC_ASCL1 follows SCLC."""
+    their registry ``family`` default. NEC and NET are kept together under one
+    ``Neuroendocrine`` group; the one exception is neuroblastoma -> ``Embryonal``
+    (a peripheral neuroblastic / neural-crest embryonal tumour, not an epithelial
+    NEN). Overrides inherit down the ``parent_code`` chain, so e.g. NBL_MYCNamp
+    follows NBL."""
     df = get_data("cancer-lineage-group-overrides")
     return dict(df[["code", "lineage_group"]].itertuples(index=False, name=None))
 
 
 def cancer_lineage_group(cancer_type):
-    """Coarse histogenesis group (Epithelial / Sarcoma / NEC / NET / CNS /
+    """Coarse histogenesis group (Epithelial / Sarcoma / Neuroendocrine / CNS /
     Melanoma / Heme / Germ cell / Embryonal) for a code, alias, or display name.
     Resolution: a per-code override (inherited up the ``parent_code`` chain) if
     one applies, else the registry ``family`` default. Returns ``None`` if the
