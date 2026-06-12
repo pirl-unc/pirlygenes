@@ -16,8 +16,8 @@ heme-tcell,Heme
 heme-myeloid,Heme
 heme-plasma,Heme
 melanoma,Melanoma
-neuroendocrine,Neuroendocrine
-endocrine-neuroendocrine,Neuroendocrine
+neuroendocrine,NET
+endocrine-neuroendocrine,NET
 germ-cell,Germ cell
 embryonal,Embryonal
 cns-embryonal,Embryonal

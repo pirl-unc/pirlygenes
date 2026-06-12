@@ -22,8 +22,8 @@ from pirlygenes.gene_sets_cancer import (
 
 
 _LINEAGE_GROUPS = {
-    "Epithelial", "Sarcoma", "Heme", "CNS",
-    "Neuroendocrine", "Melanoma", "Germ cell", "Embryonal",
+    "Epithelial", "Sarcoma", "Heme", "CNS", "NEC", "NET",
+    "Melanoma", "Germ cell", "Embryonal",
 }
 
 
@@ -53,9 +53,24 @@ def test_cancer_lineage_group_resolves_codes_and_histogenesis():
     assert cancer_lineage_group("SKCM") == "Melanoma"
     assert cancer_lineage_group("TGCT") == "Germ cell"
     assert cancer_lineage_group("MBL") == "Embryonal"
-    assert cancer_lineage_group("NET_PANCREAS") == "Neuroendocrine"
     assert cancer_lineage_group("melanoma") == "Melanoma"        # alias resolves
     assert cancer_lineage_group("not-a-cancer") is None
+
+
+def test_neuroendocrine_split_nec_net_and_neuroblastoma():
+    # The neuroendocrine family splits by histogenesis + immunotherapy behaviour:
+    # high-grade NE carcinomas -> NEC (immune-responsive), well-differentiated
+    # NETs -> NET (immune-cold), and neuroblastoma is an embryonal neural-crest
+    # tumour, not an epithelial NEN.
+    assert cancer_lineage_group("SCLC") == "NEC"
+    assert cancer_lineage_group("SCLC_ASCL1") == "NEC"           # inherits via parent
+    assert cancer_lineage_group("NEC_MERKEL") == "NEC"
+    assert cancer_lineage_group("NEC_LUNG_LARGECELL") == "NEC"
+    assert cancer_lineage_group("NET_PANCREAS") == "NET"
+    assert cancer_lineage_group("NET_MIDGUT") == "NET"
+    assert cancer_lineage_group("MTC") == "NET"
+    assert cancer_lineage_group("NBL") == "Embryonal"
+    assert cancer_lineage_group("NBL_MYCNamp") == "Embryonal"    # inherits via parent
 
 
 def _parent_codes(value):
