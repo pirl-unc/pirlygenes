@@ -1211,10 +1211,13 @@ def _tmb_axis() -> _XAxis:
 
 @lru_cache(maxsize=1)
 def _apd1_axis() -> _XAxis:
-    # Empty sweet_label -> no shaded sweet-spot band on the aPD-1 axis.
+    # cancer_apd1_response() now returns mixed immune-checkpoint classes
+    # (anti-PD-1 mono + anti-PD-L1 proxy + dual ipi+nivo), so this axis is the
+    # ICI response, not strictly anti-PD-1. Slug "ici" -> cta_*_vs_ici folders.
+    # Empty sweet_label -> no shaded sweet-spot band.
     return _XAxis(
-        "apd1", "anti-PD-1 response",
-        "anti-PD-1 monotherapy ORR", False,
+        "ici", "immune-checkpoint (ICI) response",
+        "ICI objective response rate", False,
         _axis_value_map(gsc.cancer_apd1_response()), 10.0, "", pct=True)
 
 
@@ -1576,14 +1579,14 @@ def _tmb_vs_apd1():
                     arrowprops=dict(arrowstyle="-", color="0.6", lw=0.4))
     except ImportError:
         pass
-    ax.set_title(f"anti-PD-1 ORR vs TMB by cancer type (n={len(pts)} cohorts)",
+    ax.set_title(f"ICI response vs TMB by cancer type (n={len(pts)} cohorts)",
                  fontsize=10)
     fig.tight_layout()
-    # single-plot output: write flat (apd1_vs_tmb.png), no one-file folder
+    # single-plot output: write flat (ici_vs_tmb.png), no one-file folder
     FIGDIR.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGDIR / "apd1_vs_tmb.png", dpi=300)
+    fig.savefig(FIGDIR / "ici_vs_tmb.png", dpi=300)
     plt.close(fig)
-    print(f"      apd1_vs_tmb: {len(pts)} cohorts", flush=True)
+    print(f"      ici_vs_tmb: {len(pts)} cohorts", flush=True)
 
 
 def _mean_ctas_per_sample(mat, cols, thr, pctile_cutoffs):

@@ -356,7 +356,10 @@ def main() -> None:
     args = ap.parse_args()
     _, FIGDIR = resolve_dirs(args, OUT_DIR)
     print("loading cancer reference expression...")
-    df = accessors.cancer_reference_expression()
+    # collapse cDNA-identical loci (the centralized proteoform collapse) so the
+    # heatmap shows one XAGE1 (=XAGE1A+XAGE1B), not split paralogs — same view as
+    # every other CTA quant site.
+    df = accessors.cancer_reference_expression(collapse_cdna_identical=True)
 
     matrices: dict = {}
     for metric, metric_label in COHORT_METRICS:

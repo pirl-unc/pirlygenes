@@ -141,12 +141,16 @@ def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None, *,
             ax.scatter(x, y, s=42, color=fam_color, edgecolor="white",
                        linewidth=0.4, marker="o", zorder=3)
             suffix = ""
-        texts.append(ax.text(x, y, f"{code}{suffix}", fontsize=6.5))
-    # de-overlap the labels (adjustText if available; else a fixed nudge)
+        texts.append(ax.text(x, y, f"{code}{suffix}", fontsize=6))
+    # de-overlap the labels. Stronger repulsion + more iterations untangles the
+    # dense low-TMB/low-ORR lower-left cluster; min_arrow_len drops the short
+    # leader lines (which just add clutter when a label barely moved) and keeps
+    # one only when a label is pulled far enough to need its anchor.
     if adjust_text is not None and texts:
-        adjust_text(texts, ax=ax,
-                    arrowprops=dict(arrowstyle="-", color="0.6", lw=0.4),
-                    expand=(1.05, 1.2))
+        adjust_text(texts, ax=ax, expand=(1.25, 1.6),
+                    force_text=(0.5, 0.8), max_move=60, iter_lim=200,
+                    min_arrow_len=12,
+                    arrowprops=dict(arrowstyle="-", color="0.6", lw=0.3))
     else:
         for t in texts:
             t.set_position((t.get_position()[0], t.get_position()[1]))
