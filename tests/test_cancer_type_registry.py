@@ -22,8 +22,8 @@ from pirlygenes.gene_sets_cancer import (
 
 
 _LINEAGE_GROUPS = {
-    "Epithelial", "Mesenchymal", "Hematolymphoid", "CNS",
-    "Neuroendocrine", "Melanocytic", "Germ cell", "Embryonal",
+    "Epithelial", "Sarcoma", "Heme", "CNS",
+    "Neuroendocrine", "Melanoma", "Germ cell", "Embryonal",
 }
 
 
@@ -42,19 +42,19 @@ def test_every_registry_family_has_a_lineage_group():
 
 
 def test_cancer_lineage_group_resolves_codes_and_histogenesis():
-    # carcinomas -> Epithelial; sarcomas -> Mesenchymal; gliomas/meningioma ->
-    # CNS; lymphoma/leukemia -> Hematolymphoid; melanoma -> Melanocytic.
+    # carcinomas -> Epithelial; sarcomas -> Sarcoma; gliomas/meningioma -> CNS;
+    # lymphoma/leukemia -> Heme; melanoma -> Melanoma.
     assert cancer_lineage_group("KIRC") == "Epithelial"
     assert cancer_lineage_group("KIRP") == "Epithelial"          # not sarcoma!
-    assert cancer_lineage_group("SARC_UPS") == "Mesenchymal"
+    assert cancer_lineage_group("SARC_UPS") == "Sarcoma"
     assert cancer_lineage_group("GBM") == "CNS"
     assert cancer_lineage_group("MENINGIOMA") == "CNS"
-    assert cancer_lineage_group("HL") == "Hematolymphoid"
-    assert cancer_lineage_group("SKCM") == "Melanocytic"
+    assert cancer_lineage_group("HL") == "Heme"
+    assert cancer_lineage_group("SKCM") == "Melanoma"
     assert cancer_lineage_group("TGCT") == "Germ cell"
     assert cancer_lineage_group("MBL") == "Embryonal"
     assert cancer_lineage_group("NET_PANCREAS") == "Neuroendocrine"
-    assert cancer_lineage_group("melanoma") == "Melanocytic"     # alias resolves
+    assert cancer_lineage_group("melanoma") == "Melanoma"        # alias resolves
     assert cancer_lineage_group("not-a-cancer") is None
 
 
