@@ -70,8 +70,8 @@ def _lineage_map() -> dict:
     """{code: coarse histogenesis group} over the registry. The registry
     ``family`` column is uneven (CNS split into 6, carcinoma by organ), so we
     colour by the ~8 cell-of-origin classes from ``cancer_lineage_group``
-    (Epithelial / Sarcoma / Heme / CNS / Neuroendocrine /
-    Melanoma / Germ cell / Embryonal) instead."""
+    (Epithelial / Sarcoma / Heme / CNS / NEC / NET / Melanoma /
+    Germ cell / Embryonal) instead."""
     codes = gsc.cancer_type_registry()["code"].astype(str)
     return {c: (gsc.cancer_lineage_group(c) or "other") for c in codes}
 
