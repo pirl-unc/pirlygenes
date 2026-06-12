@@ -11,12 +11,51 @@ import pytest
 from pirlygenes.gene_sets_cancer import (
     CANCER_TYPE_ALIASES,
     CANCER_TYPE_NAMES,
+    cancer_lineage_group,
+    cancer_lineage_groups,
     cancer_type_registry,
     cancer_types_in_family,
     cancer_types_by_tissue,
     cancer_type_subtypes_of,
     resolve_cancer_type,
 )
+
+
+_LINEAGE_GROUPS = {
+    "Epithelial", "Mesenchymal", "Hematolymphoid", "CNS",
+    "Neuroendocrine", "Melanocytic", "Germ cell", "Embryonal",
+}
+
+
+def test_every_registry_family_has_a_lineage_group():
+    """The coarse histogenesis rollup must cover every registry ``family`` and
+    only use the agreed cell-of-origin classes — so plot colouring and any
+    cross-lineage reasoning never hit an unmapped family."""
+    reg = cancer_type_registry()
+    fams = {str(f) for f in reg["family"].dropna()}
+    mapping = cancer_lineage_groups()
+    missing = fams - set(mapping)
+    assert not missing, f"families with no lineage group: {sorted(missing)}"
+    assert set(mapping.values()) <= _LINEAGE_GROUPS, (
+        f"unexpected lineage groups: {sorted(set(mapping.values()) - _LINEAGE_GROUPS)}"
+    )
+
+
+def test_cancer_lineage_group_resolves_codes_and_histogenesis():
+    # carcinomas -> Epithelial; sarcomas -> Mesenchymal; gliomas/meningioma ->
+    # CNS; lymphoma/leukemia -> Hematolymphoid; melanoma -> Melanocytic.
+    assert cancer_lineage_group("KIRC") == "Epithelial"
+    assert cancer_lineage_group("KIRP") == "Epithelial"          # not sarcoma!
+    assert cancer_lineage_group("SARC_UPS") == "Mesenchymal"
+    assert cancer_lineage_group("GBM") == "CNS"
+    assert cancer_lineage_group("MENINGIOMA") == "CNS"
+    assert cancer_lineage_group("HL") == "Hematolymphoid"
+    assert cancer_lineage_group("SKCM") == "Melanocytic"
+    assert cancer_lineage_group("TGCT") == "Germ cell"
+    assert cancer_lineage_group("MBL") == "Embryonal"
+    assert cancer_lineage_group("NET_PANCREAS") == "Neuroendocrine"
+    assert cancer_lineage_group("melanoma") == "Melanocytic"     # alias resolves
+    assert cancer_lineage_group("not-a-cancer") is None
 
 
 def _parent_codes(value):

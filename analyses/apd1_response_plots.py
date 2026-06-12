@@ -10,11 +10,11 @@ Each figure is emitted in TWO variants:
 Figures:
   1. apd1_vs_tmb_{ici,strict_pd1}.png   — median TMB (log x) vs ORR (y), one
                               labelled point per cancer type, coloured by
-                              lineage family. The immune-logic quadrant: high
+                              lineage (cell of origin). The immune-logic quadrant: high
                               TMB → high ORR (melanoma, MSI-H), low TMB → low
                               ORR (PRAD, GBM, MSS CRC).
   2. apd1_orr_bars_{ici,strict_pd1}.png — ORR by cancer type, sorted, coloured
-                              by lineage; the documented subtype PAIRS
+                              by lineage (cell of origin); the documented subtype PAIRS
                               (MSI-H vs MSS CRC) are drawn adjacent so the
                               differential is visible.
 
@@ -66,46 +66,52 @@ def _pool_crc(d: dict) -> dict:
 
 
 @lru_cache(maxsize=1)
-def _family_map() -> dict:
-    """{code: family} over the cancer-type registry, read + indexed once."""
-    fam = gsc.cancer_type_registry().set_index("code")["family"]
-    return {str(code): str(family) for code, family in fam.items()}
+def _lineage_map() -> dict:
+    """{code: coarse histogenesis group} over the registry. The registry
+    ``family`` column is uneven (CNS split into 6, carcinoma by organ), so we
+    colour by the ~8 cell-of-origin classes from ``cancer_lineage_group``
+    (Epithelial / Mesenchymal / Hematolymphoid / CNS / Neuroendocrine /
+    Melanocytic / Germ cell / Embryonal) instead."""
+    codes = gsc.cancer_type_registry()["code"].astype(str)
+    return {c: (gsc.cancer_lineage_group(c) or "other") for c in codes}
 
 
-def _family(code: str) -> str:
-    return _family_map().get(code, "other")
+def _lineage(code: str) -> str:
+    m = _lineage_map()
+    if code in m:
+        return m[code]
+    # synthetic pooled CRC tiers (CRC_MSI / CRC_MSS / CRC) aren't registry codes
+    # -> fall back to their umbrella's group (CRC_MSI -> CRC -> Epithelial).
+    return m.get(code.split("_")[0], "other")
 
 
 @lru_cache(maxsize=1)
-def _family_color_map() -> dict:
-    """Deterministic family -> colour over the FULL registry family list, so the
-    palette is STABLE: it never shifts when the plotted subset changes (ICI vs
-    strict, or when new leaves are added). There are 27 families — more than
-    tab20's 20 slots — so tab20+tab20b (40 distinct colours) are concatenated to
-    avoid the wrap-around that made e.g. kidney (carcinoma-gu) collide with
-    sarcoma. Every plot reads this one map, and the colours are explained by the
-    lineage legend drawn alongside the figure."""
-    reg = gsc.cancer_type_registry()
-    fams = sorted({str(f) for f in reg["family"].dropna()} | {"other"})
-    base = list(plt.get_cmap("tab20").colors) + list(plt.get_cmap("tab20b").colors)
-    return {f: base[i % len(base)] for i, f in enumerate(fams)}
+def _lineage_color_map() -> dict:
+    """Deterministic lineage-group -> colour over the FULL set of groups, so the
+    palette is STABLE across variants and there are few enough groups (~8) for a
+    clean, collision-free ``tab10`` legend. ``other`` gets a neutral grey."""
+    groups = sorted(set(_lineage_map().values()))
+    cmap = plt.get_cmap("tab10")
+    colors = {g: cmap(i % 10) for i, g in enumerate(groups)}
+    colors.setdefault("other", (0.6, 0.6, 0.6, 1.0))
+    return colors
 
 
-def _family_handles(codes, colors):
-    """Legend handles for the lineage families actually present (stable colour)."""
-    fams = sorted({_family(c) for c in codes})
-    return [Line2D([], [], marker="o", linestyle="", markersize=6,
-                   color=colors[f], label=f) for f in fams]
+def _lineage_handles(codes, colors):
+    """Legend handles for the lineage groups actually present (stable colour)."""
+    groups = sorted({_lineage(c) for c in codes})
+    return [Line2D([], [], marker="o", linestyle="", markersize=7,
+                   color=colors[g], label=g) for g in groups]
 
 
 def _add_family_legend(ax, codes, colors):
-    """Attach the lineage-family colour key just outside the axes on the right.
-    Must be the LAST ``ax.legend`` call so it becomes the axes' primary legend
-    (any marker-class legend is added earlier via ``add_artist``)."""
-    return ax.legend(handles=_family_handles(codes, colors),
-                     title="lineage family", loc="upper left",
-                     bbox_to_anchor=(1.01, 1.0), fontsize=6.5, title_fontsize=7,
-                     handletextpad=0.4, borderaxespad=0.0, ncol=1)
+    """Attach the lineage colour key just outside the axes on the right. Must be
+    the LAST ``ax.legend`` call so it becomes the axes' primary legend (any
+    marker-class legend is added earlier via ``add_artist``)."""
+    return ax.legend(handles=_lineage_handles(codes, colors),
+                     title="lineage (cell of origin)", loc="upper left",
+                     bbox_to_anchor=(1.01, 1.0), fontsize=8, title_fontsize=8,
+                     handletextpad=0.5, borderaxespad=0.0, ncol=1)
 
 
 def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None, *,
@@ -121,7 +127,7 @@ def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None, *,
         #   anti-PD-1 monotherapy      -> FILLED circle
         #   PD-L1 proxy (no aPD-1 ORR) -> OPEN circle, label suffix "*"
         #   dual ipi+nivo (no single-agent ORR) -> FILLED diamond, label suffix "+"
-        fam_color = colors[_family(code)]
+        fam_color = colors[_lineage(code)]
         is_proxy, is_dual = code in proxy, code in dual
         if is_proxy:
             ax.scatter(x, y, s=54, facecolors="none", edgecolors=fam_color,
@@ -182,7 +188,7 @@ def _plot_orr_bars(orr, colors, *, fname="apd1_orr_bars.png",
     vals = [v for _, v in items]
     fig, ax = plt.subplots(figsize=(10.5, max(6, 0.32 * len(codes))))
     ax.barh(range(len(codes)), vals,
-            color=[colors[_family(c)] for c in codes], edgecolor="white")
+            color=[colors[_lineage(c)] for c in codes], edgecolor="white")
     ax.set_yticks(range(len(codes)))
     ax.set_yticklabels(codes, fontsize=7)
     ax.set_xlabel(f"{kind} objective response rate")
@@ -208,7 +214,7 @@ def main() -> int:
     rdf = get_data("cancer-apd1-response")     # denoted fallback classes
     proxy = set(rdf.loc[rdf["drug_target"] == "PD-L1", "cancer_code"].astype(str))
     dual = set(rdf.loc[rdf["drug_target"] == "PD-1+CTLA-4", "cancer_code"].astype(str))
-    colors = _family_color_map()               # stable family palette (all variants)
+    colors = _lineage_color_map()              # stable ~8-group lineage palette
 
     # Variant 1 — full ICI: anti-PD-1 monotherapy + anti-PD-L1 proxies + dual
     # ipi+nivo, each drawn with its evidence-class marker.

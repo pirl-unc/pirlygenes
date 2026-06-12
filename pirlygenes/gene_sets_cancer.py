@@ -812,6 +812,41 @@ def cancer_family_display_names():
                 .itertuples(index=False, name=None))
 
 
+def cancer_lineage_groups():
+    """Dict ``{registry family -> coarse histogenesis lineage group}``.
+
+    The registry ``family`` column is intentionally uneven in granularity — it
+    splits CNS into six neuro-lineages and carcinoma by organ system (because
+    the lineage *gene panels* need that resolution), so it ranges from a whole
+    organ system (``carcinoma-gu``, 20 codes) down to single tumours
+    (``cns-choroid``, 1). This rolls the 27 families up to ~8 cell-of-origin
+    classes — **Epithelial, Mesenchymal, Hematolymphoid, CNS, Neuroendocrine,
+    Melanocytic, Germ cell, Embryonal** — the consistent level for broad
+    cross-lineage reasoning and plot colouring. Distinct from
+    :func:`cancer_family_groups`, which rolls up *gene-panel* families for
+    scoring vetoes; this rolls up *registry* families by histogenesis."""
+    df = get_data("cancer-lineage-groups")
+    return dict(df[["family", "lineage_group"]].drop_duplicates()
+                .itertuples(index=False, name=None))
+
+
+def cancer_lineage_group(cancer_type):
+    """Coarse histogenesis group (Epithelial / Mesenchymal / …) for a code,
+    alias, or display name, resolved via its registry ``family``. Returns
+    ``None`` if the type or its family doesn't resolve."""
+    try:
+        code = resolve_cancer_type(cancer_type)
+    except ValueError:
+        return None
+    if code is None:
+        return None
+    reg = cancer_type_registry().set_index("code")
+    if code not in reg.index:
+        return None
+    family = str(reg.loc[code, "family"] or "")
+    return cancer_lineage_groups().get(family)
+
+
 # ---------- Stem-cell marker panels (cell STATE, orthogonal to lineage) ------
 #
 # A SEPARATE concept from cancer_family_panels: those answer "which lineage is
