@@ -79,27 +79,34 @@ def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None):
     fig, ax = plt.subplots(figsize=(12, 7.5))
     ax.set_xscale("log")
     for code, x, y in pts:
-        # anti-PD-1 monotherapy = filled circle; the two fallback classes are
-        # drawn with distinct open markers and a glyph suffix on the label:
-        #   PD-L1 proxy (no anti-PD-1 ORR) -> open diamond, "*"
-        #   dual ipi+nivo (no single-agent ORR) -> open triangle, "+"
+        # Marker encodes the evidence class (see drug_target):
+        #   anti-PD-1 monotherapy      -> FILLED circle
+        #   PD-L1 proxy (no aPD-1 ORR) -> OPEN circle, label suffix "*"
+        #   dual ipi+nivo (no single-agent ORR) -> FILLED diamond, label suffix "+"
+        fam_color = colors[_family(code)]
         is_proxy, is_dual = code in proxy, code in dual
-        marker = "D" if is_proxy else "^" if is_dual else "o"
-        special = is_proxy or is_dual
-        ax.scatter(x, y, s=58 if special else 42, color=colors[_family(code)],
-                   alpha=0.9, edgecolor="black" if special else "white",
-                   linewidth=1.1 if special else 0.4, marker=marker, zorder=3)
-        suffix = "*" if is_proxy else "+" if is_dual else ""
+        if is_proxy:
+            ax.scatter(x, y, s=54, facecolors="none", edgecolors=fam_color,
+                       linewidth=1.4, marker="o", zorder=3)
+            suffix = "*"
+        elif is_dual:
+            ax.scatter(x, y, s=64, color=fam_color, edgecolor="black",
+                       linewidth=0.9, marker="D", zorder=3)
+            suffix = "+"
+        else:
+            ax.scatter(x, y, s=42, color=fam_color, edgecolor="white",
+                       linewidth=0.4, marker="o", zorder=3)
+            suffix = ""
         ax.annotate(f"{code}{suffix}", (x, y), fontsize=6.5,
                     xytext=(3, 3), textcoords="offset points")
     seen = {c for c, _, _ in pts}
     handles = []
     if proxy & seen:
-        handles.append(ax.scatter([], [], marker="D", facecolor="0.6",
-                       edgecolor="black",
+        handles.append(ax.scatter([], [], marker="o", facecolors="none",
+                       edgecolors="0.4", linewidth=1.4,
                        label="* PD-L1 proxy (no anti-PD-1 monotherapy data)"))
     if dual & seen:
-        handles.append(ax.scatter([], [], marker="^", facecolor="0.6",
+        handles.append(ax.scatter([], [], marker="D", facecolor="0.5",
                        edgecolor="black",
                        label="+ dual checkpoint, ipi+nivo (no single-agent data)"))
     if handles:
@@ -110,9 +117,9 @@ def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None):
             ax.plot([tmb[hi], tmb[lo]], [orr[hi], orr[lo]], color="0.5",
                     lw=0.8, ls="--", zorder=2)
     ax.set_xlabel("median tumor mutational burden (mut/Mb)")
-    ax.set_ylabel("anti-PD-1 monotherapy ORR")
+    ax.set_ylabel("immune-checkpoint (ICI) objective response rate")
     pct_axis(ax, "y")
-    ax.set_title("Tumor mutational burden vs anti-PD-1 response, by cancer type")
+    ax.set_title("Tumor mutational burden vs immune-checkpoint (ICI) response, by cancer type")
     ax.grid(alpha=0.3, which="both")
     ax.set_ylim(-3, (max(orr.values()) * 1.08) if orr else 1.0)
     fig.tight_layout()
@@ -130,9 +137,9 @@ def _plot_orr_bars(orr, colors):
             color=[colors[_family(c)] for c in codes], edgecolor="white")
     ax.set_yticks(range(len(codes)))
     ax.set_yticklabels(codes, fontsize=7)
-    ax.set_xlabel("anti-PD-1 monotherapy ORR")
+    ax.set_xlabel("immune-checkpoint (ICI) objective response rate")
     pct_axis(ax, "x")
-    ax.set_title("Anti-PD-1 response rate by cancer type (curated)")
+    ax.set_title("Immune-checkpoint (ICI) response rate by cancer type (curated)")
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
     fig.savefig(FIGDIR / "apd1_orr_bars.png", dpi=300)

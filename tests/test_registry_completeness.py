@@ -52,7 +52,7 @@ _MISSING_THERAPY_AXIS = frozenset(
         "MESO", "NET_MIDGUT", "MM", "MPN", "MTC", "NPC", "NUTM",
         "OV", "PAAD", "NET_PANCREAS", "PCPG", "RB", "NET_RECTAL",
         "RT", "SARC", "CRC",
-        "SCLC", "STAD", "TGCT", "THCA", "THYM", "T_ALL", "UCEC", "UCS",
+        "SCLC", "STAD", "TGCT", "THCA", "THYM", "THYMCA", "T_ALL", "UCEC", "UCS",
         "UVM", "WILMS",
         # #294/#295 NCI-gap additions — curated registry entries; expression
         # data not yet built, so no therapy-axis panel is materialised yet.
@@ -131,6 +131,9 @@ _TOLERATED_GAPS_EXPLICIT = {
     # CRC: computed colorectal union (parent of COAD+READ); an abstract node
     # with no panels of its own — its children carry lineage/biomarker/therapy.
     "CRC": {"lineage", "biomarker", "therapy"},
+    # THYMCA: thymic carcinoma split from thymoma (THYM); curated clinical
+    # reference (TMB/ICI) only — lineage/biomarker/therapy panels not yet built.
+    "THYMCA": {"lineage", "biomarker", "therapy"},
 }
 
 

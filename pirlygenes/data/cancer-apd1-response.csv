@@ -48,7 +48,7 @@ BCC,31.0,cemiplimab,NCT03132636,locally advanced post-hedgehog,PMID:33812497,hig
 ANSC,24.0,nivolumab,NCI9673,refractory metastatic anal SCC,PMID:28223062,high,nivo mono ORR 24% (9/37); pembro KEYNOTE-158 anal ~11%,PD-1
 VSCC,10.9,pembrolizumab,KEYNOTE-158,advanced vulvar SCC,PMID:35361487,high,ORR 10.9% (11/101); durable (mDOR 20.4 mo),PD-1
 GBC,5.8,pembrolizumab,KEYNOTE-158,advanced biliary (pan-biliary),DOI:10.1002/ijc.33013,medium,pan-biliary cohort ORR 5.8% (6/104); not gallbladder-isolated; MSI-H biliary ~41%,PD-1
-THYM,22.5,pembrolizumab,NCT02364076,advanced thymic carcinoma,PMID:29395863,medium,thymic carcinoma ORR 22.5% (9/40); thymoma itself avoided (severe irAEs),PD-1
+THYMCA,22.5,pembrolizumab,NCT02364076,advanced thymic carcinoma,PMID:29395863,medium,thymic carcinoma ORR 22.5% (9/40); thymoma (THYM) itself avoided due to severe irAEs,PD-1
 CTCL,38.0,pembrolizumab,CITN-10,mycosis fungoides / Sezary,PMID:31532724,high,ORR 38% (9/24); 2 CR + 7 PR; durable,PD-1
 PCPG,9.0,pembrolizumab,NCT02721732,metastatic pheochromocytoma/paraganglioma,DOI:10.3390/cancers12082307,medium,ORR 9% (1/11); non-progression 27wk 40%; CBR 73%,PD-1
 THCA,6.8,pembrolizumab,KEYNOTE-158,advanced differentiated thyroid,DOI:10.1002/cncr.34657,high,differentiated thyroid ORR 6.8% (7/103); anaplastic ATC higher with TKI combos (not monotherapy),PD-1
@@ -77,3 +77,5 @@ SARC_ANGIO,25.0,nivolumab+ipilimumab,DART/SWOG S1609 cohort 51,metastatic/unrese
 ADCC,6.0,nivolumab+ipilimumab,phase 2 ipi+nivo salivary,adenoid cystic carcinoma,DOI:10.1038/s41591-023-02518-x,medium,dual checkpoint ORR 6% (2/32); pan-salivary pembro ~4.6%; checkpoint-resistant,PD-1+CTLA-4
 NET_MIDGUT,0.0,nivolumab+ipilimumab,DART/SWOG S1609,midgut/small-bowel carcinoid (low-grade),PMID:31969335,low,low/intermediate-grade NET 0/14 in DART nonpancreatic NET cohort (pooled; not site-isolated); high-grade NEN respond ~44%,PD-1+CTLA-4
 NET_LUNG,0.0,nivolumab+ipilimumab,DART/SWOG S1609,lung typical/atypical carcinoid (low-grade),PMID:31969335,low,low/intermediate-grade NET 0/14 in DART nonpancreatic NET cohort (pooled; not site-isolated),PD-1+CTLA-4
+PMBCL,41.5,pembrolizumab,KEYNOTE-170,relapsed/refractory primary mediastinal B-cell lymphoma,PMID:37130017,high,ORR 41.5% (22/53); CR 20.8%; 9p24.1/PD-L1 amplification; FDA-approved; the checkpoint-sensitive exception within DLBCL,PD-1
+ATC,30.0,nivolumab+ipilimumab,NCT03246958 (ASCO 2020 abstr 6513),anaplastic thyroid carcinoma,DOI:10.1200/JCO.2020.38.15_suppl.6513,low,dual checkpoint ORR 30% (3/10); abstract-level; lenvatinib+pembrolizumab ~52% (ATLEP combo; not monotherapy); no single-agent anti-PD-1 ORR,PD-1+CTLA-4
