@@ -443,9 +443,12 @@ _CRC_SUBTYPE_POOL = {"CRC_MSI": ["COAD_MSI", "READ_MSI"],
 
 
 def _add_crc_subtype_cohorts(cohorts):
-    """Synthesize CRC_MSI / CRC_MSS by pooling the per-sample COAD/READ MSI/MSS
-    cohorts (de-duplicated). Bulk CRC=[COAD,READ] is already a registry
-    aggregate; this adds the microsatellite-resolved tiers."""
+    """Pool the organ-split colorectal cohorts into colorectal tiers, so every
+    plot shows CRC / CRC_MSI / CRC_MSS rather than separate COAD/READ halves
+    (KEYNOTE-177 and the MSS series report *colorectal*). Synthesize
+    CRC_MSI/CRC_MSS by de-duplicating the COAD/READ MSI/MSS samples, then DROP
+    the component cohorts; bulk CRC=[COAD,READ] is already a registry aggregate,
+    so the organ-specific COAD/READ are dropped in its favour."""
     added = []
     for agg, members in _CRC_SUBTYPE_POOL.items():
         pooled, seen = [], set()
@@ -457,8 +460,14 @@ def _add_crc_subtype_cohorts(cohorts):
         if pooled:
             cohorts[agg] = pooled
             added.append(f"{agg}(n={len(pooled)})")
+        for m in members:                      # fold the components into the tier
+            cohorts.pop(m, None)
+    if "CRC" in cohorts:                        # prefer the colorectal aggregate
+        for organ in ("COAD", "READ"):
+            cohorts.pop(organ, None)
     if added:
-        print(f"      + CRC subtype cohorts: {', '.join(added)}", flush=True)
+        print(f"      + CRC subtype cohorts: {', '.join(added)} "
+              f"(COAD/READ folded in)", flush=True)
     return cohorts
 
 
