@@ -352,24 +352,22 @@ def extract_cta_matrix(symbols: dict[str, str]) -> pd.DataFrame:
     sym_to_ensg = {v: k for k, v in symbols.items()}
     CACHE.mkdir(parents=True, exist_ok=True)
     symfile = CACHE / "_cta_symbols.txt"
-    symfile.write_text("\n".join(sym_to_ensg) + "\n")
     small = CACHE / "_cta_rows.tsv"
-    # Reuse the cached extraction only if it's newer than the source matrix AND
-    # already contains every wanted symbol — otherwise a newly-added CTA (e.g.
-    # XAGE5) would be silently missing because the awk pass (the slow step over
-    # the 6.9 GB compendium) was skipped against a stale, smaller symbol set.
-    cache_ok = False
-    if small.exists() and small.stat().st_mtime >= TPM_TSV.stat().st_mtime:
-        cached_syms = set(pd.read_csv(small, sep="\t", usecols=[0])
-                          .iloc[:, 0].astype(str))
-        missing = set(sym_to_ensg) - cached_syms
-        cache_ok = not missing
-        if missing:
-            print(f"      cache stale ({len(missing)} new symbol(s), e.g. "
-                  f"{sorted(missing)[:5]}) -> re-extracting", flush=True)
+    # Cache key = the WANT-LIST identity, not "every wanted symbol is present in
+    # the extraction". The latter forced a permanent cache miss (the awk scan of
+    # the 6.9 GB compendium re-ran every run) because some CTA symbols — recent
+    # gene renames like GARIN1B/CBLL2 — simply don't exist as rows in this
+    # compendium build and so can never appear in the output. Instead we rebuild
+    # only when the source is newer or the requested symbol set actually changed
+    # (a real panel edit, e.g. a newly-added CTA), recording the built want-list
+    # in ``symfile``. Downstream already tolerates symbols absent from the source.
+    want_text = "\n".join(sym_to_ensg) + "\n"
+    cache_ok = (small.exists() and small.stat().st_mtime >= TPM_TSV.stat().st_mtime
+                and symfile.exists() and symfile.read_text() == want_text)
     if cache_ok:
         print("      reusing cached _cta_rows.tsv (skip awk)", flush=True)
     else:
+        symfile.write_text(want_text)        # record the want-list we build against
         # awk: keep header (NR==1) + rows whose first column is a CTA symbol.
         awk = (
             'BEGIN{while((getline l < "%s")>0) S[l]=1}'
