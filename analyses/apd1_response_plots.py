@@ -33,6 +33,12 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
+
+try:                                    # optional: nicer non-overlapping labels
+    from adjustText import adjust_text
+except Exception:                       # pragma: no cover - fallback if missing
+    adjust_text = None
 
 from pirlygenes import gene_sets_cancer as gsc  # noqa: E402
 from pirlygenes.load_dataset import get_data  # noqa: E402
@@ -40,9 +46,6 @@ from _run_layout import add_layout_args, resolve_dirs, pct_axis  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "outputs"
 FIGDIR = OUT   # per-run output dir; set in main() via _run_layout
-
-# Documented aPD1-differential subtype pairs (immune-hot vs immune-cold).
-_PAIRS = [("CRC_MSI", "CRC_MSS")]
 
 # Colorectal pooling: KEYNOTE-177 (and the MSS series) report *colorectal*, so
 # COAD_MSI+READ_MSI are one CRC_MSI point (identical ORR/TMB), not two — mirrors
@@ -73,10 +76,36 @@ def _family(code: str) -> str:
     return _family_map().get(code, "other")
 
 
-def _color_map(codes):
+@lru_cache(maxsize=1)
+def _family_color_map() -> dict:
+    """Deterministic family -> colour over the FULL registry family list, so the
+    palette is STABLE: it never shifts when the plotted subset changes (ICI vs
+    strict, or when new leaves are added). There are 27 families — more than
+    tab20's 20 slots — so tab20+tab20b (40 distinct colours) are concatenated to
+    avoid the wrap-around that made e.g. kidney (carcinoma-gu) collide with
+    sarcoma. Every plot reads this one map, and the colours are explained by the
+    lineage legend drawn alongside the figure."""
+    reg = gsc.cancer_type_registry()
+    fams = sorted({str(f) for f in reg["family"].dropna()} | {"other"})
+    base = list(plt.get_cmap("tab20").colors) + list(plt.get_cmap("tab20b").colors)
+    return {f: base[i % len(base)] for i, f in enumerate(fams)}
+
+
+def _family_handles(codes, colors):
+    """Legend handles for the lineage families actually present (stable colour)."""
     fams = sorted({_family(c) for c in codes})
-    cmap = plt.get_cmap("tab20")
-    return {f: cmap(i % 20) for i, f in enumerate(fams)}
+    return [Line2D([], [], marker="o", linestyle="", markersize=6,
+                   color=colors[f], label=f) for f in fams]
+
+
+def _add_family_legend(ax, codes, colors):
+    """Attach the lineage-family colour key just outside the axes on the right.
+    Must be the LAST ``ax.legend`` call so it becomes the axes' primary legend
+    (any marker-class legend is added earlier via ``add_artist``)."""
+    return ax.legend(handles=_family_handles(codes, colors),
+                     title="lineage family", loc="upper left",
+                     bbox_to_anchor=(1.01, 1.0), fontsize=6.5, title_fontsize=7,
+                     handletextpad=0.4, borderaxespad=0.0, ncol=1)
 
 
 def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None, *,
@@ -84,8 +113,9 @@ def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None, *,
     proxy = proxy or set()
     dual = dual or set()
     pts = [(c, tmb[c], orr[c]) for c in orr if c in tmb]
-    fig, ax = plt.subplots(figsize=(12, 7.5))
+    fig, ax = plt.subplots(figsize=(13.5, 8))
     ax.set_xscale("log")
+    texts = []
     for code, x, y in pts:
         # Marker encodes the evidence class (see drug_target):
         #   anti-PD-1 monotherapy      -> FILLED circle
@@ -105,33 +135,42 @@ def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None, *,
             ax.scatter(x, y, s=42, color=fam_color, edgecolor="white",
                        linewidth=0.4, marker="o", zorder=3)
             suffix = ""
-        ax.annotate(f"{code}{suffix}", (x, y), fontsize=6.5,
-                    xytext=(3, 3), textcoords="offset points")
-    seen = {c for c, _, _ in pts}
-    handles = []
-    if proxy & seen:
-        handles.append(ax.scatter([], [], marker="o", facecolors="none",
-                       edgecolors="0.4", linewidth=1.4,
-                       label="* PD-L1 proxy (no anti-PD-1 monotherapy data)"))
-    if dual & seen:
-        handles.append(ax.scatter([], [], marker="D", facecolor="0.5",
-                       edgecolor="black",
-                       label="+ dual checkpoint, ipi+nivo (no single-agent data)"))
-    if handles:
-        ax.legend(loc="lower right", fontsize=8)
-    # connect the subtype pairs with a thin line to show the differential
-    for hi, lo in _PAIRS:
-        if hi in tmb and hi in orr and lo in tmb and lo in orr:
-            ax.plot([tmb[hi], tmb[lo]], [orr[hi], orr[lo]], color="0.5",
-                    lw=0.8, ls="--", zorder=2)
+        texts.append(ax.text(x, y, f"{code}{suffix}", fontsize=6.5))
+    # de-overlap the labels (adjustText if available; else a fixed nudge)
+    if adjust_text is not None and texts:
+        adjust_text(texts, ax=ax,
+                    arrowprops=dict(arrowstyle="-", color="0.6", lw=0.4),
+                    expand=(1.05, 1.2))
+    else:
+        for t in texts:
+            t.set_position((t.get_position()[0], t.get_position()[1]))
+            t.set_ha("left")
+
     ax.set_xlabel("median tumor mutational burden (mut/Mb)")
     ax.set_ylabel(f"{kind} objective response rate")
     pct_axis(ax, "y")
     ax.set_title(f"Tumor mutational burden vs {kind} response, by cancer type")
     ax.grid(alpha=0.3, which="both")
     ax.set_ylim(-3, (max(orr.values()) * 1.08) if orr else 1.0)
-    fig.tight_layout()
-    fig.savefig(FIGDIR / fname, dpi=300)
+
+    # Two legends. The evidence-class marker key is built FIRST and pinned with
+    # add_artist; the lineage-family colour key is built LAST so it is the axes'
+    # primary legend (otherwise the second ax.legend call would drop the first).
+    seen = {c for c, _, _ in pts}
+    mhandles = []
+    if proxy & seen:
+        mhandles.append(Line2D([], [], marker="o", linestyle="", color="0.4",
+                        markerfacecolor="none", markeredgewidth=1.4,
+                        label="* PD-L1 proxy (no anti-PD-1 monotherapy data)"))
+    if dual & seen:
+        mhandles.append(Line2D([], [], marker="D", linestyle="", color="0.5",
+                        markeredgecolor="black",
+                        label="+ dual checkpoint, ipi+nivo (no single-agent data)"))
+    if mhandles:
+        ax.add_artist(ax.legend(handles=mhandles, loc="lower right", fontsize=8))
+    _add_family_legend(ax, [c for c, _, _ in pts], colors)
+
+    fig.savefig(FIGDIR / fname, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return len(pts)
 
@@ -141,7 +180,7 @@ def _plot_orr_bars(orr, colors, *, fname="apd1_orr_bars.png",
     items = sorted(orr.items(), key=lambda kv: kv[1])
     codes = [c for c, _ in items]
     vals = [v for _, v in items]
-    fig, ax = plt.subplots(figsize=(9, max(6, 0.32 * len(codes))))
+    fig, ax = plt.subplots(figsize=(10.5, max(6, 0.32 * len(codes))))
     ax.barh(range(len(codes)), vals,
             color=[colors[_family(c)] for c in codes], edgecolor="white")
     ax.set_yticks(range(len(codes)))
@@ -150,8 +189,8 @@ def _plot_orr_bars(orr, colors, *, fname="apd1_orr_bars.png",
     pct_axis(ax, "x")
     ax.set_title(f"{kind[0].upper()}{kind[1:]} response rate by cancer type (curated)")
     ax.grid(axis="x", alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(FIGDIR / fname, dpi=300)
+    _add_family_legend(ax, codes, colors)
+    fig.savefig(FIGDIR / fname, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -169,7 +208,7 @@ def main() -> int:
     rdf = get_data("cancer-apd1-response")     # denoted fallback classes
     proxy = set(rdf.loc[rdf["drug_target"] == "PD-L1", "cancer_code"].astype(str))
     dual = set(rdf.loc[rdf["drug_target"] == "PD-1+CTLA-4", "cancer_code"].astype(str))
-    colors = _color_map(orr)                   # shared palette across variants
+    colors = _family_color_map()               # stable family palette (all variants)
 
     # Variant 1 — full ICI: anti-PD-1 monotherapy + anti-PD-L1 proxies + dual
     # ipi+nivo, each drawn with its evidence-class marker.
