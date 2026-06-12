@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 from datetime import datetime
 from functools import lru_cache
@@ -39,6 +38,9 @@ from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pyarrow.dataset as pads
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
@@ -54,6 +56,11 @@ import sweep_treehouse_tcga_cohorts as tcga
 # (a 5.22.18 collision silently broke _DERIVED_DIR / the cBioPortal splits).
 EXPR_CACHE = Path.home() / ".cache" / "pirlygenes" / "expression" / "treehouse-polya-25-01"
 TPM_TSV = EXPR_CACHE / "Tumor-25.01-Polya_hugo_log2tpm_58581genes_2025-02-27.tsv"
+# Columnar mirror of the 6.2 GB compendium TSV, built ONCE. After conversion the
+# TSV is never read again: CTA extraction is a row-filter query (no awk) and the
+# percentile pass streams Parquet record-batches. Genes-as-rows, sample columns
+# as float32, zstd-compressed; first column is "Symbol".
+TPM_PARQUET = EXPR_CACHE / "Tumor-25.01-Polya_hugo_log2tpm.parquet"
 CLINICAL = EXPR_CACHE / "clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv"
 GLIOMA_MAP = EXPR_CACHE / "derived" / "tcga_glioma_case_to_project.csv"
 # Three roles, three locations:
@@ -161,6 +168,50 @@ class Threshold:
         ], dtype=float)
 
 
+def _source_mtime() -> float:
+    """Cache-invalidation timestamp for the compendium: the source TSV's mtime
+    when present, else the converted Parquet's (so caches stay valid even if the
+    6.2 GB TSV is deleted to reclaim disk after conversion)."""
+    if TPM_TSV.exists():
+        return TPM_TSV.stat().st_mtime
+    if TPM_PARQUET.exists():
+        return TPM_PARQUET.stat().st_mtime
+    raise FileNotFoundError(f"no compendium source: {TPM_TSV} / {TPM_PARQUET}")
+
+
+def compendium_parquet() -> Path:
+    """Path to the Parquet mirror of the compendium, building it once from the
+    TSV if missing or stale. This is the single place the 6.2 GB text file is
+    ever read — streamed in row-chunks straight into the Parquet writer."""
+    if (TPM_PARQUET.exists()
+            and (not TPM_TSV.exists()
+                 or TPM_PARQUET.stat().st_mtime >= TPM_TSV.stat().st_mtime)):
+        return TPM_PARQUET
+    if not TPM_TSV.exists():
+        raise FileNotFoundError(f"cannot build {TPM_PARQUET}: source {TPM_TSV} absent")
+    print(f"      building compendium Parquet (one-time) -> {TPM_PARQUET.name}",
+          flush=True)
+    tmp = TPM_PARQUET.with_suffix(".building.parquet")
+    writer = None
+    schema = None
+    try:
+        for chunk in pd.read_csv(TPM_TSV, sep="\t", chunksize=4000):
+            chunk = chunk.rename(columns={chunk.columns[0]: "Symbol"})
+            chunk["Symbol"] = chunk["Symbol"].astype(str)
+            for c in chunk.columns[1:]:
+                chunk[c] = chunk[c].astype("float32")
+            table = pa.Table.from_pandas(chunk, preserve_index=False)
+            if writer is None:
+                schema = table.schema
+                writer = pq.ParquetWriter(tmp, schema, compression="zstd")
+            writer.write_table(table.cast(schema))
+    finally:
+        if writer is not None:
+            writer.close()
+    tmp.replace(TPM_PARQUET)
+    return TPM_PARQUET
+
+
 def per_sample_percentile_cutoffs(percentiles=PERCENTILES, *, nbins=2000,
                                   vmax_log2=20.0, cache=True) -> pd.DataFrame:
     """Per-sample TPM value at each within-sample percentile, computed over ALL
@@ -174,7 +225,7 @@ def per_sample_percentile_cutoffs(percentiles=PERCENTILES, *, nbins=2000,
     still contains its own components (#21)."""
     cachef = CACHE / "_per_sample_pctile_cutoffs_v3.parquet"   # v2: cDNA-collapsed
     if (cache and cachef.exists()
-            and cachef.stat().st_mtime >= TPM_TSV.stat().st_mtime):
+            and cachef.stat().st_mtime >= _source_mtime()):
         return pd.read_parquet(cachef)
     from pirlygenes.expression.protein_groups import (
         cdna_symbol_to_canonical_symbol)
@@ -185,7 +236,8 @@ def per_sample_percentile_cutoffs(percentiles=PERCENTILES, *, nbins=2000,
     hist = None
     cols = None
     accum: dict[str, np.ndarray] = {}      # canonical symbol -> per-sample LINEAR sum
-    for chunk in pd.read_csv(TPM_TSV, sep="\t", chunksize=4000):
+    for batch in pq.ParquetFile(compendium_parquet()).iter_batches(batch_size=4000):
+        chunk = batch.to_pandas()
         genes = chunk.iloc[:, 0].astype(str).str.upper()
         vals = chunk.iloc[:, 1:]
         if cols is None:
@@ -346,38 +398,21 @@ def cohort_samples(clinical: pd.DataFrame) -> dict[str, list[str]]:
 
 
 def extract_cta_matrix(symbols: dict[str, str]) -> pd.DataFrame:
-    """Extract only the CTA rows from the wide compendium via awk, then load.
+    """Pull just the CTA rows out of the compendium with a single columnar
+    Parquet query — no awk, no 6.2 GB text scan. The Parquet ``Symbol`` column
+    is row-group-indexed, so pyarrow only materialises the wanted rows; symbols
+    absent from this compendium build (recent gene renames) are simply not
+    returned, which downstream already tolerates.
 
     Returns a CTA(ENSG)-indexed, sample-columned TPM frame."""
     sym_to_ensg = {v: k for k, v in symbols.items()}
-    CACHE.mkdir(parents=True, exist_ok=True)
-    symfile = CACHE / "_cta_symbols.txt"
-    small = CACHE / "_cta_rows.tsv"
-    # Cache key = the WANT-LIST identity, not "every wanted symbol is present in
-    # the extraction". The latter forced a permanent cache miss (the awk scan of
-    # the 6.9 GB compendium re-ran every run) because some CTA symbols — recent
-    # gene renames like GARIN1B/CBLL2 — simply don't exist as rows in this
-    # compendium build and so can never appear in the output. Instead we rebuild
-    # only when the source is newer or the requested symbol set actually changed
-    # (a real panel edit, e.g. a newly-added CTA), recording the built want-list
-    # in ``symfile``. Downstream already tolerates symbols absent from the source.
-    want_text = "\n".join(sym_to_ensg) + "\n"
-    cache_ok = (small.exists() and small.stat().st_mtime >= TPM_TSV.stat().st_mtime
-                and symfile.exists() and symfile.read_text() == want_text)
-    if cache_ok:
-        print("      reusing cached _cta_rows.tsv (skip awk)", flush=True)
-    else:
-        symfile.write_text(want_text)        # record the want-list we build against
-        # awk: keep header (NR==1) + rows whose first column is a CTA symbol.
-        awk = (
-            'BEGIN{while((getline l < "%s")>0) S[l]=1}'
-            "NR==1||($1 in S)" % symfile
-        )
-        with small.open("w") as fh:
-            subprocess.run(["awk", "-F\t", awk, str(TPM_TSV)], stdout=fh, check=True)
-    raw = pd.read_csv(small, sep="\t")
-    raw = raw.rename(columns={raw.columns[0]: "Symbol"})
+    want = list(sym_to_ensg)
+    table = pads.dataset(compendium_parquet(), format="parquet").to_table(
+        filter=pads.field("Symbol").isin(want))
+    raw = table.to_pandas()
     raw = raw[raw["Symbol"].isin(sym_to_ensg)].set_index("Symbol")
+    print(f"      Parquet CTA query: {raw.shape[0]}/{len(want)} symbols present",
+          flush=True)
     # inverse log2(TPM+1) -> TPM, clamp tiny negatives
     tpm = np.power(2.0, raw.to_numpy(dtype=float)) - 1.0
     tpm = np.clip(tpm, 0.0, None)
@@ -605,7 +640,7 @@ def main():
     # Authoritative ENSG->Symbol straight from the CTA evidence table (tsarina),
     # so every CTA in the set gets a symbol — including ones absent from the
     # bundled reference-expression CSVs (e.g. XAGE5). The compendium is keyed by
-    # HUGO symbol, and CTA_evidence Symbols are HUGO, so they align for the awk.
+    # HUGO symbol, and CTA_evidence Symbols are HUGO, so they align for the query.
     ctas = set(gsc.CTA_gene_ids())
     ev = gsc.CTA_evidence()[["Symbol", "Ensembl_Gene_ID"]].dropna()
     ensg_to_sym = {}
@@ -620,7 +655,7 @@ def main():
     print(f"      {len(cohorts)} cohorts, "
           f"{sum(len(v) for v in cohorts.values())} samples", flush=True)
 
-    print("[3/5] extract CTA per-sample TPM matrix (awk slice + log2 inverse)", flush=True)
+    print("[3/5] extract CTA per-sample TPM matrix (Parquet query + log2 inverse)", flush=True)
     mat = extract_cta_matrix(ensg_to_sym)
     mat, cohorts = _add_parquet_cohorts(mat, cohorts, ctas)
     cohorts = _add_crc_subtype_cohorts(cohorts)
