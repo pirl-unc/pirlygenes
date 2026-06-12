@@ -466,12 +466,10 @@ def _add_crc_subtype_cohorts(cohorts):
             added.append(f"{agg}(n={len(pooled)})")
         for m in members:                      # fold the components into the tier
             cohorts.pop(m, None)
-    if "CRC" in cohorts:                        # prefer the colorectal aggregate
-        for organ in ("COAD", "READ"):
-            cohorts.pop(organ, None)
+    # NB: plain COAD/READ are folded into the CRC aggregate in main(), AFTER
+    # _add_aggregate_cohorts builds CRC (it doesn't exist yet here).
     if added:
-        print(f"      + CRC subtype cohorts: {', '.join(added)} "
-              f"(COAD/READ folded in)", flush=True)
+        print(f"      + CRC subtype cohorts: {', '.join(added)}", flush=True)
     return cohorts
 
 
@@ -676,7 +674,13 @@ def main():
     mat = extract_cta_matrix(ensg_to_sym)
     mat, cohorts = _add_parquet_cohorts(mat, cohorts, ctas)
     cohorts = _add_crc_subtype_cohorts(cohorts)
-    cohorts = _add_aggregate_cohorts(cohorts)
+    cohorts = _add_aggregate_cohorts(cohorts)   # materialises CRC = COAD+READ
+    # now that the colorectal aggregate exists, fold the organ-split halves into
+    # it (KEYNOTE-177 etc. report *colorectal*) — done here, not in
+    # _add_crc_subtype_cohorts, because CRC isn't built until the line above.
+    if "CRC" in cohorts:
+        for organ in ("COAD", "READ"):
+            cohorts.pop(organ, None)
     cohorts = _add_subtype_intermediates(cohorts)
     mat, ensg_to_sym = _merge_proteins(mat, ensg_to_sym)
     print(f"      matrix {mat.shape[0]} CTA proteins × {mat.shape[1]} samples, "
