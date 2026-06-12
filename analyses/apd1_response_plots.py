@@ -3,7 +3,7 @@
 Each figure is emitted in TWO variants:
   * ``_ici``        — full immune-checkpoint view: anti-PD-1 monotherapy
                       (filled circle) + anti-PD-L1 proxies (open circle, "*")
-                      + dual ipi+nivo fallbacks (filled diamond, "+").
+                      + dual ipi+nivo fallbacks (double circle, "+").
   * ``_strict_pd1`` — only true single-agent anti-PD-1 ORRs (PD-L1 proxies and
                       dual-checkpoint fallbacks dropped); all filled circles.
 
@@ -34,6 +34,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.legend_handler import HandlerTuple  # noqa: E402
 
 try:                                    # optional: nicer non-overlapping labels
     from adjustText import adjust_text
@@ -126,7 +127,8 @@ def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None, *,
         # Marker encodes the evidence class (see drug_target):
         #   anti-PD-1 monotherapy      -> FILLED circle
         #   PD-L1 proxy (no aPD-1 ORR) -> OPEN circle, label suffix "*"
-        #   dual ipi+nivo (no single-agent ORR) -> FILLED diamond, label suffix "+"
+        #   dual ipi+nivo (no single-agent ORR) -> DOUBLE circle (filled + outer
+        #       ring), label suffix "+"
         fam_color = colors[_lineage(code)]
         is_proxy, is_dual = code in proxy, code in dual
         if is_proxy:
@@ -134,8 +136,10 @@ def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None, *,
                        linewidth=1.4, marker="o", zorder=3)
             suffix = "*"
         elif is_dual:
-            ax.scatter(x, y, s=64, color=fam_color, edgecolor="black",
-                       linewidth=0.9, marker="D", zorder=3)
+            ax.scatter(x, y, s=40, color=fam_color, edgecolor="white",
+                       linewidth=0.3, marker="o", zorder=4)
+            ax.scatter(x, y, s=120, facecolors="none", edgecolors=fam_color,
+                       linewidth=1.1, marker="o", zorder=3)   # outer ring
             suffix = "+"
         else:
             ax.scatter(x, y, s=42, color=fam_color, edgecolor="white",
@@ -167,17 +171,21 @@ def _plot_tmb_vs_apd1(orr, tmb, colors, proxy=None, dual=None, *,
     # add_artist; the lineage-family colour key is built LAST so it is the axes'
     # primary legend (otherwise the second ax.legend call would drop the first).
     seen = {c for c, _, _ in pts}
-    mhandles = []
+    mhandles, mlabels = [], []
     if proxy & seen:
         mhandles.append(Line2D([], [], marker="o", linestyle="", color="0.4",
-                        markerfacecolor="none", markeredgewidth=1.4,
-                        label="* PD-L1 proxy (no anti-PD-1 monotherapy data)"))
+                        markerfacecolor="none", markeredgewidth=1.4))
+        mlabels.append("* PD-L1 proxy (no anti-PD-1 monotherapy data)")
     if dual & seen:
-        mhandles.append(Line2D([], [], marker="D", linestyle="", color="0.5",
-                        markeredgecolor="black",
-                        label="+ dual checkpoint, ipi+nivo (no single-agent data)"))
+        # double circle = overlaid filled + open-ring handles (HandlerTuple)
+        inner = Line2D([], [], marker="o", linestyle="", color="0.5", markersize=4)
+        outer = Line2D([], [], marker="o", linestyle="", markerfacecolor="none",
+                       markeredgecolor="0.4", markeredgewidth=1.2, markersize=11)
+        mhandles.append((outer, inner))
+        mlabels.append("+ dual checkpoint, ipi+nivo (no single-agent data)")
     if mhandles:
-        ax.add_artist(ax.legend(handles=mhandles, loc="lower right", fontsize=8))
+        ax.add_artist(ax.legend(mhandles, mlabels, loc="lower right", fontsize=8,
+                      handler_map={tuple: HandlerTuple(ndivide=None)}))
     _add_family_legend(ax, [c for c, _, _ in pts], colors)
 
     fig.savefig(FIGDIR / fname, dpi=300, bbox_inches="tight")
