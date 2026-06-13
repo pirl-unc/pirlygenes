@@ -32,8 +32,8 @@ OUT = Path(__file__).resolve().parent / "outputs"
 COUNTS = OUT / "cta_patient_counts.csv"
 UNION = OUT / "cta_union_counts.csv"
 FIGDIR = OUT
-TPM_THRESHOLDS = [25, 50, 100]
-PERCENTILES = [80, 90, 95]
+TPM_THRESHOLDS = [25, 50]
+PERCENTILES = [90, 95]
 TOPN = 40
 
 

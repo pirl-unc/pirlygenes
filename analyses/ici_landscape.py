@@ -217,9 +217,7 @@ def _cta_metrics_heatmap():
         return 0
     u = pd.read_csv(path)
     metrics = {">25 TPM": "n_any_gt25", ">50 TPM": "n_any_gt50",
-               ">100 TPM": "n_any_gt100", ">200 TPM": "n_any_gt200",
-               "≥p80": "n_any_p80", "≥p90": "n_any_p90",
-               "≥p95": "n_any_p95"}
+               "≥p90": "n_any_p90", "≥p95": "n_any_p95"}
     frac = pd.DataFrame(
         {lab: 100.0 * u[col] / u["n_samples"] for lab, col in metrics.items()})
     frac.index = u["cancer_code"]
@@ -231,7 +229,7 @@ def _cta_metrics_heatmap():
     ax.set_xticklabels(frac.columns, rotation=45, ha="right", fontsize=8)
     ax.set_yticks(range(len(frac)))
     ax.set_yticklabels(frac.index, fontsize=6)
-    ax.axvline(3.5, color="white", lw=1.5)     # absolute-TPM | within-sample pctile
+    ax.axvline(1.5, color="white", lw=1.5)     # absolute-TPM | within-sample pctile
     ax.set_title("CTA burden — all metrics (% patients with ≥1 CTA on)\n"
                  "absolute TPM | within-sample percentile, sorted by ≥p95",
                  fontsize=10, pad=10)

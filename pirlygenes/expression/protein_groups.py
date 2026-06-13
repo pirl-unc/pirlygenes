@@ -90,6 +90,13 @@ def proteoform_id(member_symbols):
     if len(syms) == 1:
         return syms[0]
     stem = os.path.commonprefix(syms)
+    # Don't split inside a multi-digit number: if the common prefix ends mid-run
+    # (its last char is a digit and a member continues with another digit, e.g.
+    # PRAMEF25/PRAMEF26 -> prefix 'PRAMEF2'), back it up to the start of that
+    # trailing digit run so the suffixes stay whole numbers (-> 'PRAMEF25/26').
+    if stem and stem[-1].isdigit() and any(
+            len(s) > len(stem) and s[len(stem)].isdigit() for s in syms):
+        stem = stem.rstrip("0123456789")
     suffixes = [s[len(stem):] for s in syms]
     if stem and all(suffixes):
         return stem + "/".join(suffixes)
@@ -253,16 +260,14 @@ def collapse_protein_identical_loci_long(
         out = out.merge(
             work.groupby(full_keys, as_index=False)[present_max].max(),
             on=full_keys, how="left")
-    # A row is a FOLDED proteoform only where >=2 member loci were present in
-    # this context and summed; it then leaves the ENSG key space and is keyed by
-    # the group's proteoform ID (``csym[canon]`` — e.g. ``CTAG1A/B``) in both the
-    # id and symbol columns. Single-locus rows keep their real ENSG + symbol.
-    sizes = work.groupby(full_keys).size().rename("_n").reset_index()
-    out = out.merge(sizes, on=full_keys, how="left")
+    # Every member of a fold group leaves the ENSG key space and is keyed by the
+    # group's proteoform ID (``csym[canon]`` — e.g. ``CTAG1A/B``) in both the id
+    # and symbol columns, CONSISTENTLY across cohorts (whether 1 or N members were
+    # present in a given context — the reads can't be told apart). Single-locus
+    # genes (``_canon`` is their own ENSG, not a group key) keep their real ENSG.
     pid = out["_canon"].map(csym)
-    folded = (out["_n"] >= 2) & pid.notna()
-    out[id_col] = out[id_col].mask(folded, pid)
-    out[symbol_col] = out[symbol_col].mask(folded, pid)
+    out[id_col] = out[id_col].mask(pid.notna(), pid)
+    out[symbol_col] = out[symbol_col].mask(pid.notna(), pid)
     return out.sort_values("_ord").reset_index(drop=True)[list(df.columns)]
 
 

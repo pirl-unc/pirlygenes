@@ -31,8 +31,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 import pirlygenes.expression.accessors as accessors
-import pirlygenes.gene_sets_cancer as gsc
-from cta_expression_heatmaps import _representative_source
+from cta_expression_heatmaps import _cta_symbols, _representative_source
 from _run_layout import add_layout_args, resolve_dirs, pct_axis
 
 ACTIONABLE_TPM = 30.0     # "actionable" target threshold (per user intuition)
@@ -78,8 +77,8 @@ def cta_matrices() -> dict[str, pd.DataFrame]:
     df = accessors.cancer_reference_expression(collapse_cdna_identical=True)
     rep = _representative_source(df)
     keep = set(zip(rep["cancer_code"], rep["source_cohort"]))
-    cta_ids = set(gsc.CTA_gene_ids())
-    sub = df[df["Ensembl_Gene_ID"].isin(cta_ids)]
+    cta_syms = _cta_symbols()
+    sub = df[df["Symbol"].isin(cta_syms)]
     sub = sub[[(c, s) in keep for c, s in zip(sub["cancer_code"], sub["source_cohort"])]]
     return {
         "median (≥50% of patients)": sub.pivot_table(

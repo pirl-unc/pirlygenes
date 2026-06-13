@@ -31,6 +31,15 @@ from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 import pirlygenes.expression.accessors as accessors
 from _run_layout import add_layout_args, resolve_dirs
 import pirlygenes.gene_sets_cancer as gsc
+from pirlygenes.expression.protein_groups import fold_to_cdna_canonical_symbol
+
+def _cta_symbols() -> set:
+    """CTA panel folded onto the matrix's proteoform-ID columns, so a folded
+    antigen (NY-ESO `CTAG1A/B`, `XAGE1A/B`, the CT47A cluster) is selected by its
+    proteoform-ID `Symbol` after collapse_cdna_identical — NOT by a member ENSG
+    that no longer keys the row."""
+    return set(fold_to_cdna_canonical_symbol(gsc.CTA_gene_names()))
+
 
 N_CANCER_TYPES = 30
 N_CTAS = 30
@@ -120,9 +129,9 @@ def representative_cohorts(df: pd.DataFrame, metric: str) -> pd.DataFrame:
     if metric == "size":
         rep = rep.assign(metric_score=rep["n_samples"].astype(float))
     else:
-        cta_ids = set(gsc.CTA_gene_ids())
+        cta_syms = _cta_symbols()
         keep = set(zip(rep["cancer_code"], rep["source_cohort"]))
-        cta = df[df["Ensembl_Gene_ID"].isin(cta_ids)]
+        cta = df[df["Symbol"].isin(cta_syms)]
         cta = cta[
             [(c, s) in keep for c, s in zip(cta["cancer_code"], cta["source_cohort"])]
         ]
@@ -161,9 +170,9 @@ def _row_label(code: str, n_by_code: dict, parent_name: dict) -> str:
 def cta_rows(df: pd.DataFrame, rep: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """Long CTA rows for the selected cohorts (labelled), plus the row order
     (cohort labels in metric_score order)."""
-    cta_ids = set(gsc.CTA_gene_ids())
+    cta_syms = _cta_symbols()
     keep = set(zip(rep["cancer_code"], rep["source_cohort"]))
-    sub = df[df["Ensembl_Gene_ID"].isin(cta_ids)]
+    sub = df[df["Symbol"].isin(cta_syms)]
     sub = sub[
         [(c, s) in keep for c, s in zip(sub["cancer_code"], sub["source_cohort"])]
     ]
