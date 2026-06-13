@@ -1016,6 +1016,11 @@ def _pool_union_rows(long: pd.DataFrame, *,
     even on the full union.
     """
     keys = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "normalization"]
+    # Member_Ensembl_Gene_IDs is constant per Ensembl_Gene_ID (a proteoform's
+    # constituent ENSGs), so carrying it as a group key preserves it through
+    # pooling without changing the grouping.
+    if "Member_Ensembl_Gene_IDs" in long.columns:
+        keys = keys + ["Member_Ensembl_Gene_IDs"]
     w = long["n_samples"].where(long["expression"].notna()) \
         if "n_samples" in long.columns else long["expression"].notna().astype(float)
     tmp = long.assign(_w=w, _wx=w * long["expression"])
@@ -1029,7 +1034,8 @@ def _pool_union_rows(long: pd.DataFrame, *,
     g["q1"] = np.nan
     g["q3"] = np.nan
     g["source_cohort"] = "POOLED"
-    out_cols = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"]
+    out_cols = ["Ensembl_Gene_ID", "Symbol", "Member_Ensembl_Gene_IDs",
+                "cancer_code", "source_cohort"]
     if include_provenance:
         if "n_samples" in long.columns:
             out_cols.append("n_samples")
@@ -1257,6 +1263,24 @@ def cancer_reference_expression(
 
     if pool:
         long = _pool_union_rows(long, include_provenance=include_provenance)
+
+    # Dual gene/proteoform identifiers on every row, so consumers can work at
+    # either level: `Proteoform_ID` is the stable proteoform key each row maps to
+    # (= `Ensembl_Gene_ID` on the proteoform frame; the gene's proteoform on the
+    # per-ENSG gene frame), and `Member_Ensembl_Gene_IDs` is the constituent real
+    # ENSGs (the gene view; = the gene's own ENSG when not folded).
+    from .protein_groups import fold_to_cdna_canonical_id
+    _ids = long["Ensembl_Gene_ID"].astype(str)
+    _pid = {u: fold_to_cdna_canonical_id([u])[0] for u in _ids.unique()}
+    long = long.assign(Proteoform_ID=_ids.map(_pid))
+    if "Member_Ensembl_Gene_IDs" not in long.columns:
+        long = long.assign(Member_Ensembl_Gene_IDs=long["Ensembl_Gene_ID"])
+    # keep the four identifier columns grouped + consistently ordered (so the gene
+    # and proteoform frames share one schema)
+    _id_cols = ["Ensembl_Gene_ID", "Symbol", "Proteoform_ID",
+                "Member_Ensembl_Gene_IDs"]
+    long = long[[c for c in _id_cols if c in long.columns]
+                + [c for c in long.columns if c not in _id_cols]]
 
     if format == "long":
         return long

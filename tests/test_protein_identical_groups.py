@@ -196,6 +196,35 @@ def test_accessor_collapse_cdna_identical_behaviour():
     assert nrows(base, "H4C") - nrows(roll, "H4C") <= 3
 
 
+def test_fold_to_cdna_canonical_id():
+    """ENSG analog of the symbol fold: a member ENSG -> the proteoform key, an
+    ungrouped ENSG -> itself, de-duplicated."""
+    from pirlygenes.expression.protein_groups import fold_to_cdna_canonical_id
+    assert fold_to_cdna_canonical_id(["ENSG00000184033"]) == ["CTAG1A/B"]   # CTAG1B
+    assert fold_to_cdna_canonical_id(["ENSG00000141510"]) == ["ENSG00000141510"]  # TP53
+    assert fold_to_cdna_canonical_id(
+        ["ENSG00000184033", "ENSG00000268651"]) == ["CTAG1A/B"]   # both -> one key
+
+
+def test_dual_gene_proteoform_identifiers():
+    """The accessor exposes a gene view and a proteoform view that share one
+    schema and bridge via Proteoform_ID / Member_Ensembl_Gene_IDs."""
+    from pirlygenes.expression.accessors import cancer_reference_expression as cre
+    gene = cre(cancer_types=["SKCM"], normalize="tpm")
+    prot = cre(cancer_types=["SKCM"], normalize="tpm", collapse_cdna_identical=True)
+    cols = {"Ensembl_Gene_ID", "Proteoform_ID", "Member_Ensembl_Gene_IDs", "Symbol"}
+    assert cols <= set(gene.columns) and cols <= set(prot.columns)
+    # gene frame: CTAG1B keeps its ENSG but bridges to the proteoform
+    g = gene[gene["Ensembl_Gene_ID"] == "ENSG00000184033"].iloc[0]
+    assert g["Proteoform_ID"] == "CTAG1A/B"
+    assert g["Member_Ensembl_Gene_IDs"] == "ENSG00000184033"
+    # proteoform frame: one CTAG1A/B row carrying its constituent ENSGs
+    pr = prot[prot["Proteoform_ID"] == "CTAG1A/B"]
+    assert len(pr) >= 1
+    assert set(pr.iloc[0]["Member_Ensembl_Gene_IDs"].split(";")) == {
+        "ENSG00000184033", "ENSG00000268651"}
+
+
 def test_proteoform_id_construction():
     """A folded group's ID is the merged member symbols, so it shows exactly what
     was combined and is unique by construction."""

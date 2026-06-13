@@ -283,6 +283,8 @@ def test_cancer_reference_expression_empty_gene_subset_keeps_long_schema():
     assert list(df.columns) == [
         "Ensembl_Gene_ID",
         "Symbol",
+        "Proteoform_ID",
+        "Member_Ensembl_Gene_IDs",
         "cancer_code",
         "source_cohort",
         "source_project",

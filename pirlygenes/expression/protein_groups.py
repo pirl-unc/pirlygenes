@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections import defaultdict
 from functools import lru_cache
 
 import pandas as pd
@@ -268,7 +269,20 @@ def collapse_protein_identical_loci_long(
     pid = out["_canon"].map(csym)
     out[id_col] = out[id_col].mask(pid.notna(), pid)
     out[symbol_col] = out[symbol_col].mask(pid.notna(), pid)
-    return out.sort_values("_ord").reset_index(drop=True)[list(df.columns)]
+    # Dual-identifier contract: the proteoform ID is the key, but the real
+    # constituent ENSGs stay reachable for ENSG-keyed consumers via the
+    # ``Member_Ensembl_Gene_IDs`` column (";"-joined; the gene's own ENSG for a
+    # single locus). Members come from the (canonical -> members) inverse of
+    # ``m2c``, so it's the full group membership regardless of per-context presence.
+    members = defaultdict(set)
+    for member, canon in m2c.items():
+        members[canon].add(member)
+    members_str = {c: ";".join(sorted(ms)) for c, ms in members.items()}
+    out["Member_Ensembl_Gene_IDs"] = [members_str.get(c, c) for c in out["_canon"]]
+    keep_cols = list(df.columns)
+    if "Member_Ensembl_Gene_IDs" not in keep_cols:
+        keep_cols = keep_cols + ["Member_Ensembl_Gene_IDs"]
+    return out.sort_values("_ord").reset_index(drop=True)[keep_cols]
 
 
 # ---- cDNA-identical (read-recovery) collapse: the universal, principled one ----
@@ -337,7 +351,8 @@ def _cdna_symbol_to_canonical_symbol() -> dict[str, str]:
 
 def fold_to_cdna_canonical_symbol(symbols) -> list[str]:
     """Map symbols onto their cDNA-identical (+override) canonical symbol and
-    de-duplicate, preserving order — fold a panel the way the matrix collapsed."""
+    de-duplicate, preserving order — fold a panel the way the matrix collapsed.
+    Match the result against the collapsed table's ``Symbol`` column."""
     m = _cdna_symbol_to_canonical_symbol()
     seen, out = set(), []
     for s in symbols:
@@ -345,6 +360,25 @@ def fold_to_cdna_canonical_symbol(symbols) -> list[str]:
         if c not in seen:
             seen.add(c)
             out.append(c)
+    return out
+
+
+def fold_to_cdna_canonical_id(ensembl_ids) -> list[str]:
+    """ENSG analog of :func:`fold_to_cdna_canonical_symbol`: map each Ensembl
+    gene id onto the **key it collapses to** — the group's proteoform ID if it is
+    in a cDNA-identical (+override) group, else its own (version-stripped) ENSG —
+    de-duplicated, order-preserving. Match the result against the collapsed
+    table's ``Ensembl_Gene_ID`` column (the ENSG-panel selection path)."""
+    m2c = _cdna_member_to_canonical()
+    c2s = _cdna_canonical_to_symbol()
+    seen, out = set(), []
+    for e in ensembl_ids:
+        e = _strip_version(str(e).strip())
+        canon = m2c.get(e, e)
+        key = c2s.get(canon, e)          # proteoform id if grouped, else the ENSG
+        if key not in seen:
+            seen.add(key)
+            out.append(key)
     return out
 
 
