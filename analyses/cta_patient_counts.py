@@ -28,9 +28,9 @@ Run:  python analyses/cta_patient_counts.py [--threshold 25] [--cohort GBM]
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -128,9 +128,6 @@ def _pct_axis(ax, which):
     share). ``which`` is 'x' or 'y'."""
     from matplotlib.ticker import PercentFormatter
     getattr(ax, f"{which}axis").set_major_formatter(PercentFormatter(xmax=100, decimals=0))
-
-
-from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -851,8 +848,8 @@ def _shade(rgb, k):
     distinguish members within one family."""
     import colorsys
     r, g, b = rgb[:3]
-    h, l, s = colorsys.rgb_to_hls(r, g, b)
-    return colorsys.hls_to_rgb(h, min(1.0, max(0.0, l + k)), s)
+    h, lum, s = colorsys.rgb_to_hls(r, g, b)
+    return colorsys.hls_to_rgb(h, min(1.0, max(0.0, lum + k)), s)
 
 
 # Distinct base hues, one per antigen family; members shaded within the hue.
@@ -1533,9 +1530,11 @@ def _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
     if log_y:
         ax.set_yscale("log")
         pos = [y for y in ys if y > 0]
-        ax.set_ylim((min(pos) * 0.7) if pos else 1.0, max(ys) * 1.5)
+        if pos:                              # all-zero panel: leave the default
+            ax.set_ylim(min(pos) * 0.7, max(pos) * 1.5)
     else:
-        ax.set_ylim(0, max(ys) * 1.08)
+        top = max(ys)
+        ax.set_ylim(0, top * 1.08 if top > 0 else 1.0)
     _scatter_points(fig, ax, xs, ys, pts, color_by)
     ax.set_xlabel(xaxis.label)
     ax.set_ylabel(ylabel)

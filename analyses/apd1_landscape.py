@@ -102,7 +102,7 @@ def _heatmap(Z, orr, axes_of, rho):
     ax.set_yticks(range(len(order)))
     ax.set_yticklabels([f"{c}  ({orr[c]:.0f}%)" for c in order], fontsize=7)
     # axis-group separators + headers
-    bounds, prev, start = [], None, 0
+    prev, start = None, 0
     for i, c in enumerate(Zo.columns):
         a = axes_of[c]
         if prev is not None and a != prev:
@@ -118,7 +118,7 @@ def _heatmap(Z, orr, axes_of, rho):
                  "level (red high / blue low)", fontsize=11, pad=44)
     fig.colorbar(ax.images[0], ax=ax, shrink=0.4, label="z-score")
     fig.tight_layout()
-    fig.savefig(OUT / "apd1_landscape_heatmap.png", dpi=130)
+    fig.savefig(OUT / "apd1_landscape_heatmap.png", dpi=300)
     plt.close(fig)
 
 
@@ -158,7 +158,7 @@ def _balance_sheet(Z, orr, axes_of):
     fig.supxlabel("←  less favourable        contribution toward aPD-1 response "
                   "(z)        more favourable  →", fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.savefig(OUT / "apd1_balance_sheet.png", dpi=130)
+    fig.savefig(OUT / "apd1_balance_sheet.png", dpi=300)
     plt.close(fig)
 
 

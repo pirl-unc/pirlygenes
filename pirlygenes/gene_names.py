@@ -57,6 +57,21 @@ aliases = {
 }
 
 
+# Display labels for *proteoform IDs* — the synthesized identifiers the
+# cDNA/protein-identical collapse assigns to a folded paralog group (the merged
+# member symbols, e.g. CTAG1A/B; see
+# pirlygenes.expression.protein_groups.proteoform_id). These are display-only:
+# unlike `aliases`, they do NOT feed the bidirectional mapping synonym pool
+# (gene_mapping._curated_display_candidates), because a proteoform ID like
+# CTAG1A/B is not a real HGNC locus and must not compete with the real gene
+# (CTAG1B) for the reverse "NY-ESO-1 -> official symbol" resolution. A proteoform
+# ID with no entry here displays as-is (e.g. XAGE1A/B), which is already legible.
+proteoform_display_aliases = {
+    "CTAG1A/B": "NY-ESO-1",                          # cDNA-identical NY-ESO pair
+    "CT47A1/2/3/4/5/6/7/8/9/10/11/12": "CT47A",      # the 12-locus CT47A cluster
+}
+
+
 reverse_aliases = defaultdict(list)
 for k, v in aliases.items():
     reverse_aliases[v].append(k)
@@ -74,7 +89,9 @@ def get_reverse_alias_as_list(name: str) -> list[str]:
 
 
 def display_name(name: str) -> str:
-    return aliases.get(name, name)
+    if name in aliases:
+        return aliases[name]
+    return proteoform_display_aliases.get(name, name)
 
 
 def short_gene_name(name: str) -> str:

@@ -28,6 +28,8 @@ from pathlib import Path
 import pandas as pd
 from pyensembl import EnsemblRelease
 
+from pirlygenes.expression.protein_groups import proteoform_id
+
 MIN_CDS = 90  # nt (>= 30 codons), mirrors the protein generator's 30-aa floor
 OUT = Path(__file__).resolve().parent.parent / "pirlygenes" / "data" / \
     "cdna-identical-gene-groups.csv"
@@ -76,12 +78,13 @@ def build_groups(release: int) -> pd.DataFrame:
         if len(gene_ids) < 2:
             continue
         members = sorted(gene_ids)
-        canonical = members[0]
-        canonical_symbol = canon[canonical][1]
+        # canonical *symbol* = proteoform ID: the merged member symbols (e.g.
+        # XAGE1A+XAGE1B -> XAGE1A/B), unique by construction.
+        pid = proteoform_id([canon[m][1] for m in members])
         for member in members:
             rows.append({
-                "group_canonical_ensembl_gene_id": canonical,
-                "group_canonical_symbol": canonical_symbol,
+                "group_canonical_ensembl_gene_id": members[0],
+                "group_canonical_symbol": pid,
                 "ensembl_gene_id": member,
                 "symbol": canon[member][1],
                 "cds_nt": len(cds),

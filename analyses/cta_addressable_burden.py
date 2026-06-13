@@ -223,7 +223,6 @@ def _burden_category_plot():
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    import numpy as np
 
     counts = pd.read_csv(COUNTS)
     counts = counts[~counts.cancer_code.isin(_REDUNDANT)].copy()
@@ -269,7 +268,11 @@ def main():
     ap.add_argument("--run-dir", type=Path, default=None,
                     help="run_<ts>/ holding cta_patient_counts.csv + "
                          "cta_union_counts.csv (default: latest run under "
-                         "analyses/outputs). Plots are written into this dir.")
+                         "analyses/outputs).")
+    ap.add_argument("--fig-dir", type=Path, default=None,
+                    help="where to write plots (default: the --run-dir itself). "
+                         "Pass a subfolder to keep these plots in their own "
+                         "family dir while still reading tables from --run-dir.")
     args = ap.parse_args()
     run = args.run_dir or latest_run_dir(OUT)
     if run is None:
@@ -278,7 +281,8 @@ def main():
             "cta_patient_counts.py first (or pass --run-dir).")
     COUNTS = run / "cta_patient_counts.csv"
     UNION = run / "cta_union_counts.csv"
-    FIGDIR = run
+    FIGDIR = args.fig_dir or run
+    FIGDIR.mkdir(parents=True, exist_ok=True)
     print(f"reading tables + writing plots in {FIGDIR}", flush=True)
     _render(drop_mage=False, suffix="", title_tag="")
     _render(drop_mage=True, suffix="_noMAGE", title_tag=" (excl. MAGE-A/B/C)")

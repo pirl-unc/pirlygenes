@@ -45,6 +45,7 @@ from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 from _apd1_factors import (apd1_map, cohort_gene_matrix,  # noqa: E402
                            cta_burden, curated_exclusion_genes, indel_map,
                            tmb_map, viral_score, with_parent)
+from _panels import GYN_COLD  # noqa: E402
 
 OUT = Path(os.environ.get("APD1_RUN_DIR",
           str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
@@ -146,7 +147,7 @@ def main() -> int:
 
 def _plot(F, feats, betas, r2):
     fig = plt.figure(figsize=(16, 5.2))
-    gyn = ["OV", "BRCA_Basal", "UCEC_CNL", "UCEC_CNH"]
+    gyn = GYN_COLD
     rcc = ["KIRC", "KIRP", "KICH"]
 
     # A. standardized coefficients
@@ -199,7 +200,7 @@ def _plot(F, feats, betas, r2):
     fig.suptitle("Causal factors of anti-PD-1 response across cancer types "
                  "(IFN/infiltrate markers deliberately excluded)", fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.savefig(OUT / "apd1_causal_factors.png", dpi=130)
+    fig.savefig(OUT / "apd1_causal_factors.png", dpi=300)
 
 
 if __name__ == "__main__":

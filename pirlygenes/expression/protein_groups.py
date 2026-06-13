@@ -23,15 +23,77 @@ whose canonical/longest protein is byte-identical) into
 
 Groups are protein-identity only: paralog families that differ at the protein
 level (PSG*, CSH*, most MAGE/GAGE members) are NOT collapsed.
+
+Identifier contract (used consistently everywhere a collapse runs)
+------------------------------------------------------------------
+A row in a collapsed expression table is keyed by ``Ensembl_Gene_ID`` and named
+by ``Symbol``:
+
+- **Unique gene → protein (not folded):** the key is the gene's real **ENSG**
+  and the name is its HGNC symbol. Untouched.
+- **Folded proteoform (>=2 loci summed):** the member ENSGs LEAVE the key space
+  and the merged row is keyed by a **proteoform ID** — the member symbols
+  combined so the id shows exactly what was summed and is unique by construction
+  (:func:`proteoform_id`: ``XAGE1A``+``XAGE1B`` -> ``XAGE1A/B``; ``CT47A1..12``
+  -> ``CT47A1/2/.../12``). Both ``Ensembl_Gene_ID`` and ``Symbol`` carry this id.
+
+So ``Ensembl_Gene_ID`` holds an ENSG xor a proteoform id; never a member locus
+standing in for the group. The single id→display-name authority is
+:func:`pirlygenes.gene_names.display_name`, which maps a gene symbol OR a
+proteoform id to its label (``CTAG1A/B`` -> ``NY-ESO-1``; ``XAGE1A/B`` -> itself).
 """
 
 from __future__ import annotations
 
+import os
+import re
 from functools import lru_cache
 
 import pandas as pd
 
 from pirlygenes.load_dataset import get_data
+
+def _natural_key(s):
+    """Sort key that orders 'CT47A2' before 'CT47A10' (numeric chunks compared
+    as ints), so a folded proteoform ID lists its members in human order."""
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", str(s))]
+
+
+def proteoform_id(member_symbols):
+    """The identifier for a folded proteoform group — one row of expression
+    summed across **>=2 distinct ENSG loci** that the collapse removes from the
+    key space. It is built from the member gene symbols so it shows exactly what
+    was merged and is unique by construction (no two groups share a member set):
+
+    - all members carry the **same** symbol -> that symbol (e.g. two ``FOO``
+      loci -> ``FOO``);
+    - members share a common prefix -> factor it out and slash the distinct
+      suffixes (``CTAG1A``+``CTAG1B`` -> ``CTAG1A/B``; ``XAGE1A``+``XAGE1B`` ->
+      ``XAGE1A/B``; ``CT47A1..CT47A12`` -> ``CT47A1/2/.../12``);
+    - no shared prefix -> slash the full symbols (``GENEA`` + ``GENEB`` ->
+      ``GENEA/GENEB``).
+
+    A single-locus gene is NOT a proteoform group: it keeps its own ENSG as the
+    key and its symbol as the name (this function is only called for >=2 loci).
+    Returns ``None`` if no member carries a symbol. The human-readable label for
+    the result comes from :func:`pirlygenes.gene_names.display_name` (e.g.
+    ``CTAG1A/B`` -> ``NY-ESO-1``).
+    """
+    syms = []
+    for s in member_symbols:
+        s = str(s).strip()
+        if s and s.lower() != "nan" and s not in syms:
+            syms.append(s)
+    if not syms:
+        return None
+    syms.sort(key=_natural_key)
+    if len(syms) == 1:
+        return syms[0]
+    stem = os.path.commonprefix(syms)
+    suffixes = [s[len(stem):] for s in syms]
+    if stem and all(suffixes):
+        return stem + "/".join(suffixes)
+    return "/".join(syms)
 
 
 @lru_cache(maxsize=1)
@@ -191,10 +253,16 @@ def collapse_protein_identical_loci_long(
         out = out.merge(
             work.groupby(full_keys, as_index=False)[present_max].max(),
             on=full_keys, how="left")
-    # key the merged row by the canonical id + symbol
-    out[id_col] = out["_canon"]
-    out[symbol_col] = [csym.get(c, s)
-                       for c, s in zip(out["_canon"], out[symbol_col])]
+    # A row is a FOLDED proteoform only where >=2 member loci were present in
+    # this context and summed; it then leaves the ENSG key space and is keyed by
+    # the group's proteoform ID (``csym[canon]`` — e.g. ``CTAG1A/B``) in both the
+    # id and symbol columns. Single-locus rows keep their real ENSG + symbol.
+    sizes = work.groupby(full_keys).size().rename("_n").reset_index()
+    out = out.merge(sizes, on=full_keys, how="left")
+    pid = out["_canon"].map(csym)
+    folded = (out["_n"] >= 2) & pid.notna()
+    out[id_col] = out[id_col].mask(folded, pid)
+    out[symbol_col] = out[symbol_col].mask(folded, pid)
     return out.sort_values("_ord").reset_index(drop=True)[list(df.columns)]
 
 

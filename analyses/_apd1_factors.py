@@ -59,6 +59,12 @@ _COLORECTAL_POOL = {
 }
 _COLORECTAL_DROP = ("COAD", "READ")  # bulk all-comer = MSI/MSS mixture
 
+# Full colorectal re-key map shared by EVERY aPD1 plot (causal-factors here +
+# response bars in apd1_response_plots): the registry-derived COAD/READ x
+# {MSI,MSS} -> CRC_MSI/CRC_MSS pool plus bulk COAD/READ -> CRC. Exported so the
+# plots import this one source of truth instead of each hardcoding the map.
+CRC_POOL = {**_COLORECTAL_POOL, "COAD": "CRC", "READ": "CRC"}
+
 # A bulk all-comer code whose finer clinical anchors carry distinct aPD1
 # ORR/TMB is a *mixture* of those anchors (like bulk COAD/READ over MSI/MSS).
 # When every listed subtype is present in the cohort x gene matrix, drop the
@@ -78,7 +84,7 @@ def _pool_dict(d: dict) -> dict:
     all-comer COAD/READ into a CRC fallback value, then drop the bulk keys.
     CRC is a *fallback* (e.g. CRC_MSS TMB has no explicit row, so it resolves to
     base CRC), not a modeled cohort (the matrix only carries CRC_MSI/CRC_MSS)."""
-    pool = {**_COLORECTAL_POOL, "COAD": "CRC", "READ": "CRC"}
+    pool = CRC_POOL
     groups: dict = {}
     for src, tgt in pool.items():
         if src in d and pd.notna(d[src]):

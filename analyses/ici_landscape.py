@@ -40,6 +40,7 @@ from pirlygenes import gene_sets_cancer as gsc  # noqa: E402
 from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 from _apd1_factors import (apd1_map, tmb_map, viral_score, cta_burden,  # noqa: E402
                            cohort_gene_matrix, curated_signatures)
+from _panels import GENE_PANELS  # noqa: E402
 from _run_layout import add_layout_args, resolve_dirs  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "outputs"
@@ -59,8 +60,9 @@ _WNT = "aPD1_exclusion_Wnt"
 #   IL10  — general secreted immunosuppressive cytokine (Treg/M2); included to
 #           check whether it carries any per-cohort signal vs the exclusion genes.
 # Shown as individual columns in the causal heatmap (each gene's Spearman vs ORR
-# visible) and averaged into the favourability suppression term.
-_SECRETED_INHIBITORY = ["TGFB1", "WNT5A", "WNT11", "IL10"]
+# visible) and averaged into the favourability suppression term. Sourced from the
+# central panel registry (proteoform-folded) so it can't drift from the figures.
+_SECRETED_INHIBITORY = GENE_PANELS["secreted_inhibitory"]
 
 
 def _z(s):

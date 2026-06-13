@@ -5,9 +5,11 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes.expression.protein_groups import (
+    cdna_identical_groups,
     collapse_protein_identical_loci,
     collapse_protein_identical_loci_long,
     fold_symbols_to_canonical,
+    proteoform_id,
     protein_identical_groups,
 )
 
@@ -117,12 +119,14 @@ def test_long_collapse_sums_per_context_not_across():
     })
     out = collapse_protein_identical_loci_long(
         long, group_keys=["cancer_code"], sum_cols=["expression"])
+    # the folded rows leave the ENSG key space -> keyed by the proteoform ID
+    pid = grp["group_canonical_symbol"]
     val = out.set_index(["Ensembl_Gene_ID", "cancer_code"])["expression"]
-    assert val[(canon, "CA")] == 15.0          # 10 + 5 within cohort CA
-    assert val[(canon, "CB")] == 7.0           # 7 + NaN -> 7 (NaN ignored)
-    assert val[("ENSG00000000003", "CA")] == 99.0   # ungrouped untouched
-    # merged row carries the canonical symbol
-    assert out[out["Ensembl_Gene_ID"] == canon]["Symbol"].iloc[0] == grp["group_canonical_symbol"]
+    assert val[(pid, "CA")] == 15.0            # 10 + 5 within cohort CA
+    assert val[(pid, "CB")] == 7.0             # 7 + NaN -> 7 (NaN ignored)
+    assert val[("ENSG00000000003", "CA")] == 99.0   # ungrouped keeps its ENSG
+    # merged row's id AND symbol are the proteoform ID
+    assert (out[out["Ensembl_Gene_ID"] == pid]["Symbol"] == pid).all()
 
 
 def test_fold_symbols_to_canonical():
@@ -144,11 +148,13 @@ def test_accessor_collapse_option_sums_paralogs():
     coll = cancer_reference_expression(cancer_types=["SKCM"], normalize="tpm_clean",
                                        collapse_protein_identical=True)
     assert len(coll) < len(base)               # loci merged
-    # MAGEA9/MAGEA9B -> one canonical row whose value is their sum
+    # MAGEA9 + MAGEA9B -> one row keyed by the proteoform ID (one symbol is a
+    # prefix of the other, so the ID slashes the full names), value = their sum
     b = base[base["Symbol"].isin(["MAGEA9", "MAGEA9B"])]["expression"]
-    c = coll[coll["Symbol"].isin(["MAGEA9", "MAGEA9B"])]["expression"]
+    c = coll[coll["Symbol"] == "MAGEA9/MAGEA9B"]["expression"]
     assert len(c) == 1
     assert abs(float(c.iloc[0]) - float(b.sum())) < 1e-6
+    assert not coll["Symbol"].isin(["MAGEA9", "MAGEA9B"]).any()
 
 
 def test_cdna_groups_table_invariants():
@@ -174,16 +180,50 @@ def test_accessor_collapse_cdna_identical_behaviour():
     def nrows(df, pat):
         return int(df["Symbol"].astype(str).str.match(pat).sum())
 
-    # NY-ESO CTAG1A/CTAG1B are cDNA-identical -> one row, summed
+    # NY-ESO CTAG1A/CTAG1B are cDNA-identical -> one row, summed, keyed by the
+    # proteoform ID CTAG1A/B in BOTH the id and symbol columns (the member loci
+    # leave the ENSG key space)
     b = base[base["Symbol"].isin(["CTAG1A", "CTAG1B"])]["expression"]
-    r = roll[roll["Symbol"].isin(["CTAG1A", "CTAG1B"])]
+    r = roll[roll["Symbol"] == "CTAG1A/B"]
     assert len(r) == 1 and abs(float(r["expression"].iloc[0]) - float(b.sum())) < 1e-6
+    assert r["Ensembl_Gene_ID"].iloc[0] == "CTAG1A/B"          # keyed by proteoform ID
+    assert not roll["Symbol"].isin(["CTAG1A", "CTAG1B"]).any()  # member loci folded away
     # MAGEA3 vs MAGEA6 are cDNA-DISTINCT (95.9% aa) -> stay separate
     assert roll["Symbol"].isin(["MAGEA3", "MAGEA6"]).sum() == 2
     # CT47A: override unifies all 12 loci into one (CT47B1 is a different antigen)
     assert nrows(roll, "CT47A") == 1
     # histone cluster: only exact-duplicate pairs merge, NOT the whole cluster
     assert nrows(base, "H4C") - nrows(roll, "H4C") <= 3
+
+
+def test_proteoform_id_construction():
+    """A folded group's ID is the merged member symbols, so it shows exactly what
+    was combined and is unique by construction."""
+    # shared prefix -> factor it out, slash the distinct suffixes
+    assert proteoform_id(["XAGE1A", "XAGE1B"]) == "XAGE1A/B"
+    assert proteoform_id(["CTAG1B", "CTAG1A"]) == "CTAG1A/B"           # order-independent
+    assert proteoform_id(["CT47A2", "CT47A10", "CT47A1"]) == "CT47A1/2/10"  # natural order
+    # no shared prefix -> slash full symbols (natural-sorted)
+    assert proteoform_id(["SOD2", "FOO9"]) == "FOO9/SOD2"
+    # one symbol is a prefix of the other -> slash full symbols
+    assert proteoform_id(["MAGEA9", "MAGEA9B"]) == "MAGEA9/MAGEA9B"
+    # identical / duplicate names -> use one
+    assert proteoform_id(["FOO", "FOO"]) == "FOO"
+    # NaN/empty members ignored
+    assert proteoform_id(["XAGE1A", "XAGE1B", "nan", ""]) == "XAGE1A/B"
+    assert proteoform_id([]) is None
+
+
+def test_group_csv_ids_unique_and_wellformed():
+    """The shipped derived tables: every group's proteoform ID is unique and is
+    not bounded by separator punctuation."""
+    for df in (protein_identical_groups(), cdna_identical_groups()):
+        per_id = df.groupby("group_canonical_symbol"
+                            )["group_canonical_ensembl_gene_id"].nunique()
+        assert (per_id == 1).all(), dict(per_id[per_id > 1])
+        for sym in df["group_canonical_symbol"].dropna().unique():
+            s = str(sym)
+            assert s[0].isalnum() and s[-1].isalnum(), s
 
 
 def test_collapse_is_idempotent():
