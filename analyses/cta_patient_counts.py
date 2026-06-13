@@ -1632,7 +1632,7 @@ def _mean_ctas_per_sample(mat, cols, thr, pctile_cutoffs):
 def _mean_total_cta_tpm(mat, cols, thr, pctile_cutoffs):
     """Mean over patients of the summed TPM across the CTAs that are ON at the
     threshold — the total CTA transcriptional burden per sample. Threshold-aware
-    like the other load metrics (so it gets t25/t50/p80/p90/p95 variants): only
+    like the other load metrics (so it gets t25/t50/p90/p95 variants): only
     CTAs above the cutoff contribute their TPM. Spans orders of magnitude, so
     plotted log-y."""
     on = _cohort_on_matrix(mat, cols, thr, pctile_cutoffs)

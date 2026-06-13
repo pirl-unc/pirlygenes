@@ -1269,9 +1269,16 @@ def cancer_reference_expression(
     # (= `Ensembl_Gene_ID` on the proteoform frame; the gene's proteoform on the
     # per-ENSG gene frame), and `Member_Ensembl_Gene_IDs` is the constituent real
     # ENSGs (the gene view; = the gene's own ENSG when not folded).
-    from .protein_groups import fold_to_cdna_canonical_id
+    from ..gene_ids import strip_version
+    from .protein_groups import (cdna_canonical_to_symbol,
+                                  cdna_member_to_canonical)
+    _m2c = cdna_member_to_canonical()
+    _c2s = cdna_canonical_to_symbol()
     _ids = long["Ensembl_Gene_ID"].astype(str)
-    _pid = {u: fold_to_cdna_canonical_id([u])[0] for u in _ids.unique()}
+    _pid = {}
+    for u in _ids.unique():               # per-id key (no dedup); idempotent on a
+        s = strip_version(u)              # proteoform ID (not a member -> itself)
+        _pid[u] = _c2s.get(_m2c.get(s, s), s)
     long = long.assign(Proteoform_ID=_ids.map(_pid))
     if "Member_Ensembl_Gene_IDs" not in long.columns:
         long = long.assign(Member_Ensembl_Gene_IDs=long["Ensembl_Gene_ID"])

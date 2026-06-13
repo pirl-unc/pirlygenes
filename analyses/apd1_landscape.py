@@ -41,6 +41,7 @@ from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 from _apd1_factors import (SIGNATURE_META, apd1_map,  # noqa: E402
                            cohort_gene_matrix, cta_burden, curated_signatures,
                            indel_map, tmb_map, viral_score, with_parent)
+from _panels import fold  # noqa: E402
 
 OUT = Path(os.environ.get("APD1_RUN_DIR",
           str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
@@ -73,7 +74,7 @@ def _build():
     cols["CTA"] = ("antigen", cta_burden(mat))
     # curated expression signatures
     for cls, genes in curated_signatures().items():
-        present = [g for g in genes if g in mat.columns]
+        present = [g for g in fold(genes) if g in mat.columns]  # proteoform-fold
         if len(present) < 1:        # allow single-gene signatures (TGF-β = TGFB2)
             continue
         axis = SIGNATURE_META[cls][0]

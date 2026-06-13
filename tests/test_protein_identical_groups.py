@@ -223,6 +223,14 @@ def test_dual_gene_proteoform_identifiers():
     assert len(pr) >= 1
     assert set(pr.iloc[0]["Member_Ensembl_Gene_IDs"].split(";")) == {
         "ENSG00000184033", "ENSG00000268651"}
+    # the dual columns survive pooling (pool groups on them, so they round-trip)
+    pooled = cre(cancer_types=["SKCM"], normalize="tpm",
+                 collapse_cdna_identical=True, pool=True)
+    assert cols <= set(pooled.columns)
+    pp = pooled[pooled["Proteoform_ID"] == "CTAG1A/B"]
+    assert len(pp) == 1 and set(
+        pp.iloc[0]["Member_Ensembl_Gene_IDs"].split(";")) == {
+        "ENSG00000184033", "ENSG00000268651"}
 
 
 def test_proteoform_id_construction():

@@ -42,7 +42,7 @@ from scipy.stats import spearmanr
 
 from _apd1_factors import (apd1_map, cohort_gene_matrix,
                            curated_exclusion_genes)
-from _panels import GENE_PANELS, GYN_COLD, HOT
+from _panels import GENE_PANELS, GYN_COLD, HOT, fold
 
 OUT = Path(os.environ.get("APD1_RUN_DIR",
           str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
@@ -168,7 +168,7 @@ def main() -> int:
     }
 
     def zcomposite(genes: list[str]) -> pd.Series:
-        present = [g for g in genes if g in mat.columns]
+        present = [g for g in fold(genes) if g in mat.columns]  # proteoform-fold
         z = (mat[present] - mat[present].mean()) / mat[present].std(ddof=0)
         return z.mean(axis=1)
 
@@ -198,7 +198,7 @@ def main() -> int:
     # ---- 5. greedy forward selection (descriptive; LOO-checked) -----------
     POOL = sorted({g for gs in GROUPS.values() for g in gs}
                   | set(GENE_PANELS["exclusion_pool_extras"]))
-    POOL = [g for g in POOL if g in mat.columns]
+    POOL = [g for g in fold(POOL) if g in mat.columns]
     chosen: list[str] = []
     best_rho = 0.0
     while True:
@@ -265,7 +265,7 @@ def main() -> int:
     LIT_POOL = sorted({g for gs in GROUPS.values() for g in gs
                        if gs is not GROUPS["Gyn_tolerance"]}
                       | set(CURATED) | {"GAS6", "ISLR"})
-    LIT_POOL = [g for g in LIT_POOL if g in mat.columns]
+    LIT_POOL = [g for g in fold(LIT_POOL) if g in mat.columns]
     gyn_set = [c for c in GYN_COLD if c in mat.index]
     resp_set = [c for c in mat.index if orr[c] >= 25]
 
