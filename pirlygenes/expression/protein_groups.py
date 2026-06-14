@@ -156,13 +156,13 @@ def _with_display_aliases(member_map: dict) -> dict:
     the SAME proteoform space up front: ``NY-ESO-1`` -> ``CTAG1A/B``.
 
     Only grouped members are aliased. Single-locus display nicknames are NOT
-    synthesised: ``gene_names.aliases`` is a display map with mixed direction
-    (mostly ``current_symbol -> nickname`` but some ``old_symbol ->
-    current_symbol``, e.g. ``PVRL4 -> NECTIN4``), so blindly mapping
-    ``display -> official`` would invert the latter and remap a real current
-    symbol (``NECTIN4``) onto a dead one (``PVRL4``). A grouped member's symbol is
-    always the current Ensembl symbol, so its alias direction is unambiguous;
-    single-locus official symbols fold via passthrough, and arbitrary synonyms go
+    synthesised: ``gene_names.aliases`` is a display map whose direction isn't
+    guaranteed — a stray ``old_symbol -> current_symbol`` entry (like the removed
+    ``PVRL4 -> NECTIN4``) would, under a blind ``display -> official`` map, remap a
+    real current symbol onto a dead one. A grouped member's symbol is always the
+    current Ensembl symbol, so restricting to grouped members keeps the alias
+    direction unambiguous and is robust even if such an entry were re-added.
+    Single-locus official symbols fold via passthrough, and arbitrary synonyms go
     through :func:`pirlygenes.gene_ids.find_gene_and_ensembl_release_by_name`."""
     from ..gene_names import aliases as _display_aliases
     out = dict(member_map)
@@ -460,6 +460,18 @@ def cdna_canonical_to_symbol() -> dict[str, str]:
     """Public ``{canonical_ensg: canonical_symbol}`` companion to
     :func:`cdna_member_to_canonical`."""
     return dict(_cdna_canonical_to_symbol())
+
+
+def protein_member_to_canonical() -> dict[str, str]:
+    """Public ``{member_ensg: canonical_ensg}`` for the **protein**-identical
+    collapse — the protein-abundance analog of :func:`cdna_member_to_canonical`."""
+    return dict(_member_to_canonical())
+
+
+def protein_canonical_id_to_symbol() -> dict[str, str]:
+    """Public ``{canonical_ensg: proteoform_symbol}`` companion to
+    :func:`protein_member_to_canonical`."""
+    return dict(_canonical_id_to_symbol())
 
 
 def cdna_symbol_to_canonical_symbol() -> dict[str, str]:

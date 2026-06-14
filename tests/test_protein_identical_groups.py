@@ -231,6 +231,13 @@ def test_dual_gene_proteoform_identifiers():
     assert len(pp) == 1 and set(
         pp.iloc[0]["Member_Ensembl_Gene_IDs"].split(";")) == {
         "ENSG00000184033", "ENSG00000268651"}
+    # Proteoform_ID is built with the maps MATCHING the collapse, so it equals the
+    # row key on BOTH collapse frames (cDNA and protein), not just cDNA.
+    for kw in (dict(collapse_cdna_identical=True),
+               dict(collapse_protein_identical=True)):
+        df = cre(cancer_types=["SKCM"], normalize="tpm", **kw)
+        assert (df["Ensembl_Gene_ID"].astype(str)
+                == df["Proteoform_ID"].astype(str)).all()
 
 
 def test_fold_resolves_display_aliases_up_front():
@@ -243,8 +250,9 @@ def test_fold_resolves_display_aliases_up_front():
         assert fold(["CTAG1B"]) == ["CTAG1A/B"]        # member symbol -> same
         # de-dups when alias + member of the same group are both given
         assert fold(["NY-ESO-1", "CTAG1B"]) == ["CTAG1A/B"]
-        # single-locus current symbols pass through; NOT inverted onto an old alias
-        # (aliases dict has PVRL4->NECTIN4, so blind folding would break NECTIN4)
+        # single-locus current symbols pass through; grouped-only folding never
+        # inverts a current symbol onto an old alias (regression guard for the
+        # removed backwards PVRL4->NECTIN4 entry)
         assert fold(["NECTIN4"]) == ["NECTIN4"]
         assert fold(["CD274"]) == ["CD274"]
 
