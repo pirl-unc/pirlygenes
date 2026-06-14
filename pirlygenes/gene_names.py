@@ -49,7 +49,12 @@ aliases = {
     "VSIR": "VISTA",
     "POU1F1": "POUF1",
     "ATP5F1E": "ATP5E",
-    "PVRL4": "NECTIN4",
+    # NOTE: do NOT add old->current entries here (e.g. PVRL4->NECTIN4). This dict
+    # is current_symbol -> preferred *display label* and feeds reverse_aliases /
+    # short_gene_name; a backwards entry makes the CURRENT symbol normalise to the
+    # dead one (short_gene_name('NECTIN4') -> 'PVRL4'). Old->current synonyms are
+    # resolved up front by the NCBI synonym layer (synonym_to_official('PVRL4') ->
+    # 'NECTIN4'), so they don't belong here.
     "CTAG1B": "NY-ESO-1",
     "TP53": "p53",
     "FOLR1": "FRα",
