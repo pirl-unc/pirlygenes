@@ -363,23 +363,38 @@ def fold_to_cdna_canonical_symbol(symbols) -> list[str]:
     return out
 
 
-def fold_to_cdna_canonical_id(ensembl_ids) -> list[str]:
-    """ENSG analog of :func:`fold_to_cdna_canonical_symbol`: map each Ensembl
-    gene id onto the **key it collapses to** — the group's proteoform ID if it is
-    in a cDNA-identical (+override) group, else its own (version-stripped) ENSG —
-    de-duplicated, order-preserving. Match the result against the collapsed
-    table's ``Ensembl_Gene_ID`` column (the ENSG-panel selection path)."""
-    m2c = _cdna_member_to_canonical()
-    c2s = _cdna_canonical_to_symbol()
+def _fold_ids(ensembl_ids, m2c, c2s) -> list[str]:
+    """Map each Ensembl gene id onto the key it collapses to under the (member ->
+    canonical) ``m2c`` + (canonical -> proteoform symbol) ``c2s`` maps: the
+    group's proteoform ID if grouped, else its own version-stripped ENSG;
+    de-duplicated, order-preserving."""
     seen, out = set(), []
     for e in ensembl_ids:
         e = _strip_version(str(e).strip())
-        canon = m2c.get(e, e)
-        key = c2s.get(canon, e)          # proteoform id if grouped, else the ENSG
+        key = c2s.get(m2c.get(e, e), e)   # proteoform id if grouped, else the ENSG
         if key not in seen:
             seen.add(key)
             out.append(key)
     return out
+
+
+def fold_to_cdna_canonical_id(ensembl_ids) -> list[str]:
+    """ENSG analog of :func:`fold_to_cdna_canonical_symbol`: map each Ensembl gene
+    id onto the key the **cDNA**-identical (+override) collapse gives it (proteoform
+    ID if grouped, else its own ENSG). Match against the ``Ensembl_Gene_ID`` column
+    of a ``collapse_cdna_identical`` frame."""
+    return _fold_ids(ensembl_ids, _cdna_member_to_canonical(),
+                     _cdna_canonical_to_symbol())
+
+
+def fold_to_protein_canonical_id(ensembl_ids) -> list[str]:
+    """ENSG analog of :func:`fold_symbols_to_canonical`: map each Ensembl gene id
+    onto the key the **protein**-identical collapse gives it. Match against the
+    ``Ensembl_Gene_ID`` column of a ``collapse_protein_identical`` frame (the
+    protein-abundance fold; differs from the cDNA fold only on protein-identical-
+    but-cDNA-distinct loci)."""
+    return _fold_ids(ensembl_ids, _member_to_canonical(),
+                     _canonical_id_to_symbol())
 
 
 def cdna_member_to_canonical() -> dict[str, str]:

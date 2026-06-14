@@ -233,6 +233,21 @@ def test_dual_gene_proteoform_identifiers():
         "ENSG00000184033", "ENSG00000268651"}
 
 
+def test_cta_proteoform_panels_match_collapsed_frame():
+    """The public folded CTA panels select the clustered antigens (NY-ESO etc.)
+    on a proteoform-collapsed frame, so consumers don't have to fold themselves."""
+    from pirlygenes.gene_sets_cancer import (CTA_proteoform_ids,
+                                             CTA_proteoform_symbols)
+    from pirlygenes.expression.accessors import cancer_reference_expression as cre
+    psy, pid = set(CTA_proteoform_symbols()), set(CTA_proteoform_ids())
+    assert "CTAG1A/B" in psy and "CTAG1A/B" in pid    # NY-ESO folded
+    assert "CTAG1B" not in psy                         # member symbol folds away
+    df = cre(cancer_types=["SKCM"], normalize="tpm", collapse_cdna_identical=True)
+    by_sym = set(df[df["Symbol"].isin(psy)]["Proteoform_ID"])
+    by_id = set(df[df["Ensembl_Gene_ID"].isin(pid)]["Proteoform_ID"])
+    assert "CTAG1A/B" in by_sym and "CTAG1A/B" in by_id  # both selection paths hit it
+
+
 def test_proteoform_id_construction():
     """A folded group's ID is the merged member symbols, so it shows exactly what
     was combined and is unique by construction."""

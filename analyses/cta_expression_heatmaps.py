@@ -31,23 +31,18 @@ from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 import pirlygenes.expression.accessors as accessors
 from _run_layout import add_layout_args, resolve_dirs
 import pirlygenes.gene_sets_cancer as gsc
-from pirlygenes.expression.protein_groups import (
-    fold_to_cdna_canonical_id, fold_to_cdna_canonical_symbol)
+
 
 def _cta_symbols() -> set:
-    """CTA panel folded onto the matrix's proteoform-ID columns, so a folded
-    antigen (NY-ESO `CTAG1A/B`, `XAGE1A/B`, the CT47A cluster) is selected by its
-    proteoform-ID `Symbol` after collapse_cdna_identical — NOT by a member ENSG
-    that no longer keys the row. Pair: :func:`_cta_ensgs` for the id column."""
-    return set(fold_to_cdna_canonical_symbol(gsc.CTA_gene_names()))
+    """Proteoform-folded CTA panel for `Symbol` selection — the public pirlygenes
+    API (folded NY-ESO `CTAG1A/B`, the CT47A cluster, …)."""
+    return set(gsc.CTA_proteoform_symbols())
 
 
 def _cta_ensgs() -> set:
-    """CTA panel folded onto the collapsed `Ensembl_Gene_ID` key (the ENSG-panel
-    selection path): a folded CTA's id is its proteoform ID, a single-locus CTA's
-    is its ENSG. Select `df[df['Ensembl_Gene_ID'].isin(_cta_ensgs())]` — the
-    ENSG-keyed parallel of :func:`_cta_symbols`."""
-    return set(fold_to_cdna_canonical_id(gsc.CTA_gene_ids()))
+    """Proteoform-folded CTA panel for `Ensembl_Gene_ID` selection — the public
+    pirlygenes API (ENSG-keyed parallel of :func:`_cta_symbols`)."""
+    return set(gsc.CTA_proteoform_ids())
 
 
 N_CANCER_TYPES = 30

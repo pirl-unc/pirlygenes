@@ -1924,6 +1924,42 @@ def CTA_gene_id_to_name():
     return result
 
 
+# Which proteoform collapse a folded CTA panel should match. 'cdna' = the
+# read-recovery collapse_cdna_identical frame (pirlygenes' matrix default);
+# 'protein' = the protein-abundance collapse_protein_identical fold (what
+# trufflepig uses). They differ only on protein-identical-but-cDNA-distinct loci
+# (e.g. CGB3/5/8 vs CGB5/8). Pick the one matching the frame you select against.
+def CTA_proteoform_symbols(kind="cdna"):
+    """The CTA panel folded onto a proteoform-collapsed matrix's ``Symbol``
+    column: a folded antigen by its proteoform ID (NY-ESO ``CTAG1A/B``, the
+    ``CT47A1/2/.../12`` cluster), a single-locus CTA by its symbol. Order-
+    preserving + de-duplicated.
+
+    Use this (not raw :func:`CTA_gene_names`) to select CTA rows by ``Symbol`` —
+    otherwise the clustered CTAs silently miss, since their member symbols no
+    longer key any row. ``kind`` is ``'cdna'`` (collapse_cdna_identical) or
+    ``'protein'`` (collapse_protein_identical / trufflepig's fold). Pair:
+    :func:`CTA_proteoform_ids` for the ``Ensembl_Gene_ID`` column."""
+    from .expression.protein_groups import (fold_symbols_to_canonical,
+                                            fold_to_cdna_canonical_symbol)
+    fold = {"cdna": fold_to_cdna_canonical_symbol,
+            "protein": fold_symbols_to_canonical}[kind]
+    return fold(CTA_gene_names())
+
+
+def CTA_proteoform_ids(kind="cdna"):
+    """The CTA panel folded onto a proteoform-collapsed matrix's
+    ``Ensembl_Gene_ID`` key: a folded antigen by its proteoform ID, a single-locus
+    CTA by its ENSG. Order-preserving + de-duplicated. The ENSG-keyed parallel of
+    :func:`CTA_proteoform_symbols` — robust to symbol renames. ``kind`` is
+    ``'cdna'`` or ``'protein'`` (see that function)."""
+    from .expression.protein_groups import (fold_to_cdna_canonical_id,
+                                            fold_to_protein_canonical_id)
+    fold = {"cdna": fold_to_cdna_canonical_id,
+            "protein": fold_to_protein_canonical_id}[kind]
+    return fold(CTA_gene_ids())
+
+
 def CTA_partition(return_type="gene_ids", ensembl_release=112):
     """Deprecated — use CTA_partition_gene_ids, CTA_partition_gene_names,
     or CTA_partition_dataframes instead."""
