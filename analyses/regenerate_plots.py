@@ -45,6 +45,7 @@ LAYOUT = [
     ("ici_landscape", [], "ici_landscape"),
     ("apd1_ici_factor_contributions", [], "apd1_ici_contributions"),
     ("suppressor_genes_vs_apd1", [], "suppressor_genes"),
+    ("antigen_or_suppression_score", [], "antigen_or_suppression"),
 ]
 
 
