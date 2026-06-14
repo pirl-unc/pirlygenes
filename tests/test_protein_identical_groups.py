@@ -241,10 +241,12 @@ def test_fold_resolves_display_aliases_up_front():
     for fold in (fold_to_cdna_canonical_symbol, fold_symbols_to_canonical):
         assert fold(["NY-ESO-1"]) == ["CTAG1A/B"]      # display alias of a GROUP
         assert fold(["CTAG1B"]) == ["CTAG1A/B"]        # member symbol -> same
-        assert fold(["B7-H4"]) == ["VTCN1"]            # alias of a SINGLE locus
-        assert fold(["MAGE-A1"]) == ["MAGEA1"]
         # de-dups when alias + member of the same group are both given
         assert fold(["NY-ESO-1", "CTAG1B"]) == ["CTAG1A/B"]
+        # single-locus current symbols pass through; NOT inverted onto an old alias
+        # (aliases dict has PVRL4->NECTIN4, so blind folding would break NECTIN4)
+        assert fold(["NECTIN4"]) == ["NECTIN4"]
+        assert fold(["CD274"]) == ["CD274"]
 
 
 def test_cta_proteoform_panels_match_collapsed_frame():

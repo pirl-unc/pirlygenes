@@ -55,9 +55,9 @@ resolve synonyms up front:
 - :func:`fold_to_cdna_canonical_symbol` / :func:`fold_symbols_to_canonical`
   (``Symbol``) and :func:`fold_to_cdna_canonical_id` /
   :func:`fold_to_protein_canonical_id` (``Ensembl_Gene_ID``) fold a panel onto the
-  collapsed key; the symbol folds also resolve curated **display aliases**
-  (``NY-ESO-1`` -> ``CTAG1A/B``, ``B7-H4`` -> ``VTCN1``) so a display-named panel
-  lands in the same space.
+  collapsed key; the symbol folds also resolve a grouped member's curated
+  **display alias** (``NY-ESO-1`` -> ``CTAG1A/B``) so a display-named panel lands
+  in the same space.
 - the ENSG folds are robust to symbol renames (stable accessions); use them when
   a panel carries old/renamed symbols.
 - arbitrary NCBI synonyms normalise to an official symbol via the single resolver
@@ -151,18 +151,25 @@ def _canonical_id_to_symbol() -> dict[str, str]:
 
 
 def _with_display_aliases(member_map: dict) -> dict:
-    """Augment a ``{member_symbol_upper: canonical}`` fold map with every curated
-    display alias mapped to its canonical, so a panel named in display space lands
-    in the SAME canonical space up front rather than leaking through unmapped:
-    ``NY-ESO-1`` -> ``CTAG1A/B`` (grouped), ``MAGE-A1`` -> ``MAGEA1`` (single
-    locus -> its own official symbol). A real member symbol wins over an alias."""
+    """Augment a ``{member_symbol_upper: canonical}`` fold map with the display
+    alias of each **grouped member**, so a panel named in display space lands in
+    the SAME proteoform space up front: ``NY-ESO-1`` -> ``CTAG1A/B``.
+
+    Only grouped members are aliased. Single-locus display nicknames are NOT
+    synthesised: ``gene_names.aliases`` is a display map with mixed direction
+    (mostly ``current_symbol -> nickname`` but some ``old_symbol ->
+    current_symbol``, e.g. ``PVRL4 -> NECTIN4``), so blindly mapping
+    ``display -> official`` would invert the latter and remap a real current
+    symbol (``NECTIN4``) onto a dead one (``PVRL4``). A grouped member's symbol is
+    always the current Ensembl symbol, so its alias direction is unambiguous;
+    single-locus official symbols fold via passthrough, and arbitrary synonyms go
+    through :func:`pirlygenes.gene_ids.find_gene_and_ensembl_release_by_name`."""
     from ..gene_names import aliases as _display_aliases
     out = dict(member_map)
     for official, display in _display_aliases.items():
-        # grouped member -> its proteoform canonical; single locus -> the official
-        # symbol itself (which IS its canonical in the collapsed matrix).
-        canon = member_map.get(str(official).strip().upper(), official)
-        out.setdefault(str(display).strip().upper(), canon)
+        off_u = str(official).strip().upper()
+        if off_u in member_map:                       # grouped -> real proteoform ID
+            out.setdefault(str(display).strip().upper(), member_map[off_u])
     return out
 
 
