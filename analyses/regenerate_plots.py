@@ -43,6 +43,7 @@ LAYOUT = [
     ("cta_expression_heatmaps", [], "cta_expression_heatmaps"),
     ("apd1_response_plots", [], "apd1_response"),
     ("ici_landscape", [], "ici_landscape"),
+    ("apd1_ici_factor_contributions", [], "apd1_ici_contributions"),
 ]
 
 
