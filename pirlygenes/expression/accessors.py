@@ -1594,6 +1594,8 @@ def pan_cancer_expression(
     *,
     log_transform: bool = False,
     drop_technical_rna: bool = False,
+    collapse_cdna_identical: bool = False,
+    collapse_protein_identical: bool = False,
 ) -> pd.DataFrame:
     """Wide-form expression across HPA normal tissues + TCGA cancer types.
 
@@ -1651,6 +1653,14 @@ def pan_cancer_expression(
         ``normalize="tpm_clean"``: this removes rows, while
         ``"tpm_clean"`` zeroes them in added ``*_clean`` columns. See
         Boundary note in the module docstring.
+    collapse_cdna_identical / collapse_protein_identical
+        Collapse identical loci into one row per proteoform (same dual-identifier
+        contract as :func:`cancer_reference_expression`), summed in linear space
+        BEFORE any clean/log/percentile column is generated. At most one may be
+        True. Regardless of these flags the result always carries the gene-view
+        bridge columns ``Proteoform_ID`` (the proteoform each gene folds to — group
+        by it to roll up) and ``Member_Ensembl_Gene_IDs`` (constituent ENSGs), so
+        the gene/proteoform duality is uniform across accessors.
 
     Returns
     -------
@@ -1663,6 +1673,27 @@ def pan_cancer_expression(
 
     df = get_data("pan-cancer-expression")
     df, _ = add_tpm_columns_from_fpkm(df)
+
+    # Proteoform duality (uniform with cancer_reference_expression): always add the
+    # gene-view Proteoform_ID / Member_Ensembl_Gene_IDs bridge columns; optionally
+    # collapse identical loci in LINEAR space here, BEFORE any clean/log/percentile
+    # column is generated, so the summed proteoform values then normalise correctly.
+    if collapse_cdna_identical and collapse_protein_identical:
+        raise ValueError("set at most one of collapse_cdna_identical / "
+                         "collapse_protein_identical")
+    _collapse_kind = ("cdna" if collapse_cdna_identical
+                      else "protein" if collapse_protein_identical else None)
+    if _collapse_kind:
+        from .protein_groups import collapse_wide, fold_ids, fold_symbols
+        _linear = [c for c in df.columns if c.startswith(_VALUE_COL_PREFIXES)]
+        df = collapse_wide(df, value_cols=_linear, kind=_collapse_kind)
+        if genes is not None:   # fold the gene filter so a member-named panel hits
+            genes = sorted(set(map(str, genes))
+                           | set(fold_symbols(genes, kind=_collapse_kind))
+                           | set(fold_ids(genes, kind=_collapse_kind)))
+    else:
+        from .protein_groups import add_proteoform_columns
+        df = add_proteoform_columns(df)
     analysis_value_cols = _pan_analysis_value_cols(df)
 
     generated_value_cols: list[str] = []

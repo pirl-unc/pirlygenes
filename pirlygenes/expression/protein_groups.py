@@ -523,3 +523,70 @@ def collapse_cdna_identical_loci_long(
         symbol_col=symbol_col, max_cols=max_cols,
         member_to_canonical=_cdna_member_to_canonical(),
         canonical_to_symbol=_cdna_canonical_to_symbol())
+
+
+@lru_cache(maxsize=None)
+def members_by_canonical(kind: str = "cdna") -> dict:
+    """``{canonical_ensg: ";".join(sorted member ENSGs)}`` for a space — the real
+    constituent ENSGs of each fold group (for ``Member_Ensembl_Gene_IDs``)."""
+    out = defaultdict(set)
+    for member, canon in member_to_canonical(kind).items():
+        out[canon].add(member)
+    return {c: ";".join(sorted(ms)) for c, ms in out.items()}
+
+
+def collapse_wide(df: pd.DataFrame, *, value_cols, kind: str = "cdna",
+                  id_col: str = "Ensembl_Gene_ID",
+                  symbol_col: str = "Symbol") -> pd.DataFrame:
+    """Sum identical loci in a **linear-space** wide matrix (gene rows × value
+    columns) into one row per proteoform — the wide analog of
+    :func:`collapse_protein_identical_loci_long`, with the same dual-identifier
+    contract:
+
+    - folded rows (>=1 member of a group) leave the ENSG key space: ``id_col`` and
+      ``symbol_col`` become the proteoform ID, ``Proteoform_ID`` = that id,
+      ``Member_Ensembl_Gene_IDs`` = the group's constituent real ENSGs;
+    - single-locus rows keep their real ENSG + symbol (``Proteoform_ID`` = the
+      ENSG, ``Member_Ensembl_Gene_IDs`` = itself).
+
+    ``value_cols`` are summed in linear space (``min_count=1``: NaN members
+    ignored, all-NaN stays NaN). Run BEFORE any log / percentile transform. Other
+    columns are taken from the first member (lowest-accession) row.
+    """
+    if id_col not in df.columns:
+        raise ValueError(f"collapse_wide needs an {id_col!r} column")
+    m2c, c2s = member_to_canonical(kind), canonical_to_symbol(kind)
+    members = members_by_canonical(kind)
+    work = df.reset_index(drop=True).copy()
+    work["_ord"] = range(len(work))
+    sid = work[id_col].map(_strip_version)
+    work["_canon"] = sid.where(~sid.map(m2c.__contains__), sid.map(m2c))
+    present = [c for c in value_cols if c in work.columns]
+    rep = (work.sort_values(["_canon", "_ord"])
+               .drop_duplicates("_canon", keep="first")
+               .set_index("_canon"))
+    rep[present] = work.groupby("_canon")[present].sum(min_count=1)
+    canon = rep.index.to_series()
+    pid = canon.map(c2s)                       # proteoform symbol where grouped
+    folded = pid.notna().to_numpy()
+    rep[id_col] = rep[id_col].mask(folded, pid)
+    if symbol_col in rep.columns:
+        rep[symbol_col] = rep[symbol_col].mask(folded, pid)
+    rep["Proteoform_ID"] = rep[id_col].astype(str).to_numpy()
+    rep["Member_Ensembl_Gene_IDs"] = canon.map(lambda c: members.get(c, c)).to_numpy()
+    keep = list(df.columns) + [c for c in ("Proteoform_ID", "Member_Ensembl_Gene_IDs")
+                               if c not in df.columns]
+    return rep.sort_values("_ord").reset_index(drop=True)[keep]
+
+
+def add_proteoform_columns(df: pd.DataFrame, *, kind: str = "cdna",
+                           id_col: str = "Ensembl_Gene_ID") -> pd.DataFrame:
+    """Add the gene-view dual identifiers to an UN-collapsed wide matrix:
+    ``Proteoform_ID`` (the proteoform key each gene folds to — group by it to roll
+    up) and ``Member_Ensembl_Gene_IDs`` (the gene's own ENSG). Cheap, no summing."""
+    out = df.copy()
+    m2c, c2s = member_to_canonical(kind), canonical_to_symbol(kind)
+    ids = out[id_col].astype(str).map(_strip_version)
+    out["Proteoform_ID"] = [c2s.get(m2c.get(s, s), s) for s in ids]
+    out["Member_Ensembl_Gene_IDs"] = ids.to_numpy()
+    return out

@@ -1549,3 +1549,26 @@ def test_pan_cancer_expression_rejects_removed_legacy_kwargs():
 def test_pan_cancer_expression_rejects_removed_legacy_positional_kwargs():
     with pytest.raises(TypeError):
         pan_cancer_expression(None, None, False, True)
+
+
+def test_pan_cancer_expression_proteoform_duality():
+    """pan_cancer_expression carries the gene/proteoform bridge columns and can
+    collapse identical loci in linear space (uniform with cancer_reference_expression)."""
+    from pirlygenes.expression.accessors import pan_cancer_expression
+    genes = ["CTAG1A", "CTAG1B", "PRAME"]
+    base = pan_cancer_expression(genes=genes, normalize="tpm")
+    assert {"Proteoform_ID", "Member_Ensembl_Gene_IDs"} <= set(base.columns)
+    # gene view: CTAG1B bridges to its proteoform
+    assert base.loc[base.Symbol == "CTAG1B", "Proteoform_ID"].iloc[0] == "CTAG1A/B"
+    # collapse: CTAG1A + CTAG1B summed into one CTAG1A/B row, PRAME untouched
+    coll = pan_cancer_expression(genes=genes, normalize="tpm",
+                                 collapse_protein_identical=True)
+    assert "CTAG1A/B" in set(coll.Symbol) and "CTAG1B" not in set(coll.Symbol)
+    vcol = next(c for c in coll.columns if c.endswith("_TPM"))
+    summed = coll.loc[coll.Symbol == "CTAG1A/B", vcol].iloc[0]
+    parts = base.loc[base.Symbol.isin(["CTAG1A", "CTAG1B"]), vcol].sum()
+    assert abs(float(summed) - float(parts)) < 1e-6
+    # a member-symbol gene filter still hits the folded row when collapsing
+    only = pan_cancer_expression(genes=["CTAG1B"], normalize="tpm",
+                                 collapse_protein_identical=True)
+    assert set(only.Symbol) == {"CTAG1A/B"}
