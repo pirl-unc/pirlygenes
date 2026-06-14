@@ -52,14 +52,13 @@ space" bug: **map every identifier into that one space UP FRONT, never compare
 raw symbols to collapsed data.** The fold functions are that boundary mapper and
 resolve synonyms up front:
 
-- :func:`fold_to_cdna_canonical_symbol` / :func:`fold_symbols_to_canonical`
-  (``Symbol``) and :func:`fold_to_cdna_canonical_id` /
-  :func:`fold_to_protein_canonical_id` (``Ensembl_Gene_ID``) fold a panel onto the
-  collapsed key; the symbol folds also resolve a grouped member's curated
+- :func:`fold_symbols` (``Symbol``) and :func:`fold_ids` (``Ensembl_Gene_ID``)
+  fold a panel onto a space's collapsed key, selected by ``kind='cdna'`` (default)
+  or ``'protein'``. The symbol fold also resolves a grouped member's curated
   **display alias** (``NY-ESO-1`` -> ``CTAG1A/B``) so a display-named panel lands
   in the same space.
-- the ENSG folds are robust to symbol renames (stable accessions); use them when
-  a panel carries old/renamed symbols.
+- the ENSG fold is robust to symbol renames (stable accessions); use it when a
+  panel carries old/renamed symbols.
 - arbitrary NCBI synonyms normalise to an official symbol via the single resolver
   :func:`pirlygenes.gene_ids.find_gene_and_ensembl_release_by_name` first.
 
@@ -67,6 +66,21 @@ Curated panels ship pre-folded — e.g.
 :func:`pirlygenes.gene_sets_cancer.CTA_proteoform_symbols` /
 :func:`~pirlygenes.gene_sets_cancer.CTA_proteoform_ids` — so a consumer never has
 to fold at the selection site.
+
+ONE parameterized core
+----------------------
+Both proteoform spaces flow through ONE ``kind``-parameterized core, so there is a
+single implementation of each concept rather than a per-space copy:
+
+- maps: :func:`member_to_canonical`, :func:`canonical_to_symbol`,
+  :func:`symbol_to_canonical` (each ``kind='cdna'|'protein'``);
+- folds: :func:`fold_symbols`, :func:`fold_ids` (same ``kind``).
+
+The older per-space names (``fold_to_cdna_canonical_symbol``,
+``fold_symbols_to_canonical``, ``cdna_member_to_canonical``,
+``protein_member_to_canonical``, …) are kept as one-line aliases over this core
+for back-compat (incl. external consumers like trufflepig); prefer the ``kind=``
+functions in new code.
 """
 
 from __future__ import annotations
@@ -136,20 +150,6 @@ def protein_identical_groups() -> pd.DataFrame:
     return get_data("protein-identical-gene-groups")
 
 
-@lru_cache(maxsize=1)
-def _member_to_canonical() -> dict[str, str]:
-    df = protein_identical_groups()
-    return dict(zip(df["ensembl_gene_id"].astype(str),
-                    df["group_canonical_ensembl_gene_id"].astype(str)))
-
-
-@lru_cache(maxsize=1)
-def _canonical_id_to_symbol() -> dict[str, str]:
-    df = protein_identical_groups()
-    return dict(zip(df["group_canonical_ensembl_gene_id"].astype(str),
-                    df["group_canonical_symbol"].astype(str)))
-
-
 def _with_display_aliases(member_map: dict) -> dict:
     """Augment a ``{member_symbol_upper: canonical}`` fold map with the display
     alias of each **grouped member**, so a panel named in display space lands in
@@ -173,34 +173,123 @@ def _with_display_aliases(member_map: dict) -> dict:
     return out
 
 
-@lru_cache(maxsize=1)
-def canonical_symbol_map() -> dict[str, str]:
-    """``{member_symbol_upper: group_canonical_symbol}`` (+ display aliases) for
-    folding a gene-symbol set (e.g. a CTA panel) onto its protein-identical
-    representatives, so a panel and a collapsed matrix agree on which symbol
-    carries the group. Display aliases are resolved up front (see
-    :func:`_with_display_aliases`)."""
-    df = protein_identical_groups()
+# ============================================================================
+# Proteoform spaces — ONE parameterized core
+# ============================================================================
+# A proteoform "space" is one identity criterion for collapsing loci:
+#   'cdna'    byte-identical canonical CDS — a quantifier can't assign reads
+#             between members, so only the SUM is reliable (the read-recovery
+#             collapse; the matrix's collapse_cdna_identical). A small curated
+#             override (proteoform-collapse-overrides) force-collapses a few
+#             protein-identical / cDNA-distinct antigens (the CT47A cluster).
+#   'protein' byte-identical canonical protein — the protein-abundance collapse
+#             (collapse_protein_identical). No override.
+# Each space provides three maps; fold_symbols / fold_ids and the collapse
+# helpers are thin layers on top. Pick ONE space per analysis and map both panels
+# and data into it (see the "ONE canonical space" note in the module docstring).
+# The per-space named functions further down are one-line aliases over this core,
+# kept for back-compat (incl. external consumers like trufflepig).
+
+
+def _space_groups(kind: str) -> pd.DataFrame:
+    return cdna_identical_groups() if kind == "cdna" else protein_identical_groups()
+
+
+@lru_cache(maxsize=None)
+def member_to_canonical(kind: str = "cdna") -> dict[str, str]:
+    """``{member_ensg: canonical_ensg}`` for a proteoform space. The 'cdna' space
+    applies the curated overrides last (they force-collapse a whole protein group,
+    superseding any cDNA-subgroup split)."""
+    df = _space_groups(kind)
+    m = dict(zip(df["ensembl_gene_id"].astype(str),
+                 df["group_canonical_ensembl_gene_id"].astype(str)))
+    if kind == "cdna":
+        overrides = set(get_data("proteoform-collapse-overrides")
+                        ["group_canonical_ensembl_gene_id"].astype(str))
+        if overrides:
+            pg = protein_identical_groups()
+            for canon, sub in pg.groupby("group_canonical_ensembl_gene_id"):
+                if str(canon) in overrides:
+                    for member in sub["ensembl_gene_id"].astype(str):
+                        m[member] = str(canon)
+    return m
+
+
+@lru_cache(maxsize=None)
+def canonical_to_symbol(kind: str = "cdna") -> dict[str, str]:
+    """``{canonical_ensg: proteoform_symbol}`` for a space (the 'cdna' space
+    applies the override's symbol)."""
+    df = _space_groups(kind)
+    out = dict(zip(df["group_canonical_ensembl_gene_id"].astype(str),
+                   df["group_canonical_symbol"].astype(str)))
+    if kind == "cdna":
+        ov = get_data("proteoform-collapse-overrides")
+        out.update(dict(zip(ov["group_canonical_ensembl_gene_id"].astype(str),
+                            ov["group_symbol"].astype(str))))
+    return out
+
+
+@lru_cache(maxsize=None)
+def symbol_to_canonical(kind: str = "cdna") -> dict[str, str]:
+    """``{member_symbol_upper: proteoform_symbol}`` (+ display aliases) for a
+    space — fold a symbol-keyed panel/matrix onto its proteoform symbols. The
+    'cdna' space scans both group tables so override members (which live in the
+    protein table) are caught."""
+    m2c, c2s = member_to_canonical(kind), canonical_to_symbol(kind)
+    tables = ((cdna_identical_groups(), protein_identical_groups())
+              if kind == "cdna" else (protein_identical_groups(),))
     out = {}
-    for sym, canon in zip(df["symbol"], df["group_canonical_symbol"]):
-        s = str(sym).strip().upper()
-        if s:
-            out[s] = str(canon)
+    for df in tables:
+        for sym, ensg in zip(df["symbol"], df["ensembl_gene_id"].astype(str)):
+            s = str(sym).strip().upper()
+            if s and ensg in m2c:
+                out[s] = c2s.get(m2c[ensg], sym)
     return _with_display_aliases(out)
 
 
-def fold_symbols_to_canonical(symbols) -> list[str]:
-    """Map each symbol to its protein-identical group's canonical symbol
-    (identity if ungrouped) and de-duplicate, preserving order. Use to collapse
-    a panel (CTA, lineage, …) the same way the matrix was collapsed."""
-    m = canonical_symbol_map()
+def _dedup(items):
+    """Order-preserving de-duplication."""
     seen, out = set(), []
-    for s in symbols:
-        c = m.get(str(s).strip().upper(), s)
-        if c not in seen:
-            seen.add(c)
-            out.append(c)
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
     return out
+
+
+def fold_symbols(symbols, *, kind: str = "cdna") -> list[str]:
+    """Fold a symbol panel onto a space's proteoform symbols (identity if
+    ungrouped), de-duplicated + order-preserving. Match against a collapsed
+    frame's ``Symbol`` column."""
+    m = symbol_to_canonical(kind)
+    return _dedup(m.get(str(s).strip().upper(), s) for s in symbols)
+
+
+def fold_ids(ensembl_ids, *, kind: str = "cdna") -> list[str]:
+    """Fold an ENSG panel onto a space's collapsed key — the group's proteoform ID
+    if grouped, else its own version-stripped ENSG. Match against the
+    ``Ensembl_Gene_ID`` column of the matching collapsed frame."""
+    return _fold_ids(ensembl_ids, member_to_canonical(kind),
+                     canonical_to_symbol(kind))
+
+
+# ---- back-compat aliases over the core (prefer the kind= API above) ----------
+def _member_to_canonical() -> dict[str, str]:
+    return member_to_canonical("protein")
+
+
+def _canonical_id_to_symbol() -> dict[str, str]:
+    return canonical_to_symbol("protein")
+
+
+def canonical_symbol_map() -> dict[str, str]:
+    """Alias: protein-space :func:`symbol_to_canonical` (``kind='protein'``)."""
+    return symbol_to_canonical("protein")
+
+
+def fold_symbols_to_canonical(symbols) -> list[str]:
+    """Alias: :func:`fold_symbols` with ``kind='protein'``."""
+    return fold_symbols(symbols, kind="protein")
 
 
 def _strip_version(ensg: str) -> str:
@@ -353,132 +442,68 @@ def cdna_identical_groups() -> pd.DataFrame:
     return get_data("cdna-identical-gene-groups")
 
 
-@lru_cache(maxsize=1)
+def _fold_ids(ensembl_ids, m2c, c2s) -> list[str]:
+    """Inner ENSG fold under explicit (member->canonical) ``m2c`` + (canonical->
+    proteoform symbol) ``c2s`` maps: the group's proteoform ID if grouped, else
+    the version-stripped ENSG. Used by :func:`fold_ids` and the collapse path."""
+    return _dedup(c2s.get(m2c.get(s, s), s)
+                  for s in (_strip_version(str(e).strip()) for e in ensembl_ids))
+
+
+# ---- back-compat aliases over the core (prefer the kind= API above) ----------
 def _cdna_member_to_canonical() -> dict[str, str]:
-    """``{member_ensg: canonical_ensg}`` from the cDNA-identical groups, with the
-    curated overrides applied last (they force-collapse whole protein-identical
-    groups, superseding any cDNA-subgroup split)."""
-    cd = cdna_identical_groups()
-    m = dict(zip(cd["ensembl_gene_id"].astype(str),
-                 cd["group_canonical_ensembl_gene_id"].astype(str)))
-    overrides = set(get_data("proteoform-collapse-overrides")
-                    ["group_canonical_ensembl_gene_id"].astype(str))
-    if overrides:
-        pg = protein_identical_groups()
-        for canon, sub in pg.groupby("group_canonical_ensembl_gene_id"):
-            if str(canon) in overrides:
-                for member in sub["ensembl_gene_id"].astype(str):
-                    m[member] = str(canon)
-    return m
+    return member_to_canonical("cdna")
 
 
-@lru_cache(maxsize=1)
 def _cdna_canonical_to_symbol() -> dict[str, str]:
-    cd = cdna_identical_groups()
-    out = dict(zip(cd["group_canonical_ensembl_gene_id"].astype(str),
-                   cd["group_canonical_symbol"].astype(str)))
-    ov = get_data("proteoform-collapse-overrides")
-    out.update(dict(zip(ov["group_canonical_ensembl_gene_id"].astype(str),
-                        ov["group_symbol"].astype(str))))
-    return out
+    return canonical_to_symbol("cdna")
 
 
-@lru_cache(maxsize=1)
 def _cdna_symbol_to_canonical_symbol() -> dict[str, str]:
-    """``{member_symbol_upper: canonical_symbol}`` (+ display aliases) for folding
-    a panel (e.g. CTA) onto the cDNA-collapsed matrix's canonical symbols. Display
-    aliases are resolved up front so a display-named panel lands in one space."""
-    m2c = _cdna_member_to_canonical()
-    c2s = _cdna_canonical_to_symbol()
-    cd = cdna_identical_groups()
-    pg = protein_identical_groups()
-    out = {}
-    for df in (cd, pg):
-        for sym, ensg in zip(df["symbol"], df["ensembl_gene_id"].astype(str)):
-            s = str(sym).strip().upper()
-            if s and ensg in m2c:
-                out[s] = c2s.get(m2c[ensg], sym)
-    return _with_display_aliases(out)
+    return symbol_to_canonical("cdna")
 
 
 def fold_to_cdna_canonical_symbol(symbols) -> list[str]:
-    """Map symbols onto their cDNA-identical (+override) canonical symbol and
-    de-duplicate, preserving order — fold a panel the way the matrix collapsed.
-    Match the result against the collapsed table's ``Symbol`` column."""
-    m = _cdna_symbol_to_canonical_symbol()
-    seen, out = set(), []
-    for s in symbols:
-        c = m.get(str(s).strip().upper(), s)
-        if c not in seen:
-            seen.add(c)
-            out.append(c)
-    return out
-
-
-def _fold_ids(ensembl_ids, m2c, c2s) -> list[str]:
-    """Map each Ensembl gene id onto the key it collapses to under the (member ->
-    canonical) ``m2c`` + (canonical -> proteoform symbol) ``c2s`` maps: the
-    group's proteoform ID if grouped, else its own version-stripped ENSG;
-    de-duplicated, order-preserving."""
-    seen, out = set(), []
-    for e in ensembl_ids:
-        e = _strip_version(str(e).strip())
-        key = c2s.get(m2c.get(e, e), e)   # proteoform id if grouped, else the ENSG
-        if key not in seen:
-            seen.add(key)
-            out.append(key)
-    return out
+    """Alias: :func:`fold_symbols` with ``kind='cdna'`` — fold a panel the way the
+    matrix's ``collapse_cdna_identical`` did (match the ``Symbol`` column)."""
+    return fold_symbols(symbols, kind="cdna")
 
 
 def fold_to_cdna_canonical_id(ensembl_ids) -> list[str]:
-    """ENSG analog of :func:`fold_to_cdna_canonical_symbol`: map each Ensembl gene
-    id onto the key the **cDNA**-identical (+override) collapse gives it (proteoform
-    ID if grouped, else its own ENSG). Match against the ``Ensembl_Gene_ID`` column
-    of a ``collapse_cdna_identical`` frame."""
-    return _fold_ids(ensembl_ids, _cdna_member_to_canonical(),
-                     _cdna_canonical_to_symbol())
+    """Alias: :func:`fold_ids` with ``kind='cdna'`` (match ``Ensembl_Gene_ID``)."""
+    return fold_ids(ensembl_ids, kind="cdna")
 
 
 def fold_to_protein_canonical_id(ensembl_ids) -> list[str]:
-    """ENSG analog of :func:`fold_symbols_to_canonical`: map each Ensembl gene id
-    onto the key the **protein**-identical collapse gives it. Match against the
-    ``Ensembl_Gene_ID`` column of a ``collapse_protein_identical`` frame (the
-    protein-abundance fold; differs from the cDNA fold only on protein-identical-
-    but-cDNA-distinct loci)."""
-    return _fold_ids(ensembl_ids, _member_to_canonical(),
-                     _canonical_id_to_symbol())
+    """Alias: :func:`fold_ids` with ``kind='protein'``."""
+    return fold_ids(ensembl_ids, kind="protein")
 
 
 def cdna_member_to_canonical() -> dict[str, str]:
-    """Public ``{member_ensg: canonical_ensg}`` for the cDNA-identical collapse
-    (+ curated overrides) — for consumers that collapse an ENSG-indexed matrix
-    directly (e.g. per-sample CTA matrices)."""
-    return dict(_cdna_member_to_canonical())
+    """Alias: ``dict(member_to_canonical('cdna'))`` — a fresh copy for consumers
+    that collapse an ENSG-indexed matrix directly (e.g. per-sample CTA matrices)."""
+    return dict(member_to_canonical("cdna"))
 
 
 def cdna_canonical_to_symbol() -> dict[str, str]:
-    """Public ``{canonical_ensg: canonical_symbol}`` companion to
-    :func:`cdna_member_to_canonical`."""
-    return dict(_cdna_canonical_to_symbol())
+    """Alias: ``dict(canonical_to_symbol('cdna'))``."""
+    return dict(canonical_to_symbol("cdna"))
 
 
 def protein_member_to_canonical() -> dict[str, str]:
-    """Public ``{member_ensg: canonical_ensg}`` for the **protein**-identical
-    collapse — the protein-abundance analog of :func:`cdna_member_to_canonical`."""
-    return dict(_member_to_canonical())
+    """Alias: ``dict(member_to_canonical('protein'))``."""
+    return dict(member_to_canonical("protein"))
 
 
 def protein_canonical_id_to_symbol() -> dict[str, str]:
-    """Public ``{canonical_ensg: proteoform_symbol}`` companion to
-    :func:`protein_member_to_canonical`."""
-    return dict(_canonical_id_to_symbol())
+    """Alias: ``dict(canonical_to_symbol('protein'))``."""
+    return dict(canonical_to_symbol("protein"))
 
 
 def cdna_symbol_to_canonical_symbol() -> dict[str, str]:
-    """Public ``{member_symbol_upper: canonical_symbol}`` for collapsing a
-    **symbol**-keyed matrix (e.g. the percentile-reference transcriptome TSV) so
-    a cDNA-identical group is one entry in the ranking universe."""
-    return dict(_cdna_symbol_to_canonical_symbol())
+    """Alias: ``dict(symbol_to_canonical('cdna'))`` — for collapsing a symbol-keyed
+    matrix (e.g. the percentile-reference transcriptome TSV)."""
+    return dict(symbol_to_canonical("cdna"))
 
 
 def collapse_cdna_identical_loci_long(

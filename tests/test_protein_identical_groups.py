@@ -196,6 +196,25 @@ def test_accessor_collapse_cdna_identical_behaviour():
     assert nrows(base, "H4C") - nrows(roll, "H4C") <= 3
 
 
+def test_parameterized_fold_core():
+    """The kind= core is the single implementation; the per-space aliases delegate
+    to it identically."""
+    from pirlygenes.expression import protein_groups as pg
+    syms = ["CTAG1B", "CGB3", "PRAME"]
+    ids = ["ENSG00000184033", "ENSG00000141510"]
+    # kind selects the space; cDNA vs protein differ on protein-identical-but-
+    # cDNA-distinct loci (CGB3 -> CGB3 cdna vs CGB3/5/8 protein)
+    assert pg.fold_symbols(syms, kind="cdna") == pg.fold_to_cdna_canonical_symbol(syms)
+    assert pg.fold_symbols(syms, kind="protein") == pg.fold_symbols_to_canonical(syms)
+    assert pg.fold_ids(ids, kind="cdna") == pg.fold_to_cdna_canonical_id(ids)
+    assert pg.fold_ids(ids, kind="protein") == pg.fold_to_protein_canonical_id(ids)
+    assert pg.fold_symbols(["CGB3"], kind="cdna") == ["CGB3"]
+    assert pg.fold_symbols(["CGB3"], kind="protein") == ["CGB3/5/8"]
+    # maps: aliases are copies of the core
+    assert pg.cdna_member_to_canonical() == pg.member_to_canonical("cdna")
+    assert pg.protein_canonical_id_to_symbol() == pg.canonical_to_symbol("protein")
+
+
 def test_fold_to_cdna_canonical_id():
     """ENSG analog of the symbol fold: a member ENSG -> the proteoform key, an
     ungrouped ENSG -> itself, de-duplicated."""

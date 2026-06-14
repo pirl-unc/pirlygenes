@@ -1270,18 +1270,12 @@ def cancer_reference_expression(
     # per-ENSG gene frame), and `Member_Ensembl_Gene_IDs` is the constituent real
     # ENSGs (the gene view; = the gene's own ENSG when not folded).
     from ..gene_ids import strip_version
-    # Proteoform_ID must use the SAME collapse maps as the frame, so it equals
+    from .protein_groups import canonical_to_symbol, member_to_canonical
+    # Proteoform_ID uses the SAME proteoform space as the frame, so it equals
     # Ensembl_Gene_ID on a collapsed frame (cDNA xor protein) and is the matching
     # gene->proteoform bridge on the gene frame (cDNA = the matrix default).
-    if collapse_protein_identical:
-        from .protein_groups import (
-            protein_canonical_id_to_symbol as _c2s_fn,
-            protein_member_to_canonical as _m2c_fn)
-    else:
-        from .protein_groups import (
-            cdna_canonical_to_symbol as _c2s_fn,
-            cdna_member_to_canonical as _m2c_fn)
-    _m2c, _c2s = _m2c_fn(), _c2s_fn()
+    _kind = "protein" if collapse_protein_identical else "cdna"
+    _m2c, _c2s = member_to_canonical(_kind), canonical_to_symbol(_kind)
     _ids = long["Ensembl_Gene_ID"].astype(str)
     _pid = {}
     for u in _ids.unique():               # per-id key (no dedup); idempotent on a
