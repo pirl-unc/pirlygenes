@@ -47,6 +47,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from pirlygenes import gene_sets_cancer as gsc
 from pirlygenes.builders.treehouse import _filter_samples, TreehouseCohort
 from pirlygenes.coverage import greedy_coverage as _pkg_greedy_coverage
+# Sole display authority: structural symbol/proteoform ID -> user-facing label
+# (CTAG1B and CTAG1A/B both -> NY-ESO-1). Data stays keyed by the raw symbol.
+from pirlygenes.gene_names import display_name as display_label
 
 import sweep_treehouse_polya_cohorts as polya
 import sweep_treehouse_tcga_cohorts as tcga
@@ -933,8 +936,8 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
             # label the widest leading segments; always try the dominant one
             if (marg >= min_label_pct and j < max_label_segments) or j == 0:
                 if marg >= 1.5:
-                    ax.text(left + marg / 2, y, sym, va="center", ha="center",
-                            fontsize=4.5, clip_on=True)
+                    ax.text(left + marg / 2, y, display_label(sym), va="center",
+                            ha="center", fontsize=4.5, clip_on=True)
             left += marg
     ax.set_yticks(range(len(rows)))
     ax.set_yticklabels(labels, fontsize=7)
@@ -1669,7 +1672,7 @@ def _coverage_every_cohort(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
         xs = range(1, len(cum) + 1)
         ax.plot(xs, [c * 100 for c in cum], marker="o", ms=3, color="#3a0ca3")
         for x, (nm, c) in enumerate(zip(names[:15], cum[:15]), start=1):
-            ax.annotate(nm, (x, c * 100), fontsize=6, rotation=45,
+            ax.annotate(display_label(nm), (x, c * 100), fontsize=6, rotation=45,
                         textcoords="offset points", xytext=(2, 4))
         ax.set_xlabel("# CTAs added")
         ax.set_ylabel(f"{_display_code(code)} patients with ≥1 CTA {thr.xlabel}")
@@ -1707,7 +1710,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     ax.set_xticklabels([_display_code(c) for c in piv.columns],
                        rotation=90, fontsize=6)
     ax.set_yticks(range(len(piv.index)))
-    ax.set_yticklabels(piv.index, fontsize=6)
+    ax.set_yticklabels([display_label(s) for s in piv.index], fontsize=6)
     ax.set_title(f"# patients expressing each CTA (> {threshold} TPM)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="patients")
     fig.tight_layout()
@@ -1724,7 +1727,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     ax.set_xticklabels([_display_code(c) for c in pivp.columns],
                        rotation=90, fontsize=6)
     ax.set_yticks(range(len(pivp.index)))
-    ax.set_yticklabels(pivp.index, fontsize=6)
+    ax.set_yticklabels([display_label(s) for s in pivp.index], fontsize=6)
     ax.set_title(f"% of cohort expressing each CTA (> {threshold} TPM)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="% patients")
     fig.tight_layout()
@@ -1736,7 +1739,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     fc = fc[fc[pcol] > 0].head(35)
     if len(fc):
         fig, ax = plt.subplots(figsize=(10, max(4, len(fc) * 0.28)))
-        ax.barh(fc["Symbol"], fc[pcol], color="#b5179e")
+        ax.barh([display_label(s) for s in fc["Symbol"]], fc[pcol], color="#b5179e")
         ax.invert_yaxis()
         ax.set_xlabel(f"{_display_code(focus)} patients > {threshold} TPM")
         _pct_axis(ax, "x")
@@ -1790,7 +1793,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
         ax.plot(range(1, len(cum) + 1), [c * 100 for c in cum],
                 marker="o", color="#3a0ca3")
         for x, (nm, c) in enumerate(zip(names[:15], cum[:15]), start=1):
-            ax.annotate(nm, (x, c * 100), fontsize=6, rotation=45,
+            ax.annotate(display_label(nm), (x, c * 100), fontsize=6, rotation=45,
                         textcoords="offset points", xytext=(2, 4))
         ax.set_xlabel("# CTAs added")
         ax.set_ylabel(f"% of {_display_code(focus)} patients covered")

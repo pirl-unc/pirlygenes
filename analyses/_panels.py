@@ -11,11 +11,24 @@ column instead of silently dropping — no per-script special-case lists.
 The curated, literature-grounded *signatures* still live in the package CSV
 (``data/therapy-response-signatures.csv``) — already a single source of truth;
 this module holds only the analysis-layer (non-CSV) panels.
+
+Display convention (one canonical form per layer, never interchangeably):
+  * DATA / keys / matrix columns / CSV headers use the **structural** identifier
+    — the proteoform ID for a fold (``CTAG1A/B``) or the raw symbol otherwise.
+  * USER-FACING labels (plot axes, titles, annotations, markdown tables) go
+    through :func:`pirlygenes.gene_names.display_name` — the sole display
+    authority — which maps both the single locus ``CTAG1B`` and the folded
+    proteoform ``CTAG1A/B`` to ``NY-ESO-1``. Re-exported here as
+    :func:`display_label` so every analysis script shares one render boundary.
 """
 from __future__ import annotations
 
 from pirlygenes.expression.protein_groups import fold_to_cdna_canonical_symbol
+from pirlygenes.gene_names import display_name as display_label
 from pirlygenes.gene_sets_cancer import CTA_gene_names
+
+__all__ = ["fold", "display_label", "cta_antigen_panel", "GENE_PANELS",
+           "mechanism_controls", "GYN_COLD", "HOT"]
 
 
 def fold(genes) -> list[str]:

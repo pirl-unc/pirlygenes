@@ -29,13 +29,16 @@ import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap, LogNorm, Normalize
 
 import pirlygenes.expression.accessors as accessors
+from _panels import display_label
 from _run_layout import add_layout_args, resolve_dirs
 import pirlygenes.gene_sets_cancer as gsc
 
 
 def _cta_symbols() -> set:
     """Proteoform-folded CTA panel for `Symbol` selection — the public pirlygenes
-    API (folded NY-ESO `CTAG1A/B`, the CT47A cluster, …)."""
+    API. Returns structural proteoform IDs (the NY-ESO fold `CTAG1A/B`, the CT47A
+    cluster, …); these stay the data/CSV keys and are rendered as display names
+    (`CTAG1A/B` → NY-ESO-1) only at plot time."""
     return set(gsc.CTA_proteoform_symbols())
 
 
@@ -197,7 +200,7 @@ def _select_max_coverage_ctas(mat: pd.DataFrame, k: int) -> list:
     threshold). Leftover budget is filled by peak expression.
 
     This replaces the old "top-k by global peak", which let a handful of
-    pan-cancer high-expressers (MAGEA cluster, PRAME, CTAG1B) eat the column
+    pan-cancer high-expressers (MAGEA cluster, PRAME, NY-ESO-1) eat the column
     budget and hid the signature antigen of any cancer whose best CTA wasn't
     globally loud.
     """
@@ -273,7 +276,9 @@ def plot(mat, stat_label, metric_label, fname, *, log_scale=True) -> None:
     fig, ax = plt.subplots(figsize=(15, 11))
     ax.set_facecolor("0.7")  # unmeasured (NaN) cells show as gray, not white
     sns.heatmap(
-        data, ax=ax, cmap="magma", norm=norm,
+        # render display names on the axis (CTAG1A/B -> NY-ESO-1); data stays
+        # keyed by the structural proteoform ID (the CSV written from `mat`).
+        data.rename(columns=display_label), ax=ax, cmap="magma", norm=norm,
         cbar_kws={"label": f"{stat_label}  ({scale_txt} scale)", "shrink": 0.6},
         linewidths=0.3, linecolor="0.9",
     )
@@ -311,7 +316,7 @@ def plot_coarse(mat, stat_label, metric_label, fname) -> None:
     fig, ax = plt.subplots(figsize=(15, 11))
     ax.set_facecolor("0.7")  # unmeasured (NaN) cells show as gray, not white
     sns.heatmap(
-        data, ax=ax, cmap=_coarse_cmap(), norm=norm,
+        data.rename(columns=display_label), ax=ax, cmap=_coarse_cmap(), norm=norm,
         cbar_kws={
             "label": f"{stat_label}  (coarse scale)",
             "shrink": 0.6,
@@ -354,10 +359,11 @@ def write_summary_md(matrices: dict, path: Path) -> None:
         "| --- | ---: | ---: | --- |",
     ]
     for sym in breadth.head(15).index:
-        col = med[sym]
+        col = med[sym]                       # index by structural proteoform ID
         peak_code = col.idxmax().split("[")[-1].split("]")[0]
         lines.append(
-            f"| {sym} | {int(breadth[sym])} | {col.max():.1f} | {peak_code} |"
+            f"| {display_label(sym)} | {int(breadth[sym])} | {col.max():.1f} "
+            f"| {peak_code} |"
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

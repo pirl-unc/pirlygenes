@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes import gene_sets_cancer as gsc
+from _panels import display_label
 from _run_layout import latest_run_dir, pct_axis
 
 OUT = Path(__file__).resolve().parent / "outputs"
@@ -183,7 +184,7 @@ def _render(drop_mage, suffix, title_tag):
             fig, ax = plt.subplots(figsize=(10, max(6, (len(top) + 2) * 0.27)))
             ax.barh(range(len(top)), top.addressable, color=colors)
             ax.set_yticks(range(len(top)))
-            ax.set_yticklabels(top.Symbol, fontsize=6)
+            ax.set_yticklabels([display_label(s) for s in top.Symbol], fontsize=6)
             for y, (val, lab) in enumerate(zip(top.addressable, top.label)):
                 ax.text(val, y, f" {lab}", va="center", fontsize=5, color="0.3")
             # whole-panel union ("All CTAs"): patient expresses >=1 CTA protein
@@ -193,7 +194,8 @@ def _render(drop_mage, suffix, title_tag):
             ax.text(union, uy, f"  All CTAs ({union:.0f}%)", va="center",
                     fontsize=6, fontweight="bold", color="#7a5c00")
             ax.set_yticks(list(range(len(top))) + [uy])
-            ax.set_yticklabels(list(top.Symbol) + ["All CTAs"], fontsize=6)
+            ax.set_yticklabels([display_label(s) for s in top.Symbol] + ["All CTAs"],
+                               fontsize=6)
             ax.set_xlabel(f"annual {blabel} addressable")
             pct_axis(ax, "x")
             ax.set_title(f"CTA population addressability{title_tag} — {blabel} "
@@ -211,7 +213,7 @@ def _render(drop_mage, suffix, title_tag):
             fig.tight_layout()
             fig.savefig(FIGDIR / f"cta_addressable_{mkey}_{t.slug}{suffix}.png", dpi=300)
             plt.close(fig)
-            print(f"  {mkey} {t.slug}{suffix}: top CTA {per.iloc[0].Symbol} "
+            print(f"  {mkey} {t.slug}{suffix}: top CTA {display_label(per.iloc[0].Symbol)} "
                   f"({per.iloc[0].addressable:.1f}% of {blabel}); ceiling {ceiling:.0f}%",
                   flush=True)
 
