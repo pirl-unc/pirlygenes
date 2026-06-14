@@ -10,14 +10,14 @@ gene that is really an IFN-induced *readout* of an active response (circular),
 not a cause — which is why the canonical checkpoint ligand CD274/PD-L1 is shown
 only as a labelled CONTRAST.
 
-Gene panel (constitutive immunosuppression):
-  * secreted immune-EXCLUSION — TGFB1, TGFB2, WNT11, WNT5A, IL10
-    (the TGF-beta / non-canonical Wnt exclusion axis; secreted, tumor-intrinsic)
-  * surface / secreted checkpoint ligands kept from the prior screen for their
-    real negative signal — CD47 (don't-eat-me), NECTIN2 (CD112/TIGIT-PVR axis),
-    LGALS9 (galectin-9 / TIM-3)
-  * SUPPRESSOR composite = mean z(log TPM) over the eight genes
-  * CD274 (PD-L1) — circular IFN-induced contrast (expected rho > 0)
+Gene panel — SECRETED constitutive immunosuppression only (no membrane proteins):
+  * TGF-beta / non-canonical Wnt exclusion axis — TGFB1, TGFB2, WNT11, WNT5A
+  * IL10 — secreted immunosuppressive cytokine (Treg / M2)
+  * LGALS9 — galectin-9, secreted TIM-3 ligand
+  * SUPPRESSOR composite = mean z(log TPM) over the six secreted genes
+  * CXCL9 — secreted but IFN-INDUCED chemokine: a circular *readout* of an
+    active T-cell response, shown as a contrast (expected rho > 0). The membrane
+    checkpoint markers (CD47, NECTIN2, CD274/PD-L1) are excluded — secreted only.
 
 Two response axes (same gene grid):
   1. anti-PD-1 MONOTHERAPY  — drops the PD-L1 and PD-1+CTLA-4 cohorts, the strict
@@ -55,12 +55,10 @@ from pirlygenes.load_dataset import get_data  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "outputs"
 
-# constitutive immunosuppressive genes, plotted one panel each (secreted
-# immune-exclusion first, then the surface/secreted checkpoint ligands kept from
-# the prior screen for their genuine negative signal).
-SUPPRESSORS = ["TGFB1", "TGFB2", "WNT11", "WNT5A", "IL10",
-               "CD47", "NECTIN2", "LGALS9"]
-CONTRAST = "CD274"          # PD-L1 — circular IFN-induced readout (expect rho>0)
+# SECRETED constitutive immunosuppressive genes, one panel each (no membrane
+# proteins — the TGF-beta / Wnt exclusion axis + IL10 + secreted galectin-9).
+SUPPRESSORS = ["TGFB1", "TGFB2", "WNT11", "WNT5A", "IL10", "LGALS9"]
+CONTRAST = "CXCL9"          # secreted but IFN-induced -> circular readout (rho>0)
 
 _SARC_COLOR = "#e85d04"     # sarcoma cohorts (the user's question — make visible)
 _OTHER_COLOR = "#1b4965"
@@ -150,7 +148,7 @@ def _figure(mat: pd.DataFrame, orr_map: dict, axis_label: str, fname: str,
     contrast = _series_for(mat, CONTRAST)
 
     panels = present + ["__composite__", "__contrast__"]
-    ncol = 5
+    ncol = 4
     nrow = int(np.ceil(len(panels) / ncol))
     fig, axes = plt.subplots(nrow, ncol, figsize=(3.0 * ncol, 3.0 * nrow))
     axes = np.atleast_1d(axes).ravel()
@@ -160,8 +158,9 @@ def _figure(mat: pd.DataFrame, orr_map: dict, axis_label: str, fname: str,
                    logy=False, ring=ring)
         elif key == "__contrast__":
             if contrast is not None:
-                _panel(ax, contrast, orr, f"{display_label(CONTRAST)}/PD-L1 "
-                       "[contrast]", logy=True, ring=ring)
+                _panel(ax, contrast, orr,
+                       f"{display_label(CONTRAST)} [IFN-circular contrast]",
+                       logy=True, ring=ring)
             else:
                 ax.axis("off")
         else:
@@ -173,10 +172,10 @@ def _figure(mat: pd.DataFrame, orr_map: dict, axis_label: str, fname: str,
              .notna()).sum())
     sarc = sum(c.startswith("SARC") for c in composite.index if c in orr.index)
     fig.suptitle(
-        f"Immunosuppressive gene expression vs {axis_label} "
+        f"Secreted immunosuppressive gene expression vs {axis_label} "
         f"(RNA-seq cohorts, n={n}; {sarc} sarcoma subtypes in orange)\n"
-        "constitutive suppressors expected ρ<0; CD274/PD-L1 shown as circular "
-        "IFN-induced contrast (expected ρ>0)",
+        "secreted constitutive suppressors expected ρ<0; CXCL9 (secreted but "
+        "IFN-induced) shown as circular contrast (expected ρ>0)",
         fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(figdir / fname, dpi=300)
