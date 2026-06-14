@@ -41,6 +41,32 @@ So ``Ensembl_Gene_ID`` holds an ENSG xor a proteoform id; never a member locus
 standing in for the group. The single id→display-name authority is
 :func:`pirlygenes.gene_names.display_name`, which maps a gene symbol OR a
 proteoform id to its label (``CTAG1A/B`` -> ``NY-ESO-1``; ``XAGE1A/B`` -> itself).
+
+ONE canonical space, mapping up front
+-------------------------------------
+For a given collapse there is **one** canonical space (the proteoform space —
+cDNA-identical for the read-recovery ``collapse_cdna_identical`` matrix, or
+protein-identical for the protein-abundance fold; pick one per analysis). The
+rule that prevents the recurring "panel in member space vs data in proteoform
+space" bug: **map every identifier into that one space UP FRONT, never compare
+raw symbols to collapsed data.** The fold functions are that boundary mapper and
+resolve synonyms up front:
+
+- :func:`fold_to_cdna_canonical_symbol` / :func:`fold_symbols_to_canonical`
+  (``Symbol``) and :func:`fold_to_cdna_canonical_id` /
+  :func:`fold_to_protein_canonical_id` (``Ensembl_Gene_ID``) fold a panel onto the
+  collapsed key; the symbol folds also resolve curated **display aliases**
+  (``NY-ESO-1`` -> ``CTAG1A/B``, ``B7-H4`` -> ``VTCN1``) so a display-named panel
+  lands in the same space.
+- the ENSG folds are robust to symbol renames (stable accessions); use them when
+  a panel carries old/renamed symbols.
+- arbitrary NCBI synonyms normalise to an official symbol via the single resolver
+  :func:`pirlygenes.gene_ids.find_gene_and_ensembl_release_by_name` first.
+
+Curated panels ship pre-folded — e.g.
+:func:`pirlygenes.gene_sets_cancer.CTA_proteoform_symbols` /
+:func:`~pirlygenes.gene_sets_cancer.CTA_proteoform_ids` — so a consumer never has
+to fold at the selection site.
 """
 
 from __future__ import annotations
@@ -124,18 +150,36 @@ def _canonical_id_to_symbol() -> dict[str, str]:
                     df["group_canonical_symbol"].astype(str)))
 
 
+def _with_display_aliases(member_map: dict) -> dict:
+    """Augment a ``{member_symbol_upper: canonical}`` fold map with every curated
+    display alias mapped to its canonical, so a panel named in display space lands
+    in the SAME canonical space up front rather than leaking through unmapped:
+    ``NY-ESO-1`` -> ``CTAG1A/B`` (grouped), ``MAGE-A1`` -> ``MAGEA1`` (single
+    locus -> its own official symbol). A real member symbol wins over an alias."""
+    from ..gene_names import aliases as _display_aliases
+    out = dict(member_map)
+    for official, display in _display_aliases.items():
+        # grouped member -> its proteoform canonical; single locus -> the official
+        # symbol itself (which IS its canonical in the collapsed matrix).
+        canon = member_map.get(str(official).strip().upper(), official)
+        out.setdefault(str(display).strip().upper(), canon)
+    return out
+
+
 @lru_cache(maxsize=1)
 def canonical_symbol_map() -> dict[str, str]:
-    """``{member_symbol_upper: group_canonical_symbol}`` for folding a gene-symbol
-    set (e.g. a CTA panel) onto its protein-identical representatives, so a
-    panel and a collapsed matrix agree on which symbol carries the group."""
+    """``{member_symbol_upper: group_canonical_symbol}`` (+ display aliases) for
+    folding a gene-symbol set (e.g. a CTA panel) onto its protein-identical
+    representatives, so a panel and a collapsed matrix agree on which symbol
+    carries the group. Display aliases are resolved up front (see
+    :func:`_with_display_aliases`)."""
     df = protein_identical_groups()
     out = {}
     for sym, canon in zip(df["symbol"], df["group_canonical_symbol"]):
         s = str(sym).strip().upper()
         if s:
             out[s] = str(canon)
-    return out
+    return _with_display_aliases(out)
 
 
 def fold_symbols_to_canonical(symbols) -> list[str]:
@@ -334,8 +378,9 @@ def _cdna_canonical_to_symbol() -> dict[str, str]:
 
 @lru_cache(maxsize=1)
 def _cdna_symbol_to_canonical_symbol() -> dict[str, str]:
-    """``{member_symbol_upper: canonical_symbol}`` for folding a panel (e.g. CTA)
-    onto the cDNA-collapsed matrix's canonical symbols."""
+    """``{member_symbol_upper: canonical_symbol}`` (+ display aliases) for folding
+    a panel (e.g. CTA) onto the cDNA-collapsed matrix's canonical symbols. Display
+    aliases are resolved up front so a display-named panel lands in one space."""
     m2c = _cdna_member_to_canonical()
     c2s = _cdna_canonical_to_symbol()
     cd = cdna_identical_groups()
@@ -346,7 +391,7 @@ def _cdna_symbol_to_canonical_symbol() -> dict[str, str]:
             s = str(sym).strip().upper()
             if s and ensg in m2c:
                 out[s] = c2s.get(m2c[ensg], sym)
-    return out
+    return _with_display_aliases(out)
 
 
 def fold_to_cdna_canonical_symbol(symbols) -> list[str]:

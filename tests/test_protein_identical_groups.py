@@ -233,6 +233,20 @@ def test_dual_gene_proteoform_identifiers():
         "ENSG00000184033", "ENSG00000268651"}
 
 
+def test_fold_resolves_display_aliases_up_front():
+    """Synonym->canonical happens up front: a panel named in display space lands
+    in the SAME proteoform space as member symbols, never leaking through."""
+    from pirlygenes.expression.protein_groups import (
+        fold_symbols_to_canonical, fold_to_cdna_canonical_symbol)
+    for fold in (fold_to_cdna_canonical_symbol, fold_symbols_to_canonical):
+        assert fold(["NY-ESO-1"]) == ["CTAG1A/B"]      # display alias of a GROUP
+        assert fold(["CTAG1B"]) == ["CTAG1A/B"]        # member symbol -> same
+        assert fold(["B7-H4"]) == ["VTCN1"]            # alias of a SINGLE locus
+        assert fold(["MAGE-A1"]) == ["MAGEA1"]
+        # de-dups when alias + member of the same group are both given
+        assert fold(["NY-ESO-1", "CTAG1B"]) == ["CTAG1A/B"]
+
+
 def test_cta_proteoform_panels_match_collapsed_frame():
     """The public folded CTA panels select the clustered antigens (NY-ESO etc.)
     on a proteoform-collapsed frame, so consumers don't have to fold themselves."""
