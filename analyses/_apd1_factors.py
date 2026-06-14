@@ -30,6 +30,22 @@ from pirlygenes.expression.protein_groups import fold_to_cdna_canonical_symbol
 from pirlygenes.gene_sets_cancer import CTA_gene_names, cancer_subtype_group
 from pirlygenes.load_dataset import get_data
 
+
+def zscore(s: pd.Series) -> pd.Series:
+    """Z-score a series across cohorts (population std, ddof=0). The one
+    z-score the aPD1/ICI analyses share."""
+    return (s - s.mean()) / s.std(ddof=0)
+
+
+def signature_score(mat: pd.DataFrame, genes) -> pd.Series:
+    """Per-cohort mean z-scored log-expression over a gene signature, restricted
+    to its proteoform-folded members present in the cohort×gene matrix; NaN where
+    none are present. The single place the analyses score a gene set."""
+    present = [g for g in fold_to_cdna_canonical_symbol(genes) if g in mat.columns]
+    if not present:
+        return pd.Series(np.nan, index=mat.index)
+    return mat[present].apply(zscore).mean(axis=1)
+
 _EXPR_CACHE = (Path.home() / ".cache" / "pirlygenes" / "expression"
                / "treehouse-polya-25-01")
 _DERIVED = _EXPR_CACHE / "derived"

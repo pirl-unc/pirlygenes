@@ -29,6 +29,7 @@ from pirlygenes import gene_sets_cancer as gsc  # noqa: E402
 from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 from _apd1_factors import (apd1_map, tmb_map, viral_score, cta_burden,  # noqa: E402
                            cohort_gene_matrix, curated_signatures)
+from _apd1_factors import zscore, signature_score  # noqa: E402
 from _panels import fold  # noqa: E402
 from _run_layout import add_layout_args, resolve_dirs  # noqa: E402
 
@@ -38,10 +39,6 @@ _TGFB = "aPD1_exclusion_TGFb_response"
 _WNT = "aPD1_exclusion_Wnt"
 # Individual secreted immune-EXCLUSION genes shown as their own factors.
 _SECRETED = ["TGFB1", "WNT11", "WNT5A", "IL10"]
-
-
-def _z(s):
-    return (s - s.mean()) / s.std(ddof=0)
 
 
 def _orr_maps():
@@ -65,23 +62,16 @@ def _factor_table():
     tmb = tmb_map()
     cta = cta_burden(mat)
     sig = curated_signatures()
-
-    def sigscore(key):
-        genes = [g for g in fold(sig.get(key, [])) if g in mat.columns]
-        if not genes:
-            return pd.Series(np.nan, index=mat.index)
-        return mat[genes].apply(_z).mean(axis=1)
-
     cols = {
         "median TMB": np.log10(pd.Series({c: tmb.get(c, np.nan) for c in mat.index})),
         "CTA burden": pd.Series({c: cta.get(c, np.nan) for c in mat.index}),
         "viral status": pd.Series({c: viral_score(c, reg) for c in mat.index}),
-        "TGF-beta signature": sigscore(_TGFB),
-        "Wnt signature": sigscore(_WNT),
+        "TGF-beta signature": signature_score(mat, sig.get(_TGFB, [])),
+        "Wnt signature": signature_score(mat, sig.get(_WNT, [])),
     }
     for g in fold(_SECRETED):
         if g in mat.columns:
-            cols[g] = _z(mat[g])
+            cols[g] = zscore(mat[g])
     return pd.DataFrame(cols)
 
 

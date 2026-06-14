@@ -572,8 +572,10 @@ def collapse_wide(df: pd.DataFrame, *, value_cols, kind: str = "cdna",
     rep[id_col] = rep[id_col].mask(folded, pid)
     if symbol_col in rep.columns:
         rep[symbol_col] = rep[symbol_col].mask(folded, pid)
-    rep["Proteoform_ID"] = rep[id_col].astype(str).to_numpy()
-    rep["Member_Ensembl_Gene_IDs"] = canon.map(lambda c: members.get(c, c)).to_numpy()
+    rep = rep.assign(
+        Proteoform_ID=rep[id_col].astype(str).to_numpy(),
+        Member_Ensembl_Gene_IDs=canon.map(lambda c: members.get(c, c)).to_numpy(),
+    )
     keep = list(df.columns) + [c for c in ("Proteoform_ID", "Member_Ensembl_Gene_IDs")
                                if c not in df.columns]
     return rep.sort_values("_ord").reset_index(drop=True)[keep]

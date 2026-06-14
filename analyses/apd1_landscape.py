@@ -41,6 +41,7 @@ from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 from _apd1_factors import (SIGNATURE_META, apd1_map,  # noqa: E402
                            cohort_gene_matrix, cta_burden, curated_signatures,
                            indel_map, tmb_map, viral_score, with_parent)
+from _apd1_factors import zscore  # noqa: E402
 from _panels import fold  # noqa: E402
 
 OUT = Path(os.environ.get("APD1_RUN_DIR",
@@ -48,10 +49,6 @@ OUT = Path(os.environ.get("APD1_RUN_DIR",
 OUT.mkdir(parents=True, exist_ok=True)
 # column order within each axis (label -> therapy_class or special token)
 _AXIS_ORDER = ["antigen", "exclusion", "circular"]
-
-
-def _z(s):
-    return (s - s.mean()) / s.std(ddof=0)
 
 
 def _build():
@@ -80,11 +77,11 @@ def _build():
         axis = SIGNATURE_META[cls][0]
         label = cls.replace("aPD1_", "").replace("exclusion_", "").replace(
             "circular_", "").replace("antigen_", "")
-        cols[label] = (axis, mat[present].apply(_z).mean(axis=1))
+        cols[label] = (axis, mat[present].apply(zscore).mean(axis=1))
 
     # order columns by axis
     ordered = sorted(cols, key=lambda k: (_AXIS_ORDER.index(cols[k][0]), k))
-    Z = pd.DataFrame({k: _z(cols[k][1]) for k in ordered})
+    Z = pd.DataFrame({k: zscore(cols[k][1]) for k in ordered})
     axes_of = {k: cols[k][0] for k in ordered}
     rho = {k: spearmanr(cols[k][1], orr, nan_policy="omit").statistic
            for k in ordered}
