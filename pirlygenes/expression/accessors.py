@@ -1702,12 +1702,18 @@ def pan_cancer_expression(
         if mode == "tpm":
             continue
         if mode == "tpm_clean":
-            normalized_df = _bundled_normalize(
+            # ONE clean TPM everywhere: the fixed_fraction 16/9/75 contract,
+            # identical to cancer_reference_expression. (Was the legacy zero
+            # drop-and-renormalize, which kept ribosomal proteins in biology and
+            # inflated the biological budget to 1e6 — a different, non-comparable
+            # "clean" than the reference table used.)
+            normalized_df, _ = normalize_expression(
                 df,
-                technical_rna_normalize=True,
-                remove_noncoding=False,
-                renormalize=True,
+                label_col="Symbol",
+                id_col="Ensembl_Gene_ID",
                 value_cols=analysis_value_cols,
+                censored_fill="fixed_fraction",
+                exclude_ribosomal_proteins=True,
             )
             source_cols = analysis_value_cols
         elif mode == "tpm_log1p":

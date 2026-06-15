@@ -1316,8 +1316,10 @@ def test_pan_cancer_expression_normalize_default_is_tpm_clean():
         c for c in df.columns
         if c.endswith(("_TPM_clean", "_nTPM_clean"))
     ]
+    # clean TPM is the fixed_fraction 16/9/75 contract (identical to
+    # cancer_reference_expression): technical RNA is PINNED to ~9%, not zeroed.
     for col in value_cols:
-        assert df.loc[mt_mask, col].astype(float).sum() == pytest.approx(0.0)
+        assert df.loc[mt_mask, col].astype(float).sum() > 0
 
 
 def test_pan_cancer_expression_normalize_none_keeps_raw_and_tpm_columns():
@@ -1414,19 +1416,34 @@ def test_pan_cancer_expression_normalize_housekeeping_alias_works():
     assert any(c.endswith("_TPM_hk") for c in df.columns)
 
 
-def test_pan_cancer_expression_normalize_tpm_clean_zeroes_technical_rna():
-    """``normalize="tpm_clean"`` zeroes mtDNA / rRNA / NUMT / MALAT1+NEAT1
-    rows in added clean TPM-scale analysis columns."""
+def test_pan_cancer_expression_normalize_tpm_clean_fixed_fraction():
+    """``normalize="tpm_clean"`` applies the ONE fixed_fraction 16/9/75 contract
+    (identical to cancer_reference_expression): the censored block is PINNED, not
+    zeroed — ribosomal proteins to ~16%, other technical RNA to ~9% — and biology
+    fills the constant remaining ~75%."""
+    from pirlygenes.expression.normalize import clean_tpm_removal_mask
     raw = pan_cancer_expression(normalize=None)
     df = pan_cancer_expression(normalize="tpm_clean")
     mt_mask = df["Symbol"].astype(str).str.startswith("MT-")
     assert mt_mask.any()
+    gt = df[["Symbol", "Ensembl_Gene_ID"]]
+    rem = clean_tpm_removal_mask(gt).to_numpy()
+    tech_only = clean_tpm_removal_mask(
+        gt, exclude_ribosomal_proteins=False).to_numpy()
+    ribo, other = rem & ~tech_only, rem & tech_only
     value_cols = [
         c for c in df.columns
         if c.endswith(("_TPM_clean", "_nTPM_clean"))
     ]
     for col in value_cols:
-        assert df.loc[mt_mask, col].astype(float).sum() == pytest.approx(0.0)
+        v = df[col].astype(float)
+        total = float(v.sum())
+        if total <= 0:
+            continue
+        assert v[mt_mask].sum() > 0                      # PINNED, not zeroed
+        assert v[ribo].sum() / total == pytest.approx(0.16, abs=0.015)
+        assert v[other].sum() / total == pytest.approx(0.09, abs=0.015)
+        assert v[~rem].sum() / total == pytest.approx(0.75, abs=0.015)
     fpkm_col = next(c for c in df.columns if c.endswith("_FPKM"))
     pd.testing.assert_series_equal(
         raw[fpkm_col].reset_index(drop=True),
