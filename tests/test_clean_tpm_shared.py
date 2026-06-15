@@ -105,25 +105,46 @@ def test_reference_fill_is_cohort_independent():
         assert a.loc[i].tolist() == b.loc[i].tolist()
 
 
-def test_clean_tpm_fixed_fraction_two_compartment():
+def test_clean_tpm_fixed_fraction_three_compartment():
+    """Default clean-TPM splits the censored block into ribosomal-protein (16%)
+    + other-technical (9%), biology 75% (cancerdata 16/9 refinement)."""
     gene_table, values = _fixture()
-    # two samples deliberately differ in technical fraction (the confound)
     clean = clean_tpm_matrix(values, gene_table=gene_table,
                              censored_fill="fixed_fraction")
     mask = clean_tpm_removal_mask(gene_table).to_numpy()
-    # every sample: technical -> 25%, biological -> 75%, total 1e6
-    np.testing.assert_allclose(clean.loc[mask].sum(axis=0).to_numpy(),
-                               [250_000.0, 250_000.0])
+    tech_only = clean_tpm_removal_mask(
+        gene_table, exclude_ribosomal_proteins=False).to_numpy()
+    ribo = mask & ~tech_only          # RPL13A
+    other = mask & tech_only          # MT-CO1, MT-RNR1, MALAT1
+    # each compartment pinned separately; biology gets the rest; total 1e6
+    np.testing.assert_allclose(clean.loc[ribo].sum(axis=0).to_numpy(),
+                               [160_000.0, 160_000.0])
+    np.testing.assert_allclose(clean.loc[other].sum(axis=0).to_numpy(),
+                               [90_000.0, 90_000.0])
     np.testing.assert_allclose(clean.loc[~mask].sum(axis=0).to_numpy(),
                                [750_000.0, 750_000.0])
+    # combined censored still 25% (back-compat with the lumped contract)
+    np.testing.assert_allclose(clean.loc[mask].sum(axis=0).to_numpy(),
+                               [250_000.0, 250_000.0])
     np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
     # within-compartment relative expression preserved (MT-CO1:MT-RNR1 was 5:1)
     assert abs(clean.loc[0, "S1"] / clean.loc[1, "S1"]
                - values.loc[0, "S1"] / values.loc[1, "S1"]) < 1e-6
-    # custom fraction honoured
-    c10 = clean_tpm_matrix(values, gene_table=gene_table,
-                           censored_fill="fixed_fraction", technical_fraction=0.10)
-    np.testing.assert_allclose(c10.loc[mask].sum(axis=0).to_numpy(),
+    # custom per-compartment fractions honoured
+    c = clean_tpm_matrix(values, gene_table=gene_table,
+                         censored_fill="fixed_fraction",
+                         ribosomal_protein_fraction=0.20,
+                         other_technical_fraction=0.05)
+    np.testing.assert_allclose(c.loc[ribo].sum(axis=0).to_numpy(),
+                               [200_000.0, 200_000.0])
+    np.testing.assert_allclose(c.loc[other].sum(axis=0).to_numpy(),
+                               [50_000.0, 50_000.0])
+    # technical-only view (ribosomal kept in biology): single censored block at
+    # technical_fraction, no ribosomal compartment
+    t = clean_tpm_matrix(values, gene_table=gene_table,
+                         censored_fill="fixed_fraction",
+                         exclude_ribosomal_proteins=False, technical_fraction=0.10)
+    np.testing.assert_allclose(t.loc[tech_only].sum(axis=0).to_numpy(),
                                [100_000.0, 100_000.0])
 
 

@@ -64,12 +64,19 @@ TECHNICAL_RNA_GROUPS = frozenset(
 #: Deprecated private alias of :data:`TECHNICAL_RNA_GROUPS`; kept for back-compat.
 _TECHNICAL_RNA_GROUPS = TECHNICAL_RNA_GROUPS
 
-#: Fraction of the 1e6 clean-TPM budget pinned to the technical-RNA (+ ribosomal-
-#: protein) compartment in the clean_tpm_v4 contract (#446). The PUBLIC source of
-#: truth for the value normalize.py applies; consumers import this instead of
-#: re-typing the magic number, and the emitted reference frame records the value
-#: actually used in its metadata.
-TECHNICAL_FRACTION = 0.25
+#: Fractions of the 1e6 clean-TPM budget pinned to each censored compartment in
+#: the clean-TPM contract (#446). The censored block is split into two
+#: separately-pinned compartments (cancerdata's 16/9 refinement, validated on
+#: fresh-frozen polyA TCGA: ribosomal proteins sit at ~16% of the budget, other
+#: technical RNA at ~9%), with biology getting the remaining 75% — instead of one
+#: lumped 25% block. PUBLIC source of truth for the values normalize.py applies;
+#: consumers import these instead of re-typing the magic numbers, and the emitted
+#: reference frame records the values actually used in its metadata.
+RIBOSOMAL_PROTEIN_FRACTION = 0.16
+OTHER_TECHNICAL_FRACTION = 0.09
+#: Combined censored budget (ribosomal + other technical). Retained for back-compat
+#: and for the single-compartment paths (technical-only view, the v5 cap mode).
+TECHNICAL_FRACTION = RIBOSOMAL_PROTEIN_FRACTION + OTHER_TECHNICAL_FRACTION
 
 # Display ordering for the per-category pre-normalization QC block.
 # Removed groups come first (drop-by-default), then retained groups; within
@@ -336,6 +343,8 @@ __all__ = [
     "TECHNICAL_RNA_GROUPS",
     "TECHNICAL_RNA_FAMILIES",
     "TECHNICAL_FRACTION",
+    "RIBOSOMAL_PROTEIN_FRACTION",
+    "OTHER_TECHNICAL_FRACTION",
     "_POLYA_BIAS_LNCRNA_SYMBOLS",
     "_TECHNICAL_RNA_GROUPS",
     "_TECHNICAL_RNA_FAMILIES",
