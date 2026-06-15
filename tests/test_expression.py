@@ -1421,16 +1421,23 @@ def test_pan_cancer_expression_normalize_tpm_clean_fixed_fraction():
     (identical to cancer_reference_expression): the censored block is PINNED, not
     zeroed — ribosomal proteins to ~16%, other technical RNA to ~9% — and biology
     fills the constant remaining ~75%."""
-    from pirlygenes.expression.normalize import clean_tpm_removal_mask
+    from pirlygenes.load_dataset import get_data
     raw = pan_cancer_expression(normalize=None)
     df = pan_cancer_expression(normalize="tpm_clean")
-    mt_mask = df["Symbol"].astype(str).str.startswith("MT-")
-    assert mt_mask.any()
-    gt = df[["Symbol", "Ensembl_Gene_ID"]]
-    rem = clean_tpm_removal_mask(gt).to_numpy()
-    tech_only = clean_tpm_removal_mask(
-        gt, exclude_ribosomal_proteins=False).to_numpy()
-    ribo, other = rem & ~tech_only, rem & tech_only
+    # Authoritative category split — the canonical censored-gene list (the same
+    # source of truth the transform is built on), keyed by ENSG. Using the list
+    # DIRECTLY (not the removal-mask helper the implementation also calls) makes
+    # this an independent check of which genes land in each compartment.
+    censored = get_data("clean-tpm-censored-genes")
+    ribo_ids = set(censored.loc[censored["category"] == "ribosomal_protein",
+                                "Ensembl_Gene_ID"].astype(str))
+    tech_ids = set(censored.loc[censored["category"] == "technical",
+                                "Ensembl_Gene_ID"].astype(str))
+    ids = df["Ensembl_Gene_ID"].astype(str)
+    ribo = ids.isin(ribo_ids).to_numpy()
+    other = ids.isin(tech_ids).to_numpy()
+    rem = ribo | other
+    assert ribo.any() and other.any()
     value_cols = [
         c for c in df.columns
         if c.endswith(("_TPM_clean", "_nTPM_clean"))
@@ -1440,7 +1447,7 @@ def test_pan_cancer_expression_normalize_tpm_clean_fixed_fraction():
         total = float(v.sum())
         if total <= 0:
             continue
-        assert v[mt_mask].sum() > 0                      # PINNED, not zeroed
+        assert v[other].sum() > 0                        # technical PINNED, not zeroed
         assert v[ribo].sum() / total == pytest.approx(0.16, abs=0.015)
         assert v[other].sum() / total == pytest.approx(0.09, abs=0.015)
         assert v[~rem].sum() / total == pytest.approx(0.75, abs=0.015)
