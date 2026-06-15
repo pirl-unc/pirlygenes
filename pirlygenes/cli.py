@@ -616,7 +616,7 @@ def _source_build_cmd(src, summary_out=_SUMMARY_OUT, samples_out=_SAMPLES_OUT,
                 cmd += [flag, value]
     cmd += list(src.builder_args)
     e = list(extra or [])
-    if e and e and e[0] == "--":
+    if e and e[0] == "--":
         e = e[1:]
     cmd += e
     return cmd

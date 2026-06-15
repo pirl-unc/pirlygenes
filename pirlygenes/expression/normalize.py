@@ -263,7 +263,7 @@ def normalize_expression(
     matches how the packaged ``cancer_reference_expression`` references were
     built (#311):
 
-    - ``"fixed_fraction"`` (clean_tpm_v4) — two-compartment: the censored
+    - ``"fixed_fraction"`` (clean_tpm) — three-compartment: the censored
       (technical) block is pinned to ``technical_fraction`` of the 1e6 budget
       (default 25%) and the biological block to the rest (75%), each
       renormalized within its group. This is the basis the references ship on.
@@ -459,7 +459,7 @@ def normalize_technical_rna_columns(
     Shared comparability transform for reference matrices. With the default
     ``censored_fill="zero"`` it zeroes technical-RNA features and preserves
     each column's total mass (legacy behavior). Set
-    ``censored_fill="fixed_fraction"`` to apply the clean_tpm_v4 two-compartment
+    ``censored_fill="fixed_fraction"`` to apply the clean_tpm three-compartment
     transform the cohort builders use, so your normalized inputs match how the
     packaged references were built (#311) — see :func:`normalize_expression`.
 
@@ -699,75 +699,65 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
             gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins)
     import pandas as pd
 
+    if censored_fill != "fixed_fraction":
+        raise ValueError(
+            "clean_tpm_matrix only supports the single clean-TPM contract "
+            f"censored_fill='fixed_fraction' (got {censored_fill!r}); the legacy "
+            "zero / reference / typical modes were removed.")
+    # The single clean-TPM contract. The censored block (mtDNA / rRNA-like /
+    # mt-pseudogene / polyA-bias lncRNA + ribosomal-protein mRNA & pseudogenes) is
+    # FORCED to a constant fraction of the 1e6 budget, split into separately pinned
+    # ribosomal (~16%) and other-technical (~9%) compartments; biology fills the
+    # constant remaining ~75%. Within each compartment relative expression is
+    # preserved (cohort-independent, no reference table). Fixing the BIOLOGICAL
+    # compartment to a constant 750k budget is what makes biological clean-TPM
+    # cross-sample comparable — the one property the transform exists to provide.
     rem = removable.to_numpy()
-    if censored_fill == "fixed_fraction":
-        # The single clean-TPM contract. The censored block (mtDNA / rRNA-like /
-        # mt-pseudogene / polyA-bias lncRNA + ribosomal-protein mRNA & pseudogenes)
-        # is FORCED to a constant fraction of the 1e6 budget, split into separately
-        # pinned ribosomal (16%) and other-technical (9%) compartments; biology
-        # fills the constant remaining ~75%. Within each compartment relative
-        # expression is preserved; cohort-independent (no reference table). Fixing
-        # the BIOLOGICAL compartment to a constant 750k budget is what makes
-        # biological clean-TPM cross-sample comparable — the one property the whole
-        # transform exists to provide. (A cap-only "v5" variant was evaluated and
-        # rejected, #304: it inflates biology in low-technical samples, moving the
-        # distortion onto the comparison you actually use.)
-        if not 0.0 < technical_fraction < 1.0:
-            raise ValueError("technical_fraction must be in (0, 1)")
+    if not 0.0 < technical_fraction < 1.0:
+        raise ValueError("technical_fraction must be in (0, 1)")
 
-        def _scale_to_budget(mask, fraction):
-            """Per-column scale that forces ``mask``'s mass to ``fraction`` of
-            1e6; 0 where the compartment has no mass (it stays empty)."""
-            s = values.loc[mask].sum(axis=0)
-            out = pd.Series(0.0, index=values.columns, dtype=float)
-            pos = s > 0
-            out.loc[pos] = (fraction * 1_000_000.0) / s.loc[pos]
-            return out
+    def _scale_to_budget(mask, fraction):
+        """Per-column scale that forces ``mask``'s mass to ``fraction`` of 1e6;
+        0 where the compartment has no mass (it stays empty)."""
+        s = values.loc[mask].sum(axis=0)
+        out = pd.Series(0.0, index=values.columns, dtype=float)
+        pos = s > 0
+        out.loc[pos] = (fraction * 1_000_000.0) / s.loc[pos]
+        return out
 
-        clean = values.astype(float).copy()
-        if censored_fill == "fixed_fraction":
-            # Default contract: split the censored block into two separately-
-            # pinned compartments — ribosomal proteins (RIBOSOMAL_PROTEIN_FRACTION,
-            # ~16%) and other technical RNA (OTHER_TECHNICAL_FRACTION, ~9%) — with
-            # biology getting the rest (~75%). Each compartment is renormalized
-            # within itself so relative expression is preserved; pinning the two
-            # separately stops one's cross-sample variation from bleeding into the
-            # other's budget (cancerdata's 16/9 refinement of the lumped-25% v4).
-            # The ribosomal sub-block is the censored ribosomal-protein category
-            # (removal-mask delta between the full and technical-only lists — the
-            # single source of truth); its mass is the ~120 canonical RPL/RPS, so
-            # forcing the whole category to 16% lands the canonical proteins at 16%.
-            ribo_mask = None
-            if exclude_ribosomal_proteins and gene_table is not None:
-                tech_only = clean_tpm_removal_mask(
-                    gene_table, exclude_ribosomal_proteins=False).to_numpy()
-                ribo_mask = rem & ~tech_only
-            if ribo_mask is not None and ribo_mask.any():
-                other_mask = rem & ~ribo_mask
-                bio_frac = 1.0 - ribosomal_protein_fraction - other_technical_fraction
-                if bio_frac <= 0.0:
-                    raise ValueError(
-                        "ribosomal_protein_fraction + other_technical_fraction "
-                        "must be < 1 (biology needs a positive budget)")
-                clean.loc[ribo_mask] = values.loc[ribo_mask].mul(
-                    _scale_to_budget(ribo_mask, ribosomal_protein_fraction), axis=1)
-                clean.loc[other_mask] = values.loc[other_mask].mul(
-                    _scale_to_budget(other_mask, other_technical_fraction), axis=1)
-                clean.loc[~rem] = values.loc[~rem].mul(
-                    _scale_to_budget(~rem, bio_frac), axis=1)
-                return clean.fillna(0.0)
-            # technical-only view (no ribosomal compartment): single censored
-            # block pinned to technical_fraction, biology to the rest.
-            clean.loc[rem] = values.loc[rem].mul(
-                _scale_to_budget(rem, technical_fraction), axis=1)
-            clean.loc[~rem] = values.loc[~rem].mul(
-                _scale_to_budget(~rem, 1.0 - technical_fraction), axis=1)
-            return clean.fillna(0.0)
-
-    raise ValueError(
-        "clean_tpm_matrix only supports the single clean-TPM contract "
-        f"censored_fill='fixed_fraction' (got {censored_fill!r}); the legacy "
-        "zero / reference / typical modes were removed.")
+    clean = values.astype(float).copy()
+    # The ribosomal sub-block is the gene_table ribosomal-protein CATEGORY (the
+    # full censored list minus the technical-only list — the single source of
+    # truth) INTERSECTED with the actual removable rows, so an explicitly-supplied
+    # ``removable`` that disagrees with ``gene_table`` can't miscompartmentalize a
+    # non-ribosomal gene into the 16% block.
+    ribo_mask = None
+    if exclude_ribosomal_proteins and gene_table is not None:
+        full = clean_tpm_removal_mask(gene_table).to_numpy()
+        tech_only = clean_tpm_removal_mask(
+            gene_table, exclude_ribosomal_proteins=False).to_numpy()
+        ribo_mask = rem & full & ~tech_only
+    if ribo_mask is not None and ribo_mask.any():
+        other_mask = rem & ~ribo_mask
+        bio_frac = 1.0 - ribosomal_protein_fraction - other_technical_fraction
+        if bio_frac <= 0.0:
+            raise ValueError(
+                "ribosomal_protein_fraction + other_technical_fraction must be "
+                "< 1 (biology needs a positive budget)")
+        clean.loc[ribo_mask] = values.loc[ribo_mask].mul(
+            _scale_to_budget(ribo_mask, ribosomal_protein_fraction), axis=1)
+        clean.loc[other_mask] = values.loc[other_mask].mul(
+            _scale_to_budget(other_mask, other_technical_fraction), axis=1)
+        clean.loc[~rem] = values.loc[~rem].mul(
+            _scale_to_budget(~rem, bio_frac), axis=1)
+        return clean.fillna(0.0)
+    # technical-only view (no ribosomal compartment): single censored block pinned
+    # to technical_fraction, biology to the rest.
+    clean.loc[rem] = values.loc[rem].mul(
+        _scale_to_budget(rem, technical_fraction), axis=1)
+    clean.loc[~rem] = values.loc[~rem].mul(
+        _scale_to_budget(~rem, 1.0 - technical_fraction), axis=1)
+    return clean.fillna(0.0)
 
 
 # ---------- cross-source transforms (#293) ----------
