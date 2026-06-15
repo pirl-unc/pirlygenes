@@ -30,14 +30,14 @@ from __future__ import annotations
 import functools
 from typing import Iterable
 
-from .qc import _TECHNICAL_RNA_GROUPS, classify_gene_qc
+from .qc import TECHNICAL_FRACTION, TECHNICAL_RNA_GROUPS, classify_gene_qc
 
 
-# Default removal panel. Mirrors :data:`expression_qc._TECHNICAL_RNA_GROUPS`
+# Default removal panel. Mirrors :data:`expression_qc.TECHNICAL_RNA_GROUPS`
 # — mtDNA, NUMT-like pseudogenes, nuclear rRNA-like, and the
 # polyadenylation-bias lncRNA panel (MALAT1, NEAT1). See the
 # expression_qc module for the per-group citations.
-_DEFAULT_NORMALIZE_REMOVE_GROUPS = _TECHNICAL_RNA_GROUPS
+_DEFAULT_NORMALIZE_REMOVE_GROUPS = TECHNICAL_RNA_GROUPS
 _VALUE_COL_PREFIXES = ("TPM", "nTPM_", "FPKM_")
 _VALUE_COL_SUFFIXES = (
     "_TPM",
@@ -230,7 +230,7 @@ def normalize_expression(
     remove_noncoding: bool = False,
     remove_groups: Iterable[str] = _DEFAULT_NORMALIZE_REMOVE_GROUPS,
     censored_fill: str = "zero",
-    technical_fraction: float = 0.25,
+    technical_fraction: float = TECHNICAL_FRACTION,
     exclude_ribosomal_proteins: bool = True,
     protect=None,
     reference=None,
@@ -436,7 +436,7 @@ def normalize_technical_rna_columns(
     label_col: str = "Symbol",
     value_cols: Iterable[str] | None = None,
     censored_fill: str = "zero",
-    technical_fraction: float = 0.25,
+    technical_fraction: float = TECHNICAL_FRACTION,
 ):
     """Normalize mtDNA/rRNA-like features and renormalize every expression column.
 
@@ -469,7 +469,7 @@ def normalize_technical_rna_long_table(
     group_cols: Iterable[str] = ("cancer_code", "subtype"),
     value_cols: Iterable[str] = ("tumor_tpm_median", "tumor_tpm_q1", "tumor_tpm_q3"),
     censored_fill: str = "zero",
-    technical_fraction: float = 0.25,
+    technical_fraction: float = TECHNICAL_FRACTION,
 ):
     """Apply technical-RNA normalization within each long-table cohort group.
 
@@ -653,7 +653,7 @@ def censored_gene_reference():
 def clean_tpm_matrix(values, removable=None, *, gene_table=None,
                      exclude_ribosomal_proteins: bool = True,
                      censored_fill: str = "fixed_fraction", censored_budget=None,
-                     reference=None, technical_fraction: float = 0.25):
+                     reference=None, technical_fraction: float = TECHNICAL_FRACTION):
     """Reference clean-TPM transform on a gene×sample matrix.
 
     ``values`` is genes (rows) × samples (cols). Provide either an explicit

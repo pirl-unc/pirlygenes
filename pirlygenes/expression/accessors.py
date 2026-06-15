@@ -84,7 +84,7 @@ from .normalize import (
     percentile_rank_expression,
     renormalize_to_million,
 )
-from .qc import _TECHNICAL_RNA_FAMILIES
+from .qc import TECHNICAL_RNA_FAMILIES
 
 
 # ---------- column-discovery helpers ----------
@@ -303,7 +303,7 @@ def technical_rna_gene_ids() -> set[str]:
     to project onto a frame that doesn't carry ``Ensembl_Gene_ID``.
     """
     out: set[str] = set()
-    for family in _TECHNICAL_RNA_FAMILIES:
+    for family in TECHNICAL_RNA_FAMILIES:
         out |= gene_family_ids(family)
     return out
 

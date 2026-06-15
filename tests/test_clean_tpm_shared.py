@@ -332,3 +332,32 @@ def test_removal_mask_membership_matches_canonical_list():
     mask = clean_tpm_removal_mask(gt)
     removed = set(gt.loc[mask.to_numpy(), "Ensembl_Gene_ID"])
     assert removed == set(df["Ensembl_Gene_ID"].astype(str))
+
+
+def test_public_technical_rna_contract_exported():
+    """#445/#446: the clean-TPM technical-RNA compartment is a PUBLIC contract.
+    Consumers (trufflepig) import these instead of underscore-private globals."""
+    from pirlygenes.expression import (
+        TECHNICAL_FRACTION,
+        TECHNICAL_RNA_FAMILIES,
+        TECHNICAL_RNA_GROUPS,
+    )
+    from pirlygenes.expression import qc
+
+    assert TECHNICAL_RNA_GROUPS == frozenset(
+        {"mt_dna", "mt_like_pseudogene", "rrna_like", "polyadenylation_bias_lncrna"})
+    assert "mitochondrial" in TECHNICAL_RNA_FAMILIES
+    assert TECHNICAL_FRACTION == 0.25
+    # private names remain as back-compat aliases pointing at the public objects
+    assert qc._TECHNICAL_RNA_GROUPS is qc.TECHNICAL_RNA_GROUPS
+    assert qc._TECHNICAL_RNA_FAMILIES is qc.TECHNICAL_RNA_FAMILIES
+
+
+def test_normalize_defaults_track_public_fraction():
+    """The technical_fraction function defaults reference the public constant, so
+    changing TECHNICAL_FRACTION can't silently desync from the applied value."""
+    import inspect
+    from pirlygenes.expression import normalize
+    from pirlygenes.expression.qc import TECHNICAL_FRACTION
+    sig = inspect.signature(normalize.normalize_expression)
+    assert sig.parameters["technical_fraction"].default == TECHNICAL_FRACTION

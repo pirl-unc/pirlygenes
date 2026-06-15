@@ -1,0 +1,2 @@
+- [aPD1 curation + cohort hunt](project_apd1_and_cohort_hunt.md) — SHIPPED 5.22.5 cancer-apd1-response.csv (23 cancers, cited) + accessor; NUT still no public data; TGCT/ATRT/CRC-MSI onboard candidates + CTA-therapy→cancer map
+- [Proteoform identifier scheme](project_proteoform_identifier_scheme.md) — folded loci keyed by slashed proteoform ID (XAGE1A/B, CTAG1A/B) not a member ENSG; ENSG kept for unique genes; proteoform_id() + display_name authority + separate proteoform_display_aliases; analyses panels centralized in _panels.py
