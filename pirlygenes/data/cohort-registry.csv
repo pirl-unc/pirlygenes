@@ -40,3 +40,4 @@ SCLC_UCOLOGNE_2015_TF_DOMINANCE,SCLC,ucologne,University of Cologne,bulk RNA-seq
 TREEHOUSE_POLYA_25_01_TCGA_COADREAD_MSI,TREEHOUSE,treehouse,TCGA (Treehouse-reprocessed),bulk RNA-seq,361,4,False,,Treehouse 25.01 PolyA TCGA-COAD/READ samples split by cBioPortal coadread_tcga_pan_can_atlas_2018 MSIsensor score (>=10 = MSI-H); HUGO symbols harmonized to Ensembl release 112
 UNC_NUTM1,UNC,unc,UNC NUTM1 case series,bulk RNA-seq,3,1,False,,UNC NUTM1 NUT-carcinoma case series; whole-transcriptome RNA-seq gene-level TPM; the only per-sample NUTM expression (public NUT data is cell-line/controlled-access only)
 COMPUTED_COLORECTAL,COMPUTED,computed,Computed aggregate,computed-aggregate,0,2,True,COAD;READ,colorectal union of COAD+READ (rectum curated as colorectal)
+GSE235092_MERKEL_2024,GSE235092,geo,GEO,bulk RNA-seq,91,1,False,,GSE235092 Merkel cell carcinoma bulk RNA-seq panel → exonic-length-normalized TPM → clean_tpm fixed_fraction (16/9/75) → per-cohort summary.

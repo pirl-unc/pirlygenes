@@ -58,51 +58,14 @@ def test_default_removal_mask_is_technical_plus_ribosomal_protein():
         technical_rna_mask(gene_table).tolist() == [True, True, True, False, False, False]
 
 
-def test_clean_tpm_zero_fill_drops_censored_and_renormalizes():
+def test_clean_tpm_matrix_rejects_removed_modes():
+    """zero / reference / typical were removed — clean_tpm_matrix is the single
+    fixed_fraction clean-TPM contract and rejects anything else."""
+    import pytest
     gene_table, values = _fixture()
-    clean = clean_tpm_matrix(values, gene_table=gene_table, censored_fill="zero")
-    assert (clean.loc[[0, 1, 2, 3]] == 0).all().all()   # technical + RPL13A
-    assert (clean.loc[[4, 5]] > 0).all().all()           # TP53, ACTB kept
-    np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
-
-
-def test_clean_tpm_typical_fill_constant_budget_avoids_inflation():
-    gene_table, values = _fixture()
-    clean = clean_tpm_matrix(values, gene_table=gene_table, censored_fill="typical")
-    np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
-    cens = clean.loc[[0, 1, 2, 3]]                      # censored share one value
-    for col in clean.columns:
-        assert cens[col].nunique() == 1
-    z = clean_tpm_matrix(values, gene_table=gene_table, censored_fill="zero")
-    assert (clean.loc[4] < z.loc[4]).all()             # kept less inflated
-
-
-def test_clean_tpm_reference_fill_pins_per_gene_and_fills_remainder():
-    gene_table, values = _fixture()
-    # explicit per-gene reference constants (deterministic, cohort-independent)
-    ref = {"MT-CO1": 100.0, "MT-RNR1": 50.0, "MALAT1": 40.0, "RPL13A": 80.0}  # 270
-    clean = clean_tpm_matrix(values, gene_table=gene_table,
-                             censored_fill="reference", reference=ref)
-    # each censored gene pinned EXACTLY to its reference, identical every sample
-    assert clean.loc[0].tolist() == [100.0, 100.0]
-    assert clean.loc[2].tolist() == [40.0, 40.0]
-    assert clean.loc[3].tolist() == [80.0, 80.0]
-    # the kept genes (TP53, ACTB) fill the remaining 1e6 - 270 budget
-    np.testing.assert_allclose(clean.loc[[4, 5]].sum(axis=0).to_numpy(),
-                               [1e6 - 270.0, 1e6 - 270.0])
-    np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
-
-
-def test_reference_fill_is_cohort_independent():
-    gene_table, values = _fixture()
-    ref = {"MT-CO1": 100.0, "MT-RNR1": 50.0, "MALAT1": 40.0, "RPL13A": 80.0}
-    a = clean_tpm_matrix(values, gene_table=gene_table,
-                         censored_fill="reference", reference=ref)
-    b = clean_tpm_matrix(values * 7, gene_table=gene_table,
-                         censored_fill="reference", reference=ref)
-    # censored genes hold the same value regardless of the (scaled) input cohort
-    for i in (0, 1, 2, 3):
-        assert a.loc[i].tolist() == b.loc[i].tolist()
+    for mode in ("zero", "reference", "typical"):
+        with pytest.raises(ValueError, match="fixed_fraction"):
+            clean_tpm_matrix(values, gene_table=gene_table, censored_fill=mode)
 
 
 def test_clean_tpm_fixed_fraction_three_compartment():
@@ -150,7 +113,9 @@ def test_clean_tpm_fixed_fraction_three_compartment():
 
 def test_technical_only_mask_keeps_ribo_protein():
     gene_table, values = _fixture()
-    tech = clean_tpm_matrix(values, technical_rna_mask(gene_table), censored_fill="zero")
+    # under the strict technical-only mask, RPL13A (ribosomal protein) is NOT
+    # censored, so it stays in the biological compartment (non-zero) after clean.
+    tech = clean_tpm_matrix(values, technical_rna_mask(gene_table))
     assert (tech.loc[3] > 0).all()   # RPL13A kept under the strict technical set
 
 

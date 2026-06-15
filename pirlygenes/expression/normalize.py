@@ -141,7 +141,6 @@ def _clean_tpm_normalize(
     technical_fraction,
     exclude_ribosomal_proteins,
     protect,
-    reference,
 ):
     """Apply the shared reference clean-TPM transform (:func:`clean_tpm_matrix`)
     to ``out`` in place, per (group × value column), and return
@@ -186,7 +185,6 @@ def _clean_tpm_normalize(
             exclude_ribosomal_proteins=exclude_ribosomal_proteins,
             censored_fill=censored_fill,
             technical_fraction=technical_fraction,
-            reference=reference,
         )
         out.loc[idx, value_cols] = cleaned
 
@@ -215,9 +213,7 @@ def _clean_tpm_normalize(
         "group_cols": resolved_group_cols,
         "censored_fill": censored_fill,
         "technical_fraction": (
-            technical_fraction
-            if censored_fill in ("fixed_fraction", "fixed_fraction_cap")
-            else None
+            technical_fraction if censored_fill == "fixed_fraction" else None
         ),
         # the actually-applied per-compartment split (default fixed_fraction path)
         "ribosomal_protein_fraction": (
@@ -250,7 +246,6 @@ def normalize_expression(
     technical_fraction: float = TECHNICAL_FRACTION,
     exclude_ribosomal_proteins: bool = True,
     protect=None,
-    reference=None,
 ):
     """Normalize technical-RNA features and rescale each column's mass.
 
@@ -321,7 +316,7 @@ def normalize_expression(
             "groups": {},
         }
 
-    if censored_fill != "zero":
+    if censored_fill == "fixed_fraction":
         return _clean_tpm_normalize(
             out,
             label_col=label_col,
@@ -332,8 +327,12 @@ def normalize_expression(
             technical_fraction=technical_fraction,
             exclude_ribosomal_proteins=exclude_ribosomal_proteins,
             protect=protect,
-            reference=reference,
         )
+    if censored_fill != "zero":
+        raise ValueError(
+            "normalize_expression supports censored_fill='fixed_fraction' (the "
+            "single clean-TPM contract) or 'zero' (legacy technical-RNA drop); "
+            f"got {censored_fill!r} — the reference / typical modes were removed.")
 
     labels = out[label_col].fillna("").astype(str).str.strip()
     remove_group_set = {str(group) for group in remove_groups}
@@ -656,24 +655,13 @@ def drop_technical_genes(df, *, label_col: str = "Symbol",
     return df.loc[~removable.to_numpy()].reset_index(drop=True)
 
 
-def censored_gene_reference():
-    """``{Symbol: reference_tpm}`` — each censored gene's fixed surrogate value,
-    its median TPM across the Treehouse 25.01 PolyA compendium (the reference
-    cohort). Used by :func:`clean_tpm_matrix` ``censored_fill="reference"`` so a
-    censored gene holds the **same** value in every cohort/pipeline. Generated
-    by ``scripts/generate_censored_gene_reference.py``."""
-    from ..load_dataset import get_data
-    df = get_data("censored-gene-reference-tpm")
-    return dict(zip(df["Symbol"].astype(str), df["reference_tpm"].astype(float)))
-
-
 def clean_tpm_matrix(values, removable=None, *, gene_table=None,
                      exclude_ribosomal_proteins: bool = True,
-                     censored_fill: str = "fixed_fraction", censored_budget=None,
-                     reference=None, technical_fraction: float = TECHNICAL_FRACTION,
+                     censored_fill: str = "fixed_fraction",
+                     technical_fraction: float = TECHNICAL_FRACTION,
                      ribosomal_protein_fraction: float = RIBOSOMAL_PROTEIN_FRACTION,
                      other_technical_fraction: float = OTHER_TECHNICAL_FRACTION):
-    """Reference clean-TPM transform on a gene×sample matrix.
+    """The ONE clean-TPM transform on a gene×sample matrix (16/9/75 fixed_fraction).
 
     ``values`` is genes (rows) × samples (cols). Provide either an explicit
     boolean ``removable`` mask (aligned to ``values.index``) or a ``gene_table``
@@ -682,102 +670,48 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
     ribosomal proteins by default** (``exclude_ribosomal_proteins=True`` removes
     them from the biological signal; pass ``False`` for technical-only).
 
-    ``censored_fill`` controls what happens to the censored (removable) rows
-    (``"fixed_fraction"`` is the default as of clean_tpm_v4 — see below):
+    THREE-compartment normalization — force the **ribosomal-protein** block to
+    ``ribosomal_protein_fraction`` (~16%), the **other-technical** block to
+    ``other_technical_fraction`` (~9%), and the kept **biological** block to the
+    remaining ~75% of the 1e6 budget, **renormalizing within each compartment**
+    so relative expression inside each is preserved. Pinning ribosomal and
+    other-technical *separately* (cancerdata's 16/9 refinement of the old
+    lumped-25% v4) keeps one compartment's cross-sample/pipeline variation from
+    bleeding into the other's budget — e.g. a sample with heavy residual rRNA no
+    longer compresses its ribosomal-protein block. Fixing the BIOLOGICAL
+    compartment to a constant ~750k budget is what makes biological clean-TPM
+    cross-sample comparable — the one property the transform exists to provide.
+    Cohort-independent (no reference table). An empty compartment stays at 0 (the
+    others still hit their targets). The ribosomal sub-block is the censored
+    ribosomal-protein category; with ``exclude_ribosomal_proteins=False`` (or no
+    ``gene_table``) there is no ribosomal compartment and the censored block falls
+    back to a single ``technical_fraction`` split.
 
-    - ``"reference"``: replace **each** censored gene with its own
-      **fixed reference value** — its median TPM across the Treehouse PolyA
-      compendium (:func:`censored_gene_reference`) — then renormalize each
-      column to 1e6. Because the censored block is per-gene and identical in
-      every cohort/pipeline, the kept genes are scaled by ``1e6 / (kept_sum +
-      reference_sum)`` with ``reference_sum`` constant, so a sample's variable
-      (often pipeline-driven) technical/ribosomal fraction no longer inflates
-      its other genes, and the censored values are comparable across sources.
-      Requires ``gene_table`` (or an explicit ``reference`` Symbol->TPM map) for
-      the per-gene lookup; genes absent from the reference get 0.
-    - ``"typical"``: hold the censored block at one constant ``censored_budget``
-      (median censored TPM sum across ``values`` if ``None``) split equally
-      across censored genes — cohort-derived, single value.
-    - ``"fixed_fraction"`` (**default**): THREE-compartment normalization — force
-      the **ribosomal-protein** block to ``ribosomal_protein_fraction`` (~16%),
-      the **other-technical** block to ``other_technical_fraction`` (~9%), and the
-      kept **biological** block to the remaining ~75% of the 1e6 budget,
-      **renormalizing within each compartment** so relative expression inside each
-      is preserved. Pinning ribosomal and other-technical *separately* (cancerdata's
-      16/9 refinement of the old lumped-25% v4) keeps one compartment's
-      cross-sample/pipeline variation from bleeding into the other's budget — e.g.
-      a sample with heavy residual rRNA no longer compresses its ribosomal-protein
-      block. This removes the cross-sample technical-fraction confound while
-      keeping each sample's real within-compartment ratios — unlike ``"reference"``,
-      which erases within-technical variation by pinning each gene to a fixed value.
-      Cohort-independent (no reference table). The biological compartment lands on a
-      constant ~750k budget in every sample, so kept genes are directly comparable
-      across samples and sources. An empty compartment stays at 0 (the others still
-      hit their targets). The ribosomal sub-block is the censored ribosomal-protein
-      category; with ``exclude_ribosomal_proteins=False`` (or no ``gene_table``)
-      there is no ribosomal compartment and the censored block falls back to a
-      single ``technical_fraction`` split.
-    - ``"zero"`` (legacy): drop the censored rows and renormalize the remainder
-      (inflates survivors by ``1/(1-censored_fraction)``).
-
-    Columns whose post-fill denominator is <= 0 collapse to zero.
+    ``censored_fill`` accepts only ``"fixed_fraction"`` (the single clean-TPM
+    contract); the legacy ``"zero"`` / ``"reference"`` / ``"typical"`` modes were
+    removed. (Plain technical-RNA dropping — the old ``"zero"`` behavior — still
+    lives in :func:`normalize_expression`, which is a different operation.)
     """
     if removable is None:
         if gene_table is None:
             raise ValueError("clean_tpm_matrix needs either removable or gene_table")
         removable = clean_tpm_removal_mask(
             gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins)
-    import numpy as np
     import pandas as pd
 
     rem = removable.to_numpy()
-    if censored_fill == "reference":
-        # Censored genes are pinned to their FIXED per-gene reference value
-        # (identical in every cohort/pipeline) and NOT renormalized; the kept
-        # genes are scaled to fill the remaining budget (1e6 - reference_sum).
-        if reference is None:
-            reference = censored_gene_reference()
-        if gene_table is None:
-            raise ValueError("censored_fill='reference' needs gene_table (or "
-                             "reference=) for the per-gene surrogate lookup")
-        ref_row = gene_table["Symbol"].astype(str).map(reference).fillna(0.0).to_numpy()
-        ref_sum = float(ref_row[rem].sum())
-        kept_raw_sum = values.loc[~rem].sum(axis=0)
-        kept_scale = pd.Series(0.0, index=values.columns, dtype=float)
-        pos = kept_raw_sum > 0
-        kept_scale.loc[pos] = max(0.0, 1_000_000.0 - ref_sum) / kept_raw_sum.loc[pos]
-        clean = values.astype(float).copy()
-        clean.loc[~rem] = values.loc[~rem].mul(kept_scale, axis=1)
-        ci = np.where(rem)[0]
-        if len(ci):  # exact reference value, broadcast across sample columns
-            clean.iloc[ci, :] = ref_row[ci][:, None]
-        return clean.fillna(0.0)
-
-    if censored_fill in ("fixed_fraction", "fixed_fraction_cap"):
-        # Two-compartment technical/biological split. The technical block is
-        # mtDNA / rRNA-like / mt-pseudogene / polyA-bias lncRNA + ribosomal-
-        # protein mRNA & pseudogenes. Within each compartment relative
-        # expression is preserved; cohort-independent (no reference table).
-        #   "fixed_fraction"     (clean_tpm_v4): technical block FORCED to
-        #       technical_fraction of the 1e6 budget — inflates technical genes
-        #       UP when they're naturally below the target (#304).
-        #   "fixed_fraction_cap" (clean_tpm_v5, #304): technical block CAPPED at
-        #       technical_fraction — compressed when above, NEVER inflated above
-        #       its natural level (suppress-only). Below the cap, expression is
-        #       left as-is (renormalised to 1e6).
-        #       CAVEAT: this is NOT a strict improvement on v4. Within a 1e6
-        #       budget "biology comparable across samples" and "technical block
-        #       untouched" are complementary. v4 fixes the BIOLOGICAL compartment
-        #       to a constant (1-fraction) budget, so biological clean-TPM is
-        #       cross-sample comparable and only the suppressed technical/QC
-        #       block (incl. MALAT1/NEAT1 nuclear-QC markers) is rescaled. v5
-        #       instead lets low-technical samples keep a LARGER biological
-        #       budget, so biological genes are inflated there (a 10%-technical
-        #       sample reads ~1.2x a 25%-technical one for the same true biology)
-        #       — it moves the distortion onto the biological comparison you
-        #       actually use. Prefer v4 for a cross-cohort biological reference;
-        #       use v5 only WITHIN a technically-uniform set, or read QC genes
-        #       from raw TPM instead.
+    if censored_fill == "fixed_fraction":
+        # The single clean-TPM contract. The censored block (mtDNA / rRNA-like /
+        # mt-pseudogene / polyA-bias lncRNA + ribosomal-protein mRNA & pseudogenes)
+        # is FORCED to a constant fraction of the 1e6 budget, split into separately
+        # pinned ribosomal (16%) and other-technical (9%) compartments; biology
+        # fills the constant remaining ~75%. Within each compartment relative
+        # expression is preserved; cohort-independent (no reference table). Fixing
+        # the BIOLOGICAL compartment to a constant 750k budget is what makes
+        # biological clean-TPM cross-sample comparable — the one property the whole
+        # transform exists to provide. (A cap-only "v5" variant was evaluated and
+        # rejected, #304: it inflates biology in low-technical samples, moving the
+        # distortion onto the comparison you actually use.)
         if not 0.0 < technical_fraction < 1.0:
             raise ValueError("technical_fraction must be in (0, 1)")
 
@@ -830,44 +764,10 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
                 _scale_to_budget(~rem, 1.0 - technical_fraction), axis=1)
             return clean.fillna(0.0)
 
-        # fixed_fraction_cap (v5, opt-in): cap-only, never inflate; single
-        # combined censored compartment.
-        tech_budget = technical_fraction * 1_000_000.0
-        tech_sum = values.loc[rem].sum(axis=0)
-        bio_sum = values.loc[~rem].sum(axis=0)
-        tscale = pd.Series(0.0, index=values.columns, dtype=float)
-        bscale = pd.Series(0.0, index=values.columns, dtype=float)
-        total = tech_sum + bio_sum
-        over = (tech_sum > tech_budget) & (bio_sum > 0)
-        tscale.loc[over] = tech_budget / tech_sum.loc[over]
-        bscale.loc[over] = (1_000_000.0 - tech_budget) / bio_sum.loc[over]
-        keep = ~over & (total > 0)
-        tscale.loc[keep] = 1_000_000.0 / total.loc[keep]
-        bscale.loc[keep] = 1_000_000.0 / total.loc[keep]
-        clean.loc[rem] = values.loc[rem].mul(tscale, axis=1)
-        clean.loc[~rem] = values.loc[~rem].mul(bscale, axis=1)
-        return clean.fillna(0.0)
-
-    if censored_fill == "zero":
-        clean = values.copy()
-        clean.loc[rem, :] = 0.0
-        denom = clean.sum(axis=0)
-    elif censored_fill == "typical":
-        kept_sum = values.loc[~rem].sum(axis=0)
-        if censored_budget is None:
-            censored_budget = float(values.loc[rem].sum(axis=0).median()) if rem.any() else 0.0
-        clean = values.copy()
-        if rem.any():
-            clean.loc[rem, :] = censored_budget / int(rem.sum())
-        denom = kept_sum + censored_budget
-    else:
-        raise ValueError("censored_fill must be 'reference', 'typical', or 'zero'")
-
-    # only a genuinely empty column (no mass at all) collapses to zero
-    positive = denom > 0
-    scale = pd.Series(np.nan, index=denom.index, dtype=float)
-    scale.loc[positive] = 1_000_000.0 / denom.loc[positive]
-    return clean.mul(scale, axis=1).fillna(0.0)
+    raise ValueError(
+        "clean_tpm_matrix only supports the single clean-TPM contract "
+        f"censored_fill='fixed_fraction' (got {censored_fill!r}); the legacy "
+        "zero / reference / typical modes were removed.")
 
 
 # ---------- cross-source transforms (#293) ----------
@@ -1279,6 +1179,5 @@ __all__ = [
     "tpm_to_housekeeping_normalized",
     "technical_rna_mask",
     "clean_tpm_removal_mask",
-    "censored_gene_reference",
     "clean_tpm_matrix",
 ]

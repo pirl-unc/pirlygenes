@@ -609,6 +609,9 @@ def test_source_cohort_values_are_canonical():
         "GSE32662_PRINGLE_2012_MTC",
         # v5.6.0 LPS: 4 subtypes from one Singer 2007 MSKCC microarray
         "GSE30929_SINGER_2007_LPS",
+        # NEC_MERKEL bulk RNA-seq panel — first built by `pirlygenes build all`
+        # (registered source, previously LITERATURE_CURATED only)
+        "GSE235092_MERKEL_2024",
     }
     present = set(df["source_cohort"].fillna("").astype(str).unique())
     unknown = present - valid

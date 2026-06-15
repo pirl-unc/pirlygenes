@@ -139,17 +139,22 @@ def test_clean_tpm_zeroes_removable_and_renormalizes():
         columns=["S1", "S2"],
     )
     removable = pd.Series([True, False, False, False], index=values.index)
-    # legacy zero fill: removable g0 dropped to 0, remainder renormalized
-    clean = builder._clean_tpm(values, removable, censored_fill="zero")
-    assert (clean.iloc[0] == 0).all()
+    # The builder's clean TPM is the single fixed_fraction contract: the censored
+    # block (g0) is PINNED to a fixed fraction (not zeroed), so it doesn't inflate
+    # the kept genes; columns still sum to 1e6. (No gene_table -> single-compartment
+    # technical_fraction split.)
+    import pytest
+
+    from pirlygenes.expression.qc import TECHNICAL_FRACTION
+    clean = builder._clean_tpm(values, removable)
+    assert (clean.iloc[0] > 0).all()                    # PINNED, not zeroed
     np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
-    # typical fill (constant budget, no per-gene reference table needed): g0
-    # holds a constant budget (not zero), columns still sum to 1e6, and kept
-    # genes are less inflated than under zero fill (g0 dominates raw mass here).
-    typ = builder._clean_tpm(values, removable, censored_fill="typical")
-    assert (typ.iloc[0] > 0).all()
-    np.testing.assert_allclose(typ.sum(axis=0).to_numpy(), [1e6, 1e6])
-    assert (typ.iloc[1] < clean.iloc[1]).all()
+    for col in clean.columns:
+        assert clean.loc["g0", col] / clean[col].sum() == pytest.approx(
+            TECHNICAL_FRACTION, abs=1e-6)
+    # the removed legacy modes now raise
+    with pytest.raises(ValueError, match="fixed_fraction"):
+        builder._clean_tpm(values, removable, censored_fill="zero")
 
 
 def test_symbol_mapping_rescues_renamed_symbol(monkeypatch, tmp_path):
