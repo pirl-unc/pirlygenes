@@ -639,12 +639,24 @@ def _cmd_build_all(sources, args) -> int:
     import subprocess
 
     buildable = [s for s in sorted(sources, key=lambda x: x.id) if s.builder]
-    ok, failed, skipped = [], [], []
+    ok, failed, skipped, deduped = [], [], [], []
+    seen_cmds: dict[tuple, str] = {}
     for i, src in enumerate(buildable, 1):
         cmd = _source_build_cmd(src, extra=args.build_args)
         if cmd is None:
             skipped.append(src.id)
             continue
+        # Many sources share ONE multi-cohort sweep builder with an identical
+        # command (every tcga-* source -> sweep_treehouse_tcga_cohorts.py, which
+        # rebuilds ALL its cohorts in a single invocation). Run each distinct
+        # command once; the redundant siblings are covered by that single run.
+        key = tuple(cmd)
+        if key in seen_cmds:
+            deduped.append(src.id)
+            sys.stdout.write(
+                f"  -> {src.id}: covered by {seen_cmds[key]} (same command)\n")
+            continue
+        seen_cmds[key] = src.id
         sys.stdout.write(
             f"\n=== [{i}/{len(buildable)}] build {src.id} ===\n"
             f"running: {' '.join(cmd)}\n")
@@ -655,8 +667,8 @@ def _cmd_build_all(sources, args) -> int:
             f"  -> {src.id}: {'OK' if rc == 0 else f'FAILED (rc={rc})'}\n")
         sys.stdout.flush()
     sys.stdout.write(
-        f"\nbuild all: {len(ok)} ok, {len(failed)} failed, "
-        f"{len(skipped)} skipped (no builder)\n")
+        f"\nbuild all: {len(ok)} ok, {len(failed)} failed, {len(deduped)} "
+        f"deduped (shared sweep), {len(skipped)} skipped (no builder)\n")
     if failed:
         sys.stdout.write(f"  failed: {sorted(failed)}\n")
     if skipped:
