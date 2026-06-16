@@ -30,6 +30,20 @@ def _sym_groups():
     return out
 
 
+def test_every_member_and_group_has_a_symbol():
+    """No blank symbols in either derived table: a locus Ensembl ships without an
+    HGNC name (novel / alt-contig protein- or cDNA-identical duplicates) falls
+    back to its ENSG, so the symbol columns are always a usable identifier —
+    never blank (a blank round-trips through CSV as NaN, which breaks downstream
+    string ops)."""
+    for df in (protein_identical_groups(), cdna_identical_groups()):
+        assert df["symbol"].notna().all()
+        assert df["group_canonical_symbol"].notna().all()
+        # the fallback is exactly the row's own ENSG; never an unrelated value
+        nameless = df[df["symbol"].str.startswith("ENSG")]
+        assert (nameless["symbol"] == nameless["ensembl_gene_id"]).all()
+
+
 def test_groups_table_shape_and_invariants():
     df = protein_identical_groups()
     for col in ("group_canonical_ensembl_gene_id", "ensembl_gene_id",
