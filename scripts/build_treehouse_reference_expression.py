@@ -71,13 +71,13 @@ DEFAULT_SOURCE_VERSION = (
     "log2(TPM+1) inverse-transformed; "
     "HUGO symbols harmonized to Ensembl release {ensembl_release}"
 )
-PIPELINE = "treehouse_polya_25_01_log2tpm_to_tpm_ensembl{ensembl}_clean_tpm_v4"
+PIPELINE = "treehouse_polya_25_01_log2tpm_to_tpm_ensembl{ensembl}_clean_tpm_16_9_75"
 DEFAULT_NOTES = (
     "Per-sample TPMs from the Treehouse Tumor Compendium 25.01 PolyA "
     "(hugo_log2tpm matrix, inverse-log2 transformed). Sample selection: "
     "clinical.disease == '{disease_label}'. HUGO symbols mapped to "
     "Ensembl release {ensembl_release}; duplicate symbol mappings dropped. "
-    "TPM_clean is computed per-sample by two-compartment fixed-fraction clean-TPM (technical 25% / biological 75%, each renormalized within its group) + "
+    "TPM_clean is computed per-sample by three-compartment fixed-fraction clean-TPM (ribosomal-protein 16% / other-technical 9% / biological 75%, each renormalized within its compartment) + "
     "denominator rescaling."
 )
 

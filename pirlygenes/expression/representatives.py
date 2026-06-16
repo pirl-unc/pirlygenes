@@ -25,8 +25,8 @@ seed; dependency-free (pure NumPy, no scikit-learn).
 
 Cluster on a **biology-only** matrix (drop the technical compartment first with
 :func:`pirlygenes.expression.drop_technical_genes`) so the selection rides on
-biological signal and is insensitive to the clean_tpm_v4 fixed-fraction floor
-(#304) — while the *stored* vectors stay in the clean_tpm_v4 basis that matches
+biological signal and is insensitive to the clean_tpm_16_9_75 fixed-fraction floor
+(#304) — while the *stored* vectors stay in the clean_tpm_16_9_75 basis that matches
 the aggregate references.
 """
 
@@ -40,7 +40,7 @@ def select_representative_samples(matrix, k: int, *, seed: int = 0) -> list:
     """Pick up to ``k`` representative sample columns of ``matrix``.
 
     ``matrix`` is genes (rows) × samples (cols), values on a linear expression
-    scale (e.g. clean_tpm_v4); ideally already restricted to biological genes
+    scale (e.g. clean_tpm_16_9_75); ideally already restricted to biological genes
     (see :func:`pirlygenes.expression.drop_technical_genes`). Returns the chosen
     column labels in cohort order. Fewer than ``k`` may be returned when
     clusters collapse (empty cluster, or two clusters share a nearest sample) or

@@ -142,7 +142,7 @@ def test_bundled_artifact_schema_and_v4_scale():
     assert {"Ensembl_Gene_ID", "Symbol"} <= set(w.columns)
     reps = [c for c in w.columns if c.startswith("PRAD_rep")]
     assert 1 <= len(reps) <= 5
-    # clean_tpm_v4: biological compartment lands on the 750k budget
+    # clean_tpm_16_9_75: biological compartment lands on the 750k budget
     from pirlygenes.expression.normalize import clean_tpm_removal_mask
     mask = clean_tpm_removal_mask(w[["Symbol", "Ensembl_Gene_ID"]]).to_numpy()
     bio = w[reps[0]].to_numpy()[~mask].sum()

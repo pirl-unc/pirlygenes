@@ -56,7 +56,7 @@ def main() -> int:
 
     # Renormalize each sample to 1e6 (the corrector TPM is a per-gene subset and
     # may not sum to exactly 1e6) so the per-sample basis matches every other
-    # cohort before the generators apply clean_tpm_v4.
+    # cohort before the generators apply clean_tpm_16_9_75.
     sums = wide[sample_cols].sum(axis=0)
     wide[sample_cols] = wide[sample_cols].div(sums.where(sums > 0), axis=1) * 1_000_000.0
 
@@ -85,7 +85,7 @@ def main() -> int:
         source_version=("UNC NUTM1 case series; whole-transcriptome RNA-seq "
                         "gene-level TPM; Ensembl release "
                         f"{args.ensembl_release}"),
-        processing_pipeline="unc_nutm1_gene_tpm_renorm1e6_clean_tpm_v4",
+        processing_pipeline="unc_nutm1_gene_tpm_renorm1e6_clean_tpm_16_9_75",
         notes=(f"NUT carcinoma, UNC case series (n={len(sample_cols)}; "
                "whole-transcriptome RNA-seq). The only per-sample NUTM "
                "expression; public NUT data is cell-line / controlled-access "

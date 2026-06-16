@@ -27,12 +27,12 @@ def test_views_bundle_three_stages_and_provenance():
 
 
 def test_views_clean_differs_from_tpm_for_technical_gene():
-    """clean_tpm_v4 changes the technical gene's value vs plain TPM (the whole
+    """clean_tpm_16_9_75 changes the technical gene's value vs plain TPM (the whole
     point of having both stages in one object)."""
     v = cohort_expression_views("CLL", genes=["MS4A1", "MALAT1"])
     tpm = dict(zip(v.tpm["Symbol"], v.tpm["CLL"]))
     clean = dict(zip(v.clean_tpm["Symbol"], v.clean_tpm["CLL"]))
-    # MALAT1 (polyA-bias technical) is suppressed under clean_tpm_v4
+    # MALAT1 (polyA-bias technical) is suppressed under clean_tpm_16_9_75
     assert clean["MALAT1"] != tpm["MALAT1"]
 
 

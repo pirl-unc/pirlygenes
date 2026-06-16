@@ -1329,7 +1329,7 @@ class CohortExpressionViews:
     index columns):
 
     * ``tpm`` — TPM-harmonized cohort summary (median).
-    * ``clean_tpm`` — clean_tpm_v4 (technical compartment **included**, pinned
+    * ``clean_tpm`` — clean_tpm_16_9_75 (technical compartment **included**, pinned
       to the fixed fraction).
     * ``clean_tpm_biological`` — ``clean_tpm`` with the technical/ribosomal
       genes (the canonical censored-gene list) **dropped** — the
@@ -1459,7 +1459,7 @@ def representative_cohort_samples(
     against the cohort *median* — which overstates accuracy and can't
     reconstruct a physiological sample. This accessor returns a **bounded** set
     of real joint per-sample vectors per cohort — medoids spanning the
-    within-cohort variation — in the same ``clean_tpm_v4`` basis as the
+    within-cohort variation — in the same ``clean_tpm_16_9_75`` basis as the
     aggregates, for the honest sample-level self-classification battery and for
     validating normalization / representation changes on realistic samples.
 
@@ -1474,7 +1474,7 @@ def representative_cohort_samples(
         Keep at most the first ``k`` representatives per cohort (``None`` = all,
         currently up to 5). Representatives are anonymized (``<CODE>_rep01`` …).
     normalize
-        ``"tpm_clean"`` (clean_tpm_v4, as stored) or ``"tpm_clean_log1p"``
+        ``"tpm_clean"`` (clean_tpm_16_9_75, as stored) or ``"tpm_clean_log1p"``
         (log1p of the stored values).
     format
         ``"wide"`` → one ``Ensembl_Gene_ID`` / ``Symbol`` row per gene with one
@@ -1490,7 +1490,7 @@ def representative_cohort_samples(
     if normalize not in ("tpm_clean", "tpm_clean_log1p"):
         raise ValueError(
             "representative_cohort_samples normalize must be 'tpm_clean' or "
-            "'tpm_clean_log1p' (the artifact ships only in clean_tpm_v4)"
+            "'tpm_clean_log1p' (the artifact ships only in clean_tpm_16_9_75)"
         )
     if format not in ("wide", "long"):
         raise ValueError("format must be 'wide' or 'long'")
@@ -1561,7 +1561,7 @@ def cohort_gene_percentiles(cancer_type, *, as_tpm: bool = True) -> pd.DataFrame
     sample's gene as a **percentile rank within the cohort** instead of an
     absolute TPM (the producer side of trufflepig#54).
 
-    Computed on the **biological clean_tpm_v4 view** (technical genes dropped,
+    Computed on the **biological clean_tpm_16_9_75 view** (technical genes dropped,
     so the fixed-fraction inflation #304 doesn't apply). Stored compactly as
     ``log1p`` + float16; ``as_tpm=True`` (default) ``expm1``-restores clean-TPM
     values, ``as_tpm=False`` returns the stored log1p values. Raises if the

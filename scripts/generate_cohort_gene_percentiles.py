@@ -12,7 +12,7 @@ dense in the actionable upper tail where targeting candidacy lives:
 
     p0, p1, p5, p10, p15 … p90, p95, p96, p97, p98, p99, p100
 
-Computed on the **biological clean_tpm_v4 view** (technical genes dropped), so
+Computed on the **biological clean_tpm_16_9_75 view** (technical genes dropped), so
 it sidesteps the fixed-fraction technical-inflation artifact (#304) and stays
 compact. Quantiles are linear-interpolated empirical (numpy 'linear').
 

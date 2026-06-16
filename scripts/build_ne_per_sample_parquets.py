@@ -7,7 +7,7 @@ joint matrices the representatives generator needs, **reusing the existing NE
 builders' parsing** (so the per-sample TPM is identical to what the summaries
 were aggregated from) and writing them in the standard
 ``<source>/derived/<CODE>_per_sample_tpm.parquet`` location (linear raw TPM;
-the representatives generator applies clean_tpm_v4 + medoid selection).
+the representatives generator applies clean_tpm_16_9_75 + medoid selection).
 
 Covers the NE cohorts that have no other canonical per-sample builder: small-cell
 lung cancer (UCologne FPKM) and lung NET/NEC (IARC LNEN counts). Pancreatic NET
