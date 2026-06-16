@@ -15,11 +15,18 @@ from pirlygenes.expression.protein_groups import (
 
 
 def _sym_groups():
-    """{canonical_ensg: set(symbols)} from the derived table."""
+    """{canonical_ensg: set(symbols)} from the derived table.
+
+    Members whose symbol is unresolved (NaN in the table) carry no symbol to
+    match on, so they're dropped here. ``dropna`` before ``astype(str)`` keeps
+    this robust across pandas versions: older pandas coerces NaN to the literal
+    ``"nan"`` string, newer pandas preserves it as a float — and a float has no
+    ``.startswith`` for the prefix checks below.
+    """
     df = protein_identical_groups()
     out = {}
     for canon, grp in df.groupby("group_canonical_ensembl_gene_id"):
-        out[canon] = set(grp["symbol"].astype(str))
+        out[canon] = set(grp["symbol"].dropna().astype(str))
     return out
 
 
