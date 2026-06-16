@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -516,7 +517,6 @@ def test_categorize_metadata_is_a_lossless_encoding(tmp_path):
     value. Guards the specific worry that the dtype switch could alter the
     strings: every value (incl. NaN, unicode, long repeated strings) survives the
     cast AND a parquet round-trip byte-identical to the original object column."""
-    import numpy as np
     raw = pd.DataFrame({
         "notes": ["a long provenance sentence — with unicode é/μ", "x", np.nan,
                   "a long provenance sentence — with unicode é/μ", "x"],

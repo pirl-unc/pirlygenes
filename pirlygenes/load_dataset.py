@@ -135,7 +135,8 @@ def get_all_csv_paths() -> list:
 #
 # A `category` is only a codes+dictionary *encoding* of the same strings: the
 # values, NaNs, ==, .str and groupby results are byte-identical to the object
-# column (asserted element-wise in test_load_dataset). Only operations that
+# column (asserted element-wise on representative data in test_load_dataset).
+# Only operations that
 # introduce a NEW category at the array level (.loc/.iloc/.at setitem, .fillna,
 # .replace, reindex-fill) raise on a categorical — so this is deliberately
 # limited to columns that are pure display/provenance and never computed on:
@@ -156,7 +157,8 @@ _SHARD_CACHE_FORMAT = 3
 
 
 def _categorize_metadata(df: pd.DataFrame) -> pd.DataFrame:
-    """Cast the low-cardinality provenance columns to ``category`` in place."""
+    """Cast the low-cardinality provenance columns to ``category`` in place and
+    return ``df`` (returned for convenient chaining at the call sites)."""
     for col in _LOW_CARDINALITY_METADATA_COLS:
         if col in df.columns and not isinstance(
                 df[col].dtype, pd.CategoricalDtype):
