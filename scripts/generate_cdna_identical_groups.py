@@ -79,14 +79,21 @@ def build_groups(release: int) -> pd.DataFrame:
             continue
         members = sorted(gene_ids)
         # canonical *symbol* = proteoform ID: the merged member symbols (e.g.
-        # XAGE1A+XAGE1B -> XAGE1A/B), unique by construction.
-        pid = proteoform_id([canon[m][1] for m in members])
+        # XAGE1A+XAGE1B -> XAGE1A/B), unique by construction. ``proteoform_id``
+        # ignores empty member names, so one named member keeps the group's
+        # biological name; fall back to the canonical ENSG only if NONE is named.
+        pid = proteoform_id([canon[m][1] for m in members]) or members[0]
         for member in members:
+            # nameless loci (novel / alt-contig cDNA-identical duplicates Ensembl
+            # ships without an HGNC symbol) fall back to their ENSG so the symbol
+            # column is always a usable identifier, never blank (blank -> NaN on
+            # CSV round-trip, which breaks downstream string ops).
+            symbol = canon[member][1] or member
             rows.append({
                 "group_canonical_ensembl_gene_id": members[0],
                 "group_canonical_symbol": pid,
                 "ensembl_gene_id": member,
-                "symbol": canon[member][1],
+                "symbol": symbol,
                 "cds_nt": len(cds),
                 "n_members": len(members),
             })
