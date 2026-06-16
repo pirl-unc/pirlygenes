@@ -530,8 +530,10 @@ def test_categorize_metadata_is_a_lossless_encoding(tmp_path):
         assert isinstance(out[col].dtype, pd.CategoricalDtype)
         pd.testing.assert_series_equal(
             out[col].astype(object), before[col].astype(object), check_names=False)
-    # untouched column keeps its dtype
-    assert out["cancer_code"].dtype == object
+    # untouched column keeps its original dtype (whatever pandas inferred —
+    # object on pandas 2, the new StringDtype on pandas 3) and is NOT categorical
+    assert out["cancer_code"].dtype == before["cancer_code"].dtype
+    assert not isinstance(out["cancer_code"].dtype, pd.CategoricalDtype)
     # survives the parquet cache round-trip unchanged
     path = tmp_path / "roundtrip.parquet"
     out.to_parquet(path, index=False)
