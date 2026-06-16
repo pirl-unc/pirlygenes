@@ -42,7 +42,7 @@ SOURCE_URL = (
 CANCER_CODE = "SARC_CHOR"
 SOURCE_COHORT = "GSE239531_VANOOST_2024"
 SOURCE_PROJECT = "GEO"
-PIPELINE = "gse239531_chordoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_v4"
+PIPELINE = "gse239531_chordoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_16_9_75"
 
 
 def main() -> int:
@@ -97,7 +97,7 @@ def main() -> int:
         f"n={tpm.shape[1]} primary chordoma; PMID 38272563). Source data is "
         "raw counts keyed by Ensembl ID; length-normalized to TPM with "
         f"Ensembl release {args.ensembl_release} gene lengths. TPM_clean "
-        "computed per-sample by two-compartment fixed-fraction clean-TPM (technical 25% / biological 75%, each renormalized within its group)."
+        "computed per-sample by three-compartment fixed-fraction clean-TPM (ribosomal-protein 16% / other-technical 9% / biological 75%, each renormalized within its compartment)."
     )
     # reindex (not strict select): tumor_origin / metastasis_site aren't set
     # by this source and should land as empty rather than KeyError.

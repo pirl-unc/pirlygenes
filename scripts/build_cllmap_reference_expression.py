@@ -45,7 +45,7 @@ SOURCE_URL = (
     "https://data.broadinstitute.org/cllmap/data/downloads/"
     "cllmap_rnaseq_tpms_full.tsv.gz"
 )
-PIPELINE = "cllmap_raw_tpm_gencode19_ensembl112_clean_tpm_v4"
+PIPELINE = "cllmap_raw_tpm_gencode19_ensembl112_clean_tpm_16_9_75"
 SOURCE_VERSION = (
     "CLL-map RNA-SeQC v2.3.6 GENCODE19; Ensembl IDs harmonized to "
     "Ensembl release 112; downloaded 2026-05-18"

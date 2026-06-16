@@ -137,7 +137,7 @@ def main() -> int:
         assign_stats(out, sub_values, clean)
         out["processing_pipeline"] = (
             f"sclc_ucologne_2015_tf_dominance_ensembl"
-            f"{args.ensembl_release}_clean_tpm_v4"
+            f"{args.ensembl_release}_clean_tpm_16_9_75"
         )
         out["notes"] = (
             f"SCLC {code.removeprefix('SCLC_')}-dominant subtype "

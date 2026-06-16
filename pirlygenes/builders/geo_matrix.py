@@ -437,7 +437,7 @@ def build_source(
         pipeline_stem = source.pipeline_stem or source.source_cohort.lower()
         out["processing_pipeline"] = (
             f"{pipeline_stem}_{source.unit.lower().replace('(','').replace(')','').replace('+','plus')}"
-            f"_to_tpm_ensembl{ensembl_release}_clean_tpm_v4"
+            f"_to_tpm_ensembl{ensembl_release}_clean_tpm_16_9_75"
         )
         out["notes"] = source.notes or (
             f"Per-sample expression from {source.source_cohort} (n={len(cols)}). "

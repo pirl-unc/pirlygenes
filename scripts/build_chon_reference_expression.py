@@ -35,7 +35,7 @@ SOURCE_URL = (
 CANCER_CODE = "SARC_CHON"
 SOURCE_COHORT = "GSE299759_MEIJER_2026"
 SOURCE_PROJECT = "GEO"
-PIPELINE = "gse299759_chondrosarcoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_v4"
+PIPELINE = "gse299759_chondrosarcoma_raw_counts_to_tpm_ensembl{ensembl}_clean_tpm_16_9_75"
 
 
 def _download(url: str, dest: Path) -> Path:

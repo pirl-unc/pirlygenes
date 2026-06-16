@@ -7,12 +7,12 @@ downstream can only validate classification / normalization against the cohort
 sample (genes are correlated; sampling each gene independently at its own
 quantile is non-physiological). This script packages K real per-sample joint
 vectors per cohort — medoids spanning the within-cohort variation — in the same
-``clean_tpm_v4`` basis the aggregates use, so consumers (trufflepig) can run the
+``clean_tpm_16_9_75`` basis the aggregates use, so consumers (trufflepig) can run the
 *honest* sample-level self-classification battery.
 
 Source = the cached per-sample TPM parquets the builders write
 (``<source>/derived/<stem>_per_sample_tpm.parquet``, linear raw TPM). For each
-cohort we apply :func:`clean_tpm_matrix` (``fixed_fraction`` = clean_tpm_v4),
+cohort we apply :func:`clean_tpm_matrix` (``fixed_fraction`` = clean_tpm_16_9_75),
 then pick K representatives by k-means (in log1p-PCA space) and taking each
 cluster's medoid (the real sample nearest the cluster centroid). Representatives
 are written with **anonymized** ids (``<CODE>_rep01`` …) — provenance is kept at
@@ -20,7 +20,7 @@ the cohort/source level only, never the upstream barcode.
 
 Output (bundle artifact, keyed like ``cancer-reference-expression/``):
     pirlygenes/data/cancer-reference-expression-representatives/<CODE>.parquet
-        wide: Ensembl_Gene_ID, Symbol, <CODE>_rep01 … (clean_tpm_v4, float32)
+        wide: Ensembl_Gene_ID, Symbol, <CODE>_rep01 … (clean_tpm_16_9_75, float32)
     pirlygenes/data/cancer-reference-expression-representatives/_provenance.csv
         one row per representative: cancer_code, representative_id,
         source_cohort, source_project, n_cohort_samples, cluster_rank
@@ -60,8 +60,8 @@ def build(k: int = 12) -> None:
         clean = clean_tpm_matrix(df[sample_cols], gene_table=gene_table,
                                  censored_fill="fixed_fraction")
         # Select medoids on the BIOLOGY-ONLY view so the choice rides on
-        # biological signal and is insensitive to the clean_tpm_v4
-        # fixed-fraction technical floor (#304); store the full clean_tpm_v4
+        # biological signal and is insensitive to the clean_tpm_16_9_75
+        # fixed-fraction technical floor (#304); store the full clean_tpm_16_9_75
         # vectors for the chosen samples (matching the aggregate references).
         sel_frame = clean.copy()
         sel_frame.insert(0, "Ensembl_Gene_ID",

@@ -166,7 +166,7 @@ def main() -> int:
         assign_stats(out, sub_values, clean)
         out["processing_pipeline"] = (
             f"drmetrics_alcala_2019_lnen_raw_counts_to_tpm_ensembl"
-            f"{args.ensembl_release}_clean_tpm_v4"
+            f"{args.ensembl_release}_clean_tpm_16_9_75"
         )
         histos = (
             attrs.loc[attrs["Sample_ID"].isin(cols), "Histopathology_simplified"]

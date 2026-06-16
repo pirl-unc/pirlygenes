@@ -128,7 +128,7 @@ def main() -> int:
         assign_stats(out, sub_values, clean)
         out["processing_pipeline"] = (
             f"treehouse_polya_25_01_mbl_subgroup_markers_ensembl"
-            f"{args.ensembl_release}_clean_tpm_v4"
+            f"{args.ensembl_release}_clean_tpm_16_9_75"
         )
         out["notes"] = (
             f"MBL subgroup = '{code.removeprefix('MBL_')}' (n={len(cols)}) "

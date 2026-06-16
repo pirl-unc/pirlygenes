@@ -3,7 +3,7 @@
 Previously copy-pasted into ~12 builders/scripts; these lock the one
 definition. The clean-TPM removal set is technical-RNA rows (mtDNA / rRNA-like
 / mt-like pseudogene / polyA-bias lncRNA) **and** ribosomal-protein mRNA +
-pseudogenes. As of clean_tpm_v4 the **default** transform is
+pseudogenes. As of clean_tpm_16_9_75 the **default** transform is
 ``censored_fill="fixed_fraction"``: that removal (technical) block is forced to
 25% of the 1e6 budget and the kept (biological) block to 75%, each renormalized
 within its group (the ``"reference"`` / ``"typical"`` / ``"zero"`` modes remain
@@ -127,7 +127,7 @@ def _wide_df():
     return pd.concat([gene_table, vals], axis=1)
 
 
-def test_runtime_wrapper_v4_matches_builder_clean_tpm():
+def test_runtime_wrapper_matches_builder_clean_tpm():
     """normalize_technical_rna_columns(censored_fill='fixed_fraction') produces
     the SAME values as the builder's clean_tpm_matrix — the runtime path now
     matches how packaged references are built (#311)."""
@@ -138,7 +138,7 @@ def test_runtime_wrapper_v4_matches_builder_clean_tpm():
                                                 censored_fill="fixed_fraction")
     rt = out[["TPM_S1", "TPM_S2"]].to_numpy()
     np.testing.assert_allclose(rt, ref.to_numpy())
-    # biological compartment lands on the 750k v4 budget; technical on 250k
+    # biological compartment lands on the 750k biological budget; technical on 250k
     mask = clean_tpm_removal_mask(gene_table).to_numpy()
     np.testing.assert_allclose(out[["TPM_S1", "TPM_S2"]][~mask].sum().to_numpy(),
                                [750_000.0, 750_000.0])
@@ -170,8 +170,8 @@ def test_clean_tpm_runtime_rejects_symbol_only_input():
     assert "removed_feature_mode" in info
 
 
-def test_runtime_long_table_v4_per_group_budget():
-    """The long-table wrapper applies the v4 transform within each cohort group:
+def test_runtime_long_table_per_group_budget():
+    """The long-table wrapper applies the clean-TPM transform within each cohort group:
     every group's biological compartment lands on 750k."""
     gene_table, values = _fixture()
     rows = []

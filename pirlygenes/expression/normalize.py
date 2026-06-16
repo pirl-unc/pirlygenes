@@ -146,7 +146,7 @@ def _clean_tpm_normalize(
     to ``out`` in place, per (group × value column), and return
     ``(out, info)``. Each value column is a per-gene vector; treating it as a
     one-sample gene×sample matrix lets the runtime path reuse the identical
-    builder transform so the result lands on the v4 basis (biological 750k).
+    builder transform so the result lands on the clean-TPM basis (biological 750k).
     """
     import pandas as pd
 
@@ -489,7 +489,7 @@ def normalize_technical_rna_long_table(
 ):
     """Apply technical-RNA normalization within each long-table cohort group.
 
-    ``censored_fill="fixed_fraction"`` applies the clean_tpm_v4 reference
+    ``censored_fill="fixed_fraction"`` applies the clean_tpm_16_9_75 reference
     transform per cohort group (matching the packaged references) instead of
     the legacy zero-and-renormalize (#311); see :func:`normalize_expression`.
     """
@@ -632,7 +632,7 @@ def drop_technical_genes(df, *, label_col: str = "Symbol",
 
     Intended for distance/clustering and cross-sample comparison that should
     ride on biological signal rather than the technical compartment — in
-    particular it is **insensitive to the clean_tpm_v4 fixed-fraction floor**
+    particular it is **insensitive to the clean_tpm_16_9_75 fixed-fraction floor**
     (#304), since the inflated technical rows are removed before any distance is
     computed. (Distinct from :func:`pirlygenes.expression.filter_technical_rna`,
     which drops only the strict curated technical-RNA family set.)
@@ -676,7 +676,7 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
     remaining ~75% of the 1e6 budget, **renormalizing within each compartment**
     so relative expression inside each is preserved. Pinning ribosomal and
     other-technical *separately* (cancerdata's 16/9 refinement of the old
-    lumped-25% v4) keeps one compartment's cross-sample/pipeline variation from
+    lumped-25%) keeps one compartment's cross-sample/pipeline variation from
     bleeding into the other's budget — e.g. a sample with heavy residual rRNA no
     longer compresses its ribosomal-protein block. Fixing the BIOLOGICAL
     compartment to a constant ~750k budget is what makes biological clean-TPM

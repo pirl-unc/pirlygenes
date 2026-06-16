@@ -45,7 +45,7 @@ def _summary_row(gene_table, values, code: str):
             "Treehouse 25.01 PolyA TCGA-COAD/READ × cBioPortal "
             "coadread_tcga_pan_can_atlas_2018 MSIsensor score (>=10 = MSI-H)"),
         processing_pipeline=(
-            "treehouse_polya_25_01_tcga_coadread_msi_log2tpm_to_tpm_clean_tpm_v4"),
+            "treehouse_polya_25_01_tcga_coadread_msi_log2tpm_to_tpm_clean_tpm_16_9_75"),
         notes=(
             f"{code}: TCGA {code.split('_')[0]} samples in Treehouse 25.01 "
             "PolyA split by cBioPortal MSIsensor score (>=10 = MSI-H)."),

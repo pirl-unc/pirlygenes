@@ -6,8 +6,8 @@ lost — see #305) with a real per-sample build straight from the GEO processed
 matrix ``GSE75885_Expression_117_sarcomas.tsv.gz`` (RNA-seq, Illumina HiSeq
 2000; 117 sarcomas). Values are RPKM-like (per-sample totals ~1.6-3.4e6×10,
 not pinned at 1e6), so each sample is renormalized to 1e6 (RPKM→TPM), HUGO
-symbols are harmonized to Ensembl, and the two-compartment fixed-fraction
-clean-TPM (v4) is applied — matching every other per-sample cohort.
+symbols are harmonized to Ensembl, and the three-compartment fixed-fraction
+clean-TPM is applied — matching every other per-sample cohort.
 
 Per-sample subtype labels come from the series-matrix ``!Sample_title`` (which
 prefixes each author sample ID, e.g. ``"M969 - Liposarcoma - dedifferentiated"``).
@@ -47,7 +47,7 @@ SERIES_URL = (
 )
 SOURCE_COHORT = "GSE75885_DELESPAUL_2017"
 SOURCE_PROJECT = "GEO"
-PIPELINE = "gse75885_rpkm_to_tpm_ensembl{ensembl}_clean_tpm_v4"
+PIPELINE = "gse75885_rpkm_to_tpm_ensembl{ensembl}_clean_tpm_16_9_75"
 
 # series-matrix tumor-type label -> registry code (only the codes this cohort
 # is registered to back; the matrix has other subtypes too).
@@ -125,7 +125,7 @@ def main() -> int:
         if not cols:
             print(f"  WARN no samples for {label!r} -> {code}; skipping")
             continue
-        # RPKM-like -> TPM: renormalize each sample to 1e6, then v4 clean-TPM.
+        # RPKM-like -> TPM: renormalize each sample to 1e6, then clean-TPM.
         sub = values[cols]
         sub = sub.div(sub.sum(axis=0), axis=1) * 1_000_000.0
         from pirlygenes import cohorts as _cohorts
@@ -147,8 +147,9 @@ def main() -> int:
             f"Per-sample TPM from GSE75885 (Delespaul 2017, n={len(cols)} {label}). "
             "Processed RNA-seq matrix from GEO supplementary; RPKM-like values "
             "renormalized per sample to 1e6. TPM_clean computed per-sample by "
-            "two-compartment fixed-fraction clean-TPM (technical 25% / biological "
-            "75%, each renormalized within its group). Supersedes the lost "
+            "three-compartment fixed-fraction clean-TPM (ribosomal-protein 16% / "
+            "other-technical 9% / biological 75%, each renormalized within its "
+            "compartment). Supersedes the lost "
             "summary-only import (#305)."
         )
         # Mixed primary/metastasis cohort (series-matrix 'metastasis' field).

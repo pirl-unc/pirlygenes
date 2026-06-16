@@ -335,16 +335,17 @@ def _summarize_cohort(
         f"{release.release_label}; HUGO symbols harmonized to Ensembl "
         f"release {ensembl_release}; log2(TPM+1) inverse-transformed"
     )
-    pipeline = f"{release.pipeline_prefix}_ensembl{ensembl_release}_clean_tpm_v4"
+    pipeline = f"{release.pipeline_prefix}_ensembl{ensembl_release}_clean_tpm_16_9_75"
     notes = (
         f"Per-sample TPMs from {release.release_label}. Sample selection: "
         f"clinical.disease == '{cohort.disease_label}'. "
         f"HUGO symbols mapped to Ensembl release {ensembl_release}; "
-        f"duplicate symbol mappings dropped. TPM_clean (v4) is two-compartment "
-        f"fixed-fraction: technical-RNA + ribosomal-protein genes are forced to "
-        f"25% of the 1e6 budget and the remaining (biological) genes to 75%, "
-        f"each renormalized within its group (within-compartment ratios "
-        f"preserved; cohort-independent; curated cancer targets never censored). "
+        f"duplicate symbol mappings dropped. TPM_clean is three-compartment "
+        f"fixed-fraction: ribosomal-protein genes are pinned to 16% of the 1e6 "
+        f"budget, other technical-RNA to 9%, and the remaining (biological) "
+        f"genes to 75%, each renormalized within its compartment "
+        f"(within-compartment ratios preserved; cohort-independent; curated "
+        f"cancer targets never censored). "
         f"The biological compartment lands on a constant 750k in every sample."
     )
     if cohort.extra_notes:

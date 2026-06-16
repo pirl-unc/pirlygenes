@@ -39,7 +39,7 @@ CANCER_CODE = "MM"
 SOURCE_COHORT = "MMRF_COMMPASS"
 SOURCE_PROJECT = "MMRF CoMMpass"
 SOURCE_URL = "https://portal.gdc.cancer.gov/projects/MMRF-COMMPASS"
-PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v4"
+PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_16_9_75"
 SOURCE_VERSION = (
     "GDC STAR - Counts, GENCODE v36; Ensembl IDs harmonized to "
     "Ensembl release 112; queried 2026-05-18"
@@ -422,7 +422,7 @@ def main() -> None:
         ensembl_release=args.ensembl_release,
     )
     # Persist the per-sample raw-TPM matrix for medoids + percentiles (uniform
-    # with every other per-sample cohort; generators apply clean_tpm_v4).
+    # with every other per-sample cohort; generators apply clean_tpm_16_9_75).
     from pirlygenes import cohorts as _cohorts
     _cohorts.write_per_sample(gene_table, values, args.cache_dir.name, CANCER_CODE)
     summary = _summarize(gene_table, values)

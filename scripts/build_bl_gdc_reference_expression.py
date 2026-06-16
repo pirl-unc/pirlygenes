@@ -40,7 +40,7 @@ CANCER_CODE = "BL"
 SOURCE_COHORT = "CGCI_BLGSP"
 SOURCE_PROJECT = "CGCI Burkitt Lymphoma Genome Sequencing Project"
 SOURCE_URL = "https://portal.gdc.cancer.gov/projects/CGCI-BLGSP"
-PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v4"
+PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_16_9_75"
 SOURCE_VERSION = (
     "GDC STAR - Counts, GENCODE v36; Ensembl IDs harmonized to "
     "Ensembl release 112; queried 2026-05-19"
@@ -427,7 +427,7 @@ def main() -> None:
     )
     # Persist the per-sample raw-TPM matrix so this cohort gets medoid
     # representatives + percentiles like every other per-sample cohort
-    # (registry source id == cache-dir name). The generators apply clean_tpm_v4.
+    # (registry source id == cache-dir name). The generators apply clean_tpm_16_9_75.
     from pirlygenes import cohorts as _cohorts
     _cohorts.write_per_sample(gene_table, values, args.cache_dir.name, CANCER_CODE)
     summary = _summarize(gene_table, values)

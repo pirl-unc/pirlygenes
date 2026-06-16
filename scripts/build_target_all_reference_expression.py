@@ -42,7 +42,7 @@ PROJECT_IDS = ["TARGET-ALL-P1", "TARGET-ALL-P2", "TARGET-ALL-P3"]
 SOURCE_COHORT = "TARGET_ALL_2018"
 SOURCE_PROJECT = "TARGET ALL"
 SOURCE_URL = "https://portal.gdc.cancer.gov/projects/TARGET-ALL-P2"
-PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_v4"
+PIPELINE = "gdc_star_counts_tpm_ensembl112_clean_tpm_16_9_75"
 SOURCE_VERSION = (
     "GDC STAR - Counts, GENCODE v36; TARGET ALL Phase 1/2 sample "
     "matrices 2019-06-06; Ensembl IDs harmonized to Ensembl release "

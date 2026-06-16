@@ -501,7 +501,7 @@ def build_microarray_source(
     assign_stats(out, by_ensg, clean)
     out["processing_pipeline"] = (
         f"{platform_id.lower()}_microarray_tpm_proxy_ensembl"
-        f"{ensembl_release}_clean_tpm_v4"
+        f"{ensembl_release}_clean_tpm_16_9_75"
     )
     out["notes"] = (
         f"{platform_name} microarray-derived TPM-proxy "
