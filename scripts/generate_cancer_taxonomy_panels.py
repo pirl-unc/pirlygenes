@@ -61,14 +61,14 @@ COMPARTMENT_PANELS: dict[str, tuple[str, list[str]]] = {
 DISCRIMINATORS: dict[str, dict] = {
     # — thoracic —
     "LUAD_vs_LUSC": dict(type_a="LUAD", type_b="LUSC", separability="strong",
-        source="22301491", favors={
+        source="22960745", favors={
             "LUAD": [("NKX2-1", "high", "primary"), ("NAPSA", "high", "primary"),
                      ("SFTPC", "high", "primary"), ("SFTPB", "high", "primary")],
             "LUSC": [("TP63", "high", "primary"), ("KRT5", "high", "primary"),
                      ("KRT6A", "high", "primary"), ("DSG3", "high", "supporting"),
                      ("SOX2", "high", "supporting")]}),
     "LUAD_vs_MESO": dict(type_a="LUAD", type_b="MESO", separability="good",
-        source="29073361", favors={
+        source="25613900", favors={
             "LUAD": [("NKX2-1", "high", "primary"), ("NAPSA", "high", "primary"),
                      ("CEACAM5", "high", "supporting"), ("EPCAM", "high", "supporting"),
                      ("CLDN4", "high", "supporting")],
@@ -76,7 +76,7 @@ DISCRIMINATORS: dict[str, dict] = {
                      ("MSLN", "high", "supporting"), ("PDPN", "high", "supporting"),
                      ("KRT5", "high", "supporting")]}),
     "SCLC_vs_LUAD": dict(type_a="SCLC", type_b="LUAD", separability="good",
-        source="28614209", favors={  # NKX2-1 excluded — positive in BOTH
+        source="26168399", favors={  # NKX2-1 excluded — positive in BOTH
             "SCLC": [("ASCL1", "high", "primary"), ("INSM1", "high", "primary"),
                      ("CHGA", "high", "supporting"), ("SYP", "high", "supporting"),
                      ("NCAM1", "high", "supporting"), ("NEUROD1", "high", "supporting")],
@@ -84,7 +84,7 @@ DISCRIMINATORS: dict[str, dict] = {
                      ("SFTPB", "high", "supporting"), ("CLDN4", "high", "supporting")]}),
     # — GI / hepatobiliary —
     "LIHC_vs_CHOL": dict(type_a="LIHC", type_b="CHOL", separability="good",
-        source="25723115", favors={
+        source="28622513", favors={
             "LIHC": [("ALB", "high", "primary"), ("ARG1", "high", "primary"),
                      ("GPC3", "high", "primary"), ("HNF4A", "high", "supporting"),
                      ("CPS1", "high", "supporting"), ("FGA", "high", "supporting")],
@@ -92,7 +92,7 @@ DISCRIMINATORS: dict[str, dict] = {
                      ("MUC1", "high", "supporting"), ("EPCAM", "high", "supporting"),
                      ("SPP1", "high", "supporting"), ("S100P", "high", "supporting")]}),
     "CRC_vs_STAD": dict(type_a="CRC", type_b="STAD", separability="strong",
-        source="21577201", favors={
+        source="22810696", favors={
             "CRC": [("SATB2", "high", "primary"), ("CDX2", "high", "primary"),
                     ("CDH17", "high", "supporting"), ("GUCY2C", "high", "supporting"),
                     ("KRT20", "high", "supporting")],
@@ -100,7 +100,7 @@ DISCRIMINATORS: dict[str, dict] = {
                      ("GKN1", "high", "primary"), ("GKN2", "high", "primary"),
                      ("PGC", "high", "supporting"), ("MUC6", "high", "supporting")]}),
     "PAAD_vs_STAD": dict(type_a="PAAD", type_b="STAD", separability="moderate",
-        source="31658955", favors={
+        source="26343385", favors={
             "PAAD": [("GATA6", "high", "primary"), ("MSLN", "high", "supporting"),
                      ("CLDN18", "high", "supporting"), ("KRT17", "high", "supporting")],
             "STAD": [("GKN1", "high", "primary"), ("GKN2", "high", "primary"),
@@ -108,7 +108,7 @@ DISCRIMINATORS: dict[str, dict] = {
                      ("MUC5AC", "high", "supporting")]}),
     # — GU / gyn / endocrine —
     "BLCA_vs_PRAD": dict(type_a="BLCA", type_b="PRAD", separability="strong",
-        source="20182344", favors={
+        source="28988769", favors={
             "BLCA": [("GATA3", "high", "primary"), ("UPK1B", "high", "primary"),
                      ("UPK2", "high", "primary"), ("UPK3A", "high", "primary"),
                      ("KRT20", "high", "supporting"), ("KRT5", "high", "supporting")],
@@ -116,7 +116,7 @@ DISCRIMINATORS: dict[str, dict] = {
                      ("KLK2", "high", "supporting"), ("FOLH1", "high", "supporting"),
                      ("AMACR", "high", "supporting"), ("HOXB13", "high", "supporting")]}),
     "BLCA_vs_BRCA": dict(type_a="BLCA", type_b="BRCA", separability="good",
-        source="33756509", favors={  # GATA3 excluded — positive in BOTH
+        source="28988769", favors={  # GATA3 excluded — positive in BOTH
             "BLCA": [("UPK1B", "high", "primary"), ("UPK2", "high", "primary"),
                      ("UPK3A", "high", "primary"), ("KRT20", "high", "supporting")],
             "BRCA": [("TRPS1", "high", "primary"), ("SCGB2A2", "high", "primary"),
@@ -137,7 +137,7 @@ DISCRIMINATORS: dict[str, dict] = {
             "KIRP": [("AMACR", "high", "primary"), ("MET", "high", "primary"),
                      ("KRT7", "high", "supporting"), ("VIM", "high", "supporting")]}),
     "KIRC_vs_KICH": dict(type_a="KIRC", type_b="KICH", separability="strong",
-        source="30872830", favors={
+        source="23792563", favors={
             "KIRC": [("CA9", "high", "primary"), ("NDUFA4L2", "high", "primary")],
             "KICH": [("FOXI1", "high", "primary"), ("KIT", "high", "primary"),
                      ("PVALB", "high", "supporting"), ("GATA3", "high", "supporting")]}),
@@ -150,7 +150,7 @@ DISCRIMINATORS: dict[str, dict] = {
                     ("CHGA", "high", "supporting"), ("TG", "low", "primary")]}),
     # — neuroendocrine / skin —
     "NEC_MERKEL_vs_SCLC": dict(type_a="NEC_MERKEL", type_b="SCLC",
-        separability="good", source="9888708", favors={
+        separability="good", source="26168399", favors={
             "NEC_MERKEL": [("KRT20", "high", "primary"), ("NEFL", "high", "supporting"),
                            ("NEFM", "high", "supporting"), ("ATOH1", "high", "primary")],
             "SCLC": [("NKX2-1", "high", "primary"), ("ASCL1", "high", "supporting"),

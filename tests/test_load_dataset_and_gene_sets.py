@@ -591,3 +591,27 @@ def test_cancer_type_discriminators():
     assert ("WT1", "low") in ov["UCEC"]
     # unknown pair -> empty
     assert gsc.cancer_type_discriminator("BLCA", "GBM") == {}
+
+
+def test_family_panel_marker_roles_and_verified_refs():
+    """Each family marker carries a role (anchor/confirmatory/negative), a source
+    (tumor/immune/stroma), and a PubMed-verified PMID. Positive accessors exclude
+    negatives; negative markers are fetched separately."""
+    df = gsc.cancer_family_panels_df()
+    assert {"role", "source", "reference"} <= set(df.columns)
+    assert set(df["role"]) == {"anchor", "confirmatory", "negative"}
+    assert set(df["source"]) <= {"tumor", "immune", "stroma"}
+    assert df["reference"].str.match(r"PMID:\d+").all()
+    # positive panel (anchor+confirmatory) excludes negatives
+    thca = gsc.cancer_family_panel("THCA")
+    assert "TG" in thca and "CALCA" not in thca            # TG positive, CALCA negative
+    # negatives fetched separately: CALCA high -> MTC not THCA
+    neg = gsc.cancer_family_negative_markers("THCA")
+    assert "CALCA" in neg and "TG" not in neg
+    # confirmatory = promiscuous (PAX8 spans 4 lineages); anchor = specific
+    pax8 = df[(df.Family == "THCA") & (df.Symbol == "PAX8")]["role"].iloc[0]
+    assert pax8 == "confirmatory"
+    tg = df[(df.Family == "THCA") & (df.Symbol == "TG")]["role"].iloc[0]
+    assert tg == "anchor"
+    # immune-infiltrate markers are flagged as source!=tumor
+    assert (gsc.cancer_family_panels_df(family="HEME_TCELL")["source"] == "immune").any()

@@ -762,37 +762,65 @@ def lineage_genes_by_cancer_type():
 
 
 # ---------- Cancer family panels ----------
-def cancer_family_panels_df(family=None):
+def cancer_family_panels_df(family=None, role=None):
     """DataFrame of broad-family signature panels used for cancer-type scoring.
 
-    Columns ``Family, family_group, display_name, Symbol, Ensembl_Gene_ID``.
-    ``Family`` is the fine panel that *scores* (PROSTATE, CRC, GASTRIC, ESCA_SQ,
-    SQUAMOUS, RENAL, GLIAL, MELANOCYTIC, the adenocarcinoma lineages LUAD, BRCA,
-    PAAD, LIHC, OV, UCEC, BLCA, THCA, NEUROENDOCRINE,
-    HEME_BCELL/TCELL/MYELOID/PLASMA, EMBRYONAL, GERM_CELL, CNS_EMBRYONAL);
-    ``family_group`` is the coarse penalty boundary the fine panel rolls up into
-    (see :func:`cancer_family_groups`).
+    Columns ``Family, family_group, display_name, Symbol, Ensembl_Gene_ID, role,
+    source, reference``. ``Family`` is the fine panel that *scores* (PROSTATE,
+    CRC, GASTRIC, the adenocarcinoma lineages LUAD/BRCA/PAAD/LIHC/OV/UCEC/BLCA/
+    THCA, SQUAMOUS, RENAL, GLIAL, MELANOCYTIC, NEUROENDOCRINE, HEME_*, ...);
+    ``family_group`` is the coarse penalty boundary (see :func:`cancer_family_groups`).
+
+    Each marker carries a **role** that defines its USE (pass ``role`` to filter):
+      - ``anchor``       lineage-specific positive — confirms AND discriminates
+                         this type (TG=thyroid, ALB=liver, KLK3=prostate).
+      - ``confirmatory`` positive but PROMISCUOUS — confirms a broader class, does
+                         NOT discriminate (PAX8 spans renal/Müllerian/thyroid;
+                         NKX2-1 lung+thyroid; pan-keratins; CHGA/SYP). Use to
+                         place the class, never to pick the member.
+      - ``negative``     SURPRISING if high — argues AGAINST this type, a rule-out
+                         (KRT7 high -> not colorectal; CALCA high -> MTC not THCA).
+    A fourth role, pairwise "if high -> X not Y" discrimination, lives in
+    :func:`cancer_type_discriminators_df`. ``source`` flags whether the transcript
+    is from the ``tumor`` cells, ``immune`` infiltrate, or ``stroma`` (so a heme
+    marker isn't mistaken for the malignant clone in a carcinoma). ``reference``
+    is a PubMed-verified PMID (TCGA molecular-characterization paper for the type,
+    or HPA tissue map 25613900 / blood atlas 31857451).
 
     These are tumor-LINEAGE families. Stroma is deliberately not one: the old
     MESENCHYMAL panel was CAF/stromal markers present in every solid tumor's
     microenvironment (it out-scored the correct carcinoma family 15-150x — #452),
-    so it was removed; stromal/CAF signal lives in :func:`tme_markers_df`
-    (``fibroblast``) and sarcoma lineage is carried by the SARC subtype key-genes.
+    so it was removed; stromal/CAF signal lives in :func:`tme_markers_df`.
     """
     df = get_data("cancer-family-panels")
     if family is not None:
         df = df[df["Family"] == family]
+    if role is not None:
+        df = df[df["role"] == role]
     return df
 
 
 def cancer_family_panel(family):
-    """List of Symbols for one cancer family. See `cancer_family_panels_df`."""
-    return cancer_family_panels_df(family=family)["Symbol"].tolist()
+    """List of POSITIVE-marker Symbols (anchor + confirmatory) for one family —
+    the genes EXPECTED HIGH in this type. Negative/exclusion markers are excluded;
+    fetch them with :func:`cancer_family_negative_markers`. See
+    `cancer_family_panels_df`."""
+    df = cancer_family_panels_df(family=family)
+    return df[df["role"] != "negative"]["Symbol"].tolist()
+
+
+def cancer_family_negative_markers(family):
+    """List of NEGATIVE / exclusion Symbols for one family — genes whose HIGH
+    expression would be SURPRISING and argues against this type (rule-out)."""
+    return cancer_family_panels_df(family=family, role="negative")["Symbol"].tolist()
 
 
 def cancer_family_panels():
-    """Dict of {family_label: [Symbol, ...]} for all families."""
+    """Dict of ``{family_label: [Symbol, ...]}`` of POSITIVE markers (anchor +
+    confirmatory) for all families. Negative markers are excluded (see
+    :func:`cancer_family_negative_markers`)."""
     df = get_data("cancer-family-panels")
+    df = df[df["role"] != "negative"]
     return {
         family: group["Symbol"].tolist()
         for family, group in df.groupby("Family", sort=False)
