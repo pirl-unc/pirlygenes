@@ -130,12 +130,23 @@ def get_all_csv_paths() -> list:
 # repeated across every gene row — the ~130 distinct `notes` strings alone span
 # 4.8M rows (3.3 GB as object). Stored as `object` the concatenated
 # cancer-reference-expression frame is ~8 GB and its cached-parquet read ~10 s;
-# casting just these three to `category` drops it to ~2.9 GB and ~2 s — paid once
-# per process (every xdist worker, script and plot run). Deliberately limited to
-# columns that are pure display/provenance and never participate in computation:
-# the cohort-availability and pooling code reindex-/fillna-/assign on
-# source_cohort / source_project / tumor_origin / cancer_code, where a
-# categorical's "no new category" rule would break callers, so those stay object.
+# casting just these three to `category` drops it to ~3 GB and ~1 s — paid once
+# per process (every xdist worker, script and plot run).
+#
+# A `category` is only a codes+dictionary *encoding* of the same strings: the
+# values, NaNs, ==, .str and groupby results are byte-identical to the object
+# column (asserted element-wise in test_load_dataset). Only operations that
+# introduce a NEW category at the array level (.loc/.iloc/.at setitem, .fillna,
+# .replace, reindex-fill) raise on a categorical — so this is deliberately
+# limited to columns that are pure display/provenance and never computed on:
+# the cohort-availability code reindex-/fillna-s on source_cohort /
+# source_project / tumor_origin / cancer_code (a categorical's "no new category"
+# rule would break those), so they stay object.
+#
+# NOTE the pooling path does `g["processing_pipeline"] = "pooled_n_weighted"`,
+# a value not among the categories. That stays safe ONLY because whole-column
+# scalar assignment REPLACES the column (-> a fresh object column), not an
+# in-place categorical setitem; do not switch it to .loc/.fillna on these cols.
 _LOW_CARDINALITY_METADATA_COLS = (
     "source_version", "processing_pipeline", "notes",
 )
@@ -183,7 +194,7 @@ def _load_shard_directory(shard_dir: Path) -> pd.DataFrame:
         pass  # any cache-read problem -> rebuild from the authoritative CSVs
     df = pd.concat([pd.read_csv(str(p), low_memory=False) for p in paths],
                    ignore_index=True)
-    _categorize_metadata(df)
+    df = _categorize_metadata(df)
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
         df.to_parquet(cache_file, index=False)

@@ -497,3 +497,45 @@ def test_stem_cell_marker_panels_355():
     df = gsc.stem_cell_panels_df()
     assert (df["Ensembl_Gene_ID"].str.match(r"^ENSG\d+$")).all()
     assert set(df["program"]) == {"pluripotent", "tissue_specific"}
+
+
+def test_reference_provenance_columns_are_categorical():
+    """Regression guard for the shard-cache memory/load-time optimization: the
+    pure-text provenance columns must load as ``category`` (a future change that
+    drops one from the set, or a pandas upgrade that re-materializes objects,
+    would otherwise silently regress the ~10x load speedup)."""
+    df = ld.get_data("cancer-reference-expression", copy=False)
+    for col in ld._LOW_CARDINALITY_METADATA_COLS:
+        assert isinstance(df[col].dtype, pd.CategoricalDtype), col
+        # builders always stamp these, so a NaN here would signal a load bug
+        assert df[col].notna().all(), col
+
+
+def test_categorize_metadata_is_a_lossless_encoding(tmp_path):
+    """A ``category`` is only a codes+dictionary encoding — it must never change a
+    value. Guards the specific worry that the dtype switch could alter the
+    strings: every value (incl. NaN, unicode, long repeated strings) survives the
+    cast AND a parquet round-trip byte-identical to the original object column."""
+    import numpy as np
+    raw = pd.DataFrame({
+        "notes": ["a long provenance sentence — with unicode é/μ", "x", np.nan,
+                  "a long provenance sentence — with unicode é/μ", "x"],
+        "source_version": ["v1.0", "v1.0", "v2.0", "v1.0", np.nan],
+        "processing_pipeline": ["p_a", "p_b", "p_a", "p_a", "p_b"],
+        "cancer_code": ["AAA", "BBB", "AAA", "CCC", "BBB"],  # not in the set
+    })
+    before = raw.copy()
+    out = ld._categorize_metadata(raw)
+    for col in ld._LOW_CARDINALITY_METADATA_COLS:
+        assert isinstance(out[col].dtype, pd.CategoricalDtype)
+        pd.testing.assert_series_equal(
+            out[col].astype(object), before[col].astype(object), check_names=False)
+    # untouched column keeps its dtype
+    assert out["cancer_code"].dtype == object
+    # survives the parquet cache round-trip unchanged
+    path = tmp_path / "roundtrip.parquet"
+    out.to_parquet(path, index=False)
+    back = pd.read_parquet(path)
+    for col in ld._LOW_CARDINALITY_METADATA_COLS:
+        pd.testing.assert_series_equal(
+            back[col].astype(object), before[col].astype(object), check_names=False)
