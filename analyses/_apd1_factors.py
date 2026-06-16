@@ -30,6 +30,22 @@ from pirlygenes.expression.protein_groups import fold_to_cdna_canonical_symbol
 from pirlygenes.gene_sets_cancer import CTA_gene_names, cancer_subtype_group
 from pirlygenes.load_dataset import get_data
 
+
+def zscore(s: pd.Series) -> pd.Series:
+    """Z-score a series across cohorts (population std, ddof=0). The one
+    z-score the aPD1/ICI analyses share."""
+    return (s - s.mean()) / s.std(ddof=0)
+
+
+def signature_score(mat: pd.DataFrame, genes) -> pd.Series:
+    """Per-cohort mean z-scored log-expression over a gene signature, restricted
+    to its proteoform-folded members present in the cohort×gene matrix; NaN where
+    none are present. The single place the analyses score a gene set."""
+    present = [g for g in fold_to_cdna_canonical_symbol(genes) if g in mat.columns]
+    if not present:
+        return pd.Series(np.nan, index=mat.index)
+    return mat[present].apply(zscore).mean(axis=1)
+
 _EXPR_CACHE = (Path.home() / ".cache" / "pirlygenes" / "expression"
                / "treehouse-polya-25-01")
 _DERIVED = _EXPR_CACHE / "derived"
@@ -59,6 +75,12 @@ _COLORECTAL_POOL = {
 }
 _COLORECTAL_DROP = ("COAD", "READ")  # bulk all-comer = MSI/MSS mixture
 
+# Full colorectal re-key map shared by EVERY aPD1 plot (causal-factors here +
+# response bars in apd1_response_plots): the registry-derived COAD/READ x
+# {MSI,MSS} -> CRC_MSI/CRC_MSS pool plus bulk COAD/READ -> CRC. Exported so the
+# plots import this one source of truth instead of each hardcoding the map.
+CRC_POOL = {**_COLORECTAL_POOL, "COAD": "CRC", "READ": "CRC"}
+
 # A bulk all-comer code whose finer clinical anchors carry distinct aPD1
 # ORR/TMB is a *mixture* of those anchors (like bulk COAD/READ over MSI/MSS).
 # When every listed subtype is present in the cohort x gene matrix, drop the
@@ -78,7 +100,7 @@ def _pool_dict(d: dict) -> dict:
     all-comer COAD/READ into a CRC fallback value, then drop the bulk keys.
     CRC is a *fallback* (e.g. CRC_MSS TMB has no explicit row, so it resolves to
     base CRC), not a modeled cohort (the matrix only carries CRC_MSI/CRC_MSS)."""
-    pool = {**_COLORECTAL_POOL, "COAD": "CRC", "READ": "CRC"}
+    pool = CRC_POOL
     groups: dict = {}
     for src, tgt in pool.items():
         if src in d and pd.notna(d[src]):

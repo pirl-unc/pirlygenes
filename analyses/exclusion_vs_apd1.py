@@ -42,6 +42,7 @@ from scipy.stats import spearmanr
 
 from _apd1_factors import (apd1_map, cohort_gene_matrix,
                            curated_exclusion_genes)
+from _panels import GENE_PANELS, GYN_COLD, HOT, fold
 
 OUT = Path(os.environ.get("APD1_RUN_DIR",
           str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
@@ -73,9 +74,9 @@ CURATED = {
 # Circular IFN/cytotoxic markers — shown as contrast, expected POSITIVE.
 CIRCULAR = ["CD274", "IDO1", "CXCL9", "CD8A", "GZMB", "PRF1", "HLA-E", "HLA-A"]
 
-# genuinely COLD gyn cohorts (UCEC_MSI is MSI-H/hot -> a low-exclusion control)
-GYN_COLD = ["OV", "BRCA_Basal", "UCEC_CNL", "UCEC_CNH"]
-HOT = ["SKCM"]
+# genuinely COLD gyn cohorts vs the SKCM hot control (UCEC_MSI is MSI-H/hot ->
+# excluded). Shared archetypes from the central registry (see _panels).
+# GYN_COLD, HOT imported from _panels.
 
 
 def main() -> int:
@@ -157,18 +158,17 @@ def main() -> int:
     # Split TGF-beta into ligand/CAF vs response/contractile arms — the screen
     # shows they move oppositely across cancer types.
     GROUPS = {
-        "TGFb_ligand_CAF": ["TGFB1", "TGFB3", "FAP", "CXCL12", "LRRC15",
-                            "POSTN", "COL11A1"],
+        "TGFb_ligand_CAF": GENE_PANELS["tgfb_ligand_caf"],
         "TGFb_response_myCAF": tgfb_response,
         "Wnt_axis": wnt,
-        "PGE2_COX2": ["PTGS2", "PTGES"],
-        "Angiogenic": ["VEGFA"],
-        "Myeloid_CXCR2": ["CSF1", "CXCL1", "CXCL5"],
-        "Gyn_tolerance": ["VTCN1", "MUC1", "FOLR1"],
+        "PGE2_COX2": GENE_PANELS["pge2_cox2"],
+        "Angiogenic": GENE_PANELS["angiogenic"],
+        "Myeloid_CXCR2": GENE_PANELS["myeloid_cxcr2"],
+        "Gyn_tolerance": GENE_PANELS["gyn_tolerance"],
     }
 
     def zcomposite(genes: list[str]) -> pd.Series:
-        present = [g for g in genes if g in mat.columns]
+        present = [g for g in fold(genes) if g in mat.columns]  # proteoform-fold
         z = (mat[present] - mat[present].mean()) / mat[present].std(ddof=0)
         return z.mean(axis=1)
 
@@ -197,8 +197,8 @@ def main() -> int:
 
     # ---- 5. greedy forward selection (descriptive; LOO-checked) -----------
     POOL = sorted({g for gs in GROUPS.values() for g in gs}
-                  | {"GAS6", "ISLR", "PMEPA1", "TGFB2", "ACTA2", "CTNNB1"})
-    POOL = [g for g in POOL if g in mat.columns]
+                  | set(GENE_PANELS["exclusion_pool_extras"]))
+    POOL = [g for g in fold(POOL) if g in mat.columns]
     chosen: list[str] = []
     best_rho = 0.0
     while True:
@@ -265,7 +265,7 @@ def main() -> int:
     LIT_POOL = sorted({g for gs in GROUPS.values() for g in gs
                        if gs is not GROUPS["Gyn_tolerance"]}
                       | set(CURATED) | {"GAS6", "ISLR"})
-    LIT_POOL = [g for g in LIT_POOL if g in mat.columns]
+    LIT_POOL = [g for g in fold(LIT_POOL) if g in mat.columns]
     gyn_set = [c for c in GYN_COLD if c in mat.index]
     resp_set = [c for c in mat.index if orr[c] >= 25]
 
@@ -334,7 +334,7 @@ def main() -> int:
                  "(RNA-seq cohorts; IFN/cytotoxic markers excluded)",
                  fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
-    fig.savefig(OUT / "exclusion_composite_vs_apd1.png", dpi=130)
+    fig.savefig(OUT / "exclusion_composite_vs_apd1.png", dpi=300)
     print(f"\nwrote {OUT/'exclusion_composite_vs_apd1.png'}")
 
     OUT.mkdir(parents=True, exist_ok=True)

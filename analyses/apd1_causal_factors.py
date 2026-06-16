@@ -45,14 +45,12 @@ from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 from _apd1_factors import (apd1_map, cohort_gene_matrix,  # noqa: E402
                            cta_burden, curated_exclusion_genes, indel_map,
                            tmb_map, viral_score, with_parent)
+from _apd1_factors import zscore  # noqa: E402
+from _panels import GYN_COLD  # noqa: E402
 
 OUT = Path(os.environ.get("APD1_RUN_DIR",
           str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
 OUT.mkdir(parents=True, exist_ok=True)
-
-
-def _z(s: pd.Series) -> pd.Series:
-    return (s - s.mean()) / s.std(ddof=0)
 
 
 def main() -> int:
@@ -86,8 +84,8 @@ def main() -> int:
     # The two conceptual axes the user wants kept distinct:
     #   ANTIGEN AVAILABILITY = TMB + CTA + viral + indel (anything to see?)
     #   IMMUNE EXCLUSION     = TGF-beta-response + Wnt  (will a T cell get in?)
-    F["exclusion"] = mat.loc[F.index, excl_genes].apply(_z).mean(axis=1)
-    F["antigen"] = F[["logTMB", "CTA", "viral", "indel"]].apply(_z).mean(axis=1)
+    F["exclusion"] = mat.loc[F.index, excl_genes].apply(zscore).mean(axis=1)
+    F["antigen"] = F[["logTMB", "CTA", "viral", "indel"]].apply(zscore).mean(axis=1)
     print(f"cohorts modeled: {len(F)}\n")
 
     # ---- univariate Spearman of each causal factor -----------------------
@@ -97,8 +95,8 @@ def main() -> int:
         print(f"  {col:10s} rho={rho:+.2f} (p={p:.3f})")
 
     # ---- two-axis model: ANTIGEN vs EXCLUSION ----------------------------
-    Xa = np.column_stack([np.ones(len(F)), _z(F["antigen"]), _z(F["exclusion"])])
-    ya = _z(F["ORR"]).to_numpy()
+    Xa = np.column_stack([np.ones(len(F)), zscore(F["antigen"]), zscore(F["exclusion"])])
+    ya = zscore(F["ORR"]).to_numpy()
     ba, *_ = np.linalg.lstsq(Xa, ya, rcond=None)
     yha = Xa @ ba
     r2a = 1 - ((ya - yha) ** 2).sum() / ((ya - ya.mean()) ** 2).sum()
@@ -108,9 +106,9 @@ def main() -> int:
 
     # ---- standardized multiple regression (factor breakdown) -------------
     feats = ["logTMB", "CTA", "viral", "indel", "exclusion"]
-    X = np.column_stack([_z(F[c]) for c in feats])
+    X = np.column_stack([zscore(F[c]) for c in feats])
     X = np.column_stack([np.ones(len(F)), X])
-    y = _z(F["ORR"]).to_numpy()
+    y = zscore(F["ORR"]).to_numpy()
     beta, *_ = np.linalg.lstsq(X, y, rcond=None)
     yhat = X @ beta
     r2 = 1 - ((y - yhat) ** 2).sum() / ((y - y.mean()) ** 2).sum()
@@ -120,7 +118,7 @@ def main() -> int:
         print(f"  beta[{name:10s}] = {b:+.2f}")
 
     # residuals on the ORR scale (refit unstandardized for interpretable %)
-    Xr = np.column_stack([np.ones(len(F))] + [F[c].pipe(_z).to_numpy()
+    Xr = np.column_stack([np.ones(len(F))] + [F[c].pipe(zscore).to_numpy()
                                               for c in feats])
     br, *_ = np.linalg.lstsq(Xr, F["ORR"].to_numpy(), rcond=None)
     F["pred"] = Xr @ br
@@ -146,7 +144,7 @@ def main() -> int:
 
 def _plot(F, feats, betas, r2):
     fig = plt.figure(figsize=(16, 5.2))
-    gyn = ["OV", "BRCA_Basal", "UCEC_CNL", "UCEC_CNH"]
+    gyn = GYN_COLD
     rcc = ["KIRC", "KIRP", "KICH"]
 
     # A. standardized coefficients
@@ -181,13 +179,13 @@ def _plot(F, feats, betas, r2):
 
     # C. 2-axis antigen x exclusion map
     axC = fig.add_subplot(1, 3, 3)
-    antigen = _z(F["antigen"])
-    sc = axC.scatter(antigen, _z(F["exclusion"]), c=F["ORR"], cmap="viridis",
+    antigen = zscore(F["antigen"])
+    sc = axC.scatter(antigen, zscore(F["exclusion"]), c=F["ORR"], cmap="viridis",
                      s=70, edgecolor="k", linewidth=0.3)
     for c in F.index:
         col = "red" if c in rcc else ("darkgreen" if c in gyn else "black")
         w = "bold" if (c in rcc or c in gyn) else "normal"
-        axC.annotate(c, (antigen[c], _z(F["exclusion"])[c]), fontsize=6,
+        axC.annotate(c, (antigen[c], zscore(F["exclusion"])[c]), fontsize=6,
                      color=col, fontweight=w, alpha=0.85)
     axC.axhline(0, color="gray", lw=0.6, ls=":")
     axC.axvline(0, color="gray", lw=0.6, ls=":")
@@ -199,7 +197,7 @@ def _plot(F, feats, betas, r2):
     fig.suptitle("Causal factors of anti-PD-1 response across cancer types "
                  "(IFN/infiltrate markers deliberately excluded)", fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.savefig(OUT / "apd1_causal_factors.png", dpi=130)
+    fig.savefig(OUT / "apd1_causal_factors.png", dpi=300)
 
 
 if __name__ == "__main__":

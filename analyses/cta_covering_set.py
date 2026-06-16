@@ -31,8 +31,8 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 import pirlygenes.expression.accessors as accessors
-import pirlygenes.gene_sets_cancer as gsc
-from cta_expression_heatmaps import _representative_source
+from cta_expression_heatmaps import _cta_ensgs, _representative_source
+from _panels import display_label
 from _run_layout import add_layout_args, resolve_dirs, pct_axis
 
 ACTIONABLE_TPM = 30.0     # "actionable" target threshold (per user intuition)
@@ -78,7 +78,7 @@ def cta_matrices() -> dict[str, pd.DataFrame]:
     df = accessors.cancer_reference_expression(collapse_cdna_identical=True)
     rep = _representative_source(df)
     keep = set(zip(rep["cancer_code"], rep["source_cohort"]))
-    cta_ids = set(gsc.CTA_gene_ids())
+    cta_ids = _cta_ensgs()
     sub = df[df["Ensembl_Gene_ID"].isin(cta_ids)]
     sub = sub[[(c, s) in keep for c, s in zip(sub["cancer_code"], sub["source_cohort"])]]
     return {
@@ -145,7 +145,8 @@ def _section(mat: pd.DataFrame, stat_label: str, codes, type_w, pat_w) -> list[s
         for i, (cta, new_codes, cum_w, cum_n) in enumerate(order, 1):
             shown = ", ".join(new_codes[:6]) + ("…" if len(new_codes) > 6 else "")
             lines.append(
-                f"| {i} | {cta} | {100*cum_w/total:.0f}% ({cum_n} codes) | {shown} |"
+                f"| {i} | {display_label(cta)} | {100*cum_w/total:.0f}% "
+                f"({cum_n} codes) | {shown} |"
             )
         miles = []
         for frac in (0.5, 0.8, 0.9):

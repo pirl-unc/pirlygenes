@@ -40,6 +40,8 @@ from pirlygenes import gene_sets_cancer as gsc  # noqa: E402
 from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 from _apd1_factors import (apd1_map, tmb_map, viral_score, cta_burden,  # noqa: E402
                            cohort_gene_matrix, curated_signatures)
+from _apd1_factors import zscore, signature_score  # noqa: E402
+from _panels import GENE_PANELS  # noqa: E402
 from _run_layout import add_layout_args, resolve_dirs  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "outputs"
@@ -59,12 +61,9 @@ _WNT = "aPD1_exclusion_Wnt"
 #   IL10  — general secreted immunosuppressive cytokine (Treg/M2); included to
 #           check whether it carries any per-cohort signal vs the exclusion genes.
 # Shown as individual columns in the causal heatmap (each gene's Spearman vs ORR
-# visible) and averaged into the favourability suppression term.
-_SECRETED_INHIBITORY = ["TGFB1", "WNT5A", "WNT11", "IL10"]
-
-
-def _z(s):
-    return (s - s.mean()) / s.std(ddof=0)
+# visible) and averaged into the favourability suppression term. Sourced from the
+# central panel registry (proteoform-folded) so it can't drift from the figures.
+_SECRETED_INHIBITORY = GENE_PANELS["secreted_inhibitory"]
 
 
 def _lin(code: str) -> str:
@@ -92,24 +91,17 @@ def _factors():
     tmb = tmb_map()
     cta = cta_burden(mat)
     sig = curated_signatures()
-
-    def sigscore(key):
-        genes = [g for g in sig.get(key, []) if g in mat.columns]
-        if not genes:
-            return pd.Series(np.nan, index=mat.index)
-        return mat[genes].apply(_z).mean(axis=1)
-
     df = pd.DataFrame({
         "ICI ORR": pd.Series({c: apd1[c] for c in mat.index}),
         "TMB": np.log10(pd.Series({c: tmb.get(c, np.nan) for c in mat.index})),
         "CTA burden": pd.Series({c: cta.get(c, np.nan) for c in mat.index}),
         "viral": pd.Series({c: viral_score(c, reg) for c in mat.index}),
-        "TGFβ": sigscore(_TGFB),
-        "Wnt/β-catenin": sigscore(_WNT),
+        "TGFβ": signature_score(mat, sig.get(_TGFB, [])),
+        "Wnt/β-catenin": signature_score(mat, sig.get(_WNT, [])),
     })
     inhib = [g for g in _SECRETED_INHIBITORY if g in mat.columns]
     for g in inhib:                     # individual z-cols (shown in the heatmap)
-        df[g] = _z(mat[g])
+        df[g] = zscore(mat[g])
     df["secreted inhibitory"] = df[inhib].mean(axis=1) if inhib else np.nan
     return df
 
@@ -120,7 +112,7 @@ def _causal_heatmap(df):
     genes = [g for g in _SECRETED_INHIBITORY if g in df.columns]
     suppr = ["TGFβ", "Wnt/β-catenin"] + genes      # pathway signatures + secreted genes
     cols = drivers + suppr
-    Z = df[cols].apply(_z)
+    Z = df[cols].apply(zscore)
     order = df["ICI ORR"].sort_values(ascending=False).index
     Zo = Z.loc[order]
 
@@ -215,9 +207,7 @@ def _cta_metrics_heatmap():
         return 0
     u = pd.read_csv(path)
     metrics = {">25 TPM": "n_any_gt25", ">50 TPM": "n_any_gt50",
-               ">100 TPM": "n_any_gt100", ">200 TPM": "n_any_gt200",
-               "≥p80": "n_any_p80", "≥p90": "n_any_p90",
-               "≥p95": "n_any_p95"}
+               "≥p90": "n_any_p90", "≥p95": "n_any_p95"}
     frac = pd.DataFrame(
         {lab: 100.0 * u[col] / u["n_samples"] for lab, col in metrics.items()})
     frac.index = u["cancer_code"]
@@ -229,7 +219,7 @@ def _cta_metrics_heatmap():
     ax.set_xticklabels(frac.columns, rotation=45, ha="right", fontsize=8)
     ax.set_yticks(range(len(frac)))
     ax.set_yticklabels(frac.index, fontsize=6)
-    ax.axvline(3.5, color="white", lw=1.5)     # absolute-TPM | within-sample pctile
+    ax.axvline(1.5, color="white", lw=1.5)     # absolute-TPM | within-sample pctile
     ax.set_title("CTA burden — all metrics (% patients with ≥1 CTA on)\n"
                  "absolute TPM | within-sample percentile, sorted by ≥p95",
                  fontsize=10, pad=10)

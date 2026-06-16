@@ -5,19 +5,28 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes.expression.protein_groups import (
+    cdna_identical_groups,
     collapse_protein_identical_loci,
     collapse_protein_identical_loci_long,
     fold_symbols_to_canonical,
+    proteoform_id,
     protein_identical_groups,
 )
 
 
 def _sym_groups():
-    """{canonical_ensg: set(symbols)} from the derived table."""
+    """{canonical_ensg: set(symbols)} from the derived table.
+
+    Members whose symbol is unresolved (NaN in the table) carry no symbol to
+    match on, so they're dropped here. ``dropna`` before ``astype(str)`` keeps
+    this robust across pandas versions: older pandas coerces NaN to the literal
+    ``"nan"`` string, newer pandas preserves it as a float — and a float has no
+    ``.startswith`` for the prefix checks below.
+    """
     df = protein_identical_groups()
     out = {}
     for canon, grp in df.groupby("group_canonical_ensembl_gene_id"):
-        out[canon] = set(grp["symbol"].astype(str))
+        out[canon] = set(grp["symbol"].dropna().astype(str))
     return out
 
 
@@ -117,12 +126,14 @@ def test_long_collapse_sums_per_context_not_across():
     })
     out = collapse_protein_identical_loci_long(
         long, group_keys=["cancer_code"], sum_cols=["expression"])
+    # the folded rows leave the ENSG key space -> keyed by the proteoform ID
+    pid = grp["group_canonical_symbol"]
     val = out.set_index(["Ensembl_Gene_ID", "cancer_code"])["expression"]
-    assert val[(canon, "CA")] == 15.0          # 10 + 5 within cohort CA
-    assert val[(canon, "CB")] == 7.0           # 7 + NaN -> 7 (NaN ignored)
-    assert val[("ENSG00000000003", "CA")] == 99.0   # ungrouped untouched
-    # merged row carries the canonical symbol
-    assert out[out["Ensembl_Gene_ID"] == canon]["Symbol"].iloc[0] == grp["group_canonical_symbol"]
+    assert val[(pid, "CA")] == 15.0            # 10 + 5 within cohort CA
+    assert val[(pid, "CB")] == 7.0             # 7 + NaN -> 7 (NaN ignored)
+    assert val[("ENSG00000000003", "CA")] == 99.0   # ungrouped keeps its ENSG
+    # merged row's id AND symbol are the proteoform ID
+    assert (out[out["Ensembl_Gene_ID"] == pid]["Symbol"] == pid).all()
 
 
 def test_fold_symbols_to_canonical():
@@ -144,11 +155,13 @@ def test_accessor_collapse_option_sums_paralogs():
     coll = cancer_reference_expression(cancer_types=["SKCM"], normalize="tpm_clean",
                                        collapse_protein_identical=True)
     assert len(coll) < len(base)               # loci merged
-    # MAGEA9/MAGEA9B -> one canonical row whose value is their sum
+    # MAGEA9 + MAGEA9B -> one row keyed by the proteoform ID (one symbol is a
+    # prefix of the other, so the ID slashes the full names), value = their sum
     b = base[base["Symbol"].isin(["MAGEA9", "MAGEA9B"])]["expression"]
-    c = coll[coll["Symbol"].isin(["MAGEA9", "MAGEA9B"])]["expression"]
+    c = coll[coll["Symbol"] == "MAGEA9/MAGEA9B"]["expression"]
     assert len(c) == 1
     assert abs(float(c.iloc[0]) - float(b.sum())) < 1e-6
+    assert not coll["Symbol"].isin(["MAGEA9", "MAGEA9B"]).any()
 
 
 def test_cdna_groups_table_invariants():
@@ -174,16 +187,145 @@ def test_accessor_collapse_cdna_identical_behaviour():
     def nrows(df, pat):
         return int(df["Symbol"].astype(str).str.match(pat).sum())
 
-    # NY-ESO CTAG1A/CTAG1B are cDNA-identical -> one row, summed
+    # NY-ESO CTAG1A/CTAG1B are cDNA-identical -> one row, summed, keyed by the
+    # proteoform ID CTAG1A/B in BOTH the id and symbol columns (the member loci
+    # leave the ENSG key space)
     b = base[base["Symbol"].isin(["CTAG1A", "CTAG1B"])]["expression"]
-    r = roll[roll["Symbol"].isin(["CTAG1A", "CTAG1B"])]
+    r = roll[roll["Symbol"] == "CTAG1A/B"]
     assert len(r) == 1 and abs(float(r["expression"].iloc[0]) - float(b.sum())) < 1e-6
+    assert r["Ensembl_Gene_ID"].iloc[0] == "CTAG1A/B"          # keyed by proteoform ID
+    assert not roll["Symbol"].isin(["CTAG1A", "CTAG1B"]).any()  # member loci folded away
     # MAGEA3 vs MAGEA6 are cDNA-DISTINCT (95.9% aa) -> stay separate
     assert roll["Symbol"].isin(["MAGEA3", "MAGEA6"]).sum() == 2
     # CT47A: override unifies all 12 loci into one (CT47B1 is a different antigen)
     assert nrows(roll, "CT47A") == 1
     # histone cluster: only exact-duplicate pairs merge, NOT the whole cluster
     assert nrows(base, "H4C") - nrows(roll, "H4C") <= 3
+
+
+def test_parameterized_fold_core():
+    """The kind= core is the single implementation; the per-space aliases delegate
+    to it identically."""
+    from pirlygenes.expression import protein_groups as pg
+    syms = ["CTAG1B", "CGB3", "PRAME"]
+    ids = ["ENSG00000184033", "ENSG00000141510"]
+    # kind selects the space; cDNA vs protein differ on protein-identical-but-
+    # cDNA-distinct loci (CGB3 -> CGB3 cdna vs CGB3/5/8 protein)
+    assert pg.fold_symbols(syms, kind="cdna") == pg.fold_to_cdna_canonical_symbol(syms)
+    assert pg.fold_symbols(syms, kind="protein") == pg.fold_symbols_to_canonical(syms)
+    assert pg.fold_ids(ids, kind="cdna") == pg.fold_to_cdna_canonical_id(ids)
+    assert pg.fold_ids(ids, kind="protein") == pg.fold_to_protein_canonical_id(ids)
+    assert pg.fold_symbols(["CGB3"], kind="cdna") == ["CGB3"]
+    assert pg.fold_symbols(["CGB3"], kind="protein") == ["CGB3/5/8"]
+    # maps: aliases are copies of the core
+    assert pg.cdna_member_to_canonical() == pg.member_to_canonical("cdna")
+    assert pg.protein_canonical_id_to_symbol() == pg.canonical_to_symbol("protein")
+
+
+def test_fold_to_cdna_canonical_id():
+    """ENSG analog of the symbol fold: a member ENSG -> the proteoform key, an
+    ungrouped ENSG -> itself, de-duplicated."""
+    from pirlygenes.expression.protein_groups import fold_to_cdna_canonical_id
+    assert fold_to_cdna_canonical_id(["ENSG00000184033"]) == ["CTAG1A/B"]   # CTAG1B
+    assert fold_to_cdna_canonical_id(["ENSG00000141510"]) == ["ENSG00000141510"]  # TP53
+    assert fold_to_cdna_canonical_id(
+        ["ENSG00000184033", "ENSG00000268651"]) == ["CTAG1A/B"]   # both -> one key
+
+
+def test_dual_gene_proteoform_identifiers():
+    """The accessor exposes a gene view and a proteoform view that share one
+    schema and bridge via Proteoform_ID / Member_Ensembl_Gene_IDs."""
+    from pirlygenes.expression.accessors import cancer_reference_expression as cre
+    gene = cre(cancer_types=["SKCM"], normalize="tpm")
+    prot = cre(cancer_types=["SKCM"], normalize="tpm", collapse_cdna_identical=True)
+    cols = {"Ensembl_Gene_ID", "Proteoform_ID", "Member_Ensembl_Gene_IDs", "Symbol"}
+    assert cols <= set(gene.columns) and cols <= set(prot.columns)
+    # gene frame: CTAG1B keeps its ENSG but bridges to the proteoform
+    g = gene[gene["Ensembl_Gene_ID"] == "ENSG00000184033"].iloc[0]
+    assert g["Proteoform_ID"] == "CTAG1A/B"
+    assert g["Member_Ensembl_Gene_IDs"] == "ENSG00000184033"
+    # proteoform frame: one CTAG1A/B row carrying its constituent ENSGs
+    pr = prot[prot["Proteoform_ID"] == "CTAG1A/B"]
+    assert len(pr) >= 1
+    assert set(pr.iloc[0]["Member_Ensembl_Gene_IDs"].split(";")) == {
+        "ENSG00000184033", "ENSG00000268651"}
+    # the dual columns survive pooling (pool groups on them, so they round-trip)
+    pooled = cre(cancer_types=["SKCM"], normalize="tpm",
+                 collapse_cdna_identical=True, pool=True)
+    assert cols <= set(pooled.columns)
+    pp = pooled[pooled["Proteoform_ID"] == "CTAG1A/B"]
+    assert len(pp) == 1 and set(
+        pp.iloc[0]["Member_Ensembl_Gene_IDs"].split(";")) == {
+        "ENSG00000184033", "ENSG00000268651"}
+    # Proteoform_ID is built with the maps MATCHING the collapse, so it equals the
+    # row key on BOTH collapse frames (cDNA and protein), not just cDNA.
+    for kw in (dict(collapse_cdna_identical=True),
+               dict(collapse_protein_identical=True)):
+        df = cre(cancer_types=["SKCM"], normalize="tpm", **kw)
+        assert (df["Ensembl_Gene_ID"].astype(str)
+                == df["Proteoform_ID"].astype(str)).all()
+
+
+def test_fold_resolves_display_aliases_up_front():
+    """Synonym->canonical happens up front: a panel named in display space lands
+    in the SAME proteoform space as member symbols, never leaking through."""
+    from pirlygenes.expression.protein_groups import (
+        fold_symbols_to_canonical, fold_to_cdna_canonical_symbol)
+    for fold in (fold_to_cdna_canonical_symbol, fold_symbols_to_canonical):
+        assert fold(["NY-ESO-1"]) == ["CTAG1A/B"]      # display alias of a GROUP
+        assert fold(["CTAG1B"]) == ["CTAG1A/B"]        # member symbol -> same
+        # de-dups when alias + member of the same group are both given
+        assert fold(["NY-ESO-1", "CTAG1B"]) == ["CTAG1A/B"]
+        # single-locus current symbols pass through; grouped-only folding never
+        # inverts a current symbol onto an old alias (regression guard for the
+        # removed backwards PVRL4->NECTIN4 entry)
+        assert fold(["NECTIN4"]) == ["NECTIN4"]
+        assert fold(["CD274"]) == ["CD274"]
+
+
+def test_cta_proteoform_panels_match_collapsed_frame():
+    """The public folded CTA panels select the clustered antigens (NY-ESO etc.)
+    on a proteoform-collapsed frame, so consumers don't have to fold themselves."""
+    from pirlygenes.gene_sets_cancer import (CTA_proteoform_ids,
+                                             CTA_proteoform_symbols)
+    from pirlygenes.expression.accessors import cancer_reference_expression as cre
+    psy, pid = set(CTA_proteoform_symbols()), set(CTA_proteoform_ids())
+    assert "CTAG1A/B" in psy and "CTAG1A/B" in pid    # NY-ESO folded
+    assert "CTAG1B" not in psy                         # member symbol folds away
+    df = cre(cancer_types=["SKCM"], normalize="tpm", collapse_cdna_identical=True)
+    by_sym = set(df[df["Symbol"].isin(psy)]["Proteoform_ID"])
+    by_id = set(df[df["Ensembl_Gene_ID"].isin(pid)]["Proteoform_ID"])
+    assert "CTAG1A/B" in by_sym and "CTAG1A/B" in by_id  # both selection paths hit it
+
+
+def test_proteoform_id_construction():
+    """A folded group's ID is the merged member symbols, so it shows exactly what
+    was combined and is unique by construction."""
+    # shared prefix -> factor it out, slash the distinct suffixes
+    assert proteoform_id(["XAGE1A", "XAGE1B"]) == "XAGE1A/B"
+    assert proteoform_id(["CTAG1B", "CTAG1A"]) == "CTAG1A/B"           # order-independent
+    assert proteoform_id(["CT47A2", "CT47A10", "CT47A1"]) == "CT47A1/2/10"  # natural order
+    # no shared prefix -> slash full symbols (natural-sorted)
+    assert proteoform_id(["SOD2", "FOO9"]) == "FOO9/SOD2"
+    # one symbol is a prefix of the other -> slash full symbols
+    assert proteoform_id(["MAGEA9", "MAGEA9B"]) == "MAGEA9/MAGEA9B"
+    # identical / duplicate names -> use one
+    assert proteoform_id(["FOO", "FOO"]) == "FOO"
+    # NaN/empty members ignored
+    assert proteoform_id(["XAGE1A", "XAGE1B", "nan", ""]) == "XAGE1A/B"
+    assert proteoform_id([]) is None
+
+
+def test_group_csv_ids_unique_and_wellformed():
+    """The shipped derived tables: every group's proteoform ID is unique and is
+    not bounded by separator punctuation."""
+    for df in (protein_identical_groups(), cdna_identical_groups()):
+        per_id = df.groupby("group_canonical_symbol"
+                            )["group_canonical_ensembl_gene_id"].nunique()
+        assert (per_id == 1).all(), dict(per_id[per_id > 1])
+        for sym in df["group_canonical_symbol"].dropna().unique():
+            s = str(sym)
+            assert s[0].isalnum() and s[-1].isalnum(), s
 
 
 def test_collapse_is_idempotent():

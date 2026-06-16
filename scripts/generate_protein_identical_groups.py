@@ -33,6 +33,8 @@ from pathlib import Path
 import pandas as pd
 from pyensembl import EnsemblRelease
 
+from pirlygenes.expression.protein_groups import proteoform_id
+
 MIN_AA = 30
 OUT = Path(__file__).resolve().parent.parent / "pirlygenes" / "data" / \
     "protein-identical-gene-groups.csv"
@@ -81,13 +83,14 @@ def build_groups(release: int) -> pd.DataFrame:
     for prot, gene_ids in by_protein.items():
         if len(gene_ids) < 2:
             continue
-        members = sorted(gene_ids)              # deterministic
-        canonical = members[0]                  # smallest accession = representative
-        canonical_symbol = canon[canonical][1]
+        members = sorted(gene_ids)              # deterministic; [0] = smallest acc.
+        # The group's canonical *symbol* is its proteoform ID — the member symbols
+        # combined (XAGE1A+XAGE1B -> XAGE1A/B), so it shows exactly what was merged.
+        pid = proteoform_id([canon[m][1] for m in members])
         for member in members:
             rows.append({
-                "group_canonical_ensembl_gene_id": canonical,
-                "group_canonical_symbol": canonical_symbol,
+                "group_canonical_ensembl_gene_id": members[0],
+                "group_canonical_symbol": pid,
                 "ensembl_gene_id": member,
                 "symbol": canon[member][1],
                 "protein_aa": len(prot),

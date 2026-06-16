@@ -39,11 +39,14 @@ APD1_BATCH = ["exclusion_vs_apd1", "apd1_causal_factors", "apd1_mechanism_screen
 #   target "<name>" -> a flat-writing script gets its own named subdir
 LAYOUT = [
     ("cta_patient_counts", [], "groups"),
-    ("cta_addressable_burden", [], "cta_addressable"),
     ("cta_covering_set", [], "cta_covering_set"),
     ("cta_expression_heatmaps", [], "cta_expression_heatmaps"),
     ("apd1_response_plots", [], "apd1_response"),
     ("ici_landscape", [], "ici_landscape"),
+    ("apd1_ici_factor_contributions", [], "apd1_ici_contributions"),
+    ("suppressor_genes_vs_apd1", [], "suppressor_genes"),
+    ("antigen_or_suppression_score", [], "antigen_or_suppression"),
+    ("placental_immune_privilege", [], "placental_immune_privilege"),
 ]
 
 
@@ -70,6 +73,15 @@ def main() -> int:
         else:                           # flat-writing -> its own named subdir
             args = ["--out-dir", str(run), "--run-name", target]
         (ok if _run([sys.executable, f"{s}.py", *args, *extra]) else failed).append(s)
+
+    # cta_addressable_burden consumes cta_patient_counts' tables (written above by
+    # the "groups" entry into the run root) and has its own --run-dir/--fig-dir
+    # CLI, so it can't ride the LAYOUT loop. Read tables from the run root, write
+    # its plots into their own family subdir.
+    print("  cta_addressable: cta_addressable_burden ...", flush=True)
+    addr_ok = _run([sys.executable, "cta_addressable_burden.py",
+                    "--run-dir", str(run), "--fig-dir", str(run / "cta_addressable")])
+    (ok if addr_ok else failed).append("cta_addressable_burden")
 
     pngs = sorted(run.rglob("*.png"))
     print(f"\nrun -> {run}")

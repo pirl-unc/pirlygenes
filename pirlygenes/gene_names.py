@@ -49,11 +49,31 @@ aliases = {
     "VSIR": "VISTA",
     "POU1F1": "POUF1",
     "ATP5F1E": "ATP5E",
-    "PVRL4": "NECTIN4",
+    # NOTE: do NOT add old->current entries here (e.g. PVRL4->NECTIN4). This dict
+    # is current_symbol -> preferred *display label* and feeds reverse_aliases /
+    # short_gene_name; a backwards entry makes the CURRENT symbol normalise to the
+    # dead one (short_gene_name('NECTIN4') -> 'PVRL4'). Old->current synonyms are
+    # resolved up front by the NCBI synonym layer (synonym_to_official('PVRL4') ->
+    # 'NECTIN4'), so they don't belong here.
     "CTAG1B": "NY-ESO-1",
     "TP53": "p53",
     "FOLR1": "FRα",
     "FCRL5": "FCRH5",
+}
+
+
+# Display labels for *proteoform IDs* — the synthesized identifiers the
+# cDNA/protein-identical collapse assigns to a folded paralog group (the merged
+# member symbols, e.g. CTAG1A/B; see
+# pirlygenes.expression.protein_groups.proteoform_id). These are display-only:
+# unlike `aliases`, they do NOT feed the bidirectional mapping synonym pool
+# (gene_mapping._curated_display_candidates), because a proteoform ID like
+# CTAG1A/B is not a real HGNC locus and must not compete with the real gene
+# (CTAG1B) for the reverse "NY-ESO-1 -> official symbol" resolution. A proteoform
+# ID with no entry here displays as-is (e.g. XAGE1A/B), which is already legible.
+proteoform_display_aliases = {
+    "CTAG1A/B": "NY-ESO-1",                          # cDNA-identical NY-ESO pair
+    "CT47A1/2/3/4/5/6/7/8/9/10/11/12": "CT47A",      # the 12-locus CT47A cluster
 }
 
 
@@ -74,7 +94,9 @@ def get_reverse_alias_as_list(name: str) -> list[str]:
 
 
 def display_name(name: str) -> str:
-    return aliases.get(name, name)
+    if name in aliases:
+        return aliases[name]
+    return proteoform_display_aliases.get(name, name)
 
 
 def short_gene_name(name: str) -> str:

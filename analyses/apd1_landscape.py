@@ -41,16 +41,14 @@ from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 from _apd1_factors import (SIGNATURE_META, apd1_map,  # noqa: E402
                            cohort_gene_matrix, cta_burden, curated_signatures,
                            indel_map, tmb_map, viral_score, with_parent)
+from _apd1_factors import zscore  # noqa: E402
+from _panels import fold  # noqa: E402
 
 OUT = Path(os.environ.get("APD1_RUN_DIR",
           str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
 OUT.mkdir(parents=True, exist_ok=True)
 # column order within each axis (label -> therapy_class or special token)
 _AXIS_ORDER = ["antigen", "exclusion", "circular"]
-
-
-def _z(s):
-    return (s - s.mean()) / s.std(ddof=0)
 
 
 def _build():
@@ -73,17 +71,17 @@ def _build():
     cols["CTA"] = ("antigen", cta_burden(mat))
     # curated expression signatures
     for cls, genes in curated_signatures().items():
-        present = [g for g in genes if g in mat.columns]
+        present = [g for g in fold(genes) if g in mat.columns]  # proteoform-fold
         if len(present) < 1:        # allow single-gene signatures (TGF-β = TGFB2)
             continue
         axis = SIGNATURE_META[cls][0]
         label = cls.replace("aPD1_", "").replace("exclusion_", "").replace(
             "circular_", "").replace("antigen_", "")
-        cols[label] = (axis, mat[present].apply(_z).mean(axis=1))
+        cols[label] = (axis, mat[present].apply(zscore).mean(axis=1))
 
     # order columns by axis
     ordered = sorted(cols, key=lambda k: (_AXIS_ORDER.index(cols[k][0]), k))
-    Z = pd.DataFrame({k: _z(cols[k][1]) for k in ordered})
+    Z = pd.DataFrame({k: zscore(cols[k][1]) for k in ordered})
     axes_of = {k: cols[k][0] for k in ordered}
     rho = {k: spearmanr(cols[k][1], orr, nan_policy="omit").statistic
            for k in ordered}
@@ -102,7 +100,7 @@ def _heatmap(Z, orr, axes_of, rho):
     ax.set_yticks(range(len(order)))
     ax.set_yticklabels([f"{c}  ({orr[c]:.0f}%)" for c in order], fontsize=7)
     # axis-group separators + headers
-    bounds, prev, start = [], None, 0
+    prev, start = None, 0
     for i, c in enumerate(Zo.columns):
         a = axes_of[c]
         if prev is not None and a != prev:
@@ -118,7 +116,7 @@ def _heatmap(Z, orr, axes_of, rho):
                  "level (red high / blue low)", fontsize=11, pad=44)
     fig.colorbar(ax.images[0], ax=ax, shrink=0.4, label="z-score")
     fig.tight_layout()
-    fig.savefig(OUT / "apd1_landscape_heatmap.png", dpi=130)
+    fig.savefig(OUT / "apd1_landscape_heatmap.png", dpi=300)
     plt.close(fig)
 
 
@@ -158,7 +156,7 @@ def _balance_sheet(Z, orr, axes_of):
     fig.supxlabel("←  less favourable        contribution toward aPD-1 response "
                   "(z)        more favourable  →", fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    fig.savefig(OUT / "apd1_balance_sheet.png", dpi=130)
+    fig.savefig(OUT / "apd1_balance_sheet.png", dpi=300)
     plt.close(fig)
 
 

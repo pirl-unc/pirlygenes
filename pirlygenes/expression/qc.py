@@ -54,9 +54,29 @@ _GENE_NA = {"", "NAN", "NONE", "NULL", "-"}
 # biology more than it removes artifact.
 _POLYA_BIAS_LNCRNA_SYMBOLS = frozenset({"MALAT1", "NEAT1"})
 
-_TECHNICAL_RNA_GROUPS = frozenset(
+# The qc-groups that constitute the zero-and-renormalize *technical-RNA*
+# compartment of the clean-TPM space. PUBLIC contract (#445): a consumer
+# conforming a sample to clean-TPM classifies each gene with
+# :func:`classify_gene_qc` and zeroes rows whose ``.group`` is in this set.
+TECHNICAL_RNA_GROUPS = frozenset(
     {"mt_dna", "mt_like_pseudogene", "rrna_like", "polyadenylation_bias_lncrna"}
 )
+#: Deprecated private alias of :data:`TECHNICAL_RNA_GROUPS`; kept for back-compat.
+_TECHNICAL_RNA_GROUPS = TECHNICAL_RNA_GROUPS
+
+#: Fractions of the 1e6 clean-TPM budget pinned to each censored compartment in
+#: the clean-TPM contract (#446). The censored block is split into two
+#: separately-pinned compartments (cancerdata's 16/9 refinement, validated on
+#: fresh-frozen polyA TCGA: ribosomal proteins sit at ~16% of the budget, other
+#: technical RNA at ~9%), with biology getting the remaining 75% — instead of one
+#: lumped 25% block. PUBLIC source of truth for the values normalize.py applies;
+#: consumers import these instead of re-typing the magic numbers, and the emitted
+#: reference frame records the values actually used in its metadata.
+RIBOSOMAL_PROTEIN_FRACTION = 0.16
+OTHER_TECHNICAL_FRACTION = 0.09
+#: Combined censored budget (ribosomal + other technical). Retained for back-compat
+#: and for the single-compartment paths (technical-only view, the v5 cap mode).
+TECHNICAL_FRACTION = RIBOSOMAL_PROTEIN_FRACTION + OTHER_TECHNICAL_FRACTION
 
 # Display ordering for the per-category pre-normalization QC block.
 # Removed groups come first (drop-by-default), then retained groups; within
@@ -122,11 +142,13 @@ _FAMILY_TO_QC = {
 # view (used by :func:`pirlygenes.expression.filter_technical_rna`) and
 # the QC-group view (used by :func:`is_rescue_feature` /
 # :func:`normalize_expression`) stay in lockstep automatically.
-_TECHNICAL_RNA_FAMILIES = frozenset(
+TECHNICAL_RNA_FAMILIES = frozenset(
     family
     for family, (_label, group) in _FAMILY_TO_QC.items()
-    if group in _TECHNICAL_RNA_GROUPS
+    if group in TECHNICAL_RNA_GROUPS
 )
+#: Deprecated private alias of :data:`TECHNICAL_RNA_FAMILIES`; kept for back-compat.
+_TECHNICAL_RNA_FAMILIES = TECHNICAL_RNA_FAMILIES
 
 
 def _family_to_qc_class(family: str, symbol: str | None = None) -> GeneQcClass:
@@ -313,11 +335,16 @@ def classify_gene_qc(
 
 def is_rescue_feature(symbol: str | None) -> bool:
     """True when a feature should be removed by mtDNA/rRNA rescue."""
-    return classify_gene_qc(symbol).group in _TECHNICAL_RNA_GROUPS
+    return classify_gene_qc(symbol).group in TECHNICAL_RNA_GROUPS
 
 
 __all__ = [
     "GeneQcClass",
+    "TECHNICAL_RNA_GROUPS",
+    "TECHNICAL_RNA_FAMILIES",
+    "TECHNICAL_FRACTION",
+    "RIBOSOMAL_PROTEIN_FRACTION",
+    "OTHER_TECHNICAL_FRACTION",
     "_POLYA_BIAS_LNCRNA_SYMBOLS",
     "_TECHNICAL_RNA_GROUPS",
     "_TECHNICAL_RNA_FAMILIES",

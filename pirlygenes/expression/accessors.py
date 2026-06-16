@@ -84,7 +84,7 @@ from .normalize import (
     percentile_rank_expression,
     renormalize_to_million,
 )
-from .qc import _TECHNICAL_RNA_FAMILIES
+from .qc import TECHNICAL_RNA_FAMILIES
 
 
 # ---------- column-discovery helpers ----------
@@ -303,7 +303,7 @@ def technical_rna_gene_ids() -> set[str]:
     to project onto a frame that doesn't carry ``Ensembl_Gene_ID``.
     """
     out: set[str] = set()
-    for family in _TECHNICAL_RNA_FAMILIES:
+    for family in TECHNICAL_RNA_FAMILIES:
         out |= gene_family_ids(family)
     return out
 
@@ -1016,6 +1016,11 @@ def _pool_union_rows(long: pd.DataFrame, *,
     even on the full union.
     """
     keys = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "normalization"]
+    # Member_Ensembl_Gene_IDs is constant per Ensembl_Gene_ID (a proteoform's
+    # constituent ENSGs), so carrying it as a group key preserves it through
+    # pooling without changing the grouping.
+    if "Member_Ensembl_Gene_IDs" in long.columns:
+        keys = keys + ["Member_Ensembl_Gene_IDs"]
     w = long["n_samples"].where(long["expression"].notna()) \
         if "n_samples" in long.columns else long["expression"].notna().astype(float)
     tmp = long.assign(_w=w, _wx=w * long["expression"])
@@ -1029,7 +1034,8 @@ def _pool_union_rows(long: pd.DataFrame, *,
     g["q1"] = np.nan
     g["q3"] = np.nan
     g["source_cohort"] = "POOLED"
-    out_cols = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"]
+    out_cols = ["Ensembl_Gene_ID", "Symbol", "Member_Ensembl_Gene_IDs",
+                "cancer_code", "source_cohort"]
     if include_provenance:
         if "n_samples" in long.columns:
             out_cols.append("n_samples")
@@ -1257,6 +1263,33 @@ def cancer_reference_expression(
 
     if pool:
         long = _pool_union_rows(long, include_provenance=include_provenance)
+
+    # Dual gene/proteoform identifiers on every row, so consumers can work at
+    # either level: `Proteoform_ID` is the stable proteoform key each row maps to
+    # (= `Ensembl_Gene_ID` on the proteoform frame; the gene's proteoform on the
+    # per-ENSG gene frame), and `Member_Ensembl_Gene_IDs` is the constituent real
+    # ENSGs (the gene view; = the gene's own ENSG when not folded).
+    from ..gene_ids import strip_version
+    from .protein_groups import canonical_to_symbol, member_to_canonical
+    # Proteoform_ID uses the SAME proteoform space as the frame, so it equals
+    # Ensembl_Gene_ID on a collapsed frame (cDNA xor protein) and is the matching
+    # gene->proteoform bridge on the gene frame (cDNA = the matrix default).
+    _kind = "protein" if collapse_protein_identical else "cdna"
+    _m2c, _c2s = member_to_canonical(_kind), canonical_to_symbol(_kind)
+    _ids = long["Ensembl_Gene_ID"].astype(str)
+    _pid = {}
+    for u in _ids.unique():               # per-id key (no dedup); idempotent on a
+        s = strip_version(u)              # proteoform ID (not a member -> itself)
+        _pid[u] = _c2s.get(_m2c.get(s, s), s)
+    long = long.assign(Proteoform_ID=_ids.map(_pid))
+    if "Member_Ensembl_Gene_IDs" not in long.columns:
+        long = long.assign(Member_Ensembl_Gene_IDs=long["Ensembl_Gene_ID"])
+    # keep the four identifier columns grouped + consistently ordered (so the gene
+    # and proteoform frames share one schema)
+    _id_cols = ["Ensembl_Gene_ID", "Symbol", "Proteoform_ID",
+                "Member_Ensembl_Gene_IDs"]
+    long = long[[c for c in _id_cols if c in long.columns]
+                + [c for c in long.columns if c not in _id_cols]]
 
     if format == "long":
         return long
@@ -1561,6 +1594,8 @@ def pan_cancer_expression(
     *,
     log_transform: bool = False,
     drop_technical_rna: bool = False,
+    collapse_cdna_identical: bool = False,
+    collapse_protein_identical: bool = False,
 ) -> pd.DataFrame:
     """Wide-form expression across HPA normal tissues + TCGA cancer types.
 
@@ -1618,6 +1653,14 @@ def pan_cancer_expression(
         ``normalize="tpm_clean"``: this removes rows, while
         ``"tpm_clean"`` zeroes them in added ``*_clean`` columns. See
         Boundary note in the module docstring.
+    collapse_cdna_identical / collapse_protein_identical
+        Collapse identical loci into one row per proteoform (same dual-identifier
+        contract as :func:`cancer_reference_expression`), summed in linear space
+        BEFORE any clean/log/percentile column is generated. At most one may be
+        True. Regardless of these flags the result always carries the gene-view
+        bridge columns ``Proteoform_ID`` (the proteoform each gene folds to — group
+        by it to roll up) and ``Member_Ensembl_Gene_IDs`` (constituent ENSGs), so
+        the gene/proteoform duality is uniform across accessors.
 
     Returns
     -------
@@ -1630,6 +1673,27 @@ def pan_cancer_expression(
 
     df = get_data("pan-cancer-expression")
     df, _ = add_tpm_columns_from_fpkm(df)
+
+    # Proteoform duality (uniform with cancer_reference_expression): always add the
+    # gene-view Proteoform_ID / Member_Ensembl_Gene_IDs bridge columns; optionally
+    # collapse identical loci in LINEAR space here, BEFORE any clean/log/percentile
+    # column is generated, so the summed proteoform values then normalise correctly.
+    if collapse_cdna_identical and collapse_protein_identical:
+        raise ValueError("set at most one of collapse_cdna_identical / "
+                         "collapse_protein_identical")
+    _collapse_kind = ("cdna" if collapse_cdna_identical
+                      else "protein" if collapse_protein_identical else None)
+    if _collapse_kind:
+        from .protein_groups import collapse_wide, fold_ids, fold_symbols
+        _linear = [c for c in df.columns if c.startswith(_VALUE_COL_PREFIXES)]
+        df = collapse_wide(df, value_cols=_linear, kind=_collapse_kind)
+        if genes is not None:   # fold the gene filter so a member-named panel hits
+            genes = sorted(set(map(str, genes))
+                           | set(fold_symbols(genes, kind=_collapse_kind))
+                           | set(fold_ids(genes, kind=_collapse_kind)))
+    else:
+        from .protein_groups import add_proteoform_columns
+        df = add_proteoform_columns(df)
     analysis_value_cols = _pan_analysis_value_cols(df)
 
     generated_value_cols: list[str] = []
@@ -1638,12 +1702,18 @@ def pan_cancer_expression(
         if mode == "tpm":
             continue
         if mode == "tpm_clean":
-            normalized_df = _bundled_normalize(
+            # ONE clean TPM everywhere: the fixed_fraction 16/9/75 contract,
+            # identical to cancer_reference_expression. (Was the legacy zero
+            # drop-and-renormalize, which kept ribosomal proteins in biology and
+            # inflated the biological budget to 1e6 — a different, non-comparable
+            # "clean" than the reference table used.)
+            normalized_df, _ = normalize_expression(
                 df,
-                technical_rna_normalize=True,
-                remove_noncoding=False,
-                renormalize=True,
+                label_col="Symbol",
+                id_col="Ensembl_Gene_ID",
                 value_cols=analysis_value_cols,
+                censored_fill="fixed_fraction",
+                exclude_ribosomal_proteins=True,
             )
             source_cols = analysis_value_cols
         elif mode == "tpm_log1p":

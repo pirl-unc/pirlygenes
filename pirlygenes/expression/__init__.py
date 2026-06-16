@@ -87,6 +87,9 @@ from .normalize import (
     zscore_normalize,
 )
 from .qc import (
+    TECHNICAL_FRACTION,
+    TECHNICAL_RNA_FAMILIES,
+    TECHNICAL_RNA_GROUPS,
     GeneQcClass,
     classify_gene_qc,
     is_rescue_feature,
@@ -140,6 +143,10 @@ __all__ = [
     "classify_gene_qc",
     "is_rescue_feature",
     "GeneQcClass",
+    # Clean-TPM technical-RNA contract (public; #445, #446)
+    "TECHNICAL_RNA_GROUPS",
+    "TECHNICAL_RNA_FAMILIES",
+    "TECHNICAL_FRACTION",
     # Aggregation
     "aggregate_gene_expression",
     "extra_tx_mappings",

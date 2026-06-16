@@ -35,46 +35,26 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from _apd1_factors import (SIGNATURE_META, apd1_map,  # noqa: E402
                            cohort_gene_matrix, curated_signatures)
+from _panels import fold, mechanism_controls  # noqa: E402
 
 OUT = Path(os.environ.get("APD1_RUN_DIR",
           str(Path(__file__).resolve().parent / "outputs" / "apd1_causal_factors")))
 OUT.mkdir(parents=True, exist_ok=True)
 
-# Curated signatures (therapy-response-signatures.csv) are the source of truth;
-# these are the NON-curated extras tested as controls / known failures:
-# name -> (gene list, expected sign, circularity tag, one-line rationale)
-_EXTRA_CONTROLS = {
-    "antigen:CTA": (
-        ["MAGEA1", "MAGEA3", "MAGEA4", "MAGEC2", "CTAG1B", "CTAG2", "PRAME",
-         "SSX2", "GAGE1", "XAGE1B"], +1, "causal",
-        "cancer-testis antigen expression (representative MAGEs; CTA panel owned "
-        "by tsarina, not this CSV)"),
-    "antigen:ERV_annotated": (
-        ["ERV3-1", "ERVK-28", "ERVK3-1", "ERVMER34-1", "ERVW-1", "ERVFRD-1",
-         "ERVH-1", "ERVV-1"], +1, "causal",
-        "Ensembl-annotated ERVs (mostly placental syncytins - FAILS)"),
-    "exclude:hypoxia": (
-        ["CA9", "SLC2A1", "LDHA", "VEGFA", "PGK1"], -1, "borderline",
-        "hypoxia (CA9 is also a ccRCC lineage marker - confounded, NOT curated)"),
-    "exclude:myeloid_tolerance": (
-        ["VSIG4", "MARCO", "CD163", "C1QA", "C1QB", "ARG1", "ALDH1A1", "IL10"],
-        -1, "borderline",
-        "resident tolerogenic myeloid (WRONG-SIGN: indexes infiltrate; NOT curated)"),
-}
-# axis -> expected response sign (antigen up, exclusion down, circular up)
-_AXIS_SIGN = {"antigen": +1, "exclusion": -1, "circular": +1}
 _TAG_COLOR = {"causal": "#2c7fb8", "borderline": "#d95f0e", "circular": "#999999"}
 
 
 def _mechanisms() -> dict:
-    """Build the test catalog: curated signatures (from CSV) + extra controls."""
+    """Build the test catalog: curated signatures (from the CSV) + the
+    non-curated control panels (from _panels.mechanism_controls). Every panel is
+    proteoform-folded so its symbols match the matrix's proteoform-ID columns."""
     out = {}
     for cls, genes in curated_signatures().items():
         axis, sign, tag = SIGNATURE_META[cls]
         short = cls.replace("aPD1_", "").replace("exclusion_", "").replace(
             "circular_", "").replace("antigen_", "")
-        out[f"{axis}:{short}"] = (genes, sign, tag, f"curated {cls}")
-    out.update(_EXTRA_CONTROLS)
+        out[f"{axis}:{short}"] = (fold(genes), sign, tag, f"curated {cls}")
+    out.update(mechanism_controls())
     return out
 
 
@@ -86,6 +66,8 @@ def main() -> int:
 
     rows = []
     for name, (genes, sign, tag, why) in _mechanisms().items():
+        # genes are already proteoform-folded by _mechanisms (via _panels.fold),
+        # so they match the matrix's proteoform-ID columns directly.
         present = [g for g in genes if g in mat.columns]
         if len(present) < 2:
             print(f"  SKIP {name}: <2 genes present ({present})")
@@ -140,7 +122,7 @@ def _plot(df: pd.DataFrame):
     handles = [plt.Rectangle((0, 0), 1, 1, color=c) for c in _TAG_COLOR.values()]
     ax.legend(handles, _TAG_COLOR.keys(), loc="lower right", fontsize=8)
     fig.tight_layout()
-    fig.savefig(OUT / "apd1_mechanism_screen.png", dpi=130)
+    fig.savefig(OUT / "apd1_mechanism_screen.png", dpi=300)
 
 
 if __name__ == "__main__":

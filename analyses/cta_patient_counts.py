@@ -28,9 +28,9 @@ Run:  python analyses/cta_patient_counts.py [--threshold 25] [--cohort GBM]
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -47,6 +47,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from pirlygenes import gene_sets_cancer as gsc
 from pirlygenes.builders.treehouse import _filter_samples, TreehouseCohort
 from pirlygenes.coverage import greedy_coverage as _pkg_greedy_coverage
+# Sole display authority: structural symbol/proteoform ID -> user-facing label
+# (CTAG1B and CTAG1A/B both -> NY-ESO-1). Data stays keyed by the raw symbol.
+from pirlygenes.gene_names import display_name as display_label
 
 import sweep_treehouse_polya_cohorts as polya
 import sweep_treehouse_tcga_cohorts as tcga
@@ -75,8 +78,8 @@ GLIOMA_MAP = EXPR_CACHE / "derived" / "tcga_glioma_case_to_project.csv"
 OUT = Path(__file__).resolve().parent / "outputs"
 CACHE = OUT / "_cache"
 FIGDIR = OUT
-THRESHOLDS = [25, 50, 100, 200]
-PERCENTILES = [80, 90, 95]
+THRESHOLDS = [25, 50]
+PERCENTILES = [90, 95]
 
 
 def _out_path(group: str, name: str) -> Path:
@@ -128,9 +131,6 @@ def _pct_axis(ax, which):
     share). ``which`` is 'x' or 'y'."""
     from matplotlib.ticker import PercentFormatter
     getattr(ax, f"{which}axis").set_major_formatter(PercentFormatter(xmax=100, decimals=0))
-
-
-from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -726,18 +726,6 @@ def main():
     print("[5/9] plots", flush=True)
     _plots(mat, cohorts, counts, ensg_to_sym, args.threshold, args.cohort)
 
-    tpm_thr = Threshold("tpm", args.threshold)
-    print("[6/8] per-cohort coverage curves (one PNG each)", flush=True)
-    _coverage_every_cohort(mat, cohorts, ensg_to_sym, tpm_thr)
-
-    print("[7/8] stacked coverage bar (per-CTA marginal contribution)", flush=True)
-    _stacked_coverage_bars(mat, cohorts, ensg_to_sym, tpm_thr)
-
-    print("[8/8] CTA coverage / load vs cohort TMB / aPD-1 / burden axes",
-          flush=True)
-    _emit_coverage(mat, cohorts, ensg_to_sym, tpm_thr)
-    _tmb_vs_apd1()   # cohort-level TMB-vs-aPD-1 context scatter (once per run)
-
     # CTA load metrics vs TMB: (a) mean # CTAs expressed per sample, (b) mean
     # per-sample CTA-specific-9mer load (Σ over the CTAs a sample expresses of
     # each CTA's count of 9mers absent from the whole non-CTA proteome). Weights
@@ -800,14 +788,22 @@ def main():
                     _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base,
                                    pctile_cutoffs=cutoffs, xaxis=xa, log_y=True)
 
-    _emit_load_metrics(tpm_thr)
+    # Absolute-TPM coverage / load variants, one per TPM threshold (t25, t50):
+    # per-cohort coverage curves, stacked bars, coverage scatters, load metrics.
+    print("[6/8] absolute-TPM coverage / load variants", flush=True)
+    for tpm in _tqdm(THRESHOLDS, "TPM thresholds"):
+        tpm_thr = Threshold("tpm", tpm)
+        _coverage_every_cohort(mat, cohorts, ensg_to_sym, tpm_thr)
+        _stacked_coverage_bars(mat, cohorts, ensg_to_sym, tpm_thr)
+        _emit_coverage(mat, cohorts, ensg_to_sym, tpm_thr)
+        _emit_load_metrics(tpm_thr)
+    _tmb_vs_apd1()   # cohort-level TMB-vs-aPD-1 context scatter (once per run)
 
     # Within-sample percentile-rank thresholds (after clean-TPM): a CTA is "on"
     # in a sample if its TPM is at/above that sample's Nth-percentile across all
     # genes. Pipeline-robust (rank harmonizes across quantification pipelines).
-    # Generated once (gated on the base TPM threshold) since they don't depend
-    # on --threshold; the cutoffs are cached after the first compute.
-    if not args.no_percentiles and args.threshold == THRESHOLDS[0]:
+    # The cutoffs are cached after the first compute.
+    if not args.no_percentiles:
         print(f"[+] within-sample percentile thresholds {PERCENTILES}", flush=True)
         cutoffs = per_sample_percentile_cutoffs()
         for p in _tqdm(PERCENTILES, "percentile thresholds"):
@@ -851,8 +847,8 @@ def _shade(rgb, k):
     distinguish members within one family."""
     import colorsys
     r, g, b = rgb[:3]
-    h, l, s = colorsys.rgb_to_hls(r, g, b)
-    return colorsys.hls_to_rgb(h, min(1.0, max(0.0, l + k)), s)
+    h, lum, s = colorsys.rgb_to_hls(r, g, b)
+    return colorsys.hls_to_rgb(h, min(1.0, max(0.0, lum + k)), s)
 
 
 # Distinct base hues, one per antigen family; members shaded within the hue.
@@ -940,8 +936,8 @@ def _stacked_coverage_bars(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
             # label the widest leading segments; always try the dominant one
             if (marg >= min_label_pct and j < max_label_segments) or j == 0:
                 if marg >= 1.5:
-                    ax.text(left + marg / 2, y, sym, va="center", ha="center",
-                            fontsize=4.5, clip_on=True)
+                    ax.text(left + marg / 2, y, display_label(sym), va="center",
+                            ha="center", fontsize=4.5, clip_on=True)
             left += marg
     ax.set_yticks(range(len(rows)))
     ax.set_yticklabels(labels, fontsize=7)
@@ -1242,6 +1238,23 @@ def _apd1_axis() -> _XAxis:
         _axis_value_map(gsc.cancer_apd1_response()), 10.0, "", pct=True)
 
 
+@lru_cache(maxsize=1)
+def _apd1_axis_strict() -> _XAxis:
+    # Strict anti-PD-1 MONOTHERAPY ORR: the ICI response restricted to true
+    # single-agent anti-PD-1 cohorts — drop the anti-PD-L1 proxies and the
+    # PD-1+CTLA-4 dual fallbacks (mirrors apd1_response_plots' strict_pd1 variant)
+    # so the aPD-1 and ICI response axes get the SAME set of CTA scatters.
+    # Slug "apd1" -> cta_*_vs_apd1 folders, parallel to the broad "ici" axis.
+    rdf = gsc.cancer_apd1_response_df()
+    drop = set(rdf.loc[rdf["drug_target"].isin(["PD-L1", "PD-1+CTLA-4"]),
+                       "cancer_code"].astype(str))
+    raw = {c: v for c, v in gsc.cancer_apd1_response().items() if c not in drop}
+    return _XAxis(
+        "apd1", "anti-PD-1 monotherapy response",
+        "anti-PD-1 objective response rate", False,
+        _axis_value_map(raw), 10.0, "", pct=True)
+
+
 # Disease-burden x-axes: each cancer type's share (%) of annual cancer
 # {incidence, mortality}, {global = GLOBOCAN 2022 world, usa = ACS}. Burden is
 # curated per tissue ``burden_category``, so every code under a category inherits
@@ -1286,9 +1299,11 @@ def _burden_axes() -> list:
 
 
 def _all_axes() -> list:
-    """Every cohort-level x-axis the scatters sweep: TMB, anti-PD-1 ORR, and the
-    four disease-burden axes (incidence/mortality × global/usa)."""
-    return [_tmb_axis(), _apd1_axis()] + _burden_axes()
+    """Every cohort-level x-axis the scatters sweep: TMB, the broad ICI ORR and
+    the strict anti-PD-1-monotherapy ORR (parallel response axes -> cta_*_vs_ici
+    and cta_*_vs_apd1), and the four disease-burden axes (incidence/mortality ×
+    global/usa)."""
+    return [_tmb_axis(), _apd1_axis(), _apd1_axis_strict()] + _burden_axes()
 
 
 def _xlim(xs, xaxis: _XAxis):
@@ -1533,9 +1548,11 @@ def _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
     if log_y:
         ax.set_yscale("log")
         pos = [y for y in ys if y > 0]
-        ax.set_ylim((min(pos) * 0.7) if pos else 1.0, max(ys) * 1.5)
+        if pos:                              # all-zero panel: leave the default
+            ax.set_ylim(min(pos) * 0.7, max(pos) * 1.5)
     else:
-        ax.set_ylim(0, max(ys) * 1.08)
+        top = max(ys)
+        ax.set_ylim(0, top * 1.08 if top > 0 else 1.0)
     _scatter_points(fig, ax, xs, ys, pts, color_by)
     ax.set_xlabel(xaxis.label)
     ax.set_ylabel(ylabel)
@@ -1618,7 +1635,7 @@ def _mean_ctas_per_sample(mat, cols, thr, pctile_cutoffs):
 def _mean_total_cta_tpm(mat, cols, thr, pctile_cutoffs):
     """Mean over patients of the summed TPM across the CTAs that are ON at the
     threshold — the total CTA transcriptional burden per sample. Threshold-aware
-    like the other load metrics (so it gets t25/t50/p80/p90/p95 variants): only
+    like the other load metrics (so it gets t25/t50/p90/p95 variants): only
     CTAs above the cutoff contribute their TPM. Spans orders of magnitude, so
     plotted log-y."""
     on = _cohort_on_matrix(mat, cols, thr, pctile_cutoffs)
@@ -1655,7 +1672,7 @@ def _coverage_every_cohort(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None):
         xs = range(1, len(cum) + 1)
         ax.plot(xs, [c * 100 for c in cum], marker="o", ms=3, color="#3a0ca3")
         for x, (nm, c) in enumerate(zip(names[:15], cum[:15]), start=1):
-            ax.annotate(nm, (x, c * 100), fontsize=6, rotation=45,
+            ax.annotate(display_label(nm), (x, c * 100), fontsize=6, rotation=45,
                         textcoords="offset points", xytext=(2, 4))
         ax.set_xlabel("# CTAs added")
         ax.set_ylabel(f"{_display_code(code)} patients with ≥1 CTA {thr.xlabel}")
@@ -1693,7 +1710,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     ax.set_xticklabels([_display_code(c) for c in piv.columns],
                        rotation=90, fontsize=6)
     ax.set_yticks(range(len(piv.index)))
-    ax.set_yticklabels(piv.index, fontsize=6)
+    ax.set_yticklabels([display_label(s) for s in piv.index], fontsize=6)
     ax.set_title(f"# patients expressing each CTA (> {threshold} TPM)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="patients")
     fig.tight_layout()
@@ -1710,7 +1727,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     ax.set_xticklabels([_display_code(c) for c in pivp.columns],
                        rotation=90, fontsize=6)
     ax.set_yticks(range(len(pivp.index)))
-    ax.set_yticklabels(pivp.index, fontsize=6)
+    ax.set_yticklabels([display_label(s) for s in pivp.index], fontsize=6)
     ax.set_title(f"% of cohort expressing each CTA (> {threshold} TPM)", fontsize=9)
     fig.colorbar(im, ax=ax, shrink=0.5, label="% patients")
     fig.tight_layout()
@@ -1722,7 +1739,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     fc = fc[fc[pcol] > 0].head(35)
     if len(fc):
         fig, ax = plt.subplots(figsize=(10, max(4, len(fc) * 0.28)))
-        ax.barh(fc["Symbol"], fc[pcol], color="#b5179e")
+        ax.barh([display_label(s) for s in fc["Symbol"]], fc[pcol], color="#b5179e")
         ax.invert_yaxis()
         ax.set_xlabel(f"{_display_code(focus)} patients > {threshold} TPM")
         _pct_axis(ax, "x")
@@ -1776,7 +1793,7 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
         ax.plot(range(1, len(cum) + 1), [c * 100 for c in cum],
                 marker="o", color="#3a0ca3")
         for x, (nm, c) in enumerate(zip(names[:15], cum[:15]), start=1):
-            ax.annotate(nm, (x, c * 100), fontsize=6, rotation=45,
+            ax.annotate(display_label(nm), (x, c * 100), fontsize=6, rotation=45,
                         textcoords="offset points", xytext=(2, 4))
         ax.set_xlabel("# CTAs added")
         ax.set_ylabel(f"% of {_display_code(focus)} patients covered")

@@ -283,6 +283,8 @@ def test_cancer_reference_expression_empty_gene_subset_keeps_long_schema():
     assert list(df.columns) == [
         "Ensembl_Gene_ID",
         "Symbol",
+        "Proteoform_ID",
+        "Member_Ensembl_Gene_IDs",
         "cancer_code",
         "source_cohort",
         "source_project",
@@ -1314,8 +1316,10 @@ def test_pan_cancer_expression_normalize_default_is_tpm_clean():
         c for c in df.columns
         if c.endswith(("_TPM_clean", "_nTPM_clean"))
     ]
+    # clean TPM is the fixed_fraction 16/9/75 contract (identical to
+    # cancer_reference_expression): technical RNA is PINNED to ~9%, not zeroed.
     for col in value_cols:
-        assert df.loc[mt_mask, col].astype(float).sum() == pytest.approx(0.0)
+        assert df.loc[mt_mask, col].astype(float).sum() > 0
 
 
 def test_pan_cancer_expression_normalize_none_keeps_raw_and_tpm_columns():
@@ -1412,19 +1416,41 @@ def test_pan_cancer_expression_normalize_housekeeping_alias_works():
     assert any(c.endswith("_TPM_hk") for c in df.columns)
 
 
-def test_pan_cancer_expression_normalize_tpm_clean_zeroes_technical_rna():
-    """``normalize="tpm_clean"`` zeroes mtDNA / rRNA / NUMT / MALAT1+NEAT1
-    rows in added clean TPM-scale analysis columns."""
+def test_pan_cancer_expression_normalize_tpm_clean_fixed_fraction():
+    """``normalize="tpm_clean"`` applies the ONE fixed_fraction 16/9/75 contract
+    (identical to cancer_reference_expression): the censored block is PINNED, not
+    zeroed — ribosomal proteins to ~16%, other technical RNA to ~9% — and biology
+    fills the constant remaining ~75%."""
+    from pirlygenes.load_dataset import get_data
     raw = pan_cancer_expression(normalize=None)
     df = pan_cancer_expression(normalize="tpm_clean")
-    mt_mask = df["Symbol"].astype(str).str.startswith("MT-")
-    assert mt_mask.any()
+    # Authoritative category split — the canonical censored-gene list (the same
+    # source of truth the transform is built on), keyed by ENSG. Using the list
+    # DIRECTLY (not the removal-mask helper the implementation also calls) makes
+    # this an independent check of which genes land in each compartment.
+    censored = get_data("clean-tpm-censored-genes")
+    ribo_ids = set(censored.loc[censored["category"] == "ribosomal_protein",
+                                "Ensembl_Gene_ID"].astype(str))
+    tech_ids = set(censored.loc[censored["category"] == "technical",
+                                "Ensembl_Gene_ID"].astype(str))
+    ids = df["Ensembl_Gene_ID"].astype(str)
+    ribo = ids.isin(ribo_ids).to_numpy()
+    other = ids.isin(tech_ids).to_numpy()
+    rem = ribo | other
+    assert ribo.any() and other.any()
     value_cols = [
         c for c in df.columns
         if c.endswith(("_TPM_clean", "_nTPM_clean"))
     ]
     for col in value_cols:
-        assert df.loc[mt_mask, col].astype(float).sum() == pytest.approx(0.0)
+        v = df[col].astype(float)
+        total = float(v.sum())
+        if total <= 0:
+            continue
+        assert v[other].sum() > 0                        # technical PINNED, not zeroed
+        assert v[ribo].sum() / total == pytest.approx(0.16, abs=0.015)
+        assert v[other].sum() / total == pytest.approx(0.09, abs=0.015)
+        assert v[~rem].sum() / total == pytest.approx(0.75, abs=0.015)
     fpkm_col = next(c for c in df.columns if c.endswith("_FPKM"))
     pd.testing.assert_series_equal(
         raw[fpkm_col].reset_index(drop=True),
@@ -1547,3 +1573,26 @@ def test_pan_cancer_expression_rejects_removed_legacy_kwargs():
 def test_pan_cancer_expression_rejects_removed_legacy_positional_kwargs():
     with pytest.raises(TypeError):
         pan_cancer_expression(None, None, False, True)
+
+
+def test_pan_cancer_expression_proteoform_duality():
+    """pan_cancer_expression carries the gene/proteoform bridge columns and can
+    collapse identical loci in linear space (uniform with cancer_reference_expression)."""
+    from pirlygenes.expression.accessors import pan_cancer_expression
+    genes = ["CTAG1A", "CTAG1B", "PRAME"]
+    base = pan_cancer_expression(genes=genes, normalize="tpm")
+    assert {"Proteoform_ID", "Member_Ensembl_Gene_IDs"} <= set(base.columns)
+    # gene view: CTAG1B bridges to its proteoform
+    assert base.loc[base.Symbol == "CTAG1B", "Proteoform_ID"].iloc[0] == "CTAG1A/B"
+    # collapse: CTAG1A + CTAG1B summed into one CTAG1A/B row, PRAME untouched
+    coll = pan_cancer_expression(genes=genes, normalize="tpm",
+                                 collapse_protein_identical=True)
+    assert "CTAG1A/B" in set(coll.Symbol) and "CTAG1B" not in set(coll.Symbol)
+    vcol = next(c for c in coll.columns if c.endswith("_TPM"))
+    summed = coll.loc[coll.Symbol == "CTAG1A/B", vcol].iloc[0]
+    parts = base.loc[base.Symbol.isin(["CTAG1A", "CTAG1B"]), vcol].sum()
+    assert abs(float(summed) - float(parts)) < 1e-6
+    # a member-symbol gene filter still hits the folded row when collapsing
+    only = pan_cancer_expression(genes=["CTAG1B"], normalize="tpm",
+                                 collapse_protein_identical=True)
+    assert set(only.Symbol) == {"CTAG1A/B"}

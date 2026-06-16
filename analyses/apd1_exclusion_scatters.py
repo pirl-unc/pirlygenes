@@ -69,7 +69,7 @@ def _scatter(x, y, color, labels, *, xlabel, ylabel, clabel, title, path, cmap):
     ax.set_title(title)
     ax.grid(True, alpha=0.3, zorder=0)
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    fig.savefig(path, dpi=300)
     plt.close(fig)
 
 
