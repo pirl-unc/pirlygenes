@@ -147,13 +147,20 @@ _MIN_SANE_GENE_COUNT = 1000
 _MIN_SANE_TRANSCRIPT_COUNT = 5000
 
 
-def _load_index_cache(release: int):
+def _load_index_cache(release: int, installed_releases=None):
     """Return (gene_dict, transcript_dict) from the pickle cache, or None.
 
     Each subprocess pays ~2s to walk pyensembl's gene/transcript tables
     when first resolving Ensembl IDs. Loading the prebuilt dicts from
-    a single ~5MB pickle is sub-300ms and is shared across the OS page
-    cache when many processes mmap the same file."""
+    a single ~14MB pickle is sub-300ms and is shared across the OS page
+    cache when many processes mmap the same file.
+
+    The cached map is a *union* across every installed release (see
+    ``_build_indexes``), so it is keyed not just by the newest release but
+    by the full installed-release list: pass ``installed_releases`` and the
+    cache is rejected (forcing a rebuild) when that set has changed — e.g. a
+    new annotation was downloaded, or a previously-empty release gained data.
+    """
     import pickle as _pickle
     path = _index_cache_path(release)
     if not path.exists():
@@ -164,6 +171,11 @@ def _load_index_cache(release: int):
         if not isinstance(payload, dict):
             return None
         if payload.get("release") != release:
+            return None
+        if installed_releases is not None and payload.get(
+            "installed_releases"
+        ) != list(installed_releases):
+            # Built against a different set of installed releases — stale.
             return None
         gene_map = payload["gene_id_to_name"]
         transcript_map = payload["transcript_id_to_gene_name"]
@@ -178,7 +190,19 @@ def _load_index_cache(release: int):
         return None
 
 
-def _store_index_cache(release: int, gene_map: dict, transcript_map: dict) -> None:
+def _store_index_cache(
+    release: int, gene_map: dict, transcript_map: dict, installed_releases=None
+) -> None:
+    if (
+        len(gene_map) < _MIN_SANE_GENE_COUNT
+        or len(transcript_map) < _MIN_SANE_TRANSCRIPT_COUNT
+    ):
+        # Refuse to persist a degenerate index. An empty/partial build (e.g. the
+        # newest installed release has no usable GTF, so its tables come back
+        # empty) must never be written — a tiny pickle would otherwise be loaded
+        # back as "the index" and force every lookup onto the slow per-id sqlite
+        # fallback. (This is what produced the stray 79-byte caches.)
+        return
     import pickle as _pickle
     path = _index_cache_path(release)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -188,6 +212,9 @@ def _store_index_cache(release: int, gene_map: dict, transcript_map: dict) -> No
             _pickle.dump(
                 {
                     "release": release,
+                    "installed_releases": list(installed_releases)
+                    if installed_releases is not None
+                    else None,
                     "gene_id_to_name": gene_map,
                     "transcript_id_to_gene_name": transcript_map,
                 },
@@ -200,6 +227,55 @@ def _store_index_cache(release: int, gene_map: dict, transcript_map: dict) -> No
             tmp.unlink(missing_ok=True)
 
 
+def _release_id_maps(genome):
+    """Return ``(gene_id->name, transcript_id->gene_name)`` for one release.
+
+    Fast path: query the release's gtf sqlite directly — a single
+    ``SELECT transcript_id, gene_name FROM transcript`` pulls a full human
+    release in ~0.3s, versus ~130s to walk ``genome.transcripts()`` (which
+    materializes a Python ``Transcript`` object per row). The direct query is
+    also the natural "does this release actually have data?" probe: a release
+    whose GTF was never built raises here, so we return ``(None, None)`` and
+    skip it instead of indexing an empty map.
+
+    Compatibility path: if the direct query fails (older/newer pyensembl with
+    a different schema, or a non-pyensembl genome such as a unit-test fake),
+    fall back to the public ``genes()`` / ``transcripts()`` walk so the union
+    is still correct, just slower.
+    """
+    # Fast path — direct SQL against the gtf sqlite.
+    try:
+        conn = genome.db.connection
+        tx_rows = conn.execute(
+            "SELECT transcript_id, gene_name FROM transcript"
+        ).fetchall()
+        gene_rows = conn.execute("SELECT gene_id, gene_name FROM gene").fetchall()
+        txs = {strip_version(t): n for t, n in tx_rows if t and n}
+        if len(txs) >= _MIN_SANE_TRANSCRIPT_COUNT:
+            genes = {strip_version(gid): n for gid, n in gene_rows if gid and n}
+            return genes, txs
+    except Exception:
+        pass
+    # Compatibility path — public object walk (also covers test fakes).
+    genes: dict = {}
+    txs = {}
+    try:
+        for gene in genome.genes():
+            if gene.id and gene.name:
+                genes[strip_version(gene.id)] = gene.name
+    except Exception:
+        pass
+    try:
+        for t in genome.transcripts():
+            if t.id and t.gene_name:
+                txs[strip_version(t.id)] = t.gene_name
+    except Exception:
+        pass
+    if not genes and not txs:
+        return None, None
+    return genes, txs
+
+
 def _build_indexes():
     global _gene_id_to_name, _transcript_id_to_gene_name, _indexes_built
     if _indexes_built:
@@ -207,32 +283,53 @@ def _build_indexes():
     if not genomes:
         _indexes_built = True
         return
-    g = genomes[0]
-    cached = _load_index_cache(g.release)
+    # Build (and cache) a *union* id->name map across every installed release,
+    # newest-first so the newest annotation wins on conflict. This is the eager,
+    # precomputed form of the lazy per-id older-release fallback below: a
+    # transcript retired before the newest release still resolves as a single
+    # dict hit instead of a per-id sqlite probe across older genomes.
+    #
+    # Keyed on the newest installed release but validated against the full
+    # installed-release list, so the cache rebuilds when annotations change. The
+    # newest *installed* release can have no usable GTF (pyensembl lists it but
+    # its tables are empty); indexing that release alone used to poison the cache
+    # with an empty map and push EVERY lookup onto the slow fallback (~1.5M
+    # sqlite queries per file). The union naturally skips such empty releases.
+    installed = [g.release for g in genomes]
+    key_release = installed[0]
+    cached = _load_index_cache(key_release, installed_releases=installed)
     if cached is not None:
         _gene_id_to_name, _transcript_id_to_gene_name = cached
         print(
             f"[index] Loaded {len(_gene_id_to_name)} genes, "
             f"{len(_transcript_id_to_gene_name)} transcripts from cache "
-            f"(release {g.release})"
+            f"(release {key_release}, union of {installed})"
         )
         _indexes_built = True
         return
-    print(f"[index] Building gene/transcript index from Ensembl release {g.release}...")
-    try:
-        for gene in g.genes():
-            _gene_id_to_name[strip_version(gene.id)] = gene.name
-    except Exception:
-        pass
-    try:
-        for t in g.transcripts():
-            _transcript_id_to_gene_name[strip_version(t.id)] = t.gene_name
-    except Exception:
-        pass
     print(
-        f"[index] {len(_gene_id_to_name)} genes, {len(_transcript_id_to_gene_name)} transcripts indexed"
+        f"[index] Building union gene/transcript index across installed "
+        f"releases {installed}..."
     )
-    _store_index_cache(g.release, _gene_id_to_name, _transcript_id_to_gene_name)
+    for genome in genomes:  # newest-first; setdefault => newest name wins
+        genes, txs = _release_id_maps(genome)
+        if genes:
+            for gid, name in genes.items():
+                _gene_id_to_name.setdefault(gid, name)
+        if txs:
+            for tid, name in txs.items():
+                _transcript_id_to_gene_name.setdefault(tid, name)
+    print(
+        f"[index] {len(_gene_id_to_name)} genes, "
+        f"{len(_transcript_id_to_gene_name)} transcripts indexed "
+        f"(union of {installed})"
+    )
+    _store_index_cache(
+        key_release,
+        _gene_id_to_name,
+        _transcript_id_to_gene_name,
+        installed_releases=installed,
+    )
     _indexes_built = True
 
 
