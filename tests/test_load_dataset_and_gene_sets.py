@@ -553,3 +553,41 @@ def test_categorize_metadata_is_a_lossless_encoding(tmp_path):
     for col in ld._LOW_CARDINALITY_METADATA_COLS:
         pd.testing.assert_series_equal(
             back[col].astype(object), before[col].astype(object), check_names=False)
+
+
+def test_cancer_compartment_panels_coarse_tier():
+    """The coarsest lineage granularity: cell-of-origin compartments. Every
+    compartment has a non-empty panel of resolvable ENSG markers, and the
+    melanocytic/epithelial anchors are present (regression on the curated set)."""
+    panels = gsc.cancer_compartment_panels()
+    expected = {"EPITHELIAL", "MESENCHYMAL", "HEMATOLYMPHOID", "MELANOCYTIC",
+                "NEURAL_GLIAL", "GERM_CELL", "NEUROENDOCRINE"}
+    assert set(panels) == expected
+    for comp, genes in panels.items():
+        assert len(genes) >= 5, comp
+    assert "MLANA" in panels["MELANOCYTIC"]
+    assert "EPCAM" in panels["EPITHELIAL"]
+    assert "PTPRC" in panels["HEMATOLYMPHOID"]
+    df = gsc.cancer_compartment_panels_df()
+    assert (df["Ensembl_Gene_ID"].str.match(r"^ENSG\d+$")).all()
+
+
+def test_cancer_type_discriminators():
+    """Pairwise contrastive sets separate confusable types; lookup is
+    order-independent and a 'low' direction encodes the negative call."""
+    df = gsc.cancer_type_discriminators_df()
+    assert (df["Ensembl_Gene_ID"].str.match(r"^ENSG\d+$")).all()
+    assert set(df["direction"]) <= {"high", "low"}
+    # order-independent pair fetch
+    a = gsc.cancer_type_discriminator("BLCA", "PRAD")
+    b = gsc.cancer_type_discriminator("PRAD", "BLCA")
+    assert a == b and set(a) == {"BLCA", "PRAD"}
+    # uroplakins favour urothelial, prostate-secretory favours prostate
+    assert any(s == "UPK2" for s, _ in a["BLCA"])
+    assert any(s == "KLK3" for s, _ in a["PRAD"])
+    # WT1 is high-favours-OV but low-favours-UCEC (the serous discriminator)
+    ov = gsc.cancer_type_discriminator("OV", "UCEC")
+    assert ("WT1", "high") in ov["OV"]
+    assert ("WT1", "low") in ov["UCEC"]
+    # unknown pair -> empty
+    assert gsc.cancer_type_discriminator("BLCA", "GBM") == {}

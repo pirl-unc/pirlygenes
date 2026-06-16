@@ -819,6 +819,63 @@ def cancer_family_display_names():
                 .itertuples(index=False, name=None))
 
 
+# ---------- Compartment (cell-of-origin super-class) panels ----------
+# The COARSEST granularity of the lineage taxonomy: compartment (this) -> family
+# (cancer_family_panels) -> subtype (cancer_lineage_panels). "What broad kind of
+# tumor is this?" — epithelial/carcinoma, mesenchymal/sarcoma, hematolymphoid,
+# melanocytic, neural-glial, germ-cell, neuroendocrine. Curated against the TCGA
+# pan-cancer cell-of-origin analysis (PMID 29625048) + HPA; see
+# scripts/generate_cancer_taxonomy_panels.py.
+def cancer_compartment_panels_df(compartment=None):
+    """DataFrame of compartment marker panels (``Compartment, display_name,
+    Symbol, Ensembl_Gene_ID``). ``MESENCHYMAL`` is a diagnosis-of-exclusion
+    compartment (its markers overlap CAF/stroma) and ``HEMATOLYMPHOID`` markers
+    double as TIL infiltrate — call those only when the panel dominates the
+    transcriptome, not on positivity alone."""
+    df = get_data("cancer-compartment-panels")
+    if compartment is not None:
+        df = df[df["Compartment"] == compartment]
+    return df
+
+
+def cancer_compartment_panel(compartment):
+    """List of Symbols for one compartment. See `cancer_compartment_panels_df`."""
+    return cancer_compartment_panels_df(compartment=compartment)["Symbol"].tolist()
+
+
+def cancer_compartment_panels():
+    """Dict of ``{compartment: [Symbol, ...]}`` for all compartments."""
+    df = get_data("cancer-compartment-panels")
+    return {comp: grp["Symbol"].tolist()
+            for comp, grp in df.groupby("Compartment", sort=False)}
+
+
+# ---------- Pairwise type discriminators (the "differential" question) ----------
+def cancer_type_discriminators_df(type_a=None, type_b=None):
+    """DataFrame of contrastive marker sets that SEPARATE confusable cancer-type
+    pairs (``contrast, type_a, type_b, favors, Symbol, Ensembl_Gene_ID,
+    direction, tier, separability, source``). ``direction`` ``high``/``low`` is
+    relative to the ``favors`` type (``WT1`` ``low`` favours endometrioid-UCEC
+    over serous-OV). ``separability`` is the contrast's honest difficulty
+    (``strong``..``poor``); only RNA-detectable markers are included (DNA/CNV
+    events — RB1/CDKN2A loss, 1p19q codeletion — are excluded). Pass a pair of
+    codes to fetch one contrast in either order."""
+    df = get_data("cancer-type-discriminators")
+    if type_a is not None and type_b is not None:
+        pair = {type_a, type_b}
+        df = df[df.apply(lambda r: {r["type_a"], r["type_b"]} == pair, axis=1)]
+    return df
+
+
+def cancer_type_discriminator(type_a, type_b):
+    """Dict ``{favored_code: [(Symbol, direction), ...]}`` separating two cancer
+    types, or ``{}`` if the pair has no curated contrast. See
+    `cancer_type_discriminators_df`."""
+    df = cancer_type_discriminators_df(type_a=type_a, type_b=type_b)
+    return {code: list(grp[["Symbol", "direction"]].itertuples(index=False, name=None))
+            for code, grp in df.groupby("favors", sort=False)}
+
+
 def cancer_lineage_groups():
     """Dict ``{registry family -> coarse histogenesis lineage group}``.
 
