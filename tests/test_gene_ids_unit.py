@@ -150,6 +150,76 @@ def test_lookup_functions_fall_back_to_older_release_on_latest_miss(
     )
 
 
+def test_build_indexes_skips_empty_newest_release_and_eager_unions_older(
+    monkeypatch, tmp_path,
+):
+    """The newest *installed* release can have no usable GTF (empty tables).
+    Indexing it alone used to poison the cache with an empty map and force every
+    lookup onto the per-id sqlite fallback. The union build must skip the empty
+    newest release and index the older release *eagerly* (the id lands in the
+    map directly, not via the lazy fallback)."""
+    tx = SimpleNamespace(gene_name="REALGENE")
+    genomes = [
+        FakeGenome(release=115),  # newest, no data
+        FakeGenome(
+            release=114,
+            gene_by_id_map={"ENSGREAL": FakeGene("ENSGREAL", "REALGENE")},
+            tx_by_id_map={"ENSTREAL": tx},
+        ),
+    ]
+    monkeypatch.setattr(gi, "genomes", genomes)
+    monkeypatch.setattr(gi, "_indexes_built", False)
+    monkeypatch.setattr(gi, "_gene_id_to_name", {})
+    monkeypatch.setattr(gi, "_transcript_id_to_gene_name", {})
+    monkeypatch.setattr(gi, "_gene_id_miss_cache", set())
+    monkeypatch.setattr(gi, "_transcript_id_miss_cache", set())
+    monkeypatch.setattr(
+        gi, "_index_cache_path",
+        lambda release: tmp_path / f"fake-ensembl-{release}-id-index.pkl",
+    )
+
+    gi._build_indexes()
+
+    # Eagerly indexed (present in the map *before* any per-id fallback runs).
+    assert gi._transcript_id_to_gene_name.get("ENSTREAL") == "REALGENE"
+    assert gi._gene_id_to_name.get("ENSGREAL") == "REALGENE"
+    # And the lazy fallback was never needed for it.
+    assert "ENSTREAL" not in gi._transcript_id_miss_cache
+
+
+def test_index_cache_invalidates_when_installed_release_set_changes(tmp_path):
+    """A union cache built against one installed-release list is rejected once
+    that list changes (e.g. a new annotation is downloaded)."""
+    gene_map = {f"ENSG{i}": "G" for i in range(gi._MIN_SANE_GENE_COUNT + 1)}
+    tx_map = {f"ENST{i}": "G" for i in range(gi._MIN_SANE_TRANSCRIPT_COUNT + 1)}
+    path = tmp_path / "idx.pkl"
+    import pirlygenes.gene_ids as _gi
+    orig = _gi._index_cache_path
+    _gi._index_cache_path = lambda release: path
+    try:
+        _gi._store_index_cache(114, gene_map, tx_map, installed_releases=[114])
+        # Same release set → hit.
+        assert _gi._load_index_cache(114, installed_releases=[114]) is not None
+        # Newer release downloaded → the cached union is stale → miss.
+        assert _gi._load_index_cache(114, installed_releases=[115, 114]) is None
+    finally:
+        _gi._index_cache_path = orig
+
+
+def test_store_index_cache_refuses_degenerate_map(tmp_path):
+    """An empty/partial build must never be persisted — a tiny pickle would be
+    loaded back as 'the index' and defeat the whole fast path."""
+    path = tmp_path / "idx.pkl"
+    import pirlygenes.gene_ids as _gi
+    orig = _gi._index_cache_path
+    _gi._index_cache_path = lambda release: path
+    try:
+        _gi._store_index_cache(115, {"ENSG1": "G"}, {"ENST1": "G"})
+        assert not path.exists()
+    finally:
+        _gi._index_cache_path = orig
+
+
 def test_ncbi_synonym_official_symbol_casing(monkeypatch):
     monkeypatch.setattr(gi, "_ncbi_symbol_synonyms", lambda: {"GNB2L1": "RACK1"})
     assert gi.ncbi_synonym_official_symbol("gnb2l1") == "RACK1"
