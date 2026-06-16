@@ -615,10 +615,12 @@ def _source_build_cmd(src, summary_out=_SUMMARY_OUT, samples_out=_SAMPLES_OUT,
             if flag in accepted:
                 cmd += [flag, value]
     cmd += list(src.builder_args)
-    e = list(extra or [])
-    if e and e[0] == "--":
-        e = e[1:]
-    cmd += e
+    # Pass through any user-supplied extra args, coerced to str. argparse
+    # REMAINDER hands these over with a leading "--" separator that we drop.
+    extra_args = [str(arg) for arg in (extra or [])]
+    if extra_args and extra_args[0] == "--":
+        extra_args = extra_args[1:]
+    cmd += extra_args
     return cmd
 
 
