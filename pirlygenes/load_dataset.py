@@ -126,21 +126,51 @@ def get_all_csv_paths() -> list:
     return list(seen.values())
 
 
+# Pure-text provenance columns: a handful of distinct values (long strings)
+# repeated across every gene row — the ~130 distinct `notes` strings alone span
+# 4.8M rows (3.3 GB as object). Stored as `object` the concatenated
+# cancer-reference-expression frame is ~8 GB and its cached-parquet read ~10 s;
+# casting just these three to `category` drops it to ~2.9 GB and ~2 s — paid once
+# per process (every xdist worker, script and plot run). Deliberately limited to
+# columns that are pure display/provenance and never participate in computation:
+# the cohort-availability and pooling code reindex-/fillna-/assign on
+# source_cohort / source_project / tumor_origin / cancer_code, where a
+# categorical's "no new category" rule would break callers, so those stay object.
+_LOW_CARDINALITY_METADATA_COLS = (
+    "source_version", "processing_pipeline", "notes",
+)
+# Bump when the cached dtype scheme changes so stale object-dtype parquets in an
+# existing ``~/.cache/pirlygenes/shard_cache/`` rebuild instead of being reused.
+_SHARD_CACHE_FORMAT = 3
+
+
+def _categorize_metadata(df: pd.DataFrame) -> pd.DataFrame:
+    """Cast the low-cardinality provenance columns to ``category`` in place."""
+    for col in _LOW_CARDINALITY_METADATA_COLS:
+        if col in df.columns and not isinstance(
+                df[col].dtype, pd.CategoricalDtype):
+            df[col] = df[col].astype("category")
+    return df
+
+
 def _load_shard_directory(shard_dir: Path) -> pd.DataFrame:
     """Concatenate every ``*.csv[.gz]`` shard in a sharded dataset directory.
 
-    Parsing ~70 gzipped CSVs into a ~1M-row frame is the slowest single step in
-    the test suite, and a fresh process repeats it every run. So we keep a
+    Parsing ~70 gzipped CSVs into a multi-million-row frame is the slowest single
+    step in the test suite, and a fresh process repeats it every run. So we keep a
     best-effort **parquet cache** of the concatenated frame in
     ``~/.cache/pirlygenes/shard_cache/``, keyed on a signature of the shard
-    files (count + total size + newest mtime). A subsequent run reads one parquet
-    (~5-10x faster) instead of re-parsing every gzip; the cache auto-invalidates
-    when any shard changes, and any cache error silently falls back to the CSVs.
+    files (count + total size + newest mtime) and the cache format. A subsequent
+    run reads one parquet (~7-10x faster) instead of re-parsing every gzip; the
+    cache auto-invalidates when any shard changes, and any cache error silently
+    falls back to the CSVs. Low-cardinality provenance columns are stored as
+    ``category`` (see :data:`_LOW_CARDINALITY_METADATA_COLS`).
     """
     paths = _shard_paths(shard_dir)
     if not paths:
         raise FileNotFoundError(f"no CSV shards found under {shard_dir}")
-    sig = repr((len(paths), sum(p.stat().st_size for p in paths),
+    sig = repr((_SHARD_CACHE_FORMAT, len(paths),
+                sum(p.stat().st_size for p in paths),
                 max(p.stat().st_mtime_ns for p in paths)))
     cache_dir = Path.home() / ".cache" / "pirlygenes" / "shard_cache"
     cache_file = cache_dir / f"{shard_dir.name}.parquet"
@@ -148,11 +178,12 @@ def _load_shard_directory(shard_dir: Path) -> pd.DataFrame:
     try:
         if (cache_file.exists() and sig_file.exists()
                 and sig_file.read_text() == sig):
-            return pd.read_parquet(cache_file)
+            return _categorize_metadata(pd.read_parquet(cache_file))
     except Exception:
         pass  # any cache-read problem -> rebuild from the authoritative CSVs
     df = pd.concat([pd.read_csv(str(p), low_memory=False) for p in paths],
                    ignore_index=True)
+    _categorize_metadata(df)
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
         df.to_parquet(cache_file, index=False)
