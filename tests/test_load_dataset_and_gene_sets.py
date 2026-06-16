@@ -292,16 +292,28 @@ def test_lineage_gene_loaders_cover_all_tcga_codes():
 def test_cancer_family_panel_loader():
     families = gsc.cancer_family_panels()
     expected = {
-        # adult carcinoma / mesenchymal (original 9)
+        # adult carcinoma lineages. MESENCHYMAL was removed in #452: its panel
+        # was stroma/CAF markers (TME signal present in every solid tumor, not a
+        # tumor lineage) — stroma now lives in tme-markers.csv, and sarcoma
+        # lineage is carried by the SARC subtype key-genes layer.
         "PROSTATE",
         "CRC",
         "GASTRIC",
         "SQUAMOUS",
         "ESCA_SQ",
-        "MESENCHYMAL",
         "RENAL",
         "GLIAL",
         "MELANOCYTIC",
+        # adenocarcinoma families added for #452 (previously no family signal,
+        # which structurally disadvantaged them in lineage ranking)
+        "LUAD",
+        "BRCA",
+        "PAAD",
+        "LIHC",
+        "OV",
+        "UCEC",
+        "BLCA",
+        "THCA",
         # lineage families added for #351 (neuroendocrine / hematolymphoid /
         # embryonal / germ-cell / CNS-embryonal) — previously-unanchored classes
         "NEUROENDOCRINE",

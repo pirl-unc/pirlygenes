@@ -767,10 +767,17 @@ def cancer_family_panels_df(family=None):
 
     Columns ``Family, family_group, display_name, Symbol, Ensembl_Gene_ID``.
     ``Family`` is the fine panel that *scores* (PROSTATE, CRC, GASTRIC, ESCA_SQ,
-    SQUAMOUS, MESENCHYMAL, RENAL, GLIAL, MELANOCYTIC, NEUROENDOCRINE,
+    SQUAMOUS, RENAL, GLIAL, MELANOCYTIC, the adenocarcinoma lineages LUAD, BRCA,
+    PAAD, LIHC, OV, UCEC, BLCA, THCA, NEUROENDOCRINE,
     HEME_BCELL/TCELL/MYELOID/PLASMA, EMBRYONAL, GERM_CELL, CNS_EMBRYONAL);
     ``family_group`` is the coarse penalty boundary the fine panel rolls up into
     (see :func:`cancer_family_groups`).
+
+    These are tumor-LINEAGE families. Stroma is deliberately not one: the old
+    MESENCHYMAL panel was CAF/stromal markers present in every solid tumor's
+    microenvironment (it out-scored the correct carcinoma family 15-150x — #452),
+    so it was removed; stromal/CAF signal lives in :func:`tme_markers_df`
+    (``fibroblast``) and sarcoma lineage is carried by the SARC subtype key-genes.
     """
     df = get_data("cancer-family-panels")
     if family is not None:
