@@ -615,3 +615,24 @@ def test_family_panel_marker_roles_and_verified_refs():
     assert tg == "anchor"
     # immune-infiltrate markers are flagged as source!=tumor
     assert (gsc.cancer_family_panels_df(family="HEME_TCELL")["source"] == "immune").any()
+
+
+def test_cancer_classification_ontology_and_supertypes():
+    """The supertype tier promotes promiscuous markers to anchors at their level,
+    and the ontology node hierarchy walks compartment->supertype->family (a DAG)."""
+    st = gsc.cancer_supertype_panels()
+    assert "PAX8" in st["PAX8_LINEAGE"] and "NKX2-1" in st["TTF1_LINEAGE"]
+    assert "GATA3" in st["LUMINAL_GATA3"] and "TP63" in st["SQUAMOUS_PROGRAM"]
+    sdf = gsc.cancer_supertype_panels_df()
+    assert (sdf["role"] == "anchor").all()
+    assert sdf["reference"].str.match(r"PMID:\d+").all()
+    onto = gsc.cancer_classification_ontology()
+    assert set(onto["tier"]) == {"compartment", "supertype", "family"}
+    # level-relative role: PAX8 is anchor@supertype AND confirmatory@family(THCA)
+    famdf = gsc.cancer_family_panels_df(family="THCA")
+    assert (famdf[famdf.Symbol == "PAX8"]["role"] == "confirmatory").all()
+    # DAG: thyroid inherits BOTH PAX8 and TTF1 programs
+    path = gsc.cancer_lineage_path("THCA")
+    assert path[-1] == "THCA" and path[0] == "EPITHELIAL"
+    assert "PAX8_LINEAGE" in path and "TTF1_LINEAGE" in path
+    assert (onto[onto.node == "NEUROENDOCRINE"]["module"] == "cross_cutting").any()

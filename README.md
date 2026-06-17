@@ -42,7 +42,7 @@ trufflepig run --sample expr.tsv --workspace out --cancer-type PRAD
 
 Most accessors are re-exported from the top-level package, so
 `from pirlygenes import pan_cancer_expression` works for any of the
-~99 names in `pirlygenes.__all__`. The submodule paths below are the
+~105 names in `pirlygenes.__all__`. The submodule paths below are the
 canonical home and stay stable across versions.
 
 ### Gene-set panels and resolvers

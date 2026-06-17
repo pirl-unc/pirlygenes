@@ -22,7 +22,7 @@ of two independent axes:
 | tier | question | example nodes | where it lives today |
 |---|---|---|---|
 | **compartment** | what broad cell-of-origin class? | EPITHELIAL, HEMATOLYMPHOID, MELANOCYTIC, NEURAL_GLIAL, GERM_CELL, NEUROENDOCRINE, MESENCHYMAL | `cancer-compartment-panels.csv` |
-| **supertype** *(new)* | which lineage *program* within the compartment? | SQUAMOUS, PAX8_LINEAGE, TTF1_LINEAGE, LUMINAL_GATA3, FOREGUT, INTESTINAL, HEPATOCYTE, UROTHELIAL; lymphoid/myeloid/plasma | `family_group` (partial); to be made explicit |
+| **supertype** | which lineage *program* within the compartment? | SQUAMOUS_PROGRAM, PAX8_LINEAGE, TTF1_LINEAGE, LUMINAL_GATA3, FOREGUT | `cancer-supertype-panels.csv` + `cancer-classification-ontology.csv` (node tree) |
 | **family** | which organ lineage? | LUAD, BRCA, CRC, RENAL, THCA, HEME_BCELL, GLIAL | `cancer-family-panels.csv` |
 | **subtype** | which molecular/morphologic child? | BRCA_Basal, COAD_MSI, LUAD_EGFR, SARC_RMS_ERMS | `cancer-lineage-panels.csv`, `cancer-subtype-groupings.csv` |
 

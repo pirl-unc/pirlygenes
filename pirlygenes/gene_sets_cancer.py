@@ -904,6 +904,66 @@ def cancer_type_discriminator(type_a, type_b):
             for code, grp in df.groupby("favors", sort=False)}
 
 
+# ---------- Classification ONTOLOGY: the compartment->supertype->family DAG ----------
+# The SUPERTYPE tier is where the promiscuous "confirmatory" markers become
+# anchors (PAX8 -> PAX8_LINEAGE; NKX2-1 -> TTF1_LINEAGE; GATA3/FOXA1 ->
+# LUMINAL_GATA3; TP63/KRT5 -> SQUAMOUS_PROGRAM; CLDN18 -> FOREGUT). A marker's
+# role is level-relative: anchor at its own node, inherited as confirmatory by
+# descendants. See docs/cancer-classification-ontology.md.
+def cancer_supertype_panels_df(supertype=None):
+    """DataFrame of supertype anchor markers (``Supertype, display_name, Symbol,
+    Ensembl_Gene_ID, role, source, reference``) — the promiscuous markers placed
+    at the level where they ARE specific (a PAX8 high says PAX8_LINEAGE, then the
+    family anchors TG/CA9/WT1 pick thyroid/renal/serous)."""
+    df = get_data("cancer-supertype-panels")
+    if supertype is not None:
+        df = df[df["Supertype"] == supertype]
+    return df
+
+
+def cancer_supertype_panel(supertype):
+    """List of anchor Symbols for one supertype. See `cancer_supertype_panels_df`."""
+    return cancer_supertype_panels_df(supertype=supertype)["Symbol"].tolist()
+
+
+def cancer_supertype_panels():
+    """Dict of ``{supertype: [Symbol, ...]}`` for all supertypes."""
+    df = get_data("cancer-supertype-panels")
+    return {s: grp["Symbol"].tolist()
+            for s, grp in df.groupby("Supertype", sort=False)}
+
+
+def cancer_classification_ontology():
+    """DataFrame of the classification node hierarchy (``node, tier, parent,
+    display_name, module``). ``tier`` is compartment | supertype | family;
+    ``parent`` is ``;``-separated for the DAG nodes (THCA inherits both
+    PAX8_LINEAGE and TTF1_LINEAGE); ``module`` flags a cross-cutting program
+    (neuroendocrine overrides organ; embryonal oncofetal)."""
+    return get_data("cancer-classification-ontology")
+
+
+def cancer_lineage_path(node):
+    """Walk a node up to its compartment root: returns the list of ancestor nodes
+    coarsest-first, e.g. ``cancer_lineage_path("THCA")`` ->
+    ``["EPITHELIAL", "PAX8_LINEAGE", "TTF1_LINEAGE", "THCA"]``. Handles the DAG
+    (a node with multiple parents yields all distinct ancestors)."""
+    onto = get_data("cancer-classification-ontology")
+    parent_of = dict(zip(onto["node"], onto["parent"].fillna("")))
+    if node not in parent_of:
+        return []
+    seen, order = set(), []
+
+    def _up(n):
+        for p in str(parent_of.get(n, "")).split(";"):
+            p = p.strip()
+            if p and p not in seen:
+                seen.add(p)
+                _up(p)
+                order.append(p)
+    _up(node)
+    return order + [node]
+
+
 def cancer_lineage_groups():
     """Dict ``{registry family -> coarse histogenesis lineage group}``.
 
