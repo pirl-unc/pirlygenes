@@ -65,6 +65,9 @@ _MISSING_THERAPY_AXIS = frozenset(
         # ALCL — curated entity (lineage/CD30+ALK biomarker+therapy present); no
         # therapy-response signature materialised yet.
         "ALCL",
+        # ASTB — Astroblastoma (MN1-altered), new MN1::BEND2 entity (#458);
+        # biomarker-only, no public expression cohort / therapy-response panel.
+        "ASTB",
     }
 )
 
@@ -134,6 +137,10 @@ _TOLERATED_GAPS_EXPLICIT = {
     # THYMCA: thymic carcinoma split from thymoma (THYM); curated clinical
     # reference (TMB/ICI) only — lineage/biomarker/therapy panels not yet built.
     "THYMCA": {"lineage", "biomarker", "therapy"},
+    # ASTB: Astroblastoma (MN1-altered), added with the MN1::BEND2 ontology
+    # entry (#458). Carries the defining MN1 biomarker; no lineage panel and
+    # no clinician-validated targeted therapy exist for this rare CNS tumor.
+    "ASTB": {"lineage", "therapy"},
 }
 
 

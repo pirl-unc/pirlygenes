@@ -2,7 +2,6 @@ fusion_class,surrogate_gene,surrogate_role,cancer_code,rationale,refs
 EWSR1-FLI1,NR0B1,activated_ectopic,SARC_EWS,EWS-FLI1 directly binds GGAA microsatellite in NR0B1 promoter → ectopic expression in ~90% of Ewing sarcoma. Normally silent outside adrenal.,PMID:18626011
 EWSR1-FLI1,FATE1,activated_ectopic,SARC_EWS,EWS-FLI1 target; GGAA microsatellite in promoter; ectopic expression in Ewing sarcoma. Normally silent outside testis.,DOI:10.1038/359162a0
 EWSR1-FLI1,GLG1,activated,SARC_EWS,EWS-FLI1 downstream target; part of the Ewing signature expression panel.,PMID:32164354
-EWSR1-FLI1,PHOX2B,activated_ectopic,SARC_EWS,EWS-FLI1 target; not normally expressed in mesenchymal tissue — its expression narrows candidates to Ewing or neuroblastoma.,
 EWSR1-WT1,WT1,activated,SARC_DSRCT,DSRCT expresses the C-terminal WT1 portion from the EWSR1-WT1 fusion; WT1 expression in a small-blue-round-cell tumor + abdominal site narrows to DSRCT.,PMID:8187063
 PAX3-FOXO1,MYOD1,myogenic_lineage,SARC_RMS_ARMS,PAX3-FOXO1 locks myogenic lineage; MYOD1 expression is a defining marker of rhabdomyosarcoma.,PMID:8275086
 PAX3-FOXO1,MYOG,myogenic_lineage,SARC_RMS_ARMS,Same as MYOD1 — myogenic lineage.,PMID:8275086
@@ -24,7 +23,7 @@ CIC-DUX4,ETV4,activated,SARC_CIC,CIC-DUX4 target.,PMID:16717057
 CIC-DUX4,ETV5,activated,SARC_CIC,CIC-DUX4 target.,PMID:16717057
 CIC-DUX4,DUX4,activated_ectopic,SARC_CIC,DUX4 is normally silenced in somatic tissue; CIC-DUX4 fusion expresses the DUX4 portion.,PMID:16717057
 BCOR-CCNB3,CCNB3,activated_ectopic,SARC_BCOR,CCNB3 is normally testis-restricted; expression in a small-blue-round-cell sarcoma is near-pathognomonic.,PMID:22387997
-MN1-BEND2,BEND2,activated_ectopic,ATRT,BEND2 is normally silent in the CNS; its expression signals MN1-BEND2 fusion astroblastoma.,PMID:36604386
+MN1-BEND2,BEND2,activated_ectopic,ASTB,BEND2 is normally silent in the CNS; its expression signals MN1-BEND2 fusion astroblastoma.,PMID:36604386
 ZFTA-RELA,L1CAM,activated,EPN,ZFTA-RELA drives L1CAM expression via NFκB activation; L1CAM is a pathognomonic IHC + expression marker for RELA-fusion ependymoma.,PMID:24553141
 ZFTA-RELA,CCND1,activated,EPN,NFκB target activated by ZFTA-RELA.,PMID:24553141
 ALK_rearrangement,ALK,activated_ectopic,LUAD;SARC_IMT;ALCL,ALK is normally silent post-development; expression >1 TPM plus an epithelial/mesenchymal context signals ALK rearrangement.,PMID:17625570

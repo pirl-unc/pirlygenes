@@ -170,3 +170,4 @@ SARC_MYOEP,EWSR1-PBX1,EWSR1,FET,PBX1,homeobox(TALE),subset,true,true,yes,fusion_
 SARC_MYOEP,EWSR1-ZNF444,EWSR1,FET,ZNF444,,rare,true,true,yes,fusion_transcript,low,PMID:19760602,rare myoepithelial partner
 SARC_SMARCA4,(none),,,,,,false,false,no,other,high,,"SMARCA4/BRG1 deficiency (deletion/truncating mutation), not a fusion"
 ALCL,ALK_rearrangement,NPM1,nucleophosmin,ALK,RTK,~majority of ALK+ ALCL,true,false,yes,fusion_transcript,high,PMID:8122112,ALK+ ALCL; t(2;5)(p23;q35); NPM1-ALK most common ALK partner (also TPM3/ATIC/TFG); ALK-inhibitor target. ALK- ALCL is DUSP22/TP63-rearranged.
+ASTB,MN1-BEND2,MN1,,BEND2,,most,true,true,yes,fusion_transcript,high,PMID:36604386,MN1::BEND2 defines astroblastoma MN1-altered (WHO CNS5); supratentorial; pediatric/young-adult female predominance

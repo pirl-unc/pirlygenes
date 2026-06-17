@@ -260,7 +260,7 @@ PAAD,,PALB2,biomarker,,,,,,,,HRD gene; emerging PARP inhibitor trials,PMID:29069
 PAAD,,TP53,biomarker,,,,,,,,Mutation common; prognostic and co-occurring with KRAS,PMID:25079552
 PAAD,,CDKN2A,biomarker,,,,,,,,Frequent loss; potential synthetic-lethal approaches,PMID:25079552
 PAAD,,SMAD4,biomarker,,,,,,,,Loss associated with metastatic phenotype / adverse prognosis,PMID:25079552
-PAAD,,CLDN18,biomarker,,,,,,,,CLDN18.2 expression subset — emerging target for zolbetuximab / ADCs,PMID:37068504
+PAAD,,CLDN18,biomarker,,,,,,,,CLDN18.2 expressed in a PDAC subset (~57% IHC+); zolbetuximab is approved in CLDN18.2+ gastric/GEJ (SPOTLIGHT) — emerging cross-tumor target/ADC candidate under study in pancreatic cancer,PMID:35656795;PMID:37068504
 PAAD,,NRG1,biomarker,,,,,,,,NRG1 fusion — actionable subset with zenocutuzumab,PMID:39908431
 PAAD,,KRT19,biomarker,,,,,,,,Pancreatic ductal adenocarcinoma lineage marker,PMID:27689616
 PAAD,,PDX1,biomarker,,,,,,,,Pancreatic lineage transcription factor,PMID:17056599
@@ -350,7 +350,6 @@ SARC,ewing_sarcoma,FLI1,biomarker,,,,,,,,Fusion partner — IHC positive in Ewin
 SARC,ewing_sarcoma,NKX2-2,biomarker,,,,,,,,Downstream EWSR1-FLI1 target; lineage marker,PMID:28864350
 SARC,ewing_sarcoma,CD99,biomarker,,,,,,,,Membranous CD99 staining — sensitive but not specific Ewing IHC,PMID:28864350
 SARC,ewing_sarcoma,CAV1,biomarker,,,,,,,,Caveolin-1 — marker of Ewing differentiation,PMID:17047056
-SARC,ewing_sarcoma,PRAME,biomarker,,,,,,,,CT antigen expressed in Ewing; TCR-T target,
 SARC,ewing_sarcoma,,target,trabectedin,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,relapsed Ewing,Alkylating agent — active in Ewing per single-agent and combo trials,PMID:25609059
 SARC,ewing_sarcoma,CDK4,target,palbociclib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,relapsed Ewing,CDK4/6 inhibitor — ongoing phase 2,PMID:37306107
 SARC,ewing_sarcoma,,target,TK216,small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,relapsed Ewing,Small-molecule ETV fusion inhibitor — first-in-class trial,PMID:38954782
@@ -450,7 +449,6 @@ NUTM,,MYC,biomarker,,,,,,,,Major BRD4-NUT downstream output; drives proliferatio
 NUTM,,TP63,biomarker,,,,,,,,ΔNp63 isoform overexpressed; squamous-like differentiation program,PMID:38708903
 NUTM,,SOX2,biomarker,,,,,,,,Stem-cell program; commonly expressed in NUT carcinoma,PMID:24736545
 NUTM,,KRT5,biomarker,,,,,,,,Cytokeratin — squamous-like differentiation signal in NUT carcinoma,PMID:38708903
-NUTM,,CDKN2A,biomarker,,,,,,,,Frequently deleted — p16 loss additional cooperating lesion,
 NUTM,,BRD4,target,molibresib (GSK525762),small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,NUT carcinoma,First-in-class BET bromodomain inhibitor — targets BRD4-NUT driver directly,PMID:34724226
 NUTM,,BRD4,target,birabresib (OTX015/MK-8628),small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,NUT carcinoma,BET inhibitor — early clinical activity in NUT carcinoma,PMID:26976114
 NUTM,,BRD4,target,BMS-986158,small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,NUT carcinoma,BET inhibitor trials in NUT carcinoma and hematologic malignancies,PMID:36077617
@@ -473,7 +471,7 @@ KICH,,KIT,biomarker,,,,,,,,CD117 diffuse IHC — defining KICH; distinguishes fr
 KICH,,KRT7,biomarker,,,,,,,,CK7 diffuse — chromophobe lineage marker; negative in KIRC,PMID:17683191
 KICH,,TP53,biomarker,,,,,,,,Recurrent mutation in KICH; associated with sarcomatoid dedifferentiation,PMID:25155756
 KICH,,PTEN,biomarker,,,,,,,,Loss in subset of KICH; PI3K-mTOR pathway activation,PMID:25155756
-KICH,,MET,target,cabozantinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced RCC (non-clear-cell) incl KICH,MET/VEGFR/AXL TKI — approved for advanced RCC; best evidence in papillary/non-clear,PMID:33592176
+KICH,,MET,target,cabozantinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced RCC (non-clear-cell) incl KICH,Cabozantinib (VEGFR/MET/AXL TKI) is used across non-clear-cell RCC; activity is VEGFR/AXL-driven — MET is a papillary (KIRP) driver not a chromophobe driver; chromophobe responses limited,PMID:35298296
 KICH,,VEGFA,target,sunitinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced RCC,VEGFR/PDGFR TKI — included in combined non-clear-cell RCC trials,PMID:17215530
 KICH,,PDCD1,target,nivolumab,antibody,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced RCC,Anti-PD1; approved in combination settings for advanced RCC,PMID:26406148
 KIRP,,MET,biomarker,,,,,,,,Germline and somatic activating mutations — Type 1 papillary driver,PMID:26536169
@@ -668,7 +666,6 @@ MBL,,TP53,biomarker,,,,,,,,Germline (Li-Fraumeni) — SHH subgroup high-risk ana
 MBL,,SMO,target,vismodegib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,SHH-subgroup MBL,Smoothened inhibitor — SHH-specific activity; limited pediatric approval,PMID:24493713
 MBL,,TYMS,target,cisplatin + CCNU + vincristine,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,newly-diagnosed MBL,Standard-risk / high-risk backbone — Packer regimen,PMID:16943538
 ATRT,,SMARCB1,biomarker,,,,,,,,Biallelic loss — pathognomonic for ATRT (and non-CNS RT),PMID:9671307
-ATRT,,VIM,biomarker,,,,,,,,Mesenchymal marker — frequently expressed in rhabdoid tumors,
 ATRT,,EZH2,target,tazemetostat,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R SMARCB1-deficient ATRT,EZH2 inhibitor — SMARCB1-loss synthetic-lethal; pediatric trials,PMID:37541451
 ATRT,,TYMS,target,intensive chemo + radiation,small_molecule,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,newly-diagnosed ATRT,Multi-agent pediatric regimens — no single-agent backbone,PMID:32402552
 RB,,RB1,biomarker,,,,,,,,Biallelic inactivation — defines retinoblastoma; germline or somatic,PMID:37658463
@@ -720,12 +717,11 @@ MTC,,RET,target,pralsetinib,small_molecule,approved,approved_indication_matched,
 MTC,,VEGFA,target,cabozantinib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,advanced metastatic MTC,Multi-TKI (incl RET) — approved pre-selective era; EXAM trial,PMID:23902240
 MTC,,VEGFA,target,vandetanib,small_molecule,approved,approved_indication_matched,approved_biomarker_matched,confirm biomarker/indication-specific eligibility,symptomatic advanced MTC,Multi-TKI — ZETA trial; first approved MTC-specific agent,PMID:22500115
 NPC,,EBV_LMP1,biomarker,,,,,,,,EBV-encoded — near-universal in endemic NPC; distinguishes from HNSC,PMID:19663731
-NPC,,EBV_BZLF1,biomarker,,,,,,,,Lytic-phase marker — EBV-reactivation axis,
+NPC,,EBV_LMP2A,biomarker,,,,,,,,EBV latency-II membrane protein expressed in NPC (with LMP1/EBNA1/EBERs); latency-associated and not lytic,PMID:40685972
 NPC,,CD274,biomarker,,,,,,,,PD-L1 — elevated in NPC tumor + immune infiltrate; IO-sensitive,PMID:38887234
 NPC,,PDCD1,target,toripalimab + gemcitabine/cisplatin,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,recurrent/metastatic NPC,JUPITER-02 — approved 2023 first-line; anti-PD1,PMID:38015220
 NPC,,PDCD1,target,tislelizumab,antibody,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,R/R NPC,RATIONALE-309 — approved in NPC 2023,PMID:37207654
 NPC,,PDCD1,target,pembrolizumab,antibody,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,R/R NPC,Basket approval PD-L1+ solid tumors; KEYNOTE-122,PMID:28837405
-ACINIC,,BCL6,biomarker,,,,,,,,Translocation (ACIN) — MSA-B family marker; salivary acinic carcinoma,
 ACINIC,,DOG1,biomarker,,,,,,,,Anoctamin 1 — distinctive IHC for acinic cell carcinoma,PMID:26464669
 ACINIC,,NR4A3,biomarker,,,,,,,,HTN3-MSANTD3 fusion → NR4A3 overexpression; diagnostic for ACC variant,PMID:36469101
 ACINIC,,TYMS,target,carboplatin + paclitaxel,small_molecule,off_label,off_label,off_label,off-label follow-up; confirm rationale and alternatives,advanced acinic cell carcinoma,Rarely needed — mostly indolent; reserved for high-grade transformed variant,
@@ -755,8 +751,8 @@ BL,,CD79A,biomarker,,,,,,,,B-cell receptor — BCR pathway component,
 BL,,BCL6,biomarker,,,,,,,,Germinal-center B-cell transcription factor — Burkitt cell of origin,
 BL,,TP53,biomarker,,,,,,,,Frequently mutated (~40%); high-risk in HIV-associated BL,PMID:22343534
 BL,,MS4A1,target,rituximab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,BL (DA-EPOCH-R),Anti-CD20 — standard of care with DA-EPOCH chemo backbone,PMID:24224624
-BL,,CD19,target,tisagenlecleucel,CAR-T,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R BL (pediatric),CD19 CAR-T — pediatric R/R BL activity in JULIET / ELIANA follow-ups,PMID:29385370
-BL,,CD22,target,inotuzumab ozogamicin,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R BL,CD22 ADC — activity in R/R BCR signaling B-cell lymphomas including BL,PMID:27292104
+BL,,CD19,target,tisagenlecleucel,CAR-T,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R BL,CD19 CAR-T shows activity in R/R Burkitt lymphoma (ORR ~58% / CR ~42%) though durable control is infrequent; CD19 is a valid BL surface target,PMID:39938007
+BL,,CD22,target,inotuzumab ozogamicin,ADC,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R BL,CD22 is a valid pan-B-cell target in BL; CD22 ADC (inotuzumab) efficacy is established in B-ALL (INO-VATE) and extrapolated/cross-indication for BL — not BL-specific trial data,PMID:27292104
 FL,,MS4A1,biomarker,,,,,,,,CD20 — germinal-center B-cell; anti-CD20 backbone of FL therapy,PMID:12652459
 FL,,BCL2,biomarker,,,,,,,,t(14;18) IGH-BCL2 (~85%) — defining cytogenetic — anti-apoptotic driver,PMID:6093263
 FL,,BCL6,biomarker,,,,,,,,Germinal-center TF; retained in FL vs lost in transformed aggressive variants,PMID:21988858
@@ -798,7 +794,7 @@ SCLC,,CD274,target,atezolizumab,antibody,approved,approved_standard,standard_or_
 SCLC,,CD274,target,durvalumab,antibody,approved,approved_standard,standard_or_frontline,confirm indication and line of therapy,ES-SCLC first-line (+ chemo),Anti-PD-L1 — CASPIAN trial,PMID:31590988
 T_ALL,,CD7,biomarker,,,,,,,,T-cell surface — broadly expressed on T-ALL blasts; CAR-T target,PMID:34324392
 T_ALL,,NOTCH1,biomarker,,,,,,,,Activating mutation (~60%) — HES1/MYC axis driver,PMID:15472075
-T_ALL,,FBXW7,biomarker,,,,,,,,Co-occurs with NOTCH1 — sensitizes to γ-secretase inhibitors in preclinical,PMID:17646408
+T_ALL,,FBXW7,biomarker,,,,,,,,Co-occurs with NOTCH1; inactivating FBXW7 mutation stabilizes MYC and confers resistance to γ-secretase inhibitors,PMID:17646408
 T_ALL,,TP53,biomarker,,,,,,,,Loss-of-function — high-risk relapsed T-ALL,PMID:38848537
 T_ALL,,CD7,target,WU-CART-007,CAR-T,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,R/R T-ALL,Allogeneic CD7 CAR-T — early-phase data in R/R T-ALL,PMID:34324392
 T_ALL,,DCK,target,nelarabine,small_molecule,approved,approved_later_line,later_line_approved,confirm prior therapies and indication-specific eligibility,R/R T-ALL,Ara-G prodrug activated by deoxycytidine kinase (DCK); selectively toxic to T-lineage blasts — approved 2005,PMID:37389830
@@ -823,7 +819,6 @@ SARC,MPNST,SOX10,biomarker,,,,,,,,Schwann-cell lineage confirmation — frequent
 SARC,MPNST,S100B,biomarker,,,,,,,,Schwann-cell lineage marker; loss often accompanies high-grade / dedifferentiated MPNST,
 SARC,MPNST,MEK1,target,trametinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,unresectable/metastatic NF1-associated MPNST,RAS-pathway dependency from NF1 loss; SARC031 trial investigating trametinib ± SHP2i,PMID:33032988
 SARC,MPNST,MEK1,target,selumetinib,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,NF1-associated MPNST (investigational),FDA-approved for inoperable plexiform NF (the MPNST precursor); extending into MPNST trials,PMID:32187457
-SARC,MPNST,MDM2,target,brigimadlin (BI 907828),small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,MDM2-amplified TP53-retained MPNST,MDM2 inhibition where TP53 wild-type preserved,PMID:38214149
 SARC,MPNST,EZH2,target,tazemetostat,small_molecule,phase_2,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,PRC2-null / SMARCB1-null MPNST,Synthetic lethal with PRC2 loss; FDA-approved for epithelioid sarcoma (SMARCB1-null) precedent,PMID:33035459
 SARC,MPNST,PTPN11,target,SHP2 inhibitors (trials),small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,RAS-driven MPNST (MEK-combo trials),SHP2 inhibition as MEK-resistance mitigator,PMID:33032988
 SARC,MPNST,BRD4,target,BET inhibitors (trials),small_molecule,phase_1,trial_follow_up,clinical_trial,clinical-trial follow-up; not default standard,MPNST (preclinical / early-phase),BRD4 dependency in PRC2-null contexts — synergy with MEK inhibition,PMID:25119042
@@ -850,3 +845,4 @@ MENINGIOMA,,PGR,biomarker,,,,,,,,Progesterone receptor — expressed in most gra
 MENINGIOMA,,SSTR2,target,177Lu-DOTATATE,radioligand,phase_2,investigational_biomarker_matched,later_line_or_investigational,confirm SSTR2 expression (DOTATATE-PET-avid),progressive/refractory meningioma,SSTR2-directed peptide receptor radionuclide therapy — investigational for surgery/RT-refractory disease,
 CHOROID_PLEXUS,,TP53,biomarker,,,,,,,,TP53 mutation — strong Li-Fraumeni association in choroid plexus carcinoma; prompts germline testing,
 CHOROID_PLEXUS,,TTR,biomarker,,,,,,,,Transthyretin — definitive choroid-plexus differentiation marker (diagnostic IHC),
+ASTB,,MN1,biomarker,,,,,,,,MN1::BEND2 fusion — defining alteration of astroblastoma (MN1-altered; WHO CNS5); detect by RNA fusion / FISH,PMID:36604386
