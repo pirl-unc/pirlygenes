@@ -63,22 +63,17 @@ GROUP_TO_SLUG = {
 
 def _grch38_cache_root() -> Path | None:
     """pyensembl's GRCh38 cache directory (the parent of the per-release
-    ``ensemblN`` dirs), obtained **release-agnostically**.
-
-    Every ``EnsemblRelease(n)`` computes the same ``<root>/GRCh38/ensemblN``
-    path whether or not ``n`` is installed, so we take the newest release number
-    pyensembl still *knows* (scanning down from a high bound) and return its
-    parent — honouring ``PYENSEMBL_CACHE_DIR`` / platform cache roots. Scanning
-    down rather than hardcoding one release means a future pyensembl dropping any
-    particular release from its known list can't make this silently fail.
-    Returns ``None`` only if pyensembl knows no GRCh38 release at all.
-    """
-    for n in range(199, 75, -1):
-        try:
-            return Path(EnsemblRelease(n).download_cache.cache_directory_path).parent
-        except Exception:
-            continue  # n not a release pyensembl knows; try the next one down
-    return None
+    ``ensemblN`` dirs). ``EnsemblRelease()`` with no arguments defaults to
+    pyensembl's own newest known release, and the cache path is computed the same
+    way for every release, so we just take that default's directory and step up
+    one level. No release needs to be installed, and we never hardcode a release
+    number (honours ``PYENSEMBL_CACHE_DIR`` / platform cache roots). Returns
+    ``None`` only if pyensembl's cache API can't be read."""
+    try:
+        default = EnsemblRelease()  # pyensembl's latest known release
+        return Path(default.download_cache.cache_directory_path).parent
+    except Exception:
+        return None
 
 
 def _installed_grch38_releases() -> list[int]:
