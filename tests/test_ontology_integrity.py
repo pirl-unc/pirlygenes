@@ -75,6 +75,9 @@ def test_curated_panel_symbol_ensg_not_swapped():
         ("cancer-fusions", "gene_3prime", "gene_3prime_ensembl_id"),
         ("fusion-surrogate-expression", "surrogate_gene", "surrogate_gene_ensembl_id"),
         ("rare-cancer-rna-surrogates", "primary_gene", "primary_gene_ensembl_id"),
+        # surface-proteins (CSPA): corrected 46 alt-haplotype / wrong-copy ENSGs
+        # to the symbol's primary-assembly accession carried by the bundle.
+        ("surface-proteins", "Symbol", "Ensembl_Gene_ID"),
     ]
     swaps = []
     for name, sc, ec in curated:

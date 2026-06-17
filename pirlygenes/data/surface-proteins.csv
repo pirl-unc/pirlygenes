@@ -274,7 +274,7 @@ TSPAN9,ENSG00000011105,Tetraspanin-9,Predicted,,Bausch-Fluck et al. 2018 PNAS 11
 CPD,ENSG00000108582,Carboxypeptidase D,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2B3,ENSG00000204703,Putative olfactory receptor 2B3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2J3,ENSG00000204701,Olfactory receptor 2J3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR2J2,ENSG00000196231,Olfactory receptor 2J2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR2J2,ENSG00000204700,Olfactory receptor 2J2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 NCR1,ENSG00000189430,Natural cytotoxicity triggering receptor 1,Predicted,CD335,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC22A5,ENSG00000197375,Solute carrier family 22 member 5,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR7C1,ENSG00000127530,Olfactory receptor 7C1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -332,7 +332,7 @@ G6B,ENSG00000204420,Protein G6b,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 11
 LY6G6C,ENSG00000204421,Lymphocyte antigen 6 complex locus protein G6c,GPI_anchored,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 LY6G6D,ENSG00000244355,Lymphocyte antigen 6 complex locus protein G6d,GPI_anchored,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC16A8,ENSG00000100156,Monocarboxylate transporter 3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR2H2,ENSG00000206512,Olfactory receptor 2H2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR2H2,ENSG00000204657,Olfactory receptor 2H2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 NCR2,ENSG00000096264,Natural cytotoxicity triggering receptor 2,Predicted,CD336,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD160,ENSG00000117281,CD160 antigen,CSPA_validated,CD160,Bausch-Fluck et al. 2018 PNAS 115:E10988
 IGSF6,ENSG00000140749,Immunoglobulin superfamily member 6,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -347,27 +347,27 @@ CD4,ENSG00000010610,T-cell surface glycoprotein CD4,CSPA_validated,CD4,Bausch-Fl
 CD8A,ENSG00000153563,T-cell surface glycoprotein CD8 alpha chain,CSPA_validated,CD8a,Bausch-Fluck et al. 2018 PNAS 115:E10988
 PIGR,ENSG00000162896,Polymeric immunoglobulin receptor,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 HLA-B,ENSG00000234745,"HLA class I histocompatibility antigen, B-7 alpha chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-A,ENSG00000235657,"HLA class I histocompatibility antigen, A-68 alpha chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-A,ENSG00000206503,"HLA class I histocompatibility antigen, A-68 alpha chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 HLA-H,,"Putative HLA class I histocompatibility antigen, alpha chain H",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-DRA,ENSG00000227993,"HLA class II histocompatibility antigen, DR alpha chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-DQA2,ENSG00000206301,"HLA class II histocompatibility antigen, DQ alpha 2 chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-DRA,ENSG00000204287,"HLA class II histocompatibility antigen, DR alpha chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-DQA2,ENSG00000237541,"HLA class II histocompatibility antigen, DQ alpha 2 chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 HLA-DQA1,ENSG00000196735,"HLA class II histocompatibility antigen, DQ alpha 1 chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 HLA-DRB1,ENSG00000196126,"HLA class II histocompatibility antigen, DRB1-15 beta chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-DQB1,ENSG00000231286,"HLA class II histocompatibility antigen, DQ beta 1 chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-DQB1,ENSG00000179344,"HLA class II histocompatibility antigen, DQ beta 1 chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CHRNA1,ENSG00000138435,Acetylcholine receptor subunit alpha,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 GYPA,ENSG00000170180,Glycophorin-A,CSPA_validated,CD235a,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC4A1,ENSG00000004939,Band 3 anion transport protein,CSPA_validated,CD233,Bausch-Fluck et al. 2018 PNAS 115:E10988
 TRGC2,,T-cell receptor gamma-2 chain C region,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OPN1SW,ENSG00000128617,Short-wave-sensitive opsin 1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OPN1LW,ENSG00000102076,Long-wave-sensitive opsin 1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OPN1MW,ENSG00000166160,Medium-wave-sensitive opsin 1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OPN1MW,ENSG00000268221,Medium-wave-sensitive opsin 1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 PRNP,ENSG00000171867,Major prion protein,CSPA_validated,CD230,Bausch-Fluck et al. 2018 PNAS 115:E10988
 MAS1,ENSG00000130368,Proto-oncogene Mas,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 THY1,ENSG00000154096,Thy-1 membrane glycoprotein,CSPA_validated,CD90,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-C,ENSG00000225691,"HLA class I histocompatibility antigen, Cw-3 alpha chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-C,ENSG00000204525,"HLA class I histocompatibility antigen, Cw-3 alpha chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD74,ENSG00000019582,HLA class II histocompatibility antigen gamma chain,CSPA_validated,CD74,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD3D,ENSG00000167286,T-cell surface glycoprotein CD3 delta chain,CSPA_validated,CD3d,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-DPB1,ENSG00000215048,"HLA class II histocompatibility antigen, DP beta 1 chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-DPB1,ENSG00000223865,"HLA class II histocompatibility antigen, DP beta 1 chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 ERBB2,ENSG00000141736,Receptor tyrosine-protein kinase erbB-2,CSPA_validated,CD340,Bausch-Fluck et al. 2018 PNAS 115:E10988
 NTRK1,ENSG00000198400,High affinity nerve growth factor receptor,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CYBB,ENSG00000165168,Cytochrome b-245 heavy chain,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -381,7 +381,7 @@ ITGB2,ENSG00000160255,Integrin beta-2,CSPA_validated,CD18,Bausch-Fluck et al. 20
 ALPL,ENSG00000162551,"Alkaline phosphatase, tissue-nonspecific isozyme",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 ALPP,ENSG00000163283,"Alkaline phosphatase, placental type",GPI_anchored,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 ICAM1,ENSG00000090339,Intercellular adhesion molecule 1,CSPA_validated,CD54,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-DQB2,ENSG00000196610,"HLA class II histocompatibility antigen, DQ beta 2 chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-DQB2,ENSG00000232629,"HLA class II histocompatibility antigen, DQ beta 2 chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 ITGB1,ENSG00000150093,Integrin beta-1,CSPA_validated,CD29,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD1A,ENSG00000158477,T-cell surface glycoprotein CD1a,Predicted,CD1a,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD5,ENSG00000110448,T-cell surface glycoprotein CD5,CSPA_validated,CD5,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -490,9 +490,9 @@ ITGA4,ENSG00000115232,Integrin alpha-4,CSPA_validated,CD49d,Bausch-Fluck et al. 
 ATP1A3,ENSG00000105409,Sodium/potassium-transporting ATPase subunit alpha-3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CEACAM1,ENSG00000079385,Carcinoembryonic antigen-related cell adhesion molecule 1,CSPA_validated,CD66a,Bausch-Fluck et al. 2018 PNAS 115:E10988
 F3,ENSG00000117525,Tissue factor,CSPA_validated,CD142,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-E,ENSG00000206493,"HLA class I histocompatibility antigen, alpha chain E",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-E,ENSG00000204592,"HLA class I histocompatibility antigen, alpha chain E",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 HLA-DRB4,ENSG00000227357,"HLA class II histocompatibility antigen, DR beta 4 chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-DOB,ENSG00000243612,"HLA class II histocompatibility antigen, DO beta chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-DOB,ENSG00000241106,"HLA class II histocompatibility antigen, DO beta chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC5A1,ENSG00000100170,Sodium/glucose cotransporter 1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 ADRB3,ENSG00000188778,Beta-3 adrenergic receptor,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD59,ENSG00000085063,CD59 glycoprotein,CSPA_validated,CD59,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -563,7 +563,7 @@ TNFRSF1A,ENSG00000067182,Tumor necrosis factor receptor superfamily member 1A,CS
 GGT1,ENSG00000100031,Gamma-glutamyltranspeptidase 1,CSPA_validated,CD224,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC9A1,ENSG00000090020,Sodium/hydrogen exchanger 1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CR2,ENSG00000117322,Complement receptor type 2,CSPA_validated,CD21,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-DPA1,ENSG00000168384,"HLA class II histocompatibility antigen, DP alpha 1 chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-DPA1,ENSG00000231389,"HLA class II histocompatibility antigen, DP alpha 1 chain",CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD33,ENSG00000105383,Myeloid cell surface antigen CD33,CSPA_validated,CD33,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD22,ENSG00000012124,B-cell receptor CD22,CSPA_validated,CD22,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CHRM3,ENSG00000133019,Muscarinic acetylcholine receptor M3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -652,7 +652,7 @@ DPP4,ENSG00000197635,Dipeptidyl peptidase 4,CSPA_validated,CD26,Bausch-Fluck et 
 CD82,ENSG00000085117,CD82 antigen,Predicted,CD82,Bausch-Fluck et al. 2018 PNAS 115:E10988
 IL1R2,ENSG00000115590,Interleukin-1 receptor type 2,CSPA_validated,CD121b,Bausch-Fluck et al. 2018 PNAS 115:E10988
 HLA-DMA,ENSG00000204257,"HLA class II histocompatibility antigen, DM alpha chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-HLA-DMB,ENSG00000241674,"HLA class II histocompatibility antigen, DM beta chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+HLA-DMB,ENSG00000242574,"HLA class II histocompatibility antigen, DM beta chain",Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 HTR1D,ENSG00000179546,5-hydroxytryptamine receptor 1D,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 HTR1B,ENSG00000135312,5-hydroxytryptamine receptor 1B,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 HTR2A,ENSG00000102468,5-hydroxytryptamine receptor 2A,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -733,7 +733,7 @@ MC5R,ENSG00000176136,Melanocortin receptor 5,CSPA_validated,,Bausch-Fluck et al.
 CDH5,ENSG00000179776,Cadherin-5,CSPA_validated,CD144,Bausch-Fluck et al. 2018 PNAS 115:E10988
 ABCC1,ENSG00000103222,Multidrug resistance-associated protein 1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD80,ENSG00000121594,T-lymphocyte activation antigen CD80,CSPA_validated,CD80,Bausch-Fluck et al. 2018 PNAS 115:E10988
-ADORA3,ENSG00000121933,Adenosine receptor A3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+ADORA3,ENSG00000282608,Adenosine receptor A3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SDC2,ENSG00000169439,Syndecan-2,Predicted,CD362,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD68,ENSG00000129226,Macrosialin,CSPA_validated,CD68,Bausch-Fluck et al. 2018 PNAS 115:E10988
 GABRA3,ENSG00000011677,Gamma-aminobutyric acid receptor subunit alpha-3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -829,7 +829,7 @@ KIR2DL3,ENSG00000243772,Killer cell immunoglobulin-like receptor 2DL3,CSPA_valid
 KIR3DL1,ENSG00000167633,Killer cell immunoglobulin-like receptor 3DL1,CSPA_validated,CD158e,Bausch-Fluck et al. 2018 PNAS 115:E10988
 KIR3DL2,ENSG00000240403,Killer cell immunoglobulin-like receptor 3DL2,CSPA_validated,CD158k,Bausch-Fluck et al. 2018 PNAS 115:E10988
 KIR2DS2,ENSG00000277885,Killer cell immunoglobulin-like receptor 2DS2,Predicted,CD158j,Bausch-Fluck et al. 2018 PNAS 115:E10988
-KIR2DS4,ENSG00000276885,Killer cell immunoglobulin-like receptor 2DS4,CSPA_validated,CD158i,Bausch-Fluck et al. 2018 PNAS 115:E10988
+KIR2DS4,ENSG00000221957,Killer cell immunoglobulin-like receptor 2DS4,CSPA_validated,CD158i,Bausch-Fluck et al. 2018 PNAS 115:E10988
 LPAR6,ENSG00000139679,Lysophosphatidic acid receptor 6,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CHRNA4,ENSG00000101204,Neuronal acetylcholine receptor subunit alpha-4,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC15A1,ENSG00000088386,Solute carrier family 15 member 1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -869,7 +869,7 @@ GLIPR1,ENSG00000139278,Glioma pathogenesis-related protein 1,Predicted,,Bausch-F
 SLC6A12,ENSG00000111181,Sodium- and chloride-dependent betaine transporter,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC6A11,ENSG00000132164,Sodium- and chloride-dependent GABA transporter 3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC6A9,ENSG00000196517,Sodium- and chloride-dependent glycine transporter 1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-NPBWR1,ENSG00000183729,Neuropeptides B/W receptor type 1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+NPBWR1,ENSG00000288611,Neuropeptides B/W receptor type 1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 NPBWR2,ENSG00000125522,Neuropeptides B/W receptor type 2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 GLRB,ENSG00000109738,Glycine receptor subunit beta,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 GABRA4,ENSG00000109158,Gamma-aminobutyric acid receptor subunit alpha-4,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -978,7 +978,7 @@ OR1D5,ENSG00000262628,Olfactory receptor 1D5,Predicted,,Bausch-Fluck et al. 2018
 OR2B6,ENSG00000124657,Olfactory receptor 2B6,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4D2,ENSG00000255713,Olfactory receptor 4D2,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR10A3,ENSG00000170683,Olfactory receptor 10A3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR12D2,ENSG00000204690,Olfactory receptor 12D2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR12D2,ENSG00000280236,Olfactory receptor 12D2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 ANTXR2,ENSG00000163297,Anthrax toxin receptor 2,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 NRXN1,ENSG00000179915,Neurexin-1-beta,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 NRXN2,ENSG00000110076,Neurexin-2-beta,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1082,7 +1082,7 @@ SLC3A1,ENSG00000138079,Neutral and basic amino acid transport protein rBAT,Predi
 LRP1,ENSG00000123384,Prolow-density lipoprotein receptor-related protein 1,CSPA_validated,CD91,Bausch-Fluck et al. 2018 PNAS 115:E10988
 PCDH1,ENSG00000156453,Protocadherin-1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 IL10RB,ENSG00000243646,Interleukin-10 receptor subunit beta,CSPA_validated,CDw210b,Bausch-Fluck et al. 2018 PNAS 115:E10988
-DDR1,ENSG00000137332,Epithelial discoidin domain-containing receptor 1,CSPA_validated,CD167a,Bausch-Fluck et al. 2018 PNAS 115:E10988
+DDR1,ENSG00000204580,Epithelial discoidin domain-containing receptor 1,CSPA_validated,CD167a,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC20A2,ENSG00000168575,Sodium-dependent phosphate transporter 2,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 ADCY2,ENSG00000078295,Adenylate cyclase type 2,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 DSC1,ENSG00000134765,Desmocollin-1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1241,7 +1241,7 @@ SGCA,ENSG00000108823,Alpha-sarcoglycan,Predicted,,Bausch-Fluck et al. 2018 PNAS 
 CALCRL,ENSG00000064989,Calcitonin gene-related peptide type 1 receptor,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 NTRK2,ENSG00000148053,BDNF/NT-3 growth factors receptor,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 PRSS8,ENSG00000052344,Prostasin,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-MOG,ENSG00000137345,Myelin-oligodendrocyte glycoprotein,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+MOG,ENSG00000204655,Myelin-oligodendrocyte glycoprotein,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 AMHR2,ENSG00000135409,Anti-Muellerian hormone type-2 receptor,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 ATP2B3,ENSG00000067842,Plasma membrane calcium-transporting ATPase 3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 MEP1A,ENSG00000112818,Meprin A subunit alpha,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1258,7 +1258,7 @@ SLC5A12,ENSG00000148942,Sodium-coupled monocarboxylate transporter 2,Predicted,,
 DUOXA1,ENSG00000140254,Dual oxidase maturation factor 1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 TMEM132A,ENSG00000006118,Transmembrane protein 132A,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 MICB,ENSG00000204516,MHC class I polypeptide-related sequence B,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-MICA,ENSG00000183214,MHC class I polypeptide-related sequence A,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+MICA,ENSG00000204520,MHC class I polypeptide-related sequence A,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CLEC12B,ENSG00000256660,C-type lectin domain family 12 member B,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 GSG1,ENSG00000111305,Germ cell-specific gene 1 protein,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 MPEG1,ENSG00000197629,Macrophage-expressed gene 1 protein,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1368,7 +1368,7 @@ TMEM211,ENSG00000206069,Transmembrane protein 211,Predicted,,Bausch-Fluck et al.
 TMEM132E,ENSG00000181291,Transmembrane protein 132E,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5M10,ENSG00000254834,Olfactory receptor 5M10,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4C11,ENSG00000172188,Olfactory receptor 4C11,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR4F3,ENSG00000273547,Olfactory receptor 4F3/4F16/4F29,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR4F3,ENSG00000230178,Olfactory receptor 4F3/4F16/4F29,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2T5,ENSG00000203661,Olfactory receptor 2T5,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2T2,ENSG00000196240,Olfactory receptor 2T2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2A2,ENSG00000221989,Olfactory receptor 2A2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1742,7 +1742,7 @@ OR10H5,ENSG00000172519,Olfactory receptor 10H5,CSPA_validated,,Bausch-Fluck et a
 OR4F17,ENSG00000176695,Olfactory receptor 4F17,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4C5,ENSG00000176540,Olfactory receptor 4C5,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4S1,ENSG00000176555,Olfactory receptor 4S1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR4M2,ENSG00000182974,Olfactory receptor 4M2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR4M2,ENSG00000274102,Olfactory receptor 4M2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4F15,ENSG00000182854,Olfactory receptor 4F15,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4F6,ENSG00000184140,Olfactory receptor 4F6,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5AU1,ENSG00000169327,Olfactory receptor 5AU1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1770,7 +1770,7 @@ OR9K2,ENSG00000170605,Olfactory receptor 9K2,CSPA_validated,,Bausch-Fluck et al.
 OR4D9,ENSG00000172742,Olfactory receptor 4D9,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR9Q2,ENSG00000186513,Olfactory receptor 9Q2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR52B6,ENSG00000187747,Olfactory receptor 52B6,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR52R1,ENSG00000176937,Olfactory receptor 52R1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR52R1,ENSG00000279270,Olfactory receptor 52R1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR51D1,ENSG00000197428,Olfactory receptor 51D1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5AP2,ENSG00000172464,Olfactory receptor 5AP2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR10W1,ENSG00000172772,Olfactory receptor 10W1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1785,7 +1785,7 @@ OR8H1,ENSG00000181693,Olfactory receptor 8H1,CSPA_validated,,Bausch-Fluck et al.
 OR8K1,ENSG00000150261,Olfactory receptor 8K1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR8B12,ENSG00000170953,Olfactory receptor 8B12,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR8A1,ENSG00000196119,Olfactory receptor 8A1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR8B3,ENSG00000196661,Olfactory receptor 8B3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR8B3,ENSG00000284609,Olfactory receptor 8B3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2D3,ENSG00000178358,Olfactory receptor 2D3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR56A1,ENSG00000180934,Olfactory receptor 56A1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR52L2P,,Putative olfactory receptor 52L2,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1812,7 +1812,7 @@ OR51A2,ENSG00000205496,Olfactory receptor 51A2,CSPA_validated,,Bausch-Fluck et a
 OR51S1,ENSG00000176922,Olfactory receptor 51S1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR51T1,ENSG00000176900,Olfactory receptor 51T1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR51G2,ENSG00000176893,Olfactory receptor 51G2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR51G1,ENSG00000176879,Olfactory receptor 51G1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR51G1,ENSG00000278870,Olfactory receptor 51G1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR52B4,ENSG00000221996,Olfactory receptor 52B4,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR52K2,ENSG00000181963,Olfactory receptor 52K2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR52K1,ENSG00000196778,Olfactory receptor 52K1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1821,12 +1821,12 @@ OR52I1,ENSG00000232268,Olfactory receptor 52I1,Predicted,,Bausch-Fluck et al. 20
 OR5D16,ENSG00000205029,Olfactory receptor 5D16,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5L2,ENSG00000205030,Olfactory receptor 5L2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5D18,ENSG00000186119,Olfactory receptor 5D18,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR5L1,ENSG00000186117,Olfactory receptor 5L1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR5L1,ENSG00000279395,Olfactory receptor 5L1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5D14,ENSG00000186113,Olfactory receptor 5D14,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR5D13,ENSG00000198877,Olfactory receptor 5D13,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR5D13,ENSG00000279761,Olfactory receptor 5D13,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4A15,ENSG00000181958,Olfactory receptor 4A15,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4P4,ENSG00000181927,Olfactory receptor 4P4,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR4C16,ENSG00000181935,Olfactory receptor 4C16,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR4C16,ENSG00000279514,Olfactory receptor 4C16,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4C15,ENSG00000181939,Olfactory receptor 4C15,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR6M1,ENSG00000196099,Olfactory receptor 6M1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR8D4,ENSG00000181518,Olfactory receptor 8D4,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1857,7 +1857,7 @@ OR1L6,ENSG00000171459,Olfactory receptor 1L6,CSPA_validated,,Bausch-Fluck et al.
 OR1K1,ENSG00000165204,Olfactory receptor 1K1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5C1,ENSG00000148215,Olfactory receptor 5C1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR1L4,ENSG00000136939,Olfactory receptor 1L4,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR1B1,ENSG00000171484,Olfactory receptor 1B1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR1B1,ENSG00000280094,Olfactory receptor 1B1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR1L8,ENSG00000171496,Olfactory receptor 1L8,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR1N2,ENSG00000171501,Olfactory receptor 1N2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR1N1,ENSG00000171505,Olfactory receptor 1N1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1875,7 +1875,7 @@ OR2K2,ENSG00000171133,Olfactory receptor 2K2,CSPA_validated,,Bausch-Fluck et al.
 OR13J1,ENSG00000168828,Olfactory receptor 13J1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR9A2,ENSG00000179468,Olfactory receptor 9A2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2A12,ENSG00000221858,Olfactory receptor 2A12,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR2A1,ENSG00000212807,Olfactory receptor 2A1/2A42,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR2A1,ENSG00000221970,Olfactory receptor 2A1/2A42,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR9A1P,,Putative olfactory receptor 9A1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR9A4,ENSG00000258083,Olfactory receptor 9A4,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2I1P,,Putative olfactory receptor 2I1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1894,14 +1894,14 @@ OR10K1,ENSG00000173285,Olfactory receptor 10K1,CSPA_validated,,Bausch-Fluck et a
 OR10R2,ENSG00000198965,Olfactory receptor 10R2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR6Y1,ENSG00000197532,Olfactory receptor 6Y1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR6P1,ENSG00000186440,Olfactory receptor 6P1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR10X1,ENSG00000186400,Olfactory receptor 10X1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR10X1,ENSG00000279111,Olfactory receptor 10X1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR10Z1,ENSG00000198967,Olfactory receptor 10Z1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR6K2,ENSG00000196171,Olfactory receptor 6K2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR6K3,ENSG00000203757,Olfactory receptor 6K3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR6N1,ENSG00000197403,Olfactory receptor 6N1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR6N2,ENSG00000188340,Olfactory receptor 6N2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR10J6P,,Putative olfactory receptor 10J6,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR2L8,ENSG00000196936,Olfactory receptor 2L8,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR2L8,ENSG00000279263,Olfactory receptor 2L8,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2AJ1,ENSG00000177275,Olfactory receptor 2AJ1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR14K1,ENSG00000153230,Olfactory receptor 14K1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR13G1,ENSG00000197437,Olfactory receptor 13G1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1910,7 +1910,7 @@ OR2G2,ENSG00000177489,Olfactory receptor 2G2,CSPA_validated,,Bausch-Fluck et al.
 OR6F1,ENSG00000169214,Olfactory receptor 6F1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2T10,ENSG00000184022,Olfactory receptor 2T10,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2T4,ENSG00000196944,Olfactory receptor 2T4,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR2T11,ENSG00000183130,Olfactory receptor 2T11,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR2T11,ENSG00000279301,Olfactory receptor 2T11,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2T29,ENSG00000182783,Olfactory receptor 2T29,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2T3,ENSG00000196539,Olfactory receptor 2T3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2T27,ENSG00000187701,Olfactory receptor 2T27,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1918,7 +1918,7 @@ OR4Q3,ENSG00000182652,Olfactory receptor 4Q3,CSPA_validated,,Bausch-Fluck et al.
 OR1P1,,Olfactory receptor 1P1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR11H2,ENSG00000258453,Olfactory receptor 11H2,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR10AC1P,,Putative olfactory receptor 10AC1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR8S1,ENSG00000197376,Olfactory receptor 8S1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR8S1,ENSG00000284723,Olfactory receptor 8S1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR8U1,ENSG00000172199,Olfactory receptor 8U1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2L2,ENSG00000203663,Olfactory receptor 2L2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5J2,ENSG00000174957,Olfactory receptor 5J2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1932,7 +1932,7 @@ OR4L1,ENSG00000176246,Olfactory receptor 4L1,CSPA_validated,,Bausch-Fluck et al.
 OR5B3,ENSG00000172769,Olfactory receptor 5B3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4X1,ENSG00000176567,Olfactory receptor 4X1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR8K5,ENSG00000181752,Olfactory receptor 8K5,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR8K3,ENSG00000181689,Olfactory receptor 8K3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR8K3,ENSG00000280314,Olfactory receptor 8K3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR52N1,ENSG00000181001,Olfactory receptor 52N1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR56A3,ENSG00000184478,Olfactory receptor 56A3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR52E5,ENSG00000277932,Olfactory receptor 52E5,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1948,7 +1948,7 @@ OR5W2,ENSG00000187612,Olfactory receptor 5W2,CSPA_validated,,Bausch-Fluck et al.
 OR4A16,ENSG00000181961,Olfactory receptor 4A16,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4C6,ENSG00000181903,Olfactory receptor 4C6,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR4S2,ENSG00000174982,Olfactory receptor 4S2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR10A6,ENSG00000175393,Olfactory receptor 10A6,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR10A6,ENSG00000279000,Olfactory receptor 10A6,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR56B4,ENSG00000180919,Olfactory receptor 56B4,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR6X1,ENSG00000221931,Olfactory receptor 6X1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR10D3,ENSG00000197309,Putative olfactory receptor 10D3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1958,7 +1958,7 @@ OR5R1,ENSG00000174942,Olfactory receptor 5R1,CSPA_validated,,Bausch-Fluck et al.
 OR9G1,ENSG00000174914,Olfactory receptor 9G1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5AK3P,,Putative olfactory receptor 5AK3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5AK2,ENSG00000181273,Olfactory receptor 5AK2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR1S1,ENSG00000172774,Olfactory receptor 1S1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR1S1,ENSG00000280204,Olfactory receptor 1S1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR1L3,ENSG00000171481,Olfactory receptor 1L3,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR1L1,ENSG00000173679,Olfactory receptor 1L1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR13C6P,,Putative olfactory receptor 13C6,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -2143,7 +2143,7 @@ GPR128,ENSG00000144820,Probable G-protein coupled receptor 128,CSPA_validated,,B
 MEGF10,ENSG00000145794,Multiple epidermal growth factor-like domains protein 10,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 MSLNL,ENSG00000162006,Mesothelin-like protein,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 KCNS1,ENSG00000124134,Potassium voltage-gated channel subfamily S member 1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR10C1,ENSG00000229412,Olfactory receptor 10C1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR10C1,ENSG00000206474,Olfactory receptor 10C1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 BTN2A3P,,Putative butyrophilin subfamily 2 member A3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SUSD3,ENSG00000157303,Sushi domain-containing protein 3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 FCRL2,ENSG00000132704,Fc receptor-like protein 2,CSPA_validated,CD307b,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -2204,7 +2204,7 @@ OR1F2P,,Putative olfactory receptor 1F2,Predicted,,Bausch-Fluck et al. 2018 PNAS
 OR7D2,ENSG00000188000,Olfactory receptor 7D2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR5M11,ENSG00000255223,Olfactory receptor 5M11,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR8B4,ENSG00000280090,Olfactory receptor 8B4,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR8B2,ENSG00000204293,Olfactory receptor 8B2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR8B2,ENSG00000284680,Olfactory receptor 8B2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR6C1,ENSG00000205330,Olfactory receptor 6C1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR52B2,ENSG00000255307,Olfactory receptor 52B2,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR52E6,ENSG00000205409,Olfactory receptor 52E6,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -2323,7 +2323,7 @@ OR2B2,ENSG00000168131,Olfactory receptor 2B2,CSPA_validated,,Bausch-Fluck et al.
 OR2H1,ENSG00000204688,Olfactory receptor 2H1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR2J1,ENSG00000204702,Olfactory receptor 2J1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR11A1,ENSG00000204694,Olfactory receptor 11A1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR8D2,ENSG00000197263,Olfactory receptor 8D2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR8D2,ENSG00000279116,Olfactory receptor 8D2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 GPR88,ENSG00000181656,Probable G-protein coupled receptor 88,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC6A16,ENSG00000063127,Orphan sodium- and chloride-dependent neurotransmitter transporter NTT5,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 VN1R1,ENSG00000178201,Vomeronasal type-1 receptor 1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -2373,7 +2373,7 @@ SLC12A5,ENSG00000124140,Solute carrier family 12 member 5,Predicted,,Bausch-Fluc
 SLCO5A1,ENSG00000137571,Solute carrier organic anion transporter family member 5A1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 TTYH1,ENSG00000167614,Protein tweety homolog 1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 TMEM245,ENSG00000106771,Transmembrane protein 245,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR51B5,ENSG00000242180,Olfactory receptor 51B5,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR51B5,ENSG00000167355,Olfactory receptor 51B5,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR51B6,ENSG00000176239,Olfactory receptor 51B6,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR51M1,ENSG00000184698,Olfactory receptor 51M1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR51J1,ENSG00000184321,Olfactory receptor 51J1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -2600,9 +2600,9 @@ LPAR3,ENSG00000171517,Lysophosphatidic acid receptor 3,Predicted,,Bausch-Fluck e
 KL,ENSG00000133116,Klotho,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CACNG5,ENSG00000075429,Voltage-dependent calcium channel gamma-5 subunit,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 EPHA6,ENSG00000080224,Ephrin type-A receptor 6,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR14J1,ENSG00000112459,Olfactory receptor 14J1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR5V1,ENSG00000112461,Olfactory receptor 5V1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR12D3,ENSG00000204692,Olfactory receptor 12D3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR14J1,ENSG00000204695,Olfactory receptor 14J1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR5V1,ENSG00000243729,Olfactory receptor 5V1,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR12D3,ENSG00000112462,Olfactory receptor 12D3,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC23A2,ENSG00000089057,Solute carrier family 23 member 2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CHRNA9,ENSG00000174343,Neuronal acetylcholine receptor subunit alpha-9,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD300A,ENSG00000167851,CMRF35-like molecule 8,Predicted,CD300a,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -2767,7 +2767,7 @@ PCDHAC2,ENSG00000243232,Protocadherin alpha-C2,Predicted,,Bausch-Fluck et al. 20
 CLDN16,ENSG00000113946,Claudin-16,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 HRH3,ENSG00000101180,Histamine H3 receptor,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 OR51B4,ENSG00000183251,Olfactory receptor 51B4,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-OR51B2,ENSG00000184881,Olfactory receptor 51B2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+OR51B2,ENSG00000279012,Olfactory receptor 51B2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CORIN,ENSG00000145244,Atrial natriuretic peptide-converting enzyme,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 TRPV2,ENSG00000187688,Transient receptor potential cation channel subfamily V member 2,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 TNFRSF18,ENSG00000186891,Tumor necrosis factor receptor superfamily member 18,Predicted,CD357,Bausch-Fluck et al. 2018 PNAS 115:E10988
