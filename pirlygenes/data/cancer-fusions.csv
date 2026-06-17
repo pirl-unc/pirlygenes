@@ -2,7 +2,7 @@ cancer_code,fusion_family,gene_5prime,gene_5prime_family,gene_3prime,gene_3prime
 SARC_EWS,EWSR1-ETS,EWSR1,FET,FLI1,ETS,~85%,true,true,yes,fusion_transcript,high,PMID:1522903,Ewing sarcoma; t(11;22)(q24;q12); most common partner
 SARC_EWS,EWSR1-ETS,EWSR1,FET,ERG,ETS,~10%,true,true,yes,fusion_transcript,high,PMID:8162068,t(21;22)(q22;q12); second most common ETS partner
 SARC_EWS,EWSR1-ETS,EWSR1,FET,ETV1,ETS,rare,true,true,yes,fusion_transcript,medium,PMID:7700648,rare ETS variant fusion
-SARC_EWS,EWSR1-ETS,EWSR1,FET,ETV4,ETS,rare,true,true,yes,fusion_transcript,medium,PMID:9182765,rare ETS variant fusion (also called E1AF)
+SARC_EWS,EWSR1-ETS,EWSR1,FET,ETV4,ETS,rare,true,true,yes,fusion_transcript,medium,PMID:9858836,rare ETS variant fusion (also called E1AF)
 SARC_EWS,EWSR1-ETS,EWSR1,FET,FEV,ETS,rare,true,true,yes,fusion_transcript,medium,PMID:11050006,rare ETS variant fusion
 SARC_EWS,FUS-ETS,FUS,FET,ERG,ETS,rare,true,true,yes,fusion_transcript,medium,PMID:8392442,FET-family alternative (FUS instead of EWSR1)
 SARC_SYN,SS18-SSX,SS18,,SSX1,SSX,~65%,true,true,yes,fusion_transcript,high,PMID:7951326,synovial sarcoma; t(X;18)(p11;q11); SSX1 more common in biphasic

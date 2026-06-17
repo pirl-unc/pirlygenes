@@ -42,7 +42,7 @@ trufflepig run --sample expr.tsv --workspace out --cancer-type PRAD
 
 Most accessors are re-exported from the top-level package, so
 `from pirlygenes import pan_cancer_expression` works for any of the
-~85 names in `pirlygenes.__all__`. The submodule paths below are the
+~105 names in `pirlygenes.__all__`. The submodule paths below are the
 canonical home and stay stable across versions.
 
 ### Gene-set panels and resolvers
@@ -61,14 +61,15 @@ from pirlygenes.gene_sets_cancer import (
     CANCER_TYPE_NAMES,                # registry-backed {code: display_name} view
     lineage_genes_by_cancer_type,     # lineage panels
     cancer_family_panels,             # broad-family lineage panels (keys: PROSTATE,
-                                      #   CRC, GASTRIC, ESCA_SQ, SQUAMOUS, MESENCHYMAL,
-                                      #   RENAL, GLIAL, MELANOCYTIC, NEUROENDOCRINE,
-                                      #   HEME_BCELL, HEME_TCELL, HEME_MYELOID,
-                                      #   HEME_PLASMA, EMBRYONAL, GERM_CELL,
-                                      #   CNS_EMBRYONAL, EPENDYMAL,
+                                      #   CRC, GASTRIC, ESCA_SQ, SQUAMOUS, RENAL,
+                                      #   GLIAL, MELANOCYTIC, LUAD, BRCA, PAAD,
+                                      #   LIHC, OV, UCEC, BLCA, THCA,
+                                      #   NEUROENDOCRINE, HEME_BCELL, HEME_TCELL,
+                                      #   HEME_MYELOID, HEME_PLASMA, EMBRYONAL,
+                                      #   GERM_CELL, CNS_EMBRYONAL, EPENDYMAL,
                                       #   SELLAR_EPITHELIAL, MENINGIOMA,
                                       #   NERVE_SHEATH, CHOROID_PLEXUS)
-    cancer_family_panel,              # e.g. cancer_family_panel("MESENCHYMAL")
+    cancer_family_panel,              # e.g. cancer_family_panel("LUAD")
     therapy_benefit_toxicity_evidence,# curated clinical benefit/toxicity rows
     housekeeping_gene_ids,
     mitochondrial_gene_ids,

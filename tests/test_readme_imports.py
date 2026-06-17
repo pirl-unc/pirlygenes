@@ -72,13 +72,16 @@ def test_readme_python_api_block_is_importable():
 
 def test_readme_cancer_family_panel_example_returns_genes():
     """README documents valid family names: PROSTATE, CRC, GASTRIC,
-    ESCA_SQ, SQUAMOUS, MESENCHYMAL, RENAL, GLIAL, MELANOCYTIC. Catches
-    regressions where these names diverge from cancer-family-panels.csv
-    keys (and prevents another empty-list example like the v5.0.0
-    'sarcoma' typo)."""
+    ESCA_SQ, SQUAMOUS, RENAL, GLIAL, MELANOCYTIC, and the #452 adenocarcinoma
+    families (LUAD, BRCA, …). Catches regressions where these names diverge from
+    cancer-family-panels.csv keys (and prevents another empty-list example like
+    the v5.0.0 'sarcoma' typo). MESENCHYMAL was removed in #452 (it detected
+    stroma/TME, not a tumor lineage)."""
     documented = {
         "PROSTATE", "CRC", "GASTRIC", "ESCA_SQ", "SQUAMOUS",
-        "MESENCHYMAL", "RENAL", "GLIAL", "MELANOCYTIC",
+        "RENAL", "GLIAL", "MELANOCYTIC",
+        # #452 adenocarcinoma lineage families
+        "LUAD", "BRCA", "PAAD", "LIHC", "OV", "UCEC", "BLCA", "THCA",
         "NEUROENDOCRINE", "HEME_BCELL", "HEME_TCELL", "HEME_MYELOID",
         "HEME_PLASMA", "EMBRYONAL", "GERM_CELL", "CNS_EMBRYONAL",
         "EPENDYMAL", "SELLAR_EPITHELIAL", "MENINGIOMA", "NERVE_SHEATH",

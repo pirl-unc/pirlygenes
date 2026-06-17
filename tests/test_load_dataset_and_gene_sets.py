@@ -292,16 +292,28 @@ def test_lineage_gene_loaders_cover_all_tcga_codes():
 def test_cancer_family_panel_loader():
     families = gsc.cancer_family_panels()
     expected = {
-        # adult carcinoma / mesenchymal (original 9)
+        # adult carcinoma lineages. MESENCHYMAL was removed in #452: its panel
+        # was stroma/CAF markers (TME signal present in every solid tumor, not a
+        # tumor lineage) — stroma now lives in tme-markers.csv, and sarcoma
+        # lineage is carried by the SARC subtype key-genes layer.
         "PROSTATE",
         "CRC",
         "GASTRIC",
         "SQUAMOUS",
         "ESCA_SQ",
-        "MESENCHYMAL",
         "RENAL",
         "GLIAL",
         "MELANOCYTIC",
+        # adenocarcinoma families added for #452 (previously no family signal,
+        # which structurally disadvantaged them in lineage ranking)
+        "LUAD",
+        "BRCA",
+        "PAAD",
+        "LIHC",
+        "OV",
+        "UCEC",
+        "BLCA",
+        "THCA",
         # lineage families added for #351 (neuroendocrine / hematolymphoid /
         # embryonal / germ-cell / CNS-embryonal) — previously-unanchored classes
         "NEUROENDOCRINE",
@@ -541,3 +553,94 @@ def test_categorize_metadata_is_a_lossless_encoding(tmp_path):
     for col in ld._LOW_CARDINALITY_METADATA_COLS:
         pd.testing.assert_series_equal(
             back[col].astype(object), before[col].astype(object), check_names=False)
+
+
+def test_cancer_compartment_panels_coarse_tier():
+    """The coarsest lineage granularity: cell-of-origin compartments. Every
+    compartment has a non-empty panel of resolvable ENSG markers, and the
+    melanocytic/epithelial anchors are present (regression on the curated set)."""
+    panels = gsc.cancer_compartment_panels()
+    expected = {"EPITHELIAL", "MESENCHYMAL", "HEMATOLYMPHOID", "MELANOCYTIC",
+                "NEURAL_GLIAL", "GERM_CELL", "NEUROENDOCRINE"}
+    assert set(panels) == expected
+    for comp, genes in panels.items():
+        assert len(genes) >= 5, comp
+    assert "MLANA" in panels["MELANOCYTIC"]
+    assert "EPCAM" in panels["EPITHELIAL"]
+    assert "PTPRC" in panels["HEMATOLYMPHOID"]
+    df = gsc.cancer_compartment_panels_df()
+    assert (df["Ensembl_Gene_ID"].str.match(r"^ENSG\d+$")).all()
+
+
+def test_cancer_type_discriminators():
+    """Pairwise contrastive sets separate confusable types; lookup is
+    order-independent and a 'low' direction encodes the negative call."""
+    df = gsc.cancer_type_discriminators_df()
+    assert (df["Ensembl_Gene_ID"].str.match(r"^ENSG\d+$")).all()
+    assert set(df["direction"]) <= {"high", "low"}
+    # order-independent pair fetch
+    a = gsc.cancer_type_discriminator("BLCA", "PRAD")
+    b = gsc.cancer_type_discriminator("PRAD", "BLCA")
+    assert a == b and set(a) == {"BLCA", "PRAD"}
+    # uroplakins favour urothelial, prostate-secretory favours prostate
+    assert any(s == "UPK2" for s, _ in a["BLCA"])
+    assert any(s == "KLK3" for s, _ in a["PRAD"])
+    # WT1 is high-favours-OV but low-favours-UCEC (the serous discriminator)
+    ov = gsc.cancer_type_discriminator("OV", "UCEC")
+    assert ("WT1", "high") in ov["OV"]
+    assert ("WT1", "low") in ov["UCEC"]
+    # unknown pair -> empty
+    assert gsc.cancer_type_discriminator("BLCA", "GBM") == {}
+
+
+def test_family_panel_marker_roles_and_verified_refs():
+    """Each family marker carries a role (anchor/confirmatory/negative), a source
+    (tumor/immune/stroma), and a PubMed-verified PMID. Positive accessors exclude
+    negatives; negative markers are fetched separately."""
+    df = gsc.cancer_family_panels_df()
+    assert {"role", "source", "reference"} <= set(df.columns)
+    assert set(df["role"]) == {"anchor", "confirmatory", "negative"}
+    assert set(df["source"]) <= {"tumor", "immune", "stroma"}
+    assert df["reference"].str.match(r"PMID:\d+").all()
+    # positive panel (anchor+confirmatory) excludes negatives
+    thca = gsc.cancer_family_panel("THCA")
+    assert "TG" in thca and "CALCA" not in thca            # TG positive, CALCA negative
+    # negatives fetched separately: CALCA high -> MTC not THCA
+    neg = gsc.cancer_family_negative_markers("THCA")
+    assert "CALCA" in neg and "TG" not in neg
+    # confirmatory = promiscuous (PAX8 spans 4 lineages); anchor = specific
+    pax8 = df[(df.Family == "THCA") & (df.Symbol == "PAX8")]["role"].iloc[0]
+    assert pax8 == "confirmatory"
+    tg = df[(df.Family == "THCA") & (df.Symbol == "TG")]["role"].iloc[0]
+    assert tg == "anchor"
+    # source semantics: a hematolymphoid NEOPLASM's lineage genes are the tumor
+    # cells (CD3D in a T-cell lymphoma = tumor, not infiltrate)...
+    assert (gsc.cancer_family_panels_df(family="HEME_TCELL")["source"] == "tumor").all()
+    # ...but the same markers on the HEMATOLYMPHOID *compartment* panel are the
+    # infiltrate caveat (in a solid tumor they = TILs), and an immune-gene
+    # NEGATIVE marker (PTPRC high -> not melanoma) is flagged immune.
+    comp = gsc.cancer_compartment_panels_df(compartment="HEMATOLYMPHOID")
+    assert (comp["source"] == "immune").all()
+    mel_neg = gsc.cancer_family_panels_df(family="MELANOCYTIC")
+    assert (mel_neg[mel_neg.Symbol == "PTPRC"]["source"] == "immune").all()
+
+
+def test_cancer_classification_ontology_and_supertypes():
+    """The supertype tier promotes promiscuous markers to anchors at their level,
+    and the ontology node hierarchy walks compartment->supertype->family (a DAG)."""
+    st = gsc.cancer_supertype_panels()
+    assert "PAX8" in st["PAX8_LINEAGE"] and "NKX2-1" in st["TTF1_LINEAGE"]
+    assert "GATA3" in st["LUMINAL_GATA3"] and "TP63" in st["SQUAMOUS_PROGRAM"]
+    sdf = gsc.cancer_supertype_panels_df()
+    assert (sdf["role"] == "anchor").all()
+    assert sdf["reference"].str.match(r"PMID:\d+").all()
+    onto = gsc.cancer_classification_ontology()
+    assert set(onto["tier"]) == {"compartment", "supertype", "family"}
+    # level-relative role: PAX8 is anchor@supertype AND confirmatory@family(THCA)
+    famdf = gsc.cancer_family_panels_df(family="THCA")
+    assert (famdf[famdf.Symbol == "PAX8"]["role"] == "confirmatory").all()
+    # DAG: thyroid inherits BOTH PAX8 and TTF1 programs
+    path = gsc.cancer_lineage_path("THCA")
+    assert path[-1] == "THCA" and path[0] == "EPITHELIAL"
+    assert "PAX8_LINEAGE" in path and "TTF1_LINEAGE" in path
+    assert (onto[onto.node == "NEUROENDOCRINE"]["module"] == "cross_cutting").any()

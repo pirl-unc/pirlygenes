@@ -762,30 +762,65 @@ def lineage_genes_by_cancer_type():
 
 
 # ---------- Cancer family panels ----------
-def cancer_family_panels_df(family=None):
+def cancer_family_panels_df(family=None, role=None):
     """DataFrame of broad-family signature panels used for cancer-type scoring.
 
-    Columns ``Family, family_group, display_name, Symbol, Ensembl_Gene_ID``.
-    ``Family`` is the fine panel that *scores* (PROSTATE, CRC, GASTRIC, ESCA_SQ,
-    SQUAMOUS, MESENCHYMAL, RENAL, GLIAL, MELANOCYTIC, NEUROENDOCRINE,
-    HEME_BCELL/TCELL/MYELOID/PLASMA, EMBRYONAL, GERM_CELL, CNS_EMBRYONAL);
-    ``family_group`` is the coarse penalty boundary the fine panel rolls up into
-    (see :func:`cancer_family_groups`).
+    Columns ``Family, family_group, display_name, Symbol, Ensembl_Gene_ID, role,
+    source, reference``. ``Family`` is the fine panel that *scores* (PROSTATE,
+    CRC, GASTRIC, the adenocarcinoma lineages LUAD/BRCA/PAAD/LIHC/OV/UCEC/BLCA/
+    THCA, SQUAMOUS, RENAL, GLIAL, MELANOCYTIC, NEUROENDOCRINE, HEME_*, ...);
+    ``family_group`` is the coarse penalty boundary (see :func:`cancer_family_groups`).
+
+    Each marker carries a **role** that defines its USE (pass ``role`` to filter):
+      - ``anchor``       lineage-specific positive — confirms AND discriminates
+                         this type (TG=thyroid, ALB=liver, KLK3=prostate).
+      - ``confirmatory`` positive but PROMISCUOUS — confirms a broader class, does
+                         NOT discriminate (PAX8 spans renal/Müllerian/thyroid;
+                         NKX2-1 lung+thyroid; pan-keratins; CHGA/SYP). Use to
+                         place the class, never to pick the member.
+      - ``negative``     SURPRISING if high — argues AGAINST this type, a rule-out
+                         (KRT7 high -> not colorectal; CALCA high -> MTC not THCA).
+    A fourth role, pairwise "if high -> X not Y" discrimination, lives in
+    :func:`cancer_type_discriminators_df`. ``source`` flags whether the transcript
+    is from the ``tumor`` cells, ``immune`` infiltrate, or ``stroma`` (so a heme
+    marker isn't mistaken for the malignant clone in a carcinoma). ``reference``
+    is a PubMed-verified PMID (TCGA molecular-characterization paper for the type,
+    or HPA tissue map 25613900 / blood atlas 31857451).
+
+    These are tumor-LINEAGE families. Stroma is deliberately not one: the old
+    MESENCHYMAL panel was CAF/stromal markers present in every solid tumor's
+    microenvironment (it out-scored the correct carcinoma family 15-150x — #452),
+    so it was removed; stromal/CAF signal lives in :func:`tme_markers_df`.
     """
     df = get_data("cancer-family-panels")
     if family is not None:
         df = df[df["Family"] == family]
+    if role is not None:
+        df = df[df["role"] == role]
     return df
 
 
 def cancer_family_panel(family):
-    """List of Symbols for one cancer family. See `cancer_family_panels_df`."""
-    return cancer_family_panels_df(family=family)["Symbol"].tolist()
+    """List of POSITIVE-marker Symbols (anchor + confirmatory) for one family —
+    the genes EXPECTED HIGH in this type. Negative/exclusion markers are excluded;
+    fetch them with :func:`cancer_family_negative_markers`. See
+    `cancer_family_panels_df`."""
+    df = cancer_family_panels_df(family=family)
+    return df[df["role"] != "negative"]["Symbol"].tolist()
+
+
+def cancer_family_negative_markers(family):
+    """List of NEGATIVE / exclusion Symbols for one family — genes whose HIGH
+    expression would be SURPRISING and argues against this type (rule-out)."""
+    return cancer_family_panels_df(family=family, role="negative")["Symbol"].tolist()
 
 
 def cancer_family_panels():
-    """Dict of {family_label: [Symbol, ...]} for all families."""
+    """Dict of ``{family_label: [Symbol, ...]}`` of POSITIVE markers (anchor +
+    confirmatory) for all families. Negative markers are excluded (see
+    :func:`cancer_family_negative_markers`)."""
     df = get_data("cancer-family-panels")
+    df = df[df["role"] != "negative"]
     return {
         family: group["Symbol"].tolist()
         for family, group in df.groupby("Family", sort=False)
@@ -810,6 +845,123 @@ def cancer_family_display_names():
     df = get_data("cancer-family-panels")
     return dict(df[["Family", "display_name"]].drop_duplicates()
                 .itertuples(index=False, name=None))
+
+
+# ---------- Compartment (cell-of-origin super-class) panels ----------
+# The COARSEST granularity of the lineage taxonomy: compartment (this) -> family
+# (cancer_family_panels) -> subtype (cancer_lineage_panels). "What broad kind of
+# tumor is this?" — epithelial/carcinoma, mesenchymal/sarcoma, hematolymphoid,
+# melanocytic, neural-glial, germ-cell, neuroendocrine. Curated against the TCGA
+# pan-cancer cell-of-origin analysis (PMID 29625048) + HPA; see
+# scripts/generate_cancer_taxonomy_panels.py.
+def cancer_compartment_panels_df(compartment=None):
+    """DataFrame of compartment marker panels (``Compartment, display_name,
+    Symbol, Ensembl_Gene_ID``). ``MESENCHYMAL`` is a diagnosis-of-exclusion
+    compartment (its markers overlap CAF/stroma) and ``HEMATOLYMPHOID`` markers
+    double as TIL infiltrate — call those only when the panel dominates the
+    transcriptome, not on positivity alone."""
+    df = get_data("cancer-compartment-panels")
+    if compartment is not None:
+        df = df[df["Compartment"] == compartment]
+    return df
+
+
+def cancer_compartment_panel(compartment):
+    """List of Symbols for one compartment. See `cancer_compartment_panels_df`."""
+    return cancer_compartment_panels_df(compartment=compartment)["Symbol"].tolist()
+
+
+def cancer_compartment_panels():
+    """Dict of ``{compartment: [Symbol, ...]}`` for all compartments."""
+    df = get_data("cancer-compartment-panels")
+    return {comp: grp["Symbol"].tolist()
+            for comp, grp in df.groupby("Compartment", sort=False)}
+
+
+# ---------- Pairwise type discriminators (the "differential" question) ----------
+def cancer_type_discriminators_df(type_a=None, type_b=None):
+    """DataFrame of contrastive marker sets that SEPARATE confusable cancer-type
+    pairs (``contrast, type_a, type_b, favors, Symbol, Ensembl_Gene_ID,
+    direction, tier, separability, source``). ``direction`` ``high``/``low`` is
+    relative to the ``favors`` type (``WT1`` ``low`` favours endometrioid-UCEC
+    over serous-OV). ``separability`` is the contrast's honest difficulty
+    (``strong``..``poor``); only RNA-detectable markers are included (DNA/CNV
+    events — RB1/CDKN2A loss, 1p19q codeletion — are excluded). Pass a pair of
+    codes to fetch one contrast in either order."""
+    df = get_data("cancer-type-discriminators")
+    if type_a is not None and type_b is not None:
+        pair = {type_a, type_b}
+        df = df[df.apply(lambda r: {r["type_a"], r["type_b"]} == pair, axis=1)]
+    return df
+
+
+def cancer_type_discriminator(type_a, type_b):
+    """Dict ``{favored_code: [(Symbol, direction), ...]}`` separating two cancer
+    types, or ``{}`` if the pair has no curated contrast. See
+    `cancer_type_discriminators_df`."""
+    df = cancer_type_discriminators_df(type_a=type_a, type_b=type_b)
+    return {code: list(grp[["Symbol", "direction"]].itertuples(index=False, name=None))
+            for code, grp in df.groupby("favors", sort=False)}
+
+
+# ---------- Classification ONTOLOGY: the compartment->supertype->family DAG ----------
+# The SUPERTYPE tier is where the promiscuous "confirmatory" markers become
+# anchors (PAX8 -> PAX8_LINEAGE; NKX2-1 -> TTF1_LINEAGE; GATA3/FOXA1 ->
+# LUMINAL_GATA3; TP63/KRT5 -> SQUAMOUS_PROGRAM; CLDN18 -> FOREGUT). A marker's
+# role is level-relative: anchor at its own node, inherited as confirmatory by
+# descendants. See docs/cancer-classification-ontology.md.
+def cancer_supertype_panels_df(supertype=None):
+    """DataFrame of supertype anchor markers (``Supertype, display_name, Symbol,
+    Ensembl_Gene_ID, role, source, reference``) — the promiscuous markers placed
+    at the level where they ARE specific (a PAX8 high says PAX8_LINEAGE, then the
+    family anchors TG/CA9/WT1 pick thyroid/renal/serous)."""
+    df = get_data("cancer-supertype-panels")
+    if supertype is not None:
+        df = df[df["Supertype"] == supertype]
+    return df
+
+
+def cancer_supertype_panel(supertype):
+    """List of anchor Symbols for one supertype. See `cancer_supertype_panels_df`."""
+    return cancer_supertype_panels_df(supertype=supertype)["Symbol"].tolist()
+
+
+def cancer_supertype_panels():
+    """Dict of ``{supertype: [Symbol, ...]}`` for all supertypes."""
+    df = get_data("cancer-supertype-panels")
+    return {s: grp["Symbol"].tolist()
+            for s, grp in df.groupby("Supertype", sort=False)}
+
+
+def cancer_classification_ontology():
+    """DataFrame of the classification node hierarchy (``node, tier, parent,
+    display_name, module``). ``tier`` is compartment | supertype | family;
+    ``parent`` is ``;``-separated for the DAG nodes (THCA inherits both
+    PAX8_LINEAGE and TTF1_LINEAGE); ``module`` flags a cross-cutting program
+    (neuroendocrine overrides organ; embryonal oncofetal)."""
+    return get_data("cancer-classification-ontology")
+
+
+def cancer_lineage_path(node):
+    """Walk a node up to its compartment root: returns the list of ancestor nodes
+    coarsest-first, e.g. ``cancer_lineage_path("THCA")`` ->
+    ``["EPITHELIAL", "PAX8_LINEAGE", "TTF1_LINEAGE", "THCA"]``. Handles the DAG
+    (a node with multiple parents yields all distinct ancestors)."""
+    onto = get_data("cancer-classification-ontology")
+    parent_of = dict(zip(onto["node"], onto["parent"].fillna("")))
+    if node not in parent_of:
+        return []
+    seen, order = set(), []
+
+    def _up(n):
+        for p in str(parent_of.get(n, "")).split(";"):
+            p = p.strip()
+            if p and p not in seen:
+                seen.add(p)
+                _up(p)
+                order.append(p)
+    _up(node)
+    return order + [node]
 
 
 def cancer_lineage_groups():
