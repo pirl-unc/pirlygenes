@@ -592,3 +592,72 @@ def add_proteoform_columns(df: pd.DataFrame, *, kind: str = "cdna",
     out["Proteoform_ID"] = [c2s.get(m2c.get(s, s), s) for s in ids]
     out["Member_Ensembl_Gene_IDs"] = ids.to_numpy()
     return out
+
+
+# ============================================================================
+# Curated-panel proteoform view (opt-in; derived, never hand-curated)
+# ============================================================================
+# Curated gene-set CSVs live in MEMBER space (each row's own gene symbol + ENSG)
+# — the right primitive for the 99% single-locus genes and for locus/allele-level
+# rows (mutations, fusion breakpoints, amplifications). For the handful of genes
+# whose protein is encoded by >=2 identical loci (cancer-testis X-paralogs like
+# NY-ESO-1/CTAG1A/B and SSX2/SSX2B; pseudoautosomal-region genes like CRLF2 /
+# P2RY8 / CD99), the protein — not the locus — is what an assay or TCR/CAR/ADC
+# sees. These helpers surface that proteoform grouping ON DEMAND so a consumer
+# can reason at the protein level, without baking a proteoform column into the
+# curated CSVs. (Use :func:`fold_ids` / :func:`fold_symbols` to map a panel onto
+# a collapsed expression matrix's key; use these to *annotate* what was grouped.)
+
+
+@lru_cache(maxsize=None)
+def _canonical_to_member_symbols(kind: str = "protein") -> dict[str, list[str]]:
+    """``{canonical_ensg: [member symbols, natural-sorted]}`` for a space."""
+    df = _space_groups(kind)
+    out: dict[str, list[str]] = {}
+    for canon, sub in df.groupby("group_canonical_ensembl_gene_id"):
+        syms = _dedup(str(s).strip() for s in sub["symbol"]
+                      if str(s).strip() and str(s).strip().lower() != "nan")
+        out[str(canon)] = sorted(syms, key=_natural_key)
+    return out
+
+
+def proteoform_group_of(ensembl_id, *, kind: str = "protein"):
+    """Return the identical-protein (``kind='protein'``) or identical-cDNA
+    (``kind='cdna'``) proteoform group containing ``ensembl_id`` as
+    ``{"proteoform_id", "members", "canonical_ensembl_gene_id"}``, or ``None``
+    when the gene is single-locus (not part of any >=2-locus group)."""
+    canon = member_to_canonical(kind).get(_strip_version(ensembl_id))
+    if not canon:
+        return None
+    return {
+        "proteoform_id": canonical_to_symbol(kind).get(canon, canon),
+        "members": _canonical_to_member_symbols(kind).get(canon, []),
+        "canonical_ensembl_gene_id": canon,
+    }
+
+
+def annotate_panel_proteoforms(
+    df: pd.DataFrame, *, id_col: str = "Ensembl_Gene_ID", kind: str = "protein",
+    id_out: str = "proteoform_id", members_out: str = "proteoform_members",
+) -> pd.DataFrame:
+    """Add derived proteoform columns to a curated panel (opt-in; does NOT mutate
+    any CSV). For each row, if the ENSG(s) in ``id_col`` belong to a >=2-locus
+    identical-``kind`` group, fill ``id_out`` with the proteoform id (e.g.
+    ``CTAG1A/B``) and ``members_out`` with the ';'-joined member symbols; a
+    single-locus gene gets ``''``. ``id_col`` cells may be ';'-joined (the fusion
+    rule tables) — each ENSG is resolved independently and the per-cell results
+    de-duplicated, order-preserved, and ';'-joined."""
+    pids, mems = [], []
+    for cell in df[id_col].astype(str):
+        cp, cm = [], []
+        for e in re.findall(r"ENSG\d{11}", cell):
+            g = proteoform_group_of(e, kind=kind)
+            if g:
+                cp.append(g["proteoform_id"])
+                cm.extend(g["members"])
+        pids.append(";".join(_dedup(cp)))
+        mems.append(";".join(_dedup(cm)))
+    out = df.copy()
+    out[id_out] = pids
+    out[members_out] = mems
+    return out

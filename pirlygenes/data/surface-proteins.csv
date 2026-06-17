@@ -1253,7 +1253,7 @@ AOC3,ENSG00000131471,Membrane primary amine oxidase,CSPA_validated,,Bausch-Fluck
 UGT8,ENSG00000174607,2-hydroxyacylsphingosine 1-beta-galactosyltransferase,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 FAM187B,ENSG00000177558,Protein FAM187B,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 LY6K,ENSG00000160886,Lymphocyte antigen 6K,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-ECSCR,ENSG00000279686,Endothelial cell-specific chemotaxis regulator,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+ECSCR,ENSG00000249751,Endothelial cell-specific chemotaxis regulator,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 SLC5A12,ENSG00000148942,Sodium-coupled monocarboxylate transporter 2,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 DUOXA1,ENSG00000140254,Dual oxidase maturation factor 1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 TMEM132A,ENSG00000006118,Transmembrane protein 132A,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
@@ -1661,7 +1661,7 @@ CLDN19,ENSG00000164007,Claudin-19,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E
 IL22RA1,ENSG00000142677,Interleukin-22 receptor subunit alpha-1,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 CD177,ENSG00000204936,CD177 antigen,GPI_anchored,CD177,Bausch-Fluck et al. 2018 PNAS 115:E10988
 GPR161,ENSG00000143147,G-protein coupled receptor 161,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
-PCDH20,ENSG00000197991,Protocadherin-20,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
+PCDH20,ENSG00000280165,Protocadherin-20,CSPA_validated,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 KIR3DL3,,Killer cell immunoglobulin-like receptor 3DL3,Predicted,CD158z,Bausch-Fluck et al. 2018 PNAS 115:E10988
 LRRC52,ENSG00000162763,Leucine-rich repeat-containing protein 52,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
 TMEM217,ENSG00000172738,Transmembrane protein 217,Predicted,,Bausch-Fluck et al. 2018 PNAS 115:E10988
