@@ -617,29 +617,42 @@ def add_proteoform_columns(df: pd.DataFrame, *, kind: str = "cdna",
 
 
 @lru_cache(maxsize=None)
-def _canonical_to_member_symbols(kind: str = "protein") -> dict[str, list[str]]:
-    """``{canonical_ensg: [member symbols, natural-sorted]}`` for a space."""
-    df = _space_groups(kind)
-    out: dict[str, list[str]] = {}
-    for canon, sub in df.groupby("group_canonical_ensembl_gene_id"):
-        syms = _dedup(str(s).strip() for s in sub["symbol"]
-                      if str(s).strip() and str(s).strip().lower() != "nan")
-        out[str(canon)] = sorted(syms, key=_natural_key)
+def _ensg_to_symbol() -> dict[str, str]:
+    """``{member_ensg: symbol}`` across BOTH group tables — a member's symbol lives
+    in whichever table it came from, and the protein table carries the cdna-space
+    override members (the CT47A cluster), so a single union map resolves them all."""
+    out: dict[str, str] = {}
+    for df in (protein_identical_groups(), cdna_identical_groups()):
+        for ensg, sym in zip(df["ensembl_gene_id"].astype(str), df["symbol"]):
+            s = str(sym).strip()
+            if s and s.lower() != "nan":
+                out.setdefault(str(ensg), s)
     return out
 
 
 @lru_cache(maxsize=None)
 def _canonical_to_member_ensgs(kind: str = "protein") -> dict[str, list[str]]:
-    """``{canonical_ensg: [member ENSGs, sorted]}`` for a space. Unlike the symbol
-    map this never collapses (each locus has a distinct ENSG), so it carries the
-    true locus count — needed for same-symbol groups (PAR X/Y pairs like CD99,
-    IL3RA) whose member *symbols* dedup to one."""
-    df = _space_groups(kind)
-    out: dict[str, list[str]] = {}
-    for canon, sub in df.groupby("group_canonical_ensembl_gene_id"):
-        out[str(canon)] = sorted(_dedup(str(e).strip()
-                                        for e in sub["ensembl_gene_id"]))
-    return out
+    """``{canonical_ensg: [member ENSGs, sorted]}`` for a space. Derived by
+    inverting :func:`member_to_canonical` — the single override-aware source of
+    truth — so the ``cdna`` space includes the curated-override members (the
+    CT47A cluster) rather than just the raw cdna-table subset. Each locus has a
+    distinct ENSG, so this carries the true locus count even for same-symbol
+    groups (PAR X/Y pairs like CD99 / IL3RA) whose member *symbols* dedup."""
+    out: dict[str, list[str]] = defaultdict(list)
+    for member, canon in member_to_canonical(kind).items():
+        out[canon].append(member)
+    return {c: sorted(_dedup(v)) for c, v in out.items()}
+
+
+@lru_cache(maxsize=None)
+def _canonical_to_member_symbols(kind: str = "protein") -> dict[str, list[str]]:
+    """``{canonical_ensg: [member symbols, natural-sorted]}`` for a space —
+    override-aware via :func:`_canonical_to_member_ensgs`, with symbols resolved
+    across both group tables."""
+    e2s = _ensg_to_symbol()
+    return {canon: sorted(_dedup(e2s[e] for e in ensgs if e in e2s),
+                          key=_natural_key)
+            for canon, ensgs in _canonical_to_member_ensgs(kind).items()}
 
 
 def proteoform_group_of(ensembl_id, *, kind: str = "protein"):

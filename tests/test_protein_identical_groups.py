@@ -391,6 +391,26 @@ def test_annotate_panel_proteoforms_marks_multilocus_only():
     assert "proteoform_id" not in panel.columns
 
 
+def test_proteoform_group_of_is_override_aware_and_self_inclusive():
+    """A curated cdna-space override (the CT47A cluster) folds the full protein
+    member set; ``proteoform_group_of`` must report the same members under
+    'cdna' as 'protein' (not just the raw cdna-table subset), and every queried
+    member must appear in its own group's member list."""
+    from pirlygenes.load_dataset import get_data
+    ov = get_data("proteoform-collapse-overrides")
+    canon = str(ov["group_canonical_ensembl_gene_id"].iloc[0])
+    g = protein_identical_groups()
+    members = g[g["group_canonical_ensembl_gene_id"].astype(str) == canon][
+        "ensembl_gene_id"].astype(str).tolist()
+    prot = proteoform_group_of(members[0], kind="protein")
+    cdna = proteoform_group_of(members[0], kind="cdna")
+    assert cdna["n_members"] == prot["n_members"] == len(members)
+    for e in members:                       # every member sees its full group
+        gp = proteoform_group_of(e, kind="cdna")
+        assert e in gp["member_ensembl_gene_ids"]
+        assert gp["n_members"] == len(members)
+
+
 def test_no_curated_panel_uses_a_nameless_proteoform_member():
     """Curated gene-set panels must reference the *named* ENSG of a gene, not a
     symbol-less alt-locus member of a protein-identical group (the ECSCR /
