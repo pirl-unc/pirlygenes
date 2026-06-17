@@ -613,8 +613,16 @@ def test_family_panel_marker_roles_and_verified_refs():
     assert pax8 == "confirmatory"
     tg = df[(df.Family == "THCA") & (df.Symbol == "TG")]["role"].iloc[0]
     assert tg == "anchor"
-    # immune-infiltrate markers are flagged as source!=tumor
-    assert (gsc.cancer_family_panels_df(family="HEME_TCELL")["source"] == "immune").any()
+    # source semantics: a hematolymphoid NEOPLASM's lineage genes are the tumor
+    # cells (CD3D in a T-cell lymphoma = tumor, not infiltrate)...
+    assert (gsc.cancer_family_panels_df(family="HEME_TCELL")["source"] == "tumor").all()
+    # ...but the same markers on the HEMATOLYMPHOID *compartment* panel are the
+    # infiltrate caveat (in a solid tumor they = TILs), and an immune-gene
+    # NEGATIVE marker (PTPRC high -> not melanoma) is flagged immune.
+    comp = gsc.cancer_compartment_panels_df(compartment="HEMATOLYMPHOID")
+    assert (comp["source"] == "immune").all()
+    mel_neg = gsc.cancer_family_panels_df(family="MELANOCYTIC")
+    assert (mel_neg[mel_neg.Symbol == "PTPRC"]["source"] == "immune").all()
 
 
 def test_cancer_classification_ontology_and_supertypes():

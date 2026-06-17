@@ -141,6 +141,15 @@ def _role(sym):
 
 
 def _source(sym, family):
+    # In a HEMATOLYMPHOID neoplasm the immune-lineage genes ARE the tumor cells
+    # (CD19/PAX5 in a B-cell lymphoma = the malignant clone), so they are
+    # source=tumor here. The "this signal is infiltrate" caveat for immune-lineage
+    # genes lives on the HEMATOLYMPHOID *compartment* panel (where, in a solid
+    # tumor, the same genes = TILs) — see COMPARTMENT_SOURCE — and on immune-gene
+    # NEGATIVE markers in non-heme families (PTPRC high in a melanoma = infiltrate,
+    # argues against melanoma).
+    if family in HEME_FAMILIES:
+        return "tumor"
     if sym in IMMUNE:
         return "immune"
     if sym in STROMA:
@@ -151,6 +160,13 @@ def _source(sym, family):
 def main() -> int:
     g = _genome()
     fam = pd.read_csv(DATA / "cancer-family-panels.csv")
+
+    # idempotent: if the file was already enriched, strip the added negative rows
+    # and the role/source/reference columns back to the base before re-processing,
+    # so a re-run doesn't compound (overwrite negatives' roles + re-append them).
+    if "role" in fam.columns:
+        fam = (fam[fam["role"] != "negative"]
+               .drop(columns=["role", "source", "reference"], errors="ignore"))
 
     # apply membership corrections
     fam = fam[~fam.apply(lambda r: r["Symbol"] in DROP.get(r["Family"], []), axis=1)]
