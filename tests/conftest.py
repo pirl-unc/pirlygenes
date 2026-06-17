@@ -11,9 +11,11 @@ auto``. Installing inside a per-worker fixture would let multiple workers race t
 controller before workers fork, so gating on ``config.workerinput`` makes the
 ensure-install happen exactly once.
 
-It's best-effort: a no-op if 111 is already built, skipped on CI / when opted
-out / when the ``pyensembl`` CLI is missing, and non-fatal if the download fails
-(offline) — the release-dependent tests then skip on their own.
+It's best-effort: a no-op if 111 is already built (CI installs + caches it in the
+workflow, so this no-ops there too), skipped when opted out via
+``PIRLYGENES_NO_ENSEMBL_INSTALL`` or when the ``pyensembl`` CLI is missing, and
+non-fatal if the download fails (offline) — the release-dependent tests then skip
+on their own.
 """
 
 import importlib.util
@@ -47,7 +49,9 @@ def pytest_configure(config):
     if hasattr(config, "workerinput"):
         return
     # Opt-out for environments that pre-provision pyensembl or run offline.
-    if os.environ.get("PIRLYGENES_NO_ENSEMBL_INSTALL") or os.environ.get("CI"):
+    # (CI installs + caches release 111 in the workflow, so the check below
+    # already short-circuits there — no special-casing needed.)
+    if os.environ.get("PIRLYGENES_NO_ENSEMBL_INSTALL"):
         return
     if _release_installed(_DEFAULT_RELEASE) or shutil.which("pyensembl") is None:
         return

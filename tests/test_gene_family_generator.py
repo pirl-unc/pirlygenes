@@ -91,3 +91,22 @@ def test_shrink_guard_flags_whole_family_drop(tmp_path):
     (tmp_path / "fam.csv").write_text("Symbol,Ensembl_Gene_ID\nA,ENSG1\nB,ENSG2\n")
     # tables omits 'fam' entirely; known_slugs still includes it
     assert gfg.shrinking_families({}, tmp_path, known_slugs=["fam"]) == [("fam", 2, 0)]
+
+
+def test_write_family_tables_emits_header_only_for_vanished(tmp_path):
+    """Writing covers EVERY canonical family: a populated one gets its rows, and
+    a family absent from `tables` gets a header-only CSV (not skipped → no stale
+    file left behind)."""
+    populated = next(iter(gfg.GROUP_TO_SLUG.values()))
+    df = pd.DataFrame({"Symbol": ["A"], "Ensembl_Gene_ID": ["ENSG00000000001"]})
+    written = dict(gfg.write_family_tables({populated: df}, tmp_path))
+
+    assert written[populated] == 1
+    for slug in gfg.GROUP_TO_SLUG.values():
+        path = tmp_path / f"{slug}.csv"
+        assert path.exists()                      # every family written, none skipped
+        header = path.read_text().splitlines()[0]
+        assert header == "Symbol,Ensembl_Gene_ID"
+        if slug != populated:
+            assert written[slug] == 0             # vanished -> header-only
+            assert path.read_text().strip() == "Symbol,Ensembl_Gene_ID"

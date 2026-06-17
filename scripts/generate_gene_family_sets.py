@@ -205,6 +205,25 @@ def build_family_tables(releases: list[int]) -> dict[str, pd.DataFrame]:
     return out
 
 
+_FAMILY_COLUMNS = ["Symbol", "Ensembl_Gene_ID"]
+
+
+def write_family_tables(tables: dict[str, pd.DataFrame], out_dir: Path) -> list[tuple[str, int]]:
+    """Write EVERY canonical family CSV to ``out_dir``, returning ``[(slug,
+    rows)]``. A family absent from ``tables`` (it produced no rows this run) is
+    written as a **header-only** CSV rather than skipped — so a vanished family
+    replaces its stale file instead of leaving it behind. (Normal fully-provisioned
+    runs produce every family, so no empties are written; an emptied family only
+    reaches here past the shrink guard, i.e. under ``--allow-shrink``.)"""
+    empty = pd.DataFrame(columns=_FAMILY_COLUMNS)
+    written = []
+    for slug in sorted(set(GROUP_TO_SLUG.values()) | set(tables)):
+        df = tables.get(slug, empty)
+        df.to_csv(out_dir / f"{slug}.csv", index=False)
+        written.append((slug, len(df)))
+    return written
+
+
 def _existing_row_count(path: Path) -> int | None:
     """Data-row count (excluding header) of an existing CSV, or ``None``."""
     if not path.is_file():
@@ -285,10 +304,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {slug}: {old} -> {new} rows", file=sys.stderr)
         return 3
 
-    for slug, df in tables.items():
-        path = out_dir / f"{slug}.csv"
-        df.to_csv(path, index=False)
-        print(f"  wrote {path.name}: {len(df)} rows", flush=True)
+    for slug, n in write_family_tables(tables, out_dir):
+        print(f"  wrote {slug}.csv: {n} rows", flush=True)
     return 0
 
 
