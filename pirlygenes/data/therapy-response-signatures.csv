@@ -1,25 +1,25 @@
 symbol,ensembl_gene_id,therapy_class,direction,mechanism,cancer_context,strength,refs
-KLK3,ENSG00000142515,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:20220176
-KLK2,ENSG00000167751,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:20220176
+KLK3,ENSG00000142515,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:19632176
+KLK2,ENSG00000167751,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:19632176
 TMPRSS2,ENSG00000184012,AR_signaling,up,AR-transactivated (TMPRSS2-ERG fusion driver),PRAD,canonical,PMID:16254181
-NKX3-1,ENSG00000167034,AR_signaling,up,AR-transactivated homeobox tumor suppressor,PRAD,canonical,PMID:14530290
-FKBP5,ENSG00000096060,AR_signaling,up,AR-transactivated chaperone,PRAD,canonical,PMID:20220176
+NKX3-1,ENSG00000167034,AR_signaling,up,AR-transactivated homeobox tumor suppressor,PRAD,canonical,PMID:18557759
+FKBP5,ENSG00000096060,AR_signaling,up,AR-transactivated chaperone,PRAD,canonical,PMID:19632176
 STEAP4,ENSG00000127954,AR_signaling,up,AR-transactivated,PRAD,supported,
 NDRG1,ENSG00000104419,AR_signaling,up,AR-transactivated,PRAD,supported,
 PMEPA1,ENSG00000124225,AR_signaling,up,AR-transactivated,PRAD,supported,
 SLC45A3,ENSG00000158715,AR_signaling,up,AR-transactivated prostein,PRAD,supported,
 ACPP,ENSG00000014257,AR_signaling,up,AR-transactivated (PAP),PRAD,canonical,
 AR,ENSG00000169083,AR_signaling,up,Receptor itself; stable to moderate AR blockade but lost on potent inhibition,PRAD,canonical,
-FOLH1,ENSG00000086205,AR_signaling,down,AR-suppressed / ADT-upregulated (PSMA),PRAD,canonical,PMID:26162558
-CHGA,ENSG00000100604,AR_signaling,down,NE-lineage emergence under sustained AR blockade,PRAD,emerging,PMID:28546367
-SYP,ENSG00000102003,AR_signaling,down,NE differentiation marker,PRAD,emerging,PMID:28546367
-ENO2,ENSG00000111674,AR_signaling,down,Neuronal enolase — NE differentiation,PRAD,emerging,PMID:28546367
+FOLH1,ENSG00000086205,AR_signaling,down,AR-suppressed / ADT-upregulated (PSMA),PRAD,canonical,PMID:38558458
+CHGA,ENSG00000100604,AR_signaling,down,NE-lineage emergence under sustained AR blockade,PRAD,emerging,PMID:34290447
+SYP,ENSG00000102003,AR_signaling,down,NE differentiation marker,PRAD,emerging,PMID:34290447
+ENO2,ENSG00000111674,AR_signaling,down,Neuronal enolase — NE differentiation,PRAD,emerging,PMID:34290447
 NCAM1,ENSG00000149294,AR_signaling,down,NE differentiation marker,PRAD,emerging,
-ASCL1,ENSG00000139352,AR_signaling,down,NE-lineage transcription factor,PRAD,emerging,PMID:28546367
+ASCL1,ENSG00000139352,AR_signaling,down,NE-lineage transcription factor,PRAD,emerging,PMID:34290447
 ESR1,ENSG00000091831,ER_signaling,up,Estrogen receptor — target and driver,BRCA,canonical,
 PGR,ENSG00000082175,ER_signaling,up,Classic ER-transactivated,BRCA,canonical,
-TFF1,ENSG00000160182,ER_signaling,up,ER-transactivated (pS2),BRCA,canonical,PMID:11786590
-GREB1,ENSG00000196208,ER_signaling,up,ER-transactivated (highly ER-dependent),BRCA,canonical,PMID:15831514
+TFF1,ENSG00000160182,ER_signaling,up,ER-transactivated (pS2),BRCA,canonical,PMID:18543253
+GREB1,ENSG00000196208,ER_signaling,up,ER-transactivated (highly ER-dependent),BRCA,canonical,PMID:15986123
 CCND1,ENSG00000110092,ER_signaling,up,ER-transactivated cyclin D1,BRCA,supported,
 MYB,ENSG00000118513,ER_signaling,up,ER-transactivated,BRCA,supported,
 ERBB2,ENSG00000141736,HER2_signaling,up,HER2 amplification / receptor overexpression,BRCA,canonical,PMID:22149876
@@ -30,19 +30,19 @@ PHLDA1,ENSG00000139289,MAPK_EGFR_signaling,up,MPAS downstream MAPK/ERK transcrip
 SPRY2,ENSG00000136158,MAPK_EGFR_signaling,up,MPAS MAPK-transcribed feedback regulator,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4
 SPRY4,ENSG00000187678,MAPK_EGFR_signaling,up,MPAS MAPK-transcribed feedback regulator,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4
 DUSP4,ENSG00000120875,MAPK_EGFR_signaling,up,MPAS dual-specificity phosphatase feedback,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4
-DUSP6,ENSG00000139318,MAPK_EGFR_signaling,up,MPAS dual-specificity phosphatase feedback,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4;PMID:16892078
+DUSP6,ENSG00000139318,MAPK_EGFR_signaling,up,MPAS dual-specificity phosphatase feedback,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4;PMID:29872725
 CCND1,ENSG00000110092,MAPK_EGFR_signaling,up,MPAS MAPK-linked cell-cycle output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4
 EPHA2,ENSG00000142627,MAPK_EGFR_signaling,up,MPAS MAPK-associated receptor output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4
 EPHA4,ENSG00000116106,MAPK_EGFR_signaling,up,MPAS MAPK-associated receptor output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4
 ETV4,ENSG00000175832,MAPK_EGFR_signaling,up,MPAS PEA3-family MAPK transcriptional output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4
 ETV5,ENSG00000244405,MAPK_EGFR_signaling,up,MPAS PEA3-family MAPK transcriptional output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4
-CHGA,ENSG00000100604,NE_differentiation,up,NE / small-cell lineage marker,PRAD;LUSC;LUAD;NBL,canonical,PMID:28546367
-SYP,ENSG00000102003,NE_differentiation,up,NE / small-cell lineage marker,PRAD;LUSC;LUAD;NBL,canonical,PMID:28546367
-ENO2,ENSG00000111674,NE_differentiation,up,Neuronal enolase,PRAD;LUSC;LUAD;NBL,canonical,PMID:28546367
-INSM1,ENSG00000173404,NE_differentiation,up,NE transcription factor,PRAD;LUSC;LUAD;NBL,canonical,PMID:30175790
-ASCL1,ENSG00000139352,NE_differentiation,up,NE-lineage TF,PRAD;LUSC;LUAD;NBL,canonical,PMID:28546367
+CHGA,ENSG00000100604,NE_differentiation,up,NE / small-cell lineage marker,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447
+SYP,ENSG00000102003,NE_differentiation,up,NE / small-cell lineage marker,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447
+ENO2,ENSG00000111674,NE_differentiation,up,Neuronal enolase,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447
+INSM1,ENSG00000173404,NE_differentiation,up,NE transcription factor,PRAD;LUSC;LUAD;NBL,canonical,PMID:29438167
+ASCL1,ENSG00000139352,NE_differentiation,up,NE-lineage TF,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447
 POU3F2,ENSG00000184486,NE_differentiation,up,NE-lineage TF (Brn2),PRAD;LUSC;LUAD;NBL,canonical,
-NEUROD1,ENSG00000162992,NE_differentiation,up,NE-lineage TF,LUSC;LUAD;NBL,canonical,PMID:28546367
+NEUROD1,ENSG00000162992,NE_differentiation,up,NE-lineage TF,LUSC;LUAD;NBL,canonical,PMID:34290447
 NCAM1,ENSG00000149294,NE_differentiation,up,NE surface marker (CD56),PRAD;LUSC;LUAD;NBL,canonical,
 VIM,ENSG00000026025,EMT,up,Mesenchymal intermediate filament,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
 FN1,ENSG00000115414,EMT,up,Extracellular matrix (also high in CAFs),BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669

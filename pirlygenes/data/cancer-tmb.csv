@@ -69,8 +69,8 @@ MTC,1.0,148,Romei 2019,PMID:31605946,low,"Sporadic medullary thyroid; single-dri
 ADCC,0.31,,Ho 2013,PMID:23685749,high,Adenoid cystic carcinoma ~0.31; MYB-NFIB fusion-driven; very low.
 NPC,0.95,,Nasopharyngeal WES,PMID:28098136,medium,Nasopharyngeal carcinoma median ~0.95-1.0; EBV-driven low SNV burden.
 NUTM,1.0,,Stathis 2019,PMID:31180909,high,NUTM1 fusion sole driver; very low TMB (range 0-16).
-BRCA_Basal,1.8,,TCGA-Breast;Barroso-Sousa 2020,PMID:23000897;PMID:31504112,low,TNBC/basal-like: highest TMB among breast subtypes
-BRCA_HER2,1.6,,TCGA-Breast;Barroso-Sousa 2020,PMID:23000897;PMID:31504112,low,HER2-enriched: elevated vs luminal
+BRCA_Basal,1.8,,TCGA-Breast;Barroso-Sousa 2020,PMID:23000897,low,TNBC/basal-like: highest TMB among breast subtypes
+BRCA_HER2,1.6,,TCGA-Breast;Barroso-Sousa 2020,PMID:23000897,low,HER2-enriched: elevated vs luminal
 BRCA_LumB,1.2,,TCGA-Breast,PMID:23000897,low,luminal B
 BRCA_LumA,0.9,,TCGA-Breast,PMID:23000897,low,luminal A: lowest-TMB subtype
 BRCA_Normal,1.0,,TCGA-Breast,PMID:23000897,low,normal-like
@@ -80,8 +80,8 @@ SARC,1.8,,TCGA-SARC 2017,DOI:10.1016/j.cell.2017.10.014,medium,pan soft-tissue s
 SARC_LPS_UNSPEC,1.5,,TCGA-SARC 2017,DOI:10.1016/j.cell.2017.10.014,low,liposarcoma NOS ~ dedifferentiated
 SARC_RMS_PRMS,1.2,,Grobner 2018,PMID:29489754,low,pleomorphic RMS (adult): higher than pediatric RMS
 SARC_RMS_SSRMS,0.6,,Grobner 2018,PMID:29489754,low,spindle/sclerosing RMS
-BCC,65,,Bonilla 2016,PMID:27158114,medium,Basal cell carcinoma; UV signature; among the highest TMB of any tumor.
-cSCC,45,,Pickering 2014,PMID:24927297,medium,Cutaneous SCC; UV-driven; very high TMB.
+BCC,65,,Bonilla 2016,PMID:23774526,medium,Basal cell carcinoma; UV signature; among the highest TMB of any tumor.
+cSCC,45,,Pickering 2014,PMID:25303977,medium,Cutaneous SCC; UV-driven; very high TMB.
 EPN,0.5,,Grobner 2018,PMID:29489754,medium,Ependymoma; very low SNV TMB; fusion/epigenetic-driven.
 DIPG,1.0,,Mackay 2017,PMID:28966033,medium,Diffuse midline glioma; low TMB; H3 K27M epigenetic driver.
 VSCC,5.6,,Han 2018,PMID:39089654,medium,Vulvar SCC; HPV-neg (TP53/CDKN2A) higher TMB than HPV-pos.
