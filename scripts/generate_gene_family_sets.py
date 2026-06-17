@@ -32,6 +32,7 @@ changes — these CSVs are derived data, not curated.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -60,33 +61,53 @@ GROUP_TO_SLUG = {
 }
 
 
+def _grch38_cache_root() -> Path | None:
+    """pyensembl's GRCh38 cache directory (the parent of the per-release
+    ``ensemblN`` dirs). ``EnsemblRelease()`` with no arguments defaults to
+    pyensembl's own newest known release, and the cache path is computed the same
+    way for every release, so we just take that default's directory and step up
+    one level. No release needs to be installed, and we never hardcode a release
+    number (honours ``PYENSEMBL_CACHE_DIR`` / platform cache roots). Returns
+    ``None`` only if pyensembl's cache API can't be read."""
+    try:
+        default = EnsemblRelease()  # pyensembl's latest known release
+        return Path(default.download_cache.cache_directory_path).parent
+    except Exception:
+        return None
+
+
 def _installed_grch38_releases() -> list[int]:
-    """All GRCh38 Ensembl releases pyensembl can actually load.
+    """All GRCh38 Ensembl releases with a BUILT GTF database on disk — i.e.
+    releases we can read WITHOUT triggering a (multi-GB) FTP download.
 
-    Asks pyensembl itself where its GTFs live (via ``EnsemblRelease``'s
-    own ``gtf_path``) instead of guessing macOS/XDG paths — pyensembl
-    respects ``PYENSEMBL_CACHE_DIR`` and platform-specific cache roots,
-    and we can't reproduce that mapping reliably from the outside.
-
-    Probes release numbers 76–199 because pyensembl has no enumerate
-    API for cached GRCh38 releases — every supported release ID is
-    tried and accepted only when its GTF file is actually on disk.
+    Globs pyensembl's own cache (see :func:`_grch38_cache_root`) for parsed
+    ``*.gtf.db`` files. We deliberately do NOT use ``EnsemblRelease.gtf_path``
+    (it returns ``None`` until a download is attempted in recent pyensembl, which
+    made this silently report *zero* releases — a no-op regeneration), and do NOT
+    probe via ``genes()`` (that auto-downloads any release merely listed). Only
+    releases whose GTF DB is already present are returned.
     """
-    candidates: set[int] = set()
-    # GRCh38 spans Ensembl release 76+; cap at 200 to bound the probe.
-    # ValueError = release isn't a known pyensembl release;
-    # FileNotFoundError = the cached release-spec file isn't present.
-    # Anything else (PermissionError on the cache dir, etc.) should
-    # surface, not be silently treated as "release missing".
-    for release in range(76, 200):
-        try:
-            rel = EnsemblRelease(release)
-            gtf_path = rel.gtf_path
-        except (ValueError, FileNotFoundError):
-            continue
-        if gtf_path and Path(gtf_path).is_file():
-            candidates.add(release)
-    return sorted(candidates)
+    root = _grch38_cache_root()
+    if root is None:
+        print(
+            "WARNING: could not locate pyensembl's GRCh38 cache directory — "
+            "pyensembl's cache API may have changed; reporting no releases.",
+            file=sys.stderr,
+        )
+        return []
+    rels: set[int] = set()
+    for db in root.glob("ensembl*/Homo_sapiens.GRCh38.*.gtf.db"):
+        m = re.search(r"GRCh38\.(\d+)\.gtf\.db$", db.name)
+        if m:
+            rels.add(int(m.group(1)))
+    return sorted(rels)
+
+
+def _most_recent_installed_release() -> int | None:
+    """Newest GRCh38 Ensembl release with a built GTF database on disk, or
+    ``None`` if none are installed."""
+    rels = _installed_grch38_releases()
+    return rels[-1] if rels else None
 
 
 def _parse_releases(spec: str | None) -> list[int]:
@@ -184,6 +205,61 @@ def build_family_tables(releases: list[int]) -> dict[str, pd.DataFrame]:
     return out
 
 
+_FAMILY_COLUMNS = ["Symbol", "Ensembl_Gene_ID"]
+
+
+def write_family_tables(tables: dict[str, pd.DataFrame], out_dir: Path) -> list[tuple[str, int]]:
+    """Write EVERY canonical family CSV to ``out_dir``, returning ``[(slug,
+    rows)]``. A family absent from ``tables`` (it produced no rows this run) is
+    written as a **header-only** CSV rather than skipped — so a vanished family
+    replaces its stale file instead of leaving it behind. (Normal fully-provisioned
+    runs produce every family, so no empties are written; an emptied family only
+    reaches here past the shrink guard, i.e. under ``--allow-shrink``.)"""
+    empty = pd.DataFrame(columns=_FAMILY_COLUMNS)
+    written = []
+    for slug in sorted(set(GROUP_TO_SLUG.values()) | set(tables)):
+        df = tables.get(slug, empty)
+        df.to_csv(out_dir / f"{slug}.csv", index=False)
+        written.append((slug, len(df)))
+    return written
+
+
+def _existing_row_count(path: Path) -> int | None:
+    """Data-row count (excluding header) of an existing CSV, or ``None``."""
+    if not path.is_file():
+        return None
+    with open(path, encoding="utf-8") as fh:
+        return max(sum(1 for _ in fh) - 1, 0)
+
+
+def shrinking_families(
+    tables: dict[str, pd.DataFrame], out_dir: Path, *, known_slugs=None,
+) -> list[tuple[str, int, int]]:
+    """``[(slug, existing_rows, new_rows)]`` for families whose regenerated table
+    has FEWER rows than the committed file — **including a family that
+    regenerated to zero rows** (its slug absent from ``tables`` but a committed
+    CSV still on disk; ``build_family_tables`` only emits slugs that produced
+    rows, so a vanished family would otherwise slip past this guard and leave a
+    stale file). These CSVs are a cross-release UNION of ``(Symbol, ENSG)``
+    pairs, so a shrink almost always means the run saw fewer installed releases
+    than the committed data was built from — i.e. it would silently DROP
+    historical ENSG mappings. The caller refuses to write in that case (override
+    with ``--allow-shrink``). ``known_slugs`` defaults to every family slug the
+    generator emits, so the on-disk set is checked even when ``tables`` omits a
+    family entirely."""
+    slugs = set(known_slugs if known_slugs is not None else GROUP_TO_SLUG.values())
+    slugs |= set(tables)
+    shrunk = []
+    for slug in slugs:
+        existing = _existing_row_count(out_dir / f"{slug}.csv")
+        if existing is None:
+            continue
+        new = len(tables.get(slug, ()))  # 0 if the family produced no rows
+        if new < existing:
+            shrunk.append((slug, existing, new))
+    return sorted(shrunk)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -195,11 +271,22 @@ def main(argv: list[str] | None = None) -> int:
         default=str(REPO_ROOT / "pirlygenes" / "data"),
         help="Where to write the gene-family CSVs (default: pirlygenes/data/).",
     )
+    parser.add_argument(
+        "--allow-shrink",
+        action="store_true",
+        help="Permit overwriting a family CSV with FEWER rows than the committed "
+             "file. Off by default: these CSVs are a cross-release union, so a "
+             "shrink usually means too few Ensembl releases are installed and the "
+             "run would drop historical ENSG mappings.",
+    )
     args = parser.parse_args(argv)
 
     releases = _parse_releases(args.releases)
     if not releases:
-        print("No Ensembl releases available — install via pyensembl first.", file=sys.stderr)
+        print("No Ensembl releases with a built GTF database were found. Install "
+              "them first, e.g. `pyensembl install --release 77 100 ... --species "
+              "homo_sapiens` — listing a release alone is not enough; its GTF DB "
+              "must be built.", file=sys.stderr)
         return 2
     print(f"Using Ensembl releases: {releases}", flush=True)
 
@@ -207,10 +294,18 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for slug, df in tables.items():
-        path = out_dir / f"{slug}.csv"
-        df.to_csv(path, index=False)
-        print(f"  wrote {path.name}: {len(df)} rows", flush=True)
+    shrunk = shrinking_families(tables, out_dir)
+    if shrunk and not args.allow_shrink:
+        print("\nREFUSING to write — regeneration would SHRINK the cross-release "
+              "union (fewer installed releases than the committed data was built "
+              "from). Install the missing GTF databases and re-run, or pass "
+              "--allow-shrink if this is genuinely intended:", file=sys.stderr)
+        for slug, old, new in shrunk:
+            print(f"  {slug}: {old} -> {new} rows", file=sys.stderr)
+        return 3
+
+    for slug, n in write_family_tables(tables, out_dir):
+        print(f"  wrote {slug}.csv: {n} rows", flush=True)
     return 0
 
 
