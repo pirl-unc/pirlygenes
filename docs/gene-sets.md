@@ -248,6 +248,68 @@ features, replication-dependent histones, hemoglobin/globin transcripts,
 extremely short transcripts, low-complexity processed pseudogenes, and
 alignment-level rDNA repeat/decoy contig enrichment.
 
+## Proteoform-level panels
+
+Curated panels are stored in **member space** — each row carries its own gene
+`symbol` and unversioned `Ensembl_Gene_ID`. That is the right primitive for the
+~99% of genes that are single-locus and for every locus/allele-level row
+(mutations, fusion breakpoints, amplifications). But a handful of genes encode
+the **identical protein from ≥2 loci**, so a quantifier splits the reads across
+them and per-locus TPM under-counts the protein:
+
+- **cancer-testis X-paralog families** — `CTAG1A/CTAG1B` (NY-ESO-1),
+  `SSX2/SSX2B`, `SSX4/SSX4B`, the `CT47A` cluster;
+- **pseudoautosomal-region (PAR) genes** — `CRLF2`, `P2RY8`, `CSF2RA`,
+  `IL3RA` (CD123), `CD99` (PAR1) and `IL9R` (PAR2): an identical X- *and*
+  Y-encoded copy.
+
+For these, the **protein** — not the locus — is what a TCR/CAR/ADC or a
+protein-abundance threshold sees, so you must operate in *proteoform space*.
+
+### The one rule
+
+There is **one canonical space per analysis**. Map *both* your panel and your
+expression data into it **up front**, then match — never compare raw member
+symbols/ENSGs to collapsed data. Pick the space with `kind=`:
+
+- `kind="protein"` — byte-identical canonical **protein** (the protein-abundance
+  / antigen fold). The default for panel work.
+- `kind="cdna"` — byte-identical canonical **cDNA** (the read-recovery fold for
+  expression matrices; a few curated overrides force-collapse antigens like the
+  `CT47A` cluster).
+
+### The API, by what you hold
+
+| You have | Call | Result |
+|---|---|---|
+| a panel, want every row's proteoform-space **key** | `add_proteoform_columns(df, kind="protein", id_col=...)` | adds `Proteoform_ID` (proteoform id if grouped, else own ENSG) + `Member_Ensembl_Gene_IDs` |
+| a panel, want to **see** what's grouped | `annotate_panel_proteoforms(df, id_col=..., kind="protein")` | adds `proteoform_id`, `proteoform_members`, `proteoform_member_ensembl_ids`, `proteoform_n_members` (blank/0 for single-locus) |
+| a single ENSG | `proteoform_group_of(ensg, kind="protein")` | the group dict, or `None` |
+| a list of symbols / ENSGs | `fold_symbols(...)` / `fold_ids(...)` | deduped proteoform keys to match a collapsed matrix |
+| an expression matrix | `collapse_protein_identical_loci(tpm_df)` | identical loci summed in **linear TPM** space |
+
+```python
+from pirlygenes.load_dataset import get_data
+from pirlygenes.expression.protein_groups import (
+    add_proteoform_columns, annotate_panel_proteoforms, collapse_protein_identical_loci)
+
+panel = get_data("cancer-key-genes")
+
+# "always operate in proteoform space" — one call gives every row its key:
+keyed = add_proteoform_columns(panel, kind="protein", id_col="ensembl_gene_id")
+collapsed = collapse_protein_identical_loci(tpm_df)        # match keyed.Proteoform_ID -> collapsed key
+
+# inspect which curated genes are multi-locus proteoforms:
+ann = annotate_panel_proteoforms(panel, id_col="ensembl_gene_id")
+ann[ann.proteoform_n_members >= 2]    # NY-ESO-1 (CTAG1A/B), CD99, CD123/IL3RA, ...
+```
+
+Built-in panels can also ship **pre-folded** so the consumer never folds at the
+selection site — e.g. `gene_sets_cancer.CTA_proteoform_symbols()` /
+`CTA_proteoform_ids()`. `gene_names.display_name()` is the single id→label
+authority (`CTAG1A/B` → `NY-ESO-1`). `n_members` counts distinct *loci*, so
+same-symbol PAR X/Y pairs (CD99, IL3RA) correctly report 2.
+
 ## Embedding Gene Sets
 
 The bottleneck gene selection (`_select_embedding_genes_bottleneck()`)

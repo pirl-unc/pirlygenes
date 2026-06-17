@@ -370,9 +370,18 @@ def test_annotate_panel_proteoforms_marks_multilocus_only():
     panel = pd.DataFrame({"Ensembl_Gene_ID": [member_ensg, TP53]})
     out = annotate_panel_proteoforms(panel)
     assert out.loc[0, "proteoform_id"] == pid
-    assert out.loc[0, "proteoform_members"]            # non-empty member list
-    assert out.loc[1, "proteoform_id"] == ""           # TP53 single-locus
+    assert out.loc[0, "proteoform_members"]                       # member symbols
+    assert member_ensg in out.loc[0, "proteoform_member_ensembl_ids"]
+    assert out.loc[0, "proteoform_n_members"] >= 2                # >=2 loci
+    assert out.loc[1, "proteoform_id"] == ""                      # TP53 single-locus
     assert out.loc[1, "proteoform_members"] == ""
+    assert out.loc[1, "proteoform_member_ensembl_ids"] == ""
+    assert out.loc[1, "proteoform_n_members"] == 0
+
+    # n_members counts distinct LOCI, so same-symbol PAR X/Y groups (whose member
+    # symbols dedup to one) still report >=2.
+    scalar = proteoform_group_of(member_ensg)
+    assert scalar["n_members"] == len(scalar["member_ensembl_gene_ids"]) >= 2
 
     # a ';'-joined id cell (rule-table style) resolves each ENSG independently
     out2 = annotate_panel_proteoforms(
