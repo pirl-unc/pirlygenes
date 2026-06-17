@@ -66,7 +66,7 @@ LAML,RUNX1-RUNX1T1,RUNX1,CBF,RUNX1T1,CBF,common,true,true,yes,fusion_transcript,
 LAML,CBFB-MYH11,CBFB,CBF,MYH11,myosin,common,true,true,yes,fusion_transcript,high,PMID:8351518,AML inv(16)(p13q22)/t(16;16); CBF-AML; favorable
 LAML,KMT2A-MLLT3,KMT2A,KMT/HMTase,MLLT3,YEATS,subset,true,true,yes,fusion_transcript,high,PMID:8506309,AML t(9;11); KMT2A=MLL; MLLT3=AF9; promiscuous MLL partner
 LAML,KMT2A-MLLT10,KMT2A,KMT/HMTase,MLLT10,MLL partner,subset,true,false,yes,fusion_transcript,medium,PMID:7888665,t(10;11); MLLT10=AF10
-LAML,KMT2A-ELL,KMT2A,KMT/HMTase,ELL,,subset,true,true,yes,fusion_transcript,medium,PMID:8161785,t(11;19)(q23;p13.1)
+LAML,KMT2A-ELL,KMT2A,KMT/HMTase,ELL,,subset,true,true,yes,fusion_transcript,medium,PMID:26949571,t(11;19)(q23;p13.1)
 LAML,KMT2A-MLLT1,KMT2A,KMT/HMTase,MLLT1,YEATS,subset,true,true,yes,fusion_transcript,medium,PMID:1423624,t(11;19)(q23;p13.3); MLLT1=ENL
 LAML,DEK-NUP214,DEK,,NUP214,nucleoporin,rare,true,true,yes,fusion_transcript,high,PMID:1549122,t(6;9)(p23;q34); FLT3-ITD-associated; poor prognosis; NUP214=CAN
 LAML,NUP98-NSD1,NUP98,nucleoporin,NSD1,KMT/HMTase,rare,true,true,yes,fusion_transcript,medium,PMID:11493482,t(5;11); cryptic; pediatric AML; poor prognosis
