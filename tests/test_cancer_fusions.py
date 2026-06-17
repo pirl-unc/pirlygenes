@@ -9,8 +9,10 @@ from pirlygenes.gene_sets_cancer import (
 )
 
 _EXPECTED_COLS = [
-    "cancer_code", "fusion_family", "gene_5prime", "gene_5prime_family",
-    "gene_3prime", "gene_3prime_family", "frequency", "is_defining",
+    "cancer_code", "fusion_family",
+    "gene_5prime", "gene_5prime_family", "gene_5prime_ensembl_id",
+    "gene_3prime", "gene_3prime_family", "gene_3prime_ensembl_id",
+    "frequency", "is_defining",
     "pathognomonic", "rnaseq_detectable", "mechanism", "confidence",
     "pmid", "notes",
 ]
