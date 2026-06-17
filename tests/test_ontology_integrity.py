@@ -68,6 +68,13 @@ def test_curated_panel_symbol_ensg_not_swapped():
         ("therapy-response-signatures", "symbol", "ensembl_gene_id"),
         ("cancer-lineage-panels", "Symbol", "Ensembl_Gene_ID"),
         ("lineage-genes", "Symbol", "Ensembl_Gene_ID"),
+        # ENSG columns added in #460 follow-up (single-gene columns only; the
+        # fusion-rule tables carry ';'-joined partner lists, out of scope here).
+        ("cancer-key-genes", "symbol", "ensembl_gene_id"),
+        ("cancer-fusions", "gene_5prime", "gene_5prime_ensembl_id"),
+        ("cancer-fusions", "gene_3prime", "gene_3prime_ensembl_id"),
+        ("fusion-surrogate-expression", "surrogate_gene", "surrogate_gene_ensembl_id"),
+        ("rare-cancer-rna-surrogates", "primary_gene", "primary_gene_ensembl_id"),
     ]
     swaps = []
     for name, sc, ec in curated:

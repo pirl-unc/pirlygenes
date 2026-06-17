@@ -5,10 +5,12 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes.expression.protein_groups import (
+    annotate_panel_proteoforms,
     cdna_identical_groups,
     collapse_protein_identical_loci,
     collapse_protein_identical_loci_long,
     fold_symbols_to_canonical,
+    proteoform_group_of,
     proteoform_id,
     protein_identical_groups,
 )
@@ -351,3 +353,93 @@ def test_collapse_is_idempotent():
     twice = collapse_protein_identical_loci(once)
     pd.testing.assert_frame_equal(once, twice)
     assert once["t1"].iloc[0] == 5.0
+
+
+# ---- opt-in curated-panel proteoform view (derived; never hand-curated) -------
+
+def test_annotate_panel_proteoforms_marks_multilocus_only():
+    """The panel accessor fills proteoform_id + member symbols for a multi-locus
+    gene and leaves single-locus genes blank; the scalar helper agrees."""
+    g = protein_identical_groups()
+    grp = g[g["n_members"] >= 2].iloc[0]
+    member_ensg = str(grp["ensembl_gene_id"])
+    pid = str(grp["group_canonical_symbol"])
+    TP53 = "ENSG00000141510"  # single-locus sanity anchor
+    assert proteoform_group_of(TP53) is None
+
+    panel = pd.DataFrame({"Ensembl_Gene_ID": [member_ensg, TP53]})
+    out = annotate_panel_proteoforms(panel)
+    assert out.loc[0, "proteoform_id"] == pid
+    assert out.loc[0, "proteoform_members"]                       # member symbols
+    assert member_ensg in out.loc[0, "proteoform_member_ensembl_ids"]
+    assert out.loc[0, "proteoform_n_members"] >= 2                # >=2 loci
+    assert out.loc[1, "proteoform_id"] == ""                      # TP53 single-locus
+    assert out.loc[1, "proteoform_members"] == ""
+    assert out.loc[1, "proteoform_member_ensembl_ids"] == ""
+    assert out.loc[1, "proteoform_n_members"] == 0
+
+    # n_members counts distinct LOCI, so same-symbol PAR X/Y groups (whose member
+    # symbols dedup to one) still report >=2.
+    scalar = proteoform_group_of(member_ensg)
+    assert scalar["n_members"] == len(scalar["member_ensembl_gene_ids"]) >= 2
+
+    # a ';'-joined id cell (rule-table style) resolves each ENSG independently
+    out2 = annotate_panel_proteoforms(
+        pd.DataFrame({"Ensembl_Gene_ID": [f"{member_ensg};{TP53}"]}))
+    assert out2.loc[0, "proteoform_id"] == pid
+    # original CSVs are never mutated by the accessor
+    assert "proteoform_id" not in panel.columns
+
+
+def test_proteoform_group_of_is_override_aware_and_self_inclusive():
+    """A curated cdna-space override (the CT47A cluster) folds the full protein
+    member set; ``proteoform_group_of`` must report the same members under
+    'cdna' as 'protein' (not just the raw cdna-table subset), and every queried
+    member must appear in its own group's member list."""
+    from pirlygenes.load_dataset import get_data
+    ov = get_data("proteoform-collapse-overrides")
+    canon = str(ov["group_canonical_ensembl_gene_id"].iloc[0])
+    g = protein_identical_groups()
+    members = g[g["group_canonical_ensembl_gene_id"].astype(str) == canon][
+        "ensembl_gene_id"].astype(str).tolist()
+    prot = proteoform_group_of(members[0], kind="protein")
+    cdna = proteoform_group_of(members[0], kind="cdna")
+    assert cdna["n_members"] == prot["n_members"] == len(members)
+    for e in members:                       # every member sees its full group
+        gp = proteoform_group_of(e, kind="cdna")
+        assert e in gp["member_ensembl_gene_ids"]
+        assert gp["n_members"] == len(members)
+
+
+def test_no_curated_panel_uses_a_nameless_proteoform_member():
+    """Curated gene-set panels must reference the *named* ENSG of a gene, not a
+    symbol-less alt-locus member of a protein-identical group (the ECSCR /
+    PCDH20 class). A nameless member means the symbol<->ENSG pairing is wrong
+    (the symbol's real locus is the named one), so the panel would mis-fold."""
+    import re
+    from pirlygenes.load_dataset import get_data
+    g = protein_identical_groups()
+    nameless = {str(e) for e, s in zip(g["ensembl_gene_id"], g["symbol"])
+                if str(s).strip() == str(e).strip() or str(s).strip().lower() == "nan"}
+    panels = [
+        "cancer-key-genes", "cancer-fusions", "fusion-surrogate-expression",
+        "rare-cancer-rna-surrogates", "rare-cancer-fusion-rules",
+        "fusion-expression-effects", "cancer-lineage-panels", "lineage-genes",
+        "therapy-response-signatures", "cancer-family-panels",
+        "cancer-compartment-panels", "cancer-supertype-panels",
+        "cancer-type-discriminators", "surface-proteins",
+    ]
+    ensg_re = re.compile(r"ENSG\d{11}")
+    bad = []
+    for name in panels:
+        try:
+            df = get_data(name)
+        except Exception:
+            continue
+        for c in [c for c in df.columns if re.search(r"ensembl|ensg", c, re.I)]:
+            for cell in df[c].dropna().astype(str):
+                for e in ensg_re.findall(cell):
+                    if e in nameless:
+                        bad.append(f"{name}::{c} = {e}")
+    assert not bad, ("curated panels reference nameless proteoform-group members "
+                     "(use the gene's named ENSG):\n  " + "\n  ".join(bad))
