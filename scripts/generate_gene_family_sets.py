@@ -61,32 +61,58 @@ GROUP_TO_SLUG = {
 }
 
 
+def _grch38_cache_root() -> Path | None:
+    """pyensembl's GRCh38 cache directory (the parent of the per-release
+    ``ensemblN`` dirs), obtained **release-agnostically**.
+
+    Every ``EnsemblRelease(n)`` computes the same ``<root>/GRCh38/ensemblN``
+    path whether or not ``n`` is installed, so we take the newest release number
+    pyensembl still *knows* (scanning down from a high bound) and return its
+    parent — honouring ``PYENSEMBL_CACHE_DIR`` / platform cache roots. Scanning
+    down rather than hardcoding one release means a future pyensembl dropping any
+    particular release from its known list can't make this silently fail.
+    Returns ``None`` only if pyensembl knows no GRCh38 release at all.
+    """
+    for n in range(199, 75, -1):
+        try:
+            return Path(EnsemblRelease(n).download_cache.cache_directory_path).parent
+        except Exception:
+            continue  # n not a release pyensembl knows; try the next one down
+    return None
+
+
 def _installed_grch38_releases() -> list[int]:
     """All GRCh38 Ensembl releases with a BUILT GTF database on disk — i.e.
     releases we can read WITHOUT triggering a (multi-GB) FTP download.
 
-    We look for pyensembl's parsed ``*.gtf.db`` files in its own cache
-    directory. The cache root is obtained from pyensembl itself
-    (``download_cache.cache_directory_path``), so this honours
-    ``PYENSEMBL_CACHE_DIR`` and platform cache roots. We deliberately do NOT
-    use ``EnsemblRelease.gtf_path`` (it returns ``None`` until a download is
-    attempted in recent pyensembl, which made this function silently report
-    *zero* releases — a no-op regeneration), and we do NOT probe via
-    ``genes()`` (that auto-downloads any release merely listed). Only releases
-    whose GTF DB is already present are returned.
+    Globs pyensembl's own cache (see :func:`_grch38_cache_root`) for parsed
+    ``*.gtf.db`` files. We deliberately do NOT use ``EnsemblRelease.gtf_path``
+    (it returns ``None`` until a download is attempted in recent pyensembl, which
+    made this silently report *zero* releases — a no-op regeneration), and do NOT
+    probe via ``genes()`` (that auto-downloads any release merely listed). Only
+    releases whose GTF DB is already present are returned.
     """
-    try:
-        per_release_dir = Path(
-            EnsemblRelease(111).download_cache.cache_directory_path)
-        grch38_root = per_release_dir.parent
-    except Exception:
+    root = _grch38_cache_root()
+    if root is None:
+        print(
+            "WARNING: could not locate pyensembl's GRCh38 cache directory — "
+            "pyensembl's cache API may have changed; reporting no releases.",
+            file=sys.stderr,
+        )
         return []
     rels: set[int] = set()
-    for db in grch38_root.glob("ensembl*/Homo_sapiens.GRCh38.*.gtf.db"):
+    for db in root.glob("ensembl*/Homo_sapiens.GRCh38.*.gtf.db"):
         m = re.search(r"GRCh38\.(\d+)\.gtf\.db$", db.name)
         if m:
             rels.add(int(m.group(1)))
     return sorted(rels)
+
+
+def _most_recent_installed_release() -> int | None:
+    """Newest GRCh38 Ensembl release with a built GTF database on disk, or
+    ``None`` if none are installed."""
+    rels = _installed_grch38_releases()
+    return rels[-1] if rels else None
 
 
 def _parse_releases(spec: str | None) -> list[int]:
@@ -192,18 +218,31 @@ def _existing_row_count(path: Path) -> int | None:
         return max(sum(1 for _ in fh) - 1, 0)
 
 
-def shrinking_families(tables: dict[str, pd.DataFrame], out_dir: Path) -> list[tuple[str, int, int]]:
+def shrinking_families(
+    tables: dict[str, pd.DataFrame], out_dir: Path, *, known_slugs=None,
+) -> list[tuple[str, int, int]]:
     """``[(slug, existing_rows, new_rows)]`` for families whose regenerated table
-    has FEWER rows than the committed file. These CSVs are a cross-release UNION
-    of ``(Symbol, ENSG)`` pairs, so a shrink almost always means the run saw
-    fewer installed releases than the committed data was built from — i.e. it
-    would silently DROP historical ENSG mappings. The caller refuses to write in
-    that case (override with ``--allow-shrink``)."""
+    has FEWER rows than the committed file — **including a family that
+    regenerated to zero rows** (its slug absent from ``tables`` but a committed
+    CSV still on disk; ``build_family_tables`` only emits slugs that produced
+    rows, so a vanished family would otherwise slip past this guard and leave a
+    stale file). These CSVs are a cross-release UNION of ``(Symbol, ENSG)``
+    pairs, so a shrink almost always means the run saw fewer installed releases
+    than the committed data was built from — i.e. it would silently DROP
+    historical ENSG mappings. The caller refuses to write in that case (override
+    with ``--allow-shrink``). ``known_slugs`` defaults to every family slug the
+    generator emits, so the on-disk set is checked even when ``tables`` omits a
+    family entirely."""
+    slugs = set(known_slugs if known_slugs is not None else GROUP_TO_SLUG.values())
+    slugs |= set(tables)
     shrunk = []
-    for slug, df in tables.items():
+    for slug in slugs:
         existing = _existing_row_count(out_dir / f"{slug}.csv")
-        if existing is not None and len(df) < existing:
-            shrunk.append((slug, existing, len(df)))
+        if existing is None:
+            continue
+        new = len(tables.get(slug, ()))  # 0 if the family produced no rows
+        if new < existing:
+            shrunk.append((slug, existing, new))
     return sorted(shrunk)
 
 

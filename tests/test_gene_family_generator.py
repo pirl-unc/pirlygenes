@@ -12,6 +12,7 @@ import importlib.util
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "generate_gene_family_sets.py"
 
@@ -35,6 +36,32 @@ def test_release_discovery_returns_sorted_ints_without_download():
     assert rels == sorted(rels)
 
 
+def test_cache_root_is_release_agnostic():
+    """The cache root is found without depending on any one release being a
+    known/installed pyensembl release (regression for the hardcoded 111)."""
+    root = gfg._grch38_cache_root()
+    # Either pyensembl knows no GRCh38 release at all (None) or we get a path
+    # ending in the GRCh38 reference dir — never an exception.
+    assert root is None or root.name == "GRCh38"
+
+
+def test_most_recent_installed_release_matches_max():
+    rels = gfg._installed_grch38_releases()
+    if not rels:
+        assert gfg._most_recent_installed_release() is None
+    else:
+        assert gfg._most_recent_installed_release() == max(rels)
+
+
+def test_discovery_includes_default_release_111():
+    """With the default release installed (ensured by conftest where possible),
+    discovery surfaces it. Skips cleanly if 111 isn't available (offline/CI)."""
+    rels = gfg._installed_grch38_releases()
+    if 111 not in rels:
+        pytest.skip("Ensembl release 111 not installed in this environment")
+    assert 111 in rels
+
+
 def test_existing_row_count(tmp_path):
     p = tmp_path / "x.csv"
     p.write_text("Symbol,Ensembl_Gene_ID\na,ENSG1\nb,ENSG2\n")
@@ -48,9 +75,19 @@ def test_shrink_guard_flags_only_smaller_tables(tmp_path):
     smaller = pd.DataFrame({"Symbol": ["A"], "Ensembl_Gene_ID": ["ENSG1"]})
     bigger = pd.DataFrame({"Symbol": list("ABCD"),
                            "Ensembl_Gene_ID": [f"ENSG{i}" for i in range(4)]})
+    ks = ["fam"]  # restrict the known-slug set so the test is hermetic
     # shrink -> flagged with (slug, existing, new)
-    assert gfg.shrinking_families({"fam": smaller}, tmp_path) == [("fam", 3, 1)]
+    assert gfg.shrinking_families({"fam": smaller}, tmp_path, known_slugs=ks) == [("fam", 3, 1)]
     # grew or equal -> not flagged
-    assert gfg.shrinking_families({"fam": bigger}, tmp_path) == []
+    assert gfg.shrinking_families({"fam": bigger}, tmp_path, known_slugs=ks) == []
     # brand-new family (no committed file) -> not flagged
-    assert gfg.shrinking_families({"newfam": smaller}, tmp_path) == []
+    assert gfg.shrinking_families({"newfam": smaller}, tmp_path, known_slugs=["newfam"]) == []
+
+
+def test_shrink_guard_flags_whole_family_drop(tmp_path):
+    """A family that regenerates to ZERO rows (slug absent from the tables dict
+    but a committed CSV exists) is still flagged — it would otherwise leave a
+    stale file untouched."""
+    (tmp_path / "fam.csv").write_text("Symbol,Ensembl_Gene_ID\nA,ENSG1\nB,ENSG2\n")
+    # tables omits 'fam' entirely; known_slugs still includes it
+    assert gfg.shrinking_families({}, tmp_path, known_slugs=["fam"]) == [("fam", 2, 0)]
