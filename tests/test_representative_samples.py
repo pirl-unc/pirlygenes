@@ -66,6 +66,39 @@ def test_wide_all_cohorts_outer_join(synth_reps):
                          "PRAD_rep01", "PRAD_rep02", "PRAD_rep03"}
 
 
+def test_wide_representatives_canonicalize_before_outer_join(tmp_path, monkeypatch):
+    pd.DataFrame(
+        {
+            "Ensembl_Gene_ID": [
+                "ENSG00000141510",
+                "ENSG00000141510",
+                "ENSG00000277113",
+            ],
+            "Symbol": ["old_tp53_alias", "TP53", "OR2T3"],
+            "AAA_rep01": [1.0, 2.0, 4.0],
+        }
+    ).to_parquet(tmp_path / "AAA.parquet")
+    pd.DataFrame(
+        {
+            "Ensembl_Gene_ID": ["ENSG00000196539"],
+            "Symbol": ["OR2T3"],
+            "BBB_rep01": [5.0],
+        }
+    ).to_parquet(tmp_path / "BBB.parquet")
+    monkeypatch.setattr(accessors, "_representatives_root", lambda: tmp_path)
+
+    w = accessors.representative_cohort_samples()
+
+    assert w["Ensembl_Gene_ID"].tolist() == [
+        "ENSG00000141510",
+        "ENSG00000196539",
+    ]
+    assert w["AAA_rep01"].iloc[0] == 3.0
+    or2t3 = w["Ensembl_Gene_ID"] == "ENSG00000196539"
+    assert w.loc[or2t3, "AAA_rep01"].iloc[0] == 4.0
+    assert w.loc[or2t3, "BBB_rep01"].iloc[0] == 5.0
+
+
 def test_long_with_provenance(synth_reps):
     lng = accessors.representative_cohort_samples("PRAD", format="long",
                                                   include_provenance=True)

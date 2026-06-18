@@ -141,6 +141,22 @@ from .gene_sets_cancer import (
     tme_markers_df,
 )
 from .load_dataset import get_data, load_all_dataframes, load_all_dataframes_dict
+from .gene_canonicalization import (
+    CANONICAL_ENSEMBL_RELEASE,
+    CANONICAL_GENE_MAP_VERSION,
+    CANONICAL_PROTEOFORM_MAP_VERSION,
+    GeneIdentitySpaceReport,
+    GeneIdentitySpaceViolation,
+    canonical_gene_id,
+    canonical_gene_id_map,
+    canonical_gene_space_report,
+    canonical_gene_symbol,
+    canonical_proteoform_id,
+    canonical_proteoform_id_map,
+    canonicalize_gene_ids,
+    canonicalize_gene_table,
+    validate_canonical_gene_table,
+)
 from . import data_inventory, downloads
 from .version import __version__
 
@@ -151,6 +167,20 @@ __all__ = [
     "load_all_dataframes",
     "load_all_dataframes_dict",
     "get_data",
+    "CANONICAL_ENSEMBL_RELEASE",
+    "CANONICAL_GENE_MAP_VERSION",
+    "CANONICAL_PROTEOFORM_MAP_VERSION",
+    "GeneIdentitySpaceReport",
+    "GeneIdentitySpaceViolation",
+    "canonical_gene_id",
+    "canonical_gene_id_map",
+    "canonical_gene_space_report",
+    "canonical_gene_symbol",
+    "canonical_proteoform_id",
+    "canonical_proteoform_id_map",
+    "canonicalize_gene_ids",
+    "canonicalize_gene_table",
+    "validate_canonical_gene_table",
     # gene-set panels
     "housekeeping_gene_ids",
     "housekeeping_gene_names",
