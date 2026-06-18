@@ -1367,6 +1367,8 @@ def cohort_expression_views(
     genes: Optional[Iterable[str]] = None,
     *,
     canonicalize_genes: bool = True,
+    protein_coding: bool = False,
+    min_cohort_coverage: Optional[float] = None,
 ) -> "CohortExpressionViews":
     """Bundle a cohort's normalization stages into one
     :class:`CohortExpressionViews` (tpm / clean_tpm / clean_tpm_biological +
@@ -1376,7 +1378,11 @@ def cohort_expression_views(
     :func:`cancer_reference_expression` (so aggregate codes like ``SARC`` expand
     to their subtypes). Values are the per-cohort medians.  By default, rows are
     canonicalized to one ENSG key before pivoting so cross-release symbol drift
-    cannot split one gene into several sparse rows.
+    cannot split one gene into several sparse rows.  ``protein_coding=True``
+    keeps only protein-coding genes (via the offline authority biotype), and
+    ``min_cohort_coverage`` (0..1) keeps only genes measured in at least that
+    fraction of cohorts — together they yield the dense coding core and skip the
+    mostly-zero non-coding tail.
     """
     long = cancer_reference_expression(
         cancer_types, genes=genes, normalize=["tpm", "tpm_clean"],
@@ -1408,8 +1414,26 @@ def cohort_expression_views(
             wide.insert(1, "Symbol", wide["Ensembl_Gene_ID"].map(symbol_by_gene))
         return wide
 
-    tpm = _pivot("TPM")
-    clean = _pivot("TPM_clean")
+    def _select(wide):
+        if wide.empty or (not protein_coding and min_cohort_coverage is None):
+            return wide
+        mask = pd.Series(True, index=wide.index)
+        if protein_coding:
+            from ..gene_canonicalization import canonical_gene_biotype
+            mask &= wide["Ensembl_Gene_ID"].map(
+                lambda e: canonical_gene_biotype(e) == "protein_coding"
+            )
+        if min_cohort_coverage is not None:
+            cohort_cols = [c for c in wide.columns
+                           if c not in ("Ensembl_Gene_ID", "Symbol")]
+            if cohort_cols:
+                coverage = wide[cohort_cols].notna().sum(axis=1) / len(cohort_cols)
+                mask &= coverage >= min_cohort_coverage
+        return wide[mask].reset_index(drop=True)
+
+    tpm = _select(_pivot("TPM"))
+    clean = _select(_pivot("TPM_clean"))
+    # biological inherits clean's gene selection, then drops technical genes.
     biological = drop_technical_genes(clean) if not clean.empty else clean
     prov_cols = ["source_cohort", "processing_pipeline", "n_samples"]
     provenance = (long[[c for c in prov_cols if c in long.columns]]

@@ -413,6 +413,37 @@ def _combined_canonical_map() -> dict[str, str]:
     return out
 
 
+@lru_cache(maxsize=1)
+def _cross_release_name_map() -> dict[str, str]:
+    """Bundled ``ENSG -> symbol`` across Ensembl releases, or {} if absent."""
+    try:
+        df = get_data("ensembl-gene-index")
+    except ValueError:
+        _log.debug("ensembl-gene-index not bundled; using live pyensembl for names")
+        return {}
+    return {
+        strip_version(_clean_identifier(ensg)): _clean_identifier(symbol)
+        for ensg, symbol in zip(df["ensembl_gene_id"], df["symbol"])
+        if _clean_identifier(ensg)
+    }
+
+
+def _cross_release_gene_name(ensembl_gene_id: str) -> str | None:
+    """ENSG -> symbol from the bundled offline index, else live pyensembl.
+
+    Keeps the canonicalizer's retired-id rescue install-independent: the
+    bundled snapshot replaces the ``pirlygenes.gene_ids`` union index (which
+    needs many local pyensembl releases) whenever it is present.
+    """
+    gid = strip_version(_clean_identifier(ensembl_gene_id))
+    if not gid:
+        return None
+    names = _cross_release_name_map()
+    if names:
+        return names.get(gid) or None
+    return find_gene_name_from_ensembl_gene_id(gid)
+
+
 def _canonicalize_ensembl_gene_id(
     gene_id: str,
     *,
@@ -435,13 +466,13 @@ def _canonicalize_ensembl_gene_id(
     if collapsed:
         candidate_symbols = [
             symbol_hints.get(mapped),
-            find_gene_name_from_ensembl_gene_id(mapped),
+            _cross_release_gene_name(mapped),
         ]
     else:
         candidate_symbols = [
             symbol_hint,
             symbol_hints.get(sid),
-            find_gene_name_from_ensembl_gene_id(sid),
+            _cross_release_gene_name(sid),
         ]
     seen: set[str] = set()
     for symbol in candidate_symbols:
@@ -574,7 +605,7 @@ def canonical_gene_symbol(ensembl_gene_id: str, fallback: str | None = None) -> 
     gene_id = canonical_gene_id(ensembl_gene_id) or _clean_identifier(ensembl_gene_id)
     if not gene_id:
         return _clean_identifier(fallback)
-    name = find_gene_name_from_ensembl_gene_id(gene_id)
+    name = _cross_release_gene_name(gene_id)
     if name:
         return name
     _, symbol_hints = _ensembl_alias_maps()
@@ -830,39 +861,31 @@ def canonicalize_gene_table(
 
     work = df.reset_index(drop=True).copy()
     work["_canonical_ord"] = range(len(work))
-    source_versions = (
-        work[source_version_col].tolist()
-        if source_version_col and source_version_col in work.columns
-        else [None] * len(work)
+    # Resolve each DISTINCT (id, symbol) pair once, then map back vectorized:
+    # the cohort long form is ~9.4M rows, so a per-row Python loop dominates
+    # wall-clock. ``source_version`` is currently a global no-op in
+    # canonical_gene_id, so it is not part of the resolution key (the ~10^5
+    # distinct pairs are what is actually resolved).
+    id_series = work[id_col].astype(str)
+    if symbol_col is not None and symbol_col in work.columns:
+        sym_series = work[symbol_col].astype(str)
+    else:
+        sym_series = pd.Series([""] * len(work), index=work.index)
+    pairs = pd.DataFrame(
+        {"_id": id_series.to_numpy(), "_sym": sym_series.to_numpy()}
     )
-    symbols = (
-        work[symbol_col].tolist()
-        if symbol_col is not None and symbol_col in work.columns
-        else [None] * len(work)
+    uniq = pairs.drop_duplicates()
+    resolved: list[str | None] = []
+    for raw, sym in zip(uniq["_id"], uniq["_sym"]):
+        hint = sym if sym not in ("", "nan", "None") else None
+        gene_id = canonical_gene_id(raw, symbol_hint=hint)
+        if gene_id is None and hint is not None:
+            gene_id = canonical_gene_id(hint)
+        resolved.append(gene_id)
+    uniq = uniq.assign(_canon=resolved)
+    work[id_col] = (
+        pairs.merge(uniq, on=["_id", "_sym"], how="left")["_canon"].to_numpy()
     )
-
-    # Resolve each DISTINCT (id, symbol, source_version) combination once instead
-    # of once per row.  The cohort long form is ~9.4M rows, and a per-row
-    # canonical_gene_id() call made cohort_expression_views ~34x slower (#465);
-    # memoizing on the exact key keeps behaviour identical while collapsing the
-    # work to the ~10^5 distinct combinations actually present.
-    unresolved = object()
-    resolution_cache: dict[tuple, "str | None"] = {}
-    canonical_ids = []
-    for raw, sym, source_version in zip(
-        work[id_col].tolist(), symbols, source_versions
-    ):
-        key = (raw, sym, source_version)
-        gene_id = resolution_cache.get(key, unresolved)
-        if gene_id is unresolved:
-            gene_id = canonical_gene_id(
-                raw, source_version=source_version, symbol_hint=sym
-            )
-            if gene_id is None and sym is not None:
-                gene_id = canonical_gene_id(sym, source_version=source_version)
-            resolution_cache[key] = gene_id
-        canonical_ids.append(gene_id)
-    work[id_col] = canonical_ids
     if drop_unmapped:
         work = work[work[id_col].notna()].copy()
     else:

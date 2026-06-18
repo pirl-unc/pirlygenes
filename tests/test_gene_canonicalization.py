@@ -195,3 +195,12 @@ def test_canonical_proteoform_id_map_is_versioned():
         "canonical_gene_id",
         "proteoform_id",
     } <= set(m.columns)
+
+
+def test_cross_release_gene_name_is_offline():
+    from pirlygenes.gene_canonicalization import _cross_release_gene_name
+
+    # The bundled ENSG->symbol snapshot resolves a name without building the
+    # pyensembl union index, so the cohort canonicalization path is
+    # install-independent (#465).
+    assert _cross_release_gene_name("ENSG00000141510") == "TP53"
