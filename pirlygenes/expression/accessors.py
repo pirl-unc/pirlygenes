@@ -1365,6 +1365,10 @@ class CohortExpressionViews:
 def cohort_expression_views(
     cancer_types: Optional[str | Iterable[str]] = None,
     genes: Optional[Iterable[str]] = None,
+    *,
+    canonicalize_genes: bool = True,
+    protein_coding: bool = False,
+    min_cohort_coverage: Optional[float] = None,
 ) -> "CohortExpressionViews":
     """Bundle a cohort's normalization stages into one
     :class:`CohortExpressionViews` (tpm / clean_tpm / clean_tpm_biological +
@@ -1372,25 +1376,66 @@ def cohort_expression_views(
 
     ``cancer_types`` / ``genes`` are passed through to
     :func:`cancer_reference_expression` (so aggregate codes like ``SARC`` expand
-    to their subtypes). Values are the per-cohort medians.
+    to their subtypes). Values are the per-cohort medians.  By default, rows are
+    canonicalized to one ENSG key before pivoting so cross-release symbol drift
+    cannot split one gene into several sparse rows.  ``protein_coding=True``
+    keeps only protein-coding genes (via the offline authority biotype), and
+    ``min_cohort_coverage`` (0..1) keeps only genes measured in at least that
+    fraction of cohorts — together they yield the dense coding core and skip the
+    mostly-zero non-coding tail.
     """
+    if min_cohort_coverage is not None and not 0 <= min_cohort_coverage <= 1:
+        raise ValueError("min_cohort_coverage must be between 0 and 1")
     long = cancer_reference_expression(
         cancer_types, genes=genes, normalize=["tpm", "tpm_clean"],
         format="long", include_provenance=True)
-    base = ["Ensembl_Gene_ID", "Symbol"]
+    if canonicalize_genes:
+        from ..gene_canonicalization import canonicalize_gene_table
+        long = canonicalize_gene_table(
+            long,
+            group_keys=["cancer_code", "source_cohort", "normalization"],
+            value_cols=["expression", "q1", "q3"],
+            max_cols=["n_detected"],
+        )
+    # Symbol is display metadata, never a join key (#465): once canonicalized,
+    # pivot on the canonical ENSG alone so a gene can't fragment on residual
+    # symbol differences, then re-attach a single Symbol per gene.
+    index_cols = ["Ensembl_Gene_ID"] if canonicalize_genes else ["Ensembl_Gene_ID", "Symbol"]
 
     def _pivot(label):
         sub = long[long["normalization"] == label]
         if sub.empty:
-            return pd.DataFrame(columns=base)
-        wide = (sub.pivot_table(index=base, columns="cancer_code",
+            return pd.DataFrame(columns=["Ensembl_Gene_ID", "Symbol"])
+        wide = (sub.pivot_table(index=index_cols, columns="cancer_code",
                                 values="expression", aggfunc="first")
                 .reset_index())
         wide.columns.name = None
+        if "Symbol" not in wide.columns:
+            symbol_by_gene = (sub.drop_duplicates("Ensembl_Gene_ID")
+                              .set_index("Ensembl_Gene_ID")["Symbol"])
+            wide.insert(1, "Symbol", wide["Ensembl_Gene_ID"].map(symbol_by_gene))
         return wide
 
-    tpm = _pivot("TPM")
-    clean = _pivot("TPM_clean")
+    def _select(wide):
+        if wide.empty or (not protein_coding and min_cohort_coverage is None):
+            return wide
+        mask = pd.Series(True, index=wide.index)
+        if protein_coding:
+            from ..gene_canonicalization import canonical_gene_biotype
+            mask &= wide["Ensembl_Gene_ID"].map(
+                lambda e: canonical_gene_biotype(e) == "protein_coding"
+            )
+        if min_cohort_coverage is not None:
+            cohort_cols = [c for c in wide.columns
+                           if c not in ("Ensembl_Gene_ID", "Symbol")]
+            if cohort_cols:
+                coverage = wide[cohort_cols].notna().sum(axis=1) / len(cohort_cols)
+                mask &= coverage >= min_cohort_coverage
+        return wide[mask].reset_index(drop=True)
+
+    tpm = _select(_pivot("TPM"))
+    clean = _select(_pivot("TPM_clean"))
+    # biological inherits clean's gene selection, then drops technical genes.
     biological = drop_technical_genes(clean) if not clean.empty else clean
     prov_cols = ["source_cohort", "processing_pipeline", "n_samples"]
     provenance = (long[[c for c in prov_cols if c in long.columns]]
@@ -1451,6 +1496,7 @@ def representative_cohort_samples(
     normalize: str = "tpm_clean",
     format: str = "wide",
     include_provenance: bool = False,
+    canonicalize_genes: bool = True,
 ) -> pd.DataFrame:
     """Representative real per-sample expression vectors per cohort (#312).
 
@@ -1482,6 +1528,10 @@ def representative_cohort_samples(
         gene × representative with ``cancer_code`` + ``representative_id``;
         ``include_provenance=True`` adds ``source_cohort`` / ``source_project``
         / ``n_cohort_samples``.
+    canonicalize_genes
+        Collapse each shard onto the shared canonical ENSG space before the
+        wide outer join.  This removes same-gene rows split only by
+        cross-release symbol drift.
 
     Returns
     -------
@@ -1511,6 +1561,13 @@ def representative_cohort_samples(
         rep_cols = [c for c in shard.columns if c not in base]
         if k is not None:
             rep_cols = rep_cols[:k]
+        if canonicalize_genes:
+            from ..gene_canonicalization import canonicalize_gene_table
+            shard = canonicalize_gene_table(
+                shard,
+                value_cols=rep_cols,
+                source_version_col=None,
+            )
         if normalize == "tpm_clean_log1p":
             shard[rep_cols] = np.log1p(shard[rep_cols].to_numpy(dtype=float))
         if format == "wide":
@@ -1525,6 +1582,14 @@ def representative_cohort_samples(
     if format == "wide":
         if wide is None:
             return pd.DataFrame(columns=base)
+        if canonicalize_genes:
+            from ..gene_canonicalization import canonicalize_gene_table
+            rep_cols = [c for c in wide.columns if c not in base]
+            wide = canonicalize_gene_table(
+                wide,
+                value_cols=rep_cols,
+                source_version_col=None,
+            )
         return wide
 
     if not long_parts:

@@ -6,6 +6,7 @@ from pirlygenes.expression import (
     CohortExpressionViews,
     cohort_expression_views,
 )
+from pirlygenes.expression import accessors
 
 
 def test_views_bundle_three_stages_and_provenance():
@@ -41,3 +42,99 @@ def test_aggregate_code_expands_in_views():
     v = cohort_expression_views("SARC", genes=["TP53"])
     cohort_cols = [c for c in v.tpm.columns if c not in ("Ensembl_Gene_ID", "Symbol")]
     assert any(c.startswith("SARC_") for c in cohort_cols)
+
+
+def test_views_canonicalize_before_pivoting_symbol_drift(monkeypatch):
+    import pandas as pd
+
+    fake = pd.DataFrame(
+        [
+            {
+                "Ensembl_Gene_ID": "ENSG00000141510",
+                "Symbol": "old_tp53_alias",
+                "cancer_code": "AAA",
+                "source_cohort": "S1",
+                "source_project": "fixture",
+                "source_version": "fixture-v1",
+                "TPM_median": 1.0,
+                "TPM_q1": 1.0,
+                "TPM_q3": 1.0,
+                "TPM_clean_median": 10.0,
+                "TPM_clean_q1": 10.0,
+                "TPM_clean_q3": 10.0,
+                "n_samples": 1,
+                "n_detected": 1,
+                "processing_pipeline": "fixture",
+                "notes": "",
+            },
+            {
+                "Ensembl_Gene_ID": "ENSG00000141510",
+                "Symbol": "TP53",
+                "cancer_code": "AAA",
+                "source_cohort": "S1",
+                "source_project": "fixture",
+                "source_version": "fixture-v2",
+                "TPM_median": 2.0,
+                "TPM_q1": 2.0,
+                "TPM_q3": 2.0,
+                "TPM_clean_median": 20.0,
+                "TPM_clean_q1": 20.0,
+                "TPM_clean_q3": 20.0,
+                "n_samples": 1,
+                "n_detected": 1,
+                "processing_pipeline": "fixture",
+                "notes": "",
+            },
+        ]
+    )
+    accessors._REFERENCE_VIEW_CACHE.clear()
+    monkeypatch.setattr(accessors, "_load_cancer_reference_expression", lambda: fake)
+
+    v = cohort_expression_views()
+
+    assert v.tpm["Ensembl_Gene_ID"].tolist() == ["ENSG00000141510"]
+    assert v.tpm["AAA"].iloc[0] == 3.0
+    assert v.clean_tpm["AAA"].iloc[0] == 30.0
+
+
+def _fixture_row(ensg, code, version, tpm):
+    return {
+        "Ensembl_Gene_ID": ensg, "Symbol": ensg, "cancer_code": code,
+        "source_cohort": "S1", "source_project": "fixture",
+        "source_version": version, "TPM_median": tpm, "TPM_q1": tpm,
+        "TPM_q3": tpm, "TPM_clean_median": tpm, "TPM_clean_q1": tpm,
+        "TPM_clean_q3": tpm, "n_samples": 1, "n_detected": 1,
+        "processing_pipeline": "fixture", "notes": "",
+    }
+
+
+def test_views_protein_coding_and_coverage_filters(monkeypatch):
+    import pandas as pd
+
+    # TP53 (protein_coding) in both cohorts; MALAT1 (lncRNA) in one cohort only.
+    fake = pd.DataFrame([
+        _fixture_row("ENSG00000141510", "AAA", "v1", 1.0),
+        _fixture_row("ENSG00000141510", "BBB", "v1", 1.0),
+        _fixture_row("ENSG00000251562", "AAA", "v1", 5.0),
+    ])
+    monkeypatch.setattr(
+        accessors, "_load_cancer_reference_expression", lambda: fake
+    )
+
+    accessors._REFERENCE_VIEW_CACHE.clear()
+    pc = cohort_expression_views(protein_coding=True)
+    assert pc.clean_tpm["Ensembl_Gene_ID"].tolist() == ["ENSG00000141510"]
+
+    accessors._REFERENCE_VIEW_CACHE.clear()
+    cov = cohort_expression_views(min_cohort_coverage=1.0)
+    # only TP53 is measured in every cohort
+    assert cov.clean_tpm["Ensembl_Gene_ID"].tolist() == ["ENSG00000141510"]
+
+
+def test_views_reject_invalid_min_cohort_coverage():
+    import pytest
+
+    with pytest.raises(ValueError, match="min_cohort_coverage"):
+        cohort_expression_views("CLL", min_cohort_coverage=-0.1)
+    with pytest.raises(ValueError, match="min_cohort_coverage"):
+        cohort_expression_views("CLL", min_cohort_coverage=1.1)
