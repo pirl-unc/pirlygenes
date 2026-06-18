@@ -68,6 +68,9 @@ can mutate freely.
 
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Iterable, Optional, Sequence
 
 import numpy as np
@@ -1321,6 +1324,16 @@ def cancer_reference_expression(
 # ---------- accessors: unified normalization views (#319) ----------
 
 
+_COHORT_VIEWS_DIR = "cancer-reference-expression-views"
+_COHORT_VIEW_ID_COLS = ("Ensembl_Gene_ID", "Symbol")
+_COHORT_VIEW_VALUE_FILES = {
+    "tpm": "tpm.parquet",
+    "clean_tpm": "clean_tpm.parquet",
+}
+_COHORT_VIEW_PROVENANCE_FILE = "provenance.parquet"
+_ARTIFACT_MANIFEST_FILE = "_manifest.json"
+
+
 class CohortExpressionViews:
     """The canonical normalization stages of a cohort reference in **one
     object**, so a consumer never re-normalizes inconsistently (#319).
@@ -1362,7 +1375,185 @@ class CohortExpressionViews:
                 f"sources={cohorts[:3]}{'…' if len(cohorts) > 3 else ''})")
 
 
-def cohort_expression_views(
+def _cohort_views_root():
+    return _bundle_subdir(_COHORT_VIEWS_DIR)
+
+
+def _artifact_manifest(root: Path) -> dict:
+    path = root / _ARTIFACT_MANIFEST_FILE
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _artifact_has_canonical_genes(root: Path) -> bool:
+    return bool(_artifact_manifest(root).get("canonical_gene_ids"))
+
+
+def _cohort_views_present(root: Path) -> bool:
+    return (
+        root.exists()
+        and all((root / name).exists()
+                for name in _COHORT_VIEW_VALUE_FILES.values())
+        and (root / _COHORT_VIEW_PROVENANCE_FILE).exists()
+    )
+
+
+@lru_cache(maxsize=4)
+def _load_precomputed_cohort_views(root_text: str) -> tuple[pd.DataFrame, ...]:
+    root = Path(root_text)
+    tpm = pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["tpm"])
+    clean = pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["clean_tpm"])
+    provenance = pd.read_parquet(root / _COHORT_VIEW_PROVENANCE_FILE)
+    return tpm, clean, provenance
+
+
+def _cohort_value_cols(wide: pd.DataFrame) -> list[str]:
+    return [c for c in wide.columns if c not in _COHORT_VIEW_ID_COLS]
+
+
+def _filter_canonical_view_genes(
+    wide: pd.DataFrame,
+    genes: Iterable[str],
+) -> pd.DataFrame:
+    gene_list = [str(g).strip() for g in genes if str(g).strip()]
+    if not gene_list:
+        return wide.iloc[0:0].reset_index(drop=True)
+
+    # Keep the legacy symbol/alias behavior, then add canonical ENSG hits so
+    # retired IDs and old symbols still match the baked canonical row.
+    filtered = filter_to_genes(wide, gene_list)
+    candidates: set[str] = set(gene_list)
+    for gene in gene_list:
+        candidates.update(get_alias_as_list(gene))
+        candidates.update(get_reverse_alias_as_list(gene))
+
+    target_ids: set[str] = set()
+    from ..gene_canonicalization import canonical_gene_id
+
+    for candidate in candidates:
+        canonical = canonical_gene_id(candidate)
+        if canonical is not None:
+            target_ids.add(canonical)
+    if target_ids:
+        extra = wide[wide["Ensembl_Gene_ID"].astype(str).isin(target_ids)]
+        if not extra.empty:
+            filtered = pd.concat([filtered, extra], ignore_index=True)
+
+    if filtered.empty:
+        return filtered.reset_index(drop=True)
+    return (
+        filtered.drop_duplicates(subset=["Ensembl_Gene_ID"])
+        .reset_index(drop=True)
+    )
+
+
+def _drop_all_missing_cohort_columns(wide: pd.DataFrame) -> pd.DataFrame:
+    value_cols = _cohort_value_cols(wide)
+    keep_values = [c for c in value_cols if wide[c].notna().any()]
+    return wide[[*_COHORT_VIEW_ID_COLS, *keep_values]].copy()
+
+
+def _select_cohort_columns(
+    wide: pd.DataFrame,
+    codes: list[str] | None,
+) -> pd.DataFrame:
+    if codes is None:
+        return wide.copy()
+    selected = [c for c in dict.fromkeys(codes) if c in wide.columns]
+    return wide[[*_COHORT_VIEW_ID_COLS, *selected]].copy()
+
+
+def _select_cohort_view_rows(
+    wide: pd.DataFrame,
+    *,
+    protein_coding: bool,
+    min_cohort_coverage: Optional[float],
+) -> pd.DataFrame:
+    if wide.empty or (not protein_coding and min_cohort_coverage is None):
+        return wide.reset_index(drop=True)
+
+    mask = pd.Series(True, index=wide.index)
+    if protein_coding:
+        from ..gene_canonicalization import canonical_gene_biotype
+
+        mask &= wide["Ensembl_Gene_ID"].map(
+            lambda e: canonical_gene_biotype(e) == "protein_coding"
+        )
+    if min_cohort_coverage is not None:
+        cohort_cols = _cohort_value_cols(wide)
+        if cohort_cols:
+            coverage = wide[cohort_cols].notna().sum(axis=1) / len(cohort_cols)
+            mask &= coverage >= min_cohort_coverage
+    return wide[mask].reset_index(drop=True)
+
+
+def _filter_cohort_view_provenance(
+    provenance: pd.DataFrame,
+    *,
+    codes: list[str] | None,
+) -> pd.DataFrame:
+    out = provenance
+    if codes is not None and "cancer_code" in out.columns:
+        out = out[out["cancer_code"].astype(str).isin(set(codes))]
+    prov_cols = ["source_cohort", "processing_pipeline", "n_samples"]
+    return (
+        out[[c for c in prov_cols if c in out.columns]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+
+
+def _cohort_expression_views_from_precomputed(
+    cancer_types: Optional[str | Iterable[str]],
+    genes: Optional[Iterable[str]],
+    *,
+    protein_coding: bool,
+    min_cohort_coverage: Optional[float],
+) -> CohortExpressionViews | None:
+    root = Path(_cohort_views_root())
+    if not _cohort_views_present(root):
+        return None
+    tpm, clean, provenance = _load_precomputed_cohort_views(str(root))
+
+    codes = _resolve_cancer_types(cancer_types, expand_aggregates=True)
+    tpm = _select_cohort_columns(tpm, codes)
+    clean = _select_cohort_columns(clean, codes)
+
+    provenance_codes = codes
+    if genes is not None:
+        gene_list = list(genes)
+        tpm = _filter_canonical_view_genes(tpm, gene_list)
+        clean = _filter_canonical_view_genes(clean, gene_list)
+        tpm = _drop_all_missing_cohort_columns(tpm)
+        clean = _drop_all_missing_cohort_columns(clean)
+        provenance_codes = list(dict.fromkeys(
+            _cohort_value_cols(tpm) + _cohort_value_cols(clean)
+        ))
+
+    tpm = _select_cohort_view_rows(
+        tpm,
+        protein_coding=protein_coding,
+        min_cohort_coverage=min_cohort_coverage,
+    )
+    clean = _select_cohort_view_rows(
+        clean,
+        protein_coding=protein_coding,
+        min_cohort_coverage=min_cohort_coverage,
+    )
+    biological = drop_technical_genes(clean) if not clean.empty else clean
+    return CohortExpressionViews(
+        tpm,
+        clean,
+        biological,
+        _filter_cohort_view_provenance(provenance, codes=provenance_codes),
+    )
+
+
+def _cohort_expression_views_from_reference(
     cancer_types: Optional[str | Iterable[str]] = None,
     genes: Optional[Iterable[str]] = None,
     *,
@@ -1370,22 +1561,6 @@ def cohort_expression_views(
     protein_coding: bool = False,
     min_cohort_coverage: Optional[float] = None,
 ) -> "CohortExpressionViews":
-    """Bundle a cohort's normalization stages into one
-    :class:`CohortExpressionViews` (tpm / clean_tpm / clean_tpm_biological +
-    provenance) so downstream never re-normalizes inconsistently (#319).
-
-    ``cancer_types`` / ``genes`` are passed through to
-    :func:`cancer_reference_expression` (so aggregate codes like ``SARC`` expand
-    to their subtypes). Values are the per-cohort medians.  By default, rows are
-    canonicalized to one ENSG key before pivoting so cross-release symbol drift
-    cannot split one gene into several sparse rows.  ``protein_coding=True``
-    keeps only protein-coding genes (via the offline authority biotype), and
-    ``min_cohort_coverage`` (0..1) keeps only genes measured in at least that
-    fraction of cohorts — together they yield the dense coding core and skip the
-    mostly-zero non-coding tail.
-    """
-    if min_cohort_coverage is not None and not 0 <= min_cohort_coverage <= 1:
-        raise ValueError("min_cohort_coverage must be between 0 and 1")
     long = cancer_reference_expression(
         cancer_types, genes=genes, normalize=["tpm", "tpm_clean"],
         format="long", include_provenance=True)
@@ -1416,31 +1591,64 @@ def cohort_expression_views(
             wide.insert(1, "Symbol", wide["Ensembl_Gene_ID"].map(symbol_by_gene))
         return wide
 
-    def _select(wide):
-        if wide.empty or (not protein_coding and min_cohort_coverage is None):
-            return wide
-        mask = pd.Series(True, index=wide.index)
-        if protein_coding:
-            from ..gene_canonicalization import canonical_gene_biotype
-            mask &= wide["Ensembl_Gene_ID"].map(
-                lambda e: canonical_gene_biotype(e) == "protein_coding"
-            )
-        if min_cohort_coverage is not None:
-            cohort_cols = [c for c in wide.columns
-                           if c not in ("Ensembl_Gene_ID", "Symbol")]
-            if cohort_cols:
-                coverage = wide[cohort_cols].notna().sum(axis=1) / len(cohort_cols)
-                mask &= coverage >= min_cohort_coverage
-        return wide[mask].reset_index(drop=True)
-
-    tpm = _select(_pivot("TPM"))
-    clean = _select(_pivot("TPM_clean"))
+    tpm = _select_cohort_view_rows(
+        _pivot("TPM"),
+        protein_coding=protein_coding,
+        min_cohort_coverage=min_cohort_coverage,
+    )
+    clean = _select_cohort_view_rows(
+        _pivot("TPM_clean"),
+        protein_coding=protein_coding,
+        min_cohort_coverage=min_cohort_coverage,
+    )
     # biological inherits clean's gene selection, then drops technical genes.
     biological = drop_technical_genes(clean) if not clean.empty else clean
     prov_cols = ["source_cohort", "processing_pipeline", "n_samples"]
     provenance = (long[[c for c in prov_cols if c in long.columns]]
                   .drop_duplicates().reset_index(drop=True))
     return CohortExpressionViews(tpm, clean, biological, provenance)
+
+
+def cohort_expression_views(
+    cancer_types: Optional[str | Iterable[str]] = None,
+    genes: Optional[Iterable[str]] = None,
+    *,
+    canonicalize_genes: bool = True,
+    protein_coding: bool = False,
+    min_cohort_coverage: Optional[float] = None,
+) -> "CohortExpressionViews":
+    """Bundle a cohort's normalization stages into one
+    :class:`CohortExpressionViews` (tpm / clean_tpm / clean_tpm_biological +
+    provenance) so downstream never re-normalizes inconsistently (#319).
+
+    ``cancer_types`` / ``genes`` are passed through to
+    :func:`cancer_reference_expression` (so aggregate codes like ``SARC`` expand
+    to their subtypes). Values are the per-cohort medians.  By default, rows are
+    canonicalized to one ENSG key before pivoting so cross-release symbol drift
+    cannot split one gene into several sparse rows.  ``protein_coding=True``
+    keeps only protein-coding genes (via the offline authority biotype), and
+    ``min_cohort_coverage`` (0..1) keeps only genes measured in at least that
+    fraction of cohorts — together they yield the dense coding core and skip the
+    mostly-zero non-coding tail.
+    """
+    if min_cohort_coverage is not None and not 0 <= min_cohort_coverage <= 1:
+        raise ValueError("min_cohort_coverage must be between 0 and 1")
+    if canonicalize_genes:
+        precomputed = _cohort_expression_views_from_precomputed(
+            cancer_types,
+            genes,
+            protein_coding=protein_coding,
+            min_cohort_coverage=min_cohort_coverage,
+        )
+        if precomputed is not None:
+            return precomputed
+    return _cohort_expression_views_from_reference(
+        cancer_types,
+        genes,
+        canonicalize_genes=canonicalize_genes,
+        protein_coding=protein_coding,
+        min_cohort_coverage=min_cohort_coverage,
+    )
 
 
 # ---------- accessors: representative per-sample vectors (#312) ----------
@@ -1546,6 +1754,7 @@ def representative_cohort_samples(
         raise ValueError("format must be 'wide' or 'long'")
 
     root = _representatives_root()
+    canonical_baked = _artifact_has_canonical_genes(Path(root))
     available = set(available_representative_cohorts())
     if cancer_types is None:
         codes = sorted(available)
@@ -1555,13 +1764,14 @@ def representative_cohort_samples(
 
     base = ["Ensembl_Gene_ID", "Symbol"]
     wide = None
+    wide_parts = []
     long_parts = []
     for code in codes:
         shard = pd.read_parquet(root / f"{code}.parquet")
         rep_cols = [c for c in shard.columns if c not in base]
         if k is not None:
             rep_cols = rep_cols[:k]
-        if canonicalize_genes:
+        if canonicalize_genes and not canonical_baked:
             from ..gene_canonicalization import canonicalize_gene_table
             shard = canonicalize_gene_table(
                 shard,
@@ -1572,7 +1782,11 @@ def representative_cohort_samples(
             shard[rep_cols] = np.log1p(shard[rep_cols].to_numpy(dtype=float))
         if format == "wide":
             part = shard[base + rep_cols]
-            wide = part if wide is None else wide.merge(part, on=base, how="outer")
+            if canonicalize_genes:
+                wide_parts.append(part.set_index(base))
+            else:
+                wide = part if wide is None else wide.merge(
+                    part, on=base, how="outer")
         else:
             melted = shard[base + rep_cols].melt(
                 id_vars=base, var_name="representative_id", value_name="expression")
@@ -1580,16 +1794,12 @@ def representative_cohort_samples(
             long_parts.append(melted)
 
     if format == "wide":
+        if canonicalize_genes:
+            if not wide_parts:
+                return pd.DataFrame(columns=base)
+            return pd.concat(wide_parts, axis=1).reset_index()
         if wide is None:
             return pd.DataFrame(columns=base)
-        if canonicalize_genes:
-            from ..gene_canonicalization import canonicalize_gene_table
-            rep_cols = [c for c in wide.columns if c not in base]
-            wide = canonicalize_gene_table(
-                wide,
-                value_cols=rep_cols,
-                source_version_col=None,
-            )
         return wide
 
     if not long_parts:

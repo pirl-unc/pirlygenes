@@ -17,8 +17,11 @@ Layout:
     pirlygenes/data/expression_sources.yaml         (registry)
     pirlygenes/data/cancer-reference-expression-samples.csv.gz
 
-  Downloaded (lazy, ~340 MB total, cached locally):
+Downloaded (lazy, expression bundle, cached locally):
     cancer-reference-expression/*.csv.gz            (per-cohort summaries)
+    cancer-reference-expression-views/*.parquet     (precomputed canonical views)
+    cancer-reference-expression-representatives/*.parquet
+    cancer-reference-expression-percentiles/*.parquet
     pan-cancer-expression.csv
     hpa-cell-type-expression.csv
 
@@ -26,6 +29,9 @@ Cache layout (version-pinned so upgrades trigger a re-fetch):
 
   ~/.cache/pirlygenes/bundled_data/v<version>/
     cancer-reference-expression/...
+    cancer-reference-expression-views/...
+    cancer-reference-expression-representatives/...
+    cancer-reference-expression-percentiles/...
     pan-cancer-expression.csv
     hpa-cell-type-expression.csv
 
@@ -72,6 +78,7 @@ RELEASE_URL = (
 # module looks here as a fallback after checking pirlygenes/data/.
 DOWNLOADABLE_PATHS: tuple[str, ...] = (
     "cancer-reference-expression",     # directory of per-source shards
+    "cancer-reference-expression-views",  # precomputed canonical wide views
     "cancer-reference-expression-representatives",  # per-cohort medoid parquets (#312)
     "cancer-reference-expression-percentiles",  # per-gene percentile vectors (#298)
     "pan-cancer-expression.csv",
