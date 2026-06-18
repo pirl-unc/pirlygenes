@@ -51,8 +51,9 @@ The runtime API lives in `pirlygenes.gene_canonicalization`:
 - `validate_canonical_gene_table(...)` raises when a table violates the contract.
 - `canonical_gene_space_report(...)` returns counts and examples without raising.
 - `canonical_gene_id_map()` exposes the versioned bundled static maps — the
-  alt-haplotype/retired alias table and the sequence-identity groups, tagged by
-  `mapping_source`.
+  alt-haplotype/retired alias table and the sequence-identity groups, resolved
+  to the same terminal IDs as `canonical_gene_id()`. If both bundled sources
+  mention a source ID, their `mapping_source` values are combined.
 - `canonical_gene_biotype(ensg)` returns the authority biotype offline, for a
   `protein_coding`-only filter without a live pyensembl install.
 

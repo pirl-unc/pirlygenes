@@ -6,15 +6,17 @@ used to rescue a retired id by its old symbol) otherwise depend on the
 releases happen to be installed locally (the `[index] Loaded … union of N
 releases` log line, and a heavy multi-release install requirement).
 
-This snapshots that ENSG -> symbol map once, at build time, into a small
+This snapshots the human ENSG -> symbol map once, at build time, into a small
 bundled CSV so the runtime canonicalizer needs no live pyensembl install.
-Newest installed release wins per id; releases whose GTF db is missing are
-skipped.
+Newest installed human release wins per id; releases whose GTF db is missing
+are skipped.
 
     python scripts/generate_ensembl_gene_index.py
 """
 
 from __future__ import annotations
+
+import re
 
 import pandas as pd
 
@@ -24,11 +26,15 @@ from pirlygenes.gene_ids import (
 )
 
 OUTPUT = "pirlygenes/data/ensembl-gene-index.csv.gz"
+HUMAN_GENE_ID_RE = re.compile(r"^ENSG\d+(?:\.\d+)?$")
 
 
 def build() -> pd.DataFrame:
     genomes = sorted(
-        collect_all_installed_ensembl_releases(),
+        (
+            g for g in collect_all_installed_ensembl_releases()
+            if g.species.latin_name == "homo_sapiens"
+        ),
         key=lambda g: g.release,
         reverse=True,
     )
@@ -44,6 +50,8 @@ def build() -> pd.DataFrame:
             if not gid:
                 continue
             ensg = strip_version(str(gid))
+            if not HUMAN_GENE_ID_RE.match(ensg):
+                continue
             clean = str(name).strip() if name else ""
             if ensg not in id_to_name and clean:
                 id_to_name[ensg] = clean

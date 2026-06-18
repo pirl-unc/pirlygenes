@@ -45,6 +45,13 @@ def test_canonical_gene_id_map_is_versioned():
     assert m["canonical_gene_id"].notna().all()
 
 
+def test_canonical_gene_id_map_matches_runtime_canonicalizer():
+    m = canonical_gene_id_map()
+    assert not m["source_identifier"].duplicated().any()
+    terminal = m["source_identifier"].map(canonical_gene_id)
+    assert (terminal == m["canonical_gene_id"]).all()
+
+
 def test_canonicalize_gene_table_collapses_same_id_symbol_drift():
     df = pd.DataFrame(
         {
@@ -204,3 +211,11 @@ def test_cross_release_gene_name_is_offline():
     # pyensembl union index, so the cohort canonicalization path is
     # install-independent (#465).
     assert _cross_release_gene_name("ENSG00000141510") == "TP53"
+
+
+def test_nonhuman_ensembl_ids_do_not_symbol_rescue_to_human_genes():
+    from pirlygenes.gene_canonicalization import _cross_release_gene_name
+
+    mouse_tp53 = "ENSMUSG00000059552"
+    assert _cross_release_gene_name(mouse_tp53) is None
+    assert canonical_gene_id(mouse_tp53) is None

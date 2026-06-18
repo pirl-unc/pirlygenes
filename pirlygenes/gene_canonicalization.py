@@ -35,7 +35,7 @@ CANONICAL_GENE_MAP_VERSION = "pirlygenes-gene-canonicalization-v1"
 CANONICAL_PROTEOFORM_MAP_VERSION = "pirlygenes-proteoform-canonicalization-v1"
 CANONICAL_ENSEMBL_RELEASE = 112
 
-_ENSEMBL_GENE_RE = re.compile(r"^ENS[A-Z]*G\d+(?:\.\d+)?$")
+_ENSEMBL_GENE_RE = re.compile(r"^ENSG\d+(?:\.\d+)?$")
 _CANONICAL_ENSG_RE = re.compile(r"^ENSG\d{11}$")
 _ENTREZ_RE = re.compile(r"^\d+$")
 
@@ -421,11 +421,12 @@ def _cross_release_name_map() -> dict[str, str]:
     except ValueError:
         _log.debug("ensembl-gene-index not bundled; using live pyensembl for names")
         return {}
-    return {
-        strip_version(_clean_identifier(ensg)): _clean_identifier(symbol)
-        for ensg, symbol in zip(df["ensembl_gene_id"], df["symbol"])
-        if _clean_identifier(ensg)
-    }
+    out = {}
+    for ensg, symbol in zip(df["ensembl_gene_id"], df["symbol"]):
+        gid = strip_version(_clean_identifier(ensg))
+        if gid and _ENSEMBL_GENE_RE.match(gid):
+            out[gid] = _clean_identifier(symbol)
+    return out
 
 
 def _cross_release_gene_name(ensembl_gene_id: str) -> str | None:
@@ -628,41 +629,62 @@ def canonical_gene_id_map() -> pd.DataFrame:
     :func:`canonical_gene_id` for those. The empty-frame columns are the
     stable schema.
     """
+    columns = [
+        "map_version",
+        "source_identifier",
+        "source_identifier_type",
+        "source_version",
+        "canonical_gene_id",
+        "canonical_symbol",
+        "mapping_source",
+    ]
     try:
         df = get_data("ensembl-id-aliases")
     except ValueError:
-        return pd.DataFrame(
-            columns=[
-                "map_version",
-                "source_identifier",
-                "source_identifier_type",
-                "source_version",
-                "canonical_gene_id",
-                "canonical_symbol",
-                "mapping_source",
-            ]
-        )
-    rows = []
-    for _, row in df.iterrows():
-        src = _clean_identifier(row.get("alt_haplotype_id"))
-        dst = _clean_identifier(row.get("primary_contig_id"))
-        if not src or not dst:
-            continue
-        fallback_symbol = _clean_identifier(row.get("symbol"))
-        canon = _canonicalize_ensembl_gene_id(dst, symbol_hint=fallback_symbol)
-        if canon is None:
-            continue
-        rows.append(
-            {
+        return pd.DataFrame(columns=columns)
+    rows_by_source: dict[str, dict[str, str]] = {}
+
+    def add_row(src: str, fallback_symbol: str, mapping_source: str) -> None:
+        source_id = strip_version(_clean_identifier(src))
+        if not source_id:
+            return
+        canon = canonical_gene_id(source_id, symbol_hint=fallback_symbol)
+        if canon is None or canon == source_id:
+            return
+        existing = rows_by_source.get(source_id)
+        if existing is None:
+            rows_by_source[source_id] = {
                 "map_version": CANONICAL_GENE_MAP_VERSION,
-                "source_identifier": strip_version(src),
+                "source_identifier": source_id,
                 "source_identifier_type": "ensembl_gene_id",
                 "source_version": "",
                 "canonical_gene_id": canon,
-                "canonical_symbol": canonical_gene_symbol(canon, fallback=fallback_symbol),
-                "mapping_source": _clean_identifier(row.get("source")),
+                "canonical_symbol": canonical_gene_symbol(
+                    canon, fallback=fallback_symbol
+                ),
+                "mapping_source": mapping_source,
             }
-        )
+            return
+        if existing["canonical_gene_id"] != canon:
+            raise GeneIdentitySpaceViolation(
+                "canonical map source resolves to conflicting terminal IDs: "
+                f"{source_id} -> {existing['canonical_gene_id']} and {canon}"
+            )
+        sources = {
+            s
+            for s in existing["mapping_source"].split("+")
+            if s
+        }
+        if mapping_source:
+            sources.add(mapping_source)
+        existing["mapping_source"] = "+".join(sorted(sources))
+
+    for _, row in df.iterrows():
+        src = _clean_identifier(row.get("alt_haplotype_id"))
+        if not src:
+            continue
+        fallback_symbol = _clean_identifier(row.get("symbol"))
+        add_row(src, fallback_symbol, _clean_identifier(row.get("source")))
     try:
         seq_df = get_data("sequence-identical-gene-groups")
     except ValueError:
@@ -674,29 +696,15 @@ def canonical_gene_id_map() -> pd.DataFrame:
             if "canonical_symbol" in seq_df.columns
             else [""] * len(seq_df)
         )
-        for member, canon, sym in zip(
-            seq_df["member_ensembl_gene_id"],
-            seq_df["canonical_ensembl_gene_id"],
-            syms,
-        ):
+        for member, sym in zip(seq_df["member_ensembl_gene_id"], syms):
             m = strip_version(_clean_identifier(member))
-            c = strip_version(_clean_identifier(canon))
-            if not m or not c or m == c:
+            if not m:
                 continue
-            rows.append(
-                {
-                    "map_version": CANONICAL_GENE_MAP_VERSION,
-                    "source_identifier": m,
-                    "source_identifier_type": "ensembl_gene_id",
-                    "source_version": "",
-                    "canonical_gene_id": c,
-                    "canonical_symbol": canonical_gene_symbol(
-                        c, fallback=_clean_identifier(sym)
-                    ),
-                    "mapping_source": "sequence_identity",
-                }
-            )
-    return pd.DataFrame(rows)
+            add_row(m, _clean_identifier(sym), "sequence_identity")
+    return pd.DataFrame(
+        sorted(rows_by_source.values(), key=lambda r: r["source_identifier"]),
+        columns=columns,
+    )
 
 
 def canonical_gene_space_report(

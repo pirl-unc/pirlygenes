@@ -129,3 +129,12 @@ def test_views_protein_coding_and_coverage_filters(monkeypatch):
     cov = cohort_expression_views(min_cohort_coverage=1.0)
     # only TP53 is measured in every cohort
     assert cov.clean_tpm["Ensembl_Gene_ID"].tolist() == ["ENSG00000141510"]
+
+
+def test_views_reject_invalid_min_cohort_coverage():
+    import pytest
+
+    with pytest.raises(ValueError, match="min_cohort_coverage"):
+        cohort_expression_views("CLL", min_cohort_coverage=-0.1)
+    with pytest.raises(ValueError, match="min_cohort_coverage"):
+        cohort_expression_views("CLL", min_cohort_coverage=1.1)

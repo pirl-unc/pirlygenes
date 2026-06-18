@@ -1384,6 +1384,8 @@ def cohort_expression_views(
     fraction of cohorts — together they yield the dense coding core and skip the
     mostly-zero non-coding tail.
     """
+    if min_cohort_coverage is not None and not 0 <= min_cohort_coverage <= 1:
+        raise ValueError("min_cohort_coverage must be between 0 and 1")
     long = cancer_reference_expression(
         cancer_types, genes=genes, normalize=["tpm", "tpm_clean"],
         format="long", include_provenance=True)
