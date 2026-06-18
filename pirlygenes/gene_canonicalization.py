@@ -12,8 +12,10 @@ canonicalize their own inputs without importing a particular ingest path.
 
 from __future__ import annotations
 
+import logging
 import math
 import re
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
@@ -36,6 +38,8 @@ CANONICAL_ENSEMBL_RELEASE = 112
 _ENSEMBL_GENE_RE = re.compile(r"^ENS[A-Z]*G\d+(?:\.\d+)?$")
 _CANONICAL_ENSG_RE = re.compile(r"^ENSG\d{11}$")
 _ENTREZ_RE = re.compile(r"^\d+$")
+
+_log = logging.getLogger(__name__)
 
 
 class GeneIdentitySpaceViolation(ValueError):
@@ -136,22 +140,73 @@ def _gene_id_from_pyensembl(gene) -> str | None:
 
 
 @lru_cache(maxsize=1)
-def _canonical_release_maps() -> dict[str, object]:
-    """Return ID/symbol maps for the pinned Ensembl authority release.
+def _canonical_reference_frame():
+    """Bundled offline snapshot of the authority release's gene table, or None.
 
-    Release 112 is the authority because the packaged reference sources claim
-    to have been harmonized there.  If that release is unavailable in a local
-    environment, fall back to the newest usable installed human release so the
-    API remains usable rather than failing at import time.
+    ``canonical-gene-reference.csv.gz`` (built by
+    ``scripts/generate_canonical_gene_reference.py``) is one row per
+    unversioned authority gene: ``ensembl_gene_id, symbol, contig, biotype``.
     """
+    try:
+        df = get_data("canonical-gene-reference")
+    except ValueError:
+        # Snapshot not bundled in this build (e.g. a dev tree before regen);
+        # _canonical_release_maps falls back to live pyensembl with a warning.
+        _log.debug("canonical-gene-reference snapshot not bundled")
+        return None
+    return df if df is not None and not df.empty else None
+
+
+def _maps_from_reference() -> dict[str, object] | None:
+    df = _canonical_reference_frame()
+    if df is None:
+        return None
+    ids: set[str] = set()
+    symbol_to_ids: dict[str, set[str]] = defaultdict(set)
+    contig: dict[str, str] = {}
+    biotype: dict[str, str] = {}
+    for ensg, sym, ctg, bt in zip(
+        df["ensembl_gene_id"], df["symbol"], df["contig"], df["biotype"]
+    ):
+        gid = strip_version(_clean_identifier(ensg))
+        if not gid:
+            continue
+        ids.add(gid)
+        name = _clean_identifier(sym)
+        if name:
+            symbol_to_ids[name.upper()].add(gid)
+        contig[gid] = _clean_identifier(ctg)
+        biotype[gid] = _clean_identifier(bt)
+    unique_symbol_to_id = {
+        symbol: next(iter(gids))
+        for symbol, gids in symbol_to_ids.items()
+        if len(gids) == 1
+    }
+    return {
+        "release": CANONICAL_ENSEMBL_RELEASE,
+        "ids": frozenset(ids),
+        "unique_symbol_to_id": unique_symbol_to_id,
+        "contig": contig,
+        "biotype": biotype,
+    }
+
+
+def _empty_maps() -> dict[str, object]:
+    return {
+        "release": None,
+        "ids": frozenset(),
+        "unique_symbol_to_id": {},
+        "contig": {},
+        "biotype": {},
+    }
+
+
+def _maps_from_pyensembl() -> dict[str, object]:
+    """Fallback used only when the bundled reference snapshot is absent."""
     try:
         from .gene_ids import genomes
     except Exception:
-        return {
-            "release": None,
-            "ids": frozenset(),
-            "unique_symbol_to_id": {},
-        }
+        return _empty_maps()
 
     preferred = [
         g for g in genomes if getattr(g, "release", None) == CANONICAL_ENSEMBL_RELEASE
@@ -166,11 +221,7 @@ def _canonical_release_maps() -> dict[str, object]:
             ).fetchall()
         except Exception:
             continue
-        ids = {
-            strip_version(gid)
-            for gid, _name in rows
-            if gid
-        }
+        ids = {strip_version(gid) for gid, _name in rows if gid}
         if len(ids) < 50_000:
             continue
         symbol_to_ids: dict[str, set[str]] = defaultdict(set)
@@ -178,24 +229,67 @@ def _canonical_release_maps() -> dict[str, object]:
             if gid and name:
                 symbol_to_ids[str(name).strip().upper()].add(strip_version(gid))
         unique_symbol_to_id = {
-            symbol: next(iter(symbol_ids))
-            for symbol, symbol_ids in symbol_to_ids.items()
-            if len(symbol_ids) == 1
+            symbol: next(iter(gids))
+            for symbol, gids in symbol_to_ids.items()
+            if len(gids) == 1
         }
+        chosen = getattr(genome, "release", None)
+        warnings.warn(
+            f"canonical gene authority fell back to live Ensembl release "
+            f"{chosen}: the bundled reference snapshot is missing. Regenerate "
+            f"`pirlygenes/data/canonical-gene-reference.csv.gz` "
+            f"(scripts/generate_canonical_gene_reference.py) for the pinned, "
+            f"reproducible authority.",
+            stacklevel=2,
+        )
         return {
-            "release": getattr(genome, "release", None),
+            "release": chosen,
             "ids": frozenset(ids),
             "unique_symbol_to_id": unique_symbol_to_id,
+            "contig": {},
+            "biotype": {},
         }
-    return {
-        "release": None,
-        "ids": frozenset(),
-        "unique_symbol_to_id": {},
-    }
+    return _empty_maps()
+
+
+@lru_cache(maxsize=1)
+def _canonical_release_maps() -> dict[str, object]:
+    """ID / symbol / contig / biotype maps for the canonical authority release.
+
+    Prefers the bundled offline snapshot
+    (``pirlygenes/data/canonical-gene-reference.csv.gz``, release
+    :data:`CANONICAL_ENSEMBL_RELEASE`) so canonicalization does not depend on
+    which pyensembl releases are installed at runtime.  Falls back to a live
+    pyensembl release (with a warning) only if that snapshot is absent.
+    """
+    return _maps_from_reference() or _maps_from_pyensembl()
 
 
 def _authority_gene_ids() -> frozenset[str]:
     return cast(frozenset[str], _canonical_release_maps()["ids"])
+
+
+def canonical_authority_release() -> int | None:
+    """The Ensembl release actually used as the canonical-gene authority.
+
+    Normally :data:`CANONICAL_ENSEMBL_RELEASE`; it differs (with a warning)
+    only when the bundled reference is missing and a live release is used, so
+    callers and tests can assert the authority instead of trusting it silently.
+    """
+    return cast("int | None", _canonical_release_maps()["release"])
+
+
+def canonical_gene_biotype(ensembl_gene_id: str) -> str | None:
+    """Authority-release biotype of a canonical gene (offline), or None.
+
+    Sourced from the bundled canonical-gene reference, so a biotype filter
+    (e.g. ``protein_coding`` only) needs no live pyensembl install.
+    """
+    gid = strip_version(_clean_identifier(ensembl_gene_id))
+    if not gid:
+        return None
+    biotype = cast(dict, _canonical_release_maps().get("biotype", {})).get(gid)
+    return biotype or None
 
 
 def _authority_gene_id_for_symbol(symbol: str) -> str | None:
@@ -224,7 +318,8 @@ def _ensembl_alias_maps() -> tuple[dict[str, str], dict[str, str]]:
     """
     try:
         df = get_data("ensembl-id-aliases")
-    except Exception:
+    except ValueError:
+        _log.debug("ensembl-id-aliases not bundled")
         return {}, {}
 
     alias_to_canonical: dict[str, str] = {}
@@ -243,27 +338,111 @@ def _ensembl_alias_maps() -> tuple[dict[str, str], dict[str, str]]:
     return alias_to_canonical, canonical_to_symbol
 
 
+@lru_cache(maxsize=1)
+def _sequence_identity_map() -> dict[str, str]:
+    """``member ENSG -> canonical ENSG`` for byte-identical-cDNA gene groups.
+
+    Folds alt-haplotype copies and multi-copy non-coding RNA families (``U6``,
+    ``Y_RNA``, ``Metazoa_SRP`` …) onto one representative so the existing
+    sum-collapse adds their TPM.  Built offline by
+    ``scripts/generate_sequence_identical_gene_groups.py``.
+    """
+    try:
+        df = get_data("sequence-identical-gene-groups")
+    except ValueError:
+        _log.debug("sequence-identical-gene-groups not bundled; skipping collapse")
+        return {}
+    out: dict[str, str] = {}
+    for member, canonical in zip(
+        df["member_ensembl_gene_id"], df["canonical_ensembl_gene_id"]
+    ):
+        m = strip_version(_clean_identifier(member))
+        c = strip_version(_clean_identifier(canonical))
+        if m and c and m != c:
+            out[m] = c
+    return out
+
+
+@lru_cache(maxsize=1)
+def _combined_canonical_map() -> dict[str, str]:
+    """``id -> terminal canonical`` over the union of the alt-haplotype/retired
+    alias edges and the byte-identical-sequence edges (#465).
+
+    The two maps form one equivalence relation — a sequence representative may
+    itself be an alias, and an alias target may be a sequence member — so we
+    take their transitive closure once (union-find) and pick a single
+    representative per class, preferring an authority-release id then the
+    smallest stable id. Every related id then resolves to the same terminal
+    canonical in a single lookup, with no order-dependent iterated resolution
+    at call time.
+    """
+    alias_to_canonical, _ = _ensembl_alias_maps()
+    seq_map = _sequence_identity_map()
+    edges = list(alias_to_canonical.items()) + list(seq_map.items())
+    if not edges:
+        return {}
+
+    parent: dict[str, str] = {}
+
+    def find(node: str) -> str:
+        parent.setdefault(node, node)
+        root = node
+        while parent[root] != root:
+            root = parent[root]
+        while parent[node] != root:
+            parent[node], node = root, parent[node]
+        return root
+
+    def union(a: str, b: str) -> None:
+        parent[find(a)] = find(b)
+
+    for src, dst in edges:
+        union(src, dst)
+
+    components: dict[str, list[str]] = defaultdict(list)
+    for node in list(parent):
+        components[find(node)].append(node)
+
+    authority_ids = _authority_gene_ids()
+    out: dict[str, str] = {}
+    for members in components.values():
+        rep = min(members, key=lambda e: (e not in authority_ids, e))
+        for member in members:
+            if member != rep:
+                out[member] = rep
+    return out
+
+
 def _canonicalize_ensembl_gene_id(
     gene_id: str,
     *,
     symbol_hint: str | None = None,
 ) -> str | None:
     sid = strip_version(gene_id)
-    alias_to_canonical, symbol_hints = _ensembl_alias_maps()
-    mapped = alias_to_canonical.get(sid, sid)
+    _, symbol_hints = _ensembl_alias_maps()
+    # One lookup into the precomputed alias+sequence equivalence closure: every
+    # id in a class lands on the same terminal canonical (#465).
+    mapped = _combined_canonical_map().get(sid, sid)
+    collapsed = mapped != sid
     authority_ids = _authority_gene_ids()
-    if not authority_ids:
-        return mapped
-    if mapped in authority_ids:
+    if not authority_ids or mapped in authority_ids:
         return mapped
 
-    candidate_symbols = [
-        symbol_hint,
-        symbol_hints.get(mapped),
-        symbol_hints.get(sid),
-        find_gene_name_from_ensembl_gene_id(mapped),
-        find_gene_name_from_ensembl_gene_id(sid),
-    ]
+    # Symbol rescue for ids still outside the authority release (e.g. a retired
+    # id whose successor shares its symbol). When the id was collapsed by the
+    # equivalence closure, rescue on the representative only, so every member of
+    # a class converges on the same authority target.
+    if collapsed:
+        candidate_symbols = [
+            symbol_hints.get(mapped),
+            find_gene_name_from_ensembl_gene_id(mapped),
+        ]
+    else:
+        candidate_symbols = [
+            symbol_hint,
+            symbol_hints.get(sid),
+            find_gene_name_from_ensembl_gene_id(sid),
+        ]
     seen: set[str] = set()
     for symbol in candidate_symbols:
         clean = _clean_identifier(symbol)
@@ -273,7 +452,11 @@ def _canonicalize_ensembl_gene_id(
         target = _authority_gene_id_for_symbol(clean)
         if target:
             return target
-    return None
+    # Keep-as-self: a well-formed Ensembl gene id always keeps a unique
+    # canonical id instead of being dropped (#465). Genes absent from the
+    # authority release (alt-haplotype, multi-copy ncRNA, retired-without-
+    # successor) survive with the ENSG itself as their display symbol.
+    return mapped
 
 
 @lru_cache(maxsize=1)
@@ -404,10 +587,19 @@ def canonical_gene_symbol(ensembl_gene_id: str, fallback: str | None = None) -> 
 
 
 def canonical_gene_id_map() -> pd.DataFrame:
-    """Versioned table of bundled source-ID aliases to canonical ENSGs."""
+    """Versioned table of the bundled static source-ID -> canonical-ENSG maps.
+
+    Materialises the two *offline* mapping sources — the Ensembl
+    alt-haplotype/retired alias table and the byte-identical-sequence collapse
+    groups — distinguished by ``mapping_source``. Dynamic resolution that
+    depends on installed pyensembl/NCBI data (authority-release symbol rescue,
+    NCBI synonyms, Entrez) is *not* materialised here; call
+    :func:`canonical_gene_id` for those. The empty-frame columns are the
+    stable schema.
+    """
     try:
         df = get_data("ensembl-id-aliases")
-    except Exception:
+    except ValueError:
         return pd.DataFrame(
             columns=[
                 "map_version",
@@ -440,6 +632,39 @@ def canonical_gene_id_map() -> pd.DataFrame:
                 "mapping_source": _clean_identifier(row.get("source")),
             }
         )
+    try:
+        seq_df = get_data("sequence-identical-gene-groups")
+    except ValueError:
+        _log.debug("sequence-identical-gene-groups not bundled; alias-only map")
+        seq_df = None
+    if seq_df is not None and not seq_df.empty:
+        syms = (
+            seq_df["canonical_symbol"]
+            if "canonical_symbol" in seq_df.columns
+            else [""] * len(seq_df)
+        )
+        for member, canon, sym in zip(
+            seq_df["member_ensembl_gene_id"],
+            seq_df["canonical_ensembl_gene_id"],
+            syms,
+        ):
+            m = strip_version(_clean_identifier(member))
+            c = strip_version(_clean_identifier(canon))
+            if not m or not c or m == c:
+                continue
+            rows.append(
+                {
+                    "map_version": CANONICAL_GENE_MAP_VERSION,
+                    "source_identifier": m,
+                    "source_identifier_type": "ensembl_gene_id",
+                    "source_version": "",
+                    "canonical_gene_id": c,
+                    "canonical_symbol": canonical_gene_symbol(
+                        c, fallback=_clean_identifier(sym)
+                    ),
+                    "mapping_source": "sequence_identity",
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -467,11 +692,11 @@ def canonical_gene_space_report(
     ids = df[id_col].map(_clean_identifier)
     nonempty = ids.ne("")
     versioned = ids.str.contains(r"\.\d+$", regex=True, na=False)
-    authority_ids = _authority_gene_ids()
-    if authority_ids:
-        valid_gene_ids = ids.isin(authority_ids)
-    else:
-        valid_gene_ids = ids.str.match(_CANONICAL_ENSG_RE, na=False)
+    # A well-formed unversioned human ENSG is a valid gene-space key even when
+    # it is absent from the pinned authority release: keep-as-self genes (#465)
+    # must not be flagged invalid. The authority release governs symbol rescue
+    # and merge targets, not row admissibility.
+    valid_gene_ids = ids.str.match(_CANONICAL_ENSG_RE, na=False)
     if allow_proteoform_ids:
         known_proteoforms = _known_proteoform_ids()
         invalid = ~(
@@ -763,6 +988,8 @@ __all__ = [
     "GeneIdentitySpaceViolation",
     "canonical_gene_id",
     "canonical_gene_symbol",
+    "canonical_authority_release",
+    "canonical_gene_biotype",
     "canonical_gene_id_map",
     "canonical_gene_space_report",
     "canonicalize_gene_table",

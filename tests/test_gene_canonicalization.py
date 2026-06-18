@@ -3,8 +3,11 @@ import pandas as pd
 import pytest
 
 from pirlygenes.gene_canonicalization import (
+    CANONICAL_ENSEMBL_RELEASE,
     CANONICAL_GENE_MAP_VERSION,
     GeneIdentitySpaceViolation,
+    canonical_authority_release,
+    canonical_gene_biotype,
     canonical_gene_id,
     canonical_gene_id_map,
     canonical_gene_space_report,
@@ -124,17 +127,58 @@ def test_report_surfaces_raw_ensg_symbols_without_failing_by_default():
         validate_canonical_gene_table(df, forbid_symbol_fallback_ids=True)
 
 
-def test_validate_catches_ids_outside_authority_release():
+def test_keep_as_self_accepts_well_formed_ensg_outside_authority():
+    # A well-formed unversioned ENSG is a valid gene-space key even when it is
+    # absent from the pinned authority release: keep-as-self genes (#465) are
+    # kept, not dropped or flagged invalid.
     df = pd.DataFrame(
         {
             "Ensembl_Gene_ID": ["ENSG00000999999"],
-            "Symbol": ["made_up_gene"],
+            "Symbol": ["MADEUP"],
         }
     )
+    report = canonical_gene_space_report(df)
+    assert report.n_invalid_ids == 0
+    validate_canonical_gene_table(df)  # does not raise
+
+
+def test_validate_catches_malformed_gene_ids():
+    df = pd.DataFrame({"Ensembl_Gene_ID": ["not-an-ensg"], "Symbol": ["x"]})
     report = canonical_gene_space_report(df)
     assert report.n_invalid_ids == 1
     with pytest.raises(GeneIdentitySpaceViolation, match="outside"):
         validate_canonical_gene_table(df)
+
+
+def test_keep_as_self_never_drops_well_formed_ensg():
+    # canonical_gene_id keeps a well-formed ENSG (version-stripped) rather than
+    # returning None, which canonicalize_gene_table would drop.
+    assert canonical_gene_id("ENSG00000999999") == "ENSG00000999999"
+    assert canonical_gene_id("ENSG00000999999.4") == "ENSG00000999999"
+
+
+def test_canonical_authority_release_is_pinned():
+    # The authority is the bundled offline snapshot's release, not whatever
+    # pyensembl happens to be installed locally.
+    assert canonical_authority_release() == CANONICAL_ENSEMBL_RELEASE
+
+
+def test_canonical_gene_biotype_is_offline():
+    assert canonical_gene_biotype("ENSG00000141510") == "protein_coding"  # TP53
+    assert canonical_gene_biotype("ENSG00000999999") is None
+
+
+def test_sequence_identity_group_members_collapse_consistently():
+    groups = get_data("sequence-identical-gene-groups")
+    if groups.empty:
+        pytest.skip("sequence-identical-gene-groups not bundled")
+    # Every member of a byte-identical-sequence group resolves to the same
+    # terminal canonical as its recorded representative — the alias+sequence
+    # equivalence closure must not fragment a group (#465).
+    sample = groups.head(200)
+    member_terminal = sample["member_ensembl_gene_id"].map(canonical_gene_id)
+    repr_terminal = sample["canonical_ensembl_gene_id"].map(canonical_gene_id)
+    assert (member_terminal == repr_terminal).all()
 
 
 def test_canonical_proteoform_id_uses_existing_protein_space():

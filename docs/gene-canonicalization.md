@@ -12,7 +12,11 @@ tables.
   `ENSG00000141510`.
 - The authority release is `pirlygenes.CANONICAL_ENSEMBL_RELEASE`, currently
   Ensembl release 112, because the packaged references claim to have been
-  harmonized there.
+  harmonized there. It is loaded from a bundled offline snapshot
+  (`pirlygenes/data/canonical-gene-reference.csv.gz`: id, symbol, contig,
+  biotype), so canonicalization does not depend on which pyensembl releases are
+  installed at runtime. `canonical_authority_release()` reports the release
+  actually in effect.
 - `Symbol` is display metadata only. It is never part of a join key.
 - A canonicalized expression table has at most one row per
   `(Ensembl_Gene_ID, context...)`, where context is the caller's declared
@@ -20,12 +24,21 @@ tables.
 - If multiple source rows map to the same canonical gene inside one context,
   linear expression values are summed with `min_count=1`; all-missing stays
   missing.
-- Version suffixes (`.17`), raw source IDs, IDs outside the authority release,
-  and synthetic proteoform keys are not valid gene-space keys.
-- Source rows that cannot be mapped into the authority release are quarantined
-  by default by `canonicalize_gene_table(..., drop_unmapped=True)`. Keeping them
-  requires an explicit opt-out and should be followed by
-  `canonical_gene_space_report(...)`.
+- Version suffixes (`.17`), non-Ensembl / malformed ids, and synthetic
+  proteoform keys are not valid gene-space keys. A well-formed unversioned ENSG
+  *is* valid even when absent from the authority release (see keep-as-self
+  below); the authority governs symbol rescue and merge targets, not row
+  admissibility.
+- Keep-as-self: every well-formed ENSG resolves to a stable canonical id rather
+  than being dropped. Genes outside the authority release (alt-haplotype,
+  multi-copy ncRNA, retired-without-successor) survive with the ENSG itself as
+  their display symbol.
+- Multiple representations of one sequence collapse to a single id. Byte-
+  identical-cDNA loci (alt-haplotype copies and multi-copy ncRNA families like
+  `U6` / `Y_RNA`) plus the curated alt-haplotype/retired aliases form one
+  equivalence class (union-find over
+  `scripts/generate_sequence_identical_gene_groups.py` output and the bundled
+  alias table); members sum their TPM onto one representative.
 
 The runtime API lives in `pirlygenes.gene_canonicalization`:
 
@@ -37,7 +50,11 @@ The runtime API lives in `pirlygenes.gene_canonicalization`:
 - `canonicalize_gene_table(...)` rewrites and collapses a table into that space.
 - `validate_canonical_gene_table(...)` raises when a table violates the contract.
 - `canonical_gene_space_report(...)` returns counts and examples without raising.
-- `canonical_gene_id_map()` exposes the versioned bundled alias map.
+- `canonical_gene_id_map()` exposes the versioned bundled static maps — the
+  alt-haplotype/retired alias table and the sequence-identity groups, tagged by
+  `mapping_source`.
+- `canonical_gene_biotype(ensg)` returns the authority biotype offline, for a
+  `protein_coding`-only filter without a live pyensembl install.
 
 `source_version` is part of the API even when the current bundled runtime map does
 not need it for every lookup. Callers should pass it, because release-specific
