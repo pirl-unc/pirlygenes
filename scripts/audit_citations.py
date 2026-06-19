@@ -46,14 +46,27 @@ FILES = {
     "cancer-frameshift-burden": dict(col="pmid_doi"),
     "therapy-response-signatures": dict(col="refs"),
     "ffpe-sensitive-markers": dict(col="refs"),
+    "housekeeping-genes": dict(col="Reference"),
+    "surface-proteins": dict(col="Source"),
     "cancer-family-panels": dict(col="reference"),
     "cancer-compartment-panels": dict(col="reference"),
     "cancer-supertype-panels": dict(col="reference"),
     "cancer-type-discriminators": dict(col="source"),
-    "cancer-viral-antigens": dict(col="source"),
+    "cancer-viral-antigens": dict(col=[
+        "source",
+        "association_source",
+        "integration_source",
+        "antigen_expression_source",
+        "targetability_source",
+    ]),
+    "degenerate-subtype-pairs": dict(col="refs"),
+    "fusion-surrogate-expression": dict(col="refs"),
     "fusion-expression-effects": dict(col="source"),
     "mutation-expression-effects": dict(col="source"),
+    "rare-cancer-rna-surrogates": dict(col="source"),
     "rare-cancer-fusion-rules": dict(col="source"),
+    "TCR-T-approved": dict(col="pmid_doi"),
+    "TCR-T-trials": dict(col="pmid_doi"),
 }
 
 # row-identifying columns, first match wins
@@ -136,53 +149,59 @@ def audit_file(stem: str, spec: dict) -> list[dict]:
     rows = list(csv.DictReader(path.open(newline="")))
     cols = rows[0].keys() if rows else []
     keycol = next((k for k in KEY_COLS if k in cols), None)
-    citecol = spec["col"]
+    citecols = spec["col"] if isinstance(spec["col"], list) else [spec["col"]]
+    citecol_set = set(citecols)
     pmids = []
     for r in rows:
-        r["_pmid"] = _pmid(r.get(citecol, ""))
-        if r["_pmid"]:
-            pmids.append(r["_pmid"])
+        r["_pmids"] = {}
+        for citecol in citecols:
+            pid = _pmid(r.get(citecol, ""))
+            r["_pmids"][citecol] = pid
+            if pid:
+                pmids.append(pid)
     titles = esummary(sorted(set(pmids))) if pmids else {}
 
     results = []
     for r in rows:
-        pid = r["_pmid"]
         key = (r.get(keycol, "") if keycol
                else f"{r.get('gene_5prime','')}-{r.get('gene_3prime','')}")
-        raw = str(r.get(citecol, "")).strip()
-        if not pid:
-            # legitimate non-PMID citation forms: DOI, PMCID, a GEO/SRA/array
-            # accession (data source), or an explicit curation placeholder.
-            non_pmid = re.search(
-                r"10\.\d{4}|PMC\d|GSE\d|GSM\d|SRP\d|E-MTAB|curated_literature",
-                raw, re.I)
-            verdict = "OK_NO_PMID" if (not raw or non_pmid) else "UNPARSEABLE"
-            results.append(dict(file=stem, key=key, pmid=raw, verdict=verdict,
-                                title="", claim=""))
-            continue
-        rec = titles.get(pid)
         claim = " ".join(str(v) for k, v in r.items()
-                         if k not in (citecol, "_pmid"))
-        if rec is None:
-            results.append(dict(file=stem, key=key, pmid=pid,
-                                verdict="NONEXISTENT", title="", claim=claim[:80]))
-            continue
-        verdicts = []
-        exp_a, exp_y = _clean_surname_year(r.get(spec.get("source_col", ""), ""))
-        consortium = any(c in (r.get(spec.get("source_col", ""), "") + " "
-                               + rec["authors_l"]).lower() for c in CONSORTIA)
-        if not consortium:
-            if exp_y and rec["year"] and exp_y != rec["year"]:
-                verdicts.append(f"YEAR {rec['year']}≠{exp_y}")
-            if exp_a and exp_a not in rec["authors_l"]:
-                verdicts.append(f"AUTHOR≠{exp_a}")
-        shared = (_tokens(claim) & _tokens(rec["title"])) | (
-            _tokens(rec["title"]) & ONCO_TERMS)
-        if not shared:
-            verdicts.append("TOPIC_NONE")
-        results.append(dict(file=stem, key=key, pmid=pid,
-                            verdict=";".join(verdicts) if verdicts else "ok",
-                            title=rec["title"], claim=claim[:80]))
+                         if k not in citecol_set and not k.startswith("_"))
+        for citecol in citecols:
+            result_file = stem if len(citecols) == 1 else f"{stem}.{citecol}"
+            pid = r["_pmids"][citecol]
+            raw = str(r.get(citecol, "")).strip()
+            if not pid:
+                # legitimate non-PMID citation forms: DOI, PMCID, a GEO/SRA/array
+                # accession (data source), or an explicit curation placeholder.
+                non_pmid = re.search(
+                    r"10\.\d{4}|PMC\d|GSE\d|GSM\d|SRP\d|E-MTAB|curated_literature",
+                    raw, re.I)
+                verdict = "OK_NO_PMID" if (not raw or non_pmid) else "UNPARSEABLE"
+                results.append(dict(file=result_file, key=key, pmid=raw,
+                                    verdict=verdict, title="", claim=""))
+                continue
+            rec = titles.get(pid)
+            if rec is None:
+                results.append(dict(file=result_file, key=key, pmid=pid,
+                                    verdict="NONEXISTENT", title="", claim=claim[:80]))
+                continue
+            verdicts = []
+            exp_a, exp_y = _clean_surname_year(r.get(spec.get("source_col", ""), ""))
+            consortium = any(c in (r.get(spec.get("source_col", ""), "") + " "
+                                   + rec["authors_l"]).lower() for c in CONSORTIA)
+            if not consortium:
+                if exp_y and rec["year"] and exp_y != rec["year"]:
+                    verdicts.append(f"YEAR {rec['year']}≠{exp_y}")
+                if exp_a and exp_a not in rec["authors_l"]:
+                    verdicts.append(f"AUTHOR≠{exp_a}")
+            shared = (_tokens(claim) & _tokens(rec["title"])) | (
+                _tokens(rec["title"]) & ONCO_TERMS)
+            if not shared:
+                verdicts.append("TOPIC_NONE")
+            results.append(dict(file=result_file, key=key, pmid=pid,
+                                verdict=";".join(verdicts) if verdicts else "ok",
+                                title=rec["title"], claim=claim[:80]))
     return results
 
 

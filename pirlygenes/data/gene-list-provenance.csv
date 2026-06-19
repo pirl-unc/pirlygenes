@@ -1,0 +1,21 @@
+table_name,provenance_type,source_id,source_anchor,notes
+cancer-type-genes,internal_curated,,row-level sources pending,Curated cancer marker/driver membership; add row-level literature/database provenance before treating as source-verified.
+cancer-driver-genes,internal_curated,,row-level sources pending,Curated cancer driver gene table; source-specific driver database release provenance is not yet encoded.
+cancer-driver-variants,internal_curated,,row-level sources pending,Curated driver variant list; variant-level source database/literature provenance is not yet encoded.
+gene-sets,internal_rule,,category definitions,Small pathway/category lists curated as internal rule sets.
+narrative-gene-sets,internal_rule,,narrative rule definitions,Named narrative panels curated for disease-state reporting; row-level source anchors pending.
+stem-cell-marker-panels,literature_curated,,row-level sources pending,Stem/cell-state marker panels curated from literature; marker-level source anchors pending.
+tme-markers,literature_curated,,row-level sources pending,TME cell-type marker table; marker-level source anchors pending.
+ADC-approved,label_or_regulatory_curated,,drug approvals,Approved ADC target table curated from labels/regulatory approvals; label tokens pending.
+CAR-T-approved,label_or_regulatory_curated,,drug approvals,Approved CAR-T target table curated from labels/regulatory approvals; label tokens pending.
+bispecific-antibodies-approved,label_or_regulatory_curated,,drug approvals,Approved bispecific target table curated from labels/regulatory approvals; label tokens pending.
+multispecific-tcell-engager-trials,trial_registry_curated,,clinical development table,Multispecific T-cell engager target table curated from trial/development records; registry tokens pending.
+radioligand-targets,label_or_literature_curated,,target status buckets,Radioligand target table curated from labels and clinical literature; row-level tokens pending.
+histone-genes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived gene family table; excluded from literature PMID audits.
+hemoglobin-genes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived gene family table; excluded from literature PMID audits.
+immune-receptor-segments,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived IG/TR segment table; excluded from literature PMID audits.
+ribosomal-protein-genes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived gene family table; excluded from literature PMID audits.
+ribosomal-protein-pseudogenes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived gene family table; excluded from literature PMID audits.
+rrna-and-pseudogenes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived RNA/pseudogene table; excluded from literature PMID audits.
+numt-pseudogenes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived NUMT pseudogene table; excluded from literature PMID audits.
+small-noncoding-rnas,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived small noncoding RNA table; excluded from literature PMID audits.

@@ -8,9 +8,8 @@ citation columns below must be one or more of:
 
     PMID:<digits>  |  DOI:<...>  |  10.<...> (bare DOI)  |  GSE<digits> (GEO source)
 
-joined by ';' when a row cites more than one. Free-text bibliographic columns
-(housekeeping-genes.Reference, TCR-T-*.Reference) use a different, legitimate
-prose style and are intentionally out of scope.
+    joined by ';' when a row cites more than one. Free-text bibliography columns
+    can still exist for display, but normalized companion columns are tested here.
 """
 
 import re
@@ -30,9 +29,22 @@ STRUCTURED_CITATION_COLUMNS = [
     ("cancer-compartment-panels", "reference"),
     ("cancer-supertype-panels", "reference"),
     ("cancer-type-discriminators", "source"),
+    ("cancer-viral-antigens", "source"),
+    ("cancer-viral-antigens", "association_source"),
+    ("cancer-viral-antigens", "integration_source"),
+    ("cancer-viral-antigens", "antigen_expression_source"),
+    ("cancer-viral-antigens", "targetability_source"),
+    ("degenerate-subtype-pairs", "refs"),
+    ("fusion-surrogate-expression", "refs"),
+    ("housekeeping-genes", "Reference"),
+    ("surface-proteins", "Source"),
+    ("TCR-T-approved", "pmid_doi"),
+    ("TCR-T-trials", "pmid_doi"),
 ]
 
-_TOKEN = re.compile(r"^(PMID:\d{6,9}|DOI:\S+|10\.\d{4,}/\S+|GSE\d+)$")
+_TOKEN = re.compile(
+    r"^(PMID:\d{6,9}|DOI:\S+|10\.\d{4,}/\S+|GSE\d+|NCT\d{8}|UMIN\d{9})$"
+)
 
 
 def _well_formed(value: str) -> bool:

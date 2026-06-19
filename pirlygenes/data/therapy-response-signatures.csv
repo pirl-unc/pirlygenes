@@ -1,114 +1,114 @@
-symbol,ensembl_gene_id,therapy_class,direction,mechanism,cancer_context,strength,refs
-KLK3,ENSG00000142515,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:19632176
-KLK2,ENSG00000167751,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:19632176
-TMPRSS2,ENSG00000184012,AR_signaling,up,AR-transactivated (TMPRSS2-ERG fusion driver),PRAD,canonical,PMID:16254181
-NKX3-1,ENSG00000167034,AR_signaling,up,AR-transactivated homeobox tumor suppressor,PRAD,canonical,PMID:18557759
-FKBP5,ENSG00000096060,AR_signaling,up,AR-transactivated chaperone,PRAD,canonical,PMID:19632176
-STEAP4,ENSG00000127954,AR_signaling,up,AR-transactivated,PRAD,supported,
-NDRG1,ENSG00000104419,AR_signaling,up,AR-transactivated,PRAD,supported,
-PMEPA1,ENSG00000124225,AR_signaling,up,AR-transactivated,PRAD,supported,
-SLC45A3,ENSG00000158715,AR_signaling,up,AR-transactivated prostein,PRAD,supported,
-ACPP,ENSG00000014257,AR_signaling,up,AR-transactivated (PAP),PRAD,canonical,
-AR,ENSG00000169083,AR_signaling,up,Receptor itself; stable to moderate AR blockade but lost on potent inhibition,PRAD,canonical,
-FOLH1,ENSG00000086205,AR_signaling,down,AR-suppressed / ADT-upregulated (PSMA),PRAD,canonical,PMID:38558458
-CHGA,ENSG00000100604,AR_signaling,down,NE-lineage emergence under sustained AR blockade,PRAD,emerging,PMID:34290447
-SYP,ENSG00000102003,AR_signaling,down,NE differentiation marker,PRAD,emerging,PMID:34290447
-ENO2,ENSG00000111674,AR_signaling,down,Neuronal enolase — NE differentiation,PRAD,emerging,PMID:34290447
-NCAM1,ENSG00000149294,AR_signaling,down,NE differentiation marker,PRAD,emerging,
-ASCL1,ENSG00000139352,AR_signaling,down,NE-lineage transcription factor,PRAD,emerging,PMID:34290447
-ESR1,ENSG00000091831,ER_signaling,up,Estrogen receptor — target and driver,BRCA,canonical,
-PGR,ENSG00000082175,ER_signaling,up,Classic ER-transactivated,BRCA,canonical,
-TFF1,ENSG00000160182,ER_signaling,up,ER-transactivated (pS2),BRCA,canonical,PMID:18543253
-GREB1,ENSG00000196208,ER_signaling,up,ER-transactivated (highly ER-dependent),BRCA,canonical,PMID:15986123
-CCND1,ENSG00000110092,ER_signaling,up,ER-transactivated cyclin D1,BRCA,supported,
-MYB,ENSG00000118513,ER_signaling,up,ER-transactivated,BRCA,supported,
-ERBB2,ENSG00000141736,HER2_signaling,up,HER2 amplification / receptor overexpression,BRCA,canonical,PMID:22149876
-GRB7,ENSG00000141738,HER2_signaling,up,Co-amplified with ERBB2,BRCA,canonical,PMID:22149876
-STARD3,ENSG00000131748,HER2_signaling,up,Co-amplified (17q12 amplicon),BRCA,canonical,PMID:22149876
-PNMT,ENSG00000141744,HER2_signaling,up,Co-amplified (17q12 amplicon),BRCA,supported,
-PHLDA1,ENSG00000139289,MAPK_EGFR_signaling,up,MPAS downstream MAPK/ERK transcriptional output,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4
-SPRY2,ENSG00000136158,MAPK_EGFR_signaling,up,MPAS MAPK-transcribed feedback regulator,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4
-SPRY4,ENSG00000187678,MAPK_EGFR_signaling,up,MPAS MAPK-transcribed feedback regulator,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4
-DUSP4,ENSG00000120875,MAPK_EGFR_signaling,up,MPAS dual-specificity phosphatase feedback,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4
-DUSP6,ENSG00000139318,MAPK_EGFR_signaling,up,MPAS dual-specificity phosphatase feedback,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4;PMID:29872725
-CCND1,ENSG00000110092,MAPK_EGFR_signaling,up,MPAS MAPK-linked cell-cycle output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4
-EPHA2,ENSG00000142627,MAPK_EGFR_signaling,up,MPAS MAPK-associated receptor output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4
-EPHA4,ENSG00000116106,MAPK_EGFR_signaling,up,MPAS MAPK-associated receptor output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4
-ETV4,ENSG00000175832,MAPK_EGFR_signaling,up,MPAS PEA3-family MAPK transcriptional output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4
-ETV5,ENSG00000244405,MAPK_EGFR_signaling,up,MPAS PEA3-family MAPK transcriptional output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4
-CHGA,ENSG00000100604,NE_differentiation,up,NE / small-cell lineage marker,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447
-SYP,ENSG00000102003,NE_differentiation,up,NE / small-cell lineage marker,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447
-ENO2,ENSG00000111674,NE_differentiation,up,Neuronal enolase,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447
-INSM1,ENSG00000173404,NE_differentiation,up,NE transcription factor,PRAD;LUSC;LUAD;NBL,canonical,PMID:29438167
-ASCL1,ENSG00000139352,NE_differentiation,up,NE-lineage TF,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447
-POU3F2,ENSG00000184486,NE_differentiation,up,NE-lineage TF (Brn2),PRAD;LUSC;LUAD;NBL,canonical,
-NEUROD1,ENSG00000162992,NE_differentiation,up,NE-lineage TF,LUSC;LUAD;NBL,canonical,PMID:34290447
-NCAM1,ENSG00000149294,NE_differentiation,up,NE surface marker (CD56),PRAD;LUSC;LUAD;NBL,canonical,
-VIM,ENSG00000026025,EMT,up,Mesenchymal intermediate filament,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
-FN1,ENSG00000115414,EMT,up,Extracellular matrix (also high in CAFs),BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
-CDH2,ENSG00000170558,EMT,up,N-cadherin cadherin switch,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
-SNAI1,ENSG00000124216,EMT,up,EMT TF (Snail),BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
-SNAI2,ENSG00000019549,EMT,up,EMT TF (Slug),BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
-ZEB1,ENSG00000148516,EMT,up,EMT TF,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
-ZEB2,ENSG00000169554,EMT,up,EMT TF,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
-TWIST1,ENSG00000122691,EMT,up,EMT TF,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
-CDH1,ENSG00000039068,EMT,down,E-cadherin — epithelial marker lost in EMT,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
-EPCAM,ENSG00000119888,EMT,down,Epithelial marker lost in EMT,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669
-CA9,ENSG00000107159,hypoxia,up,HIF-transactivated carbonic anhydrase,pan_cancer,canonical,PMID:11752456
-VEGFA,ENSG00000112715,hypoxia,up,HIF-transactivated,pan_cancer,canonical,PMID:11752456
-SLC2A1,ENSG00000117394,hypoxia,up,HIF-transactivated (GLUT1),pan_cancer,canonical,PMID:11752456
-PGK1,ENSG00000102144,hypoxia,up,HIF-transactivated glycolysis gene,pan_cancer,supported,
-LDHA,ENSG00000134333,hypoxia,up,HIF-transactivated,pan_cancer,supported,
-NDRG1,ENSG00000104419,hypoxia,up,HIF-transactivated,pan_cancer,supported,
-BNIP3,ENSG00000176171,hypoxia,up,HIF-transactivated pro-autophagic,pan_cancer,supported,
-ISG15,ENSG00000187608,IFN_response,up,IFN-stimulated gene (ISG),pan_cancer,canonical,
-IFIT1,ENSG00000185745,IFN_response,up,IFN-stimulated antiviral,pan_cancer,canonical,
-IFIT3,ENSG00000119917,IFN_response,up,IFN-stimulated antiviral,pan_cancer,canonical,
-MX1,ENSG00000157601,IFN_response,up,IFN-stimulated (Mx1),pan_cancer,canonical,
-OAS1,ENSG00000089127,IFN_response,up,IFN-stimulated (2-5A synthetase),pan_cancer,canonical,
-OAS2,ENSG00000111335,IFN_response,up,IFN-stimulated (2-5A synthetase),pan_cancer,canonical,
-STAT1,ENSG00000115415,IFN_response,up,IFN-signal transducer,pan_cancer,canonical,
-IRF7,ENSG00000185507,IFN_response,up,IFN-regulatory factor,pan_cancer,canonical,
-CXCL10,ENSG00000169245,IFN_response,up,IFN-stimulated chemokine,pan_cancer,canonical,
-CXCL9,ENSG00000138755,IFN_response,up,IFN-stimulated chemokine,pan_cancer,canonical,
-TGFB2,ENSG00000092969,aPD1_exclusion_TGFb_response,up,TGF-beta2 ligand; stromal T-cell-exclusion cytokine,pan_cancer,supported,PMID:29443960
-WNT11,ENSG00000085741,aPD1_exclusion_Wnt,up,non-canonical Wnt ligand; T-cell-excluded phenotype,pan_cancer,emerging,PMID:25970248
-DKK1,ENSG00000107984,aPD1_exclusion_Wnt,up,Wnt modulator (DKK1); immunosuppressive in T-cell-excluded tumors,pan_cancer,emerging,PMID:25970248
-AXIN2,ENSG00000168646,aPD1_exclusion_Wnt_target,up,beta-catenin transcriptional target; true Wnt-ON activation readout (vs ligand/CTNNB1 level),pan_cancer,supported,PMID:25970248
-LGR5,ENSG00000139292,aPD1_exclusion_Wnt_target,up,beta-catenin target; stem/Wnt-active marker,pan_cancer,supported,PMID:25970248
-NKD1,ENSG00000140807,aPD1_exclusion_Wnt_target,up,beta-catenin negative-feedback target; Wnt-ON marker,pan_cancer,emerging,PMID:25970248
-RNF43,ENSG00000108375,aPD1_exclusion_Wnt_target,up,beta-catenin target E3 ligase; Wnt-ON marker,pan_cancer,emerging,PMID:25970248
-NOTUM,ENSG00000185269,aPD1_exclusion_Wnt_target,up,beta-catenin target; secreted Wnt feedback; Wnt-ON marker,pan_cancer,emerging,PMID:25970248
-SP5,ENSG00000204335,aPD1_exclusion_Wnt_target,up,beta-catenin target transcription factor,pan_cancer,emerging,PMID:25970248
-TBX3,ENSG00000135111,aPD1_exclusion_Wnt_target,up,beta-catenin target; Wnt-active (HCC),pan_cancer,emerging,PMID:25970248
-LECT2,ENSG00000145826,aPD1_exclusion_Wnt_target,up,beta-catenin-target hepatokine; Wnt-active HCC,pan_cancer,emerging,PMID:25970248
-VEGFA,ENSG00000112715,aPD1_exclusion_angiogenesis,up,VEGF-A; abnormal vasculature + T-cell exclusion; anti-VEGF+ICB synergy (RCC/HCC/endometrial),pan_cancer,supported,PMID:25601652
-KDR,ENSG00000128052,aPD1_exclusion_angiogenesis,up,VEGFR2; angiogenic endothelium,pan_cancer,supported,PMID:25601652
-ANGPT2,ENSG00000091879,aPD1_exclusion_angiogenesis,up,angiopoietin-2; vascular destabilization and immunosuppression,pan_cancer,emerging,PMID:25601652
-PECAM1,ENSG00000261371,aPD1_exclusion_angiogenesis,up,CD31 endothelial content; vascular barrier proxy,pan_cancer,emerging,PMID:25601652
-ESM1,ENSG00000164283,aPD1_exclusion_angiogenesis,up,endocan; endothelial tip-cell/angiogenesis marker,pan_cancer,emerging,PMID:25601652
-ENTPD1,ENSG00000138185,aPD1_exclusion_adenosine,up,CD39; ATP-to-AMP first step of immunosuppressive adenosine,pan_cancer,supported,DOI:10.1038/nrc.2017.86
-NT5E,ENSG00000135318,aPD1_exclusion_adenosine,up,CD73; AMP-to-adenosine; suppresses CD8 effector function,pan_cancer,supported,DOI:10.1038/nrc.2017.86
-ADORA2A,ENSG00000128271,aPD1_exclusion_adenosine,up,adenosine A2A receptor; T-cell suppression,pan_cancer,emerging,DOI:10.1038/nrc.2017.86
-ADORA2B,ENSG00000170425,aPD1_exclusion_adenosine,up,adenosine A2B receptor; myeloid immunosuppression,pan_cancer,emerging,DOI:10.1038/nrc.2017.86
-B2M,ENSG00000166710,aPD1_antigen_presentation,up,beta-2-microglobulin; MHC-I light chain; loss is a canonical aPD1 resistance mechanism,pan_cancer,canonical,PMID:29070816
-HLA-A,ENSG00000206503,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,PMID:29070816
-HLA-B,ENSG00000234745,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,PMID:29070816
-HLA-C,ENSG00000204525,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,PMID:29070816
-TAP1,ENSG00000168394,aPD1_antigen_presentation,up,peptide transporter; antigen processing (IFN-inducible),pan_cancer,canonical,PMID:29070816
-TAP2,ENSG00000204267,aPD1_antigen_presentation,up,peptide transporter; antigen processing,pan_cancer,canonical,PMID:29070816
-TAPBP,ENSG00000231925,aPD1_antigen_presentation,up,tapasin; MHC-I peptide loading,pan_cancer,supported,PMID:29070816
-NLRC5,ENSG00000140853,aPD1_antigen_presentation,up,master transcriptional activator of MHC-I genes,pan_cancer,supported,PMID:29070816
-PSMB8,ENSG00000204264,aPD1_antigen_presentation,up,immunoproteasome subunit LMP7,pan_cancer,supported,PMID:29070816
-PSMB9,ENSG00000240065,aPD1_antigen_presentation,up,immunoproteasome subunit LMP2,pan_cancer,supported,PMID:29070816
-HLA-E,ENSG00000204592,aPD1_antigen_presentation,up,non-classical MHC-I; NK inhibitory ligand (context-dependent),pan_cancer,emerging,PMID:29070816
-HLA-F,ENSG00000204642,aPD1_antigen_presentation,up,non-classical MHC-I,pan_cancer,emerging,PMID:29070816
-CD274,ENSG00000120217,aPD1_circular_checkpoints,up,PD-L1; IFN-induced; a READOUT of ongoing immune engagement (not causal),pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504
-IDO1,ENSG00000131203,aPD1_circular_checkpoints,up,IFN-induced tryptophan catabolism; response readout (not causal),pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504
-LAG3,ENSG00000089692,aPD1_circular_checkpoints,up,exhaustion checkpoint; infiltrate readout,pan_cancer,supported,DOI:10.1126/scitranslmed.3006504
-HAVCR2,ENSG00000135077,aPD1_circular_checkpoints,up,TIM-3 exhaustion checkpoint; infiltrate readout,pan_cancer,supported,DOI:10.1126/scitranslmed.3006504
-PDCD1,ENSG00000188389,aPD1_circular_checkpoints,up,PD-1; T-cell exhaustion; infiltrate readout,pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504
-FOXP3,ENSG00000049768,aPD1_circular_treg,up,regulatory T-cell master TF; suppressive-infiltrate readout (not causal),pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504
-CTLA4,ENSG00000163599,aPD1_circular_treg,up,Treg/activation checkpoint; infiltrate readout,pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504
-IL2RA,ENSG00000134460,aPD1_circular_treg,up,CD25; Treg marker,pan_cancer,supported,DOI:10.1126/scitranslmed.3006504
-IKZF2,ENSG00000030419,aPD1_circular_treg,up,Helios; Treg stability marker,pan_cancer,emerging,DOI:10.1126/scitranslmed.3006504
+symbol,ensembl_gene_id,therapy_class,direction,mechanism,cancer_context,strength,refs,support_type,source_anchor
+KLK3,ENSG00000142515,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:19632176,mechanism_or_marker_support,
+KLK2,ENSG00000167751,AR_signaling,up,AR-transactivated,PRAD,canonical,PMID:19632176,mechanism_or_marker_support,
+TMPRSS2,ENSG00000184012,AR_signaling,up,AR-transactivated (TMPRSS2-ERG fusion driver),PRAD,canonical,PMID:16254181,mechanism_or_marker_support,
+NKX3-1,ENSG00000167034,AR_signaling,up,AR-transactivated homeobox tumor suppressor,PRAD,canonical,PMID:18557759,mechanism_or_marker_support,
+FKBP5,ENSG00000096060,AR_signaling,up,AR-transactivated chaperone,PRAD,canonical,PMID:19632176,mechanism_or_marker_support,
+STEAP4,ENSG00000127954,AR_signaling,up,AR-transactivated,PRAD,supported,,uncited_curated,
+NDRG1,ENSG00000104419,AR_signaling,up,AR-transactivated,PRAD,supported,,uncited_curated,
+PMEPA1,ENSG00000124225,AR_signaling,up,AR-transactivated,PRAD,supported,,uncited_curated,
+SLC45A3,ENSG00000158715,AR_signaling,up,AR-transactivated prostein,PRAD,supported,,uncited_curated,
+ACPP,ENSG00000014257,AR_signaling,up,AR-transactivated (PAP),PRAD,canonical,,uncited_curated,
+AR,ENSG00000169083,AR_signaling,up,Receptor itself; stable to moderate AR blockade but lost on potent inhibition,PRAD,canonical,,uncited_curated,
+FOLH1,ENSG00000086205,AR_signaling,down,AR-suppressed / ADT-upregulated (PSMA),PRAD,canonical,PMID:38558458,mechanism_or_marker_support,
+CHGA,ENSG00000100604,AR_signaling,down,NE-lineage emergence under sustained AR blockade,PRAD,emerging,PMID:34290447,mechanism_or_marker_support,
+SYP,ENSG00000102003,AR_signaling,down,NE differentiation marker,PRAD,emerging,PMID:34290447,mechanism_or_marker_support,
+ENO2,ENSG00000111674,AR_signaling,down,Neuronal enolase — NE differentiation,PRAD,emerging,PMID:34290447,mechanism_or_marker_support,
+NCAM1,ENSG00000149294,AR_signaling,down,NE differentiation marker,PRAD,emerging,,uncited_curated,
+ASCL1,ENSG00000139352,AR_signaling,down,NE-lineage transcription factor,PRAD,emerging,PMID:34290447,mechanism_or_marker_support,
+ESR1,ENSG00000091831,ER_signaling,up,Estrogen receptor — target and driver,BRCA,canonical,,uncited_curated,
+PGR,ENSG00000082175,ER_signaling,up,Classic ER-transactivated,BRCA,canonical,,uncited_curated,
+TFF1,ENSG00000160182,ER_signaling,up,ER-transactivated (pS2),BRCA,canonical,PMID:18543253,mechanism_or_marker_support,
+GREB1,ENSG00000196208,ER_signaling,up,ER-transactivated (highly ER-dependent),BRCA,canonical,PMID:15986123,mechanism_or_marker_support,
+CCND1,ENSG00000110092,ER_signaling,up,ER-transactivated cyclin D1,BRCA,supported,,uncited_curated,
+MYB,ENSG00000118513,ER_signaling,up,ER-transactivated,BRCA,supported,,uncited_curated,
+ERBB2,ENSG00000141736,HER2_signaling,up,HER2 amplification / receptor overexpression,BRCA,canonical,PMID:23000897,genomic_signature,TCGA breast integrated subtype/HER2-enriched amplification context
+GRB7,ENSG00000141738,HER2_signaling,up,Co-amplified with ERBB2,BRCA,canonical,PMID:23000897,genomic_signature,TCGA breast integrated subtype/HER2-enriched amplification context
+STARD3,ENSG00000131748,HER2_signaling,up,Co-amplified (17q12 amplicon),BRCA,canonical,PMID:23000897,genomic_signature,TCGA breast integrated subtype/HER2-enriched amplification context
+PNMT,ENSG00000141744,HER2_signaling,up,Co-amplified (17q12 amplicon),BRCA,supported,PMID:23000897,genomic_signature,TCGA breast integrated subtype/HER2-enriched amplification context
+PHLDA1,ENSG00000139289,MAPK_EGFR_signaling,up,MPAS downstream MAPK/ERK transcriptional output,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4,mechanism_or_marker_support,
+SPRY2,ENSG00000136158,MAPK_EGFR_signaling,up,MPAS MAPK-transcribed feedback regulator,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4,mechanism_or_marker_support,
+SPRY4,ENSG00000187678,MAPK_EGFR_signaling,up,MPAS MAPK-transcribed feedback regulator,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4,mechanism_or_marker_support,
+DUSP4,ENSG00000120875,MAPK_EGFR_signaling,up,MPAS dual-specificity phosphatase feedback,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4,mechanism_or_marker_support,
+DUSP6,ENSG00000139318,MAPK_EGFR_signaling,up,MPAS dual-specificity phosphatase feedback,pan_cancer,canonical,DOI:10.1038/s41698-018-0051-4;PMID:29872725,mechanism_or_marker_support,
+CCND1,ENSG00000110092,MAPK_EGFR_signaling,up,MPAS MAPK-linked cell-cycle output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4,mechanism_or_marker_support,
+EPHA2,ENSG00000142627,MAPK_EGFR_signaling,up,MPAS MAPK-associated receptor output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4,mechanism_or_marker_support,
+EPHA4,ENSG00000116106,MAPK_EGFR_signaling,up,MPAS MAPK-associated receptor output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4,mechanism_or_marker_support,
+ETV4,ENSG00000175832,MAPK_EGFR_signaling,up,MPAS PEA3-family MAPK transcriptional output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4,mechanism_or_marker_support,
+ETV5,ENSG00000244405,MAPK_EGFR_signaling,up,MPAS PEA3-family MAPK transcriptional output,pan_cancer,supported,DOI:10.1038/s41698-018-0051-4,mechanism_or_marker_support,
+CHGA,ENSG00000100604,NE_differentiation,up,NE / small-cell lineage marker,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447,mechanism_or_marker_support,
+SYP,ENSG00000102003,NE_differentiation,up,NE / small-cell lineage marker,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447,mechanism_or_marker_support,
+ENO2,ENSG00000111674,NE_differentiation,up,Neuronal enolase,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447,mechanism_or_marker_support,
+INSM1,ENSG00000173404,NE_differentiation,up,NE transcription factor,PRAD;LUSC;LUAD;NBL,canonical,PMID:29438167,mechanism_or_marker_support,
+ASCL1,ENSG00000139352,NE_differentiation,up,NE-lineage TF,PRAD;LUSC;LUAD;NBL,canonical,PMID:34290447,mechanism_or_marker_support,
+POU3F2,ENSG00000184486,NE_differentiation,up,NE-lineage TF (Brn2),PRAD;LUSC;LUAD;NBL,canonical,,uncited_curated,
+NEUROD1,ENSG00000162992,NE_differentiation,up,NE-lineage TF,LUSC;LUAD;NBL,canonical,PMID:34290447,mechanism_or_marker_support,
+NCAM1,ENSG00000149294,NE_differentiation,up,NE surface marker (CD56),PRAD;LUSC;LUAD;NBL,canonical,,uncited_curated,
+VIM,ENSG00000026025,EMT,up,Mesenchymal intermediate filament,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669,mechanism_or_marker_support,
+FN1,ENSG00000115414,EMT,up,Extracellular matrix (also high in CAFs),BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669,mechanism_or_marker_support,
+CDH2,ENSG00000170558,EMT,up,N-cadherin cadherin switch,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669,mechanism_or_marker_support,
+SNAI1,ENSG00000124216,EMT,up,EMT TF (Snail),BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669,mechanism_or_marker_support,
+SNAI2,ENSG00000019549,EMT,up,EMT TF (Slug),BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669,mechanism_or_marker_support,
+ZEB1,ENSG00000148516,EMT,up,EMT TF,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669,mechanism_or_marker_support,
+ZEB2,ENSG00000169554,EMT,up,EMT TF,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669,mechanism_or_marker_support,
+TWIST1,ENSG00000122691,EMT,up,EMT TF,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669,mechanism_or_marker_support,
+CDH1,ENSG00000039068,EMT,down,E-cadherin — epithelial marker lost in EMT,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669,mechanism_or_marker_support,
+EPCAM,ENSG00000119888,EMT,down,Epithelial marker lost in EMT,BRCA;LUAD;COAD;PRAD;SKCM,canonical,PMID:19153669,mechanism_or_marker_support,
+CA9,ENSG00000107159,hypoxia,up,HIF-transactivated carbonic anhydrase,pan_cancer,canonical,PMID:11752456,pathway_signature,HIF/hypoxia target gene marker; needs source-local target-gene anchor
+VEGFA,ENSG00000112715,hypoxia,up,HIF-transactivated,pan_cancer,canonical,PMID:11752456,pathway_signature,HIF/hypoxia target gene marker; needs source-local target-gene anchor
+SLC2A1,ENSG00000117394,hypoxia,up,HIF-transactivated (GLUT1),pan_cancer,canonical,PMID:11752456,pathway_signature,HIF/hypoxia target gene marker; needs source-local target-gene anchor
+PGK1,ENSG00000102144,hypoxia,up,HIF-transactivated glycolysis gene,pan_cancer,supported,,pathway_signature,HIF/hypoxia target gene marker; needs source-local target-gene anchor
+LDHA,ENSG00000134333,hypoxia,up,HIF-transactivated,pan_cancer,supported,,pathway_signature,HIF/hypoxia target gene marker; needs source-local target-gene anchor
+NDRG1,ENSG00000104419,hypoxia,up,HIF-transactivated,pan_cancer,supported,,pathway_signature,HIF/hypoxia target gene marker; needs source-local target-gene anchor
+BNIP3,ENSG00000176171,hypoxia,up,HIF-transactivated pro-autophagic,pan_cancer,supported,,pathway_signature,HIF/hypoxia target gene marker; needs source-local target-gene anchor
+ISG15,ENSG00000187608,IFN_response,up,IFN-stimulated gene (ISG),pan_cancer,canonical,,uncited_curated,
+IFIT1,ENSG00000185745,IFN_response,up,IFN-stimulated antiviral,pan_cancer,canonical,,uncited_curated,
+IFIT3,ENSG00000119917,IFN_response,up,IFN-stimulated antiviral,pan_cancer,canonical,,uncited_curated,
+MX1,ENSG00000157601,IFN_response,up,IFN-stimulated (Mx1),pan_cancer,canonical,,uncited_curated,
+OAS1,ENSG00000089127,IFN_response,up,IFN-stimulated (2-5A synthetase),pan_cancer,canonical,,uncited_curated,
+OAS2,ENSG00000111335,IFN_response,up,IFN-stimulated (2-5A synthetase),pan_cancer,canonical,,uncited_curated,
+STAT1,ENSG00000115415,IFN_response,up,IFN-signal transducer,pan_cancer,canonical,,uncited_curated,
+IRF7,ENSG00000185507,IFN_response,up,IFN-regulatory factor,pan_cancer,canonical,,uncited_curated,
+CXCL10,ENSG00000169245,IFN_response,up,IFN-stimulated chemokine,pan_cancer,canonical,,uncited_curated,
+CXCL9,ENSG00000138755,IFN_response,up,IFN-stimulated chemokine,pan_cancer,canonical,,uncited_curated,
+TGFB2,ENSG00000092969,aPD1_exclusion_TGFb_response,up,TGF-beta2 ligand; stromal T-cell-exclusion cytokine,pan_cancer,supported,PMID:29443960,mechanism_or_marker_support,
+WNT11,ENSG00000085741,aPD1_exclusion_Wnt,up,non-canonical Wnt ligand; T-cell-excluded phenotype,pan_cancer,emerging,PMID:25970248,pathway_mechanism_not_exact_gene_set,beta-catenin immune-exclusion mechanism; exact Wnt target gene set needs separate anchor
+DKK1,ENSG00000107984,aPD1_exclusion_Wnt,up,Wnt modulator (DKK1); immunosuppressive in T-cell-excluded tumors,pan_cancer,emerging,PMID:25970248,pathway_mechanism_not_exact_gene_set,beta-catenin immune-exclusion mechanism; exact Wnt target gene set needs separate anchor
+AXIN2,ENSG00000168646,aPD1_exclusion_Wnt_target,up,beta-catenin transcriptional target; true Wnt-ON activation readout (vs ligand/CTNNB1 level),pan_cancer,supported,PMID:25970248,pathway_mechanism_not_exact_gene_set,beta-catenin immune-exclusion mechanism; exact Wnt target gene set needs separate anchor
+LGR5,ENSG00000139292,aPD1_exclusion_Wnt_target,up,beta-catenin target; stem/Wnt-active marker,pan_cancer,supported,PMID:25970248,pathway_mechanism_not_exact_gene_set,beta-catenin immune-exclusion mechanism; exact Wnt target gene set needs separate anchor
+NKD1,ENSG00000140807,aPD1_exclusion_Wnt_target,up,beta-catenin negative-feedback target; Wnt-ON marker,pan_cancer,emerging,PMID:25970248,pathway_mechanism_not_exact_gene_set,beta-catenin immune-exclusion mechanism; exact Wnt target gene set needs separate anchor
+RNF43,ENSG00000108375,aPD1_exclusion_Wnt_target,up,beta-catenin target E3 ligase; Wnt-ON marker,pan_cancer,emerging,PMID:25970248,pathway_mechanism_not_exact_gene_set,beta-catenin immune-exclusion mechanism; exact Wnt target gene set needs separate anchor
+NOTUM,ENSG00000185269,aPD1_exclusion_Wnt_target,up,beta-catenin target; secreted Wnt feedback; Wnt-ON marker,pan_cancer,emerging,PMID:25970248,pathway_mechanism_not_exact_gene_set,beta-catenin immune-exclusion mechanism; exact Wnt target gene set needs separate anchor
+SP5,ENSG00000204335,aPD1_exclusion_Wnt_target,up,beta-catenin target transcription factor,pan_cancer,emerging,PMID:25970248,pathway_mechanism_not_exact_gene_set,beta-catenin immune-exclusion mechanism; exact Wnt target gene set needs separate anchor
+TBX3,ENSG00000135111,aPD1_exclusion_Wnt_target,up,beta-catenin target; Wnt-active (HCC),pan_cancer,emerging,PMID:25970248,pathway_mechanism_not_exact_gene_set,beta-catenin immune-exclusion mechanism; exact Wnt target gene set needs separate anchor
+LECT2,ENSG00000145826,aPD1_exclusion_Wnt_target,up,beta-catenin-target hepatokine; Wnt-active HCC,pan_cancer,emerging,PMID:25970248,pathway_mechanism_not_exact_gene_set,beta-catenin immune-exclusion mechanism; exact Wnt target gene set needs separate anchor
+VEGFA,ENSG00000112715,aPD1_exclusion_angiogenesis,up,VEGF-A; abnormal vasculature + T-cell exclusion; anti-VEGF+ICB synergy (RCC/HCC/endometrial),pan_cancer,supported,PMID:25601652,mechanism_plus_marker_proxy,VEGFA checkpoint mechanism; endothelial marker list needs angiogenesis signature anchor
+KDR,ENSG00000128052,aPD1_exclusion_angiogenesis,up,VEGFR2; angiogenic endothelium,pan_cancer,supported,PMID:25601652,mechanism_plus_marker_proxy,VEGFA checkpoint mechanism; endothelial marker list needs angiogenesis signature anchor
+ANGPT2,ENSG00000091879,aPD1_exclusion_angiogenesis,up,angiopoietin-2; vascular destabilization and immunosuppression,pan_cancer,emerging,PMID:25601652,mechanism_plus_marker_proxy,VEGFA checkpoint mechanism; endothelial marker list needs angiogenesis signature anchor
+PECAM1,ENSG00000261371,aPD1_exclusion_angiogenesis,up,CD31 endothelial content; vascular barrier proxy,pan_cancer,emerging,PMID:25601652,mechanism_plus_marker_proxy,VEGFA checkpoint mechanism; endothelial marker list needs angiogenesis signature anchor
+ESM1,ENSG00000164283,aPD1_exclusion_angiogenesis,up,endocan; endothelial tip-cell/angiogenesis marker,pan_cancer,emerging,PMID:25601652,mechanism_plus_marker_proxy,VEGFA checkpoint mechanism; endothelial marker list needs angiogenesis signature anchor
+ENTPD1,ENSG00000138185,aPD1_exclusion_adenosine,up,CD39; ATP-to-AMP first step of immunosuppressive adenosine,pan_cancer,supported,DOI:10.1038/nrc.2017.86,mechanism_or_marker_support,
+NT5E,ENSG00000135318,aPD1_exclusion_adenosine,up,CD73; AMP-to-adenosine; suppresses CD8 effector function,pan_cancer,supported,DOI:10.1038/nrc.2017.86,mechanism_or_marker_support,
+ADORA2A,ENSG00000128271,aPD1_exclusion_adenosine,up,adenosine A2A receptor; T-cell suppression,pan_cancer,emerging,DOI:10.1038/nrc.2017.86,mechanism_or_marker_support,
+ADORA2B,ENSG00000170425,aPD1_exclusion_adenosine,up,adenosine A2B receptor; myeloid immunosuppression,pan_cancer,emerging,DOI:10.1038/nrc.2017.86,mechanism_or_marker_support,
+B2M,ENSG00000166710,aPD1_antigen_presentation,up,beta-2-microglobulin; MHC-I light chain; loss is a canonical aPD1 resistance mechanism,pan_cancer,canonical,PMID:29070816,mechanism_or_marker_support,
+HLA-A,ENSG00000206503,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,PMID:29070816,mechanism_or_marker_support,
+HLA-B,ENSG00000234745,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,PMID:29070816,mechanism_or_marker_support,
+HLA-C,ENSG00000204525,aPD1_antigen_presentation,up,MHC class I heavy chain (IFN-inducible),pan_cancer,canonical,PMID:29070816,mechanism_or_marker_support,
+TAP1,ENSG00000168394,aPD1_antigen_presentation,up,peptide transporter; antigen processing (IFN-inducible),pan_cancer,canonical,PMID:29070816,mechanism_or_marker_support,
+TAP2,ENSG00000204267,aPD1_antigen_presentation,up,peptide transporter; antigen processing,pan_cancer,canonical,PMID:29070816,mechanism_or_marker_support,
+TAPBP,ENSG00000231925,aPD1_antigen_presentation,up,tapasin; MHC-I peptide loading,pan_cancer,supported,PMID:29070816,mechanism_or_marker_support,
+NLRC5,ENSG00000140853,aPD1_antigen_presentation,up,master transcriptional activator of MHC-I genes,pan_cancer,supported,PMID:29070816,mechanism_or_marker_support,
+PSMB8,ENSG00000204264,aPD1_antigen_presentation,up,immunoproteasome subunit LMP7,pan_cancer,supported,PMID:29070816,mechanism_or_marker_support,
+PSMB9,ENSG00000240065,aPD1_antigen_presentation,up,immunoproteasome subunit LMP2,pan_cancer,supported,PMID:29070816,mechanism_or_marker_support,
+HLA-E,ENSG00000204592,aPD1_antigen_presentation,up,non-classical MHC-I; NK inhibitory ligand (context-dependent),pan_cancer,emerging,PMID:29070816,mechanism_or_marker_support,
+HLA-F,ENSG00000204642,aPD1_antigen_presentation,up,non-classical MHC-I,pan_cancer,emerging,PMID:29070816,mechanism_or_marker_support,
+CD274,ENSG00000120217,aPD1_circular_checkpoints,up,PD-L1; IFN-induced; a READOUT of ongoing immune engagement (not causal),pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504,mechanism_or_marker_support,
+IDO1,ENSG00000131203,aPD1_circular_checkpoints,up,IFN-induced tryptophan catabolism; response readout (not causal),pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504,mechanism_or_marker_support,
+LAG3,ENSG00000089692,aPD1_circular_checkpoints,up,exhaustion checkpoint; infiltrate readout,pan_cancer,supported,DOI:10.1126/scitranslmed.3006504,mechanism_or_marker_support,
+HAVCR2,ENSG00000135077,aPD1_circular_checkpoints,up,TIM-3 exhaustion checkpoint; infiltrate readout,pan_cancer,supported,DOI:10.1126/scitranslmed.3006504,mechanism_or_marker_support,
+PDCD1,ENSG00000188389,aPD1_circular_checkpoints,up,PD-1; T-cell exhaustion; infiltrate readout,pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504,mechanism_or_marker_support,
+FOXP3,ENSG00000049768,aPD1_circular_treg,up,regulatory T-cell master TF; suppressive-infiltrate readout (not causal),pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504,mechanism_or_marker_support,
+CTLA4,ENSG00000163599,aPD1_circular_treg,up,Treg/activation checkpoint; infiltrate readout,pan_cancer,canonical,DOI:10.1126/scitranslmed.3006504,mechanism_or_marker_support,
+IL2RA,ENSG00000134460,aPD1_circular_treg,up,CD25; Treg marker,pan_cancer,supported,DOI:10.1126/scitranslmed.3006504,mechanism_or_marker_support,
+IKZF2,ENSG00000030419,aPD1_circular_treg,up,Helios; Treg stability marker,pan_cancer,emerging,DOI:10.1126/scitranslmed.3006504,mechanism_or_marker_support,

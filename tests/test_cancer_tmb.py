@@ -14,6 +14,9 @@ _EXPECTED_COLS = [
     "pmid_doi",
     "confidence",
     "notes",
+    "estimate_type",
+    "source_scope",
+    "missing_reason",
 ]
 
 
@@ -65,6 +68,27 @@ def test_every_value_is_cited():
             assert row.confidence in {"high", "medium", "low"}
         else:
             assert row.confidence == "none"
+            assert isinstance(row.missing_reason, str) and row.missing_reason.strip()
+
+
+def test_estimate_provenance_is_structured():
+    df = cancer_tmb_df()
+    allowed = {
+        "published_median",
+        "approximate_literature",
+        "panel_inferred",
+        "small_n",
+        "order_of_magnitude",
+        "unknown",
+    }
+    assert set(df["estimate_type"].dropna()) <= allowed
+    blanks = df[df["median_tmb_mut_mb"].isna()]
+    assert set(blanks["estimate_type"]) == {"unknown"}
+    assert blanks["missing_reason"].astype(str).str.len().gt(0).all()
+
+    net = df[df["cancer_code"].isin(["NET_MIDGUT", "NET_RECTAL"])]
+    assert net["median_tmb_mut_mb"].isna().all()
+    assert set(net["source_scope"]) == {"source_rejected_for_site_specific_value"}
 
 
 def test_accessor_map_omits_blanks():

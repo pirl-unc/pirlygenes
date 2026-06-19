@@ -165,6 +165,6 @@ def test_coverage_report():
     # TMB is complete except the documented single-driver heme neoplasms with no
     # reliable entity-median TMB (CML BCR-ABL / MPN JAK2-CALR-MPL) - deliberately
     # blank per the oncology-table lit audit, NOT fabricated.
-    _TMB_IRREDUCIBLE = {"CML", "MPN"}
+    _TMB_IRREDUCIBLE = {"CML", "MPN", "NET_MIDGUT", "NET_RECTAL"}
     assert (real_top - tmb_ct) <= _TMB_IRREDUCIBLE, \
         f"real types missing TMB (beyond documented blanks): {sorted(real_top - tmb_ct - _TMB_IRREDUCIBLE)}"

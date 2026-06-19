@@ -1,12 +1,12 @@
-Supertype,display_name,Symbol,Ensembl_Gene_ID,role,source,reference
-SQUAMOUS_PROGRAM,Squamous program,TP63,ENSG00000073282,anchor,tumor,PMID:25631445
-SQUAMOUS_PROGRAM,Squamous program,KRT5,ENSG00000186081,anchor,tumor,PMID:25631445
-SQUAMOUS_PROGRAM,Squamous program,KRT6A,ENSG00000205420,anchor,tumor,PMID:25631445
-SQUAMOUS_PROGRAM,Squamous program,DSG3,ENSG00000134757,anchor,tumor,PMID:25631445
-SQUAMOUS_PROGRAM,Squamous program,SOX2,ENSG00000181449,anchor,tumor,PMID:25631445
-PAX8_LINEAGE,PAX8 lineage (renal/Müllerian/thyroid),PAX8,ENSG00000125618,anchor,tumor,PMID:25613900
-PAX8_LINEAGE,PAX8 lineage (renal/Müllerian/thyroid),PAX2,ENSG00000075891,anchor,tumor,PMID:25613900
-TTF1_LINEAGE,TTF-1 lineage (lung/thyroid),NKX2-1,ENSG00000136352,anchor,tumor,PMID:25079552
-LUMINAL_GATA3,GATA3/FOXA1 luminal (breast/urothelial/prostate),GATA3,ENSG00000107485,anchor,tumor,PMID:23000897
-LUMINAL_GATA3,GATA3/FOXA1 luminal (breast/urothelial/prostate),FOXA1,ENSG00000129514,anchor,tumor,PMID:23000897
-FOREGUT,Foregut glandular (gastric/pancreatic),CLDN18,ENSG00000066405,anchor,tumor,PMID:25079317
+Supertype,display_name,Symbol,Ensembl_Gene_ID,role,source,reference,support_type,source_anchor
+SQUAMOUS_PROGRAM,Squamous program,TP63,ENSG00000073282,anchor,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS_PROGRAM,Squamous program,KRT5,ENSG00000186081,anchor,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS_PROGRAM,Squamous program,KRT6A,ENSG00000205420,anchor,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS_PROGRAM,Squamous program,DSG3,ENSG00000134757,anchor,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS_PROGRAM,Squamous program,SOX2,ENSG00000181449,anchor,tumor,PMID:25631445,literature_marker_support,row-level marker source
+PAX8_LINEAGE,PAX8 lineage (renal/Müllerian/thyroid),PAX8,ENSG00000125618,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+PAX8_LINEAGE,PAX8 lineage (renal/Müllerian/thyroid),PAX2,ENSG00000075891,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+TTF1_LINEAGE,TTF-1 lineage (lung/thyroid),NKX2-1,ENSG00000136352,anchor,tumor,PMID:25079552,literature_marker_support,row-level marker source
+LUMINAL_GATA3,GATA3/FOXA1 luminal (breast/urothelial/prostate),GATA3,ENSG00000107485,anchor,tumor,PMID:23000897,literature_marker_support,row-level marker source
+LUMINAL_GATA3,GATA3/FOXA1 luminal (breast/urothelial/prostate),FOXA1,ENSG00000129514,anchor,tumor,PMID:23000897,literature_marker_support,row-level marker source
+FOREGUT,Foregut glandular (gastric/pancreatic),CLDN18,ENSG00000066405,anchor,tumor,PMID:25079317,literature_marker_support,row-level marker source

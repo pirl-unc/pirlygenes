@@ -2222,6 +2222,9 @@ _THERAPY_EVIDENCE_REQUIRED_COLUMNS = (
     "major_toxicities",
     "source_type",
     "source_id",
+    "source_token",
+    "source_url",
+    "source_anchor",
     "evidence_transfer",
     "evidence_notes",
 )
