@@ -4,6 +4,11 @@ This document describes how the pirlygenes CTA gene set is built, filtered, and 
 
 ## Figures
 
+These figures are regenerated from `tsarina.CTA_detailed_evidence()` by
+`analyses/cta_curation_figures.py`. They refresh together with every other
+analyses plot via the single driver — `python analyses/regenerate_plots.py
+--promote-docs` rebuilds them and copies the results back into this directory.
+
 ### Source overlap
 ![CTA Source Venn Diagram](cta-source-venn.png)
 
