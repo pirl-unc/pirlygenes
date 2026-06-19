@@ -18,6 +18,11 @@ dependencies = [
     "numpy>=2.0.0",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
+    # Parquet engine for the cohort-view / representative / percentile
+    # artifacts (pd.read_parquet). Present transitively today via
+    # pyensembl→gtfparse, but declared directly since pirlygenes reads parquet
+    # in several modules and must not break if that chain changes (#474 review).
+    "pyarrow>=10",
     "pyensembl>=2.6.0",
     "PyYAML>=6.0",
     "tqdm",
@@ -80,12 +85,15 @@ pirlygenes = [
 # What we deliberately DO NOT ship in the wheel (these get fetched
 # lazily by pirlygenes.data_bundle):
 #   data/cancer-reference-expression/*                  ~325 MB
+#   data/cancer-reference-expression-views/*            precomputed views
 #   data/cancer-reference-expression-representatives/*   ~48 MB  (#312)
+#   data/cancer-reference-expression-percentiles/*       percentile vectors
 #   data/pan-cancer-expression.csv                       ~11 MB
 #   data/hpa-cell-type-expression.csv                    ~7 MB
 [tool.setuptools.exclude-package-data]
 pirlygenes = [
     "data/cancer-reference-expression/*",
+    "data/cancer-reference-expression-views/*",
     "data/cancer-reference-expression-representatives/*",
     "data/cancer-reference-expression-percentiles/*",
     "data/pan-cancer-expression.csv",

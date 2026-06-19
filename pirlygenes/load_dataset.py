@@ -214,9 +214,11 @@ def load_all_dataframes():
     the on-disk compression format. Sharded directories yield once as the
     full concatenated frame, keyed under ``<dirname>.csv``.
 
-    Triggers a one-time download of the heavy data bundle if needed.
+    Triggers a one-time download of any heavy data-bundle item that is missing
+    from both the checkout/wheel data directory and the local cache.
     """
-    data_bundle.ensure_local()
+    for path in data_bundle.DOWNLOADABLE_PATHS:
+        _ensure_downloadable(path)
     _invalidate_dataset_paths()
     for csv_path in get_all_csv_paths():
         df = pd.read_csv(str(csv_path), low_memory=False)

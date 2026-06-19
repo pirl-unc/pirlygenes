@@ -426,8 +426,10 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
     from . import data_bundle
     from .load_dataset import _shard_paths
 
-    data_bundle.ensure_local()
     active = _active_reference_dir()
+    if not any(active.glob("*.csv.gz")) and not any(active.glob("*.csv")):
+        data_bundle.ensure_local()
+        active = _active_reference_dir()
     paths = _shard_paths(active)
 
     # cheap, environment-specific fields are always recomputed live

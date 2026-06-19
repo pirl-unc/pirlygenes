@@ -99,6 +99,45 @@ def test_wide_representatives_canonicalize_before_outer_join(tmp_path, monkeypat
     assert w.loc[or2t3, "BBB_rep01"].iloc[0] == 5.0
 
 
+def test_wide_baked_dedupes_divergent_symbol(tmp_path, monkeypatch):
+    """Same canonical ENSG with a divergent display Symbol across shards (a real
+    symbol in one cohort, the ENSG string as fallback in the other) must collapse
+    to ONE row, preferring the real symbol (#474 review, P2b). The baked path
+    skips read-time canonicalization, so this is where the split surfaced."""
+    pd.DataFrame({
+        "Ensembl_Gene_ID": ["ENSG00000141510", "ENSG00000999991"],
+        "Symbol": ["TP53", "REALSYM"],
+        "CLL_rep01": [10.0, 20.0],
+    }).to_parquet(tmp_path / "CLL.parquet")
+    pd.DataFrame({
+        "Ensembl_Gene_ID": ["ENSG00000141510", "ENSG00000999991"],
+        "Symbol": ["TP53", "ENSG00000999991"],   # fallback to the ENSG string
+        "PRAD_rep01": [11.0, 21.0],
+    }).to_parquet(tmp_path / "PRAD.parquet")
+    (tmp_path / "_manifest.json").write_text('{"canonical_gene_ids": true}\n')
+    monkeypatch.setattr(accessors, "_representatives_root", lambda: tmp_path)
+
+    w = accessors.representative_cohort_samples(["CLL", "PRAD"], format="wide")
+
+    assert w["Ensembl_Gene_ID"].nunique() == len(w)          # no duplicate ENSG
+    row = w[w["Ensembl_Gene_ID"] == "ENSG00000999991"]
+    assert len(row) == 1
+    assert row["Symbol"].iloc[0] == "REALSYM"                # real symbol wins
+    assert row["CLL_rep01"].iloc[0] == 20.0                  # both cohorts aligned
+    assert row["PRAD_rep01"].iloc[0] == 21.0
+    assert list(w.columns[:2]) == ["Ensembl_Gene_ID", "Symbol"]
+
+
+def test_real_representatives_have_unique_genes():
+    """The bundled baked representatives must yield one row per gene across all
+    cohorts — no ENSG split by divergent Symbol fallbacks (#474 review, P2b)."""
+    codes = accessors.available_representative_cohorts()
+    if len(codes) < 2:
+        pytest.skip("needs the bundled multi-cohort representatives")
+    w = accessors.representative_cohort_samples(codes, k=1, format="wide")
+    assert w["Ensembl_Gene_ID"].nunique() == len(w)
+
+
 def test_long_with_provenance(synth_reps):
     lng = accessors.representative_cohort_samples("PRAD", format="long",
                                                   include_provenance=True)

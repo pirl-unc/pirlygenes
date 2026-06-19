@@ -30,6 +30,7 @@ Run:  python scripts/generate_representative_cohort_samples.py [--k 12]
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 
@@ -42,6 +43,8 @@ from pirlygenes.expression import (
     drop_technical_genes,
     select_representative_samples,
 )
+from pirlygenes.gene_canonicalization import canonicalize_gene_table
+from pirlygenes.version import DATA_VERSION
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "pirlygenes" / "data" \
     / "cancer-reference-expression-representatives"
@@ -56,8 +59,13 @@ def build(k: int = 12) -> None:
         sample_cols = _cohorts.sample_columns(df)
         if not sample_cols:
             continue
-        gene_table = df[["Symbol", "Ensembl_Gene_ID"]]
-        clean = clean_tpm_matrix(df[sample_cols], gene_table=gene_table,
+        matrix = canonicalize_gene_table(
+            df[["Ensembl_Gene_ID", "Symbol", *sample_cols]],
+            value_cols=sample_cols,
+            source_version_col=None,
+        )
+        gene_table = matrix[["Symbol", "Ensembl_Gene_ID"]]
+        clean = clean_tpm_matrix(matrix[sample_cols], gene_table=gene_table,
                                  censored_fill="fixed_fraction")
         # Select medoids on the BIOLOGY-ONLY view so the choice rides on
         # biological signal and is insensitive to the clean_tpm_16_9_75
@@ -65,15 +73,15 @@ def build(k: int = 12) -> None:
         # vectors for the chosen samples (matching the aggregate references).
         sel_frame = clean.copy()
         sel_frame.insert(0, "Ensembl_Gene_ID",
-                         df["Ensembl_Gene_ID"].astype(str).values)
-        sel_frame.insert(0, "Symbol", df["Symbol"].astype(str).values)
+                         matrix["Ensembl_Gene_ID"].astype(str).values)
+        sel_frame.insert(0, "Symbol", matrix["Symbol"].astype(str).values)
         bio = drop_technical_genes(sel_frame)
         chosen = select_representative_samples(bio[sample_cols], k)
         reps = clean[chosen]
         rep_ids = [f"{code}_rep{i:02d}" for i in range(1, len(chosen) + 1)]
         out = pd.DataFrame({
-            "Ensembl_Gene_ID": df["Ensembl_Gene_ID"].astype(str).values,
-            "Symbol": df["Symbol"].astype(str).values,
+            "Ensembl_Gene_ID": matrix["Ensembl_Gene_ID"].astype(str).values,
+            "Symbol": matrix["Symbol"].astype(str).values,
         })
         for rid, col in zip(rep_ids, chosen):
             out[rid] = reps[col].to_numpy(dtype=np.float32)
@@ -93,6 +101,17 @@ def build(k: int = 12) -> None:
               flush=True)
     prov = pd.DataFrame(provenance).sort_values(["cancer_code", "cluster_rank"])
     prov.to_csv(OUT_DIR / "_provenance.csv", index=False)
+    manifest = {
+        "artifact": "cancer-reference-expression-representatives",
+        "data_version": DATA_VERSION,
+        "canonical_gene_ids": True,
+        "format": 1,
+        "cohorts": n_cohorts,
+        "representatives": int(len(prov)),
+    }
+    (OUT_DIR / "_manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    )
     total_mb = sum(f.stat().st_size for f in OUT_DIR.glob("*.parquet")) / 1e6
     print(f"\ndone: {n_cohorts} cohorts, {len(prov)} representatives, "
           f"{total_mb:.0f} MB -> {OUT_DIR}", flush=True)

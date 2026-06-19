@@ -1,0 +1,9 @@
+{
+  "artifact": "cancer-reference-expression-representatives",
+  "canonical_gene_ids": true,
+  "data_version": "5.23.0",
+  "files": 118,
+  "format": 1,
+  "rows_after": 4431677,
+  "rows_before": 4484095
+}

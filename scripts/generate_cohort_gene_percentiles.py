@@ -25,6 +25,7 @@ Run:  python scripts/generate_cohort_gene_percentiles.py
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -38,6 +39,8 @@ from pirlygenes.expression.normalize import (  # noqa: E402
     clean_tpm_matrix,
     drop_technical_genes,
 )
+from pirlygenes.gene_canonicalization import canonicalize_gene_table  # noqa: E402
+from pirlygenes.version import DATA_VERSION  # noqa: E402
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "pirlygenes" / "data" \
     / "cancer-reference-expression-percentiles"
@@ -61,11 +64,19 @@ def build() -> None:
         # observation). Emitted so percentile coverage matches the representative
         # set exactly (one artifact per per-sample cohort); consumers that need a
         # real spread should check n_samples.
-        clean = clean_tpm_matrix(df[sample_cols],
-                                 gene_table=df[["Symbol", "Ensembl_Gene_ID"]],
+        matrix = canonicalize_gene_table(
+            df[["Ensembl_Gene_ID", "Symbol", *sample_cols]],
+            value_cols=sample_cols,
+            source_version_col=None,
+        )
+        clean = clean_tpm_matrix(matrix[sample_cols],
+                                 gene_table=matrix[["Symbol", "Ensembl_Gene_ID"]],
                                  censored_fill="fixed_fraction")
-        clean.insert(0, "Ensembl_Gene_ID", df["Ensembl_Gene_ID"].astype(str).values)
-        clean.insert(0, "Symbol", df["Symbol"].astype(str).values)
+        clean.insert(
+            0, "Ensembl_Gene_ID",
+            matrix["Ensembl_Gene_ID"].astype(str).values,
+        )
+        clean.insert(0, "Symbol", matrix["Symbol"].astype(str).values)
         bio = drop_technical_genes(clean)
         biovals = bio[sample_cols].to_numpy(dtype=np.float64)
         pct = np.percentile(biovals, BREAKPOINTS, axis=1).T  # genes × 26
@@ -77,6 +88,17 @@ def build() -> None:
         n_cohorts += 1
         print(f"  {code}: {len(out)} genes × {len(BREAKPOINTS)} breakpoints "
               f"(n={len(sample_cols)})", flush=True)
+    manifest = {
+        "artifact": "cancer-reference-expression-percentiles",
+        "data_version": DATA_VERSION,
+        "canonical_gene_ids": True,
+        "format": 1,
+        "cohorts": n_cohorts,
+        "breakpoints": BREAKPOINTS,
+    }
+    (OUT_DIR / "_manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    )
     total_mb = sum(f.stat().st_size for f in OUT_DIR.glob("*.parquet")) / 1e6
     print(f"\ndone: {n_cohorts} cohorts, {total_mb:.0f} MB -> {OUT_DIR}", flush=True)
 
