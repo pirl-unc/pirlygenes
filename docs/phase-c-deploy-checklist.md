@@ -6,6 +6,21 @@ Expression data lives outside the wheel. In a git checkout, the in-repo
 change to a wheel-excluded data artifact needs a new tarball and a `DATA_VERSION`
 bump in the same release.
 
+## Streamlined path (preferred)
+
+`python scripts/release.py` orchestrates everything below in one idempotent,
+re-runnable command — it builds + publishes the data tarball only when
+`DATA_VERSION` changed, warms the version cache, runs `./test.sh`, builds, uploads
+to PyPI, and creates/pushes the release tag, in the one order that can't 404 a
+pip install. Dry-run by default:
+
+```bash
+python scripts/release.py              # print the plan, touch nothing
+python scripts/release.py --execute    # run for real (prompts before each public step)
+```
+
+The manual steps below are kept as the reference the script automates.
+
 Files in the tarball (`pirlygenes.data_bundle.DOWNLOADABLE_PATHS`):
 `cancer-reference-expression/`, `cancer-reference-expression-views/`,
 `cancer-reference-expression-representatives/`,
