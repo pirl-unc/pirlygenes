@@ -18,6 +18,11 @@ dependencies = [
     "numpy>=2.0.0",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
+    # Parquet engine for the cohort-view / representative / percentile
+    # artifacts (pd.read_parquet). Present transitively today via
+    # pyensembl→gtfparse, but declared directly since pirlygenes reads parquet
+    # in several modules and must not break if that chain changes (#474 review).
+    "pyarrow>=10",
     "pyensembl>=2.6.0",
     "PyYAML>=6.0",
     "tqdm",

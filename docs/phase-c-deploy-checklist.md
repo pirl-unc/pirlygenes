@@ -17,9 +17,11 @@ Files in the tarball (`pirlygenes.data_bundle.DOWNLOADABLE_PATHS`):
 1. **Regenerate derived artifacts** when the migration touches expression data:
    ```bash
    python scripts/bake_canonical_reference_expression_artifacts.py
-   # When per-sample source matrices are available and percentile data changes:
-   python scripts/generate_cohort_gene_percentiles.py
+   # The views artifact is a cache of the summary shards, so regenerate it
+   # whenever those shards change (it must run after the bake above):
    python scripts/generate_cohort_expression_views.py
+   # Percentiles + representatives only when per-sample source matrices change:
+   python scripts/generate_cohort_gene_percentiles.py
    ```
 
 2. **Build the data tarball** from the in-repo data:

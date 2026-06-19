@@ -19,8 +19,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pandas as pd
-
 from pirlygenes.expression import accessors
 from pirlygenes.version import DATA_VERSION
 
@@ -35,27 +33,20 @@ OUT_DIR = (
 
 def build() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    views = accessors._cohort_expression_views_from_reference(  # noqa: SLF001
-        canonicalize_genes=True,
+    # The artifact is, by construction, the serialized output of the same
+    # function the read path falls back to when the artifact is absent
+    # (accessors._rebuild_full_canonical_views). Generating it any other way
+    # would let the cache drift from the fallback, so call that function
+    # directly — tpm/clean_tpm/provenance here are exactly what a cache miss
+    # would recompute.
+    tpm, clean_tpm, provenance = (
+        accessors._rebuild_full_canonical_views()  # noqa: SLF001
     )
-    views.tpm.to_parquet(OUT_DIR / "tpm.parquet", index=False, compression="zstd")
-    views.clean_tpm.to_parquet(
+    tpm.to_parquet(OUT_DIR / "tpm.parquet", index=False, compression="zstd")
+    clean_tpm.to_parquet(
         OUT_DIR / "clean_tpm.parquet",
         index=False,
         compression="zstd",
-    )
-
-    ref = accessors._load_cancer_reference_expression()  # noqa: SLF001
-    provenance_cols = [
-        "cancer_code",
-        "source_cohort",
-        "processing_pipeline",
-        "n_samples",
-    ]
-    provenance = (
-        ref[[c for c in provenance_cols if c in ref.columns]]
-        .drop_duplicates()
-        .reset_index(drop=True)
     )
     provenance.to_parquet(
         OUT_DIR / "provenance.parquet",
@@ -69,8 +60,8 @@ def build() -> None:
         "canonical_gene_ids": True,
         "format": 1,
         "rows": {
-            "tpm": int(len(views.tpm)),
-            "clean_tpm": int(len(views.clean_tpm)),
+            "tpm": int(len(tpm)),
+            "clean_tpm": int(len(clean_tpm)),
             "provenance": int(len(provenance)),
         },
     }
@@ -79,8 +70,8 @@ def build() -> None:
     )
     total_mb = sum(f.stat().st_size for f in OUT_DIR.glob("*")) / 1e6
     print(
-        f"done: {len(views.tpm)} genes, "
-        f"{len(accessors._cohort_value_cols(views.tpm))} cohorts, "  # noqa: SLF001
+        f"done: {len(tpm)} genes, "
+        f"{len(accessors._cohort_value_cols(tpm))} cohorts, "  # noqa: SLF001
         f"{total_mb:.1f} MB -> {OUT_DIR}",
         flush=True,
     )
