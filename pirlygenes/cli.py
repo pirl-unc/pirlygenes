@@ -782,7 +782,11 @@ def cmd_plot_patient_coverage(args: argparse.Namespace) -> int:
 def cmd_plot_cta_curation(args: argparse.Namespace) -> int:
     from . import cta_curation_plots
 
-    result = cta_curation_plots.render(out_dir=args.out)
+    try:
+        result = cta_curation_plots.render(out_dir=args.out)
+    except Exception as exc:  # noqa: BLE001 — tsarina/matplotlib failure -> clean exit
+        sys.stderr.write(f"error: could not render CTA curation figures: {exc}\n")
+        return 2
     sys.stdout.write(
         f"CTA curation figures ({result['n_genes']} evidence rows):\n")
     for kind, path in result["paths"].items():

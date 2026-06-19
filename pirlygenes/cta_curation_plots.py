@@ -13,8 +13,9 @@ Exposed two ways over the *same* code:
     :func:`render` so the figures ride the shared analyses run layout and the
     ``regenerate_plots.py --promote-docs`` flow.
 
-``matplotlib_venn`` is used for the source-overlap venn when available; without
-it the venn degrades to a source-size bar (no hard dependency added).
+``matplotlib_venn`` (the ``pirlygenes[viz]`` extra) is used for the source-overlap
+venn when available; without it that one figure degrades to a source-size bar, so
+it stays an optional dependency rather than a hard one.
 """
 from __future__ import annotations
 
@@ -98,16 +99,23 @@ def _fig_source_venn(df, path, plt):
     sets = _tag_sets(df)
     fig, ax = plt.subplots(figsize=(7, 6))
     keys = ("CTpedia", "CTexploreR", "daSilva2017_protein")
+    placental = len(sets["placental_antigen"])
+    # Only the missing-library case falls back; a real venn3 rendering error is
+    # left to propagate rather than be silently masked as a bar.
     try:
         from matplotlib_venn import venn3
+    except ImportError:
+        ax.barh(list(keys), [len(sets[k]) for k in keys], color=KEPT)
+        ax.set_xlabel("genes")
+        ax.set_title(
+            "CTA source sizes — install matplotlib_venn (or pirlygenes[viz])\n"
+            f"for the overlap venn; +{placental} placental-antigen genes folded in")
+    else:
         venn3([sets[k] for k in keys],
               set_labels=("CTpedia", "CTexploreR", "da Silva 2017\n(protein)"),
               ax=ax)
-    except Exception:  # noqa: BLE001 — no venn lib: degrade to a size bar
-        ax.barh(list(keys), [len(sets[k]) for k in keys], color=KEPT)
-        ax.set_xlabel("genes")
-    ax.set_title(f"CTA source overlap (primary databases)\n"
-                 f"+{len(sets['placental_antigen'])} placental-antigen genes folded in")
+        ax.set_title("CTA source overlap (primary databases)\n"
+                     f"+{placental} placental-antigen genes folded in")
     _save(fig, path, plt)
 
 
