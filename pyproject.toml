@@ -52,6 +52,12 @@ test = [
     "pytest-cov",
     "pytest-xdist",
 ]
+# Optional plotting extras. matplotlib is a core dep; matplotlib_venn is only
+# needed for the CTA source-overlap venn (pirlygenes plot cta-curation), which
+# otherwise degrades to a source-size bar.
+viz = [
+    "matplotlib_venn>=1.0",
+]
 [project.urls]
 "Homepage" = "https://github.com/pirl-unc/pirlygenes"
 "Bug Tracker" = "https://github.com/pirl-unc/pirlygenes"

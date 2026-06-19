@@ -149,11 +149,26 @@ def test_cli_build_ambiguous_cancer_code_lists_candidates():
 
 
 def test_cli_plot_requires_an_action():
-    # `plot` is now implemented (patient-coverage); with no action it prints a
-    # usage line naming the available action and exits non-zero.
+    # `plot` is now implemented; with no action it prints a usage line naming
+    # the available actions and exits non-zero.
     rc, _, err = _run_cli(["plot"])
     assert rc == 2
     assert "patient-coverage" in err
+    assert "cta-curation" in err
+
+
+def test_cli_plot_cta_curation_produces_figures(tmp_path: Path):
+    rc, out, _ = _run_cli(["plot", "cta-curation", "--out", str(tmp_path)])
+    assert rc == 0
+    produced = sorted(p.name for p in tmp_path.glob("*.png"))
+    assert produced == [
+        "cta-deflated-frac-dist.png",
+        "cta-filter-funnel.png",
+        "cta-filter-outcome.png",
+        "cta-protein-vs-rna.png",
+        "cta-source-venn.png",
+    ]
+    assert "evidence rows" in out
 
 
 def test_cli_analyze_redirects_to_trufflepig():

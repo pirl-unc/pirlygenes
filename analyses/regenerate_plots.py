@@ -20,14 +20,22 @@ Scripts that fail are reported but don't abort the batch.
 """
 from __future__ import annotations
 
+import argparse
 import datetime
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 OUTPUTS = HERE / "outputs"
+DOCS = HERE.parent / "docs"
+
+# Families whose output doubles as committed documentation assets: --promote-docs
+# copies these into docs/ so the figures embedded in docs/*.md stay in sync.
+# {run-subdir: glob}
+DOCS_PROMOTE = {"cta_curation": "cta-*.png"}
 
 # aPD1 causal-factor batch — driven by the APD1_RUN_DIR env var, all into one
 # subfolder of the run (they already group cta_vs_apd1_by_exclusion/ themselves).
@@ -41,6 +49,7 @@ LAYOUT = [
     ("cta_patient_counts", [], "groups"),
     ("cta_covering_set", [], "cta_covering_set"),
     ("cta_expression_heatmaps", [], "cta_expression_heatmaps"),
+    ("cta_curation_figures", [], "cta_curation"),
     ("apd1_response_plots", [], "apd1_response"),
     ("ici_landscape", [], "ici_landscape"),
     ("apd1_ici_factor_contributions", [], "apd1_ici_contributions"),
@@ -54,7 +63,23 @@ def _run(cmd, env=None):
     return subprocess.run(cmd, cwd=HERE, env=env).returncode == 0
 
 
+def _promote_docs(run: Path) -> None:
+    """Copy curation-figure families from the run into docs/ so the committed
+    figures embedded in docs/*.md stay current."""
+    for subdir, pattern in DOCS_PROMOTE.items():
+        for src in sorted((run / subdir).glob(pattern)):
+            shutil.copy2(src, DOCS / src.name)
+            print(f"  promoted {src.name} -> docs/", flush=True)
+
+
 def main() -> int:
+    ap = argparse.ArgumentParser(description="Regenerate all analyses plots.")
+    ap.add_argument(
+        "--promote-docs", action="store_true",
+        help="after the run, copy curation figures into docs/ (overwrites the "
+             "committed doc figures embedded in docs/cta-curation.md)")
+    opts = ap.parse_args()
+
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     run = OUTPUTS / f"run_{ts}"
     run.mkdir(parents=True, exist_ok=True)
@@ -82,6 +107,9 @@ def main() -> int:
     addr_ok = _run([sys.executable, "cta_addressable_burden.py",
                     "--run-dir", str(run), "--fig-dir", str(run / "cta_addressable")])
     (ok if addr_ok else failed).append("cta_addressable_burden")
+
+    if opts.promote_docs:
+        _promote_docs(run)
 
     pngs = sorted(run.rglob("*.png"))
     print(f"\nrun -> {run}")

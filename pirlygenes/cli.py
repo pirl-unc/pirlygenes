@@ -283,6 +283,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "Cohort-level plots over the packaged reference data.\n\n"
             "actions:\n"
             "  patient-coverage   per-cohort patient coverage of a gene set\n"
+            "  cta-curation       CTA panel curation figures (source/filter/HPA)\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -326,6 +327,24 @@ def _build_parser() -> argparse.ArgumentParser:
     pc.add_argument(
         "--out", default="coverage_out",
         help="output directory for the CSV + PNGs (default: %(default)s)",
+    )
+
+    cur = plot_sub.add_parser(
+        "cta-curation",
+        help="CTA curation figures (source overlap, filter funnel/outcome, HPA).",
+        description=(
+            "Rebuild the five CTA-curation documentation figures from the\n"
+            "packaged CTA evidence table (tsarina.CTA_detailed_evidence):\n"
+            "source venn, filter funnel/outcome, deflated reproductive-fraction\n"
+            "distribution, and protein-reliability-vs-RNA tiers. These are the\n"
+            "figures embedded in docs/cta-curation.md."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Example:\n  pirlygenes plot cta-curation --out cta_curation_out\n",
+    )
+    cur.add_argument(
+        "--out", default="cta_curation_out",
+        help="output directory for the PNGs (default: %(default)s)",
     )
 
     for name in sorted(_ANALYSIS_SUBCOMMANDS):
@@ -760,8 +779,24 @@ def cmd_plot_patient_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plot_cta_curation(args: argparse.Namespace) -> int:
+    from . import cta_curation_plots
+
+    try:
+        result = cta_curation_plots.render(out_dir=args.out)
+    except Exception as exc:  # noqa: BLE001 — tsarina/matplotlib failure -> clean exit
+        sys.stderr.write(f"error: could not render CTA curation figures: {exc}\n")
+        return 2
+    sys.stdout.write(
+        f"CTA curation figures ({result['n_genes']} evidence rows):\n")
+    for kind, path in result["paths"].items():
+        sys.stdout.write(f"  {kind}: {path}\n")
+    return 0
+
+
 _PLOT_DISPATCH = {
     "patient-coverage": cmd_plot_patient_coverage,
+    "cta-curation": cmd_plot_cta_curation,
 }
 
 
@@ -825,7 +860,8 @@ def main(argv: list[str] | None = None) -> int:
     if subcommand == "plot":
         handler = _PLOT_DISPATCH.get(args.plot_action)
         if handler is None:
-            sys.stderr.write("usage: pirlygenes plot {patient-coverage}\n")
+            sys.stderr.write(
+                "usage: pirlygenes plot {patient-coverage,cta-curation}\n")
             return 2
         return handler(args)
 
