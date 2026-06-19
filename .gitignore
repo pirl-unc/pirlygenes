@@ -178,3 +178,4 @@ analyses/outputs/*.png
 analyses/outputs/**/*.png
 analyses/outputs/run_*/
 analyses/outputs/_cache/
+citation-audit.csv
