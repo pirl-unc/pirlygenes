@@ -73,12 +73,50 @@ def _promote_docs(run: Path) -> None:
             print(f"  promoted {src.name} -> docs/", flush=True)
 
 
+# max page dimension (px) in the combined PDF — bounds file size and memory;
+# the run dir keeps the full-resolution PNGs for detailed inspection.
+_PDF_MAX_PX = 1000
+
+
+def _build_combined_pdf(run: Path) -> Path | None:
+    """Bundle every PNG in the run into one ``all-figures.pdf`` (one figure per
+    page, captioned with its run-relative path) for easy flip-through and
+    sharing. Pages are ordered by family then filename. Uses Pillow (fast image
+    embedding) and caps page resolution so the per-run cost stays small.
+    Resilient: any failure is reported but never aborts the batch."""
+    pngs = sorted(run.rglob("*.png"))
+    if not pngs:
+        return None
+    try:
+        from PIL import Image, ImageDraw
+
+        cap_h = 18
+        pages = []
+        for png in pngs:
+            im = Image.open(png).convert("RGB")
+            im.thumbnail((_PDF_MAX_PX, _PDF_MAX_PX))
+            page = Image.new("RGB", (im.width, im.height + cap_h), "white")
+            page.paste(im, (0, cap_h))
+            ImageDraw.Draw(page).text(
+                (4, 4), str(png.relative_to(run)), fill="black")
+            pages.append(page)
+        out = run / "all-figures.pdf"
+        pages[0].save(out, save_all=True, append_images=pages[1:])
+        return out
+    except Exception as exc:  # noqa: BLE001 — never fail the batch over the PDF
+        print(f"  WARNING: could not build all-figures.pdf: {exc}", flush=True)
+        return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Regenerate all analyses plots.")
     ap.add_argument(
         "--promote-docs", action="store_true",
         help="after the run, copy curation figures into docs/ (overwrites the "
              "committed doc figures embedded in docs/cta-curation.md)")
+    ap.add_argument(
+        "--no-pdf", action="store_true",
+        help="skip building the combined all-figures.pdf (faster iterative runs)")
     opts = ap.parse_args()
 
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -113,8 +151,11 @@ def main() -> int:
         _promote_docs(run)
 
     pngs = sorted(run.rglob("*.png"))
+    pdf = None if opts.no_pdf else _build_combined_pdf(run)
     print(f"\nrun -> {run}")
     print(f"  {len(pngs)} PNGs across {len({p.parent for p in pngs})} subfolders")
+    if pdf is not None:
+        print(f"  all-figures.pdf: {pdf} ({len(pngs)} pages)")
     print(f"  ok: {ok}")
     if failed:
         print(f"  FAILED: {failed}")
