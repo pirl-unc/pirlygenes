@@ -76,32 +76,109 @@ def _promote_docs(run: Path) -> None:
 # max page dimension (px) in the combined PDF — bounds file size and memory;
 # the run dir keeps the full-resolution PNGs for detailed inspection.
 _PDF_MAX_PX = 1000
+_PDF_PAGE_W = 1000
+
+
+def _pdf_font(size):
+    """A TrueType font at ``size`` — DejaVu Sans (bundled with matplotlib) for
+    reliable sizing, falling back to Pillow's default."""
+    from PIL import ImageFont
+    try:
+        from matplotlib import font_manager
+        return ImageFont.truetype(font_manager.findfont("DejaVu Sans"), size)
+    except Exception:  # noqa: BLE001
+        try:
+            return ImageFont.load_default(size=size)
+        except TypeError:
+            return ImageFont.load_default()
 
 
 def _build_combined_pdf(run: Path) -> Path | None:
-    """Bundle every PNG in the run into one ``all-figures.pdf`` (one figure per
-    page, captioned with its run-relative path) for easy flip-through and
-    sharing. Pages are ordered by family then filename. Uses Pillow (fast image
-    embedding) and caps page resolution so the per-run cost stays small.
-    Resilient: any failure is reported but never aborts the batch."""
-    pngs = sorted(run.rglob("*.png"))
-    if not pngs:
+    """Bundle every PNG in the run into one organized ``all-figures.pdf``:
+
+      * a **table of contents** page (each section -> start page + figure count),
+      * a **section divider** page before each family,
+      * one captioned figure per page (run-relative path),
+      * **PDF bookmarks** (one per section) when ``pypdf`` is available.
+
+    Sections = the run's family subdirs, ordered by path. Pillow does the image
+    embedding (fast), capped at ``_PDF_MAX_PX`` so per-run cost stays bounded;
+    full-resolution PNGs remain in the run dir. Resilient: any failure is
+    reported but never aborts the batch."""
+    if not list(run.rglob("*.png")):
         return None
     try:
+        from itertools import groupby
+
         from PIL import Image, ImageDraw
 
-        cap_h = 18
-        pages = []
-        for png in pngs:
-            im = Image.open(png).convert("RGB")
-            im.thumbnail((_PDF_MAX_PX, _PDF_MAX_PX))
-            page = Image.new("RGB", (im.width, im.height + cap_h), "white")
-            page.paste(im, (0, cap_h))
-            ImageDraw.Draw(page).text(
-                (4, 4), str(png.relative_to(run)), fill="black")
-            pages.append(page)
+        def family_of(p):
+            return str(p.parent.relative_to(run))
+
+        def disp(fam):  # display label for the run root
+            return "(root)" if fam == "." else fam
+
+        # Sort by (family, name) — NOT full path — so every family's files are
+        # contiguous; a plain path sort interleaves a dir's files with its
+        # subdirs and splits one family into duplicate groupby runs.
+        pngs = sorted(run.rglob("*.png"), key=lambda p: (family_of(p), p.name))
+        groups = [(fam, list(it)) for fam, it in groupby(pngs, key=family_of)]
+
+        def _caption_page(img, caption):
+            cap_h = 20
+            page = Image.new("RGB", (img.width, img.height + cap_h), "white")
+            page.paste(img, (0, cap_h))
+            ImageDraw.Draw(page).text((6, 4), caption, fill="black",
+                                      font=_pdf_font(14))
+            return page
+
+        # body = [divider, figs...] per section; track each divider's body index
+        body, family_start = [], {}
+        for fam, figs in groups:
+            family_start[fam] = len(body)
+            div = Image.new("RGB", (_PDF_PAGE_W, 640), "white")
+            dd = ImageDraw.Draw(div)
+            dd.text((48, 280), disp(fam), fill="black", font=_pdf_font(38))
+            dd.text((48, 344), f"{len(figs)} figure(s)", fill="#555",
+                    font=_pdf_font(22))
+            body.append(div)
+            for f in figs:
+                im = Image.open(f).convert("RGB")
+                im.thumbnail((_PDF_MAX_PX, _PDF_MAX_PX))
+                body.append(_caption_page(im, str(f.relative_to(run))))
+
+        # ToC page goes first, so a section divider at body index s is page s+2.
+        toc = Image.new("RGB", (_PDF_PAGE_W, max(640, 130 + 26 * len(groups))),
+                        "white")
+        tt = ImageDraw.Draw(toc)
+        tt.text((48, 28), f"All figures — {run.name}", fill="black",
+                font=_pdf_font(30))
+        tt.text((48, 72), f"{len(pngs)} figures · {len(groups)} sections",
+                fill="#555", font=_pdf_font(18))
+        y = 120
+        for fam, figs in groups:
+            tt.text((48, y), disp(fam), fill="black", font=_pdf_font(15))
+            tt.text((_PDF_PAGE_W - 150, y), f"p.{family_start[fam] + 2}  ({len(figs)})",
+                    fill="#555", font=_pdf_font(15))
+            y += 26
+
+        pages = [toc] + body
         out = run / "all-figures.pdf"
         pages[0].save(out, save_all=True, append_images=pages[1:])
+
+        # bookmarks (one per section -> its divider page); a bonus when pypdf
+        # is installed, never required.
+        try:
+            from pypdf import PdfReader, PdfWriter
+            reader, writer = PdfReader(out), PdfWriter()
+            for p in reader.pages:
+                writer.add_page(p)
+            for fam, _figs in groups:
+                writer.add_outline_item(disp(fam), family_start[fam] + 1)
+            with open(out, "wb") as fh:
+                writer.write(fh)
+        except Exception:  # noqa: BLE001 — ToC + dividers already navigate
+            pass
         return out
     except Exception as exc:  # noqa: BLE001 — never fail the batch over the PDF
         print(f"  WARNING: could not build all-figures.pdf: {exc}", flush=True)
