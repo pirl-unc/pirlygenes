@@ -1,7 +1,7 @@
 """How each causal factor associates with anti-PD-1 (strict monotherapy) and broad
 ICI objective response across cancer types: antigen/response DRIVERS (median TMB,
-CTA burden, viral status) vs secreted SUPPRESSORS (TGFB1, WNT11, WNT5A, IL10, and
-the curated TGF-beta / Wnt pathway signatures).
+CTA coverage/load/9-mer payload, viral status) vs secreted SUPPRESSORS (TGFB1,
+WNT11, WNT5A, IL10, and the curated TGF-beta / Wnt pathway signatures).
 
 Two grouped Spearman-rho bars per factor — one for the strict anti-PD-1 ORR axis,
 one for the broad ICI ORR axis — so you can read each factor's predictive sign and
@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from pirlygenes import gene_sets_cancer as gsc  # noqa: E402
 from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
-from _apd1_factors import (apd1_map, tmb_map, viral_score, cta_burden,  # noqa: E402
+from _apd1_factors import (apd1_map, tmb_map, viral_score, cta_metric_table,  # noqa: E402
                            cohort_gene_matrix, curated_signatures)
 from _apd1_factors import zscore, signature_score  # noqa: E402
 from _panels import fold  # noqa: E402
@@ -60,11 +60,16 @@ def _factor_table():
     mat = mat.loc[[c for c in mat.index if c in ici]]
     reg = cancer_type_registry().set_index("code")
     tmb = tmb_map()
-    cta = cta_burden(mat)
+    cta = cta_metric_table()
     sig = curated_signatures()
     cols = {
         "median TMB": np.log10(pd.Series({c: tmb.get(c, np.nan) for c in mat.index})),
-        "CTA burden": pd.Series({c: cta.get(c, np.nan) for c in mat.index}),
+        "CTA coverage p90": cta.get("cta_coverage_p90", pd.Series(dtype=float)).reindex(mat.index),
+        "CTA coverage p95": cta.get("cta_coverage_p95", pd.Series(dtype=float)).reindex(mat.index),
+        "CTA load p90": cta.get("cta_count_p90", pd.Series(dtype=float)).reindex(mat.index),
+        "CTA load p95": cta.get("cta_count_p95", pd.Series(dtype=float)).reindex(mat.index),
+        "CTA 9mer load p90": cta.get("cta_9mer_load_p90", pd.Series(dtype=float)).reindex(mat.index),
+        "CTA 9mer load p95": cta.get("cta_9mer_load_p95", pd.Series(dtype=float)).reindex(mat.index),
         "viral status": pd.Series({c: viral_score(c, reg) for c in mat.index}),
         "TGF-beta signature": signature_score(mat, sig.get(_TGFB, [])),
         "Wnt signature": signature_score(mat, sig.get(_WNT, [])),
@@ -76,7 +81,15 @@ def _factor_table():
 
 
 # DRIVERS first (expected +), then SUPPRESSORS (expected -); plotted top->bottom.
-_DRIVERS = ["median TMB", "CTA burden", "viral status"]
+_CTA_DRIVERS = [
+    "CTA coverage p90",
+    "CTA coverage p95",
+    "CTA load p90",
+    "CTA load p95",
+    "CTA 9mer load p90",
+    "CTA 9mer load p95",
+]
+_DRIVERS = ["median TMB", *_CTA_DRIVERS, "viral status"]
 _SUPPRESSORS = ["TGF-beta signature", "Wnt signature"] + _SECRETED
 
 
@@ -109,7 +122,7 @@ def main() -> int:
     order = list(res.index[::-1])           # barh: first factor on top
     y = np.arange(len(order))
     h = 0.38
-    fig, ax = plt.subplots(figsize=(9.5, max(5, 0.62 * len(order))))
+    fig, ax = plt.subplots(figsize=(10.5, max(5, 0.62 * len(order))))
     ax.barh(y + h / 2, res.loc[order, "rho_apd1"], height=h,
             color="#1b6ca8", label="anti-PD-1 monotherapy ORR")
     ax.barh(y - h / 2, res.loc[order, "rho_ici"], height=h,
@@ -129,9 +142,9 @@ def main() -> int:
                 va="top", fontsize=8, color="#a83232", fontweight="bold")
     ax.set_xlabel("Spearman ρ vs objective response rate (across cancer types)")
     ax.set_title("Causal-factor association with anti-PD-1 vs broad-ICI response\n"
-                 f"drivers (TMB · CTA burden · viral) vs secreted suppressors "
-                 f"(TGFβ · Wnt · TGFB1 · WNT11 · WNT5A · IL10); "
-                 f"n={len(strict)} aPD1 / {len(ici)} ICI cohorts", fontsize=10)
+                 "drivers: TMB, CTA coverage/load/9mer (p90/p95), viral; "
+                 "suppressors: TGFβ/Wnt/secreted genes\n"
+                 f"n={len(strict)} aPD1 / {len(ici)} ICI cohorts", fontsize=9.5)
     ax.grid(axis="x", alpha=0.3)
     ax.legend(loc="lower right", fontsize=8)
     fig.tight_layout()

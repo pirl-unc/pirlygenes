@@ -250,6 +250,101 @@ def _cta_coverage_p95() -> dict:
                                df["n_samples"]) if n}
 
 
+def _latest_cta_patient_counts_path() -> Path | None:
+    """Stable per-CTA patient-count table, falling back to the newest run dir.
+
+    ``cta_patient_counts.py`` historically only wrote the detailed table into
+    each timestamped run. Newer runs also write ``_cta_patient_counts.csv`` next
+    to ``_cta_union_counts.csv``; keep the fallback so older regenerated outputs
+    still support CTA-load comparisons.
+    """
+    out = Path(__file__).resolve().parent / "outputs"
+    stable = out / "_cta_patient_counts.csv"
+    if stable.exists():
+        return stable
+    runs = sorted(out.glob("run_*/cta_patient_counts.csv"),
+                  key=lambda p: p.stat().st_mtime, reverse=True)
+    return runs[0] if runs else None
+
+
+@lru_cache(maxsize=1)
+def cta_metric_table() -> pd.DataFrame:
+    """Per-cohort CTA metrics from the generated per-sample CTA tables.
+
+    Columns are raw values, not z-scores:
+
+    * ``cta_coverage_p90/p95``: percent of patients with >=1 CTA on.
+    * ``cta_count_p90/p95``: mean active CTA proteins per patient.
+    * ``cta_9mer_load_p90/p95``: mean CTA-specific 9-mer payload per patient.
+
+    Empty/NaN columns are returned when the prerequisite generated tables are
+    absent; callers can still render the non-CTA factors.
+    """
+    union_path = Path(__file__).resolve().parent / "outputs" / "_cta_union_counts.csv"
+    counts_path = _latest_cta_patient_counts_path()
+    out = pd.DataFrame()
+
+    if union_path.exists():
+        u = pd.read_csv(union_path)
+        u = u[u["n_samples"].astype(float) > 0].copy()
+        u["cancer_code"] = u["cancer_code"].astype(str)
+        out = out.reindex(u["cancer_code"])
+        for q in (90, 95):
+            out[f"cta_coverage_p{q}"] = (
+                100.0 * u[f"n_any_p{q}"].astype(float).to_numpy()
+                / u["n_samples"].astype(float).to_numpy()
+            )
+
+    if counts_path is None:
+        return out
+
+    counts = pd.read_csv(counts_path)
+    if counts.empty:
+        return out
+    counts["cancer_code"] = counts["cancer_code"].astype(str)
+    n_samples = counts.groupby("cancer_code")["n_samples"].first().astype(float)
+    out = out.reindex(out.index.union(n_samples.index))
+
+    for q in (90, 95):
+        col = f"n_p{q}"
+        if col in counts.columns:
+            out[f"cta_count_p{q}"] = (
+                counts.groupby("cancer_code")[col].sum().astype(float)
+                / n_samples
+            )
+
+    spec_path = Path(__file__).resolve().parent / "outputs" / "_cache" / "cta_specific_9mers.csv"
+    if not spec_path.exists():
+        return out
+
+    spec = pd.read_csv(spec_path)
+    sym2spec = dict(zip(spec["Symbol"].astype(str),
+                        spec["n_specific_9mers"].astype(float)))
+    try:
+        groups = get_data("cta-protein-groups")
+        for group, members in groups.groupby("protein_group"):
+            weights = [sym2spec.get(str(m), 0.0)
+                       for m in members["member_symbol"].astype(str)]
+            if weights:
+                sym2spec.setdefault(str(group), max(weights))
+    except Exception:
+        pass
+
+    counts = counts.assign(
+        _specific_9mers=counts["Symbol"].astype(str).map(sym2spec).fillna(0.0)
+    )
+    for q in (90, 95):
+        col = f"n_p{q}"
+        if col in counts.columns:
+            weighted = (
+                counts.assign(_weighted=counts[col].astype(float)
+                              * counts["_specific_9mers"].astype(float))
+                .groupby("cancer_code")["_weighted"].sum()
+            )
+            out[f"cta_9mer_load_p{q}"] = weighted / n_samples
+    return out
+
+
 def cta_burden(mat: pd.DataFrame, *, thr_tpm: float = CTA_ON_TPM,
                min_coverage: float = 0.5) -> pd.Series:
     """CTA burden = **% of patients in the cohort with >=1 CTA at the >=95th
