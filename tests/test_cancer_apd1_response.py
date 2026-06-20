@@ -18,6 +18,14 @@ _EXPECTED_COLS = [
     "confidence",
     "notes",
     "drug_target",
+    "evidence_type",
+    "therapy_regimen_class",
+    "histology_match",
+    "is_direct_cancer_code_evidence",
+    "endpoint_population",
+    "response_numerator",
+    "response_denominator",
+    "source_anchor",
 ]
 
 
@@ -58,6 +66,31 @@ def test_drug_matches_its_checkpoint_target():
     # fallback classes must carry a citation (no unsourced proxies)
     for fallback in (pdl1, dual):
         assert fallback["pmid_doi"].astype(str).str.startswith(("PMID", "DOI", "10.")).all()
+
+
+def test_response_evidence_provenance_is_structured():
+    df = cancer_apd1_response_df()
+    assert df["endpoint_population"].astype(str).str.len().gt(0).all()
+    assert set(df["therapy_regimen_class"]) <= {
+        "single_agent_pd1",
+        "single_agent_pdl1_proxy",
+        "dual_checkpoint_proxy",
+    }
+    direct_values = set(
+        df["is_direct_cancer_code_evidence"].astype(str).str.lower()
+    )
+    assert direct_values <= {"true", "false"}
+
+    proxy = df[df["cancer_code"].isin(["GBC", "NEC_LUNG_LARGECELL", "ACINIC"])]
+    assert set(proxy["histology_match"]) == {"proxy_or_pooled"}
+
+    sarc = df.set_index("cancer_code")
+    assert sarc.loc["SARC_UPS", "apd1_orr_pct"] == 40.0
+    assert sarc.loc["SARC_DDLPS", "apd1_orr_pct"] == 20.0
+    assert sarc.loc["SARC_CHON", "apd1_orr_pct"] == 20.0
+    assert str(
+        sarc.loc["SARC_DDLPS", "is_direct_cancer_code_evidence"]
+    ).lower() == "false"
 
 
 def test_every_value_is_cited_or_flagged():

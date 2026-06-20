@@ -1,232 +1,232 @@
-Family,family_group,display_name,Symbol,Ensembl_Gene_ID,role,source,reference
-PROSTATE,PROSTATE,Prostate,KLK3,ENSG00000142515,anchor,tumor,PMID:26544944
-PROSTATE,PROSTATE,Prostate,KLK2,ENSG00000167751,anchor,tumor,PMID:26544944
-PROSTATE,PROSTATE,Prostate,TMPRSS2,ENSG00000184012,confirmatory,tumor,PMID:26544944
-PROSTATE,PROSTATE,Prostate,FOLH1,ENSG00000086205,confirmatory,tumor,PMID:26544944
-PROSTATE,PROSTATE,Prostate,NKX3-1,ENSG00000167034,anchor,tumor,PMID:26544944
-PROSTATE,PROSTATE,Prostate,HOXB13,ENSG00000159184,anchor,tumor,PMID:26544944
-PROSTATE,PROSTATE,Prostate,STEAP1,ENSG00000164647,confirmatory,tumor,PMID:26544944
-PROSTATE,PROSTATE,Prostate,STEAP2,ENSG00000157214,confirmatory,tumor,PMID:26544944
-PROSTATE,PROSTATE,Prostate,AR,ENSG00000169083,confirmatory,tumor,PMID:26544944
-CRC,CRC,Colorectal,GUCY2C,ENSG00000070019,anchor,tumor,PMID:22810696
-CRC,CRC,Colorectal,TFF3,ENSG00000160180,confirmatory,tumor,PMID:22810696
-CRC,CRC,Colorectal,CDH17,ENSG00000079112,anchor,tumor,PMID:22810696
-CRC,CRC,Colorectal,EPHB2,ENSG00000133216,confirmatory,tumor,PMID:22810696
-CRC,CRC,Colorectal,CEACAM5,ENSG00000105388,confirmatory,tumor,PMID:22810696
-CRC,CRC,Colorectal,CEACAM6,ENSG00000086548,confirmatory,tumor,PMID:22810696
-CRC,CRC,Colorectal,VIL1,ENSG00000127831,confirmatory,tumor,PMID:22810696
-CRC,CRC,Colorectal,CDX2,ENSG00000165556,confirmatory,tumor,PMID:22810696
-GASTRIC,GASTRIC,Gastric,MUC5AC,ENSG00000215182,confirmatory,tumor,PMID:25079317
-GASTRIC,GASTRIC,Gastric,MUC6,ENSG00000184956,confirmatory,tumor,PMID:25079317
-GASTRIC,GASTRIC,Gastric,CLDN18,ENSG00000066405,confirmatory,tumor,PMID:25079317
-GASTRIC,GASTRIC,Gastric,TFF1,ENSG00000160182,confirmatory,tumor,PMID:25079317
-GASTRIC,GASTRIC,Gastric,TFF2,ENSG00000160181,confirmatory,tumor,PMID:25079317
-GASTRIC,GASTRIC,Gastric,REG4,ENSG00000134193,confirmatory,tumor,PMID:25079317
-GASTRIC,GASTRIC,Gastric,GKN1,ENSG00000169605,anchor,tumor,PMID:25079317
-GASTRIC,GASTRIC,Gastric,GKN2,ENSG00000183607,anchor,tumor,PMID:25079317
-ESCA_SQ,SQUAMOUS,Esophageal squamous,TP63,ENSG00000073282,confirmatory,tumor,PMID:25631445
-ESCA_SQ,SQUAMOUS,Esophageal squamous,SOX2,ENSG00000181449,confirmatory,tumor,PMID:25631445
-ESCA_SQ,SQUAMOUS,Esophageal squamous,KRT5,ENSG00000186081,confirmatory,tumor,PMID:25631445
-ESCA_SQ,SQUAMOUS,Esophageal squamous,KRT14,ENSG00000186847,confirmatory,tumor,PMID:25631445
-ESCA_SQ,SQUAMOUS,Esophageal squamous,DSG3,ENSG00000134757,confirmatory,tumor,PMID:25631445
-ESCA_SQ,SQUAMOUS,Esophageal squamous,PPL,ENSG00000118898,confirmatory,tumor,PMID:25631445
-ESCA_SQ,SQUAMOUS,Esophageal squamous,KRT17,ENSG00000128422,confirmatory,tumor,PMID:25631445
-ESCA_SQ,SQUAMOUS,Esophageal squamous,FAM83H,ENSG00000180921,anchor,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,TP63,ENSG00000073282,confirmatory,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,SOX2,ENSG00000181449,confirmatory,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,KRT5,ENSG00000186081,confirmatory,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,KRT14,ENSG00000186847,confirmatory,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,DSG3,ENSG00000134757,confirmatory,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,PPL,ENSG00000118898,confirmatory,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,KRT17,ENSG00000128422,confirmatory,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,CLCA2,ENSG00000137975,anchor,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,KRT6A,ENSG00000205420,confirmatory,tumor,PMID:25631445
-RENAL,RENAL,Renal,PAX8,ENSG00000125618,confirmatory,tumor,PMID:23792563
-RENAL,RENAL,Renal,PAX2,ENSG00000075891,confirmatory,tumor,PMID:23792563
-RENAL,RENAL,Renal,CA9,ENSG00000107159,anchor,tumor,PMID:23792563
-RENAL,RENAL,Renal,NDUFA4L2,ENSG00000185633,anchor,tumor,PMID:23792563
-RENAL,RENAL,Renal,SLC22A12,ENSG00000197891,anchor,tumor,PMID:23792563
-RENAL,RENAL,Renal,KCNJ1,ENSG00000151704,anchor,tumor,PMID:23792563
-RENAL,RENAL,Renal,AMACR,ENSG00000242110,confirmatory,tumor,PMID:23792563
-GLIAL,CNS,Glioma,GFAP,ENSG00000131095,confirmatory,tumor,PMID:26061751
-GLIAL,CNS,Glioma,OLIG2,ENSG00000205927,anchor,tumor,PMID:26061751
-GLIAL,CNS,Glioma,AQP4,ENSG00000171885,confirmatory,tumor,PMID:26061751
-GLIAL,CNS,Glioma,ALDH1L1,ENSG00000144908,anchor,tumor,PMID:26061751
-GLIAL,CNS,Glioma,SLC1A3,ENSG00000079215,anchor,tumor,PMID:26061751
-MELANOCYTIC,MELANOCYTIC,Melanocytic,MLANA,ENSG00000120215,anchor,tumor,PMID:26091043
-MELANOCYTIC,MELANOCYTIC,Melanocytic,PMEL,ENSG00000185664,anchor,tumor,PMID:26091043
-MELANOCYTIC,MELANOCYTIC,Melanocytic,TYR,ENSG00000077498,anchor,tumor,PMID:26091043
-MELANOCYTIC,MELANOCYTIC,Melanocytic,DCT,ENSG00000080166,anchor,tumor,PMID:26091043
-MELANOCYTIC,MELANOCYTIC,Melanocytic,MITF,ENSG00000187098,confirmatory,tumor,PMID:26091043
-NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,CHGA,ENSG00000100604,anchor,tumor,PMID:26168399
-NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,CHGB,ENSG00000089199,anchor,tumor,PMID:26168399
-NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,SYP,ENSG00000102003,anchor,tumor,PMID:26168399
-NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,INSM1,ENSG00000173404,anchor,tumor,PMID:26168399
-NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,NCAM1,ENSG00000149294,confirmatory,tumor,PMID:26168399
-NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,ASCL1,ENSG00000139352,anchor,tumor,PMID:26168399
-NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,SCG2,ENSG00000171951,confirmatory,tumor,PMID:26168399
-NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,SCG3,ENSG00000104112,confirmatory,tumor,PMID:26168399
-HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,PTPRC,ENSG00000081237,anchor,tumor,PMID:31857451
-HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,CD19,ENSG00000177455,anchor,tumor,PMID:31857451
-HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,CD79A,ENSG00000105369,anchor,tumor,PMID:31857451
-HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,CD79B,ENSG00000007312,anchor,tumor,PMID:31857451
-HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,MS4A1,ENSG00000156738,anchor,tumor,PMID:31857451
-HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,PAX5,ENSG00000196092,anchor,tumor,PMID:31857451
-HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,PTPRC,ENSG00000081237,anchor,tumor,PMID:31857451
-HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD3D,ENSG00000167286,anchor,tumor,PMID:31857451
-HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD3E,ENSG00000198851,anchor,tumor,PMID:31857451
-HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD3G,ENSG00000160654,anchor,tumor,PMID:31857451
-HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD2,ENSG00000116824,anchor,tumor,PMID:31857451
-HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD5,ENSG00000110448,anchor,tumor,PMID:31857451
-HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD7,ENSG00000173762,anchor,tumor,PMID:31857451
-HEME_MYELOID,HEMATOLYMPHOID,Myeloid,PTPRC,ENSG00000081237,anchor,tumor,PMID:31857451
-HEME_MYELOID,HEMATOLYMPHOID,Myeloid,SPI1,ENSG00000066336,confirmatory,tumor,PMID:31857451
-HEME_MYELOID,HEMATOLYMPHOID,Myeloid,MPO,ENSG00000005381,anchor,tumor,PMID:31857451
-HEME_MYELOID,HEMATOLYMPHOID,Myeloid,ELANE,ENSG00000197561,anchor,tumor,PMID:31857451
-HEME_MYELOID,HEMATOLYMPHOID,Myeloid,CSF1R,ENSG00000182578,anchor,tumor,PMID:31857451
-HEME_MYELOID,HEMATOLYMPHOID,Myeloid,LYZ,ENSG00000090382,anchor,tumor,PMID:31857451
-HEME_MYELOID,HEMATOLYMPHOID,Myeloid,ITGAM,ENSG00000169896,anchor,tumor,PMID:31857451
-HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,SDC1,ENSG00000115884,confirmatory,tumor,PMID:31857451
-HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,MZB1,ENSG00000170476,anchor,tumor,PMID:31857451
-HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,XBP1,ENSG00000100219,confirmatory,tumor,PMID:31857451
-HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,TNFRSF17,ENSG00000048462,anchor,tumor,PMID:31857451
-HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,PRDM1,ENSG00000057657,confirmatory,tumor,PMID:31857451
-HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,CD38,ENSG00000004468,confirmatory,tumor,PMID:31857451
-EMBRYONAL,PRIMITIVE,Embryonal,LIN28A,ENSG00000131914,confirmatory,tumor,PMID:19211792
-EMBRYONAL,PRIMITIVE,Embryonal,LIN28B,ENSG00000187772,confirmatory,tumor,PMID:19211792
-EMBRYONAL,PRIMITIVE,Embryonal,SALL4,ENSG00000101115,confirmatory,tumor,PMID:19211792
-EMBRYONAL,PRIMITIVE,Embryonal,DLK1,ENSG00000185559,anchor,tumor,PMID:19211792
-EMBRYONAL,PRIMITIVE,Embryonal,IGF2BP1,ENSG00000159217,confirmatory,tumor,PMID:19211792
-EMBRYONAL,PRIMITIVE,Embryonal,IGF2BP3,ENSG00000136231,confirmatory,tumor,PMID:19211792
-GERM_CELL,PRIMITIVE,Germ cell,POU5F1,ENSG00000204531,anchor,tumor,PMID:25613900
-GERM_CELL,PRIMITIVE,Germ cell,NANOG,ENSG00000111704,anchor,tumor,PMID:25613900
-GERM_CELL,PRIMITIVE,Germ cell,SALL4,ENSG00000101115,confirmatory,tumor,PMID:25613900
-GERM_CELL,PRIMITIVE,Germ cell,DPPA4,ENSG00000121570,confirmatory,tumor,PMID:25613900
-GERM_CELL,PRIMITIVE,Germ cell,TDGF1,ENSG00000241186,confirmatory,tumor,PMID:25613900
-GERM_CELL,PRIMITIVE,Germ cell,KIT,ENSG00000157404,confirmatory,tumor,PMID:25613900
-CNS_EMBRYONAL,PRIMITIVE,CNS embryonal,OTX2,ENSG00000165588,anchor,tumor,PMID:22832581
-CNS_EMBRYONAL,PRIMITIVE,CNS embryonal,CRX,ENSG00000105392,anchor,tumor,PMID:22832581
-CNS_EMBRYONAL,PRIMITIVE,CNS embryonal,LIN28A,ENSG00000131914,confirmatory,tumor,PMID:22832581
-CNS_EMBRYONAL,PRIMITIVE,CNS embryonal,SALL4,ENSG00000101115,confirmatory,tumor,PMID:22832581
-CNS_EMBRYONAL,PRIMITIVE,CNS embryonal,FOXG1,ENSG00000176165,anchor,tumor,PMID:22832581
-EPENDYMAL,CNS,Ependymoma,L1CAM,ENSG00000198910,anchor,tumor,PMID:25613900
-EPENDYMAL,CNS,Ependymoma,GFAP,ENSG00000131095,confirmatory,tumor,PMID:25613900
-EPENDYMAL,CNS,Ependymoma,S100B,ENSG00000160307,confirmatory,tumor,PMID:25613900
-SELLAR_EPITHELIAL,SELLAR_EPITHELIAL,Sellar epithelial,KRT8,ENSG00000170421,confirmatory,tumor,PMID:25613900
-SELLAR_EPITHELIAL,SELLAR_EPITHELIAL,Sellar epithelial,KRT18,ENSG00000111057,confirmatory,tumor,PMID:25613900
-SELLAR_EPITHELIAL,SELLAR_EPITHELIAL,Sellar epithelial,CTNNB1,ENSG00000168036,confirmatory,tumor,PMID:25613900
-SELLAR_EPITHELIAL,SELLAR_EPITHELIAL,Sellar epithelial,LEF1,ENSG00000138795,anchor,tumor,PMID:25613900
-MENINGIOMA,MENINGIOMA,Meningioma,SSTR2,ENSG00000180616,anchor,tumor,PMID:25613900
-MENINGIOMA,MENINGIOMA,Meningioma,PGR,ENSG00000082175,confirmatory,tumor,PMID:25613900
-MENINGIOMA,MENINGIOMA,Meningioma,MUC1,ENSG00000185499,confirmatory,tumor,PMID:25613900
-MENINGIOMA,MENINGIOMA,Meningioma,CLDN1,ENSG00000163347,anchor,tumor,PMID:25613900
-NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,SOX10,ENSG00000100146,confirmatory,tumor,PMID:25613900
-NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,PLP1,ENSG00000123560,anchor,tumor,PMID:25613900
-NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,MPZ,ENSG00000158887,anchor,tumor,PMID:25613900
-NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,PMP22,ENSG00000109099,anchor,tumor,PMID:25613900
-NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,S100B,ENSG00000160307,confirmatory,tumor,PMID:25613900
-NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,NGFR,ENSG00000064300,anchor,tumor,PMID:25613900
-CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,TTR,ENSG00000118271,anchor,tumor,PMID:25613900
-CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,AQP1,ENSG00000240583,confirmatory,tumor,PMID:25613900
-CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,CLIC6,ENSG00000159212,anchor,tumor,PMID:25613900
-CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,KRT8,ENSG00000170421,confirmatory,tumor,PMID:25613900
-CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,KCNJ13,ENSG00000115474,anchor,tumor,PMID:25613900
-LUAD,LUAD,Lung adeno,NKX2-1,ENSG00000136352,confirmatory,tumor,PMID:25079552
-LUAD,LUAD,Lung adeno,NAPSA,ENSG00000131400,anchor,tumor,PMID:25079552
-LUAD,LUAD,Lung adeno,SFTPC,ENSG00000168484,anchor,tumor,PMID:25079552
-LUAD,LUAD,Lung adeno,SFTPB,ENSG00000168878,anchor,tumor,PMID:25079552
-LUAD,LUAD,Lung adeno,SFTPA2,ENSG00000185303,anchor,tumor,PMID:25079552
-LUAD,LUAD,Lung adeno,SLC34A2,ENSG00000157765,anchor,tumor,PMID:25079552
-BRCA,BRCA,Breast,GATA3,ENSG00000107485,confirmatory,tumor,PMID:23000897
-BRCA,BRCA,Breast,TRPS1,ENSG00000104447,anchor,tumor,PMID:23000897
-BRCA,BRCA,Breast,FOXA1,ENSG00000129514,confirmatory,tumor,PMID:23000897
-BRCA,BRCA,Breast,ESR1,ENSG00000091831,confirmatory,tumor,PMID:23000897
-BRCA,BRCA,Breast,SOX10,ENSG00000100146,confirmatory,tumor,PMID:23000897
-BRCA,BRCA,Breast,SCGB2A2,ENSG00000110484,anchor,tumor,PMID:23000897
-BRCA,BRCA,Breast,PIP,ENSG00000159763,anchor,tumor,PMID:23000897
-PAAD,PAAD,Pancreatic,CLDN18,ENSG00000066405,confirmatory,tumor,PMID:26343385
-PAAD,PAAD,Pancreatic,GATA6,ENSG00000141448,anchor,tumor,PMID:26343385
-PAAD,PAAD,Pancreatic,S100P,ENSG00000163993,confirmatory,tumor,PMID:26343385
-PAAD,PAAD,Pancreatic,MSLN,ENSG00000102854,anchor,tumor,PMID:26343385
-PAAD,PAAD,Pancreatic,KRT19,ENSG00000171345,confirmatory,tumor,PMID:26343385
-PAAD,PAAD,Pancreatic,KRT7,ENSG00000135480,confirmatory,tumor,PMID:26343385
-LIHC,LIHC,Hepatocellular,ALB,ENSG00000163631,anchor,tumor,PMID:28622513
-LIHC,LIHC,Hepatocellular,HNF4A,ENSG00000101076,anchor,tumor,PMID:28622513
-LIHC,LIHC,Hepatocellular,APOB,ENSG00000084674,anchor,tumor,PMID:28622513
-LIHC,LIHC,Hepatocellular,FGA,ENSG00000171560,anchor,tumor,PMID:28622513
-LIHC,LIHC,Hepatocellular,SERPINA1,ENSG00000197249,anchor,tumor,PMID:28622513
-LIHC,LIHC,Hepatocellular,GPC3,ENSG00000147257,anchor,tumor,PMID:28622513
-LIHC,LIHC,Hepatocellular,ARG1,ENSG00000118520,anchor,tumor,PMID:28622513
-OV,OV,Ovarian,PAX8,ENSG00000125618,confirmatory,tumor,PMID:21720365
-OV,OV,Ovarian,WT1,ENSG00000184937,anchor,tumor,PMID:21720365
-OV,OV,Ovarian,SOX17,ENSG00000164736,anchor,tumor,PMID:21720365
-OV,OV,Ovarian,MUC16,ENSG00000181143,anchor,tumor,PMID:21720365
-OV,OV,Ovarian,WFDC2,ENSG00000101443,anchor,tumor,PMID:21720365
-OV,OV,Ovarian,FOLR1,ENSG00000110195,anchor,tumor,PMID:21720365
-UCEC,UCEC,Endometrial,PAX8,ENSG00000125618,confirmatory,tumor,PMID:23636398
-UCEC,UCEC,Endometrial,ESR1,ENSG00000091831,confirmatory,tumor,PMID:23636398
-UCEC,UCEC,Endometrial,PGR,ENSG00000082175,confirmatory,tumor,PMID:23636398
-UCEC,UCEC,Endometrial,VIM,ENSG00000026025,anchor,stroma,PMID:23636398
-UCEC,UCEC,Endometrial,HOXA10,ENSG00000253293,anchor,tumor,PMID:23636398
-UCEC,UCEC,Endometrial,HOXA11,ENSG00000005073,anchor,tumor,PMID:23636398
-BLCA,BLCA,Urothelial,UPK1A,ENSG00000105668,anchor,tumor,PMID:28988769
-BLCA,BLCA,Urothelial,UPK1B,ENSG00000114638,anchor,tumor,PMID:28988769
-BLCA,BLCA,Urothelial,UPK2,ENSG00000110375,anchor,tumor,PMID:28988769
-BLCA,BLCA,Urothelial,UPK3A,ENSG00000100373,anchor,tumor,PMID:28988769
-BLCA,BLCA,Urothelial,GATA3,ENSG00000107485,confirmatory,tumor,PMID:28988769
-BLCA,BLCA,Urothelial,FOXA1,ENSG00000129514,confirmatory,tumor,PMID:28988769
-BLCA,BLCA,Urothelial,KRT5,ENSG00000186081,confirmatory,tumor,PMID:28988769
-BLCA,BLCA,Urothelial,KRT20,ENSG00000171431,confirmatory,tumor,PMID:28988769
-THCA,THCA,Thyroid,TG,ENSG00000042832,anchor,tumor,PMID:25417114
-THCA,THCA,Thyroid,TPO,ENSG00000115705,anchor,tumor,PMID:25417114
-THCA,THCA,Thyroid,SLC5A5,ENSG00000105641,anchor,tumor,PMID:25417114
-THCA,THCA,Thyroid,TSHR,ENSG00000165409,anchor,tumor,PMID:25417114
-THCA,THCA,Thyroid,FOXE1,ENSG00000178919,anchor,tumor,PMID:25417114
-THCA,THCA,Thyroid,PAX8,ENSG00000125618,confirmatory,tumor,PMID:25417114
-THCA,THCA,Thyroid,NKX2-1,ENSG00000136352,confirmatory,tumor,PMID:25417114
-CRC,CRC,Colorectal,SATB2,ENSG00000119042,anchor,tumor,PMID:22810696
-CRC,CRC,Colorectal,KRT20,ENSG00000171431,confirmatory,tumor,PMID:22810696
-MELANOCYTIC,MELANOCYTIC,Melanocytic,SOX10,ENSG00000100146,confirmatory,tumor,PMID:26091043
-MELANOCYTIC,MELANOCYTIC,Melanocytic,TYRP1,ENSG00000107165,anchor,tumor,PMID:26091043
-EPENDYMAL,CNS,Ependymoma,FOXJ1,ENSG00000129654,anchor,tumor,PMID:25613900
-CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,OTX2,ENSG00000165588,anchor,tumor,PMID:25613900
-GERM_CELL,PRIMITIVE,Germ cell,SOX17,ENSG00000164736,anchor,tumor,PMID:25613900
-NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,NEUROD1,ENSG00000162992,anchor,tumor,PMID:26168399
-GASTRIC,GASTRIC,Gastric,PGC,ENSG00000096088,anchor,tumor,PMID:25079317
-CRC,CRC,Colorectal,KRT7,ENSG00000135480,negative,tumor,PMID:22810696
-CRC,CRC,Colorectal,NKX2-1,ENSG00000136352,negative,tumor,PMID:22810696
-CRC,CRC,Colorectal,PAX8,ENSG00000125618,negative,tumor,PMID:22810696
-GASTRIC,GASTRIC,Gastric,SATB2,ENSG00000119042,negative,tumor,PMID:25079317
-GASTRIC,GASTRIC,Gastric,NKX2-1,ENSG00000136352,negative,tumor,PMID:25079317
-PROSTATE,PROSTATE,Prostate,GATA3,ENSG00000107485,negative,tumor,PMID:26544944
-PROSTATE,PROSTATE,Prostate,KRT7,ENSG00000135480,negative,tumor,PMID:26544944
-PROSTATE,PROSTATE,Prostate,CDX2,ENSG00000165556,negative,tumor,PMID:26544944
-LIHC,LIHC,Hepatocellular,KRT7,ENSG00000135480,negative,tumor,PMID:28622513
-LIHC,LIHC,Hepatocellular,KRT19,ENSG00000171345,negative,tumor,PMID:28622513
-LIHC,LIHC,Hepatocellular,EPCAM,ENSG00000119888,negative,tumor,PMID:28622513
-THCA,THCA,Thyroid,CALCA,ENSG00000110680,negative,tumor,PMID:25417114
-THCA,THCA,Thyroid,CHGA,ENSG00000100604,negative,tumor,PMID:25417114
-RENAL,RENAL,Renal,TG,ENSG00000042832,negative,tumor,PMID:23792563
-RENAL,RENAL,Renal,NKX2-1,ENSG00000136352,negative,tumor,PMID:23792563
-RENAL,RENAL,Renal,WT1,ENSG00000184937,negative,tumor,PMID:23792563
-SQUAMOUS,SQUAMOUS,Squamous,NAPSA,ENSG00000131400,negative,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,NKX2-1,ENSG00000136352,negative,tumor,PMID:25631445
-SQUAMOUS,SQUAMOUS,Squamous,CDX2,ENSG00000165556,negative,tumor,PMID:25631445
-MELANOCYTIC,MELANOCYTIC,Melanocytic,KRT8,ENSG00000170421,negative,tumor,PMID:26091043
-MELANOCYTIC,MELANOCYTIC,Melanocytic,EPCAM,ENSG00000119888,negative,tumor,PMID:26091043
-MELANOCYTIC,MELANOCYTIC,Melanocytic,PTPRC,ENSG00000081237,negative,immune,PMID:26091043
-GERM_CELL,PRIMITIVE,Germ cell,KRT8,ENSG00000170421,negative,tumor,PMID:25613900
-GERM_CELL,PRIMITIVE,Germ cell,GATA3,ENSG00000107485,negative,tumor,PMID:25613900
-MENINGIOMA,MENINGIOMA,Meningioma,SOX10,ENSG00000100146,negative,tumor,PMID:25613900
-MENINGIOMA,MENINGIOMA,Meningioma,GFAP,ENSG00000131095,negative,tumor,PMID:25613900
-NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,MLANA,ENSG00000120215,negative,tumor,PMID:25613900
-NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,EPCAM,ENSG00000119888,negative,tumor,PMID:25613900
-GLIAL,CNS,Glioma,TTR,ENSG00000118271,negative,tumor,PMID:26061751
-GLIAL,CNS,Glioma,EPCAM,ENSG00000119888,negative,tumor,PMID:26061751
-GLIAL,CNS,Glioma,SYP,ENSG00000102003,negative,tumor,PMID:26061751
-BLCA,BLCA,Urothelial,NKX3-1,ENSG00000167034,negative,tumor,PMID:28988769
-BLCA,BLCA,Urothelial,TTF1,ENSG00000125482,negative,tumor,PMID:28988769
-OV,OV,Ovarian,KRT20,ENSG00000171431,negative,tumor,PMID:21720365
-OV,OV,Ovarian,CDX2,ENSG00000165556,negative,tumor,PMID:21720365
-HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,MS4A1,ENSG00000156738,negative,tumor,PMID:31857451
-HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,CD19,ENSG00000177455,negative,tumor,PMID:31857451
+Family,family_group,display_name,Symbol,Ensembl_Gene_ID,role,source,reference,support_type,source_anchor
+PROSTATE,PROSTATE,Prostate,KLK3,ENSG00000142515,anchor,tumor,PMID:26544944,literature_marker_support,row-level marker source
+PROSTATE,PROSTATE,Prostate,KLK2,ENSG00000167751,anchor,tumor,PMID:26544944,literature_marker_support,row-level marker source
+PROSTATE,PROSTATE,Prostate,TMPRSS2,ENSG00000184012,confirmatory,tumor,PMID:26544944,literature_marker_support,row-level marker source
+PROSTATE,PROSTATE,Prostate,FOLH1,ENSG00000086205,confirmatory,tumor,PMID:26544944,literature_marker_support,row-level marker source
+PROSTATE,PROSTATE,Prostate,NKX3-1,ENSG00000167034,anchor,tumor,PMID:26544944,literature_marker_support,row-level marker source
+PROSTATE,PROSTATE,Prostate,HOXB13,ENSG00000159184,anchor,tumor,PMID:26544944,literature_marker_support,row-level marker source
+PROSTATE,PROSTATE,Prostate,STEAP1,ENSG00000164647,confirmatory,tumor,PMID:26544944,literature_marker_support,row-level marker source
+PROSTATE,PROSTATE,Prostate,STEAP2,ENSG00000157214,confirmatory,tumor,PMID:26544944,literature_marker_support,row-level marker source
+PROSTATE,PROSTATE,Prostate,AR,ENSG00000169083,confirmatory,tumor,PMID:26544944,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,GUCY2C,ENSG00000070019,anchor,tumor,PMID:22810696,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,TFF3,ENSG00000160180,confirmatory,tumor,PMID:22810696,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,CDH17,ENSG00000079112,anchor,tumor,PMID:22810696,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,EPHB2,ENSG00000133216,confirmatory,tumor,PMID:22810696,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,CEACAM5,ENSG00000105388,confirmatory,tumor,PMID:22810696,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,CEACAM6,ENSG00000086548,confirmatory,tumor,PMID:22810696,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,VIL1,ENSG00000127831,confirmatory,tumor,PMID:22810696,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,CDX2,ENSG00000165556,confirmatory,tumor,PMID:22810696,literature_marker_support,row-level marker source
+GASTRIC,GASTRIC,Gastric,MUC5AC,ENSG00000215182,confirmatory,tumor,PMID:25079317,literature_marker_support,row-level marker source
+GASTRIC,GASTRIC,Gastric,MUC6,ENSG00000184956,confirmatory,tumor,PMID:25079317,literature_marker_support,row-level marker source
+GASTRIC,GASTRIC,Gastric,CLDN18,ENSG00000066405,confirmatory,tumor,PMID:25079317,literature_marker_support,row-level marker source
+GASTRIC,GASTRIC,Gastric,TFF1,ENSG00000160182,confirmatory,tumor,PMID:25079317,literature_marker_support,row-level marker source
+GASTRIC,GASTRIC,Gastric,TFF2,ENSG00000160181,confirmatory,tumor,PMID:25079317,literature_marker_support,row-level marker source
+GASTRIC,GASTRIC,Gastric,REG4,ENSG00000134193,confirmatory,tumor,PMID:25079317,literature_marker_support,row-level marker source
+GASTRIC,GASTRIC,Gastric,GKN1,ENSG00000169605,anchor,tumor,PMID:25079317,literature_marker_support,row-level marker source
+GASTRIC,GASTRIC,Gastric,GKN2,ENSG00000183607,anchor,tumor,PMID:25079317,literature_marker_support,row-level marker source
+ESCA_SQ,SQUAMOUS,Esophageal squamous,TP63,ENSG00000073282,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+ESCA_SQ,SQUAMOUS,Esophageal squamous,SOX2,ENSG00000181449,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+ESCA_SQ,SQUAMOUS,Esophageal squamous,KRT5,ENSG00000186081,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+ESCA_SQ,SQUAMOUS,Esophageal squamous,KRT14,ENSG00000186847,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+ESCA_SQ,SQUAMOUS,Esophageal squamous,DSG3,ENSG00000134757,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+ESCA_SQ,SQUAMOUS,Esophageal squamous,PPL,ENSG00000118898,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+ESCA_SQ,SQUAMOUS,Esophageal squamous,KRT17,ENSG00000128422,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+ESCA_SQ,SQUAMOUS,Esophageal squamous,FAM83H,ENSG00000180921,anchor,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS,SQUAMOUS,Squamous,TP63,ENSG00000073282,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS,SQUAMOUS,Squamous,SOX2,ENSG00000181449,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS,SQUAMOUS,Squamous,KRT5,ENSG00000186081,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS,SQUAMOUS,Squamous,KRT14,ENSG00000186847,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS,SQUAMOUS,Squamous,DSG3,ENSG00000134757,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS,SQUAMOUS,Squamous,PPL,ENSG00000118898,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS,SQUAMOUS,Squamous,KRT17,ENSG00000128422,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS,SQUAMOUS,Squamous,CLCA2,ENSG00000137975,anchor,tumor,PMID:25631445,literature_marker_support,row-level marker source
+SQUAMOUS,SQUAMOUS,Squamous,KRT6A,ENSG00000205420,confirmatory,tumor,PMID:25631445,literature_marker_support,row-level marker source
+RENAL,RENAL,Renal,PAX8,ENSG00000125618,confirmatory,tumor,PMID:23792563,literature_marker_support,row-level marker source
+RENAL,RENAL,Renal,PAX2,ENSG00000075891,confirmatory,tumor,PMID:23792563,literature_marker_support,row-level marker source
+RENAL,RENAL,Renal,CA9,ENSG00000107159,anchor,tumor,PMID:23792563,literature_marker_support,row-level marker source
+RENAL,RENAL,Renal,NDUFA4L2,ENSG00000185633,anchor,tumor,PMID:23792563,literature_marker_support,row-level marker source
+RENAL,RENAL,Renal,SLC22A12,ENSG00000197891,anchor,tumor,PMID:23792563,literature_marker_support,row-level marker source
+RENAL,RENAL,Renal,KCNJ1,ENSG00000151704,anchor,tumor,PMID:23792563,literature_marker_support,row-level marker source
+RENAL,RENAL,Renal,AMACR,ENSG00000242110,confirmatory,tumor,PMID:23792563,literature_marker_support,row-level marker source
+GLIAL,CNS,Glioma,GFAP,ENSG00000131095,confirmatory,tumor,PMID:26061751,literature_marker_support,row-level marker source
+GLIAL,CNS,Glioma,OLIG2,ENSG00000205927,anchor,tumor,PMID:26061751,literature_marker_support,row-level marker source
+GLIAL,CNS,Glioma,AQP4,ENSG00000171885,confirmatory,tumor,PMID:26061751,literature_marker_support,row-level marker source
+GLIAL,CNS,Glioma,ALDH1L1,ENSG00000144908,anchor,tumor,PMID:26061751,literature_marker_support,row-level marker source
+GLIAL,CNS,Glioma,SLC1A3,ENSG00000079215,anchor,tumor,PMID:26061751,literature_marker_support,row-level marker source
+MELANOCYTIC,MELANOCYTIC,Melanocytic,MLANA,ENSG00000120215,anchor,tumor,PMID:26091043,literature_marker_support,row-level marker source
+MELANOCYTIC,MELANOCYTIC,Melanocytic,PMEL,ENSG00000185664,anchor,tumor,PMID:26091043,literature_marker_support,row-level marker source
+MELANOCYTIC,MELANOCYTIC,Melanocytic,TYR,ENSG00000077498,anchor,tumor,PMID:26091043,literature_marker_support,row-level marker source
+MELANOCYTIC,MELANOCYTIC,Melanocytic,DCT,ENSG00000080166,anchor,tumor,PMID:26091043,literature_marker_support,row-level marker source
+MELANOCYTIC,MELANOCYTIC,Melanocytic,MITF,ENSG00000187098,confirmatory,tumor,PMID:26091043,literature_marker_support,row-level marker source
+NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,CHGA,ENSG00000100604,anchor,tumor,PMID:26168399,literature_marker_support,row-level marker source
+NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,CHGB,ENSG00000089199,anchor,tumor,PMID:26168399,literature_marker_support,row-level marker source
+NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,SYP,ENSG00000102003,anchor,tumor,PMID:26168399,literature_marker_support,row-level marker source
+NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,INSM1,ENSG00000173404,anchor,tumor,PMID:26168399,literature_marker_support,row-level marker source
+NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,NCAM1,ENSG00000149294,confirmatory,tumor,PMID:26168399,literature_marker_support,row-level marker source
+NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,ASCL1,ENSG00000139352,anchor,tumor,PMID:26168399,literature_marker_support,row-level marker source
+NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,SCG2,ENSG00000171951,confirmatory,tumor,PMID:26168399,literature_marker_support,row-level marker source
+NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,SCG3,ENSG00000104112,confirmatory,tumor,PMID:26168399,literature_marker_support,row-level marker source
+HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,PTPRC,ENSG00000081237,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,CD19,ENSG00000177455,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,CD79A,ENSG00000105369,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,CD79B,ENSG00000007312,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,MS4A1,ENSG00000156738,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_BCELL,HEMATOLYMPHOID,B-cell lymphoid,PAX5,ENSG00000196092,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,PTPRC,ENSG00000081237,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD3D,ENSG00000167286,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD3E,ENSG00000198851,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD3G,ENSG00000160654,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD2,ENSG00000116824,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD5,ENSG00000110448,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_TCELL,HEMATOLYMPHOID,T-cell lymphoid,CD7,ENSG00000173762,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_MYELOID,HEMATOLYMPHOID,Myeloid,PTPRC,ENSG00000081237,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_MYELOID,HEMATOLYMPHOID,Myeloid,SPI1,ENSG00000066336,confirmatory,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_MYELOID,HEMATOLYMPHOID,Myeloid,MPO,ENSG00000005381,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_MYELOID,HEMATOLYMPHOID,Myeloid,ELANE,ENSG00000197561,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_MYELOID,HEMATOLYMPHOID,Myeloid,CSF1R,ENSG00000182578,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_MYELOID,HEMATOLYMPHOID,Myeloid,LYZ,ENSG00000090382,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_MYELOID,HEMATOLYMPHOID,Myeloid,ITGAM,ENSG00000169896,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,SDC1,ENSG00000115884,confirmatory,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,MZB1,ENSG00000170476,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,XBP1,ENSG00000100219,confirmatory,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,TNFRSF17,ENSG00000048462,anchor,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,PRDM1,ENSG00000057657,confirmatory,tumor,PMID:31857451,literature_marker_support,row-level marker source
+HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,CD38,ENSG00000004468,confirmatory,tumor,PMID:31857451,literature_marker_support,row-level marker source
+EMBRYONAL,PRIMITIVE,Embryonal,LIN28A,ENSG00000131914,confirmatory,tumor,PMID:19211792,literature_marker_support,row-level marker source
+EMBRYONAL,PRIMITIVE,Embryonal,LIN28B,ENSG00000187772,confirmatory,tumor,PMID:19211792,literature_marker_support,row-level marker source
+EMBRYONAL,PRIMITIVE,Embryonal,SALL4,ENSG00000101115,confirmatory,tumor,PMID:19211792,literature_marker_support,row-level marker source
+EMBRYONAL,PRIMITIVE,Embryonal,DLK1,ENSG00000185559,anchor,tumor,PMID:19211792,literature_marker_support,row-level marker source
+EMBRYONAL,PRIMITIVE,Embryonal,IGF2BP1,ENSG00000159217,confirmatory,tumor,PMID:19211792,literature_marker_support,row-level marker source
+EMBRYONAL,PRIMITIVE,Embryonal,IGF2BP3,ENSG00000136231,confirmatory,tumor,PMID:19211792,literature_marker_support,row-level marker source
+GERM_CELL,PRIMITIVE,Germ cell,POU5F1,ENSG00000204531,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+GERM_CELL,PRIMITIVE,Germ cell,NANOG,ENSG00000111704,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+GERM_CELL,PRIMITIVE,Germ cell,SALL4,ENSG00000101115,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+GERM_CELL,PRIMITIVE,Germ cell,DPPA4,ENSG00000121570,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+GERM_CELL,PRIMITIVE,Germ cell,TDGF1,ENSG00000241186,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+GERM_CELL,PRIMITIVE,Germ cell,KIT,ENSG00000157404,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+CNS_EMBRYONAL,PRIMITIVE,CNS embryonal,OTX2,ENSG00000165588,anchor,tumor,PMID:22832581,literature_marker_support,row-level marker source
+CNS_EMBRYONAL,PRIMITIVE,CNS embryonal,CRX,ENSG00000105392,anchor,tumor,PMID:22832581,literature_marker_support,row-level marker source
+CNS_EMBRYONAL,PRIMITIVE,CNS embryonal,LIN28A,ENSG00000131914,confirmatory,tumor,PMID:22832581,literature_marker_support,row-level marker source
+CNS_EMBRYONAL,PRIMITIVE,CNS embryonal,SALL4,ENSG00000101115,confirmatory,tumor,PMID:22832581,literature_marker_support,row-level marker source
+CNS_EMBRYONAL,PRIMITIVE,CNS embryonal,FOXG1,ENSG00000176165,anchor,tumor,PMID:22832581,literature_marker_support,row-level marker source
+EPENDYMAL,CNS,Ependymoma,L1CAM,ENSG00000198910,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+EPENDYMAL,CNS,Ependymoma,GFAP,ENSG00000131095,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+EPENDYMAL,CNS,Ependymoma,S100B,ENSG00000160307,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+SELLAR_EPITHELIAL,SELLAR_EPITHELIAL,Sellar epithelial,KRT8,ENSG00000170421,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+SELLAR_EPITHELIAL,SELLAR_EPITHELIAL,Sellar epithelial,KRT18,ENSG00000111057,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+SELLAR_EPITHELIAL,SELLAR_EPITHELIAL,Sellar epithelial,CTNNB1,ENSG00000168036,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+SELLAR_EPITHELIAL,SELLAR_EPITHELIAL,Sellar epithelial,LEF1,ENSG00000138795,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+MENINGIOMA,MENINGIOMA,Meningioma,SSTR2,ENSG00000180616,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+MENINGIOMA,MENINGIOMA,Meningioma,PGR,ENSG00000082175,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+MENINGIOMA,MENINGIOMA,Meningioma,MUC1,ENSG00000185499,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+MENINGIOMA,MENINGIOMA,Meningioma,CLDN1,ENSG00000163347,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,SOX10,ENSG00000100146,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,PLP1,ENSG00000123560,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,MPZ,ENSG00000158887,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,PMP22,ENSG00000109099,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,S100B,ENSG00000160307,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,NGFR,ENSG00000064300,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,TTR,ENSG00000118271,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,AQP1,ENSG00000240583,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,CLIC6,ENSG00000159212,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,KRT8,ENSG00000170421,confirmatory,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,KCNJ13,ENSG00000115474,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+LUAD,LUAD,Lung adeno,NKX2-1,ENSG00000136352,confirmatory,tumor,PMID:25079552,literature_marker_support,row-level marker source
+LUAD,LUAD,Lung adeno,NAPSA,ENSG00000131400,anchor,tumor,PMID:25079552,literature_marker_support,row-level marker source
+LUAD,LUAD,Lung adeno,SFTPC,ENSG00000168484,anchor,tumor,PMID:25079552,literature_marker_support,row-level marker source
+LUAD,LUAD,Lung adeno,SFTPB,ENSG00000168878,anchor,tumor,PMID:25079552,literature_marker_support,row-level marker source
+LUAD,LUAD,Lung adeno,SFTPA2,ENSG00000185303,anchor,tumor,PMID:25079552,literature_marker_support,row-level marker source
+LUAD,LUAD,Lung adeno,SLC34A2,ENSG00000157765,anchor,tumor,PMID:25079552,literature_marker_support,row-level marker source
+BRCA,BRCA,Breast,GATA3,ENSG00000107485,confirmatory,tumor,PMID:23000897,literature_marker_support,row-level marker source
+BRCA,BRCA,Breast,TRPS1,ENSG00000104447,anchor,tumor,PMID:23000897,literature_marker_support,row-level marker source
+BRCA,BRCA,Breast,FOXA1,ENSG00000129514,confirmatory,tumor,PMID:23000897,literature_marker_support,row-level marker source
+BRCA,BRCA,Breast,ESR1,ENSG00000091831,confirmatory,tumor,PMID:23000897,literature_marker_support,row-level marker source
+BRCA,BRCA,Breast,SOX10,ENSG00000100146,confirmatory,tumor,PMID:23000897,literature_marker_support,row-level marker source
+BRCA,BRCA,Breast,SCGB2A2,ENSG00000110484,anchor,tumor,PMID:23000897,literature_marker_support,row-level marker source
+BRCA,BRCA,Breast,PIP,ENSG00000159763,anchor,tumor,PMID:23000897,literature_marker_support,row-level marker source
+PAAD,PAAD,Pancreatic,CLDN18,ENSG00000066405,confirmatory,tumor,PMID:26343385,literature_marker_support,row-level marker source
+PAAD,PAAD,Pancreatic,GATA6,ENSG00000141448,anchor,tumor,PMID:26343385,literature_marker_support,row-level marker source
+PAAD,PAAD,Pancreatic,S100P,ENSG00000163993,confirmatory,tumor,PMID:26343385,literature_marker_support,row-level marker source
+PAAD,PAAD,Pancreatic,MSLN,ENSG00000102854,anchor,tumor,PMID:26343385,literature_marker_support,row-level marker source
+PAAD,PAAD,Pancreatic,KRT19,ENSG00000171345,confirmatory,tumor,PMID:26343385,literature_marker_support,row-level marker source
+PAAD,PAAD,Pancreatic,KRT7,ENSG00000135480,confirmatory,tumor,PMID:26343385,literature_marker_support,row-level marker source
+LIHC,LIHC,Hepatocellular,ALB,ENSG00000163631,anchor,tumor,PMID:28622513,literature_marker_support,row-level marker source
+LIHC,LIHC,Hepatocellular,HNF4A,ENSG00000101076,anchor,tumor,PMID:28622513,literature_marker_support,row-level marker source
+LIHC,LIHC,Hepatocellular,APOB,ENSG00000084674,anchor,tumor,PMID:28622513,literature_marker_support,row-level marker source
+LIHC,LIHC,Hepatocellular,FGA,ENSG00000171560,anchor,tumor,PMID:28622513,literature_marker_support,row-level marker source
+LIHC,LIHC,Hepatocellular,SERPINA1,ENSG00000197249,anchor,tumor,PMID:28622513,literature_marker_support,row-level marker source
+LIHC,LIHC,Hepatocellular,GPC3,ENSG00000147257,anchor,tumor,PMID:28622513,literature_marker_support,row-level marker source
+LIHC,LIHC,Hepatocellular,ARG1,ENSG00000118520,anchor,tumor,PMID:28622513,literature_marker_support,row-level marker source
+OV,OV,Ovarian,PAX8,ENSG00000125618,confirmatory,tumor,PMID:21720365,literature_marker_support,row-level marker source
+OV,OV,Ovarian,WT1,ENSG00000184937,anchor,tumor,PMID:21720365,literature_marker_support,row-level marker source
+OV,OV,Ovarian,SOX17,ENSG00000164736,anchor,tumor,PMID:21720365,literature_marker_support,row-level marker source
+OV,OV,Ovarian,MUC16,ENSG00000181143,anchor,tumor,PMID:21720365,literature_marker_support,row-level marker source
+OV,OV,Ovarian,WFDC2,ENSG00000101443,anchor,tumor,PMID:21720365,literature_marker_support,row-level marker source
+OV,OV,Ovarian,FOLR1,ENSG00000110195,anchor,tumor,PMID:21720365,literature_marker_support,row-level marker source
+UCEC,UCEC,Endometrial,PAX8,ENSG00000125618,confirmatory,tumor,PMID:23636398,literature_marker_support,row-level marker source
+UCEC,UCEC,Endometrial,ESR1,ENSG00000091831,confirmatory,tumor,PMID:23636398,literature_marker_support,row-level marker source
+UCEC,UCEC,Endometrial,PGR,ENSG00000082175,confirmatory,tumor,PMID:23636398,literature_marker_support,row-level marker source
+UCEC,UCEC,Endometrial,VIM,ENSG00000026025,anchor,stroma,PMID:23636398,literature_marker_support,row-level marker source
+UCEC,UCEC,Endometrial,HOXA10,ENSG00000253293,anchor,tumor,PMID:23636398,literature_marker_support,row-level marker source
+UCEC,UCEC,Endometrial,HOXA11,ENSG00000005073,anchor,tumor,PMID:23636398,literature_marker_support,row-level marker source
+BLCA,BLCA,Urothelial,UPK1A,ENSG00000105668,anchor,tumor,PMID:28988769,literature_marker_support,row-level marker source
+BLCA,BLCA,Urothelial,UPK1B,ENSG00000114638,anchor,tumor,PMID:28988769,literature_marker_support,row-level marker source
+BLCA,BLCA,Urothelial,UPK2,ENSG00000110375,anchor,tumor,PMID:28988769,literature_marker_support,row-level marker source
+BLCA,BLCA,Urothelial,UPK3A,ENSG00000100373,anchor,tumor,PMID:28988769,literature_marker_support,row-level marker source
+BLCA,BLCA,Urothelial,GATA3,ENSG00000107485,confirmatory,tumor,PMID:28988769,literature_marker_support,row-level marker source
+BLCA,BLCA,Urothelial,FOXA1,ENSG00000129514,confirmatory,tumor,PMID:28988769,literature_marker_support,row-level marker source
+BLCA,BLCA,Urothelial,KRT5,ENSG00000186081,confirmatory,tumor,PMID:28988769,literature_marker_support,row-level marker source
+BLCA,BLCA,Urothelial,KRT20,ENSG00000171431,confirmatory,tumor,PMID:28988769,literature_marker_support,row-level marker source
+THCA,THCA,Thyroid,TG,ENSG00000042832,anchor,tumor,PMID:25417114,literature_marker_support,row-level marker source
+THCA,THCA,Thyroid,TPO,ENSG00000115705,anchor,tumor,PMID:25417114,literature_marker_support,row-level marker source
+THCA,THCA,Thyroid,SLC5A5,ENSG00000105641,anchor,tumor,PMID:25417114,literature_marker_support,row-level marker source
+THCA,THCA,Thyroid,TSHR,ENSG00000165409,anchor,tumor,PMID:25417114,literature_marker_support,row-level marker source
+THCA,THCA,Thyroid,FOXE1,ENSG00000178919,anchor,tumor,PMID:25417114,literature_marker_support,row-level marker source
+THCA,THCA,Thyroid,PAX8,ENSG00000125618,confirmatory,tumor,PMID:25417114,literature_marker_support,row-level marker source
+THCA,THCA,Thyroid,NKX2-1,ENSG00000136352,confirmatory,tumor,PMID:25417114,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,SATB2,ENSG00000119042,anchor,tumor,PMID:22810696,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,KRT20,ENSG00000171431,confirmatory,tumor,PMID:22810696,literature_marker_support,row-level marker source
+MELANOCYTIC,MELANOCYTIC,Melanocytic,SOX10,ENSG00000100146,confirmatory,tumor,PMID:26091043,literature_marker_support,row-level marker source
+MELANOCYTIC,MELANOCYTIC,Melanocytic,TYRP1,ENSG00000107165,anchor,tumor,PMID:26091043,literature_marker_support,row-level marker source
+EPENDYMAL,CNS,Ependymoma,FOXJ1,ENSG00000129654,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+CHOROID_PLEXUS,CHOROID_PLEXUS,Choroid plexus,OTX2,ENSG00000165588,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+GERM_CELL,PRIMITIVE,Germ cell,SOX17,ENSG00000164736,anchor,tumor,PMID:25613900,atlas_resource,Human Protein Atlas/tissue proteome resource; gene-page or derivation anchor recommended
+NEUROENDOCRINE,NEUROENDOCRINE,Neuroendocrine,NEUROD1,ENSG00000162992,anchor,tumor,PMID:26168399,literature_marker_support,row-level marker source
+GASTRIC,GASTRIC,Gastric,PGC,ENSG00000096088,anchor,tumor,PMID:25079317,literature_marker_support,row-level marker source
+CRC,CRC,Colorectal,KRT7,ENSG00000135480,negative,tumor,PMID:22810696,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+CRC,CRC,Colorectal,NKX2-1,ENSG00000136352,negative,tumor,PMID:22810696,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+CRC,CRC,Colorectal,PAX8,ENSG00000125618,negative,tumor,PMID:22810696,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+GASTRIC,GASTRIC,Gastric,SATB2,ENSG00000119042,negative,tumor,PMID:25079317,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+GASTRIC,GASTRIC,Gastric,NKX2-1,ENSG00000136352,negative,tumor,PMID:25079317,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+PROSTATE,PROSTATE,Prostate,GATA3,ENSG00000107485,negative,tumor,PMID:26544944,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+PROSTATE,PROSTATE,Prostate,KRT7,ENSG00000135480,negative,tumor,PMID:26544944,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+PROSTATE,PROSTATE,Prostate,CDX2,ENSG00000165556,negative,tumor,PMID:26544944,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+LIHC,LIHC,Hepatocellular,KRT7,ENSG00000135480,negative,tumor,PMID:28622513,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+LIHC,LIHC,Hepatocellular,KRT19,ENSG00000171345,negative,tumor,PMID:28622513,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+LIHC,LIHC,Hepatocellular,EPCAM,ENSG00000119888,negative,tumor,PMID:28622513,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+THCA,THCA,Thyroid,CALCA,ENSG00000110680,negative,tumor,PMID:25417114,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+THCA,THCA,Thyroid,CHGA,ENSG00000100604,negative,tumor,PMID:25417114,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+RENAL,RENAL,Renal,TG,ENSG00000042832,negative,tumor,PMID:23792563,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+RENAL,RENAL,Renal,NKX2-1,ENSG00000136352,negative,tumor,PMID:23792563,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+RENAL,RENAL,Renal,WT1,ENSG00000184937,negative,tumor,PMID:23792563,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+SQUAMOUS,SQUAMOUS,Squamous,NAPSA,ENSG00000131400,negative,tumor,PMID:25631445,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+SQUAMOUS,SQUAMOUS,Squamous,NKX2-1,ENSG00000136352,negative,tumor,PMID:25631445,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+SQUAMOUS,SQUAMOUS,Squamous,CDX2,ENSG00000165556,negative,tumor,PMID:25631445,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+MELANOCYTIC,MELANOCYTIC,Melanocytic,KRT8,ENSG00000170421,negative,tumor,PMID:26091043,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+MELANOCYTIC,MELANOCYTIC,Melanocytic,EPCAM,ENSG00000119888,negative,tumor,PMID:26091043,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+MELANOCYTIC,MELANOCYTIC,Melanocytic,PTPRC,ENSG00000081237,negative,immune,PMID:26091043,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+GERM_CELL,PRIMITIVE,Germ cell,KRT8,ENSG00000170421,negative,tumor,PMID:25613900,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+GERM_CELL,PRIMITIVE,Germ cell,GATA3,ENSG00000107485,negative,tumor,PMID:25613900,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+MENINGIOMA,MENINGIOMA,Meningioma,SOX10,ENSG00000100146,negative,tumor,PMID:25613900,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+MENINGIOMA,MENINGIOMA,Meningioma,GFAP,ENSG00000131095,negative,tumor,PMID:25613900,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,MLANA,ENSG00000120215,negative,tumor,PMID:25613900,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+NERVE_SHEATH,NERVE_SHEATH,Nerve sheath,EPCAM,ENSG00000119888,negative,tumor,PMID:25613900,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+GLIAL,CNS,Glioma,TTR,ENSG00000118271,negative,tumor,PMID:26061751,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+GLIAL,CNS,Glioma,EPCAM,ENSG00000119888,negative,tumor,PMID:26061751,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+GLIAL,CNS,Glioma,SYP,ENSG00000102003,negative,tumor,PMID:26061751,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+BLCA,BLCA,Urothelial,NKX3-1,ENSG00000167034,negative,tumor,PMID:28988769,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+BLCA,BLCA,Urothelial,TTF1,ENSG00000125482,negative,tumor,PMID:28988769,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+OV,OV,Ovarian,KRT20,ENSG00000171431,negative,tumor,PMID:21720365,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+OV,OV,Ovarian,CDX2,ENSG00000165556,negative,tumor,PMID:21720365,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,MS4A1,ENSG00000156738,negative,tumor,PMID:31857451,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended
+HEME_PLASMA,HEMATOLYMPHOID,Plasma cell,CD19,ENSG00000177455,negative,tumor,PMID:31857451,expression_negative_rule,Internal expression-derived negative marker rule; diagnostic specificity source recommended

@@ -14,7 +14,7 @@ _EXPECTED_COLS = [
     "gene_3prime", "gene_3prime_family", "gene_3prime_ensembl_id",
     "frequency", "is_defining",
     "pathognomonic", "rnaseq_detectable", "mechanism", "confidence",
-    "pmid", "notes",
+    "pmid", "notes", "provenance_type", "source_anchor",
 ]
 
 
@@ -86,3 +86,13 @@ def test_fusion_negative_entities_marked():
         rows = cancer_fusions(code)
         assert (rows["fusion_family"] == "(none)").any()
         assert rows["is_defining"].astype(bool).sum() == 0
+
+
+def test_fusion_rows_have_provenance_type():
+    df = cancer_fusions_df()
+    assert df["provenance_type"].astype(str).str.len().gt(0).all()
+    cited = df[df["pmid"].fillna("").astype(str).str.strip().ne("")]
+    assert set(cited["provenance_type"]) >= {"literature"}
+    missing = df[df["pmid"].fillna("").astype(str).str.strip().eq("")]
+    if not missing.empty:
+        assert missing["provenance_type"].astype(str).str.contains("uncited").all()

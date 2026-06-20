@@ -25,6 +25,9 @@ def test_therapy_benefit_toxicity_schema_and_tiers():
         "toxicity_tier",
         "source_type",
         "source_id",
+        "source_token",
+        "source_url",
+        "source_anchor",
         "evidence_transfer",
     }
     assert required.issubset(df.columns)
@@ -98,3 +101,10 @@ def test_postmarket_signal_rows_are_not_incidence_estimates():
     assert row["evidence_transfer"] == "safety_signal_only"
     assert pd.isna(row["grade3_plus_ae_rate"])
     assert pd.isna(row["discontinuation_rate"])
+
+
+def test_source_tokens_are_structured():
+    df = therapy_benefit_toxicity_evidence()
+    assert df["source_token"].astype(str).str.len().gt(0).all()
+    assert df["source_anchor"].astype(str).str.len().gt(0).all()
+    assert df["source_url"].astype(str).str.startswith(("https://", "http://")).all()

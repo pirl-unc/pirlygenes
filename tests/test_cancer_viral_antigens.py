@@ -11,8 +11,26 @@ from pirlygenes.gene_sets_cancer import (
     viral_antigens_for_cancer,
 )
 
-_SCHEMA = {"virus", "integration_mode", "targetable_antigens",
-           "associated_cohorts", "notes", "source"}
+_SCHEMA = {
+    "virus",
+    "integration_mode",
+    "targetable_antigens",
+    "associated_cohorts",
+    "notes",
+    "source",
+    "association_source",
+    "integration_source",
+    "antigen_expression_source",
+    "targetability_source",
+    "support_scope",
+}
+
+_ASSERTION_SOURCE_COLUMNS = {
+    "association_source",
+    "integration_source",
+    "antigen_expression_source",
+    "targetability_source",
+}
 
 
 def test_schema_and_controlled_vocab():
@@ -22,6 +40,21 @@ def test_schema_and_controlled_vocab():
     assert set(df["integration_mode"].astype(str)) <= {"integrated", "episomal"}
     # every row is cited
     assert df["source"].astype(str).str.match(r"(PMID:|DOI:|https?:)").all()
+
+
+def test_assertion_level_source_columns_are_populated():
+    df = cancer_viral_antigens_df()
+    assert df["support_scope"].astype(str).str.strip().ne("").all()
+    has_assertion_source = df[list(_ASSERTION_SOURCE_COLUMNS)].fillna("").astype(str)
+    assert has_assertion_source.apply(
+        lambda row: any(value.strip() for value in row),
+        axis=1,
+    ).all()
+
+    by_virus = df.set_index("virus")
+    assert by_virus.loc["HPV", "targetability_source"] == "PMID:25823737"
+    assert by_virus.loc["HBV", "integration_source"] == "PMID:22634756"
+    assert "need separate" in by_virus.loc["HBV", "support_scope"]
 
 
 def test_known_virus_antigens():
