@@ -28,7 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pirlygenes import gene_sets_cancer as gsc  # noqa: E402
 from pirlygenes.gene_sets_cancer import cancer_type_registry  # noqa: E402
 from _apd1_factors import (apd1_map, tmb_map, viral_score, cta_metric_table,  # noqa: E402
-                           cohort_gene_matrix, curated_signatures)
+                           cohort_gene_matrix, curated_signatures,
+                           available_cta_metric_columns, CTA_FACTOR_METRICS)
 from _apd1_factors import zscore, signature_score  # noqa: E402
 from _panels import fold  # noqa: E402
 from _run_layout import add_layout_args, resolve_dirs  # noqa: E402
@@ -40,14 +41,6 @@ _WNT = "aPD1_exclusion_Wnt"
 # Individual secreted immune-EXCLUSION genes shown as their own factors.
 _SECRETED = ["TGFB1", "WNT11", "WNT5A", "IL10"]
 _MIN_RHO_N = 4
-_CTA_FACTOR_METRICS = [
-    ("CTA coverage p90", "cta_coverage_p90"),
-    ("CTA coverage p95", "cta_coverage_p95"),
-    ("CTA load p90", "cta_count_p90"),
-    ("CTA load p95", "cta_count_p95"),
-    ("CTA 9mer load p90", "cta_9mer_load_p90"),
-    ("CTA 9mer load p95", "cta_9mer_load_p95"),
-]
 
 
 def _orr_maps():
@@ -60,30 +53,6 @@ def _orr_maps():
                        "cancer_code"].astype(str))
     strict = {c: v for c, v in ici.items() if c not in drop}
     return strict, ici
-
-
-def _available_cta_metric_columns(
-    cta: pd.DataFrame,
-    index: pd.Index,
-) -> tuple[dict[str, pd.Series], list[str]]:
-    """CTA factor columns available for correlation on this checkout.
-
-    Some CTA factors depend on generated artifacts under ``outputs/_cache``.
-    In a clean checkout those columns are intentionally absent from
-    ``cta_metric_table()``; skip them rather than plotting all-NaN rho rows.
-    """
-    cols: dict[str, pd.Series] = {}
-    skipped: list[str] = []
-    for label, source_col in _CTA_FACTOR_METRICS:
-        if source_col not in cta.columns:
-            skipped.append(label)
-            continue
-        series = cta[source_col].reindex(index)
-        if series.notna().sum() < _MIN_RHO_N:
-            skipped.append(label)
-            continue
-        cols[label] = series
-    return cols, skipped
 
 
 def _factor_table():
@@ -101,7 +70,8 @@ def _factor_table():
         "TGF-beta signature": signature_score(mat, sig.get(_TGFB, [])),
         "Wnt signature": signature_score(mat, sig.get(_WNT, [])),
     }
-    cta_cols, skipped_cta = _available_cta_metric_columns(cta, mat.index)
+    cta_cols, skipped_cta = available_cta_metric_columns(
+        cta, mat.index, min_n=_MIN_RHO_N)
     cols.update(cta_cols)
     for g in fold(_SECRETED):
         if g in mat.columns:
@@ -113,12 +83,7 @@ def _factor_table():
 
 # DRIVERS first (expected +), then SUPPRESSORS (expected -); plotted top->bottom.
 _CTA_DRIVERS = [
-    "CTA coverage p90",
-    "CTA coverage p95",
-    "CTA load p90",
-    "CTA load p95",
-    "CTA 9mer load p90",
-    "CTA 9mer load p95",
+    label for label, _source_col in CTA_FACTOR_METRICS
 ]
 _DRIVERS = ["median TMB", *_CTA_DRIVERS, "viral status"]
 _SUPPRESSORS = ["TGF-beta signature", "Wnt signature"] + _SECRETED

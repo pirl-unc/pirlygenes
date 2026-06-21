@@ -270,6 +270,14 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
 
 # "ON" threshold for a cancer-testis antigen protein: summed linear TPM >= 6.
 CTA_ON_TPM = 6.0
+CTA_FACTOR_METRICS = [
+    ("CTA coverage p90", "cta_coverage_p90"),
+    ("CTA coverage p95", "cta_coverage_p95"),
+    ("CTA load p90", "cta_count_p90"),
+    ("CTA load p95", "cta_count_p95"),
+    ("CTA 9mer load p90", "cta_9mer_load_p90"),
+    ("CTA 9mer load p95", "cta_9mer_load_p95"),
+]
 
 
 @lru_cache(maxsize=1)
@@ -380,6 +388,32 @@ def cta_metric_table() -> pd.DataFrame:
             )
             out[f"cta_9mer_load_p{q}"] = weighted / n_samples
     return out
+
+
+def available_cta_metric_columns(
+    cta: pd.DataFrame,
+    index: pd.Index,
+    *,
+    min_n: int = 4,
+) -> tuple[dict[str, pd.Series], list[str]]:
+    """CTA factor columns available for correlation on this checkout.
+
+    Some CTA factors depend on generated artifacts under ``outputs/_cache``.
+    In a clean checkout those columns are intentionally absent from
+    :func:`cta_metric_table`; skip them rather than plotting all-NaN rho rows.
+    """
+    cols: dict[str, pd.Series] = {}
+    skipped: list[str] = []
+    for label, source_col in CTA_FACTOR_METRICS:
+        if source_col not in cta.columns:
+            skipped.append(label)
+            continue
+        series = cta[source_col].reindex(index)
+        if series.notna().sum() < min_n:
+            skipped.append(label)
+            continue
+        cols[label] = series
+    return cols, skipped
 
 
 def cta_burden(mat: pd.DataFrame, *, thr_tpm: float = CTA_ON_TPM,
