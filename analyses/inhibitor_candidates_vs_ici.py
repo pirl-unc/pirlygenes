@@ -2,9 +2,10 @@
 
 This is a compact companion to ``suppressor_genes_vs_apd1.py``. Instead of one
 scatter per gene, it summarizes the WNT11-like negative candidates and the
-checkpoint/readout contrast genes in a single Spearman-rho bar plot. A
-compartment marker distinguishes secreted/soluble factors, surface proteins,
-and cytosolic/intracellular enzymes or pathway readouts.
+checkpoint/readout contrast genes in a single Spearman-rho bar plot. Bar hue
+distinguishes secreted/soluble factors, surface proteins, and
+cytosolic/intracellular enzymes or pathway readouts; within each hue, the darker
+shade is anti-PD-1 and the lighter shade is broad ICI.
 
 Negative rho means the gene is higher in low-response cancers; positive rho
 marks genes that behave like inflamed/readout markers across cancer types.
@@ -24,7 +25,7 @@ from scipy.stats import spearmanr
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -72,10 +73,19 @@ GENES = [
     ("PDCD1LG2", "inflamed checkpoint/readout", "surface", "PD-L2"),
 ]
 
-COMPARTMENT_COLOR = {
-    "secreted/soluble": "#2a9d8f",
-    "surface": "#7b4bb2",
-    "cytosolic/intracellular": "#a15c2f",
+COMPARTMENT_COLORS = {
+    "secreted/soluble": {
+        "apd1": "#13796f",
+        "ici": "#74cfc3",
+    },
+    "surface": {
+        "apd1": "#5f3495",
+        "ici": "#b895df",
+    },
+    "cytosolic/intracellular": {
+        "apd1": "#7d421f",
+        "ici": "#d1905a",
+    },
 }
 
 
@@ -144,10 +154,10 @@ def _plot(df: pd.DataFrame, figdir: Path) -> None:
     h = 0.36
     fig, ax = plt.subplots(figsize=(10.2, max(6.2, 0.44 * len(order))))
 
-    ax.barh(y + h / 2, order["rho_apd1"], height=h, color="#1b6ca8",
-            label="anti-PD-1 monotherapy ORR")
-    ax.barh(y - h / 2, order["rho_ici"], height=h, color="#f6a21e",
-            label="broad ICI ORR")
+    apd1_colors = [COMPARTMENT_COLORS[c]["apd1"] for c in order["compartment"]]
+    ici_colors = [COMPARTMENT_COLORS[c]["ici"] for c in order["compartment"]]
+    ax.barh(y + h / 2, order["rho_apd1"], height=h, color=apd1_colors)
+    ax.barh(y - h / 2, order["rho_ici"], height=h, color=ici_colors)
     ax.axvline(0, color="0.25", lw=0.9)
     ax.set_yticks(y)
     labels = [f"{row.display}  ({row.note})" for row in order.itertuples()]
@@ -155,8 +165,8 @@ def _plot(df: pd.DataFrame, figdir: Path) -> None:
     ax.set_xlabel("Spearman rho vs objective response rate")
     ax.set_title(
         "Candidate inhibitor genes vs anti-PD-1 / broad ICI response\n"
-        "negative rho = higher in low-response cancers; row markers = "
-        "protein compartment",
+        "bar hue = protein compartment; darker shade = anti-PD-1, "
+        "lighter shade = broad ICI",
         fontsize=10,
     )
     ax.grid(axis="x", alpha=0.28)
@@ -164,20 +174,18 @@ def _plot(df: pd.DataFrame, figdir: Path) -> None:
     x_min = min(-0.34, float(np.nanmin(order[["rho_apd1", "rho_ici"]].to_numpy())) - 0.08)
     x_max = max(0.42, float(np.nanmax(order[["rho_apd1", "rho_ici"]].to_numpy())) + 0.08)
     ax.set_xlim(x_min, x_max)
-    x_marker = x_min + 0.015
-    ax.scatter([x_marker] * len(order), y,
-               c=[COMPARTMENT_COLOR[c] for c in order["compartment"]],
-               marker="s", s=30, zorder=4, clip_on=False)
 
-    axis_handles, axis_labels = ax.get_legend_handles_labels()
-    compartment_handles = [
-        Line2D([0], [0], marker="s", linestyle="", markersize=7,
-               markerfacecolor=color, markeredgecolor=color, label=compartment)
-        for compartment, color in COMPARTMENT_COLOR.items()
+    legend_handles = [
+        Patch(facecolor=shades[axis], label=f"{compartment} · {label}")
+        for compartment, shades in COMPARTMENT_COLORS.items()
+        for axis, label in (
+            ("apd1", "anti-PD-1"),
+            ("ici", "broad ICI"),
+        )
     ]
-    ax.legend(axis_handles + compartment_handles,
-              axis_labels + list(COMPARTMENT_COLOR),
-              loc="upper right", fontsize=8, frameon=True)
+    ax.legend(handles=legend_handles, loc="upper right", ncol=2,
+              fontsize=7.5, frameon=True, columnspacing=1.0,
+              handlelength=1.2)
     fig.tight_layout()
     fig.savefig(figdir / "inhibitor_candidates_vs_ici.png", dpi=300)
     plt.close(fig)
