@@ -314,8 +314,8 @@ def cta_metric_table() -> pd.DataFrame:
     * ``cta_count_p90/p95``: mean active CTA proteins per patient.
     * ``cta_9mer_load_p90/p95``: mean CTA-specific 9-mer payload per patient.
 
-    Empty/NaN columns are returned when the prerequisite generated tables are
-    absent; callers can still render the non-CTA factors.
+    Columns whose prerequisite generated tables are absent are omitted; callers
+    should skip unavailable factors rather than plotting all-NaN rows.
     """
     union_path = Path(__file__).resolve().parent / "outputs" / "_cta_union_counts.csv"
     counts_path = _latest_cta_patient_counts_path()

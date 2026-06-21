@@ -39,6 +39,15 @@ _TGFB = "aPD1_exclusion_TGFb_response"
 _WNT = "aPD1_exclusion_Wnt"
 # Individual secreted immune-EXCLUSION genes shown as their own factors.
 _SECRETED = ["TGFB1", "WNT11", "WNT5A", "IL10"]
+_MIN_RHO_N = 4
+_CTA_FACTOR_METRICS = [
+    ("CTA coverage p90", "cta_coverage_p90"),
+    ("CTA coverage p95", "cta_coverage_p95"),
+    ("CTA load p90", "cta_count_p90"),
+    ("CTA load p95", "cta_count_p95"),
+    ("CTA 9mer load p90", "cta_9mer_load_p90"),
+    ("CTA 9mer load p95", "cta_9mer_load_p95"),
+]
 
 
 def _orr_maps():
@@ -53,6 +62,30 @@ def _orr_maps():
     return strict, ici
 
 
+def _available_cta_metric_columns(
+    cta: pd.DataFrame,
+    index: pd.Index,
+) -> tuple[dict[str, pd.Series], list[str]]:
+    """CTA factor columns available for correlation on this checkout.
+
+    Some CTA factors depend on generated artifacts under ``outputs/_cache``.
+    In a clean checkout those columns are intentionally absent from
+    ``cta_metric_table()``; skip them rather than plotting all-NaN rho rows.
+    """
+    cols: dict[str, pd.Series] = {}
+    skipped: list[str] = []
+    for label, source_col in _CTA_FACTOR_METRICS:
+        if source_col not in cta.columns:
+            skipped.append(label)
+            continue
+        series = cta[source_col].reindex(index)
+        if series.notna().sum() < _MIN_RHO_N:
+            skipped.append(label)
+            continue
+        cols[label] = series
+    return cols, skipped
+
+
 def _factor_table():
     """Per-cohort factor values indexed by cancer code (codes with an ICI ORR)."""
     ici = apd1_map()
@@ -64,20 +97,18 @@ def _factor_table():
     sig = curated_signatures()
     cols = {
         "median TMB": np.log10(pd.Series({c: tmb.get(c, np.nan) for c in mat.index})),
-        "CTA coverage p90": cta.get("cta_coverage_p90", pd.Series(dtype=float)).reindex(mat.index),
-        "CTA coverage p95": cta.get("cta_coverage_p95", pd.Series(dtype=float)).reindex(mat.index),
-        "CTA load p90": cta.get("cta_count_p90", pd.Series(dtype=float)).reindex(mat.index),
-        "CTA load p95": cta.get("cta_count_p95", pd.Series(dtype=float)).reindex(mat.index),
-        "CTA 9mer load p90": cta.get("cta_9mer_load_p90", pd.Series(dtype=float)).reindex(mat.index),
-        "CTA 9mer load p95": cta.get("cta_9mer_load_p95", pd.Series(dtype=float)).reindex(mat.index),
         "viral status": pd.Series({c: viral_score(c, reg) for c in mat.index}),
         "TGF-beta signature": signature_score(mat, sig.get(_TGFB, [])),
         "Wnt signature": signature_score(mat, sig.get(_WNT, [])),
     }
+    cta_cols, skipped_cta = _available_cta_metric_columns(cta, mat.index)
+    cols.update(cta_cols)
     for g in fold(_SECRETED):
         if g in mat.columns:
             cols[g] = zscore(mat[g])
-    return pd.DataFrame(cols)
+    df = pd.DataFrame(cols)
+    df.attrs["skipped_cta_factors"] = skipped_cta
+    return df
 
 
 # DRIVERS first (expected +), then SUPPRESSORS (expected -); plotted top->bottom.
@@ -96,9 +127,15 @@ _SUPPRESSORS = ["TGF-beta signature", "Wnt signature"] + _SECRETED
 def _rho(factor: pd.Series, orr_map: dict) -> float:
     orr = pd.Series({c: orr_map.get(c, np.nan) for c in factor.index})
     ok = factor.notna() & orr.notna()
-    if ok.sum() < 4:
+    if ok.sum() < _MIN_RHO_N:
         return np.nan
     return float(spearmanr(factor[ok], orr[ok]).statistic)
+
+
+def _driver_title(factors: list[str]) -> str:
+    cta_labels = [f.replace("CTA ", "") for f in _CTA_DRIVERS if f in factors]
+    cta_text = f", CTA {'/'.join(cta_labels)}" if cta_labels else ""
+    return f"drivers: TMB{cta_text}, viral"
 
 
 def main() -> int:
@@ -142,8 +179,7 @@ def main() -> int:
                 va="top", fontsize=8, color="#a83232", fontweight="bold")
     ax.set_xlabel("Spearman ρ vs objective response rate (across cancer types)")
     ax.set_title("Causal-factor association with anti-PD-1 vs broad-ICI response\n"
-                 "drivers: TMB, CTA coverage/load/9mer (p90/p95), viral; "
-                 "suppressors: TGFβ/Wnt/secreted genes\n"
+                 f"{_driver_title(factors)}; suppressors: TGFβ/Wnt/secreted genes\n"
                  f"n={len(strict)} aPD1 / {len(ici)} ICI cohorts", fontsize=9.5)
     ax.grid(axis="x", alpha=0.3)
     ax.legend(loc="lower right", fontsize=8)
@@ -151,6 +187,9 @@ def main() -> int:
     fig.savefig(figdir / "apd1_ici_factor_contributions.png", dpi=300)
     plt.close(fig)
     print(f"wrote apd1_ici_factor_contributions.png + .csv -> {figdir}", flush=True)
+    if df.attrs.get("skipped_cta_factors"):
+        skipped = ", ".join(df.attrs["skipped_cta_factors"])
+        print(f"skipped unavailable CTA factors: {skipped}", flush=True)
     print(res.round(2).to_string(), flush=True)
     return 0
 
