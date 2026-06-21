@@ -2,7 +2,9 @@
 
 This is a compact companion to ``suppressor_genes_vs_apd1.py``. Instead of one
 scatter per gene, it summarizes the WNT11-like negative candidates and the
-checkpoint/readout contrast genes in a single Spearman-rho bar plot.
+checkpoint/readout contrast genes in a single Spearman-rho bar plot. A
+compartment marker distinguishes secreted/soluble factors, surface proteins,
+and cytosolic/intracellular enzymes or pathway readouts.
 
 Negative rho means the gene is higher in low-response cancers; positive rho
 marks genes that behave like inflamed/readout markers across cancer types.
@@ -38,33 +40,42 @@ OUT = Path(__file__).resolve().parent / "outputs"
 #   * negative candidates: candidates with WNT11-like negative correlation.
 #   * secreted controls: genes often named as suppressive, but positive here.
 #   * inflamed readouts: checkpoint/T-cell genes expected to go positive.
+# Tuple fields: gene, response-behavior group, compartment, short note.
 GENES = [
-    ("ARG1", "negative candidate", "arginase / myeloid tolerance"),
-    ("NKD1", "negative candidate", "Wnt target"),
-    ("WNT11", "negative candidate", "non-canonical Wnt ligand"),
-    ("AXIN2", "negative candidate", "Wnt target"),
-    ("ARG2", "negative candidate", "arginase family"),
-    ("HHLA2", "negative candidate", "checkpoint-like"),
-    ("FOLR1", "negative candidate", "gyn-tolerance marker"),
-    ("TGFB1", "secreted suppressor contrast", "TGF-beta ligand"),
-    ("WNT5A", "secreted suppressor contrast", "non-canonical Wnt ligand"),
-    ("IL10", "secreted suppressor contrast", "secreted cytokine"),
-    ("LGALS9", "secreted suppressor contrast", "galectin-9"),
-    ("TIGIT", "inflamed checkpoint/readout", "T-cell checkpoint"),
-    ("ICOS", "inflamed checkpoint/readout", "T-cell activation"),
-    ("CTLA4", "inflamed checkpoint/readout", "T-cell checkpoint"),
-    ("IDO1", "inflamed checkpoint/readout", "IFN-induced enzyme"),
-    ("HAVCR2", "inflamed checkpoint/readout", "TIM-3"),
-    ("LAG3", "inflamed checkpoint/readout", "T-cell checkpoint"),
-    ("PDCD1", "inflamed checkpoint/readout", "PD-1"),
-    ("CD274", "inflamed checkpoint/readout", "PD-L1"),
-    ("PDCD1LG2", "inflamed checkpoint/readout", "PD-L2"),
+    ("ARG1", "negative candidate", "cytosolic/intracellular",
+     "arginase / myeloid tolerance"),
+    ("NKD1", "negative candidate", "cytosolic/intracellular", "Wnt target"),
+    ("WNT11", "negative candidate", "secreted/soluble",
+     "non-canonical Wnt ligand"),
+    ("AXIN2", "negative candidate", "cytosolic/intracellular", "Wnt target"),
+    ("ARG2", "negative candidate", "cytosolic/intracellular",
+     "arginase family"),
+    ("HHLA2", "negative candidate", "surface", "checkpoint-like"),
+    ("FOLR1", "negative candidate", "surface", "gyn-tolerance marker"),
+    ("TGFB1", "secreted suppressor contrast", "secreted/soluble",
+     "TGF-beta ligand"),
+    ("WNT5A", "secreted suppressor contrast", "secreted/soluble",
+     "non-canonical Wnt ligand"),
+    ("IL10", "secreted suppressor contrast", "secreted/soluble",
+     "secreted cytokine"),
+    ("LGALS9", "secreted suppressor contrast", "secreted/soluble",
+     "galectin-9"),
+    ("TIGIT", "inflamed checkpoint/readout", "surface", "T-cell checkpoint"),
+    ("ICOS", "inflamed checkpoint/readout", "surface", "T-cell activation"),
+    ("CTLA4", "inflamed checkpoint/readout", "surface", "T-cell checkpoint"),
+    ("IDO1", "inflamed checkpoint/readout", "cytosolic/intracellular",
+     "IFN-induced enzyme"),
+    ("HAVCR2", "inflamed checkpoint/readout", "surface", "TIM-3"),
+    ("LAG3", "inflamed checkpoint/readout", "surface", "T-cell checkpoint"),
+    ("PDCD1", "inflamed checkpoint/readout", "surface", "PD-1"),
+    ("CD274", "inflamed checkpoint/readout", "surface", "PD-L1"),
+    ("PDCD1LG2", "inflamed checkpoint/readout", "surface", "PD-L2"),
 ]
 
-GROUP_COLOR = {
-    "negative candidate": "#a83232",
-    "secreted suppressor contrast": "#8c6d31",
-    "inflamed checkpoint/readout": "#3f7f5f",
+COMPARTMENT_COLOR = {
+    "secreted/soluble": "#2a9d8f",
+    "surface": "#7b4bb2",
+    "cytosolic/intracellular": "#a15c2f",
 }
 
 
@@ -102,7 +113,7 @@ def _score_table() -> pd.DataFrame:
     mat = mat.loc[[c for c in mat.index if c in ici]]
 
     rows = []
-    for gene, group, note in GENES:
+    for gene, group, compartment, note in GENES:
         series, matrix_col = _gene_series(mat, gene)
         if series is None:
             continue
@@ -113,6 +124,7 @@ def _score_table() -> pd.DataFrame:
             "display": display_label(gene),
             "matrix_col": matrix_col,
             "group": group,
+            "compartment": compartment,
             "note": note,
             "rho_apd1": rho_strict,
             "p_apd1": p_strict,
@@ -143,8 +155,8 @@ def _plot(df: pd.DataFrame, figdir: Path) -> None:
     ax.set_xlabel("Spearman rho vs objective response rate")
     ax.set_title(
         "Candidate inhibitor genes vs anti-PD-1 / broad ICI response\n"
-        "negative rho = higher in low-response cancers; positive rho = "
-        "inflamed checkpoint/readout behavior",
+        "negative rho = higher in low-response cancers; row markers = "
+        "protein compartment",
         fontsize=10,
     )
     ax.grid(axis="x", alpha=0.28)
@@ -154,16 +166,17 @@ def _plot(df: pd.DataFrame, figdir: Path) -> None:
     ax.set_xlim(x_min, x_max)
     x_marker = x_min + 0.015
     ax.scatter([x_marker] * len(order), y,
-               c=[GROUP_COLOR[g] for g in order["group"]],
+               c=[COMPARTMENT_COLOR[c] for c in order["compartment"]],
                marker="s", s=30, zorder=4, clip_on=False)
 
     axis_handles, axis_labels = ax.get_legend_handles_labels()
-    group_handles = [
+    compartment_handles = [
         Line2D([0], [0], marker="s", linestyle="", markersize=7,
-               markerfacecolor=color, markeredgecolor=color, label=group)
-        for group, color in GROUP_COLOR.items()
+               markerfacecolor=color, markeredgecolor=color, label=compartment)
+        for compartment, color in COMPARTMENT_COLOR.items()
     ]
-    ax.legend(axis_handles + group_handles, axis_labels + list(GROUP_COLOR),
+    ax.legend(axis_handles + compartment_handles,
+              axis_labels + list(COMPARTMENT_COLOR),
               loc="upper right", fontsize=8, frameon=True)
     fig.tight_layout()
     fig.savefig(figdir / "inhibitor_candidates_vs_ici.png", dpi=300)
