@@ -5,16 +5,21 @@ Used by ``exclusion_vs_apd1.py`` (gene screen + exclusion-panel refinement) and
 cohort x gene expression matrix and the per-cohort factor table so the two
 scripts can't drift.
 
-Granularity rule: cohorts are matched to the anti-PD-1 response table
-(``cancer-apd1-response.csv``), which defines the analysis grain — it carries
-molecular subtypes where they matter (UCEC_MSI/CNL/CNH, COAD_MSI/MSS,
-BRCA_Basal, HNSC_HPVpos/neg) and coarse codes elsewhere. The reference
-expression matrix only has *bulk* UCEC, so UCEC is split into its four TCGA
-molecular subtypes from the per-sample TCGA-UCEC parquet + the cBioPortal
-SUBTYPE map (same artifacts the CTA plots use). If those per-sample artifacts
-are absent we fall back to bulk UCEC + UCS aggregate (no subtype split).
-Fine-grained subtypes that lack an aPD1 ORR simply don't join and drop out, so
-e.g. SARC rolls up to whatever coarse code has a response number (none, here).
+Granularity rule: the anti-PD-1 response table carries molecular subtypes where
+they matter (UCEC_MSI/CNL/CNH, COAD_MSI/MSS, BRCA_Basal, HNSC_HPVpos/neg) and
+coarse codes elsewhere, but clinical anchors with colorectal source scope are
+pooled to CRC tiers before plotting. For example, KEYNOTE-177 TMB/ORR rows are
+CRC_MSI anchors, not independent COAD_MSI and READ_MSI estimates. Measured
+feature axes (expression/CTA) can still use organ/subtype rows where real
+per-cohort data exist, and those rows are pooled separately in the matrix layer.
+
+The reference expression matrix only has *bulk* UCEC, so UCEC is split into its
+four TCGA molecular subtypes from the per-sample TCGA-UCEC parquet + the
+cBioPortal SUBTYPE map (same artifacts the CTA plots use). If those per-sample
+artifacts are absent we fall back to bulk UCEC + UCS aggregate (no subtype
+split). Fine-grained subtypes that lack an aPD1 ORR simply don't join and drop
+out, so e.g. SARC rolls up to whatever coarse code has a response number (none,
+here).
 """
 
 from __future__ import annotations
@@ -68,12 +73,15 @@ _UCEC_RECODE = {
 # cross-cutting groupings (cancer-subtype-groupings.csv), so the pool is a
 # single source of truth, not a hardcoded list:
 #   {COAD_MSI: CRC_MSI, READ_MSI: CRC_MSI, COAD_MSS: CRC_MSS, READ_MSS: CRC_MSS}
-_COLORECTAL_POOL = {
-    member: f"CRC_{grp}"
+_CRC_TIER_MEMBERS = {
+    f"CRC_{grp}": cancer_subtype_group(grp, under="CRC")
     for grp in ("MSI", "MSS")
-    for member in cancer_subtype_group(grp, under="CRC")
 }
-_COLORECTAL_DROP = ("COAD", "READ")  # bulk all-comer = MSI/MSS mixture
+_COLORECTAL_POOL = {
+    member: tier
+    for tier, members in _CRC_TIER_MEMBERS.items()
+    for member in members
+}
 
 # Full colorectal re-key map shared by EVERY aPD1 plot (causal-factors here +
 # response bars in apd1_response_plots): the registry-derived COAD/READ x
@@ -95,28 +103,44 @@ _POOLED_CODES = set(_COLORECTAL_POOL.values()) | {"CRC"}
 _CRC_TIERS = _POOLED_CODES
 
 
-def _pool_dict(d: dict) -> dict:
-    """Pool COAD/READ subtypes into CRC_MSI/CRC_MSS (mean), and the bulk
-    all-comer COAD/READ into a CRC fallback value, then drop the bulk keys.
-    CRC is a *fallback* (e.g. CRC_MSS TMB has no explicit row, so it resolves to
-    base CRC), not a modeled cohort (the matrix only carries CRC_MSI/CRC_MSS)."""
-    pool = CRC_POOL
+def pool_colorectal_axis(d: dict, *, keep_source_codes: bool) -> dict:
+    """Return a copy with COAD/READ source rows pooled into CRC tiers.
+
+    Use ``keep_source_codes=False`` for clinical/source-scope axes such as
+    aPD1/ICI ORR, TMB, and mechanistic indel class: those curated COAD/READ
+    subtype rows are CRC-level anchors copied for lookup convenience, so plots
+    should expose only ``CRC`` / ``CRC_MSI`` / ``CRC_MSS``. Use
+    ``keep_source_codes=True`` only for measured feature axes where the
+    organ/subtype rows remain valid independent measurements.
+    """
+    out = dict(d)
     groups: dict = {}
-    for src, tgt in pool.items():
-        if src in d and pd.notna(d[src]):
-            groups.setdefault(tgt, []).append(d[src])
+    for src, tgt in CRC_POOL.items():
+        if src in out and pd.notna(out[src]):
+            groups.setdefault(tgt, []).append(out[src])
     for tgt, vals in groups.items():
-        d[tgt] = sum(vals) / len(vals)
-    for bulk in _COLORECTAL_DROP:
-        d.pop(bulk, None)
-    return d
+        out[tgt] = sum(vals) / len(vals)
+    if not keep_source_codes:
+        for src in CRC_POOL:
+            out.pop(src, None)
+    return out
+
+
+def _clinical_anchor_map(d: dict) -> dict:
+    """Pool CRC-scoped clinical anchors and hide the source split rows."""
+    return pool_colorectal_axis(d, keep_source_codes=False)
 
 
 def apd1_map() -> dict[str, float]:
-    """``{cancer_code: aPD1 ORR %}`` from the curated response table (colorectal
-    pooled to CRC tiers)."""
+    """``{cancer_code: aPD1 ORR %}`` from the curated response table.
+
+    Colorectal ORR rows are source-scoped as CRC-level clinical anchors, so the
+    returned analysis map exposes ``CRC`` / ``CRC_MSI`` / ``CRC_MSS`` rather
+    than independent COAD/READ source rows.
+    """
     df = get_data("cancer-apd1-response.csv")
-    return _pool_dict(dict(zip(df["cancer_code"], df["apd1_orr_pct"].astype(float))))
+    return _clinical_anchor_map(
+        dict(zip(df["cancer_code"], df["apd1_orr_pct"].astype(float))))
 
 
 _VIRAL_SCORE = {"defining": 1.0, "subset": 0.5, "none": 0.0}
@@ -132,9 +156,13 @@ def with_parent(d: dict, code: str, default=None):
 
 
 def tmb_map() -> dict[str, float]:
-    """``{cancer_code: median TMB mut/Mb}`` from ``cancer-tmb.csv`` (CRC pooled)."""
+    """``{cancer_code: median TMB mut/Mb}`` from ``cancer-tmb.csv``.
+
+    CRC-scoped MSI-H TMB values are exposed as ``CRC_MSI`` only. Scripts that
+    need a CRC_MSS TMB use the existing ``CRC`` fallback via :func:`with_parent`.
+    """
     df = get_data("cancer-tmb.csv")
-    return _pool_dict(dict(zip(df["cancer_code"], df["median_tmb_mut_mb"])))
+    return _clinical_anchor_map(dict(zip(df["cancer_code"], df["median_tmb_mut_mb"])))
 
 
 def indel_map() -> dict[str, float]:
@@ -143,7 +171,8 @@ def indel_map() -> dict[str, float]:
     A mechanistic class, NOT a measured per-Mb value: high = RCC lineage
     (Turajlic 2017) + dMMR/MSI-H. See ``cancer-frameshift-burden.csv``."""
     df = get_data("cancer-frameshift-burden.csv")
-    return _pool_dict(dict(zip(df["cancer_code"], df["indel_score"].astype(float))))
+    return _clinical_anchor_map(
+        dict(zip(df["cancer_code"], df["indel_score"].astype(float))))
 
 
 def viral_score(code: str, reg) -> float:
@@ -194,10 +223,18 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
     z-score each gene across cohorts, so this affects cohort *ranking* only
     marginally; do not compare raw subtype TPM to other cohorts' raw TPM.
     """
-    # CRC_* are analysis-only pooled codes (not registry codes); fetch the real
-    # COAD/READ subtype shards and pool them after.
+    # CRC_* are analysis-only pooled codes (not registry codes); when a caller
+    # asks for CRC_MSI/CRC_MSS, fetch the real COAD/READ subtype shards and pool
+    # them below. Do not require clinical ORR/TMB maps to expose those source
+    # split rows merely to make expression fetching work.
+    crc_sources = [
+        member
+        for tier, members in _CRC_TIER_MEMBERS.items()
+        if tier in codes
+        for member in members
+    ]
     fetch = list(dict.fromkeys(
-        [c for c in codes if c not in _CRC_TIERS] + ["UCEC", "UCS"]))
+        [c for c in codes if c not in _CRC_TIERS] + crc_sources + ["UCEC", "UCS"]))
     # collapse_cdna_identical: sum cDNA-identical loci (+ curated overrides like
     # CT47A) CENTRALLY in the accessor — the universal read-recovery collapse,
     # applied consistently everywhere. cDNA-distinct paralogs (MAGEA3 vs MAGEA6,

@@ -49,20 +49,16 @@ OUT = Path(__file__).resolve().parent / "outputs"
 FIGDIR = OUT   # per-run output dir; set in main() via _run_layout
 
 # Colorectal pooling: KEYNOTE-177 (and the MSS series) report *colorectal*, so
-# COAD_MSI+READ_MSI are one CRC_MSI point (identical ORR/TMB), not two. The map
-# is the registry-derived CRC_POOL from _apd1_factors (single source of truth),
-# NOT a hardcoded copy, so every aPD1 plot pools identically and can't drift.
-from _apd1_factors import CRC_POOL as _CRC_POOL  # noqa: E402
+# COAD_MSI+READ_MSI are one CRC_MSI point (identical ORR/TMB), not two. Use the
+# shared clinical-anchor helper so every aPD1 plot pools identically.
+from _apd1_factors import pool_colorectal_axis  # noqa: E402
 
 
 def _pool_crc(d: dict) -> dict:
     """Average the colorectal members into their CRC tier (the duplicated
     COAD/READ values are identical, so the mean is just that value); every other
     cancer code passes through unchanged."""
-    groups: dict[str, list] = {}
-    for code, val in d.items():
-        groups.setdefault(_CRC_POOL.get(code, code), []).append(val)
-    return {k: sum(v) / len(v) for k, v in groups.items()}
+    return pool_colorectal_axis(d, keep_source_codes=False)
 
 
 @lru_cache(maxsize=1)
