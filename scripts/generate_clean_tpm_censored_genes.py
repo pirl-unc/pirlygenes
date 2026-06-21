@@ -23,6 +23,13 @@ across every packaged cohort/source/release — comprehensive for our data), so
 the list restricted to any reference gene_table reproduces the old QC mask
 exactly (membership-preserving → no reference regeneration).
 
+The checked-in censored list is also used as a stability seed: re-running the
+generator should not shrink the censor contract just because the packaged
+reference-expression universe changes. The explicit rRNA/rRNA-pseudogene family
+is unioned in as well. A few rRNA features are valid Ensembl genes but absent
+from the current reference expression universe, and the clean-TPM censor list
+should still capture them when a downstream source exposes those rows.
+
 Run:  python scripts/generate_clean_tpm_censored_genes.py
 """
 from __future__ import annotations
@@ -49,6 +56,14 @@ _RIBOSOMAL = {str(g) for g in _RIBOSOMAL_PROTEIN_GROUPS}
 def build() -> None:
     ref = get_data("cancer-reference-expression", copy=False)
     gt = (ref[["Symbol", "Ensembl_Gene_ID"]]
+          .dropna(subset=["Ensembl_Gene_ID"])
+          .drop_duplicates("Ensembl_Gene_ID")
+          .reset_index(drop=True))
+    existing = get_data("clean-tpm-censored-genes", copy=False)[
+        ["Symbol", "Ensembl_Gene_ID"]
+    ]
+    rrna = get_data("rrna-and-pseudogenes", copy=False)[["Symbol", "Ensembl_Gene_ID"]]
+    gt = (pd.concat([existing, gt, rrna], ignore_index=True)
           .dropna(subset=["Ensembl_Gene_ID"])
           .drop_duplicates("Ensembl_Gene_ID")
           .reset_index(drop=True))
