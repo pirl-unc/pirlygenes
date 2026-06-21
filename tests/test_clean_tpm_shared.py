@@ -320,6 +320,20 @@ def test_removal_mask_membership_matches_canonical_list():
     assert removed == set(df["Ensembl_Gene_ID"].astype(str))
 
 
+def test_rrna_family_is_fully_censored_as_technical():
+    """Every bundled rRNA/rRNA-pseudogene ENSG is part of clean-TPM censoring."""
+    from pirlygenes.load_dataset import get_data
+
+    censored = get_data("clean-tpm-censored-genes")
+    rrna = get_data("rrna-and-pseudogenes")
+    technical_ids = set(
+        censored.loc[censored["category"] == "technical", "Ensembl_Gene_ID"]
+        .astype(str)
+    )
+    rrna_ids = set(rrna["Ensembl_Gene_ID"].astype(str))
+    assert rrna_ids <= technical_ids
+
+
 def test_public_technical_rna_contract_exported():
     """#445/#446: the clean-TPM technical-RNA compartment is a PUBLIC contract.
     Consumers (trufflepig) import these instead of underscore-private globals."""
