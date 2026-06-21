@@ -695,6 +695,9 @@ def main():
     counts = per_cohort_counts(mat, cohorts, ensg_to_sym, pctile_cuts)
     counts = counts.sort_values(["cancer_code", "n_gt25"], ascending=[True, False])
     counts.to_csv(FIGDIR / "cta_patient_counts.csv", index=False)
+    # Stable copy for downstream factor analyses that need mean active-CTA and
+    # CTA-specific-9mer load metrics without hunting timestamped run dirs.
+    counts.to_csv(OUT / "_cta_patient_counts.csv", index=False)
     # per-cohort union: # patients expressing >=1 CTA protein over each threshold
     # (each patient counted once regardless of how many CTAs they express). Also
     # emit a MAGE-excluded union so addressability can show a "without MAGE" panel.

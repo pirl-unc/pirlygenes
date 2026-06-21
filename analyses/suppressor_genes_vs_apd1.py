@@ -58,7 +58,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _apd1_factors import cohort_gene_matrix, _pool_dict  # noqa: E402
+from _apd1_factors import cohort_gene_matrix, pool_colorectal_axis  # noqa: E402
 from _panels import display_label, fold  # noqa: E402
 from _run_layout import add_layout_args, resolve_dirs  # noqa: E402
 from pirlygenes.expression.accessors import cancer_reference_expression  # noqa: E402
@@ -95,8 +95,9 @@ def _orr_axis(*, strict: bool) -> dict[str, float]:
     df = get_data("cancer-apd1-response.csv")
     if strict:
         df = df[df["drug_target"] == "PD-1"]
-    return _pool_dict(dict(zip(df["cancer_code"],
-                               df["apd1_orr_pct"].astype(float))))
+    return pool_colorectal_axis(
+        dict(zip(df["cancer_code"], df["apd1_orr_pct"].astype(float))),
+        keep_source_codes=False)
 
 
 def _nonmono_codes() -> set[str]:
@@ -105,7 +106,9 @@ def _nonmono_codes() -> set[str]:
     df = get_data("cancer-apd1-response.csv")
     raw = set(df.loc[df["drug_target"].isin(["PD-L1", "PD-1+CTLA-4"]),
                      "cancer_code"].astype(str))
-    pooled = _pool_dict({c: 1.0 for c in raw})   # map raw codes through CRC pool
+    pooled = pool_colorectal_axis(
+        {c: 1.0 for c in raw},
+        keep_source_codes=False)   # map raw codes through CRC pool
     return set(pooled)
 
 
