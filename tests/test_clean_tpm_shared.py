@@ -74,6 +74,9 @@ def test_clean_tpm_fixed_fraction_three_compartment():
     gene_table, values = _fixture()
     clean = clean_tpm_matrix(values, gene_table=gene_table,
                              censored_fill="fixed_fraction")
+    assert len(clean) == len(values)
+    assert clean.index.equals(values.index)
+    assert clean.columns.equals(values.columns)
     mask = clean_tpm_removal_mask(gene_table).to_numpy()
     tech_only = clean_tpm_removal_mask(
         gene_table, exclude_ribosomal_proteins=False).to_numpy()
@@ -108,6 +111,41 @@ def test_clean_tpm_fixed_fraction_three_compartment():
                          censored_fill="fixed_fraction",
                          exclude_ribosomal_proteins=False, technical_fraction=0.10)
     np.testing.assert_allclose(t.loc[tech_only].sum(axis=0).to_numpy(),
+                               [100_000.0, 100_000.0])
+
+
+def test_clean_tpm_matrix_delegates_gene_table_path_to_oncoref(monkeypatch):
+    import pirlygenes.expression.normalize as norm
+
+    gene_table, values = _fixture()
+    calls = []
+
+    def fake_clean_tpm(values_arg, gene_table_arg, **kwargs):
+        calls.append((values_arg, gene_table_arg, kwargs))
+        return values_arg.astype(float) + 1.0
+
+    monkeypatch.setattr(norm, "_oncoref_clean_tpm", fake_clean_tpm)
+
+    default = clean_tpm_matrix(values, gene_table=gene_table)
+    assert default.equals(values.astype(float) + 1.0)
+    assert calls[-1][0] is values
+    assert calls[-1][1] is gene_table
+    assert calls[-1][2] == {
+        "exclude_ribosomal_proteins": True,
+        "ribosomal_protein_fraction": 0.16,
+        "other_technical_fraction": 0.09,
+    }
+
+    technical_only = clean_tpm_matrix(
+        values,
+        gene_table=gene_table,
+        exclude_ribosomal_proteins=False,
+        technical_fraction=0.10,
+    )
+    assert len(calls) == 1
+    tech_only = clean_tpm_removal_mask(
+        gene_table, exclude_ribosomal_proteins=False).to_numpy()
+    np.testing.assert_allclose(technical_only.loc[tech_only].sum(axis=0).to_numpy(),
                                [100_000.0, 100_000.0])
 
 

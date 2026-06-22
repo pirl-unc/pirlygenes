@@ -30,6 +30,8 @@ from __future__ import annotations
 import functools
 from typing import Iterable
 
+from oncoref.normalization import clean_tpm as _oncoref_clean_tpm
+
 from .qc import (
     OTHER_TECHNICAL_FRACTION,
     RIBOSOMAL_PROTEIN_FRACTION,
@@ -694,6 +696,7 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
     removed. (Plain technical-RNA dropping — the old ``"zero"`` behavior — still
     lives in :func:`normalize_expression`, which is a different operation.)
     """
+    explicit_removable = removable is not None
     if removable is None:
         if gene_table is None:
             raise ValueError("clean_tpm_matrix needs either removable or gene_table")
@@ -706,6 +709,20 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
             "clean_tpm_matrix only supports the single clean-TPM contract "
             f"censored_fill='fixed_fraction' (got {censored_fill!r}); the legacy "
             "zero / reference / typical modes were removed.")
+    if (
+        not explicit_removable
+        and gene_table is not None
+        and exclude_ribosomal_proteins
+    ):
+        return _oncoref_clean_tpm(
+            values,
+            gene_table,
+            exclude_ribosomal_proteins=True,
+            ribosomal_protein_fraction=ribosomal_protein_fraction,
+            other_technical_fraction=other_technical_fraction,
+        )
+    # TODO(oncoref#190): delegate the technical-only compatibility mode once
+    # oncoref exposes an explicit budget-conserving API for it.
     # The single clean-TPM contract. The censored block (mtDNA / rRNA-like /
     # mt-pseudogene / polyA-bias lncRNA + ribosomal-protein mRNA & pseudogenes) is
     # FORCED to a constant fraction of the 1e6 budget, split into separately pinned
