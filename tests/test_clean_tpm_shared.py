@@ -70,7 +70,7 @@ def test_clean_tpm_matrix_rejects_removed_modes():
 
 def test_clean_tpm_fixed_fraction_three_compartment():
     """Default clean-TPM splits the censored block into ribosomal-protein (16%)
-    + other-technical (9%), biology 75% (cancerdata 16/9 refinement)."""
+    + other-technical (9%), biology 75% (pirlygenes' current 16/9 contract)."""
     gene_table, values = _fixture()
     clean = clean_tpm_matrix(values, gene_table=gene_table,
                              censored_fill="fixed_fraction")
