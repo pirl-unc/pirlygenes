@@ -675,13 +675,15 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
     ``other_technical_fraction`` (~9%), and the kept **biological** block to the
     remaining ~75% of the 1e6 budget, **renormalizing within each compartment**
     so relative expression inside each is preserved. Pinning ribosomal and
-    other-technical *separately* (cancerdata's 16/9 refinement of the old
-    lumped-25%) keeps one compartment's cross-sample/pipeline variation from
+    other-technical *separately* (the current pirlygenes 16/9 refinement of the
+    old lumped-25%) keeps one compartment's cross-sample/pipeline variation from
     bleeding into the other's budget — e.g. a sample with heavy residual rRNA no
     longer compresses its ribosomal-protein block. Fixing the BIOLOGICAL
     compartment to a constant ~750k budget is what makes biological clean-TPM
     cross-sample comparable — the one property the transform exists to provide.
-    Cohort-independent (no reference table). An empty compartment stays at 0 (the
+    This implementation still lives in pirlygenes and should be kept compatible
+    with any future oncoref reference-data migration. Cohort-independent (no
+    reference table). An empty compartment stays at 0 (the
     others still hit their targets). The ribosomal sub-block is the censored
     ribosomal-protein category; with ``exclude_ribosomal_proteins=False`` (or no
     ``gene_table``) there is no ribosomal compartment and the censored block falls
