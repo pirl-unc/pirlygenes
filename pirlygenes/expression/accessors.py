@@ -2161,7 +2161,6 @@ def pan_cancer_expression(
                 id_col="Ensembl_Gene_ID",
                 value_cols=analysis_value_cols,
                 censored_fill="fixed_fraction",
-                exclude_ribosomal_proteins=True,
             )
             source_cols = analysis_value_cols
         elif mode == "tpm_log1p":

@@ -127,34 +127,40 @@ def test_inverse_log2_clamps_tiny_negatives():
 
 def test_clean_tpm_zeroes_removable_and_renormalizes():
     builder = _load_builder()
-    # 2 samples, 4 genes. Gene 0 (mtRNA-like) is removable.
+    # 2 samples, 4 genes. Gene 0 is other technical and gene 1 is ribosomal.
     values = pd.DataFrame(
         [
-            [500_000.0, 800_000.0],   # removable, dominates raw mass
+            [500_000.0, 800_000.0],
             [100_000.0, 50_000.0],
             [200_000.0, 100_000.0],
             [200_000.0, 50_000.0],
         ],
-        index=["g0", "g1", "g2", "g3"],
         columns=["S1", "S2"],
     )
-    removable = pd.Series([True, False, False, False], index=values.index)
-    # The builder's clean TPM is the single fixed_fraction contract: the censored
-    # block (g0) is PINNED to a fixed fraction (not zeroed), so it doesn't inflate
-    # the kept genes; columns still sum to 1e6. (No gene_table -> single-compartment
-    # technical_fraction split.)
+    gene_table = pd.DataFrame(
+        {
+            "Symbol": ["MT-CO1", "RPL13A", "TP53", "ACTB"],
+            "Ensembl_Gene_ID": [
+                "ENSG00000198804",
+                "ENSG00000142541",
+                "ENSG00000141510",
+                "ENSG00000075624",
+            ],
+        }
+    )
+    # The builder's clean TPM is the single fixed_fraction contract: ribosomal
+    # rows get 16%, other technical rows 9%, biological rows 75%.
     import pytest
 
-    from pirlygenes.expression.qc import TECHNICAL_FRACTION
-    clean = builder._clean_tpm(values, removable)
-    assert (clean.iloc[0] > 0).all()                    # PINNED, not zeroed
+    clean = builder._clean_tpm(values, gene_table=gene_table)
     np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
-    for col in clean.columns:
-        assert clean.loc["g0", col] / clean[col].sum() == pytest.approx(
-            TECHNICAL_FRACTION, abs=1e-6)
+    np.testing.assert_allclose(clean.iloc[0].to_numpy(), [90_000.0, 90_000.0])
+    np.testing.assert_allclose(clean.iloc[1].to_numpy(), [160_000.0, 160_000.0])
+    np.testing.assert_allclose(clean.iloc[[2, 3]].sum(axis=0).to_numpy(),
+                               [750_000.0, 750_000.0])
     # the removed legacy modes now raise
     with pytest.raises(ValueError, match="fixed_fraction"):
-        builder._clean_tpm(values, removable, censored_fill="zero")
+        builder._clean_tpm(values, gene_table=gene_table, censored_fill="zero")
 
 
 def test_symbol_mapping_rescues_renamed_symbol(monkeypatch, tmp_path):
