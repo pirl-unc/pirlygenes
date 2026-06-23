@@ -151,6 +151,9 @@ def get_all_csv_paths() -> list:
 _LOW_CARDINALITY_METADATA_COLS = (
     "source_version", "processing_pipeline", "notes",
 )
+_DATASET_STRING_ID_COLS = {
+    "cancer-type-registry.csv": ("code",),
+}
 # Bump when the cached dtype scheme changes so stale object-dtype parquets in an
 # existing ``~/.cache/pirlygenes/shard_cache/`` rebuild instead of being reused.
 _SHARD_CACHE_FORMAT = 3
@@ -163,6 +166,20 @@ def _categorize_metadata(df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns and not isinstance(
                 df[col].dtype, pd.CategoricalDtype):
             df[col] = df[col].astype("category")
+    return df
+
+
+def _normalize_dataset_dtypes(cache_key: str, df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize dtypes that are part of a dataset's public schema.
+
+    Registry code columns are stable string identifiers. Keeping them as plain
+    object dtype makes ``DataFrame.set_index`` rely on pandas' deprecated object
+    dtype inference when future string inference is enabled.
+    """
+    key = cache_key.lower().removesuffix(".gz")
+    for col in _DATASET_STRING_ID_COLS.get(key, ()):
+        if col in df.columns:
+            df[col] = df[col].astype("string")
     return df
 
 
@@ -197,6 +214,7 @@ def _load_shard_directory(shard_dir: Path) -> pd.DataFrame:
     df = pd.concat([pd.read_csv(str(p), low_memory=False) for p in paths],
                    ignore_index=True)
     df = _categorize_metadata(df)
+    df = _normalize_dataset_dtypes(shard_dir.name + ".csv", df)
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
         df.to_parquet(cache_file, index=False)
@@ -221,9 +239,10 @@ def load_all_dataframes():
         _ensure_downloadable(path)
     _invalidate_dataset_paths()
     for csv_path in get_all_csv_paths():
+        csv_key = csv_path.name.removesuffix(".gz")
         df = pd.read_csv(str(csv_path), low_memory=False)
-        key = csv_path.name.removesuffix(".gz")
-        yield key, df
+        df = _normalize_dataset_dtypes(csv_key, df)
+        yield csv_key, df
     for shard_dir in _shard_directories():
         yield f"{shard_dir.name}.csv", _load_shard_directory(shard_dir)
 
@@ -300,8 +319,11 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                 else:
                     cache_key = resolved.name.removesuffix(".gz")
                     if cache_key not in _CACHED_DATAFRAMES:
-                        _CACHED_DATAFRAMES[cache_key] = pd.read_csv(
-                            str(resolved), low_memory=False
+                        _CACHED_DATAFRAMES[cache_key] = _normalize_dataset_dtypes(
+                            cache_key,
+                            pd.read_csv(
+                                str(resolved), low_memory=False,
+                            ),
                         )
                 # Return a copy so callers that mutate in place (e.g. df["c"]=...,
                 # df.fillna(0, inplace=True)) can't corrupt the shared cache.
@@ -314,5 +336,6 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
         if candidate in _dataframes_dict:
             # Return a copy so callers that mutate in place (e.g. df["c"]=...,
             # df.fillna(0, inplace=True)) can't corrupt the shared cache.
-            return _dataframes_dict[candidate].copy() if copy else _dataframes_dict[candidate]
+            df = _dataframes_dict[candidate].copy() if copy else _dataframes_dict[candidate]
+            return _normalize_dataset_dtypes(candidate, df)
     raise ValueError(f"Dataset {name} not found")

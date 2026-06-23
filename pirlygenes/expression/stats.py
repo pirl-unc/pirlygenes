@@ -743,6 +743,28 @@ def upsert_to_shard(
 _SAMPLE_MANIFEST_SORT = ["cancer_code", "source_cohort", "sample_id"]
 
 
+def _reindex_with_missing_column_dtypes(
+    frame: pd.DataFrame,
+    *,
+    columns: list[str],
+    dtype_source: pd.DataFrame,
+) -> pd.DataFrame:
+    """Reindex while preserving dtypes for columns missing from ``frame``.
+
+    Without this, pandas creates absent columns as all-NA float64. Concatenating
+    that with real string/object columns relies on deprecated dtype inference.
+    """
+    out = frame.reindex(columns=columns)
+    for col in columns:
+        if col in frame.columns or col not in dtype_source.columns:
+            continue
+        try:
+            out[col] = out[col].astype(dtype_source[col].dtype)
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
 def upsert_samples_manifest(path, new_rows: pd.DataFrame) -> pd.DataFrame:
     """Upsert per-sample provenance rows into the shared samples manifest.
 
@@ -772,8 +794,18 @@ def upsert_samples_manifest(path, new_rows: pd.DataFrame) -> pd.DataFrame:
         keep = ~existing["source_cohort"].astype(str).isin(cohorts)
         # Order-preserving union: existing columns first, then any new ones.
         cols = list(dict.fromkeys(list(existing.columns) + list(new_rows.columns)))
+        existing_kept = _reindex_with_missing_column_dtypes(
+            existing.loc[keep],
+            columns=cols,
+            dtype_source=new_rows,
+        )
+        new_aligned = _reindex_with_missing_column_dtypes(
+            new_rows,
+            columns=cols,
+            dtype_source=existing,
+        )
         out = pd.concat(
-            [existing.loc[keep].reindex(columns=cols), new_rows.reindex(columns=cols)],
+            [existing_kept, new_aligned],
             ignore_index=True,
         )
     else:

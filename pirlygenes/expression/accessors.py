@@ -635,6 +635,14 @@ def _load_cancer_reference_expression() -> pd.DataFrame:
 _REFERENCE_VIEW_CACHE: dict[str, tuple] = {}
 
 
+def _string_id_columns(df: pd.DataFrame, *cols: str) -> pd.DataFrame:
+    """Cast stable identifier columns to pandas string dtype in place."""
+    for col in cols:
+        if col in df.columns:
+            df[col] = df[col].astype("string")
+    return df
+
+
 def _reference_view(key: str, builder):
     """Return ``builder(reference_frame)``, memoized on the frame's identity."""
     df = _load_cancer_reference_expression()
@@ -676,7 +684,7 @@ def _load_cancer_expression_source_candidates() -> pd.DataFrame:
     df = get_data("cancer-expression-source-candidates")
     string_cols = [c for c in df.columns if c != "estimated_samples"]
     df[string_cols] = df[string_cols].fillna("")
-    return df
+    return _string_id_columns(df, "cancer_code")
 
 
 def _pan_expression_codes() -> set[str]:
@@ -837,7 +845,7 @@ def _build_available_references(df: pd.DataFrame) -> pd.DataFrame:
         ).drop(columns="_origin_rank")
     else:
         out = out.sort_values(["cancer_code", "source_cohort"])
-    return out.reset_index(drop=True)
+    return _string_id_columns(out.reset_index(drop=True), "cancer_code")
 
 
 def source_prefixed_references() -> pd.DataFrame:
@@ -976,7 +984,7 @@ def cancer_expression_reference_status(
             "candidate_url": _text(candidate.get("source_url", "")),
             "candidate_processing_plan": _text(candidate.get("processing_plan", "")),
         })
-    return pd.DataFrame(rows).reset_index(drop=True)
+    return _string_id_columns(pd.DataFrame(rows).reset_index(drop=True), "cancer_code")
 
 
 def _filter_cancer_code(df: pd.DataFrame, cancer_code: str | None) -> pd.DataFrame:
@@ -1294,6 +1302,16 @@ def cancer_reference_expression(
                 "Member_Ensembl_Gene_IDs"]
     long = long[[c for c in _id_cols if c in long.columns]
                 + [c for c in long.columns if c not in _id_cols]]
+    long = _string_id_columns(
+        long,
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "Proteoform_ID",
+        "Member_Ensembl_Gene_IDs",
+        "cancer_code",
+        "source_cohort",
+        "normalization",
+    )
 
     if format == "long":
         return long
@@ -1319,7 +1337,8 @@ def cancer_reference_expression(
     for col in expected_value_cols:
         if col not in wide.columns:
             wide[col] = np.nan
-    return wide[["Ensembl_Gene_ID", "Symbol", *expected_value_cols]]
+    wide = wide[["Ensembl_Gene_ID", "Symbol", *expected_value_cols]]
+    return _string_id_columns(wide, "Ensembl_Gene_ID", "Symbol")
 
 
 # ---------- accessors: unified normalization views (#319) ----------
@@ -1414,6 +1433,12 @@ def _load_precomputed_cohort_views(root_text: str) -> tuple[pd.DataFrame, ...]:
 
 def _cohort_value_cols(wide: pd.DataFrame) -> list[str]:
     return [c for c in wide.columns if c not in _COHORT_VIEW_ID_COLS]
+
+
+def _object_column_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Use ordinary object-dtype column labels for public wide matrices."""
+    df.columns = pd.Index(df.columns.to_list(), dtype=object)
+    return df
 
 
 def _filter_canonical_view_genes(
@@ -1568,6 +1593,7 @@ def _pivot_views_long(
                             values="expression", aggfunc="first")
             .reset_index())
     wide.columns.name = None
+    wide = _object_column_index(wide)
     if "Symbol" not in wide.columns:
         symbol_by_gene = (sub.drop_duplicates("Ensembl_Gene_ID")
                           .set_index("Ensembl_Gene_ID")["Symbol"])
