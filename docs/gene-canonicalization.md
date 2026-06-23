@@ -1,11 +1,12 @@
 # Gene Canonicalization Contract
 
-Pirlygenes has two related identifier spaces. They are intentionally separate.
+Pirlygenes has two related identifier conventions. They are intentionally
+separate.
 
-## Canonical Gene Space
+## Canonical Gene Tables
 
-The canonical gene space is the row identity space for gene-level expression
-tables.
+Canonical gene tables use one row identity convention for gene-level expression
+data.
 
 - The key is `Ensembl_Gene_ID`.
 - Values are unversioned human Ensembl stable gene IDs such as
@@ -25,7 +26,7 @@ tables.
   linear expression values are summed with `min_count=1`; all-missing stays
   missing.
 - Version suffixes (`.17`), non-Ensembl / malformed ids, and synthetic
-  proteoform keys are not valid gene-space keys. A well-formed unversioned ENSG
+  proteoform keys are not valid gene-table keys. A well-formed unversioned ENSG
   *is* valid even when absent from the authority release (see keep-as-self
   below); the authority governs symbol rescue and merge targets, not row
   admissibility.
@@ -43,13 +44,14 @@ tables.
 The runtime API lives in `pirlygenes.gene_canonicalization`:
 
 - `canonical_gene_id(identifier, source_version=None, symbol_hint=None)` maps
-  source identifiers into the canonical gene space. Pass `symbol_hint` when
+  source identifiers into the canonical gene table convention. Pass `symbol_hint` when
   resolving a table row that has both an Ensembl ID and a symbol; this rescues
   retired IDs whose stable-ID history is incomplete but whose symbol maps
   uniquely into release 112.
-- `canonicalize_gene_table(...)` rewrites and collapses a table into that space.
+- `canonicalize_gene_table(...)` rewrites and collapses a table into that
+  convention.
 - `validate_canonical_gene_table(...)` raises when a table violates the contract.
-- `canonical_gene_space_report(...)` returns counts and examples without raising.
+- `gene_table_validation_report(...)` returns counts and examples without raising.
 - `canonical_gene_id_map()` exposes the versioned bundled static maps — the
   alt-haplotype/retired alias table and the sequence-identity groups, resolved
   to the same terminal IDs as `canonical_gene_id()`. If both bundled sources
@@ -61,17 +63,17 @@ The runtime API lives in `pirlygenes.gene_canonicalization`:
 not need it for every lookup. Callers should pass it, because release-specific
 stable-ID history is the natural authority for retire/rename/merge/split events.
 
-## Reduced Proteoform Space
+## Reduced Proteoform Tables
 
-The reduced proteoform space is layered on top of canonical genes for analyses
+Reduced proteoform tables are layered on top of canonical genes for analyses
 that need a protein-abundance proxy.
 
 - If one canonical gene maps uniquely to one protein, the proteoform key remains
   the canonical ENSG.
 - If multiple genes encode a byte-identical protein, the proteoform key is a
   synthetic summed key such as `CTAG1A/B`.
-- Synthetic proteoform keys are valid only in a declared proteoform-space table,
-  never in an ordinary gene-space table.
+- Synthetic proteoform keys are valid only in a declared proteoform table,
+  never in an ordinary gene table.
 - Collapses happen in linear expression space before log or percentile transforms.
 
 The public helpers are:
@@ -98,9 +100,9 @@ validate_canonical_gene_table(
 For diagnostics without raising:
 
 ```python
-from pirlygenes.gene_canonicalization import canonical_gene_space_report
+from pirlygenes.gene_canonicalization import gene_table_validation_report
 
-report = canonical_gene_space_report(df, context_cols=["cancer_code"])
+report = gene_table_validation_report(df, context_cols=["cancer_code"])
 print(report)
 ```
 

@@ -5,15 +5,15 @@ import pytest
 from pirlygenes.gene_canonicalization import (
     CANONICAL_ENSEMBL_RELEASE,
     CANONICAL_GENE_MAP_VERSION,
-    GeneIdentitySpaceViolation,
+    GeneTableValidationError,
     canonical_authority_release,
     canonical_gene_biotype,
     canonical_gene_id,
     canonical_gene_id_map,
-    canonical_gene_space_report,
     canonical_proteoform_id,
     canonical_proteoform_id_map,
     canonicalize_gene_table,
+    gene_table_validation_report,
     validate_canonical_gene_table,
 )
 from pirlygenes.load_dataset import get_data
@@ -92,7 +92,7 @@ def test_validate_catches_duplicate_canonical_id_contexts():
             "cancer_code": ["A", "A"],
         }
     )
-    with pytest.raises(GeneIdentitySpaceViolation, match="duplicate"):
+    with pytest.raises(GeneTableValidationError, match="duplicate"):
         validate_canonical_gene_table(df, context_cols=["cancer_code"])
 
 
@@ -100,13 +100,13 @@ def test_validate_catches_versioned_ids_and_proteoform_leakage():
     versioned = pd.DataFrame(
         {"Ensembl_Gene_ID": ["ENSG00000141510.17"], "Symbol": ["TP53"]}
     )
-    with pytest.raises(GeneIdentitySpaceViolation, match="versioned"):
+    with pytest.raises(GeneTableValidationError, match="versioned"):
         validate_canonical_gene_table(versioned)
 
     proteoform = pd.DataFrame(
         {"Ensembl_Gene_ID": ["CTAG1A/B"], "Symbol": ["CTAG1A/B"]}
     )
-    with pytest.raises(GeneIdentitySpaceViolation, match="outside"):
+    with pytest.raises(GeneTableValidationError, match="invalid"):
         validate_canonical_gene_table(proteoform)
     assert validate_canonical_gene_table(
         proteoform, allow_proteoform_ids=True
@@ -115,7 +115,7 @@ def test_validate_catches_versioned_ids_and_proteoform_leakage():
     arbitrary_symbol = pd.DataFrame(
         {"Ensembl_Gene_ID": ["TP53"], "Symbol": ["TP53"]}
     )
-    with pytest.raises(GeneIdentitySpaceViolation, match="outside"):
+    with pytest.raises(GeneTableValidationError, match="invalid"):
         validate_canonical_gene_table(
             arbitrary_symbol, allow_proteoform_ids=True
         )
@@ -128,14 +128,14 @@ def test_report_surfaces_raw_ensg_symbols_without_failing_by_default():
             "Symbol": ["ENSG00000141510"],
         }
     )
-    report = canonical_gene_space_report(df)
+    report = gene_table_validation_report(df)
     assert report.n_symbol_fallback_ids == 1
-    with pytest.raises(GeneIdentitySpaceViolation, match="raw ENSG as Symbol"):
+    with pytest.raises(GeneTableValidationError, match="raw ENSG as Symbol"):
         validate_canonical_gene_table(df, forbid_symbol_fallback_ids=True)
 
 
 def test_keep_as_self_accepts_well_formed_ensg_outside_authority():
-    # A well-formed unversioned ENSG is a valid gene-space key even when it is
+    # A well-formed unversioned ENSG is a valid gene-table key even when it is
     # absent from the pinned authority release: keep-as-self genes (#465) are
     # kept, not dropped or flagged invalid.
     df = pd.DataFrame(
@@ -144,16 +144,16 @@ def test_keep_as_self_accepts_well_formed_ensg_outside_authority():
             "Symbol": ["MADEUP"],
         }
     )
-    report = canonical_gene_space_report(df)
+    report = gene_table_validation_report(df)
     assert report.n_invalid_ids == 0
     validate_canonical_gene_table(df)  # does not raise
 
 
 def test_validate_catches_malformed_gene_ids():
     df = pd.DataFrame({"Ensembl_Gene_ID": ["not-an-ensg"], "Symbol": ["x"]})
-    report = canonical_gene_space_report(df)
+    report = gene_table_validation_report(df)
     assert report.n_invalid_ids == 1
-    with pytest.raises(GeneIdentitySpaceViolation, match="outside"):
+    with pytest.raises(GeneTableValidationError, match="invalid"):
         validate_canonical_gene_table(df)
 
 
