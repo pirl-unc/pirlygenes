@@ -341,6 +341,30 @@ def test_canonical_list_is_cta_safe():
     assert mask == [False, False, True]  # CTAs kept, real ribosomal censored
 
 
+def test_clean_tpm_ribosomal_budget_is_cta_safe():
+    """The broad ribosomal family may include CTAs, but the clean-TPM 16%
+    ribosomal budget must not."""
+    from pirlygenes.gene_families import ribosomal_protein_ids
+    from pirlygenes.gene_sets_cancer import CTA_evidence
+    from pirlygenes.load_dataset import get_data
+
+    rpl10l = "ENSG00000165496"
+    cta_ens = set(CTA_evidence()["Ensembl_Gene_ID"].dropna().astype(str)
+                  .str.split(".").str[0])
+    assert rpl10l in cta_ens
+    assert rpl10l in ribosomal_protein_ids()
+
+    censored = get_data("clean-tpm-censored-genes")
+    ribosomal_budget_ids = set(
+        censored.loc[
+            censored["category"].astype(str).eq("ribosomal_protein"),
+            "Ensembl_Gene_ID",
+        ].astype(str)
+    )
+    assert ribosomal_budget_ids.isdisjoint(cta_ens)
+    assert rpl10l not in ribosomal_budget_ids
+
+
 def test_removal_mask_membership_matches_canonical_list():
     """clean_tpm_removal_mask is exactly the canonical list (ENSG membership),
     so there is one source of truth used everywhere."""
