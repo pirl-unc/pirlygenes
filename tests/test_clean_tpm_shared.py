@@ -100,6 +100,33 @@ def test_clean_tpm_fixed_fraction_three_compartment():
     assert other.any()
 
 
+def test_clean_tpm_matrix_uses_censored_category_compartments():
+    """oncoref must use clean-tpm-censored-genes.csv:category for the 16/9 split."""
+    gene_table = pd.DataFrame({
+        "Symbol": ["RPL10AP1", "RPL10L", "MT-CO1", "TP53"],
+        "Ensembl_Gene_ID": [
+            "ENSG00000244691",  # ribosomal-protein pseudogene: 16%
+            "ENSG00000165496",  # ribosomal-like CTA: biological
+            "ENSG00000198804",  # other technical: 9%
+            "ENSG00000141510",  # biological
+        ],
+    })
+    values = pd.DataFrame({"S1": [100.0, 200.0, 300.0, 400.0]},
+                          index=gene_table.index)
+
+    assert clean_tpm_removal_mask(gene_table).tolist() == [True, False, True, False]
+    assert clean_tpm_removal_mask(
+        gene_table, exclude_ribosomal_proteins=False).tolist() == \
+        [False, False, True, False]
+
+    clean = clean_tpm_matrix(values, gene_table=gene_table)
+    np.testing.assert_allclose(
+        clean["S1"].to_numpy(),
+        [160_000.0, 250_000.0, 90_000.0, 500_000.0],
+    )
+    np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6])
+
+
 def test_clean_tpm_matrix_rejects_noncanonical_options():
     import pytest
 
