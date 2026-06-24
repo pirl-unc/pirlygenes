@@ -24,6 +24,13 @@ source id). Source entries in the YAML for this builder use the
   citation: <PMID or DOI>
   notes: <free text for the 'notes' column>
   pipeline_stem: <optional override for processing_pipeline prefix>
+  sample_qc:                    # optional generic per-sample QC thresholds
+    enabled: true
+    source_scale_class: linear_rnaseq_tpm
+    linear_tpm_comparable: true
+    min_detected_genes: 5000
+    min_universal_nonzero_genes: 5
+    min_universal_nonzero_fraction: 0.5
 
 For sources where one matrix needs to split across multiple
 cancer_codes (e.g. an LCNEC vs typical-carcinoid table that has both
@@ -46,7 +53,7 @@ from typing import Callable
 
 import yaml
 
-from pirlygenes.builders.geo_matrix import GeoMatrixSource, build_source
+from pirlygenes.builders.geo_matrix import GeoMatrixSource, SampleQcConfig, build_source
 from pirlygenes.downloads import load_registry, source_cache_dir
 
 
@@ -83,6 +90,38 @@ def _build_sample_filter(spec: dict) -> Callable[[list[str]], list[str]] | None:
     return _filter
 
 
+def _build_sample_qc_config(spec: dict | None) -> SampleQcConfig:
+    spec = spec or {}
+    return SampleQcConfig(
+        enabled=bool(spec.get("enabled", True)),
+        min_detected_genes=int(spec.get("min_detected_genes", 5_000)),
+        min_universal_nonzero_genes=int(
+            spec.get(
+                "min_universal_nonzero_genes",
+                spec.get("min_housekeeping_nonzero_genes", 5),
+            )
+        ),
+        min_universal_nonzero_fraction=float(
+            spec.get(
+                "min_universal_nonzero_fraction",
+                spec.get("min_housekeeping_nonzero_fraction", 0.5),
+            )
+        ),
+        universal_floor_tpm=float(spec.get("universal_floor_tpm", 1.0)),
+        max_top_gene_fraction=(
+            None if spec.get("max_top_gene_fraction") is None
+            else float(spec["max_top_gene_fraction"])
+        ),
+        max_top10_fraction=(
+            None if spec.get("max_top10_fraction") is None
+            else float(spec["max_top10_fraction"])
+        ),
+        source_scale_class=str(spec.get("source_scale_class", "")),
+        linear_tpm_comparable=bool(spec.get("linear_tpm_comparable", True)),
+        special_source_warning=str(spec.get("special_source_warning", "")),
+    )
+
+
 def _build_geo_source(entry: dict) -> GeoMatrixSource:
     cancer_codes = entry["cancer_codes"]
     cancer_code = cancer_codes if len(cancer_codes) > 1 else cancer_codes[0]
@@ -112,6 +151,7 @@ def _build_geo_source(entry: dict) -> GeoMatrixSource:
         pipeline_stem=entry.get("pipeline_stem", ""),
         tumor_origin=entry.get("tumor_origin", "primary"),
         metastasis_site=entry.get("metastasis_site"),
+        sample_qc=_build_sample_qc_config(entry.get("sample_qc")),
     )
 
 
