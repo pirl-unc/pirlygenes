@@ -1006,23 +1006,28 @@ def tpm_to_housekeeping_normalized(
     panel: Iterable[str] | None = None,
     panel_ids: Iterable[str] | None = None,
     pseudocount: float = 0.1,
+    min_hk_positive_genes: int = 5,
+    min_hk_positive_fraction: float = 0.5,
 ):
     """Divide each expression column by the geometric mean of a HK panel.
 
-    Uses :func:`pirlygenes.housekeeping_gene_names` by default (~22
-    classic housekeeping genes, e.g. ACTB, GAPDH, B2M, HPRT1, PGK1).
-    Pass ``panel`` to override.
+    Uses :func:`pirlygenes.housekeeping_gene_names` by default: the active
+    HPA-derived housekeeping denominator panel. Pass ``panel`` to override.
 
-    A small ``pseudocount`` is added before taking the log to make the
-    geometric mean robust to zeros in the panel. Returns the
-    HK-normalized frame plus a record dict with the panel-symbol
-    coverage and per-column denominator value, so callers can audit
-    whether the panel was actually present.
+    Literal zero TPMs in broadly expressed housekeeping genes are often
+    source/sample artifacts rather than biology. A column is therefore scaled
+    only when enough housekeeping rows are strictly positive: at least
+    ``min_hk_positive_genes`` and at least ``min_hk_positive_fraction`` of the
+    panel rows present in the table, capped at the number of present panel rows.
+    Columns that fail this QC are left unchanged and reported in the returned
+    record. Positive HK rows are then combined with a small ``pseudocount`` in
+    log space.
 
     The output is on a unit-free ratio scale (gene expression relative
     to the housekeeping baseline). It survives library-prep total
-    drift in a way that TPM does not — useful when comparing samples
-    across very different sequencing depth or capture chemistry.
+    drift in a way that TPM does not, but thresholds are panel-dependent;
+    prefer clean TPM, log1p(clean TPM), or percentile-rank clean TPM when the
+    analysis needs an absolute, compressed, or rank-only expression space.
     """
     import numpy as np
     import pandas as pd
@@ -1077,30 +1082,79 @@ def tpm_to_housekeeping_normalized(
     for col in value_cols:
         vals = pd.to_numeric(out[col], errors="coerce")
         hk_vals = vals[hk_mask].dropna()
+        required_positive = min(
+            int(len(hk_vals)),
+            max(
+                int(min_hk_positive_genes),
+                int(np.ceil(int(len(hk_vals)) * float(min_hk_positive_fraction))),
+            ),
+        )
         if hk_vals.empty:
-            columns[col] = {"hk_geomean": None, "scale": 1.0, "n_hk_used": 0}
+            columns[col] = {
+                "applied": False,
+                "hk_geomean": None,
+                "scale": 1.0,
+                "n_hk_used": 0,
+                "n_hk_measured": 0,
+                "n_hk_positive": 0,
+                "n_hk_nonpositive": 0,
+                "min_hk_positive_required": required_positive,
+                "skip_reason": "no measured HK values",
+            }
             continue
-        log_vals = np.log(hk_vals.astype(float) + pseudocount)
+        positive_hk = hk_vals[hk_vals > 0]
+        n_positive = int(len(positive_hk))
+        if n_positive < required_positive:
+            columns[col] = {
+                "applied": False,
+                "hk_geomean": None,
+                "scale": 1.0,
+                "n_hk_used": n_positive,
+                "n_hk_measured": int(len(hk_vals)),
+                "n_hk_positive": n_positive,
+                "n_hk_nonpositive": int((hk_vals <= 0).sum()),
+                "min_hk_positive_required": required_positive,
+                "skip_reason": "insufficient positive HK genes",
+            }
+            continue
+        log_vals = np.log(positive_hk.astype(float) + pseudocount)
         hk_geomean = float(np.exp(log_vals.mean()) - pseudocount)
         if hk_geomean <= 0:
-            columns[col] = {"hk_geomean": hk_geomean, "scale": 1.0, "n_hk_used": int(len(hk_vals))}
+            columns[col] = {
+                "applied": False,
+                "hk_geomean": hk_geomean,
+                "scale": 1.0,
+                "n_hk_used": n_positive,
+                "n_hk_measured": int(len(hk_vals)),
+                "n_hk_positive": n_positive,
+                "n_hk_nonpositive": int((hk_vals <= 0).sum()),
+                "min_hk_positive_required": required_positive,
+                "skip_reason": "nonpositive HK geomean",
+            }
             continue
         out[col] = vals / hk_geomean
         columns[col] = {
+            "applied": True,
             "hk_geomean": hk_geomean,
             "scale": 1.0 / hk_geomean,
-            "n_hk_used": int(len(hk_vals)),
+            "n_hk_used": n_positive,
+            "n_hk_measured": int(len(hk_vals)),
+            "n_hk_positive": n_positive,
+            "n_hk_nonpositive": int((hk_vals <= 0).sum()),
+            "min_hk_positive_required": required_positive,
         }
         any_applied = True
     return out, {
         "applied": any_applied,
-        "reason": "divided by housekeeping geomean per column" if any_applied else "no positive HK geomeans",
+        "reason": "divided by housekeeping geomean per column" if any_applied else "insufficient positive HK genes",
         "columns": columns,
         "value_cols": value_cols,
         "panel_size": panel_size,
         "panel_present_in_table": n_hk_present,
         "match_mode": match_mode,
         "pseudocount": pseudocount,
+        "min_hk_positive_genes": min_hk_positive_genes,
+        "min_hk_positive_fraction": min_hk_positive_fraction,
     }
 
 
