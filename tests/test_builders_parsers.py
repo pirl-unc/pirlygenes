@@ -295,3 +295,157 @@ def test_harmonize_entrez_via_ncbi_returns_empty_on_no_matches(monkeypatch):
     # can `.reindex().fillna(0)` without a structure surprise.
     assert list(by_ensg.columns) == ["sampleA", "sampleB"]
     assert by_ensg.empty
+
+
+# ─── geo_matrix parse diagnostics + generic QC ────────────────────────
+
+
+def test_geo_matrix_read_diagnostics_preserve_parse_missingness(tmp_path):
+    from pirlygenes.builders.geo_matrix import read_matrix_with_diagnostics
+
+    path = tmp_path / "tiny_geo_matrix.tsv"
+    path.write_text(
+        "Gene\tSymbol\tS1\tS2\tAnnotation\n"
+        "ENSG000001\tGENE1\t1\tbad\tnote A\n"
+        "ENSG000002\tGENE2\tNA\t3\tnote B\n",
+        encoding="utf-8",
+    )
+
+    matrix, diagnostics = read_matrix_with_diagnostics(
+        path,
+        sep="\t",
+        gene_id_col="Gene",
+        drop_cols=("Symbol",),
+    )
+
+    assert list(matrix.columns) == ["S1", "S2"]
+    assert matrix.loc["ENSG000001", "S2"] == 0.0
+    assert matrix.loc["ENSG000002", "S1"] == 0.0
+    assert diagnostics.numeric_value_count.to_dict() == {"S1": 1, "S2": 1}
+    assert diagnostics.numeric_missing_count.to_dict() == {"S1": 1, "S2": 1}
+    assert diagnostics.dropped_non_sample_columns == ("Annotation",)
+
+
+def test_geo_matrix_sample_qc_excludes_sparse_samples_without_sample_ids():
+    from pirlygenes.builders.geo_matrix import (
+        MatrixReadDiagnostics,
+        SampleQcConfig,
+        sample_qc_table,
+    )
+    from pirlygenes.gene_sets_cancer import housekeeping_gene_ids
+
+    universal_ids = sorted(housekeeping_gene_ids())[:6]
+    gene_ids = universal_ids + ["ENSG99999999999"]
+    gene_table = pd.DataFrame({
+        "Ensembl_Gene_ID": gene_ids,
+        "Symbol": [f"GENE{i}" for i in range(len(gene_ids))],
+    })
+    raw = pd.DataFrame(
+        {
+            "sparse_source_sample": [1, 0, 0, 0, 0, 0, 0],
+            "usable_source_sample": [5, 5, 5, 5, 5, 5, 5],
+        },
+        index=gene_ids,
+    )
+    diagnostics = MatrixReadDiagnostics(
+        numeric_value_count=pd.Series({
+            "sparse_source_sample": 7,
+            "usable_source_sample": 7,
+        }),
+        numeric_missing_count=pd.Series({
+            "sparse_source_sample": 2,
+            "usable_source_sample": 0,
+        }),
+    )
+
+    qc = sample_qc_table(
+        raw,
+        raw.copy(),
+        gene_table,
+        config=SampleQcConfig(
+            min_detected_genes=3,
+            min_universal_nonzero_genes=5,
+            min_universal_nonzero_fraction=0.5,
+            source_scale_class="linear_rnaseq_tpm",
+        ),
+        read_diagnostics=diagnostics,
+    ).set_index("sample_id")
+
+    sparse = qc.loc["sparse_source_sample"]
+    assert not bool(sparse["included"])
+    assert sparse["sample_qc_status"] == "fail"
+    assert "detected_genes_below_min" in sparse["sample_qc_reasons"]
+    assert "universal_nonzero_below_min" in sparse["sample_qc_reasons"]
+    assert sparse["source_parse_missing_fraction"] == pytest.approx(2 / 9)
+
+    usable = qc.loc["usable_source_sample"]
+    assert bool(usable["included"])
+    assert usable["sample_qc_status"] == "pass"
+    assert usable["n_detected_raw"] == 7
+    assert usable["n_universal_nonzero_genes"] == 6
+
+
+def test_geo_matrix_sample_qc_retains_proxy_sources_with_warning():
+    from pirlygenes.builders.geo_matrix import SampleQcConfig, sample_qc_table
+    from pirlygenes.gene_sets_cancer import housekeeping_gene_ids
+
+    gene_ids = sorted(housekeeping_gene_ids())[:2]
+    gene_table = pd.DataFrame({
+        "Ensembl_Gene_ID": gene_ids,
+        "Symbol": ["GENE1", "GENE2"],
+    })
+    values = pd.DataFrame({"microarray_sample": [0.0, 0.0]}, index=gene_ids)
+
+    qc = sample_qc_table(
+        values,
+        values.copy(),
+        gene_table,
+        config=SampleQcConfig(
+            min_detected_genes=999,
+            source_scale_class="microarray_tpm_proxy",
+            linear_tpm_comparable=False,
+            special_source_warning="rank_percentile_qc_required",
+        ),
+    ).iloc[0]
+
+    assert bool(qc["included"])
+    assert qc["sample_qc_status"] == "warn"
+    assert "nonlinear_or_proxy_source_scale" in qc["sample_qc_reasons"]
+    assert "rank_percentile_qc_required" in qc["sample_qc_reasons"]
+
+
+def test_geo_matrix_mapping_audit_marks_unresolved_and_ambiguous_rows():
+    from pirlygenes.builders.geo_matrix import (
+        mapping_audit_summary,
+        mapping_audit_table,
+    )
+
+    matrix = pd.DataFrame(
+        {"sampleA": [2.0, 0.5, 3.0], "sampleB": [0.0, 0.5, 0.0]},
+        index=["A", "B", "C"],
+    )
+    mapping = pd.DataFrame({
+        "source_id": ["A", "B", "B"],
+        "Ensembl_Gene_ID": ["ENSG000001", "ENSG000002", "ENSG000003"],
+        "Symbol": ["GENEA", "GENEB1", "GENEB2"],
+        "mapping_method": ["symbol", "synonym", "synonym"],
+    })
+
+    audit = mapping_audit_table(
+        matrix,
+        mapping,
+        detected_gene_id_type="hugo",
+    ).set_index("source_id")
+
+    assert audit.loc["A", "mapping_status"] == "resolved"
+    assert audit.loc["B", "mapping_status"] == "ambiguous"
+    assert audit.loc["C", "mapping_status"] == "unresolved"
+    assert bool(audit.loc["C", "high_expression_unresolved"])
+    assert audit.loc["C", "source_expression_sample_with_max"] == "sampleA"
+
+    summary = mapping_audit_summary(audit.reset_index()).iloc[0]
+    assert summary["source_row_count"] == 3
+    assert summary["resolved_row_count"] == 1
+    assert summary["unresolved_row_count"] == 1
+    assert summary["ambiguous_row_count"] == 1
+    assert summary["high_expression_unresolved_row_count"] == 1

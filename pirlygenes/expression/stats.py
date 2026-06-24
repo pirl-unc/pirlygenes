@@ -772,9 +772,16 @@ def upsert_samples_manifest(path, new_rows: pd.DataFrame) -> pd.DataFrame:
         keep = ~existing["source_cohort"].astype(str).isin(cohorts)
         # Order-preserving union: existing columns first, then any new ones.
         cols = list(dict.fromkeys(list(existing.columns) + list(new_rows.columns)))
-        out = pd.concat(
-            [existing.loc[keep].reindex(columns=cols), new_rows.reindex(columns=cols)],
-            ignore_index=True,
+        frames = [
+            frame.dropna(axis=1, how="all") for frame in (
+                existing.loc[keep].reindex(columns=cols),
+                new_rows.reindex(columns=cols),
+            )
+            if not frame.empty
+        ]
+        out = (
+            pd.concat(frames, ignore_index=True).reindex(columns=cols)
+            if frames else pd.DataFrame(columns=cols)
         )
     else:
         out = new_rows

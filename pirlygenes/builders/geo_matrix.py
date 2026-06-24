@@ -19,7 +19,7 @@ from __future__ import annotations
 import gzip
 import shutil
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Iterable, Literal
 
@@ -28,6 +28,7 @@ import pandas as pd
 from pyensembl import EnsemblRelease
 
 from ..expression.normalize import (
+    clean_tpm_removal_mask,
     clean_tpm_matrix as _clean_tpm,
     technical_rna_mask as _technical_mask,
 )
@@ -40,13 +41,38 @@ from .gene_mapping import (
     GeneIdType,
     aggregate_matrix_by_mapping,
     detect_id_type,
+    entrez_to_gene,
     gene_from_ensembl_id,
-    harmonize_entrez_matrix,
     resolve_symbol,
     strip_version,
 )
 
 Unit = Literal["TPM", "FPKM", "RPKM", "log2(TPM+1)", "raw_counts"]
+
+
+@dataclass(frozen=True)
+class MatrixReadDiagnostics:
+    """Diagnostics from parsing a source matrix before numeric NaNs are filled."""
+
+    numeric_value_count: pd.Series
+    numeric_missing_count: pd.Series
+    dropped_non_sample_columns: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SampleQcConfig:
+    """Generic sparse-expression sample QC for full-transcriptome RNA-seq sources."""
+
+    enabled: bool = True
+    min_detected_genes: int = 5_000
+    min_universal_nonzero_genes: int = 5
+    min_universal_nonzero_fraction: float = 0.5
+    universal_floor_tpm: float = 1.0
+    max_top_gene_fraction: float | None = None
+    max_top10_fraction: float | None = None
+    source_scale_class: str = ""
+    linear_tpm_comparable: bool = True
+    special_source_warning: str = ""
 
 
 @dataclass(frozen=True)
@@ -82,6 +108,7 @@ class GeoMatrixSource:
     # should override.
     tumor_origin: str = "primary"
     metastasis_site: str | None = None
+    sample_qc: SampleQcConfig = field(default_factory=SampleQcConfig)
 
 
 # ─── ID type detection ──────────────────────────────────────────────────────
@@ -110,7 +137,9 @@ def _open_text(path: Path):
     return path.open("r")
 
 
-def read_matrix(path: Path, *, sep: str, gene_id_col: str, drop_cols: tuple[str, ...]) -> pd.DataFrame:
+def read_matrix_with_diagnostics(
+    path: Path, *, sep: str, gene_id_col: str, drop_cols: tuple[str, ...],
+) -> tuple[pd.DataFrame, MatrixReadDiagnostics]:
     """Return a DataFrame indexed by gene ID, columns = sample IDs.
 
     ``gene_id_col=""`` treats the first column as the gene-ID index
@@ -143,13 +172,402 @@ def read_matrix(path: Path, *, sep: str, gene_id_col: str, drop_cols: tuple[str,
     # locus / Description that survived index_col=0 but aren't actual
     # samples). Distinguish them from real samples that happen to
     # contain a single NaN: a non-sample column will parse to all NaN.
+    numeric_value_counts: dict[str, int] = {}
+    numeric_missing_counts: dict[str, int] = {}
+    dropped_non_sample_columns: list[str] = []
     for col in list(df.columns):
         numeric = pd.to_numeric(df[col], errors="coerce")
         if numeric.notna().sum() == 0:
             df = df.drop(columns=col)
+            dropped_non_sample_columns.append(str(col))
         else:
+            numeric_value_counts[str(col)] = int(numeric.notna().sum())
+            numeric_missing_counts[str(col)] = int(numeric.isna().sum())
             df[col] = numeric.fillna(0.0)
-    return df
+    return df, MatrixReadDiagnostics(
+        numeric_value_count=pd.Series(numeric_value_counts, dtype="int64"),
+        numeric_missing_count=pd.Series(numeric_missing_counts, dtype="int64"),
+        dropped_non_sample_columns=tuple(dropped_non_sample_columns),
+    )
+
+
+def read_matrix(path: Path, *, sep: str, gene_id_col: str, drop_cols: tuple[str, ...]) -> pd.DataFrame:
+    """Return a numeric source matrix, filling parse failures with ``0.0``.
+
+    Use :func:`read_matrix_with_diagnostics` when a builder needs to audit those
+    parse failures separately from literal source zeros.
+    """
+    matrix, _diagnostics = read_matrix_with_diagnostics(
+        path, sep=sep, gene_id_col=gene_id_col, drop_cols=drop_cols,
+    )
+    return matrix
+
+
+def _series_for_samples(series: pd.Series, samples: Iterable[str]) -> pd.Series:
+    return (
+        series.reindex([str(s) for s in samples])
+        .fillna(0)
+        .astype(int)
+    )
+
+
+def _default_source_scale_class(unit: Unit) -> str:
+    if unit == "raw_counts":
+        return "count_derived_tpm"
+    if unit == "log2(TPM+1)":
+        return "log2_tpm_inverse"
+    return "linear_rnaseq_tpm"
+
+
+def _effective_sample_qc_config(config: SampleQcConfig, unit: Unit) -> SampleQcConfig:
+    if config.source_scale_class:
+        return config
+    return replace(config, source_scale_class=_default_source_scale_class(unit))
+
+
+def _top_n_sum(values: pd.DataFrame, n: int) -> pd.Series:
+    if values.empty:
+        return pd.Series(0.0, index=values.columns, dtype=float)
+    return values.apply(lambda col: col.nlargest(min(n, len(col))).sum(), axis=0)
+
+
+def _mapping_frame(rows: list[dict[str, str]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        rows,
+        columns=["source_id", "Ensembl_Gene_ID", "Symbol", "mapping_method"],
+    )
+
+
+def sample_qc_table(
+    raw_values: pd.DataFrame,
+    clean_values: pd.DataFrame,
+    gene_table: pd.DataFrame,
+    *,
+    config: SampleQcConfig | None = None,
+    read_diagnostics: MatrixReadDiagnostics | None = None,
+    missing_after_harmonization: pd.Series | None = None,
+) -> pd.DataFrame:
+    """Return generic per-sample expression QC metrics and inclusion decisions.
+
+    The rules are intentionally sample-ID agnostic. Sparse samples are excluded
+    only when they fail documented numeric thresholds, not because a source
+    sample name appears on a curated denylist.
+    """
+    cfg = config or SampleQcConfig()
+    sample_ids = [str(c) for c in raw_values.columns]
+    raw_values = raw_values.copy()
+    clean_values = clean_values.reindex(
+        index=raw_values.index,
+        columns=raw_values.columns,
+    )
+    raw_values.columns = sample_ids
+    clean_values.columns = sample_ids
+
+    raw_totals = raw_values.sum(axis=0)
+    clean_totals = clean_values.sum(axis=0)
+    top_gene_raw = raw_values.max(axis=0)
+    top_gene_clean = clean_values.max(axis=0)
+    top10_raw = _top_n_sum(raw_values, 10)
+    top10_clean = _top_n_sum(clean_values, 10)
+    detected_raw = (raw_values > 0).sum(axis=0)
+    detected_clean = (clean_values > 0).sum(axis=0)
+    n_genes = int(raw_values.shape[0])
+    source_zero = (raw_values == 0).sum(axis=0)
+
+    removal_mask = clean_tpm_removal_mask(gene_table).to_numpy()
+    biological_clean = clean_values.loc[~removal_mask]
+    detected_clean_biological = (biological_clean > 0).sum(axis=0)
+
+    from ..gene_sets_cancer import housekeeping_gene_ids
+
+    universal_ids = {
+        str(x).split(".", 1)[0].strip()
+        for x in housekeeping_gene_ids()
+        if str(x).strip()
+    }
+    ids = gene_table["Ensembl_Gene_ID"].astype(str).str.split(".").str[0]
+    universal_mask = ids.isin(universal_ids).to_numpy()
+    n_universal_expected = len(universal_ids)
+    n_universal_present = int(universal_mask.sum())
+    if n_universal_present:
+        universal_values = raw_values.loc[universal_mask]
+        universal_detected = (universal_values > 0).sum(axis=0)
+        universal_floor = (universal_values >= cfg.universal_floor_tpm).sum(axis=0)
+    else:
+        universal_detected = pd.Series(0, index=sample_ids, dtype=int)
+        universal_floor = pd.Series(0, index=sample_ids, dtype=int)
+
+    numeric_missing = (
+        _series_for_samples(read_diagnostics.numeric_missing_count, sample_ids)
+        if read_diagnostics is not None
+        else pd.Series(0, index=sample_ids, dtype=int)
+    )
+    numeric_values = (
+        _series_for_samples(read_diagnostics.numeric_value_count, sample_ids)
+        if read_diagnostics is not None
+        else pd.Series(0, index=sample_ids, dtype=int)
+    )
+    missing_after = (
+        _series_for_samples(missing_after_harmonization, sample_ids)
+        if missing_after_harmonization is not None
+        else pd.Series(0, index=sample_ids, dtype=int)
+    )
+
+    rows = []
+    for sample in sample_ids:
+        raw_total = float(raw_totals.get(sample, 0.0))
+        clean_total = float(clean_totals.get(sample, 0.0))
+        n_detected_raw = int(detected_raw.get(sample, 0))
+        n_detected_clean = int(detected_clean.get(sample, 0))
+        n_detected_clean_bio = int(detected_clean_biological.get(sample, 0))
+        n_universal_nonzero = int(universal_detected.get(sample, 0))
+        universal_fraction = (
+            n_universal_nonzero / n_universal_present
+            if n_universal_present else 0.0
+        )
+        n_universal_floor = int(universal_floor.get(sample, 0))
+        universal_floor_fraction = (
+            n_universal_floor / n_universal_present
+            if n_universal_present else 0.0
+        )
+        top_raw = float(top_gene_raw.get(sample, 0.0))
+        top_clean = float(top_gene_clean.get(sample, 0.0))
+        top10_raw_sum = float(top10_raw.get(sample, 0.0))
+        top10_clean_sum = float(top10_clean.get(sample, 0.0))
+        missing_numeric = int(numeric_missing.get(sample, 0))
+        parsed_numeric = int(numeric_values.get(sample, 0))
+        parse_total = parsed_numeric + missing_numeric
+        fail_reasons: list[str] = []
+        warn_reasons: list[str] = []
+        if not cfg.enabled:
+            warn_reasons.append("sample_qc_disabled")
+        elif not cfg.linear_tpm_comparable:
+            warn_reasons.append("nonlinear_or_proxy_source_scale")
+        else:
+            if n_detected_raw < cfg.min_detected_genes:
+                fail_reasons.append("detected_genes_below_min")
+            if (
+                n_universal_present
+                and n_universal_nonzero < cfg.min_universal_nonzero_genes
+            ):
+                fail_reasons.append("universal_nonzero_below_min")
+            if (
+                n_universal_present
+                and universal_fraction < cfg.min_universal_nonzero_fraction
+            ):
+                fail_reasons.append("universal_nonzero_fraction_below_min")
+            if cfg.max_top_gene_fraction is not None and raw_total > 0:
+                if top_raw / raw_total > cfg.max_top_gene_fraction:
+                    fail_reasons.append("top_gene_fraction_above_max")
+            if cfg.max_top10_fraction is not None and raw_total > 0:
+                if top10_raw_sum / raw_total > cfg.max_top10_fraction:
+                    fail_reasons.append("top10_fraction_above_max")
+        if cfg.special_source_warning:
+            warn_reasons.append(cfg.special_source_warning)
+        status = "fail" if fail_reasons else ("warn" if warn_reasons else "pass")
+        all_reasons = fail_reasons + warn_reasons
+        rows.append({
+            "sample_id": sample,
+            "included": status != "fail",
+            "sample_qc_status": status,
+            "sample_qc_reasons": ";".join(all_reasons),
+            "n_genes_harmonized": n_genes,
+            "n_detected_raw": n_detected_raw,
+            "n_detected_clean": n_detected_clean,
+            "n_detected_clean_biological": n_detected_clean_bio,
+            "detected_raw_fraction": n_detected_raw / n_genes if n_genes else 0.0,
+            "source_zero_fraction": (
+                int(source_zero.get(sample, 0)) / n_genes if n_genes else 0.0
+            ),
+            "source_total_tpm_raw": raw_total,
+            "source_total_tpm_clean": clean_total,
+            "top1_tpm_raw": top_raw,
+            "top1_fraction_raw": top_raw / raw_total if raw_total > 0 else 0.0,
+            "top10_tpm_raw": top10_raw_sum,
+            "top10_fraction_raw": (
+                top10_raw_sum / raw_total if raw_total > 0 else 0.0
+            ),
+            "top1_tpm_clean": top_clean,
+            "top1_fraction_clean": (
+                top_clean / clean_total if clean_total > 0 else 0.0
+            ),
+            "top10_tpm_clean": top10_clean_sum,
+            "top10_fraction_clean": (
+                top10_clean_sum / clean_total if clean_total > 0 else 0.0
+            ),
+            "n_universal_genes_expected": n_universal_expected,
+            "n_universal_genes_present": n_universal_present,
+            "n_universal_genes_missing": (
+                n_universal_expected - n_universal_present
+            ),
+            "n_universal_nonzero_genes": n_universal_nonzero,
+            "universal_nonzero_fraction": universal_fraction,
+            "universal_floor_tpm": cfg.universal_floor_tpm,
+            "n_universal_ge_floor_genes": n_universal_floor,
+            "universal_ge_floor_fraction": universal_floor_fraction,
+            "source_scale_class": cfg.source_scale_class,
+            "linear_tpm_comparable": cfg.linear_tpm_comparable,
+            "source_numeric_values": parsed_numeric,
+            "source_numeric_missing_values": missing_numeric,
+            "source_parse_missing_fraction": (
+                missing_numeric / parse_total if parse_total else 0.0
+            ),
+            "missing_after_harmonization": int(missing_after.get(sample, 0)),
+        })
+    return pd.DataFrame(rows)
+
+
+_HIGH_EXPRESSION_UNRESOLVED_MAX_TPM = 1.0
+
+
+def mapping_audit_table(
+    matrix: pd.DataFrame,
+    mapping: pd.DataFrame,
+    *,
+    detected_gene_id_type: GeneIdType,
+) -> pd.DataFrame:
+    """Return a per-source-row mapping audit for a normalized source matrix."""
+    sample_cols = [str(c) for c in matrix.columns]
+    row_numbers = np.arange(len(matrix.index), dtype=int)
+    source_ids = pd.Series(matrix.index.astype(str), name="source_id")
+    if sample_cols:
+        expression_total = matrix.sum(axis=1).to_numpy(dtype=float)
+        expression_max = matrix.max(axis=1).to_numpy(dtype=float)
+        sample_with_max = matrix.idxmax(axis=1).astype(str).to_numpy()
+        nonzero_samples = (matrix > 0).sum(axis=1).to_numpy(dtype=int)
+    else:
+        expression_total = np.zeros(len(matrix.index), dtype=float)
+        expression_max = np.zeros(len(matrix.index), dtype=float)
+        sample_with_max = np.array([""] * len(matrix.index), dtype=object)
+        nonzero_samples = np.zeros(len(matrix.index), dtype=int)
+    audit = pd.DataFrame({
+        "source_row_number": row_numbers,
+        "source_id": source_ids,
+        "detected_gene_id_type": detected_gene_id_type,
+        "source_expression_total": expression_total,
+        "source_expression_max": expression_max,
+        "source_expression_sample_with_max": sample_with_max,
+        "source_expression_nonzero_samples": nonzero_samples,
+    })
+    if mapping.empty:
+        grouped = pd.DataFrame(
+            columns=[
+                "source_id",
+                "Ensembl_Gene_ID",
+                "Symbol",
+                "mapping_method",
+                "mapping_candidate_count",
+                "n_canonical_ids",
+            ]
+        )
+    else:
+        mapping = mapping.copy()
+        if "mapping_method" not in mapping.columns:
+            mapping["mapping_method"] = ""
+        grouped = (
+            mapping.assign(source_id=mapping["source_id"].astype(str))
+            .groupby("source_id", sort=False)
+            .agg(
+                Ensembl_Gene_ID=(
+                    "Ensembl_Gene_ID",
+                    lambda s: ";".join(sorted({str(x) for x in s if str(x)})),
+                ),
+                Symbol=(
+                    "Symbol",
+                    lambda s: ";".join(sorted({str(x) for x in s if str(x)})),
+                ),
+                mapping_method=(
+                    "mapping_method",
+                    lambda s: ";".join(sorted({str(x) for x in s if str(x)})),
+                ),
+                mapping_candidate_count=("Ensembl_Gene_ID", "size"),
+                n_canonical_ids=(
+                    "Ensembl_Gene_ID",
+                    lambda s: len({str(x) for x in s if str(x)}),
+                ),
+            )
+            .reset_index()
+        )
+    audit = audit.merge(grouped, on="source_id", how="left")
+    audit["mapping_candidate_count"] = (
+        audit["mapping_candidate_count"].fillna(0).astype(int)
+    )
+    audit["n_canonical_ids"] = audit["n_canonical_ids"].fillna(0).astype(int)
+    audit["mapping_status"] = np.select(
+        [
+            audit["n_canonical_ids"].eq(0),
+            audit["n_canonical_ids"].eq(1),
+        ],
+        ["unresolved", "resolved"],
+        default="ambiguous",
+    )
+    audit["high_expression_unresolved"] = (
+        audit["mapping_status"].eq("unresolved")
+        & audit["source_expression_max"].ge(_HIGH_EXPRESSION_UNRESOLVED_MAX_TPM)
+    )
+    ordered = [
+        "source_row_number",
+        "source_id",
+        "detected_gene_id_type",
+        "mapping_status",
+        "mapping_method",
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "mapping_candidate_count",
+        "n_canonical_ids",
+        "source_expression_total",
+        "source_expression_max",
+        "source_expression_sample_with_max",
+        "source_expression_nonzero_samples",
+        "high_expression_unresolved",
+    ]
+    return audit[ordered]
+
+
+def mapping_audit_summary(audit: pd.DataFrame) -> pd.DataFrame:
+    """Summarize a mapping audit table in the fields tracked by issue #515."""
+    return pd.DataFrame([{
+        "detected_gene_id_type": (
+            audit["detected_gene_id_type"].iloc[0] if not audit.empty else ""
+        ),
+        "source_row_count": int(len(audit)),
+        "resolved_row_count": int(audit["mapping_status"].eq("resolved").sum()),
+        "unresolved_row_count": int(audit["mapping_status"].eq("unresolved").sum()),
+        "ambiguous_row_count": int(audit["mapping_status"].eq("ambiguous").sum()),
+        "high_expression_unresolved_row_count": int(
+            audit["high_expression_unresolved"].sum()
+        ),
+        "high_expression_unresolved_max_tpm_threshold": (
+            _HIGH_EXPRESSION_UNRESOLVED_MAX_TPM
+        ),
+    }])
+
+
+def _artifact_stem(value: str) -> str:
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in value)
+
+
+def _write_mapping_audit(
+    cache_dir: Path,
+    source_cohort: str,
+    audit: pd.DataFrame,
+) -> tuple[Path, Path]:
+    derived = cache_dir / "derived"
+    derived.mkdir(parents=True, exist_ok=True)
+    stem = _artifact_stem(source_cohort)
+    audit_path = derived / f"{stem}_mapping_audit.csv"
+    summary_path = derived / f"{stem}_mapping_audit_summary.csv"
+    audit.to_csv(audit_path, index=False)
+    mapping_audit_summary(audit).to_csv(summary_path, index=False)
+    return audit_path, summary_path
+
+
+def _write_sample_qc(cache_dir: Path, code: str, qc: pd.DataFrame) -> Path:
+    derived = cache_dir / "derived"
+    derived.mkdir(parents=True, exist_ok=True)
+    path = derived / f"{code}_sample_qc.csv"
+    qc.to_csv(path, index=False)
+    return path
 
 
 # ─── Unit normalization → TPM ───────────────────────────────────────────────
@@ -221,9 +639,14 @@ def _harmonize_by_ensembl_id(
             "source_id": str(raw),
             "Ensembl_Gene_ID": ensembl_id,
             "Symbol": name,
+            "mapping_method": "ensembl_id",
         })
-    mapping = pd.DataFrame(rows)
-    return mapping, aggregate_matrix_by_mapping(matrix, mapping)
+    mapping = _mapping_frame(rows)
+    if mapping.empty:
+        return mapping, pd.DataFrame(columns=matrix.columns)
+    return mapping, aggregate_matrix_by_mapping(
+        matrix, mapping[["source_id", "Ensembl_Gene_ID", "Symbol"]],
+    )
 
 
 def _harmonize_by_symbol(
@@ -242,9 +665,42 @@ def _harmonize_by_symbol(
             "source_id": str(raw).strip(),
             "Ensembl_Gene_ID": ensembl_id,
             "Symbol": name,
+            "mapping_method": _method,
         })
-    mapping = pd.DataFrame(rows)
-    return mapping, aggregate_matrix_by_mapping(matrix, mapping)
+    mapping = _mapping_frame(rows)
+    if mapping.empty:
+        return mapping, pd.DataFrame(columns=matrix.columns)
+    return mapping, aggregate_matrix_by_mapping(
+        matrix, mapping[["source_id", "Ensembl_Gene_ID", "Symbol"]],
+    )
+
+
+def _harmonize_by_entrez_id(
+    matrix: pd.DataFrame, ensembl_release: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Resolve Entrez IDs through the shared NCBI chain, keeping method labels."""
+    genome = EnsemblRelease(ensembl_release)
+    rows = []
+    for raw in matrix.index:
+        entrez_id = str(raw).strip()
+        if not entrez_id.isdigit():
+            continue
+        result = entrez_to_gene(genome, entrez_id)
+        if result is None:
+            continue
+        ensembl_id, name, method = result
+        rows.append({
+            "source_id": entrez_id,
+            "Ensembl_Gene_ID": ensembl_id,
+            "Symbol": name,
+            "mapping_method": method,
+        })
+    mapping = _mapping_frame(rows)
+    if mapping.empty:
+        return mapping, pd.DataFrame(columns=matrix.columns)
+    return mapping, aggregate_matrix_by_mapping(
+        matrix, mapping[["source_id", "Ensembl_Gene_ID", "Symbol"]],
+    )
 
 
 def harmonize_gene_ids(
@@ -263,7 +719,7 @@ def harmonize_gene_ids(
     if actual == "ensembl":
         return _harmonize_by_ensembl_id(matrix, ensembl_release)
     if actual == "entrez":
-        return harmonize_entrez_matrix(matrix, ensembl_release=ensembl_release)
+        return _harmonize_by_entrez_id(matrix, ensembl_release)
     return _harmonize_by_symbol(matrix, ensembl_release)
 
 
@@ -327,17 +783,27 @@ def build_source(
     _download(source.file_url, file_path)
 
     print(f"reading matrix (unit={source.unit}, sep={source.sep!r})...")
-    matrix = read_matrix(
+    matrix, read_diagnostics = read_matrix_with_diagnostics(
         file_path,
         sep=source.sep,
         gene_id_col=source.gene_id_col,
         drop_cols=source.drop_cols,
     )
+    matrix.columns = matrix.columns.astype(str)
     if source.transposed:
         # File is samples-as-rows × genes-as-cols; transpose so the
         # rest of the pipeline (genes-as-rows, samples-as-cols) works.
+        dropped_non_sample_columns = read_diagnostics.dropped_non_sample_columns
         matrix = matrix.T
         matrix.index.name = source.gene_id_col or "gene_id"
+        matrix.columns = matrix.columns.astype(str)
+        # The parser diagnostics were column-oriented before transpose (genes,
+        # not samples), so do not report them as per-sample parse missingness.
+        read_diagnostics = MatrixReadDiagnostics(
+            numeric_value_count=pd.Series(dtype="int64"),
+            numeric_missing_count=pd.Series(dtype="int64"),
+            dropped_non_sample_columns=dropped_non_sample_columns,
+        )
         print(f"  transposed: now shape {matrix.shape} (genes × samples)")
     if source.sample_filter is not None:
         keep = source.sample_filter(list(matrix.columns))
@@ -372,6 +838,16 @@ def build_source(
     )
     print(f"  resolved {len(mapping)}/{len(tpm.index)} rows → "
           f"{len(values)} canonical genes")
+    audit = mapping_audit_table(
+        tpm, mapping, detected_gene_id_type=gene_id_type,
+    )
+    audit_path, audit_summary_path = _write_mapping_audit(
+        cache_dir, source.source_cohort, audit,
+    )
+    print(
+        f"  mapping audit: {audit_path} "
+        f"(summary: {audit_summary_path})"
+    )
 
     # Build per-gene-per-cohort rows. The cancer_code may be a list when
     # the same matrix splits across multiple codes (e.g. NET_LUNG vs
@@ -380,7 +856,9 @@ def build_source(
         mapping.drop_duplicates("Ensembl_Gene_ID")[["Ensembl_Gene_ID", "Symbol"]]
         .reset_index(drop=True)
     )
-    values = values.reindex(gene_table["Ensembl_Gene_ID"]).fillna(0.0)
+    values = values.reindex(gene_table["Ensembl_Gene_ID"])
+    missing_after_harmonization = values.isna().sum(axis=0)
+    values = values.fillna(0.0)
 
     # Some source matrices repeat a sample id across columns (e.g. GSE294016
     # ADCC has P-58/P-77 ×15). Uniquify so each is a distinct per-sample column
@@ -396,6 +874,7 @@ def build_source(
                 seen[c] = 0
                 uniq.append(c)
         values.columns = uniq
+        missing_after_harmonization.index = uniq
 
     if source.sample_to_cancer_code is not None:
         cohort_to_cols: dict[str, list[str]] = {}
@@ -413,17 +892,41 @@ def build_source(
 
     summaries: list[pd.DataFrame] = []
     counts_by_code: dict[str, int] = {}
+    sample_qc_config = _effective_sample_qc_config(source.sample_qc, source.unit)
     for code, cols in cohort_to_cols.items():
         if not cols:
             continue
         sub_values = values[cols]
+        missing_after_sub = missing_after_harmonization.reindex(cols).fillna(0).astype(int)
+        clean = _clean_tpm(sub_values, gene_table=gene_table)
+        qc = sample_qc_table(
+            sub_values,
+            clean,
+            gene_table,
+            config=sample_qc_config,
+            read_diagnostics=read_diagnostics,
+            missing_after_harmonization=missing_after_sub,
+        )
+        qc_path = _write_sample_qc(cache_dir, code, qc)
+        if sample_qc_config.enabled:
+            keep = qc.loc[qc["included"], "sample_id"].tolist()
+            excluded = qc.loc[~qc["included"], ["sample_id", "sample_qc_reasons"]]
+            if not excluded.empty:
+                print(
+                    f"    {code}: excluding {len(excluded)} sparse/QC-failed samples; "
+                    f"QC details: {qc_path}"
+                )
+            sub_values = sub_values[keep]
+            clean = clean[keep]
+            if sub_values.shape[1] == 0:
+                print(f"    {code}: all samples failed generic expression QC")
+                continue
         # Persist the per-code per-sample matrix for medoids + percentiles
         # (uniform with every other per-sample cohort; the read path discovers
         # it by code==stem under this source's cache). One hook covers every
         # geo_matrix source.
         from ..cohorts import write_per_sample as _write_per_sample
         _write_per_sample(gene_table, sub_values, cache_dir.name, code)
-        clean = _clean_tpm(sub_values, gene_table=gene_table)
         out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
         out["cancer_code"] = code
         out["source_cohort"] = source.source_cohort
@@ -440,14 +943,15 @@ def build_source(
             f"_to_tpm_ensembl{ensembl_release}_clean_tpm_16_9_75"
         )
         out["notes"] = source.notes or (
-            f"Per-sample expression from {source.source_cohort} (n={len(cols)}). "
+            f"Per-sample expression from {source.source_cohort} "
+            f"(n={sub_values.shape[1]}). "
             f"Unit-normalized to TPM; tech-RNA-zeroed; v5.3 stats."
         )
         out["metastasis_site"] = source.metastasis_site if source.metastasis_site else pd.NA
         out = finalize_reference_rows(out, tumor_origin=source.tumor_origin)
         summaries.append(out)
-        counts_by_code[code] = len(cols)
-        print(f"    {code}: n={len(cols)} → {len(out)} gene rows")
+        counts_by_code[code] = sub_values.shape[1]
+        print(f"    {code}: n={sub_values.shape[1]} → {len(out)} gene rows")
 
     if not summaries:
         raise RuntimeError("no cohort had samples after filtering")
@@ -465,9 +969,15 @@ def build_source(
 __all__ = [
     "GeoMatrixSource",
     "GeneIdType",
+    "MatrixReadDiagnostics",
+    "SampleQcConfig",
     "Unit",
     "detect_gene_id_type",
     "read_matrix",
+    "read_matrix_with_diagnostics",
+    "sample_qc_table",
+    "mapping_audit_table",
+    "mapping_audit_summary",
     "normalize_to_tpm",
     "harmonize_gene_ids",
     "build_source",
