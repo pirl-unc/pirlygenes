@@ -183,6 +183,25 @@ def _normalize_dataset_dtypes(cache_key: str, df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _concat_shard_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
+    """Concatenate CSV shards without letting all-NA shard columns set dtypes."""
+    if not frames:
+        return pd.DataFrame()
+
+    columns: list[str] = []
+    seen: set[str] = set()
+    trimmed = []
+    for frame in frames:
+        for col in frame.columns:
+            if col not in seen:
+                seen.add(col)
+                columns.append(col)
+        trimmed.append(frame.dropna(axis=1, how="all"))
+
+    df = pd.concat(trimmed, ignore_index=True)
+    return df.reindex(columns=columns)
+
+
 def _load_shard_directory(shard_dir: Path) -> pd.DataFrame:
     """Concatenate every ``*.csv[.gz]`` shard in a sharded dataset directory.
 
@@ -211,8 +230,8 @@ def _load_shard_directory(shard_dir: Path) -> pd.DataFrame:
             return _categorize_metadata(pd.read_parquet(cache_file))
     except Exception:
         pass  # any cache-read problem -> rebuild from the authoritative CSVs
-    df = pd.concat([pd.read_csv(str(p), low_memory=False) for p in paths],
-                   ignore_index=True)
+    df = _concat_shard_frames([pd.read_csv(str(p), low_memory=False)
+                               for p in paths])
     df = _categorize_metadata(df)
     df = _normalize_dataset_dtypes(shard_dir.name + ".csv", df)
     try:
