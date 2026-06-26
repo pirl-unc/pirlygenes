@@ -1,10 +1,15 @@
 # Reasoning Pipeline
 
-`pirlygenes analyze` builds an auditable inference state from RNA and any
-optional clinical or molecular inputs. The report is not a single
-thresholded label. It is a chain of evidence: what was supplied, what RNA
-suggests, where those sources agree or disagree, how uncertain each
-estimate is, and which downstream conclusions depend on that uncertainty.
+Historical note: this document describes the per-sample reasoning flow that now
+belongs in [`trufflepig`](https://github.com/pirl-unc/trufflepig). It remains
+here as migration context for pirlygenes-owned reference data and API
+contracts.
+
+The analysis runner builds an auditable inference state from RNA and any
+optional clinical or molecular inputs. The report is not a single thresholded
+label. It is a chain of evidence: what was supplied, what RNA suggests, where
+those sources agree or disagree, how uncertain each estimate is, and which
+downstream conclusions depend on that uncertainty.
 
 The main design rule is simple: **later steps add evidence; they do not
 erase earlier evidence**. If an external label disagrees with RNA, both

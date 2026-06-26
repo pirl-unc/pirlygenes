@@ -62,10 +62,11 @@ gene's disjoint exonic bases), *not* read counts. The transform
    metadata is needed** for TPM.
 2. **Harmonize IDs**: strip `.<version>` / `_PAR_Y`, sum collisions → one row
    per unversioned ENSG.
-3. **Clean TPM**: zero the technical-RNA groups (mtDNA, rRNA-like, mt-like
-   pseudogene, polyA-bias lncRNA) and renormalize to 1e6 — the **one shared
-   helper** (`expression.normalize.clean_tpm_matrix` + `technical_rna_mask`)
-   used by every cohort. Ribosomal-protein mRNA is kept, as elsewhere.
+3. **Clean TPM**: apply the canonical 16/9/75 clean-TPM transform through
+   `expression.normalize.clean_tpm_matrix`. Rows in
+   `clean-tpm-censored-genes.csv` with `category == "ribosomal_protein"` are
+   pinned to 16% of the 1e6 budget, rows with `category == "technical"` are
+   pinned to 9%, and all other biological rows receive the remaining 75%.
 
 Result: ENSG × sample clean TPM on the same scale and technical-RNA
 treatment as our GDC/Treehouse/GEO shards, ready for the usual

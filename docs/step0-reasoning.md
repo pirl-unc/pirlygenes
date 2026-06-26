@@ -1,8 +1,12 @@
 # Step-0 Reasoning
 
-Step 0 is the coarse tissue-context gate for `pirlygenes analyze`. It
-does not diagnose a cancer type and it does not override a supplied
-clinical label. It answers two narrower questions from RNA alone:
+Historical note: this document describes per-sample analysis behavior that now
+belongs in [`trufflepig`](https://github.com/pirl-unc/trufflepig). It remains
+here as context for pirlygenes-owned reference panels and expression APIs.
+
+Step 0 is the coarse tissue-context gate. It does not diagnose a cancer type
+and it does not override a supplied clinical label. It answers two narrower
+questions from RNA alone:
 
 1. Which normal tissues and broad TCGA cohorts does the sample most
    resemble?

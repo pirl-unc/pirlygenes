@@ -1,7 +1,12 @@
 # Figure-set audit
 
-Inventory + purpose + similar-purpose groupings for every PNG/PDF
-emitted by `pirlygenes analyze`.
+Historical note: these are legacy per-sample analysis figures. The active
+sample-analysis runner now belongs in
+[`trufflepig`](https://github.com/pirl-unc/trufflepig); pirlygenes keeps the
+curated data and cohort-level reference APIs that those figures may consume.
+
+Inventory + purpose + similar-purpose groupings for every PNG/PDF emitted by
+the legacy `pirlygenes analyze` runner.
 
 **Round 1** (v4.45.0 baseline, shipped 2026-04-21): verdict format below was
 ✓ keep / ~ review / ✗ drop / + missing. Actions taken based on that
@@ -25,9 +30,9 @@ Older default figures that repeated the same story (`sample-target-safety.png`,
 `sample-curated-target-evidence.png`, target tissue PNG fan-out, and
 `sample-purity-targets.png`) are retired from default output or kept only as
 appendix/provenance artifacts.
-They can still be emitted with `pirlygenes analyze --deprecated-figures`, which
-writes them under `figures/deprecated/` and keeps them out of the main figure
-packet.
+In the legacy runner they could still be emitted with
+`pirlygenes analyze --deprecated-figures`, which wrote them under
+`figures/deprecated/` and kept them out of the main figure packet.
 
 ---
 
