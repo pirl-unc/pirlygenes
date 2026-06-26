@@ -253,7 +253,9 @@ def normalize_to_housekeeping(
     Returns
     -------
     pd.DataFrame
-        Copy of ``df`` with the named columns rescaled in place.
+        Copy of ``df`` with the named columns rescaled in place. Requested
+        columns that cannot be put on the housekeeping ratio scale are blanked
+        to ``NaN`` rather than returned on the raw input scale.
     """
     id_col = _resolve_id_col(df)
     if id_col is None:
@@ -261,7 +263,27 @@ def normalize_to_housekeeping(
             "normalize_to_housekeeping needs an Ensembl_Gene_ID column"
         )
     cols = list(value_cols) if value_cols is not None else _default_value_cols(df)
-    out, _ = tpm_to_housekeeping_normalized(df, id_col=id_col, value_cols=cols)
+    out, record = tpm_to_housekeeping_normalized(df, id_col=id_col, value_cols=cols)
+    columns = record.get("columns", {}) if isinstance(record, dict) else {}
+    applied = bool(record.get("applied")) if isinstance(record, dict) else False
+    failed_cols: list[str] = []
+    for col in cols:
+        if col not in out.columns:
+            continue
+        col_record = columns.get(col)
+        if col_record is None:
+            if not applied:
+                failed_cols.append(col)
+            continue
+        try:
+            denominator = float(col_record.get("denominator", 0.0))
+        except (TypeError, ValueError):
+            denominator = 0.0
+        if col_record.get("applied") is False or denominator <= 0:
+            failed_cols.append(col)
+    if failed_cols:
+        out = out.copy()
+        out[failed_cols] = np.nan
     return out
 
 
