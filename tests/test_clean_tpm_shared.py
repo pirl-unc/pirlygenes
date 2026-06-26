@@ -54,9 +54,8 @@ def test_default_removal_mask_is_technical_plus_ribosomal_protein():
     # (RPL13A) censored; normal genes kept. Nothing else.
     assert clean_tpm_removal_mask(gene_table).tolist() == \
         [True, True, True, True, False, False]
-    # exclude_ribosomal_proteins=False -> strict technical-only (RPL13A kept)
-    assert clean_tpm_removal_mask(gene_table, exclude_ribosomal_proteins=False).tolist() == \
-        technical_rna_mask(gene_table).tolist() == [True, True, True, False, False, False]
+    assert technical_rna_mask(gene_table).tolist() == \
+        [True, True, True, False, False, False]
 
 
 def test_clean_tpm_matrix_rejects_removed_modes():
@@ -79,8 +78,7 @@ def test_clean_tpm_fixed_fraction_three_compartment():
     assert clean.index.equals(values.index)
     assert clean.columns.equals(values.columns)
     mask = clean_tpm_removal_mask(gene_table).to_numpy()
-    tech_only = clean_tpm_removal_mask(
-        gene_table, exclude_ribosomal_proteins=False).to_numpy()
+    tech_only = technical_rna_mask(gene_table).to_numpy()
     ribo = mask & ~tech_only          # RPL13A
     other = mask & tech_only          # MT-CO1, MT-RNR1, MALAT1
     # each compartment pinned separately; biology gets the rest; total 1e6
@@ -115,9 +113,7 @@ def test_clean_tpm_matrix_uses_censored_category_compartments():
                           index=gene_table.index)
 
     assert clean_tpm_removal_mask(gene_table).tolist() == [True, False, True, False]
-    assert clean_tpm_removal_mask(
-        gene_table, exclude_ribosomal_proteins=False).tolist() == \
-        [False, False, True, False]
+    assert technical_rna_mask(gene_table).tolist() == [False, False, True, False]
 
     clean = clean_tpm_matrix(values, gene_table=gene_table)
     np.testing.assert_allclose(
@@ -140,8 +136,6 @@ def test_clean_tpm_matrix_rejects_noncanonical_options():
         )
     with pytest.raises(ValueError, match="technical_fraction is deprecated"):
         clean_tpm_matrix(values, gene_table=gene_table, technical_fraction=0.10)
-    with pytest.raises(ValueError, match="one canonical 16/9/75 contract"):
-        clean_tpm_matrix(values, gene_table=gene_table, exclude_ribosomal_proteins=False)
     with pytest.raises(ValueError, match="explicit removable mask"):
         clean_tpm_matrix(values, technical_rna_mask(gene_table))
 
@@ -199,14 +193,6 @@ def test_runtime_clean_tpm_rejects_noncanonical_options():
             _wide_df(),
             censored_fill="fixed_fraction",
             technical_fraction=0.10,
-        )
-    with pytest.raises(ValueError, match="one canonical 16/9/75 contract"):
-        from pirlygenes.expression.normalize import normalize_expression
-
-        normalize_expression(
-            _wide_df(),
-            censored_fill="fixed_fraction",
-            exclude_ribosomal_proteins=False,
         )
 
 
@@ -317,9 +303,6 @@ def test_drop_technical_genes_biology_only_view():
     # (translation/splicing are not censored — no extended level)
     bio = drop_technical_genes(frame)
     assert set(bio["Symbol"]) == {"EEF1A1", "SRSF1", "TP53", "ACTB", "MYC"}
-    # technical-only keeps the ribosomal protein too
-    bio_tech = drop_technical_genes(frame, exclude_ribosomal_proteins=False)
-    assert "RPL13A" in set(bio_tech["Symbol"])
     # sample columns pass through untouched
     assert list(values.columns) == [c for c in bio.columns
                                     if c not in ("Symbol", "Ensembl_Gene_ID")]

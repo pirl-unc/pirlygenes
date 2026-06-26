@@ -11,8 +11,8 @@ ribosomal-protein genes the classifier catches).
 Two guarantees baked in at generation:
   * **categorized** — each row is ``technical`` (mtDNA / rRNA-like / mt-like
     pseudogene / polyA-bias lncRNA) or ``ribosomal_protein`` (RP mRNA +
-    pseudogenes), so the runtime ``exclude_ribosomal_proteins`` boolean is a
-    simple category filter.
+    pseudogenes), so the 16% ribosomal and 9% other-technical clean-TPM
+    compartments are explicit and auditable.
   * **CTA-safe** — curated cancer targets (the CTA / surfaceome / key-gene /
     lineage / fusion panels via ``_default_protected_symbols``) are excluded, so
     a CTA ribosomal-protein paralog (RPL10L) or histone CTA (H1-6) is never
