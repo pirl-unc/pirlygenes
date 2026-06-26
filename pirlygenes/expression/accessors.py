@@ -1376,10 +1376,10 @@ class CohortExpressionViews:
     __slots__ = ("tpm", "clean_tpm", "clean_tpm_biological", "provenance")
 
     def __init__(self, tpm, clean_tpm, clean_tpm_biological, provenance):
-        self.tpm = tpm
-        self.clean_tpm = clean_tpm
-        self.clean_tpm_biological = clean_tpm_biological
-        self.provenance = provenance
+        self.tpm = _object_column_index(tpm)
+        self.clean_tpm = _object_column_index(clean_tpm)
+        self.clean_tpm_biological = _object_column_index(clean_tpm_biological)
+        self.provenance = _object_column_index(provenance)
 
     def __repr__(self):
         cohorts = list(self.provenance["source_cohort"]) if len(
