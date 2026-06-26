@@ -1420,9 +1420,15 @@ def _cohort_views_present(root: Path) -> bool:
 @lru_cache(maxsize=4)
 def _load_precomputed_cohort_views(root_text: str) -> tuple[pd.DataFrame, ...]:
     root = Path(root_text)
-    tpm = pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["tpm"])
-    clean = pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["clean_tpm"])
-    provenance = pd.read_parquet(root / _COHORT_VIEW_PROVENANCE_FILE)
+    tpm = _object_column_index(
+        pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["tpm"])
+    )
+    clean = _object_column_index(
+        pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["clean_tpm"])
+    )
+    provenance = _object_column_index(
+        pd.read_parquet(root / _COHORT_VIEW_PROVENANCE_FILE)
+    )
     return tpm, clean, provenance
 
 
