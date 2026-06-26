@@ -31,6 +31,9 @@ import functools
 from typing import Iterable
 
 from oncoref.normalization import clean_tpm as _oncoref_clean_tpm
+from oncoref.normalization import (
+    tpm_to_housekeeping_normalized as _oncoref_tpm_to_housekeeping_normalized,
+)
 
 from .qc import (
     OTHER_TECHNICAL_FRACTION,
@@ -980,14 +983,6 @@ def percentile_rank_expression(
     }
 
 
-def _housekeeping_panel_symbols(panel: Iterable[str] | None = None) -> set[str]:
-    if panel is not None:
-        return {str(s).strip().upper() for s in panel if str(s).strip()}
-    from pirlygenes import housekeeping_gene_names
-
-    return {str(s).strip().upper() for s in housekeeping_gene_names() if str(s).strip()}
-
-
 def _housekeeping_panel_ensembl_ids(panel: Iterable[str] | None = None) -> set[str]:
     """Unversioned ENSG IDs for the housekeeping panel."""
     if panel is not None:
@@ -1005,23 +1000,19 @@ def tpm_to_housekeeping_normalized(
     value_cols: Iterable[str] | None = None,
     panel: Iterable[str] | None = None,
     panel_ids: Iterable[str] | None = None,
+    panel_name: str | None = None,
     pseudocount: float = 0.1,
     min_hk_positive_genes: int = 5,
     min_hk_positive_fraction: float = 0.5,
 ):
-    """Divide each expression column by the geometric mean of a HK panel.
+    """Divide each expression column by the housekeeping-panel geometric mean.
 
-    Uses :func:`pirlygenes.housekeeping_gene_names` by default: the active
-    HPA-derived housekeeping denominator panel. Pass ``panel`` to override.
-
-    Literal zero TPMs in broadly expressed housekeeping genes are often
-    source/sample artifacts rather than biology. A column is therefore scaled
-    only when enough housekeeping rows are strictly positive: at least
-    ``min_hk_positive_genes`` and at least ``min_hk_positive_fraction`` of the
-    panel rows present in the table, capped at the number of present panel rows.
-    Columns that fail this QC are left unchanged and reported in the returned
-    record. Positive HK rows are then combined with a small ``pseudocount`` in
-    log space.
+    This is a compatibility wrapper over
+    :func:`oncoref.normalization.tpm_to_housekeeping_normalized`. pirlygenes keeps
+    the public function name and active-panel data API, but the normalization
+    arithmetic and record schema live in oncoref. Matching is ENSG-first: the
+    default panel is :func:`pirlygenes.housekeeping_gene_ids`, and custom panels
+    should be passed as ``panel_ids``.
 
     The output is on a unit-free ratio scale (gene expression relative
     to the housekeeping baseline). It survives library-prep total
@@ -1029,133 +1020,35 @@ def tpm_to_housekeeping_normalized(
     prefer clean TPM, log1p(clean TPM), or percentile-rank clean TPM when the
     analysis needs an absolute, compressed, or rank-only expression space.
     """
-    import numpy as np
-    import pandas as pd
-
-    if df is None:
-        return None, {"applied": False, "reason": "no table", "columns": {}}
-    if label_col not in df.columns:
-        return df.copy(), {
-            "applied": False,
-            "reason": f"label column {label_col!r} not present",
-            "columns": {},
-        }
-
-    out = df.copy()
-    if value_cols is None:
-        value_cols = [c for c in out.columns if _is_expression_value_col(c)]
-    value_cols = [str(c) for c in value_cols if str(c) in out.columns]
-    if not value_cols:
-        return out, {
-            "applied": False,
-            "reason": "no expression value columns",
-            "columns": {},
-        }
-
-    # ENSG-first matching when both an id_col is present and we have
-    # ENSG IDs from pirlygenes; falls back to symbol matching when
-    # either side is missing.
-    if id_col and id_col in out.columns:
-        panel_ensgs = _housekeeping_panel_ensembl_ids(panel_ids)
-        ids = out[id_col].fillna("").astype(str).str.split(".").str[0].str.strip()
-        hk_mask = ids.isin(panel_ensgs)
-        match_mode = "ensembl_id"
-        panel_size = len(panel_ensgs)
-    else:
-        panel_syms = _housekeeping_panel_symbols(panel)
-        labels = out[label_col].fillna("").astype(str).str.strip().str.upper()
-        hk_mask = labels.isin(panel_syms)
-        match_mode = "symbol"
-        panel_size = len(panel_syms)
-    n_hk_present = int(hk_mask.sum())
-    if n_hk_present == 0:
-        return out, {
-            "applied": False,
-            "reason": f"no housekeeping panel genes found via {match_mode}",
-            "columns": {},
-            "panel_size": panel_size,
-            "match_mode": match_mode,
-        }
-
-    columns = {}
-    any_applied = False
-    for col in value_cols:
-        vals = pd.to_numeric(out[col], errors="coerce")
-        hk_vals = vals[hk_mask].dropna()
-        required_positive = min(
-            int(len(hk_vals)),
-            max(
-                int(min_hk_positive_genes),
-                int(np.ceil(int(len(hk_vals)) * float(min_hk_positive_fraction))),
-            ),
+    if panel is not None and panel_ids is None:
+        raw_panel = [str(s).strip() for s in panel if str(s).strip()]
+        if raw_panel and all(s.split(".", 1)[0].upper().startswith("ENSG") for s in raw_panel):
+            panel_ids = raw_panel
+        else:
+            raise ValueError(
+                "tpm_to_housekeeping_normalized uses Ensembl ID housekeeping panels; "
+                "pass panel_ids instead of symbol-based panel"
+            )
+    if min_hk_positive_genes != 5 or min_hk_positive_fraction != 0.5:
+        raise ValueError(
+            "pirlygenes no longer implements local sparse-HK guards; use oncoref's "
+            "housekeeping normalization contract directly"
         )
-        if hk_vals.empty:
-            columns[col] = {
-                "applied": False,
-                "hk_geomean": None,
-                "scale": 1.0,
-                "n_hk_used": 0,
-                "n_hk_measured": 0,
-                "n_hk_positive": 0,
-                "n_hk_nonpositive": 0,
-                "min_hk_positive_required": required_positive,
-                "skip_reason": "no measured HK values",
-            }
-            continue
-        positive_hk = hk_vals[hk_vals > 0]
-        n_positive = int(len(positive_hk))
-        if n_positive < required_positive:
-            columns[col] = {
-                "applied": False,
-                "hk_geomean": None,
-                "scale": 1.0,
-                "n_hk_used": n_positive,
-                "n_hk_measured": int(len(hk_vals)),
-                "n_hk_positive": n_positive,
-                "n_hk_nonpositive": int((hk_vals <= 0).sum()),
-                "min_hk_positive_required": required_positive,
-                "skip_reason": "insufficient positive HK genes",
-            }
-            continue
-        log_vals = np.log(positive_hk.astype(float) + pseudocount)
-        hk_geomean = float(np.exp(log_vals.mean()) - pseudocount)
-        if hk_geomean <= 0:
-            columns[col] = {
-                "applied": False,
-                "hk_geomean": hk_geomean,
-                "scale": 1.0,
-                "n_hk_used": n_positive,
-                "n_hk_measured": int(len(hk_vals)),
-                "n_hk_positive": n_positive,
-                "n_hk_nonpositive": int((hk_vals <= 0).sum()),
-                "min_hk_positive_required": required_positive,
-                "skip_reason": "nonpositive HK geomean",
-            }
-            continue
-        out[col] = vals / hk_geomean
-        columns[col] = {
-            "applied": True,
-            "hk_geomean": hk_geomean,
-            "scale": 1.0 / hk_geomean,
-            "n_hk_used": n_positive,
-            "n_hk_measured": int(len(hk_vals)),
-            "n_hk_positive": n_positive,
-            "n_hk_nonpositive": int((hk_vals <= 0).sum()),
-            "min_hk_positive_required": required_positive,
-        }
-        any_applied = True
-    return out, {
-        "applied": any_applied,
-        "reason": "divided by housekeeping geomean per column" if any_applied else "insufficient positive HK genes",
-        "columns": columns,
-        "value_cols": value_cols,
-        "panel_size": panel_size,
-        "panel_present_in_table": n_hk_present,
-        "match_mode": match_mode,
-        "pseudocount": pseudocount,
-        "min_hk_positive_genes": min_hk_positive_genes,
-        "min_hk_positive_fraction": min_hk_positive_fraction,
-    }
+    if df is not None and value_cols is None:
+        value_cols = [c for c in df.columns if _is_expression_value_col(c)]
+    effective_panel_ids = _housekeeping_panel_ensembl_ids(panel_ids)
+    effective_panel_name = panel_name or (
+        "custom" if panel_ids is not None else "pirlygenes_active_housekeeping"
+    )
+    return _oncoref_tpm_to_housekeeping_normalized(
+        df,
+        label_col=label_col,
+        id_col=id_col,
+        value_cols=value_cols,
+        panel_ids=effective_panel_ids,
+        panel_name=effective_panel_name,
+        pseudocount=pseudocount,
+    )
 
 
 __all__ = [

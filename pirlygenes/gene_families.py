@@ -280,6 +280,36 @@ def gene_family_for_symbol(symbol: str | None) -> str | None:
     return _symbol_to_family().get(str(symbol).strip().upper())
 
 
+# ---------- HPA-derived housekeeping denominator candidates ----------
+
+
+def hpa_housekeeping_candidates(*args, **kwargs) -> pd.DataFrame:
+    """Empirical HPA-derived housekeeping candidate scorer.
+
+    This delegates to :func:`oncoref.gene_families.hpa_housekeeping_candidates`,
+    which owns HPA access and the clean-TPM biological-component contract. Keeping the
+    implementation there avoids a second pirlygenes-local reconstruction rule drifting
+    from the source reference layer. The result is for calibration/review; changing the
+    active HK panel changes every HK-normalized threshold.
+    """
+    from oncoref.gene_families import hpa_housekeeping_candidates as _impl
+
+    return _impl(*args, **kwargs)
+
+
+def recommended_hpa_housekeeping_panel(*args, **kwargs) -> pd.DataFrame:
+    """Recommended primary housekeeping denominator panel derived from HPA.
+
+    Thin compatibility wrapper over
+    :func:`oncoref.gene_families.recommended_hpa_housekeeping_panel`. Treat this as a
+    proposed denominator that requires downstream recalibration and comparison against
+    clean TPM, log1p(clean TPM), and percentile-rank clean TPM before adoption.
+    """
+    from oncoref.gene_families import recommended_hpa_housekeeping_panel as _impl
+
+    return _impl(*args, **kwargs)
+
+
 __all__ = [
     "GeneFamily",
     "GENE_FAMILIES",
@@ -290,6 +320,8 @@ __all__ = [
     "gene_family_symbols",
     "gene_family_for_ensembl_id",
     "gene_family_for_symbol",
+    "hpa_housekeeping_candidates",
+    "recommended_hpa_housekeeping_panel",
     # typed per family
     "numt_pseudogene_ids",
     "numt_pseudogene_symbols",

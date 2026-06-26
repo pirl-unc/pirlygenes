@@ -35,8 +35,8 @@ The normalization layer is intentionally narrow — anything that
 needs per-sample QC narration (degradation index, FFPE rescue,
 library-prep classification) lives in trufflepig. What's here:
 
-* :func:`normalize_to_housekeeping` — divide each column by its
-  housekeeping-gene median.
+* :func:`normalize_to_housekeeping` — divide each column by the
+  active housekeeping-panel geometric mean.
 * :func:`log2_transform` — log2(x + 1) over value columns.
 * :func:`filter_technical_rna` — drop mtDNA / NUMT-like / rRNA-like /
   nuclear-retained-lncRNA rows by ENSG, sourced from
@@ -79,7 +79,6 @@ import pandas as pd
 
 from ..gene_families import gene_family_ids
 from ..gene_names import get_alias_as_list, get_reverse_alias_as_list
-from ..gene_sets_cancer import housekeeping_gene_ids
 from ..load_dataset import get_data
 from .normalize import (
     add_tpm_columns_from_fpkm,
@@ -87,6 +86,7 @@ from .normalize import (
     normalize_expression,
     percentile_rank_expression,
     renormalize_to_million,
+    tpm_to_housekeeping_normalized,
 )
 from .qc import TECHNICAL_RNA_FAMILIES
 
@@ -229,11 +229,15 @@ def normalize_to_housekeeping(
     df: pd.DataFrame,
     value_cols: Optional[Sequence[str]] = None,
 ) -> pd.DataFrame:
-    """Rescale each value column by the median housekeeping-gene level.
+    """Rescale each value column by the active housekeeping-panel baseline.
 
     The result is unitless: a value of 1.0 in a given column means
     "expressed at the column's housekeeping baseline". Works across
-    TPM, FPKM, and nTPM units since the normalization is per-column.
+    TPM, FPKM, and nTPM units since the normalization is per-column. This
+    compatibility helper delegates to
+    :func:`pirlygenes.expression.normalize.tpm_to_housekeeping_normalized`,
+    so the HK path uses the same ENSG-first HPA-derived panel and geometric
+    mean denominator everywhere.
 
     Parameters
     ----------
@@ -257,16 +261,7 @@ def normalize_to_housekeeping(
             "normalize_to_housekeeping needs an Ensembl_Gene_ID column"
         )
     cols = list(value_cols) if value_cols is not None else _default_value_cols(df)
-    hk_ids = housekeeping_gene_ids()
-    hk_mask = df[id_col].isin(hk_ids)
-    out = df.copy()
-    for col in cols:
-        vals = out[col].astype(float)
-        hk_median = vals[hk_mask].median()
-        if np.isnan(hk_median) or hk_median <= 0:
-            out[col] = np.nan
-        else:
-            out[col] = vals / hk_median
+    out, _ = tpm_to_housekeeping_normalized(df, id_col=id_col, value_cols=cols)
     return out
 
 
@@ -2109,7 +2104,7 @@ def pan_cancer_expression(
           TPM-scale analysis columns. Implies ``"tpm"``.
         - ``"hk"`` or ``"housekeeping"`` — add
           ``<tissue>_nTPM_hk`` and ``<code>_TPM_hk`` columns divided by
-          their housekeeping-gene median. Implies ``"tpm"``.
+          their housekeeping-panel geometric mean. Implies ``"tpm"``.
         - ``"percentile"`` — within-column percentile rank (0–100),
           added as ``<tissue>_nTPM_percentile`` and
           ``<code>_TPM_percentile`` columns. Implies ``"tpm"``.

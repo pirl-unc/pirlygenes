@@ -10,6 +10,7 @@ updating trufflepig will silently break the downstream lookup path.
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from pirlygenes.gene_families import (
     GENE_FAMILIES,
@@ -21,15 +22,18 @@ from pirlygenes.gene_families import (
     gene_family_symbols,
     hemoglobin_gene_ids,
     histone_gene_ids,
+    hpa_housekeeping_candidates,
     immune_receptor_segment_ids,
     nuclear_retained_lncrna_ids,
     nuclear_retained_lncrna_symbols,
     numt_pseudogene_ids,
+    recommended_hpa_housekeeping_panel,
     ribosomal_protein_ids,
     ribosomal_protein_pseudogene_ids,
     rrna_and_pseudogene_ids,
     small_noncoding_rna_ids,
 )
+from pirlygenes.gene_sets_cancer import housekeeping_gene_ids, housekeeping_gene_names
 
 
 # ---------- shape / schema ----------
@@ -162,3 +166,40 @@ def test_gene_family_table_idempotent_under_mutation():
     a["Ensembl_Gene_ID"] = "X"
     b = gene_family_table()
     assert (b["Ensembl_Gene_ID"] != "X").all()
+
+
+def test_hpa_housekeeping_derivation_delegates_to_oncoref(monkeypatch):
+    import oncoref.gene_families as ogf
+
+    calls = []
+
+    def fake_candidates(*args, **kwargs):
+        calls.append(("candidates", args, kwargs))
+        return pd.DataFrame({"Symbol": ["A"]})
+
+    def fake_panel(*args, **kwargs):
+        calls.append(("panel", args, kwargs))
+        return pd.DataFrame({"Symbol": ["B"]})
+
+    monkeypatch.setattr(ogf, "hpa_housekeeping_candidates", fake_candidates)
+    monkeypatch.setattr(ogf, "recommended_hpa_housekeeping_panel", fake_panel)
+
+    assert hpa_housekeeping_candidates(min_ntpm=123)["Symbol"].tolist() == ["A"]
+    assert recommended_hpa_housekeeping_panel(target_size=3)["Symbol"].tolist() == ["B"]
+    assert calls == [
+        ("candidates", (), {"min_ntpm": 123}),
+        ("panel", (), {"target_size": 3}),
+    ]
+    assert pytest.importorskip("pirlygenes").recommended_hpa_housekeeping_panel is (
+        recommended_hpa_housekeeping_panel
+    )
+
+
+def test_active_housekeeping_panel_is_hpa_derived_core_panel():
+    symbols = housekeeping_gene_names()
+    ids = housekeeping_gene_ids()
+    assert len(symbols) == len(ids) == 30
+    assert {"SUMO2", "HSP90AB1", "EEF1A1"} <= symbols
+    assert symbols.isdisjoint({"ACTB", "GAPDH", "PPIA", "HSP90AA1", "RPLP0", "RPS18"})
+    assert housekeeping_gene_names(core_only=True) == symbols
+    assert housekeeping_gene_ids(core_only=True) == ids
