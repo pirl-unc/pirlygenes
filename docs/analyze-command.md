@@ -1,15 +1,20 @@
 # The `analyze` Command
 
-`pirlygenes analyze` is the main CLI entry point for personalized
-cancer sample analysis. It takes a gene expression file (CSV, TSV,
-or Excel) and produces:
+Historical note: this document describes the legacy pirlygenes analysis runner.
+Per-sample analysis now belongs in
+[`trufflepig`](https://github.com/pirl-unc/trufflepig). `pirlygenes` keeps the
+reference data, expression transforms, and cohort-level build/plot commands;
+new work on the personalized sample-analysis flow should happen in trufflepig
+unless it changes a pirlygenes-owned data/API contract.
+
+The runner takes a gene expression file (CSV, TSV, or Excel) and produces:
 
 - Figures (moved to `figures/` subdir)
 - A combined PDF (`{prefix}-all-figures.pdf`)
 - Text reports (`{prefix}-summary.md`, `{prefix}-analysis.md`, `{prefix}-evidence.md`)
 
-Raw sample QC is computed before any expression rescue. By default,
-downstream biology uses a technical-RNA-normalized expression view:
+Raw sample QC is computed before any expression rescue. Historically,
+downstream biology used a strict technical-RNA-normalized expression view:
 mitochondrial transcripts, NUMT-like mitochondrial pseudogenes, rRNA-like
 features, and rRNA-pseudogene rows are zeroed and the remaining sample TPM
 is renormalized. Downstream reference comparisons use the same normalized
@@ -22,7 +27,7 @@ protein-coding, immunoglobulin, and TCR genes; this is off by default.
 ## Usage
 
 ```bash
-pirlygenes analyze input.csv \
+trufflepig run --sample input.csv \
     --output-dir results/ \
     --cancer-type PRAD \          # optional, auto-detected if omitted
     --label-genes "FOLH1,PSMA" \  # genes to always label in plots
@@ -256,7 +261,8 @@ pirlygenes plot-cancer-cohorts sample1.tsv sample2.tsv sample3.tsv \
 
 ### `pirlygenes plot-expression` (deprecated)
 
-Legacy single-sample plotting command. Use `pirlygenes analyze` instead.
+Legacy single-sample plotting command. Use the trufflepig sample-analysis
+runner instead.
 
 ## Design principles
 

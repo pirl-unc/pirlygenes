@@ -340,6 +340,29 @@ def _assert_views_equal(a, b):
     pd.testing.assert_frame_equal(pa, pb, check_dtype=False, check_like=True)
 
 
+def test_views_normalize_public_column_label_dtype():
+    import pandas as pd
+
+    matrix = pd.DataFrame(
+        [["ENSG00000141510", "TP53", 1.0]],
+        columns=pd.Index(["Ensembl_Gene_ID", "Symbol", "CLL"], dtype="string"),
+    )
+    provenance = pd.DataFrame(
+        [["CLL", "fixture", 1]],
+        columns=pd.Index(
+            ["source_cohort", "processing_pipeline", "n_samples"],
+            dtype="string",
+        ),
+    )
+
+    views = CohortExpressionViews(matrix, matrix.copy(), matrix.copy(), provenance)
+
+    assert views.tpm.columns.dtype == object
+    assert views.clean_tpm.columns.dtype == object
+    assert views.clean_tpm_biological.columns.dtype == object
+    assert views.provenance.columns.dtype == object
+
+
 _FILTER_CASES = [
     dict(),
     dict(cancer_types=COHORT_A),

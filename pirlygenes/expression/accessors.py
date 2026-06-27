@@ -35,8 +35,8 @@ The normalization layer is intentionally narrow — anything that
 needs per-sample QC narration (degradation index, FFPE rescue,
 library-prep classification) lives in trufflepig. What's here:
 
-* :func:`normalize_to_housekeeping` — divide each column by its
-  housekeeping-gene median.
+* :func:`normalize_to_housekeeping` — divide each column by the
+  active housekeeping-panel geometric mean.
 * :func:`log2_transform` — log2(x + 1) over value columns.
 * :func:`filter_technical_rna` — drop mtDNA / NUMT-like / rRNA-like /
   nuclear-retained-lncRNA rows by ENSG, sourced from
@@ -79,7 +79,6 @@ import pandas as pd
 
 from ..gene_families import gene_family_ids
 from ..gene_names import get_alias_as_list, get_reverse_alias_as_list
-from ..gene_sets_cancer import housekeeping_gene_ids
 from ..load_dataset import get_data
 from .normalize import (
     add_tpm_columns_from_fpkm,
@@ -87,6 +86,7 @@ from .normalize import (
     normalize_expression,
     percentile_rank_expression,
     renormalize_to_million,
+    tpm_to_housekeeping_normalized,
 )
 from .qc import TECHNICAL_RNA_FAMILIES
 
@@ -229,11 +229,15 @@ def normalize_to_housekeeping(
     df: pd.DataFrame,
     value_cols: Optional[Sequence[str]] = None,
 ) -> pd.DataFrame:
-    """Rescale each value column by the median housekeeping-gene level.
+    """Rescale each value column by the active housekeeping-panel baseline.
 
     The result is unitless: a value of 1.0 in a given column means
     "expressed at the column's housekeeping baseline". Works across
-    TPM, FPKM, and nTPM units since the normalization is per-column.
+    TPM, FPKM, and nTPM units since the normalization is per-column. This
+    compatibility helper delegates to
+    :func:`pirlygenes.expression.normalize.tpm_to_housekeeping_normalized`,
+    so the HK path uses the same ENSG-first HPA-derived panel and geometric
+    mean denominator everywhere.
 
     Parameters
     ----------
@@ -249,7 +253,9 @@ def normalize_to_housekeeping(
     Returns
     -------
     pd.DataFrame
-        Copy of ``df`` with the named columns rescaled in place.
+        Copy of ``df`` with the named columns rescaled in place. Requested
+        columns that cannot be put on the housekeeping ratio scale are blanked
+        to ``NaN`` rather than returned on the raw input scale.
     """
     id_col = _resolve_id_col(df)
     if id_col is None:
@@ -257,16 +263,27 @@ def normalize_to_housekeeping(
             "normalize_to_housekeeping needs an Ensembl_Gene_ID column"
         )
     cols = list(value_cols) if value_cols is not None else _default_value_cols(df)
-    hk_ids = housekeeping_gene_ids()
-    hk_mask = df[id_col].isin(hk_ids)
-    out = df.copy()
+    out, record = tpm_to_housekeeping_normalized(df, id_col=id_col, value_cols=cols)
+    columns = record.get("columns", {}) if isinstance(record, dict) else {}
+    applied = bool(record.get("applied")) if isinstance(record, dict) else False
+    failed_cols: list[str] = []
     for col in cols:
-        vals = out[col].astype(float)
-        hk_median = vals[hk_mask].median()
-        if np.isnan(hk_median) or hk_median <= 0:
-            out[col] = np.nan
-        else:
-            out[col] = vals / hk_median
+        if col not in out.columns:
+            continue
+        col_record = columns.get(col)
+        if col_record is None:
+            if not applied:
+                failed_cols.append(col)
+            continue
+        try:
+            denominator = float(col_record.get("denominator", 0.0))
+        except (TypeError, ValueError):
+            denominator = 0.0
+        if col_record.get("applied") is False or denominator <= 0:
+            failed_cols.append(col)
+    if failed_cols:
+        out = out.copy()
+        out[failed_cols] = np.nan
     return out
 
 
@@ -635,6 +652,14 @@ def _load_cancer_reference_expression() -> pd.DataFrame:
 _REFERENCE_VIEW_CACHE: dict[str, tuple] = {}
 
 
+def _string_id_columns(df: pd.DataFrame, *cols: str) -> pd.DataFrame:
+    """Cast stable identifier columns to pandas string dtype in place."""
+    for col in cols:
+        if col in df.columns:
+            df[col] = df[col].astype("string")
+    return df
+
+
 def _reference_view(key: str, builder):
     """Return ``builder(reference_frame)``, memoized on the frame's identity."""
     df = _load_cancer_reference_expression()
@@ -676,7 +701,7 @@ def _load_cancer_expression_source_candidates() -> pd.DataFrame:
     df = get_data("cancer-expression-source-candidates")
     string_cols = [c for c in df.columns if c != "estimated_samples"]
     df[string_cols] = df[string_cols].fillna("")
-    return df
+    return _string_id_columns(df, "cancer_code")
 
 
 def _pan_expression_codes() -> set[str]:
@@ -837,7 +862,7 @@ def _build_available_references(df: pd.DataFrame) -> pd.DataFrame:
         ).drop(columns="_origin_rank")
     else:
         out = out.sort_values(["cancer_code", "source_cohort"])
-    return out.reset_index(drop=True)
+    return _string_id_columns(out.reset_index(drop=True), "cancer_code")
 
 
 def source_prefixed_references() -> pd.DataFrame:
@@ -976,7 +1001,7 @@ def cancer_expression_reference_status(
             "candidate_url": _text(candidate.get("source_url", "")),
             "candidate_processing_plan": _text(candidate.get("processing_plan", "")),
         })
-    return pd.DataFrame(rows).reset_index(drop=True)
+    return _string_id_columns(pd.DataFrame(rows).reset_index(drop=True), "cancer_code")
 
 
 def _filter_cancer_code(df: pd.DataFrame, cancer_code: str | None) -> pd.DataFrame:
@@ -1294,6 +1319,16 @@ def cancer_reference_expression(
                 "Member_Ensembl_Gene_IDs"]
     long = long[[c for c in _id_cols if c in long.columns]
                 + [c for c in long.columns if c not in _id_cols]]
+    long = _string_id_columns(
+        long,
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "Proteoform_ID",
+        "Member_Ensembl_Gene_IDs",
+        "cancer_code",
+        "source_cohort",
+        "normalization",
+    )
 
     if format == "long":
         return long
@@ -1319,7 +1354,8 @@ def cancer_reference_expression(
     for col in expected_value_cols:
         if col not in wide.columns:
             wide[col] = np.nan
-    return wide[["Ensembl_Gene_ID", "Symbol", *expected_value_cols]]
+    wide = wide[["Ensembl_Gene_ID", "Symbol", *expected_value_cols]]
+    return _string_id_columns(wide, "Ensembl_Gene_ID", "Symbol")
 
 
 # ---------- accessors: unified normalization views (#319) ----------
@@ -1362,10 +1398,10 @@ class CohortExpressionViews:
     __slots__ = ("tpm", "clean_tpm", "clean_tpm_biological", "provenance")
 
     def __init__(self, tpm, clean_tpm, clean_tpm_biological, provenance):
-        self.tpm = tpm
-        self.clean_tpm = clean_tpm
-        self.clean_tpm_biological = clean_tpm_biological
-        self.provenance = provenance
+        self.tpm = _object_column_index(tpm)
+        self.clean_tpm = _object_column_index(clean_tpm)
+        self.clean_tpm_biological = _object_column_index(clean_tpm_biological)
+        self.provenance = _object_column_index(provenance)
 
     def __repr__(self):
         cohorts = list(self.provenance["source_cohort"]) if len(
@@ -1406,14 +1442,26 @@ def _cohort_views_present(root: Path) -> bool:
 @lru_cache(maxsize=4)
 def _load_precomputed_cohort_views(root_text: str) -> tuple[pd.DataFrame, ...]:
     root = Path(root_text)
-    tpm = pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["tpm"])
-    clean = pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["clean_tpm"])
-    provenance = pd.read_parquet(root / _COHORT_VIEW_PROVENANCE_FILE)
+    tpm = _object_column_index(
+        pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["tpm"])
+    )
+    clean = _object_column_index(
+        pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["clean_tpm"])
+    )
+    provenance = _object_column_index(
+        pd.read_parquet(root / _COHORT_VIEW_PROVENANCE_FILE)
+    )
     return tpm, clean, provenance
 
 
 def _cohort_value_cols(wide: pd.DataFrame) -> list[str]:
     return [c for c in wide.columns if c not in _COHORT_VIEW_ID_COLS]
+
+
+def _object_column_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Use ordinary object-dtype column labels for public wide matrices."""
+    df.columns = pd.Index(df.columns.to_list(), dtype=object)
+    return df
 
 
 def _filter_canonical_view_genes(
@@ -1568,6 +1616,7 @@ def _pivot_views_long(
                             values="expression", aggfunc="first")
             .reset_index())
     wide.columns.name = None
+    wide = _object_column_index(wide)
     if "Symbol" not in wide.columns:
         symbol_by_gene = (sub.drop_duplicates("Ensembl_Gene_ID")
                           .set_index("Ensembl_Gene_ID")["Symbol"])
@@ -2083,7 +2132,7 @@ def pan_cancer_expression(
           TPM-scale analysis columns. Implies ``"tpm"``.
         - ``"hk"`` or ``"housekeeping"`` — add
           ``<tissue>_nTPM_hk`` and ``<code>_TPM_hk`` columns divided by
-          their housekeeping-gene median. Implies ``"tpm"``.
+          their housekeeping-panel geometric mean. Implies ``"tpm"``.
         - ``"percentile"`` — within-column percentile rank (0–100),
           added as ``<tissue>_nTPM_percentile`` and
           ``<code>_TPM_percentile`` columns. Implies ``"tpm"``.
@@ -2161,7 +2210,6 @@ def pan_cancer_expression(
                 id_col="Ensembl_Gene_ID",
                 value_cols=analysis_value_cols,
                 censored_fill="fixed_fraction",
-                exclude_ribosomal_proteins=True,
             )
             source_cols = analysis_value_cols
         elif mode == "tpm_log1p":

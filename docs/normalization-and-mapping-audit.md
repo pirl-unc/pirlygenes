@@ -8,10 +8,12 @@ mapping is uniform. Done June 2026 alongside the recount3 integration.
 
 There is **one** unit dispatcher,
 `pirlygenes.builders.geo_matrix.normalize_to_tpm`, and **one** clean-TPM
-transform, `expression.normalize.clean_tpm_matrix` + `technical_rna_mask`
-(zero mtDNA / rRNA-like / mt-like pseudogene / polyA-bias lncRNA, renormalize
-each sample column to 1e6; ribosomal-protein mRNA kept). Every per-sample
-builder imports the *same* clean-TPM helper.
+transform, `expression.normalize.clean_tpm_matrix`. Clean TPM follows the
+canonical 16/9/75 compartment contract: `clean-tpm-censored-genes.csv` rows
+with `category == "ribosomal_protein"` receive 16% of each sample's 1e6 budget,
+rows with `category == "technical"` receive 9%, and all other biological rows
+receive 75%. `technical_rna_mask` is the strict technical subset used by lower
+level masking/QC paths, not the clean-TPM compartment contract.
 
 | native unit | sources | length-normalized? | path |
 | --- | --- | --- | --- |
@@ -29,7 +31,9 @@ builder imports the *same* clean-TPM helper.
 - **Microarrays are *not* length-normalized** — correct: a probe measures transcript concentration directly, so the array TPM-*proxy* needs no length term. (It is *not* absolute-comparable to RNA-seq TPM; flagged in the `processing_pipeline` tag and surfaced by `pirlygenes data sources`.)
 - **scRNA pseudobulk is not length-normalized** — correct for UMI/3′ data.
 - **There is no CPM-unit source.** (The only "CPM" in the tree is the gene *Carboxypeptidase M*.) The CTCL scRNA path is the one CPM-like quantity, and it correctly skips length normalization.
-- The same technical-RNA group set drives both the builder clean-TPM and the analysis-layer transform (`_DEFAULT_NORMALIZE_REMOVE_GROUPS = _TECHNICAL_RNA_GROUPS`).
+- Builder clean TPM and analysis-layer clean TPM use the same canonical
+  `clean_tpm_matrix` path. Lower-level technical-RNA zeroing still uses the
+  narrower strict technical mask when explicitly requested.
 
 **Minor / follow-ups**
 - recount3 now delegates its length-normalization to the shared

@@ -1189,12 +1189,63 @@ def test_normalize_to_housekeeping_handles_explicit_value_cols():
     df = pan_cancer_expression()
     fpkm_cols = [c for c in df.columns if c.endswith("_FPKM")][:2]
     out = normalize_to_housekeeping(df, value_cols=fpkm_cols)
+    expected, record = tpm_to_housekeeping_normalized(df, value_cols=fpkm_cols)
+    assert record["applied"]
+    pd.testing.assert_frame_equal(out, expected)
     # The non-rescaled columns should be untouched.
     other_col = next(c for c in df.columns if c.endswith("_nTPM"))
     pd.testing.assert_series_equal(
         df[other_col].reset_index(drop=True),
         out[other_col].reset_index(drop=True),
     )
+
+
+def test_normalize_to_housekeeping_uses_ensembl_ids_without_symbol_column():
+    from pirlygenes import housekeeping_gene_ids
+
+    hk_ids = sorted(housekeeping_gene_ids())[:5]
+    df = pd.DataFrame(
+        {
+            "Ensembl_Gene_ID": [*hk_ids, "ENSG00000141510"],
+            "sample_TPM": [10.0, 10.0, 10.0, 10.0, 10.0, 100.0],
+        }
+    )
+
+    out = normalize_to_housekeeping(df, value_cols=["sample_TPM"])
+    _, record = tpm_to_housekeeping_normalized(df, value_cols=["sample_TPM"])
+
+    assert record["applied"]
+    assert record["panel"] == "pirlygenes_active_housekeeping"
+    assert out["sample_TPM"].iloc[-1] == pytest.approx(100.0 / 10.1)
+
+
+def test_normalize_to_housekeeping_blanks_columns_with_no_panel_genes():
+    df = pd.DataFrame(
+        {
+            "Ensembl_Gene_ID": ["ENSG00000141510"],
+            "sample_TPM": [100.0],
+        }
+    )
+
+    out = normalize_to_housekeeping(df, value_cols=["sample_TPM"])
+
+    assert out["sample_TPM"].isna().all()
+
+
+def test_normalize_to_housekeeping_blanks_columns_with_all_zero_panel():
+    from pirlygenes import housekeeping_gene_ids
+
+    hk_ids = sorted(housekeeping_gene_ids())[:5]
+    df = pd.DataFrame(
+        {
+            "Ensembl_Gene_ID": [*hk_ids, "ENSG00000141510"],
+            "sample_TPM": [0.0, 0.0, 0.0, 0.0, 0.0, 100.0],
+        }
+    )
+
+    out = normalize_to_housekeeping(df, value_cols=["sample_TPM"])
+
+    assert out["sample_TPM"].isna().all()
 
 
 def test_log2_transform_idempotent_on_zero_pseudocount_input():

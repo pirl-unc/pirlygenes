@@ -30,6 +30,11 @@ from __future__ import annotations
 import functools
 from typing import Iterable
 
+from oncoref.normalization import clean_tpm as _oncoref_clean_tpm
+from oncoref.normalization import (
+    tpm_to_housekeeping_normalized as _oncoref_tpm_to_housekeeping_normalized,
+)
+
 from .qc import (
     OTHER_TECHNICAL_FRACTION,
     RIBOSOMAL_PROTEIN_FRACTION,
@@ -139,7 +144,6 @@ def _clean_tpm_normalize(
     group_cols,
     censored_fill,
     technical_fraction,
-    exclude_ribosomal_proteins,
     protect,
 ):
     """Apply the shared reference clean-TPM transform (:func:`clean_tpm_matrix`)
@@ -169,20 +173,17 @@ def _clean_tpm_normalize(
         },
         index=out.index,
     )
-    removable = clean_tpm_removal_mask(
-        gene_table,
-        exclude_ribosomal_proteins=exclude_ribosomal_proteins,
-        protect=protect,
-    )
+    if protect is not None:
+        raise ValueError(
+            "clean-TPM normalization has one canonical 16/9/75 contract; "
+            "protect overrides are only supported by technical-drop helpers")
 
     def _apply(indices):
         idx = list(indices)
         block = out.loc[idx, value_cols].apply(pd.to_numeric, errors="coerce")
         cleaned = clean_tpm_matrix(
             block,
-            removable=removable.loc[idx],
             gene_table=gene_table.loc[idx],
-            exclude_ribosomal_proteins=exclude_ribosomal_proteins,
             censored_fill=censored_fill,
             technical_fraction=technical_fraction,
         )
@@ -215,19 +216,9 @@ def _clean_tpm_normalize(
         "technical_fraction": (
             technical_fraction if censored_fill == "fixed_fraction" else None
         ),
-        # the actually-applied per-compartment split (default fixed_fraction path)
-        "ribosomal_protein_fraction": (
-            RIBOSOMAL_PROTEIN_FRACTION
-            if censored_fill == "fixed_fraction" and exclude_ribosomal_proteins
-            else None
-        ),
-        "other_technical_fraction": (
-            OTHER_TECHNICAL_FRACTION
-            if censored_fill == "fixed_fraction" and exclude_ribosomal_proteins
-            else None
-        ),
-        "exclude_ribosomal_proteins": bool(exclude_ribosomal_proteins),
-        "removed_technical_gene_count": int(removable.sum()),
+        "ribosomal_protein_fraction": RIBOSOMAL_PROTEIN_FRACTION,
+        "other_technical_fraction": OTHER_TECHNICAL_FRACTION,
+        "removed_technical_gene_count": int(clean_tpm_removal_mask(gene_table).sum()),
         "removed_feature_mode": censored_fill,
     }
 
@@ -244,7 +235,6 @@ def normalize_expression(
     remove_groups: Iterable[str] = _DEFAULT_NORMALIZE_REMOVE_GROUPS,
     censored_fill: str = "zero",
     technical_fraction: float = TECHNICAL_FRACTION,
-    exclude_ribosomal_proteins: bool = True,
     protect=None,
 ):
     """Normalize technical-RNA features and rescale each column's mass.
@@ -263,19 +253,17 @@ def normalize_expression(
     matches how the packaged ``cancer_reference_expression`` references were
     built (#311):
 
-    - ``"fixed_fraction"`` (clean_tpm) — three-compartment: the censored
-      (technical) block is pinned to ``technical_fraction`` of the 1e6 budget
-      (default 25%) and the biological block to the rest (75%), each
-      renormalized within its group. This is the basis the references ship on.
-    - ``"reference"`` / ``"typical"`` — the other :func:`clean_tpm_matrix`
-      modes.
-
+    - ``"fixed_fraction"`` (clean_tpm) — the single 16/9/75 contract:
+      ribosomal-protein rows are pinned to 16% of the 1e6 budget, other
+      technical rows to 9%, and biological rows to 75%, each renormalized within
+      its group. This is the basis the references ship on.
     In every non-``"zero"`` mode the censored set is the **clean-TPM removal
     set** (:func:`clean_tpm_removal_mask`: technical RNA **plus**
     ribosomal-protein mRNA/pseudogenes, minus curated targets), not the
     technical-only ``remove_groups`` of the legacy zero path — matching the
-    references by construction. ``exclude_ribosomal_proteins=False`` narrows
-    it to technical-only; ``protect`` overrides the protected-target symbols;
+    references by construction. Fraction overrides are rejected in this mode;
+    use :func:`technical_rna_mask` for the strict technical-RNA set or
+    :func:`drop_technical_genes` for the biology-only clean-TPM-censored view.
     ``remove_noncoding`` / ``remove_groups`` / ``biotype_col`` apply only to
     the legacy zero path.
 
@@ -325,14 +313,13 @@ def normalize_expression(
             group_cols=group_cols,
             censored_fill=censored_fill,
             technical_fraction=technical_fraction,
-            exclude_ribosomal_proteins=exclude_ribosomal_proteins,
             protect=protect,
         )
     if censored_fill != "zero":
         raise ValueError(
             "normalize_expression supports censored_fill='fixed_fraction' (the "
             "single clean-TPM contract) or 'zero' (legacy technical-RNA drop); "
-            f"got {censored_fill!r} — the reference / typical modes were removed.")
+            f"got {censored_fill!r}; the reference / typical modes were removed.")
 
     labels = out[label_col].fillna("").astype(str).str.strip()
     remove_group_set = {str(group) for group in remove_groups}
@@ -459,7 +446,7 @@ def normalize_technical_rna_columns(
     Shared comparability transform for reference matrices. With the default
     ``censored_fill="zero"`` it zeroes technical-RNA features and preserves
     each column's total mass (legacy behavior). Set
-    ``censored_fill="fixed_fraction"`` to apply the clean_tpm three-compartment
+    ``censored_fill="fixed_fraction"`` to apply the canonical clean_tpm_16_9_75
     transform the cohort builders use, so your normalized inputs match how the
     packaged references were built (#311) — see :func:`normalize_expression`.
 
@@ -507,9 +494,9 @@ def normalize_technical_rna_long_table(
 # ---------- builder clean-TPM (wide gene×sample matrix) ----------
 #
 # The single definition of the reference "clean TPM" transform that every
-# cohort builder shares: zero the technical-RNA rows, then renormalize
-# each sample column to 1e6. Previously copy-pasted into ~12 builders and
-# scripts; this is now the one home.
+# cohort builder shares: pin ribosomal-protein rows to 16%, other technical rows
+# to 9%, and biological rows to 75% of each 1e6 sample column. Previously
+# copy-pasted into ~12 builders and scripts; this is now the one home.
 
 
 # The clean-TPM censored set = the technical-RNA groups (mtDNA + mt-like
@@ -587,30 +574,27 @@ def _default_protected_symbols():
     return frozenset(protected)
 
 
-def clean_tpm_removal_mask(gene_table, *, exclude_ribosomal_proteins: bool = True,
-                           protect=None):
+def clean_tpm_removal_mask(gene_table, *, protect=None):
     """Boolean Series of rows zeroed by the clean-TPM transform — the genes in
     the canonical censored-gene list (:func:`_clean_tpm_censored_ids`).
 
     The list is the **single source of truth** for the technical/biological
     split: technical-RNA (mtDNA + mt-like pseudogene + rRNA-like + the polyA-bias
-    lncRNAs MALAT1/NEAT1) plus, when ``exclude_ribosomal_proteins`` (the
-    default), ribosomal-protein mRNA + pseudogenes — and nothing else. It is
-    CTA-safe by construction: curated cancer targets are excluded at generation,
-    so a CTA ribosomal-protein paralog (``RPL10L``) or histone CTA (``H1-6``) is
-    never censored (no runtime special-case needed).
+    lncRNAs MALAT1/NEAT1) plus ribosomal-protein mRNA + pseudogenes — and
+    nothing else. It is CTA-safe by construction: curated cancer targets are
+    excluded at generation, so a CTA ribosomal-protein paralog (``RPL10L``) or
+    histone CTA (``H1-6``) is never censored (no runtime special-case needed).
 
-    ``exclude_ribosomal_proteins=False`` gives the strict technical-only set
-    (== :func:`technical_rna_mask`). ``protect`` optionally protects *additional*
-    symbols beyond the list's baked-in cancer targets (it can only keep more
-    genes, never censor a target).
+    Use :func:`technical_rna_mask` for the strict technical-RNA subset.
+    ``protect`` optionally protects *additional* symbols beyond the list's
+    baked-in cancer targets (it can only keep more genes, never censor a target).
     """
     if "Ensembl_Gene_ID" not in gene_table.columns:
         raise ValueError(
             "clean_tpm_removal_mask needs an 'Ensembl_Gene_ID' column — the "
             "canonical censored-gene list is keyed on ENSG (resolve symbols to "
             "Ensembl ids first)")
-    ids = _clean_tpm_censored_ids(bool(exclude_ribosomal_proteins))
+    ids = _clean_tpm_censored_ids(include_ribosomal=True)
     mask = _ensg_unversioned(gene_table).isin(ids)
     if protect:
         keep = ~gene_table["Symbol"].astype(str).isin(set(protect))
@@ -620,15 +604,15 @@ def clean_tpm_removal_mask(gene_table, *, exclude_ribosomal_proteins: bool = Tru
 
 def drop_technical_genes(df, *, label_col: str = "Symbol",
                          id_col: str = "Ensembl_Gene_ID",
-                         exclude_ribosomal_proteins: bool = True, protect=None):
+                         protect=None):
     """Return ``df`` with the clean-TPM censored rows removed — the biology-only
     view of a gene×value frame.
 
     Uses the same canonical censored-gene list as the clean-TPM transform
-    (:func:`clean_tpm_removal_mask`): technical RNA plus ribosomal proteins by
-    default (``exclude_ribosomal_proteins=False`` keeps the technical-only set),
+    (:func:`clean_tpm_removal_mask`): technical RNA plus ribosomal proteins,
     CTA-safe by construction. ``df`` must carry ``id_col`` (Ensembl_Gene_ID);
-    all other columns pass through untouched.
+    all other columns pass through untouched. Use :func:`technical_rna_mask` for
+    the strict technical-RNA subset.
 
     Intended for distance/clustering and cross-sample comparison that should
     ride on biological signal rather than the technical compartment — in
@@ -650,116 +634,63 @@ def drop_technical_genes(df, *, label_col: str = "Symbol",
         index=df.index,
     )
     removable = clean_tpm_removal_mask(
-        gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins,
-        protect=protect)
+        gene_table, protect=protect)
     return df.loc[~removable.to_numpy()].reset_index(drop=True)
 
 
 def clean_tpm_matrix(values, removable=None, *, gene_table=None,
-                     exclude_ribosomal_proteins: bool = True,
                      censored_fill: str = "fixed_fraction",
                      technical_fraction: float = TECHNICAL_FRACTION,
                      ribosomal_protein_fraction: float = RIBOSOMAL_PROTEIN_FRACTION,
                      other_technical_fraction: float = OTHER_TECHNICAL_FRACTION):
     """The ONE clean-TPM transform on a gene×sample matrix (16/9/75 fixed_fraction).
 
-    ``values`` is genes (rows) × samples (cols). Provide either an explicit
-    boolean ``removable`` mask (aligned to ``values.index``) or a ``gene_table``
-    (``Symbol`` + ``Ensembl_Gene_ID``, row-aligned to ``values``) — in which
-    case the mask is built via :func:`clean_tpm_removal_mask`, which **censors
-    ribosomal proteins by default** (``exclude_ribosomal_proteins=True`` removes
-    them from the biological signal; pass ``False`` for technical-only).
+    ``values`` is genes (rows) × samples (cols). Provide a ``gene_table``
+    (``Symbol`` + ``Ensembl_Gene_ID``, row-aligned to ``values``). Explicit
+    boolean masks are no longer accepted for clean TPM because they cannot
+    encode the canonical ribosomal-vs-other-technical 16/9 split.
 
     THREE-compartment normalization — force the **ribosomal-protein** block to
-    ``ribosomal_protein_fraction`` (~16%), the **other-technical** block to
-    ``other_technical_fraction`` (~9%), and the kept **biological** block to the
-    remaining ~75% of the 1e6 budget, **renormalizing within each compartment**
-    so relative expression inside each is preserved. Pinning ribosomal and
-    other-technical *separately* (the current pirlygenes 16/9 refinement of the
-    old lumped-25%) keeps one compartment's cross-sample/pipeline variation from
-    bleeding into the other's budget — e.g. a sample with heavy residual rRNA no
-    longer compresses its ribosomal-protein block. Fixing the BIOLOGICAL
-    compartment to a constant ~750k budget is what makes biological clean-TPM
-    cross-sample comparable — the one property the transform exists to provide.
-    This implementation still lives in pirlygenes and should be kept compatible
-    with any future oncoref reference-data migration. Cohort-independent (no
-    reference table). An empty compartment stays at 0 (the
-    others still hit their targets). The ribosomal sub-block is the censored
-    ribosomal-protein category; with ``exclude_ribosomal_proteins=False`` (or no
-    ``gene_table``) there is no ribosomal compartment and the censored block falls
-    back to a single ``technical_fraction`` split.
+    16%, the **other-technical** block to 9%, and the kept **biological** block
+    to 75% of the 1e6 budget, **renormalizing within each compartment** so
+    relative expression inside each is preserved. Pinning ribosomal and
+    other-technical separately keeps one compartment's cross-sample/pipeline
+    variation from bleeding into the other's budget. Fixing the BIOLOGICAL
+    compartment to a constant 750k budget is what makes biological clean-TPM
+    cross-sample comparable.
 
     ``censored_fill`` accepts only ``"fixed_fraction"`` (the single clean-TPM
     contract); the legacy ``"zero"`` / ``"reference"`` / ``"typical"`` modes were
-    removed. (Plain technical-RNA dropping — the old ``"zero"`` behavior — still
-    lives in :func:`normalize_expression`, which is a different operation.)
+    removed. Fraction overrides are rejected instead of defining alternate
+    clean-TPM semantics. Strict technical-RNA masks still live in
+    :func:`technical_rna_mask`, which is a different operation.
     """
-    if removable is None:
-        if gene_table is None:
-            raise ValueError("clean_tpm_matrix needs either removable or gene_table")
-        removable = clean_tpm_removal_mask(
-            gene_table, exclude_ribosomal_proteins=exclude_ribosomal_proteins)
-    import pandas as pd
-
     if censored_fill != "fixed_fraction":
         raise ValueError(
             "clean_tpm_matrix only supports the single clean-TPM contract "
             f"censored_fill='fixed_fraction' (got {censored_fill!r}); the legacy "
             "zero / reference / typical modes were removed.")
-    # The single clean-TPM contract. The censored block (mtDNA / rRNA-like /
-    # mt-pseudogene / polyA-bias lncRNA + ribosomal-protein mRNA & pseudogenes) is
-    # FORCED to a constant fraction of the 1e6 budget, split into separately pinned
-    # ribosomal (~16%) and other-technical (~9%) compartments; biology fills the
-    # constant remaining ~75%. Within each compartment relative expression is
-    # preserved (cohort-independent, no reference table). Fixing the BIOLOGICAL
-    # compartment to a constant 750k budget is what makes biological clean-TPM
-    # cross-sample comparable — the one property the transform exists to provide.
-    rem = removable.to_numpy()
-    if not 0.0 < technical_fraction < 1.0:
-        raise ValueError("technical_fraction must be in (0, 1)")
-
-    def _scale_to_budget(mask, fraction):
-        """Per-column scale that forces ``mask``'s mass to ``fraction`` of 1e6;
-        0 where the compartment has no mass (it stays empty)."""
-        s = values.loc[mask].sum(axis=0)
-        out = pd.Series(0.0, index=values.columns, dtype=float)
-        pos = s > 0
-        out.loc[pos] = (fraction * 1_000_000.0) / s.loc[pos]
-        return out
-
-    clean = values.astype(float).copy()
-    # The ribosomal sub-block is the gene_table ribosomal-protein CATEGORY (the
-    # full censored list minus the technical-only list — the single source of
-    # truth) INTERSECTED with the actual removable rows, so an explicitly-supplied
-    # ``removable`` that disagrees with ``gene_table`` can't miscompartmentalize a
-    # non-ribosomal gene into the 16% block.
-    ribo_mask = None
-    if exclude_ribosomal_proteins and gene_table is not None:
-        full = clean_tpm_removal_mask(gene_table).to_numpy()
-        tech_only = clean_tpm_removal_mask(
-            gene_table, exclude_ribosomal_proteins=False).to_numpy()
-        ribo_mask = rem & full & ~tech_only
-    if ribo_mask is not None and ribo_mask.any():
-        other_mask = rem & ~ribo_mask
-        bio_frac = 1.0 - ribosomal_protein_fraction - other_technical_fraction
-        if bio_frac <= 0.0:
-            raise ValueError(
-                "ribosomal_protein_fraction + other_technical_fraction must be "
-                "< 1 (biology needs a positive budget)")
-        clean.loc[ribo_mask] = values.loc[ribo_mask].mul(
-            _scale_to_budget(ribo_mask, ribosomal_protein_fraction), axis=1)
-        clean.loc[other_mask] = values.loc[other_mask].mul(
-            _scale_to_budget(other_mask, other_technical_fraction), axis=1)
-        clean.loc[~rem] = values.loc[~rem].mul(
-            _scale_to_budget(~rem, bio_frac), axis=1)
-        return clean.fillna(0.0)
-    # technical-only view (no ribosomal compartment): single censored block pinned
-    # to technical_fraction, biology to the rest.
-    clean.loc[rem] = values.loc[rem].mul(
-        _scale_to_budget(rem, technical_fraction), axis=1)
-    clean.loc[~rem] = values.loc[~rem].mul(
-        _scale_to_budget(~rem, 1.0 - technical_fraction), axis=1)
-    return clean.fillna(0.0)
+    if removable is not None:
+        raise ValueError(
+            "clean_tpm_matrix no longer accepts an explicit removable mask; "
+            "pass gene_table so the canonical 16/9/75 compartments can be "
+            "derived from the shared censored-gene table")
+    if gene_table is None:
+        raise ValueError("clean_tpm_matrix needs a gene_table")
+    if technical_fraction != TECHNICAL_FRACTION:
+        raise ValueError(
+            "clean_tpm_matrix technical_fraction is deprecated: clean TPM always "
+            "uses the canonical 16% ribosomal / 9% other-technical / 75% "
+            "biological budget")
+    if (
+        ribosomal_protein_fraction != RIBOSOMAL_PROTEIN_FRACTION
+        or other_technical_fraction != OTHER_TECHNICAL_FRACTION
+    ):
+        raise ValueError(
+            "clean_tpm_matrix fraction knobs are deprecated: clean TPM always "
+            "uses the canonical 16% ribosomal / 9% other-technical / 75% "
+            "biological budget")
+    return _oncoref_clean_tpm(values, gene_table)
 
 
 # ---------- cross-source transforms (#293) ----------
@@ -1036,14 +967,6 @@ def percentile_rank_expression(
     }
 
 
-def _housekeeping_panel_symbols(panel: Iterable[str] | None = None) -> set[str]:
-    if panel is not None:
-        return {str(s).strip().upper() for s in panel if str(s).strip()}
-    from pirlygenes import housekeeping_gene_names
-
-    return {str(s).strip().upper() for s in housekeeping_gene_names() if str(s).strip()}
-
-
 def _housekeeping_panel_ensembl_ids(panel: Iterable[str] | None = None) -> set[str]:
     """Unversioned ENSG IDs for the housekeeping panel."""
     if panel is not None:
@@ -1061,103 +984,157 @@ def tpm_to_housekeeping_normalized(
     value_cols: Iterable[str] | None = None,
     panel: Iterable[str] | None = None,
     panel_ids: Iterable[str] | None = None,
+    panel_name: str | None = None,
     pseudocount: float = 0.1,
+    min_hk_positive_genes: int = 5,
+    min_hk_positive_fraction: float = 0.5,
 ):
-    """Divide each expression column by the geometric mean of a HK panel.
+    """Divide each expression column by the housekeeping-panel geometric mean.
 
-    Uses :func:`pirlygenes.housekeeping_gene_names` by default (~22
-    classic housekeeping genes, e.g. ACTB, GAPDH, B2M, HPRT1, PGK1).
-    Pass ``panel`` to override.
-
-    A small ``pseudocount`` is added before taking the log to make the
-    geometric mean robust to zeros in the panel. Returns the
-    HK-normalized frame plus a record dict with the panel-symbol
-    coverage and per-column denominator value, so callers can audit
-    whether the panel was actually present.
+    This is a compatibility wrapper over
+    :func:`oncoref.normalization.tpm_to_housekeeping_normalized`. pirlygenes keeps
+    the public function name and active-panel data API, but the normalization
+    arithmetic and record schema live in oncoref. Matching is ENSG-first: the
+    default panel is :func:`pirlygenes.housekeeping_gene_ids`, and custom panels
+    should be passed as ``panel_ids``.
 
     The output is on a unit-free ratio scale (gene expression relative
     to the housekeeping baseline). It survives library-prep total
-    drift in a way that TPM does not — useful when comparing samples
-    across very different sequencing depth or capture chemistry.
+    drift in a way that TPM does not, but thresholds are panel-dependent;
+    prefer clean TPM, log1p(clean TPM), or percentile-rank clean TPM when the
+    analysis needs an absolute, compressed, or rank-only expression space.
     """
+    if panel is not None and panel_ids is None:
+        raw_panel = [str(s).strip() for s in panel if str(s).strip()]
+        if raw_panel and all(s.split(".", 1)[0].upper().startswith("ENSG") for s in raw_panel):
+            panel_ids = raw_panel
+        else:
+            raise ValueError(
+                "tpm_to_housekeeping_normalized uses Ensembl ID housekeeping panels; "
+                "pass panel_ids instead of symbol-based panel"
+            )
+    if df is not None and value_cols is None:
+        value_cols = [c for c in df.columns if _is_expression_value_col(c)]
+    effective_panel_ids = _housekeeping_panel_ensembl_ids(panel_ids)
+    effective_panel_name = panel_name or (
+        "custom" if panel_ids is not None else "pirlygenes_active_housekeeping"
+    )
+    if df is None or not (id_col and id_col in df.columns):
+        return _oncoref_tpm_to_housekeeping_normalized(
+            df,
+            label_col=label_col,
+            id_col=id_col,
+            value_cols=value_cols,
+            panel_ids=effective_panel_ids,
+            panel_name=effective_panel_name,
+            pseudocount=pseudocount,
+        )
+
     import numpy as np
     import pandas as pd
 
-    if df is None:
-        return None, {"applied": False, "reason": "no table", "columns": {}}
-    if label_col not in df.columns:
-        return df.copy(), {
-            "applied": False,
-            "reason": f"label column {label_col!r} not present",
-            "columns": {},
-        }
+    if not 0 <= float(min_hk_positive_fraction) <= 1:
+        raise ValueError("min_hk_positive_fraction must be between 0 and 1")
+    if int(min_hk_positive_genes) < 0:
+        raise ValueError("min_hk_positive_genes must be non-negative")
 
-    out = df.copy()
-    if value_cols is None:
-        value_cols = [c for c in out.columns if _is_expression_value_col(c)]
-    value_cols = [str(c) for c in value_cols if str(c) in out.columns]
+    value_cols = [str(c) for c in (value_cols or []) if str(c) in df.columns]
     if not value_cols:
-        return out, {
-            "applied": False,
-            "reason": "no expression value columns",
-            "columns": {},
-        }
+        return _oncoref_tpm_to_housekeeping_normalized(
+            df,
+            label_col=label_col,
+            id_col=id_col,
+            value_cols=value_cols,
+            panel_ids=effective_panel_ids,
+            panel_name=effective_panel_name,
+            pseudocount=pseudocount,
+        )
 
-    # ENSG-first matching when both an id_col is present and we have
-    # ENSG IDs from pirlygenes; falls back to symbol matching when
-    # either side is missing.
-    if id_col and id_col in out.columns:
-        panel_ensgs = _housekeeping_panel_ensembl_ids(panel_ids)
-        ids = out[id_col].fillna("").astype(str).str.split(".").str[0].str.strip()
-        hk_mask = ids.isin(panel_ensgs)
-        match_mode = "ensembl_id"
-        panel_size = len(panel_ensgs)
-    else:
-        panel_syms = _housekeeping_panel_symbols(panel)
-        labels = out[label_col].fillna("").astype(str).str.strip().str.upper()
-        hk_mask = labels.isin(panel_syms)
-        match_mode = "symbol"
-        panel_size = len(panel_syms)
-    n_hk_present = int(hk_mask.sum())
-    if n_hk_present == 0:
-        return out, {
-            "applied": False,
-            "reason": f"no housekeeping panel genes found via {match_mode}",
-            "columns": {},
-            "panel_size": panel_size,
-            "match_mode": match_mode,
-        }
+    panel_rows = (
+        df[id_col].fillna("").astype(str).str.split(".").str[0].str.strip()
+        .isin(effective_panel_ids)
+    )
+    n_panel_present = int(panel_rows.sum())
+    if n_panel_present == 0:
+        return _oncoref_tpm_to_housekeeping_normalized(
+            df,
+            label_col=label_col,
+            id_col=id_col,
+            value_cols=value_cols,
+            panel_ids=effective_panel_ids,
+            panel_name=effective_panel_name,
+            pseudocount=pseudocount,
+        )
 
-    columns = {}
-    any_applied = False
+    delegate_cols: list[str] = []
+    skipped_columns: dict[str, dict] = {}
     for col in value_cols:
-        vals = pd.to_numeric(out[col], errors="coerce")
-        hk_vals = vals[hk_mask].dropna()
-        if hk_vals.empty:
-            columns[col] = {"hk_geomean": None, "scale": 1.0, "n_hk_used": 0}
+        hk_vals = pd.to_numeric(df.loc[panel_rows, col], errors="coerce").dropna()
+        required_positive = min(
+            int(len(hk_vals)),
+            max(
+                int(min_hk_positive_genes),
+                int(np.ceil(int(len(hk_vals)) * float(min_hk_positive_fraction))),
+            ),
+        )
+        positive_hk = hk_vals[hk_vals > 0]
+        n_positive = int(len(positive_hk))
+        if hk_vals.empty or n_positive < required_positive:
+            skipped_columns[col] = {
+                "applied": False,
+                "denominator": 0.0,
+                "panel_genes_present": n_panel_present,
+                "panel_genes_measured": int(len(hk_vals)),
+                "panel_genes_detected": n_positive,
+                "panel_genes_zero": int((hk_vals == 0).sum()),
+                "min_hk_positive_required": required_positive,
+                "reason": (
+                    "no measured HK values"
+                    if hk_vals.empty
+                    else "insufficient positive HK genes"
+                ),
+            }
             continue
-        log_vals = np.log(hk_vals.astype(float) + pseudocount)
-        hk_geomean = float(np.exp(log_vals.mean()) - pseudocount)
-        if hk_geomean <= 0:
-            columns[col] = {"hk_geomean": hk_geomean, "scale": 1.0, "n_hk_used": int(len(hk_vals))}
-            continue
-        out[col] = vals / hk_geomean
-        columns[col] = {
-            "hk_geomean": hk_geomean,
-            "scale": 1.0 / hk_geomean,
-            "n_hk_used": int(len(hk_vals)),
+        delegate_cols.append(col)
+
+    if not skipped_columns:
+        return _oncoref_tpm_to_housekeeping_normalized(
+            df,
+            label_col=label_col,
+            id_col=id_col,
+            value_cols=value_cols,
+            panel_ids=effective_panel_ids,
+            panel_name=effective_panel_name,
+            pseudocount=pseudocount,
+        )
+
+    if delegate_cols:
+        out, record = _oncoref_tpm_to_housekeeping_normalized(
+            df,
+            label_col=label_col,
+            id_col=id_col,
+            value_cols=delegate_cols,
+            panel_ids=effective_panel_ids,
+            panel_name=effective_panel_name,
+            pseudocount=pseudocount,
+        )
+    else:
+        out = df.copy()
+        record = {
+            "applied": False,
+            "reason": "insufficient positive HK genes",
+            "panel": effective_panel_name,
+            "columns": {},
+            "value_cols": [],
+            "panel_genes_present": n_panel_present,
         }
-        any_applied = True
-    return out, {
-        "applied": any_applied,
-        "reason": "divided by housekeeping geomean per column" if any_applied else "no positive HK geomeans",
-        "columns": columns,
-        "value_cols": value_cols,
-        "panel_size": panel_size,
-        "panel_present_in_table": n_hk_present,
-        "match_mode": match_mode,
-        "pseudocount": pseudocount,
-    }
+
+    record = dict(record)
+    record["columns"] = {**record.get("columns", {}), **skipped_columns}
+    record["value_cols"] = value_cols
+    if skipped_columns and not delegate_cols:
+        record["reason"] = "insufficient positive HK genes"
+    return out, record
 
 
 __all__ = [

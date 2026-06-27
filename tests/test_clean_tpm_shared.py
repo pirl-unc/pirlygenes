@@ -4,10 +4,11 @@ Previously copy-pasted into ~12 builders/scripts; these lock the one
 definition. The clean-TPM removal set is technical-RNA rows (mtDNA / rRNA-like
 / mt-like pseudogene / polyA-bias lncRNA) **and** ribosomal-protein mRNA +
 pseudogenes. As of clean_tpm_16_9_75 the **default** transform is
-``censored_fill="fixed_fraction"``: that removal (technical) block is forced to
-25% of the 1e6 budget and the kept (biological) block to 75%, each renormalized
-within its group (the ``"reference"`` / ``"typical"`` / ``"zero"`` modes remain
-available). ``technical_rna_mask`` is the strict technical-only subset.
+``censored_fill="fixed_fraction"``: ribosomal-protein rows are forced to 16%,
+other technical rows to 9%, and biological rows to 75% of the 1e6 budget, each
+renormalized within its group. The old ``"reference"`` / ``"typical"`` /
+``"zero"`` clean-TPM modes are not part of that contract. ``technical_rna_mask``
+is the strict technical-only subset for separately named drop/filter helpers.
 """
 from __future__ import annotations
 
@@ -53,9 +54,8 @@ def test_default_removal_mask_is_technical_plus_ribosomal_protein():
     # (RPL13A) censored; normal genes kept. Nothing else.
     assert clean_tpm_removal_mask(gene_table).tolist() == \
         [True, True, True, True, False, False]
-    # exclude_ribosomal_proteins=False -> strict technical-only (RPL13A kept)
-    assert clean_tpm_removal_mask(gene_table, exclude_ribosomal_proteins=False).tolist() == \
-        technical_rna_mask(gene_table).tolist() == [True, True, True, False, False, False]
+    assert technical_rna_mask(gene_table).tolist() == \
+        [True, True, True, False, False, False]
 
 
 def test_clean_tpm_matrix_rejects_removed_modes():
@@ -74,9 +74,11 @@ def test_clean_tpm_fixed_fraction_three_compartment():
     gene_table, values = _fixture()
     clean = clean_tpm_matrix(values, gene_table=gene_table,
                              censored_fill="fixed_fraction")
+    assert len(clean) == len(values)
+    assert clean.index.equals(values.index)
+    assert clean.columns.equals(values.columns)
     mask = clean_tpm_removal_mask(gene_table).to_numpy()
-    tech_only = clean_tpm_removal_mask(
-        gene_table, exclude_ribosomal_proteins=False).to_numpy()
+    tech_only = technical_rna_mask(gene_table).to_numpy()
     ribo = mask & ~tech_only          # RPL13A
     other = mask & tech_only          # MT-CO1, MT-RNR1, MALAT1
     # each compartment pinned separately; biology gets the rest; total 1e6
@@ -93,30 +95,68 @@ def test_clean_tpm_fixed_fraction_three_compartment():
     # within-compartment relative expression preserved (MT-CO1:MT-RNR1 was 5:1)
     assert abs(clean.loc[0, "S1"] / clean.loc[1, "S1"]
                - values.loc[0, "S1"] / values.loc[1, "S1"]) < 1e-6
-    # custom per-compartment fractions honoured
-    c = clean_tpm_matrix(values, gene_table=gene_table,
-                         censored_fill="fixed_fraction",
-                         ribosomal_protein_fraction=0.20,
-                         other_technical_fraction=0.05)
-    np.testing.assert_allclose(c.loc[ribo].sum(axis=0).to_numpy(),
-                               [200_000.0, 200_000.0])
-    np.testing.assert_allclose(c.loc[other].sum(axis=0).to_numpy(),
-                               [50_000.0, 50_000.0])
-    # technical-only view (ribosomal kept in biology): single censored block at
-    # technical_fraction, no ribosomal compartment
-    t = clean_tpm_matrix(values, gene_table=gene_table,
-                         censored_fill="fixed_fraction",
-                         exclude_ribosomal_proteins=False, technical_fraction=0.10)
-    np.testing.assert_allclose(t.loc[tech_only].sum(axis=0).to_numpy(),
-                               [100_000.0, 100_000.0])
+    assert other.any()
 
 
-def test_technical_only_mask_keeps_ribo_protein():
+def test_clean_tpm_matrix_uses_censored_category_compartments():
+    """oncoref must use clean-tpm-censored-genes.csv:category for the 16/9 split."""
+    gene_table = pd.DataFrame({
+        "Symbol": ["RPL10AP1", "RPL10L", "MT-CO1", "TP53"],
+        "Ensembl_Gene_ID": [
+            "ENSG00000244691",  # ribosomal-protein pseudogene: 16%
+            "ENSG00000165496",  # ribosomal-like CTA: biological
+            "ENSG00000198804",  # other technical: 9%
+            "ENSG00000141510",  # biological
+        ],
+    })
+    values = pd.DataFrame({"S1": [100.0, 200.0, 300.0, 400.0]},
+                          index=gene_table.index)
+
+    assert clean_tpm_removal_mask(gene_table).tolist() == [True, False, True, False]
+    assert technical_rna_mask(gene_table).tolist() == [False, False, True, False]
+
+    clean = clean_tpm_matrix(values, gene_table=gene_table)
+    np.testing.assert_allclose(
+        clean["S1"].to_numpy(),
+        [160_000.0, 250_000.0, 90_000.0, 500_000.0],
+    )
+    np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6])
+
+
+def test_clean_tpm_matrix_rejects_noncanonical_options():
+    import pytest
+
     gene_table, values = _fixture()
-    # under the strict technical-only mask, RPL13A (ribosomal protein) is NOT
-    # censored, so it stays in the biological compartment (non-zero) after clean.
-    tech = clean_tpm_matrix(values, technical_rna_mask(gene_table))
-    assert (tech.loc[3] > 0).all()   # RPL13A kept under the strict technical set
+    with pytest.raises(ValueError, match="fraction knobs are deprecated"):
+        clean_tpm_matrix(
+            values,
+            gene_table=gene_table,
+            ribosomal_protein_fraction=0.20,
+            other_technical_fraction=0.05,
+        )
+    with pytest.raises(ValueError, match="technical_fraction is deprecated"):
+        clean_tpm_matrix(values, gene_table=gene_table, technical_fraction=0.10)
+    with pytest.raises(ValueError, match="explicit removable mask"):
+        clean_tpm_matrix(values, technical_rna_mask(gene_table))
+
+
+def test_clean_tpm_matrix_delegates_gene_table_path_to_oncoref(monkeypatch):
+    import pirlygenes.expression.normalize as norm
+
+    gene_table, values = _fixture()
+    calls = []
+
+    def fake_clean_tpm(values_arg, gene_table_arg, **kwargs):
+        calls.append((values_arg, gene_table_arg, kwargs))
+        return values_arg.astype(float) + 1.0
+
+    monkeypatch.setattr(norm, "_oncoref_clean_tpm", fake_clean_tpm)
+
+    default = clean_tpm_matrix(values, gene_table=gene_table)
+    assert default.equals(values.astype(float) + 1.0)
+    assert calls[-1][0] is values
+    assert calls[-1][1] is gene_table
+    assert calls[-1][2] == {}
 
 
 # ---- runtime path consistency with the builder transform (#311) ----
@@ -143,6 +183,17 @@ def test_runtime_wrapper_matches_builder_clean_tpm():
     np.testing.assert_allclose(out[["TPM_S1", "TPM_S2"]][~mask].sum().to_numpy(),
                                [750_000.0, 750_000.0])
     assert info["removed_feature_mode"] == "fixed_fraction"
+
+
+def test_runtime_clean_tpm_rejects_noncanonical_options():
+    import pytest
+
+    with pytest.raises(ValueError, match="technical_fraction is deprecated"):
+        normalize_technical_rna_columns(
+            _wide_df(),
+            censored_fill="fixed_fraction",
+            technical_fraction=0.10,
+        )
 
 
 def test_runtime_wrapper_default_is_legacy_zero_unchanged():
@@ -252,9 +303,6 @@ def test_drop_technical_genes_biology_only_view():
     # (translation/splicing are not censored — no extended level)
     bio = drop_technical_genes(frame)
     assert set(bio["Symbol"]) == {"EEF1A1", "SRSF1", "TP53", "ACTB", "MYC"}
-    # technical-only keeps the ribosomal protein too
-    bio_tech = drop_technical_genes(frame, exclude_ribosomal_proteins=False)
-    assert "RPL13A" in set(bio_tech["Symbol"])
     # sample columns pass through untouched
     assert list(values.columns) == [c for c in bio.columns
                                     if c not in ("Symbol", "Ensembl_Gene_ID")]
@@ -301,6 +349,30 @@ def test_canonical_list_is_cta_safe():
                                            "ENSG00000142541"]})
     mask = clean_tpm_removal_mask(gt).tolist()
     assert mask == [False, False, True]  # CTAs kept, real ribosomal censored
+
+
+def test_clean_tpm_ribosomal_budget_is_cta_safe():
+    """The broad ribosomal family may include CTAs, but the clean-TPM 16%
+    ribosomal budget must not."""
+    from pirlygenes.gene_families import ribosomal_protein_ids
+    from pirlygenes.gene_sets_cancer import CTA_evidence
+    from pirlygenes.load_dataset import get_data
+
+    rpl10l = "ENSG00000165496"
+    cta_ens = set(CTA_evidence()["Ensembl_Gene_ID"].dropna().astype(str)
+                  .str.split(".").str[0])
+    assert rpl10l in cta_ens
+    assert rpl10l in ribosomal_protein_ids()
+
+    censored = get_data("clean-tpm-censored-genes")
+    ribosomal_budget_ids = set(
+        censored.loc[
+            censored["category"].astype(str).eq("ribosomal_protein"),
+            "Ensembl_Gene_ID",
+        ].astype(str)
+    )
+    assert ribosomal_budget_ids.isdisjoint(cta_ens)
+    assert rpl10l not in ribosomal_budget_ids
 
 
 def test_removal_mask_membership_matches_canonical_list():

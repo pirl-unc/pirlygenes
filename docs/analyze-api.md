@@ -1,9 +1,11 @@
 # Analyze API Boundary
 
-`pirlygenes analyze` is being prepared for extraction into a standalone
-runner package, tentatively `trufflepig`. The current command still lives
-in `pirlygenes.cli`, but new orchestration contracts live under
-`pirlygenes.analyze` and are deliberately lightweight.
+Historical note: this document records the migration boundary that moved
+per-sample analysis out of pirlygenes. The active runner package is now
+[`trufflepig`](https://github.com/pirl-unc/trufflepig). Keep pirlygenes changes
+limited to curated reference data, expression transforms, builder/download
+mechanics, and cohort-level APIs unless a trufflepig workflow needs a new
+pirlygenes-owned data contract.
 
 ## Ownership Split
 
@@ -11,21 +13,26 @@ in `pirlygenes.cli`, but new orchestration contracts live under
 
 - bundled CSVs and their schema tests
 - cancer-type registry, aliases, panels, and expression references
-- tumor/TME decomposition primitives
-- plotting and report renderers while they still depend on local data
+- expression transforms, identifier mapping, and transcript-to-gene rollup
+- cohort-level builders, downloads, and plots
+- low-level pure reference helpers that trufflepig can call without pulling
+  sample-runner orchestration back into pirlygenes
 
-`trufflepig` should become the analysis runner:
+`trufflepig` owns the analysis runner:
 
 - CLI argument parsing and run configuration
 - input resolution and sample identity
 - step order and information flow
+- tumor/TME decomposition workflows
+- per-sample plotting and report rendering
 - artifact manifest and output layout
 - optional-step failure policy
 - report packet assembly
 
-The short-term rule is: if a decision is about what a cancer type means,
-it belongs with `pirlygenes`; if it is about how a sample analysis moves
-from one step to the next, it belongs under `pirlygenes.analyze` first.
+The rule is: if a decision is about what a cancer type, curated gene set, or
+reference expression artifact means, it belongs with `pirlygenes`; if it is
+about how a sample analysis moves from one step to the next, it belongs with
+`trufflepig`.
 
 ## Current Contracts
 

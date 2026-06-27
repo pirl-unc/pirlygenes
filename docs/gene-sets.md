@@ -85,11 +85,12 @@ Supports normalization with `None`, a string, or a list of strings:
   deterministic `*_TPM` companions derived from `*_FPKM`
 - `pan_cancer_expression(normalize="tpm_log1p")` — add natural-log
   `*_TPM_log1p` and `*_nTPM_log1p` analysis columns
-- `pan_cancer_expression(normalize="tpm_clean")` — TPM scale plus zero
-  mitochondrial, NUMT-like, rRNA-like, and MALAT1/NEAT1 rows, then pin each
-  clean analysis column to sum to 1e6. Base `*_nTPM`, `*_TPM`, and
-  `*_FPKM` columns remain unchanged; clean values are added as
-  `*_nTPM_clean` and `*_TPM_clean`.
+- `pan_cancer_expression(normalize="tpm_clean")` — TPM scale plus the
+  canonical clean-TPM 16/9/75 transform. Ribosomal-protein censored rows are
+  pinned to 16% of each column budget, other technical censored rows to 9%,
+  and biological rows to 75%. Base `*_nTPM`, `*_TPM`, and `*_FPKM` columns
+  remain unchanged; clean values are added as `*_nTPM_clean` and
+  `*_TPM_clean`.
 - `pan_cancer_expression(normalize="tpm_clean_log1p")` — add clean
   TPM/nTPM columns, then add natural-log `*_TPM_clean_log1p` and
   `*_nTPM_clean_log1p` columns
@@ -225,14 +226,21 @@ expression matrices. Solid-tumor marker codes are `ACC`, `ATRT`, `BLCA`,
 `THCA`, `THYM`, `UCEC`, `UCS`, `UVM`, and `WILMS`; heme marker codes are
 `DLBC` and `LAML`.
 
-`normalize_expression()` in `pirlygenes.expression` implements the shared
-transform for samples and references. The default removal set is intentionally
-narrow: mitochondrial transcripts, NUMT-like mitochondrial pseudogenes, and
+`clean_tpm_matrix()` in `pirlygenes.expression` is the shared clean-TPM
+transform for samples and references. Its censored compartments come from
+`clean-tpm-censored-genes.csv`, not from the supporting family CSVs:
+`category == "ribosomal_protein"` is the 16% ribosomal compartment,
+`category == "technical"` is the 9% other-technical compartment, and every
+gene absent from that table remains biological.
+
+`normalize_expression()` remains available as a lower-level strict
+technical-RNA zero path. Its default removal set is intentionally narrower:
+mitochondrial transcripts, NUMT-like mitochondrial pseudogenes,
 rRNA/rRNA-pseudogene features, plus the nuclear-retained lncRNAs MALAT1 and
 NEAT1. `remove_noncoding=True` additionally removes noncoding-biotype rows when
-biotype metadata is available, while keeping protein-coding, immunoglobulin, and
-TCR biotypes. That option is off by default because noncoding RNAs can be real
-biology in some assays.
+biotype metadata is available, while keeping protein-coding, immunoglobulin,
+and TCR biotypes. That option is off by default because noncoding RNAs can be
+real biology in some assays.
 
 Current curated gene-set impact: the default transform silences the dedicated
 mitochondrial QC gene set (`MT-CO1/2/3`, `MT-ND*`, `MT-CYB`, `MT-ATP6/8`,

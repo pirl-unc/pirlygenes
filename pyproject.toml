@@ -16,6 +16,7 @@ dynamic = ["version"]
 dependencies = [
     "matplotlib>=3.7.0",
     "numpy>=2.0.0",
+    "oncoref>=1.8.10",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile

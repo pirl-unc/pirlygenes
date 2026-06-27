@@ -3,7 +3,7 @@
 This module is the runtime boundary for expression-table identity:
 source identifiers enter here, are mapped onto one canonical gene key,
 and only then are rows joined or compared.  The current packaged map is
-offline and versioned: it pins the canonical gene space to Ensembl release
+offline and versioned: it pins the canonical gene-table convention to Ensembl release
 112 when that authority release is installed, then combines the bundled
 Ensembl ID alias table with the existing pyensembl/NCBI-symbol resolver.
 The API is deliberately separate from builder code so consumers can
@@ -42,19 +42,19 @@ _ENTREZ_RE = re.compile(r"^\d+$")
 _log = logging.getLogger(__name__)
 
 
-class GeneIdentitySpaceViolation(ValueError):
-    """Raised when a table claims a canonical identity space but violates it."""
+class GeneTableValidationError(ValueError):
+    """Raised when a table violates the canonical gene-table contract."""
 
 
 @dataclass(frozen=True)
-class GeneIdentitySpaceReport:
-    """Structural audit of a table's gene identity semantics.
+class GeneTableValidationReport:
+    """Structural audit of a table's gene identifiers.
 
-    Semantics enforced by the canonical *gene* space:
+    The canonical gene-table contract:
 
     - ``Ensembl_Gene_ID`` is the identity key and must contain only unversioned
       human Ensembl gene stable IDs from the pinned authority release (``ENSG``),
-      unless a caller explicitly opts into a proteoform space.
+      unless a caller explicitly opts into proteoform IDs.
     - ``Symbol`` is display metadata only.  It must never participate in joins,
       and one canonical gene ID should have one display symbol in an output.
     - A canonicalized table has at most one row per canonical gene ID within a
@@ -62,7 +62,7 @@ class GeneIdentitySpaceReport:
     - Rows that cannot be mapped into the authority release are quarantined
       before joins; they should not survive as raw source identifiers.
 
-    Semantics enforced by the reduced *proteoform* space:
+    Proteoform-table exception:
 
     - Unique gene-to-protein mappings keep the canonical ENSG as their key.
     - Byte-identical multi-gene proteins use a synthetic proteoform key such as
@@ -102,7 +102,7 @@ class GeneIdentitySpaceReport:
             )
         if self.n_invalid_ids:
             messages.append(
-                f"{self.n_invalid_ids} IDs outside the declared space "
+                f"{self.n_invalid_ids} invalid gene-table IDs "
                 f"(examples: {list(self.invalid_id_examples)})"
             )
         if self.n_versioned_ids:
@@ -666,7 +666,7 @@ def canonical_gene_id_map() -> pd.DataFrame:
             }
             return
         if existing["canonical_gene_id"] != canon:
-            raise GeneIdentitySpaceViolation(
+            raise GeneTableValidationError(
                 "canonical map source resolves to conflicting terminal IDs: "
                 f"{source_id} -> {existing['canonical_gene_id']} and {canon}"
             )
@@ -707,23 +707,23 @@ def canonical_gene_id_map() -> pd.DataFrame:
     )
 
 
-def canonical_gene_space_report(
+def gene_table_validation_report(
     df: pd.DataFrame,
     *,
     id_col: str = "Ensembl_Gene_ID",
     symbol_col: str | None = "Symbol",
     context_cols: Sequence[str] = (),
     allow_proteoform_ids: bool = False,
-) -> GeneIdentitySpaceReport:
-    """Audit whether ``df`` obeys the declared identity-space contract.
+) -> GeneTableValidationReport:
+    """Audit whether ``df`` obeys the canonical gene-table contract.
 
-    Use this on any table before a cross-source join.  For gene-space tables,
+    Use this on any table before a cross-source join. For ordinary gene tables,
     leave ``allow_proteoform_ids=False`` so synthetic proteoform keys are caught
-    if they leak into ``Ensembl_Gene_ID``.  For a deliberately collapsed
-    proteoform frame, pass ``allow_proteoform_ids=True``.
+    if they leak into ``Ensembl_Gene_ID``. For a deliberately collapsed
+    proteoform table, pass ``allow_proteoform_ids=True``.
     """
     if id_col not in df.columns:
-        raise ValueError(f"canonical_gene_space_report needs an {id_col!r} column")
+        raise ValueError(f"gene_table_validation_report needs an {id_col!r} column")
     missing_context = [c for c in context_cols if c not in df.columns]
     if missing_context:
         raise ValueError(f"context columns not present: {missing_context!r}")
@@ -731,7 +731,7 @@ def canonical_gene_space_report(
     ids = df[id_col].map(_clean_identifier)
     nonempty = ids.ne("")
     versioned = ids.str.contains(r"\.\d+$", regex=True, na=False)
-    # A well-formed unversioned human ENSG is a valid gene-space key even when
+    # A well-formed unversioned human ENSG is a valid gene-table key even when
     # it is absent from the pinned authority release: keep-as-self genes (#465)
     # must not be flagged invalid. The authority release governs symbol rescue
     # and merge targets, not row admissibility.
@@ -783,7 +783,7 @@ def canonical_gene_space_report(
         n_multi_symbol_gene_ids = int(len(multi))
         multi_symbol_examples = tuple(multi.head(5).index.astype(str))
 
-    return GeneIdentitySpaceReport(
+    return GeneTableValidationReport(
         n_rows=int(len(df)),
         n_gene_ids=int(ids[nonempty].nunique()),
         n_duplicate_key_rows=n_duplicate_key_rows,
@@ -807,9 +807,9 @@ def validate_canonical_gene_table(
     context_cols: Sequence[str] = (),
     allow_proteoform_ids: bool = False,
     forbid_symbol_fallback_ids: bool = False,
-) -> GeneIdentitySpaceReport:
-    """Return a report or raise if ``df`` violates canonical-space semantics."""
-    report = canonical_gene_space_report(
+) -> GeneTableValidationReport:
+    """Return a report or raise if ``df`` violates the gene-table contract."""
+    report = gene_table_validation_report(
         df,
         id_col=id_col,
         symbol_col=symbol_col,
@@ -820,8 +820,8 @@ def validate_canonical_gene_table(
         forbid_symbol_fallback_ids=forbid_symbol_fallback_ids
     )
     if messages:
-        raise GeneIdentitySpaceViolation(
-            "canonical gene identity contract violated: " + "; ".join(messages)
+        raise GeneTableValidationError(
+            "canonical gene-table contract violated: " + "; ".join(messages)
         )
     return report
 
@@ -1015,17 +1015,17 @@ __all__ = [
     "CANONICAL_GENE_MAP_VERSION",
     "CANONICAL_ENSEMBL_RELEASE",
     "CANONICAL_PROTEOFORM_MAP_VERSION",
-    "GeneIdentitySpaceReport",
-    "GeneIdentitySpaceViolation",
+    "GeneTableValidationError",
+    "GeneTableValidationReport",
     "canonical_gene_id",
     "canonical_gene_symbol",
     "canonical_authority_release",
     "canonical_gene_biotype",
     "canonical_gene_id_map",
-    "canonical_gene_space_report",
     "canonicalize_gene_table",
     "canonicalize_gene_ids",
     "canonical_proteoform_id",
     "canonical_proteoform_id_map",
+    "gene_table_validation_report",
     "validate_canonical_gene_table",
 ]

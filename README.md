@@ -18,6 +18,14 @@
   `aggregate_gene_expression`.
 - Cohort-baseline constants (`TCGA_MEDIAN_PURITY`).
 
+Shared low-level reference mechanics are delegated to
+[`oncoref`](https://github.com/pirl-unc/oncoref) when they are parity-clean.
+Today that includes the canonical clean-TPM 16/9/75 transform and the
+biological housekeeping denominator used for explicit housekeeping
+normalization. `pirlygenes` still owns its curated CSVs, bundled expression
+artifacts, builder/download registry, public wrappers, masks, and compatibility
+tests.
+
 Analysis-layer code (CLI, plotting, sample-QC narration,
 deconvolution, signature scoring) lives in
 [`trufflepig`](https://github.com/pirl-unc/trufflepig).
@@ -137,7 +145,7 @@ from pirlygenes.expression import (
 
     # Rescaling primitives — pure math on expression matrices
     add_tpm_columns_from_fpkm,        # preserve FPKM and append TPM companions
-    normalize_expression,             # zero technical-RNA rows + renormalize
+    normalize_expression,             # low-level strict technical-RNA zero path
     fpkm_to_tpm,                      # rescale each column to sum to 10⁶
     percentile_rank_expression,       # within-column percentile ranks
     renormalize_to_million,           # bare utility for column rescaling
@@ -165,10 +173,11 @@ preserved, and cleaned TPM-scale analysis columns are added as
 `*_TPM_clean` / `*_nTPM_clean`.
 
 ```python
-# Zero mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows across TPM-scale analysis
-# columns and pin each column sum back at 1e6. Base *_nTPM, *_TPM, and
-# *_FPKM columns remain unchanged; clean values are added as *_nTPM_clean
-# and *_TPM_clean companion columns.
+# Apply the canonical clean-TPM 16/9/75 transform to TPM-scale analysis
+# columns: ribosomal-protein rows are pinned to 16% of the budget, other
+# technical rows to 9%, and the remaining biological rows to 75%. Base
+# *_nTPM, *_TPM, and *_FPKM columns remain unchanged; clean values are
+# added as *_nTPM_clean and *_TPM_clean companion columns.
 pan_cancer_expression()                          # normalize="tpm_clean"
 
 # Raw/provenance view: raw <code>_FPKM from TCGA, <tissue>_nTPM from HPA,
@@ -212,9 +221,9 @@ compact marker panels for tumor-up-vs-matched-normal comparisons.
 
 The older `pan_cancer_expression()` kwargs (`technical_rna_normalize`,
 `remove_noncoding`, and `renormalize_to_million`) have been removed. Use
-`normalize="tpm_clean"` for the TPM-scaled, technical-RNA-cleaned view;
-compose `normalize_expression()` / `renormalize_to_million()` directly when
-you need lower-level transforms.
+`normalize="tpm_clean"` for the TPM-scaled canonical clean-TPM view; compose
+`normalize_expression()` / `renormalize_to_million()` directly when you need
+the lower-level strict technical-RNA zero path.
 
 The gene-family panels are ENSG-keyed sets derived from every
 installed Ensembl release (`numt-pseudogenes.csv`,
@@ -293,12 +302,21 @@ mtDNA set with a semantic `Role` column).
 
 ## Where the boundary is
 
-`pirlygenes` owns curated reference data and the *mechanical* operations
-on it — gene-set lookups, expression-matrix accessors, FPKM↔TPM,
-housekeeping rescaling, technical-RNA masking, transcript→gene rollup.
+`pirlygenes` owns curated reference data and the public API around that data:
+gene-set lookups, bundled expression-matrix accessors, the cancer-type
+registry, expression builders/downloads, public masks, and compatibility
+wrappers. When a low-level reference mechanic is shared and parity-clean, this
+package delegates it to `oncoref`; currently that includes canonical clean TPM
+and explicit housekeeping normalization.
+
+Do not assume every oncoref table is a drop-in replacement for the bundled
+pirlygenes artifacts. `cancer_reference_expression`, representative-sample and
+percentile accessors, bundle/download/build QC, and broad registry-table
+replacement stay local until their parity and provenance contracts are clean.
+
 Anything that requires interpretive judgment (per-sample QC narration,
-library-prep auto-detection, deconvolution pipelines, signature
-scoring, rescue heuristics) lives in
+library-prep auto-detection, deconvolution pipelines, signature scoring, rescue
+heuristics) lives in
 [`pirl-trufflepig`](https://github.com/pirl-unc/trufflepig), which
 depends on this package.
 
@@ -334,7 +352,7 @@ If the `pirlygenes` console-script is still on PATH from a prior install, it now
 ## Migration history
 
 - **v5.2.0** — add `normalize=` presets for TPM-scaled and
-  technical-RNA-cleaned expression accessors, derive `<TCGA>_TPM`
+  clean-TPM expression accessors, derive `<TCGA>_TPM`
   columns from the ID-keyed pan-cancer `<TCGA>_FPKM` columns, and remove
   deconvolution-derived reference tables from the package.
 - **v5.1.0** — restore expression matrices to
