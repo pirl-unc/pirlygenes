@@ -15,9 +15,10 @@ convert between common quantification scales:
   while preserving raw FPKM provenance columns.
 - :func:`percentile_rank_expression` — map expression columns to
   within-column percentile ranks.
-- :func:`tpm_to_housekeeping_normalized` — divide each column by the
-  geometric mean of a curated housekeeping panel, producing a unit-free
-  ratio scale that survives library-prep totals.
+- :func:`tpm_to_housekeeping_normalized` — divide each column by its
+  median-of-ratios housekeeping size factor (median of
+  ``sample_tpm[g] / reference_tpm[g]`` over a curated housekeeping panel),
+  putting the sample on the reference-profile scale.
 - :func:`renormalize_to_million` — bare utility: rescale columns to
   sum to 10⁶ without dropping anything.
 
@@ -988,8 +989,10 @@ def tpm_to_housekeeping_normalized(
     pseudocount: float = 0.1,
     min_hk_positive_genes: int = 5,
     min_hk_positive_fraction: float = 0.5,
+    reference_profile=None,
+    method: str | None = None,
 ):
-    """Divide each expression column by the housekeeping-panel geometric mean.
+    """Divide each expression column by a housekeeping-panel size factor.
 
     This is a compatibility wrapper over
     :func:`oncoref.normalization.tpm_to_housekeeping_normalized`. pirlygenes keeps
@@ -998,12 +1001,26 @@ def tpm_to_housekeeping_normalized(
     default panel is :func:`pirlygenes.housekeeping_gene_ids`, and custom panels
     should be passed as ``panel_ids``.
 
-    The output is on a unit-free ratio scale (gene expression relative
-    to the housekeeping baseline). It survives library-prep total
-    drift in a way that TPM does not, but thresholds are panel-dependent;
+    oncoref's default method is **median-of-ratios**: each column's size factor is
+    the median of ``sample_tpm[g] / reference_tpm[g]`` over the housekeeping genes,
+    against a reference profile (the HPA-derived clean-TPM housekeeping profile by
+    default; pirlygenes' active panel *is* that profile's 30 genes). Pass
+    ``reference_profile`` to normalize against a custom panel, or
+    ``method="legacy_geomean"`` for the old geNorm-style denominator (audits only).
+
+    Output values sit on the reference-profile scale (a gene at its reference level
+    reads ~its reference TPM), not a unit baseline. Thresholds are panel-dependent;
     prefer clean TPM, log1p(clean TPM), or percentile-rank clean TPM when the
     analysis needs an absolute, compressed, or rank-only expression space.
     """
+    # oncoref-only knobs, forwarded to every delegation below. Left absent (not
+    # None) so oncoref's own defaults (median_of_ratios + default reference
+    # profile) apply unless the caller overrides them.
+    _oncoref_extra: dict = {}
+    if reference_profile is not None:
+        _oncoref_extra["reference_profile"] = reference_profile
+    if method is not None:
+        _oncoref_extra["method"] = method
     if panel is not None and panel_ids is None:
         raw_panel = [str(s).strip() for s in panel if str(s).strip()]
         if raw_panel and all(s.split(".", 1)[0].upper().startswith("ENSG") for s in raw_panel):
@@ -1028,6 +1045,7 @@ def tpm_to_housekeeping_normalized(
             panel_ids=effective_panel_ids,
             panel_name=effective_panel_name,
             pseudocount=pseudocount,
+            **_oncoref_extra,
         )
 
     import numpy as np
@@ -1048,6 +1066,7 @@ def tpm_to_housekeeping_normalized(
             panel_ids=effective_panel_ids,
             panel_name=effective_panel_name,
             pseudocount=pseudocount,
+            **_oncoref_extra,
         )
 
     panel_rows = (
@@ -1064,6 +1083,7 @@ def tpm_to_housekeeping_normalized(
             panel_ids=effective_panel_ids,
             panel_name=effective_panel_name,
             pseudocount=pseudocount,
+            **_oncoref_extra,
         )
 
     delegate_cols: list[str] = []
@@ -1106,6 +1126,7 @@ def tpm_to_housekeeping_normalized(
             panel_ids=effective_panel_ids,
             panel_name=effective_panel_name,
             pseudocount=pseudocount,
+            **_oncoref_extra,
         )
 
     if delegate_cols:
@@ -1117,6 +1138,7 @@ def tpm_to_housekeeping_normalized(
             panel_ids=effective_panel_ids,
             panel_name=effective_panel_name,
             pseudocount=pseudocount,
+            **_oncoref_extra,
         )
     else:
         out = df.copy()

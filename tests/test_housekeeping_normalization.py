@@ -80,13 +80,23 @@ def test_housekeeping_normalization_uses_oncoref_denominator():
     hk_values = [0.0, 10.0, 20.0, 30.0, 40.0, 50.0]
     df = _housekeeping_frame(hk_values)
 
+    # median-of-ratios needs a reference profile covering the panel; the
+    # synthetic HK_IDS are absent from oncoref's default HPA profile, so
+    # supply a flat reference. size factor = median over detected genes of
+    # sample_tpm/reference_tpm, then every gene is divided by that factor.
+    reference = pd.DataFrame(
+        {"Ensembl_Gene_ID": HK_IDS, "reference_tpm": [10.0] * len(HK_IDS)}
+    )
+
     out, record = tpm_to_housekeeping_normalized(
         df,
         value_cols=["TPM_S1"],
         panel_ids=HK_IDS,
+        reference_profile=reference,
     )
 
     assert record["applied"] is True
+    assert record["method"] == "median_of_ratios"
     expected_denominator = record["columns"]["TPM_S1"]["denominator"]
     assert record["panel"] == "custom"
     assert record["panel_genes_present"] == len(HK_IDS)
