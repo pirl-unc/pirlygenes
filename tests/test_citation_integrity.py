@@ -23,7 +23,9 @@ DATA = Path(__file__).resolve().parent.parent / "pirlygenes" / "data"
 # {csv stem: citation column(s)} — the columns whose values must be real citations.
 CITATION_COLUMNS = {
     "cancer-fusions": "pmid",
-    "cancer-type-registry": "source_pmid",
+    # cancer-type-registry is re-exported from oncoref (pirlygenes#523); its
+    # citation format is validated through the get_data accessor in
+    # test_reference_format, and oncoref owns registry-content validation.
     "cancer-tmb": "pmid_doi",
     "cancer-apd1-response": "pmid_doi",
     "cancer-frameshift-burden": "pmid_doi",

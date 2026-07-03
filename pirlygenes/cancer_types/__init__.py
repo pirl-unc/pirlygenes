@@ -16,8 +16,9 @@ data tables.
 
 Everything is keyed by the canonical registry code and accepts any synonym
 (common name, display name, or a pre-rename old code) on input. The facts live
-in ``data/cancer-type-registry.csv`` (one row per type); this package is the
-thin, cohesive accessor surface over it.
+in oncoref's cancer-type registry (one row per type), re-exported through
+``get_data("cancer-type-registry")``; this package is the thin, cohesive
+accessor surface over it.
 
     from pirlygenes import cancer_types as ct
 
