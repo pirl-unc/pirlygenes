@@ -35,8 +35,8 @@ The normalization layer is intentionally narrow — anything that
 needs per-sample QC narration (degradation index, FFPE rescue,
 library-prep classification) lives in trufflepig. What's here:
 
-* :func:`normalize_to_housekeeping` — divide each column by the
-  active housekeeping-panel geometric mean.
+* :func:`normalize_to_housekeeping` — divide each column by its
+  median-of-ratios housekeeping size factor.
 * :func:`log2_transform` — log2(x + 1) over value columns.
 * :func:`filter_technical_rna` — drop mtDNA / NUMT-like / rRNA-like /
   nuclear-retained-lncRNA rows by ENSG, sourced from
@@ -229,15 +229,17 @@ def normalize_to_housekeeping(
     df: pd.DataFrame,
     value_cols: Optional[Sequence[str]] = None,
 ) -> pd.DataFrame:
-    """Rescale each value column by the active housekeeping-panel baseline.
+    """Rescale each value column by its housekeeping size factor.
 
-    The result is unitless: a value of 1.0 in a given column means
-    "expressed at the column's housekeeping baseline". Works across
-    TPM, FPKM, and nTPM units since the normalization is per-column. This
-    compatibility helper delegates to
+    The size factor is the median-of-ratios denominator: for each column,
+    the median of ``sample_tpm[g] / reference_tpm[g]`` over the housekeeping
+    genes. Dividing by it puts the sample on the reference-profile scale
+    (a housekeeping gene reads back ~its reference TPM), not a unit baseline.
+    Works across TPM, FPKM, and nTPM units since the normalization is
+    per-column. This compatibility helper delegates to
     :func:`pirlygenes.expression.normalize.tpm_to_housekeeping_normalized`,
-    so the HK path uses the same ENSG-first HPA-derived panel and geometric
-    mean denominator everywhere.
+    so the HK path uses the same ENSG-first HPA-derived panel and
+    median-of-ratios denominator everywhere.
 
     Parameters
     ----------
@@ -2132,7 +2134,7 @@ def pan_cancer_expression(
           TPM-scale analysis columns. Implies ``"tpm"``.
         - ``"hk"`` or ``"housekeeping"`` — add
           ``<tissue>_nTPM_hk`` and ``<code>_TPM_hk`` columns divided by
-          their housekeeping-panel geometric mean. Implies ``"tpm"``.
+          their median-of-ratios housekeeping size factor. Implies ``"tpm"``.
         - ``"percentile"`` — within-column percentile rank (0–100),
           added as ``<tissue>_nTPM_percentile`` and
           ``<code>_TPM_percentile`` columns. Implies ``"tpm"``.

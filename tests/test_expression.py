@@ -73,17 +73,31 @@ def test_pan_cancer_expression_subset_filters_to_named_genes():
 def test_pan_cancer_expression_housekeeping_rescales_to_unit_baseline():
     df = pan_cancer_expression(normalize="hk")
     tpm_cols = [c for c in df.columns if c.endswith("_TPM_hk")]
-    # After housekeeping rescale, the median of housekeeping rows in
-    # each column should sit at ~1.0 (it's a rescale, not a centering).
-    # Tolerance loose enough to survive pandas median-aggregation
-    # ordering drift without false-flagging.
+    # Median-of-ratios does not rescale each HK gene to 1.0 (that was the old
+    # geomean behavior); it puts the whole sample on the reference-profile
+    # scale. The defining invariant is that the median over HK genes of
+    # normalized_tpm / reference_tpm sits at ~1.0. Check that instead.
     from pirlygenes import housekeeping_gene_ids
+    from oncoref import housekeeping_reference_profile
+
+    ref = housekeeping_reference_profile()
+    ref_tpm = dict(
+        zip(ref["Ensembl_Gene_ID"].astype(str), ref["reference_tpm"].astype(float))
+    )
     hk = housekeeping_gene_ids()
     hk_rows = df[df["Ensembl_Gene_ID"].isin(hk)]
     for col in tpm_cols[:3]:  # spot-check first few columns
-        med = hk_rows[col].astype(float).median()
+        ratios = [
+            value / ref_tpm[gene]
+            for gene, value in zip(
+                hk_rows["Ensembl_Gene_ID"].astype(str),
+                hk_rows[col].astype(float),
+            )
+            if ref_tpm.get(gene, 0.0) > 0
+        ]
+        med = float(np.median(ratios))
         assert med == pytest.approx(1.0, rel=0.05), (
-            f"{col} housekeeping median is {med}, expected ~1.0"
+            f"{col} median housekeeping ratio-to-reference is {med}, expected ~1.0"
         )
 
 
@@ -1108,9 +1122,9 @@ def test_normalize_expression_drops_technical_rna_rows_and_renormalizes():
     assert "mt_dna" in record["remove_groups"]
 
 
-def test_tpm_to_housekeeping_normalized_uses_geomean_of_curated_panel():
-    """tpm_to_housekeeping_normalized divides each column by the geomean
-    of the curated housekeeping panel. Result is unitless."""
+def test_tpm_to_housekeeping_normalized_divides_by_size_factor():
+    """tpm_to_housekeeping_normalized divides each column by its
+    median-of-ratios housekeeping size factor. Result stays non-negative."""
     pce = pan_cancer_expression()
     fpkm_cols = [c for c in pce.columns if c.endswith("_FPKM")][:2]
     out, _record = tpm_to_housekeeping_normalized(pce, value_cols=fpkm_cols)
@@ -1216,7 +1230,12 @@ def test_normalize_to_housekeeping_uses_ensembl_ids_without_symbol_column():
 
     assert record["applied"]
     assert record["panel"] == "pirlygenes_active_housekeeping"
-    assert out["sample_TPM"].iloc[-1] == pytest.approx(100.0 / 10.1)
+    # median-of-ratios size factor = median(sample_tpm / reference_tpm) over
+    # the detected HK genes; divide the non-panel gene (TP53) by it. Read the
+    # denominator from the record rather than hardcoding, so the assertion
+    # tracks the reference profile instead of the old geomean(10 + 0.1).
+    denom = record["columns"]["sample_TPM"]["denominator"]
+    assert out["sample_TPM"].iloc[-1] == pytest.approx(100.0 / denom)
 
 
 def test_normalize_to_housekeeping_blanks_columns_with_no_panel_genes():
@@ -1298,18 +1317,23 @@ def test_accessor_pipeline_drops_technical_rna_before_gene_subset():
 def test_accessor_pipeline_applies_log_after_normalize():
     """log_transform runs after normalize.
 
-    A housekeeping gene rescales to 1.0; with the default pseudocount
-    of 1, log2(1.0 + 1.0) = 1.0. An order swap (log-then-rescale)
-    would log raw TPM first, then divide by the wrong housekeeping
-    median, and the median of housekeeping rows wouldn't land at 1.0.
+    The logged column must equal ``log2(normalized_linear + 1)`` elementwise.
+    An order swap (log-then-normalize) would log the raw TPM first and then
+    divide by the housekeeping size factor, so the logged values would no
+    longer be a pure log of the linear normalized values. Method-agnostic:
+    this holds under median-of-ratios exactly as it did under the old geomean.
     """
-    df = pan_cancer_expression(normalize="hk", log_transform=True)
-    from pirlygenes import housekeeping_gene_ids
+    linear = pan_cancer_expression(normalize="hk", log_transform=False)
+    logged = pan_cancer_expression(normalize="hk", log_transform=True)
 
-    hk_rows = df[df["Ensembl_Gene_ID"].isin(housekeeping_gene_ids())]
-    tpm_col = next(c for c in df.columns if c.endswith("_TPM_hk"))
-    med = hk_rows[tpm_col].astype(float).median()
-    assert med == pytest.approx(1.0, abs=0.1)
+    tpm_col = next(c for c in logged.columns if c.endswith("_TPM_hk"))
+    lin = linear.set_index("Ensembl_Gene_ID")[tpm_col].astype(float)
+    log = logged.set_index("Ensembl_Gene_ID")[tpm_col].astype(float)
+    common = lin.index.intersection(log.index)
+    max_diff = (log.loc[common] - np.log2(lin.loc[common] + 1.0)).abs().max()
+    assert max_diff == pytest.approx(0.0, abs=1e-9), (
+        f"logged column is not log2(normalized + 1); max diff {max_diff}"
+    )
 
 
 # ---------- normalize_expression: noncoding biotype path ----------
