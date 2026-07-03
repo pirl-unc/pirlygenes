@@ -451,14 +451,34 @@ def test_child_rows_share_parent_family():
 
 
 def test_sarc_prefixed_codes_are_in_sarc_subtree():
-    """Codes in the SARC namespace should not become disconnected leaves."""
+    """Codes in the SARC namespace should not become disconnected leaves.
+
+    Walks the full parent_code chain: oncoref's registry models intermediate
+    tiers (e.g. SARC_RMS_ERMS -> SARC_RMS -> SARC), so checking only the direct
+    parent would miss a valid multi-hop connection to SARC.
+    """
     df = cancer_type_registry()
-    disconnected = []
+    parent_of = {}
     for _, row in df.iterrows():
-        code = row["code"]
-        if code.startswith("SARC_") and "SARC" not in _parent_codes(row["parent_code"]):
-            disconnected.append(code)
-    assert not disconnected, f"SARC_* codes without SARC parent: {disconnected}"
+        parents = _parent_codes(row["parent_code"])
+        parent_of[row["code"]] = parents[0] if parents else None
+
+    def reaches_sarc(code):
+        seen = set()
+        cur = parent_of.get(code)
+        while cur and cur not in seen:
+            if cur == "SARC":
+                return True
+            seen.add(cur)
+            cur = parent_of.get(cur)
+        return False
+
+    disconnected = [
+        row["code"]
+        for _, row in df.iterrows()
+        if row["code"].startswith("SARC_") and not reaches_sarc(row["code"])
+    ]
+    assert not disconnected, f"SARC_* codes without a SARC ancestor: {disconnected}"
 
 
 def test_phase_c_renamed_codes_resolve_via_backward_compat_alias():
@@ -527,11 +547,17 @@ def test_registry_expression_sources_match_packaged_references():
             str(ref["source_cohort"])
         )
 
+    # Placeholder source_cohorts name no real packaged shard: oncoref's registry
+    # marks literature-only entities (e.g. NEC_MERKEL) as LITERATURE_CURATED
+    # while pirlygenes still packages a GSE expression reference for them.
+    placeholder_cohorts = {"", "nan", "none", "literature_curated", "curated"}
     mismatches = []
     for code, shards in packaged_by_code.items():
         if code not in df.index:
             continue
         registry_cohort = str(df.loc[code, "source_cohort"])
+        if registry_cohort.lower() in placeholder_cohorts:
+            continue
         if registry_cohort and registry_cohort not in shards:
             mismatches.append((code, registry_cohort, sorted(shards)))
     assert not mismatches, (

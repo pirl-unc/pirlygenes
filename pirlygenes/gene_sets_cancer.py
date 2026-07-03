@@ -2790,6 +2790,7 @@ _PRIMARY_TISSUE_BURDEN = {
     "urethra": "bladder", "anal_canal": "anus",
     "fallopian_tube": "ovary", "peritoneum_serous": "ovary",  # HGSC pooled with OV
     "gallbladder": "gallbladder_biliary",
+    "biliary_tract": "gallbladder_biliary",  # BTC (oncoref biliary-tract parent)
     "thyroid": "thyroid", "thyroid_c_cell": "thyroid",
     "testis": "testicular_germ_cell",
     "pleura": "mesothelioma", "peritoneum": "mesothelioma",
@@ -2827,6 +2828,10 @@ _FAMILY_BURDEN = {
     "cns-ependymal": "brain_cns", "cns-sellar": "brain_cns",
     "cns-meningeal": "brain_cns", "cns-choroid": "brain_cns",
     "carcinoma-skin": "non_melanoma_skin",
+    # Mixed-/all-site neuroendocrine roll-ups (NET, NET_NONPANCREATIC,
+    # NEN_G3_EXTRAPULMONARY) have no single anatomic burden bucket; site-specific
+    # NETs (NET_PANCREAS -> pancreas, NET_LUNG -> lung) resolve by tissue first.
+    "neuroendocrine": "other_and_unknown_primary",
 }
 
 
