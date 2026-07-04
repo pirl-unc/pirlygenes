@@ -117,7 +117,12 @@ def _build_sample_qc_config(spec: dict | None) -> SampleQcConfig:
             else float(spec["max_top10_fraction"])
         ),
         source_scale_class=str(spec.get("source_scale_class", "")),
-        linear_tpm_comparable=bool(spec.get("linear_tpm_comparable", True)),
+        # Omitted → None → derived from source_scale_class; only an explicit
+        # YAML value overrides the derivation.
+        linear_tpm_comparable=(
+            None if spec.get("linear_tpm_comparable") is None
+            else bool(spec["linear_tpm_comparable"])
+        ),
         special_source_warning=str(spec.get("special_source_warning", "")),
     )
 

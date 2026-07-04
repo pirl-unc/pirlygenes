@@ -71,7 +71,10 @@ class SampleQcConfig:
     max_top_gene_fraction: float | None = None
     max_top10_fraction: float | None = None
     source_scale_class: str = ""
-    linear_tpm_comparable: bool = True
+    # ``None`` (the default) derives comparability from ``source_scale_class`` so
+    # the two never desync; set an explicit bool only to override that. Genuine
+    # non-linear proxies (microarray / rank / percentile scales) resolve False.
+    linear_tpm_comparable: bool | None = None
     special_source_warning: str = ""
 
 
@@ -219,6 +222,25 @@ def _default_source_scale_class(unit: Unit) -> str:
     return "linear_rnaseq_tpm"
 
 
+# Substrings that mark a source-scale class as NOT linear-TPM comparable. The
+# RNA-seq / count-derived / log2-inverse classes all resolve to linear TPM after
+# ``normalize_to_tpm``; only genuine proxy scales (microarray, rank/percentile
+# surrogates) are non-comparable.
+_NONLINEAR_SCALE_HINTS = ("proxy", "microarray", "rank", "percentile")
+
+
+def _scale_class_is_linear(source_scale_class: str) -> bool:
+    lowered = source_scale_class.lower()
+    return not any(hint in lowered for hint in _NONLINEAR_SCALE_HINTS)
+
+
+def _resolve_linear_comparable(config: SampleQcConfig) -> bool:
+    """Effective ``linear_tpm_comparable``: explicit override, else derived."""
+    if config.linear_tpm_comparable is not None:
+        return config.linear_tpm_comparable
+    return _scale_class_is_linear(config.source_scale_class)
+
+
 def _effective_sample_qc_config(config: SampleQcConfig, unit: Unit) -> SampleQcConfig:
     if config.source_scale_class:
         return config
@@ -231,10 +253,40 @@ def _top_n_sum(values: pd.DataFrame, n: int) -> pd.Series:
     return values.apply(lambda col: col.nlargest(min(n, len(col))).sum(), axis=0)
 
 
+def _safe_ratio(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
+    """Elementwise ``numerator / denominator``, 0.0 where ``denominator <= 0``."""
+    return (numerator / denominator.where(denominator > 0)).fillna(0.0)
+
+
 def _mapping_frame(rows: list[dict[str, str]]) -> pd.DataFrame:
     return pd.DataFrame(
         rows,
         columns=["source_id", "Ensembl_Gene_ID", "Symbol", "mapping_method"],
+    )
+
+
+def _diagnostics_for_uniquified_columns(
+    diagnostics: MatrixReadDiagnostics,
+    origin: dict[str, str],
+) -> MatrixReadDiagnostics:
+    """Re-key parse diagnostics onto uniquified sample columns.
+
+    ``build_source`` renames duplicated sample columns (e.g. ``P-58`` ×15 →
+    ``P-58``, ``P-58.1``, …). The parser diagnostics are keyed by the ORIGINAL
+    column names, so without this remap every renamed replicate misses the
+    lookup and reports ``source_numeric_*`` / ``source_parse_missing_fraction``
+    as 0; here each uniquified name inherits its source column's counts.
+    """
+    def _remap(series: pd.Series) -> pd.Series:
+        return pd.Series(
+            {new: int(series.get(src, 0)) for new, src in origin.items()},
+            dtype="int64",
+        )
+
+    return MatrixReadDiagnostics(
+        numeric_value_count=_remap(diagnostics.numeric_value_count),
+        numeric_missing_count=_remap(diagnostics.numeric_missing_count),
+        dropped_non_sample_columns=diagnostics.dropped_non_sample_columns,
     )
 
 
@@ -274,28 +326,43 @@ def sample_qc_table(
     n_genes = int(raw_values.shape[0])
     source_zero = (raw_values == 0).sum(axis=0)
 
-    removal_mask = clean_tpm_removal_mask(gene_table).to_numpy()
+    linear_comparable = _resolve_linear_comparable(cfg)
+
+    # Align gene-level masks to the value-matrix rows BY LABEL: a caller whose
+    # gene_table is reordered or a subset of the value rows still selects the
+    # right genes (positional boolean masking silently mis-selected before).
+    gene_ids = gene_table["Ensembl_Gene_ID"].map(strip_version)
+    row_ids = pd.Index(raw_values.index).map(strip_version)
+
+    removal_by_id = pd.Series(
+        clean_tpm_removal_mask(gene_table).to_numpy(), index=gene_ids.to_numpy()
+    )
+    removal_mask = removal_by_id.reindex(row_ids, fill_value=False).to_numpy()
     biological_clean = clean_values.loc[~removal_mask]
     detected_clean_biological = (biological_clean > 0).sum(axis=0)
 
     from ..gene_sets_cancer import housekeeping_gene_ids
 
     universal_ids = {
-        str(x).split(".", 1)[0].strip()
-        for x in housekeeping_gene_ids()
-        if str(x).strip()
+        strip_version(x) for x in housekeeping_gene_ids() if str(x).strip()
     }
-    ids = gene_table["Ensembl_Gene_ID"].astype(str).str.split(".").str[0]
-    universal_mask = ids.isin(universal_ids).to_numpy()
+    universal_by_id = pd.Series(
+        gene_ids.isin(universal_ids).to_numpy(), index=gene_ids.to_numpy()
+    )
+    universal_mask = universal_by_id.reindex(row_ids, fill_value=False).to_numpy()
     n_universal_expected = len(universal_ids)
     n_universal_present = int(universal_mask.sum())
     if n_universal_present:
         universal_values = raw_values.loc[universal_mask]
         universal_detected = (universal_values > 0).sum(axis=0)
         universal_floor = (universal_values >= cfg.universal_floor_tpm).sum(axis=0)
+        universal_fraction = universal_detected / n_universal_present
+        universal_floor_fraction = universal_floor / n_universal_present
     else:
         universal_detected = pd.Series(0, index=sample_ids, dtype=int)
         universal_floor = pd.Series(0, index=sample_ids, dtype=int)
+        universal_fraction = pd.Series(0.0, index=sample_ids)
+        universal_floor_fraction = pd.Series(0.0, index=sample_ids)
 
     numeric_missing = (
         _series_for_samples(read_diagnostics.numeric_missing_count, sample_ids)
@@ -312,109 +379,97 @@ def sample_qc_table(
         if missing_after_harmonization is not None
         else pd.Series(0, index=sample_ids, dtype=int)
     )
+    parse_total = numeric_values + numeric_missing
 
-    rows = []
+    # Every per-sample metric is already a columnar Series indexed by sample_id;
+    # assemble them directly rather than re-deriving each via scalar lookups.
+    if n_genes:
+        detected_raw_fraction = detected_raw / n_genes
+        source_zero_fraction = source_zero / n_genes
+    else:
+        detected_raw_fraction = pd.Series(0.0, index=sample_ids)
+        source_zero_fraction = pd.Series(0.0, index=sample_ids)
+
+    # Fail/warn flags as boolean columns; column insertion order fixes the order
+    # reasons appear in ``sample_qc_reasons`` (fails first, then warns).
+    fail_flags = pd.DataFrame(index=pd.Index(sample_ids))
+    warn_flags = pd.DataFrame(index=pd.Index(sample_ids))
+    if not cfg.enabled:
+        warn_flags["sample_qc_disabled"] = True
+    elif not linear_comparable:
+        warn_flags["nonlinear_or_proxy_source_scale"] = True
+    else:
+        fail_flags["detected_genes_below_min"] = detected_raw < cfg.min_detected_genes
+        if n_universal_present:
+            fail_flags["universal_nonzero_below_min"] = (
+                universal_detected < cfg.min_universal_nonzero_genes
+            )
+            fail_flags["universal_nonzero_fraction_below_min"] = (
+                universal_fraction < cfg.min_universal_nonzero_fraction
+            )
+        if cfg.max_top_gene_fraction is not None:
+            fail_flags["top_gene_fraction_above_max"] = (raw_totals > 0) & (
+                _safe_ratio(top_gene_raw, raw_totals) > cfg.max_top_gene_fraction
+            )
+        if cfg.max_top10_fraction is not None:
+            fail_flags["top10_fraction_above_max"] = (raw_totals > 0) & (
+                _safe_ratio(top10_raw, raw_totals) > cfg.max_top10_fraction
+            )
+    if cfg.special_source_warning:
+        warn_flags[cfg.special_source_warning] = True
+
+    fail_cols = list(fail_flags.columns)
+    warn_cols = list(warn_flags.columns)
+    statuses: list[str] = []
+    reason_strs: list[str] = []
+    included: list[bool] = []
     for sample in sample_ids:
-        raw_total = float(raw_totals.get(sample, 0.0))
-        clean_total = float(clean_totals.get(sample, 0.0))
-        n_detected_raw = int(detected_raw.get(sample, 0))
-        n_detected_clean = int(detected_clean.get(sample, 0))
-        n_detected_clean_bio = int(detected_clean_biological.get(sample, 0))
-        n_universal_nonzero = int(universal_detected.get(sample, 0))
-        universal_fraction = (
-            n_universal_nonzero / n_universal_present
-            if n_universal_present else 0.0
-        )
-        n_universal_floor = int(universal_floor.get(sample, 0))
-        universal_floor_fraction = (
-            n_universal_floor / n_universal_present
-            if n_universal_present else 0.0
-        )
-        top_raw = float(top_gene_raw.get(sample, 0.0))
-        top_clean = float(top_gene_clean.get(sample, 0.0))
-        top10_raw_sum = float(top10_raw.get(sample, 0.0))
-        top10_clean_sum = float(top10_clean.get(sample, 0.0))
-        missing_numeric = int(numeric_missing.get(sample, 0))
-        parsed_numeric = int(numeric_values.get(sample, 0))
-        parse_total = parsed_numeric + missing_numeric
-        fail_reasons: list[str] = []
-        warn_reasons: list[str] = []
-        if not cfg.enabled:
-            warn_reasons.append("sample_qc_disabled")
-        elif not cfg.linear_tpm_comparable:
-            warn_reasons.append("nonlinear_or_proxy_source_scale")
-        else:
-            if n_detected_raw < cfg.min_detected_genes:
-                fail_reasons.append("detected_genes_below_min")
-            if (
-                n_universal_present
-                and n_universal_nonzero < cfg.min_universal_nonzero_genes
-            ):
-                fail_reasons.append("universal_nonzero_below_min")
-            if (
-                n_universal_present
-                and universal_fraction < cfg.min_universal_nonzero_fraction
-            ):
-                fail_reasons.append("universal_nonzero_fraction_below_min")
-            if cfg.max_top_gene_fraction is not None and raw_total > 0:
-                if top_raw / raw_total > cfg.max_top_gene_fraction:
-                    fail_reasons.append("top_gene_fraction_above_max")
-            if cfg.max_top10_fraction is not None and raw_total > 0:
-                if top10_raw_sum / raw_total > cfg.max_top10_fraction:
-                    fail_reasons.append("top10_fraction_above_max")
-        if cfg.special_source_warning:
-            warn_reasons.append(cfg.special_source_warning)
-        status = "fail" if fail_reasons else ("warn" if warn_reasons else "pass")
-        all_reasons = fail_reasons + warn_reasons
-        rows.append({
-            "sample_id": sample,
-            "included": status != "fail",
-            "sample_qc_status": status,
-            "sample_qc_reasons": ";".join(all_reasons),
-            "n_genes_harmonized": n_genes,
-            "n_detected_raw": n_detected_raw,
-            "n_detected_clean": n_detected_clean,
-            "n_detected_clean_biological": n_detected_clean_bio,
-            "detected_raw_fraction": n_detected_raw / n_genes if n_genes else 0.0,
-            "source_zero_fraction": (
-                int(source_zero.get(sample, 0)) / n_genes if n_genes else 0.0
-            ),
-            "source_total_tpm_raw": raw_total,
-            "source_total_tpm_clean": clean_total,
-            "top1_tpm_raw": top_raw,
-            "top1_fraction_raw": top_raw / raw_total if raw_total > 0 else 0.0,
-            "top10_tpm_raw": top10_raw_sum,
-            "top10_fraction_raw": (
-                top10_raw_sum / raw_total if raw_total > 0 else 0.0
-            ),
-            "top1_tpm_clean": top_clean,
-            "top1_fraction_clean": (
-                top_clean / clean_total if clean_total > 0 else 0.0
-            ),
-            "top10_tpm_clean": top10_clean_sum,
-            "top10_fraction_clean": (
-                top10_clean_sum / clean_total if clean_total > 0 else 0.0
-            ),
-            "n_universal_genes_expected": n_universal_expected,
-            "n_universal_genes_present": n_universal_present,
-            "n_universal_genes_missing": (
-                n_universal_expected - n_universal_present
-            ),
-            "n_universal_nonzero_genes": n_universal_nonzero,
-            "universal_nonzero_fraction": universal_fraction,
-            "universal_floor_tpm": cfg.universal_floor_tpm,
-            "n_universal_ge_floor_genes": n_universal_floor,
-            "universal_ge_floor_fraction": universal_floor_fraction,
-            "source_scale_class": cfg.source_scale_class,
-            "linear_tpm_comparable": cfg.linear_tpm_comparable,
-            "source_numeric_values": parsed_numeric,
-            "source_numeric_missing_values": missing_numeric,
-            "source_parse_missing_fraction": (
-                missing_numeric / parse_total if parse_total else 0.0
-            ),
-            "missing_after_harmonization": int(missing_after.get(sample, 0)),
-        })
-    return pd.DataFrame(rows)
+        frs = [c for c in fail_cols if bool(fail_flags.at[sample, c])]
+        wrs = [c for c in warn_cols if bool(warn_flags.at[sample, c])]
+        status = "fail" if frs else ("warn" if wrs else "pass")
+        statuses.append(status)
+        reason_strs.append(";".join(frs + wrs))
+        included.append(status != "fail")
+
+    def _col(series: pd.Series):
+        return series.reindex(sample_ids).to_numpy()
+
+    return pd.DataFrame({
+        "sample_id": sample_ids,
+        "included": included,
+        "sample_qc_status": statuses,
+        "sample_qc_reasons": reason_strs,
+        "n_genes_harmonized": n_genes,
+        "n_detected_raw": _col(detected_raw),
+        "n_detected_clean": _col(detected_clean),
+        "n_detected_clean_biological": _col(detected_clean_biological),
+        "detected_raw_fraction": _col(detected_raw_fraction),
+        "source_zero_fraction": _col(source_zero_fraction),
+        "source_total_tpm_raw": _col(raw_totals),
+        "source_total_tpm_clean": _col(clean_totals),
+        "top1_tpm_raw": _col(top_gene_raw),
+        "top1_fraction_raw": _col(_safe_ratio(top_gene_raw, raw_totals)),
+        "top10_tpm_raw": _col(top10_raw),
+        "top10_fraction_raw": _col(_safe_ratio(top10_raw, raw_totals)),
+        "top1_tpm_clean": _col(top_gene_clean),
+        "top1_fraction_clean": _col(_safe_ratio(top_gene_clean, clean_totals)),
+        "top10_tpm_clean": _col(top10_clean),
+        "top10_fraction_clean": _col(_safe_ratio(top10_clean, clean_totals)),
+        "n_universal_genes_expected": n_universal_expected,
+        "n_universal_genes_present": n_universal_present,
+        "n_universal_genes_missing": n_universal_expected - n_universal_present,
+        "n_universal_nonzero_genes": _col(universal_detected),
+        "universal_nonzero_fraction": _col(universal_fraction),
+        "universal_floor_tpm": cfg.universal_floor_tpm,
+        "n_universal_ge_floor_genes": _col(universal_floor),
+        "universal_ge_floor_fraction": _col(universal_floor_fraction),
+        "source_scale_class": cfg.source_scale_class,
+        "linear_tpm_comparable": linear_comparable,
+        "source_numeric_values": _col(numeric_values),
+        "source_numeric_missing_values": _col(numeric_missing),
+        "source_parse_missing_fraction": _col(_safe_ratio(numeric_missing, parse_total)),
+        "missing_after_harmonization": _col(missing_after),
+    })
 
 
 _HIGH_EXPRESSION_UNRESOLVED_MAX_TPM = 1.0
@@ -866,15 +921,23 @@ def build_source(
     if values.columns.duplicated().any():
         seen: dict[str, int] = {}
         uniq = []
+        origin: dict[str, str] = {}
         for c in values.columns:
             if c in seen:
                 seen[c] += 1
-                uniq.append(f"{c}.{seen[c]}")
+                new = f"{c}.{seen[c]}"
             else:
                 seen[c] = 0
-                uniq.append(c)
+                new = c
+            uniq.append(new)
+            origin[new] = c
         values.columns = uniq
         missing_after_harmonization.index = uniq
+        # Carry parse diagnostics onto the renamed replicates so each reports its
+        # source column's parse counts instead of a misleading 0.
+        read_diagnostics = _diagnostics_for_uniquified_columns(
+            read_diagnostics, origin,
+        )
 
     if source.sample_to_cancer_code is not None:
         cohort_to_cols: dict[str, list[str]] = {}
