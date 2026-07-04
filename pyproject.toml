@@ -16,6 +16,12 @@ dynamic = ["version"]
 dependencies = [
     "matplotlib>=3.7.0",
     "numpy>=2.0.0",
+    # oncoref owns the cancer-type ontology/registry (single source of truth);
+    # pirlygenes re-exports it via load_dataset (pirlygenes#523 / oncoref#275).
+    # Floor 1.8.64: its registry is a superset of every code pirlygenes
+    # previously shipped (incl. ASTB, oncoref #223) AND it ships the
+    # median-of-ratios housekeeping normalization pirlygenes delegates to
+    # (oncoref #204 / #516).
     "oncoref>=1.8.64",
     "openpyxl>=3.1.0",
     "pandas>=2.0",

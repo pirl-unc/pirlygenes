@@ -71,14 +71,14 @@ _RENAMED_CODE_ALIASES_UPPER = {k.upper(): v for k, v in _RENAMED_CODE_ALIASES.it
 
 
 class _CancerTypeNamesView:
-    """Read-only ``{code: display_name}`` view backed by the registry CSV.
+    """Read-only ``{code: display_name}`` view backed by oncoref's registry.
 
     Trufflepig and downstream consumers treat ``CANCER_TYPE_NAMES`` as
     a dict (``.get(code)``, ``code in CANCER_TYPE_NAMES``, iteration).
-    Loading from the CSV at first access keeps the dict in lock-step
-    with the registry — adding a new subtype row to
-    ``cancer-type-registry.csv`` automatically extends the dict
-    without a code change here.
+    Loading via ``get_data("cancer-type-registry")`` (which re-exports
+    oncoref's registry) at first access keeps the dict in lock-step
+    with the registry — a new subtype added upstream in oncoref
+    automatically extends the dict without a code change here.
 
     The loaded mapping is cached on the instance after the first
     access; downstream callers in trufflepig hit this in tight loops
@@ -158,11 +158,11 @@ class _CancerTypeNamesView:
         return f"_CancerTypeNamesView({len(self._load())} codes)"
 
 
-# Registry-backed view of cancer code → display name. Reads
-# ``cancer-type-registry.csv`` lazily on first access and caches the
-# resolved mapping so adding a new subtype row automatically broadens
+# Registry-backed view of cancer code → display name. Reads oncoref's
+# re-exported registry lazily on first access and caches the resolved
+# mapping so a new subtype added upstream automatically broadens
 # ``resolve_cancer_type`` and trufflepig's label lookups without
-# repeated CSV-parse / iterrows cost on the hot path.
+# repeated parse / iterrows cost on the hot path.
 CANCER_TYPE_NAMES = _CancerTypeNamesView()
 
 
@@ -2790,6 +2790,7 @@ _PRIMARY_TISSUE_BURDEN = {
     "urethra": "bladder", "anal_canal": "anus",
     "fallopian_tube": "ovary", "peritoneum_serous": "ovary",  # HGSC pooled with OV
     "gallbladder": "gallbladder_biliary",
+    "biliary_tract": "gallbladder_biliary",  # BTC (oncoref biliary-tract parent)
     "thyroid": "thyroid", "thyroid_c_cell": "thyroid",
     "testis": "testicular_germ_cell",
     "pleura": "mesothelioma", "peritoneum": "mesothelioma",
@@ -2827,6 +2828,10 @@ _FAMILY_BURDEN = {
     "cns-ependymal": "brain_cns", "cns-sellar": "brain_cns",
     "cns-meningeal": "brain_cns", "cns-choroid": "brain_cns",
     "carcinoma-skin": "non_melanoma_skin",
+    # Mixed-/all-site neuroendocrine roll-ups (NET, NET_NONPANCREATIC,
+    # NEN_G3_EXTRAPULMONARY) have no single anatomic burden bucket; site-specific
+    # NETs (NET_PANCREAS -> pancreas, NET_LUNG -> lung) resolve by tissue first.
+    "neuroendocrine": "other_and_unknown_primary",
 }
 
 

@@ -310,6 +310,23 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     ``cancer-reference-expression`` table (~367 MB, ~1M string rows)
     dominated test-suite time (#278).
     """
+    # The cancer-type registry is owned by oncoref (the empirical base layer);
+    # pirlygenes re-exports it rather than shipping a divergent copy. Routing the
+    # load through oncoref keeps every consumer — cancer_type_registry(),
+    # CANCER_TYPE_NAMES, resolve_cancer_type, the cancer_types sub-library — on a
+    # single source of truth. Tests inject a fixture registry either by monkey-
+    # patching get_data wholesale or by passing _dataframes_dict; both bypass this
+    # branch, so the fixture path is unchanged. See pirlygenes#523 / oncoref#275.
+    if _dataframes_dict is None and name in (
+        "cancer-type-registry", "cancer-type-registry.csv"
+    ):
+        import oncoref
+
+        registry = _normalize_dataset_dtypes(
+            "cancer-type-registry", oncoref.cancer_type_registry()
+        )
+        return registry.copy() if copy else registry
+
     candidates = [name, name.lower()]
     for candidate in list(candidates):
         candidates.append(candidate + ".csv")

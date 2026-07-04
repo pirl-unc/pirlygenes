@@ -72,8 +72,8 @@ def test_burden_category_registry_driven():
     assert burden_category("MM") == "multiple_myeloma"
     assert burden_category("B_ALL") == "leukemia_all_other"
     # every registry code resolves to a real burden category (no silent gaps)
-    import pandas as pd
-    reg = pd.read_csv("pirlygenes/data/cancer-type-registry.csv")
+    from pirlygenes.gene_sets_cancer import cancer_type_registry
+    reg = cancer_type_registry()
     resolved = {c: burden_category(c) for c in reg["code"]}
     assert all(v is not None for v in resolved.values())
     assert set(resolved.values()) <= cats

@@ -44,19 +44,26 @@ _MISSING_THERAPY_AXIS = frozenset(
         # Phase C: the bone / RMS / ESS sarcomas (SARC_OS, SARC_EWS,
         # SARC_CHON/CHOR, SARC_GCTB, SARC_ESS_*, SARC_RMS_*) are now parented
         # under SARC and inherit its therapy axis, so they are no longer gaps.
-        "ACC", "ACINIC", "ADCC", "ATRT", "BL", "BLCA", "B_ALL", "CESC",
-        "CHOL", "CLL", "CML", "CTCL", "DLBC", "ESCA",
+        # ACINIC/ADCC/CHOL/GBC/NET_LUNG/NET_MIDGUT/NET_PANCREAS/NET_RECTAL now
+        # inherit a therapy axis through the parent links oncoref's registry
+        # adds (e.g. NET_* -> NET, CHOL/GBC -> BTC), so they are no longer gaps.
+        "ACC", "ATRT", "BL", "BLCA", "B_ALL", "CESC",
+        "CLL", "CML", "CTCL", "DLBC", "ESCA",
         "FL", "GBM", "HCL", "HEPB",
         "HL", "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC",
-        "NET_LUNG", "NEC_LUNG_LARGECELL", "MBL", "MCL", "MDS", "NEC_MERKEL",
-        "MESO", "NET_MIDGUT", "MM", "MPN", "MTC", "NPC", "NUTM",
-        "OV", "PAAD", "NET_PANCREAS", "PCPG", "RB", "NET_RECTAL",
+        "NEC_LUNG_LARGECELL", "MBL", "MCL", "MDS", "NEC_MERKEL",
+        "MESO", "MM", "MPN", "MTC", "NPC", "NUTM",
+        "OV", "PAAD", "PCPG", "RB",
         "RT", "SARC", "CRC",
         "SCLC", "STAD", "TGCT", "THCA", "THYM", "THYMCA", "T_ALL", "UCEC", "UCS",
         "UVM", "WILMS",
+        # Re-export of oncoref's registry (pirlygenes#523) adds these codes; no
+        # therapy-response signature is materialised for them yet.
+        "BTC", "CRC_MSI", "NET", "NEN_G3_EXTRAPULMONARY", "NSCLC", "RCC_NCC",
+        "SGC",
         # #294/#295 NCI-gap additions — curated registry entries; expression
         # data not yet built, so no therapy-axis panel is materialised yet.
-        "BCC", "cSCC", "VSCC", "PENSCC", "VAGC", "URETH", "ANSC", "GBC",
+        "BCC", "cSCC", "VSCC", "PENSCC", "VAGC", "URETH", "ANSC",
         "EPN", "CRANIO", "DIPG", "PITNET",
         # #358 CNS panel anchors — curated registry entries that anchor the
         # MENINGIOMA / CHOROID_PLEXUS family panels (#357); expression data and
@@ -76,6 +83,18 @@ _MISSING_THERAPY_AXIS = frozenset(
 # fields``. ``therapy_axis`` is seeded automatically from the baseline
 # set above; this dict carries the lineage / biomarker / therapy gaps.
 _TOLERATED_GAPS_EXPLICIT = {
+    # Re-export of oncoref's registry (pirlygenes#523) adds these codes; their
+    # pirlygenes gene-set panels (lineage/biomarker/therapy) aren't curated yet.
+    "BTC": {"lineage", "biomarker", "therapy"},
+    "CRC_MSI": {"lineage", "biomarker", "therapy"},
+    "NET": {"lineage", "biomarker", "therapy"},
+    "NET_NONPANCREATIC": {"lineage", "biomarker", "therapy"},
+    "NEN_G3_EXTRAPULMONARY": {"lineage", "biomarker", "therapy"},
+    "NSCLC": {"lineage", "biomarker", "therapy"},
+    "RCC_NCC": {"lineage", "biomarker", "therapy"},
+    "RCC_NCC_UNCLASSIFIED": {"lineage", "biomarker", "therapy"},
+    "SGC": {"lineage", "biomarker", "therapy"},
+    "SARC_MMNST": {"lineage", "biomarker", "therapy"},
     # Heme entries still awaiting curation
     "CLL": {"lineage"},
     "B_ALL": {"lineage", "biomarker", "therapy"},
