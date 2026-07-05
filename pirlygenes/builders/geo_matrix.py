@@ -351,11 +351,15 @@ def sample_qc_table(
     """
     cfg = config or SampleQcConfig()
     sample_ids = [str(c) for c in raw_values.columns]
-    raw_values = raw_values.copy()
+    # Work in float so the persisted TPM-value columns (totals, top1/top10) are
+    # always float64 regardless of input dtype — an integer input matrix would
+    # otherwise leave them int64. Count columns come from boolean reductions and
+    # stay int either way.
+    raw_values = raw_values.astype(float)
     clean_values = clean_values.reindex(
         index=raw_values.index,
         columns=raw_values.columns,
-    )
+    ).astype(float)
     raw_values.columns = sample_ids
     clean_values.columns = sample_ids
 

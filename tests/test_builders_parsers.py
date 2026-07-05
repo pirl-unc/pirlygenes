@@ -534,3 +534,53 @@ def test_sample_qc_table_tolerates_duplicate_ensg_gene_table():
     ).set_index("sample_id")
     assert bool(qc.loc["s1", "included"])
     assert int(qc.loc["s1", "n_universal_nonzero_genes"]) == 5
+
+
+def test_sample_qc_table_value_columns_are_float_for_integer_input():
+    """An integer-dtype input matrix still yields float64 TPM-value columns
+    (totals/top1/top10) while count columns stay integer, and the frame is
+    identical to the float-input frame."""
+    from pirlygenes.builders.geo_matrix import SampleQcConfig, sample_qc_table
+    from pirlygenes.gene_sets_cancer import housekeeping_gene_ids
+
+    hk = sorted(housekeeping_gene_ids())[:5]
+    genes = hk + ["ENSG00000141510"]
+    gene_table = pd.DataFrame({
+        "Ensembl_Gene_ID": genes,
+        "Symbol": [f"G{i}" for i in range(len(genes))],
+    })
+    cfg = SampleQcConfig(min_detected_genes=3, source_scale_class="linear_rnaseq_tpm")
+    raw_int = pd.DataFrame({"s1": [5, 5, 5, 5, 5, 100]}, index=genes, dtype=int)
+    qc = sample_qc_table(raw_int, raw_int.copy(), gene_table, config=cfg)
+
+    for col in ("source_total_tpm_raw", "source_total_tpm_clean",
+                "top1_tpm_raw", "top1_tpm_clean",
+                "top10_tpm_raw", "top10_tpm_clean"):
+        assert str(qc[col].dtype) == "float64", (col, qc[col].dtype)
+    for col in ("n_detected_raw", "n_detected_clean", "n_universal_nonzero_genes",
+                "source_numeric_values"):
+        assert "int" in str(qc[col].dtype), (col, qc[col].dtype)
+
+    raw_float = raw_int.astype(float)
+    qc_float = sample_qc_table(raw_float, raw_float.copy(), gene_table, config=cfg)
+    pd.testing.assert_frame_equal(qc, qc_float)
+
+
+def test_sample_qc_table_empty_input_keeps_full_schema():
+    """A zero-sample input returns an empty frame that still carries every QC
+    column, so downstream concat/consumers see a stable schema."""
+    from pirlygenes.builders.geo_matrix import SampleQcConfig, sample_qc_table
+    from pirlygenes.gene_sets_cancer import housekeeping_gene_ids
+
+    genes = sorted(housekeeping_gene_ids())[:3]
+    gene_table = pd.DataFrame({
+        "Ensembl_Gene_ID": genes, "Symbol": [f"G{i}" for i in range(len(genes))],
+    })
+    empty = pd.DataFrame(index=genes)
+    qc = sample_qc_table(
+        empty, empty.copy(), gene_table,
+        config=SampleQcConfig(source_scale_class="linear_rnaseq_tpm"),
+    )
+    assert len(qc) == 0
+    assert {"sample_id", "included", "sample_qc_status", "sample_qc_reasons",
+            "source_parse_missing_fraction"} <= set(qc.columns)
