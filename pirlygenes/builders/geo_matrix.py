@@ -57,6 +57,15 @@ class MatrixReadDiagnostics:
     numeric_value_count: pd.Series
     numeric_missing_count: pd.Series
     dropped_non_sample_columns: tuple[str, ...] = ()
+    # Per-ROW parse counts (positional over the kept sample columns). For a
+    # transposed source the rows are the samples, so these become the per-sample
+    # parse diagnostics after transpose. Empty when a caller doesn't need them.
+    row_numeric_value_count: pd.Series = field(
+        default_factory=lambda: pd.Series(dtype="int64")
+    )
+    row_numeric_missing_count: pd.Series = field(
+        default_factory=lambda: pd.Series(dtype="int64")
+    )
 
 
 @dataclass(frozen=True)
@@ -178,19 +187,34 @@ def read_matrix_with_diagnostics(
     numeric_value_counts: dict[str, int] = {}
     numeric_missing_counts: dict[str, int] = {}
     dropped_non_sample_columns: list[str] = []
+    kept_na_masks: list[np.ndarray] = []
     for col in list(df.columns):
         numeric = pd.to_numeric(df[col], errors="coerce")
-        if numeric.notna().sum() == 0:
+        na = numeric.isna()
+        if (~na).sum() == 0:
             df = df.drop(columns=col)
             dropped_non_sample_columns.append(str(col))
         else:
-            numeric_value_counts[str(col)] = int(numeric.notna().sum())
-            numeric_missing_counts[str(col)] = int(numeric.isna().sum())
+            numeric_value_counts[str(col)] = int((~na).sum())
+            numeric_missing_counts[str(col)] = int(na.sum())
+            kept_na_masks.append(na.to_numpy())
             df[col] = numeric.fillna(0.0)
+    # Per-ROW parse counts over the kept (sample) columns — computed positionally
+    # so they survive duplicate row labels. For a transposed source the rows are
+    # the samples, so these are the per-sample parse diagnostics after transpose.
+    if kept_na_masks:
+        na_block = np.column_stack(kept_na_masks)
+        row_missing = na_block.sum(axis=1).astype("int64")
+        row_values = (~na_block).sum(axis=1).astype("int64")
+    else:
+        row_missing = np.zeros(len(df.index), dtype="int64")
+        row_values = np.zeros(len(df.index), dtype="int64")
     return df, MatrixReadDiagnostics(
         numeric_value_count=pd.Series(numeric_value_counts, dtype="int64"),
         numeric_missing_count=pd.Series(numeric_missing_counts, dtype="int64"),
         dropped_non_sample_columns=tuple(dropped_non_sample_columns),
+        row_numeric_value_count=pd.Series(row_values, index=df.index),
+        row_numeric_missing_count=pd.Series(row_missing, index=df.index),
     )
 
 
@@ -222,16 +246,23 @@ def _default_source_scale_class(unit: Unit) -> str:
     return "linear_rnaseq_tpm"
 
 
-# Substrings that mark a source-scale class as NOT linear-TPM comparable. The
-# RNA-seq / count-derived / log2-inverse classes all resolve to linear TPM after
-# ``normalize_to_tpm``; only genuine proxy scales (microarray, rank/percentile
-# surrogates) are non-comparable.
-_NONLINEAR_SCALE_HINTS = ("proxy", "microarray", "rank", "percentile")
+# Source-scale classes that ARE linear-TPM comparable across cohorts. These all
+# resolve to linear TPM after ``normalize_to_tpm`` (see _default_source_scale_class).
+# This is an ALLOWLIST, not a blocklist: an unrecognized class — including any
+# future proxy / microarray / rank / percentile scale — is treated as NON-
+# comparable (warn-only) unless a source sets ``linear_tpm_comparable`` explicitly,
+# so a new proxy scale can never silently inherit the RNA-seq hard-fail thresholds.
+_LINEAR_SCALE_CLASSES = frozenset(
+    {"linear_rnaseq_tpm", "count_derived_tpm", "log2_tpm_inverse"}
+)
 
 
 def _scale_class_is_linear(source_scale_class: str) -> bool:
-    lowered = source_scale_class.lower()
-    return not any(hint in lowered for hint in _NONLINEAR_SCALE_HINTS)
+    if not source_scale_class:
+        # Unspecified → assume the default RNA-seq linear TPM (backward compatible
+        # bare-config default; the effective config always fills a real class).
+        return True
+    return source_scale_class in _LINEAR_SCALE_CLASSES
 
 
 def _resolve_linear_comparable(config: SampleQcConfig) -> bool:
@@ -272,16 +303,29 @@ def _diagnostics_for_uniquified_columns(
     """Re-key parse diagnostics onto uniquified sample columns.
 
     ``build_source`` renames duplicated sample columns (e.g. ``P-58`` ×15 →
-    ``P-58``, ``P-58.1``, …). The parser diagnostics are keyed by the ORIGINAL
+    ``P-58``, ``P-58.1``, …). The parse diagnostics are keyed by the ORIGINAL
     column names, so without this remap every renamed replicate misses the
     lookup and reports ``source_numeric_*`` / ``source_parse_missing_fraction``
-    as 0; here each uniquified name inherits its source column's counts.
+    as 0. Because the diagnostics Series can itself carry duplicate labels (the
+    transposed case, where sample rows repeat), each label's counts are drawn in
+    order — so identically named replicates get a per-replicate value rather than
+    colliding, and a label lookup never raises on a duplicated index.
     """
     def _remap(series: pd.Series) -> pd.Series:
-        return pd.Series(
-            {new: int(series.get(src, 0)) for new, src in origin.items()},
-            dtype="int64",
-        )
+        buckets: dict[str, list[int]] = {}
+        for label, val in zip(series.index.astype(str), series.to_numpy()):
+            buckets.setdefault(str(label), []).append(int(val))
+        cursor: dict[str, int] = {}
+        out: dict[str, int] = {}
+        for new, src in origin.items():
+            vals = buckets.get(src)
+            if not vals:
+                out[new] = 0
+                continue
+            i = min(cursor.get(src, 0), len(vals) - 1)
+            out[new] = vals[i]
+            cursor[src] = cursor.get(src, 0) + 1
+        return pd.Series(out, dtype="int64")
 
     return MatrixReadDiagnostics(
         numeric_value_count=_remap(diagnostics.numeric_value_count),
@@ -331,7 +375,14 @@ def sample_qc_table(
     # Align gene-level masks to the value-matrix rows BY LABEL: a caller whose
     # gene_table is reordered or a subset of the value rows still selects the
     # right genes (positional boolean masking silently mis-selected before).
+    # Collapse duplicate (stripped) ENSGs first so the by-ID mask index is unique
+    # — build_source already dedups, but this keeps direct callers that pass a
+    # non-deduplicated gene_table from hitting an opaque reindex error.
     gene_ids = gene_table["Ensembl_Gene_ID"].map(strip_version)
+    keep_first = ~gene_ids.duplicated()
+    if not keep_first.all():
+        gene_table = gene_table.loc[keep_first]
+        gene_ids = gene_ids.loc[keep_first]
     row_ids = pd.Index(raw_values.index).map(strip_version)
 
     removal_by_id = pd.Series(
@@ -849,14 +900,17 @@ def build_source(
         # File is samples-as-rows × genes-as-cols; transpose so the
         # rest of the pipeline (genes-as-rows, samples-as-cols) works.
         dropped_non_sample_columns = read_diagnostics.dropped_non_sample_columns
+        row_values = read_diagnostics.row_numeric_value_count.to_numpy()
+        row_missing = read_diagnostics.row_numeric_missing_count.to_numpy()
         matrix = matrix.T
         matrix.index.name = source.gene_id_col or "gene_id"
         matrix.columns = matrix.columns.astype(str)
-        # The parser diagnostics were column-oriented before transpose (genes,
-        # not samples), so do not report them as per-sample parse missingness.
+        # Rows were samples pre-transpose, so the per-ROW parse counts ARE the
+        # per-sample parse diagnostics. Attach them positionally to the now-
+        # transposed columns (same order as the original rows).
         read_diagnostics = MatrixReadDiagnostics(
-            numeric_value_count=pd.Series(dtype="int64"),
-            numeric_missing_count=pd.Series(dtype="int64"),
+            numeric_value_count=pd.Series(row_values, index=matrix.columns),
+            numeric_missing_count=pd.Series(row_missing, index=matrix.columns),
             dropped_non_sample_columns=dropped_non_sample_columns,
         )
         print(f"  transposed: now shape {matrix.shape} (genes × samples)")

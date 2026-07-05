@@ -449,3 +449,88 @@ def test_geo_matrix_mapping_audit_marks_unresolved_and_ambiguous_rows():
     assert summary["unresolved_row_count"] == 1
     assert summary["ambiguous_row_count"] == 1
     assert summary["high_expression_unresolved_row_count"] == 1
+
+
+# ─── review follow-up: parse diagnostics for transposed sources, etc. ─────
+
+
+def test_read_matrix_diagnostics_expose_per_row_parse_counts(tmp_path):
+    """read_matrix_with_diagnostics reports per-ROW parse counts (the per-sample
+    diagnostics for a transposed source) alongside the per-column ones."""
+    from pirlygenes.builders.geo_matrix import read_matrix_with_diagnostics
+
+    path = tmp_path / "transposed_like.tsv"
+    # rows = samples, cols = genes; S2 has one NA and one non-numeric cell.
+    path.write_text(
+        "sample\tG1\tG2\tG3\n"
+        "S1\t1\t2\t3\n"
+        "S2\tNA\tbad\t5\n"
+        "S3\t0\t0\t0\n",
+        encoding="utf-8",
+    )
+    _matrix, diag = read_matrix_with_diagnostics(
+        path, sep="\t", gene_id_col="sample", drop_cols=()
+    )
+    assert diag.row_numeric_value_count.to_dict() == {"S1": 3, "S2": 1, "S3": 3}
+    assert diag.row_numeric_missing_count.to_dict() == {"S1": 0, "S2": 2, "S3": 0}
+
+
+def test_diagnostics_for_uniquified_columns_handles_duplicate_labels():
+    """The remap draws a per-replicate count for identically named samples and
+    never raises on a duplicate-labeled diagnostics Series (the transposed case)."""
+    from pirlygenes.builders.geo_matrix import (
+        MatrixReadDiagnostics,
+        _diagnostics_for_uniquified_columns,
+    )
+
+    diag = MatrixReadDiagnostics(
+        numeric_value_count=pd.Series([3, 2, 1], index=["P-58", "P-58", "Q-1"]),
+        numeric_missing_count=pd.Series([0, 1, 0], index=["P-58", "P-58", "Q-1"]),
+    )
+    origin = {"P-58": "P-58", "P-58.1": "P-58", "Q-1": "Q-1"}
+    out = _diagnostics_for_uniquified_columns(diag, origin)
+    assert out.numeric_value_count.to_dict() == {"P-58": 3, "P-58.1": 2, "Q-1": 1}
+    assert out.numeric_missing_count.to_dict() == {"P-58": 0, "P-58.1": 1, "Q-1": 0}
+
+
+def test_scale_class_is_linear_is_an_allowlist():
+    """Only the known RNA-seq/count/log2 classes are comparable; an unrecognized
+    proxy-ish class resolves non-linear (warn-only), never RNA-seq hard-fail."""
+    from pirlygenes.builders.geo_matrix import (
+        SampleQcConfig,
+        _resolve_linear_comparable,
+        _scale_class_is_linear,
+    )
+
+    for known in ("linear_rnaseq_tpm", "count_derived_tpm", "log2_tpm_inverse", ""):
+        assert _scale_class_is_linear(known) is True
+    for unknown in ("affymetrix_array_intensity", "nanostring_ncounter",
+                    "quantile_normalized", "microarray_tpm_proxy"):
+        assert _scale_class_is_linear(unknown) is False
+    # explicit override still wins over the derived value
+    assert _resolve_linear_comparable(
+        SampleQcConfig(source_scale_class="nanostring_ncounter",
+                       linear_tpm_comparable=True)
+    ) is True
+
+
+def test_sample_qc_table_tolerates_duplicate_ensg_gene_table():
+    """A non-deduplicated gene_table (repeated ENSG) no longer raises; the
+    duplicate is collapsed before the by-ID mask is built."""
+    from pirlygenes.builders.geo_matrix import SampleQcConfig, sample_qc_table
+    from pirlygenes.gene_sets_cancer import housekeeping_gene_ids
+
+    hk = sorted(housekeeping_gene_ids())[:5]
+    genes = hk + ["ENSG00000141510"]
+    gene_table = pd.DataFrame({
+        "Ensembl_Gene_ID": genes + [hk[0]],  # hk[0] duplicated
+        "Symbol": [f"G{i}" for i in range(len(genes) + 1)],
+    })
+    raw = pd.DataFrame({"s1": [5, 5, 5, 5, 5, 100]}, index=genes, dtype=float)
+    qc = sample_qc_table(
+        raw, raw.copy(), gene_table,
+        config=SampleQcConfig(min_detected_genes=3,
+                              source_scale_class="linear_rnaseq_tpm"),
+    ).set_index("sample_id")
+    assert bool(qc.loc["s1", "included"])
+    assert int(qc.loc["s1", "n_universal_nonzero_genes"]) == 5
