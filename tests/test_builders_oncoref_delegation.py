@@ -151,3 +151,63 @@ def test_build_source_qc_mode_pass_filters_and_removes_stale_parquet(tmp_path, m
     # QC manifest still written (covers every sample); stale parquet removed.
     assert (cache_dir / "derived" / "LUAD_sample_qc.csv").exists()
     assert not (cache_dir / "derived" / "LUAD_per_sample_tpm.parquet").exists()
+
+
+def test_build_source_canonicalizes_cohort_code_stems(tmp_path, monkeypatch):
+    """A sample_to_cancer_code rule that emits a pre-rename alias (MID_NET) must
+    still land the QC manifest AND the per-sample parquet under the canonical
+    code (NET_MIDGUT) — one stem for every artifact, so nothing is orphaned."""
+    from pirlygenes import cohorts
+    from pirlygenes.builders import geo_matrix
+
+    cache_dir = tmp_path / "test-geo-alias"
+    cache_dir.mkdir()
+    (cache_dir / "matrix.tsv").write_text(_MATRIX, encoding="utf-8")
+    monkeypatch.setattr(cohorts.downloads, "source_cache_dir", lambda source_id: cache_dir)
+
+    shard_dir = tmp_path / "cancer-reference-expression"
+    counts = geo_matrix.build_source(
+        _make_source(sample_to_cancer_code=lambda s: "MID_NET"),  # alias for every sample
+        cache_dir=cache_dir, summary_output=shard_dir,
+    )
+    assert counts == {"NET_MIDGUT": 3}  # counts keyed by canonical code, not the alias
+    derived = cache_dir / "derived"
+    assert (derived / "NET_MIDGUT_sample_qc.csv").exists()
+    assert (derived / "NET_MIDGUT_per_sample_tpm.parquet").exists()
+    assert not (derived / "MID_NET_sample_qc.csv").exists()  # alias stem never written
+    shard = pd.read_csv(shard_dir / "TEST_GEO_ONCOREF.csv.gz")
+    assert set(shard["cancer_code"]) == {"NET_MIDGUT"}
+
+
+def _load_build_geo_matrix():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "scripts" / "build_geo_matrix.py"
+    spec = importlib.util.spec_from_file_location("build_geo_matrix_mod", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_build_geo_source_threads_qc_scale_knobs_from_yaml():
+    """_build_geo_source must forward sample_qc_mode / source_scale_class /
+    linear_tpm_comparable from the YAML entry — otherwise a proxy/microarray GEO
+    source can't be marked non-linear and oncoref's warn-only path is unreachable
+    (it would wrongly hit the RNA-seq hard-fail gates)."""
+    mod = _load_build_geo_matrix()
+    base = {"cancer_codes": ["BRCA"], "source_cohort": "X",
+            "file_url": "u", "file_name": "f", "unit": "TPM"}
+
+    proxy = mod._build_geo_source({**base,
+        "source_scale_class": "microarray_tpm_proxy",
+        "linear_tpm_comparable": False, "sample_qc_mode": "all"})
+    assert proxy.source_scale_class == "microarray_tpm_proxy"
+    assert proxy.linear_tpm_comparable is False
+    assert proxy.sample_qc_mode == "all"
+
+    # Defaults stay RNA-seq-linear / pass_or_warn for an ordinary TPM cohort.
+    default = mod._build_geo_source(base)
+    assert default.sample_qc_mode == "pass_or_warn"
+    assert default.source_scale_class == ""
+    assert default.linear_tpm_comparable is None

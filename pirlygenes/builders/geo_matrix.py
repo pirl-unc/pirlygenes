@@ -415,6 +415,17 @@ def build_source(
             )
         cohort_to_cols = {source.cancer_code: list(canon.sample_cols)}
 
+    # Canonicalize cohort codes once so every downstream artifact — the QC
+    # manifest CSV, the per-sample parquet, and the shard rows — shares one stem.
+    # write_per_sample / remove_per_sample canonicalize internally; without this
+    # the QC-CSV stem (written from the raw code) would diverge from the parquet
+    # when a sample_to_cancer_code rule emits a pre-rename alias. Merge collisions.
+    from ..gene_sets_cancer import canonical_cancer_code as _canonical_code
+    _canonicalized: dict[str, list[str]] = {}
+    for _code, _cols in cohort_to_cols.items():
+        _canonicalized.setdefault(_canonical_code(_code), []).extend(_cols)
+    cohort_to_cols = _canonicalized
+
     summaries: list[pd.DataFrame] = []
     counts_by_code: dict[str, int] = {}
     # Every code we evaluated (had ≥1 column), incl. any whose samples all fail

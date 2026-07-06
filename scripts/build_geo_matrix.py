@@ -112,6 +112,14 @@ def _build_geo_source(entry: dict) -> GeoMatrixSource:
         pipeline_stem=entry.get("pipeline_stem", ""),
         tumor_origin=entry.get("tumor_origin", "primary"),
         metastasis_site=entry.get("metastasis_site"),
+        # oncoref source-QC knobs. A proxy/microarray source declares
+        # source_scale_class + linear_tpm_comparable=False so oncoref skips the
+        # RNA-seq hard-fail gates (warn-only); sample_qc_mode picks which samples
+        # feed the summary + parquet. Without these the default (RNA-seq TPM,
+        # pass_or_warn) applies, correct for the linear-TPM GEO cohorts.
+        sample_qc_mode=entry.get("sample_qc_mode", "pass_or_warn"),
+        source_scale_class=entry.get("source_scale_class", ""),
+        linear_tpm_comparable=entry.get("linear_tpm_comparable"),
     )
 
 

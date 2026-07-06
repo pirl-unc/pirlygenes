@@ -49,8 +49,13 @@ Identifier mapping has a single intended home,
 `pirlygenes.builders.gene_mapping.resolve_symbol` (direct pyensembl →
 Entrez chain → NCBI-synonym + curated-alias rescue), which recovers renamed
 symbols (`HIST1H1T`→`H1-6`, `GNB2L1`→`RACK1`). It is used by:
-- the generic GEO-matrix builder (`geo_matrix._harmonize_by_symbol`), and
 - the Treehouse builder (`builders/treehouse.py`).
+
+**As of PR #527**, the GEO-matrix and CLL-map builders no longer resolve symbols
+locally: they delegate the whole source-gene contract (id → canonical ENSG,
+including HUGO/synonym rescue, in `oncoref`) via
+`pirlygenes.builders.oncoref_source.canonicalize_source`, so `geo_matrix` no
+longer carries `_harmonize_by_symbol`/`harmonize_gene_ids`.
 
 **Fixed in v5.10.0:** `build_geo_heme` (CML/MCL/MPN), `build_cllmap` (CLL),
 and `build_ctcl` (CTCL) now route their symbol resolution through the shared

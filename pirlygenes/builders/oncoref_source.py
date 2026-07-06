@@ -17,6 +17,13 @@ the canonical source-matrix contract:
 This module wraps those into the shapes pirlygenes builders already use
 (gene-id-indexed TPM matrix → ``gene_table`` + ENSG-indexed ``values``) so a
 builder swaps its local harmonizer for one call. See pirlygenes#526.
+
+Builders share this one gene-mapping path but opt into the *optional* layers as
+their input warrants: ``canonicalize_source(symbols=…)`` for HUGO rescue only
+when the source carries a symbol column separate from its id (cllmap's GENCODE19),
+and ``sample_qc(…)`` only where per-sample QC gating is wanted (the generic
+geo-matrix build). ENSG-native single-id sources (recount3, lnen, ne) need
+neither. The mapping/summing/parse-diagnostics contract is identical for all.
 """
 
 from __future__ import annotations
@@ -178,11 +185,13 @@ def canonicalize_source(
     )
     mapping_stats = source_gene_mapping_stats(audit)
     # ``canonicalize_source_gene_matrix`` stashes the mapping stats + parse
-    # diagnostics DataFrame in ``matrix.attrs``. That propagates to every derived
-    # frame and makes pandas ``concat`` raise ("truth value of a DataFrame is
+    # diagnostics DataFrame in ``matrix.attrs``. Those propagate to every derived
+    # frame and make pandas ``concat`` raise ("truth value of a DataFrame is
     # ambiguous") when it compares attrs. We surface both as explicit fields, so
-    # drop the attrs to keep downstream frames concat-safe.
-    matrix.attrs.clear()
+    # drop just those two keys (not the whole attrs dict — leave any other
+    # metadata a future oncoref release attaches intact) to keep frames concat-safe.
+    matrix.attrs.pop("source_value_parse_diagnostics", None)
+    matrix.attrs.pop("source_gene_mapping_stats", None)
 
     diag_source = raw_matrix if raw_matrix is not None else tpm_matrix
     diag_cols = _uniquify([str(c) for c in diag_source.columns])
