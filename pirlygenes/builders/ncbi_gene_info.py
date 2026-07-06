@@ -299,9 +299,8 @@ def harmonize_entrez_via_ncbi(
 
     Backward-compatible name for the shared
     :func:`pirlygenes.builders.gene_mapping.harmonize_entrez_matrix`.
-    Returns the same shape as ``geo_matrix.harmonize_gene_ids``: a
-    mapping table with columns ``(source_id, Ensembl_Gene_ID, Symbol)``
-    and the matrix re-aggregated (sum) per Ensembl_Gene_ID. The
+    Returns a mapping table with columns ``(source_id, Ensembl_Gene_ID,
+    Symbol)`` and the matrix re-aggregated (sum) per Ensembl_Gene_ID. The
     import is function-level because ``gene_mapping`` imports this
     module's table loaders.
     """

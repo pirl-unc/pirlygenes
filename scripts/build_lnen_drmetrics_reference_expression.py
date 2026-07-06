@@ -24,10 +24,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from pirlygenes.builders import oncoref_source as _osrc
 from pirlygenes.builders.geo_matrix import (
     _clean_tpm,
-    _technical_mask,
-    harmonize_gene_ids,
     normalize_to_tpm,
     read_matrix,
     _gene_lengths_kb_for_index,
@@ -126,15 +125,10 @@ def main() -> int:
     print(f"  gene lengths resolved for {len(lengths_kb)} of {len(matrix.index)} rows")
     tpm = normalize_to_tpm(matrix, unit="raw_counts", gene_lengths_kb=lengths_kb)
 
-    print(f"harmonizing → Ensembl release {args.ensembl_release}...")
-    mapping, values = harmonize_gene_ids(
-        tpm, gene_id_type="ensembl", ensembl_release=args.ensembl_release,
-    )
-    gene_table = (
-        mapping.drop_duplicates("Ensembl_Gene_ID")[["Ensembl_Gene_ID", "Symbol"]]
-        .reset_index(drop=True)
-    )
-    values = values.reindex(gene_table["Ensembl_Gene_ID"]).fillna(0.0)
+    print("canonicalizing gene ids via oncoref...")
+    canon = _osrc.canonicalize_source(tpm)
+    gene_table = canon.gene_table
+    values = canon.values
     print(f"  canonical genes: {len(gene_table)}")
 
     # Group samples by histology → cancer_code

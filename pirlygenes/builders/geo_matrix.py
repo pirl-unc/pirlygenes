@@ -36,13 +36,11 @@ from ..expression.stats import (
     finalize_reference_rows,
     upsert_to_shard,
 )
+from . import oncoref_source as _osrc
+from .oncoref_source import SampleQcMode
 from .gene_mapping import (
     GeneIdType,
-    aggregate_matrix_by_mapping,
     detect_id_type,
-    gene_from_ensembl_id,
-    harmonize_entrez_matrix,
-    resolve_symbol,
     strip_version,
 )
 
@@ -82,6 +80,15 @@ class GeoMatrixSource:
     # should override.
     tumor_origin: str = "primary"
     metastasis_site: str | None = None
+    # Source-scale class for the oncoref sample-QC contract. Empty → derived
+    # from ``unit`` (RNA-seq TPM). A non-linear / proxy source (microarray, rank,
+    # percentile) sets its own class + ``linear_tpm_comparable=False`` so the
+    # RNA-seq fail gates are skipped (warn-only). ``sample_qc_mode`` picks which
+    # samples feed the summary stats + per-sample parquet; the full QC manifest
+    # is persisted regardless so a consumer can re-filter at read time.
+    source_scale_class: str = ""
+    linear_tpm_comparable: bool | None = None
+    sample_qc_mode: SampleQcMode = "pass_or_warn"
 
 
 # ─── ID type detection ──────────────────────────────────────────────────────
@@ -204,68 +211,10 @@ def normalize_to_tpm(
     raise RuntimeError(f"unsupported unit: {unit!r}")
 
 
-# ─── Gene ID harmonization (Ensembl / HUGO / Entrez → Ensembl 112) ──────────
-
-def _harmonize_by_ensembl_id(
-    matrix: pd.DataFrame, ensembl_release: int,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Strip version suffix; map to (Ensembl_Gene_ID, Symbol) via pyensembl."""
-    genome = EnsemblRelease(ensembl_release)
-    rows = []
-    for raw in matrix.index:
-        result = gene_from_ensembl_id(genome, raw)
-        if result is None:
-            continue
-        ensembl_id, name = result
-        rows.append({
-            "source_id": str(raw),
-            "Ensembl_Gene_ID": ensembl_id,
-            "Symbol": name,
-        })
-    mapping = pd.DataFrame(rows)
-    return mapping, aggregate_matrix_by_mapping(matrix, mapping)
-
-
-def _harmonize_by_symbol(
-    matrix: pd.DataFrame, ensembl_release: int,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Resolve each HUGO symbol via the shared resolver (direct → synonym
-    rescue); drop ambiguous (>1 gene) and unresolved."""
-    genome = EnsemblRelease(ensembl_release)
-    rows = []
-    for raw in matrix.index:
-        result = resolve_symbol(genome, str(raw).strip())
-        if result is None:
-            continue
-        ensembl_id, name, _method = result
-        rows.append({
-            "source_id": str(raw).strip(),
-            "Ensembl_Gene_ID": ensembl_id,
-            "Symbol": name,
-        })
-    mapping = pd.DataFrame(rows)
-    return mapping, aggregate_matrix_by_mapping(matrix, mapping)
-
-
-def harmonize_gene_ids(
-    matrix: pd.DataFrame, *, gene_id_type: GeneIdType, ensembl_release: int,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Detect ID type if needed, then dispatch to the right harmonizer.
-
-    Returns (mapping_table, gene_indexed_tpm_matrix). The mapping has
-    columns (source_id, Ensembl_Gene_ID, Symbol). Entrez input goes
-    through the shared NCBI-backed chain (dbXrefs → current-symbol →
-    gene_history); Ensembl/HUGO go through pyensembl.
-    """
-    actual = gene_id_type
-    if gene_id_type == "auto":
-        actual = detect_gene_id_type(matrix.index)
-    if actual == "ensembl":
-        return _harmonize_by_ensembl_id(matrix, ensembl_release)
-    if actual == "entrez":
-        return harmonize_entrez_matrix(matrix, ensembl_release=ensembl_release)
-    return _harmonize_by_symbol(matrix, ensembl_release)
-
+# ─── Gene-length lookup (raw counts → TPM) ──────────────────────────────────
+# Gene-id *harmonization* is delegated to oncoref (see oncoref_source); this
+# module keeps only the pyensembl gene-length lookup that unit normalization
+# needs, since oncoref does not own unit conversion.
 
 def _gene_lengths_kb_for_index(
     ensembl_ids_or_symbols: Iterable[str], *,
@@ -311,6 +260,52 @@ def _gene_lengths_kb_for_index(
 # at the top of this module so builders can pull both from one place.)
 
 
+# ─── Raw read (source strings, for oncoref parse diagnostics) ───────────────
+
+def _read_raw_matrix(
+    path: Path, *, sep: str, gene_id_col: str, drop_cols: tuple[str, ...],
+) -> pd.DataFrame:
+    """Like :func:`read_matrix` but keep sample values as RAW strings.
+
+    oncoref's ``coerce_source_expression_values`` measures missing-vs-parse-fail-
+    vs-literal-zero on the source strings, so the numeric coercion is deferred to
+    it rather than done here. Gene-annotation columns (entirely non-numeric) are
+    still dropped, and empty gene-id rows removed, exactly as ``read_matrix``.
+    """
+    engine = "python" if (len(sep) > 1 or "\\" in sep) else "c"
+    read_kwargs = {"sep": sep, "engine": engine, "dtype": str}
+    if gene_id_col == "":
+        df = pd.read_csv(path, index_col=0, **read_kwargs)
+    else:
+        df = pd.read_csv(path, **read_kwargs)
+        if gene_id_col not in df.columns:
+            raise RuntimeError(
+                f"gene_id_col={gene_id_col!r} not in columns: {list(df.columns)[:10]}"
+            )
+        df = df.dropna(subset=[gene_id_col]).set_index(gene_id_col)
+    df.index = df.index.astype(str).str.strip()
+    df = df[df.index != ""]
+    for col in drop_cols:
+        if col in df.columns:
+            df = df.drop(columns=col)
+    for col in list(df.columns):
+        if pd.to_numeric(df[col], errors="coerce").notna().sum() == 0:
+            df = df.drop(columns=col)
+    return df
+
+
+def _artifact_stem(value: str) -> str:
+    return "".join(c if c.isalnum() or c in "._-" else "_" for c in value)
+
+
+def _write_derived_csv(cache_dir: Path, stem: str, frame: pd.DataFrame) -> Path:
+    derived = cache_dir / "derived"
+    derived.mkdir(parents=True, exist_ok=True)
+    path = derived / f"{_artifact_stem(stem)}.csv"
+    frame.to_csv(path, index=False)
+    return path
+
+
 # ─── End-to-end build ───────────────────────────────────────────────────────
 
 def build_source(
@@ -320,14 +315,23 @@ def build_source(
     summary_output: Path,
     ensembl_release: int = 112,
 ) -> dict[str, int]:
-    """Download, parse, normalize, harmonize, summarize, and upsert."""
+    """Download, parse, normalize, canonicalize (oncoref), QC, summarize, upsert.
+
+    Gene mapping (Ensembl / HUGO / Entrez / transcript / synonym → canonical
+    ENSG), parse diagnostics, the per-source-row mapping audit, and the
+    per-sample QC manifest are all delegated to oncoref via
+    :mod:`pirlygenes.builders.oncoref_source`. pirlygenes keeps unit → TPM
+    normalization, clean-TPM stats, the per-sample parquet, and the shard upsert.
+    """
+    import oncoref
+
     cache_dir.mkdir(parents=True, exist_ok=True)
     file_path = cache_dir / source.file_name
     print(f"downloading {source.file_name}...")
     _download(source.file_url, file_path)
 
     print(f"reading matrix (unit={source.unit}, sep={source.sep!r})...")
-    matrix = read_matrix(
+    raw = _read_raw_matrix(
         file_path,
         sep=source.sep,
         gene_id_col=source.gene_id_col,
@@ -336,70 +340,70 @@ def build_source(
     if source.transposed:
         # File is samples-as-rows × genes-as-cols; transpose so the
         # rest of the pipeline (genes-as-rows, samples-as-cols) works.
-        matrix = matrix.T
-        matrix.index.name = source.gene_id_col or "gene_id"
-        print(f"  transposed: now shape {matrix.shape} (genes × samples)")
+        raw = raw.T
+        raw.index.name = source.gene_id_col or "gene_id"
+        print(f"  transposed: now shape {raw.shape} (genes × samples)")
     if source.sample_filter is not None:
-        keep = source.sample_filter(list(matrix.columns))
-        matrix = matrix[keep]
-    print(f"  shape: {matrix.shape} (genes × samples)")
-    if matrix.shape[1] < 1:
+        keep = source.sample_filter(list(raw.columns))
+        raw = raw[keep]
+    print(f"  shape: {raw.shape} (genes × samples)")
+    if raw.shape[1] < 1:
         raise RuntimeError("matrix has 0 samples after filter")
 
-    # Detect ID type
+    # Numeric view for unit normalization: missing / parse-fail cells → 0 for the
+    # per-sample TPM sum. The missing-vs-zero distinction is preserved separately
+    # by oncoref's parse diagnostics (computed from ``raw``), so no source
+    # missingness is silently collapsed into a measured zero before QC.
+    numeric = raw.apply(lambda c: pd.to_numeric(c, errors="coerce")).fillna(0.0)
+
     gene_id_type = source.gene_id_type
     if gene_id_type == "auto":
-        gene_id_type = detect_gene_id_type(matrix.index)
+        gene_id_type = detect_gene_id_type(numeric.index)
     print(f"  detected gene_id_type: {gene_id_type}")
 
-    # Unit normalization → TPM
+    # Unit normalization → TPM (pirlygenes owns unit conversion; oncoref does not).
     if source.unit == "raw_counts":
         print("  computing gene lengths (kb) for length-normalization...")
         lengths_kb = _gene_lengths_kb_for_index(
-            matrix.index, gene_id_type=gene_id_type, ensembl_release=ensembl_release,
+            numeric.index, gene_id_type=gene_id_type, ensembl_release=ensembl_release,
         )
-        print(f"  got lengths for {len(lengths_kb)} / {len(matrix.index)} rows")
-        tpm = normalize_to_tpm(matrix, unit=source.unit, gene_lengths_kb=lengths_kb)
+        print(f"  got lengths for {len(lengths_kb)} / {len(numeric.index)} rows")
+        tpm = normalize_to_tpm(numeric, unit=source.unit, gene_lengths_kb=lengths_kb)
     else:
-        tpm = normalize_to_tpm(matrix, unit=source.unit)
+        tpm = normalize_to_tpm(numeric, unit=source.unit)
     print(f"  per-sample sums (after TPM normalize, first 3): "
           f"{tpm.sum(axis=0).head(3).to_dict()}")
 
-    # Harmonize → Ensembl
-    print(f"  harmonizing → Ensembl release {ensembl_release}...")
-    mapping, values = harmonize_gene_ids(
-        tpm, gene_id_type=gene_id_type, ensembl_release=ensembl_release,
+    # Canonicalize gene ids (release-independent, incl. Entrez) via oncoref.
+    print("  canonicalizing gene ids via oncoref...")
+    canon = _osrc.canonicalize_source(
+        tpm, row_id_name=source.gene_id_col or "gene_id", raw_matrix=raw,
     )
-    print(f"  resolved {len(mapping)}/{len(tpm.index)} rows → "
-          f"{len(values)} canonical genes")
+    gene_table = canon.gene_table
+    values = canon.values
+    stats = canon.mapping_stats
+    print(f"  resolved {stats['n_resolved_rows']}/{stats['n_source_rows']} rows → "
+          f"{len(gene_table)} canonical genes "
+          f"({stats['n_ambiguous_rows']} ambiguous, "
+          f"{stats['n_high_expression_unresolved_rows']} high-expression unresolved)")
+    stem = _artifact_stem(source.source_cohort)
+    audit_path = _write_derived_csv(cache_dir, f"{stem}_mapping_audit", canon.audit)
+    _write_derived_csv(cache_dir, f"{stem}_parse_diagnostics", canon.parse_diagnostics)
+    print(f"  mapping audit + parse diagnostics: {audit_path.parent}")
 
-    # Build per-gene-per-cohort rows. The cancer_code may be a list when
-    # the same matrix splits across multiple codes (e.g. NET_LUNG vs
-    # NEC_LUNG_LARGECELL) via sample_to_cancer_code.
-    gene_table = (
-        mapping.drop_duplicates("Ensembl_Gene_ID")[["Ensembl_Gene_ID", "Symbol"]]
-        .reset_index(drop=True)
+    metadata = _osrc.source_metadata(
+        unit=source.unit,
+        source_scale_class=source.source_scale_class,
+        linear_tpm_comparable=source.linear_tpm_comparable,
+        source_cohort=source.source_cohort,
+        source_type=source.source_project,
     )
-    values = values.reindex(gene_table["Ensembl_Gene_ID"]).fillna(0.0)
 
-    # Some source matrices repeat a sample id across columns (e.g. GSE294016
-    # ADCC has P-58/P-77 ×15). Uniquify so each is a distinct per-sample column
-    # — required for the per-sample parquet (and harmless for the summary).
-    if values.columns.duplicated().any():
-        seen: dict[str, int] = {}
-        uniq = []
-        for c in values.columns:
-            if c in seen:
-                seen[c] += 1
-                uniq.append(f"{c}.{seen[c]}")
-            else:
-                seen[c] = 0
-                uniq.append(c)
-        values.columns = uniq
-
+    # Split by cancer_code. The cancer_code may be a list when the same matrix
+    # splits across multiple codes (e.g. NET_LUNG vs NEC_LUNG_LARGECELL).
     if source.sample_to_cancer_code is not None:
         cohort_to_cols: dict[str, list[str]] = {}
-        for col in values.columns:
+        for col in canon.sample_cols:
             code = source.sample_to_cancer_code(col)
             if code is None:
                 continue
@@ -409,18 +413,39 @@ def build_source(
             raise RuntimeError(
                 "cancer_code is a list but no sample_to_cancer_code provided"
             )
-        cohort_to_cols = {source.cancer_code: list(values.columns)}
+        cohort_to_cols = {source.cancer_code: list(canon.sample_cols)}
 
     summaries: list[pd.DataFrame] = []
     counts_by_code: dict[str, int] = {}
+    # Every code we evaluated (had ≥1 column), incl. any whose samples all fail
+    # QC. Passed to upsert_to_shard so a fully-failed code's stale shard rows are
+    # REMOVED on rebuild rather than left behind under the preserve-others rule.
+    processed_codes: list[str] = []
     for code, cols in cohort_to_cols.items():
         if not cols:
             continue
-        sub_values = values[cols]
-        # Persist the per-code per-sample matrix for medoids + percentiles
-        # (uniform with every other per-sample cohort; the read path discovers
-        # it by code==stem under this source's cache). One hook covers every
-        # geo_matrix source.
+        processed_codes.append(code)
+        sub_matrix = canon.matrix[["Ensembl_Gene_ID", "Symbol", *cols]]
+        # Per-sample QC (oncoref). The manifest covers EVERY sample; ``kept`` is
+        # the subset that feeds the summary stats + parquet, per sample_qc_mode.
+        qc, kept = _osrc.sample_qc(
+            sub_matrix, cols, metadata=metadata, cancer_type=code,
+            mode=source.sample_qc_mode,
+        )
+        qc_path = _write_derived_csv(cache_dir, f"{code}_sample_qc", qc)
+        n_excluded = len(cols) - len(kept)
+        if n_excluded:
+            print(f"    {code}: excluding {n_excluded} QC-filtered sample(s) "
+                  f"(mode={source.sample_qc_mode}); manifest: {qc_path}")
+        if not kept:
+            print(f"    {code}: all samples failed generic expression QC")
+            # Drop any stale per-sample parquet from a previous build so the
+            # read path can't serve a code that now contributes no samples.
+            from ..cohorts import remove_per_sample as _remove_per_sample
+            _remove_per_sample(cache_dir.name, code)
+            continue
+        sub_values = values[kept]
+        # Persist the per-code per-sample matrix for medoids + percentiles.
         from ..cohorts import write_per_sample as _write_per_sample
         _write_per_sample(gene_table, sub_values, cache_dir.name, code)
         clean = _clean_tpm(sub_values, gene_table=gene_table)
@@ -430,24 +455,24 @@ def build_source(
         out["source_project"] = source.source_project
         out["source_version"] = (
             f"{source.citation}; gene-id-type={gene_id_type}; "
-            f"unit={source.unit}; harmonized to Ensembl release "
-            f"{ensembl_release}"
+            f"unit={source.unit}; oncoref-canonicalized (oncoref {oncoref.__version__})"
         )
         assign_stats(out, sub_values, clean)
         pipeline_stem = source.pipeline_stem or source.source_cohort.lower()
+        unit_slug = source.unit.lower().replace('(', '').replace(')', '').replace('+', 'plus')
         out["processing_pipeline"] = (
-            f"{pipeline_stem}_{source.unit.lower().replace('(','').replace(')','').replace('+','plus')}"
-            f"_to_tpm_ensembl{ensembl_release}_clean_tpm_16_9_75"
+            f"{pipeline_stem}_{unit_slug}_to_tpm_oncoref_canonical_clean_tpm_16_9_75"
         )
         out["notes"] = source.notes or (
-            f"Per-sample expression from {source.source_cohort} (n={len(cols)}). "
-            f"Unit-normalized to TPM; tech-RNA-zeroed; v5.3 stats."
+            f"Per-sample expression from {source.source_cohort} (n={len(kept)}). "
+            f"Unit-normalized to TPM; oncoref-canonicalized gene ids; "
+            f"tech-RNA-zeroed; v5.3 stats."
         )
         out["metastasis_site"] = source.metastasis_site if source.metastasis_site else pd.NA
         out = finalize_reference_rows(out, tumor_origin=source.tumor_origin)
         summaries.append(out)
-        counts_by_code[code] = len(cols)
-        print(f"    {code}: n={len(cols)} → {len(out)} gene rows")
+        counts_by_code[code] = len(kept)
+        print(f"    {code}: n={len(kept)} → {len(out)} gene rows")
 
     if not summaries:
         raise RuntimeError("no cohort had samples after filtering")
@@ -455,7 +480,7 @@ def build_source(
     upsert_to_shard(
         summary_output, combined,
         source_cohort=source.source_cohort,
-        cancer_codes=list(counts_by_code.keys()),
+        cancer_codes=processed_codes,
     )
     print(f"  upserted {len(combined)} rows into shard "
           f"{source.source_cohort}.csv.gz")
@@ -469,7 +494,6 @@ __all__ = [
     "detect_gene_id_type",
     "read_matrix",
     "normalize_to_tpm",
-    "harmonize_gene_ids",
     "build_source",
     # Re-exported shared clean-TPM helpers (builders import them from here).
     "_clean_tpm",
