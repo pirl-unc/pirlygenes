@@ -584,3 +584,119 @@ def test_sample_qc_table_empty_input_keeps_full_schema():
     assert len(qc) == 0
     assert {"sample_id", "included", "sample_qc_status", "sample_qc_reasons",
             "source_parse_missing_fraction"} <= set(qc.columns)
+
+
+# ─── review follow-up: fixes for stale-shard / entrez-reuse / audit / diag ───
+
+
+def test_mapping_audit_blanks_sample_with_max_for_all_zero_rows():
+    """A gene row that is 0 in every sample must NOT name a peak sample; the
+    ``source_expression_sample_with_max`` field is blank when max is 0."""
+    from pirlygenes.builders.geo_matrix import mapping_audit_table
+
+    matrix = pd.DataFrame(
+        {"sampleA": [2.0, 0.0], "sampleB": [1.0, 0.0]},
+        index=["A", "Z"],
+    )
+    mapping = pd.DataFrame({
+        "source_id": ["A"],
+        "Ensembl_Gene_ID": ["ENSG000001"],
+        "Symbol": ["GENEA"],
+        "mapping_method": ["symbol"],
+    })
+    audit = mapping_audit_table(
+        matrix, mapping, detected_gene_id_type="hugo",
+    ).set_index("source_id")
+    # Expressed row still names its peak sample.
+    assert audit.loc["A", "source_expression_max"] == 2.0
+    assert audit.loc["A", "source_expression_sample_with_max"] == "sampleA"
+    # All-zero row: max is 0 and the peak-sample field is blank, not "sampleA".
+    assert audit.loc["Z", "source_expression_max"] == 0.0
+    assert audit.loc["Z", "source_expression_sample_with_max"] == ""
+
+
+def test_harmonize_entrez_matrix_records_mapping_method(monkeypatch):
+    """The consolidated Entrez harmonizer records a ``mapping_method`` column
+    (for the mapping audit) and keeps stable columns even when nothing maps —
+    so geo_matrix can route Entrez through it without a second implementation."""
+    from pirlygenes.builders import gene_mapping
+
+    monkeypatch.setattr(
+        gene_mapping, "cached_entrez_to_symbol", lambda: {"780": "DDR1"},
+    )
+    monkeypatch.setattr(gene_mapping, "cached_entrez_to_ensembl", lambda: {})
+    monkeypatch.setattr(gene_mapping, "cached_entrez_history", lambda: {})
+
+    counts = pd.DataFrame({"sampleA": [100, 5]}, index=["780", "99999"])
+    counts.index.name = "gene_id"
+    mapping, by_ensg = gene_mapping.harmonize_entrez_matrix(
+        counts, ensembl_release=112,
+    )
+    assert "mapping_method" in mapping.columns
+    assert (mapping["mapping_method"] != "").all()
+    # mapping_method must NOT leak into the aggregated matrix as a sample column.
+    assert list(by_ensg.columns) == ["sampleA"]
+
+    # All-unresolvable input → empty mapping that still carries the 4 columns
+    # (no bare-empty-frame KeyError for a downstream drop_duplicates/audit).
+    monkeypatch.setattr(
+        gene_mapping, "cached_entrez_to_symbol", lambda: {"99999": "ZZBOGUS"},
+    )
+    empty_mapping, _ = gene_mapping.harmonize_entrez_matrix(
+        pd.DataFrame({"sampleA": [1]}, index=["99999"]), ensembl_release=112,
+    )
+    assert empty_mapping.empty
+    assert list(empty_mapping.columns) == [
+        "source_id", "Ensembl_Gene_ID", "Symbol", "mapping_method",
+    ]
+
+
+def test_select_diagnostics_columns_aligns_after_filter():
+    """A sample_filter that drops columns must leave the parse diagnostics
+    aligned with the survivors (label-based, duplicate-safe), so the later
+    uniquify remap can't draw a stale count."""
+    from pirlygenes.builders.geo_matrix import (
+        MatrixReadDiagnostics,
+        _diagnostics_for_uniquified_columns,
+        _select_diagnostics_columns,
+    )
+
+    # Transposed-style diagnostics: duplicate "P-58" replicates + a "Q-1".
+    diag = MatrixReadDiagnostics(
+        numeric_value_count=pd.Series([3, 2, 9, 1], index=["P-58", "P-58", "DROP", "Q-1"]),
+        numeric_missing_count=pd.Series([0, 1, 4, 0], index=["P-58", "P-58", "DROP", "Q-1"]),
+    )
+    # Filter drops the "DROP" sample; both P-58 replicates are kept (a label
+    # filter can only keep/drop a whole label group, never split it).
+    kept = _select_diagnostics_columns(diag, ["P-58", "Q-1"])
+    assert list(kept.numeric_value_count.index) == ["P-58", "P-58", "Q-1"]
+    assert list(kept.numeric_value_count.to_numpy()) == [3, 2, 1]
+
+    # The uniquify remap then draws the right per-replicate counts.
+    origin = {"P-58": "P-58", "P-58.1": "P-58", "Q-1": "Q-1"}
+    out = _diagnostics_for_uniquified_columns(kept, origin)
+    assert out.numeric_value_count.to_dict() == {"P-58": 3, "P-58.1": 2, "Q-1": 1}
+    assert out.numeric_missing_count.to_dict() == {"P-58": 0, "P-58.1": 1, "Q-1": 0}
+
+
+def test_remove_per_sample_deletes_stale_parquet(tmp_path, monkeypatch):
+    """remove_per_sample deletes an existing per-sample parquet (canonicalising
+    the code like write_per_sample) so a fully-QC-failed code leaves nothing for
+    the discovery read path to serve, and is a no-op when absent."""
+    from pirlygenes import cohorts
+
+    derived = tmp_path / "derived"
+    derived.mkdir(parents=True)
+    monkeypatch.setattr(
+        cohorts.downloads, "source_cache_dir", lambda source_id: tmp_path,
+    )
+    gene_table = pd.DataFrame({"Ensembl_Gene_ID": ["ENSG1"], "Symbol": ["G1"]})
+    values = pd.DataFrame({"s1": [1.0]}, index=["ENSG1"])
+    written = cohorts.write_per_sample(gene_table, values, "src", "LUAD")
+    assert written.exists()
+
+    removed = cohorts.remove_per_sample("src", "LUAD")
+    assert removed == written
+    assert not written.exists()
+    # Second call is a no-op (nothing to remove).
+    assert cohorts.remove_per_sample("src", "LUAD") is None

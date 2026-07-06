@@ -41,8 +41,8 @@ from .gene_mapping import (
     GeneIdType,
     aggregate_matrix_by_mapping,
     detect_id_type,
-    entrez_to_gene,
     gene_from_ensembl_id,
+    harmonize_entrez_matrix,
     resolve_symbol,
     strip_version,
 )
@@ -334,6 +334,34 @@ def _diagnostics_for_uniquified_columns(
     )
 
 
+def _select_diagnostics_columns(
+    diagnostics: MatrixReadDiagnostics, keep: Iterable[str],
+) -> MatrixReadDiagnostics:
+    """Subset the per-column parse diagnostics to the kept sample labels.
+
+    Called in lockstep with ``matrix[keep]`` so a source's ``sample_filter``
+    (or any column drop) leaves the diagnostics aligned with the surviving
+    columns rather than still carrying the pre-filter set. Selection is
+    label-based to mirror ``matrix[keep]`` exactly — including the
+    duplicate-label case (a transposed source with repeated sample IDs),
+    where both return every column matching a kept label, in index order —
+    so the later per-replicate remap can never draw a stale/misaligned count.
+    """
+    keep = [str(c) for c in keep]
+
+    def _sel(series: pd.Series) -> pd.Series:
+        if series.empty:
+            return series
+        present = [k for k in keep if k in series.index]
+        return series.loc[present]
+
+    return replace(
+        diagnostics,
+        numeric_value_count=_sel(diagnostics.numeric_value_count),
+        numeric_missing_count=_sel(diagnostics.numeric_missing_count),
+    )
+
+
 def sample_qc_table(
     raw_values: pd.DataFrame,
     clean_values: pd.DataFrame,
@@ -544,6 +572,10 @@ def mapping_audit_table(
         expression_total = matrix.sum(axis=1).to_numpy(dtype=float)
         expression_max = matrix.max(axis=1).to_numpy(dtype=float)
         sample_with_max = matrix.idxmax(axis=1).astype(str).to_numpy()
+        # ``idxmax`` returns the FIRST column label for an all-zero row, which
+        # would falsely attribute a peak to a sample where the gene reads zero.
+        # Blank the peak-sample wherever there is no positive expression.
+        sample_with_max = np.where(expression_max > 0, sample_with_max, "")
         nonzero_samples = (matrix > 0).sum(axis=1).to_numpy(dtype=int)
     else:
         expression_total = np.zeros(len(matrix.index), dtype=float)
@@ -785,43 +817,17 @@ def _harmonize_by_symbol(
     )
 
 
-def _harmonize_by_entrez_id(
-    matrix: pd.DataFrame, ensembl_release: int,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Resolve Entrez IDs through the shared NCBI chain, keeping method labels."""
-    genome = EnsemblRelease(ensembl_release)
-    rows = []
-    for raw in matrix.index:
-        entrez_id = str(raw).strip()
-        if not entrez_id.isdigit():
-            continue
-        result = entrez_to_gene(genome, entrez_id)
-        if result is None:
-            continue
-        ensembl_id, name, method = result
-        rows.append({
-            "source_id": entrez_id,
-            "Ensembl_Gene_ID": ensembl_id,
-            "Symbol": name,
-            "mapping_method": method,
-        })
-    mapping = _mapping_frame(rows)
-    if mapping.empty:
-        return mapping, pd.DataFrame(columns=matrix.columns)
-    return mapping, aggregate_matrix_by_mapping(
-        matrix, mapping[["source_id", "Ensembl_Gene_ID", "Symbol"]],
-    )
-
-
 def harmonize_gene_ids(
     matrix: pd.DataFrame, *, gene_id_type: GeneIdType, ensembl_release: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Detect ID type if needed, then dispatch to the right harmonizer.
 
     Returns (mapping_table, gene_indexed_tpm_matrix). The mapping has
-    columns (source_id, Ensembl_Gene_ID, Symbol). Entrez input goes
-    through the shared NCBI-backed chain (dbXrefs → current-symbol →
-    gene_history); Ensembl/HUGO go through pyensembl.
+    columns (source_id, Ensembl_Gene_ID, Symbol, mapping_method). Entrez
+    input goes through the shared NCBI-backed chain
+    (:func:`harmonize_entrez_matrix`: dbXrefs → current-symbol →
+    gene_history); Ensembl/HUGO go through pyensembl. All three paths
+    label each row's ``mapping_method`` for the mapping audit.
     """
     actual = gene_id_type
     if gene_id_type == "auto":
@@ -829,7 +835,7 @@ def harmonize_gene_ids(
     if actual == "ensembl":
         return _harmonize_by_ensembl_id(matrix, ensembl_release)
     if actual == "entrez":
-        return _harmonize_by_entrez_id(matrix, ensembl_release)
+        return harmonize_entrez_matrix(matrix, ensembl_release=ensembl_release)
     return _harmonize_by_symbol(matrix, ensembl_release)
 
 
@@ -921,6 +927,10 @@ def build_source(
     if source.sample_filter is not None:
         keep = source.sample_filter(list(matrix.columns))
         matrix = matrix[keep]
+        # Keep the per-sample parse diagnostics aligned with the surviving
+        # columns; otherwise a filtered transposed source would remap stale
+        # pre-filter counts onto its (uniquified) replicate columns.
+        read_diagnostics = _select_diagnostics_columns(read_diagnostics, keep)
     print(f"  shape: {matrix.shape} (genes × samples)")
     if matrix.shape[1] < 1:
         raise RuntimeError("matrix has 0 samples after filter")
@@ -1013,10 +1023,16 @@ def build_source(
 
     summaries: list[pd.DataFrame] = []
     counts_by_code: dict[str, int] = {}
+    # Every code we evaluated (had ≥1 column), including any whose samples all
+    # fail QC. This — not counts_by_code — is what upsert_to_shard replaces, so a
+    # code that fully fails on a rebuild has its now-superseded shard rows REMOVED
+    # rather than silently left behind under the "preserve other codes" contract.
+    processed_codes: list[str] = []
     sample_qc_config = _effective_sample_qc_config(source.sample_qc, source.unit)
     for code, cols in cohort_to_cols.items():
         if not cols:
             continue
+        processed_codes.append(code)
         sub_values = values[cols]
         missing_after_sub = missing_after_harmonization.reindex(cols).fillna(0).astype(int)
         clean = _clean_tpm(sub_values, gene_table=gene_table)
@@ -1041,6 +1057,12 @@ def build_source(
             clean = clean[keep]
             if sub_values.shape[1] == 0:
                 print(f"    {code}: all samples failed generic expression QC")
+                # Drop any per-sample parquet from a previous build so the
+                # medoid/percentile read path can't serve stale data for a code
+                # that now contributes no samples. (Its shard rows are removed
+                # via processed_codes → cancer_codes below.)
+                from ..cohorts import remove_per_sample as _remove_per_sample
+                _remove_per_sample(cache_dir.name, code)
                 continue
         # Persist the per-code per-sample matrix for medoids + percentiles
         # (uniform with every other per-sample cohort; the read path discovers
@@ -1080,7 +1102,7 @@ def build_source(
     upsert_to_shard(
         summary_output, combined,
         source_cohort=source.source_cohort,
-        cancer_codes=list(counts_by_code.keys()),
+        cancer_codes=processed_codes,
     )
     print(f"  upserted {len(combined)} rows into shard "
           f"{source.source_cohort}.csv.gz")

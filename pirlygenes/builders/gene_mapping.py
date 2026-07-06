@@ -355,10 +355,15 @@ def harmonize_entrez_matrix(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Entrez-indexed matrix → (mapping, ENSG-indexed sum-aggregated matrix).
 
-    Mapping columns are ``(source_id, Ensembl_Gene_ID, Symbol)``. Each
-    Entrez ID goes through the shared :func:`entrez_to_gene` chain
-    (dbXrefs → current-symbol → gene_history), so this benefits from the
-    same recovery every other dataset gets.
+    Mapping columns are ``(source_id, Ensembl_Gene_ID, Symbol,
+    mapping_method)``. Each Entrez ID goes through the shared
+    :func:`entrez_to_gene` chain (dbXrefs → current-symbol → gene_history),
+    so this benefits from the same recovery every other dataset gets. The
+    ``mapping_method`` column records which tier resolved each row (for the
+    builder-side mapping audit); it is dropped before aggregation so it is
+    never mistaken for a sample column. The columns are fixed even when the
+    mapping is empty so downstream ``drop_duplicates("Ensembl_Gene_ID")`` /
+    audit callers never hit a ``KeyError`` on a bare empty frame.
     """
     from pyensembl import EnsemblRelease
 
@@ -374,18 +379,24 @@ def harmonize_entrez_matrix(
         if result is None:
             unresolved += 1
             continue
-        ensembl_id, name, _ = result
+        ensembl_id, name, method = result
         rows.append({
             "source_id": entrez_id,
             "Ensembl_Gene_ID": ensembl_id,
             "Symbol": name,
+            "mapping_method": method,
         })
         resolved += 1
     print(f"  Entrez→ENSG: resolved={resolved:,}, unresolved={unresolved:,}")
-    mapping = pd.DataFrame(rows)
+    mapping = pd.DataFrame(
+        rows,
+        columns=["source_id", "Ensembl_Gene_ID", "Symbol", "mapping_method"],
+    )
     if mapping.empty:
         return mapping, pd.DataFrame(columns=matrix.columns)
-    return mapping, aggregate_matrix_by_mapping(matrix, mapping)
+    return mapping, aggregate_matrix_by_mapping(
+        matrix, mapping[["source_id", "Ensembl_Gene_ID", "Symbol"]],
+    )
 
 
 __all__ = [
