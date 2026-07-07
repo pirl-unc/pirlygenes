@@ -533,20 +533,3 @@ def write_per_sample(gene_table: pd.DataFrame, values: pd.DataFrame,
     path = derived / f"{code}{PER_SAMPLE_SUFFIX}"
     out.to_parquet(path, index=False)
     return path
-
-
-def remove_per_sample(source_id: str, code: str):
-    """Delete a cohort's per-sample TPM parquet if one exists; return its path
-    (or ``None`` if there was nothing to remove).
-
-    Mirrors :func:`write_per_sample`'s path + code canonicalisation so a code
-    that now contributes no samples — e.g. every sample failed QC on a rebuild
-    — does not leave a stale parquet for the discovery read path (stem == code)
-    to keep serving."""
-    from .gene_sets_cancer import canonical_cancer_code
-    code = canonical_cancer_code(code)
-    path = downloads.source_cache_dir(source_id) / "derived" / f"{code}{PER_SAMPLE_SUFFIX}"
-    if path.exists():
-        path.unlink()
-        return path
-    return None

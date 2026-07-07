@@ -36,7 +36,6 @@ deliberately NOT uniform:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -152,20 +151,15 @@ def _as_row_id_frame(matrix: pd.DataFrame, row_id_name: str, sample_cols: list[s
     return frame
 
 
-_ENSG_PAR = re.compile(r"^(ENSG\d+(?:\.\d+)?)_PAR_[XY]$")
-
-
-def _fold_par_ensg(row_id: str) -> str:
-    """Fold a pseudoautosomal ``ENSG…_PAR_[XY]`` id onto its base gene id.
-
-    oncoref's per-row Ensembl detector (``^ENSG\\d+(?:\\.\\d+)?$``) rejects the
-    ``_PAR_[XY]`` suffix and would drop the row as unresolved; folding it onto the
-    base id lets oncoref map + sum the X/Y pseudoautosomal copies together — what
-    the pre-delegation ``strip_version`` (``str(id).split('.', 1)[0]``) path did.
-    Non-PAR ids (and symbols) pass through unchanged.
-    """
-    m = _ENSG_PAR.match(row_id)
-    return m.group(1) if m else row_id
+# Fold a pseudoautosomal ``ENSG…_PAR_[XY]`` id onto its base gene id: oncoref's
+# per-row Ensembl detector (``^ENSG\d+(?:\.\d+)?$``) rejects the ``_PAR_[XY]``
+# suffix and would drop the row as unresolved, so folding it onto the base id lets
+# oncoref map + sum the X/Y pseudoautosomal copies together (what the pre-delegation
+# ``strip_version`` = ``str(id).split('.', 1)[0]`` path did). Fully anchored, so
+# non-PAR ids and symbols pass through unchanged. See oncoref#312 — the row-type
+# detector should recognize this suffix so every oncoref consumer folds PAR, not
+# just callers routed through this wrapper.
+_ENSG_PAR_PATTERN = r"^(ENSG\d+(?:\.\d+)?)_PAR_[XY]$"
 
 
 def canonicalize_source(
@@ -193,8 +187,9 @@ def canonicalize_source(
     sample_cols = _uniquify([str(c) for c in tpm_matrix.columns])
     df = _as_row_id_frame(tpm_matrix, row_id_name, sample_cols)
     # Fold pseudoautosomal ENSG…_PAR_[XY] ids onto their base gene so oncoref maps
-    # + sums the X/Y copies instead of dropping the suffixed row as unresolved.
-    df[row_id_name] = df[row_id_name].map(_fold_par_ensg)
+    # + sums the X/Y copies instead of dropping the suffixed row as unresolved
+    # (vectorized: the anchored pattern matches at most once per id).
+    df[row_id_name] = df[row_id_name].str.replace(_ENSG_PAR_PATTERN, r"\1", regex=True)
     symbol_col: str | None = None
     if symbols is not None:
         values = list(symbols)

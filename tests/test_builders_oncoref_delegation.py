@@ -173,11 +173,12 @@ def test_build_source_rescues_leading_digit_symbols(tmp_path, monkeypatch):
     assert "RN7SL1" in set(shard["Symbol"])  # rescued, not silently dropped
 
 
-def test_build_source_all_qc_fail_purges_shard_and_parquet_without_aborting(tmp_path, monkeypatch):
-    """When every sample fails QC the build must NOT abort: it purges the code's
-    stale shard rows in lockstep with its removed per-sample parquet (no half-state
-    where the shard advertises a cohort the read path can't serve) and returns empty
-    counts, while still writing the QC manifest (covers every sample)."""
+def test_build_source_all_qc_fail_preserves_prior_data_and_raises(tmp_path, monkeypatch):
+    """When every sample fails QC the build must PRESERVE the prior good build
+    (shard rows + per-sample parquet untouched) and RAISE — never silently delete
+    reference data a real build produced. A transient/config all-fail (wrong unit,
+    corrupt download) is indistinguishable from a genuinely-empty cohort, so the
+    safe default is preserve-and-signal, not destroy-and-continue."""
     from pirlygenes import cohorts
     from pirlygenes.builders import geo_matrix
 
@@ -189,22 +190,21 @@ def test_build_source_all_qc_fail_purges_shard_and_parquet_without_aborting(tmp_
 
     # A first (all-samples) build seeds LUAD shard rows + a real per-sample parquet.
     geo_matrix.build_source(_make_source(), cache_dir=cache_dir, summary_output=shard_dir)
-    assert (cache_dir / "derived" / "LUAD_per_sample_tpm.parquet").exists()
-    seeded = pd.read_csv(shard_dir / "TEST_GEO_ONCOREF.csv.gz")
-    assert (seeded["cancer_code"] == "LUAD").any()
+    parquet = cache_dir / "derived" / "LUAD_per_sample_tpm.parquet"
+    assert parquet.exists()
+    seeded_rows = (pd.read_csv(shard_dir / "TEST_GEO_ONCOREF.csv.gz")["cancer_code"] == "LUAD").sum()
+    assert seeded_rows > 0
 
-    # Rebuild with a fail-inducing mode: the tiny matrix fails every QC gate.
-    counts = geo_matrix.build_source(
-        _make_source(sample_qc_mode="pass"),
-        cache_dir=cache_dir, summary_output=shard_dir,
-    )
-    assert counts == {}  # no cohort contributed samples — but no abort
-    # QC manifest still written (covers every sample); stale parquet removed.
-    assert (cache_dir / "derived" / "LUAD_sample_qc.csv").exists()
-    assert not (cache_dir / "derived" / "LUAD_per_sample_tpm.parquet").exists()
-    # Stale LUAD shard rows purged in lockstep — not left orphaned.
-    shard = pd.read_csv(shard_dir / "TEST_GEO_ONCOREF.csv.gz")
-    assert (shard["cancer_code"] == "LUAD").sum() == 0
+    # Rebuild with a fail-inducing mode: every sample fails QC → must raise…
+    with pytest.raises(RuntimeError, match="failed QC"):
+        geo_matrix.build_source(
+            _make_source(sample_qc_mode="pass"),
+            cache_dir=cache_dir, summary_output=shard_dir,
+        )
+    # …and the prior good data must be intact (parquet + shard rows preserved).
+    assert parquet.exists()
+    preserved = pd.read_csv(shard_dir / "TEST_GEO_ONCOREF.csv.gz")
+    assert (preserved["cancer_code"] == "LUAD").sum() == seeded_rows
 
 
 def test_build_source_raises_when_no_samples_routed(tmp_path, monkeypatch):

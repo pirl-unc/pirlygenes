@@ -32,7 +32,6 @@ from ..expression.normalize import (
     technical_rna_mask as _technical_mask,
 )
 from ..expression.stats import (
-    REFERENCE_COLUMNS,
     assign_stats,
     finalize_reference_rows,
     upsert_to_shard,
@@ -290,13 +289,12 @@ def _read_raw_matrix(
         if col in df.columns:
             df = df.drop(columns=col)
     for col in list(df.columns):
-        # Drop a genuine text-annotation column (has non-null values, none of them
-        # numeric). An entirely-blank/all-NaN column is NOT annotation — keep it so
-        # it reaches oncoref's parse-diagnostics + per-sample QC (which cover every
-        # sample) instead of vanishing silently before QC ever sees it.
-        non_null = int(df[col].notna().sum())
-        numeric_ok = int(pd.to_numeric(df[col], errors="coerce").notna().sum())
-        if non_null > 0 and numeric_ok == 0:
+        # Drop any column that parses to all-NaN — gene-annotation columns (Symbol/
+        # locus/…) AND all-blank columns alike. A blank column is genuinely absent
+        # data: dropping it keeps that gene/sample `not_measurable` (missing != zero)
+        # rather than materializing a spurious 0-TPM row/sample. This mirrors
+        # ``read_matrix`` and is orientation-safe (runs before any transpose).
+        if pd.to_numeric(df[col], errors="coerce").notna().sum() == 0:
             df = df.drop(columns=col)
     return df
 
@@ -429,7 +427,7 @@ def build_source(
 
     # Canonicalize cohort codes once so every downstream artifact — the QC
     # manifest CSV, the per-sample parquet, and the shard rows — shares one stem.
-    # write_per_sample / remove_per_sample canonicalize internally; without this
+    # write_per_sample canonicalizes internally; without this
     # the QC-CSV stem (written from the raw code) would diverge from the parquet
     # when a sample_to_cancer_code rule emits a pre-rename alias. Merge collisions.
     from ..gene_sets_cancer import canonical_cancer_code as _canonical_code
@@ -441,8 +439,9 @@ def build_source(
     summaries: list[pd.DataFrame] = []
     counts_by_code: dict[str, int] = {}
     # Every code we evaluated (had ≥1 column), incl. any whose samples all fail
-    # QC. Passed to upsert_to_shard so a fully-failed code's stale shard rows are
-    # REMOVED on rebuild rather than left behind under the preserve-others rule.
+    # QC. Drives the two "nothing to write" guards below (routed-but-empty vs.
+    # all-QC-failed); the shard upsert scope is counts_by_code, which excludes
+    # all-failed codes so their prior rows are preserved, not purged.
     processed_codes: list[str] = []
     for code, cols in cohort_to_cols.items():
         if not cols:
@@ -461,11 +460,14 @@ def build_source(
             print(f"    {code}: excluding {n_excluded} QC-filtered sample(s) "
                   f"(mode={source.sample_qc_mode}); manifest: {qc_path}")
         if not kept:
-            print(f"    {code}: all samples failed generic expression QC")
-            # Drop any stale per-sample parquet from a previous build so the
-            # read path can't serve a code that now contributes no samples.
-            from ..cohorts import remove_per_sample as _remove_per_sample
-            _remove_per_sample(cache_dir.name, code)
+            # PRESERVE any prior shard rows + per-sample parquet for this code and
+            # write nothing new. An all-fail is indistinguishable from a transient/
+            # config problem (wrong unit, corrupt download, mis-set QC thresholds)
+            # that presents identically to a genuinely-empty cohort, so we never
+            # auto-delete reference data a real build produced — we skip the code
+            # (and, below, raise if EVERY code is in this state).
+            print(f"    {code}: all samples failed generic expression QC — "
+                  f"preserving any prior data, wrote nothing for this code")
             continue
         sub_values = values[kept]
         # Persist the per-code per-sample matrix for medoids + percentiles.
@@ -507,24 +509,27 @@ def build_source(
         # Nothing routed to any cancer code — an empty / mis-filtered matrix (a
         # config error), distinct from "samples routed but every one failed QC".
         raise RuntimeError("no cohort had samples after filtering")
-    combined = (pd.concat(summaries, ignore_index=True) if summaries
-                else pd.DataFrame(columns=list(REFERENCE_COLUMNS)))
-    # Always upsert — even when every sample failed QC and `combined` is empty — so
-    # a fully-failed code's stale shard rows are purged in lockstep with its removed
-    # per-sample parquet. Otherwise the shard keeps advertising a cohort the read
-    # path (medoids/percentiles) can no longer serve: an inconsistent half-state.
+    if not summaries:
+        # Every routed sample failed QC across all codes. Anomalous — and a
+        # transient/config failure is indistinguishable from a genuinely-empty
+        # cohort — so we PRESERVE the prior good build (shard rows + parquets left
+        # untouched above) and surface loudly, rather than silently deleting
+        # reference data a real build produced. Investigate before rebuilding.
+        raise RuntimeError(
+            f"every sample in all cohort(s) {processed_codes} failed QC "
+            f"(mode={source.sample_qc_mode}); preserved prior data, wrote nothing"
+        )
+    combined = pd.concat(summaries, ignore_index=True)
+    # Upsert ONLY the codes that produced samples. A code whose samples all failed
+    # keeps its prior shard rows — we do not purge on a signal we cannot distinguish
+    # from a transient failure (upsert preserves every code not in cancer_codes).
     upsert_to_shard(
         summary_output, combined,
         source_cohort=source.source_cohort,
-        cancer_codes=processed_codes,
+        cancer_codes=list(counts_by_code.keys()),
     )
-    if summaries:
-        print(f"  upserted {len(combined)} rows into shard "
-              f"{source.source_cohort}.csv.gz")
-    else:
-        print(f"  WARNING: every sample in all {len(processed_codes)} cohort(s) "
-              f"{processed_codes} failed QC (mode={source.sample_qc_mode}); purged "
-              f"their stale shard rows, wrote no summary rows")
+    print(f"  upserted {len(combined)} rows into shard "
+          f"{source.source_cohort}.csv.gz")
     return counts_by_code
 
 
