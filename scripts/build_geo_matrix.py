@@ -44,10 +44,8 @@ import re
 from pathlib import Path
 from typing import Callable
 
-import yaml
-
 from pirlygenes.builders.geo_matrix import GeoMatrixSource, build_source
-from pirlygenes.downloads import load_registry, source_cache_dir
+from pirlygenes.downloads import source_cache_dir
 
 
 def _build_sample_to_cancer_code(rules: list[dict]) -> Callable[[str], str | None]:
