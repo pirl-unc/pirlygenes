@@ -28,7 +28,7 @@ import pandas as pd
 
 from pirlygenes import cohorts as _cohorts
 from pirlygenes.downloads import source_cache_dir
-from pirlygenes.expression.stats import build_reference_rows, upsert_to_shard
+from pirlygenes.expression.stats import build_reference_rows, write_reference_rows
 
 SOURCE_ID = "treehouse-polya-25-01"
 SUMMARY_COHORT = "TREEHOUSE_POLYA_25_01_TCGA_COADREAD_MSI"
@@ -126,7 +126,7 @@ def main() -> int:
             print(f"  WARNING: no samples matched for {missing} (parent "
                   f"{parent}); registered cohort(s) left unbuilt", flush=True)
         if summaries:
-            upsert_to_shard(args.summary_output, pd.concat(summaries, ignore_index=True),
+            write_reference_rows(args.summary_output, pd.concat(summaries, ignore_index=True),
                             source_cohort=SUMMARY_COHORT, cancer_codes=written,
                             per_cancer_code_shards=True)
     return 0

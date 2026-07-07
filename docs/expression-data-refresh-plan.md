@@ -74,7 +74,7 @@ That's milestones 3-4 (TCGA fresh) and 8 (existing-cohort sweep).
 - **Sharded data layout.** GitHub rejected pushing a 147 MB CSV (over
   the 100 MB hard limit). Split into per-source-cohort shards under
   `pirlygenes/data/cancer-reference-expression/<source_cohort>.csv.gz`;
-  largest 90 MB. New shared `pirlygenes.expression.stats.upsert_to_shard`
+  largest 90 MB. New shared `pirlygenes.expression.stats.write_reference_rows`
   helper; every per-cohort builder + the Treehouse sweep use it.
   Loader updated to glob + concat shards transparently.
 - **TCGA cancer codes registry sync.** 31 TCGA codes' `source_cohort`

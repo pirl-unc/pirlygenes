@@ -36,7 +36,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
-    upsert_to_shard,
+    write_reference_rows,
 )
 from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
 
@@ -471,7 +471,7 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
                 ),
             ))
         combined = pd.concat(summaries, ignore_index=True)
-        upsert_to_shard(
+        write_reference_rows(
             args.summary_output,
             combined,
             source_cohort=project.source_cohort,
@@ -482,7 +482,7 @@ def _build_project(project: TargetProject, args: argparse.Namespace) -> None:
             gene_table, values,
             cancer_code=project.cancer_code, project=project, source_id=cache_dir.name,
         )
-        upsert_to_shard(
+        write_reference_rows(
             args.summary_output,
             summary,
             source_cohort=project.source_cohort,

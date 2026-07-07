@@ -516,7 +516,7 @@ def write_per_sample(gene_table: pd.DataFrame, values: pd.DataFrame,
     writer.
 
     The ``code`` is canonicalised for the filename stem (the single
-    canonicalisation point, mirroring ``upsert_to_shard``): a builder still
+    canonicalisation point, mirroring ``write_reference_rows``): a builder still
     emitting a pre-rename code (e.g. ``MID_NET`` -> ``NET_MIDGUT``,
     ``PANNET`` -> ``NET_PANCREAS``) lands its parquet under the current
     registry code, so the discovery read path (stem == code) sees the canonical

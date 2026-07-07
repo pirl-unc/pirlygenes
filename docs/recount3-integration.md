@@ -83,7 +83,7 @@ cohort-level summaries, exactly as the sources we already combine.
 For each covered source, the builder fetches `recount3_clean_tpm(srp)`,
 routes SRR runs to cancer codes via the recount3 `sra` metadata
 (`external_id` = GSM + characteristics) — reusing each source's existing
-routing — then runs the standard `assign_stats` / `upsert_to_shard`. The
+routing — then runs the standard `assign_stats` / `write_reference_rows`. The
 recount3-derived shard keeps the **same `source_cohort` tag** so it replaces
 the spotty one in place. Registry entries gain `recount3_srp:` +
 `source_type: recount3`.

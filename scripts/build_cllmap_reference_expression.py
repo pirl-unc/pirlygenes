@@ -23,7 +23,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
-    upsert_to_shard,
+    write_reference_rows,
 )
 from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm
 
@@ -148,7 +148,7 @@ def main() -> None:
     # QC-gating the source-specific cohorts is a deliberate data-affecting follow-up.
     summary = _summarize(canon.matrix, included, source_id="cllmap")
     args.samples_output.parent.mkdir(parents=True, exist_ok=True)
-    upsert_to_shard(
+    write_reference_rows(
         args.summary_output,
         summary,
         source_cohort="CLLMAP_2022",

@@ -27,7 +27,7 @@ from pirlygenes.builders.gene_mapping import resolve_symbol
 from pirlygenes.expression.stats import (
     assign_stats,
     finalize_reference_rows,
-    upsert_to_shard,
+    write_reference_rows,
 )
 from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
 SAMPLE_COLUMNS = [
@@ -454,7 +454,7 @@ def _upsert_reference(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
     written = []
     for source_cohort, group in new_rows.groupby("source_cohort", sort=False):
         codes = sorted(group["cancer_code"].astype(str).unique())
-        shard = upsert_to_shard(
+        shard = write_reference_rows(
             path,
             group.reset_index(drop=True),
             source_cohort=str(source_cohort),

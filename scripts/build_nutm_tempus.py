@@ -25,7 +25,7 @@ from pyensembl import EnsemblRelease
 
 from pirlygenes import cohorts as _cohorts
 from pirlygenes.gene_ids import gene_for_ensembl_id, strip_version
-from pirlygenes.expression.stats import build_reference_rows, upsert_to_shard
+from pirlygenes.expression.stats import build_reference_rows, write_reference_rows
 
 SOURCE_ID = "unc-nutm1"
 SOURCE_COHORT = "UNC_NUTM1"
@@ -92,7 +92,7 @@ def main() -> int:
                "only."),
         tumor_origin="primary",
     )
-    upsert_to_shard(args.summary_output, out, source_cohort=SOURCE_COHORT,
+    write_reference_rows(args.summary_output, out, source_cohort=SOURCE_COHORT,
                     cancer_codes=[CANCER_CODE])
     print(f"upserted {len(out)} NUTM summary rows ({SOURCE_COHORT})", flush=True)
     return 0

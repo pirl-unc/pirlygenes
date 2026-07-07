@@ -34,7 +34,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
-    upsert_to_shard,
+    write_reference_rows,
 )
 from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
 SAMPLE_COLUMNS = [
@@ -358,7 +358,7 @@ def _summarize(gene_table: pd.DataFrame, values: pd.DataFrame) -> pd.DataFrame:
 
 def _upsert_reference(path: Path, new_rows: pd.DataFrame) -> pd.DataFrame:
     codes = sorted(new_rows["cancer_code"].astype(str).unique())
-    return upsert_to_shard(
+    return write_reference_rows(
         path, new_rows, source_cohort=SOURCE_COHORT, cancer_codes=codes,
     )
 

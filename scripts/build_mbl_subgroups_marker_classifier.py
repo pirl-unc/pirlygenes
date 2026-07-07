@@ -41,7 +41,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
-    upsert_to_shard,
+    write_reference_rows,
 )
 
 
@@ -146,7 +146,7 @@ def main() -> int:
         print(f"  {code}: n={len(cols)} → {len(out)} gene rows")
 
     combined = pd.concat(summaries, ignore_index=True)
-    upsert_to_shard(
+    write_reference_rows(
         args.summary_output, combined,
         source_cohort=SOURCE_COHORT, cancer_codes=CANCER_CODES,
     )

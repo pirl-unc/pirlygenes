@@ -646,7 +646,7 @@ def _source_build_cmd(src, summary_out=_SUMMARY_OUT, samples_out=_SAMPLES_OUT,
 def _cmd_build_all(sources, args) -> int:
     """Run EVERY registered builder in turn, upserting each source's rows into
     the shared summary shard. Builders are order-independent — each owns its
-    ``(cancer_code, source_cohort)`` rows via ``upsert_to_shard`` — so a plain
+    ``(cancer_code, source_cohort)`` rows via ``write_reference_rows`` — so a plain
     sequential sweep regenerates the whole reference table on the current
     normalization (e.g. the clean-TPM contract). Continues past failures (a
     source whose raw download isn't cached just fails and is reported) and
