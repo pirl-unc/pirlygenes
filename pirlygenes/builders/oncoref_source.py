@@ -19,15 +19,24 @@ This module wraps those into the shapes pirlygenes builders already use
 builder swaps its local harmonizer for one call. See pirlygenes#526.
 
 Builders share this one gene-mapping path but opt into the *optional* layers as
-their input warrants: ``canonicalize_source(symbols=…)`` for HUGO rescue only
-when the source carries a symbol column separate from its id (cllmap's GENCODE19),
-and ``sample_qc(…)`` only where per-sample QC gating is wanted (the generic
-geo-matrix build). ENSG-native single-id sources (recount3, lnen, ne) need
-neither. The mapping/summing/parse-diagnostics contract is identical for all.
+their input warrants. The mapping/summing/parse-diagnostics contract from
+``canonicalize_source`` is identical for all builders; the two extra layers are
+deliberately NOT uniform:
+
+- ``canonicalize_source(symbols=…)`` — HUGO rescue, passed when a source's ids
+  may not resolve on their own (cllmap's retired GENCODE19 ids, or a HUGO-keyed
+  matrix whose leading-digit ncRNA symbols oncoref's row-type sniff would skip).
+- ``sample_qc(…)`` — per-sample QC gating + manifest. **Currently the generic
+  geo-matrix build is the only caller**; the source-specific builders (cllmap,
+  lnen, ne) intentionally keep every mapped sample (no build-time QC drop),
+  matching the read-time-filtering direction. Making those cohorts QC-gated is a
+  deliberate, data-affecting follow-up (a rebuild shifts their medians), not an
+  oversight — do not assume a sample entering a non-geo cohort's stats was QC-vetted.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -143,6 +152,22 @@ def _as_row_id_frame(matrix: pd.DataFrame, row_id_name: str, sample_cols: list[s
     return frame
 
 
+_ENSG_PAR = re.compile(r"^(ENSG\d+(?:\.\d+)?)_PAR_[XY]$")
+
+
+def _fold_par_ensg(row_id: str) -> str:
+    """Fold a pseudoautosomal ``ENSG…_PAR_[XY]`` id onto its base gene id.
+
+    oncoref's per-row Ensembl detector (``^ENSG\\d+(?:\\.\\d+)?$``) rejects the
+    ``_PAR_[XY]`` suffix and would drop the row as unresolved; folding it onto the
+    base id lets oncoref map + sum the X/Y pseudoautosomal copies together — what
+    the pre-delegation ``strip_version`` (``str(id).split('.', 1)[0]``) path did.
+    Non-PAR ids (and symbols) pass through unchanged.
+    """
+    m = _ENSG_PAR.match(row_id)
+    return m.group(1) if m else row_id
+
+
 def canonicalize_source(
     tpm_matrix: pd.DataFrame,
     *,
@@ -167,6 +192,9 @@ def canonicalize_source(
     """
     sample_cols = _uniquify([str(c) for c in tpm_matrix.columns])
     df = _as_row_id_frame(tpm_matrix, row_id_name, sample_cols)
+    # Fold pseudoautosomal ENSG…_PAR_[XY] ids onto their base gene so oncoref maps
+    # + sums the X/Y copies instead of dropping the suffixed row as unresolved.
+    df[row_id_name] = df[row_id_name].map(_fold_par_ensg)
     symbol_col: str | None = None
     if symbols is not None:
         values = list(symbols)

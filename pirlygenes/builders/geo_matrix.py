@@ -32,6 +32,7 @@ from ..expression.normalize import (
     technical_rna_mask as _technical_mask,
 )
 from ..expression.stats import (
+    REFERENCE_COLUMNS,
     assign_stats,
     finalize_reference_rows,
     upsert_to_shard,
@@ -289,7 +290,13 @@ def _read_raw_matrix(
         if col in df.columns:
             df = df.drop(columns=col)
     for col in list(df.columns):
-        if pd.to_numeric(df[col], errors="coerce").notna().sum() == 0:
+        # Drop a genuine text-annotation column (has non-null values, none of them
+        # numeric). An entirely-blank/all-NaN column is NOT annotation — keep it so
+        # it reaches oncoref's parse-diagnostics + per-sample QC (which cover every
+        # sample) instead of vanishing silently before QC ever sees it.
+        non_null = int(df[col].notna().sum())
+        numeric_ok = int(pd.to_numeric(df[col], errors="coerce").notna().sum())
+        if non_null > 0 and numeric_ok == 0:
             df = df.drop(columns=col)
     return df
 
@@ -374,10 +381,15 @@ def build_source(
     print(f"  per-sample sums (after TPM normalize, first 3): "
           f"{tpm.sum(axis=0).head(3).to_dict()}")
 
-    # Canonicalize gene ids (release-independent, incl. Entrez) via oncoref.
+    # Canonicalize gene ids (release-independent, incl. Entrez) via oncoref. For a
+    # symbol-keyed source, pass the ids as HUGO symbol candidates so oncoref rescues
+    # tokens its row-type sniff would otherwise skip (leading-digit ncRNA symbols
+    # like 7SL/45S), matching the pre-delegation unconditional symbol resolver.
     print("  canonicalizing gene ids via oncoref...")
+    symbols = list(tpm.index) if gene_id_type == "hugo" else None
     canon = _osrc.canonicalize_source(
         tpm, row_id_name=source.gene_id_col or "gene_id", raw_matrix=raw,
+        symbols=symbols,
     )
     gene_table = canon.gene_table
     values = canon.values
@@ -464,9 +476,15 @@ def build_source(
         out["cancer_code"] = code
         out["source_cohort"] = source.source_cohort
         out["source_project"] = source.source_project
+        # Record any build-time QC exclusion in the durable shard provenance — the
+        # per-sample manifest lives only in the cache, so without this the shard's
+        # shifted n has no on-record explanation.
+        qc_note = (f"; {n_excluded} sample(s) QC-excluded (mode={source.sample_qc_mode})"
+                   if n_excluded else "")
         out["source_version"] = (
             f"{source.citation}; gene-id-type={gene_id_type}; "
             f"unit={source.unit}; oncoref-canonicalized (oncoref {oncoref.__version__})"
+            f"{qc_note}"
         )
         assign_stats(out, sub_values, clean)
         pipeline_stem = source.pipeline_stem or source.source_cohort.lower()
@@ -485,16 +503,28 @@ def build_source(
         counts_by_code[code] = len(kept)
         print(f"    {code}: n={len(kept)} → {len(out)} gene rows")
 
-    if not summaries:
+    if not processed_codes:
+        # Nothing routed to any cancer code — an empty / mis-filtered matrix (a
+        # config error), distinct from "samples routed but every one failed QC".
         raise RuntimeError("no cohort had samples after filtering")
-    combined = pd.concat(summaries, ignore_index=True)
+    combined = (pd.concat(summaries, ignore_index=True) if summaries
+                else pd.DataFrame(columns=list(REFERENCE_COLUMNS)))
+    # Always upsert — even when every sample failed QC and `combined` is empty — so
+    # a fully-failed code's stale shard rows are purged in lockstep with its removed
+    # per-sample parquet. Otherwise the shard keeps advertising a cohort the read
+    # path (medoids/percentiles) can no longer serve: an inconsistent half-state.
     upsert_to_shard(
         summary_output, combined,
         source_cohort=source.source_cohort,
         cancer_codes=processed_codes,
     )
-    print(f"  upserted {len(combined)} rows into shard "
-          f"{source.source_cohort}.csv.gz")
+    if summaries:
+        print(f"  upserted {len(combined)} rows into shard "
+              f"{source.source_cohort}.csv.gz")
+    else:
+        print(f"  WARNING: every sample in all {len(processed_codes)} cohort(s) "
+              f"{processed_codes} failed QC (mode={source.sample_qc_mode}); purged "
+              f"their stale shard rows, wrote no summary rows")
     return counts_by_code
 
 

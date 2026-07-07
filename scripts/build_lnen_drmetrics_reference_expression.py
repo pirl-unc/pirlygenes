@@ -126,6 +126,9 @@ def main() -> int:
     tpm = normalize_to_tpm(matrix, unit="raw_counts", gene_lengths_kb=lengths_kb)
 
     print("canonicalizing gene ids via oncoref...")
+    # No per-sample sample_qc() gate here (unlike the generic geo-matrix build):
+    # every mapped sample enters the stats — QC-gating this cohort is a deliberate
+    # data-affecting follow-up (see oncoref_source's module docstring).
     canon = _osrc.canonicalize_source(tpm)
     gene_table = canon.gene_table
     values = canon.values

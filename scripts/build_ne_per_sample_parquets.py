@@ -93,6 +93,9 @@ def build_lung_ne() -> None:
     lengths = _gene_lengths_kb_for_index(matrix.index, gene_id_type="ensembl",
                                          ensembl_release=ENSEMBL)
     tpm = normalize_to_tpm(matrix, unit="raw_counts", gene_lengths_kb=lengths)
+    # No per-sample sample_qc() gate here (unlike the generic geo-matrix build):
+    # every mapped sample enters the stats — QC-gating this cohort is a deliberate
+    # data-affecting follow-up (see oncoref_source's module docstring).
     canon = _osrc.canonicalize_source(tpm)
     gene_table = canon.gene_table
     values = canon.values

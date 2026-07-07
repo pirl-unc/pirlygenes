@@ -42,6 +42,24 @@ def test_canonicalize_source_resolves_entrez_and_sums_duplicate_genes():
     assert bool(unresolved["high_expression_unresolved"].iloc[0])
 
 
+def test_canonicalize_source_folds_par_ensg_into_base_gene():
+    """A pseudoautosomal ``ENSG…_PAR_Y`` row is folded onto its base gene id and
+    summed with the base copy, not dropped as unresolved (oncoref's ENSG regex
+    rejects the suffix; the pre-delegation strip-and-sum path folded it)."""
+    base = "ENSG00000182162"  # P2RY8, a real pseudoautosomal gene
+    tpm = pd.DataFrame(
+        {"a": [10.0, 4.0], "b": [6.0, 2.0]},
+        index=[f"{base}.11", f"{base}.11_PAR_Y"],
+    )
+    tpm.index.name = "gene_id"
+    res = osrc.canonicalize_source(tpm)
+    assert (res.gene_table["Ensembl_Gene_ID"] == base).sum() == 1  # one folded row
+    assert res.mapping_stats["n_unresolved_rows"] == 0             # _PAR_Y not dropped
+    # X-copy + Y-copy summed (10+4, 6+2).
+    assert res.values.loc[base, "a"] == pytest.approx(14.0)
+    assert res.values.loc[base, "b"] == pytest.approx(8.0)
+
+
 def test_source_metadata_proxy_scale_is_warn_only():
     """A declared non-linear proxy scale resolves ``linear_tpm_comparable`` False
     so oncoref skips the RNA-seq fail gates (warn-only)."""
@@ -128,9 +146,38 @@ def test_build_source_delegates_to_oncoref_end_to_end(tmp_path, monkeypatch):
     assert (derived / "LUAD_per_sample_tpm.parquet").exists()
 
 
-def test_build_source_qc_mode_pass_filters_and_removes_stale_parquet(tmp_path, monkeypatch):
-    """With a fail-inducing QC mode and a tiny matrix, LUAD samples all fail →
-    no summary rows, and any stale parquet is removed (no crash, clear error)."""
+def test_build_source_rescues_leading_digit_symbols(tmp_path, monkeypatch):
+    """A HUGO-keyed source: build_source forwards the ids as symbol candidates so a
+    leading-digit ncRNA symbol (7SL) is rescued to its ENSG (RN7SL1) instead of
+    being dropped by oncoref's row-type sniff."""
+    from pirlygenes import cohorts
+    from pirlygenes.builders import geo_matrix
+
+    matrix = (
+        "gene_id\ts1\ts2\ts3\n"
+        "7SL\t10\t12\t8\n"          # leading-digit ncRNA symbol → RN7SL1
+        "EGFR\t500\t480\t520\n"
+        "ACTB\t450\t470\t460\n"
+    )
+    cache_dir = tmp_path / "test-geo-hugo"
+    cache_dir.mkdir()
+    (cache_dir / "matrix.tsv").write_text(matrix, encoding="utf-8")
+    monkeypatch.setattr(cohorts.downloads, "source_cache_dir", lambda source_id: cache_dir)
+
+    shard_dir = tmp_path / "cancer-reference-expression"
+    geo_matrix.build_source(
+        _make_source(drop_cols=(), gene_id_type="hugo"),
+        cache_dir=cache_dir, summary_output=shard_dir,
+    )
+    shard = pd.read_csv(shard_dir / "TEST_GEO_ONCOREF.csv.gz")
+    assert "RN7SL1" in set(shard["Symbol"])  # rescued, not silently dropped
+
+
+def test_build_source_all_qc_fail_purges_shard_and_parquet_without_aborting(tmp_path, monkeypatch):
+    """When every sample fails QC the build must NOT abort: it purges the code's
+    stale shard rows in lockstep with its removed per-sample parquet (no half-state
+    where the shard advertises a cohort the read path can't serve) and returns empty
+    counts, while still writing the QC manifest (covers every sample)."""
     from pirlygenes import cohorts
     from pirlygenes.builders import geo_matrix
 
@@ -138,19 +185,45 @@ def test_build_source_qc_mode_pass_filters_and_removes_stale_parquet(tmp_path, m
     cache_dir.mkdir()
     (cache_dir / "matrix.tsv").write_text(_MATRIX, encoding="utf-8")
     monkeypatch.setattr(cohorts.downloads, "source_cache_dir", lambda source_id: cache_dir)
-    # Pre-place a stale parquet so we can assert it gets removed.
-    (cache_dir / "derived").mkdir()
-    (cache_dir / "derived" / "LUAD_per_sample_tpm.parquet").write_bytes(b"stale")
-
     shard_dir = tmp_path / "cancer-reference-expression"
-    with pytest.raises(RuntimeError, match="no cohort had samples"):
-        geo_matrix.build_source(
-            _make_source(sample_qc_mode="pass"),
-            cache_dir=cache_dir, summary_output=shard_dir,
-        )
+
+    # A first (all-samples) build seeds LUAD shard rows + a real per-sample parquet.
+    geo_matrix.build_source(_make_source(), cache_dir=cache_dir, summary_output=shard_dir)
+    assert (cache_dir / "derived" / "LUAD_per_sample_tpm.parquet").exists()
+    seeded = pd.read_csv(shard_dir / "TEST_GEO_ONCOREF.csv.gz")
+    assert (seeded["cancer_code"] == "LUAD").any()
+
+    # Rebuild with a fail-inducing mode: the tiny matrix fails every QC gate.
+    counts = geo_matrix.build_source(
+        _make_source(sample_qc_mode="pass"),
+        cache_dir=cache_dir, summary_output=shard_dir,
+    )
+    assert counts == {}  # no cohort contributed samples — but no abort
     # QC manifest still written (covers every sample); stale parquet removed.
     assert (cache_dir / "derived" / "LUAD_sample_qc.csv").exists()
     assert not (cache_dir / "derived" / "LUAD_per_sample_tpm.parquet").exists()
+    # Stale LUAD shard rows purged in lockstep — not left orphaned.
+    shard = pd.read_csv(shard_dir / "TEST_GEO_ONCOREF.csv.gz")
+    assert (shard["cancer_code"] == "LUAD").sum() == 0
+
+
+def test_build_source_raises_when_no_samples_routed(tmp_path, monkeypatch):
+    """A genuine config error — a sample_to_cancer_code that routes nothing — is
+    still a hard error (distinct from 'samples routed but all failed QC')."""
+    from pirlygenes import cohorts
+    from pirlygenes.builders import geo_matrix
+
+    cache_dir = tmp_path / "test-geo-noroute"
+    cache_dir.mkdir()
+    (cache_dir / "matrix.tsv").write_text(_MATRIX, encoding="utf-8")
+    monkeypatch.setattr(cohorts.downloads, "source_cache_dir", lambda source_id: cache_dir)
+    shard_dir = tmp_path / "cancer-reference-expression"
+    with pytest.raises(RuntimeError, match="no cohort had samples"):
+        geo_matrix.build_source(
+            _make_source(cancer_code=["LUAD", "LUSC"],
+                         sample_to_cancer_code=lambda s: None),  # routes nothing
+            cache_dir=cache_dir, summary_output=shard_dir,
+        )
 
 
 def test_build_source_canonicalizes_cohort_code_stems(tmp_path, monkeypatch):

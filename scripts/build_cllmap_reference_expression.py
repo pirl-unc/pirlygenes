@@ -143,6 +143,9 @@ def main() -> None:
     canon = _osrc.canonicalize_source(
         matrix, row_id_name="source_gene_id", symbols=df["Symbol"].tolist(),
     )
+    # No per-sample sample_qc() gate here (unlike the generic geo-matrix build):
+    # every mapped sample enters the stats. See oncoref_source's module docstring —
+    # QC-gating the source-specific cohorts is a deliberate data-affecting follow-up.
     summary = _summarize(canon.matrix, included, source_id="cllmap")
     args.samples_output.parent.mkdir(parents=True, exist_ok=True)
     upsert_to_shard(
