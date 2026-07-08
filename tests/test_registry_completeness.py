@@ -59,7 +59,10 @@ _MISSING_THERAPY_AXIS = frozenset(
         "UVM", "WILMS",
         # Re-export of oncoref's registry (pirlygenes#523) adds these codes; no
         # therapy-response signature is materialised for them yet.
-        "BTC", "CRC_MSI", "NET", "NEN_G3_EXTRAPULMONARY", "NSCLC", "RCC_NCC",
+        # (CRC_MSI dropped from this set in oncoref 1.8.95: it was reparented
+        # under CRC as a molecular subtype (oncoref #322/#323), so it is no
+        # longer a top-level code the completeness check evaluates.)
+        "BTC", "NET", "NEN_G3_EXTRAPULMONARY", "NSCLC", "RCC_NCC",
         "SGC",
         # #294/#295 NCI-gap additions — curated registry entries; expression
         # data not yet built, so no therapy-axis panel is materialised yet.
