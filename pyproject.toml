@@ -22,10 +22,13 @@ dependencies = [
     # previously shipped (incl. ASTB, oncoref #223) AND it ships the
     # median-of-ratios housekeeping normalization pirlygenes delegates to
     # (oncoref #204 / #516). 1.8.95 adds the ontology_level/ontology_kind
-    # columns and reparents CRC_MSI under CRC (oncoref #322/#323); 1.8.98
-    # (#325/#326) finishes the intermediate-tier wiring (SARC_LPS/ESS leaves
-    # reparented, NEC_LUNG tier added) and ships cancer_subtype_groupings.
-    # The registry-completeness baseline is keyed to that registry shape.
+    # columns and reparents CRC_MSI under CRC (oncoref #322/#323); 1.8.103
+    # (#325/#326) finishes the aggregate tier wiring — the intermediate SARC
+    # histology rollups (SARC_LPS/ESS/RMS) and NEC_LUNG become type-level
+    # computed_union tiers, and the literature-pooling buckets
+    # (NET_NONPANCREATIC, NEN_G3_EXTRAPULMONARY) get ontology_level=evidence_scope.
+    # The grouping-signal tests + registry-completeness baseline are keyed to
+    # that finished tier shape (see tests/test_ontology_level_groupings.py).
     # >=1.8.75 also gives the builders the cleaned-up source-matrix QC /
     # mapping-audit / parse-diagnostics contract they delegate to — Entrez
     # resolver (#293) + un-versioned QC contract with configurable HK floor +
@@ -34,7 +37,7 @@ dependencies = [
     # delegates in #208 (representative_cohort_samples with
     # representative_id_style/sample_qc='artifact', available_representative_
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles).
-    "oncoref>=1.8.98",
+    "oncoref>=1.8.103",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile
