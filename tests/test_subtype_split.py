@@ -101,3 +101,15 @@ def test_ucec_subtype_cohorts_registered_in_group():
 
     group = {c.code for c in cohorts.cohorts_for_group("tcga_ucec_subtype")}
     assert group == {"UCEC_MSI", "UCEC_CNL", "UCEC_CNH", "UCEC_POLE"}
+
+
+def test_stad_subtype_cohorts_registered_in_group():
+    """The four STAD molecular subtypes are declared under one build group; their
+    registry codes (STAD_EBV/MSI/GS/CIN) are oncoref-owned (pirlygenes#529)."""
+    from pirlygenes import cohorts
+
+    group = {c.code for c in cohorts.cohorts_for_group("tcga_stad_subtype")}
+    assert group == {"STAD_EBV", "STAD_MSI", "STAD_GS", "STAD_CIN"}
+    # selection carries the cBioPortal SUBTYPE string the builder maps on.
+    sel = {c.code: c.selection for c in cohorts.cohorts_for_group("tcga_stad_subtype")}
+    assert sel["STAD_MSI"] == "subtype:STAD_MSI"

@@ -298,6 +298,16 @@ def _treehouse_registry() -> tuple[Cohort, ...]:
         rows.append(Cohort(code, code, _POLYA, group="tcga_ucec_subtype",
                            disease_label="endometrial carcinoma",
                            selection=f"subtype:{subtype}"))
+    # TCGA-STAD molecular subtypes (cBioPortal stad_tcga_pan_can_atlas_2018
+    # SUBTYPE; TCGA 2014 PMID 25079317). Extends the MMR axis to gastric
+    # (pirlygenes#529): STAD_MSI = MSI-positive, STAD_GS/STAD_CIN = MSS
+    # negatives, STAD_EBV = immune-hot holdout confounder. selection carries the
+    # cBioPortal SUBTYPE value.
+    for code, subtype in [("STAD_EBV", "STAD_EBV"), ("STAD_MSI", "STAD_MSI"),
+                          ("STAD_GS", "STAD_GS"), ("STAD_CIN", "STAD_CIN")]:
+        rows.append(Cohort(code, code, _POLYA, group="tcga_stad_subtype",
+                           disease_label="stomach adenocarcinoma",
+                           selection=f"subtype:{subtype}"))
     # TCGA-SARC histology overlays (GDC primary_diagnosis). WDLPS is built by
     # the sarc_subtypes sweep; DDLPS/PLEOLPS by the sarc_rare overlay path.
     for code, diagnosis, grp in [
