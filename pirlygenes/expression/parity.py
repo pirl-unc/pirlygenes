@@ -40,6 +40,14 @@ DEFAULT_MIN_EXPR = 1.0
 _DIVERGENT_REL = 0.5
 
 
+def _first_int(series: pd.Series, default: int = -1) -> int:
+    """First value of ``series`` as an int, or ``default`` when empty/NaN."""
+    if not len(series):
+        return default
+    val = series.iloc[0]
+    return default if pd.isna(val) else int(val)
+
+
 def _oncoref_reference(code: str, normalize: str):
     """Read oncoref's summary rows for one cancer_code under its baked QC policy.
 
@@ -74,6 +82,10 @@ def _pg_single_cohort(pg: pd.DataFrame, *, target_n: int) -> pd.DataFrame:
     (``target_n``) — that is the cohort oncoref computed from — and falls back to
     the richest cohort when no count matches. Single-cohort codes pass through
     unchanged. ``Ensembl_Gene_ID`` is de-duplicated defensively.
+
+    If two cohorts tie on ``n_samples == target_n`` the first (groupby-sorted)
+    wins; that is a benign ambiguity today (no code has same-size cohorts), and
+    the value deltas would expose a wrong pick if one ever arose.
     """
     if pg["source_cohort"].nunique() > 1:
         n_by_cohort = pg.groupby("source_cohort")["n_samples"].first()
@@ -123,19 +135,27 @@ def parity_for_code(
             "n_genes_pg": int(pg["Ensembl_Gene_ID"].nunique()),
         }
 
-    # oncoref serves exactly one canonical source_cohort per code; pirlygenes'
-    # frame can carry several (e.g. SARC_DDLPS spans 3 cohorts). Comparing all pg
-    # rows against oncoref's one cohort is a many-to-many join with arbitrary
-    # n_samples. Reduce each side to a single cohort — on the pg side, the one
-    # oncoref actually used (matched by sample count; richest as a fallback) — so
-    # the comparison is apples-to-apples. (Cohort *labels* differ slightly across
-    # the two frames, so we match on sample count, not name.)
-    n_samp_on = (
-        int(on["n_reference_samples"].iloc[0])
-        if "n_reference_samples" in on.columns
-        else -1
-    )
-    on = on.drop_duplicates("Ensembl_Gene_ID")
+    # oncoref serves one canonical source_cohort per code today. A future
+    # group/umbrella code (e.g. a pooled CRC) would instead expand into several
+    # sub-cohorts under one label, repeating each Ensembl_Gene_ID per block —
+    # that is not a single-cohort summary we can compare gene-for-gene, so flag it
+    # rather than silently dedup down to whichever block happens to sort first.
+    if on["Ensembl_Gene_ID"].duplicated().any():
+        return {
+            "cancer_code": code,
+            "status": "oncoref-multi-cohort",
+            "qc_used": qc_used,
+            "n_samples_pg": int(pg["n_samples"].max()),
+            "n_genes_pg": int(pg["Ensembl_Gene_ID"].nunique()),
+        }
+
+    # pirlygenes' frame can still carry several cohorts (e.g. SARC_DDLPS spans 3).
+    # Comparing all pg rows against oncoref's one cohort is a many-to-many join
+    # with arbitrary n_samples. Reduce the pg side to the cohort oncoref actually
+    # used (matched by sample count; richest as a fallback) so the comparison is
+    # apples-to-apples. (Cohort *labels* differ slightly across the two frames, so
+    # we match on sample count, not name.)
+    n_samp_on = _first_int(on.get("n_reference_samples", pd.Series(dtype=float)))
     pg = _pg_single_cohort(pg, target_n=n_samp_on)
 
     pg_g = set(pg["Ensembl_Gene_ID"])
@@ -151,7 +171,12 @@ def parity_for_code(
     merged["rel"] = (merged["expression_on"] - merged["expression_pg"]).abs() / denom
 
     scored = merged[merged["expression_pg"] >= min_expr]
-    rel = scored["rel"]
+    # A gene where pg has a real value but oncoref's is NaN yields rel=NaN, which
+    # silently drops out of every rel_* metric and the divergent count. Surface it
+    # separately so "oncoref can't value a gene pg can" isn't invisible.
+    on_missing = scored["expression_on"].isna()
+    n_on_missing = int(on_missing.sum())
+    rel = scored.loc[~on_missing, "rel"]
     n_divergent = int((rel > _DIVERGENT_REL).sum())
 
     n_samp_pg = int(pg["n_samples"].iloc[0])
@@ -173,6 +198,7 @@ def parity_for_code(
         "rel_p95": float(rel.quantile(0.95)) if len(rel) else np.nan,
         "rel_max": float(rel.max()) if len(rel) else np.nan,
         "n_divergent": n_divergent,
+        "n_on_missing_value": n_on_missing,
     }
 
 
@@ -185,7 +211,7 @@ def parity_report(
     from pirlygenes.expression.accessors import cancer_reference_expression
 
     pg_frame = cancer_reference_expression()
-    if codes is None:
+    if not codes:  # None or empty -> every code in the bundle
         codes = sorted(pg_frame["cancer_code"].unique())
 
     rows = [
@@ -196,6 +222,8 @@ def parity_report(
 
 def format_markdown(df: pd.DataFrame, min_expr: float = DEFAULT_MIN_EXPR) -> str:
     """Render a :func:`parity_report` frame as a human-readable markdown report."""
+    if "status" not in df.columns:
+        return "# cancer_reference_expression parity: pirlygenes vs oncoref (#207)\n\n(no codes compared)\n"
     ok = df[df["status"] == "ok"]
     not_ok = df[df["status"] != "ok"]
     lines = [

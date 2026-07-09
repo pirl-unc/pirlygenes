@@ -12,6 +12,7 @@ unit/scale regression, a vanished cohort), not to pin float noise.
 
 import warnings
 
+import pandas as pd
 import pytest
 
 pytest.importorskip("oncoref")
@@ -79,6 +80,27 @@ def test_multi_cohort_code_paired_to_oncoref_cohort(pg_frame):
     assert r["status"] == "ok", r
     assert r["n_samples_match"], (r["n_samples_pg"], r["n_samples_on"])
     assert r["rel_median"] < 0.01, r["rel_median"]
+
+
+def test_group_code_multi_expansion_flagged():
+    """A future pooled/group code (oncoref expands `CRC` into COAD+READ blocks
+    under one label, repeating each gene) must be flagged `oncoref-multi-cohort`,
+    not silently dedup'd down to whichever block sorts first. Uses a synthetic pg
+    frame so the code is not `pg-empty` and reaches the guard."""
+    if not _serves("CRC"):
+        pytest.skip("oncoref cannot serve CRC in this environment")
+    syn = pd.DataFrame(
+        {
+            "cancer_code": ["CRC", "CRC"],
+            "normalization": ["TPM_clean", "TPM_clean"],
+            "source_cohort": ["FAKE", "FAKE"],
+            "n_samples": [100, 100],
+            "Ensembl_Gene_ID": ["ENSG00000141510", "ENSG00000171862"],
+            "expression": [10.0, 5.0],
+        }
+    )
+    r = parity_for_code("CRC", pg_frame=syn)
+    assert r["status"] == "oncoref-multi-cohort", r
 
 
 def test_qc_policy_fallback(pg_frame):
