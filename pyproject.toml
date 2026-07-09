@@ -26,6 +26,10 @@ dependencies = [
     # (#325/#326) finishes the intermediate-tier wiring (SARC_LPS/ESS leaves
     # reparented, NEC_LUNG tier added) and ships cancer_subtype_groupings.
     # The registry-completeness baseline is keyed to that registry shape.
+    # >=1.8.75 also gives the builders the cleaned-up source-matrix QC /
+    # mapping-audit / parse-diagnostics contract they delegate to — Entrez
+    # resolver (#293) + un-versioned QC contract with configurable HK floor +
+    # proxy warn-only (#292); see pirlygenes#526 (satisfied by 1.8.98).
     "oncoref>=1.8.98",
     "openpyxl>=3.1.0",
     "pandas>=2.0",

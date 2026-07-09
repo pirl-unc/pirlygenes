@@ -75,9 +75,9 @@ def build_sclc() -> None:
 def build_lung_ne() -> None:
     """Lung NE (NET_LUNG carcinoid + NEC_LUNG_LARGECELL) from the IARC DRMetrics
     pan-LNEN counts, reusing the LNEN builder's counts→TPM + histology split."""
+    from pirlygenes.builders import oncoref_source as _osrc
     from pirlygenes.builders.geo_matrix import (
         _gene_lengths_kb_for_index,
-        harmonize_gene_ids,
         normalize_to_tpm,
         read_matrix,
     )
@@ -93,11 +93,12 @@ def build_lung_ne() -> None:
     lengths = _gene_lengths_kb_for_index(matrix.index, gene_id_type="ensembl",
                                          ensembl_release=ENSEMBL)
     tpm = normalize_to_tpm(matrix, unit="raw_counts", gene_lengths_kb=lengths)
-    mapping, values = harmonize_gene_ids(tpm, gene_id_type="ensembl",
-                                         ensembl_release=ENSEMBL)
-    gene_table = (mapping.drop_duplicates("Ensembl_Gene_ID")
-                  [["Ensembl_Gene_ID", "Symbol"]].reset_index(drop=True))
-    values = values.reindex(gene_table["Ensembl_Gene_ID"]).fillna(0.0)
+    # No per-sample sample_qc() gate here (unlike the generic geo-matrix build):
+    # every mapped sample enters the stats — QC-gating this cohort is a deliberate
+    # data-affecting follow-up (see oncoref_source's module docstring).
+    canon = _osrc.canonicalize_source(tpm)
+    gene_table = canon.gene_table
+    values = canon.values
     sample_to_code = {r.Sample_ID: lnen.HISTOLOGY_TO_CODE.get(
         r.Histopathology_simplified) for r in attrs.itertuples(index=False)}
     by_code: dict[str, list[str]] = {}

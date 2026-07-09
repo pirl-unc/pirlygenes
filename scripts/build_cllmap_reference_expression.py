@@ -15,11 +15,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-from pyensembl import EnsemblRelease
 
-from pirlygenes.builders.gene_mapping import resolve_symbol
+from pirlygenes.builders import oncoref_source as _osrc
 from pirlygenes.gene_ids import strip_version as _strip_version
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
@@ -27,7 +25,7 @@ from pirlygenes.expression.stats import (
     round_stat_columns,
     upsert_to_shard,
 )
-from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
+from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm
 
 
 PORTAL_NONREDUNDANT_EXCLUSIONS = {
@@ -45,10 +43,10 @@ SOURCE_URL = (
     "https://data.broadinstitute.org/cllmap/data/downloads/"
     "cllmap_rnaseq_tpms_full.tsv.gz"
 )
-PIPELINE = "cllmap_raw_tpm_gencode19_ensembl112_clean_tpm_16_9_75"
+PIPELINE = "cllmap_raw_tpm_gencode19_oncoref_canonical_clean_tpm_16_9_75"
 SOURCE_VERSION = (
-    "CLL-map RNA-SeQC v2.3.6 GENCODE19; Ensembl IDs harmonized to "
-    "Ensembl release 112; downloaded 2026-05-18"
+    "CLL-map RNA-SeQC v2.3.6 GENCODE19; source ids canonicalized to "
+    "unversioned Ensembl via oncoref; downloaded 2026-05-18"
 )
 
 
@@ -59,75 +57,6 @@ def _read_tpm_matrix(path: Path) -> pd.DataFrame:
     df["Ensembl_Gene_ID"] = df["Ensembl_Gene_ID"].map(_strip_version)
     df["Symbol"] = df["Symbol"].fillna("").astype(str)
     return df
-
-
-def _gene_by_id(genome: EnsemblRelease, gene_id: str):
-    try:
-        return genome.gene_by_id(gene_id)
-    except Exception:
-        return None
-
-
-def _unique_gene_by_symbol(genome: EnsemblRelease, symbol: str):
-    """Symbol → Ensembl gene object via the shared resolver (direct → Entrez
-    → NCBI-synonym/alias rescue), so retired GENCODE19 symbols are recovered
-    consistently with every other builder. None if unresolved/ambiguous."""
-    if not symbol:
-        return None
-    resolved = resolve_symbol(genome, symbol)
-    return _gene_by_id(genome, resolved[0]) if resolved else None
-
-
-def _harmonize_gene_ids(
-    df: pd.DataFrame,
-    *,
-    ensembl_release: int,
-) -> tuple[pd.DataFrame, dict[str, int]]:
-    """Map source GENCODE19 IDs to an Ensembl release used by CI/tests.
-
-    CLL-map's raw matrix is GENCODE19-keyed. Most stable IDs still resolve in
-    modern Ensembl; for retired IDs with an unambiguous current symbol, remap
-    to the current Ensembl ID. Retired anonymous loci that cannot be resolved
-    by ID or unique symbol are dropped from the packaged summary.
-    """
-    genome = EnsemblRelease(ensembl_release)
-    by_id_cache = {}
-    by_symbol_cache = {}
-    canonical_ids: list[str | None] = []
-    canonical_symbols: list[str | None] = []
-    counts = {"source_id": 0, "symbol": 0, "dropped": 0}
-
-    for source_id, symbol in zip(df["Ensembl_Gene_ID"], df["Symbol"]):
-        gene = by_id_cache.get(source_id)
-        if source_id not in by_id_cache:
-            gene = _gene_by_id(genome, str(source_id))
-            by_id_cache[source_id] = gene
-        if gene is not None:
-            canonical_ids.append(gene.gene_id.split(".", 1)[0])
-            canonical_symbols.append(gene.gene_name or str(symbol))
-            counts["source_id"] += 1
-            continue
-
-        symbol_key = str(symbol)
-        gene = by_symbol_cache.get(symbol_key)
-        if symbol_key not in by_symbol_cache:
-            gene = _unique_gene_by_symbol(genome, symbol_key)
-            by_symbol_cache[symbol_key] = gene
-        if gene is not None:
-            canonical_ids.append(gene.gene_id.split(".", 1)[0])
-            canonical_symbols.append(gene.gene_name or symbol_key)
-            counts["symbol"] += 1
-            continue
-
-        canonical_ids.append(None)
-        canonical_symbols.append(None)
-        counts["dropped"] += 1
-
-    out = df.copy()
-    out["Ensembl_Gene_ID"] = canonical_ids
-    out["Symbol"] = canonical_symbols
-    out = out[out["Ensembl_Gene_ID"].notna()].reset_index(drop=True)
-    return out, counts
 
 
 def _sample_manifest(sample_cols: list[str]) -> pd.DataFrame:
@@ -160,24 +89,6 @@ def _sample_manifest(sample_cols: list[str]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _collapse_duplicate_genes(df: pd.DataFrame, sample_cols: list[str]) -> pd.DataFrame:
-    value_block = df[sample_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
-    meta = df[["Ensembl_Gene_ID", "Symbol", "source_gene_id"]].copy()
-    work = pd.concat([meta, value_block], axis=1)
-    symbol = (
-        work.groupby("Ensembl_Gene_ID", sort=False)["Symbol"]
-        .agg(lambda s: next((v for v in s if v), ""))
-        .rename("Symbol")
-    )
-    source_gene_id = (
-        work.groupby("Ensembl_Gene_ID", sort=False)["source_gene_id"]
-        .agg(lambda s: ";".join(sorted(set(map(str, s)))))
-        .rename("source_gene_id")
-    )
-    values = work.groupby("Ensembl_Gene_ID", sort=False)[sample_cols].sum()
-    return pd.concat([symbol, source_gene_id, values], axis=1).reset_index()
-
-
 def _summarize(df: pd.DataFrame, included_cols: list[str],
                *, source_id: str | None = None) -> pd.DataFrame:
     values = df[included_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
@@ -198,9 +109,9 @@ def _summarize(df: pd.DataFrame, included_cols: list[str],
     out["tumor_origin"] = "primary"
     out["notes"] = (
         "Raw CLL-map TPMs; portal duplicate exclusions applied; "
-        "GCLL-0136 excluded as suspected MCL; GENCODE19 IDs harmonized "
-        "to Ensembl release 112 by source ID or shared-resolver symbol "
-        "rescue (direct → Entrez → NCBI-synonym/alias)."
+        "GCLL-0136 excluded as suspected MCL; GENCODE19 source ids "
+        "canonicalized to unversioned Ensembl via oncoref (id → symbol "
+        "rescue), duplicate loci summed in linear TPM space."
     )
     return round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
 
@@ -210,7 +121,11 @@ def main() -> None:
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--summary-output", required=True, type=Path)
     parser.add_argument("--samples-output", required=True, type=Path)
-    parser.add_argument("--ensembl-release", default=112, type=int)
+    parser.add_argument(
+        "--ensembl-release", default=112, type=int,
+        help="(Accepted for CLI compatibility; canonicalization now uses "
+             "oncoref's bundled authority, not a pyensembl release.)",
+    )
     args = parser.parse_args()
 
     df = _read_tpm_matrix(args.input)
@@ -221,12 +136,17 @@ def main() -> None:
     }]
     manifest = _sample_manifest(sample_cols)
     included = manifest.loc[manifest["included"], "sample_id"].tolist()
-    df, harmonized = _harmonize_gene_ids(
-        df,
-        ensembl_release=args.ensembl_release,
+    # Canonicalize GENCODE19 source ids → unversioned Ensembl via oncoref,
+    # summing duplicate loci in linear TPM space. The versioned source id is the
+    # row id; the source Symbol rescues retired ids with a still-current symbol.
+    matrix = df.set_index("source_gene_id")[sample_cols]
+    canon = _osrc.canonicalize_source(
+        matrix, row_id_name="source_gene_id", symbols=df["Symbol"].tolist(),
     )
-    collapsed = _collapse_duplicate_genes(df, sample_cols)
-    summary = _summarize(collapsed, included, source_id="cllmap")
+    # No per-sample sample_qc() gate here (unlike the generic geo-matrix build):
+    # every mapped sample enters the stats. See oncoref_source's module docstring —
+    # QC-gating the source-specific cohorts is a deliberate data-affecting follow-up.
+    summary = _summarize(canon.matrix, included, source_id="cllmap")
     args.samples_output.parent.mkdir(parents=True, exist_ok=True)
     upsert_to_shard(
         args.summary_output,
@@ -243,11 +163,12 @@ def main() -> None:
         f"Wrote {len(summary)} genes from {len(included)} included CLL samples "
         f"({len(sample_cols)} total source columns)."
     )
+    stats = canon.mapping_stats
     print(
-        "Gene ID harmonization: "
-        f"{harmonized['source_id']} source IDs retained, "
-        f"{harmonized['symbol']} remapped by unique symbol, "
-        f"{harmonized['dropped']} unresolved rows dropped."
+        "Gene ID canonicalization (oncoref): "
+        f"{stats['n_resolved_rows']}/{stats['n_source_rows']} source rows "
+        f"resolved, {stats['n_unresolved_rows']} unresolved dropped "
+        f"({stats['n_high_expression_unresolved_rows']} high-expression)."
     )
 
 
