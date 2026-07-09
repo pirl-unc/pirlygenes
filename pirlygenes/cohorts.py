@@ -288,6 +288,26 @@ def _treehouse_registry() -> tuple[Cohort, ...]:
             code = f"{parent}_{'MSI' if status == 'MSI-H' else 'MSS'}"
             rows.append(Cohort(code, code, _POLYA, group="tcga_coadread_msi",
                                disease_label=dl, selection=f"msi:{status}"))
+    # TCGA-UCEC molecular subtypes (cBioPortal ucec_tcga_pan_can_atlas_2018
+    # SUBTYPE; Kandoth 2013 PMID 23636398). The MMR/POLE axis trufflepig's
+    # MSI-vs-MSS classifier needs beyond CRC (pirlygenes#529): UCEC_MSI = MMRd
+    # positive, UCEC_CNL/UCEC_CNH = pMMR/MSS negatives, UCEC_POLE = ultramutated
+    # holdout confounder. selection carries the cBioPortal SUBTYPE value.
+    for code, subtype in [("UCEC_POLE", "UCEC_POLE"), ("UCEC_MSI", "UCEC_MSI"),
+                          ("UCEC_CNL", "UCEC_CN_LOW"), ("UCEC_CNH", "UCEC_CN_HIGH")]:
+        rows.append(Cohort(code, code, _POLYA, group="tcga_ucec_subtype",
+                           disease_label="endometrial carcinoma",
+                           selection=f"subtype:{subtype}"))
+    # TCGA-STAD molecular subtypes (cBioPortal stad_tcga_pan_can_atlas_2018
+    # SUBTYPE; TCGA 2014 PMID 25079317). Extends the MMR axis to gastric
+    # (pirlygenes#529): STAD_MSI = MSI-positive, STAD_GS/STAD_CIN = MSS
+    # negatives, STAD_EBV = immune-hot holdout confounder. selection carries the
+    # cBioPortal SUBTYPE value.
+    for code, subtype in [("STAD_EBV", "STAD_EBV"), ("STAD_MSI", "STAD_MSI"),
+                          ("STAD_GS", "STAD_GS"), ("STAD_CIN", "STAD_CIN")]:
+        rows.append(Cohort(code, code, _POLYA, group="tcga_stad_subtype",
+                           disease_label="stomach adenocarcinoma",
+                           selection=f"subtype:{subtype}"))
     # TCGA-SARC histology overlays (GDC primary_diagnosis). WDLPS is built by
     # the sarc_subtypes sweep; DDLPS/PLEOLPS by the sarc_rare overlay path.
     for code, diagnosis, grp in [

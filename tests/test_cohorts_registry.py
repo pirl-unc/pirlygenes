@@ -103,8 +103,9 @@ def test_registry_covers_the_expected_cohort_set():
     polya = {c.code: c.stem for c in cohorts._PER_SAMPLE_COHORTS
              if c.source_id == "treehouse-polya-25-01"}
     # 26 polya-direct (stem==code) + 30 tcga-direct + 2 glioma + 13 molecular/
-    # histology splits + 4 COAD/READ MSI splits = 75.
-    assert len(polya) == 75
+    # histology splits + 4 COAD/READ MSI splits + 4 UCEC subtype splits +
+    # 4 STAD subtype splits = 83.
+    assert len(polya) == 83
     # spot-check each stem rule
     assert polya["ATRT"] == "ATRT"                  # pediatric direct
     assert polya["NPC"] == "NPC"                    # rare-subtype direct
@@ -115,6 +116,8 @@ def test_registry_covers_the_expected_cohort_set():
     assert polya["HNSC_HPVpos"] == "tcga_hnsc_hpv_pos"  # hpv
     assert polya["LUAD_STK11"] == "tcga_luad_stk11"     # mutation
     assert polya["SARC_WDLPS"] == "tcga_sarc_wdlps"     # histology overlay
+    assert polya["UCEC_MSI"] == "UCEC_MSI"              # UCEC subtype split
+    assert polya["STAD_MSI"] == "STAD_MSI"              # STAD subtype split
     ribod = {c.code: c.stem for c in cohorts._PER_SAMPLE_COHORTS
              if c.source_id == "treehouse-ribod-25-01"}
     assert ribod == {"SARC_CHOR": "SARC_CHOR", "RB": "RB"}
@@ -148,7 +151,8 @@ def test_groups_partition_the_registry():
         "polya_pediatric", "sarc_rare_direct", "sarc_subtypes",
         "sarc_rare_overlay", "tcga_direct", "tcga_glioma",
         "tcga_brca_pam50", "tcga_hnsc_hpv", "tcga_luad_mut", "ribod",
-        "neuroendocrine", "sclc_tf_subtype", "tcga_coadread_msi"}
+        "neuroendocrine", "sclc_tf_subtype", "tcga_coadread_msi",
+        "tcga_ucec_subtype", "tcga_stad_subtype"}
 
 
 def test_cohorts_for_group_filters_by_group():
