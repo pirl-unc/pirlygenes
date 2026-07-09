@@ -1489,6 +1489,11 @@ def mixture_cohort_codes():
     NOT taxonomic groupings. For the taxonomy question "is this an
     aggregate/grouping node" use :func:`is_grouping` (oncoref's
     ``ontology_level``), which excludes those source-scope subtypes.
+
+    Not dead — trufflepig's per-sample ``tumor_purity`` gates the
+    ``_mixture_cohort_lineage_summary`` subtype-pick on :func:`is_mixture_cohort`,
+    so this stays a supported accessor even though :func:`is_grouping` supersedes
+    it for the pure-taxonomy question.
     """
     df = cancer_type_registry()
     if "mixture_cohort" not in df.columns:

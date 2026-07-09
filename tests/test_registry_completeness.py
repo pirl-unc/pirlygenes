@@ -263,22 +263,72 @@ def test_tolerated_fields_are_valid_names():
         )
 
 
-def test_therapy_axis_baseline_matches_current_data():
-    """If the baseline claims a code lacks a therapy axis but the panel
-    is actually present (or vice versa), the set has drifted."""
-    coverage = _leaf_codes_with_coverage()
-    missing_now = {c for c, f in coverage.items() if not f["therapy_axis"]}
+def _baseline_drift(declared, coverage):
+    """``(stale, new, reparented_out)`` between a declared "missing therapy axis"
+    set and the current leaf coverage.
 
-    stale = set(_MISSING_THERAPY_AXIS) - missing_now
-    new = missing_now - set(_MISSING_THERAPY_AXIS)
+    Resilient to oncoref registry reshapes: a declared code oncoref has since
+    reparented under a parent is no longer a leaf the completeness check
+    evaluates, so it is neither ``stale`` nor a real gap — it is reported as
+    ``reparented_out`` (prunable, non-failing) instead of forcing a manual
+    frozenset edit on every taxonomy move. The genuine drift signals survive:
+    ``stale`` = a still-leaf code that GAINED a panel (shrink the set); ``new`` =
+    a leaf with no panel that isn't yet declared.
+    """
+    leaf_codes = set(coverage)
+    missing_now = {c for c, f in coverage.items() if not f["therapy_axis"]}
+    declared = set(declared)
+    reparented_out = declared - leaf_codes
+    declared_leaf = declared & leaf_codes
+    stale = declared_leaf - missing_now
+    new = missing_now - declared
+    return stale, new, reparented_out
+
+
+def test_therapy_axis_baseline_matches_current_data():
+    """If the baseline claims a leaf code lacks a therapy axis but the panel is
+    actually present (or a new leaf lacks one), the set has drifted.
+
+    Reparenting is not drift: see :func:`_baseline_drift`. Only a leaf that gained
+    a panel or a genuinely new gap fails; codes oncoref moved under a parent are
+    reported for eventual pruning but do not break CI."""
+    stale, new, reparented_out = _baseline_drift(
+        _MISSING_THERAPY_AXIS, _leaf_codes_with_coverage())
+
+    if reparented_out:
+        print(
+            "\n[baseline] _MISSING_THERAPY_AXIS entries oncoref reparented out of "
+            f"leaf status (prunable, non-failing): {sorted(reparented_out)}"
+        )
 
     assert not stale, (
-        f"_MISSING_THERAPY_AXIS lists codes that NOW have a panel — shrink: {sorted(stale)}"
+        f"_MISSING_THERAPY_AXIS lists leaf codes that NOW have a panel — shrink: {sorted(stale)}"
     )
     assert not new, (
         f"New leaf codes lack a therapy-axis panel but aren't in "
         f"_MISSING_THERAPY_AXIS: {sorted(new)}"
     )
+
+
+def test_baseline_drift_ignores_reparented_codes():
+    """The churn-hardening contract: a declared code oncoref reparents out of
+    leaf status reads as ``reparented_out`` (prunable), NOT ``stale`` drift — so a
+    registry reshape doesn't re-break the baseline. The gained-panel and new-gap
+    signals still fire."""
+    # KEEP_GAP: still a leaf, still no panel (correctly declared).
+    # GAINED: still a leaf, but now HAS a panel (declared -> should shrink).
+    # NEWGAP: a leaf with no panel that is NOT declared (a real new gap).
+    coverage = {
+        "KEEP_GAP": {"therapy_axis": False},
+        "GAINED": {"therapy_axis": True},
+        "NEWGAP": {"therapy_axis": False},
+    }
+    # REPARENTED is declared but no longer a leaf (absent from coverage).
+    stale, new, reparented = _baseline_drift(
+        {"KEEP_GAP", "GAINED", "REPARENTED"}, coverage)
+    assert reparented == {"REPARENTED"}   # ignored — taxonomy move, not drift
+    assert stale == {"GAINED"}            # declared gap that gained a panel
+    assert new == {"NEWGAP"}              # undeclared new leaf gap still flagged
 
 
 def test_completeness_progress_report(capsys):
