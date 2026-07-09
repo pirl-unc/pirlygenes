@@ -1,5 +1,6 @@
 """Consuming oncoref's ontology_level / ontology_kind grouping signal
-(oncoref #322/#323, requires oncoref >= 1.8.95).
+(oncoref #322/#323 add the columns; #326 finishes the aggregate tier wiring —
+requires oncoref >= 1.8.103).
 
 These accessors are the authoritative "is this a taxonomic grouping" signal
 that pirlygenes (and trufflepig, which re-exports these) should gate on
@@ -45,7 +46,19 @@ def test_grouping_is_narrower_than_mixture_cohort():
     assert "CRC_MSI" in mixture and "CRC_MSI" not in groupings
 
 
-def test_computed_union_is_subset_of_groupings():
+def test_computed_union_codes_span_grouping_and_type_tiers():
+    # oncoref #326 ("aggregate ontology tier wiring") split computed-union
+    # aggregates across two ontology levels: top-level taxonomic groupings
+    # (SARC/CRC/NET) AND intermediate type-level rollup tiers (SARC_LPS/ESS/RMS,
+    # NEC_LUNG). So the computed-union set is no longer a subset of the grouping
+    # set — but every member is still a real aggregate node (grouping- or
+    # type-level, never a primary leaf), and the grouping-level members are
+    # exactly grouping codes.
     cu = set(computed_union_codes())
     assert {"CRC", "NET", "SARC"} <= cu
-    assert cu <= set(grouping_codes())
+    reg = cancer_type_registry().set_index("code")
+    levels = {c: str(reg.loc[c, "ontology_level"]) for c in cu if c in reg.index}
+    assert set(levels.values()) <= {"grouping", "type"}
+    grouping_level = {c for c, lvl in levels.items() if lvl == "grouping"}
+    assert grouping_level <= set(grouping_codes())
+    assert {"SARC", "CRC", "NET"} <= grouping_level
