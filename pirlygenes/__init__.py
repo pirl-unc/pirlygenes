@@ -69,7 +69,6 @@ from .expression import (
     rank_normalize,
     renormalize_to_million,
     representative_cohort_samples,
-    select_representative_samples,
     technical_rna_gene_ids,
     tumor_up_vs_matched_normal,
     zscore_normalize,
@@ -282,7 +281,6 @@ __all__ = [
     "drop_technical_genes",
     "rank_normalize",
     "zscore_normalize",
-    "select_representative_samples",
     # expression: reference-frame convenience
     "normalize_to_housekeeping",
     "log2_transform",

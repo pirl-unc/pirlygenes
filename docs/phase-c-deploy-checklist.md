@@ -23,9 +23,9 @@ The manual steps below are kept as the reference the script automates.
 
 Files in the tarball (`pirlygenes.data_bundle.DOWNLOADABLE_PATHS`):
 `cancer-reference-expression/`, `cancer-reference-expression-views/`,
-`cancer-reference-expression-representatives/`,
-`cancer-reference-expression-percentiles/`, `pan-cancer-expression.csv`,
-`hpa-cell-type-expression.csv`.
+`pan-cancer-expression.csv`, `hpa-cell-type-expression.csv`.
+(Per-cohort medoid representatives + per-gene percentile vectors moved to
+oncoref in #208 — no longer in the tarball.)
 
 ## Steps (run by a maintainer with PyPI + GitHub-release credentials)
 
@@ -35,8 +35,8 @@ Files in the tarball (`pirlygenes.data_bundle.DOWNLOADABLE_PATHS`):
    # The views artifact is a cache of the summary shards, so regenerate it
    # whenever those shards change (it must run after the bake above):
    python scripts/generate_cohort_expression_views.py
-   # Percentiles + representatives only when per-sample source matrices change:
-   python scripts/generate_cohort_gene_percentiles.py
+   # (Per-gene percentile vectors + representative-sample medoids are owned by
+   #  oncoref since #208 — regenerated in oncoref, not here.)
    ```
 
 2. **Build the data tarball** from the in-repo data:
@@ -45,8 +45,6 @@ Files in the tarball (`pirlygenes.data_bundle.DOWNLOADABLE_PATHS`):
    tar -C pirlygenes/data -czf pirlygenes-data-v$V.tar.gz \
        cancer-reference-expression \
        cancer-reference-expression-views \
-       cancer-reference-expression-representatives \
-       cancer-reference-expression-percentiles \
        pan-cancer-expression.csv \
        hpa-cell-type-expression.csv
    ```

@@ -1,7 +1,10 @@
-"""Per-gene × cohort tail-weighted percentile vectors (#298)."""
+"""Per-gene × cohort tail-weighted percentile vectors (#298).
 
-import sys
-from pathlib import Path
+The percentile artifact + its generator moved to oncoref in #208; the accessor
+now delegates there. These tests pin the pirlygenes-facing contract against the
+real artifact (skip when absent). The 26 tail-weighted breakpoints are the
+public column schema oncoref emits.
+"""
 
 import numpy as np
 import pytest
@@ -11,10 +14,9 @@ from pirlygenes.expression import (
     cohort_gene_percentiles,
 )
 
-# single source of truth for the breakpoints: the generator defines them.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-from generate_cohort_gene_percentiles import BREAKPOINTS  # noqa: E402
-
+# The 26 tail-weighted breakpoints (dense in the actionable upper tail) — the
+# public column schema of the delegated per-gene percentile vector.
+BREAKPOINTS = [0, 1] + list(range(5, 91, 5)) + [95, 96, 97, 98, 99, 100]
 _BP = [f"p{b}" for b in BREAKPOINTS]
 
 

@@ -114,16 +114,14 @@ pirlygenes = [
 # lazily by pirlygenes.data_bundle):
 #   data/cancer-reference-expression/*                  ~325 MB
 #   data/cancer-reference-expression-views/*            precomputed views
-#   data/cancer-reference-expression-representatives/*   ~48 MB  (#312)
-#   data/cancer-reference-expression-percentiles/*       percentile vectors
 #   data/pan-cancer-expression.csv                       ~11 MB
 #   data/hpa-cell-type-expression.csv                    ~7 MB
+# (Per-cohort medoid representatives + per-gene percentile vectors moved to
+#  oncoref in #208; pirlygenes no longer ships or downloads them.)
 [tool.setuptools.exclude-package-data]
 pirlygenes = [
     "data/cancer-reference-expression/*",
     "data/cancer-reference-expression-views/*",
-    "data/cancer-reference-expression-representatives/*",
-    "data/cancer-reference-expression-percentiles/*",
     "data/pan-cancer-expression.csv",
     "data/hpa-cell-type-expression.csv",
 ]

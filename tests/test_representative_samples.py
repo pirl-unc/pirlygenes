@@ -2,8 +2,8 @@
 
 The accessor now delegates selection + storage to oncoref (deterministic
 farthest-first medoids); these tests pin the pirlygenes-facing contract against
-the real artifact (skip when absent), plus the build-side
-``select_representative_samples`` engine (still shipped + used by the builder).
+the real artifact (skip when absent). The former pirlygenes-side k-means++
+selection engine was retired in #208 — oncoref owns medoid selection now.
 Never real patient data — the artifact is the public Treehouse-derived medoids.
 """
 
@@ -12,7 +12,6 @@ import pandas as pd
 import pytest
 
 from pirlygenes.expression import accessors
-from pirlygenes.expression import select_representative_samples
 
 
 def _skip_if_absent():
@@ -157,34 +156,3 @@ def test_neuroendocrine_axis_has_representatives():
     assert {"NET_PANCREAS", "SCLC"} <= set(ne), f"NE axis under-covered: {ne}"
     w = accessors.representative_cohort_samples("NET_PANCREAS")
     assert [c for c in w.columns if c.startswith("NET_PANCREAS_rep")]
-
-
-# --- select_representative_samples (the build-side clustering/medoid engine) ---
-
-def test_select_returns_all_when_n_le_k():
-    m = pd.DataFrame(np.random.default_rng(0).random((20, 3)),
-                     columns=["a", "b", "c"])
-    assert select_representative_samples(m, k=5) == ["a", "b", "c"]
-
-
-def test_select_picks_real_columns_and_is_deterministic():
-    rng = np.random.default_rng(1)
-    # three well-separated blobs of samples in gene space: 5 samples x 30 genes
-    blocks = [rng.normal(center, 1.0, size=(5, 30)) for center in (10.0, 100.0, 1000.0)]
-    samples_by_genes = np.vstack(blocks)         # 15 samples x 30 genes
-    X = samples_by_genes.T                        # genes(30) x samples(15)
-    cols = [f"s{i:02d}" for i in range(15)]
-    m = pd.DataFrame(X, columns=cols)
-    a = select_representative_samples(m, k=3)
-    b = select_representative_samples(m, k=3)
-    assert a == b                      # deterministic
-    assert set(a) <= set(cols)         # real columns
-    assert len(a) == 3
-    blobs = {i // 5 for i in (cols.index(c) for c in a)}
-    assert blobs == {0, 1, 2}          # one representative per separated blob
-
-
-def test_select_rejects_nonpositive_k():
-    m = pd.DataFrame(np.ones((4, 4)))
-    with pytest.raises(ValueError):
-        select_representative_samples(m, k=0)

@@ -94,7 +94,6 @@ from .qc import (
     classify_gene_qc,
     is_rescue_feature,
 )
-from .representatives import select_representative_samples
 
 
 __all__ = [
@@ -131,7 +130,6 @@ __all__ = [
     "technical_rna_mask",
     "rank_normalize",
     "zscore_normalize",
-    "select_representative_samples",
     # Reference-frame convenience wrappers
     "normalize_to_housekeeping",
     "log1p_transform",
