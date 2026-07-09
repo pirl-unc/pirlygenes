@@ -23,7 +23,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
-    upsert_to_shard,
+    write_reference_rows,
 )
 from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
 
@@ -171,7 +171,7 @@ def main() -> int:
     out = round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
     print(f"  built {len(out)} gene rows for {CANCER_CODE}")
 
-    upsert_to_shard(
+    write_reference_rows(
         args.summary_output, out,
         source_cohort=SOURCE_COHORT, cancer_codes=[CANCER_CODE],
     )

@@ -21,7 +21,7 @@ from pirlygenes.expression.stats import (
     compute_cohort_stats,
     compute_count_columns,
     round_stat_columns,
-    upsert_to_shard,
+    write_reference_rows,
 )
 from pirlygenes.load_dataset import get_data
 
@@ -102,7 +102,7 @@ def test_bundled_csv_has_full_schema():
 
 def test_every_bundled_shard_has_tumor_origin_set():
     """Catch any shard that ships without tumor_origin set —
-    upsert_to_shard now rejects writes that violate this, but pre-v5.4
+    write_reference_rows now rejects writes that violate this, but pre-v5.4
     files could still slip through if a builder is updated incorrectly."""
     df = get_data("cancer-reference-expression")
     bad = df[df["tumor_origin"].isna()]
@@ -114,7 +114,7 @@ def test_every_bundled_shard_has_tumor_origin_set():
 
 def test_every_bundled_tumor_origin_is_in_enum():
     """Catch typos like 'metastatic' that would otherwise slip past
-    upsert_to_shard's validation if a legacy shard was ever
+    write_reference_rows's validation if a legacy shard was ever
     hand-edited."""
     df = get_data("cancer-reference-expression")
     observed = set(df["tumor_origin"].dropna().astype(str).unique())
@@ -125,11 +125,11 @@ def test_every_bundled_tumor_origin_is_in_enum():
     )
 
 
-# ---------- upsert_to_shard validation ----------
+# ---------- write_reference_rows validation ----------
 
 
 def _stat_kwargs(n_genes: int, n_samples: int) -> dict:
-    """Build a minimal valid stat-columns block for upsert_to_shard tests."""
+    """Build a minimal valid stat-columns block for write_reference_rows tests."""
     import numpy as np
     cols = {c: np.zeros(n_genes, dtype=float) for c in STAT_COLUMNS}
     cols.update({c: np.zeros(n_genes, dtype=float) for c in CLEAN_STAT_COLUMNS})
@@ -158,35 +158,35 @@ def _minimal_rows(*, cancer_code: str, tumor_origin=None) -> pd.DataFrame:
     return base
 
 
-def test_upsert_to_shard_rejects_missing_tumor_origin(tmp_path):
+def test_write_reference_rows_rejects_missing_tumor_origin(tmp_path):
     """A builder that forgets to set tumor_origin must fail at write time."""
     import pytest as _pt
     rows = _minimal_rows(cancer_code="FAKE")
     # Drop the column entirely; simulates a builder that never set it.
     rows = rows.drop(columns=["tumor_origin"], errors="ignore")
     with _pt.raises(ValueError, match="tumor_origin"):
-        upsert_to_shard(
+        write_reference_rows(
             tmp_path, rows,
             source_cohort="TEST_SOURCE", cancer_codes=["FAKE"],
         )
 
 
-def test_upsert_to_shard_rejects_invalid_tumor_origin(tmp_path):
+def test_write_reference_rows_rejects_invalid_tumor_origin(tmp_path):
     """Typos like 'metastatic' (vs 'metastasis') must fail at write time."""
     import pytest as _pt
     rows = _minimal_rows(cancer_code="FAKE", tumor_origin="metastatic")
     with _pt.raises(ValueError, match="unrecognised tumor_origin"):
-        upsert_to_shard(
+        write_reference_rows(
             tmp_path, rows,
             source_cohort="TEST_SOURCE", cancer_codes=["FAKE"],
         )
 
 
-def test_upsert_to_shard_accepts_valid_tumor_origin(tmp_path):
+def test_write_reference_rows_accepts_valid_tumor_origin(tmp_path):
     """Sanity: a correctly-set tumor_origin passes validation and lands
     on disk via the regular shard path."""
     rows = _minimal_rows(cancer_code="FAKE", tumor_origin="primary")
-    written = upsert_to_shard(
+    written = write_reference_rows(
         tmp_path, rows,
         source_cohort="TEST_SOURCE", cancer_codes=["FAKE"],
     )
@@ -194,7 +194,7 @@ def test_upsert_to_shard_accepts_valid_tumor_origin(tmp_path):
     assert set(written["tumor_origin"]) == {"primary"}
 
 
-def test_upsert_to_shard_canonicalizes_renamed_codes(tmp_path):
+def test_write_reference_rows_canonicalizes_renamed_codes(tmp_path):
     """A builder still emitting a pre-rename code (e.g. recount3 routing →
     'MID_NET') must land under the current registry code ('NET_MIDGUT'),
     and the cross-code upsert must REPLACE any existing canonical-name rows
@@ -207,13 +207,13 @@ def test_upsert_to_shard_canonicalizes_renamed_codes(tmp_path):
     # rename migration would have left it).
     stale = _minimal_rows(cancer_code="NET_MIDGUT", tumor_origin="primary")
     stale["source_version"] = "stale_v1"
-    upsert_to_shard(
+    write_reference_rows(
         tmp_path, stale, source_cohort="TEST_SOURCE", cancer_codes=["NET_MIDGUT"],
     )
     # New build emits the OLD code name; cancer_codes also uses the old name.
     fresh = _minimal_rows(cancer_code="MID_NET", tumor_origin="primary")
     fresh["source_version"] = "fresh_v4"
-    merged = upsert_to_shard(
+    merged = write_reference_rows(
         tmp_path, fresh, source_cohort="TEST_SOURCE", cancer_codes=["MID_NET"],
     )
     # Result: only the canonical code survives, carrying the fresh data.
@@ -268,14 +268,14 @@ def test_upsert_samples_manifest_preserves_other_cohorts_rows_and_columns(tmp_pa
     assert out["source_cohort"].value_counts().to_dict() == {"COHORT_A": 2, "COHORT_B": 2}
 
 
-def test_upsert_to_shard_per_cancer_code_shards_writes_one_file_per_code(tmp_path):
+def test_write_reference_rows_per_cancer_code_shards_writes_one_file_per_code(tmp_path):
     """When per_cancer_code_shards=True, write `<source>__<code>.csv.gz`
     per code so a multi-code source can stay under GitHub's 100 MiB
     hard limit even after the schema grows."""
     rows_a = _minimal_rows(cancer_code="CODE_A", tumor_origin="primary")
     rows_b = _minimal_rows(cancer_code="CODE_B", tumor_origin="primary")
     rows = pd.concat([rows_a, rows_b], ignore_index=True)
-    upsert_to_shard(
+    write_reference_rows(
         tmp_path, rows,
         source_cohort="TEST_SPLIT",
         cancer_codes=["CODE_A", "CODE_B"],
@@ -301,7 +301,7 @@ def test_per_cancer_code_shards_concat_back_via_loader(tmp_path):
     rows_a = _minimal_rows(cancer_code="CODE_A", tumor_origin="primary")
     rows_b = _minimal_rows(cancer_code="CODE_B", tumor_origin="mixed")
     rows = pd.concat([rows_a, rows_b], ignore_index=True)
-    upsert_to_shard(
+    write_reference_rows(
         tmp_path, rows,
         source_cohort="ROUNDTRIP",
         cancer_codes=["CODE_A", "CODE_B"],
@@ -321,7 +321,7 @@ def test_per_cancer_code_shards_concat_back_via_loader(tmp_path):
     assert len(loaded) == len(rows)
 
 
-def test_upsert_to_shard_per_cancer_code_warns_on_unexpected_codes(tmp_path):
+def test_write_reference_rows_per_cancer_code_warns_on_unexpected_codes(tmp_path):
     """Codes present in new_rows but missing from the cancer_codes list
     usually indicate accidental cross-contamination in the input
     frame — surface a warning so the builder author notices."""
@@ -330,7 +330,7 @@ def test_upsert_to_shard_per_cancer_code_warns_on_unexpected_codes(tmp_path):
     rows_b = _minimal_rows(cancer_code="STRAY", tumor_origin="primary")
     rows = pd.concat([rows_a, rows_b], ignore_index=True)
     with _pt.warns(UserWarning, match="STRAY"):
-        upsert_to_shard(
+        write_reference_rows(
             tmp_path, rows,
             source_cohort="TEST_SPLIT_WARN",
             cancer_codes=["CODE_A"],   # 'STRAY' not listed
@@ -378,12 +378,12 @@ def test_data_bundle_prune_lists_and_deletes_stale_dirs(tmp_path, monkeypatch):
     assert (tmp_path / f"v{data_bundle.DATA_VERSION}").exists()
 
 
-def test_upsert_to_shard_allow_unset_for_legacy_backfill(tmp_path):
+def test_write_reference_rows_allow_unset_for_legacy_backfill(tmp_path):
     """The v5.4 migration backfill rewrites legacy rows; ``allow_unset_tumor_origin``
     lets it pass NaN through during that one-time migration."""
     rows = _minimal_rows(cancer_code="FAKE", tumor_origin=None)
     rows = rows.drop(columns=["tumor_origin"], errors="ignore")
-    upsert_to_shard(
+    write_reference_rows(
         tmp_path, rows,
         source_cohort="TEST_LEGACY", cancer_codes=["FAKE"],
         allow_unset_tumor_origin=True,

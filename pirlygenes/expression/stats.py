@@ -8,7 +8,7 @@ in ``cancer-reference-expression.csv.gz`` with the same shape.
 Schema additions in v5.4 — ``tumor_origin`` (one of the values in
 :data:`TUMOR_ORIGIN_VALUES`) and ``metastasis_site`` (free-text site
 when ``tumor_origin == 'metastasis'``). Every builder MUST set
-``tumor_origin``; :func:`upsert_to_shard` raises if it's missing or
+``tumor_origin``; :func:`write_reference_rows` raises if it's missing or
 holds an unrecognised value.
 
 Stat suite (raw and ``_clean`` companions, raw applied to the input
@@ -105,11 +105,11 @@ COHORT_ANNOTATION_COLUMNS: tuple[str, ...] = (
 )
 
 
-# Valid values for the ``tumor_origin`` column. ``upsert_to_shard``
+# Valid values for the ``tumor_origin`` column. ``write_reference_rows``
 # rejects any row whose ``tumor_origin`` falls outside this set —
 # catches typos like 'metastatic' (vs 'metastasis') at write time
 # rather than at downstream-analysis time. NaN is allowed only when
-# explicitly opted into via ``upsert_to_shard(..., allow_unset_tumor_origin=True)``
+# explicitly opted into via ``write_reference_rows(..., allow_unset_tumor_origin=True)``
 # (used by the schema-backfill script during the v5.4 migration; new
 # builders should always set it).
 TUMOR_ORIGIN_VALUES: frozenset[str] = frozenset({
@@ -510,7 +510,7 @@ def finalize_reference_rows(
     idiom. Sets ``tumor_origin`` when given, then a **lenient** reindex onto
     ``REFERENCE_COLUMNS`` — backfilling any schema column the builder predates
     (e.g. ``metastasis_site``) as NaN instead of the strict ``[list(...)]``
-    select that ``KeyError``s when a column isn't present. ``upsert_to_shard``
+    select that ``KeyError``s when a column isn't present. ``write_reference_rows``
     still validates ``tumor_origin``, so a row can never reach the shard with it
     unset.
     """
@@ -580,7 +580,7 @@ def _validate_tumor_origin(
         if allow_unset:
             return
         raise ValueError(
-            f"upsert_to_shard({source_cohort!r}): rows are missing the "
+            f"write_reference_rows({source_cohort!r}): rows are missing the "
             "'tumor_origin' column. Every builder must set this — see "
             "TUMOR_ORIGIN_VALUES for the allowed enum."
         )
@@ -588,7 +588,7 @@ def _validate_tumor_origin(
     null_mask = series.isna()
     if null_mask.any() and not allow_unset:
         raise ValueError(
-            f"upsert_to_shard({source_cohort!r}): {int(null_mask.sum())} "
+            f"write_reference_rows({source_cohort!r}): {int(null_mask.sum())} "
             f"of {len(rows)} rows have null tumor_origin. Set it "
             "explicitly in the builder (or pass allow_unset_tumor_origin"
             "=True if this is a legacy-data backfill)."
@@ -597,13 +597,13 @@ def _validate_tumor_origin(
     invalid = sorted(set(non_null) - TUMOR_ORIGIN_VALUES)
     if invalid:
         raise ValueError(
-            f"upsert_to_shard({source_cohort!r}): unrecognised "
+            f"write_reference_rows({source_cohort!r}): unrecognised "
             f"tumor_origin values {invalid}. Allowed: "
             f"{sorted(TUMOR_ORIGIN_VALUES)}."
         )
 
 
-def upsert_to_shard(
+def write_reference_rows(
     summary_output,
     new_rows: pd.DataFrame,
     *,
@@ -612,7 +612,10 @@ def upsert_to_shard(
     per_cancer_code_shards: bool = False,
     allow_unset_tumor_origin: bool = False,
 ) -> pd.DataFrame:
-    """Upsert ``new_rows`` into the per-source shard for ``source_cohort``.
+    """Write ``new_rows`` into the per-source shard for ``source_cohort``.
+
+    (Replace-or-insert: rows for the given ``cancer_codes`` are overwritten,
+    rows for every other code in the source are preserved — see below.)
 
     ``summary_output`` is the
     ``pirlygenes/data/cancer-reference-expression/`` directory. By
@@ -687,14 +690,14 @@ def upsert_to_shard(
         missing = set(cancer_codes) - set(present_codes)
         if missing:
             raise ValueError(
-                f"upsert_to_shard({source_cohort!r}, per_cancer_code_shards"
+                f"write_reference_rows({source_cohort!r}, per_cancer_code_shards"
                 f"=True): cancer_codes lists {sorted(missing)} but no "
                 "rows in new_rows carry that code."
             )
         unexpected = set(present_codes) - set(cancer_codes)
         if unexpected:
             warnings.warn(
-                f"upsert_to_shard({source_cohort!r}, per_cancer_code_shards"
+                f"write_reference_rows({source_cohort!r}, per_cancer_code_shards"
                 f"=True): new_rows contains cancer_codes {sorted(unexpected)} "
                 "that were NOT listed in the cancer_codes argument. Writing "
                 "them anyway, but this usually indicates accidental cross-"
@@ -836,6 +839,6 @@ __all__ = [
     "numeric_stat_columns",
     "round_stat_columns",
     "finalize_reference_rows",
-    "upsert_to_shard",
+    "write_reference_rows",
     "upsert_samples_manifest",
 ]

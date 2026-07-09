@@ -5,7 +5,7 @@ The combined shard hit 99.47 MiB after the v5.4 schema addition
 (tumor_origin + metastasis_site) — within touching distance of
 GitHub's 100 MiB hard limit. This script reads it once, groups by
 cancer_code, and writes ``TREEHOUSE_POLYA_25_01_TCGA_SUBSET__<CODE>.csv.gz``
-per code via :func:`pirlygenes.expression.stats.upsert_to_shard` in
+per code via :func:`pirlygenes.expression.stats.write_reference_rows` in
 its new ``per_cancer_code_shards=True`` mode. The original combined
 file is then deleted.
 
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from pirlygenes.expression.stats import REFERENCE_COLUMNS, upsert_to_shard
+from pirlygenes.expression.stats import REFERENCE_COLUMNS, write_reference_rows
 
 SHARD_NAME = "TREEHOUSE_POLYA_25_01_TCGA_SUBSET"
 
@@ -77,8 +77,8 @@ def main() -> int:
             print(f"    {args.source_cohort}__{code}.csv.gz  ({n_rows:,} rows)")
         return 0
 
-    print("writing per-code shards via upsert_to_shard(per_cancer_code_shards=True)...")
-    upsert_to_shard(
+    print("writing per-code shards via write_reference_rows(per_cancer_code_shards=True)...")
+    write_reference_rows(
         args.shard_dir,
         df,
         source_cohort=args.source_cohort,

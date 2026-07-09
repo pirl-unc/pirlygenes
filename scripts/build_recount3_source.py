@@ -27,7 +27,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
-    upsert_to_shard,
+    write_reference_rows,
 )
 
 CACHE_DIR = Path.home() / ".cache" / "pirlygenes" / "recount3"
@@ -193,7 +193,7 @@ def build(src: Recount3Source, summary_output: Path) -> int:
     if not summaries:
         print("  nothing to write")
         return 1
-    upsert_to_shard(
+    write_reference_rows(
         summary_output, pd.concat(summaries, ignore_index=True),
         source_cohort=src.source_cohort, cancer_codes=written,
     )

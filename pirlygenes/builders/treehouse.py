@@ -55,7 +55,7 @@ from ..expression.normalize import (
 from ..expression.stats import (
     assign_stats,
     finalize_reference_rows,
-    upsert_to_shard,
+    write_reference_rows,
 )
 from .gene_mapping import resolve_symbol
 
@@ -364,11 +364,6 @@ def _summarize_cohort(
     return finalize_reference_rows(out, tumor_origin=release.tumor_origin)
 
 
-# Thin alias kept so the existing call site keeps its descriptive
-# name; the shared implementation lives in pirlygenes.expression.stats.
-_upsert_many = upsert_to_shard
-
-
 def run_sweep(
     release: TreehouseRelease,
     cohorts: Iterable[TreehouseCohort],
@@ -447,7 +442,7 @@ def run_sweep(
         f"writing {len(combined_new):,} new rows across "
         f"{len(per_cohort_summaries)} cohorts into {summary_output}..."
     )
-    shard_total = _upsert_many(
+    shard_total = write_reference_rows(
         Path(summary_output),
         combined_new,
         source_cohort=release.source_cohort,

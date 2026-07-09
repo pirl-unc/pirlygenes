@@ -18,7 +18,7 @@ Two layers, evaluated in this order:
 
 New builders should:
 - Set ``tumor_origin`` (and ``metastasis_site`` when applicable) on
-  every emitted row. :func:`pirlygenes.expression.stats.upsert_to_shard`
+  every emitted row. :func:`pirlygenes.expression.stats.write_reference_rows`
   validates this and rejects unset / unrecognised values.
 - Add ``tumor_origin:`` to the YAML source entry too, so the value is
   declarative (separate from per-row data).

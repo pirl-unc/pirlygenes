@@ -5,7 +5,7 @@ RPKM / log2(TPM+1) / raw counts) keyed by gene IDs (Ensembl / HUGO
 symbol / Entrez), normalizes everything to per-sample TPM, applies
 the technical-RNA filter + renormalize, and computes the v5.3 stat
 suite. Output goes to the standard per-source shard via
-``pirlygenes.expression.stats.upsert_to_shard``.
+``pirlygenes.expression.stats.write_reference_rows``.
 
 Used by ``scripts/build_geo_matrix.py``, which looks up source
 config from ``pirlygenes/data/expression_sources.yaml`` by source-id
@@ -34,7 +34,7 @@ from ..expression.normalize import (
 from ..expression.stats import (
     assign_stats,
     finalize_reference_rows,
-    upsert_to_shard,
+    write_reference_rows,
 )
 from . import oncoref_source as _osrc
 from .oncoref_source import SampleQcMode
@@ -523,7 +523,7 @@ def build_source(
     # Upsert ONLY the codes that produced samples. A code whose samples all failed
     # keeps its prior shard rows — we do not purge on a signal we cannot distinguish
     # from a transient failure (upsert preserves every code not in cancer_codes).
-    upsert_to_shard(
+    write_reference_rows(
         summary_output, combined,
         source_cohort=source.source_cohort,
         cancer_codes=list(counts_by_code.keys()),

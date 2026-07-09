@@ -53,7 +53,7 @@ from .treehouse import _build_or_load_symbol_mapping
 from ..expression.stats import (
     assign_stats,
     finalize_reference_rows,
-    upsert_to_shard,
+    write_reference_rows,
 )
 
 
@@ -512,7 +512,7 @@ def build_microarray_source(
     out["metastasis_site"] = metastasis_site if metastasis_site else pd.NA
     out = finalize_reference_rows(out, tumor_origin=tumor_origin)
 
-    upsert_to_shard(
+    write_reference_rows(
         summary_output,
         out,
         source_cohort=source_cohort,

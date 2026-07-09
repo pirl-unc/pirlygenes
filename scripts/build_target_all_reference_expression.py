@@ -31,7 +31,7 @@ from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
     assign_stats,
     round_stat_columns,
-    upsert_to_shard,
+    write_reference_rows,
 )
 from pirlygenes.expression.normalize import clean_tpm_matrix as _clean_tpm, technical_rna_mask as _technical_mask
 
@@ -572,7 +572,7 @@ def _upsert_source_cohort(
     NOT use this — it's a single-file write, see _upsert_samples.
     """
     codes = sorted(new_rows["cancer_code"].astype(str).unique())
-    return upsert_to_shard(
+    return write_reference_rows(
         path, new_rows, source_cohort=source_cohort, cancer_codes=codes,
     )
 

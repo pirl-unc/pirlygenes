@@ -9,7 +9,7 @@ and writes the right values.
 
 Going forward this script is only needed for one-time schema-migration
 passes against legacy data — new builders set ``tumor_origin`` per-row
-and ``upsert_to_shard`` rejects unset / unrecognised values at write
+and ``write_reference_rows`` rejects unset / unrecognised values at write
 time.
 """
 

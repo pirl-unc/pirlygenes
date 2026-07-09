@@ -34,7 +34,7 @@ from pirlygenes.builders.treehouse import (
 from pirlygenes.expression.stats import (
     assign_stats,
     finalize_reference_rows,
-    upsert_to_shard,
+    write_reference_rows,
 )
 
 EXPR_URL = (
@@ -158,7 +158,7 @@ def main() -> int:
         counts[code] = len(cols)
 
     combined = pd.concat(summaries, ignore_index=True)
-    upsert_to_shard(
+    write_reference_rows(
         args.summary_output, combined,
         source_cohort=SOURCE_COHORT, cancer_codes=list(counts),
     )

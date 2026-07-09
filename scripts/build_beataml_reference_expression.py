@@ -79,7 +79,7 @@ import urllib.request
 import urllib.parse
 import json
 
-from pirlygenes.expression.stats import upsert_to_shard
+from pirlygenes.expression.stats import write_reference_rows
 
 
 GDC_FILES_ENDPOINT = "https://api.gdc.cancer.gov/files"
@@ -283,7 +283,7 @@ def main() -> int:
         print(f"  {subtype}: {len(cols)} samples; {len(summary)} gene rows")
 
     combined = pd.concat(summaries, ignore_index=True)
-    upsert_to_shard(
+    write_reference_rows(
         args.summary_output, combined,
         source_cohort=SOURCE_COHORT, cancer_codes=cancer_codes,
     )
