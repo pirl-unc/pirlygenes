@@ -1473,14 +1473,22 @@ def mixture_cohort_codes():
     A mixture cohort is a parent code whose TCGA / reference median is a
     biological union of lineage-distinct subtypes. Running classification
     against the parent median drowns subtype-specific markers; the
-    classifier instead evaluates each subtype's lineage panel
-    independently and takes the max (see
-    :func:`pirlygenes.tumor_purity.estimate_tumor_purity`).
+    per-sample classifier instead evaluates each subtype's lineage panel
+    independently and takes the max. (That classifier moved to trufflepig
+    with the per-sample analysis surface — ``estimate_tumor_purity`` lives
+    there now, not in pirlygenes.)
 
     Example: ``SARC`` = leiomyosarcoma ∪ liposarcoma ∪ myxofibrosarcoma ∪
     undifferentiated pleomorphic ∪ synovial ∪ MPNST. MYH11 is a
     leiomyosarcoma marker but near-zero at TCGA-SARC median because LMS
     is only ~26% of the cohort.
+
+    Legacy signal. As of oncoref 1.8.95 the ``mixture_cohort`` column is
+    documented as *cohort/source pooling*, not taxonomy: it also flags
+    source-pooled codes like ``CRC_MSI`` (pools COAD_MSI+READ_MSI) that are
+    NOT taxonomic groupings. For the taxonomy question "is this an
+    aggregate/grouping node" use :func:`is_grouping` (oncoref's
+    ``ontology_level``), which excludes those source-scope subtypes.
     """
     df = cancer_type_registry()
     if "mixture_cohort" not in df.columns:
@@ -1492,6 +1500,42 @@ def mixture_cohort_codes():
 def is_mixture_cohort(code):
     """True when ``code`` is a mixture cohort per the registry (#171)."""
     return code in set(mixture_cohort_codes())
+
+
+def grouping_codes():
+    """Registry codes that are taxonomic *groupings* — aggregate / union nodes
+    such as ``SARC``, ``CRC``, ``NET``, ``BTC`` — as opposed to primary types
+    or molecular subtypes.
+
+    Reads oncoref's authoritative ``ontology_level == "grouping"`` signal
+    (oncoref #322/#323), the single source of truth for "is this a grouping."
+    Prefer this over deriving groupings from ``family`` / ``mixture_cohort``
+    heuristics. Deliberately narrower than :func:`mixture_cohort_codes`:
+    source-scope molecular subtypes like ``CRC_MSI`` are NOT groupings.
+    """
+    df = cancer_type_registry()
+    if "ontology_level" not in df.columns:
+        return []
+    return df.loc[df["ontology_level"] == "grouping", "code"].tolist()
+
+
+def is_grouping(code):
+    """True when ``code`` is a taxonomic grouping node (see
+    :func:`grouping_codes`)."""
+    return code in set(grouping_codes())
+
+
+def computed_union_codes():
+    """Grouping codes whose reference profile is a *computed union* of member
+    cohorts (oncoref ``ontology_kind == "computed_union"``: ``CRC``, ``NET``,
+    ``SARC``), as distinct from source-scope groupings (``BTC`` / ``RCC_NCC`` /
+    ``SGC`` / ``NSCLC``) that draw from a single broad cohort. Every computed
+    union is also a :func:`grouping_codes` member.
+    """
+    df = cancer_type_registry()
+    if "ontology_kind" not in df.columns:
+        return []
+    return df.loc[df["ontology_kind"] == "computed_union", "code"].tolist()
 
 
 def sarcoma_lineage_codes(*, with_expression_only=False):
@@ -2149,6 +2193,32 @@ def cancer_key_genes_df():
     return get_data("cancer-key-genes")
 
 
+def _subtype_tile_code(cancer_code, subtype):
+    """Resolve the ``cancer_code`` a curated subtype tile is keyed under.
+
+    A subtype's key-genes tile (e.g. the ``dedifferentiated_liposarcoma``
+    biomarkers) is curated at whatever lineage level makes sense — historically
+    the leaf's immediate parent, but oncoref's intermediate-tier re-parenting
+    (SARC_DDLPS: parent SARC -> SARC_LPS, oncoref#325) can leave the tile at a
+    grandparent. When the exact ``(cancer_code, subtype)`` pair has no rows, walk
+    up the registry parent chain and return the first ancestor that does, so
+    subtype lookups stay robust to re-parenting. Returns ``cancer_code``
+    unchanged when ``subtype`` is ``None`` or no ancestor carries the tile
+    (preserving the prior exact-match behavior for every non-re-parented case).
+    """
+    if subtype is None:
+        return cancer_code
+    df = cancer_key_genes_df()
+    have = set(df.loc[df["subtype"].fillna("").astype(str) == subtype, "cancer_code"])
+    if cancer_code in have:
+        return cancer_code
+    parent_of = cancer_type_registry().set_index("code")["parent_code"].to_dict()
+    for anc in _walk_ancestors(cancer_code, parent_of):
+        if anc in have:
+            return anc
+    return cancer_code
+
+
 def cancer_biomarker_genes(cancer_code, subtype=None):
     """Ordered list of biomarker gene symbols for ``cancer_code``.
 
@@ -2163,7 +2233,8 @@ def cancer_biomarker_genes(cancer_code, subtype=None):
     yet determined at report time.
     """
     df = cancer_key_genes_df()
-    sub = df[(df["cancer_code"] == cancer_code) & (df["role"] == "biomarker")]
+    code = _subtype_tile_code(cancer_code, subtype)
+    sub = df[(df["cancer_code"] == code) & (df["role"] == "biomarker")]
     if subtype is not None:
         sub = sub[sub["subtype"].fillna("").astype(str) == subtype]
     return list(sub["symbol"].dropna().astype(str).unique())
@@ -2178,7 +2249,8 @@ def cancer_therapy_targets(cancer_code, subtype=None):
     :func:`cancer_biomarker_genes` for semantics.
     """
     df = cancer_key_genes_df()
-    sub = df[(df["cancer_code"] == cancer_code) & (df["role"] == "target")]
+    code = _subtype_tile_code(cancer_code, subtype)
+    sub = df[(df["cancer_code"] == code) & (df["role"] == "target")]
     if subtype is not None:
         sub = sub[sub["subtype"].fillna("").astype(str) == subtype]
     return sub.copy().reset_index(drop=True)

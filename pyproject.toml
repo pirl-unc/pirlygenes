@@ -18,11 +18,15 @@ dependencies = [
     "numpy>=2.0.0",
     # oncoref owns the cancer-type ontology/registry (single source of truth);
     # pirlygenes re-exports it via load_dataset (pirlygenes#523 / oncoref#275).
-    # Floor 1.8.64: its registry is a superset of every code pirlygenes
+    # Floor 1.8.98: its registry is a superset of every code pirlygenes
     # previously shipped (incl. ASTB, oncoref #223) AND it ships the
     # median-of-ratios housekeeping normalization pirlygenes delegates to
-    # (oncoref #204 / #516).
-    "oncoref>=1.8.64",
+    # (oncoref #204 / #516). 1.8.95 adds the ontology_level/ontology_kind
+    # columns and reparents CRC_MSI under CRC (oncoref #322/#323); 1.8.98
+    # (#325/#326) finishes the intermediate-tier wiring (SARC_LPS/ESS leaves
+    # reparented, NEC_LUNG tier added) and ships cancer_subtype_groupings.
+    # The registry-completeness baseline is keyed to that registry shape.
+    "oncoref>=1.8.98",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile

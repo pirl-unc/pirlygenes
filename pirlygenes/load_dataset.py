@@ -327,6 +327,22 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
         )
         return registry.copy() if copy else registry
 
+    # cancer-subtype-groupings (cross-cutting MSI/MSS/POLE/HPV/MYCN/EBV axes) is
+    # likewise owned by oncoref as of 1.8.95 — a lossless superset of pirlygenes'
+    # former local CSV (adds the EBV_POS axis + STAD_MSI/CIN/GS and CRC_MSI
+    # members). Re-export it the same way so cancer_subtype_groupings() /
+    # cancer_subtype_group() delegate rather than ship a divergent copy. Fixture
+    # injection bypasses this branch as above. See oncoref#325.
+    if _dataframes_dict is None and name in (
+        "cancer-subtype-groupings", "cancer-subtype-groupings.csv"
+    ):
+        import oncoref
+
+        groupings = _normalize_dataset_dtypes(
+            "cancer-subtype-groupings", oncoref.cancer_subtype_groupings()
+        )
+        return groupings.copy() if copy else groupings
+
     candidates = [name, name.lower()]
     for candidate in list(candidates):
         candidates.append(candidate + ".csv")

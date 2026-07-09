@@ -51,7 +51,7 @@ _MISSING_THERAPY_AXIS = frozenset(
         "CLL", "CML", "CTCL", "DLBC", "ESCA",
         "FL", "GBM", "HCL", "HEPB",
         "HL", "HNSC", "KICH", "KIRC", "KIRP", "LAML", "LGG", "LIHC",
-        "NEC_LUNG_LARGECELL", "MBL", "MCL", "MDS", "NEC_MERKEL",
+        "MBL", "MCL", "MDS", "NEC_MERKEL",
         "MESO", "MM", "MPN", "MTC", "NPC", "NUTM",
         "OV", "PAAD", "PCPG", "RB",
         "RT", "SARC", "CRC",
@@ -59,8 +59,16 @@ _MISSING_THERAPY_AXIS = frozenset(
         "UVM", "WILMS",
         # Re-export of oncoref's registry (pirlygenes#523) adds these codes; no
         # therapy-response signature is materialised for them yet.
-        "BTC", "CRC_MSI", "NET", "NEN_G3_EXTRAPULMONARY", "NSCLC", "RCC_NCC",
+        # (CRC_MSI dropped from this set in oncoref 1.8.95: it was reparented
+        # under CRC as a molecular subtype (oncoref #322/#323), so it is no
+        # longer a top-level code the completeness check evaluates.)
+        "BTC", "NET", "NEN_G3_EXTRAPULMONARY", "NSCLC", "RCC_NCC",
         "SGC",
+        # oncoref 1.8.98 (#325/#326) finished the intermediate-tier wiring:
+        # NEC_LUNG is a new top-level lung-NEC grouping tier — parent of
+        # NEC_LUNG_LARGECELL, which is now a subtype (so it left this set) —
+        # with no therapy-response panel of its own yet.
+        "NEC_LUNG",
         # #294/#295 NCI-gap additions — curated registry entries; expression
         # data not yet built, so no therapy-axis panel is materialised yet.
         "BCC", "cSCC", "VSCC", "PENSCC", "VAGC", "URETH", "ANSC",
@@ -102,6 +110,10 @@ _TOLERATED_GAPS_EXPLICIT = {
     "MPN": {"lineage", "biomarker", "therapy"},
     # NET axis — NET_PANCREAS shipped v4.47.0; rest pending
     "NEC_LUNG_LARGECELL": {"lineage", "biomarker", "therapy"},
+    # NEC_LUNG: computed lung-NEC grouping tier added in oncoref 1.8.98
+    # (#325/#326); an abstract parent of NEC_LUNG_LARGECELL with no panels of
+    # its own — its child carries lineage/biomarker/therapy.
+    "NEC_LUNG": {"lineage", "biomarker", "therapy"},
     "NET_RECTAL": {"lineage", "biomarker", "therapy"},
     # Pediatric entities — lineage panels still need curation
     "NBL": {"lineage"},

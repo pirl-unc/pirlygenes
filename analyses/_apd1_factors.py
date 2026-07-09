@@ -73,8 +73,14 @@ _UCEC_RECODE = {
 # cross-cutting groupings (cancer-subtype-groupings.csv), so the pool is a
 # single source of truth, not a hardcoded list:
 #   {COAD_MSI: CRC_MSI, READ_MSI: CRC_MSI, COAD_MSS: CRC_MSS, READ_MSS: CRC_MSS}
+# Pool the organ-level source leaves (COAD/READ x {MSI,MSS}); exclude the tier's
+# own CRC-level aggregate node — as of oncoref 1.8.95 cancer_subtype_group("MSI",
+# under="CRC") also returns the CRC_MSI molecular-subtype node itself, which is
+# the pool TARGET, not a source to average (and would otherwise be dropped as a
+# "source code" and vanish from the map).
 _CRC_TIER_MEMBERS = {
-    f"CRC_{grp}": cancer_subtype_group(grp, under="CRC")
+    f"CRC_{grp}": [m for m in cancer_subtype_group(grp, under="CRC")
+                   if m != f"CRC_{grp}"]
     for grp in ("MSI", "MSS")
 }
 _COLORECTAL_POOL = {
