@@ -62,7 +62,7 @@ _MISSING_THERAPY_AXIS = frozenset(
         # (CRC_MSI dropped from this set in oncoref 1.8.95: it was reparented
         # under CRC as a molecular subtype (oncoref #322/#323), so it is no
         # longer a top-level code the completeness check evaluates.)
-        "BTC", "NET", "NEN_G3_EXTRAPULMONARY", "NSCLC", "RCC_NCC",
+        "BTC", "NET", "NSCLC", "RCC_NCC",
         "SGC",
         # oncoref 1.8.98 (#325/#326) finished the intermediate-tier wiring:
         # NEC_LUNG is a new top-level lung-NEC grouping tier — parent of
@@ -97,7 +97,6 @@ _TOLERATED_GAPS_EXPLICIT = {
     "CRC_MSI": {"lineage", "biomarker", "therapy"},
     "NET": {"lineage", "biomarker", "therapy"},
     "NET_NONPANCREATIC": {"lineage", "biomarker", "therapy"},
-    "NEN_G3_EXTRAPULMONARY": {"lineage", "biomarker", "therapy"},
     "NSCLC": {"lineage", "biomarker", "therapy"},
     "RCC_NCC": {"lineage", "biomarker", "therapy"},
     "RCC_NCC_UNCLASSIFIED": {"lineage", "biomarker", "therapy"},
@@ -175,9 +174,27 @@ _TOLERATED_GAPS_EXPLICIT = {
 }
 
 
-def _build_tolerated_gaps():
+def _leaf_registry_rows():
+    """Top-level registry rows that are real classifiable entities.
+
+    A "leaf" here is a top-level code (empty ``parent_code``) that is NOT an
+    ``ontology_level == "grouping"`` aggregate. Grouping nodes (SARC/CRC/NET/NEN/
+    RCC/THYM_EPITHELIAL/… — oncoref ``computed_union`` unions) have no gene-set
+    panels of their own; their child cohorts carry lineage/biomarker/therapy, so
+    they are exempt from the leaf-completeness minimum. Gating on oncoref's
+    ``ontology_level`` keeps this robust to oncoref adding new grouping tiers
+    (which it does frequently) without a manual frozenset edit each time.
+    """
     reg = cancer_type_registry()
-    leaf = reg[reg["parent_code"].fillna("").astype(str).eq("")]
+    is_top = reg["parent_code"].fillna("").astype(str).eq("")
+    if "ontology_level" in reg.columns:
+        is_grouping = reg["ontology_level"].astype(str).eq("grouping")
+        return reg[is_top & ~is_grouping]
+    return reg[is_top]
+
+
+def _build_tolerated_gaps():
+    leaf = _leaf_registry_rows()
     out = {}
     for code in leaf["code"]:
         fields = set(_TOLERATED_GAPS_EXPLICIT.get(code, set()))
@@ -193,8 +210,7 @@ _TOLERATED_GAPS = _build_tolerated_gaps()
 
 def _leaf_codes_with_coverage():
     """Return ``{code: {field: bool}}`` for every leaf registry entry."""
-    reg = cancer_type_registry()
-    leaf = reg[reg["parent_code"].fillna("").astype(str).eq("")]
+    leaf = _leaf_registry_rows()
 
     ln = get_data("lineage-genes")
     ln_codes = {code for code, group in ln.groupby("Cancer_Type") if len(group) >= 5}

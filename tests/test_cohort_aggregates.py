@@ -40,6 +40,35 @@ def test_sarc_is_pan_sarcoma_union_excluding_aggregates_and_self():
     assert "SARC_RMS_ERMS" in pan and "SARC_LMS" in pan
 
 
+def test_sarc_tier_rollups_stay_in_lockstep_with_registry_children():
+    """The curated SARC histology rollups must equal oncoref's registry
+    parent_code tiers. Aligned exactly once oncoref #326 finished the
+    intermediate-tier wiring (1.8.103: SARC_LPS/ESS/RMS are computed_union tiers
+    with the leaves reparented under them). This guards against the curated CSV
+    silently drifting from the registry — if oncoref reparents or adds a subtype,
+    the rollup must be updated in lockstep.
+
+    CRC is deliberately NOT checked here: its cohort-aggregate members are the
+    organ atoms (COAD/READ), but the registry also parents the molecular subtype
+    CRC_MSI under CRC, so registry-derivation would wrongly pull it into the
+    organ rollup — the reason this stays a curated CSV, not a pure derivation.
+    """
+    from pirlygenes.gene_sets_cancer import cancer_type_registry
+
+    reg = cancer_type_registry()
+    children: dict[str, set] = {}
+    for code, parent in zip(
+        reg["code"].astype(str), reg["parent_code"].fillna("").astype(str)
+    ):
+        p = parent.strip()
+        if p and p.lower() not in ("nan", "none"):
+            children.setdefault(p, set()).add(code)
+    for tier in ("SARC_LPS", "SARC_ESS", "SARC_RMS"):
+        assert set(cohort_aggregate_members(tier)) == children.get(tier, set()), (
+            f"{tier} rollup drifted from registry parent_code children"
+        )
+
+
 def test_non_aggregate_returns_none():
     assert cohort_aggregate_members("GBM") is None
     assert cohort_aggregate_members("not-a-code") is None

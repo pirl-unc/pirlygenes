@@ -25,10 +25,14 @@ dependencies = [
     # columns and reparents CRC_MSI under CRC (oncoref #322/#323); 1.8.103
     # (#325/#326) finishes the aggregate tier wiring — the intermediate SARC
     # histology rollups (SARC_LPS/ESS/RMS) and NEC_LUNG become type-level
-    # computed_union tiers, and the literature-pooling buckets
-    # (NET_NONPANCREATIC, NEN_G3_EXTRAPULMONARY) get ontology_level=evidence_scope.
-    # The grouping-signal tests + registry-completeness baseline are keyed to
-    # that finished tier shape (see tests/test_ontology_level_groupings.py).
+    # computed_union tiers. 1.8.107 restructures the neuroendocrine / renal /
+    # thymic taxonomy: NEN/RCC/THYM_EPITHELIAL added as grouping unions
+    # (NEN -> NET/NEC, RCC -> KIRC/KIRP/KICH/RCC_NCC, THYM_EPITHELIAL ->
+    # THYM/THYMCA) and NEN_G3_EXTRAPULMONARY renamed to NEN_EXTRAPULMONARY_HG.
+    # The grouping-signal tests + registry-completeness baseline gate on
+    # ontology_level=='grouping' (auto-exempt) so this taxonomy churn no longer
+    # needs a frozenset edit per release (see tests/test_registry_completeness.py
+    # and tests/test_ontology_level_groupings.py).
     # >=1.8.75 also gives the builders the cleaned-up source-matrix QC /
     # mapping-audit / parse-diagnostics contract they delegate to — Entrez
     # resolver (#293) + un-versioned QC contract with configurable HK floor +
@@ -37,7 +41,7 @@ dependencies = [
     # delegates in #208 (representative_cohort_samples with
     # representative_id_style/sample_qc='artifact', available_representative_
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles).
-    "oncoref>=1.8.103",
+    "oncoref>=1.8.107",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile
