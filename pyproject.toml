@@ -30,6 +30,10 @@ dependencies = [
     # mapping-audit / parse-diagnostics contract they delegate to — Entrez
     # resolver (#293) + un-versioned QC contract with configurable HK floor +
     # proxy warn-only (#292); see pirlygenes#526 (satisfied by 1.8.98).
+    # 1.8.98 also serves the representative/percentile accessors pirlygenes
+    # delegates in #208 (representative_cohort_samples with
+    # representative_id_style/sample_qc='artifact', available_representative_
+    # cohorts, available_percentile_cohorts, cohort_gene_percentiles).
     "oncoref>=1.8.98",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
