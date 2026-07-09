@@ -319,8 +319,9 @@ def test_sarc_subtypes_cover_main_entities():
     subs = set(cancer_type_subtypes_of("SARC"))
     required = {
         "SARC_LMS",
-        "SARC_DDLPS",
-        "SARC_MYXLPS",
+        # Liposarcoma is represented by the SARC_LPS tier now (its histologic
+        # leaves DDLPS/MYXLPS/… parent under SARC_LPS as of oncoref 1.8.98 #326).
+        "SARC_LPS",
         "SARC_SYN",
         "SARC_DSRCT",
         "SARC_GIST",
@@ -336,9 +337,9 @@ def test_sarc_intermediate_tiers_present():
     """One-level subtype tiers (SARC_RMS / SARC_LPS / SARC_ESS) exist as real
     registry codes (family=sarcoma, parent=SARC, computed), so the parent
     subtype is a first-class, consistently-typed entity — not just a plot-time
-    synthesis. The molecular leaves are intentionally NOT re-parented (leaf->tier
-    membership lives in cancer-cohort-aggregates), so subtypes_of('SARC') still
-    enumerates the atoms."""
+    synthesis. As of oncoref 1.8.98 (#326) the histologic leaves ARE re-parented
+    under their tier, so they enumerate under SARC_LPS/SARC_ESS/SARC_RMS and the
+    tier is the direct SARC child."""
     reg = cancer_type_registry().set_index("code")
     for tier in ("SARC_RMS", "SARC_LPS", "SARC_ESS"):
         assert tier in reg.index, f"missing intermediate tier {tier}"
@@ -346,8 +347,10 @@ def test_sarc_intermediate_tiers_present():
         assert reg.loc[tier, "parent_code"] == "SARC"
         assert reg.loc[tier, "expression_source"] == "computed"
         assert resolve_cancer_type(tier) == tier
-    # leaves still enumerate under SARC (no re-parenting / trufflepig breakage)
-    assert {"SARC_DDLPS", "SARC_MYXLPS"} <= set(cancer_type_subtypes_of("SARC"))
+        # the tier is a direct child of SARC...
+        assert tier in set(cancer_type_subtypes_of("SARC"))
+    # ...and the liposarcoma leaves now enumerate under the SARC_LPS tier.
+    assert {"SARC_DDLPS", "SARC_MYXLPS"} <= set(cancer_type_subtypes_of("SARC_LPS"))
 
 
 def test_ucec_molecular_subtypes_split_apd1_368():

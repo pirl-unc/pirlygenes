@@ -2193,6 +2193,32 @@ def cancer_key_genes_df():
     return get_data("cancer-key-genes")
 
 
+def _subtype_tile_code(cancer_code, subtype):
+    """Resolve the ``cancer_code`` a curated subtype tile is keyed under.
+
+    A subtype's key-genes tile (e.g. the ``dedifferentiated_liposarcoma``
+    biomarkers) is curated at whatever lineage level makes sense — historically
+    the leaf's immediate parent, but oncoref's intermediate-tier re-parenting
+    (SARC_DDLPS: parent SARC -> SARC_LPS, oncoref#325) can leave the tile at a
+    grandparent. When the exact ``(cancer_code, subtype)`` pair has no rows, walk
+    up the registry parent chain and return the first ancestor that does, so
+    subtype lookups stay robust to re-parenting. Returns ``cancer_code``
+    unchanged when ``subtype`` is ``None`` or no ancestor carries the tile
+    (preserving the prior exact-match behavior for every non-re-parented case).
+    """
+    if subtype is None:
+        return cancer_code
+    df = cancer_key_genes_df()
+    have = set(df.loc[df["subtype"].fillna("").astype(str) == subtype, "cancer_code"])
+    if cancer_code in have:
+        return cancer_code
+    parent_of = cancer_type_registry().set_index("code")["parent_code"].to_dict()
+    for anc in _walk_ancestors(cancer_code, parent_of):
+        if anc in have:
+            return anc
+    return cancer_code
+
+
 def cancer_biomarker_genes(cancer_code, subtype=None):
     """Ordered list of biomarker gene symbols for ``cancer_code``.
 
@@ -2207,7 +2233,8 @@ def cancer_biomarker_genes(cancer_code, subtype=None):
     yet determined at report time.
     """
     df = cancer_key_genes_df()
-    sub = df[(df["cancer_code"] == cancer_code) & (df["role"] == "biomarker")]
+    code = _subtype_tile_code(cancer_code, subtype)
+    sub = df[(df["cancer_code"] == code) & (df["role"] == "biomarker")]
     if subtype is not None:
         sub = sub[sub["subtype"].fillna("").astype(str) == subtype]
     return list(sub["symbol"].dropna().astype(str).unique())
@@ -2222,7 +2249,8 @@ def cancer_therapy_targets(cancer_code, subtype=None):
     :func:`cancer_biomarker_genes` for semantics.
     """
     df = cancer_key_genes_df()
-    sub = df[(df["cancer_code"] == cancer_code) & (df["role"] == "target")]
+    code = _subtype_tile_code(cancer_code, subtype)
+    sub = df[(df["cancer_code"] == code) & (df["role"] == "target")]
     if subtype is not None:
         sub = sub[sub["subtype"].fillna("").astype(str) == subtype]
     return sub.copy().reset_index(drop=True)
