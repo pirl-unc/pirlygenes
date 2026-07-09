@@ -48,22 +48,41 @@ So the common case is already parity. The value of the harness is the tail.
 
 ## Divergences that need attention
 
-Ordered roughly by severity. These are the items to resolve (mostly on the
-oncoref side) before trusting a full handoff.
+Ordered roughly by severity. The largest class turns out to be a **pirlygenes**
+problem the handoff itself fixes (a stale bundle over-counting technical genes);
+the remainder are an oncoref coverage gap and a shared gene-universe question.
 
-### Scale / normalization mismatches (same samples, wrong values)
+### Compositional scale shifts from technical-gene multimapping (pg bundle is stale)
 
-| code | n_samp pg/on | rel median | note |
+| code | n_samp pg/on | rel median | on/pg ratio (real genes) |
 | --- | --- | --- | --- |
-| `MBL` | 125/125 | **421%** (p95 1026%) | identical sample set, medians on a different scale — a per-source normalization/unit bug |
-| `MM` | 764/764 | **133%** | same — large cohort, so not a small-n artifact |
-| `SARC_LGFMS` | 2/2 | **49%** (p95 180%) | ~6.3k of ~18.8k scored genes divergent — a per-source scale issue |
-| `HL` | 5/5 | 45% | small cohort, but the shift is systematic |
-| `SARC_CCS` | 5/5 | 22% | |
-| `NPC` | 4/4 | 18% | |
+| `MBL` | 125/125 | **421%** (p95 1026%) | ~5.3x |
+| `MM` | 764/764 | **133%** | ~2.3x |
+| `SARC_LGFMS` | 2/2 | **49%** (p95 180%) | — |
+| `HL` | 5/5 | 45% | — |
+| `SARC_CCS` | 5/5 | 22% | — |
+| `NPC` | 4/4 | 18% | — |
 
-These matter most: the sample sets match but the summarized expression does not,
-which points at how the source matrix was unit-converted/normalized on one side.
+Same sample set, but every real gene's median is inflated on the oncoref side by
+a near-constant factor. The cause is **not** a normalization bug in oncoref — it
+is the compositional (sum-to-a-million) nature of TPM reacting to a handful of
+**technical genes that pirlygenes' *current* bundle over-counts**:
+
+- `MBL`: pg reports `RNU1-28P` (a spliceosomal-snRNA pseudogene) at **228,608
+  TPM** — 23% of the entire transcriptome from one gene — plus large piles on
+  `RN7SL1`/`RN7SK`/`RNU4-2`/`RNU2-2`. These are classic multimapping-magnet
+  loci; oncoref's builder values `RNU1-28P` at ~85 TPM.
+- `MM`: pg reports `IGKC` (a rearranged immunoglobulin constant segment) at
+  **234,899 TPM**; oncoref ~7,400.
+
+`classify_gene_qc` tags every one of these `small_ncrna` or `immune_receptor` —
+the technical classes a clean-TPM is meant to exclude. When oncoref drops/deflates
+them, the freed compositional budget re-inflates all real genes, so the median
+ratio tracks how much of pg's TPM those technical piles consumed (~80% for MBL,
+~60% for MM). **oncoref is the more-correct side here.** The pg bundle predates
+the builder→oncoref delegation (#527); rebuilding it from `oncoref.expression_builders`
+(the handoff this harness gates) is what resolves these codes — no oncoref fix
+needed. `SARC_LGFMS`/`HL`/`SARC_CCS`/`NPC` are the same effect at smaller cohorts.
 
 ### Coverage gaps
 
