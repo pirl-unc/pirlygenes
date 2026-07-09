@@ -1428,10 +1428,6 @@ def _artifact_manifest(root: Path) -> dict:
         return {}
 
 
-def _artifact_has_canonical_genes(root: Path) -> bool:
-    return bool(_artifact_manifest(root).get("canonical_gene_ids"))
-
-
 def _cohort_views_present(root: Path) -> bool:
     return (
         root.exists()
@@ -1857,8 +1853,6 @@ def cohort_expression_views(
 
 # ---------- accessors: representative per-sample vectors (#312) ----------
 
-_REPRESENTATIVES_DIR = "cancer-reference-expression-representatives"
-
 
 def _bundle_subdir(name: str):
     """Locate a bundle shard directory: an in-repo checkout (``pirlygenes/data/…``)
@@ -1879,26 +1873,16 @@ def _bundle_subdir(name: str):
     return data_bundle.cache_dir() / name
 
 
-def _available_shard_codes(root) -> list[str]:
-    """Sorted cohort codes that ship a parquet shard under ``root`` (the shared
-    body of the ``available_*_cohorts`` accessors). ``root`` is resolved by the
-    per-artifact root function so test monkeypatches on those still apply."""
-    if not root.exists():
-        return []
-    return sorted(p.stem for p in root.glob("*.parquet"))
-
-
-def _representatives_root():
-    return _bundle_subdir(_REPRESENTATIVES_DIR)
-
-
-def _percentiles_root():
-    return _bundle_subdir(_PERCENTILES_DIR)
-
-
 def available_representative_cohorts() -> list[str]:
-    """Registry codes that ship a representative-samples shard (sorted)."""
-    return _available_shard_codes(_representatives_root())
+    """Registry codes that ship a representative-samples artifact (sorted).
+
+    Delegates to oncoref (pirlygenes#208): oncoref owns the source-matrix medoid
+    selection and the representatives artifact; pirlygenes re-exports the accessor
+    so trufflepig and notebooks keep a single import path.
+    """
+    import oncoref
+
+    return sorted(oncoref.available_representative_cohorts())
 
 
 def representative_cohort_samples(
@@ -1912,38 +1896,39 @@ def representative_cohort_samples(
 ) -> pd.DataFrame:
     """Representative real per-sample expression vectors per cohort (#312).
 
-    The packaged cohort references are per-cohort aggregates (median /
-    quantiles), so downstream can only validate classification / normalization
-    against the cohort *median* — which overstates accuracy and can't
-    reconstruct a physiological sample. This accessor returns a **bounded** set
-    of real joint per-sample vectors per cohort — medoids spanning the
-    within-cohort variation — in the same ``clean_tpm_16_9_75`` basis as the
-    aggregates, for the honest sample-level self-classification battery and for
-    validating normalization / representation changes on realistic samples.
+    A bounded set of real joint per-sample medoid vectors per cohort, spanning
+    the within-cohort variation, in the ``clean_tpm_16_9_75`` basis that matches
+    the aggregate references — for the sample-level self-classification battery
+    and for validating normalization / representation changes on realistic
+    samples.
+
+    Delegated to oncoref (pirlygenes#208). oncoref selects the medoids by a
+    deterministic farthest-first traversal seeded at the true cohort medoid (the
+    sample minimizing total distance to all others), then each subsequent pick is
+    the sample farthest from those already chosen — a principled max-min coverage
+    guarantee that is seed-free, always returns ``k``, and orders picks medoid
+    first. (pirlygenes' former k-means++ selection was seed-dependent and could
+    return fewer than ``k``.)
 
     Parameters
     ----------
     cancer_types
-        Registry code, alias, or iterable. A computed-aggregate code expands to
-        the union of its member subtypes (e.g. ``"SARC"``). ``None`` returns
-        every cohort that ships representatives. Codes without a representatives
-        shard are skipped.
+        Registry code, alias, or iterable; a computed-aggregate code expands to
+        its members. ``None`` returns every cohort with representatives.
     k
         Keep at most the first ``k`` representatives per cohort (``None`` = all,
-        currently up to 5). Representatives are anonymized (``<CODE>_rep01`` …).
+        currently up to 5), medoid first. Anonymized ``<CODE>_rep01`` …
     normalize
-        ``"tpm_clean"`` (clean_tpm_16_9_75, as stored) or ``"tpm_clean_log1p"``
-        (log1p of the stored values).
+        ``"tpm_clean"`` (clean_tpm_16_9_75, as stored) or ``"tpm_clean_log1p"``.
     format
         ``"wide"`` → one ``Ensembl_Gene_ID`` / ``Symbol`` row per gene with one
-        column per representative (genes × samples). ``"long"`` → one row per
-        gene × representative with ``cancer_code`` + ``representative_id``;
-        ``include_provenance=True`` adds ``source_cohort`` / ``source_project``
-        / ``n_cohort_samples``.
+        column per representative. ``"long"`` → one row per gene ×
+        representative with ``cancer_code``; ``include_provenance=True`` adds
+        ``source_cohort`` / ``source_project`` / ``n_cohort_samples``.
     canonicalize_genes
-        Collapse each shard onto the shared canonical ENSG space before the
-        wide outer join.  This removes same-gene rows split only by
-        cross-release symbol drift.
+        Retained for signature compatibility. oncoref always returns the shared
+        canonical ENSG space, so the wide outer join never splits a gene on
+        cross-release symbol drift regardless of this flag.
 
     Returns
     -------
@@ -1957,131 +1942,77 @@ def representative_cohort_samples(
     if format not in ("wide", "long"):
         raise ValueError("format must be 'wide' or 'long'")
 
-    root = _representatives_root()
-    canonical_baked = _artifact_has_canonical_genes(Path(root))
-    available = set(available_representative_cohorts())
-    if cancer_types is None:
-        codes = sorted(available)
-    else:
-        requested = _resolve_cancer_types(cancer_types, expand_aggregates=True)
-        codes = [c for c in dict.fromkeys(requested) if c in available]
+    import oncoref
 
-    base = ["Ensembl_Gene_ID", "Symbol"]
-    wide = None
-    wide_parts = []
-    # One canonical Symbol per ENSG, preferring a real symbol over the ENSG-as-
-    # fallback that some baked shards carry (#474 review). Built while iterating
-    # so the final wide frame can index on ENSG alone.
-    symbol_by_gene: dict[str, str] = {}
-    long_parts = []
-    for code in codes:
-        shard = pd.read_parquet(root / f"{code}.parquet")
-        rep_cols = [c for c in shard.columns if c not in base]
-        if k is not None:
-            rep_cols = rep_cols[:k]
-        if canonicalize_genes and not canonical_baked:
-            from ..gene_canonicalization import canonicalize_gene_table
-            shard = canonicalize_gene_table(
-                shard,
-                value_cols=rep_cols,
-                source_version_col=None,
-            )
-        if normalize == "tpm_clean_log1p":
-            shard[rep_cols] = np.log1p(shard[rep_cols].to_numpy(dtype=float))
-        if format == "wide":
-            part = shard[base + rep_cols]
-            if canonicalize_genes:
-                # Index on the canonical ENSG ONLY. The display Symbol is a
-                # fallback that can differ across shards (a real symbol in one,
-                # the ENSG string in another); indexing on (ENSG, Symbol) would
-                # split one gene into duplicate rows. Symbol is re-attached once
-                # at the end.
-                for ensg, sym in zip(part["Ensembl_Gene_ID"], part["Symbol"]):
-                    cur = symbol_by_gene.get(ensg)
-                    if cur is None or cur == ensg:
-                        symbol_by_gene[ensg] = sym
-                wide_parts.append(
-                    part.set_index("Ensembl_Gene_ID")[rep_cols])
-            else:
-                wide = part if wide is None else wide.merge(
-                    part, on=base, how="outer")
-        else:
-            melted = shard[base + rep_cols].melt(
-                id_vars=base, var_name="representative_id", value_name="expression")
-            melted.insert(2, "cancer_code", code)
-            long_parts.append(melted)
-
-    if format == "wide":
-        if canonicalize_genes:
-            if not wide_parts:
-                return pd.DataFrame(columns=base)
-            combined = pd.concat(wide_parts, axis=1)
-            combined.index.name = "Ensembl_Gene_ID"
-            combined = combined.reset_index()
-            combined.insert(
-                1, "Symbol",
-                combined["Ensembl_Gene_ID"].map(symbol_by_gene))
-            return combined
-        if wide is None:
-            return pd.DataFrame(columns=base)
-        return wide
-
-    if not long_parts:
-        cols = base + ["cancer_code", "representative_id", "expression"]
-        return pd.DataFrame(columns=cols)
-    long = pd.concat(long_parts, ignore_index=True)
-    if include_provenance:
-        prov_path = root / "_provenance.csv"
-        if prov_path.exists():
-            prov = pd.read_csv(prov_path)
-            keep = ["representative_id", "source_cohort", "source_project",
-                    "n_cohort_samples"]
-            long = long.merge(prov[[c for c in keep if c in prov.columns]],
-                              on="representative_id", how="left")
-    return long
+    out = oncoref.representative_cohort_samples(
+        cancer_types,
+        k=k,
+        normalize=normalize,
+        format=format,
+        include_provenance=include_provenance,
+        representative_id_style="pirlygenes",
+        sample_qc="artifact",  # serve each cohort under its baked QC policy
+    )
+    # oncoref's long-format provenance is a superset; project to pirlygenes'
+    # documented columns so the contract is unchanged for consumers.
+    if format == "long" and include_provenance:
+        keep = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "representative_id",
+                "expression", "source_cohort", "source_project", "n_cohort_samples"]
+        out = out[[c for c in keep if c in out.columns]]
+    return out.reset_index(drop=True)
 
 
 # ---------- accessors: per-gene × cohort percentile vectors (#298) ----------
 
-_PERCENTILES_DIR = "cancer-reference-expression-percentiles"
-
 
 def available_percentile_cohorts() -> list[str]:
-    """Cohort codes that ship a per-gene percentile-vector shard (sorted)."""
-    return _available_shard_codes(_percentiles_root())
+    """Cohort codes that ship a per-gene percentile-vector artifact (sorted).
+
+    Delegated to oncoref (pirlygenes#208 / #298)."""
+    import oncoref
+
+    # Gene-level percentiles are scope-independent (oncoref's ``scope`` selects
+    # gene- vs proteoform-level; the default suffices for the gene-level vector).
+    return sorted(oncoref.available_percentile_cohorts())
 
 
 def cohort_gene_percentiles(cancer_type, *, as_tpm: bool = True) -> pd.DataFrame:
     """Tail-weighted per-gene percentile vector for one cohort (#298).
 
-    Returns one row per gene (``Ensembl_Gene_ID`` + ``Symbol``) with 26
-    breakpoint columns — ``p0, p1, p5, p10 … p90, p95, p96, p97, p98, p99,
-    p100`` — dense in the actionable upper tail. Lets a consumer place a
-    sample's gene as a **percentile rank within the cohort** instead of an
-    absolute TPM (the producer side of trufflepig#54).
+    One row per gene (``Ensembl_Gene_ID`` + ``Symbol``) with 26 breakpoint
+    columns — ``p0, p1, p5, p10 … p90, p95, p96, p97, p98, p99, p100`` — dense in
+    the actionable upper tail, so a consumer can place a sample's gene as a
+    **percentile rank within the cohort** instead of an absolute TPM.
 
-    Computed on the **biological clean_tpm_16_9_75 view** (technical genes dropped,
-    so the fixed-fraction inflation #304 doesn't apply). Stored compactly as
-    ``log1p`` + float16; ``as_tpm=True`` (default) ``expm1``-restores clean-TPM
-    values, ``as_tpm=False`` returns the stored log1p values. Raises if the
-    cohort has no per-sample data (summary-only cohorts have no vector — their
-    coarse percentiles are in :func:`cancer_reference_expression`).
+    Computed on the biological clean_tpm_16_9_75 view. ``as_tpm=True`` (default)
+    returns clean-TPM values, ``as_tpm=False`` the stored ``log1p`` values.
+
+    Delegated to oncoref (pirlygenes#208); reads the cohort under its baked QC
+    policy. Raises ``ValueError`` if the cohort has no per-sample data
+    (summary-only cohorts have no vector — their coarse percentiles are in
+    :func:`cancer_reference_expression`).
     """
+    from oncoref.source_matrices import SourceMatrixError
+
+    import oncoref
+
     from ..gene_sets_cancer import resolve_cancer_type
+
     code = resolve_cancer_type(cancer_type)
-    shard = _percentiles_root() / f"{code}.parquet"
-    if not shard.exists():
+    try:
+        # Gene-level percentiles are scope-independent (see
+        # available_percentile_cohorts); no ``scope`` needed.
+        df = oncoref.cohort_gene_percentiles(
+            code, as_tpm=as_tpm, sample_qc="artifact", auto_fetch=True)
+    except SourceMatrixError as err:
         raise ValueError(
-            f"no percentile vector for {code!r} — only cohorts with per-sample "
-            f"data ship one; see available_percentile_cohorts(). Summary-only "
-            "cohorts expose coarse p5/p10/p90/p95 via cancer_reference_expression."
-        )
-    df = pd.read_parquet(shard)
-    bp_cols = [c for c in df.columns if c not in ("Ensembl_Gene_ID", "Symbol")]
-    df[bp_cols] = df[bp_cols].astype("float32")
-    if as_tpm:
-        df[bp_cols] = np.expm1(df[bp_cols])
-    return df
+            f"no percentile vector available for {code!r} — either it is a "
+            f"summary-only cohort (no per-sample data; its coarse "
+            f"p5/p10/p90/p95 are in cancer_reference_expression) or its "
+            f"per-sample matrix could not be loaded. See "
+            f"available_percentile_cohorts() for cohorts that ship one."
+        ) from err
+    return df.reset_index(drop=True)
 
 
 # ---------- accessors: pan-cancer expression ----------
