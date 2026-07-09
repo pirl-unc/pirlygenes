@@ -67,6 +67,41 @@ def test_log1p_normalize_matches_expm1():
         np.log1p(raw["PRAD_rep01"].to_numpy()), rtol=1e-4, atol=1e-3)
 
 
+def test_long_provenance_projection_glue(monkeypatch):
+    """Projection glue is exercised even without the artifact: oncoref's
+    provenance is a superset, and the accessor must trim to exactly pirlygenes'
+    8 documented columns (in order), forwarding the pirlygenes-specific kwargs.
+    """
+    import oncoref
+
+    superset = pd.DataFrame({
+        "Ensembl_Gene_ID": ["ENSG00000000001", "ENSG00000000002"],
+        "Symbol": ["AAA", "BBB"],
+        "cancer_code": ["PRAD", "PRAD"],
+        "representative_id": ["PRAD_rep01", "PRAD_rep01"],
+        "expression": [1.0, 2.0],
+        "source_cohort": ["treehouse", "treehouse"],
+        "source_project": ["TCGA-PRAD", "TCGA-PRAD"],
+        "n_cohort_samples": [42, 42],
+        "oncoref_only_extra": ["x", "y"],   # oncoref superset column — must be dropped
+        "medoid_rank": [0, 0],              # oncoref superset column — must be dropped
+    })
+
+    def fake_delegate(*_a, **kw):
+        assert kw.get("representative_id_style") == "pirlygenes"
+        assert kw.get("sample_qc") == "artifact"
+        assert kw.get("format") == "long" and kw.get("include_provenance") is True
+        return superset
+
+    monkeypatch.setattr(oncoref, "representative_cohort_samples", fake_delegate)
+    out = accessors.representative_cohort_samples(
+        "PRAD", format="long", include_provenance=True)
+    assert list(out.columns) == [
+        "Ensembl_Gene_ID", "Symbol", "cancer_code", "representative_id",
+        "expression", "source_cohort", "source_project", "n_cohort_samples"]
+    assert out["cancer_code"].tolist() == ["PRAD", "PRAD"]
+
+
 def test_unknown_normalize_or_format_raises():
     # Validation happens before the oncoref call, so no artifact needed.
     with pytest.raises(ValueError):

@@ -1971,7 +1971,9 @@ def available_percentile_cohorts() -> list[str]:
     Delegated to oncoref (pirlygenes#208 / #298)."""
     import oncoref
 
-    return sorted(oncoref.available_percentile_cohorts(scope="all"))
+    # Gene-level percentiles are scope-independent (oncoref's ``scope`` selects
+    # gene- vs proteoform-level; the default suffices for the gene-level vector).
+    return sorted(oncoref.available_percentile_cohorts())
 
 
 def cohort_gene_percentiles(cancer_type, *, as_tpm: bool = True) -> pd.DataFrame:
@@ -1998,13 +2000,17 @@ def cohort_gene_percentiles(cancer_type, *, as_tpm: bool = True) -> pd.DataFrame
 
     code = resolve_cancer_type(cancer_type)
     try:
+        # Gene-level percentiles are scope-independent (see
+        # available_percentile_cohorts); no ``scope`` needed.
         df = oncoref.cohort_gene_percentiles(
-            code, as_tpm=as_tpm, scope="all", sample_qc="artifact", auto_fetch=True)
+            code, as_tpm=as_tpm, sample_qc="artifact", auto_fetch=True)
     except SourceMatrixError as err:
         raise ValueError(
-            f"no percentile vector for {code!r} — only cohorts with per-sample "
-            f"data ship one; see available_percentile_cohorts(). Summary-only "
-            "cohorts expose coarse p5/p10/p90/p95 via cancer_reference_expression."
+            f"no percentile vector available for {code!r} — either it is a "
+            f"summary-only cohort (no per-sample data; its coarse "
+            f"p5/p10/p90/p95 are in cancer_reference_expression) or its "
+            f"per-sample matrix could not be loaded. See "
+            f"available_percentile_cohorts() for cohorts that ship one."
         ) from err
     return df.reset_index(drop=True)
 
