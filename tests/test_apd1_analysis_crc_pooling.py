@@ -7,6 +7,7 @@ import sys
 import pandas as pd
 import pytest
 
+from pirlygenes.gene_sets_cancer import cancer_apd1_response, cancer_tmb
 from pirlygenes.load_dataset import get_data
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "analyses"))
@@ -22,13 +23,26 @@ from _apd1_factors import (  # noqa: E402
 _CRC_SOURCE_CODES = {"COAD", "READ", "COAD_MSI", "READ_MSI", "COAD_MSS", "READ_MSS"}
 
 
-def test_raw_crc_subtype_rows_remain_available_for_lookup():
-    """The data layer may keep organ/subtype rows; analysis axes decide pooling."""
+def test_crc_subtype_lookups_resolve_via_oncoref():
+    """Clinical aPD1/TMB rows are owned by oncoref (pirlygenes#541), which folds
+    the COAD/READ microsatellite source rows into the ``CRC_MSI`` anchor. The
+    finer source codes are no longer raw rows in the re-exported frame, but a
+    lookup for one still resolves to the CRC anchor value through oncoref's
+    source-scope resolver."""
     apd1_codes = set(get_data("cancer-apd1-response.csv")["cancer_code"])
     tmb_codes = set(get_data("cancer-tmb.csv")["cancer_code"])
 
-    assert {"COAD_MSI", "READ_MSI", "COAD_MSS", "READ_MSS"} <= apd1_codes
-    assert {"COAD", "READ", "COAD_MSI", "READ_MSI"} <= tmb_codes
+    # the CRC molecular-subtype anchor is present; the COAD/READ MSI source
+    # split rows are folded into it, not carried as independent rows.
+    assert "CRC_MSI" in apd1_codes and "CRC_MSI" in tmb_codes
+    assert not ({"COAD_MSI", "READ_MSI"} & apd1_codes)
+    assert not ({"COAD_MSI", "READ_MSI"} & tmb_codes)
+
+    # source-scope subtype lookups still resolve to the CRC anchor value.
+    assert cancer_apd1_response("COAD_MSI") == cancer_apd1_response("CRC_MSI")
+    assert cancer_apd1_response("READ_MSI") == cancer_apd1_response("CRC_MSI")
+    assert cancer_tmb("COAD_MSI") == cancer_tmb("CRC_MSI")
+    assert cancer_tmb("READ_MSI") == cancer_tmb("CRC_MSI")
 
 
 def test_clinical_anchor_maps_hide_crc_source_split_rows():
@@ -37,7 +51,7 @@ def test_clinical_anchor_maps_hide_crc_source_split_rows():
     tmb = tmb_map()
     indel = indel_map()
 
-    assert apd1["CRC_MSI"] == pytest.approx(45.0)
+    assert apd1["CRC_MSI"] == pytest.approx(cancer_apd1_response("CRC_MSI"))
     assert apd1["CRC_MSS"] == pytest.approx(0.0)
     assert tmb["CRC_MSI"] == pytest.approx(46.0)
     assert indel["CRC_MSI"] == pytest.approx(2.0)

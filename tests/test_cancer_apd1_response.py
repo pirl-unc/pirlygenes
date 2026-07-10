@@ -1,6 +1,12 @@
-"""Tests for the curated anti-PD-1 monotherapy ORR reference (cancer-apd1-response.csv)."""
+"""Delegation-surface tests for the anti-PD-1 monotherapy ORR reference.
 
-import math
+The curated table is now owned by oncoref and re-exported through
+``cancer_apd1_response`` / ``cancer_apd1_response_df`` (pirlygenes#541). These
+tests exercise the pirlygenes *delegation contract* — the accessor resolves
+aliases, walks parent inheritance, omits/returns sane values, and surfaces the
+columns pirlygenes consumes — rather than pinning oncoref's exact schema or
+per-code curated ORRs (which oncoref validates upstream and re-curates on its
+own release cadence)."""
 
 from pirlygenes.gene_sets_cancer import (
     cancer_apd1_response,
@@ -8,30 +14,20 @@ from pirlygenes.gene_sets_cancer import (
     resolve_cancer_type,
 )
 
-_EXPECTED_COLS = [
+# The columns pirlygenes' own analyses/plots read off the re-exported frame.
+# oncoref may add columns; it must not drop these.
+_REQUIRED_COLS = {
     "cancer_code",
     "apd1_orr_pct",
     "drug",
-    "trial",
-    "setting",
     "pmid_doi",
     "confidence",
-    "notes",
-    "drug_target",
-    "evidence_type",
-    "therapy_regimen_class",
-    "histology_match",
-    "is_direct_cancer_code_evidence",
-    "endpoint_population",
-    "response_numerator",
-    "response_denominator",
-    "source_anchor",
-]
+}
 
 
 def test_schema_and_unique_codes():
     df = cancer_apd1_response_df()
-    assert list(df.columns) == _EXPECTED_COLS
+    assert _REQUIRED_COLS <= set(df.columns)
     codes = df["cancer_code"].astype(str)
     assert codes.is_unique
     for code in codes:                      # every code must be a real registry code
@@ -48,49 +44,11 @@ def test_values_are_response_rates():
     assert m["GBM"] < 15 and m["PRAD"] < 15
 
 
-def test_drug_matches_its_checkpoint_target():
-    """Each row's drug must match its ``drug_target`` class:
-      - ``PD-1``        — anti-PD-1 monotherapy (pembrolizumab/nivolumab/cemiplimab).
-      - ``PD-L1``       — anti-PD-L1 *proxy*, used only where no anti-PD-1 ORR exists.
-      - ``PD-1+CTLA-4`` — dual checkpoint *fallback* (nivolumab+ipilimumab), used
-                          where no single-agent anti-PD-1/PD-L1 ORR exists.
-    Both fallback classes (PD-L1, PD-1+CTLA-4) must carry a citation."""
-    df = cancer_apd1_response_df()
-    assert set(df["drug_target"]) <= {"PD-1", "PD-L1", "PD-1+CTLA-4"}
-    pd1 = df[df["drug_target"] == "PD-1"]
-    pdl1 = df[df["drug_target"] == "PD-L1"]
-    dual = df[df["drug_target"] == "PD-1+CTLA-4"]
-    assert set(pd1["drug"]).issubset({"pembrolizumab", "nivolumab", "cemiplimab"})
-    assert set(pdl1["drug"]).issubset({"atezolizumab", "durvalumab", "avelumab"})
-    assert set(dual["drug"]).issubset({"nivolumab+ipilimumab"})
-    # fallback classes must carry a citation (no unsourced proxies)
-    for fallback in (pdl1, dual):
-        assert fallback["pmid_doi"].astype(str).str.startswith(("PMID", "DOI", "10.")).all()
-
-
-def test_response_evidence_provenance_is_structured():
-    df = cancer_apd1_response_df()
-    assert df["endpoint_population"].astype(str).str.len().gt(0).all()
-    assert set(df["therapy_regimen_class"]) <= {
-        "single_agent_pd1",
-        "single_agent_pdl1_proxy",
-        "dual_checkpoint_proxy",
-    }
-    direct_values = set(
-        df["is_direct_cancer_code_evidence"].astype(str).str.lower()
-    )
-    assert direct_values <= {"true", "false"}
-
-    proxy = df[df["cancer_code"].isin(["GBC", "NEC_LUNG_LARGECELL", "ACINIC"])]
-    assert set(proxy["histology_match"]) == {"proxy_or_pooled"}
-
-    sarc = df.set_index("cancer_code")
-    assert sarc.loc["SARC_UPS", "apd1_orr_pct"] == 40.0
-    assert sarc.loc["SARC_DDLPS", "apd1_orr_pct"] == 20.0
-    assert sarc.loc["SARC_CHON", "apd1_orr_pct"] == 20.0
-    assert str(
-        sarc.loc["SARC_DDLPS", "is_direct_cancer_code_evidence"]
-    ).lower() == "false"
+# The drug↔checkpoint-target taxonomy (PD-1/PD-L1/PD-1+CTLA-4 fallback classes,
+# drug-name spellings) and the per-code evidence provenance (endpoint_population,
+# therapy_regimen_class, histology_match, per-code ORRs like SARC_UPS) are
+# oncoref's curation contract and are validated in oncoref (pirlygenes#541). We
+# keep only the delegation-surface + biology-sanity checks here.
 
 
 def test_every_value_is_cited_or_flagged():

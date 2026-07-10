@@ -343,6 +343,38 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
         )
         return groupings.copy() if copy else groupings
 
+    # cancer-apd1-response and cancer-tmb are owned by oncoref's structured,
+    # provenance-bearing tables (value_basis / source_scope / estimate_type /
+    # missing_reason / ...). pirlygenes re-exports them rather than shipping
+    # divergent local CSVs, so oncoref's ongoing re-curation flows through. The
+    # per-code accessors (cancer_apd1_response / cancer_tmb) delegate to oncoref's
+    # resolvers, which own the source-scope taxonomy fallback (COAD_MSI/READ_MSI ->
+    # CRC_MSI, CHOL/GBC -> BTC, NET_MIDGUT/NET_LUNG -> NET_NONPANCREATIC,
+    # ACINIC -> SGC) AND the parent-inherit chain. A compat `trial` column is
+    # synthesized from oncoref's split trial_name/trial_alias for callers that
+    # expected the former single column. Fixture injection bypasses this branch as
+    # for the registry above. See pirlygenes#541 / #507.
+    if _dataframes_dict is None and name in (
+        "cancer-apd1-response", "cancer-apd1-response.csv"
+    ):
+        import oncoref
+
+        apd1 = oncoref.cancer_apd1_response_df()
+        if "trial" not in apd1.columns and "trial_name" in apd1.columns:
+            apd1 = apd1.copy()
+            trial = apd1["trial_name"]
+            if "trial_alias" in apd1.columns:
+                trial = trial.fillna(apd1["trial_alias"])
+            apd1["trial"] = trial
+        apd1 = _normalize_dataset_dtypes("cancer-apd1-response", apd1)
+        return apd1.copy() if copy else apd1
+
+    if _dataframes_dict is None and name in ("cancer-tmb", "cancer-tmb.csv"):
+        import oncoref
+
+        tmb = _normalize_dataset_dtypes("cancer-tmb", oncoref.cancer_tmb_df())
+        return tmb.copy() if copy else tmb
+
     candidates = [name, name.lower()]
     for candidate in list(candidates):
         candidates.append(candidate + ".csv")

@@ -38,11 +38,11 @@ ESUMMARY = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 
 # {stem: citation_column}.  ``source_col`` (optional) names a "Surname YYYY"
 # label column to cross-check the cited paper's author/year against.
+# cancer-type-registry, cancer-tmb, and cancer-apd1-response are re-exported
+# from oncoref (pirlygenes#523/#541); they have no local CSV under
+# pirlygenes/data/ and oncoref runs the citation audit for the tables it curates.
 FILES = {
     "cancer-fusions": dict(col="pmid"),
-    "cancer-type-registry": dict(col="source_pmid"),
-    "cancer-tmb": dict(col="pmid_doi", source_col="source"),
-    "cancer-apd1-response": dict(col="pmid_doi"),
     "cancer-frameshift-burden": dict(col="pmid_doi"),
     "therapy-response-signatures": dict(col="refs"),
     "ffpe-sensitive-markers": dict(col="refs"),

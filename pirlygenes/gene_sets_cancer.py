@@ -2569,27 +2569,15 @@ def cancer_tmb(cancer_type=None, *, inherit=True):
     ``parent_code`` chain — so molecular / histology subtypes (``LUAD_EGFR`` ->
     ``LUAD``, ``SCLC_ASCL1`` -> ``SCLC``, rare ``SARC_*`` -> ``SARC``) resolve
     without a curated row each. Returns ``None`` if neither the code nor any
-    ancestor has a value."""
-    df = cancer_tmb_df()
-    vals = df.dropna(subset=["median_tmb_mut_mb"])
-    mapping = dict(zip(vals["cancer_code"].astype(str),
-                       vals["median_tmb_mut_mb"].astype(float)))
-    if cancer_type is None:
-        return mapping
-    code = resolve_cancer_type(cancer_type)
-    if code in mapping or not inherit:
-        return mapping.get(code)
-    # walk the registry parent chain to inherit an ancestor's value
-    reg = cancer_type_registry().set_index("code")
-    cur, seen = code, set()
-    while cur and cur not in seen:
-        seen.add(cur)
-        if cur in mapping:
-            return mapping[cur]
-        if cur not in reg.index:
-            break
-        cur = str(reg.loc[cur].get("parent_code", "") or "").strip() or None
-    return None
+    ancestor has a value.
+
+    Delegates to oncoref's ``cancer_tmb`` resolver (the authoritative,
+    provenance-bearing TMB table), which owns both the source-scope subtype
+    fallback and the parent-inherit chain — so oncoref's ongoing re-curation
+    flows through without a divergent local copy. See pirlygenes#541 / #507."""
+    import oncoref
+
+    return oncoref.cancer_tmb(cancer_type, inherit=inherit)
 
 
 def cancer_apd1_response_df():
@@ -2616,26 +2604,16 @@ def cancer_apd1_response(cancer_type=None, *, inherit=True):
     curated row of its own inherits its nearest ancestor's value via the
     registry ``parent_code`` chain (so ``SCLC_ASCL1`` -> ``SCLC``,
     ``LUAD_KRAS`` -> ``LUAD``). Returns ``None`` if neither the code nor any
-    ancestor has a value. Mirrors :func:`cancer_tmb`."""
-    df = cancer_apd1_response_df()
-    vals = df.dropna(subset=["apd1_orr_pct"])
-    mapping = dict(zip(vals["cancer_code"].astype(str),
-                       vals["apd1_orr_pct"].astype(float)))
-    if cancer_type is None:
-        return mapping
-    code = resolve_cancer_type(cancer_type)
-    if code in mapping or not inherit:
-        return mapping.get(code)
-    reg = cancer_type_registry().set_index("code")
-    cur, seen = code, set()
-    while cur and cur not in seen:
-        seen.add(cur)
-        if cur in mapping:
-            return mapping[cur]
-        if cur not in reg.index:
-            break
-        cur = str(reg.loc[cur].get("parent_code", "") or "").strip() or None
-    return None
+    ancestor has a value. Mirrors :func:`cancer_tmb`.
+
+    Delegates to oncoref's ``cancer_apd1_response`` resolver, which owns the
+    source-scope taxonomy fallback (``COAD_MSI``/``READ_MSI`` -> ``CRC_MSI``,
+    ``CHOL``/``GBC`` -> ``BTC``, ``NET_MIDGUT``/``NET_LUNG`` ->
+    ``NET_NONPANCREATIC``, ``ACINIC`` -> ``SGC``) and the parent-inherit chain,
+    so oncoref's re-curation flows through. See pirlygenes#541 / #507."""
+    import oncoref
+
+    return oncoref.cancer_apd1_response(cancer_type, inherit=inherit)
 
 
 def cancer_fusions_df():

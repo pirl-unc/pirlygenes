@@ -12,7 +12,6 @@ The authoritative topic-match audit against PubMed lives in
 from __future__ import annotations
 
 import csv
-import datetime
 import re
 from pathlib import Path
 
@@ -23,11 +22,10 @@ DATA = Path(__file__).resolve().parent.parent / "pirlygenes" / "data"
 # {csv stem: citation column(s)} — the columns whose values must be real citations.
 CITATION_COLUMNS = {
     "cancer-fusions": "pmid",
-    # cancer-type-registry is re-exported from oncoref (pirlygenes#523); its
-    # citation format is validated through the get_data accessor in
-    # test_reference_format, and oncoref owns registry-content validation.
-    "cancer-tmb": "pmid_doi",
-    "cancer-apd1-response": "pmid_doi",
+    # cancer-type-registry, cancer-tmb, and cancer-apd1-response are re-exported
+    # from oncoref (pirlygenes#523/#541); their citation format is validated
+    # through the get_data accessor in test_reference_format, and oncoref owns
+    # the content/citation validation for the tables it curates.
     "cancer-frameshift-burden": "pmid_doi",
     "therapy-response-signatures": "refs",
     "ffpe-sensitive-markers": "refs",
@@ -68,7 +66,6 @@ _TOKEN = re.compile(
     re.IGNORECASE,
 )
 _FORBIDDEN = re.compile(r"\b(tbd|todo|placeholder|xxx|fixme|tba|n/?a)\b", re.I)
-_THIS_YEAR = datetime.date.today().year
 
 
 def _rows(stem):
@@ -96,15 +93,9 @@ def test_citation_cells_are_well_formed(stem, col):
     assert not bad, f"{stem}.{col} has malformed citations: {bad[:8]}"
 
 
-def test_cancer_tmb_source_years_not_in_the_future():
-    """A 'Surname YYYY' source label must not name a future year (the FL '2026'
-    bug). Catches fabricated/typo year labels offline."""
-    offenders = []
-    for row in _rows("cancer-tmb"):
-        m = re.search(r"((?:19|20)\d{2})", row.get("source", ""))
-        if m and int(m.group(1)) > _THIS_YEAR:
-            offenders.append((row.get("cancer_code"), row.get("source")))
-    assert not offenders, f"future-year source labels: {offenders}"
+# NOTE: the "Surname YYYY source label must not name a future year" guard (the
+# FL '2026' bug) moved to oncoref alongside cancer-tmb (pirlygenes#541); oncoref
+# owns the year-sanity check for the TMB table it now curates.
 
 
 def test_gene_list_provenance_manifest_covers_uncited_tables():
