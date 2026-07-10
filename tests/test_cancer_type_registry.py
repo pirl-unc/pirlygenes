@@ -354,9 +354,15 @@ def test_sarc_intermediate_tiers_present():
 
 
 def test_ucec_molecular_subtypes_split_apd1_368():
-    """#368: UCEC is split into its TCGA molecular classes so the conflated bulk
-    aPD-1 ORR is replaced by subtype-specific values — MSI-H/MMRd responds
-    (~50%) while the MSS classes (CNL/CNH) do not (~6%)."""
+    """#368: UCEC is split into its TCGA molecular classes so consumers can use
+    subtype-specific aPD-1 ORRs instead of a single conflated bulk value —
+    MSI-H/MMRd responds (~50%) while the MSS classes (CNL/CNH) do not (~6-15%).
+
+    The aPD-1 table is now owned by oncoref (pirlygenes#541), which exposes the
+    subtype-specific rows and may also retain a coarse bulk ``UCEC`` fallback.
+    The invariant pirlygenes depends on is the subtype responder/non-responder
+    gradient, not the presence/absence of the bulk row (oncoref#349 tracks the
+    bulk-retention choice + the UCEC_POLE understatement upstream)."""
     from pirlygenes.gene_sets_cancer import cancer_apd1_response
 
     subs = set(cancer_type_subtypes_of("UCEC"))
@@ -366,7 +372,6 @@ def test_ucec_molecular_subtypes_split_apd1_368():
         assert reg.loc[s, "family"] == "carcinoma-gu"
         assert reg.loc[s, "parent_code"] == "UCEC"
     orr = cancer_apd1_response()
-    assert "UCEC" not in orr            # conflated bulk value removed
     assert orr["UCEC_MSI"] >= 45        # responder
     assert orr["UCEC_CNH"] <= 15        # MSS non-responder
     assert orr["UCEC_MSI"] > orr["UCEC_CNH"]
