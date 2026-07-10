@@ -221,6 +221,12 @@ def test_get_data_resolves_csv_downloadable_by_bare_name_after_fetch(monkeypatch
 
     monkeypatch.setattr(data_bundle, "ensure_local", fake_ensure_local)
 
+    # Snapshot the module-global dataframe cache so this test's FAKE
+    # pan-cancer-expression frame can't leak into real-data tests later in the
+    # same (serial, -n 0) process — that poisoning made 28 downstream expression
+    # tests KeyError in the release run.
+    saved_frames = dict(ld._CACHED_DATAFRAMES)
+
     # Prime the path cache BEFORE the file exists — the stale-cache precondition
     # the fetch has to punch through.
     ld._invalidate_dataset_paths()
@@ -231,4 +237,6 @@ def test_get_data_resolves_csv_downloadable_by_bare_name_after_fetch(monkeypatch
         assert list(df.columns) == ["gene_id", "COAD_TPM"]
         assert len(df) == 1
     finally:
+        ld._CACHED_DATAFRAMES.clear()
+        ld._CACHED_DATAFRAMES.update(saved_frames)
         ld._invalidate_dataset_paths()  # don't leak the tmp-path map to other tests
