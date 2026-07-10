@@ -188,3 +188,47 @@ def test_cli_analyze_with_legacy_flags_still_redirects():
     assert rc == 2
     assert "pirl-trufflepig" in err
     assert "unrecognized" not in err
+
+
+def test_get_data_resolves_csv_downloadable_by_bare_name_after_fetch(monkeypatch, tmp_path):
+    """Regression: on a clean install, ``get_data("pan-cancer-expression")`` (bare
+    stem — the item is registered as ``pan-cancer-expression.csv``) must resolve
+    right after the on-demand bundle fetch.
+
+    Previously ``get_data``'s post-fetch path-cache rebuild guard checked
+    ``is_downloadable(name)`` on the bare stem, which returned False for a
+    ``.csv``-suffixed downloadable. So the ``_dataset_paths`` cache (primed
+    before the fetch) was never invalidated and the just-fetched file stayed
+    invisible → ``ValueError: Dataset pan-cancer-expression not found`` on every
+    fresh wheel install. See pirl-unc/trufflepig CI.
+    """
+    import pirlygenes.data_bundle as data_bundle
+    import pirlygenes.load_dataset as ld
+
+    bundled = tmp_path / "bundled"  # a fresh wheel: no large downloadables bundled
+    cache = tmp_path / "cache"  # the version-pinned download target
+    bundled.mkdir()
+    cache.mkdir()
+
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
+    monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
+    monkeypatch.setattr(data_bundle, "cache_dir", lambda: cache)
+
+    def fake_ensure_local(*, auto_fetch: bool = True, verbose: bool = True):
+        # Stand in for the ~350 MB release fetch: drop the file the bundle carries.
+        (cache / "pan-cancer-expression.csv").write_text("gene_id,COAD_TPM\nENSG1,5.0\n")
+        return cache
+
+    monkeypatch.setattr(data_bundle, "ensure_local", fake_ensure_local)
+
+    # Prime the path cache BEFORE the file exists — the stale-cache precondition
+    # the fetch has to punch through.
+    ld._invalidate_dataset_paths()
+    assert "pan-cancer-expression.csv" not in ld._dataset_paths()
+
+    try:
+        df = ld.get_data("pan-cancer-expression", copy=False)
+        assert list(df.columns) == ["gene_id", "COAD_TPM"]
+        assert len(df) == 1
+    finally:
+        ld._invalidate_dataset_paths()  # don't leak the tmp-path map to other tests

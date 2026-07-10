@@ -387,8 +387,14 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
 
         # If the lookup misses but the requested name is a downloadable
         # item, force a path-cache rebuild after the fetch and retry once.
+        # Check downloadability against the *candidate* set (incl. the ".csv"
+        # form), not the bare ``name``: downloadables registered with a ".csv"
+        # suffix (pan-cancer-expression.csv, hpa-cell-type-expression.csv) are
+        # requested by the bare stem, so ``is_downloadable(name)`` alone missed
+        # them — leaving the pre-fetch _dataset_paths cache stale and raising a
+        # spurious "not found" on a clean install right after the bundle fetched.
         miss = not any(c in paths for c in candidates)
-        if miss and data_bundle.is_downloadable(name):
+        if miss and any(data_bundle.is_downloadable(c) for c in candidates):
             data_bundle.ensure_local()
             _invalidate_dataset_paths()
             paths = _dataset_paths()
