@@ -2019,15 +2019,21 @@ radioligand_target_gene_ids = _deprecate(
 
 
 # ---------- Cancer-testis antigens (CTA) ----------
-# CTA curation is owned by tsarina — the single source of truth. pirlygenes
-# re-exports tsarina's evidence table, gene-set accessors, and protein-coding
-# partition so downstream consumers (trufflepig, analyses, normalize) keep one
-# stable import path while the filter / never-expressed / partition logic lives
-# in exactly one place. tsarina is a hard dependency (#289/#290/#291); the only
-# pirlygenes-local addition is CTA_gene_id_to_name(), a convenience mapping with
-# no tsarina equivalent.
-from tsarina.evidence import CTA_evidence as _tsarina_CTA_evidence  # noqa: E402
-from tsarina.gene_sets import (  # noqa: E402,F401
+# The CTA *gene set* is owned by oncoref — the canonical, audit-backed source
+# (pirlygenes#511). pirlygenes re-exports oncoref's set / restriction-subset
+# accessors and alias resolver so downstream consumers (trufflepig, analyses,
+# normalize) keep one stable import path.
+#
+# The CTA *evidence* frame and the protein-coding partition stay on tsarina.
+# tsarina's CTA_evidence() carries the ms_* mass-spec healthy-tissue safety
+# layer (ms_restriction / ms_healthy_somatic_tissues / ms_pmids) that oncoref's
+# specificity_* audit does not — an orthogonal safety signal we keep as an
+# evidence-enrichment join on top of oncoref's set (pirlygenes#546, tsarina#141).
+# As of tsarina 1.23.1 (PR#142) tsarina's default set converged onto oncoref's,
+# so the set and the evidence rows line up (every set gene has an evidence row).
+# The only pirlygenes-local addition is CTA_gene_id_to_name(), a convenience
+# mapping with no upstream equivalent.
+from oncoref import (  # noqa: E402,F401
     CTA_by_axes,
     CTA_excluded_gene_ids,
     CTA_excluded_gene_names,
@@ -2045,6 +2051,7 @@ from tsarina.gene_sets import (  # noqa: E402,F401
     CTA_unfiltered_gene_names,
     cta_symbol_for_alias,
 )
+from tsarina.evidence import CTA_evidence as _tsarina_CTA_evidence  # noqa: E402
 from tsarina.partition import (  # noqa: E402,F401
     CTAPartitionDataFrames,
     CTAPartitionSets,
@@ -2097,9 +2104,15 @@ def cta_paralog_symbols(name: str) -> list[str]:
 def CTA_evidence():
     """Full CTA evidence DataFrame with HPA tissue-restriction columns.
 
-    Delegates to :func:`tsarina.evidence.CTA_evidence` — tsarina is the single
-    source of truth for CTA curation. See tsarina for the column semantics
-    (``passes_filters`` / ``filtered``, ``never_expressed``,
+    Delegates to :func:`tsarina.evidence.CTA_evidence`. While the CTA *gene set*
+    is owned by oncoref (pirlygenes#511), the evidence frame stays on tsarina
+    because it carries the ``ms_*`` mass-spec healthy-tissue safety layer
+    (``ms_restriction`` / ``ms_healthy_somatic_tissues`` / ``ms_pmids``) that
+    oncoref's ``specificity_*`` audit does not — an orthogonal safety signal we
+    keep as an evidence-enrichment join on oncoref's set (pirlygenes#546,
+    tsarina#141). tsarina 1.23.1 converged its default set onto oncoref's, so
+    every gene in :func:`CTA_gene_ids` has a row here. See tsarina for the column
+    semantics (``passes_filters`` / ``filtered``, ``never_expressed``,
     ``rna_*_pct_filter``, ``rna_deflated_reproductive_frac``, ``rna_max_ntpm``,
     the per-tissue nTPM columns, …).
     """

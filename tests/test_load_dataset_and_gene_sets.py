@@ -145,7 +145,13 @@ def test_cta_filtered_and_evidence():
     assert filtered_names & excluded_names == set()  # no overlap
 
     evidence_df = gsc.CTA_evidence()
-    assert len(evidence_df) == len(all_names)
+    # The universe (all_ids) now comes from oncoref while the evidence frame
+    # stays on tsarina (#511, #546). tsarina retains a hair more candidates than
+    # oncoref's unfiltered universe (a few genes oncoref filters upstream, e.g.
+    # the testis histone H1-6), so the invariant is coverage — every universe
+    # gene has an evidence row — not exact row-count equality.
+    ev_ids = set(evidence_df["Ensembl_Gene_ID"].astype(str).str.strip())
+    assert set(all_ids) <= ev_ids
     expected_cols = [
         "protein_reproductive",
         "protein_thymus",
@@ -179,22 +185,66 @@ def test_cta_filtered_and_evidence():
     assert "XAGE1B" in filtered_names
 
 
-def test_cta_accessors_delegate_to_tsarina():
-    # tsarina is the single source of truth (#289/#290/#291); pirlygenes
-    # re-exports its evidence / gene-set / partition accessors. Assert the
-    # delegation is identity, not a re-implementation that could drift.
+def test_cta_set_accessors_delegate_to_oncoref():
+    # The CTA *gene set* is owned by oncoref (#511); pirlygenes re-exports its
+    # set / restriction-subset / alias accessors. Assert the delegation is
+    # identity, not a re-implementation that could drift.
+    import oncoref
+
+    for name in (
+        "CTA_gene_ids",
+        "CTA_gene_names",
+        "CTA_filtered_gene_ids",
+        "CTA_filtered_gene_names",
+        "CTA_unfiltered_gene_ids",
+        "CTA_unfiltered_gene_names",
+        "CTA_excluded_gene_ids",
+        "CTA_excluded_gene_names",
+        "CTA_never_expressed_gene_ids",
+        "CTA_never_expressed_gene_names",
+        "CTA_testis_restricted_gene_ids",
+        "CTA_testis_restricted_gene_names",
+        "CTA_placental_restricted_gene_ids",
+        "CTA_placental_restricted_gene_names",
+        "CTA_by_axes",
+        "cta_symbol_for_alias",
+    ):
+        assert getattr(gsc, name) is getattr(oncoref, name), name
+
+    # ...and therefore the resolved panel is oncoref's exactly.
+    assert gsc.CTA_gene_names() == oncoref.CTA_gene_names()
+    assert gsc.CTA_gene_ids() == oncoref.CTA_gene_ids()
+
+
+def test_cta_evidence_and_partition_stay_on_tsarina():
+    # The evidence frame stays on tsarina for its ms_* mass-spec safety layer
+    # (oncoref carries specificity_* instead), and the protein-coding partition
+    # stays on tsarina too (#546). Assert both remain identity-delegated there,
+    # and that the ms_* enrichment survives the split.
     import tsarina.evidence as _tev
-    import tsarina.gene_sets as _tgs
     import tsarina.partition as _tp
 
-    assert gsc.CTA_gene_names() == _tgs.CTA_gene_names()
-    assert gsc.CTA_filtered_gene_names() == _tgs.CTA_filtered_gene_names()
-    assert gsc.CTA_unfiltered_gene_names() == _tgs.CTA_unfiltered_gene_names()
-    assert gsc.CTA_gene_names is _tgs.CTA_gene_names
     assert gsc.CTAPartitionSets is _tp.CTAPartitionSets
-    # CTA_evidence() returns tsarina's table verbatim
+    assert gsc.CTA_partition_gene_ids is _tp.CTA_partition_gene_ids
+    # CTA_evidence() returns tsarina's table verbatim, ms_* layer intact.
+    ev = gsc.CTA_evidence()
     pd_testing = __import__("pandas").testing
-    pd_testing.assert_frame_equal(gsc.CTA_evidence(), _tev.CTA_evidence())
+    pd_testing.assert_frame_equal(ev, _tev.CTA_evidence())
+    assert {"ms_restriction", "ms_healthy_somatic_tissues", "ms_pmids"} <= set(
+        ev.columns
+    )
+
+
+def test_cta_set_and_evidence_rows_line_up():
+    # The delegation splits the set (oncoref) from the evidence (tsarina); the
+    # join in CTA_gene_id_to_name() is only sound if every set gene has an
+    # evidence row. tsarina 1.23.1 converged its set onto oncoref's, so this
+    # holds — guard against a future tsarina/oncoref drift that would silently
+    # drop genes from the id->name mapping.
+    set_ids = set(gsc.CTA_gene_ids())
+    ev_ids = set(gsc.CTA_evidence()["Ensembl_Gene_ID"].astype(str).str.strip())
+    assert set_ids <= ev_ids
+    assert set(gsc.CTA_gene_id_to_name()) == set_ids
 
 
 def test_cta_gene_id_to_name_preserves_row_pairing():
