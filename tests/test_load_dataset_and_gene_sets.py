@@ -242,6 +242,7 @@ def test_cta_set_and_evidence_rows_line_up():
     # holds — guard against a future tsarina/oncoref drift that would silently
     # drop genes from the id->name mapping.
     set_ids = set(gsc.CTA_gene_ids())
+    assert len(set_ids) > 200  # guard the subset checks below from passing vacuously
     ev_ids = set(gsc.CTA_evidence()["Ensembl_Gene_ID"].astype(str).str.strip())
     assert set_ids <= ev_ids
     assert set(gsc.CTA_gene_id_to_name()) == set_ids
