@@ -111,9 +111,17 @@ def test_unknown_normalize_or_format_raises():
 
 def test_missing_cohort_returns_empty_schema():
     _skip_if_absent()
-    # A registered code with no representatives (STAD_MSI is registered but its
-    # per-sample cohort is not built) returns the empty schema, not an error.
-    out = accessors.representative_cohort_samples("STAD_MSI")
+    # A registered code whose per-sample cohort is not built returns the empty
+    # schema, not an error. Pick an unbuilt registered code dynamically so this
+    # stays correct as more cohorts get built (the former hard-coded example
+    # STAD_MSI was built in #540).
+    from pirlygenes.gene_sets_cancer import CANCER_TYPE_NAMES
+
+    built = set(accessors.available_representative_cohorts())
+    unbuilt = sorted(set(CANCER_TYPE_NAMES.keys()) - built)
+    if not unbuilt:
+        pytest.skip("every registered cohort has representatives in this bundle")
+    out = accessors.representative_cohort_samples(unbuilt[0])
     assert list(out.columns) == ["Ensembl_Gene_ID", "Symbol"]
     assert out.empty
 
