@@ -57,7 +57,7 @@ canonical home and stay stable across versions.
 
 ```python
 from pirlygenes.gene_sets_cancer import (
-    CTA_gene_names,                   # ~260 cancer-testis antigens
+    CTA_gene_names,                   # ~290 cancer-testis antigens
     surface_protein_gene_names,       # 2,799 surfaceome genes
     cancer_surfaceome_gene_names,     # 147 tumor-specific surface targets
     therapy_target_gene_names,        # modality: "ADC", "CAR-T", "TCR-T",
