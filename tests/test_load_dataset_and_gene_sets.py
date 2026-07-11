@@ -236,15 +236,16 @@ def test_cta_evidence_and_partition_stay_on_tsarina():
 
 
 def test_cta_set_and_evidence_rows_line_up():
-    # The delegation splits the set (oncoref) from the evidence (tsarina); the
-    # join in CTA_gene_id_to_name() is only sound if every set gene has an
-    # evidence row. tsarina 1.23.1 converged its set onto oncoref's, so this
-    # holds — guard against a future tsarina/oncoref drift that would silently
-    # drop genes from the id->name mapping.
+    # CTA_gene_id_to_name() now delegates to oncoref (drift-proof), but tsarina's
+    # evidence frame is still an enrichment join on oncoref's set (CTA_evidence()
+    # consumers key rows by set gene). Guard that tsarina's evidence covers every
+    # oncoref set gene, so set-keyed evidence lookups stay complete across a
+    # future oncoref/tsarina drift.
     set_ids = set(gsc.CTA_gene_ids())
-    assert len(set_ids) > 200  # guard the subset checks below from passing vacuously
+    assert len(set_ids) > 200  # guard the subset check below from passing vacuously
     ev_ids = set(gsc.CTA_evidence()["Ensembl_Gene_ID"].astype(str).str.strip())
     assert set_ids <= ev_ids
+    # id->name map (oncoref-sourced) covers exactly the set — no join gap.
     assert set(gsc.CTA_gene_id_to_name()) == set_ids
 
 

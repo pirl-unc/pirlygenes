@@ -2122,20 +2122,16 @@ def CTA_evidence():
 def CTA_gene_id_to_name():
     """CTA ``{Ensembl_Gene_ID: Symbol}`` for the filtered + expressed set.
 
-    pirlygenes convenience over tsarina's :func:`CTA_gene_ids` /
-    :func:`CTA_gene_names`: tsarina exposes the id and symbol sets but not the
-    id→symbol mapping. Restricted to the same filtered-and-expressed CTAs as
-    :func:`CTA_gene_ids`.
+    Delegates to :func:`oncoref.cta_gene_id_to_name`. oncoref owns the CTA gene
+    set (pirlygenes#511), so its id→name mapping covers exactly
+    :func:`CTA_gene_ids` by construction — no dependence on joining oncoref's set
+    against tsarina's evidence frame, which (under separately-versioned
+    oncoref/tsarina floors) could transiently drop a freshly-added set gene that
+    the installed tsarina evidence hasn't caught up on. Returns a fresh dict.
     """
-    ids = CTA_gene_ids()
-    ev = CTA_evidence()
-    result = {}
-    for gid, sym in zip(ev["Ensembl_Gene_ID"].astype(str), ev["Symbol"].astype(str)):
-        gid = gid.strip()
-        sym = sym.strip()
-        if gid in ids and sym and sym.lower() not in {"nan", "none"}:
-            result[gid] = sym
-    return result
+    import oncoref
+
+    return dict(oncoref.cta_gene_id_to_name())
 
 
 # Which proteoform collapse a folded CTA panel should match. 'cdna' = the
