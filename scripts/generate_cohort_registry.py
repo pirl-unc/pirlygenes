@@ -8,10 +8,13 @@ placeholder, which are NOT in ``available_cancer_expression_references()``.
 
 Derived (re-runnable) from:
   - the packaged reference manifest (per-cohort sample counts, # codes,
-    source_project, provenance) — bundled shards;
-  - the cancer-type registry's ``source_cohort`` column (adds the
-    computed/curated cohorts that have no shard);
-  - the computed aggregates (``cohort_aggregates``) for member lists.
+    source_version provenance) — bundled shards;
+  - oncoref's cancer-type registry ``source_cohort`` column (adds the
+    computed/curated cohorts that have no shard) — read via
+    ``cancer_type_registry()``, not a packaged CSV;
+  - the computed aggregates (``cohort_aggregates``) for the member lists +
+    provenance of the shardless computed unions (COMPUTED_PAN_SARCOMA,
+    COMPUTED_COLORECTAL).
 
 Columns: cohort_id, prefix, kind, source_project, assay, n_samples, n_codes,
 is_computed, member_cohorts, provenance.
@@ -55,6 +58,8 @@ def _classify(cid: str):
         return "cllmap", "CLL-map", "bulk RNA-seq"
     if cid.startswith("CGCI"):
         return "cgci", "CGCI", "bulk RNA-seq"
+    if cid.startswith("UNC"):
+        return "unc", "UNC NUTM1 case series", "bulk RNA-seq"
     return "other", "", "bulk RNA-seq"
 
 
@@ -81,15 +86,31 @@ def main():
         source_version=("source_version", "first"),
     )
 
-    # 2. full cohort universe = shards ∪ registry source_cohort column
-    reg = pd.read_csv(DATA / "cancer-type-registry.csv", dtype=str)
-    universe = set(by_cohort.index) | set(reg["source_cohort"].dropna())
-
-    # 3. computed-aggregate members
+    # 2. full cohort universe = shards ∪ registry source_cohort column. The
+    # cancer-type registry is owned by oncoref now (the packaged
+    # cancer-type-registry.csv was removed in the oncoref migration), so read it
+    # through the accessor rather than a deleted CSV.
     import sys
     sys.path.insert(0, ".")
-    from pirlygenes.gene_sets_cancer import cohort_aggregates
-    sarc_members = cohort_aggregates().get("SARC", [])
+    from pirlygenes.gene_sets_cancer import cancer_type_registry, cohort_aggregates
+    reg = cancer_type_registry()
+    universe = set(by_cohort.index) | set(reg["source_cohort"].dropna().astype(str))
+
+    # 3. computed-aggregate members, keyed by the source_cohort id the registry
+    # assigns to each computed union (CRC -> COMPUTED_COLORECTAL, SARC ->
+    # COMPUTED_PAN_SARCOMA). Members + provenance come from cohort_aggregates so
+    # these shardless rows regenerate instead of being hand-maintained.
+    agg = cohort_aggregates()
+    computed_members = {
+        "COMPUTED_PAN_SARCOMA": (
+            agg.get("SARC", []),
+            "pan-sarcoma grand union of all SARC_* histology atoms",
+        ),
+        "COMPUTED_COLORECTAL": (
+            agg.get("CRC", []),
+            "colorectal union of COAD+READ (rectum curated as colorectal)",
+        ),
+    }
 
     rows = []
     for cid in sorted(universe):
@@ -105,10 +126,10 @@ def main():
         else:
             n_samples, n_codes, prov = 0, 0, ""
         member_cohorts = ""
-        if cid == "COMPUTED_PAN_SARCOMA":
-            member_cohorts = ";".join(sarc_members)
-            n_codes = len(sarc_members)
-            prov = "pan-sarcoma grand union of all SARC_* histology atoms"
+        if cid in computed_members:
+            members, prov = computed_members[cid]
+            member_cohorts = ";".join(members)
+            n_codes = len(members)
         elif cid == "LITERATURE_CURATED":
             prov = "registry entry without a built expression matrix"
         rows.append({
