@@ -52,10 +52,13 @@ dependencies = [
     "pyensembl>=2.6.0",
     "PyYAML>=6.0",
     "tqdm",
-    # tsarina is the single source of truth for CTA curation; pirlygenes
-    # re-exports its evidence/gene-set/partition accessors (no bundled CTA
-    # snapshot to drift). Published on PyPI as of 1.4.x. (#289/#290/#291)
-    "tsarina>=1.4.8",
+    # The CTA gene set is owned by oncoref (#511); pirlygenes still re-exports
+    # tsarina's CTA_evidence() (for the ms_* mass-spec safety layer oncoref does
+    # not carry) and CTA_partition* (no bundled CTA snapshot to drift). 1.23.1
+    # (PR#142/#141) converges tsarina's default set onto oncoref's, so the
+    # evidence rows line up with oncoref's set — pin it so the join stays
+    # aligned. (#289/#290/#291, #546)
+    "tsarina>=1.23.1",
 ]
 
 [tool.setuptools.dynamic]

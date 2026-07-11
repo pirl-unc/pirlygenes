@@ -1,6 +1,18 @@
 # Cancer-Testis Antigen (CTA) Curation
 
-This document describes how the pirlygenes CTA gene set is built, filtered, and maintained.
+This document describes how the CTA gene set is built, filtered, and maintained.
+
+> **Ownership (as of #511).** The canonical CTA *gene set* is owned by
+> [oncoref](https://github.com/pirl-unc/oncoref); pirlygenes re-exports its
+> `CTA_gene_ids()` / `CTA_gene_names()` and restriction-subset accessors. The
+> CTA *evidence* frame (`CTA_evidence()`) stays sourced from
+> [tsarina](https://github.com/pirl-unc/tsarina) because it carries the `ms_*`
+> mass-spec healthy-tissue safety layer oncoref does not — kept as an
+> evidence-enrichment join on oncoref's set. tsarina 1.23.1 converged its
+> default set onto oncoref's, so the two agree gene-for-gene (see
+> pirl-unc/pirlygenes#546 for the fork characterization and authority decision).
+> The reproductive-restriction methodology below is the pipeline both packages
+> share.
 
 ## Figures
 
