@@ -573,6 +573,38 @@ def test_registry_expression_sources_match_packaged_references():
     )
 
 
+def test_registry_source_cohorts_in_manifest_or_curated():
+    """Every source_cohort the registry references must either have a packaged
+    expression shard (appear in the reference manifest) or be a known
+    computed/curated cohort with no shard.
+
+    The per-code check above only iterates codes that already have packaged
+    shards, so it cannot catch a registry code pointing at a manifest-absent
+    cohort that has *no* shard at all. This global subset invariant does — it's
+    the class behind #550 (a shipped wheel whose registry referenced
+    ``TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY`` before the manifest carried it).
+    """
+    from pirlygenes.expression import available_cancer_expression_references
+    from pirlygenes.gene_sets_cancer import cohort_registry_df
+
+    reg = set(cancer_type_registry()["source_cohort"].dropna().astype(str)) - {""}
+    manifest = set(
+        available_cancer_expression_references()["source_cohort"].astype(str)
+    )
+    creg = cohort_registry_df()
+    curated = set(
+        creg[
+            (creg["is_computed"].astype(str).str.lower() == "true")
+            | (creg["kind"].astype(str) == "curated")
+        ]["cohort_id"].astype(str)
+    )
+    missing = reg - manifest - curated
+    assert not missing, (
+        "registry source_cohorts absent from the expression manifest and not a "
+        f"computed/curated cohort: {sorted(missing)}"
+    )
+
+
 def test_registry_has_source_cohort_column():
     """Every curated row carries the cohort that produced its expression
     median — enables downstream tracking of which cohort + paper each
