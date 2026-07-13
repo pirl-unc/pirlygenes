@@ -36,6 +36,24 @@ def test_views_bundle_three_stages_and_provenance():
     assert len(v.provenance) >= 1
 
 
+def test_views_manifest_data_version_matches_current():
+    """The baked cohort-views manifest must be stamped with the current
+    DATA_VERSION, so a data release that regenerates the per-code shards but
+    forgets to regenerate the views can't silently ship stale baked views
+    (#543 — the manifest read 5.23.3 while DATA_VERSION was 5.23.19 because
+    #540's generator ran before the version bump)."""
+    from pirlygenes.version import DATA_VERSION
+
+    manifest = accessors._artifact_manifest(accessors._cohort_views_root())
+    if not manifest:
+        pytest.skip("cohort-views artifact not present in this checkout/cache")
+    assert manifest.get("data_version") == DATA_VERSION, (
+        f"cohort-views manifest data_version={manifest.get('data_version')!r} != "
+        f"DATA_VERSION={DATA_VERSION!r}; regenerate the views "
+        "(scripts/generate_cohort_expression_views.py) after bumping DATA_VERSION"
+    )
+
+
 def test_views_clean_differs_from_tpm_for_technical_gene():
     """clean_tpm_16_9_75 changes the technical gene's value vs plain TPM (the whole
     point of having both stages in one object)."""
