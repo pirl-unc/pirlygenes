@@ -130,3 +130,34 @@ def test_gene_list_provenance_manifest_covers_uncited_tables():
         if source:
             for tok in source.split(";"):
                 assert _TOKEN.match(tok.strip()), (row["table_name"], source)
+
+
+_GSE = re.compile(r"GSE\d+")
+
+
+def test_expression_source_gse_accessions_are_structured():
+    """Every expression source that names a GSE in its citation / URL / file
+    metadata must expose that accession in the structured ``accession:`` field,
+    and the field must match one of the GSEs it references (#470).
+
+    Guards against GEO provenance that is only recoverable by ad hoc text
+    extraction from ``citation`` / ``file_url`` / ``file_name``.
+    """
+    import yaml
+
+    payload = yaml.safe_load((DATA / "expression_sources.yaml").read_text())
+    bad = []
+    for src in payload.get("sources") or []:
+        text = " ".join(
+            str(src.get(k, "") or "")
+            for k in ("citation", "url", "file_url", "file_name")
+        )
+        referenced = set(_GSE.findall(text))
+        if not referenced:
+            continue
+        accession = str(src.get("accession", "") or "").strip()
+        if not accession:
+            bad.append((src.get("id"), "GSE in text but no accession:", sorted(referenced)))
+        elif not (set(_GSE.findall(accession)) & referenced):
+            bad.append((src.get("id"), f"accession {accession!r} not among {sorted(referenced)}"))
+    assert not bad, f"expression_sources.yaml GEO accessions not structured: {bad}"
