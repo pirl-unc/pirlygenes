@@ -2793,12 +2793,21 @@ _BURDEN_METRICS = ("us_incidence_pct", "us_mortality_pct",
 def cancer_burden_df():
     """Return the curated ``cancer-incidence-mortality.csv`` reference: each
     cancer **burden category**'s share (%) of annual cancer incidence and
-    mortality, for the US and worldwide, cited per row (ACS Cancer Facts &
-    Figures 2024 / GLOBOCAN 2022). Rows flagged in ``notes`` as subsets/rollups
-    (e.g. small_cell_lung, leukemia subtypes, sarcoma/pediatric aggregates)
-    overlap others — don't sum them blindly. Incidence vs mortality diverge
-    sharply (pancreas/lung high mortality:incidence; prostate/thyroid low), as
-    do US vs worldwide (stomach/liver/cervix far larger globally)."""
+    mortality, for the US and worldwide. Each row carries a resolvable
+    ``source_anchor`` (ACS CFF 2024 = ``PMID:38230766``; GLOBOCAN 2022 =
+    ``DOI:10.3322/caac.21834``) and a structured ``aggregation`` giving its
+    site composition (e.g. ``COAD+READ``) or residual formula.
+
+    The shares are taken against these denominators: **US** = ACS Cancer Facts &
+    Figures 2024 (2,001,140 estimated new cases / 611,720 deaths); **world** =
+    GLOBOCAN 2022 (~19,976,499 new cases / 9,743,832 deaths, incl. NMSC). Each
+    percentage column sums to ~100% (``other_and_unknown_primary`` is the
+    residual; ``non_melanoma_skin`` has 0% incidence by registry convention).
+
+    Rows whose ``aggregation`` combines sites overlap component categories —
+    don't sum them blindly. Incidence vs mortality diverge sharply (pancreas/lung
+    high mortality:incidence; prostate/thyroid low), as do US vs worldwide
+    (stomach/liver/cervix far larger globally)."""
     return get_data("cancer-incidence-mortality")
 
 
