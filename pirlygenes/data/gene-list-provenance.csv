@@ -19,3 +19,4 @@ ribosomal-protein-pseudogenes,ensembl_derived,ENSEMBL_RELEASE:112,gene family de
 rrna-and-pseudogenes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived RNA/pseudogene table; excluded from literature PMID audits.
 numt-pseudogenes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived NUMT pseudogene table; excluded from literature PMID audits.
 small-noncoding-rnas,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived small noncoding RNA table; excluded from literature PMID audits.
+lineage-genes,literature_curated,,row-level sources pending,Lineage/differentiation marker panels curated from literature; six molecularly-defining subtype markers (SARC_ASPS/SFT/EHE/DFSP/IMT/BCOR) carry row-level PMIDs in the reference column; remaining rows have panel-level provenance pending.
