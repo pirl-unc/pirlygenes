@@ -184,6 +184,7 @@ sources:
       Treehouse Childhood Cancer Initiative, Tumor Compendium 25.01
       PolyA (released Jan 2025; clinical 20250131v1, TPM matrix
       2025-02-27). GSE294351.
+    accession: GSE294351
     files:
       tpm: Tumor-25.01-Polya_hugo_log2tpm_58581genes_2025-02-27.tsv
       clinical: clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv
@@ -214,6 +215,7 @@ sources:
       Treehouse Childhood Cancer Initiative, Tumor Compendium 25.01
       RiboDeplete (released Jan 2025; TPM matrix 2025-03-19).
       GSE294353.
+    accession: GSE294353
     files:
       tpm: Tumor-25.01-Ribodeplete_hugo_log2tpm_58581genes_2025-03-19.tsv
       clinical: clinical_Treehouse-Tumor-Compendium-25.01-RiboD_20250306v1.tsv
@@ -237,7 +239,7 @@ sources:
     unit: TPM
     library_prep: polyA RNA-seq   # OHSU BeatAML Illumina TruSeq stranded mRNA (polyA)
     expected_size_gb: 0
-    citation: BeatAML 2.0 (Bottomly 2022)
+    citation: PMID:35868306   # BeatAML 2.0 (Bottomly et al. 2022, Cancer Cell); dataset page at url:
     special_handling: >
       Summary-only import; subgrouped by ELN risk and APL. Per-sample
       data is available from BeatAML2 — backfill candidate for the
@@ -719,6 +721,7 @@ sources:
     cancer_codes: [FL]
     source_type: geo-matrix
     builder: scripts/build_geo_matrix.py
+    accession: GSE142334
     file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE142nnn/GSE142334/suppl/GSE142334_Proj_3970_htseq_all_samples.txt.gz
     file_name: GSE142334_Proj_3970_htseq_all_samples.txt.gz
     unit: raw_counts
@@ -741,6 +744,7 @@ sources:
     cancer_codes: [SARC_CCS]
     source_type: geo-matrix
     builder: scripts/build_geo_matrix.py
+    accession: GSE248751
     file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE248nnn/GSE248751/suppl/GSE248751_human_CCS_counts.txt.gz
     file_name: GSE248751_human_CCS_counts.txt.gz
     unit: raw_counts
@@ -761,6 +765,7 @@ sources:
     cancer_codes: [SARC_PEC]
     source_type: geo-matrix
     builder: scripts/build_geo_matrix.py
+    accession: GSE328026
     file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE328nnn/GSE328026/suppl/GSE328026_TPMs_all_Samples.txt.gz
     file_name: GSE328026_TPMs_all_Samples.txt.gz
     unit: TPM
@@ -768,7 +773,7 @@ sources:
     gene_id_type: auto
     source_cohort: GSE328026_PECOMA_2026
     source_project: GEO
-    citation: GSE328026 (PEComa TPMs, public Apr 2026)
+    citation: GSE328026   # PEComa TPMs, public Apr 2026 (no associated publication)
     expected_size_gb: 0.01
     notes: >
       n=69 PEComa tumors. TPM directly; harmonized to Ensembl 112.
@@ -778,6 +783,7 @@ sources:
     cancer_codes: [SARC_KS]
     source_type: geo-matrix
     builder: scripts/build_geo_matrix.py
+    accession: GSE241095
     file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE241nnn/GSE241095/suppl/GSE241095_Final_skin_asperpapersamplecode.csv.gz
     file_name: GSE241095_Final_skin_asperpapersamplecode.csv.gz
     unit: TPM
@@ -806,6 +812,7 @@ sources:
     cancer_codes: [ADCC]
     source_type: geo-matrix
     builder: scripts/build_geo_matrix.py
+    accession: GSE294016
     file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE294nnn/GSE294016/suppl/GSE294016_TPM_mat.tsv.gz
     file_name: GSE294016_TPM_mat.tsv.gz
     unit: TPM
@@ -829,6 +836,7 @@ sources:
     cancer_codes: [NEC_MERKEL]
     source_type: geo-matrix
     builder: scripts/build_geo_matrix.py
+    accession: GSE235092
     file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE235nnn/GSE235092/suppl/GSE235092_all_bulk_counts.csv.gz
     file_name: GSE235092_all_bulk_counts.csv.gz
     unit: raw_counts
@@ -837,7 +845,7 @@ sources:
     sep: ","
     source_cohort: GSE235092_MERKEL_2024
     source_project: GEO
-    citation: GSE235092 (Merkel cell carcinoma bulk RNA-seq panel)
+    citation: GSE235092   # Merkel cell carcinoma bulk RNA-seq panel
     expected_size_gb: 0.01
     notes: >
       All 91 bulk-RNA Merkel cell carcinoma tumor samples
