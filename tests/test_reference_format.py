@@ -40,6 +40,9 @@ STRUCTURED_CITATION_COLUMNS = [
     ("surface-proteins", "Source"),
     ("TCR-T-approved", "pmid_doi"),
     ("TCR-T-trials", "pmid_doi"),
+    ("therapy-response-signatures", "refs"),
+    ("ffpe-sensitive-markers", "refs"),
+    ("lineage-genes", "reference"),
 ]
 
 _TOKEN = re.compile(
