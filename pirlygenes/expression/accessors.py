@@ -17,9 +17,9 @@ This module bundles the curated cross-cohort expression panels that
 normalization helpers needed to make them comparable across columns:
 
 * :func:`pan_cancer_expression` — wide-form ``Symbol × tissue/cancer``
-  panel: 50 HPA normal tissues (nTPM) + 33 TCGA cancer types (FPKM)
-  with optional deterministic TPM companion columns derived from those
-  FPKM columns and optional added normalized analysis columns.
+  panel: 50 HPA normal tissues (nTPM), 33 TCGA cancer types (observed FPKM
+  provenance + deterministic TPM companions), and five TPM-only computed
+  tumor rollups, with optional added normalized analysis columns.
 * :func:`cancer_reference_expression` — long- or wide-form non-TCGA
   tumor reference summaries (CLL-map, MMRF, TARGET, GEO, etc.) exposed
   on a common TPM / clean-TPM contract for downstream consumers.
@@ -78,10 +78,10 @@ import numpy as np
 import pandas as pd
 
 from ..gene_families import gene_family_ids
+from ..gene_ids import strip_version
 from ..gene_names import get_alias_as_list, get_reverse_alias_as_list
 from ..load_dataset import get_data
 from .normalize import (
-    add_tpm_columns_from_fpkm,
     drop_technical_genes,
     normalize_expression,
     percentile_rank_expression,
@@ -211,6 +211,50 @@ def _rename_pan_expression_columns_entity_first(df: pd.DataFrame) -> pd.DataFram
     names. The accessor returns entity-first names for readability.
     """
     return df.rename(columns={c: _pan_public_col_name(c) for c in df.columns})
+
+
+def _pan_public_to_unit_prefix(col: str) -> str:
+    """Inverse of :func:`_pan_public_col_name` for *raw* entity-first columns.
+
+    Maps oncoref's ``<tissue>_nTPM`` / ``<CODE>_FPKM`` / ``<CODE>_TPM`` back to
+    the internal unit-prefix names (``nTPM_<tissue>`` / ``FPKM_<CODE>`` /
+    ``TPM_<CODE>``) the normalization pipeline operates on. Only the raw units
+    appear on the delegated ``normalize=None`` frame, so no normalized suffixes
+    need handling here. Tissue names may contain underscores, so the unit is
+    matched as a trailing suffix, not a leading token.
+    """
+    for suffix, prefix in (("_nTPM", "nTPM_"), ("_FPKM", "FPKM_"), ("_TPM", "TPM_")):
+        if col.endswith(suffix):
+            return f"{prefix}{col[: -len(suffix)]}"
+    return col
+
+
+@lru_cache(maxsize=1)
+def _pan_reference_frame() -> pd.DataFrame:
+    """Canonical raw pan-cancer matrix, delegated to oncoref (#509).
+
+    oncoref owns the reference expression data, and its ``pan_cancer_expression``
+    is the canonical view: duplicate loci are collapsed (e.g. MATR3's two Ensembl
+    IDs summed into one row), genes are remapped to canonical Ensembl IDs (e.g.
+    PAXX ``ENSG00000148362`` → ``ENSG00000310560``), and rollup cohorts
+    (``BTC``/``CRC``/``NET``/``NSCLC``/``SGC``) are provided alongside the 33
+    TCGA cohorts. We take its raw (``normalize=None``) frame in pirlygenes column
+    style and invert it to the internal unit-prefix schema this module normalizes
+    on. Every pirlygenes-specific transform — fixed-fraction ``tpm_clean``,
+    proteoform bridge columns, ``collapse_*``/``drop_technical_rna``/
+    ``log_transform`` flags, entity-first output naming — then runs locally on the
+    canonical data, so this accessor's normalization stays identical to
+    :func:`cancer_reference_expression`. The canonical raw frame is cached:
+    oncoref canonicalizes the gene universe and computes the five aggregate
+    cohorts eagerly, while every public call below starts by copying this frame
+    before applying pirlygenes-specific transforms.
+    """
+    import oncoref
+
+    raw = oncoref.pan_cancer_expression(normalize=None, column_style="pirlygenes")
+    return raw.rename(
+        columns={c: _pan_public_to_unit_prefix(c) for c in raw.columns}
+    )
 
 
 def _resolve_id_col(df: pd.DataFrame) -> Optional[str]:
@@ -355,14 +399,22 @@ def filter_to_genes(
     """Subset rows to a caller-provided list of symbols or Ensembl IDs.
 
     Match is case-insensitive against both ``Symbol`` (or ``symbol``)
-    and the Ensembl-ID column.
+    and the Ensembl-ID column. Ensembl version suffixes are ignored, so
+    ``ENSG00000146648`` and ``ENSG00000146648.17`` are equivalent.
     """
+    if isinstance(genes, str):
+        genes = [genes]
     targets = set()
     for gene in genes:
         name = str(gene).strip()
         targets.add(name.upper())
         targets.update(alias.upper() for alias in get_alias_as_list(name))
         targets.update(alias.upper() for alias in get_reverse_alias_as_list(name))
+    ensembl_targets = {
+        strip_version(target).upper()
+        for target in targets
+        if target.upper().startswith("ENSG")
+    }
     id_col = _resolve_id_col(df)
     sym_col = next(
         (c for c in ("Symbol", "symbol", "Gene_Symbol") if c in df.columns),
@@ -374,7 +426,10 @@ def filter_to_genes(
         )
     mask = pd.Series(False, index=df.index)
     if id_col is not None:
-        mask |= df[id_col].astype(str).str.upper().isin(targets)
+        ids = df[id_col].astype(str).str.upper()
+        mask |= ids.isin(targets)
+        if ensembl_targets:
+            mask |= ids.map(strip_version).isin(ensembl_targets)
     if sym_col is not None:
         mask |= df[sym_col].astype(str).str.upper().isin(targets)
     return df[mask].reset_index(drop=True)
@@ -2031,9 +2086,20 @@ def pan_cancer_expression(
 
     50 normal tissues from HPA v23 consensus (``<tissue>_nTPM`` columns)
     plus 33 TCGA cancer types from HPA pathology + GDC/STAR reprocessing
-    (``<code>_FPKM`` in native units). The accessor always appends
-    deterministic ``<code>_TPM`` companion columns derived from the FPKM
-    columns, preserving the raw FPKM columns for provenance.
+    (``<code>_FPKM`` in native units with deterministic ``<code>_TPM``
+    companions). Five computed tumor rollups (``BTC``/``CRC``/``NET``/
+    ``NSCLC``/``SGC``) are built from sample-weighted TPM cohort medians and
+    therefore have ``<code>_TPM`` but no synthetic FPKM. TPM and every requested
+    analysis derivative are available uniformly across all tumor entities;
+    FPKM is retained only as source provenance where it actually exists.
+
+    The raw matrix is delegated to oncoref's canonical
+    ``pan_cancer_expression`` (#509): duplicate loci are collapsed and genes
+    remapped to canonical Ensembl IDs, and rollup cohorts
+    (``BTC``/``CRC``/``NET``/``NSCLC``/``SGC``, TPM-only) are provided beside
+    the 33 TCGA cohorts. All normalization below runs locally on that canonical
+    data, so this view stays identical in method to
+    :func:`cancer_reference_expression`. See :func:`_pan_reference_frame`.
 
     Parameters
     ----------
@@ -2044,8 +2110,8 @@ def pan_cancer_expression(
         combined; dependencies are inserted automatically. ``"TPM"`` and
         ``"tpm"`` are equivalent.
 
-        - ``"tpm_clean"`` (default) — first ensure deterministic
-          ``<code>_TPM`` columns exist from ``<code>_FPKM``, then add
+        - ``"tpm_clean"`` (default) — start from the uniform TPM/nTPM
+          analysis columns (including TPM-only computed rollups), then add
           ``<tissue>_nTPM_clean`` and ``<code>_TPM_clean`` columns with
           mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows zeroed
           and each column's sum pinned back to 10⁶. This is the
@@ -2054,12 +2120,13 @@ def pan_cancer_expression(
           removed. Base ``<tissue>_nTPM`` and ``<code>_TPM`` columns,
           plus raw ``<code>_FPKM`` columns, remain unchanged.
         - ``None`` — raw/provenance view: raw TCGA ``<code>_FPKM``
-          values and HPA ``<tissue>_nTPM`` values are preserved, while
-          deterministic ``<code>_TPM`` analysis columns are generated
-          from ``<code>_FPKM``. No artifact-gene cleanup, HK scaling,
-          percentile-rank, or log transform is applied.
-        - ``"tpm"`` / ``"TPM"`` — add missing ``<code>_TPM`` companion
-          columns from ``<code>_FPKM`` while preserving raw FPKM.
+          values, HPA ``<tissue>_nTPM`` values, deterministic TCGA
+          ``<code>_TPM`` companions, and TPM-only computed rollups are
+          preserved. No artifact-gene cleanup, HK scaling, percentile-rank,
+          or log transform is applied.
+        - ``"tpm"`` / ``"TPM"`` — the uniform tumor-analysis view: every
+          TCGA and computed-rollup entity has ``<code>_TPM``; raw TCGA FPKM
+          provenance remains available where present.
         - ``"tpm_log1p"`` — add ``<tissue>_nTPM_log1p`` and
           ``<code>_TPM_log1p`` columns using natural ``log1p`` over the
           TPM-scale analysis columns. Implies ``"tpm"``.
@@ -2101,8 +2168,10 @@ def pan_cancer_expression(
     if "tpm" not in normalize_modes:
         normalize_modes.insert(0, "tpm")
 
-    df = get_data("pan-cancer-expression")
-    df, _ = add_tpm_columns_from_fpkm(df)
+    # oncoref's raw compatibility view already contains deterministic TPM
+    # companions for every FPKM cohort. Copy the cached canonical frame before
+    # adding bridge/normalization columns so callers can mutate independently.
+    df = _pan_reference_frame().copy()
 
     # Proteoform duality (uniform with cancer_reference_expression): always add the
     # gene-view Proteoform_ID / Member_Ensembl_Gene_IDs bridge columns; optionally

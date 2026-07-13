@@ -51,6 +51,135 @@ from pirlygenes.expression import (
 # ---------- reference accessors ----------
 
 
+def _delegated_pan_cancer_fixture():
+    """Small canonical oncoref-style raw frame for #509 adapter tests."""
+    fpkm = np.array([2.0, 8.0, 1.0, 10.0, 5.0, 3.0, 7.0])
+    return pd.DataFrame({
+        "Ensembl_Gene_ID": [
+            "ENSG00000146648",  # EGFR
+            "ENSG00000141510",  # TP53
+            "ENSG00000198888",  # MT-ND1 (technical)
+            "ENSG00000111640",  # GAPDH (housekeeping)
+            "ENSG00000147604",  # RPL7 (ribosomal protein)
+            "ENSG00000310560",  # PAXX canonical id
+            "ENSG00000015479",  # canonical collapsed MATR3 row
+        ],
+        "Symbol": ["EGFR", "TP53", "MT-ND1", "GAPDH", "RPL7", "PAXX", "MATR3"],
+        "liver_nTPM": [20.0, 10.0, 5.0, 40.0, 30.0, 2.0, 19.0],
+        "LUAD_FPKM": fpkm,
+        "LUAD_TPM": fpkm * (1_000_000.0 / fpkm.sum()),
+        # Representative TPM-only computed aggregate supplied by oncoref.
+        "CRC_TPM": [100_000.0, 200_000.0, 50_000.0, 250_000.0,
+                    150_000.0, 25_000.0, 225_000.0],
+    })
+
+
+@pytest.fixture
+def delegated_pan_cancer(monkeypatch):
+    """Stub only the oncoref boundary and isolate the one-entry raw-frame cache."""
+    import oncoref
+
+    calls = []
+    raw = _delegated_pan_cancer_fixture()
+
+    def fake_pan_cancer_expression(*, normalize=None, column_style=None):
+        calls.append({"normalize": normalize, "column_style": column_style})
+        return raw.copy()
+
+    expression_accessors._pan_reference_frame.cache_clear()
+    monkeypatch.setattr(oncoref, "pan_cancer_expression", fake_pan_cancer_expression)
+    yield raw, calls
+    expression_accessors._pan_reference_frame.cache_clear()
+
+
+def test_pan_reference_frame_delegates_once_and_adapts_raw_columns(
+    delegated_pan_cancer,
+):
+    raw, calls = delegated_pan_cancer
+
+    first = expression_accessors._pan_reference_frame()
+    second = expression_accessors._pan_reference_frame()
+
+    assert first is second
+    assert calls == [{"normalize": None, "column_style": "pirlygenes"}]
+    assert {"nTPM_liver", "FPKM_LUAD", "TPM_LUAD", "TPM_CRC"} <= set(first.columns)
+    assert not {"liver_nTPM", "LUAD_FPKM", "LUAD_TPM", "CRC_TPM"} & set(first.columns)
+    assert first["FPKM_LUAD"].tolist() == raw["LUAD_FPKM"].tolist()
+
+
+def test_pan_cancer_delegation_preserves_all_normalize_contracts(
+    delegated_pan_cancer,
+):
+    raw, calls = delegated_pan_cancer
+    base_cols = {"liver_nTPM", "LUAD_FPKM", "LUAD_TPM", "CRC_TPM"}
+
+    default = pan_cancer_expression()
+    explicit_clean = pan_cancer_expression(normalize="tpm_clean")
+    pd.testing.assert_frame_equal(default, explicit_clean)
+
+    raw_view = pan_cancer_expression(normalize=None)
+    tpm_view = pan_cancer_expression(normalize="tpm")
+    raw_log = pan_cancer_expression(normalize="tpm_log1p")
+    clean_log = pan_cancer_expression(normalize="tpm_clean_log1p")
+    combined = pan_cancer_expression(
+        normalize=["tpm_clean", "hk", "percentile"],
+    )
+
+    for frame in (default, raw_view, tpm_view, raw_log, clean_log, combined):
+        assert base_cols <= set(frame.columns)
+        assert not any(c.startswith(("nTPM_", "FPKM_", "TPM_")) for c in frame.columns)
+        assert not any(c.endswith("_raw") for c in frame.columns)
+        assert frame["LUAD_FPKM"].tolist() == raw["LUAD_FPKM"].tolist()
+        assert frame["LUAD_TPM"].tolist() == pytest.approx(raw["LUAD_TPM"])
+
+    normalized_cols = {
+        "liver_nTPM_clean", "LUAD_TPM_clean", "CRC_TPM_clean",
+    }
+    assert normalized_cols <= set(default.columns)
+    assert not normalized_cols & set(raw_view.columns)
+    assert list(raw_view.columns) == list(tpm_view.columns)
+    assert {"liver_nTPM_log1p", "LUAD_TPM_log1p", "CRC_TPM_log1p"} <= set(
+        raw_log.columns
+    )
+    assert {
+        "liver_nTPM_clean_log1p", "LUAD_TPM_clean_log1p", "CRC_TPM_clean_log1p",
+    } <= set(clean_log.columns)
+    assert {
+        "liver_nTPM_clean", "LUAD_TPM_clean", "CRC_TPM_clean",
+        "liver_nTPM_hk", "LUAD_TPM_hk", "CRC_TPM_hk",
+        "liver_nTPM_percentile", "LUAD_TPM_percentile", "CRC_TPM_percentile",
+    } <= set(combined.columns)
+
+    # Every mode shares the one expensive canonical oncoref call.
+    assert calls == [{"normalize": None, "column_style": "pirlygenes"}]
+
+
+def test_pan_cancer_delegated_canonical_rows_and_gene_filters(
+    delegated_pan_cancer,
+):
+    _raw, calls = delegated_pan_cancer
+
+    by_symbol = pan_cancer_expression(genes="EGFR", normalize="tpm")
+    by_unversioned_id = pan_cancer_expression(
+        genes=["ENSG00000146648"], normalize="tpm",
+    )
+    by_versioned_id = pan_cancer_expression(
+        genes=["ENSG00000146648.17"], normalize="tpm",
+    )
+    for frame in (by_symbol, by_unversioned_id, by_versioned_id):
+        assert frame["Symbol"].tolist() == ["EGFR"]
+
+    paxx = pan_cancer_expression(genes=["PAXX"], normalize="tpm")
+    assert paxx["Ensembl_Gene_ID"].tolist() == ["ENSG00000310560"]
+    assert "ENSG00000148362" not in set(paxx["Ensembl_Gene_ID"])
+
+    matr3 = pan_cancer_expression(genes=["MATR3"], normalize="tpm")
+    assert len(matr3) == 1
+    assert matr3["Ensembl_Gene_ID"].tolist() == ["ENSG00000015479"]
+    assert matr3["liver_nTPM"].tolist() == [19.0]
+    assert calls == [{"normalize": None, "column_style": "pirlygenes"}]
+
+
 def test_pan_cancer_expression_returns_wide_frame_with_tpm_companions():
     df = pan_cancer_expression()
     assert not df.empty
@@ -1193,10 +1322,11 @@ def test_filter_technical_rna_removes_mt_rows_from_pan_cancer():
 
 def test_filter_to_genes_subsets_by_symbol_or_ensg():
     df = pan_cancer_expression()
-    out = filter_to_genes(df, ["KLK3", "ENSG00000136997"])  # symbol + ENSG (MYC)
+    # Versioned ENSG queries match the canonical unversioned row.
+    out = filter_to_genes(df, ["KLK3", "ENSG00000136997.17"])
     assert not out.empty
     syms = set(out["Symbol"].str.upper())
-    assert "KLK3" in syms or "MYC" in syms
+    assert {"KLK3", "MYC"} <= syms
 
 
 def test_normalize_to_housekeeping_handles_explicit_value_cols():
@@ -1455,7 +1585,13 @@ def test_pan_cancer_expression_normalize_uppercase_tpm_adds_tpm():
 def test_pan_cancer_expression_normalize_tpm_rescales_fpkm_to_million():
     """After ``normalize="tpm"`` each former FPKM column sums to 10⁶."""
     df = pan_cancer_expression(normalize="tpm")
-    tpm_cols = [c for c in df.columns if c.endswith("_TPM")]
+    # Computed rollups (BTC/CRC/NET/NSCLC/SGC) are TPM-only, sample-weighted
+    # cohort medians and therefore do not carry the per-sample sum-to-million
+    # invariant. Check only deterministic companions with paired FPKM provenance.
+    tpm_cols = [
+        c for c in df.columns
+        if c.endswith("_TPM") and f"{c[:-len('_TPM')]}_FPKM" in df.columns
+    ]
     assert tpm_cols
     for col in tpm_cols:
         col_sum = float(pd.to_numeric(df[col], errors="coerce").sum())
@@ -1607,17 +1743,28 @@ def test_pan_cancer_expression_normalize_default_matches_singleton_list():
 
 def test_pan_cancer_expression_normalize_list_combines_modes():
     df = pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])
-    for suffix in (
-        "_TPM",
-        "_TPM_clean",
-        "_TPM_hk",
-        "_TPM_percentile",
-        "_nTPM",
-        "_nTPM_clean",
-        "_nTPM_hk",
-        "_nTPM_percentile",
-    ):
-        assert any(c.endswith(suffix) for c in df.columns), suffix
+    tumor_entities = {
+        c[:-len("_TPM")] for c in df.columns if c.endswith("_TPM")
+    }
+    normal_entities = {
+        c[:-len("_nTPM")] for c in df.columns if c.endswith("_nTPM")
+    }
+    assert {"BTC", "CRC", "NET", "NSCLC", "SGC"} <= tumor_entities
+
+    # FPKM is optional provenance, but every tumor and normal entity has the
+    # same requested analysis derivatives.
+    for entity in tumor_entities:
+        assert {
+            f"{entity}_TPM_clean",
+            f"{entity}_TPM_hk",
+            f"{entity}_TPM_percentile",
+        } <= set(df.columns)
+    for entity in normal_entities:
+        assert {
+            f"{entity}_nTPM_clean",
+            f"{entity}_nTPM_hk",
+            f"{entity}_nTPM_percentile",
+        } <= set(df.columns)
 
 
 def test_pan_cancer_expression_normalize_rejects_invalid_token():
