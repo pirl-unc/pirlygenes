@@ -33,11 +33,12 @@ dependencies = [
     # ontology_level=='grouping' (auto-exempt) so this taxonomy churn no longer
     # needs a frozenset edit per release (see tests/test_registry_completeness.py
     # and tests/test_ontology_level_groupings.py).
-    # 1.8.123 completes the cancer_reference_expression compatibility contract
+    # 1.8.125 completes the cancer_reference_expression compatibility contract
     # used by pirlygenes' delegated read path (#557): source-union summaries,
     # pirlygenes gene-ID/universe views, provenance, pooling, and identical-locus
-    # collapse. 1.8.124 indexes reference-summary rows by cohort so filtered
-    # calls do not repeatedly scan the full frame. >=1.8.75 also gives the
+    # collapse, including compact pirlygenes proteoform IDs and n_detected-safe
+    # source-union collapse. 1.8.124 indexes reference-summary rows by cohort so
+    # filtered calls do not repeatedly scan the full frame. >=1.8.75 also gives the
     # builders the cleaned-up source-matrix QC /
     # mapping-audit / parse-diagnostics contract they delegate to — Entrez
     # resolver (#293) + un-versioned QC contract with configurable HK floor +
@@ -46,7 +47,7 @@ dependencies = [
     # delegates in #208 (representative_cohort_samples with
     # representative_id_style/sample_qc='artifact', available_representative_
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles).
-    "oncoref>=1.8.124",
+    "oncoref>=1.8.125",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile

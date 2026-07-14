@@ -23,7 +23,7 @@ under #528; no supported public read path selects them.
 
 ## Compatibility transforms
 
-The adapter performs four deterministic operations over delegated rows:
+The adapter performs three deterministic operations over delegated rows:
 
 - maps oncoref normalization labels back to `TPM`, `TPM_clean`,
   `TPM_log1p`, and `TPM_clean_log1p`;
@@ -31,11 +31,11 @@ The adapter performs four deterministic operations over delegated rows:
   both log views with `numpy.log1p` from oncoref's delegated linear summaries;
 - maps the DDLPS/WDLPS rows from oncoref's stale generic TCGA-subset storage
   label to the dedicated SARC-histology label advertised by oncoref's registry,
-  including translation of canonical `source_cohort=` filters;
-- preserves pirlygenes proteoform IDs and applies identical-locus collapse to
-  delegated linear rows while oncoref's summary-union collapse retains its
-  `n_detected` provenance bug. This exception is exposed in
-  `attrs["compatibility_transforms"]` and has no local-data fallback.
+  including translation of canonical `source_cohort=` filters
+  ([oncoref#374](https://github.com/pirl-unc/oncoref/issues/374));
+
+Pooling, proteoform bridges, and cDNA/protein-identical collapse delegate
+directly to oncoref 1.8.125 and therefore require no local expression transform.
 
 ## Validation
 
@@ -63,7 +63,7 @@ python scripts/parity_reference_expression.py
 
 The committed [Markdown report](reference-expression-delegation-557.md) and
 [per-code CSV](reference-expression-delegation-557.csv) were generated with
-oncoref 1.8.124. Headline results:
+oncoref 1.8.125. Headline results:
 
 - 128 source-union cancer codes audited;
 - 124 served by both the compatibility and canonical selected/QC-aware views;

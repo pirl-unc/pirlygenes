@@ -1383,33 +1383,6 @@ def _reference_compatibility_genes(
     return expanded
 
 
-def _restore_pirlygenes_proteoform_bridge(
-    df: pd.DataFrame, *, kind: str
-) -> pd.DataFrame:
-    """Use pirlygenes' stable proteoform IDs on delegated gene/collapse rows."""
-    from .protein_groups import canonical_to_symbol, member_to_canonical
-
-    out = df.copy()
-    if "Member_Ensembl_Gene_IDs" not in out.columns:
-        out["Member_Ensembl_Gene_IDs"] = out["Ensembl_Gene_ID"]
-    else:
-        out["Member_Ensembl_Gene_IDs"] = out[
-            "Member_Ensembl_Gene_IDs"
-        ].fillna(out["Ensembl_Gene_ID"])
-    member_map = member_to_canonical(kind)
-    symbol_map = canonical_to_symbol(kind)
-    ids = out["Ensembl_Gene_ID"].astype(str)
-    proteoform_by_id = {
-        value: symbol_map.get(
-            member_map.get(strip_version(value), strip_version(value)),
-            strip_version(value),
-        )
-        for value in ids.unique()
-    }
-    out["Proteoform_ID"] = ids.map(proteoform_by_id)
-    return out
-
-
 def _oncoref_reference_mode(
     *,
     cancer_types: Optional[str | Iterable[str]],
@@ -1438,14 +1411,12 @@ def _oncoref_reference_mode(
         else ([genes] if isinstance(genes, str) else list(genes))
     )
     compatibility_genes = _reference_compatibility_genes(requested_genes)
-    local_collapse = collapse_cdna_identical or collapse_protein_identical
-    internal_provenance = include_provenance or (local_collapse and pool)
     delegated = oncoref.cancer_reference_expression(
         cancer_types=cancer_types,
         genes=compatibility_genes,
         normalize=delegated_mode,
         format="long",
-        include_provenance=internal_provenance,
+        include_provenance=include_provenance,
         on_missing="empty",
         auto_fetch=False,
         sample_qc="all",
@@ -1455,13 +1426,9 @@ def _oncoref_reference_mode(
         source_kind=source_kind,
         source_cohort=_reference_source_cohort_storage_filter(source_cohort),
         exclude_microarray_proxy=exclude_microarray_proxy,
-        # oncoref 1.8.124's summary-union collapse currently trips over the
-        # n_detected provenance key. Apply the identical public transform to
-        # delegated rows below; this is an audited adapter transform, never a
-        # fallback to pirlygenes expression data.
-        pool=pool and not local_collapse,
-        collapse_cdna_identical=False,
-        collapse_protein_identical=False,
+        pool=pool,
+        collapse_cdna_identical=collapse_cdna_identical,
+        collapse_protein_identical=collapse_protein_identical,
     )
     attrs = dict(delegated.attrs)
     label = _REFERENCE_VALUE_COLUMNS[mode][3]
@@ -1471,13 +1438,6 @@ def _oncoref_reference_mode(
         compatibility_transforms.append(
             "legacy gene aliases expanded before delegated filtering"
         )
-    # oncoref's migration bridge uses its canonical group labels. Recompute the
-    # historical pirlygenes bridge unconditionally (for example CTAG1A/B rather
-    # than CTAG1B) and restore columns dropped by pooling.
-    bridge_kind = "protein" if collapse_protein_identical else "cdna"
-    delegated = _restore_pirlygenes_proteoform_bridge(
-        delegated, kind=bridge_kind
-    )
     delegated, source_labels_normalized = (
         _normalize_reference_source_cohort_labels(delegated)
     )
@@ -1486,47 +1446,6 @@ def _oncoref_reference_mode(
             "SARC DDLPS/WDLPS source cohort normalized to registry label"
         )
     delegated["normalization"] = label
-    if local_collapse:
-        delegated = _project_oncoref_reference_schema(
-            delegated,
-            include_provenance=internal_provenance,
-            pool=False,
-        )
-        if collapse_protein_identical:
-            from .protein_groups import collapse_protein_identical_loci_long
-
-            delegated = collapse_protein_identical_loci_long(
-                delegated,
-                group_keys=["cancer_code", "source_cohort", "normalization"],
-                sum_cols=["expression", "q1", "q3"],
-                max_cols=("n_detected",),
-            )
-            compatibility_transforms.append(
-                "protein-identical collapse applied to delegated linear rows"
-            )
-        if collapse_cdna_identical:
-            from .protein_groups import collapse_cdna_identical_loci_long
-
-            delegated = collapse_cdna_identical_loci_long(
-                delegated,
-                group_keys=["cancer_code", "source_cohort", "normalization"],
-                sum_cols=["expression", "q1", "q3"],
-                max_cols=("n_detected",),
-            )
-            compatibility_transforms.append(
-                "cDNA-identical collapse applied to delegated linear rows"
-            )
-        if pool:
-            delegated = _pool_union_rows(
-                delegated,
-                include_provenance=include_provenance,
-            )
-            compatibility_transforms.append(
-                "pooling applied after compatibility identical-locus collapse"
-            )
-        delegated = _restore_pirlygenes_proteoform_bridge(
-            delegated, kind=bridge_kind
-        )
     # Collapse/pool in linear space before deriving the historical raw-log view.
     if mode.endswith("_log1p"):
         for column in ("expression", "q1", "q3"):

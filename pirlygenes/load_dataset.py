@@ -154,7 +154,7 @@ _DATASET_STRING_ID_COLS = {
     "cancer-type-registry.csv": ("code",),
 }
 
-# oncoref 1.8.124's registry/availability metadata assigns the TCGA-derived
+# oncoref 1.8.125's registry/availability metadata assigns the TCGA-derived
 # DDLPS/WDLPS rows to the dedicated histology cohort, but the underlying summary
 # rows still carry the older generic TCGA-subset label.  Normalize only those two
 # code/source pairs at the pirlygenes compatibility boundary; other TCGA-derived
