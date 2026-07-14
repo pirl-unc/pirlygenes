@@ -163,7 +163,10 @@ CONTRASTS = {
         "type_a": "BRCA",
         "type_b": "SARC_EPITH",
         "separability": "poor",
-        "source": "PMID:23000897;PMID:9839166",
+        "source": (
+            "PMID:23000897;PMID:33011748;PMID:10561252;PMID:8982381;"
+            "PMID:9839166;PMID:23774169"
+        ),
         "favors": {
             "BRCA": [
                 ("TRPS1", "high", "primary"),
@@ -183,7 +186,10 @@ CONTRASTS = {
         "type_a": "BRCA_Basal",
         "type_b": "SARC_EPITH",
         "separability": "poor",
-        "source": "PMID:23000897;PMID:9839166",
+        "source": (
+            "PMID:23000897;PMID:33011748;PMID:34725848;PMID:10561252;"
+            "PMID:9839166;PMID:23774169"
+        ),
         "favors": {
             "BRCA_Basal": [
                 ("TRPS1", "high", "primary"),
@@ -203,7 +209,10 @@ CONTRASTS = {
         "type_a": "BRCA_Basal",
         "type_b": "SARC_OS",
         "separability": "moderate",
-        "source": "PMID:23000897;PMID:32173717",
+        "source": (
+            "PMID:23000897;PMID:33011748;PMID:34725848;PMID:10561252;"
+            "PMID:32173717;PMID:20465837"
+        ),
         "favors": {
             "BRCA_Basal": [
                 ("TRPS1", "high", "primary"),
@@ -305,7 +314,9 @@ CONTRASTS = {
         "type_a": "NET_MIDGUT",
         "type_b": "SARC_LMS",
         "separability": "strong",
-        "source": "PMID:15848904;PMID:19901961;PMID:28893210",
+        "source": (
+            "PMID:15640551;PMID:15848904;PMID:26386079;PMID:19901961;PMID:28893210"
+        ),
         "anchor": "pirlygenes#266 exact gate plus pirlygenes#326 source-QC follow-up",
         "favors": {
             "NET_MIDGUT": [
@@ -328,7 +339,7 @@ CONTRASTS = {
         "type_a": "RB",
         "type_b": "SARC_LPS_UNSPEC",
         "separability": "moderate",
-        "source": "PMID:41535675;PMID:23511993",
+        "source": ("PMID:41535675;PMID:19936203;PMID:8666979;PMID:23511993"),
         "favors": {
             "RB": [
                 ("CRX", "high", "primary"),
@@ -370,7 +381,7 @@ CONTRASTS = {
         "type_a": "SARC_SYN",
         "type_b": "LAML",
         "separability": "strong",
-        "source": "PMID:17255769;PMID:34673590;PMID:23634996",
+        "source": ("PMID:17255769;PMID:23287123;PMID:34673590;PMID:23634996"),
         "favors": {
             "SARC_SYN": [
                 ("TLE1", "high", "primary"),
@@ -392,7 +403,10 @@ CONTRASTS = {
         "type_a": "STAD_GS",
         "type_b": "BL",
         "separability": "strong",
-        "source": "PMID:25079317;PMID:31857451",
+        "source": (
+            "PMID:25079317;PMID:31235864;PMID:28150071;PMID:28129645;"
+            "PMID:31857451;PMID:18838917"
+        ),
         "favors": {
             "STAD_GS": [
                 ("CLDN18", "high", "primary"),
