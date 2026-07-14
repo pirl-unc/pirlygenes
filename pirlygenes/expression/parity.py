@@ -279,8 +279,10 @@ def format_markdown(df: pd.DataFrame, min_expr: float = DEFAULT_MIN_EXPR) -> str
     if len(not_ok):
         lines += ["", "## Not comparable", ""]
         for _, r in not_ok.iterrows():
+            detail = str(r.get("detail", "") or "").strip()
+            suffix = f": {detail}" if detail else ""
             lines.append(
-                f"- `{r['cancer_code']}` — {r['status']}: {r.get('detail', '')}"
+                f"- `{r['cancer_code']}` — {r['status']}{suffix}"
             )
     lines.append("")
     return "\n".join(lines)

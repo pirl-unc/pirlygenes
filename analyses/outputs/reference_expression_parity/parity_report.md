@@ -139,7 +139,7 @@ Compares pirlygenes' pre-built cohort summary rows against oncoref's on-demand c
 
 ## Not comparable
 
-- `MBL_G3` — oncoref-empty: 
-- `MBL_G4` — oncoref-empty: 
-- `MBL_SHH` — oncoref-empty: 
-- `MBL_WNT` — oncoref-empty: 
+- `MBL_G3` — oncoref-empty
+- `MBL_G4` — oncoref-empty
+- `MBL_SHH` — oncoref-empty
+- `MBL_WNT` — oncoref-empty
