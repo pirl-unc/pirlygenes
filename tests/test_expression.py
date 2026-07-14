@@ -23,6 +23,7 @@ from pirlygenes.expression import (
     add_tpm_columns_from_fpkm,
     aggregate_gene_expression,
     available_cancer_expression_references,
+    cancer_enriched_genes,
     cancer_expression,
     cancer_expression_reference_status,
     cancer_expression_source_candidates,
@@ -288,6 +289,12 @@ def test_pan_cancer_expression_subset_filters_to_named_genes():
 def test_pan_cancer_expression_housekeeping_rescales_to_unit_baseline():
     df = pan_cancer_expression(normalize="hk")
     tpm_cols = [c for c in df.columns if c.endswith("_TPM_hk")]
+    source_tpm_cols = [
+        col
+        for col in tpm_cols
+        if f"{col[:-len('_TPM_hk')]}_FPKM" in df.columns
+    ]
+    assert len(source_tpm_cols) == 33
     # Median-of-ratios does not rescale each HK gene to 1.0 (that was the old
     # geomean behavior); it puts the whole sample on the reference-profile
     # scale. The defining invariant is that the median over HK genes of
@@ -314,6 +321,60 @@ def test_pan_cancer_expression_housekeeping_rescales_to_unit_baseline():
         assert med == pytest.approx(1.0, rel=0.05), (
             f"{col} median housekeeping ratio-to-reference is {med}, expected ~1.0"
         )
+
+
+def test_cancer_enriched_genes_excludes_computed_rollups_from_background(
+    monkeypatch,
+):
+    frame = pd.DataFrame({
+        "Ensembl_Gene_ID": ["ENSG00000146648"],
+        "Symbol": ["EGFR"],
+        "LUAD_FPKM": [1.0],
+        "LUSC_FPKM": [1.0],
+        "COAD_FPKM": [1.0],
+        "LUAD_TPM_hk": [12.0],
+        "LUSC_TPM_hk": [4.0],
+        "COAD_TPM_hk": [8.0],
+        # Deliberately extreme rollups: none may affect the source background.
+        "NSCLC_TPM_hk": [1_000.0],
+        "CRC_TPM_hk": [2_000.0],
+        "BTC_TPM_hk": [3_000.0],
+    })
+    monkeypatch.setattr(
+        expression_accessors,
+        "pan_cancer_expression",
+        lambda **_kwargs: frame.copy(),
+    )
+
+    enriched = cancer_enriched_genes("LUAD", min_fold=0.0, min_expression=0.0)
+
+    assert enriched.loc[0, "other_median"] == pytest.approx(6.0)
+    assert enriched.loc[0, "fold_change"] == pytest.approx(
+        (12.0 + 0.001) / (6.0 + 0.001)
+    )
+
+
+def test_cancer_enriched_genes_excludes_members_of_aggregate_target(monkeypatch):
+    frame = pd.DataFrame({
+        "Ensembl_Gene_ID": ["ENSG00000146648"],
+        "Symbol": ["EGFR"],
+        "LUAD_FPKM": [1.0],
+        "LUSC_FPKM": [1.0],
+        "COAD_FPKM": [1.0],
+        "LUAD_TPM_hk": [100.0],
+        "LUSC_TPM_hk": [200.0],
+        "COAD_TPM_hk": [8.0],
+        "NSCLC_TPM_hk": [12.0],
+    })
+    monkeypatch.setattr(
+        expression_accessors,
+        "pan_cancer_expression",
+        lambda **_kwargs: frame.copy(),
+    )
+
+    enriched = cancer_enriched_genes("NSCLC", min_fold=0.0, min_expression=0.0)
+
+    assert enriched.loc[0, "other_median"] == pytest.approx(8.0)
 
 
 def test_cancer_expression_returns_per_symbol_expression_column():
