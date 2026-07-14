@@ -411,9 +411,26 @@ def test_cancer_expression_tcga_default_is_clean_tpm_not_housekeeping():
     assert not np.allclose(default["expression"], explicit_hk["expression"])
 
 
-def test_hpa_cell_type_expression_long_form():
+def test_hpa_cell_type_expression_long_form(monkeypatch):
+    import oncoref
+
+    expected = pd.DataFrame(
+        {
+            "Ensembl_Gene_ID": ["E1"],
+            "Symbol": ["A"],
+            "T-cells": [3.0],
+        }
+    )
+    monkeypatch.setattr(oncoref, "hpa_cell_type_expression", lambda: expected.copy())
+    monkeypatch.setattr(
+        expression_accessors,
+        "get_data",
+        lambda name: pytest.fail(f"unexpected local dataset read: {name}"),
+    )
+
     df = hpa_cell_type_expression()
-    assert not df.empty
+
+    pd.testing.assert_frame_equal(df, expected)
 
 
 def test_estimate_signatures_has_stromal_and_immune_classes():

@@ -285,7 +285,7 @@ read raw via the generic loader.
 | `cancer-reference-expression/*.csv.gz` | Legacy `available_cancer_expression_references()`/status manifests and cohort-view rebuilds |
 | `tumor-up-vs-matched-normal.csv` | `tumor_up_vs_matched_normal()` |
 | `heme-tumor-up-vs-matched-normal.csv` | `heme_tumor_up_vs_matched_normal()` |
-| `hpa-cell-type-expression.csv` | `hpa_cell_type_expression()` |
+| oncoref HPA reference bundle | `hpa_cell_type_expression()` compatibility wrapper |
 | `estimate-signatures.csv` | `estimate_signatures()` |
 | `gene-sets.csv` | `get_data("gene-sets")` (catalog of named sets) |
 | `therapy-response-signatures.csv` | `get_data("therapy-response-signatures")` |
@@ -309,7 +309,8 @@ registry, expression builders/downloads, public masks, and compatibility
 wrappers. When a low-level reference mechanic is shared and parity-clean, this
 package delegates it to `oncoref`; currently that includes canonical clean TPM,
 explicit housekeeping normalization, pan-cancer expression canonicalization,
-and the empirical `cancer_reference_expression` read path.
+the empirical `cancer_reference_expression` read path, and HPA cell-type
+expression.
 
 Do not assume every oncoref table is a drop-in replacement for the bundled
 pirlygenes artifacts. Representative-sample and percentile accessors also

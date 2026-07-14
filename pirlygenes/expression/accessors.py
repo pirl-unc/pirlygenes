@@ -2494,7 +2494,9 @@ def hpa_cell_type_expression() -> pd.DataFrame:
     aggregated across the public HPA single-cell datasets. Useful for
     interpreting which cell type drives a sample's signal.
     """
-    return get_data("hpa-cell-type-expression").copy()
+    import oncoref
+
+    return oncoref.hpa_cell_type_expression()
 
 
 def estimate_signatures() -> pd.DataFrame:
