@@ -2423,6 +2423,11 @@ def cancer_enriched_genes(
 ) -> pd.DataFrame:
     """Genes enriched in one cancer type vs the pan-cancer median.
 
+    The comparison population is the original 33 source cohorts. Computed
+    rollups are not independent observations and are therefore never included
+    in the background. When a rollup is itself the target, its member cohorts
+    are excluded from the background as well.
+
     Parameters
     ----------
     cancer_type
@@ -2445,14 +2450,27 @@ def cancer_enriched_genes(
         normalize="hk",
         drop_technical_rna=True,
     )
-    tpm_cols = [c for c in df.columns if c.endswith("_TPM_hk")]
     target_col = f"{code}_TPM_hk"
     if target_col not in df.columns:
         raise ValueError(
             f"no HK-normalized TPM column for {cancer_type!r} "
             f"(resolved to {code!r})"
         )
-    other_cols = [c for c in tpm_cols if c != target_col]
+    # Paired FPKM provenance distinguishes the 33 source cohorts from the
+    # TPM-only computed rollups. Including rollups here would count source
+    # cohorts more than once (for example LUAD both directly and via NSCLC).
+    source_cols = [
+        col
+        for col in df.columns
+        if col.endswith("_TPM_hk")
+        and f"{col[:-len('_TPM_hk')]}_FPKM" in df.columns
+    ]
+    excluded_codes = {code, *_PAN_COMPUTED_ROLLUP_MEMBERS.get(code, ())}
+    other_cols = [
+        col
+        for col in source_cols
+        if col[:-len("_TPM_hk")] not in excluded_codes
+    ]
     result = df[["Ensembl_Gene_ID", "Symbol"]].copy()
     result["expression"] = df[target_col].astype(float)
     result["other_median"] = df[other_cols].astype(float).median(axis=1)
