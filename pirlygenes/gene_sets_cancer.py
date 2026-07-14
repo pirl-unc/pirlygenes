@@ -904,6 +904,20 @@ def cancer_type_discriminator(type_a, type_b):
             for code, grp in df.groupby("favors", sort=False)}
 
 
+def cancer_discriminator_hard_cases_df():
+    """Exact representative-sample gate for unresolved lineage mistakes.
+
+    The rows record the expected code, baseline no-hint prediction, positive
+    expected-lineage markers, counter-lineage markers, and whether resolution
+    belongs to panel scoring, source QC, or mixture-aware scoring.  ``must_keep``
+    means a difficult representative stays visible while it is investigated;
+    it is not permission to override coherent expression biology.
+
+    See pirlygenes issues #266 and #326.
+    """
+    return get_data("cancer-discriminator-hard-cases")
+
+
 # ---------- Classification ONTOLOGY: the compartment->supertype->family DAG ----------
 # The SUPERTYPE tier is where the promiscuous "confirmatory" markers become
 # anchors (PAX8 -> PAX8_LINEAGE; NKX2-1 -> TTF1_LINEAGE; GATA3/FOXA1 ->

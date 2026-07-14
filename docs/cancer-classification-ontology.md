@@ -155,6 +155,22 @@ rule a branch out; `discriminator`s break sibling ties. Promotion of a marker up
 a tier (PAX8: family-confirmatory → supertype-anchor) is the single mechanical
 change that makes the whole thing consistent.
 
+### Hard-case regression gate
+
+`cancer-discriminator-hard-cases.csv` pins the exact 13 representative samples
+reported in [#266](https://github.com/pirl-unc/pirlygenes/issues/266#issuecomment-4964643961),
+including `NET_MIDGUT_rep04` from the source-QC follow-up in
+[#326](https://github.com/pirl-unc/pirlygenes/issues/326#issuecomment-4964643967).
+Each row names the baseline cross-lineage attractor, the expected positive
+program, the counter-lineage program, and whether the remedy belongs to panel
+scoring, source QC, or mixture-aware scoring. The paired high/low evidence is
+kept in `cancer-type-discriminators.csv` with literature provenance.
+
+`must_keep` is a regression-policy flag: the difficult representative must stay
+visible until it is resolved. It is not a label override. In particular, a
+source vector with coherent counter-lineage expression must be repaired or
+replaced upstream rather than made to pass by blanket compartment locking.
+
 ## 6. Do we need supertypes and subtypes?
 
 **Supertypes — YES.** They are *where the promiscuous markers anchor*. Without
