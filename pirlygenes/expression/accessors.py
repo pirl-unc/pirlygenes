@@ -1633,14 +1633,71 @@ def cancer_reference_expression(
     collapse_cdna_identical: bool = False,
     pool: bool = False,
 ) -> pd.DataFrame:
-    """Tumor expression references delegated to oncoref.
+    """Source-agnostic tumor expression references delegated to oncoref.
 
-    This compatibility wrapper preserves pirlygenes' historical normalization
-    labels, long/wide schemas, source-union semantics, provenance projection,
-    filters, pooling, and identical-locus options. Empirical rows and their
-    provenance come only from ``oncoref.cancer_reference_expression``; no local
-    fallback is attempted. Delegation availability and any missing requests are
-    exposed in ``DataFrame.attrs`` for auditability.
+    This compatibility wrapper preserves pirlygenes' normalization labels,
+    long/wide schemas, source-union semantics, provenance projection, filters,
+    pooling, and identical-locus options. Empirical rows and provenance come
+    only from :func:`oncoref.cancer_reference_expression`; no local expression
+    fallback is attempted. Delegation availability, missing requests, and every
+    deterministic compatibility transform are exposed in ``DataFrame.attrs``.
+
+    ``source_kind`` selects union members by processing-source kind (for example
+    ``"treehouse"``, ``"geo"``, ``"target"``, or ``"cllmap"``). It is not
+    the sample origin: Treehouse-reprocessed TCGA rows select under
+    ``source_kind="treehouse"``, not a fabricated ``"tcga"`` kind. Use
+    ``source_cohort=`` for exact cohort-level selection.
+
+    Cross-cohort unions can mix assays and gene universes. Microarray-proxy TPM
+    is not magnitude-comparable across platforms; pass
+    ``exclude_microarray_proxy=True`` for a pipeline-homogeneous pool. A gene
+    absent from one member remains unavailable for that member, never measured
+    zero. Rows therefore retain ``(cancer_code, source_cohort)`` identity unless
+    the caller explicitly requests ``pool=True``.
+
+    Parameters
+    ----------
+    cancer_types
+        Optional registry code, alias, or iterable. Computed aggregates expand
+        to the union of their subtype rows: for example, ``"SARC"`` retains
+        each sarcoma member's own ``cancer_code`` and ``source_cohort``.
+    genes
+        Optional gene-symbol or Ensembl-ID subset. Legacy aliases and retired
+        Ensembl IDs supported by the pirlygenes/oncoref migration map resolve to
+        the same canonical rows.
+    normalize
+        One mode or a sequence of ``"tpm"``, ``"tpm_clean"``,
+        ``"tpm_log1p"``, or ``"tpm_clean_log1p"``. ``"clean_tpm"`` is an
+        alias for ``"tpm_clean"``.
+    format
+        ``"long"`` returns one row per gene/cancer/source/normalization;
+        ``"wide"`` returns one row per gene with columns such as
+        ``CLL_TPM_clean``.
+    include_provenance
+        Include source/sample/provenance columns in long-form output.
+    exclude_microarray_proxy
+        Exclude source rows whose magnitudes are microarray-derived TPM proxies.
+    source_kind / source_cohort
+        Optional processing-kind or exact-cohort filters; each accepts one value
+        or an iterable.
+    collapse_protein_identical / collapse_cdna_identical
+        Sum identical loci once per ``(cancer_code, source_cohort)`` in linear
+        space before any log transform. At most one collapse mode may be true.
+        cDNA identity is the conservative read-recovery view; protein identity
+        additionally combines protein-identical/cDNA-distinct loci.
+    pool
+        Collapse each source union to one n-sample-weighted row per
+        ``(gene, cancer_code, normalization)``. Only cohorts that measured the
+        gene contribute. ``source_cohort`` becomes ``"POOLED"``; ``q1`` and
+        ``q3`` are ``NaN`` because quantiles cannot be reconstructed from cohort
+        summaries. Pool only pipeline-comparable sources.
+
+    Returns
+    -------
+    pd.DataFrame
+        Defensive copy suitable for downstream mutation. ``attrs`` records the
+        delegation target, availability, missing requests, and compatibility
+        transforms.
     """
     modes = _resolve_reference_normalize_modes(normalize)
     _validate_reference_format(format)

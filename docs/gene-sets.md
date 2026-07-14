@@ -134,8 +134,8 @@ or `PCN`, load through their documented parent expression reference. Use
 direct reference, TCGA pan-cancer column, parent reference, or only a candidate
 source.
 
-`cancer_reference_expression()` exposes non-TCGA tumor references in long or
-wide form with the same normalization names. Current packaged references
+`cancer_reference_expression()` exposes oncoref-owned tumor references in long
+or wide form with pirlygenes-compatible normalization names. Current references
 include CLL-map (`CLL`), MMRF CoMMpass (`MM`), and TARGET ALL (`B_ALL`,
 `T_ALL`), GEO/CGCI heme references including CTCL scRNA/TCR pseudobulk nTPM,
 plus BeatAML/TARGET subtype summaries and selected Treehouse/GEO

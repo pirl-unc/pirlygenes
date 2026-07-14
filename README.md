@@ -203,8 +203,8 @@ pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])
 reference sources: clean TPM (`normalize="tpm_clean"`). For TCGA-backed cancer
 types, housekeeping-normalized values are available only when explicitly
 requested with `normalize="hk"` or `normalize="housekeeping"`.
-`cancer_reference_expression()` exposes packaged non-TCGA tumor references
-through the same raw TPM / clean TPM contract; current bundled sources include
+`cancer_reference_expression()` exposes oncoref-owned tumor reference summaries
+through a pirlygenes-compatible raw TPM / clean TPM contract; current sources include
 CLL-map (`CLL`), MMRF CoMMpass (`MM`), TARGET ALL (`B_ALL`, `T_ALL`),
 CGCI/GDC Burkitt lymphoma (`BL`), GEO heme cohorts (`CML`, `MCL`, `MDS`,
 `MPN`), a CTCL scRNA/TCR pseudobulk nTPM reference (`CTCL`),
@@ -281,7 +281,7 @@ read raw via the generic loader.
 | `hemoglobin-genes.csv` | `hemoglobin_gene_ids()`, `hemoglobin_gene_symbols()` |
 | `immune-receptor-segments.csv` | `immune_receptor_segment_ids()`, `immune_receptor_segment_symbols()` |
 | `pan-cancer-expression.csv` | `pan_cancer_expression()`, `cancer_expression(cancer_type)`, `cancer_enriched_genes(cancer_type)` |
-| `cancer-reference-expression.csv.gz` | `cancer_reference_expression()`, `available_cancer_expression_references()` |
+| oncoref `cancer-reference-expression` bundle | `cancer_reference_expression()`, `available_cancer_expression_references()` |
 | `tumor-up-vs-matched-normal.csv` | `tumor_up_vs_matched_normal()` |
 | `heme-tumor-up-vs-matched-normal.csv` | `heme_tumor_up_vs_matched_normal()` |
 | `hpa-cell-type-expression.csv` | `hpa_cell_type_expression()` |
