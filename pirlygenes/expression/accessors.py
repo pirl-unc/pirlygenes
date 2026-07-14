@@ -1411,6 +1411,15 @@ def _oncoref_reference_mode(
         if genes is None
         else ([genes] if isinstance(genes, str) else list(genes))
     )
+    requested_source_cohort = (
+        None
+        if source_cohort is None
+        else (
+            source_cohort
+            if isinstance(source_cohort, str)
+            else list(source_cohort)
+        )
+    )
     compatibility_genes = _reference_compatibility_genes(requested_genes)
     delegated = oncoref.cancer_reference_expression(
         cancer_types=cancer_types,
@@ -1425,7 +1434,9 @@ def _oncoref_reference_mode(
         gene_id_style="pirlygenes",
         gene_universe="pirlygenes",
         source_kind=source_kind,
-        source_cohort=_reference_source_cohort_storage_filter(source_cohort),
+        source_cohort=_reference_source_cohort_storage_filter(
+            requested_source_cohort
+        ),
         exclude_microarray_proxy=exclude_microarray_proxy,
         pool=pool,
         collapse_cdna_identical=collapse_cdna_identical,
@@ -1446,7 +1457,9 @@ def _oncoref_reference_mode(
         compatibility_transforms.append(
             "SARC DDLPS/WDLPS source cohort normalized to registry label"
         )
-    public_source_filter = _reference_source_cohort_public_filter(source_cohort)
+    public_source_filter = _reference_source_cohort_public_filter(
+        requested_source_cohort
+    )
     if public_source_filter is not None:
         delegated = delegated[
             delegated["source_cohort"].astype(str).isin(public_source_filter)

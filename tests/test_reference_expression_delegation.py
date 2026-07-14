@@ -155,7 +155,7 @@ def test_sarc_histology_source_label_and_filter_are_canonicalized():
     out = accessors.cancer_reference_expression(
         cancer_types="SARC",
         genes=["TP53"],
-        source_cohort=canonical,
+        source_cohort=(cohort for cohort in [canonical]),
     )
     assert not out.empty
     assert set(out["source_cohort"]) == {canonical}
