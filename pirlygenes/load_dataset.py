@@ -12,7 +12,7 @@
 
 """Loader for bundled + downloaded data files.
 
-Two data roots are checked in order:
+For pirlygenes-owned datasets, two data roots are checked in order:
 
   1. ``_BUNDLED_DATA_DIR`` — files shipped in the wheel (small panels,
      registries) AND files present in a git-checkout's
@@ -21,10 +21,9 @@ Two data roots are checked in order:
      :mod:`pirlygenes.data_bundle` (large per-cohort summaries fetched
      from the GitHub Release matching the installed version).
 
-Any file present in (1) wins over (2) — this keeps dev iteration on
-the cancer-reference-expression shards working without forcing a re-
-download. In a fresh wheel install, (1) will only have the small
-panels and (2) supplies the heavy data.
+Any file present in (1) wins over (2). The exception is
+``cancer-reference-expression``: oncoref owns that empirical table and
+``get_data`` delegates it explicitly, even in a source checkout (#557).
 
 When a callable here requests one of the
 :data:`pirlygenes.data_bundle.DOWNLOADABLE_PATHS` items and it's
@@ -154,6 +153,20 @@ _LOW_CARDINALITY_METADATA_COLS = (
 _DATASET_STRING_ID_COLS = {
     "cancer-type-registry.csv": ("code",),
 }
+
+# oncoref 1.8.124's registry/availability metadata assigns the TCGA-derived
+# DDLPS/WDLPS rows to the dedicated histology cohort, but the underlying summary
+# rows still carry the older generic TCGA-subset label.  Normalize only those two
+# code/source pairs at the pirlygenes compatibility boundary; other TCGA-derived
+# SARC rows genuinely belong to the generic subset and must not be relabelled.
+_REFERENCE_SOURCE_COHORT_STORAGE = "TREEHOUSE_POLYA_25_01_TCGA_SUBSET"
+_REFERENCE_SOURCE_COHORT_CANONICAL = (
+    "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY"
+)
+_REFERENCE_SOURCE_COHORT_REMAP_CODES = frozenset({
+    "SARC_DDLPS",
+    "SARC_WDLPS",
+})
 # Bump when the cached dtype scheme changes so stale object-dtype parquets in an
 # existing ``~/.cache/pirlygenes/shard_cache/`` rebuild instead of being reused.
 _SHARD_CACHE_FORMAT = 3
@@ -181,6 +194,47 @@ def _normalize_dataset_dtypes(cache_key: str, df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].astype("string")
     return df
+
+
+def _normalize_reference_source_cohort_labels(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, bool]:
+    """Repair the narrow oncoref SARC row/registry source-label mismatch.
+
+    A shallow frame plus a replacement ``source_cohort`` Series avoids mutating
+    oncoref's process-wide cached frame or copying its multi-million-row value
+    blocks.  Returns ``(frame, changed)`` so public adapters can expose the
+    compatibility transform in ``DataFrame.attrs``.
+    """
+    if not {"cancer_code", "source_cohort"} <= set(df.columns):
+        return df, False
+    mask = (
+        df["cancer_code"].isin(_REFERENCE_SOURCE_COHORT_REMAP_CODES)
+        & df["source_cohort"].eq(_REFERENCE_SOURCE_COHORT_STORAGE)
+    )
+    if not mask.any():
+        return df, False
+    out = df.copy(deep=False)
+    source_cohort = df["source_cohort"].astype(object).copy()
+    source_cohort.loc[mask] = _REFERENCE_SOURCE_COHORT_CANONICAL
+    out["source_cohort"] = source_cohort
+    return out, True
+
+
+def _reference_source_cohort_storage_filter(source_cohort):
+    """Translate the canonical SARC histology label to oncoref's row label."""
+    if source_cohort is None:
+        return None
+    scalar = isinstance(source_cohort, str)
+    requested = [source_cohort] if scalar else list(source_cohort)
+    translated: list[str] = []
+    for cohort in requested:
+        value = str(cohort)
+        if value == _REFERENCE_SOURCE_COHORT_CANONICAL:
+            value = _REFERENCE_SOURCE_COHORT_STORAGE
+        if value not in translated:
+            translated.append(value)
+    return translated[0] if scalar else translated
 
 
 def _concat_shard_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
@@ -262,7 +316,15 @@ def load_all_dataframes():
         df = pd.read_csv(str(csv_path), low_memory=False)
         df = _normalize_dataset_dtypes(csv_key, df)
         yield csv_key, df
+    # Runtime ownership of the empirical summary rows moved to oncoref (#557).
+    # Yield the delegated frame exactly once even in a wheel install, where the
+    # legacy pirlygenes shard directory is intentionally absent.
+    yield "cancer-reference-expression.csv", get_data(
+        "cancer-reference-expression", copy=False
+    )
     for shard_dir in _shard_directories():
+        if shard_dir.name == "cancer-reference-expression":
+            continue
         yield f"{shard_dir.name}.csv", _load_shard_directory(shard_dir)
 
 
@@ -307,9 +369,30 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     the shared cache. Pass ``copy=False`` to get the cached frame directly —
     only for read-only callers that filter/copy a small slice before any
     mutation. This skips the full-frame copy, which for the large
-    ``cancer-reference-expression`` table (~367 MB, ~1M string rows)
+    ``cancer-reference-expression`` table (multi-million-row summary frame)
     dominated test-suite time (#278).
     """
+    # The empirical cancer-reference-expression rows are owned by oncoref.  Keep
+    # pirlygenes' generic get_data surface working, but never select the duplicate
+    # in-repo/downloaded shard set at runtime.  A shallow frame copy lets us retain
+    # pirlygenes' low-cardinality categorical provenance dtypes without mutating
+    # oncoref's process-wide cached frame or copying the multi-million-row values.
+    # Fixture injection deliberately bypasses this branch.  See #557 / #528.
+    if _dataframes_dict is None and name in (
+        "cancer-reference-expression", "cancer-reference-expression.csv"
+    ):
+        cache_key = "cancer-reference-expression.csv"
+        if cache_key not in _CACHED_DATAFRAMES:
+            from oncoref.load_dataset import get_data as get_oncoref_data
+
+            delegated = get_oncoref_data(
+                "cancer-reference-expression", copy=False
+            ).copy(deep=False)
+            delegated, _ = _normalize_reference_source_cohort_labels(delegated)
+            _CACHED_DATAFRAMES[cache_key] = _categorize_metadata(delegated)
+        cached = _CACHED_DATAFRAMES[cache_key]
+        return cached.copy() if copy else cached
+
     # The cancer-type registry is owned by oncoref (the empirical base layer);
     # pirlygenes re-exports it rather than shipping a divergent copy. Routing the
     # load through oncoref keeps every consumer — cancer_type_registry(),

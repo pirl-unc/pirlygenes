@@ -62,7 +62,13 @@ def test_tcga_selects_as_treehouse_not_a_fake_kind():
     sub = cancer_reference_expression(
         cancer_types="SARC", genes=["TP53"],
         source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SUBSET")
-    assert set(sub["source_cohort"].unique()) == {"TREEHOUSE_POLYA_25_01_TCGA_SUBSET"}
+    # oncoref stores DDLPS/WDLPS under the generic source label even though its
+    # registry assigns those rows to the dedicated histology cohort.  The
+    # compatibility boundary exposes the canonical label for those two codes.
+    assert set(sub["source_cohort"].unique()) == {
+        "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
+        "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
+    }
 
 
 def test_pool_collapses_multisource_n_weighted_per_gene_availability():

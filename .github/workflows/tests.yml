@@ -38,13 +38,21 @@ jobs:
           path: ~/.cache/pirlygenes/ncbi_gene_info/
           key: ncbi-gene-data-${{ runner.os }}-${{ hashFiles('pirlygenes/builders/ncbi_gene_info.py') }}
       - name: Cache pirlygenes data bundle
-        # The ~367 MB downloadable cohort summaries the expression tests fetch
-        # from the version-pinned release. Keyed on version.py (DATA_VERSION) so
-        # a data release re-fetches; otherwise reused across CI runs.
+        # Pirlygenes-owned derived views and HPA/pan-cancer matrices from the
+        # version-pinned release. Keyed on version.py (DATA_VERSION) so a data
+        # release re-fetches; otherwise reused across CI runs.
         uses: actions/cache@v4
         with:
           path: ~/.cache/pirlygenes/bundled_data/
           key: pirlygenes-bundle-${{ runner.os }}-${{ hashFiles('pirlygenes/version.py') }}
+      - name: Cache oncoref data bundle
+        # oncoref owns the delegated cancer-reference-expression summary rows
+        # (#557). Key on the dependency floor so an oncoref data-version bump
+        # invalidates this cache without making every worker re-download it.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/oncoref/bundled_data/
+          key: oncoref-bundle-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
       - name: Cache source-data mirror
         # Raw per-source inputs (small/medium: GEO, CLL-map) mirrored to a
         # pinned release for FTP-independent builds. Keyed on the mirror module.

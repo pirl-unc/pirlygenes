@@ -1,108 +1,77 @@
-# Reference-expression parity: pirlygenes vs oncoref (#207)
+# Reference-expression delegation parity (#557)
 
-pirlygenes ships pre-built per-`(gene, cancer_code, source_cohort)` summary rows
-in `cancer-reference-expression.csv.gz`. oncoref computes the *same* rows on
-demand from its source-matrix artifact (`oncoref.cancer_reference_expression`).
-Before pirlygenes retires its own builders and becomes a pure consumer of
-`oncoref.expression_builders`, we need to know exactly where the two agree and
-where they diverge. This harness measures that.
+`pirlygenes.cancer_reference_expression()` is a compatibility wrapper over
+`oncoref.cancer_reference_expression()`. Oncoref owns the empirical rows,
+provenance, source selection, and downloadable summary artifact; pirlygenes
+preserves its historical schema, normalization labels, source-union view,
+gene-ID space, pooling, and proteoform-collapse surface.
 
-## Running it
+The wrapper requests oncoref's all-sample `summary_rows_all` product because the
+pirlygenes API exposes every source cohort and supports `source_kind=`,
+`source_cohort=`, proxy exclusion, and heterogeneity-safe pooling. It never
+falls back to a pirlygenes expression artifact. `DataFrame.attrs` records the
+delegation target, availability/missing requests, and every compatibility
+transform.
+
+## Runtime ownership
+
+`cancer-reference-expression` is no longer a pirlygenes download-bundle member,
+and both `get_data()` and `load_all_dataframes()` route its runtime reads to
+oncoref. The in-repository `pirlygenes/data/cancer-reference-expression/` shards
+remain only as builder/audit inputs while the local ingestion fleet is retired
+under #528; no supported public read path selects them.
+
+## Compatibility transforms
+
+The adapter performs four deterministic operations over delegated rows:
+
+- maps oncoref normalization labels back to `TPM`, `TPM_clean`,
+  `TPM_log1p`, and `TPM_clean_log1p`;
+- expands legacy pirlygenes gene aliases before the delegated filter and derives
+  both log views with `numpy.log1p` from oncoref's delegated linear summaries;
+- maps the DDLPS/WDLPS rows from oncoref's stale generic TCGA-subset storage
+  label to the dedicated SARC-histology label advertised by oncoref's registry,
+  including translation of canonical `source_cohort=` filters;
+- preserves pirlygenes proteoform IDs and applies identical-locus collapse to
+  delegated linear rows while oncoref's summary-union collapse retains its
+  `n_detected` provenance bug. This exception is exposed in
+  `attrs["compatibility_transforms"]` and has no local-data fallback.
+
+## Validation
+
+`tests/test_reference_expression_delegation.py` compares the wrapper directly
+against oncoref for five required reference classes:
+
+- common TCGA (`LUAD`);
+- non-TCGA heme (`CLL`);
+- microarray proxy (`MTC`);
+- molecular subtype (`BRCA_Basal`);
+- computed union (`SARC`).
+
+It also proves the legacy-symbol and raw-log adapters cannot invoke the former
+local summary-frame loader. The existing expression, source-union, pooling,
+legacy-Ensembl-ID, and proteoform-collapse tests continue to gate the historical
+public contract.
+
+## Full audit report
+
+Run:
 
 ```bash
-python scripts/parity_reference_expression.py                  # every code
-python scripts/parity_reference_expression.py --codes PRAD MBL # a subset
+python scripts/parity_reference_expression.py
 ```
 
-Writes `parity_by_code.csv` + `parity_report.md` under
-`analyses/outputs/reference_expression_parity/`. The core lives in
-`pirlygenes.expression.parity` (`parity_for_code`, `parity_report`,
-`format_markdown`) so notebooks and tests can call it directly.
+The committed [Markdown report](reference-expression-delegation-557.md) and
+[per-code CSV](reference-expression-delegation-557.csv) were generated with
+oncoref 1.8.124. Headline results:
 
-The comparison joins the two frames on `(cancer_code, Ensembl_Gene_ID)` at
-`tpm_clean` and reports, per code: reference-sample-count agreement, the
-relative-delta distribution of the median `expression` for genes above a 1 TPM
-floor, and gene-universe deltas (genes on only one side). Each cohort is read
-under the QC policy its oncoref artifact was baked with (`pass`, falling back to
-`pass_or_warn` / `all`).
+- 128 source-union cancer codes audited;
+- 124 served by both the compatibility and canonical selected/QC-aware views;
+- 124/124 exact reference-sample-count agreement;
+- median per-code relative expression delta: 0.129%.
 
-oncoref serves exactly one canonical `source_cohort` per code; pirlygenes' bundle
-sometimes carries several (e.g. `SARC_DDLPS` spans three cohorts). The harness
-pairs each code against the pg cohort oncoref actually used — matched by
-reference-sample count — so multi-cohort codes are compared apples-to-apples
-rather than as a many-to-many blur.
-
-## Headline
-
-Sweep of all 120 pirlygenes cancer_codes (oncoref 1.8.98, bundle 5.23.2):
-
-- **116/120** served by both sides; 4 (`MBL_G3/G4/SHH/WNT`) return no oncoref rows.
-- **116/116** agree on `n_samples` exactly (once multi-cohort codes are paired to
-  oncoref's chosen cohort).
-- Median relative delta across codes: **0.15%**.
-- For ~90 of the codes, median delta is ~0.05% and p95 ~0.13% — i.e. **parity to
-  float/rounding noise**. Every large-cohort TCGA type (BRCA 1099, CLL 708, KIRC
-  531, LGG 523, THCA 512) is in this bucket.
-
-So the common case is already parity. The value of the harness is the tail.
-
-## Divergences that need attention
-
-Ordered roughly by severity. The largest class turns out to be a **pirlygenes**
-problem the handoff itself fixes (a stale bundle over-counting technical genes);
-the remainder are an oncoref coverage gap and a shared gene-universe question.
-
-### Compositional scale shifts from technical-gene multimapping (pg bundle is stale)
-
-| code | n_samp pg/on | rel median | on/pg ratio (real genes) |
-| --- | --- | --- | --- |
-| `MBL` | 125/125 | **421%** (p95 1026%) | ~5.3x |
-| `MM` | 764/764 | **133%** | ~2.3x |
-| `SARC_LGFMS` | 2/2 | **49%** (p95 180%) | — |
-| `HL` | 5/5 | 45% | — |
-| `SARC_CCS` | 5/5 | 22% | — |
-| `NPC` | 4/4 | 18% | — |
-
-Same sample set, but every real gene's median is inflated on the oncoref side by
-a near-constant factor. The cause is **not** a normalization bug in oncoref — it
-is the compositional (sum-to-a-million) nature of TPM reacting to a handful of
-**technical genes that pirlygenes' *current* bundle over-counts**:
-
-- `MBL`: pg reports `RNU1-28P` (a spliceosomal-snRNA pseudogene) at **228,608
-  TPM** — 23% of the entire transcriptome from one gene — plus large piles on
-  `RN7SL1`/`RN7SK`/`RNU4-2`/`RNU2-2`. These are classic multimapping-magnet
-  loci; oncoref's builder values `RNU1-28P` at ~85 TPM.
-- `MM`: pg reports `IGKC` (a rearranged immunoglobulin constant segment) at
-  **234,899 TPM**; oncoref ~7,400.
-
-`classify_gene_qc` tags every one of these `small_ncrna` or `immune_receptor` —
-the technical classes a clean-TPM is meant to exclude. When oncoref drops/deflates
-them, the freed compositional budget re-inflates all real genes, so the median
-ratio tracks how much of pg's TPM those technical piles consumed (~80% for MBL,
-~60% for MM). **oncoref is the more-correct side here.** The pg bundle predates
-the builder→oncoref delegation (#527); rebuilding it from `oncoref.expression_builders`
-(the handoff this harness gates) is what resolves these codes — no oncoref fix
-needed. `SARC_LGFMS`/`HL`/`SARC_CCS`/`NPC` are the same effect at smaller cohorts.
-
-### Coverage gaps
-
-- `MBL_G3`, `MBL_G4`, `MBL_SHH`, `MBL_WNT` — oncoref returns no rows; pirlygenes
-  ships these medulloblastoma molecular subgroups (44/39/25/17 samples). oncoref
-  computes only the pooled `MBL`.
-
-### Systematic gene-universe gap
-
-Nearly every TCGA-scale code shows **~1686 genes present in pirlygenes but not
-oncoref**, and **~225 in oncoref but not pirlygenes**. The pg-only set is
-dominated by the ncRNA/lncRNA/miRNA tail (e.g. `MIR3179-2`, `LINC01422`) — genes
-that gene-universe filtering and sequence-identity canonicalization treat
-differently between the two artifacts. This is the source of most per-code
-`divergent` gene counts and is a deliberate-choice question, not necessarily a bug.
-
-## Regression guard
-
-`tests/test_reference_expression_parity.py` locks in the *shape* of parity on
-`PRAD`/`LUAD` (exact `n_samples`, median delta < 1%, p95 < 5%, >20k shared genes)
-and the `pass_or_warn` fallback on `MTC`. It skips when oncoref's artifact is
-unavailable. The loose ceilings catch a structural break (wrong join, a
-unit/scale regression, a vanished cohort) without pinning float noise.
+This sweep intentionally compares two different oncoref products. Large value
+outliers such as MBL, HL, and MM reflect all-sample source-union rows versus the
+default pass-QC selected artifact; they are not adapter distortion. The four
+unserved canonical comparisons are the MBL molecular subgroups. Exact
+adapter-to-source value parity is covered separately by the five-class test.

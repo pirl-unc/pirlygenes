@@ -22,8 +22,10 @@ python scripts/release.py --execute    # run for real (prompts before each publi
 The manual steps below are kept as the reference the script automates.
 
 Files in the tarball (`pirlygenes.data_bundle.DOWNLOADABLE_PATHS`):
-`cancer-reference-expression/`, `cancer-reference-expression-views/`,
-`pan-cancer-expression.csv`, `hpa-cell-type-expression.csv`.
+`cancer-reference-expression-views/`, `pan-cancer-expression.csv`, and
+`hpa-cell-type-expression.csv`. The source summary rows are served by oncoref;
+pirlygenes no longer downloads its duplicate `cancer-reference-expression/`
+runtime copy (#557).
 (Per-cohort medoid representatives + per-gene percentile vectors moved to
 oncoref in #208 — no longer in the tarball.)
 
@@ -43,7 +45,6 @@ oncoref in #208 — no longer in the tarball.)
    ```bash
    V=5.23.0
    tar -C pirlygenes/data -czf pirlygenes-data-v$V.tar.gz \
-       cancer-reference-expression \
        cancer-reference-expression-views \
        pan-cancer-expression.csv \
        hpa-cell-type-expression.csv

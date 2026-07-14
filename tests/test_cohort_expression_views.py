@@ -620,13 +620,13 @@ def test_rebuild_memoized_on_reference_identity(tmp_path, monkeypatch):
     monkeypatch.setattr(accessors, "_cohort_views_root", lambda: tmp_path / "absent")
 
     calls = {"n": 0}
-    real = accessors.cancer_reference_expression
+    real = accessors._reference_long_from_summary_frame
 
     def counting(*a, **k):
         calls["n"] += 1
         return real(*a, **k)
 
-    monkeypatch.setattr(accessors, "cancer_reference_expression", counting)
+    monkeypatch.setattr(accessors, "_reference_long_from_summary_frame", counting)
     accessors._REFERENCE_VIEW_CACHE.clear()
 
     cohort_expression_views(genes=["TP53"])

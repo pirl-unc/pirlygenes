@@ -924,6 +924,32 @@ def test_reference_expression_default_is_source_generic(monkeypatch):
         lambda: fake.copy(),
     )
 
+    # cancer_expression() discovers reference availability through the local
+    # compatibility metadata above, then reads values through the delegated
+    # public accessor (#557). Keep both halves of this synthetic unit test in
+    # the same fake source without changing the separately imported real
+    # cancer_reference_expression used by the wide empty-schema assertion below.
+    def fake_delegated_reference(cancer_types=None, genes=None, **_kwargs):
+        codes = [cancer_types] if isinstance(cancer_types, str) else list(cancer_types)
+        out = fake[fake["cancer_code"].isin(codes)].copy()
+        if genes is not None:
+            wanted = set(genes)
+            out = out[
+                out["Ensembl_Gene_ID"].isin(wanted) | out["Symbol"].isin(wanted)
+            ]
+        return out.assign(
+            normalization="TPM_clean",
+            expression=out["TPM_clean_median"],
+            q1=out["TPM_clean_q1"],
+            q3=out["TPM_clean_q3"],
+        )
+
+    monkeypatch.setattr(
+        expression_accessors,
+        "cancer_reference_expression",
+        fake_delegated_reference,
+    )
+
     mm = cancer_expression("MM", genes=["FAKE2"])
     assert mm["expression"].tolist() == [17.0]
 
