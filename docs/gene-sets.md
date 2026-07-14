@@ -74,6 +74,11 @@ rollup has `*_TPM` plus every requested `*_TPM_clean`, `*_TPM_hk`,
 present only for the 33 inputs that were actually supplied in FPKM units; it is
 not a required analysis column.
 
+The five rollups are baked from the selected cohort sources into a small
+canonical artifact and joined with the same oncoref Ensembl alias map used for
+the base pan matrix. A gene unavailable in a rollup remains `NaN` in both
+`*_TPM` and every derived column; it is never reported as a measured zero.
+
 By default, `normalize="tpm_clean"`: the accessor preserves raw TCGA
 `*_FPKM`, exposes TPM for TCGA and computed rollups, preserves HPA `*_nTPM`,
 cleans TPM-scale analysis columns, and adds the clean values as

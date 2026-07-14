@@ -82,6 +82,7 @@ from ..gene_ids import strip_version
 from ..gene_names import get_alias_as_list, get_reverse_alias_as_list
 from ..load_dataset import get_data
 from .normalize import (
+    add_tpm_columns_from_fpkm,
     drop_technical_genes,
     normalize_expression,
     percentile_rank_expression,
@@ -171,12 +172,18 @@ def _add_pan_normalized_value_cols(
     value_cols: Sequence[str],
     normalize: str,
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Add normalized TPM/nTPM analysis columns without overwriting inputs."""
+    """Add normalized TPM/nTPM analysis columns without overwriting inputs.
+
+    Every derived column preserves its source column's availability mask.  In
+    particular, ``normalize_expression(..., censored_fill="fixed_fraction")``
+    fills missing inputs with zero internally; restoring the mask here keeps an
+    unavailable rollup value distinct from a measured biological zero.
+    """
     out = df.copy()
     target_cols = []
     for col in value_cols:
         target = _pan_normalized_col_name(col, normalize)
-        out[target] = normalized_df[col]
+        out[target] = normalized_df[col].mask(df[col].isna())
         target_cols.append(target)
     return out, target_cols
 
@@ -213,47 +220,118 @@ def _rename_pan_expression_columns_entity_first(df: pd.DataFrame) -> pd.DataFram
     return df.rename(columns={c: _pan_public_col_name(c) for c in df.columns})
 
 
-def _pan_public_to_unit_prefix(col: str) -> str:
-    """Inverse of :func:`_pan_public_col_name` for *raw* entity-first columns.
+_PAN_COMPUTED_ROLLUP_MEMBERS = {
+    "BTC": ("CHOL",),
+    "CRC": ("COAD", "READ"),
+    "NET": ("NET_PANCREAS", "NET_MIDGUT", "NET_RECTAL", "NET_LUNG"),
+    "NSCLC": ("LUAD", "LUSC"),
+    "SGC": ("ADCC",),
+}
+_PAN_ROLLUP_MEMBER_CODES = tuple(dict.fromkeys(
+    member
+    for members in _PAN_COMPUTED_ROLLUP_MEMBERS.values()
+    for member in members
+))
 
-    Maps oncoref's ``<tissue>_nTPM`` / ``<CODE>_FPKM`` / ``<CODE>_TPM`` back to
-    the internal unit-prefix names (``nTPM_<tissue>`` / ``FPKM_<CODE>`` /
-    ``TPM_<CODE>``) the normalization pipeline operates on. Only the raw units
-    appear on the delegated ``normalize=None`` frame, so no normalized suffixes
-    need handling here. Tissue names may contain underscores, so the unit is
-    matched as a trailing suffix, not a leading token.
+
+def _oncoref_canonicalize_gene_rows(
+    df: pd.DataFrame,
+    *,
+    value_cols: Sequence[str],
+) -> pd.DataFrame:
+    """Collapse a wide linear-expression frame onto oncoref's gene-id space.
+
+    The compatibility adapter deliberately uses oncoref's public alias resolver,
+    rather than pirlygenes' proteoform-oriented sequence-identity map.  Alias and
+    retired rows are summed with ``min_count=1`` before any normalization, which
+    is the same rule used by oncoref's expression accessors and preserves an
+    all-missing source cell as missing.
     """
-    for suffix, prefix in (("_nTPM", "nTPM_"), ("_FPKM", "FPKM_"), ("_TPM", "TPM_")):
-        if col.endswith(suffix):
-            return f"{prefix}{col[: -len(suffix)]}"
-    return col
+    from oncoref.gene_ids import resolve_ensembl_id, unversioned
+
+    canonical = df["Ensembl_Gene_ID"].astype(str).map(resolve_ensembl_id)
+    if not canonical.duplicated().any():
+        return df.assign(Ensembl_Gene_ID=canonical.to_numpy())
+
+    original = df["Ensembl_Gene_ID"].astype(str).map(unversioned)
+    is_primary = original.to_numpy() == canonical.to_numpy()
+    work = df.assign(
+        Ensembl_Gene_ID=canonical.to_numpy(),
+        _primary=is_primary,
+    )
+    work = work.sort_values("_primary", ascending=False, kind="stable").drop(
+        columns="_primary"
+    )
+    sum_cols = [col for col in value_cols if col in work.columns]
+    keep_cols = [
+        col
+        for col in work.columns
+        if col != "Ensembl_Gene_ID" and col not in sum_cols
+    ]
+    grouped = work.groupby("Ensembl_Gene_ID", sort=False)
+    parts = []
+    if keep_cols:
+        parts.append(grouped[keep_cols].first())
+    if sum_cols:
+        parts.append(grouped[sum_cols].sum(min_count=1))
+    out = pd.concat(parts, axis=1).reset_index()
+    return out[list(df.columns)]
+
+
+@lru_cache(maxsize=1)
+def _load_pan_rollup_frame() -> pd.DataFrame:
+    """Read the small persisted pan-cancer rollup artifact.
+
+    The artifact is baked from oncoref's selected source for each member cohort
+    (see ``scripts/generate_pan_cancer_expression_rollups.py``), canonicalized
+    before pooling, and shipped in the wheel. This avoids both an eager scan of
+    the multi-million-row reference summary and the gene-wise source fallback
+    that a generic all-source cohort pivot would introduce.
+    """
+    rollups = get_data("pan-cancer-expression-rollups", copy=False)
+    value_cols = [f"TPM_{code}" for code in _PAN_COMPUTED_ROLLUP_MEMBERS]
+    missing = [
+        col
+        for col in ["Ensembl_Gene_ID", *value_cols]
+        if col not in rollups.columns
+    ]
+    if missing:
+        raise ValueError(
+            "pan-cancer-expression-rollups has an invalid schema; missing "
+            f"{missing!r}"
+        )
+    return _oncoref_canonicalize_gene_rows(
+        rollups,
+        value_cols=value_cols,
+    )
+
+
+def _pan_computed_rollup_frame() -> pd.DataFrame:
+    """Return canonical ENSG + five persisted raw-TPM rollups."""
+    return _load_pan_rollup_frame()
 
 
 @lru_cache(maxsize=1)
 def _pan_reference_frame() -> pd.DataFrame:
-    """Canonical raw pan-cancer matrix, delegated to oncoref (#509).
+    """Canonical raw pan-cancer matrix via the oncoref compatibility adapter.
 
-    oncoref owns the reference expression data, and its ``pan_cancer_expression``
-    is the canonical view: duplicate loci are collapsed (e.g. MATR3's two Ensembl
-    IDs summed into one row), genes are remapped to canonical Ensembl IDs (e.g.
-    PAXX ``ENSG00000148362`` → ``ENSG00000310560``), and rollup cohorts
-    (``BTC``/``CRC``/``NET``/``NSCLC``/``SGC``) are provided alongside the 33
-    TCGA cohorts. We take its raw (``normalize=None``) frame in pirlygenes column
-    style and invert it to the internal unit-prefix schema this module normalizes
-    on. Every pirlygenes-specific transform — fixed-fraction ``tpm_clean``,
-    proteoform bridge columns, ``collapse_*``/``drop_technical_rna``/
-    ``log_transform`` flags, entity-first output naming — then runs locally on the
-    canonical data, so this accessor's normalization stays identical to
-    :func:`cancer_reference_expression`. The canonical raw frame is cached:
-    oncoref canonicalizes the gene universe and computes the five aggregate
-    cohorts eagerly, while every public call below starts by copying this frame
-    before applying pirlygenes-specific transforms.
+    The version-pinned pirlygenes pan matrix remains the fast persisted source.
+    We canonicalize it with oncoref's delegated alias map, sum duplicate linear
+    loci, derive deterministic TPM companions, and join five persisted rollups
+    baked from oncoref's selected sources. This produces oncoref's canonical
+    semantics without its eager multi-million-row summary scan or a runtime
+    dependency on oncoref's separate expression data bundle.
     """
-    import oncoref
-
-    raw = oncoref.pan_cancer_expression(normalize=None, column_style="pirlygenes")
-    return raw.rename(
-        columns={c: _pan_public_to_unit_prefix(c) for c in raw.columns}
+    raw = get_data("pan-cancer-expression", copy=False)
+    id_cols = {"Ensembl_Gene_ID", "Symbol"}
+    value_cols = [col for col in raw.columns if col not in id_cols]
+    raw = _oncoref_canonicalize_gene_rows(raw, value_cols=value_cols)
+    raw, _ = add_tpm_columns_from_fpkm(raw)
+    return raw.merge(
+        _pan_computed_rollup_frame(),
+        on="Ensembl_Gene_ID",
+        how="left",
+        sort=False,
     )
 
 
@@ -415,6 +493,16 @@ def filter_to_genes(
         for target in targets
         if target.upper().startswith("ENSG")
     }
+    if ensembl_targets:
+        # The pan-cancer frame is keyed in oncoref's canonical ENSG space.  Keep
+        # raw targets for generic/non-canonical frames, but add the delegated
+        # alias-map targets so legacy and retired IDs still hit canonical rows.
+        from oncoref.gene_ids import resolve_ensembl_id
+
+        ensembl_targets.update(
+            resolve_ensembl_id(target).upper()
+            for target in tuple(ensembl_targets)
+        )
     id_col = _resolve_id_col(df)
     sym_col = next(
         (c for c in ("Symbol", "symbol", "Gene_Symbol") if c in df.columns),
@@ -2093,13 +2181,13 @@ def pan_cancer_expression(
     analysis derivative are available uniformly across all tumor entities;
     FPKM is retained only as source provenance where it actually exists.
 
-    The raw matrix is delegated to oncoref's canonical
-    ``pan_cancer_expression`` (#509): duplicate loci are collapsed and genes
-    remapped to canonical Ensembl IDs, and rollup cohorts
-    (``BTC``/``CRC``/``NET``/``NSCLC``/``SGC``, TPM-only) are provided beside
-    the 33 TCGA cohorts. All normalization below runs locally on that canonical
-    data, so this view stays identical in method to
-    :func:`cancer_reference_expression`. See :func:`_pan_reference_frame`.
+    An oncoref compatibility adapter canonicalizes the version-pinned local
+    matrix with oncoref's alias map, collapses duplicate loci, and composes the
+    TPM-only rollups from pirlygenes' selected-source rollup artifact. All
+    normalization below runs locally on that canonical data, so this view stays
+    identical in method to :func:`cancer_reference_expression` without an eager
+    scan of oncoref's separate reference-summary bundle. See
+    :func:`_pan_reference_frame`.
 
     Parameters
     ----------
@@ -2168,9 +2256,9 @@ def pan_cancer_expression(
     if "tpm" not in normalize_modes:
         normalize_modes.insert(0, "tpm")
 
-    # oncoref's raw compatibility view already contains deterministic TPM
-    # companions for every FPKM cohort. Copy the cached canonical frame before
-    # adding bridge/normalization columns so callers can mutate independently.
+    # The cached compatibility view already contains deterministic TPM
+    # companions for every FPKM cohort. Copy it before adding bridge and
+    # normalization columns so callers can mutate independently.
     df = _pan_reference_frame().copy()
 
     # Proteoform duality (uniform with cancer_reference_expression): always add the
