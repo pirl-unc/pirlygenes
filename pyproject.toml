@@ -113,7 +113,7 @@ requires = ["setuptools>=60"]
 # installed version. See pirlygenes/data_bundle.py.
 pirlygenes = [
     "data/*.csv",            # small curated panels (cancer-key-genes, CTAs, etc.)
-    "data/*.csv.gz",         # samples-manifest + any tiny gzipped panel
+    "data/*.csv.gz",         # samples manifest + small generated pan-rollup artifact
     "data/*.yaml",           # expression_sources.yaml
 ]
 

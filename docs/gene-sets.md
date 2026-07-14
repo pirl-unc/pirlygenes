@@ -61,13 +61,27 @@ vaccination and immunotherapy targets.
 
 ## Pan-Cancer Expression Reference
 
-`pan_cancer_expression()` returns a DataFrame with median expression
-across 33 TCGA cancer types (raw FPKM plus deterministic TPM companions)
-and 50 HPA normal tissues (nTPM).
+`pan_cancer_expression()` returns a DataFrame with median expression across
+33 TCGA cancer types (raw FPKM plus deterministic TPM companions), five
+computed tumor rollups (`BTC`, `CRC`, `NET`, `NSCLC`, `SGC`), and 50 HPA normal
+tissues (nTPM). The rollups are sample-weighted combinations of cohort-level
+TPM medians, so they are TPM-only: FPKM cannot be recovered from a TPM summary
+and is not synthesized.
+
+The uniform analysis contract is TPM-based. Every TCGA cancer and computed
+rollup has `*_TPM` plus every requested `*_TPM_clean`, `*_TPM_hk`,
+`*_TPM_percentile`, or log derivative. `*_FPKM` is optional source provenance,
+present only for the 33 inputs that were actually supplied in FPKM units; it is
+not a required analysis column.
+
+The five rollups are baked from the selected cohort sources into a small
+canonical artifact and joined with the same oncoref Ensembl alias map used for
+the base pan matrix. A gene unavailable in a rollup remains `NaN` in both
+`*_TPM` and every derived column; it is never reported as a measured zero.
 
 By default, `normalize="tpm_clean"`: the accessor preserves raw TCGA
-`*_FPKM`, adds derived TCGA `*_TPM`, preserves HPA `*_nTPM`, cleans
-TPM-scale analysis columns, and adds the clean values as
+`*_FPKM`, exposes TPM for TCGA and computed rollups, preserves HPA `*_nTPM`,
+cleans TPM-scale analysis columns, and adds the clean values as
 `*_TPM_clean` / `*_nTPM_clean`.
 
 ```python
@@ -79,10 +93,11 @@ ref = pan_cancer_expression()
 
 Supports normalization with `None`, a string, or a list of strings:
 - `pan_cancer_expression(normalize=None)` — raw/provenance view with
-  `*_FPKM` and `*_nTPM` columns unchanged, plus derived `*_TPM` analysis
-  columns
-- `pan_cancer_expression(normalize="tpm")` or `normalize="TPM"` — add
-  deterministic `*_TPM` companions derived from `*_FPKM`
+  `*_FPKM` and `*_nTPM` columns unchanged, deterministic TCGA `*_TPM`
+  companions, and TPM-only computed rollups
+- `pan_cancer_expression(normalize="tpm")` or `normalize="TPM"` — expose
+  the uniform `*_TPM` analysis columns for every tumor entity while preserving
+  any available FPKM provenance
 - `pan_cancer_expression(normalize="tpm_log1p")` — add natural-log
   `*_TPM_log1p` and `*_nTPM_log1p` analysis columns
 - `pan_cancer_expression(normalize="tpm_clean")` — TPM scale plus the
