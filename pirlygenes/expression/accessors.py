@@ -824,6 +824,21 @@ def _reference_code_set() -> frozenset:
     )
 
 
+@lru_cache(maxsize=1)
+def _oncoref_reference_code_set() -> frozenset:
+    """Reference codes served by the delegated oncoref source-union view."""
+    import oncoref
+
+    availability = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+    )
+    return frozenset(
+        availability.loc[availability["available"], "cancer_code"].astype(str)
+    )
+
+
 def _reference_indices_by_code() -> dict:
     """Cached ``{cancer_code: positional-row-index array}`` over the reference
     frame, so per-code slicing avoids a full-frame ``astype(str).isin`` scan."""
@@ -839,7 +854,7 @@ def _reference_indices_by_code() -> dict:
 
 
 def _has_cancer_reference(code: str) -> bool:
-    return code in _reference_code_set()
+    return code in _oncoref_reference_code_set()
 
 
 def _load_cancer_expression_source_candidates() -> pd.DataFrame:
@@ -936,7 +951,7 @@ def _resolve_expression_reference_code(code: str) -> str | None:
     from ..gene_sets_cancer import cancer_type_registry
 
     registry = cancer_type_registry().set_index("code")
-    reference_codes = _reference_code_set()
+    reference_codes = _oncoref_reference_code_set()
     pan_codes = _pan_expression_codes()
     return _resolve_expression_reference_code_from_lookups(
         code,
@@ -1357,44 +1372,80 @@ def cancer_reference_expression(
     """
     modes = _resolve_reference_normalize_modes(normalize)
     _validate_reference_format(format)
-    df = _load_cancer_reference_expression()
     codes = _resolve_cancer_types(cancer_types, expand_aggregates=True)
-    idx_by_code = _reference_indices_by_code()
-    if codes is not None:
-        # Slice via the cached code→row-positions index instead of an
-        # .astype(str).isin() scan of the full ~1M-row frame — the latter cost
-        # ~15 s across the suite when called once per cancer code (#278 f/u).
-        available_codes = [c for c in dict.fromkeys(codes) if c in idx_by_code]
-        if available_codes:
-            positions = np.concatenate([idx_by_code[c] for c in available_codes])
-            df = df.iloc[positions]
-        else:
-            df = df.iloc[0:0]
-        wide_codes = [code for code in codes if code in set(available_codes)]
-    else:
-        available_codes = list(idx_by_code.keys())
-        wide_codes = available_codes
-    if genes is not None:
-        df = filter_to_genes(df, genes)
-    if exclude_microarray_proxy:
-        # drop cross-platform-incomparable microarray-proxy members so the
-        # remaining all:-union view is pipeline-homogeneous and poolable.
-        df = df[~df["processing_pipeline"].astype(str)
-                .str.contains("microarray_tpm_proxy", na=False)]
-    if source_kind is not None:
-        # source:node selector — keep only members of the given cohort kind(s).
-        kinds = {source_kind} if isinstance(source_kind, str) else set(source_kind)
-        cr = get_data("cohort-registry")
-        cohort_kind = dict(zip(cr["cohort_id"].astype(str),
-                               cr["kind"].astype(str)))
-        df = df[df["source_cohort"].astype(str).map(cohort_kind).isin(kinds)]
-    if source_cohort is not None:
-        # origin/cohort-level precision (e.g. the Treehouse TCGA subset).
-        cohorts = ({source_cohort} if isinstance(source_cohort, str)
-                   else set(source_cohort))
-        df = df[df["source_cohort"].astype(str).isin(cohorts)]
+    import oncoref
 
-    base_cols = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort"]
+    # oncoref owns the empirical rows. Pirlygenes requests the all-source,
+    # all-sample summary view because that is this accessor's historical public
+    # contract. TPM_log1p is a legacy pirlygenes label derived exactly from raw
+    # TPM after delegation because log1p is monotonic for all three quantiles.
+    delegated_modes = []
+    for mode in modes:
+        delegated = "tpm" if mode == "tpm_log1p" else mode
+        if delegated not in delegated_modes:
+            delegated_modes.append(delegated)
+    delegated_genes = genes
+    if genes is not None:
+        requested_genes = [genes] if isinstance(genes, str) else list(genes)
+        delegated_genes = list(dict.fromkeys(
+            alias
+            for gene in requested_genes
+            for alias in (
+                str(gene),
+                *get_alias_as_list(str(gene)),
+                *get_reverse_alias_as_list(str(gene)),
+            )
+        ))
+    delegated_long = oncoref.cancer_reference_expression(
+        codes,
+        genes=delegated_genes,
+        normalize=delegated_modes,
+        format="long",
+        include_provenance=include_provenance,
+        on_missing="empty",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        gene_id_style="pirlygenes",
+        gene_universe="pirlygenes",
+        source_kind=source_kind,
+        source_cohort=source_cohort,
+        exclude_microarray_proxy=exclude_microarray_proxy,
+        pool=pool,
+        collapse_cdna_identical=collapse_cdna_identical,
+        collapse_protein_identical=collapse_protein_identical,
+    )
+    availability = delegated_long.attrs.get("availability", [])
+    delegated_available_codes = list(dict.fromkeys(
+        str(row["cancer_code"])
+        for row in availability
+        if row.get("available")
+    ))
+
+    source_labels = {
+        "tpm": "tpm_raw",
+        "tpm_log1p": "tpm_raw",
+        "tpm_clean": "tpm_clean",
+        "tpm_clean_log1p": "tpm_clean_log1p",
+    }
+    public_labels = {
+        mode: _REFERENCE_VALUE_COLUMNS[mode][3]
+        for mode in modes
+    }
+    frames = []
+    for mode in modes:
+        part = delegated_long.loc[
+            delegated_long["normalization"].astype(str).eq(source_labels[mode])
+        ].copy()
+        if mode == "tpm_log1p":
+            for col in ("expression", "q1", "q3"):
+                part[col] = np.log1p(pd.to_numeric(part[col], errors="coerce"))
+        part["normalization"] = public_labels[mode]
+        frames.append(part)
+    long = pd.concat(frames, ignore_index=True) if frames else delegated_long.iloc[0:0]
+
+    _id_cols = ["Ensembl_Gene_ID", "Symbol", "Proteoform_ID",
+                "Member_Ensembl_Gene_IDs"]
+    base_cols = ["cancer_code", "source_cohort"]
     provenance_cols = [
         "source_project",
         "source_version",
@@ -1403,67 +1454,11 @@ def cancer_reference_expression(
         "processing_pipeline",
         "notes",
     ]
-    frames = []
-    for mode in modes:
-        expr, q1, q3, label = _reference_expr_value(df, mode)
-        cols = list(base_cols)
-        if include_provenance:
-            cols += [c for c in provenance_cols if c in df.columns]
-        part = df[cols].copy()
-        part["normalization"] = label
-        part["expression"] = expr
-        part["q1"] = q1
-        part["q3"] = q3
-        frames.append(part)
-    long = pd.concat(frames, ignore_index=True)
-
-    if collapse_protein_identical:
-        from .protein_groups import collapse_protein_identical_loci_long
-        long = collapse_protein_identical_loci_long(
-            long,
-            group_keys=["cancer_code", "source_cohort", "normalization"],
-            sum_cols=["expression", "q1", "q3"],
-            max_cols=("n_detected",),
-        )
-
-    if collapse_cdna_identical:
-        from .protein_groups import collapse_cdna_identical_loci_long
-        long = collapse_cdna_identical_loci_long(
-            long,
-            group_keys=["cancer_code", "source_cohort", "normalization"],
-            sum_cols=["expression", "q1", "q3"],
-            max_cols=("n_detected",),
-        )
-
-    if pool:
-        long = _pool_union_rows(long, include_provenance=include_provenance)
-
-    # Dual gene/proteoform identifiers on every row, so consumers can work at
-    # either level: `Proteoform_ID` is the stable proteoform key each row maps to
-    # (= `Ensembl_Gene_ID` on the proteoform frame; the gene's proteoform on the
-    # per-ENSG gene frame), and `Member_Ensembl_Gene_IDs` is the constituent real
-    # ENSGs (the gene view; = the gene's own ENSG when not folded).
-    from ..gene_ids import strip_version
-    from .protein_groups import canonical_to_symbol, member_to_canonical
-    # Proteoform_ID uses the SAME proteoform space as the frame, so it equals
-    # Ensembl_Gene_ID on a collapsed frame (cDNA xor protein) and is the matching
-    # gene->proteoform bridge on the gene frame (cDNA = the matrix default).
-    _kind = "protein" if collapse_protein_identical else "cdna"
-    _m2c, _c2s = member_to_canonical(_kind), canonical_to_symbol(_kind)
-    _ids = long["Ensembl_Gene_ID"].astype(str)
-    _pid = {}
-    for u in _ids.unique():               # per-id key (no dedup); idempotent on a
-        s = strip_version(u)              # proteoform ID (not a member -> itself)
-        _pid[u] = _c2s.get(_m2c.get(s, s), s)
-    long = long.assign(Proteoform_ID=_ids.map(_pid))
-    if "Member_Ensembl_Gene_IDs" not in long.columns:
-        long = long.assign(Member_Ensembl_Gene_IDs=long["Ensembl_Gene_ID"])
-    # keep the four identifier columns grouped + consistently ordered (so the gene
-    # and proteoform frames share one schema)
-    _id_cols = ["Ensembl_Gene_ID", "Symbol", "Proteoform_ID",
-                "Member_Ensembl_Gene_IDs"]
-    long = long[[c for c in _id_cols if c in long.columns]
-                + [c for c in long.columns if c not in _id_cols]]
+    output_cols = [*_id_cols, *base_cols]
+    if include_provenance:
+        output_cols.extend(provenance_cols)
+    output_cols.extend(["normalization", "expression", "q1", "q3"])
+    long = long[[col for col in output_cols if col in long.columns]]
     long = _string_id_columns(
         long,
         "Ensembl_Gene_ID",
@@ -1474,11 +1469,11 @@ def cancer_reference_expression(
         "source_cohort",
         "normalization",
     )
+    long.attrs["reference_backend"] = "oncoref"
+    long.attrs["reference_source"] = "summary_rows_all"
 
     if format == "long":
         return long
-    if format != "wide":
-        raise ValueError("format must be 'long' or 'wide'")
 
     wide = long[["Ensembl_Gene_ID", "Symbol"]].drop_duplicates().copy()
     for (code, label), group in long.groupby(["cancer_code", "normalization"]):
@@ -1491,6 +1486,9 @@ def cancer_reference_expression(
             on="Ensembl_Gene_ID",
             how="left",
         )
+    wide_codes = delegated_available_codes or list(
+        dict.fromkeys(long["cancer_code"].astype(str))
+    )
     expected_value_cols = [
         f"{code}_{_REFERENCE_VALUE_COLUMNS[mode][3]}"
         for code in wide_codes
@@ -1500,7 +1498,9 @@ def cancer_reference_expression(
         if col not in wide.columns:
             wide[col] = np.nan
     wide = wide[["Ensembl_Gene_ID", "Symbol", *expected_value_cols]]
-    return _string_id_columns(wide, "Ensembl_Gene_ID", "Symbol")
+    wide = _string_id_columns(wide, "Ensembl_Gene_ID", "Symbol")
+    wide.attrs.update(long.attrs)
+    return wide
 
 
 # ---------- accessors: unified normalization views (#319) ----------
