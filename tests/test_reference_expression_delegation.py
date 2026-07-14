@@ -153,12 +153,13 @@ def test_delegated_filter_preserves_legacy_ensembl_queries():
 def test_sarc_histology_source_label_and_filter_are_canonicalized():
     canonical = "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY"
     out = accessors.cancer_reference_expression(
-        cancer_types=["SARC_DDLPS", "SARC_WDLPS"],
+        cancer_types="SARC",
         genes=["TP53"],
         source_cohort=canonical,
     )
     assert not out.empty
     assert set(out["source_cohort"]) == {canonical}
+    assert set(out["cancer_code"]) == {"SARC_DDLPS", "SARC_WDLPS"}
     assert (
         "SARC DDLPS/WDLPS source cohort normalized to registry label"
         in out.attrs["compatibility_transforms"]

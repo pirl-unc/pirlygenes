@@ -82,6 +82,7 @@ from ..gene_ids import strip_version
 from ..gene_names import get_alias_as_list, get_reverse_alias_as_list
 from ..load_dataset import (
     _normalize_reference_source_cohort_labels,
+    _reference_source_cohort_public_filter,
     _reference_source_cohort_storage_filter,
     get_data,
 )
@@ -1445,6 +1446,11 @@ def _oncoref_reference_mode(
         compatibility_transforms.append(
             "SARC DDLPS/WDLPS source cohort normalized to registry label"
         )
+    public_source_filter = _reference_source_cohort_public_filter(source_cohort)
+    if public_source_filter is not None:
+        delegated = delegated[
+            delegated["source_cohort"].astype(str).isin(public_source_filter)
+        ].copy()
     delegated["normalization"] = label
     # Collapse/pool in linear space before deriving the historical raw-log view.
     if mode.endswith("_log1p"):

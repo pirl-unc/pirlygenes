@@ -237,6 +237,27 @@ def _reference_source_cohort_storage_filter(source_cohort):
     return translated[0] if scalar else translated
 
 
+def _reference_source_cohort_public_filter(source_cohort):
+    """Return accepted post-remap labels for an exact public source filter.
+
+    The stale storage label remains a backwards-compatible alias for both the
+    generic cohort and the two rows now exposed under the canonical histology
+    label. A canonical-only request stays exact and must not leak other rows
+    that happen to share oncoref's physical storage label.
+    """
+    if source_cohort is None:
+        return None
+    requested = (
+        {source_cohort}
+        if isinstance(source_cohort, str)
+        else set(source_cohort)
+    )
+    accepted = {str(cohort) for cohort in requested}
+    if _REFERENCE_SOURCE_COHORT_STORAGE in accepted:
+        accepted.add(_REFERENCE_SOURCE_COHORT_CANONICAL)
+    return frozenset(accepted)
+
+
 def _concat_shard_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
     """Concatenate CSV shards without letting all-NA shard columns set dtypes."""
     if not frames:
