@@ -1639,6 +1639,15 @@ def cancer_reference_expression(
     """
     modes = _resolve_reference_normalize_modes(normalize)
     _validate_reference_format(format)
+    # Every mode is one delegated call. Materialize one-shot iterables once so
+    # generators select the same request for every normalization stage.
+    def materialize(value):
+        return value if value is None or isinstance(value, str) else list(value)
+
+    cancer_types = materialize(cancer_types)
+    genes = materialize(genes)
+    source_kind = materialize(source_kind)
+    source_cohort = materialize(source_cohort)
     parts = [
         _oncoref_reference_mode(
             cancer_types=cancer_types,

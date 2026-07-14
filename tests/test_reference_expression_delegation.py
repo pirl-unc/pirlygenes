@@ -188,3 +188,16 @@ def test_identical_locus_collapse_precedes_raw_log_transform():
         ]
         assert len(actual) == 1
         assert np.isclose(actual.iloc[0], expected)
+
+
+def test_one_shot_filters_are_reused_across_normalization_modes():
+    out = accessors.cancer_reference_expression(
+        cancer_types=(code for code in ["CLL"]),
+        genes=(gene for gene in ["MS4A1"]),
+        normalize=["tpm", "tpm_clean"],
+        source_kind=(kind for kind in ["cllmap"]),
+        source_cohort=(cohort for cohort in ["CLLMAP_2022"]),
+    )
+    assert set(out["normalization"]) == {"TPM", "TPM_clean"}
+    assert out.groupby("normalization").size().nunique() == 1
+    assert set(out["Symbol"]) == {"MS4A1"}
