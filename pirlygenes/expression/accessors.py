@@ -1238,51 +1238,6 @@ def heme_tumor_up_vs_matched_normal(cancer_code: str | None = None) -> pd.DataFr
     )
 
 
-def _pool_union_rows(long: pd.DataFrame, *,
-                     include_provenance: bool) -> pd.DataFrame:
-    """Collapse per-(gene, cancer_code, source_cohort) union rows to one
-    heterogeneity-safe pooled row per (gene, cancer_code, normalization).
-
-    Per-gene availability: only source-cohort rows with a non-NaN ``expression``
-    (a cohort that measured the gene) are pooled; the central value is
-    ``n_samples``-weighted and the pooled ``n_samples`` is the summed
-    measuring-cohort sample count. ``q1``/``q3`` -> ``NaN`` (quantiles aren't
-    recombinable from summaries). Vectorised (no per-group Python) so it is cheap
-    even on the full union.
-    """
-    keys = ["Ensembl_Gene_ID", "Symbol", "cancer_code", "normalization"]
-    # Member_Ensembl_Gene_IDs is constant per Ensembl_Gene_ID (a proteoform's
-    # constituent ENSGs), so carrying it as a group key preserves it through
-    # pooling without changing the grouping.
-    if "Member_Ensembl_Gene_IDs" in long.columns:
-        keys = keys + ["Member_Ensembl_Gene_IDs"]
-    w = long["n_samples"].where(long["expression"].notna()) \
-        if "n_samples" in long.columns else long["expression"].notna().astype(float)
-    tmp = long.assign(_w=w, _wx=w * long["expression"])
-    agg_spec = {"_wx": ("_wx", "sum"), "_w": ("_w", "sum")}
-    if "n_detected" in long.columns:
-        # samples detecting the gene, summed over measuring cohorts
-        agg_spec["n_detected"] = ("n_detected", "sum")
-    g = tmp.groupby(keys, as_index=False, sort=False).agg(**agg_spec)
-    g["expression"] = g["_wx"] / g["_w"].replace(0, np.nan)
-    g["n_samples"] = g["_w"]
-    g["q1"] = np.nan
-    g["q3"] = np.nan
-    g["source_cohort"] = "POOLED"
-    out_cols = ["Ensembl_Gene_ID", "Symbol", "Member_Ensembl_Gene_IDs",
-                "cancer_code", "source_cohort"]
-    if include_provenance:
-        if "n_samples" in long.columns:
-            out_cols.append("n_samples")
-        if "n_detected" in g.columns:
-            out_cols.append("n_detected")
-        g["processing_pipeline"] = "pooled_n_weighted"
-        g["source_project"] = "pooled"
-        out_cols += ["source_project", "processing_pipeline"]
-    out_cols += ["normalization", "expression", "q1", "q3"]
-    return g[[c for c in out_cols if c in g.columns]]
-
-
 _REFERENCE_LONG_ID_COLUMNS = [
     "Ensembl_Gene_ID",
     "Symbol",
