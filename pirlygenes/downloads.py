@@ -59,9 +59,8 @@ class ExpressionSource:
     expected_size_gb: float | None
     citation: str | None
     special_handling: str | None
-    # recount3 sources: the SRA study id the builder re-quantifies, and the
-    # shard tag it writes (so the registry, the builder, and the on-disk
-    # source_cohort all agree). None for non-recount3 sources.
+    # recount3 provenance mirrored from oncoref's source registry: the SRA
+    # study id and canonical source-cohort tag. None for non-recount3 sources.
     recount3_srp: str | None = None
     source_cohort: str | None = None
     # Curated library prep / platform (what the inventory shows as 'assay'):

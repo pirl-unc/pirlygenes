@@ -18,7 +18,7 @@ level masking/QC paths, not the clean-TPM compartment contract.
 | native unit | sources | length-normalized? | path |
 | --- | --- | --- | --- |
 | raw counts / HTSeq | FL, MCL, MPN, NET(old), heme | **yes** — counts ÷ gene length | `normalize_to_tpm(unit="raw_counts", gene_lengths_kb=…)` |
-| recount3 coverage gene-sums | NET, MDS, PANNET-prim, HL | **yes** — coverage ÷ exonic bp_length | `recount3.gene_sums_to_tpm` → delegates to the same `raw_counts` path |
+| recount3 coverage gene-sums | NET, MDS, PANNET-prim, HL | **yes** — coverage ÷ exonic bp_length | `oncoref.expression_builders.recount3_gene_sums_to_tpm` |
 | FPKM | HL(old), pan-cancer | no (already length-normalized) | renormalize to 1e6 |
 | RPKM | CML | no (already length-normalized) | renormalize to 1e6 |
 | TPM | GDC STAR (`tpm_unstranded`), CLL-map, most GEO | no (already TPM) | renormalize to 1e6 |
@@ -36,8 +36,9 @@ level masking/QC paths, not the clean-TPM compartment contract.
   narrower strict technical mask when explicitly requested.
 
 **Minor / follow-ups**
-- recount3 now delegates its length-normalization to the shared
-  `normalize_to_tpm` `raw_counts` path (was a private copy) — one route.
+- recount3 ingestion and length-normalization are owned by
+  `oncoref.expression_builders`; pirlygenes consumes the resulting source
+  matrices and summaries instead of maintaining a second builder path.
 - `normalize_to_tpm`'s `log2(TPM+1)` branch inverse-transforms but does not
   re-renormalize; only the Treehouse builder uses log2 input and it
   renormalizes downstream, so no live source is affected. Harmless but worth

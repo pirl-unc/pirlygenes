@@ -111,7 +111,6 @@ sources:
     accession: GSE114922
     recount3_srp: SRP149374
     source_cohort: GSE114922_SHIOZAWA_2018
-    builder: scripts/build_recount3_source.py
     unit: recount3 Gencode-v26 coverage gene-sums
     expected_size_gb: 0.1
     citation: GSE114922 (Shiozawa 2018)
@@ -252,7 +251,6 @@ sources:
     accession: GSE118014
     recount3_srp: SRP156049
     source_cohort: GSE118014_ALVAREZ_2018
-    builder: scripts/build_recount3_source.py
     unit: recount3 Gencode-v26 coverage gene-sums
     expected_size_gb: 0.1
     citation: GSE118014 (Alvarez 2018)
@@ -704,7 +702,6 @@ sources:
     recount3_srp: SRP162356
     source_cohort: GSE120328_LAMPRECHT_2018
     source_project: GEO
-    builder: scripts/build_recount3_source.py
     unit: recount3 Gencode-v26 coverage gene-sums
     citation: Lamprecht 2018 PMID 30546079 (cHL LCM bulk RNA-seq)
     expected_size_gb: 0.05
@@ -904,7 +901,6 @@ sources:
     accession: GSE98894
     recount3_srp: SRP107025
     source_cohort: GSE98894_ALVAREZ_2018_NET
-    builder: scripts/build_recount3_source.py
     unit: recount3 Gencode-v26 coverage gene-sums
     expected_size_gb: 0.1
     citation: PMID 30013182 (Alvarez 2018 NET master regulator analysis)
