@@ -1,9 +1,9 @@
-"""CLI for the #207 reference-expression parity harness.
+"""CLI for the #557 reference-expression delegation parity harness.
 
 Thin wrapper over :mod:`pirlygenes.expression.parity`. Writes a per-code CSV plus
-a markdown report comparing pirlygenes' pre-built ``cancer_reference_expression``
-summary rows against oncoref's on-demand computation from its source-matrix
-artifact. See the module docstring for what the deltas mean.
+a markdown report comparing pirlygenes' delegated source-union compatibility
+rows against oncoref's canonical selected/QC-aware artifact view. See the module
+docstring for what the deltas mean.
 
     python scripts/parity_reference_expression.py                 # every code
     python scripts/parity_reference_expression.py --codes PRAD MBL # a subset

@@ -1,9 +1,9 @@
-"""Scoped regression guard for the #207 parity harness.
+"""Scoped regression guard for the #557 delegation parity harness.
 
 The full sweep lives in ``scripts/parity_reference_expression.py`` (offline,
 writes a per-code report). Here we lock in the *shape* of parity on a couple of
-well-behaved cohorts so a regression — pirlygenes drifting away from oncoref's
-source-matrix computation, or the harness itself breaking — trips in CI.
+well-behaved cohorts so a regression in the delegated compatibility projection,
+or in the canonical oncoref comparison view, trips in CI.
 
 Tolerances are deliberately loose relative to the observed deltas (PRAD median
 ~0.05%, p95 ~0.14%): the point is to catch a structural break (wrong join, a

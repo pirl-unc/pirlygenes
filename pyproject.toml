@@ -33,7 +33,13 @@ dependencies = [
     # ontology_level=='grouping' (auto-exempt) so this taxonomy churn no longer
     # needs a frozenset edit per release (see tests/test_registry_completeness.py
     # and tests/test_ontology_level_groupings.py).
-    # >=1.8.75 also gives the builders the cleaned-up source-matrix QC /
+    # 1.8.125 completes the cancer_reference_expression compatibility contract
+    # used by pirlygenes' delegated read path (#557): source-union summaries,
+    # pirlygenes gene-ID/universe views, provenance, pooling, and identical-locus
+    # collapse, including compact pirlygenes proteoform IDs and n_detected-safe
+    # source-union collapse. 1.8.124 indexes reference-summary rows by cohort so
+    # filtered calls do not repeatedly scan the full frame. >=1.8.75 also gives the
+    # builders the cleaned-up source-matrix QC /
     # mapping-audit / parse-diagnostics contract they delegate to — Entrez
     # resolver (#293) + un-versioned QC contract with configurable HK floor +
     # proxy warn-only (#292); see pirlygenes#526 (satisfied by 1.8.98).
@@ -41,12 +47,6 @@ dependencies = [
     # delegates in #208 (representative_cohort_samples with
     # representative_id_style/sample_qc='artifact', available_representative_
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles).
-    # 1.8.123 completes the source-union, provenance, compatibility gene-ID /
-    # universe, normalization, and identical-locus collapse contract used by
-    # cancer_reference_expression (#557 / oncoref#182). 1.8.124 adds the
-    # per-cohort source-summary index required for production query latency;
-    # 1.8.125 fixes source-union collapse, compact compatibility IDs, and pooled
-    # bridge-column retention found by this migration's downstream suite.
     "oncoref>=1.8.125",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
@@ -112,25 +112,25 @@ pirlygenes = "pirlygenes.cli:main"
 requires = ["setuptools>=60"]
 
 [tool.setuptools.package-data]
-# Only small curated panels ship in the wheel — the heavy per-cohort
-# expression summaries (cancer-reference-expression/*, pan-cancer-
-# expression.csv, hpa-cell-type-expression.csv; ~340 MB total) are
-# downloaded on first access from the GitHub Release matching the
-# installed version. See pirlygenes/data_bundle.py.
+# Only small curated panels ship in the wheel. Empirical per-cohort summary rows
+# are owned/fetched by oncoref (#557); pirlygenes' remaining precomputed views,
+# pan-cancer matrix, and HPA cell-type matrix come from its versioned data bundle.
+# See pirlygenes/data_bundle.py.
 pirlygenes = [
     "data/*.csv",            # small curated panels (cancer-key-genes, CTAs, etc.)
     "data/*.csv.gz",         # samples manifest + small generated pan-rollup artifact
     "data/*.yaml",           # expression_sources.yaml
 ]
 
-# What we deliberately DO NOT ship in the wheel (these get fetched
-# lazily by pirlygenes.data_bundle):
-#   data/cancer-reference-expression/*                  ~325 MB legacy manifest/status source
+# What we deliberately DO NOT ship in the wheel:
+#   data/cancer-reference-expression/*                  build/audit inputs;
+#                                                       runtime owned by oncoref
 #   data/cancer-reference-expression-views/*            precomputed views
 #   data/pan-cancer-expression.csv                       ~11 MB
 #   data/hpa-cell-type-expression.csv                    ~7 MB
-# (Per-cohort medoid representatives + per-gene percentile vectors moved to
-#  oncoref in #208; pirlygenes no longer ships or downloads them.)
+# (The last three paths are fetched by pirlygenes.data_bundle. Per-cohort
+# summary rows, medoid representatives, and percentile vectors are fetched by
+# oncoref; pirlygenes no longer has a duplicate summary-row runtime path.)
 [tool.setuptools.exclude-package-data]
 pirlygenes = [
     "data/cancer-reference-expression/*",

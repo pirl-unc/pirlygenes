@@ -1,11 +1,11 @@
-"""Parity checks: pirlygenes ``cancer_reference_expression`` vs oncoref's (#207).
+"""Parity checks for pirlygenes' delegated expression compatibility view (#557).
 
-pirlygenes ships pre-built per-(gene, cancer_code, source_cohort) summary rows in
-``cancer-reference-expression.csv.gz``. oncoref computes the *same* summary rows
-on demand from its source-matrix artifact (``oncoref.cancer_reference_expression``).
-Both are meant to describe identical cohorts; this module quantifies where they
-agree and where they diverge, so we can prove parity before pirlygenes retires
-its own builders and becomes a pure consumer of ``oncoref.expression_builders``.
+pirlygenes exposes oncoref's per-source summary rows through its historical
+schema, normalization labels, and source-union semantics. oncoref also serves a
+canonical selected/QC-aware view computed from its percentile/source-matrix
+artifacts. This module compares those two oncoref-owned views, quantifying the
+sample-count, value, and row-universe differences that the compatibility wrapper
+must make visible while the later builder migration (#528) is completed.
 
 The comparison joins the two frames on ``(cancer_code, Ensembl_Gene_ID)`` for a
 fixed normalization (``tpm_clean``) and reports, per cancer_code:
@@ -243,16 +243,23 @@ def parity_report(
 def format_markdown(df: pd.DataFrame, min_expr: float = DEFAULT_MIN_EXPR) -> str:
     """Render a :func:`parity_report` frame as a human-readable markdown report."""
     if "status" not in df.columns:
-        return "# cancer_reference_expression parity: pirlygenes vs oncoref (#207)\n\n(no codes compared)\n"
+        return "# cancer_reference_expression delegation parity (#557)\n\n(no codes compared)\n"
     ok = df[df["status"] == "ok"]
     not_ok = df[df["status"] != "ok"]
     lines = [
-        "# cancer_reference_expression parity: pirlygenes vs oncoref (#207)",
+        "# cancer_reference_expression delegation parity (#557)",
         "",
-        "Compares pirlygenes' pre-built cohort summary rows against oncoref's "
-        "on-demand computation from its source-matrix artifact, per "
+        "Compares pirlygenes' delegated source-union compatibility rows against "
+        "oncoref's canonical selected/QC-aware artifact view, per "
         "`(cancer_code, Ensembl_Gene_ID)` at `tpm_clean`. Relative deltas are on "
         f"the median `expression`, over genes with pg TPM >= {min_expr}.",
+        "",
+        "This intentionally compares two different oncoref products: the "
+        "all-sample source-union compatibility rows and the default pass-QC "
+        "selected artifact. Large outliers therefore identify QC/source-product "
+        "differences, not adapter distortion; exact adapter-to-source parity for "
+        "TCGA, heme, microarray, subtype, and computed-union cases is gated in "
+        "`tests/test_reference_expression_delegation.py`.",
         "",
         f"- cancer_codes compared: **{len(df)}**",
         f"- served by both sides: **{len(ok)}**",
@@ -279,10 +286,8 @@ def format_markdown(df: pd.DataFrame, min_expr: float = DEFAULT_MIN_EXPR) -> str
     if len(not_ok):
         lines += ["", "## Not comparable", ""]
         for _, r in not_ok.iterrows():
-            detail = str(r.get("detail", "") or "").strip()
-            suffix = f": {detail}" if detail else ""
-            lines.append(
-                f"- `{r['cancer_code']}` — {r['status']}{suffix}"
-            )
+            detail = r.get("detail", "")
+            suffix = "" if pd.isna(detail) or not str(detail) else f": {detail}"
+            lines.append(f"- `{r['cancer_code']}` — {r['status']}{suffix}")
     lines.append("")
     return "\n".join(lines)

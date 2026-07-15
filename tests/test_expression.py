@@ -906,39 +906,138 @@ def test_cancer_expression_defaults_to_clean_tpm_for_all_packaged_references():
         pd.testing.assert_frame_equal(actual, expected)
 
 
+def test_reference_expression_default_is_source_generic(monkeypatch):
+    fake = pd.DataFrame(
+        [
+            {
+                "Ensembl_Gene_ID": "ENSG000001",
+                "Symbol": "FAKE1",
+                "cancer_code": "CLL",
+                "source_cohort": "FAKE_CLL",
+                "source_project": "fake",
+                "source_version": "test",
+                "TPM_median": 7.0,
+                "TPM_q1": 5.0,
+                "TPM_q3": 9.0,
+                "TPM_mean": 7.5,
+                "TPM_clean_median": 11.0,
+                "TPM_clean_q1": 10.0,
+                "TPM_clean_q3": 12.0,
+                "n_samples": 3,
+                "n_detected": 3,
+                "processing_pipeline": "test",
+                "notes": "",
+            },
+            {
+                "Ensembl_Gene_ID": "ENSG000002",
+                "Symbol": "FAKE2",
+                "cancer_code": "MM",
+                "source_cohort": "FAKE_MM",
+                "source_project": "fake",
+                "source_version": "test",
+                "TPM_median": 13.0,
+                "TPM_q1": 12.0,
+                "TPM_q3": 14.0,
+                "TPM_mean": 13.5,
+                "TPM_clean_median": 17.0,
+                "TPM_clean_q1": 16.0,
+                "TPM_clean_q3": 18.0,
+                "n_samples": 4,
+                "n_detected": 4,
+                "processing_pipeline": "test",
+                "notes": "",
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        expression_accessors,
+        "_load_cancer_reference_expression",
+        lambda: fake.copy(),
+    )
+
+    # cancer_expression() discovers reference availability through the local
+    # compatibility metadata above, then reads values through the delegated
+    # public accessor (#557). Keep both halves of this synthetic unit test in
+    # the same fake source without changing the separately imported real
+    # cancer_reference_expression used by the wide empty-schema assertion below.
+    def fake_delegated_reference(cancer_types=None, genes=None, **_kwargs):
+        codes = [cancer_types] if isinstance(cancer_types, str) else list(cancer_types)
+        out = fake[fake["cancer_code"].isin(codes)].copy()
+        if genes is not None:
+            wanted = set(genes)
+            out = out[
+                out["Ensembl_Gene_ID"].isin(wanted) | out["Symbol"].isin(wanted)
+            ]
+        return out.assign(
+            normalization="TPM_clean",
+            expression=out["TPM_clean_median"],
+            q1=out["TPM_clean_q1"],
+            q3=out["TPM_clean_q3"],
+        )
+
+    monkeypatch.setattr(
+        expression_accessors,
+        "cancer_reference_expression",
+        fake_delegated_reference,
+    )
+
+    mm = cancer_expression("MM", genes=["FAKE2"])
+    assert mm["expression"].tolist() == [17.0]
+
+    wide = cancer_reference_expression(
+        cancer_types=["CLL", "MM"],
+        genes=["NO_SUCH_GENE"],
+        format="wide",
+    )
+    assert wide.empty
+    assert list(wide.columns) == [
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "CLL_TPM_clean",
+        "MM_TPM_clean",
+    ]
+
+
 def test_reference_expression_delegates_to_oncoref_without_fallback(monkeypatch):
     import oncoref
 
     calls = []
 
-    def fake_oncoref(codes, **kwargs):
-        calls.append((codes, kwargs))
+    def fake_oncoref(cancer_types=None, **kwargs):
+        calls.append((cancer_types, kwargs))
+        normalization = kwargs["normalize"]
+        source_label = "tpm_raw" if normalization == "tpm" else normalization
+        offset = 0.0 if normalization == "tpm" else 4.0
         rows = []
         for code, value in (("CLL", 7.0), ("MM", 13.0)):
-            for normalization, offset in (("tpm_raw", 0.0), ("tpm_clean", 4.0)):
-                rows.append({
-                    "Ensembl_Gene_ID": f"ENSG_{code}",
-                    "Symbol": f"FAKE_{code}",
-                    "Proteoform_ID": f"ENSG_{code}",
-                    "Member_Ensembl_Gene_IDs": f"ENSG_{code}",
-                    "cancer_code": code,
-                    "source_cohort": f"FAKE_{code}",
-                    "source_project": "fake",
-                    "source_version": "test",
-                    "n_samples": 3,
-                    "n_detected": 3,
-                    "processing_pipeline": "test",
-                    "notes": "",
-                    "normalization": normalization,
-                    "expression": value + offset,
-                    "q1": value + offset - 1,
-                    "q3": value + offset + 1,
-                })
+            rows.append({
+                "Ensembl_Gene_ID": f"ENSG_{code}",
+                "Symbol": f"FAKE_{code}",
+                "Proteoform_ID": f"ENSG_{code}",
+                "Member_Ensembl_Gene_IDs": f"ENSG_{code}",
+                "cancer_code": code,
+                "source_cohort": f"FAKE_{code}",
+                "source_project": "fake",
+                "source_version": "test",
+                "n_samples": 3,
+                "n_detected": 3,
+                "processing_pipeline": "test",
+                "notes": "",
+                "normalization": source_label,
+                "expression": value + offset,
+                "q1": value + offset - 1,
+                "q3": value + offset + 1,
+            })
         out = pd.DataFrame(rows)
         out.attrs["availability"] = [
-            {"cancer_code": code, "available": True}
+            {
+                "cancer_code": code,
+                "normalization": source_label,
+                "available": True,
+            }
             for code in ("CLL", "MM")
         ]
+        out.attrs["reference_source"] = "summary_rows_all"
         return out
 
     monkeypatch.setattr(oncoref, "cancer_reference_expression", fake_oncoref)
@@ -953,19 +1052,19 @@ def test_reference_expression_delegates_to_oncoref_without_fallback(monkeypatch)
         collapse_cdna_identical=True,
     )
 
-    assert len(calls) == 1
-    codes, kwargs = calls[0]
-    assert codes == ["CLL", "MM"]
-    assert kwargs["normalize"] == ["tpm", "tpm_clean"]
-    assert kwargs["sample_qc"] == "all"
-    assert kwargs["reference_source"] == "summary_rows_all"
-    assert kwargs["gene_id_style"] == "pirlygenes"
-    assert kwargs["gene_universe"] == "pirlygenes"
-    assert kwargs["on_missing"] == "empty"
-    assert kwargs["source_kind"] == "geo"
-    assert kwargs["source_cohort"] == ["FAKE_CLL", "FAKE_MM"]
-    assert kwargs["exclude_microarray_proxy"] is True
-    assert kwargs["collapse_cdna_identical"] is True
+    assert len(calls) == 2
+    assert {kwargs["normalize"] for _, kwargs in calls} == {"tpm", "tpm_clean"}
+    for codes, kwargs in calls:
+        assert codes == ["CLL", "MM"]
+        assert kwargs["sample_qc"] == "all"
+        assert kwargs["reference_source"] == "summary_rows_all"
+        assert kwargs["gene_id_style"] == "pirlygenes"
+        assert kwargs["gene_universe"] == "pirlygenes"
+        assert kwargs["on_missing"] == "empty"
+        assert kwargs["source_kind"] == "geo"
+        assert kwargs["source_cohort"] == ["FAKE_CLL", "FAKE_MM"]
+        assert kwargs["exclude_microarray_proxy"] is True
+        assert kwargs["collapse_cdna_identical"] is True
 
     assert set(df["normalization"]) == {"TPM_log1p", "TPM_clean"}
     raw_log = df[df["normalization"] == "TPM_log1p"].set_index("cancer_code")

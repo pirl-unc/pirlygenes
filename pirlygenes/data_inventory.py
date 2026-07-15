@@ -6,8 +6,7 @@ read-side counterpart to :mod:`pirlygenes.downloads`:
 - ``downloads`` describes what's *fetchable* (raw inputs from GDC /
   GEO / etc.) and how much disk those raw inputs occupy locally.
 - ``data_inventory`` describes the per-gene-per-cohort summary
-  tables — wherever they currently live (bundled in the wheel for
-  a git checkout, or downloaded into the cache for a pip install).
+  tables from their canonical oncoref bundle.
 
 Trufflepig and ad-hoc notebooks can call :func:`summarize_inventory`
 directly without going through the CLI.
@@ -24,31 +23,17 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import data_bundle
 from .downloads import load_registry
 
 
-_BUNDLED_REFERENCE_DIR = (
-    Path(__file__).parent / "data" / "cancer-reference-expression"
-)
-
-
 def _active_reference_dir() -> Path:
-    """Pick whichever cancer-reference-expression dir actually has files.
+    """Return oncoref's canonical cancer-reference-expression shard path."""
+    from oncoref import data_bundle as oncoref_data_bundle
 
-    Priority order matches :func:`pirlygenes.load_dataset._shard_directories`:
-      1. Bundled in-wheel / git-checkout location
-      2. Downloaded cache populated by :mod:`pirlygenes.data_bundle`
-
-    Returns the bundled path as a fallback even when neither exists
-    so callers always get a sensible Path to display.
-    """
-    if any(_BUNDLED_REFERENCE_DIR.glob("*.csv.gz")):
-        return _BUNDLED_REFERENCE_DIR
-    cached = data_bundle.cache_dir() / "cancer-reference-expression"
-    if any(cached.glob("*.csv.gz")):
+    cached = oncoref_data_bundle.find("cancer-reference-expression")
+    if cached is not None:
         return cached
-    return _BUNDLED_REFERENCE_DIR
+    return oncoref_data_bundle.cache_dir() / "cancer-reference-expression"
 
 
 @dataclass(frozen=True)
@@ -71,15 +56,12 @@ class CohortRowCount:
 class InventorySnapshot:
     """Snapshot of the cancer-reference-expression dataset state.
 
-    ``data_path`` points at whichever on-disk directory actually
-    supplies the data (bundled or downloaded; see
-    :func:`_active_reference_dir`). ``data_source`` distinguishes
-    the two so consumers can tell whether the user is in a dev
-    checkout or a wheel install.
+    ``data_path`` points at oncoref's canonical on-disk shard directory (see
+    :func:`_active_reference_dir`).
     """
 
     data_path: Path
-    data_source: str          # "bundled" | "downloaded" | "missing"
+    data_source: str          # "oncoref" | "missing"
     data_size_bytes: int
     total_rows: int
     unique_genes: int
@@ -384,10 +366,8 @@ def _shard_count(shard_dir: Path) -> int:
 
 
 def _classify_path(active: Path) -> str:
-    """Tag the active directory as bundled / downloaded / missing."""
-    if active == _BUNDLED_REFERENCE_DIR:
-        return "bundled" if active.exists() else "missing"
-    return "downloaded"
+    """Tag the canonical oncoref directory as available or missing."""
+    return "oncoref" if active.exists() else "missing"
 
 
 # Only the columns the summary needs — reading these 7 instead of the full
@@ -423,12 +403,12 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
     """
     import pandas as pd
 
-    from . import data_bundle
     from .load_dataset import _shard_paths
+    from oncoref import data_bundle as oncoref_data_bundle
 
     active = _active_reference_dir()
     if not any(active.glob("*.csv.gz")) and not any(active.glob("*.csv")):
-        data_bundle.ensure_local()
+        oncoref_data_bundle.ensure_local()
         active = _active_reference_dir()
     paths = _shard_paths(active)
 

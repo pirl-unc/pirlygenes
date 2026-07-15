@@ -496,15 +496,10 @@ def test_artifact_matches_from_reference_oracle_current_symbols(cancer_types, ge
     fast = cohort_expression_views(cancer_types, genes=genes)
     oracle = accessors._cohort_expression_views_from_reference(
         cancer_types, genes=genes, canonicalize_genes=True)
-    _assert_views_equal(fast, oracle, check_provenance=cancer_types != "SARC")
-    if cancer_types == "SARC":
-        # The retained precomputed view predates Treehouse source-identity
-        # cleanup. Values must match exactly, but its historical provenance
-        # remains an explicit residual until that artifact is retired.
-        fast_sources = set(fast.provenance["source_cohort"].astype(str))
-        current_sources = set(oracle.provenance["source_cohort"].astype(str))
-        assert "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY" in fast_sources
-        assert "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY" not in current_sources
+    # The delegated compatibility boundary canonicalizes the historical
+    # Treehouse DDLPS/WDLPS source label, so SARC provenance now matches the
+    # precomputed artifact as exactly as the expression matrices do.
+    _assert_views_equal(fast, oracle)
 
 
 def test_canonical_path_resolves_retired_synonym():
@@ -687,13 +682,13 @@ def test_rebuild_memoized_on_reference_identity(tmp_path, monkeypatch):
     monkeypatch.setattr(accessors, "_cohort_views_root", lambda: tmp_path / "absent")
 
     calls = {"n": 0}
-    real = accessors.cancer_reference_expression
+    real = accessors._reference_long_from_summary_frame
 
     def counting(*a, **k):
         calls["n"] += 1
         return real(*a, **k)
 
-    monkeypatch.setattr(accessors, "cancer_reference_expression", counting)
+    monkeypatch.setattr(accessors, "_reference_long_from_summary_frame", counting)
     accessors._REFERENCE_VIEW_CACHE.clear()
 
     cohort_expression_views(genes=["TP53"])
