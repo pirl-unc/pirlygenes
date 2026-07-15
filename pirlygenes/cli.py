@@ -592,6 +592,13 @@ def _source_build_cmd(src, summary_out=_SUMMARY_OUT, samples_out=_SAMPLES_OUT,
     from pathlib import Path
 
     if not src.builder:
+        if src.source_type == "recount3":
+            sys.stderr.write(
+                f"source {src.id!r} is built and published by oncoref; use "
+                "oncoref.expression_builders.build_recount3_source_matrices "
+                "for source rebuilds.\n"
+            )
+            return None
         sys.stderr.write(
             f"source {src.id!r} has no `builder` field in the YAML registry.\n")
         return None
@@ -604,8 +611,6 @@ def _source_build_cmd(src, summary_out=_SUMMARY_OUT, samples_out=_SAMPLES_OUT,
     builder_name = builder_path.name
     if "sweep_treehouse" in builder_name:
         cmd += ["--summary-output", summary_out]
-    elif builder_name == "build_recount3_source.py":
-        cmd += [src.id, "--summary-output", summary_out]
     elif builder_name in {"build_geo_matrix.py", "build_gpl570_microarray.py"}:
         cmd += ["--source-id", src.id, "--summary-output", summary_out,
                 "--samples-output", samples_out, "--cache-dir", cache_dir]

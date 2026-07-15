@@ -5,7 +5,7 @@ incomplete gene universe — HTSeq counts keyed to a stale Entrez/GTF set,
 author-chosen FPKM/TPM tables — leaving genuine coverage holes. The
 motivating case: **GSE98894 (SRP107025)** HTSeq counts never annotated the
 near-identical CTA paralogs `XAGE1A`/`XAGE1B`, so they are *absent*
-(`not_measurable`), not zero, in MID_NET / PANNET / REC_NET.
+(`not_measurable`), not zero, in NET_MIDGUT / NET_PANCREAS / NET_RECTAL.
 
 [recount3](https://rna.recount.bio/) (Wilks 2021) uniformly re-quantified
 ~750k public SRA/GTEx/TCGA RNA-seq runs with Monorail (STAR → base coverage)
@@ -23,9 +23,9 @@ recount3 S3 path) gives **4 of 15 GEO RNA-seq sources** covered today:
 
 | source-id | SRP | codes | recount3 |
 | --- | --- | --- | --- |
-| `gse98894-midnet` | SRP107025 | MID_NET, PANNET, REC_NET | ✅ 212 samples |
+| `gse98894-midnet` | SRP107025 | NET_MIDGUT, NET_PANCREAS, NET_RECTAL | ✅ 212 samples |
 | `gse114922-mds` | SRP149374 | MDS | ✅ |
-| `gse118014-pannet` | SRP156049 | PANNET (primary) | ✅ |
+| `gse118014-pannet` | SRP156049 | NET_PANCREAS (primary) | ✅ |
 | `gse120328-hl` | SRP162356 | HL | ✅ |
 | `gse100026-cml` | SRP109177 | CML | ❌ not in release |
 | `gse142334-fl` | SRP238213 | FL | ❌ past snapshot |
@@ -49,8 +49,8 @@ recount3 S3 path) gives **4 of 15 GEO RNA-seq sources** covered today:
 ## Normalization: gene-sums → clean TPM
 
 recount3 `gene_sums` are **coverage sums** (Σ per-base read depth over a
-gene's disjoint exonic bases), *not* read counts. The transform
-(implemented + tested in `pirlygenes/builders/recount3.py`):
+gene's disjoint exonic bases), *not* read counts. The transform is owned by
+`oncoref.expression_builders`:
 
 1. **Length-normalize to TPM** (per sample column `j`):
    `rate[g,j] = gene_sums[g,j] / bp_length[g]`, then
@@ -78,12 +78,32 @@ rather than absent, which is the meaningful gain. Gencode v26 (recount3) vs
 GENCODE v36 (GDC) vs RSEM (Treehouse) all mix acceptably as "RNA-seq TPM" for
 cohort-level summaries, exactly as the sources we already combine.
 
-## Rollout
+## Ownership and rebuilds
 
-For each covered source, the builder fetches `recount3_clean_tpm(srp)`,
-routes SRR runs to cancer codes via the recount3 `sra` metadata
-(`external_id` = GSM + characteristics) — reusing each source's existing
-routing — then runs the standard `assign_stats` / `write_reference_rows`. The
-recount3-derived shard keeps the **same `source_cohort` tag** so it replaces
-the spotty one in place. Registry entries gain `recount3_srp:` +
-`source_type: recount3`.
+oncoref is the sole owner of recount3 ingestion. Its registry records the
+study-specific routing and expected sample counts, while
+`build_recount3_source_matrices` fetches the annotation, gene sums, and SRA
+metadata; aggregates runs into biological samples; canonicalizes gene IDs;
+and writes per-code matrices with mapping, parse, QC, and summary sidecars.
+pirlygenes consumes those published matrices and summaries and retains only
+the `recount3_srp` and `source_cohort` provenance in its registry.
+
+To rebuild one source in the oncoref development environment:
+
+```python
+from pathlib import Path
+
+from oncoref.expression_builders import (
+    build_recount3_source_matrices,
+    recount3_source_from_registry,
+)
+
+source = recount3_source_from_registry("gse98894-midnet")
+build_recount3_source_matrices(
+    source,
+    cache_dir=Path.home() / ".cache" / "oncoref" / "recount3",
+)
+```
+
+The resulting source keeps the same canonical `source_cohort` tag, so the
+published oncoref artifact replaces the coverage-incomplete source in place.

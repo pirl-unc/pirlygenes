@@ -46,6 +46,29 @@ def test_registry_loads_and_has_expected_categories():
     assert not any(code.startswith("TCGA_") for code in tcga_codes)
 
 
+def test_recount3_sources_are_oncoref_owned():
+    """recount3 build routes live only in oncoref (#528)."""
+    from oncoref.expression_builders import (
+        recount3_source_entries,
+        recount3_source_from_registry,
+    )
+
+    local = {
+        source.id: source
+        for source in downloads.load_registry()
+        if source.source_type == "recount3"
+    }
+    upstream_ids = {str(entry["id"]) for entry in recount3_source_entries()}
+
+    assert local
+    assert set(local) <= upstream_ids
+    for source_id, source in local.items():
+        upstream = recount3_source_from_registry(source_id)
+        assert source.builder is None
+        assert upstream.srp == source.recount3_srp
+        assert upstream.source_cohort == source.source_cohort
+
+
 def test_cache_root_honors_env_var(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path / "override"))
     assert downloads.cache_root() == tmp_path / "override"
@@ -136,6 +159,13 @@ def test_cli_build_unknown_source_reports_clearly():
     rc, _, err = _run_cli(["build", "nope-not-a-real-id"])
     assert rc == 2
     assert "no source matches" in err
+
+
+def test_cli_build_recount3_source_redirects_to_oncoref():
+    rc, _, err = _run_cli(["build", "gse98894-midnet"])
+    assert rc == 2
+    assert "built and published by oncoref" in err
+    assert "build_recount3_source_matrices" in err
 
 
 def test_cli_build_ambiguous_cancer_code_lists_candidates():
