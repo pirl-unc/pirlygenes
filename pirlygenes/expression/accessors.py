@@ -693,6 +693,11 @@ _REFERENCE_NORMALIZE_ALIASES = {
     "tpm_clean_log1p": "tpm_clean_log1p",
     "clean_tpm_log1p": "tpm_clean_log1p",
 }
+# oncoref currently normalizes an explicitly empty source-kind iterable to an
+# empty set and then treats that set as though no filter was supplied.  Forward
+# a guaranteed-nonmatching value instead so pirlygenes retains its historical
+# distinction between ``None`` (all source kinds) and ``[]`` (no source kinds).
+_EMPTY_REFERENCE_SOURCE_KIND = "__pirlygenes_explicit_empty_source_kind__"
 _REFERENCE_VALUE_COLUMNS = {
     "tpm": ("TPM_median", "TPM_q1", "TPM_q3", "TPM"),
     "tpm_clean": (
@@ -1322,20 +1327,25 @@ def _compatibility_availability_records(
 def _reference_compatibility_genes(
     genes: Optional[Iterable[str]],
 ) -> Optional[list[str]]:
-    """Expand legacy symbols before oncoref applies its delegated filter."""
+    """Normalize and expand symbols before oncoref applies its filter."""
     if genes is None:
         return None
     requested = [genes] if isinstance(genes, str) else list(genes)
     expanded: list[str] = []
     for gene in requested:
-        token = str(gene)
+        # filter_to_genes(), used by the pre-delegation implementation, made
+        # symbol filters whitespace- and case-insensitive.  oncoref's symbol
+        # match is exact, so normalize at this compatibility boundary before
+        # looking up aliases or forwarding candidates.
+        token = str(gene).strip().upper()
         for candidate in (
             token,
             *get_alias_as_list(token),
             *get_reverse_alias_as_list(token),
         ):
-            if candidate and candidate not in expanded:
-                expanded.append(candidate)
+            normalized = str(candidate).strip().upper()
+            if normalized and normalized not in expanded:
+                expanded.append(normalized)
     return expanded
 
 
@@ -1375,6 +1385,18 @@ def _oncoref_reference_mode(
             else list(source_cohort)
         )
     )
+    delegated_source_kind = source_kind
+    if source_kind is not None:
+        source_kinds = (
+            [source_kind]
+            if isinstance(source_kind, str)
+            else list(source_kind)
+        )
+        delegated_source_kind = (
+            source_kinds
+            if any(str(kind) for kind in source_kinds)
+            else [_EMPTY_REFERENCE_SOURCE_KIND]
+        )
     compatibility_genes = _reference_compatibility_genes(requested_genes)
     delegated = oncoref.cancer_reference_expression(
         cancer_types=cancer_types,
@@ -1388,7 +1410,7 @@ def _oncoref_reference_mode(
         reference_source="summary_rows_all",
         gene_id_style="pirlygenes",
         gene_universe="pirlygenes",
-        source_kind=source_kind,
+        source_kind=delegated_source_kind,
         source_cohort=_reference_source_cohort_storage_filter(
             requested_source_cohort
         ),
@@ -1479,8 +1501,13 @@ def _reference_wide_from_delegated_long(
     *,
     modes: Sequence[str],
     parts: Sequence[pd.DataFrame],
+    requested_codes: Optional[Sequence[str]] = None,
 ) -> pd.DataFrame:
-    available_codes: list[str] = []
+    # Resolve explicit requests before row-level source filtering so an empty
+    # result retains its stable wide schema (for example CLL_TPM_clean even
+    # when source_kind excludes CLL).  For the all-cohorts default, retain the
+    # delegated availability/observed-code behavior.
+    available_codes = list(dict.fromkeys(requested_codes or []))
     for part in parts:
         for record in part.attrs.get("availability", []):
             code = str(record.get("cancer_code", ""))
@@ -1638,7 +1665,16 @@ def cancer_reference_expression(
     _merge_reference_compatibility_attrs(long, parts)
     if format == "long":
         return long
-    return _reference_wide_from_delegated_long(long, modes=modes, parts=parts)
+    requested_codes = _resolve_cancer_types(
+        cancer_types,
+        expand_aggregates=True,
+    )
+    return _reference_wide_from_delegated_long(
+        long,
+        modes=modes,
+        parts=parts,
+        requested_codes=requested_codes,
+    )
 
 
 # ---------- accessors: unified normalization views (#319) ----------

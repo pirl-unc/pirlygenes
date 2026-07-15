@@ -150,6 +150,45 @@ def test_delegated_filter_preserves_legacy_ensembl_queries():
     assert out["expression"].notna().all()
 
 
+def test_delegated_filter_preserves_case_insensitive_trimmed_symbols():
+    for gene in ("ms4a1", " MS4A1 "):
+        out = accessors.cancer_reference_expression(
+            cancer_types="CLL",
+            genes=[gene],
+        )
+        assert out["Symbol"].tolist() == ["MS4A1"]
+
+        compact = accessors.cancer_expression("CLL", genes=[gene])
+        assert compact["Symbol"].tolist() == ["MS4A1"]
+
+
+def test_explicit_empty_source_kind_returns_no_rows():
+    out = accessors.cancer_reference_expression(
+        cancer_types="CLL",
+        genes=["MS4A1"],
+        source_kind=[],
+    )
+    assert out.empty
+    assert out.attrs["availability"][0]["available"] is False
+
+
+def test_source_filtered_empty_wide_result_keeps_requested_columns():
+    out = accessors.cancer_reference_expression(
+        cancer_types="CLL",
+        genes=["MS4A1"],
+        normalize=["tpm", "tpm_clean"],
+        format="wide",
+        source_kind="tcga",
+    )
+    assert out.empty
+    assert list(out.columns) == [
+        "Ensembl_Gene_ID",
+        "Symbol",
+        "CLL_TPM",
+        "CLL_TPM_clean",
+    ]
+
+
 def test_sarc_histology_source_label_and_filter_are_canonicalized():
     canonical = "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY"
     out = accessors.cancer_reference_expression(

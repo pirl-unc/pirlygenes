@@ -393,13 +393,15 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     ``cancer-reference-expression`` table (multi-million-row summary frame)
     dominated test-suite time (#278).
     """
+    normalized_name = name.lower()
+
     # The empirical cancer-reference-expression rows are owned by oncoref.  Keep
     # pirlygenes' generic get_data surface working, but never select the duplicate
     # in-repo/downloaded shard set at runtime.  A shallow frame copy lets us retain
     # pirlygenes' low-cardinality categorical provenance dtypes without mutating
     # oncoref's process-wide cached frame or copying the multi-million-row values.
     # Fixture injection deliberately bypasses this branch.  See #557 / #528.
-    if _dataframes_dict is None and name in (
+    if _dataframes_dict is None and normalized_name in (
         "cancer-reference-expression", "cancer-reference-expression.csv"
     ):
         cache_key = "cancer-reference-expression.csv"

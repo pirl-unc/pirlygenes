@@ -41,6 +41,25 @@ def test_get_data_copy_false_returns_shared_cached_frame():
     assert defensive is not shared  # default path still copies
 
 
+def test_cancer_reference_name_variants_delegate_to_oncoref(monkeypatch):
+    import oncoref.load_dataset
+
+    delegated = pd.DataFrame({"sentinel": [1]})
+    calls = []
+
+    def fake_get_data(name, *, copy):
+        calls.append((name, copy))
+        return delegated
+
+    monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
+    monkeypatch.setattr(oncoref.load_dataset, "get_data", fake_get_data)
+
+    actual = ld.get_data("Cancer-Reference-Expression", copy=False)
+
+    pd.testing.assert_frame_equal(actual, delegated)
+    assert calls == [("cancer-reference-expression", False)]
+
+
 def test_get_all_csv_paths_contains_core_dataset():
     paths = ld.get_all_csv_paths()
     assert any(Path(p).name == "ADC-trials.csv" for p in paths)
