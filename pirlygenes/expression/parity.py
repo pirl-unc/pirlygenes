@@ -40,6 +40,25 @@ DEFAULT_MIN_EXPR = 1.0
 _DIVERGENT_REL = 0.5
 
 
+def _legacy_clean_reference_frame() -> pd.DataFrame:
+    """Load the frozen pirlygenes artifact as the clean-TPM parity schema."""
+    from pirlygenes.expression.accessors import _load_cancer_reference_expression
+
+    legacy = _load_cancer_reference_expression()
+    if "normalization" in legacy.columns:
+        return legacy
+    columns = [
+        "Ensembl_Gene_ID",
+        "cancer_code",
+        "source_cohort",
+        "n_samples",
+        "TPM_clean_median",
+    ]
+    out = legacy[columns].rename(columns={"TPM_clean_median": "expression"}).copy()
+    out["normalization"] = "TPM_clean"
+    return out
+
+
 def _first_int(series: pd.Series, default: int = -1) -> int:
     """First value of ``series`` as an int, or ``default`` when empty/NaN."""
     if not len(series):
@@ -208,9 +227,10 @@ def parity_report(
     min_expr: float = DEFAULT_MIN_EXPR,
 ) -> pd.DataFrame:
     """Run :func:`parity_for_code` across many cancer_codes; return a summary frame."""
-    from pirlygenes.expression.accessors import cancer_reference_expression
-
-    pg_frame = cancer_reference_expression()
+    # The public accessor delegates to oncoref as of #557. Read the frozen
+    # artifact through the explicit legacy adapter; calling the wrapper here
+    # would compare oncoref with itself and hide migration deltas.
+    pg_frame = _legacy_clean_reference_frame()
     if not codes:  # None or empty -> every code in the bundle
         codes = sorted(pg_frame["cancer_code"].unique())
 
@@ -259,8 +279,10 @@ def format_markdown(df: pd.DataFrame, min_expr: float = DEFAULT_MIN_EXPR) -> str
     if len(not_ok):
         lines += ["", "## Not comparable", ""]
         for _, r in not_ok.iterrows():
+            detail = str(r.get("detail", "") or "").strip()
+            suffix = f": {detail}" if detail else ""
             lines.append(
-                f"- `{r['cancer_code']}` — {r['status']}: {r.get('detail', '')}"
+                f"- `{r['cancer_code']}` — {r['status']}{suffix}"
             )
     lines.append("")
     return "\n".join(lines)

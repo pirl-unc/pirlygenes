@@ -45,6 +45,14 @@ jobs:
         with:
           path: ~/.cache/pirlygenes/bundled_data/
           key: pirlygenes-bundle-${{ runner.os }}-${{ hashFiles('pirlygenes/version.py') }}
+      - name: Cache oncoref data bundle
+        # cancer_reference_expression delegates empirical source rows to
+        # oncoref. Keyed on the dependency floor so contract bumps invalidate
+        # the cache; oncoref itself keeps data versions in separate subdirs.
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/oncoref/bundled_data/
+          key: oncoref-bundle-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
       - name: Cache source-data mirror
         # Raw per-source inputs (small/medium: GEO, CLL-map) mirrored to a
         # pinned release for FTP-independent builds. Keyed on the mirror module.

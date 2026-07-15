@@ -411,9 +411,26 @@ def test_cancer_expression_tcga_default_is_clean_tpm_not_housekeeping():
     assert not np.allclose(default["expression"], explicit_hk["expression"])
 
 
-def test_hpa_cell_type_expression_long_form():
+def test_hpa_cell_type_expression_long_form(monkeypatch):
+    import oncoref
+
+    expected = pd.DataFrame(
+        {
+            "Ensembl_Gene_ID": ["E1"],
+            "Symbol": ["A"],
+            "T-cells": [3.0],
+        }
+    )
+    monkeypatch.setattr(oncoref, "hpa_cell_type_expression", lambda: expected.copy())
+    monkeypatch.setattr(
+        expression_accessors,
+        "get_data",
+        lambda name: pytest.fail(f"unexpected local dataset read: {name}"),
+    )
+
     df = hpa_cell_type_expression()
-    assert not df.empty
+
+    pd.testing.assert_frame_equal(df, expected)
 
 
 def test_estimate_signatures_has_stromal_and_immune_classes():
@@ -620,6 +637,20 @@ def test_cancer_expression_resolves_non_tcga_reference():
     df = cancer_expression("CLL", genes=["FCER2"])
     assert list(df["Symbol"]) == ["FCER2"]
     assert df["expression"].iloc[0] > 100
+
+
+def test_cancer_expression_does_not_read_legacy_reference_bundle(monkeypatch):
+    expression_accessors._oncoref_reference_code_set.cache_clear()
+    monkeypatch.setattr(
+        expression_accessors,
+        "_load_cancer_reference_expression",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("delegated cancer_expression read the legacy bundle")
+        ),
+    )
+    df = cancer_expression("CLL", genes=["FCER2"])
+    assert list(df["Symbol"]) == ["FCER2"]
+    expression_accessors._oncoref_reference_code_set.cache_clear()
 
 
 def test_cancer_expression_resolves_mmrf_reference():
@@ -875,70 +906,99 @@ def test_cancer_expression_defaults_to_clean_tpm_for_all_packaged_references():
         pd.testing.assert_frame_equal(actual, expected)
 
 
-def test_reference_expression_default_is_source_generic(monkeypatch):
-    fake = pd.DataFrame(
-        [
-            {
-                "Ensembl_Gene_ID": "ENSG000001",
-                "Symbol": "FAKE1",
-                "cancer_code": "CLL",
-                "source_cohort": "FAKE_CLL",
-                "source_project": "fake",
-                "source_version": "test",
-                "TPM_median": 7.0,
-                "TPM_q1": 5.0,
-                "TPM_q3": 9.0,
-                "TPM_mean": 7.5,
-                "TPM_clean_median": 11.0,
-                "TPM_clean_q1": 10.0,
-                "TPM_clean_q3": 12.0,
-                "n_samples": 3,
-                "n_detected": 3,
-                "processing_pipeline": "test",
-                "notes": "",
-            },
-            {
-                "Ensembl_Gene_ID": "ENSG000002",
-                "Symbol": "FAKE2",
-                "cancer_code": "MM",
-                "source_cohort": "FAKE_MM",
-                "source_project": "fake",
-                "source_version": "test",
-                "TPM_median": 13.0,
-                "TPM_q1": 12.0,
-                "TPM_q3": 14.0,
-                "TPM_mean": 13.5,
-                "TPM_clean_median": 17.0,
-                "TPM_clean_q1": 16.0,
-                "TPM_clean_q3": 18.0,
-                "n_samples": 4,
-                "n_detected": 4,
-                "processing_pipeline": "test",
-                "notes": "",
-            },
+def test_reference_expression_delegates_to_oncoref_without_fallback(monkeypatch):
+    import oncoref
+
+    calls = []
+
+    def fake_oncoref(codes, **kwargs):
+        calls.append((codes, kwargs))
+        rows = []
+        for code, value in (("CLL", 7.0), ("MM", 13.0)):
+            for normalization, offset in (("tpm_raw", 0.0), ("tpm_clean", 4.0)):
+                rows.append({
+                    "Ensembl_Gene_ID": f"ENSG_{code}",
+                    "Symbol": f"FAKE_{code}",
+                    "Proteoform_ID": f"ENSG_{code}",
+                    "Member_Ensembl_Gene_IDs": f"ENSG_{code}",
+                    "cancer_code": code,
+                    "source_cohort": f"FAKE_{code}",
+                    "source_project": "fake",
+                    "source_version": "test",
+                    "n_samples": 3,
+                    "n_detected": 3,
+                    "processing_pipeline": "test",
+                    "notes": "",
+                    "normalization": normalization,
+                    "expression": value + offset,
+                    "q1": value + offset - 1,
+                    "q3": value + offset + 1,
+                })
+        out = pd.DataFrame(rows)
+        out.attrs["availability"] = [
+            {"cancer_code": code, "available": True}
+            for code in ("CLL", "MM")
         ]
-    )
-    monkeypatch.setattr(
-        expression_accessors,
-        "_load_cancer_reference_expression",
-        lambda: fake.copy(),
-    )
+        return out
 
-    mm = cancer_expression("MM", genes=["FAKE2"])
-    assert mm["expression"].tolist() == [17.0]
+    monkeypatch.setattr(oncoref, "cancer_reference_expression", fake_oncoref)
 
-    wide = cancer_reference_expression(
+    df = cancer_reference_expression(
         cancer_types=["CLL", "MM"],
-        genes=["NO_SUCH_GENE"],
-        format="wide",
+        genes=["FAKE"],
+        normalize=["tpm_log1p", "tpm_clean"],
+        source_kind="geo",
+        source_cohort=["FAKE_CLL", "FAKE_MM"],
+        exclude_microarray_proxy=True,
+        collapse_cdna_identical=True,
     )
-    assert wide.empty
-    assert list(wide.columns) == [
-        "Ensembl_Gene_ID",
-        "Symbol",
-        "CLL_TPM_clean",
-        "MM_TPM_clean",
-    ]
+
+    assert len(calls) == 1
+    codes, kwargs = calls[0]
+    assert codes == ["CLL", "MM"]
+    assert kwargs["normalize"] == ["tpm", "tpm_clean"]
+    assert kwargs["sample_qc"] == "all"
+    assert kwargs["reference_source"] == "summary_rows_all"
+    assert kwargs["gene_id_style"] == "pirlygenes"
+    assert kwargs["gene_universe"] == "pirlygenes"
+    assert kwargs["on_missing"] == "empty"
+    assert kwargs["source_kind"] == "geo"
+    assert kwargs["source_cohort"] == ["FAKE_CLL", "FAKE_MM"]
+    assert kwargs["exclude_microarray_proxy"] is True
+    assert kwargs["collapse_cdna_identical"] is True
+
+    assert set(df["normalization"]) == {"TPM_log1p", "TPM_clean"}
+    raw_log = df[df["normalization"] == "TPM_log1p"].set_index("cancer_code")
+    assert raw_log.loc["CLL", "expression"] == pytest.approx(np.log1p(7.0))
+    assert raw_log.loc["MM", "q3"] == pytest.approx(np.log1p(14.0))
+    assert df.attrs["reference_backend"] == "oncoref"
+    assert df.attrs["reference_source"] == "summary_rows_all"
+
+
+@pytest.mark.parametrize(
+    ("cancer_type", "gene", "expected_codes"),
+    [
+        ("LUAD", "TP53", {"LUAD"}),
+        ("CLL", "MS4A1", {"CLL"}),
+        ("SARC_DDLPS", "MDM2", {"SARC_DDLPS"}),
+        ("BRCA_Basal", "ESR1", {"BRCA_Basal"}),
+        ("CRC", "TP53", {"COAD", "READ"}),
+    ],
+)
+def test_reference_expression_oncoref_parity_surfaces(
+    cancer_type,
+    gene,
+    expected_codes,
+):
+    df = cancer_reference_expression(
+        cancer_type,
+        genes=[gene],
+        normalize=["tpm", "tpm_clean"],
+    )
+    assert not df.empty
+    assert set(df["cancer_code"].astype(str)) == expected_codes
+    assert set(df["normalization"].astype(str)) == {"TPM", "TPM_clean"}
+    assert df.attrs["reference_backend"] == "oncoref"
 
 
 def test_cancer_expression_empty_gene_subset_is_uniform_across_sources():

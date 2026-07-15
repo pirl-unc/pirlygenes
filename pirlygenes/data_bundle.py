@@ -18,7 +18,7 @@ Layout:
     pirlygenes/data/cancer-reference-expression-samples.csv.gz
 
 Downloaded (lazy, expression bundle, cached locally):
-    cancer-reference-expression/*.csv.gz            (per-cohort summaries)
+    cancer-reference-expression/*.csv.gz            (legacy manifest/status source)
     cancer-reference-expression-views/*.parquet     (precomputed canonical views)
     pan-cancer-expression.csv
     hpa-cell-type-expression.csv
@@ -30,7 +30,7 @@ Downloaded (lazy, expression bundle, cached locally):
 Cache layout (version-pinned so upgrades trigger a re-fetch):
 
   ~/.cache/pirlygenes/bundled_data/v<version>/
-    cancer-reference-expression/...
+    cancer-reference-expression/...                  (legacy manifest/status source)
     cancer-reference-expression-views/...
     pan-cancer-expression.csv
     hpa-cell-type-expression.csv
@@ -77,9 +77,14 @@ RELEASE_URL = (
 # the cache root) and are NOT bundled in the wheel. The load_dataset
 # module looks here as a fallback after checking pirlygenes/data/.
 DOWNLOADABLE_PATHS: tuple[str, ...] = (
-    "cancer-reference-expression",     # directory of per-source shards
+    # The public expression accessor delegates to oncoref (#557). These shards
+    # remain temporarily for available_cancer_expression_references(), status
+    # rollups, and rebuilding the legacy canonical-view artifact.
+    "cancer-reference-expression",
     "cancer-reference-expression-views",  # precomputed canonical wide views
     "pan-cancer-expression.csv",
+    # Public hpa_cell_type_expression delegates to oncoref (#510). Keep the old
+    # file only for direct get_data("hpa-cell-type-expression") compatibility.
     "hpa-cell-type-expression.csv",
 )
 
