@@ -78,6 +78,8 @@ RELEASE_URL = (
 DOWNLOADABLE_PATHS: tuple[str, ...] = (
     "cancer-reference-expression-views",  # precomputed canonical wide views
     "pan-cancer-expression.csv",
+    # Public hpa_cell_type_expression delegates to oncoref (#510). Keep the old
+    # file only for direct get_data("hpa-cell-type-expression") compatibility.
     "hpa-cell-type-expression.csv",
 )
 

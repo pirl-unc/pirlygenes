@@ -18,6 +18,70 @@ def _disable_precomputed_views(monkeypatch, tmp_path):
     monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root / "missing")
 
 
+def _install_fake_reference(monkeypatch, fake):
+    """Install a delegated long-form accessor over an old-summary fixture."""
+    import pandas as pd
+
+    def fake_accessor(
+        cancer_types=None,
+        genes=None,
+        normalize="tpm_clean",
+        *,
+        format="long",
+        include_provenance=True,
+        **_kwargs,
+    ):
+        assert format == "long"
+        df = fake.copy()
+        if cancer_types is not None:
+            codes = [cancer_types] if isinstance(cancer_types, str) else list(cancer_types)
+            df = df[df["cancer_code"].astype(str).isin(map(str, codes))]
+        if genes is not None:
+            requested = [genes] if isinstance(genes, str) else list(genes)
+            requested = {str(gene) for gene in requested}
+            df = df[
+                df["Ensembl_Gene_ID"].astype(str).isin(requested)
+                | df["Symbol"].astype(str).isin(requested)
+            ]
+        modes = [normalize] if isinstance(normalize, str) else list(normalize)
+        mode_columns = {
+            "tpm": ("TPM_median", "TPM_q1", "TPM_q3", "TPM"),
+            "tpm_clean": (
+                "TPM_clean_median",
+                "TPM_clean_q1",
+                "TPM_clean_q3",
+                "TPM_clean",
+            ),
+        }
+        parts = []
+        for mode in modes:
+            median, q1, q3, label = mode_columns[mode]
+            columns = [
+                "Ensembl_Gene_ID", "Symbol", "cancer_code", "source_cohort",
+            ]
+            if include_provenance:
+                columns.extend([
+                    "source_project", "source_version", "n_samples",
+                    "n_detected", "processing_pipeline", "notes",
+                ])
+            part = df[[col for col in columns if col in df.columns]].copy()
+            part["Proteoform_ID"] = part["Ensembl_Gene_ID"]
+            part["Member_Ensembl_Gene_IDs"] = part["Ensembl_Gene_ID"]
+            part["normalization"] = label
+            part["expression"] = pd.to_numeric(df[median], errors="coerce")
+            part["q1"] = pd.to_numeric(df[q1], errors="coerce")
+            part["q3"] = pd.to_numeric(df[q3], errors="coerce")
+            parts.append(part)
+        return pd.concat(parts, ignore_index=True)
+
+    # _reference_view still uses the frame identity to invalidate rebuilt
+    # canonical views; the values now come through the delegated accessor.
+    monkeypatch.setattr(accessors, "_load_cancer_reference_expression", lambda: fake)
+    monkeypatch.setattr(accessors, "cancer_reference_expression", fake_accessor)
+    accessors._REFERENCE_VIEW_CACHE.clear()
+    accessors._load_precomputed_cohort_views.cache_clear()
+
+
 def test_views_bundle_three_stages_and_provenance():
     v = cohort_expression_views("CLL", genes=["MS4A1", "MALAT1", "RPL13A"])
     assert isinstance(v, CohortExpressionViews)
@@ -114,8 +178,7 @@ def test_views_canonicalize_before_pivoting_symbol_drift(monkeypatch, tmp_path):
             },
         ]
     )
-    accessors._REFERENCE_VIEW_CACHE.clear()
-    monkeypatch.setattr(accessors, "_load_cancer_reference_expression", lambda: fake)
+    _install_fake_reference(monkeypatch, fake)
     _disable_precomputed_views(monkeypatch, tmp_path)
 
     v = cohort_expression_views()
@@ -145,11 +208,8 @@ def test_views_protein_coding_and_coverage_filters(monkeypatch, tmp_path):
         _fixture_row("ENSG00000141510", "BBB", "v1", 1.0),
         _fixture_row("ENSG00000251562", "AAA", "v1", 5.0),
     ])
-    monkeypatch.setattr(
-        accessors, "_load_cancer_reference_expression", lambda: fake
-    )
+    _install_fake_reference(monkeypatch, fake)
 
-    accessors._REFERENCE_VIEW_CACHE.clear()
     _disable_precomputed_views(monkeypatch, tmp_path)
     pc = cohort_expression_views(protein_coding=True)
     assert pc.clean_tpm["Ensembl_Gene_ID"].tolist() == ["ENSG00000141510"]
@@ -322,9 +382,7 @@ def _write_artifact_from_rebuild(root, monkeypatch, fake):
     """Materialize the precomputed artifact exactly as the generator does — as
     the serialized output of ``_rebuild_full_canonical_views`` over ``fake`` —
     so artifact and rebuild are the same data through two code paths."""
-    monkeypatch.setattr(accessors, "_load_cancer_reference_expression", lambda: fake)
-    accessors._REFERENCE_VIEW_CACHE.clear()
-    accessors._load_precomputed_cohort_views.cache_clear()
+    _install_fake_reference(monkeypatch, fake)
     tpm, clean, prov = accessors._rebuild_full_canonical_views()
     root.mkdir(parents=True, exist_ok=True)
     tpm.to_parquet(root / "tpm.parquet", index=False)
@@ -345,7 +403,7 @@ def _normalize(df):
     return out.reset_index(drop=True)
 
 
-def _assert_views_equal(a, b):
+def _assert_views_equal(a, b, *, check_provenance=True):
     import pandas as pd
 
     for attr in ("tpm", "clean_tpm", "clean_tpm_biological"):
@@ -353,9 +411,16 @@ def _assert_views_equal(a, b):
             _normalize(getattr(a, attr)), _normalize(getattr(b, attr)),
             check_dtype=False, check_like=True, rtol=1e-9, atol=1e-9,
         )
-    pa = a.provenance.sort_values(list(a.provenance.columns)).reset_index(drop=True)
-    pb = b.provenance.sort_values(list(b.provenance.columns)).reset_index(drop=True)
-    pd.testing.assert_frame_equal(pa, pb, check_dtype=False, check_like=True)
+    if check_provenance:
+        pa = a.provenance.sort_values(list(a.provenance.columns)).reset_index(drop=True)
+        pb = b.provenance.sort_values(list(b.provenance.columns)).reset_index(drop=True)
+        pd.testing.assert_frame_equal(
+            pa,
+            pb,
+            check_dtype=False,
+            check_categorical=False,
+            check_like=True,
+        )
 
 
 def test_views_normalize_public_column_label_dtype():
@@ -431,6 +496,9 @@ def test_artifact_matches_from_reference_oracle_current_symbols(cancer_types, ge
     fast = cohort_expression_views(cancer_types, genes=genes)
     oracle = accessors._cohort_expression_views_from_reference(
         cancer_types, genes=genes, canonicalize_genes=True)
+    # The delegated compatibility boundary canonicalizes the historical
+    # Treehouse DDLPS/WDLPS source label, so SARC provenance now matches the
+    # precomputed artifact as exactly as the expression matrices do.
     _assert_views_equal(fast, oracle)
 
 
@@ -481,12 +549,6 @@ def test_cohort_only_view_excludes_single_cohort_gene(tmp_path, monkeypatch):
 
 
 # ---------- fallback / corruption robustness ----------
-
-def _install_fake_reference(monkeypatch, fake):
-    monkeypatch.setattr(accessors, "_load_cancer_reference_expression", lambda: fake)
-    accessors._REFERENCE_VIEW_CACHE.clear()
-    accessors._load_precomputed_cohort_views.cache_clear()
-
 
 def test_missing_one_parquet_falls_back_to_rebuild(tmp_path, monkeypatch):
     fake = _synthetic_reference()

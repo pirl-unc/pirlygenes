@@ -834,6 +834,21 @@ def _reference_code_set() -> frozenset:
     )
 
 
+@lru_cache(maxsize=1)
+def _oncoref_reference_code_set() -> frozenset:
+    """Reference codes served by the delegated oncoref source-union view."""
+    import oncoref
+
+    availability = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+    )
+    return frozenset(
+        availability.loc[availability["available"], "cancer_code"].astype(str)
+    )
+
+
 def _reference_indices_by_code() -> dict:
     """Cached ``{cancer_code: positional-row-index array}`` over the reference
     frame, so per-code slicing avoids a full-frame ``astype(str).isin`` scan."""
@@ -849,7 +864,7 @@ def _reference_indices_by_code() -> dict:
 
 
 def _has_cancer_reference(code: str) -> bool:
-    return code in _reference_code_set()
+    return code in _oncoref_reference_code_set()
 
 
 def _load_cancer_expression_source_candidates() -> pd.DataFrame:
@@ -946,7 +961,7 @@ def _resolve_expression_reference_code(code: str) -> str | None:
     from ..gene_sets_cancer import cancer_type_registry
 
     registry = cancer_type_registry().set_index("code")
-    reference_codes = _reference_code_set()
+    reference_codes = _oncoref_reference_code_set()
     pan_codes = _pan_expression_codes()
     return _resolve_expression_reference_code_from_lookups(
         code,
@@ -1392,11 +1407,10 @@ def _oncoref_reference_mode(
             if isinstance(source_kind, str)
             else list(source_kind)
         )
-        delegated_source_kind = (
-            source_kinds
-            if any(str(kind) for kind in source_kinds)
-            else [_EMPTY_REFERENCE_SOURCE_KIND]
-        )
+        if not any(str(kind) for kind in source_kinds):
+            delegated_source_kind = [_EMPTY_REFERENCE_SOURCE_KIND]
+        elif not isinstance(source_kind, str):
+            delegated_source_kind = source_kinds
     compatibility_genes = _reference_compatibility_genes(requested_genes)
     delegated = oncoref.cancer_reference_expression(
         cancer_types=cancer_types,
@@ -1473,6 +1487,7 @@ def _oncoref_reference_mode(
     out.attrs["availability"] = availability
     out.attrs["missing_requests"] = missing
     out.attrs["delegated_to"] = "oncoref.cancer_reference_expression"
+    out.attrs["reference_backend"] = "oncoref"
     out.attrs["compatibility_transforms"] = compatibility_transforms
     return out
 
@@ -1494,6 +1509,7 @@ def _merge_reference_compatibility_attrs(
         for transform in part.attrs.get("compatibility_transforms", [])
     ))
     out.attrs["delegated_to"] = "oncoref.cancer_reference_expression"
+    out.attrs["reference_backend"] = "oncoref"
 
 
 def _reference_wide_from_delegated_long(
@@ -2672,7 +2688,9 @@ def hpa_cell_type_expression() -> pd.DataFrame:
     aggregated across the public HPA single-cell datasets. Useful for
     interpreting which cell type drives a sample's signal.
     """
-    return get_data("hpa-cell-type-expression").copy()
+    import oncoref
+
+    return oncoref.hpa_cell_type_expression()
 
 
 def estimate_signatures() -> pd.DataFrame:

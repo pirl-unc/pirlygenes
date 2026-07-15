@@ -17,8 +17,11 @@ import pytest
 
 pytest.importorskip("oncoref")
 
-from pirlygenes.expression.accessors import cancer_reference_expression
-from pirlygenes.expression.parity import parity_for_code
+from pirlygenes.expression.parity import (
+    _legacy_clean_reference_frame,
+    parity_for_code,
+    parity_report,
+)
 
 
 def _serves(code: str) -> bool:
@@ -46,9 +49,39 @@ def _serves(code: str) -> bool:
 @pytest.fixture(scope="module")
 def pg_frame():
     warnings.filterwarnings("ignore")
-    return cancer_reference_expression(
-        cancer_types=["PRAD", "LUAD", "MTC", "SARC_DDLPS"]
+    legacy = _legacy_clean_reference_frame()
+    return legacy[
+        legacy["cancer_code"].isin(["PRAD", "LUAD", "MTC", "SARC_DDLPS"])
+    ]
+
+
+def test_parity_report_reads_frozen_legacy_artifact(monkeypatch):
+    legacy = pd.DataFrame(
+        {
+            "cancer_code": ["X"],
+            "normalization": ["TPM_clean"],
+            "source_cohort": ["LEGACY"],
+            "n_samples": [1],
+            "Ensembl_Gene_ID": ["E1"],
+            "expression": [2.0],
+        }
     )
+    monkeypatch.setattr(
+        "pirlygenes.expression.accessors._load_cancer_reference_expression",
+        lambda: legacy,
+    )
+    monkeypatch.setattr(
+        "pirlygenes.expression.parity.parity_for_code",
+        lambda code, **kwargs: {
+            "cancer_code": code,
+            "status": "ok",
+            "source_cohort": kwargs["pg_frame"].loc[0, "source_cohort"],
+        },
+    )
+
+    report = parity_report(["X"])
+
+    assert report.loc[0, "source_cohort"] == "LEGACY"
 
 
 @pytest.mark.parametrize("code", ["PRAD", "LUAD"])

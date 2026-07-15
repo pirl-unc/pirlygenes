@@ -284,7 +284,7 @@ read raw via the generic loader.
 | oncoref `cancer-reference-expression` bundle | `cancer_reference_expression()`, `available_cancer_expression_references()` |
 | `tumor-up-vs-matched-normal.csv` | `tumor_up_vs_matched_normal()` |
 | `heme-tumor-up-vs-matched-normal.csv` | `heme_tumor_up_vs_matched_normal()` |
-| `hpa-cell-type-expression.csv` | `hpa_cell_type_expression()` |
+| oncoref HPA reference bundle | `hpa_cell_type_expression()` compatibility wrapper |
 | `estimate-signatures.csv` | `estimate_signatures()` |
 | `gene-sets.csv` | `get_data("gene-sets")` (catalog of named sets) |
 | `therapy-response-signatures.csv` | `get_data("therapy-response-signatures")` |
@@ -306,13 +306,20 @@ mtDNA set with a semantic `Role` column).
 gene-set lookups, bundled expression-matrix accessors, the cancer-type
 registry, expression builders/downloads, public masks, and compatibility
 wrappers. When a low-level reference mechanic is shared and parity-clean, this
-package delegates it to `oncoref`; currently that includes canonical clean TPM
-and explicit housekeeping normalization.
+package delegates it to `oncoref`; currently that includes canonical clean TPM,
+explicit housekeeping normalization, pan-cancer expression canonicalization,
+the empirical `cancer_reference_expression` read path, and HPA cell-type
+expression.
 
 Do not assume every oncoref table is a drop-in replacement for the bundled
-pirlygenes artifacts. `cancer_reference_expression`, representative-sample and
-percentile accessors, bundle/download/build QC, and broad registry-table
-replacement stay local until their parity and provenance contracts are clean.
+pirlygenes artifacts. Representative-sample and percentile accessors also
+delegate to oncoref. Bundle/download/build QC and purpose-specific curated
+panels remain local. The old cancer-reference summary shards are retained only
+for the cohort manifest/status helpers and legacy canonical-view rebuild path;
+they are not a silent fallback for `cancer_reference_expression`. The
+precomputed cohort view also retains its historical source labels (including
+the pre-cleanup Treehouse SARC labels); use `cancer_reference_expression` when
+current row-level provenance is required.
 
 Anything that requires interpretive judgment (per-sample QC narration,
 library-prep auto-detection, deconvolution pipelines, signature scoring, rescue
