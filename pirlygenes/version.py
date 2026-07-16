@@ -10,15 +10,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "5.23.33"
+__version__ = "5.23.34"
 
 # Version of the downloadable data bundle (pirlygenes.data_bundle). Bump
 # this ONLY when the reference data changes — it pins the bundle filename,
 # GitHub-release tag, and on-disk cache. Decoupling it from __version__
 # means a code-only release (bug/build-time fix) reuses the last uploaded
-# bundle instead of forcing a redundant ~350 MB re-upload. Must always
+# bundle instead of forcing a redundant data re-upload. Must always
 # point at an existing `pirlygenes-data-v<DATA_VERSION>.tar.gz` release asset.
-DATA_VERSION = "5.23.19"
+DATA_VERSION = "5.23.34"
 
 version_string = f"v{__version__}"
 

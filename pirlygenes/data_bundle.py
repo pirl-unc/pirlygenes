@@ -130,7 +130,7 @@ def fetch(*, verbose: bool = True) -> Path:
     if verbose:
         sys.stderr.write(
             f"pirlygenes: downloading data bundle for v{DATA_VERSION} "
-            "(~350 MB, one-time)\n"
+            "(~52 MB, one-time)\n"
             f"  from {RELEASE_URL}\n"
             f"  to   {root}\n"
         )
@@ -163,7 +163,7 @@ def ensure_local(*, auto_fetch: bool = True, verbose: bool = True) -> Path:
     With ``auto_fetch=False``, raises ``FileNotFoundError`` instead of
     triggering a network call — useful for read-only CLI inspection
     paths (``pirlygenes data status``) that shouldn't surprise users
-    with a 340 MB download.
+    with a large download.
     """
     if is_local():
         return cache_dir()

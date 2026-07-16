@@ -1061,8 +1061,14 @@ def test_reference_expression_delegates_to_oncoref_without_fallback(monkeypatch)
         assert kwargs["gene_id_style"] == "pirlygenes"
         assert kwargs["gene_universe"] == "pirlygenes"
         assert kwargs["on_missing"] == "empty"
-        assert kwargs["source_kind"] == "geo"
-        assert kwargs["source_cohort"] == ["FAKE_CLL", "FAKE_MM"]
+        # Pirlygenes owns the compatibility kind map, so kinds are resolved to
+        # exact cohort IDs before oncoref filters/pools. These deliberately fake
+        # cohorts are absent from that registry and therefore become an exact
+        # nonmatching filter rather than leaking through as unfiltered rows.
+        assert kwargs["source_kind"] is None
+        assert kwargs["source_cohort"] == [
+            expression_accessors._EMPTY_REFERENCE_SOURCE_COHORT
+        ]
         assert kwargs["exclude_microarray_proxy"] is True
         assert kwargs["collapse_cdna_identical"] is True
 

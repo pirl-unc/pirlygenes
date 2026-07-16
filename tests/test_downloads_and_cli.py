@@ -245,7 +245,7 @@ def test_get_data_resolves_csv_downloadable_by_bare_name_after_fetch(monkeypatch
     monkeypatch.setattr(data_bundle, "cache_dir", lambda: cache)
 
     def fake_ensure_local(*, auto_fetch: bool = True, verbose: bool = True):
-        # Stand in for the ~350 MB release fetch: drop the file the bundle carries.
+        # Stand in for the release fetch: drop the file the bundle carries.
         (cache / "pan-cancer-expression.csv").write_text("gene_id,COAD_TPM\nENSG1,5.0\n")
         return cache
 
