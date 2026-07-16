@@ -154,7 +154,9 @@ pirlygenes = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-n auto"
+# Keep the repository default serial. The full suite materializes large
+# reference frames in-process, so xdist workers multiply peak memory. Opt into
+# parallelism explicitly only for a known-lightweight subset.
 markers = [
     "perf: performance-regression fences",
 ]
