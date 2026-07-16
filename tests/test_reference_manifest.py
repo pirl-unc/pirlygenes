@@ -114,6 +114,7 @@ import resource
 import sys
 from pirlygenes.expression import available_cancer_expression_references
 
+assert sys.gettrace() is None, 'memory probe inherited coverage/debug tracing'
 result = available_cancer_expression_references()
 assert result.shape == (137, 8)
 peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -121,6 +122,13 @@ peak_bytes = peak if sys.platform == 'darwin' else peak * 1024
 print(peak_bytes)
 """
     env = os.environ.copy()
+    # CI runs the parent suite under pytest-cov. Newer pytest-cov releases
+    # instrument subprocesses through COV_CORE_*/COVERAGE_* environment
+    # variables; retaining them measures the coverage tracer's bookkeeping,
+    # not this accessor's fresh-process RSS.
+    for name in tuple(env):
+        if name.startswith(("COV_CORE_", "COVERAGE_")):
+            env.pop(name)
     completed = subprocess.run(
         [sys.executable, "-c", code],
         cwd=_ROOT,
