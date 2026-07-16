@@ -52,6 +52,9 @@ from pirlygenes import data_bundle  # noqa: E402
 from pirlygenes.version import DATA_VERSION, __version__  # noqa: E402
 
 DATA_DIR = REPO_ROOT / "pirlygenes" / "data"
+COHORT_VIEWS_MANIFEST = (
+    DATA_DIR / "cancer-reference-expression-views" / "_manifest.json"
+)
 TARBALL = REPO_ROOT / data_bundle.TARBALL_FILENAME           # pirlygenes-data-v<DV>.tar.gz
 DATA_TAG = f"v{DATA_VERSION}"
 CODE_TAG = f"v{__version__}"
@@ -129,7 +132,34 @@ def _release_exists(tag: str) -> bool:
         capture_output=True).returncode == 0
 
 
+def validate_data_bundle_manifests() -> None:
+    """Refuse to package derived views stamped for another data release."""
+    try:
+        manifest = json.loads(COHORT_VIEWS_MANIFEST.read_text())
+    except FileNotFoundError as exc:
+        raise Abort(
+            f"cohort-views manifest missing: {COHORT_VIEWS_MANIFEST}"
+        ) from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise Abort(
+            f"cohort-views manifest unreadable: {COHORT_VIEWS_MANIFEST}: {exc}"
+        ) from exc
+    if not isinstance(manifest, dict):
+        raise Abort(
+            f"cohort-views manifest invalid: {COHORT_VIEWS_MANIFEST} must "
+            "contain a JSON object"
+        )
+    actual = str(manifest.get("data_version", ""))
+    if actual != DATA_VERSION:
+        raise Abort(
+            "cohort-views manifest data_version mismatch: "
+            f"{actual!r} != DATA_VERSION {DATA_VERSION!r}; bump DATA_VERSION "
+            "before running scripts/generate_cohort_expression_views.py"
+        )
+
+
 def build_data_tarball(*, dry: bool) -> None:
+    validate_data_bundle_manifests()
     members = list(data_bundle.DOWNLOADABLE_PATHS)
     missing = [m for m in members if not (DATA_DIR / m).exists()]
     if missing:

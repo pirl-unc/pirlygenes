@@ -2,6 +2,8 @@
 tpm / clean_tpm / clean_tpm_biological stages so a consumer can't re-normalize
 inconsistently."""
 
+import json
+
 import pytest
 
 from pirlygenes.expression import (
@@ -9,6 +11,14 @@ from pirlygenes.expression import (
     cohort_expression_views,
 )
 from pirlygenes.expression import accessors
+from pirlygenes.version import DATA_VERSION
+
+
+def _write_current_manifest(root):
+    (root / "_manifest.json").write_text(json.dumps({
+        "canonical_gene_ids": True,
+        "data_version": DATA_VERSION,
+    }))
 
 
 def _disable_precomputed_views(monkeypatch, tmp_path):
@@ -265,7 +275,7 @@ def test_views_precomputed_artifact_fast_path(tmp_path, monkeypatch):
             },
         ]
     ).to_parquet(tmp_path / "provenance.parquet", index=False)
-    (tmp_path / "_manifest.json").write_text('{"canonical_gene_ids": true}\n')
+    _write_current_manifest(tmp_path)
     accessors._load_precomputed_cohort_views.cache_clear()
     monkeypatch.setattr(accessors, "_cohort_views_root", lambda: tmp_path)
     # When the artifact is usable, NEITHER fallback may run: not the canonical
@@ -314,7 +324,7 @@ def test_views_precomputed_gene_filter_drops_empty_cohorts(tmp_path, monkeypatch
              "processing_pipeline": "fixture", "n_samples": 3},
         ]
     ).to_parquet(tmp_path / "provenance.parquet", index=False)
-    (tmp_path / "_manifest.json").write_text('{"canonical_gene_ids": true}\n')
+    _write_current_manifest(tmp_path)
     accessors._load_precomputed_cohort_views.cache_clear()
     monkeypatch.setattr(accessors, "_cohort_views_root", lambda: tmp_path)
 
@@ -388,7 +398,7 @@ def _write_artifact_from_rebuild(root, monkeypatch, fake):
     tpm.to_parquet(root / "tpm.parquet", index=False)
     clean.to_parquet(root / "clean_tpm.parquet", index=False)
     prov.to_parquet(root / "provenance.parquet", index=False)
-    (root / "_manifest.json").write_text('{"canonical_gene_ids": true}\n')
+    _write_current_manifest(root)
     return tpm, clean, prov
 
 
@@ -604,21 +614,60 @@ def test_non_canonical_manifest_rejected(tmp_path, monkeypatch):
     assert accessors._cohort_views_usable(root) is False
 
 
-def test_malformed_manifest_treated_as_canonical(tmp_path, monkeypatch):
+def test_stale_manifest_rejected_and_falls_back_to_rebuild(tmp_path, monkeypatch):
+    fake = _synthetic_reference()
+    root = tmp_path / "views"
+    _write_artifact_from_rebuild(root, monkeypatch, fake)
+    (root / "_manifest.json").write_text(json.dumps({
+        "canonical_gene_ids": True,
+        "data_version": "5.23.19",
+    }))
+
+    _install_fake_reference(monkeypatch, fake)
+    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root)
+    monkeypatch.setattr(
+        accessors,
+        "_load_precomputed_cohort_views",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("stale precomputed artifact was read")
+        ),
+    )
+
+    assert accessors._cohort_views_usable(root) is False
+    rebuilt = cohort_expression_views(genes=["TP53"])
+    assert rebuilt.tpm["Ensembl_Gene_ID"].tolist() == [TP53]
+
+
+def test_unversioned_manifest_rejected(tmp_path, monkeypatch):
+    fake = _synthetic_reference()
+    root = tmp_path / "views"
+    _write_artifact_from_rebuild(root, monkeypatch, fake)
+    (root / "_manifest.json").write_text('{"canonical_gene_ids": true}\n')
+    assert accessors._cohort_views_usable(root) is False
+
+
+def test_malformed_manifest_rejected(tmp_path, monkeypatch):
     fake = _synthetic_reference()
     root = tmp_path / "views"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
     (root / "_manifest.json").write_text("{ not valid json")
-    # Unreadable manifest → no claim either way → present artifact still usable.
-    assert accessors._cohort_views_usable(root) is True
+    assert accessors._cohort_views_usable(root) is False
 
 
-def test_absent_manifest_treated_as_canonical(tmp_path, monkeypatch):
+def test_non_object_manifest_rejected(tmp_path, monkeypatch):
+    fake = _synthetic_reference()
+    root = tmp_path / "views"
+    _write_artifact_from_rebuild(root, monkeypatch, fake)
+    (root / "_manifest.json").write_text("[]")
+    assert accessors._cohort_views_usable(root) is False
+
+
+def test_absent_manifest_rejected(tmp_path, monkeypatch):
     fake = _synthetic_reference()
     root = tmp_path / "views"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
     (root / "_manifest.json").unlink()
-    assert accessors._cohort_views_usable(root) is True
+    assert accessors._cohort_views_usable(root) is False
 
 
 # ---------- gene-filter edge cases (on the fast path) ----------

@@ -86,6 +86,7 @@ from ..load_dataset import (
     _reference_source_cohort_storage_filter,
     get_data,
 )
+from ..version import DATA_VERSION
 from .normalize import (
     add_tpm_columns_from_fpkm,
     drop_technical_genes,
@@ -1822,9 +1823,10 @@ def _artifact_manifest(root: Path) -> dict:
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text())
+        manifest = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return {}
+    return manifest if isinstance(manifest, dict) else {}
 
 
 def _cohort_views_present(root: Path) -> bool:
@@ -1975,17 +1977,16 @@ def _filter_cohort_view_provenance(
 
 def _cohort_views_usable(root: Path) -> bool:
     """The precomputed views artifact is safe to use for the *canonical* path
-    iff all three parquets exist and the manifest does not actively declare the
-    artifact non-canonical. A missing manifest is treated as canonical (legacy
-    artifacts predate the marker); an explicit ``canonical_gene_ids: false`` is
-    rejected so a non-canonical bake can never masquerade as the canonical
-    source."""
+    iff all three parquets exist and a readable manifest declares both
+    canonical gene IDs and the running data version. Missing, malformed,
+    stale, and unversioned manifests all take the fail-safe rebuild path."""
     if not _cohort_views_present(root):
         return False
     manifest = _artifact_manifest(root)
-    if manifest and not manifest.get("canonical_gene_ids", False):
-        return False
-    return True
+    return bool(
+        manifest.get("canonical_gene_ids", False)
+        and str(manifest.get("data_version", "")) == DATA_VERSION
+    )
 
 
 def _canonicalize_views_long(long: pd.DataFrame) -> pd.DataFrame:
