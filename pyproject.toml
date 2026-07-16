@@ -155,8 +155,9 @@ pirlygenes = [
 
 [tool.pytest.ini_options]
 # Keep the repository default serial. The full suite materializes large
-# reference frames in-process, so xdist workers multiply peak memory. Opt into
-# parallelism explicitly only for a known-lightweight subset.
+# reference frames in-process, so xdist workers multiply peak memory. The root
+# conftest also forces automatic worker counts to zero and requires an explicit,
+# two-worker-max opt-in for a known-lightweight subset.
 markers = [
     "perf: performance-regression fences",
 ]
