@@ -1249,64 +1249,14 @@ def test_cancer_expression_reference_status_is_uniform_for_parent_labels():
     assert status.loc["CLL", "reference_status"] == "direct_reference"
 
 
-def test_cancer_expression_reference_status_precomputes_reference_lookups(
-    monkeypatch,
-):
-    calls = {"reference_loads": 0}
-    fake_refs = pd.DataFrame(
-        [
-            {
-                "Ensembl_Gene_ID": "ENSG000001",
-                "Symbol": "FAKE1",
-                "cancer_code": "CLL",
-                "source_cohort": "CLLMAP_2022",
-                "source_project": "CLL-map",
-                "source_version": "test",
-                "TPM_median": 1.0,
-                "TPM_q1": 0.5,
-                "TPM_q3": 1.5,
-                "TPM_mean": 1.0,
-                "TPM_clean_median": 1.0,
-                "TPM_clean_q1": 0.5,
-                "TPM_clean_q3": 1.5,
-                "n_samples": 2,
-                "n_detected": 2,
-                "processing_pipeline": "test",
-                "notes": "",
-            },
-            {
-                "Ensembl_Gene_ID": "ENSG000002",
-                "Symbol": "FAKE2",
-                "cancer_code": "MM",
-                "source_cohort": "MMRF_COMMPASS",
-                "source_project": "MMRF CoMMpass",
-                "source_version": "test",
-                "TPM_median": 2.0,
-                "TPM_q1": 1.5,
-                "TPM_q3": 2.5,
-                "TPM_mean": 2.0,
-                "TPM_clean_median": 2.0,
-                "TPM_clean_q1": 1.5,
-                "TPM_clean_q3": 2.5,
-                "n_samples": 3,
-                "n_detected": 3,
-                "processing_pipeline": "test",
-                "notes": "",
-            },
-        ]
-    )
-
-    def fake_load_reference_expression():
-        calls["reference_loads"] += 1
-        return fake_refs.copy()
-
+def test_cancer_expression_reference_status_avoids_full_reference(monkeypatch):
     def raise_if_used(*_args, **_kwargs):
-        raise AssertionError("status should use precomputed reference lookups")
+        raise AssertionError("status loaded or rescanned the full reference")
 
     monkeypatch.setattr(
         expression_accessors,
         "_load_cancer_reference_expression",
-        fake_load_reference_expression,
+        raise_if_used,
     )
     monkeypatch.setattr(
         expression_accessors,
@@ -1326,10 +1276,9 @@ def test_cancer_expression_reference_status_precomputes_reference_lookups(
 
     status = cancer_expression_reference_status().set_index("cancer_code")
 
-    assert calls["reference_loads"] == 1
     assert status.loc["CLL", "reference_status"] == "direct_reference"
     assert status.loc["PCN", "reference_code"] == "MM"
-    assert status.loc["BRCA_Basal", "reference_code"] == "BRCA"
+    assert status.loc["BRCA_Basal", "reference_code"] == "BRCA_Basal"
 
 
 def test_cancer_reference_expression_cll_sample_manifest_tracks_exclusions():

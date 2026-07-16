@@ -798,12 +798,9 @@ def _load_cancer_reference_expression() -> pd.DataFrame:
 
 # Identity-keyed memo of read-only views derived purely from the (shared,
 # process-wide) reference frame. The frame is a singleton — get_data(copy=False)
-# returns the same object every call — so any view computed from it is stable
-# until the data reloads. Keying each cache entry on the frame's *identity*
-# makes it self-invalidate the moment a test monkeypatches
-# _load_cancer_reference_expression to return a different frame. Without this,
-# available_cancer_expression_references() factorized the ~1M-row frame once per
-# cancer code, which alone was ~300 s of the serial suite (#278 follow-up).
+# returns the same object every call — so any expression-value view computed
+# from it is stable until the data reloads. The gene-independent availability
+# manifest deliberately does not use this cache (#565).
 _REFERENCE_VIEW_CACHE: dict[str, tuple] = {}
 
 
@@ -1020,6 +1017,8 @@ def _reference_long_from_summary_frame(
         "n_detected",
         "processing_pipeline",
         "notes",
+        "tumor_origin",
+        "metastasis_site",
     ]
     keep = [
         column
@@ -1052,15 +1051,34 @@ def available_cancer_expression_references() -> pd.DataFrame:
     cohort. Downstream consumers can use this to decide which non-TCGA
     references are available without inspecting data files.
 
-    The expensive projection (drop_duplicates over the ~1M-row frame) is
-    memoized on the reference frame's identity; this returns a fresh ``.copy()``
-    of that cached view each call, so callers may mutate the result freely
-    without corrupting the cache. The copy is cheap — the cached frame is the
-    deduplicated cohort list (one row per ``(cancer_code, source_cohort)``).
+    This is a gene-independent manifest read. It combines oncoref's lightweight
+    availability API with pirlygenes' cohort-view provenance sidecar and
+    compatibility registry; it never loads the multi-million-row expression
+    summary. A fresh ``.copy()`` keeps the historical mutation-safe contract.
     """
-    return _reference_view(
-        "available_references", _build_available_references
-    ).copy()
+    root = _cohort_views_root()
+    return _load_available_reference_manifest(str(root)).copy()
+
+
+@lru_cache(maxsize=4)
+def _load_available_reference_manifest(root_text: str) -> pd.DataFrame:
+    import oncoref
+
+    from ..gene_sets_cancer import cohort_registry_df
+    from .reference_manifest import build_reference_manifest
+    from .source_cohort_origin import classify_source_cohort
+
+    provenance = pd.read_parquet(
+        Path(root_text) / _COHORT_VIEW_PROVENANCE_FILE,
+    )
+    availability = oncoref.cancer_reference_expression_availability()
+    manifest = build_reference_manifest(
+        provenance,
+        availability,
+        cohort_registry_df(),
+        classify_source_cohort,
+    )
+    return _build_available_references(manifest)
 
 
 def _build_available_references(df: pd.DataFrame) -> pd.DataFrame:
@@ -2046,9 +2064,12 @@ def _rebuild_full_canonical_views() -> tuple[pd.DataFrame, pd.DataFrame, pd.Data
         index_cols = ["Ensembl_Gene_ID"]
         tpm = _pivot_views_long(long, "TPM", index_cols)
         clean = _pivot_views_long(long, "TPM_clean", index_cols)
-        prov_cols = [
-            "cancer_code", "source_cohort", "processing_pipeline", "n_samples",
-        ]
+        # Keep the full public availability metadata in future sidecars. The
+        # lightweight reader remains compatible with older four-column
+        # sidecars by filling these fields from registries (#565).
+        from .reference_manifest import PUBLIC_COLUMNS
+
+        prov_cols = list(PUBLIC_COLUMNS)
         provenance = (long[[c for c in prov_cols if c in long.columns]]
                       .drop_duplicates().reset_index(drop=True))
         return tpm, clean, provenance
