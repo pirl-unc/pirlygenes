@@ -64,7 +64,8 @@ gene's disjoint exonic bases), *not* read counts. The transform is owned by
    per unversioned ENSG.
 3. **Clean TPM**: apply the canonical 16/9/75 clean-TPM transform through
    `expression.normalize.clean_tpm_matrix`. Rows in
-   `clean-tpm-censored-genes.csv` with `category == "ribosomal_protein"` are
+   oncoref's `clean-tpm-censored-genes` dataset with
+   `category == "ribosomal_protein"` are
    pinned to 16% of the 1e6 budget, rows with `category == "technical"` are
    pinned to 9%, and all other biological rows receive the remaining 75%.
 

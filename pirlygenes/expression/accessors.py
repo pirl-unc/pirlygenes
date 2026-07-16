@@ -693,11 +693,11 @@ _REFERENCE_NORMALIZE_ALIASES = {
     "tpm_clean_log1p": "tpm_clean_log1p",
     "clean_tpm_log1p": "tpm_clean_log1p",
 }
-# oncoref currently normalizes an explicitly empty source-kind iterable to an
-# empty set and then treats that set as though no filter was supplied.  Forward
-# a guaranteed-nonmatching value instead so pirlygenes retains its historical
-# distinction between ``None`` (all source kinds) and ``[]`` (no source kinds).
-_EMPTY_REFERENCE_SOURCE_KIND = "__pirlygenes_explicit_empty_source_kind__"
+# oncoref currently normalizes explicitly empty filters to an empty set and
+# then treats that set as though no filter was supplied.  Forward a guaranteed
+# nonmatching cohort instead so pirlygenes retains its historical distinction
+# between ``None`` (all sources) and ``[]`` (no sources).
+_EMPTY_REFERENCE_SOURCE_COHORT = "__pirlygenes_explicit_empty_source_cohort__"
 _REFERENCE_VALUE_COLUMNS = {
     "tpm": ("TPM_median", "TPM_q1", "TPM_q3", "TPM"),
     "tpm_clean": (
@@ -1364,6 +1364,44 @@ def _reference_compatibility_genes(
     return expanded
 
 
+def _reference_compatibility_source_cohorts(
+    source_kind: Optional[str | Iterable[str]],
+    source_cohort: Optional[str | Iterable[str]],
+) -> Optional[list[str] | str]:
+    """Translate pirlygenes source-kind semantics to exact cohort filters.
+
+    Pirlygenes' cohort registry is the compatibility authority for ``kind``.
+    Resolving kinds to cohort IDs before delegation both preserves that public
+    contract when oncoref's registry lags (currently the Merkel GEO cohort) and
+    ensures filtering occurs before oncoref pools source rows.
+    """
+    storage_filter = _reference_source_cohort_storage_filter(source_cohort)
+    if source_kind is None:
+        return storage_filter
+
+    requested_kinds = (
+        [source_kind] if isinstance(source_kind, str) else list(source_kind)
+    )
+    requested_kinds = {str(kind) for kind in requested_kinds if str(kind)}
+    from ..gene_sets_cancer import cohort_registry_df
+
+    registry = cohort_registry_df()
+    matching = registry.loc[
+        registry["kind"].astype(str).isin(requested_kinds), "cohort_id"
+    ].astype(str).tolist()
+    kind_cohorts = _reference_source_cohort_storage_filter(matching)
+    allowed = list(kind_cohorts) if kind_cohorts is not None else []
+
+    if storage_filter is not None:
+        requested = (
+            [storage_filter] if isinstance(storage_filter, str) else storage_filter
+        )
+        allowed_set = set(allowed)
+        allowed = [cohort for cohort in requested if cohort in allowed_set]
+
+    return allowed or [_EMPTY_REFERENCE_SOURCE_COHORT]
+
+
 def _oncoref_reference_mode(
     *,
     cancer_types: Optional[str | Iterable[str]],
@@ -1400,18 +1438,11 @@ def _oncoref_reference_mode(
             else list(source_cohort)
         )
     )
-    delegated_source_kind = source_kind
-    if source_kind is not None:
-        source_kinds = (
-            [source_kind]
-            if isinstance(source_kind, str)
-            else list(source_kind)
-        )
-        if not any(str(kind) for kind in source_kinds):
-            delegated_source_kind = [_EMPTY_REFERENCE_SOURCE_KIND]
-        elif not isinstance(source_kind, str):
-            delegated_source_kind = source_kinds
     compatibility_genes = _reference_compatibility_genes(requested_genes)
+    delegated_source_cohort = _reference_compatibility_source_cohorts(
+        source_kind,
+        requested_source_cohort,
+    )
     delegated = oncoref.cancer_reference_expression(
         cancer_types=cancer_types,
         genes=compatibility_genes,
@@ -1424,10 +1455,10 @@ def _oncoref_reference_mode(
         reference_source="summary_rows_all",
         gene_id_style="pirlygenes",
         gene_universe="pirlygenes",
-        source_kind=delegated_source_kind,
-        source_cohort=_reference_source_cohort_storage_filter(
-            requested_source_cohort
-        ),
+        # Resolve source kinds with pirlygenes' registry and forward exact
+        # cohorts. This avoids inheriting gaps in oncoref's kind map.
+        source_kind=None,
+        source_cohort=delegated_source_cohort,
         exclude_microarray_proxy=exclude_microarray_proxy,
         pool=pool,
         collapse_cdna_identical=collapse_cdna_identical,
@@ -1441,6 +1472,30 @@ def _oncoref_reference_mode(
         compatibility_transforms.append(
             "legacy gene aliases expanded before delegated filtering"
         )
+    if source_kind is not None:
+        compatibility_transforms.append(
+            "source-kind filter resolved through pirlygenes cohort registry"
+        )
+    if cancer_types is not None:
+        allowed_codes = {str(code) for code in cancer_types}
+        delegated_codes = set(delegated["cancer_code"].astype(str))
+        availability_codes = {
+            str(record.get("cancer_code", ""))
+            for record in attrs.get("availability", [])
+        }
+        if (delegated_codes | availability_codes) - allowed_codes:
+            compatibility_transforms.append(
+                "cancer-type request constrained to pirlygenes aggregate semantics"
+            )
+        delegated = delegated.loc[
+            delegated["cancer_code"].astype(str).isin(allowed_codes)
+        ].copy()
+        for attr_name in ("availability", "missing_requests"):
+            attrs[attr_name] = [
+                record
+                for record in attrs.get(attr_name, [])
+                if str(record.get("cancer_code", "")) in allowed_codes
+            ]
     delegated, source_labels_normalized = (
         _normalize_reference_source_cohort_labels(delegated)
     )
@@ -1451,7 +1506,7 @@ def _oncoref_reference_mode(
     public_source_filter = _reference_source_cohort_public_filter(
         requested_source_cohort
     )
-    if public_source_filter is not None:
+    if public_source_filter is not None and not pool:
         delegated = delegated[
             delegated["source_cohort"].astype(str).isin(public_source_filter)
         ].copy()
@@ -1646,9 +1701,13 @@ def cancer_reference_expression(
     genes = materialize(genes)
     source_kind = materialize(source_kind)
     source_cohort = materialize(source_cohort)
+    requested_codes = _resolve_cancer_types(
+        cancer_types,
+        expand_aggregates=True,
+    )
     parts = [
         _oncoref_reference_mode(
-            cancer_types=cancer_types,
+            cancer_types=requested_codes,
             genes=genes,
             mode=mode,
             include_provenance=include_provenance,
@@ -1681,15 +1740,22 @@ def cancer_reference_expression(
     _merge_reference_compatibility_attrs(long, parts)
     if format == "long":
         return long
-    requested_codes = _resolve_cancer_types(
-        cancer_types,
-        expand_aggregates=True,
+    # Retain stable columns for directly available cohorts eliminated by a
+    # row-level filter, while omitting oncoref-only grouping nodes that
+    # pirlygenes historically treated as exact, unavailable codes.
+    wide_requested_codes = (
+        None
+        if requested_codes is None
+        else [
+            code for code in requested_codes
+            if code in _oncoref_reference_code_set()
+        ]
     )
     return _reference_wide_from_delegated_long(
         long,
         modes=modes,
         parts=parts,
-        requested_codes=requested_codes,
+        requested_codes=wide_requested_codes,
     )
 
 

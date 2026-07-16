@@ -31,6 +31,9 @@ from __future__ import annotations
 import functools
 from typing import Iterable
 
+from oncoref.gene_families import (
+    clean_tpm_censored_gene_ids as _oncoref_clean_tpm_censored_gene_ids,
+)
 from oncoref.normalization import clean_tpm as _oncoref_clean_tpm
 from oncoref.normalization import (
     tpm_to_housekeeping_normalized as _oncoref_tpm_to_housekeeping_normalized,
@@ -514,17 +517,16 @@ _RIBOSOMAL_PROTEIN_GROUPS = frozenset(
 
 @functools.lru_cache(maxsize=2)
 def _clean_tpm_censored_ids(include_ribosomal: bool) -> frozenset:
-    """Unversioned ENSGs censored by the clean-TPM transform, read from the
-    single canonical explicit list ``clean-tpm-censored-genes.csv`` (materialized
-    once from :func:`classify_gene_qc`, categorized, and CTA-excluded — see
-    ``scripts/generate_clean_tpm_censored_genes.py``). ``include_ribosomal``
-    toggles the ``ribosomal_protein`` category on top of the always-included
-    ``technical`` category."""
-    from ..load_dataset import get_data
-    df = get_data("clean-tpm-censored-genes", copy=False)
-    if not include_ribosomal:
-        df = df[df["category"].astype(str) == "technical"]
-    return frozenset(df["Ensembl_Gene_ID"].astype(str).str.split(".").str[0])
+    """Unversioned ENSGs censored by oncoref's canonical clean-TPM contract.
+
+    ``include_ribosomal`` toggles the 16% ribosomal compartment on top of the
+    always-included 9% other-technical compartment. pirlygenes retains this
+    private helper for its public compatibility masks, but no longer owns or
+    regenerates the underlying membership table (#514).
+    """
+    return _oncoref_clean_tpm_censored_gene_ids(
+        include_ribosomal_proteins=include_ribosomal,
+    )
 
 
 def _ensg_unversioned(gene_table):

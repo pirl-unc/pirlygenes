@@ -15,7 +15,7 @@ histone-genes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechani
 hemoglobin-genes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived gene family table; excluded from literature PMID audits.
 immune-receptor-segments,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived IG/TR segment table; excluded from literature PMID audits.
 ribosomal-protein-genes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived gene family table; excluded from literature PMID audits.
-ribosomal-protein-pseudogenes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived gene family table; excluded from literature PMID audits.
+ribosomal-protein-pseudogenes,ensembl_derived,ENSEMBL_RELEASE:112,oncoref.gene_families.gene_family,Re-exported from oncoref's canonical mechanically derived gene-family table; excluded from literature PMID audits.
 rrna-and-pseudogenes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived RNA/pseudogene table; excluded from literature PMID audits.
 numt-pseudogenes,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived NUMT pseudogene table; excluded from literature PMID audits.
 small-noncoding-rnas,ensembl_derived,ENSEMBL_RELEASE:112,gene family derivation,Mechanically derived small noncoding RNA table; excluded from literature PMID audits.

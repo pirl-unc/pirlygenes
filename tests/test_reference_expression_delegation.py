@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import oncoref
 
@@ -187,6 +188,49 @@ def test_source_filtered_empty_wide_result_keeps_requested_columns():
         "CLL_TPM",
         "CLL_TPM_clean",
     ]
+
+
+@pytest.mark.parametrize(
+    "code",
+    ["CRC_MSI", "NEC", "NEC_LUNG", "NEN", "NET", "RCC", "THYM_EPITHELIAL"],
+)
+def test_oncoref_only_groupings_remain_exact_unavailable_requests(code):
+    long = accessors.cancer_reference_expression(
+        cancer_types=code,
+        genes=["TP53"],
+    )
+    assert long.empty
+
+    wide = accessors.cancer_reference_expression(
+        cancer_types=code,
+        genes=["TP53"],
+        format="wide",
+    )
+    assert wide.empty
+    assert list(wide.columns) == ["Ensembl_Gene_ID", "Symbol"]
+
+
+def test_merkel_geo_kind_uses_pirlygenes_cohort_registry():
+    out = accessors.cancer_reference_expression(
+        cancer_types="NEC_MERKEL",
+        genes=["TP53"],
+        source_kind="geo",
+    )
+    assert not out.empty
+    assert set(out["cancer_code"]) == {"NEC_MERKEL"}
+    assert set(out["source_cohort"]) == {"GSE235092_MERKEL_2024"}
+
+
+def test_exact_cohort_filter_is_applied_before_pooling():
+    out = accessors.cancer_reference_expression(
+        cancer_types="CLL",
+        genes=["MS4A1"],
+        source_cohort="CLLMAP_2022",
+        pool=True,
+    )
+    assert not out.empty
+    assert set(out["source_cohort"]) == {"POOLED"}
+    assert out["expression"].notna().all()
 
 
 def test_sarc_histology_source_label_and_filter_are_canonicalized():

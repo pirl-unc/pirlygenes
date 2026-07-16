@@ -243,7 +243,8 @@ expression matrices. Solid-tumor marker codes are `ACC`, `ATRT`, `BLCA`,
 
 `clean_tpm_matrix()` in `pirlygenes.expression` is the shared clean-TPM
 transform for samples and references. Its censored compartments come from
-`clean-tpm-censored-genes.csv`, not from the supporting family CSVs:
+oncoref's `clean-tpm-censored-genes` dataset, re-exported by pirlygenes for
+compatibility, not from the supporting family tables:
 `category == "ribosomal_protein"` is the 16% ribosomal compartment,
 `category == "technical"` is the 9% other-technical compartment, and every
 gene absent from that table remains biological.
