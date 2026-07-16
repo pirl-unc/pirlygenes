@@ -21,9 +21,9 @@ For pirlygenes-owned datasets, two data roots are checked in order:
      :mod:`pirlygenes.data_bundle` (large per-cohort summaries fetched
      from the GitHub Release matching the installed version).
 
-Any file present in (1) wins over (2). The exception is
-``cancer-reference-expression``: oncoref owns that empirical table and
-``get_data`` delegates it explicitly, even in a source checkout (#557).
+Any file present in (1) wins over (2). Datasets owned by oncoref are explicit
+exceptions: ``get_data`` delegates them even in a source checkout, so stale
+pirlygenes-local mirrors can never win (#557, #514).
 
 When a callable here requests one of the
 :data:`pirlygenes.data_bundle.DOWNLOADABLE_PATHS` items and it's
@@ -41,6 +41,14 @@ _BUNDLED_DATA_DIR = Path(__file__).parent / "data"
 _DOWNLOADED_DATA_DIR = data_bundle.cache_dir()
 _DATASET_PATHS = None
 _CACHED_DATAFRAMES = {}
+
+# Base-layer normalization/gene-family datasets owned by oncoref. Keep their
+# historical pirlygenes get_data names as compatibility re-exports without
+# shipping a second physical copy that can drift.
+_ONCOREF_DATASETS = frozenset({
+    "clean-tpm-censored-genes",
+    "ribosomal-protein-pseudogenes",
+})
 
 
 # Back-compat alias — many call sites still import _DATA_DIR.
@@ -337,6 +345,11 @@ def load_all_dataframes():
         df = pd.read_csv(str(csv_path), low_memory=False)
         df = _normalize_dataset_dtypes(csv_key, df)
         yield csv_key, df
+    # Preserve the generic enumeration surface for datasets whose physical
+    # copies moved to oncoref. They are not present in get_all_csv_paths(), but
+    # callers of load_all_dataframes_dict() still see the historical keys.
+    for dataset in sorted(_ONCOREF_DATASETS):
+        yield f"{dataset}.csv", get_data(dataset, copy=False)
     # Runtime ownership of the empirical summary rows moved to oncoref (#557).
     # Yield the delegated frame exactly once even in a wheel install, where the
     # legacy pirlygenes shard directory is intentionally absent.
@@ -394,6 +407,19 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     dominated test-suite time (#278).
     """
     normalized_name = name.lower()
+
+    delegated_name = normalized_name.removesuffix(".csv")
+    if _dataframes_dict is None and delegated_name in _ONCOREF_DATASETS:
+        cache_key = f"{delegated_name}.csv"
+        if cache_key not in _CACHED_DATAFRAMES:
+            from oncoref.load_dataset import get_data as get_oncoref_data
+
+            _CACHED_DATAFRAMES[cache_key] = get_oncoref_data(
+                delegated_name,
+                copy=False,
+            )
+        cached = _CACHED_DATAFRAMES[cache_key]
+        return cached.copy() if copy else cached
 
     # The empirical cancer-reference-expression rows are owned by oncoref.  Keep
     # pirlygenes' generic get_data surface working, but never select the duplicate

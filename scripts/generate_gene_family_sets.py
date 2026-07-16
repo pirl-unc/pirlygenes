@@ -26,7 +26,10 @@ Run from the pirlygenes repo root:
     python scripts/generate_gene_family_sets.py [--releases 100-114]
 
 Re-run after the regex panel in ``pirlygenes/expression/qc.py``
-changes — these CSVs are derived data, not curated.
+changes — these CSVs are derived data, not curated. The
+ribosomal-protein-pseudogene family is intentionally absent: oncoref owns that
+table and pirlygenes delegates it rather than regenerating a local mirror
+(pirlygenes#514).
 """
 
 from __future__ import annotations
@@ -42,7 +45,7 @@ from pyensembl import EnsemblRelease
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-from pirlygenes.expression.qc import classify_gene_qc
+from pirlygenes.expression.qc import classify_gene_qc  # noqa: E402
 
 
 # QC-classifier group → on-disk slug. ``mt_dna`` is intentionally
@@ -52,7 +55,6 @@ GROUP_TO_SLUG = {
     "mt_like_pseudogene": "numt-pseudogenes",
     "rrna_like": "rrna-and-pseudogenes",
     "ribosomal_protein": "ribosomal-protein-genes",
-    "ribosomal_protein_pseudogene": "ribosomal-protein-pseudogenes",
     "small_ncrna": "small-noncoding-rnas",
     "histone": "histone-genes",
     "hemoglobin": "hemoglobin-genes",

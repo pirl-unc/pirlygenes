@@ -27,6 +27,12 @@ def _load_generator():
 gfg = _load_generator()
 
 
+def test_oncoref_owned_ribosomal_pseudogenes_are_not_generated_locally():
+    assert "ribosomal-protein-pseudogenes" not in set(
+        gfg.GROUP_TO_SLUG.values()
+    )
+
+
 def test_release_discovery_returns_sorted_ints_without_download():
     """Discovery returns a sorted list of release ints (empty if none built),
     and never raises — regardless of pyensembl's ``gtf_path`` behaviour."""

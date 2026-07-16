@@ -1,4 +1,4 @@
-"""Curated functional gene families — symbol/ENSG sets shipped as CSVs.
+"""Curated functional gene families — symbol/ENSG compatibility accessors.
 
 Each family is a set of HGNC symbols and Ensembl gene IDs sharing a
 biological or structural origin (NUMTs, nuclear rRNA pseudogenes,
@@ -8,23 +8,25 @@ panels for QC, normalization, attribution, and downstream analysis —
 ENSG-stable feature classification, falling back to symbol regex when
 an ID isn't present in any family.
 
-Files in ``pirlygenes/data/``:
+Sources exposed through pirlygenes:
 
     mitochondrial-genes.csv          (curated; ``Symbol, Ensembl_Gene_ID, Role``)
     numt-pseudogenes.csv             (derived)
     nuclear-retained-lncrnas.csv     (derived; MALAT1, NEAT1)
     rrna-and-pseudogenes.csv         (derived)
     ribosomal-protein-genes.csv      (derived)
-    ribosomal-protein-pseudogenes.csv (derived)
+    ribosomal-protein-pseudogenes     (owned by oncoref; delegated)
     small-noncoding-rnas.csv         (derived; snoRNAs, snRNAs, miRNAs, Y RNAs, vault RNAs, ...)
     histone-genes.csv                (derived)
     hemoglobin-genes.csv             (derived)
     immune-receptor-segments.csv     (derived; IG/TR V/D/J/C)
 
-Derived CSVs are produced by ``scripts/generate_gene_family_sets.py``
-walking every installed Ensembl release and applying the regex panel
-in :func:`pirlygenes.expression.qc.classify_gene_qc`. Re-run after the
-regex changes.
+The remaining local derived CSVs are produced by
+``scripts/generate_gene_family_sets.py`` walking every installed Ensembl
+release and applying the regex panel in
+:func:`pirlygenes.expression.qc.classify_gene_qc`. The ribosomal-protein
+pseudogene family is owned by :mod:`oncoref.gene_families` and is never
+regenerated locally (#514).
 
 ENSG IDs are stored **unversioned** (``ENSG00000251562``); a sample
 carrying ``ENSG00000251562.5`` is stripped at lookup. Multi-release
@@ -56,7 +58,8 @@ class GeneFamily:
     """One curated gene family."""
 
     name: str  # canonical family name, e.g. "numt_pseudogene"
-    filename: str  # CSV filename under pirlygenes/data/
+    filename: str  # historical dataset filename retained for compatibility
+    owner: str = "pirlygenes"
 
 
 # Ordered: when an ENSG/Symbol appears in multiple families (rare HGNC
@@ -67,7 +70,11 @@ GENE_FAMILIES: tuple[GeneFamily, ...] = (
     GeneFamily("numt_pseudogene", "numt-pseudogenes.csv"),
     GeneFamily("nuclear_retained_lncrna", "nuclear-retained-lncrnas.csv"),
     GeneFamily("rrna_and_pseudogene", "rrna-and-pseudogenes.csv"),
-    GeneFamily("ribosomal_protein_pseudogene", "ribosomal-protein-pseudogenes.csv"),
+    GeneFamily(
+        "ribosomal_protein_pseudogene",
+        "ribosomal-protein-pseudogenes.csv",
+        owner="oncoref",
+    ),
     GeneFamily("ribosomal_protein", "ribosomal-protein-genes.csv"),
     GeneFamily("small_noncoding_rna", "small-noncoding-rnas.csv"),
     GeneFamily("histone", "histone-genes.csv"),
@@ -84,6 +91,13 @@ def _load_table() -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     missing: list[str] = []
     for family in GENE_FAMILIES:
+        if family.owner == "oncoref":
+            from oncoref.gene_families import gene_family as oncoref_gene_family
+
+            df = oncoref_gene_family(family.name)
+            df["family"] = family.name
+            frames.append(df)
+            continue
         path = _DATA_DIR / family.filename
         if not path.is_file():
             missing.append(family.filename)

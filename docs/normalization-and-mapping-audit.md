@@ -9,7 +9,8 @@ mapping is uniform. Done June 2026 alongside the recount3 integration.
 There is **one** unit dispatcher,
 `pirlygenes.builders.geo_matrix.normalize_to_tpm`, and **one** clean-TPM
 transform, `expression.normalize.clean_tpm_matrix`. Clean TPM follows the
-canonical 16/9/75 compartment contract: `clean-tpm-censored-genes.csv` rows
+canonical 16/9/75 compartment contract: oncoref's
+`clean-tpm-censored-genes` rows
 with `category == "ribosomal_protein"` receive 16% of each sample's 1e6 budget,
 rows with `category == "technical"` receive 9%, and all other biological rows
 receive 75%. `technical_rna_mask` is the strict technical subset used by lower

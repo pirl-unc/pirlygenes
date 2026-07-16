@@ -330,6 +330,52 @@ def test_canonical_list_schema_and_categories():
     assert len(df) > 2000
 
 
+def test_reconciled_ribosomal_pseudogenes_come_from_oncoref():
+    """All #514 reconciliation rows flow through pirlygenes' compatibility APIs.
+
+    The physical datasets live only in oncoref: three family rows newly join the
+    16% clean-TPM compartment and nine compartment rows newly join the broader
+    ribosomal-protein-pseudogene family.
+    """
+    from pathlib import Path
+
+    from oncoref.load_dataset import get_data as get_oncoref_data
+
+    from pirlygenes.gene_families import ribosomal_protein_pseudogene_ids
+    from pirlygenes.load_dataset import get_data
+
+    reconciled = {
+        "ENSG00000292328", "ENSG00000280437", "ENSG00000293173",
+        "ENSG00000283120", "ENSG00000283753", "ENSG00000283660",
+        "ENSG00000284212", "ENSG00000242150", "ENSG00000282862",
+        "ENSG00000282942", "ENSG00000284153", "ENSG00000282839",
+    }
+    censored = get_data("clean-tpm-censored-genes")
+    family = get_data("ribosomal-protein-pseudogenes")
+
+    pd.testing.assert_frame_equal(
+        censored,
+        get_oncoref_data("clean-tpm-censored-genes"),
+    )
+    pd.testing.assert_frame_equal(
+        family,
+        get_oncoref_data("ribosomal-protein-pseudogenes"),
+    )
+    assert reconciled <= set(censored["Ensembl_Gene_ID"].astype(str))
+    assert reconciled <= set(family["Ensembl_Gene_ID"].astype(str))
+    assert reconciled <= ribosomal_protein_pseudogene_ids()
+
+    rows = censored[censored["Ensembl_Gene_ID"].astype(str).isin(reconciled)]
+    assert set(rows["category"].astype(str)) == {"ribosomal_protein"}
+    assert clean_tpm_removal_mask(
+        rows[["Symbol", "Ensembl_Gene_ID"]].reset_index(drop=True)
+    ).all()
+
+    data_dir = Path(__file__).resolve().parent.parent / "pirlygenes" / "data"
+    assert not (data_dir / "clean-tpm-censored-genes.csv").exists()
+    assert not (data_dir / "ribosomal-protein-pseudogenes.csv").exists()
+
+
 def test_canonical_list_is_cta_safe():
     """The list is CTA-excluded by construction, so the ribosomal-protein CTA
     (RPL10L) and the histone CTA (H1-6) are never censored — no runtime
