@@ -110,22 +110,27 @@ def test_availability_returns_a_defensive_copy():
 
 def test_fresh_process_availability_peak_rss_stays_below_one_gb():
     code = """
-import resource
 import sys
+from pathlib import Path
 from pirlygenes.expression import available_cancer_expression_references
 
 assert sys.gettrace() is None, 'memory probe inherited coverage/debug tracing'
 result = available_cancer_expression_references()
 assert result.shape == (137, 8)
-peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-peak_bytes = peak if sys.platform == 'darwin' else peak * 1024
+if sys.platform.startswith('linux'):
+    # getrusage().ru_maxrss retains the forked pytest parent's historical
+    # high-water mark across exec on Linux. VmHWM belongs to this executable's
+    # new memory map and therefore measures the intended fresh process.
+    status = Path('/proc/self/status').read_text().splitlines()
+    peak_kib = next(line for line in status if line.startswith('VmHWM:')).split()[1]
+    peak_bytes = int(peak_kib) * 1024
+else:
+    import resource
+    peak_bytes = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 print(peak_bytes)
 """
     env = os.environ.copy()
-    # CI runs the parent suite under pytest-cov. Newer pytest-cov releases
-    # instrument subprocesses through COV_CORE_*/COVERAGE_* environment
-    # variables; retaining them measures the coverage tracer's bookkeeping,
-    # not this accessor's fresh-process RSS.
+    # Do not make coverage/debug instrumentation part of the measured workload.
     for name in tuple(env):
         if name.startswith(("COV_CORE_", "COVERAGE_")):
             env.pop(name)
