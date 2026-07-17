@@ -80,11 +80,12 @@ import pandas as pd
 from ..gene_families import gene_family_ids
 from ..gene_ids import strip_version
 from ..gene_names import get_alias_as_list, get_reverse_alias_as_list
-from ..load_dataset import (
-    _normalize_reference_source_cohort_labels,
-    _reference_source_cohort_public_filter,
-    _reference_source_cohort_storage_filter,
-    get_data,
+from ..load_dataset import get_data
+from ..reference_source_cohorts import (
+    normalize_reference_source_cohort_labels as _normalize_reference_source_cohort_labels,
+    normalize_reference_source_cohort_records as _normalize_reference_source_cohort_records,
+    reference_source_cohort_public_filter as _reference_source_cohort_public_filter,
+    reference_source_cohort_storage_filter as _reference_source_cohort_storage_filter,
 )
 from .normalize import (
     add_tpm_columns_from_fpkm,
@@ -1425,6 +1426,14 @@ def _reference_compatibility_source_cohorts(
     """
     storage_filter = _reference_source_cohort_storage_filter(source_cohort)
     if source_kind is None:
+        if source_cohort is not None:
+            requested = (
+                [storage_filter]
+                if isinstance(storage_filter, str)
+                else storage_filter
+            )
+            if not requested or not any(str(cohort) for cohort in requested):
+                return [_EMPTY_REFERENCE_SOURCE_COHORT]
         return storage_filter
 
     requested_kinds = (
@@ -1544,12 +1553,26 @@ def _oncoref_reference_mode(
                 for record in attrs.get(attr_name, [])
                 if str(record.get("cancer_code", "")) in allowed_codes
             ]
-    delegated, source_labels_normalized = (
+    attrs["availability"], availability_labels_normalized = (
+        _normalize_reference_source_cohort_records(
+            attrs.get("availability", [])
+        )
+    )
+    attrs["missing_requests"], missing_labels_normalized = (
+        _normalize_reference_source_cohort_records(
+            attrs.get("missing_requests", [])
+        )
+    )
+    delegated, row_labels_normalized = (
         _normalize_reference_source_cohort_labels(delegated)
     )
-    if source_labels_normalized:
+    if (
+        row_labels_normalized
+        or availability_labels_normalized
+        or missing_labels_normalized
+    ):
         compatibility_transforms.append(
-            "SARC DDLPS/WDLPS source cohort normalized to registry label"
+            "source-cohort labels normalized to public registry identities"
         )
     public_source_filter = _reference_source_cohort_public_filter(
         requested_source_cohort

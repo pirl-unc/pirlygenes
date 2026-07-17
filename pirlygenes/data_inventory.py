@@ -24,6 +24,7 @@ from pathlib import Path
 import pandas as pd
 
 from .downloads import load_registry
+from .reference_source_cohorts import normalize_reference_source_cohort_labels
 
 
 def _active_reference_dir() -> Path:
@@ -380,7 +381,7 @@ _SUMMARY_CACHE = Path.home() / ".cache" / "pirlygenes" / "inventory_summary.json
 # Bump when the cached snapshot's fields/shape change, so stale caches from an
 # older code version are ignored (the shard fingerprint alone wouldn't catch a
 # pure-code schema change like adding the `reference` field).
-_SUMMARY_SCHEMA = "11"
+_SUMMARY_SCHEMA = "12"
 
 
 def _shard_signature(paths: list[Path]) -> str:
@@ -447,6 +448,7 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
         for col in _SUMMARY_COLS:
             if col not in sd.columns:
                 sd[col] = None if col == "n_samples" else ""
+        sd, _ = normalize_reference_source_cohort_labels(sd)
         total_rows += len(sd)
         gene_ids.update(sd["Ensembl_Gene_ID"].astype(str).unique())
         parts.append(

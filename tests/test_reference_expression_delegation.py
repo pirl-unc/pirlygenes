@@ -173,6 +173,19 @@ def test_explicit_empty_source_kind_returns_no_rows():
     assert out.attrs["availability"][0]["available"] is False
 
 
+@pytest.mark.parametrize("pool", [False, True])
+@pytest.mark.parametrize("source_cohort", [[], (), ""])
+def test_explicit_empty_source_cohort_returns_no_rows(source_cohort, pool):
+    out = accessors.cancer_reference_expression(
+        cancer_types="CLL",
+        genes=["MS4A1"],
+        source_cohort=source_cohort,
+        pool=pool,
+    )
+    assert out.empty
+    assert out.attrs["availability"][0]["available"] is False
+
+
 def test_source_filtered_empty_wide_result_keeps_requested_columns():
     out = accessors.cancer_reference_expression(
         cancer_types="CLL",
@@ -274,7 +287,7 @@ def test_sarc_histology_source_label_and_filter_are_canonicalized():
         for record in out.attrs["missing_requests"]
     )
     assert (
-        "SARC DDLPS/WDLPS source cohort normalized to registry label"
+        "source-cohort labels normalized to public registry identities"
         in out.attrs["compatibility_transforms"]
     )
     assert (

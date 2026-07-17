@@ -36,6 +36,9 @@ from pathlib import Path
 import pandas as pd
 
 from . import data_bundle
+from .reference_source_cohorts import (
+    normalize_reference_source_cohort_labels as _normalize_reference_source_cohort_labels,
+)
 
 _BUNDLED_DATA_DIR = Path(__file__).parent / "data"
 _DOWNLOADED_DATA_DIR = data_bundle.cache_dir()
@@ -162,19 +165,6 @@ _DATASET_STRING_ID_COLS = {
     "cancer-type-registry.csv": ("code",),
 }
 
-# oncoref 1.8.125's registry/availability metadata assigns the TCGA-derived
-# DDLPS/WDLPS rows to the dedicated histology cohort, but the underlying summary
-# rows still carry the older generic TCGA-subset label.  Normalize only those two
-# code/source pairs at the pirlygenes compatibility boundary; other TCGA-derived
-# SARC rows genuinely belong to the generic subset and must not be relabelled.
-_REFERENCE_SOURCE_COHORT_STORAGE = "TREEHOUSE_POLYA_25_01_TCGA_SUBSET"
-_REFERENCE_SOURCE_COHORT_CANONICAL = (
-    "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY"
-)
-_REFERENCE_SOURCE_COHORT_REMAP_CODES = frozenset({
-    "SARC_DDLPS",
-    "SARC_WDLPS",
-})
 # Bump when the cached dtype scheme changes so stale object-dtype parquets in an
 # existing ``~/.cache/pirlygenes/shard_cache/`` rebuild instead of being reused.
 _SHARD_CACHE_FORMAT = 3
@@ -202,68 +192,6 @@ def _normalize_dataset_dtypes(cache_key: str, df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].astype("string")
     return df
-
-
-def _normalize_reference_source_cohort_labels(
-    df: pd.DataFrame,
-) -> tuple[pd.DataFrame, bool]:
-    """Repair the narrow oncoref SARC row/registry source-label mismatch.
-
-    A shallow frame plus a replacement ``source_cohort`` Series avoids mutating
-    oncoref's process-wide cached frame or copying its multi-million-row value
-    blocks.  Returns ``(frame, changed)`` so public adapters can expose the
-    compatibility transform in ``DataFrame.attrs``.
-    """
-    if not {"cancer_code", "source_cohort"} <= set(df.columns):
-        return df, False
-    mask = (
-        df["cancer_code"].isin(_REFERENCE_SOURCE_COHORT_REMAP_CODES)
-        & df["source_cohort"].eq(_REFERENCE_SOURCE_COHORT_STORAGE)
-    )
-    if not mask.any():
-        return df, False
-    out = df.copy(deep=False)
-    source_cohort = df["source_cohort"].astype(object).copy()
-    source_cohort.loc[mask] = _REFERENCE_SOURCE_COHORT_CANONICAL
-    out["source_cohort"] = source_cohort
-    return out, True
-
-
-def _reference_source_cohort_storage_filter(source_cohort):
-    """Translate the canonical SARC histology label to oncoref's row label."""
-    if source_cohort is None:
-        return None
-    scalar = isinstance(source_cohort, str)
-    requested = [source_cohort] if scalar else list(source_cohort)
-    translated: list[str] = []
-    for cohort in requested:
-        value = str(cohort)
-        if value == _REFERENCE_SOURCE_COHORT_CANONICAL:
-            value = _REFERENCE_SOURCE_COHORT_STORAGE
-        if value not in translated:
-            translated.append(value)
-    return translated[0] if scalar else translated
-
-
-def _reference_source_cohort_public_filter(source_cohort):
-    """Return accepted post-remap labels for an exact public source filter.
-
-    The stale storage label remains a backwards-compatible alias for both the
-    generic cohort and the two rows now exposed under the canonical histology
-    label. A canonical-only request stays exact and must not leak other rows
-    that happen to share oncoref's physical storage label.
-    """
-    if source_cohort is None:
-        return None
-    requested = (
-        {source_cohort}
-        if isinstance(source_cohort, str)
-        else set(source_cohort)
-    )
-    accepted = {str(cohort) for cohort in requested}
-    if _REFERENCE_SOURCE_COHORT_STORAGE in accepted:
-        accepted.add(_REFERENCE_SOURCE_COHORT_CANONICAL)
-    return frozenset(accepted)
 
 
 def _concat_shard_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
