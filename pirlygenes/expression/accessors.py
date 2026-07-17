@@ -1398,10 +1398,10 @@ def _reference_compatibility_genes(
     expanded: list[str] = []
     for gene in requested:
         # filter_to_genes(), used by the pre-delegation implementation, made
-        # symbol filters whitespace- and case-insensitive.  oncoref's symbol
-        # match is exact, so normalize at this compatibility boundary before
-        # looking up aliases or forwarding candidates.
-        token = str(gene).strip().upper()
+        # symbol filters whitespace- and case-insensitive. Resolve display
+        # aliases from the original spelling, then normalize every candidate
+        # because oncoref's symbol match is exact.
+        token = str(gene).strip()
         for candidate in (
             token,
             *get_alias_as_list(token),

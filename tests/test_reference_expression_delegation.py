@@ -163,6 +163,32 @@ def test_delegated_filter_preserves_case_insensitive_trimmed_symbols():
         assert compact["Symbol"].tolist() == ["MS4A1"]
 
 
+@pytest.mark.parametrize(
+    ("code", "display_alias", "official_symbol"),
+    [
+        ("LUAD", "p53", "TP53"),
+        ("LUAD", "P53", "TP53"),
+        ("SKCM", "gp100", "PMEL"),
+        ("SKCM", "GP100", "PMEL"),
+        ("OV", "FRα", "FOLR1"),
+        ("OV", "frΑ", "FOLR1"),
+    ],
+)
+def test_display_aliases_are_unicode_case_insensitive(
+    code, display_alias, official_symbol,
+):
+    out = accessors.cancer_reference_expression(
+        cancer_types=code,
+        genes=[display_alias],
+    )
+    assert not out.empty
+    assert set(out["Symbol"]) == {official_symbol}
+
+    compact = accessors.cancer_expression(code, genes=[display_alias])
+    assert not compact.empty
+    assert set(compact["Symbol"]) == {official_symbol}
+
+
 def test_explicit_empty_source_kind_returns_no_rows():
     out = accessors.cancer_reference_expression(
         cancer_types="CLL",
