@@ -1357,6 +1357,36 @@ def _compatibility_availability_records(
     return out
 
 
+def _reconcile_reference_availability_with_public_source_filter(
+    records: Iterable[dict],
+    public_source_filter: frozenset[str],
+) -> tuple[list[dict], bool]:
+    """Make delegated availability obey pirlygenes' public cohort labels.
+
+    oncoref currently computes availability before its provenance is reconciled
+    with exact source filters (oncoref#382).  Use the lightweight pirlygenes
+    manifest as the compatibility authority until that dependency fix ships.
+    """
+    manifest = available_cancer_expression_references()
+    matching_codes = set(
+        manifest.loc[
+            manifest["source_cohort"].astype(str).isin(public_source_filter),
+            "cancer_code",
+        ].astype(str)
+    )
+    out: list[dict] = []
+    changed = False
+    for record in records:
+        adapted = dict(record)
+        code = str(adapted.get("cancer_code", ""))
+        if adapted.get("available") and code not in matching_codes:
+            adapted["available"] = False
+            adapted["missing_reason"] = "no_reference_summary_rows"
+            changed = True
+        out.append(adapted)
+    return out, changed
+
+
 def _reference_compatibility_genes(
     genes: Optional[Iterable[str]],
 ) -> Optional[list[str]]:
@@ -1528,6 +1558,21 @@ def _oncoref_reference_mode(
         delegated = delegated[
             delegated["source_cohort"].astype(str).isin(public_source_filter)
         ].copy()
+    if public_source_filter is not None:
+        availability, availability_reconciled = (
+            _reconcile_reference_availability_with_public_source_filter(
+                attrs.get("availability", []),
+                public_source_filter,
+            )
+        )
+        attrs["availability"] = availability
+        attrs["missing_requests"] = [
+            record for record in availability if not record.get("available", False)
+        ]
+        if availability_reconciled:
+            compatibility_transforms.append(
+                "availability reconciled with public source-cohort filter"
+            )
     delegated["normalization"] = label
     # Collapse/pool in linear space before deriving the historical raw-log view.
     if mode.endswith("_log1p"):

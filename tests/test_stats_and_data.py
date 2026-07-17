@@ -29,6 +29,16 @@ from pirlygenes.load_dataset import get_data
 # ---------- schema ----------
 
 
+def test_data_bundle_excludes_delegated_reference_expression_shards():
+    from pirlygenes import data_bundle
+
+    assert not any(
+        path == "cancer-reference-expression"
+        or path.startswith("cancer-reference-expression/")
+        for path in data_bundle.DOWNLOADABLE_PATHS
+    )
+
+
 def test_reference_columns_starts_with_legacy_order():
     legacy = (
         "Ensembl_Gene_ID",

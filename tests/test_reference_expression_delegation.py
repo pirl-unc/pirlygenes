@@ -233,6 +233,22 @@ def test_exact_cohort_filter_is_applied_before_pooling():
     assert out["expression"].notna().all()
 
 
+def test_nutm_exact_cohort_filter_is_applied_before_pooling():
+    out = accessors.cancer_reference_expression(
+        cancer_types="NUTM",
+        genes=["TP53"],
+        source_cohort="UNC_NUTM1",
+        pool=True,
+    )
+    assert not out.empty
+    assert set(out["source_cohort"]) == {"POOLED"}
+    assert out["expression"].notna().all()
+    assert any(
+        record["cancer_code"] == "NUTM" and record["available"]
+        for record in out.attrs["availability"]
+    )
+
+
 def test_sarc_histology_source_label_and_filter_are_canonicalized():
     canonical = "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY"
     out = accessors.cancer_reference_expression(
@@ -243,8 +259,26 @@ def test_sarc_histology_source_label_and_filter_are_canonicalized():
     assert not out.empty
     assert set(out["source_cohort"]) == {canonical}
     assert set(out["cancer_code"]) == {"SARC_DDLPS", "SARC_WDLPS"}
+    availability = {
+        record["cancer_code"]: record for record in out.attrs["availability"]
+    }
+    assert availability["SARC_DDLPS"]["available"] is True
+    assert availability["SARC_WDLPS"]["available"] is True
+    assert availability["SARC_PLEOLPS"]["available"] is False
+    assert (
+        availability["SARC_PLEOLPS"]["missing_reason"]
+        == "no_reference_summary_rows"
+    )
+    assert any(
+        record["cancer_code"] == "SARC_PLEOLPS"
+        for record in out.attrs["missing_requests"]
+    )
     assert (
         "SARC DDLPS/WDLPS source cohort normalized to registry label"
+        in out.attrs["compatibility_transforms"]
+    )
+    assert (
+        "availability reconciled with public source-cohort filter"
         in out.attrs["compatibility_transforms"]
     )
 
