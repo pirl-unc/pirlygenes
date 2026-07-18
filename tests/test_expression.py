@@ -1041,6 +1041,11 @@ def test_reference_expression_delegates_to_oncoref_without_fallback(monkeypatch)
         return out
 
     monkeypatch.setattr(oncoref, "cancer_reference_expression", fake_oncoref)
+    monkeypatch.setattr(
+        expression_accessors,
+        "get_data",
+        lambda name, *, copy: pd.DataFrame(),
+    )
 
     df = cancer_reference_expression(
         cancer_types=["CLL", "MM"],

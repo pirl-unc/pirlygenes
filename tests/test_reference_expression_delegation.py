@@ -112,6 +112,12 @@ def test_adapter_expands_legacy_aliases_and_derives_raw_log_without_fallback(
         return out
 
     monkeypatch.setattr(oncoref, "cancer_reference_expression", fake_oncoref)
+    prepared = []
+    monkeypatch.setattr(
+        accessors,
+        "get_data",
+        lambda name, *, copy: prepared.append((name, copy)) or pd.DataFrame(),
+    )
     monkeypatch.setattr(
         accessors,
         "_load_cancer_reference_expression",
@@ -127,6 +133,7 @@ def test_adapter_expands_legacy_aliases_and_derives_raw_log_without_fallback(
     assert calls[0]["normalize"] == "tpm"
     assert calls[0]["sample_qc"] == "all"
     assert calls[0]["reference_source"] == "summary_rows_all"
+    assert prepared == [("cancer-reference-expression", False)]
     assert calls[0]["gene_id_style"] == "pirlygenes"
     assert calls[0]["gene_universe"] == "pirlygenes"
     assert {"FCRH5", "FCRL5"} <= set(calls[0]["genes"])

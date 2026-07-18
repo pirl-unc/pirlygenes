@@ -414,10 +414,15 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
 
     # The empirical cancer-reference-expression rows are owned by oncoref.  Keep
     # pirlygenes' generic get_data surface working, but never select the duplicate
-    # in-repo/downloaded shard set at runtime.  A shallow frame copy lets us retain
-    # pirlygenes' low-cardinality categorical provenance dtypes without mutating
-    # oncoref's process-wide cached frame or copying the multi-million-row values.
-    # Fixture injection deliberately bypasses this branch.  See #557 / #528.
+    # in-repo/downloaded shard set at runtime. Categorizing the owning frame lets
+    # us retain pirlygenes' low-cardinality provenance dtypes without copying the
+    # multi-million-row values. Categorize the frame returned by copy=False
+    # *before* making the label-compatibility view: that frame is oncoref's
+    # owning cache object, so the original ~8 GB object blocks can be released
+    # instead of remaining strongly referenced beside the ~3 GB categorical
+    # representation. This lossless cache-boundary normalization can move into
+    # oncoref once oncoref#390 is released. Fixture injection deliberately
+    # bypasses this branch. See #557 / #528.
     if _dataframes_dict is None and normalized_name in (
         "cancer-reference-expression", "cancer-reference-expression.csv"
     ):
@@ -427,9 +432,10 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
 
             delegated = get_oncoref_data(
                 "cancer-reference-expression", copy=False
-            ).copy(deep=False)
+            )
+            delegated = _categorize_metadata(delegated)
             delegated, _ = _normalize_reference_source_cohort_labels(delegated)
-            _CACHED_DATAFRAMES[cache_key] = _categorize_metadata(delegated)
+            _CACHED_DATAFRAMES[cache_key] = delegated
         cached = _CACHED_DATAFRAMES[cache_key]
         return cached.copy() if copy else cached
 

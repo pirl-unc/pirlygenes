@@ -57,8 +57,13 @@ def test_fusion_status_known_entities():
 
 
 def test_fusion_calls_consistent_with_cancer_fusions_table():
-    """Every 'defining' fusion call must be backed by an is_defining row in the
-    cited cancer-fusions.csv (no fusion status invented beyond the evidence)."""
+    """Every selectable fusion-defined target has detailed fusion evidence.
+
+    oncoref's broader WHO ontology can include non-selectable summary entities
+    before their partner-level rows are curated (oncoref#391). Pirlygenes must
+    not expose an unsupported *classification target*, while it also must not
+    require its compatibility detail table to mirror every ontology-only row.
+    """
     fus = get_data("cancer-fusions")
     defining_in_table = {
         str(c)
@@ -66,8 +71,14 @@ def test_fusion_calls_consistent_with_cancer_fusions_table():
         if d["is_defining"].astype(str).str.lower().isin(["true", "1", "yes"]).any()
     }
     reg = get_data("cancer-type-registry.csv")
+    target = reg["is_classification_target"].astype(str).str.lower().isin(
+        ["true", "1", "yes"]
+    )
     called_defining = set(
-        reg.loc[reg["fusion_driven"] == "defining", "code"].astype(str)
+        reg.loc[
+            reg["fusion_driven"].eq("defining") & target,
+            "code",
+        ].astype(str)
     )
     assert called_defining <= defining_in_table
 

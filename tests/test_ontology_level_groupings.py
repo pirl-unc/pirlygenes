@@ -36,13 +36,25 @@ def test_grouping_excludes_source_scope_subtype_and_primary_types():
     assert is_grouping("SARC")
 
 
-def test_grouping_is_narrower_than_mixture_cohort():
-    # mixture_cohort conflates taxonomy groupings with source pooling; the
-    # ontology_level grouping set is a strict subset that drops CRC_MSI and the
-    # pirlygenes-local SARC histology rollups.
+def test_grouping_distinguishes_source_unions_from_ontology_only_groups():
+    # mixture_cohort identifies source-pooling nodes, while ontology_level also
+    # permits non-selectable taxonomy-only groups (for example the WHO round-
+    # cell sarcoma family added in oncoref 1.8.131). Computed-union groupings
+    # must remain poolable; ontology-only groups deliberately need not be.
     groupings = set(grouping_codes())
     mixture = set(mixture_cohort_codes())
-    assert groupings <= mixture
+    reg = cancer_type_registry().set_index("code")
+    computed_groupings = {
+        code
+        for code in groupings
+        if str(reg.loc[code, "ontology_kind"]) == "computed_union"
+    }
+    ontology_only = groupings - mixture
+    assert computed_groupings <= mixture
+    assert all(
+        str(reg.loc[code, "ontology_kind"]) == "ontology_group"
+        for code in ontology_only
+    )
     assert "CRC_MSI" in mixture and "CRC_MSI" not in groupings
 
 

@@ -60,6 +60,34 @@ def test_cancer_reference_name_variants_delegate_to_oncoref(monkeypatch):
     assert calls == [("cancer-reference-expression", False)]
 
 
+def test_reference_categorizes_the_owning_oncoref_cache_frame(monkeypatch):
+    """The object blocks must not survive in oncoref's process cache (#390)."""
+    import oncoref.load_dataset
+
+    owning = pd.DataFrame(
+        {
+            "source_version": ["v1", "v1"],
+            "processing_pipeline": ["p", "p"],
+            "notes": ["long repeated provenance", "long repeated provenance"],
+            "cancer_code": ["A", "B"],
+            "source_cohort": ["C1", "C2"],
+        }
+    )
+
+    monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
+    monkeypatch.setattr(
+        oncoref.load_dataset,
+        "get_data",
+        lambda name, *, copy: owning,
+    )
+
+    actual = ld.get_data("cancer-reference-expression", copy=False)
+
+    assert actual is owning
+    for column in ld._LOW_CARDINALITY_METADATA_COLS:
+        assert isinstance(owning[column].dtype, pd.CategoricalDtype)
+
+
 @pytest.mark.parametrize(
     "canonical,variant",
     [
