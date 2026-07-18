@@ -88,23 +88,33 @@ def normalize_reference_source_cohort_records(
 
 
 def reference_source_cohort_storage_filter(source_cohort):
-    """Translate public labels into the physical labels accepted by oncoref."""
+    """Expand public/storage aliases accepted across oncoref data versions.
+
+    oncoref <=1.8.129 filters the affected SARC summary rows under their
+    historical physical label, while >=1.8.130 canonicalizes those rows before
+    filtering.  Forward both equivalent labels so pirlygenes remains compatible
+    with either representation.  The exact public semantics are applied after
+    delegation by :func:`reference_source_cohort_public_filter`.
+    """
     if source_cohort is None:
         return None
     scalar = isinstance(source_cohort, str)
     requested = [source_cohort] if scalar else list(source_cohort)
-    storage_by_public: dict[str, list[str]] = {}
+    aliases: dict[str, list[str]] = {}
     for (_, stored), public in _PUBLIC_SOURCE_COHORT_BY_STORED_PAIR.items():
-        storage_by_public.setdefault(public, [])
-        if stored not in storage_by_public[public]:
-            storage_by_public[public].append(stored)
+        aliases.setdefault(stored, [])
+        aliases.setdefault(public, [])
+        if public not in aliases[stored]:
+            aliases[stored].append(public)
+        if stored not in aliases[public]:
+            aliases[public].append(stored)
 
     translated: list[str] = []
     for cohort in requested:
         value = str(cohort)
-        for stored in storage_by_public.get(value, [value]):
-            if stored not in translated:
-                translated.append(stored)
+        for candidate in (value, *aliases.get(value, [])):
+            if candidate not in translated:
+                translated.append(candidate)
     return translated[0] if scalar and len(translated) == 1 else translated
 
 

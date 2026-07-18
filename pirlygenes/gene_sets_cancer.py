@@ -1584,14 +1584,17 @@ def sarcoma_lineage_codes(*, with_expression_only=False):
 
 # Computed cohort aggregates: "view" cohorts that pool the per-sample values of
 # several atom cohorts by histology or source, rather than being a single frozen
-# matrix. Backed by ``cancer-cohort-aggregates.csv`` ({aggregate_code:
-# [member_code,...]}); the pan-sarcoma ``SARC`` grand union is computed from the
-# registry family (so it tracks new atoms automatically) rather than enumerated.
+# matrix. The explicit rollup rows are delegated to oncoref and filtered to
+# pirlygenes' historical aggregate surface; the pan-sarcoma ``SARC`` grand union
+# is computed from the registry family (so it tracks new atoms automatically)
+# rather than enumerated.
 def cohort_aggregates_df():
-    """Return the curated ``cancer-cohort-aggregates.csv`` long table
-    (``aggregate_code, member_code, basis``) — the explicit histology
-    rollup cohorts (e.g. ``SARC_RMS`` ← the four rhabdomyosarcoma subtypes;
-    ``SARC_LPS`` ← the liposarcoma subtypes)."""
+    """Return oncoref's rows for pirlygenes' compatible aggregate surface.
+
+    The schema remains ``aggregate_code, member_code, basis`` and the public
+    rollups remain the historical explicit histology/organ cohorts (for
+    example ``SARC_RMS`` and ``SARC_LPS``).
+    """
     return get_data("cancer-cohort-aggregates")
 
 

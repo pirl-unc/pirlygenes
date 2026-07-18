@@ -49,9 +49,26 @@ _CACHED_DATAFRAMES = {}
 # historical pirlygenes get_data names as compatibility re-exports without
 # shipping a second physical copy that can drift.
 _ONCOREF_DATASETS = frozenset({
+    "cancer-cohort-aggregates",
     "clean-tpm-censored-genes",
     "ribosomal-protein-pseudogenes",
 })
+
+# oncoref owns the complete computed-aggregate ontology.  Pirlygenes keeps its
+# historical public expansion surface (the four rollups it has always exposed)
+# while sourcing those rows from that authority, so newly added children such
+# as SARC_MPLPS cannot silently drift here again.
+_PIRLYGENES_AGGREGATE_CODES = frozenset({
+    "CRC",
+    "SARC_ESS",
+    "SARC_LPS",
+    "SARC_RMS",
+})
+
+_COMPUTED_COHORT_AGGREGATE_CODES = {
+    "COMPUTED_COLORECTAL": "CRC",
+    "COMPUTED_PAN_SARCOMA": "SARC",
+}
 
 
 # Back-compat alias — many call sites still import _DATA_DIR.
@@ -272,17 +289,19 @@ def load_all_dataframes():
         csv_key = csv_path.name.removesuffix(".gz")
         df = pd.read_csv(str(csv_path), low_memory=False)
         df = _normalize_dataset_dtypes(csv_key, df)
+        if csv_key == "cohort-registry.csv":
+            df = _reconcile_computed_cohort_members(df)
         yield csv_key, df
     # Preserve the generic enumeration surface for datasets whose physical
     # copies moved to oncoref. They are not present in get_all_csv_paths(), but
     # callers of load_all_dataframes_dict() still see the historical keys.
     for dataset in sorted(_ONCOREF_DATASETS):
-        yield f"{dataset}.csv", get_data(dataset, copy=False)
+        yield f"{dataset}.csv", get_data(dataset)
     # Runtime ownership of the empirical summary rows moved to oncoref (#557).
     # Yield the delegated frame exactly once even in a wheel install, where the
     # legacy pirlygenes shard directory is intentionally absent.
     yield "cancer-reference-expression.csv", get_data(
-        "cancer-reference-expression", copy=False
+        "cancer-reference-expression"
     )
     for shard_dir in _shard_directories():
         if shard_dir.name == "cancer-reference-expression":
@@ -300,6 +319,43 @@ def load_all_dataframes_dict():
 def _invalidate_dataset_paths() -> None:
     global _DATASET_PATHS
     _DATASET_PATHS = None
+
+
+def _reconcile_computed_cohort_members(df: pd.DataFrame) -> pd.DataFrame:
+    """Derive computed-cohort membership from oncoref's live ontology.
+
+    The packaged cohort registry is useful pirlygenes-specific source metadata,
+    but its computed rows are snapshots.  Re-derive only those rows so a newly
+    added cancer atom cannot leave ``n_codes`` and ``member_cohorts`` stale
+    (oncoref#387) while preserving the Merkel cohort absent from oncoref's
+    source-cohort registry.
+    """
+    if not {"cohort_id", "n_codes", "member_cohorts"} <= set(df.columns):
+        return df
+
+    import oncoref
+
+    replacements: list[tuple[pd.Series, list[str]]] = []
+    for cohort_id, aggregate_code in _COMPUTED_COHORT_AGGREGATE_CODES.items():
+        mask = df["cohort_id"].astype(str).eq(cohort_id)
+        if not mask.any():
+            continue
+        members = list(oncoref.cohort_aggregate_members(aggregate_code) or [])
+        serialized = ";".join(members)
+        current_members = df.loc[mask, "member_cohorts"].fillna("").astype(str)
+        current_counts = pd.to_numeric(df.loc[mask, "n_codes"], errors="coerce")
+        if not current_members.eq(serialized).all() or not current_counts.eq(
+            len(members)
+        ).all():
+            replacements.append((mask, members))
+    if not replacements:
+        return df
+
+    out = df.copy()
+    for mask, members in replacements:
+        out.loc[mask, "member_cohorts"] = ";".join(members)
+        out.loc[mask, "n_codes"] = len(members)
+    return out
 
 
 def _dataset_paths():
@@ -342,10 +398,17 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
         if cache_key not in _CACHED_DATAFRAMES:
             from oncoref.load_dataset import get_data as get_oncoref_data
 
-            _CACHED_DATAFRAMES[cache_key] = get_oncoref_data(
+            delegated = get_oncoref_data(
                 delegated_name,
                 copy=False,
             )
+            if delegated_name == "cancer-cohort-aggregates":
+                delegated = delegated.loc[
+                    delegated["aggregate_code"].astype(str).isin(
+                        _PIRLYGENES_AGGREGATE_CODES
+                    )
+                ].copy()
+            _CACHED_DATAFRAMES[cache_key] = delegated
         cached = _CACHED_DATAFRAMES[cache_key]
         return cached.copy() if copy else cached
 
@@ -377,7 +440,7 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     # single source of truth. Tests inject a fixture registry either by monkey-
     # patching get_data wholesale or by passing _dataframes_dict; both bypass this
     # branch, so the fixture path is unchanged. See pirlygenes#523 / oncoref#275.
-    if _dataframes_dict is None and name in (
+    if _dataframes_dict is None and normalized_name in (
         "cancer-type-registry", "cancer-type-registry.csv"
     ):
         import oncoref
@@ -393,7 +456,7 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     # members). Re-export it the same way so cancer_subtype_groupings() /
     # cancer_subtype_group() delegate rather than ship a divergent copy. Fixture
     # injection bypasses this branch as above. See oncoref#325.
-    if _dataframes_dict is None and name in (
+    if _dataframes_dict is None and normalized_name in (
         "cancer-subtype-groupings", "cancer-subtype-groupings.csv"
     ):
         import oncoref
@@ -414,7 +477,7 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     # synthesized from oncoref's split trial_name/trial_alias for callers that
     # expected the former single column. Fixture injection bypasses this branch as
     # for the registry above. See pirlygenes#541 / #507.
-    if _dataframes_dict is None and name in (
+    if _dataframes_dict is None and normalized_name in (
         "cancer-apd1-response", "cancer-apd1-response.csv"
     ):
         import oncoref
@@ -429,7 +492,9 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
         apd1 = _normalize_dataset_dtypes("cancer-apd1-response", apd1)
         return apd1.copy() if copy else apd1
 
-    if _dataframes_dict is None and name in ("cancer-tmb", "cancer-tmb.csv"):
+    if _dataframes_dict is None and normalized_name in (
+        "cancer-tmb", "cancer-tmb.csv"
+    ):
         import oncoref
 
         tmb = _normalize_dataset_dtypes("cancer-tmb", oncoref.cancer_tmb_df())
@@ -469,12 +534,15 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                 else:
                     cache_key = resolved.name.removesuffix(".gz")
                     if cache_key not in _CACHED_DATAFRAMES:
-                        _CACHED_DATAFRAMES[cache_key] = _normalize_dataset_dtypes(
+                        loaded = _normalize_dataset_dtypes(
                             cache_key,
                             pd.read_csv(
                                 str(resolved), low_memory=False,
                             ),
                         )
+                        if cache_key == "cohort-registry.csv":
+                            loaded = _reconcile_computed_cohort_members(loaded)
+                        _CACHED_DATAFRAMES[cache_key] = loaded
                 # Return a copy so callers that mutate in place (e.g. df["c"]=...,
                 # df.fillna(0, inplace=True)) can't corrupt the shared cache.
                 # copy=False skips this for read-only callers (#278).

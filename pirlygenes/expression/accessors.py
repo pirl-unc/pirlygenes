@@ -1364,9 +1364,10 @@ def _reconcile_reference_availability_with_public_source_filter(
 ) -> tuple[list[dict], bool]:
     """Make delegated availability obey pirlygenes' public cohort labels.
 
-    oncoref currently computes availability before its provenance is reconciled
-    with exact source filters (oncoref#382).  Use the lightweight pirlygenes
-    manifest as the compatibility authority until that dependency fix ships.
+    Delegation accepts both canonical and historical aliases so the same wheel
+    works with multiple oncoref data generations.  Availability therefore
+    reflects that broadened delegated filter; use the lightweight pirlygenes
+    manifest to restore the caller's exact public-label semantics.
     """
     manifest = available_cancer_expression_references()
     matching_codes = set(
@@ -1528,6 +1529,13 @@ def _oncoref_reference_mode(
     if compatibility_genes != requested_genes:
         compatibility_transforms.append(
             "legacy gene aliases expanded before delegated filtering"
+        )
+    if (
+        requested_source_cohort is not None
+        and delegated_source_cohort != requested_source_cohort
+    ):
+        compatibility_transforms.append(
+            "source-cohort aliases expanded across delegated data versions"
         )
     if source_kind is not None:
         compatibility_transforms.append(

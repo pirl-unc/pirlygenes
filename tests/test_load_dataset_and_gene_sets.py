@@ -60,6 +60,63 @@ def test_cancer_reference_name_variants_delegate_to_oncoref(monkeypatch):
     assert calls == [("cancer-reference-expression", False)]
 
 
+@pytest.mark.parametrize(
+    "canonical,variant",
+    [
+        ("cancer-type-registry", "Cancer-Type-Registry"),
+        ("cancer-subtype-groupings", "Cancer-Subtype-Groupings"),
+        ("cancer-apd1-response", "Cancer-APD1-Response"),
+        ("cancer-tmb", "Cancer-TMB"),
+    ],
+)
+def test_all_delegated_dataset_name_variants_are_case_insensitive(
+    canonical, variant,
+):
+    expected = ld.get_data(canonical)
+    actual = ld.get_data(variant)
+    pd.testing.assert_frame_equal(actual, expected)
+
+
+def test_load_all_dataframes_keeps_delegated_frames_out_of_shared_cache(
+    monkeypatch,
+):
+    shared = pd.DataFrame({"value": [1]})
+    calls = []
+
+    def fake_get_data(name, *, copy=True):
+        calls.append((name, copy))
+        return shared.copy() if copy else shared
+
+    monkeypatch.setattr(ld.data_bundle, "DOWNLOADABLE_PATHS", [])
+    monkeypatch.setattr(ld, "get_all_csv_paths", lambda: [])
+    monkeypatch.setattr(ld, "_shard_directories", lambda: [])
+    monkeypatch.setattr(ld, "_ONCOREF_DATASETS", frozenset({"delegated"}))
+    monkeypatch.setattr(ld, "get_data", fake_get_data)
+
+    frames = dict(ld.load_all_dataframes())
+    frames["delegated.csv"].loc[0, "value"] = 99
+
+    assert shared.loc[0, "value"] == 1
+    assert frames["cancer-reference-expression.csv"].loc[0, "value"] == 1
+    assert calls == [
+        ("delegated", True),
+        ("cancer-reference-expression", True),
+    ]
+
+
+def test_cohort_aggregate_dataset_is_a_filtered_oncoref_compatibility_view():
+    import oncoref
+
+    actual = ld.get_data("Cancer-Cohort-Aggregates")
+    expected = oncoref.cohort_aggregates_df()
+    expected = expected.loc[
+        expected["aggregate_code"].astype(str).isin(
+            ld._PIRLYGENES_AGGREGATE_CODES
+        )
+    ].reset_index(drop=True)
+    pd.testing.assert_frame_equal(actual.reset_index(drop=True), expected)
+
+
 def test_get_all_csv_paths_contains_core_dataset():
     paths = ld.get_all_csv_paths()
     assert any(Path(p).name == "ADC-trials.csv" for p in paths)

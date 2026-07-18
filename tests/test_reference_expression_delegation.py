@@ -288,6 +288,21 @@ def test_nutm_exact_cohort_filter_is_applied_before_pooling():
     )
 
 
+@pytest.mark.parametrize(
+    "requested",
+    [
+        "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
+        "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
+    ],
+)
+def test_sarc_source_filter_expands_both_delegated_label_generations(requested):
+    actual = accessors._reference_source_cohort_storage_filter(requested)
+    assert set(actual) == {
+        "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
+        "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
+    }
+
+
 def test_sarc_histology_source_label_and_filter_are_canonicalized():
     canonical = "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY"
     out = accessors.cancer_reference_expression(
@@ -313,7 +328,7 @@ def test_sarc_histology_source_label_and_filter_are_canonicalized():
         for record in out.attrs["missing_requests"]
     )
     assert (
-        "source-cohort labels normalized to public registry identities"
+        "source-cohort aliases expanded across delegated data versions"
         in out.attrs["compatibility_transforms"]
     )
     assert (

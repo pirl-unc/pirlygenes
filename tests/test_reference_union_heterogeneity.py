@@ -62,9 +62,9 @@ def test_tcga_selects_as_treehouse_not_a_fake_kind():
     sub = cancer_reference_expression(
         cancer_types="SARC", genes=["TP53"],
         source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SUBSET")
-    # oncoref stores DDLPS/WDLPS under the generic source label even though its
-    # registry assigns those rows to the dedicated histology cohort.  The
-    # compatibility boundary exposes the canonical label for those two codes.
+    # The historical storage label remains a compatibility alias: generic
+    # TCGA-subset rows retain that label, while DDLPS/WDLPS expose the canonical
+    # histology cohort on both old and newly canonicalized oncoref artifacts.
     assert set(sub["source_cohort"].unique()) == {
         "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
         "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
