@@ -38,7 +38,10 @@ dependencies = [
     # pirlygenes gene-ID/universe views, provenance, pooling, and identical-locus
     # collapse, including compact pirlygenes proteoform IDs and n_detected-safe
     # source-union collapse. 1.8.124 indexes reference-summary rows by cohort so
-    # filtered calls do not repeatedly scan the full frame. >=1.8.75 also gives the
+    # filtered calls do not repeatedly scan the full frame. The current 1.8.132
+    # floor also includes 1.8.130's canonical SARC-histology labels before source
+    # filtering, so exact cohort filters and their availability metadata share one
+    # upstream identity. >=1.8.75 also gives the
     # builders the cleaned-up source-matrix QC /
     # mapping-audit / parse-diagnostics contract they delegate to — Entrez
     # resolver (#293) + un-versioned QC contract with configurable HK floor +
@@ -47,7 +50,7 @@ dependencies = [
     # delegates in #208 (representative_cohort_samples with
     # representative_id_style/sample_qc='artifact', available_representative_
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles).
-    "oncoref>=1.8.125",
+    "oncoref>=1.8.132",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile

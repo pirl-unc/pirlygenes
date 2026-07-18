@@ -55,9 +55,6 @@ def test_delegated_parity_across_reference_classes():
             gene_id_style="pirlygenes",
             gene_universe="pirlygenes",
         ).copy()
-        delegated, _ = accessors._normalize_reference_source_cohort_labels(
-            delegated
-        )
         delegated["normalization"] = "TPM_clean"
 
         actual_cmp = actual[compare_columns].sort_values(sort_columns).reset_index(drop=True)
@@ -296,18 +293,25 @@ def test_nutm_exact_cohort_filter_is_applied_before_pooling():
 
 
 @pytest.mark.parametrize(
-    "requested",
+    ("requested", "expected"),
     [
-        "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
-        "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
+        (
+            "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
+            {
+                "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
+                "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
+            },
+        ),
+        (
+            "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
+            {"TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY"},
+        ),
     ],
 )
-def test_sarc_source_filter_expands_both_delegated_label_generations(requested):
-    actual = accessors._reference_source_cohort_storage_filter(requested)
-    assert set(actual) == {
-        "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
-        "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
-    }
+def test_sarc_source_filter_only_expands_the_legacy_alias(requested, expected):
+    actual = accessors._reference_source_cohort_delegated_filter(requested)
+    actual = [actual] if isinstance(actual, str) else actual
+    assert set(actual) == expected
 
 
 def test_sarc_histology_source_label_and_filter_are_canonicalized():
@@ -334,13 +338,10 @@ def test_sarc_histology_source_label_and_filter_are_canonicalized():
         record["cancer_code"] == "SARC_PLEOLPS"
         for record in out.attrs["missing_requests"]
     )
-    assert (
-        "source-cohort aliases expanded across delegated data versions"
-        in out.attrs["compatibility_transforms"]
-    )
-    assert (
-        "availability reconciled with public source-cohort filter"
-        in out.attrs["compatibility_transforms"]
+    assert not any(
+        "source-cohort" in transform
+        or "availability reconciled" in transform
+        for transform in out.attrs["compatibility_transforms"]
     )
 
 

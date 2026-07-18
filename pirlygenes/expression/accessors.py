@@ -82,10 +82,7 @@ from ..gene_ids import strip_version
 from ..gene_names import get_alias_as_list, get_reverse_alias_as_list
 from ..load_dataset import get_data
 from ..reference_source_cohorts import (
-    normalize_reference_source_cohort_labels as _normalize_reference_source_cohort_labels,
-    normalize_reference_source_cohort_records as _normalize_reference_source_cohort_records,
-    reference_source_cohort_public_filter as _reference_source_cohort_public_filter,
-    reference_source_cohort_storage_filter as _reference_source_cohort_storage_filter,
+    reference_source_cohort_delegated_filter as _reference_source_cohort_delegated_filter,
 )
 from .normalize import (
     add_tpm_columns_from_fpkm,
@@ -1358,37 +1355,6 @@ def _compatibility_availability_records(
     return out
 
 
-def _reconcile_reference_availability_with_public_source_filter(
-    records: Iterable[dict],
-    public_source_filter: frozenset[str],
-) -> tuple[list[dict], bool]:
-    """Make delegated availability obey pirlygenes' public cohort labels.
-
-    Delegation accepts both canonical and historical aliases so the same wheel
-    works with multiple oncoref data generations.  Availability therefore
-    reflects that broadened delegated filter; use the lightweight pirlygenes
-    manifest to restore the caller's exact public-label semantics.
-    """
-    manifest = available_cancer_expression_references()
-    matching_codes = set(
-        manifest.loc[
-            manifest["source_cohort"].astype(str).isin(public_source_filter),
-            "cancer_code",
-        ].astype(str)
-    )
-    out: list[dict] = []
-    changed = False
-    for record in records:
-        adapted = dict(record)
-        code = str(adapted.get("cancer_code", ""))
-        if adapted.get("available") and code not in matching_codes:
-            adapted["available"] = False
-            adapted["missing_reason"] = "no_reference_summary_rows"
-            changed = True
-        out.append(adapted)
-    return out, changed
-
-
 def _reference_compatibility_genes(
     genes: Optional[Iterable[str]],
 ) -> Optional[list[str]]:
@@ -1425,17 +1391,17 @@ def _reference_compatibility_source_cohorts(
     contract when oncoref's registry lags (currently the Merkel GEO cohort) and
     ensures filtering occurs before oncoref pools source rows.
     """
-    storage_filter = _reference_source_cohort_storage_filter(source_cohort)
+    delegated_filter = _reference_source_cohort_delegated_filter(source_cohort)
     if source_kind is None:
         if source_cohort is not None:
             requested = (
-                [storage_filter]
-                if isinstance(storage_filter, str)
-                else storage_filter
+                [delegated_filter]
+                if isinstance(delegated_filter, str)
+                else delegated_filter
             )
             if not requested or not any(str(cohort) for cohort in requested):
                 return [_EMPTY_REFERENCE_SOURCE_COHORT]
-        return storage_filter
+        return delegated_filter
 
     requested_kinds = (
         [source_kind] if isinstance(source_kind, str) else list(source_kind)
@@ -1447,12 +1413,14 @@ def _reference_compatibility_source_cohorts(
     matching = registry.loc[
         registry["kind"].astype(str).isin(requested_kinds), "cohort_id"
     ].astype(str).tolist()
-    kind_cohorts = _reference_source_cohort_storage_filter(matching)
+    kind_cohorts = _reference_source_cohort_delegated_filter(matching)
     allowed = list(kind_cohorts) if kind_cohorts is not None else []
 
-    if storage_filter is not None:
+    if delegated_filter is not None:
         requested = (
-            [storage_filter] if isinstance(storage_filter, str) else storage_filter
+            [delegated_filter]
+            if isinstance(delegated_filter, str)
+            else delegated_filter
         )
         allowed_set = set(allowed)
         allowed = [cohort for cohort in requested if cohort in allowed_set]
@@ -1567,49 +1535,6 @@ def _oncoref_reference_mode(
                 for record in attrs.get(attr_name, [])
                 if str(record.get("cancer_code", "")) in allowed_codes
             ]
-    attrs["availability"], availability_labels_normalized = (
-        _normalize_reference_source_cohort_records(
-            attrs.get("availability", [])
-        )
-    )
-    attrs["missing_requests"], missing_labels_normalized = (
-        _normalize_reference_source_cohort_records(
-            attrs.get("missing_requests", [])
-        )
-    )
-    delegated, row_labels_normalized = (
-        _normalize_reference_source_cohort_labels(delegated)
-    )
-    if (
-        row_labels_normalized
-        or availability_labels_normalized
-        or missing_labels_normalized
-    ):
-        compatibility_transforms.append(
-            "source-cohort labels normalized to public registry identities"
-        )
-    public_source_filter = _reference_source_cohort_public_filter(
-        requested_source_cohort
-    )
-    if public_source_filter is not None and not pool:
-        delegated = delegated[
-            delegated["source_cohort"].astype(str).isin(public_source_filter)
-        ].copy()
-    if public_source_filter is not None:
-        availability, availability_reconciled = (
-            _reconcile_reference_availability_with_public_source_filter(
-                attrs.get("availability", []),
-                public_source_filter,
-            )
-        )
-        attrs["availability"] = availability
-        attrs["missing_requests"] = [
-            record for record in availability if not record.get("available", False)
-        ]
-        if availability_reconciled:
-            compatibility_transforms.append(
-                "availability reconciled with public source-cohort filter"
-            )
     delegated["normalization"] = label
     # Collapse/pool in linear space before deriving the historical raw-log view.
     if mode.endswith("_log1p"):

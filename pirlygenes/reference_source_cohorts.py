@@ -21,8 +21,6 @@ helpers so frames, filters, metadata, and inventory expose one contract.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-
 import pandas as pd
 
 
@@ -67,83 +65,37 @@ def normalize_reference_source_cohort_labels(
     return out, True
 
 
-def normalize_reference_source_cohort_records(
-    records: Iterable[dict],
-) -> tuple[list[dict], bool]:
-    """Apply the same pair normalization to availability-style records."""
-    out: list[dict] = []
-    changed = False
-    for record in records:
-        adapted = dict(record)
-        stored = adapted.get("source_cohort")
-        public = canonical_reference_source_cohort(
-            adapted.get("cancer_code", ""),
-            stored,
-        )
-        if stored is not None and str(stored) != public:
-            adapted["source_cohort"] = public
-            changed = True
-        out.append(adapted)
-    return out, changed
+def reference_source_cohort_delegated_filter(source_cohort):
+    """Expand only historical aliases before delegating to current oncoref.
 
-
-def reference_source_cohort_storage_filter(source_cohort):
-    """Expand public/storage aliases accepted across oncoref data versions.
-
-    oncoref <=1.8.129 filters the affected SARC summary rows under their
-    historical physical label, while >=1.8.130 canonicalizes those rows before
-    filtering.  Forward both equivalent labels so pirlygenes remains compatible
-    with either representation.  The exact public semantics are applied after
-    delegation by :func:`reference_source_cohort_public_filter`.
+    oncoref >=1.8.130 canonicalizes DDLPS/WDLPS summary rows before source
+    filtering. A canonical request therefore passes through unchanged and keeps
+    upstream availability exact. Pirlygenes historically exposed the physical
+    ``TCGA_SUBSET`` label, so that legacy input remains a compatibility alias for
+    both the generic cohort and the two rows now exposed under the canonical
+    SARC-histology identity.
     """
     if source_cohort is None:
         return None
     scalar = isinstance(source_cohort, str)
     requested = [source_cohort] if scalar else list(source_cohort)
-    aliases: dict[str, list[str]] = {}
+    forward_aliases: dict[str, list[str]] = {}
     for (_, stored), public in _PUBLIC_SOURCE_COHORT_BY_STORED_PAIR.items():
-        aliases.setdefault(stored, [])
-        aliases.setdefault(public, [])
-        if public not in aliases[stored]:
-            aliases[stored].append(public)
-        if stored not in aliases[public]:
-            aliases[public].append(stored)
+        forward_aliases.setdefault(stored, [])
+        if public not in forward_aliases[stored]:
+            forward_aliases[stored].append(public)
 
     translated: list[str] = []
     for cohort in requested:
         value = str(cohort)
-        for candidate in (value, *aliases.get(value, [])):
+        for candidate in (value, *forward_aliases.get(value, [])):
             if candidate not in translated:
                 translated.append(candidate)
     return translated[0] if scalar and len(translated) == 1 else translated
 
 
-def reference_source_cohort_public_filter(source_cohort):
-    """Return canonical labels accepted for an exact public source filter.
-
-    A request using a historical storage label remains a compatibility alias
-    for rows that now expose a more specific public label.  A request using the
-    canonical label stays exact and does not admit unrelated rows that still
-    share the physical storage cohort.
-    """
-    if source_cohort is None:
-        return None
-    requested = (
-        {source_cohort}
-        if isinstance(source_cohort, str)
-        else set(source_cohort)
-    )
-    accepted = {str(cohort) for cohort in requested}
-    for (_, stored), public in _PUBLIC_SOURCE_COHORT_BY_STORED_PAIR.items():
-        if stored in accepted:
-            accepted.add(public)
-    return frozenset(accepted)
-
-
 __all__ = [
     "canonical_reference_source_cohort",
     "normalize_reference_source_cohort_labels",
-    "normalize_reference_source_cohort_records",
-    "reference_source_cohort_public_filter",
-    "reference_source_cohort_storage_filter",
+    "reference_source_cohort_delegated_filter",
 ]
