@@ -858,6 +858,29 @@ def _reference_indices_by_code() -> dict:
     )
 
 
+def _reference_slice_by_codes(
+    df: pd.DataFrame,
+    codes: Sequence[str],
+) -> pd.DataFrame:
+    """Slice the shared summary through its cached positional cohort index.
+
+    Tests and offline callers may pass an independent fixture frame; retain the
+    ordinary boolean filter for those objects. Runtime callers pass the shared
+    oncoref-owned singleton, where rebuilding a multi-million-row string mask on
+    every noncanonical cohort-view request is avoidable.
+    """
+    if df is not _load_cancer_reference_expression():
+        return df[df["cancer_code"].astype(str).isin(codes)]
+
+    index = _reference_indices_by_code()
+    positions = [index[str(code)] for code in codes if str(code) in index]
+    if not positions:
+        return df.iloc[0:0]
+    # The previous boolean mask preserved artifact row order. Keep that contract
+    # even when aggregate expansion supplies codes in a different order.
+    return df.iloc[np.sort(np.concatenate(positions))]
+
+
 def _has_cancer_reference(code: str) -> bool:
     return code in _oncoref_reference_code_set()
 
@@ -999,7 +1022,7 @@ def _reference_long_from_summary_frame(
     source = df
     codes = _resolve_cancer_types(cancer_types, expand_aggregates=True)
     if codes is not None:
-        source = source[source["cancer_code"].astype(str).isin(codes)]
+        source = _reference_slice_by_codes(source, codes)
     if genes is not None:
         requested = [genes] if isinstance(genes, str) else list(genes)
         source = filter_to_genes(

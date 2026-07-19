@@ -712,3 +712,27 @@ def test_canonicalize_false_uses_reference_not_artifact(tmp_path, monkeypatch):
     )
     v = cohort_expression_views(COHORT_A, genes=["TP53"], canonicalize_genes=False)
     assert TP53 in set(v.tpm["Ensembl_Gene_ID"])
+
+
+def test_canonicalize_false_reuses_cached_cohort_positions(monkeypatch):
+    """A narrow opt-out request must not rescan the full shared summary."""
+    fake = _synthetic_reference()
+    _install_fake_reference(monkeypatch, fake)
+    expected_positions = {
+        str(code): positions
+        for code, positions in fake.groupby("cancer_code", sort=False).indices.items()
+    }
+    calls = []
+    monkeypatch.setattr(
+        accessors,
+        "_reference_indices_by_code",
+        lambda: calls.append(True) or expected_positions,
+    )
+
+    long = accessors._reference_long_from_summary_frame(
+        fake,
+        cancer_types=COHORT_A,
+    )
+
+    assert calls == [True]
+    assert set(long["cancer_code"]) == {COHORT_A}
