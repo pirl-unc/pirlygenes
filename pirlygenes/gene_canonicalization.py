@@ -752,7 +752,15 @@ def gene_table_validation_report(
     work = df.copy()
     work["_canonical_report_id"] = ids
     key_cols = ["_canonical_report_id", *context_cols]
-    dup_sizes = work.groupby(key_cols, dropna=False).size()
+    # ``context_cols`` may inherit compact categoricals from an owning data
+    # cache. Only observed key combinations are rows in the source table;
+    # materializing the categorical cartesian product can manufacture phantom
+    # groups and become enormous for reference-expression data.
+    dup_sizes = work.groupby(
+        key_cols,
+        dropna=False,
+        observed=True,
+    ).size()
     dup_sizes = dup_sizes[dup_sizes > 1]
     n_duplicate_key_rows = int((dup_sizes - 1).sum())
 
@@ -928,13 +936,21 @@ def canonicalize_gene_table(
     out = rep
     if present_sum:
         out = out.merge(
-            work.groupby(full_keys, as_index=False)[present_sum].sum(min_count=1),
+            work.groupby(
+                full_keys,
+                as_index=False,
+                observed=True,
+            )[present_sum].sum(min_count=1),
             on=full_keys,
             how="left",
         )
     if present_max:
         out = out.merge(
-            work.groupby(full_keys, as_index=False)[present_max].max(),
+            work.groupby(
+                full_keys,
+                as_index=False,
+                observed=True,
+            )[present_max].max(),
             on=full_keys,
             how="left",
         )

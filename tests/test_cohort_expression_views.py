@@ -188,6 +188,45 @@ def test_views_canonicalize_before_pivoting_symbol_drift(monkeypatch, tmp_path):
     assert v.clean_tpm["AAA"].iloc[0] == 30.0
 
 
+def test_views_ignore_unobserved_inherited_categories():
+    """Owning-cache vocabularies must not create phantom cohort combinations."""
+    import pandas as pd
+
+    long = pd.DataFrame(
+        {
+            "Ensembl_Gene_ID": ["ENSG00000141510", "ENSG00000141510"],
+            "Symbol": ["TP53", "TP53"],
+            "cancer_code": pd.Categorical(
+                ["AAA", "BBB"], categories=["AAA", "BBB", "UNUSED"]
+            ),
+            "source_cohort": pd.Categorical(
+                ["S1", "S2"], categories=["S1", "S2", "UNUSED_SOURCE"]
+            ),
+            "normalization": pd.Categorical(
+                ["TPM", "TPM"], categories=["TPM", "TPM_clean", "UNUSED_MODE"]
+            ),
+            "expression": [1.0, 2.0],
+            "q1": [0.5, 1.5],
+            "q3": [1.5, 2.5],
+            "n_detected": [1, 1],
+        }
+    )
+
+    canonical = accessors._canonicalize_views_long(long)
+    wide = accessors._pivot_views_long(
+        canonical,
+        "TPM",
+        ["Ensembl_Gene_ID"],
+    )
+
+    assert len(canonical) == 2
+    assert set(zip(
+        canonical["cancer_code"].astype(str),
+        canonical["source_cohort"].astype(str),
+    )) == {("AAA", "S1"), ("BBB", "S2")}
+    assert wide.columns.tolist() == ["Ensembl_Gene_ID", "Symbol", "AAA", "BBB"]
+
+
 def _fixture_row(ensg, code, version, tpm):
     return {
         "Ensembl_Gene_ID": ensg, "Symbol": ensg, "cancer_code": code,

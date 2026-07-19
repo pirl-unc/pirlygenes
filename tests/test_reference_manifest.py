@@ -153,6 +153,28 @@ def test_availability_returns_a_defensive_copy():
     assert second.iloc[0]["source_cohort"] == expected
 
 
+def test_availability_sorts_categorical_origins_without_a_fill_sentinel():
+    source = pd.DataFrame(
+        {
+            "cancer_code": ["AAA"] * 4,
+            "source_cohort": ["unknown", "met", "mixed", "primary"],
+            "tumor_origin": pd.Categorical(
+                [pd.NA, "metastasis", "mixed", "primary"],
+                categories=["primary", "mixed", "metastasis"],
+            ),
+        }
+    )
+
+    result = accessors._build_available_references(source)
+
+    assert result["source_cohort"].tolist() == [
+        "primary",
+        "mixed",
+        "met",
+        "unknown",
+    ]
+
+
 def test_fresh_process_availability_peak_rss_stays_below_one_gb():
     code = """
 import sys

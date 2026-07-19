@@ -1116,12 +1116,19 @@ def _build_available_references(df: pd.DataFrame) -> pd.DataFrame:
     ]
     present = [c for c in keep if c in df.columns]
     out = df[present].drop_duplicates()
-    # Sort so primary > mixed > metastasis > everything else within
-    # each cancer_code; ties broken by source_cohort.
+    # Sort so primary > mixed > metastasis > everything else within each
+    # cancer_code; ties broken by source_cohort. Map through object so a
+    # categorical origin column never needs a synthetic category or magic-value
+    # fill just to express the ordering.
     origin_priority = {"primary": 0, "mixed": 1, "metastasis": 2}
     if "tumor_origin" in out.columns:
+        unknown_origin_rank = len(origin_priority)
         out = out.assign(
-            _origin_rank=out["tumor_origin"].map(origin_priority).fillna(9),
+            _origin_rank=(
+                out["tumor_origin"]
+                .astype(object)
+                .map(lambda value: origin_priority.get(value, unknown_origin_rank))
+            ),
         )
         out = out.sort_values(
             ["cancer_code", "_origin_rank", "source_cohort"],
@@ -1493,12 +1500,6 @@ def _oncoref_reference_mode(
         source_kind,
         requested_source_cohort,
     )
-    # The delegated accessor will load the same full summary frame. Route that
-    # first load through pirlygenes' compatibility loader so the *owning*
-    # oncoref cache is converted to its lossless categorical representation;
-    # otherwise oncoref retains the ~8 GB object blocks for the process lifetime
-    # (oncoref#390).
-    get_data("cancer-reference-expression", copy=False)
     delegated = oncoref.cancer_reference_expression(
         cancer_types=cancer_types,
         genes=compatibility_genes,
@@ -2065,7 +2066,8 @@ def _pivot_views_long(
     if sub.empty:
         return pd.DataFrame(columns=["Ensembl_Gene_ID", "Symbol"])
     wide = (sub.pivot_table(index=index_cols, columns="cancer_code",
-                            values="expression", aggfunc="first")
+                            values="expression", aggfunc="first",
+                            observed=True)
             .reset_index())
     wide.columns.name = None
     wide = _object_column_index(wide)

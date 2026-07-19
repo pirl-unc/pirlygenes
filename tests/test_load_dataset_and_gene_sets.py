@@ -60,17 +60,19 @@ def test_cancer_reference_name_variants_delegate_to_oncoref(monkeypatch):
     assert calls == [("cancer-reference-expression", False)]
 
 
-def test_reference_categorizes_the_owning_oncoref_cache_frame(monkeypatch):
-    """The object blocks must not survive in oncoref's process cache (#390)."""
+def test_reference_reuses_oncorefs_compact_owning_cache_frame(monkeypatch):
+    """oncoref owns its cache encoding; pirlygenes must not mutate it (#390)."""
     import oncoref.load_dataset
 
     owning = pd.DataFrame(
         {
-            "source_version": ["v1", "v1"],
-            "processing_pipeline": ["p", "p"],
-            "notes": ["long repeated provenance", "long repeated provenance"],
-            "cancer_code": ["A", "B"],
-            "source_cohort": ["C1", "C2"],
+            "source_version": pd.Categorical(["v1", "v1"]),
+            "processing_pipeline": pd.Categorical(["p", "p"]),
+            "notes": pd.Categorical(
+                ["long repeated provenance", "long repeated provenance"]
+            ),
+            "cancer_code": pd.Categorical(["A", "B"]),
+            "source_cohort": pd.Categorical(["C1", "C2"]),
         }
     )
 
@@ -84,8 +86,7 @@ def test_reference_categorizes_the_owning_oncoref_cache_frame(monkeypatch):
     actual = ld.get_data("cancer-reference-expression", copy=False)
 
     assert actual is owning
-    for column in ld._LOW_CARDINALITY_METADATA_COLS:
-        assert isinstance(owning[column].dtype, pd.CategoricalDtype)
+    assert actual.dtypes.equals(owning.dtypes)
 
 
 @pytest.mark.parametrize(
