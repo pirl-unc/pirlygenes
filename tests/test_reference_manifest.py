@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 
+import oncoref
 import pandas as pd
 
 from pirlygenes.expression import available_cancer_expression_references
@@ -27,6 +28,13 @@ _PUBLIC_COLUMNS = [
 
 def test_availability_never_loads_full_expression_frame(monkeypatch):
     accessors._load_available_reference_manifest.cache_clear()
+    delegated_calls = []
+    delegated = oncoref.cancer_reference_expression_availability
+    monkeypatch.setattr(
+        oncoref,
+        "cancer_reference_expression_availability",
+        lambda **kwargs: delegated_calls.append(kwargs) or delegated(**kwargs),
+    )
     monkeypatch.setattr(
         accessors,
         "_load_cancer_reference_expression",
@@ -34,11 +42,48 @@ def test_availability_never_loads_full_expression_frame(monkeypatch):
             AssertionError("availability loaded the full expression frame")
         ),
     )
+    monkeypatch.setattr(
+        accessors,
+        "_cohort_views_root",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("availability consulted the local cohort-view sidecar")
+        ),
+    )
 
     result = available_cancer_expression_references()
 
     assert result.shape == (137, 8)
     assert result.columns.tolist() == _PUBLIC_COLUMNS
+    assert delegated_calls == [{
+        "normalize": "tpm_clean",
+        "sample_qc": "all",
+        "reference_source": "summary_rows_all",
+        "all_sources": True,
+    }]
+
+
+def test_availability_keys_match_oncoref_all_source_manifest():
+    delegated = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        all_sources=True,
+    )
+    result = available_cancer_expression_references()
+
+    expected_keys = set(map(
+        tuple,
+        delegated[["cancer_code", "source_cohort"]]
+        .astype(str)
+        .itertuples(index=False, name=None),
+    ))
+    actual_keys = set(map(
+        tuple,
+        result[["cancer_code", "source_cohort"]]
+        .astype(str)
+        .itertuples(index=False, name=None),
+    ))
+    assert actual_keys == expected_keys
 
 
 def test_availability_keys_match_the_pirlygenes_provenance_sidecar():

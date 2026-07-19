@@ -1072,29 +1072,30 @@ def available_cancer_expression_references() -> pd.DataFrame:
     cohort. Downstream consumers can use this to decide which non-TCGA
     references are available without inspecting data files.
 
-    This is a gene-independent manifest read. It combines oncoref's lightweight
-    availability API with pirlygenes' cohort-view provenance sidecar and
-    compatibility registry; it never loads the multi-million-row expression
-    summary. A fresh ``.copy()`` keeps the historical mutation-safe contract.
+    This is a gene-independent manifest read. It adapts oncoref's compact
+    all-source availability API through pirlygenes' compatibility registry; it
+    never loads the multi-million-row expression summary or the cohort-view
+    artifact. A fresh ``.copy()`` keeps the historical mutation-safe contract.
     """
-    root = _cohort_views_root()
-    return _load_available_reference_manifest(str(root)).copy()
+    return _load_available_reference_manifest().copy()
 
 
-@lru_cache(maxsize=4)
-def _load_available_reference_manifest(root_text: str) -> pd.DataFrame:
+@lru_cache(maxsize=1)
+def _load_available_reference_manifest() -> pd.DataFrame:
     import oncoref
 
     from ..gene_sets_cancer import cohort_registry_df
     from .reference_manifest import build_reference_manifest
     from .source_cohort_origin import classify_source_cohort
 
-    provenance = pd.read_parquet(
-        Path(root_text) / _COHORT_VIEW_PROVENANCE_FILE,
+    availability = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        all_sources=True,
     )
-    availability = oncoref.cancer_reference_expression_availability()
     manifest = build_reference_manifest(
-        provenance,
+        availability,
         availability,
         cohort_registry_df(),
         classify_source_cohort,

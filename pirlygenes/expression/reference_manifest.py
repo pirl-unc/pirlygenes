@@ -1,9 +1,10 @@
 """Lightweight compatibility manifest for cancer-expression references.
 
 The public manifest predates the delegated oncoref read path and intentionally
-keeps pirlygenes' cohort labels and display provenance.  Its row spine comes
-from the tiny cohort-view provenance sidecar; oncoref and the cohort registry
-only fill metadata, so constructing it never materializes expression values.
+keeps pirlygenes' cohort labels and display provenance. Its row spine and source
+metadata come from oncoref's compact all-source availability manifest; the
+compatibility maps below preserve historical display values and dtypes without
+materializing expression values.
 """
 
 from __future__ import annotations
@@ -214,8 +215,8 @@ def build_reference_manifest(
                 delegated.get("source_project"),
             ),
             "source_version": _first_present(
-                source.get("source_version"),
                 _SOURCE_VERSION_COMPAT.get(key),
+                source.get("source_version"),
                 registered.get("provenance"),
                 delegated.get("source_version"),
             ),
