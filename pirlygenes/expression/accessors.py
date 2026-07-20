@@ -835,6 +835,7 @@ def _oncoref_summary_reference_code_set() -> frozenset:
         normalize="tpm_clean",
         sample_qc="all",
         reference_source="summary_rows_all",
+        all_sources=True,
     )
     return frozenset(
         availability.loc[availability["available"], "cancer_code"].astype(str)

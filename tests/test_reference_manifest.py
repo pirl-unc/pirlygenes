@@ -54,7 +54,7 @@ def test_availability_never_loads_full_expression_frame(monkeypatch):
 
     assert result.shape == (139, 8)
     assert result.columns.tolist() == _PUBLIC_COLUMNS
-    assert delegated_calls == [
+    assert delegated_calls[:2] == [
         {
             "normalize": "tpm_clean",
             "sample_qc": "all",
@@ -67,6 +67,11 @@ def test_availability_never_loads_full_expression_frame(monkeypatch):
             "reference_source": "artifact",
         },
     ]
+    assert all(
+        call.get("all_sources") is True
+        for call in delegated_calls
+        if call.get("reference_source") == "summary_rows_all"
+    )
 
 
 def test_availability_keys_match_summary_plus_artifact_only_union():
