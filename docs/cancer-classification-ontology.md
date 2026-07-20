@@ -171,6 +171,22 @@ visible until it is resolved. It is not a label override. In particular, a
 source vector with coherent counter-lineage expression must be repaired or
 replaced upstream rather than made to pass by blanket compartment locking.
 
+### Same-lineage sibling programs
+
+The next #266 increment extends `cancer-type-discriminators.csv` with reusable
+parent-level programs for AML versus CML, MPN, B-ALL, and follicular lymphoma,
+plus STAD/ESCA/CHOL. Molecular and risk children can request the nearest curated
+parent contrast with `ancestor_fallback=True`; the returned rows retain the
+matched parent codes, so evidence is never presented as subtype-specific when it
+is only lineage-level. CML/MPN and mixed-histology ESCA contrasts are marked
+`poor` and are corroborative rather than molecular/anatomic substitutes.
+
+COAD versus READ is deliberately different. TCGA found colon and rectal tumors
+similar enough that bulk RNA should not manufacture an anatomic leaf margin.
+`degenerate-subtype-pairs.csv` therefore keeps COAD, READ, and their MSS children
+under a site-template tiebreaker, with no activation marker program. An absent
+discriminator is meaningful here: report CRC unless anatomy supplies the leaf.
+
 ## 6. Do we need supertypes and subtypes?
 
 **Supertypes — YES.** They are *where the promiscuous markers anchor*. Without
