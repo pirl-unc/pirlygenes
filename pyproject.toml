@@ -47,7 +47,9 @@ dependencies = [
     # canonicalizes the SARC histology shards. 1.8.138 adds observed-only
     # categorical grouping and the unambiguous generic Treehouse TCGA identity,
     # plus a public exact-alias canonicalizer used for legacy inputs and old
-    # pirlygenes provenance sidecars. >=1.8.75
+    # pirlygenes provenance sidecars. 1.8.141 registers artifact-only ESS
+    # provenance and reports its selected artifact sample counts consistently.
+    # >=1.8.75
     # also gives the
     # builders the cleaned-up source-matrix QC /
     # mapping-audit / parse-diagnostics contract they delegate to — Entrez
@@ -57,7 +59,7 @@ dependencies = [
     # delegates in #208 (representative_cohort_samples with
     # representative_id_style/sample_qc='artifact', available_representative_
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles).
-    "oncoref>=1.8.138",
+    "oncoref>=1.8.141",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile
