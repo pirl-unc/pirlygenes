@@ -413,8 +413,8 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     # pirlygenes' generic get_data surface working, but never select the duplicate
     # in-repo/downloaded shard set at runtime. oncoref >=1.8.133 applies its
     # low-cardinality encoding at the owning cache boundary (oncoref#390), so do
-    # not mutate or re-encode that shared frame here. oncoref >=1.8.136 also owns
-    # the canonical physical source-cohort labels. Fixture injection deliberately
+    # not mutate or re-encode that shared frame here. oncoref also owns the
+    # canonical physical source-cohort labels. Fixture injection deliberately
     # bypasses this branch. See #557 / #528.
     if _dataframes_dict is None and normalized_name in (
         "cancer-reference-expression", "cancer-reference-expression.csv"

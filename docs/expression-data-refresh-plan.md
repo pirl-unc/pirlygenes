@@ -79,7 +79,7 @@ That's milestones 3-4 (TCGA fresh) and 8 (existing-cohort sweep).
   Loader updated to glob + concat shards transparently.
 - **TCGA cancer codes registry sync.** 31 TCGA codes' `source_cohort`
   in `cancer-type-registry.csv` updated from `TCGA_XENA_TOIL` →
-  `TREEHOUSE_POLYA_25_01_TCGA_SUBSET` to match actually-bundled data.
+  `TREEHOUSE_POLYA_25_01_TCGA_SAMPLES` to match actually-bundled data.
 
 Queued for follow-up sessions, in priority order:
 

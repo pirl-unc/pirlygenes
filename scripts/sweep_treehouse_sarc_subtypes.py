@@ -13,7 +13,7 @@ covered by Treehouse's compendium-wide disease labels. Of those:
   cases; all 5 are also in Treehouse (under disease="liposarcoma").
   Route them out of the parent SARC_LPS_UNSPEC cohort by joining
   the GDC TCGA-SARC histology table on the case submitter_id.
-  Tag with source_cohort=TREEHOUSE_POLYA_25_01_TCGA_SUBSET.
+  Tag with source_cohort=TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY.
 
 - **SARC_MYXLPS** (myxoid liposarcoma): NOT in TCGA-SARC. Treehouse
   has 1 "pleomorphic myxoid liposarcoma" sample, too rare to build.
@@ -68,7 +68,7 @@ RELEASE_TREEHOUSE = TreehouseRelease(
 
 RELEASE_TCGA = TreehouseRelease(
     source_id="treehouse-polya-25-01",
-    source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
+    source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
     source_project="Treehouse (TCGA samples)",
     release_label=(
         "Treehouse Tumor Compendium 25.01 PolyA, TCGA-SARC "
@@ -79,7 +79,7 @@ RELEASE_TCGA = TreehouseRelease(
     clinical_filename="clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv",
     cache_dir=RELEASE_DIR,
     pipeline_prefix="treehouse_polya_25_01_tcga_sarc_histology_log2tpm_to_tpm",
-    # Per-code to match the TCGA_SUBSET source_cohort layout (else collides
+    # Per-code to match the TCGA_SARC_HISTOLOGY source-cohort layout (else collides
     # with the per-code __SARC_WDLPS shard).
     per_cancer_code_shards=True,
 )

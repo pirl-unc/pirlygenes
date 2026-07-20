@@ -101,6 +101,6 @@ count**, and **native unit** (derived from the `processing_pipeline`
 provenance tag). Example:
 
     SARC_DDLPS  (multi-source — kept separate, not merged)
-        TREEHOUSE_POLYA_25_01_TCGA_SUBSET  n=48  genes=34571  RSEM log2(TPM+1)
+        TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY  n=48  genes=34571  RSEM log2(TPM+1)
         GSE75885_DELESPAUL_2017            n=19  genes=18499  TPM
         GSE30929_SINGER_2007_LPS           n=40  genes=13654  microarray intensity (TPM-proxy)

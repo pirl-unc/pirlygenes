@@ -87,9 +87,12 @@ def test_availability_keys_match_oncoref_all_source_manifest():
 
 
 def test_availability_keys_match_the_pirlygenes_provenance_sidecar():
-    sidecar = pd.read_parquet(
-        accessors._cohort_views_root() / accessors._COHORT_VIEW_PROVENANCE_FILE,
-        columns=["cancer_code", "source_cohort"],
+    sidecar = accessors._canonicalize_source_cohort_ids(
+        pd.read_parquet(
+            accessors._cohort_views_root()
+            / accessors._COHORT_VIEW_PROVENANCE_FILE,
+            columns=["cancer_code", "source_cohort"],
+        )
     )
     result = available_cancer_expression_references()
 
@@ -101,9 +104,10 @@ def test_availability_keys_match_the_pirlygenes_provenance_sidecar():
         .itertuples(index=False, name=None),
     ))
     assert actual_keys == expected_keys
+    assert not any("TCGA_SUBSET" in cohort for _, cohort in actual_keys)
 
 
-def test_availability_preserves_the_complete_legacy_manifest():
+def test_availability_preserves_the_complete_public_manifest():
     result = available_cancer_expression_references().copy()
     for column in result:
         result[column] = result[column].map(
@@ -111,11 +115,11 @@ def test_availability_preserves_the_complete_legacy_manifest():
         )
     payload = result.to_csv(index=False, lineterminator="\n").encode()
 
-    # Captured from the former full-frame projection in data version 5.23.34.
+    # Captured from the compact owner manifest with its canonical cohort IDs.
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "02b4cd32de40981deccadfd689047e61fc2b70432d3cf2e3dc7bd8545a0af701"
+        "72a7a701a72e510bc05b684bd1114a04a62d99b75ebec41ee7412fcb392dcf87"
     )
 
 

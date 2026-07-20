@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""One-shot: split TREEHOUSE_POLYA_25_01_TCGA_SUBSET into per-code shards.
+"""One-shot: split TREEHOUSE_POLYA_25_01_TCGA_SAMPLES into per-code shards.
 
 The combined shard hit 99.47 MiB after the v5.4 schema addition
 (tumor_origin + metastasis_site) — within touching distance of
 GitHub's 100 MiB hard limit. This script reads it once, groups by
-cancer_code, and writes ``TREEHOUSE_POLYA_25_01_TCGA_SUBSET__<CODE>.csv.gz``
+cancer_code, and writes ``TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__<CODE>.csv.gz``
 per code via :func:`pirlygenes.expression.stats.write_reference_rows` in
 its new ``per_cancer_code_shards=True`` mode. The original combined
 file is then deleted.
@@ -32,7 +32,7 @@ import pandas as pd
 
 from pirlygenes.expression.stats import REFERENCE_COLUMNS, write_reference_rows
 
-SHARD_NAME = "TREEHOUSE_POLYA_25_01_TCGA_SUBSET"
+SHARD_NAME = "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES"
 
 
 def main() -> int:

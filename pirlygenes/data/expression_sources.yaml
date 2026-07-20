@@ -175,7 +175,7 @@ sources:
     url: https://public.gi.ucsc.edu/~ekephart/public-data/#tumor_25.01_polya
     builder: scripts/sweep_treehouse_polya_cohorts.py
     sibling_builders:
-      - scripts/sweep_treehouse_tcga_cohorts.py  # TCGA subset of this file
+      - scripts/sweep_treehouse_tcga_cohorts.py  # TCGA samples from this file
       - scripts/build_treehouse_reference_expression.py  # single-cohort CLI
     unit: log2(TPM+1)
     expected_size_gb: 6.2
@@ -197,9 +197,9 @@ sources:
       ENSG, then runs the standard tech-RNA zero + per-sample
       renormalize before stat summarization. Same builder is
       parameterized for every Treehouse cancer code listed above.
-      The TCGA subset (~9,800 samples) of this same file is extracted
+      The TCGA-provenance samples (~9,800) in this same file are extracted
       by `scripts/sweep_treehouse_tcga_cohorts.py` and tagged
-      `source_cohort=TREEHOUSE_POLYA_25_01_TCGA_SUBSET` so a future
+      `source_cohort=TREEHOUSE_POLYA_25_01_TCGA_SAMPLES` so a future
       authoritative GDC build can land alongside without clobbering.
 
   - id: treehouse-ribod-25-01

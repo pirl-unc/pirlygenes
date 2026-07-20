@@ -1415,15 +1415,23 @@ def _reference_compatibility_source_cohorts(
     """Resolve pirlygenes source-kind semantics to exact cohort filters.
 
     Pirlygenes' cohort registry is the compatibility authority for ``kind``.
-    Resolving kinds to cohort IDs before delegation both preserves that public
-    contract when oncoref's registry lags (currently the Merkel GEO cohort) and
-    ensures filtering occurs before oncoref pools source rows.
+    Resolving kinds to cohort IDs before delegation preserves that public
+    contract and ensures filtering occurs before oncoref pools source rows.
 
     ``source_cohort`` itself is exact. In particular, the generic Treehouse
-    TCGA-subset cohort and the SARC-histology cohort are distinct upstream
-    identities in oncoref >=1.8.136 and are never expanded into each other.
+    TCGA-samples cohort and the SARC-histology cohort are distinct upstream
+    identities and are never expanded into each other. Exact deprecated IDs are
+    canonicalized by oncoref; an explicitly empty selection uses a nonmatching
+    sentinel until oncoref#412 preserves empty filters itself.
     """
-    delegated_filter = source_cohort
+    from oncoref import canonical_cohort_id
+
+    if source_cohort is None:
+        delegated_filter = None
+    elif isinstance(source_cohort, str):
+        delegated_filter = canonical_cohort_id(source_cohort)
+    else:
+        delegated_filter = [canonical_cohort_id(value) for value in source_cohort]
     if source_kind is None:
         if source_cohort is not None:
             requested = (
@@ -1888,10 +1896,71 @@ def _load_precomputed_cohort_views(root_text: str) -> tuple[pd.DataFrame, ...]:
     clean = _object_column_index(
         pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["clean_tpm"])
     )
-    provenance = _object_column_index(
-        pd.read_parquet(root / _COHORT_VIEW_PROVENANCE_FILE)
+    provenance = _refresh_cohort_view_provenance(
+        _object_column_index(
+            pd.read_parquet(root / _COHORT_VIEW_PROVENANCE_FILE)
+        )
     )
     return tpm, clean, provenance
+
+
+def _canonicalize_source_cohort_ids(df: pd.DataFrame) -> pd.DataFrame:
+    """Canonicalize exact cohort aliases through their oncoref owner.
+
+    Existing pirlygenes data bundles can carry a provenance sidecar created
+    before oncoref renamed the generic Treehouse TCGA cohort. Keeping the alias
+    map upstream lets old bundles and new delegated rows expose one identity
+    without another pirlygenes data release or a duplicated local map.
+    """
+    if "source_cohort" not in df.columns:
+        return df
+
+    from oncoref import canonical_cohort_id
+
+    canonical = df["source_cohort"].map(
+        lambda value: value if pd.isna(value) else canonical_cohort_id(value)
+    )
+    if canonical.equals(df["source_cohort"]):
+        return df
+    out = df.copy()
+    out["source_cohort"] = canonical
+    return out
+
+
+def _refresh_cohort_view_provenance(df: pd.DataFrame) -> pd.DataFrame:
+    """Refresh a bundled sidecar from oncoref's compact owner manifest.
+
+    The precomputed value matrices remain valid across a provenance-only cohort
+    rename. For matching ``(cancer_code, source_cohort)`` rows, use the current
+    owner's cohort, pipeline, and sample metadata; retain sidecar values for
+    custom or fixture rows absent from the owner manifest.
+    """
+    out = _canonicalize_source_cohort_ids(df)
+    keys = ["cancer_code", "source_cohort"]
+    if not set(keys) <= set(out.columns):
+        return out
+
+    refresh_cols = ["processing_pipeline", "n_samples"]
+    owner = available_cancer_expression_references()[
+        [*keys, *refresh_cols]
+    ].drop_duplicates(keys).copy()
+    # The compact owner manifest deliberately uses categorical metadata. Cast
+    # only the tiny joined projection so fixture/custom sidecar values that are
+    # not owner categories can be retained without mutating oncoref's cache.
+    owner["processing_pipeline"] = owner["processing_pipeline"].astype(object)
+    merged = out.merge(owner, on=keys, how="left", suffixes=("", "_owner"))
+    for column in refresh_cols:
+        owner_column = f"{column}_owner"
+        if column in merged.columns:
+            owner_values = merged[owner_column]
+            merged[column] = owner_values.where(
+                owner_values.notna(),
+                merged[column],
+            )
+        else:
+            merged[column] = merged[owner_column]
+        merged = merged.drop(columns=owner_column)
+    return _object_column_index(merged[out.columns])
 
 
 def _cohort_value_cols(wide: pd.DataFrame) -> list[str]:

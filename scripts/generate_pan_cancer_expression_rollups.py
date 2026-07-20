@@ -29,15 +29,15 @@ OUT_PATH = (
 # current version-pinned data. Keep this table explicit: a source change should
 # produce a reviewable artifact diff rather than a silent gene-wise fallback.
 SELECTED_SOURCE_SHARDS = {
-    "CHOL": "TREEHOUSE_POLYA_25_01_TCGA_SUBSET__CHOL.csv.gz",
-    "COAD": "TREEHOUSE_POLYA_25_01_TCGA_SUBSET__COAD.csv.gz",
-    "READ": "TREEHOUSE_POLYA_25_01_TCGA_SUBSET__READ.csv.gz",
+    "CHOL": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__CHOL.csv.gz",
+    "COAD": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__COAD.csv.gz",
+    "READ": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__READ.csv.gz",
     "NET_PANCREAS": "GSE118014_ALVAREZ_2018.csv.gz",
     "NET_MIDGUT": "GSE98894_ALVAREZ_2018_NET.csv.gz",
     "NET_RECTAL": "GSE98894_ALVAREZ_2018_NET.csv.gz",
     "NET_LUNG": "DRMETRICS_ALCALA_2019_LNEN.csv.gz",
-    "LUAD": "TREEHOUSE_POLYA_25_01_TCGA_SUBSET__LUAD.csv.gz",
-    "LUSC": "TREEHOUSE_POLYA_25_01_TCGA_SUBSET__LUSC.csv.gz",
+    "LUAD": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__LUAD.csv.gz",
+    "LUSC": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__LUSC.csv.gz",
     "ADCC": "GSE294016_BARTL_2025_SGC.csv.gz",
 }
 

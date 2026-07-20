@@ -476,7 +476,7 @@ def test_round_stat_columns_only_touches_known_columns():
 def test_inventory_preserves_oncorefs_canonical_source_cohort_labels(
     tmp_path, monkeypatch,
 ):
-    storage = "TREEHOUSE_POLYA_25_01_TCGA_SUBSET"
+    storage = "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES"
     canonical = "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY"
     pd.DataFrame(
         {

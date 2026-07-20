@@ -385,7 +385,7 @@ def test_cancer_expression_returns_per_symbol_expression_column():
 
 def test_cancer_expression_tcga_default_is_clean_tpm_not_housekeeping():
     # PRAD now has bundled per-sample data via Treehouse 25.01 PolyA
-    # TCGA subset (source_cohort=TREEHOUSE_POLYA_25_01_TCGA_SUBSET);
+    # Treehouse TCGA samples (source_cohort=TREEHOUSE_POLYA_25_01_TCGA_SAMPLES);
     # cancer_expression prefers that over the legacy pan-cancer FPKM
     # medians. Default should still be TPM_clean (not housekeeping).
     default = cancer_expression("PRAD", genes=["KLK3"])
@@ -518,8 +518,8 @@ def test_imported_specific_reference_keeps_one_default_source_per_code():
     # c45b9ca). Both should have exactly one packaged source row each.
     gbm_sources = df[df["cancer_code"] == "GBM"]["source_cohort"].tolist()
     lgg_sources = df[df["cancer_code"] == "LGG"]["source_cohort"].tolist()
-    assert gbm_sources == ["TREEHOUSE_POLYA_25_01_TCGA_SUBSET"]
-    assert lgg_sources == ["TREEHOUSE_POLYA_25_01_TCGA_SUBSET"]
+    assert gbm_sources == ["TREEHOUSE_POLYA_25_01_TCGA_SAMPLES"]
+    assert lgg_sources == ["TREEHOUSE_POLYA_25_01_TCGA_SAMPLES"]
 
 
 def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():

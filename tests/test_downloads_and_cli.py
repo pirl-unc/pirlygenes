@@ -32,7 +32,7 @@ def test_registry_loads_and_has_expected_categories():
     # TCGA cohorts in the YAML registry use the unprefixed registry
     # codes (BLCA, BRCA, ...) so they match cancer-type-registry.csv.
     # The TCGA-via-Treehouse build tags rows with source_cohort
-    # TREEHOUSE_POLYA_25_01_TCGA_SUBSET to distinguish from a future
+    # TREEHOUSE_POLYA_25_01_TCGA_SAMPLES to distinguish from a future
     # GDC-direct build under the same cancer_code.
     tcga_codes = {
         code
