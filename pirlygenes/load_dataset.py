@@ -409,9 +409,18 @@ def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
         sample_qc="artifact",
         reference_source="artifact",
     )
+    summary = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+    )
+    summary_codes = set(
+        summary.loc[summary["available"], "cancer_code"].astype(str)
+    )
     availability = availability.loc[
         availability["available"]
         & availability["source_cohort"].notna()
+        & ~availability["cancer_code"].astype(str).isin(summary_codes)
     ].drop_duplicates(["cancer_code", "source_cohort"])
     known = set(df["cohort_id"].astype(str))
     availability = availability.loc[
