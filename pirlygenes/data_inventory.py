@@ -41,7 +41,7 @@ class CohortRowCount:
     cancer_code: str
     source_cohort: str
     source_project: str
-    n_rows: int          # one row per measured gene → this is the gene count
+    n_rows: int | None   # one row per measured gene; None for metadata-only rows
     n_samples: int | None
     processing_pipeline: str = ""
     tumor_origin: str = ""
@@ -381,16 +381,21 @@ _SUMMARY_CACHE = Path.home() / ".cache" / "pirlygenes" / "inventory_summary.json
 # Bump when the cached snapshot's fields/shape change, so stale caches from an
 # older code version are ignored (the shard fingerprint alone wouldn't catch a
 # pure-code schema change like adding the `reference` field).
-_SUMMARY_SCHEMA = "12"
+_SUMMARY_SCHEMA = "14"
 
 
-def _shard_signature(paths: list[Path]) -> str:
+def _shard_signature(
+    paths: list[Path], *, owner_data_version: str | None = None,
+) -> str:
     """Fingerprint the shard set by (name, size, mtime) — plus the summary
-    schema version — so the cached summary is reused only while both are
-    unchanged."""
+    schema and owner data versions — so the cached summary is reused only while
+    all three are unchanged."""
+    if owner_data_version is None:
+        from oncoref.data_bundle import DATA_VERSION as owner_data_version
+
     parts = sorted((p.name, p.stat().st_size, int(p.stat().st_mtime)) for p in paths)
     return hashlib.md5(  # noqa: S324 (non-crypto)
-        (_SUMMARY_SCHEMA + repr(parts)).encode()
+        f"{_SUMMARY_SCHEMA}:{owner_data_version}:{parts!r}".encode()
     ).hexdigest()
 
 
@@ -474,6 +479,33 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
         .reset_index()
         .sort_values(["source_cohort", "cancer_code"])
     )
+    # Summary shards remain the historical inventory spine, but canonical
+    # artifact-only references are public/loadable too. Add their compact
+    # manifest rows without reading expression values. Their gene count remains
+    # explicitly unknown rather than being fabricated as zero. See #568.
+    from .expression import available_cancer_expression_references
+
+    public_manifest = available_cancer_expression_references()
+    grouped_keys = set(map(
+        tuple,
+        grouped[["cancer_code", "source_cohort"]]
+        .astype(str)
+        .itertuples(index=False, name=None),
+    ))
+    artifact_only = public_manifest.loc[[
+        (str(row.cancer_code), str(row.source_cohort)) not in grouped_keys
+        for row in public_manifest.itertuples(index=False)
+    ]]
+    if not artifact_only.empty:
+        additions = artifact_only[[
+            "cancer_code", "source_cohort", "source_project", "n_samples",
+            "processing_pipeline", "tumor_origin",
+        ]].copy()
+        additions["n_rows"] = pd.NA
+        grouped = pd.concat([
+            grouped,
+            additions[grouped.columns],
+        ], ignore_index=True).sort_values(["source_cohort", "cancer_code"])
     try:
         from .gene_sets_cancer import CANCER_TYPE_NAMES
         name_for = {
@@ -503,7 +535,7 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
             cancer_code=str(row.cancer_code),
             source_cohort=str(row.source_cohort),
             source_project=str(row.source_project),
-            n_rows=int(row.n_rows),
+            n_rows=_coerce_int(row.n_rows),
             n_samples=_coerce_int(row.n_samples),
             processing_pipeline=str(getattr(row, "processing_pipeline", "") or ""),
             tumor_origin=str(getattr(row, "tumor_origin", "") or ""),
@@ -601,8 +633,9 @@ def _render_flat(rows: list[CohortRowCount]) -> str:
         else:
             source, strat = r.reference, "—"
         n = "—" if r.n_samples is None else f"{r.n_samples}"
+        genes = "—" if r.n_rows is None else f"{r.n_rows:,}"
         lines.append(
-            f"{r.cancer_code:<16}{name:<30}{n:>6}  {r.n_rows:>8,}  "
+            f"{r.cancer_code:<16}{name:<30}{n:>6}  {genes:>8}  "
             f"{assay:<22}{tool:<9}{unit:<13}{strat:<19}{source}"
         )
     return "\n".join(lines)
@@ -740,13 +773,17 @@ def render_inventory(
         assay = entries[0].assay or _assay_heuristic(
             source_cohort, entries[0].processing_pipeline
         )
-        gene_set = {e.n_rows for e in entries}
-        genes_vary = len(gene_set) > 1
-        genes_str = (
-            f"{min(gene_set):,}–{max(gene_set):,}"
-            if genes_vary
-            else f"{next(iter(gene_set)):,}"
-        )
+        gene_set = {e.n_rows for e in entries if e.n_rows is not None}
+        unknown_genes = any(e.n_rows is None for e in entries)
+        genes_vary = len(gene_set) > 1 or (bool(gene_set) and unknown_genes)
+        if not gene_set:
+            genes_str = "unknown"
+        elif genes_vary:
+            genes_str = f"{min(gene_set):,}–{max(gene_set):,}"
+            if unknown_genes:
+                genes_str += " + unknown"
+        else:
+            genes_str = f"{next(iter(gene_set)):,}"
         # header: cohorts · samples · assay · genes · quantification · [met] · reference
         parts = [
             f"{len(entries)} {'cohort' if len(entries) == 1 else 'cohorts'}",
@@ -762,7 +799,8 @@ def render_inventory(
         lines.append(f"  {source_cohort}   —   " + " · ".join(parts))
         for e in entries:
             n = "n=NaN" if e.n_samples is None else f"n={e.n_samples}"
-            extra = f"   {e.n_rows:>7,} genes" if genes_vary else ""
+            row_genes = "unknown" if e.n_rows is None else f"{e.n_rows:>7,}"
+            extra = f"   {row_genes} genes" if genes_vary else ""
             n_field = f"{n:<7}" if genes_vary else n
             name = e.cancer_type_name
             if len(name) > 40:

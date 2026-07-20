@@ -16,7 +16,6 @@ def test_delegated_parity_across_reference_classes():
         ("CLL", ["MS4A1"]),         # non-TCGA heme reference
         ("MTC", ["CALCA"]),         # microarray TPM proxy
         ("BRCA_Basal", ["KRT5"]),   # molecular subtype
-        ("SARC", ["TP53"]),         # computed source union
     ]
     compare_columns = [
         "Ensembl_Gene_ID",
@@ -64,6 +63,95 @@ def test_delegated_parity_across_reference_classes():
         pd.testing.assert_frame_equal(actual_cmp, delegated_cmp, check_dtype=False)
         assert actual.attrs["delegated_to"] == "oncoref.cancer_reference_expression"
         assert actual.attrs["reference_source"] == "summary_rows_all"
+
+
+def test_sarc_union_preserves_summaries_and_adds_artifact_only_children():
+    actual = accessors.cancer_reference_expression(
+        cancer_types="SARC",
+        genes=["TP53"],
+        normalize="tpm_clean",
+    )
+    delegated = oncoref.cancer_reference_expression(
+        cancer_types="SARC",
+        genes=["TP53"],
+        normalize="tpm_clean",
+        format="long",
+        include_provenance=True,
+        on_missing="empty",
+        auto_fetch=False,
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        gene_id_style="pirlygenes",
+        gene_universe="pirlygenes",
+    )
+    summary_codes = set(delegated["cancer_code"].astype(str))
+    actual_codes = set(actual["cancer_code"].astype(str))
+
+    assert summary_codes <= actual_codes
+    assert actual_codes - summary_codes == {"SARC_ESS_HG", "SARC_ESS_LG"}
+    assert actual.attrs["reference_source"] == "summary_rows_all+artifact"
+
+
+def test_artifact_only_ess_cohorts_load_with_stable_modes_and_provenance():
+    codes = ["SARC_ESS_HG", "SARC_ESS_LG"]
+    genes = ["ESR1", "PGR", "BCOR"]
+    out = accessors.cancer_reference_expression(
+        cancer_types=codes,
+        genes=genes,
+        normalize=["tpm", "tpm_clean", "tpm_log1p", "tpm_clean_log1p"],
+    )
+
+    assert set(out["cancer_code"].astype(str)) == set(codes)
+    assert set(out["Symbol"].astype(str)) == set(genes)
+    assert set(out["normalization"].astype(str)) == {
+        "TPM", "TPM_clean", "TPM_log1p", "TPM_clean_log1p",
+    }
+    assert set(out["source_cohort"].astype(str)) == {
+        "GSE85383_YOSHIDA_2017_ESS"
+    }
+    assert set(out.loc[out["cancer_code"].eq("SARC_ESS_HG"), "n_samples"]) == {4}
+    assert set(out.loc[out["cancer_code"].eq("SARC_ESS_LG"), "n_samples"]) == {9}
+    assert out["expression"].notna().all()
+    assert out.attrs["reference_source"] == "artifact"
+    assert not out.attrs["missing_requests"]
+
+
+def test_artifact_only_exact_source_filter_and_pooling_contract():
+    cohort = "GSE85383_YOSHIDA_2017_ESS"
+    selected = accessors.cancer_reference_expression(
+        cancer_types="SARC_ESS_HG",
+        genes=["ESR1"],
+        source_cohort=cohort,
+        pool=True,
+    )
+    assert selected["source_cohort"].tolist() == ["POOLED"]
+    assert selected["n_samples"].tolist() == [4]
+    assert selected[["q1", "q3"]].isna().all().all()
+
+    missing = accessors.cancer_reference_expression(
+        cancer_types="SARC_ESS_HG",
+        genes=["ESR1"],
+        source_cohort="NO_SUCH_COHORT",
+    )
+    assert missing.empty
+    assert missing.attrs["availability"][0]["available"] is False
+    assert (
+        missing.attrs["availability"][0]["missing_reason"]
+        == "no_reference_artifact_matching_source_filter"
+    )
+
+
+def test_compact_cancer_expression_loads_artifact_only_reference():
+    out = accessors.cancer_expression("SARC_ESS_HG", genes=["ESR1"])
+
+    assert out["Symbol"].tolist() == ["ESR1"]
+    assert out["expression"].iloc[0] > 0
+    status = accessors.cancer_expression_reference_status(
+        "SARC_ESS_HG"
+    ).iloc[0]
+    assert status["reference_status"] == "direct_reference"
+    assert status["reference_code"] == "SARC_ESS_HG"
+    assert status["reference_n_samples"] == 4
 
 
 def test_adapter_expands_legacy_aliases_and_derives_raw_log_without_fallback(

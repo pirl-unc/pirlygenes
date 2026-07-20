@@ -52,30 +52,51 @@ def test_availability_never_loads_full_expression_frame(monkeypatch):
 
     result = available_cancer_expression_references()
 
-    assert result.shape == (137, 8)
+    assert result.shape == (139, 8)
     assert result.columns.tolist() == _PUBLIC_COLUMNS
-    assert delegated_calls == [{
-        "normalize": "tpm_clean",
-        "sample_qc": "all",
-        "reference_source": "summary_rows_all",
-        "all_sources": True,
-    }]
+    assert delegated_calls == [
+        {
+            "normalize": "tpm_clean",
+            "sample_qc": "all",
+            "reference_source": "summary_rows_all",
+            "all_sources": True,
+        },
+        {
+            "normalize": "tpm_clean",
+            "sample_qc": "artifact",
+            "reference_source": "artifact",
+        },
+    ]
 
 
-def test_availability_keys_match_oncoref_all_source_manifest():
-    delegated = oncoref.cancer_reference_expression_availability(
+def test_availability_keys_match_summary_plus_artifact_only_union():
+    summary = oncoref.cancer_reference_expression_availability(
         normalize="tpm_clean",
         sample_qc="all",
         reference_source="summary_rows_all",
         all_sources=True,
     )
+    artifacts = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="artifact",
+        reference_source="artifact",
+    )
     result = available_cancer_expression_references()
 
-    expected_keys = set(map(
+    summary_keys = set(map(
         tuple,
-        delegated[["cancer_code", "source_cohort"]]
+        summary[["cancer_code", "source_cohort"]]
         .astype(str)
         .itertuples(index=False, name=None),
+    ))
+    summary_codes = {code for code, _ in summary_keys}
+    artifact_only_keys = set(map(
+        tuple,
+        artifacts.loc[
+            artifacts["available"]
+            & ~artifacts["cancer_code"].astype(str).isin(summary_codes),
+            ["cancer_code", "source_cohort"],
+        ].astype(str).itertuples(index=False, name=None),
     ))
     actual_keys = set(map(
         tuple,
@@ -83,7 +104,7 @@ def test_availability_keys_match_oncoref_all_source_manifest():
         .astype(str)
         .itertuples(index=False, name=None),
     ))
-    assert actual_keys == expected_keys
+    assert actual_keys == summary_keys | artifact_only_keys
 
 
 def test_availability_keys_match_the_pirlygenes_provenance_sidecar():
@@ -103,7 +124,11 @@ def test_availability_keys_match_the_pirlygenes_provenance_sidecar():
         .astype(str)
         .itertuples(index=False, name=None),
     ))
-    assert actual_keys == expected_keys
+    assert expected_keys <= actual_keys
+    assert actual_keys - expected_keys == {
+        ("SARC_ESS_HG", "GSE85383_YOSHIDA_2017_ESS"),
+        ("SARC_ESS_LG", "GSE85383_YOSHIDA_2017_ESS"),
+    }
     assert not any("TCGA_SUBSET" in cohort for _, cohort in actual_keys)
 
 
@@ -119,7 +144,7 @@ def test_availability_preserves_the_complete_public_manifest():
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "72a7a701a72e510bc05b684bd1114a04a62d99b75ebec41ee7412fcb392dcf87"
+        "a2dd3e12b113759f6c30fe0a2a4637f6908850005414456ad7acadbcc8f50da1"
     )
 
 
@@ -143,6 +168,8 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         ("SARC_CHON", "GSE299759_MEIJER_2026"),
         ("SARC_CHOR", "GSE239531_VANOOST_2024"),
         ("SARC_PEC", "GSE328026_PECOMA_2026"),
+        ("SARC_ESS_HG", "GSE85383_YOSHIDA_2017_ESS"),
+        ("SARC_ESS_LG", "GSE85383_YOSHIDA_2017_ESS"),
     })
     assert expected <= keys
 
@@ -187,7 +214,7 @@ from pirlygenes.expression import available_cancer_expression_references
 
 assert sys.gettrace() is None, 'memory probe inherited coverage/debug tracing'
 result = available_cancer_expression_references()
-assert result.shape == (137, 8)
+assert result.shape == (139, 8)
 if sys.platform.startswith('linux'):
     # getrusage().ru_maxrss retains the forked pytest parent's historical
     # high-water mark across exec on Linux. VmHWM belongs to this executable's

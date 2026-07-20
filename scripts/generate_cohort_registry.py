@@ -34,33 +34,9 @@ DATA = Path("pirlygenes/data")
 # underscore-prefix token is the `prefix`; `kind` is the high-level pipeline
 # family (what the cross-source combining rule keys off).
 def _classify(cid: str):
-    if cid.startswith("COMPUTED_"):
-        return "computed", "Computed aggregate", "computed-aggregate"
-    if cid == "LITERATURE_CURATED":
-        return "curated", "Literature-curated", "literature-curated"
-    if cid.startswith("TREEHOUSE_"):
-        proj = ("TCGA (Treehouse-reprocessed)" if "_TCGA_" in cid
-                else "Treehouse")
-        return "treehouse", proj, "bulk RNA-seq"
-    if cid.startswith("TARGET_"):
-        return "target", "TARGET", "bulk RNA-seq"
-    if cid.startswith("SCLC_UCOLOGNE"):
-        return "ucologne", "University of Cologne", "bulk RNA-seq"
-    if cid.startswith("DRMETRICS"):
-        return "geo", "GEO (DR-metrics / Alcala LNEN)", "bulk RNA-seq"
-    if cid.startswith("GSE"):
-        return "geo", "GEO", "bulk RNA-seq"
-    if cid.startswith("BEATAML"):
-        return "beataml", "BeatAML (OHSU)", "bulk RNA-seq"
-    if cid.startswith("MMRF"):
-        return "mmrf", "MMRF CoMMpass", "bulk RNA-seq"
-    if cid.startswith("CLLMAP"):
-        return "cllmap", "CLL-map", "bulk RNA-seq"
-    if cid.startswith("CGCI"):
-        return "cgci", "CGCI", "bulk RNA-seq"
-    if cid.startswith("UNC"):
-        return "unc", "UNC NUTM1 case series", "bulk RNA-seq"
-    return "other", "", "bulk RNA-seq"
+    from pirlygenes.load_dataset import _cohort_source_defaults
+
+    return _cohort_source_defaults(cid)
 
 
 # Cohorts whose assay is NOT bulk RNA-seq (override the default).
@@ -85,6 +61,39 @@ def main():
         n_codes=("cancer_code", "nunique"),
         source_version=("source_version", "first"),
     )
+
+    # Canonical percentile artifacts may lead their legacy summary sidecars.
+    # Include those owner-advertised sources so regenerating this CSV cannot
+    # make a public/loadable cohort orphaned again (pirlygenes#568,
+    # oncoref#416).
+    import oncoref
+
+    artifact_availability = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="artifact",
+        reference_source="artifact",
+    )
+    summary_codes = set(per["cancer_code"].astype(str))
+    artifact_only = artifact_availability.loc[
+        artifact_availability["available"]
+        & artifact_availability["source_cohort"].notna()
+        & ~artifact_availability["cancer_code"].astype(str).isin(summary_codes)
+    ].drop_duplicates(["cancer_code", "source_cohort"])
+    for cohort_id, group in artifact_only.groupby("source_cohort"):
+        cohort_id = str(cohort_id)
+        if cohort_id in by_cohort.index:
+            continue
+        counts = pd.to_numeric(group["n_reference_samples"], errors="coerce")
+        versions = ",".join(sorted(set(
+            group["data_version"].dropna().astype(str)
+        )))
+        by_cohort.loc[cohort_id] = {
+            "n_samples": counts.fillna(0).sum(),
+            "n_codes": group["cancer_code"].astype(str).nunique(),
+            "source_version": (
+                f"oncoref cancer-reference artifact; data_version={versions}"
+            ),
+        }
 
     # 2. full cohort universe = shards ∪ registry source_cohort column. The
     # cancer-type registry is owned by oncoref now (the packaged

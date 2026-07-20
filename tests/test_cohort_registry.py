@@ -51,6 +51,19 @@ def test_cohort_kind_and_prefix_documented():
     assert gsc.cohort_registry()["GSE32662_PRINGLE_2012_MTC"]["assay"] == "microarray"
 
 
+def test_artifact_only_source_is_registered_from_owner_availability():
+    row = gsc.cohort_registry_df().set_index("cohort_id").loc[
+        "GSE85383_YOSHIDA_2017_ESS"
+    ]
+
+    assert row["prefix"] == "GSE85383"
+    assert row["kind"] == "geo"
+    assert row["source_project"] == "GEO"
+    assert row["n_samples"] == 13
+    assert row["n_codes"] == 2
+    assert "oncoref cancer-reference artifact" in row["provenance"]
+
+
 def test_source_prefixed_atoms_and_rollup():
     spr = source_prefixed_references()
     assert {"kind", "cohort_atom"}.issubset(spr.columns)
