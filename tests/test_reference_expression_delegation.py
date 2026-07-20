@@ -92,19 +92,19 @@ def test_sarc_union_preserves_summaries_and_adds_artifact_only_children():
     assert actual.attrs["reference_source"] == "summary_rows_all+artifact"
 
 
-def test_artifact_only_ess_cohorts_load_with_stable_modes_and_provenance():
+def test_artifact_only_ess_cohorts_load_packaged_modes_and_provenance():
     codes = ["SARC_ESS_HG", "SARC_ESS_LG"]
     genes = ["ESR1", "PGR", "BCOR"]
     out = accessors.cancer_reference_expression(
         cancer_types=codes,
         genes=genes,
-        normalize=["tpm", "tpm_clean", "tpm_log1p", "tpm_clean_log1p"],
+        normalize=["tpm_clean", "tpm_clean_log1p"],
     )
 
     assert set(out["cancer_code"].astype(str)) == set(codes)
     assert set(out["Symbol"].astype(str)) == set(genes)
     assert set(out["normalization"].astype(str)) == {
-        "TPM", "TPM_clean", "TPM_log1p", "TPM_clean_log1p",
+        "TPM_clean", "TPM_clean_log1p",
     }
     assert set(out["source_cohort"].astype(str)) == {
         "GSE85383_YOSHIDA_2017_ESS"

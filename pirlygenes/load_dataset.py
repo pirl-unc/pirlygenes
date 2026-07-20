@@ -413,6 +413,7 @@ def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
         normalize="tpm_clean",
         sample_qc="all",
         reference_source="summary_rows_all",
+        all_sources=True,
     )
     summary_codes = set(
         summary.loc[summary["available"], "cancer_code"].astype(str)
