@@ -827,8 +827,8 @@ def _reference_code_set() -> frozenset:
 
 
 @lru_cache(maxsize=1)
-def _oncoref_reference_code_set() -> frozenset:
-    """Reference codes served by the delegated oncoref source-union view."""
+def _oncoref_summary_reference_code_set() -> frozenset:
+    """Reference codes served by oncoref's all-source summary view."""
     import oncoref
 
     availability = oncoref.cancer_reference_expression_availability(
@@ -838,6 +838,30 @@ def _oncoref_reference_code_set() -> frozenset:
     )
     return frozenset(
         availability.loc[availability["available"], "cancer_code"].astype(str)
+    )
+
+
+@lru_cache(maxsize=1)
+def _oncoref_artifact_reference_code_set() -> frozenset:
+    """Reference codes served by oncoref's canonical percentile artifacts."""
+    import oncoref
+
+    availability = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="artifact",
+        reference_source="artifact",
+    )
+    return frozenset(
+        availability.loc[availability["available"], "cancer_code"].astype(str)
+    )
+
+
+@lru_cache(maxsize=1)
+def _oncoref_reference_code_set() -> frozenset:
+    """All codes loadable through the delegated compatibility accessor."""
+    return frozenset(
+        _oncoref_summary_reference_code_set()
+        | _oncoref_artifact_reference_code_set()
     )
 
 
@@ -1069,10 +1093,12 @@ def available_cancer_expression_references() -> pd.DataFrame:
     cohort. Downstream consumers can use this to decide which non-TCGA
     references are available without inspecting data files.
 
-    This is a gene-independent manifest read. It adapts oncoref's compact
-    all-source availability API through pirlygenes' compatibility registry; it
-    never loads the multi-million-row expression summary or the cohort-view
-    artifact. A fresh ``.copy()`` keeps the historical mutation-safe contract.
+    This is a gene-independent manifest read. It combines oncoref's compact
+    all-source summary availability with cohorts served only by its canonical
+    percentile artifacts, then adapts that union through pirlygenes'
+    compatibility registry. It never loads the multi-million-row expression
+    summary or any expression values. A fresh ``.copy()`` keeps the historical
+    mutation-safe contract.
     """
     return _load_available_reference_manifest().copy()
 
@@ -1085,12 +1111,25 @@ def _load_available_reference_manifest() -> pd.DataFrame:
     from .reference_manifest import build_reference_manifest
     from .source_cohort_origin import classify_source_cohort
 
-    availability = oncoref.cancer_reference_expression_availability(
+    summary = oncoref.cancer_reference_expression_availability(
         normalize="tpm_clean",
         sample_qc="all",
         reference_source="summary_rows_all",
         all_sources=True,
     )
+    artifacts = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="artifact",
+        reference_source="artifact",
+    )
+    summary_codes = set(
+        summary.loc[summary["available"], "cancer_code"].astype(str)
+    )
+    artifact_only = artifacts.loc[
+        artifacts["available"]
+        & ~artifacts["cancer_code"].astype(str).isin(summary_codes)
+    ]
+    availability = pd.concat([summary, artifact_only], ignore_index=True)
     manifest = build_reference_manifest(
         availability,
         availability,
@@ -1467,6 +1506,140 @@ def _reference_compatibility_source_cohorts(
     return allowed or [_EMPTY_REFERENCE_SOURCE_COHORT]
 
 
+def _partition_reference_codes_by_owner_view(
+    cancer_types: Optional[str | Iterable[str]],
+) -> tuple[Optional[list[str]], list[str]]:
+    """Split requests between the compatibility summary and artifact views.
+
+    A code stays on the historical all-source summary view whenever that view
+    can serve it. Only codes absent there are delegated to the canonical
+    artifact view. This preserves source-union behavior while making future
+    artifact-only cohorts visible without a cohort-name allowlist.
+    """
+    artifact_only = (
+        _oncoref_artifact_reference_code_set()
+        - _oncoref_summary_reference_code_set()
+    )
+    if cancer_types is None:
+        return None, sorted(artifact_only)
+    requested = (
+        [cancer_types] if isinstance(cancer_types, str) else list(cancer_types)
+    )
+    return (
+        [code for code in requested if str(code) not in artifact_only],
+        [str(code) for code in requested if str(code) in artifact_only],
+    )
+
+
+def _artifact_record_matches_source_filter(
+    record: dict,
+    *,
+    source_cohorts: Optional[str | Iterable[str]],
+    exclude_microarray_proxy: bool,
+) -> bool:
+    if source_cohorts is not None:
+        allowed = (
+            {str(source_cohorts)}
+            if isinstance(source_cohorts, str)
+            else {str(value) for value in source_cohorts}
+        )
+        if str(record.get("source_cohort", "")) not in allowed:
+            return False
+    if exclude_microarray_proxy:
+        source_text = " ".join(
+            str(record.get(column, ""))
+            for column in (
+                "source_scale_class",
+                "source_type",
+                "processing_pipeline",
+                "notes",
+            )
+        ).lower()
+        if any(token in source_text for token in (
+            "microarray", "tpm_proxy", "tpm-proxy", "tpm proxy",
+        )):
+            return False
+    return True
+
+
+def _filter_artifact_reference_source(
+    frame: pd.DataFrame,
+    *,
+    source_cohorts: Optional[str | Iterable[str]],
+    exclude_microarray_proxy: bool,
+) -> pd.DataFrame:
+    """Apply source-union filters to an artifact-only delegated result."""
+    attrs = dict(frame.attrs)
+    availability = []
+    allowed_pairs = set()
+    allowed_cohorts_by_code = {}
+    for original in attrs.get("availability", []):
+        record = dict(original)
+        allowed = bool(record.get("available")) and (
+            _artifact_record_matches_source_filter(
+                record,
+                source_cohorts=source_cohorts,
+                exclude_microarray_proxy=exclude_microarray_proxy,
+            )
+        )
+        if record.get("available") and not allowed:
+            record["available"] = False
+            record["missing_reason"] = "no_reference_artifact_matching_source_filter"
+        if allowed:
+            code = str(record.get("cancer_code", ""))
+            cohort = str(record.get("source_cohort", ""))
+            allowed_pairs.add((code, cohort))
+            allowed_cohorts_by_code[code] = cohort
+        availability.append(record)
+
+    if frame.empty:
+        out = frame.copy()
+    elif "source_cohort" in frame.columns:
+        pairs = pd.Series(
+            list(zip(
+                frame["cancer_code"].astype(str),
+                frame["source_cohort"].astype(str),
+            )),
+            index=frame.index,
+        )
+        out = frame.loc[pairs.isin(allowed_pairs)].copy()
+    else:
+        # oncoref omits provenance columns from artifact output when
+        # include_provenance=False. Pirlygenes keeps source_cohort as a stable
+        # identity column, so recover it from the same availability record used
+        # to decide whether the row is selectable.
+        codes = frame["cancer_code"].astype(str)
+        out = frame.loc[codes.isin(allowed_cohorts_by_code)].copy()
+        out["source_cohort"] = (
+            out["cancer_code"].astype(str).map(allowed_cohorts_by_code)
+        )
+    out.attrs.update(attrs)
+    out.attrs["availability"] = availability
+    out.attrs["missing_requests"] = [
+        record for record in availability if not record.get("available")
+    ]
+    return out
+
+
+def _artifact_sample_qc_by_code(codes: Sequence[str]) -> dict[str, str]:
+    """Return each artifact's effective build-QC policy for raw recomputes."""
+    import oncoref
+
+    availability = oncoref.cancer_reference_expression_availability(
+        cancer_types=codes,
+        normalize="tpm_clean",
+        sample_qc="artifact",
+        reference_source="artifact",
+    )
+    valid = {"pass", "pass_or_warn", "all"}
+    policies = {}
+    for record in availability.loc[availability["available"]].to_dict("records"):
+        policy = str(record.get("artifact_sample_qc", ""))
+        if policy in valid:
+            policies[str(record["cancer_code"])] = policy
+    return policies
+
+
 def _oncoref_reference_mode(
     *,
     cancer_types: Optional[str | Iterable[str]],
@@ -1508,28 +1681,116 @@ def _oncoref_reference_mode(
         source_kind,
         requested_source_cohort,
     )
-    delegated = oncoref.cancer_reference_expression(
-        cancer_types=cancer_types,
-        genes=compatibility_genes,
-        normalize=delegated_mode,
-        format="long",
-        include_provenance=include_provenance,
-        on_missing="empty",
-        auto_fetch=False,
-        sample_qc="all",
-        reference_source="summary_rows_all",
-        gene_id_style="pirlygenes",
-        gene_universe="pirlygenes",
-        # Resolve source kinds with pirlygenes' registry and forward exact
-        # cohorts. This avoids inheriting gaps in oncoref's kind map.
-        source_kind=None,
-        source_cohort=delegated_source_cohort,
-        exclude_microarray_proxy=exclude_microarray_proxy,
-        pool=pool,
-        collapse_cdna_identical=collapse_cdna_identical,
-        collapse_protein_identical=collapse_protein_identical,
+    summary_codes, artifact_codes = _partition_reference_codes_by_owner_view(
+        cancer_types
     )
-    attrs = dict(delegated.attrs)
+    delegated_parts: list[pd.DataFrame] = []
+    if summary_codes is None or summary_codes:
+        delegated_parts.append(oncoref.cancer_reference_expression(
+            cancer_types=summary_codes,
+            genes=compatibility_genes,
+            normalize=delegated_mode,
+            format="long",
+            include_provenance=include_provenance,
+            on_missing="empty",
+            auto_fetch=False,
+            sample_qc="all",
+            reference_source="summary_rows_all",
+            gene_id_style="pirlygenes",
+            gene_universe="pirlygenes",
+            # Resolve source kinds with pirlygenes' registry and forward exact
+            # cohorts. This avoids inheriting gaps in oncoref's kind map.
+            source_kind=None,
+            source_cohort=delegated_source_cohort,
+            exclude_microarray_proxy=exclude_microarray_proxy,
+            pool=pool,
+            collapse_cdna_identical=collapse_cdna_identical,
+            collapse_protein_identical=collapse_protein_identical,
+        ))
+
+    if artifact_codes:
+        if delegated_mode == "tpm":
+            policies = _artifact_sample_qc_by_code(artifact_codes)
+            artifact_groups: dict[str, list[str]] = {}
+            for code in artifact_codes:
+                # oncoref's strict-pass default is the conservative fallback
+                # for legacy metadata without a recorded effective policy.
+                artifact_groups.setdefault(policies.get(code, "pass"), []).append(code)
+        else:
+            artifact_groups = {"artifact": artifact_codes}
+
+        for sample_qc, codes in artifact_groups.items():
+            artifact = oncoref.cancer_reference_expression(
+                cancer_types=codes,
+                genes=compatibility_genes,
+                normalize=delegated_mode,
+                format="long",
+                include_provenance=include_provenance,
+                on_missing="empty",
+                auto_fetch=False,
+                sample_qc=sample_qc,
+                reference_source="artifact",
+                gene_id_style="pirlygenes",
+                gene_universe="pirlygenes",
+                source_kind=None,
+                source_cohort=None,
+                exclude_microarray_proxy=False,
+                pool=False,
+                collapse_cdna_identical=collapse_cdna_identical,
+                collapse_protein_identical=collapse_protein_identical,
+            )
+            artifact = _filter_artifact_reference_source(
+                artifact,
+                source_cohorts=delegated_source_cohort,
+                exclude_microarray_proxy=exclude_microarray_proxy,
+            )
+            artifact_attrs = dict(artifact.attrs)
+            sample_counts = {
+                str(record.get("cancer_code", "")): record.get(
+                    "n_reference_samples", np.nan
+                )
+                for record in artifact_attrs.get("availability", [])
+            }
+            if include_provenance and "n_samples" in artifact.columns:
+                missing_samples = artifact["n_samples"].isna()
+                artifact.loc[missing_samples, "n_samples"] = (
+                    artifact.loc[missing_samples, "cancer_code"]
+                    .astype(str)
+                    .map(sample_counts)
+                )
+            if pool and not artifact.empty:
+                artifact["source_cohort"] = "POOLED"
+                for quantile in ("q1", "q3"):
+                    artifact[quantile] = np.nan
+                if include_provenance and "source_project" in artifact.columns:
+                    artifact["source_project"] = "pooled"
+            artifact.attrs.update(artifact_attrs)
+            delegated_parts.append(artifact)
+
+    if delegated_parts:
+        delegated = pd.concat(delegated_parts, ignore_index=True)
+        attrs = dict(delegated_parts[0].attrs)
+        attrs["availability"] = [
+            record
+            for part in delegated_parts
+            for record in part.attrs.get("availability", [])
+        ]
+        attrs["missing_requests"] = [
+            record
+            for part in delegated_parts
+            for record in part.attrs.get("missing_requests", [])
+        ]
+        sources = list(dict.fromkeys(
+            str(part.attrs.get("reference_source", ""))
+            for part in delegated_parts
+            if part.attrs.get("reference_source")
+        ))
+        attrs["reference_source"] = "+".join(sources)
+    else:
+        delegated = pd.DataFrame(columns=[
+            "cancer_code", "source_cohort", "expression", "q1", "q3",
+        ])
+        attrs = {"availability": [], "missing_requests": []}
     label = _REFERENCE_VALUE_COLUMNS[mode][3]
     delegated = delegated.copy()
     compatibility_transforms: list[str] = []
@@ -1541,6 +1802,14 @@ def _oncoref_reference_mode(
         compatibility_transforms.append(
             "source-kind filter resolved through pirlygenes cohort registry"
         )
+    if artifact_codes:
+        compatibility_transforms.append(
+            "artifact-only cohorts delegated through oncoref artifact view"
+        )
+        if delegated_mode == "tpm":
+            compatibility_transforms.append(
+                "raw TPM artifact-only cohorts use artifact-recorded sample QC"
+            )
     if cancer_types is not None:
         allowed_codes = {str(code) for code in cancer_types}
         delegated_codes = set(delegated["cancer_code"].astype(str))
@@ -1679,10 +1948,13 @@ def cancer_reference_expression(
 
     This compatibility wrapper preserves pirlygenes' normalization labels,
     long/wide schemas, source-union semantics, provenance projection, filters,
-    pooling, and identical-locus options. Empirical rows and provenance come
-    only from :func:`oncoref.cancer_reference_expression`; no local expression
-    fallback is attempted. Delegation availability, missing requests, and every
-    deterministic compatibility transform are exposed in ``DataFrame.attrs``.
+    pooling, and identical-locus options. Summary-backed codes retain the
+    historical all-source view; codes available only through oncoref's
+    canonical artifacts use that view automatically. Empirical rows and
+    provenance come only from :func:`oncoref.cancer_reference_expression`; no
+    local expression fallback is attempted. Delegation availability, missing
+    requests, and deterministic compatibility transforms are exposed in
+    ``DataFrame.attrs``.
 
     ``source_kind`` selects union members by processing-source kind (for example
     ``"treehouse"``, ``"geo"``, ``"target"``, or ``"cllmap"``). It is not

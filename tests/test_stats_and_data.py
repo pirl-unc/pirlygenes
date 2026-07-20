@@ -531,6 +531,29 @@ def test_inventory_keys_match_public_reference_manifest():
     )
 
     assert inventory_keys == manifest_keys
+    ess = {
+        row.cancer_code: row
+        for row in snapshot.cohort_rows
+        if row.cancer_code in {"SARC_ESS_HG", "SARC_ESS_LG"}
+    }
+    assert ess["SARC_ESS_HG"].n_rows is None
+    assert ess["SARC_ESS_HG"].n_samples == 4
+    assert ess["SARC_ESS_LG"].n_rows is None
+    assert ess["SARC_ESS_LG"].n_samples == 9
+
+
+def test_inventory_cache_signature_tracks_owner_data_version(tmp_path):
+    shard = tmp_path / "reference.csv.gz"
+    shard.write_bytes(b"fixture")
+
+    before = data_inventory._shard_signature(
+        [shard], owner_data_version="5.23.7"
+    )
+    after = data_inventory._shard_signature(
+        [shard], owner_data_version="5.23.8"
+    )
+
+    assert before != after
 
 
 def test_render_inventory_contains_expected_lines():

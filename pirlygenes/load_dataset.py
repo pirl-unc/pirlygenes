@@ -287,7 +287,7 @@ def load_all_dataframes():
         df = pd.read_csv(str(csv_path), low_memory=False)
         df = _normalize_dataset_dtypes(csv_key, df)
         if csv_key == "cohort-registry.csv":
-            df = _reconcile_computed_cohort_members(df)
+            df = _reconcile_cohort_registry(df)
         yield csv_key, df
     # Preserve the generic enumeration surface for datasets whose physical
     # copies moved to oncoref. They are not present in get_all_csv_paths(), but
@@ -353,6 +353,127 @@ def _reconcile_computed_cohort_members(df: pd.DataFrame) -> pd.DataFrame:
         out.loc[mask, "member_cohorts"] = ";".join(members)
         out.loc[mask, "n_codes"] = len(members)
     return out
+
+
+def _cohort_source_defaults(cohort_id: str) -> tuple[str, str, str]:
+    """Classify an owner cohort using the public cohort-ID convention."""
+    if cohort_id.startswith("COMPUTED_"):
+        return "computed", "Computed aggregate", "computed-aggregate"
+    if cohort_id == "LITERATURE_CURATED":
+        return "curated", "Literature-curated", "literature-curated"
+    if cohort_id.startswith("TREEHOUSE_"):
+        project = (
+            "TCGA (Treehouse-reprocessed)"
+            if "_TCGA_" in cohort_id
+            else "Treehouse"
+        )
+        return "treehouse", project, "bulk RNA-seq"
+    prefix_defaults = (
+        ("TARGET_", "target", "TARGET"),
+        ("SCLC_UCOLOGNE", "ucologne", "University of Cologne"),
+        ("DRMETRICS", "geo", "GEO (DR-metrics / Alcala LNEN)"),
+        ("GSE", "geo", "GEO"),
+        ("BEATAML", "beataml", "BeatAML (OHSU)"),
+        ("MMRF", "mmrf", "MMRF CoMMpass"),
+        ("CLLMAP", "cllmap", "CLL-map"),
+        ("CGCI", "cgci", "CGCI"),
+        ("UNC", "unc", "UNC NUTM1 case series"),
+    )
+    for prefix, kind, project in prefix_defaults:
+        if cohort_id.startswith(prefix):
+            return kind, project, "bulk RNA-seq"
+    return "other", "", "bulk RNA-seq"
+
+
+def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
+    """Register artifact sources missing from the compatibility vocabulary.
+
+    oncoref owns the artifacts and ultimately their cohort metadata
+    (oncoref#416). Until every artifact source is native to that registry,
+    derive missing rows from its compact availability records so pirlygenes'
+    invariant remains true: every advertised ``source_cohort`` is selectable by
+    kind and valid against ``cohort_registry_df()``.
+    """
+    required = {
+        "cohort_id", "prefix", "kind", "source_project", "assay",
+        "n_samples", "n_codes", "is_computed", "member_cohorts",
+        "provenance",
+    }
+    if not required <= set(df.columns):
+        return df
+
+    import oncoref
+
+    availability = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="artifact",
+        reference_source="artifact",
+    )
+    summary = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+    )
+    summary_codes = set(
+        summary.loc[summary["available"], "cancer_code"].astype(str)
+    )
+    availability = availability.loc[
+        availability["available"]
+        & availability["source_cohort"].notna()
+        & ~availability["cancer_code"].astype(str).isin(summary_codes)
+    ].drop_duplicates(["cancer_code", "source_cohort"])
+    known = set(df["cohort_id"].astype(str))
+    availability = availability.loc[
+        ~availability["source_cohort"].astype(str).isin(known)
+    ]
+    if availability.empty:
+        return df
+
+    rows = []
+    for cohort_id, group in availability.groupby("source_cohort", sort=True):
+        cohort_id = str(cohort_id)
+        kind, default_project, default_assay = _cohort_source_defaults(cohort_id)
+        project_values = group["source_project"].dropna().astype(str)
+        source_types = group["source_type"].dropna().astype(str)
+        counts = pd.to_numeric(group["n_reference_samples"], errors="coerce")
+        versions = ",".join(sorted(set(
+            group["data_version"].dropna().astype(str)
+        )))
+        qc_policies = ",".join(sorted(set(
+            group["artifact_sample_qc"].dropna().astype(str)
+        )))
+        provenance = f"oncoref cancer-reference artifact; data_version={versions}"
+        if qc_policies:
+            provenance += f"; sample_qc={qc_policies}"
+        rows.append({
+            "cohort_id": cohort_id,
+            "prefix": cohort_id.split("_", 1)[0],
+            "kind": kind,
+            "source_project": (
+                project_values.iloc[0]
+                if not project_values.empty
+                else default_project
+            ),
+            "assay": (
+                source_types.iloc[0] if not source_types.empty else default_assay
+            ),
+            "n_samples": int(counts.fillna(0).sum()),
+            "n_codes": int(group["cancer_code"].astype(str).nunique()),
+            "is_computed": False,
+            "member_cohorts": "",
+            "provenance": provenance,
+        })
+    return (
+        pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
+        .sort_values(["kind", "cohort_id"])
+        .reset_index(drop=True)
+    )
+
+
+def _reconcile_cohort_registry(df: pd.DataFrame) -> pd.DataFrame:
+    return _reconcile_artifact_only_cohorts(
+        _reconcile_computed_cohort_members(df)
+    )
 
 
 def _dataset_paths():
@@ -538,7 +659,7 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                             ),
                         )
                         if cache_key == "cohort-registry.csv":
-                            loaded = _reconcile_computed_cohort_members(loaded)
+                            loaded = _reconcile_cohort_registry(loaded)
                         _CACHED_DATAFRAMES[cache_key] = loaded
                 # Return a copy so callers that mutate in place (e.g. df["c"]=...,
                 # df.fillna(0, inplace=True)) can't corrupt the shared cache.
