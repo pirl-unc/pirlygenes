@@ -473,7 +473,7 @@ def test_round_stat_columns_only_touches_known_columns():
 # ---------- data inventory + CLI ----------
 
 
-def test_inventory_uses_public_pair_specific_source_cohort_labels(
+def test_inventory_preserves_oncorefs_canonical_source_cohort_labels(
     tmp_path, monkeypatch,
 ):
     storage = "TREEHOUSE_POLYA_25_01_TCGA_SUBSET"
@@ -482,7 +482,7 @@ def test_inventory_uses_public_pair_specific_source_cohort_labels(
         {
             "Ensembl_Gene_ID": ["E1", "E1", "E1"],
             "cancer_code": ["SARC_DDLPS", "SARC_WDLPS", "SARC_PLEOLPS"],
-            "source_cohort": [storage, storage, storage],
+            "source_cohort": [canonical, canonical, storage],
             "source_project": ["Treehouse"] * 3,
             "n_samples": [48, 5, 4],
             "processing_pipeline": ["treehouse_polya"] * 3,

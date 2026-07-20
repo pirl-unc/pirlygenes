@@ -24,7 +24,6 @@ from pathlib import Path
 import pandas as pd
 
 from .downloads import load_registry
-from .reference_source_cohorts import normalize_reference_source_cohort_labels
 
 
 def _active_reference_dir() -> Path:
@@ -448,7 +447,6 @@ def summarize_inventory(*, progress: bool = True) -> InventorySnapshot:
         for col in _SUMMARY_COLS:
             if col not in sd.columns:
                 sd[col] = None if col == "n_samples" else ""
-        sd, _ = normalize_reference_source_cohort_labels(sd)
         total_rows += len(sd)
         gene_ids.update(sd["Ensembl_Gene_ID"].astype(str).unique())
         parts.append(

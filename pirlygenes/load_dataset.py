@@ -36,9 +36,6 @@ from pathlib import Path
 import pandas as pd
 
 from . import data_bundle
-from .reference_source_cohorts import (
-    normalize_reference_source_cohort_labels as _normalize_reference_source_cohort_labels,
-)
 
 _BUNDLED_DATA_DIR = Path(__file__).parent / "data"
 _DOWNLOADED_DATA_DIR = data_bundle.cache_dir()
@@ -416,9 +413,9 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     # pirlygenes' generic get_data surface working, but never select the duplicate
     # in-repo/downloaded shard set at runtime. oncoref >=1.8.133 applies its
     # low-cardinality encoding at the owning cache boundary (oncoref#390), so do
-    # not mutate or re-encode that shared frame here. The narrow source-label
-    # compatibility view does not copy unless an old physical label is present.
-    # Fixture injection deliberately bypasses this branch. See #557 / #528.
+    # not mutate or re-encode that shared frame here. oncoref >=1.8.136 also owns
+    # the canonical physical source-cohort labels. Fixture injection deliberately
+    # bypasses this branch. See #557 / #528.
     if _dataframes_dict is None and normalized_name in (
         "cancer-reference-expression", "cancer-reference-expression.csv"
     ):
@@ -429,7 +426,6 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
             delegated = get_oncoref_data(
                 "cancer-reference-expression", copy=False
             )
-            delegated, _ = _normalize_reference_source_cohort_labels(delegated)
             _CACHED_DATAFRAMES[cache_key] = delegated
         cached = _CACHED_DATAFRAMES[cache_key]
         return cached.copy() if copy else cached

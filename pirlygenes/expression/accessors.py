@@ -81,9 +81,6 @@ from ..gene_families import gene_family_ids
 from ..gene_ids import strip_version
 from ..gene_names import get_alias_as_list, get_reverse_alias_as_list
 from ..load_dataset import get_data
-from ..reference_source_cohorts import (
-    reference_source_cohort_delegated_filter as _reference_source_cohort_delegated_filter,
-)
 from .normalize import (
     add_tpm_columns_from_fpkm,
     drop_technical_genes,
@@ -1415,14 +1412,18 @@ def _reference_compatibility_source_cohorts(
     source_kind: Optional[str | Iterable[str]],
     source_cohort: Optional[str | Iterable[str]],
 ) -> Optional[list[str] | str]:
-    """Translate pirlygenes source-kind semantics to exact cohort filters.
+    """Resolve pirlygenes source-kind semantics to exact cohort filters.
 
     Pirlygenes' cohort registry is the compatibility authority for ``kind``.
     Resolving kinds to cohort IDs before delegation both preserves that public
     contract when oncoref's registry lags (currently the Merkel GEO cohort) and
     ensures filtering occurs before oncoref pools source rows.
+
+    ``source_cohort`` itself is exact. In particular, the generic Treehouse
+    TCGA-subset cohort and the SARC-histology cohort are distinct upstream
+    identities in oncoref >=1.8.136 and are never expanded into each other.
     """
-    delegated_filter = _reference_source_cohort_delegated_filter(source_cohort)
+    delegated_filter = source_cohort
     if source_kind is None:
         if source_cohort is not None:
             requested = (
@@ -1444,8 +1445,7 @@ def _reference_compatibility_source_cohorts(
     matching = registry.loc[
         registry["kind"].astype(str).isin(requested_kinds), "cohort_id"
     ].astype(str).tolist()
-    kind_cohorts = _reference_source_cohort_delegated_filter(matching)
-    allowed = list(kind_cohorts) if kind_cohorts is not None else []
+    allowed = matching
 
     if delegated_filter is not None:
         requested = (
@@ -1528,13 +1528,6 @@ def _oncoref_reference_mode(
     if compatibility_genes != requested_genes:
         compatibility_transforms.append(
             "legacy gene aliases expanded before delegated filtering"
-        )
-    if (
-        requested_source_cohort is not None
-        and delegated_source_cohort != requested_source_cohort
-    ):
-        compatibility_transforms.append(
-            "source-cohort aliases expanded across delegated data versions"
         )
     if source_kind is not None:
         compatibility_transforms.append(

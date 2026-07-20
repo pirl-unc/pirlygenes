@@ -286,25 +286,28 @@ def test_nutm_exact_cohort_filter_is_applied_before_pooling():
 
 
 @pytest.mark.parametrize(
-    ("requested", "expected"),
+    "requested",
     [
-        (
-            "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
-            {
-                "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
-                "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
-            },
-        ),
-        (
-            "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
-            {"TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY"},
-        ),
+        "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
+        "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
     ],
 )
-def test_sarc_source_filter_only_expands_the_legacy_alias(requested, expected):
-    actual = accessors._reference_source_cohort_delegated_filter(requested)
-    actual = [actual] if isinstance(actual, str) else actual
-    assert set(actual) == expected
+def test_source_cohort_filters_remain_exact(requested):
+    actual = accessors._reference_compatibility_source_cohorts(None, requested)
+    assert actual == requested
+
+
+def test_generic_tcga_subset_does_not_select_sarc_histology_rows():
+    out = accessors.cancer_reference_expression(
+        cancer_types="SARC",
+        genes=["TP53"],
+        source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
+    )
+
+    assert set(out["cancer_code"]) == {"SARC_PLEOLPS"}
+    assert set(out["source_cohort"]) == {
+        "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
+    }
 
 
 def test_sarc_histology_source_label_and_filter_are_canonicalized():
@@ -333,7 +336,6 @@ def test_sarc_histology_source_label_and_filter_are_canonicalized():
     )
     assert not any(
         "source-cohort" in transform
-        or "availability reconciled" in transform
         for transform in out.attrs["compatibility_transforms"]
     )
 
