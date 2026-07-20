@@ -23,19 +23,16 @@ under #528; no supported public read path selects them.
 
 ## Compatibility transforms
 
-The adapter performs three deterministic operations over delegated rows:
+The adapter performs two deterministic operations over delegated rows:
 
 - maps oncoref normalization labels back to `TPM`, `TPM_clean`,
   `TPM_log1p`, and `TPM_clean_log1p`;
 - expands legacy pirlygenes gene aliases before the delegated filter and derives
   both log views with `numpy.log1p` from oncoref's delegated linear summaries;
-- maps the DDLPS/WDLPS rows from oncoref's stale generic TCGA-subset storage
-  label to the dedicated SARC-histology label advertised by oncoref's registry,
-  including translation of canonical `source_cohort=` filters
-  ([oncoref#374](https://github.com/pirl-unc/oncoref/issues/374));
 
 Pooling, proteoform bridges, and cDNA/protein-identical collapse delegate
-directly to oncoref 1.8.125 and therefore require no local expression transform.
+directly to oncoref. Exact deprecated cohort IDs and old provenance sidecars
+canonicalize through oncoref's public cohort-alias API.
 
 ## Validation
 

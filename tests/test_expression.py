@@ -385,7 +385,7 @@ def test_cancer_expression_returns_per_symbol_expression_column():
 
 def test_cancer_expression_tcga_default_is_clean_tpm_not_housekeeping():
     # PRAD now has bundled per-sample data via Treehouse 25.01 PolyA
-    # TCGA subset (source_cohort=TREEHOUSE_POLYA_25_01_TCGA_SUBSET);
+    # Treehouse TCGA samples (source_cohort=TREEHOUSE_POLYA_25_01_TCGA_SAMPLES);
     # cancer_expression prefers that over the legacy pan-cancer FPKM
     # medians. Default should still be TPM_clean (not housekeeping).
     default = cancer_expression("PRAD", genes=["KLK3"])
@@ -518,8 +518,8 @@ def test_imported_specific_reference_keeps_one_default_source_per_code():
     # c45b9ca). Both should have exactly one packaged source row each.
     gbm_sources = df[df["cancer_code"] == "GBM"]["source_cohort"].tolist()
     lgg_sources = df[df["cancer_code"] == "LGG"]["source_cohort"].tolist()
-    assert gbm_sources == ["TREEHOUSE_POLYA_25_01_TCGA_SUBSET"]
-    assert lgg_sources == ["TREEHOUSE_POLYA_25_01_TCGA_SUBSET"]
+    assert gbm_sources == ["TREEHOUSE_POLYA_25_01_TCGA_SAMPLES"]
+    assert lgg_sources == ["TREEHOUSE_POLYA_25_01_TCGA_SAMPLES"]
 
 
 def test_cancer_reference_expression_returns_cll_clean_tpm_by_default():
@@ -1041,6 +1041,11 @@ def test_reference_expression_delegates_to_oncoref_without_fallback(monkeypatch)
         return out
 
     monkeypatch.setattr(oncoref, "cancer_reference_expression", fake_oncoref)
+    monkeypatch.setattr(
+        expression_accessors,
+        "get_data",
+        lambda name, *, copy: pd.DataFrame(),
+    )
 
     df = cancer_reference_expression(
         cancer_types=["CLL", "MM"],
@@ -1249,64 +1254,14 @@ def test_cancer_expression_reference_status_is_uniform_for_parent_labels():
     assert status.loc["CLL", "reference_status"] == "direct_reference"
 
 
-def test_cancer_expression_reference_status_precomputes_reference_lookups(
-    monkeypatch,
-):
-    calls = {"reference_loads": 0}
-    fake_refs = pd.DataFrame(
-        [
-            {
-                "Ensembl_Gene_ID": "ENSG000001",
-                "Symbol": "FAKE1",
-                "cancer_code": "CLL",
-                "source_cohort": "CLLMAP_2022",
-                "source_project": "CLL-map",
-                "source_version": "test",
-                "TPM_median": 1.0,
-                "TPM_q1": 0.5,
-                "TPM_q3": 1.5,
-                "TPM_mean": 1.0,
-                "TPM_clean_median": 1.0,
-                "TPM_clean_q1": 0.5,
-                "TPM_clean_q3": 1.5,
-                "n_samples": 2,
-                "n_detected": 2,
-                "processing_pipeline": "test",
-                "notes": "",
-            },
-            {
-                "Ensembl_Gene_ID": "ENSG000002",
-                "Symbol": "FAKE2",
-                "cancer_code": "MM",
-                "source_cohort": "MMRF_COMMPASS",
-                "source_project": "MMRF CoMMpass",
-                "source_version": "test",
-                "TPM_median": 2.0,
-                "TPM_q1": 1.5,
-                "TPM_q3": 2.5,
-                "TPM_mean": 2.0,
-                "TPM_clean_median": 2.0,
-                "TPM_clean_q1": 1.5,
-                "TPM_clean_q3": 2.5,
-                "n_samples": 3,
-                "n_detected": 3,
-                "processing_pipeline": "test",
-                "notes": "",
-            },
-        ]
-    )
-
-    def fake_load_reference_expression():
-        calls["reference_loads"] += 1
-        return fake_refs.copy()
-
+def test_cancer_expression_reference_status_avoids_full_reference(monkeypatch):
     def raise_if_used(*_args, **_kwargs):
-        raise AssertionError("status should use precomputed reference lookups")
+        raise AssertionError("status loaded or rescanned the full reference")
 
     monkeypatch.setattr(
         expression_accessors,
         "_load_cancer_reference_expression",
-        fake_load_reference_expression,
+        raise_if_used,
     )
     monkeypatch.setattr(
         expression_accessors,
@@ -1326,10 +1281,9 @@ def test_cancer_expression_reference_status_precomputes_reference_lookups(
 
     status = cancer_expression_reference_status().set_index("cancer_code")
 
-    assert calls["reference_loads"] == 1
     assert status.loc["CLL", "reference_status"] == "direct_reference"
     assert status.loc["PCN", "reference_code"] == "MM"
-    assert status.loc["BRCA_Basal", "reference_code"] == "BRCA"
+    assert status.loc["BRCA_Basal", "reference_code"] == "BRCA_Basal"
 
 
 def test_cancer_reference_expression_cll_sample_manifest_tracks_exclusions():

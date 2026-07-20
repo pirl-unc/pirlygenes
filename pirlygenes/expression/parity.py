@@ -25,12 +25,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-# oncoref's read policy for a cohort must match the policy its artifact was built
-# with; 'pass' is the common case, a handful of cohorts (e.g. MTC) were baked
-# 'pass_or_warn'. We try the stricter policy first and fall back on the exact
-# mismatch oncoref raises, so each cohort is read under its own baked policy.
-_QC_FALLBACK_ORDER = ("pass", "pass_or_warn", "all")
-
 # TPM floor below which a relative delta is dominated by float/rounding noise and
 # a "100% delta" (one side rounds to 0) is not informative on its own.
 DEFAULT_MIN_EXPR = 1.0
@@ -75,23 +69,18 @@ def _oncoref_reference(code: str, normalize: str):
     """
     import oncoref
 
-    last_err = None
-    for qc in _QC_FALLBACK_ORDER:
-        try:
-            df = oncoref.cancer_reference_expression(
-                cancer_types=code, normalize=normalize, sample_qc=qc
-            )
-            return df, qc
-        except ValueError as err:
-            # Only retry on the sample_qc-policy mismatch; other ValueErrors are
-            # real (unknown code, bad normalize) and should surface.
-            if "sample_qc" in str(err).lower() and "mismatch" in str(err).lower():
-                last_err = err
-                continue
-            return None, f"{type(err).__name__}: {err}"
-        except Exception as err:  # noqa: BLE001 - report, don't crash the sweep
-            return None, f"{type(err).__name__}: {err}"
-    return None, f"no QC policy matched ({last_err})"
+    # oncoref owns the artifact and its baked QC policy. ``artifact`` selects
+    # that policy directly, including pass_or_warn cohorts such as MTC, so a
+    # compatibility retry loop cannot drift from newer availability semantics.
+    try:
+        df = oncoref.cancer_reference_expression(
+            cancer_types=code,
+            normalize=normalize,
+            sample_qc="artifact",
+        )
+        return df, "artifact"
+    except Exception as err:  # noqa: BLE001 - report, don't crash the sweep
+        return None, f"{type(err).__name__}: {err}"
 
 
 def _pg_single_cohort(pg: pd.DataFrame, *, target_n: int) -> pd.DataFrame:
@@ -107,7 +96,10 @@ def _pg_single_cohort(pg: pd.DataFrame, *, target_n: int) -> pd.DataFrame:
     the value deltas would expose a wrong pick if one ever arose.
     """
     if pg["source_cohort"].nunique() > 1:
-        n_by_cohort = pg.groupby("source_cohort")["n_samples"].first()
+        n_by_cohort = pg.groupby(
+            "source_cohort",
+            observed=True,
+        )["n_samples"].first()
         exact = n_by_cohort[n_by_cohort == target_n]
         chosen = exact.index[0] if len(exact) else n_by_cohort.idxmax()
         pg = pg[pg["source_cohort"] == chosen]

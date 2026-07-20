@@ -188,6 +188,45 @@ def test_views_canonicalize_before_pivoting_symbol_drift(monkeypatch, tmp_path):
     assert v.clean_tpm["AAA"].iloc[0] == 30.0
 
 
+def test_views_ignore_unobserved_inherited_categories():
+    """Owning-cache vocabularies must not create phantom cohort combinations."""
+    import pandas as pd
+
+    long = pd.DataFrame(
+        {
+            "Ensembl_Gene_ID": ["ENSG00000141510", "ENSG00000141510"],
+            "Symbol": ["TP53", "TP53"],
+            "cancer_code": pd.Categorical(
+                ["AAA", "BBB"], categories=["AAA", "BBB", "UNUSED"]
+            ),
+            "source_cohort": pd.Categorical(
+                ["S1", "S2"], categories=["S1", "S2", "UNUSED_SOURCE"]
+            ),
+            "normalization": pd.Categorical(
+                ["TPM", "TPM"], categories=["TPM", "TPM_clean", "UNUSED_MODE"]
+            ),
+            "expression": [1.0, 2.0],
+            "q1": [0.5, 1.5],
+            "q3": [1.5, 2.5],
+            "n_detected": [1, 1],
+        }
+    )
+
+    canonical = accessors._canonicalize_views_long(long)
+    wide = accessors._pivot_views_long(
+        canonical,
+        "TPM",
+        ["Ensembl_Gene_ID"],
+    )
+
+    assert len(canonical) == 2
+    assert set(zip(
+        canonical["cancer_code"].astype(str),
+        canonical["source_cohort"].astype(str),
+    )) == {("AAA", "S1"), ("BBB", "S2")}
+    assert wide.columns.tolist() == ["Ensembl_Gene_ID", "Symbol", "AAA", "BBB"]
+
+
 def _fixture_row(ensg, code, version, tpm):
     return {
         "Ensembl_Gene_ID": ensg, "Symbol": ensg, "cancer_code": code,
@@ -712,3 +751,27 @@ def test_canonicalize_false_uses_reference_not_artifact(tmp_path, monkeypatch):
     )
     v = cohort_expression_views(COHORT_A, genes=["TP53"], canonicalize_genes=False)
     assert TP53 in set(v.tpm["Ensembl_Gene_ID"])
+
+
+def test_canonicalize_false_reuses_cached_cohort_positions(monkeypatch):
+    """A narrow opt-out request must not rescan the full shared summary."""
+    fake = _synthetic_reference()
+    _install_fake_reference(monkeypatch, fake)
+    expected_positions = {
+        str(code): positions
+        for code, positions in fake.groupby("cancer_code", sort=False).indices.items()
+    }
+    calls = []
+    monkeypatch.setattr(
+        accessors,
+        "_reference_indices_by_code",
+        lambda: calls.append(True) or expected_positions,
+    )
+
+    long = accessors._reference_long_from_summary_frame(
+        fake,
+        cancer_types=COHORT_A,
+    )
+
+    assert calls == [True]
+    assert set(long["cancer_code"]) == {COHORT_A}

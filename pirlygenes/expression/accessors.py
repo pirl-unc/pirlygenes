@@ -80,12 +80,7 @@ import pandas as pd
 from ..gene_families import gene_family_ids
 from ..gene_ids import strip_version
 from ..gene_names import get_alias_as_list, get_reverse_alias_as_list
-from ..load_dataset import (
-    _normalize_reference_source_cohort_labels,
-    _reference_source_cohort_public_filter,
-    _reference_source_cohort_storage_filter,
-    get_data,
-)
+from ..load_dataset import get_data
 from .normalize import (
     add_tpm_columns_from_fpkm,
     drop_technical_genes,
@@ -798,12 +793,9 @@ def _load_cancer_reference_expression() -> pd.DataFrame:
 
 # Identity-keyed memo of read-only views derived purely from the (shared,
 # process-wide) reference frame. The frame is a singleton — get_data(copy=False)
-# returns the same object every call — so any view computed from it is stable
-# until the data reloads. Keying each cache entry on the frame's *identity*
-# makes it self-invalidate the moment a test monkeypatches
-# _load_cancer_reference_expression to return a different frame. Without this,
-# available_cancer_expression_references() factorized the ~1M-row frame once per
-# cancer code, which alone was ~300 s of the serial suite (#278 follow-up).
+# returns the same object every call — so any expression-value view computed
+# from it is stable until the data reloads. The gene-independent availability
+# manifest deliberately does not use this cache (#565).
 _REFERENCE_VIEW_CACHE: dict[str, tuple] = {}
 
 
@@ -861,6 +853,29 @@ def _reference_indices_by_code() -> dict:
             ).indices.items()
         },
     )
+
+
+def _reference_slice_by_codes(
+    df: pd.DataFrame,
+    codes: Sequence[str],
+) -> pd.DataFrame:
+    """Slice the shared summary through its cached positional cohort index.
+
+    Tests and offline callers may pass an independent fixture frame; retain the
+    ordinary boolean filter for those objects. Runtime callers pass the shared
+    oncoref-owned singleton, where rebuilding a multi-million-row string mask on
+    every noncanonical cohort-view request is avoidable.
+    """
+    if df is not _load_cancer_reference_expression():
+        return df[df["cancer_code"].astype(str).isin(codes)]
+
+    index = _reference_indices_by_code()
+    positions = [index[str(code)] for code in codes if str(code) in index]
+    if not positions:
+        return df.iloc[0:0]
+    # The previous boolean mask preserved artifact row order. Keep that contract
+    # even when aggregate expansion supplies codes in a different order.
+    return df.iloc[np.sort(np.concatenate(positions))]
 
 
 def _has_cancer_reference(code: str) -> bool:
@@ -1004,7 +1019,7 @@ def _reference_long_from_summary_frame(
     source = df
     codes = _resolve_cancer_types(cancer_types, expand_aggregates=True)
     if codes is not None:
-        source = source[source["cancer_code"].astype(str).isin(codes)]
+        source = _reference_slice_by_codes(source, codes)
     if genes is not None:
         requested = [genes] if isinstance(genes, str) else list(genes)
         source = filter_to_genes(
@@ -1020,6 +1035,8 @@ def _reference_long_from_summary_frame(
         "n_detected",
         "processing_pipeline",
         "notes",
+        "tumor_origin",
+        "metastasis_site",
     ]
     keep = [
         column
@@ -1052,15 +1069,35 @@ def available_cancer_expression_references() -> pd.DataFrame:
     cohort. Downstream consumers can use this to decide which non-TCGA
     references are available without inspecting data files.
 
-    The expensive projection (drop_duplicates over the ~1M-row frame) is
-    memoized on the reference frame's identity; this returns a fresh ``.copy()``
-    of that cached view each call, so callers may mutate the result freely
-    without corrupting the cache. The copy is cheap — the cached frame is the
-    deduplicated cohort list (one row per ``(cancer_code, source_cohort)``).
+    This is a gene-independent manifest read. It adapts oncoref's compact
+    all-source availability API through pirlygenes' compatibility registry; it
+    never loads the multi-million-row expression summary or the cohort-view
+    artifact. A fresh ``.copy()`` keeps the historical mutation-safe contract.
     """
-    return _reference_view(
-        "available_references", _build_available_references
-    ).copy()
+    return _load_available_reference_manifest().copy()
+
+
+@lru_cache(maxsize=1)
+def _load_available_reference_manifest() -> pd.DataFrame:
+    import oncoref
+
+    from ..gene_sets_cancer import cohort_registry_df
+    from .reference_manifest import build_reference_manifest
+    from .source_cohort_origin import classify_source_cohort
+
+    availability = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        all_sources=True,
+    )
+    manifest = build_reference_manifest(
+        availability,
+        availability,
+        cohort_registry_df(),
+        classify_source_cohort,
+    )
+    return _build_available_references(manifest)
 
 
 def _build_available_references(df: pd.DataFrame) -> pd.DataFrame:
@@ -1076,12 +1113,19 @@ def _build_available_references(df: pd.DataFrame) -> pd.DataFrame:
     ]
     present = [c for c in keep if c in df.columns]
     out = df[present].drop_duplicates()
-    # Sort so primary > mixed > metastasis > everything else within
-    # each cancer_code; ties broken by source_cohort.
+    # Sort so primary > mixed > metastasis > everything else within each
+    # cancer_code; ties broken by source_cohort. Map through object so a
+    # categorical origin column never needs a synthetic category or magic-value
+    # fill just to express the ordering.
     origin_priority = {"primary": 0, "mixed": 1, "metastasis": 2}
     if "tumor_origin" in out.columns:
+        unknown_origin_rank = len(origin_priority)
         out = out.assign(
-            _origin_rank=out["tumor_origin"].map(origin_priority).fillna(9),
+            _origin_rank=(
+                out["tumor_origin"]
+                .astype(object)
+                .map(lambda value: origin_priority.get(value, unknown_origin_rank))
+            ),
         )
         out = out.sort_values(
             ["cancer_code", "_origin_rank", "source_cohort"],
@@ -1349,10 +1393,10 @@ def _reference_compatibility_genes(
     expanded: list[str] = []
     for gene in requested:
         # filter_to_genes(), used by the pre-delegation implementation, made
-        # symbol filters whitespace- and case-insensitive.  oncoref's symbol
-        # match is exact, so normalize at this compatibility boundary before
-        # looking up aliases or forwarding candidates.
-        token = str(gene).strip().upper()
+        # symbol filters whitespace- and case-insensitive. Resolve display
+        # aliases from the original spelling, then normalize every candidate
+        # because oncoref's symbol match is exact.
+        token = str(gene).strip()
         for candidate in (
             token,
             *get_alias_as_list(token),
@@ -1368,16 +1412,36 @@ def _reference_compatibility_source_cohorts(
     source_kind: Optional[str | Iterable[str]],
     source_cohort: Optional[str | Iterable[str]],
 ) -> Optional[list[str] | str]:
-    """Translate pirlygenes source-kind semantics to exact cohort filters.
+    """Resolve pirlygenes source-kind semantics to exact cohort filters.
 
     Pirlygenes' cohort registry is the compatibility authority for ``kind``.
-    Resolving kinds to cohort IDs before delegation both preserves that public
-    contract when oncoref's registry lags (currently the Merkel GEO cohort) and
-    ensures filtering occurs before oncoref pools source rows.
+    Resolving kinds to cohort IDs before delegation preserves that public
+    contract and ensures filtering occurs before oncoref pools source rows.
+
+    ``source_cohort`` itself is exact. In particular, the generic Treehouse
+    TCGA-samples cohort and the SARC-histology cohort are distinct upstream
+    identities and are never expanded into each other. Exact deprecated IDs are
+    canonicalized by oncoref; an explicitly empty selection uses a nonmatching
+    sentinel until oncoref#412 preserves empty filters itself.
     """
-    storage_filter = _reference_source_cohort_storage_filter(source_cohort)
+    from oncoref import canonical_cohort_id
+
+    if source_cohort is None:
+        delegated_filter = None
+    elif isinstance(source_cohort, str):
+        delegated_filter = canonical_cohort_id(source_cohort)
+    else:
+        delegated_filter = [canonical_cohort_id(value) for value in source_cohort]
     if source_kind is None:
-        return storage_filter
+        if source_cohort is not None:
+            requested = (
+                [delegated_filter]
+                if isinstance(delegated_filter, str)
+                else delegated_filter
+            )
+            if not requested or not any(str(cohort) for cohort in requested):
+                return [_EMPTY_REFERENCE_SOURCE_COHORT]
+        return delegated_filter
 
     requested_kinds = (
         [source_kind] if isinstance(source_kind, str) else list(source_kind)
@@ -1389,12 +1453,13 @@ def _reference_compatibility_source_cohorts(
     matching = registry.loc[
         registry["kind"].astype(str).isin(requested_kinds), "cohort_id"
     ].astype(str).tolist()
-    kind_cohorts = _reference_source_cohort_storage_filter(matching)
-    allowed = list(kind_cohorts) if kind_cohorts is not None else []
+    allowed = matching
 
-    if storage_filter is not None:
+    if delegated_filter is not None:
         requested = (
-            [storage_filter] if isinstance(storage_filter, str) else storage_filter
+            [delegated_filter]
+            if isinstance(delegated_filter, str)
+            else delegated_filter
         )
         allowed_set = set(allowed)
         allowed = [cohort for cohort in requested if cohort in allowed_set]
@@ -1496,20 +1561,6 @@ def _oncoref_reference_mode(
                 for record in attrs.get(attr_name, [])
                 if str(record.get("cancer_code", "")) in allowed_codes
             ]
-    delegated, source_labels_normalized = (
-        _normalize_reference_source_cohort_labels(delegated)
-    )
-    if source_labels_normalized:
-        compatibility_transforms.append(
-            "SARC DDLPS/WDLPS source cohort normalized to registry label"
-        )
-    public_source_filter = _reference_source_cohort_public_filter(
-        requested_source_cohort
-    )
-    if public_source_filter is not None and not pool:
-        delegated = delegated[
-            delegated["source_cohort"].astype(str).isin(public_source_filter)
-        ].copy()
     delegated["normalization"] = label
     # Collapse/pool in linear space before deriving the historical raw-log view.
     if mode.endswith("_log1p"):
@@ -1845,10 +1896,71 @@ def _load_precomputed_cohort_views(root_text: str) -> tuple[pd.DataFrame, ...]:
     clean = _object_column_index(
         pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["clean_tpm"])
     )
-    provenance = _object_column_index(
-        pd.read_parquet(root / _COHORT_VIEW_PROVENANCE_FILE)
+    provenance = _refresh_cohort_view_provenance(
+        _object_column_index(
+            pd.read_parquet(root / _COHORT_VIEW_PROVENANCE_FILE)
+        )
     )
     return tpm, clean, provenance
+
+
+def _canonicalize_source_cohort_ids(df: pd.DataFrame) -> pd.DataFrame:
+    """Canonicalize exact cohort aliases through their oncoref owner.
+
+    Existing pirlygenes data bundles can carry a provenance sidecar created
+    before oncoref renamed the generic Treehouse TCGA cohort. Keeping the alias
+    map upstream lets old bundles and new delegated rows expose one identity
+    without another pirlygenes data release or a duplicated local map.
+    """
+    if "source_cohort" not in df.columns:
+        return df
+
+    from oncoref import canonical_cohort_id
+
+    canonical = df["source_cohort"].map(
+        lambda value: value if pd.isna(value) else canonical_cohort_id(value)
+    )
+    if canonical.equals(df["source_cohort"]):
+        return df
+    out = df.copy()
+    out["source_cohort"] = canonical
+    return out
+
+
+def _refresh_cohort_view_provenance(df: pd.DataFrame) -> pd.DataFrame:
+    """Refresh a bundled sidecar from oncoref's compact owner manifest.
+
+    The precomputed value matrices remain valid across a provenance-only cohort
+    rename. For matching ``(cancer_code, source_cohort)`` rows, use the current
+    owner's cohort, pipeline, and sample metadata; retain sidecar values for
+    custom or fixture rows absent from the owner manifest.
+    """
+    out = _canonicalize_source_cohort_ids(df)
+    keys = ["cancer_code", "source_cohort"]
+    if not set(keys) <= set(out.columns):
+        return out
+
+    refresh_cols = ["processing_pipeline", "n_samples"]
+    owner = available_cancer_expression_references()[
+        [*keys, *refresh_cols]
+    ].drop_duplicates(keys).copy()
+    # The compact owner manifest deliberately uses categorical metadata. Cast
+    # only the tiny joined projection so fixture/custom sidecar values that are
+    # not owner categories can be retained without mutating oncoref's cache.
+    owner["processing_pipeline"] = owner["processing_pipeline"].astype(object)
+    merged = out.merge(owner, on=keys, how="left", suffixes=("", "_owner"))
+    for column in refresh_cols:
+        owner_column = f"{column}_owner"
+        if column in merged.columns:
+            owner_values = merged[owner_column]
+            merged[column] = owner_values.where(
+                owner_values.notna(),
+                merged[column],
+            )
+        else:
+            merged[column] = merged[owner_column]
+        merged = merged.drop(columns=owner_column)
+    return _object_column_index(merged[out.columns])
 
 
 def _cohort_value_cols(wide: pd.DataFrame) -> list[str]:
@@ -2016,7 +2128,8 @@ def _pivot_views_long(
     if sub.empty:
         return pd.DataFrame(columns=["Ensembl_Gene_ID", "Symbol"])
     wide = (sub.pivot_table(index=index_cols, columns="cancer_code",
-                            values="expression", aggfunc="first")
+                            values="expression", aggfunc="first",
+                            observed=True)
             .reset_index())
     wide.columns.name = None
     wide = _object_column_index(wide)
@@ -2046,9 +2159,12 @@ def _rebuild_full_canonical_views() -> tuple[pd.DataFrame, pd.DataFrame, pd.Data
         index_cols = ["Ensembl_Gene_ID"]
         tpm = _pivot_views_long(long, "TPM", index_cols)
         clean = _pivot_views_long(long, "TPM_clean", index_cols)
-        prov_cols = [
-            "cancer_code", "source_cohort", "processing_pipeline", "n_samples",
-        ]
+        # Keep the full public availability metadata in future sidecars. The
+        # lightweight reader remains compatible with older four-column
+        # sidecars by filling these fields from registries (#565).
+        from .reference_manifest import PUBLIC_COLUMNS
+
+        prov_cols = list(PUBLIC_COLUMNS)
         provenance = (long[[c for c in prov_cols if c in long.columns]]
                       .drop_duplicates().reset_index(drop=True))
         return tpm, clean, provenance

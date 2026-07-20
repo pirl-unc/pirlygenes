@@ -30,20 +30,16 @@ def _serves(code: str) -> bool:
     needed and unavailable)."""
     import oncoref
 
-    for qc in ("pass", "pass_or_warn", "all"):
-        try:
-            oncoref.cancer_reference_expression(
-                cancer_types=code, genes=["ENSG00000141510"], normalize="tpm_clean",
-                sample_qc=qc,
-            )
-            return True
-        except ValueError as err:
-            if "sample_qc" in str(err).lower() and "mismatch" in str(err).lower():
-                continue
-            return False
-        except Exception:
-            return False
-    return False
+    try:
+        result = oncoref.cancer_reference_expression(
+            cancer_types=code,
+            genes=["ENSG00000141510"],
+            normalize="tpm_clean",
+            sample_qc="artifact",
+        )
+        return not result.empty
+    except Exception:
+        return False
 
 
 @pytest.fixture(scope="module")
@@ -136,14 +132,13 @@ def test_group_code_multi_expansion_flagged():
     assert r["status"] == "oncoref-multi-cohort", r
 
 
-def test_qc_policy_fallback(pg_frame):
-    """MTC's artifact was baked ``pass_or_warn``; the harness must fall back to
-    it instead of erroring on the default ``pass`` policy."""
+def test_artifact_qc_policy(pg_frame):
+    """The harness asks oncoref to use each artifact's baked QC policy."""
     if not _serves("MTC"):
         pytest.skip("oncoref cannot serve MTC in this environment")
     r = parity_for_code("MTC", pg_frame=pg_frame)
     assert r["status"] == "ok", r
-    assert r["qc_used"] == "pass_or_warn", r["qc_used"]
+    assert r["qc_used"] == "artifact", r["qc_used"]
 
 
 def test_report_shape_smoke(pg_frame):

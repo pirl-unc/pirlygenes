@@ -38,6 +38,18 @@ def test_sarc_is_pan_sarcoma_union_excluding_aggregates_and_self():
     assert "SARC" not in pan  # no self-membership / circularity
     # the curated rollup members themselves are atoms in the pan union
     assert "SARC_RMS_ERMS" in pan and "SARC_LMS" in pan
+    # oncoref's broader WHO ontology contains non-sample-bearing grouping nodes;
+    # those must never become members of the expression union.
+    from pirlygenes.gene_sets_cancer import cancer_type_registry
+
+    registry = cancer_type_registry()
+    grouping_nodes = set(
+        registry.loc[
+            registry["ontology_level"].astype(str).eq("grouping"),
+            "code",
+        ].astype(str)
+    )
+    assert not (set(pan) & grouping_nodes)
 
 
 def test_sarc_tier_rollups_stay_in_lockstep_with_registry_children():

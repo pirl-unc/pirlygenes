@@ -45,14 +45,20 @@ jobs:
         with:
           path: ~/.cache/pirlygenes/bundled_data/
           key: pirlygenes-bundle-${{ runner.os }}-${{ hashFiles('pirlygenes/version.py') }}
+      - name: Resolve oncoref cache version
+        id: oncoref-cache-version
+        run: |
+          source .venv/bin/activate
+          python -c "import oncoref; from oncoref.version import DATA_VERSION; print(f'key={oncoref.__version__}-data-{DATA_VERSION}')" >> "$GITHUB_OUTPUT"
       - name: Cache oncoref data bundle
         # oncoref owns the delegated cancer-reference-expression summary rows
-        # (#557). Key on the dependency floor so an oncoref data-version bump
-        # invalidates this cache without making every worker re-download it.
+        # (#557). Key on the version actually resolved in this job and its data
+        # version: a lower-bound dependency alone does not change when a newer
+        # oncoref release is selected, and Actions cache entries are immutable.
         uses: actions/cache@v4
         with:
           path: ~/.cache/oncoref/bundled_data/
-          key: oncoref-bundle-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          key: oncoref-bundle-${{ runner.os }}-${{ steps.oncoref-cache-version.outputs.key }}
       - name: Cache source-data mirror
         # Raw per-source inputs (small/medium: GEO, CLL-map) mirrored to a
         # pinned release for FTP-independent builds. Keyed on the mirror module.

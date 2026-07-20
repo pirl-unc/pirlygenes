@@ -26,6 +26,8 @@ def test_cohort_registry_schema_and_computed_aggregate():
     assert row["kind"] == "computed"
     members = str(row["member_cohorts"]).split(";")
     assert "SARC_LMS" in members and len(members) > 20
+    assert members == gsc.cohort_aggregate_members("SARC")
+    assert int(row["n_codes"]) == len(members)
 
 
 def test_every_used_source_cohort_is_registered():

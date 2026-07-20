@@ -11,6 +11,7 @@
 # limitations under the License.
 
 from collections import defaultdict
+from unicodedata import normalize as unicode_normalize
 
 # -----------------------------------------------------------
 # Let's rewrite the Ensembl gene names as the more
@@ -82,15 +83,27 @@ for k, v in aliases.items():
     reverse_aliases[v].append(k)
 
 
+def _alias_lookup_key(name: object) -> str:
+    """Normalize case and equivalent Unicode forms for alias lookup."""
+    return unicode_normalize("NFKC", str(name).strip()).casefold()
+
+
+_aliases_by_lookup_key = {
+    _alias_lookup_key(official): display
+    for official, display in aliases.items()
+}
+_reverse_aliases_by_lookup_key = defaultdict(list)
+for display, officials in reverse_aliases.items():
+    _reverse_aliases_by_lookup_key[_alias_lookup_key(display)].extend(officials)
+
+
 def get_alias_as_list(name: str) -> list[str]:
-    if name in aliases:
-        return [aliases[name]]
-    else:
-        return []
+    alias = _aliases_by_lookup_key.get(_alias_lookup_key(name))
+    return [alias] if alias is not None else []
 
 
 def get_reverse_alias_as_list(name: str) -> list[str]:
-    return reverse_aliases.get(name, [])
+    return list(_reverse_aliases_by_lookup_key.get(_alias_lookup_key(name), []))
 
 
 def display_name(name: str) -> str:
@@ -104,4 +117,5 @@ def short_gene_name(name: str) -> str:
     Normalize gene names to their aliases.
     """
     normalized = str(name).strip()
-    return sorted(reverse_aliases.get(normalized, [normalized.upper()]), key=len)[0]
+    candidates = get_reverse_alias_as_list(normalized) or [normalized.upper()]
+    return sorted(candidates, key=len)[0]

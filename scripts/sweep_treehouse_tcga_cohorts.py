@@ -2,12 +2,12 @@
 """TCGA-via-Treehouse sweep: every TCGA cohort in the PolyA compendium.
 
 The Treehouse 25.01 PolyA compendium re-processes ~9,800 TCGA RNA-seq
-samples through its own pipeline. Each cohort listed here is the
-TCGA subset of that compendium for the matching disease label —
+samples through its own pipeline. Each cohort listed here contains the
+TCGA-provenance samples for the matching disease label —
 filtered with ``th_dataset_id.startswith("TCGA")`` so Treehouse-
 internal samples for the same disease don't contaminate the cohort.
 
-source_cohort tag is ``TREEHOUSE_POLYA_25_01_TCGA_SUBSET`` so a future
+source_cohort tag is ``TREEHOUSE_POLYA_25_01_TCGA_SAMPLES`` so a future
 authoritative GDC STAR-counts build (plan milestone 3) can land
 alongside under a different source_cohort tag.
 
@@ -37,20 +37,21 @@ CACHE_ROOT = Path.home() / ".cache" / "pirlygenes" / "expression"
 
 RELEASE = TreehouseRelease(
     source_id="treehouse-polya-25-01",
-    source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
+    source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SAMPLES",
     source_project="Treehouse (TCGA samples)",
     release_label=(
-        "Treehouse Tumor Compendium 25.01 PolyA, TCGA subset "
+        "Treehouse Tumor Compendium 25.01 PolyA samples selected by TCGA "
+        "provenance "
         "(hugo_log2tpm_58581genes_2025-02-27); downloaded from "
         "public.gi.ucsc.edu/~ekephart/public-data/"
     ),
     tpm_filename="Tumor-25.01-Polya_hugo_log2tpm_58581genes_2025-02-27.tsv",
     clinical_filename="clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv",
     cache_dir=CACHE_ROOT / "treehouse-polya-25-01",
-    pipeline_prefix="treehouse_polya_25_01_tcga_subset_log2tpm_to_tpm",
+    pipeline_prefix="treehouse_polya_25_01_tcga_samples_log2tpm_to_tpm",
     # 36 TCGA cohorts in one source — combined shard hit 99.47 MiB
     # after the v5.4 schema and was re-sharded per cancer_code via
-    # scripts/reshard_tcga_subset.py. Keep this flag true so re-runs
+    # scripts/reshard_tcga_samples.py. Keep this flag true so re-runs
     # of the sweep preserve the split.
     per_cancer_code_shards=True,
 )
@@ -67,7 +68,7 @@ COHORTS = [
         disease_label=c.disease_label,
         sample_predicate=tcga_only_predicate(),
         extra_notes=(
-            "TCGA subset only: filtered via "
+            "TCGA-provenance samples only: filtered via "
             "`th_dataset_id.startswith('TCGA')` against Treehouse's "
             "compendium-wide disease label. Treehouse-internal "
             "samples with the same disease are excluded from this row."

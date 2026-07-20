@@ -53,7 +53,7 @@ def test_source_kind_selector_filters_by_cohort_kind():
 def test_tcga_selects_as_treehouse_not_a_fake_kind():
     """TCGA is Treehouse-reprocessed, so it selects under source_kind='treehouse'
     (the processing source) — there is no 'tcga' kind. source_cohort= gives the
-    finer origin-level precision (the specific Treehouse TCGA subset)."""
+    finer origin-level precision (the Treehouse TCGA-provenance samples)."""
     th = cancer_reference_expression(
         cancer_types="SARC", genes=["TP53"], source_kind="treehouse")
     assert any("TCGA" in s for s in th["source_cohort"].unique())  # TCGA in treehouse:
@@ -61,14 +61,12 @@ def test_tcga_selects_as_treehouse_not_a_fake_kind():
         cancer_types="SARC", genes=["TP53"], source_kind="tcga").empty  # no tcga kind
     sub = cancer_reference_expression(
         cancer_types="SARC", genes=["TP53"],
-        source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SUBSET")
-    # oncoref stores DDLPS/WDLPS under the generic source label even though its
-    # registry assigns those rows to the dedicated histology cohort.  The
-    # compatibility boundary exposes the canonical label for those two codes.
+        source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SAMPLES")
+    # Exact cohort filters do not cross into the distinct SARC-histology cohort.
     assert set(sub["source_cohort"].unique()) == {
-        "TREEHOUSE_POLYA_25_01_TCGA_SUBSET",
-        "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
+        "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES",
     }
+    assert set(sub["cancer_code"].unique()) == {"SARC_PLEOLPS"}
 
 
 def test_pool_collapses_multisource_n_weighted_per_gene_availability():

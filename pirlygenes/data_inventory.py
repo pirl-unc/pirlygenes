@@ -278,8 +278,9 @@ def _concise_reference(ref: str) -> str:
     return r
 
 
-# The 33 TCGA project codes. When a TCGA_SUBSET cohort's cancer_code is one of
-# these, the generic "(TCGA samples)" credit is rewritten to the specific
+# The 33 TCGA project codes. When the generic Treehouse TCGA-samples cohort's
+# cancer_code is one of these, the generic "(TCGA samples)" credit is rewritten
+# to the specific
 # "(TCGA-<code>)" project — matching how the per-project subtype slices read.
 # Histology splits inside the subset (e.g. SARC_DDLPS) aren't TCGA projects, so
 # they fall through and keep the generic "(TCGA samples)".
@@ -309,7 +310,7 @@ def _reference_for(
 
     Looks up the authoritative registry citation — by GEO accession, or by the
     registry source-id matched as a prefix of the normalized cohort id (so
-    ``TREEHOUSE_POLYA_25_01_TCGA_SUBSET`` → the ``treehouse-polya-25-01``
+    ``TREEHOUSE_POLYA_25_01_TCGA_SAMPLES`` → the ``treehouse-polya-25-01``
     citation). Prefers a rich registry citation when ``source_project`` is just
     a bare name (e.g. 'Treehouse'); keeps a descriptive multi-word
     ``source_project`` (e.g. 'CGCI Burkitt … Project') over a bare URL; always
@@ -380,7 +381,7 @@ _SUMMARY_CACHE = Path.home() / ".cache" / "pirlygenes" / "inventory_summary.json
 # Bump when the cached snapshot's fields/shape change, so stale caches from an
 # older code version are ignored (the shard fingerprint alone wouldn't catch a
 # pure-code schema change like adding the `reference` field).
-_SUMMARY_SCHEMA = "11"
+_SUMMARY_SCHEMA = "12"
 
 
 def _shard_signature(paths: list[Path]) -> str:
