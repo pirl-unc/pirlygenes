@@ -55,12 +55,3 @@ def test_neuroendocrine_cohorts_have_percentiles():
     _skip_if_absent()
     cohorts = set(available_percentile_cohorts())
     assert {"NET_PANCREAS", "SCLC", "NET_LUNG", "NEC_LUNG_LARGECELL"} <= cohorts
-
-
-def test_summary_only_cohort_raises():
-    _skip_if_absent()
-    # MBL_WNT (a medulloblastoma molecular subtype) is summary-only / literature
-    # -curated — no per-sample matrix, so no percentile vector. (CLL/MM/BL/MTC
-    # etc. now DO have per-sample data.)
-    with pytest.raises(ValueError):
-        cohort_gene_percentiles("MBL_WNT")

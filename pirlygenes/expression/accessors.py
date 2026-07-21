@@ -2671,7 +2671,9 @@ def available_representative_cohorts() -> list[str]:
 
     Delegates to oncoref (pirlygenes#208): oncoref owns the source-matrix medoid
     selection and the representatives artifact; pirlygenes re-exports the accessor
-    so trufflepig and notebooks keep a single import path.
+    so trufflepig and notebooks keep a single import path. Aggregate reference
+    availability does not imply representative availability: a source may
+    publish cohort summaries without redistributing its per-sample matrix.
     """
     import oncoref
 
@@ -2761,7 +2763,9 @@ def representative_cohort_samples(
 def available_percentile_cohorts() -> list[str]:
     """Cohort codes that ship a per-gene percentile-vector artifact (sorted).
 
-    Delegated to oncoref (pirlygenes#208 / #298)."""
+    Delegated to oncoref (pirlygenes#208 / #298). Aggregate reference
+    availability does not imply percentile availability; this function is the
+    capability authority for the per-sample-derived percentile artifact."""
     import oncoref
 
     # Gene-level percentiles are scope-independent (oncoref's ``scope`` selects

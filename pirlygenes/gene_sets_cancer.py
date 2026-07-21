@@ -1396,8 +1396,11 @@ def cancer_type_registry():
       soft-tissue SARC default
     - ``parent_code`` — if this row is a subtype of another registry
       entry (e.g. ``LAML_APL`` has ``parent_code=LAML``)
-    - ``expression_source`` — where to find median expression (TCGA,
-      TARGET, BEATAML, CoMMpass, curated, none)
+    - ``expression_source`` — where to find aggregate reference expression
+      (TCGA, TARGET, BEATAML, CoMMpass, curated, none). This is summary
+      availability, not a promise that releasable per-sample matrices,
+      representatives, or percentile vectors exist; use the corresponding
+      ``available_*_cohorts()`` expression accessor for those capabilities.
     - ``notes`` — one-line clinical / therapeutic context
 
     Returns a defensive copy so callers can mutate freely.
@@ -1622,7 +1625,14 @@ def cohort_registry_df():
     ``prefix, kind, source_project, assay, n_samples, n_codes, is_computed,
     member_cohorts, provenance``. The authority to validate any ``source_cohort``
     against — includes the computed aggregates and literature-curated cohorts
-    that are absent from :func:`available_cancer_expression_references`."""
+    that are absent from :func:`available_cancer_expression_references`.
+
+    A row describes source-level provenance, not artifact coverage. In
+    particular, ``assay`` and ``n_samples`` may describe the samples used to
+    build released aggregate summaries even when no per-sample matrix can be
+    redistributed. Use ``available_representative_cohorts()`` and
+    ``available_percentile_cohorts()`` for those explicit capabilities.
+    """
     return get_data("cohort-registry")
 
 

@@ -321,6 +321,16 @@ precomputed cohort view also retains its historical source labels (including
 the pre-cleanup Treehouse SARC labels); use `cancer_reference_expression` when
 current row-level provenance is required.
 
+Aggregate reference availability and per-sample artifact availability are
+separate capabilities. A cohort can expose medians, sample counts, and coarse
+percentiles through `cancer_reference_expression()` without shipping the
+underlying matrix. Check `available_representative_cohorts()` or
+`available_percentile_cohorts()` before requesting those derived artifacts;
+`expression_source`, `assay`, and `n_samples` in the registries do not imply
+that the source permits per-sample redistribution. The four marker-classified
+MBL subgroups currently have aggregate summaries only; matrix materialization
+is tracked by [oncoref #420](https://github.com/pirl-unc/oncoref/issues/420).
+
 Anything that requires interpretive judgment (per-sample QC narration,
 library-prep auto-detection, deconvolution pipelines, signature scoring, rescue
 heuristics) lives in
