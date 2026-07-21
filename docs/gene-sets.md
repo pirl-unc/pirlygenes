@@ -155,7 +155,8 @@ scheme. The register is intentionally loadable data rather than prose so
 downstream consumers can distinguish `parent_sample_split_ready`,
 `bulk_candidate_ready`, `scRNA_candidate_ready`,
 `scRNA_candidate_needs_malignant_selection`, `parent_reference_only`, and
-`source_needed`.
+`source_needed`. `dependency_rebuild_pending` means the source and exact routing
+are known but the owning oncoref artifacts are not yet safe to consume.
 
 Current high-confidence candidates include:
 
@@ -167,8 +168,8 @@ Current high-confidence candidates include:
 | `MBL_G3`, `MBL_G4`, `MBL_SHH`, `MBL_WNT` | GEO `GSE155446` | scRNA neoplastic-cell pseudobulk by medulloblastoma subgroup |
 | `FL` | GEO `GSE261917` | scRNA pseudobulk after reproducible malignant B-cell selection |
 | `NPC` | GEO `GSE102349` | bulk RNA-seq import of treatment-naive NPC tumors |
-| `MEC` | GEO `GSE235092` | Merkel-cell carcinoma bulk RNA-seq import; note this registry code is not salivary mucoepidermoid carcinoma |
-| `ADCC`, `ACINIC` | GEO `GSE294016` | salivary gland bulk TPM import by sample-table histology |
+| `NEC_MERKEL` | GEO `GSE235092` | Merkel-cell carcinoma bulk RNA-seq import; not salivary mucoepidermoid carcinoma |
+| `ADCC`, `ACINIC` | GEO `GSE294016` | upstream rebuild pending; public Supplementary Dataset 1 gives 57 ADCC and 3 ACINIC sample rows, while the former mixed 95-sample ADCC route is quarantined (oncoref#422) |
 | `SARC_ASPS` | GEO `GSE54729` | bulk RNA-seq import of human ASPS tumor rows only |
 | `SARC_GIST` | GEO `GSE162115` | scRNA tumor-cell pseudobulk from GIST tumor samples |
 | `SARC_MPNST` | GEO `GSE207400` | bulk RNA-seq import of malignant PNST rows |
