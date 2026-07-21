@@ -60,6 +60,26 @@ def test_canonicalize_source_folds_par_ensg_into_base_gene():
     assert res.values.loc[base, "b"] == pytest.approx(8.0)
 
 
+def test_canonicalize_source_uniquifies_duplicate_samples_once():
+    """Repeated patient IDs are distinct samples, not a Cartesian expansion.
+
+    GSE294016 contains two rows each for P-58 and P-77. Its stale artifact
+    expanded both pairs to four columns, changing 95 source rows into 99. The
+    generic canonicalizer must retain each source column exactly once.
+    """
+    tpm = pd.DataFrame(
+        [[10.0, 20.0, 30.0, 40.0]],
+        index=["ENSG00000141510"],
+        columns=["P-58", "P-58", "P-77", "P-77"],
+    )
+
+    result = osrc.canonicalize_source(tpm)
+
+    assert result.sample_cols == ["P-58", "P-58.1", "P-77", "P-77.1"]
+    assert list(result.values.columns) == result.sample_cols
+    assert result.values.shape[1] == tpm.shape[1]
+
+
 def test_source_metadata_proxy_scale_is_warn_only():
     """A declared non-linear proxy scale resolves ``linear_tpm_comparable`` False
     so oncoref skips the RNA-seq fail gates (warn-only)."""

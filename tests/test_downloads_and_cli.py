@@ -29,6 +29,10 @@ def test_registry_loads_and_has_expected_categories():
     assert "mmrf-commpass" in by_id
     assert "tcga-blca" in by_id
     assert "treehouse-polya-25-01" in by_id
+    # #346: the legacy route labeled all 95 mixed salivary samples as ADCC.
+    # oncoref#422 owns the diagnosis-split rebuild; a local build must not
+    # silently recreate the quarantined artifact.
+    assert "gse294016-adcc" not in by_id
     # TCGA cohorts in the YAML registry use the unprefixed registry
     # codes (BLCA, BRCA, ...) so they match cancer-type-registry.csv.
     # The TCGA-via-Treehouse build tags rows with source_cohort

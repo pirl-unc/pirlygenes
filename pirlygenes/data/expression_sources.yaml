@@ -804,29 +804,13 @@ sources:
   # "no clean public RNA-seq" bucket (closest is Lee 2020
   # PRJNA433667 raw FASTQ for 21 AcCC — needs an alignment pipeline).
 
-  - id: gse294016-adcc
-    category: expression
-    cancer_codes: [ADCC]
-    source_type: geo-matrix
-    builder: scripts/build_geo_matrix.py
-    accession: GSE294016
-    file_url: https://ftp.ncbi.nlm.nih.gov/geo/series/GSE294nnn/GSE294016/suppl/GSE294016_TPM_mat.tsv.gz
-    file_name: GSE294016_TPM_mat.tsv.gz
-    unit: TPM
-    gene_id_col: ""
-    gene_id_type: ensembl
-    transposed: true   # matrix is samples-as-rows × genes-as-cols (ENSG headers)
-    source_cohort: GSE294016_BARTL_2025_SGC
-    source_project: GEO
-    citation: PMID 40506428 (Bartl 2025 salivary gland cancer panel)
-    expected_size_gb: 0.02
-    notes: >
-      Bartl 2025 salivary-gland cancer bulk RNA-seq panel (n=95
-      total: includes ACC, AcCC, MEC, etc.). Matrix is transposed
-      (rows = samples, cols = Ensembl IDs versioned). Currently
-      routes ALL samples to ADCC; per-sample histology split (ACC
-      vs AcCC vs MEC) needs Bartl 2025 Supplementary Table 1
-      sample-→-diagnosis lookup — pending.
+  # GSE294016 is intentionally NOT a local build route. The former entry sent
+  # all 95 mixed salivary-cancer samples to ADCC and produced a 99-column
+  # artifact by expanding the duplicate P-58/P-77 sample IDs twice. The public
+  # Nature Supplementary Dataset 1 gives an exact diagnosis map (57 ADCC sample
+  # rows, 3 ACINIC, 35 other histologies). Rebuilding the source matrices and
+  # every derived artifact belongs to oncoref#422; keeping the broken local
+  # route would let `pirlygenes build all` recreate data we have quarantined.
 
   - id: gse235092-merkel
     category: expression

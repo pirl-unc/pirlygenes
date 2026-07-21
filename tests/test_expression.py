@@ -1236,6 +1236,20 @@ def test_cancer_expression_source_candidates_cover_requested_gaps():
     assert ready["accession"].str.len().gt(0).all()
 
 
+def test_salivary_candidates_are_pending_diagnosis_split_rebuild():
+    candidates = cancer_expression_source_candidates(
+        ["ADCC", "ACINIC"]
+    ).set_index("cancer_code")
+
+    assert set(candidates["source_status"]) == {"dependency_rebuild_pending"}
+    assert candidates["estimated_samples"].to_dict() == {
+        "ADCC": 57.0,
+        "ACINIC": 3.0,
+    }
+    assert set(candidates["accession"]) == {"GSE294016"}
+    assert candidates["notes"].str.contains("oncoref#422", regex=False).all()
+
+
 def test_cancer_expression_reference_status_is_uniform_for_parent_labels():
     status = cancer_expression_reference_status(
         ["BRCA_Basal", "PCN", "SARC_GIST", "CLL"],
