@@ -388,9 +388,9 @@ def _cohort_source_defaults(cohort_id: str) -> tuple[str, str, str]:
 def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
     """Register artifact sources missing from the compatibility vocabulary.
 
-    oncoref owns the artifacts and ultimately their cohort metadata
-    (oncoref#416). Until every artifact source is native to that registry,
-    derive missing rows from its compact availability records so pirlygenes'
+    oncoref owns the artifacts and their cohort metadata (oncoref#416). Merge
+    any artifact source newer than pirlygenes' packaged registry snapshot from
+    its compact availability records so pirlygenes'
     invariant remains true: every advertised ``source_cohort`` is selectable by
     kind and valid against ``cohort_registry_df()``.
     """

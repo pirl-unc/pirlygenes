@@ -52,6 +52,9 @@ from pirlygenes import data_bundle  # noqa: E402
 from pirlygenes.version import DATA_VERSION, __version__  # noqa: E402
 
 DATA_DIR = REPO_ROOT / "pirlygenes" / "data"
+COHORT_VIEWS_MANIFEST = (
+    DATA_DIR / "cancer-reference-expression-views" / "_manifest.json"
+)
 TARBALL = REPO_ROOT / data_bundle.TARBALL_FILENAME           # pirlygenes-data-v<DV>.tar.gz
 DATA_TAG = f"v{DATA_VERSION}"
 CODE_TAG = f"v{__version__}"
@@ -129,6 +132,37 @@ def _release_exists(tag: str) -> bool:
         capture_output=True).returncode == 0
 
 
+def validate_data_bundle_manifests() -> None:
+    """Refuse to publish derived views stamped for another data release."""
+    try:
+        manifest = json.loads(COHORT_VIEWS_MANIFEST.read_text())
+    except FileNotFoundError as exc:
+        raise Abort(
+            f"cohort-views manifest missing: {COHORT_VIEWS_MANIFEST}"
+        ) from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise Abort(
+            f"cohort-views manifest unreadable: {COHORT_VIEWS_MANIFEST}: {exc}"
+        ) from exc
+    if not isinstance(manifest, dict):
+        raise Abort(
+            f"cohort-views manifest invalid: {COHORT_VIEWS_MANIFEST} must "
+            "contain a JSON object"
+        )
+    if manifest.get("canonical_gene_ids") is not True:
+        raise Abort(
+            "cohort-views manifest must declare canonical_gene_ids=true: "
+            f"{COHORT_VIEWS_MANIFEST}"
+        )
+    actual = str(manifest.get("data_version", ""))
+    if actual != DATA_VERSION:
+        raise Abort(
+            "cohort-views manifest data_version mismatch: "
+            f"{actual!r} != DATA_VERSION {DATA_VERSION!r}; bump DATA_VERSION "
+            "before running scripts/generate_cohort_expression_views.py"
+        )
+
+
 def build_data_tarball(*, dry: bool) -> None:
     members = list(data_bundle.DOWNLOADABLE_PATHS)
     missing = [m for m in members if not (DATA_DIR / m).exists()]
@@ -160,6 +194,7 @@ def pre_extract_cache(*, dry: bool) -> None:
 
 def publish_data(*, dry: bool, assume_yes: bool, target_sha: str) -> None:
     print(f"== data bundle ==  tag={DATA_TAG}")
+    validate_data_bundle_manifests()
     if _release_has_asset(DATA_TAG, TARBALL.name):
         print(f"  {TARBALL.name} already on release {DATA_TAG}; skipping data publish")
         return
@@ -197,6 +232,15 @@ def build_wheel(*, dry: bool) -> None:
     print("== build ==")
     if not dry:
         shutil.rmtree(REPO_ROOT / "dist", ignore_errors=True)
+    pip_available = subprocess.run(
+        [sys.executable, "-m", "pip", "--version"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    ).returncode == 0
+    if not pip_available:
+        _run([sys.executable, "-m", "ensurepip", "--upgrade"], dry=dry)
     _run([sys.executable, "-m", "pip", "install", "--upgrade", "build", "twine"],
          dry=dry)
     _run([sys.executable, "-m", "build"], dry=dry)

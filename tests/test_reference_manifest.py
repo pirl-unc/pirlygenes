@@ -149,7 +149,7 @@ def test_availability_preserves_the_complete_public_manifest():
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "a2dd3e12b113759f6c30fe0a2a4637f6908850005414456ad7acadbcc8f50da1"
+        "dc506bb4640e74af799cb3bbe38e8d491bfbc6a267d88f21751c142c012597a8"
     )
 
 
@@ -177,6 +177,17 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         ("SARC_ESS_LG", "GSE85383_YOSHIDA_2017_ESS"),
     })
     assert expected <= keys
+
+    ess = result.loc[
+        result["cancer_code"].astype(str).isin({"SARC_ESS_HG", "SARC_ESS_LG"})
+    ]
+    assert set(ess["source_project"].astype(str)) == {"GEO"}
+    assert set(ess["source_version"].astype(str)) == {"GSE85383/GPL22303"}
+    assert set(ess["tumor_origin"].astype(str)) == {"primary"}
+    assert set(ess["processing_pipeline"].astype(str)) == {
+        "GPL22303 series-matrix log2 intensity with GPL13497 symbol bridge "
+        "to TPM proxy; Ensembl 112"
+    }
 
 
 def test_availability_returns_a_defensive_copy():
