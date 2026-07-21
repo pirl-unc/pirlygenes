@@ -15,6 +15,10 @@ signature; this script approximates it by per-sample max-TPM among
 
 Applied to the 125 cached Treehouse MBL samples.
 
+This legacy builder writes aggregate reference rows only. It does not publish
+the classified per-sample matrices used by representative/percentile accessors;
+materializing those artifacts belongs to oncoref (pirl-unc/oncoref#420).
+
 Distribution expectation (published): WNT ~10%, SHH ~30%, G3 ~25%,
 G4 ~35%. If observed deviates substantially, swap in the rigorous
 Cavalli 2017 supplementary-table-based classifier (PMID 28617753;
@@ -26,7 +30,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from pirlygenes.builders.treehouse import (
@@ -35,7 +38,6 @@ from pirlygenes.builders.treehouse import (
     _clean_tpm,
     _inverse_log2,
     _read_tpm_columns,
-    _technical_mask,
 )
 from pirlygenes.expression.stats import (
     REFERENCE_COLUMNS,
