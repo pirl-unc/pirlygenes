@@ -328,8 +328,10 @@ underlying matrix. Check `available_representative_cohorts()` or
 `available_percentile_cohorts()` before requesting those derived artifacts;
 `expression_source`, `assay`, and `n_samples` in the registries do not imply
 that the source permits per-sample redistribution. The four marker-classified
-MBL subgroups currently have aggregate summaries only; matrix materialization
-is tracked by [oncoref #420](https://github.com/pirl-unc/oncoref/issues/420).
+MBL subgroups expose aligned source matrices, representatives, and percentiles
+through oncoref. Their WIF1/GLI2/MYC/KCNA1 maximum-TPM partition is a documented
+historical approximation, not a replacement for authoritative published
+per-sample subgroup labels.
 
 Anything that requires interpretive judgment (per-sample QC narration,
 library-prep auto-detection, deconvolution pipelines, signature scoring, rescue
