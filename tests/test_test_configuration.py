@@ -7,6 +7,8 @@ import shlex
 import subprocess
 import sys
 
+import pytest
+
 
 _PYPROJECT = Path(__file__).resolve().parent.parent / "pyproject.toml"
 _THIS_FILE = Path(__file__).resolve()
@@ -63,8 +65,9 @@ def test_unopted_process_is_not_xdist_worker():
         assert "PYTEST_XDIST_WORKER" not in os.environ
 
 
-def test_xdist_auto_is_forced_to_serial_execution():
-    result = _nested_pytest("-n", "auto", "-q", _SERIAL_TARGET)
+@pytest.mark.parametrize("worker_count", ["auto", "logical"])
+def test_xdist_automatic_counts_are_forced_to_serial_execution(worker_count):
+    result = _nested_pytest("-n", worker_count, "-q", _SERIAL_TARGET)
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
     assert "1 passed" in output
@@ -85,6 +88,13 @@ def test_explicit_xdist_worker_count_is_capped():
     output = result.stdout + result.stderr
     assert result.returncode == 4, output
     assert "at most 2 explicit xdist workers" in output
+
+
+def test_direct_xdist_transport_is_rejected():
+    result = _nested_pytest("--tx", "popen", "--collect-only", _TARGET)
+    output = result.stdout + result.stderr
+    assert result.returncode == 4, output
+    assert "disables direct xdist --tx configurations" in output
 
 
 def test_bounded_xdist_opt_in_remains_available():
