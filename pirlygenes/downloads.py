@@ -67,6 +67,11 @@ class ExpressionSource:
     # 'polyA RNA-seq' | 'ribo-depleted RNA-seq' | 'microarray' | 'scRNA' |
     # 'RNA-seq' (prep not recorded). Only set when documented — see the YAML.
     library_prep: str | None = None
+    # Package that owns source-matrix/artifact rebuilding. ``None`` means the
+    # local ``builder`` remains authoritative; ``oncoref`` keeps this registry
+    # entry as compatibility/discovery metadata but delegates all writes.
+    # Kept last and defaulted to preserve positional/direct construction.
+    build_owner: str | None = None
 
 
 def _coerce_tuple(value) -> tuple[str, ...]:
@@ -103,26 +108,31 @@ def load_registry(path: Path | None = None) -> list[ExpressionSource]:
     raw_sources = payload.get("sources") or []
     out: list[ExpressionSource] = []
     for entry in raw_sources:
-        out.append(
-            ExpressionSource(
-                id=str(entry["id"]),
-                category=str(entry.get("category", "expression")),
-                cancer_codes=_coerce_tuple(entry.get("cancer_codes")),
-                source_type=str(entry.get("source_type", "")),
-                builder=_coerce_str(entry.get("builder")),
-                builder_args=_coerce_tuple(entry.get("builder_args")),
-                project_id=_coerce_str(entry.get("project_id")),
-                accession=_coerce_str(entry.get("accession")),
-                url=_coerce_str(entry.get("url")),
-                unit=_coerce_str(entry.get("unit")),
-                expected_size_gb=_coerce_float(entry.get("expected_size_gb")),
-                citation=_coerce_str(entry.get("citation")),
-                special_handling=_coerce_str(entry.get("special_handling")),
-                recount3_srp=_coerce_str(entry.get("recount3_srp")),
-                source_cohort=_coerce_str(entry.get("source_cohort")),
-                library_prep=_coerce_str(entry.get("library_prep")),
-            )
+        source = ExpressionSource(
+            id=str(entry["id"]),
+            category=str(entry.get("category", "expression")),
+            cancer_codes=_coerce_tuple(entry.get("cancer_codes")),
+            source_type=str(entry.get("source_type", "")),
+            builder=_coerce_str(entry.get("builder")),
+            build_owner=_coerce_str(entry.get("build_owner")),
+            builder_args=_coerce_tuple(entry.get("builder_args")),
+            project_id=_coerce_str(entry.get("project_id")),
+            accession=_coerce_str(entry.get("accession")),
+            url=_coerce_str(entry.get("url")),
+            unit=_coerce_str(entry.get("unit")),
+            expected_size_gb=_coerce_float(entry.get("expected_size_gb")),
+            citation=_coerce_str(entry.get("citation")),
+            special_handling=_coerce_str(entry.get("special_handling")),
+            recount3_srp=_coerce_str(entry.get("recount3_srp")),
+            source_cohort=_coerce_str(entry.get("source_cohort")),
+            library_prep=_coerce_str(entry.get("library_prep")),
         )
+        if source.builder and source.build_owner:
+            raise ValueError(
+                f"expression source {source.id!r} cannot declare both "
+                "builder and build_owner"
+            )
+        out.append(source)
     return out
 
 

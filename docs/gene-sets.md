@@ -231,6 +231,12 @@ Packaged cancer expression coverage:
 | `T_ALL` | TARGET ALL | `TARGET_ALL_2018` | 264 |
 | `WILMS` | TARGET | `TARGET_WT_2015` | 130 |
 
+The `Samples` column records the current source/summary population. Generic
+oncoref RNA-seq QC separately marks 175/184 `CGCI_BLGSP` samples and 60/69
+`GSE328026_PECOMA_2026` samples as passing. Representatives already use those
+pass sets; rebuilding summaries and percentiles to the same population is
+tracked by [oncoref #423](https://github.com/pirl-unc/oncoref/issues/423).
+
 `tumor_up_vs_matched_normal()` and
 `heme_tumor_up_vs_matched_normal()` expose compact marker panels for
 tumor-up-vs-matched-normal comparisons. They are marker tables, not full

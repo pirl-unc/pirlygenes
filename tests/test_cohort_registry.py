@@ -1,8 +1,6 @@
 """First-class cohort vocabulary (#296) + source-prefixed atoms (#292)."""
 from __future__ import annotations
 
-import pandas as pd
-
 import pirlygenes.gene_sets_cancer as gsc
 from pirlygenes.cohorts import Cohort
 from pirlygenes.expression.accessors import (
@@ -62,6 +60,20 @@ def test_artifact_only_source_is_registered_from_owner_availability():
     assert row["n_samples"] == 13
     assert row["n_codes"] == 2
     assert "oncoref cancer-reference artifact" in row["provenance"]
+
+
+def test_sparse_source_registry_records_pending_owner_rebuild():
+    registry = gsc.cohort_registry_df().set_index("cohort_id")
+    expected = {
+        "CGCI_BLGSP": (184, "175 QC pass / 9 fail"),
+        "GSE328026_PECOMA_2026": (69, "60 QC pass / 9 fail"),
+    }
+
+    for cohort_id, (source_samples, qc_note) in expected.items():
+        row = registry.loc[cohort_id]
+        assert int(row["n_samples"]) == source_samples
+        assert qc_note in row["provenance"]
+        assert "oncoref#423" in row["provenance"]
 
 
 def test_source_prefixed_atoms_and_rollup():
