@@ -13,6 +13,8 @@ import io
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
+import pytest
+
 from pirlygenes import cli, downloads
 
 
@@ -61,27 +63,39 @@ def test_ci_oncoref_cache_key_tracks_resolved_package_and_data_versions():
     assert "steps.oncoref-cache-version.outputs.key" in workflow
 
 
-def test_recount3_sources_are_oncoref_owned():
-    """recount3 build routes live only in oncoref (#528)."""
+def test_dependency_owned_sources_are_present_in_oncoref():
+    """Dependency-owned routes stay discoverable but never write locally."""
     from oncoref.expression_builders import (
+        gdc_source_entries,
+        geo_matrix_source_entries,
         recount3_source_entries,
-        recount3_source_from_registry,
+        treehouse_source_entries,
     )
 
     local = {
         source.id: source
         for source in downloads.load_registry()
-        if source.source_type == "recount3"
+        if source.build_owner == "oncoref"
     }
-    upstream_ids = {str(entry["id"]) for entry in recount3_source_entries()}
+    upstream = {
+        str(entry["id"]): entry
+        for entries in (
+            gdc_source_entries(),
+            geo_matrix_source_entries(),
+            recount3_source_entries(),
+            treehouse_source_entries(),
+        )
+        for entry in entries
+    }
 
     assert local
-    assert set(local) <= upstream_ids
+    assert {"cgci-blgsp", "gse328026-sarc-pec"} <= set(local)
+    assert set(local) <= set(upstream)
     for source_id, source in local.items():
-        upstream = recount3_source_from_registry(source_id)
         assert source.builder is None
-        assert upstream.srp == source.recount3_srp
-        assert upstream.source_cohort == source.source_cohort
+        assert source.source_type == str(upstream[source_id]["source_type"])
+        if source.source_cohort:
+            assert source.source_cohort == str(upstream[source_id]["source_cohort"])
 
 
 def test_cache_root_honors_env_var(monkeypatch, tmp_path: Path):
@@ -89,6 +103,20 @@ def test_cache_root_honors_env_var(monkeypatch, tmp_path: Path):
     assert downloads.cache_root() == tmp_path / "override"
     monkeypatch.delenv("PIRLYGENES_CACHE")
     assert downloads.cache_root() == Path.home() / ".cache" / "pirlygenes"
+
+
+def test_registry_rejects_conflicting_build_owners(tmp_path: Path):
+    registry = tmp_path / "sources.yaml"
+    registry.write_text(
+        "sources:\n"
+        "  - id: conflicting\n"
+        "    builder: scripts/build.py\n"
+        "    build_owner: oncoref\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="cannot declare both"):
+        downloads.load_registry(registry)
 
 
 def test_source_cache_dir_layout(monkeypatch, tmp_path: Path):
@@ -167,7 +195,7 @@ def test_cli_build_list_enumerates_sources():
     assert rc == 0
     assert "cgci-blgsp" in out
     assert "tcga-blca" in out
-    assert "scripts/build_bl_gdc_reference_expression.py" in out
+    assert "(oncoref-owned)" in out
 
 
 def test_cli_build_unknown_source_reports_clearly():
@@ -176,11 +204,16 @@ def test_cli_build_unknown_source_reports_clearly():
     assert "no source matches" in err
 
 
-def test_cli_build_recount3_source_redirects_to_oncoref():
-    rc, _, err = _run_cli(["build", "gse98894-midnet"])
-    assert rc == 2
-    assert "built and published by oncoref" in err
-    assert "build_recount3_source_matrices" in err
+def test_cli_build_dependency_owned_sources_redirect_to_oncoref():
+    for source_id in (
+        "gse98894-midnet",
+        "cgci-blgsp",
+        "gse328026-sarc-pec",
+    ):
+        rc, _, err = _run_cli(["build", source_id])
+        assert rc == 2
+        assert "built and published by oncoref" in err
+        assert "oncoref.expression_builders" in err
 
 
 def test_cli_build_ambiguous_cancer_code_lists_candidates():

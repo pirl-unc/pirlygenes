@@ -97,7 +97,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "  pirlygenes data list                 # what cohorts/genes/samples are packaged\n"
             "  pirlygenes data sources NET_PANCREAS       # which sources feed a cancer code\n"
             "  pirlygenes data status               # is the data bundle downloaded?\n"
-            "  pirlygenes build list                # all buildable source ids\n"
+            "  pirlygenes build list                # source ids and build owners\n"
             "\n"
             "The Python data API is unchanged: `from pirlygenes import\n"
             "gene_sets_cancer, gene_ids, gene_names, gene_families`.\n"
@@ -249,16 +249,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
     build_parser = subparsers.add_parser(
         "build",
-        help="Rebuild per-gene-per-cohort summaries from a source's raw data.",
+        help="Rebuild a local source or identify its dependency owner.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "Regenerate the packaged reference summaries for one source (or one\n"
-            "cancer code) from its raw quantifications, writing the updated\n"
-            "per-source shard. Downloads inputs first if needed."
+            "Regenerate locally owned reference summaries from raw source data.\n"
+            "Dependency-owned sources remain listed for compatibility and emit\n"
+            "a redirect instead of writing divergent artifacts."
         ),
         epilog=(
             "Examples:\n"
-            "  pirlygenes build list                # show every buildable source id\n"
+            "  pirlygenes build list                # show source ids and owners\n"
             "  pirlygenes build gse98894-midnet     # rebuild one source\n"
             "  pirlygenes build BL                  # rebuild whatever feeds a cancer code\n"
         ),
@@ -592,11 +592,16 @@ def _source_build_cmd(src, summary_out=_SUMMARY_OUT, samples_out=_SAMPLES_OUT,
     from pathlib import Path
 
     if not src.builder:
-        if src.source_type == "recount3":
+        if src.build_owner:
+            owner_hint = (
+                "the source-type-appropriate public API in "
+                "oncoref.expression_builders"
+                if src.build_owner == "oncoref"
+                else f"{src.build_owner}'s source-build tooling"
+            )
             sys.stderr.write(
-                f"source {src.id!r} is built and published by oncoref; use "
-                "oncoref.expression_builders.build_recount3_source_matrices "
-                "for source rebuilds.\n"
+                f"source {src.id!r} is built and published by "
+                f"{src.build_owner}; use {owner_hint} for source rebuilds.\n"
             )
             return None
         sys.stderr.write(
@@ -721,7 +726,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     if requested == "list":
         for s in sorted(sources, key=lambda x: x.id):
             codes = ",".join(s.cancer_codes) or "-"
-            builder = s.builder or "(no builder)"
+            builder = s.builder or (
+                f"({s.build_owner}-owned)" if s.build_owner else "(no builder)"
+            )
             sys.stdout.write(f"  {s.id:32}  {codes:40}  {builder}\n")
         return 0
 
