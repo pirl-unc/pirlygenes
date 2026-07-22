@@ -879,7 +879,42 @@ def cancer_compartment_panels():
 
 
 # ---------- Pairwise type discriminators (the "differential" question) ----------
-def cancer_type_discriminators_df(type_a=None, type_b=None):
+def _cancer_type_with_ancestors(cancer_type):
+    """Return ``cancer_type`` followed by its registry parents."""
+    registry = get_data("cancer-type-registry")
+    parent_of = dict(
+        registry[["code", "parent_code"]].itertuples(index=False, name=None)
+    )
+    result = [cancer_type]
+    seen = {cancer_type}
+    current = cancer_type
+    while current in parent_of:
+        parent = parent_of[current]
+        if parent is None or str(parent).strip().lower() in {"", "nan", "none"}:
+            break
+        parent = str(parent).strip()
+        if parent in seen:
+            break
+        result.append(parent)
+        seen.add(parent)
+        current = parent
+    return result
+
+
+def _cancer_type_discriminator_pair(df, type_a, type_b):
+    """Vectorized, order-independent pair selection."""
+    return df[
+        ((df["type_a"] == type_a) & (df["type_b"] == type_b))
+        | ((df["type_a"] == type_b) & (df["type_b"] == type_a))
+    ]
+
+
+def cancer_type_discriminators_df(
+    type_a=None,
+    type_b=None,
+    *,
+    ancestor_fallback=False,
+):
     """DataFrame of contrastive marker sets that SEPARATE confusable cancer-type
     pairs (``contrast, type_a, type_b, favors, Symbol, Ensembl_Gene_ID,
     direction, tier, separability, source``). ``direction`` ``high``/``low`` is
@@ -887,19 +922,54 @@ def cancer_type_discriminators_df(type_a=None, type_b=None):
     over serous-OV). ``separability`` is the contrast's honest difficulty
     (``strong``..``poor``); only RNA-detectable markers are included (DNA/CNV
     events — RB1/CDKN2A loss, 1p19q codeletion — are excluded). Pass a pair of
-    codes to fetch one contrast in either order."""
+    codes to fetch one contrast in either order.
+
+    With ``ancestor_fallback=True``, an exact pair is preferred and then the
+    nearest registry ancestors are searched. This lets molecular/risk children
+    reuse a general parent program (for example ``LAML_ELNadv`` versus ``CML``
+    uses the curated ``LAML`` versus ``CML`` contrast) without copying identical
+    marker rows onto every child. Returned rows retain the matched parent codes
+    so consumers can report the evidence level honestly.
+    """
     df = get_data("cancer-type-discriminators")
     if type_a is not None and type_b is not None:
-        pair = {type_a, type_b}
-        df = df[df.apply(lambda r: {r["type_a"], r["type_b"]} == pair, axis=1)]
+        exact = _cancer_type_discriminator_pair(df, type_a, type_b)
+        if not exact.empty or not ancestor_fallback:
+            return exact
+        lineage_a = _cancer_type_with_ancestors(type_a)
+        lineage_b = _cancer_type_with_ancestors(type_b)
+        searches = sorted(
+            (
+                (
+                    depth_a + depth_b,
+                    max(depth_a, depth_b),
+                    tuple(sorted((parent_a, parent_b))),
+                    parent_a,
+                    parent_b,
+                )
+                for depth_a, parent_a in enumerate(lineage_a)
+                for depth_b, parent_b in enumerate(lineage_b)
+                if depth_a or depth_b
+            ),
+            key=lambda item: (item[0], item[1], item[2]),
+        )
+        for _, _, _, parent_a, parent_b in searches:
+            inherited = _cancer_type_discriminator_pair(df, parent_a, parent_b)
+            if not inherited.empty:
+                return inherited
+        return df.iloc[0:0]
     return df
 
 
-def cancer_type_discriminator(type_a, type_b):
+def cancer_type_discriminator(type_a, type_b, *, ancestor_fallback=False):
     """Dict ``{favored_code: [(Symbol, direction), ...]}`` separating two cancer
     types, or ``{}`` if the pair has no curated contrast. See
     `cancer_type_discriminators_df`."""
-    df = cancer_type_discriminators_df(type_a=type_a, type_b=type_b)
+    df = cancer_type_discriminators_df(
+        type_a=type_a,
+        type_b=type_b,
+        ancestor_fallback=ancestor_fallback,
+    )
     return {code: list(grp[["Symbol", "direction"]].itertuples(index=False, name=None))
             for code, grp in df.groupby("favors", sort=False)}
 
