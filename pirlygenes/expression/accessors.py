@@ -226,7 +226,7 @@ _PAN_COMPUTED_ROLLUP_MEMBERS = {
     "CRC": ("COAD", "READ"),
     "NET": ("NET_PANCREAS", "NET_MIDGUT", "NET_RECTAL", "NET_LUNG"),
     "NSCLC": ("LUAD", "LUSC"),
-    "SGC": ("ADCC",),
+    "SGC": ("ADCC", "ACINIC"),
 }
 _PAN_ROLLUP_MEMBER_CODES = tuple(dict.fromkeys(
     member

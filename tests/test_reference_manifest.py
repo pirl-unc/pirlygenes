@@ -52,7 +52,7 @@ def test_availability_never_loads_full_expression_frame(monkeypatch):
 
     result = available_cancer_expression_references()
 
-    assert result.shape == (139, 8)
+    assert result.shape == (140, 8)
     assert result.columns.tolist() == _PUBLIC_COLUMNS
     assert delegated_calls[:2] == [
         {
@@ -131,6 +131,7 @@ def test_availability_keys_match_the_pirlygenes_provenance_sidecar():
     ))
     assert expected_keys <= actual_keys
     assert actual_keys - expected_keys == {
+        ("ACINIC", "GSE294016_BARTL_2025_SGC"),
         ("SARC_ESS_HG", "GSE85383_YOSHIDA_2017_ESS"),
         ("SARC_ESS_LG", "GSE85383_YOSHIDA_2017_ESS"),
     }
@@ -149,7 +150,7 @@ def test_availability_preserves_the_complete_public_manifest():
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "dc506bb4640e74af799cb3bbe38e8d491bfbc6a267d88f21751c142c012597a8"
+        "4f9ad30da4e5a4c9ccf0b1c8817817cb60a5d8e51db02e5ba1abf937ce25945c"
     )
 
 
@@ -170,6 +171,7 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         ("NUTM", "TREEHOUSE_POLYA_25_01"),
         ("NUTM", "UNC_NUTM1"),
         ("NEC_MERKEL", "GSE235092_MERKEL_2024"),
+        ("ACINIC", "GSE294016_BARTL_2025_SGC"),
         ("SARC_CHON", "GSE299759_MEIJER_2026"),
         ("SARC_CHOR", "GSE239531_VANOOST_2024"),
         ("SARC_PEC", "GSE328026_PECOMA_2026"),
@@ -230,7 +232,7 @@ from pirlygenes.expression import available_cancer_expression_references
 
 assert sys.gettrace() is None, 'memory probe inherited coverage/debug tracing'
 result = available_cancer_expression_references()
-assert result.shape == (139, 8)
+assert result.shape == (140, 8)
 if sys.platform.startswith('linux'):
     # getrusage().ru_maxrss retains the forked pytest parent's historical
     # high-water mark across exec on Linux. VmHWM belongs to this executable's

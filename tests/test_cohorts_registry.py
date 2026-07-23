@@ -27,6 +27,9 @@ def test_per_sample_sources_complete():
     # script — incl. ribod + the NE sources added by #318/#326.
     assert {"treehouse-polya-25-01", "treehouse-ribod-25-01", "gse118014-pannet",
             "sclc-ucologne-2015", "drmetrics-lnen-2020"} <= set(src)
+    # Dependency-owned diagnosis-split artifacts must not rediscover the
+    # retired mixed-histology local cache.
+    assert "gse294016-adcc" not in src
     for sid, (label, project) in src.items():
         assert cohorts.source_label(sid) == label
         assert cohorts.source_project(sid) == project

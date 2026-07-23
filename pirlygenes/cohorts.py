@@ -133,7 +133,10 @@ PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = {
     "gse248751-sarc-ccs": ("GSE248751_HUMAN_CCS_2023", "GEO"),
     "gse328026-sarc-pec": ("GSE328026_PECOMA_2026", "GEO"),
     "gse241095-sarc-ks-skin": ("GSE241095_KS_SKIN_2023", "GEO"),
-    "gse294016-adcc": ("GSE294016_BARTL_2025_SGC", "GEO"),
+    # GSE294016 is dependency-owned and deliberately absent here. Its former
+    # local source id (gse294016-adcc) can discover stale mixed-histology cache
+    # files; oncoref >=1.8.145 instead publishes the diagnosis-split ADCC and
+    # ACINIC matrices and all derived artifacts.
     "gse235092-merkel": ("GSE235092_MERKEL_2024", "GEO"),
     # recount3 (gene_sums → TPM); HL is unique, others tie-break by sample count.
     "gse120328-hl": ("GSE120328_LAMPRECHT_2018", "recount3"),

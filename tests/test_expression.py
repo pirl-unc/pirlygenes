@@ -87,6 +87,7 @@ def _local_pan_cancer_fixture():
         ("LUAD", 40.0),
         ("LUSC", 50.0),
         ("ADCC", 60.0),
+        ("ACINIC", 70.0),
     ):
         rollup[code] = rollup["CHOL"] + offset
 
@@ -100,7 +101,8 @@ def _local_pan_cancer_fixture():
         "NET_LUNG": 118,
         "LUAD": 515,
         "LUSC": 498,
-        "ADCC": 99,
+        "ADCC": 57,
+        "ACINIC": 3,
     }
     persisted = rollup[["Ensembl_Gene_ID"]].copy()
     for aggregate, members in (
@@ -108,7 +110,7 @@ def _local_pan_cancer_fixture():
         ("CRC", ("COAD", "READ")),
         ("NET", ("NET_PANCREAS", "NET_MIDGUT", "NET_RECTAL", "NET_LUNG")),
         ("NSCLC", ("LUAD", "LUSC")),
-        ("SGC", ("ADCC",)),
+        ("SGC", ("ADCC", "ACINIC")),
     ):
         member_weights = pd.Series({code: weights[code] for code in members})
         values = rollup[list(members)]
@@ -233,6 +235,7 @@ def test_pan_cancer_canonical_rows_rollups_and_legacy_gene_filters(
     assert paxx["Ensembl_Gene_ID"].tolist() == ["ENSG00000310560"]
     assert "ENSG00000148362" not in set(paxx["Ensembl_Gene_ID"])
     assert paxx["CRC_TPM"].tolist() == pytest.approx([(25.0 * 3 + 35.0) / 4])
+    assert paxx["SGC_TPM"].tolist() == pytest.approx([(66.0 * 57 + 76.0 * 3) / 60])
     assert paxx[["BTC_TPM", "CRC_TPM", "NET_TPM", "NSCLC_TPM", "SGC_TPM"]].notna().all(axis=None)
 
     paxx_legacy = pan_cancer_expression(
@@ -1236,18 +1239,23 @@ def test_cancer_expression_source_candidates_cover_requested_gaps():
     assert ready["accession"].str.len().gt(0).all()
 
 
-def test_salivary_candidates_are_pending_diagnosis_split_rebuild():
+def test_salivary_candidates_report_released_diagnosis_split():
     candidates = cancer_expression_source_candidates(
         ["ADCC", "ACINIC"]
     ).set_index("cancer_code")
 
-    assert set(candidates["source_status"]) == {"dependency_rebuild_pending"}
+    assert set(candidates["source_status"]) == {"direct_reference_available"}
+    assert candidates["reference_code"].to_dict() == {
+        "ADCC": "ADCC",
+        "ACINIC": "ACINIC",
+    }
     assert candidates["estimated_samples"].to_dict() == {
         "ADCC": 57.0,
         "ACINIC": 3.0,
     }
+    assert set(candidates["source_cohort"]) == {"GSE294016_BARTL_2025_SGC"}
     assert set(candidates["accession"]) == {"GSE294016"}
-    assert candidates["notes"].str.contains("oncoref#422", regex=False).all()
+    assert candidates["notes"].str.contains("oncoref 1.8.145", regex=False).all()
 
 
 def test_cancer_expression_reference_status_is_uniform_for_parent_labels():

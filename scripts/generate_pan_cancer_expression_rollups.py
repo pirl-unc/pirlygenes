@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+from oncoref import data_bundle as oncoref_data_bundle
 
 from pirlygenes.expression import accessors
 from pirlygenes.load_dataset import get_data
@@ -39,6 +40,7 @@ SELECTED_SOURCE_SHARDS = {
     "LUAD": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__LUAD.csv.gz",
     "LUSC": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__LUSC.csv.gz",
     "ADCC": "GSE294016_BARTL_2025_SGC.csv.gz",
+    "ACINIC": "GSE294016_BARTL_2025_SGC.csv.gz",
 }
 
 
@@ -50,7 +52,15 @@ def build() -> pd.DataFrame:
             f"missing={sorted(expected_codes - set(SELECTED_SOURCE_SHARDS))!r}, "
             f"extra={sorted(set(SELECTED_SOURCE_SHARDS) - expected_codes)!r}"
         )
-    root = Path(accessors._bundle_subdir("cancer-reference-expression"))
+    root = oncoref_data_bundle.find("cancer-reference-expression")
+    if root is None:
+        oncoref_data_bundle.ensure_local()
+        root = oncoref_data_bundle.find("cancer-reference-expression")
+    if root is None:
+        raise FileNotFoundError(
+            "oncoref's cancer-reference-expression bundle is unavailable"
+        )
+    root = Path(root)
     member_values: dict[str, pd.Series] = {}
     sample_counts: dict[str, float] = {}
     shard_cache: dict[str, pd.DataFrame] = {}
