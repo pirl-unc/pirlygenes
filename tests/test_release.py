@@ -3,10 +3,22 @@
 import json
 from types import SimpleNamespace
 
+import oncoref
 import pytest
+from oncoref import data_bundle as oncoref_data_bundle
 
 from pirlygenes.version import DATA_VERSION
 from scripts import release
+
+
+def _current_manifest_payload():
+    return {
+        "canonical_gene_ids": True,
+        "data_version": DATA_VERSION,
+        "source_data_version": oncoref_data_bundle.DATA_VERSION,
+        "source_package": "oncoref",
+        "source_package_version": oncoref.__version__,
+    }
 
 
 def _manifest(tmp_path, monkeypatch, payload):
@@ -17,18 +29,14 @@ def _manifest(tmp_path, monkeypatch, payload):
 
 
 def test_release_accepts_current_cohort_views_manifest(tmp_path, monkeypatch):
-    _manifest(tmp_path, monkeypatch, {
-        "canonical_gene_ids": True,
-        "data_version": DATA_VERSION,
-    })
+    _manifest(tmp_path, monkeypatch, _current_manifest_payload())
     release.validate_data_bundle_manifests()
 
 
 def test_release_rejects_stale_cohort_views_manifest(tmp_path, monkeypatch):
-    _manifest(tmp_path, monkeypatch, {
-        "canonical_gene_ids": True,
-        "data_version": "stale-data-version",
-    })
+    payload = _current_manifest_payload()
+    payload["data_version"] = "stale-data-version"
+    _manifest(tmp_path, monkeypatch, payload)
     with pytest.raises(release.Abort, match="data_version mismatch"):
         release.validate_data_bundle_manifests()
 
@@ -36,10 +44,9 @@ def test_release_rejects_stale_cohort_views_manifest(tmp_path, monkeypatch):
 def test_release_rejects_noncanonical_cohort_views_manifest(
     tmp_path, monkeypatch,
 ):
-    _manifest(tmp_path, monkeypatch, {
-        "canonical_gene_ids": False,
-        "data_version": DATA_VERSION,
-    })
+    payload = _current_manifest_payload()
+    payload["canonical_gene_ids"] = False
+    _manifest(tmp_path, monkeypatch, payload)
     with pytest.raises(release.Abort, match="canonical_gene_ids=true"):
         release.validate_data_bundle_manifests()
 
@@ -56,6 +63,19 @@ def test_release_rejects_missing_or_malformed_manifest(tmp_path, monkeypatch):
 
     path.write_text("[]")
     with pytest.raises(release.Abort, match="manifest invalid"):
+        release.validate_data_bundle_manifests()
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["source_package", "source_package_version", "source_data_version"],
+)
+def test_release_rejects_stale_owner_manifest(tmp_path, monkeypatch, field):
+    payload = _current_manifest_payload()
+    payload[field] = "stale-owner"
+    _manifest(tmp_path, monkeypatch, payload)
+
+    with pytest.raises(release.Abort, match=field):
         release.validate_data_bundle_manifests()
 
 

@@ -62,7 +62,7 @@ def test_artifact_only_source_is_registered_from_owner_availability():
     assert "oncoref cancer-reference artifact" in row["provenance"]
 
 
-def test_sparse_source_registry_records_pending_owner_rebuild():
+def test_sparse_source_registry_records_released_owner_rebuild():
     registry = gsc.cohort_registry_df().set_index("cohort_id")
     expected = {
         "CGCI_BLGSP": (184, "175 QC pass / 9 fail"),
@@ -73,6 +73,7 @@ def test_sparse_source_registry_records_pending_owner_rebuild():
         row = registry.loc[cohort_id]
         assert int(row["n_samples"]) == source_samples
         assert qc_note in row["provenance"]
+        assert "released in oncoref 1.8.146" in row["provenance"]
         assert "oncoref#423" in row["provenance"]
 
 

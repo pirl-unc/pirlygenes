@@ -45,6 +45,9 @@ import sys
 import tarfile
 from pathlib import Path
 
+import oncoref
+from oncoref import data_bundle as oncoref_data_bundle
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -161,6 +164,19 @@ def validate_data_bundle_manifests() -> None:
             f"{actual!r} != DATA_VERSION {DATA_VERSION!r}; bump DATA_VERSION "
             "before running scripts/generate_cohort_expression_views.py"
         )
+    expected_owner = {
+        "source_package": "oncoref",
+        "source_package_version": str(oncoref.__version__),
+        "source_data_version": str(oncoref_data_bundle.DATA_VERSION),
+    }
+    for field, expected in expected_owner.items():
+        observed = str(manifest.get(field, ""))
+        if observed != expected:
+            raise Abort(
+                f"cohort-views manifest {field} mismatch: "
+                f"{observed!r} != {expected!r}; regenerate the views with the "
+                "installed oncoref release"
+            )
 
 
 def build_data_tarball(*, dry: bool) -> None:

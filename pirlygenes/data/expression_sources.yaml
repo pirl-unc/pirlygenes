@@ -48,7 +48,8 @@ sources:
       Open GDC STAR-counts; one deterministic primary-tumor sample per
       case. GENCODE v36 → Ensembl 112. Source matrices, QC manifests,
       summaries, representatives, and percentiles are rebuilt and published
-      together by oncoref; sparse-sample parity is tracked in oncoref#423.
+      together by oncoref 1.8.146 from the 175 QC-pass samples; see
+      oncoref#423.
 
   - id: mmrf-commpass
     category: expression
@@ -784,7 +785,7 @@ sources:
       69 PEComa source samples; generic oncoref RNA-seq QC currently marks
       60 pass and 9 fail. Source matrices, QC manifests, summaries,
       representatives, and percentiles are rebuilt and published together by
-      oncoref; released-artifact parity is tracked in oncoref#423.
+      oncoref 1.8.146 from the 60 QC-pass samples; see oncoref#423.
 
   - id: gse241095-sarc-ks-skin
     category: expression

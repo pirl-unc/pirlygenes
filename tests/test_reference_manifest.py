@@ -131,7 +131,6 @@ def test_availability_keys_match_the_pirlygenes_provenance_sidecar():
     ))
     assert expected_keys <= actual_keys
     assert actual_keys - expected_keys == {
-        ("ACINIC", "GSE294016_BARTL_2025_SGC"),
         ("SARC_ESS_HG", "GSE85383_YOSHIDA_2017_ESS"),
         ("SARC_ESS_LG", "GSE85383_YOSHIDA_2017_ESS"),
     }
@@ -150,7 +149,7 @@ def test_availability_preserves_the_complete_public_manifest():
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "4f9ad30da4e5a4c9ccf0b1c8817817cb60a5d8e51db02e5ba1abf937ce25945c"
+        "bd239175a44ec7edab3eb7ce29aa9cbcc01f9e134be669b14fa0195b6357d258"
     )
 
 

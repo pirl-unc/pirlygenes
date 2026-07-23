@@ -4,7 +4,9 @@ inconsistently."""
 
 import json
 
+import oncoref
 import pytest
+from oncoref import data_bundle as oncoref_data_bundle
 
 from pirlygenes.expression import (
     CohortExpressionViews,
@@ -18,6 +20,9 @@ def _write_current_manifest(root):
     (root / "_manifest.json").write_text(json.dumps({
         "canonical_gene_ids": True,
         "data_version": DATA_VERSION,
+        "source_data_version": oncoref_data_bundle.DATA_VERSION,
+        "source_package": "oncoref",
+        "source_package_version": oncoref.__version__,
     }))
 
 
@@ -110,7 +115,7 @@ def test_views_bundle_three_stages_and_provenance():
     assert len(v.provenance) >= 1
 
 
-def test_views_manifest_data_version_matches_current():
+def test_views_manifest_versions_match_current_owners():
     """The baked cohort-views manifest must be stamped with the current
     DATA_VERSION, so a data release that regenerates the per-code shards but
     forgets to regenerate the views can't silently ship stale baked views
@@ -125,6 +130,12 @@ def test_views_manifest_data_version_matches_current():
         f"cohort-views manifest data_version={manifest.get('data_version')!r} != "
         f"DATA_VERSION={DATA_VERSION!r}; regenerate the views "
         "(scripts/generate_cohort_expression_views.py) after bumping DATA_VERSION"
+    )
+    assert manifest.get("source_package") == "oncoref"
+    assert manifest.get("source_package_version") == oncoref.__version__
+    assert (
+        manifest.get("source_data_version")
+        == oncoref_data_bundle.DATA_VERSION
     )
 
 
@@ -442,8 +453,6 @@ def _write_artifact_from_rebuild(root, monkeypatch, fake):
 
 
 def _normalize(df):
-    import pandas as pd
-
     cols = sorted(df.columns)
     keys = [c for c in ("Ensembl_Gene_ID", "Symbol") if c in cols]
     out = df[cols]
@@ -675,6 +684,30 @@ def test_stale_manifest_rejected_and_falls_back_to_rebuild(tmp_path, monkeypatch
     assert accessors._cohort_views_usable(root) is False
     rebuilt = cohort_expression_views(genes=["TP53"])
     assert rebuilt.tpm["Ensembl_Gene_ID"].tolist() == [TP53]
+
+
+@pytest.mark.parametrize(
+    ("field", "stale_value"),
+    [
+        ("source_package", "another-owner"),
+        ("source_package_version", "0.0.0"),
+        ("source_data_version", "stale-owner-data"),
+    ],
+)
+def test_stale_owner_manifest_rejected(
+    tmp_path,
+    monkeypatch,
+    field,
+    stale_value,
+):
+    fake = _synthetic_reference()
+    root = tmp_path / "views"
+    _write_artifact_from_rebuild(root, monkeypatch, fake)
+    manifest = accessors._artifact_manifest(root)
+    manifest[field] = stale_value
+    (root / "_manifest.json").write_text(json.dumps(manifest))
+
+    assert accessors._cohort_views_usable(root) is False
 
 
 def test_unversioned_manifest_rejected(tmp_path, monkeypatch):

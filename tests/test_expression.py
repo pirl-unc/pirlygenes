@@ -498,7 +498,7 @@ def test_available_cancer_expression_references_includes_acquirable_heme_cohorts
     refs = df.set_index("cancer_code")
 
     expected = {
-        "BL": ("CGCI_BLGSP", 184),
+        "BL": ("CGCI_BLGSP", 175),
         "CML": ("GSE100026_DING_2017", 5),
         "CTCL": ("GSE171811_ECCITE_CTCL", 7),
         "MCL": ("GSE271664_BODOR_2025", 51),
