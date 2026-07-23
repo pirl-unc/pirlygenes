@@ -63,7 +63,7 @@ def test_canonicalize_source_folds_par_ensg_into_base_gene():
 def test_canonicalize_source_uniquifies_duplicate_samples_once():
     """Repeated patient IDs are distinct samples, not a Cartesian expansion.
 
-    GSE294016 contains two rows each for P-58 and P-77. Its stale artifact
+    GSE294016 contains two rows each for P-58 and P-77. Its former artifact
     expanded both pairs to four columns, changing 95 source rows into 99. The
     generic canonicalizer must retain each source column exactly once.
     """

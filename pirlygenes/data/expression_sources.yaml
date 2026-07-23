@@ -48,7 +48,8 @@ sources:
       Open GDC STAR-counts; one deterministic primary-tumor sample per
       case. GENCODE v36 → Ensembl 112. Source matrices, QC manifests,
       summaries, representatives, and percentiles are rebuilt and published
-      together by oncoref; sparse-sample parity is tracked in oncoref#423.
+      together by oncoref 1.8.146 from the 175 QC-pass samples; see
+      oncoref#423.
 
   - id: mmrf-commpass
     category: expression
@@ -784,7 +785,7 @@ sources:
       69 PEComa source samples; generic oncoref RNA-seq QC currently marks
       60 pass and 9 fail. Source matrices, QC manifests, summaries,
       representatives, and percentiles are rebuilt and published together by
-      oncoref; released-artifact parity is tracked in oncoref#423.
+      oncoref 1.8.146 from the 60 QC-pass samples; see oncoref#423.
 
   - id: gse241095-sarc-ks-skin
     category: expression
@@ -811,17 +812,16 @@ sources:
 
   # GSE76354 turned out to be NIH3T3 mouse cell-line ± MSANTD3
   # transfection, NOT primary AcCC tumor RNA-seq. The agent's recon
-  # mismatched. Removing the entry; ACINIC stays in the
-  # "no clean public RNA-seq" bucket (closest is Lee 2020
-  # PRJNA433667 raw FASTQ for 21 AcCC — needs an alignment pipeline).
+  # mismatched. It remains excluded; diagnosis-confirmed ACINIC RNA-seq now
+  # comes from oncoref's GSE294016 split below.
 
   # GSE294016 is intentionally NOT a local build route. The former entry sent
   # all 95 mixed salivary-cancer samples to ADCC and produced a 99-column
   # artifact by expanding the duplicate P-58/P-77 sample IDs twice. The public
   # Nature Supplementary Dataset 1 gives an exact diagnosis map (57 ADCC sample
-  # rows, 3 ACINIC, 35 other histologies). Rebuilding the source matrices and
-  # every derived artifact belongs to oncoref#422; keeping the broken local
-  # route would let `pirlygenes build all` recreate data we have quarantined.
+  # rows, 3 ACINIC, 35 other histologies). Oncoref 1.8.145 publishes the split
+  # source matrices and every derived artifact. Keeping any local route would
+  # let `pirlygenes build all` recreate the retired mixed-histology artifact.
 
   - id: gse235092-merkel
     category: expression

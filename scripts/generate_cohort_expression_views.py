@@ -19,6 +19,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import oncoref
+from oncoref import data_bundle as oncoref_data_bundle
+
 from pirlygenes.expression import accessors
 from pirlygenes.version import DATA_VERSION
 
@@ -59,6 +62,9 @@ def build() -> None:
         "data_version": DATA_VERSION,
         "canonical_gene_ids": True,
         "format": 1,
+        "source_data_version": oncoref_data_bundle.DATA_VERSION,
+        "source_package": "oncoref",
+        "source_package_version": oncoref.__version__,
         "rows": {
             "tpm": int(len(tpm)),
             "clean_tpm": int(len(clean_tpm)),

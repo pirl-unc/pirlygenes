@@ -226,7 +226,7 @@ _PAN_COMPUTED_ROLLUP_MEMBERS = {
     "CRC": ("COAD", "READ"),
     "NET": ("NET_PANCREAS", "NET_MIDGUT", "NET_RECTAL", "NET_LUNG"),
     "NSCLC": ("LUAD", "LUSC"),
-    "SGC": ("ADCC",),
+    "SGC": ("ADCC", "ACINIC"),
 }
 _PAN_ROLLUP_MEMBER_CODES = tuple(dict.fromkeys(
     member
@@ -2363,14 +2363,24 @@ def _filter_cohort_view_provenance(
 def _cohort_views_usable(root: Path) -> bool:
     """The precomputed views artifact is safe to use for the *canonical* path
     iff all three parquets exist and a readable manifest declares both
-    canonical gene IDs and the running data version. Missing, malformed,
-    stale, and unversioned manifests all take the fail-safe rebuild path."""
+    canonical gene IDs, the running pirlygenes data version, and the exact
+    oncoref package/data versions that supplied its summary rows. Missing,
+    malformed, stale, and unversioned manifests all take the fail-safe rebuild
+    path."""
     if not _cohort_views_present(root):
         return False
+    import oncoref
+    from oncoref import data_bundle as oncoref_data_bundle
+
     manifest = _artifact_manifest(root)
     return bool(
         manifest.get("canonical_gene_ids", False)
         and str(manifest.get("data_version", "")) == DATA_VERSION
+        and str(manifest.get("source_package", "")) == "oncoref"
+        and str(manifest.get("source_package_version", ""))
+        == str(oncoref.__version__)
+        and str(manifest.get("source_data_version", ""))
+        == str(oncoref_data_bundle.DATA_VERSION)
     )
 
 
