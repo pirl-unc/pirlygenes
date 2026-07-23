@@ -5,11 +5,12 @@ read pyensembl GTF databases. We default to **release 111** as the baseline and
 ensure it's installed once, up front, so release-dependent tests are meaningful
 rather than silently skipped.
 
-Why here (and only in the xdist *controller*): ``./test.sh`` runs ``pytest -n
-auto``. Installing inside a per-worker fixture would let multiple workers race to
-``pyensembl install`` into the same cache. ``pytest_configure`` runs in the
-controller before workers fork, so gating on ``config.workerinput`` makes the
-ensure-install happen exactly once.
+Why here (and only in the xdist *controller*): the repository defaults to
+serial execution, but permits at most two explicitly opted-in workers for
+known-lightweight subsets. Installing inside a per-worker fixture would let
+those workers race to ``pyensembl install`` into the same cache.
+``pytest_configure`` runs in the controller before workers fork, so gating on
+``config.workerinput`` makes the ensure-install happen exactly once.
 
 It's best-effort: a no-op if 111 is already built (CI installs + caches it in the
 workflow, so this no-ops there too), skipped when opted out via
