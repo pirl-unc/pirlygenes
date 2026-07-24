@@ -46,6 +46,22 @@ pip install pirl-trufflepig
 trufflepig run --sample expr.tsv --workspace out --cancer-type PRAD
 ```
 
+## Documentation
+
+Start with the [documentation map](docs/README.md). It groups maintained
+documents by reader goal so architecture and current ownership come before
+implementation history:
+
+- [gene sets and public data surfaces](docs/gene-sets.md)
+- [gene canonicalization contract](docs/gene-canonicalization.md)
+- [reference-expression ownership and parity](docs/reference-expression-parity.md)
+- [normalization and mapping audit](docs/normalization-and-mapping-audit.md)
+- [cancer-classification ontology](docs/cancer-classification-ontology.md)
+
+Documents about the retired per-sample runner are retained as explicitly marked
+migration or design history; active sample-analysis documentation belongs to
+[`trufflepig`](https://github.com/pirl-unc/trufflepig).
+
 ## Python API
 
 Most accessors are re-exported from the top-level package, so

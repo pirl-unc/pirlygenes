@@ -3,6 +3,16 @@
 PIRLy Genes provides curated gene sets for cancer biology analysis.
 All are accessible via `pirlygenes.gene_sets_cancer`.
 
+## Guide at a glance
+
+- Therapy, CTA, surface, pMHC, and TCE sections describe curated target panels.
+- Expression-reference sections explain the uniform TPM analysis surface and
+  its cohort/source provenance.
+- Proteoform sections explain when several canonical genes become one
+  sequence-identical analysis unit.
+- Embedding and cancer-type sections cover reference feature selection and
+  registry identifiers.
+
 ## Therapy Target Gene Sets
 
 Each therapy type has trial and approved variants. Access via

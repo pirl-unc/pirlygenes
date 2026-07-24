@@ -1,12 +1,21 @@
 # Figure-set audit
 
-Historical note: these are legacy per-sample analysis figures. The active
-sample-analysis runner now belongs in
-[`trufflepig`](https://github.com/pirl-unc/trufflepig); pirlygenes keeps the
-curated data and cohort-level reference APIs that those figures may consume.
+## Executive summary
 
-Inventory + purpose + similar-purpose groupings for every PNG/PDF emitted by
-the legacy `pirlygenes analyze` runner.
+- These are legacy per-sample figures; the active runner and its current figure
+  documentation belong in
+  [`trufflepig`](https://github.com/pirl-unc/trufflepig).
+- The canonical therapy-target set is `sample-actionable-targets.png`,
+  `sample-priority-targets.png`, and `sample-priority-target-context.png`.
+- The main remaining organization problem is packaging audit/provenance views,
+  especially the ten gene-set plots, rather than adding another decision plot.
+- Detailed inventories are retained below as migration and design evidence.
+
+## Scope and audit history
+
+Pirlygenes keeps the curated data and cohort-level reference APIs that these
+figures may consume. This document inventories and groups every PNG/PDF emitted
+by the legacy `pirlygenes analyze` runner.
 
 **Round 1** (v4.45.0 baseline, shipped 2026-04-21): verdict format below was
 ✓ keep / ~ review / ✗ drop / + missing. Actions taken based on that
@@ -22,7 +31,7 @@ shared reference the reader can audit later to decide if any cluster
 should be consolidated. 48 files baseline after QC-plot additions and
 the concentration / technical-RNA split.
 
-**Current target-figure convention**: the canonical therapy-target figures are
+**Current target-figure convention:** the canonical therapy-target figures are
 `sample-actionable-targets.png` (broad target screen),
 `sample-priority-targets.png` (ranked shortlist), and
 `sample-priority-target-context.png` (evidence companion for the shortlist).

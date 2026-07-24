@@ -3,6 +3,16 @@
 Pirlygenes has two related identifier conventions. They are intentionally
 separate.
 
+## Contract at a glance
+
+- Gene-level tables join on unversioned `Ensembl_Gene_ID`; `Symbol` is display
+  metadata, never identity.
+- Source aliases and sequence-identical loci resolve into one canonical gene
+  row per declared context, with linear values summed before transformation.
+- Proteoform tables are an explicit derived space. Synthetic proteoform keys
+  must never leak into ordinary gene tables.
+- Validate cross-cohort inputs before joining them.
+
 ## Canonical Gene Tables
 
 Canonical gene tables use one row identity convention for gene-level expression

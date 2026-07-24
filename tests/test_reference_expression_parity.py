@@ -33,6 +33,13 @@ _PARITY_ARTIFACT = (
     / "reference_expression_parity"
     / "parity_by_code.csv"
 )
+_PARITY_MARKDOWN = _PARITY_ARTIFACT.with_name("parity_report.md")
+_DOCUMENTED_PARITY_ARTIFACT = (
+    _ROOT / "docs" / "reference-expression-delegation-557.csv"
+)
+_DOCUMENTED_PARITY_MARKDOWN = (
+    _ROOT / "docs" / "reference-expression-delegation-557.md"
+)
 _MOLECULAR_SUBTYPE_COHORTS = {
     "STAD_CIN",
     "STAD_EBV",
@@ -149,6 +156,15 @@ def test_pinned_parity_artifact_covers_complete_owner_manifest():
     assert set(subtype_rows["cancer_code"]) == _MOLECULAR_SUBTYPE_COHORTS
     assert subtype_rows["status"].eq("ok").all()
     assert subtype_rows["n_samples_match"].eq(True).all()
+
+
+def test_documented_parity_artifacts_match_analysis_outputs():
+    assert _DOCUMENTED_PARITY_ARTIFACT.read_bytes() == (
+        _PARITY_ARTIFACT.read_bytes()
+    )
+    assert _DOCUMENTED_PARITY_MARKDOWN.read_bytes() == (
+        _PARITY_MARKDOWN.read_bytes()
+    )
 
 
 @pytest.mark.parametrize("code", ["PRAD", "LUAD"])

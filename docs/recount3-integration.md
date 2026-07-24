@@ -1,5 +1,7 @@
 # recount3 as a coverage-complete drop-in for spotty GEO sources
 
+## Summary
+
 Several of our GEO RNA-seq sources ship a *processed* matrix with an
 incomplete gene universe — HTSeq counts keyed to a stale Entrez/GTF set,
 author-chosen FPKM/TPM tables — leaving genuine coverage holes. The
@@ -14,6 +16,20 @@ it covers a study, swapping our source for the recount3 gene-sums replaces
 spotty coverage with the full Gencode universe on one consistent scale.
 Confirmed for SRP107025: `XAGE1A` goes from *absent* to max 218 TPM (measured
 in 20/212 samples).
+
+Oncoref is the sole owner of recount3 ingestion, normalization, source-matrix
+QC, and rebuilds. Pirlygenes consumes the published matrices and summaries and
+retains source provenance. Of the 15 audited GEO RNA-seq sources, four are
+covered by recount3's frozen 2019 human SRA snapshot.
+
+## Ownership
+
+Oncoref's registry records study routing and expected sample counts.
+`build_recount3_source_matrices` fetches annotation, gene sums, and SRA
+metadata; aggregates runs into biological samples; canonicalizes gene IDs; and
+writes per-code matrices with mapping, parse, QC, and summary sidecars.
+Pirlygenes retains only `recount3_srp` and `source_cohort` provenance for these
+published sources.
 
 ## How many of our sources can use it
 
@@ -79,15 +95,7 @@ rather than absent, which is the meaningful gain. Gencode v26 (recount3) vs
 GENCODE v36 (GDC) vs RSEM (Treehouse) all mix acceptably as "RNA-seq TPM" for
 cohort-level summaries, exactly as the sources we already combine.
 
-## Ownership and rebuilds
-
-oncoref is the sole owner of recount3 ingestion. Its registry records the
-study-specific routing and expected sample counts, while
-`build_recount3_source_matrices` fetches the annotation, gene sums, and SRA
-metadata; aggregates runs into biological samples; canonicalizes gene IDs;
-and writes per-code matrices with mapping, parse, QC, and summary sidecars.
-pirlygenes consumes those published matrices and summaries and retains only
-the `recount3_srp` and `source_cohort` provenance in its registry.
+## Rebuild procedure
 
 To rebuild one source in the oncoref development environment:
 
