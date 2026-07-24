@@ -1,9 +1,21 @@
 # Expression-data refresh plan
 
-Multi-session project. Owner: this is the rolling work plan; update it
-as milestones land.
+This is the historical implementation log for the expression-data refresh.
+It is no longer the current ownership roadmap.
 
-## Goal
+## Current outcome
+
+- Oncoref owns empirical cancer-reference summary rows, source matrices,
+  cohort selection, sample QC, and the general source rebuild machinery.
+- Pirlygenes exposes compatibility wrappers and owns its curated panels,
+  pan-cancer and cohort-view artifacts, release bundle, and contract tests.
+- `cancer_reference_expression()` delegates to oncoref; the ownership and
+  validation details live in
+  [reference-expression-parity.md](reference-expression-parity.md).
+- The session log and follow-up queue below explain how this state was reached.
+  They are retained for provenance, not as current release instructions.
+
+## Original goal
 
 Bring every cancer cohort in `pirlygenes/data/cancer-reference-expression.csv.gz`
 into the same normalized TPM space, with a uniform extended-stat suite
@@ -15,7 +27,7 @@ missing from the long-format reference table.
 Driven by a `pirlygenes downloads / build / plot` CLI backed by a
 single YAML registry of data sources.
 
-## Status
+## Historical implementation log
 
 **Session 1, 2026-05-26 — landed:**
 
@@ -81,7 +93,7 @@ That's milestones 3-4 (TCGA fresh) and 8 (existing-cohort sweep).
   in `cancer-type-registry.csv` updated from `TCGA_XENA_TOIL` →
   `TREEHOUSE_POLYA_25_01_TCGA_SAMPLES` to match actually-bundled data.
 
-Queued for follow-up sessions, in priority order:
+### Historical follow-up queue
 
 2. **`pirlygenes build <source-id>` dispatcher.** Read the YAML
    registry, dispatch to the matching builder (existing scripts/

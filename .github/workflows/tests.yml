@@ -22,7 +22,9 @@ jobs:
           python -m pip install uv
           uv venv
           source .venv/bin/activate
-          uv pip install coveralls pylint ruff
+          # Keep lint policy reproducible. Ruff enables and changes rules across
+          # releases, so an unbounded install can fail unchanged code.
+          uv pip install coveralls pylint 'ruff==0.15.9'
           uv pip install '.[test]'
       - name: Cache pyensembl data
         uses: actions/cache@v4

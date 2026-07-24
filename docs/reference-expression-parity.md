@@ -1,5 +1,7 @@
 # Reference-expression delegation parity (#557)
 
+## Summary
+
 `pirlygenes.cancer_reference_expression()` is a compatibility wrapper over
 `oncoref.cancer_reference_expression()`. Oncoref owns the empirical rows,
 provenance, source selection, and downloadable summary artifact; pirlygenes
@@ -59,16 +61,19 @@ python scripts/parity_reference_expression.py
 ```
 
 The committed [Markdown report](reference-expression-delegation-557.md) and
-[per-code CSV](reference-expression-delegation-557.csv) were generated with
-oncoref 1.8.125. Headline results:
+[per-code CSV](reference-expression-delegation-557.csv) were regenerated with
+the pinned oncoref 1.8.146 package and complete source bundle. Headline results:
 
-- 128 source-union cancer codes audited;
-- 124 served by both the compatibility and canonical selected/QC-aware views;
-- 124/124 exact reference-sample-count agreement;
-- median per-code relative expression delta: 0.129%.
+- 129 source-union cancer codes audited;
+- all 129 served by both the compatibility and canonical selected/QC-aware
+  views;
+- 127/129 exact reference-sample-count agreement;
+- median per-code relative expression delta: 0.1271%.
 
 This sweep intentionally compares two different oncoref products. Large value
-outliers such as MBL, HL, and MM reflect all-sample source-union rows versus the
-default pass-QC selected artifact; they are not adapter distortion. The four
-unserved canonical comparisons are the MBL molecular subgroups. Exact
+outliers such as the MBL subgroups, HL, and MM reflect all-sample source-union
+rows versus the selected/QC-aware artifact; they are not adapter distortion.
+The two sample-count warnings, BL (175/184) and SARC_PEC (60/69), are an
+oncoref availability/accessor inconsistency tracked in
+[oncoref #423](https://github.com/pirl-unc/oncoref/issues/423). Exact
 adapter-to-source value parity is covered separately by the five-class test.

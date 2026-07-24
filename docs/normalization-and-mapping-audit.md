@@ -4,7 +4,24 @@ Scope: how every cohort builder converts its native quantification to the
 comparable **clean-TPM** reference values, and whether identifier/synonym
 mapping is uniform. Done June 2026 alongside the recount3 integration.
 
-## 1. Native unit → TPM → clean TPM
+## Executive summary
+
+- Native counts and recount3 coverage are length-normalized exactly once;
+  FPKM, RPKM, TPM, microarray proxies, and 3′/UMI pseudobulk are not
+  incorrectly length-normalized a second time.
+- Every builder reaches the same canonical 16/9/75 clean-TPM contract.
+- Ensembl IDs are unversioned and canonical across cohorts. Oncoref owns the
+  general source-gene canonicalization path; the few remaining local fallbacks
+  are historical import or ENSG-keyed GDC paths.
+- Multiple assay/source cohorts remain separate. They are selectable and
+  visible in provenance rather than being averaged across incompatible scales.
+
+The sections below provide the evidence and remaining follow-ups behind those
+conclusions.
+
+## Detailed findings
+
+### 1. Native unit → TPM → clean TPM
 
 There is **one** unit dispatcher,
 `pirlygenes.builders.geo_matrix.normalize_to_tpm`, and **one** clean-TPM
@@ -27,7 +44,7 @@ level masking/QC paths, not the clean-TPM compartment contract.
 | microarray intensity | MTC, LPS | **no — correct** (intensity ∝ concentration, not length×conc.) | probe-max → anti-log2 → sum-to-1e6 (TPM-*proxy*) |
 | scRNA pseudobulk nTPM | CTCL | **no — correct** (UMI/3′ counts are length-agnostic) | pseudobulk → counts-per-million |
 
-**Conclusions**
+#### Unit-conversion conclusions
 - **Counts are length-normalized; FPKM/RPKM/TPM are not re-length-normalized** (they already are — re-dividing would double-count). Correct.
 - **Microarrays are *not* length-normalized** — correct: a probe measures transcript concentration directly, so the array TPM-*proxy* needs no length term. (It is *not* absolute-comparable to RNA-seq TPM; flagged in the `processing_pipeline` tag and surfaced by `pirlygenes data sources`.)
 - **scRNA pseudobulk is not length-normalized** — correct for UMI/3′ data.
@@ -45,7 +62,7 @@ level masking/QC paths, not the clean-TPM compartment contract.
   renormalizes downstream, so no live source is affected. Harmless but worth
   tightening if a log2 GEO-matrix source is ever added.
 
-## 2. Symbol / synonym mapping — NOT yet uniform
+### 2. Symbol / synonym mapping
 
 Identifier mapping has a single intended home,
 `pirlygenes.builders.gene_mapping.resolve_symbol` (direct pyensembl →
@@ -82,7 +99,7 @@ Every cohort's shard is keyed by **unversioned ENSG** — verified across all
 shards — so the references share one compatible identifier space regardless
 of source (Ensembl 112 vs recount3 Gencode v26).
 
-## 3. Multi-source cohorts — semantics & visibility
+### 3. Multi-source cohorts — semantics and visibility
 
 A cancer code can have **multiple sources** (e.g. PANNET = liver-met
 recount3 + primary recount3; SARC_DDLPS = Treehouse RNA-seq + GEO RNA-seq +

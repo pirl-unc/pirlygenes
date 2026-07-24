@@ -10,6 +10,7 @@ Tolerances are deliberately loose relative to the observed deltas (PRAD median
 unit/scale regression, a vanished cohort), not to pin float noise.
 """
 
+from pathlib import Path
 import warnings
 
 import pandas as pd
@@ -18,10 +19,37 @@ import pytest
 pytest.importorskip("oncoref")
 
 from pirlygenes.expression.parity import (
+    _default_parity_codes,
     _legacy_clean_reference_frame,
     parity_for_code,
     parity_report,
 )
+
+_ROOT = Path(__file__).resolve().parent.parent
+_PARITY_ARTIFACT = (
+    _ROOT
+    / "analyses"
+    / "outputs"
+    / "reference_expression_parity"
+    / "parity_by_code.csv"
+)
+_PARITY_MARKDOWN = _PARITY_ARTIFACT.with_name("parity_report.md")
+_DOCUMENTED_PARITY_ARTIFACT = (
+    _ROOT / "docs" / "reference-expression-delegation-557.csv"
+)
+_DOCUMENTED_PARITY_MARKDOWN = (
+    _ROOT / "docs" / "reference-expression-delegation-557.md"
+)
+_MOLECULAR_SUBTYPE_COHORTS = {
+    "STAD_CIN",
+    "STAD_EBV",
+    "STAD_GS",
+    "STAD_MSI",
+    "UCEC_CNH",
+    "UCEC_CNL",
+    "UCEC_MSI",
+    "UCEC_POLE",
+}
 
 
 def _serves(code: str) -> bool:
@@ -78,6 +106,65 @@ def test_parity_report_reads_frozen_legacy_artifact(monkeypatch):
     report = parity_report(["X"])
 
     assert report.loc[0, "source_cohort"] == "LEGACY"
+
+
+def test_default_parity_report_keeps_owner_manifest_codes(monkeypatch):
+    legacy = pd.DataFrame(
+        {
+            "cancer_code": ["PRESENT"],
+            "normalization": ["TPM_clean"],
+            "source_cohort": ["LEGACY"],
+            "n_samples": [1],
+            "Ensembl_Gene_ID": ["E1"],
+            "expression": [2.0],
+        }
+    )
+    monkeypatch.setattr(
+        "pirlygenes.expression.parity._legacy_clean_reference_frame",
+        lambda: legacy,
+    )
+    monkeypatch.setattr(
+        "pirlygenes.expression.parity._default_parity_codes",
+        lambda: ["MISSING", "PRESENT"],
+    )
+    monkeypatch.setattr(
+        "pirlygenes.expression.parity.parity_for_code",
+        lambda code, **kwargs: {
+            "cancer_code": code,
+            "status": (
+                "ok"
+                if code in set(kwargs["pg_frame"]["cancer_code"])
+                else "pg-empty"
+            ),
+        },
+    )
+
+    report = parity_report()
+
+    assert report["cancer_code"].tolist() == ["MISSING", "PRESENT"]
+    assert report.set_index("cancer_code").loc["MISSING", "status"] == "pg-empty"
+
+
+def test_pinned_parity_artifact_covers_complete_owner_manifest():
+    report = pd.read_csv(_PARITY_ARTIFACT)
+    report_codes = set(report["cancer_code"].astype(str))
+
+    assert report_codes == set(_default_parity_codes())
+    subtype_rows = report.loc[
+        report["cancer_code"].isin(_MOLECULAR_SUBTYPE_COHORTS)
+    ]
+    assert set(subtype_rows["cancer_code"]) == _MOLECULAR_SUBTYPE_COHORTS
+    assert subtype_rows["status"].eq("ok").all()
+    assert subtype_rows["n_samples_match"].eq(True).all()
+
+
+def test_documented_parity_artifacts_match_analysis_outputs():
+    assert _DOCUMENTED_PARITY_ARTIFACT.read_bytes() == (
+        _PARITY_ARTIFACT.read_bytes()
+    )
+    assert _DOCUMENTED_PARITY_MARKDOWN.read_bytes() == (
+        _PARITY_MARKDOWN.read_bytes()
+    )
 
 
 @pytest.mark.parametrize("code", ["PRAD", "LUAD"])

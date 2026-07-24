@@ -213,6 +213,31 @@ def parity_for_code(
     }
 
 
+def _default_parity_codes() -> list[str]:
+    """Return the complete owner-advertised summary-row cohort universe.
+
+    Deriving the sweep from the loaded expression frame can silently shrink a
+    report when a local cache or source bundle is incomplete.  oncoref's compact
+    availability manifest is the authority for which summary-backed cohorts
+    should be compared; a missing row on the pirlygenes side must therefore
+    remain visible as ``pg-empty`` rather than disappear from the report.
+    """
+    import oncoref
+
+    availability = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        all_sources=True,
+    )
+    return sorted(set(
+        availability.loc[
+            availability["available"].eq(True),
+            "cancer_code",
+        ].astype(str)
+    ))
+
+
 def parity_report(
     codes: list[str] | None = None,
     *,
@@ -223,8 +248,8 @@ def parity_report(
     # artifact through the explicit legacy adapter; calling the wrapper here
     # would compare oncoref with itself and hide migration deltas.
     pg_frame = _legacy_clean_reference_frame()
-    if not codes:  # None or empty -> every code in the bundle
-        codes = sorted(pg_frame["cancer_code"].unique())
+    if not codes:  # None or empty -> every owner-advertised summary cohort
+        codes = _default_parity_codes()
 
     rows = [
         parity_for_code(code, pg_frame=pg_frame, min_expr=min_expr) for code in codes

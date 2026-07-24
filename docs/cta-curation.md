@@ -2,17 +2,32 @@
 
 This document describes how the CTA gene set is built, filtered, and maintained.
 
-> **Ownership (as of #511).** The canonical CTA *gene set* is owned by
-> [oncoref](https://github.com/pirl-unc/oncoref); pirlygenes re-exports its
-> `CTA_gene_ids()` / `CTA_gene_names()` and restriction-subset accessors. The
-> CTA *evidence* frame (`CTA_evidence()`) stays sourced from
-> [tsarina](https://github.com/pirl-unc/tsarina) because it carries the `ms_*`
-> mass-spec healthy-tissue safety layer oncoref does not — kept as an
-> evidence-enrichment join on oncoref's set. tsarina 1.23.1 converged its
-> default set onto oncoref's, so the two agree gene-for-gene (see
-> pirl-unc/pirlygenes#546 for the fork characterization and authority decision).
-> The reproductive-restriction methodology below is the pipeline both packages
-> share.
+## Overview
+
+Cancer-testis antigens (CTAs) are proteins normally restricted to reproductive
+tissues (testis, ovary, placenta) that become aberrantly expressed in tumors.
+Their tissue restriction makes them attractive immunotherapy targets because
+immune responses against them should spare normal somatic tissues.
+
+The CTA set is an **unbiased union** of published CT-antigen databases,
+systematically filtered with Human Protein Atlas tissue-expression data to keep
+genes with reproductive-restricted expression. The rest of this document moves
+from ownership and outputs to source evidence, filtering, maintenance, and API
+details.
+
+## Ownership and scope
+
+As of #511, [oncoref](https://github.com/pirl-unc/oncoref) owns the canonical
+CTA *gene set*. Pirlygenes re-exports its `CTA_gene_ids()` /
+`CTA_gene_names()` and restriction-subset accessors.
+
+The CTA *evidence* frame (`CTA_evidence()`) remains sourced from
+[tsarina](https://github.com/pirl-unc/tsarina) because it carries the `ms_*`
+mass-spec healthy-tissue safety layer that oncoref does not. Pirlygenes treats
+that frame as an evidence-enrichment join on the oncoref set. Tsarina 1.23.1
+converged its default set onto oncoref's, so the two agree gene-for-gene (see
+pirl-unc/pirlygenes#546). The reproductive-restriction methodology below is
+shared by both packages.
 
 ## Figures
 
@@ -41,12 +56,6 @@ same packaged code) and copies the results back into this directory.
 
 ### Protein reliability vs RNA fraction
 ![Protein vs RNA](cta-protein-vs-rna.png)
-
-## Overview
-
-Cancer-testis antigens (CTAs) are proteins normally restricted to reproductive tissues (testis, ovary, placenta) that become aberrantly expressed in tumors. Their tissue restriction makes them attractive targets for cancer immunotherapy because immune responses against them should not damage normal somatic tissues.
-
-The pirlygenes CTA set is built as an **unbiased union** from multiple published CT antigen databases, then **systematically filtered** using Human Protein Atlas tissue expression data to retain only genes with reproductive-restricted expression.
 
 ## Source databases
 
