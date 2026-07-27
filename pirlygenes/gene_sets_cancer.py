@@ -24,6 +24,7 @@ from .load_dataset import get_data
 # The registry CSV is the source-of-truth for valid codes and their
 # display names — see :data:`CANCER_TYPE_NAMES` below.
 CANCER_TYPE_ALIASES = {
+    "acicc": "ACINIC",
     "prostate": "PRAD", "breast": "BRCA", "lung_adeno": "LUAD",
     "lung_squamous": "LUSC", "melanoma": "SKCM", "skin": "SKCM",
     "colon": "COAD", "colorectal": "COAD", "rectal": "READ",
@@ -182,7 +183,7 @@ def resolve_cancer_type(cancer_type, *, strict=True):
     Accepts:
     - canonical registry codes (``"PRAD"``, ``"SARC_DDLPS"``,
       ``"LAML_APL"``);
-    - hand-curated common-name aliases (``"prostate"``, ``"melanoma"``);
+    - hand-curated common-name aliases (``"prostate"``, ``"AciCC"``);
     - the registry display name (``"Prostate Adenocarcinoma"``),
       case-insensitive.
 
@@ -2527,11 +2528,60 @@ def fusion_surrogate_expression_df():
 def rare_cancer_rna_surrogate_rules_df():
     """Return ``rare-cancer-rna-surrogates.csv``.
 
-    Rows encode hypothesis-level report-scope rules for rare cancers that
-    lack a bundled TCGA expression cohort but have a high-specificity RNA
-    marker, such as NUTM1 for NUT carcinoma or TBXT for chordoma.
+    ``evidence_role`` distinguishes report-scope hypotheses from
+    hypothesis-only and testing-prompt rows. RNA-only rules may promote report
+    scope only for registry classification targets; direct molecular evidence
+    is represented separately by :func:`rare_cancer_fusion_rules_df`.
+
+    The cross-table check is repeated here so a future data edit cannot expose
+    an unsafe rule to consumers even if package tests were bypassed.
     """
-    return get_data("rare-cancer-rna-surrogates")
+    rules = get_data("rare-cancer-rna-surrogates")
+    roles = rules["evidence_role"].fillna("").astype(str).str.strip()
+    valid_roles = {"report_scope", "hypothesis_only", "testing_prompt"}
+    invalid_roles = sorted(set(roles) - valid_roles)
+    if invalid_roles:
+        raise ValueError(
+            "rare RNA surrogate rules contain invalid evidence_role values: "
+            f"{invalid_roles}"
+        )
+
+    promotes = (
+        rules["promote_report_scope"]
+        .fillna(False)
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .isin({"true", "1", "yes"})
+    )
+    role_promotes = roles.eq("report_scope")
+    if not promotes.equals(role_promotes):
+        mismatches = sorted(
+            rules.loc[promotes.ne(role_promotes), "rule_id"].astype(str)
+        )
+        raise ValueError(
+            "rare RNA surrogate rules disagree on evidence_role and "
+            f"promote_report_scope: {mismatches}"
+        )
+
+    registry = get_data("cancer-type-registry.csv")
+    target_by_code = registry.set_index("code")["is_classification_target"]
+    is_target = (
+        rules["cancer_code"]
+        .map(target_by_code)
+        .fillna(False)
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .isin({"true", "1", "yes"})
+    )
+    unsafe = sorted(rules.loc[promotes & ~is_target, "rule_id"].astype(str))
+    if unsafe:
+        raise ValueError(
+            "RNA-only rules cannot promote registry non-classification "
+            f"targets: {unsafe}"
+        )
+    return rules
 
 
 def rare_cancer_fusion_rules_df():

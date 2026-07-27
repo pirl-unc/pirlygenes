@@ -149,9 +149,11 @@ without provenance.
 - If the supplied label is a refined registry child without its own
   numeric expression cohort, analysis uses the parent/reference cohort
   for quantitative work while preserving the refined label in the report.
-- If direct fusion evidence or a rare-marker RNA rule supports a rare
-  cancer hypothesis, that can set or widen report scope, but the nearest
-  expression cohort remains labeled as context rather than diagnosis.
+- Direct fusion evidence can support a rare-cancer report scope. A rare-marker
+  RNA rule can set or widen report scope only when its target is registry
+  classifiable; rules for non-classification targets remain structured
+  hypotheses or testing prompts. The nearest expression cohort remains labeled
+  as context rather than diagnosis.
 - If no external label or rare-scope rule applies, the top RNA candidate
   is explicitly rendered as an RNA-inferred hypothesis.
 
