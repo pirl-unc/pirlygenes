@@ -307,6 +307,11 @@ read raw via the generic loader.
 | `ensembl-id-aliases.csv` | `get_data("ensembl-id-aliases")` (consumed internally by `gene_ids`) |
 | `extra-tx-mappings.csv` | `get_data("extra-tx-mappings")` (consumed internally by `gene_ids`, `aggregate_gene_expression`) |
 
+Rare-cancer RNA surrogate rows carry an `evidence_role` of `report_scope`,
+`hypothesis_only`, or `testing_prompt`. The accessor rejects any RNA-only
+report-scope rule whose cancer code is not a registry classification target;
+direct molecular evidence is modeled separately in the fusion-rule table.
+
 Gene-family CSVs (`numt-pseudogenes.csv`, `nuclear-retained-lncrnas.csv`,
 `rrna-and-pseudogenes.csv`, ribosomal-protein splits, `small-noncoding-rnas.csv`,
 `histone-genes.csv`, `hemoglobin-genes.csv`, `immune-receptor-segments.csv`)
