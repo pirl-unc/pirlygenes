@@ -39,13 +39,17 @@ def test_acinic_nr4a3_is_hypothesis_only():
 def test_accessor_fails_closed_on_non_target_promotion(monkeypatch):
     real_get_data = gsc.get_data
     rules = real_get_data("rare-cancer-rna-surrogates").copy()
+    registry = real_get_data("cancer-type-registry.csv").copy()
     acinic = rules["rule_id"].eq("acinic_nr4a3")
     rules.loc[acinic, "promote_report_scope"] = True
     rules.loc[acinic, "evidence_role"] = "report_scope"
+    registry.loc[registry["code"].eq("ACINIC"), "is_classification_target"] = False
 
     def fake_get_data(name):
         if name == "rare-cancer-rna-surrogates":
             return rules
+        if name == "cancer-type-registry.csv":
+            return registry
         return real_get_data(name)
 
     monkeypatch.setattr(gsc, "get_data", fake_get_data)

@@ -825,6 +825,7 @@ def test_resolve_cancer_type_common_name_alias():
     assert resolve_cancer_type("prostate") == "PRAD"
     assert resolve_cancer_type("melanoma") == "SKCM"
     assert resolve_cancer_type("colorectal") == "COAD"
+    assert resolve_cancer_type("AciCC") == "ACINIC"
 
 
 def test_resolve_cancer_type_subtype_codes_from_registry():

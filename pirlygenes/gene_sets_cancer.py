@@ -24,6 +24,7 @@ from .load_dataset import get_data
 # The registry CSV is the source-of-truth for valid codes and their
 # display names — see :data:`CANCER_TYPE_NAMES` below.
 CANCER_TYPE_ALIASES = {
+    "acicc": "ACINIC",
     "prostate": "PRAD", "breast": "BRCA", "lung_adeno": "LUAD",
     "lung_squamous": "LUSC", "melanoma": "SKCM", "skin": "SKCM",
     "colon": "COAD", "colorectal": "COAD", "rectal": "READ",
@@ -182,7 +183,7 @@ def resolve_cancer_type(cancer_type, *, strict=True):
     Accepts:
     - canonical registry codes (``"PRAD"``, ``"SARC_DDLPS"``,
       ``"LAML_APL"``);
-    - hand-curated common-name aliases (``"prostate"``, ``"melanoma"``);
+    - hand-curated common-name aliases (``"prostate"``, ``"AciCC"``);
     - the registry display name (``"Prostate Adenocarcinoma"``),
       case-insensitive.
 
