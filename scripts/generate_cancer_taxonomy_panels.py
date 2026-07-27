@@ -31,6 +31,13 @@ from pyensembl import EnsemblRelease
 
 DATA = Path(__file__).resolve().parent.parent / "pirlygenes" / "data"
 
+DISCRIMINATOR_POLICY = {
+    "evidence_role": "hypothesis_only",
+    "promote_report_scope": False,
+    "validation_scope": "pairwise_only",
+    "conflict_policy": "abstain",
+}
+
 # ── Coarse tier: compartment (cell-of-origin super-class) panels ──────────────
 # {compartment: (display_name, [symbols])}. Pan-compartment, RNA-expressed,
 # tumor-intrinsic markers (MESENCHYMAL is a diagnosis-of-exclusion compartment —
@@ -206,7 +213,10 @@ def main() -> int:
                     "contrast": contrast, "type_a": spec["type_a"],
                     "type_b": spec["type_b"], "favors": code, "Symbol": sym,
                     "Ensembl_Gene_ID": ensg, "direction": direction, "tier": tier,
-                    "separability": spec["separability"], "source": "PMID:" + spec["source"]})
+                    "separability": spec["separability"],
+                    "source": "PMID:" + spec["source"],
+                    **DISCRIMINATOR_POLICY,
+                })
     pd.DataFrame(disc_rows).to_csv(DATA / "cancer-type-discriminators.csv", index=False)
 
     print(f"compartment panels: {len(comp_rows)} rows / {len(COMPARTMENT_PANELS)} compartments")

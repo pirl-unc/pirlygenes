@@ -22,6 +22,16 @@ from pyensembl import EnsemblRelease
 
 DATA = Path(__file__).resolve().parent.parent / "pirlygenes" / "data"
 
+# Pairwise marker programs are evidence artifacts, not a globally calibrated
+# classifier. Keep the policy in the CSV so every consumer sees it, including
+# consumers that never import pirlygenes' convenience helpers.
+DISCRIMINATOR_POLICY = {
+    "evidence_role": "hypothesis_only",
+    "promote_report_scope": False,
+    "validation_scope": "pairwise_only",
+    "conflict_policy": "abstain",
+}
+
 
 # Each marker tuple is (symbol, direction, tier).  ``low`` is used only where
 # absence of the counter-program is biologically meaningful.  The two
@@ -228,6 +238,8 @@ def _update_discriminators(genome: EnsemblRelease) -> int:
     path = DATA / "cancer-type-discriminators.csv"
     existing = pd.read_csv(path)
     existing = existing[~existing["contrast"].isin(CONTRASTS)].copy()
+    for column, value in DISCRIMINATOR_POLICY.items():
+        existing[column] = value
     rows = []
     for contrast, spec in CONTRASTS.items():
         for favored_code, markers in spec["favors"].items():
@@ -249,6 +261,7 @@ def _update_discriminators(genome: EnsemblRelease) -> int:
                             "anchor",
                             "pirlygenes#266 general sibling-entity discriminator program",
                         ),
+                        **DISCRIMINATOR_POLICY,
                     }
                 )
     generated = pd.DataFrame(rows, columns=existing.columns)

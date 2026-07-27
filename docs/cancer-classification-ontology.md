@@ -144,8 +144,8 @@ the same way — programs that recur across branches.
 2. SUPERTYPE    — within the compartment, which lineage-program anchor is on?
                   (squamous? PAX8+? TTF1+? GATA3+? foregut? intestinal? hepatocyte?)
 3. FAMILY       — within the supertype, the family ANCHORS pick the lineage;
-                  NEGATIVES prune sibling branches; DISCRIMINATORS resolve the hard
-                  pairs (cancer-type-discriminators.csv).
+                  NEGATIVES prune sibling branches; DISCRIMINATORS contribute
+                  hypotheses for hard pairs (cancer-type-discriminators.csv).
 4. SUBTYPE      — molecular (MSI/HPV/MYCN/PAM50) or morphologic child.
 ```
 
@@ -154,6 +154,35 @@ At every step: `anchor`s of the *current* node decide; `confirmatory` markers
 rule a branch out; `discriminator`s break sibling ties. Promotion of a marker up
 a tier (PAX8: family-confirmatory → supertype-anchor) is the single mechanical
 change that makes the whole thing consistent.
+
+### Pairwise evidence safety contract
+
+Pairwise discriminators are not a global cancer classifier. A panel answers
+only “A or B?” under a context that already made A and B plausible. It cannot
+establish that either candidate is preferable to every untested cancer type.
+Multiple panels can therefore be internally coherent while nominating different
+entities.
+
+This limitation is part of the public data contract, not an assumption left to
+one downstream application. Every row in `cancer-type-discriminators.csv`
+carries:
+
+- `evidence_role=hypothesis_only`
+- `promote_report_scope=false`
+- `validation_scope=pairwise_only`
+- `conflict_policy=abstain`
+
+`cancer_type_discriminator_consensus()` validates activated
+`(contrast, favored_code)` nominations from any scoring implementation. One
+unique candidate remains a hypothesis; different candidates produce an
+explicit conflict; neither result emits a report code. Registry
+non-classification targets such as GBC are identified in the result and can
+never be promoted by the accessor.
+
+The artifact will remain `pairwise_only` until a held-out, cross-platform joint
+evaluation publishes specificity and cross-activation across all candidates in
+the relevant differential. Pairwise representative coherence is useful panel
+QC, but it is not mislabeled as multiclass validation.
 
 ### Hard-case regression gate
 
@@ -178,8 +207,9 @@ parent-level programs for AML versus CML, MPN, B-ALL, and follicular lymphoma,
 plus STAD/ESCA/CHOL. Molecular and risk children can request the nearest curated
 parent contrast with `ancestor_fallback=True`; the returned rows retain the
 matched parent codes, so evidence is never presented as subtype-specific when it
-is only lineage-level. CML/MPN and mixed-histology ESCA contrasts are marked
-`poor` and are corroborative rather than molecular/anatomic substitutes.
+is only lineage-level. All remain subject to the pairwise evidence safety
+contract above. CML/MPN and mixed-histology ESCA contrasts are marked `poor` and
+are corroborative rather than molecular/anatomic substitutes.
 
 COAD versus READ is deliberately different. TCGA found colon and rectal tumors
 similar enough that bulk RNA should not manufacture an anatomic leaf margin.

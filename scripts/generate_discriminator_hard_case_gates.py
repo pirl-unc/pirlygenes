@@ -492,6 +492,14 @@ def main() -> int:
     path = DATA / "cancer-type-discriminators.csv"
     existing = pd.read_csv(path)
     existing = existing[~existing["contrast"].isin(CONTRASTS)].copy()
+    policy = {
+        "evidence_role": "hypothesis_only",
+        "promote_report_scope": False,
+        "validation_scope": "pairwise_only",
+        "conflict_policy": "abstain",
+    }
+    for column, value in policy.items():
+        existing[column] = value
     rows = []
     default_anchor = (
         "pirlygenes#266 exact representative hard-case gate; "
@@ -514,6 +522,7 @@ def main() -> int:
                         "source": spec["source"],
                         "support_type": "hard_case_discriminator_literature",
                         "source_anchor": spec.get("anchor", default_anchor),
+                        **policy,
                     }
                 )
     generated = pd.DataFrame(rows, columns=existing.columns)
