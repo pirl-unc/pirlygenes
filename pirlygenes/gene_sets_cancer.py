@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import threading
 import warnings
+from collections.abc import Mapping
 from functools import lru_cache
 
 from .load_dataset import get_data
@@ -880,29 +881,285 @@ def cancer_compartment_panels():
 
 
 # ---------- Pairwise type discriminators (the "differential" question) ----------
-def cancer_type_discriminators_df(type_a=None, type_b=None):
-    """DataFrame of contrastive marker sets that SEPARATE confusable cancer-type
-    pairs (``contrast, type_a, type_b, favors, Symbol, Ensembl_Gene_ID,
-    direction, tier, separability, source``). ``direction`` ``high``/``low`` is
-    relative to the ``favors`` type (``WT1`` ``low`` favours endometrioid-UCEC
-    over serous-OV). ``separability`` is the contrast's honest difficulty
-    (``strong``..``poor``); only RNA-detectable markers are included (DNA/CNV
-    events — RB1/CDKN2A loss, 1p19q codeletion — are excluded). Pass a pair of
-    codes to fetch one contrast in either order."""
-    df = get_data("cancer-type-discriminators")
-    if type_a is not None and type_b is not None:
-        pair = {type_a, type_b}
-        df = df[df.apply(lambda r: {r["type_a"], r["type_b"]} == pair, axis=1)]
+def _cancer_type_with_ancestors(cancer_type):
+    """Return ``cancer_type`` followed by its registry parents."""
+    registry = get_data("cancer-type-registry")
+    parent_of = dict(
+        registry[["code", "parent_code"]].itertuples(index=False, name=None)
+    )
+    result = [cancer_type]
+    seen = {cancer_type}
+    current = cancer_type
+    while current in parent_of:
+        parent = parent_of[current]
+        if parent is None or str(parent).strip().lower() in {"", "nan", "none"}:
+            break
+        parent = str(parent).strip()
+        if parent in seen:
+            break
+        result.append(parent)
+        seen.add(parent)
+        current = parent
+    return result
+
+
+def _cancer_type_discriminator_pair(df, type_a, type_b):
+    """Vectorized, order-independent pair selection."""
+    return df[
+        ((df["type_a"] == type_a) & (df["type_b"] == type_b))
+        | ((df["type_a"] == type_b) & (df["type_b"] == type_a))
+    ]
+
+
+def _truthy_values(series):
+    """Normalize CSV booleans without depending on pandas' dtype inference."""
+    return (
+        series.fillna(False)
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .isin({"true", "1", "yes"})
+    )
+
+
+def _validate_cancer_type_discriminator_policy(df):
+    """Fail closed when pairwise evidence is mislabeled as globally decisive."""
+    policy_columns = {
+        "evidence_role",
+        "promote_report_scope",
+        "validation_scope",
+        "conflict_policy",
+    }
+    missing = sorted(policy_columns - set(df.columns))
+    if missing:
+        raise ValueError(
+            "cancer-type discriminators are missing safety policy columns: "
+            f"{missing}"
+        )
+
+    roles = df["evidence_role"].fillna("").astype(str).str.strip()
+    valid_roles = {"hypothesis_only", "report_scope"}
+    invalid_roles = sorted(set(roles) - valid_roles)
+    if invalid_roles:
+        raise ValueError(
+            "cancer-type discriminators contain invalid evidence_role values: "
+            f"{invalid_roles}"
+        )
+
+    scopes = df["validation_scope"].fillna("").astype(str).str.strip()
+    valid_scopes = {"pairwise_only", "joint_multiclass"}
+    invalid_scopes = sorted(set(scopes) - valid_scopes)
+    if invalid_scopes:
+        raise ValueError(
+            "cancer-type discriminators contain invalid validation_scope values: "
+            f"{invalid_scopes}"
+        )
+
+    conflict_policies = (
+        df["conflict_policy"].fillna("").astype(str).str.strip()
+    )
+    invalid_conflict_policies = sorted(set(conflict_policies) - {"abstain"})
+    if invalid_conflict_policies:
+        raise ValueError(
+            "cancer-type discriminators contain invalid conflict_policy values: "
+            f"{invalid_conflict_policies}"
+        )
+
+    promotes = _truthy_values(df["promote_report_scope"])
+    role_promotes = roles.eq("report_scope")
+    mismatched_roles = sorted(
+        set(df.loc[promotes.ne(role_promotes), "contrast"].astype(str))
+    )
+    if mismatched_roles:
+        raise ValueError(
+            "cancer-type discriminators disagree on evidence_role and "
+            f"promote_report_scope: {mismatched_roles}"
+        )
+
+    pairwise_promotions = sorted(
+        set(df.loc[promotes & scopes.ne("joint_multiclass"), "contrast"].astype(str))
+    )
+    if pairwise_promotions:
+        raise ValueError(
+            "pairwise-only discriminator evidence cannot promote report scope: "
+            f"{pairwise_promotions}"
+        )
+
+    registry = get_data("cancer-type-registry.csv")
+    target_by_code = registry.set_index("code")["is_classification_target"]
+    is_target = _truthy_values(df["favors"].map(target_by_code))
+    unsafe_targets = sorted(
+        set(df.loc[promotes & ~is_target, "favors"].astype(str))
+    )
+    if unsafe_targets:
+        raise ValueError(
+            "cancer-type discriminators cannot promote registry "
+            f"non-classification targets: {unsafe_targets}"
+        )
+
+    contrast_policy = ["validation_scope", "conflict_policy"]
+    inconsistent_contrasts = sorted(
+        contrast
+        for contrast, rows in df.groupby("contrast", sort=False)
+        if any(rows[column].nunique(dropna=False) != 1 for column in contrast_policy)
+    )
+    if inconsistent_contrasts:
+        raise ValueError(
+            "cancer-type discriminator rows disagree within a contrast: "
+            f"{inconsistent_contrasts}"
+        )
+
+    side_policy = ["evidence_role", "promote_report_scope"]
+    inconsistent_sides = sorted(
+        f"{contrast}:{favored}"
+        for (contrast, favored), rows in df.groupby(
+            ["contrast", "favors"],
+            sort=False,
+        )
+        if any(rows[column].nunique(dropna=False) != 1 for column in side_policy)
+    )
+    if inconsistent_sides:
+        raise ValueError(
+            "cancer-type discriminator rows disagree within a favored side: "
+            f"{inconsistent_sides}"
+        )
     return df
 
 
-def cancer_type_discriminator(type_a, type_b):
-    """Dict ``{favored_code: [(Symbol, direction), ...]}`` separating two cancer
-    types, or ``{}`` if the pair has no curated contrast. See
-    `cancer_type_discriminators_df`."""
-    df = cancer_type_discriminators_df(type_a=type_a, type_b=type_b)
+def cancer_type_discriminators_df(
+    type_a=None,
+    type_b=None,
+    *,
+    ancestor_fallback=False,
+):
+    """DataFrame of contrastive marker sets that SEPARATE confusable cancer-type
+    pairs (``contrast, type_a, type_b, favors, Symbol, Ensembl_Gene_ID,
+    direction, tier, separability, source``). Every row also carries the
+    consumer-neutral safety policy ``evidence_role``, ``promote_report_scope``,
+    ``validation_scope``, and ``conflict_policy``. Pairwise panels are
+    hypothesis evidence, not a globally calibrated classifier: they cannot
+    promote report scope, and conflicting nominations require abstention.
+
+    ``direction`` ``high``/``low`` is relative to the ``favors`` type (``WT1``
+    ``low`` favours endometrioid-UCEC over serous-OV). ``separability`` is the
+    contrast's honest difficulty (``strong``..``poor``); only RNA-detectable
+    markers are included (DNA/CNV events — RB1/CDKN2A loss, 1p19q codeletion —
+    are excluded). Pass a pair of codes to fetch one contrast in either order.
+
+    With ``ancestor_fallback=True``, an exact pair is preferred and then the
+    nearest registry ancestors are searched. This lets molecular/risk children
+    reuse a general parent program (for example ``LAML_ELNadv`` versus ``CML``
+    uses the curated ``LAML`` versus ``CML`` contrast) without copying identical
+    marker rows onto every child. Returned rows retain the matched parent codes
+    so consumers can report the evidence level honestly.
+    """
+    df = _validate_cancer_type_discriminator_policy(
+        get_data("cancer-type-discriminators")
+    )
+    if type_a is not None and type_b is not None:
+        exact = _cancer_type_discriminator_pair(df, type_a, type_b)
+        if not exact.empty or not ancestor_fallback:
+            return exact
+        lineage_a = _cancer_type_with_ancestors(type_a)
+        lineage_b = _cancer_type_with_ancestors(type_b)
+        searches = sorted(
+            (
+                (
+                    depth_a + depth_b,
+                    max(depth_a, depth_b),
+                    tuple(sorted((parent_a, parent_b))),
+                    parent_a,
+                    parent_b,
+                )
+                for depth_a, parent_a in enumerate(lineage_a)
+                for depth_b, parent_b in enumerate(lineage_b)
+                if depth_a or depth_b
+            ),
+            key=lambda item: (item[0], item[1], item[2]),
+        )
+        for _, _, _, parent_a, parent_b in searches:
+            inherited = _cancer_type_discriminator_pair(df, parent_a, parent_b)
+            if not inherited.empty:
+                return inherited
+        return df.iloc[0:0]
+    return df
+
+
+def cancer_type_discriminator(type_a, type_b, *, ancestor_fallback=False):
+    """Return marker hypotheses for two cancer types.
+
+    The result is ``{favored_code: [(Symbol, direction), ...]}``, or ``{}`` when
+    no contrast is curated. It is deliberately not a global label decision.
+    Read the policy columns from :func:`cancer_type_discriminators_df` and pass
+    activated nominations to :func:`cancer_type_discriminator_consensus`.
+    """
+    df = cancer_type_discriminators_df(
+        type_a=type_a,
+        type_b=type_b,
+        ancestor_fallback=ancestor_fallback,
+    )
     return {code: list(grp[["Symbol", "direction"]].itertuples(index=False, name=None))
             for code, grp in df.groupby("favors", sort=False)}
+
+
+def cancer_type_discriminator_consensus(nominations):
+    """Apply the global safety contract to activated pairwise nominations.
+
+    ``nominations`` is either a mapping or iterable of ``(contrast,
+    favored_code)`` pairs produced by any consumer-specific scoring method.
+    This function validates that every nomination belongs to the curated
+    contrast. A single unique candidate remains ``hypothesis_only``; multiple
+    candidates are a ``conflict``. Neither state yields a report code because
+    the shipped panels have only pairwise validation.
+
+    The returned dict has ``status``, sorted ``hypotheses``,
+    ``non_classification_targets``, ``promote_report_scope`` (always false for
+    the current artifact), and ``report_code`` (always ``None``).
+    """
+    items = list(
+        nominations.items()
+        if isinstance(nominations, Mapping)
+        else nominations
+    )
+    discriminators = cancer_type_discriminators_df()
+    allowed = set(
+        discriminators[["contrast", "favors"]].itertuples(index=False, name=None)
+    )
+    invalid = sorted(
+        (str(contrast), str(favored))
+        for contrast, favored in items
+        if (contrast, favored) not in allowed
+    )
+    if invalid:
+        raise ValueError(
+            "unknown cancer-type discriminator nominations: "
+            f"{invalid}"
+        )
+
+    hypotheses = tuple(sorted({str(favored) for _, favored in items}))
+    if not hypotheses:
+        status = "no_evidence"
+    elif len(hypotheses) == 1:
+        status = "hypothesis_only"
+    else:
+        status = "conflict"
+
+    registry = get_data("cancer-type-registry.csv")
+    target_by_code = registry.set_index("code")["is_classification_target"]
+    non_targets = tuple(
+        code
+        for code in hypotheses
+        if not _truthy_values(
+            target_by_code.reindex([code])
+        ).iloc[0]
+    )
+    return {
+        "status": status,
+        "hypotheses": hypotheses,
+        "non_classification_targets": non_targets,
+        "promote_report_scope": False,
+        "report_code": None,
+    }
 
 
 def cancer_discriminator_hard_cases_df():
