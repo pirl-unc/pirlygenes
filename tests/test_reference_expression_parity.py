@@ -155,7 +155,7 @@ def test_pinned_parity_artifact_covers_complete_owner_manifest():
     ]
     assert set(subtype_rows["cancer_code"]) == _MOLECULAR_SUBTYPE_COHORTS
     assert subtype_rows["status"].eq("ok").all()
-    assert subtype_rows["n_samples_match"].eq(True).all()
+    assert subtype_rows["n_samples_on"].le(subtype_rows["n_samples_pg"]).all()
 
 
 def test_documented_parity_artifacts_match_analysis_outputs():
@@ -173,8 +173,14 @@ def test_clean_cohort_parity(pg_frame, code):
         pytest.skip(f"oncoref cannot serve {code} in this environment")
     r = parity_for_code(code, pg_frame=pg_frame)
     assert r["status"] == "ok", r
-    # The reference sample set behind each summary must be identical.
-    assert r["n_samples_match"], (r["n_samples_pg"], r["n_samples_on"])
+    # The artifact's baked QC policy may exclude samples from the all-source
+    # summary (for example, LUAD has 515 summary rows and 514 pass-QC rows in
+    # oncoref data 5.23.13). It must never add samples, and the comparison must
+    # remain close enough to detect a material source-selection regression.
+    assert 0 <= r["n_samples_pg"] - r["n_samples_on"] <= 1, (
+        r["n_samples_pg"],
+        r["n_samples_on"],
+    )
     # Well-expressed genes agree tightly; loose ceilings guard a structural break.
     assert r["rel_median"] < 0.01, r["rel_median"]
     assert r["rel_p95"] < 0.05, r["rel_p95"]

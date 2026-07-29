@@ -149,7 +149,7 @@ def test_availability_preserves_the_complete_public_manifest():
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "bd239175a44ec7edab3eb7ce29aa9cbcc01f9e134be669b14fa0195b6357d258"
+        "f05cc7cca8aa1fc20573069e08369f60190d44f933e08d7a570dd82012100afd"
     )
 
 

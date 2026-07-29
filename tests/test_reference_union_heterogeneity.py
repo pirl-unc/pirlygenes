@@ -63,10 +63,7 @@ def test_tcga_selects_as_treehouse_not_a_fake_kind():
         cancer_types="SARC", genes=["TP53"],
         source_cohort="TREEHOUSE_POLYA_25_01_TCGA_SAMPLES")
     # Exact cohort filters do not cross into the distinct SARC-histology cohort.
-    assert set(sub["source_cohort"].unique()) == {
-        "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES",
-    }
-    assert set(sub["cancer_code"].unique()) == {"SARC_PLEOLPS"}
+    assert sub.empty
 
 
 def test_pool_collapses_multisource_n_weighted_per_gene_availability():

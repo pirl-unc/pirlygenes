@@ -52,6 +52,5 @@ def test_mbl_registry_provenance_states_marker_derived_artifacts():
     assert row["assay"] == "bulk RNA-seq"
     assert int(row["n_samples"]) == sum(MBL_SUBGROUP_SAMPLES.values())
     assert int(row["n_codes"]) == len(MBL_SUBGROUP_SAMPLES)
-    assert "deterministic disjoint partition" in row["provenance"]
-    assert "representative / percentile artifacts" in row["provenance"]
-    assert "historical approximation" in row["provenance"]
+    assert "simplified marker-gene subgroup classifier" in row["provenance"]
+    assert "WIF1 / GLI2 / MYC / KCNA1" in row["provenance"]
