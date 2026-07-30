@@ -60,7 +60,11 @@ def test_sgc_rollup_includes_adcc_and_acinic_with_sample_weights():
         for code, n_samples in SALIVARY_SAMPLES.items()
     ) / sum(SALIVARY_SAMPLES.values())
 
-    pan = pan_cancer_expression(genes=["TP53"], normalize="tpm").iloc[0]
+    pan = pan_cancer_expression(
+        genes=["TP53"],
+        normalize="tpm",
+        include_computed_rollups=True,
+    ).iloc[0]
 
     assert pan["SGC_TPM"] == pytest.approx(expected)
 
@@ -71,6 +75,5 @@ def test_salivary_registry_describes_only_the_released_partition():
     assert row["assay"] == "bulk RNA-seq"
     assert int(row["n_samples"]) == sum(SALIVARY_SAMPLES.values())
     assert int(row["n_codes"]) == len(SALIVARY_SAMPLES)
-    assert "57 ADCC and 3 ACINIC" in row["provenance"]
-    assert "excluding 35 other histologies" in row["provenance"]
-    assert "58 QC pass / 2 fail" in row["provenance"]
+    assert "PMID 40506428" in row["provenance"]
+    assert "unit=TPM" in row["provenance"]

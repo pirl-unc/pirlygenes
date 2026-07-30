@@ -38,8 +38,8 @@ dependencies = [
     # pirlygenes gene-ID/universe views, provenance, pooling, and identical-locus
     # collapse, including compact pirlygenes proteoform IDs and n_detected-safe
     # source-union collapse. 1.8.124 indexes reference-summary rows by cohort so
-    # filtered calls do not repeatedly scan the full frame. The current 1.8.138
-    # floor also includes 1.8.130's canonical SARC-histology labels before source
+    # filtered calls do not repeatedly scan the full frame. The current 1.8.159
+    # release also includes 1.8.130's canonical SARC-histology labels before source
     # filtering, so exact cohort filters and their availability metadata share one
     # upstream identity, 1.8.133's categorical encoding at the owning cache
     # boundary, and 1.8.134's compact all-source availability manifest used here
@@ -48,7 +48,10 @@ dependencies = [
     # categorical grouping and the unambiguous generic Treehouse TCGA identity,
     # plus a public exact-alias canonicalizer used for legacy inputs and old
     # pirlygenes provenance sidecars. 1.8.141 registers artifact-only ESS
-    # provenance and reports its selected artifact sample counts consistently.
+    # provenance and reports its selected artifact sample counts consistently;
+    # 1.8.158/data 5.23.13 adds the partition-safe compact manifest used by the
+    # delegated read paths. 1.8.159 adds the SRA/Salmon source builder without
+    # changing the released expression-data bundle.
     # >=1.8.75
     # also gives the
     # builders the cleaned-up source-matrix QC /
@@ -61,7 +64,7 @@ dependencies = [
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles). Pin the
     # exact owner release because the downloadable cohort-view snapshot records
     # and validates the oncoref package/data versions used to build it.
-    "oncoref==1.8.146",
+    "oncoref==1.8.159",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile

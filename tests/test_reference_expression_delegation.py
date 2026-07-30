@@ -409,10 +409,7 @@ def test_generic_tcga_cohort_does_not_select_sarc_histology_rows(requested):
         source_cohort=requested,
     )
 
-    assert set(out["cancer_code"]) == {"SARC_PLEOLPS"}
-    assert set(out["source_cohort"]) == {
-        "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES",
-    }
+    assert out.empty
 
 
 def test_sarc_histology_source_label_and_filter_are_canonicalized():
@@ -424,18 +421,18 @@ def test_sarc_histology_source_label_and_filter_are_canonicalized():
     )
     assert not out.empty
     assert set(out["source_cohort"]) == {canonical}
-    assert set(out["cancer_code"]) == {"SARC_DDLPS", "SARC_WDLPS"}
+    assert set(out["cancer_code"]) == {
+        "SARC_DDLPS",
+        "SARC_PLEOLPS",
+        "SARC_WDLPS",
+    }
     availability = {
         record["cancer_code"]: record for record in out.attrs["availability"]
     }
     assert availability["SARC_DDLPS"]["available"] is True
     assert availability["SARC_WDLPS"]["available"] is True
-    assert availability["SARC_PLEOLPS"]["available"] is False
-    assert (
-        availability["SARC_PLEOLPS"]["missing_reason"]
-        == "no_reference_summary_rows"
-    )
-    assert any(
+    assert availability["SARC_PLEOLPS"]["available"] is True
+    assert not any(
         record["cancer_code"] == "SARC_PLEOLPS"
         for record in out.attrs["missing_requests"]
     )

@@ -59,22 +59,47 @@ def test_artifact_only_source_is_registered_from_owner_availability():
     assert row["source_project"] == "GEO"
     assert row["n_samples"] == 13
     assert row["n_codes"] == 2
-    assert "oncoref cancer-reference artifact" in row["provenance"]
+    assert "GSE85383 Yoshida 2017 ESS" in row["provenance"]
+    assert "9 low-grade and 4 high-grade" in row["provenance"]
 
 
-def test_sparse_source_registry_records_released_owner_rebuild():
+def test_sparse_source_registry_keeps_physical_and_reference_counts_distinct():
+    import oncoref
+
     registry = gsc.cohort_registry_df().set_index("cohort_id")
     expected = {
-        "CGCI_BLGSP": (184, "175 QC pass / 9 fail"),
-        "GSE328026_PECOMA_2026": (69, "60 QC pass / 9 fail"),
+        "CGCI_BLGSP": (184, 175),
+        "GSE328026_PECOMA_2026": (69, 60),
     }
+    manifest = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        all_sources=True,
+    )
 
-    for cohort_id, (source_samples, qc_note) in expected.items():
+    for cohort_id, (source_samples, reference_samples) in expected.items():
         row = registry.loc[cohort_id]
         assert int(row["n_samples"]) == source_samples
-        assert qc_note in row["provenance"]
-        assert "released in oncoref 1.8.146" in row["provenance"]
-        assert "oncoref#423" in row["provenance"]
+        selected = manifest.loc[
+            manifest["available"]
+            & manifest["source_cohort"].astype(str).eq(cohort_id),
+            "n_reference_samples",
+        ]
+        assert int(selected.sum()) == reference_samples
+
+
+def test_salivary_registry_repairs_owner_code_count_from_reference_manifest():
+    """The owner registry is stale in oncoref 1.8.159 (oncoref#448).
+
+    Pirlygenes' compatibility snapshot must follow the released reference
+    manifest until the dependency fixes its 123-sample/one-code row.
+    """
+    registry = gsc.cohort_registry_df().set_index("cohort_id")
+    row = registry.loc["GSE294016_BARTL_2025_SGC"]
+
+    assert int(row["n_samples"]) == 60
+    assert int(row["n_codes"]) == 2
 
 
 def test_source_prefixed_atoms_and_rollup():

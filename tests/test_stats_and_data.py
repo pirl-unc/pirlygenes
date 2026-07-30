@@ -476,6 +476,8 @@ def test_round_stat_columns_only_touches_known_columns():
 def test_inventory_preserves_oncorefs_canonical_source_cohort_labels(
     tmp_path, monkeypatch,
 ):
+    import pirlygenes.expression as expression
+
     storage = "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES"
     canonical = "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY"
     pd.DataFrame(
@@ -496,6 +498,18 @@ def test_inventory_preserves_oncorefs_canonical_source_cohort_labels(
         tmp_path / "inventory_summary.json",
     )
     monkeypatch.setattr(data_inventory, "load_registry", lambda: [])
+    monkeypatch.setattr(
+        expression,
+        "available_cancer_expression_references",
+        lambda: pd.DataFrame(columns=[
+            "cancer_code",
+            "source_cohort",
+            "source_project",
+            "n_samples",
+            "processing_pipeline",
+            "tumor_origin",
+        ]),
+    )
 
     snapshot = data_inventory.summarize_inventory(progress=False)
     cohort_for = {row.cancer_code: row.source_cohort for row in snapshot.cohort_rows}

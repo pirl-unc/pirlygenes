@@ -313,21 +313,37 @@ def _pan_computed_rollup_frame() -> pd.DataFrame:
 
 
 @lru_cache(maxsize=1)
-def _pan_reference_frame() -> pd.DataFrame:
-    """Canonical raw pan-cancer matrix via the oncoref compatibility adapter.
-
-    The version-pinned pirlygenes pan matrix remains the fast persisted source.
-    We canonicalize it with oncoref's delegated alias map, sum duplicate linear
-    loci, derive deterministic TPM companions, and join five persisted rollups
-    baked from oncoref's selected sources. This produces oncoref's canonical
-    semantics without its eager multi-million-row summary scan or a runtime
-    dependency on oncoref's separate expression data bundle.
-    """
+def _pan_source_reference_frame() -> pd.DataFrame:
+    """Canonical raw matrix containing only independent source cohorts."""
     raw = get_data("pan-cancer-expression", copy=False)
     id_cols = {"Ensembl_Gene_ID", "Symbol"}
     value_cols = [col for col in raw.columns if col not in id_cols]
     raw = _oncoref_canonicalize_gene_rows(raw, value_cols=value_cols)
     raw, _ = add_tpm_columns_from_fpkm(raw)
+    return raw
+
+
+@lru_cache(maxsize=2)
+def _pan_reference_frame(
+    include_computed_rollups: bool = False,
+) -> pd.DataFrame:
+    """Canonical raw pan-cancer matrix via the oncoref compatibility adapter.
+
+    The version-pinned pirlygenes pan matrix remains the fast persisted source.
+    We canonicalize it with oncoref's delegated alias map, sum duplicate linear
+    loci, and derive deterministic TPM companions. Five persisted rollups baked
+    from oncoref's selected sources are joined only when explicitly requested.
+    Keeping computed aggregates out of the default frame prevents them from
+    silently becoming extra independent observations in downstream code that
+    enumerates every ``*_TPM`` column.
+
+    This produces oncoref's canonical semantics without its eager
+    multi-million-row summary scan or a runtime dependency on oncoref's
+    separate expression data bundle.
+    """
+    raw = _pan_source_reference_frame()
+    if not include_computed_rollups:
+        return raw
     return raw.merge(
         _pan_computed_rollup_frame(),
         on="Ensembl_Gene_ID",
@@ -2829,6 +2845,7 @@ def pan_cancer_expression(
     genes: Optional[Iterable[str]] = None,
     normalize: Optional[str | Sequence[str]] = "tpm_clean",
     *,
+    include_computed_rollups: bool = False,
     log_transform: bool = False,
     drop_technical_rna: bool = False,
     collapse_cdna_identical: bool = False,
@@ -2839,11 +2856,13 @@ def pan_cancer_expression(
     50 normal tissues from HPA v23 consensus (``<tissue>_nTPM`` columns)
     plus 33 TCGA cancer types from HPA pathology + GDC/STAR reprocessing
     (``<code>_FPKM`` in native units with deterministic ``<code>_TPM``
-    companions). Five computed tumor rollups (``BTC``/``CRC``/``NET``/
-    ``NSCLC``/``SGC``) are built from sample-weighted TPM cohort medians and
-    therefore have ``<code>_TPM`` but no synthetic FPKM. TPM and every requested
-    analysis derivative are available uniformly across all tumor entities;
-    FPKM is retained only as source provenance where it actually exists.
+    companions). By default the view contains only these independent source
+    cohorts. Set ``include_computed_rollups=True`` to add five computed tumor
+    rollups (``BTC``/``CRC``/``NET``/``NSCLC``/``SGC``), built from
+    sample-weighted TPM cohort medians. Rollups have ``<code>_TPM`` but no
+    synthetic FPKM. TPM and every requested analysis derivative are available
+    uniformly across the included tumor entities; FPKM is retained only as
+    source provenance where it actually exists.
 
     An oncoref compatibility adapter canonicalizes the version-pinned local
     matrix with oncoref's alias map, collapses duplicate loci, and composes the
@@ -2863,7 +2882,8 @@ def pan_cancer_expression(
         ``"tpm"`` are equivalent.
 
         - ``"tpm_clean"`` (default) — start from the uniform TPM/nTPM
-          analysis columns (including TPM-only computed rollups), then add
+          analysis columns (including any explicitly requested computed
+          rollups), then add
           ``<tissue>_nTPM_clean`` and ``<code>_TPM_clean`` columns with
           mtDNA / NUMT / rRNA / MALAT1+NEAT1 rows zeroed
           and each column's sum pinned back to 10⁶. This is the
@@ -2873,12 +2893,12 @@ def pan_cancer_expression(
           plus raw ``<code>_FPKM`` columns, remain unchanged.
         - ``None`` — raw/provenance view: raw TCGA ``<code>_FPKM``
           values, HPA ``<tissue>_nTPM`` values, deterministic TCGA
-          ``<code>_TPM`` companions, and TPM-only computed rollups are
-          preserved. No artifact-gene cleanup, HK scaling, percentile-rank,
-          or log transform is applied.
+          ``<code>_TPM`` companions, and any explicitly requested TPM-only
+          computed rollups are preserved. No artifact-gene cleanup, HK
+          scaling, percentile-rank, or log transform is applied.
         - ``"tpm"`` / ``"TPM"`` — the uniform tumor-analysis view: every
-          TCGA and computed-rollup entity has ``<code>_TPM``; raw TCGA FPKM
-          provenance remains available where present.
+          included tumor entity has ``<code>_TPM``; raw TCGA FPKM provenance
+          remains available where present.
         - ``"tpm_log1p"`` — add ``<tissue>_nTPM_log1p`` and
           ``<code>_TPM_log1p`` columns using natural ``log1p`` over the
           TPM-scale analysis columns. Implies ``"tpm"``.
@@ -2894,6 +2914,11 @@ def pan_cancer_expression(
 
         For example, ``normalize=["tpm_clean", "hk", "percentile"]``
         adds clean, housekeeping, and percentile columns in one call.
+    include_computed_rollups
+        Include the five TPM-only aggregate tumor references. Defaults to
+        ``False`` so code that enumerates every ``*_TPM`` column receives only
+        independent source cohorts. Use ``True`` when an aggregate itself is
+        the intended target.
     log_transform
         Apply ``log2(x + 1)`` to value columns after any normalization.
     drop_technical_rna
@@ -2923,7 +2948,7 @@ def pan_cancer_expression(
     # The cached compatibility view already contains deterministic TPM
     # companions for every FPKM cohort. Copy it before adding bridge and
     # normalization columns so callers can mutate independently.
-    df = _pan_reference_frame().copy()
+    df = _pan_reference_frame(include_computed_rollups).copy()
 
     # Proteoform duality (uniform with cancer_reference_expression): always add the
     # gene-view Proteoform_ID / Member_Ensembl_Gene_IDs bridge columns; optionally
@@ -3003,7 +3028,13 @@ def pan_cancer_expression(
         percentile=False,
         value_cols=pipeline_value_cols,
     )
-    return _rename_pan_expression_columns_entity_first(df)
+    out = _rename_pan_expression_columns_entity_first(df)
+    out.attrs["computed_rollups_included"] = bool(include_computed_rollups)
+    out.attrs["computed_rollup_members"] = {
+        code: tuple(members)
+        for code, members in _PAN_COMPUTED_ROLLUP_MEMBERS.items()
+    }
+    return out
 
 
 def cancer_expression(
@@ -3055,6 +3086,9 @@ def cancer_expression(
     df = pan_cancer_expression(
         genes=genes,
         normalize=pan_mode,
+        # This accessor extracts one explicitly requested entity, so aggregate
+        # columns cannot leak into a comparison population.
+        include_computed_rollups=True,
         drop_technical_rna=False,
     )
     suffix_by_mode = {
@@ -3087,7 +3121,7 @@ def cancer_enriched_genes(
 ) -> pd.DataFrame:
     """Genes enriched in one cancer type vs the pan-cancer median.
 
-    The comparison population is the original 33 source cohorts. Computed
+    Clean TPM is compared across the original 33 source cohorts. Computed
     rollups are not independent observations and are therefore never included
     in the background. When a rollup is itself the target, its member cohorts
     are excluded from the background as well.
@@ -3099,7 +3133,7 @@ def cancer_enriched_genes(
     min_fold
         Minimum fold-change over the median of all other cancer types.
     min_expression
-        Minimum housekeeping-normalized expression in the target cancer.
+        Minimum clean-TPM expression in the target cancer.
 
     Returns
     -------
@@ -3111,13 +3145,16 @@ def cancer_enriched_genes(
 
     code = resolve_cancer_type(cancer_type)
     df = pan_cancer_expression(
-        normalize="hk",
+        normalize="tpm_clean",
+        # Aggregate targets remain valid here; the background below is
+        # explicitly restricted to independent source cohorts.
+        include_computed_rollups=True,
         drop_technical_rna=True,
     )
-    target_col = f"{code}_TPM_hk"
+    target_col = f"{code}_TPM_clean"
     if target_col not in df.columns:
         raise ValueError(
-            f"no HK-normalized TPM column for {cancer_type!r} "
+            f"no clean-TPM column for {cancer_type!r} "
             f"(resolved to {code!r})"
         )
     # Paired FPKM provenance distinguishes the 33 source cohorts from the
@@ -3126,14 +3163,14 @@ def cancer_enriched_genes(
     source_cols = [
         col
         for col in df.columns
-        if col.endswith("_TPM_hk")
-        and f"{col[:-len('_TPM_hk')]}_FPKM" in df.columns
+        if col.endswith("_TPM_clean")
+        and f"{col[:-len('_TPM_clean')]}_FPKM" in df.columns
     ]
     excluded_codes = {code, *_PAN_COMPUTED_ROLLUP_MEMBERS.get(code, ())}
     other_cols = [
         col
         for col in source_cols
-        if col[:-len("_TPM_hk")] not in excluded_codes
+        if col[:-len("_TPM_clean")] not in excluded_codes
     ]
     result = df[["Ensembl_Gene_ID", "Symbol"]].copy()
     result["expression"] = df[target_col].astype(float)

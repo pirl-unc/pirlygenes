@@ -186,7 +186,10 @@ list of strings. The default is `normalize="tpm_clean"` (equivalent to
 `normalize=["tpm_clean"]`): TCGA `*_FPKM` columns are preserved for provenance,
 deterministic TCGA `*_TPM` companions are added, HPA `*_nTPM` columns are
 preserved, and cleaned TPM-scale analysis columns are added as
-`*_TPM_clean` / `*_nTPM_clean`.
+`*_TPM_clean` / `*_nTPM_clean`. The default contains only the 33 independent
+TCGA source cohorts. Computed aggregates are explicit opt-in columns, so a
+consumer that enumerates every `*_TPM` column cannot accidentally count a
+source cohort twice.
 
 ```python
 # Apply the canonical clean-TPM 16/9/75 transform to TPM-scale analysis
@@ -213,12 +216,18 @@ pan_cancer_expression(normalize="hk")
 
 # Combine modes in one call; tpm_clean, hk, and percentile each imply "tpm".
 pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])
+
+# Add the five sample-weighted aggregate references only when they are an
+# intended target: BTC, CRC, NET, NSCLC, and SGC.
+pan_cancer_expression(include_computed_rollups=True)
 ```
 
 `cancer_expression(cancer_type)` uses the same default analysis view across
 reference sources: clean TPM (`normalize="tpm_clean"`). For TCGA-backed cancer
 types, housekeeping-normalized values are available only when explicitly
 requested with `normalize="hk"` or `normalize="housekeeping"`.
+`cancer_enriched_genes()` also compares clean TPM and restricts its background
+to the 33 independent source cohorts.
 `cancer_reference_expression()` exposes oncoref-owned tumor reference summaries
 through a pirlygenes-compatible raw TPM / clean TPM contract; current sources include
 CLL-map (`CLL`), MMRF CoMMpass (`MM`), TARGET ALL (`B_ALL`, `T_ALL`),
