@@ -1,7 +1,7 @@
-"""The single shared clean-TPM helper (expression.normalize).
+"""The single shared clean-TPM compatibility helper.
 
-Previously copy-pasted into ~12 builders/scripts; these lock the one
-definition. The clean-TPM removal set is technical-RNA rows (mtDNA / rRNA-like
+These tests lock the consumer contract shared with oncoref. The clean-TPM
+removal set is technical-RNA rows (mtDNA / rRNA-like
 / mt-like pseudogene / polyA-bias lncRNA) **and** ribosomal-protein mRNA +
 pseudogenes. As of clean_tpm_16_9_75 the **default** transform is
 ``censored_fill="fixed_fraction"``: ribosomal-protein rows are forced to 16%,

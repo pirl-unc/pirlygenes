@@ -10,8 +10,9 @@ a data-bundle artifact:
     pirlygenes/data/cancer-reference-expression-views/provenance.parquet
     pirlygenes/data/cancer-reference-expression-views/_manifest.json
 
-Run after baking ``cancer-reference-expression/`` shards and before creating the
-DATA_VERSION tarball.
+Run against the pinned delegated oncoref summary before creating the
+``DATA_VERSION`` tarball. This is a pirlygenes-specific wide compatibility
+cache, not an empirical source builder.
 """
 
 from __future__ import annotations

@@ -6,16 +6,21 @@ It is no longer the current ownership roadmap.
 ## Current outcome
 
 - Oncoref owns empirical cancer-reference summary rows, source matrices,
-  cohort selection, sample QC, and the general source rebuild machinery.
+  source/sample registries, cohort selection, sample QC, and source rebuilds.
 - Pirlygenes exposes compatibility wrappers and owns its curated panels,
-  pan-cancer and cohort-view artifacts, release bundle, and contract tests.
+  pan-cancer and cohort-view compatibility artifacts, release bundle, and
+  contract tests. Its duplicate source registry, empirical shards, sample
+  manifest, and builder fleet were retired in #528.
 - `cancer_reference_expression()` delegates to oncoref; the ownership and
   validation details live in
   [reference-expression-parity.md](reference-expression-parity.md).
-- The session log and follow-up queue below explain how this state was reached.
+- `pirlygenes build` now redirects maintainers to
+  `oncoref.expression_builders`; `pirlygenes downloads` inspects and fetches
+  `oncoref.source_matrices`.
+- The session log and original follow-up queue below explain how this state was reached.
   They are retained for provenance, not as current release instructions.
 
-## Original goal
+## Original goal (historical)
 
 Bring every cancer cohort in `pirlygenes/data/cancer-reference-expression.csv.gz`
 into the same normalized TPM space, with a uniform extended-stat suite
@@ -24,8 +29,8 @@ n_samples / n_detected), generated from per-sample data wherever
 possible. Add the 32 TCGA bulk-adult cohorts that are currently
 missing from the long-format reference table.
 
-Driven by a `pirlygenes downloads / build / plot` CLI backed by a
-single YAML registry of data sources.
+This was originally driven by a pirlygenes-local YAML registry and build CLI.
+Those ingestion responsibilities subsequently moved to oncoref.
 
 ## Historical implementation log
 
@@ -93,7 +98,7 @@ That's milestones 3-4 (TCGA fresh) and 8 (existing-cohort sweep).
   in `cancer-type-registry.csv` updated from `TCGA_XENA_TOIL` →
   `TREEHOUSE_POLYA_25_01_TCGA_SAMPLES` to match actually-bundled data.
 
-### Historical follow-up queue
+### Superseded historical follow-up queue
 
 2. **`pirlygenes build <source-id>` dispatcher.** Read the YAML
    registry, dispatch to the matching builder (existing scripts/
@@ -155,20 +160,16 @@ per-sample level escapes this approximation; cohorts that stay on
 summary-import retain it and the notes column should continue to say
 so.
 
-## Data sources
+## Current data-source authority
 
-See `pirlygenes/data/expression_sources.yaml` for the authoritative
-list. Each entry carries: `id`, `cancer_codes`, `category`,
-`source_type`, `builder` (module path once builders are hoisted into
-`pirlygenes/builders/`), source-specific identifiers (project_id /
-accession / url), `unit`, `expected_size_gb`, `citation`, and
-`special_handling` notes for any per-source quirks
-(e.g. MMRF's "deterministic primary BM CD138+ sample per case"
-inclusion rule).
+Oncoref's expression registry is authoritative. Pirlygenes exposes it through
+`pirlygenes.downloads.load_registry()` only as a compatibility view; it does
+not carry a writable mirror. Source-specific build and QC rules live in
+`oncoref.expression_builders`.
 
 ## Cache convention
 
-Default cache root: `~/.cache/pirlygenes/expression/<source_id>/`.
-Override via `PIRLYGENES_CACHE` environment variable. Disk usage is
-discoverable via `pirlygenes downloads list` (groups sources by
-`category`, sorts by on-disk size descending).
+Canonical source matrices use oncoref's versioned source-matrix cache (override
+with `CANCERDATA_SOURCE_MATRICES`). `pirlygenes downloads list` reports that
+owner cache. `PIRLYGENES_CACHE` remains only for explicit custom-registry
+compatibility helpers.

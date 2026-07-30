@@ -2,20 +2,14 @@
 
 ## Running tests
 
-**Always use `./test.sh`, not raw `pytest`.**
+Run tests serially. Never use `pytest -n auto`: each worker can load the
+multi-million-row delegated reference, and an orphaned xdist run previously
+exceeded 100 GB RSS and triggered a macOS watchdog restart.
 
-`./test.sh` runs `./lint.sh` first, then `pytest --cov=pirlygenes/ --cov-report=term-missing tests`.
-`pyproject.toml` sets `addopts = "-n auto"`, so xdist spawns one worker per
-logical CPU — fine here because the test suite is moderate (~130 tests
-as of 5.1.0) and the only sizeable CSVs are the expression matrices
-(~36 MB total). Memory pressure isn't an issue the way it is in
-trufflepig.
+Use `./lint.sh`, then invoke pytest with `-n 0`, for example:
 
-Pass extra pytest args after the script name:
-
-    ./test.sh -q
-    ./test.sh tests/test_gene_families.py
-    ./test.sh -x -v
+    pytest -n 0 -q
+    pytest -n 0 tests/test_gene_families.py
 
 ## Package boundary (5.2+)
 
@@ -28,9 +22,9 @@ Things that belong here:
   cancer-type registry, narrative gene sets, rule tables, …)
 - Symbol/ENSG resolvers (`gene_ids.py`, `gene_names.py`)
 - Gene-family panels (`gene_families.py` + `data/{numt-pseudogenes,nuclear-retained-lncrnas,…}.csv`)
-- Reference expression matrices (`pirlygenes/expression/accessors.py` +
-  `data/pan-cancer-expression.csv`, `hpa-cell-type-expression.csv`,
-  `estimate-signatures.csv`, `cancer-reference-expression.csv.gz`)
+- Reference-expression compatibility accessors
+  (`pirlygenes/expression/accessors.py`) over oncoref-owned empirical data,
+  plus pirlygenes' curated/derived pan-cancer and signature matrices
 - Mechanical transforms on expression matrices
   (`pirlygenes/expression/normalize.py`: `normalize_expression`,
   `fpkm_to_tpm`, `renormalize_to_million`, `tpm_to_housekeeping_normalized`,
@@ -40,20 +34,8 @@ Things that belong here:
 - Transcript→gene rollup (`pirlygenes/expression/aggregate.py`)
 - Cohort-baseline constants (`TCGA_MEDIAN_PURITY`)
 - **Cohort-level CLI surface** (`pirlygenes/cli.py`, console script
-  `pirlygenes`) hosting `downloads` / `build` / `plot`:
-  - `pirlygenes downloads {list,cache-dir,fetch,prune}` — the local
-    cache of per-source raw quantifications. Backed by
-    `pirlygenes.downloads` and the registry
-    `pirlygenes/data/expression_sources.yaml`. Every CLI subcommand
-    is a thin wrapper around a public Python API so trufflepig and
-    notebooks can call the same code without going through the
-    shell.
-  - `pirlygenes build <source-id>` — regenerate per-gene-per-cohort
-    summary rows in `cancer-reference-expression.csv.gz` from
-    per-sample quantifications. Currently the existing
-    `scripts/build_*_reference_expression.py` files; these will be
-    hoisted into `pirlygenes/builders/` and registered against the
-    YAML registry (plan milestone 2).
+  `pirlygenes`): `downloads` inspects/fetches oncoref source matrices, while
+  `build` redirects regeneration work to `oncoref.expression_builders`.
   - `pirlygenes plot <…>` — cohort-level plots: gene-or-set
     expression across cohorts, panel coverage across the cancer-type
     registry, etc. Per-sample plots stay in trufflepig.
@@ -73,8 +55,8 @@ Things that **don't** belong here (route to trufflepig):
 
 The dividing line: "is this acting on a single patient sample, or on
 the cohort-level reference data?" Per-sample → trufflepig.
-Cohort-level (data, transforms, downloads, builders, panel plots) →
-pirlygenes.
+Cohort-level curated data, compatibility transforms, and panel plots →
+pirlygenes. Expression ingestion/building → oncoref.
 
 History: 5.0.x removed pirlygenes' CLI entirely; 5.1.x restored
 expression data + transforms; 5.2.x (in progress) restored the CLI
@@ -112,46 +94,13 @@ regex panel changes:
 distinguishing protein-coding, rRNA, and tRNA entries) and not touched
 by the script.
 
-`ncbi-symbol-synonyms.csv.gz` is also **derived**: a static, offline
-`{alias: official_symbol}` snapshot of NCBI `gene_info` `Synonyms` that
-backs the *lowest tier* of symbol resolution in
-`pirlygenes.gene_ids.find_gene_and_ensembl_release_by_name` (the last
-resort when a name matches no installed Ensembl release and isn't a
-curated display alias — `GNB2L1`→`RACK1`, `TCEB2`→`ELOB`, …). Only
-unambiguous, guard-checked aliases are kept; the pruning reuses
-`pirlygenes.builders.gene_mapping.synonym_to_official` so the bundled
-snapshot and the builders' live lookup share one guard. Re-run after a
-major NCBI `gene_info` refresh:
-
-    python scripts/generate_ncbi_symbol_synonyms.py
-
-## NCBI gene-data mirror (build-time)
-
-The builders' full Entrez tables — `Homo_sapiens.gene_info.gz` (~5 MB)
-and `gene_history.gz` (~160 MB) — are **not** fetched from NCBI's FTP at
-build time. `pirlygenes.builders.ncbi_gene_info` loads them from a
-**pinned GitHub release** (`GENE_DATA_MIRROR_TAG`, e.g.
-`ncbi-gene-data-20260601`), cached to `~/.cache/pirlygenes/ncbi_gene_info/`.
-This makes `pirlygenes build` reproducible and FTP-independent. The
-upstream NCBI URLs survive as `*_UPSTREAM_URL` constants, used only to
-refresh the mirror:
-
-    python scripts/refresh_ncbi_gene_data.py --tag ncbi-gene-data-YYYYMMDD
-
-After refreshing, bump `GENE_DATA_MIRROR_TAG` and regenerate the synonym
-snapshot. (Only `pirlygenes build` touches these; normal analysis uses
-the in-wheel `ncbi-symbol-synonyms.csv.gz` above.)
-
 ## Symbol/identifier mapping — one path per task
 
 Identifier mapping has a single home per semantic task. The pure
 primitives — `strip_version` and `gene_for_ensembl_id` (resolve an
 Ensembl gene ID against one genome) — live in core `pirlygenes.gene_ids`.
-The builders' harmonizers (`pirlygenes.builders.gene_mapping`) import
-those and add the NCBI-table-backed layer (Entrez chain, synonym
-rescue, matrix aggregation). Dependency direction is builders → core,
-never the reverse. `gene_names.display_name()` remains the sole display
-authority; its curated aliases also feed the mapping synonym pool.
+General source canonicalization and the pinned synonym authority live in
+oncoref. `gene_names.display_name()` remains pirlygenes' display authority.
 
 ## Test fixtures for the cancer-type registry
 

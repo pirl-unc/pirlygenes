@@ -333,23 +333,16 @@ mtDNA set with a semantic `Role` column).
 ## Where the boundary is
 
 `pirlygenes` owns curated reference data and the public API around that data:
-gene-set lookups, bundled expression-matrix accessors, the cancer-type
-registry, expression builders/downloads, public masks, and compatibility
-wrappers. When a low-level reference mechanic is shared and parity-clean, this
-package delegates it to `oncoref`; currently that includes canonical clean TPM,
-explicit housekeeping normalization, pan-cancer expression canonicalization,
-the empirical `cancer_reference_expression` read path, and HPA cell-type
-expression.
+gene-set lookups, the cancer-type registry, public masks, and compatibility
+wrappers. Oncoref owns expression ingestion, source/sample registries,
+per-sample matrices, empirical summaries, representatives, percentiles,
+within-sample fractions, and proteoform artifacts.
 
-Do not assume every oncoref table is a drop-in replacement for the bundled
-pirlygenes artifacts. Representative-sample and percentile accessors also
-delegate to oncoref. Bundle/download/build QC and purpose-specific curated
-panels remain local. The old cancer-reference summary shards are retained only
-for the cohort manifest/status helpers and legacy canonical-view rebuild path;
-they are not a silent fallback for `cancer_reference_expression`. The
-precomputed cohort view also retains its historical source labels (including
-the pre-cleanup Treehouse SARC labels); use `cancer_reference_expression` when
-current row-level provenance is required.
+Pirlygenes' expression APIs are compatibility views over those owner artifacts.
+It no longer ships a source registry, empirical summary shards, sample manifest,
+or builders. The pirlygenes release bundle retains only purpose-specific
+derived views and matrices; the precomputed cohort view is a version-stamped
+wide cache generated from oncoref, not an independent empirical data source.
 
 Aggregate reference availability and per-sample artifact availability are
 separate capabilities. A cohort can expose medians, sample counts, and coarse

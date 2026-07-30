@@ -1,19 +1,13 @@
-"""Cache layout + registry-driven inspection of expression data sources.
+"""Compatibility inspection of oncoref-owned expression data sources.
 
-Backs the ``pirlygenes downloads`` CLI surface. This module owns:
+Backs the ``pirlygenes downloads`` CLI surface. Oncoref now owns both the
+source registry and per-cohort source-matrix cache. Pirlygenes retains this
+module so existing callers can inspect sources without carrying a second YAML
+registry or a second set of builders.
 
-- The on-disk cache convention
-  (``~/.cache/pirlygenes/expression/<source_id>/``, overridable via
-  the ``PIRLYGENES_CACHE`` environment variable).
-- Loading the data-source registry from
-  ``pirlygenes/data/expression_sources.yaml``.
-- Reporting per-source disk usage so callers can group by category and
-  sort by size.
-
-Write operations (fetch, prune) are not implemented yet — see
-``docs/expression-data-refresh-plan.md`` milestones 5 and 6. Calling
-those CLI subcommands surfaces a ``NotImplementedError`` with a
-pointer to the plan.
+The legacy ``source_cache_dir`` helper remains for fixture/custom-source
+compatibility only. Canonical matrices are fetched by
+``oncoref.source_matrices``.
 """
 
 from __future__ import annotations
@@ -23,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-_REGISTRY_PATH = Path(__file__).parent / "data" / "expression_sources.yaml"
 _DEFAULT_CACHE_ROOT = Path.home() / ".cache" / "pirlygenes"
 _CACHE_ENV_VAR = "PIRLYGENES_CACHE"
 
@@ -99,10 +92,39 @@ def _coerce_str(value) -> str | None:
 
 
 def load_registry(path: Path | None = None) -> list[ExpressionSource]:
-    """Parse the expression-sources YAML registry."""
+    """Return the oncoref source registry as pirlygenes compatibility rows.
+
+    ``path`` retains the historical custom-registry hook used by tests and
+    private tooling. The default never reads a pirlygenes-owned registry.
+    """
+    if path is None:
+        from oncoref.expression_registry import expression_sources
+
+        return [
+            ExpressionSource(
+                id=source.id,
+                category=source.category,
+                cancer_codes=source.cancer_codes,
+                source_type=source.source_type,
+                builder=None,
+                build_owner="oncoref",
+                builder_args=(),
+                project_id=source.project_id,
+                accession=source.accession,
+                url=source.url,
+                unit=source.unit,
+                expected_size_gb=source.expected_size_gb,
+                citation=source.citation,
+                special_handling=source.special_handling,
+                recount3_srp=source.recount3_srp,
+                source_cohort=source.source_cohort,
+                library_prep=source.library_prep,
+            )
+            for source in expression_sources()
+        ]
+
     import yaml
 
-    path = path or _REGISTRY_PATH
     with path.open("r", encoding="utf-8") as handle:
         payload = yaml.safe_load(handle) or {}
     raw_sources = payload.get("sources") or []
@@ -180,14 +202,31 @@ class CacheUsage:
 def collect_cache_usage(
     sources: Iterable[ExpressionSource] | None = None,
 ) -> list[CacheUsage]:
+    default_registry = sources is None
     sources = list(sources) if sources is not None else load_registry()
     out: list[CacheUsage] = []
     for source in sources:
-        cache_dir = source_cache_dir(source.id, category=source.category)
+        if default_registry:
+            from oncoref import source_matrices
+            from . import cohorts
+
+            paths = [
+                source_matrices.local_path(code)
+                for code in cohorts.cohorts_for_source(
+                    source.id,
+                    include_related=False,
+                )
+                if source_matrices.is_cached(code)
+            ]
+            cache_dir = source_matrices.cache_dir()
+            size = sum(_walk_size_bytes(path) for path in paths)
+        else:
+            cache_dir = source_cache_dir(source.id, category=source.category)
+            size = _walk_size_bytes(cache_dir)
         out.append(
             CacheUsage(
                 source=source,
-                on_disk_bytes=_walk_size_bytes(cache_dir),
+                on_disk_bytes=size,
                 cache_dir=cache_dir,
             )
         )
@@ -201,6 +240,7 @@ def render_list(usages: Iterable[CacheUsage]) -> str:
     descending so the heaviest entries are easy to find when freeing
     space.
     """
+    usages = list(usages)
     by_category: dict[str, list[CacheUsage]] = {}
     for usage in usages:
         by_category.setdefault(usage.source.category, []).append(usage)
@@ -235,7 +275,12 @@ def render_list(usages: Iterable[CacheUsage]) -> str:
         f"Total across {sum(len(v) for v in by_category.values())} sources: "
         f"{_format_bytes(grand_total)}"
     )
-    lines.append(f"Cache root: {cache_root()}")
+    roots = sorted({str(usage.cache_dir) for usage in usages})
+    lines.append(
+        f"Cache root: {roots[0]}"
+        if len(roots) == 1
+        else f"Cache roots: {', '.join(roots)}"
+    )
     return "\n".join(lines)
 
 

@@ -19,9 +19,21 @@ transform.
 
 `cancer-reference-expression` is no longer a pirlygenes download-bundle member,
 and both `get_data()` and `load_all_dataframes()` route its runtime reads to
-oncoref. The in-repository `pirlygenes/data/cancer-reference-expression/` shards
-remain only as builder/audit inputs while the local ingestion fleet is retired
-under #528; no supported public read path selects them.
+oncoref. Pirlygenes' duplicate empirical shards, source registry, sample
+manifest, builder modules, and build/sweep scripts were removed under #528.
+Per-sample compatibility accessors now resolve and fetch matrices through
+`oncoref.source_matrices`.
+
+Pirlygenes retains one derived, version-stamped wide cohort-view cache because
+that is a package-specific API shape and oncoref does not publish the same
+artifact. It is generated only from the delegated oncoref summary and cannot
+ingest or overwrite empirical source data.
+
+Oncoref owns regeneration. Registry-backed routes that are not yet fully
+rebuildable upstream are tracked in
+[oncoref #450](https://github.com/pirl-unc/oncoref/issues/450), and missing
+structured provenance fields are tracked in
+[oncoref #451](https://github.com/pirl-unc/oncoref/issues/451).
 
 ## Compatibility transforms
 

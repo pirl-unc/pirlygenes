@@ -36,16 +36,24 @@ _SYNTH = pd.DataFrame(
 
 @pytest.fixture
 def synth_source(tmp_path, monkeypatch):
-    """Register a synthetic cohort 'SYNTH' backed by a tmp-dir parquet."""
-    derived = tmp_path / "derived"
-    derived.mkdir()
-    _SYNTH.to_parquet(derived / "SYNTH_per_sample_tpm.parquet", index=False)
-
-    monkeypatch.setattr(coverage._cohorts.downloads, "source_cache_dir",
-                        lambda source_id, **k: tmp_path)
-    monkeypatch.setitem(
-        cohorts._REGISTRY, "synth",
-        {"SYNTH": cohorts.Cohort("SYNTH", "SYNTH", "synth")},
+    """Expose one synthetic matrix through the owner-reader boundary."""
+    cohort = cohorts.Cohort("SYNTH", "SYNTH", "synth")
+    available = {"SYNTH": cohort}
+    monkeypatch.setattr(
+        cohorts,
+        "available_cohorts",
+        lambda source_id: available if source_id == "synth" else {},
+    )
+    monkeypatch.setattr(
+        cohorts,
+        "cohorts_for_source",
+        lambda source_id: available if source_id == "synth" else {},
+    )
+    monkeypatch.setattr(cohorts, "all_available_cohorts", lambda: available)
+    monkeypatch.setattr(
+        cohorts,
+        "read_per_sample",
+        lambda requested: _SYNTH.copy(),
     )
     return tmp_path
 

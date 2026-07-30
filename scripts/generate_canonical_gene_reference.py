@@ -4,9 +4,9 @@ Canonicalization must not depend on which pyensembl releases happen to be
 installed at *runtime* (installs are patchy: missing GTF dbs, duplicate
 genome objects, partial downloads).  This script snapshots the pinned
 authority release's gene table once, at build time, into a small bundled
-CSV so the runtime authority is offline, versioned, and reproducible —
-the same pattern as ``ncbi-symbol-synonyms.csv.gz`` and
-``ensembl-id-aliases.csv``.
+CSV so the runtime authority is offline, versioned, and reproducible.
+Symbol/Entrez alias resolution is delegated to oncoref rather than
+snapshotted again here.
 
 Output ``pirlygenes/data/canonical-gene-reference.csv.gz`` has one row per
 unversioned authority-release gene:
