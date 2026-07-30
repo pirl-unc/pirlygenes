@@ -57,6 +57,30 @@ def test_source_filter_uses_owner_source_cohort_mapping():
     assert cohorts.cohorts_for_source("not-a-source") == {}
 
 
+def test_owner_build_source_ids_fall_back_to_selected_matrix_codes():
+    assert set(cohorts.cohorts_for_source("beataml-ohsu-2022")) == {
+        "LAML_APL",
+        "LAML_ELNadv",
+        "LAML_ELNfav",
+        "LAML_ELNint",
+    }
+    assert set(cohorts.cohorts_for_source("tcga-acc")) == {"ACC"}
+    assert cohorts.cohorts_for_source("prjna1083972-mmnst") == {}
+
+
+def test_legacy_geo_heme_is_a_composite_read_alias():
+    assert cohorts.source_label("geo-heme") == "GEO_HEME_2022"
+    assert cohorts.source_project("geo-heme") == "GEO"
+    actual = cohorts.cohorts_for_source("geo-heme")
+    assert set(actual) == {"CML", "MDS", "MCL", "MPN"}
+    assert {cohort.source_id for cohort in actual.values()} == {
+        "gse100026-cml",
+        "gse114922-mds",
+        "gse271664-mcl",
+        "gse283710-mpn",
+    }
+
+
 def test_available_cohorts_uses_owner_cache_state(monkeypatch):
     from oncoref import source_matrices
 

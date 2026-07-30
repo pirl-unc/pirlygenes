@@ -18,6 +18,7 @@ import pytest
 
 from pirlygenes import load_all_dataframes_dict
 import pirlygenes.expression.accessors as expression_accessors
+from pirlygenes.load_dataset import get_data
 from pirlygenes.expression import (
     GeneQcClass,
     add_tpm_columns_from_fpkm,
@@ -1305,6 +1306,28 @@ def test_salivary_candidates_report_released_diagnosis_split():
     assert candidates["notes"].str.contains("published by oncoref", regex=False).all()
 
 
+def test_candidate_reconciliation_preserves_distinct_acquisition_provenance():
+    candidates = cancer_expression_source_candidates(
+        ["FL", "NPC", "SARC_ASPS", "SARC_MYXLPS"],
+    ).set_index("cancer_code")
+
+    assert candidates.loc["FL", "source_status"] == (
+        "scRNA_candidate_needs_malignant_selection"
+    )
+    assert candidates.loc["FL", "source_cohort"] == "GSE261917"
+    assert candidates.loc["FL", "accession"] == "GSE261917"
+    assert "Pseudobulk malignant FL B cells" in candidates.loc[
+        "FL", "processing_plan"
+    ]
+
+    assert candidates.loc["NPC", "source_cohort"] == "GSE102349"
+    assert candidates.loc["NPC", "accession"] == "GSE102349"
+    assert candidates.loc["SARC_ASPS", "source_cohort"] == "GSE54729"
+    assert candidates.loc["SARC_ASPS", "accession"] == "GSE54729"
+    assert candidates.loc["SARC_MYXLPS", "source_cohort"] == "TCGA_XENA_TOIL"
+    assert candidates.loc["SARC_MYXLPS", "accession"] == "TCGA-SARC"
+
+
 def test_cancer_expression_reference_status_is_uniform_for_parent_labels():
     status = cancer_expression_reference_status(
         ["BRCA_Basal", "PCN", "SARC_GIST", "CLL"],
@@ -1375,6 +1398,57 @@ def test_cancer_reference_expression_cll_sample_manifest_tracks_exclusions():
         excluded.set_index("sample_id").loc["GCLL-0136", "exclusion_reason"]
         == "suspected_mcl"
     )
+
+
+def test_delegated_sample_manifest_preserves_beataml_subtype_contract():
+    samples = get_data("cancer-reference-expression-samples")
+    beataml = samples[
+        samples["source_cohort"].astype(str).eq("BEATAML_OHSU_2022")
+    ]
+
+    assert "subtype" in samples.columns
+    assert beataml["subtype"].notna().sum() == 667
+    assert beataml["subtype"].value_counts().to_dict() == {
+        "LAML_ELNfav": 270,
+        "LAML_ELNadv": 211,
+        "LAML_ELNint": 166,
+        "LAML_APL": 20,
+    }
+    assert set(beataml["lineage_label"].dropna()) == {
+        "LAML_ELNfav",
+        "LAML_ELNadv",
+        "LAML_ELNint",
+        "LAML_APL",
+    }
+
+
+def test_delegated_sample_manifest_uses_owner_pipeline_provenance():
+    from oncoref.load_dataset import get_data as get_oncoref_data
+
+    samples = get_data("cancer-reference-expression-samples")
+    availability = get_oncoref_data(
+        "cancer-reference-expression-availability",
+        copy=False,
+    )
+    expected = (
+        availability[
+            ["source_cohort", "processing_pipeline"]
+        ]
+        .dropna()
+        .drop_duplicates()
+        .groupby("source_cohort")["processing_pipeline"]
+        .agg(lambda values: values.iloc[0] if values.nunique() == 1 else None)
+        .dropna()
+    )
+    observed = samples.loc[
+        samples["source_cohort"].isin(expected.index),
+        ["source_cohort", "processing_pipeline"],
+    ].drop_duplicates()
+
+    assert observed.set_index("source_cohort")["processing_pipeline"].to_dict() == (
+        expected.loc[observed["source_cohort"]].to_dict()
+    )
+    assert not samples["processing_pipeline"].astype(str).str.endswith("_v1").any()
 
 
 def test_cancer_reference_expression_mm_sample_manifest_tracks_exclusions():

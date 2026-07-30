@@ -172,6 +172,39 @@ def test_cli_downloads_list(monkeypatch, tmp_path: Path):
     assert "cgci-blgsp" in out
 
 
+def test_cli_downloads_fetch_resolves_owner_source_ids(monkeypatch):
+    from oncoref import source_matrices
+
+    fetched = []
+    monkeypatch.setattr(source_matrices, "fetch", fetched.append)
+
+    rc, out, err = _run_cli(["downloads", "fetch", "beataml-ohsu-2022"])
+
+    assert rc == 0
+    assert not err
+    assert fetched == [
+        "LAML_APL",
+        "LAML_ELNadv",
+        "LAML_ELNfav",
+        "LAML_ELNint",
+    ]
+    assert "fetched 4 oncoref source matrices" in out
+
+
+def test_cli_downloads_fetch_preserves_geo_heme_alias(monkeypatch):
+    from oncoref import source_matrices
+
+    fetched = []
+    monkeypatch.setattr(source_matrices, "fetch", fetched.append)
+
+    rc, out, err = _run_cli(["downloads", "fetch", "geo-heme"])
+
+    assert rc == 0
+    assert not err
+    assert fetched == ["CML", "MCL", "MDS", "MPN"]
+    assert "fetched 4 oncoref source matrices" in out
+
+
 def test_cli_build_list_enumerates_sources():
     rc, out, _ = _run_cli(["build", "list"])
     assert rc == 0
@@ -196,6 +229,14 @@ def test_cli_build_dependency_owned_sources_redirect_to_oncoref():
         assert rc == 2
         assert "built and published by oncoref" in err
         assert "oncoref.expression_builders" in err
+
+
+def test_cli_build_does_not_offer_an_unpublished_matrix():
+    rc, _, err = _run_cli(["build", "prjna1083972-mmnst"])
+
+    assert rc == 2
+    assert "no published source matrix currently matches" in err
+    assert "downloads fetch" not in err
 
 
 def test_cli_build_ambiguous_cancer_code_lists_candidates():

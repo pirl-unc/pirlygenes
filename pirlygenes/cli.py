@@ -386,9 +386,9 @@ def cmd_downloads_fetch(args: argparse.Namespace) -> int:
         return 2
     for code in codes:
         source_matrices.fetch(code)
+    noun = "matrix" if len(codes) == 1 else "matrices"
     sys.stdout.write(
-        f"fetched {len(codes)} oncoref source matrix"
-        f"{'' if len(codes) == 1 else 'es'}: {', '.join(codes)}\n"
+        f"fetched {len(codes)} oncoref source {noun}: {', '.join(codes)}\n"
     )
     return 0
 
@@ -565,6 +565,8 @@ def cmd_data_prune(args: argparse.Namespace) -> int:
 
 def cmd_build(args: argparse.Namespace) -> int:
     """Preserve source discovery while redirecting every rebuild to oncoref."""
+    from . import cohorts
+
     sources = downloads.load_registry()
     requested = args.source_id
 
@@ -601,12 +603,22 @@ def cmd_build(args: argparse.Namespace) -> int:
             return 2
         src = candidates[0]
 
-    sys.stderr.write(
-        f"source {src.id!r} is built and published by oncoref; use "
-        "oncoref.expression_builders for regeneration or "
-        "`pirlygenes downloads fetch "
-        f"{src.id}` to fetch its published matrices.\n"
-    )
+    published = sorted(cohorts.cohorts_for_source(src.id))
+    if published:
+        sys.stderr.write(
+            f"source {src.id!r} is built and published by oncoref; use "
+            "oncoref.expression_builders for regeneration or "
+            "`pirlygenes downloads fetch "
+            f"{src.id}` to fetch its selected published matrices "
+            f"({', '.join(published)}).\n"
+        )
+    else:
+        sys.stderr.write(
+            f"source {src.id!r} is owned by oncoref, but no published "
+            "source matrix currently matches it; use "
+            "oncoref.expression_builders for regeneration and track the "
+            "owner's source-matrix registry for publication.\n"
+        )
     return 2
 
 

@@ -76,6 +76,22 @@ _LEGACY_SOURCE_PROJECT = {
     "sclc-ucologne-2015": "University of Cologne",
 }
 
+# Historical composite filters that never represented one physical dataset.
+# Keep them only as read-side aliases over the independently owned oncoref
+# sources; never emit the composite label as matrix provenance.
+_LEGACY_COMPOSITE_SOURCES = {
+    "geo-heme": (
+        "gse100026-cml",
+        "gse114922-mds",
+        "gse271664-mcl",
+        "gse283710-mpn",
+    ),
+}
+
+_LEGACY_COMPOSITE_METADATA = {
+    "geo-heme": ("GEO_HEME_2022", "GEO"),
+}
+
 
 def _owner_registry() -> pd.DataFrame:
     from oncoref import source_matrices
@@ -109,6 +125,8 @@ def _source_id_for_row(code: str, source_cohort: str) -> str:
 def _source_matches(requested: str, actual: str) -> bool:
     if requested == actual:
         return True
+    if actual in _LEGACY_COMPOSITE_SOURCES.get(requested, ()):
+        return True
     # The historical pirlygenes Treehouse source grouped all PolyA-derived
     # selectors under one source ID. Preserve that convenient filter while
     # allowing oncoref's more precise registry IDs.
@@ -141,6 +159,8 @@ def _per_sample_sources() -> dict[str, tuple[str, str]]:
             source_id,
             (cohort, _LEGACY_SOURCE_PROJECT.get(source_id, "")),
         )
+    for source_id, metadata in _LEGACY_COMPOSITE_METADATA.items():
+        out.setdefault(source_id, metadata)
     return out
 
 
@@ -201,7 +221,8 @@ def cohorts_for_source(
     charged to two registry entries.
     """
     out: dict[str, Cohort] = {}
-    for _, row in _owner_registry().iterrows():
+    owner_registry = _owner_registry()
+    for _, row in owner_registry.iterrows():
         cohort = _cohort_from_row(row)
         matches = (
             _source_matches(source_id, cohort.source_id)
@@ -210,6 +231,26 @@ def cohorts_for_source(
         )
         if matches:
             out[cohort.code] = cohort
+    if out or not include_related:
+        return out
+
+    # The expression-source registry describes acquisition/build routes, while
+    # source_matrices publishes one selected artifact per cancer code. Some
+    # owner source IDs therefore have no exact physical-source match (for
+    # example ``tcga-acc`` is currently served by the selected Treehouse ACC
+    # matrix, and ``beataml-ohsu-2022`` retains a legacy physical source ID).
+    # Preserve CLI/source-filter usability by falling back to the source's
+    # declared cancer codes, but only after exact provenance routing failed.
+    source = next(
+        (candidate for candidate in _owner_sources() if candidate.id == source_id),
+        None,
+    )
+    if source is not None:
+        wanted_codes = set(source.cancer_codes)
+        for _, row in owner_registry.iterrows():
+            code = str(row["cancer_code"])
+            if code in wanted_codes:
+                out[code] = _cohort_from_row(row)
     return out
 
 
