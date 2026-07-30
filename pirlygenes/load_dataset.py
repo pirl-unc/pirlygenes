@@ -47,6 +47,9 @@ _CACHED_DATAFRAMES = {}
 # shipping a second physical copy that can drift.
 _ONCOREF_DATASETS = frozenset({
     "cancer-cohort-aggregates",
+    "cancer-expression-source-candidates",
+    "cancer-reference-expression-availability",
+    "cancer-reference-expression-samples",
     "clean-tpm-censored-genes",
     "ribosomal-protein-pseudogenes",
 })
@@ -498,6 +501,170 @@ def _dataset_paths():
     return paths
 
 
+def _reconcile_expression_source_candidates(
+    candidates: pd.DataFrame,
+) -> pd.DataFrame:
+    """Reconcile planning rows with oncoref's compact availability manifest.
+
+    The candidate table describes acquisition plans, while the availability
+    manifest records what oncoref actually publishes.  A released reference
+    must therefore win over an older ``*_candidate_ready`` status.  Keep this
+    as a derived compatibility view rather than restoring pirlygenes' retired
+    physical CSV.  oncoref#452 tracks making the owner dataset self-consistent.
+    """
+    from oncoref import __version__ as oncoref_version
+    from oncoref.load_dataset import get_data as get_oncoref_data
+
+    availability = get_oncoref_data(
+        "cancer-reference-expression-availability",
+        copy=False,
+    )
+    if availability.empty:
+        return candidates
+
+    selected = availability.loc[
+        availability["selected"].fillna(False).astype(bool)
+    ].drop_duplicates("cancer_code")
+    if selected.empty:
+        return candidates
+
+    out = candidates.copy()
+    existing_codes = set(out["cancer_code"].astype(str))
+
+    # Pirlygenes owns a small amount of pairwise discriminator evidence that is
+    # intentionally not a promotable reference.  Derive its acquisition-plan
+    # rows from that evidence table when oncoref's broader candidate registry
+    # has not incorporated them yet; do not restore a duplicate candidate CSV.
+    discriminator_evidence = get_data(
+        "cancer-type-discriminators",
+        copy=False,
+    )
+    evidence = discriminator_evidence.loc[
+        discriminator_evidence["support_type"]
+        .astype(str)
+        .str.endswith("_expression_candidate")
+    ]
+    evidence = evidence.loc[
+        ~evidence["favors"].astype(str).isin(existing_codes)
+    ].drop_duplicates("favors")
+    evidence_rows: list[dict[str, object]] = []
+    for record in evidence.itertuples(index=False):
+        code = str(record.favors)
+        accession = str(record.source)
+        row: dict[str, object] = {column: "" for column in out.columns}
+        row.update({
+            "cancer_code": code,
+            "source_status": "bulk_candidate_ready",
+            "source_project": "GEO" if accession.startswith("GSE") else "",
+            "source_cohort": f"{accession}_{code}",
+            "accession": accession,
+            "source_url": (
+                "https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi"
+                f"?acc={accession}"
+                if accession.startswith("GSE")
+                else ""
+            ),
+            "assay": "bulk RNA-seq",
+            "source_scope": str(record.source_anchor),
+            "estimated_samples": pd.NA,
+            "processing_plan": (
+                f"Use {accession} as small-n discriminator evidence; "
+                "retain pairwise-only safeguards"
+            ),
+            "gene_id_plan": "harmonize source identifiers through oncoref",
+            "normalization_plan": "TPM-compatible evidence only",
+            "notes": str(record.source_anchor),
+        })
+        evidence_rows.append(row)
+    if evidence_rows:
+        out = pd.concat([out, pd.DataFrame(evidence_rows)], ignore_index=True)
+        existing_codes.update(
+            str(row["cancer_code"]) for row in evidence_rows
+        )
+
+    # CHOL is part of pirlygenes' established public planning surface but is
+    # missing from oncoref 1.8.159's candidate table.  Its values below are
+    # derived from owner registries, not from a second pirlygenes data file.
+    compatibility_codes = {"CHOL"}
+    missing = selected.loc[
+        selected["cancer_code"].astype(str).isin(
+            compatibility_codes - existing_codes
+        )
+    ]
+    if not missing.empty:
+        registry = get_oncoref_data("cancer-type-registry", copy=False)
+        registry_by_code = registry.set_index(
+            registry["code"].astype(str),
+            drop=False,
+        )
+        rows: list[dict[str, object]] = []
+        for available in missing.itertuples(index=False):
+            code = str(available.cancer_code)
+            reg = (
+                registry_by_code.loc[code]
+                if code in registry_by_code.index
+                else None
+            )
+            expression_source = (
+                str(reg.get("expression_source", ""))
+                if reg is not None
+                else ""
+            )
+            accession = f"TCGA-{code}" if expression_source == "TCGA" else ""
+            row: dict[str, object] = {column: "" for column in out.columns}
+            row.update({
+                "cancer_code": code,
+                "source_status": "direct_reference_available",
+                "reference_code": code,
+                "source_project": str(available.source_project),
+                "source_cohort": str(available.source_cohort),
+                "accession": accession,
+                "source_url": (
+                    f"https://portal.gdc.cancer.gov/projects/{accession}"
+                    if accession
+                    else ""
+                ),
+                "assay": "bulk RNA-seq",
+                "source_scope": f"selected {code} reference",
+                "estimated_samples": available.n_reference_samples,
+                "processing_plan": (
+                    f"Consume oncoref's selected {code} reference"
+                ),
+                "gene_id_plan": "use oncoref canonical gene identifiers",
+                "normalization_plan": "TPM and TPM_clean",
+                "notes": (
+                    f"Direct {code} reference is published by oncoref "
+                    f"{oncoref_version}."
+                ),
+            })
+            rows.append(row)
+        out = pd.concat([out, pd.DataFrame(rows)], ignore_index=True)
+
+    direct_by_code = selected.set_index(
+        selected["cancer_code"].astype(str),
+        drop=False,
+    )
+    for code in set(out["cancer_code"].astype(str)) & set(direct_by_code.index):
+        available = direct_by_code.loc[code]
+        mask = out["cancer_code"].astype(str).eq(code)
+        out.loc[mask, "source_status"] = "direct_reference_available"
+        out.loc[mask, "reference_code"] = code
+        out.loc[mask, "source_project"] = str(available["source_project"])
+        out.loc[mask, "source_cohort"] = str(available["source_cohort"])
+        out.loc[mask, "estimated_samples"] = available["n_reference_samples"]
+        release_note = (
+            f"Direct {code} reference is published by oncoref "
+            f"{oncoref_version}."
+        )
+        for idx in out.index[mask]:
+            raw_notes = out.at[idx, "notes"]
+            notes = "" if pd.isna(raw_notes) else str(raw_notes).strip()
+            if release_note not in notes:
+                out.at[idx, "notes"] = f"{notes} {release_note}".strip()
+
+    return out
+
+
 def get_data(name, _dataframes_dict=None, *, copy=True):
     """Load a packaged dataset as a DataFrame.
 
@@ -527,6 +694,8 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                         _PIRLYGENES_AGGREGATE_CODES
                     )
                 ].copy()
+            elif delegated_name == "cancer-expression-source-candidates":
+                delegated = _reconcile_expression_source_candidates(delegated)
             _CACHED_DATAFRAMES[cache_key] = delegated
         cached = _CACHED_DATAFRAMES[cache_key]
         return cached.copy() if copy else cached

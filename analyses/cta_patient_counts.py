@@ -4,12 +4,10 @@ The cohort-summary table only stores per-cohort percentiles, so it cannot
 answer "how many *patients* express CTA X above 50 TPM" or "as I add CTAs,
 how many *new* patients do I pick up". Those need per-sample values.
 
-This script pulls the per-sample CTA TPM matrix straight from the cached
-Treehouse 25.01 PolyA compendium (one uniform RSEM log2(TPM+1) pipeline, so
-cohorts are mutually comparable), reusing the *exact* builder cohort filters
-(`pirlygenes.builders.treehouse._filter_samples`) so the patient groups match
-our registry cohorts (incl. the TCGA-subset codes and the GBM/LGG glioma
-split). It then emits four artifacts:
+This script consumes oncoref's published per-cohort source matrices. Cohort
+routing, sample selection, gene canonicalization, and source-version ownership
+therefore match the public reference layer without importing a pirlygenes
+builder or reading its retired expression cache. It emits four artifacts:
 
   1. cta_patient_counts.csv         — for every CTA × cohort, the number and %
                                       of patients above 25 / 50 / 100 / 200 TPM.
@@ -29,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -38,34 +35,13 @@ from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
-import pyarrow.dataset as pads
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from pirlygenes import gene_sets_cancer as gsc
-from pirlygenes.builders.treehouse import _filter_samples, TreehouseCohort
 from pirlygenes.coverage import greedy_coverage as _pkg_greedy_coverage
 # Sole display authority: structural symbol/proteoform ID -> user-facing label
 # (CTAG1B and CTAG1A/B both -> NY-ESO-1). Data stays keyed by the raw symbol.
 from pirlygenes.gene_names import display_name as display_label
 
-import sweep_treehouse_polya_cohorts as polya
-import sweep_treehouse_tcga_cohorts as tcga
-
-# Expression source cache (Treehouse compendium TPM + clinical + cBioPortal
-# derived maps). Distinct from the output CACHE below — keep the names separate
-# (a 5.22.18 collision silently broke _DERIVED_DIR / the cBioPortal splits).
-EXPR_CACHE = Path.home() / ".cache" / "pirlygenes" / "expression" / "treehouse-polya-25-01"
-TPM_TSV = EXPR_CACHE / "Tumor-25.01-Polya_hugo_log2tpm_58581genes_2025-02-27.tsv"
-# Columnar mirror of the 6.2 GB compendium TSV, built ONCE. After conversion the
-# TSV is never read again: CTA extraction is a row-filter query (no awk) and the
-# percentile pass streams Parquet record-batches. Genes-as-rows, sample columns
-# as float32, zstd-compressed; first column is "Symbol".
-TPM_PARQUET = EXPR_CACHE / "Tumor-25.01-Polya_hugo_log2tpm.parquet"
-CLINICAL = EXPR_CACHE / "clinical_Treehouse-Tumor-Compendium-25.01-PolyA_20250131v1.tsv"
-GLIOMA_MAP = EXPR_CACHE / "derived" / "tcga_glioma_case_to_project.csv"
 # Three roles, three locations:
 #  * OUT     — the stable base directory.
 #  * CACHE   — OUT/_cache: expensive, regenerable, reused across runs (percentile
@@ -168,140 +144,6 @@ class Threshold:
         ], dtype=float)
 
 
-def _source_mtime() -> float:
-    """Cache-invalidation timestamp for the compendium: the source TSV's mtime
-    when present, else the converted Parquet's (so caches stay valid even if the
-    6.2 GB TSV is deleted to reclaim disk after conversion)."""
-    if TPM_TSV.exists():
-        return TPM_TSV.stat().st_mtime
-    if TPM_PARQUET.exists():
-        return TPM_PARQUET.stat().st_mtime
-    raise FileNotFoundError(f"no compendium source: {TPM_TSV} / {TPM_PARQUET}")
-
-
-def compendium_parquet() -> Path:
-    """Path to the Parquet mirror of the compendium, building it once from the
-    TSV if missing or stale. This is the single place the 6.2 GB text file is
-    ever read — streamed in row-chunks straight into the Parquet writer."""
-    if (TPM_PARQUET.exists()
-            and (not TPM_TSV.exists()
-                 or TPM_PARQUET.stat().st_mtime >= TPM_TSV.stat().st_mtime)):
-        return TPM_PARQUET
-    if not TPM_TSV.exists():
-        raise FileNotFoundError(f"cannot build {TPM_PARQUET}: source {TPM_TSV} absent")
-    print(f"      building compendium Parquet (one-time) -> {TPM_PARQUET.name}",
-          flush=True)
-    tmp = TPM_PARQUET.with_suffix(".building.parquet")
-    writer = None
-    schema = None
-    try:
-        for chunk in pd.read_csv(TPM_TSV, sep="\t", chunksize=4000):
-            chunk = chunk.rename(columns={chunk.columns[0]: "Symbol"})
-            chunk["Symbol"] = chunk["Symbol"].astype(str)
-            for c in chunk.columns[1:]:
-                chunk[c] = chunk[c].astype("float32")
-            table = pa.Table.from_pandas(chunk, preserve_index=False)
-            if writer is None:
-                schema = table.schema
-                writer = pq.ParquetWriter(tmp, schema, compression="zstd")
-            writer.write_table(table.cast(schema))
-    finally:
-        if writer is not None:
-            writer.close()
-    tmp.replace(TPM_PARQUET)
-    return TPM_PARQUET
-
-
-def per_sample_percentile_cutoffs(percentiles=PERCENTILES, *, nbins=2000,
-                                  vmax_log2=20.0, cache=True) -> pd.DataFrame:
-    """Per-sample TPM value at each within-sample percentile, computed over ALL
-    genes in the compendium (not just CTAs) so a CTA's rank is relative to the
-    whole transcriptome. Memory-bounded histogram pass over the full
-    log2(TPM+1) TSV (+ the linear-TPM parquet cohorts); cached.
-
-    cDNA-identical loci are **collapsed (summed) into one entry before ranking**,
-    so the ranking universe holds one XAGE1 (=XAGE1A+XAGE1B), not the individual
-    members — otherwise a collapsed CTA would be ranked against a universe that
-    still contains its own components (#21)."""
-    cachef = CACHE / "_per_sample_pctile_cutoffs_v3.parquet"   # v2: cDNA-collapsed
-    if (cache and cachef.exists()
-            and cachef.stat().st_mtime >= _source_mtime()):
-        return pd.read_parquet(cachef)
-    from pirlygenes.expression.protein_groups import (
-        cdna_symbol_to_canonical_symbol)
-    sym2canon = {k.upper(): v for k, v in cdna_symbol_to_canonical_symbol().items()}
-
-    edges = np.linspace(0.0, vmax_log2, nbins + 1)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    hist = None
-    cols = None
-    accum: dict[str, np.ndarray] = {}      # canonical symbol -> per-sample LINEAR sum
-    for batch in pq.ParquetFile(compendium_parquet()).iter_batches(batch_size=4000):
-        chunk = batch.to_pandas()
-        genes = chunk.iloc[:, 0].astype(str).str.upper()
-        vals = chunk.iloc[:, 1:]
-        if cols is None:
-            cols = list(vals.columns)
-            hist = np.zeros((len(cols), nbins), dtype=np.int64)
-        arr = vals.to_numpy(dtype=np.float32)            # genes(chunk) × samples (log2)
-        canon = genes.map(sym2canon)                     # canonical symbol or NaN
-        member = canon.notna().to_numpy()
-        # histogram the genes that are NOT in a cDNA-identical group, as-is
-        if (~member).any():
-            nm_idx = np.clip(np.searchsorted(edges, arr[~member], side="right") - 1,
-                             0, nbins - 1)
-            for j in range(nm_idx.shape[1]):
-                hist[j] += np.bincount(nm_idx[:, j], minlength=nbins)
-        # accumulate group members (linear) into their canonical's per-sample sum
-        if member.any():
-            lin = np.power(2.0, arr[member].astype(np.float64)) - 1.0
-            for gi, cs in enumerate(canon[member].to_numpy()):
-                accum.setdefault(cs, np.zeros(len(cols)))
-                accum[cs] += lin[gi]
-    # each collapsed group contributes ONE entry per sample (its summed value)
-    for linsum in accum.values():
-        log2v = np.log2(linsum + 1.0)
-        bins_c = np.clip(np.searchsorted(edges, log2v, side="right") - 1, 0, nbins - 1)
-        hist[np.arange(len(cols)), bins_c] += 1
-
-    cum = np.cumsum(hist, axis=1)
-    total = cum[:, -1].astype(float)
-    out = {"sample": cols}
-    for p in percentiles:
-        bins = (cum >= (total * (p / 100.0))[:, None]).argmax(axis=1)
-        out[f"p{p}"] = np.power(2.0, centers[bins]) - 1.0   # log2 cutoff -> TPM
-    df = pd.DataFrame(out).set_index("sample")
-
-    # parquet cohorts ship linear TPM over their own gene set — compute their
-    # per-sample percentiles directly and append.
-    extra = []
-    cache_dir = Path.home() / ".cache" / "pirlygenes" / "expression"
-    for source_id, code in _EXTRA_PARQUET_COHORTS:
-        p = cache_dir / source_id / "derived" / f"{code}_per_sample_tpm.parquet"
-        if not p.exists():
-            continue
-        pf = pd.read_parquet(p)
-        sample_cols = [c for c in pf.columns
-                       if c not in ("Ensembl_Gene_ID", "Symbol")]
-        # collapse cDNA-identical loci (sum) before ranking, same as the TSV pass
-        canon = pf["Symbol"].astype(str).str.upper().map(sym2canon)
-        pf = pf.assign(_g=canon.fillna(pf["Symbol"].astype(str)))
-        m = pf.groupby("_g")[sample_cols].sum().to_numpy(dtype=float)
-        rec = {}
-        for col, vec in zip(sample_cols, m.T):
-            # match the prefixed column names _add_parquet_cohorts assigns
-            # ("{code}::{sample}"), else the cutoff lookup misses -> +inf -> the
-            # cohort's within-sample-percentile coverage is wrongly zero.
-            rec[f"{code}::{col}"] = {f"p{q}": float(np.percentile(vec, q))
-                                     for q in percentiles}
-        extra.append(pd.DataFrame(rec).T)
-    if extra:
-        df = pd.concat([df] + extra)
-        df = df[~df.index.duplicated(keep="first")]
-    if cache:
-        df.to_parquet(cachef)
-    return df
-
 # Plot tick labels: the registry code is now authoritative (Phase C made SARC
 # the honest pan-sarcoma grand union and split the histology atoms), so no
 # special-case relabelling is needed. The only transform is the shared
@@ -310,135 +152,75 @@ def _display_code(code: str) -> str:
     return gsc.format_cancer_code_label(code)
 
 
-def _glioma_split_cohorts() -> list[TreehouseCohort]:
-    """GBM/LGG cohorts from the cached TCGA glioma case->project map."""
-    if not GLIOMA_MAP.exists():
-        return []
-    m = pd.read_csv(GLIOMA_MAP)
-    case_to_project = dict(zip(m["submitter_id"], m["project_id"]))
+def owner_cta_expression(
+    ctas: set[str],
+    *,
+    percentiles: list[int] | tuple[int, ...] = PERCENTILES,
+) -> tuple[pd.DataFrame, dict[str, list[str]], pd.DataFrame]:
+    """Load the analysis matrix from oncoref-owned per-cohort artifacts.
 
-    def _pred_for(project_id):
-        def _pred(row):
-            dsid = str(row.get("th_dataset_id", ""))
-            if not dsid.startswith("TCGA"):
-                return False
-            return case_to_project.get("-".join(dsid.split("-")[:3])) == project_id
-        return _pred
+    The source set matches the historical analysis (Treehouse matrices plus the
+    independently published NUTM and chordoma cohorts). Physical Treehouse
+    samples share oncoref's stable namespace, so overlapping parent/subtype
+    views reuse one column and aggregate cohorts cannot double-count a patient.
+    """
+    from oncoref import source_matrices
 
-    return [
-        TreehouseCohort("GBM", "glioma", sample_predicate=_pred_for("TCGA-GBM")),
-        TreehouseCohort("LGG", "glioma", sample_predicate=_pred_for("TCGA-LGG")),
-    ]
+    from pirlygenes.expression.protein_groups import cdna_member_to_canonical
 
-
-_DERIVED_DIR = EXPR_CACHE / "derived"
-
-
-def _tcga_case_subtype_cohorts(cache_csv, disease_label, key_col, code_col,
-                               recode=None):
-    """Build derived sub-cohorts from a cached cBioPortal patientId->code map:
-    one TreehouseCohort per distinct code, matching TCGA samples whose case id
-    maps to that code (same logic the sweep builders use). ``recode`` maps the
-    cached label to the canonical registry code."""
-    if not cache_csv.exists():
-        return []
-    recode = recode or {}
-    m = pd.read_csv(cache_csv)
-    out = []
-    for raw in sorted(m[code_col].dropna().unique()):
-        code = recode.get(str(raw), str(raw))
-        cases = set(m.loc[m[code_col] == raw, key_col].astype(str))
-
-        def _pred(row, cases=cases):
-            dsid = str(row.get("th_dataset_id", ""))
-            if not dsid.startswith("TCGA"):
-                return False
-            return "-".join(dsid.split("-")[:3]) in cases
-
-        out.append(TreehouseCohort(str(code), disease_label, sample_predicate=_pred))
-    return out
-
-
-def _cbioportal_derived_cohorts() -> list[TreehouseCohort]:
-    """BRCA PAM50 (5) + HNSC HPV (2) sub-cohorts from the cached cBioPortal
-    maps — the per-sample-reconstructable sub-divisions of TCGA parents."""
-    return (
-        _tcga_case_subtype_cohorts(
-            _DERIVED_DIR / "cbioportal_brca_pam50.csv",
-            "breast invasive carcinoma", "patientId", "pam50",
-            recode={"BRCA_Her2": "BRCA_HER2"})
-        + _tcga_case_subtype_cohorts(
-            _DERIVED_DIR / "cbioportal_hnsc_hpv.csv",
-            "head & neck squamous cell carcinoma", "patientId", "hpv_subtype",
-            recode={"HNSC_HPV-": "HNSC_HPVneg", "HNSC_HPV+": "HNSC_HPVpos"})
-        + _tcga_case_subtype_cohorts(
-            _DERIVED_DIR / "cbioportal_ucec_subtype.csv",
-            "uterine corpus endometrioid carcinoma", "patientId", "ucec_subtype",
-            recode={"UCEC_CN_LOW": "UCEC_CNL", "UCEC_CN_HIGH": "UCEC_CNH"})
+    registry = source_matrices.registry().copy()
+    source_labels = registry["source_cohort"].astype(str)
+    keep = (
+        source_labels.str.startswith("TREEHOUSE_")
+        | registry["cancer_code"].astype(str).isin({"NUTM", "SARC_CHOR"})
     )
+    selected = registry.loc[keep].sort_values("cancer_code")
+    ctas = {str(gene).split(".", 1)[0] for gene in ctas}
+    member_to_canonical = cdna_member_to_canonical()
 
+    sample_vectors: dict[str, pd.Series] = {}
+    cutoff_rows: dict[str, dict[str, float]] = {}
+    cohorts: dict[str, list[str]] = {}
+    for row in selected.itertuples(index=False):
+        code = str(row.cancer_code)
+        source_cohort = str(row.source_cohort)
+        frame = pd.read_parquet(source_matrices.ensure(code))
+        id_cols = {"Ensembl_Gene_ID", "Symbol"}
+        sample_cols = [col for col in frame.columns if col not in id_cols]
+        if "Ensembl_Gene_ID" not in frame.columns or not sample_cols:
+            raise ValueError(f"oncoref source matrix {code!r} has no gene/sample data")
 
-def build_cohorts() -> list[TreehouseCohort]:
-    """Pediatric/sarcoma + TCGA-subset + GBM/LGG split + cBioPortal sub-cohorts
-    (BRCA PAM50, HNSC HPV) — parents AND their sub-divisions, all via the
-    builders' own per-sample filters."""
-    return (
-        list(polya.COHORTS) + list(tcga.COHORTS)
-        + _glioma_split_cohorts() + _cbioportal_derived_cohorts()
-    )
+        gene_ids = (
+            frame["Ensembl_Gene_ID"].astype(str).str.split(".", n=1).str[0]
+        )
+        values = frame[sample_cols].apply(pd.to_numeric, errors="coerce")
+        values.index = gene_ids
+        values = values.groupby(level=0, sort=False).sum(min_count=1)
 
+        collapsed_ids = pd.Index(
+            [member_to_canonical.get(gene, gene) for gene in values.index],
+            name="Ensembl_Gene_ID",
+        )
+        ranked = values.groupby(collapsed_ids, sort=False).sum(min_count=1)
+        namespace = source_matrices.source_sample_namespace(source_cohort)
+        cohort_samples: list[str] = []
+        for sample in sample_cols:
+            public_sample = f"{namespace}::{sample}"
+            cohort_samples.append(public_sample)
+            if public_sample not in sample_vectors:
+                sample_vectors[public_sample] = values[sample].reindex(sorted(ctas))
+                vector = ranked[sample].dropna().to_numpy(dtype=float)
+                cutoff_rows[public_sample] = {
+                    f"p{q}": float(np.percentile(vector, q))
+                    for q in percentiles
+                }
+        cohorts[code] = list(dict.fromkeys(cohort_samples))
 
-def cohort_samples(clinical: pd.DataFrame) -> dict[str, list[str]]:
-    out: dict[str, list[str]] = {}
-    for c in build_cohorts():
-        ids = [s for s in _filter_samples(clinical, c) if s]
-        if ids:
-            out[c.cancer_code] = ids
-    return out
+    matrix = pd.DataFrame(sample_vectors).fillna(0.0)
+    matrix.index.name = "Ensembl_Gene_ID"
+    cutoffs = pd.DataFrame.from_dict(cutoff_rows, orient="index")
+    return matrix, cohorts, cutoffs
 
-
-def extract_cta_matrix(symbols: dict[str, str]) -> pd.DataFrame:
-    """Pull just the CTA rows out of the compendium with a single columnar
-    Parquet query — no awk, no 6.2 GB text scan. The Parquet ``Symbol`` column
-    is row-group-indexed, so pyarrow only materialises the wanted rows; symbols
-    absent from this compendium build (recent gene renames) are simply not
-    returned, which downstream already tolerates.
-
-    Returns a CTA(ENSG)-indexed, sample-columned TPM frame."""
-    sym_to_ensg = {v: k for k, v in symbols.items()}
-    want = list(sym_to_ensg)
-    table = pads.dataset(compendium_parquet(), format="parquet").to_table(
-        filter=pads.field("Symbol").isin(want))
-    raw = table.to_pandas()
-    raw = raw[raw["Symbol"].isin(sym_to_ensg)].set_index("Symbol")
-    print(f"      Parquet CTA query: {raw.shape[0]}/{len(want)} symbols present",
-          flush=True)
-    # inverse log2(TPM+1) -> TPM, clamp tiny negatives
-    tpm = np.power(2.0, raw.to_numpy(dtype=float)) - 1.0
-    tpm = np.clip(tpm, 0.0, None)
-    out = pd.DataFrame(tpm, index=raw.index, columns=raw.columns)
-    out.index = [sym_to_ensg[s] for s in out.index]  # -> ENSG
-    out.index.name = "Ensembl_Gene_ID"
-    return out
-
-
-# Extra per-sample cohorts pulled from other cached per-cohort parquets (linear
-# TPM) so coverage isn't confined to a single compendium. The set expands as
-# more sources gain materialized per-sample data (see issue #275).
-_EXTRA_PARQUET_COHORTS = [
-    ("treehouse-ribod-25-01", "SARC_CHOR"),
-    ("treehouse-ribod-25-01", "RB"),
-    # NUT carcinoma: the UNC case series (n=3); UNIONED with the single Treehouse
-    # NUT sample already in the matrix -> NUTM n=4 (the prefixed parquet sample
-    # ids can't collide with the raw Treehouse id, so no double-count).
-    ("unc-nutm1", "NUTM"),
-    # colorectal MSI/MSS subtypes (per-sample) so the coverage plots can resolve
-    # CRC_MSI / CRC_MSS (pooled from these by _add_crc_subtype_cohorts)
-    ("treehouse-polya-25-01", "COAD_MSI"),
-    ("treehouse-polya-25-01", "READ_MSI"),
-    ("treehouse-polya-25-01", "COAD_MSS"),
-    ("treehouse-polya-25-01", "READ_MSS"),
-]
 
 # KEYNOTE-177 etc. report *colorectal*, so COAD+READ of a given microsatellite
 # status are one CRC tier (the causal-factors / apd1 plots pool the same way).
@@ -471,32 +253,6 @@ def _add_crc_subtype_cohorts(cohorts):
     if added:
         print(f"      + CRC subtype cohorts: {', '.join(added)}", flush=True)
     return cohorts
-
-
-def _add_parquet_cohorts(mat, cohorts, ctas):
-    """Merge extra per-sample cohorts (from cached per-cohort parquets) into the
-    CTA matrix + cohort buckets, aligned to the existing CTA index."""
-    cache = Path.home() / ".cache" / "pirlygenes" / "expression"
-    added = []
-    for source_id, code in _EXTRA_PARQUET_COHORTS:
-        p = cache / source_id / "derived" / f"{code}_per_sample_tpm.parquet"
-        if not p.exists():
-            continue
-        df = pd.read_parquet(p)
-        df = df[df["Ensembl_Gene_ID"].astype(str).isin(set(ctas))]
-        sample_cols = [c for c in df.columns if c not in ("Ensembl_Gene_ID", "Symbol")]
-        sub = df.set_index("Ensembl_Gene_ID")[sample_cols].reindex(mat.index).fillna(0.0)
-        sub.columns = [f"{code}::{c}" for c in sub.columns]  # avoid id collisions
-        mat = pd.concat([mat, sub], axis=1)
-        # UNION with any samples this code already has (e.g. NUTM's single
-        # Treehouse sample) — the "{code}::" prefix guarantees no id collision,
-        # so this pools rather than replaces. Codes with no prior cohort (the
-        # MSI/MSS tiers) are unaffected.
-        cohorts[code] = cohorts.get(code, []) + list(sub.columns)
-        added.append(f"{code}(n={len(cohorts[code])})")
-    if added:
-        print(f"      + extra per-sample cohorts: {', '.join(added)}", flush=True)
-    return mat, cohorts
 
 
 def _add_aggregate_cohorts(cohorts):
@@ -664,15 +420,8 @@ def main():
             ensg_to_sym[e] = sym
     print(f"[1/5] ENSG->Symbol for {len(ensg_to_sym)} CTAs", flush=True)
 
-    print("[2/5] cohort sample buckets (builder filters)", flush=True)
-    clinical = pd.read_csv(CLINICAL, sep="\t", dtype=str)
-    cohorts = cohort_samples(clinical)
-    print(f"      {len(cohorts)} cohorts, "
-          f"{sum(len(v) for v in cohorts.values())} samples", flush=True)
-
-    print("[3/5] extract CTA per-sample TPM matrix (Parquet query + log2 inverse)", flush=True)
-    mat = extract_cta_matrix(ensg_to_sym)
-    mat, cohorts = _add_parquet_cohorts(mat, cohorts, ctas)
+    print("[2/5] load oncoref per-cohort source matrices", flush=True)
+    mat, cohorts, owner_pctile_cuts = owner_cta_expression(ctas)
     cohorts = _add_crc_subtype_cohorts(cohorts)
     cohorts = _add_aggregate_cohorts(cohorts)   # materialises CRC = COAD+READ
     # now that the colorectal aggregate exists, fold the organ-split halves into
@@ -689,7 +438,7 @@ def main():
     # Within-sample percentile cutoffs (computed once, cached) so the counts
     # CSVs carry n_p80/90/95 alongside n_gt25/50/100/200 — downstream plots
     # (addressability) can then offer percentile versions too.
-    pctile_cuts = None if args.no_percentiles else per_sample_percentile_cutoffs()
+    pctile_cuts = None if args.no_percentiles else owner_pctile_cuts
 
     print("[4/5] per (CTA × cohort) threshold counts -> CSV", flush=True)
     counts = per_cohort_counts(mat, cohorts, ensg_to_sym, pctile_cuts)
@@ -808,7 +557,7 @@ def main():
     # The cutoffs are cached after the first compute.
     if not args.no_percentiles:
         print(f"[+] within-sample percentile thresholds {PERCENTILES}", flush=True)
-        cutoffs = per_sample_percentile_cutoffs()
+        cutoffs = owner_pctile_cuts
         for p in _tqdm(PERCENTILES, "percentile thresholds"):
             pthr = Threshold("pctile", p)
             _coverage_every_cohort(mat, cohorts, ensg_to_sym, pthr, cutoffs)

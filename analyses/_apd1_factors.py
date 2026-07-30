@@ -13,13 +13,10 @@ CRC_MSI anchors, not independent COAD_MSI and READ_MSI estimates. Measured
 feature axes (expression/CTA) can still use organ/subtype rows where real
 per-cohort data exist, and those rows are pooled separately in the matrix layer.
 
-The reference expression matrix only has *bulk* UCEC, so UCEC is split into its
-four TCGA molecular subtypes from the per-sample TCGA-UCEC parquet + the
-cBioPortal SUBTYPE map (same artifacts the CTA plots use). If those per-sample
-artifacts are absent we fall back to bulk UCEC + UCS aggregate (no subtype
-split). Fine-grained subtypes that lack an aPD1 ORR simply don't join and drop
-out, so e.g. SARC rolls up to whatever coarse code has a response number (none,
-here).
+UCEC's four TCGA molecular subtypes come from oncoref's published per-subtype
+source matrices. If those artifacts are not cached we fall back to bulk UCEC +
+UCS (no subtype split). Fine-grained subtypes that lack an aPD1 ORR simply do
+not join.
 """
 
 from __future__ import annotations
@@ -51,16 +48,7 @@ def signature_score(mat: pd.DataFrame, genes) -> pd.Series:
         return pd.Series(np.nan, index=mat.index)
     return mat[present].apply(zscore).mean(axis=1)
 
-_EXPR_CACHE = (Path.home() / ".cache" / "pirlygenes" / "expression"
-               / "treehouse-polya-25-01")
-_DERIVED = _EXPR_CACHE / "derived"
-_UCEC_PARQUET = _DERIVED / "tcga_ucec_per_sample_tpm.parquet"
-_UCEC_SUBTYPE_MAP = _DERIVED / "cbioportal_ucec_subtype.csv"
-# cBioPortal SUBTYPE -> aPD1-table code
-_UCEC_RECODE = {
-    "UCEC_POLE": "UCEC_POLE", "UCEC_MSI": "UCEC_MSI",
-    "UCEC_CN_LOW": "UCEC_CNL", "UCEC_CN_HIGH": "UCEC_CNH",
-}
+_UCEC_SUBTYPE_CODES = ("UCEC_POLE", "UCEC_MSI", "UCEC_CNL", "UCEC_CNH")
 
 
 # Rectum is curated as colorectal (READ inherits COAD's aPD1 ORR + TMB at every
@@ -191,27 +179,26 @@ def viral_score(code: str, reg) -> float:
 
 
 def _ucec_subtype_tpm(genes=None) -> pd.DataFrame | None:
-    """Per-subtype median TPM (rows = UCEC_* codes, cols = Symbol) from the
-    per-sample TCGA-UCEC parquet split by the cBioPortal molecular class.
-    Returns ``None`` if the per-sample artifacts are unavailable."""
-    if not (_UCEC_PARQUET.exists() and _UCEC_SUBTYPE_MAP.exists()):
+    """Per-subtype median TPM from oncoref's published UCEC matrices.
+
+    Returns ``None`` unless every subtype artifact is already cached, preserving
+    this analysis helper's no-surprise-download behavior.
+    """
+    from oncoref import source_matrices
+
+    if not all(source_matrices.is_cached(code) for code in _UCEC_SUBTYPE_CODES):
         return None
-    mat = pd.read_parquet(_UCEC_PARQUET)
-    smap = pd.read_csv(_UCEC_SUBTYPE_MAP)
-    sub = dict(zip(smap["patientId"], smap["ucec_subtype"]))
-    if genes is not None:
-        mat = mat[mat["Symbol"].isin(set(genes))]
-    sample_cols = [c for c in mat.columns if c.startswith("TCGA-")]
-    # sample "TCGA-2E-A9G8-01" -> patientId "TCGA-2E-A9G8"
-    col_sub = {c: _UCEC_RECODE.get(sub.get("-".join(c.split("-")[:3])))
-               for c in sample_cols}
     out = {}
-    for code in set(v for v in col_sub.values() if v):
-        cols = [c for c in sample_cols if col_sub[c] == code]
-        if cols:
-            out[code] = mat.set_index("Symbol")[cols].median(axis=1)
-    if not out:
-        return None
+    for code in _UCEC_SUBTYPE_CODES:
+        matrix = pd.read_parquet(source_matrices.local_path(code))
+        if genes is not None:
+            matrix = matrix[matrix["Symbol"].isin(set(genes))]
+        sample_cols = [
+            col
+            for col in matrix.columns
+            if col not in {"Ensembl_Gene_ID", "Symbol"}
+        ]
+        out[code] = matrix.set_index("Symbol")[sample_cols].median(axis=1)
     return pd.DataFrame(out).T  # rows=codes, cols=Symbol
 
 
@@ -219,12 +206,12 @@ def cohort_gene_matrix(codes, *, ucec_subtypes: bool = True) -> pd.DataFrame:
     """cohort (cancer_code) x gene matrix of ``log10(TPM+1)``.
 
     Richest-source-wins per code, RNA-seq only (microarray-proxy cohorts
-    dropped). When ``ucec_subtypes`` and the per-sample artifacts exist, bulk
+    dropped). When ``ucec_subtypes`` and the owner artifacts exist, bulk
     UCEC is replaced by its four molecular subtypes; otherwise bulk UCEC and
     UCS are kept as-is.
 
-    Caveat: the UCEC subtype rows are summarised from the per-sample TCGA-UCEC
-    parquet, a *different* pipeline than the reference-summary cohorts, so their
+    Caveat: the UCEC subtype rows are summarised from per-sample source
+    matrices, a *different* view than the reference-summary cohorts, so their
     absolute TPM is not strictly cross-pipeline comparable. Downstream analyses
     z-score each gene across cohorts, so this affects cohort *ranking* only
     marginally; do not compare raw subtype TPM to other cohorts' raw TPM.

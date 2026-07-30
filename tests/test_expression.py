@@ -1302,7 +1302,7 @@ def test_salivary_candidates_report_released_diagnosis_split():
     }
     assert set(candidates["source_cohort"]) == {"GSE294016_BARTL_2025_SGC"}
     assert set(candidates["accession"]) == {"GSE294016"}
-    assert candidates["notes"].str.contains("oncoref 1.8.145", regex=False).all()
+    assert candidates["notes"].str.contains("published by oncoref", regex=False).all()
 
 
 def test_cancer_expression_reference_status_is_uniform_for_parent_labels():

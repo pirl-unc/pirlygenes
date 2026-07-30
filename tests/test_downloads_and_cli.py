@@ -1,11 +1,4 @@
-"""Smoke tests for the cohort-level CLI + downloads Python API.
-
-Covers the foundation shipped in the expression-data refresh project
-(see docs/expression-data-refresh-plan.md). Heavy behavior (build,
-fetch) is scaffolded only — those subcommands return a clear
-NotImplemented pointer and are not exercised here. `plot
-patient-coverage` is implemented and covered in test_coverage.py.
-"""
+"""Smoke tests for the oncoref-backed cache and compatibility CLI."""
 
 from __future__ import annotations
 
@@ -65,37 +58,23 @@ def test_ci_oncoref_cache_key_tracks_resolved_package_and_data_versions():
 
 def test_dependency_owned_sources_are_present_in_oncoref():
     """Dependency-owned routes stay discoverable but never write locally."""
-    from oncoref.expression_builders import (
-        gdc_source_entries,
-        geo_matrix_source_entries,
-        recount3_source_entries,
-        treehouse_source_entries,
-    )
+    from oncoref.expression_registry import expression_sources
 
     local = {
         source.id: source
         for source in downloads.load_registry()
         if source.build_owner == "oncoref"
     }
-    upstream = {
-        str(entry["id"]): entry
-        for entries in (
-            gdc_source_entries(),
-            geo_matrix_source_entries(),
-            recount3_source_entries(),
-            treehouse_source_entries(),
-        )
-        for entry in entries
-    }
+    upstream = {source.id: source for source in expression_sources()}
 
     assert local
     assert {"cgci-blgsp", "gse328026-sarc-pec"} <= set(local)
     assert set(local) <= set(upstream)
     for source_id, source in local.items():
         assert source.builder is None
-        assert source.source_type == str(upstream[source_id]["source_type"])
+        assert source.source_type == upstream[source_id].source_type
         if source.source_cohort:
-            assert source.source_cohort == str(upstream[source_id]["source_cohort"])
+            assert source.source_cohort == upstream[source_id].source_cohort
 
 
 def test_cache_root_honors_env_var(monkeypatch, tmp_path: Path):
@@ -131,7 +110,7 @@ def test_source_cache_dir_layout(monkeypatch, tmp_path: Path):
 def test_collect_cache_usage_reports_zero_for_empty_cache(
     monkeypatch, tmp_path: Path,
 ):
-    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path))
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
     usages = downloads.collect_cache_usage()
     assert usages, "must report at least one source"
     assert all(u.on_disk_bytes == 0 for u in usages)
@@ -140,22 +119,23 @@ def test_collect_cache_usage_reports_zero_for_empty_cache(
 def test_collect_cache_usage_walks_actual_files(
     monkeypatch, tmp_path: Path,
 ):
-    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path))
-    target = downloads.source_cache_dir("cgci-blgsp")
-    target.mkdir(parents=True)
-    (target / "a.bin").write_bytes(b"x" * 1024)
-    (target / "sub").mkdir()
-    (target / "sub" / "b.bin").write_bytes(b"y" * 2048)
+    from oncoref import source_matrices
+
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
+    target = source_matrices.local_path("BL")
+    target.write_bytes(b"x" * 3072)
 
     usages = {u.source.id: u for u in downloads.collect_cache_usage()}
     assert usages["cgci-blgsp"].on_disk_bytes == 1024 + 2048
 
 
 def test_render_list_groups_and_sorts(monkeypatch, tmp_path: Path):
-    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path))
+    from oncoref import source_matrices
+
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
     out = downloads.render_list(downloads.collect_cache_usage())
     assert "== expression" in out
-    assert "Cache root:" in out
+    assert f"Cache root: {source_matrices.cache_dir()}" in out
     assert "Total across" in out
 
 
@@ -176,14 +156,16 @@ def test_cli_no_args_prints_help():
 
 
 def test_cli_downloads_cache_dir(monkeypatch, tmp_path: Path):
-    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path))
+    from oncoref import source_matrices
+
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
     rc, out, _ = _run_cli(["downloads", "cache-dir"])
     assert rc == 0
-    assert out.strip() == str(tmp_path)
+    assert out.strip() == str(source_matrices.cache_dir())
 
 
 def test_cli_downloads_list(monkeypatch, tmp_path: Path):
-    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path))
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
     rc, out, _ = _run_cli(["downloads", "list"])
     assert rc == 0
     assert "tcga-blca" in out

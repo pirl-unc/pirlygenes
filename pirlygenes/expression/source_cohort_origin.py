@@ -6,7 +6,7 @@ lives here so the backfill script, future audit scripts, and any
 
 Two layers, evaluated in this order:
 
-1. **YAML overlay** — ``pirlygenes/data/expression_sources.yaml`` entries
+1. **Owner-registry overlay** — oncoref ``expression_sources.yaml`` entries
    with an explicit ``tumor_origin:`` (and optional ``metastasis_site:``
    + ``source_cohort:``) field win. Builders that emit non-primary
    shards declare their classification here.
@@ -16,12 +16,7 @@ Two layers, evaluated in this order:
    legacy shards whose YAML entries predate the v5.4 schema and don't
    carry a ``tumor_origin`` field yet.
 
-New builders should:
-- Set ``tumor_origin`` (and ``metastasis_site`` when applicable) on
-  every emitted row. :func:`pirlygenes.expression.stats.write_reference_rows`
-  validates this and rejects unset / unrecognised values.
-- Add ``tumor_origin:`` to the YAML source entry too, so the value is
-  declarative (separate from per-row data).
+New builders should set these fields in oncoref's registry and emitted rows.
 
 The backfill script is then only relevant for one-time schema-migration
 passes against legacy data.
@@ -83,15 +78,11 @@ SELF_ANNOTATED_SOURCES: frozenset[str] = frozenset({
 })
 
 
-_DEFAULT_YAML_PATH = (
-    Path(__file__).resolve().parent.parent / "data" / "expression_sources.yaml"
-)
-
 # Mutable so :func:`set_yaml_path` (a test hook) can redirect lookups
 # at the YAML registry without monkey-patching a private constant.
 # Production code should NOT mutate this — use ``set_yaml_path`` from
 # a test, paired with ``clear_cache()``.
-_YAML_PATH = _DEFAULT_YAML_PATH
+_YAML_PATH: Path | None = None
 
 
 def set_yaml_path(path: Path | None) -> None:
@@ -101,10 +92,10 @@ def set_yaml_path(path: Path | None) -> None:
     ``set_yaml_path(tmp_path / "fake.yaml")`` then ``clear_cache()``,
     and resets via ``set_yaml_path(None)`` (or ``clear_cache()``-only
     if relying on autouse-fixture cleanup) at teardown.
-    Passing ``None`` restores the bundled default.
+    Passing ``None`` restores oncoref's owner registry.
     """
     global _YAML_PATH
-    _YAML_PATH = _DEFAULT_YAML_PATH if path is None else Path(path)
+    _YAML_PATH = None if path is None else Path(path)
     clear_cache()
 
 
@@ -119,12 +110,20 @@ def _yaml_overlay() -> dict[str, tuple[str, str | None]]:
     half-completes the YAML schema sees an explicit signal rather
     than silent inaction.
     """
-    if not _YAML_PATH.exists():
-        return {}
-    payload = yaml.safe_load(_YAML_PATH.read_text()) or {}
+    if _YAML_PATH is None:
+        from oncoref.expression_registry import (
+            expression_source_registry_entries,
+        )
+
+        entries = expression_source_registry_entries()
+    else:
+        if not _YAML_PATH.exists():
+            return {}
+        payload = yaml.safe_load(_YAML_PATH.read_text()) or {}
+        entries = payload.get("sources", []) or []
     out: dict[str, tuple[str, str | None]] = {}
     incomplete: list[str] = []
-    for entry in payload.get("sources", []) or []:
+    for entry in entries:
         origin = entry.get("tumor_origin")
         if not origin:
             continue
@@ -145,7 +144,7 @@ def _yaml_overlay() -> dict[str, tuple[str, str | None]]:
         # builder, test, or notebook) — that's the audience who needs
         # to see what triggered the lookup.
         warnings.warn(
-            "expression_sources.yaml: entries with tumor_origin: but "
+            "oncoref expression_sources.yaml: entries with tumor_origin: but "
             f"no source_cohort: are ignored by classify_source_cohort: "
             f"{incomplete}. Add `source_cohort: <SHARD_NAME>` to make "
             "the classification apply.",

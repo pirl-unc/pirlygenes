@@ -1,15 +1,9 @@
-"""Shared per-cohort summary-statistic computation.
+"""Reference-expression schema and pure summary-statistic helpers.
 
-Every ``scripts/build_*_reference_expression.py`` builder produces a
-per-gene-per-cohort summary from a per-sample TPM matrix; this module
-defines the exact stat suite and column names so every cohort lands
-in ``cancer-reference-expression.csv.gz`` with the same shape.
-
-Schema additions in v5.4 — ``tumor_origin`` (one of the values in
-:data:`TUMOR_ORIGIN_VALUES`) and ``metastasis_site`` (free-text site
-when ``tumor_origin == 'metastasis'``). Every builder MUST set
-``tumor_origin``; :func:`write_reference_rows` raises if it's missing or
-holds an unrecognised value.
+Oncoref owns source ingestion, per-sample matrices, and persisted empirical
+summary rows. This module retains pirlygenes' compatibility column names and
+pure in-memory statistics used by downstream consumers; it deliberately has no
+writer or source-builder path.
 
 Stat suite (raw and ``_clean`` companions, raw applied to the input
 TPM matrix and clean applied after technical-RNA features are zeroed
@@ -25,14 +19,12 @@ and the remaining mass renormalized):
 plus ``n_samples`` (total samples in the cohort) and ``n_detected``
 (samples with ``TPM > 0`` for the gene, raw matrix).
 
-Use :func:`compute_cohort_stats` from each builder's ``_summarize``
-to populate the columns; ``STAT_COLUMNS`` / ``CLEAN_STAT_COLUMNS``
-are the canonical column-name tuples for schema work.
+``STAT_COLUMNS`` / ``CLEAN_STAT_COLUMNS`` are the canonical column-name tuples
+for schema compatibility work.
 """
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Iterable, Literal, Optional
@@ -105,13 +97,8 @@ COHORT_ANNOTATION_COLUMNS: tuple[str, ...] = (
 )
 
 
-# Valid values for the ``tumor_origin`` column. ``write_reference_rows``
-# rejects any row whose ``tumor_origin`` falls outside this set —
-# catches typos like 'metastatic' (vs 'metastasis') at write time
-# rather than at downstream-analysis time. NaN is allowed only when
-# explicitly opted into via ``write_reference_rows(..., allow_unset_tumor_origin=True)``
-# (used by the schema-backfill script during the v5.4 migration; new
-# builders should always set it).
+# Valid values for the compatibility ``tumor_origin`` column. Oncoref validates
+# and publishes these values at the owning data boundary.
 TUMOR_ORIGIN_VALUES: frozenset[str] = frozenset({
     "primary",
     "metastasis",
@@ -133,14 +120,9 @@ TumorOrigin = Literal[
 ]
 
 
-# Canonical column order for cancer-reference-expression.csv.gz rows.
-# Every `build_*_reference_expression.py` and
-# `import_cancer_specific_expression.py` writes this exact ordering so
-# the on-disk schema stays uniform across cohorts. The legacy 17
-# columns (median/q1/q3/mean + clean median/q1/q3 + counts +
-# metadata) come first to preserve byte-stable diffs with prior
-# releases; the v5.3 extension (std/min/max/p5/p10/p90/p95 + clean
-# mean + clean std/min/max/p5/p10/p90/p95) is appended.
+# Canonical compatibility column order for delegated reference-expression rows.
+# The legacy 17 columns come first to preserve positional consumers; later
+# extensions remain appended in release order.
 REFERENCE_COLUMNS: tuple[str, ...] = (
     *IDENTIFIER_COLUMNS,
     *PROVENANCE_COLUMNS,
@@ -501,327 +483,6 @@ def round_stat_columns(
     return df
 
 
-def finalize_reference_rows(
-    rows: pd.DataFrame, *, tumor_origin: str | None = None,
-) -> pd.DataFrame:
-    """Round stat columns and project a builder's rows onto ``REFERENCE_COLUMNS``.
-
-    Replaces the copy-pasted ``round_stat_columns(out)[list(REFERENCE_COLUMNS)]``
-    idiom. Sets ``tumor_origin`` when given, then a **lenient** reindex onto
-    ``REFERENCE_COLUMNS`` — backfilling any schema column the builder predates
-    (e.g. ``metastasis_site``) as NaN instead of the strict ``[list(...)]``
-    select that ``KeyError``s when a column isn't present. ``write_reference_rows``
-    still validates ``tumor_origin``, so a row can never reach the shard with it
-    unset.
-    """
-    out = rows
-    if tumor_origin is not None:
-        out = out.copy()
-        out["tumor_origin"] = tumor_origin
-    return round_stat_columns(out).reindex(columns=list(REFERENCE_COLUMNS))
-
-
-def build_reference_rows(
-    gene_table: pd.DataFrame,
-    raw_values: pd.DataFrame,
-    *,
-    cancer_code: str,
-    source_cohort: str,
-    source_project: str,
-    source_version: str,
-    processing_pipeline: str,
-    notes: str,
-    tumor_origin: str,
-    clean_values: pd.DataFrame | None = None,
-) -> pd.DataFrame:
-    """Assemble finalized reference rows from a gene table + raw TPM matrix.
-
-    Bundles the per-builder boilerplate that every ``scripts/build_*.py``
-    repeats: clean the raw matrix, carry the gene ids, stamp the provenance
-    columns, compute the full stat suite (:func:`assign_stats`), and project
-    onto ``REFERENCE_COLUMNS`` (:func:`finalize_reference_rows`). ``gene_table``
-    must carry ``Ensembl_Gene_ID`` + ``Symbol``; ``raw_values`` is the
-    gene×sample TPM matrix aligned to it. Pass ``clean_values`` to reuse an
-    already-cleaned matrix; otherwise it is computed with
-    ``clean_tpm_matrix(..., censored_fill="fixed_fraction")``.
-    """
-    from .normalize import clean_tpm_matrix
-
-    if clean_values is None:
-        clean_values = clean_tpm_matrix(
-            raw_values, gene_table=gene_table, censored_fill="fixed_fraction"
-        )
-    out = gene_table[["Ensembl_Gene_ID", "Symbol"]].copy()
-    out["cancer_code"] = cancer_code
-    out["source_cohort"] = source_cohort
-    out["source_project"] = source_project
-    out["source_version"] = source_version
-    assign_stats(out, raw_values, clean_values)
-    out["processing_pipeline"] = processing_pipeline
-    out["notes"] = notes
-    return finalize_reference_rows(out, tumor_origin=tumor_origin)
-
-
-def _validate_tumor_origin(
-    rows: pd.DataFrame,
-    *,
-    source_cohort: str,
-    allow_unset: bool,
-) -> None:
-    """Reject rows whose ``tumor_origin`` is missing or out-of-enum.
-
-    Catches typos like ``'metastatic'`` (vs ``'metastasis'``) and silently
-    skipped ``tumor_origin = …`` assignments at write time, rather than
-    at downstream-analysis time. When ``allow_unset=True``, NaN values
-    pass (used by the v5.4 migration backfill); the validity check still
-    runs on any non-null values.
-    """
-    if "tumor_origin" not in rows.columns:
-        if allow_unset:
-            return
-        raise ValueError(
-            f"write_reference_rows({source_cohort!r}): rows are missing the "
-            "'tumor_origin' column. Every builder must set this — see "
-            "TUMOR_ORIGIN_VALUES for the allowed enum."
-        )
-    series = rows["tumor_origin"]
-    null_mask = series.isna()
-    if null_mask.any() and not allow_unset:
-        raise ValueError(
-            f"write_reference_rows({source_cohort!r}): {int(null_mask.sum())} "
-            f"of {len(rows)} rows have null tumor_origin. Set it "
-            "explicitly in the builder (or pass allow_unset_tumor_origin"
-            "=True if this is a legacy-data backfill)."
-        )
-    non_null = series.dropna().astype(str)
-    invalid = sorted(set(non_null) - TUMOR_ORIGIN_VALUES)
-    if invalid:
-        raise ValueError(
-            f"write_reference_rows({source_cohort!r}): unrecognised "
-            f"tumor_origin values {invalid}. Allowed: "
-            f"{sorted(TUMOR_ORIGIN_VALUES)}."
-        )
-
-
-def write_reference_rows(
-    summary_output,
-    new_rows: pd.DataFrame,
-    *,
-    source_cohort: str,
-    cancer_codes: list[str],
-    per_cancer_code_shards: bool = False,
-    allow_unset_tumor_origin: bool = False,
-) -> pd.DataFrame:
-    """Write ``new_rows`` into the per-source shard for ``source_cohort``.
-
-    (Replace-or-insert: rows for the given ``cancer_codes`` are overwritten,
-    rows for every other code in the source are preserved — see below.)
-
-    ``summary_output`` is the
-    ``pirlygenes/data/cancer-reference-expression/`` directory. By
-    default the per-source shard ``<dir>/<source_cohort>.csv.gz`` holds
-    every row for that source; this function replaces the rows for
-    every ``cancer_code`` in ``cancer_codes`` and preserves rows for
-    every other cancer code in that source.
-
-    When ``per_cancer_code_shards=True`` the source is sharded one
-    file per cancer_code at ``<dir>/<source_cohort>__<cancer_code>.csv.gz``.
-    Use this for sources that span many large per-code groups and
-    would otherwise push the combined file past GitHub's 100 MiB
-    hard limit (Treehouse TCGA subset is the motivating case).
-    The reader (``_load_shard_directory``) transparently concats all
-    matching files so no consumer needs to know about the split.
-
-    Backwards-compat: if ``summary_output`` looks like the legacy
-    single-file path
-    (``pirlygenes/data/cancer-reference-expression.csv.gz``), the
-    shard dir is derived from its parent so existing builders don't
-    need to update their --summary-output default in one go.
-
-    Raises ``ValueError`` if ``tumor_origin`` is missing or holds a
-    value outside :data:`TUMOR_ORIGIN_VALUES`. Pass
-    ``allow_unset_tumor_origin=True`` to skip the non-null check (the
-    v5.4 migration backfill needs this; new builders should not).
-    """
-    from pathlib import Path as _Path
-
-    _validate_tumor_origin(
-        new_rows,
-        source_cohort=source_cohort,
-        allow_unset=allow_unset_tumor_origin,
-    )
-
-    # Canonicalize cancer codes on write so a builder still emitting a
-    # pre-rename code (e.g. recount3 routing → "MID_NET"/"PANNET") lands
-    # under the current registry code ("NET_MIDGUT"/"NET_PANCREAS"). This
-    # is the single chokepoint that keeps shards free of rename-orphan
-    # rows: the cross-code upsert below then replaces the canonical rows
-    # instead of leaving a stale copy under the old name. Lazy import to
-    # avoid coupling the expression layer to the registry at module load.
-    from ..gene_sets_cancer import canonical_cancer_code
-
-    new_rows = new_rows.copy()
-    new_rows["cancer_code"] = (
-        new_rows["cancer_code"].map(canonical_cancer_code)
-    )
-    cancer_codes = [canonical_cancer_code(c) for c in cancer_codes]
-
-    out_path = _Path(str(summary_output))
-    if out_path.suffix == ".gz" or out_path.is_file():
-        shard_dir = out_path.parent / "cancer-reference-expression"
-    else:
-        shard_dir = out_path
-    shard_dir.mkdir(parents=True, exist_ok=True)
-
-    new_rows = new_rows.reindex(columns=list(REFERENCE_COLUMNS))
-
-    if per_cancer_code_shards:
-        # One file per code; each file holds rows for that code only.
-        # No cross-code upsert needed because there's no shared file.
-        present_codes = (
-            new_rows["cancer_code"].dropna().astype(str).unique().tolist()
-        )
-
-        # Defensive: catch caller typos in BOTH directions. A code in
-        # cancer_codes but missing from new_rows is almost always a
-        # bug (typo, dropped during filtering); a code in new_rows but
-        # not in cancer_codes is usually accidental cross-contamination
-        # in the input frame and worth surfacing too.
-        missing = set(cancer_codes) - set(present_codes)
-        if missing:
-            raise ValueError(
-                f"write_reference_rows({source_cohort!r}, per_cancer_code_shards"
-                f"=True): cancer_codes lists {sorted(missing)} but no "
-                "rows in new_rows carry that code."
-            )
-        unexpected = set(present_codes) - set(cancer_codes)
-        if unexpected:
-            warnings.warn(
-                f"write_reference_rows({source_cohort!r}, per_cancer_code_shards"
-                f"=True): new_rows contains cancer_codes {sorted(unexpected)} "
-                "that were NOT listed in the cancer_codes argument. Writing "
-                "them anyway, but this usually indicates accidental cross-"
-                "contamination in the input frame — double-check the builder.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        written_frames: list[pd.DataFrame] = []
-        for code in present_codes:
-            code_rows = new_rows[new_rows["cancer_code"].astype(str) == code]
-            code_rows = code_rows.sort_values(
-                ["cancer_code", "Ensembl_Gene_ID"], na_position="last",
-            )
-            shard_path = shard_dir / f"{source_cohort}__{code}.csv.gz"
-            code_rows.to_csv(shard_path, index=False, compression="gzip")
-            written_frames.append(code_rows)
-        return pd.concat(written_frames, ignore_index=True)
-
-    shard_path = shard_dir / f"{source_cohort}.csv.gz"
-    if shard_path.exists():
-        existing = pd.read_csv(shard_path, low_memory=False)
-        # Canonicalize the existing shard's codes too, so a stale row written
-        # under a pre-rename name (e.g. an earlier build's "MID_NET") is folded
-        # into the canonical namespace and matched by the (already canonical)
-        # cancer_codes removal list — otherwise it survives as a rename-orphan.
-        existing["cancer_code"] = existing["cancer_code"].map(canonical_cancer_code)
-        keep = ~existing["cancer_code"].astype(str).isin(cancer_codes)
-        merged = pd.concat(
-            [
-                existing.loc[keep].reindex(columns=list(REFERENCE_COLUMNS)),
-                new_rows,
-            ],
-            ignore_index=True,
-        )
-    else:
-        merged = new_rows.copy()
-
-    merged = merged.reindex(columns=list(REFERENCE_COLUMNS)).sort_values(
-        ["cancer_code", "Ensembl_Gene_ID"], na_position="last",
-    )
-    merged.to_csv(shard_path, index=False, compression="gzip")
-    return merged
-
-
-_SAMPLE_MANIFEST_SORT = ["cancer_code", "source_cohort", "sample_id"]
-
-
-def _reindex_with_missing_column_dtypes(
-    frame: pd.DataFrame,
-    *,
-    columns: list[str],
-    dtype_source: pd.DataFrame,
-) -> pd.DataFrame:
-    """Reindex while preserving dtypes for columns missing from ``frame``.
-
-    Without this, pandas creates absent columns as all-NA float64. Concatenating
-    that with real string/object columns relies on deprecated dtype inference.
-    """
-    out = frame.reindex(columns=columns)
-    for col in columns:
-        if col in frame.columns or col not in dtype_source.columns:
-            continue
-        try:
-            out[col] = out[col].astype(dtype_source[col].dtype)
-        except (TypeError, ValueError):
-            pass
-    return out
-
-
-def upsert_samples_manifest(path, new_rows: pd.DataFrame) -> pd.DataFrame:
-    """Upsert per-sample provenance rows into the shared samples manifest.
-
-    The samples manifest
-    (``pirlygenes/data/cancer-reference-expression-samples.csv.gz``) is a single
-    un-sharded CSV recording which samples were included/excluded per
-    ``source_cohort``. Every sample-writing builder funnels through here so the
-    contract is enforced in one place (previously ~6 copy-pasted variants with
-    subtly different keys and a column-stripping bug).
-
-    Contract:
-    - **Replace** all rows for every ``source_cohort`` present in ``new_rows``;
-      **preserve** every other cohort's rows untouched.
-    - **Union the columns** of the existing manifest and ``new_rows`` so a
-      builder whose manifest carries a narrower column set never strips columns
-      (e.g. ``lineage_label``) from the cohorts it does not own — the bug that
-      let partial rebuilds silently corrupt foreign-cohort provenance.
-    """
-    from pathlib import Path as _Path
-
-    out_path = _Path(str(path))
-    new_rows = new_rows.copy()
-    cohorts = set(new_rows["source_cohort"].astype(str))
-
-    if out_path.exists():
-        existing = pd.read_csv(out_path, low_memory=False)
-        keep = ~existing["source_cohort"].astype(str).isin(cohorts)
-        # Order-preserving union: existing columns first, then any new ones.
-        cols = list(dict.fromkeys(list(existing.columns) + list(new_rows.columns)))
-        existing_kept = _reindex_with_missing_column_dtypes(
-            existing.loc[keep],
-            columns=cols,
-            dtype_source=new_rows,
-        )
-        new_aligned = _reindex_with_missing_column_dtypes(
-            new_rows,
-            columns=cols,
-            dtype_source=existing,
-        )
-        out = pd.concat(
-            [existing_kept, new_aligned],
-            ignore_index=True,
-        )
-    else:
-        out = new_rows
-
-    sort_cols = [c for c in _SAMPLE_MANIFEST_SORT if c in out.columns]
-    if sort_cols:
-        out = out.sort_values(sort_cols, na_position="last").reset_index(drop=True)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out.to_csv(out_path, index=False)
-    return out
-
-
 __all__ = [
     "STAT_COLUMNS",
     "CLEAN_STAT_COLUMNS",
@@ -838,7 +499,4 @@ __all__ = [
     "assign_stats",
     "numeric_stat_columns",
     "round_stat_columns",
-    "finalize_reference_rows",
-    "write_reference_rows",
-    "upsert_samples_manifest",
 ]

@@ -12,12 +12,12 @@
 
 """Cohort-level *patient* coverage of a gene set.
 
-The packaged cohort summaries store per-cohort percentiles only, so they can't
+The delegated cohort summaries store per-cohort percentiles only, so they can't
 answer "how many *patients* in this cohort express gene X above 50 TPM" or
 "as I add genes to a panel, how many *new* patients do I pick up". Those are
-cohort-level questions that need the per-sample matrices the builders cache
-(``<source>/derived/<stem>_per_sample_tpm.parquet``, linear TPM). This module
-reads those, restricted to a named gene set, and computes:
+cohort-level questions that need oncoref's published per-sample source matrices.
+This module reads those through the pirlygenes compatibility adapter,
+restricted to a named gene set, and computes:
 
   * per (cohort × gene × threshold) patient counts and percentages, and
   * greedy co-occurrence-aware coverage — as genes are added in the order that
@@ -46,8 +46,8 @@ DEFAULT_THRESHOLDS = (25, 50, 100, 200)
 def _available(source_id):
     """Cohorts with cached per-sample matrices for ``source_id``, or — when
     ``source_id == "all"`` — across every registered per-sample source (#275).
-    Cross-source is safe because each cohort carries its own ``source_id`` and
-    :func:`cohort_matrix` reads that cohort's own parquet."""
+    Cross-source is safe because each cohort resolves to its own oncoref
+    source-matrix artifact."""
     if source_id == "all":
         return _cohorts.all_available_cohorts()
     return _cohorts.available_cohorts(source_id)
