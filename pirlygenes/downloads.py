@@ -202,14 +202,34 @@ class CacheUsage:
 def collect_cache_usage(
     sources: Iterable[ExpressionSource] | None = None,
 ) -> list[CacheUsage]:
-    default_registry = sources is None
+    """Measure each source in the cache owned by its build authority.
+
+    Supplying ``sources`` filters the returned rows; it does not change their
+    ownership. Oncoref-owned rows are always measured from the selected-matrix
+    cache, while true custom/local rows retain the legacy pirlygenes cache.
+    """
     sources = list(sources) if sources is not None else load_registry()
     assigned_codes: dict[str, tuple[str, ...]] = {}
-    if default_registry:
+    owner_sources = [
+        source for source in sources if source.build_owner == "oncoref"
+    ]
+    if owner_sources:
         from oncoref import source_matrices
 
+        # Determine physical ownership against the complete owner registry even
+        # when the caller supplied only a filtered subset. Ownership must not
+        # change with presentation filtering: otherwise routed matrices can be
+        # charged to an alias or disappear merely because their physical source
+        # was omitted from ``sources``.
+        routing_sources_by_id = {
+            source.id: source for source in load_registry()
+        }
+        routing_sources_by_id.update({
+            source.id: source for source in owner_sources
+        })
+        routing_sources = list(routing_sources_by_id.values())
         resolutions = {}
-        for source in sources:
+        for source in routing_sources:
             try:
                 resolutions[source.id] = (
                     source_matrices.resolution_for_source(source.id)
@@ -224,7 +244,7 @@ def collect_cache_usage(
         # owner resolver omits an umbrella/subtype code.
         physical_owner: dict[str, str] = {}
         owner_by_cohort: dict[str, str] = {}
-        for source in sources:
+        for source in routing_sources:
             resolution = resolutions.get(source.id)
             if (
                 resolution is None
@@ -236,7 +256,7 @@ def collect_cache_usage(
             for code in resolution.codes:
                 physical_owner.setdefault(code, source.id)
 
-        for source in sources:
+        for source in routing_sources:
             resolution = resolutions.get(source.id)
             if resolution is None:
                 continue
@@ -245,11 +265,11 @@ def collect_cache_usage(
 
         declared_owner = {
             code: source.id
-            for source in sources
+            for source in routing_sources
             for code in source.cancer_codes
         }
         codes_by_source: dict[str, list[str]] = {
-            source.id: [] for source in sources
+            source.id: [] for source in routing_sources
         }
         registry = source_matrices.registry()
         unassigned: list[str] = []
@@ -270,12 +290,12 @@ def collect_cache_usage(
                 + ", ".join(sorted(unassigned))
             )
 
-        for source in sources:
+        for source in owner_sources:
             assigned_codes[source.id] = tuple(codes_by_source[source.id])
 
     out: list[CacheUsage] = []
     for source in sources:
-        if default_registry:
+        if source.build_owner == "oncoref":
             from oncoref import source_matrices
 
             paths = [

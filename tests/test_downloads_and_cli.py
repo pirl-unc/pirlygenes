@@ -129,6 +129,57 @@ def test_collect_cache_usage_walks_actual_files(
     assert usages["cgci-blgsp"].on_disk_bytes == 1024 + 2048
 
 
+def test_explicit_owner_subset_uses_oncoref_cache(
+    monkeypatch, tmp_path: Path,
+):
+    from oncoref import source_matrices
+
+    owner_cache = tmp_path / "owner"
+    legacy_cache = tmp_path / "legacy"
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(owner_cache))
+    monkeypatch.setenv("PIRLYGENES_CACHE", str(legacy_cache))
+    source_matrices.local_path("BL").write_bytes(b"x" * 3072)
+
+    subset = [
+        source
+        for source in downloads.load_registry()
+        if source.id == "cgci-blgsp"
+    ]
+    stale = downloads.source_cache_dir("cgci-blgsp")
+    stale.mkdir(parents=True)
+    (stale / "stale.bin").write_bytes(b"x" * 17)
+
+    usage = downloads.collect_cache_usage(subset)
+
+    assert len(usage) == 1
+    assert usage[0].on_disk_bytes == 3072
+    assert usage[0].cache_dir == source_matrices.cache_dir()
+
+
+def test_explicit_custom_source_uses_legacy_cache(
+    monkeypatch, tmp_path: Path,
+):
+    registry = tmp_path / "sources.yaml"
+    registry.write_text(
+        "sources:\n"
+        "  - id: private-fixture\n"
+        "    category: expression\n"
+        "    cancer_codes: [PRIVATE]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path / "legacy"))
+    source = downloads.load_registry(registry)[0]
+    cached = downloads.source_cache_dir(source.id)
+    cached.mkdir(parents=True)
+    (cached / "matrix.csv").write_bytes(b"x" * 23)
+
+    usage = downloads.collect_cache_usage([source])
+
+    assert len(usage) == 1
+    assert usage[0].on_disk_bytes == 23
+    assert usage[0].cache_dir == cached
+
+
 def test_cache_usage_charges_routed_matrices_only_to_physical_owner(
     monkeypatch, tmp_path: Path,
 ):
