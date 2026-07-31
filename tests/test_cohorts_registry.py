@@ -57,7 +57,7 @@ def test_source_filter_uses_owner_source_cohort_mapping():
     assert cohorts.cohorts_for_source("not-a-source") == {}
 
 
-def test_owner_build_source_ids_fall_back_to_selected_matrix_codes():
+def test_owner_build_source_ids_delegate_to_selected_matrix_resolver():
     assert set(cohorts.cohorts_for_source("beataml-ohsu-2022")) == {
         "LAML_APL",
         "LAML_ELNadv",
@@ -65,7 +65,9 @@ def test_owner_build_source_ids_fall_back_to_selected_matrix_codes():
         "LAML_ELNint",
     }
     assert set(cohorts.cohorts_for_source("tcga-acc")) == {"ACC"}
-    assert cohorts.cohorts_for_source("prjna1083972-mmnst") == {}
+    assert set(cohorts.cohorts_for_source("prjna1083972-mmnst")) == {
+        "SARC_MMNST"
+    }
 
 
 def test_legacy_geo_heme_is_a_composite_read_alias():
@@ -135,7 +137,9 @@ def test_no_local_builder_fleet_or_summary_shards_remain():
 
     root = Path(__file__).resolve().parent.parent
 
-    assert not (root / "pirlygenes" / "builders").exists()
+    # An ignored __pycache__ can survive a branch switch in an existing
+    # checkout; the contract is that no importable builder source remains.
+    assert not list((root / "pirlygenes" / "builders").glob("*.py"))
     assert not (
         root / "pirlygenes" / "data" / "cancer-reference-expression"
     ).exists()

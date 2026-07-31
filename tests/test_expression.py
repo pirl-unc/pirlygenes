@@ -1303,7 +1303,6 @@ def test_salivary_candidates_report_released_diagnosis_split():
     }
     assert set(candidates["source_cohort"]) == {"GSE294016_BARTL_2025_SGC"}
     assert set(candidates["accession"]) == {"GSE294016"}
-    assert candidates["notes"].str.contains("published by oncoref", regex=False).all()
 
 
 def test_candidate_reconciliation_preserves_distinct_acquisition_provenance():

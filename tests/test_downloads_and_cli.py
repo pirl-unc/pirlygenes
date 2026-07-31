@@ -231,12 +231,13 @@ def test_cli_build_dependency_owned_sources_redirect_to_oncoref():
         assert "oncoref.expression_builders" in err
 
 
-def test_cli_build_does_not_offer_an_unpublished_matrix():
+def test_cli_build_reports_newly_published_mmnst_matrix():
     rc, _, err = _run_cli(["build", "prjna1083972-mmnst"])
 
     assert rc == 2
-    assert "no published source matrix currently matches" in err
-    assert "downloads fetch" not in err
+    assert "built and published by oncoref" in err
+    assert "downloads fetch prjna1083972-mmnst" in err
+    assert "SARC_MMNST" in err
 
 
 def test_cli_build_ambiguous_cancer_code_lists_candidates():

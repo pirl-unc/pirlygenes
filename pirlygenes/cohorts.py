@@ -220,38 +220,82 @@ def cohorts_for_source(
     IDs. Cache accounting sets it false so one physical artifact is never
     charged to two registry entries.
     """
-    out: dict[str, Cohort] = {}
-    owner_registry = _owner_registry()
-    for _, row in owner_registry.iterrows():
-        cohort = _cohort_from_row(row)
-        matches = (
-            _source_matches(source_id, cohort.source_id)
-            if include_related
-            else source_id == cohort.source_id
-        )
-        if matches:
-            out[cohort.code] = cohort
-    if out or not include_related:
-        return out
+    from oncoref import source_matrices
 
-    # The expression-source registry describes acquisition/build routes, while
-    # source_matrices publishes one selected artifact per cancer code. Some
-    # owner source IDs therefore have no exact physical-source match (for
-    # example ``tcga-acc`` is currently served by the selected Treehouse ACC
-    # matrix, and ``beataml-ohsu-2022`` retains a legacy physical source ID).
-    # Preserve CLI/source-filter usability by falling back to the source's
-    # declared cancer codes, but only after exact provenance routing failed.
-    source = next(
-        (candidate for candidate in _owner_sources() if candidate.id == source_id),
-        None,
-    )
-    if source is not None:
-        wanted_codes = set(source.cancer_codes)
-        for _, row in owner_registry.iterrows():
-            code = str(row["cancer_code"])
-            if code in wanted_codes:
-                out[code] = _cohort_from_row(row)
-    return out
+    owner_sources = _owner_sources()
+    owner_ids = {source.id for source in owner_sources}
+
+    if source_id in _LEGACY_COMPOSITE_SOURCES:
+        source_ids = (
+            _LEGACY_COMPOSITE_SOURCES[source_id]
+            if include_related
+            else ()
+        )
+    elif source_id in owner_ids and include_related:
+        # Historical pirlygenes filters treated a base source ID as including
+        # its more specific selection/subtype routes. Preserve that general
+        # prefix relationship while asking oncoref to resolve every underlying
+        # owner source independently.
+        source_ids = tuple(
+            source.id
+            for source in owner_sources
+            if source.id == source_id
+            or source.id.startswith(f"{source_id}-")
+        )
+    elif source_id in owner_ids:
+        source_ids = (source_id,)
+    else:
+        # A few pre-oncoref source IDs named the physical cohort rather than
+        # the current acquisition route. Resolve those compatibility aliases
+        # through owner metadata, then use the same owner resolver as every
+        # current source ID.
+        source_ids = tuple(
+            source.id
+            for source in owner_sources
+            if _LEGACY_SOURCE_BY_COHORT.get(source.source_cohort) == source_id
+        )
+
+    wanted_codes: list[str] = []
+    seen: set[str] = set()
+    for resolved_source_id in source_ids:
+        try:
+            codes = source_matrices.codes_for_source(resolved_source_id)
+        except source_matrices.SourceMatrixError:
+            continue
+        for code in codes:
+            if code not in seen:
+                wanted_codes.append(code)
+                seen.add(code)
+
+    registry_by_code = {
+        str(row["cancer_code"]): row
+        for _, row in _owner_registry().iterrows()
+    }
+    if include_related:
+        selected_rows = [
+            registry_by_code[code]
+            for code in wanted_codes
+            if code in registry_by_code
+        ]
+        selected_cohorts = {
+            str(row["source_cohort"]) for row in selected_rows
+        }
+        parent_prefixes = tuple(f"{code}_" for code in wanted_codes)
+        for code, row in registry_by_code.items():
+            if (
+                code not in seen
+                and parent_prefixes
+                and code.startswith(parent_prefixes)
+                and str(row["source_cohort"]) in selected_cohorts
+            ):
+                wanted_codes.append(code)
+                seen.add(code)
+
+    return {
+        code: _cohort_from_row(registry_by_code[code])
+        for code in wanted_codes
+        if code in registry_by_code
+    }
 
 
 def parquet_path(cohort: Cohort):
