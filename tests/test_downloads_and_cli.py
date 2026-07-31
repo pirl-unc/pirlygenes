@@ -129,6 +129,21 @@ def test_collect_cache_usage_walks_actual_files(
     assert usages["cgci-blgsp"].on_disk_bytes == 1024 + 2048
 
 
+def test_cache_usage_charges_routed_matrices_only_to_physical_owner(
+    monkeypatch, tmp_path: Path,
+):
+    from oncoref import source_matrices
+
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
+    source_matrices.local_path("ACC").write_bytes(b"x" * 4096)
+
+    usages = {u.source.id: u for u in downloads.collect_cache_usage()}
+
+    assert usages["treehouse-polya-25-01-tcga-subset"].on_disk_bytes == 4096
+    assert usages["tcga-acc"].on_disk_bytes == 0
+    assert sum(usage.on_disk_bytes for usage in usages.values()) == 4096
+
+
 def test_render_list_groups_and_sorts(monkeypatch, tmp_path: Path):
     from oncoref import source_matrices
 
@@ -179,6 +194,25 @@ def test_cli_downloads_fetch_resolves_owner_source_ids(monkeypatch):
     monkeypatch.setattr(source_matrices, "fetch", fetched.append)
 
     rc, out, err = _run_cli(["downloads", "fetch", "beataml-ohsu-2022"])
+
+    assert rc == 0
+    assert not err
+    assert fetched == [
+        "LAML_APL",
+        "LAML_ELNadv",
+        "LAML_ELNfav",
+        "LAML_ELNint",
+    ]
+    assert "fetched 4 oncoref source matrices" in out
+
+
+def test_cli_downloads_fetch_resolves_historical_source_ids(monkeypatch):
+    from oncoref import source_matrices
+
+    fetched = []
+    monkeypatch.setattr(source_matrices, "fetch", fetched.append)
+
+    rc, out, err = _run_cli(["downloads", "fetch", "beataml-ohsu"])
 
     assert rc == 0
     assert not err

@@ -204,18 +204,59 @@ def collect_cache_usage(
 ) -> list[CacheUsage]:
     default_registry = sources is None
     sources = list(sources) if sources is not None else load_registry()
+    assigned_codes: dict[str, tuple[str, ...]] = {}
+    if default_registry:
+        from oncoref import source_matrices
+
+        resolutions = {}
+        for source in sources:
+            try:
+                resolutions[source.id] = (
+                    source_matrices.resolution_for_source(source.id)
+                )
+            except source_matrices.SourceMatrixError:
+                continue
+
+        # A declared cancer-code route can point at a matrix physically owned
+        # by another source (for example tcga-acc -> the Treehouse TCGA
+        # matrix). Charge physical owners first, then assign any remaining
+        # compatibility-only matrices once in stable registry order.
+        physical_owner: dict[str, str] = {}
+        for source in sources:
+            resolution = resolutions.get(source.id)
+            if (
+                resolution is None
+                or resolution.resolution_method != "physical_source"
+            ):
+                continue
+            for code in resolution.codes:
+                physical_owner.setdefault(code, source.id)
+
+        charged: set[str] = set()
+        for source in sources:
+            resolution = resolutions.get(source.id)
+            if resolution is None:
+                assigned_codes[source.id] = ()
+                continue
+            codes = []
+            for code in resolution.codes:
+                owner = physical_owner.get(code)
+                if owner is not None and owner != source.id:
+                    continue
+                if code in charged:
+                    continue
+                codes.append(code)
+                charged.add(code)
+            assigned_codes[source.id] = tuple(codes)
+
     out: list[CacheUsage] = []
     for source in sources:
         if default_registry:
             from oncoref import source_matrices
-            from . import cohorts
 
             paths = [
                 source_matrices.local_path(code)
-                for code in cohorts.cohorts_for_source(
-                    source.id,
-                    include_related=False,
-                )
+                for code in assigned_codes.get(source.id, ())
                 if source_matrices.is_cached(code)
             ]
             cache_dir = source_matrices.cache_dir()

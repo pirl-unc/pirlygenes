@@ -376,6 +376,9 @@ def _cohort_source_defaults(cohort_id: str) -> tuple[str, str, str]:
         ("SCLC_UCOLOGNE", "ucologne", "University of Cologne"),
         ("DRMETRICS", "geo", "GEO (DR-metrics / Alcala LNEN)"),
         ("GSE", "geo", "GEO"),
+        ("SRP", "sra", "NCBI SRA"),
+        ("SRA", "sra", "NCBI SRA"),
+        ("PRJNA", "sra", "NCBI SRA"),
         ("BEATAML", "beataml", "BeatAML (OHSU)"),
         ("MMRF", "mmrf", "MMRF CoMMpass"),
         ("CLLMAP", "cllmap", "CLL-map"),
@@ -388,12 +391,12 @@ def _cohort_source_defaults(cohort_id: str) -> tuple[str, str, str]:
     return "other", "", "bulk RNA-seq"
 
 
-def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
-    """Register artifact sources missing from the compatibility vocabulary.
+def _reconcile_owner_cohorts(df: pd.DataFrame) -> pd.DataFrame:
+    """Register owner sources missing from the compatibility vocabulary.
 
-    oncoref owns the artifacts and their cohort metadata (oncoref#416). Merge
-    any artifact source newer than pirlygenes' packaged registry snapshot from
-    its compact availability records so pirlygenes'
+    oncoref owns the summaries, artifacts, and their cohort metadata. Merge any
+    source newer than pirlygenes' packaged registry snapshot from its compact
+    availability records so pirlygenes'
     invariant remains true: every advertised ``source_cohort`` is selectable by
     kind and valid against ``cohort_registry_df()``.
     """
@@ -407,7 +410,7 @@ def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
 
     import oncoref
 
-    availability = oncoref.cancer_reference_expression_availability(
+    artifacts = oncoref.cancer_reference_expression_availability(
         normalize="tpm_clean",
         sample_qc="artifact",
         reference_source="artifact",
@@ -418,14 +421,19 @@ def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
         reference_source="summary_rows_all",
         all_sources=True,
     )
-    summary_codes = set(
-        summary.loc[summary["available"], "cancer_code"].astype(str)
-    )
-    availability = availability.loc[
-        availability["available"]
-        & availability["source_cohort"].notna()
-        & ~availability["cancer_code"].astype(str).isin(summary_codes)
-    ].drop_duplicates(["cancer_code", "source_cohort"])
+    summary = summary.loc[
+        summary["available"] & summary["source_cohort"].notna()
+    ]
+    summary_codes = set(summary["cancer_code"].astype(str))
+    artifact_only = artifacts.loc[
+        artifacts["available"]
+        & artifacts["source_cohort"].notna()
+        & ~artifacts["cancer_code"].astype(str).isin(summary_codes)
+    ]
+    availability = pd.concat(
+        [summary, artifact_only],
+        ignore_index=True,
+    ).drop_duplicates(["cancer_code", "source_cohort"])
     known = set(df["cohort_id"].astype(str))
     availability = availability.loc[
         ~availability["source_cohort"].astype(str).isin(known)
@@ -475,7 +483,7 @@ def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _reconcile_cohort_registry(df: pd.DataFrame) -> pd.DataFrame:
-    return _reconcile_artifact_only_cohorts(
+    return _reconcile_owner_cohorts(
         _reconcile_computed_cohort_members(df)
     )
 

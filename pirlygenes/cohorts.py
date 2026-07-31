@@ -147,18 +147,42 @@ def _cohort_from_row(row) -> Cohort:
 
 
 def _per_sample_sources() -> dict[str, tuple[str, str]]:
+    from oncoref import source_matrices
+
     out: dict[str, tuple[str, str]] = {}
     for source in _owner_sources():
         if not source.cancer_codes:
             continue
-        label = source.source_cohort or source.id
-        project = source.source_project or ""
+        label = source.source_cohort
+        if not label:
+            try:
+                resolution = source_matrices.resolution_for_source(source.id)
+            except source_matrices.SourceMatrixError:
+                resolution = None
+            selected_labels = {
+                matrix.source_cohort
+                for matrix in resolution.matrices
+            } if resolution is not None else set()
+            if len(selected_labels) == 1:
+                label = selected_labels.pop()
+        label = label or source.id
+        compatibility_id = _LEGACY_SOURCE_BY_COHORT.get(label, source.id)
+        project = (
+            source.source_project
+            or _LEGACY_SOURCE_PROJECT.get(compatibility_id, "")
+        )
         out[source.id] = (label, project)
     for cohort, source_id in _LEGACY_SOURCE_BY_COHORT.items():
-        out.setdefault(
-            source_id,
-            (cohort, _LEGACY_SOURCE_PROJECT.get(source_id, "")),
-        )
+        # Some owner registry entries intentionally omit display provenance
+        # (for example TARGET ALL and CLL-map). Preserve complete owner values,
+        # but fill each absent field from pirlygenes' compatibility metadata.
+        # A placeholder source ID must not shadow a known public cohort label.
+        label, project = out.get(source_id, ("", ""))
+        if not label or label == source_id:
+            label = cohort
+        if not project:
+            project = _LEGACY_SOURCE_PROJECT.get(source_id, "")
+        out[source_id] = (label, project)
     for source_id, metadata in _LEGACY_COMPOSITE_METADATA.items():
         out.setdefault(source_id, metadata)
     return out
@@ -167,6 +191,36 @@ def _per_sample_sources() -> dict[str, tuple[str, str]]:
 # Backwards-compatible inspection mapping. It is derived from oncoref at import
 # time and contains no pirlygenes-owned file or build path.
 PER_SAMPLE_SOURCES: dict[str, tuple[str, str]] = _per_sample_sources()
+
+
+@lru_cache(maxsize=1)
+def _legacy_source_routes() -> dict[str, tuple[str, ...]]:
+    """Map historical source IDs to current owner routes by provenance.
+
+    Oncoref source IDs describe acquisition/build routes, while pirlygenes'
+    older IDs sometimes named the selected matrix cohort. Resolve that older
+    vocabulary through oncoref's public source-to-matrix resolver instead of
+    maintaining duplicate old-to-new source-ID aliases here.
+    """
+    from oncoref import source_matrices
+
+    owner_ids_by_cohort: dict[str, list[str]] = {}
+    for source in _owner_sources():
+        try:
+            resolution = source_matrices.resolution_for_source(source.id)
+        except source_matrices.SourceMatrixError:
+            continue
+        for matrix in resolution.matrices:
+            ids = owner_ids_by_cohort.setdefault(matrix.source_cohort, [])
+            if source.id not in ids:
+                ids.append(source.id)
+
+    routes: dict[str, tuple[str, ...]] = {}
+    for cohort, legacy_source_id in _LEGACY_SOURCE_BY_COHORT.items():
+        owner_ids = owner_ids_by_cohort.get(cohort, [])
+        if owner_ids:
+            routes[legacy_source_id] = tuple(owner_ids)
+    return routes
 
 
 def cohorts_for_group(group: str) -> list[Cohort]:
@@ -249,11 +303,7 @@ def cohorts_for_source(
         # the current acquisition route. Resolve those compatibility aliases
         # through owner metadata, then use the same owner resolver as every
         # current source ID.
-        source_ids = tuple(
-            source.id
-            for source in owner_sources
-            if _LEGACY_SOURCE_BY_COHORT.get(source.source_cohort) == source_id
-        )
+        source_ids = _legacy_source_routes().get(source_id, ())
 
     wanted_codes: list[str] = []
     seen: set[str] = set()

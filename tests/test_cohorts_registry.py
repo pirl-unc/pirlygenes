@@ -35,6 +35,15 @@ def test_per_sample_sources_are_derived_from_owner_registry():
     assert cohorts.source_label("not-a-source") is None
 
 
+def test_compatibility_metadata_fills_incomplete_owner_records():
+    assert cohorts.source_label("target-all") == "TARGET_ALL_2018"
+    assert cohorts.source_project("target-all") == "TARGET"
+    assert cohorts.source_label("cllmap") == "CLLMAP_2022"
+    assert cohorts.source_project("cllmap") == "CLL-map"
+    assert cohorts.source_label("beataml-ohsu-2022") == "BEATAML_OHSU_2022"
+    assert cohorts.source_project("beataml-ohsu-2022") == "BeatAML"
+
+
 def test_source_filter_uses_owner_source_cohort_mapping():
     polya = cohorts.cohorts_for_source("treehouse-polya-25-01")
     sclc = cohorts.cohorts_for_source("sclc-ucologne-2015")
@@ -68,6 +77,27 @@ def test_owner_build_source_ids_delegate_to_selected_matrix_resolver():
     assert set(cohorts.cohorts_for_source("prjna1083972-mmnst")) == {
         "SARC_MMNST"
     }
+
+
+def test_historical_source_ids_resolve_through_selected_matrix_provenance(
+    monkeypatch,
+):
+    expected = {
+        "LAML_APL",
+        "LAML_ELNadv",
+        "LAML_ELNfav",
+        "LAML_ELNint",
+    }
+    assert set(cohorts.cohorts_for_source("beataml-ohsu")) == expected
+
+    from oncoref import source_matrices
+
+    monkeypatch.setattr(
+        source_matrices,
+        "is_cached",
+        lambda code: code in expected,
+    )
+    assert set(cohorts.available_cohorts("beataml-ohsu")) == expected
 
 
 def test_legacy_geo_heme_is_a_composite_read_alias():

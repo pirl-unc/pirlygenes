@@ -1,7 +1,7 @@
 {
   "artifact": "cancer-reference-expression-views",
   "canonical_gene_ids": true,
-  "data_version": "5.23.46",
+  "data_version": "5.23.47",
   "format": 1,
   "rows": {
     "clean_tpm": 65007,
