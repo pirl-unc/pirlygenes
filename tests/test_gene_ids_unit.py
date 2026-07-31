@@ -277,6 +277,11 @@ def test_oncoref_synonym_rows_preserve_exact_case_collisions():
     assert gi.ncbi_synonym_official_symbol("5PTase") == "INPP5B"
 
 
+def test_oncoref_synonym_rows_preserve_na_like_aliases():
+    assert gi.ncbi_synonym_official_symbol("NA") == "XK"
+    assert gi.ncbi_synonym_official_symbol("NaN") == "SCN11A"
+
+
 @pytest.mark.parametrize(
     ("alias", "official", "gene_id"),
     [

@@ -373,10 +373,15 @@ def cmd_downloads_fetch(args: argparse.Namespace) -> int:
     from . import cohorts
 
     requested = str(args.source_id)
-    if requested in source_matrices.available_cohorts():
-        codes = [requested]
-    else:
+    try:
+        # The owner resolver accepts canonical codes, case variants, and public
+        # cancer aliases (for example PANNET -> NET_PANCREAS). Resolve those
+        # before interpreting the same token as a source registry ID.
+        info = source_matrices.cohort_info(requested)
+    except source_matrices.SourceMatrixError:
         codes = sorted(cohorts.cohorts_for_source(requested))
+    else:
+        codes = [str(info["cancer_code"])]
     if not codes:
         sys.stderr.write(
             f"no oncoref source matrices match {requested!r}. "

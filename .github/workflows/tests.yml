@@ -1,5 +1,11 @@
 name: Tests
-on: [push, pull_request]
+on:
+  # A PR branch push also emits pull_request:synchronize. Running both events
+  # launched two identical four-version matrices for every review update.
+  pull_request:
+  # Retain a post-merge gate for the deployed branch.
+  push:
+    branches: [main]
 
 jobs:
   build:
@@ -91,6 +97,11 @@ jobs:
       - name: Run linting script and unit tests
         run: |
           source .venv/bin/activate
-          # COVERAGE=1 keeps the coverage report in CI; local dev runs
-          # ./test.sh without it for speed (coverage is the dominant CPU cost).
-          COVERAGE=1 ./test.sh
+          # Every Python version runs the full suite. Coverage instruments that
+          # same suite once: repeating it in all four matrix jobs adds substantial
+          # CPU time without measuring additional lines.
+          if [[ "${{ matrix.python-version }}" == "3.12" ]]; then
+            COVERAGE=1 ./test.sh
+          else
+            ./test.sh
+          fi

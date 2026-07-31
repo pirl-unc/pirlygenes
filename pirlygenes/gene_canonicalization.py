@@ -527,11 +527,24 @@ def _canonical_gene_id_cached(
 
     if _ENTREZ_RE.match(text):
         # Numeric source IDs are Entrez/NCBI GeneIDs. Oncoref owns the pinned
-        # live/history mapping into the same canonical ENSG space as the
-        # reference matrices; do not retain a builder-only NCBI mirror here.
+        # live/history mapping into ENSG, but pirlygenes' public contract is its
+        # Ensembl-112 authority space. Re-run the delegated result through the
+        # same private Ensembl normalization used for direct ENSG inputs so a
+        # newer oncoref ID still joins pirlygenes' canonical expression views.
+        # Callers use public canonical_gene_id(); this helper remains an
+        # implementation detail of that multi-identifier API.
         from oncoref import canonical_gene_id as owner_canonical_gene_id
 
-        return owner_canonical_gene_id(text, source_version=source_version)
+        delegated = owner_canonical_gene_id(
+            text,
+            source_version=source_version,
+        )
+        if not delegated:
+            return None
+        return _canonicalize_ensembl_gene_id(
+            delegated,
+            symbol_hint=symbol_hint,
+        )
 
     authority_id = _authority_gene_id_for_symbol(text)
     if authority_id:

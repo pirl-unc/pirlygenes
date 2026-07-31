@@ -77,7 +77,7 @@ def gene_for_ensembl_id(genome, gene_id: str):
 @lru_cache(maxsize=1)
 def _ncbi_symbol_synonyms() -> dict[str, str]:
     """Load oncoref's synonym rows without collapsing case distinctions."""
-    from oncoref.load_dataset import get_data
+    from .load_dataset import get_data
 
     synonyms = get_data("ncbi-symbol-synonyms", copy=False)
     return {

@@ -254,6 +254,29 @@ def test_cli_downloads_fetch_preserves_geo_heme_alias(monkeypatch):
     assert "fetched 4 oncoref source matrices" in out
 
 
+@pytest.mark.parametrize(
+    ("requested", "canonical"),
+    [
+        ("PANNET", "NET_PANCREAS"),
+        ("prad", "PRAD"),
+    ],
+)
+def test_cli_downloads_fetch_resolves_cancer_code_aliases(
+    monkeypatch, requested, canonical,
+):
+    from oncoref import source_matrices
+
+    fetched = []
+    monkeypatch.setattr(source_matrices, "fetch", fetched.append)
+
+    rc, out, err = _run_cli(["downloads", "fetch", requested])
+
+    assert rc == 0
+    assert not err
+    assert fetched == [canonical]
+    assert "fetched 1 oncoref source matrix" in out
+
+
 def test_cli_downloads_fetch_reports_owner_download_failures(monkeypatch):
     from oncoref import source_matrices
 
