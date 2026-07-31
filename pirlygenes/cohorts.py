@@ -63,6 +63,12 @@ _LEGACY_SOURCE_BY_COHORT = {
 }
 
 _LEGACY_SOURCE_PROJECT = {
+    "treehouse-polya-25-01": "Treehouse",
+    "treehouse-ribod-25-01": "Treehouse",
+    "gse118014-pannet": "GEO",
+    "drmetrics-lnen-2020": "IARC LNEN",
+    "cgci-blgsp": "CGCI",
+    "mmrf-commpass": "MMRF",
     "target-all": "TARGET",
     "cllmap": "CLL-map",
     "gse171811-ctcl": "GEO",
@@ -74,6 +80,18 @@ _LEGACY_SOURCE_PROJECT = {
     "gse239531-chordoma": "GEO",
     "gse75885-sarc": "GEO",
     "sclc-ucologne-2015": "University of Cologne",
+    "gse98894-midnet": "GEO",
+    "gse142334-fl": "GEO",
+    "gse248751-sarc-ccs": "GEO",
+    "gse328026-sarc-pec": "GEO",
+    "gse241095-sarc-ks-skin": "GEO",
+    "gse235092-merkel": "GEO",
+    "gse120328-hl": "recount3",
+    "gse114922-mds": "recount3",
+    "gse85383-ess": "GEO",
+    "gse32662-mtc": "GEO",
+    "gse30929-lps": "GEO",
+    "unc-nutm1": "UNC",
 }
 
 # Historical composite filters that never represented one physical dataset.
@@ -120,20 +138,6 @@ def _source_id_for_row(code: str, source_cohort: str) -> str:
     if source is not None:
         return source.id
     return _LEGACY_SOURCE_BY_COHORT.get(source_cohort, source_cohort.lower())
-
-
-def _source_matches(requested: str, actual: str) -> bool:
-    if requested == actual:
-        return True
-    if actual in _LEGACY_COMPOSITE_SOURCES.get(requested, ()):
-        return True
-    # The historical pirlygenes Treehouse source grouped all PolyA-derived
-    # selectors under one source ID. Preserve that convenient filter while
-    # allowing oncoref's more precise registry IDs.
-    return (
-        requested == "treehouse-polya-25-01"
-        and actual.startswith("treehouse-polya-25-01")
-    )
 
 
 def _cohort_from_row(row) -> Cohort:
@@ -330,12 +334,14 @@ def cohorts_for_source(
         selected_cohorts = {
             str(row["source_cohort"]) for row in selected_rows
         }
-        parent_prefixes = tuple(f"{code}_" for code in wanted_codes)
         for code, row in registry_by_code.items():
             if (
                 code not in seen
-                and parent_prefixes
-                and code.startswith(parent_prefixes)
+                and any(
+                    code.startswith(f"{selected}_")
+                    or selected.startswith(f"{code}_")
+                    for selected in wanted_codes
+                )
                 and str(row["source_cohort"]) in selected_cohorts
             ):
                 wanted_codes.append(code)
@@ -408,13 +414,18 @@ def iter_per_sample_cohorts(*, sources=None, unique_by_code=True):
     Oncoref publishes one selected matrix per cancer code, so
     ``unique_by_code`` is retained only for call compatibility.
     """
-    wanted = None if sources is None else set(sources)
+    if sources is None:
+        wanted_codes = None
+    else:
+        requested = (sources,) if isinstance(sources, str) else tuple(sources)
+        wanted_codes = {
+            code
+            for source_id in requested
+            for code in cohorts_for_source(source_id)
+        }
     seen: set[str] = set()
     for code, cohort in all_available_cohorts().items():
-        if wanted is not None and not any(
-            _source_matches(source_id, cohort.source_id)
-            for source_id in wanted
-        ):
+        if wanted_codes is not None and code not in wanted_codes:
             continue
         if unique_by_code and code in seen:
             continue

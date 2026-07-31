@@ -219,9 +219,11 @@ def collect_cache_usage(
 
         # A declared cancer-code route can point at a matrix physically owned
         # by another source (for example tcga-acc -> the Treehouse TCGA
-        # matrix). Charge physical owners first, then assign any remaining
-        # compatibility-only matrices once in stable registry order.
+        # matrix). Resolve one owner for every published matrix, preferring an
+        # exact physical route and using shared cohort provenance only when the
+        # owner resolver omits an umbrella/subtype code.
         physical_owner: dict[str, str] = {}
+        owner_by_cohort: dict[str, str] = {}
         for source in sources:
             resolution = resolutions.get(source.id)
             if (
@@ -229,25 +231,47 @@ def collect_cache_usage(
                 or resolution.resolution_method != "physical_source"
             ):
                 continue
+            for matrix in resolution.matrices:
+                owner_by_cohort.setdefault(matrix.source_cohort, source.id)
             for code in resolution.codes:
                 physical_owner.setdefault(code, source.id)
 
-        charged: set[str] = set()
         for source in sources:
             resolution = resolutions.get(source.id)
             if resolution is None:
-                assigned_codes[source.id] = ()
                 continue
-            codes = []
-            for code in resolution.codes:
-                owner = physical_owner.get(code)
-                if owner is not None and owner != source.id:
-                    continue
-                if code in charged:
-                    continue
-                codes.append(code)
-                charged.add(code)
-            assigned_codes[source.id] = tuple(codes)
+            for matrix in resolution.matrices:
+                owner_by_cohort.setdefault(matrix.source_cohort, source.id)
+
+        declared_owner = {
+            code: source.id
+            for source in sources
+            for code in source.cancer_codes
+        }
+        codes_by_source: dict[str, list[str]] = {
+            source.id: [] for source in sources
+        }
+        registry = source_matrices.registry()
+        unassigned: list[str] = []
+        for row in registry.to_dict("records"):
+            code = str(row["cancer_code"])
+            owner = (
+                physical_owner.get(code)
+                or owner_by_cohort.get(str(row["source_cohort"]))
+                or declared_owner.get(code)
+            )
+            if owner not in codes_by_source:
+                unassigned.append(code)
+                continue
+            codes_by_source[owner].append(code)
+        if unassigned:
+            raise RuntimeError(
+                "oncoref source matrices have no owning source route: "
+                + ", ".join(sorted(unassigned))
+            )
+
+        for source in sources:
+            assigned_codes[source.id] = tuple(codes_by_source[source.id])
 
     out: list[CacheUsage] = []
     for source in sources:

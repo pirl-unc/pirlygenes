@@ -144,6 +144,21 @@ def test_cache_usage_charges_routed_matrices_only_to_physical_owner(
     assert sum(usage.on_disk_bytes for usage in usages.values()) == 4096
 
 
+def test_cache_usage_accounts_for_every_published_matrix(
+    monkeypatch, tmp_path: Path,
+):
+    from oncoref import source_matrices
+
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
+    codes = source_matrices.registry()["cancer_code"].astype(str).tolist()
+    for code in codes:
+        source_matrices.local_path(code).write_bytes(b"x")
+
+    usages = downloads.collect_cache_usage()
+
+    assert sum(usage.on_disk_bytes for usage in usages) == len(codes)
+
+
 def test_render_list_groups_and_sorts(monkeypatch, tmp_path: Path):
     from oncoref import source_matrices
 
@@ -237,6 +252,22 @@ def test_cli_downloads_fetch_preserves_geo_heme_alias(monkeypatch):
     assert not err
     assert fetched == ["CML", "MCL", "MDS", "MPN"]
     assert "fetched 4 oncoref source matrices" in out
+
+
+def test_cli_downloads_fetch_reports_owner_download_failures(monkeypatch):
+    from oncoref import source_matrices
+
+    def fail(_code):
+        raise source_matrices.SourceMatrixError("offline fixture")
+
+    monkeypatch.setattr(source_matrices, "fetch", fail)
+
+    rc, out, err = _run_cli(["downloads", "fetch", "PRAD"])
+
+    assert rc == 2
+    assert not out
+    assert "failed to fetch oncoref source matrix 'PRAD'" in err
+    assert "offline fixture" in err
 
 
 def test_cli_build_list_enumerates_sources():

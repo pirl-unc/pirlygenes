@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import lru_cache
 from typing import Optional, Sequence, Tuple, List
 
 from tqdm import tqdm
@@ -73,20 +74,34 @@ def gene_for_ensembl_id(genome, gene_id: str):
 # matches no installed Ensembl release and is not a curated display alias.
 # ---------------------------------------------------------------------------
 
+@lru_cache(maxsize=1)
+def _ncbi_symbol_synonyms() -> dict[str, str]:
+    """Load oncoref's synonym rows without collapsing case distinctions."""
+    from oncoref.load_dataset import get_data
+
+    synonyms = get_data("ncbi-symbol-synonyms", copy=False)
+    return {
+        str(alias): str(official)
+        for alias, official in zip(
+            synonyms["alias"],
+            synonyms["official_symbol"],
+        )
+        if isinstance(alias, str) and isinstance(official, str)
+    }
+
+
 def ncbi_synonym_official_symbol(name: str) -> Optional[str]:
     """Map a legacy/alternate symbol to its current official symbol, or None.
 
-    Delegates to oncoref's case-insensitive, pinned symbol authority. A live
-    official or unknown symbol is returned unchanged upstream, which this
-    compatibility wrapper converts to ``None``.
+    The data remains delegated to oncoref, but pirlygenes preserves its public
+    exact-case-first lookup before trying the upper-case spelling. This matters
+    for NCBI aliases that differ only by case and name different genes.
     """
     s = str(name).strip()
     if not s:
         return None
-    from oncoref import resolve_symbol
-
-    resolved = resolve_symbol(s)
-    return resolved if resolved.casefold() != s.casefold() else None
+    table = _ncbi_symbol_synonyms()
+    return table.get(s) or table.get(s.upper())
 
 
 def _index_cache_path(release: int):

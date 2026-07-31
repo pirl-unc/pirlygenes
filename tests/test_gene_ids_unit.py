@@ -221,12 +221,10 @@ def test_store_index_cache_refuses_degenerate_map(tmp_path):
 
 
 def test_ncbi_synonym_official_symbol_casing(monkeypatch):
-    import oncoref
-
     monkeypatch.setattr(
-        oncoref,
-        "resolve_symbol",
-        lambda value: "RACK1" if str(value).upper() == "GNB2L1" else value,
+        gi,
+        "_ncbi_symbol_synonyms",
+        lambda: {"GNB2L1": "RACK1"},
     )
     assert gi.ncbi_synonym_official_symbol("gnb2l1") == "RACK1"
     assert gi.ncbi_synonym_official_symbol("GNB2L1") == "RACK1"
@@ -235,15 +233,13 @@ def test_ncbi_synonym_official_symbol_casing(monkeypatch):
 
 def test_symbol_lookup_lowest_tier_resolves_via_ncbi_synonym(monkeypatch):
     """A legacy symbol unknown to every release resolves via oncoref."""
-    import oncoref
-
     rack1 = FakeGene("ENSGRACK1", "RACK1")
     genomes = [FakeGenome(release=112, by_name={"RACK1": [rack1]})]
     monkeypatch.setattr(gi, "genomes", genomes)
     monkeypatch.setattr(
-        oncoref,
-        "resolve_symbol",
-        lambda value: "RACK1" if value == "GNB2L1" else value,
+        gi,
+        "_ncbi_symbol_synonyms",
+        lambda: {"GNB2L1": "RACK1"},
     )
 
     genome, gene = gi.find_gene_and_ensembl_release_by_name("GNB2L1")
@@ -253,16 +249,14 @@ def test_symbol_lookup_lowest_tier_resolves_via_ncbi_synonym(monkeypatch):
 def test_symbol_lookup_direct_hit_beats_synonym(monkeypatch):
     """The lowest tier fires only after the release loop fails — a direct
     pyensembl match is never overridden by a synonym."""
-    import oncoref
-
     direct = FakeGene("ENSGDIRECT", "FOO")
     other = FakeGene("ENSGOTHER", "BAR")
     genomes = [FakeGenome(release=112, by_name={"FOO": [direct], "BAR": [other]})]
     monkeypatch.setattr(gi, "genomes", genomes)
     monkeypatch.setattr(
-        oncoref,
-        "resolve_symbol",
-        lambda value: "BAR" if value == "FOO" else value,
+        gi,
+        "_ncbi_symbol_synonyms",
+        lambda: {"FOO": "BAR"},
     )
 
     genome, gene = gi.find_gene_and_ensembl_release_by_name("FOO")
@@ -274,6 +268,37 @@ def test_oncoref_symbol_authority_carries_known_renames():
     assert gi.ncbi_synonym_official_symbol("GNB2L1") == "RACK1"
     assert gi.ncbi_synonym_official_symbol("TCEB2") == "ELOB"
     assert gi.ncbi_synonym_official_symbol("NARS") == "NARS1"
+
+
+def test_oncoref_synonym_rows_preserve_exact_case_collisions():
+    assert gi.ncbi_synonym_official_symbol("20-ALPHA-HSD") == "AKR1C1"
+    assert gi.ncbi_synonym_official_symbol("20-alpha-HSD") == "HSD17B1"
+    assert gi.ncbi_synonym_official_symbol("5PTASE") == "INPP5A"
+    assert gi.ncbi_synonym_official_symbol("5PTase") == "INPP5B"
+
+
+@pytest.mark.parametrize(
+    ("alias", "official", "gene_id"),
+    [
+        ("20-ALPHA-HSD", "AKR1C1", "ENSG_AKR1C1"),
+        ("20-alpha-HSD", "HSD17B1", "ENSG_HSD17B1"),
+        ("5PTASE", "INPP5A", "ENSG_INPP5A"),
+        ("5PTase", "INPP5B", "ENSG_INPP5B"),
+    ],
+)
+def test_case_distinct_synonyms_resolve_to_the_right_gene(
+    monkeypatch, alias, official, gene_id,
+):
+    gene = FakeGene(gene_id, official)
+    monkeypatch.setattr(
+        gi,
+        "genomes",
+        [FakeGenome(release=112, by_name={official: [gene]})],
+    )
+
+    _genome, resolved = gi.find_gene_and_ensembl_release_by_name(alias)
+
+    assert resolved.id == gene_id
 
 
 # Real HGNC renames / classic aliases → current official symbol, straight

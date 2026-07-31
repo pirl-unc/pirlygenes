@@ -37,11 +37,26 @@ def test_per_sample_sources_are_derived_from_owner_registry():
 
 def test_compatibility_metadata_fills_incomplete_owner_records():
     assert cohorts.source_label("target-all") == "TARGET_ALL_2018"
-    assert cohorts.source_project("target-all") == "TARGET"
+    assert cohorts.source_project("target-all") == "TARGET ALL"
     assert cohorts.source_label("cllmap") == "CLLMAP_2022"
     assert cohorts.source_project("cllmap") == "CLL-map"
     assert cohorts.source_label("beataml-ohsu-2022") == "BEATAML_OHSU_2022"
-    assert cohorts.source_project("beataml-ohsu-2022") == "BeatAML"
+    assert cohorts.source_project("beataml-ohsu-2022") == "BeatAML 1.0"
+
+
+def test_compatibility_projects_fill_remaining_owner_metadata_gaps():
+    expected = {
+        "gse118014-pannet": "GEO",
+        "drmetrics-lnen-2020": "IARC LNEN",
+        "gse98894-midnet": "GEO",
+        "gse114922-mds": "recount3",
+        "gse32662-mtc": "GEO",
+        "gse30929-lps": "GEO",
+    }
+    assert {
+        source_id: cohorts.source_project(source_id)
+        for source_id in expected
+    } == expected
 
 
 def test_source_filter_uses_owner_source_cohort_mapping():
@@ -76,6 +91,11 @@ def test_owner_build_source_ids_delegate_to_selected_matrix_resolver():
     assert set(cohorts.cohorts_for_source("tcga-acc")) == {"ACC"}
     assert set(cohorts.cohorts_for_source("prjna1083972-mmnst")) == {
         "SARC_MMNST"
+    }
+    assert set(cohorts.cohorts_for_source("target-nbl")) == {
+        "NBL",
+        "NBL_MYCNamp",
+        "NBL_MYCNnonamp",
     }
 
 
@@ -127,6 +147,28 @@ def test_available_cohorts_uses_owner_cache_state(monkeypatch):
         "PRAD",
     }
     assert set(cohorts.all_available_cohorts()) == {"ATRT", "PRAD"}
+
+
+def test_iteration_filters_by_resolved_codes_for_current_and_legacy_ids(
+    monkeypatch,
+):
+    available = cohorts.cohorts_for_source("beataml-ohsu-2022")
+    monkeypatch.setattr(cohorts, "all_available_cohorts", lambda: available)
+    monkeypatch.setattr(
+        cohorts,
+        "read_per_sample",
+        lambda cohort: pd.DataFrame({"code": [cohort.code]}),
+    )
+
+    expected = set(available)
+    for source_id in ("beataml-ohsu-2022", "beataml-ohsu"):
+        actual = {
+            cohort.code
+            for cohort, _frame in cohorts.iter_per_sample_cohorts(
+                sources=[source_id]
+            )
+        }
+        assert actual == expected
 
 
 def test_read_per_sample_fetches_through_owner(tmp_path, monkeypatch):

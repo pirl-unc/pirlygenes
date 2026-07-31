@@ -385,7 +385,13 @@ def cmd_downloads_fetch(args: argparse.Namespace) -> int:
         )
         return 2
     for code in codes:
-        source_matrices.fetch(code)
+        try:
+            source_matrices.fetch(code)
+        except source_matrices.SourceMatrixError as err:
+            sys.stderr.write(
+                f"failed to fetch oncoref source matrix {code!r}: {err}\n"
+            )
+            return 2
     noun = "matrix" if len(codes) == 1 else "matrices"
     sys.stdout.write(
         f"fetched {len(codes)} oncoref source {noun}: {', '.join(codes)}\n"
