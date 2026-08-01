@@ -81,6 +81,11 @@ def test_resolve_named_panels():
     assert label == "lineage:PRAD"
     assert ensgs and all(str(e).startswith("ENSG") for e in ensgs)
 
+    label, ensgs = coverage.resolve_gene_set("lineage:SARC_MMNST")
+    assert label == "lineage:SARC_MMNST"
+    assert "ENSG00000185664" in ensgs  # PMEL: expected high
+    assert "ENSG00000108946" not in ensgs  # PRKAR1A: contrastive low evidence
+
 
 def test_resolve_csv_path_ensg(tmp_path):
     """An ENSG-column CSV resolves to exactly those (unversioned) ids."""

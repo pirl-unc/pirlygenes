@@ -456,6 +456,41 @@ def test_lineage_gene_loaders_cover_all_tcga_codes():
     assert {"KLK3", "FOLH1", "TMPRSS2"}.issubset(prad)
 
 
+def test_mmnst_lineage_panel_preserves_high_and_low_evidence():
+    panel = gsc.lineage_genes_df("SARC_MMNST")
+    high = panel[panel["direction"] == "high"]
+    low = panel[panel["direction"] == "low"]
+
+    assert list(high["Symbol"]) == [
+        "TYR",
+        "PMEL",
+        "MLANA",
+        "DCT",
+        "MITF",
+        "SOX10",
+        "S100B",
+    ]
+    assert list(low["Symbol"]) == ["PMP22", "PMP2", "MPZ", "PRKAR1A"]
+    assert panel["reference"].str.contains(
+        r"(?:PMID:\d+|SRP\d+)", regex=True
+    ).all()
+
+    # Compatibility helpers remain positive-panel accessors by default. Low
+    # rows are available only when callers explicitly request them.
+    assert gsc.lineage_gene_symbols("SARC_MMNST") == list(high["Symbol"])
+    assert gsc.lineage_gene_symbols("SARC_MMNST", direction="low") == list(
+        low["Symbol"]
+    )
+    assert gsc.lineage_gene_symbols("SARC_MMNST", direction=None) == list(
+        panel["Symbol"]
+    )
+    assert gsc.lineage_gene_ids("SARC_MMNST", direction="low") == list(
+        low["Ensembl_Gene_ID"]
+    )
+    with pytest.raises(ValueError, match="direction"):
+        gsc.lineage_genes_df("SARC_MMNST", direction="negative")
+
+
 def test_cancer_family_panel_loader():
     families = gsc.cancer_family_panels()
     expected = {
