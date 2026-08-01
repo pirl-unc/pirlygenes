@@ -552,37 +552,6 @@ def _reconcile_reference_expression_samples(
     return out
 
 
-def _preserve_oncoref_synonym_literals(
-    synonyms: pd.DataFrame,
-) -> pd.DataFrame:
-    """Repair pandas NA coercion in oncoref's string-only synonym table.
-
-    oncoref 1.8.165 loads top-level CSVs with pandas' default NA parsing, which
-    turns the real aliases ``NA`` (XK) and ``NaN`` (SCN11A) into missing values.
-    Read the same dependency-owned file with NA parsing disabled only while the
-    delegated frame exhibits that upstream defect. Once oncoref preserves the
-    literals itself, the normal delegated frame passes through unchanged.
-    """
-    if "alias" not in synonyms or not synonyms["alias"].isna().any():
-        return synonyms
-
-    from oncoref.load_dataset import get_all_csv_paths
-
-    for path in get_all_csv_paths():
-        stem = path.name.removesuffix(".gz").removesuffix(".csv")
-        if stem == "ncbi-symbol-synonyms":
-            return pd.read_csv(
-                path,
-                dtype=str,
-                keep_default_na=False,
-                low_memory=False,
-            )
-    raise RuntimeError(
-        "oncoref returned lossy ncbi-symbol-synonyms data and its owning "
-        "CSV could not be located"
-    )
-
-
 def get_data(name, _dataframes_dict=None, *, copy=True):
     """Load a packaged dataset as a DataFrame.
 
@@ -614,8 +583,6 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                 ].copy()
             elif delegated_name == "cancer-reference-expression-samples":
                 delegated = _reconcile_reference_expression_samples(delegated)
-            elif delegated_name == "ncbi-symbol-synonyms":
-                delegated = _preserve_oncoref_synonym_literals(delegated)
             _CACHED_DATAFRAMES[cache_key] = delegated
         cached = _CACHED_DATAFRAMES[cache_key]
         return cached.copy() if copy else cached

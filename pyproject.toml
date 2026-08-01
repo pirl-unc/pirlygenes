@@ -54,7 +54,10 @@ dependencies = [
     # changing the released expression-data bundle. 1.8.162 reconciles the
     # sample-manifest lineage/provenance labels and adds the public
     # source_matrices.resolution_for_source()/codes_for_source() API used by the
-    # compatibility cohort and CLI routes below.
+    # compatibility cohort and CLI routes below. 1.8.169 preserves literal
+    # NA-like NCBI aliases with exact-case-first resolution and completes the
+    # remaining acquisition-source project metadata, removing the last
+    # dependency workarounds tracked by oncoref #461/#462/#464.
     # >=1.8.75
     # also gives the
     # builders the cleaned-up source-matrix QC /
@@ -67,7 +70,7 @@ dependencies = [
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles). Pin the
     # exact owner release because the downloadable cohort-view snapshot records
     # and validates the oncoref package/data versions used to build it.
-    "oncoref==1.8.165",
+    "oncoref==1.8.169",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile

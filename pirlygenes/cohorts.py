@@ -63,35 +63,11 @@ _LEGACY_SOURCE_BY_COHORT = {
 }
 
 _LEGACY_SOURCE_PROJECT = {
-    "treehouse-polya-25-01": "Treehouse",
-    "treehouse-ribod-25-01": "Treehouse",
-    "gse118014-pannet": "GEO",
-    "drmetrics-lnen-2020": "IARC LNEN",
-    "cgci-blgsp": "CGCI",
-    "mmrf-commpass": "MMRF",
-    "target-all": "TARGET",
-    "cllmap": "CLL-map",
-    "gse171811-ctcl": "GEO",
+    # This historical pirlygenes ID predates oncoref's current
+    # ``beataml-ohsu-2022`` acquisition ID. Current owner sources always use
+    # their authoritative source_project; only the retired read alias needs a
+    # compatibility display value.
     "beataml-ohsu": "BeatAML",
-    "target-nbl": "TARGET",
-    "target-rt": "TARGET",
-    "target-wt": "TARGET",
-    "gse299759-chon": "GEO",
-    "gse239531-chordoma": "GEO",
-    "gse75885-sarc": "GEO",
-    "sclc-ucologne-2015": "University of Cologne",
-    "gse98894-midnet": "GEO",
-    "gse142334-fl": "GEO",
-    "gse248751-sarc-ccs": "GEO",
-    "gse328026-sarc-pec": "GEO",
-    "gse241095-sarc-ks-skin": "GEO",
-    "gse235092-merkel": "GEO",
-    "gse120328-hl": "recount3",
-    "gse114922-mds": "recount3",
-    "gse85383-ess": "GEO",
-    "gse32662-mtc": "GEO",
-    "gse30929-lps": "GEO",
-    "unc-nutm1": "UNC",
 }
 
 # Historical composite filters that never represented one physical dataset.

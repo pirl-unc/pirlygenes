@@ -44,19 +44,29 @@ def test_compatibility_metadata_fills_incomplete_owner_records():
     assert cohorts.source_project("beataml-ohsu-2022") == "BeatAML 1.0"
 
 
-def test_compatibility_projects_fill_remaining_owner_metadata_gaps():
-    expected = {
-        "gse118014-pannet": "GEO",
-        "drmetrics-lnen-2020": "IARC LNEN",
-        "gse98894-midnet": "GEO",
-        "gse114922-mds": "recount3",
-        "gse32662-mtc": "GEO",
-        "gse30929-lps": "GEO",
+def test_owner_projects_supersede_retired_compatibility_fallbacks():
+    from oncoref.expression_registry import expression_sources
+
+    source_ids = {
+        "gse118014-pannet",
+        "drmetrics-lnen-2020",
+        "gse98894-midnet",
+        "gse114922-mds",
+        "gse32662-mtc",
+        "gse30929-lps",
     }
+    owner_projects = {
+        source.id: source.source_project
+        for source in expression_sources()
+        if source.id in source_ids
+    }
+
+    assert set(owner_projects) == source_ids
+    assert all(owner_projects.values())
     assert {
         source_id: cohorts.source_project(source_id)
-        for source_id in expected
-    } == expected
+        for source_id in source_ids
+    } == owner_projects
 
 
 def test_source_filter_uses_owner_source_cohort_mapping():
