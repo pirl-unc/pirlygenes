@@ -117,19 +117,18 @@ def test_clear_cache_observably_drops_overlay(tmp_path):
 
 
 def test_set_yaml_path_none_restores_default(tmp_path):
-    """``set_yaml_path(None)`` flips back to the bundled
-    ``expression_sources.yaml`` — confirmed by looking up a known
-    PRIMARY_SOURCES entry, which the bundled YAML's classify pipeline
-    should match."""
+    """``set_yaml_path(None)`` restores oncoref's owner registry.
+
+    The owner registry may intentionally supersede a legacy fallback
+    classification, so compare with its declared value when one exists.
+    """
     _write_yaml(tmp_path, "sources: []\n")
-    # Bundled lookup hidden by the empty override
     primary_example = next(iter(sco.PRIMARY_SOURCES))
-    # Falls back through the hardcoded set even with empty YAML
     assert sco.classify_source_cohort(primary_example) == ("primary", None)
 
-    sco.set_yaml_path(None)   # restore default
-    # Still classified — but now via either YAML or hardcoded path
-    assert sco.classify_source_cohort(primary_example) == ("primary", None)
+    sco.set_yaml_path(None)
+    expected = sco._yaml_overlay().get(primary_example, ("primary", None))
+    assert sco.classify_source_cohort(primary_example) == expected
 
 
 # ─── Hardcoded fallback path ──────────────────────────────────────────

@@ -170,6 +170,15 @@ def test_canonical_authority_release_is_pinned():
     assert canonical_authority_release() == CANONICAL_ENSEMBL_RELEASE
 
 
+def test_delegated_entrez_id_is_recanonicalized_to_local_authority():
+    # oncoref's newer authority maps CAST's Entrez ID to ENSG00000310517;
+    # pirlygenes promises Ensembl 112, where the canonical join key is the
+    # predecessor ENSG00000153113. Both strict and permissive calls must return
+    # the key exposed by pirlygenes expression views.
+    assert canonical_gene_id("831") == "ENSG00000153113"
+    assert canonical_gene_id("831", strict=True) == "ENSG00000153113"
+
+
 def test_canonical_gene_biotype_is_offline():
     assert canonical_gene_biotype("ENSG00000141510") == "protein_coding"  # TP53
     assert canonical_gene_biotype("ENSG00000999999") is None

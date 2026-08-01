@@ -526,35 +526,25 @@ def _canonical_gene_id_cached(
         return _canonicalize_ensembl_gene_id(text, symbol_hint=symbol_hint)
 
     if _ENTREZ_RE.match(text):
-        # Numeric source IDs are Entrez/NCBI GeneIDs in this codebase.  These
-        # tables live under builders because ingest paths are their main user;
-        # import lazily so symbol/ENSG callers never trigger the cache or any
-        # mirror fetch.
-        try:
-            from .builders.ncbi_gene_info import (
-                cached_entrez_history,
-                cached_entrez_to_ensembl,
-                cached_entrez_to_symbol,
-            )
-        except Exception:
-            return None
+        # Numeric source IDs are Entrez/NCBI GeneIDs. Oncoref owns the pinned
+        # live/history mapping into ENSG, but pirlygenes' public contract is its
+        # Ensembl-112 authority space. Re-run the delegated result through the
+        # same private Ensembl normalization used for direct ENSG inputs so a
+        # newer oncoref ID still joins pirlygenes' canonical expression views.
+        # Callers use public canonical_gene_id(); this helper remains an
+        # implementation detail of that multi-identifier API.
+        from oncoref import canonical_gene_id as owner_canonical_gene_id
 
-        def _via_entrez(eid: str) -> str | None:
-            ensg = cached_entrez_to_ensembl().get(eid)
-            if ensg:
-                return _canonicalize_ensembl_gene_id(ensg, symbol_hint=symbol_hint)
-            symbol = cached_entrez_to_symbol().get(eid)
-            if symbol:
-                return _canonical_gene_id_cached(
-                    symbol, source_version, symbol_hint
-                )
+        delegated = owner_canonical_gene_id(
+            text,
+            source_version=source_version,
+        )
+        if not delegated:
             return None
-
-        found = _via_entrez(text)
-        if found:
-            return found
-        live = cached_entrez_history().get(text)
-        return _via_entrez(live) if live else None
+        return _canonicalize_ensembl_gene_id(
+            delegated,
+            symbol_hint=symbol_hint,
+        )
 
     authority_id = _authority_gene_id_for_symbol(text)
     if authority_id:

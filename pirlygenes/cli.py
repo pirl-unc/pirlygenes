@@ -1,10 +1,8 @@
-"""Pirlygenes CLI — cohort-level reference-data operations.
+"""Pirlygenes CLI — cohort-level reference-data inspection.
 
-Hosts subcommands that act on the curated cohort-level reference
-data: ``downloads`` (manage the local cache of per-source raw
-quantifications), ``build`` (regenerate per-gene-per-cohort summary
-statistics from per-sample data), and ``plot`` (cohort-level
-visualisations of gene sets and reference matrices).
+``downloads`` inspects and fetches oncoref-owned source matrices, ``build``
+identifies oncoref as the regeneration owner, and ``data`` inspects the
+delegated summaries plus pirlygenes' curated compatibility artifacts.
 
 Per-sample analysis (``analyze`` and siblings) lives in
 ``pirl-trufflepig``. This CLI keeps the migration-pointer message for
@@ -19,9 +17,8 @@ consumers (trufflepig, ad-hoc notebooks) use directly:
     downloads.load_registry()
     downloads.collect_cache_usage()
 
-Every subcommand here delegates to a function in the
-:mod:`pirlygenes.downloads` (and, when they land, ``pirlygenes.builders``
-/ ``pirlygenes.plot``) modules — no behavior is CLI-only.
+Every expression-ingestion operation delegates to oncoref. Pirlygenes contains
+no source builder or shard writer.
 
 Pattern matches ``trufflepig/cli.py``: stdlib argparse + per-command
 ``cmd_*`` handlers + a dispatch dict in :func:`main`.
@@ -86,11 +83,11 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "pirlygenes — curated cancer reference-expression data and the\n"
-            "cohort-level tools to inspect, build, and plot it.\n\n"
-            "The data lifecycle has three stages:\n"
-            "  downloads   raw per-source quantifications (the build INPUTS)\n"
-            "  build       turn those into per-gene-per-cohort summaries\n"
-            "  data        inspect the packaged reference data (the OUTPUTS)\n"
+            "cohort-level tools to inspect and plot it.\n\n"
+            "Oncoref owns expression ingestion and source matrices:\n"
+            "  downloads   inspect/fetch oncoref per-sample matrices\n"
+            "  build       identify the upstream build owner\n"
+            "  data        inspect packaged/delegated reference data\n"
         ),
         epilog=(
             "Examples:\n"
@@ -115,12 +112,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     downloads_parser = subparsers.add_parser(
         "downloads",
-        help="Manage the local cache of raw per-source quantifications (build inputs).",
+        help="Inspect or fetch oncoref-owned per-sample matrices.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "The local cache of RAW per-source data that builders read from —\n"
-            "the inputs to `pirlygenes build`. (For the packaged OUTPUT data,\n"
-            "use `pirlygenes data` instead.)"
+            "The oncoref source-matrix cache consumed by patient-level\n"
+            "pirlygenes analyses. Use `pirlygenes data` for summary artifacts."
         ),
         epilog="Example:\n  pirlygenes downloads list      # registered sources by on-disk size\n",
     )
@@ -133,14 +129,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     downloads_sub.add_parser(
         "cache-dir",
-        help="Print the active cache root (honors PIRLYGENES_CACHE env var).",
+        help=(
+            "Print the oncoref matrix cache root "
+            "(honors CANCERDATA_SOURCE_MATRICES)."
+        ),
     )
     fetch_parser = downloads_sub.add_parser(
         "fetch",
-        help="Download raw data for a source (NotImplemented; see plan milestone 5).",
+        help="Fetch every published matrix for a source ID or cancer code.",
     )
     fetch_parser.add_argument(
-        "source_id", help="Source id from expression_sources.yaml"
+        "source_id", help="Source id from oncoref's expression registry"
     )
     prune_parser = downloads_sub.add_parser(
         "prune",
@@ -158,9 +157,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Inspect + manage the packaged reference data (the build outputs).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "The packaged cancer reference-expression data: per-gene-per-cohort\n"
-            "summaries plus the small bundled panels. Heavy summaries download\n"
-            "on first use from the version-pinned GitHub release."
+            "Cancer reference-expression summaries delegated to oncoref, plus\n"
+            "pirlygenes' small curated panels and purpose-specific derived views."
         ),
         epilog=(
             "Examples:\n"
@@ -249,18 +247,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     build_parser = subparsers.add_parser(
         "build",
-        help="Rebuild a local source or identify its dependency owner.",
+        help="Identify the oncoref build owner (pirlygenes is read-only).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
-            "Regenerate locally owned reference summaries from raw source data.\n"
-            "Dependency-owned sources remain listed for compatibility and emit\n"
-            "a redirect instead of writing divergent artifacts."
+            "Expression regeneration is owned by oncoref.expression_builders.\n"
+            "This compatibility command lists sources and redirects rebuilds;\n"
+            "it never writes a second pirlygenes artifact."
         ),
         epilog=(
             "Examples:\n"
             "  pirlygenes build list                # show source ids and owners\n"
-            "  pirlygenes build gse98894-midnet     # rebuild one source\n"
-            "  pirlygenes build BL                  # rebuild whatever feeds a cancer code\n"
+            "  pirlygenes build gse98894-midnet     # show the upstream owner\n"
         ),
     )
     build_parser.add_argument(
@@ -268,12 +265,12 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="<source-id|cancer-code|list|all>",
         help="A source id (e.g. 'cgci-blgsp', 'treehouse-polya-25-01') or a "
              "cancer code (e.g. 'BL', 'SARC_EWS'). Use 'list' to print all source "
-             "ids, or 'all' to run every builder (slow!).",
+             "ids. 'all' reports the single upstream owner.",
     )
     build_parser.add_argument(
         "build_args",
         nargs=argparse.REMAINDER,
-        help="Extra args passed through to the underlying builder.",
+        help="Deprecated compatibility arguments; no local builder is run.",
     )
 
     plot_parser = subparsers.add_parser(
@@ -365,18 +362,46 @@ def cmd_downloads_list(_args: argparse.Namespace) -> int:
 
 
 def cmd_downloads_cache_dir(_args: argparse.Namespace) -> int:
-    sys.stdout.write(str(downloads.cache_root()) + "\n")
+    from oncoref import source_matrices
+
+    sys.stdout.write(str(source_matrices.cache_dir()) + "\n")
     return 0
 
 
-def cmd_downloads_fetch(_args: argparse.Namespace) -> int:
-    sys.stderr.write(
-        _NOT_IMPLEMENTED_MESSAGE.format(
-            subcommand="downloads fetch", milestone=5
+def cmd_downloads_fetch(args: argparse.Namespace) -> int:
+    from oncoref import source_matrices
+    from . import cohorts
+
+    requested = str(args.source_id)
+    try:
+        # The owner resolver accepts canonical codes, case variants, and public
+        # cancer aliases (for example PANNET -> NET_PANCREAS). Resolve those
+        # before interpreting the same token as a source registry ID.
+        info = source_matrices.cohort_info(requested)
+    except source_matrices.SourceMatrixError:
+        codes = sorted(cohorts.cohorts_for_source(requested))
+    else:
+        codes = [str(info["cancer_code"])]
+    if not codes:
+        sys.stderr.write(
+            f"no oncoref source matrices match {requested!r}. "
+            "Use `pirlygenes build list` for source IDs or "
+            "`oncoref.source_matrices.available_cohorts()` for cancer codes.\n"
         )
-        + "\n"
+        return 2
+    for code in codes:
+        try:
+            source_matrices.fetch(code)
+        except source_matrices.SourceMatrixError as err:
+            sys.stderr.write(
+                f"failed to fetch oncoref source matrix {code!r}: {err}\n"
+            )
+            return 2
+    noun = "matrix" if len(codes) == 1 else "matrices"
+    sys.stdout.write(
+        f"fetched {len(codes)} oncoref source {noun}: {', '.join(codes)}\n"
     )
-    return 2
+    return 0
 
 
 def cmd_downloads_prune(_args: argparse.Namespace) -> int:
@@ -549,176 +574,9 @@ def cmd_data_prune(args: argparse.Namespace) -> int:
     return 0
 
 
-def _builder_accepted_flags(builder_path) -> set[str]:
-    """Return the set of long ``--flags`` a builder script's argparse accepts.
-
-    Discovered by running the script with ``--help`` and scraping the usage
-    text. Cached per path. Lets the dispatcher pass only flags a given builder
-    actually declares (they share a conventional vocabulary but not uniformly).
-    """
-    import re
-    import subprocess
-
-    cached = _builder_accepted_flags._cache.get(str(builder_path))
-    if cached is not None:
-        return cached
-    flags: set[str] = set()
-    try:
-        proc = subprocess.run(
-            [sys.executable, str(builder_path), "--help"],
-            capture_output=True, text=True, timeout=120,
-        )
-        flags = set(re.findall(r"(--[a-zA-Z][a-zA-Z0-9-]+)", proc.stdout))
-    except Exception:
-        # On any failure, fall back to the conventional trio so behavior
-        # matches the historical uniform-args dispatch.
-        flags = {"--summary-output", "--samples-output", "--cache-dir"}
-    _builder_accepted_flags._cache[str(builder_path)] = flags
-    return flags
-
-
-_builder_accepted_flags._cache = {}
-
-
-_SUMMARY_OUT = "pirlygenes/data/cancer-reference-expression"
-_SAMPLES_OUT = "pirlygenes/data/cancer-reference-expression-samples.csv.gz"
-
-
-def _source_build_cmd(src, summary_out=_SUMMARY_OUT, samples_out=_SAMPLES_OUT,
-                      extra=None):
-    """Construct the subprocess command for one source's builder, or ``None``
-    (with a reason on stderr) when it has no usable builder. Shared by
-    ``build <id>`` and ``build all`` so both dispatch identically."""
-    from pathlib import Path
-
-    if not src.builder:
-        if src.build_owner:
-            owner_hint = (
-                "the source-type-appropriate public API in "
-                "oncoref.expression_builders"
-                if src.build_owner == "oncoref"
-                else f"{src.build_owner}'s source-build tooling"
-            )
-            sys.stderr.write(
-                f"source {src.id!r} is built and published by "
-                f"{src.build_owner}; use {owner_hint} for source rebuilds.\n"
-            )
-            return None
-        sys.stderr.write(
-            f"source {src.id!r} has no `builder` field in the YAML registry.\n")
-        return None
-    builder_path = Path(src.builder)
-    if not builder_path.exists():
-        sys.stderr.write(f"builder script not found: {builder_path}\n")
-        return None
-    cache_dir = str(downloads.source_cache_dir(src.id, category=src.category))
-    cmd = [sys.executable, str(builder_path)]
-    builder_name = builder_path.name
-    if "sweep_treehouse" in builder_name:
-        cmd += ["--summary-output", summary_out]
-    elif builder_name in {"build_geo_matrix.py", "build_gpl570_microarray.py"}:
-        cmd += ["--source-id", src.id, "--summary-output", summary_out,
-                "--samples-output", samples_out, "--cache-dir", cache_dir]
-    elif builder_name == "build_target_subprojects.py":
-        cmd += ["--summary-output", summary_out, "--samples-output", samples_out,
-                "--cache-root", str(downloads.cache_root() / "expression")]
-    elif builder_name == "build_cllmap_reference_expression.py":
-        input_file = Path(cache_dir) / "cllmap_rnaseq_tpms_full.tsv.gz"
-        if not input_file.exists():
-            from .builders import source_data_mirror
-            try:
-                input_file = source_data_mirror.fetch(
-                    "cllmap_rnaseq_tpms_full.tsv.gz", upstream_url=src.url or "")
-            except Exception as exc:
-                sys.stderr.write(
-                    f"CLLMAP input not available from mirror or upstream "
-                    f"({src.url!r}): {exc}\n")
-                return None
-        cmd += ["--input", str(input_file), "--summary-output", summary_out,
-                "--samples-output", samples_out]
-    else:
-        accepted = _builder_accepted_flags(builder_path)
-        for flag, value in (("--summary-output", summary_out),
-                            ("--samples-output", samples_out),
-                            ("--cache-dir", cache_dir)):
-            if flag in accepted:
-                cmd += [flag, value]
-    cmd += list(src.builder_args)
-    # Pass through any user-supplied extra args, coerced to str. argparse
-    # REMAINDER hands these over with a leading "--" separator that we drop.
-    extra_args = [str(arg) for arg in (extra or [])]
-    if extra_args and extra_args[0] == "--":
-        extra_args = extra_args[1:]
-    cmd += extra_args
-    return cmd
-
-
-def _cmd_build_all(sources, args) -> int:
-    """Run EVERY registered builder in turn, upserting each source's rows into
-    the shared summary shard. Builders are order-independent — each owns its
-    ``(cancer_code, source_cohort)`` rows via ``write_reference_rows`` — so a plain
-    sequential sweep regenerates the whole reference table on the current
-    normalization (e.g. the clean-TPM contract). Continues past failures (a
-    source whose raw download isn't cached just fails and is reported) and
-    returns non-zero if any builder failed.
-
-    NOTE: this rebuilds only the per-cohort SUMMARY rows. The derived per-sample
-    artifacts (percentile vectors, representative-sample medoids) are owned by
-    oncoref (pirlygenes#208) — pirlygenes re-exports the accessors but no longer
-    generates those artifacts here.
-    """
-    import subprocess
-
-    buildable = [s for s in sorted(sources, key=lambda x: x.id) if s.builder]
-    ok, failed, skipped, deduped = [], [], [], []
-    seen_cmds: dict[tuple, str] = {}
-    for i, src in enumerate(buildable, 1):
-        cmd = _source_build_cmd(src, extra=args.build_args)
-        if cmd is None:
-            skipped.append(src.id)
-            continue
-        # Many sources share ONE multi-cohort sweep builder with an identical
-        # command (every tcga-* source -> sweep_treehouse_tcga_cohorts.py, which
-        # rebuilds ALL its cohorts in a single invocation). Run each distinct
-        # command once; the redundant siblings are covered by that single run.
-        key = tuple(cmd)
-        if key in seen_cmds:
-            deduped.append(src.id)
-            sys.stdout.write(
-                f"  -> {src.id}: covered by {seen_cmds[key]} (same command)\n")
-            continue
-        seen_cmds[key] = src.id
-        sys.stdout.write(
-            f"\n=== [{i}/{len(buildable)}] build {src.id} ===\n"
-            f"running: {' '.join(cmd)}\n")
-        sys.stdout.flush()
-        rc = subprocess.run(cmd).returncode
-        (ok if rc == 0 else failed).append(src.id)
-        sys.stdout.write(
-            f"  -> {src.id}: {'OK' if rc == 0 else f'FAILED (rc={rc})'}\n")
-        sys.stdout.flush()
-    sys.stdout.write(
-        f"\nbuild all: {len(ok)} ok, {len(failed)} failed, {len(deduped)} "
-        f"deduped (shared sweep), {len(skipped)} skipped (no builder)\n")
-    if failed:
-        sys.stdout.write(f"  failed: {sorted(failed)}\n")
-    if skipped:
-        sys.stdout.write(f"  skipped: {sorted(skipped)}\n")
-    return 1 if failed else 0
-
-
 def cmd_build(args: argparse.Namespace) -> int:
-    """Dispatch to scripts/build_*.py per the YAML registry's `builder` field.
-
-    Lookup order:
-      1. exact source_id match (lowercase)
-      2. cancer_code membership in any registered source's cancer_codes
-      3. 'list' / 'all' meta-commands
-
-    Standard --summary-output / --samples-output / --cache-dir defaults
-    are inferred from the source's id. Extra args passed via REMAINDER.
-    """
-    import subprocess
+    """Preserve source discovery while redirecting every rebuild to oncoref."""
+    from . import cohorts
 
     sources = downloads.load_registry()
     requested = args.source_id
@@ -726,14 +584,17 @@ def cmd_build(args: argparse.Namespace) -> int:
     if requested == "list":
         for s in sorted(sources, key=lambda x: x.id):
             codes = ",".join(s.cancer_codes) or "-"
-            builder = s.builder or (
-                f"({s.build_owner}-owned)" if s.build_owner else "(no builder)"
+            sys.stdout.write(
+                f"  {s.id:32}  {codes:40}  (oncoref-owned)\n"
             )
-            sys.stdout.write(f"  {s.id:32}  {codes:40}  {builder}\n")
         return 0
 
     if requested == "all":
-        return _cmd_build_all(sources, args)
+        sys.stderr.write(
+            "pirlygenes is a read-only oncoref consumer; all expression "
+            "rebuilds belong to oncoref.expression_builders.\n"
+        )
+        return 2
 
     # Exact id match, else cancer_code lookup
     src = next((s for s in sources if s.id == requested), None)
@@ -753,14 +614,23 @@ def cmd_build(args: argparse.Namespace) -> int:
             return 2
         src = candidates[0]
 
-    cmd = _source_build_cmd(src, extra=args.build_args)
-    if cmd is None:
-        return 2
-
-    sys.stdout.write(f"running: {' '.join(cmd)}\n")
-    sys.stdout.flush()
-    result = subprocess.run(cmd)
-    return int(result.returncode)
+    published = sorted(cohorts.cohorts_for_source(src.id))
+    if published:
+        sys.stderr.write(
+            f"source {src.id!r} is built and published by oncoref; use "
+            "oncoref.expression_builders for regeneration or "
+            "`pirlygenes downloads fetch "
+            f"{src.id}` to fetch its selected published matrices "
+            f"({', '.join(published)}).\n"
+        )
+    else:
+        sys.stderr.write(
+            f"source {src.id!r} is owned by oncoref, but no published "
+            "source matrix currently matches it; use "
+            "oncoref.expression_builders for regeneration and track the "
+            "owner's source-matrix registry for publication.\n"
+        )
+    return 2
 
 
 def cmd_plot_patient_coverage(args: argparse.Namespace) -> int:
@@ -778,8 +648,7 @@ def cmd_plot_patient_coverage(args: argparse.Namespace) -> int:
         sys.stderr.write(
             f"no cohorts with cached per-sample data for source "
             f"'{args.source}' (and gene set '{result['label']}'). "
-            f"Run `pirlygenes downloads fetch {args.source}` / "
-            f"`pirlygenes build {args.source}` first.\n"
+            f"Run `pirlygenes downloads fetch {args.source}` first.\n"
         )
         return 2
     sys.stdout.write(

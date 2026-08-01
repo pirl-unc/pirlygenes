@@ -1,18 +1,18 @@
 # Audit: expression normalization, clean-TPM, and symbol mapping
 
-Scope: how every cohort builder converts its native quantification to the
-comparable **clean-TPM** reference values, and whether identifier/synonym
-mapping is uniform. Done June 2026 alongside the recount3 integration.
+Scope: current ownership and consistency of native-unit conversion,
+**clean-TPM**, and identifier mapping. The source-level findings were first
+audited in June 2026; ownership moved completely to oncoref under #528.
 
 ## Executive summary
 
+- Oncoref is the single ingestion and source-gene mapping owner. Pirlygenes
+  consumes its matrices and summaries and carries no builder fallback.
 - Native counts and recount3 coverage are length-normalized exactly once;
   FPKM, RPKM, TPM, microarray proxies, and 3′/UMI pseudobulk are not
   incorrectly length-normalized a second time.
-- Every builder reaches the same canonical 16/9/75 clean-TPM contract.
-- Ensembl IDs are unversioned and canonical across cohorts. Oncoref owns the
-  general source-gene canonicalization path; the few remaining local fallbacks
-  are historical import or ENSG-keyed GDC paths.
+- Every source reaches the canonical 16/9/75 clean-TPM contract.
+- Ensembl IDs are unversioned and canonical across cohorts.
 - Multiple assay/source cohorts remain separate. They are selectable and
   visible in provenance rather than being averaged across incompatible scales.
 
@@ -23,9 +23,9 @@ conclusions.
 
 ### 1. Native unit → TPM → clean TPM
 
-There is **one** unit dispatcher,
-`pirlygenes.builders.geo_matrix.normalize_to_tpm`, and **one** clean-TPM
-transform, `expression.normalize.clean_tpm_matrix`. Clean TPM follows the
+Oncoref's public expression-builder layer is the unit-conversion authority.
+Pirlygenes' `expression.normalize.clean_tpm_matrix` is a compatibility wrapper
+over the same clean-TPM policy, not an ingestion path. Clean TPM follows the
 canonical 16/9/75 compartment contract: oncoref's
 `clean-tpm-censored-genes` rows
 with `category == "ribosomal_protein"` receive 16% of each sample's 1e6 budget,
@@ -35,7 +35,7 @@ level masking/QC paths, not the clean-TPM compartment contract.
 
 | native unit | sources | length-normalized? | path |
 | --- | --- | --- | --- |
-| raw counts / HTSeq | FL, MCL, MPN, NET(old), heme | **yes** — counts ÷ gene length | `normalize_to_tpm(unit="raw_counts", gene_lengths_kb=…)` |
+| raw counts / HTSeq | FL, MCL, MPN, NET(old), heme | **yes** — counts ÷ gene length | oncoref source builder |
 | recount3 coverage gene-sums | NET, MDS, PANNET-prim, HL | **yes** — coverage ÷ exonic bp_length | `oncoref.expression_builders.recount3_gene_sums_to_tpm` |
 | FPKM | HL(old), pan-cancer | no (already length-normalized) | renormalize to 1e6 |
 | RPKM | CML | no (already length-normalized) | renormalize to 1e6 |
@@ -49,61 +49,33 @@ level masking/QC paths, not the clean-TPM compartment contract.
 - **Microarrays are *not* length-normalized** — correct: a probe measures transcript concentration directly, so the array TPM-*proxy* needs no length term. (It is *not* absolute-comparable to RNA-seq TPM; flagged in the `processing_pipeline` tag and surfaced by `pirlygenes data sources`.)
 - **scRNA pseudobulk is not length-normalized** — correct for UMI/3′ data.
 - **There is no CPM-unit source.** (The only "CPM" in the tree is the gene *Carboxypeptidase M*.) The CTCL scRNA path is the one CPM-like quantity, and it correctly skips length normalization.
-- Builder clean TPM and analysis-layer clean TPM use the same canonical
+- Source clean TPM and the compatibility-layer clean TPM use the same canonical
   `clean_tpm_matrix` path. Lower-level technical-RNA zeroing still uses the
   narrower strict technical mask when explicitly requested.
 
 **Minor / follow-ups**
-- recount3 ingestion and length-normalization are owned by
-  `oncoref.expression_builders`; pirlygenes consumes the resulting source
-  matrices and summaries instead of maintaining a second builder path.
-- `normalize_to_tpm`'s `log2(TPM+1)` branch inverse-transforms but does not
-  re-renormalize; only the Treehouse builder uses log2 input and it
-  renormalizes downstream, so no live source is affected. Harmless but worth
-  tightening if a log2 GEO-matrix source is ever added.
+- Registry rows without a complete executable upstream build route are tracked
+  in [oncoref #450](https://github.com/pirl-unc/oncoref/issues/450).
+- Missing structured accessions/provenance fields are tracked in
+  [oncoref #451](https://github.com/pirl-unc/oncoref/issues/451).
 
 ### 2. Symbol / synonym mapping
 
-Identifier mapping has a single intended home,
-`pirlygenes.builders.gene_mapping.resolve_symbol` (direct pyensembl →
-Entrez chain → NCBI-synonym + curated-alias rescue), which recovers renamed
-symbols (`HIST1H1T`→`H1-6`, `GNB2L1`→`RACK1`). It is used by:
-- the Treehouse builder (`builders/treehouse.py`).
+Oncoref's source canonicalization is authoritative: it resolves source symbols
+and identifiers, follows retired-locus mappings, and emits unversioned canonical
+ENSG keys. Pirlygenes delegates its lowest-tier synonym lookup to
+`oncoref.resolve_symbol` and retains only display aliases and compatibility
+lookups over installed Ensembl releases.
 
-**As of PR #527**, the GEO-matrix and CLL-map builders no longer resolve symbols
-locally: they delegate the whole source-gene contract (id → canonical ENSG,
-including HUGO/synonym rescue, in `oncoref`) via
-`pirlygenes.builders.oncoref_source.canonicalize_source`, so `geo_matrix` no
-longer carries `_harmonize_by_symbol`/`harmonize_gene_ids`.
-
-**Fixed in v5.10.0:** `build_geo_heme` (CML/MCL/MPN), `build_cllmap` (CLL),
-and `build_ctcl` (CTCL) now route their symbol resolution through the shared
-`resolve_symbol` and were rebuilt. Recovered genes that retired HGNC symbols
-had silently dropped — e.g. CML **+1454 genes** (RACK1←GNB2L1 at 1424 TPM,
-H3-3A←H3F3A, H1-10, ATP5F1E, …), CTCL +951, MPN +524, MCL +462, CLL +88.
-Those builders were also brought to current schema (`tumor_origin` set,
-`reindex` not strict column-select).
-
-**Still on the local resolver (documented, lower risk):**
-- `import_cancer_specific_expression.py` (CHON / SARC subtypes / SCLC) —
-  already does its *own* historical-Ensembl-release rescue (a different
-  mechanism), and its summary input table isn't in the tree, so it's left
-  pending a re-supply of that input.
-- GDC builders (`build_target_all`, `build_mmrf`, `build_bl_gdc`,
-  `build_target_subprojects`) call `genes_by_name` only as a **fallback**;
-  they are ENSG-keyed (STAR `tpm_unstranded` by Ensembl ID), so the fallback
-  rarely fires and rebuilding needs full GDC downloads. Unify at the next
-  GDC rebuild.
-
-Every cohort's shard is keyed by **unversioned ENSG** — verified across all
-shards — so the references share one compatible identifier space regardless
-of source (Ensembl 112 vs recount3 Gencode v26).
+The original migration recovered retired symbols such as
+`HIST1H1T`→`H1-6` and `GNB2L1`→`RACK1`. With the local builder fleet removed,
+there is no second source-level resolver that can drift from oncoref.
 
 ### 3. Multi-source cohorts — semantics and visibility
 
-A cancer code can have **multiple sources** (e.g. PANNET = liver-met
+A cancer code can have **multiple sources** (e.g. NET_PANCREAS = liver-met
 recount3 + primary recount3; SARC_DDLPS = Treehouse RNA-seq + GEO RNA-seq +
-microarray). These are **kept as separate `source_cohort` shards and are
+microarray). These are **kept as separate `source_cohort` rows and are
 NOT averaged/merged** — different assays and quantification scales
 (microarray TPM-proxy is not comparable in magnitude to RNA-seq TPM).
 Consumers select or compare explicitly; e.g. the CTA heatmaps pick the

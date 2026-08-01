@@ -38,7 +38,7 @@ dependencies = [
     # pirlygenes gene-ID/universe views, provenance, pooling, and identical-locus
     # collapse, including compact pirlygenes proteoform IDs and n_detected-safe
     # source-union collapse. 1.8.124 indexes reference-summary rows by cohort so
-    # filtered calls do not repeatedly scan the full frame. The current 1.8.159
+    # filtered calls do not repeatedly scan the full frame. The current 1.8.162
     # release also includes 1.8.130's canonical SARC-histology labels before source
     # filtering, so exact cohort filters and their availability metadata share one
     # upstream identity, 1.8.133's categorical encoding at the owning cache
@@ -51,7 +51,13 @@ dependencies = [
     # provenance and reports its selected artifact sample counts consistently;
     # 1.8.158/data 5.23.13 adds the partition-safe compact manifest used by the
     # delegated read paths. 1.8.159 adds the SRA/Salmon source builder without
-    # changing the released expression-data bundle.
+    # changing the released expression-data bundle. 1.8.162 reconciles the
+    # sample-manifest lineage/provenance labels and adds the public
+    # source_matrices.resolution_for_source()/codes_for_source() API used by the
+    # compatibility cohort and CLI routes below. 1.8.169 preserves literal
+    # NA-like NCBI aliases with exact-case-first resolution and completes the
+    # remaining acquisition-source project metadata, removing the last
+    # dependency workarounds tracked by oncoref #461/#462/#464.
     # >=1.8.75
     # also gives the
     # builders the cleaned-up source-matrix QC /
@@ -64,7 +70,7 @@ dependencies = [
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles). Pin the
     # exact owner release because the downloadable cohort-view snapshot records
     # and validates the oncoref package/data versions used to build it.
-    "oncoref==1.8.159",
+    "oncoref==1.8.169",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile
@@ -129,28 +135,25 @@ pirlygenes = "pirlygenes.cli:main"
 requires = ["setuptools>=60"]
 
 [tool.setuptools.package-data]
-# Only small curated panels ship in the wheel. Empirical per-cohort summary rows
-# are owned/fetched by oncoref (#557); pirlygenes' remaining precomputed views,
-# pan-cancer matrix, and HPA cell-type matrix come from its versioned data bundle.
+# Only small curated panels ship in the wheel. Empirical rows, source metadata,
+# sample manifests, and per-sample matrices are owned/fetched by oncoref
+# (#557/#528); pirlygenes' remaining precomputed views, pan-cancer matrix, and
+# HPA cell-type matrix come from its versioned data bundle.
 # See pirlygenes/data_bundle.py.
 pirlygenes = [
     "data/*.csv",            # small curated panels (cancer-key-genes, CTAs, etc.)
-    "data/*.csv.gz",         # samples manifest + small generated pan-rollup artifact
-    "data/*.yaml",           # expression_sources.yaml
+    "data/*.csv.gz",         # small generated artifacts
 ]
 
 # What we deliberately DO NOT ship in the wheel:
-#   data/cancer-reference-expression/*                  build/audit inputs;
-#                                                       runtime owned by oncoref
 #   data/cancer-reference-expression-views/*            precomputed views
 #   data/pan-cancer-expression.csv                       ~11 MB
 #   data/hpa-cell-type-expression.csv                    ~7 MB
 # (The last three paths are fetched by pirlygenes.data_bundle. Per-cohort
-# summary rows, medoid representatives, and percentile vectors are fetched by
-# oncoref; pirlygenes no longer has a duplicate summary-row runtime path.)
+# summary rows, source matrices/manifests, medoid representatives, and
+# percentile vectors are fetched by oncoref.)
 [tool.setuptools.exclude-package-data]
 pirlygenes = [
-    "data/cancer-reference-expression/*",
     "data/cancer-reference-expression-views/*",
     "data/pan-cancer-expression.csv",
     "data/hpa-cell-type-expression.csv",

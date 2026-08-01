@@ -63,6 +63,19 @@ def test_artifact_only_source_is_registered_from_owner_availability():
     assert "9 low-grade and 4 high-grade" in row["provenance"]
 
 
+def test_new_summary_source_is_registered_from_owner_availability():
+    row = gsc.cohort_registry_df().set_index("cohort_id").loc[
+        "SRP493407_MMNST_2024"
+    ]
+
+    assert row["prefix"] == "SRP493407"
+    assert row["kind"] == "sra"
+    assert row["source_project"] == "NCBI SRA Gene Feature counts"
+    assert row["n_samples"] == 3
+    assert row["n_codes"] == 1
+    assert "data_version=5.23.14" in row["provenance"]
+
+
 def test_sparse_source_registry_keeps_physical_and_reference_counts_distinct():
     import oncoref
 

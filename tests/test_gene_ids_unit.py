@@ -221,19 +221,26 @@ def test_store_index_cache_refuses_degenerate_map(tmp_path):
 
 
 def test_ncbi_synonym_official_symbol_casing(monkeypatch):
-    monkeypatch.setattr(gi, "_ncbi_symbol_synonyms", lambda: {"GNB2L1": "RACK1"})
+    monkeypatch.setattr(
+        gi,
+        "_ncbi_symbol_synonyms",
+        lambda: {"GNB2L1": "RACK1"},
+    )
     assert gi.ncbi_synonym_official_symbol("gnb2l1") == "RACK1"
     assert gi.ncbi_synonym_official_symbol("GNB2L1") == "RACK1"
     assert gi.ncbi_synonym_official_symbol("NOPE") is None
 
 
 def test_symbol_lookup_lowest_tier_resolves_via_ncbi_synonym(monkeypatch):
-    """A legacy symbol unknown to every release resolves via the bundled
-    NCBI synonym snapshot (the lowest tier)."""
+    """A legacy symbol unknown to every release resolves via oncoref."""
     rack1 = FakeGene("ENSGRACK1", "RACK1")
     genomes = [FakeGenome(release=112, by_name={"RACK1": [rack1]})]
     monkeypatch.setattr(gi, "genomes", genomes)
-    monkeypatch.setattr(gi, "_ncbi_symbol_synonyms", lambda: {"GNB2L1": "RACK1"})
+    monkeypatch.setattr(
+        gi,
+        "_ncbi_symbol_synonyms",
+        lambda: {"GNB2L1": "RACK1"},
+    )
 
     genome, gene = gi.find_gene_and_ensembl_release_by_name("GNB2L1")
     assert gene.id == "ENSGRACK1"
@@ -246,23 +253,61 @@ def test_symbol_lookup_direct_hit_beats_synonym(monkeypatch):
     other = FakeGene("ENSGOTHER", "BAR")
     genomes = [FakeGenome(release=112, by_name={"FOO": [direct], "BAR": [other]})]
     monkeypatch.setattr(gi, "genomes", genomes)
-    monkeypatch.setattr(gi, "_ncbi_symbol_synonyms", lambda: {"FOO": "BAR"})
+    monkeypatch.setattr(
+        gi,
+        "_ncbi_symbol_synonyms",
+        lambda: {"FOO": "BAR"},
+    )
 
     genome, gene = gi.find_gene_and_ensembl_release_by_name("FOO")
     assert gene.id == "ENSGDIRECT"
 
 
-def test_bundled_ncbi_synonyms_present_and_sane():
-    """The bundled snapshot ships, loads offline, and carries known renames."""
-    table = gi._ncbi_symbol_synonyms()
-    assert len(table) > 10_000
-    assert table.get("GNB2L1") == "RACK1"
-    assert table.get("TCEB2") == "ELOB"
-    assert table.get("NARS") == "NARS1"
+def test_oncoref_symbol_authority_carries_known_renames():
+    """The dependency-owned offline authority carries the historical aliases."""
+    assert gi.ncbi_synonym_official_symbol("GNB2L1") == "RACK1"
+    assert gi.ncbi_synonym_official_symbol("TCEB2") == "ELOB"
+    assert gi.ncbi_synonym_official_symbol("NARS") == "NARS1"
+
+
+def test_oncoref_synonym_rows_preserve_exact_case_collisions():
+    assert gi.ncbi_synonym_official_symbol("20-ALPHA-HSD") == "AKR1C1"
+    assert gi.ncbi_synonym_official_symbol("20-alpha-HSD") == "HSD17B1"
+    assert gi.ncbi_synonym_official_symbol("5PTASE") == "INPP5A"
+    assert gi.ncbi_synonym_official_symbol("5PTase") == "INPP5B"
+
+
+def test_oncoref_synonym_rows_preserve_na_like_aliases():
+    assert gi.ncbi_synonym_official_symbol("NA") == "XK"
+    assert gi.ncbi_synonym_official_symbol("NaN") == "SCN11A"
+
+
+@pytest.mark.parametrize(
+    ("alias", "official", "gene_id"),
+    [
+        ("20-ALPHA-HSD", "AKR1C1", "ENSG_AKR1C1"),
+        ("20-alpha-HSD", "HSD17B1", "ENSG_HSD17B1"),
+        ("5PTASE", "INPP5A", "ENSG_INPP5A"),
+        ("5PTase", "INPP5B", "ENSG_INPP5B"),
+    ],
+)
+def test_case_distinct_synonyms_resolve_to_the_right_gene(
+    monkeypatch, alias, official, gene_id,
+):
+    gene = FakeGene(gene_id, official)
+    monkeypatch.setattr(
+        gi,
+        "genomes",
+        [FakeGenome(release=112, by_name={official: [gene]})],
+    )
+
+    _genome, resolved = gi.find_gene_and_ensembl_release_by_name(alias)
+
+    assert resolved.id == gene_id
 
 
 # Real HGNC renames / classic aliases → current official symbol, straight
-# from the bundled snapshot (offline, deterministic, no pyensembl). A
+# from oncoref's offline authority (deterministic, no pyensembl). A
 # deliberately gnarly spread: elongin renames, the KMT2/MLL family, the
 # ATP-synthase and septin mass-renames, KIAA/ORF/FLJ/ODZ names, and the
 # myeloma-relevant WHSC1/MMSET→NSD2 and FAM46C→TENT5C.

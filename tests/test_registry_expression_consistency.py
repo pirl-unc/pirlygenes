@@ -1,8 +1,8 @@
-"""Registry ↔ expression-data consistency (#316).
+"""Registry ↔ delegated expression-data consistency (#316).
 
 If a registry row claims a **concrete** expression source (a real
 ``expression_source`` like Treehouse/TCGA/GEO with a concrete
-``source_cohort``), then that code must actually be backed by either a packaged
+``source_cohort``), then that code must actually be backed by either a delegated
 reference (``available_cancer_expression_references``) or a candidate row in
 ``cancer-expression-source-candidates`` documenting why it isn't built yet.
 Otherwise the registry over-claims data that doesn't exist (the four
@@ -45,23 +45,15 @@ def test_concrete_source_has_reference_or_candidate():
 
 
 def test_every_reference_source_cohort_is_registered():
-    """Reverse direction of the check above: every ``source_cohort`` appearing
-    in the packaged reference frame must be a registered ``cohort_id`` in
-    cohort-registry.csv. Catches an orphan/stale shard left in
-    ``cancer-reference-expression/`` after a rename — the shard loader globs all
-    ``*.csv.gz`` and concatenates, so an unregistered leftover would silently
-    re-enter the frame (e.g. a renamed ``TEMPUS_UNC_NUTM1.csv.gz`` sitting beside
-    its replacement ``UNC_NUTM1.csv.gz`` double-counted NUTM)."""
+    """Every owner ``source_cohort`` exposed publicly has a registry entry."""
     data_sources = set(
         available_cancer_expression_references()["source_cohort"].astype(str))
     registered = set(get_data("cohort-registry.csv")["cohort_id"].astype(str))
     orphans = sorted(data_sources - registered)
     assert not orphans, (
-        "Reference-expression shards carry source_cohort(s) absent from "
+        "Delegated reference rows carry source_cohort(s) absent from "
         "cohort-registry.csv:\n  " + "\n  ".join(orphans)
-        + "\n\nLikely a stale/renamed shard left in "
-        "pirlygenes/data/cancer-reference-expression/. Delete the orphan "
-        "shard or register the cohort."
+        + "\n\nCanonicalize the owner label or register the cohort upstream."
     )
 
 

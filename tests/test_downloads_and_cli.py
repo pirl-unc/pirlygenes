@@ -1,11 +1,4 @@
-"""Smoke tests for the cohort-level CLI + downloads Python API.
-
-Covers the foundation shipped in the expression-data refresh project
-(see docs/expression-data-refresh-plan.md). Heavy behavior (build,
-fetch) is scaffolded only — those subcommands return a clear
-NotImplemented pointer and are not exercised here. `plot
-patient-coverage` is implemented and covered in test_coverage.py.
-"""
+"""Smoke tests for the oncoref-backed cache and compatibility CLI."""
 
 from __future__ import annotations
 
@@ -65,37 +58,23 @@ def test_ci_oncoref_cache_key_tracks_resolved_package_and_data_versions():
 
 def test_dependency_owned_sources_are_present_in_oncoref():
     """Dependency-owned routes stay discoverable but never write locally."""
-    from oncoref.expression_builders import (
-        gdc_source_entries,
-        geo_matrix_source_entries,
-        recount3_source_entries,
-        treehouse_source_entries,
-    )
+    from oncoref.expression_registry import expression_sources
 
     local = {
         source.id: source
         for source in downloads.load_registry()
         if source.build_owner == "oncoref"
     }
-    upstream = {
-        str(entry["id"]): entry
-        for entries in (
-            gdc_source_entries(),
-            geo_matrix_source_entries(),
-            recount3_source_entries(),
-            treehouse_source_entries(),
-        )
-        for entry in entries
-    }
+    upstream = {source.id: source for source in expression_sources()}
 
     assert local
     assert {"cgci-blgsp", "gse328026-sarc-pec"} <= set(local)
     assert set(local) <= set(upstream)
     for source_id, source in local.items():
         assert source.builder is None
-        assert source.source_type == str(upstream[source_id]["source_type"])
+        assert source.source_type == upstream[source_id].source_type
         if source.source_cohort:
-            assert source.source_cohort == str(upstream[source_id]["source_cohort"])
+            assert source.source_cohort == upstream[source_id].source_cohort
 
 
 def test_cache_root_honors_env_var(monkeypatch, tmp_path: Path):
@@ -131,7 +110,7 @@ def test_source_cache_dir_layout(monkeypatch, tmp_path: Path):
 def test_collect_cache_usage_reports_zero_for_empty_cache(
     monkeypatch, tmp_path: Path,
 ):
-    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path))
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
     usages = downloads.collect_cache_usage()
     assert usages, "must report at least one source"
     assert all(u.on_disk_bytes == 0 for u in usages)
@@ -140,22 +119,104 @@ def test_collect_cache_usage_reports_zero_for_empty_cache(
 def test_collect_cache_usage_walks_actual_files(
     monkeypatch, tmp_path: Path,
 ):
-    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path))
-    target = downloads.source_cache_dir("cgci-blgsp")
-    target.mkdir(parents=True)
-    (target / "a.bin").write_bytes(b"x" * 1024)
-    (target / "sub").mkdir()
-    (target / "sub" / "b.bin").write_bytes(b"y" * 2048)
+    from oncoref import source_matrices
+
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
+    target = source_matrices.local_path("BL")
+    target.write_bytes(b"x" * 3072)
 
     usages = {u.source.id: u for u in downloads.collect_cache_usage()}
     assert usages["cgci-blgsp"].on_disk_bytes == 1024 + 2048
 
 
+def test_explicit_owner_subset_uses_oncoref_cache(
+    monkeypatch, tmp_path: Path,
+):
+    from oncoref import source_matrices
+
+    owner_cache = tmp_path / "owner"
+    legacy_cache = tmp_path / "legacy"
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(owner_cache))
+    monkeypatch.setenv("PIRLYGENES_CACHE", str(legacy_cache))
+    source_matrices.local_path("BL").write_bytes(b"x" * 3072)
+
+    subset = [
+        source
+        for source in downloads.load_registry()
+        if source.id == "cgci-blgsp"
+    ]
+    stale = downloads.source_cache_dir("cgci-blgsp")
+    stale.mkdir(parents=True)
+    (stale / "stale.bin").write_bytes(b"x" * 17)
+
+    usage = downloads.collect_cache_usage(subset)
+
+    assert len(usage) == 1
+    assert usage[0].on_disk_bytes == 3072
+    assert usage[0].cache_dir == source_matrices.cache_dir()
+
+
+def test_explicit_custom_source_uses_legacy_cache(
+    monkeypatch, tmp_path: Path,
+):
+    registry = tmp_path / "sources.yaml"
+    registry.write_text(
+        "sources:\n"
+        "  - id: private-fixture\n"
+        "    category: expression\n"
+        "    cancer_codes: [PRIVATE]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path / "legacy"))
+    source = downloads.load_registry(registry)[0]
+    cached = downloads.source_cache_dir(source.id)
+    cached.mkdir(parents=True)
+    (cached / "matrix.csv").write_bytes(b"x" * 23)
+
+    usage = downloads.collect_cache_usage([source])
+
+    assert len(usage) == 1
+    assert usage[0].on_disk_bytes == 23
+    assert usage[0].cache_dir == cached
+
+
+def test_cache_usage_charges_routed_matrices_only_to_physical_owner(
+    monkeypatch, tmp_path: Path,
+):
+    from oncoref import source_matrices
+
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
+    source_matrices.local_path("ACC").write_bytes(b"x" * 4096)
+
+    usages = {u.source.id: u for u in downloads.collect_cache_usage()}
+
+    assert usages["treehouse-polya-25-01-tcga-subset"].on_disk_bytes == 4096
+    assert usages["tcga-acc"].on_disk_bytes == 0
+    assert sum(usage.on_disk_bytes for usage in usages.values()) == 4096
+
+
+def test_cache_usage_accounts_for_every_published_matrix(
+    monkeypatch, tmp_path: Path,
+):
+    from oncoref import source_matrices
+
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
+    codes = source_matrices.registry()["cancer_code"].astype(str).tolist()
+    for code in codes:
+        source_matrices.local_path(code).write_bytes(b"x")
+
+    usages = downloads.collect_cache_usage()
+
+    assert sum(usage.on_disk_bytes for usage in usages) == len(codes)
+
+
 def test_render_list_groups_and_sorts(monkeypatch, tmp_path: Path):
-    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path))
+    from oncoref import source_matrices
+
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
     out = downloads.render_list(downloads.collect_cache_usage())
     assert "== expression" in out
-    assert "Cache root:" in out
+    assert f"Cache root: {source_matrices.cache_dir()}" in out
     assert "Total across" in out
 
 
@@ -176,18 +237,111 @@ def test_cli_no_args_prints_help():
 
 
 def test_cli_downloads_cache_dir(monkeypatch, tmp_path: Path):
-    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path))
+    from oncoref import source_matrices
+
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
     rc, out, _ = _run_cli(["downloads", "cache-dir"])
     assert rc == 0
-    assert out.strip() == str(tmp_path)
+    assert out.strip() == str(source_matrices.cache_dir())
 
 
 def test_cli_downloads_list(monkeypatch, tmp_path: Path):
-    monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path))
+    monkeypatch.setenv("CANCERDATA_SOURCE_MATRICES", str(tmp_path))
     rc, out, _ = _run_cli(["downloads", "list"])
     assert rc == 0
     assert "tcga-blca" in out
     assert "cgci-blgsp" in out
+
+
+def test_cli_downloads_fetch_resolves_owner_source_ids(monkeypatch):
+    from oncoref import source_matrices
+
+    fetched = []
+    monkeypatch.setattr(source_matrices, "fetch", fetched.append)
+
+    rc, out, err = _run_cli(["downloads", "fetch", "beataml-ohsu-2022"])
+
+    assert rc == 0
+    assert not err
+    assert fetched == [
+        "LAML_APL",
+        "LAML_ELNadv",
+        "LAML_ELNfav",
+        "LAML_ELNint",
+    ]
+    assert "fetched 4 oncoref source matrices" in out
+
+
+def test_cli_downloads_fetch_resolves_historical_source_ids(monkeypatch):
+    from oncoref import source_matrices
+
+    fetched = []
+    monkeypatch.setattr(source_matrices, "fetch", fetched.append)
+
+    rc, out, err = _run_cli(["downloads", "fetch", "beataml-ohsu"])
+
+    assert rc == 0
+    assert not err
+    assert fetched == [
+        "LAML_APL",
+        "LAML_ELNadv",
+        "LAML_ELNfav",
+        "LAML_ELNint",
+    ]
+    assert "fetched 4 oncoref source matrices" in out
+
+
+def test_cli_downloads_fetch_preserves_geo_heme_alias(monkeypatch):
+    from oncoref import source_matrices
+
+    fetched = []
+    monkeypatch.setattr(source_matrices, "fetch", fetched.append)
+
+    rc, out, err = _run_cli(["downloads", "fetch", "geo-heme"])
+
+    assert rc == 0
+    assert not err
+    assert fetched == ["CML", "MCL", "MDS", "MPN"]
+    assert "fetched 4 oncoref source matrices" in out
+
+
+@pytest.mark.parametrize(
+    ("requested", "canonical"),
+    [
+        ("PANNET", "NET_PANCREAS"),
+        ("prad", "PRAD"),
+    ],
+)
+def test_cli_downloads_fetch_resolves_cancer_code_aliases(
+    monkeypatch, requested, canonical,
+):
+    from oncoref import source_matrices
+
+    fetched = []
+    monkeypatch.setattr(source_matrices, "fetch", fetched.append)
+
+    rc, out, err = _run_cli(["downloads", "fetch", requested])
+
+    assert rc == 0
+    assert not err
+    assert fetched == [canonical]
+    assert "fetched 1 oncoref source matrix" in out
+
+
+def test_cli_downloads_fetch_reports_owner_download_failures(monkeypatch):
+    from oncoref import source_matrices
+
+    def fail(_code):
+        raise source_matrices.SourceMatrixError("offline fixture")
+
+    monkeypatch.setattr(source_matrices, "fetch", fail)
+
+    rc, out, err = _run_cli(["downloads", "fetch", "PRAD"])
+
+    assert rc == 2
+    assert not out
+    assert "failed to fetch oncoref source matrix 'PRAD'" in err
+    assert "offline fixture" in err
 
 
 def test_cli_build_list_enumerates_sources():
@@ -214,6 +368,15 @@ def test_cli_build_dependency_owned_sources_redirect_to_oncoref():
         assert rc == 2
         assert "built and published by oncoref" in err
         assert "oncoref.expression_builders" in err
+
+
+def test_cli_build_reports_newly_published_mmnst_matrix():
+    rc, _, err = _run_cli(["build", "prjna1083972-mmnst"])
+
+    assert rc == 2
+    assert "built and published by oncoref" in err
+    assert "downloads fetch prjna1083972-mmnst" in err
+    assert "SARC_MMNST" in err
 
 
 def test_cli_build_ambiguous_cancer_code_lists_candidates():

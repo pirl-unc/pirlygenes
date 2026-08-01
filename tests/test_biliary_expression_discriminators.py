@@ -7,8 +7,9 @@ def test_biliary_expression_candidates_are_explicit():
 
     chol = candidates.loc["CHOL"]
     assert chol["source_status"] == "direct_reference_available"
-    assert chol["accession"] == "TCGA-CHOL"
-    assert "Direct CHOL reference" in chol["notes"]
+    assert chol["accession"] == "GSE294351"
+    assert chol["source_cohort"] == "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES"
+    assert "selected Treehouse physical source" in chol["notes"]
 
     gbc = candidates.loc["GBC"]
     assert gbc["source_status"] == "bulk_candidate_ready"

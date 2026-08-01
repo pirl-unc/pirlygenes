@@ -14,11 +14,14 @@ version-pinned tarball retains only its purpose-specific derived views/matrices.
 Layout:
 
   Bundled (in wheel, ships with pip install pirlygenes):
-    pirlygenes/data/*.csv                           (small panels)
-    pirlygenes/data/expression_sources.yaml         (registry)
-    pirlygenes/data/cancer-reference-expression-samples.csv.gz
+    pirlygenes/data/*.csv                           (small curated panels)
 
-Downloaded (lazy, expression bundle, cached locally):
+  Owned by oncoref:
+    expression source registry
+    per-sample source matrices and sample-QC manifest
+    empirical cancer-reference summary rows
+
+  Downloaded (lazy, pirlygenes bundle, cached locally):
     cancer-reference-expression-views/*.parquet     (precomputed canonical views)
     pan-cancer-expression.csv
     hpa-cell-type-expression.csv

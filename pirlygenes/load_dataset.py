@@ -47,7 +47,11 @@ _CACHED_DATAFRAMES = {}
 # shipping a second physical copy that can drift.
 _ONCOREF_DATASETS = frozenset({
     "cancer-cohort-aggregates",
+    "cancer-expression-source-candidates",
+    "cancer-reference-expression-availability",
+    "cancer-reference-expression-samples",
     "clean-tpm-censored-genes",
+    "ncbi-symbol-synonyms",
     "ribosomal-protein-pseudogenes",
 })
 
@@ -373,6 +377,9 @@ def _cohort_source_defaults(cohort_id: str) -> tuple[str, str, str]:
         ("SCLC_UCOLOGNE", "ucologne", "University of Cologne"),
         ("DRMETRICS", "geo", "GEO (DR-metrics / Alcala LNEN)"),
         ("GSE", "geo", "GEO"),
+        ("SRP", "sra", "NCBI SRA"),
+        ("SRA", "sra", "NCBI SRA"),
+        ("PRJNA", "sra", "NCBI SRA"),
         ("BEATAML", "beataml", "BeatAML (OHSU)"),
         ("MMRF", "mmrf", "MMRF CoMMpass"),
         ("CLLMAP", "cllmap", "CLL-map"),
@@ -385,12 +392,12 @@ def _cohort_source_defaults(cohort_id: str) -> tuple[str, str, str]:
     return "other", "", "bulk RNA-seq"
 
 
-def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
-    """Register artifact sources missing from the compatibility vocabulary.
+def _reconcile_owner_cohorts(df: pd.DataFrame) -> pd.DataFrame:
+    """Register owner sources missing from the compatibility vocabulary.
 
-    oncoref owns the artifacts and their cohort metadata (oncoref#416). Merge
-    any artifact source newer than pirlygenes' packaged registry snapshot from
-    its compact availability records so pirlygenes'
+    oncoref owns the summaries, artifacts, and their cohort metadata. Merge any
+    source newer than pirlygenes' packaged registry snapshot from its compact
+    availability records so pirlygenes'
     invariant remains true: every advertised ``source_cohort`` is selectable by
     kind and valid against ``cohort_registry_df()``.
     """
@@ -404,7 +411,7 @@ def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
 
     import oncoref
 
-    availability = oncoref.cancer_reference_expression_availability(
+    artifacts = oncoref.cancer_reference_expression_availability(
         normalize="tpm_clean",
         sample_qc="artifact",
         reference_source="artifact",
@@ -415,14 +422,19 @@ def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
         reference_source="summary_rows_all",
         all_sources=True,
     )
-    summary_codes = set(
-        summary.loc[summary["available"], "cancer_code"].astype(str)
-    )
-    availability = availability.loc[
-        availability["available"]
-        & availability["source_cohort"].notna()
-        & ~availability["cancer_code"].astype(str).isin(summary_codes)
-    ].drop_duplicates(["cancer_code", "source_cohort"])
+    summary = summary.loc[
+        summary["available"] & summary["source_cohort"].notna()
+    ]
+    summary_codes = set(summary["cancer_code"].astype(str))
+    artifact_only = artifacts.loc[
+        artifacts["available"]
+        & artifacts["source_cohort"].notna()
+        & ~artifacts["cancer_code"].astype(str).isin(summary_codes)
+    ]
+    availability = pd.concat(
+        [summary, artifact_only],
+        ignore_index=True,
+    ).drop_duplicates(["cancer_code", "source_cohort"])
     known = set(df["cohort_id"].astype(str))
     availability = availability.loc[
         ~availability["source_cohort"].astype(str).isin(known)
@@ -472,7 +484,7 @@ def _reconcile_artifact_only_cohorts(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _reconcile_cohort_registry(df: pd.DataFrame) -> pd.DataFrame:
-    return _reconcile_artifact_only_cohorts(
+    return _reconcile_owner_cohorts(
         _reconcile_computed_cohort_members(df)
     )
 
@@ -496,6 +508,48 @@ def _dataset_paths():
             paths[key] = shard_dir
     _DATASET_PATHS = paths
     return paths
+
+
+def _reconcile_reference_expression_samples(
+    samples: pd.DataFrame,
+) -> pd.DataFrame:
+    """Preserve pirlygenes' public sample-manifest schema over owner rows.
+
+    Oncoref owns the physical manifest, including canonical lineage and
+    pipeline provenance as of 1.8.162. Pirlygenes historically added a BeatAML
+    ``subtype`` column, so derive only that compatibility field from owner rows.
+    """
+    out = samples.copy()
+
+    # ``subtype`` was a BeatAML compatibility field. For included samples it is
+    # identical to canonical lineage_label; excluded duplicate aliquots inherit
+    # the unique subtype of the retained aliquot for the same case. This
+    # reconstructs the historical 667 assignments entirely from owner metadata.
+    subtype = pd.Series(pd.NA, index=out.index, dtype="object")
+    if {"source_cohort", "case_id", "lineage_label"} <= set(out.columns):
+        beataml = out["source_cohort"].astype(str).eq("BEATAML_OHSU_2022")
+        subtype.loc[beataml] = out.loc[beataml, "lineage_label"]
+        classified = out.loc[
+            beataml
+            & out["case_id"].notna()
+            & out["lineage_label"].notna(),
+            ["case_id", "lineage_label"],
+        ]
+        unambiguous = (
+            classified.groupby("case_id")["lineage_label"]
+            .agg(
+                lambda values: (
+                    values.iloc[0]
+                    if values.astype(str).nunique() == 1
+                    else pd.NA
+                )
+            )
+        )
+        missing = beataml & subtype.isna() & out["case_id"].notna()
+        subtype.loc[missing] = out.loc[missing, "case_id"].map(unambiguous)
+    out["subtype"] = subtype
+
+    return out
 
 
 def get_data(name, _dataframes_dict=None, *, copy=True):
@@ -527,6 +581,8 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                         _PIRLYGENES_AGGREGATE_CODES
                     )
                 ].copy()
+            elif delegated_name == "cancer-reference-expression-samples":
+                delegated = _reconcile_reference_expression_samples(delegated)
             _CACHED_DATAFRAMES[cache_key] = delegated
         cached = _CACHED_DATAFRAMES[cache_key]
         return cached.copy() if copy else cached

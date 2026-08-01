@@ -146,6 +146,16 @@ def test_cohort_aggregate_dataset_is_a_filtered_oncoref_compatibility_view():
     pd.testing.assert_frame_equal(actual.reset_index(drop=True), expected)
 
 
+def test_ncbi_synonym_dataset_remains_delegated_and_preserves_na_literals():
+    assert "ncbi-symbol-synonyms" in ld._ONCOREF_DATASETS
+
+    synonyms = ld.get_data("NCBI-Symbol-Synonyms")
+    by_alias = synonyms.set_index("alias")["official_symbol"]
+
+    assert by_alias["NA"] == "XK"
+    assert by_alias["NaN"] == "SCN11A"
+
+
 def test_get_all_csv_paths_contains_core_dataset():
     paths = ld.get_all_csv_paths()
     assert any(Path(p).name == "ADC-trials.csv" for p in paths)

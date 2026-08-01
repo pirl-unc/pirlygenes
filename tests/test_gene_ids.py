@@ -34,12 +34,20 @@ def _load_ensembl_id_aliases():
 
 
 def _resolve_in_any_release(gene_id, aliases=None):
-    """Check if gene_id (or its alias) resolves in any installed Ensembl release."""
+    """Check whether Ensembl or the delegated owner recognizes ``gene_id``."""
+    import oncoref
+
     aliases = aliases or {}
     candidates = [gene_id]
     if gene_id in aliases:
         candidates.append(aliases[gene_id])
     for candidate in candidates:
+        # Delegated expression data uses oncoref's harmonized primary-assembly
+        # gene space. A valid owner-canonical ID may be absent from the locally
+        # installed Ensembl snapshots, so query the owner authority before
+        # treating it as retired or malformed.
+        if oncoref.is_canonical_gene(candidate):
+            return True
         for genome in _human_genomes:
             try:
                 gene = genome.gene_by_id(candidate)

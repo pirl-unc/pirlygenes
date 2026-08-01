@@ -668,6 +668,7 @@ def test_source_cohort_values_are_canonical():
         "GSE248751_HUMAN_CCS_2023",
         "GSE294016_BARTL_2025_SGC",
         "GSE328026_PECOMA_2026",
+        "SRP493407_MMNST_2024",
         "DRMETRICS_ALCALA_2019_LNEN",
         "TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS",
         "SCLC_UCOLOGNE_2015_TF_DOMINANCE",
