@@ -88,7 +88,10 @@ def resolve_gene_set(name: str):
         return f"therapy:{t}", set(gsc.therapy_target_gene_ids(t))
     if low.startswith("lineage:"):
         code = gsc.resolve_cancer_type(token.split(":", 1)[1])
-        df = gsc.lineage_genes_df(code)
+        # A named coverage panel is a positive gene set. Directional ``low``
+        # rows are contrastive evidence and must not be counted as expressed
+        # lineage support.
+        df = gsc.lineage_genes_df(code, direction="high")
         ensgs = set(df["Ensembl_Gene_ID"].dropna().astype(str).str.split(".").str[0])
         # lineage panels are ENSG-backed; symbols are display-only, not joined.
         return f"lineage:{code}", ensgs

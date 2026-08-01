@@ -721,42 +721,52 @@ def degradation_gene_pairs():
 
 
 # ---------- Cancer lineage genes ----------
-def lineage_genes_df(cancer_type=None):
-    """DataFrame of per-TCGA-cancer lineage genes.
+def lineage_genes_df(cancer_type=None, direction=None):
+    """DataFrame of per-cancer lineage genes and directional evidence.
 
     Lineage genes are retained in metastases and specific enough to
     calibrate tumor purity. Each row is (Cancer_Type, Symbol,
-    Ensembl_Gene_ID). Filter by `cancer_type` to get one type's genes.
+    Ensembl_Gene_ID, direction, reference). Filter by ``cancer_type`` and/or
+    ``direction`` (``"high"`` or ``"low"``) to select a panel. A low row is
+    negative/contrastive evidence, not a positively expressed lineage marker.
     """
     df = get_data("lineage-genes")
     if cancer_type is not None:
         df = df[df["Cancer_Type"] == cancer_type]
+    if direction is not None:
+        if direction not in {"high", "low"}:
+            raise ValueError("direction must be 'high', 'low', or None")
+        df = df[df["direction"] == direction]
     return df
 
 
-def lineage_gene_symbols(cancer_type):
-    """List of lineage gene symbols for a given TCGA cancer type code.
+def lineage_gene_symbols(cancer_type, direction="high"):
+    """List of lineage gene symbols for a given cancer type code.
 
     Preserves CSV order (which encodes the curator's intent about which
-    markers are most load-bearing for that cancer type).
+    markers are most load-bearing for that cancer type). Positive/high markers
+    are returned by default, preserving the historical positive-panel contract;
+    pass ``direction="low"`` for negative evidence or ``None`` for both.
     """
-    df = lineage_genes_df(cancer_type=cancer_type)
+    df = lineage_genes_df(cancer_type=cancer_type, direction=direction)
     return df["Symbol"].tolist()
 
 
-def lineage_gene_ids(cancer_type):
-    """List of lineage Ensembl IDs for a given TCGA cancer type code."""
-    df = lineage_genes_df(cancer_type=cancer_type)
+def lineage_gene_ids(cancer_type, direction="high"):
+    """List of lineage Ensembl IDs for a given cancer type and direction."""
+    df = lineage_genes_df(cancer_type=cancer_type, direction=direction)
     return df["Ensembl_Gene_ID"].tolist()
 
 
-def lineage_genes_by_cancer_type():
+def lineage_genes_by_cancer_type(direction="high"):
     """Dict of {TCGA_code: [Symbol, ...]} for all cancer types.
 
     Primarily for consumers that historically used a pre-built dict. Built
-    once per process via the `get_data` cache.
+    once per process via the ``get_data`` cache. Positive/high markers are
+    returned by default; pass ``direction="low"`` or ``None`` explicitly for
+    directional negative evidence or the complete table.
     """
-    df = get_data("lineage-genes")
+    df = lineage_genes_df(direction=direction)
     return {
         code: group["Symbol"].tolist()
         for code, group in df.groupby("Cancer_Type", sort=False)

@@ -6,15 +6,15 @@ PubMed network), but this catches the cheap, common corruption: a citation cell
 that isn't a well-formed reference token. Each non-empty value in the structured
 citation columns below must be one or more of:
 
-    PMID:<digits>  |  DOI:<...>  |  10.<...> (bare DOI)  |  GSE<digits> (GEO source)
+    PMID:<digits>  |  DOI:<...>  |  10.<...> (bare DOI)
+    GSE<digits> (GEO series)  |  SRP<digits> (SRA study)
+    NCT<8 digits> (ClinicalTrials.gov)  |  UMIN<9 digits> (UMIN-CTR)
 
     joined by ';' when a row cites more than one. Free-text bibliography columns
     can still exist for display, but normalized companion columns are tested here.
 """
 
 import re
-
-import pandas as pd
 
 from pirlygenes.load_dataset import get_data
 
@@ -46,7 +46,7 @@ STRUCTURED_CITATION_COLUMNS = [
 ]
 
 _TOKEN = re.compile(
-    r"^(PMID:\d{6,9}|DOI:\S+|10\.\d{4,}/\S+|GSE\d+|NCT\d{8}|UMIN\d{9})$"
+    r"^(PMID:\d{6,9}|DOI:\S+|10\.\d{4,}/\S+|GSE\d+|SRP\d+|NCT\d{8}|UMIN\d{9})$"
 )
 
 
@@ -58,9 +58,11 @@ def _well_formed(value: str) -> bool:
 
 
 def test_structured_citation_columns_are_well_formed():
-    """Every non-empty citation cell is a PMID/DOI/GSE token (or ';'-joined set).
+    """Every non-empty citation cell uses the documented structured vocabulary.
+
     Catches a fabricated bare number, a stray non-citation string, or a PMC id
-    pasted in place of a PMID — the corruption #456 fixed."""
+    pasted in place of a PMID — the corruption #456 fixed.
+    """
     failures = []
     for name, col in STRUCTURED_CITATION_COLUMNS:
         df = get_data(name, copy=False)
@@ -69,3 +71,9 @@ def test_structured_citation_columns_are_well_formed():
             if not _well_formed(value):
                 failures.append(f"{name}::{col} = {value!r}")
     assert not failures, "malformed citation cells:\n  " + "\n  ".join(failures)
+
+
+def test_structured_citations_accept_sra_study_accessions():
+    assert _well_formed("SRP493407")
+    assert _well_formed("PMID:24145644;SRP493407")
+    assert not _well_formed("SRP493407_MMNST_2024")
