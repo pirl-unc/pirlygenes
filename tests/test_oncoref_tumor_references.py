@@ -1,0 +1,56 @@
+"""Compatibility contract for oncoref's canonical tumor references (#601)."""
+
+import numpy as np
+import oncoref
+from oncoref.version import DATA_VERSION as ONCOREF_DATA_VERSION
+
+from pirlygenes import gene_sets_cancer as gsc
+
+
+def test_pinned_oncoref_exposes_canonical_tumor_reference_apis():
+    assert oncoref.__version__ == "1.8.170"
+    assert ONCOREF_DATA_VERSION == "5.23.16"
+
+    tcga = oncoref.tcga_deconvolved_expression("ACC")
+    assert not tcga.empty
+    assert set(tcga["cancer_code"]) == {"ACC"}
+    assert np.isclose(tcga["tumor_tpm_median"].sum(), 1_000_000.0)
+    assert tcga.attrs["oncoref"] == {
+        "dataset": "tcga-deconvolved-expression",
+        "data_version": "5.23.16",
+        "scale": "classifier_tpm",
+        "derivation_method": "tme_deconvolution",
+        "derivation_scope": "dataset",
+        "provenance_dataset": "tumor-reference-expression-provenance",
+    }
+
+    beataml = oncoref.subtype_tumor_reference_expression(
+        "LAML",
+        subtype_code="LAML_APL",
+        source_cohort="BEATAML_OHSU_2022",
+    )
+    assert not beataml.empty
+    assert set(beataml["cancer_code"]) == {"LAML"}
+    assert set(beataml["subtype"]) == {"LAML_APL"}
+    assert set(beataml["source_cohort"]) == {"BEATAML_OHSU_2022"}
+    assert np.isclose(beataml["tumor_tpm_median"].sum(), 1_000_000.0)
+
+    provenance = oncoref.tumor_reference_expression_provenance(
+        artifact="subtype-deconvolved-expression",
+        cancer_code="LAML",
+        source_cohort="BEATAML_OHSU_2022",
+    )
+    apl = provenance[provenance["subtype"].eq("LAML_APL")]
+    assert len(apl) == 1
+    assert apl.iloc[0]["derivation_method"] == "high_purity_passthrough"
+    assert apl.iloc[0]["source_scale"] == "clean_tpm_16_9_75"
+    assert apl.iloc[0]["sample_qc_policy"] == "pass"
+
+
+def test_mmnst_directional_panel_survives_owner_upgrade():
+    high = gsc.lineage_gene_symbols("SARC_MMNST")
+    low = gsc.lineage_gene_symbols("SARC_MMNST", direction="low")
+
+    assert high == ["TYR", "PMEL", "MLANA", "DCT", "MITF", "SOX10", "S100B"]
+    assert low == ["PMP22", "PMP2", "MPZ", "PRKAR1A"]
+    assert set(high).isdisjoint(low)

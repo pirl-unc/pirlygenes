@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import pirlygenes.gene_sets_cancer as gsc
+from oncoref.version import DATA_VERSION as ONCOREF_DATA_VERSION
+
 from pirlygenes.cohorts import Cohort
 from pirlygenes.expression.accessors import (
     available_cancer_expression_references,
@@ -73,7 +75,7 @@ def test_new_summary_source_is_registered_from_owner_availability():
     assert row["source_project"] == "NCBI SRA Gene Feature counts"
     assert row["n_samples"] == 3
     assert row["n_codes"] == 1
-    assert "data_version=5.23.14" in row["provenance"]
+    assert f"data_version={ONCOREF_DATA_VERSION}" in row["provenance"]
 
 
 def test_sparse_source_registry_keeps_physical_and_reference_counts_distinct():

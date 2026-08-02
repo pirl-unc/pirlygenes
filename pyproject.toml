@@ -57,7 +57,10 @@ dependencies = [
     # compatibility cohort and CLI routes below. 1.8.169 preserves literal
     # NA-like NCBI aliases with exact-case-first resolution and completes the
     # remaining acquisition-source project metadata, removing the last
-    # dependency workarounds tracked by oncoref #461/#462/#464.
+    # dependency workarounds tracked by oncoref #461/#462/#464. 1.8.170/data
+    # 5.23.16 adds the canonical TCGA and subtype tumor-reference accessors,
+    # their source-level derivation provenance, and the corrected clean-TPM
+    # BeatAML summaries consumed by downstream classifiers (#601).
     # >=1.8.75
     # also gives the
     # builders the cleaned-up source-matrix QC /
@@ -70,7 +73,7 @@ dependencies = [
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles). Pin the
     # exact owner release because the downloadable cohort-view snapshot records
     # and validates the oncoref package/data versions used to build it.
-    "oncoref==1.8.169",
+    "oncoref==1.8.170",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile
