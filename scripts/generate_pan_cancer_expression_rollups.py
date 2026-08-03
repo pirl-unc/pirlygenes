@@ -30,17 +30,42 @@ OUT_PATH = (
 # current version-pinned data. Keep this table explicit: a source change should
 # produce a reviewable artifact diff rather than a silent gene-wise fallback.
 SELECTED_SOURCE_SHARDS = {
-    "COAD": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__COAD.csv.gz",
-    "READ": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__READ.csv.gz",
+    "COAD": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES.csv.gz",
+    "READ": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES.csv.gz",
     "NET_PANCREAS": "GSE118014_ALVAREZ_2018.csv.gz",
     "NET_MIDGUT": "GSE98894_ALVAREZ_2018_NET.csv.gz",
     "NET_RECTAL": "GSE98894_ALVAREZ_2018_NET.csv.gz",
     "NET_LUNG": "DRMETRICS_ALCALA_2019_LNEN.csv.gz",
-    "LUAD": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__LUAD.csv.gz",
-    "LUSC": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__LUSC.csv.gz",
+    "LUAD": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES.csv.gz",
+    "LUSC": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES.csv.gz",
     "ADCC": "GSE294016_BARTL_2025_SGC.csv.gz",
     "ACINIC": "GSE294016_BARTL_2025_SGC.csv.gz",
 }
+
+_SOURCE_COLUMNS = [
+    "Ensembl_Gene_ID",
+    "Symbol",
+    "cancer_code",
+    "TPM_median",
+    "n_samples",
+]
+
+
+def _read_selected_source_rows(
+    path: Path,
+    cancer_codes: set[str],
+) -> pd.DataFrame:
+    """Read only requested codes from a possibly consolidated owner shard."""
+    parts = []
+    for chunk in pd.read_csv(path, usecols=_SOURCE_COLUMNS, chunksize=250_000):
+        selected = chunk.loc[
+            chunk["cancer_code"].astype(str).isin(cancer_codes)
+        ]
+        if not selected.empty:
+            parts.append(selected.copy())
+    if not parts:
+        return pd.DataFrame(columns=_SOURCE_COLUMNS)
+    return pd.concat(parts, ignore_index=True)
 
 
 def build() -> pd.DataFrame:
@@ -63,18 +88,15 @@ def build() -> pd.DataFrame:
     member_values: dict[str, pd.Series] = {}
     sample_counts: dict[str, float] = {}
     shard_cache: dict[str, pd.DataFrame] = {}
+    codes_by_shard: dict[str, set[str]] = {}
+    for code, filename in SELECTED_SOURCE_SHARDS.items():
+        codes_by_shard.setdefault(filename, set()).add(code)
 
     for code, filename in SELECTED_SOURCE_SHARDS.items():
         if filename not in shard_cache:
-            shard_cache[filename] = pd.read_csv(
+            shard_cache[filename] = _read_selected_source_rows(
                 root / filename,
-                usecols=[
-                    "Ensembl_Gene_ID",
-                    "Symbol",
-                    "cancer_code",
-                    "TPM_median",
-                    "n_samples",
-                ],
+                codes_by_shard[filename],
             )
         source = shard_cache[filename]
         source = source[source["cancer_code"].astype(str) == code].copy()

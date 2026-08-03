@@ -401,6 +401,42 @@ def test_historical_sclc_source_resolves_to_physical_matrix():
     ) == "SCLC_UCOLOGNE_2015"
 
 
+@pytest.mark.parametrize(
+    "placeholder",
+    [
+        "LITERATURE_CURATED",
+        "COMPUTED_PAN_SARCOMA",
+        "COMPUTED_COLORECTAL",
+    ],
+)
+def test_nonphysical_source_placeholders_are_not_routed_to_matrices(placeholder):
+    assert accessors._owner_physical_source_cohorts(placeholder) == (placeholder,)
+
+
+def test_nonphysical_source_filters_do_not_select_physical_rows():
+    for cancer_types, source_filter in (
+        (
+            ["ACINIC", "STAD_CIN", "UCEC_CNH"],
+            {"source_kind": "curated"},
+        ),
+        (
+            ["ACINIC", "STAD_CIN", "UCEC_CNH"],
+            {"source_cohort": "LITERATURE_CURATED"},
+        ),
+        (["SARC", "CRC"], {"source_kind": "computed"}),
+    ):
+        out = accessors.cancer_reference_expression(
+            cancer_types=cancer_types,
+            genes=["TP53"],
+            **source_filter,
+        )
+        assert out.empty
+        assert not any(
+            record.get("available")
+            for record in out.attrs["availability"]
+        )
+
+
 def test_sclc_registry_source_filter_returns_selected_matrix_rows():
     out = accessors.cancer_reference_expression(
         cancer_types="SCLC_ASCL1",

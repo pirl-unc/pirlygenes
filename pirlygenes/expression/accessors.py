@@ -885,6 +885,17 @@ _HISTORICAL_REFERENCE_SOURCE_COHORTS = {
 }
 
 
+def _is_nonphysical_reference_source_cohort(source_cohort: object) -> bool:
+    """Whether a registry cohort value describes evidence, not a matrix.
+
+    Owner registry rows use stable placeholders for literature-only and
+    computed references. They are valid exact public filter values, but must
+    never be routed through a cancer code to an unrelated selected matrix.
+    """
+    cohort = str(source_cohort).strip().upper()
+    return cohort == "LITERATURE_CURATED" or cohort.startswith("COMPUTED_")
+
+
 @lru_cache(maxsize=None)
 def _owner_physical_source_cohorts(source_cohort: str) -> tuple[str, ...]:
     """Resolve an owner registry source to its selected physical matrices.
@@ -900,6 +911,8 @@ def _owner_physical_source_cohorts(source_cohort: str) -> tuple[str, ...]:
         _HISTORICAL_REFERENCE_SOURCE_COHORTS.get(source_cohort, source_cohort)
     )
     if not str(canonical):
+        return (str(canonical),)
+    if _is_nonphysical_reference_source_cohort(canonical):
         return (str(canonical),)
     available = _oncoref_summary_source_cohort_set()
     if canonical in available:
