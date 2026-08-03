@@ -18,7 +18,7 @@ normalization helpers needed to make them comparable across columns:
 
 * :func:`pan_cancer_expression` — wide-form ``Symbol × tissue/cancer``
   panel: 50 HPA normal tissues (nTPM), 33 TCGA cancer types (observed FPKM
-  provenance + deterministic TPM companions), and five TPM-only computed
+  provenance + deterministic TPM companions), and four TPM-only computed
   tumor rollups, with optional added normalized analysis columns.
 * :func:`cancer_reference_expression` — long- or wide-form non-TCGA
   tumor reference summaries (CLL-map, MMRF, TARGET, GEO, etc.) exposed
@@ -222,7 +222,6 @@ def _rename_pan_expression_columns_entity_first(df: pd.DataFrame) -> pd.DataFram
 
 
 _PAN_COMPUTED_ROLLUP_MEMBERS = {
-    "BTC": ("CHOL",),
     "CRC": ("COAD", "READ"),
     "NET": ("NET_PANCREAS", "NET_MIDGUT", "NET_RECTAL", "NET_LUNG"),
     "NSCLC": ("LUAD", "LUSC"),
@@ -308,7 +307,7 @@ def _load_pan_rollup_frame() -> pd.DataFrame:
 
 
 def _pan_computed_rollup_frame() -> pd.DataFrame:
-    """Return canonical ENSG + five persisted raw-TPM rollups."""
+    """Return canonical ENSG + persisted complete-member raw-TPM rollups."""
     return _load_pan_rollup_frame()
 
 
@@ -331,7 +330,7 @@ def _pan_reference_frame(
 
     The version-pinned pirlygenes pan matrix remains the fast persisted source.
     We canonicalize it with oncoref's delegated alias map, sum duplicate linear
-    loci, and derive deterministic TPM companions. Five persisted rollups baked
+    loci, and derive deterministic TPM companions. Four persisted rollups baked
     from oncoref's selected sources are joined only when explicitly requested.
     Keeping computed aggregates out of the default frame prevents them from
     silently becoming extra independent observations in downstream code that
@@ -878,20 +877,28 @@ def _oncoref_summary_source_cohort_set() -> frozenset:
     )
 
 
+_HISTORICAL_REFERENCE_SOURCE_COHORTS = {
+    # Published by the pre-1.8.174 owner registry as a derivation label. The
+    # physical source is now canonical, but oncoref canonical_cohort_id() does
+    # not yet retain this historical input alias (oncoref#479 follow-up).
+    "SCLC_UCOLOGNE_2015_TF_DOMINANCE": "SCLC_UCOLOGNE_2015",
+}
+
+
 @lru_cache(maxsize=None)
 def _owner_physical_source_cohorts(source_cohort: str) -> tuple[str, ...]:
     """Resolve an owner registry source to its selected physical matrices.
 
-    Usually registry and matrix provenance use the same cohort ID. When they
-    differ, derive the physical label through oncoref's public registry and
-    selected-matrix metadata. This temporary general adapter covers the SCLC
-    subtype identity defect tracked by oncoref#479 without maintaining a local
-    source-alias table.
+    Current registry and matrix provenance use the same cohort ID. Preserve
+    historical pirlygenes inputs first, then derive any other mismatched owner
+    label through oncoref's public registry and selected-matrix metadata.
     """
     import oncoref
     from oncoref import canonical_cohort_id, source_matrices
 
-    canonical = canonical_cohort_id(source_cohort)
+    canonical = canonical_cohort_id(
+        _HISTORICAL_REFERENCE_SOURCE_COHORTS.get(source_cohort, source_cohort)
+    )
     if not str(canonical):
         return (str(canonical),)
     available = _oncoref_summary_source_cohort_set()
@@ -1653,7 +1660,7 @@ def _artifact_record_matches_source_filter(
 def _reference_record_is_microarray_proxy(record: Mapping[str, object]) -> bool:
     """Classify proxy-scale references from structured owner provenance.
 
-    oncoref 1.8.173 filters only the normalized pipeline label, which no longer
+    oncoref 1.8.174 filters only the normalized pipeline label, which no longer
     says ``microarray`` for every proxy source (oncoref#482).  Prefer its public
     scale/type fields and retain the text fallback for older metadata.
     """
@@ -1742,7 +1749,7 @@ def _filter_delegated_microarray_proxy(
 def _pool_reference_compatibility_rows(frame: pd.DataFrame) -> pd.DataFrame:
     """Pool after public gene-ID projection, once per physical source.
 
-    oncoref 1.8.173 pools before applying ``gene_id_style='pirlygenes'`` and
+    oncoref 1.8.174 pools before applying ``gene_id_style='pirlygenes'`` and
     can consequently emit two rows for one projected ENSG (oncoref#483).
     Source filtering has already happened upstream; collapsing here keeps the
     compatibility promise of one sample-weighted row per public gene ID.
@@ -2084,7 +2091,7 @@ def _oncoref_reference_mode(
         and delegated_source_cohort != requested_source_cohort
     ):
         compatibility_transforms.append(
-            "registry source resolved through oncoref selected-matrix provenance"
+            "source cohort resolved to oncoref physical identity"
         )
     if artifact_codes:
         compatibility_transforms.append(
@@ -3131,8 +3138,8 @@ def pan_cancer_expression(
     plus 33 TCGA cancer types from HPA pathology + GDC/STAR reprocessing
     (``<code>_FPKM`` in native units with deterministic ``<code>_TPM``
     companions). By default the view contains only these independent source
-    cohorts. Set ``include_computed_rollups=True`` to add five computed tumor
-    rollups (``BTC``/``CRC``/``NET``/``NSCLC``/``SGC``), built from
+    cohorts. Set ``include_computed_rollups=True`` to add four computed tumor
+    rollups (``CRC``/``NET``/``NSCLC``/``SGC``), built from complete,
     sample-weighted TPM cohort medians. Rollups have ``<code>_TPM`` but no
     synthetic FPKM. TPM and every requested analysis derivative are available
     uniformly across the included tumor entities; FPKM is retained only as
@@ -3189,10 +3196,12 @@ def pan_cancer_expression(
         For example, ``normalize=["tpm_clean", "hk", "percentile"]``
         adds clean, housekeeping, and percentile columns in one call.
     include_computed_rollups
-        Include the five TPM-only aggregate tumor references. Defaults to
+        Include the four TPM-only aggregate tumor references. Defaults to
         ``False`` so code that enumerates every ``*_TPM`` column receives only
         independent source cohorts. Use ``True`` when an aggregate itself is
-        the intended target.
+        the intended target. ``BTC`` is intentionally absent: its required GBC
+        member has no backed expression reference, so CHOL must not masquerade
+        as a complete pan-biliary aggregate.
     log_transform
         Apply ``log2(x + 1)`` to value columns after any normalization.
     drop_technical_rna

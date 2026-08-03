@@ -106,13 +106,7 @@ def _local_pan_cancer_fixture():
         "ACINIC": 3,
     }
     persisted = rollup[["Ensembl_Gene_ID"]].copy()
-    for aggregate, members in (
-        ("BTC", ("CHOL",)),
-        ("CRC", ("COAD", "READ")),
-        ("NET", ("NET_PANCREAS", "NET_MIDGUT", "NET_RECTAL", "NET_LUNG")),
-        ("NSCLC", ("LUAD", "LUSC")),
-        ("SGC", ("ADCC", "ACINIC")),
-    ):
+    for aggregate, members in expression_accessors._PAN_COMPUTED_ROLLUP_MEMBERS.items():
         member_weights = pd.Series({code: weights[code] for code in members})
         values = rollup[list(members)]
         numerator = values.mul(member_weights, axis="columns").sum(
@@ -248,7 +242,8 @@ def test_pan_cancer_canonical_rows_rollups_and_legacy_gene_filters(
     assert "ENSG00000148362" not in set(paxx["Ensembl_Gene_ID"])
     assert paxx["CRC_TPM"].tolist() == pytest.approx([(25.0 * 3 + 35.0) / 4])
     assert paxx["SGC_TPM"].tolist() == pytest.approx([(66.0 * 57 + 76.0 * 3) / 60])
-    assert paxx[["BTC_TPM", "CRC_TPM", "NET_TPM", "NSCLC_TPM", "SGC_TPM"]].notna().all(axis=None)
+    assert paxx[["CRC_TPM", "NET_TPM", "NSCLC_TPM", "SGC_TPM"]].notna().all(axis=None)
+    assert "BTC_TPM" not in paxx.columns
 
     paxx_legacy = pan_cancer_expression(
         genes=["ENSG00000148362.9"], normalize="tpm",
@@ -329,6 +324,7 @@ def test_pan_cancer_computed_rollups_are_explicit_opt_in():
         f"{code}_TPM"
         for code in expression_accessors._PAN_COMPUTED_ROLLUP_MEMBERS
     } <= set(with_rollups.columns)
+    assert "BTC_TPM" not in with_rollups.columns
 
 
 def test_pan_cancer_expression_subset_filters_to_named_genes():
@@ -1993,7 +1989,7 @@ def test_pan_cancer_expression_normalize_uppercase_tpm_adds_tpm():
 def test_pan_cancer_expression_normalize_tpm_rescales_fpkm_to_million():
     """After ``normalize="tpm"`` each former FPKM column sums to 10⁶."""
     df = pan_cancer_expression(normalize="tpm")
-    # Computed rollups (BTC/CRC/NET/NSCLC/SGC) are TPM-only, sample-weighted
+    # Computed rollups (CRC/NET/NSCLC/SGC) are TPM-only, sample-weighted
     # cohort medians and therefore do not carry the per-sample sum-to-million
     # invariant. Check only deterministic companions with paired FPKM provenance.
     tpm_cols = [
@@ -2160,7 +2156,8 @@ def test_pan_cancer_expression_normalize_list_combines_modes():
     normal_entities = {
         c[:-len("_nTPM")] for c in df.columns if c.endswith("_nTPM")
     }
-    assert {"BTC", "CRC", "NET", "NSCLC", "SGC"} <= tumor_entities
+    assert {"CRC", "NET", "NSCLC", "SGC"} <= tumor_entities
+    assert "BTC" not in tumor_entities
 
     # FPKM is optional provenance, but every tumor and normal entity has the
     # same requested analysis derivatives.

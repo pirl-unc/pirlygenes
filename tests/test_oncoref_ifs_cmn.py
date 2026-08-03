@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import oncoref
-from oncoref.load_dataset import get_data as get_oncoref_data
 
 from pirlygenes.expression import available_cancer_expression_references
 from pirlygenes.gene_sets_cancer import cancer_lineage_group
@@ -34,7 +33,7 @@ def test_cmn_and_ifs_reference_sources_remain_physically_separate():
 
 
 def test_cmn_is_owner_marked_validation_only_and_shares_sarcoma_lineage():
-    registry = get_oncoref_data("cancer-type-registry").set_index("code")
+    registry = oncoref.cancer_type_registry().set_index("code")
 
     assert bool(registry.loc["CMN", "is_classification_target"]) is False
     assert registry.loc["CMN", "source_cohort"] == "GSE11482_GADD_2010_CMN"

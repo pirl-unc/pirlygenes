@@ -73,11 +73,15 @@ vaccination and immunotherapy targets.
 
 `pan_cancer_expression()` returns a DataFrame with median expression across
 33 independent TCGA cancer types (raw FPKM plus deterministic TPM companions)
-and 50 HPA normal tissues (nTPM). This source-only view is the default. Five
-computed tumor rollups (`BTC`, `CRC`, `NET`, `NSCLC`, `SGC`) are available with
+and 50 HPA normal tissues (nTPM). This source-only view is the default. Four
+computed tumor rollups (`CRC`, `NET`, `NSCLC`, `SGC`) are available with
 `include_computed_rollups=True` when an aggregate is an intended target. Keeping
 them opt-in prevents generic `*_TPM` column discovery from treating a source
 cohort and its aggregate as independent observations.
+
+`BTC` is intentionally not computed from CHOL alone. Oncoref requires both
+CHOL and GBC to back a pan-biliary member union, and GBC has no expression
+reference yet; exposing the incomplete union would mislabel CHOL as pan-BTC.
 
 The rollups are sample-weighted combinations of cohort-level TPM medians, so
 they are TPM-only: FPKM cannot be recovered from a TPM summary and is not
@@ -89,7 +93,7 @@ computed rollup has `*_TPM` plus every requested `*_TPM_clean`, `*_TPM_hk`,
 present only for the 33 inputs that were actually supplied in FPKM units; it is
 not a required analysis column.
 
-The five rollups are baked from the selected cohort sources into a small
+The four rollups are baked from the selected cohort sources into a small
 canonical artifact and joined with the same oncoref Ensembl alias map used for
 the base pan matrix. A gene unavailable in a rollup remains `NaN` in both
 `*_TPM` and every derived column; it is never reported as a measured zero.
@@ -106,7 +110,7 @@ ref = pan_cancer_expression()
 # Columns: Ensembl_Gene_ID, Symbol, adipose_tissue_nTPM, ..., ACC_FPKM, ..., ACC_TPM, ...
 
 aggregate_ref = pan_cancer_expression(include_computed_rollups=True)
-# Adds BTC_TPM, CRC_TPM, NET_TPM, NSCLC_TPM, SGC_TPM and clean companions.
+# Adds CRC_TPM, NET_TPM, NSCLC_TPM, SGC_TPM and clean companions.
 ```
 
 Supports normalization with `None`, a string, or a list of strings:

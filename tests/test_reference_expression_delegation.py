@@ -394,7 +394,7 @@ def test_source_cohort_filters_are_canonical_and_exact(requested, expected):
     assert actual == expected
 
 
-def test_registry_source_resolves_to_selected_physical_matrix():
+def test_historical_sclc_source_resolves_to_physical_matrix():
     assert accessors._reference_compatibility_source_cohorts(
         None,
         "SCLC_UCOLOGNE_2015_TF_DOMINANCE",
@@ -412,7 +412,7 @@ def test_sclc_registry_source_filter_returns_selected_matrix_rows():
     assert set(out["cancer_code"]) == {"SCLC_ASCL1"}
     assert set(out["source_cohort"]) == {"SCLC_UCOLOGNE_2015"}
     assert (
-        "registry source resolved through oncoref selected-matrix provenance"
+        "source cohort resolved to oncoref physical identity"
         in out.attrs["compatibility_transforms"]
     )
 

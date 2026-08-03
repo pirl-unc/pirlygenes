@@ -30,7 +30,6 @@ OUT_PATH = (
 # current version-pinned data. Keep this table explicit: a source change should
 # produce a reviewable artifact diff rather than a silent gene-wise fallback.
 SELECTED_SOURCE_SHARDS = {
-    "CHOL": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__CHOL.csv.gz",
     "COAD": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__COAD.csv.gz",
     "READ": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES__READ.csv.gz",
     "NET_PANCREAS": "GSE118014_ALVAREZ_2018.csv.gz",

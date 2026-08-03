@@ -65,7 +65,9 @@ dependencies = [
     # provenance, and one assay-independent clean-TPM reference composition;
     # 1.8.172 makes exact Ensembl lookups bounded and cached without changing
     # that data release; 1.8.173 makes oncoref's supported plotting surface
-    # complete in every base installation.
+    # complete in every base installation. 1.8.174 fixes classification-policy,
+    # complete-member-union, SCLC source-identity, PEComa provenance, and
+    # concurrent bundle-staging contracts without changing the data bundle.
     # >=1.8.75
     # also gives the
     # builders the cleaned-up source-matrix QC /
@@ -78,7 +80,7 @@ dependencies = [
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles). Pin the
     # exact owner release because the downloadable cohort-view snapshot records
     # and validates the oncoref package/data versions used to build it.
-    "oncoref==1.8.173",
+    "oncoref==1.8.174",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile

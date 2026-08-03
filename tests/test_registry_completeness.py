@@ -189,30 +189,16 @@ def _leaf_registry_rows():
     ``is_classification_target`` is the owner policy gate: a cohort may support
     marker/rank validation without being eligible as an emitted diagnosis.
     """
-    from oncoref.load_dataset import get_data as get_oncoref_data
-
     reg = cancer_type_registry()
     is_top = reg["parent_code"].fillna("").astype(str).eq("")
-    owner_registry = get_oncoref_data("cancer-type-registry")
-    if "is_classification_target" in owner_registry.columns:
-        # The reviewed owner table is the policy source. oncoref 1.8.173's
-        # enriched public registry currently re-derives this field from data
-        # availability and turns CMN's validation-only microarray proxy into a
-        # classification target (oncoref#480).
-        owner_targets = owner_registry.set_index("code")[
-            "is_classification_target"
-        ]
-        target_values = reg["code"].map(owner_targets)
-        is_target = (
-            target_values
-            .fillna(False)
-            .astype(str)
-            .str.strip()
-            .str.lower()
-            .isin({"true", "1", "yes"})
-        )
-    else:
-        is_target = True
+    is_target = (
+        reg["is_classification_target"]
+        .fillna(False)
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .isin({"true", "1", "yes"})
+    )
     if "ontology_level" in reg.columns:
         is_grouping = reg["ontology_level"].astype(str).eq("grouping")
         return reg[is_top & is_target & ~is_grouping]
