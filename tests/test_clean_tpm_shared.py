@@ -5,10 +5,12 @@ removal set is technical-RNA rows (mtDNA / rRNA-like
 / mt-like pseudogene / polyA-bias lncRNA) **and** ribosomal-protein mRNA +
 pseudogenes. As of clean_tpm_16_9_75 the **default** transform is
 ``censored_fill="fixed_fraction"``: ribosomal-protein rows are forced to 16%,
-other technical rows to 9%, and biological rows to 75% of the 1e6 budget, each
-renormalized within its group. The old ``"reference"`` / ``"typical"`` /
-``"zero"`` clean-TPM modes are not part of that contract. ``technical_rna_mask``
-is the strict technical-only subset for separately named drop/filter helpers.
+other technical rows to 9%, and biological rows to 75% of the 1e6 budget. The
+two censored blocks use one fixed Treehouse PolyA reference composition rather
+than retaining assay-specific technical-RNA ratios; biological within-sample
+ratios remain intact. The old ``"reference"`` / ``"typical"`` / ``"zero"``
+clean-TPM modes are not part of that contract. ``technical_rna_mask`` is the
+strict technical-only subset for separately named drop/filter helpers.
 """
 from __future__ import annotations
 
@@ -92,10 +94,43 @@ def test_clean_tpm_fixed_fraction_three_compartment():
     np.testing.assert_allclose(clean.loc[mask].sum(axis=0).to_numpy(),
                                [250_000.0, 250_000.0])
     np.testing.assert_allclose(clean.sum(axis=0).to_numpy(), [1e6, 1e6])
-    # within-compartment relative expression preserved (MT-CO1:MT-RNR1 was 5:1)
-    assert abs(clean.loc[0, "S1"] / clean.loc[1, "S1"]
-               - values.loc[0, "S1"] / values.loc[1, "S1"]) < 1e-6
+    # Technical composition comes from one assay-independent owner reference,
+    # so the very different input ratios converge to the same output profile.
+    input_technical = values.loc[other].div(
+        values.loc[other].sum(axis=0), axis=1
+    )
+    clean_technical = clean.loc[other].div(
+        clean.loc[other].sum(axis=0), axis=1
+    )
+    assert not np.allclose(
+        input_technical["S1"].to_numpy(), input_technical["S2"].to_numpy()
+    )
+    np.testing.assert_allclose(
+        clean_technical["S1"].to_numpy(), clean_technical["S2"].to_numpy()
+    )
+    # The biological compartment still preserves each sample's own ratios.
+    for sample in clean.columns:
+        np.testing.assert_allclose(
+            clean.loc[4, sample] / clean.loc[5, sample],
+            values.loc[4, sample] / values.loc[5, sample],
+        )
     assert other.any()
+
+
+def test_clean_tpm_owner_table_carries_one_fixed_reference_profile():
+    from pirlygenes.load_dataset import get_data
+
+    censored = get_data("clean-tpm-censored-genes")
+    assert {
+        "Ensembl_Gene_ID",
+        "category",
+        "reference_tpm",
+        "reference_source",
+        "reference_profile_version",
+    }.issubset(censored.columns)
+    assert censored["reference_source"].nunique() == 1
+    assert censored["reference_profile_version"].nunique() == 1
+    assert censored["reference_tpm"].notna().all()
 
 
 def test_clean_tpm_matrix_uses_censored_category_compartments():

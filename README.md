@@ -217,8 +217,9 @@ pan_cancer_expression(normalize="hk")
 # Combine modes in one call; tpm_clean, hk, and percentile each imply "tpm".
 pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])
 
-# Add the five sample-weighted aggregate references only when they are an
-# intended target: BTC, CRC, NET, NSCLC, and SGC.
+# Add the four complete, sample-weighted aggregate references only when they
+# are an intended target: CRC, NET, NSCLC, and SGC. BTC remains unavailable
+# until both CHOL and GBC have backed expression references.
 pan_cancer_expression(include_computed_rollups=True)
 ```
 

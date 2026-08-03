@@ -18,7 +18,7 @@ normalization helpers needed to make them comparable across columns:
 
 * :func:`pan_cancer_expression` — wide-form ``Symbol × tissue/cancer``
   panel: 50 HPA normal tissues (nTPM), 33 TCGA cancer types (observed FPKM
-  provenance + deterministic TPM companions), and five TPM-only computed
+  provenance + deterministic TPM companions), and four TPM-only computed
   tumor rollups, with optional added normalized analysis columns.
 * :func:`cancer_reference_expression` — long- or wide-form non-TCGA
   tumor reference summaries (CLL-map, MMRF, TARGET, GEO, etc.) exposed
@@ -72,7 +72,7 @@ import json
 import warnings
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Mapping, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -222,7 +222,6 @@ def _rename_pan_expression_columns_entity_first(df: pd.DataFrame) -> pd.DataFram
 
 
 _PAN_COMPUTED_ROLLUP_MEMBERS = {
-    "BTC": ("CHOL",),
     "CRC": ("COAD", "READ"),
     "NET": ("NET_PANCREAS", "NET_MIDGUT", "NET_RECTAL", "NET_LUNG"),
     "NSCLC": ("LUAD", "LUSC"),
@@ -308,7 +307,7 @@ def _load_pan_rollup_frame() -> pd.DataFrame:
 
 
 def _pan_computed_rollup_frame() -> pd.DataFrame:
-    """Return canonical ENSG + five persisted raw-TPM rollups."""
+    """Return canonical ENSG + persisted complete-member raw-TPM rollups."""
     return _load_pan_rollup_frame()
 
 
@@ -331,7 +330,7 @@ def _pan_reference_frame(
 
     The version-pinned pirlygenes pan matrix remains the fast persisted source.
     We canonicalize it with oncoref's delegated alias map, sum duplicate linear
-    loci, and derive deterministic TPM companions. Five persisted rollups baked
+    loci, and derive deterministic TPM companions. Four persisted rollups baked
     from oncoref's selected sources are joined only when explicitly requested.
     Keeping computed aggregates out of the default frame prevents them from
     silently becoming extra independent observations in downstream code that
@@ -857,6 +856,83 @@ def _oncoref_summary_reference_code_set() -> frozenset:
     return frozenset(
         availability.loc[availability["available"], "cancer_code"].astype(str)
     )
+
+
+@lru_cache(maxsize=1)
+def _oncoref_summary_source_cohort_set() -> frozenset:
+    """Physical source cohorts served by oncoref's all-source summary view."""
+    import oncoref
+
+    availability = oncoref.cancer_reference_expression_availability(
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        all_sources=True,
+    )
+    return frozenset(
+        availability.loc[
+            availability["available"] & availability["source_cohort"].notna(),
+            "source_cohort",
+        ].astype(str)
+    )
+
+
+_HISTORICAL_REFERENCE_SOURCE_COHORTS = {
+    # Published by the pre-1.8.174 owner registry as a derivation label. The
+    # physical source is now canonical, but oncoref canonical_cohort_id() does
+    # not yet retain this historical input alias (oncoref#479 follow-up).
+    "SCLC_UCOLOGNE_2015_TF_DOMINANCE": "SCLC_UCOLOGNE_2015",
+}
+
+
+def _is_nonphysical_reference_source_cohort(source_cohort: object) -> bool:
+    """Whether a registry cohort value describes evidence, not a matrix.
+
+    Owner registry rows use stable placeholders for literature-only and
+    computed references. They are valid exact public filter values, but must
+    never be routed through a cancer code to an unrelated selected matrix.
+    """
+    cohort = str(source_cohort).strip().upper()
+    return cohort == "LITERATURE_CURATED" or cohort.startswith("COMPUTED_")
+
+
+@lru_cache(maxsize=None)
+def _owner_physical_source_cohorts(source_cohort: str) -> tuple[str, ...]:
+    """Resolve an owner registry source to its selected physical matrices.
+
+    Current registry and matrix provenance use the same cohort ID. Preserve
+    historical pirlygenes inputs first, then derive any other mismatched owner
+    label through oncoref's public registry and selected-matrix metadata.
+    """
+    import oncoref
+    from oncoref import canonical_cohort_id, source_matrices
+
+    canonical = canonical_cohort_id(
+        _HISTORICAL_REFERENCE_SOURCE_COHORTS.get(source_cohort, source_cohort)
+    )
+    if not str(canonical):
+        return (str(canonical),)
+    if _is_nonphysical_reference_source_cohort(canonical):
+        return (str(canonical),)
+    available = _oncoref_summary_source_cohort_set()
+    if canonical in available:
+        return (canonical,)
+
+    registry = oncoref.cancer_type_registry()
+    codes = registry.loc[
+        registry["source_cohort"].fillna("").astype(str).eq(canonical),
+        "code",
+    ].astype(str)
+    physical: list[str] = []
+    for code in codes:
+        try:
+            info = source_matrices.cohort_info(code)
+        except (KeyError, ValueError, source_matrices.SourceMatrixError):
+            continue
+        selected = canonical_cohort_id((info or {}).get("source_cohort", ""))
+        if selected in available and selected not in physical:
+            physical.append(selected)
+    return tuple(physical) or (canonical,)
 
 
 @lru_cache(maxsize=1)
@@ -1481,14 +1557,24 @@ def _reference_compatibility_source_cohorts(
     canonicalized by oncoref; an explicitly empty selection uses a nonmatching
     sentinel until oncoref#412 preserves empty filters itself.
     """
-    from oncoref import canonical_cohort_id
-
     if source_cohort is None:
         delegated_filter = None
-    elif isinstance(source_cohort, str):
-        delegated_filter = canonical_cohort_id(source_cohort)
     else:
-        delegated_filter = [canonical_cohort_id(value) for value in source_cohort]
+        requested = (
+            [source_cohort]
+            if isinstance(source_cohort, str)
+            else list(source_cohort)
+        )
+        expanded = list(dict.fromkeys(
+            cohort
+            for value in requested
+            for cohort in _owner_physical_source_cohorts(str(value))
+        ))
+        delegated_filter = (
+            expanded[0]
+            if isinstance(source_cohort, str) and len(expanded) == 1
+            else expanded
+        )
     if source_kind is None:
         if source_cohort is not None:
             requested = (
@@ -1510,7 +1596,11 @@ def _reference_compatibility_source_cohorts(
     matching = registry.loc[
         registry["kind"].astype(str).isin(requested_kinds), "cohort_id"
     ].astype(str).tolist()
-    allowed = matching
+    allowed = list(dict.fromkeys(
+        cohort
+        for value in matching
+        for cohort in _owner_physical_source_cohorts(value)
+    ))
 
     if delegated_filter is not None:
         requested = (
@@ -1578,6 +1668,184 @@ def _artifact_record_matches_source_filter(
         )):
             return False
     return True
+
+
+def _reference_record_is_microarray_proxy(record: Mapping[str, object]) -> bool:
+    """Classify proxy-scale references from structured owner provenance.
+
+    oncoref 1.8.174 filters only the normalized pipeline label, which no longer
+    says ``microarray`` for every proxy source (oncoref#482).  Prefer its public
+    scale/type fields and retain the text fallback for older metadata.
+    """
+    scale = str(record.get("source_scale_class", "")).lower()
+    source_type = str(record.get("source_type", "")).lower()
+    text = " ".join(
+        str(record.get(column, ""))
+        for column in ("processing_pipeline", "notes")
+    ).lower()
+    return (
+        scale == "microarray_tpm_proxy"
+        or "microarray" in source_type
+        or any(token in text for token in (
+            "microarray", "tpm_proxy", "tpm-proxy", "tpm proxy",
+        ))
+    )
+
+
+@lru_cache(maxsize=32)
+def _oncoref_summary_microarray_proxy_pairs(
+    cancer_codes: Optional[tuple[str, ...]],
+) -> frozenset[tuple[str, str]]:
+    """Return structured proxy identities from oncoref's compact manifest."""
+    import oncoref
+
+    availability = oncoref.cancer_reference_expression_availability(
+        cancer_types=None if cancer_codes is None else list(cancer_codes),
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        all_sources=True,
+    )
+    records = availability.loc[availability["available"].eq(True)].to_dict("records")
+    return frozenset(
+        (
+            str(record.get("cancer_code", "")),
+            str(record.get("source_cohort", "")),
+        )
+        for record in records
+        if _reference_record_is_microarray_proxy(record)
+    )
+
+
+def _filter_delegated_microarray_proxy(
+    frame: pd.DataFrame,
+    attrs: dict,
+    *,
+    blocked_pairs: Iterable[tuple[str, str]] = (),
+) -> tuple[pd.DataFrame, dict]:
+    """Enforce proxy exclusion against public structured availability data."""
+    availability = []
+    blocked = set(blocked_pairs)
+    for original in attrs.get("availability", []):
+        record = dict(original)
+        pair = (
+            str(record.get("cancer_code", "")),
+            str(record.get("source_cohort", "")),
+        )
+        if record.get("available") and (
+            pair in blocked or _reference_record_is_microarray_proxy(record)
+        ):
+            record["available"] = False
+            record["missing_reason"] = "microarray_proxy_excluded"
+            blocked.add(pair)
+        availability.append(record)
+
+    out = frame
+    if blocked and {"cancer_code", "source_cohort"} <= set(frame.columns):
+        pairs = pd.Series(
+            list(zip(
+                frame["cancer_code"].astype(str),
+                frame["source_cohort"].astype(str),
+            )),
+            index=frame.index,
+        )
+        out = frame.loc[~pairs.isin(blocked)].copy()
+
+    adapted_attrs = dict(attrs)
+    adapted_attrs["availability"] = availability
+    adapted_attrs["missing_requests"] = [
+        record for record in availability if not record.get("available")
+    ]
+    return out, adapted_attrs
+
+
+def _pool_reference_compatibility_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """Pool after public gene-ID projection, once per physical source.
+
+    oncoref 1.8.174 pools before applying ``gene_id_style='pirlygenes'`` and
+    can consequently emit two rows for one projected ENSG (oncoref#483).
+    Source filtering has already happened upstream; collapsing here keeps the
+    compatibility promise of one sample-weighted row per public gene ID.
+    """
+    if frame.empty:
+        return frame.copy()
+
+    keys = [
+        column
+        for column in ("cancer_code", "normalization", "Ensembl_Gene_ID")
+        if column in frame.columns
+    ]
+    source_keys = [*keys, "source_cohort"]
+    working = frame.copy()
+    symbols = working.get("Symbol", pd.Series("", index=working.index))
+    symbol_text = symbols.astype("string").fillna("").astype(str)
+    # If a remapped legacy row carries its retired ENSG as Symbol, prefer the
+    # companion row with a genuine display symbol before source de-duplication.
+    working["_symbol_score"] = (
+        symbol_text.ne("") & ~symbol_text.str.startswith("ENSG")
+    ).astype(int)
+    per_source = (
+        working.sort_values("_symbol_score", ascending=False, kind="stable")
+        .drop_duplicates(source_keys, keep="first")
+    )
+
+    expression = pd.to_numeric(per_source["expression"], errors="coerce")
+    if "n_samples" in per_source.columns:
+        weights = pd.to_numeric(per_source["n_samples"], errors="coerce")
+    else:
+        weights = pd.Series(1.0, index=per_source.index)
+    weights = weights.fillna(1.0)
+    valid = expression.notna() & weights.gt(0)
+    per_source["_weighted_expression"] = expression.where(valid, 0.0) * weights.where(
+        valid, 0.0
+    )
+    per_source["_effective_weight"] = weights.where(valid, 0.0)
+    if "n_detected" in per_source.columns:
+        per_source["_n_detected"] = pd.to_numeric(
+            per_source["n_detected"], errors="coerce"
+        ).fillna(0.0)
+    else:
+        per_source["_n_detected"] = 0.0
+
+    grouped = per_source.groupby(keys, dropna=False, sort=False, observed=True)
+    aggregates = grouped.agg(
+        _weighted_expression=("_weighted_expression", "sum"),
+        n_samples=("_effective_weight", "sum"),
+        n_detected=("_n_detected", "sum"),
+    ).reset_index()
+    aggregates["expression"] = (
+        aggregates["_weighted_expression"] / aggregates["n_samples"]
+    ).where(aggregates["n_samples"].gt(0))
+    aggregates = aggregates.drop(columns="_weighted_expression")
+
+    base = (
+        per_source.sort_values("_symbol_score", ascending=False, kind="stable")
+        .drop_duplicates(keys, keep="first")
+        .drop(columns=[
+            "_symbol_score",
+            "_weighted_expression",
+            "_effective_weight",
+            "_n_detected",
+            "expression",
+            "n_samples",
+            "n_detected",
+            "q1",
+            "q3",
+        ], errors="ignore")
+    )
+    out = base.merge(aggregates, on=keys, how="left", validate="one_to_one")
+    from ..gene_canonicalization import canonical_gene_symbol
+
+    out["Symbol"] = [
+        canonical_gene_symbol(str(gene_id), fallback=str(symbol))
+        for gene_id, symbol in zip(out["Ensembl_Gene_ID"], out["Symbol"])
+    ]
+    out["source_cohort"] = "POOLED"
+    out["source_project"] = "pooled"
+    out["processing_pipeline"] = "pooled_n_weighted"
+    out["q1"] = np.nan
+    out["q3"] = np.nan
+    return out
 
 
 def _filter_artifact_reference_source(
@@ -1709,7 +1977,9 @@ def _oncoref_reference_mode(
             genes=compatibility_genes,
             normalize=delegated_mode,
             format="long",
-            include_provenance=include_provenance,
+            # Local post-projection pooling needs per-source sample weights
+            # even when the caller omits provenance from the final schema.
+            include_provenance=include_provenance or pool,
             on_missing="empty",
             auto_fetch=False,
             sample_qc="all",
@@ -1721,7 +1991,7 @@ def _oncoref_reference_mode(
             source_kind=None,
             source_cohort=delegated_source_cohort,
             exclude_microarray_proxy=exclude_microarray_proxy,
-            pool=pool,
+            pool=False,
             collapse_cdna_identical=collapse_cdna_identical,
             collapse_protein_identical=collapse_protein_identical,
         ))
@@ -1743,7 +2013,7 @@ def _oncoref_reference_mode(
                 genes=compatibility_genes,
                 normalize=delegated_mode,
                 format="long",
-                include_provenance=include_provenance,
+                include_provenance=include_provenance or pool,
                 on_missing="empty",
                 auto_fetch=False,
                 sample_qc=sample_qc,
@@ -1776,12 +2046,6 @@ def _oncoref_reference_mode(
                     .astype(str)
                     .map(sample_counts)
                 )
-            if pool and not artifact.empty:
-                artifact["source_cohort"] = "POOLED"
-                for quantile in ("q1", "q3"):
-                    artifact[quantile] = np.nan
-                if include_provenance and "source_project" in artifact.columns:
-                    artifact["source_project"] = "pooled"
             artifact.attrs.update(artifact_attrs)
             delegated_parts.append(artifact)
 
@@ -1809,6 +2073,21 @@ def _oncoref_reference_mode(
             "cancer_code", "source_cohort", "expression", "q1", "q3",
         ])
         attrs = {"availability": [], "missing_requests": []}
+    if exclude_microarray_proxy:
+        summary_proxy_pairs = (
+            _oncoref_summary_microarray_proxy_pairs(
+                None if summary_codes is None else tuple(summary_codes)
+            )
+            if summary_codes is None or summary_codes
+            else frozenset()
+        )
+        delegated, attrs = _filter_delegated_microarray_proxy(
+            delegated,
+            attrs,
+            blocked_pairs=summary_proxy_pairs,
+        )
+    if pool:
+        delegated = _pool_reference_compatibility_rows(delegated)
     label = _REFERENCE_VALUE_COLUMNS[mode][3]
     delegated = delegated.copy()
     compatibility_transforms: list[str] = []
@@ -1820,6 +2099,13 @@ def _oncoref_reference_mode(
         compatibility_transforms.append(
             "source-kind filter resolved through pirlygenes cohort registry"
         )
+    if (
+        requested_source_cohort is not None
+        and delegated_source_cohort != requested_source_cohort
+    ):
+        compatibility_transforms.append(
+            "source cohort resolved to oncoref physical identity"
+        )
     if artifact_codes:
         compatibility_transforms.append(
             "artifact-only cohorts delegated through oncoref artifact view"
@@ -1828,6 +2114,14 @@ def _oncoref_reference_mode(
             compatibility_transforms.append(
                 "raw TPM artifact-only cohorts use artifact-recorded sample QC"
             )
+    if exclude_microarray_proxy:
+        compatibility_transforms.append(
+            "microarray proxies excluded using structured oncoref scale provenance"
+        )
+    if pool:
+        compatibility_transforms.append(
+            "source rows pooled after pirlygenes gene-ID projection"
+        )
     if cancer_types is not None:
         allowed_codes = {str(code) for code in cancer_types}
         delegated_codes = set(delegated["cancer_code"].astype(str))
@@ -2857,8 +3151,8 @@ def pan_cancer_expression(
     plus 33 TCGA cancer types from HPA pathology + GDC/STAR reprocessing
     (``<code>_FPKM`` in native units with deterministic ``<code>_TPM``
     companions). By default the view contains only these independent source
-    cohorts. Set ``include_computed_rollups=True`` to add five computed tumor
-    rollups (``BTC``/``CRC``/``NET``/``NSCLC``/``SGC``), built from
+    cohorts. Set ``include_computed_rollups=True`` to add four computed tumor
+    rollups (``CRC``/``NET``/``NSCLC``/``SGC``), built from complete,
     sample-weighted TPM cohort medians. Rollups have ``<code>_TPM`` but no
     synthetic FPKM. TPM and every requested analysis derivative are available
     uniformly across the included tumor entities; FPKM is retained only as
@@ -2915,10 +3209,12 @@ def pan_cancer_expression(
         For example, ``normalize=["tpm_clean", "hk", "percentile"]``
         adds clean, housekeeping, and percentile columns in one call.
     include_computed_rollups
-        Include the five TPM-only aggregate tumor references. Defaults to
+        Include the four TPM-only aggregate tumor references. Defaults to
         ``False`` so code that enumerates every ``*_TPM`` column receives only
         independent source cohorts. Use ``True`` when an aggregate itself is
-        the intended target.
+        the intended target. ``BTC`` is intentionally absent: its required GBC
+        member has no backed expression reference, so CHOL must not masquerade
+        as a complete pan-biliary aggregate.
     log_transform
         Apply ``log2(x + 1)`` to value columns after any normalization.
     drop_technical_rna

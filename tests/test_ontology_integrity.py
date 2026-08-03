@@ -147,9 +147,14 @@ def test_coverage_report():
     *monotherapy* ORR only exist for ~TCGA / trialled cancers, so those gaps are
     largely irreducible (and must never be fabricated)."""
     reg = _reg()
-    real_top = {c for c, r in reg.iterrows()
-                if (pd.isna(r["parent_code"]) or not str(r["parent_code"]).strip())
-                and str(r["expression_source"]) not in ("computed", "curated")}
+    real_top = {
+        c
+        for c, r in reg.iterrows()
+        if (pd.isna(r["parent_code"]) or not str(r["parent_code"]).strip())
+        and str(r["expression_source"]) not in ("computed", "curated")
+        and str(r["is_classification_target"]).strip().lower()
+        in {"true", "1", "yes"}
+    }
     from pirlygenes.gene_sets_cancer import cancer_tmb
 
     lin = get_data("lineage-genes")

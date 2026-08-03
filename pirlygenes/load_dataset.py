@@ -48,9 +48,11 @@ _CACHED_DATAFRAMES = {}
 _ONCOREF_DATASETS = frozenset({
     "cancer-cohort-aggregates",
     "cancer-expression-source-candidates",
+    "cancer-lineage-groups",
     "cancer-reference-expression-availability",
     "cancer-reference-expression-samples",
     "clean-tpm-censored-genes",
+    "cohort-registry",
     "ncbi-symbol-synonyms",
     "ribosomal-protein-pseudogenes",
 })
@@ -65,12 +67,6 @@ _PIRLYGENES_AGGREGATE_CODES = frozenset({
     "SARC_LPS",
     "SARC_RMS",
 })
-
-_COMPUTED_COHORT_AGGREGATE_CODES = {
-    "COMPUTED_COLORECTAL": "CRC",
-    "COMPUTED_PAN_SARCOMA": "SARC",
-}
-
 
 # Back-compat alias — many call sites still import _DATA_DIR.
 _DATA_DIR = _BUNDLED_DATA_DIR
@@ -290,8 +286,6 @@ def load_all_dataframes():
         csv_key = csv_path.name.removesuffix(".gz")
         df = pd.read_csv(str(csv_path), low_memory=False)
         df = _normalize_dataset_dtypes(csv_key, df)
-        if csv_key == "cohort-registry.csv":
-            df = _reconcile_cohort_registry(df)
         yield csv_key, df
     # Preserve the generic enumeration surface for datasets whose physical
     # copies moved to oncoref. They are not present in get_all_csv_paths(), but
@@ -320,173 +314,6 @@ def load_all_dataframes_dict():
 def _invalidate_dataset_paths() -> None:
     global _DATASET_PATHS
     _DATASET_PATHS = None
-
-
-def _reconcile_computed_cohort_members(df: pd.DataFrame) -> pd.DataFrame:
-    """Derive computed-cohort membership from oncoref's live ontology.
-
-    The packaged cohort registry is useful pirlygenes-specific source metadata,
-    but its computed rows are snapshots.  Re-derive only those rows so a newly
-    added cancer atom cannot leave ``n_codes`` and ``member_cohorts`` stale
-    (oncoref#387) while preserving the Merkel cohort absent from oncoref's
-    source-cohort registry.
-    """
-    if not {"cohort_id", "n_codes", "member_cohorts"} <= set(df.columns):
-        return df
-
-    import oncoref
-
-    replacements: list[tuple[pd.Series, list[str]]] = []
-    for cohort_id, aggregate_code in _COMPUTED_COHORT_AGGREGATE_CODES.items():
-        mask = df["cohort_id"].astype(str).eq(cohort_id)
-        if not mask.any():
-            continue
-        members = list(oncoref.cohort_aggregate_members(aggregate_code) or [])
-        serialized = ";".join(members)
-        current_members = df.loc[mask, "member_cohorts"].fillna("").astype(str)
-        current_counts = pd.to_numeric(df.loc[mask, "n_codes"], errors="coerce")
-        if not current_members.eq(serialized).all() or not current_counts.eq(
-            len(members)
-        ).all():
-            replacements.append((mask, members))
-    if not replacements:
-        return df
-
-    out = df.copy()
-    for mask, members in replacements:
-        out.loc[mask, "member_cohorts"] = ";".join(members)
-        out.loc[mask, "n_codes"] = len(members)
-    return out
-
-
-def _cohort_source_defaults(cohort_id: str) -> tuple[str, str, str]:
-    """Classify an owner cohort using the public cohort-ID convention."""
-    if cohort_id.startswith("COMPUTED_"):
-        return "computed", "Computed aggregate", "computed-aggregate"
-    if cohort_id == "LITERATURE_CURATED":
-        return "curated", "Literature-curated", "literature-curated"
-    if cohort_id.startswith("TREEHOUSE_"):
-        project = (
-            "TCGA (Treehouse-reprocessed)"
-            if "_TCGA_" in cohort_id
-            else "Treehouse"
-        )
-        return "treehouse", project, "bulk RNA-seq"
-    prefix_defaults = (
-        ("TARGET_", "target", "TARGET"),
-        ("SCLC_UCOLOGNE", "ucologne", "University of Cologne"),
-        ("DRMETRICS", "geo", "GEO (DR-metrics / Alcala LNEN)"),
-        ("GSE", "geo", "GEO"),
-        ("SRP", "sra", "NCBI SRA"),
-        ("SRA", "sra", "NCBI SRA"),
-        ("PRJNA", "sra", "NCBI SRA"),
-        ("BEATAML", "beataml", "BeatAML (OHSU)"),
-        ("MMRF", "mmrf", "MMRF CoMMpass"),
-        ("CLLMAP", "cllmap", "CLL-map"),
-        ("CGCI", "cgci", "CGCI"),
-        ("UNC", "unc", "UNC NUTM1 case series"),
-    )
-    for prefix, kind, project in prefix_defaults:
-        if cohort_id.startswith(prefix):
-            return kind, project, "bulk RNA-seq"
-    return "other", "", "bulk RNA-seq"
-
-
-def _reconcile_owner_cohorts(df: pd.DataFrame) -> pd.DataFrame:
-    """Register owner sources missing from the compatibility vocabulary.
-
-    oncoref owns the summaries, artifacts, and their cohort metadata. Merge any
-    source newer than pirlygenes' packaged registry snapshot from its compact
-    availability records so pirlygenes'
-    invariant remains true: every advertised ``source_cohort`` is selectable by
-    kind and valid against ``cohort_registry_df()``.
-    """
-    required = {
-        "cohort_id", "prefix", "kind", "source_project", "assay",
-        "n_samples", "n_codes", "is_computed", "member_cohorts",
-        "provenance",
-    }
-    if not required <= set(df.columns):
-        return df
-
-    import oncoref
-
-    artifacts = oncoref.cancer_reference_expression_availability(
-        normalize="tpm_clean",
-        sample_qc="artifact",
-        reference_source="artifact",
-    )
-    summary = oncoref.cancer_reference_expression_availability(
-        normalize="tpm_clean",
-        sample_qc="all",
-        reference_source="summary_rows_all",
-        all_sources=True,
-    )
-    summary = summary.loc[
-        summary["available"] & summary["source_cohort"].notna()
-    ]
-    summary_codes = set(summary["cancer_code"].astype(str))
-    artifact_only = artifacts.loc[
-        artifacts["available"]
-        & artifacts["source_cohort"].notna()
-        & ~artifacts["cancer_code"].astype(str).isin(summary_codes)
-    ]
-    availability = pd.concat(
-        [summary, artifact_only],
-        ignore_index=True,
-    ).drop_duplicates(["cancer_code", "source_cohort"])
-    known = set(df["cohort_id"].astype(str))
-    availability = availability.loc[
-        ~availability["source_cohort"].astype(str).isin(known)
-    ]
-    if availability.empty:
-        return df
-
-    rows = []
-    for cohort_id, group in availability.groupby("source_cohort", sort=True):
-        cohort_id = str(cohort_id)
-        kind, default_project, default_assay = _cohort_source_defaults(cohort_id)
-        project_values = group["source_project"].dropna().astype(str)
-        source_types = group["source_type"].dropna().astype(str)
-        counts = pd.to_numeric(group["n_reference_samples"], errors="coerce")
-        versions = ",".join(sorted(set(
-            group["data_version"].dropna().astype(str)
-        )))
-        qc_policies = ",".join(sorted(set(
-            group["artifact_sample_qc"].dropna().astype(str)
-        )))
-        provenance = f"oncoref cancer-reference artifact; data_version={versions}"
-        if qc_policies:
-            provenance += f"; sample_qc={qc_policies}"
-        rows.append({
-            "cohort_id": cohort_id,
-            "prefix": cohort_id.split("_", 1)[0],
-            "kind": kind,
-            "source_project": (
-                project_values.iloc[0]
-                if not project_values.empty
-                else default_project
-            ),
-            "assay": (
-                source_types.iloc[0] if not source_types.empty else default_assay
-            ),
-            "n_samples": int(counts.fillna(0).sum()),
-            "n_codes": int(group["cancer_code"].astype(str).nunique()),
-            "is_computed": False,
-            "member_cohorts": "",
-            "provenance": provenance,
-        })
-    return (
-        pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
-        .sort_values(["kind", "cohort_id"])
-        .reset_index(drop=True)
-    )
-
-
-def _reconcile_cohort_registry(df: pd.DataFrame) -> pd.DataFrame:
-    return _reconcile_owner_cohorts(
-        _reconcile_computed_cohort_members(df)
-    )
 
 
 def _dataset_paths():
@@ -569,12 +396,19 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     if _dataframes_dict is None and delegated_name in _ONCOREF_DATASETS:
         cache_key = f"{delegated_name}.csv"
         if cache_key not in _CACHED_DATAFRAMES:
-            from oncoref.load_dataset import get_data as get_oncoref_data
+            if delegated_name == "cohort-registry":
+                import oncoref
 
-            delegated = get_oncoref_data(
-                delegated_name,
-                copy=False,
-            )
+                # Use the owner's public resolver, which reconciles physical
+                # source rows; its generic table is the unprocessed input.
+                delegated = oncoref.cohort_registry_df()
+            else:
+                from oncoref.load_dataset import get_data as get_oncoref_data
+
+                delegated = get_oncoref_data(
+                    delegated_name,
+                    copy=False,
+                )
             if delegated_name == "cancer-cohort-aggregates":
                 delegated = delegated.loc[
                     delegated["aggregate_code"].astype(str).isin(
@@ -715,8 +549,6 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                                 str(resolved), low_memory=False,
                             ),
                         )
-                        if cache_key == "cohort-registry.csv":
-                            loaded = _reconcile_cohort_registry(loaded)
                         _CACHED_DATAFRAMES[cache_key] = loaded
                 # Return a copy so callers that mutate in place (e.g. df["c"]=...,
                 # df.fillna(0, inplace=True)) can't corrupt the shared cache.

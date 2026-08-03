@@ -8,8 +8,8 @@ from pirlygenes import gene_sets_cancer as gsc
 
 
 def test_pinned_oncoref_exposes_canonical_tumor_reference_apis():
-    assert oncoref.__version__ == "1.8.170"
-    assert ONCOREF_DATA_VERSION == "5.23.16"
+    assert oncoref.__version__ == "1.8.174"
+    assert ONCOREF_DATA_VERSION == "5.23.17"
 
     tcga = oncoref.tcga_deconvolved_expression("ACC")
     assert not tcga.empty
@@ -17,7 +17,7 @@ def test_pinned_oncoref_exposes_canonical_tumor_reference_apis():
     assert np.isclose(tcga["tumor_tpm_median"].sum(), 1_000_000.0)
     assert tcga.attrs["oncoref"] == {
         "dataset": "tcga-deconvolved-expression",
-        "data_version": "5.23.16",
+        "data_version": "5.23.17",
         "scale": "classifier_tpm",
         "derivation_method": "tme_deconvolution",
         "derivation_scope": "dataset",
@@ -54,3 +54,29 @@ def test_mmnst_directional_panel_survives_owner_upgrade():
     assert high == ["TYR", "PMEL", "MLANA", "DCT", "MITF", "SOX10", "S100B"]
     assert low == ["PMP22", "PMP2", "MPZ", "PRKAR1A"]
     assert set(high).isdisjoint(low)
+
+
+def test_owner_aggregate_availability_requires_complete_member_unions():
+    expected = {
+        "BTC": [("BTC", "direct", False, "no_percentile_artifact")],
+        "SGC": [
+            ("ACINIC", "aggregate_member", True, ""),
+            ("ADCC", "aggregate_member", True, ""),
+        ],
+        "NSCLC": [
+            ("LUAD", "aggregate_member", True, ""),
+            ("LUSC", "aggregate_member", True, ""),
+        ],
+    }
+
+    for code, records in expected.items():
+        availability = oncoref.cancer_reference_expression_availability(
+            code,
+            normalize="tpm_clean",
+        )
+        observed = list(
+            availability[
+                ["cancer_code", "request_kind", "available", "missing_reason"]
+            ].itertuples(index=False, name=None)
+        )
+        assert observed == records

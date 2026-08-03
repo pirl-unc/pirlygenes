@@ -2,14 +2,11 @@
 synonym resolution, viral/fusion status, tissue of origin, and the registry
 biology columns that back them."""
 
-import pandas as pd
-
 from pirlygenes import cancer_types as ct
-from pirlygenes.gene_sets_cancer import _RENAMED_CODE_ALIASES
 from pirlygenes.load_dataset import get_data
 
 _VIRAL_ETIOLOGIES = {"defining", "subset", "none"}
-_FUSION_STATES = {"defining", "subtype", "rare", "none"}
+_FUSION_STATES = {"defining", "subtype", "rare", "heterogeneous", "none"}
 
 
 def test_registry_has_biology_columns():
