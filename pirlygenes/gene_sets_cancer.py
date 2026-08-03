@@ -1871,13 +1871,14 @@ def cohort_aggregates_df():
 
 # ---------- Cohort vocabulary (first-class registry, #296) ----------
 #
-# ``cohort-registry.csv`` is the single authority for "what cohorts exist, what
-# kind are they, which cancer types draw from them." Unlike
+# oncoref's cohort registry is the single authority for "what cohorts exist,
+# what kind are they, which cancer types draw from them." Pirlygenes re-exports
+# it through its historical API without packaging a snapshot. Unlike
 # ``available_cancer_expression_references`` (a per-``(cancer_code,
 # source_cohort)`` manifest of *shards*), it also lists the **computed
 # aggregates** (``COMPUTED_PAN_SARCOMA``) and the **literature-curated**
 # placeholder — so every ``source_cohort`` value anywhere validates against one
-# list. Regenerate with ``scripts/generate_cohort_registry.py``.
+# owner-managed list.
 #
 # ``kind`` prefixes (the cross-source combining rule keys off this — see
 # :func:`source_prefixed_references`):
@@ -1889,7 +1890,7 @@ def cohort_aggregates_df():
 
 
 def cohort_registry_df():
-    """The first-class cohort vocabulary (#296): one row per ``cohort_id`` with
+    """The oncoref-owned cohort vocabulary: one row per ``cohort_id`` with
     ``prefix, kind, source_project, assay, n_samples, n_codes, is_computed,
     member_cohorts, provenance``. The authority to validate any ``source_cohort``
     against — includes the computed aggregates and literature-curated cohorts

@@ -259,8 +259,10 @@ def normalize_expression(
 
     - ``"fixed_fraction"`` (clean_tpm) — the single 16/9/75 contract:
       ribosomal-protein rows are pinned to 16% of the 1e6 budget, other
-      technical rows to 9%, and biological rows to 75%, each renormalized within
-      its group. This is the basis the references ship on.
+      technical rows to 9%, and biological rows to 75%. The two censored blocks
+      use one assay-independent Treehouse PolyA reference composition; only the
+      biological block preserves the sample's within-group proportions. This is
+      the basis the references ship on.
     In every non-``"zero"`` mode the censored set is the **clean-TPM removal
     set** (:func:`clean_tpm_removal_mask`: technical RNA **plus**
     ribosomal-protein mRNA/pseudogenes, minus curated targets), not the
@@ -655,12 +657,13 @@ def clean_tpm_matrix(values, removable=None, *, gene_table=None,
 
     THREE-compartment normalization — force the **ribosomal-protein** block to
     16%, the **other-technical** block to 9%, and the kept **biological** block
-    to 75% of the 1e6 budget, **renormalizing within each compartment** so
-    relative expression inside each is preserved. Pinning ribosomal and
-    other-technical separately keeps one compartment's cross-sample/pipeline
-    variation from bleeding into the other's budget. Fixing the BIOLOGICAL
-    compartment to a constant 750k budget is what makes biological clean-TPM
-    cross-sample comparable.
+    to 75% of the 1e6 budget. The censored blocks use one fixed Treehouse PolyA
+    reference composition instead of preserving assay-specific technical-RNA
+    ratios. The biological block is renormalized from each input sample, so its
+    relative expression is preserved. Separating the two fixed technical
+    budgets prevents one compartment's cross-sample/pipeline variation from
+    bleeding into the other; the constant 750k biological budget makes the
+    resulting biological clean-TPM comparable across samples.
 
     ``censored_fill`` accepts only ``"fixed_fraction"`` (the single clean-TPM
     contract); the legacy ``"zero"`` / ``"reference"`` / ``"typical"`` modes were

@@ -3,6 +3,8 @@ to member cohorts with mixed assays/pipelines and different gene universes, so
 the reference must (a) preserve per-cohort provenance, (b) never pre-pool, and
 (c) offer a pipeline-homogeneous view via exclude_microarray_proxy."""
 
+import oncoref
+
 from pirlygenes.expression.accessors import cancer_reference_expression
 
 
@@ -19,8 +21,21 @@ def test_exclude_microarray_proxy_yields_homogeneous_view():
     homo = cancer_reference_expression(
         cancer_types="SARC", genes=["TP53"], exclude_microarray_proxy=True)
     # the microarray-proxy members (cross-platform-incomparable TPM) are dropped
-    assert full["processing_pipeline"].str.contains("microarray", na=False).any()
-    assert not homo["processing_pipeline"].str.contains("microarray", na=False).any()
+    availability = oncoref.cancer_reference_expression_availability(
+        cancer_types="SARC",
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        all_sources=True,
+    )
+    proxy_sources = set(
+        availability.loc[
+            availability["source_scale_class"].eq("microarray_tpm_proxy"),
+            "source_cohort",
+        ].astype(str)
+    )
+    assert proxy_sources & set(full["source_cohort"])
+    assert proxy_sources.isdisjoint(set(homo["source_cohort"]))
     assert homo["cancer_code"].nunique() < full["cancer_code"].nunique()
 
 

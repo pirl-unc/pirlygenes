@@ -60,12 +60,15 @@ jobs:
           python -c "import oncoref; from oncoref.version import DATA_VERSION; print(f'key={oncoref.__version__}-data-{DATA_VERSION}')" >> "$GITHUB_OUTPUT"
       - name: Cache oncoref data bundle
         # oncoref owns the delegated cancer-reference-expression summary rows
-        # (#557). Key on the version actually resolved in this job and its data
-        # version: a lower-bound dependency alone does not change when a newer
-        # oncoref release is selected, and Actions cache entries are immutable.
+        # (#557). Cache its version-derived parquet shards as well as the source
+        # bundle so each matrix job does not reparse the multi-million-row CSV.
+        # Key on the resolved package and data versions because Actions cache
+        # entries are immutable.
         uses: actions/cache@v4
         with:
-          path: ~/.cache/oncoref/bundled_data/
+          path: |
+            ~/.cache/oncoref/bundled_data/
+            ~/.cache/oncoref/shard_cache/
           key: oncoref-bundle-${{ runner.os }}-${{ steps.oncoref-cache-version.outputs.key }}
       - name: Cache source-data mirror
         # Raw per-source inputs (small/medium: GEO, CLL-map) mirrored to a

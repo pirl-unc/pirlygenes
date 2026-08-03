@@ -65,34 +65,33 @@ def test_delegated_parity_across_reference_classes():
         assert actual.attrs["reference_source"] == "summary_rows_all"
 
 
-def test_sarc_union_preserves_summaries_and_adds_artifact_only_children():
+def test_sarc_union_matches_complete_owner_summaries():
     actual = accessors.cancer_reference_expression(
         cancer_types="SARC",
         genes=["TP53"],
         normalize="tpm_clean",
     )
-    delegated = oncoref.cancer_reference_expression(
-        cancer_types="SARC",
-        genes=["TP53"],
+    availability = oncoref.cancer_reference_expression_availability(
         normalize="tpm_clean",
-        format="long",
-        include_provenance=True,
-        on_missing="empty",
-        auto_fetch=False,
         sample_qc="all",
         reference_source="summary_rows_all",
-        gene_id_style="pirlygenes",
-        gene_universe="pirlygenes",
+        all_sources=True,
     )
-    summary_codes = set(delegated["cancer_code"].astype(str))
+    members = set(oncoref.cohort_aggregate_members("SARC") or ())
+    summary_codes = set(
+        availability.loc[
+            availability["available"], "cancer_code"
+        ].astype(str)
+    )
+    summary_codes &= members
     actual_codes = set(actual["cancer_code"].astype(str))
 
-    assert summary_codes <= actual_codes
-    assert actual_codes - summary_codes == {"SARC_ESS_HG", "SARC_ESS_LG"}
-    assert actual.attrs["reference_source"] == "summary_rows_all+artifact"
+    assert actual_codes == summary_codes
+    assert {"SARC_ESS_HG", "SARC_ESS_LG"} <= actual_codes
+    assert actual.attrs["reference_source"] == "summary_rows_all"
 
 
-def test_artifact_only_ess_cohorts_load_packaged_modes_and_provenance():
+def test_ess_cohorts_load_owner_summary_modes_and_provenance():
     codes = ["SARC_ESS_HG", "SARC_ESS_LG"]
     genes = ["ESR1", "PGR", "BCOR"]
     out = accessors.cancer_reference_expression(
@@ -112,11 +111,11 @@ def test_artifact_only_ess_cohorts_load_packaged_modes_and_provenance():
     assert set(out.loc[out["cancer_code"].eq("SARC_ESS_HG"), "n_samples"]) == {4}
     assert set(out.loc[out["cancer_code"].eq("SARC_ESS_LG"), "n_samples"]) == {9}
     assert out["expression"].notna().all()
-    assert out.attrs["reference_source"] == "artifact"
+    assert out.attrs["reference_source"] == "summary_rows_all"
     assert not out.attrs["missing_requests"]
 
 
-def test_artifact_only_exact_source_filter_and_pooling_contract():
+def test_ess_exact_source_filter_and_pooling_contract():
     cohort = "GSE85383_YOSHIDA_2017_ESS"
     selected = accessors.cancer_reference_expression(
         cancer_types="SARC_ESS_HG",
@@ -137,7 +136,7 @@ def test_artifact_only_exact_source_filter_and_pooling_contract():
     assert missing.attrs["availability"][0]["available"] is False
     assert (
         missing.attrs["availability"][0]["missing_reason"]
-        == "no_reference_artifact_matching_source_filter"
+        == "no_reference_summary_rows"
     )
 
 
@@ -393,6 +392,29 @@ def test_nutm_exact_cohort_filter_is_applied_before_pooling():
 def test_source_cohort_filters_are_canonical_and_exact(requested, expected):
     actual = accessors._reference_compatibility_source_cohorts(None, requested)
     assert actual == expected
+
+
+def test_registry_source_resolves_to_selected_physical_matrix():
+    assert accessors._reference_compatibility_source_cohorts(
+        None,
+        "SCLC_UCOLOGNE_2015_TF_DOMINANCE",
+    ) == "SCLC_UCOLOGNE_2015"
+
+
+def test_sclc_registry_source_filter_returns_selected_matrix_rows():
+    out = accessors.cancer_reference_expression(
+        cancer_types="SCLC_ASCL1",
+        genes=["ASCL1"],
+        source_cohort="SCLC_UCOLOGNE_2015_TF_DOMINANCE",
+    )
+
+    assert not out.empty
+    assert set(out["cancer_code"]) == {"SCLC_ASCL1"}
+    assert set(out["source_cohort"]) == {"SCLC_UCOLOGNE_2015"}
+    assert (
+        "registry source resolved through oncoref selected-matrix provenance"
+        in out.attrs["compatibility_transforms"]
+    )
 
 
 @pytest.mark.parametrize(

@@ -1,9 +1,10 @@
 """First-class cohort vocabulary (#296) + source-prefixed atoms (#292)."""
 from __future__ import annotations
 
-import pirlygenes.gene_sets_cancer as gsc
-from oncoref.version import DATA_VERSION as ONCOREF_DATA_VERSION
+import oncoref
+import pandas as pd
 
+import pirlygenes.gene_sets_cancer as gsc
 from pirlygenes.cohorts import Cohort
 from pirlygenes.expression.accessors import (
     available_cancer_expression_references,
@@ -28,6 +29,13 @@ def test_cohort_registry_schema_and_computed_aggregate():
     assert "SARC_LMS" in members and len(members) > 20
     assert members == gsc.cohort_aggregate_members("SARC")
     assert int(row["n_codes"]) == len(members)
+
+
+def test_cohort_registry_is_delegated_without_a_local_snapshot():
+    actual = gsc.cohort_registry_df().reset_index(drop=True)
+    expected = oncoref.cohort_registry_df().reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
 
 
 def test_every_used_source_cohort_is_registered():
@@ -65,7 +73,7 @@ def test_artifact_only_source_is_registered_from_owner_availability():
     assert "9 low-grade and 4 high-grade" in row["provenance"]
 
 
-def test_new_summary_source_is_registered_from_owner_availability():
+def test_mixed_tumor_control_source_keeps_owner_physical_sample_count():
     row = gsc.cohort_registry_df().set_index("cohort_id").loc[
         "SRP493407_MMNST_2024"
     ]
@@ -73,9 +81,12 @@ def test_new_summary_source_is_registered_from_owner_availability():
     assert row["prefix"] == "SRP493407"
     assert row["kind"] == "sra"
     assert row["source_project"] == "NCBI SRA Gene Feature counts"
-    assert row["n_samples"] == 3
+    # Three MMNST tumors enter the reference; the physical cohort row retains
+    # all six source samples, including three independent normal-nerve controls.
+    assert row["n_samples"] == 6
     assert row["n_codes"] == 1
-    assert f"data_version={ONCOREF_DATA_VERSION}" in row["provenance"]
+    assert "3 primary MMNST tumors" in row["provenance"]
+    assert "3 independent normal-nerve controls" in row["provenance"]
 
 
 def test_sparse_source_registry_keeps_physical_and_reference_counts_distinct():
@@ -83,8 +94,8 @@ def test_sparse_source_registry_keeps_physical_and_reference_counts_distinct():
 
     registry = gsc.cohort_registry_df().set_index("cohort_id")
     expected = {
-        "CGCI_BLGSP": (184, 175),
-        "GSE328026_PECOMA_2026": (69, 60),
+        "SRP493407_MMNST_2024": (6, 3),
+        "GSE294016_BARTL_2025_SGC": (95, 60),
     }
     manifest = oncoref.cancer_reference_expression_availability(
         normalize="tpm_clean",
@@ -104,17 +115,15 @@ def test_sparse_source_registry_keeps_physical_and_reference_counts_distinct():
         assert int(selected.sum()) == reference_samples
 
 
-def test_salivary_registry_repairs_owner_code_count_from_reference_manifest():
-    """The owner registry is stale in oncoref 1.8.159 (oncoref#448).
-
-    Pirlygenes' compatibility snapshot must follow the released reference
-    manifest until the dependency fixes its 123-sample/one-code row.
-    """
+def test_salivary_registry_keeps_owner_physical_and_routed_counts_distinct():
     registry = gsc.cohort_registry_df().set_index("cohort_id")
     row = registry.loc["GSE294016_BARTL_2025_SGC"]
 
-    assert int(row["n_samples"]) == 60
+    # The source contains 95 physical rows; 60 route to ADCC/ACINIC reference
+    # codes and 35 other salivary histologies are intentionally excluded.
+    assert int(row["n_samples"]) == 95
     assert int(row["n_codes"]) == 2
+    assert "35 other histologies excluded" in row["provenance"]
 
 
 def test_source_prefixed_atoms_and_rollup():

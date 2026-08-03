@@ -13,6 +13,7 @@ from pirlygenes.gene_sets_cancer import (
     CANCER_TYPE_NAMES,
     cancer_lineage_group,
     cancer_lineage_groups,
+    known_cohort_ids,
     cancer_type_registry,
     cancer_types_in_family,
     cancer_types_by_tissue,
@@ -39,6 +40,19 @@ def test_every_registry_family_has_a_lineage_group():
     assert set(mapping.values()) <= _LINEAGE_GROUPS, (
         f"unexpected lineage groups: {sorted(set(mapping.values()) - _LINEAGE_GROUPS)}"
     )
+
+
+def test_lineage_groups_are_delegated_to_oncoref():
+    from oncoref.load_dataset import get_data as get_oncoref_data
+
+    expected = dict(
+        get_oncoref_data("cancer-lineage-groups")
+        [["family", "lineage_group"]]
+        .drop_duplicates()
+        .itertuples(index=False, name=None)
+    )
+    assert cancer_lineage_groups() == expected
+    assert cancer_lineage_groups()["renal-mesenchymal"] == "Sarcoma"
 
 
 def test_cancer_lineage_group_resolves_codes_and_histogenesis():
@@ -545,6 +559,8 @@ def test_registry_expression_sources_match_packaged_references():
     registry tracks only the canonical primary reference, not every
     shard. So this test checks 'registry-canonical cohort is present'
     rather than 'every packaged shard matches the registry'."""
+    from oncoref import source_matrices
+
     from pirlygenes.expression import available_cancer_expression_references
 
     df = cancer_type_registry().set_index("code")
@@ -566,8 +582,16 @@ def test_registry_expression_sources_match_packaged_references():
         registry_cohort = str(df.loc[code, "source_cohort"])
         if registry_cohort.lower() in placeholder_cohorts:
             continue
-        if registry_cohort and registry_cohort not in shards:
-            mismatches.append((code, registry_cohort, sorted(shards)))
+        selected = source_matrices.cohort_info(code) or {}
+        physical_cohort = str(selected.get("source_cohort", ""))
+        if (
+            registry_cohort
+            and registry_cohort not in shards
+            and physical_cohort not in shards
+        ):
+            mismatches.append(
+                (code, registry_cohort, physical_cohort, sorted(shards))
+            )
     assert not mismatches, (
         f"registry source_cohort missing from packaged references: {mismatches}"
     )
@@ -584,10 +608,12 @@ def test_registry_source_cohorts_in_manifest_or_curated():
     the class behind #550 (a shipped wheel whose registry referenced
     ``TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY`` before the manifest carried it).
     """
+    from oncoref import source_matrices
+
     from pirlygenes.expression import available_cancer_expression_references
     from pirlygenes.gene_sets_cancer import cohort_registry_df
 
-    reg = set(cancer_type_registry()["source_cohort"].dropna().astype(str)) - {""}
+    registry = cancer_type_registry()
     manifest = set(
         available_cancer_expression_references()["source_cohort"].astype(str)
     )
@@ -598,7 +624,15 @@ def test_registry_source_cohorts_in_manifest_or_curated():
             | (creg["kind"].astype(str) == "curated")
         ]["cohort_id"].astype(str)
     )
-    missing = reg - manifest - curated
+    missing = []
+    for row in registry.loc[registry["source_cohort"].notna()].itertuples():
+        declared = str(row.source_cohort)
+        if not declared or declared in manifest or declared in curated:
+            continue
+        selected = source_matrices.cohort_info(str(row.code)) or {}
+        physical = str(selected.get("source_cohort", ""))
+        if physical not in manifest:
+            missing.append((str(row.code), declared, physical))
     assert not missing, (
         "registry source_cohorts absent from the expression manifest and not a "
         f"computed/curated cohort: {sorted(missing)}"
@@ -618,69 +652,7 @@ def test_source_cohort_values_are_canonical():
     """source_cohort should only take values from the canonical
     cohort vocabulary — rejects typos like 'TCGA_BRCA' vs 'TCGA_XENA_TOIL'."""
     df = cancer_type_registry()
-    valid = {
-        "",
-        # Phase C: the bare SARC code is a computed pan-sarcoma grand union
-        # (no frozen shard), not a materialised cohort.
-        "COMPUTED_PAN_SARCOMA",
-        "COMPUTED_COLORECTAL",
-        "TCGA_XENA_TOIL",
-        "TCGA_BRCA_PAM50",
-        "TCGA_HNSC",
-        "TCGA_LUAD",
-        "BEATAML_OHSU_2022",
-        "CGCI_BLGSP",
-        "GSE100026_DING_2017",
-        "GSE114922_SHIOZAWA_2018",
-        "GSE171811_ECCITE_CTCL",
-        "GSE271664_BODOR_2025",
-        "GSE283710_WASHU_2024",
-        "TARGET_NBL_2018",
-        "TARGET_OS_2020",
-        "TARGET_RMS_2014",
-        "TARGET_WT_2015",
-        "TARGET_RT_2017",
-        "TARGET_ALL_2018",
-        "TARGET_UNSPECIFIED",
-        "TARGET_AML_2018",
-        "SCLC_UCOLOGNE_2015",
-        "MMRF_COMMPASS",
-        "CLLMAP_2022",
-        "ICGC",
-        "LITERATURE_CURATED",
-        "TREEHOUSE_v25.01",
-        "TREEHOUSE_POLYA_25_01",
-        "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES",
-        "TREEHOUSE_POLYA_25_01_TCGA_SARC_HISTOLOGY",
-        "TREEHOUSE_POLYA_25_01_TCGA_BRCA_PAM50",
-        "TREEHOUSE_POLYA_25_01_TCGA_LUAD_MUT",
-        "TREEHOUSE_POLYA_25_01_TCGA_HNSC_HPV",
-        "TREEHOUSE_POLYA_25_01_TCGA_COADREAD_MSI",
-        "TREEHOUSE_RIBOD_25_01",
-        "UNC_NUTM1",
-        "GSE118014_ALVAREZ_2018",
-        "GSE98894_ALVAREZ_2018_NET",
-        "GSE299759_MEIJER_2026",
-        "GSE75885_DELESPAUL_2017",
-        "GSE120328_LAMPRECHT_2018",
-        "GSE142334_FL_TFL_2021",
-        "GSE241095_KS_SKIN_2023",
-        "GSE248751_HUMAN_CCS_2023",
-        "GSE294016_BARTL_2025_SGC",
-        "GSE328026_PECOMA_2026",
-        "SRP493407_MMNST_2024",
-        "DRMETRICS_ALCALA_2019_LNEN",
-        "TREEHOUSE_POLYA_25_01_MBL_SUBGROUP_MARKERS",
-        "SCLC_UCOLOGNE_2015_TF_DOMINANCE",
-        "SCLC_UCOLOGNE_2015",
-        # v5.5.0 microarray cohorts (build_microarray_source)
-        "GSE32662_PRINGLE_2012_MTC",
-        # v5.6.0 LPS: 4 subtypes from one Singer 2007 MSKCC microarray
-        "GSE30929_SINGER_2007_LPS",
-        # NEC_MERKEL bulk RNA-seq panel — first built by `pirlygenes build all`
-        # (registered source, previously LITERATURE_CURATED only)
-        "GSE235092_MERKEL_2024",
-    }
+    valid = set(known_cohort_ids()) | {""}
     present = set(df["source_cohort"].fillna("").astype(str).unique())
     unknown = present - valid
     assert not unknown, f"unknown source_cohort values: {unknown}"

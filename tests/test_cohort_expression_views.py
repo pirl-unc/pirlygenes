@@ -149,6 +149,17 @@ def test_views_clean_differs_from_tpm_for_technical_gene():
     assert clean["MALAT1"] != tpm["MALAT1"]
 
 
+def test_views_include_cmn_and_ifs_from_the_owner_manifest():
+    views = cohort_expression_views(["CMN", "SARC_IFS"], genes=["TP53"])
+
+    assert {"CMN", "SARC_IFS"} <= set(views.tpm.columns)
+    assert {"CMN", "SARC_IFS"} <= set(views.clean_tpm.columns)
+    sources = set(views.provenance["source_cohort"].astype(str))
+    assert "GSE11482_GADD_2010_CMN" in sources
+    assert "TREEHOUSE_POLYA_25_01" in sources
+    assert "TREEHOUSE_RIBOD_25_01" in sources
+
+
 def test_aggregate_code_expands_in_views():
     """An aggregate code (SARC) expands to its subtype cohorts in the views."""
     v = cohort_expression_views("SARC", genes=["TP53"])

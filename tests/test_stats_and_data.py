@@ -311,9 +311,9 @@ def test_inventory_keys_match_public_reference_manifest():
         for row in snapshot.cohort_rows
         if row.cancer_code in {"SARC_ESS_HG", "SARC_ESS_LG"}
     }
-    assert ess["SARC_ESS_HG"].n_rows is None
+    assert ess["SARC_ESS_HG"].n_rows > 0
     assert ess["SARC_ESS_HG"].n_samples == 4
-    assert ess["SARC_ESS_LG"].n_rows is None
+    assert ess["SARC_ESS_LG"].n_rows > 0
     assert ess["SARC_ESS_LG"].n_samples == 9
 
 

@@ -52,7 +52,7 @@ def test_availability_never_loads_full_expression_frame(monkeypatch):
 
     result = available_cancer_expression_references()
 
-    assert result.shape == (141, 8)
+    assert result.shape == (144, 8)
     assert result.columns.tolist() == _PUBLIC_COLUMNS
     assert delegated_calls[:2] == [
         {
@@ -130,10 +130,7 @@ def test_availability_keys_match_the_pirlygenes_provenance_sidecar():
         .itertuples(index=False, name=None),
     ))
     assert expected_keys <= actual_keys
-    assert actual_keys - expected_keys == {
-        ("SARC_ESS_HG", "GSE85383_YOSHIDA_2017_ESS"),
-        ("SARC_ESS_LG", "GSE85383_YOSHIDA_2017_ESS"),
-    }
+    assert actual_keys == expected_keys
     assert not any("TCGA_SUBSET" in cohort for _, cohort in actual_keys)
 
 
@@ -149,7 +146,7 @@ def test_availability_preserves_the_complete_public_manifest():
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "d86a8e3f1add775b7e72e88bc52952daff60e0c51963bfbca6f9bb8d4269774c"
+        "32ef831d96c6df8e37e24af7a65f7315a22ab9e0a66951fcaea322cbff28701a"
     )
 
 
@@ -183,7 +180,13 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         result["cancer_code"].astype(str).isin({"SARC_ESS_HG", "SARC_ESS_LG"})
     ]
     assert set(ess["source_project"].astype(str)) == {"GEO"}
-    assert set(ess["source_version"].astype(str)) == {"GSE85383/GPL22303"}
+    assert ess["source_version"].astype(str).str.startswith(
+        "GSE85383/GPL22303; unit=TPM proxy;"
+    ).all()
+    assert ess["source_version"].astype(str).str.contains(
+        "clean_tpm_profile=treehouse_polya_25_01_median_v1",
+        regex=False,
+    ).all()
     assert set(ess["tumor_origin"].astype(str)) == {"primary"}
     assert set(ess["processing_pipeline"].astype(str)) == {
         "GPL22303 series-matrix log2 intensity with GPL13497 symbol bridge "
@@ -231,7 +234,7 @@ from pirlygenes.expression import available_cancer_expression_references
 
 assert sys.gettrace() is None, 'memory probe inherited coverage/debug tracing'
 result = available_cancer_expression_references()
-assert result.shape == (141, 8)
+assert result.shape == (144, 8)
 if sys.platform.startswith('linux'):
     # getrusage().ru_maxrss retains the forked pytest parent's historical
     # high-water mark across exec on Linux. VmHWM belongs to this executable's

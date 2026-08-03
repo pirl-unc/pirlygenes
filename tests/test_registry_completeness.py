@@ -1,8 +1,8 @@
 """Registry-completeness contract (data-only fields).
 
-Every **leaf** cancer-type code in ``cancer-type-registry.csv``
-(``parent_code`` empty) must carry a minimum package of curated
-gene-knowledge data:
+Every **classifiable leaf** cancer-type code in the oncoref-owned registry
+(``parent_code`` empty and ``is_classification_target`` true) must carry a
+minimum package of curated gene-knowledge data:
 
 1. **Lineage panel** — at least five genes registered in
    ``lineage-genes.csv``.
@@ -16,7 +16,9 @@ gene-knowledge data:
    per-cancer subtype-signature plot in downstream consumers.
 
 Subtype rows (``parent_code`` set) are exempt — the parent carries the
-minimum, subtype inherits via mixture-cohort / subtype_key.
+minimum, subtype inherits via mixture-cohort / subtype_key. Reference-only
+validation cohorts explicitly marked ``is_classification_target=False`` are
+also exempt: data availability alone does not turn them into diagnoses.
 
 Expression-data + matched-normal-reference contracts moved to
 trufflepig along with the expression matrices. See
@@ -184,13 +186,37 @@ def _leaf_registry_rows():
     they are exempt from the leaf-completeness minimum. Gating on oncoref's
     ``ontology_level`` keeps this robust to oncoref adding new grouping tiers
     (which it does frequently) without a manual frozenset edit each time.
+    ``is_classification_target`` is the owner policy gate: a cohort may support
+    marker/rank validation without being eligible as an emitted diagnosis.
     """
+    from oncoref.load_dataset import get_data as get_oncoref_data
+
     reg = cancer_type_registry()
     is_top = reg["parent_code"].fillna("").astype(str).eq("")
+    owner_registry = get_oncoref_data("cancer-type-registry")
+    if "is_classification_target" in owner_registry.columns:
+        # The reviewed owner table is the policy source. oncoref 1.8.173's
+        # enriched public registry currently re-derives this field from data
+        # availability and turns CMN's validation-only microarray proxy into a
+        # classification target (oncoref#480).
+        owner_targets = owner_registry.set_index("code")[
+            "is_classification_target"
+        ]
+        target_values = reg["code"].map(owner_targets)
+        is_target = (
+            target_values
+            .fillna(False)
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin({"true", "1", "yes"})
+        )
+    else:
+        is_target = True
     if "ontology_level" in reg.columns:
         is_grouping = reg["ontology_level"].astype(str).eq("grouping")
-        return reg[is_top & ~is_grouping]
-    return reg[is_top]
+        return reg[is_top & is_target & ~is_grouping]
+    return reg[is_top & is_target]
 
 
 def _build_tolerated_gaps():

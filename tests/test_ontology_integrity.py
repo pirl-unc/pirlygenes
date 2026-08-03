@@ -147,9 +147,26 @@ def test_coverage_report():
     *monotherapy* ORR only exist for ~TCGA / trialled cancers, so those gaps are
     largely irreducible (and must never be fabricated)."""
     reg = _reg()
-    real_top = {c for c, r in reg.iterrows()
-                if (pd.isna(r["parent_code"]) or not str(r["parent_code"]).strip())
-                and str(r["expression_source"]) not in ("computed", "curated")}
+    from oncoref.load_dataset import get_data as get_oncoref_data
+
+    # The reviewed owner table is the policy authority. oncoref 1.8.173's
+    # enriched registry currently promotes CMN from validation-only proxy to a
+    # classification target based on data availability (oncoref#480).
+    owner_targets = (
+        get_oncoref_data("cancer-type-registry")
+        .set_index("code")["is_classification_target"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .isin({"true", "1", "yes"})
+    )
+    real_top = {
+        c
+        for c, r in reg.iterrows()
+        if (pd.isna(r["parent_code"]) or not str(r["parent_code"]).strip())
+        and str(r["expression_source"]) not in ("computed", "curated")
+        and bool(owner_targets.get(c, False))
+    }
     from pirlygenes.gene_sets_cancer import cancer_tmb
 
     lin = get_data("lineage-genes")

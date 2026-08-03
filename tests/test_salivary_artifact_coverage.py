@@ -16,7 +16,7 @@ from pirlygenes.gene_sets_cancer import cohort_registry_df
 
 SALIVARY_SAMPLES = {"ADCC": 57, "ACINIC": 3}
 SALIVARY_QC = {
-    "ADCC": {"n_qc_pass": 56, "n_qc_fail": 1},
+    "ADCC": {"n_qc_pass": 57, "n_qc_fail": 0},
     "ACINIC": {"n_qc_pass": 2, "n_qc_fail": 1},
 }
 SALIVARY_SOURCE = "GSE294016_BARTL_2025_SGC"
@@ -69,11 +69,15 @@ def test_sgc_rollup_includes_adcc_and_acinic_with_sample_weights():
     assert pan["SGC_TPM"] == pytest.approx(expected)
 
 
-def test_salivary_registry_describes_only_the_released_partition():
+def test_salivary_registry_distinguishes_physical_and_routed_sample_counts():
     row = cohort_registry_df().set_index("cohort_id").loc[SALIVARY_SOURCE]
 
     assert row["assay"] == "bulk RNA-seq"
-    assert int(row["n_samples"]) == sum(SALIVARY_SAMPLES.values())
+    # The owner registry describes all physical rows; public diagnosis
+    # references expose only the 60 samples routed to ADCC or ACINIC.
+    assert int(row["n_samples"]) == 95
     assert int(row["n_codes"]) == len(SALIVARY_SAMPLES)
+    assert sum(SALIVARY_SAMPLES.values()) == 60
+    assert "35 other histologies excluded" in row["provenance"]
     assert "PMID 40506428" in row["provenance"]
     assert "unit=TPM" in row["provenance"]
