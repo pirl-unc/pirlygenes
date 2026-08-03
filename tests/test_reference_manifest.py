@@ -146,7 +146,7 @@ def test_availability_preserves_the_complete_public_manifest():
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "32ef831d96c6df8e37e24af7a65f7315a22ab9e0a66951fcaea322cbff28701a"
+        "ef6d06cff8ccd1a37af999b43aa613fd98bc7d7dae3bd7ac65d305a1fc17116e"
     )
 
 
@@ -192,6 +192,13 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         "GPL22303 series-matrix log2 intensity with GPL13497 symbol bridge "
         "to TPM proxy; Ensembl 112"
     }
+
+    pecoma = result.loc[
+        result["cancer_code"].astype(str).eq("SARC_PEC")
+        & result["source_cohort"].astype(str).eq("GSE328026_PECOMA_2026")
+    ]
+    assert len(pecoma) == 1
+    assert "PMID 42331846" in str(pecoma.iloc[0]["source_version"])
 
 
 def test_availability_returns_a_defensive_copy():
