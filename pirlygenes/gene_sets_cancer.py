@@ -2492,7 +2492,11 @@ def cancer_key_genes_df():
     multiple approved agents appear as multiple rows. Columns:
     ``cancer_code, subtype, symbol, role (biomarker|target), agent,
     agent_class, phase (approved|phase_3|phase_2|phase_1|preclinical),
-    indication, rationale, source``.
+    indication, rationale, source``. New molecularly gated target rows also
+    carry ``eligibility_basis`` and the nullable Boolean
+    ``requires_verified_alteration``. A true value means expression alone is
+    never eligibility evidence; the caller must supply a verified molecular
+    alteration.
 
     The curation bar is "genes a clinician would ask about because they
     have clear prognostic value or gate access to an active therapy."
@@ -2502,7 +2506,17 @@ def cancer_key_genes_df():
     """
     from .load_dataset import get_data
 
-    return get_data("cancer-key-genes")
+    df = get_data("cancer-key-genes")
+    if "requires_verified_alteration" in df.columns:
+        normalized = (
+            df["requires_verified_alteration"]
+            .astype("string")
+            .str.strip()
+            .str.casefold()
+            .map({"true": True, "false": False})
+        )
+        df["requires_verified_alteration"] = normalized.astype("boolean")
+    return df
 
 
 def _subtype_tile_code(cancer_code, subtype):
@@ -2531,6 +2545,56 @@ def _subtype_tile_code(cancer_code, subtype):
     return cancer_code
 
 
+def _key_gene_tile(cancer_code, subtype, *, role):
+    """Resolve one public request to an exact key-gene table tile.
+
+    Exact rows keyed directly to a leaf code take precedence. Otherwise, when
+    the oncoref-owned registry provides ``parent_code`` + ``subtype_key``, map
+    the leaf to that parent/subtype tile. This makes direct calls such as
+    ``cancer_therapy_targets("SARC_GIST")`` equivalent to the historical
+    ``SARC/gist`` lookup while allowing newly curated exact child panels to work
+    without a downstream parent fallback.
+    """
+    code = str(cancer_code)
+    df = cancer_key_genes_df()
+    exact_role = df["role"].astype(str).eq(role)
+    has_exact_role = (df["cancer_code"].astype(str).eq(code) & exact_role).any()
+
+    registry = cancer_type_registry()
+    registry_codes = registry["code"].astype(str)
+    matched = registry[registry_codes.eq(code)]
+    missing_tokens = {"", "nan", "none", "<na>"}
+    parent = "" if matched.empty else str(matched.iloc[0].get("parent_code", "")).strip()
+    is_registered_child = parent.casefold() not in missing_tokens
+
+    # A registered child with its own role-specific panel is authoritative.
+    # Ignore an incompatible caller-supplied subtype rather than routing the
+    # request into a sibling tile (for example SARC_IMT -> SARC/gist).
+    if has_exact_role and is_registered_child:
+        return code, None
+
+    if subtype is not None:
+        return _subtype_tile_code(code, subtype), subtype
+
+    if has_exact_role:
+        return code, None
+
+    if matched.empty:
+        return code, None
+    row = matched.iloc[0]
+    subtype_key = str(row.get("subtype_key", "")).strip()
+    if parent.casefold() in missing_tokens or subtype_key.casefold() in missing_tokens:
+        return code, None
+
+    values = df["subtype"].fillna("").astype(str)
+    has_tile = (
+        df["cancer_code"].astype(str).eq(parent)
+        & values.eq(subtype_key)
+        & df["role"].astype(str).eq(role)
+    ).any()
+    return (parent, subtype_key) if has_tile else (code, None)
+
+
 def cancer_biomarker_genes(cancer_code, subtype=None):
     """Ordered list of biomarker gene symbols for ``cancer_code``.
 
@@ -2545,10 +2609,10 @@ def cancer_biomarker_genes(cancer_code, subtype=None):
     yet determined at report time.
     """
     df = cancer_key_genes_df()
-    code = _subtype_tile_code(cancer_code, subtype)
+    code, resolved_subtype = _key_gene_tile(cancer_code, subtype, role="biomarker")
     sub = df[(df["cancer_code"] == code) & (df["role"] == "biomarker")]
-    if subtype is not None:
-        sub = sub[sub["subtype"].fillna("").astype(str) == subtype]
+    if resolved_subtype is not None:
+        sub = sub[sub["subtype"].fillna("").astype(str) == resolved_subtype]
     return list(sub["symbol"].dropna().astype(str).unique())
 
 
@@ -2558,13 +2622,16 @@ def cancer_therapy_targets(cancer_code, subtype=None):
     Phase / Indication / Agent columns without re-joining.
 
     ``subtype`` (optional) filters to a specific subtype; see
-    :func:`cancer_biomarker_genes` for semantics.
+    :func:`cancer_biomarker_genes` for semantics. Exact child-code panels take
+    precedence over parent tiles, so callers must not fall back from a known
+    child (for example ``SARC_IMT``) to the union of mutually exclusive SARC
+    subtype therapies.
     """
     df = cancer_key_genes_df()
-    code = _subtype_tile_code(cancer_code, subtype)
+    code, resolved_subtype = _key_gene_tile(cancer_code, subtype, role="target")
     sub = df[(df["cancer_code"] == code) & (df["role"] == "target")]
-    if subtype is not None:
-        sub = sub[sub["subtype"].fillna("").astype(str) == subtype]
+    if resolved_subtype is not None:
+        sub = sub[sub["subtype"].fillna("").astype(str) == resolved_subtype]
     return sub.copy().reset_index(drop=True)
 
 
