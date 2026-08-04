@@ -38,7 +38,7 @@ not evidence of survival benefit or toxicity by itself.
 
 `cancer_therapy_targets(cancer_code, subtype=None)` returns the disease-matched
 small-molecule, antibody, cellular, or radioligand rows from
-`cancer-key-genes.csv`. Exact leaf panels take precedence over parent subtype
+`cancer-key-genes.csv`. Exact child-code panels take precedence over parent subtype
 tiles. For example, `SARC_IMT`, `SARC_DFSP`, and `SARC_PEC` return only their
 own panels; callers must not replace an empty child lookup with the union of
 mutually exclusive `SARC` subtype therapies. The existing registry mapping

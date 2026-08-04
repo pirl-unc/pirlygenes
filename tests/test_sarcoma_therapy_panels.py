@@ -1,6 +1,8 @@
 """Exact IMT, DFSP, and PEComa therapy-panel contracts (#606)."""
 
+import csv
 from itertools import product
+from pathlib import Path
 
 import pandas as pd
 
@@ -15,6 +17,28 @@ def test_exact_sarcoma_panels_are_advertised_as_available():
     available = set(cancer_key_genes_cancer_types())
 
     assert {"SARC_IMT", "SARC_DFSP", "SARC_PEC"} <= available
+
+
+def test_key_gene_csv_is_rectangular_for_strict_readers():
+    path = (
+        Path(__file__).parents[1]
+        / "pirlygenes"
+        / "data"
+        / "cancer-key-genes.csv"
+    )
+    with path.open(newline="") as handle:
+        rows = list(csv.reader(handle))
+
+    assert rows
+    assert all(len(row) == len(rows[0]) == 16 for row in rows)
+
+
+def test_exact_child_panels_cannot_be_overridden_by_sibling_subtypes():
+    for code in ("SARC_IMT", "SARC_DFSP", "SARC_PEC"):
+        expected = cancer_therapy_targets(code)
+        for subtype in ("gist", "not_a_real_subtype"):
+            actual = cancer_therapy_targets(code, subtype=subtype)
+            pd.testing.assert_frame_equal(actual, expected)
 
 
 def test_direct_gist_lookup_preserves_registry_subtype_mapping():

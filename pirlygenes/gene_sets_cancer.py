@@ -2552,26 +2552,37 @@ def _key_gene_tile(cancer_code, subtype, *, role):
     the oncoref-owned registry provides ``parent_code`` + ``subtype_key``, map
     the leaf to that parent/subtype tile. This makes direct calls such as
     ``cancer_therapy_targets("SARC_GIST")`` equivalent to the historical
-    ``SARC/gist`` lookup while allowing newly curated exact leaf panels to work
+    ``SARC/gist`` lookup while allowing newly curated exact child panels to work
     without a downstream parent fallback.
     """
     code = str(cancer_code)
+    df = cancer_key_genes_df()
+    exact_role = df["role"].astype(str).eq(role)
+    has_exact_role = (df["cancer_code"].astype(str).eq(code) & exact_role).any()
+
+    registry = cancer_type_registry()
+    registry_codes = registry["code"].astype(str)
+    matched = registry[registry_codes.eq(code)]
+    missing_tokens = {"", "nan", "none", "<na>"}
+    parent = "" if matched.empty else str(matched.iloc[0].get("parent_code", "")).strip()
+    is_registered_child = parent.casefold() not in missing_tokens
+
+    # A registered child with its own role-specific panel is authoritative.
+    # Ignore an incompatible caller-supplied subtype rather than routing the
+    # request into a sibling tile (for example SARC_IMT -> SARC/gist).
+    if has_exact_role and is_registered_child:
+        return code, None
+
     if subtype is not None:
         return _subtype_tile_code(code, subtype), subtype
 
-    df = cancer_key_genes_df()
-    exact_role = df["role"].astype(str).eq(role)
-    if (df["cancer_code"].astype(str).eq(code) & exact_role).any():
+    if has_exact_role:
         return code, None
 
-    registry = cancer_type_registry()
-    matched = registry[registry["code"].astype(str).eq(code)]
     if matched.empty:
         return code, None
     row = matched.iloc[0]
-    parent = str(row.get("parent_code", "")).strip()
     subtype_key = str(row.get("subtype_key", "")).strip()
-    missing_tokens = {"", "nan", "none", "<na>"}
     if parent.casefold() in missing_tokens or subtype_key.casefold() in missing_tokens:
         return code, None
 
@@ -2611,7 +2622,7 @@ def cancer_therapy_targets(cancer_code, subtype=None):
     Phase / Indication / Agent columns without re-joining.
 
     ``subtype`` (optional) filters to a specific subtype; see
-    :func:`cancer_biomarker_genes` for semantics. Exact leaf-code panels take
+    :func:`cancer_biomarker_genes` for semantics. Exact child-code panels take
     precedence over parent tiles, so callers must not fall back from a known
     child (for example ``SARC_IMT``) to the union of mutually exclusive SARC
     subtype therapies.
