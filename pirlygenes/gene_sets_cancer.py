@@ -2519,7 +2519,7 @@ def cancer_key_genes_df():
     return df
 
 
-def _subtype_tile_code(cancer_code, subtype):
+def _subtype_tile_code(cancer_code, subtype, *, role=None):
     """Resolve the ``cancer_code`` a curated subtype tile is keyed under.
 
     A subtype's key-genes tile (e.g. the ``dedifferentiated_liposarcoma``
@@ -2528,14 +2528,19 @@ def _subtype_tile_code(cancer_code, subtype):
     (SARC_DDLPS: parent SARC -> SARC_LPS, oncoref#325) can leave the tile at a
     grandparent. When the exact ``(cancer_code, subtype)`` pair has no rows, walk
     up the registry parent chain and return the first ancestor that does, so
-    subtype lookups stay robust to re-parenting. Returns ``cancer_code``
-    unchanged when ``subtype`` is ``None`` or no ancestor carries the tile
-    (preserving the prior exact-match behavior for every non-re-parented case).
+    subtype lookups stay robust to re-parenting. When ``role`` is provided,
+    select the nearest ancestor carrying that role rather than stopping at a
+    partial tile. Returns ``cancer_code`` unchanged when ``subtype`` is
+    ``None`` or no ancestor carries the tile (preserving the prior exact-match
+    behavior for every non-re-parented case).
     """
     if subtype is None:
         return cancer_code
     df = cancer_key_genes_df()
-    have = set(df.loc[df["subtype"].fillna("").astype(str) == subtype, "cancer_code"])
+    matching = df["subtype"].fillna("").astype(str).eq(subtype)
+    if role is not None:
+        matching &= df["role"].astype(str).eq(role)
+    have = set(df.loc[matching, "cancer_code"])
     if cancer_code in have:
         return cancer_code
     parent_of = cancer_type_registry().set_index("code")["parent_code"].to_dict()
@@ -2574,7 +2579,7 @@ def _key_gene_tile(cancer_code, subtype, *, role):
         return code, None
 
     if subtype is not None:
-        return _subtype_tile_code(code, subtype), subtype
+        return _subtype_tile_code(code, subtype, role=role), subtype
 
     if has_exact_role:
         return code, None
@@ -2586,13 +2591,14 @@ def _key_gene_tile(cancer_code, subtype, *, role):
     if parent.casefold() in missing_tokens or subtype_key.casefold() in missing_tokens:
         return code, None
 
+    tile_code = _subtype_tile_code(code, subtype_key, role=role)
     values = df["subtype"].fillna("").astype(str)
     has_tile = (
-        df["cancer_code"].astype(str).eq(parent)
+        df["cancer_code"].astype(str).eq(tile_code)
         & values.eq(subtype_key)
         & df["role"].astype(str).eq(role)
     ).any()
-    return (parent, subtype_key) if has_tile else (code, None)
+    return (tile_code, subtype_key) if has_tile else (code, None)
 
 
 def cancer_biomarker_genes(cancer_code, subtype=None):
