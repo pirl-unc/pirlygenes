@@ -1,11 +1,32 @@
 """Tests for SARC subtype-aware cancer-key-genes curation (#126)."""
 
+import pandas as pd
+import pytest
+
 from pirlygenes.gene_sets_cancer import (
     cancer_biomarker_genes,
     cancer_therapy_targets,
     cancer_key_genes_cancer_types,
     cancer_key_genes_subtypes,
 )
+
+
+@pytest.mark.parametrize(
+    ("code", "subtype"),
+    [
+        ("SARC_DDLPS", "dedifferentiated_liposarcoma"),
+        ("SARC_WDLPS", "well_differentiated_liposarcoma"),
+        ("SARC_MYXLPS", "myxoid_liposarcoma"),
+    ],
+)
+def test_direct_liposarcoma_keys_walk_to_curated_ancestor_tile(code, subtype):
+    assert cancer_biomarker_genes(code) == cancer_biomarker_genes(
+        "SARC", subtype=subtype
+    )
+    pd.testing.assert_frame_equal(
+        cancer_therapy_targets(code),
+        cancer_therapy_targets("SARC", subtype=subtype),
+    )
 
 
 def test_sarc_is_in_curated_codes():

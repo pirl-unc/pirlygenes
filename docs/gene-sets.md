@@ -34,6 +34,33 @@ benefit/toxicity rows keyed by agent, cancer code, subtype, and line of
 therapy. These rows are separate from expression data; target expression is
 not evidence of survival benefit or toxicity by itself.
 
+### Disease-matched therapy panels
+
+`cancer_therapy_targets(cancer_code, subtype=None)` returns the disease-matched
+small-molecule, antibody, cellular, or radioligand rows from
+`cancer-key-genes.csv`. Exact child-code panels take precedence over parent subtype
+tiles. For example, `SARC_IMT`, `SARC_DFSP`, and `SARC_PEC` return only their
+own panels; callers must not replace an empty child lookup with the union of
+mutually exclusive `SARC` subtype therapies. The existing registry mapping
+still makes `SARC_GIST` equivalent to `SARC` with `subtype="gist"`.
+
+For molecularly gated rows, `eligibility_basis` describes whether the label is
+histology- or alteration-based and `requires_verified_alteration` is a nullable
+Boolean. When it is true, RNA abundance is context only and a verified molecular
+alteration must be supplied independently. The IMT crizotinib row instead uses
+`histology_and_alk_positive`: validated ALK IHC or a molecular method such as
+FISH can establish the label-required ALK-positive status, so a separately
+verified fusion is not mandatory. A false Boolean does not waive evidence named
+by the eligibility basis or note. DFSP imatinib and PEComa nab-sirolimus are
+histology-gated label indications; their characteristic PDGFB or TSC/mTOR
+biology is contextual rather than a label requirement.
+The structured `cancer_fusions("SARC_DFSP")` row exposes COL1A1 as the
+matchable 5-prime partner of PDGFB.
+
+No named ROS1-, RET-, or PDGFRB-directed IMT recommendation is promoted from
+case reports. ALK-negative IMT instead warrants a diagnostic-workup prompt for
+comprehensive RNA structural-variant testing and clinical-trial review.
+
 ## Cancer-Testis Antigens (CTAs)
 
 CTAs are genes normally expressed only in germline tissues (testis,
