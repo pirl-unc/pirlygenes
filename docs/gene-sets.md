@@ -46,10 +46,14 @@ still makes `SARC_GIST` equivalent to `SARC` with `subtype="gist"`.
 
 For molecularly gated rows, `eligibility_basis` describes whether the label is
 histology- or alteration-based and `requires_verified_alteration` is a nullable
-Boolean. When it is true, RNA abundance is context only: a verified ALK or
-NTRK fusion/rearrangement must be supplied independently. DFSP imatinib and
-PEComa nab-sirolimus are histology-gated label indications; their characteristic
-PDGFB or TSC/mTOR biology is contextual rather than a label requirement.
+Boolean. When it is true, RNA abundance is context only and a verified molecular
+alteration must be supplied independently. The IMT crizotinib row instead uses
+`histology_and_alk_positive`: validated ALK IHC or a molecular method such as
+FISH can establish the label-required ALK-positive status, so a separately
+verified fusion is not mandatory. A false Boolean does not waive evidence named
+by the eligibility basis or note. DFSP imatinib and PEComa nab-sirolimus are
+histology-gated label indications; their characteristic PDGFB or TSC/mTOR
+biology is contextual rather than a label requirement.
 The structured `cancer_fusions("SARC_DFSP")` row exposes COL1A1 as the
 matchable 5-prime partner of PDGFB.
 

@@ -49,7 +49,7 @@ def test_direct_gist_lookup_preserves_registry_subtype_mapping():
     pd.testing.assert_frame_equal(direct, historical)
 
 
-def test_imt_panel_is_exact_and_molecular_options_are_alteration_gated():
+def test_imt_panel_is_exact_and_uses_distinct_alk_and_ntrk_evidence_gates():
     panel = cancer_therapy_targets("SARC_IMT")
 
     assert not panel.empty
@@ -60,9 +60,8 @@ def test_imt_panel_is_exact_and_molecular_options_are_alteration_gated():
         "entrectinib",
         "repotrectinib",
     }
-    assert panel["requires_verified_alteration"].all()
     assert set(panel["eligibility_basis"]) == {
-        "histology_and_alteration",
+        "histology_and_alk_positive",
         "tumor_agnostic_alteration",
     }
     assert panel["eligibility_note"].str.contains(
@@ -81,6 +80,17 @@ def test_imt_panel_is_exact_and_molecular_options_are_alteration_gated():
     assert set(panel["agent"]).isdisjoint(sibling_agents)
 
 
+def test_imt_crizotinib_accepts_validated_alk_ihc_without_requiring_fusion():
+    panel = cancer_therapy_targets("SARC_IMT")
+    row = panel[panel["agent"].eq("crizotinib")].iloc[0]
+
+    assert row["eligibility_basis"] == "histology_and_alk_positive"
+    assert not bool(row["requires_verified_alteration"])
+    assert "validated ALK IHC" in row["eligibility_note"]
+    assert "FISH" in row["eligibility_note"]
+    assert "RNA abundance alone is not eligibility evidence" in row["eligibility_note"]
+
+
 def test_imt_ntrk_panel_covers_every_gene_and_approved_agent():
     panel = cancer_therapy_targets("SARC_IMT")
     ntrk = panel[panel["symbol"].isin({"NTRK1", "NTRK2", "NTRK3"})]
@@ -93,6 +103,7 @@ def test_imt_ntrk_panel_covers_every_gene_and_approved_agent():
     )
     assert set(zip(ntrk["symbol"], ntrk["agent"])) == expected
     assert set(ntrk["eligibility_basis"]) == {"tumor_agnostic_alteration"}
+    assert ntrk["requires_verified_alteration"].all()
     assert ntrk["indication"].str.contains("tumor-agnostic", regex=False).all()
 
 

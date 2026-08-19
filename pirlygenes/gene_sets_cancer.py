@@ -2496,7 +2496,9 @@ def cancer_key_genes_df():
     carry ``eligibility_basis`` and the nullable Boolean
     ``requires_verified_alteration``. A true value means expression alone is
     never eligibility evidence; the caller must supply a verified molecular
-    alteration.
+    alteration. A false value does not waive other evidence named by
+    ``eligibility_basis`` and ``eligibility_note`` (for example validated ALK
+    positivity by IHC for crizotinib in IMT).
 
     The curation bar is "genes a clinician would ask about because they
     have clear prognostic value or gate access to an active therapy."
