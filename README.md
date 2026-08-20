@@ -261,6 +261,30 @@ Regenerate the derived CSVs with `python
 scripts/generate_gene_family_sets.py` after the upstream regex panel
 changes.
 
+### Per-patient coverage thresholds
+
+`patient_coverage()` and `pirlygenes plot patient-coverage` use per-sample
+oncoref matrices to compute co-occurrence-aware panel coverage. Their default
+`threshold_mode="auto"` follows oncoref's structured
+`linear_tpm_comparable` metadata:
+
+- comparable RNA-seq sources use absolute clean-TPM thresholds (default 25);
+- microarray proxies or sources with unknown comparability use within-sample
+  percentile rank (default p95).
+
+Choose the contract explicitly with `threshold_mode="tpm"` or
+`threshold_mode="percentile"` in Python, or `--threshold-mode` on the CLI.
+Explicit TPM mode rejects sources that oncoref marks non-comparable. Returned
+tables carry source cohort, source type, scale class, normalization, and the
+effective threshold mode; percentile columns use names such as `n_p95`, while
+absolute columns retain names such as `n_gt25`.
+
+```bash
+pirlygenes plot patient-coverage --gene-set cta --source all
+pirlygenes plot patient-coverage --gene-set cta \
+  --threshold-mode percentile --threshold 95
+```
+
 ## What's bundled (`pirlygenes/data/`)
 
 Every CSV ships in the wheel under `pirlygenes/data/`. The "Primary

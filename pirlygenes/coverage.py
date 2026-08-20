@@ -25,12 +25,25 @@ restricted to a named gene set, and computes:
     of patients with >=1 panel gene over threshold (a patient expressing
     several panel genes is counted once).
 
+Coverage has two explicit threshold contracts:
+
+``auto`` (the default)
+    Uses absolute clean TPM only when oncoref marks every selected source as
+    linearly TPM-comparable. Otherwise it uses within-sample percentile rank,
+    which is robust to quantifier/platform scale differences.
+``tpm`` / ``percentile``
+    Force one contract. TPM is rejected for a source that oncoref explicitly
+    labels as a microarray TPM proxy; percentile ranks are computed with
+    :func:`oncoref.percentile_rank` over each sample's full biological
+    transcriptome before the requested panel is selected.
+
 It is the engine behind ``pirlygenes plot patient-coverage`` and generalises
 the CTA-specific analysis in ``analyses/cta_patient_counts.py`` to any panel.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -40,7 +53,96 @@ from . import cohorts as _cohorts
 from . import gene_sets_cancer as gsc
 
 DEFAULT_SOURCE = "treehouse-polya-25-01"
-DEFAULT_THRESHOLDS = (25, 50, 100, 200)
+DEFAULT_TPM_THRESHOLDS = (25, 50, 100, 200)
+DEFAULT_PERCENTILE_THRESHOLDS = (90, 95)
+
+# Historical import compatibility. New code should select the mode-specific
+# default through :func:`patient_coverage`.
+DEFAULT_THRESHOLDS = DEFAULT_TPM_THRESHOLDS
+
+
+@dataclass(frozen=True)
+class Threshold:
+    """One coverage cutoff.
+
+    ``kind`` is ``"tpm"`` or ``"percentile"`` (``"pctile"`` remains an
+    accepted analysis-script alias). Absolute TPM uses the historical strict
+    ``>`` comparison; percentile mode uses ``>=`` because a p95 call means a
+    gene ranks at or above the 95th percentile within that sample.
+    """
+
+    kind: str
+    value: int
+
+    def __post_init__(self):
+        kind = str(self.kind).strip().lower()
+        if kind == "pctile":
+            kind = "percentile"
+        if kind not in {"tpm", "percentile"}:
+            raise ValueError("threshold kind must be 'tpm' or 'percentile'")
+        numeric = float(self.value)
+        if not np.isfinite(numeric) or not numeric.is_integer():
+            raise ValueError("coverage threshold values must be finite integers")
+        value = int(numeric)
+        if kind == "tpm" and value < 0:
+            raise ValueError("TPM thresholds must be non-negative")
+        if kind == "percentile" and not 0 < value <= 100:
+            raise ValueError("percentile thresholds must be in (0, 100]")
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "value", value)
+
+    @property
+    def slug(self) -> str:
+        return f"t{self.value}" if self.kind == "tpm" else f"p{self.value}"
+
+    @property
+    def count_suffix(self) -> str:
+        return f"gt{self.value}" if self.kind == "tpm" else f"p{self.value}"
+
+    @property
+    def xlabel(self) -> str:
+        return (
+            f"> {self.value} clean TPM"
+            if self.kind == "tpm"
+            else f"≥ {self.value}th within-sample percentile"
+        )
+
+    @property
+    def label(self) -> str:
+        """Compatibility alias used by analysis scripts."""
+        return self.xlabel
+
+    @property
+    def count_col(self) -> str:
+        return f"n_{self.count_suffix}"
+
+    def cutoff(self, cols, pctile_cutoffs=None):
+        """Scalar TPM or a per-sample percentile cutoff vector.
+
+        This preserves the precomputed-cutoff interface used by the historical
+        CTA analysis while the public coverage path ranks through oncoref.
+        Samples without a percentile cutoff receive ``+inf``.
+        """
+        if self.kind == "tpm":
+            return self.value
+        col = f"p{self.value}"
+        series = pctile_cutoffs[col] if pctile_cutoffs is not None else None
+        return np.array([
+            series.get(c, np.inf) if series is not None else np.inf
+            for c in cols
+        ], dtype=float)
+
+    def compare(self, values, cutoff=None):
+        """Return the boolean hit mask for ``values``."""
+        threshold = self.value if cutoff is None else cutoff
+        values = np.asarray(values)
+        if self.kind == "tpm":
+            return values > threshold
+        return values >= threshold
+
+    def hits(self, values, cols=(), pctile_cutoffs=None):
+        """Compare raw values using this threshold's scalar/vector cutoff."""
+        return self.compare(values, self.cutoff(cols, pctile_cutoffs))
 
 
 def _available(source_id):
@@ -51,6 +153,130 @@ def _available(source_id):
     if source_id == "all":
         return _cohorts.all_available_cohorts()
     return _cohorts.available_cohorts(source_id)
+
+
+def _selected_cohorts(source_id, codes=None):
+    available = _available(source_id)
+    if codes:
+        wanted = {gsc.resolve_cancer_type(code) for code in codes}
+        available = {
+            code: cohort
+            for code, cohort in available.items()
+            if code in wanted
+        }
+    return available
+
+
+def _coverage_source_metadata(available):
+    """Owner scale/provenance metadata for selected matrix codes.
+
+    The compact oncoref availability table is deliberately used instead of
+    inferring comparability from source IDs or pipeline-name substrings. Custom
+    compatibility cohorts that are not in oncoref receive explicit ``unknown``
+    metadata and therefore make ``auto`` choose percentile mode.
+    """
+    from oncoref import (
+        cancer_reference_expression_availability,
+        source_matrices,
+    )
+
+    registry = source_matrices.registry()
+    registry_rows = {
+        str(row["cancer_code"]): row for _, row in registry.iterrows()
+    }
+    known_codes = [code for code in available if code in registry_rows]
+    owner = pd.DataFrame()
+    if known_codes:
+        owner = cancer_reference_expression_availability(
+            cancer_types=known_codes,
+            normalize="tpm_clean",
+            sample_qc="all",
+            reference_source="summary_rows_all",
+            all_sources=True,
+        )
+
+    out = {}
+    for code, cohort in available.items():
+        registry_row = registry_rows.get(code)
+        source_cohort = (
+            str(registry_row["source_cohort"])
+            if registry_row is not None
+            else cohort.source_id
+        )
+        if owner.empty:
+            match = owner
+        else:
+            match = owner.loc[
+                owner["cancer_code"].astype(str).eq(code)
+                & owner["source_cohort"].astype(str).eq(source_cohort)
+            ]
+        if match.empty and not owner.empty:
+            match = owner.loc[
+                owner["cancer_code"].astype(str).eq(code)
+            ]
+        row = match.iloc[0] if not match.empty else None
+        comparable = None
+        if row is not None and not pd.isna(row.get("linear_tpm_comparable")):
+            comparable = bool(row["linear_tpm_comparable"])
+        out[code] = {
+            "source_cohort": source_cohort,
+            "source_type": (
+                str(row.get("source_type", "unknown"))
+                if row is not None else "unknown"
+            ),
+            "source_scale_class": (
+                str(row.get("source_scale_class", "unknown"))
+                if row is not None else "unknown"
+            ),
+            "linear_tpm_comparable": comparable,
+            "normalization": "tpm_clean",
+        }
+    return out
+
+
+def _resolve_threshold_mode(requested, metadata):
+    mode = str(requested).strip().lower()
+    if mode == "pctile":
+        mode = "percentile"
+    if mode not in {"auto", "tpm", "percentile"}:
+        raise ValueError(
+            "threshold_mode must be one of 'auto', 'tpm', or 'percentile'"
+        )
+    if mode == "auto":
+        if metadata and all(
+            item["linear_tpm_comparable"] is True
+            for item in metadata.values()
+        ):
+            return "tpm"
+        return "percentile"
+    if mode == "tpm":
+        incompatible = sorted(
+            code for code, item in metadata.items()
+            if item["linear_tpm_comparable"] is False
+        )
+        if incompatible:
+            joined = ", ".join(incompatible)
+            raise ValueError(
+                "absolute TPM coverage is invalid for non-comparable source "
+                f"scale(s): {joined}; use threshold_mode='percentile'"
+            )
+    return mode
+
+
+def _threshold_values(mode, thresholds):
+    if thresholds is None:
+        thresholds = (
+            DEFAULT_TPM_THRESHOLDS
+            if mode == "tpm"
+            else DEFAULT_PERCENTILE_THRESHOLDS
+        )
+    values = []
+    for value in thresholds:
+        normalized = Threshold(mode, value).value
+        if normalized not in values:
+            values.append(normalized)
+    return tuple(values)
+
 
 # --- gene-set resolution ---------------------------------------------------
 
@@ -138,21 +364,41 @@ def _gene_set_from_file(path: Path):
 
 # --- per-sample access + counting ------------------------------------------
 
-def cohort_matrix(cohort, ensgs=None) -> pd.DataFrame:
-    """Per-sample TPM matrix for ``cohort``, restricted to the panel rows.
+def cohort_matrix(cohort, ensgs=None, *, percentile_rank=False) -> pd.DataFrame:
+    """Per-sample clean-TPM matrix for ``cohort``, restricted to panel rows.
 
     Matching is on the unversioned Ensembl gene id only — symbols are never a
-    join key. Returns an ENSG-indexed, sample-columned DataFrame (linear TPM);
-    a ``{ensg: symbol}`` display map is stashed in ``df.attrs['symbols']`` so
-    downstream rendering can label rows without ever joining on the symbol.
+    join key. Owner cohorts are normalized by
+    :func:`oncoref.per_sample_expression`; custom compatibility cohorts retain
+    the historical reader path. With ``percentile_rank=True``, oncoref ranks
+    every gene within each sample *before* selecting panel rows, so the result
+    is not the misleading rank within the panel alone.
+
+    Returns an ENSG-indexed, sample-columned DataFrame. A ``{ensg: symbol}``
+    display map is stashed in ``df.attrs['symbols']`` so downstream rendering
+    can label rows without joining on the symbol.
     """
-    df = _cohorts.read_per_sample(cohort)
+    import oncoref
+    from oncoref import source_matrices
+
+    owner_codes = set(source_matrices.registry()["cancer_code"].astype(str))
+    if cohort.code in owner_codes:
+        df = oncoref.per_sample_expression(
+            cohort.code,
+            normalize="tpm_clean",
+            auto_fetch=False,
+            sample_qc="all",
+        )
+    else:
+        df = _cohorts.read_per_sample(cohort)
+    sample_cols = _cohorts.sample_columns(df)
+    if percentile_rank:
+        df = oncoref.percentile_rank(df, value_cols=sample_cols)
     ensgs = ensgs or set()
     ensg_col = df["Ensembl_Gene_ID"].astype(str).str.split(".").str[0]
     mask = ensg_col.isin(ensgs) if ensgs else pd.Series(False, index=df.index)
     sub = df.loc[mask].copy()
     sub["Ensembl_Gene_ID"] = ensg_col[mask]
-    sample_cols = _cohorts.sample_columns(sub)
     symbol_map = {}
     if "Symbol" in sub.columns:
         symbol_map = dict(zip(sub["Ensembl_Gene_ID"], sub["Symbol"].astype(str)))
@@ -161,15 +407,19 @@ def cohort_matrix(cohort, ensgs=None) -> pd.DataFrame:
     return out
 
 
-def greedy_coverage(mat: pd.DataFrame, threshold: float):
-    """Greedily order genes by marginal NEW patients (>threshold).
+def greedy_coverage(mat: pd.DataFrame, threshold, *, inclusive=False):
+    """Greedily order genes by marginal new patients at ``threshold``.
 
-    Returns ``(ordered_row_positions, cumulative_fraction, n_samples)``."""
+    ``threshold`` may be a scalar or a sample-aligned vector. ``inclusive`` is
+    used for percentile ranks (at-or-above pN); absolute TPM retains the
+    historical strict-greater-than contract. Returns
+    ``(ordered_row_positions, cumulative_fraction, n_samples)``.
+    """
     arr = mat.to_numpy()
     n = arr.shape[1]
     if n == 0 or arr.shape[0] == 0:
         return [], [], n
-    hit = arr > threshold
+    hit = arr >= threshold if inclusive else arr > threshold
     covered = np.zeros(n, dtype=bool)
     order, cum, remaining = [], [], set(range(arr.shape[0]))
     while remaining:
@@ -187,41 +437,130 @@ def greedy_coverage(mat: pd.DataFrame, threshold: float):
     return order, cum, n
 
 
-def patient_coverage(gene_set: str, source_id: str = DEFAULT_SOURCE,
-                     codes=None, thresholds=DEFAULT_THRESHOLDS) -> pd.DataFrame:
-    """Long table: for every (cohort × gene) the number and % of patients with
-    TPM above each threshold. Only genes with at least one hit are kept.
+def _coverage_frame(
+    ensgs,
+    available,
+    metadata,
+    mode,
+    threshold_values,
+    *,
+    greedy_threshold=None,
+):
+    """Compute counts and optional greedy curves in one matrix pass.
+
+    Keeping the loop here prevents :func:`render` from loading every source
+    matrix twice. Matrices are discarded cohort-by-cohort, bounding memory even
+    for ``source_id="all"``.
+    """
+    thresholds = [Threshold(mode, value) for value in threshold_values]
+    rows = []
+    per = []
+    for code, cohort in available.items():
+        mat = cohort_matrix(
+            cohort,
+            ensgs,
+            percentile_rank=(mode == "percentile"),
+        )
+        n = mat.shape[1]
+        if n == 0:
+            continue
+        source = metadata[code]
+        symbols = mat.attrs.get("symbols", {})
+        for ensg, vals in zip(mat.index, mat.to_numpy()):
+            rec = {
+                "cancer_code": code,
+                "source_cohort": source["source_cohort"],
+                "source_type": source["source_type"],
+                "source_scale_class": source["source_scale_class"],
+                "linear_tpm_comparable": source["linear_tpm_comparable"],
+                "normalization": source["normalization"],
+                "threshold_mode": mode,
+                "n_samples": n,
+                "Ensembl_Gene_ID": ensg,
+                "Symbol": symbols.get(ensg, ""),
+            }
+            any_hit = False
+            for threshold in thresholds:
+                count = int(threshold.compare(vals).sum())
+                rec[f"n_{threshold.count_suffix}"] = count
+                rec[f"pct_{threshold.count_suffix}"] = round(
+                    100 * count / n, 2
+                )
+                any_hit = any_hit or count > 0
+            if any_hit:
+                rows.append(rec)
+
+        if greedy_threshold is not None:
+            order, cumulative, _ = greedy_coverage(
+                mat,
+                greedy_threshold.value,
+                inclusive=(mode == "percentile"),
+            )
+            if cumulative:
+                names = [
+                    symbols.get(mat.index[index]) or mat.index[index]
+                    for index in order
+                ]
+                per.append((code, n, cumulative, names))
+
+    cols = [
+        "cancer_code",
+        "source_cohort",
+        "source_type",
+        "source_scale_class",
+        "linear_tpm_comparable",
+        "normalization",
+        "threshold_mode",
+        "n_samples",
+        "Ensembl_Gene_ID",
+        "Symbol",
+    ] + [
+        f"{prefix}_{threshold.count_suffix}"
+        for threshold in thresholds
+        for prefix in ("n", "pct")
+    ]
+    out = pd.DataFrame(rows, columns=cols)
+    out.attrs.update({
+        "threshold_mode": mode,
+        "thresholds": tuple(threshold.value for threshold in thresholds),
+        "source_metadata": metadata,
+    })
+    return out, per
+
+
+def patient_coverage(
+    gene_set: str,
+    source_id: str = DEFAULT_SOURCE,
+    codes=None,
+    thresholds=None,
+    *,
+    threshold_mode="auto",
+) -> pd.DataFrame:
+    """Per-cohort/per-gene patient coverage under one threshold contract.
+
+    ``threshold_mode="auto"`` uses owner ``linear_tpm_comparable`` metadata:
+    clean TPM for wholly comparable sources, otherwise within-sample
+    percentile rank. Explicit ``"tpm"`` is rejected for sources oncoref marks
+    non-comparable; ``"percentile"`` is always platform-safe. TPM output uses
+    ``n_gt25``/``pct_gt25``-style columns; percentile output uses
+    ``n_p90``/``pct_p90``. Only genes with at least one hit are retained.
 
     ``codes`` optionally restricts to specific cancer types (resolved through
     :func:`gene_sets_cancer.resolve_cancer_type`); default is every cohort with
     a cached per-sample matrix for ``source_id``.
     """
     _label, ensgs = resolve_gene_set(gene_set)
-    avail = _available(source_id)
-    if codes:
-        want = {gsc.resolve_cancer_type(c) for c in codes}
-        avail = {k: v for k, v in avail.items() if k in want}
-    rows = []
-    for code, cohort in avail.items():
-        mat = cohort_matrix(cohort, ensgs)
-        n = mat.shape[1]
-        if n == 0:
-            continue
-        symbols = mat.attrs.get("symbols", {})
-        for ensg, vals in zip(mat.index, mat.to_numpy()):
-            rec = {"cancer_code": code, "n_samples": n,
-                   "Ensembl_Gene_ID": ensg, "Symbol": symbols.get(ensg, "")}
-            any_hit = False
-            for t in thresholds:
-                k = int((vals > t).sum())
-                rec[f"n_gt{t}"] = k
-                rec[f"pct_gt{t}"] = round(100 * k / n, 2)
-                any_hit = any_hit or k > 0
-            if any_hit:
-                rows.append(rec)
-    cols = (["cancer_code", "n_samples", "Ensembl_Gene_ID", "Symbol"]
-            + [f"{p}_gt{t}" for t in thresholds for p in ("n", "pct")])
-    return pd.DataFrame(rows, columns=cols)
+    avail = _selected_cohorts(source_id, codes)
+    metadata = _coverage_source_metadata(avail)
+    mode = _resolve_threshold_mode(threshold_mode, metadata)
+    threshold_values = _threshold_values(mode, thresholds)
+    return _coverage_frame(
+        ensgs,
+        avail,
+        metadata,
+        mode,
+        threshold_values,
+    )[0]
 
 
 # --- rendering (CLI) -------------------------------------------------------
@@ -237,14 +576,22 @@ def _slug(label: str) -> str:
     return "".join(c if c.isalnum() else "_" for c in label.lower()).strip("_")
 
 
-def render(gene_set: str, source_id: str = DEFAULT_SOURCE, codes=None,
-           threshold: int = 25, thresholds=DEFAULT_THRESHOLDS,
-           out_dir="coverage_out") -> dict:
+def render(
+    gene_set: str,
+    source_id: str = DEFAULT_SOURCE,
+    codes=None,
+    threshold=None,
+    thresholds=None,
+    out_dir="coverage_out",
+    *,
+    threshold_mode="auto",
+) -> dict:
     """Compute patient coverage for ``gene_set`` and write a counts CSV plus two
     figures (a per-CTA-style stacked coverage bar and a coverage-curve
     small-multiples) into ``out_dir``. Returns a dict of written paths + the
-    counts DataFrame. ``threshold`` is the TPM cutoff used for the two plots;
-    ``thresholds`` are the cutoffs tabulated in the CSV.
+    counts DataFrame. ``threshold_mode`` follows :func:`patient_coverage`;
+    ``threshold`` is the plotted cutoff and ``thresholds`` are tabulated in the
+    CSV. Mode-appropriate defaults are 25 clean TPM or p95.
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -255,37 +602,56 @@ def render(gene_set: str, source_id: str = DEFAULT_SOURCE, codes=None,
     out.mkdir(parents=True, exist_ok=True)
     slug = _slug(label)
 
-    counts = patient_coverage(gene_set, source_id, codes, thresholds)
+    avail = _selected_cohorts(source_id, codes)
+    metadata = _coverage_source_metadata(avail)
+    mode = _resolve_threshold_mode(threshold_mode, metadata)
+    requested_plot_value = threshold if threshold is not None else (
+        25 if mode == "tpm" else 95
+    )
+    plot_threshold = Threshold(mode, requested_plot_value)
+    plot_value = plot_threshold.value
+    table_thresholds = list(_threshold_values(mode, thresholds))
+    if plot_value not in table_thresholds:
+        table_thresholds.append(plot_value)
+    counts, per = _coverage_frame(
+        ensgs,
+        avail,
+        metadata,
+        mode,
+        table_thresholds,
+        greedy_threshold=plot_threshold,
+    )
     csv_path = out / f"{slug}_patient_counts.csv"
-    counts.sort_values(["cancer_code", f"n_gt{threshold}"],
+    counts.sort_values(["cancer_code", plot_threshold.count_col],
                        ascending=[True, False]).to_csv(csv_path, index=False)
 
-    # Per-cohort greedy coverage (reuse the loaded matrices once). Greedy order
-    # is computed on ENSG-indexed rows; symbols are mapped in only for display.
-    avail = _available(source_id)
-    if codes:
-        want = {gsc.resolve_cancer_type(c) for c in codes}
-        avail = {k: v for k, v in avail.items() if k in want}
-    per = []  # (code, n, cum, gene_display_names_in_greedy_order)
-    for code, cohort in avail.items():
-        mat = cohort_matrix(cohort, ensgs)
-        order, cum, n = greedy_coverage(mat, threshold)
-        if cum:
-            symbols = mat.attrs.get("symbols", {})
-            names = [symbols.get(mat.index[i]) or mat.index[i] for i in order]
-            per.append((code, n, cum, names))
     per.sort(key=lambda t: t[2][-1])  # ascending plateau -> broadest at top
 
     paths = {"counts_csv": str(csv_path)}
     if per:
         paths["stacked_bar"] = str(_stacked_bar(
-            per, label, threshold, out / f"{slug}_stacked_coverage_t{threshold}.png",
-            plt))
+            per,
+            label,
+            plot_threshold,
+            out / f"{slug}_stacked_coverage_{plot_threshold.slug}.png",
+            plt,
+        ))
         paths["coverage_curves"] = str(_coverage_curves(
-            per, label, threshold,
-            out / f"{slug}_coverage_curves_t{threshold}.png", plt))
-    return {"paths": paths, "counts": counts, "label": label,
-            "n_cohorts": len(per)}
+            per,
+            label,
+            plot_threshold,
+            out / f"{slug}_coverage_curves_{plot_threshold.slug}.png",
+            plt,
+        ))
+    return {
+        "paths": paths,
+        "counts": counts,
+        "label": label,
+        "n_cohorts": len(per),
+        "threshold_mode": mode,
+        "threshold": plot_value,
+        "threshold_label": plot_threshold.xlabel,
+    }
 
 
 def _gene_color_map(genes_ordered):
@@ -321,19 +687,18 @@ def _stacked_bar(per, label, threshold, path, plt):
                 continue
             ax.barh(y, marg, left=left, color=color.get(nm, "#cccccc"),
                     edgecolor="white", linewidth=0.3)
-            if marg >= 3.0 or j == 0:
-                if marg >= 1.5:
-                    ax.text(left + marg / 2, y, nm, va="center", ha="center",
-                            fontsize=4.5, clip_on=True)
+            if (marg >= 3.0 or j == 0) and marg >= 1.5:
+                ax.text(left + marg / 2, y, nm, va="center", ha="center",
+                        fontsize=4.5, clip_on=True)
             left += marg
     ax.set_yticks(range(len(per)))
     ax.set_yticklabels(labels, fontsize=7)
     ax.set_xlim(0, 100)
-    ax.set_xlabel(f"% of patients with ≥1 {label} gene > {threshold} TPM "
+    ax.set_xlabel(f"% of patients with ≥1 {label} gene {threshold.xlabel} "
                   "(stacked by each gene's marginal new-patient share, greedy)")
     ax.grid(axis="x", alpha=0.3)
     ax.set_title(f"{label} coverage by cancer type, split by gene "
-                 f"(> {threshold} TPM, {len(per)} cohorts)", fontsize=11)
+                 f"({threshold.xlabel}, {len(per)} cohorts)", fontsize=11)
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
@@ -365,7 +730,7 @@ def _coverage_curves(per, label, threshold, path, plt):
     for ax in axes[len(ordered):]:
         ax.axis("off")
     fig.suptitle(f"{label} panel coverage by cancer type — distinct patients "
-                 f"with ≥1 gene > {threshold} TPM (sorted by plateau)",
+                 f"with ≥1 gene {threshold.xlabel} (sorted by plateau)",
                  fontsize=11)
     fig.supxlabel("# genes added (greedy)", fontsize=8)
     fig.supylabel("% patients covered", fontsize=8)

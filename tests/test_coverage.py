@@ -126,12 +126,101 @@ def test_greedy_coverage_plateau(synth_source):
 
 def test_patient_coverage_counts(synth_source, tmp_path):
     df = coverage.patient_coverage(str(_symbol_csv(tmp_path)), source_id="synth",
-                                   thresholds=(25,))
+                                   thresholds=(25,), threshold_mode="tpm")
     a = df[df.Ensembl_Gene_ID == _TP53].iloc[0]
     assert a.n_samples == 4 and a.n_gt25 == 2 and a.pct_gt25 == 50.0
     assert a.Symbol == "TP53"  # symbol carried for display
+    assert a.threshold_mode == "tpm"
+    assert a.source_cohort == "synth"
+    assert a.source_scale_class == "unknown"
     # MYC is >25 in one sample, so it is retained (any_hit), not dropped.
     assert _MYC in set(df.Ensembl_Gene_ID)
+
+
+def test_auto_uses_percentile_when_source_comparability_is_unknown(
+    synth_source, tmp_path,
+):
+    df = coverage.patient_coverage(
+        str(_symbol_csv(tmp_path)),
+        source_id="synth",
+        thresholds=(90,),
+    )
+    assert df.attrs["threshold_mode"] == "percentile"
+    assert set(df["threshold_mode"]) == {"percentile"}
+    assert "n_p90" in df and "n_gt90" not in df
+    by_gene = df.set_index("Ensembl_Gene_ID")
+    assert by_gene.loc[_TP53, "n_p90"] == 1
+    assert by_gene.loc[_EGFR, "n_p90"] == 2
+    assert _MYC not in by_gene.index
+
+
+def test_auto_uses_tpm_for_owner_marked_comparable_source(
+    synth_source, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(
+        coverage,
+        "_coverage_source_metadata",
+        lambda available: {
+            "SYNTH": {
+                "source_cohort": "SYNTH_SOURCE",
+                "source_type": "synthetic-rnaseq",
+                "source_scale_class": "linear_rnaseq_tpm",
+                "linear_tpm_comparable": True,
+                "normalization": "tpm_clean",
+            }
+        },
+    )
+    df = coverage.patient_coverage(
+        str(_symbol_csv(tmp_path)),
+        source_id="synth",
+        thresholds=(25,),
+    )
+    assert df.attrs["threshold_mode"] == "tpm"
+    assert "n_gt25" in df
+
+
+def test_explicit_tpm_rejects_owner_marked_proxy(
+    synth_source, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(
+        coverage,
+        "_coverage_source_metadata",
+        lambda available: {
+            "SYNTH": {
+                "source_cohort": "SYNTH_PROXY",
+                "source_type": "microarray",
+                "source_scale_class": "microarray_tpm_proxy",
+                "linear_tpm_comparable": False,
+                "normalization": "tpm_clean",
+            }
+        },
+    )
+    with pytest.raises(ValueError, match="use threshold_mode='percentile'"):
+        coverage.patient_coverage(
+            str(_symbol_csv(tmp_path)),
+            source_id="synth",
+            thresholds=(25,),
+            threshold_mode="tpm",
+        )
+
+
+def test_owner_scale_metadata_drives_auto_mode():
+    selected = {
+        "ACC": cohorts.Cohort("ACC", "ACC", "treehouse-polya-25-01"),
+        "MTC": cohorts.Cohort("MTC", "MTC", "gse32662-mtc"),
+    }
+    metadata = coverage._coverage_source_metadata(selected)
+    assert metadata["ACC"]["source_scale_class"] == "linear_rnaseq_tpm"
+    assert metadata["ACC"]["linear_tpm_comparable"] is True
+    assert metadata["MTC"]["source_scale_class"] == "microarray_tpm_proxy"
+    assert metadata["MTC"]["linear_tpm_comparable"] is False
+    assert coverage._resolve_threshold_mode("auto", metadata) == "percentile"
+
+
+@pytest.mark.parametrize("value", [0, 101, 95.5])
+def test_percentile_threshold_validation(value):
+    with pytest.raises(ValueError):
+        coverage.Threshold("percentile", value)
 
 
 # --- CLI dispatch ----------------------------------------------------------
@@ -141,11 +230,45 @@ def test_cli_patient_coverage(synth_source, tmp_path):
     out = tmp_path / "out"
     rc = cli_main([
         "plot", "patient-coverage", "--gene-set", str(_symbol_csv(tmp_path)),
-        "--source", "synth", "--threshold", "25", "--out", str(out),
+        "--source", "synth", "--threshold-mode", "tpm",
+        "--threshold", "25", "--out", str(out),
     ])
     assert rc == 0
     assert (out / "panel_csv_patient_counts.csv").exists()
     assert (out / "panel_csv_stacked_coverage_t25.png").exists()
+
+
+def test_cli_patient_coverage_percentile(synth_source, tmp_path):
+    from pirlygenes.cli import main as cli_main
+    out = tmp_path / "out"
+    rc = cli_main([
+        "plot", "patient-coverage", "--gene-set", str(_symbol_csv(tmp_path)),
+        "--source", "synth", "--threshold-mode", "percentile",
+        "--threshold", "90", "--out", str(out),
+    ])
+    assert rc == 0
+    assert (out / "panel_csv_stacked_coverage_p90.png").exists()
+
+
+def test_render_loads_each_cohort_once(
+    synth_source, tmp_path, monkeypatch,
+):
+    original = coverage.cohort_matrix
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(args[0].code)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(coverage, "cohort_matrix", counted)
+    coverage.render(
+        str(_symbol_csv(tmp_path)),
+        source_id="synth",
+        threshold_mode="tpm",
+        threshold=25,
+        out_dir=tmp_path / "out",
+    )
+    assert calls == ["SYNTH"]
 
 
 def test_cli_bad_gene_set_returns_2(tmp_path):

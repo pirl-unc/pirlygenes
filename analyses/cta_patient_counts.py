@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import re
-from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -37,7 +36,9 @@ import numpy as np
 import pandas as pd
 
 from pirlygenes import gene_sets_cancer as gsc
+from pirlygenes.coverage import Threshold
 from pirlygenes.coverage import greedy_coverage as _pkg_greedy_coverage
+
 # Sole display authority: structural symbol/proteoform ID -> user-facing label
 # (CTAG1B and CTAG1A/B both -> NY-ESO-1). Data stays keyed by the raw symbol.
 from pirlygenes.gene_names import display_name as display_label
@@ -107,41 +108,6 @@ def _pct_axis(ax, which):
     share). ``which`` is 'x' or 'y'."""
     from matplotlib.ticker import PercentFormatter
     getattr(ax, f"{which}axis").set_major_formatter(PercentFormatter(xmax=100, decimals=0))
-
-
-@dataclass(frozen=True)
-class Threshold:
-    """A CTA-positivity cutoff that is either an absolute TPM level
-    (``kind='tpm'``) or a within-sample percentile rank after clean-TPM
-    (``kind='pctile'``: a CTA is "on" in a sample if its TPM is at/above that
-    sample's Nth-percentile TPM across all genes). The percentile cutoff is
-    per-sample, so :meth:`cutoff` returns a vector aligned to the sample
-    columns; greedy_coverage compares each column to its own cutoff via
-    NumPy broadcasting."""
-    kind: str   # 'tpm' | 'pctile'
-    value: int
-
-    @property
-    def slug(self) -> str:
-        return (f"t{self.value}" if self.kind == "tpm" else f"p{self.value}")
-
-    @property
-    def xlabel(self) -> str:
-        return (f"> {self.value} TPM" if self.kind == "tpm"
-                else f"≥ {self.value}th within-sample percentile")
-
-    def cutoff(self, cols, pctile_cutoffs=None):
-        """Scalar TPM (tpm mode) or per-sample cutoff array aligned to ``cols``
-        (pctile mode). Samples without a percentile cutoff get +inf so no CTA
-        is ever called positive there (rather than a silent false positive)."""
-        if self.kind == "tpm":
-            return self.value
-        col = f"p{self.value}"
-        series = pctile_cutoffs[col] if pctile_cutoffs is not None else None
-        return np.array([
-            (series.get(c, np.inf) if series is not None else np.inf)
-            for c in cols
-        ], dtype=float)
 
 
 # Plot tick labels: the registry code is now authoritative (Phase C made SARC
@@ -293,8 +259,10 @@ def _merge_proteins(mat, ensg_to_sym):
     >=90% near-identical rollup — distinct proteins (MAGEA3 vs MAGEA6) stay
     separate. Returns the merged matrix (canonical-Ensembl-indexed) + a
     ``{ensg: symbol}`` display map."""
-    from pirlygenes.expression.protein_groups import (cdna_canonical_to_symbol,
-                                                      cdna_member_to_canonical)
+    from pirlygenes.expression.protein_groups import (
+        cdna_canonical_to_symbol,
+        cdna_member_to_canonical,
+    )
     m2c = cdna_member_to_canonical()
     c2s = cdna_canonical_to_symbol()
     row_canon = [m2c.get(str(e).split(".")[0], str(e).split(".")[0])
@@ -333,12 +301,12 @@ def per_cohort_counts(mat, cohorts, ensg_to_sym, pctile_cutoffs=None):
             }
             any_hit = False
             for t in THRESHOLDS:
-                k = int((vals > t).sum())
+                k = int(Threshold("tpm", t).compare(vals).sum())
                 rec[f"n_gt{t}"] = k
                 rec[f"pct_gt{t}"] = round(100 * k / n, 2)
                 any_hit = any_hit or k > 0
             for q, cut in pcuts.items():
-                k = int((vals > cut).sum())
+                k = int(Threshold("percentile", q).compare(vals, cut).sum())
                 rec[f"n_p{q}"] = k
                 rec[f"pct_p{q}"] = round(100 * k / n, 2)
                 any_hit = any_hit or k > 0
@@ -362,7 +330,14 @@ def greedy_coverage(mat, samples, threshold, pctile_cutoffs=None):
     cols = [s for s in samples if s in mat.columns]
     cut = (threshold.cutoff(cols, pctile_cutoffs)
            if isinstance(threshold, Threshold) else threshold)
-    return _pkg_greedy_coverage(mat[cols], cut)
+    return _pkg_greedy_coverage(
+        mat[cols],
+        cut,
+        inclusive=(
+            isinstance(threshold, Threshold)
+            and threshold.kind == "percentile"
+        ),
+    )
 
 
 def main():
@@ -461,13 +436,23 @@ def main():
         sub_nomage = sub[~is_mage]
         rec = {"cancer_code": code, "n_samples": len(cols)}
         for t in THRESHOLDS:
-            rec[f"n_any_gt{t}"] = int((sub > t).any(axis=0).sum())
-            rec[f"n_any_gt{t}_nomage"] = int((sub_nomage > t).any(axis=0).sum())
+            threshold = Threshold("tpm", t)
+            rec[f"n_any_gt{t}"] = int(
+                threshold.compare(sub).any(axis=0).sum()
+            )
+            rec[f"n_any_gt{t}_nomage"] = int(
+                threshold.compare(sub_nomage).any(axis=0).sum()
+            )
         if pctile_cuts is not None:
             for q in PERCENTILES:
-                cut = Threshold("pctile", q).cutoff(cols, pctile_cuts)  # per-sample
-                rec[f"n_any_p{q}"] = int((sub > cut).any(axis=0).sum())
-                rec[f"n_any_p{q}_nomage"] = int((sub_nomage > cut).any(axis=0).sum())
+                threshold = Threshold("percentile", q)
+                cut = threshold.cutoff(cols, pctile_cuts)  # per-sample
+                rec[f"n_any_p{q}"] = int(
+                    threshold.compare(sub, cut).any(axis=0).sum()
+                )
+                rec[f"n_any_p{q}_nomage"] = int(
+                    threshold.compare(sub_nomage, cut).any(axis=0).sum()
+                )
         urows.append(rec)
     union_df = pd.DataFrame(urows)
     union_df.to_csv(FIGDIR / "cta_union_counts.csv", index=False)
@@ -1255,9 +1240,9 @@ def cta_specific_9mer_counts(*, ensembl_release=112, k=9, refresh=False):
 
 def _cohort_on_matrix(mat, cols, thr, pctile_cutoffs):
     """Boolean CTA × patient 'on' matrix for one cohort at a Threshold."""
-    cut = (thr.cutoff(cols, pctile_cutoffs)
-           if isinstance(thr, Threshold) else thr)
-    return mat[cols].to_numpy() > cut
+    if isinstance(thr, Threshold):
+        return thr.hits(mat[cols].to_numpy(), cols, pctile_cutoffs)
+    return mat[cols].to_numpy() > thr
 
 
 def _metric_vs_x(mat, cohorts, thr, value_fn, ylabel, slug_base, *,
