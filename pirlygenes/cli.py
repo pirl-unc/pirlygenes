@@ -292,15 +292,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Per-cohort patient coverage of a gene set (counts CSV + plots).",
         description=(
             "For each cancer cohort with cached per-sample data, count how many\n"
-            "patients express each gene of a panel above TPM thresholds, and\n"
-            "compute greedy co-occurrence-aware coverage. Writes a counts CSV +\n"
-            "a stacked coverage bar + a coverage-curve small-multiples."
+            "patients express each gene of a panel above clean-TPM or within-\n"
+            "sample percentile thresholds, and compute greedy co-occurrence-\n"
+            "aware coverage. Auto mode uses oncoref source-scale metadata to\n"
+            "avoid comparing microarray proxies as absolute TPM. Writes a\n"
+            "counts CSV + a stacked coverage bar + coverage-curve panels."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
             "  pirlygenes plot patient-coverage --gene-set cta\n"
+            "  pirlygenes plot patient-coverage --gene-set cta --source all\n"
             "  pirlygenes plot patient-coverage --gene-set lineage:PRAD --cohort PRAD\n"
+            "  pirlygenes plot patient-coverage --gene-set cta "
+            "--threshold-mode percentile --threshold 95\n"
             "  pirlygenes plot patient-coverage --gene-set ./my_symbols.csv\n"
         ),
     )
@@ -314,8 +319,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="expression source id with cached per-sample data (default: %(default)s)",
     )
     pc.add_argument(
-        "--threshold", type=int, default=25,
-        help="TPM cutoff for the coverage plots (default: %(default)s)",
+        "--threshold-mode",
+        choices=("auto", "tpm", "percentile"),
+        default="auto",
+        help=("threshold contract (default: auto; clean TPM only when every "
+              "selected source is owner-marked comparable, otherwise percentile)"),
+    )
+    pc.add_argument(
+        "--threshold", type=int, default=None,
+        help="plot cutoff (default: 25 for TPM mode, 95 for percentile mode)",
     )
     pc.add_argument(
         "--cohort", action="append", default=None, metavar="CODE",
@@ -639,7 +651,8 @@ def cmd_plot_patient_coverage(args: argparse.Namespace) -> int:
     try:
         result = coverage.render(
             args.gene_set, source_id=args.source, codes=args.cohort,
-            threshold=args.threshold, out_dir=args.out,
+            threshold=args.threshold, threshold_mode=args.threshold_mode,
+            out_dir=args.out,
         )
     except (ValueError, FileNotFoundError) as exc:
         sys.stderr.write(f"error: {exc}\n")
@@ -653,7 +666,7 @@ def cmd_plot_patient_coverage(args: argparse.Namespace) -> int:
         return 2
     sys.stdout.write(
         f"{result['label']}: {result['n_cohorts']} cohorts "
-        f"(> {args.threshold} TPM)\n"
+        f"({result['threshold_label']}; mode={result['threshold_mode']})\n"
     )
     for kind, path in result["paths"].items():
         sys.stdout.write(f"  {kind}: {path}\n")
