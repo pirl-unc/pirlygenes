@@ -370,20 +370,6 @@ def read_per_sample(cohort: Cohort) -> pd.DataFrame:
     return pd.read_parquet(source_matrices.ensure(cohort.code))
 
 
-def _parquet_sample_count(cohort: Cohort) -> int:
-    from oncoref import source_matrices
-
-    try:
-        return int(source_matrices.cohort_info(cohort.code)["n_samples"])
-    except (KeyError, TypeError, ValueError):
-        import pyarrow.parquet as pq
-
-        return max(
-            0,
-            pq.read_metadata(parquet_path(cohort)).num_columns - len(ID_COLS),
-        )
-
-
 def iter_per_sample_cohorts(*, sources=None, unique_by_code=True):
     """Yield cached owner matrices as ``(Cohort, DataFrame)`` pairs.
 
@@ -409,10 +395,20 @@ def iter_per_sample_cohorts(*, sources=None, unique_by_code=True):
         yield cohort, read_per_sample(cohort)
 
 
+def registered_cohorts() -> dict[str, Cohort]:
+    """Every oncoref-selected matrix as a pirlygenes ``Cohort`` mapping.
+
+    Unlike :func:`all_available_cohorts`, this describes the complete owner
+    registry whether or not each matrix is present in the local cache.
+    """
+    return {
+        str(row["cancer_code"]): _cohort_from_row(row)
+        for _, row in _owner_registry().iterrows()
+    }
+
+
 # Historical private snapshots retained for callers that inspected them.
-_PER_SAMPLE_COHORTS: tuple[Cohort, ...] = tuple(
-    _cohort_from_row(row) for _, row in _owner_registry().iterrows()
-)
+_PER_SAMPLE_COHORTS: tuple[Cohort, ...] = tuple(registered_cohorts().values())
 _TREEHOUSE_COHORTS: tuple[Cohort, ...] = tuple(
     cohort
     for cohort in _PER_SAMPLE_COHORTS

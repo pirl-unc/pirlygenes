@@ -8,8 +8,8 @@ from pirlygenes import gene_sets_cancer as gsc
 
 
 def test_pinned_oncoref_exposes_canonical_tumor_reference_apis():
-    assert oncoref.__version__ == "1.8.174"
-    assert ONCOREF_DATA_VERSION == "5.23.17"
+    assert oncoref.__version__ == "1.8.178"
+    assert ONCOREF_DATA_VERSION == "5.23.19"
 
     tcga = oncoref.tcga_deconvolved_expression("ACC")
     assert not tcga.empty
@@ -17,7 +17,7 @@ def test_pinned_oncoref_exposes_canonical_tumor_reference_apis():
     assert np.isclose(tcga["tumor_tpm_median"].sum(), 1_000_000.0)
     assert tcga.attrs["oncoref"] == {
         "dataset": "tcga-deconvolved-expression",
-        "data_version": "5.23.17",
+        "data_version": "5.23.19",
         "scale": "classifier_tpm",
         "derivation_method": "tme_deconvolution",
         "derivation_scope": "dataset",
@@ -58,7 +58,10 @@ def test_mmnst_directional_panel_survives_owner_upgrade():
 
 def test_owner_aggregate_availability_requires_complete_member_unions():
     expected = {
-        "BTC": [("BTC", "direct", False, "no_percentile_artifact")],
+        "BTC": [
+            ("CHOL", "aggregate_member", True, ""),
+            ("GBC", "aggregate_member", True, ""),
+        ],
         "SGC": [
             ("ACINIC", "aggregate_member", True, ""),
             ("ADCC", "aggregate_member", True, ""),

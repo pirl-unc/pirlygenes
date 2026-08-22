@@ -15,7 +15,10 @@ from pathlib import Path
 import pandas as pd
 from oncoref import data_bundle as oncoref_data_bundle
 
-from pirlygenes.expression import accessors
+from pirlygenes.expression import (
+    PAN_CANCER_ROLLUP_MEMBERS,
+    canonicalize_expression_gene_rows,
+)
 from pirlygenes.load_dataset import get_data
 
 
@@ -30,6 +33,8 @@ OUT_PATH = (
 # current version-pinned data. Keep this table explicit: a source change should
 # produce a reviewable artifact diff rather than a silent gene-wise fallback.
 SELECTED_SOURCE_SHARDS = {
+    "CHOL": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES.csv.gz",
+    "GBC": "GSE139682_GBC.csv.gz",
     "COAD": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES.csv.gz",
     "READ": "TREEHOUSE_POLYA_25_01_TCGA_SAMPLES.csv.gz",
     "NET_PANCREAS": "GSE118014_ALVAREZ_2018.csv.gz",
@@ -69,7 +74,11 @@ def _read_selected_source_rows(
 
 
 def build() -> pd.DataFrame:
-    expected_codes = set(accessors._PAN_ROLLUP_MEMBER_CODES)
+    expected_codes = {
+        code
+        for members in PAN_CANCER_ROLLUP_MEMBERS.values()
+        for code in members
+    }
     if set(SELECTED_SOURCE_SHARDS) != expected_codes:
         raise ValueError(
             "selected-source table does not match the rollup members: "
@@ -102,7 +111,7 @@ def build() -> pd.DataFrame:
         source = source[source["cancer_code"].astype(str) == code].copy()
         if source.empty:
             raise ValueError(f"{filename} does not contain {code}")
-        source = accessors._oncoref_canonicalize_gene_rows(
+        source = canonicalize_expression_gene_rows(
             source,
             value_cols=["TPM_median"],
         )
@@ -118,7 +127,7 @@ def build() -> pd.DataFrame:
 
     members = pd.concat(member_values.values(), axis=1)
     aggregate_values: dict[str, pd.Series] = {}
-    for aggregate, codes in accessors._PAN_COMPUTED_ROLLUP_MEMBERS.items():
+    for aggregate, codes in PAN_CANCER_ROLLUP_MEMBERS.items():
         values = members[list(codes)]
         weights = pd.Series({code: sample_counts[code] for code in codes})
         numerator = values.mul(weights, axis="columns").sum(axis=1, min_count=1)
@@ -130,7 +139,7 @@ def build() -> pd.DataFrame:
     base = get_data("pan-cancer-expression", copy=False)[
         ["Ensembl_Gene_ID", "Symbol"]
     ]
-    base = accessors._oncoref_canonicalize_gene_rows(base, value_cols=[])
+    base = canonicalize_expression_gene_rows(base, value_cols=[])
     out = base[["Ensembl_Gene_ID"]].copy()
     for column, values in aggregate_values.items():
         out[column] = out["Ensembl_Gene_ID"].map(values)

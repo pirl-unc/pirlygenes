@@ -105,17 +105,6 @@ def _safe_name(name: str) -> str:
     )
 
 
-def _to_text(value: Any) -> str:
-    if value is None:
-        return ""
-    try:
-        if pd.isna(value):
-            return ""
-    except (TypeError, ValueError):
-        pass
-    return str(value)
-
-
 def _values_equal(left: Any, right: Any, *, rtol: float, atol: float) -> bool:
     try:
         left_na = pd.isna(left)

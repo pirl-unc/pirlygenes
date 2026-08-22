@@ -170,14 +170,6 @@ def _unit_for(
     return _norm_unit(u) if u else _quant_unit(pipeline)
 
 
-def _quant_short(pipeline: str) -> str:
-    """Quantification UNIT only — drops the platform word that the assay
-    column already shows (microarray intensity → intensity, scRNA UMI counts
-    → UMI counts). Used in the listing where assay is a separate field."""
-    q = native_unit_from_pipeline(pipeline)
-    return {"microarray intensity": "intensity", "scRNA UMI counts": "UMI counts"}.get(q, q)
-
-
 # Cross-cohort comparability classes: RNA-seq→TPM cohorts are roughly
 # comparable in magnitude; microarray TPM-proxy and scRNA nTPM are NOT
 # comparable to RNA-seq TPM (the most decision-relevant grouping).

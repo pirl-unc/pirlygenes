@@ -45,7 +45,6 @@ CITATION_COLUMNS = {
     "housekeeping-genes": "Reference",
     "lineage-genes": "reference",
     "cancer-key-genes": "source",
-    "cancer-incidence-mortality": "source_anchor",
     "rare-cancer-fusion-rules": "source",
     "surface-proteins": "Source",
     "TCR-T-approved": "pmid_doi",
@@ -137,20 +136,21 @@ def test_gene_list_provenance_manifest_covers_uncited_tables():
 
 
 def test_incidence_mortality_shares_are_coherent():
-    """cancer-incidence-mortality.csv stores each burden category's share (%) of
+    """The delegated owner table stores each burden category's share (%) of
     annual incidence/mortality. Every row must carry a structured `aggregation`
     (site composition or residual formula) and a resolvable `source_anchor`, and
-    each of the four percentage columns must sum to ~100% — the internal
-    consistency the audit (#478) could not verify from percentages alone.
+    each of the four percentage columns must sum to ~100%.
 
     Denominators the shares are taken against: US = ACS CFF 2024
     (2,001,140 new cases / 611,720 deaths; PMID:38230766); world = GLOBOCAN 2022
     (~19,976,499 new cases / 9,743,832 deaths; DOI:10.3322/caac.21834).
     """
-    rows = _rows("cancer-incidence-mortality")
+    from pirlygenes.gene_sets_cancer import cancer_burden_df
+
+    rows = cancer_burden_df().to_dict(orient="records")
     for row in rows:
-        assert row["aggregation"].strip(), row["burden_category"]
-        assert row["source_anchor"].strip(), row["burden_category"]
+        assert str(row["aggregation"]).strip(), row["burden_category"]
+        assert str(row["source_anchor"]).strip(), row["burden_category"]
     for col in ("us_incidence_pct", "us_mortality_pct",
                 "world_incidence_pct", "world_mortality_pct"):
         total = sum(float(row[col]) for row in rows)

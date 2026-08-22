@@ -156,6 +156,24 @@ def test_ncbi_synonym_dataset_remains_delegated_and_preserves_na_literals():
     assert by_alias["NaN"] == "SCN11A"
 
 
+def test_cancer_burden_datasets_are_delegated():
+    import oncoref
+    from oncoref.load_dataset import get_data as get_oncoref_data
+
+    assert {
+        "cancer-code-burden-map",
+        "cancer-incidence-mortality",
+    } <= ld._ONCOREF_DATASETS
+    pd.testing.assert_frame_equal(
+        ld.get_data("Cancer-Incidence-Mortality"),
+        oncoref.cancer_burden_df(),
+    )
+    pd.testing.assert_frame_equal(
+        ld.get_data("Cancer-Code-Burden-Map"),
+        get_oncoref_data("cancer-code-burden-map"),
+    )
+
+
 def test_get_all_csv_paths_contains_core_dataset():
     paths = ld.get_all_csv_paths()
     assert any(Path(p).name == "ADC-trials.csv" for p in paths)

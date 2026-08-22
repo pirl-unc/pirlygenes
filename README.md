@@ -217,9 +217,9 @@ pan_cancer_expression(normalize="hk")
 # Combine modes in one call; tpm_clean, hk, and percentile each imply "tpm".
 pan_cancer_expression(normalize=["tpm_clean", "hk", "percentile"])
 
-# Add the four complete, sample-weighted aggregate references only when they
-# are an intended target: CRC, NET, NSCLC, and SGC. BTC remains unavailable
-# until both CHOL and GBC have backed expression references.
+# Add the five complete, sample-weighted aggregate references only when they
+# are an intended target: BTC, CRC, NET, NSCLC, and SGC. BTC is emitted only
+# because both CHOL and GBC now have backed expression references.
 pan_cancer_expression(include_computed_rollups=True)
 ```
 
@@ -233,7 +233,8 @@ to the 33 independent source cohorts.
 through a pirlygenes-compatible raw TPM / clean TPM contract; current sources include
 CLL-map (`CLL`), MMRF CoMMpass (`MM`), TARGET ALL (`B_ALL`, `T_ALL`),
 CGCI/GDC Burkitt lymphoma (`BL`), GEO heme cohorts (`CML`, `MCL`, `MDS`,
-`MPN`), a CTCL scRNA/TCR pseudobulk nTPM reference (`CTCL`),
+`MPN`), scRNA pseudobulk references for `CTCL` and `HCL`, direct BCC/cSCC/GBC
+references,
 BeatAML/TARGET subtype summaries, and selected Treehouse/GEO
 cancer-specific cohorts such as `OS`, `PANNET`, `CHON`, `SCLC`, `RB`, and
 sarcoma subtypes.

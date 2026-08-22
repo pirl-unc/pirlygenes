@@ -71,6 +71,33 @@ def test_cancer_lineage_group_resolves_codes_and_histogenesis():
     assert cancer_lineage_group("not-a-cancer") is None
 
 
+def test_non_testicular_germ_cell_hierarchy_is_owner_delegated():
+    """TGCT stays testicular while ovarian/CNS entities remain distinct."""
+    reg = cancer_type_registry().set_index("code")
+    expected_parents = {
+        "TGCT": "GCT",
+        "GCT_OV": "GCT",
+        "GCT_OV_YST": "GCT_OV",
+        "GCT_OV_IMT": "GCT_OV",
+        "GCT_OV_DYS": "GCT_OV",
+        "GCT_CNS": "GCT",
+        "GCT_CNS_GER": "GCT_CNS",
+        "GCT_CNS_NGGCT": "GCT_CNS",
+    }
+
+    assert set(expected_parents) <= set(reg.index)
+    assert {
+        code: str(reg.loc[code, "parent_code"])
+        for code in expected_parents
+    } == expected_parents
+    assert bool(reg.loc["TGCT", "is_classification_target"])
+    assert not reg.loc[
+        list(expected_parents.keys())[1:], "is_classification_target"
+    ].astype(bool).any()
+    assert cancer_lineage_group("GCT_OV_YST") == "Germ cell"
+    assert cancer_lineage_group("GCT_CNS_GER") == "Germ cell"
+
+
 def test_neuroendocrine_grouping_and_neuroblastoma():
     # NEC and NET are kept together under one coarse Neuroendocrine group, but
     # neuroblastoma is pulled out to Embryonal — it's a peripheral neuroblastic
@@ -874,9 +901,9 @@ def test_cancer_type_aliases_all_resolve_to_valid_registry_codes():
 
 
 def test_clear_cache_resets_view_and_reverse_map():
-    """``_clear_caches()`` must drop both the forward and reverse
+    """The public cache reset must drop both the forward and reverse
     caches so tests that monkey-patch ``get_data`` see the new data."""
-    from pirlygenes.gene_sets_cancer import _clear_caches
+    from pirlygenes.cancer_types import clear_caches
 
     # Warm both caches.
     _ = CANCER_TYPE_NAMES.get("PRAD")
@@ -884,7 +911,7 @@ def test_clear_cache_resets_view_and_reverse_map():
     assert CANCER_TYPE_NAMES._cache is not None
     assert CANCER_TYPE_NAMES._name_to_code_cache is not None
 
-    _clear_caches()
+    clear_caches()
 
     assert CANCER_TYPE_NAMES._cache is None
     assert CANCER_TYPE_NAMES._name_to_code_cache is None

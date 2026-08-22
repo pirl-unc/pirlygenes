@@ -342,7 +342,7 @@ def test_views_precomputed_artifact_fast_path(tmp_path, monkeypatch):
     # When the artifact is usable, NEITHER fallback may run: not the canonical
     # rebuild, not the from-reference builder.
     for name in (
-        "_rebuild_full_canonical_views",
+        "build_canonical_cohort_expression_views",
         "_cohort_expression_views_from_reference",
     ):
         monkeypatch.setattr(
@@ -451,10 +451,11 @@ def _synthetic_reference():
 
 def _write_artifact_from_rebuild(root, monkeypatch, fake):
     """Materialize the precomputed artifact exactly as the generator does — as
-    the serialized output of ``_rebuild_full_canonical_views`` over ``fake`` —
+    the serialized output of ``build_canonical_cohort_expression_views`` over
+    ``fake`` —
     so artifact and rebuild are the same data through two code paths."""
     _install_fake_reference(monkeypatch, fake)
-    tpm, clean, prov = accessors._rebuild_full_canonical_views()
+    tpm, clean, prov = accessors.build_canonical_cohort_expression_views()
     root.mkdir(parents=True, exist_ok=True)
     tpm.to_parquet(root / "tpm.parquet", index=False)
     clean.to_parquet(root / "clean_tpm.parquet", index=False)

@@ -52,7 +52,7 @@ def test_availability_never_loads_full_expression_frame(monkeypatch):
 
     result = available_cancer_expression_references()
 
-    assert result.shape == (144, 8)
+    assert result.shape == (148, 8)
     assert result.columns.tolist() == _PUBLIC_COLUMNS
     assert delegated_calls[:2] == [
         {
@@ -146,7 +146,7 @@ def test_availability_preserves_the_complete_public_manifest():
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "ef6d06cff8ccd1a37af999b43aa613fd98bc7d7dae3bd7ac65d305a1fc17116e"
+        "fd5f420bef672e21635fef32dddb2f4c21488fbe40b9493363ce5dc79ff2b4e0"
     )
 
 
@@ -173,6 +173,10 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         ("SARC_PEC", "GSE328026_PECOMA_2026"),
         ("SARC_ESS_HG", "GSE85383_YOSHIDA_2017_ESS"),
         ("SARC_ESS_LG", "GSE85383_YOSHIDA_2017_ESS"),
+        ("HCL", "ZENODO_14917813_BOHN_2026_HCL"),
+        ("BCC", "GSE125285_BCC_CSCC"),
+        ("cSCC", "GSE125285_BCC_CSCC"),
+        ("GBC", "GSE139682_GBC"),
     })
     assert expected <= keys
 
@@ -198,7 +202,16 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         & result["source_cohort"].astype(str).eq("GSE328026_PECOMA_2026")
     ]
     assert len(pecoma) == 1
-    assert "PMID 42331846" in str(pecoma.iloc[0]["source_version"])
+    # The owner registry is the structured citation source. oncoref#498 tracks
+    # propagating this field into the compact availability manifest as well.
+    from oncoref.expression_registry import expression_sources
+
+    pecoma_source = next(
+        source
+        for source in expression_sources()
+        if source.id == "gse328026-sarc-pec"
+    )
+    assert pecoma_source.source_pmid == "PMID:42331846"
 
 
 def test_availability_returns_a_defensive_copy():
@@ -241,7 +254,7 @@ from pirlygenes.expression import available_cancer_expression_references
 
 assert sys.gettrace() is None, 'memory probe inherited coverage/debug tracing'
 result = available_cancer_expression_references()
-assert result.shape == (144, 8)
+assert result.shape == (148, 8)
 if sys.platform.startswith('linux'):
     # getrusage().ru_maxrss retains the forked pytest parent's historical
     # high-water mark across exec on Linux. VmHWM belongs to this executable's

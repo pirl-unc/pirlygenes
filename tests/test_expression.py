@@ -21,6 +21,7 @@ import pirlygenes.expression.accessors as expression_accessors
 from pirlygenes.load_dataset import get_data
 from pirlygenes.expression import (
     GeneQcClass,
+    PAN_CANCER_ROLLUP_MEMBERS,
     add_tpm_columns_from_fpkm,
     aggregate_gene_expression,
     available_cancer_expression_references,
@@ -29,6 +30,7 @@ from pirlygenes.expression import (
     cancer_expression_reference_status,
     cancer_expression_source_candidates,
     cancer_reference_expression,
+    canonicalize_expression_gene_rows,
     classify_gene_qc,
     estimate_signatures,
     filter_technical_rna,
@@ -51,6 +53,122 @@ from pirlygenes.expression import (
 
 
 # ---------- reference accessors ----------
+
+
+def test_public_expression_gene_canonicalizer_collapses_alias_rows():
+    frame = pd.DataFrame({
+        "Ensembl_Gene_ID": ["ENSG00000148362", "ENSG00000310560"],
+        "Symbol": ["PAXX", "PAXX"],
+        "TPM_A": [2.0, 3.0],
+        "TPM_UNKNOWN": [np.nan, np.nan],
+    })
+
+    result = canonicalize_expression_gene_rows(
+        frame,
+        value_cols=["TPM_A", "TPM_UNKNOWN"],
+    )
+
+    assert result["Ensembl_Gene_ID"].tolist() == ["ENSG00000310560"]
+    assert result["TPM_A"].tolist() == [5.0]
+    assert result["TPM_UNKNOWN"].isna().all()
+    with pytest.raises(TypeError):
+        PAN_CANCER_ROLLUP_MEMBERS["FAKE"] = ("A", "B")
+
+
+def test_hcl_direct_reference_source_sample_count_and_marker_qc():
+    source = "ZENODO_14917813_BOHN_2026_HCL"
+    markers = {"ANXA1", "MS4A1", "CD22", "IL2RA", "ITGAE", "ITGAX"}
+
+    refs = available_cancer_expression_references()
+    hcl = refs.loc[refs["cancer_code"].astype(str).eq("HCL")]
+    assert len(hcl) == 1
+    assert hcl.iloc[0]["source_cohort"] == source
+    assert int(hcl.iloc[0]["n_samples"]) == 5
+
+    expr = cancer_reference_expression(
+        "HCL",
+        genes=sorted(markers),
+        normalize="tpm_clean",
+        format="long",
+        source_cohort=source,
+    )
+    assert set(expr["Symbol"]) == markers
+    assert set(expr["cancer_code"]) == {"HCL"}
+    assert set(expr["source_cohort"]) == {source}
+    assert set(expr["n_samples"].astype(int)) == {5}
+    assert (expr["expression"].astype(float) > 0).all()
+
+    availability = expr.attrs["availability"]
+    assert len(availability) == 1 and availability[0]["available"] is True
+    assert availability[0]["source_scale_class"] == (
+        "scrna_malignant_cell_pseudobulk_ntpm"
+    )
+    assert availability[0]["linear_tpm_comparable"] is False
+
+
+def test_non_testicular_gct_candidates_do_not_reuse_tgct_expression():
+    codes = {
+        "GCT_OV_YST",
+        "GCT_OV_IMT",
+        "GCT_OV_DYS",
+        "GCT_CNS_GER",
+        "GCT_CNS_NGGCT",
+    }
+    candidates = cancer_expression_source_candidates(sorted(codes))
+    assert set(candidates["cancer_code"].astype(str)) == codes
+    assert candidates["reference_code"].fillna("").astype(str).eq("").all()
+
+    refs = available_cancer_expression_references()
+    assert not set(refs["cancer_code"].astype(str)) & codes
+    assert "TGCT" in set(refs["cancer_code"].astype(str))
+
+
+def test_released_nci_gap_references_and_remaining_gap_contract():
+    """Use backed references without pretending unresolved gaps are solved."""
+    import oncoref
+
+    released = {"BCC": 25, "cSCC": 10, "GBC": 10}
+    remaining = {
+        "VSCC", "VAGC", "FTC", "PPC", "PENSCC", "URETH", "ANSC",
+        "EPN", "PITNET", "CRANIO", "DIPG",
+    }
+    codes = [*released, *sorted(remaining)]
+    owner = oncoref.cancer_reference_expression_availability(
+        cancer_types=codes,
+        normalize="tpm_clean",
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        all_sources=True,
+    )
+    assert set(owner["requested_code"].astype(str)) == set(codes)
+    available = owner.loc[owner["available"].astype(bool)].set_index(
+        "cancer_code"
+    )
+    assert set(available.index.astype(str)) == set(released)
+    assert available["n_samples"].astype(int).to_dict() == released
+    assert available.loc["BCC", "source_scale_class"] == (
+        "bulk_rnaseq_cpm_proxy"
+    )
+    assert bool(available.loc["BCC", "linear_tpm_comparable"]) is False
+    assert available.loc["GBC", "source_scale_class"] == "linear_rnaseq_tpm"
+    assert bool(available.loc["GBC", "linear_tpm_comparable"]) is True
+
+    refs = available_cancer_expression_references()
+    ref_codes = set(refs["cancer_code"].astype(str))
+    assert set(released) <= ref_codes
+    assert not ref_codes & remaining
+
+    expr = cancer_reference_expression(
+        list(released),
+        genes=["TP53"],
+        normalize="tpm_clean",
+        format="long",
+    )
+    assert set(expr["cancer_code"].astype(str)) == set(released)
+    assert (expr["expression"].astype(float) > 0).all()
+
+    registry = get_data("cancer-type-registry").set_index("code")
+    assert not registry.loc[codes, "is_classification_target"].astype(bool).any()
 
 
 def _local_pan_cancer_fixture():
@@ -78,6 +196,7 @@ def _local_pan_cancer_fixture():
     # absent from every CRC member, exercising unavailable-vs-zero semantics.
     rollup = raw[["Ensembl_Gene_ID", "Symbol"]].copy()
     rollup["CHOL"] = [10.0, 20.0, 5.0, 40.0, 30.0, 6.0, 12.0, 3.0]
+    rollup["GBC"] = [20.0, 30.0, 15.0, 50.0, 40.0, 16.0, 22.0, 13.0]
     rollup["COAD"] = [100.0, np.nan, 50.0, 250.0, 150.0, 25.0, 125.0, 100.0]
     rollup["READ"] = [200.0, np.nan, 60.0, 260.0, 160.0, 35.0, 225.0, 75.0]
     for code, offset in (
@@ -94,6 +213,7 @@ def _local_pan_cancer_fixture():
 
     weights = {
         "CHOL": 36,
+        "GBC": 10,
         "COAD": 3,
         "READ": 1,
         "NET_PANCREAS": 33,
@@ -106,7 +226,7 @@ def _local_pan_cancer_fixture():
         "ACINIC": 3,
     }
     persisted = rollup[["Ensembl_Gene_ID"]].copy()
-    for aggregate, members in expression_accessors._PAN_COMPUTED_ROLLUP_MEMBERS.items():
+    for aggregate, members in PAN_CANCER_ROLLUP_MEMBERS.items():
         member_weights = pd.Series({code: weights[code] for code in members})
         values = rollup[list(members)]
         numerator = values.mul(member_weights, axis="columns").sum(
@@ -242,8 +362,9 @@ def test_pan_cancer_canonical_rows_rollups_and_legacy_gene_filters(
     assert "ENSG00000148362" not in set(paxx["Ensembl_Gene_ID"])
     assert paxx["CRC_TPM"].tolist() == pytest.approx([(25.0 * 3 + 35.0) / 4])
     assert paxx["SGC_TPM"].tolist() == pytest.approx([(66.0 * 57 + 76.0 * 3) / 60])
-    assert paxx[["CRC_TPM", "NET_TPM", "NSCLC_TPM", "SGC_TPM"]].notna().all(axis=None)
-    assert "BTC_TPM" not in paxx.columns
+    assert paxx[
+        ["BTC_TPM", "CRC_TPM", "NET_TPM", "NSCLC_TPM", "SGC_TPM"]
+    ].notna().all(axis=None)
 
     paxx_legacy = pan_cancer_expression(
         genes=["ENSG00000148362.9"], normalize="tpm",
@@ -299,7 +420,7 @@ def test_pan_cancer_expression_returns_wide_frame_with_tpm_companions():
     assert df.attrs["computed_rollups_included"] is False
     assert not any(
         f"{code}_TPM" in df.columns
-        for code in expression_accessors._PAN_COMPUTED_ROLLUP_MEMBERS
+        for code in PAN_CANCER_ROLLUP_MEMBERS
     )
 
 
@@ -322,9 +443,9 @@ def test_pan_cancer_computed_rollups_are_explicit_opt_in():
     assert with_rollups.attrs["computed_rollups_included"] is True
     assert {
         f"{code}_TPM"
-        for code in expression_accessors._PAN_COMPUTED_ROLLUP_MEMBERS
+        for code in PAN_CANCER_ROLLUP_MEMBERS
     } <= set(with_rollups.columns)
-    assert "BTC_TPM" not in with_rollups.columns
+    assert "BTC_TPM" in with_rollups.columns
 
 
 def test_pan_cancer_expression_subset_filters_to_named_genes():
@@ -1360,12 +1481,6 @@ def test_cancer_expression_reference_status_avoids_full_reference(monkeypatch):
         "_has_cancer_reference",
         raise_if_used,
     )
-    monkeypatch.setattr(
-        expression_accessors,
-        "_reference_cohort_summary",
-        raise_if_used,
-    )
-
     status = cancer_expression_reference_status().set_index("cancer_code")
 
     assert status.loc["CLL", "reference_status"] == "direct_reference"
@@ -2156,8 +2271,7 @@ def test_pan_cancer_expression_normalize_list_combines_modes():
     normal_entities = {
         c[:-len("_nTPM")] for c in df.columns if c.endswith("_nTPM")
     }
-    assert {"CRC", "NET", "NSCLC", "SGC"} <= tumor_entities
-    assert "BTC" not in tumor_entities
+    assert {"BTC", "CRC", "NET", "NSCLC", "SGC"} <= tumor_entities
 
     # FPKM is optional provenance, but every tumor and normal entity has the
     # same requested analysis derivatives.

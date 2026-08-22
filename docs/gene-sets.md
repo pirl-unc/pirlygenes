@@ -100,15 +100,16 @@ vaccination and immunotherapy targets.
 
 `pan_cancer_expression()` returns a DataFrame with median expression across
 33 independent TCGA cancer types (raw FPKM plus deterministic TPM companions)
-and 50 HPA normal tissues (nTPM). This source-only view is the default. Four
-computed tumor rollups (`CRC`, `NET`, `NSCLC`, `SGC`) are available with
+and 50 HPA normal tissues (nTPM). This source-only view is the default. Five
+computed tumor rollups (`BTC`, `CRC`, `NET`, `NSCLC`, `SGC`) are available with
 `include_computed_rollups=True` when an aggregate is an intended target. Keeping
 them opt-in prevents generic `*_TPM` column discovery from treating a source
 cohort and its aggregate as independent observations.
 
-`BTC` is intentionally not computed from CHOL alone. Oncoref requires both
-CHOL and GBC to back a pan-biliary member union, and GBC has no expression
-reference yet; exposing the incomplete union would mislabel CHOL as pan-BTC.
+`BTC` is never computed from CHOL alone. Oncoref requires both CHOL and GBC to
+back the pan-biliary union; the rollup became available only after the direct
+GBC reference landed. This prevents an incomplete union from being mislabeled
+as pan-BTC.
 
 The rollups are sample-weighted combinations of cohort-level TPM medians, so
 they are TPM-only: FPKM cannot be recovered from a TPM summary and is not
@@ -120,7 +121,7 @@ computed rollup has `*_TPM` plus every requested `*_TPM_clean`, `*_TPM_hk`,
 present only for the 33 inputs that were actually supplied in FPKM units; it is
 not a required analysis column.
 
-The four rollups are baked from the selected cohort sources into a small
+The five rollups are baked from the selected cohort sources into a small
 canonical artifact and joined with the same oncoref Ensembl alias map used for
 the base pan matrix. A gene unavailable in a rollup remains `NaN` in both
 `*_TPM` and every derived column; it is never reported as a measured zero.
@@ -399,10 +400,20 @@ methodology and evaluation.
 
 ## Cancer Type Identifiers
 
-33 TCGA cancer types are supported. Use `cancer_types()` for the full
-list or `CANCER_TYPE_NAMES` for `{code: full_name}` mapping.
+The pan-cancer expression panel contains 33 TCGA source cohorts, but the
+oncoref-owned cancer-type registry is broader. Use `cancer_types()` for the
+full list or `CANCER_TYPE_NAMES` for the `{code: full_name}` mapping. The
+registry keeps non-testicular germ-cell entities (`GCT_OV*`, `GCT_CNS*`)
+separate from testicular `TGCT`; candidate-only entities remain explicitly
+non-classifying until an owner reference is selected.
 
 Common codes: ACC, BLCA, BRCA, CESC, CHOL, COAD, DLBC, ESCA, GBM,
 HNSC, KICH, KIRC, KIRP, LAML, LGG, LIHC, LUAD, LUSC, MESO, OV,
 PAAD, PCPG, PRAD, READ, SARC, SKCM, STAD, TGCT, THCA, THYM, UCEC,
 UCS, UVM.
+
+Incidence and mortality facts are also owned by oncoref. Pirlygenes preserves
+the compatibility accessors `cancer_burden_df()`, `cancer_burden()`,
+`cancer_code_burden_map()`, and `burden_category()` while returning the richer
+owner provenance, counts, denominators, and derivation fields unchanged. No
+duplicate burden CSV is bundled locally.
