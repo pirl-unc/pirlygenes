@@ -89,11 +89,11 @@ def _install_fake_reference(monkeypatch, fake):
             parts.append(part)
         return pd.concat(parts, ignore_index=True)
 
-    # _reference_view still uses the frame identity to invalidate rebuilt
-    # canonical views; the values now come through the delegated accessor.
+    # The shared derivation cache still uses the frame identity to invalidate
+    # rebuilt canonical views; values now come through the delegated accessor.
     monkeypatch.setattr(accessors, "_load_cancer_reference_expression", lambda: fake)
     monkeypatch.setattr(accessors, "cancer_reference_expression", fake_accessor)
-    accessors._REFERENCE_VIEW_CACHE.clear()
+    accessors._SHARED_REFERENCE_DERIVATION_CACHE.clear()
     accessors._load_precomputed_cohort_views.cache_clear()
 
 
@@ -285,7 +285,7 @@ def test_views_protein_coding_and_coverage_filters(monkeypatch, tmp_path):
     pc = cohort_expression_views(protein_coding=True)
     assert pc.clean_tpm["Ensembl_Gene_ID"].tolist() == ["ENSG00000141510"]
 
-    accessors._REFERENCE_VIEW_CACHE.clear()
+    accessors._SHARED_REFERENCE_DERIVATION_CACHE.clear()
     _disable_precomputed_views(monkeypatch, tmp_path)
     cov = cohort_expression_views(min_cohort_coverage=1.0)
     # only TP53 is measured in every cohort
@@ -342,7 +342,7 @@ def test_views_precomputed_artifact_fast_path(tmp_path, monkeypatch):
     # When the artifact is usable, NEITHER fallback may run: not the canonical
     # rebuild, not the from-reference builder.
     for name in (
-        "build_canonical_cohort_expression_views",
+        "_shared_rebuilt_canonical_cohort_views",
         "_cohort_expression_views_from_reference",
     ):
         monkeypatch.setattr(
@@ -473,6 +473,25 @@ def test_public_builder_returns_defensive_copies(monkeypatch, tmp_path):
     assert "POISONED" not in set(fallback.provenance["source_cohort"])
 
 
+def test_fallback_slices_shared_rebuild_without_public_full_copy(
+    monkeypatch, tmp_path,
+):
+    """A missing artifact must not clone both full matrices per query."""
+    _install_fake_reference(monkeypatch, _synthetic_reference())
+    _disable_precomputed_views(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        accessors,
+        "build_canonical_cohort_expression_views",
+        lambda: (_ for _ in ()).throw(AssertionError("public copy path used")),
+    )
+
+    first = cohort_expression_views(COHORT_A, genes=[TP53])
+    second = cohort_expression_views(COHORT_B, genes=[ACTB])
+
+    assert first.tpm[COHORT_A].tolist() == [3.0]
+    assert second.tpm[COHORT_B].tolist() == [6.0]
+
+
 def _write_artifact_from_rebuild(root, monkeypatch, fake):
     """Materialize the precomputed artifact exactly as the generator does — as
     the serialized output of ``build_canonical_cohort_expression_views`` over
@@ -571,7 +590,7 @@ def test_artifact_path_equals_rebuild_path(tmp_path, monkeypatch, kwargs):
 
     # Artifact absent → rebuild fallback (same reference + same filter).
     monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root / "absent")
-    accessors._REFERENCE_VIEW_CACHE.clear()
+    accessors._SHARED_REFERENCE_DERIVATION_CACHE.clear()
     from_rebuild = cohort_expression_views(**kwargs)
 
     _assert_views_equal(from_artifact, from_rebuild)
@@ -846,7 +865,7 @@ def test_rebuild_memoized_on_reference_identity(tmp_path, monkeypatch):
         return real(*a, **k)
 
     monkeypatch.setattr(accessors, "_reference_long_from_summary_frame", counting)
-    accessors._REFERENCE_VIEW_CACHE.clear()
+    accessors._SHARED_REFERENCE_DERIVATION_CACHE.clear()
 
     cohort_expression_views(genes=["TP53"])
     first = calls["n"]
@@ -864,7 +883,7 @@ def test_canonicalize_false_uses_reference_not_artifact(tmp_path, monkeypatch):
     monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root)
     # The artifact must NOT be consulted for the non-canonical path.
     monkeypatch.setattr(
-        accessors, "_full_canonical_views",
+        accessors, "_shared_full_canonical_cohort_views",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("artifact used")),
     )
     v = cohort_expression_views(COHORT_A, genes=["TP53"], canonicalize_genes=False)

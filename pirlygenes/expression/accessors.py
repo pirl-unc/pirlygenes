@@ -73,7 +73,7 @@ import warnings
 from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
-from typing import Iterable, Mapping, Optional, Sequence
+from typing import Callable, Iterable, Mapping, Optional, Sequence, TypeVar, cast
 
 import numpy as np
 import pandas as pd
@@ -744,7 +744,8 @@ def _load_cancer_reference_expression() -> pd.DataFrame:
 # returns the same object every call — so any expression-value view computed
 # from it is stable until the data reloads. The gene-independent availability
 # manifest deliberately does not use this cache (#565).
-_REFERENCE_VIEW_CACHE: dict[str, tuple] = {}
+_T = TypeVar("_T")
+_SHARED_REFERENCE_DERIVATION_CACHE: dict[str, tuple[pd.DataFrame, object]] = {}
 
 
 def _string_id_columns(df: pd.DataFrame, *cols: str) -> pd.DataFrame:
@@ -755,14 +756,23 @@ def _string_id_columns(df: pd.DataFrame, *cols: str) -> pd.DataFrame:
     return df
 
 
-def _reference_view(key: str, builder):
-    """Return ``builder(reference_frame)``, memoized on the frame's identity."""
+def _shared_reference_derivation(
+    key: str,
+    builder: Callable[[pd.DataFrame], _T],
+) -> _T:
+    """Borrow a process-owned derivation of the shared reference frame.
+
+    The cache is invalidated when the owning reference-frame object changes.
+    Returned values can themselves be mutable and are shared across calls, so
+    this is strictly an internal performance primitive: a public API must copy
+    a cached value before exposing it to callers.
+    """
     df = _load_cancer_reference_expression()
-    cached = _REFERENCE_VIEW_CACHE.get(key)
+    cached = _SHARED_REFERENCE_DERIVATION_CACHE.get(key)
     if cached is not None and cached[0] is df:
-        return cached[1]
+        return cast(_T, cached[1])
     value = builder(df)
-    _REFERENCE_VIEW_CACHE[key] = (df, value)
+    _SHARED_REFERENCE_DERIVATION_CACHE[key] = (df, value)
     return value
 
 
@@ -886,7 +896,7 @@ def _oncoref_reference_code_set() -> frozenset:
 def _reference_indices_by_code() -> dict:
     """Cached ``{cancer_code: positional-row-index array}`` over the reference
     frame, so per-code slicing avoids a full-frame ``astype(str).isin`` scan."""
-    return _reference_view(
+    return _shared_reference_derivation(
         "indices_by_code",
         lambda df: {
             str(code): idx
@@ -2647,25 +2657,13 @@ def _pivot_views_long(
     return wide
 
 
-def build_canonical_cohort_expression_views(
+def _shared_rebuilt_canonical_cohort_views(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Build the **full** canonical wide matrices (every gene × every cohort)
-    plus a provenance table that still carries ``cancer_code``.
+    """Borrow the cached full canonical views rebuilt from the reference.
 
-    This is the public, deterministic builder for the canonical views. The
-    operation intentionally bypasses the precomputed artifact and can be
-    expensive; release tooling and parity audits use it when producing or
-    validating a new data bundle. The precomputed
-    artifact under ``cancer-reference-expression-views/`` is nothing but the
-    on-disk serialization of this function's output (see
-    ``scripts/generate_cohort_expression_views.py``), so the read path can treat
-    "load artifact" and "rebuild" as interchangeable and apply one identical
-    filter to either. The build is memoized on the reference-frame identity so
-    a process that has no artifact pays it at most once, not per query. Each
-    public call returns defensive copies of the cached frames so caller
-    mutation cannot alter a later build or the artifact-missing read path.
+    This internal result is process-owned and must not escape through a public
+    API. Internal readers immediately slice it into caller-owned frames.
     """
-
     def _build(_df: pd.DataFrame):
         long = _reference_long_from_summary_frame(_df)
         long = _canonicalize_views_long(long)
@@ -2682,8 +2680,27 @@ def build_canonical_cohort_expression_views(
                       .drop_duplicates().reset_index(drop=True))
         return tpm, clean, provenance
 
-    cached = _reference_view("full_canonical_views", _build)
-    tpm, clean_tpm, provenance = cached
+    return _shared_reference_derivation("full_canonical_views", _build)
+
+
+def build_canonical_cohort_expression_views(
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Build the **full** canonical wide matrices (every gene × every cohort)
+    plus a provenance table that still carries ``cancer_code``.
+
+    This is the public, deterministic artifact builder. It intentionally
+    bypasses the precomputed artifact and can be expensive; release tooling and
+    parity audits use it when producing or validating a data bundle. The
+    artifact under ``cancer-reference-expression-views/`` is the on-disk
+    serialization of this function's output (see
+    ``scripts/generate_cohort_expression_views.py``).
+
+    The expensive rebuild is memoized on the reference-frame identity, but
+    every public call receives defensive copies. Callers may therefore mutate
+    the returned frames without changing later builds or normal expression
+    queries.
+    """
+    tpm, clean_tpm, provenance = _shared_rebuilt_canonical_cohort_views()
     return tpm.copy(), clean_tpm.copy(), provenance.copy()
 
 
@@ -2701,12 +2718,16 @@ def _valid_full_views(frames: tuple[pd.DataFrame, ...]) -> bool:
     return True
 
 
-def _full_canonical_views() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """The full canonical (tpm, clean_tpm, provenance) frames, served from the
-    precomputed artifact when it is present and usable, else rebuilt from the
-    reference. Both branches return the identical schema so a single filter
-    works on either. A present-but-unreadable or schema-invalid artifact is
-    never fatal — it degrades to the rebuild."""
+def _shared_full_canonical_cohort_views(
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Borrow process-owned full canonical views for internal slicing.
+
+    A usable precomputed artifact wins; otherwise the reference-derived cache
+    is used. Both branches have the same schema. The returned frames are shared
+    mutable objects and must never be exposed directly—the sole caller passes
+    them to ``_apply_cohort_view_filters``, which creates caller-owned slices.
+    An unreadable or schema-invalid artifact degrades to the rebuild.
+    """
     root = Path(_cohort_views_root())
     if _cohort_views_usable(root):
         try:
@@ -2732,7 +2753,7 @@ def _full_canonical_views() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
                 frames = None
         if frames is not None:
             return frames
-    return build_canonical_cohort_expression_views()
+    return _shared_rebuilt_canonical_cohort_views()
 
 
 def _apply_cohort_view_filters(
@@ -2866,7 +2887,9 @@ def cohort_expression_views(
     if min_cohort_coverage is not None and not 0 <= min_cohort_coverage <= 1:
         raise ValueError("min_cohort_coverage must be between 0 and 1")
     if canonicalize_genes:
-        tpm_full, clean_full, provenance_full = _full_canonical_views()
+        tpm_full, clean_full, provenance_full = (
+            _shared_full_canonical_cohort_views()
+        )
         return _apply_cohort_view_filters(
             tpm_full,
             clean_full,

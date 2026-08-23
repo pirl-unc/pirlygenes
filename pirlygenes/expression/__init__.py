@@ -33,12 +33,19 @@ imports are flat::
         pan_cancer_expression,
         cancer_reference_expression,
         cohort_expression_views,
+        build_canonical_cohort_expression_views,
         normalize_expression,
         fpkm_to_tpm,
         tpm_to_housekeeping_normalized,
         classify_gene_qc,
         aggregate_gene_expression,
     )
+
+``cohort_expression_views`` is the normal read API: it selects caller-owned
+cohort/gene slices from a validated artifact or an internal rebuild cache.
+``build_canonical_cohort_expression_views`` is the expensive release-tooling
+API: it constructs the complete artifact frames and returns defensive copies.
+The process-owned caches behind both functions are deliberately private.
 """
 
 from .accessors import (
