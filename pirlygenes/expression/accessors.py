@@ -2660,8 +2660,10 @@ def build_canonical_cohort_expression_views(
     on-disk serialization of this function's output (see
     ``scripts/generate_cohort_expression_views.py``), so the read path can treat
     "load artifact" and "rebuild" as interchangeable and apply one identical
-    filter to either. Memoized on the reference-frame identity so a process that
-    has no artifact pays this rebuild at most once, not per query.
+    filter to either. The build is memoized on the reference-frame identity so
+    a process that has no artifact pays it at most once, not per query. Each
+    public call returns defensive copies of the cached frames so caller
+    mutation cannot alter a later build or the artifact-missing read path.
     """
 
     def _build(_df: pd.DataFrame):
@@ -2680,7 +2682,9 @@ def build_canonical_cohort_expression_views(
                       .drop_duplicates().reset_index(drop=True))
         return tpm, clean, provenance
 
-    return _reference_view("full_canonical_views", _build)
+    cached = _reference_view("full_canonical_views", _build)
+    tpm, clean_tpm, provenance = cached
+    return tpm.copy(), clean_tpm.copy(), provenance.copy()
 
 
 def _valid_full_views(frames: tuple[pd.DataFrame, ...]) -> bool:

@@ -449,6 +449,30 @@ def _synthetic_reference():
     ])
 
 
+def test_public_builder_returns_defensive_copies(monkeypatch, tmp_path):
+    """Caller mutation must not poison the shared rebuild cache or fallback."""
+    import pandas as pd
+
+    _install_fake_reference(monkeypatch, _synthetic_reference())
+    first = accessors.build_canonical_cohort_expression_views()
+    expected = tuple(frame.copy() for frame in first)
+
+    first[0].loc[:, COHORT_A] = -1.0
+    first[1].loc[:, COHORT_A] = -1.0
+    first[2].loc[:, "source_cohort"] = "POISONED"
+
+    second = accessors.build_canonical_cohort_expression_views()
+    for actual, original, mutated in zip(second, expected, first):
+        pd.testing.assert_frame_equal(actual, original)
+        assert actual is not mutated
+
+    _disable_precomputed_views(monkeypatch, tmp_path)
+    fallback = cohort_expression_views(COHORT_A)
+    assert not fallback.tpm[COHORT_A].eq(-1.0).any()
+    assert not fallback.clean_tpm[COHORT_A].eq(-1.0).any()
+    assert "POISONED" not in set(fallback.provenance["source_cohort"])
+
+
 def _write_artifact_from_rebuild(root, monkeypatch, fake):
     """Materialize the precomputed artifact exactly as the generator does — as
     the serialized output of ``build_canonical_cohort_expression_views`` over
