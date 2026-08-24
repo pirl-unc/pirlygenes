@@ -52,7 +52,7 @@ def test_availability_never_loads_full_expression_frame(monkeypatch):
 
     result = available_cancer_expression_references()
 
-    assert result.shape == (148, 8)
+    assert result.shape == (150, 8)
     assert result.columns.tolist() == _PUBLIC_COLUMNS
     assert delegated_calls[:2] == [
         {
@@ -146,7 +146,7 @@ def test_availability_preserves_the_complete_public_manifest():
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "fd5f420bef672e21635fef32dddb2f4c21488fbe40b9493363ce5dc79ff2b4e0"
+        "c12f1182511d4d82475ab5a29d5e289b59dad3d0aad65646be9b948935d976fc"
     )
 
 
@@ -177,6 +177,8 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         ("BCC", "GSE125285_BCC_CSCC"),
         ("cSCC", "GSE125285_BCC_CSCC"),
         ("GBC", "GSE139682_GBC"),
+        ("EPN", "GSE141460_GOJO_2020_EPN"),
+        ("CRANIO", "OPENPBTA_V23_CBTN_CRANIO"),
     })
     assert expected <= keys
 
@@ -202,16 +204,14 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         & result["source_cohort"].astype(str).eq("GSE328026_PECOMA_2026")
     ]
     assert len(pecoma) == 1
-    # The owner registry is the structured citation source. oncoref#498 tracks
-    # propagating this field into the compact availability manifest as well.
-    from oncoref.expression_registry import expression_sources
-
-    pecoma_source = next(
-        source
-        for source in expression_sources()
-        if source.id == "gse328026-sarc-pec"
+    # Structured source metadata is owned and exposed by oncoref. Keep the
+    # compact pirlygenes compatibility manifest stable at its historical eight
+    # columns while using the owner API for richer provenance.
+    pecoma_source = oncoref.cancer_reference_expression_source_metadata(
+        "SARC_PEC",
+        source_cohort="GSE328026_PECOMA_2026",
     )
-    assert pecoma_source.source_pmid == "PMID:42331846"
+    assert pecoma_source["source_pmid"] == "PMID:42331846"
 
 
 def test_availability_returns_a_defensive_copy():
@@ -254,7 +254,7 @@ from pirlygenes.expression import available_cancer_expression_references
 
 assert sys.gettrace() is None, 'memory probe inherited coverage/debug tracing'
 result = available_cancer_expression_references()
-assert result.shape == (148, 8)
+assert result.shape == (150, 8)
 if sys.platform.startswith('linux'):
     # getrusage().ru_maxrss retains the forked pytest parent's historical
     # high-water mark across exec on Linux. VmHWM belongs to this executable's

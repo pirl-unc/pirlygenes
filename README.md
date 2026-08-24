@@ -233,8 +233,8 @@ to the 33 independent source cohorts.
 through a pirlygenes-compatible raw TPM / clean TPM contract; current sources include
 CLL-map (`CLL`), MMRF CoMMpass (`MM`), TARGET ALL (`B_ALL`, `T_ALL`),
 CGCI/GDC Burkitt lymphoma (`BL`), GEO heme cohorts (`CML`, `MCL`, `MDS`,
-`MPN`), scRNA pseudobulk references for `CTCL` and `HCL`, direct BCC/cSCC/GBC
-references,
+`MPN`), scRNA pseudobulk references for `CTCL`, `HCL`, and diagnosis-stage
+`EPN`, direct BCC/cSCC/GBC references, an OpenPBTA primary `CRANIO` reference,
 BeatAML/TARGET subtype summaries, and selected Treehouse/GEO
 cancer-specific cohorts such as `OS`, `PANNET`, `CHON`, `SCLC`, `RB`, and
 sarcoma subtypes.

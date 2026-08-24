@@ -72,7 +72,12 @@ dependencies = [
     # candidate decisions without collapsing those entities into TGCT;
     # 1.8.176 completes cancer-burden and HPA source provenance; 1.8.177/data
     # 5.23.18 adds the direct five-donor HCL reference; 1.8.178/data 5.23.19
-    # adds BCC, cSCC, and GBC references plus the complete CHOL/GBC BTC union.
+    # adds BCC, cSCC, and GBC references plus the complete CHOL/GBC BTC union;
+    # 1.8.179/data 5.23.20 adds diagnosis-stage EPN pseudobulks; 1.8.180/data
+    # 5.23.21 adds primary OpenPBTA CRANIO tumors. 1.8.181 fixes delegated
+    # microarray exclusion, projected-ID pooling, sarcoma subtype keys, and
+    # structured source/PMID metadata (oncoref #482/#483/#485/#498) without a
+    # data-bundle change.
     # >=1.8.75
     # also gives the
     # builders the cleaned-up source-matrix QC /
@@ -85,7 +90,7 @@ dependencies = [
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles). Pin the
     # exact owner release because the downloadable cohort-view snapshot records
     # and validates the oncoref package/data versions used to build it.
-    "oncoref==1.8.178",
+    "oncoref==1.8.181",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile

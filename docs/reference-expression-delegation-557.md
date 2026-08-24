@@ -4,9 +4,9 @@ Compares pirlygenes' delegated source-union compatibility rows against oncoref's
 
 This intentionally compares two different oncoref products: the all-sample source-union compatibility rows and the default pass-QC selected artifact. Large outliers therefore identify QC/source-product differences, not adapter distortion; exact adapter-to-source parity for TCGA, heme, microarray, subtype, and computed-union cases is gated in `tests/test_reference_expression_delegation.py`.
 
-- cancer_codes compared: **137**
-- served by both sides: **137**
-- n_samples agreement: **122/137** codes match exactly
+- cancer_codes compared: **139**
+- served by both sides: **139**
+- n_samples agreement: **124/139** codes match exactly
 - median relative delta (across codes): **0.0463%**
 - worst-code p95 relative delta: **237.9842%**
 
@@ -90,6 +90,7 @@ This intentionally compares two different oncoref products: the all-sample sourc
 | READ_MSS | artifact | 83/83 | 29636 (4935/0) | 0.0462% | 0.1423% | 0 |
 | PRAD | artifact | 496/496 | 29636 (4935/0) | 0.0452% | 0.1422% | 0 |
 | CLL | artifact | 708/708 | 44997 (7081/0) | 0.0444% | 0.1420% | 0 |
+| EPN | artifact | 11/11 | 21374 (490/0) | 0.0469% | 0.1419% | 0 |
 | SARC_ASPS | artifact | 3/3 | 29636 (4935/0) | 0.0449% | 0.1419% | 0 |
 | SARC_RMS_ARMS | artifact | 73/73 | 29636 (4935/0) | 0.0462% | 0.1418% | 0 |
 | SKCM | artifact | 469/469 | 29636 (4935/0) | 0.0450% | 0.1418% | 0 |
@@ -146,6 +147,7 @@ This intentionally compares two different oncoref products: the all-sample sourc
 | NBL | artifact | 155/155 | 52545 (7734/0) | 0.0422% | 0.1258% | 0 |
 | MTC | artifact | 52/52 | 18862 (105/0) | 0.0536% | 0.1257% | 0 |
 | RT | artifact | 63/63 | 52545 (7734/0) | 0.0402% | 0.1251% | 0 |
+| CRANIO | artifact | 29/29 | 48965 (7732/0) | 0.0425% | 0.1231% | 0 |
 | NET_LUNG | artifact | 118/118 | 51445 (7733/0) | 0.0400% | 0.1213% | 0 |
 | LIHC | artifact | 368/368 | 29636 (4935/0) | 0.0410% | 0.1178% | 0 |
 | T_ALL | artifact | 264/264 | 52545 (7734/0) | 0.0401% | 0.1129% | 0 |
