@@ -47,7 +47,9 @@ _CACHED_DATAFRAMES = {}
 # shipping a second physical copy that can drift.
 _ONCOREF_DATASETS = frozenset({
     "cancer-cohort-aggregates",
+    "cancer-code-burden-map",
     "cancer-expression-source-candidates",
+    "cancer-incidence-mortality",
     "cancer-lineage-groups",
     "cancer-reference-expression-availability",
     "cancer-reference-expression-samples",
@@ -58,9 +60,10 @@ _ONCOREF_DATASETS = frozenset({
 })
 
 # oncoref owns the complete computed-aggregate ontology.  Pirlygenes keeps its
-# historical public expansion surface (the four rollups it has always exposed)
-# while sourcing those rows from that authority, so newly added children such
-# as SARC_MPLPS cannot silently drift here again.
+# historical public expansion surface (CRC plus three sarcoma groupings) while
+# sourcing those rows from that authority, so newly added children such as
+# SARC_MPLPS cannot silently drift here again. Pan-expression rollups are a
+# separate public contract in ``expression.PAN_CANCER_ROLLUP_MEMBERS``.
 _PIRLYGENES_AGGREGATE_CODES = frozenset({
     "CRC",
     "SARC_ESS",

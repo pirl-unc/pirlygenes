@@ -11,10 +11,12 @@ def test_compatibility_registry_covers_every_owner_matrix():
     from oncoref import source_matrices
 
     owner = source_matrices.registry()
-    actual = {cohort.code for cohort in cohorts._PER_SAMPLE_COHORTS}
+    registered = cohorts.registered_cohorts()
+    actual = set(registered)
 
     assert actual == set(owner["cancer_code"].astype(str))
     assert len(actual) == len(owner)
+    assert all(code == cohort.code for code, cohort in registered.items())
 
 
 def test_per_sample_sources_are_derived_from_owner_registry():
@@ -33,6 +35,29 @@ def test_per_sample_sources_are_derived_from_owner_registry():
         assert cohorts.source_label(source_id) == label
         assert cohorts.source_project(source_id) == project
     assert cohorts.source_label("not-a-source") is None
+
+
+def test_hcl_selected_matrix_is_discoverable_through_owner_source():
+    selected = cohorts.cohorts_for_source("zenodo-14917813-hcl")
+
+    assert set(selected) == {"HCL"}
+    assert selected["HCL"].source_id == "zenodo-14917813-hcl"
+    assert cohorts.source_label("zenodo-14917813-hcl") == (
+        "ZENODO_14917813_BOHN_2026_HCL"
+    )
+    assert cohorts.source_project("zenodo-14917813-hcl") == "Zenodo"
+
+
+def test_released_nci_gap_matrices_are_discoverable_through_owner_sources():
+    expected = {
+        "gse125285-bcc-cscc": {"BCC", "cSCC"},
+        "gse139682-gbc": {"GBC"},
+    }
+
+    for source_id, codes in expected.items():
+        selected = cohorts.cohorts_for_source(source_id)
+        assert set(selected) == codes
+        assert {cohort.source_id for cohort in selected.values()} == {source_id}
 
 
 def test_compatibility_metadata_fills_incomplete_owner_records():

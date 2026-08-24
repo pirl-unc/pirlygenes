@@ -459,10 +459,6 @@ def _cdna_canonical_to_symbol() -> dict[str, str]:
     return canonical_to_symbol("cdna")
 
 
-def _cdna_symbol_to_canonical_symbol() -> dict[str, str]:
-    return symbol_to_canonical("cdna")
-
-
 def fold_to_cdna_canonical_symbol(symbols) -> list[str]:
     """Alias: :func:`fold_symbols` with ``kind='cdna'`` — fold a panel the way the
     matrix's ``collapse_cdna_identical`` did (match the ``Symbol`` column)."""

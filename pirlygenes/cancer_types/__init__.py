@@ -45,6 +45,7 @@ Curation provenance:
 """
 
 from ..gene_sets_cancer import (
+    clear_cancer_type_caches as clear_caches,
     cancer_type_info as info,
     cancer_type_synonyms as synonyms,
     resolve_cancer_type as resolve,
@@ -96,4 +97,5 @@ __all__ = [
     "burden_category",
     "tmb",
     "registry",
+    "clear_caches",
 ]

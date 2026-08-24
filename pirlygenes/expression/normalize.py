@@ -548,37 +548,6 @@ def technical_rna_mask(gene_table):
     return _ensg_unversioned(gene_table).isin(_clean_tpm_censored_ids(False))
 
 
-@functools.lru_cache(maxsize=1)
-def _default_protected_symbols():
-    """Curated cancer-target symbols that must NEVER be censored even if their
-    symbol matches a censored QC group — they are signal we score on. The
-    canonical case is ``RPL10L`` (a testis CTA that is a ribosomal-protein
-    paralog). Union of the CTA panel + surfaceome / key-gene / lineage / fusion
-    panels; degrades gracefully if a source is unavailable."""
-    protected: set[str] = set()
-    try:
-        from .. import gene_sets_cancer as gsc
-        protected |= set(gsc.CTA_evidence()["Symbol"].astype(str))
-    except Exception:
-        pass
-    try:
-        from ..load_dataset import get_data
-        for ds, cols in [("surface-proteins", ["Symbol"]),
-                         ("cancer-key-genes", ["symbol"]),
-                         ("cancer-lineage-panels", ["Symbol", "Child_Code"]),
-                         ("cancer-fusions", ["gene_5prime", "gene_3prime"])]:
-            try:
-                df = get_data(ds)
-            except Exception:
-                continue
-            for c in cols:
-                if c in df.columns:
-                    protected |= set(df[c].dropna().astype(str))
-    except Exception:
-        pass
-    return frozenset(protected)
-
-
 def clean_tpm_removal_mask(gene_table, *, protect=None):
     """Boolean Series of rows zeroed by the clean-TPM transform — the genes in
     the canonical censored-gene list (:func:`_clean_tpm_censored_ids`).

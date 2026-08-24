@@ -18,7 +18,7 @@ normalization helpers needed to make them comparable across columns:
 
 * :func:`pan_cancer_expression` — wide-form ``Symbol × tissue/cancer``
   panel: 50 HPA normal tissues (nTPM), 33 TCGA cancer types (observed FPKM
-  provenance + deterministic TPM companions), and four TPM-only computed
+  provenance + deterministic TPM companions), and five TPM-only computed
   tumor rollups, with optional added normalized analysis columns.
 * :func:`cancer_reference_expression` — long- or wide-form non-TCGA
   tumor reference summaries (CLL-map, MMRF, TARGET, GEO, etc.) exposed
@@ -72,7 +72,8 @@ import json
 import warnings
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, Mapping, Optional, Sequence
+from types import MappingProxyType
+from typing import Callable, Iterable, Mapping, Optional, Sequence, TypeVar, cast
 
 import numpy as np
 import pandas as pd
@@ -87,7 +88,6 @@ from .normalize import (
     drop_technical_genes,
     normalize_expression,
     percentile_rank_expression,
-    renormalize_to_million,
     tpm_to_housekeeping_normalized,
 )
 from .qc import TECHNICAL_RNA_FAMILIES
@@ -221,31 +221,28 @@ def _rename_pan_expression_columns_entity_first(df: pd.DataFrame) -> pd.DataFram
     return df.rename(columns={c: _pan_public_col_name(c) for c in df.columns})
 
 
-_PAN_COMPUTED_ROLLUP_MEMBERS = {
+PAN_CANCER_ROLLUP_MEMBERS = MappingProxyType({
+    "BTC": ("CHOL", "GBC"),
     "CRC": ("COAD", "READ"),
     "NET": ("NET_PANCREAS", "NET_MIDGUT", "NET_RECTAL", "NET_LUNG"),
     "NSCLC": ("LUAD", "LUSC"),
     "SGC": ("ADCC", "ACINIC"),
-}
-_PAN_ROLLUP_MEMBER_CODES = tuple(dict.fromkeys(
-    member
-    for members in _PAN_COMPUTED_ROLLUP_MEMBERS.values()
-    for member in members
-))
+})
 
 
-def _oncoref_canonicalize_gene_rows(
+def canonicalize_expression_gene_rows(
     df: pd.DataFrame,
     *,
     value_cols: Sequence[str],
 ) -> pd.DataFrame:
-    """Collapse a wide linear-expression frame onto oncoref's gene-id space.
+    """Collapse a wide linear-expression frame onto oncoref's gene-ID space.
 
-    The compatibility adapter deliberately uses oncoref's public alias resolver,
-    rather than pirlygenes' proteoform-oriented sequence-identity map.  Alias and
-    retired rows are summed with ``min_count=1`` before any normalization, which
-    is the same rule used by oncoref's expression accessors and preserves an
-    all-missing source cell as missing.
+    This is the shared public primitive used by persisted expression-artifact
+    builders. It deliberately uses oncoref's alias resolver rather than
+    pirlygenes' proteoform-oriented sequence-identity map. Alias and retired
+    rows are summed with ``min_count=1`` before any normalization, matching
+    oncoref's expression accessors while preserving an all-missing source cell
+    as missing.
     """
     from oncoref.gene_ids import resolve_ensembl_id, unversioned
 
@@ -289,7 +286,7 @@ def _load_pan_rollup_frame() -> pd.DataFrame:
     that a generic all-source cohort pivot would introduce.
     """
     rollups = get_data("pan-cancer-expression-rollups", copy=False)
-    value_cols = [f"TPM_{code}" for code in _PAN_COMPUTED_ROLLUP_MEMBERS]
+    value_cols = [f"TPM_{code}" for code in PAN_CANCER_ROLLUP_MEMBERS]
     missing = [
         col
         for col in ["Ensembl_Gene_ID", *value_cols]
@@ -300,7 +297,7 @@ def _load_pan_rollup_frame() -> pd.DataFrame:
             "pan-cancer-expression-rollups has an invalid schema; missing "
             f"{missing!r}"
         )
-    return _oncoref_canonicalize_gene_rows(
+    return canonicalize_expression_gene_rows(
         rollups,
         value_cols=value_cols,
     )
@@ -317,7 +314,7 @@ def _pan_source_reference_frame() -> pd.DataFrame:
     raw = get_data("pan-cancer-expression", copy=False)
     id_cols = {"Ensembl_Gene_ID", "Symbol"}
     value_cols = [col for col in raw.columns if col not in id_cols]
-    raw = _oncoref_canonicalize_gene_rows(raw, value_cols=value_cols)
+    raw = canonicalize_expression_gene_rows(raw, value_cols=value_cols)
     raw, _ = add_tpm_columns_from_fpkm(raw)
     return raw
 
@@ -539,71 +536,6 @@ def filter_to_genes(
     return df[mask].reset_index(drop=True)
 
 
-def _renormalize_to_million_grouped(
-    df: pd.DataFrame,
-    *,
-    value_cols: Sequence[str],
-    group_cols: Sequence[str],
-) -> pd.DataFrame:
-    """Within each (group_cols) partition, rescale each value column so
-    its non-NaN sum is 10⁶. The whole-table version in
-    :func:`renormalize_to_million` rescales globally, which collapses
-    long-form per-group medians into per-row crumbs — long-form callers
-    want the TPM convention enforced per cohort, not across cohorts."""
-    out = df.copy()
-    for col in value_cols:
-        if col not in out.columns:
-            continue
-        out[col] = pd.to_numeric(out[col], errors="coerce")
-    for _key, idx in out.groupby(list(group_cols), dropna=False).groups.items():
-        idx = list(idx)
-        for col in value_cols:
-            if col not in out.columns:
-                continue
-            col_sum = float(out.loc[idx, col].sum())
-            if col_sum <= 0:
-                continue
-            out.loc[idx, col] = out.loc[idx, col] * (1e6 / col_sum)
-    return out
-
-
-def _bundled_normalize(
-    df: pd.DataFrame,
-    *,
-    technical_rna_normalize: bool,
-    remove_noncoding: bool,
-    renormalize: bool,
-    label_col: str = "Symbol",
-    id_col: Optional[str] = "Ensembl_Gene_ID",
-    value_cols: Optional[Sequence[str]] = None,
-    group_cols: Optional[Sequence[str]] = None,
-) -> pd.DataFrame:
-    """Bundled rescaling: zero technical-RNA (optionally noncoding) rows
-    and renormalize each column's remaining mass, then optionally pin
-    every column to a 10⁶ total.
-
-    Matches the kwarg surface trufflepig's local reference accessors use
-    so callers can pull these transforms from pirlygenes directly.
-    """
-    if technical_rna_normalize or remove_noncoding:
-        df, _ = normalize_expression(
-            df,
-            label_col=label_col,
-            id_col=id_col,
-            value_cols=value_cols,
-            group_cols=group_cols,
-            remove_noncoding=remove_noncoding,
-        )
-    if renormalize:
-        if group_cols and value_cols:
-            df = _renormalize_to_million_grouped(
-                df, value_cols=value_cols, group_cols=group_cols,
-            )
-        else:
-            df, _ = renormalize_to_million(df, value_cols=value_cols)
-    return df
-
-
 _VALID_NORMALIZE_PAN = (
     "tpm",
     "tpm_clean",
@@ -812,7 +744,8 @@ def _load_cancer_reference_expression() -> pd.DataFrame:
 # returns the same object every call — so any expression-value view computed
 # from it is stable until the data reloads. The gene-independent availability
 # manifest deliberately does not use this cache (#565).
-_REFERENCE_VIEW_CACHE: dict[str, tuple] = {}
+_T = TypeVar("_T")
+_SHARED_REFERENCE_DERIVATION_CACHE: dict[str, tuple[pd.DataFrame, object]] = {}
 
 
 def _string_id_columns(df: pd.DataFrame, *cols: str) -> pd.DataFrame:
@@ -823,23 +756,24 @@ def _string_id_columns(df: pd.DataFrame, *cols: str) -> pd.DataFrame:
     return df
 
 
-def _reference_view(key: str, builder):
-    """Return ``builder(reference_frame)``, memoized on the frame's identity."""
+def _shared_reference_derivation(
+    key: str,
+    builder: Callable[[pd.DataFrame], _T],
+) -> _T:
+    """Borrow a process-owned derivation of the shared reference frame.
+
+    The cache is invalidated when the owning reference-frame object changes.
+    Returned values can themselves be mutable and are shared across calls, so
+    this is strictly an internal performance primitive: a public API must copy
+    a cached value before exposing it to callers.
+    """
     df = _load_cancer_reference_expression()
-    cached = _REFERENCE_VIEW_CACHE.get(key)
+    cached = _SHARED_REFERENCE_DERIVATION_CACHE.get(key)
     if cached is not None and cached[0] is df:
-        return cached[1]
+        return cast(_T, cached[1])
     value = builder(df)
-    _REFERENCE_VIEW_CACHE[key] = (df, value)
+    _SHARED_REFERENCE_DERIVATION_CACHE[key] = (df, value)
     return value
-
-
-def _reference_code_set() -> frozenset:
-    """Cached ``{cancer_code}`` set over the packaged reference frame."""
-    return _reference_view(
-        "reference_code_set",
-        lambda df: frozenset(df["cancer_code"].astype(str)),
-    )
 
 
 @lru_cache(maxsize=1)
@@ -962,7 +896,7 @@ def _oncoref_reference_code_set() -> frozenset:
 def _reference_indices_by_code() -> dict:
     """Cached ``{cancer_code: positional-row-index array}`` over the reference
     frame, so per-code slicing avoids a full-frame ``astype(str).isin`` scan."""
-    return _reference_view(
+    return _shared_reference_derivation(
         "indices_by_code",
         lambda df: {
             str(code): idx
@@ -1027,17 +961,6 @@ def _registry_parent_codes(value) -> list[str]:
         for part in text.replace(";", ",").split(",")
         if part.strip()
     ]
-
-
-def _reference_cohort_summary(code: str) -> dict[str, object]:
-    refs = available_cancer_expression_references()
-    summaries = _reference_cohort_summaries(refs, _pan_expression_codes())
-    return summaries.get(code, {
-        "source_project": "",
-        "source_cohort": "",
-        "n_samples": np.nan,
-        "processing_pipeline": "",
-    })
 
 
 def _reference_cohort_summaries(
@@ -2734,19 +2657,13 @@ def _pivot_views_long(
     return wide
 
 
-def _rebuild_full_canonical_views() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Build the **full** canonical wide matrices (every gene × every cohort)
-    plus a provenance table that still carries ``cancer_code``.
+def _shared_rebuilt_canonical_cohort_views(
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Borrow the cached full canonical views rebuilt from the reference.
 
-    This is the single source of truth for the canonical views. The precomputed
-    artifact under ``cancer-reference-expression-views/`` is nothing but the
-    on-disk serialization of this function's output (see
-    ``scripts/generate_cohort_expression_views.py``), so the read path can treat
-    "load artifact" and "rebuild" as interchangeable and apply one identical
-    filter to either. Memoized on the reference-frame identity so a process that
-    has no artifact pays this rebuild at most once, not per query.
+    This internal result is process-owned and must not escape through a public
+    API. Internal readers immediately slice it into caller-owned frames.
     """
-
     def _build(_df: pd.DataFrame):
         long = _reference_long_from_summary_frame(_df)
         long = _canonicalize_views_long(long)
@@ -2763,7 +2680,28 @@ def _rebuild_full_canonical_views() -> tuple[pd.DataFrame, pd.DataFrame, pd.Data
                       .drop_duplicates().reset_index(drop=True))
         return tpm, clean, provenance
 
-    return _reference_view("full_canonical_views", _build)
+    return _shared_reference_derivation("full_canonical_views", _build)
+
+
+def build_canonical_cohort_expression_views(
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Build the **full** canonical wide matrices (every gene × every cohort)
+    plus a provenance table that still carries ``cancer_code``.
+
+    This is the public, deterministic artifact builder. It intentionally
+    bypasses the precomputed artifact and can be expensive; release tooling and
+    parity audits use it when producing or validating a data bundle. The
+    artifact under ``cancer-reference-expression-views/`` is the on-disk
+    serialization of this function's output (see
+    ``scripts/generate_cohort_expression_views.py``).
+
+    The expensive rebuild is memoized on the reference-frame identity, but
+    every public call receives defensive copies. Callers may therefore mutate
+    the returned frames without changing later builds or normal expression
+    queries.
+    """
+    tpm, clean_tpm, provenance = _shared_rebuilt_canonical_cohort_views()
+    return tpm.copy(), clean_tpm.copy(), provenance.copy()
 
 
 def _valid_full_views(frames: tuple[pd.DataFrame, ...]) -> bool:
@@ -2780,12 +2718,16 @@ def _valid_full_views(frames: tuple[pd.DataFrame, ...]) -> bool:
     return True
 
 
-def _full_canonical_views() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """The full canonical (tpm, clean_tpm, provenance) frames, served from the
-    precomputed artifact when it is present and usable, else rebuilt from the
-    reference. Both branches return the identical schema so a single filter
-    works on either. A present-but-unreadable or schema-invalid artifact is
-    never fatal — it degrades to the rebuild."""
+def _shared_full_canonical_cohort_views(
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Borrow process-owned full canonical views for internal slicing.
+
+    A usable precomputed artifact wins; otherwise the reference-derived cache
+    is used. Both branches have the same schema. The returned frames are shared
+    mutable objects and must never be exposed directly—the sole caller passes
+    them to ``_apply_cohort_view_filters``, which creates caller-owned slices.
+    An unreadable or schema-invalid artifact degrades to the rebuild.
+    """
     root = Path(_cohort_views_root())
     if _cohort_views_usable(root):
         try:
@@ -2811,7 +2753,7 @@ def _full_canonical_views() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
                 frames = None
         if frames is not None:
             return frames
-    return _rebuild_full_canonical_views()
+    return _shared_rebuilt_canonical_cohort_views()
 
 
 def _apply_cohort_view_filters(
@@ -2945,7 +2887,9 @@ def cohort_expression_views(
     if min_cohort_coverage is not None and not 0 <= min_cohort_coverage <= 1:
         raise ValueError("min_cohort_coverage must be between 0 and 1")
     if canonicalize_genes:
-        tpm_full, clean_full, provenance_full = _full_canonical_views()
+        tpm_full, clean_full, provenance_full = (
+            _shared_full_canonical_cohort_views()
+        )
         return _apply_cohort_view_filters(
             tpm_full,
             clean_full,
@@ -3151,8 +3095,8 @@ def pan_cancer_expression(
     plus 33 TCGA cancer types from HPA pathology + GDC/STAR reprocessing
     (``<code>_FPKM`` in native units with deterministic ``<code>_TPM``
     companions). By default the view contains only these independent source
-    cohorts. Set ``include_computed_rollups=True`` to add four computed tumor
-    rollups (``CRC``/``NET``/``NSCLC``/``SGC``), built from complete,
+    cohorts. Set ``include_computed_rollups=True`` to add five computed tumor
+    rollups (``BTC``/``CRC``/``NET``/``NSCLC``/``SGC``), built from complete,
     sample-weighted TPM cohort medians. Rollups have ``<code>_TPM`` but no
     synthetic FPKM. TPM and every requested analysis derivative are available
     uniformly across the included tumor entities; FPKM is retained only as
@@ -3209,12 +3153,12 @@ def pan_cancer_expression(
         For example, ``normalize=["tpm_clean", "hk", "percentile"]``
         adds clean, housekeeping, and percentile columns in one call.
     include_computed_rollups
-        Include the four TPM-only aggregate tumor references. Defaults to
+        Include the five TPM-only aggregate tumor references. Defaults to
         ``False`` so code that enumerates every ``*_TPM`` column receives only
         independent source cohorts. Use ``True`` when an aggregate itself is
-        the intended target. ``BTC`` is intentionally absent: its required GBC
-        member has no backed expression reference, so CHOL must not masquerade
-        as a complete pan-biliary aggregate.
+        the intended target. Each rollup is emitted only after oncoref backs
+        every required member; for example, BTC combines CHOL and GBC rather
+        than allowing CHOL to masquerade as pan-biliary expression.
     log_transform
         Apply ``log2(x + 1)`` to value columns after any normalization.
     drop_technical_rna
@@ -3328,7 +3272,7 @@ def pan_cancer_expression(
     out.attrs["computed_rollups_included"] = bool(include_computed_rollups)
     out.attrs["computed_rollup_members"] = {
         code: tuple(members)
-        for code, members in _PAN_COMPUTED_ROLLUP_MEMBERS.items()
+        for code, members in PAN_CANCER_ROLLUP_MEMBERS.items()
     }
     return out
 
@@ -3462,7 +3406,7 @@ def cancer_enriched_genes(
         if col.endswith("_TPM_clean")
         and f"{col[:-len('_TPM_clean')]}_FPKM" in df.columns
     ]
-    excluded_codes = {code, *_PAN_COMPUTED_ROLLUP_MEMBERS.get(code, ())}
+    excluded_codes = {code, *PAN_CANCER_ROLLUP_MEMBERS.get(code, ())}
     other_cols = [
         col
         for col in source_cols
@@ -3507,12 +3451,22 @@ def estimate_signatures() -> pd.DataFrame:
 
 
 __all__ = [
+    # artifact contracts/builders
+    "PAN_CANCER_ROLLUP_MEMBERS",
+    "canonicalize_expression_gene_rows",
+    "build_canonical_cohort_expression_views",
     # accessors
     "pan_cancer_expression",
     "cancer_reference_expression",
     "available_cancer_expression_references",
     "cancer_expression_reference_status",
     "cancer_expression_source_candidates",
+    "representative_cohort_samples",
+    "available_representative_cohorts",
+    "cohort_gene_percentiles",
+    "available_percentile_cohorts",
+    "cohort_expression_views",
+    "CohortExpressionViews",
     "tumor_up_vs_matched_normal",
     "heme_tumor_up_vs_matched_normal",
     "cancer_expression",
@@ -3521,6 +3475,7 @@ __all__ = [
     "estimate_signatures",
     # normalization
     "normalize_to_housekeeping",
+    "log1p_transform",
     "log2_transform",
     "filter_technical_rna",
     "filter_to_genes",

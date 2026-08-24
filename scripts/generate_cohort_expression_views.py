@@ -23,7 +23,9 @@ from pathlib import Path
 import oncoref
 from oncoref import data_bundle as oncoref_data_bundle
 
-from pirlygenes.expression import accessors
+from pirlygenes.expression import (
+    build_canonical_cohort_expression_views,
+)
 from pirlygenes.version import DATA_VERSION
 
 
@@ -39,13 +41,11 @@ def build() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     # The artifact is, by construction, the serialized output of the same
     # function the read path falls back to when the artifact is absent
-    # (accessors._rebuild_full_canonical_views). Generating it any other way
+    # (build_canonical_cohort_expression_views). Generating it any other way
     # would let the cache drift from the fallback, so call that function
     # directly — tpm/clean_tpm/provenance here are exactly what a cache miss
     # would recompute.
-    tpm, clean_tpm, provenance = (
-        accessors._rebuild_full_canonical_views()  # noqa: SLF001
-    )
+    tpm, clean_tpm, provenance = build_canonical_cohort_expression_views()
     tpm.to_parquet(OUT_DIR / "tpm.parquet", index=False, compression="zstd")
     clean_tpm.to_parquet(
         OUT_DIR / "clean_tpm.parquet",
@@ -78,7 +78,7 @@ def build() -> None:
     total_mb = sum(f.stat().st_size for f in OUT_DIR.glob("*")) / 1e6
     print(
         f"done: {len(tpm)} genes, "
-        f"{len(accessors._cohort_value_cols(tpm))} cohorts, "  # noqa: SLF001
+        f"{provenance['cancer_code'].astype(str).nunique()} cohorts, "
         f"{total_mb:.1f} MB -> {OUT_DIR}",
         flush=True,
     )

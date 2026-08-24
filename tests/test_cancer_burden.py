@@ -1,4 +1,9 @@
-"""Tests for the curated cancer-burden reference (incidence + mortality)."""
+"""Compatibility tests for oncoref-owned cancer-burden references."""
+
+import oncoref
+import pandas as pd
+
+from pirlygenes.load_dataset import get_data
 
 from pirlygenes.gene_sets_cancer import (
     burden_category,
@@ -16,6 +21,27 @@ def test_schema():
     for col in ["burden_category", *_METRICS, "source", "notes"]:
         assert col in df.columns
     assert df["burden_category"].is_unique
+
+
+def test_owner_frame_and_richer_provenance_flow_through_unchanged():
+    actual = cancer_burden_df()
+    expected = oncoref.cancer_burden_df()
+
+    pd.testing.assert_frame_equal(actual, expected)
+    pd.testing.assert_frame_equal(
+        get_data("Cancer-Incidence-Mortality"),
+        expected,
+    )
+    assert {
+        "aggregation",
+        "source_anchor",
+        "us_incidence_count",
+        "us_incidence_total",
+        "us_source_locator",
+        "derivation_basis",
+    } <= set(actual.columns)
+    assert actual["aggregation"].astype(str).str.strip().ne("").all()
+    assert actual["source_anchor"].astype(str).str.strip().ne("").all()
 
 
 def test_values_are_percent_shares():
@@ -52,6 +78,8 @@ def test_code_map_is_overrides_only():
     cats = set(cancer_burden_df()["burden_category"])
     assert set(m.values()) <= cats
 
+    assert m == oncoref.cancer_code_burden_map()
+
 
 def test_burden_category_registry_driven():
     cats = set(cancer_burden_df()["burden_category"])
@@ -79,3 +107,10 @@ def test_burden_category_registry_driven():
     assert set(resolved.values()) <= cats
     # unresolvable input returns None (no crash)
     assert burden_category("not-a-cancer-xyz") is None
+
+
+def test_public_burden_helpers_are_owner_compatible():
+    for metric in _METRICS:
+        assert cancer_burden(metric=metric) == oncoref.cancer_burden(metric=metric)
+    for query in ("SARC_OS", "HCL", "GCT_OV_YST", "not-a-cancer-xyz"):
+        assert burden_category(query) == oncoref.burden_category(query)
