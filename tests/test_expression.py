@@ -127,10 +127,10 @@ def test_released_nci_gap_references_and_remaining_gap_contract():
     """Use backed references without pretending unresolved gaps are solved."""
     import oncoref
 
-    released = {"BCC": 25, "cSCC": 10, "GBC": 10}
+    released = {"BCC": 25, "cSCC": 10, "GBC": 10, "EPN": 11, "CRANIO": 29}
     remaining = {
         "VSCC", "VAGC", "FTC", "PPC", "PENSCC", "URETH", "ANSC",
-        "EPN", "PITNET", "CRANIO", "DIPG",
+        "PITNET", "DIPG",
     }
     codes = [*released, *sorted(remaining)]
     owner = oncoref.cancer_reference_expression_availability(
@@ -152,6 +152,12 @@ def test_released_nci_gap_references_and_remaining_gap_contract():
     assert bool(available.loc["BCC", "linear_tpm_comparable"]) is False
     assert available.loc["GBC", "source_scale_class"] == "linear_rnaseq_tpm"
     assert bool(available.loc["GBC", "linear_tpm_comparable"]) is True
+    assert available.loc["EPN", "source_scale_class"] == (
+        "scrna_malignant_cell_mean_tpm_pseudobulk"
+    )
+    assert bool(available.loc["EPN", "linear_tpm_comparable"]) is False
+    assert available.loc["CRANIO", "source_scale_class"] == "linear_rnaseq_tpm"
+    assert bool(available.loc["CRANIO", "linear_tpm_comparable"]) is True
 
     refs = available_cancer_expression_references()
     ref_codes = set(refs["cancer_code"].astype(str))

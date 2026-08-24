@@ -716,10 +716,14 @@ def test_expanded_sarcomas_present():
     assert not missing, f"expanded-sarcoma codes missing: {missing}"
 
 
-def test_subtype_key_maps_sarc_subtypes_to_key_genes_entries():
-    """The subtype_key column must match the actual subtype values
-    used in cancer-key-genes.csv, otherwise the cancers CLI
-    subcommand will report bm=0 / tg=0 for curated subtypes."""
+def test_subtype_key_or_exact_leaf_maps_to_key_genes_entries():
+    """Every keyed subtype must expose its curation through a public route.
+
+    Exact leaf panels take precedence over the historical parent/subtype tile;
+    this prevents a caller-supplied subtype from routing a curated leaf into a
+    sibling therapy panel. Leaves without exact rows must still resolve through
+    their registry-owned ``parent_code`` and ``subtype_key``.
+    """
     from pirlygenes.gene_sets_cancer import (
         cancer_biomarker_genes,
         cancer_therapy_targets,
@@ -729,14 +733,17 @@ def test_subtype_key_maps_sarc_subtypes_to_key_genes_entries():
     mapped = df[df["subtype_key"].fillna("").astype(str).ne("")]
     assert len(mapped) >= 7, "expected at least 7 rows with subtype_key populated"
     for _, row in mapped.iterrows():
+        code = row["code"]
+        bm = cancer_biomarker_genes(code)
+        tg = cancer_therapy_targets(code)
         parent = row["parent_code"]
         subtype = row["subtype_key"]
-        bm = cancer_biomarker_genes(parent, subtype=subtype)
-        tg = cancer_therapy_targets(parent, subtype=subtype)
+        if not bm and len(tg) == 0:
+            bm = cancer_biomarker_genes(parent, subtype=subtype)
+            tg = cancer_therapy_targets(parent, subtype=subtype)
         assert len(bm) > 0 or len(tg) > 0, (
-            f"subtype_key {parent}/{subtype} (code {row['code']}) has "
-            f"no key-genes rows — either the subtype_key is wrong or "
-            f"cancer-key-genes.csv is missing the tile"
+            f"subtype_key {parent}/{subtype} (code {code}) has no direct leaf "
+            "or parent/subtype key-genes rows"
         )
 
 
