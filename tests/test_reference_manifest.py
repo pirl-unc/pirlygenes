@@ -52,7 +52,7 @@ def test_availability_never_loads_full_expression_frame(monkeypatch):
 
     result = available_cancer_expression_references()
 
-    assert result.shape == (150, 8)
+    assert result.shape == (151, 8)
     assert result.columns.tolist() == _PUBLIC_COLUMNS
     assert delegated_calls[:2] == [
         {
@@ -146,7 +146,7 @@ def test_availability_preserves_the_complete_public_manifest():
     # This pins every public value and row order, while the readable cohort-label
     # test below makes the most drift-prone compatibility cases explicit.
     assert hashlib.sha256(payload).hexdigest() == (
-        "c12f1182511d4d82475ab5a29d5e289b59dad3d0aad65646be9b948935d976fc"
+        "8190a1cfc0b848c3bbe38e814381af7a0ca08b80200fbf2b5b241ed96ca7e0fd"
     )
 
 
@@ -179,6 +179,7 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         ("GBC", "GSE139682_GBC"),
         ("EPN", "GSE141460_GOJO_2020_EPN"),
         ("CRANIO", "OPENPBTA_V23_CBTN_CRANIO"),
+        ("DIPG", "OPENPBTA_V23_DIPG_H3K27"),
     })
     assert expected <= keys
 
@@ -254,7 +255,7 @@ from pirlygenes.expression import available_cancer_expression_references
 
 assert sys.gettrace() is None, 'memory probe inherited coverage/debug tracing'
 result = available_cancer_expression_references()
-assert result.shape == (150, 8)
+assert result.shape == (151, 8)
 if sys.platform.startswith('linux'):
     # getrusage().ru_maxrss retains the forked pytest parent's historical
     # high-water mark across exec on Linux. VmHWM belongs to this executable's

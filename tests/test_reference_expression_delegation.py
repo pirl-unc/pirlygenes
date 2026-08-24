@@ -16,6 +16,8 @@ def test_delegated_parity_across_reference_classes():
         ("CLL", ["MS4A1"]),         # non-TCGA heme reference
         ("MTC", ["CALCA"]),         # microarray TPM proxy
         ("BRCA_Basal", ["KRT5"]),   # molecular subtype
+        ("CRANIO", ["TP53"]),       # corrected OpenPBTA PAR aliases
+        ("DIPG", ["TP53"]),         # molecularly constrained OpenPBTA cohort
     ]
     compare_columns = [
         "Ensembl_Gene_ID",

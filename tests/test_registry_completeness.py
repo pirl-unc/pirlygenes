@@ -72,7 +72,7 @@ _MISSING_THERAPY_AXIS = frozenset(
         # with no therapy-response panel of its own yet.
         "NEC_LUNG",
         # #294/#295 NCI-gap additions — curated registry entries without a
-        # therapy-axis panel. EPN and CRANIO now have direct expression
+        # therapy-axis panel. EPN, CRANIO, and DIPG now have direct expression
         # references, but reference availability is independent of this gate.
         "BCC", "cSCC", "VSCC", "PENSCC", "VAGC", "URETH", "ANSC",
         "EPN", "CRANIO", "DIPG", "PITNET",
@@ -146,7 +146,7 @@ _TOLERATED_GAPS_EXPLICIT = {
     # #294/#295 NCI-gap additions — lineage panels and (where noted)
     # biomarker/therapy curation still pending. BCC/cSCC/CRANIO carry curated
     # biomarker+target; GBC carries a target; DIPG/EPN carry biomarkers only.
-    # EPN and CRANIO expression references are now owner-backed.
+    # EPN, CRANIO, and DIPG expression references are now owner-backed.
     "BCC": {"lineage"},
     "cSCC": {"lineage"},
     "VSCC": {"lineage", "biomarker", "therapy"},
