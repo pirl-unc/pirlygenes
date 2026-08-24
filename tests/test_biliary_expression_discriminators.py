@@ -12,9 +12,11 @@ def test_biliary_expression_candidates_are_explicit():
     assert "selected Treehouse physical source" in chol["notes"]
 
     gbc = candidates.loc["GBC"]
-    assert gbc["source_status"] == "bulk_candidate_ready"
+    assert gbc["source_status"] == "direct_reference_available"
     assert gbc["accession"] == "GSE139682"
-    assert "small-n discriminator evidence" in gbc["processing_plan"]
+    assert gbc["source_cohort"] == "GSE139682_GBC"
+    assert "route all tumor rows" in gbc["processing_plan"]
+    assert "Direct small-n GBC reference" in gbc["notes"]
 
 
 def test_gbc_discriminators_are_pairwise_multi_marker_fallbacks():

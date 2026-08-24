@@ -4,10 +4,10 @@ Compares pirlygenes' delegated source-union compatibility rows against oncoref's
 
 This intentionally compares two different oncoref products: the all-sample source-union compatibility rows and the default pass-QC selected artifact. Large outliers therefore identify QC/source-product differences, not adapter distortion; exact adapter-to-source parity for TCGA, heme, microarray, subtype, and computed-union cases is gated in `tests/test_reference_expression_delegation.py`.
 
-- cancer_codes compared: **133**
-- served by both sides: **133**
-- n_samples agreement: **118/133** codes match exactly
-- median relative delta (across codes): **0.0462%**
+- cancer_codes compared: **137**
+- served by both sides: **137**
+- n_samples agreement: **122/137** codes match exactly
+- median relative delta (across codes): **0.0463%**
 - worst-code p95 relative delta: **237.9842%**
 
 ## Per-code detail
@@ -36,10 +36,12 @@ This intentionally compares two different oncoref products: the all-sample sourc
 | SCLC_NEUROD1 | artifact | 8/8 | 16810 (79/0) | 0.1791% | 5.1834% | 3 |
 | MDS | artifact | 82/81 warn | 52687 (7777/0) | 0.4813% | 2.6351% | 0 |
 | FL | artifact | 6/6 | 44399 (6983/0) | 0.1122% | 2.4759% | 9 |
+| GBC | artifact | 10/10 | 28043 (2665/0) | 0.1133% | 2.4029% | 0 |
 | B_ALL | artifact | 154/153 warn | 52545 (7734/0) | 0.4446% | 2.3678% | 0 |
 | BL | artifact | 184/182 warn | 52545 (7734/0) | 0.3527% | 2.1968% | 0 |
 | SARC_KS | artifact | 10/10 | 50643 (7732/0) | 0.1431% | 2.1892% | 3 |
 | SCLC_POU2F3 | artifact | 10/10 | 16810 (79/0) | 0.1271% | 2.1309% | 0 |
+| cSCC | artifact | 10/10 | 15107 (156/0) | 0.1041% | 1.5116% | 0 |
 | PAAD | artifact | 179/178 warn | 29636 (4935/0) | 0.2255% | 1.2063% | 0 |
 | UCEC_POLE | artifact | 16/16 | 29636 (4935/0) | 0.0872% | 1.1596% | 0 |
 | HEPB | artifact | 20/20 | 29636 (4935/0) | 0.0750% | 0.8706% | 0 |
@@ -62,6 +64,8 @@ This intentionally compares two different oncoref products: the all-sample sourc
 | SARC_MYXLPS | artifact | 28/28 | 13471 (182/0) | 0.0534% | 0.1634% | 0 |
 | KICH | artifact | 66/66 | 29636 (4935/0) | 0.0483% | 0.1584% | 0 |
 | SCLC_ASCL1 | artifact | 61/61 | 16810 (79/0) | 0.0476% | 0.1562% | 0 |
+| HCL | artifact | 5/5 | 14704 (94/0) | 0.0508% | 0.1558% | 0 |
+| BCC | artifact | 25/25 | 15107 (156/0) | 0.0483% | 0.1552% | 0 |
 | HNSC_HPVpos | artifact | 72/72 | 29636 (4935/0) | 0.0480% | 0.1535% | 0 |
 | CTCL | artifact | 7/7 | 16905 (99/0) | 0.0494% | 0.1528% | 0 |
 | LAML | artifact | 173/173 | 29636 (4935/0) | 0.0475% | 0.1523% | 0 |

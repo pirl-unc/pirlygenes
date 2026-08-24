@@ -38,9 +38,10 @@ def test_grouping_excludes_source_scope_subtype_and_primary_types():
 
 def test_grouping_distinguishes_source_unions_from_ontology_only_groups():
     # mixture_cohort identifies source-pooling nodes, while ontology_level also
-    # permits non-selectable taxonomy-only groups (for example the WHO round-
-    # cell sarcoma family added in oncoref 1.8.131). Computed-union groupings
-    # must remain poolable; ontology-only groups deliberately need not be.
+    # permits non-selectable taxonomy-only groups. Those include both named
+    # ontology families (for example WHO round-cell sarcoma) and anatomic
+    # groupings (for example CNS/ovarian germ-cell tumors). Computed-union
+    # groupings must remain poolable; taxonomy-only groups need not be.
     groupings = set(grouping_codes())
     mixture = set(mixture_cohort_codes())
     reg = cancer_type_registry().set_index("code")
@@ -49,12 +50,13 @@ def test_grouping_distinguishes_source_unions_from_ontology_only_groups():
         for code in groupings
         if str(reg.loc[code, "ontology_kind"]) == "computed_union"
     }
-    ontology_only = groupings - mixture
+    taxonomy_only = groupings - mixture
     assert computed_groupings <= mixture
     assert all(
-        str(reg.loc[code, "ontology_kind"]) == "ontology_group"
-        for code in ontology_only
+        str(reg.loc[code, "ontology_kind"]) != "computed_union"
+        for code in taxonomy_only
     )
+    assert {"GCT_CNS", "GCT_OV", "SARC_ROUND_CELL"} <= taxonomy_only
     assert "CRC_MSI" in mixture and "CRC_MSI" not in groupings
 
 
