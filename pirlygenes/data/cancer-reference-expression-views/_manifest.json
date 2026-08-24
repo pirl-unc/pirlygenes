@@ -1,14 +1,14 @@
 {
   "artifact": "cancer-reference-expression-views",
   "canonical_gene_ids": true,
-  "data_version": "5.23.52",
+  "data_version": "5.23.53",
   "format": 1,
   "rows": {
     "clean_tpm": 64983,
-    "provenance": 150,
+    "provenance": 151,
     "tpm": 64983
   },
-  "source_data_version": "5.23.21",
+  "source_data_version": "5.23.22",
   "source_package": "oncoref",
-  "source_package_version": "1.8.181"
+  "source_package_version": "1.8.182"
 }

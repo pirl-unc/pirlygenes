@@ -234,7 +234,8 @@ through a pirlygenes-compatible raw TPM / clean TPM contract; current sources in
 CLL-map (`CLL`), MMRF CoMMpass (`MM`), TARGET ALL (`B_ALL`, `T_ALL`),
 CGCI/GDC Burkitt lymphoma (`BL`), GEO heme cohorts (`CML`, `MCL`, `MDS`,
 `MPN`), scRNA pseudobulk references for `CTCL`, `HCL`, and diagnosis-stage
-`EPN`, direct BCC/cSCC/GBC references, an OpenPBTA primary `CRANIO` reference,
+`EPN`, direct BCC/cSCC/GBC references, and molecularly constrained OpenPBTA
+primary `CRANIO` and H3 K27-altered `DIPG` references,
 BeatAML/TARGET subtype summaries, and selected Treehouse/GEO
 cancer-specific cohorts such as `OS`, `PANNET`, `CHON`, `SCLC`, `RB`, and
 sarcoma subtypes.

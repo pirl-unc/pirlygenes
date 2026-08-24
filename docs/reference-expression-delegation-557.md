@@ -4,9 +4,9 @@ Compares pirlygenes' delegated source-union compatibility rows against oncoref's
 
 This intentionally compares two different oncoref products: the all-sample source-union compatibility rows and the default pass-QC selected artifact. Large outliers therefore identify QC/source-product differences, not adapter distortion; exact adapter-to-source parity for TCGA, heme, microarray, subtype, and computed-union cases is gated in `tests/test_reference_expression_delegation.py`.
 
-- cancer_codes compared: **139**
-- served by both sides: **139**
-- n_samples agreement: **124/139** codes match exactly
+- cancer_codes compared: **140**
+- served by both sides: **140**
+- n_samples agreement: **125/140** codes match exactly
 - median relative delta (across codes): **0.0463%**
 - worst-code p95 relative delta: **237.9842%**
 
@@ -55,6 +55,7 @@ This intentionally compares two different oncoref products: the all-sample sourc
 | BRCA | artifact | 1099/1098 warn | 29636 (4935/0) | 0.0726% | 0.2616% | 0 |
 | CHOL | artifact | 36/36 | 29636 (4935/0) | 0.0554% | 0.2380% | 0 |
 | MBL_G3 | artifact | 44/44 | 29636 (4935/0) | 0.0564% | 0.2334% | 0 |
+| DIPG | artifact | 32/32 | 48965 (7732/0) | 0.0517% | 0.1959% | 1 |
 | SARC_DDLPS | artifact | 48/48 | 29636 (4935/0) | 0.0504% | 0.1849% | 0 |
 | CMN | artifact | 12/12 | 13214 (179/0) | 0.0631% | 0.1819% | 0 |
 | SARC_SYN | artifact | 50/50 | 29636 (4935/0) | 0.0532% | 0.1816% | 0 |
@@ -147,7 +148,7 @@ This intentionally compares two different oncoref products: the all-sample sourc
 | NBL | artifact | 155/155 | 52545 (7734/0) | 0.0422% | 0.1258% | 0 |
 | MTC | artifact | 52/52 | 18862 (105/0) | 0.0536% | 0.1257% | 0 |
 | RT | artifact | 63/63 | 52545 (7734/0) | 0.0402% | 0.1251% | 0 |
-| CRANIO | artifact | 29/29 | 48965 (7732/0) | 0.0425% | 0.1231% | 0 |
+| CRANIO | artifact | 29/29 | 48965 (7732/0) | 0.0439% | 0.1232% | 0 |
 | NET_LUNG | artifact | 118/118 | 51445 (7733/0) | 0.0400% | 0.1213% | 0 |
 | LIHC | artifact | 368/368 | 29636 (4935/0) | 0.0410% | 0.1178% | 0 |
 | T_ALL | artifact | 264/264 | 52545 (7734/0) | 0.0401% | 0.1129% | 0 |
