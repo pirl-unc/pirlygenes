@@ -3,16 +3,18 @@
 The oncoref dependency cannot safely float at install time: pirlygenes ships a
 wide compatibility cache whose manifest records the exact oncoref package and
 data versions used to build it.  This helper is the deterministic core of the
-scheduled upgrade workflow:
+maintainer-run upgrade process:
 
     python scripts/upgrade_oncoref.py check
     python scripts/upgrade_oncoref.py prepare --version 1.8.183
     python scripts/upgrade_oncoref.py regenerate
 
-``check`` writes GitHub-output-compatible key/value lines. ``prepare`` changes
-only version declarations. ``regenerate`` must run after installing the newly
-pinned project; it runs the heavyweight artifact builders in separate
-processes to keep peak memory bounded and refreshes their reviewable snapshots.
+``check`` reports whether PyPI has a newer release. ``prepare`` changes only
+version declarations. After installing the newly pinned project, ``regenerate``
+runs the heavyweight artifact builders in separate processes to keep peak
+memory bounded and refreshes their reviewable snapshots. The resulting diff is
+reviewed and submitted through the normal maintainer PR process; this helper
+does not create branches, PRs, merges, or releases.
 """
 
 from __future__ import annotations
@@ -99,7 +101,7 @@ def next_patch_version(current: str) -> str:
 
 
 def check() -> bool:
-    """Print workflow outputs and return whether an upgrade is available."""
+    """Print version status and return whether an upgrade is available."""
     current = pinned_oncoref_version()
     latest = latest_oncoref_version()
     upgrade_required = _release_tuple(latest) > _release_tuple(current)

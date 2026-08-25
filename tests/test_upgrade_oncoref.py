@@ -1,14 +1,8 @@
-"""Tests for the complete owner-upgrade automation."""
-
-from pathlib import Path
+"""Tests for the maintainer-run oncoref upgrade helper."""
 
 import pytest
-import yaml
 
 from scripts import upgrade_oncoref
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_next_patch_version_is_strict_and_deterministic():
@@ -54,29 +48,17 @@ def test_prepare_rejects_equal_or_older_owner_release(
         upgrade_oncoref.prepare("1.8.181")
 
 
-def test_upgrade_workflow_is_scheduled_and_dispatches_full_ci():
-    path = ROOT / ".github" / "workflows" / "upgrade-oncoref.yml"
-    text = path.read_text()
-    workflow = yaml.safe_load(text)
+def test_check_reports_available_owner_release(monkeypatch, capsys):
+    monkeypatch.setattr(
+        upgrade_oncoref, "pinned_oncoref_version", lambda: "1.8.182"
+    )
+    monkeypatch.setattr(
+        upgrade_oncoref, "latest_oncoref_version", lambda: "1.8.183"
+    )
 
-    # PyYAML 1.1 parses the unquoted GitHub key ``on`` as True.
-    triggers = workflow.get("on", workflow.get(True))
-    assert "schedule" in triggers
-    assert "workflow_dispatch" in triggers
-    assert workflow["permissions"] == {
-        "actions": "write",
-        "contents": "write",
-        "pull-requests": "write",
-    }
-    assert "python scripts/upgrade_oncoref.py regenerate" in text
-    assert "gh workflow run tests.yml" in text
-    assert "--set-upstream origin" in text
-
-
-def test_normal_ci_accepts_explicit_dispatch_for_bot_prs():
-    text = (ROOT / ".github" / "workflows" / "tests.yml").read_text()
-    assert "workflow_dispatch:" in text
-
-
-def test_dependabot_no_longer_opens_incomplete_pin_only_prs():
-    assert not (ROOT / ".github" / "dependabot.yml").exists()
+    assert upgrade_oncoref.check() is True
+    assert capsys.readouterr().out.splitlines() == [
+        "current=1.8.182",
+        "latest=1.8.183",
+        "upgrade_required=true",
+    ]

@@ -21,21 +21,29 @@ python scripts/release.py --execute    # run for real (prompts before each publi
 
 The manual steps below are kept as the reference the script automates.
 
-## Automated oncoref upgrade PRs
+## Upgrading oncoref
 
-The daily and manually dispatchable `Upgrade oncoref` workflow checks PyPI for
-a release newer than the exact project pin. When one exists it runs
-`scripts/upgrade_oncoref.py` to allocate a new pirlygenes code/data patch
-version, install the owner release, regenerate the cohort views, pan-cancer
-rollups, parity reports, and public-manifest checksum, and open a reviewable PR.
-It explicitly dispatches the normal Python 3.9–3.12 matrix for the bot-authored
-commit.
+Oncoref upgrades are deliberately maintainer-run because a new owner release
+can change reference availability, sample QC, taxonomy, gene identity, or other
+biological semantics. Pirlygenes also ships compatibility artifacts whose
+manifests record the exact oncoref package and data versions used to build them.
+A dependency-only bot PR would therefore be incomplete.
 
-The workflow intentionally does **not** float oncoref at user install time,
-merge its own PR, or publish pirlygenes. A new owner release can change data and
-taxonomy semantics, and the downloadable compatibility cache records the exact
-package/data versions used to build it. Maintainers therefore retain the final
-review, merge, and release gates while all mechanical update work is automated.
+Use the deterministic helper from a clean, purpose-built branch:
+
+```bash
+python scripts/upgrade_oncoref.py check
+python scripts/upgrade_oncoref.py prepare --version X.Y.Z
+uv pip install -e '.[test]'
+python scripts/upgrade_oncoref.py regenerate
+```
+
+`prepare` updates the exact owner pin and allocates the next pirlygenes
+code/data patch version. After the new pin is installed, `regenerate` rebuilds
+the cohort views, pan-cancer rollups, parity reports, and public-manifest
+checksum. Inspect the complete diff, run the focused upgrade tests and normal
+serial test gate, then open a PR through the usual maintainer workflow. The
+helper never creates branches or PRs and never merges or publishes a release.
 
 Files in the tarball (`pirlygenes.data_bundle.DOWNLOADABLE_PATHS`):
 `cancer-reference-expression-views/`, `pan-cancer-expression.csv`, and
