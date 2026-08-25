@@ -119,7 +119,8 @@ jobs:
             tests/test_pan_cancer_rollup_generator.py \
             tests/test_reference_manifest.py \
             tests/test_oncoref_tumor_references.py \
-            tests/test_reference_expression_delegation.py
+            tests/test_reference_expression_delegation.py \
+            tests/test_expression.py::test_released_nci_gap_references_and_remaining_gap_contract
 
       - name: Commit and open upgrade PR
         if: >-

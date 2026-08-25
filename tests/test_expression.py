@@ -134,10 +134,10 @@ def test_released_nci_gap_references_and_remaining_gap_contract():
         "EPN": 11,
         "CRANIO": 29,
         "DIPG": 32,
+        "VSCC": 9,
     }
     remaining = {
-        "VSCC", "VAGC", "FTC", "PPC", "PENSCC", "URETH", "ANSC",
-        "PITNET",
+        "VAGC", "FTC", "PPC", "PENSCC", "URETH", "ANSC", "PITNET",
     }
     codes = [*released, *sorted(remaining)]
     owner = oncoref.cancer_reference_expression_availability(
