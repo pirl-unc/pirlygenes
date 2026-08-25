@@ -10,9 +10,11 @@ writes the small wheel-shipped compatibility artifact used by the accessor.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import pandas as pd
+from oncoref import cancer_reference_expression_source_metadata
 from oncoref import data_bundle as oncoref_data_bundle
 
 from pirlygenes.expression import (
@@ -56,6 +58,58 @@ _SOURCE_COLUMNS = [
 ]
 
 
+def validate_selected_source_shards(
+    selected_source_shards: Mapping[str, str] | None = None,
+    source_metadata: Callable[[str], Mapping[str, object]] | None = None,
+) -> None:
+    """Fail when configured rollup shards differ from owner selections."""
+    selected_source_shards = (
+        SELECTED_SOURCE_SHARDS
+        if selected_source_shards is None
+        else selected_source_shards
+    )
+    source_metadata = (
+        cancer_reference_expression_source_metadata
+        if source_metadata is None
+        else source_metadata
+    )
+    expected_codes = {
+        code
+        for members in PAN_CANCER_ROLLUP_MEMBERS.values()
+        for code in members
+    }
+    configured_codes = set(selected_source_shards)
+    if configured_codes != expected_codes:
+        raise ValueError(
+            "selected-source table does not match the rollup members: "
+            f"missing={sorted(expected_codes - configured_codes)!r}, "
+            f"extra={sorted(configured_codes - expected_codes)!r}"
+        )
+
+    drift = []
+    suffix = ".csv.gz"
+    for code in sorted(expected_codes):
+        filename = selected_source_shards[code]
+        if not filename.endswith(suffix):
+            raise ValueError(
+                f"selected rollup shard for {code} must end in {suffix!r}: "
+                f"{filename!r}"
+            )
+        configured_cohort = filename[: -len(suffix)]
+        owner_cohort = source_metadata(code).get("source_cohort")
+        if configured_cohort != owner_cohort:
+            drift.append(
+                f"{code}: configured={configured_cohort!r}, "
+                f"owner={owner_cohort!r}"
+            )
+    if drift:
+        raise RuntimeError(
+            "oncoref selected rollup sources changed; update "
+            "SELECTED_SOURCE_SHARDS and review the regenerated artifact: "
+            + "; ".join(drift)
+        )
+
+
 def _read_selected_source_rows(
     path: Path,
     cancer_codes: set[str],
@@ -74,17 +128,7 @@ def _read_selected_source_rows(
 
 
 def build() -> pd.DataFrame:
-    expected_codes = {
-        code
-        for members in PAN_CANCER_ROLLUP_MEMBERS.values()
-        for code in members
-    }
-    if set(SELECTED_SOURCE_SHARDS) != expected_codes:
-        raise ValueError(
-            "selected-source table does not match the rollup members: "
-            f"missing={sorted(expected_codes - set(SELECTED_SOURCE_SHARDS))!r}, "
-            f"extra={sorted(set(SELECTED_SOURCE_SHARDS) - expected_codes)!r}"
-        )
+    validate_selected_source_shards()
     root = oncoref_data_bundle.find("cancer-reference-expression")
     if root is None:
         oncoref_data_bundle.ensure_local()
