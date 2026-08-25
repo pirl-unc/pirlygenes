@@ -183,6 +183,9 @@ def _write_manifest_snapshot() -> None:
 def regenerate() -> None:
     """Rebuild all artifacts coupled to the exact oncoref pin."""
     import oncoref
+    from scripts.generate_pan_cancer_expression_rollups import (
+        validate_selected_source_shards,
+    )
 
     expected = pinned_oncoref_version()
     if oncoref.__version__ != expected:
@@ -190,6 +193,7 @@ def regenerate() -> None:
             f"installed oncoref is {oncoref.__version__}; expected {expected}"
         )
 
+    validate_selected_source_shards()
     _run(sys.executable, "scripts/generate_cohort_expression_views.py")
     _run(sys.executable, "scripts/generate_pan_cancer_expression_rollups.py")
     _run(sys.executable, "scripts/parity_reference_expression.py")

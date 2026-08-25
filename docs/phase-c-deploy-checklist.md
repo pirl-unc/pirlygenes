@@ -41,9 +41,12 @@ python scripts/upgrade_oncoref.py regenerate
 `prepare` updates the exact owner pin and allocates the next pirlygenes
 code/data patch version. After the new pin is installed, `regenerate` rebuilds
 the cohort views, pan-cancer rollups, parity reports, and public-manifest
-checksum. Inspect the complete diff, run the focused upgrade tests and normal
-serial test gate, then open a PR through the usual maintainer workflow. The
-helper never creates branches or PRs and never merges or publishes a release.
+checksum. Before writing any artifact it verifies that every explicit rollup
+shard still matches oncoref's selected summary cohort and fails closed on
+source drift. Inspect the complete diff, run the focused upgrade tests and
+normal serial test gate, then open a PR through the usual maintainer workflow.
+The helper never creates branches or PRs and never merges or publishes a
+release.
 
 Files in the tarball (`pirlygenes.data_bundle.DOWNLOADABLE_PATHS`):
 `cancer-reference-expression-views/`, `pan-cancer-expression.csv`, and

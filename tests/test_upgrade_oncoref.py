@@ -62,3 +62,30 @@ def test_check_reports_available_owner_release(monkeypatch, capsys):
         "latest=1.8.183",
         "upgrade_required=true",
     ]
+
+
+def test_regenerate_fails_before_writes_when_rollup_sources_drift(monkeypatch):
+    import oncoref
+    from scripts import generate_pan_cancer_expression_rollups
+
+    def fail_source_validation():
+        raise RuntimeError("source drift")
+
+    monkeypatch.setattr(
+        upgrade_oncoref,
+        "pinned_oncoref_version",
+        lambda: oncoref.__version__,
+    )
+    monkeypatch.setattr(
+        generate_pan_cancer_expression_rollups,
+        "validate_selected_source_shards",
+        fail_source_validation,
+    )
+    monkeypatch.setattr(
+        upgrade_oncoref,
+        "_run",
+        lambda *_: pytest.fail("artifact builder ran before source validation"),
+    )
+
+    with pytest.raises(RuntimeError, match="source drift"):
+        upgrade_oncoref.regenerate()
