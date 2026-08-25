@@ -21,6 +21,22 @@ python scripts/release.py --execute    # run for real (prompts before each publi
 
 The manual steps below are kept as the reference the script automates.
 
+## Automated oncoref upgrade PRs
+
+The daily and manually dispatchable `Upgrade oncoref` workflow checks PyPI for
+a release newer than the exact project pin. When one exists it runs
+`scripts/upgrade_oncoref.py` to allocate a new pirlygenes code/data patch
+version, install the owner release, regenerate the cohort views, pan-cancer
+rollups, parity reports, and public-manifest checksum, and open a reviewable PR.
+It explicitly dispatches the normal Python 3.9–3.12 matrix for the bot-authored
+commit.
+
+The workflow intentionally does **not** float oncoref at user install time,
+merge its own PR, or publish pirlygenes. A new owner release can change data and
+taxonomy semantics, and the downloadable compatibility cache records the exact
+package/data versions used to build it. Maintainers therefore retain the final
+review, merge, and release gates while all mechanical update work is automated.
+
 Files in the tarball (`pirlygenes.data_bundle.DOWNLOADABLE_PATHS`):
 `cancer-reference-expression-views/`, `pan-cancer-expression.csv`, and
 `hpa-cell-type-expression.csv`. The source summary rows are served by oncoref;

@@ -79,7 +79,8 @@ dependencies = [
     # structured source/PMID metadata (oncoref #482/#483/#485/#498) without a
     # data-bundle change. 1.8.182/data 5.23.22 adds a molecularly constrained
     # 32-donor DIPG reference and removes duplicated pseudoautosomal aliases
-    # from the CRANIO reference.
+    # from the CRANIO reference. 1.8.183/data 5.23.23 adds a direct nine-tumor
+    # VSCC reference while retaining its reference-only classification policy.
     # >=1.8.75
     # also gives the
     # builders the cleaned-up source-matrix QC /
@@ -92,7 +93,7 @@ dependencies = [
     # cohorts, available_percentile_cohorts, cohort_gene_percentiles). Pin the
     # exact owner release because the downloadable cohort-view snapshot records
     # and validates the oncoref package/data versions used to build it.
-    "oncoref==1.8.182",
+    "oncoref==1.8.183",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-view / representative / percentile

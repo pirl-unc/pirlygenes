@@ -1,0 +1,151 @@
+name: Upgrade oncoref
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upgrade-oncoref
+  cancel-in-progress: false
+
+jobs:
+  prepare-upgrade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check PyPI
+        id: versions
+        run: python scripts/upgrade_oncoref.py check >> "$GITHUB_OUTPUT"
+
+      - name: Check for an existing upgrade PR
+        if: steps.versions.outputs.upgrade_required == 'true'
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: automation/oncoref-${{ steps.versions.outputs.latest }}
+        run: |
+          if gh pr list --state open --head "$BRANCH" --json number --jq 'length' | grep -qx 1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare version changes
+        if: >-
+          steps.versions.outputs.upgrade_required == 'true' &&
+          steps.existing.outputs.exists != 'true'
+        env:
+          LATEST: ${{ steps.versions.outputs.latest }}
+        run: |
+          git switch -c "automation/oncoref-${LATEST}"
+          python scripts/upgrade_oncoref.py prepare --version "$LATEST"
+
+      - name: Install upgraded project
+        if: >-
+          steps.versions.outputs.upgrade_required == 'true' &&
+          steps.existing.outputs.exists != 'true'
+        run: |
+          python -m pip install --upgrade pip uv
+          uv venv
+          source .venv/bin/activate
+          uv pip install '.[test]' 'ruff==0.15.9'
+
+      - name: Cache oncoref data
+        if: >-
+          steps.versions.outputs.upgrade_required == 'true' &&
+          steps.existing.outputs.exists != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/oncoref/bundled_data/
+            ~/.cache/oncoref/shard_cache/
+          key: oncoref-upgrade-${{ runner.os }}-${{ steps.versions.outputs.latest }}
+
+      - name: Cache Ensembl data
+        if: >-
+          steps.versions.outputs.upgrade_required == 'true' &&
+          steps.existing.outputs.exists != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pyensembl/
+          key: pyensembl-81-111-112-${{ runner.os }}
+
+      - name: Install Ensembl genome data
+        if: >-
+          steps.versions.outputs.upgrade_required == 'true' &&
+          steps.existing.outputs.exists != 'true'
+        run: |
+          source .venv/bin/activate
+          pyensembl install --release 112 --species homo_sapiens
+          pyensembl install --release 111 --species homo_sapiens
+          pyensembl install --release 81 --species homo_sapiens
+
+      - name: Regenerate owner-derived artifacts
+        if: >-
+          steps.versions.outputs.upgrade_required == 'true' &&
+          steps.existing.outputs.exists != 'true'
+        run: |
+          source .venv/bin/activate
+          python scripts/upgrade_oncoref.py regenerate
+
+      - name: Run upgrade preflight
+        if: >-
+          steps.versions.outputs.upgrade_required == 'true' &&
+          steps.existing.outputs.exists != 'true'
+        run: |
+          source .venv/bin/activate
+          ruff check scripts/upgrade_oncoref.py tests/test_upgrade_oncoref.py
+          python -m pytest -q \
+            tests/test_upgrade_oncoref.py \
+            tests/test_release.py \
+            tests/test_cohort_expression_views.py \
+            tests/test_pan_cancer_rollup_generator.py \
+            tests/test_reference_manifest.py \
+            tests/test_oncoref_tumor_references.py \
+            tests/test_reference_expression_delegation.py
+
+      - name: Commit and open upgrade PR
+        if: >-
+          steps.versions.outputs.upgrade_required == 'true' &&
+          steps.existing.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT: ${{ steps.versions.outputs.current }}
+          LATEST: ${{ steps.versions.outputs.latest }}
+          BRANCH: automation/oncoref-${{ steps.versions.outputs.latest }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Adopt oncoref ${LATEST}"
+          git push --set-upstream origin "$BRANCH"
+          BODY="$(printf '%s\n' \
+            "Automated owner upgrade from \`oncoref==${CURRENT}\` to \`oncoref==${LATEST}\`." \
+            "" \
+            "This PR bumps the pirlygenes code/data version, regenerates the cohort-view and pan-rollup artifacts, refreshes parity reports and the public-manifest snapshot, and runs the focused upgrade preflight." \
+            "" \
+            "The full Python 3.9–3.12 matrix is dispatched explicitly after PR creation. Merge and release remain maintainer-gated.")"
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "deps: adopt oncoref ${LATEST}" \
+            --body "$BODY"
+          gh workflow run tests.yml --ref "$BRANCH"

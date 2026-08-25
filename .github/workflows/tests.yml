@@ -6,6 +6,10 @@ on:
   # Retain a post-merge gate for the deployed branch.
   push:
     branches: [main]
+  # Upgrade PRs are created with GITHUB_TOKEN, whose emitted pull_request event
+  # is intentionally not recursive. The upgrader explicitly dispatches this
+  # workflow against the bot branch so the same four-version gate still runs.
+  workflow_dispatch:
 
 jobs:
   build:

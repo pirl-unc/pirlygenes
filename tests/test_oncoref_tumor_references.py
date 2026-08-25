@@ -9,16 +9,13 @@ from pirlygenes.expression import available_cancer_expression_references
 
 
 def test_pinned_oncoref_exposes_canonical_tumor_reference_apis():
-    assert oncoref.__version__ == "1.8.182"
-    assert ONCOREF_DATA_VERSION == "5.23.22"
-
     tcga = oncoref.tcga_deconvolved_expression("ACC")
     assert not tcga.empty
     assert set(tcga["cancer_code"]) == {"ACC"}
     assert np.isclose(tcga["tumor_tpm_median"].sum(), 1_000_000.0)
     assert tcga.attrs["oncoref"] == {
         "dataset": "tcga-deconvolved-expression",
-        "data_version": "5.23.22",
+        "data_version": ONCOREF_DATA_VERSION,
         "scale": "classifier_tpm",
         "derivation_method": "tme_deconvolution",
         "derivation_scope": "dataset",
@@ -51,7 +48,9 @@ def test_pinned_oncoref_exposes_canonical_tumor_reference_apis():
 def test_latest_owner_references_are_exposed_through_pirlygenes():
     available = available_cancer_expression_references()
     latest = available.loc[
-        available["cancer_code"].astype(str).isin({"CRANIO", "DIPG", "EPN"})
+        available["cancer_code"].astype(str).isin(
+            {"CRANIO", "DIPG", "EPN", "VSCC"}
+        )
     ]
 
     observed = {
@@ -62,7 +61,14 @@ def test_latest_owner_references_are_exposed_through_pirlygenes():
         ("CRANIO", "OPENPBTA_V23_CBTN_CRANIO", 29),
         ("DIPG", "OPENPBTA_V23_DIPG_H3K27", 32),
         ("EPN", "GSE141460_GOJO_2020_EPN", 11),
+        ("VSCC", "SRP449588_VSCC_2024", 9),
     } <= observed
+
+    # The new cohort is useful as a direct comparison reference, but its small,
+    # mixed-origin design must not silently turn VSCC into a classification
+    # target in pirlygenes completeness gates.
+    registry = oncoref.cancer_type_registry().set_index("code")
+    assert not bool(registry.loc["VSCC", "is_classification_target"])
 
 
 def test_mmnst_directional_panel_survives_owner_upgrade():

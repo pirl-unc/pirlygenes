@@ -1,19 +1,14 @@
 """Release preflight guards for versioned downloadable artifacts."""
 
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import oncoref
 import pytest
-import yaml
 from oncoref import data_bundle as oncoref_data_bundle
 
 from pirlygenes.version import DATA_VERSION
 from scripts import release
-
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _current_manifest_payload():
@@ -119,17 +114,3 @@ def test_build_bootstraps_pip_when_uv_venv_omits_it(monkeypatch):
         "-m", "pip", "install", "--upgrade", "build", "twine",
     ]
     assert calls[2][1:] == ["-m", "build"]
-
-
-def test_dependabot_tracks_the_exact_oncoref_pin_daily():
-    config = yaml.safe_load((REPO_ROOT / ".github/dependabot.yml").read_text())
-    pip_updates = [
-        update
-        for update in config["updates"]
-        if update["package-ecosystem"] == "pip" and update["directory"] == "/"
-    ]
-
-    assert len(pip_updates) == 1
-    update = pip_updates[0]
-    assert update["schedule"]["interval"] == "daily"
-    assert update["allow"] == [{"dependency-name": "oncoref"}]
