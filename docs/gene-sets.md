@@ -32,7 +32,10 @@ Each therapy type has trial and approved variants. Access via
 Use `therapy_benefit_toxicity_evidence()` for curated clinical
 benefit/toxicity rows keyed by agent, cancer code, subtype, and line of
 therapy. These rows are separate from expression data; target expression is
-not evidence of survival benefit or toxicity by itself.
+not evidence of survival benefit or toxicity by itself. Oncoref owns the
+source-anchored facts and validation; pirlygenes preserves this accessor as a
+consumer-compatible query surface while continuing to own target and therapy
+panels.
 
 ### Disease-matched therapy panels
 

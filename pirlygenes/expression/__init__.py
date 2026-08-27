@@ -32,8 +32,9 @@ imports are flat::
     from pirlygenes.expression import (
         pan_cancer_expression,
         cancer_reference_expression,
-        cohort_expression_views,
-        build_canonical_cohort_expression_views,
+        cohort_expression_matrices,
+        cohort_expression_matrices_metadata,
+        build_canonical_cohort_expression_matrices,
         normalize_expression,
         fpkm_to_tpm,
         tpm_to_housekeeping_normalized,
@@ -41,27 +42,30 @@ imports are flat::
         aggregate_gene_expression,
     )
 
-``cohort_expression_views`` is the normal read API: it selects caller-owned
+``cohort_expression_matrices`` is the normal read API: it selects caller-owned
 cohort/gene slices from a validated artifact or an internal rebuild cache.
-``build_canonical_cohort_expression_views`` is the expensive release-tooling
+``build_canonical_cohort_expression_matrices`` is the expensive release-tooling
 API: it constructs the complete artifact frames and returns defensive copies.
 The process-owned caches behind both functions are deliberately private.
 """
 
 from .accessors import (
-    CohortExpressionViews,
+    COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE,
+    COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION,
+    CohortExpressionMatrices,
     PAN_CANCER_ROLLUP_MEMBERS,
     available_cancer_expression_references,
     available_percentile_cohorts,
     available_representative_cohorts,
-    build_canonical_cohort_expression_views,
+    build_canonical_cohort_expression_matrices,
     canonicalize_expression_gene_rows,
     cancer_enriched_genes,
     cancer_expression,
     cancer_expression_reference_status,
     cancer_expression_source_candidates,
     cancer_reference_expression,
-    cohort_expression_views,
+    cohort_expression_matrices,
+    cohort_expression_matrices_metadata,
     cohort_gene_percentiles,
     estimate_signatures,
     filter_technical_rna,
@@ -114,13 +118,16 @@ __all__ = [
     "cancer_expression_reference_status",
     "cancer_expression_source_candidates",
     "representative_cohort_samples",
-    "cohort_expression_views",
-    "CohortExpressionViews",
+    "cohort_expression_matrices",
+    "cohort_expression_matrices_metadata",
+    "CohortExpressionMatrices",
     "PAN_CANCER_ROLLUP_MEMBERS",
+    "COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE",
+    "COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION",
     "available_representative_cohorts",
     "cohort_gene_percentiles",
     "available_percentile_cohorts",
-    "build_canonical_cohort_expression_views",
+    "build_canonical_cohort_expression_matrices",
     "canonicalize_expression_gene_rows",
     "tumor_up_vs_matched_normal",
     "heme_tumor_up_vs_matched_normal",

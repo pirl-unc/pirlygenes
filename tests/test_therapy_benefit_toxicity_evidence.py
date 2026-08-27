@@ -1,4 +1,6 @@
+import oncoref
 import pandas as pd
+from pandas.testing import assert_frame_equal
 
 from pirlygenes.gene_sets_cancer import (
     THERAPY_BENEFIT_TIERS,
@@ -6,6 +8,41 @@ from pirlygenes.gene_sets_cancer import (
     cancer_therapy_targets,
     therapy_benefit_toxicity_evidence,
 )
+from pirlygenes.load_dataset import get_data
+
+
+def test_all_migrated_rows_match_owner_and_keep_public_schema():
+    owner = oncoref.therapy_benefit_toxicity_evidence()
+    delegated = therapy_benefit_toxicity_evidence()
+    expected = owner.drop(columns="evidence_id")
+
+    assert len(owner) == 7
+    assert owner["evidence_id"].is_unique
+    assert "evidence_id" not in delegated.columns
+    assert delegated.columns.tolist() == expected.columns.tolist()
+    assert_frame_equal(delegated, expected, check_dtype=False)
+    assert_frame_equal(
+        get_data("therapy-benefit-toxicity-evidence"),
+        expected,
+        check_dtype=False,
+    )
+    assert delegated.loc[
+        delegated["agent"].eq("afami-cel (Tecelra)"), "target_symbol"
+    ].tolist() == ["MAGEA4"]
+
+
+def test_delegated_rows_are_defensive_copies():
+    typed = therapy_benefit_toxicity_evidence()
+    generic = get_data("therapy-benefit-toxicity-evidence")
+    typed.loc[0, "agent"] = "mutated typed result"
+    generic.loc[0, "agent"] = "mutated generic result"
+
+    assert therapy_benefit_toxicity_evidence().loc[0, "agent"] != (
+        "mutated typed result"
+    )
+    assert get_data("therapy-benefit-toxicity-evidence").loc[0, "agent"] != (
+        "mutated generic result"
+    )
 
 
 def test_therapy_benefit_toxicity_schema_and_tiers():

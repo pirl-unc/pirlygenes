@@ -17,8 +17,9 @@ import warnings
 from collections.abc import Mapping
 from functools import lru_cache
 
-from .load_dataset import get_data
+from oncoref import therapy_evidence as _owner_therapy_evidence
 
+from .load_dataset import get_data
 
 # Hand-curated common-name aliases. Keyed by lowercase / underscored
 # variant; values are canonical codes from cancer-type-registry.csv.
@@ -2644,97 +2645,13 @@ def cancer_therapy_targets(cancer_code, subtype=None):
     return sub.copy().reset_index(drop=True)
 
 
-THERAPY_BENEFIT_TIERS = (
-    "curative",
-    "durable_rfs",
-    "major_survival",
-    "high_response",
-    "meaningful_pfs",
-    "incremental",
-    "modest",
-    "unclear",
+THERAPY_BENEFIT_TIERS = _owner_therapy_evidence.THERAPY_BENEFIT_TIERS
+THERAPY_TOXICITY_TIERS = _owner_therapy_evidence.THERAPY_TOXICITY_TIERS
+_THERAPY_EVIDENCE_PUBLIC_COLUMNS = tuple(
+    column
+    for column in _owner_therapy_evidence.THERAPY_EVIDENCE_COLUMNS
+    if column != "evidence_id"
 )
-
-THERAPY_TOXICITY_TIERS = (
-    "minimal",
-    "low",
-    "moderate",
-    "high",
-    "very_high",
-    "unclear",
-)
-
-_THERAPY_EVIDENCE_REQUIRED_COLUMNS = (
-    "agent",
-    "agent_class",
-    "target_symbol",
-    "cancer_code",
-    "subtype",
-    "line_of_therapy",
-    "setting",
-    "endpoint_type",
-    "endpoint_value",
-    "benefit_tier",
-    "toxicity_tier",
-    "grade3_plus_ae_rate",
-    "discontinuation_rate",
-    "boxed_warning",
-    "major_toxicities",
-    "source_type",
-    "source_id",
-    "source_token",
-    "source_url",
-    "source_anchor",
-    "evidence_transfer",
-    "evidence_notes",
-)
-
-
-def _nonempty_strings(series):
-    return set(series.dropna().astype(str).str.strip()) - {""}
-
-
-def _filter_text_value(df, column, value):
-    if value is None:
-        return df
-    wanted = str(value).strip().casefold()
-    values = df[column].fillna("").astype(str).str.strip().str.casefold()
-    return df[values == wanted]
-
-
-def _validate_therapy_benefit_toxicity_evidence(df):
-    missing = set(_THERAPY_EVIDENCE_REQUIRED_COLUMNS) - set(df.columns)
-    if missing:
-        raise ValueError(
-            "therapy-benefit-toxicity-evidence.csv is missing columns: "
-            f"{sorted(missing)}"
-        )
-
-    invalid_benefit = _nonempty_strings(df["benefit_tier"]) - set(
-        THERAPY_BENEFIT_TIERS
-    )
-    if invalid_benefit:
-        raise ValueError(f"Invalid benefit_tier values: {sorted(invalid_benefit)}")
-
-    invalid_toxicity = _nonempty_strings(df["toxicity_tier"]) - set(
-        THERAPY_TOXICITY_TIERS
-    )
-    if invalid_toxicity:
-        raise ValueError(f"Invalid toxicity_tier values: {sorted(invalid_toxicity)}")
-
-    postmarket = df["source_type"].fillna("").astype(str).str.strip().eq(
-        "postmarket_signal"
-    )
-    postmarket_with_incidence = postmarket & df["grade3_plus_ae_rate"].notna()
-    postmarket_with_incidence = postmarket_with_incidence & df[
-        "grade3_plus_ae_rate"
-    ].astype(str).str.strip().ne("")
-    if postmarket_with_incidence.any():
-        bad_agents = sorted(df.loc[postmarket_with_incidence, "agent"].astype(str))
-        raise ValueError(
-            "postmarket_signal rows must not provide incidence-like "
-            f"grade3_plus_ae_rate values: {bad_agents}"
-        )
 
 
 def therapy_benefit_toxicity_evidence(
@@ -2761,31 +2678,15 @@ def therapy_benefit_toxicity_evidence(
     ``include_transferred=False`` to drop cross-indication rows that
     require an explicit eligibility caveat before use.
     """
-    from .load_dataset import get_data
-
-    df = get_data("therapy-benefit-toxicity-evidence")
-    _validate_therapy_benefit_toxicity_evidence(df)
-
-    df = _filter_text_value(df, "agent", agent)
-    df = _filter_text_value(df, "cancer_code", cancer_code)
-    df = _filter_text_value(df, "line_of_therapy", line_of_therapy)
-    df = _filter_text_value(df, "source_type", source_type)
-
-    if subtype is not None:
-        wanted = str(subtype).strip().casefold()
-        values = df["subtype"].fillna("").astype(str).str.strip().str.casefold()
-        if cancer_code is None:
-            df = df[values == wanted]
-        else:
-            df = df[(values == "") | (values == wanted)]
-
-    if not include_transferred:
-        transfer = (
-            df["evidence_transfer"].fillna("").astype(str).str.strip().str.casefold()
-        )
-        df = df[transfer != "cross_indication"]
-
-    return df.copy().reset_index(drop=True)
+    delegated = _owner_therapy_evidence.therapy_benefit_toxicity_evidence(
+        agent=agent,
+        cancer_code=cancer_code,
+        subtype=subtype,
+        line_of_therapy=line_of_therapy,
+        source_type=source_type,
+        include_transferred=include_transferred,
+    )
+    return delegated.loc[:, _THERAPY_EVIDENCE_PUBLIC_COLUMNS].copy()
 
 
 def cancer_key_genes_cancer_types():

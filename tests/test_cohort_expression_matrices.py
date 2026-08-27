@@ -1,4 +1,4 @@
-"""Unified cohort normalization-views object (#319): one object bundling the
+"""Unified cohort normalization-matrices object (#319): one object bundling the
 tpm / clean_tpm / clean_tpm_biological stages so a consumer can't re-normalize
 inconsistently."""
 
@@ -9,28 +9,40 @@ import pytest
 from oncoref import data_bundle as oncoref_data_bundle
 
 from pirlygenes.expression import (
-    CohortExpressionViews,
-    cohort_expression_views,
+    COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE,
+    COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION,
+    CohortExpressionMatrices,
+    cohort_expression_matrices,
+    cohort_expression_matrices_metadata,
 )
 from pirlygenes.expression import accessors
 from pirlygenes.version import DATA_VERSION
 
 
-def _write_current_manifest(root):
-    (root / "_manifest.json").write_text(json.dumps({
+def _write_current_metadata(root):
+    (root / "metadata.json").write_text(json.dumps({
+        "artifact_type": COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE,
         "canonical_gene_ids": True,
-        "data_version": DATA_VERSION,
-        "source_data_version": oncoref_data_bundle.DATA_VERSION,
-        "source_package": "oncoref",
-        "source_package_version": oncoref.__version__,
+        "schema_version": COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION,
+        "pirlygenes_data_version": DATA_VERSION,
+        "built_from": {
+            "data_version": oncoref_data_bundle.DATA_VERSION,
+            "package": "oncoref",
+            "package_version": oncoref.__version__,
+        },
+        "tables": {
+            "tpm": {"file": "tpm.parquet", "rows": 3},
+            "clean_tpm": {"file": "clean_tpm.parquet", "rows": 3},
+            "provenance": {"file": "provenance.parquet", "rows": 2},
+        },
     }))
 
 
-def _disable_precomputed_views(monkeypatch, tmp_path):
-    accessors._load_precomputed_cohort_views.cache_clear()
+def _disable_precomputed_matrices(monkeypatch, tmp_path):
+    accessors._load_precomputed_cohort_matrices.cache_clear()
     from pathlib import Path
     root = Path(tmp_path)
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root / "missing")
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root / "missing")
 
 
 def _install_fake_reference(monkeypatch, fake):
@@ -90,19 +102,19 @@ def _install_fake_reference(monkeypatch, fake):
         return pd.concat(parts, ignore_index=True)
 
     # The shared derivation cache still uses the frame identity to invalidate
-    # rebuilt canonical views; values now come through the delegated accessor.
+    # rebuilt canonical matrices; values now come through the delegated accessor.
     monkeypatch.setattr(accessors, "_load_cancer_reference_expression", lambda: fake)
     monkeypatch.setattr(accessors, "cancer_reference_expression", fake_accessor)
     accessors._SHARED_REFERENCE_DERIVATION_CACHE.clear()
-    accessors._load_precomputed_cohort_views.cache_clear()
+    accessors._load_precomputed_cohort_matrices.cache_clear()
 
 
-def test_views_bundle_three_stages_and_provenance():
-    v = cohort_expression_views("CLL", genes=["MS4A1", "MALAT1", "RPL13A"])
-    assert isinstance(v, CohortExpressionViews)
+def test_matrices_bundle_three_stages_and_provenance():
+    v = cohort_expression_matrices("CLL", genes=["MS4A1", "MALAT1", "RPL13A"])
+    assert isinstance(v, CohortExpressionMatrices)
     for frame in (v.tpm, v.clean_tpm, v.clean_tpm_biological):
         assert {"Ensembl_Gene_ID", "Symbol"} <= set(frame.columns)
-    # biological view drops the censored genes (MALAT1 technical, RPL13A ribo),
+    # biological matrix drops the censored genes (MALAT1 technical, RPL13A ribo),
     # keeps real biology (MS4A1)
     bio = set(v.clean_tpm_biological["Symbol"])
     assert "MS4A1" in bio
@@ -115,59 +127,73 @@ def test_views_bundle_three_stages_and_provenance():
     assert len(v.provenance) >= 1
 
 
-def test_views_manifest_versions_match_current_owners():
-    """The baked cohort-views manifest must be stamped with the current
-    DATA_VERSION, so a data release that regenerates the per-code shards but
-    forgets to regenerate the views can't silently ship stale baked views
-    (#543 — the manifest read 5.23.3 while DATA_VERSION was 5.23.19 because
-    #540's generator ran before the version bump)."""
-    from pirlygenes.version import DATA_VERSION
+def test_matrices_metadata_matches_current_data_contract():
+    """The materialized matrices must match current pirlygenes/oncoref data.
 
-    manifest = accessors._artifact_manifest(accessors._cohort_views_root())
-    if not manifest:
-        pytest.skip("cohort-views artifact not present in this checkout/cache")
-    assert manifest.get("data_version") == DATA_VERSION, (
-        f"cohort-views manifest data_version={manifest.get('data_version')!r} != "
-        f"DATA_VERSION={DATA_VERSION!r}; regenerate the views "
-        "(scripts/generate_cohort_expression_views.py) after bumping DATA_VERSION"
+    ``built_from.package_version`` records the wheel that built the artifact; it
+    need not equal the running wheel when oncoref publishes an unrelated,
+    data-preserving code release.
+    """
+    metadata = cohort_expression_matrices_metadata()
+    if not metadata:
+        pytest.skip("cohort matrices artifact not present in this checkout/cache")
+    assert metadata.get("pirlygenes_data_version") == DATA_VERSION, (
+        "cohort matrices metadata pirlygenes_data_version="
+        f"{metadata.get('pirlygenes_data_version')!r} != "
+        f"DATA_VERSION={DATA_VERSION!r}; regenerate the matrices "
+        "(scripts/generate_cohort_expression_matrices.py) after bumping DATA_VERSION"
     )
-    assert manifest.get("source_package") == "oncoref"
-    assert manifest.get("source_package_version") == oncoref.__version__
-    assert (
-        manifest.get("source_data_version")
-        == oncoref_data_bundle.DATA_VERSION
+    assert metadata.get("artifact_type") == (
+        COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE
+    )
+    assert metadata.get("schema_version") == (
+        COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION
+    )
+    assert metadata["built_from"]["package"] == "oncoref"
+    assert metadata["built_from"]["package_version"]
+    assert metadata["built_from"]["data_version"] == (
+        oncoref_data_bundle.DATA_VERSION
     )
 
 
-def test_views_clean_differs_from_tpm_for_technical_gene():
+def test_matrices_metadata_is_a_defensive_copy():
+    first = cohort_expression_matrices_metadata()
+    first["built_from"]["package"] = "mutated"
+
+    assert cohort_expression_matrices_metadata()["built_from"]["package"] == (
+        "oncoref"
+    )
+
+
+def test_matrices_clean_differs_from_tpm_for_technical_gene():
     """clean_tpm_16_9_75 changes the technical gene's value vs plain TPM (the whole
     point of having both stages in one object)."""
-    v = cohort_expression_views("CLL", genes=["MS4A1", "MALAT1"])
+    v = cohort_expression_matrices("CLL", genes=["MS4A1", "MALAT1"])
     tpm = dict(zip(v.tpm["Symbol"], v.tpm["CLL"]))
     clean = dict(zip(v.clean_tpm["Symbol"], v.clean_tpm["CLL"]))
     # MALAT1 (polyA-bias technical) is suppressed under clean_tpm_16_9_75
     assert clean["MALAT1"] != tpm["MALAT1"]
 
 
-def test_views_include_cmn_and_ifs_from_the_owner_manifest():
-    views = cohort_expression_views(["CMN", "SARC_IFS"], genes=["TP53"])
+def test_matrices_include_cmn_and_ifs_from_the_owner_manifest():
+    matrices = cohort_expression_matrices(["CMN", "SARC_IFS"], genes=["TP53"])
 
-    assert {"CMN", "SARC_IFS"} <= set(views.tpm.columns)
-    assert {"CMN", "SARC_IFS"} <= set(views.clean_tpm.columns)
-    sources = set(views.provenance["source_cohort"].astype(str))
+    assert {"CMN", "SARC_IFS"} <= set(matrices.tpm.columns)
+    assert {"CMN", "SARC_IFS"} <= set(matrices.clean_tpm.columns)
+    sources = set(matrices.provenance["source_cohort"].astype(str))
     assert "GSE11482_GADD_2010_CMN" in sources
     assert "TREEHOUSE_POLYA_25_01" in sources
     assert "TREEHOUSE_RIBOD_25_01" in sources
 
 
-def test_aggregate_code_expands_in_views():
-    """An aggregate code (SARC) expands to its subtype cohorts in the views."""
-    v = cohort_expression_views("SARC", genes=["TP53"])
+def test_aggregate_code_expands_in_matrices():
+    """An aggregate code (SARC) expands to its subtype cohorts in the matrices."""
+    v = cohort_expression_matrices("SARC", genes=["TP53"])
     cohort_cols = [c for c in v.tpm.columns if c not in ("Ensembl_Gene_ID", "Symbol")]
     assert any(c.startswith("SARC_") for c in cohort_cols)
 
 
-def test_views_canonicalize_before_pivoting_symbol_drift(monkeypatch, tmp_path):
+def test_matrices_canonicalize_before_pivoting_symbol_drift(monkeypatch, tmp_path):
     import pandas as pd
 
     fake = pd.DataFrame(
@@ -211,16 +237,16 @@ def test_views_canonicalize_before_pivoting_symbol_drift(monkeypatch, tmp_path):
         ]
     )
     _install_fake_reference(monkeypatch, fake)
-    _disable_precomputed_views(monkeypatch, tmp_path)
+    _disable_precomputed_matrices(monkeypatch, tmp_path)
 
-    v = cohort_expression_views()
+    v = cohort_expression_matrices()
 
     assert v.tpm["Ensembl_Gene_ID"].tolist() == ["ENSG00000141510"]
     assert v.tpm["AAA"].iloc[0] == 3.0
     assert v.clean_tpm["AAA"].iloc[0] == 30.0
 
 
-def test_views_ignore_unobserved_inherited_categories():
+def test_matrices_ignore_unobserved_inherited_categories():
     """Owning-cache vocabularies must not create phantom cohort combinations."""
     import pandas as pd
 
@@ -244,8 +270,8 @@ def test_views_ignore_unobserved_inherited_categories():
         }
     )
 
-    canonical = accessors._canonicalize_views_long(long)
-    wide = accessors._pivot_views_long(
+    canonical = accessors._canonicalize_matrix_rows(long)
+    wide = accessors._pivot_expression_matrix(
         canonical,
         "TPM",
         ["Ensembl_Gene_ID"],
@@ -270,7 +296,7 @@ def _fixture_row(ensg, code, version, tpm):
     }
 
 
-def test_views_protein_coding_and_coverage_filters(monkeypatch, tmp_path):
+def test_matrices_protein_coding_and_coverage_filters(monkeypatch, tmp_path):
     import pandas as pd
 
     # TP53 (protein_coding) in both cohorts; MALAT1 (lncRNA) in one cohort only.
@@ -281,27 +307,27 @@ def test_views_protein_coding_and_coverage_filters(monkeypatch, tmp_path):
     ])
     _install_fake_reference(monkeypatch, fake)
 
-    _disable_precomputed_views(monkeypatch, tmp_path)
-    pc = cohort_expression_views(protein_coding=True)
+    _disable_precomputed_matrices(monkeypatch, tmp_path)
+    pc = cohort_expression_matrices(protein_coding=True)
     assert pc.clean_tpm["Ensembl_Gene_ID"].tolist() == ["ENSG00000141510"]
 
     accessors._SHARED_REFERENCE_DERIVATION_CACHE.clear()
-    _disable_precomputed_views(monkeypatch, tmp_path)
-    cov = cohort_expression_views(min_cohort_coverage=1.0)
+    _disable_precomputed_matrices(monkeypatch, tmp_path)
+    cov = cohort_expression_matrices(min_cohort_coverage=1.0)
     # only TP53 is measured in every cohort
     assert cov.clean_tpm["Ensembl_Gene_ID"].tolist() == ["ENSG00000141510"]
 
 
-def test_views_reject_invalid_min_cohort_coverage():
+def test_matrices_reject_invalid_min_cohort_coverage():
     import pytest
 
     with pytest.raises(ValueError, match="min_cohort_coverage"):
-        cohort_expression_views("CLL", min_cohort_coverage=-0.1)
+        cohort_expression_matrices("CLL", min_cohort_coverage=-0.1)
     with pytest.raises(ValueError, match="min_cohort_coverage"):
-        cohort_expression_views("CLL", min_cohort_coverage=1.1)
+        cohort_expression_matrices("CLL", min_cohort_coverage=1.1)
 
 
-def test_views_precomputed_artifact_fast_path(tmp_path, monkeypatch):
+def test_matrices_precomputed_artifact_fast_path(tmp_path, monkeypatch):
     import pandas as pd
 
     pd.DataFrame(
@@ -336,21 +362,21 @@ def test_views_precomputed_artifact_fast_path(tmp_path, monkeypatch):
             },
         ]
     ).to_parquet(tmp_path / "provenance.parquet", index=False)
-    _write_current_manifest(tmp_path)
-    accessors._load_precomputed_cohort_views.cache_clear()
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: tmp_path)
+    _write_current_metadata(tmp_path)
+    accessors._load_precomputed_cohort_matrices.cache_clear()
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: tmp_path)
     # When the artifact is usable, NEITHER fallback may run: not the canonical
     # rebuild, not the from-reference builder.
     for name in (
-        "_shared_rebuilt_canonical_cohort_views",
-        "_cohort_expression_views_from_reference",
+        "_shared_rebuilt_canonical_cohort_matrices",
+        "_cohort_expression_matrices_from_reference",
     ):
         monkeypatch.setattr(
             accessors, name,
             lambda *a, **k: (_ for _ in ()).throw(AssertionError("slow path used")),
         )
 
-    v = cohort_expression_views("CLL", genes=["TP53"])
+    v = cohort_expression_matrices("CLL", genes=["TP53"])
 
     assert v.tpm.columns.tolist() == ["Ensembl_Gene_ID", "Symbol", "CLL"]
     assert v.tpm["Ensembl_Gene_ID"].tolist() == ["ENSG00000141510"]
@@ -358,7 +384,7 @@ def test_views_precomputed_artifact_fast_path(tmp_path, monkeypatch):
     assert v.provenance["source_cohort"].tolist() == ["S1"]
 
 
-def test_views_precomputed_gene_filter_drops_empty_cohorts(tmp_path, monkeypatch):
+def test_matrices_precomputed_gene_filter_drops_empty_cohorts(tmp_path, monkeypatch):
     import pandas as pd
 
     pd.DataFrame(
@@ -385,11 +411,11 @@ def test_views_precomputed_gene_filter_drops_empty_cohorts(tmp_path, monkeypatch
              "processing_pipeline": "fixture", "n_samples": 3},
         ]
     ).to_parquet(tmp_path / "provenance.parquet", index=False)
-    _write_current_manifest(tmp_path)
-    accessors._load_precomputed_cohort_views.cache_clear()
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: tmp_path)
+    _write_current_metadata(tmp_path)
+    accessors._load_precomputed_cohort_matrices.cache_clear()
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: tmp_path)
 
-    v = cohort_expression_views(genes=["TP53"])
+    v = cohort_expression_matrices(genes=["TP53"])
 
     assert v.tpm.columns.tolist() == ["Ensembl_Gene_ID", "Symbol", "CLL"]
     assert v.provenance["source_cohort"].tolist() == ["S1"]
@@ -454,20 +480,20 @@ def test_public_builder_returns_defensive_copies(monkeypatch, tmp_path):
     import pandas as pd
 
     _install_fake_reference(monkeypatch, _synthetic_reference())
-    first = accessors.build_canonical_cohort_expression_views()
+    first = accessors.build_canonical_cohort_expression_matrices()
     expected = tuple(frame.copy() for frame in first)
 
     first[0].loc[:, COHORT_A] = -1.0
     first[1].loc[:, COHORT_A] = -1.0
     first[2].loc[:, "source_cohort"] = "POISONED"
 
-    second = accessors.build_canonical_cohort_expression_views()
+    second = accessors.build_canonical_cohort_expression_matrices()
     for actual, original, mutated in zip(second, expected, first):
         pd.testing.assert_frame_equal(actual, original)
         assert actual is not mutated
 
-    _disable_precomputed_views(monkeypatch, tmp_path)
-    fallback = cohort_expression_views(COHORT_A)
+    _disable_precomputed_matrices(monkeypatch, tmp_path)
+    fallback = cohort_expression_matrices(COHORT_A)
     assert not fallback.tpm[COHORT_A].eq(-1.0).any()
     assert not fallback.clean_tpm[COHORT_A].eq(-1.0).any()
     assert "POISONED" not in set(fallback.provenance["source_cohort"])
@@ -478,15 +504,15 @@ def test_fallback_slices_shared_rebuild_without_public_full_copy(
 ):
     """A missing artifact must not clone both full matrices per query."""
     _install_fake_reference(monkeypatch, _synthetic_reference())
-    _disable_precomputed_views(monkeypatch, tmp_path)
+    _disable_precomputed_matrices(monkeypatch, tmp_path)
     monkeypatch.setattr(
         accessors,
-        "build_canonical_cohort_expression_views",
+        "build_canonical_cohort_expression_matrices",
         lambda: (_ for _ in ()).throw(AssertionError("public copy path used")),
     )
 
-    first = cohort_expression_views(COHORT_A, genes=[TP53])
-    second = cohort_expression_views(COHORT_B, genes=[ACTB])
+    first = cohort_expression_matrices(COHORT_A, genes=[TP53])
+    second = cohort_expression_matrices(COHORT_B, genes=[ACTB])
 
     assert first.tpm[COHORT_A].tolist() == [3.0]
     assert second.tpm[COHORT_B].tolist() == [6.0]
@@ -494,16 +520,16 @@ def test_fallback_slices_shared_rebuild_without_public_full_copy(
 
 def _write_artifact_from_rebuild(root, monkeypatch, fake):
     """Materialize the precomputed artifact exactly as the generator does — as
-    the serialized output of ``build_canonical_cohort_expression_views`` over
+    the serialized output of ``build_canonical_cohort_expression_matrices`` over
     ``fake`` —
     so artifact and rebuild are the same data through two code paths."""
     _install_fake_reference(monkeypatch, fake)
-    tpm, clean, prov = accessors.build_canonical_cohort_expression_views()
+    tpm, clean, prov = accessors.build_canonical_cohort_expression_matrices()
     root.mkdir(parents=True, exist_ok=True)
     tpm.to_parquet(root / "tpm.parquet", index=False)
     clean.to_parquet(root / "clean_tpm.parquet", index=False)
     prov.to_parquet(root / "provenance.parquet", index=False)
-    _write_current_manifest(root)
+    _write_current_metadata(root)
     return tpm, clean, prov
 
 
@@ -516,7 +542,7 @@ def _normalize(df):
     return out.reset_index(drop=True)
 
 
-def _assert_views_equal(a, b, *, check_provenance=True):
+def _assert_matrices_equal(a, b, *, check_provenance=True):
     import pandas as pd
 
     for attr in ("tpm", "clean_tpm", "clean_tpm_biological"):
@@ -536,7 +562,7 @@ def _assert_views_equal(a, b, *, check_provenance=True):
         )
 
 
-def test_views_normalize_public_column_label_dtype():
+def test_matrices_normalize_public_column_label_dtype():
     import pandas as pd
 
     matrix = pd.DataFrame(
@@ -551,12 +577,12 @@ def test_views_normalize_public_column_label_dtype():
         ),
     )
 
-    views = CohortExpressionViews(matrix, matrix.copy(), matrix.copy(), provenance)
+    matrices = CohortExpressionMatrices(matrix, matrix.copy(), matrix.copy(), provenance)
 
-    assert views.tpm.columns.dtype == object
-    assert views.clean_tpm.columns.dtype == object
-    assert views.clean_tpm_biological.columns.dtype == object
-    assert views.provenance.columns.dtype == object
+    assert matrices.tpm.columns.dtype == object
+    assert matrices.clean_tpm.columns.dtype == object
+    assert matrices.clean_tpm_biological.columns.dtype == object
+    assert matrices.provenance.columns.dtype == object
 
 
 _FILTER_CASES = [
@@ -580,20 +606,20 @@ def test_artifact_path_equals_rebuild_path(tmp_path, monkeypatch, kwargs):
     """The gold invariant: for any filter combination, slicing the precomputed
     artifact returns exactly what rebuilding from the reference returns."""
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
 
     # Artifact present → fast path.
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root)
-    accessors._load_precomputed_cohort_views.cache_clear()
-    from_artifact = cohort_expression_views(**kwargs)
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root)
+    accessors._load_precomputed_cohort_matrices.cache_clear()
+    from_artifact = cohort_expression_matrices(**kwargs)
 
     # Artifact absent → rebuild fallback (same reference + same filter).
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root / "absent")
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root / "absent")
     accessors._SHARED_REFERENCE_DERIVATION_CACHE.clear()
-    from_rebuild = cohort_expression_views(**kwargs)
+    from_rebuild = cohort_expression_matrices(**kwargs)
 
-    _assert_views_equal(from_artifact, from_rebuild)
+    _assert_matrices_equal(from_artifact, from_rebuild)
 
 
 @pytest.mark.parametrize("cancer_types,genes", [
@@ -606,57 +632,57 @@ def test_artifact_matches_from_reference_oracle_current_symbols(cancer_types, ge
     """For current (non-retired) symbols, the artifact slice agrees with the
     independent from-reference builder on the real bundle — cross-checking the
     'slice the full matrix' path against 'filter during the pivot'."""
-    fast = cohort_expression_views(cancer_types, genes=genes)
-    oracle = accessors._cohort_expression_views_from_reference(
+    fast = cohort_expression_matrices(cancer_types, genes=genes)
+    oracle = accessors._cohort_expression_matrices_from_reference(
         cancer_types, genes=genes, canonicalize_genes=True)
     # The delegated compatibility boundary canonicalizes the historical
     # Treehouse DDLPS/WDLPS source label, so SARC provenance now matches the
     # precomputed artifact as exactly as the expression matrices do.
-    _assert_views_equal(fast, oracle)
+    _assert_matrices_equal(fast, oracle)
 
 
 def test_canonical_path_resolves_retired_synonym():
     """The canonical path resolves a retired NCBI synonym to its current gene
     (GNB2L1 → RACK1, ENSG00000204628). This is intentionally richer than the
     plain ``filter_to_genes`` symbol match."""
-    v = cohort_expression_views("CLL", genes=["GNB2L1"])
+    v = cohort_expression_matrices("CLL", genes=["GNB2L1"])
     assert "ENSG00000204628" in set(v.tpm["Ensembl_Gene_ID"])
 
 
 @pytest.mark.parametrize("cancer_types", ["CLL", "PRAD", ["CLL", "PRAD"]])
-def test_cohort_only_view_drops_unmeasured_genes(cancer_types):
+def test_cohort_only_matrix_drops_unmeasured_genes(cancer_types):
     """Narrowing to a cohort (no gene filter) must return only genes measured in
     that cohort — matching the from-reference pivot — not the full all-cohort
     gene union padded with NaN (#474 review, P2a)."""
-    fast = cohort_expression_views(cancer_types)
-    oracle = accessors._cohort_expression_views_from_reference(
+    fast = cohort_expression_matrices(cancer_types)
+    oracle = accessors._cohort_expression_matrices_from_reference(
         cancer_types, canonicalize_genes=True)
-    _assert_views_equal(fast, oracle)
+    _assert_matrices_equal(fast, oracle)
     # Every returned gene is measured in at least one selected cohort.
     cohort_cols = [c for c in fast.tpm.columns
                    if c not in ("Ensembl_Gene_ID", "Symbol")]
     assert fast.tpm[cohort_cols].notna().any(axis=1).all()
 
 
-def test_full_view_keeps_entire_gene_union(tmp_path, monkeypatch):
-    """With no cancer_types and no genes, the view is the full canonical matrix
+def test_full_matrix_keeps_entire_gene_union(tmp_path, monkeypatch):
+    """With no cancer_types and no genes, the matrix is the full canonical matrix
     (no row pruning) — the narrowing prune must not fire on the unfiltered
     request."""
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root)
-    accessors._load_precomputed_cohort_views.cache_clear()
-    full = cohort_expression_views()
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root)
+    accessors._load_precomputed_cohort_matrices.cache_clear()
+    full = cohort_expression_matrices()
     # All three synthetic genes survive (TP53, ACTB, MALAT1), both cohorts.
     assert set(full.tpm["Ensembl_Gene_ID"]) == {TP53, ACTB, MALAT1}
     assert sorted(c for c in full.tpm.columns
                   if c not in ("Ensembl_Gene_ID", "Symbol")) == [COHORT_A, COHORT_B]
 
 
-def test_cohort_only_view_excludes_single_cohort_gene(tmp_path, monkeypatch):
-    """MALAT1 lives only in COHORT_A; a COHORT_B-only view must not carry it."""
-    v = _fast_views(tmp_path, monkeypatch, cancer_types=COHORT_B)
+def test_cohort_only_matrix_excludes_single_cohort_gene(tmp_path, monkeypatch):
+    """MALAT1 lives only in COHORT_A; a COHORT_B-only matrix must not carry it."""
+    v = _fast_matrices(tmp_path, monkeypatch, cancer_types=COHORT_B)
     assert MALAT1 not in set(v.tpm["Ensembl_Gene_ID"])
     assert {TP53, ACTB} <= set(v.tpm["Ensembl_Gene_ID"])
 
@@ -665,29 +691,29 @@ def test_cohort_only_view_excludes_single_cohort_gene(tmp_path, monkeypatch):
 
 def test_missing_one_parquet_falls_back_to_rebuild(tmp_path, monkeypatch):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
     (root / "clean_tpm.parquet").unlink()  # incomplete artifact
 
     _install_fake_reference(monkeypatch, fake)
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root)
-    assert accessors._cohort_views_usable(root) is False
-    v = cohort_expression_views(genes=["TP53"])      # must not raise
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root)
+    assert accessors._cohort_matrices_usable(root) is False
+    v = cohort_expression_matrices(genes=["TP53"])      # must not raise
     assert "ENSG00000141510" in set(v.tpm["Ensembl_Gene_ID"])
 
 
 def test_corrupt_parquet_falls_back_to_rebuild(tmp_path, monkeypatch):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
     (root / "tpm.parquet").write_bytes(b"not a parquet file")  # corrupt
 
     _install_fake_reference(monkeypatch, fake)
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root)
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root)
     # Corrupt artifact must not raise — and must warn so the slow fallback is
     # observable rather than a silent performance cliff.
     with pytest.warns(RuntimeWarning, match="could not be read"):
-        v = cohort_expression_views(genes=["TP53"])
+        v = cohort_expression_matrices(genes=["TP53"])
     assert "ENSG00000141510" in set(v.tpm["Ensembl_Gene_ID"])
 
 
@@ -695,139 +721,154 @@ def test_schema_invalid_artifact_falls_back_to_rebuild(tmp_path, monkeypatch):
     import pandas as pd
 
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
     # Drop the id columns from tpm.parquet → schema-invalid.
     bad = pd.DataFrame({"AAA": [1.0], "BBB": [2.0]})
     bad.to_parquet(root / "tpm.parquet", index=False)
 
     _install_fake_reference(monkeypatch, fake)
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root)
-    accessors._load_precomputed_cohort_views.cache_clear()
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root)
+    accessors._load_precomputed_cohort_matrices.cache_clear()
     with pytest.warns(RuntimeWarning, match="schema"):
-        v = cohort_expression_views(genes=["TP53"])      # must not raise
+        v = cohort_expression_matrices(genes=["TP53"])      # must not raise
     assert "ENSG00000141510" in set(v.tpm["Ensembl_Gene_ID"])
 
 
-def test_non_canonical_manifest_rejected(tmp_path, monkeypatch):
+def test_noncanonical_metadata_rejected(tmp_path, monkeypatch):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
-    (root / "_manifest.json").write_text('{"canonical_gene_ids": false}\n')
-    assert accessors._cohort_views_usable(root) is False
+    (root / "metadata.json").write_text('{"canonical_gene_ids": false}\n')
+    assert accessors._cohort_matrices_usable(root) is False
 
 
-def test_stale_manifest_rejected_and_falls_back_to_rebuild(tmp_path, monkeypatch):
+def test_stale_metadata_rejected_and_falls_back_to_rebuild(tmp_path, monkeypatch):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
-    (root / "_manifest.json").write_text(json.dumps({
+    (root / "metadata.json").write_text(json.dumps({
+        "artifact_type": COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE,
         "canonical_gene_ids": True,
-        "data_version": "stale-data-version",
+        "schema_version": COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION,
+        "pirlygenes_data_version": "stale-data-version",
     }))
 
     _install_fake_reference(monkeypatch, fake)
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root)
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root)
     monkeypatch.setattr(
         accessors,
-        "_load_precomputed_cohort_views",
+        "_load_precomputed_cohort_matrices",
         lambda *_args: (_ for _ in ()).throw(
             AssertionError("stale precomputed artifact was read")
         ),
     )
 
-    assert accessors._cohort_views_usable(root) is False
-    rebuilt = cohort_expression_views(genes=["TP53"])
+    assert accessors._cohort_matrices_usable(root) is False
+    rebuilt = cohort_expression_matrices(genes=["TP53"])
     assert rebuilt.tpm["Ensembl_Gene_ID"].tolist() == [TP53]
 
 
 @pytest.mark.parametrize(
     ("field", "stale_value"),
     [
-        ("source_package", "another-owner"),
-        ("source_package_version", "0.0.0"),
-        ("source_data_version", "stale-owner-data"),
+        ("package", "another-owner"),
+        ("data_version", "stale-owner-data"),
     ],
 )
-def test_stale_owner_manifest_rejected(
+def test_stale_owner_metadata_rejected(
     tmp_path,
     monkeypatch,
     field,
     stale_value,
 ):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
-    manifest = accessors._artifact_manifest(root)
-    manifest[field] = stale_value
-    (root / "_manifest.json").write_text(json.dumps(manifest))
+    metadata = json.loads((root / "metadata.json").read_text())
+    metadata["built_from"][field] = stale_value
+    (root / "metadata.json").write_text(json.dumps(metadata))
 
-    assert accessors._cohort_views_usable(root) is False
+    assert accessors._cohort_matrices_usable(root) is False
 
 
-def test_unversioned_manifest_rejected(tmp_path, monkeypatch):
+def test_owner_wheel_version_is_provenance_not_cache_compatibility(
+    tmp_path,
+    monkeypatch,
+):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
-    (root / "_manifest.json").write_text('{"canonical_gene_ids": true}\n')
-    assert accessors._cohort_views_usable(root) is False
+    metadata = json.loads((root / "metadata.json").read_text())
+    metadata["built_from"]["package_version"] = "older-wheel-same-data"
+    (root / "metadata.json").write_text(json.dumps(metadata))
+
+    assert accessors._cohort_matrices_usable(root) is True
 
 
-def test_malformed_manifest_rejected(tmp_path, monkeypatch):
+def test_unversioned_metadata_rejected(tmp_path, monkeypatch):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
-    (root / "_manifest.json").write_text("{ not valid json")
-    assert accessors._cohort_views_usable(root) is False
+    (root / "metadata.json").write_text('{"canonical_gene_ids": true}\n')
+    assert accessors._cohort_matrices_usable(root) is False
 
 
-def test_non_object_manifest_rejected(tmp_path, monkeypatch):
+def test_malformed_metadata_rejected(tmp_path, monkeypatch):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
-    (root / "_manifest.json").write_text("[]")
-    assert accessors._cohort_views_usable(root) is False
+    (root / "metadata.json").write_text("{ not valid json")
+    assert accessors._cohort_matrices_usable(root) is False
 
 
-def test_absent_manifest_rejected(tmp_path, monkeypatch):
+def test_non_object_metadata_rejected(tmp_path, monkeypatch):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
-    (root / "_manifest.json").unlink()
-    assert accessors._cohort_views_usable(root) is False
+    (root / "metadata.json").write_text("[]")
+    assert accessors._cohort_matrices_usable(root) is False
+
+
+def test_absent_metadata_rejected(tmp_path, monkeypatch):
+    fake = _synthetic_reference()
+    root = tmp_path / "matrices"
+    _write_artifact_from_rebuild(root, monkeypatch, fake)
+    (root / "metadata.json").unlink()
+    assert accessors._cohort_matrices_usable(root) is False
 
 
 # ---------- gene-filter edge cases (on the fast path) ----------
 
-def _fast_views(tmp_path, monkeypatch, **kwargs):
+def _fast_matrices(tmp_path, monkeypatch, **kwargs):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root)
-    accessors._load_precomputed_cohort_views.cache_clear()
-    return cohort_expression_views(**kwargs)
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root)
+    accessors._load_precomputed_cohort_matrices.cache_clear()
+    return cohort_expression_matrices(**kwargs)
 
 
 def test_empty_gene_list_yields_no_rows(tmp_path, monkeypatch):
-    v = _fast_views(tmp_path, monkeypatch, genes=[])
+    v = _fast_matrices(tmp_path, monkeypatch, genes=[])
     assert v.tpm.empty
     assert v.clean_tpm.empty
     assert v.clean_tpm_biological.empty
 
 
 def test_unknown_gene_yields_no_rows(tmp_path, monkeypatch):
-    v = _fast_views(tmp_path, monkeypatch, genes=["NOT_A_REAL_GENE_XYZ"])
+    v = _fast_matrices(tmp_path, monkeypatch, genes=["NOT_A_REAL_GENE_XYZ"])
     assert v.tpm.empty
 
 
 def test_duplicate_and_whitespace_genes_dedupe(tmp_path, monkeypatch):
-    v = _fast_views(tmp_path, monkeypatch, genes=["TP53", " tp53 ", "TP53"])
+    v = _fast_matrices(tmp_path, monkeypatch, genes=["TP53", " tp53 ", "TP53"])
     assert v.tpm["Ensembl_Gene_ID"].tolist() == [TP53]
 
 
 def test_gene_filter_drops_cohorts_with_no_data(tmp_path, monkeypatch):
     # MALAT1 only exists in COHORT_A, so selecting it must drop COHORT_B's column.
-    v = _fast_views(tmp_path, monkeypatch, genes=["MALAT1"])
+    v = _fast_matrices(tmp_path, monkeypatch, genes=["MALAT1"])
     cohort_cols = [c for c in v.tpm.columns if c not in ("Ensembl_Gene_ID", "Symbol")]
     assert cohort_cols == [COHORT_A]
     assert set(v.provenance["source_cohort"]) == {f"{COHORT_A}_SRC"}
@@ -836,7 +877,7 @@ def test_gene_filter_drops_cohorts_with_no_data(tmp_path, monkeypatch):
 # ---------- provenance / column hygiene ----------
 
 def test_provenance_never_exposes_cancer_code(tmp_path, monkeypatch):
-    v = _fast_views(tmp_path, monkeypatch)
+    v = _fast_matrices(tmp_path, monkeypatch)
     assert "cancer_code" not in v.provenance.columns
     assert list(v.provenance.columns) == [
         "source_cohort", "processing_pipeline", "n_samples"]
@@ -845,7 +886,7 @@ def test_provenance_never_exposes_cancer_code(tmp_path, monkeypatch):
 def test_canonicalize_collapses_symbol_drift_on_fast_path(tmp_path, monkeypatch):
     # COHORT_A carried TP53 under two symbols across versions; the baked artifact
     # must hold a single canonical row summing both (1.0 + 2.0 = 3.0).
-    v = _fast_views(tmp_path, monkeypatch, cancer_types=COHORT_A, genes=["TP53"])
+    v = _fast_matrices(tmp_path, monkeypatch, cancer_types=COHORT_A, genes=["TP53"])
     assert v.tpm["Ensembl_Gene_ID"].tolist() == [TP53]
     assert v.tpm[COHORT_A].iloc[0] == 3.0
 
@@ -855,7 +896,7 @@ def test_canonicalize_collapses_symbol_drift_on_fast_path(tmp_path, monkeypatch)
 def test_rebuild_memoized_on_reference_identity(tmp_path, monkeypatch):
     fake = _synthetic_reference()
     _install_fake_reference(monkeypatch, fake)
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: tmp_path / "absent")
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: tmp_path / "absent")
 
     calls = {"n": 0}
     real = accessors._reference_long_from_summary_frame
@@ -867,9 +908,9 @@ def test_rebuild_memoized_on_reference_identity(tmp_path, monkeypatch):
     monkeypatch.setattr(accessors, "_reference_long_from_summary_frame", counting)
     accessors._SHARED_REFERENCE_DERIVATION_CACHE.clear()
 
-    cohort_expression_views(genes=["TP53"])
+    cohort_expression_matrices(genes=["TP53"])
     first = calls["n"]
-    cohort_expression_views(genes=["ACTB"])          # same reference frame
+    cohort_expression_matrices(genes=["ACTB"])          # same reference frame
     assert calls["n"] == first                       # rebuild served from memo
 
 
@@ -877,16 +918,16 @@ def test_rebuild_memoized_on_reference_identity(tmp_path, monkeypatch):
 
 def test_canonicalize_false_uses_reference_not_artifact(tmp_path, monkeypatch):
     fake = _synthetic_reference()
-    root = tmp_path / "views"
+    root = tmp_path / "matrices"
     _write_artifact_from_rebuild(root, monkeypatch, fake)
     _install_fake_reference(monkeypatch, fake)
-    monkeypatch.setattr(accessors, "_cohort_views_root", lambda: root)
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root)
     # The artifact must NOT be consulted for the non-canonical path.
     monkeypatch.setattr(
-        accessors, "_shared_full_canonical_cohort_views",
+        accessors, "_shared_full_canonical_cohort_matrices",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("artifact used")),
     )
-    v = cohort_expression_views(COHORT_A, genes=["TP53"], canonicalize_genes=False)
+    v = cohort_expression_matrices(COHORT_A, genes=["TP53"], canonicalize_genes=False)
     assert TP53 in set(v.tpm["Ensembl_Gene_ID"])
 
 
