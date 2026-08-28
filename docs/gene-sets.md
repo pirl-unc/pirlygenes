@@ -60,6 +60,44 @@ biology is contextual rather than a label requirement.
 The structured `cancer_fusions("SARC_DFSP")` row exposes COL1A1 as the
 matchable 5-prime partner of PDGFB.
 
+NUT carcinoma trial and off-label rows use
+`confirmed_nut_carcinoma_diagnosis`: their gate is an externally confirmed NUT
+carcinoma diagnosis in the appropriate pathology context, established by
+nuclear NUT IHC or a confirmed NUT-carcinoma-compatible NUTM1 rearrangement.
+These rows intentionally have no single display-target gene. A suspected fusion
+is a testing prompt pending confirmation; a same-gene hit or RNA abundance alone
+is not eligibility evidence.
+
+The structured fusion tables separate three biologically different groups:
+
+- `BRD4`, `BRD3`, and `NSD3` are high-confidence NUT-carcinoma-associated
+  NUTM1 partners. NSD3 is not a BET protein, but NSD3-NUTM1 binds BRD4 and
+  maintains the same differentiation block (PMID:24875858).
+- `ZNF532` and `ZNF592` are less common Z4-complex partners compatible with NUT
+  carcinoma, but partner-specific therapy sensitivity remains uncertain.
+- `CIC`, `YAP1`, `MGA`, `MXD4`, and unknown NUTM1 partners remain in the broader
+  `NUTM1-rearranged neoplasm` category until site, morphology, and orthogonal
+  testing establish lineage. They must not automatically inherit NUT carcinoma
+  therapy rows. `BRD4-LINC00486` is not a NUTM1 fusion at all.
+
+`NUTM2A/B` is not a broader NUT carcinoma surrogate. `YWHAE-NUTM2A/B` defines a
+separate endometrial stromal sarcoma family, and NUTM2 expression alone carries
+no NUT carcinoma eligibility meaning. High NUTM1 RNA can widen report scope as
+a hypothesis and testing prompt, but the RNA-surrogate rule still requires
+fusion/IHC/FISH and pathology confirmation before diagnosis or treatment
+selection. The PRAME and MAGEA4 transfer rows instead use
+`hla_and_antigen_expression`, requiring the named HLA type and validated antigen
+expression rather than a target-gene alteration.
+
+The vorinostat row is also diagnosis-scoped rather than `HDAC1`-scoped. Its
+rationale is experimental NUT-fusion chromatin differentiation: models and one
+pediatric BRD4-NUT case showed a transient response with substantial toxicity
+(PMID:21447744), while later NUT carcinoma cell-line activity was variable
+(PMID:30696721). A phase II study in unselected refractory soft-tissue sarcoma
+reported no objective responses and no predictive marker (PMID:27367154), so
+pirlygenes does not generalize HDAC inhibition to sarcoma or use HDAC expression
+as an eligibility gate.
+
 No named ROS1-, RET-, or PDGFRB-directed IMT recommendation is promoted from
 case reports. ALK-negative IMT instead warrants a diagnostic-workup prompt for
 comprehensive RNA structural-variant testing and clinical-trial review.

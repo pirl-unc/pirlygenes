@@ -2486,6 +2486,15 @@ def CTA_partition(return_type="gene_ids", ensembl_release=112):
 
 
 # ---------- Cancer-type key genes (biomarkers + therapy targets) #110 ----------
+THERAPY_ELIGIBILITY_BASES = frozenset({
+    "confirmed_nut_carcinoma_diagnosis",
+    "histology",
+    "histology_and_alk_positive",
+    "hla_and_antigen_expression",
+    "tumor_agnostic_alteration",
+})
+
+
 def cancer_key_genes_df():
     """Full curated table of clinician-relevant biomarker and therapy-
     target genes per cancer type (#110).
@@ -2500,7 +2509,8 @@ def cancer_key_genes_df():
     never eligibility evidence; the caller must supply a verified molecular
     alteration. A false value does not waive other evidence named by
     ``eligibility_basis`` and ``eligibility_note`` (for example validated ALK
-    positivity by IHC for crizotinib in IMT).
+    positivity by IHC for crizotinib in IMT). Non-empty eligibility bases are
+    drawn from :data:`THERAPY_ELIGIBILITY_BASES`; unknown values fail closed.
 
     The curation bar is "genes a clinician would ask about because they
     have clear prognostic value or gate access to an active therapy."
@@ -2520,6 +2530,16 @@ def cancer_key_genes_df():
             .map({"true": True, "false": False})
         )
         df["requires_verified_alteration"] = normalized.astype("boolean")
+    if "eligibility_basis" in df.columns:
+        bases = df["eligibility_basis"].dropna().astype(str).str.strip()
+        unknown = sorted(
+            set(bases[bases.ne("")]) - THERAPY_ELIGIBILITY_BASES
+        )
+        if unknown:
+            raise ValueError(
+                "cancer-key-genes contains unknown eligibility_basis values: "
+                f"{unknown}"
+            )
     return df
 
 

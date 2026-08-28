@@ -111,6 +111,7 @@ NUTM,BRD4-NUTM1,BRD4,BET,ENSG00000141867,NUTM1,NUT,ENSG00000184507,~70%,true,tru
 NUTM,BRD3-NUTM1,BRD3,BET,ENSG00000169925,NUTM1,NUT,ENSG00000184507,~15%,true,true,yes,fusion_transcript,high,PMID:17934517,second most common NUT carcinoma fusion,literature,
 NUTM,NSD3-NUTM1,NSD3,KMT/HMTase,ENSG00000147548,NUTM1,NUT,ENSG00000184507,~10%,true,true,yes,fusion_transcript,high,PMID:24875858,NSD3=WHSC1L1; NUT carcinoma variant,literature,
 NUTM,ZNF532-NUTM1,ZNF532,,ENSG00000074657,NUTM1,NUT,ENSG00000184507,rare,true,true,yes,fusion_transcript,medium,PMID:28484033,rare NUT carcinoma partner,literature,
+NUTM,ZNF592-NUTM1,ZNF592,,ENSG00000166716,NUTM1,NUT,ENSG00000184507,rare,true,true,yes,fusion_transcript,medium,PMID:30139738,rare Z4-complex NUT carcinoma partner; partner-specific therapy sensitivity remains uncertain,literature,
 ADCC,MYB-NFIB,MYB,MYB,ENSG00000118513,NFIB,NFI,ENSG00000147862,~60%,true,true,yes,fusion_transcript,high,PMID:19841262,adenoid cystic carcinoma; t(6;9)(q22-23;p23-24),literature,
 ADCC,MYBL1-NFIB,MYBL1,MYB,ENSG00000185697,NFIB,NFI,ENSG00000147862,subset,true,true,yes,fusion_transcript,high,PMID:26851182,MYBL1-NFIB alternative in MYB-negative ACC; same MYB-pathway activation,literature,
 ACINIC,HTN3-MSANTD3,HTN3,,ENSG00000205649,MSANTD3,,ENSG00000066697,subset,true,true,yes,fusion_transcript,medium,PMID:28212443,acinic cell carcinoma (salivary) recurrent fusion; t(4;11),literature,
