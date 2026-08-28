@@ -68,6 +68,7 @@ can mutate freely.
 
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import warnings
 from functools import lru_cache
@@ -916,7 +917,7 @@ def _reference_slice_by_codes(
     Tests and offline callers may pass an independent fixture frame; retain the
     ordinary boolean filter for those objects. Runtime callers pass the shared
     oncoref-owned singleton, where rebuilding a multi-million-row string mask on
-    every noncanonical cohort-view request is avoidable.
+    every noncanonical cohort-matrix request is avoidable.
     """
     if df is not _load_cancer_reference_expression():
         return df[df["cancer_code"].astype(str).isin(codes)]
@@ -1051,7 +1052,7 @@ def _reference_long_from_summary_frame(
 ) -> pd.DataFrame:
     """Project an oncoref-owned summary frame into pirlygenes long form.
 
-    Canonical cohort views consume the already delegated raw summary frame
+    Canonical cohort matrices consume the already delegated raw summary frame
     supplied by :func:`_load_cancer_reference_expression`.  Keeping this small
     deterministic projection separate from the public oncoref call avoids a
     second multi-million-row load and lets tests inject a summary fixture while
@@ -2317,20 +2318,24 @@ def cancer_reference_expression(
     )
 
 
-# ---------- accessors: unified normalization views (#319) ----------
+# ---------- accessors: unified normalization matrices (#319) ----------
 
 
-_COHORT_VIEWS_DIR = "cancer-reference-expression-views"
-_COHORT_VIEW_ID_COLS = ("Ensembl_Gene_ID", "Symbol")
-_COHORT_VIEW_VALUE_FILES = {
+_COHORT_MATRICES_DIR = "cohort-expression-matrices"
+_COHORT_MATRIX_ID_COLS = ("Ensembl_Gene_ID", "Symbol")
+_COHORT_MATRIX_FILES = {
     "tpm": "tpm.parquet",
     "clean_tpm": "clean_tpm.parquet",
+    "provenance": "provenance.parquet",
 }
-_COHORT_VIEW_PROVENANCE_FILE = "provenance.parquet"
-_ARTIFACT_MANIFEST_FILE = "_manifest.json"
+_ARTIFACT_METADATA_FILE = "metadata.json"
+COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE = (
+    "pirlygenes.cohort-expression-matrices"
+)
+COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION = 1
 
 
-class CohortExpressionViews:
+class CohortExpressionMatrices:
     """The canonical normalization stages of a cohort reference in **one
     object**, so a consumer never re-normalizes inconsistently (#319).
 
@@ -2342,7 +2347,7 @@ class CohortExpressionViews:
       to the fixed fraction).
     * ``clean_tpm_biological`` — ``clean_tpm`` with the technical/ribosomal
       genes (the canonical censored-gene list) **dropped** — the
-      biologically-actionable view.
+      biologically-actionable matrix.
     * ``provenance`` — one row per cohort: ``source_cohort``,
       ``processing_pipeline`` (records the native unit, e.g. STAR-counts→TPM),
       ``n_samples``.
@@ -2350,7 +2355,7 @@ class CohortExpressionViews:
     Note: the bundled references are TPM-harmonized at build time, so the
     **raw native** units (FPKM / microarray nTPM / counts) are not retained
     here — only recorded in ``provenance.processing_pipeline``. All three value
-    views are on the TPM scale; the only differences are the censoring stage,
+    matrices are on the TPM scale; the only differences are the censoring stage,
     so they are directly comparable and can't be accidentally re-normalized.
     """
 
@@ -2365,48 +2370,57 @@ class CohortExpressionViews:
     def __repr__(self):
         cohorts = list(self.provenance["source_cohort"]) if len(
             self.provenance) else []
-        return (f"CohortExpressionViews(genes={self.tpm.shape[0]}, "
+        return (f"CohortExpressionMatrices(genes={self.tpm.shape[0]}, "
                 f"cohorts={self.provenance.shape[0]}, "
                 f"biological_genes={self.clean_tpm_biological.shape[0]}, "
                 f"sources={cohorts[:3]}{'…' if len(cohorts) > 3 else ''})")
 
 
-def _cohort_views_root():
-    return _bundle_subdir(_COHORT_VIEWS_DIR)
+def _cohort_matrices_root():
+    return _bundle_subdir(_COHORT_MATRICES_DIR)
 
 
-def _artifact_manifest(root: Path) -> dict:
-    path = root / _ARTIFACT_MANIFEST_FILE
+def _artifact_metadata(root: Path) -> dict:
+    path = root / _ARTIFACT_METADATA_FILE
     if not path.exists():
         return {}
     try:
-        manifest = json.loads(path.read_text())
+        metadata = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return {}
-    return manifest if isinstance(manifest, dict) else {}
+    return metadata if isinstance(metadata, dict) else {}
 
 
-def _cohort_views_present(root: Path) -> bool:
+def cohort_expression_matrices_metadata() -> dict:
+    """Return the bundled matrices' self-describing artifact metadata.
+
+    The returned dictionary is a defensive copy. An empty dictionary means the
+    downloadable artifact is absent or its metadata cannot be decoded; normal
+    matrix reads will then rebuild from the delegated reference.
+    """
+    metadata = _artifact_metadata(Path(_cohort_matrices_root()))
+    return deepcopy(metadata)
+
+
+def _cohort_matrices_present(root: Path) -> bool:
     return (
         root.exists()
-        and all((root / name).exists()
-                for name in _COHORT_VIEW_VALUE_FILES.values())
-        and (root / _COHORT_VIEW_PROVENANCE_FILE).exists()
+        and all((root / name).exists() for name in _COHORT_MATRIX_FILES.values())
     )
 
 
 @lru_cache(maxsize=4)
-def _load_precomputed_cohort_views(root_text: str) -> tuple[pd.DataFrame, ...]:
+def _load_precomputed_cohort_matrices(root_text: str) -> tuple[pd.DataFrame, ...]:
     root = Path(root_text)
     tpm = _object_column_index(
-        pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["tpm"])
+        pd.read_parquet(root / _COHORT_MATRIX_FILES["tpm"])
     )
     clean = _object_column_index(
-        pd.read_parquet(root / _COHORT_VIEW_VALUE_FILES["clean_tpm"])
+        pd.read_parquet(root / _COHORT_MATRIX_FILES["clean_tpm"])
     )
-    provenance = _refresh_cohort_view_provenance(
+    provenance = _refresh_cohort_matrix_provenance(
         _object_column_index(
-            pd.read_parquet(root / _COHORT_VIEW_PROVENANCE_FILE)
+            pd.read_parquet(root / _COHORT_MATRIX_FILES["provenance"])
         )
     )
     return tpm, clean, provenance
@@ -2435,7 +2449,7 @@ def _canonicalize_source_cohort_ids(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _refresh_cohort_view_provenance(df: pd.DataFrame) -> pd.DataFrame:
+def _refresh_cohort_matrix_provenance(df: pd.DataFrame) -> pd.DataFrame:
     """Refresh a bundled sidecar from oncoref's compact owner manifest.
 
     The precomputed value matrices remain valid across a provenance-only cohort
@@ -2472,7 +2486,7 @@ def _refresh_cohort_view_provenance(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _cohort_value_cols(wide: pd.DataFrame) -> list[str]:
-    return [c for c in wide.columns if c not in _COHORT_VIEW_ID_COLS]
+    return [c for c in wide.columns if c not in _COHORT_MATRIX_ID_COLS]
 
 
 def _object_column_index(df: pd.DataFrame) -> pd.DataFrame:
@@ -2481,7 +2495,7 @@ def _object_column_index(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _filter_canonical_view_genes(
+def _filter_canonical_matrix_genes(
     wide: pd.DataFrame,
     genes: Iterable[str],
 ) -> pd.DataFrame:
@@ -2520,7 +2534,7 @@ def _filter_canonical_view_genes(
 def _drop_all_missing_cohort_columns(wide: pd.DataFrame) -> pd.DataFrame:
     value_cols = _cohort_value_cols(wide)
     keep_values = [c for c in value_cols if wide[c].notna().any()]
-    return wide[[*_COHORT_VIEW_ID_COLS, *keep_values]].copy()
+    return wide[[*_COHORT_MATRIX_ID_COLS, *keep_values]].copy()
 
 
 def _drop_unmeasured_gene_rows(wide: pd.DataFrame) -> pd.DataFrame:
@@ -2544,10 +2558,10 @@ def _select_cohort_columns(
     if codes is None:
         return wide.copy()
     selected = [c for c in dict.fromkeys(codes) if c in wide.columns]
-    return wide[[*_COHORT_VIEW_ID_COLS, *selected]].copy()
+    return wide[[*_COHORT_MATRIX_ID_COLS, *selected]].copy()
 
 
-def _select_cohort_view_rows(
+def _select_cohort_matrix_rows(
     wide: pd.DataFrame,
     *,
     protein_coding: bool,
@@ -2571,7 +2585,7 @@ def _select_cohort_view_rows(
     return wide[mask].reset_index(drop=True)
 
 
-def _filter_cohort_view_provenance(
+def _filter_cohort_matrix_provenance(
     provenance: pd.DataFrame,
     *,
     codes: list[str] | None,
@@ -2593,31 +2607,45 @@ def _filter_cohort_view_provenance(
     return result
 
 
-def _cohort_views_usable(root: Path) -> bool:
-    """The precomputed views artifact is safe to use for the *canonical* path
-    iff all three parquets exist and a readable manifest declares both
-    canonical gene IDs, the running pirlygenes data version, and the exact
-    oncoref package/data versions that supplied its summary rows. Missing,
-    malformed, stale, and unversioned manifests all take the fail-safe rebuild
-    path."""
-    if not _cohort_views_present(root):
+def _cohort_matrices_usable(root: Path) -> bool:
+    """Return whether the materialized matrices match the active data contract.
+
+    The owner package version is build provenance, not a compatibility key:
+    wheel-only oncoref releases can add unrelated APIs without changing the
+    versioned expression data. Missing, malformed, stale, and unversioned
+    metadata all take the fail-safe rebuild path.
+    """
+    if not _cohort_matrices_present(root):
         return False
-    import oncoref
     from oncoref import data_bundle as oncoref_data_bundle
 
-    manifest = _artifact_manifest(root)
+    metadata = _artifact_metadata(root)
+    built_from = metadata.get("built_from")
+    tables = metadata.get("tables")
     return bool(
-        manifest.get("canonical_gene_ids", False)
-        and str(manifest.get("data_version", "")) == DATA_VERSION
-        and str(manifest.get("source_package", "")) == "oncoref"
-        and str(manifest.get("source_package_version", ""))
-        == str(oncoref.__version__)
-        and str(manifest.get("source_data_version", ""))
+        metadata.get("artifact_type")
+        == COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE
+        and metadata.get("schema_version")
+        == COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION
+        and metadata.get("canonical_gene_ids") is True
+        and str(metadata.get("pirlygenes_data_version", "")) == DATA_VERSION
+        and isinstance(built_from, dict)
+        and str(built_from.get("package", "")) == "oncoref"
+        and bool(str(built_from.get("package_version", "")).strip())
+        and str(built_from.get("data_version", ""))
         == str(oncoref_data_bundle.DATA_VERSION)
+        and isinstance(tables, dict)
+        and all(
+            isinstance(tables.get(table), dict)
+            and tables[table].get("file") == filename
+            and isinstance(tables[table].get("rows"), int)
+            and tables[table]["rows"] >= 0
+            for table, filename in _COHORT_MATRIX_FILES.items()
+        )
     )
 
 
-def _canonicalize_views_long(long: pd.DataFrame) -> pd.DataFrame:
+def _canonicalize_matrix_rows(long: pd.DataFrame) -> pd.DataFrame:
     """Collapse the long reference onto canonical ENSG keys (#465): sum the
     TPM-like columns and max ``n_detected`` per (cancer_code, source_cohort,
     normalization, canonical-ENSG)."""
@@ -2631,7 +2659,7 @@ def _canonicalize_views_long(long: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def _pivot_views_long(
+def _pivot_expression_matrix(
     long: pd.DataFrame,
     label: str,
     index_cols: list[str],
@@ -2657,19 +2685,19 @@ def _pivot_views_long(
     return wide
 
 
-def _shared_rebuilt_canonical_cohort_views(
+def _shared_rebuilt_canonical_cohort_matrices(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Borrow the cached full canonical views rebuilt from the reference.
+    """Borrow the cached full canonical matrices rebuilt from the reference.
 
     This internal result is process-owned and must not escape through a public
     API. Internal readers immediately slice it into caller-owned frames.
     """
     def _build(_df: pd.DataFrame):
         long = _reference_long_from_summary_frame(_df)
-        long = _canonicalize_views_long(long)
+        long = _canonicalize_matrix_rows(long)
         index_cols = ["Ensembl_Gene_ID"]
-        tpm = _pivot_views_long(long, "TPM", index_cols)
-        clean = _pivot_views_long(long, "TPM_clean", index_cols)
+        tpm = _pivot_expression_matrix(long, "TPM", index_cols)
+        clean = _pivot_expression_matrix(long, "TPM_clean", index_cols)
         # Keep the full public availability metadata in future sidecars. The
         # lightweight reader remains compatible with older four-column
         # sidecars by filling these fields from registries (#565).
@@ -2680,10 +2708,10 @@ def _shared_rebuilt_canonical_cohort_views(
                       .drop_duplicates().reset_index(drop=True))
         return tpm, clean, provenance
 
-    return _shared_reference_derivation("full_canonical_views", _build)
+    return _shared_reference_derivation("full_canonical_matrices", _build)
 
 
-def build_canonical_cohort_expression_views(
+def build_canonical_cohort_expression_matrices(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build the **full** canonical wide matrices (every gene × every cohort)
     plus a provenance table that still carries ``cancer_code``.
@@ -2691,20 +2719,20 @@ def build_canonical_cohort_expression_views(
     This is the public, deterministic artifact builder. It intentionally
     bypasses the precomputed artifact and can be expensive; release tooling and
     parity audits use it when producing or validating a data bundle. The
-    artifact under ``cancer-reference-expression-views/`` is the on-disk
+    artifact under ``cohort-expression-matrices/`` is the on-disk
     serialization of this function's output (see
-    ``scripts/generate_cohort_expression_views.py``).
+    ``scripts/generate_cohort_expression_matrices.py``).
 
     The expensive rebuild is memoized on the reference-frame identity, but
     every public call receives defensive copies. Callers may therefore mutate
     the returned frames without changing later builds or normal expression
     queries.
     """
-    tpm, clean_tpm, provenance = _shared_rebuilt_canonical_cohort_views()
+    tpm, clean_tpm, provenance = _shared_rebuilt_canonical_cohort_matrices()
     return tpm.copy(), clean_tpm.copy(), provenance.copy()
 
 
-def _valid_full_views(frames: tuple[pd.DataFrame, ...]) -> bool:
+def _valid_full_matrices(frames: tuple[pd.DataFrame, ...]) -> bool:
     """The loaded artifact must be the (tpm, clean, provenance) triple with the
     id columns on the two value matrices; anything else is treated as corrupt."""
     if not isinstance(frames, tuple) or len(frames) != 3:
@@ -2713,28 +2741,28 @@ def _valid_full_views(frames: tuple[pd.DataFrame, ...]) -> bool:
     if not all(isinstance(f, pd.DataFrame) for f in frames):
         return False
     for matrix in (tpm, clean):
-        if not set(_COHORT_VIEW_ID_COLS) <= set(matrix.columns):
+        if not set(_COHORT_MATRIX_ID_COLS) <= set(matrix.columns):
             return False
     return True
 
 
-def _shared_full_canonical_cohort_views(
+def _shared_full_canonical_cohort_matrices(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Borrow process-owned full canonical views for internal slicing.
+    """Borrow process-owned full canonical matrices for internal slicing.
 
     A usable precomputed artifact wins; otherwise the reference-derived cache
     is used. Both branches have the same schema. The returned frames are shared
     mutable objects and must never be exposed directly—the sole caller passes
-    them to ``_apply_cohort_view_filters``, which creates caller-owned slices.
+    them to ``_apply_cohort_matrix_filters``, which creates caller-owned slices.
     An unreadable or schema-invalid artifact degrades to the rebuild.
     """
-    root = Path(_cohort_views_root())
-    if _cohort_views_usable(root):
+    root = Path(_cohort_matrices_root())
+    if _cohort_matrices_usable(root):
         try:
-            frames = _load_precomputed_cohort_views(str(root))
+            frames = _load_precomputed_cohort_matrices(str(root))
         except Exception as exc:  # noqa: BLE001 — corrupt parquet / missing engine
             warnings.warn(
-                f"Precomputed cohort views at {root} could not be read "
+                f"Precomputed cohort matrices at {root} could not be read "
                 f"({exc!r}); falling back to a full rebuild from the reference. "
                 "This is much slower — check the data bundle and that a parquet "
                 "engine (pyarrow) is installed.",
@@ -2742,21 +2770,21 @@ def _shared_full_canonical_cohort_views(
             )
             frames = None
         else:
-            if not _valid_full_views(frames):
+            if not _valid_full_matrices(frames):
                 warnings.warn(
-                    f"Precomputed cohort views at {root} have an unexpected "
+                    f"Precomputed cohort matrices at {root} have an unexpected "
                     "schema; falling back to a full rebuild from the reference. "
                     "This is much slower — the artifact may be stale or corrupt.",
                     RuntimeWarning, stacklevel=2,
                 )
-                _load_precomputed_cohort_views.cache_clear()
+                _load_precomputed_cohort_matrices.cache_clear()
                 frames = None
         if frames is not None:
             return frames
-    return _shared_rebuilt_canonical_cohort_views()
+    return _shared_rebuilt_canonical_cohort_matrices()
 
 
-def _apply_cohort_view_filters(
+def _apply_cohort_matrix_filters(
     tpm_full: pd.DataFrame,
     clean_full: pd.DataFrame,
     provenance_full: pd.DataFrame,
@@ -2765,18 +2793,18 @@ def _apply_cohort_view_filters(
     *,
     protein_coding: bool,
     min_cohort_coverage: Optional[float],
-) -> CohortExpressionViews:
+) -> CohortExpressionMatrices:
     """Slice the full canonical matrices down to a request. This is the **one**
-    canonical-views filter, shared by the precomputed-artifact fast path and the
+    canonical-matrices filter, shared by the precomputed-artifact fast path and the
     rebuild fallback, so the two can never diverge.
 
     Order: select cohort columns → (optional) gene filter → drop cohorts and
     genes left all-missing by the narrowing → protein-coding / coverage row
-    filter → biology-only view. Provenance is reduced to the public three
+    filter → biology-only matrix. Provenance is reduced to the public three
     columns and aligned to whichever cohorts survive.
 
     Whenever ``cancer_types`` or ``genes`` narrows the matrix we prune the
-    NaN-only rows and columns the narrowing exposes, so a sliced view contains
+    NaN-only rows and columns the narrowing exposes, so a sliced matrix contains
     exactly the genes measured in the requested cohorts (matching a pivot of
     that slice) rather than the full all-cohort gene union (#474 review)."""
     codes = _resolve_cancer_types(cancer_types, expand_aggregates=True)
@@ -2786,8 +2814,8 @@ def _apply_cohort_view_filters(
     provenance_codes = codes
     if genes is not None:
         gene_list = list(genes)
-        tpm = _filter_canonical_view_genes(tpm, gene_list)
-        clean = _filter_canonical_view_genes(clean, gene_list)
+        tpm = _filter_canonical_matrix_genes(tpm, gene_list)
+        clean = _filter_canonical_matrix_genes(clean, gene_list)
 
     if codes is not None or genes is not None:
         tpm = _drop_unmeasured_gene_rows(_drop_all_missing_cohort_columns(tpm))
@@ -2796,34 +2824,34 @@ def _apply_cohort_view_filters(
             _cohort_value_cols(tpm) + _cohort_value_cols(clean)
         ))
 
-    tpm = _select_cohort_view_rows(
+    tpm = _select_cohort_matrix_rows(
         tpm,
         protein_coding=protein_coding,
         min_cohort_coverage=min_cohort_coverage,
     )
-    clean = _select_cohort_view_rows(
+    clean = _select_cohort_matrix_rows(
         clean,
         protein_coding=protein_coding,
         min_cohort_coverage=min_cohort_coverage,
     )
     biological = drop_technical_genes(clean) if not clean.empty else clean
-    return CohortExpressionViews(
+    return CohortExpressionMatrices(
         tpm,
         clean,
         biological,
-        _filter_cohort_view_provenance(provenance_full, codes=provenance_codes),
+        _filter_cohort_matrix_provenance(provenance_full, codes=provenance_codes),
     )
 
 
-def _cohort_expression_views_from_reference(
+def _cohort_expression_matrices_from_reference(
     cancer_types: Optional[str | Iterable[str]] = None,
     genes: Optional[Iterable[str]] = None,
     *,
     canonicalize_genes: bool = True,
     protein_coding: bool = False,
     min_cohort_coverage: Optional[float] = None,
-) -> "CohortExpressionViews":
-    """Build the views straight from the long reference, filtering during the
+) -> "CohortExpressionMatrices":
+    """Build the matrices straight from the long reference, filtering during the
     pivot. This is an **independent** implementation of the same contract as the
     canonical fast path: it powers the ``canonicalize_genes=False`` opt-out, and
     serves as the from-scratch oracle the canonical path is tested against.
@@ -2834,46 +2862,46 @@ def _cohort_expression_views_from_reference(
         genes=genes,
     )
     if canonicalize_genes:
-        long = _canonicalize_views_long(long)
+        long = _canonicalize_matrix_rows(long)
     index_cols = (["Ensembl_Gene_ID"] if canonicalize_genes
                   else ["Ensembl_Gene_ID", "Symbol"])
 
-    tpm = _select_cohort_view_rows(
-        _pivot_views_long(long, "TPM", index_cols),
+    tpm = _select_cohort_matrix_rows(
+        _pivot_expression_matrix(long, "TPM", index_cols),
         protein_coding=protein_coding,
         min_cohort_coverage=min_cohort_coverage,
     )
-    clean = _select_cohort_view_rows(
-        _pivot_views_long(long, "TPM_clean", index_cols),
+    clean = _select_cohort_matrix_rows(
+        _pivot_expression_matrix(long, "TPM_clean", index_cols),
         protein_coding=protein_coding,
         min_cohort_coverage=min_cohort_coverage,
     )
     # biological inherits clean's gene selection, then drops technical genes.
     biological = drop_technical_genes(clean) if not clean.empty else clean
-    provenance = _filter_cohort_view_provenance(long, codes=None)
-    return CohortExpressionViews(tpm, clean, biological, provenance)
+    provenance = _filter_cohort_matrix_provenance(long, codes=None)
+    return CohortExpressionMatrices(tpm, clean, biological, provenance)
 
 
-def cohort_expression_views(
+def cohort_expression_matrices(
     cancer_types: Optional[str | Iterable[str]] = None,
     genes: Optional[Iterable[str]] = None,
     *,
     canonicalize_genes: bool = True,
     protein_coding: bool = False,
     min_cohort_coverage: Optional[float] = None,
-) -> "CohortExpressionViews":
+) -> "CohortExpressionMatrices":
     """Bundle a cohort's normalization stages into one
-    :class:`CohortExpressionViews` (tpm / clean_tpm / clean_tpm_biological +
+    :class:`CohortExpressionMatrices` (tpm / clean_tpm / clean_tpm_biological +
     provenance) so downstream never re-normalizes inconsistently (#319).
 
     ``cancer_types`` / ``genes`` select cohorts and genes (aggregate codes like
     ``SARC`` expand to their subtypes). Values are the per-cohort medians.
 
     By default (``canonicalize_genes=True``) the result is sliced out of the
-    **full canonical views** — every row keyed on one canonical ENSG so
+    **full canonical matrices** — every row keyed on one canonical ENSG so
     cross-release symbol drift cannot split a gene into several sparse rows.
     That full matrix is served from the precomputed
-    ``cancer-reference-expression-views/`` artifact when present, and otherwise
+    ``cohort-expression-matrices/`` artifact when present, and otherwise
     rebuilt from the reference once and memoized; either way the *same* filter
     runs, so the fast path and the fallback return identical results.
     ``canonicalize_genes=False`` opts out of canonicalization entirely and builds
@@ -2888,9 +2916,9 @@ def cohort_expression_views(
         raise ValueError("min_cohort_coverage must be between 0 and 1")
     if canonicalize_genes:
         tpm_full, clean_full, provenance_full = (
-            _shared_full_canonical_cohort_views()
+            _shared_full_canonical_cohort_matrices()
         )
-        return _apply_cohort_view_filters(
+        return _apply_cohort_matrix_filters(
             tpm_full,
             clean_full,
             provenance_full,
@@ -2899,7 +2927,7 @@ def cohort_expression_views(
             protein_coding=protein_coding,
             min_cohort_coverage=min_cohort_coverage,
         )
-    return _cohort_expression_views_from_reference(
+    return _cohort_expression_matrices_from_reference(
         cancer_types,
         genes,
         canonicalize_genes=False,
@@ -3453,8 +3481,10 @@ def estimate_signatures() -> pd.DataFrame:
 __all__ = [
     # artifact contracts/builders
     "PAN_CANCER_ROLLUP_MEMBERS",
+    "COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE",
+    "COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION",
     "canonicalize_expression_gene_rows",
-    "build_canonical_cohort_expression_views",
+    "build_canonical_cohort_expression_matrices",
     # accessors
     "pan_cancer_expression",
     "cancer_reference_expression",
@@ -3465,8 +3495,9 @@ __all__ = [
     "available_representative_cohorts",
     "cohort_gene_percentiles",
     "available_percentile_cohorts",
-    "cohort_expression_views",
-    "CohortExpressionViews",
+    "cohort_expression_matrices",
+    "cohort_expression_matrices_metadata",
+    "CohortExpressionMatrices",
     "tumor_up_vs_matched_normal",
     "heme_tumor_up_vs_matched_normal",
     "cancer_expression",

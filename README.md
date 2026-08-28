@@ -290,10 +290,11 @@ pirlygenes plot patient-coverage --gene-set cta \
 
 ## What's bundled (`pirlygenes/data/`)
 
-Every CSV ships in the wheel under `pirlygenes/data/`. The "Primary
-accessor" column points at the typed Python entry point; any CSV
-listed as `get_data("…")` has no named accessor and is meant to be
-read raw via the generic loader.
+Pirlygenes-owned small CSVs ship in the wheel under `pirlygenes/data/`;
+empirical owner rows identified as oncoref below are delegated at runtime. The
+"Primary accessor" column points at the typed Python entry point; any CSV listed
+as `get_data("…")` has no named accessor and is meant to be read raw through the
+compatibility loader.
 
 | File | Primary accessor |
 |---|---|
@@ -304,7 +305,7 @@ read raw via the generic loader.
 | `cancer-driver-genes.csv` | `get_data("cancer-driver-genes")` |
 | `cancer-driver-variants.csv` | `get_data("cancer-driver-variants")` |
 | `cancer-key-genes.csv` | `cancer_key_genes_df()` |
-| `therapy-benefit-toxicity-evidence.csv` | `therapy_benefit_toxicity_evidence()` |
+| oncoref `therapy-benefit-toxicity-evidence` facts | `therapy_benefit_toxicity_evidence()` compatibility wrapper |
 | `cancer-type-registry.csv` | `cancer_type_registry()`, `CANCER_TYPE_NAMES`, `resolve_cancer_type()`, `cancer_types_in_family()`, `cancer_types_by_tissue()`, `cancer_type_subtypes_of()` |
 | `cancer-family-panels.csv` | `cancer_family_panels()`, `cancer_family_panel(name)`, `cancer_family_panels_df()` |
 | `cancer-type-genes.csv` | `cancer_type_gene_sets(cancer_type)` |
@@ -364,13 +365,17 @@ mtDNA set with a semantic `Role` column).
 gene-set lookups, the cancer-type registry, public masks, and compatibility
 wrappers. Oncoref owns expression ingestion, source/sample registries,
 per-sample matrices, empirical summaries, representatives, percentiles,
-within-sample fractions, and proteoform artifacts.
+within-sample fractions, proteoform artifacts, and source-anchored clinical
+benefit/toxicity facts. Target-to-therapy registries and therapy-selection
+panels remain curated in pirlygenes.
 
-Pirlygenes' expression APIs are compatibility views over those owner artifacts.
+Pirlygenes' expression APIs are compatibility interfaces over those owner
+artifacts.
 It no longer ships a source registry, empirical summary shards, sample manifest,
 or builders. The pirlygenes release bundle retains only purpose-specific
-derived views and matrices; the precomputed cohort view is a version-stamped
-wide cache generated from oncoref, not an independent empirical data source.
+derived matrices; the materialized cohort-expression matrices are a
+version-stamped wide cache generated from oncoref, not an independent empirical
+data source.
 
 Aggregate reference availability and per-sample artifact availability are
 separate capabilities. A cohort can expose medians, sample counts, and coarse
@@ -421,6 +426,13 @@ If the `pirlygenes` console-script is still on PATH from a prior install, it now
 
 ## Migration history
 
+- **v6.0.0** — rename the materialized normalization API for accuracy:
+  `cohort_expression_matrices()`, `CohortExpressionMatrices`, and
+  `build_canonical_cohort_expression_matrices()`. The downloadable artifact is
+  now `cohort-expression-matrices/` with self-describing `metadata.json`;
+  `cohort_expression_matrices_metadata()` exposes that provenance without
+  requiring callers to inspect package files. The former “views” names are
+  removed rather than retained as aliases.
 - **v5.2.0** — add `normalize=` presets for TPM-scaled and
   clean-TPM expression accessors, derive `<TCGA>_TPM`
   columns from the ID-keyed pan-cancer `<TCGA>_FPKM` columns, and remove

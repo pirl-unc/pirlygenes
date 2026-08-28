@@ -57,6 +57,7 @@ _ONCOREF_DATASETS = frozenset({
     "cohort-registry",
     "ncbi-symbol-synonyms",
     "ribosomal-protein-pseudogenes",
+    "therapy-benefit-toxicity-evidence",
 })
 
 # oncoref owns the complete computed-aggregate ontology.  Pirlygenes keeps its
@@ -420,6 +421,11 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                 ].copy()
             elif delegated_name == "cancer-reference-expression-samples":
                 delegated = _reconcile_reference_expression_samples(delegated)
+            elif delegated_name == "therapy-benefit-toxicity-evidence":
+                # The owner adds a stable evidence_id. Keep the historical
+                # pirlygenes generic-loader schema while the typed wrapper
+                # delegates all filtering and evidence semantics upstream.
+                delegated = delegated.drop(columns="evidence_id").copy()
             _CACHED_DATAFRAMES[cache_key] = delegated
         cached = _CACHED_DATAFRAMES[cache_key]
         return cached.copy() if copy else cached

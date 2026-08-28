@@ -1,8 +1,9 @@
 """Prepare a complete pirlygenes upgrade to the latest oncoref release.
 
-The oncoref dependency cannot safely float at install time: pirlygenes ships a
-wide compatibility cache whose manifest records the exact oncoref package and
-data versions used to build it.  This helper is the deterministic core of the
+The oncoref dependency cannot safely float at install time: pirlygenes ships
+materialized cohort-expression matrices whose metadata records the exact
+oncoref package and data versions used to build them. This helper is the
+deterministic core of the
 maintainer-run upgrade process:
 
     python scripts/upgrade_oncoref.py check
@@ -194,7 +195,7 @@ def regenerate() -> None:
         )
 
     validate_selected_source_shards()
-    _run(sys.executable, "scripts/generate_cohort_expression_views.py")
+    _run(sys.executable, "scripts/generate_cohort_expression_matrices.py")
     _run(sys.executable, "scripts/generate_pan_cancer_expression_rollups.py")
     _run(sys.executable, "scripts/parity_reference_expression.py")
     shutil.copyfile(PARITY_DIR / "parity_by_code.csv", DOC_PARITY_CSV)

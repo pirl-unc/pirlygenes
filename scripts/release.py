@@ -45,18 +45,21 @@ import sys
 import tarfile
 from pathlib import Path
 
-import oncoref
 from oncoref import data_bundle as oncoref_data_bundle
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from pirlygenes import data_bundle  # noqa: E402
+from pirlygenes.expression import (  # noqa: E402
+    COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE,
+    COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION,
+)
 from pirlygenes.version import DATA_VERSION, __version__  # noqa: E402
 
 DATA_DIR = REPO_ROOT / "pirlygenes" / "data"
-COHORT_VIEWS_MANIFEST = (
-    DATA_DIR / "cancer-reference-expression-views" / "_manifest.json"
+COHORT_MATRICES_METADATA = (
+    DATA_DIR / "cohort-expression-matrices" / "metadata.json"
 )
 TARBALL = REPO_ROOT / data_bundle.TARBALL_FILENAME           # pirlygenes-data-v<DV>.tar.gz
 DATA_TAG = f"v{DATA_VERSION}"
@@ -135,47 +138,89 @@ def _release_exists(tag: str) -> bool:
         capture_output=True).returncode == 0
 
 
-def validate_data_bundle_manifests() -> None:
-    """Refuse to publish derived views stamped for another data release."""
+def validate_data_bundle_metadata() -> None:
+    """Refuse to publish matrices that violate their declared data contract."""
     try:
-        manifest = json.loads(COHORT_VIEWS_MANIFEST.read_text())
+        metadata = json.loads(COHORT_MATRICES_METADATA.read_text())
     except FileNotFoundError as exc:
         raise Abort(
-            f"cohort-views manifest missing: {COHORT_VIEWS_MANIFEST}"
+            f"cohort matrices metadata missing: {COHORT_MATRICES_METADATA}"
         ) from exc
     except (OSError, json.JSONDecodeError) as exc:
         raise Abort(
-            f"cohort-views manifest unreadable: {COHORT_VIEWS_MANIFEST}: {exc}"
+            "cohort matrices metadata unreadable: "
+            f"{COHORT_MATRICES_METADATA}: {exc}"
         ) from exc
-    if not isinstance(manifest, dict):
+    if not isinstance(metadata, dict):
         raise Abort(
-            f"cohort-views manifest invalid: {COHORT_VIEWS_MANIFEST} must "
+            f"cohort matrices metadata invalid: {COHORT_MATRICES_METADATA} must "
             "contain a JSON object"
         )
-    if manifest.get("canonical_gene_ids") is not True:
+    if metadata.get("artifact_type") != COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE:
         raise Abort(
-            "cohort-views manifest must declare canonical_gene_ids=true: "
-            f"{COHORT_VIEWS_MANIFEST}"
+            "cohort matrices artifact_type mismatch: "
+            f"{metadata.get('artifact_type')!r}"
         )
-    actual = str(manifest.get("data_version", ""))
+    if metadata.get("canonical_gene_ids") is not True:
+        raise Abort(
+            "cohort matrices metadata must declare canonical_gene_ids=true: "
+            f"{COHORT_MATRICES_METADATA}"
+        )
+    if (
+        metadata.get("schema_version")
+        != COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION
+    ):
+        raise Abort(
+            "cohort matrices schema_version mismatch: "
+            f"{metadata.get('schema_version')!r} != "
+            f"{COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION!r}"
+        )
+    actual = str(metadata.get("pirlygenes_data_version", ""))
     if actual != DATA_VERSION:
         raise Abort(
-            "cohort-views manifest data_version mismatch: "
+            "cohort matrices pirlygenes_data_version mismatch: "
             f"{actual!r} != DATA_VERSION {DATA_VERSION!r}; bump DATA_VERSION "
-            "before running scripts/generate_cohort_expression_views.py"
+            "before running scripts/generate_cohort_expression_matrices.py"
         )
+    built_from = metadata.get("built_from")
+    if not isinstance(built_from, dict):
+        raise Abort("cohort matrices metadata lacks a built_from object")
     expected_owner = {
-        "source_package": "oncoref",
-        "source_package_version": str(oncoref.__version__),
-        "source_data_version": str(oncoref_data_bundle.DATA_VERSION),
+        "package": "oncoref",
+        "data_version": str(oncoref_data_bundle.DATA_VERSION),
     }
     for field, expected in expected_owner.items():
-        observed = str(manifest.get(field, ""))
+        observed = str(built_from.get(field, ""))
         if observed != expected:
             raise Abort(
-                f"cohort-views manifest {field} mismatch: "
-                f"{observed!r} != {expected!r}; regenerate the views with the "
-                "installed oncoref release"
+                f"cohort matrices built_from.{field} mismatch: "
+                f"{observed!r} != {expected!r}; regenerate the matrices with the "
+                "installed oncoref data release"
+            )
+    if not str(built_from.get("package_version", "")).strip():
+        raise Abort(
+            "cohort matrices metadata lacks built_from.package_version"
+        )
+    tables = metadata.get("tables")
+    expected_files = {
+        "tpm": "tpm.parquet",
+        "clean_tpm": "clean_tpm.parquet",
+        "provenance": "provenance.parquet",
+    }
+    if not isinstance(tables, dict):
+        raise Abort("cohort matrices metadata lacks a tables object")
+    for table, filename in expected_files.items():
+        record = tables.get(table)
+        if not isinstance(record, dict):
+            raise Abort(f"cohort matrices metadata lacks tables.{table}")
+        if record.get("file") != filename:
+            raise Abort(
+                f"cohort matrices tables.{table}.file mismatch: "
+                f"{record.get('file')!r} != {filename!r}"
+            )
+        if not isinstance(record.get("rows"), int) or record["rows"] < 0:
+            raise Abort(
+                f"cohort matrices tables.{table}.rows must be a nonnegative integer"
             )
 
 
@@ -210,7 +255,7 @@ def pre_extract_cache(*, dry: bool) -> None:
 
 def publish_data(*, dry: bool, assume_yes: bool, target_sha: str) -> None:
     print(f"== data bundle ==  tag={DATA_TAG}")
-    validate_data_bundle_manifests()
+    validate_data_bundle_metadata()
     if _release_has_asset(DATA_TAG, TARBALL.name):
         print(f"  {TARBALL.name} already on release {DATA_TAG}; skipping data publish")
         return

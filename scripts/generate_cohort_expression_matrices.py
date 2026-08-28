@@ -1,14 +1,14 @@
-"""Generate precomputed canonical cohort-expression views.
+"""Generate canonical cohort-expression matrices.
 
-The public ``cohort_expression_views()`` API needs the all-cohort TPM and
+The public ``cohort_expression_matrices()`` API needs the all-cohort TPM and
 clean-TPM matrices often enough that rebuilding them from the 9M-row long form
 at read time is waste. This script materializes the canonical wide matrices as
 a data-bundle artifact:
 
-    pirlygenes/data/cancer-reference-expression-views/tpm.parquet
-    pirlygenes/data/cancer-reference-expression-views/clean_tpm.parquet
-    pirlygenes/data/cancer-reference-expression-views/provenance.parquet
-    pirlygenes/data/cancer-reference-expression-views/_manifest.json
+    pirlygenes/data/cohort-expression-matrices/tpm.parquet
+    pirlygenes/data/cohort-expression-matrices/clean_tpm.parquet
+    pirlygenes/data/cohort-expression-matrices/provenance.parquet
+    pirlygenes/data/cohort-expression-matrices/metadata.json
 
 Run against the pinned delegated oncoref summary before creating the
 ``DATA_VERSION`` tarball. This is a pirlygenes-specific wide compatibility
@@ -24,7 +24,9 @@ import oncoref
 from oncoref import data_bundle as oncoref_data_bundle
 
 from pirlygenes.expression import (
-    build_canonical_cohort_expression_views,
+    COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE,
+    COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION,
+    build_canonical_cohort_expression_matrices,
 )
 from pirlygenes.version import DATA_VERSION
 
@@ -33,7 +35,7 @@ OUT_DIR = (
     Path(__file__).resolve().parent.parent
     / "pirlygenes"
     / "data"
-    / "cancer-reference-expression-views"
+    / "cohort-expression-matrices"
 )
 
 
@@ -41,11 +43,11 @@ def build() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     # The artifact is, by construction, the serialized output of the same
     # function the read path falls back to when the artifact is absent
-    # (build_canonical_cohort_expression_views). Generating it any other way
+    # (build_canonical_cohort_expression_matrices). Generating it any other way
     # would let the cache drift from the fallback, so call that function
     # directly — tpm/clean_tpm/provenance here are exactly what a cache miss
     # would recompute.
-    tpm, clean_tpm, provenance = build_canonical_cohort_expression_views()
+    tpm, clean_tpm, provenance = build_canonical_cohort_expression_matrices()
     tpm.to_parquet(OUT_DIR / "tpm.parquet", index=False, compression="zstd")
     clean_tpm.to_parquet(
         OUT_DIR / "clean_tpm.parquet",
@@ -58,22 +60,30 @@ def build() -> None:
         compression="zstd",
     )
 
-    manifest = {
-        "artifact": "cancer-reference-expression-views",
-        "data_version": DATA_VERSION,
+    metadata = {
+        "artifact_type": COHORT_EXPRESSION_MATRICES_ARTIFACT_TYPE,
+        "schema_version": COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION,
+        "pirlygenes_data_version": DATA_VERSION,
         "canonical_gene_ids": True,
-        "format": 1,
-        "source_data_version": oncoref_data_bundle.DATA_VERSION,
-        "source_package": "oncoref",
-        "source_package_version": oncoref.__version__,
-        "rows": {
-            "tpm": int(len(tpm)),
-            "clean_tpm": int(len(clean_tpm)),
-            "provenance": int(len(provenance)),
+        "built_from": {
+            "package": "oncoref",
+            "package_version": oncoref.__version__,
+            "data_version": oncoref_data_bundle.DATA_VERSION,
+        },
+        "tables": {
+            "tpm": {"file": "tpm.parquet", "rows": int(len(tpm))},
+            "clean_tpm": {
+                "file": "clean_tpm.parquet",
+                "rows": int(len(clean_tpm)),
+            },
+            "provenance": {
+                "file": "provenance.parquet",
+                "rows": int(len(provenance)),
+            },
         },
     }
-    (OUT_DIR / "_manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    (OUT_DIR / "metadata.json").write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n"
     )
     total_mb = sum(f.stat().st_size for f in OUT_DIR.glob("*")) / 1e6
     print(

@@ -100,12 +100,13 @@ synthesis, not a TPM ranking. The score combines:
   and disease context.
 
 Do not infer survival benefit or toxicity from expression alone.
-`therapy-benefit-toxicity-evidence.csv` is the normalized curation surface for
-those fields. FDA/DailyMed labels, ClinicalTrials.gov results, publications,
-openFDA/FAERS signals, CTCAE terminology, and extracted label resources can
-contribute rows only after normalization by indication, line of therapy,
-endpoint (ORR/DOR/PFS/OS/RFS), dose, and adverse-event severity. FAERS rows are
-signal context only and are not incidence estimates.
+Oncoref owns and validates the normalized empirical evidence facts; pirlygenes'
+`therapy_benefit_toxicity_evidence()` remains a compatibility wrapper for its
+historical schema and filters. FDA/DailyMed labels, ClinicalTrials.gov results,
+publications, openFDA/FAERS signals, CTCAE terminology, and extracted label
+resources can contribute upstream rows only after normalization by indication,
+line of therapy, endpoint (ORR/DOR/PFS/OS/RFS), dose, and adverse-event
+severity. FAERS rows are signal context only and are not incidence estimates.
 
 ## Cancer Type Labels
 

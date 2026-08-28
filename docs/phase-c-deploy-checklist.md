@@ -26,7 +26,8 @@ The manual steps below are kept as the reference the script automates.
 Oncoref upgrades are deliberately maintainer-run because a new owner release
 can change reference availability, sample QC, taxonomy, gene identity, or other
 biological semantics. Pirlygenes also ships compatibility artifacts whose
-manifests record the exact oncoref package and data versions used to build them.
+metadata records the exact oncoref package and data versions used to build the
+matrices.
 A dependency-only bot PR would therefore be incomplete.
 
 Use the deterministic helper from a clean, purpose-built branch:
@@ -40,7 +41,7 @@ python scripts/upgrade_oncoref.py regenerate
 
 `prepare` updates the exact owner pin and allocates the next pirlygenes
 code/data patch version. After the new pin is installed, `regenerate` rebuilds
-the cohort views, pan-cancer rollups, parity reports, and public-manifest
+the cohort matrices, pan-cancer rollups, parity reports, and public-manifest
 checksum. Before writing any artifact it verifies that every explicit rollup
 shard still matches oncoref's selected summary cohort and fails closed on
 source drift. Inspect the complete diff, run the focused upgrade tests and
@@ -49,7 +50,7 @@ The helper never creates branches or PRs and never merges or publishes a
 release.
 
 Files in the tarball (`pirlygenes.data_bundle.DOWNLOADABLE_PATHS`):
-`cancer-reference-expression-views/`, `pan-cancer-expression.csv`, and
+`cohort-expression-matrices/`, `pan-cancer-expression.csv`, and
 `hpa-cell-type-expression.csv`. The source summary rows are served by oncoref;
 pirlygenes no longer downloads its duplicate `cancer-reference-expression/`
 runtime copy (#557).
@@ -61,18 +62,18 @@ oncoref in #208 — no longer in the tarball.)
 1. **Regenerate derived artifacts** when the migration touches expression data:
    ```bash
    python scripts/bake_canonical_reference_expression_artifacts.py
-   # The views artifact is a cache of the summary shards, so regenerate it
+   # The matrices artifact is a cache of the summary shards, so regenerate it
    # whenever those shards change (it must run after the bake above):
-   python scripts/generate_cohort_expression_views.py
+   python scripts/generate_cohort_expression_matrices.py
    # (Per-gene percentile vectors + representative-sample medoids are owned by
    #  oncoref since #208 — regenerated in oncoref, not here.)
    ```
 
 2. **Build the data tarball** from the in-repo data:
    ```bash
-   V=5.23.0
+   V=6.0.0
    tar -C pirlygenes/data -czf pirlygenes-data-v$V.tar.gz \
-       cancer-reference-expression-views \
+       cohort-expression-matrices \
        pan-cancer-expression.csv \
        hpa-cell-type-expression.csv
    ```

@@ -2,14 +2,14 @@
 
 The wheel ships small curated panels directly (gene families, cancer-type
 registry, key-gene panels, CTA list — total ~1 MB). Pirlygenes' larger derived
-views and HPA/pan-cancer matrices are downloaded on first access from the GitHub
-Release matching the installed package version. Empirical per-cohort summary
+matrices and HPA/pan-cancer matrices are downloaded on first access from the GitHub
+release matching the installed data version. Empirical per-cohort summary
 rows are owned and fetched by oncoref (#557), not this bundle.
 
 Why split: PyPI's per-file limit is 100 MiB. Bundling the full reference data
 formerly pushed the wheel to 346 MB (vs. ~5 MB without it). Runtime expression
 ownership is now split explicitly: oncoref serves empirical rows; pirlygenes'
-version-pinned tarball retains only its purpose-specific derived views/matrices.
+version-pinned tarball retains only its purpose-specific derived matrices.
 
 Layout:
 
@@ -22,7 +22,7 @@ Layout:
     empirical cancer-reference summary rows
 
   Downloaded (lazy, pirlygenes bundle, cached locally):
-    cancer-reference-expression-views/*.parquet     (precomputed canonical views)
+    cohort-expression-matrices/*.parquet     (precomputed canonical matrices)
     pan-cancer-expression.csv
     hpa-cell-type-expression.csv
 
@@ -33,7 +33,7 @@ Layout:
 Cache layout (version-pinned so upgrades trigger a re-fetch):
 
   ~/.cache/pirlygenes/bundled_data/v<version>/
-    cancer-reference-expression-views/...
+    cohort-expression-matrices/...
     pan-cancer-expression.csv
     hpa-cell-type-expression.csv
 
@@ -79,7 +79,7 @@ RELEASE_URL = (
 # the cache root) and are NOT bundled in the wheel. The load_dataset
 # module looks here as a fallback after checking pirlygenes/data/.
 DOWNLOADABLE_PATHS: tuple[str, ...] = (
-    "cancer-reference-expression-views",  # precomputed canonical wide views
+    "cohort-expression-matrices",  # precomputed canonical wide matrices
     "pan-cancer-expression.csv",
     # Public hpa_cell_type_expression delegates to oncoref (#510). Keep the old
     # file only for direct get_data("hpa-cell-type-expression") compatibility.

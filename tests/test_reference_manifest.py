@@ -44,9 +44,9 @@ def test_availability_never_loads_full_expression_frame(monkeypatch):
     )
     monkeypatch.setattr(
         accessors,
-        "_cohort_views_root",
+        "_cohort_matrices_root",
         lambda: (_ for _ in ()).throw(
-            AssertionError("availability consulted the local cohort-view sidecar")
+            AssertionError("availability consulted the local cohort matrices")
         ),
     )
 
@@ -113,17 +113,19 @@ def test_availability_keys_match_summary_plus_artifact_only_union():
     assert actual_keys == summary_keys | artifact_only_keys
 
 
-def test_availability_keys_match_the_pirlygenes_provenance_sidecar():
-    sidecar = accessors._canonicalize_source_cohort_ids(
+def test_availability_keys_match_the_pirlygenes_matrix_provenance():
+    provenance = accessors._canonicalize_source_cohort_ids(
         pd.read_parquet(
-            accessors._cohort_views_root()
-            / accessors._COHORT_VIEW_PROVENANCE_FILE,
+            accessors._cohort_matrices_root()
+            / accessors._COHORT_MATRIX_FILES["provenance"],
             columns=["cancer_code", "source_cohort"],
         )
     )
     result = available_cancer_expression_references()
 
-    expected_keys = set(map(tuple, sidecar.astype(str).itertuples(index=False, name=None)))
+    expected_keys = set(
+        map(tuple, provenance.astype(str).itertuples(index=False, name=None))
+    )
     actual_keys = set(map(
         tuple,
         result[["cancer_code", "source_cohort"]]
