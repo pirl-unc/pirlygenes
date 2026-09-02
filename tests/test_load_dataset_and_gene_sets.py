@@ -96,6 +96,9 @@ def test_reference_reuses_oncorefs_compact_owning_cache_frame(monkeypatch):
         ("cancer-subtype-groupings", "Cancer-Subtype-Groupings"),
         ("cancer-apd1-response", "Cancer-APD1-Response"),
         ("cancer-tmb", "Cancer-TMB"),
+        ("cancer-driver-genes", "Cancer-Driver-Genes"),
+        ("cancer-driver-variants", "Cancer-Driver-Variants"),
+        ("legacy-dataset-dispositions", "Legacy-Dataset-Dispositions"),
     ],
 )
 def test_all_delegated_dataset_name_variants_are_case_insensitive(
@@ -172,6 +175,22 @@ def test_cancer_burden_datasets_are_delegated():
         ld.get_data("Cancer-Code-Burden-Map"),
         get_oncoref_data("cancer-code-burden-map"),
     )
+
+
+def test_frozen_driver_datasets_delegate_to_oncoref_without_local_copies():
+    import oncoref
+    from oncoref.load_dataset import get_data as get_oncoref_data
+
+    for name in ("cancer-driver-genes", "cancer-driver-variants"):
+        assert name in ld._ONCOREF_DATASETS
+        assert not (ld._BUNDLED_DATA_DIR / f"{name}.csv").exists()
+        pd.testing.assert_frame_equal(ld.get_data(name), get_oncoref_data(name))
+
+        disposition = oncoref.legacy_dataset_disposition(name)
+        assert disposition["replacement_owner"] == "oncoref"
+        assert disposition["replacement_surface"] == (
+            "cancer-entity-driver-spectrum"
+        )
 
 
 def test_get_all_csv_paths_contains_core_dataset():

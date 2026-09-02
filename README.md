@@ -302,8 +302,7 @@ compatibility loader.
 | `cancer-surfaceome.csv` | `cancer_surfaceome_gene_names()`, `cancer_surfaceome_evidence()` |
 | `surface-proteins.csv` | `surface_protein_gene_names()`, `surface_protein_evidence()` |
 | `cancer-testis-antigens.csv` | `CTA_gene_names()`, `CTA_evidence()` |
-| `cancer-driver-genes.csv` | `get_data("cancer-driver-genes")` |
-| `cancer-driver-variants.csv` | `get_data("cancer-driver-variants")` |
+| oncoref frozen `cancer-driver-genes` / `cancer-driver-variants` compatibility views | `get_data("cancer-driver-genes")` / `get_data("cancer-driver-variants")`; new work uses oncoref `cancer-entity-driver-spectrum` |
 | `cancer-key-genes.csv` | `cancer_key_genes_df()` |
 | oncoref `therapy-benefit-toxicity-evidence` facts | `therapy_benefit_toxicity_evidence()` compatibility wrapper |
 | `cancer-type-registry.csv` | `cancer_type_registry()`, `CANCER_TYPE_NAMES`, `resolve_cancer_type()`, `cancer_types_in_family()`, `cancer_types_by_tissue()`, `cancer_type_subtypes_of()` |

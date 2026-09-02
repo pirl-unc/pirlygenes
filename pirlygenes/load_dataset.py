@@ -48,6 +48,8 @@ _CACHED_DATAFRAMES = {}
 _ONCOREF_DATASETS = frozenset({
     "cancer-cohort-aggregates",
     "cancer-code-burden-map",
+    "cancer-driver-genes",
+    "cancer-driver-variants",
     "cancer-expression-source-candidates",
     "cancer-incidence-mortality",
     "cancer-lineage-groups",
@@ -55,6 +57,7 @@ _ONCOREF_DATASETS = frozenset({
     "cancer-reference-expression-samples",
     "clean-tpm-censored-genes",
     "cohort-registry",
+    "legacy-dataset-dispositions",
     "ncbi-symbol-synonyms",
     "ribosomal-protein-pseudogenes",
     "therapy-benefit-toxicity-evidence",

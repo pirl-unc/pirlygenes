@@ -103,8 +103,6 @@ def test_citation_cells_are_well_formed(stem, col):
 def test_gene_list_provenance_manifest_covers_uncited_tables():
     required = {
         "cancer-type-genes",
-        "cancer-driver-genes",
-        "cancer-driver-variants",
         "gene-sets",
         "narrative-gene-sets",
         "stem-cell-marker-panels",
