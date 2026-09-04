@@ -4,9 +4,9 @@ Compares pirlygenes' delegated source-union compatibility rows against oncoref's
 
 This intentionally compares two different oncoref products: the all-sample source-union compatibility rows and the default pass-QC selected artifact. Large outliers therefore identify QC/source-product differences, not adapter distortion; exact adapter-to-source parity for TCGA, heme, microarray, subtype, and computed-union cases is gated in `tests/test_reference_expression_delegation.py`.
 
-- cancer_codes compared: **141**
-- served by both sides: **141**
-- n_samples agreement: **126/141** codes match exactly
+- cancer_codes compared: **142**
+- served by both sides: **142**
+- n_samples agreement: **126/142** codes match exactly
 - median relative delta (across codes): **0.0463%**
 - worst-code p95 relative delta: **237.9842%**
 
@@ -37,6 +37,7 @@ This intentionally compares two different oncoref products: the all-sample sourc
 | MDS | artifact | 82/81 warn | 52687 (7777/0) | 0.4813% | 2.6351% | 0 |
 | FL | artifact | 6/6 | 44399 (6983/0) | 0.1122% | 2.4759% | 9 |
 | GBC | artifact | 10/10 | 28043 (2665/0) | 0.1133% | 2.4029% | 0 |
+| MENINGIOMA | artifact | 384/379 warn | 51593 (7733/0) | 0.6091% | 2.3808% | 0 |
 | B_ALL | artifact | 154/153 warn | 52545 (7734/0) | 0.4446% | 2.3678% | 0 |
 | BL | artifact | 184/182 warn | 52545 (7734/0) | 0.3527% | 2.1968% | 0 |
 | SARC_KS | artifact | 10/10 | 50643 (7732/0) | 0.1431% | 2.1892% | 3 |

@@ -82,7 +82,17 @@ dependencies = [
     # from the CRANIO reference. 1.8.183/data 5.23.23 adds a direct nine-tumor
     # VSCC reference while retaining its reference-only classification policy.
     # 1.8.184 keeps data 5.23.23 and adds source-aware, fail-closed HPA IHC
-    # safety-tissue resolution for downstream consumers.
+    # safety-tissue resolution for downstream consumers. 1.8.185 publishes the
+    # therapy-evidence ownership boundary and legacy migration inventory;
+    # 1.8.186-1.8.188 add source-pinned CPTAC RNA/protein calibrations and HPA
+    # RNA/IHC priors. 1.8.189 restores the source-backed NBL anti-PD-1 anchor.
+    # 1.8.190/data 5.23.24/source 5.22.13 adds direct MENINGIOMA expression,
+    # audited BTC/NSCLC/NET_RECTAL TMB estimates, explicit aggregate TMB gaps,
+    # and the registry-aware public TMB evidence helper. 1.8.191 replaces the
+    # frozen driver-table migration target with source-anchored gene/variant
+    # evidence APIs. 1.8.192 adds a direct STAD_MSI anti-PD-1 anchor and blocks
+    # unsupported inheritance of STAD's pooled TMB; 1.8.193 consolidates and
+    # caches those evidence resolvers without changing the data/source bundles.
     # >=1.8.75
     # also gives the
     # builders the cleaned-up source-matrix QC /
@@ -96,7 +106,7 @@ dependencies = [
     # exact owner release because these compatibility APIs carry biological
     # semantics. The cohort-matrix metadata records the build package as
     # provenance and validates the exact oncoref data version.
-    "oncoref==1.8.185",
+    "oncoref==1.8.193",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-matrix / representative / percentile

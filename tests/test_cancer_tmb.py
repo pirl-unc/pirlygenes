@@ -86,9 +86,20 @@ def test_estimate_provenance_is_structured():
     assert set(blanks["estimate_type"]) == {"unknown"}
     assert blanks["missing_reason"].astype(str).str.len().gt(0).all()
 
-    net = df[df["cancer_code"].isin(["NET_MIDGUT", "NET_RECTAL"])]
-    assert net["median_tmb_mut_mb"].isna().all()
-    assert set(net["source_scope"]) == {"source_rejected_for_site_specific_value"}
+    midgut = df.set_index("cancer_code").loc["NET_MIDGUT"]
+    assert pd.isna(midgut["median_tmb_mut_mb"])
+    assert midgut["source_scope"] == "source_rejected_for_site_specific_value"
+
+    # oncoref 1.8.190 replaces the former pooled-source gap with a direct,
+    # source-backed rectal-NET median. Its new registry-aware helper also marks
+    # the mixed BTC/NSCLC estimates as aggregate-source evidence.
+    indexed = df.set_index("cancer_code")
+    assert indexed.loc["NET_RECTAL", "median_tmb_mut_mb"] == 1.15
+    assert indexed.loc["NET_RECTAL", "source_scope"] == "cancer_code_direct"
+    assert indexed.loc["BTC", "median_tmb_mut_mb"] == 1.23
+    assert indexed.loc["BTC", "source_scope"] == "aggregate_source"
+    assert indexed.loc["NSCLC", "median_tmb_mut_mb"] == 8.0
+    assert indexed.loc["NSCLC", "source_scope"] == "aggregate_source"
 
 
 def test_accessor_map_omits_blanks():
@@ -132,3 +143,15 @@ def test_subtype_inherits_parent_tmb():
     assert cancer_tmb("LUAD_KRAS", inherit=False) is None
     # a top-level code with a genuinely blank value stays None even with inherit
     assert cancer_tmb("MPN") is None
+
+
+def test_audited_stad_msi_gap_blocks_parent_inheritance():
+    """A reviewed subtype gap must not borrow the pooled STAD median."""
+    assert cancer_tmb("STAD") is not None
+    assert cancer_tmb("STAD_MSI") is None
+    assert cancer_tmb("STAD_MSI", inherit=False) is None
+
+    row = cancer_tmb_df().set_index("cancer_code").loc["STAD_MSI"]
+    assert pd.isna(row["median_tmb_mut_mb"])
+    assert row["source_scope"] == "source_rejected_for_subtype_value"
+    assert row["missing_reason"] == "no_supported_subtype_median"

@@ -1,7 +1,5 @@
 table_name,provenance_type,source_id,source_anchor,notes
 cancer-type-genes,internal_curated,,row-level sources pending,Curated cancer marker/driver membership; add row-level literature/database provenance before treating as source-verified.
-cancer-driver-genes,internal_curated,,row-level sources pending,Curated cancer driver gene table; source-specific driver database release provenance is not yet encoded.
-cancer-driver-variants,internal_curated,,row-level sources pending,Curated driver variant list; variant-level source database/literature provenance is not yet encoded.
 gene-sets,internal_rule,,category definitions,Small pathway/category lists curated as internal rule sets.
 narrative-gene-sets,internal_rule,,narrative rule definitions,Named narrative panels curated for disease-state reporting; row-level source anchors pending.
 stem-cell-marker-panels,literature_curated,,row-level sources pending,Stem/cell-state marker panels curated from literature; marker-level source anchors pending.

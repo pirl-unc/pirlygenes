@@ -320,10 +320,11 @@ def test_registry_includes_rare_entities():
 
 def test_cns_panel_anchor_codes_present_358():
     """#358: the MENINGIOMA and CHOROID_PLEXUS family panels added in #357 were
-    inert without a registry code to anchor them. Both codes now exist
-    (curated/not-yet-built) and their code matches the panel Family name so
-    trufflepig can resolve a sample to the panel by name. The coarse 'cns'
-    family was split into finer sub-families (#359), so these anchor under
+    inert without a registry code to anchor them. Both codes now exist and
+    their code matches the panel Family name so trufflepig can resolve a sample
+    to the panel by name. Oncoref 1.8.190 adds the direct GSE270638 meningioma
+    reference; choroid-plexus tumors remain curated/not-yet-built. The coarse
+    'cns' family was split into finer sub-families (#359), so these anchor under
     cns-meningeal / cns-choroid."""
     from pirlygenes.gene_sets_cancer import cancer_family_panels
 
@@ -334,10 +335,14 @@ def test_cns_panel_anchor_codes_present_358():
     for code in ("MENINGIOMA", "CHOROID_PLEXUS"):
         assert code in df.index, f"missing CNS anchor code: {code}"
         assert df.loc[code, "family"] == _cns_subfamily[code]
-        # curated placeholder, not over-claiming a concrete built shard
-        assert df.loc[code, "expression_source"] == "curated"
         # the registry code anchors the same-named family panel
         assert code in panels, f"no family panel for anchor code {code}"
+
+    assert df.loc["MENINGIOMA", "expression_source"] == "GEO"
+    assert df.loc["MENINGIOMA", "source_cohort"] == (
+        "GSE270638_MENINGIOMA_2024"
+    )
+    assert df.loc["CHOROID_PLEXUS", "expression_source"] == "curated"
 
 
 def test_brca_pam50_subtypes_present():

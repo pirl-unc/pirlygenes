@@ -76,9 +76,9 @@ _MISSING_THERAPY_AXIS = frozenset(
         # references, but reference availability is independent of this gate.
         "BCC", "cSCC", "VSCC", "PENSCC", "VAGC", "URETH", "ANSC",
         "EPN", "CRANIO", "DIPG", "PITNET",
-        # #358 CNS panel anchors — curated registry entries that anchor the
-        # MENINGIOMA / CHOROID_PLEXUS family panels (#357); expression data and
-        # therapy curation not yet built.
+        # #358 CNS panel anchors for the MENINGIOMA / CHOROID_PLEXUS family
+        # panels (#357). MENINGIOMA now has direct GSE270638 expression;
+        # CHOROID_PLEXUS expression and both therapy axes remain unbuilt.
         "MENINGIOMA", "CHOROID_PLEXUS",
         # ALCL — curated entity (lineage/CD30+ALK biomarker+therapy present); no
         # therapy-response signature materialised yet.
