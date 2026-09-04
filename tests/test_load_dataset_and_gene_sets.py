@@ -181,16 +181,18 @@ def test_frozen_driver_datasets_delegate_to_oncoref_without_local_copies():
     import oncoref
     from oncoref.load_dataset import get_data as get_oncoref_data
 
-    for name in ("cancer-driver-genes", "cancer-driver-variants"):
+    replacements = {
+        "cancer-driver-genes": "driver-gene-evidence",
+        "cancer-driver-variants": "driver-variant-evidence",
+    }
+    for name, replacement in replacements.items():
         assert name in ld._ONCOREF_DATASETS
         assert not (ld._BUNDLED_DATA_DIR / f"{name}.csv").exists()
         pd.testing.assert_frame_equal(ld.get_data(name), get_oncoref_data(name))
 
         disposition = oncoref.legacy_dataset_disposition(name)
         assert disposition["replacement_owner"] == "oncoref"
-        assert disposition["replacement_surface"] == (
-            "cancer-entity-driver-spectrum"
-        )
+        assert disposition["replacement_surface"] == replacement
 
 
 def test_get_all_csv_paths_contains_core_dataset():

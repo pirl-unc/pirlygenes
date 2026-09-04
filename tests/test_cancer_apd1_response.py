@@ -78,3 +78,10 @@ def test_subtype_inherits_parent_orr():
     assert cancer_apd1_response("LUAD_STK11") < cancer_apd1_response("LUAD")
     # strict (no inherit) returns None for an uncurated subtype
     assert cancer_apd1_response("SCLC_ASCL1", inherit=False) is None
+
+
+def test_stad_msi_uses_direct_subtype_anchor():
+    """MSI-high gastric disease must not inherit STAD's all-comer ORR."""
+    assert cancer_apd1_response("STAD_MSI") == 57.1
+    assert cancer_apd1_response("STAD_MSI", inherit=False) == 57.1
+    assert cancer_apd1_response("STAD_MSI") != cancer_apd1_response("STAD")

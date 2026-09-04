@@ -143,3 +143,15 @@ def test_subtype_inherits_parent_tmb():
     assert cancer_tmb("LUAD_KRAS", inherit=False) is None
     # a top-level code with a genuinely blank value stays None even with inherit
     assert cancer_tmb("MPN") is None
+
+
+def test_audited_stad_msi_gap_blocks_parent_inheritance():
+    """A reviewed subtype gap must not borrow the pooled STAD median."""
+    assert cancer_tmb("STAD") is not None
+    assert cancer_tmb("STAD_MSI") is None
+    assert cancer_tmb("STAD_MSI", inherit=False) is None
+
+    row = cancer_tmb_df().set_index("cancer_code").loc["STAD_MSI"]
+    assert pd.isna(row["median_tmb_mut_mb"])
+    assert row["source_scope"] == "source_rejected_for_subtype_value"
+    assert row["missing_reason"] == "no_supported_subtype_median"
