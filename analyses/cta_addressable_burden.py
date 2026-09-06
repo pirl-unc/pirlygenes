@@ -1,15 +1,17 @@
 """CTA population-addressability: the fraction of annual cancer incidence /
 mortality (US and worldwide) addressable per CTA, = Σ over cancer types of
-[that type's burden share × fraction of its patients expressing the CTA above a
-TPM threshold]. One sorted horizontal bar per CTA, for each of
-{incidence, mortality} × {US, worldwide} × {25, 50, 100 TPM} = 12 plots.
+[that type's burden share × fraction of measured patients expressing the CTA
+above a threshold]. One plot per burden metric and threshold, with and without
+MAGE-A/B/C.
 
 Each bar is labelled with the burden category that contributes most for that
 CTA, and colored by the number of cancer types the CTA is expressed in (breadth).
-Bars only count cohorts with per-sample CTA data, so the addressable % is a
-lower bound — the covered-burden ceiling is annotated per plot. (issue #280)
+Gene rates use finite measurements. Whole-panel union coverage is an observed
+lower bound when panel measurements are incomplete. Categories without sample
+data contribute nothing; the covered-burden ceiling is annotated per plot.
 
-Inputs: outputs/cta_patient_counts.csv (per cohort × CTA patient counts) +
+Inputs: cta_burden_patient_counts.csv / cta_burden_union_counts.csv (computed
+from deduplicated physical samples in each burden category) +
 the curated burden refs (pirlygenes.gene_sets_cancer.cancer_burden /
 cancer_code_burden_map).
 
@@ -30,8 +32,8 @@ from _run_layout import latest_run_dir, pct_axis
 OUT = Path(__file__).resolve().parent / "outputs"
 # Set in main() to the run_<ts>/ that holds cta_patient_counts' tables; this
 # script both reads those tables and writes its plots into that same run dir.
-COUNTS = OUT / "cta_patient_counts.csv"
-UNION = OUT / "cta_union_counts.csv"
+COUNTS = OUT / "cta_burden_patient_counts.csv"
+UNION = OUT / "cta_burden_union_counts.csv"
 FIGDIR = OUT
 TPM_THRESHOLDS = [25, 50]
 PERCENTILES = [90, 95]
@@ -41,7 +43,7 @@ TOPN = 40
 class Thr:
     """An addressability threshold: absolute TPM (``kind='tpm'``) or a
     within-sample percentile of the gene (``kind='pctile'``). Maps to the
-    matching count columns in cta_patient_counts.csv / cta_union_counts.csv."""
+    matching count columns in the deduplicated burden tables."""
 
     def __init__(self, kind, value):
         self.kind, self.value = kind, value
@@ -60,7 +62,7 @@ class Thr:
 
     @property
     def label(self):
-        return (f"> {self.value} TPM" if self.kind == "tpm"
+        return (f"> {self.value} clean TPM" if self.kind == "tpm"
                 else f"≥ {self.value}th within-sample percentile")
 
 
@@ -78,12 +80,6 @@ METRICS = {
     "world_incidence": ("world_incidence_pct", "worldwide incidence"),
     "world_mortality": ("world_mortality_pct", "worldwide deaths"),
 }
-# Subtype / aggregate cohorts whose patients are already counted by another
-# cohort in the same burden category — drop them so a category's burden isn't
-# double-weighted (the finer atom cohorts are kept; the rollups are dropped).
-_REDUNDANT = {"BRCA_LumA", "BRCA_LumB", "BRCA_HER2", "BRCA_Basal", "BRCA_Normal",
-              "HNSC_HPVpos", "HNSC_HPVneg",
-              "SARC", "SARC_RMS", "SARC_LPS"}
 
 
 def _is_mage(sym):
@@ -95,22 +91,12 @@ def _prepare(drop_mage=False):
     to category patient totals, plus per-CTA breadth (# cancer types expressed in).
     With drop_mage, MAGE-A/B/C proteins are excluded (the 'without MAGE' panel)."""
     counts = pd.read_csv(COUNTS)
-    counts = counts[~counts.cancer_code.isin(_REDUNDANT)].copy()
+    # These totals come from sample unions before target filtering, so even a
+    # category with no non-MAGE hits stays in the population denominator.
+    union = pd.read_csv(UNION)
+    cat_n = union.set_index("category")["n_samples"]
     if drop_mage:
         counts = counts[~counts.Symbol.map(_is_mage)].copy()
-    # Robust resolution (alias -> explicit map -> parent chain -> tissue -> family);
-    # warn loudly on anything unmapped rather than silently dropping it.
-    cat = {c: gsc.burden_category(c) for c in counts.cancer_code.unique()}
-    unmapped = sorted(c for c, v in cat.items() if v is None)
-    if unmapped:
-        print(f"  WARNING: {len(unmapped)} cohort(s) had NO burden category and "
-              f"were dropped from addressability: {unmapped}", flush=True)
-    counts["category"] = counts.cancer_code.map(cat)
-    counts = counts[counts.category.notna()].copy()
-    # category total patients = sum of its (deduped) cohorts' sample counts
-    per_cohort = counts.groupby("cancer_code").agg(
-        n=("n_samples", "first"), category=("category", "first"))
-    cat_n = per_cohort.groupby("category").n.sum()
     # breadth: # burden CATEGORIES each CTA is detectable in (>25 TPM in >=1
     # patient). Category-level (not cohort-level) so the color matches the
     # "+N more" label, which lists contributing categories — the whole plot is
@@ -132,11 +118,16 @@ def _addressable(counts, cat_n, threshold, burden_metric):
     """Per-CTA addressable % for one threshold + burden metric, with a label of
     the top-contributing cancer types. Returns a DataFrame sorted descending."""
     col = threshold.count_col
-    g = counts.groupby(["category", "Symbol"], as_index=False)[col].sum()
-    g["pooled_frac"] = g[col] / g.category.map(cat_n)
+    available_col = (
+        "n_available" if threshold.kind == "tpm"
+        else f"n_available_p{threshold.value}"
+    )
+    g = counts[["category", "Symbol", col, available_col]].copy()
+    g["pooled_frac"] = g[col] / g[available_col].replace(0, np.nan)
     burden = gsc.cancer_burden(metric=burden_metric)  # {category: pct of all cancer}
     g["contrib"] = g.category.map(lambda c: burden.get(c, 0.0)) * g.pooled_frac
-    per = g.groupby("Symbol").contrib.sum().rename("addressable").reset_index()
+    per = g.groupby("Symbol").contrib.sum(min_count=1).rename("addressable").reset_index()
+    per = per.dropna(subset=["addressable"])
     gp = g[g.contrib > 0].sort_values(["Symbol", "contrib"], ascending=[True, False])
     lab = gp.groupby("Symbol", sort=False).category.apply(_label).rename("label")
     per = per.merge(lab, on="Symbol", how="left").sort_values("addressable", ascending=False)
@@ -149,11 +140,8 @@ def _union_addressable(threshold, burden_metric, cat_n, drop_mage=False):
     threshold (the whole-panel union — 'All CTAs'). Each patient is counted once
     however many CTAs they express. With drop_mage, uses the MAGE-excluded union."""
     u = pd.read_csv(UNION)
-    u = u[~u.cancer_code.isin(_REDUNDANT)].copy()
-    u["category"] = [gsc.burden_category(c) for c in u.cancer_code]
-    u = u[u.category.notna()]
     col = threshold.union_col(drop_mage)
-    cat_hits = u.groupby("category")[col].sum()
+    cat_hits = u.set_index("category")[col]
     burden = gsc.cancer_burden(metric=burden_metric)
     return sum(burden.get(c, 0.0) * (h / cat_n[c])
                for c, h in cat_hits.items() if c in cat_n and cat_n[c] > 0)
@@ -167,7 +155,8 @@ def _render(drop_mage, suffix, title_tag):
     import matplotlib.colors as mcolors
 
     counts, cat_n, breadth = _prepare(drop_mage=drop_mage)
-    n_cohorts = counts.cancer_code.nunique()
+    n_cohorts = len({code for codes in counts.source_cancer_codes.unique()
+                     for code in codes.split(";")})
     n_cats = counts.category.nunique()
     bmax = int(breadth.max()) if len(breadth) else 1
     cmap = matplotlib.colormaps["viridis"]
@@ -207,8 +196,9 @@ def _render(drop_mage, suffix, title_tag):
             cb = fig.colorbar(sm, ax=ax, shrink=0.5, pad=0.02)
             cb.set_label("# cancer categories expressed in", fontsize=7)
             ax.text(0.99, 0.01,
-                    f"lower bound: {n_cohorts} per-sample cohorts → {n_cats} burden "
-                    f"categories = {ceiling:.0f}% of {blabel} (uncovered types not scored)",
+                    f"{n_cohorts} source cohorts → {n_cats} deduplicated categories; "
+                    f"{ceiling:.0f}% of {blabel}\n"
+                    "per-gene rates use measured samples; All CTAs is an observed lower bound",
                     transform=ax.transAxes, ha="right", fontsize=6, color="gray")
             fig.tight_layout()
             fig.savefig(FIGDIR / f"cta_addressable_{mkey}_{t.slug}{suffix}.png", dpi=300)
@@ -227,13 +217,8 @@ def _burden_category_plot():
     import matplotlib.pyplot as plt
 
     counts = pd.read_csv(COUNTS)
-    counts = counts[~counts.cancer_code.isin(_REDUNDANT)].copy()
-    counts["category"] = counts.cancer_code.map(
-        lambda c: gsc.burden_category(c))
-    counts = counts[counts.category.notna()]
     # member cohort codes per category (deduped, registry display where short)
-    members = (counts.groupby("category").cancer_code.unique()
-               .apply(lambda xs: sorted(set(xs))))
+    members = counts.groupby("category").source_cancer_codes.first().str.split(";")
     inc = gsc.cancer_burden(metric="us_incidence_pct")
     mort = gsc.cancer_burden(metric="us_mortality_pct")
     cats = sorted(members.index, key=lambda c: inc.get(c, 0.0))
@@ -261,35 +246,39 @@ def _burden_category_plot():
     fig.savefig(FIGDIR / "cta_burden_categories.png", dpi=300)
     plt.close(fig)
     print(f"  burden-category reference: {len(cats)} categories "
-          f"({counts.cancer_code.nunique()} cohorts)", flush=True)
+          f"({sum(map(len, members))} source cohorts)", flush=True)
 
 
 def main():
     global COUNTS, UNION, FIGDIR
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-dir", type=Path, default=None,
-                    help="run_<ts>/ holding cta_patient_counts.csv + "
-                         "cta_union_counts.csv (default: latest run under "
+                    help="run_<ts>/ holding cta_burden_patient_counts.csv + "
+                         "cta_burden_union_counts.csv (default: latest run under "
                          "analyses/outputs).")
     ap.add_argument("--fig-dir", type=Path, default=None,
                     help="where to write plots (default: the --run-dir itself). "
                          "Pass a subfolder to keep these plots in their own "
                          "family dir while still reading tables from --run-dir.")
     args = ap.parse_args()
-    run = args.run_dir or latest_run_dir(OUT)
+    run = args.run_dir or latest_run_dir(OUT, must_contain="cta_burden_patient_counts.csv")
     if run is None:
         raise SystemExit(
-            "no run_<ts>/ with cta_patient_counts.csv found — run "
-            "cta_patient_counts.py first (or pass --run-dir).")
-    COUNTS = run / "cta_patient_counts.csv"
-    UNION = run / "cta_union_counts.csv"
+            "no run with deduplicated burden tables found — run "
+            "cta_patient_counts.py --tables-only first (or pass --run-dir).")
+    COUNTS = run / "cta_burden_patient_counts.csv"
+    UNION = run / "cta_burden_union_counts.csv"
+    if not COUNTS.exists() or not UNION.exists():
+        raise SystemExit("run is missing deduplicated burden tables; regenerate "
+                         "with cta_patient_counts.py --tables-only")
     FIGDIR = args.fig_dir or run
     FIGDIR.mkdir(parents=True, exist_ok=True)
     print(f"reading tables + writing plots in {FIGDIR}", flush=True)
     _render(drop_mage=False, suffix="", title_tag="")
     _render(drop_mage=True, suffix="_noMAGE", title_tag=" (excl. MAGE-A/B/C)")
     _burden_category_plot()
-    print(f"done -> 24 addressability plots + 1 burden-category plot in {FIGDIR}",
+    n_plots = 2 * len(METRICS) * len(_available_thresholds())
+    print(f"done -> {n_plots} addressability plots + 1 burden-category plot in {FIGDIR}",
           flush=True)
 
 

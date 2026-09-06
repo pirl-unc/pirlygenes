@@ -281,12 +281,30 @@ Explicit TPM mode rejects sources that oncoref marks non-comparable. Returned
 tables carry source cohort, source type, scale class, normalization, and the
 effective threshold mode; percentile columns use names such as `n_p95`, while
 absolute columns retain names such as `n_gt25`.
+`n_samples` is the cohort size; per-gene percentages use `n_available`, the
+number of finite measurements for that gene. Missing measurements remain
+unknown. Greedy curves show observed coverage, a lower bound when panel genes
+are missing.
 
 ```bash
 pirlygenes plot patient-coverage --gene-set cta --source all
 pirlygenes plot patient-coverage --gene-set cta \
   --threshold-mode percentile --threshold 95
 ```
+
+`cancer_reference_expression(format="wide")` requires at most one source row
+per gene and cancer type. For references with multiple sources, select
+`source_cohort=`, explicitly use `pool=True` for comparable sources, or retain
+the default long format. Ambiguous wide requests raise an error.
+
+Regenerate CTA analysis tables with
+`python analyses/cta_patient_counts.py --tables-only`. The run contains
+clean-TPM cohort tables and `cta_burden_patient_counts.csv` /
+`cta_burden_union_counts.csv`, computed from deduplicated physical samples in
+each burden category. Gene tables retain zero-hit rows and measurement counts;
+union tables also report unknown samples. `cta_addressable_burden.py` requires
+these category tables and uses measured denominators for individual genes.
+The whole-panel union remains an observed lower bound.
 
 ## What's bundled (`pirlygenes/data/`)
 

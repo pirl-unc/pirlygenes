@@ -315,6 +315,11 @@ def cta_metric_table() -> pd.DataFrame:
     * ``cta_count_p90/p95``: mean active CTA proteins per patient.
     * ``cta_9mer_load_p90/p95``: mean CTA-specific 9-mer payload per patient.
 
+    These are observed lower bounds when the underlying panel is incomplete;
+    missing measurements never imply measured negative expression. The union
+    tables retain threshold-specific unknown counts and gene tables retain
+    measurement denominators for consumers that need availability accounting.
+
     Columns whose prerequisite generated tables are absent are omitted; callers
     should skip unavailable factors rather than plotting all-NaN rows.
     """
@@ -356,20 +361,13 @@ def cta_metric_table() -> pd.DataFrame:
         return out
 
     spec = pd.read_csv(spec_path)
-    sym2spec = dict(zip(spec["Symbol"].astype(str),
-                        spec["n_specific_9mers"].astype(float)))
-    try:
-        groups = get_data("cta-protein-groups")
-        for group, members in groups.groupby("protein_group"):
-            weights = [sym2spec.get(str(m), 0.0)
-                       for m in members["member_symbol"].astype(str)]
-            if weights:
-                sym2spec.setdefault(str(group), max(weights))
-    except Exception:
-        pass
+    from _cta_metrics import fold_specific_9mer_weights
+    sym2spec = fold_specific_9mer_weights(dict(zip(
+        spec["Symbol"].astype(str), spec["n_specific_9mers"].astype(float),
+    )))
 
     counts = counts.assign(
-        _specific_9mers=counts["Symbol"].astype(str).map(sym2spec).fillna(0.0)
+        _specific_9mers=counts["Symbol"].astype(str).str.upper().map(sym2spec).fillna(0.0)
     )
     for q in (90, 95):
         col = f"n_p{q}"

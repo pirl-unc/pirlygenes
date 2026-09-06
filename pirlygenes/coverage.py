@@ -137,8 +137,8 @@ class Threshold:
         threshold = self.value if cutoff is None else cutoff
         values = np.asarray(values)
         if self.kind == "tpm":
-            return values > threshold
-        return values >= threshold
+            return (values > threshold) & np.isfinite(values) & np.isfinite(threshold)
+        return (values >= threshold) & np.isfinite(values) & np.isfinite(threshold)
 
     def hits(self, values, cols=(), pctile_cutoffs=None):
         """Compare raw values using this threshold's scalar/vector cutoff."""
@@ -344,22 +344,34 @@ def _symbols_to_ensgs(symbols) -> set:
 
 
 def _gene_set_from_file(path: Path):
-    raw = pd.read_csv(path)
-    cols = {c.lower(): c for c in raw.columns}
+    # Read the first record as data until it is recognized as a header. Bare
+    # one-gene-per-line TXT/CSV panels otherwise silently lose their first gene.
+    sep = "\t" if path.suffix.lower() == ".tsv" else ","
+    try:
+        raw = pd.read_csv(path, header=None, dtype=str, keep_default_na=False,
+                          sep=sep)
+    except pd.errors.EmptyDataError:
+        return path.name, set()
+    headers = raw.iloc[0].str.strip().str.lower()
+    recognized = {"ensembl_gene_id", "symbol", "gene", "gene_id", "gene_symbol"}
+    if any(value in recognized for value in headers):
+        raw.columns = headers
+        raw = raw.iloc[1:]
+    cols = {str(c).lower(): c for c in raw.columns}
     ensgs, symbols = set(), set()
     if "ensembl_gene_id" in cols:
         ensgs |= set(raw[cols["ensembl_gene_id"]].dropna().astype(str)
-                     .str.split(".").str[0])
+                     .str.strip().str.upper().str.split(".").str[0])
     if "symbol" in cols:
-        symbols |= set(raw[cols["symbol"]].dropna().astype(str).str.upper())
+        symbols |= set(raw[cols["symbol"]].dropna().astype(str).str.strip().str.upper())
     if not ensgs and not symbols:  # bare first column: classify each token
         for v in raw[raw.columns[0]].dropna().astype(str):
             v = v.strip()
-            (ensgs.add(v.split(".")[0]) if v.upper().startswith("ENSG")
+            (ensgs.add(v.upper().split(".")[0]) if v.upper().startswith("ENSG")
              else symbols.add(v.upper()))
     # Resolve any symbol-only entries to ENSG up front, so matching is ENSG-only.
-    ensgs |= _symbols_to_ensgs(symbols)
-    return path.name, ensgs
+    ensgs |= _symbols_to_ensgs(symbols - {""})
+    return path.name, ensgs - {""}
 
 
 # --- per-sample access + counting ------------------------------------------
@@ -412,7 +424,9 @@ def greedy_coverage(mat: pd.DataFrame, threshold, *, inclusive=False):
 
     ``threshold`` may be a scalar or a sample-aligned vector. ``inclusive`` is
     used for percentile ranks (at-or-above pN); absolute TPM retains the
-    historical strict-greater-than contract. Returns
+    historical strict-greater-than contract. Missing measurements cannot add
+    observed hits, so the curve is a lower bound on coverage for incomplete
+    panels. Returns
     ``(ordered_row_positions, cumulative_fraction, n_samples)``.
     """
     arr = mat.to_numpy()
@@ -420,6 +434,7 @@ def greedy_coverage(mat: pd.DataFrame, threshold, *, inclusive=False):
     if n == 0 or arr.shape[0] == 0:
         return [], [], n
     hit = arr >= threshold if inclusive else arr > threshold
+    hit &= np.isfinite(arr) & np.isfinite(threshold)
     covered = np.zeros(n, dtype=bool)
     order, cum, remaining = [], [], set(range(arr.shape[0]))
     while remaining:
@@ -467,6 +482,7 @@ def _coverage_frame(
         source = metadata[code]
         symbols = mat.attrs.get("symbols", {})
         for ensg, vals in zip(mat.index, mat.to_numpy()):
+            n_available = int(np.isfinite(vals).sum())
             rec = {
                 "cancer_code": code,
                 "source_cohort": source["source_cohort"],
@@ -476,6 +492,7 @@ def _coverage_frame(
                 "normalization": source["normalization"],
                 "threshold_mode": mode,
                 "n_samples": n,
+                "n_available": n_available,
                 "Ensembl_Gene_ID": ensg,
                 "Symbol": symbols.get(ensg, ""),
             }
@@ -484,8 +501,8 @@ def _coverage_frame(
                 count = int(threshold.compare(vals).sum())
                 rec[f"n_{threshold.count_suffix}"] = count
                 rec[f"pct_{threshold.count_suffix}"] = round(
-                    100 * count / n, 2
-                )
+                    100 * count / n_available, 2
+                ) if n_available else np.nan
                 any_hit = any_hit or count > 0
             if any_hit:
                 rows.append(rec)
@@ -512,6 +529,7 @@ def _coverage_frame(
         "normalization",
         "threshold_mode",
         "n_samples",
+        "n_available",
         "Ensembl_Gene_ID",
         "Symbol",
     ] + [
@@ -544,6 +562,8 @@ def patient_coverage(
     non-comparable; ``"percentile"`` is always platform-safe. TPM output uses
     ``n_gt25``/``pct_gt25``-style columns; percentile output uses
     ``n_p90``/``pct_p90``. Only genes with at least one hit are retained.
+    ``n_samples`` is cohort size; per-gene percentages divide by
+    ``n_available`` (finite measurements), never by unmeasured samples.
 
     ``codes`` optionally restricts to specific cancer types (resolved through
     :func:`gene_sets_cancer.resolve_cancer_type`); default is every cohort with
