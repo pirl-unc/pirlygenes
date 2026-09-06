@@ -141,7 +141,8 @@ def test_data_bundle_prune_lists_and_deletes_stale_dirs(tmp_path, monkeypatch):
     for v in ["v5.0.0", "v5.1.0", f"v{data_bundle.DATA_VERSION}"]:
         d = tmp_path / v
         d.mkdir()
-        (d / "marker.csv").write_text("x")
+        (d / "pan-cancer-expression.csv").write_text("x")
+        (d / "hpa-cell-type-expression.csv").write_text("x")
 
     versions = data_bundle.list_cache_versions()
     by_v = {e["version"]: e for e in versions}
@@ -160,6 +161,30 @@ def test_data_bundle_prune_lists_and_deletes_stale_dirs(tmp_path, monkeypatch):
     assert not (tmp_path / "v5.0.0").exists()
     assert not (tmp_path / "v5.1.0").exists()
     assert (tmp_path / f"v{data_bundle.DATA_VERSION}").exists()
+
+
+def test_custom_bundle_prune_preserves_unrelated_and_symlinked_directories(tmp_path, monkeypatch):
+    from pirlygenes import data_bundle
+
+    root = tmp_path / "shared"
+    root.mkdir()
+    monkeypatch.setenv("PIRLYGENES_BUNDLED_DATA", str(root / "current-data"))
+    for name in ("videos", "vendor", "v1.2.3"):
+        directory = root / name
+        directory.mkdir()
+        (directory / "precious.txt").write_text("unrelated data")
+    # Even a bundle-looking version symlink must not expose external files.
+    external = tmp_path / "external"
+    external.mkdir()
+    for name in ("pan-cancer-expression.csv", "hpa-cell-type-expression.csv"):
+        (external / name).write_text("external data")
+    (root / "v5.1.0").symlink_to(external, target_is_directory=True)
+
+    assert data_bundle.prune_cache(dry_run=True) == []
+    assert data_bundle.prune_cache() == []
+    for name in ("videos", "vendor", "v1.2.3"):
+        assert (root / name / "precious.txt").read_text() == "unrelated data"
+    assert (external / "pan-cancer-expression.csv").read_text() == "external data"
 
 
 # ---------- compute_cohort_stats ----------

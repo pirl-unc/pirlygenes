@@ -10,7 +10,7 @@ therefore match the public reference layer without importing a pirlygenes
 builder or reading its retired expression cache. It emits four artifacts:
 
   1. cta_patient_counts.csv         — for every CTA × cohort, the number and %
-                                      of patients above 25 / 50 / 100 / 200 TPM.
+                                      of measured patients above 25 / 50 clean TPM.
   2. cta_patient_count_heatmap.png  — patients/cohort expressing each CTA above
                                       a chosen threshold (recurrence × breadth).
   3. cta_pct_bar_<COHORT>.png       — % of a cohort expressing each CTA, sorted
@@ -38,6 +38,7 @@ import pandas as pd
 from pirlygenes import gene_sets_cancer as gsc
 from pirlygenes.coverage import Threshold
 from pirlygenes.coverage import greedy_coverage as _pkg_greedy_coverage
+from _cta_metrics import fold_specific_9mer_weights
 
 # Sole display authority: structural symbol/proteoform ID -> user-facing label
 # (CTAG1B and CTAG1A/B both -> NY-ESO-1). Data stays keyed by the raw symbol.
@@ -130,7 +131,7 @@ def owner_cta_expression(
     samples share oncoref's stable namespace, so overlapping parent/subtype
     views reuse one column and aggregate cohorts cannot double-count a patient.
     """
-    from oncoref import source_matrices
+    from oncoref import per_sample_expression, source_matrices
 
     from pirlygenes.expression.protein_groups import cdna_member_to_canonical
 
@@ -143,6 +144,13 @@ def owner_cta_expression(
     selected = registry.loc[keep].sort_values("cancer_code")
     ctas = {str(gene).split(".", 1)[0] for gene in ctas}
     member_to_canonical = cdna_member_to_canonical()
+    canonical_ctas = {member_to_canonical.get(gene, gene) for gene in ctas}
+    # Recover all measured members before collapsing a requested proteoform,
+    # even if only one member appears in the curated CTA list.
+    panel_ids = ctas | {
+        gene for gene, canonical in member_to_canonical.items()
+        if canonical in canonical_ctas
+    }
 
     sample_vectors: dict[str, pd.Series] = {}
     cutoff_rows: dict[str, dict[str, float]] = {}
@@ -150,7 +158,7 @@ def owner_cta_expression(
     for row in selected.itertuples(index=False):
         code = str(row.cancer_code)
         source_cohort = str(row.source_cohort)
-        frame = pd.read_parquet(source_matrices.ensure(code))
+        frame = per_sample_expression(code, normalize="tpm_clean", sample_qc="all")
         id_cols = {"Ensembl_Gene_ID", "Symbol"}
         sample_cols = [col for col in frame.columns if col not in id_cols]
         if "Ensembl_Gene_ID" not in frame.columns or not sample_cols:
@@ -174,15 +182,15 @@ def owner_cta_expression(
             public_sample = f"{namespace}::{sample}"
             cohort_samples.append(public_sample)
             if public_sample not in sample_vectors:
-                sample_vectors[public_sample] = values[sample].reindex(sorted(ctas))
+                sample_vectors[public_sample] = values[sample].reindex(sorted(panel_ids))
                 vector = ranked[sample].dropna().to_numpy(dtype=float)
                 cutoff_rows[public_sample] = {
-                    f"p{q}": float(np.percentile(vector, q))
+                    f"p{q}": float(np.percentile(vector, q)) if len(vector) else np.nan
                     for q in percentiles
                 }
         cohorts[code] = list(dict.fromkeys(cohort_samples))
 
-    matrix = pd.DataFrame(sample_vectors).fillna(0.0)
+    matrix = pd.DataFrame(sample_vectors)
     matrix.index.name = "Ensembl_Gene_ID"
     cutoffs = pd.DataFrame.from_dict(cutoff_rows, orient="index")
     return matrix, cohorts, cutoffs
@@ -267,11 +275,32 @@ def _merge_proteins(mat, ensg_to_sym):
     c2s = cdna_canonical_to_symbol()
     row_canon = [m2c.get(str(e).split(".")[0], str(e).split(".")[0])
                  for e in mat.index]
-    merged = mat.groupby(pd.Index(row_canon, name="gene")).sum()
+    merged = mat.groupby(pd.Index(row_canon, name="gene")).sum(min_count=1)
     print(f"      merged {len(mat) - len(merged)} cDNA-identical rows -> "
           f"{len(merged)} genes", flush=True)
     display = {e: c2s.get(e, ensg_to_sym.get(e, e)) for e in merged.index}
     return merged, display
+
+
+def _symbols_for_index(index, ensg_to_sym):
+    """Return display symbols aligned to a canonical-Ensembl matrix index."""
+    return pd.Index([str(ensg_to_sym.get(str(ensg), ensg)) for ensg in index])
+
+
+def _mage_mask(index, ensg_to_sym):
+    """Boolean mask for MAGE rows in a canonical-Ensembl-indexed matrix."""
+    return _symbols_for_index(index, ensg_to_sym).str.upper().str.startswith(
+        ("MAGEA", "MAGEB", "MAGEC")
+    )
+
+
+def _specific_9mer_weights(index, ensg_to_sym, sym2spec):
+    """CTA-specific 9-mer counts aligned to a canonical-Ensembl matrix index."""
+    sym2spec = fold_specific_9mer_weights(sym2spec)
+    return np.array([
+        float(sym2spec.get(symbol.upper(), 0))
+        for symbol in _symbols_for_index(index, ensg_to_sym)
+    ])
 
 
 def per_cohort_counts(mat, cohorts, ensg_to_sym, pctile_cutoffs=None):
@@ -281,7 +310,11 @@ def per_cohort_counts(mat, cohorts, ensg_to_sym, pctile_cutoffs=None):
     ``pctile_cutoffs`` is supplied) ``n_p{q}``/``pct_p{q}`` for the WITHIN-SAMPLE
     percentile thresholds — a CTA is 'on' in a sample if its TPM is at/above that
     sample's qth-percentile across all genes (each sample compared to its own
-    cutoff), not a per-cohort threshold."""
+    cutoff), not a per-cohort threshold. ``n_samples`` is cohort size;
+    ``n_available`` is the number of finite measurements for this gene and
+    supplies the percentage denominator. Zero-hit and unmeasured rows are
+    retained so consumers can distinguish measured negatives from missing data.
+    """
     rows = []
     for code, samples in cohorts.items():
         cols = [s for s in samples if s in mat.columns]
@@ -295,24 +328,77 @@ def per_cohort_counts(mat, cohorts, ensg_to_sym, pctile_cutoffs=None):
                 pcuts[q] = Threshold("pctile", q).cutoff(cols, pctile_cutoffs)
         for ensg in mat.index:
             vals = sub.loc[ensg].to_numpy()
+            n_available = int(np.isfinite(vals).sum())
             rec = {
                 "cancer_code": code, "n_samples": n,
+                "n_available": n_available, "normalization": "tpm_clean",
                 "Ensembl_Gene_ID": ensg, "Symbol": ensg_to_sym.get(ensg, ensg),
             }
-            any_hit = False
             for t in THRESHOLDS:
                 k = int(Threshold("tpm", t).compare(vals).sum())
                 rec[f"n_gt{t}"] = k
-                rec[f"pct_gt{t}"] = round(100 * k / n, 2)
-                any_hit = any_hit or k > 0
+                rec[f"pct_gt{t}"] = round(100 * k / n_available, 2) if n_available else np.nan
             for q, cut in pcuts.items():
                 k = int(Threshold("percentile", q).compare(vals, cut).sum())
                 rec[f"n_p{q}"] = k
-                rec[f"pct_p{q}"] = round(100 * k / n, 2)
-                any_hit = any_hit or k > 0
-            if any_hit:
-                rows.append(rec)
+                available = int((np.isfinite(vals) & np.isfinite(cut)).sum())
+                rec[f"n_available_p{q}"] = available
+                rec[f"pct_p{q}"] = round(100 * k / available, 2) if available else np.nan
+            rows.append(rec)
     return pd.DataFrame(rows)
+
+
+def per_cohort_union_counts(mat, cohorts, ensg_to_sym, pctile_cutoffs=None):
+    """Observed panel hits plus unresolved sample counts for each threshold.
+
+    A sample with any observed hit is positive. A no-hit sample is negative
+    only when every panel row was measured; otherwise it is unknown. Dividing
+    observed hits by cohort size yields a lower bound on panel prevalence.
+    """
+    is_mage = _mage_mask(mat.index, ensg_to_sym)
+    thresholds = [Threshold("tpm", t) for t in THRESHOLDS]
+    if pctile_cutoffs is not None:
+        thresholds += [Threshold("percentile", q) for q in PERCENTILES]
+    rows = []
+    for code, samples in cohorts.items():
+        cols = list(dict.fromkeys(s for s in samples if s in mat.columns))
+        if not cols:
+            continue
+        values = mat[cols].to_numpy()
+        rec = {"cancer_code": code, "n_samples": len(cols),
+               "normalization": "tpm_clean"}
+        for suffix, panel in (("", values), ("_nomage", values[~is_mage])):
+            complete = np.isfinite(panel).all(axis=0)
+            for threshold in thresholds:
+                cutoff = threshold.cutoff(cols, pctile_cutoffs)
+                positive = threshold.compare(panel, cutoff).any(axis=0)
+                known_negative = complete & np.isfinite(cutoff)
+                key = threshold.count_suffix + suffix
+                rec[f"n_any_{key}"] = int(positive.sum())
+                rec[f"n_unknown_{key}"] = int((~positive & ~known_negative).sum())
+        rows.append(rec)
+    return pd.DataFrame(rows)
+
+
+def burden_sample_cohorts(cohorts):
+    """Pool source cohorts by burden category, counting each physical sample once.
+
+    Call before constructing cross-category aggregates such as pan-sarcoma.
+    A sample assigned to conflicting categories is rejected, not counted twice.
+    """
+    categories, members, sample_categories = {}, {}, {}
+    for code, samples in cohorts.items():
+        category = gsc.burden_category(code)
+        if category is None:
+            raise ValueError(f"no burden category for source cohort {code!r}")
+        members.setdefault(category, []).append(code)
+        selected = categories.setdefault(category, set())
+        for sample in samples:
+            previous = sample_categories.setdefault(sample, category)
+            if previous != category:
+                raise ValueError(f"sample {sample!r} spans burden categories {previous!r}/{category!r}")
+            selected.add(sample)
+    return {c: sorted(s) for c, s in categories.items()}, members
 
 
 def greedy_coverage(mat, samples, threshold, pctile_cutoffs=None):
@@ -348,12 +434,11 @@ def main():
                     help="cohort for the %%-bar and coverage plots")
     ap.add_argument("--no-percentiles", action="store_true",
                     help="skip the within-sample percentile-rank threshold plots")
+    ap.add_argument("--tables-only", action="store_true",
+                    help="regenerate cohort and deduplicated burden tables without plotting")
     ap.add_argument("--out-dir", type=Path, default=None,
-                    help="directory for the PNG plots (default: analyses/outputs). "
-                         "Only the plots move here — the caches "
-                         "(_per_sample_pctile_cutoffs.parquet, cta_specific_9mers.csv) "
-                         "and summary tables always stay in analyses/outputs, so a "
-                         "new --out-dir never forces a recompute.")
+                    help="directory for this run's plots and tables (default: analyses/outputs). "
+                         "Reusable caches and stable table copies stay in analyses/outputs.")
     ap.add_argument("--run-name", default=None,
                     help="name of the per-run plot subfolder under the plot dir "
                          "(default: a timestamp, run_YYYYMMDD-HHMMSS)")
@@ -397,6 +482,7 @@ def main():
 
     print("[2/5] load oncoref per-cohort source matrices", flush=True)
     mat, cohorts, owner_pctile_cuts = owner_cta_expression(ctas)
+    burden_cohorts, burden_members = burden_sample_cohorts(cohorts)
     cohorts = _add_crc_subtype_cohorts(cohorts)
     cohorts = _add_aggregate_cohorts(cohorts)   # materialises CRC = COAD+READ
     # now that the colorectal aggregate exists, fold the organ-split halves into
@@ -425,40 +511,29 @@ def main():
     # per-cohort union: # patients expressing >=1 CTA protein over each threshold
     # (each patient counted once regardless of how many CTAs they express). Also
     # emit a MAGE-excluded union so addressability can show a "without MAGE" panel.
-    is_mage = mat.index.to_series().astype(str).str.upper().str.startswith(
-        ("MAGEA", "MAGEB", "MAGEC")).to_numpy()
-    urows = []
-    for code, samples in cohorts.items():
-        cols = [s for s in samples if s in mat.columns]
-        if not cols:
-            continue
-        sub = mat[cols].to_numpy()
-        sub_nomage = sub[~is_mage]
-        rec = {"cancer_code": code, "n_samples": len(cols)}
-        for t in THRESHOLDS:
-            threshold = Threshold("tpm", t)
-            rec[f"n_any_gt{t}"] = int(
-                threshold.compare(sub).any(axis=0).sum()
-            )
-            rec[f"n_any_gt{t}_nomage"] = int(
-                threshold.compare(sub_nomage).any(axis=0).sum()
-            )
-        if pctile_cuts is not None:
-            for q in PERCENTILES:
-                threshold = Threshold("percentile", q)
-                cut = threshold.cutoff(cols, pctile_cuts)  # per-sample
-                rec[f"n_any_p{q}"] = int(
-                    threshold.compare(sub, cut).any(axis=0).sum()
-                )
-                rec[f"n_any_p{q}_nomage"] = int(
-                    threshold.compare(sub_nomage, cut).any(axis=0).sum()
-                )
-        urows.append(rec)
-    union_df = pd.DataFrame(urows)
+    union_df = per_cohort_union_counts(mat, cohorts, ensg_to_sym, pctile_cuts)
     union_df.to_csv(FIGDIR / "cta_union_counts.csv", index=False)
     # also a STABLE, tracked copy so other analyses (the aPD1 cta_burden) can read
     # the %-patients->=1-CTA->=95th-percentile coverage without hunting run dirs.
     union_df.to_csv(OUT / "_cta_union_counts.csv", index=False)
+
+    # Burden tables are computed from physical sample unions, never from sums
+    # of overlapping cancer-type summary rows. Keep measurement denominators
+    # even for zero-hit genes and whole categories with no observed CTA hits.
+    for name, table in (
+        ("cta_burden_patient_counts", per_cohort_counts(
+            mat, burden_cohorts, ensg_to_sym, pctile_cuts)),
+        ("cta_burden_union_counts", per_cohort_union_counts(
+            mat, burden_cohorts, ensg_to_sym, pctile_cuts)),
+    ):
+        table = table.rename(columns={"cancer_code": "category"})
+        table["source_cancer_codes"] = table.category.map(
+            lambda category: ";".join(sorted(burden_members[category]))
+        )
+        table.to_csv(FIGDIR / f"{name}.csv", index=False)
+        table.to_csv(OUT / f"_{name}.csv", index=False)
+    if args.tables_only:
+        return
 
     print("[5/9] plots", flush=True)
     _plots(mat, cohorts, counts, ensg_to_sym, args.threshold, args.cohort)
@@ -468,18 +543,9 @@ def main():
     # each CTA's count of 9mers absent from the whole non-CTA proteome). Weights
     # are mat-index-aligned; merged paralog groups take their best member's count
     # (one TCR/antibody addresses the group).
-    from pirlygenes.load_dataset import get_data as _get_data
     spec_df = cta_specific_9mer_counts()
     sym2spec = dict(zip(spec_df["Symbol"].astype(str), spec_df["n_specific_9mers"]))
-    try:
-        _grp = _get_data("cta-protein-groups")
-        for gname, members in _grp.groupby("protein_group"):
-            vals = [sym2spec.get(m, 0) for m in members["member_symbol"].astype(str)]
-            if vals:
-                sym2spec.setdefault(str(gname), max(vals))
-    except Exception:
-        pass
-    weights = np.array([float(sym2spec.get(str(name), 0)) for name in mat.index])
+    weights = _specific_9mer_weights(mat.index, ensg_to_sym, sym2spec)
     load_fn = _mean_specific_9mer_load(weights)
 
     def _emit_load_metrics(thr, cutoffs=None):
@@ -1376,7 +1442,7 @@ def _mean_total_cta_tpm(mat, cols, thr, pctile_cutoffs):
     CTAs above the cutoff contribute their TPM. Spans orders of magnitude, so
     plotted log-y."""
     on = _cohort_on_matrix(mat, cols, thr, pctile_cutoffs)
-    return float((mat[cols].to_numpy() * on).sum(axis=0).mean())
+    return float(np.where(on, mat[cols].to_numpy(), 0.0).sum(axis=0).mean())
 
 
 def _mean_specific_9mer_load(weights):
@@ -1455,8 +1521,8 @@ def _plots(mat, cohorts, counts, ensg_to_sym, threshold, focus):
     plt.close(fig)
 
     # also a %-of-cohort version (breadth, normalized for cohort size)
-    pivp = counts.pivot_table(index="Symbol", columns="cancer_code",
-                              values=pcol, fill_value=0).loc[top_ctas, top_cohorts]
+    pivp = counts.pivot(index="Symbol", columns="cancer_code",
+                       values=pcol).loc[top_ctas, top_cohorts]
     fig, ax = plt.subplots(figsize=(max(10, len(top_cohorts) * 0.34),
                                     max(8, len(top_ctas) * 0.26)))
     im = ax.imshow(pivp.to_numpy(), aspect="auto", cmap="viridis")

@@ -55,6 +55,7 @@ CLI: ``pirlygenes data {fetch, status, cache-dir}`` wraps these.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 import tarfile
@@ -235,7 +236,11 @@ def _dir_size_bytes(path: Path) -> int:
 
 
 def list_cache_versions() -> list[dict]:
-    """Enumerate every version-pinned cache dir under :func:`cache_root`.
+    """Enumerate recognizable version-pinned bundle dirs under :func:`cache_root`.
+
+    Only real directories with a ``vMAJOR.MINOR.PATCH`` name and both historical
+    HPA/pan-cancer CSVs qualify. Unrelated, incomplete, and symlinked directories
+    are left alone, including beside a custom cache location.
 
     Returns a list of ``{"version", "path", "size_bytes", "is_current"}``
     dicts, sorted by version label (lexicographic). Used by
@@ -248,7 +253,21 @@ def list_cache_versions() -> list[dict]:
     current = cache_dir()
     out: list[dict] = []
     for child in sorted(root.iterdir()):
-        if not child.is_dir() or not child.name.startswith("v"):
+        # An override can put us beside unrelated user directories. A version
+        # label alone does not prove ownership, and a symlink must never make
+        # an external directory a pruning target. Both CSVs are present in
+        # current and historical pirlygenes data bundles.
+        if (
+            child.is_symlink()
+            or not child.is_dir()
+            or re.fullmatch(r"v\d+\.\d+\.\d+", child.name) is None
+            or not all(
+                (child / name).is_file() and not (child / name).is_symlink()
+                for name in (
+                    "pan-cancer-expression.csv", "hpa-cell-type-expression.csv",
+                )
+            )
+        ):
             continue
         out.append({
             "version": child.name,

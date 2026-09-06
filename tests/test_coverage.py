@@ -99,6 +99,38 @@ def test_resolve_csv_path_symbols(tmp_path):
     assert ensgs == {_TP53, _EGFR, _MYC}
 
 
+@pytest.mark.parametrize("text,expected", [
+    (f"{_TP53}\n{_EGFR}\n", {_TP53, _EGFR}),
+    (f"{_TP53}\n", {_TP53}),
+    ("TP53\nEGFR\n", {_TP53, _EGFR}),
+    ("Symbol\nTP53\nEGFR\n", {_TP53, _EGFR}),
+    ("", set()),
+])
+def test_plain_gene_lists_preserve_first_record(tmp_path, text, expected):
+    path = tmp_path / "panel.txt"
+    path.write_text(text)
+    assert coverage.resolve_gene_set(str(path))[1] == expected
+
+
+def test_gene_panel_tsv_with_identifiers_and_symbols(tmp_path):
+    path = tmp_path / "panel.tsv"
+    path.write_text(f"Ensembl_Gene_ID\tSymbol\n{_TP53}.5\tTP53\n{_EGFR}\tEGFR\n")
+    assert coverage.resolve_gene_set(str(path))[1] == {_TP53, _EGFR}
+
+
+def test_patient_percentages_exclude_missing_measurements(synth_source, tmp_path, monkeypatch):
+    matrix = _SYNTH.copy()
+    matrix.loc[matrix.Ensembl_Gene_ID.eq(_TP53), "s4"] = float("nan")
+    monkeypatch.setattr(cohorts, "read_per_sample", lambda cohort: matrix.copy())
+    counts = coverage.patient_coverage(str(_ensg_csv(tmp_path)), source_id="synth",
+                                       thresholds=(25,), threshold_mode="tpm")
+    row = counts.set_index("Ensembl_Gene_ID").loc[_TP53]
+    assert row.n_samples == 4
+    assert row.n_available == 3
+    assert row.n_gt25 == 2
+    assert row.pct_gt25 == pytest.approx(66.67)
+
+
 def test_resolve_unknown_raises():
     with pytest.raises(ValueError):
         coverage.resolve_gene_set("definitely-not-a-panel")

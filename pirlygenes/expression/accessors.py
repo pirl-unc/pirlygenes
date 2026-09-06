@@ -2145,6 +2145,13 @@ def _reference_wide_from_delegated_long(
             available_codes.append(code)
 
     wide = long[["Ensembl_Gene_ID", "Symbol"]].drop_duplicates().copy()
+    keys = ["cancer_code", "normalization", "Ensembl_Gene_ID"]
+    if long.duplicated(keys).any():
+        raise ValueError(
+            "wide reference output requires one source row per gene and cancer "
+            "type; select a single source_cohort, use pool=True for comparable "
+            "sources, or request format='long' to retain all sources"
+        )
     for code in available_codes:
         for mode in modes:
             label = _REFERENCE_VALUE_COLUMNS[mode][3]
@@ -2153,7 +2160,7 @@ def _reference_wide_from_delegated_long(
                 long["cancer_code"].astype(str).eq(code)
                 & long["normalization"].astype(str).eq(label),
                 ["Ensembl_Gene_ID", "expression"],
-            ].drop_duplicates(subset=["Ensembl_Gene_ID"])
+            ]
             wide = wide.merge(
                 values.rename(columns={"expression": column}),
                 on="Ensembl_Gene_ID",
@@ -2222,7 +2229,9 @@ def cancer_reference_expression(
     format
         ``"long"`` returns one row per gene/cancer/source/normalization;
         ``"wide"`` returns one row per gene with columns such as
-        ``CLL_TPM_clean``.
+        ``CLL_TPM_clean``. If multiple sources supply the same gene/cancer
+        value, select a single source or explicitly request ``pool=True``;
+        ambiguous wide output raises ``ValueError`` instead of dropping sources.
     include_provenance
         Include source/sample/provenance columns in long-form output.
     exclude_microarray_proxy
