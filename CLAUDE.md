@@ -78,6 +78,22 @@ Symbols are uppercased on read.
 
 ## Regenerating derived data
 
+### Figure outputs
+
+Use a dedicated environment for figures so other projects cannot change
+oncoref during a batch. Set it up from this checkout with:
+
+    uv venv .venv-figures
+    uv pip install --python .venv-figures/bin/python -e '.[test]' pypdf seaborn
+
+Run `.venv-figures/bin/python analyses/regenerate_plots.py` to regenerate the
+full figure batch. Both batch runners enforce the exact oncoref pin before
+creating output directories and between figure jobs; a mismatch aborts the
+batch. Keep this environment stable until the run finishes. If a batch aborts
+after drift, its partial output directory must not be treated as a complete run.
+
+### Gene-family data
+
 The gene-family CSVs (`numt-pseudogenes.csv`, `nuclear-retained-lncrnas.csv`,
 `rrna-and-pseudogenes.csv`, `ribosomal-protein-genes.csv`,
 `ribosomal-protein-pseudogenes.csv`, `small-noncoding-rnas.csv`,
