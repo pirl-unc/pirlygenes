@@ -14,9 +14,11 @@ This replaces the old per-script ``outputs/apd1_causal_factors/run_*`` layout
 (which buried five scripts' output under one script's name) — every family now
 lands in the same timestamped run dir.
 
-    python analyses/regenerate_plots.py
+    .venv-figures/bin/python analyses/regenerate_plots.py
 
-Scripts that fail are reported but don't abort the batch.
+Scripts that fail are reported but don't abort the batch. An oncoref version
+mismatch aborts before writing outputs, or between jobs if the environment
+changes during a batch. Use a dedicated environment for figure runs.
 """
 from __future__ import annotations
 
@@ -29,8 +31,26 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+REPO = HERE.parent
 OUTPUTS = HERE / "outputs"
-DOCS = HERE.parent / "docs"
+DOCS = REPO / "docs"
+
+# Resolve the pin helper and all figure imports against this checkout, even
+# when a different pirlygenes checkout is installed in the selected venv.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+from scripts.figure_environment import (  # noqa: E402
+    FigureEnvironmentError,
+    check_figure_environment,
+)
+
+_SUBPROCESS_ENV = {
+    **os.environ,
+    "PYTHONPATH": os.pathsep.join(
+        [str(REPO)] + ([os.environ["PYTHONPATH"]]
+                       if os.environ.get("PYTHONPATH") else [])),
+}
 
 # Families whose output doubles as committed documentation assets: --promote-docs
 # copies these into docs/ so the figures embedded in docs/*.md stay in sync.
@@ -60,8 +80,12 @@ LAYOUT = [
 ]
 
 
-def _run(cmd, env=None):
-    return subprocess.run(cmd, cwd=HERE, env=env).returncode == 0
+def _run(cmd, expected_oncoref, env=None):
+    check_figure_environment(expected_oncoref)
+    result = subprocess.run(cmd, cwd=HERE,
+                            env={**_SUBPROCESS_ENV, **(env or {})})
+    check_figure_environment(expected_oncoref)
+    return result.returncode == 0
 
 
 def _promote_docs(run: Path) -> None:
@@ -196,16 +220,18 @@ def main() -> int:
         help="skip building the combined all-figures.pdf (faster iterative runs)")
     opts = ap.parse_args()
 
+    expected_oncoref = check_figure_environment()
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     run = OUTPUTS / f"run_{ts}"
     run.mkdir(parents=True, exist_ok=True)
     ok, failed = [], []
 
     print(f"regenerating all plots -> {run}\n")
-    env = {**os.environ, "APD1_RUN_DIR": str(run / "apd1_causal_model")}
+    env = {**_SUBPROCESS_ENV, "APD1_RUN_DIR": str(run / "apd1_causal_model")}
     for s in APD1_BATCH:
         print(f"  apd1_causal_model: {s} ...", flush=True)
-        (ok if _run([sys.executable, f"{s}.py"], env=env) else failed).append(s)
+        (ok if _run([sys.executable, f"{s}.py"], expected_oncoref, env=env)
+         else failed).append(s)
 
     for s, extra, target in LAYOUT:
         print(f"  {target}: {s} ...", flush=True)
@@ -213,7 +239,8 @@ def main() -> int:
             args = ["--out-dir", str(run), "--no-timestamp"]
         else:                           # flat-writing -> its own named subdir
             args = ["--out-dir", str(run), "--run-name", target]
-        (ok if _run([sys.executable, f"{s}.py", *args, *extra]) else failed).append(s)
+        (ok if _run([sys.executable, f"{s}.py", *args, *extra], expected_oncoref)
+         else failed).append(s)
 
     # cta_addressable_burden consumes cta_patient_counts' tables (written above by
     # the "groups" entry into the run root) and has its own --run-dir/--fig-dir
@@ -221,9 +248,11 @@ def main() -> int:
     # its plots into their own family subdir.
     print("  cta_addressable: cta_addressable_burden ...", flush=True)
     addr_ok = _run([sys.executable, "cta_addressable_burden.py",
-                    "--run-dir", str(run), "--fig-dir", str(run / "cta_addressable")])
+                    "--run-dir", str(run), "--fig-dir", str(run / "cta_addressable")],
+                   expected_oncoref)
     (ok if addr_ok else failed).append("cta_addressable_burden")
 
+    check_figure_environment(expected_oncoref)
     if opts.promote_docs:
         _promote_docs(run)
 
@@ -242,4 +271,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except FigureEnvironmentError as exc:
+        print(f"Figure batch aborted: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
