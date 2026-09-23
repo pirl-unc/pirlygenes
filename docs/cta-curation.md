@@ -277,6 +277,11 @@ This dataset provides immunohistochemistry (IHC) staining levels across **63 nor
 
 **Detection levels**: Not detected, Low, Medium, High
 
+The IHC allowed-tissue rule uses oncoref's broader reproductive set: core tissues,
+accessory reproductive tissues and breast, with thymus excluded from restriction
+assessment. The deflated RNA numerator still uses only testis, ovary and placenta.
+A protein-rule pass therefore does not imply confinement to those three tissues.
+
 **Antibody reliability** (highest to lowest confidence):
 - **Enhanced**: Orthogonal validation (mass spectrometry, Western blot, or similar)
 - **Supported**: Staining consistent with gene/protein characterization
@@ -307,9 +312,12 @@ The `never_expressed` column flags genes where:
 - No HPA protein (IHC) data is available, AND
 - Maximum RNA nTPM across all tissues is < 2
 
-These genes pass the filter (because the `+1` pseudocount gives a 1.0 deflated fraction when all nTPMs are below 1), but the evidence for their tissue restriction is weak — HPA simply doesn't have enough signal to confirm or deny reproductive specificity. They are typically very low-abundance transcripts below HPA's detection sensitivity. Many are still legitimate CTAs supported by other evidence (e.g., CTpedia listing, tumor mass spectrometry detection), but users should be aware of the limited HPA evidence.
-
-Currently **24 genes** are flagged as low evidence.
+When all RNA values are below 1 nTPM, the pseudocount yields a deflated fraction
+of 1.0. The low-evidence flag does not itself guarantee filter passage or default
+inclusion, and it is not proof that a gene is never expressed in tumors. In the
+current 439-row owner table, 34 genes carry this flag; 30 pass the raw HPA gate,
+and 16 survive the complete default policy, including literature/expression
+rescue rules. The separate funnel applies family exclusions before HPA gates.
 
 ## Gene symbol maintenance
 
@@ -331,7 +339,11 @@ Gene symbols are updated to current HGNC nomenclature, with old symbols preserve
 | HIST1H2BB | H2BC3 | Histone nomenclature update |
 | HIST1H4F | H4C6 | Histone nomenclature update |
 
-All Ensembl Gene IDs are validated against Ensembl release 112. Canonical transcript IDs (longest protein-coding transcript) are provided in the `Canonical_Transcript_ID` column.
+Gene IDs are mapped to oncoref's canonical Ensembl reference. Historical
+annotations remain in the publication-membership table. Existing transcript
+annotations are preserved; the 42 new candidates do not yet have curated
+`Canonical_Transcript_ID`, full-name or function annotations. Those fields remain
+missing rather than being inferred from the nomination papers.
 
 ## Column reference
 
@@ -343,17 +355,17 @@ All Ensembl Gene IDs are validated against Ensembl release 112. Canonical transc
 | `Function` | Functional annotation |
 | `Ensembl_Gene_ID` | Ensembl gene ID (validated against release 112) |
 | `source_databases` | Source databases (CTpedia, CTexploreR_CT, CTexploreR_CTP, daSilva2017, daSilva2017_protein) |
-| `protein_reproductive` | IHC detected only in {testis, ovary, placenta} (excl. thymus), or `"no data"` |
+| `protein_reproductive` | IHC restriction under the broader allowed reproductive-tissue rule, or `"no data"` |
 | `protein_thymus` | IHC detected in thymus |
 | `protein_reliability` | Best HPA antibody reliability (Enhanced / Supported / Approved / Uncertain / `"no data"`) |
-| `rna_reproductive` | All tissues with >=1 nTPM (excl. thymus) are in {testis, ovary, placenta} |
+| `rna_reproductive` | No detected somatic tissue under the broader somatic-exclusion scope; distinct from the core RNA fraction |
 | `rna_thymus` | Thymus nTPM >= 1 |
 | `protein_strict_expression` | Semicolon-separated tissues with IHC detection (excl. thymus) |
 | `rna_reproductive_frac` | Fraction of total nTPM (excl. thymus) in core reproductive tissues |
 | `rna_reproductive_and_thymus_frac` | Same, with thymus added to numerator and denominator |
 | `rna_deflated_reproductive_frac` | `(1 + sum_repro(max(0, nTPM-1))) / (1 + sum_all(max(0, nTPM-1)))` |
 | `rna_deflated_reproductive_and_thymus_frac` | Same, with thymus added to reproductive numerator |
-| `Canonical_Transcript_ID` | Longest protein-coding transcript (Ensembl 112) |
+| `Canonical_Transcript_ID` | Preserved transcript annotation; missing for the 42 new candidates |
 | `biotype` | Ensembl gene biotype (must be `protein_coding` to pass filter) |
 | `rna_max_ntpm` | Maximum nTPM across all tissues |
 | `rna_80_pct_filter` | Deflated reproductive fraction >= 80% |
@@ -361,7 +373,7 @@ All Ensembl Gene IDs are validated against Ensembl release 112. Canonical transc
 | `rna_95_pct_filter` | Deflated reproductive fraction >= 95% |
 | `rna_98_pct_filter` | Deflated reproductive fraction >= 98% |
 | `rna_99_pct_filter` | Deflated reproductive fraction >= 99% |
-| `passes_filters` | Final inclusion flag (see filter logic above) |
+| `passes_filters` | Raw HPA gate; family/default specificity policy is applied separately |
 | `filtered` | Historical alias for `passes_filters` |
 | `never_expressed` | No HPA protein data AND max RNA nTPM < 2 |
 
@@ -426,17 +438,17 @@ p.cta.columns           # full evidence columns for CTAs
 p.non_cta.columns       # Symbol, Ensembl_Gene_ID
 ```
 
-| Partition | Description | Typical count |
-|---|---|---|
-| `p.cta` | Expressed, reproductive-restricted CTAs. Source of CTA pMHCs. | ~257 |
-| `p.cta_never_expressed` | CTAs from databases but no meaningful HPA expression (max nTPM < 2, no protein data). Pass filter on a technicality (pseudocount). Separate from analysis. | ~21 |
-| `p.non_cta` | All other protein-coding genes, **including** CTAs that fail the reproductive-tissue filter (somatic expression). Clean non-CTA comparison set. | ~19,800 |
+| Partition | Description |
+|---|---|
+| `p.cta` | Default CTA candidates; membership does not establish peptide presentation. |
+| `p.cta_never_expressed` | Separate low-HPA-expression candidate partition. |
+| `p.non_cta` | Remaining protein-coding genes under the installed partition policy. |
 
-These three sets are **non-overlapping** and their union covers all protein-coding genes from Ensembl.
-
-**Why three partitions instead of two?**
-- **Never-expressed CTAs** pass our filter because the +1 pseudocount gives them a 1.0 deflated fraction when all nTPMs are below 1. They are in CT antigen databases but HPA has no real signal. Including them in pMHC analysis would add noise — you can't target a protein that's never made.
-- **Excluded CTAs** (those that fail the filter due to somatic expression) are folded into `non_cta`. They express in healthy tissue, so their peptides would appear in the non-CTA proteome anyway. Keeping them in `non_cta` gives a realistic comparison set.
+These partition/evidence compatibility APIs are supplied by tsarina and depend
+on its installed version and Ensembl universe. Consult that API's returned sets
+for current counts. The 298-gene default and source funnels above use the pinned
+oncoref authority directly. The `never_expressed` name is a low-HPA-signal flag,
+not evidence that no protein is ever made in a tumor.
 
 ## Completing the prior placental provenance
 
