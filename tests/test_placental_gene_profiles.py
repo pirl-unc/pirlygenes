@@ -36,3 +36,10 @@ def test_data_requests_rna_only_genes_and_preserves_separate_cohorts(monkeypatch
     assert set(c.symbol) == set(profiles.GENES)
     assert "INSL4" not in set(i.symbol)
     assert observed == {"cohort": "TCGA", "threshold": 1., "include_missing_ihc": True}
+
+
+def test_rounded_prevalence_does_not_turn_rare_detection_into_zero():
+    values = [0, .001, .008, .2, .992, 1, np.nan]
+    assert [profiles._fraction_label(v) for v in values] == [
+        "0%", "<1%", "<1%", "20%", ">99%", "100%", "NA",
+    ]

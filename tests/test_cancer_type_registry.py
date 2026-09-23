@@ -349,13 +349,14 @@ def test_brca_pam50_subtypes_present():
     """BRCA's expression-based PAM50 tiles must be in the registry so
     the second-pass subtype classifier can route to them."""
     subs = cancer_type_subtypes_of("BRCA")
-    assert set(subs) == {
+    assert {
         "BRCA_LumA",
         "BRCA_LumB",
         "BRCA_HER2",
         "BRCA_Basal",
         "BRCA_Normal",
-    }
+    } <= set(subs)
+    assert "BRCA_TNBC" in subs  # receptor-defined, distinct from PAM50 Basal
 
 
 def test_sarc_subtypes_cover_main_entities():
@@ -419,8 +420,10 @@ def test_ucec_molecular_subtypes_split_apd1_368():
         assert reg.loc[s, "parent_code"] == "UCEC"
     orr = cancer_apd1_response()
     assert orr["UCEC_MSI"] >= 45        # responder
-    assert orr["UCEC_CNH"] <= 15        # MSS non-responder
-    assert orr["UCEC_MSI"] > orr["UCEC_CNH"]
+    # The updated owner explicitly withdrew unsupported subtype estimates.
+    assert "UCEC_CNH" not in orr and "UCEC_CNL" not in orr
+    assert cancer_apd1_response("UCEC_CNH") is None
+    assert cancer_apd1_response("UCEC_CNL") is None
 
 
 def test_laml_has_apl_and_eln_tiles():

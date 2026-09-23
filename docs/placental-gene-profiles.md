@@ -5,7 +5,8 @@ GCM1, CYP19A1, HTRA4 and KISS1**. Their profiles use oncoref's SHA-pinned,
 genome-wide **HPA 25.1** reference (native HPA Ensembl 109 IDs). The RNA release
 has 21 TCGA and ten validation cancer types. All five genes have RNA rows in
 both cohorts; the cohorts remain separate. RNA is native **pTPM**, without a
-clean-TPM transformation.
+clean-TPM transformation. Positive fractions below 1% are labeled `<1%`,
+rather than rounded to zero; exact counts remain in the CSV exports.
 
 ![TCGA RNA](figures/placental-profiles/placental-rna-tcga.png)
 ![Validation RNA](figures/placental-profiles/placental-rna-validation.png)

@@ -64,6 +64,16 @@ def _heatmap(ax, values, annotations, labels, *, title, norm=None, cmap="YlGnBu"
     return image
 
 
+def _fraction_label(value):
+    if not np.isfinite(value):
+        return "NA"
+    if 0 < value < .01:
+        return "<1%"
+    if .99 < value < 1:
+        return ">99%"
+    return f"{value:.0%}"
+
+
 def plot_rna(rna, cohort, out):
     selected = rna[rna.cohort.eq(cohort)]
     metadata = selected[["cancer_code", "cancer_type"]].drop_duplicates().sort_values("cancer_type")
@@ -83,7 +93,7 @@ def plot_rna(rna, cohort, out):
     colorbar.set_label("Mean pTPM (log colour scale)")
     annotations = np.empty(prevalence.shape, dtype=object)
     for idx, value in np.ndenumerate(prevalence):
-        annotations[idx] = "NA" if np.isnan(value) else f"{value:.0%}\nn={samples[idx]:.0f}"
+        annotations[idx] = "NA" if np.isnan(value) else f"{_fraction_label(value)}\nn={samples[idx]:.0f}"
     image = _heatmap(axes[1], prevalence, annotations, [""] * len(rows),
                     title="RNA ≥1 pTPM: fraction of measured samples")
     fig.colorbar(image, ax=axes[1], shrink=.65, pad=.02, label="RNA-positive fraction")

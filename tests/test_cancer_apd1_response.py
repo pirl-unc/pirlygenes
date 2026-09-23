@@ -8,6 +8,8 @@ columns pirlygenes consumes — rather than pinning oncoref's exact schema or
 per-code curated ORRs (which oncoref validates upstream and re-curates on its
 own release cadence)."""
 
+import pandas as pd
+
 from pirlygenes.gene_sets_cancer import (
     cancer_apd1_response,
     cancer_apd1_response_df,
@@ -56,7 +58,13 @@ def test_every_value_is_cited_or_flagged():
     citation-light rows are explicitly low-confidence anchors."""
     df = cancer_apd1_response_df()
     for row in df.itertuples():
-        assert row.confidence in {"high", "medium", "low"}
+        assert row.confidence in {"high", "medium", "low", "none"}
+        if row.confidence == "none":
+            assert pd.isna(row.apd1_orr_pct)
+            assert isinstance(row.missing_reason, str) and row.missing_reason.strip()
+            assert row.cancer_code not in cancer_apd1_response()
+            continue
+        assert pd.notna(row.apd1_orr_pct)
         has_pmid = isinstance(row.pmid_doi, str) and row.pmid_doi.strip().startswith(
             ("PMID", "DOI", "10.")
         )
@@ -72,10 +80,11 @@ def test_accessor_resolves_aliases_and_map():
 
 def test_subtype_inherits_parent_orr():
     # subtypes with no curated row inherit the parent (SCLC_ASCL1 -> SCLC,
-    # LUAD_KRAS -> LUAD); the STK11 immune-cold subtype gets its own lower row.
+    # LUAD_KRAS -> LUAD). An explicitly withdrawn subtype must stay missing.
     assert cancer_apd1_response("SCLC_ASCL1") == cancer_apd1_response("SCLC")
     assert cancer_apd1_response("LUAD_KRAS") == cancer_apd1_response("LUAD")
-    assert cancer_apd1_response("LUAD_STK11") < cancer_apd1_response("LUAD")
+    assert cancer_apd1_response("LUAD_STK11") is None
+    assert cancer_apd1_response("LUAD_STK11", inherit=False) is None
     # strict (no inherit) returns None for an uncurated subtype
     assert cancer_apd1_response("SCLC_ASCL1", inherit=False) is None
 
