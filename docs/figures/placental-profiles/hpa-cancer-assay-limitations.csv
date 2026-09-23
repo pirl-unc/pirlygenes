@@ -1,0 +1,10 @@
+gene_id,scope,caution,symbol
+,cohort,"RNA and IHC cohorts are unpaired; comparisons are descriptive, not paired calibration.",
+,measurement,"IHC prevalence is the fraction of scored patients, not the fraction of stained cells.",
+,antibody,"Aggregate cancer counts do not identify antibodies, reliability, or cross-reactivity; gene/paralog specificity requires separate assay evidence.",
+ENSG00000176746,normal_tissue_curation_not_cancer_revalidation,kidney IHC with RNA ~0; Enhanced but RNA-discordant (cross-reactive antibody),MAGEB6
+ENSG00000155622,normal_tissue_curation_not_cancer_revalidation,scattered Low glandular IHC with RNA ~0 (placenta-restricted; cross-reactive),XAGE2
+ENSG00000278085,normal_tissue_curation_not_cancer_revalidation,heart Low IHC with RNA 0; CT45A1 paralog sharing an antibody,CT45A8
+ENSG00000270946,normal_tissue_curation_not_cancer_revalidation,heart Low IHC with RNA 0; CT45A1 paralog sharing an antibody,CT45A9
+ENSG00000185792,normal_tissue_curation_not_cancer_revalidation,somatic IHC artifactual (HPA042623 low-specificity polyclonal; RNA/protein discordant); oocyte/germline-restricted SCMC gene,NLRP9
+ENSG00000116726,normal_tissue_curation_not_cancer_revalidation,broad multi-tissue Low IHC with testis-restricted RNA (RNA/protein discordant); PRAMEF-cluster paralog sharing a cross-reactive antibody,PRAMEF12

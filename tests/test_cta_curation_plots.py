@@ -28,9 +28,66 @@ def test_tag_sets_cover_primary_sources():
     assert sets["daSilva2017_protein"]
 
 
-def test_render_returns_five_figures_and_writes_them(tmp_path: Path):
+def test_render_returns_figures_and_writes_them(tmp_path: Path):
     result = ccp.render(out_dir=tmp_path)
-    assert set(result["paths"]) == set(ccp.FILENAMES)
+    expected = set(ccp.FILENAMES)
+    if ccp.publication_data_available():
+        expected.update(ccp.PUBLICATION_FILENAMES)
+    assert set(result["paths"]) == expected
     assert result["n_genes"] > 0
     for path in result["paths"].values():
         assert path.exists() and path.stat().st_size > 0
+        assert path.with_suffix(".pdf").is_file()
+
+
+def test_funnel_lands_on_the_actual_public_default_set():
+    from oncoref.cta import cta_gene_ids, cta_unfiltered_gene_ids
+
+    table = ccp.stage_membership()
+    assert set(table.loc[table.default_panel, "Ensembl_Gene_ID"]) == cta_gene_ids()
+    assert set(table.loc[table.non_cta_removed, "Ensembl_Gene_ID"]) == cta_unfiltered_gene_ids()
+    assert not (table.default_panel & ~table.hpa_restriction).any()
+    counts = ccp.stage_counts()
+    assert sum(row["dropped"] for row in counts) + counts[-1]["remaining"] == len(table)
+
+
+def test_false_strings_are_not_truthy_filter_passes():
+    import pandas as pd
+
+    assert ccp._bool_series(pd.Series(["False", "True", None, False, True])).tolist() == [
+        False, True, False, False, True,
+    ]
+
+
+def test_overlap_matrix_is_symmetric_and_defaults_are_subsets():
+    counts = ccp.source_overlap_counts()
+    assert (counts.default_overlap <= counts.candidate_overlap).all()
+    for field in ("candidate_overlap", "default_overlap"):
+        matrix = counts.pivot(index="source_a", columns="source_b", values=field)
+        assert matrix.equals(matrix.T)
+    for name, ids in ccp._tag_sets(ccp._evidence()).items():
+        if ids:
+            diagonal = counts[(counts.source_a == name) & (counts.source_b == name)]
+            assert diagonal.candidate_overlap.item() == len(ids)
+
+
+def test_published_placental_overlap_uses_current_coding_identities():
+    import pytest
+
+    if not ccp.publication_data_available():
+        pytest.skip("Published source tables require the updated oncoref checkout")
+    gong, bradley, prior = ccp.placental_source_sets().values()
+    assert (len(gong), len(bradley), len(prior)) == (70, 10, 19)
+    assert len(gong & bradley) == 7
+    assert len(gong & prior) == 16
+    from oncoref.cta import cta_gene_ids
+
+    assert len(gong & prior & cta_gene_ids()) == 8
+
+
+def test_plot_reliability_thresholds_come_from_the_filter_owner():
+    from oncoref.cta_tissues import HPA_ADAPTIVE_PROTEIN_RNA_THRESHOLDS
+
+    for label, threshold in ccp.RELIABILITY_THRESHOLD.items():
+        key = "Missing" if label == "no data" else label
+        assert threshold == HPA_ADAPTIVE_PROTEIN_RNA_THRESHOLDS[key]

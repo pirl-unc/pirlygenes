@@ -1,0 +1,37 @@
+source_a,source_b,candidate_overlap,default_overlap
+CTpedia,CTpedia,209,187
+CTpedia,CTexploreR,77,72
+CTpedia,daSilva2017_protein,35,35
+CTpedia,placental_antigen,0,0
+CTpedia,Gong 2021,14,14
+CTpedia,Bradley 2020,1,1
+CTexploreR,CTpedia,77,72
+CTexploreR,CTexploreR,153,132
+CTexploreR,daSilva2017_protein,48,33
+CTexploreR,placental_antigen,0,0
+CTexploreR,Gong 2021,2,2
+CTexploreR,Bradley 2020,0,0
+daSilva2017_protein,CTpedia,35,35
+daSilva2017_protein,CTexploreR,48,33
+daSilva2017_protein,daSilva2017_protein,135,70
+daSilva2017_protein,placental_antigen,0,0
+daSilva2017_protein,Gong 2021,2,1
+daSilva2017_protein,Bradley 2020,0,0
+placental_antigen,CTpedia,0,0
+placental_antigen,CTexploreR,0,0
+placental_antigen,daSilva2017_protein,0,0
+placental_antigen,placental_antigen,19,9
+placental_antigen,Gong 2021,16,8
+placental_antigen,Bradley 2020,2,0
+Gong 2021,CTpedia,14,14
+Gong 2021,CTexploreR,2,2
+Gong 2021,daSilva2017_protein,2,1
+Gong 2021,placental_antigen,16,8
+Gong 2021,Gong 2021,70,27
+Gong 2021,Bradley 2020,7,1
+Bradley 2020,CTpedia,1,1
+Bradley 2020,CTexploreR,0,0
+Bradley 2020,daSilva2017_protein,0,0
+Bradley 2020,placental_antigen,2,0
+Bradley 2020,Gong 2021,7,1
+Bradley 2020,Bradley 2020,10,1

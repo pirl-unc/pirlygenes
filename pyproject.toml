@@ -95,6 +95,8 @@ dependencies = [
     # caches those evidence resolvers without changing the data/source bundles.
     # 1.8.194 corrects ICI pooling precedence and inherited regimen selection,
     # and keeps the current development checkouts installable together.
+    # 1.8.204 adds the genome-wide HPA 25.1 cancer reference, explicit RNA-only
+    # gene retention, placental publication sources, and exact CTA gate audits.
     # >=1.8.75
     # also gives the
     # builders the cleaned-up source-matrix QC /
@@ -108,7 +110,7 @@ dependencies = [
     # exact owner release because these compatibility APIs carry biological
     # semantics. The cohort-matrix metadata records the build package as
     # provenance and validates the exact oncoref data version.
-    "oncoref==1.8.194",
+    "oncoref==1.8.204",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-matrix / representative / percentile
@@ -153,6 +155,8 @@ test = [
 # otherwise degrades to a source-size bar.
 viz = [
     "matplotlib_venn>=1.0",
+    "pypdf>=5",
+    "reportlab>=4",
 ]
 [project.urls]
 "Homepage" = "https://github.com/pirl-unc/pirlygenes"
