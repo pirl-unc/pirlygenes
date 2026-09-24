@@ -1,0 +1,40 @@
+[
+  {
+    "release": 111,
+    "gtf_sha256": "d565260ecd80574fbf74f27df3df33a9d79fc2443c38d4f28c939cb7dc815b46",
+    "pairs": [
+      {
+        "source_symbol": "KIR3DS1",
+        "source_gene_id": "ENSG00000276534",
+        "current_symbol": "",
+        "contig": "HSCHR19KIR_RP5_B_HAP_CTG3_1"
+      },
+      {
+        "source_symbol": "KIR2DL2",
+        "source_gene_id": "ENSG00000275546",
+        "current_symbol": "KIR2DL2",
+        "contig": "HSCHR19KIR_G085_BA1_HAP_CTG3_1"
+      }
+    ],
+    "full_panel_guard": "passed"
+  },
+  {
+    "release": 112,
+    "gtf_sha256": "9068bd52a9def32ac22b248393461b9f52931f29404a94b397ecc7ddbc2fce38",
+    "pairs": [
+      {
+        "source_symbol": "KIR3DS1",
+        "source_gene_id": "ENSG00000276534",
+        "current_symbol": "",
+        "contig": "HSCHR19KIR_RP5_B_HAP_CTG3_1"
+      },
+      {
+        "source_symbol": "KIR2DL2",
+        "source_gene_id": "ENSG00000275546",
+        "current_symbol": "",
+        "contig": "HSCHR19KIR_G085_BA1_HAP_CTG3_1"
+      }
+    ],
+    "full_panel_guard": "passed"
+  }
+]
