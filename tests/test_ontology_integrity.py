@@ -6,6 +6,7 @@ across the per-node data axes (lineage / TMB / indel / aPD1).
 """
 
 import pandas as pd
+import pytest
 
 from pirlygenes.gene_sets_cancer import (
     cancer_type_registry,
@@ -17,6 +18,37 @@ from pirlygenes.load_dataset import get_data
 
 def _reg():
     return cancer_type_registry().set_index("code")
+
+
+def _documented_unnamed_haplotype(table, symbol, gene_id, current_symbol):
+    # The original surfaceome explicitly lists these KIR haplotypes:
+    # https://wlab.ethz.ch/surfaceome/ (Bausch-Fluck 2018, PMID:30373828).
+    # UniProt O43469 also links ENSG00000276534. Modern patch/haplotype GTFs
+    # leave KIR3DS1 (111/112) and KIR2DL2 (112) blank at these source IDs.
+    # Preserve the source accessions; a named different gene must still fail.
+    return current_symbol == "" and (table, symbol, gene_id) in {
+        ("surface-proteins", "KIR3DS1", "ENSG00000276534"),
+        ("surface-proteins", "KIR2DL2", "ENSG00000275546"),
+    }
+
+
+@pytest.mark.parametrize("table,symbol,gene_id,current_symbol,expected", [
+    ("surface-proteins", "KIR3DS1", "ENSG00000276534", "", True),
+    ("surface-proteins", "KIR3DS1", "ENSG00000276534", "KIR3DL1", False),
+    ("surface-proteins", "KIR3DS1", "ENSG00000276534", "(unknown)", False),
+    ("surface-proteins", "KIR3DS1", "ENSG00000167633", "", False),
+    ("surface-proteins", "KIR3DL1", "ENSG00000276534", "", False),
+    ("lineage-genes", "KIR3DS1", "ENSG00000276534", "", False),
+    ("surface-proteins", "KIR2DL2", "ENSG00000275546", "", True),
+    ("surface-proteins", "KIR2DL2", "ENSG00000275546", "KIR2DL3", False),
+    ("surface-proteins", "KIR2DL2", "ENSG00000275546", "(unknown)", False),
+])
+def test_haplotype_provenance_does_not_hide_gene_swaps(
+    table, symbol, gene_id, current_symbol, expected,
+):
+    assert _documented_unnamed_haplotype(
+        table, symbol, gene_id, current_symbol,
+    ) is expected
 
 
 def test_all_data_table_codes_resolve_to_registry():
@@ -97,6 +129,8 @@ def test_curated_panel_symbol_ensg_not_swapped():
                     actual = data.gene_by_id(ensg).gene_name
                 except Exception:
                     actual = "(unknown)"
+                if _documented_unnamed_haplotype(name, sym, ensg, actual):
+                    continue
                 swaps.append((name, sym, ensg, f"->{actual}", f"symbol->{by_name}"))
     assert not swaps, f"symbol/ENSG swap in curated panels: {swaps}"
 
