@@ -1,4 +1,4 @@
-"""Tests for the curated per-cancer-type median-TMB reference (cancer-tmb.csv)."""
+"""Delegated TMB values retain the owner’s median/mean/estimate distinctions."""
 
 import math
 
@@ -26,14 +26,15 @@ def test_n_samples_present_for_small_cohort_estimates():
     (e.g. CRANIO n=3, HCL n=1) so low-precision estimates are transparent."""
     df = cancer_tmb_df().set_index("cancer_code")
     for code in ("CRANIO", "MTC", "HCL"):
-        assert df.loc[code, "median_tmb_mut_mb"] > 0
+        assert df.loc[code, "tmb_mut_mb"] > 0
         assert df.loc[code, "n_samples"] > 0
         assert df.loc[code, "confidence"] in {"high", "medium", "low"}
 
 
 def test_schema_and_unique_codes():
     df = cancer_tmb_df()
-    assert list(df.columns) == _EXPECTED_COLS
+    assert set(_EXPECTED_COLS) <= set(df.columns)
+    assert {"tmb_mut_mb", "tmb_statistic", "mean_tmb_mut_mb", "estimate_tmb_mut_mb"} <= set(df.columns)
     codes = df["cancer_code"].astype(str)
     assert codes.is_unique
     # Every code must be a real registry code.
@@ -59,8 +60,8 @@ def test_every_value_is_cited():
     be explicitly flagged confidence=none (an honest gap, not a silent absence)."""
     df = cancer_tmb_df()
     for row in df.itertuples():
-        has_value = isinstance(row.median_tmb_mut_mb, float) and not math.isnan(
-            row.median_tmb_mut_mb
+        has_value = isinstance(row.tmb_mut_mb, float) and not math.isnan(
+            row.tmb_mut_mb
         )
         if has_value:
             assert isinstance(row.source, str) and row.source.strip()
@@ -79,16 +80,18 @@ def test_estimate_provenance_is_structured():
         "panel_inferred",
         "small_n",
         "order_of_magnitude",
-        "unknown",
+        "unknown", "curated_estimate", "reported_summary",
+        "approximate_capture_normalized", "sample_recomputed_median",
+        "subtype_proxy", "published_mean", "broader_cohort_proxy",
     }
     assert set(df["estimate_type"].dropna()) <= allowed
-    blanks = df[df["median_tmb_mut_mb"].isna()]
+    blanks = df[df["tmb_mut_mb"].isna()]
     assert set(blanks["estimate_type"]) == {"unknown"}
     assert blanks["missing_reason"].astype(str).str.len().gt(0).all()
 
     midgut = df.set_index("cancer_code").loc["NET_MIDGUT"]
-    assert pd.isna(midgut["median_tmb_mut_mb"])
-    assert midgut["source_scope"] == "source_rejected_for_site_specific_value"
+    assert midgut["median_tmb_mut_mb"] == 1.05
+    assert midgut["source_scope"] == "advanced_site_specific_cohort"
 
     # oncoref 1.8.190 replaces the former pooled-source gap with a direct,
     # source-backed rectal-NET median. Its new registry-aware helper also marks
@@ -106,7 +109,7 @@ def test_accessor_map_omits_blanks():
     mapping = cancer_tmb()
     assert isinstance(mapping, dict)
     # Blank-value codes (no published median) are absent from the map.
-    assert "MPN" not in mapping
+    assert "STAD_MSI" not in mapping
     assert "CML" not in mapping
     # Well-established values are present.
     assert "SKCM" in mapping and "PRAD" in mapping
@@ -117,7 +120,7 @@ def test_accessor_resolves_aliases():
     assert cancer_tmb("melanoma") == cancer_tmb("SKCM")
     assert cancer_tmb("melanoma") > cancer_tmb("prostate")
     # A code with no curated value returns None rather than raising.
-    assert cancer_tmb("MPN") is None
+    assert cancer_tmb("STAD_MSI") is None
 
 
 def test_skcm_is_highest_among_common_types():
@@ -137,12 +140,12 @@ def test_subtype_inherits_parent_tmb():
     assert cancer_tmb("SARC_EPITH") == cancer_tmb("SARC")
     # but a subtype that genuinely DIFFERS gets its own cited row and overrides
     # the parent: LUAD_EGFR (never-smoker, lower) and SARC_CIC (CIC-driven, low).
-    assert cancer_tmb("LUAD_EGFR") == 3.5 and cancer_tmb("LUAD_EGFR") != cancer_tmb("LUAD")
+    assert cancer_tmb("LUAD_EGFR") == 3.8 and cancer_tmb("LUAD_EGFR") != cancer_tmb("LUAD")
     assert cancer_tmb("SARC_CIC") == 1.2 and cancer_tmb("SARC_CIC") != cancer_tmb("SARC")
     # inherit=False is the strict direct-only lookup (no parent walk)
     assert cancer_tmb("LUAD_KRAS", inherit=False) is None
     # a top-level code with a genuinely blank value stays None even with inherit
-    assert cancer_tmb("MPN") is None
+    assert cancer_tmb("STAD_MSI") is None
 
 
 def test_audited_stad_msi_gap_blocks_parent_inheritance():
@@ -155,3 +158,16 @@ def test_audited_stad_msi_gap_blocks_parent_inheritance():
     assert pd.isna(row["median_tmb_mut_mb"])
     assert row["source_scope"] == "source_rejected_for_subtype_value"
     assert row["missing_reason"] == "no_supported_subtype_median"
+
+
+def test_compatibility_map_preserves_typed_owner_values():
+    import oncoref
+    from pandas.testing import assert_frame_equal
+
+    assert_frame_equal(cancer_tmb_df(), oncoref.cancer_tmb_df())
+    assert cancer_tmb() == oncoref.cancer_tmb()
+    rows = cancer_tmb_df().set_index("cancer_code")
+    # This source is an approximation, so it must not become a published median.
+    assert rows.loc["HCL", "tmb_statistic"] == "approximate"
+    assert pd.isna(rows.loc["HCL", "median_tmb_mut_mb"])
+    assert cancer_tmb("HCL") == rows.loc["HCL", "estimate_tmb_mut_mb"]

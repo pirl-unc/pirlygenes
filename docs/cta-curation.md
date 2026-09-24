@@ -9,8 +9,9 @@ tissues (testis, ovary, placenta) that become aberrantly expressed in tumors.
 Their tissue restriction makes them attractive immunotherapy targets because
 immune responses against them should spare normal somatic tissues.
 
-The CTA set is an **unbiased union** of published CT-antigen databases,
-systematically filtered with Human Protein Atlas tissue-expression data to keep
+The CTA candidate set combines published CT-antigen databases with supplementary
+family-based and single-cell nominations. It is systematically filtered with
+Human Protein Atlas tissue-expression data to keep
 genes with reproductive-restricted expression. The rest of this document moves
 from ownership and outputs to source evidence, filtering, maintenance, and API
 details.
@@ -31,7 +32,8 @@ shared by both packages.
 
 ## Figures
 
-These figures are generated from `tsarina.CTA_detailed_evidence()` by
+These figures are generated from oncoref's raw `cancer-testis-antigens` table
+and public CTA membership accessors by
 `pirlygenes.cta_curation_plots`, exposed as a CLI command:
 
 ```bash
@@ -43,7 +45,48 @@ They also refresh together with every other analyses plot via the batch driver �
 same packaged code) and copies the results back into this directory.
 
 ### Source overlap
+
+These figures use the released `oncoref==1.8.204` source authority, including
+Gong/Bradley nominations and primary CGB1/CGB2/CGB7 evidence. Install the pinned
+pirlygenes release and run `pirlygenes plot cta-curation --out <dir>` to reproduce
+the source overlaps and funnels. PNG exports are at least 300 dpi and every
+figure has a vector PDF sibling.
+
+![All CTA Source Overlaps](cta-source-overlap.png)
+
+The historical three-database comparison is retained for reference:
+
 ![CTA Source Venn Diagram](cta-source-venn.png)
+
+### Published placental nominations
+
+![Placental Publication Overlap](cta-placental-source-overlap.png)
+
+![Publication Intake Funnels](cta-publication-funnel.png)
+
+The intake funnels retain the full published denominators, including unmapped
+and currently noncoding genes. The overlap Venn uses mapped, currently
+protein-coding identities. A publication nominates candidates; it does not
+override our normal-tissue restriction or default specificity policy.
+
+### Sequential nomination funnel
+
+The funnel starts before oncoref's non-CTA family exclusions and ends at the
+exact public `CTA_gene_ids()` set. With the Gong/Bradley source additions:
+**439 nominated genes → 431 after family exclusions → 312 after HPA restriction
+→ 298 default CTAs**. The released oncoref 1.8.196 snapshot was
+397 → 390 → 302 → 293. The last step includes expression/rescue and specificity
+policy. These are gene counts, before identical-protein grouping, and do not
+imply peptide presentation or patient eligibility.
+
+Each run exports `cta-stage-counts.csv`, `cta-stage-membership.csv`, and
+`placental-nomination-provenance.csv` beside PNG and vector PDF figures.
+The updated source run also exports publication citations, full source-row
+intake membership/counts, pairwise overlap counts and the Venn membership.
+The source-level funnel distinguishes default inclusion from raw HPA passage;
+source lists overlap and must not be added together.
+
+![CTA Nomination Stages](cta-stage-funnel.png)
 
 ### Filter funnel by source
 ![CTA Filter Funnel](cta-filter-funnel.png)
@@ -58,6 +101,60 @@ same packaged code) and copies the results back into this directory.
 ![Protein vs RNA](cta-protein-vs-rna.png)
 
 ## Source databases
+
+The intake counts below describe historical source batches. For the current
+pinned historical sources, the generated source funnel has: CTpedia 209 candidates / 187
+default CTAs, CTexploreR 153 / 132, da Silva protein subset 135 / 70, placental
+nominations 19 / 9, and other paralog/cell-type additions 18 / 12. The newly
+added Gong and Bradley sources contribute 70 / 27 and 10 / 1 respectively.
+Together they add 42 candidates and five default genes: **INSL4, GCM1, CYP19A1,
+HTRA4 and KISS1**. Existing candidate evidence and filter decisions are preserved. Database
+sources overlap; these numbers are not additive.
+
+### Gong et al. 2021: placental RNA enrichment
+
+[Gong et al., *Nature Communications* (2021)](https://doi.org/10.1038/s41467-021-22695-y),
+*The RNA landscape of the human placenta in health and disease*, supplies
+71 placenta-enriched protein-coding genes in **Supplementary Data 5** and
+74 placenta-enriched noncoding entries in **Supplementary Data 6**. Both full
+lists are retained in oncoref's `cta-publication-membership` table, with original
+symbols/Ensembl IDs, source annotations and canonical mapping outcomes.
+
+| Source | Published | Mapped | Currently coding | After family exclusions | HPA pass | Default |
+|---|---:|---:|---:|---:|---:|---:|
+| Gong S5 | 71 | 70 | 69 | 68 | 31 | 26 |
+| Gong S6 | 74 | 65 | 1 | 1 | 1 | 1 |
+| Bradley Figure 3 | 10 | 10 | 10 | 10 | 1 | 1 |
+
+ERVH48-1 is preserved as historically noncoding in S6 but currently
+protein-coding. Conversely, DSCR4 was coding in S5 and is currently lncRNA;
+TXNRD3NB is unmapped. Nine further S6 entries are unmapped. These rows stay in
+the provenance table without being newly admitted as protein CTA candidates.
+Gong supports **16 of the 19 prior placental nominations and 8 of the 9 retained
+genes**; it does not cover CGB1, CGB2 or CGB7. Placental enrichment itself is not
+evidence of tumor expression, peptide presentation or T-cell recognition.
+
+### Bradley et al. 2020: cancer-placenta candidates
+
+[Bradley et al., *Nature Communications* (2020)](https://doi.org/10.1038/s41467-020-19141-w),
+*Vestigial-like 1 is a shared targetable cancer-placenta antigen expressed by
+pancreatic and basal-like breast cancers*, provides the **Figure 3** set:
+**VGLL1, PLAC1, CGB3, CGB5, IGF2BP3, DEPDC1B, ADAM12, SLC38A9, CAPN6 and MMP11**.
+Seven overlap Gong's coding nominations. The paper provides HLA-peptide and
+antigen-specific T-cell validation for **VGLL1**; the ten-gene source list is not
+a claim that all ten received that validation.
+
+Only PLAC1 passes the current default gate. VGLL1 remains in the sourced
+candidate table with its validation provenance, but fails the existing HPA
+normal-tissue restriction gate. Adding its paper does not waive that gate.
+
+Oncoref owns `cta-publication-sources`, `cta-publication-membership` and the
+reproducible `scripts/import_cta_publications.py` importer. Source tags are
+`Gong2021_placenta_PC`, `Gong2021_placenta_ncRNA` and `Bradley2020_CPA`.
+The source registry records exact tables/figures, DOI, evidence scope and input
+checksums. HPA v23 annotations are generated only for new candidates; unavailable
+RNA does not count as absent expression, and unknown canonical transcript IDs
+remain unassigned.
 
 ### CTpedia (167 genes)
 
@@ -103,6 +200,34 @@ Testis-specific genes from meiosis, piRNA pathway, and spermatogenesis literatur
 - Spermatogenesis: BRDT, LDHC, BOLL, NANOS2, ZPBP, ZPBP2, CALR3, ACTL7A, ACTL7B, DMRTB1
 - Pluripotency: DPPA3, DPPA5, UTF1
 - Known CT antigens: MAGEA8, MAGEA12, MAGEB10, GAGE1, PASD1, TEX14
+
+### Where the placental nominations came from
+
+`placental_antigen` is an internal nomination-provenance tag, not a separate
+external database and not a final tissue-restriction verdict. The initial
+family-based additions were made in
+[tsarina #111](https://github.com/pirl-unc/tsarina/commit/ddad873f01738eeb061a4d365ff51a4072748454)
+on June 10, 2026: hCG-beta/CGB, pregnancy-specific glycoproteins (PSG),
+syncytin/ERV envelope genes, placental galectins, and placental lactogen/GH.
+They were passed through the same HPA reproductive-restriction filters as the
+other candidates. The seed script contains those gene/ENSG nominations; it does
+not supply a structured per-gene literature citation for this group.
+
+LGALS16 was subsequently nominated by the HPA trophoblast/single-cell scan in
+[tsarina #125](https://github.com/pirl-unc/tsarina/commit/8aef2046fd08d44da2440033d2d565993661f701).
+Oncoref imported the candidate table in
+[oncoref #18](https://github.com/pirl-unc/oncoref/commit/698830e57c4fc5ee1e832b551debbcf5273baa4e)
+and added LGALS16 in
+[oncoref #115](https://github.com/pirl-unc/oncoref/commit/604051667c9b5ca63f3b6ec7635123d3a7353a65).
+Oncoref now owns the set and its HPA-derived filter decisions.
+
+In the pinned 1.8.204 table, 19 genes have this source tag. Nine are in the
+default set: **CGB2, PSG2, PSG6, PSG7, ERVH48-1, ERVV-2, LGALS13, LGALS14,
+LGALS16**. This source group is different from the public
+`CTA_placental_restricted_gene_names()` subset: for example, CGB2's RNA
+restriction is testis, and CGB8 already has CTpedia/daSilva source tags instead
+of `placental_antigen`. The separate `placental_immune_privilege.py` panel is a
+broader mechanistic gene list, not the source of CTA membership.
 
 ## Other CT databases considered
 
@@ -152,6 +277,11 @@ This dataset provides immunohistochemistry (IHC) staining levels across **63 nor
 
 **Detection levels**: Not detected, Low, Medium, High
 
+The IHC allowed-tissue rule uses oncoref's broader reproductive set: core tissues,
+accessory reproductive tissues and breast, with thymus excluded from restriction
+assessment. The deflated RNA numerator still uses only testis, ovary and placenta.
+A protein-rule pass therefore does not imply confinement to those three tissues.
+
 **Antibody reliability** (highest to lowest confidence):
 - **Enhanced**: Orthogonal validation (mass spectrometry, Western blot, or similar)
 - **Supported**: Staining consistent with gene/protein characterization
@@ -169,7 +299,7 @@ The `passes_filters` column uses tiered deflated RNA reproductive fraction thres
 | Enhanced (orthogonal validation) + reproductive only | >= 80% |
 | Supported (consistent characterization) + reproductive only | >= 90% |
 | Approved (basic validation) + reproductive only | >= 95% |
-| Uncertain or no protein data available | >= 98% |
+| Uncertain or no protein data available | >= 97% |
 
 **Additional filter criteria**:
 - Gene must be protein-coding (Ensembl biotype = `protein_coding`)
@@ -182,9 +312,12 @@ The `never_expressed` column flags genes where:
 - No HPA protein (IHC) data is available, AND
 - Maximum RNA nTPM across all tissues is < 2
 
-These genes pass the filter (because the `+1` pseudocount gives a 1.0 deflated fraction when all nTPMs are below 1), but the evidence for their tissue restriction is weak — HPA simply doesn't have enough signal to confirm or deny reproductive specificity. They are typically very low-abundance transcripts below HPA's detection sensitivity. Many are still legitimate CTAs supported by other evidence (e.g., CTpedia listing, tumor mass spectrometry detection), but users should be aware of the limited HPA evidence.
-
-Currently **24 genes** are flagged as low evidence.
+When all RNA values are below 1 nTPM, the pseudocount yields a deflated fraction
+of 1.0. The low-evidence flag does not itself guarantee filter passage or default
+inclusion, and it is not proof that a gene is never expressed in tumors. In the
+current 439-row owner table, 34 genes carry this flag; 30 pass the raw HPA gate,
+and 16 survive the complete default policy, including literature/expression
+rescue rules. The separate funnel applies family exclusions before HPA gates.
 
 ## Gene symbol maintenance
 
@@ -206,7 +339,11 @@ Gene symbols are updated to current HGNC nomenclature, with old symbols preserve
 | HIST1H2BB | H2BC3 | Histone nomenclature update |
 | HIST1H4F | H4C6 | Histone nomenclature update |
 
-All Ensembl Gene IDs are validated against Ensembl release 112. Canonical transcript IDs (longest protein-coding transcript) are provided in the `Canonical_Transcript_ID` column.
+Gene IDs are mapped to oncoref's canonical Ensembl reference. Historical
+annotations remain in the publication-membership table. Existing transcript
+annotations are preserved; the 42 new candidates do not yet have curated
+`Canonical_Transcript_ID`, full-name or function annotations. Those fields remain
+missing rather than being inferred from the nomination papers.
 
 ## Column reference
 
@@ -218,17 +355,17 @@ All Ensembl Gene IDs are validated against Ensembl release 112. Canonical transc
 | `Function` | Functional annotation |
 | `Ensembl_Gene_ID` | Ensembl gene ID (validated against release 112) |
 | `source_databases` | Source databases (CTpedia, CTexploreR_CT, CTexploreR_CTP, daSilva2017, daSilva2017_protein) |
-| `protein_reproductive` | IHC detected only in {testis, ovary, placenta} (excl. thymus), or `"no data"` |
+| `protein_reproductive` | IHC restriction under the broader allowed reproductive-tissue rule, or `"no data"` |
 | `protein_thymus` | IHC detected in thymus |
 | `protein_reliability` | Best HPA antibody reliability (Enhanced / Supported / Approved / Uncertain / `"no data"`) |
-| `rna_reproductive` | All tissues with >=1 nTPM (excl. thymus) are in {testis, ovary, placenta} |
+| `rna_reproductive` | No detected somatic tissue under the broader somatic-exclusion scope; distinct from the core RNA fraction |
 | `rna_thymus` | Thymus nTPM >= 1 |
 | `protein_strict_expression` | Semicolon-separated tissues with IHC detection (excl. thymus) |
 | `rna_reproductive_frac` | Fraction of total nTPM (excl. thymus) in core reproductive tissues |
 | `rna_reproductive_and_thymus_frac` | Same, with thymus added to numerator and denominator |
 | `rna_deflated_reproductive_frac` | `(1 + sum_repro(max(0, nTPM-1))) / (1 + sum_all(max(0, nTPM-1)))` |
 | `rna_deflated_reproductive_and_thymus_frac` | Same, with thymus added to reproductive numerator |
-| `Canonical_Transcript_ID` | Longest protein-coding transcript (Ensembl 112) |
+| `Canonical_Transcript_ID` | Preserved transcript annotation; missing for the 42 new candidates |
 | `biotype` | Ensembl gene biotype (must be `protein_coding` to pass filter) |
 | `rna_max_ntpm` | Maximum nTPM across all tissues |
 | `rna_80_pct_filter` | Deflated reproductive fraction >= 80% |
@@ -236,7 +373,7 @@ All Ensembl Gene IDs are validated against Ensembl release 112. Canonical transc
 | `rna_95_pct_filter` | Deflated reproductive fraction >= 95% |
 | `rna_98_pct_filter` | Deflated reproductive fraction >= 98% |
 | `rna_99_pct_filter` | Deflated reproductive fraction >= 99% |
-| `passes_filters` | Final inclusion flag (see filter logic above) |
+| `passes_filters` | Raw HPA gate; family/default specificity policy is applied separately |
 | `filtered` | Historical alias for `passes_filters` |
 | `never_expressed` | No HPA protein data AND max RNA nTPM < 2 |
 
@@ -301,14 +438,37 @@ p.cta.columns           # full evidence columns for CTAs
 p.non_cta.columns       # Symbol, Ensembl_Gene_ID
 ```
 
-| Partition | Description | Typical count |
-|---|---|---|
-| `p.cta` | Expressed, reproductive-restricted CTAs. Source of CTA pMHCs. | ~257 |
-| `p.cta_never_expressed` | CTAs from databases but no meaningful HPA expression (max nTPM < 2, no protein data). Pass filter on a technicality (pseudocount). Separate from analysis. | ~21 |
-| `p.non_cta` | All other protein-coding genes, **including** CTAs that fail the reproductive-tissue filter (somatic expression). Clean non-CTA comparison set. | ~19,800 |
+| Partition | Description |
+|---|---|
+| `p.cta` | Default CTA candidates; membership does not establish peptide presentation. |
+| `p.cta_never_expressed` | Separate low-HPA-expression candidate partition. |
+| `p.non_cta` | Remaining protein-coding genes under the installed partition policy. |
 
-These three sets are **non-overlapping** and their union covers all protein-coding genes from Ensembl.
+These partition/evidence compatibility APIs are supplied by tsarina and depend
+on its installed version and Ensembl universe. Consult that API's returned sets
+for current counts. The 298-gene default and source funnels above use the pinned
+oncoref authority directly. The `never_expressed` name is a low-HPA-signal flag,
+not evidence that no protein is ever made in a tumor.
 
-**Why three partitions instead of two?**
-- **Never-expressed CTAs** pass our filter because the +1 pseudocount gives them a 1.0 deflated fraction when all nTPMs are below 1. They are in CT antigen databases but HPA has no real signal. Including them in pMHC analysis would add noise — you can't target a protein that's never made.
-- **Excluded CTAs** (those that fail the filter due to somatic expression) are folded into `non_cta`. They express in healthy tissue, so their peptides would appear in the non-CTA proteome anyway. Keeping them in `non_cta` gives a realistic comparison set.
+## Completing the prior placental provenance
+
+Gong/Bradley leave **CGB1, CGB2 and CGB7** uncovered (only CGB2 is in the default
+panel). The additional primary sources now give **19/19** prior nominations
+publication provenance. This is expression/nomination coverage, not antigen
+validation. [Rull and Laan 2005](https://doi.org/10.1093/humrep/dei261) used
+restriction digestion to distinguish placental CGB1 and CGB2 transcripts and
+also measured CGB7. [Rull et al. 2008](https://doi.org/10.1093/molehr/gam082) and
+[Kubiczak et al. 2013](https://doi.org/10.3390/ijms140612650) used combined
+CGB1/CGB2 assays, so their positives are not assigned separately to CGB2.
+[Białas et al. 2020](https://doi.org/10.3390/genes11091082) analyzed gene-level
+cancer RNA, including CGB2, with the usual homologous-gene mapping limitation.
+The [McKellar et al. 2025 preprint](https://doi.org/10.1101/2025.05.28.656535)
+adds cancer RNA/qPCR evidence for CGB7. None of these records is annotated as
+gene-specific CGB HLA-peptide or T-cell validation.
+
+![Publication coverage of all prior placental nominations](cta-placental-evidence-coverage.png)
+
+See [the Bradley gate audit](https://github.com/pirl-unc/oncoref/blob/main/docs/cta-bradley-audit.md)
+for why VGLL1 and eight other Bradley candidates fail the default normal-tissue
+gates, and [the five-gene cancer profiles](placental-gene-profiles.md) for the
+newly retained INSL4, GCM1, CYP19A1, HTRA4 and KISS1 candidates.

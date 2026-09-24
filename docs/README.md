@@ -18,6 +18,9 @@ detail.
 - [CTA curation](cta-curation.md) — ownership, inclusion logic, evidence, and
   generated curation figures.
 
+- [Placental CTA cancer profiles](placental-gene-profiles.md) — five newly retained
+  genes, HPA cancer RNA and IHC, missing measurements, and unpaired comparisons.
+
 ## Understand expression data
 
 - [Reference-expression delegation parity](reference-expression-parity.md) —

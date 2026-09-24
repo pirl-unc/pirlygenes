@@ -167,6 +167,7 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         for code in ("MBL_G3", "MBL_G4", "MBL_SHH", "MBL_WNT")
     }
     expected.update({
+        ("BRCA_TNBC", "TREEHOUSE_POLYA_25_01_TCGA_BRCA_TNBC"),
         ("MTC", "GSE32662_PRINGLE_2012_MTC"),
         ("NUTM", "TREEHOUSE_POLYA_25_01"),
         ("NUTM", "UNC_NUTM1"),
@@ -187,6 +188,9 @@ def test_availability_keeps_compatibility_only_and_recent_cohort_labels():
         ("VSCC", "SRP449588_VSCC_2024"),
     })
     assert expected <= keys
+    tnbc = result.loc[result["cancer_code"].eq("BRCA_TNBC")]
+    assert len(tnbc) == 1
+    assert int(tnbc.iloc[0]["n_samples"]) == 157
 
     ess = result.loc[
         result["cancer_code"].astype(str).isin({"SARC_ESS_HG", "SARC_ESS_LG"})

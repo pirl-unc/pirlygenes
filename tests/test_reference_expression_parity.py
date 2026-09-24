@@ -156,6 +156,11 @@ def test_pinned_parity_artifact_covers_complete_owner_manifest():
     assert set(subtype_rows["cancer_code"]) == _MOLECULAR_SUBTYPE_COHORTS
     assert subtype_rows["status"].eq("ok").all()
     assert subtype_rows["n_samples_on"].le(subtype_rows["n_samples_pg"]).all()
+    # The rebuilt compatibility matrices include the receptor-defined cohort.
+    # Verify its own 157 samples rather than substituting PAM50 basal.
+    tnbc = report.set_index("cancer_code").loc["BRCA_TNBC"]
+    assert tnbc["status"] == "ok"
+    assert tnbc["n_samples_pg"] == tnbc["n_samples_on"] == 157
 
 
 def test_documented_parity_artifacts_match_analysis_outputs():

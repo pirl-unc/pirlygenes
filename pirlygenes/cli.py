@@ -342,7 +342,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "cta-curation",
         help="CTA curation figures (source overlap, filter funnel/outcome, HPA).",
         description=(
-            "Rebuild the five CTA-curation documentation figures from the\n"
+            "Rebuild CTA source overlaps, funnels and evidence figures from the\n"
             "packaged CTA evidence table (tsarina.CTA_detailed_evidence):\n"
             "source venn, filter funnel/outcome, deflated reproductive-fraction\n"
             "distribution, and protein-reliability-vs-RNA tiers. These are the\n"

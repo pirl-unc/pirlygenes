@@ -2899,22 +2899,22 @@ def disease_state_rules_df():
 
 
 def cancer_tmb_df():
-    """Return the curated ``cancer-tmb.csv`` reference: median tumor
-    mutational burden (mut/Mb) per cancer-type code, with a per-row
-    published source/PMID and a confidence flag.
+    """Return oncoref's typed TMB reference and source provenance.
 
-    Cohorts with no defensible published per-Mb median are present with a
-    blank ``median_tmb_mut_mb`` (and a ``confidence`` of ``none``) so the
-    gap is explicit rather than silently absent. Values mix WES-anchored
-    medians (Lawrence 2013) with panel-based medians (Chalmers 2017) and
-    disease-specific studies; see the ``source``/``notes`` columns — panel
-    and WES TMB are not strictly comparable in the low-TMB range."""
+    ``tmb_mut_mb`` is the selected usable value, with ``tmb_statistic`` stating
+    whether it is a median, mean or estimate. The separate median, mean and
+    estimate columns retain that distinction; an absent median does not imply
+    absent evidence. Fully unsupported rows carry an explicit missing reason.
+    Panel/WES denominators and source populations remain in the owner metadata.
+    """
     return get_data("cancer-tmb")
 
 
 def cancer_tmb(cancer_type=None, *, inherit=True):
-    """Median TMB (mut/Mb) for one cancer type, or the whole
-    ``{code: median_tmb}`` map (codes with no published value omitted).
+    """Selected TMB (mut/Mb) for one cancer type, or the whole value map.
+
+    Read ``cancer_tmb_df().tmb_statistic`` to distinguish medians, means and
+    estimates. Codes with no usable value are omitted from the map.
 
     ``cancer_type`` is resolved through :func:`resolve_cancer_type`, so aliases
     and display names work. When ``inherit`` (default), a code with no curated
