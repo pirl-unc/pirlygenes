@@ -31,7 +31,9 @@ jobs:
           # Keep lint policy reproducible. Ruff enables and changes rules across
           # releases, so an unbounded install can fail unchanged code.
           uv pip install coveralls pylint 'ruff==0.15.9'
-          uv pip install '.[test]'
+          # Revalidate the exact owner pin after an upstream release; stale
+          # index metadata can otherwise report a just-published version missing.
+          uv pip install --refresh-package oncoref '.[test]'
       - name: Cache pyensembl data
         uses: actions/cache@v4
         with:

@@ -110,7 +110,8 @@ dependencies = [
     # exact owner release because these compatibility APIs carry biological
     # semantics. The cohort-matrix metadata records the build package as
     # provenance and validates the exact oncoref data version.
-    "oncoref==1.8.204",
+    # 1.8.206 unifies complete paper CTA intake, gene provenance and plots.
+    "oncoref==1.8.206",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-matrix / representative / percentile
@@ -149,10 +150,11 @@ test = [
     "pytest",
     "pytest-cov",
     "pytest-xdist",
+    "pypdf>=5",  # verify vector output text
 ]
 # Optional plotting extras. matplotlib is a core dep; matplotlib_venn is only
 # needed for the CTA source-overlap venn (pirlygenes plot cta-curation), which
-# otherwise degrades to a source-size bar.
+# is supplied by the pinned oncoref plotting implementation.
 viz = [
     "matplotlib_venn>=1.0",
     "pypdf>=5",

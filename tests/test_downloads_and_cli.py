@@ -406,6 +406,8 @@ def test_cli_plot_cta_curation_produces_figures(tmp_path: Path):
         "cta-deflated-frac-dist.png",
         "cta-filter-funnel.png",
         "cta-filter-outcome.png",
+        "cta-landscape-source-venn.png",
+        "cta-legacy-source-venn.png",
         "cta-placental-evidence-coverage.png",
         "cta-placental-source-overlap.png",
         "cta-protein-vs-rna.png",

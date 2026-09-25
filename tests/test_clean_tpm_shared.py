@@ -412,17 +412,16 @@ def test_reconciled_ribosomal_pseudogenes_come_from_oncoref():
 
 
 def test_canonical_list_is_cta_safe():
-    """The list is CTA-excluded by construction, so the ribosomal-protein CTA
+    """The default panel is outside the censored set; the ribosomal-protein candidate
     (RPL10L) and the histone CTA (H1-6) are never censored — no runtime
     protect-subtract needed."""
     import pandas as pd
     from pirlygenes.load_dataset import get_data
-    from pirlygenes.gene_sets_cancer import CTA_evidence
+    from pirlygenes.gene_sets_cancer import CTA_gene_ids
 
     censored = get_data("clean-tpm-censored-genes")
     censored_ens = set(censored["Ensembl_Gene_ID"].astype(str))
-    cta_ens = set(CTA_evidence()["Ensembl_Gene_ID"].dropna().astype(str)
-                  .str.split(".").str[0])
+    cta_ens = set(CTA_gene_ids())
     assert censored_ens.isdisjoint(cta_ens)
     # RPL10L (ENSG00000165496) and H1-6 (ENSG00000187475) specifically kept
     gt = pd.DataFrame({"Symbol": ["RPL10L", "H1-6", "RPL13A"],
@@ -436,13 +435,14 @@ def test_clean_tpm_ribosomal_budget_is_cta_safe():
     """The broad ribosomal family may include CTAs, but the clean-TPM 16%
     ribosomal budget must not."""
     from pirlygenes.gene_families import ribosomal_protein_ids
-    from pirlygenes.gene_sets_cancer import CTA_evidence
+    from pirlygenes.gene_sets_cancer import CTA_gene_ids
     from pirlygenes.load_dataset import get_data
 
     rpl10l = "ENSG00000165496"
-    cta_ens = set(CTA_evidence()["Ensembl_Gene_ID"].dropna().astype(str)
-                  .str.split(".").str[0])
-    assert rpl10l in cta_ens
+    cta_ens = set(CTA_gene_ids())
+    from pirlygenes.gene_sets_cancer import CTA_unfiltered_gene_ids
+
+    assert rpl10l in CTA_unfiltered_gene_ids()
     assert rpl10l in ribosomal_protein_ids()
 
     censored = get_data("clean-tpm-censored-genes")
