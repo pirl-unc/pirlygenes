@@ -432,9 +432,25 @@ def test_cta_partition():
     assert "rna_deflated_reproductive_frac" in p3.cta.columns
     assert "Ensembl_Gene_ID" in p3.non_cta.columns
 
-    # cta_excluded genes are in non_cta
+    # The background is Ensembl 112 coding genes, whereas paper candidates
+    # use oncoref's canonical annotation. Rejected candidates with a noncoding
+    # Ensembl 112 biotype are outside this background, not retained CTAs.
+    from pyensembl import EnsemblRelease
+    from tsarina.gene_sets import CODING_GENE_BIOTYPES
+
+    ensembl = EnsemblRelease(112)
+    coding_ids = {
+        gene.gene_id for gene in ensembl.genes()
+        if gene.biotype in CODING_GENE_BIOTYPES
+    }
     excluded_ids = gsc.CTA_excluded_gene_ids()
-    assert excluded_ids.issubset(p.non_cta)
+    assert p.cta == gsc.CTA_gene_ids()
+    assert p.cta_never_expressed == gsc.CTA_never_expressed_gene_ids()
+    assert p.non_cta == coding_ids - p.cta - p.cta_never_expressed
+    assert (excluded_ids & coding_ids).issubset(p.non_cta)
+    assert excluded_ids.isdisjoint(p.cta | p.cta_never_expressed)
+    for gid in excluded_ids - p.non_cta:
+        assert ensembl.gene_by_id(gid).biotype not in CODING_GENE_BIOTYPES
 
 
 # ── Externalized gene sets (mitochondrial / culture / TME / degradation /

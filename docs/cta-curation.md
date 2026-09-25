@@ -28,6 +28,15 @@ archived. The per-gene report flags 29 legacy retained genes whose selected-pape
 provide normal-reproductive expression only. Their previous retention policy is
 preserved, with that tumor-expression evidence limitation explicit.
 
+Coding eligibility in this report uses oncoref's pinned canonical annotation.
+The separate tsarina partition uses an Ensembl 112 coding background. Four
+rejected candidates differ across those annotations: CFAP144P1
+(ENSG00000164556; Ensembl 112 processed pseudogene), SMIM10L2B-AS1
+(ENSG00000228372), RBAKDN (ENSG00000273313), and MSL3B (ENSG00000293137;
+the latter three are Ensembl 112 lncRNAs). All four fail HPA filtering and
+remain outside the default panel; the partition's retained set is exactly
+oncoref's 624 genes.
+
 Paper membership does not establish locus-specific protein, HLA
 presentation, immune recognition, normal-tissue exclusivity or clinical safety.
 
