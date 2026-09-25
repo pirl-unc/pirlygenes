@@ -110,7 +110,7 @@ dependencies = [
     # exact owner release because these compatibility APIs carry biological
     # semantics. The cohort-matrix metadata records the build package as
     # provenance and validates the exact oncoref data version.
-    "oncoref==1.8.204",
+    "oncoref==1.8.206",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-matrix / representative / percentile

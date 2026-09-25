@@ -22,10 +22,8 @@ def test_per_source_counts_partition_sums_to_total():
 def test_tag_sets_cover_primary_sources():
     sets = ccp._tag_sets(ccp._evidence())
     assert set(sets) == set(ccp.PRIMARY_SOURCES)
-    # the big curated databases contribute genes
-    assert sets["CTpedia"]
-    assert sets["CTexploreR"]
-    assert sets["daSilva2017_protein"]
+    assert len(sets) == 10
+    assert all(sets.values())
 
 
 def test_render_returns_figures_and_writes_them(tmp_path: Path):
@@ -45,7 +43,7 @@ def test_funnel_lands_on_the_actual_public_default_set():
 
     table = ccp.stage_membership()
     assert set(table.loc[table.default_panel, "Ensembl_Gene_ID"]) == cta_gene_ids()
-    assert set(table.loc[table.non_cta_removed, "Ensembl_Gene_ID"]) == cta_unfiltered_gene_ids()
+    assert set(table.loc[table.non_cta_removed, "Ensembl_Gene_ID"]) == cta_unfiltered_gene_ids() & set(ccp._evidence().Ensembl_Gene_ID)
     assert not (table.default_panel & ~table.hpa_restriction).any()
     counts = ccp.stage_counts()
     assert sum(row["dropped"] for row in counts) + counts[-1]["remaining"] == len(table)
@@ -91,3 +89,19 @@ def test_plot_reliability_thresholds_come_from_the_filter_owner():
     for label, threshold in ccp.RELIABILITY_THRESHOLD.items():
         key = "Missing" if label == "no data" else label
         assert threshold == HPA_ADAPTIVE_PROTEIN_RNA_THRESHOLDS[key]
+
+
+def test_outcome_counts_use_public_default_and_preserve_all_retained_genes():
+    from oncoref import cta
+    from oncoref.cta_provenance import candidate_provenance
+    from oncoref import cta_curation_plots as owner
+
+    assert ccp.render is owner.render
+    raw = ccp._evidence()
+    assert len(raw) == 2537
+    assert len(cta.cta_gene_ids()) == 624
+    assert "TRIM64" not in cta.cta_gene_names()
+    assert candidate_provenance().paper_dois.ne("").all()
+    for row in ccp._per_source_counts(raw):
+        ids = ccp._tag_sets(raw)[row["source"]]
+        assert row["kept_confident"] + row["kept_weak"] == len(ids & cta.cta_gene_ids())

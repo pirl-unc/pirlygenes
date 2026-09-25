@@ -24,9 +24,13 @@ def main() -> int:
     add_layout_args(ap)
     args = ap.parse_args()
     _, figdir = resolve_dirs(args, Path(__file__).resolve().parent / "outputs")
+    from scripts.figure_environment import check_figure_environment
+
+    expected = check_figure_environment()
     result = render(out_dir=figdir)
+    check_figure_environment(expected)
     print(f"CTA curation figures from {result['n_genes']} evidence rows -> {figdir}")
-    for kind, path in result["paths"].items():
+    for path in result["paths"].values():
         print(f"  wrote {path.name}")
     return 0
 
