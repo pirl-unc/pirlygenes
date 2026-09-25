@@ -877,7 +877,21 @@ def covering_set_matrix(stat: str = "q3", *, gene_set: str = "cta", codes=None,
         df = accessors.cancer_reference_expression(collapse_cdna_identical=True)
     rep = representative_sources(df)
     keep = set(zip(rep["cancer_code"], rep["source_cohort"]))
-    sub = df[df["Ensembl_Gene_ID"].isin(panel_ids)]
+    # Delegated group labels can differ (e.g. CT47A10 versus CT47A1/2/...);
+    # constituent ENSGs, not display names, bridge them into our cDNA space.
+    group_ids = {}
+    if "Member_Ensembl_Gene_IDs" in df.columns:
+        groups = df.loc[~df["Ensembl_Gene_ID"].str.startswith("ENSG"),
+                        ["Ensembl_Gene_ID", "Member_Ensembl_Gene_IDs"]].drop_duplicates()
+        for group_id, members in groups.itertuples(index=False, name=None):
+            if pd.notna(members):
+                folded = fold_to_cdna_canonical_id(str(members).split(";"))
+                if len(folded) == 1:
+                    group_ids[group_id] = folded[0]
+    frame_ids = df["Ensembl_Gene_ID"].replace(group_ids)
+    selected = frame_ids.isin(panel_ids)
+    sub = df.loc[selected].copy()
+    sub["Ensembl_Gene_ID"] = frame_ids.loc[selected]
     sub = sub.loc[[(c, s) in keep
                    for c, s in zip(sub["cancer_code"], sub["source_cohort"])]]
     population = sorted(set(rep["cancer_code"]))
@@ -886,8 +900,20 @@ def covering_set_matrix(stat: str = "q3", *, gene_set: str = "cta", codes=None,
         sub = sub[sub["cancer_code"].isin(wanted)]
         population = [code for code in population if code in wanted]
     # Keep eligible types with no measured panel genes in the denominator.
-    return sub.pivot_table(index="cancer_code", columns="Symbol",
-                           values=value_col, aggfunc="max").reindex(population)
+    matrix = sub.pivot_table(index="cancer_code", columns="Ensembl_Gene_ID",
+                             values=value_col, aggfunc="max").reindex(population)
+    # Symbols are display-only: old/new symbols for one ENSG must never split
+    # its coverage across multiple panel members.
+    from oncoref.gene_ids import canonical_gene_symbol
+    fallback = (sub[["Ensembl_Gene_ID", "Symbol"]].dropna()
+                .sort_values(["Ensembl_Gene_ID", "Symbol"])
+                .drop_duplicates("Ensembl_Gene_ID").set_index("Ensembl_Gene_ID")["Symbol"])
+    matrix.attrs["symbols"] = {
+        gid: (canonical_gene_symbol(gid) or fallback.get(gid, gid))
+        if gid.startswith("ENSG") else gid
+        for gid in matrix.columns
+    }
+    return matrix
 
 
 @dataclass(frozen=True)
@@ -1011,7 +1037,8 @@ def render_covering_set(gene_set: str = "cta", *, stat: str = "q3",
     total_weight = float(weights.sum())
     rows = pd.DataFrame([{
         "rank": i,
-        "gene": s.gene,
+        "gene": matrix.attrs.get("symbols", {}).get(s.gene, s.gene),
+        "Ensembl_Gene_ID": s.gene,
         "cum_pct_patients": (100.0 * s.cum_weight / total_weight
                              if total_weight else float("nan")),
         "cum_cancer_types": s.cum_codes,
@@ -1019,7 +1046,7 @@ def render_covering_set(gene_set: str = "cta", *, stat: str = "q3",
                                  if len(matrix.index) else float("nan")),
         "newly_covered": ";".join(s.new_codes),
     } for i, s in enumerate(steps, 1)], columns=[
-        "rank", "gene", "cum_pct_patients", "cum_cancer_types",
+        "rank", "gene", "Ensembl_Gene_ID", "cum_pct_patients", "cum_cancer_types",
         "cum_pct_cancer_types", "newly_covered",
     ])
     csv_path = out / f"{slug}_covering_set_{stat}.csv"

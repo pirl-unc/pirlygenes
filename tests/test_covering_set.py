@@ -150,7 +150,7 @@ def test_matrix_preserves_every_collapsed_cta_group(monkeypatch, stat, value_col
     monkeypatch.setattr(accessors, "cancer_reference_expression", load)
     matrix = coverage.covering_set_matrix(
         stat, df=collapsed if preloaded else None)
-    assert set(matrix.columns) == set(collapsed["Symbol"])
+    assert set(matrix.columns) == set(collapsed["Ensembl_Gene_ID"])
     assert groups <= set(matrix.columns)
     assert matrix.loc["BRCA", "CTAG1A/B"] == 80.0
     steps, coverable = coverage.greedy_covering_set(
@@ -173,7 +173,7 @@ def test_matrix_folds_non_cta_panels_and_keeps_single_loci(monkeypatch):
     })
     matrix = coverage.covering_set_matrix(gene_set="custom", df=frame)
     assert matrix.loc["BRCA"].to_dict() == {
-        "CTAG1A/B": 40.0, "XAGE1A/B": 50.0, "TP53": 60.0,
+        "CTAG1A/B": 40.0, "XAGE1A/B": 50.0, "ENSG00000141510": 60.0,
     }
 
 
@@ -191,3 +191,33 @@ def test_matrix_keeps_eligible_types_without_panel_measurements(monkeypatch, sel
     assert matrix.loc["COAD"].isna().all()
     restricted = coverage.covering_set_matrix(gene_set="custom", df=frame, codes=["COAD"])
     assert list(restricted.index) == ["COAD"]
+
+
+def test_delegated_group_names_resolve_through_constituent_ids():
+    """Oncoref names the full CT47A collapsed group CT47A10 in real data."""
+    frame = pd.DataFrame({
+        "Ensembl_Gene_ID": ["CT47A10"], "Symbol": ["CT47A10"],
+        "Member_Ensembl_Gene_IDs": ["ENSG00000224089;ENSG00000226023"],
+        "cancer_code": "BRCA", "source_cohort": "test", "n_samples": 20,
+        "expression": 40.0, "q3": 80.0,
+    })
+    matrix = coverage.covering_set_matrix(df=frame)
+    assert list(matrix.columns) == ["CT47A1/2/3/4/5/6/7/8/9/10/11/12"]
+    assert matrix.iloc[0, 0] == 80.0
+
+
+def test_symbol_aliases_cannot_split_one_target_across_cohorts(monkeypatch):
+    gene_id = "ENSG00000135248"
+    monkeypatch.setattr(coverage, "resolve_gene_set", lambda _: ("custom", {gene_id}))
+    frame = pd.DataFrame({
+        "Ensembl_Gene_ID": gene_id, "Symbol": ["FAM71F1", "GARIN1B"],
+        "cancer_code": ["BRCA", "COAD"], "source_cohort": "test",
+        "n_samples": 20, "expression": 40.0, "q3": 80.0,
+    })
+    matrix = coverage.covering_set_matrix(gene_set="custom", df=frame)
+    assert list(matrix.columns) == [gene_id]
+    steps, coverable = coverage.greedy_covering_set(
+        matrix, 30.0, pd.Series({"BRCA": 1.0, "COAD": 1.0}))
+    assert len(steps) == 1
+    assert steps[0].new_codes == ("BRCA", "COAD")
+    assert set(coverable) == {"BRCA", "COAD"}
