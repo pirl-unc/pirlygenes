@@ -138,8 +138,14 @@ def test_matrix_preserves_every_collapsed_cta_group(monkeypatch, stat, value_col
         sum_cols=["expression", "q3"])
     groups = set(collapsed.loc[collapsed["Ensembl_Gene_ID"].str.contains("/"),
                                "Ensembl_Gene_ID"])
-    assert len(groups) == 16
-    assert {"CTAG1A/B", "XAGE1A/B"} <= groups
+    # Preserve the original 16 regression targets while also checking every
+    # additional group contributed by the expanded, owner-filtered panel.
+    assert {
+        "CT47A1/2/3/4/5/6/7/8/9/10/11/12", "CXorf49/CXorf49B",
+        "MAGEA2/MAGEA2B", "CTAG1A/B", "GAGE12F/G", "MAGEA9/MAGEA9B",
+        "XAGE1A/B", "GAGE12C/D/E", "SPANXA1/2", "SSX2/SSX2B", "CT45A5/6/7",
+        "CXorf51A/B", "CT45A2/8/9", "SSX4/SSX4B", "VCY/VCY1B", "CGB5/8",
+    } <= groups
     collapsed.loc[collapsed["Ensembl_Gene_ID"] == "CTAG1A/B", value_col] = 80.0
 
     def load(*, collapse_cdna_identical):
