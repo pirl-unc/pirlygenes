@@ -34,7 +34,7 @@ def check_figure_environment(expected: str | None = None) -> str:
         raise FigureEnvironmentError(
             f"Cannot load oncoref=={pinned} with {sys.executable}. "
             "Install this checkout in a dedicated figure environment; "
-            "see the Figure outputs section in CLAUDE.md."
+            "see docs/cta-curation.md."
         ) from exc
     if installed != pinned or imported != pinned:
         raise FigureEnvironmentError(
@@ -42,7 +42,7 @@ def check_figure_environment(expected: str | None = None) -> str:
             f"installed metadata reports {installed}, imported code reports "
             f"{imported} ({sys.executable}). "
             "Use a dedicated environment matching this checkout, for example "
-            ".venv-figures/bin/python analyses/regenerate_plots.py; "
-            "see the Figure outputs section in CLAUDE.md for setup."
+            ".venv-figures/bin/python analyses/cta_curation_figures.py; "
+            "see docs/cta-curation.md for setup."
         )
     return pinned
