@@ -3,7 +3,8 @@
 This report consumes the exact oncoref 1.8.206 implementation from
 [oncoref PR #562](https://github.com/pirl-unc/oncoref/pull/562). It combines the
 complete-paper source expansion, #559 gene-level citations and pirlygenes #629
-count/plot correction. Release the owner PR before merging this dependent PR.
+count/plot correction. The committed report was regenerated against the published
+PyPI wheel, with the installed and imported owner versions checked.
 
 The active starting pool is the complete union of the ten-paper minimum cover
 of the expanded retained panel. It contains **2,537 coding candidates** and
@@ -23,10 +24,14 @@ papers; it is not a minimum over all literature.
 The 880 HPA passes are an intermediate gate. Outcome charts count the 624-gene
 public default. TRIM64 remains excluded. All active candidates have primary-paper
 DOIs and exact source locations; nine historical-only rows remain separately
-archived. Paper membership does not establish locus-specific protein, HLA
+archived. The per-gene report flags 29 legacy retained genes whose selected-paper links
+provide normal-reproductive expression only. Their previous retention policy is
+preserved, with that tumor-expression evidence limitation explicit.
+
+Paper membership does not establish locus-specific protein, HLA
 presentation, immune recognition, normal-tissue exclusivity or clinical safety.
 
-[All 11 regenerated figures, vector PDF](audits/cta-unified-20260924/pirlygenes-cta-curation-figures.pdf)
+[All 12 regenerated figures, vector PDF](audits/cta-unified-20260924/pirlygenes-cta-curation-figures.pdf)
 · [Figure index and audits](audits/cta-unified-20260924/index.md)
 · [Candidate provenance](audits/cta-unified-20260924/cta-candidate-provenance.csv)
 · [Minimum-cover certificate](audits/cta-unified-20260924/cta-minimum-source-cover.json)

@@ -1,18 +1,25 @@
 """Unit tests for the packaged CTA-curation figure generator
 (``pirlygenes.cta_curation_plots``) — the logic behind ``pirlygenes plot
 cta-curation`` and the docs/cta-curation.md figures."""
+import hashlib
+import json
 from pathlib import Path
 
 from pirlygenes import cta_curation_plots as ccp
 
 
 def test_per_source_counts_partition_sums_to_total():
-    """Each source's kept_confident + kept_weak + excluded must equal its total
-    (the outcome categories partition the source's genes)."""
+    """Reviewed inclusion, HPA-only passes and exclusions partition each source."""
+    from oncoref.cta import cta_gene_ids
+
     rows = ccp._per_source_counts(ccp._evidence())
+    sets = ccp._tag_sets(ccp._evidence())
+    defaults = cta_gene_ids()
     assert rows
     for r in rows:
-        assert r["kept_confident"] + r["kept_weak"] + r["excluded"] == r["total"]
+        assert (r["default_panel"] + r["hpa_pass_outside_default"]
+                + r["family_or_hpa_excluded"]) == r["total"]
+        assert r["default_panel"] == len(sets[r["source"]] & defaults)
         assert r["total"] > 0
     # rows are ordered largest-source-first (drives the funnel/outcome plots)
     totals = [r["total"] for r in rows]
@@ -27,6 +34,11 @@ def test_tag_sets_cover_primary_sources():
 
 
 def test_render_returns_figures_and_writes_them(tmp_path: Path):
+    import oncoref
+    import pandas as pd
+    from PIL import Image
+    from pypdf import PdfReader
+
     result = ccp.render(out_dir=tmp_path)
     expected = set(ccp.FILENAMES)
     if ccp.publication_data_available():
@@ -36,16 +48,57 @@ def test_render_returns_figures_and_writes_them(tmp_path: Path):
     for path in result["paths"].values():
         assert path.exists() and path.stat().st_size > 0
         assert path.with_suffix(".pdf").is_file()
+        with Image.open(path) as im:
+            assert min(im.info["dpi"]) >= 299
+        assert PdfReader(path.with_suffix(".pdf")).pages[0].extract_text().strip()
+    counts = pd.read_csv(tmp_path / "cta-source-outcome-counts.csv")
+    assert counts.set_index("source").loc["da Silva 2017", "default_panel"] == 515
+    provenance = json.loads((tmp_path / "run-manifest.json").read_text())
+    assert provenance["oncoref_version"] == oncoref.__version__
+    assert set(provenance["default_gene_ids"]) == oncoref.cta_gene_ids()
+    assert provenance["stages"][-1][1] == 624
+    audit = Path(oncoref.__file__).parent / "data" / "cta-specificity-audit.csv"
+    assert provenance["input_sha256"][audit.name] == hashlib.sha256(audit.read_bytes()).hexdigest()
+    text = PdfReader(result["paths"]["filter_outcome"].with_suffix(".pdf")).pages[0].extract_text()
+    assert "default panel" in text and "outside default" in text
+    assert "kept (HPA-confident)" not in text
+
+
+def test_trim64_is_an_hpa_pass_outside_the_reviewed_default():
+    import pirlygenes.gene_sets_cancer as gsc
+    from pirlygenes import coverage
+
+    gid = "ENSG00000204450"
+    from oncoref.cta_provenance import legacy_only_candidates
+    table = gsc.CTA_evidence()
+    trim64 = table.set_index("Ensembl_Gene_ID").loc[gid]
+    assert trim64.passes_filters
+    assert trim64.specificity_action == "candidate_only"
+    assert gid in set(legacy_only_candidates().Ensembl_Gene_ID)
+    assert gid not in set(ccp._evidence().Ensembl_Gene_ID)
+    assert ccp.stage_counts()[-1]["remaining"] == 624
+    assert gid not in gsc.CTA_gene_ids()
+    assert gid not in gsc.CTA_filtered_gene_ids()
+    assert gid not in gsc.CTA_placental_restricted_gene_ids()
+    assert gid not in gsc.CTA_gene_id_to_name()
+    assert gid in gsc.CTA_unfiltered_gene_ids()
+    assert gid not in coverage.resolve_gene_set("CTA")[1]
 
 
 def test_funnel_lands_on_the_actual_public_default_set():
     from oncoref.cta import cta_gene_ids, cta_unfiltered_gene_ids
+    from oncoref.load_dataset import get_data
 
     table = ccp.stage_membership()
+    raw = get_data("cancer-testis-antigens")
+    coding = set(table.loc[table.protein_coding, "Ensembl_Gene_ID"])
+    assert coding == set(ccp._evidence().Ensembl_Gene_ID)
+    assert coding < set(raw.Ensembl_Gene_ID)
     assert set(table.loc[table.default_panel, "Ensembl_Gene_ID"]) == cta_gene_ids()
     assert set(table.loc[table.non_cta_removed, "Ensembl_Gene_ID"]) == cta_unfiltered_gene_ids() & set(ccp._evidence().Ensembl_Gene_ID)
     assert not (table.default_panel & ~table.hpa_restriction).any()
     counts = ccp.stage_counts()
+    assert [row["remaining"] for row in counts] == [3895, 3654, 2537, 2523, 880, 624]
     assert sum(row["dropped"] for row in counts) + counts[-1]["remaining"] == len(table)
 
 
