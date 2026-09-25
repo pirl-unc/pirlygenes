@@ -399,24 +399,25 @@ def test_cli_plot_requires_an_action():
 
 
 def test_cli_plot_cta_curation_produces_figures(tmp_path: Path):
-    rc, out, _ = _run_cli(["plot", "cta-curation", "--out", str(tmp_path)])
-    assert rc == 0
-    produced = sorted(p.name for p in tmp_path.glob("*.png"))
-    assert produced == [
+    from pirlygenes import cta_curation_plots as plots
+
+    # The owner now ships publication plots as mandatory outputs; older
+    # renderers exposed them separately. Require the core six in either case.
+    expected = set(plots.FILENAMES.values())
+    assert {
         "cta-deflated-frac-dist.png",
         "cta-filter-funnel.png",
         "cta-filter-outcome.png",
-        "cta-landscape-source-venn.png",
-        "cta-legacy-source-venn.png",
-        "cta-placental-evidence-coverage.png",
-        "cta-placental-source-overlap.png",
         "cta-protein-vs-rna.png",
-        "cta-publication-funnel.png",
-        "cta-source-overlap.png",
         "cta-source-venn.png",
         "cta-stage-funnel.png",
-    ]
-    assert all((tmp_path / name).with_suffix(".pdf").exists() for name in produced)
+    } <= expected
+    if plots.publication_data_available():
+        expected.update(plots.PUBLICATION_FILENAMES.values())
+    rc, out, _ = _run_cli(["plot", "cta-curation", "--out", str(tmp_path)])
+    assert rc == 0
+    assert {p.name for p in tmp_path.glob("*.png")} == expected
+    assert all((tmp_path / name).with_suffix(".pdf").exists() for name in expected)
     assert "evidence rows" in out
 
 

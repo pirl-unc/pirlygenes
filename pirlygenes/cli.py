@@ -280,6 +280,8 @@ def _build_parser() -> argparse.ArgumentParser:
             "Cohort-level plots over the packaged reference data.\n\n"
             "actions:\n"
             "  patient-coverage   per-cohort patient coverage of a gene set\n"
+            "  covering-set       cumulative patient + cancer-type coverage of\n"
+            "                     a greedy panel, on one chart\n"
             "  cta-curation       CTA panel curation figures (source/filter/HPA)\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -355,6 +357,58 @@ def _build_parser() -> argparse.ArgumentParser:
         "--out", default="cta_curation_out",
         help="output directory for the PNGs (default: %(default)s)",
     )
+
+    cs = plot_sub.add_parser(
+        "covering-set",
+        help="Cumulative patient + cancer-type coverage of a greedy gene panel.",
+        description=(
+            "Greedy weighted set cover over the cancer-type registry: how few\n"
+            "targets it takes before most cancer PATIENTS — and most cancer\n"
+            "TYPES — have at least one panel member expressed at an actionable\n"
+            "level. Both lines go on one axes, because they disagree: a panel\n"
+            "tuned for patient count chases the common carcinomas while one\n"
+            "tuned for type count picks up the rare entities.\n\n"
+            "Patient weighting comes from the curated disease-burden table\n"
+            "(cancer_burden / burden_category), not a hand-maintained incidence\n"
+            "dict. A cancer type with no burden category carries zero patient\n"
+            "weight and is named on the figure rather than dropped."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  pirlygenes plot covering-set\n"
+            "  pirlygenes plot covering-set --stat median --threshold 10\n"
+            "  pirlygenes plot covering-set --gene-set cta --out covset_out\n"
+        ),
+    )
+    cs.add_argument(
+        "--gene-set", default="cta",
+        help="gene set to build the panel from (default: %(default)s)")
+    # Literals, not coverage.* — importing the coverage module here would pull
+    # pandas/numpy into every `pirlygenes` invocation, including `--help`. The
+    # stat names are pinned against coverage.COVERING_SET_STATS by a test, and
+    # --threshold defers to coverage.ACTIONABLE_TPM when left unset.
+    cs.add_argument(
+        "--stat", default="q3", choices=("median", "q3"),
+        help="per-cohort statistic a target must clear. CTAs are subset "
+             "antigens, so q3 (a target in >=25%% of patients) is the "
+             "clinically relevant bar; median hides them. (default: %(default)s)")
+    cs.add_argument(
+        "--threshold", type=float, default=None,
+        help="clean TPM above which a target counts as actionable "
+             "(default: the packaged actionable-TPM bar)")
+    cs.add_argument(
+        "--n-genes", type=int, default=25,
+        help="panel size to plot (default: %(default)s; 0 plots the full cover)")
+    cs.add_argument(
+        "--metric", default="us_incidence_pct",
+        help="burden column used for patient weighting (default: %(default)s)")
+    cs.add_argument(
+        "--cohort", action="append", dest="codes", default=None,
+        help="restrict to these cancer types (repeatable)")
+    cs.add_argument(
+        "--out", default="covering_set_out",
+        help="output directory (default: %(default)s)")
 
     for name in sorted(_ANALYSIS_SUBCOMMANDS):
         moved = subparsers.add_parser(name, help="Moved to pirl-trufflepig.")
@@ -688,9 +742,38 @@ def cmd_plot_cta_curation(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plot_covering_set(args: argparse.Namespace) -> int:
+    from . import coverage
+
+    threshold = (coverage.ACTIONABLE_TPM if args.threshold is None
+                 else args.threshold)
+    try:
+        result = coverage.render_covering_set(
+            args.gene_set, stat=args.stat, threshold=threshold,
+            codes=args.codes, n_genes=args.n_genes, metric=args.metric,
+            out_dir=args.out)
+    except Exception as exc:  # noqa: BLE001 — data/matplotlib failure -> clean exit
+        sys.stderr.write(f"error: could not render the covering set: {exc}\n")
+        return 2
+    sys.stdout.write(
+        f"{result['label']} covering set ({result['stat']}, "
+        f"> {result['threshold']:g} clean TPM): "
+        f"{result['n_coverable']}/{result['n_cancer_types']} cancer types "
+        f"reachable by at least one target\n")
+    if result["unmapped_codes"]:
+        sys.stdout.write(
+            f"  warning: no curated burden category (zero patient weight) for "
+            f"{len(result['unmapped_codes'])}: "
+            f"{', '.join(sorted(result['unmapped_codes']))}\n")
+    for kind, path in result["paths"].items():
+        sys.stdout.write(f"  {kind}: {path}\n")
+    return 0
+
+
 _PLOT_DISPATCH = {
     "patient-coverage": cmd_plot_patient_coverage,
     "cta-curation": cmd_plot_cta_curation,
+    "covering-set": cmd_plot_covering_set,
 }
 
 
@@ -755,7 +838,7 @@ def main(argv: list[str] | None = None) -> int:
         handler = _PLOT_DISPATCH.get(args.plot_action)
         if handler is None:
             sys.stderr.write(
-                "usage: pirlygenes plot {patient-coverage,cta-curation}\n")
+                "usage: pirlygenes plot {patient-coverage,covering-set,cta-curation}\n")
             return 2
         return handler(args)
 

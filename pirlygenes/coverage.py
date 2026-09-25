@@ -43,6 +43,8 @@ the CTA-specific analysis in ``analyses/cta_patient_counts.py`` to any panel.
 
 from __future__ import annotations
 
+from pirlygenes.figure_export import save_figure
+
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -720,7 +722,7 @@ def _stacked_bar(per, label, threshold, path, plt):
     ax.set_title(f"{label} coverage by cancer type, split by gene "
                  f"({threshold.xlabel}, {len(per)} cohorts)", fontsize=11)
     fig.tight_layout()
-    fig.savefig(path, dpi=150)
+    save_figure(fig, path, dpi=300)
     plt.close(fig)
     return path
 
@@ -755,6 +757,288 @@ def _coverage_curves(per, label, threshold, path, plt):
     fig.supxlabel("# genes added (greedy)", fontsize=8)
     fig.supylabel("% patients covered", fontsize=8)
     fig.tight_layout(rect=(0.01, 0.01, 1, 0.97))
-    fig.savefig(path, dpi=150)
+    save_figure(fig, path, dpi=300)
     plt.close(fig)
     return path
+
+
+# --- covering set: one panel across all cancer types -----------------------
+#
+# :func:`patient_coverage` answers "within THIS cancer type, how many patients
+# does a panel reach". The covering set answers the panel-design question one
+# level up: across the whole disease landscape, how few CTAs does it take before
+# most *cancer patients* — and most *cancer types* — have at least one target?
+#
+# That is a weighted greedy set cover over the cancer-type registry, and the two
+# weightings disagree in an interesting way: a panel tuned for patient count
+# chases the common carcinomas, while a panel tuned for type count picks up the
+# rare entities. Plotting both lines on one axes is the point of the figure.
+#
+# Patient weights come from the curated burden table (``cancer_burden`` /
+# ``burden_category``, ACS Cancer Facts & Figures / GLOBOCAN via oncoref), not a
+# hand-maintained incidence dict.
+
+ACTIONABLE_TPM = 30.0      # a target is "actionable" above this clean TPM
+COVERING_SET_STATS = {
+    "median": ("expression", "median (≥50% of patients)"),
+    "q3": ("q3", "upper quartile (≥25% of patients)"),
+}
+
+
+def burden_weights(codes, *, metric="us_incidence_pct"):
+    """Patient weight per cancer code, from the curated disease-burden table.
+
+    Returns ``(weights, unmapped)``: a code -> weight Series and the list of
+    codes with no burden category.
+
+    Burden is curated per *tissue category*, so several cancer codes can share
+    one category (COAD and READ are both ``colorectal``). Handing each of them
+    the category's full share would both inflate the total and let a panel
+    "cover colorectal" twice, so a category's share is split evenly across the
+    codes from ``codes`` that map to it — the weights then sum to the share of
+    annual incidence the plotted codes actually represent.
+
+    Unmapped codes keep weight 0 and are returned rather than dropped: they are
+    a real coverage gap, and a caller that hides them is reporting a patient
+    percentage over a denominator it cannot name.
+    """
+    codes = list(dict.fromkeys(codes))
+    shares = gsc.cancer_burden(metric=metric)        # {category: pct}
+    by_category: dict = {}
+    unmapped = []
+    for code in codes:
+        cat = gsc.burden_category(code)
+        pct = shares.get(cat) if cat else None
+        if cat is None or pct is None or pd.isna(pct):
+            unmapped.append(code)
+            continue
+        by_category.setdefault(cat, []).append(code)
+    weights = {code: 0.0 for code in codes}
+    for cat, members in by_category.items():
+        per_member = float(shares[cat]) / len(members)
+        for code in members:
+            weights[code] = per_member
+    return pd.Series(weights, dtype=float), unmapped
+
+
+def representative_sources(df: pd.DataFrame, *, min_samples=10,
+                           min_display_samples=5) -> pd.DataFrame:
+    """One ``source_cohort`` per ``cancer_code``: the most gene-rich source that
+    still clears the display floor.
+
+    Most-genes rather than most-samples, because several cohorts carry both a
+    large legacy microarray and a smaller RNA-seq set; the microarray leaves a
+    hole for every gene it never probed and its TPM proxy is not on the same
+    scale as RNA-seq TPM. Eligibility and display are separate gates: a cohort
+    qualifies if *some* source reaches ``min_samples``, but only a source with
+    ``min_display_samples`` is ever used, so a panel is never built on an n=2
+    median.
+    """
+    meta = (
+        df.groupby(["cancer_code", "source_cohort"], as_index=False)
+        .agg(n_samples=("n_samples", "first"),
+             n_genes=("Ensembl_Gene_ID", "nunique"))
+    )
+    eligible = set(meta.loc[meta["n_samples"] >= min_samples, "cancer_code"])
+    displayable = meta[meta["cancer_code"].isin(eligible)
+                       & (meta["n_samples"] >= min_display_samples)]
+    return (displayable.sort_values(["cancer_code", "n_genes", "n_samples"])
+            .groupby("cancer_code", as_index=False).tail(1))
+
+
+def covering_set_matrix(stat: str = "q3", *, gene_set: str = "cta", codes=None,
+                        df: pd.DataFrame | None = None) -> pd.DataFrame:
+    """``cancer_code`` x gene matrix of clean TPM at one statistic, one
+    representative source per code — the input to :func:`greedy_covering_set`.
+
+    ``stat`` is ``"q3"`` or ``"median"``. CTAs are *subset* antigens
+    (heterogeneous within a tumour type), so q3 — "a target in at least a
+    quarter of patients" — is the clinically relevant bar; the median alone
+    hides them. cDNA-identical loci are collapsed centrally, so a panel counts
+    one XAGE1 rather than two split paralogs.
+
+    ``df`` optionally supplies an already-loaded reference-expression frame
+    (fetched with ``collapse_cdna_identical=True``). That load takes ~12
+    minutes, so a caller drawing several figures from the same frame should
+    fetch once and pass it in rather than pay for it per figure.
+    """
+    from .expression import accessors
+
+    if stat not in COVERING_SET_STATS:
+        raise ValueError(
+            f"stat must be one of {sorted(COVERING_SET_STATS)}, got {stat!r}")
+    value_col, _ = COVERING_SET_STATS[stat]
+    _label, ensgs = resolve_gene_set(gene_set)
+    # Match the cDNA-collapsed frame: grouped loci use proteoform IDs,
+    # while single loci retain their ENSG IDs. This applies to every panel.
+    from .expression.protein_groups import fold_to_cdna_canonical_id
+    panel_ids = set(fold_to_cdna_canonical_id(ensgs))
+    if df is None:
+        df = accessors.cancer_reference_expression(collapse_cdna_identical=True)
+    rep = representative_sources(df)
+    keep = set(zip(rep["cancer_code"], rep["source_cohort"]))
+    sub = df[df["Ensembl_Gene_ID"].isin(panel_ids)]
+    sub = sub.loc[[(c, s) in keep
+                   for c, s in zip(sub["cancer_code"], sub["source_cohort"])]]
+    population = sorted(set(rep["cancer_code"]))
+    if codes is not None:
+        wanted = {gsc.resolve_cancer_type(c, strict=False) or c for c in codes}
+        sub = sub[sub["cancer_code"].isin(wanted)]
+        population = [code for code in population if code in wanted]
+    # Keep eligible types with no measured panel genes in the denominator.
+    return sub.pivot_table(index="cancer_code", columns="Symbol",
+                           values=value_col, aggfunc="max").reindex(population)
+
+
+@dataclass(frozen=True)
+class CoverStep:
+    """One pick of the greedy panel."""
+    gene: str
+    new_codes: tuple
+    cum_weight: float          # burden weight covered so far
+    cum_codes: int             # cancer types covered so far
+
+
+def greedy_covering_set(matrix: pd.DataFrame, threshold: float,
+                        weights: pd.Series):
+    """Greedy weighted set cover over cancer types. Returns
+    ``(steps, coverable)``.
+
+    At each step take the gene adding the most still-uncovered weight. A gene
+    "covers" a cancer type when its value in ``matrix`` exceeds ``threshold``.
+    ``coverable`` is the set of types any gene reaches at all — the ceiling the
+    curves asymptote to, which is why it is returned rather than inferred.
+    """
+    hits = matrix > threshold
+    coverable = list(hits.index[hits.any(axis=1)])
+    w = weights.reindex(matrix.index).fillna(0.0)
+    remaining, steps = set(coverable), []
+    while remaining:
+        best_gene, best_codes, best_gain = None, set(), 0.0
+        for gene in hits.columns:
+            covered = {c for c in hits.index[hits[gene]] if c in remaining}
+            if not covered:
+                continue
+            gain = float(w.reindex(sorted(covered)).sum())
+            # tie-break on type count so a zero-weight (unmapped) type can still
+            # be picked up once every weighted type is covered
+            if (gain, len(covered)) > (best_gain, len(best_codes)):
+                best_gene, best_codes, best_gain = gene, covered, gain
+        if best_gene is None:
+            break
+        remaining -= best_codes
+        covered_so_far = sorted(set(coverable) - remaining)
+        steps.append(CoverStep(
+            gene=best_gene,
+            new_codes=tuple(sorted(best_codes)),
+            cum_weight=float(w.reindex(covered_so_far).sum()),
+            cum_codes=len(covered_so_far),
+        ))
+    return steps, coverable
+
+
+def _covering_set_plot(steps, coverable, weights, unmapped, *, total_types,
+                       label, metric, stat, threshold, n_genes, path, plt):
+    """Cumulative burden and type coverage over the full input population."""
+    from matplotlib.ticker import MaxNLocator, PercentFormatter
+
+    shown = steps[:n_genes] if n_genes else steps
+    total_weight = float(weights.sum())
+    metric_label = {
+        "us_incidence_pct": "US annual incidence",
+        "world_incidence_pct": "world annual incidence",
+        "us_mortality_pct": "US annual mortality",
+        "world_mortality_pct": "world annual mortality",
+    }.get(metric, metric.replace("_", " "))
+    xs = list(range(1, len(shown) + 1))
+    by_patients = [100.0 * s.cum_weight / total_weight if total_weight else 0.0
+                   for s in shown]
+    by_type = [100.0 * s.cum_codes / total_types if total_types else 0.0
+               for s in shown]
+
+    fig, ax = plt.subplots(figsize=(11, 7))
+    ax.plot(xs, by_patients, "o-", ms=5, lw=2, color="#3a0ca3",
+            label=f"{metric_label} burden")
+    ax.plot(xs, by_type, "s--", ms=5, lw=2, color="#e07a00", label="cancer types")
+    ax.axhline(80, color="0.7", ls=":", lw=1)
+    ax.set_xlabel(f"# genes in panel (> {threshold:g} clean TPM at {stat})")
+    ax.set_ylabel("cumulative coverage")
+    ax.set_ylim(0, 102)
+    ax.set_xlim(left=1)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.yaxis.set_major_formatter(PercentFormatter(xmax=100, decimals=0))
+    ax.set_title(f"{label} covering set — how few targets reach most of the burden\n"
+                 f"{len(coverable)} of {total_types} cancer types coverable; "
+                 f"weighted by curated {metric_label}")
+    ax.legend(title="cumulative % covered")
+    ax.grid(alpha=0.3)
+    if unmapped:
+        fig.text(0.01, -0.01,
+                 f"{len(unmapped)} cancer type(s) have no curated burden "
+                 f"category and carry zero burden weight (they still count "
+                 f"toward cancer types): {', '.join(sorted(unmapped))}",
+                 fontsize=7, color="0.35", va="top", wrap=True)
+    fig.tight_layout()
+    save_figure(fig, path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def render_covering_set(gene_set: str = "cta", *, stat: str = "q3",
+                        threshold: float = ACTIONABLE_TPM, codes=None,
+                        n_genes: int = 25, metric: str = "us_incidence_pct",
+                        out_dir="covering_set_out",
+                        df: pd.DataFrame | None = None) -> dict:
+    """Write the covering-set figure + its step table. Returns written paths.
+
+    The stat-sensitivity question (median vs q3) is a real but *separate*
+    question from the weighting question this figure answers, so it is a
+    parameter here rather than a second line on the same axes.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    label, _ensgs = resolve_gene_set(gene_set)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    slug = _slug(label)
+
+    matrix = covering_set_matrix(stat, gene_set=gene_set, codes=codes, df=df)
+    weights, unmapped = burden_weights(matrix.index, metric=metric)
+    steps, coverable = greedy_covering_set(matrix, threshold, weights)
+
+    total_weight = float(weights.sum())
+    rows = pd.DataFrame([{
+        "rank": i,
+        "gene": s.gene,
+        "cum_pct_patients": (100.0 * s.cum_weight / total_weight
+                             if total_weight else float("nan")),
+        "cum_cancer_types": s.cum_codes,
+        "cum_pct_cancer_types": (100.0 * s.cum_codes / len(matrix.index)
+                                 if len(matrix.index) else float("nan")),
+        "newly_covered": ";".join(s.new_codes),
+    } for i, s in enumerate(steps, 1)], columns=[
+        "rank", "gene", "cum_pct_patients", "cum_cancer_types",
+        "cum_pct_cancer_types", "newly_covered",
+    ])
+    csv_path = out / f"{slug}_covering_set_{stat}.csv"
+    rows.to_csv(csv_path, index=False)
+
+    png = _covering_set_plot(
+        steps, coverable, weights, unmapped, stat=stat, threshold=threshold,
+        total_types=len(matrix.index), label=label, metric=metric,
+        n_genes=n_genes, path=out / f"{slug}_covering_set_{stat}.png", plt=plt)
+    return {
+        "paths": {"covering_set_csv": str(csv_path),
+                  "covering_set_png": str(png),
+                  "covering_set_pdf": str(png.with_suffix(".pdf"))},
+        "steps": rows,
+        "label": label,
+        "stat": stat,
+        "threshold": threshold,
+        "metric": metric,
+        "n_cancer_types": len(matrix.index),
+        "n_coverable": len(coverable),
+        "unmapped_codes": unmapped,
+    }
