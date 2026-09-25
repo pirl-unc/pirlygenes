@@ -21,6 +21,9 @@ from __future__ import annotations
 
 from pirlygenes.figure_export import save_figure
 
+import hashlib
+import json
+from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
@@ -84,9 +87,15 @@ def publication_data_available():
 
 
 def _evidence():
+    from oncoref.cta import cta_evidence
     from oncoref.load_dataset import get_data
 
-    return get_data("cancer-testis-antigens").copy()
+    # The public evidence view already removes non-CTA families. Join its
+    # specificity annotations onto the raw nominations to preserve that stage.
+    raw = get_data("cancer-testis-antigens").copy()
+    reviewed = cta_evidence()
+    columns = ["Ensembl_Gene_ID", *[c for c in reviewed if c.startswith("specificity_")]]
+    return raw.merge(reviewed[columns], on="Ensembl_Gene_ID", how="left", validate="one_to_one")
 
 
 def _bool_series(series):
@@ -148,20 +157,20 @@ def _tag_sets(df):
 
 
 def _per_source_counts(df):
-    sets = _tag_sets(df)
+    """Partition each source by reviewed membership, retaining HPA-only passes."""
+    membership = stage_membership(df)
+    sets = _tag_sets(membership)
     rows = []
     for name, members in sets.items():
         if not members:
             continue
-        sub = df[df["Ensembl_Gene_ID"].isin(members)]
-        passes = _bool_series(sub["passes_filters"])
-        weak = _bool_series(sub["never_expressed"])
+        sub = membership[membership.Ensembl_Gene_ID.isin(members)]
         rows.append({
             "source": name,
             "total": len(sub),
-            "kept_confident": int((passes & ~weak).sum()),
-            "kept_weak": int((passes & weak).sum()),
-            "excluded": int((~passes).sum()),
+            "default_panel": int(sub.default_panel.sum()),
+            "hpa_pass_outside_default": int((sub.hpa_restriction & ~sub.default_panel).sum()),
+            "family_or_hpa_excluded": int((~sub.hpa_restriction).sum()),
         })
     return sorted(rows, key=lambda r: r["total"], reverse=True)
 
@@ -254,19 +263,20 @@ def _fig_filter_funnel(df, path, plt):
 def _fig_filter_outcome(df, path, plt):
     rows = _per_source_counts(df)
     labels = [SOURCE_LABELS[r["source"]] for r in rows]
-    conf = np.array([r["kept_confident"] for r in rows])
-    weak = np.array([r["kept_weak"] for r in rows])
-    excl = np.array([r["excluded"] for r in rows])
+    kept = np.array([r["default_panel"] for r in rows])
+    outside = np.array([r["hpa_pass_outside_default"] for r in rows])
+    excl = np.array([r["family_or_hpa_excluded"] for r in rows])
     y = np.arange(len(labels))
-    fig, ax = plt.subplots(figsize=(8, 0.7 * len(labels) + 2))
-    ax.barh(y, conf, color=KEPT, label="kept (HPA-confident)")
-    ax.barh(y, weak, left=conf, color=WEAK, label="kept (weak evidence)")
-    ax.barh(y, excl, left=conf + weak, color=DROP, label="excluded")
+    fig, ax = plt.subplots(figsize=(10, 0.7 * len(labels) + 2.5))
+    ax.barh(y, kept, color=KEPT, label="default panel")
+    ax.barh(y, outside, left=kept, color=WEAK, label="HPA pass, outside default")
+    ax.barh(y, excl, left=kept + outside, color=DROP, label="family / HPA exclusion")
     ax.set_yticks(y, labels)
     ax.invert_yaxis()
-    ax.set_xlabel("genes")
+    ax.set_xlabel("Genes per nomination source (sources overlap; do not sum)")
     ax.set_title("CTA filter outcome by source")
-    ax.legend(loc="lower right")
+    ax.legend(loc="upper center", bbox_to_anchor=(.5, -.18), ncol=1)
+    fig.tight_layout()
     _save(fig, path, plt)
 
 
@@ -276,14 +286,14 @@ def _fig_deflated_dist(df, path, plt):
     bins = np.linspace(0, 1, 41)
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.hist([frac[passes], frac[~passes]], bins=bins, stacked=True,
-            color=[KEPT, DROP], label=["passes filter", "excluded"])
+            color=[KEPT, DROP], label=["passes HPA filter", "fails HPA filter"])
     for thr in sorted(set(RELIABILITY_THRESHOLD.values())):
         ax.axvline(thr, color="#555", ls="--", lw=0.8)
         ax.text(thr, ax.get_ylim()[1] * 0.97, f"{thr:.2f}", rotation=90,
                 va="top", ha="right", fontsize="small", color="#555")
     ax.set_xlabel("deflated reproductive fraction")
     ax.set_ylabel("CTA genes")
-    ax.set_title("Deflated reproductive-fraction distribution")
+    ax.set_title("Deflated reproductive-fraction distribution (HPA gate only)")
     ax.legend()
     _save(fig, path, plt)
 
@@ -306,7 +316,7 @@ def _fig_protein_vs_rna(df, path, plt):
     ax.set_xticks(range(len(RELIABILITY_ORDER)), RELIABILITY_ORDER)
     ax.set_xlabel("protein reliability (HPA IHC)")
     ax.set_ylabel("deflated reproductive fraction")
-    ax.set_title("Protein reliability vs RNA fraction\n"
+    ax.set_title("Protein reliability vs RNA fraction (HPA gate only)\n"
                  "(red line = required RNA threshold for that tier)")
     _save(fig, path, plt)
 
@@ -468,6 +478,35 @@ _PUBLICATION_BUILDERS = {
 }
 
 
+def _curation_provenance(membership, stages, *, kinds, font_scale):
+    import oncoref
+    from oncoref.version import DATA_VERSION as ONCOREF_DATA_VERSION
+    from pirlygenes.version import __version__
+
+    inputs = ["cancer-testis-antigens.csv", "cta-specificity-audit.csv"]
+    if publication_data_available():
+        inputs.extend(["cta-publication-sources.csv", "cta-publication-membership.csv",
+                       "cta-gene-publication-evidence.csv"])
+    gene_ids = sorted(membership.loc[membership.default_panel, "Ensembl_Gene_ID"])
+    return {
+        "pirlygenes_version": __version__,
+        "oncoref_version": oncoref.__version__,
+        "oncoref_data_version": ONCOREF_DATA_VERSION,
+        "input_sha256": {
+            name: hashlib.sha256(files("oncoref").joinpath("data").joinpath(name).read_bytes()).hexdigest()
+            for name in inputs
+        },
+        "default_panel_definition": "oncoref.cta.cta_gene_ids() with default arguments",
+        "default_gene_ids": gene_ids,
+        "default_panel_sha256": hashlib.sha256(("\n".join(gene_ids) + "\n").encode()).hexdigest(),
+        "stage_counts": stages,
+        "figure_kinds": list(kinds),
+        "font_scale": font_scale,
+        "png_dpi": 300,
+        "pdf_format": "vector",
+    }
+
+
 def render(out_dir="cta_curation_out", *, kinds=None, font_scale=1.0) -> dict:
     """Write figures plus auditable stage counts and gene membership tables."""
     import matplotlib
@@ -497,8 +536,11 @@ def render(out_dir="cta_curation_out", *, kinds=None, font_scale=1.0) -> dict:
 
     stages = stage_counts(df)
     pd.DataFrame(stages).to_csv(out / "cta-stage-counts.csv", index=False)
+    pd.DataFrame(_per_source_counts(df)).to_csv(out / "cta-source-outcome-counts.csv", index=False)
     membership = stage_membership(df)
     membership.to_csv(out / "cta-stage-membership.csv", index=False)
+    provenance = _curation_provenance(membership, stages, kinds=paths, font_scale=font_scale)
+    (out / "cta-curation-provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
     membership[membership.source_databases.fillna("").str.split(";").map(
         lambda tags: "placental_antigen" in tags
     )].to_csv(out / "placental-nomination-provenance.csv", index=False)

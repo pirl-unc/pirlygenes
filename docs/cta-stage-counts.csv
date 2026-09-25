@@ -2,4 +2,4 @@ stage,label,remaining,dropped
 nominated,Nominated source union,439,0
 non_cta_removed,Non-CTA families removed,431,8
 hpa_restriction,HPA reproductive restriction,312,119
-default_panel,Default specificity + expression,298,14
+default_panel,Default specificity + expression,297,15

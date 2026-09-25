@@ -25,10 +25,10 @@ CTA *gene set*. Pirlygenes re-exports its `CTA_gene_ids()` /
 The CTA *evidence* frame (`CTA_evidence()`) remains sourced from
 [tsarina](https://github.com/pirl-unc/tsarina) because it carries the `ms_*`
 mass-spec healthy-tissue safety layer that oncoref does not. Pirlygenes treats
-that frame as an evidence-enrichment join on the oncoref set. Tsarina 1.23.1
-converged its default set onto oncoref's, so the two agree gene-for-gene (see
-pirl-unc/pirlygenes#546). The reproductive-restriction methodology below is
-shared by both packages.
+that frame as an evidence-enrichment join on the oncoref set (see
+pirl-unc/pirlygenes#546). It includes excluded candidates and raw HPA measurements;
+select retained genes using oncoref's public membership accessors. Passing the
+raw HPA gate does not override a reviewed specificity exclusion.
 
 ## Figures
 
@@ -46,7 +46,7 @@ same packaged code) and copies the results back into this directory.
 
 ### Source overlap
 
-These figures use the released `oncoref==1.8.204` source authority, including
+These figures use the released `oncoref==1.8.205` source authority, including
 Gong/Bradley nominations and primary CGB1/CGB2/CGB7 evidence. Install the pinned
 pirlygenes release and run `pirlygenes plot cta-curation --out <dir>` to reproduce
 the source overlaps and funnels. PNG exports are at least 300 dpi and every
@@ -72,19 +72,29 @@ override our normal-tissue restriction or default specificity policy.
 ### Sequential nomination funnel
 
 The funnel starts before oncoref's non-CTA family exclusions and ends at the
-exact public `CTA_gene_ids()` set. With the Gong/Bradley source additions:
+exact public `CTA_gene_ids()` set. With the Gong/Bradley source additions and
+oncoref 1.8.205 specificity review:
 **439 nominated genes → 431 after family exclusions → 312 after HPA restriction
-→ 298 default CTAs**. The released oncoref 1.8.196 snapshot was
+→ 297 default CTAs**. The released oncoref 1.8.196 snapshot was
 397 → 390 → 302 → 293. The last step includes expression/rescue and specificity
 policy. These are gene counts, before identical-protein grouping, and do not
 imply peptide presentation or patient eligibility.
+
+The oncoref 1.8.204 endpoint was 298. In 1.8.205, **TRIM64 alone moves to
+candidate-only** after [review of its nomination and specificity evidence](https://github.com/pirl-unc/oncoref/blob/v1.8.205/docs/audits/trim64-nomination.md).
+Its raw HPA gate still passes; it remains among the 312 HPA-pass candidates but
+not among the 297 default genes. The 15 genes removed at the last step include
+this reviewed exclusion as well as the existing expression/specificity decisions.
 
 Each run exports `cta-stage-counts.csv`, `cta-stage-membership.csv`, and
 `placental-nomination-provenance.csv` beside PNG and vector PDF figures.
 The updated source run also exports publication citations, full source-row
 intake membership/counts, pairwise overlap counts and the Venn membership.
 The source-level funnel distinguishes default inclusion from raw HPA passage;
-source lists overlap and must not be added together.
+source lists overlap and must not be added together. `cta-source-outcome-counts.csv`
+uses the same reviewed default membership for every source. The
+`cta-curation-provenance.json` records package versions, source-file hashes, the
+exact default gene IDs, stage counts, font scale and export settings.
 
 ![CTA Nomination Stages](cta-stage-funnel.png)
 
@@ -92,9 +102,18 @@ source lists overlap and must not be added together.
 ![CTA Filter Funnel](cta-filter-funnel.png)
 
 ### Filter outcome by source
+
+The three categories are **default panel**, **HPA pass, outside default**, and
+**family / HPA exclusion**. The middle category is not retained in the default
+panel; raw HPA passage alone cannot restore TRIM64 or another reviewed exclusion.
+
 ![CTA Filter Outcome](cta-filter-outcome.png)
 
 ### Deflated reproductive fraction distribution
+
+This distribution and the protein/RNA diagnostic below show the **HPA gate only**.
+Their passing points include candidates outside the final default set.
+
 ![Deflated Fraction Distribution](cta-deflated-frac-dist.png)
 
 ### Protein reliability vs RNA fraction
@@ -103,7 +122,7 @@ source lists overlap and must not be added together.
 ## Source databases
 
 The intake counts below describe historical source batches. For the current
-pinned historical sources, the generated source funnel has: CTpedia 209 candidates / 187
+pinned historical sources, the generated source funnel has: CTpedia 209 candidates / 186
 default CTAs, CTexploreR 153 / 132, da Silva protein subset 135 / 70, placental
 nominations 19 / 9, and other paralog/cell-type additions 18 / 12. The newly
 added Gong and Bradley sources contribute 70 / 27 and 10 / 1 respectively.
