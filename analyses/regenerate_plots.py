@@ -47,7 +47,6 @@ APD1_BATCH = ["exclusion_vs_apd1", "apd1_causal_factors", "apd1_mechanism_screen
 #   target "<name>" -> a flat-writing script gets its own named subdir
 LAYOUT = [
     ("cta_patient_counts", [], "groups"),
-    ("cta_covering_set", [], "cta_covering_set"),
     ("cta_expression_heatmaps", [], "cta_expression_heatmaps"),
     ("cta_curation_figures", [], "cta_curation"),
     ("apd1_response_plots", [], "apd1_response"),
@@ -194,6 +193,28 @@ def main() -> int:
     addr_ok = _run([sys.executable, "cta_addressable_burden.py",
                     "--run-dir", str(run), "--fig-dir", str(run / "cta_addressable")])
     (ok if addr_ok else failed).append("cta_addressable_burden")
+
+    # Share one collapsed reference frame between both statistics. The compute
+    # and rendering live behind `pirlygenes plot covering-set` in the package.
+    print("  cta_covering_set: pirlygenes.coverage.render_covering_set ...",
+          flush=True)
+    try:
+        from pirlygenes import coverage
+        from pirlygenes.expression.accessors import cancer_reference_expression
+        df = cancer_reference_expression(collapse_cdna_identical=True)
+        for stat in ("q3", "median"):
+            res = coverage.render_covering_set(
+                stat=stat, out_dir=run / "cta_covering_set", df=df)
+            print(f"    {stat}: {res['n_coverable']}/{res['n_cancer_types']} "
+                  f"cancer types coverable", flush=True)
+            if res["unmapped_codes"]:
+                print(f"    {stat}: no burden category for "
+                      f"{len(res['unmapped_codes'])} code(s): "
+                      f"{', '.join(sorted(res['unmapped_codes']))}", flush=True)
+        ok.append("cta_covering_set")
+    except Exception as exc:  # noqa: BLE001 - one figure must not abort the batch
+        print(f"    FAILED: {exc}", flush=True)
+        failed.append("cta_covering_set")
 
     if opts.promote_docs:
         _promote_docs(run)
