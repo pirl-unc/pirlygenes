@@ -111,7 +111,10 @@ dependencies = [
     # semantics. The cohort-matrix metadata records the build package as
     # provenance and validates the exact oncoref data version.
     # 1.8.206 unifies complete paper CTA intake, gene provenance and plots.
-    "oncoref==1.8.206",
+    # 1.8.207 adds explicitly scoped core/extended reproductive CTA panels.
+    # Default CTA membership and expression data/source versions are unchanged;
+    # existing matrix build provenance remains truthful and compatible.
+    "oncoref==1.8.207",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-matrix / representative / percentile
