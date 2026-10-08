@@ -1,0 +1,820 @@
+{
+  "annotations": [
+    {
+      "canonical_9mers": 501,
+      "counts_sha256": "00ba9f82acba20d9af0f4f6917225480d02a27de914189419946f705dd68abe5",
+      "disk_cache_reused": true,
+      "identity": {
+        "alias_rows": [
+          [
+            "ENSG00000185686",
+            "PRAME",
+            "ensembl_alt_contig"
+          ]
+        ],
+        "aliases_sha256": "da23d42812e2b43893706fa0bb2440078bc7fc162f387b7803431b895bcbb26a",
+        "annotation_assembly": "GRCh38",
+        "annotation_release": 93,
+        "annotation_species": "homo_sapiens",
+        "candidate_gene_ids": [
+          "ENSG00000185686"
+        ],
+        "canonical_gene_id": "ENSG00000185686",
+        "canonical_gene_space_sha256": "6d64ee082fec9274fefbbe50bbe20aabddb77b0334e73d4d431d1fb9c43bfc39",
+        "canonical_reference_releases": [
+          "115"
+        ],
+        "identity_contract_version": 1,
+        "input_gene_id": "ENSG00000275013",
+        "mapping_method": "ensembl_alt_contig",
+        "oncoref_version": "1.8.208",
+        "source_contig": "CHR_HSCHR22_1_CTG3",
+        "source_end": 22568466,
+        "source_gene_id": "ENSG00000275013",
+        "source_gene_name": "PRAME",
+        "source_start": 22556806,
+        "source_strand": "-",
+        "status": "alias"
+      },
+      "inputs": [
+        {
+          "filename": "Homo_sapiens.GRCh38.93.chr_patch_hapl_scaff.gtf.gz",
+          "sha256": "8c483866ae842242f9b3de0a03a0ede9f7274db06801f75c35bb4b65dd4a9186"
+        },
+        {
+          "filename": "Homo_sapiens.GRCh38.pep.all.fa.gz",
+          "sha256": "aa89aa1232d8b356cfbecaabc820a3b1edf925e6363b14b6ec0c638504810874"
+        }
+      ],
+      "old_background_matches": 501,
+      "release": 93,
+      "retained_background_matches": 14,
+      "retained_sources": {
+        "ENST00000235347": {
+          "gene_id": "ENSG00000187545",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ",
+            "WKLQVLDLR"
+          ],
+          "protein_id": "ENSP00000235347",
+          "symbol": "PRAMEF10"
+        },
+        "ENST00000376098": {
+          "gene_id": "ENSG00000204479",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "WKLQVLDLR"
+          ],
+          "protein_id": "ENSP00000365266",
+          "symbol": "PRAMEF17"
+        },
+        "ENST00000437300": {
+          "gene_id": "ENSG00000237700",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000492439",
+          "symbol": "PRAMEF33"
+        },
+        "ENST00000540591": {
+          "gene_id": "ENSG00000277853",
+          "peptides": [
+            "LPRELFPPL",
+            "PRELFPPLF",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000446004",
+          "symbol": "PRAMEF18"
+        },
+        "ENST00000612758": {
+          "gene_id": "ENSG00000281573",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000482656",
+          "symbol": "PRAMEF9"
+        },
+        "ENST00000613059": {
+          "gene_id": "ENSG00000276299",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000481973",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000614839": {
+          "gene_id": "ENSG00000229571",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000481683",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000615936": {
+          "gene_id": "ENSG00000276299",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000480708",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000618079": {
+          "gene_id": "ENSG00000283150",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000478534",
+          "symbol": "PRAMEF5"
+        },
+        "ENST00000619661": {
+          "gene_id": "ENSG00000229571",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000478309",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000621403": {
+          "gene_id": "ENSG00000276370",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000479010",
+          "symbol": "PRAMEF33"
+        },
+        "ENST00000624207": {
+          "gene_id": "ENSG00000280267",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000485656",
+          "symbol": "PRAMEF26"
+        },
+        "ENST00000631964": {
+          "gene_id": "ENSG00000282437",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000488085",
+          "symbol": "PRAMEF27"
+        },
+        "ENST00000632108": {
+          "gene_id": "ENSG00000282125",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000491658",
+          "symbol": "PRAMEF33"
+        },
+        "ENST00000632392": {
+          "gene_id": "ENSG00000282741",
+          "peptides": [
+            "AWPFTCLPL",
+            "MVQAWPFTC",
+            "QAWPFTCLP",
+            "VQAWPFTCL",
+            "WPFTCLPLG"
+          ],
+          "protein_id": "ENSP00000492522",
+          "symbol": "PRAMEF13"
+        },
+        "ENST00000632559": {
+          "gene_id": "ENSG00000282566",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000488003",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000632873": {
+          "gene_id": "ENSG00000282663",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ",
+            "WKLQVLDLR"
+          ],
+          "protein_id": "ENSP00000488485",
+          "symbol": "PRAMEF10"
+        },
+        "ENST00000633532": {
+          "gene_id": "ENSG00000281987",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000488002",
+          "symbol": "PRAMEF26"
+        },
+        "ENST00000633914": {
+          "gene_id": "ENSG00000282298",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000488044",
+          "symbol": "PRAMEF9"
+        },
+        "ENST00000634012": {
+          "gene_id": "ENSG00000282566",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000488324",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000635813": {
+          "gene_id": "ENSG00000283348",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000490751",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000636185": {
+          "gene_id": "ENSG00000283216",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000490397",
+          "symbol": "PRAMEF26"
+        },
+        "ENST00000636272": {
+          "gene_id": "ENSG00000283488",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000490148",
+          "symbol": "PRAMEF33"
+        },
+        "ENST00000636290": {
+          "gene_id": "ENSG00000283348",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000490779",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000636332": {
+          "gene_id": "ENSG00000283425",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000490306",
+          "symbol": "PRAMEF27"
+        },
+        "ENST00000637423": {
+          "gene_id": "ENSG00000283139",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000489957",
+          "symbol": "PRAMEF9"
+        }
+      },
+      "specific_9mers": 487
+    },
+    {
+      "canonical_9mers": 501,
+      "counts_sha256": "e41580996f8a2bff3860a82db7daa5aafc7978d23f6ba0a9d5f095b900d1d436",
+      "disk_cache_reused": true,
+      "identity": {
+        "alias_rows": [
+          [
+            "ENSG00000185686",
+            "PRAME",
+            "ensembl_alt_contig"
+          ]
+        ],
+        "aliases_sha256": "da23d42812e2b43893706fa0bb2440078bc7fc162f387b7803431b895bcbb26a",
+        "annotation_assembly": "GRCh38",
+        "annotation_release": 112,
+        "annotation_species": "homo_sapiens",
+        "candidate_gene_ids": [
+          "ENSG00000185686"
+        ],
+        "canonical_gene_id": "ENSG00000185686",
+        "canonical_gene_space_sha256": "6d64ee082fec9274fefbbe50bbe20aabddb77b0334e73d4d431d1fb9c43bfc39",
+        "canonical_reference_releases": [
+          "115"
+        ],
+        "identity_contract_version": 1,
+        "input_gene_id": "ENSG00000275013",
+        "mapping_method": "ensembl_alt_contig",
+        "oncoref_version": "1.8.208",
+        "source_contig": "HSCHR22_1_CTG3",
+        "source_end": 195018,
+        "source_gene_id": "ENSG00000275013",
+        "source_gene_name": "PRAME",
+        "source_start": 183358,
+        "source_strand": "-",
+        "status": "alias"
+      },
+      "inputs": [
+        {
+          "filename": "Homo_sapiens.GRCh38.112.chr_patch_hapl_scaff.gtf.gz",
+          "sha256": "9068bd52a9def32ac22b248393461b9f52931f29404a94b397ecc7ddbc2fce38"
+        },
+        {
+          "filename": "Homo_sapiens.GRCh38.pep.all.fa.gz",
+          "sha256": "2868236131342d14afbfa8dbd8a5e3fb56ba85210fdca196b65db3e17c7ece83"
+        }
+      ],
+      "old_background_matches": 501,
+      "release": 112,
+      "retained_background_matches": 14,
+      "retained_sources": {
+        "ENST00000235347": {
+          "gene_id": "ENSG00000187545",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ",
+            "WKLQVLDLR"
+          ],
+          "protein_id": "ENSP00000235347",
+          "symbol": "PRAMEF10"
+        },
+        "ENST00000376098": {
+          "gene_id": "ENSG00000204479",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "WKLQVLDLR"
+          ],
+          "protein_id": "ENSP00000365266",
+          "symbol": "PRAMEF17"
+        },
+        "ENST00000437300": {
+          "gene_id": "ENSG00000237700",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000492439",
+          "symbol": "PRAMEF33"
+        },
+        "ENST00000540591": {
+          "gene_id": "ENSG00000277853",
+          "peptides": [
+            "LPRELFPPL",
+            "PRELFPPLF",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000446004",
+          "symbol": "PRAMEF18"
+        },
+        "ENST00000612758": {
+          "gene_id": "ENSG00000281573",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000482656",
+          "symbol": "PRAMEF9"
+        },
+        "ENST00000613059": {
+          "gene_id": "ENSG00000276299",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000481973",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000614839": {
+          "gene_id": "ENSG00000229571",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000481683",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000615936": {
+          "gene_id": "ENSG00000276299",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000480708",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000618079": {
+          "gene_id": "ENSG00000283150",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000478534",
+          "symbol": "PRAMEF5"
+        },
+        "ENST00000619661": {
+          "gene_id": "ENSG00000229571",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000478309",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000621403": {
+          "gene_id": "ENSG00000276370",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000479010",
+          "symbol": "PRAMEF33"
+        },
+        "ENST00000624207": {
+          "gene_id": "ENSG00000280267",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000485656",
+          "symbol": "PRAMEF26"
+        },
+        "ENST00000631964": {
+          "gene_id": "ENSG00000282437",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000488085",
+          "symbol": "PRAMEF27"
+        },
+        "ENST00000632108": {
+          "gene_id": "ENSG00000282125",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000491658",
+          "symbol": "PRAMEF33"
+        },
+        "ENST00000632392": {
+          "gene_id": "ENSG00000282741",
+          "peptides": [
+            "AWPFTCLPL",
+            "MVQAWPFTC",
+            "QAWPFTCLP",
+            "VQAWPFTCL",
+            "WPFTCLPLG"
+          ],
+          "protein_id": "ENSP00000492522",
+          "symbol": "PRAMEF13"
+        },
+        "ENST00000632559": {
+          "gene_id": "ENSG00000282566",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000488003",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000632873": {
+          "gene_id": "ENSG00000282663",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ",
+            "WKLQVLDLR"
+          ],
+          "protein_id": "ENSP00000488485",
+          "symbol": "PRAMEF10"
+        },
+        "ENST00000633532": {
+          "gene_id": "ENSG00000281987",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000488002",
+          "symbol": "PRAMEF26"
+        },
+        "ENST00000633914": {
+          "gene_id": "ENSG00000282298",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000488044",
+          "symbol": "PRAMEF9"
+        },
+        "ENST00000634012": {
+          "gene_id": "ENSG00000282566",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000488324",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000635813": {
+          "gene_id": "ENSG00000283348",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000490751",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000636185": {
+          "gene_id": "ENSG00000283216",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000490397",
+          "symbol": "PRAMEF26"
+        },
+        "ENST00000636272": {
+          "gene_id": "ENSG00000283488",
+          "peptides": [
+            "LSHCSQLTT",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000490148",
+          "symbol": "PRAMEF33"
+        },
+        "ENST00000636290": {
+          "gene_id": "ENSG00000283348",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000490779",
+          "symbol": "PRAMEF25"
+        },
+        "ENST00000636332": {
+          "gene_id": "ENSG00000283425",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000490306",
+          "symbol": "PRAMEF27"
+        },
+        "ENST00000637423": {
+          "gene_id": "ENSG00000283139",
+          "peptides": [
+            "PRRWKLQVL",
+            "RRWKLQVLD",
+            "RWKLQVLDL"
+          ],
+          "protein_id": "ENSP00000489957",
+          "symbol": "PRAMEF9"
+        },
+        "ENST00000697343": {
+          "gene_id": "ENSG00000280267",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000513263",
+          "symbol": "PRAMEF26"
+        },
+        "ENST00000711574": {
+          "gene_id": "ENSG00000292418",
+          "peptides": [
+            "LPRELFPPL",
+            "PRELFPPLF",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000518804",
+          "symbol": "PRAMEF18"
+        },
+        "ENST00000713547": {
+          "gene_id": "ENSG00000283216",
+          "peptides": [
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "RRWKLQVLD",
+            "RWKLQVLDL",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000518843",
+          "symbol": "PRAMEF26"
+        },
+        "ENST00000713586": {
+          "gene_id": "ENSG00000293551",
+          "peptides": [
+            "LPRELFPPL",
+            "PRELFPPLF",
+            "PRRWKLQVL",
+            "RPRRWKLQV",
+            "VRPRRWKLQ"
+          ],
+          "protein_id": "ENSP00000518878",
+          "symbol": "PRAMEF22"
+        }
+      },
+      "specific_9mers": 487
+    }
+  ],
+  "audit_date": "2026-10-08",
+  "canonical_candidate_count": 2532,
+  "canonical_default_count": 624,
+  "materialized_metadata": {
+    "artifact_type": "pirlygenes.cohort-expression-matrices",
+    "built_from": {
+      "data_version": "5.23.25",
+      "package": "oncoref",
+      "package_version": "1.8.204"
+    },
+    "canonical_gene_ids": true,
+    "pirlygenes_data_version": "6.0.5",
+    "schema_version": 1,
+    "tables": {
+      "clean_tpm": {
+        "file": "clean_tpm.parquet",
+        "rows": 64983
+      },
+      "provenance": {
+        "file": "provenance.parquet",
+        "rows": 154
+      },
+      "tpm": {
+        "file": "tpm.parquet",
+        "rows": 64983
+      }
+    }
+  },
+  "materialized_metadata_sha256": "8c3b7d0ad142aa8481c3fca647b062b7c395aa19f2dd298386077b8995488f91",
+  "method": "Scan every protein-coding transcript for canonical PRAME 9-mers, retain non-CTA source/transcript/protein identities, then verify the public longest-protein count API and disk-cache reuse. Annotation discovery alone is constrained to each complete installed release.",
+  "oncoref": "1.8.208",
+  "owner_data": "5.23.25",
+  "owner_source": "5.22.14",
+  "public_wheels": {
+    "1.8.207": {
+      "filename": "oncoref-1.8.207-py3-none-any.whl",
+      "sha256": "6b73ed79b981eeda57451b92949bc38784bf1b8aaa40680245949e524d2901d8",
+      "url": "https://files.pythonhosted.org/packages/09/9a/26929cf6e4428e52063cc3e6306c7c66f4eaac1f36b92b5cbd32fd6de826/oncoref-1.8.207-py3-none-any.whl"
+    },
+    "1.8.208": {
+      "filename": "oncoref-1.8.208-py3-none-any.whl",
+      "sha256": "2d542b177c295f29cb178003f40c127b359174eb3a81e774515d9d81a712f727",
+      "url": "https://files.pythonhosted.org/packages/10/b9/2dddec9efc25bba7b2244cb40c5e66cd75d03e8a5bace70db039629424ae/oncoref-1.8.208-py3-none-any.whl"
+    },
+    "changed_reference_files": []
+  }
+}

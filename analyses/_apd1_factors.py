@@ -320,8 +320,9 @@ def cta_metric_table() -> pd.DataFrame:
     tables retain threshold-specific unknown counts and gene tables retain
     measurement denominators for consumers that need availability accounting.
 
-    Columns whose prerequisite generated tables are absent are omitted; callers
-    should skip unavailable factors rather than plotting all-NaN rows.
+    Columns whose prerequisite expression tables are absent are omitted; callers
+    should skip unavailable factors rather than plotting all-NaN rows. Peptide
+    counts come from OncoRef and require a usable installed human proteome.
     """
     union_path = Path(__file__).resolve().parent / "outputs" / "_cta_union_counts.csv"
     counts_path = _latest_cta_patient_counts_path()
@@ -356,11 +357,11 @@ def cta_metric_table() -> pd.DataFrame:
                 / n_samples
             )
 
-    spec_path = Path(__file__).resolve().parent / "outputs" / "_cache" / "cta_specific_9mers.csv"
-    if not spec_path.exists():
-        return out
+    # Ask the owner for counts under the current annotation/identity contract.
+    # The old unversioned analysis CSV cannot establish that evidence.
+    from oncoref.cta_peptides import cta_specific_9mer_counts
 
-    spec = pd.read_csv(spec_path)
+    spec = cta_specific_9mer_counts()
     from _cta_metrics import fold_specific_9mer_weights
     sym2spec = fold_specific_9mer_weights(dict(zip(
         spec["Symbol"].astype(str), spec["n_specific_9mers"].astype(float),

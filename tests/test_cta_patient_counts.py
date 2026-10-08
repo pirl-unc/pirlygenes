@@ -118,13 +118,19 @@ def test_downstream_factor_table_keeps_folded_9mer_payload(tmp_path, monkeypatch
         "cancer_code": ["NUTM"], "n_samples": [10], "Symbol": ["CTAG1A/B"],
         "n_p90": [5], "n_p95": [2],
     }).to_csv(output / "_cta_patient_counts.csv", index=False)
-    pd.DataFrame({
+    # A stale local table must not supply peptide weights or be relabeled.
+    legacy = cache / "cta_specific_9mers.csv"
+    legacy.write_text("Symbol,n_specific_9mers\nCTAG1A,0\nCTAG1B,0\n")
+    before = legacy.read_bytes()
+    from oncoref import cta_peptides
+    monkeypatch.setattr(cta_peptides, "cta_specific_9mer_counts", lambda: pd.DataFrame({
         "Symbol": ["CTAG1A", "CTAG1B"], "n_specific_9mers": [150, 172],
-    }).to_csv(cache / "cta_specific_9mers.csv", index=False)
+    }))
     monkeypatch.setattr(factors, "__file__", str(tmp_path / "_apd1_factors.py"))
     factors.cta_metric_table.cache_clear()
     try:
         metrics = factors.cta_metric_table()
+        assert legacy.read_bytes() == before
         assert metrics.loc["NUTM", "cta_9mer_load_p90"] == 86.0
         assert metrics.loc["NUTM", "cta_9mer_load_p95"] == pytest.approx(34.4)
     finally:
