@@ -47,7 +47,8 @@ from pirlygenes.gene_names import display_name as display_label
 # Three roles, three locations:
 #  * OUT     — the stable base directory.
 #  * CACHE   — OUT/_cache: expensive, regenerable, reused across runs (percentile
-#              cutoffs, CTA-specific-9mer counts, symbol intermediates). Gitignored.
+#              cutoffs and symbol intermediates). Peptide caches belong to
+#              oncoref. Gitignored.
 #  * FIGDIR  — a per-run subfolder (run_<ts>/) holding EVERYTHING a run produces:
 #              the plots AND this run's summary tables (cta_patient_counts.csv,
 #              cta_union_counts.csv). So a run is one self-contained snapshot and a
@@ -1243,65 +1244,20 @@ def _cta_vs_x(mat, cohorts, ensg_to_sym, thr, pctile_cutoffs=None,
     print(f"      {slug_dir}: {len(pts)} cohorts plotted{ex_note}", flush=True)
 
 
-def cta_specific_9mer_counts(*, ensembl_release=112, k=9, refresh=False):
-    """Per expressed-CTA count of k-mers (default 9mer) that occur in the CTA's
-    protein but in NO non-CTA protein — a sequence-level tumor-specificity score.
+def cta_specific_9mer_counts(*, k=9, refresh=False):
+    """Count CTA-specific peptides using OncoRef's annotation identity contract.
 
-    Negative set = every protein-coding gene's canonical (longest) protein EXCEPT
-    the full CTA universe (``CTA_unfiltered_gene_ids``), so the low-expression
-    "in-between" CTAs are kept out of the negative (per the spec). **tsarina is
-    the authority on CTA membership** — it already weighs paralogs and normal-
-    tissue expression — so we trust its universe verbatim and do NOT second-guess
-    it here: if a near-identical paralog copy (e.g. DAZ2/DAZ4, CT47A8-10) is
-    absent from the universe, its 9mers count as background and its CTA sibling
-    scores low. That is the honest result for the current curation; missing
-    paralog copies are a tsarina curation question (filed upstream), not a
-    pirlygenes workaround. Cached to ``outputs/cta_specific_9mers.csv``.
+    OncoRef selects the newest usable installed human Ensembl annotation and
+    owns the cache keyed by release, k, CTA membership and verified identities.
+    The former ``ensembl_release`` argument is no longer supported. Historical
+    ``cta_specific_9mers.csv`` files lack identity evidence and are never read
+    or rewritten here. Protein/cDNA grouping remains a separate downstream step.
     """
-    CACHE.mkdir(parents=True, exist_ok=True)
-    cache = CACHE / "cta_specific_9mers.csv"
-    if cache.exists() and not refresh:
-        return pd.read_csv(cache)
-    from pyensembl import EnsemblRelease
-    genome = EnsemblRelease(ensembl_release)
-    pos = set(gsc.CTA_gene_ids())
-    universe = set(gsc.CTA_unfiltered_gene_ids())
-    id2name = gsc.CTA_gene_id_to_name()
-    longest: dict[str, str] = {}
-    for tr in genome.transcripts():
-        if tr.biotype != "protein_coding":
-            continue
-        seq = tr.protein_sequence
-        if not seq or len(seq) < k:
-            continue
-        seq = seq.rstrip("*")
-        if tr.gene_id not in longest or len(seq) > len(longest[tr.gene_id]):
-            longest[tr.gene_id] = seq
+    from oncoref.cta_peptides import cta_specific_9mer_counts as owner_counts
 
-    def kmers(s):
-        return {s[i:i + k] for i in range(len(s) - k + 1)}
-
-    negative = set()
-    for gid, seq in longest.items():
-        if gid in universe:
-            continue
-        negative |= kmers(seq)
-    rows = []
-    for gid in sorted(pos):
-        seq = longest.get(gid)
-        km = kmers(seq) if seq else set()
-        rows.append({
-            "Ensembl_Gene_ID": gid,
-            "Symbol": id2name.get(gid, gid),
-            "n_9mers": len(km),
-            "n_specific_9mers": sum(1 for x in km if x not in negative),
-        })
-    df = pd.DataFrame(rows).sort_values("n_specific_9mers", ascending=False)
-    OUT.mkdir(parents=True, exist_ok=True)
-    df.to_csv(cache, index=False)
-    print(f"      CTA-specific 9mers: {len(df)} CTAs vs {len(negative):,} "
-          f"non-CTA 9mers (median {int(df.n_specific_9mers.median())})", flush=True)
-    return df
+    return owner_counts(k=k, refresh=refresh).sort_values(
+        "n_specific_9mers", ascending=False,
+    )
 
 
 def _cohort_on_matrix(mat, cols, thr, pctile_cutoffs):
