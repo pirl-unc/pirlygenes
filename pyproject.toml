@@ -14,7 +14,7 @@ classifiers = [
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
-    "filelock>=3.13",
+    "datacache>=1.25.1",
     "matplotlib>=3.7.0",
     "numpy>=2.0.0",
     # oncoref owns the cancer-type ontology/registry (single source of truth);

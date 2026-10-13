@@ -81,7 +81,7 @@ _DATA_DIR = _BUNDLED_DATA_DIR
 
 def _data_roots() -> list[Path]:
     """Roots checked when resolving a data file, in priority order."""
-    return [_BUNDLED_DATA_DIR, _DOWNLOADED_DATA_DIR]
+    return [_BUNDLED_DATA_DIR, data_bundle._data_dir(_DOWNLOADED_DATA_DIR)]
 
 
 def _ensure_downloadable(name: str) -> None:

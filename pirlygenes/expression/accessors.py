@@ -2963,8 +2963,7 @@ def _bundle_subdir(name: str):
     cached = data_bundle.find(name)
     if cached is not None:
         return cached
-    data_bundle.ensure_local()
-    return data_bundle.cache_dir() / name
+    return data_bundle.ensure_local() / name
 
 
 def available_representative_cohorts() -> list[str]:
