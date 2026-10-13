@@ -30,12 +30,17 @@ Layout:
   to oncoref in pirlygenes#208 — pirlygenes re-exports the accessors but no
   longer ships or downloads those artifacts.)
 
-Cache layout (version-pinned so upgrades trigger a re-fetch):
+Cache layout (data-version-pinned; code-only upgrades reuse the cache):
 
   ~/.cache/pirlygenes/bundled_data/v<version>/
-    cohort-expression-matrices/...
-    pan-cancer-expression.csv
-    hpa-cell-type-expression.csv
+    .datacache-archive/bundles/<installation>/
+      cohort-expression-matrices/...
+      pan-cancer-expression.csv
+      hpa-cell-type-expression.csv
+
+Existing files directly inside the version directory remain readable. New
+installs and explicit repairs use DataCache's immutable archive bundles, so
+paths returned by ``find`` and ``ensure_local`` survive later refreshes.
 
 The cache root is overridable via the ``PIRLYGENES_BUNDLED_DATA`` env
 variable for offline / shared-cache setups.
@@ -45,7 +50,7 @@ Public API:
   cache_dir()      → version-pinned cache Path
   is_local()       → bool: every downloadable path present?
   fetch()          → download + extract from the GitHub Release
-  ensure_local()   → fetch if missing; safe to call on every access
+  ensure_local()   → extracted data directory; fetch if missing
   find(path)       → cached path or None
   status()         → dict summarizing local state
 
@@ -56,12 +61,10 @@ from __future__ import annotations
 
 import os
 import re
-import shutil
 import sys
-import tarfile
-import tempfile
-import urllib.request
 from pathlib import Path
+
+import datacache
 
 from .version import DATA_VERSION
 
@@ -100,88 +103,106 @@ def cache_root() -> Path:
 
 
 def cache_dir() -> Path:
-    """Where the downloaded bundle lives on disk for this version."""
+    """Version cache container; resolve members with ``find``/``ensure_local``."""
     override = os.environ.get("PIRLYGENES_BUNDLED_DATA")
     if override:
         return Path(override).expanduser()
     return cache_root() / f"v{DATA_VERSION}"
 
 
-def is_local() -> bool:
-    """Every downloadable path exists in the cache for this version."""
-    root = cache_dir()
-    return all((root / p).exists() for p in DOWNLOADABLE_PATHS)
+def _archive_store(root: Path) -> Path:
+    # Keep managed data separate from legacy files and other cache owners.
+    # Resolve aliases so they share DataCache's destination lock.
+    return (root / ".datacache-archive").resolve()
 
 
-def find(relative_path: str) -> Path | None:
-    """Resolve a downloadable file to its on-disk cached location.
-
-    Returns the path if cached, else None. Use :func:`ensure_local`
-    first if the caller can't tolerate None.
-    """
-    candidate = cache_dir() / relative_path
-    return candidate if candidate.exists() else None
-
-
-def fetch(*, verbose: bool = True) -> Path:
-    """Download + extract the bundle for this version into the cache.
-
-    Always overwrites — safe to call to repair a corrupt cache.
-    Returns the cache directory.
-    """
-    root = cache_dir()
-    root.mkdir(parents=True, exist_ok=True)
-    if verbose:
-        sys.stderr.write(
-            f"pirlygenes: downloading data bundle for v{DATA_VERSION} "
-            "(~52 MB, one-time)\n"
-            f"  from {RELEASE_URL}\n"
-            f"  to   {root}\n"
-        )
-        sys.stderr.flush()
-    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
-    try:
-        with urllib.request.urlopen(RELEASE_URL) as resp, tmp_path.open("wb") as h:
-            shutil.copyfileobj(resp, h, length=1024 * 1024)
-        if verbose:
-            sys.stderr.write("pirlygenes: extracting...\n")
-            sys.stderr.flush()
-        with tarfile.open(tmp_path) as tf:
-            # filter=data is Python 3.12+; fall back to the older API.
-            try:
-                tf.extractall(root, filter="data")
-            except TypeError:
-                tf.extractall(root)
-    finally:
-        tmp_path.unlink(missing_ok=True)
-    if verbose:
-        sys.stderr.write(f"pirlygenes: data bundle ready at {root}\n")
-        sys.stderr.flush()
+def _data_dir(root: Path | None = None) -> Path:
+    """Resolve one immutable DataCache bundle, or the legacy cache directory."""
+    root = cache_dir() if root is None else root
+    state = datacache.inspect_archive(
+        _archive_store(root), RELEASE_URL, verify_files=False,
+    )
+    if state.status == "available":
+        return Path(state.bundle)
+    if state.status == "inaccessible":
+        raise state.error
+    if state.status == "invalid":
+        raise datacache.FileValidationError(
+            root, "invalid bundle cache; run `pirlygenes data fetch` to repair it",
+        ) from state.error
     return root
 
 
-def ensure_local(*, auto_fetch: bool = True, verbose: bool = True) -> Path:
-    """Make sure the bundle is present locally; download if not.
+def _is_complete(root: Path) -> bool:
+    for name in DOWNLOADABLE_PATHS:
+        path = root / name
+        if name == "cohort-expression-matrices":
+            if not path.is_dir() or not any(
+                child.is_file() and child.stat().st_size > 0
+                for child in path.rglob("*")
+            ):
+                return False
+        elif not path.is_file() or path.stat().st_size == 0:
+            return False
+    return True
 
-    With ``auto_fetch=False``, raises ``FileNotFoundError`` instead of
-    triggering a network call — useful for read-only CLI inspection
-    paths (``pirlygenes data status``) that shouldn't surprise users
-    with a large download.
+
+def is_local() -> bool:
+    """Every downloadable path exists in the active managed or legacy bundle."""
+    return _is_complete(_data_dir())
+
+
+def find(relative_path: str) -> Path | None:
+    """Resolve a cached member without downloading or modifying the cache."""
+    candidate = _data_dir() / relative_path
+    return candidate if candidate.exists() else None
+
+
+def _install(*, force: bool, verbose: bool) -> Path:
+    # Historical releases lack trusted hashes. DataCache still records and
+    # validates observed hashes, serializes writers, and publishes atomically.
+    bundle = datacache.install_archive(
+        _archive_store(cache_dir()), RELEASE_URL,
+        force=force, verified=False,
+        download_options={"show_progress": verbose},
+    )
+    if not _is_complete(bundle):
+        raise datacache.FileValidationError(
+            bundle, "release is missing required data; run `pirlygenes data fetch` to repair it",
+        )
+    if verbose:
+        sys.stderr.write(f"pirlygenes: data bundle ready at {bundle}\n")
+    return bundle
+
+
+def fetch(*, verbose: bool = True) -> Path:
+    """Explicitly refresh through DataCache; existing reader paths stay valid.
+
+    Legacy files are retained. New downloads live in a managed archive store
+    inside :func:`cache_dir`; return the extracted bundle's actual directory.
+    """
+    return _install(force=True, verbose=verbose)
+
+
+def ensure_local(*, auto_fetch: bool = True, verbose: bool = True) -> Path:
+    """Reuse local data or let DataCache install the missing archive once.
+
+    Complete legacy caches remain readable without migration or network IO.
+    ``auto_fetch=False`` is read-only and raises when data are missing.
     """
     if is_local():
-        return cache_dir()
+        return _data_dir()
     if not auto_fetch:
         raise FileNotFoundError(
             f"pirlygenes data bundle not found at {cache_dir()}. "
             "Run `pirlygenes data fetch` to download it."
         )
-    return fetch(verbose=verbose)
+    return _install(force=False, verbose=verbose)
 
 
 def status() -> dict:
     """Snapshot of cache state — used by ``pirlygenes data status``."""
-    root = cache_dir()
+    root = _data_dir()
     items: dict[str, dict] = {}
     for p in DOWNLOADABLE_PATHS:
         path = root / p
@@ -201,10 +222,11 @@ def status() -> dict:
         }
     return {
         "data_version": DATA_VERSION,
-        "cache_dir": str(root),
+        "cache_dir": str(cache_dir()),
+        "data_dir": str(root),
         "release_url": RELEASE_URL,
         "items": items,
-        "all_local": is_local(),
+        "all_local": _is_complete(root),
     }
 
 
@@ -238,9 +260,9 @@ def _dir_size_bytes(path: Path) -> int:
 def list_cache_versions() -> list[dict]:
     """Enumerate recognizable version-pinned bundle dirs under :func:`cache_root`.
 
-    Only real directories with a ``vMAJOR.MINOR.PATCH`` name and both historical
-    HPA/pan-cancer CSVs qualify. Unrelated, incomplete, and symlinked directories
-    are left alone, including beside a custom cache location.
+    Only real ``vMAJOR.MINOR.PATCH`` directories containing a legacy bundle or
+    a DataCache archive with both HPA/pan-cancer CSVs qualify. Unrelated,
+    incomplete, and symlinked directories are left alone.
 
     Returns a list of ``{"version", "path", "size_bytes", "is_current"}``
     dicts, sorted by version label (lexicographic). Used by
@@ -254,18 +276,25 @@ def list_cache_versions() -> list[dict]:
     out: list[dict] = []
     for child in sorted(root.iterdir()):
         # An override can put us beside unrelated user directories. A version
-        # label alone does not prove ownership, and a symlink must never make
-        # an external directory a pruning target. Both CSVs are present in
-        # current and historical pirlygenes data bundles.
+        # label alone does not prove ownership, and symlinks must not expose
+        # external directories as pruning targets.
         if (
             child.is_symlink()
             or not child.is_dir()
             or re.fullmatch(r"v\d+\.\d+\.\d+", child.name) is None
-            or not all(
-                (child / name).is_file() and not (child / name).is_symlink()
-                for name in (
-                    "pan-cancer-expression.csv", "hpa-cell-type-expression.csv",
-                )
+        ):
+            continue
+        store = child / ".datacache-archive"
+        if store.is_symlink():
+            continue
+        state = datacache.inspect_archive(store, verify_files=False)
+        if state.status not in ("available", "missing"):
+            continue
+        data = Path(state.bundle) if state.status == "available" else child
+        if not all(
+            (data / name).is_file() and not (data / name).is_symlink()
+            for name in (
+                "pan-cancer-expression.csv", "hpa-cell-type-expression.csv",
             )
         ):
             continue
