@@ -30,7 +30,7 @@ Layout:
   to oncoref in pirlygenes#208 — pirlygenes re-exports the accessors but no
   longer ships or downloads those artifacts.)
 
-Cache layout (version-pinned so upgrades trigger a re-fetch):
+Cache layout (data-version-pinned; code-only upgrades reuse the cache):
 
   ~/.cache/pirlygenes/bundled_data/v<version>/
     cohort-expression-matrices/...
@@ -54,6 +54,7 @@ CLI: ``pirlygenes data {fetch, status, cache-dir}`` wraps these.
 
 from __future__ import annotations
 
+import gzip
 import os
 import re
 import shutil
@@ -61,7 +62,9 @@ import sys
 import tarfile
 import tempfile
 import urllib.request
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+from filelock import FileLock
 
 from .version import DATA_VERSION
 
@@ -123,14 +126,111 @@ def find(relative_path: str) -> Path | None:
     return candidate if candidate.exists() else None
 
 
-def fetch(*, verbose: bool = True) -> Path:
-    """Download + extract the bundle for this version into the cache.
+def _cache_lock(root: Path) -> FileLock:
+    """Lock the resolved destination, including callers using symlink aliases.
 
-    Always overwrites — safe to call to repair a corrupt cache.
-    Returns the cache directory.
+    Keep the lock outside the directory replaced during publication. Never
+    unlink it: waiters must continue locking the same inode.
     """
-    root = cache_dir()
-    root.mkdir(parents=True, exist_ok=True)
+    root.parent.mkdir(parents=True, exist_ok=True)
+    return FileLock(str(root.parent / f".{root.name}.pirlygenes.lock"))
+
+
+def _backup_dir(root: Path) -> Path:
+    return root.parent / f".{root.name}.pirlygenes-backup"
+
+
+def _recover_cache(root: Path) -> None:
+    """Recover an interrupted directory swap while holding the cache lock."""
+    backup = _backup_dir(root)
+    if backup.exists():
+        if not root.exists():
+            os.replace(backup, root)
+        else:
+            shutil.rmtree(backup)
+    # A killed downloader cannot clean its TemporaryDirectory. No writer for
+    # this destination is active while we hold its lock.
+    prefix = f".{root.name}.pirlygenes-stage-"
+    for child in root.parent.iterdir():
+        if child.name.startswith(prefix) and child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+
+
+def _extract_bundle(archive: Path, destination: Path) -> None:
+    """Validate gzip integrity, safe tar members, and required bundle content.
+
+    Existing releases do not publish a checksum manifest. Reading through EOF
+    checks the gzip CRC/trailer even when tarfile stops at its earlier end marker.
+    """
+    with gzip.open(archive, "rb") as stream:
+        while stream.read(1024 * 1024):
+            pass
+    with tarfile.open(archive, "r:gz") as tf:
+        members = tf.getmembers()
+        for member in members:
+            path = PurePosixPath(member.name)
+            if (
+                path.is_absolute()
+                or ".." in path.parts
+                or "\\" in member.name
+                or not path.parts
+                or path.parts[0] not in DOWNLOADABLE_PATHS
+                or not (member.isfile() or member.isdir())
+            ):
+                raise ValueError(f"Unsafe or unexpected bundle member: {member.name!r}")
+        # The explicit checks also protect Python 3.9/3.10 installations that
+        # predate tarfile's extraction filters. Bundles contain no links/devices.
+        if hasattr(tarfile, "data_filter"):
+            tf.extractall(destination, members=members, filter="data")
+        else:
+            tf.extractall(destination, members=members)
+    for relative in DOWNLOADABLE_PATHS:
+        path = destination / relative
+        if relative == "cohort-expression-matrices":
+            complete = path.is_dir() and any(
+                child.is_file() and child.stat().st_size > 0
+                for child in path.rglob("*")
+            )
+        else:
+            complete = path.is_file() and path.stat().st_size > 0
+        if not complete:
+            raise ValueError(f"Incomplete data bundle: {relative}")
+
+
+def _publish_bundle(staged: Path, root: Path) -> None:
+    """Publish a complete directory, retaining the old cache for rollback.
+
+    A repair briefly removes the destination between renames; it never exposes
+    a partly extracted bundle. A subsequent locked reader recovers the backup
+    if the process dies in that interval.
+    """
+    backup = _backup_dir(root)
+    if root.exists():
+        # Custom/shared cache directories can contain other owners' data.
+        # Preserve those entries, but replace our bundle roots in their entirety.
+        for child in root.iterdir():
+            if child.name in DOWNLOADABLE_PATHS:
+                continue
+            target = staged / child.name
+            if child.is_symlink():
+                target.symlink_to(os.readlink(child), target_is_directory=child.is_dir())
+            elif child.is_dir():
+                shutil.copytree(child, target, symlinks=True)
+            else:
+                shutil.copy2(child, target)
+        os.replace(root, backup)
+    try:
+        os.replace(staged, root)
+    except BaseException:
+        if backup.exists():
+            os.replace(backup, root)
+        raise
+    if backup.exists():
+        shutil.rmtree(backup)
+
+
+def _fetch_into_cache(root: Path, *, verbose: bool) -> None:
+    """Download, validate, and publish while holding the destination lock."""
     if verbose:
         sys.stderr.write(
             f"pirlygenes: downloading data bundle for v{DATA_VERSION} "
@@ -139,25 +239,35 @@ def fetch(*, verbose: bool = True) -> Path:
             f"  to   {root}\n"
         )
         sys.stderr.flush()
-    with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
-        tmp_path = Path(tmp.name)
-    try:
+    with tempfile.TemporaryDirectory(
+        prefix=f".{root.name}.pirlygenes-stage-", dir=root.parent,
+    ) as temporary:
+        tmp_path = Path(temporary) / "bundle.tar.gz"
+        staged = Path(temporary) / "data"
+        staged.mkdir()
         with urllib.request.urlopen(RELEASE_URL) as resp, tmp_path.open("wb") as h:
             shutil.copyfileobj(resp, h, length=1024 * 1024)
         if verbose:
             sys.stderr.write("pirlygenes: extracting...\n")
             sys.stderr.flush()
-        with tarfile.open(tmp_path) as tf:
-            # filter=data is Python 3.12+; fall back to the older API.
-            try:
-                tf.extractall(root, filter="data")
-            except TypeError:
-                tf.extractall(root)
-    finally:
-        tmp_path.unlink(missing_ok=True)
+        _extract_bundle(tmp_path, staged)
+        _publish_bundle(staged, root)
     if verbose:
         sys.stderr.write(f"pirlygenes: data bundle ready at {root}\n")
         sys.stderr.flush()
+
+
+def fetch(*, verbose: bool = True) -> Path:
+    """Explicitly download and replace the bundle, even if already cached.
+
+    Writers are serialized. Failed downloads/extractions leave existing data
+    intact, so this remains the repair path for a corrupt cache.
+    """
+    root = cache_dir()
+    destination = root.resolve()
+    with _cache_lock(destination):
+        _recover_cache(destination)
+        _fetch_into_cache(destination, verbose=verbose)
     return root
 
 
@@ -176,7 +286,14 @@ def ensure_local(*, auto_fetch: bool = True, verbose: bool = True) -> Path:
             f"pirlygenes data bundle not found at {cache_dir()}. "
             "Run `pirlygenes data fetch` to download it."
         )
-    return fetch(verbose=verbose)
+    root = cache_dir()
+    destination = root.resolve()
+    with _cache_lock(destination):
+        _recover_cache(destination)
+        # Another thread/process may have populated the cache while we waited.
+        if not is_local():
+            _fetch_into_cache(destination, verbose=verbose)
+    return root
 
 
 def status() -> dict:
