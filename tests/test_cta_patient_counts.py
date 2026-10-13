@@ -135,3 +135,47 @@ def test_downstream_factor_table_keeps_folded_9mer_payload(tmp_path, monkeypatch
         assert metrics.loc["NUTM", "cta_9mer_load_p95"] == pytest.approx(34.4)
     finally:
         factors.cta_metric_table.cache_clear()
+
+
+@pytest.mark.parametrize("reason", [
+    "no usable human Ensembl release with protein sequences installed",
+    "only 10 protein sequences resolved — the protein FASTA looks incomplete",
+])
+def test_factor_table_preserves_non_peptide_metrics_without_proteome(
+    tmp_path, monkeypatch, reason,
+):
+    import _apd1_factors as factors
+    from oncoref import cta_peptides
+
+    output = tmp_path / "outputs"
+    output.mkdir()
+    pd.DataFrame({
+        "cancer_code": ["NUTM"], "n_samples": [10],
+        "n_any_p90": [4], "n_any_p95": [2],
+    }).to_csv(output / "_cta_union_counts.csv", index=False)
+    pd.DataFrame({
+        "cancer_code": ["NUTM", "NUTM"], "n_samples": [10, 10],
+        "Symbol": ["PRAME", "MAGEA3"], "n_p90": [4, 3], "n_p95": [2, 1],
+    }).to_csv(output / "_cta_patient_counts.csv", index=False)
+
+    def unavailable():
+        raise RuntimeError(reason)
+
+    monkeypatch.setattr(cta_peptides, "cta_specific_9mer_counts", unavailable)
+    monkeypatch.setattr(factors, "__file__", str(tmp_path / "_apd1_factors.py"))
+    factors.cta_metric_table.cache_clear()
+    try:
+        with pytest.warns(RuntimeWarning, match="Skipping CTA-specific 9-mer factors"):
+            metrics = factors.cta_metric_table()
+        assert metrics.loc["NUTM"].to_dict() == {
+            "cta_coverage_p90": 40.0, "cta_coverage_p95": 20.0,
+            "cta_count_p90": 0.7, "cta_count_p95": 0.3,
+        }
+        columns, skipped = factors.available_cta_metric_columns(
+            metrics, metrics.index, min_n=1,
+        )
+        assert len(columns) == 4
+        assert skipped == [label for label, column in factors.CTA_FACTOR_METRICS
+                           if column.startswith("cta_9mer_load_")]
+    finally:
+        factors.cta_metric_table.cache_clear()

@@ -21,6 +21,7 @@ not join.
 
 from __future__ import annotations
 
+import warnings
 from functools import lru_cache
 from pathlib import Path
 
@@ -320,9 +321,9 @@ def cta_metric_table() -> pd.DataFrame:
     tables retain threshold-specific unknown counts and gene tables retain
     measurement denominators for consumers that need availability accounting.
 
-    Columns whose prerequisite expression tables are absent are omitted; callers
-    should skip unavailable factors rather than plotting all-NaN rows. Peptide
-    counts come from OncoRef and require a usable installed human proteome.
+    Columns whose prerequisite tables or Ensembl protein sequences are absent
+    are omitted; callers should skip unavailable factors rather than plotting
+    all-NaN rows. Peptide counts come from OncoRef.
     """
     union_path = Path(__file__).resolve().parent / "outputs" / "_cta_union_counts.csv"
     counts_path = _latest_cta_patient_counts_path()
@@ -361,7 +362,14 @@ def cta_metric_table() -> pd.DataFrame:
     # The old unversioned analysis CSV cannot establish that evidence.
     from oncoref.cta_peptides import cta_specific_9mer_counts
 
-    spec = cta_specific_9mer_counts()
+    try:
+        spec = cta_specific_9mer_counts()
+    except RuntimeError as exc:
+        # The owner rejects absent/incomplete proteomes. Coverage and counts
+        # remain usable without peptide weights; do not substitute zero load.
+        warnings.warn(f"Skipping CTA-specific 9-mer factors: {exc}",
+                      RuntimeWarning, stacklevel=2)
+        return out
     from _cta_metrics import fold_specific_9mer_weights
     sym2spec = fold_specific_9mer_weights(dict(zip(
         spec["Symbol"].astype(str), spec["n_specific_9mers"].astype(float),
