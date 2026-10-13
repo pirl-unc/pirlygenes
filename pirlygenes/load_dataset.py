@@ -111,7 +111,7 @@ def _ensure_downloadable(name: str) -> None:
         return
 
 
-def _shard_directories() -> list[Path]:
+def _shard_directories(*, roots=None) -> list[Path]:
     """Subdirectories holding sharded CSV datasets, gathered from both
     the bundled and downloaded data roots.
 
@@ -123,7 +123,7 @@ def _shard_directories() -> list[Path]:
     sharded per ``source_cohort``.
     """
     seen: dict[str, Path] = {}
-    for root in _data_roots():
+    for root in _data_roots() if roots is None else roots:
         if not root.exists():
             continue
         for child in sorted(root.iterdir()):
@@ -139,7 +139,7 @@ def _shard_paths(shard_dir: Path) -> list[Path]:
     return sorted(list(shard_dir.glob("*.csv")) + list(shard_dir.glob("*.csv.gz")))
 
 
-def get_all_csv_paths() -> list:
+def get_all_csv_paths(*, roots=None) -> list:
     """Paths to every top-level CSV file across both data roots.
 
     Picks up both plain ``.csv`` and gzipped ``.csv.gz`` files. Sharded
@@ -149,7 +149,7 @@ def get_all_csv_paths() -> list:
     On name conflicts, the bundled root wins over the downloaded root.
     """
     seen: dict[str, Path] = {}
-    for root in _data_roots():
+    for root in _data_roots() if roots is None else roots:
         if not root.exists():
             continue
         for p in sorted(list(root.glob("*.csv")) + list(root.glob("*.csv.gz"))):
@@ -323,24 +323,26 @@ def _invalidate_dataset_paths() -> None:
     _DATASET_PATHS = None
 
 
-def _dataset_paths():
+def _dataset_paths(*, bundled_only=False):
     """Map accepted dataset names to their on-disk CSV path or shard dir."""
     global _DATASET_PATHS
-    if _DATASET_PATHS is not None:
+    if not bundled_only and _DATASET_PATHS is not None:
         return _DATASET_PATHS
 
+    options = {"roots": [_BUNDLED_DATA_DIR]} if bundled_only else {}
     paths: dict[str, Path] = {}
-    for csv_path in get_all_csv_paths():
+    for csv_path in get_all_csv_paths(**options):
         csv_key = csv_path.name.removesuffix(".gz")
         stem_key = csv_key.removesuffix(".csv")
         for key in {csv_key, csv_key.lower(), stem_key, stem_key.lower()}:
             paths[key] = csv_path
-    for shard_dir in _shard_directories():
+    for shard_dir in _shard_directories(**options):
         stem_key = shard_dir.name
         csv_key = stem_key + ".csv"
         for key in {csv_key, csv_key.lower(), stem_key, stem_key.lower()}:
             paths[key] = shard_dir
-    _DATASET_PATHS = paths
+    if not bundled_only:
+        _DATASET_PATHS = paths
     return paths
 
 
@@ -528,8 +530,12 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     if _dataframes_dict is None:
         # Trigger download for downloadable items before resolving paths,
         # so the _dataset_paths cache sees the newly-extracted files.
-        _ensure_downloadable(name)
-        paths = _dataset_paths()
+        # A broken optional download cache must not prevent reading data
+        # shipped with the package, including sharded and compressed CSVs.
+        paths = _dataset_paths(bundled_only=True)
+        if not any(c in paths for c in candidates):
+            _ensure_downloadable(name)
+            paths = _dataset_paths()
 
         # If the lookup misses but the requested name is a downloadable
         # item, force a path-cache rebuild after the fetch and retry once.
