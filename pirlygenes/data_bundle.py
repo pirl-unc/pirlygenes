@@ -158,6 +158,11 @@ def find(relative_path: str) -> Path | None:
     return candidate if candidate.exists() else None
 
 
+def _validate_release_tree(bundle: Path) -> None:
+    if not _is_complete(bundle):
+        raise ValueError("release is missing required data")
+
+
 def _install(*, force: bool, verbose: bool) -> Path:
     # Historical releases lack trusted hashes. DataCache still records and
     # validates observed hashes, serializes writers, and publishes atomically.
@@ -165,11 +170,8 @@ def _install(*, force: bool, verbose: bool) -> Path:
         _archive_store(cache_dir()), RELEASE_URL,
         force=force, verified=False,
         download_options={"show_progress": verbose},
+        validator=_validate_release_tree,
     )
-    if not _is_complete(bundle):
-        raise datacache.FileValidationError(
-            bundle, "release is missing required data; run `pirlygenes data fetch` to repair it",
-        )
     if verbose:
         sys.stderr.write(f"pirlygenes: data bundle ready at {bundle}\n")
     return bundle

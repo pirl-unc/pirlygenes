@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import gzip
 import io
 import multiprocessing
 import os
@@ -258,13 +259,34 @@ def test_killed_downloader_never_replaces_active_data(cache, warm):
         _assert_cache(previous)
 
 
-def test_missing_required_release_members_are_not_usable(cache):
-    _archive(cache.parent / "release.tar.gz", {"unrelated.csv": b"unrelated"})
+@pytest.mark.parametrize("previous_kind", ["missing", "legacy", "managed"])
+@pytest.mark.parametrize("missing_member", list(FILES))
+@pytest.mark.parametrize("empty", [False, True])
+def test_incomplete_refresh_keeps_previous_cache(cache, previous_kind, missing_member, empty):
+    if previous_kind == "legacy":
+        _write_cache(cache)
+        previous = cache
+    elif previous_kind == "managed":
+        previous = data_bundle.ensure_local(verbose=False)
+    else:
+        previous = None
+    broken = dict(FILES)
+    if empty:
+        broken[missing_member] = b""
+    else:
+        del broken[missing_member]
+    _archive(cache.parent / "release.tar.gz", broken)
+    install = data_bundle.ensure_local if previous is None else data_bundle.fetch
     with pytest.raises(datacache.FileValidationError, match="missing required data"):
-        data_bundle.ensure_local(verbose=False)
-    assert not data_bundle.is_local()
+        install(verbose=False)
+    if previous is None:
+        assert not data_bundle.is_local()
+        assert data_bundle.find("pan-cancer-expression.csv") is None
+    else:
+        assert data_bundle.ensure_local(auto_fetch=False) == previous
+        _assert_cache(previous)
     _archive(cache.parent / "release.tar.gz")
-    _assert_cache(data_bundle.fetch(verbose=False))
+    _assert_cache(install(verbose=False))
 
 
 def test_invalid_managed_receipt_requires_explicit_repair(cache, monkeypatch):
@@ -302,6 +324,7 @@ def test_loader_resolves_bundle_published_after_path_cache_was_primed(cache, tmp
     monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
     monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
     monkeypatch.setattr(ld, "_DATASET_PATHS", None)
+    monkeypatch.setattr(ld, "_BUNDLED_DATASET_PATHS", None)
     monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
     assert "pan-cancer-expression.csv" not in ld._dataset_paths()
     frame = ld.get_data("pan-cancer-expression")
@@ -317,3 +340,92 @@ def test_expression_accessor_uses_returned_bundle_directory(cache, tmp_path, mon
     path = _bundle_subdir("cohort-expression-matrices")
     assert path == data_bundle.find("cohort-expression-matrices")
     assert (path / "matrix.parquet").read_bytes() == FILES["cohort-expression-matrices/matrix.parquet"]
+
+
+@pytest.mark.parametrize("storage", ["csv", "csv.gz", "shards"])
+@pytest.mark.parametrize("cache_error", ["corrupt", "inaccessible"])
+def test_bundled_data_survives_broken_download_cache(
+    cache, tmp_path, monkeypatch, storage, cache_error,
+):
+    from pirlygenes import load_dataset as ld
+
+    previous = data_bundle.ensure_local(verbose=False)
+    if cache_error == "corrupt":
+        (previous / ".datacache-manifest.json").write_text("{}")
+        expected_error = datacache.FileValidationError
+    else:
+        def inaccessible(*args, **kwargs):
+            raise PermissionError("download cache inaccessible")
+        monkeypatch.setattr(data_bundle, "_data_dir", inaccessible)
+        expected_error = PermissionError
+    bundled = tmp_path / "wheel-data"
+    bundled.mkdir()
+    content = b"gene,value\nPRAME,1\n"
+    if storage == "shards":
+        shard_dir = bundled / "curated"
+        shard_dir.mkdir()
+        (shard_dir / "part.csv").write_bytes(content)
+    elif storage == "csv.gz":
+        with gzip.open(bundled / "curated.csv.gz", "wb") as handle:
+            handle.write(content)
+    else:
+        (bundled / "curated.csv").write_bytes(content)
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
+    monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
+    monkeypatch.setattr(ld, "_DATASET_PATHS", None)
+    monkeypatch.setattr(ld, "_BUNDLED_DATASET_PATHS", None)
+    monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
+    for name in ("curated", "Curated.csv"):
+        assert ld.get_data(name).to_dict("list") == {"gene": ["PRAME"], "value": [1]}
+    # A request that actually needs the damaged cache still reports the error.
+    with pytest.raises(expected_error):
+        ld.get_data("pan-cancer-expression")
+
+
+@pytest.mark.parametrize("sharded", [False, True])
+def test_warm_bundled_reads_avoid_scans_and_invalidation_refreshes_both_roots(
+    cache, tmp_path, monkeypatch, sharded,
+):
+    from pirlygenes import load_dataset as ld
+
+    bundled = tmp_path / "wheel-data"
+    bundled.mkdir()
+    content = "gene,value\nPRAME,1\n"
+    if sharded:
+        (bundled / "curated").mkdir()
+        (bundled / "curated" / "part.csv").write_text(content)
+    else:
+        (bundled / "curated.csv").write_text(content)
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
+    monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
+    monkeypatch.setattr(ld, "_DATASET_PATHS", None)
+    monkeypatch.setattr(ld, "_BUNDLED_DATASET_PATHS", None)
+    monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
+
+    frame = ld.get_data("curated", copy=False)
+    assert "curated" in ld._dataset_paths()
+
+    def unexpected_scan(*args, **kwargs):
+        pytest.fail("a cached dataset lookup should not rescan directories")
+
+    with monkeypatch.context() as warm:
+        warm.setattr(ld, "get_all_csv_paths", unexpected_scan)
+        warm.setattr(ld, "_shard_directories", unexpected_scan)
+        for name in ("curated", "Curated.csv"):
+            assert ld.get_data(name, copy=False) is frame
+            assert ld.get_data(name).equals(frame)
+
+    (bundled / "added.csv").write_text(content)
+    cache.mkdir()
+    (cache / "downloaded.csv").write_text(content)
+    assert "added" not in ld._dataset_paths(bundled_only=True)
+    assert "downloaded" not in ld._dataset_paths()
+    ld._invalidate_dataset_paths()
+    bundled_paths = ld._dataset_paths(bundled_only=True)
+    all_paths = ld._dataset_paths()
+    assert bundled_paths["added"] == bundled / "added.csv"
+    assert "downloaded" not in bundled_paths
+    assert all_paths["added"] == bundled / "added.csv"
+    assert all_paths["downloaded"] == cache / "downloaded.csv"
+    assert ld.get_data("added").equals(frame)
+    assert ld.get_data("downloaded").equals(frame)
