@@ -40,6 +40,7 @@ from . import data_bundle
 _BUNDLED_DATA_DIR = Path(__file__).parent / "data"
 _DOWNLOADED_DATA_DIR = data_bundle.cache_dir()
 _DATASET_PATHS = None
+_BUNDLED_DATASET_PATHS = None
 _CACHED_DATAFRAMES = {}
 
 # Base-layer normalization/gene-family datasets owned by oncoref. Keep their
@@ -319,15 +320,17 @@ def load_all_dataframes_dict():
 
 
 def _invalidate_dataset_paths() -> None:
-    global _DATASET_PATHS
+    global _DATASET_PATHS, _BUNDLED_DATASET_PATHS
     _DATASET_PATHS = None
+    _BUNDLED_DATASET_PATHS = None
 
 
 def _dataset_paths(*, bundled_only=False):
     """Map accepted dataset names to their on-disk CSV path or shard dir."""
-    global _DATASET_PATHS
-    if not bundled_only and _DATASET_PATHS is not None:
-        return _DATASET_PATHS
+    global _DATASET_PATHS, _BUNDLED_DATASET_PATHS
+    cached = _BUNDLED_DATASET_PATHS if bundled_only else _DATASET_PATHS
+    if cached is not None:
+        return cached
 
     options = {"roots": [_BUNDLED_DATA_DIR]} if bundled_only else {}
     paths: dict[str, Path] = {}
@@ -341,7 +344,9 @@ def _dataset_paths(*, bundled_only=False):
         csv_key = stem_key + ".csv"
         for key in {csv_key, csv_key.lower(), stem_key, stem_key.lower()}:
             paths[key] = shard_dir
-    if not bundled_only:
+    if bundled_only:
+        _BUNDLED_DATASET_PATHS = paths
+    else:
         _DATASET_PATHS = paths
     return paths
 

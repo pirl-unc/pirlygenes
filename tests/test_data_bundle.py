@@ -324,6 +324,7 @@ def test_loader_resolves_bundle_published_after_path_cache_was_primed(cache, tmp
     monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
     monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
     monkeypatch.setattr(ld, "_DATASET_PATHS", None)
+    monkeypatch.setattr(ld, "_BUNDLED_DATASET_PATHS", None)
     monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
     assert "pan-cancer-expression.csv" not in ld._dataset_paths()
     frame = ld.get_data("pan-cancer-expression")
@@ -372,9 +373,59 @@ def test_bundled_data_survives_broken_download_cache(
     monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
     monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
     monkeypatch.setattr(ld, "_DATASET_PATHS", None)
+    monkeypatch.setattr(ld, "_BUNDLED_DATASET_PATHS", None)
     monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
     for name in ("curated", "Curated.csv"):
         assert ld.get_data(name).to_dict("list") == {"gene": ["PRAME"], "value": [1]}
     # A request that actually needs the damaged cache still reports the error.
     with pytest.raises(expected_error):
         ld.get_data("pan-cancer-expression")
+
+
+@pytest.mark.parametrize("sharded", [False, True])
+def test_warm_bundled_reads_avoid_scans_and_invalidation_refreshes_both_roots(
+    cache, tmp_path, monkeypatch, sharded,
+):
+    from pirlygenes import load_dataset as ld
+
+    bundled = tmp_path / "wheel-data"
+    bundled.mkdir()
+    content = "gene,value\nPRAME,1\n"
+    if sharded:
+        (bundled / "curated").mkdir()
+        (bundled / "curated" / "part.csv").write_text(content)
+    else:
+        (bundled / "curated.csv").write_text(content)
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
+    monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
+    monkeypatch.setattr(ld, "_DATASET_PATHS", None)
+    monkeypatch.setattr(ld, "_BUNDLED_DATASET_PATHS", None)
+    monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
+
+    frame = ld.get_data("curated", copy=False)
+    assert "curated" in ld._dataset_paths()
+
+    def unexpected_scan(*args, **kwargs):
+        pytest.fail("a cached dataset lookup should not rescan directories")
+
+    with monkeypatch.context() as warm:
+        warm.setattr(ld, "get_all_csv_paths", unexpected_scan)
+        warm.setattr(ld, "_shard_directories", unexpected_scan)
+        for name in ("curated", "Curated.csv"):
+            assert ld.get_data(name, copy=False) is frame
+            assert ld.get_data(name).equals(frame)
+
+    (bundled / "added.csv").write_text(content)
+    cache.mkdir()
+    (cache / "downloaded.csv").write_text(content)
+    assert "added" not in ld._dataset_paths(bundled_only=True)
+    assert "downloaded" not in ld._dataset_paths()
+    ld._invalidate_dataset_paths()
+    bundled_paths = ld._dataset_paths(bundled_only=True)
+    all_paths = ld._dataset_paths()
+    assert bundled_paths["added"] == bundled / "added.csv"
+    assert "downloaded" not in bundled_paths
+    assert all_paths["added"] == bundled / "added.csv"
+    assert all_paths["downloaded"] == cache / "downloaded.csv"
+    assert ld.get_data("added").equals(frame)
+    assert ld.get_data("downloaded").equals(frame)
