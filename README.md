@@ -157,7 +157,9 @@ clear_dataset_cache()                  # after editing local files in place
 
 Managed bundle refreshes are detected automatically, including refreshes from
 another process. Subsequent reads use the new paths and frames; existing returned
-frames remain valid snapshots. Discovery does not download data. Datasets owned
+frames remain valid snapshots. Shard Parquet caches use DataCache transactional
+materialization keyed by the bundle and each input file’s metadata. Discovery
+does not download data. Datasets owned
 by oncoref are delegated by `get_data()` and may have no local path in this map.
 
 ### Expression matrices and transforms

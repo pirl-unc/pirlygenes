@@ -32,9 +32,11 @@ triggers a one-time download from the GitHub Release.
 """
 
 from collections.abc import Mapping
+from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
 
+import datacache
 import pandas as pd
 
 from . import data_bundle
@@ -166,7 +168,7 @@ _DATASET_STRING_ID_COLS = {
 
 # Bump when the cached dtype scheme changes so stale object-dtype parquets in an
 # existing ``~/.cache/pirlygenes/shard_cache/`` rebuild instead of being reused.
-_SHARD_CACHE_FORMAT = 3
+_SHARD_CACHE_FORMAT = 4
 
 
 def _categorize_metadata(df: pd.DataFrame) -> pd.DataFrame:
@@ -213,44 +215,59 @@ def _concat_shard_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
 
 
 def _load_shard_directory(shard_dir: Path) -> pd.DataFrame:
-    """Concatenate every ``*.csv[.gz]`` shard in a sharded dataset directory.
+    """Read CSV shards, reusing a transactional DataCache-derived Parquet.
 
-    Parsing ~70 gzipped CSVs into a multi-million-row frame is the slowest single
-    step in the test suite, and a fresh process repeats it every run. So we keep a
-    best-effort **parquet cache** of the concatenated frame in
-    ``~/.cache/pirlygenes/shard_cache/``, keyed on a signature of the shard
-    files (count + total size + newest mtime) and the cache format. A subsequent
-    run reads one parquet (~7-10x faster) instead of re-parsing every gzip; the
-    cache auto-invalidates when any shard changes, and any cache error silently
-    falls back to the CSVs. Low-cardinality provenance columns are stored as
-    ``category`` (see :data:`_LOW_CARDINALITY_METADATA_COLS`).
+    Every shard's name, size, mtime and ctime participates in the derivation
+    identity, along with its immutable bundle directory and the schema version.
+    DataCache copies the sources, serializes writers and publishes all output
+    bytes atomically. Different installations/edits cannot share output files.
+    Cache hits verify the derived artifact; any cache failure falls back to the
+    authoritative CSVs without modifying caller-owned files.
     """
     paths = _shard_paths(shard_dir)
     if not paths:
         raise FileNotFoundError(f"no CSV shards found under {shard_dir}")
-    sig = repr((_SHARD_CACHE_FORMAT, str(shard_dir.resolve()), len(paths),
-                sum(p.stat().st_size for p in paths),
-                max(p.stat().st_mtime_ns for p in paths)))
-    cache_dir = Path.home() / ".cache" / "pirlygenes" / "shard_cache"
-    cache_file = cache_dir / f"{shard_dir.name}.parquet"
-    sig_file = cache_dir / f"{shard_dir.name}.sig"
+    frame = None
+
+    def build(source_paths, output_paths):
+        nonlocal frame
+        frame = _concat_shard_frames([
+            pd.read_csv(source_paths[p.name], low_memory=False) for p in paths
+        ])
+        frame = _categorize_metadata(frame)
+        frame = _normalize_dataset_dtypes(shard_dir.name + ".csv", frame)
+        frame.to_parquet(output_paths["data.parquet"], index=False)
+
     try:
-        if (cache_file.exists() and sig_file.exists()
-                and sig_file.read_text() == sig):
-            return _categorize_metadata(pd.read_parquet(cache_file))
+        records = []
+        for path in paths:
+            info = path.stat()
+            records.append((path.name, info.st_size, info.st_mtime_ns, info.st_ctime_ns))
+        signature = repr((_SHARD_CACHE_FORMAT, str(shard_dir.resolve()), records))
+        identity = sha256(signature.encode()).hexdigest()
+        cache_dir = Path.home() / ".cache" / "pirlygenes" / "shard_cache"
+        artifacts = datacache.materialize(
+            cache_dir / f"{shard_dir.name}-{identity}",
+            {p.name: {"path": p} for p in paths},
+            transform={"version": str(_SHARD_CACHE_FORMAT), "options": signature},
+            outputs={"data.parquet": {}},
+            builder=build,
+            download_options={"show_progress": False},
+        )
+        if frame is None:
+            frame = _normalize_dataset_dtypes(
+                shard_dir.name + ".csv", pd.read_parquet(artifacts["data.parquet"]),
+            )
+        return _categorize_metadata(frame)
     except Exception:
-        pass  # any cache-read problem -> rebuild from the authoritative CSVs
-    df = _concat_shard_frames([pd.read_csv(str(p), low_memory=False)
-                               for p in paths])
-    df = _categorize_metadata(df)
-    df = _normalize_dataset_dtypes(shard_dir.name + ".csv", df)
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        df.to_parquet(cache_file, index=False)
-        sig_file.write_text(sig)
-    except Exception:
-        pass  # caching is best-effort; never fail the load on a write error
-    return df
+        # Caching is optional: inaccessible/corrupt artifacts or failed writes
+        # must never prevent reading the caller-owned source. Discard any
+        # partial build and run normal parsing/validation again on that source.
+        frame = None
+    frame = _concat_shard_frames([
+        pd.read_csv(str(path), low_memory=False) for path in paths
+    ])
+    return _normalize_dataset_dtypes(shard_dir.name + ".csv", _categorize_metadata(frame))
 
 
 def load_all_dataframes():
@@ -329,7 +346,7 @@ def dataset_paths(*, bundled_only: bool = False) -> Mapping[str, Path]:
         active_paths = set(paths.values())
         for key in list(_CACHED_DATAFRAMES):
             if isinstance(key, Path) and key not in active_paths:
-                del _CACHED_DATAFRAMES[key]
+                _CACHED_DATAFRAMES.pop(key, None)
     return result
 
 
@@ -391,7 +408,8 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     delegated_name = normalized_name.removesuffix(".csv")
     if _dataframes_dict is None and delegated_name in _ONCOREF_DATASETS:
         cache_key = f"{delegated_name}.csv"
-        if cache_key not in _CACHED_DATAFRAMES:
+        cached = _CACHED_DATAFRAMES.get(cache_key)
+        if cached is None:
             if delegated_name == "cohort-registry":
                 import oncoref
 
@@ -419,7 +437,7 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                 # delegates all filtering and evidence semantics upstream.
                 delegated = delegated.drop(columns="evidence_id").copy()
             _CACHED_DATAFRAMES[cache_key] = delegated
-        cached = _CACHED_DATAFRAMES[cache_key]
+            cached = delegated
         return cached.copy() if copy else cached
 
     # The empirical cancer-reference-expression rows are owned by oncoref. Keep
@@ -433,14 +451,15 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
         "cancer-reference-expression", "cancer-reference-expression.csv"
     ):
         cache_key = "cancer-reference-expression.csv"
-        if cache_key not in _CACHED_DATAFRAMES:
+        cached = _CACHED_DATAFRAMES.get(cache_key)
+        if cached is None:
             from oncoref.load_dataset import get_data as get_oncoref_data
 
             delegated = get_oncoref_data(
                 "cancer-reference-expression", copy=False
             )
             _CACHED_DATAFRAMES[cache_key] = delegated
-        cached = _CACHED_DATAFRAMES[cache_key]
+            cached = delegated
         return cached.copy() if copy else cached
 
     # The cancer-type registry is owned by oncoref (the empirical base layer);
@@ -528,7 +547,8 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
         for candidate in candidates:
             if candidate in paths:
                 resolved = paths[candidate]
-                if resolved not in _CACHED_DATAFRAMES:
+                cached = _CACHED_DATAFRAMES.get(resolved)
+                if cached is None:
                     if resolved.is_dir():
                         loaded = _load_shard_directory(resolved)
                     else:
@@ -537,7 +557,7 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                             pd.read_csv(str(resolved), low_memory=False),
                         )
                     _CACHED_DATAFRAMES[resolved] = loaded
-                cached = _CACHED_DATAFRAMES[resolved]
+                    cached = loaded
                 return cached.copy() if copy else cached
         raise ValueError(f"Dataset {name} not found")
 

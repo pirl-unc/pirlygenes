@@ -48,6 +48,7 @@ variable for offline / shared-cache setups.
 Public API:
 
   cache_dir()      → version-pinned cache Path
+  data_dir()       → canonical active bundle or legacy data Path
   is_local()       → bool: every downloadable path present?
   fetch()          → download + extract from the GitHub Release
   ensure_local()   → extracted data directory; fetch if missing
@@ -117,8 +118,12 @@ def _archive_store(root: Path) -> Path:
 
 
 def data_dir(root: Path | None = None) -> Path:
-    """Resolve one immutable DataCache bundle, or the legacy cache directory."""
-    root = cache_dir() if root is None else root
+    """Return the canonical active bundle or legacy directory, without fetching.
+
+    Absolute, resolved paths give callers a stable cache identity even when an
+    environment override is relative or a legacy directory is reached by a link.
+    """
+    root = (cache_dir() if root is None else root).resolve()
     state = datacache.inspect_archive(
         _archive_store(root), RELEASE_URL, verify_files=False,
     )
