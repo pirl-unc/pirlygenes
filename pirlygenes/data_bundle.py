@@ -48,6 +48,7 @@ variable for offline / shared-cache setups.
 Public API:
 
   cache_dir()      → version-pinned cache Path
+  data_dir()       → canonical active bundle or legacy data Path
   is_local()       → bool: every downloadable path present?
   fetch()          → download + extract from the GitHub Release
   ensure_local()   → extracted data directory; fetch if missing
@@ -116,9 +117,13 @@ def _archive_store(root: Path) -> Path:
     return (root / ".datacache-archive").resolve()
 
 
-def _data_dir(root: Path | None = None) -> Path:
-    """Resolve one immutable DataCache bundle, or the legacy cache directory."""
-    root = cache_dir() if root is None else root
+def data_dir(root: Path | None = None) -> Path:
+    """Return the canonical active bundle or legacy directory, without fetching.
+
+    Absolute, resolved paths give callers a stable cache identity even when an
+    environment override is relative or a legacy directory is reached by a link.
+    """
+    root = (cache_dir() if root is None else root).resolve()
     state = datacache.inspect_archive(
         _archive_store(root), RELEASE_URL, verify_files=False,
     )
@@ -149,12 +154,12 @@ def _is_complete(root: Path) -> bool:
 
 def is_local() -> bool:
     """Every downloadable path exists in the active managed or legacy bundle."""
-    return _is_complete(_data_dir())
+    return _is_complete(data_dir())
 
 
 def find(relative_path: str) -> Path | None:
     """Resolve a cached member without downloading or modifying the cache."""
-    candidate = _data_dir() / relative_path
+    candidate = data_dir() / relative_path
     return candidate if candidate.exists() else None
 
 
@@ -193,7 +198,7 @@ def ensure_local(*, auto_fetch: bool = True, verbose: bool = True) -> Path:
     ``auto_fetch=False`` is read-only and raises when data are missing.
     """
     if is_local():
-        return _data_dir()
+        return data_dir()
     if not auto_fetch:
         raise FileNotFoundError(
             f"pirlygenes data bundle not found at {cache_dir()}. "
@@ -204,7 +209,7 @@ def ensure_local(*, auto_fetch: bool = True, verbose: bool = True) -> Path:
 
 def status() -> dict:
     """Snapshot of cache state — used by ``pirlygenes data status``."""
-    root = _data_dir()
+    root = data_dir()
     items: dict[str, dict] = {}
     for p in DOWNLOADABLE_PATHS:
         path = root / p
@@ -354,6 +359,7 @@ __all__ = [
     "DOWNLOADABLE_PATHS",
     "cache_root",
     "cache_dir",
+    "data_dir",
     "is_local",
     "find",
     "fetch",

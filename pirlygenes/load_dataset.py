@@ -17,7 +17,7 @@ For pirlygenes-owned datasets, two data roots are checked in order:
   1. ``_BUNDLED_DATA_DIR`` — files shipped in the wheel (small panels,
      registries) AND files present in a git-checkout's
      ``pirlygenes/data/`` (the dev workflow keeps everything here).
-  2. ``_DOWNLOADED_DATA_DIR`` — the cache populated by
+  2. ``data_bundle.data_dir()`` — the cache populated by
      :mod:`pirlygenes.data_bundle` (large per-cohort summaries fetched
      from the GitHub Release matching the installed version).
 
@@ -31,16 +31,18 @@ missing from both roots, :func:`pirlygenes.data_bundle.ensure_local`
 triggers a one-time download from the GitHub Release.
 """
 
+from collections.abc import Mapping
+from hashlib import sha256
 from pathlib import Path
+from types import MappingProxyType
 
+import datacache
 import pandas as pd
 
 from . import data_bundle
 
 _BUNDLED_DATA_DIR = Path(__file__).parent / "data"
-_DOWNLOADED_DATA_DIR = data_bundle.cache_dir()
-_DATASET_PATHS = None
-_BUNDLED_DATASET_PATHS = None
+_DATASET_PATHS = {}
 _CACHED_DATAFRAMES = {}
 
 # Base-layer normalization/gene-family datasets owned by oncoref. Keep their
@@ -76,40 +78,17 @@ _PIRLYGENES_AGGREGATE_CODES = frozenset({
     "SARC_RMS",
 })
 
-# Back-compat alias — many call sites still import _DATA_DIR.
-_DATA_DIR = _BUNDLED_DATA_DIR
 
+def data_roots(*, bundled_only: bool = False) -> tuple[Path, ...]:
+    """Return active data directories in precedence order, without downloading.
 
-def _data_roots() -> list[Path]:
-    """Roots checked when resolving a data file, in priority order."""
-    return [_BUNDLED_DATA_DIR, data_bundle._data_dir(_DOWNLOADED_DATA_DIR)]
-
-
-def _ensure_downloadable(name: str) -> None:
-    """If ``name`` (a file or dir basename) maps to a downloadable
-    bundle item missing from BOTH the bundled checkout AND the cache,
-    fetch it. No-op when the file/dir exists in either location.
-
-    Why we check the bundled path first: in a git-dev checkout the
-    full data is sitting at ``pirlygenes/data/<name>/`` already and
-    triggering a fetch from the GitHub Release that doesn't exist yet
-    (when version bumps before release-creation) breaks test.sh."""
-    stem_with_csv = name if name.endswith(".csv") else f"{name}.csv"
-    stem = name.removesuffix(".csv").removesuffix(".gz")
-    candidates = {name, stem, stem_with_csv, stem_with_csv.removesuffix(".csv")}
-    for cand in candidates:
-        if not data_bundle.is_downloadable(cand):
-            continue
-        # Bundled-checkout fast path: dev pip-installed --editable
-        # or in-repo work has the file at pirlygenes/data/<cand>.
-        if (_BUNDLED_DATA_DIR / cand).exists():
-            return
-        # Already cached — fast path hot.
-        if data_bundle.find(cand) is not None:
-            return
-        # Neither bundled nor cached → fetch from this version's release.
-        data_bundle.ensure_local()
-        return
+    Bundled files take precedence. ``bundled_only=True`` never inspects the
+    optional download cache. Otherwise, the second root follows DataCache's
+    currently published immutable bundle, including refreshes by other processes.
+    """
+    if bundled_only:
+        return (_BUNDLED_DATA_DIR,)
+    return (_BUNDLED_DATA_DIR, data_bundle.data_dir())
 
 
 def _shard_directories(*, roots=None) -> list[Path]:
@@ -124,7 +103,7 @@ def _shard_directories(*, roots=None) -> list[Path]:
     sharded per ``source_cohort``.
     """
     seen: dict[str, Path] = {}
-    for root in _data_roots() if roots is None else roots:
+    for root in data_roots() if roots is None else roots:
         if not root.exists():
             continue
         for child in sorted(root.iterdir()):
@@ -144,13 +123,13 @@ def get_all_csv_paths(*, roots=None) -> list:
     """Paths to every top-level CSV file across both data roots.
 
     Picks up both plain ``.csv`` and gzipped ``.csv.gz`` files. Sharded
-    datasets (see :func:`_shard_directories`) are not enumerated here —
+    datasets (see :func:`dataset_paths`) are not enumerated here —
     they are loaded as a single logical CSV by :func:`get_data`.
 
     On name conflicts, the bundled root wins over the downloaded root.
     """
     seen: dict[str, Path] = {}
-    for root in _data_roots() if roots is None else roots:
+    for root in data_roots() if roots is None else roots:
         if not root.exists():
             continue
         for p in sorted(list(root.glob("*.csv")) + list(root.glob("*.csv.gz"))):
@@ -189,7 +168,7 @@ _DATASET_STRING_ID_COLS = {
 
 # Bump when the cached dtype scheme changes so stale object-dtype parquets in an
 # existing ``~/.cache/pirlygenes/shard_cache/`` rebuild instead of being reused.
-_SHARD_CACHE_FORMAT = 3
+_SHARD_CACHE_FORMAT = 4
 
 
 def _categorize_metadata(df: pd.DataFrame) -> pd.DataFrame:
@@ -236,44 +215,59 @@ def _concat_shard_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
 
 
 def _load_shard_directory(shard_dir: Path) -> pd.DataFrame:
-    """Concatenate every ``*.csv[.gz]`` shard in a sharded dataset directory.
+    """Read CSV shards, reusing a transactional DataCache-derived Parquet.
 
-    Parsing ~70 gzipped CSVs into a multi-million-row frame is the slowest single
-    step in the test suite, and a fresh process repeats it every run. So we keep a
-    best-effort **parquet cache** of the concatenated frame in
-    ``~/.cache/pirlygenes/shard_cache/``, keyed on a signature of the shard
-    files (count + total size + newest mtime) and the cache format. A subsequent
-    run reads one parquet (~7-10x faster) instead of re-parsing every gzip; the
-    cache auto-invalidates when any shard changes, and any cache error silently
-    falls back to the CSVs. Low-cardinality provenance columns are stored as
-    ``category`` (see :data:`_LOW_CARDINALITY_METADATA_COLS`).
+    Every shard's name, size, mtime and ctime participates in the derivation
+    identity, along with its immutable bundle directory and the schema version.
+    DataCache copies the sources, serializes writers and publishes all output
+    bytes atomically. Different installations/edits cannot share output files.
+    Cache hits verify the derived artifact; any cache failure falls back to the
+    authoritative CSVs without modifying caller-owned files.
     """
     paths = _shard_paths(shard_dir)
     if not paths:
         raise FileNotFoundError(f"no CSV shards found under {shard_dir}")
-    sig = repr((_SHARD_CACHE_FORMAT, len(paths),
-                sum(p.stat().st_size for p in paths),
-                max(p.stat().st_mtime_ns for p in paths)))
-    cache_dir = Path.home() / ".cache" / "pirlygenes" / "shard_cache"
-    cache_file = cache_dir / f"{shard_dir.name}.parquet"
-    sig_file = cache_dir / f"{shard_dir.name}.sig"
+    frame = None
+
+    def build(source_paths, output_paths):
+        nonlocal frame
+        frame = _concat_shard_frames([
+            pd.read_csv(source_paths[p.name], low_memory=False) for p in paths
+        ])
+        frame = _categorize_metadata(frame)
+        frame = _normalize_dataset_dtypes(shard_dir.name + ".csv", frame)
+        frame.to_parquet(output_paths["data.parquet"], index=False)
+
     try:
-        if (cache_file.exists() and sig_file.exists()
-                and sig_file.read_text() == sig):
-            return _categorize_metadata(pd.read_parquet(cache_file))
+        records = []
+        for path in paths:
+            info = path.stat()
+            records.append((path.name, info.st_size, info.st_mtime_ns, info.st_ctime_ns))
+        signature = repr((_SHARD_CACHE_FORMAT, str(shard_dir.resolve()), records))
+        identity = sha256(signature.encode()).hexdigest()
+        cache_dir = Path.home() / ".cache" / "pirlygenes" / "shard_cache"
+        artifacts = datacache.materialize(
+            cache_dir / f"{shard_dir.name}-{identity}",
+            {p.name: {"path": p} for p in paths},
+            transform={"version": str(_SHARD_CACHE_FORMAT), "options": signature},
+            outputs={"data.parquet": {}},
+            builder=build,
+            download_options={"show_progress": False},
+        )
+        if frame is None:
+            frame = _normalize_dataset_dtypes(
+                shard_dir.name + ".csv", pd.read_parquet(artifacts["data.parquet"]),
+            )
+        return _categorize_metadata(frame)
     except Exception:
-        pass  # any cache-read problem -> rebuild from the authoritative CSVs
-    df = _concat_shard_frames([pd.read_csv(str(p), low_memory=False)
-                               for p in paths])
-    df = _categorize_metadata(df)
-    df = _normalize_dataset_dtypes(shard_dir.name + ".csv", df)
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        df.to_parquet(cache_file, index=False)
-        sig_file.write_text(sig)
-    except Exception:
-        pass  # caching is best-effort; never fail the load on a write error
-    return df
+        # Caching is optional: inaccessible/corrupt artifacts or failed writes
+        # must never prevent reading the caller-owned source. Discard any
+        # partial build and run normal parsing/validation again on that source.
+        frame = None
+    frame = _concat_shard_frames([
+        pd.read_csv(str(path), low_memory=False) for path in paths
+    ])
+    return _normalize_dataset_dtypes(shard_dir.name + ".csv", _categorize_metadata(frame))
 
 
 def load_all_dataframes():
@@ -287,68 +281,73 @@ def load_all_dataframes():
     Triggers a one-time download of any heavy data-bundle item that is missing
     from both the checkout/wheel data directory and the local cache.
     """
-    for path in data_bundle.DOWNLOADABLE_PATHS:
-        _ensure_downloadable(path)
-    _invalidate_dataset_paths()
-    for csv_path in get_all_csv_paths():
-        csv_key = csv_path.name.removesuffix(".gz")
-        df = pd.read_csv(str(csv_path), low_memory=False)
-        df = _normalize_dataset_dtypes(csv_key, df)
-        yield csv_key, df
-    # Preserve the generic enumeration surface for datasets whose physical
-    # copies moved to oncoref. They are not present in get_all_csv_paths(), but
-    # callers of load_all_dataframes_dict() still see the historical keys.
-    for dataset in sorted(_ONCOREF_DATASETS):
-        yield f"{dataset}.csv", get_data(dataset)
-    # Runtime ownership of the empirical summary rows moved to oncoref (#557).
-    # Yield the delegated frame exactly once even in a wheel install, where the
-    # legacy pirlygenes shard directory is intentionally absent.
-    yield "cancer-reference-expression.csv", get_data(
-        "cancer-reference-expression"
-    )
-    for shard_dir in _shard_directories():
-        if shard_dir.name == "cancer-reference-expression":
-            continue
-        yield f"{shard_dir.name}.csv", _load_shard_directory(shard_dir)
+    for name in data_bundle.DOWNLOADABLE_PATHS:
+        if not any((root / name).exists() for root in data_roots()):
+            data_bundle.ensure_local()
+    # Also discover files added in-place to a development checkout.
+    clear_dataset_cache()
+    names = {path.name.removesuffix(".gz") for path in dataset_paths().values()}
+    names.update(f"{name}.csv" for name in _ONCOREF_DATASETS)
+    names.add("cancer-reference-expression.csv")
+    for name in sorted(names):
+        yield name if name.endswith(".csv") else f"{name}.csv", get_data(
+            name.removesuffix(".csv")
+        )
 
 
 def load_all_dataframes_dict():
+    """Return all logical datasets as a dictionary of CSV names to frames."""
+    return dict(load_all_dataframes())
+
+
+def clear_dataset_cache() -> None:
+    """Clear discovered paths and loaded frames, without modifying disk data.
+
+    Call this after editing bundled or legacy files in place. Managed bundle
+    refreshes are detected automatically and do not require an explicit reset.
     """
-    Dictionary of csv_file -> df for all CSV files in the data directory
+    _DATASET_PATHS.clear()
+    _CACHED_DATAFRAMES.clear()
+
+
+def dataset_paths(*, bundled_only: bool = False) -> Mapping[str, Path]:
+    """Map accepted dataset names to CSV files or shard directories.
+
+    Includes stems, ``.csv`` names and lowercase aliases; bundled data wins
+    name conflicts. The returned mapping is read-only. Discovery never fetches
+    data and is cached separately for bundled-only and combined lookups, keyed
+    by their active directories so a newly published bundle is seen immediately.
+    See :func:`clear_dataset_cache` for files edited in place.
     """
-    return {csv_file: df for csv_file, df in load_all_dataframes()}
+    roots = data_roots(bundled_only=bundled_only)
+    cached = _DATASET_PATHS.get(bundled_only)
+    if cached is not None and cached[0] == roots:
+        return cached[1]
 
-
-def _invalidate_dataset_paths() -> None:
-    global _DATASET_PATHS, _BUNDLED_DATASET_PATHS
-    _DATASET_PATHS = None
-    _BUNDLED_DATASET_PATHS = None
-
-
-def _dataset_paths(*, bundled_only=False):
-    """Map accepted dataset names to their on-disk CSV path or shard dir."""
-    global _DATASET_PATHS, _BUNDLED_DATASET_PATHS
-    cached = _BUNDLED_DATASET_PATHS if bundled_only else _DATASET_PATHS
+    paths: dict[str, Path] = (
+        {} if bundled_only else dict(dataset_paths(bundled_only=True))
+    )
+    for root in roots if bundled_only else roots[1:]:
+        for csv_path in get_all_csv_paths(roots=[root]):
+            csv_key = csv_path.name.removesuffix(".gz")
+            stem_key = csv_key.removesuffix(".csv")
+            for key in {csv_key, csv_key.lower(), stem_key, stem_key.lower()}:
+                paths.setdefault(key, csv_path)
+        for shard_dir in _shard_directories(roots=[root]):
+            stem_key = shard_dir.name
+            csv_key = stem_key + ".csv"
+            for key in {csv_key, csv_key.lower(), stem_key, stem_key.lower()}:
+                paths.setdefault(key, shard_dir)
+    result = MappingProxyType(paths)
+    _DATASET_PATHS[bundled_only] = (roots, result)
     if cached is not None:
-        return cached
-
-    options = {"roots": [_BUNDLED_DATA_DIR]} if bundled_only else {}
-    paths: dict[str, Path] = {}
-    for csv_path in get_all_csv_paths(**options):
-        csv_key = csv_path.name.removesuffix(".gz")
-        stem_key = csv_key.removesuffix(".csv")
-        for key in {csv_key, csv_key.lower(), stem_key, stem_key.lower()}:
-            paths[key] = csv_path
-    for shard_dir in _shard_directories(**options):
-        stem_key = shard_dir.name
-        csv_key = stem_key + ".csv"
-        for key in {csv_key, csv_key.lower(), stem_key, stem_key.lower()}:
-            paths[key] = shard_dir
-    if bundled_only:
-        _BUNDLED_DATASET_PATHS = paths
-    else:
-        _DATASET_PATHS = paths
-    return paths
+        # Release frames from obsolete immutable installations. Delegated
+        # oncoref frames use string keys and have their own ownership lifecycle.
+        active_paths = set(paths.values())
+        for key in list(_CACHED_DATAFRAMES):
+            if isinstance(key, Path) and key not in active_paths:
+                _CACHED_DATAFRAMES.pop(key, None)
+    return result
 
 
 def _reconcile_reference_expression_samples(
@@ -409,7 +408,8 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
     delegated_name = normalized_name.removesuffix(".csv")
     if _dataframes_dict is None and delegated_name in _ONCOREF_DATASETS:
         cache_key = f"{delegated_name}.csv"
-        if cache_key not in _CACHED_DATAFRAMES:
+        cached = _CACHED_DATAFRAMES.get(cache_key)
+        if cached is None:
             if delegated_name == "cohort-registry":
                 import oncoref
 
@@ -437,7 +437,7 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
                 # delegates all filtering and evidence semantics upstream.
                 delegated = delegated.drop(columns="evidence_id").copy()
             _CACHED_DATAFRAMES[cache_key] = delegated
-        cached = _CACHED_DATAFRAMES[cache_key]
+            cached = delegated
         return cached.copy() if copy else cached
 
     # The empirical cancer-reference-expression rows are owned by oncoref. Keep
@@ -451,14 +451,15 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
         "cancer-reference-expression", "cancer-reference-expression.csv"
     ):
         cache_key = "cancer-reference-expression.csv"
-        if cache_key not in _CACHED_DATAFRAMES:
+        cached = _CACHED_DATAFRAMES.get(cache_key)
+        if cached is None:
             from oncoref.load_dataset import get_data as get_oncoref_data
 
             delegated = get_oncoref_data(
                 "cancer-reference-expression", copy=False
             )
             _CACHED_DATAFRAMES[cache_key] = delegated
-        cached = _CACHED_DATAFRAMES[cache_key]
+            cached = delegated
         return cached.copy() if copy else cached
 
     # The cancer-type registry is owned by oncoref (the empirical base layer);
@@ -533,50 +534,30 @@ def get_data(name, _dataframes_dict=None, *, copy=True):
         candidates.append(candidate + ".csv")
 
     if _dataframes_dict is None:
-        # Trigger download for downloadable items before resolving paths,
-        # so the _dataset_paths cache sees the newly-extracted files.
-        # A broken optional download cache must not prevent reading data
-        # shipped with the package, including sharded and compressed CSVs.
-        paths = _dataset_paths(bundled_only=True)
+        paths = dataset_paths(bundled_only=True)
         if not any(c in paths for c in candidates):
-            _ensure_downloadable(name)
-            paths = _dataset_paths()
-
-        # If the lookup misses but the requested name is a downloadable
-        # item, force a path-cache rebuild after the fetch and retry once.
-        # Check downloadability against the *candidate* set (incl. the ".csv"
-        # form), not the bare ``name``: downloadables registered with a ".csv"
-        # suffix (pan-cancer-expression.csv, hpa-cell-type-expression.csv) are
-        # requested by the bare stem, so ``is_downloadable(name)`` alone missed
-        # them — leaving the pre-fetch _dataset_paths cache stale and raising a
-        # spurious "not found" on a clean install right after the bundle fetched.
-        miss = not any(c in paths for c in candidates)
-        if miss and any(data_bundle.is_downloadable(c) for c in candidates):
+            paths = dataset_paths()
+        if (not any(c in paths for c in candidates)
+                and any(data_bundle.is_downloadable(c) for c in candidates)):
             data_bundle.ensure_local()
-            _invalidate_dataset_paths()
-            paths = _dataset_paths()
+            # Legacy installers may add files in-place without changing roots.
+            clear_dataset_cache()
+            paths = dataset_paths()
 
         for candidate in candidates:
             if candidate in paths:
                 resolved = paths[candidate]
-                if resolved.is_dir():
-                    cache_key = resolved.name + ".csv"
-                    if cache_key not in _CACHED_DATAFRAMES:
-                        _CACHED_DATAFRAMES[cache_key] = _load_shard_directory(resolved)
-                else:
-                    cache_key = resolved.name.removesuffix(".gz")
-                    if cache_key not in _CACHED_DATAFRAMES:
+                cached = _CACHED_DATAFRAMES.get(resolved)
+                if cached is None:
+                    if resolved.is_dir():
+                        loaded = _load_shard_directory(resolved)
+                    else:
                         loaded = _normalize_dataset_dtypes(
-                            cache_key,
-                            pd.read_csv(
-                                str(resolved), low_memory=False,
-                            ),
+                            resolved.name.removesuffix(".gz"),
+                            pd.read_csv(str(resolved), low_memory=False),
                         )
-                        _CACHED_DATAFRAMES[cache_key] = loaded
-                # Return a copy so callers that mutate in place (e.g. df["c"]=...,
-                # df.fillna(0, inplace=True)) can't corrupt the shared cache.
-                # copy=False skips this for read-only callers (#278).
-                cached = _CACHED_DATAFRAMES[cache_key]
+                    _CACHED_DATAFRAMES[resolved] = loaded
+                    cached = loaded
                 return cached.copy() if copy else cached
         raise ValueError(f"Dataset {name} not found")
 

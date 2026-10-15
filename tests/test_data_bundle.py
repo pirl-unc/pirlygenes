@@ -55,6 +55,15 @@ def cache(tmp_path, monkeypatch):
     return root
 
 
+@pytest.fixture(autouse=True)
+def clear_loader_cache():
+    from pirlygenes import clear_dataset_cache
+
+    clear_dataset_cache()
+    yield
+    clear_dataset_cache()
+
+
 def _record_transfers(monkeypatch):
     calls = []
     original = download.fetch_file
@@ -322,14 +331,11 @@ def test_loader_resolves_bundle_published_after_path_cache_was_primed(cache, tmp
     bundled = tmp_path / "wheel-data"
     bundled.mkdir()
     monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
-    monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
-    monkeypatch.setattr(ld, "_DATASET_PATHS", None)
-    monkeypatch.setattr(ld, "_BUNDLED_DATASET_PATHS", None)
-    monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
-    assert "pan-cancer-expression.csv" not in ld._dataset_paths()
+    ld.clear_dataset_cache()
+    assert "pan-cancer-expression.csv" not in ld.dataset_paths()
     frame = ld.get_data("pan-cancer-expression")
     assert frame.to_dict("list") == {"gene": ["fixture"], "value": [1]}
-    assert ld._dataset_paths()["pan-cancer-expression.csv"] == data_bundle.find("pan-cancer-expression.csv")
+    assert ld.dataset_paths()["pan-cancer-expression.csv"] == data_bundle.find("pan-cancer-expression.csv")
 
 
 def test_expression_accessor_uses_returned_bundle_directory(cache, tmp_path, monkeypatch):
@@ -356,7 +362,7 @@ def test_bundled_data_survives_broken_download_cache(
     else:
         def inaccessible(*args, **kwargs):
             raise PermissionError("download cache inaccessible")
-        monkeypatch.setattr(data_bundle, "_data_dir", inaccessible)
+        monkeypatch.setattr(data_bundle, "data_dir", inaccessible)
         expected_error = PermissionError
     bundled = tmp_path / "wheel-data"
     bundled.mkdir()
@@ -371,10 +377,7 @@ def test_bundled_data_survives_broken_download_cache(
     else:
         (bundled / "curated.csv").write_bytes(content)
     monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
-    monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
-    monkeypatch.setattr(ld, "_DATASET_PATHS", None)
-    monkeypatch.setattr(ld, "_BUNDLED_DATASET_PATHS", None)
-    monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
+    ld.clear_dataset_cache()
     for name in ("curated", "Curated.csv"):
         assert ld.get_data(name).to_dict("list") == {"gene": ["PRAME"], "value": [1]}
     # A request that actually needs the damaged cache still reports the error.
@@ -397,13 +400,10 @@ def test_warm_bundled_reads_avoid_scans_and_invalidation_refreshes_both_roots(
     else:
         (bundled / "curated.csv").write_text(content)
     monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
-    monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
-    monkeypatch.setattr(ld, "_DATASET_PATHS", None)
-    monkeypatch.setattr(ld, "_BUNDLED_DATASET_PATHS", None)
-    monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", {})
+    ld.clear_dataset_cache()
 
     frame = ld.get_data("curated", copy=False)
-    assert "curated" in ld._dataset_paths()
+    assert "curated" in ld.dataset_paths()
 
     def unexpected_scan(*args, **kwargs):
         pytest.fail("a cached dataset lookup should not rescan directories")
@@ -418,14 +418,254 @@ def test_warm_bundled_reads_avoid_scans_and_invalidation_refreshes_both_roots(
     (bundled / "added.csv").write_text(content)
     cache.mkdir()
     (cache / "downloaded.csv").write_text(content)
-    assert "added" not in ld._dataset_paths(bundled_only=True)
-    assert "downloaded" not in ld._dataset_paths()
-    ld._invalidate_dataset_paths()
-    bundled_paths = ld._dataset_paths(bundled_only=True)
-    all_paths = ld._dataset_paths()
+    assert "added" not in ld.dataset_paths(bundled_only=True)
+    assert "downloaded" not in ld.dataset_paths()
+    ld.clear_dataset_cache()
+    bundled_paths = ld.dataset_paths(bundled_only=True)
+    all_paths = ld.dataset_paths()
     assert bundled_paths["added"] == bundled / "added.csv"
     assert "downloaded" not in bundled_paths
     assert all_paths["added"] == bundled / "added.csv"
     assert all_paths["downloaded"] == cache / "downloaded.csv"
     assert ld.get_data("added").equals(frame)
     assert ld.get_data("downloaded").equals(frame)
+
+
+@pytest.mark.parametrize("warm_frame", [False, True])
+@pytest.mark.parametrize("remove_old", [False, True])
+def test_dataset_reads_follow_refreshed_bundle(cache, tmp_path, monkeypatch, warm_frame, remove_old):
+    from pirlygenes import dataset_paths, get_data
+    from pirlygenes import load_dataset as ld
+
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", tmp_path / "wheel-data")
+    old_bundle = data_bundle.ensure_local(verbose=False)
+    old_path = dataset_paths()["pan-cancer-expression"]
+    assert old_path.parent == old_bundle
+    if warm_frame:
+        assert get_data("pan-cancer-expression", copy=False)["value"].tolist() == [1]
+    if remove_old:
+        old_path.unlink()
+    replacement = dict(FILES, **{"pan-cancer-expression.csv": b"gene,value\nfixture,9\n"})
+    _archive(tmp_path / "release.tar.gz", replacement)
+    new_bundle = data_bundle.fetch(verbose=False)
+    assert new_bundle != old_bundle
+    assert dataset_paths()["pan-cancer-expression"] == new_bundle / old_path.name
+    assert get_data("pan-cancer-expression", copy=False)["value"].tolist() == [9]
+
+
+def test_dataset_reads_follow_external_bundle_publication(cache, tmp_path, monkeypatch):
+    from pirlygenes import dataset_paths, get_data
+    from pirlygenes import load_dataset as ld
+
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", tmp_path / "wheel-data")
+    old_bundle = data_bundle.ensure_local(verbose=False)
+    assert get_data("pan-cancer-expression", copy=False)["value"].tolist() == [1]
+    _archive(tmp_path / "release.tar.gz", dict(
+        FILES, **{"pan-cancer-expression.csv": b"gene,value\nfixture,7\n"},
+    ))
+    # Publish directly through DataCache, bypassing PirlyGenes' fetch lifecycle,
+    # as another process would. No loader cache-reset callback can run here.
+    new_bundle = datacache.install_archive(
+        cache / ".datacache-archive", data_bundle.RELEASE_URL,
+        force=True, verified=False,
+    )
+    assert new_bundle != old_bundle
+    assert dataset_paths()["pan-cancer-expression"].parent == new_bundle
+    assert get_data("pan-cancer-expression")["value"].tolist() == [7]
+
+
+def test_public_dataset_paths_are_read_only_and_bundled_aliases_win(cache, tmp_path, monkeypatch):
+    from pirlygenes import clear_dataset_cache, data_roots, dataset_paths, get_data
+    from pirlygenes import load_dataset as ld
+
+    bundled = tmp_path / "wheel-data"
+    bundled.mkdir()
+    (bundled / "Curated.csv").write_text("value\n1\n")
+    _write_cache(cache, {"curated/part.csv": b"value\n2\n"})
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
+    assert data_roots() == (bundled, cache)
+    paths = dataset_paths()
+    assert paths["curated"] == bundled / "Curated.csv"
+    with pytest.raises(TypeError):
+        paths["curated"] = cache / "curated"
+    assert get_data("curated")["value"].tolist() == [1]
+    (bundled / "Curated.csv").write_text("value\n3\n")
+    clear_dataset_cache()
+    assert get_data("curated")["value"].tolist() == [3]
+
+
+def test_refreshed_shards_do_not_reuse_previous_bundle_parquet(cache, tmp_path, monkeypatch):
+    from pirlygenes import get_data
+    from pirlygenes import load_dataset as ld
+
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", tmp_path / "wheel-data")
+    monkeypatch.setattr(ld.Path, "home", lambda: tmp_path / "home")
+    for value in (1, 9):
+        _archive(tmp_path / "release.tar.gz", dict(
+            FILES, **{"sharded/part.csv": f"gene,value\nfixture,{value}\n".encode()},
+        ))
+        bundle = data_bundle.fetch(verbose=False)
+        # Same shard count, size and mtime across installations: only the
+        # immutable directory identity distinguishes the disk-cache entries.
+        os.utime(bundle / "sharded/part.csv", ns=(1_000_000_000, 1_000_000_000))
+        assert get_data("sharded")["value"].tolist() == [value]
+        assert list((tmp_path / "home/.cache/pirlygenes/shard_cache").rglob("data.parquet"))
+
+
+def test_warm_downloaded_reads_reuse_discovered_paths(cache, tmp_path, monkeypatch):
+    from pirlygenes import get_data
+    from pirlygenes import load_dataset as ld
+
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", tmp_path / "wheel-data")
+    frame = get_data("pan-cancer-expression", copy=False)
+
+    def unexpected_scan(*args, **kwargs):
+        pytest.fail("warm downloaded lookups must not rescan directories")
+
+    monkeypatch.setattr(ld, "get_all_csv_paths", unexpected_scan)
+    assert get_data("pan-cancer-expression", copy=False) is frame
+    assert get_data("Pan-Cancer-Expression.csv").equals(frame)
+
+
+def test_clear_dataset_cache_observes_edits_to_any_shard(cache, tmp_path, monkeypatch):
+    from pirlygenes import clear_dataset_cache, get_data
+    from pirlygenes import load_dataset as ld
+
+    bundled = tmp_path / "wheel-data"
+    shards = bundled / "editable"
+    shards.mkdir(parents=True)
+    (shards / "a.csv").write_text("value\n1\n")
+    (shards / "b.csv").write_text("value\n2\n")
+    os.utime(shards / "a.csv", ns=(1_000_000_000, 1_000_000_000))
+    os.utime(shards / "b.csv", ns=(3_000_000_000, 3_000_000_000))
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
+    monkeypatch.setattr(ld.Path, "home", lambda: tmp_path / "home")
+    assert get_data("editable")["value"].tolist() == [1, 2]
+
+    (shards / "a.csv").write_text("value\n9\n")
+    os.utime(shards / "a.csv", ns=(2_000_000_000, 2_000_000_000))
+    clear_dataset_cache()
+    # The total size and newest mtime did not change, but a.csv did.
+    assert get_data("editable")["value"].tolist() == [9, 2]
+
+
+def test_shard_cache_publication_isolated_between_bundles(cache, tmp_path, monkeypatch):
+    import pandas as pd
+    from pirlygenes import clear_dataset_cache, get_data
+    from pirlygenes import load_dataset as ld
+
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", tmp_path / "wheel-data")
+    monkeypatch.setattr(ld.Path, "home", lambda: tmp_path / "home")
+    bundles = []
+    for value in (1, 9):
+        _archive(tmp_path / "release.tar.gz", dict(
+            FILES, **{"sharded/part.csv": f"value\n{value}\n".encode()},
+        ))
+        bundles.append(data_bundle.fetch(verbose=False))
+    old_bundle, new_bundle = bundles
+    active = [old_bundle]
+    monkeypatch.setattr(data_bundle, "data_dir", lambda: active[0])
+    to_parquet = pd.DataFrame.to_parquet
+    interleaved = []
+
+    def interleave_writers(frame, path, **kwargs):
+        to_parquet(frame, path, **kwargs)
+        if not interleaved:
+            interleaved.append(True)
+            active[0] = new_bundle
+            try:
+                assert get_data("sharded")["value"].tolist() == [9]
+            finally:
+                active[0] = old_bundle
+
+    monkeypatch.setattr(pd.DataFrame, "to_parquet", interleave_writers)
+    assert get_data("sharded")["value"].tolist() == [1]
+    clear_dataset_cache()
+    # An old in-flight reader and the new bundle reader must never pair one
+    # installation's data with the other installation's cache signature.
+    assert get_data("sharded")["value"].tolist() == [1]
+    active[0] = new_bundle
+    assert get_data("sharded")["value"].tolist() == [9]
+
+
+def test_inflight_dataset_read_survives_bundle_cache_eviction(cache, tmp_path, monkeypatch):
+    from pirlygenes import dataset_paths, get_data
+    from pirlygenes import load_dataset as ld
+
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", tmp_path / "wheel-data")
+    data_bundle.ensure_local(verbose=False)
+    old_path = dataset_paths()["pan-cancer-expression"]
+    _archive(tmp_path / "release.tar.gz", dict(
+        FILES, **{"pan-cancer-expression.csv": b"gene,value\nfixture,9\n"},
+    ))
+    refreshed = []
+
+    class InterleavedCache(dict):
+        def __setitem__(self, key, value):
+            super().__setitem__(key, value)
+            if key == old_path and not refreshed:
+                # Deterministically schedule a refresh and second reader after
+                # the first reader stores its frame but before it returns it.
+                refreshed.append(data_bundle.fetch(verbose=False))
+                assert get_data("pan-cancer-expression")["value"].tolist() == [9]
+
+    monkeypatch.setattr(ld, "_CACHED_DATAFRAMES", InterleavedCache())
+    assert get_data("pan-cancer-expression")["value"].tolist() == [1]
+    assert get_data("pan-cancer-expression")["value"].tolist() == [9]
+
+
+def test_shard_materialization_reused_after_in_memory_reset(cache, tmp_path, monkeypatch):
+    import pandas as pd
+    from pirlygenes import clear_dataset_cache, get_data
+    from pirlygenes import load_dataset as ld
+
+    shards = tmp_path / "wheel-data/curated"
+    shards.mkdir(parents=True)
+    (shards / "a.csv").write_text("value\n1\n")
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", shards.parent)
+    monkeypatch.setattr(ld.Path, "home", lambda: tmp_path / "home")
+    assert get_data("curated")["value"].tolist() == [1]
+    clear_dataset_cache()
+
+    def forbid_csv(*args, **kwargs):
+        pytest.fail("a verified Parquet cache hit must not reparse CSV inputs")
+
+    monkeypatch.setattr(pd, "read_csv", forbid_csv)
+    assert get_data("curated")["value"].tolist() == [1]
+
+
+@pytest.mark.parametrize("cache_failure", ["inaccessible", "corrupt"])
+def test_shard_cache_failure_falls_back_to_source(cache, tmp_path, monkeypatch, cache_failure):
+    from pirlygenes import clear_dataset_cache, get_data
+    from pirlygenes import load_dataset as ld
+
+    shards = tmp_path / "wheel-data/curated"
+    shards.mkdir(parents=True)
+    (shards / "a.csv").write_text("value\n1\n")
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", shards.parent)
+    monkeypatch.setattr(ld.Path, "home", lambda: tmp_path / "home")
+    assert get_data("curated")["value"].tolist() == [1]
+    clear_dataset_cache()
+    if cache_failure == "corrupt":
+        parquet = next((tmp_path / "home/.cache/pirlygenes/shard_cache").rglob("data.parquet"))
+        parquet.write_bytes(b"corrupt")
+    else:
+        def inaccessible(*args, **kwargs):
+            raise PermissionError("cache not writable")
+        monkeypatch.setattr(datacache, "materialize", inaccessible)
+    assert get_data("curated")["value"].tolist() == [1]
+
+
+def test_relative_legacy_cache_tracks_current_directory(cache, tmp_path, monkeypatch):
+    from pirlygenes import get_data
+    from pirlygenes import load_dataset as ld
+
+    monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", tmp_path / "wheel-data")
+    monkeypatch.setenv("PIRLYGENES_BUNDLED_DATA", "legacy")
+    for directory, value in (("first", 1), ("second", 9)):
+        root = tmp_path / directory
+        _write_cache(root / "legacy", dict(
+            FILES, **{"pan-cancer-expression.csv": f"gene,value\nfixture,{value}\n".encode()},
+        ))
+        monkeypatch.chdir(root)
+        assert get_data("pan-cancer-expression")["value"].tolist() == [value]
