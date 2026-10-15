@@ -118,7 +118,7 @@ dependencies = [
     # 1.8.208 adds annotation-scoped CTA source identities and uses verified
     # alternate/historical IDs in peptide exclusions and cache fingerprints.
     # Canonical CTA membership and expression/source data versions are unchanged.
-    "oncoref==1.8.208",
+    "oncoref==1.8.210",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-matrix / representative / percentile

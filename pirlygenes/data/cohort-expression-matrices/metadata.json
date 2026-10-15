@@ -1,12 +1,12 @@
 {
   "artifact_type": "pirlygenes.cohort-expression-matrices",
   "built_from": {
-    "data_version": "5.23.25",
+    "data_version": "5.23.26",
     "package": "oncoref",
-    "package_version": "1.8.204"
+    "package_version": "1.8.210"
   },
   "canonical_gene_ids": true,
-  "pirlygenes_data_version": "6.0.5",
+  "pirlygenes_data_version": "6.0.12",
   "schema_version": 1,
   "tables": {
     "clean_tpm": {
