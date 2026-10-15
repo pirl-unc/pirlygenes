@@ -144,7 +144,10 @@ from .gene_sets_cancer import (
     tme_marker_gene_names,
     tme_markers_df,
 )
-from .load_dataset import get_data, load_all_dataframes, load_all_dataframes_dict
+from .load_dataset import (
+    clear_dataset_cache, data_roots, dataset_paths, get_data,
+    load_all_dataframes, load_all_dataframes_dict,
+)
 from .gene_canonicalization import (
     CANONICAL_ENSEMBL_RELEASE,
     CANONICAL_GENE_MAP_VERSION,
@@ -173,6 +176,9 @@ __all__ = [
     "load_all_dataframes",
     "load_all_dataframes_dict",
     "get_data",
+    "clear_dataset_cache",
+    "data_roots",
+    "dataset_paths",
     "CANONICAL_ENSEMBL_RELEASE",
     "CANONICAL_GENE_MAP_VERSION",
     "CANONICAL_PROTEOFORM_MAP_VERSION",

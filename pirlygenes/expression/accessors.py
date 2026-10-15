@@ -2952,12 +2952,10 @@ def _bundle_subdir(name: str):
     """Locate a bundle shard directory: an in-repo checkout (``pirlygenes/data/…``)
     wins, else the downloaded bundle cache; the bundle is fetched if the
     directory is absent from both."""
-    from pathlib import Path
-
     from .. import data_bundle
-    from ..load_dataset import _BUNDLED_DATA_DIR
+    from ..load_dataset import data_roots
 
-    in_repo = Path(_BUNDLED_DATA_DIR) / name
+    in_repo = data_roots(bundled_only=True)[0] / name
     if in_repo.exists():
         return in_repo
     cached = data_bundle.find(name)

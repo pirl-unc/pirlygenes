@@ -32,6 +32,8 @@ deconvolution, signature scoring) lives in
 
 ## Install
 
+Supported Python versions: 3.10–3.14.
+
 ```bash
 pip install pirlygenes
 ```
@@ -141,6 +143,22 @@ from pirlygenes.gene_families import (
     immune_receptor_segment_ids,   # IG/TR V/D/J/C segments
 )
 ```
+
+Dataset discovery has a public API shared by loaders and callers:
+
+```python
+from pirlygenes import clear_dataset_cache, data_roots, dataset_paths
+
+paths = dataset_paths()                 # read-only CSV/shard paths and aliases
+bundled = dataset_paths(bundled_only=True)  # no download-cache access
+roots = data_roots()                    # bundled directory, then active bundle
+clear_dataset_cache()                  # after editing local files in place
+```
+
+Managed bundle refreshes are detected automatically, including refreshes from
+another process. Subsequent reads use the new paths and frames; existing returned
+frames remain valid snapshots. Discovery does not download data. Datasets owned
+by oncoref are delegated by `get_data()` and may have no local path in this map.
 
 ### Expression matrices and transforms
 

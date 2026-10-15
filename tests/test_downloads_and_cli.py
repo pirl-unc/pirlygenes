@@ -447,7 +447,7 @@ def test_get_data_resolves_csv_downloadable_by_bare_name_after_fetch(monkeypatch
 
     Previously ``get_data``'s post-fetch path-cache rebuild guard checked
     ``is_downloadable(name)`` on the bare stem, which returned False for a
-    ``.csv``-suffixed downloadable. So the ``_dataset_paths`` cache (primed
+    ``.csv``-suffixed downloadable. So the ``dataset_paths`` cache (primed
     before the fetch) was never invalidated and the just-fetched file stayed
     invisible → ``ValueError: Dataset pan-cancer-expression not found`` on every
     fresh wheel install. See pirl-unc/trufflepig CI.
@@ -461,7 +461,6 @@ def test_get_data_resolves_csv_downloadable_by_bare_name_after_fetch(monkeypatch
     cache.mkdir()
 
     monkeypatch.setattr(ld, "_BUNDLED_DATA_DIR", bundled)
-    monkeypatch.setattr(ld, "_DOWNLOADED_DATA_DIR", cache)
     monkeypatch.setattr(data_bundle, "cache_dir", lambda: cache)
 
     def fake_ensure_local(*, auto_fetch: bool = True, verbose: bool = True):
@@ -471,23 +470,14 @@ def test_get_data_resolves_csv_downloadable_by_bare_name_after_fetch(monkeypatch
 
     monkeypatch.setattr(data_bundle, "ensure_local", fake_ensure_local)
 
-    # Snapshot the module-global dataframe cache so this test's FAKE
-    # pan-cancer-expression frame can't leak into real-data tests later in the
-    # same (serial, -n 0) process — that poisoning made 28 downstream expression
-    # tests KeyError in the release run.
-    saved_frames = dict(ld._CACHED_DATAFRAMES)
-    ld._CACHED_DATAFRAMES.pop("pan-cancer-expression.csv", None)
-
     # Prime the path cache BEFORE the file exists — the stale-cache precondition
     # the fetch has to punch through.
-    ld._invalidate_dataset_paths()
-    assert "pan-cancer-expression.csv" not in ld._dataset_paths()
+    ld.clear_dataset_cache()
+    assert "pan-cancer-expression.csv" not in ld.dataset_paths()
 
     try:
         df = ld.get_data("pan-cancer-expression", copy=False)
         assert list(df.columns) == ["gene_id", "COAD_TPM"]
         assert len(df) == 1
     finally:
-        ld._CACHED_DATAFRAMES.clear()
-        ld._CACHED_DATAFRAMES.update(saved_frames)
-        ld._invalidate_dataset_paths()  # don't leak the tmp-path map to other tests
+        ld.clear_dataset_cache()  # don't leak the tmp-path map to other tests

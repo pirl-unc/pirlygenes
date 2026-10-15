@@ -120,8 +120,7 @@ def test_load_all_dataframes_keeps_delegated_frames_out_of_shared_cache(
         return shared.copy() if copy else shared
 
     monkeypatch.setattr(ld.data_bundle, "DOWNLOADABLE_PATHS", [])
-    monkeypatch.setattr(ld, "get_all_csv_paths", lambda: [])
-    monkeypatch.setattr(ld, "_shard_directories", lambda: [])
+    monkeypatch.setattr(ld, "dataset_paths", lambda **kwargs: {})
     monkeypatch.setattr(ld, "_ONCOREF_DATASETS", frozenset({"delegated"}))
     monkeypatch.setattr(ld, "get_data", fake_get_data)
 
@@ -130,9 +129,9 @@ def test_load_all_dataframes_keeps_delegated_frames_out_of_shared_cache(
 
     assert shared.loc[0, "value"] == 1
     assert frames["cancer-reference-expression.csv"].loc[0, "value"] == 1
-    assert calls == [
-        ("delegated", True),
+    assert sorted(calls) == [
         ("cancer-reference-expression", True),
+        ("delegated", True),
     ]
 
 
