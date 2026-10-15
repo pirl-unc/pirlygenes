@@ -32,6 +32,7 @@ from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 PYPROJECT = ROOT / "pyproject.toml"
 VERSION_MODULE = ROOT / "pirlygenes" / "version.py"
 PARITY_DIR = ROOT / "analyses" / "outputs" / "reference_expression_parity"
