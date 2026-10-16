@@ -8,6 +8,21 @@ on:
     branches: [main]
 
 jobs:
+  release-version:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check release versions against current main
+        run: |
+          git fetch origin main --tags
+          python scripts/release_versions.py --base-ref origin/main
+
   build:
     runs-on: ubuntu-latest
     strategy:
@@ -18,6 +33,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -110,3 +127,8 @@ jobs:
           else
             ./test.sh
           fi
+      - name: Recheck release versions after the full test suite
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin main --tags
+          python scripts/release_versions.py --base-ref origin/main
