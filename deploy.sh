@@ -1,10 +1,5 @@
-./lint.sh && \
-./test.sh && \
-python3 -m pip install --upgrade build && \
-python3 -m pip install --upgrade twine && \
-rm -rf dist && \
-python3 -m build && \
-git --version && \
-python3 -m twine upload dist/* && \
-git tag "$(python3 pirlygenes/version.py)" &&  \
-git push --tags
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Keep the historical entry point on the same guarded data + package release path.
+exec "${PYTHON:-python3}" "$(dirname "$0")/scripts/release.py" --execute "$@"

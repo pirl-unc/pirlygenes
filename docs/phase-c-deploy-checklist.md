@@ -8,10 +8,10 @@ bump in the same release.
 
 ## Streamlined path (preferred)
 
-`python scripts/release.py` orchestrates everything below in one idempotent,
-re-runnable command — it builds + publishes the data tarball only when
+`python scripts/release.py` orchestrates everything below in one guarded
+command — it builds + publishes the data tarball only when
 `DATA_VERSION` changed, warms the version cache, runs `./test.sh`, builds, uploads
-to PyPI, and creates/pushes the release tag, in the one order that can't 404 a
+to PyPI, and creates the GitHub release/tag, in the one order that can't 404 a
 pip install. Dry-run by default:
 
 ```bash
@@ -19,7 +19,31 @@ python scripts/release.py              # print the plan, touch nothing
 python scripts/release.py --execute    # run for real (prompts before each public step)
 ```
 
-The manual steps below are kept as the reference the script automates.
+`./deploy.sh` forwards to the same script with `--execute`; it accepts the
+same options, including `--yes` and `--skip-tests`.
+
+Before uploading data, and again after testing/building, the script fetches
+current main and checks the package version against PyPI and the remote release
+tags. A stale checkout, an already published/superseded package version, a tag
+owned by another commit, or a failed GitHub/PyPI lookup stops publication. With
+`--allow-branch`, the branch must descend from current main and declare a newer
+package version. Data uploads never overwrite an existing asset.
+
+CI checks changed package/data versions against current main and fetched tags
+both before and after the long test suite. A data-version change also requires
+a newer package version. Keep release PRs up to date before merging; requiring
+up-to-date branches in branch protection closes the interval between the last
+CI check and merge. These checks do not reserve versions on other publishers'
+behalf.
+
+A partial data upload can be reused when its tag belongs to the same commit.
+Once the package has reached PyPI, rerunning publication is rejected. If only
+GitHub release finalization was interrupted, verify the published artifacts and
+finish that release/tag at the original release commit instead of uploading the
+package again.
+
+The manual steps below document the artifact layout; use the guarded script for
+publication.
 
 ## Upgrading oncoref
 
@@ -100,5 +124,5 @@ oncoref in #208 — no longer in the tarball.)
    ```
    (or attach to an existing release).
 
-7. **Publish to PyPI**: `./deploy.sh` (lint → test → build → twine upload → tag →
-   push). Requires PyPI credentials.
+7. **Publish to PyPI**: `./deploy.sh` (version checks → data → lint/test → build →
+   version recheck → PyPI → GitHub release). Requires PyPI credentials.

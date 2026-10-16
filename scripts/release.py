@@ -1,8 +1,9 @@
-"""Streamlined, idempotent release of pirlygenes — data bundle + PyPI + tag.
+"""Guarded release of pirlygenes — data bundle + PyPI + tag.
 
 Replaces the manual `docs/phase-c-deploy-checklist.md` dance (and the bare
 `deploy.sh`) with one ordered, re-runnable command that does the right thing
-whether or not the data bundle changed.
+whether or not the data bundle changed. Published package versions are rejected;
+a partial data upload from the same commit can be reused.
 
 The single hard constraint this encodes: a pip-installed user fetches
 `pirlygenes-data-v<DATA_VERSION>.tar.gz` from the GitHub release tagged
@@ -12,7 +13,7 @@ The single hard constraint this encodes: a pip-installed user fetches
 script orders the stages so that can't be gotten wrong, and skips the heavy data
 step entirely on a code-only release (when the tarball already exists).
 
-Stages (each idempotent — safe to re-run after a mid-way failure):
+Stages (an existing data upload can be reused; published package versions cannot):
   1. preflight  — clean tree, expected branch, read __version__ / DATA_VERSION
   2. data       — if the v<DATA_VERSION> tarball asset is missing: build it from
                   pirlygenes/data, pre-extract into the version cache (so the
@@ -21,7 +22,7 @@ Stages (each idempotent — safe to re-run after a mid-way failure):
   3. validate   — ./test.sh (lint + full suite) against the warm cache
   4. build      — python -m build (sdist + wheel)
   5. publish    — twine upload dist/*  (the one irreversible step)
-  6. release    — ensure the v<__version__> GitHub release/tag exists, push tags
+  6. release    — ensure the v<__version__> GitHub release/tag exists
 
 Usage:
     python scripts/release.py                 # DRY RUN: print the plan, touch nothing
@@ -56,6 +57,10 @@ from pirlygenes.expression import (  # noqa: E402
     COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION,
 )
 from pirlygenes.version import DATA_VERSION, __version__  # noqa: E402
+from scripts.release_versions import (  # noqa: E402
+    ReleaseVersionError,
+    check_publication,
+)
 
 DATA_DIR = REPO_ROOT / "pirlygenes" / "data"
 COHORT_MATRICES_METADATA = (
@@ -122,20 +127,36 @@ def preflight(*, dry: bool, allow_branch: bool) -> None:
 # stage 2: data bundle (conditional)
 # ---------------------------------------------------------------------------
 
-def _release_has_asset(tag: str, asset: str) -> bool:
+def release_metadata(tag: str) -> dict | None:
+    """Return a GitHub release, treating only an explicit HTTP 404 as missing."""
     proc = subprocess.run(
-        ["gh", "release", "view", tag, "--json", "assets"],
-        cwd=REPO_ROOT, text=True, capture_output=True)
-    if proc.returncode != 0:
-        return False  # release doesn't exist yet
-    assets = json.loads(proc.stdout or "{}").get("assets", [])
-    return any(a.get("name") == asset for a in assets)
+        ["gh", "api", f"repos/{data_bundle.GITHUB_REPO}/releases/tags/{tag}"],
+        cwd=REPO_ROOT, text=True, capture_output=True,
+    )
+    try:
+        payload = json.loads(proc.stdout)
+    except (ValueError, TypeError) as exc:
+        raise Abort(f"cannot inspect GitHub release {tag}: {proc.stderr.strip()}") from exc
+    if not isinstance(payload, dict):
+        raise Abort(f"invalid GitHub release response for {tag}")
+    if proc.returncode:
+        if str(payload.get("status")) == "404":
+            return None
+        raise Abort(f"cannot inspect GitHub release {tag}: {proc.stderr.strip()}")
+    if not isinstance(payload.get("assets"), list):
+        raise Abort(f"GitHub release {tag} is missing its asset inventory")
+    return payload
 
 
-def _release_exists(tag: str) -> bool:
-    return subprocess.run(
-        ["gh", "release", "view", tag], cwd=REPO_ROOT,
-        capture_output=True).returncode == 0
+def validate_publication(*, dry: bool, target_sha: str, allow_branch: bool) -> None:
+    """Recheck mutable release state before data or package publication."""
+    if dry:
+        print("  [dry-run] would verify current main, release tags and PyPI versions")
+        return
+    try:
+        check_publication(target_sha=target_sha, allow_branch=allow_branch, root=REPO_ROOT)
+    except ReleaseVersionError as exc:
+        raise Abort(str(exc)) from exc
 
 
 def validate_data_bundle_metadata() -> None:
@@ -256,7 +277,10 @@ def pre_extract_cache(*, dry: bool) -> None:
 def publish_data(*, dry: bool, assume_yes: bool, target_sha: str) -> None:
     print(f"== data bundle ==  tag={DATA_TAG}")
     validate_data_bundle_metadata()
-    if _release_has_asset(DATA_TAG, TARBALL.name):
+    existing = release_metadata(DATA_TAG)
+    if existing is not None and any(
+        asset.get("name") == TARBALL.name for asset in existing["assets"]
+    ):
         print(f"  {TARBALL.name} already on release {DATA_TAG}; skipping data publish")
         return
 
@@ -267,8 +291,8 @@ def publish_data(*, dry: bool, assume_yes: bool, target_sha: str) -> None:
                     dry=dry, assume_yes=assume_yes):
         raise Abort("data publish declined")
 
-    if _release_exists(DATA_TAG):
-        _run(["gh", "release", "upload", DATA_TAG, str(TARBALL), "--clobber"],
+    if existing is not None:
+        _run(["gh", "release", "upload", DATA_TAG, str(TARBALL)],
              dry=dry)
     else:
         _run(["gh", "release", "create", DATA_TAG, str(TARBALL),
@@ -317,7 +341,7 @@ def publish_pypi(*, dry: bool, assume_yes: bool) -> None:
 
 def finalize_release(*, dry: bool, assume_yes: bool, target_sha: str) -> None:
     print(f"== release/tag ==  {CODE_TAG}")
-    if _release_exists(CODE_TAG):
+    if release_metadata(CODE_TAG) is not None:
         print(f"  release {CODE_TAG} already exists (data release reused)")
     else:
         if not _confirm(f"create GitHub release/tag {CODE_TAG}?",
@@ -325,7 +349,6 @@ def finalize_release(*, dry: bool, assume_yes: bool, target_sha: str) -> None:
             raise Abort("release creation declined")
         _run(["gh", "release", "create", CODE_TAG, "--target", target_sha,
               "--title", CODE_TAG, "--generate-notes"], dry=dry)
-    _run(["git", "push", "--tags"], dry=dry)
 
 
 # ---------------------------------------------------------------------------
@@ -353,9 +376,13 @@ def main() -> None:
 
     try:
         preflight(dry=dry, allow_branch=args.allow_branch)
+        validate_publication(dry=dry, target_sha=target_sha, allow_branch=args.allow_branch)
         publish_data(dry=dry, assume_yes=args.yes, target_sha=target_sha)
         validate(dry=dry, skip_tests=args.skip_tests)
         build_wheel(dry=dry)
+        # The serial test suite can take over an hour; main or PyPI may advance.
+        preflight(dry=dry, allow_branch=args.allow_branch)
+        validate_publication(dry=dry, target_sha=target_sha, allow_branch=args.allow_branch)
         publish_pypi(dry=dry, assume_yes=args.yes)
         finalize_release(dry=dry, assume_yes=args.yes, target_sha=target_sha)
     except Abort as exc:

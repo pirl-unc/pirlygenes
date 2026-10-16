@@ -119,7 +119,10 @@ def test_publish_validates_metadata_before_reusing_existing_asset(monkeypatch):
         "validate_data_bundle_metadata",
         lambda: calls.append("validate"),
     )
-    monkeypatch.setattr(release, "_release_has_asset", lambda *_args: True)
+    monkeypatch.setattr(
+        release, "release_metadata",
+        lambda *_args: {"assets": [{"name": release.TARBALL.name}]},
+    )
 
     release.publish_data(dry=True, assume_yes=True, target_sha="test-sha")
 
@@ -147,3 +150,95 @@ def test_build_bootstraps_pip_when_uv_venv_omits_it(monkeypatch):
         "-m", "pip", "install", "--upgrade", "build", "twine",
     ]
     assert calls[2][1:] == ["-m", "build"]
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 500])
+def test_github_release_lookup_failure_aborts(monkeypatch, status):
+    monkeypatch.setattr(
+        release.subprocess, "run",
+        lambda *a, **k: SimpleNamespace(
+            returncode=1, stdout=json.dumps({"status": str(status)}), stderr=f"HTTP {status}",
+        ),
+    )
+    with pytest.raises(release.Abort, match="cannot inspect GitHub release"):
+        release.release_metadata("v6.0.12")
+
+
+def test_github_only_404_means_missing_release(monkeypatch):
+    monkeypatch.setattr(
+        release.subprocess, "run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout='{"status":"404"}', stderr="HTTP 404"),
+    )
+    assert release.release_metadata("v6.0.12") is None
+
+
+@pytest.mark.parametrize("stdout", ["", "[]", "{}", "not json"])
+def test_github_malformed_release_response_aborts(monkeypatch, stdout):
+    monkeypatch.setattr(
+        release.subprocess, "run",
+        lambda *a, **k: SimpleNamespace(returncode=0, stdout=stdout, stderr=""),
+    )
+    with pytest.raises(release.Abort):
+        release.release_metadata("v6.0.12")
+
+
+def test_data_upload_never_overwrites_an_existing_asset(monkeypatch):
+    calls = []
+    monkeypatch.setattr(release, "validate_data_bundle_metadata", lambda: None)
+    monkeypatch.setattr(release, "release_metadata", lambda tag: {"assets": []})
+    monkeypatch.setattr(release, "build_data_tarball", lambda **k: None)
+    monkeypatch.setattr(release, "pre_extract_cache", lambda **k: None)
+    monkeypatch.setattr(release, "_run", lambda command, **k: calls.append(command))
+    release.publish_data(dry=False, assume_yes=True, target_sha="release-commit")
+    assert calls == [["gh", "release", "upload", release.DATA_TAG, str(release.TARBALL)]]
+
+
+@pytest.mark.parametrize("fail_check", [1, 2])
+def test_release_stops_before_writes_when_publication_state_changes(monkeypatch, fail_check):
+    from scripts.release_versions import ReleaseVersionError
+
+    calls = []
+    def check(**kwargs):
+        calls.append("check")
+        if calls.count("check") == fail_check:
+            raise ReleaseVersionError("version was taken by another release")
+
+    monkeypatch.setattr(release, "check_publication", check)
+    monkeypatch.setattr(release, "preflight", lambda **k: None)
+    monkeypatch.setattr(release.sys, "argv", ["release.py", "--execute", "--yes"])
+    monkeypatch.setattr(release.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout="release-commit"))
+    for name in ("publish_data", "validate", "build_wheel", "publish_pypi", "finalize_release"):
+        monkeypatch.setattr(release, name, lambda name=name, **k: calls.append(name))
+    with pytest.raises(SystemExit):
+        release.main()
+    assert calls == (["check"] if fail_check == 1 else ["check", "publish_data", "validate", "build_wheel", "check"])
+
+
+def test_finalization_does_not_push_unrelated_local_tags(monkeypatch):
+    calls = []
+    monkeypatch.setattr(release, "release_metadata", lambda tag: None)
+    monkeypatch.setattr(release, "_run", lambda command, **k: calls.append(command))
+    release.finalize_release(dry=False, assume_yes=True, target_sha="release-commit")
+    assert calls == [["gh", "release", "create", release.CODE_TAG, "--target", "release-commit", "--title", release.CODE_TAG, "--generate-notes"]]
+
+
+def test_deploy_wrapper_forwards_options_to_guarded_entrypoint(tmp_path):
+    import os
+    from pathlib import Path
+    import subprocess
+
+    invocation = tmp_path / "arguments.json"
+    interpreter = tmp_path / "test python"
+    interpreter.write_text(
+        f"#!{release.sys.executable}\n"
+        "import json, pathlib, sys\n"
+        f"pathlib.Path({str(invocation)!r}).write_text(json.dumps(sys.argv[1:]))\n"
+    )
+    interpreter.chmod(0o755)
+    subprocess.run(
+        ["bash", str(Path(release.REPO_ROOT) / "deploy.sh"), "--yes", "--skip-tests"],
+        cwd=tmp_path, env={**os.environ, "PYTHON": str(interpreter)}, check=True,
+    )
+    args = json.loads(invocation.read_text())
+    assert Path(args[0]).resolve() == release.REPO_ROOT / "scripts/release.py"
+    assert args[1:] == ["--execute", "--yes", "--skip-tests"]
