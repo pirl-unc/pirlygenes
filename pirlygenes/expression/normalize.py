@@ -701,7 +701,9 @@ def zscore_normalize(values, *, log: bool = True):
     ``(x - mean) / std`` independently (population std, ddof=0). With
     ``log=True`` (default) the standardization is on ``log2(values + 1)`` — the
     recommended continuous representation for cross-source pooling (paired
-    GDC-vs-Treehouse agreed to within ~0.1 sd). Zero-variance columns map to 0.
+    GDC-vs-Treehouse agreed to within ~0.1 sd). Measured values in
+    zero-variance columns map to 0; missing measurements remain missing,
+    including in entirely unmeasured columns.
     """
     import numpy as np
     import pandas as pd
@@ -713,9 +715,10 @@ def zscore_normalize(values, *, log: bool = True):
     mean = x.mean(axis=0)
     std = x.std(axis=0, ddof=0)
     z = x.sub(mean, axis=1)
-    safe = std.replace(0.0, np.nan)
-    z = z.div(safe, axis=1)
-    return z.fillna(0.0)
+    # Constant measured values already have a zero centered numerator. Use a
+    # unit divisor only for those columns, without filling unmeasured cells.
+    safe = std.replace(0.0, 1.0)
+    return z.div(safe, axis=1)
 
 
 # ---------- conversions ----------

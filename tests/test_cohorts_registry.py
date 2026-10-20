@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from pirlygenes import cohorts
 
@@ -222,6 +223,56 @@ def test_read_per_sample_fetches_through_owner(tmp_path, monkeypatch):
 
     cohort = cohorts.cohorts_for_source("treehouse-polya-25-01")["PRAD"]
     pd.testing.assert_frame_equal(cohorts.read_per_sample(cohort), expected)
+
+
+@pytest.mark.parametrize("invalid", [-1.0, float("inf"), float("-inf"), "bad"])
+@pytest.mark.parametrize("through_iterator", [False, True])
+def test_per_sample_readers_reject_invalid_expression(
+    tmp_path, monkeypatch, invalid, through_iterator,
+):
+    from oncoref import source_matrices
+
+    path = tmp_path / "SYNTH.parquet"
+    # Repeated IDs must not allow a positive row to hide a negative one.
+    # String columns exercise the same numeric boundary without mixed Arrow types.
+    positive = "10.0" if isinstance(invalid, str) else 10.0
+    frame = pd.DataFrame({
+        "Ensembl_Gene_ID": ["ENSG00000141510", "ENSG00000141510"],
+        "Symbol": ["TP53", "TP53"],
+        "sample": [positive, invalid],
+    })
+    frame.to_parquet(path, index=False)
+    monkeypatch.setattr(source_matrices, "ensure", lambda code: path)
+    cohort = cohorts.Cohort("SYNTH", "SYNTH", "synthetic")
+    monkeypatch.setattr(cohorts, "all_available_cohorts", lambda: {"SYNTH": cohort})
+
+    with pytest.raises(ValueError, match="SYNTH.*expression measurements|SYNTH.*expression.*numeric"):
+        if through_iterator:
+            list(cohorts.iter_per_sample_cohorts())
+        else:
+            cohorts.read_per_sample(cohort)
+
+    pd.testing.assert_frame_equal(pd.read_parquet(path), frame)
+
+
+def test_per_sample_readers_preserve_zero_and_missing_values(tmp_path, monkeypatch):
+    from oncoref import source_matrices
+
+    path = tmp_path / "SYNTH.parquet"
+    expected = pd.DataFrame({
+        "Ensembl_Gene_ID": ["ENSG00000141510", "ENSG00000146648"],
+        "Symbol": ["TP53", "EGFR"],
+        "sample": [0.0, float("nan")],
+    })
+    expected.to_parquet(path, index=False)
+    monkeypatch.setattr(source_matrices, "ensure", lambda code: path)
+    cohort = cohorts.Cohort("SYNTH", "SYNTH", "synthetic")
+    monkeypatch.setattr(cohorts, "all_available_cohorts", lambda: {"SYNTH": cohort})
+
+    pd.testing.assert_frame_equal(cohorts.read_per_sample(cohort), expected)
+    [(actual_cohort, actual_frame)] = list(cohorts.iter_per_sample_cohorts())
+    assert actual_cohort == cohort
+    pd.testing.assert_frame_equal(actual_frame, expected)
 
 
 def test_treehouse_groups_delegate_to_owner_builder_registry():

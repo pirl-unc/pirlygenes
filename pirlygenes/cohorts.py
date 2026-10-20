@@ -364,10 +364,19 @@ def sample_columns(df: pd.DataFrame) -> list[str]:
 
 
 def read_per_sample(cohort: Cohort) -> pd.DataFrame:
-    """Read a cohort matrix, fetching its owner artifact on first use."""
-    from oncoref import source_matrices
+    """Read and validate raw linear TPM, fetching the owner artifact if needed.
 
-    return pd.read_parquet(source_matrices.ensure(cohort.code))
+    Missing measurements stay missing. Invalid expression must be repaired at
+    its source, before downstream folding, ranking or panel selection.
+    """
+    from oncoref import source_matrices
+    from oncoref.expression_engine import validate_nonnegative_expression
+
+    frame = pd.read_parquet(source_matrices.ensure(cohort.code))
+    validate_nonnegative_expression(
+        frame[sample_columns(frame)], context=f"{cohort.code} source matrix",
+    )
+    return frame
 
 
 def iter_per_sample_cohorts(*, sources=None, unique_by_code=True):
