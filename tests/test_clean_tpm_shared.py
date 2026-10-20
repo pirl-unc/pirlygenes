@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from pirlygenes.expression.normalize import (
     clean_tpm_matrix,
@@ -353,6 +354,37 @@ def test_zscore_normalize_standardizes_each_column():
     # zero-variance column -> all zeros (no NaN/inf)
     flat = pd.DataFrame({"S1": [7.0, 7.0, 7.0]})
     assert (zscore_normalize(flat)["S1"] == 0.0).all()
+
+
+@pytest.mark.parametrize("log", [True, False])
+def test_zscore_normalize_preserves_missing_measurements(log):
+    from pirlygenes.expression.normalize import zscore_normalize
+
+    values = pd.DataFrame({
+        "variable": [1.0, 3.0, np.nan],
+        "constant": [7.0, np.nan, 7.0],
+        "single": [np.nan, 5.0, np.nan],
+        "unmeasured": [np.nan, np.nan, np.nan],
+    }, index=["gene-a", "gene-b", "gene-c"])
+    original = values.copy(deep=True)
+
+    result = zscore_normalize(values, log=log)
+
+    pd.testing.assert_frame_equal(result.isna(), values.isna())
+    np.testing.assert_allclose(result["variable"].dropna(), [-1.0, 1.0])
+    assert (result["constant"].dropna() == 0.0).all()
+    assert result.loc["gene-b", "single"] == 0.0
+    pd.testing.assert_frame_equal(values, original)
+
+
+def test_zscore_normalize_preserves_nullable_missing_measurements():
+    from pirlygenes.expression.normalize import zscore_normalize
+
+    values = pd.DataFrame({"sample": pd.Series([7.0, pd.NA], dtype="Float64")})
+    result = zscore_normalize(values)
+
+    assert result.loc[0, "sample"] == 0.0
+    assert pd.isna(result.loc[1, "sample"])
 
 
 # ---- canonical censored-gene list: single source of truth + CTA-safe ----
