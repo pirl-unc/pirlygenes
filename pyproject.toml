@@ -167,6 +167,7 @@ test = [
     "pytest-cov",
     "pytest-xdist",
     "pypdf>=5",  # verify vector output text
+    "reportlab>=4",  # exercise PDF compilation in the standard test environment
 ]
 # Optional plotting extras. matplotlib is a core dep; matplotlib_venn is only
 # needed for the CTA source-overlap venn (pirlygenes plot cta-curation), which
