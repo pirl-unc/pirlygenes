@@ -15,6 +15,9 @@ def test_default_cta_reexports_do_not_promote_extended_only_targets():
     assert gene_sets_cancer.CTA_unfiltered_gene_ids() == cta.cta_unfiltered_gene_ids()
     assert "GPX5" in cta.cta_extended_gene_names()
     assert "GPX5" not in gene_sets_cancer.CTA_gene_names()
+    # The newly nominated SPAG9 record remains outside the default panel.
+    assert "SPAG9" in gene_sets_cancer.CTA_unfiltered_gene_names()
+    assert "SPAG9" not in gene_sets_cancer.CTA_gene_names()
     evidence = gene_sets_cancer.CTA_evidence()
     assert cta.cta_gene_ids() <= set(evidence.Ensembl_Gene_ID)
     assert oncoref.CTA_gene_ids is gene_sets_cancer.CTA_gene_ids
