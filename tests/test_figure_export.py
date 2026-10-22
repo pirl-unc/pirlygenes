@@ -3,13 +3,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from PIL import Image
-import pytest
+from pypdf import PdfReader
+import reportlab  # noqa: F401 - required by the PDF compilation under test
 
 from analyses.regenerate_plots import _build_combined_pdf
 from pirlygenes.figure_export import save_figure
-
-PdfReader = pytest.importorskip("pypdf").PdfReader
-pytest.importorskip("reportlab")
 
 
 def test_vector_text_survives_compilation_without_downsampling(tmp_path):
