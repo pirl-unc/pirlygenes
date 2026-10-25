@@ -18,7 +18,7 @@ jobs:
       - name: Resolve the current OpenVax packages together
         run: |
           python -m pip install --upgrade pip uv
-          uv pip install --system --index-url https://pypi.org/simple \
+          uv pip install --system --torch-backend cpu --index-url https://pypi.org/simple \
             '.[test,viz]' vaxrank 'topiary[weirdo]' hitlist isovar varcode \
             pyensembl datacache gtfparse serializable mhcflurry mhcgnomes \
             mhctools pepdata orfdata tsarina pirl-trufflepig

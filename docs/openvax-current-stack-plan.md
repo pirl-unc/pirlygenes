@@ -16,7 +16,7 @@ reference caches.
   2.0.35. Audit the portable evidence consumer and validate current producer
   output before broadening that constraint in a separate Vaxrank release.
 - Other current releases include PyEnsembl 2.32.3, DataCache 1.29.3,
-  GTFParse 3.0.5, Varcode 10.18.5, Isovar 1.59.22, Topiary 5.95.1,
+  GTFParse 3.0.5, Varcode 10.18.5, Isovar 1.59.22, Topiary 5.95.3,
   MHCtools 4.4.3, MHCflurry 2.3.16, MHCgnomes 3.64.6, Pepdata 1.2.4,
   Serializable 1.3.2, Tsarina 1.35.1, Weirdo 2.2.0 and Trufflepig 1.30.3.
 - Shared-environment metadata is stale for some editable packages, but other
@@ -91,3 +91,9 @@ focused owner, matrix and manifest tests pass. Existing and freshly generated
 Hitlist evidence also pass Vaxrank interoperability checks. Tests use an
 isolated environment and copied caches; OncoRef shard-cache configuration is
 tracked separately in pirl-unc/oncoref#626.
+
+The full serial suite passes (1,091 tests). Cold/offline validation identified
+an independent provenance-manifest download requirement, tracked in #654. The
+cache-lifecycle fixture supplies that independent manifest explicitly; all three
+owner-adoption tests then pass with network access disabled and empty owner
+caches. Real-bundle before/after checks remain unchanged.

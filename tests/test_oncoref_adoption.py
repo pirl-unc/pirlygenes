@@ -93,6 +93,15 @@ def test_cached_matrices_survive_owner_upgrade_without_rebuild_or_rewrite(
     def no_rebuild(*args, **kwargs):
         raise AssertionError("An owner package upgrade rebuilt installed matrices")
 
+    # This fixture tests installed matrix reuse. Supply the independent owner
+    # availability manifest explicitly so a cold CI run does not download the
+    # entire expression bundle merely to refresh this synthetic provenance row.
+    monkeypatch.setattr(
+        accessors, "available_cancer_expression_references",
+        lambda: pd.DataFrame(columns=[
+            "cancer_code", "source_cohort", "processing_pipeline", "n_samples",
+        ]),
+    )
     monkeypatch.setenv("PIRLYGENES_BUNDLED_DATA", str(cache))
     monkeypatch.setattr(accessors, "_cohort_matrices_root",
                         lambda: data_bundle.find("cohort-expression-matrices"))
