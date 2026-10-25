@@ -18,10 +18,31 @@ jobs:
       - name: Resolve the current OpenVax packages together
         run: |
           python -m pip install --upgrade pip uv
+          # Exact current releases prevent the resolver from hiding a pin
+          # conflict by selecting an older Vaxrank or another older consumer.
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib.request import urlopen
+
+          requirements = [".[test,viz]"]
+          for spec in (
+              "vaxrank[hitlist]", "topiary[weirdo]", "hitlist", "isovar",
+              "varcode", "pyensembl", "datacache", "gtfparse", "serializable",
+              "mhcflurry", "mhcgnomes", "mhctools", "pepdata", "orfdata",
+              "tsarina", "pirl-trufflepig",
+          ):
+              project = spec.split("[", 1)[0]
+              with urlopen(f"https://pypi.org/pypi/{project}/json", timeout=30) as response:
+                  version = json.load(response)["info"]["version"]
+              requirements.append(f"{spec}=={version}")
+          path = Path(os.environ["RUNNER_TEMP"]) / "current-openvax.txt"
+          path.write_text("\n".join(requirements) + "\n")
+          print(path.read_text())
+          PY
           uv pip install --system --torch-backend cpu --index-url https://pypi.org/simple \
-            '.[test,viz]' vaxrank 'topiary[weirdo]' hitlist isovar varcode \
-            pyensembl datacache gtfparse serializable mhcflurry mhcgnomes \
-            mhctools pepdata orfdata tsarina pirl-trufflepig
+            -r "$RUNNER_TEMP/current-openvax.txt"
           python -m pip check
       - name: Exercise owner compatibility and installed-bundle reuse
         env:
