@@ -127,7 +127,10 @@ dependencies = [
     # Coordinate this exact pin with Vaxrank. Oncoref 1.19.2 retains expression
     # data 5.23.26 and source matrices 5.22.14; the existing materialized bundle
     # keeps its original build provenance (pirlygenes#649 and #652).
-    "oncoref==1.19.2",
+    # 1.22 retains historical CTA compatibility and separately publishes the
+    # versioned selection used by Isovar. Coordinate the pin with Vaxrank;
+    # this upgrade does not silently adopt the new target policy (#655).
+    "oncoref==1.22.0",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-matrix / representative / percentile
