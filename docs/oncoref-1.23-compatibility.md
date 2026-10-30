@@ -32,3 +32,20 @@ and peptide-exclusion tests, and the full serial suite remain required.
 
 This coordination resolves #658 and the validation-policy defect in #659.
 Adopting a different biological CTA selection policy remains separate in #655.
+
+## OncoRef 1.24.0
+
+PirlyGenes 6.0.21 pins OncoRef 1.24.0. Coordinate this update with a Vaxrank
+release whose tested dependency bounds permit both 1.23.1 and 1.24.0. The
+historical 624-gene CTA panel, expression/source data versions, sequence-reference
+assets and PirlyGenes data version remain unchanged; existing materialized
+artifacts retain their original build provenance.
+
+The owner's versioned research selection now records reviewed TCR-T evidence
+and baseline/effective RNA ceilings in its explanations. Its 522 protein groups
+and 558 member loci are unchanged. That separate policy carries exact
+peptide, HLA and product limits; it does not establish clinical clearance of
+every isoform or experimental translation of a reconstructed RNA sequence.
+See the [owner's release notes](https://pirl-unc.github.io/oncoref/cta-release-1.24.0/)
+for policy and source-snapshot provenance. This dependency update resolves #663;
+selection-policy adoption remains tracked separately in #655.
