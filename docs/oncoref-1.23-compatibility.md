@@ -1,10 +1,16 @@
 # OncoRef and Tsarina compatibility
 
-PirlyGenes 6.0.20 supports the tested OncoRef range **1.23.1–1.24.0** and
+PirlyGenes 6.1.0 supports the tested OncoRef range **1.23.1–1.24.0** and
 Tsarina **1.36.0 or newer**. The bounded owner range lets current consumers
 resolve a mutually compatible release while retaining an explicit upper bound.
 Both owner endpoints preserve the historical 624-gene CTA panel and expression
 data identities used by these compatibility APIs.
+
+The supported runtime is Python 3.11–3.14 with pandas >=3,<4 and PyEnsembl
+>=2.32.3. Current PyEnsembl requires Python >=3.11; declaring that floor avoids
+advertising an environment the resolver cannot install. Every supported Python
+version runs the complete serial suite in CI. Python 3.10 remains supported by
+compatible earlier PirlyGenes releases, not this release.
 
 OncoRef retains expression data version 5.23.26 and source-matrix version
 5.22.14. PirlyGenes retains data version 6.0.13. Existing materialized files keep

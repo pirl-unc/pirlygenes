@@ -1,10 +1,9 @@
 [project]
 name = "pirlygenes"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [ {name="Alex Rubinsteyn", email="alex.rubinsteyn@unc.edu" } ]
 description = "Curated cancer gene sets and reference expression data. Analysis lives in `trufflepig`."
 classifiers = [
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -136,7 +135,7 @@ dependencies = [
     # Both endpoints preserve this package's historical panel and data identity.
     "oncoref>=1.23.1,<=1.24.0",
     "openpyxl>=3.1.0",
-    "pandas>=2.0",
+    "pandas>=3,<4",
     # Parquet engine for the cohort-matrix / representative / percentile
     # artifacts (pd.read_parquet). Present transitively today via
     # pyensembl→gtfparse, but declared directly since pirlygenes reads parquet
