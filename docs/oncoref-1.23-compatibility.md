@@ -11,3 +11,24 @@ Keep PirlyGenes data version 6.0.13 and its original materialized build
 provenance. Run the CTA identity/peptide tests,
 data compatibility tests, full serial suite, lint, and joint installation checks.
 Publish only after downstream pins and their release gates are coordinated.
+
+## OncoRef 1.23.1
+
+PirlyGenes 6.0.20 pins OncoRef 1.23.1, which adds human Ensembl 115
+transcript/protein mappings bound to verified sequence assets. This permits
+the published `vaxrank[cta]` consumer to install with current Topiary. The
+historical CTA panel, owner data/source versions and PirlyGenes data version
+remain unchanged. Existing materialized files keep their original builder
+version; this package upgrade does not relabel or regenerate them.
+
+The current-stack CI job pins the latest Vaxrank (including its `cta` extra),
+Topiary, Hitlist, Isovar and Trufflepig releases. It upgrades shared dependencies
+within those consumers' declared bounds and records the installed versions.
+For example, current consumers exclude Varcode 11 until their candidate
+traversal migrations land. Selecting the latest compatible Varcode under those
+bounds preserves the declared API contract; pinning its advertised latest major
+would instead create an unsupported environment. `pip check`, historical CTA
+and peptide-exclusion tests, and the full serial suite remain required.
+
+This coordination resolves #658 and the validation-policy defect in #659.
+Adopting a different biological CTA selection policy remains separate in #655.

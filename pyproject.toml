@@ -130,7 +130,9 @@ dependencies = [
     # 1.23 retains historical CTA compatibility and separately publishes the
     # versioned selection used by Isovar. Coordinate the pin with Vaxrank;
     # this upgrade does not silently adopt the new target policy (#655).
-    "oncoref==1.23.0",
+    # 1.23.1 adds verified human sequence-reference mappings for common CTA
+    # consumers while retaining the same historical panel and expression data.
+    "oncoref==1.23.1",
     "openpyxl>=3.1.0",
     "pandas>=2.0",
     # Parquet engine for the cohort-matrix / representative / percentile
