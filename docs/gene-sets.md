@@ -104,9 +104,15 @@ comprehensive RNA structural-variant testing and clinical-trial review.
 
 ## Cancer-Testis Antigens (CTAs)
 
-CTAs are genes normally expressed only in germline tissues (testis,
-placenta) but aberrantly activated in tumors. They are prime
-vaccination and immunotherapy targets.
+These `CTA_*` helpers expose OncoRef's historical HPA panel. Gene lists,
+evidence and partitions use that same policy. `CTA_evidence()` retains the
+historical identities and HPA observations and joins Tsarina's independent
+`ms_*` annotations by Ensembl gene ID. Missing observations remain missing.
+
+OncoRef's current research selection is a separately versioned policy, available
+through `oncoref.cta_selection`. Tsarina 1.36 uses that current selection by
+default; upgrading Tsarina does not change these PirlyGenes compatibility
+helpers. See the [dependency compatibility notes](oncoref-1.23-compatibility.md).
 
 | Function | Returns |
 |----------|---------|
@@ -117,10 +123,17 @@ vaccination and immunotherapy targets.
 | `CTA_unfiltered_gene_names()` | All CTAs before filtering |
 | `CTA_excluded_gene_names()` | CTAs that failed quality filters |
 | `CTA_never_expressed_gene_names()` | CTAs with no detectable expression |
-| `CTA_evidence()` | DataFrame with expression evidence per CTA |
+| `CTA_evidence()` | Historical HPA evidence with independent MS annotations |
 | `CTA_partition_gene_ids()` | `CTAPartitionSets(cta, cta_never_expressed, non_cta)` |
 | `CTA_partition_gene_names()` | Same as above, using gene symbols |
 | `CTA_partition_dataframes()` | `CTAPartitionDataFrames` with full evidence |
+
+Partitions retain the historical expressed and never-expressed sets. Their
+background contains every other protein-coding gene in the requested Ensembl
+release (112 by default). This sequence annotation is independent of the panel's
+source reference. Current Neither/unassigned categories do not remove genes
+from that background. A shared symbol can label different loci; use the ID
+partition when locus identity matters.
 
 ## Surface Proteins
 

@@ -1,10 +1,9 @@
 [project]
 name = "pirlygenes"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [ {name="Alex Rubinsteyn", email="alex.rubinsteyn@unc.edu" } ]
 description = "Curated cancer gene sets and reference expression data. Analysis lives in `trufflepig`."
 classifiers = [
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -113,9 +112,9 @@ dependencies = [
     # 1.8.98 also serves the representative/percentile accessors pirlygenes
     # delegates in #208 (representative_cohort_samples with
     # representative_id_style/sample_qc='artifact', available_representative_
-    # cohorts, available_percentile_cohorts, cohort_gene_percentiles). Pin the
-    # exact owner release because these compatibility APIs carry biological
-    # semantics. The cohort-matrix metadata records the build package as
+    # cohorts, available_percentile_cohorts, cohort_gene_percentiles). These
+    # compatibility APIs carry biological semantics, so owner bounds cover only
+    # releases validated together. The cohort-matrix metadata records the build package as
     # provenance and validates the exact oncoref data version.
     # 1.8.206 unifies complete paper CTA intake, gene provenance and plots.
     # 1.8.207 adds explicitly scoped core/extended reproductive CTA panels.
@@ -124,30 +123,33 @@ dependencies = [
     # 1.8.208 adds annotation-scoped CTA source identities and uses verified
     # alternate/historical IDs in peptide exclusions and cache fingerprints.
     # Canonical CTA membership and expression/source data versions are unchanged.
-    # Coordinate this exact pin with Vaxrank. Oncoref 1.19.2 retains expression
+    # Coordinate these owner bounds with Vaxrank. Oncoref 1.19.2 retains expression
     # data 5.23.26 and source matrices 5.22.14; the existing materialized bundle
     # keeps its original build provenance (pirlygenes#649 and #652).
     # 1.23 retains historical CTA compatibility and separately publishes the
-    # versioned selection used by Isovar. Coordinate the pin with Vaxrank;
+    # versioned selection used by Isovar. Coordinate the bounds with Vaxrank;
     # this upgrade does not silently adopt the new target policy (#655).
-    "oncoref==1.23.0",
+    # 1.23.1 adds verified human sequence-reference mappings for common CTA
+    # consumers while retaining the same historical panel and expression data.
+    # 1.24.0 adds clinical explanations to the separate research selection.
+    # Both endpoints preserve this package's historical panel and data identity.
+    "oncoref>=1.23.1,<=1.24.0",
     "openpyxl>=3.1.0",
-    "pandas>=2.0",
+    "pandas>=3,<4",
     # Parquet engine for the cohort-matrix / representative / percentile
     # artifacts (pd.read_parquet). Present transitively today via
     # pyensembl→gtfparse, but declared directly since pirlygenes reads parquet
     # in several modules and must not break if that chain changes (#474 review).
     "pyarrow>=10",
-    "pyensembl>=2.6.0",
+    # Context-managed annotation access closes partition reference resources.
+    "pyensembl>=2.32.3",
     "PyYAML>=6.0",
     "tqdm",
-    # The CTA gene set is owned by oncoref (#511); pirlygenes still re-exports
-    # tsarina's CTA_evidence() (for the ms_* mass-spec safety layer oncoref does
-    # not carry) and CTA_partition* (no bundled CTA snapshot to drift). 1.23.1
-    # (PR#142/#141) converges tsarina's default set onto oncoref's, so the
-    # evidence rows line up with oncoref's set — pin it so the join stays
-    # aligned. (#289/#290/#291, #546)
-    "tsarina>=1.23.1",
+    # Oncoref owns the historical panel/HPA evidence. Tsarina 1.36 defaults to
+    # the current research selection; consume only its independent ms_* evidence
+    # and derive historical partitions consistently here (#664). No local
+    # membership snapshot or copied biological decision rules are introduced.
+    "tsarina>=1.36.0",
 ]
 
 [tool.setuptools.dynamic]

@@ -2324,15 +2324,9 @@ radioligand_target_gene_ids = _deprecate(
 # accessors and alias resolver so downstream consumers (trufflepig, analyses,
 # normalize) keep one stable import path.
 #
-# The CTA *evidence* frame and the protein-coding partition stay on tsarina.
-# tsarina's CTA_evidence() carries the ms_* mass-spec healthy-tissue safety
-# layer (ms_restriction / ms_healthy_somatic_tissues / ms_pmids) that oncoref's
-# specificity_* audit does not — an orthogonal safety signal we keep as an
-# evidence-enrichment join on top of oncoref's set (pirlygenes#546, tsarina#141).
-# As of tsarina 1.23.1 (PR#142) tsarina's default set converged onto oncoref's,
-# so the set and the evidence rows line up (every set gene has an evidence row).
-# The only pirlygenes-local addition is CTA_gene_id_to_name(), a convenience
-# mapping with no upstream equivalent.
+# Evidence and partitions explicitly retain this historical panel while adding
+# Tsarina's independent MS annotations. Tsarina's current-selection defaults
+# are a different population and must not silently redefine these APIs.
 from oncoref import (  # noqa: E402,F401
     CTA_by_axes,
     CTA_excluded_gene_ids,
@@ -2351,8 +2345,8 @@ from oncoref import (  # noqa: E402,F401
     CTA_unfiltered_gene_names,
     cta_symbol_for_alias,
 )
-from tsarina.evidence import CTA_evidence as _tsarina_CTA_evidence  # noqa: E402
-from tsarina.partition import (  # noqa: E402,F401
+from ._cta_compatibility import (  # noqa: E402,F401
+    CTA_evidence,
     CTAPartitionDataFrames,
     CTAPartitionSets,
     CTA_partition_dataframes,
@@ -2400,23 +2394,6 @@ def cta_paralog_symbols(name: str) -> list[str]:
         return list(by_group[key])
     return [sym] if sym else []
 
-
-def CTA_evidence():
-    """Full CTA evidence DataFrame with HPA tissue-restriction columns.
-
-    Delegates to :func:`tsarina.evidence.CTA_evidence`. While the CTA *gene set*
-    is owned by oncoref (pirlygenes#511), the evidence frame stays on tsarina
-    because it carries the ``ms_*`` mass-spec healthy-tissue safety layer
-    (``ms_restriction`` / ``ms_healthy_somatic_tissues`` / ``ms_pmids``) that
-    oncoref's ``specificity_*`` audit does not — an orthogonal safety signal we
-    keep as an evidence-enrichment join on oncoref's set (pirlygenes#546,
-    tsarina#141). tsarina 1.23.1 converged its default set onto oncoref's, so
-    every gene in :func:`CTA_gene_ids` has a row here. See tsarina for the column
-    semantics (``passes_filters`` / ``filtered``, ``never_expressed``,
-    ``rna_*_pct_filter``, ``rna_deflated_reproductive_frac``, ``rna_max_ntpm``,
-    the per-tissue nTPM columns, …).
-    """
-    return _tsarina_CTA_evidence()
 
 
 def CTA_gene_id_to_name():

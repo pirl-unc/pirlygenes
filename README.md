@@ -32,7 +32,8 @@ deconvolution, signature scoring) lives in
 
 ## Install
 
-Supported Python versions: 3.10–3.14.
+Supported Python versions: 3.11–3.14. PirlyGenes 6.1 uses pandas 3 and current
+PyEnsembl; Python 3.10 users must retain a compatible earlier release.
 
 ```bash
 pip install pirlygenes
