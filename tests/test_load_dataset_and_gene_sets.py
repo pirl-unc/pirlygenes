@@ -331,10 +331,9 @@ def test_cta_filtered_and_evidence():
     ]
     for col in expected_cols:
         assert col in evidence_df.columns, f"Missing column: {col}"
-    assert (
-        evidence_df["passes_filters"].astype(str).str.lower()
-        == evidence_df["filtered"].astype(str).str.lower()
-    ).all()
+    pd.testing.assert_series_equal(
+        evidence_df["passes_filters"], evidence_df["filtered"], check_names=False,
+    )
     assert "XAGE1B" in filtered_names
 
 

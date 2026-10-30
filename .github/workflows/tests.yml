@@ -51,7 +51,7 @@ jobs:
       - name: Exercise owner compatibility and installed-bundle reuse
         env:
           PIRLYGENES_NO_ENSEMBL_INSTALL: "1"
-        run: python -m pytest -n 0 -q tests/test_oncoref_adoption.py tests/test_cta_peptide_adoption.py
+        run: python -m pytest -n 0 -q tests/test_oncoref_adoption.py tests/test_cta_peptide_adoption.py tests/test_cta_compatibility.py
 
   release-version:
     if: github.event_name == 'pull_request'
