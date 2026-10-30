@@ -51,7 +51,10 @@ jobs:
       - name: Exercise owner compatibility and installed-bundle reuse
         env:
           PIRLYGENES_NO_ENSEMBL_INSTALL: "1"
-        run: python -m pytest -n 0 -q tests/test_oncoref_adoption.py tests/test_cta_peptide_adoption.py tests/test_cta_compatibility.py
+        run: >-
+          python -m pytest -n 0 -q tests/test_oncoref_adoption.py
+          tests/test_cta_peptide_adoption.py tests/test_cta_compatibility.py
+          tests/test_load_dataset_and_gene_sets.py::test_cta_evidence_preserves_owner_hpa_and_tsarina_ms
 
   release-version:
     if: github.event_name == 'pull_request'
@@ -165,7 +168,7 @@ jobs:
         run: |
           source .venv/bin/activate
           # Every Python version runs the full suite. Coverage instruments that
-          # same suite once: repeating it in all five matrix jobs adds substantial
+          # same suite once: repeating it in all four matrix jobs adds substantial
           # CPU time without measuring additional lines.
           if [[ "${{ matrix.python-version }}" == "3.12" ]]; then
             COVERAGE=1 ./test.sh

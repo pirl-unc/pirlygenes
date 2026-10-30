@@ -368,31 +368,30 @@ def test_cta_set_accessors_delegate_to_oncoref():
     assert gsc.CTA_gene_ids() == oncoref.CTA_gene_ids()
 
 
-def test_cta_evidence_and_partition_stay_on_tsarina():
-    # The evidence frame stays on tsarina for its ms_* mass-spec safety layer
-    # (oncoref carries specificity_* instead), and the protein-coding partition
-    # stays on tsarina too (#546). Assert both remain identity-delegated there,
-    # and that the ms_* enrichment survives the split.
-    import tsarina.evidence as _tev
-    import tsarina.partition as _tp
+def test_cta_evidence_preserves_owner_hpa_and_tsarina_ms():
+    # Tsarina 1.36 uses the current selection. PirlyGenes retains the historical
+    # population, its HPA evidence and the independent Tsarina MS layer (#664).
+    # Test the complete real-provider columns, not function identity.
+    from oncoref import cta
+    from tsarina import evidence, partition
 
-    assert gsc.CTAPartitionSets is _tp.CTAPartitionSets
-    assert gsc.CTA_partition_gene_ids is _tp.CTA_partition_gene_ids
-    # CTA_evidence() returns tsarina's table verbatim, ms_* layer intact.
-    ev = gsc.CTA_evidence()
-    pd_testing = __import__("pandas").testing
-    pd_testing.assert_frame_equal(ev, _tev.CTA_evidence())
+    assert gsc.CTAPartitionSets is partition.CTAPartitionSets
+    assert gsc.CTAPartitionDataFrames is partition.CTAPartitionDataFrames
+    ev = gsc.CTA_evidence().set_index("Ensembl_Gene_ID").sort_index()
+    historical = cta.cta_evidence().set_index("Ensembl_Gene_ID").sort_index()
+    pd.testing.assert_frame_equal(ev[historical.columns], historical)
+    pd.testing.assert_series_equal(ev.filtered, ev.passes_filters, check_names=False)
+    current = evidence.CTA_evidence().set_index("Ensembl_Gene_ID")
+    ms_columns = [column for column in current.columns if column.startswith("ms_")]
+    pd.testing.assert_frame_equal(ev[ms_columns], current.loc[ev.index, ms_columns])
     assert {"ms_restriction", "ms_healthy_somatic_tissues", "ms_pmids"} <= set(
         ev.columns
     )
 
 
 def test_cta_set_and_evidence_rows_line_up():
-    # CTA_gene_id_to_name() now delegates to oncoref (drift-proof), but tsarina's
-    # evidence frame is still an enrichment join on oncoref's set (CTA_evidence()
-    # consumers key rows by set gene). Guard that tsarina's evidence covers every
-    # oncoref set gene, so set-keyed evidence lookups stay complete across a
-    # future oncoref/tsarina drift.
+    # Set-keyed evidence lookups must cover every historical OncoRef CTA after
+    # enrichment with Tsarina's independent MS observations.
     set_ids = set(gsc.CTA_gene_ids())
     assert len(set_ids) > 200  # guard the subset check below from passing vacuously
     ev_ids = set(gsc.CTA_evidence()["Ensembl_Gene_ID"].astype(str).str.strip())
