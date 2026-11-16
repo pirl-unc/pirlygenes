@@ -167,6 +167,9 @@ jobs:
       - name: Run linting script and unit tests
         run: |
           source .venv/bin/activate
+          # Test the proposed data version before its release asset exists.
+          # This uses the same checked archive/cache staging as deployment.
+          python -c 'from scripts.release import build_data_tarball, pre_extract_cache; build_data_tarball(dry=False); pre_extract_cache(dry=False)'
           # Every Python version runs the full suite. Coverage instruments that
           # same suite once: repeating it in all four matrix jobs adds substantial
           # CPU time without measuring additional lines.

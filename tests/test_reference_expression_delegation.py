@@ -358,20 +358,17 @@ def test_exact_cohort_filter_is_applied_before_pooling():
     assert out["expression"].notna().all()
 
 
-def test_nutm_exact_cohort_filter_is_applied_before_pooling():
-    out = accessors.cancer_reference_expression(
-        cancer_types="NUTM",
-        genes=["TP53"],
-        source_cohort="UNC_NUTM1",
-        pool=True,
-    )
-    assert not out.empty
-    assert set(out["source_cohort"]) == {"POOLED"}
-    assert out["expression"].notna().all()
-    assert any(
-        record["cancer_code"] == "NUTM" and record["available"]
-        for record in out.attrs["availability"]
-    )
+@pytest.mark.parametrize("pool", [False, True])
+def test_invalid_nutm_source_is_rejected_before_pooling(pool):
+    # OncoRef #604 withholds UNC_NUTM1 and its derived artifacts: the
+    # original normalized measurements are not validated linear TPM.
+    with pytest.raises(ValueError, match="UNC_NUTM1.*invalid expression scale"):
+        accessors.cancer_reference_expression(
+            cancer_types="NUTM",
+            genes=["TP53"],
+            source_cohort="UNC_NUTM1",
+            pool=pool,
+        )
 
 
 @pytest.mark.parametrize(
