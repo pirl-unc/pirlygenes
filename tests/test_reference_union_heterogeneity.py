@@ -91,8 +91,9 @@ def test_pool_collapses_multisource_n_weighted_per_gene_availability():
     """pool=True collapses a multi-source code's per-cohort rows into one
     n-weighted pooled row per gene, pooling only the cohorts that measured the
     gene (per-gene availability)."""
-    base = cancer_reference_expression(cancer_types="NUTM", normalize="tpm")
-    pooled = cancer_reference_expression(cancer_types="NUTM", normalize="tpm",
+    # Use two validated linear-TPM sources; UNC_NUTM1 is withheld by OncoRef.
+    base = cancer_reference_expression(cancer_types="SARC_CHOR", normalize="tpm")
+    pooled = cancer_reference_expression(cancer_types="SARC_CHOR", normalize="tpm",
                                          pool=True)
     assert base["source_cohort"].nunique() > 1            # genuinely multi-source
     assert pooled.groupby("Ensembl_Gene_ID").size().max() == 1   # one row per gene
