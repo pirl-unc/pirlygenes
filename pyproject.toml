@@ -132,8 +132,9 @@ dependencies = [
     # 1.23.1 adds verified human sequence-reference mappings for common CTA
     # consumers while retaining the same historical panel and expression data.
     # 1.24.0 adds clinical explanations to the separate research selection.
-    # Both endpoints preserve this package's historical panel and data identity.
-    "oncoref>=1.23.1,<=1.24.0",
+    # Compatibility through 1.38.0 preserves the historical panel and data identity;
+    # current sequence-role consumers can adopt the separately versioned bundle (#665).
+    "oncoref>=1.23.1,<=1.38.0",
     "openpyxl>=3.1.0",
     "pandas>=3,<4",
     # Parquet engine for the cohort-matrix / representative / percentile
