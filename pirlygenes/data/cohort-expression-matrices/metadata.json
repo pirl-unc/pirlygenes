@@ -6,7 +6,7 @@
     "package_version": "1.38.0"
   },
   "canonical_gene_ids": true,
-  "pirlygenes_data_version": "6.0.14",
+  "pirlygenes_data_version": "6.1.1",
   "schema_version": 1,
   "tables": {
     "clean_tpm": {

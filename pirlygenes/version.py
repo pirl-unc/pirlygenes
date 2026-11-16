@@ -18,7 +18,7 @@ __version__ = "6.1.1"
 # means a code-only release (bug/build-time fix) reuses the last uploaded
 # bundle instead of forcing a redundant data re-upload. Must always
 # point at an existing `pirlygenes-data-v<DATA_VERSION>.tar.gz` release asset.
-DATA_VERSION = "6.0.14"
+DATA_VERSION = "6.1.1"
 
 version_string = f"v{__version__}"
 
