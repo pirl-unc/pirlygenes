@@ -438,58 +438,7 @@ Downstream consumers pick their level:
 - "I want to run a deconvolution / signature / report pipeline" →
   `pirl-trufflepig` (which pulls in `pirlygenes`).
 
-## Migrating from pirlygenes 4.x or 5.0.x
-
-> Only relevant if you're upgrading. Fresh 5.1+ installs can skip this.
-
-The expression matrices and CLI ran a brief migration through 5.0.0–5.0.2
-where the data lived in trufflepig. As of 5.1.0 the expression data is
-back in pirlygenes and the boundary is the one described above.
-
-| Was somewhere | Is now |
-|---|---|
-| `pirlygenes` CLI (4.x: `analyze`, `compare-analyze`, `plot-*`, `data`, `cancers`) | `trufflepig run`, `trufflepig compare`, `trufflepig plot-*`, `trufflepig data`, `trufflepig cancers` |
-| 4.x: `from pirlygenes import infer_sample_context, SampleContext, plot_*` | `from trufflepig.sample_context import …`, `from trufflepig.plot import …` |
-| 4.x: `from pirlygenes.tumor_purity import TCGA_MEDIAN_PURITY` | `from pirlygenes.gene_sets_cancer import TCGA_MEDIAN_PURITY` |
-| 4.x or 5.0.x: `from pirlygenes.gene_sets_cancer import pan_cancer_expression` | `from pirlygenes.expression import pan_cancer_expression` (or `from pirlygenes import pan_cancer_expression`) |
-| 5.0.x: `from trufflepig.reference import pan_cancer_expression` | `from pirlygenes.expression import pan_cancer_expression` |
-| 5.0.x: `from trufflepig.expression_normalize import normalize_expression, fpkm_to_tpm` | `from pirlygenes.expression import normalize_expression, fpkm_to_tpm` |
-| 5.0.x: `from trufflepig.expression_qc import classify_gene_qc` | `from pirlygenes.expression import classify_gene_qc` |
-| `from pirlygenes.cli import analyze, compare_analyze` (Python API) | `from trufflepig.main import analyze, compare_analyze` |
-
-Unchanged across all versions: `gene_sets_cancer.*` accessors,
-`load_dataset.*`, `gene_ids.*`, `gene_names.*`.
-
-If the `pirlygenes` console-script is still on PATH from a prior install, it now prints a one-line "moved to trufflepig" notice and exits 2.
-
-## Migration history
-
-- **v6.0.0** — rename the materialized normalization API for accuracy:
-  `cohort_expression_matrices()`, `CohortExpressionMatrices`, and
-  `build_canonical_cohort_expression_matrices()`. The downloadable artifact is
-  now `cohort-expression-matrices/` with self-describing `metadata.json`;
-  `cohort_expression_matrices_metadata()` exposes that provenance without
-  requiring callers to inspect package files. The former “views” names are
-  removed rather than retained as aliases.
-- **v5.2.0** — add `normalize=` presets for TPM-scaled and
-  clean-TPM expression accessors, derive `<TCGA>_TPM`
-  columns from the ID-keyed pan-cancer `<TCGA>_FPKM` columns, and remove
-  deconvolution-derived reference tables from the package.
-- **v5.1.0** — restore expression matrices to
-  pirlygenes and add `pirlygenes.expression` with the rescaling
-  primitives, the QC classifier, and the transcript→gene aggregator.
-  Closes pirlygenes#246 and #247.
-- **v5.0.0 – v5.0.2** — analysis CLI, plotting, and expression
-  matrices briefly moved to trufflepig. 5.0.0's migration message
-  pointed at `pip install trufflepig`, which on PyPI is an unrelated
-  package; 5.0.1 corrected it to `pip install pirl-trufflepig`;
-  5.0.2 added perf / caching polish.
-- **v4.x** — combined data + analysis package.
-
-See [`pirl-unc/trufflepig#1`](https://github.com/pirl-unc/trufflepig/issues/1)
-for the analysis-migration umbrella and
-[`pirl-unc/pirlygenes#119`](https://github.com/pirl-unc/pirlygenes/issues/119)
-for the original deprecation thread.
+For 4.x/5.x migration history (CLI move to `trufflepig`, `cohort_expression_matrices()` rename), see [`docs/README.md`](docs/README.md) and [`pirl-unc/trufflepig#1`](https://github.com/pirl-unc/trufflepig/issues/1).
 
 ## License
 
