@@ -107,14 +107,20 @@ def ncbi_synonym_official_symbol(name: str) -> Optional[str]:
 def _index_cache_path(release: int):
     """Cache location for the prebuilt Ensembl id→name dicts.
 
-    Honors ``XDG_CACHE_HOME`` (Linux convention) and falls back to
-    ``~/.cache/pirlygenes/``. Returns a Path; the directory is created
-    lazily by the writer.
+    Honors ``PIRLYGENES_CACHE``, ``OPENVAX_DATA_CACHE``, and ``XDG_CACHE_HOME``
+    while keeping populated legacy ``~/.cache/pirlygenes/`` caches intact.
+    Returns a Path; the directory is created lazily by the writer.
     """
     import os as _os
     from pathlib import Path as _Path
-    base = _os.environ.get("XDG_CACHE_HOME") or str(_Path.home() / ".cache")
-    return _Path(base) / "pirlygenes" / f"ensembl-{release}-id-index.pkl"
+
+    if not _os.environ.get("PIRLYGENES_CACHE", "").strip() and not _os.environ.get("OPENVAX_DATA_CACHE", "").strip():
+        xdg = _os.environ.get("XDG_CACHE_HOME", "").strip()
+        if xdg:
+            return _Path(xdg).expanduser() / "pirlygenes" / f"ensembl-{release}-id-index.pkl"
+    from . import downloads
+
+    return downloads.cache_root() / f"ensembl-{release}-id-index.pkl"
 
 
 # Minimum expected dictionary size. A real human Ensembl release has
