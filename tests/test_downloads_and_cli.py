@@ -81,7 +81,10 @@ def test_cache_root_honors_env_var(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("PIRLYGENES_CACHE", str(tmp_path / "override"))
     assert downloads.cache_root() == tmp_path / "override"
     monkeypatch.delenv("PIRLYGENES_CACHE")
-    assert downloads.cache_root() == Path.home() / ".cache" / "pirlygenes"
+    monkeypatch.setenv("OPENVAX_DATA_CACHE", str(tmp_path / "shared"))
+    assert downloads.cache_root() == tmp_path / "shared" / "pirlygenes"
+    monkeypatch.delenv("OPENVAX_DATA_CACHE")
+    assert downloads.cache_root() == Path(downloads.resolve_cache_location().path)
 
 
 def test_registry_rejects_conflicting_build_owners(tmp_path: Path):

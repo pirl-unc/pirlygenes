@@ -100,7 +100,9 @@ def cache_root() -> Path:
     if override:
         # Override points at the version-pinned dir; its parent is the root.
         return Path(override).expanduser().parent
-    return Path.home() / ".cache" / "pirlygenes" / "bundled_data"
+    from . import downloads
+
+    return downloads.cache_root() / "bundled_data"
 
 
 def cache_dir() -> Path:
@@ -168,13 +170,20 @@ def _validate_release_tree(bundle: Path) -> None:
         raise ValueError("release is missing required data")
 
 
-def _install(*, force: bool, verbose: bool) -> Path:
+def _install(*, force: bool, verbose: bool, offline: bool | None = None) -> Path:
     # Historical releases lack trusted hashes. DataCache still records and
     # validates observed hashes, serializes writers, and publishes atomically.
+    if not RELEASE_URL.startswith("file://"):
+        datacache.require_online(RELEASE_URL, offline=offline)
+    download_opts: dict[str, object] = {
+        "show_progress": "auto" if verbose else False,
+    }
+    if offline is not None:
+        download_opts["offline"] = offline
     bundle = datacache.install_archive(
         _archive_store(cache_dir()), RELEASE_URL,
         force=force, verified=False,
-        download_options={"show_progress": verbose},
+        download_options=download_opts,
         validator=_validate_release_tree,
     )
     if verbose:
@@ -182,16 +191,21 @@ def _install(*, force: bool, verbose: bool) -> Path:
     return bundle
 
 
-def fetch(*, verbose: bool = True) -> Path:
+def fetch(*, verbose: bool = True, offline: bool | None = None) -> Path:
     """Explicitly refresh through DataCache; existing reader paths stay valid.
 
     Legacy files are retained. New downloads live in a managed archive store
     inside :func:`cache_dir`; return the extracted bundle's actual directory.
     """
-    return _install(force=True, verbose=verbose)
+    return _install(force=True, verbose=verbose, offline=offline)
 
 
-def ensure_local(*, auto_fetch: bool = True, verbose: bool = True) -> Path:
+def ensure_local(
+    *,
+    auto_fetch: bool = True,
+    verbose: bool = True,
+    offline: bool | None = None,
+) -> Path:
     """Reuse local data or let DataCache install the missing archive once.
 
     Complete legacy caches remain readable without migration or network IO.
@@ -204,7 +218,7 @@ def ensure_local(*, auto_fetch: bool = True, verbose: bool = True) -> Path:
             f"pirlygenes data bundle not found at {cache_dir()}. "
             "Run `pirlygenes data fetch` to download it."
         )
-    return _install(force=False, verbose=verbose)
+    return _install(force=False, verbose=verbose, offline=offline)
 
 
 def status() -> dict:

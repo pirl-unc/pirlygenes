@@ -21,12 +21,25 @@ _DEFAULT_CACHE_ROOT = Path.home() / ".cache" / "pirlygenes"
 _CACHE_ENV_VAR = "PIRLYGENES_CACHE"
 
 
+def resolve_cache_location():
+    """Resolve Pirlygenes' cache directory and why it was chosen (read-only).
+
+    Precedence: ``PIRLYGENES_CACHE`` -> ``OPENVAX_DATA_CACHE/pirlygenes`` ->
+    populated shared platform cache -> populated legacy ``~/.cache/pirlygenes``
+    -> default shared platform cache.
+    """
+    import datacache
+
+    return datacache.resolve_cache_dir(
+        "pirlygenes",
+        _CACHE_ENV_VAR,
+        legacy=(Path.home() / ".cache" / "pirlygenes",),
+    )
+
+
 def cache_root() -> Path:
-    """Return the active cache root, honoring ``PIRLYGENES_CACHE``."""
-    override = os.environ.get(_CACHE_ENV_VAR, "").strip()
-    if override:
-        return Path(override).expanduser()
-    return _DEFAULT_CACHE_ROOT
+    """Return the active cache root, honoring ``PIRLYGENES_CACHE`` and ``OPENVAX_DATA_CACHE``."""
+    return Path(resolve_cache_location().path)
 
 
 def source_cache_dir(source_id: str, *, category: str = "expression") -> Path:

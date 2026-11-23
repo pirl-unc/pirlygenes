@@ -30,7 +30,11 @@ roadmap that drives this CLI's surface.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import json
+import os
 import sys
+from pathlib import Path
 
 from . import data_bundle, data_inventory, downloads
 from .version import __version__
@@ -127,12 +131,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "list",
         help="List registered sources grouped by category, sorted by on-disk size.",
     )
-    downloads_sub.add_parser(
+    dl_cache_dir = downloads_sub.add_parser(
         "cache-dir",
+        aliases=["path"],
         help=(
             "Print the oncoref matrix cache root "
             "(honors CANCERDATA_SOURCE_MATRICES)."
         ),
+    )
+    dl_cache_dir.add_argument(
+        "--json", action="store_true",
+        help="Emit machine-readable JSON.",
     )
     fetch_parser = downloads_sub.add_parser(
         "fetch",
@@ -140,6 +149,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     fetch_parser.add_argument(
         "source_id", help="Source id from oncoref's expression registry"
+    )
+    fetch_parser.add_argument(
+        "--offline", action="store_true",
+        help="Disallow network downloads (equivalent to DATACACHE_OFFLINE=1).",
     )
     prune_parser = downloads_sub.add_parser(
         "prune",
@@ -188,10 +201,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="One flat table of every cohort sorted by sample count, with "
              "assay / quantification / reference as columns.",
     )
-    data_sub.add_parser(
+    dirs_parser = data_sub.add_parser(
+        "dirs",
+        help="Show pirlygenes cache locations, sizes, and offline status (read-only).",
+    )
+    dirs_parser.add_argument(
+        "--json", action="store_true",
+        help="Emit machine-readable JSON.",
+    )
+    status_parser = data_sub.add_parser(
         "status",
         help="Report which downloadable bundle paths are present in "
              "the local cache for this package version.",
+    )
+    status_parser.add_argument(
+        "--json", action="store_true",
+        help="Emit machine-readable JSON.",
     )
     sources_parser = data_sub.add_parser(
         "sources",
@@ -219,15 +244,24 @@ def _build_parser() -> argparse.ArgumentParser:
         "--multi", action="store_true",
         help="Only show cancer codes that have more than one source.",
     )
-    data_sub.add_parser(
+    data_cache_dir = data_sub.add_parser(
         "cache-dir",
+        aliases=["path"],
         help="Print the on-disk cache dir for the downloaded data "
              "bundle (override via PIRLYGENES_BUNDLED_DATA).",
     )
-    data_sub.add_parser(
+    data_cache_dir.add_argument(
+        "--json", action="store_true",
+        help="Emit machine-readable JSON.",
+    )
+    data_fetch_parser = data_sub.add_parser(
         "fetch",
         help="Explicitly download the data bundle from the GitHub "
              "Release matching the installed version.",
+    )
+    data_fetch_parser.add_argument(
+        "--offline", action="store_true",
+        help="Disallow network downloads (equivalent to DATACACHE_OFFLINE=1).",
     )
     prune_parser = data_sub.add_parser(
         "prune",
@@ -243,6 +277,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--include-current", action="store_true",
         help="Also delete the current version's cache dir (forces a "
              "re-fetch on next data access).",
+    )
+    prune_parser.add_argument(
+        "--json", action="store_true",
+        help="Emit machine-readable JSON.",
     )
 
     build_parser = subparsers.add_parser(
@@ -421,20 +459,59 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+@contextlib.contextmanager
+def _offline_override(offline: bool):
+    if not offline:
+        yield
+        return
+    prev = os.environ.get("DATACACHE_OFFLINE")
+    os.environ["DATACACHE_OFFLINE"] = "1"
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop("DATACACHE_OFFLINE", None)
+        else:
+            os.environ["DATACACHE_OFFLINE"] = prev
+
+
+def _dir_size_bytes(path: Path) -> int:
+    if not path.exists():
+        return 0
+    if path.is_file():
+        try:
+            return path.stat().st_size
+        except OSError:
+            return 0
+    total = 0
+    for child in path.rglob("*"):
+        if child.is_file():
+            try:
+                total += child.stat().st_size
+            except OSError:
+                continue
+    return total
+
+
 def cmd_downloads_list(_args: argparse.Namespace) -> int:
     usages = downloads.collect_cache_usage()
     sys.stdout.write(downloads.render_list(usages) + "\n")
     return 0
 
 
-def cmd_downloads_cache_dir(_args: argparse.Namespace) -> int:
+def cmd_downloads_cache_dir(args: argparse.Namespace) -> int:
     from oncoref import source_matrices
 
-    sys.stdout.write(str(source_matrices.cache_dir()) + "\n")
+    path = str(source_matrices.cache_dir())
+    if getattr(args, "json", False):
+        sys.stdout.write(json.dumps({"path": path}, indent=2) + "\n")
+    else:
+        sys.stdout.write(path + "\n")
     return 0
 
 
 def cmd_downloads_fetch(args: argparse.Namespace) -> int:
+    import datacache
     from oncoref import source_matrices
     from . import cohorts
 
@@ -455,14 +532,16 @@ def cmd_downloads_fetch(args: argparse.Namespace) -> int:
             "`oncoref.source_matrices.available_cohorts()` for cancer codes.\n"
         )
         return 2
-    for code in codes:
-        try:
-            source_matrices.fetch(code)
-        except source_matrices.SourceMatrixError as err:
-            sys.stderr.write(
-                f"failed to fetch oncoref source matrix {code!r}: {err}\n"
-            )
-            return 2
+    offline = bool(getattr(args, "offline", False))
+    with _offline_override(offline):
+        for code in codes:
+            try:
+                source_matrices.fetch(code)
+            except (source_matrices.SourceMatrixError, datacache.OfflineError) as err:
+                sys.stderr.write(
+                    f"failed to fetch oncoref source matrix {code!r}: {err}\n"
+                )
+                return 2
     noun = "matrix" if len(codes) == 1 else "matrices"
     sys.stdout.write(
         f"fetched {len(codes)} oncoref source {noun}: {', '.join(codes)}\n"
@@ -566,8 +645,95 @@ def _format_bytes(n: int) -> str:
     return f"{f:.1f} TB"
 
 
-def cmd_data_status(_args: argparse.Namespace) -> int:
+def cmd_data_dirs(args: argparse.Namespace) -> int:
+    import datacache
+
+    loc = downloads.resolve_cache_location()
+    cache_path = Path(loc.path)
+    cache_bytes = _dir_size_bytes(cache_path)
+
+    bundle_path = data_bundle.cache_dir()
+    bundle_exists = bundle_path.exists()
+    bundle_bytes = _dir_size_bytes(bundle_path)
+    bundle_env = "PIRLYGENES_BUNDLED_DATA" if os.environ.get("PIRLYGENES_BUNDLED_DATA") else None
+
+    oncoref_info: dict[str, object] | None = None
+    try:
+        from oncoref import source_matrices
+
+        mat_path = Path(source_matrices.cache_dir())
+        oncoref_info = {
+            "path": str(mat_path),
+            "env_var": (
+                "CANCERDATA_SOURCE_MATRICES"
+                if os.environ.get("CANCERDATA_SOURCE_MATRICES")
+                else None
+            ),
+            "exists": mat_path.exists(),
+            "size_bytes": _dir_size_bytes(mat_path),
+        }
+    except Exception:  # noqa: BLE001 — optional/unavailable oncoref inspection
+        oncoref_info = None
+
+    offline_src = datacache.offline_source()
+    payload: dict[str, object] = {
+        "package": "pirlygenes",
+        "version": __version__,
+        "data_version": data_bundle.DATA_VERSION,
+        "offline": offline_src is not None,
+        "offline_source": offline_src,
+        "cache_root": {
+            "path": str(cache_path),
+            "origin": loc.origin,
+            "detail": loc.detail,
+            "exists": cache_path.exists(),
+            "size_bytes": cache_bytes,
+        },
+        "bundled_data": {
+            "path": str(bundle_path),
+            "env_var": bundle_env,
+            "exists": bundle_exists,
+            "size_bytes": bundle_bytes,
+            "all_local": data_bundle.is_local(),
+        },
+        "oncoref_matrices": oncoref_info,
+    }
+    if getattr(args, "json", False):
+        sys.stdout.write(json.dumps(payload, indent=2) + "\n")
+        return 0
+
+    origin_text = f"{loc.origin} ({loc.detail})" if loc.detail else loc.origin
+    sys.stdout.write(f"pirlygenes cache locations (v{__version__}, data v{data_bundle.DATA_VERSION})\n")
+    sys.stdout.write(
+        f"  cache_root       : {cache_path} "
+        f"[{origin_text}; {datacache.format_bytes(cache_bytes)}]\n"
+    )
+    bundle_state = "ready" if data_bundle.is_local() else ("partial" if bundle_exists else "not created")
+    sys.stdout.write(
+        f"  bundled_data     : {bundle_path} "
+        f"[{bundle_state}; {datacache.format_bytes(bundle_bytes)}]\n"
+    )
+    if oncoref_info is not None:
+        mat_state = (
+            datacache.format_bytes(int(oncoref_info["size_bytes"]))
+            if oncoref_info["exists"]
+            else "not created"
+        )
+        sys.stdout.write(
+            f"  oncoref_matrices : {oncoref_info['path']} [{mat_state}]\n"
+        )
+    if offline_src:
+        sys.stdout.write(f"  offline          : enabled ({offline_src})\n")
+    else:
+        sys.stdout.write("  offline          : disabled\n")
+    return 0
+
+
+def cmd_data_status(args: argparse.Namespace) -> int:
     snap = data_bundle.status()
+    if getattr(args, "json", False):
+        sys.stdout.write(json.dumps(snap, indent=2) + "\n")
+        return 0
     sys.stdout.write(f"pirlygenes data bundle for v{snap['data_version']}\n")
     sys.stdout.write(f"  cache dir   : {snap['cache_dir']}\n")
     sys.stdout.write(f"  release URL : {snap['release_url']}\n")
@@ -584,33 +750,99 @@ def cmd_data_status(_args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_data_cache_dir(_args: argparse.Namespace) -> int:
-    sys.stdout.write(str(data_bundle.cache_dir()) + "\n")
+def cmd_data_cache_dir(args: argparse.Namespace) -> int:
+    path = str(data_bundle.cache_dir())
+    if getattr(args, "json", False):
+        sys.stdout.write(
+            json.dumps(
+                {"path": path, "data_dir": str(data_bundle.data_dir())},
+                indent=2,
+            )
+            + "\n"
+        )
+    else:
+        sys.stdout.write(path + "\n")
     return 0
 
 
-def cmd_data_fetch(_args: argparse.Namespace) -> int:
+def cmd_data_fetch(args: argparse.Namespace) -> int:
+    offline = True if getattr(args, "offline", False) else None
     try:
-        data_bundle.fetch(verbose=True)
+        data_bundle.fetch(verbose=True, offline=offline)
         return 0
     except Exception as exc:
         sys.stderr.write(f"pirlygenes data fetch failed: {exc}\n")
         return 1
 
 
+def _serialize_version_entry(entry: dict) -> dict[str, object]:
+    return {
+        "version": entry["version"],
+        "path": str(entry["path"]),
+        "size_bytes": int(entry["size_bytes"]),
+        "is_current": bool(entry["is_current"]),
+    }
+
+
 def cmd_data_prune(args: argparse.Namespace) -> int:
+    as_json = bool(getattr(args, "json", False))
+    keep_current = not getattr(args, "include_current", False)
+    dry_run = not getattr(args, "yes", False)
     versions = data_bundle.list_cache_versions()
     if not versions:
+        if as_json:
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "cache_root": str(data_bundle.cache_root()),
+                        "dry_run": dry_run,
+                        "keep_current": keep_current,
+                        "versions": [],
+                        "candidates": [],
+                        "deleted": [],
+                        "reclaimable_bytes": 0,
+                        "freed_bytes": 0,
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+            return 0
         sys.stdout.write(
             f"pirlygenes: no cache dirs under "
             f"{data_bundle.cache_root()}; nothing to prune.\n"
         )
         return 0
-    keep_current = not getattr(args, "include_current", False)
-    dry_run = not getattr(args, "yes", False)
     candidates = data_bundle.prune_cache(
         keep_current=keep_current, dry_run=True,
     )
+    reclaimable_bytes = sum(int(c["size_bytes"]) for c in candidates)
+    deleted: list[dict] = []
+    if not dry_run and candidates:
+        deleted = data_bundle.prune_cache(
+            keep_current=keep_current, dry_run=False,
+        )
+    freed_bytes = sum(int(c["size_bytes"]) for c in deleted)
+
+    if as_json:
+        sys.stdout.write(
+            json.dumps(
+                {
+                    "cache_root": str(data_bundle.cache_root()),
+                    "dry_run": dry_run,
+                    "keep_current": keep_current,
+                    "versions": [_serialize_version_entry(e) for e in versions],
+                    "candidates": [_serialize_version_entry(e) for e in candidates],
+                    "deleted": [_serialize_version_entry(e) for e in deleted],
+                    "reclaimable_bytes": reclaimable_bytes,
+                    "freed_bytes": freed_bytes,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+        return 0
+
     sys.stdout.write(
         f"pirlygenes: bundled-data cache at {data_bundle.cache_root()}\n"
     )
@@ -626,16 +858,15 @@ def cmd_data_prune(args: argparse.Namespace) -> int:
     if not candidates:
         sys.stdout.write("nothing to prune.\n")
         return 0
-    total_mb = sum(c["size_bytes"] for c in candidates) / 1e6
+    total_mb = reclaimable_bytes / 1e6
     if dry_run:
         sys.stdout.write(
             f"\ndry run — would free {total_mb:.1f} MB across "
             f"{len(candidates)} dir(s). Re-run with --yes to delete.\n"
         )
         return 0
-    data_bundle.prune_cache(keep_current=keep_current, dry_run=False)
     sys.stdout.write(
-        f"\ndeleted {len(candidates)} cache dir(s), freed {total_mb:.1f} MB.\n"
+        f"\ndeleted {len(deleted)} cache dir(s), freed {freed_bytes / 1e6:.1f} MB.\n"
     )
     return 0
 
@@ -785,16 +1016,19 @@ def cmd_analysis_moved(_args: argparse.Namespace) -> int:
 _DOWNLOADS_DISPATCH = {
     "list": cmd_downloads_list,
     "cache-dir": cmd_downloads_cache_dir,
+    "path": cmd_downloads_cache_dir,
     "fetch": cmd_downloads_fetch,
     "prune": cmd_downloads_prune,
 }
 
 
 _DATA_DISPATCH = {
+    "dirs": cmd_data_dirs,
     "list": cmd_data_list,
     "sources": cmd_data_sources,
     "status": cmd_data_status,
     "cache-dir": cmd_data_cache_dir,
+    "path": cmd_data_cache_dir,
     "fetch": cmd_data_fetch,
     "prune": cmd_data_prune,
 }
@@ -820,7 +1054,7 @@ def main(argv: list[str] | None = None) -> int:
         handler = _DOWNLOADS_DISPATCH.get(args.downloads_action)
         if handler is None:
             sys.stderr.write(
-                "usage: pirlygenes downloads {list,cache-dir,fetch,prune}\n"
+                "usage: pirlygenes downloads {list,cache-dir,path,fetch,prune}\n"
             )
             return 2
         return handler(args)
@@ -829,7 +1063,7 @@ def main(argv: list[str] | None = None) -> int:
         handler = _DATA_DISPATCH.get(args.data_action)
         if handler is None:
             sys.stderr.write(
-                "usage: pirlygenes data {list,status,cache-dir,fetch,prune}\n"
+                "usage: pirlygenes data {dirs,list,sources,status,cache-dir,path,fetch,prune}\n"
             )
             return 2
         return handler(args)
