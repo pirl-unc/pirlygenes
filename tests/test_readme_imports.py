@@ -63,13 +63,6 @@ from pirlygenes.gene_families import (  # noqa: F401
 )
 
 
-def test_readme_python_api_block_is_importable():
-    """Smoke test — if the import block at the top of this file
-    succeeds at collection time, the README's documented API matches
-    reality. The actual assertions live above as imports."""
-    assert True
-
-
 def test_readme_cancer_family_panel_example_returns_genes():
     """README documents valid family names: PROSTATE, CRC, GASTRIC,
     ESCA_SQ, SQUAMOUS, RENAL, GLIAL, MELANOCYTIC, and the #452 adenocarcinoma
