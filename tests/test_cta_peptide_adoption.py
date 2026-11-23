@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
-from oncoref import cta_peptides, gene_identity, peptides
+from oncoref import antigen_sets, cta_peptides, gene_identity, peptides
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "analyses"))
 import cta_patient_counts as counts  # noqa: E402
@@ -78,7 +78,7 @@ def test_analysis_uses_verified_aliases_and_owner_disk_cache(owner_cache, tmp_pa
     row = result.set_index("Ensembl_Gene_ID").loc[PRAME]
     assert (row.n_9mers, row.n_specific_9mers) == (4, 3)
     assert ALTERNATE_PRAME not in set(result.Ensembl_Gene_ID)
-    assert len(result) == 624
+    assert set(result.Ensembl_Gene_ID) == set(antigen_sets.gene_ids("CTA"))
     assert legacy.read_bytes() == before
     assert len(list(owner_cache.glob("*.csv"))) == 1
 

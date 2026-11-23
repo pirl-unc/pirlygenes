@@ -25,7 +25,7 @@ dependencies = [
     # oncoref owns the cancer-type ontology, source/sample registries, and
     # delegated expression/normalization mechanics. Upper bound pins releases
     # validated with the current materialized cohort matrices (#665/#667).
-    "oncoref>=1.23.1,<=1.38.0",
+    "oncoref>=1.23.1,<=1.49.0",
     "openpyxl>=3.1.0",
     "pandas>=3,<4",
     # Parquet engine for the cohort-matrix / representative / percentile

@@ -153,10 +153,8 @@ def test_released_nci_gap_references_and_remaining_gap_contract():
     )
     assert set(available.index.astype(str)) == set(released)
     assert available["n_samples"].astype(int).to_dict() == released
-    assert available.loc["BCC", "source_scale_class"] == (
-        "bulk_rnaseq_cpm_proxy"
-    )
-    assert bool(available.loc["BCC", "linear_tpm_comparable"]) is False
+    assert available.loc["BCC", "source_scale_class"] == "linear_rnaseq_tpm"
+    assert bool(available.loc["BCC", "linear_tpm_comparable"]) is True
     assert available.loc["GBC", "source_scale_class"] == "linear_rnaseq_tpm"
     assert bool(available.loc["GBC", "linear_tpm_comparable"]) is True
     assert available.loc["EPN", "source_scale_class"] == (
