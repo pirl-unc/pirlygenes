@@ -2327,7 +2327,7 @@ radioligand_target_gene_ids = _deprecate(
 # Evidence and partitions explicitly retain this historical panel while adding
 # Tsarina's independent MS annotations. Tsarina's current-selection defaults
 # are a different population and must not silently redefine these APIs.
-from oncoref import (  # noqa: E402,F401
+from oncoref.cta import (  # noqa: E402,F401
     CTA_by_axes,
     CTA_excluded_gene_ids,
     CTA_excluded_gene_names,
