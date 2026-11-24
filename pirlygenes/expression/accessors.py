@@ -68,6 +68,7 @@ can mutate freely.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from copy import deepcopy
 import json
 import warnings
@@ -181,12 +182,23 @@ def _add_pan_normalized_value_cols(
     fills missing inputs with zero internally; restoring the mask here keeps an
     unavailable rollup value distinct from a measured biological zero.
     """
-    out = df.copy()
+    new_cols: dict[str, pd.Series] = {}
     target_cols = []
     for col in value_cols:
         target = _pan_normalized_col_name(col, normalize)
-        out[target] = normalized_df[col].mask(df[col].isna())
+        new_cols[target] = normalized_df[col].mask(df[col].isna())
         target_cols.append(target)
+    if not new_cols:
+        return df.copy(), target_cols
+    existing = [col for col in target_cols if col in df.columns]
+    if existing:
+        out = df.copy()
+        for col in existing:
+            out[col] = new_cols.pop(col)
+        if new_cols:
+            out = pd.concat([out, pd.DataFrame(new_cols, index=out.index)], axis=1)
+        return out, target_cols
+    out = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
     return out, target_cols
 
 
@@ -1850,6 +1862,821 @@ def _artifact_sample_qc_by_code(codes: Sequence[str]) -> dict[str, str]:
     return policies
 
 
+_ONCOREF_DELEGATED_MODE_LABELS = {
+    "tpm": "tpm",
+    "tpm_raw": "tpm",
+    "TPM": "tpm",
+    "tpm_clean": "tpm_clean",
+    "TPM_clean": "tpm_clean",
+    "tpm_clean_biological": "tpm_clean",
+}
+
+
+def is_default_oncoref_reference_delegate() -> bool:
+    """Return whether ``oncoref.cancer_reference_expression`` is unmodified.
+
+    Tests that monkeypatch ``oncoref.cancer_reference_expression`` bypass the
+    delegated cache and multi-mode batching so mocks observe the exact
+    per-mode call sequence.
+    """
+    import oncoref
+    from oncoref import expression as oncoref_expression
+
+    delegate = oncoref.cancer_reference_expression
+    return (
+        delegate is oncoref_expression.cancer_reference_expression
+        and getattr(delegate, "__module__", "") == "oncoref.expression"
+        and getattr(delegate, "__qualname__", "") == "cancer_reference_expression"
+    )
+
+
+def filter_cached_reference_genes(
+    df: pd.DataFrame,
+    genes: Sequence[str],
+) -> pd.DataFrame:
+    """Filter a cached pirlygenes-styled reference frame using oncoref's gene match rules."""
+    if df.empty:
+        return df.iloc[0:0].copy()
+    from oncoref.gene_ids import is_ensembl_gene_id, resolve_ensembl_id, unversioned
+
+    wanted = {str(g) for g in genes}
+    wanted_unversioned = {unversioned(g) for g in wanted}
+    wanted_resolved: set[str] = set()
+    for gene in wanted:
+        base = unversioned(gene)
+        if is_ensembl_gene_id(base):
+            resolved = unversioned(resolve_ensembl_id(base))
+            wanted_unversioned.add(resolved)
+            wanted_resolved.add(resolved)
+    ids = df["Ensembl_Gene_ID"].astype(str)
+    mask = ids.isin(wanted) | df["Symbol"].astype(str).isin(wanted)
+    if wanted_resolved:
+        ids_unversioned = ids.map(unversioned)
+        mask |= ids_unversioned.isin(wanted_unversioned)
+        # pirlygenes-styled rows can retain legacy ENSG IDs (e.g. PAXX); resolve
+        # row IDs to canonical space so canonical ENSG queries still match.
+        mask |= ids_unversioned.map(resolve_ensembl_id).isin(wanted_resolved)
+    return df.loc[mask].reset_index(drop=True)
+
+
+class DelegatedReferenceExpressionCache:
+    """Bounded in-process LRU cache for delegated ``oncoref`` reference queries.
+
+    Caches unmodified ``oncoref.cancer_reference_expression`` slices by
+    ``(view_kind, cancer_code, delegated_mode, sample_qc, genes_key, collapse_kind)``
+    with strict size caps so memory stays bounded while eliminating repeated
+    decompression and parsing of large multi-cohort summary shards across
+    union, filter, pooling, log1p, and gene-subset queries.
+
+    Stored DataFrames and ``attrs`` dictionaries are treated as read-only; every
+    lookup returns fresh caller-owned copies.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_gene_entries: int = 512,
+        max_full_entries: int = 8,
+        max_filtered_entries: int = 128,
+    ) -> None:
+        self.max_gene_entries = max_gene_entries
+        self.max_full_entries = max_full_entries
+        self.max_filtered_entries = max_filtered_entries
+        self._gene_entries: OrderedDict[tuple, tuple] = OrderedDict()
+        self._full_entries: OrderedDict[tuple, tuple] = OrderedDict()
+        self._filtered_entries: OrderedDict[tuple, tuple] = OrderedDict()
+
+    def clear(self) -> None:
+        """Drop all cached delegated reference entries."""
+        self._gene_entries.clear()
+        self._full_entries.clear()
+        self._filtered_entries.clear()
+
+    @staticmethod
+    def _lru_get(store: OrderedDict, key: tuple):
+        value = store.get(key)
+        if value is not None:
+            store.move_to_end(key)
+        return value
+
+    @staticmethod
+    def _lru_put(store: OrderedDict, key: tuple, value: tuple, maxsize: int) -> None:
+        store[key] = value
+        store.move_to_end(key)
+        while len(store) > maxsize:
+            store.popitem(last=False)
+
+    @staticmethod
+    def _collapse_kind(
+        collapse_cdna_identical: bool,
+        collapse_protein_identical: bool,
+    ) -> Optional[str]:
+        if collapse_cdna_identical:
+            return "cdna"
+        if collapse_protein_identical:
+            return "protein"
+        return None
+
+    @staticmethod
+    def _genes_key(genes: Optional[Sequence[str]]) -> Optional[tuple[str, ...]]:
+        if genes is None:
+            return None
+        return tuple(genes)
+
+    @staticmethod
+    def _source_cohort_key(
+        source_cohort: Optional[str | Sequence[str]],
+    ) -> Optional[tuple[str, ...]]:
+        if source_cohort is None:
+            return None
+        if isinstance(source_cohort, str):
+            return (source_cohort,)
+        return tuple(str(v) for v in source_cohort)
+
+    def get_code_entry(
+        self,
+        *,
+        view_kind: str,
+        code: str,
+        delegated_mode: str,
+        sample_qc: str,
+        genes: Optional[Sequence[str]],
+        collapse_kind: Optional[str],
+    ) -> Optional[tuple[pd.DataFrame, list[dict], list[dict], dict]]:
+        """Look up one unfiltered per-code entry, deriving gene subsets when cached."""
+        genes_key = self._genes_key(genes)
+        if genes_key is None:
+            full_key = (view_kind, code, delegated_mode, sample_qc, collapse_kind)
+            return self._lru_get(self._full_entries, full_key)
+
+        exact_key = (
+            view_kind,
+            code,
+            delegated_mode,
+            sample_qc,
+            genes_key,
+            collapse_kind,
+        )
+        hit = self._lru_get(self._gene_entries, exact_key)
+        if hit is not None:
+            return hit
+
+        if collapse_kind is not None:
+            return None
+
+        # Derive gene subset from a cached full-gene entry for the same code.
+        full_key = (view_kind, code, delegated_mode, sample_qc, None)
+        full_hit = self._lru_get(self._full_entries, full_key)
+        if full_hit is not None:
+            frame, avail, missing, base_attrs = full_hit
+            return (
+                filter_cached_reference_genes(frame, genes_key),
+                avail,
+                missing,
+                base_attrs,
+            )
+
+        # Derive gene subset from a cached gene-superset entry for the same code.
+        wanted_set = set(genes_key)
+        for key, entry in reversed(self._gene_entries.items()):
+            if (
+                key[0] == view_kind
+                and key[1] == code
+                and key[2] == delegated_mode
+                and key[3] == sample_qc
+                and key[5] is None
+                and wanted_set <= set(key[4])
+            ):
+                frame, avail, missing, base_attrs = entry
+                return (
+                    filter_cached_reference_genes(frame, genes_key),
+                    avail,
+                    missing,
+                    base_attrs,
+                )
+        return None
+
+    def store_unfiltered_response(
+        self,
+        *,
+        view_kind: str,
+        requested_codes: Sequence[str],
+        delegated_modes: Sequence[str],
+        sample_qc: str,
+        genes: Optional[Sequence[str]],
+        collapse_kind: Optional[str],
+        response: pd.DataFrame,
+    ) -> None:
+        """Split a multi-code/multi-mode unfiltered response into per-code entries."""
+        genes_key = self._genes_key(genes)
+        base_attrs = {
+            k: deepcopy(v)
+            for k, v in response.attrs.items()
+            if k not in {"availability", "missing_requests"}
+        }
+        empty_template = response.iloc[0:0].copy()
+
+        avail_by_key: dict[tuple[str, str], list[dict]] = {}
+        for record in response.attrs.get("availability", []):
+            norm_mode = _ONCOREF_DELEGATED_MODE_LABELS.get(
+                str(record.get("normalization", "")),
+                delegated_modes[0] if len(delegated_modes) == 1 else "",
+            )
+            code = str(record.get("cancer_code", ""))
+            avail_by_key.setdefault((norm_mode, code), []).append(dict(record))
+
+        missing_by_key: dict[tuple[str, str], list[dict]] = {}
+        for record in response.attrs.get("missing_requests", []):
+            norm_mode = _ONCOREF_DELEGATED_MODE_LABELS.get(
+                str(record.get("normalization", "")),
+                delegated_modes[0] if len(delegated_modes) == 1 else "",
+            )
+            code = str(record.get("cancer_code", ""))
+            missing_by_key.setdefault((norm_mode, code), []).append(dict(record))
+
+        # Only store codes whose availability did not expand into unrelated codes
+        # (protects oncoref-only grouping codes like CRC_MSI).
+        requested_set = {str(code) for code in requested_codes}
+        expanded_requested = {
+            str(record.get("requested_code", ""))
+            for record in response.attrs.get("availability", [])
+            if str(record.get("cancer_code", "")) not in requested_set
+        }
+
+        frames_by_key: dict[tuple[str, str], pd.DataFrame] = {}
+        if not response.empty:
+            if len(delegated_modes) == 1:
+                norm_series = pd.Series(
+                    delegated_modes[0], index=response.index, dtype=object
+                )
+            else:
+                norm_series = (
+                    response["normalization"]
+                    .astype(str)
+                    .map(lambda value: _ONCOREF_DELEGATED_MODE_LABELS.get(value, value))
+                )
+            code_series = response["cancer_code"].astype(str)
+            for (norm_mode, code), idx in response.groupby(
+                [norm_series, code_series], sort=False
+            ).indices.items():
+                frames_by_key[(str(norm_mode), str(code))] = (
+                    response.iloc[idx].reset_index(drop=True)
+                )
+
+        for mode in delegated_modes:
+            for code in requested_codes:
+                code_str = str(code)
+                if code_str in expanded_requested:
+                    continue
+                entry = (
+                    frames_by_key.get((mode, code_str), empty_template),
+                    avail_by_key.get((mode, code_str), []),
+                    missing_by_key.get((mode, code_str), []),
+                    base_attrs,
+                )
+                if genes_key is None:
+                    full_key = (view_kind, code_str, mode, sample_qc, collapse_kind)
+                    self._lru_put(
+                        self._full_entries, full_key, entry, self.max_full_entries
+                    )
+                else:
+                    gene_key = (
+                        view_kind,
+                        code_str,
+                        mode,
+                        sample_qc,
+                        genes_key,
+                        collapse_kind,
+                    )
+                    self._lru_put(
+                        self._gene_entries, gene_key, entry, self.max_gene_entries
+                    )
+
+    def get_filtered_request(
+        self,
+        *,
+        view_kind: str,
+        codes: Sequence[str],
+        delegated_mode: str,
+        sample_qc: str,
+        genes: Optional[Sequence[str]],
+        source_cohort: Optional[str | Sequence[str]],
+        exclude_microarray_proxy: bool,
+        collapse_kind: Optional[str],
+    ) -> Optional[pd.DataFrame]:
+        """Look up an exact gene-filtered source-filtered delegated response."""
+        genes_key = self._genes_key(genes)
+        if genes_key is None:
+            return None
+        key = (
+            view_kind,
+            tuple(str(c) for c in codes),
+            delegated_mode,
+            sample_qc,
+            genes_key,
+            self._source_cohort_key(source_cohort),
+            bool(exclude_microarray_proxy),
+            collapse_kind,
+        )
+        hit = self._lru_get(self._filtered_entries, key)
+        if hit is None:
+            return None
+        frame, attrs = hit
+        out = frame.copy()
+        out.attrs.update(deepcopy(attrs))
+        return out
+
+    def store_filtered_request(
+        self,
+        *,
+        view_kind: str,
+        codes: Sequence[str],
+        delegated_mode: str,
+        sample_qc: str,
+        genes: Optional[Sequence[str]],
+        source_cohort: Optional[str | Sequence[str]],
+        exclude_microarray_proxy: bool,
+        collapse_kind: Optional[str],
+        response: pd.DataFrame,
+    ) -> None:
+        """Cache a gene-filtered source-filtered delegated response."""
+        genes_key = self._genes_key(genes)
+        if genes_key is None:
+            return
+        key = (
+            view_kind,
+            tuple(str(c) for c in codes),
+            delegated_mode,
+            sample_qc,
+            genes_key,
+            self._source_cohort_key(source_cohort),
+            bool(exclude_microarray_proxy),
+            collapse_kind,
+        )
+        self._lru_put(
+            self._filtered_entries,
+            key,
+            (response.copy(), deepcopy(dict(response.attrs))),
+            self.max_filtered_entries,
+        )
+
+
+_DELEGATED_REFERENCE_CACHE = DelegatedReferenceExpressionCache()
+_PAN_NORMALIZED_FRAME_CACHE: OrderedDict[
+    tuple, tuple[pd.DataFrame, pd.DataFrame, list[str]]
+] = OrderedDict()
+_PAN_NORMALIZED_CACHE_MAXSIZE = 16
+
+
+def clear_reference_expression_cache() -> None:
+    """Clear pirlygenes' in-process reference and pan-cancer expression caches.
+
+    Clears delegated ``oncoref`` reference expression slices, normalized
+    pan-cancer expression base frames, and compact owner availability lookups.
+    Call this in tests or tooling after modifying cached reference bundles on
+    disk.
+    """
+    _DELEGATED_REFERENCE_CACHE.clear()
+    _PAN_NORMALIZED_FRAME_CACHE.clear()
+    _SHARED_REFERENCE_DERIVATION_CACHE.clear()
+    _pan_reference_frame.cache_clear()
+    _pan_source_reference_frame.cache_clear()
+    _load_pan_rollup_frame.cache_clear()
+    _oncoref_summary_reference_code_set.cache_clear()
+    _oncoref_summary_source_cohort_set.cache_clear()
+    _oncoref_artifact_reference_code_set.cache_clear()
+    _oncoref_reference_code_set.cache_clear()
+    _oncoref_summary_microarray_proxy_pairs.cache_clear()
+    _owner_physical_source_cohorts.cache_clear()
+    _load_available_reference_manifest.cache_clear()
+
+
+def _reassemble_cached_entries(
+    entries: Sequence[tuple[pd.DataFrame, list[dict], list[dict], dict]],
+) -> pd.DataFrame:
+    """Combine cached per-code slices into one caller-owned DataFrame."""
+    frames = [entry[0] for entry in entries]
+    out = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    base_attrs = deepcopy(entries[0][3]) if entries else {}
+    out.attrs.update(base_attrs)
+    out.attrs["availability"] = [
+        dict(record) for entry in entries for record in entry[1]
+    ]
+    out.attrs["missing_requests"] = [
+        dict(record) for entry in entries for record in entry[2]
+    ]
+    return out
+
+
+def _derive_filtered_summary_from_cache(
+    *,
+    summary_codes: Sequence[str],
+    delegated_mode: str,
+    compatibility_genes: Optional[Sequence[str]],
+    delegated_source_cohort: Optional[str | Sequence[str]],
+    exclude_microarray_proxy: bool,
+    collapse_kind: Optional[str],
+) -> Optional[pd.DataFrame]:
+    """Derive a source-filtered summary view when all codes are cached unfiltered."""
+    import oncoref
+    from oncoref import expression as oncoref_expression
+
+    entries = []
+    for code in summary_codes:
+        entry = _DELEGATED_REFERENCE_CACHE.get_code_entry(
+            view_kind="summary",
+            code=str(code),
+            delegated_mode=delegated_mode,
+            sample_qc="all",
+            genes=compatibility_genes,
+            collapse_kind=collapse_kind,
+        )
+        if entry is None:
+            return None
+        entries.append(entry)
+
+    avail_df = oncoref.cancer_reference_expression_availability(
+        cancer_types=list(summary_codes),
+        normalize=delegated_mode,
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        source_cohort=delegated_source_cohort,
+        exclude_microarray_proxy=exclude_microarray_proxy,
+    )
+    invalid_scales = getattr(
+        oncoref_expression,
+        "INVALID_SOURCE_SCALE_CLASSES",
+        frozenset({"invalid_legacy_tpm"}),
+    )
+    if (
+        "source_scale_class" in avail_df.columns
+        and (
+            avail_df["available"].fillna(False)
+            & avail_df["source_scale_class"].astype("string").isin(invalid_scales)
+        ).any()
+    ):
+        # Preserve upstream ValueError for explicitly requested invalid sources.
+        return None
+
+    out = _reassemble_cached_entries(entries)
+    if delegated_source_cohort is not None and "source_cohort" in out.columns:
+        raw_cohorts = (
+            [delegated_source_cohort]
+            if isinstance(delegated_source_cohort, str)
+            else list(delegated_source_cohort)
+        )
+        allowed_cohorts = {
+            oncoref.resolve_cohort_id(str(v), strict=False) or str(v)
+            for v in raw_cohorts
+            if str(v)
+        }
+        out = out.loc[
+            out["source_cohort"].astype(str).isin(allowed_cohorts)
+        ].reset_index(drop=True)
+
+    avail_records = avail_df.to_dict("records")
+    missing_records = avail_df.loc[~avail_df["available"]].to_dict("records")
+    out.attrs["availability"] = avail_records
+    out.attrs["missing_requests"] = missing_records
+    return out
+
+
+def _fetch_delegated_summary_frame(
+    *,
+    summary_codes: Optional[list[str]],
+    compatibility_genes: Optional[list[str]],
+    delegated_mode: str,
+    include_provenance: bool,
+    pool: bool,
+    delegated_source_cohort: Optional[str | list[str]],
+    exclude_microarray_proxy: bool,
+    collapse_cdna_identical: bool,
+    collapse_protein_identical: bool,
+) -> pd.DataFrame:
+    """Delegate summary-rows lookup to oncoref with bounded caching when unmodified."""
+    import oncoref
+
+    def _call_oncoref(codes_arg, *, include_prov: bool) -> pd.DataFrame:
+        return oncoref.cancer_reference_expression(
+            cancer_types=codes_arg,
+            genes=compatibility_genes,
+            normalize=delegated_mode,
+            format="long",
+            # Local post-projection pooling needs per-source sample weights
+            # even when the caller omits provenance from the final schema.
+            include_provenance=include_prov,
+            on_missing="empty",
+            auto_fetch=False,
+            sample_qc="all",
+            reference_source="summary_rows_all",
+            gene_id_style="pirlygenes",
+            gene_universe="pirlygenes",
+            # Resolve source kinds with pirlygenes' registry and forward exact
+            # cohorts. This avoids inheriting gaps in oncoref's kind map.
+            source_kind=None,
+            source_cohort=delegated_source_cohort,
+            exclude_microarray_proxy=exclude_microarray_proxy,
+            pool=False,
+            collapse_cdna_identical=collapse_cdna_identical,
+            collapse_protein_identical=collapse_protein_identical,
+        )
+
+    if not is_default_oncoref_reference_delegate() or summary_codes is None:
+        return _call_oncoref(summary_codes, include_prov=include_provenance or pool)
+
+    collapse_kind = DelegatedReferenceExpressionCache._collapse_kind(
+        collapse_cdna_identical, collapse_protein_identical
+    )
+
+    if delegated_source_cohort is not None or exclude_microarray_proxy:
+        derived = _derive_filtered_summary_from_cache(
+            summary_codes=summary_codes,
+            delegated_mode=delegated_mode,
+            compatibility_genes=compatibility_genes,
+            delegated_source_cohort=delegated_source_cohort,
+            exclude_microarray_proxy=exclude_microarray_proxy,
+            collapse_kind=collapse_kind,
+        )
+        if derived is not None:
+            return derived
+        cached_filtered = _DELEGATED_REFERENCE_CACHE.get_filtered_request(
+            view_kind="summary",
+            codes=summary_codes,
+            delegated_mode=delegated_mode,
+            sample_qc="all",
+            genes=compatibility_genes,
+            source_cohort=delegated_source_cohort,
+            exclude_microarray_proxy=exclude_microarray_proxy,
+            collapse_kind=collapse_kind,
+        )
+        if cached_filtered is not None:
+            return cached_filtered
+        fetched = _call_oncoref(summary_codes, include_prov=True)
+        _DELEGATED_REFERENCE_CACHE.store_filtered_request(
+            view_kind="summary",
+            codes=summary_codes,
+            delegated_mode=delegated_mode,
+            sample_qc="all",
+            genes=compatibility_genes,
+            source_cohort=delegated_source_cohort,
+            exclude_microarray_proxy=exclude_microarray_proxy,
+            collapse_kind=collapse_kind,
+            response=fetched,
+        )
+        return fetched
+
+    cached_by_code: dict[str, tuple] = {}
+    missing_codes: list[str] = []
+    for code in summary_codes:
+        code_str = str(code)
+        hit = _DELEGATED_REFERENCE_CACHE.get_code_entry(
+            view_kind="summary",
+            code=code_str,
+            delegated_mode=delegated_mode,
+            sample_qc="all",
+            genes=compatibility_genes,
+            collapse_kind=collapse_kind,
+        )
+        if hit is not None:
+            cached_by_code[code_str] = hit
+        else:
+            missing_codes.append(code_str)
+
+    if not missing_codes:
+        return _reassemble_cached_entries(
+            [cached_by_code[str(code)] for code in summary_codes]
+        )
+
+    fetched = _call_oncoref(missing_codes, include_prov=True)
+    _DELEGATED_REFERENCE_CACHE.store_unfiltered_response(
+        view_kind="summary",
+        requested_codes=missing_codes,
+        delegated_modes=(delegated_mode,),
+        sample_qc="all",
+        genes=compatibility_genes,
+        collapse_kind=collapse_kind,
+        response=fetched,
+    )
+    if len(missing_codes) == len(summary_codes):
+        return fetched
+
+    entries = []
+    for code in summary_codes:
+        code_str = str(code)
+        entry = cached_by_code.get(code_str)
+        if entry is None:
+            entry = _DELEGATED_REFERENCE_CACHE.get_code_entry(
+                view_kind="summary",
+                code=code_str,
+                delegated_mode=delegated_mode,
+                sample_qc="all",
+                genes=compatibility_genes,
+                collapse_kind=collapse_kind,
+            )
+        if entry is None:
+            # Fallback if an uncacheable oncoref-only grouping was mixed in.
+            return _call_oncoref(summary_codes, include_prov=True)
+        entries.append(entry)
+    return _reassemble_cached_entries(entries)
+
+
+def _fetch_delegated_artifact_frame(
+    *,
+    codes: list[str],
+    compatibility_genes: Optional[list[str]],
+    delegated_mode: str,
+    sample_qc: str,
+    include_provenance: bool,
+    pool: bool,
+    collapse_cdna_identical: bool,
+    collapse_protein_identical: bool,
+) -> pd.DataFrame:
+    """Delegate artifact-only lookup to oncoref with bounded caching when unmodified."""
+    import oncoref
+
+    def _call_oncoref(codes_arg, *, include_prov: bool) -> pd.DataFrame:
+        return oncoref.cancer_reference_expression(
+            cancer_types=codes_arg,
+            genes=compatibility_genes,
+            normalize=delegated_mode,
+            format="long",
+            include_provenance=include_prov,
+            on_missing="empty",
+            auto_fetch=False,
+            sample_qc=sample_qc,
+            reference_source="artifact",
+            gene_id_style="pirlygenes",
+            gene_universe="pirlygenes",
+            source_kind=None,
+            source_cohort=None,
+            exclude_microarray_proxy=False,
+            pool=False,
+            collapse_cdna_identical=collapse_cdna_identical,
+            collapse_protein_identical=collapse_protein_identical,
+        )
+
+    if not is_default_oncoref_reference_delegate():
+        return _call_oncoref(codes, include_prov=include_provenance or pool)
+
+    collapse_kind = DelegatedReferenceExpressionCache._collapse_kind(
+        collapse_cdna_identical, collapse_protein_identical
+    )
+    cached_by_code: dict[str, tuple] = {}
+    missing_codes: list[str] = []
+    for code in codes:
+        code_str = str(code)
+        hit = _DELEGATED_REFERENCE_CACHE.get_code_entry(
+            view_kind="artifact",
+            code=code_str,
+            delegated_mode=delegated_mode,
+            sample_qc=sample_qc,
+            genes=compatibility_genes,
+            collapse_kind=collapse_kind,
+        )
+        if hit is not None:
+            cached_by_code[code_str] = hit
+        else:
+            missing_codes.append(code_str)
+
+    if not missing_codes:
+        return _reassemble_cached_entries(
+            [cached_by_code[str(code)] for code in codes]
+        )
+
+    fetched = _call_oncoref(missing_codes, include_prov=True)
+    _DELEGATED_REFERENCE_CACHE.store_unfiltered_response(
+        view_kind="artifact",
+        requested_codes=missing_codes,
+        delegated_modes=(delegated_mode,),
+        sample_qc=sample_qc,
+        genes=compatibility_genes,
+        collapse_kind=collapse_kind,
+        response=fetched,
+    )
+    if len(missing_codes) == len(codes):
+        return fetched
+
+    entries = []
+    for code in codes:
+        code_str = str(code)
+        entry = cached_by_code.get(code_str)
+        if entry is None:
+            entry = _DELEGATED_REFERENCE_CACHE.get_code_entry(
+                view_kind="artifact",
+                code=code_str,
+                delegated_mode=delegated_mode,
+                sample_qc=sample_qc,
+                genes=compatibility_genes,
+                collapse_kind=collapse_kind,
+            )
+        if entry is None:
+            return _call_oncoref(codes, include_prov=True)
+        entries.append(entry)
+    return _reassemble_cached_entries(entries)
+
+
+def _prefetch_delegated_reference_modes(
+    *,
+    cancer_types: Optional[list[str]],
+    genes: Optional[str | list[str]],
+    modes: Sequence[str],
+    exclude_microarray_proxy: bool,
+    source_kind: Optional[str | list[str]],
+    source_cohort: Optional[str | list[str]],
+    collapse_protein_identical: bool,
+    collapse_cdna_identical: bool,
+) -> None:
+    """Batch multi-mode summary fetches so oncoref reuses its per-code shard cache."""
+    if not is_default_oncoref_reference_delegate() or not cancer_types:
+        return
+    delegated_modes = list(
+        dict.fromkeys(
+            mode.removesuffix("_log1p") if mode.endswith("_log1p") else mode
+            for mode in modes
+        )
+    )
+    if len(delegated_modes) < 2:
+        return
+    requested_source_cohort = (
+        None
+        if source_cohort is None
+        else (
+            source_cohort
+            if isinstance(source_cohort, str)
+            else list(source_cohort)
+        )
+    )
+    delegated_source_cohort = _reference_compatibility_source_cohorts(
+        source_kind,
+        requested_source_cohort,
+    )
+    if delegated_source_cohort is not None or exclude_microarray_proxy:
+        return
+    summary_codes, _artifact_codes = _partition_reference_codes_by_owner_view(
+        cancer_types
+    )
+    if not summary_codes:
+        return
+    requested_genes = (
+        None
+        if genes is None
+        else ([genes] if isinstance(genes, str) else list(genes))
+    )
+    compatibility_genes = _reference_compatibility_genes(requested_genes)
+    collapse_kind = DelegatedReferenceExpressionCache._collapse_kind(
+        collapse_cdna_identical, collapse_protein_identical
+    )
+    missing_both = [
+        str(code)
+        for code in summary_codes
+        if all(
+            _DELEGATED_REFERENCE_CACHE.get_code_entry(
+                view_kind="summary",
+                code=str(code),
+                delegated_mode=mode,
+                sample_qc="all",
+                genes=compatibility_genes,
+                collapse_kind=collapse_kind,
+            )
+            is None
+            for mode in delegated_modes
+        )
+    ]
+    if not missing_both:
+        return
+
+    import oncoref
+
+    batched = oncoref.cancer_reference_expression(
+        cancer_types=missing_both,
+        genes=compatibility_genes,
+        normalize=delegated_modes,
+        format="long",
+        include_provenance=True,
+        on_missing="empty",
+        auto_fetch=False,
+        sample_qc="all",
+        reference_source="summary_rows_all",
+        gene_id_style="pirlygenes",
+        gene_universe="pirlygenes",
+        source_kind=None,
+        source_cohort=None,
+        exclude_microarray_proxy=False,
+        pool=False,
+        collapse_cdna_identical=collapse_cdna_identical,
+        collapse_protein_identical=collapse_protein_identical,
+    )
+    _DELEGATED_REFERENCE_CACHE.store_unfiltered_response(
+        view_kind="summary",
+        requested_codes=missing_both,
+        delegated_modes=delegated_modes,
+        sample_qc="all",
+        genes=compatibility_genes,
+        collapse_kind=collapse_kind,
+        response=batched,
+    )
+
+
 def _oncoref_reference_mode(
     *,
     cancer_types: Optional[str | Iterable[str]],
@@ -1864,8 +2691,6 @@ def _oncoref_reference_mode(
     pool: bool,
 ) -> pd.DataFrame:
     """Delegate one legacy normalization mode and adapt its labels/schema."""
-    import oncoref
-
     # Derive both historical log views from delegated linear summaries. Besides
     # keeping one deterministic transform, this ensures identical-locus collapse
     # and pooling happen in linear space before log1p.
@@ -1896,29 +2721,19 @@ def _oncoref_reference_mode(
     )
     delegated_parts: list[pd.DataFrame] = []
     if summary_codes is None or summary_codes:
-        delegated_parts.append(oncoref.cancer_reference_expression(
-            cancer_types=summary_codes,
-            genes=compatibility_genes,
-            normalize=delegated_mode,
-            format="long",
-            # Local post-projection pooling needs per-source sample weights
-            # even when the caller omits provenance from the final schema.
-            include_provenance=include_provenance or pool,
-            on_missing="empty",
-            auto_fetch=False,
-            sample_qc="all",
-            reference_source="summary_rows_all",
-            gene_id_style="pirlygenes",
-            gene_universe="pirlygenes",
-            # Resolve source kinds with pirlygenes' registry and forward exact
-            # cohorts. This avoids inheriting gaps in oncoref's kind map.
-            source_kind=None,
-            source_cohort=delegated_source_cohort,
-            exclude_microarray_proxy=exclude_microarray_proxy,
-            pool=False,
-            collapse_cdna_identical=collapse_cdna_identical,
-            collapse_protein_identical=collapse_protein_identical,
-        ))
+        delegated_parts.append(
+            _fetch_delegated_summary_frame(
+                summary_codes=summary_codes,
+                compatibility_genes=compatibility_genes,
+                delegated_mode=delegated_mode,
+                include_provenance=include_provenance,
+                pool=pool,
+                delegated_source_cohort=delegated_source_cohort,
+                exclude_microarray_proxy=exclude_microarray_proxy,
+                collapse_cdna_identical=collapse_cdna_identical,
+                collapse_protein_identical=collapse_protein_identical,
+            )
+        )
 
     if artifact_codes:
         if delegated_mode == "tpm":
@@ -1932,22 +2747,13 @@ def _oncoref_reference_mode(
             artifact_groups = {"artifact": artifact_codes}
 
         for sample_qc, codes in artifact_groups.items():
-            artifact = oncoref.cancer_reference_expression(
-                cancer_types=codes,
-                genes=compatibility_genes,
-                normalize=delegated_mode,
-                format="long",
-                include_provenance=include_provenance or pool,
-                on_missing="empty",
-                auto_fetch=False,
+            artifact = _fetch_delegated_artifact_frame(
+                codes=codes,
+                compatibility_genes=compatibility_genes,
+                delegated_mode=delegated_mode,
                 sample_qc=sample_qc,
-                reference_source="artifact",
-                gene_id_style="pirlygenes",
-                gene_universe="pirlygenes",
-                source_kind=None,
-                source_cohort=None,
-                exclude_microarray_proxy=False,
-                pool=False,
+                include_provenance=include_provenance,
+                pool=pool,
                 collapse_cdna_identical=collapse_cdna_identical,
                 collapse_protein_identical=collapse_protein_identical,
             )
@@ -2272,6 +3078,16 @@ def cancer_reference_expression(
     requested_codes = _resolve_cancer_types(
         cancer_types,
         expand_aggregates=True,
+    )
+    _prefetch_delegated_reference_modes(
+        cancer_types=requested_codes,
+        genes=genes,
+        modes=modes,
+        exclude_microarray_proxy=exclude_microarray_proxy,
+        source_kind=source_kind,
+        source_cohort=source_cohort,
+        collapse_protein_identical=collapse_protein_identical,
+        collapse_cdna_identical=collapse_cdna_identical,
     )
     parts = [
         _oncoref_reference_mode(
@@ -3219,11 +4035,6 @@ def pan_cancer_expression(
     if "tpm" not in normalize_modes:
         normalize_modes.insert(0, "tpm")
 
-    # The cached compatibility view already contains deterministic TPM
-    # companions for every FPKM cohort. Copy it before adding bridge and
-    # normalization columns so callers can mutate independently.
-    df = _pan_reference_frame(include_computed_rollups).copy()
-
     # Proteoform duality (uniform with cancer_reference_expression): always add the
     # gene-view Proteoform_ID / Member_Ensembl_Gene_IDs bridge columns; optionally
     # collapse identical loci in LINEAR space here, BEFORE any clean/log/percentile
@@ -3233,76 +4044,109 @@ def pan_cancer_expression(
                          "collapse_protein_identical")
     _collapse_kind = ("cdna" if collapse_cdna_identical
                       else "protein" if collapse_protein_identical else None)
-    if _collapse_kind:
-        from .protein_groups import collapse_wide, fold_ids, fold_symbols
-        _linear = [c for c in df.columns if c.startswith(_VALUE_COL_PREFIXES)]
-        df = collapse_wide(df, value_cols=_linear, kind=_collapse_kind)
-        if genes is not None:   # fold the gene filter so a member-named panel hits
-            genes = sorted(set(map(str, genes))
-                           | set(fold_symbols(genes, kind=_collapse_kind))
-                           | set(fold_ids(genes, kind=_collapse_kind)))
-    else:
-        from .protein_groups import add_proteoform_columns
-        df = add_proteoform_columns(df)
-    analysis_value_cols = _pan_analysis_value_cols(df)
+    if _collapse_kind and genes is not None:
+        from .protein_groups import fold_ids, fold_symbols
 
-    generated_value_cols: list[str] = []
-    value_cols_by_mode: dict[str, list[str]] = {}
-    for mode in normalize_modes:
-        if mode == "tpm":
-            continue
-        if mode == "tpm_clean":
-            # ONE clean TPM everywhere: the fixed_fraction 16/9/75 contract,
-            # identical to cancer_reference_expression. (Was the legacy zero
-            # drop-and-renormalize, which kept ribosomal proteins in biology and
-            # inflated the biological budget to 1e6 — a different, non-comparable
-            # "clean" than the reference table used.)
-            normalized_df, _ = normalize_expression(
-                df,
-                label_col="Symbol",
-                id_col="Ensembl_Gene_ID",
-                value_cols=analysis_value_cols,
-                censored_fill="fixed_fraction",
-            )
-            source_cols = analysis_value_cols
-        elif mode == "tpm_log1p":
-            normalized_df = log1p_transform(
-                df, value_cols=analysis_value_cols,
-            )
-            source_cols = analysis_value_cols
-        elif mode == "tpm_clean_log1p":
-            clean_value_cols = value_cols_by_mode.get("tpm_clean", [])
-            normalized_df = log1p_transform(
-                df, value_cols=clean_value_cols,
-            )
-            source_cols = clean_value_cols
-        elif mode == "hk":
-            normalized_df = normalize_to_housekeeping(
-                df, value_cols=analysis_value_cols,
-            )
-            source_cols = analysis_value_cols
-        elif mode == "percentile":
-            normalized_df, _ = percentile_rank_expression(
-                df, value_cols=analysis_value_cols,
-            )
-            source_cols = analysis_value_cols
-        else:  # pragma: no cover - guarded by _resolve_pan_normalize_modes
-            continue
-        df, new_cols = _add_pan_normalized_value_cols(
-            df, normalized_df, source_cols, mode,
-        )
-        value_cols_by_mode[mode] = new_cols
-        generated_value_cols.extend(new_cols)
-    pipeline_value_cols = generated_value_cols or analysis_value_cols
-    df = _apply_pipeline(
-        df,
-        drop_technical_rna=drop_technical_rna,
-        genes=genes,
-        log_transform=log_transform,
-        percentile=False,
-        value_cols=pipeline_value_cols,
+        genes = sorted(set(map(str, genes))
+                       | set(fold_symbols(genes, kind=_collapse_kind))
+                       | set(fold_ids(genes, kind=_collapse_kind)))
+
+    # Cache the deterministic proteoform + normalized base view keyed on the
+    # identity of _pan_reference_frame(include_computed_rollups). Any test that
+    # clears or stubs _pan_reference_frame gets a fresh base frame identity and
+    # automatically rebuilds.
+    base_frame = _pan_reference_frame(include_computed_rollups)
+    cache_key = (
+        bool(include_computed_rollups),
+        _collapse_kind,
+        tuple(normalize_modes),
     )
-    out = _rename_pan_expression_columns_entity_first(df)
+    cached_entry = _PAN_NORMALIZED_FRAME_CACHE.get(cache_key)
+    if cached_entry is not None and cached_entry[0] is base_frame:
+        _PAN_NORMALIZED_FRAME_CACHE.move_to_end(cache_key)
+        df, pipeline_value_cols = cached_entry[1], cached_entry[2]
+    else:
+        df = base_frame.copy()
+        if _collapse_kind:
+            from .protein_groups import collapse_wide
+
+            _linear = [c for c in df.columns if c.startswith(_VALUE_COL_PREFIXES)]
+            df = collapse_wide(df, value_cols=_linear, kind=_collapse_kind)
+        else:
+            from .protein_groups import add_proteoform_columns
+
+            df = add_proteoform_columns(df)
+        analysis_value_cols = _pan_analysis_value_cols(df)
+
+        generated_value_cols: list[str] = []
+        value_cols_by_mode: dict[str, list[str]] = {}
+        for mode in normalize_modes:
+            if mode == "tpm":
+                continue
+            if mode == "tpm_clean":
+                # ONE clean TPM everywhere: the fixed_fraction 16/9/75 contract,
+                # identical to cancer_reference_expression. (Was the legacy zero
+                # drop-and-renormalize, which kept ribosomal proteins in biology and
+                # inflated the biological budget to 1e6 — a different, non-comparable
+                # "clean" than the reference table used.)
+                normalized_df, _ = normalize_expression(
+                    df,
+                    label_col="Symbol",
+                    id_col="Ensembl_Gene_ID",
+                    value_cols=analysis_value_cols,
+                    censored_fill="fixed_fraction",
+                )
+                source_cols = analysis_value_cols
+            elif mode == "tpm_log1p":
+                normalized_df = log1p_transform(
+                    df, value_cols=analysis_value_cols,
+                )
+                source_cols = analysis_value_cols
+            elif mode == "tpm_clean_log1p":
+                clean_value_cols = value_cols_by_mode.get("tpm_clean", [])
+                normalized_df = log1p_transform(
+                    df, value_cols=clean_value_cols,
+                )
+                source_cols = clean_value_cols
+            elif mode == "hk":
+                normalized_df = normalize_to_housekeeping(
+                    df, value_cols=analysis_value_cols,
+                )
+                source_cols = analysis_value_cols
+            elif mode == "percentile":
+                normalized_df, _ = percentile_rank_expression(
+                    df, value_cols=analysis_value_cols,
+                )
+                source_cols = analysis_value_cols
+            else:  # pragma: no cover - guarded by _resolve_pan_normalize_modes
+                continue
+            df, new_cols = _add_pan_normalized_value_cols(
+                df, normalized_df, source_cols, mode,
+            )
+            value_cols_by_mode[mode] = new_cols
+            generated_value_cols.extend(new_cols)
+        pipeline_value_cols = generated_value_cols or analysis_value_cols
+        _PAN_NORMALIZED_FRAME_CACHE[cache_key] = (
+            base_frame,
+            df,
+            pipeline_value_cols,
+        )
+        _PAN_NORMALIZED_FRAME_CACHE.move_to_end(cache_key)
+        while len(_PAN_NORMALIZED_FRAME_CACHE) > _PAN_NORMALIZED_CACHE_MAXSIZE:
+            _PAN_NORMALIZED_FRAME_CACHE.popitem(last=False)
+
+    if drop_technical_rna or genes is not None or log_transform:
+        result_df = _apply_pipeline(
+            df,
+            drop_technical_rna=drop_technical_rna,
+            genes=genes,
+            log_transform=log_transform,
+            percentile=False,
+            value_cols=pipeline_value_cols,
+        )
+    else:
+        result_df = df.copy()
+    out = _rename_pan_expression_columns_entity_first(result_df)
     out.attrs["computed_rollups_included"] = bool(include_computed_rollups)
     out.attrs["computed_rollup_members"] = {
         code: tuple(members)
@@ -3491,6 +4335,10 @@ __all__ = [
     "COHORT_EXPRESSION_MATRICES_SCHEMA_VERSION",
     "canonicalize_expression_gene_rows",
     "build_canonical_cohort_expression_matrices",
+    "DelegatedReferenceExpressionCache",
+    "clear_reference_expression_cache",
+    "filter_cached_reference_genes",
+    "is_default_oncoref_reference_delegate",
     # accessors
     "pan_cancer_expression",
     "cancer_reference_expression",

@@ -32,6 +32,7 @@ from pirlygenes.expression import (
     cancer_reference_expression,
     canonicalize_expression_gene_rows,
     classify_gene_qc,
+    clear_reference_expression_cache,
     estimate_signatures,
     filter_technical_rna,
     filter_to_genes,
@@ -1013,13 +1014,28 @@ def test_cancer_reference_expression_ctcl_scrna_markers_and_artifacts():
     assert pivot.loc["MALAT1", "TPM_clean"] > 0
 
 
-def test_imported_symbol_only_references_use_historical_symbol_rescue():
+@pytest.fixture(scope="module")
+def all_dataframes_dict():
+    """Read-only shared snapshot of ``load_all_dataframes_dict()`` across module tests.
+
+    Avoids repeating ``clear_dataset_cache()`` + copying the 5.7M-row delegated
+    reference frame on every read-only manifest/table assertion while keeping
+    the full ``load_all_dataframes_dict()`` contract exercised end-to-end.
+    """
+    frames = load_all_dataframes_dict()
+    yield frames
+    frames.clear()
+
+
+def test_imported_symbol_only_references_use_historical_symbol_rescue(
+    all_dataframes_dict,
+):
     # SCLC remains a summary-only import (SCLC_UCOLOGNE_2015 via
     # scripts/import_cancer_specific_expression.py) and still
     # benefits from the historical symbol rescue in that import path.
     # OS / RMS / SARC etc. moved to per-sample Treehouse builds and
     # use strict pyensembl 112 matching (no historical rescue yet).
-    refs = load_all_dataframes_dict()["cancer-reference-expression.csv"]
+    refs = all_dataframes_dict["cancer-reference-expression.csv"]
     nbl_ref = refs[refs["cancer_code"].eq("NBL_MYCNnonamp")]
     assert len(nbl_ref) > 12_000
     # AARS1 (formerly AARS) and PRXL2C (formerly AAED1) are recovered
@@ -1501,8 +1517,10 @@ def test_cancer_expression_reference_status_avoids_full_reference(monkeypatch):
     assert status.loc["BRCA_Basal", "reference_code"] == "BRCA_Basal"
 
 
-def test_cancer_reference_expression_cll_sample_manifest_tracks_exclusions():
-    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+def test_cancer_reference_expression_cll_sample_manifest_tracks_exclusions(
+    all_dataframes_dict,
+):
+    samples = all_dataframes_dict["cancer-reference-expression-samples.csv"]
     samples = samples[samples["source_cohort"] == "CLLMAP_2022"]
     included = samples["included"].astype(str).str.lower().eq("true")
     excluded = samples[~included]
@@ -1574,8 +1592,10 @@ def test_delegated_sample_manifest_uses_owner_pipeline_provenance():
     assert not samples["processing_pipeline"].astype(str).str.endswith("_v1").any()
 
 
-def test_cancer_reference_expression_mm_sample_manifest_tracks_exclusions():
-    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+def test_cancer_reference_expression_mm_sample_manifest_tracks_exclusions(
+    all_dataframes_dict,
+):
+    samples = all_dataframes_dict["cancer-reference-expression-samples.csv"]
     samples = samples[samples["source_cohort"] == "MMRF_COMMPASS"]
     included = samples["included"].astype(str).str.lower().eq("true")
     excluded = samples[~included]
@@ -1590,8 +1610,10 @@ def test_cancer_reference_expression_mm_sample_manifest_tracks_exclusions():
     assert set(samples.loc[included, "lineage_label"]) == {"MM"}
 
 
-def test_cancer_reference_expression_target_all_sample_manifest_tracks_lineage():
-    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+def test_cancer_reference_expression_target_all_sample_manifest_tracks_lineage(
+    all_dataframes_dict,
+):
+    samples = all_dataframes_dict["cancer-reference-expression-samples.csv"]
     samples = samples[samples["source_cohort"] == "TARGET_ALL_2018"]
     included = samples["included"].astype(str).str.lower().eq("true")
     excluded = samples[~included]
@@ -1621,8 +1643,10 @@ def test_cancer_reference_expression_target_all_sample_manifest_tracks_lineage()
     assert set(samples.loc[included, "lineage_label"]) == {"B_ALL", "T_ALL"}
 
 
-def test_cancer_reference_expression_heme_sample_manifest_tracks_inclusions():
-    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+def test_cancer_reference_expression_heme_sample_manifest_tracks_inclusions(
+    all_dataframes_dict,
+):
+    samples = all_dataframes_dict["cancer-reference-expression-samples.csv"]
     samples = samples[samples["cancer_code"].isin(["BL", "CML", "MCL", "MDS", "MPN"])]
     included = samples["included"].astype(str).str.lower().eq("true")
 
@@ -1643,8 +1667,10 @@ def test_cancer_reference_expression_heme_sample_manifest_tracks_inclusions():
     assert "not_primary_burkitt_tumor" in set(excluded["exclusion_reason"])
 
 
-def test_cancer_reference_expression_ctcl_scrna_manifest_tracks_clones():
-    samples = load_all_dataframes_dict()["cancer-reference-expression-samples.csv"]
+def test_cancer_reference_expression_ctcl_scrna_manifest_tracks_clones(
+    all_dataframes_dict,
+):
+    samples = all_dataframes_dict["cancer-reference-expression-samples.csv"]
     samples = samples[samples["source_cohort"] == "GSE171811_ECCITE_CTCL"]
     included = samples["included"].astype(str).str.lower().eq("true")
     excluded = samples[~included]
@@ -1667,18 +1693,20 @@ def test_cancer_reference_expression_ctcl_scrna_manifest_tracks_clones():
 # ---------- topiary call pattern ----------
 
 
-def test_topiary_load_all_dataframes_dict_pattern_works():
+def test_topiary_load_all_dataframes_dict_pattern_works(all_dataframes_dict):
     """Topiary's `pce = load_all_dataframes_dict()["pan-cancer-expression.csv"]`
     must keep working — that pattern broke between 5.0.0 and 5.0.2 when
     the CSVs were stripped. 5.1.0 restores it."""
-    pce = load_all_dataframes_dict()["pan-cancer-expression.csv"]
+    pce = all_dataframes_dict["pan-cancer-expression.csv"]
     assert isinstance(pce, pd.DataFrame)
     assert not pce.empty
     assert "Ensembl_Gene_ID" in pce.columns
 
 
-def test_matched_normal_marker_tables_are_packaged_and_filterable():
-    dataframes = load_all_dataframes_dict()
+def test_matched_normal_marker_tables_are_packaged_and_filterable(
+    all_dataframes_dict,
+):
+    dataframes = all_dataframes_dict
     assert "tumor-up-vs-matched-normal.csv" in dataframes
     assert "heme-tumor-up-vs-matched-normal.csv" in dataframes
 
@@ -2353,3 +2381,94 @@ def test_pan_cancer_expression_proteoform_duality():
     only = pan_cancer_expression(genes=["CTAG1B"], normalize="tpm",
                                  collapse_protein_identical=True)
     assert set(only.Symbol) == {"CTAG1A/B"}
+
+
+def test_cached_reference_and_pan_cancer_expression_are_mutation_safe(monkeypatch):
+    monkeypatch.setattr(
+        expression_accessors,
+        "_DELEGATED_REFERENCE_CACHE",
+        expression_accessors.DelegatedReferenceExpressionCache(),
+    )
+    clear_reference_expression_cache()
+
+    ref_first = cancer_reference_expression(cancer_types="CLL", genes=["MS4A1"])
+    orig_val = float(ref_first["expression"].iloc[0])
+    orig_avail = list(ref_first.attrs["availability"])
+    ref_first["expression"] = -999.0
+    ref_first.attrs["availability"].clear()
+
+    ref_second = cancer_reference_expression(cancer_types="CLL", genes=["MS4A1"])
+    assert float(ref_second["expression"].iloc[0]) == pytest.approx(orig_val)
+    assert ref_second.attrs["availability"] == orig_avail
+
+    pce_first = pan_cancer_expression(normalize="tpm_clean")
+    col = next(c for c in pce_first.columns if c.endswith("_TPM_clean"))
+    orig_pce_val = float(pce_first[col].iloc[0])
+    pce_first[col] = -1.0
+
+    pce_second = pan_cancer_expression(normalize="tpm_clean")
+    assert float(pce_second[col].iloc[0]) == pytest.approx(orig_pce_val)
+
+
+def test_cached_derived_reference_views_match_uncached_semantics(monkeypatch):
+    monkeypatch.setattr(
+        expression_accessors,
+        "_DELEGATED_REFERENCE_CACHE",
+        expression_accessors.DelegatedReferenceExpressionCache(),
+    )
+    # Cold uncached baselines (on small fast cohorts) vs derived-from-cache views.
+    clear_reference_expression_cache()
+    cold_noproxy = cancer_reference_expression(
+        cancer_types="SARC_DDLPS", genes=["TP53"], exclude_microarray_proxy=True
+    )
+    clear_reference_expression_cache()
+    cold_geo = cancer_reference_expression(
+        cancer_types="SARC_DDLPS", genes=["TP53"], source_kind="geo"
+    )
+    clear_reference_expression_cache()
+    cold_legacy = cancer_reference_expression(
+        cancer_types="CLL",
+        genes=["ENSG00000148362.9", "ENSG00000280987", "ENSG00000310560"],
+    )
+
+    # Populate unfiltered caches, then derive each filtered/subset view.
+    clear_reference_expression_cache()
+    _unfiltered_ddlps = cancer_reference_expression(
+        cancer_types="SARC_DDLPS", genes=["TP53"]
+    )
+    assert len(_unfiltered_ddlps) > len(cold_noproxy)
+
+    cached_noproxy = cancer_reference_expression(
+        cancer_types="SARC_DDLPS", genes=["TP53"], exclude_microarray_proxy=True
+    )
+    cached_geo = cancer_reference_expression(
+        cancer_types="SARC_DDLPS", genes=["TP53"], source_kind="geo"
+    )
+    pd.testing.assert_frame_equal(cached_noproxy, cold_noproxy)
+    pd.testing.assert_frame_equal(
+        pd.DataFrame(cached_noproxy.attrs["availability"]),
+        pd.DataFrame(cold_noproxy.attrs["availability"]),
+    )
+    pd.testing.assert_frame_equal(cached_geo, cold_geo)
+    pd.testing.assert_frame_equal(
+        pd.DataFrame(cached_geo.attrs["availability"]),
+        pd.DataFrame(cold_geo.attrs["availability"]),
+    )
+
+    # Populate full-gene CLL cache and verify legacy/canonical ENSG subset parity.
+    _full_cll = cancer_reference_expression(cancer_types="CLL")
+    assert len(_full_cll) > 10_000
+    cached_legacy = cancer_reference_expression(
+        cancer_types="CLL",
+        genes=["ENSG00000148362.9", "ENSG00000280987", "ENSG00000310560"],
+    )
+    pd.testing.assert_frame_equal(cached_legacy, cold_legacy)
+
+    # Invalid source must still be rejected even if the cohort was cached unfiltered.
+    _ = cancer_reference_expression(cancer_types="NUTM", genes=["TP53"])
+    with pytest.raises(ValueError, match="UNC_NUTM1.*invalid expression scale"):
+        cancer_reference_expression(
+            cancer_types="NUTM",
+            genes=["TP53"],
+            source_cohort="UNC_NUTM1",
+        )

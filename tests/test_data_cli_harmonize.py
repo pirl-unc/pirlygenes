@@ -40,9 +40,14 @@ def test_cache_resolution_precedence_and_legacy_preservation(monkeypatch, tmp_pa
     monkeypatch.delenv("OPENVAX_DATA_CACHE", raising=False)
     monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+    platform_cache_attr = (
+        "platform_cache_dir"
+        if hasattr(dc_common, "platform_cache_dir")
+        else "_platform_cache_dir"
+    )
     monkeypatch.setattr(
         dc_common,
-        "_platform_cache_dir",
+        platform_cache_attr,
         lambda app: str(platform_shared if app == "openvax" else tmp_path / app),
     )
 

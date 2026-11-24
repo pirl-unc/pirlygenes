@@ -872,8 +872,11 @@ def add_tpm_columns_from_fpkm(
             "columns": {},
         }
 
+    import pandas as pd
+
     converted, record = fpkm_to_tpm(out, value_cols=value_cols)
     columns = {}
+    new_cols = {}
     for source_col in value_cols:
         target_col = _tpm_target_col_from_fpkm(
             source_col,
@@ -889,11 +892,16 @@ def add_tpm_columns_from_fpkm(
                 "reason": "target column already exists",
             }
             continue
-        out[target_col] = converted[source_col]
+        if target_col in out.columns:
+            out[target_col] = converted[source_col]
+        else:
+            new_cols[target_col] = converted[source_col]
         columns[source_col] = {
             "target_column": target_col,
             **record.get("columns", {}).get(source_col, {}),
         }
+    if new_cols:
+        out = pd.concat([out, pd.DataFrame(new_cols, index=out.index)], axis=1)
 
     return out, {
         "applied": bool(columns),

@@ -64,6 +64,7 @@ from .accessors import (
     cancer_expression_reference_status,
     cancer_expression_source_candidates,
     cancer_reference_expression,
+    clear_reference_expression_cache,
     cohort_expression_matrices,
     cohort_expression_matrices_metadata,
     cohort_gene_percentiles,
@@ -114,6 +115,7 @@ __all__ = [
     # Reference-data accessors
     "pan_cancer_expression",
     "cancer_reference_expression",
+    "clear_reference_expression_cache",
     "available_cancer_expression_references",
     "cancer_expression_reference_status",
     "cancer_expression_source_candidates",
