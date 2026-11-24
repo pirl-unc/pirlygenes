@@ -561,16 +561,28 @@ def collapse_wide(df: pd.DataFrame, *, value_cols, kind: str = "cdna",
     rep = (work.sort_values(["_canon", "_ord"])
                .drop_duplicates("_canon", keep="first")
                .set_index("_canon"))
-    rep[present] = work.groupby("_canon")[present].sum(min_count=1)
+    summed = work.groupby("_canon")[present].sum(min_count=1)
+    rep = pd.concat([rep.drop(columns=present), summed], axis=1)
     canon = rep.index.to_series()
     pid = canon.map(c2s)                       # proteoform symbol where grouped
     folded = pid.notna().to_numpy()
     rep[id_col] = rep[id_col].mask(folded, pid)
     if symbol_col in rep.columns:
         rep[symbol_col] = rep[symbol_col].mask(folded, pid)
-    rep = rep.assign(
-        Proteoform_ID=rep[id_col].astype(str).to_numpy(),
-        Member_Ensembl_Gene_IDs=canon.map(lambda c: members.get(c, c)).to_numpy(),
+    rep = pd.concat(
+        [
+            rep.drop(columns=["Proteoform_ID", "Member_Ensembl_Gene_IDs"], errors="ignore"),
+            pd.DataFrame(
+                {
+                    "Proteoform_ID": rep[id_col].astype(str).to_numpy(),
+                    "Member_Ensembl_Gene_IDs": canon.map(
+                        lambda c: members.get(c, c)
+                    ).to_numpy(),
+                },
+                index=rep.index,
+            ),
+        ],
+        axis=1,
     )
     keep = list(df.columns) + [c for c in ("Proteoform_ID", "Member_Ensembl_Gene_IDs")
                                if c not in df.columns]
