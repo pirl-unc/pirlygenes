@@ -1,3 +1,4 @@
+# PYTHON_ARGCOMPLETE_OK
 """Pirlygenes CLI — cohort-level reference-data inspection.
 
 ``downloads`` inspects and fetches oncoref-owned source matrices, ``build``
@@ -36,7 +37,12 @@ import os
 import sys
 from pathlib import Path
 
-from . import data_bundle, data_inventory, downloads
+from datacache.cli_help import (
+    HelpArgumentParser,
+    enable_argcomplete,
+    style_table_header,
+)
+
 from .version import __version__
 
 
@@ -81,10 +87,28 @@ _ANALYSIS_SUBCOMMANDS = frozenset({
 })
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+_CACHE_ROOT_HELP = (
+    "Override the pirlygenes cache root (equivalent to PIRLYGENES_CACHE)."
+)
+
+
+def _add_cache_root_arg(
+    parser: argparse.ArgumentParser, *, is_subcommand: bool = False
+) -> None:
+    kwargs: dict[str, object] = {
+        "metavar": "DIR",
+        "help": _CACHE_ROOT_HELP,
+    }
+    if is_subcommand:
+        kwargs["default"] = argparse.SUPPRESS
+    else:
+        kwargs["default"] = None
+    parser.add_argument("--cache-root", **kwargs)
+
+
+def _build_parser() -> HelpArgumentParser:
+    parser = HelpArgumentParser(
         prog="pirlygenes",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "pirlygenes — curated cancer reference-expression data and the\n"
             "cohort-level tools to inspect and plot it.\n\n"
@@ -110,6 +134,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"pirlygenes {__version__}",
     )
+    _add_cache_root_arg(parser)
     subparsers = parser.add_subparsers(
         dest="subcommand", metavar="<command>", title="commands",
     )
@@ -117,7 +142,6 @@ def _build_parser() -> argparse.ArgumentParser:
     downloads_parser = subparsers.add_parser(
         "downloads",
         help="Inspect or fetch oncoref-owned per-sample matrices.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "The oncoref source-matrix cache consumed by patient-level\n"
             "pirlygenes analyses. Use `pirlygenes data` for summary artifacts."
@@ -127,10 +151,11 @@ def _build_parser() -> argparse.ArgumentParser:
     downloads_sub = downloads_parser.add_subparsers(
         dest="downloads_action", metavar="<action>", title="actions",
     )
-    downloads_sub.add_parser(
+    dl_list = downloads_sub.add_parser(
         "list",
         help="List registered sources grouped by category, sorted by on-disk size.",
     )
+    _add_cache_root_arg(dl_list, is_subcommand=True)
     dl_cache_dir = downloads_sub.add_parser(
         "cache-dir",
         aliases=["path"],
@@ -143,6 +168,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true",
         help="Emit machine-readable JSON.",
     )
+    _add_cache_root_arg(dl_cache_dir, is_subcommand=True)
     fetch_parser = downloads_sub.add_parser(
         "fetch",
         help="Fetch every published matrix for a source ID or cancer code.",
@@ -154,6 +180,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--offline", action="store_true",
         help="Disallow network downloads (equivalent to DATACACHE_OFFLINE=1).",
     )
+    _add_cache_root_arg(fetch_parser, is_subcommand=True)
     prune_parser = downloads_sub.add_parser(
         "prune",
         help="Cap cache disk usage (NotImplemented; see plan milestone 5).",
@@ -168,7 +195,6 @@ def _build_parser() -> argparse.ArgumentParser:
     data_parser = subparsers.add_parser(
         "data",
         help="Inspect + manage the packaged reference data (the build outputs).",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "Cancer reference-expression summaries delegated to oncoref, plus\n"
             "pirlygenes' small curated panels and purpose-specific derived views."
@@ -201,6 +227,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="One flat table of every cohort sorted by sample count, with "
              "assay / quantification / reference as columns.",
     )
+    _add_cache_root_arg(list_parser, is_subcommand=True)
     dirs_parser = data_sub.add_parser(
         "dirs",
         help="Show pirlygenes cache locations, sizes, and offline status (read-only).",
@@ -209,6 +236,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true",
         help="Emit machine-readable JSON.",
     )
+    _add_cache_root_arg(dirs_parser, is_subcommand=True)
     status_parser = data_sub.add_parser(
         "status",
         help="Report which downloadable bundle paths are present in "
@@ -218,11 +246,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true",
         help="Emit machine-readable JSON.",
     )
+    _add_cache_root_arg(status_parser, is_subcommand=True)
     sources_parser = data_sub.add_parser(
         "sources",
         help="Show the expression source(s) feeding each cancer code "
              "(samples, gene count, quantification method).",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "For each cancer code, list its source cohort(s) with sample count,\n"
             "genes measured, and native quantification. When a code has more\n"
@@ -254,6 +282,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true",
         help="Emit machine-readable JSON.",
     )
+    _add_cache_root_arg(data_cache_dir, is_subcommand=True)
     data_fetch_parser = data_sub.add_parser(
         "fetch",
         help="Explicitly download the data bundle from the GitHub "
@@ -263,6 +292,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--offline", action="store_true",
         help="Disallow network downloads (equivalent to DATACACHE_OFFLINE=1).",
     )
+    _add_cache_root_arg(data_fetch_parser, is_subcommand=True)
     prune_parser = data_sub.add_parser(
         "prune",
         help="Delete stale v<old-version>/ bundled-data cache dirs "
@@ -282,11 +312,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true",
         help="Emit machine-readable JSON.",
     )
+    _add_cache_root_arg(prune_parser, is_subcommand=True)
 
     build_parser = subparsers.add_parser(
         "build",
         help="Identify the oncoref build owner (pirlygenes is read-only).",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "Expression regeneration is owned by oncoref.expression_builders.\n"
             "This compatibility command lists sources and redirects rebuilds;\n"
@@ -322,7 +352,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "                     a greedy panel, on one chart\n"
             "  cta-curation       CTA panel curation figures (source/filter/HPA)\n"
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     plot_sub = plot_parser.add_subparsers(
         dest="plot_action", metavar="<action>", title="actions",
@@ -338,7 +367,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "avoid comparing microarray proxies as absolute TPM. Writes a\n"
             "counts CSV + a stacked coverage bar + coverage-curve panels."
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
             "  pirlygenes plot patient-coverage --gene-set cta\n"
@@ -388,7 +416,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "distribution, and protein-reliability-vs-RNA tiers. These are the\n"
             "figures embedded in docs/cta-curation.md."
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Example:\n  pirlygenes plot cta-curation --out cta_curation_out\n",
     )
     cur.add_argument(
@@ -411,7 +438,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "dict. A cancer type with no burden category carries zero patient\n"
             "weight and is named on the figure rather than dropped."
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
             "  pirlygenes plot covering-set\n"
@@ -460,6 +486,39 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 @contextlib.contextmanager
+def _cache_root_override(cache_root: str | None):
+    if not cache_root:
+        yield
+        return
+    expanded = str(Path(cache_root).expanduser())
+    prev_cache = os.environ.get("PIRLYGENES_CACHE")
+    prev_bundled = os.environ.get("PIRLYGENES_BUNDLED_DATA")
+    os.environ["PIRLYGENES_CACHE"] = expanded
+    os.environ.pop("PIRLYGENES_BUNDLED_DATA", None)
+    try:
+        yield
+    finally:
+        if prev_cache is None:
+            os.environ.pop("PIRLYGENES_CACHE", None)
+        else:
+            os.environ["PIRLYGENES_CACHE"] = prev_cache
+        if prev_bundled is not None:
+            os.environ["PIRLYGENES_BUNDLED_DATA"] = prev_bundled
+
+
+def _oncoref_source_matrices_dir(source_matrices) -> Path:
+    """Resolve oncoref's versioned source-matrices path without creating dirs."""
+    if hasattr(source_matrices, "cache_root") and hasattr(
+        source_matrices, "SOURCE_MATRIX_VERSION"
+    ):
+        return (
+            Path(source_matrices.cache_root())
+            / f"v{source_matrices.SOURCE_MATRIX_VERSION}"
+        )
+    return Path(source_matrices.cache_dir())
+
+
+@contextlib.contextmanager
 def _offline_override(offline: bool):
     if not offline:
         yield
@@ -494,6 +553,8 @@ def _dir_size_bytes(path: Path) -> int:
 
 
 def cmd_downloads_list(_args: argparse.Namespace) -> int:
+    from . import downloads
+
     usages = downloads.collect_cache_usage()
     sys.stdout.write(downloads.render_list(usages) + "\n")
     return 0
@@ -502,7 +563,7 @@ def cmd_downloads_list(_args: argparse.Namespace) -> int:
 def cmd_downloads_cache_dir(args: argparse.Namespace) -> int:
     from oncoref import source_matrices
 
-    path = str(source_matrices.cache_dir())
+    path = str(_oncoref_source_matrices_dir(source_matrices))
     if getattr(args, "json", False):
         sys.stdout.write(json.dumps({"path": path}, indent=2) + "\n")
     else:
@@ -560,6 +621,8 @@ def cmd_downloads_prune(_args: argparse.Namespace) -> int:
 
 
 def cmd_data_list(args: argparse.Namespace) -> int:
+    from . import data_inventory
+
     snapshot = data_inventory.summarize_inventory()
     sys.stdout.write(
         data_inventory.render_inventory(
@@ -585,6 +648,7 @@ def cmd_data_sources(args: argparse.Namespace) -> int:
     docs/recount3-integration.md and the `normalization` column.
     """
     import pirlygenes.expression.accessors as accessors
+    from . import data_inventory, downloads
 
     df = accessors.cancer_reference_expression()
     native_unit = {
@@ -647,6 +711,7 @@ def _format_bytes(n: int) -> str:
 
 def cmd_data_dirs(args: argparse.Namespace) -> int:
     import datacache
+    from . import data_bundle, downloads
 
     loc = downloads.resolve_cache_location()
     cache_path = Path(loc.path)
@@ -661,7 +726,7 @@ def cmd_data_dirs(args: argparse.Namespace) -> int:
     try:
         from oncoref import source_matrices
 
-        mat_path = Path(source_matrices.cache_dir())
+        mat_path = _oncoref_source_matrices_dir(source_matrices)
         oncoref_info = {
             "path": str(mat_path),
             "env_var": (
@@ -703,7 +768,11 @@ def cmd_data_dirs(args: argparse.Namespace) -> int:
         return 0
 
     origin_text = f"{loc.origin} ({loc.detail})" if loc.detail else loc.origin
-    sys.stdout.write(f"pirlygenes cache locations (v{__version__}, data v{data_bundle.DATA_VERSION})\n")
+    header = style_table_header(
+        f"pirlygenes cache locations (v{__version__}, data v{data_bundle.DATA_VERSION})",
+        stream=sys.stdout,
+    )
+    sys.stdout.write(header + "\n")
     sys.stdout.write(
         f"  cache_root       : {cache_path} "
         f"[{origin_text}; {datacache.format_bytes(cache_bytes)}]\n"
@@ -730,11 +799,17 @@ def cmd_data_dirs(args: argparse.Namespace) -> int:
 
 
 def cmd_data_status(args: argparse.Namespace) -> int:
+    from . import data_bundle
+
     snap = data_bundle.status()
     if getattr(args, "json", False):
         sys.stdout.write(json.dumps(snap, indent=2) + "\n")
         return 0
-    sys.stdout.write(f"pirlygenes data bundle for v{snap['data_version']}\n")
+    header = style_table_header(
+        f"pirlygenes data bundle for v{snap['data_version']}",
+        stream=sys.stdout,
+    )
+    sys.stdout.write(header + "\n")
     sys.stdout.write(f"  cache dir   : {snap['cache_dir']}\n")
     sys.stdout.write(f"  release URL : {snap['release_url']}\n")
     sys.stdout.write(f"  all local?  : {snap['all_local']}\n")
@@ -751,6 +826,8 @@ def cmd_data_status(args: argparse.Namespace) -> int:
 
 
 def cmd_data_cache_dir(args: argparse.Namespace) -> int:
+    from . import data_bundle
+
     path = str(data_bundle.cache_dir())
     if getattr(args, "json", False):
         sys.stdout.write(
@@ -766,6 +843,8 @@ def cmd_data_cache_dir(args: argparse.Namespace) -> int:
 
 
 def cmd_data_fetch(args: argparse.Namespace) -> int:
+    from . import data_bundle
+
     offline = True if getattr(args, "offline", False) else None
     try:
         data_bundle.fetch(verbose=True, offline=offline)
@@ -785,6 +864,8 @@ def _serialize_version_entry(entry: dict) -> dict[str, object]:
 
 
 def cmd_data_prune(args: argparse.Namespace) -> int:
+    from . import data_bundle
+
     as_json = bool(getattr(args, "json", False))
     keep_current = not getattr(args, "include_current", False)
     dry_run = not getattr(args, "yes", False)
@@ -873,7 +954,7 @@ def cmd_data_prune(args: argparse.Namespace) -> int:
 
 def cmd_build(args: argparse.Namespace) -> int:
     """Preserve source discovery while redirecting every rebuild to oncoref."""
-    from . import cohorts
+    from . import cohorts, downloads
 
     sources = downloads.load_registry()
     requested = args.source_id
@@ -1040,6 +1121,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_analysis_moved(None)
 
     parser = _build_parser()
+    enable_argcomplete(parser)
     args = parser.parse_args(argv)
 
     subcommand = args.subcommand
@@ -1050,40 +1132,41 @@ def main(argv: list[str] | None = None) -> int:
     if subcommand in _ANALYSIS_SUBCOMMANDS:
         return cmd_analysis_moved(args)
 
-    if subcommand == "downloads":
-        handler = _DOWNLOADS_DISPATCH.get(args.downloads_action)
+    with _cache_root_override(getattr(args, "cache_root", None)):
+        if subcommand == "downloads":
+            handler = _DOWNLOADS_DISPATCH.get(args.downloads_action)
+            if handler is None:
+                sys.stderr.write(
+                    "usage: pirlygenes downloads {list,cache-dir,path,fetch,prune}\n"
+                )
+                return 2
+            return handler(args)
+
+        if subcommand == "data":
+            handler = _DATA_DISPATCH.get(args.data_action)
+            if handler is None:
+                sys.stderr.write(
+                    "usage: pirlygenes data {dirs,list,sources,status,cache-dir,path,fetch,prune}\n"
+                )
+                return 2
+            return handler(args)
+
+        if subcommand == "plot":
+            handler = _PLOT_DISPATCH.get(args.plot_action)
+            if handler is None:
+                sys.stderr.write(
+                    "usage: pirlygenes plot {patient-coverage,covering-set,cta-curation}\n")
+                return 2
+            return handler(args)
+
+        dispatch = {
+            "build": cmd_build,
+        }
+        handler = dispatch.get(subcommand)
         if handler is None:
-            sys.stderr.write(
-                "usage: pirlygenes downloads {list,cache-dir,path,fetch,prune}\n"
-            )
+            parser.print_help()
             return 2
         return handler(args)
-
-    if subcommand == "data":
-        handler = _DATA_DISPATCH.get(args.data_action)
-        if handler is None:
-            sys.stderr.write(
-                "usage: pirlygenes data {dirs,list,sources,status,cache-dir,path,fetch,prune}\n"
-            )
-            return 2
-        return handler(args)
-
-    if subcommand == "plot":
-        handler = _PLOT_DISPATCH.get(args.plot_action)
-        if handler is None:
-            sys.stderr.write(
-                "usage: pirlygenes plot {patient-coverage,covering-set,cta-curation}\n")
-            return 2
-        return handler(args)
-
-    dispatch = {
-        "build": cmd_build,
-    }
-    handler = dispatch.get(subcommand)
-    if handler is None:
-        parser.print_help()
-        return 2
-    return handler(args)
 
 
 if __name__ == "__main__":

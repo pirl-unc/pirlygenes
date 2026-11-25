@@ -608,12 +608,14 @@ def _format_bytes(size: int) -> str:
 def _render_flat(rows: list[CohortRowCount]) -> str:
     """One flat table, one row per cohort, sorted by sample count, with assay /
     quantification / reference as columns."""
+    from datacache.cli_help import style_table_header
+
     entries = sorted(rows, key=lambda r: -(r.n_samples or 0))
     hdr = (
         f"{'code':<16}{'cancer type':<30}{'n':>6}  {'genes':>8}  "
         f"{'assay':<22}{'tool':<9}{'unit':<13}{'stratified by':<19}source"
     )
-    lines = [hdr, "─" * len(hdr)]
+    lines = [style_table_header(hdr), "─" * len(hdr)]
     for r in entries:
         name = (r.cancer_type_name or "")[:29]
         assay = r.assay or _assay_heuristic(r.source_cohort, r.processing_pipeline)

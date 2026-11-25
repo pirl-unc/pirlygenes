@@ -1,8 +1,19 @@
+[build-system]
+# setuptools-scm was removed in v5.3.0 because it was auto-including
+# every git-tracked file in the wheel, which overrode our explicit
+# exclude-package-data rules and pushed the wheel past PyPI's 100 MiB
+# limit. Version comes from pirlygenes/version.py via the
+# [tool.setuptools.dynamic] attr lookup, so scm isn't needed.
+requires = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "pirlygenes"
 requires-python = ">=3.11"
 authors = [ {name="Alex Rubinsteyn", email="alex.rubinsteyn@unc.edu" } ]
 description = "Curated cancer gene sets and reference expression data. Analysis lives in `trufflepig`."
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -13,19 +24,19 @@ classifiers = [
     'Environment :: Console',
     'Operating System :: OS Independent',
     'Intended Audience :: Science/Research',
-    'License :: OSI Approved :: Apache Software License',
     'Topic :: Scientific/Engineering :: Bio-Informatics',
 ]
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
-    "datacache>=1.34.0",
+    "datacache>=1.38.0,<2.0.0",
     "matplotlib>=3.7.0",
     "numpy>=2.0.0",
     # oncoref owns the cancer-type ontology, source/sample registries, and
-    # delegated expression/normalization mechanics. Upper bound pins releases
-    # validated with the current materialized cohort matrices (#665/#667).
-    "oncoref>=1.23.1,<=1.49.0",
+    # delegated expression/normalization mechanics. Materialized cohort-matrix
+    # compatibility is verified against oncoref's DATA_VERSION metadata rather
+    # than pinning an exact wheel upper bound.
+    "oncoref>=1.23.1,<2.0.0",
     "openpyxl>=3.1.0",
     "pandas>=3,<4",
     # Parquet engine for the cohort-matrix / representative / percentile
@@ -84,14 +95,6 @@ viz = [
 [project.scripts]
 pirlygenes = "pirlygenes.cli:main"
 
-[build-system]
-# setuptools-scm was removed in v5.3.0 because it was auto-including
-# every git-tracked file in the wheel, which overrode our explicit
-# exclude-package-data rules and pushed the wheel past PyPI's 100 MiB
-# limit. Version comes from pirlygenes/version.py via the
-# [tool.setuptools.dynamic] attr lookup, so scm isn't needed.
-requires = ["setuptools>=60"]
-
 [tool.setuptools.package-data]
 # Only small curated panels ship in the wheel. Empirical rows, source metadata,
 # sample manifests, and per-sample matrices are owned/fetched by oncoref
@@ -125,3 +128,10 @@ pirlygenes = [
 markers = [
     "perf: performance-regression fences",
 ]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Ruff 0.16 widened its default rule set; keep the rules lint.sh has always enforced.
+select = ["E4", "E7", "E9", "F"]
