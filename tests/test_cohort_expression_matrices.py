@@ -717,6 +717,24 @@ def test_corrupt_parquet_falls_back_to_rebuild(tmp_path, monkeypatch):
     assert "ENSG00000141510" in set(v.tpm["Ensembl_Gene_ID"])
 
 
+def test_corrupt_provenance_parquet_falls_back_to_rebuild(tmp_path, monkeypatch):
+    fake = _synthetic_reference()
+    root = tmp_path / "matrices"
+    _write_artifact_from_rebuild(root, monkeypatch, fake)
+    (root / "provenance.parquet").write_bytes(b"not a parquet file")  # corrupt
+
+    _install_fake_reference(monkeypatch, fake)
+    monkeypatch.setattr(accessors, "_cohort_matrices_root", lambda: root)
+    accessors._load_precomputed_cohort_matrices.cache_clear()
+    with pytest.warns(RuntimeWarning, match="could not be read") as record:
+        v = cohort_expression_matrices(genes=["TP53"])
+    assert all(
+        "Owner expression provenance metadata" not in str(w.message)
+        for w in record
+    )
+    assert "ENSG00000141510" in set(v.tpm["Ensembl_Gene_ID"])
+
+
 def test_schema_invalid_artifact_falls_back_to_rebuild(tmp_path, monkeypatch):
     import pandas as pd
 

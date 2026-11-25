@@ -298,3 +298,43 @@ print(peak_bytes)
         f"availability used {peak_bytes / 1e9:.2f} GB peak RSS; it must remain "
         "a gene-independent manifest read"
     )
+
+
+def test_availability_cold_offline_skips_artifact_download(tmp_path, monkeypatch):
+    """Cold availability reads must not download OncoRef's bulk archive (#654)."""
+    from oncoref import data_bundle as oncoref_data_bundle
+
+    empty_owner_cache = tmp_path / "empty-oncoref"
+    empty_owner_cache.mkdir()
+    monkeypatch.setenv("CANCERDATA_BUNDLED_DATA", str(empty_owner_cache))
+    monkeypatch.setenv("OPENVAX_OFFLINE", "1")
+    delegated_calls = []
+    delegated = oncoref.cancer_reference_expression_availability
+    monkeypatch.setattr(
+        oncoref,
+        "cancer_reference_expression_availability",
+        lambda **kwargs: delegated_calls.append(kwargs) or delegated(**kwargs),
+    )
+    monkeypatch.setattr(
+        oncoref_data_bundle,
+        "ensure_local",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("availability triggered bulk OncoRef download")
+        ),
+    )
+    accessors._load_available_reference_manifest.cache_clear()
+    try:
+        assert accessors.owner_percentile_artifacts_are_local() is False
+        result = available_cancer_expression_references()
+        assert not result.empty
+        assert result.columns.tolist() == _PUBLIC_COLUMNS
+        assert delegated_calls == [
+            {
+                "normalize": "tpm_clean",
+                "sample_qc": "all",
+                "reference_source": "summary_rows_all",
+                "all_sources": True,
+            }
+        ]
+    finally:
+        accessors._load_available_reference_manifest.cache_clear()

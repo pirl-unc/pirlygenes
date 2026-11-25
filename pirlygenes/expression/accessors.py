@@ -1113,6 +1113,27 @@ def _reference_long_from_summary_frame(
     return pd.concat(parts, ignore_index=True)
 
 
+def owner_percentile_artifacts_are_local() -> bool:
+    """Return whether OncoRef's percentile shards are already present locally.
+
+    Checking local shard presence before querying OncoRef's artifact
+    availability avoids triggering an unrelated bulk OncoRef archive download
+    when only the compact availability/provenance manifest is needed.
+    """
+    import oncoref
+
+    local_cohorts = getattr(
+        oncoref, "locally_available_percentile_cohorts", None
+    )
+    if callable(local_cohorts):
+        return bool(local_cohorts(include_recomputable=False))
+    owner_bundle = getattr(oncoref, "data_bundle", None)
+    item_is_local = getattr(owner_bundle, "item_is_local", None)
+    if callable(item_is_local):
+        return bool(item_is_local("cancer-reference-expression-percentiles"))
+    return False
+
+
 def available_cancer_expression_references() -> pd.DataFrame:
     """Packaged non-TCGA tumor reference cohorts available by cancer code.
 
@@ -1124,17 +1145,22 @@ def available_cancer_expression_references() -> pd.DataFrame:
     references are available without inspecting data files.
 
     This is a gene-independent manifest read. It combines oncoref's compact
-    all-source summary availability with cohorts served only by its canonical
-    percentile artifacts, then adapts that union through pirlygenes'
-    compatibility registry. It never loads the multi-million-row expression
-    summary or any expression values. A fresh ``.copy()`` keeps the historical
-    mutation-safe contract.
+    all-source summary availability with cohorts served only by locally
+    installed canonical percentile artifacts, then adapts that union through
+    pirlygenes' compatibility registry. It never loads the multi-million-row
+    expression summary, never reads expression values, and never triggers a
+    bulk OncoRef archive download when percentile shards are absent locally.
+    A fresh ``.copy()`` keeps the historical mutation-safe contract.
     """
-    return _load_available_reference_manifest().copy()
+    return _load_available_reference_manifest(
+        owner_percentile_artifacts_are_local()
+    ).copy()
 
 
-@lru_cache(maxsize=1)
-def _load_available_reference_manifest() -> pd.DataFrame:
+@lru_cache(maxsize=2)
+def _load_available_reference_manifest(
+    include_artifact_only: bool = True,
+) -> pd.DataFrame:
     import oncoref
 
     from ..gene_sets_cancer import cohort_registry_df
@@ -1147,19 +1173,22 @@ def _load_available_reference_manifest() -> pd.DataFrame:
         reference_source="summary_rows_all",
         all_sources=True,
     )
-    artifacts = oncoref.cancer_reference_expression_availability(
-        normalize="tpm_clean",
-        sample_qc="artifact",
-        reference_source="artifact",
-    )
-    summary_codes = set(
-        summary.loc[summary["available"], "cancer_code"].astype(str)
-    )
-    artifact_only = artifacts.loc[
-        artifacts["available"]
-        & ~artifacts["cancer_code"].astype(str).isin(summary_codes)
-    ]
-    availability = pd.concat([summary, artifact_only], ignore_index=True)
+    if include_artifact_only:
+        artifacts = oncoref.cancer_reference_expression_availability(
+            normalize="tpm_clean",
+            sample_qc="artifact",
+            reference_source="artifact",
+        )
+        summary_codes = set(
+            summary.loc[summary["available"], "cancer_code"].astype(str)
+        )
+        artifact_only = artifacts.loc[
+            artifacts["available"]
+            & ~artifacts["cancer_code"].astype(str).isin(summary_codes)
+        ]
+        availability = pd.concat([summary, artifact_only], ignore_index=True)
+    else:
+        availability = summary
     manifest = build_reference_manifest(
         availability,
         availability,
@@ -2232,9 +2261,9 @@ def clear_reference_expression_cache() -> None:
     """Clear pirlygenes' in-process reference and pan-cancer expression caches.
 
     Clears delegated ``oncoref`` reference expression slices, normalized
-    pan-cancer expression base frames, and compact owner availability lookups.
-    Call this in tests or tooling after modifying cached reference bundles on
-    disk.
+    pan-cancer expression base frames, compact owner availability lookups, and
+    loaded precomputed cohort matrices. Call this in tests or tooling after
+    modifying cached reference bundles on disk.
     """
     _DELEGATED_REFERENCE_CACHE.clear()
     _PAN_NORMALIZED_FRAME_CACHE.clear()
@@ -2249,6 +2278,7 @@ def clear_reference_expression_cache() -> None:
     _oncoref_summary_microarray_proxy_pairs.cache_clear()
     _owner_physical_source_cohorts.cache_clear()
     _load_available_reference_manifest.cache_clear()
+    _load_precomputed_cohort_matrices.cache_clear()
 
 
 def _reassemble_cached_entries(
@@ -3234,6 +3264,14 @@ def _cohort_matrices_present(root: Path) -> bool:
     )
 
 
+_OWNER_METADATA_UNAVAILABLE_ERRORS = (
+    OSError,
+    RuntimeError,
+    ValueError,
+    LookupError,
+)
+
+
 @lru_cache(maxsize=4)
 def _load_precomputed_cohort_matrices(root_text: str) -> tuple[pd.DataFrame, ...]:
     root = Path(root_text)
@@ -3243,11 +3281,11 @@ def _load_precomputed_cohort_matrices(root_text: str) -> tuple[pd.DataFrame, ...
     clean = _object_column_index(
         pd.read_parquet(root / _COHORT_MATRIX_FILES["clean_tpm"])
     )
-    provenance = _refresh_cohort_matrix_provenance(
-        _object_column_index(
-            pd.read_parquet(root / _COHORT_MATRIX_FILES["provenance"])
-        )
+    provenance = _object_column_index(
+        pd.read_parquet(root / _COHORT_MATRIX_FILES["provenance"])
     )
+    if _valid_full_matrices((tpm, clean, provenance)):
+        provenance = refresh_cohort_matrix_provenance(provenance)
     return tpm, clean, provenance
 
 
@@ -3274,23 +3312,40 @@ def _canonicalize_source_cohort_ids(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _refresh_cohort_matrix_provenance(df: pd.DataFrame) -> pd.DataFrame:
-    """Refresh a bundled sidecar from oncoref's compact owner manifest.
+def refresh_cohort_matrix_provenance(df: pd.DataFrame) -> pd.DataFrame:
+    """Refresh a bundled cohort-matrix provenance sidecar from owner metadata.
 
     The precomputed value matrices remain valid across a provenance-only cohort
     rename. For matching ``(cancer_code, source_cohort)`` rows, use the current
     owner's cohort, pipeline, and sample metadata; retain sidecar values for
     custom or fixture rows absent from the owner manifest.
+
+    If the owner availability manifest cannot be acquired (for example, in an
+    offline environment or when owner metadata is unavailable), emit a
+    ``RuntimeWarning`` distinguishing owner-metadata acquisition failure from
+    corrupt matrix files and preserve the canonicalized bundled provenance
+    without triggering a rebuild.
     """
     out = _canonicalize_source_cohort_ids(df)
     keys = ["cancer_code", "source_cohort"]
     if not set(keys) <= set(out.columns):
-        return out
+        return _object_column_index(out)
 
     refresh_cols = ["processing_pipeline", "n_samples"]
-    owner = available_cancer_expression_references()[
-        [*keys, *refresh_cols]
-    ].drop_duplicates(keys).copy()
+    try:
+        owner = available_cancer_expression_references()[
+            [*keys, *refresh_cols]
+        ].drop_duplicates(keys).copy()
+    except _OWNER_METADATA_UNAVAILABLE_ERRORS as exc:
+        warnings.warn(
+            "Owner expression provenance metadata could not be loaded "
+            f"({exc!r}); preserving bundled cohort-matrix provenance without "
+            "rebuilding matrices.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return _object_column_index(out)
+
     # The compact owner manifest deliberately uses categorical metadata. Cast
     # only the tiny joined projection so fixture/custom sidecar values that are
     # not owner categories can be retained without mutating oncoref's cache.
@@ -3308,6 +3363,10 @@ def _refresh_cohort_matrix_provenance(df: pd.DataFrame) -> pd.DataFrame:
             merged[column] = merged[owner_column]
         merged = merged.drop(columns=owner_column)
     return _object_column_index(merged[out.columns])
+
+
+def _refresh_cohort_matrix_provenance(df: pd.DataFrame) -> pd.DataFrame:
+    return refresh_cohort_matrix_provenance(df)
 
 
 def _cohort_value_cols(wide: pd.DataFrame) -> list[str]:
@@ -4339,6 +4398,8 @@ __all__ = [
     "clear_reference_expression_cache",
     "filter_cached_reference_genes",
     "is_default_oncoref_reference_delegate",
+    "owner_percentile_artifacts_are_local",
+    "refresh_cohort_matrix_provenance",
     # accessors
     "pan_cancer_expression",
     "cancer_reference_expression",
