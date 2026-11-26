@@ -178,6 +178,7 @@ def clear_cancer_type_caches():
     """
     CANCER_TYPE_NAMES.clear_cache()
     _cta_protein_group_index.cache_clear()
+    clear_cta_policy_cache()
 
 
 def resolve_cancer_type(cancer_type, *, strict=True):
@@ -2319,33 +2320,55 @@ radioligand_target_gene_ids = _deprecate(
 
 
 # ---------- Cancer-testis antigens (CTA) ----------
-# The CTA *gene set* is owned by oncoref — the canonical, audit-backed source
-# (pirlygenes#511). pirlygenes re-exports oncoref's set / restriction-subset
-# accessors and alias resolver so downstream consumers (trufflepig, analyses,
-# normalize) keep one stable import path.
+# Default CTA membership, categories, 4-way sex-restriction partitions, and
+# manifest provenance follow OncoRef's active ``target_selection`` policy via
+# ``pirlygenes.cta_policy`` (pirlygenes#655). Curated clinical / tumor-marker
+# panels (cancer-key-genes, cancer-type-genes, surfaceome, therapy target CSVs,
+# lineage/family panels) remain curated in pirlygenes.
 #
-# Evidence and partitions explicitly retain this historical panel while adding
-# Tsarina's independent MS annotations. Tsarina's current-selection defaults
-# are a different population and must not silently redefine these APIs.
+# Explicit historical v1 HPA helpers (CTA_historical_*, plus the frozen HPA
+# axis views CTA_testis_restricted_* / CTA_placental_restricted_*) remain
+# importable without altering active defaults.
 from oncoref.cta import (  # noqa: E402,F401
-    CTA_by_axes,
-    CTA_excluded_gene_ids,
-    CTA_excluded_gene_names,
-    CTA_filtered_gene_ids,
-    CTA_filtered_gene_names,
-    CTA_gene_ids,
-    CTA_gene_names,
-    CTA_never_expressed_gene_ids,
-    CTA_never_expressed_gene_names,
     CTA_placental_restricted_gene_ids,
     CTA_placental_restricted_gene_names,
     CTA_testis_restricted_gene_ids,
     CTA_testis_restricted_gene_names,
+)
+from .cta_policy import (  # noqa: E402,F401
+    CTA_antigen_set_gene_ids,
+    CTA_antigen_set_gene_names,
+    CTA_by_tier,
+    CTA_cancer_antigen_gene_ids,
+    CTA_cancer_antigen_gene_names,
+    CTA_excluded_gene_ids,
+    CTA_excluded_gene_names,
+    CTA_filtered_gene_ids,
+    CTA_filtered_gene_names,
+    CTA_gene_id_to_name,
+    CTA_gene_ids,
+    CTA_gene_names,
+    CTA_historical_evidence,
+    CTA_historical_gene_ids,
+    CTA_historical_gene_names,
+    CTA_never_expressed_gene_ids,
+    CTA_never_expressed_gene_names,
+    CTA_policy_id,
+    CTA_policy_manifest,
+    CTA_reproductive_antigen_gene_ids,
+    CTA_reproductive_antigen_gene_names,
+    CTA_selection_df,
+    CTA_sex_partition_gene_ids,
+    CTA_sex_partition_gene_names,
+    CTA_target_candidate_gene_ids,
+    CTA_target_candidate_gene_names,
     CTA_unfiltered_gene_ids,
     CTA_unfiltered_gene_names,
+    clear_cta_policy_cache,
     cta_symbol_for_alias,
 )
 from ._cta_compatibility import (  # noqa: E402,F401
+    CTA_by_axes,
     CTA_evidence,
     CTAPartitionDataFrames,
     CTAPartitionSets,
@@ -2394,21 +2417,6 @@ def cta_paralog_symbols(name: str) -> list[str]:
         return list(by_group[key])
     return [sym] if sym else []
 
-
-
-def CTA_gene_id_to_name():
-    """CTA ``{Ensembl_Gene_ID: Symbol}`` for the filtered + expressed set.
-
-    Delegates to :func:`oncoref.cta_gene_id_to_name`. oncoref owns the CTA gene
-    set (pirlygenes#511), so its id→name mapping covers exactly
-    :func:`CTA_gene_ids` by construction — no dependence on joining oncoref's set
-    against tsarina's evidence frame, which (under separately-versioned
-    oncoref/tsarina floors) could transiently drop a freshly-added set gene that
-    the installed tsarina evidence hasn't caught up on. Returns a fresh dict.
-    """
-    import oncoref
-
-    return dict(oncoref.cta_gene_id_to_name())
 
 
 # Which proteoform collapse a folded CTA panel should match. 'cdna' = the

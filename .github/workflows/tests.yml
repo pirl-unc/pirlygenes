@@ -52,9 +52,10 @@ jobs:
         env:
           PIRLYGENES_NO_ENSEMBL_INSTALL: "1"
         run: >-
-          python -m pytest -n 0 -q tests/test_oncoref_adoption.py
+          python -m pytest -n 0 -q tests/test_cta_policy_oncoref152.py
+          tests/test_oncoref_adoption.py
           tests/test_cta_peptide_adoption.py tests/test_cta_compatibility.py
-          tests/test_load_dataset_and_gene_sets.py::test_cta_evidence_preserves_owner_hpa_and_tsarina_ms
+          tests/test_load_dataset_and_gene_sets.py::test_cta_evidence_preserves_active_policy_hpa_and_tsarina_ms
 
   release-version:
     if: github.event_name == 'pull_request'

@@ -45,7 +45,7 @@ from typing import TYPE_CHECKING
 from .version import __version__
 
 if TYPE_CHECKING:
-    from . import data_inventory, downloads
+    from . import cta_policy, data_inventory, downloads
     from .expression import (
         CohortExpressionMatrices,
         GeneQcClass,
@@ -135,6 +135,18 @@ if TYPE_CHECKING:
         small_noncoding_rna_symbols,
     )
     from .gene_sets_cancer import (
+        CTA_antigen_set_gene_ids,
+        CTA_antigen_set_gene_names,
+        CTA_by_tier,
+        CTA_evidence,
+        CTA_gene_id_to_name,
+        CTA_gene_ids,
+        CTA_gene_names,
+        CTA_policy_id,
+        CTA_policy_manifest,
+        CTA_selection_df,
+        CTA_sex_partition_gene_ids,
+        CTA_sex_partition_gene_names,
         cancer_classification_ontology,
         cancer_compartment_panel,
         cancer_compartment_panels,
@@ -254,6 +266,18 @@ EXPORT_MODULES = {
     "small_noncoding_rna_ids": "gene_families",
     "small_noncoding_rna_symbols": "gene_families",
     # gene_sets_cancer
+    "CTA_antigen_set_gene_ids": "gene_sets_cancer",
+    "CTA_antigen_set_gene_names": "gene_sets_cancer",
+    "CTA_by_tier": "gene_sets_cancer",
+    "CTA_evidence": "gene_sets_cancer",
+    "CTA_gene_id_to_name": "gene_sets_cancer",
+    "CTA_gene_ids": "gene_sets_cancer",
+    "CTA_gene_names": "gene_sets_cancer",
+    "CTA_policy_id": "gene_sets_cancer",
+    "CTA_policy_manifest": "gene_sets_cancer",
+    "CTA_selection_df": "gene_sets_cancer",
+    "CTA_sex_partition_gene_ids": "gene_sets_cancer",
+    "CTA_sex_partition_gene_names": "gene_sets_cancer",
     "cancer_family_panel": "gene_sets_cancer",
     "cancer_family_panels": "gene_sets_cancer",
     "cancer_family_panels_df": "gene_sets_cancer",
@@ -343,6 +367,18 @@ __all__ = [
     "gene_table_validation_report",
     "validate_canonical_gene_table",
     # gene-set panels
+    "CTA_policy_id",
+    "CTA_policy_manifest",
+    "CTA_selection_df",
+    "CTA_antigen_set_gene_ids",
+    "CTA_antigen_set_gene_names",
+    "CTA_sex_partition_gene_ids",
+    "CTA_sex_partition_gene_names",
+    "CTA_by_tier",
+    "CTA_gene_ids",
+    "CTA_gene_names",
+    "CTA_gene_id_to_name",
+    "CTA_evidence",
     "housekeeping_gene_ids",
     "housekeeping_gene_names",
     "mitochondrial_genes_df",
@@ -452,6 +488,8 @@ __all__ = [
     "GeneQcClass",
     # expression: aggregation
     "aggregate_gene_expression",
+    # active OncoRef CTA policy
+    "cta_policy",
     # cohort-level downloads + cache
     "downloads",
     # cohort-level bundled-data inventory

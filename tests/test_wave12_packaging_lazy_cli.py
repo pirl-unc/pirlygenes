@@ -52,7 +52,7 @@ print(json.dumps({
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     payload = json.loads(completed.stdout.strip().splitlines()[-1])
-    assert payload["version"] == "6.3.0"
+    assert payload["version"] == "6.4.0"
     assert payload["loaded"] == [], f"eager heavy imports on `import pirlygenes`: {payload['loaded']}"
     assert payload["dir_has_all"] is True
 
@@ -60,7 +60,7 @@ print(json.dumps({
 def test_lazy_init_exposes_every_all_symbol_and_rejects_unknown():
     import pirlygenes
 
-    submodules = {"downloads", "data_inventory"}
+    submodules = {"cta_policy", "downloads", "data_inventory"}
     expected_export_keys = set(pirlygenes.__all__) - {"__version__"} - submodules
     assert set(pirlygenes.EXPORT_MODULES) == expected_export_keys
 
@@ -179,11 +179,11 @@ def test_pyproject_packaging_and_oncoref_compatibility():
 
     deps = project["dependencies"]
     assert "datacache>=1.38.0,<2.0.0" in deps
-    assert "oncoref>=1.23.1,<2.0.0" in deps
+    assert "oncoref>=1.52.0,<2.0.0" in deps
 
     ruff_lint = data["tool"]["ruff"]["lint"]
     assert ruff_lint["select"] == ["E4", "E7", "E9", "F"]
 
     major, minor, *_ = (int(part) for part in oncoref.__version__.split(".")[:3])
-    assert (major, minor) >= (1, 23)
+    assert (major, minor) >= (1, 52)
     assert major < 2

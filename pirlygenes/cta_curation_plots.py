@@ -1,7 +1,10 @@
-"""CTA plots and provenance owned by oncoref; this module preserves the CLI API.
+"""Historical 10-paper CTA curation figures owned by oncoref; preserves the CLI API.
 
-Both repositories render the same complete paper union and public default mask.
-The exact oncoref dependency pin is the versioned figure/data contract.
+``render()`` and the funnel/overlap helpers wrap :mod:`oncoref.cta_curation_plots`,
+which reproduces the frozen v1 HPA paper-intake curation figures (624 historical
+HPA-filtered genes). Active CTA target selection and manifest provenance come
+from :mod:`pirlygenes.cta_policy` (:mod:`oncoref.target_selection`); inspect
+:func:`active_cta_policy_manifest` for the live OncoRef policy receipt.
 """
 from oncoref.cta_curation_plots import (
     FILENAMES,
@@ -22,6 +25,8 @@ from oncoref.cta_curation_plots import (
 from oncoref.cta_curation_plots import (
     stage_membership as _owner_stage_membership,
 )
+
+from .cta_policy import CTA_policy_manifest as active_cta_policy_manifest
 
 # Kept for callers predating the mandatory owner provenance tables.
 PUBLICATION_FILENAMES = {}
@@ -49,6 +54,7 @@ __all__ = [
     '_evidence',
     '_per_source_counts',
     '_tag_sets',
+    'active_cta_policy_manifest',
     'placental_source_sets',
     'publication_data_available',
     'render',

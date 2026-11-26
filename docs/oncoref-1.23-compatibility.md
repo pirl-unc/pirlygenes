@@ -1,6 +1,20 @@
 # OncoRef and Tsarina compatibility
 
-PirlyGenes 6.1.0 supports the tested OncoRef range **1.23.1–1.24.0** and
+> **Update in PirlyGenes 6.4.0 (`#655`):** PirlyGenes now requires
+> `oncoref>=1.52.0,<2.0.0` and adopts OncoRef's active `target_selection` CTA
+> policy, 4-way sex-restriction partition (`CTA-M`/`CTA-F`/`CTA-MF`/`CTA-P`),
+> clinical clearance metadata, and manifest provenance as the default for
+> `CTA_*` accessors (via `pirlygenes.cta_policy`). Curated clinical and
+> tumor-marker panels in `pirlygenes/data/*.csv` remain curated by PirlyGenes,
+> and explicit frozen v1 HPA compatibility helpers (`CTA_historical_*()`,
+> `CTA_testis_restricted_*()`, `CTA_placental_restricted_*()`,
+> `pirlygenes.cta_curation_plots`) remain available for historical
+> reproducibility. OncoRef retains expression `DATA_VERSION = "5.23.31"` and
+> PirlyGenes retains `DATA_VERSION = "6.1.3"`.
+
+## Historical 6.1.0 compatibility notes (superseded by `#655`)
+
+PirlyGenes 6.1.0 supported the tested OncoRef range **1.23.1–1.24.0** and
 Tsarina **1.36.0 or newer**. The bounded owner range lets current consumers
 resolve a mutually compatible release while retaining an explicit upper bound.
 Both owner endpoints preserve the historical 624-gene CTA panel and expression

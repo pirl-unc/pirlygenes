@@ -272,40 +272,43 @@ def test_all_gene_set_wrappers(monkeypatch):
 
 
 def test_cta_filtered_and_evidence():
-    # CTA_gene_names() = filtered + expressed (excludes never_expressed)
+    # Under OncoRef's active target_selection policy (#655), CTA admission
+    # requires qualifying tumor + reproductive expression (no never-expressed
+    # CTA tier). CA-only, RA-only, Other, and Unsafe remain distinct categories.
     expressed_names = gsc.CTA_gene_names()
     expressed_ids = gsc.CTA_gene_ids()
-    # CTA_filtered includes never_expressed
     filtered_names = gsc.CTA_filtered_gene_names()
     filtered_ids = gsc.CTA_filtered_gene_ids()
-    # never_expressed = filtered - expressed
     never_expr_names = gsc.CTA_never_expressed_gene_names()
     never_expr_ids = gsc.CTA_never_expressed_gene_ids()
-    # unfiltered = full superset
     all_names = gsc.CTA_unfiltered_gene_names()
     all_ids = gsc.CTA_unfiltered_gene_ids()
-    # excluded = fail filter
+    excluded_ids = gsc.CTA_excluded_gene_ids()
     excluded_names = gsc.CTA_excluded_gene_names()
 
     assert expressed_names
-    assert filtered_names
+    assert filtered_names == expressed_names
+    assert filtered_ids == expressed_ids
+    assert never_expr_names == set()
+    assert never_expr_ids == set()
     assert all_names
-    assert expressed_names < filtered_names  # expressed is strict subset of filtered
-    assert filtered_names < all_names  # filtered is strict subset of unfiltered
-    assert expressed_names & never_expr_names == set()  # no overlap
-    assert expressed_names | never_expr_names == filtered_names  # partition
-    assert filtered_names | excluded_names == all_names  # partition
-    assert filtered_names & excluded_names == set()  # no overlap
+    assert filtered_ids < all_ids
+    assert excluded_ids < all_ids
+    assert expressed_names & never_expr_names == set()
+    assert expressed_names | never_expr_names == filtered_names
+    assert filtered_ids & excluded_ids == set()
+    assert filtered_names & excluded_names == set()
 
     evidence_df = gsc.CTA_evidence()
-    # The universe (all_ids) now comes from oncoref while the evidence frame
-    # stays on tsarina (#511, #546). tsarina retains a hair more candidates than
-    # oncoref's unfiltered universe (a few genes oncoref filters upstream, e.g.
-    # the testis histone H1-6), so the invariant is coverage — every universe
-    # gene has an evidence row — not exact row-count equality.
     ev_ids = set(evidence_df["Ensembl_Gene_ID"].astype(str).str.strip())
-    assert set(all_ids) <= ev_ids
+    assert set(all_ids) == ev_ids
     expected_cols = [
+        "is_current_cta",
+        "selection_policy_id",
+        "selection_category",
+        "selection_cta_tier",
+        "selection_sex_restriction_class",
+        "selection_sex_restriction_code",
         "protein_reproductive",
         "protein_thymus",
         "protein_reliability",
@@ -335,52 +338,52 @@ def test_cta_filtered_and_evidence():
         evidence_df["passes_filters"], evidence_df["filtered"], check_names=False,
     )
     assert "XAGE1B" in filtered_names
+    assert "CTAG2" in filtered_names
 
 
 def test_cta_set_accessors_delegate_to_oncoref():
-    # The CTA *gene set* is owned by oncoref (#511); pirlygenes re-exports its
-    # set / restriction-subset / alias accessors. Assert the delegation is
-    # identity, not a re-implementation that could drift.
+    # Default CTA membership follows OncoRef's active target_selection policy
+    # (#655), while explicit HPA-axis compatibility accessors continue to
+    # delegate directly to oncoref.cta.
     import oncoref
+    from oncoref import cta as legacy_cta
+
+    assert gsc.CTA_gene_ids() == set(oncoref.coverage.cta_gene_ids())
+    assert gsc.CTA_gene_id_to_name() == oncoref.coverage.cta_gene_id_to_name()
+    assert gsc.CTA_gene_names() == set(oncoref.coverage.cta_gene_id_to_name().values())
+    assert gsc.CTA_policy_id() == oncoref.target_selection.POLICY_ID
 
     for name in (
-        "CTA_gene_ids",
-        "CTA_gene_names",
-        "CTA_filtered_gene_ids",
-        "CTA_filtered_gene_names",
-        "CTA_unfiltered_gene_ids",
-        "CTA_unfiltered_gene_names",
-        "CTA_excluded_gene_ids",
-        "CTA_excluded_gene_names",
-        "CTA_never_expressed_gene_ids",
-        "CTA_never_expressed_gene_names",
         "CTA_testis_restricted_gene_ids",
         "CTA_testis_restricted_gene_names",
         "CTA_placental_restricted_gene_ids",
         "CTA_placental_restricted_gene_names",
-        "CTA_by_axes",
-        "cta_symbol_for_alias",
     ):
-        assert getattr(gsc, name) is getattr(oncoref, name), name
-
-    # ...and therefore the resolved panel is oncoref's exactly.
-    assert gsc.CTA_gene_names() == oncoref.CTA_gene_names()
-    assert gsc.CTA_gene_ids() == oncoref.CTA_gene_ids()
+        assert getattr(gsc, name) is getattr(legacy_cta, name), name
 
 
-def test_cta_evidence_preserves_owner_hpa_and_tsarina_ms():
-    # Tsarina 1.36 uses the current selection. PirlyGenes retains the historical
-    # population, its HPA evidence and the independent Tsarina MS layer (#664).
-    # Test the complete real-provider columns, not function identity.
-    from oncoref import cta
+def test_cta_evidence_preserves_active_policy_hpa_and_tsarina_ms():
+    # Active OncoRef target_selection decisions carry HPA annotations and
+    # Tsarina's independent MS layer (#655).
+    from oncoref import cta as legacy_cta
     from tsarina import evidence, partition
 
     assert gsc.CTAPartitionSets is partition.CTAPartitionSets
     assert gsc.CTAPartitionDataFrames is partition.CTAPartitionDataFrames
     ev = gsc.CTA_evidence().set_index("Ensembl_Gene_ID").sort_index()
-    historical = cta.cta_evidence().set_index("Ensembl_Gene_ID").sort_index()
-    pd.testing.assert_frame_equal(ev[historical.columns], historical)
+    assert set(ev["selection_policy_id"].unique()) == {gsc.CTA_policy_id()}
     pd.testing.assert_series_equal(ev.filtered, ev.passes_filters, check_names=False)
+
+    historical = legacy_cta.cta_evidence().set_index("Ensembl_Gene_ID")
+    shared_ids = ev.index.intersection(historical.index)
+    assert len(shared_ids) > 2000
+    pd.testing.assert_series_equal(
+        ev.loc[shared_ids, "passes_filters"],
+        historical.loc[shared_ids, "passes_filters"],
+        check_names=False,
+        check_dtype=False,
+    )
+
     current = evidence.CTA_evidence().set_index("Ensembl_Gene_ID")
     ms_columns = [column for column in current.columns if column.startswith("ms_")]
     pd.testing.assert_frame_equal(ev[ms_columns], current.loc[ev.index, ms_columns])
@@ -390,8 +393,8 @@ def test_cta_evidence_preserves_owner_hpa_and_tsarina_ms():
 
 
 def test_cta_set_and_evidence_rows_line_up():
-    # Set-keyed evidence lookups must cover every historical OncoRef CTA after
-    # enrichment with Tsarina's independent MS observations.
+    # Set-keyed evidence lookups must cover every active OncoRef CTA after
+    # enrichment with HPA annotations and Tsarina's independent MS observations.
     set_ids = set(gsc.CTA_gene_ids())
     assert len(set_ids) > 200  # guard the subset check below from passing vacuously
     ev_ids = set(gsc.CTA_evidence()["Ensembl_Gene_ID"].astype(str).str.strip())
@@ -402,7 +405,7 @@ def test_cta_set_and_evidence_rows_line_up():
 
 def test_cta_gene_id_to_name_preserves_row_pairing():
     mapping = gsc.CTA_gene_id_to_name()
-    assert mapping["ENSG00000181323"] == "SPEM1"
+    assert mapping["ENSG00000126890"] == "CTAG2"
     assert mapping["ENSG00000230594"] == "CT47A4"
     assert mapping["ENSG00000236126"] == "CT47A3"
 
@@ -413,6 +416,7 @@ def test_cta_partition():
     assert isinstance(p, gsc.CTAPartitionSets)
     assert len(p.cta) > 200
     assert len(p.non_cta) > 15000
+    assert p.cta_never_expressed == set()
     assert p.cta & p.cta_never_expressed == set()
     assert p.cta & p.non_cta == set()
     assert p.cta_never_expressed & p.non_cta == set()
@@ -421,17 +425,20 @@ def test_cta_partition():
     p2 = gsc.CTA_partition_gene_names()
     assert isinstance(p2, gsc.CTAPartitionSets)
     assert "MAGEA4" in p2.cta
+    assert "CTAG2" in p2.cta
     assert "TP53" in p2.non_cta
 
     # dataframes
     p3 = gsc.CTA_partition_dataframes()
     assert isinstance(p3, gsc.CTAPartitionDataFrames)
+    assert "selection_policy_id" in p3.cta.columns
     assert "rna_deflated_reproductive_frac" in p3.cta.columns
     assert "Ensembl_Gene_ID" in p3.non_cta.columns
+    assert p3.cta_never_expressed.empty
 
-    # The background is Ensembl 112 coding genes, whereas paper candidates
-    # use oncoref's canonical annotation. Rejected candidates with a noncoding
-    # Ensembl 112 biotype are outside this background, not retained CTAs.
+    # The background is Ensembl 112 coding genes minus active OncoRef CTAs.
+    # Unsafe, Other, CA-only, RA-only, and unassessed coding loci remain in
+    # non_cta.
     from pyensembl import EnsemblRelease
     from tsarina.gene_sets import CODING_GENE_BIOTYPES
 
@@ -446,8 +453,6 @@ def test_cta_partition():
     assert p.non_cta == coding_ids - p.cta - p.cta_never_expressed
     assert (excluded_ids & coding_ids).issubset(p.non_cta)
     assert excluded_ids.isdisjoint(p.cta | p.cta_never_expressed)
-    for gid in excluded_ids - p.non_cta:
-        assert ensembl.gene_by_id(gid).biotype not in CODING_GENE_BIOTYPES
 
 
 # ── Externalized gene sets (mitochondrial / culture / TME / degradation /

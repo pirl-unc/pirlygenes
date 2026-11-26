@@ -55,7 +55,7 @@ def test_render_returns_figures_and_writes_them(tmp_path: Path):
     assert counts.set_index("source").loc["da Silva 2017", "default_panel"] == 515
     provenance = json.loads((tmp_path / "run-manifest.json").read_text())
     assert provenance["oncoref_version"] == oncoref.__version__
-    assert set(provenance["default_gene_ids"]) == oncoref.cta_gene_ids()
+    assert set(provenance["default_gene_ids"]) == oncoref.cta.cta_gene_ids()
     assert provenance["stages"][-1][1] == 624
     audit = Path(oncoref.__file__).parent / "data" / "cta-specificity-audit.csv"
     assert provenance["input_sha256"][audit.name] == hashlib.sha256(audit.read_bytes()).hexdigest()

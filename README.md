@@ -69,14 +69,14 @@ migration or design history; active sample-analysis documentation belongs to
 
 Most accessors are re-exported from the top-level package, so
 `from pirlygenes import pan_cancer_expression` works for any of the
-~120 names in `pirlygenes.__all__`. The submodule paths below are the
+~140 names in `pirlygenes.__all__`. The submodule paths below are the
 canonical home and stay stable across versions.
 
 ### Gene-set panels and resolvers
 
 ```python
 from pirlygenes.gene_sets_cancer import (
-    CTA_gene_names,                   # ~620 cancer-testis antigens
+    CTA_gene_names,                   # ~360 cancer-testis antigens (active OncoRef policy)
     surface_protein_gene_names,       # 2,799 surfaceome genes
     cancer_surfaceome_gene_names,     # 147 tumor-specific surface targets
     therapy_target_gene_names,        # modality: "ADC", "CAR-T", "TCR-T",
@@ -340,7 +340,7 @@ compatibility loader.
 | `ADC-approved.csv`, `ADC-trials.csv`, `ADC-withdrawn.csv`, `CAR-T-approved.csv`, `TCR-T-trials.csv`, `TCR-T-approved.csv`, `bispecific-antibodies-approved.csv`, `multispecific-tcell-engager-trials.csv`, `radioligand-targets.csv` | `therapy_target_gene_names(modality)` / `therapy_target_gene_ids(modality)` |
 | `cancer-surfaceome.csv` | `cancer_surfaceome_gene_names()`, `cancer_surfaceome_evidence()` |
 | `surface-proteins.csv` | `surface_protein_gene_names()`, `surface_protein_evidence()` |
-| `cancer-testis-antigens.csv` | `CTA_gene_names()`, `CTA_evidence()` |
+| oncoref active `target_selection` CTA policy | `CTA_gene_names()`, `CTA_gene_ids()`, `CTA_evidence()`, `CTA_policy_manifest()`, `CTA_sex_partition_gene_ids()` |
 | oncoref frozen `cancer-driver-genes` / `cancer-driver-variants` compatibility views | `get_data("cancer-driver-genes")` / `get_data("cancer-driver-variants")`; new work uses oncoref `driver_gene_evidence()` / `driver_variant_evidence()` |
 | `cancer-key-genes.csv` | `cancer_key_genes_df()` |
 | oncoref `therapy-benefit-toxicity-evidence` facts | `therapy_benefit_toxicity_evidence()` compatibility wrapper |

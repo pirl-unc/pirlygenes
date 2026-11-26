@@ -291,7 +291,9 @@ def resolve_gene_set(name: str):
 
     Supported tokens::
 
-        cta | surfaceome | mito | housekeeping
+        cta | cta-m | cta-f | cta-mf | cta-p | surfaceome | mito | housekeeping
+        cta:<set>          active OncoRef antigen set (e.g. cta:CTA-M, cta:CTA-P,
+                           cta:CA, cta:RA, cta:CA|RA, cta:core) or cta:historical
         therapy:<type>     e.g. therapy:adc, therapy:car-t, therapy:radioligand
         lineage:<code>     per-cancer-type lineage panel (e.g. lineage:PRAD)
         <path>             a CSV/TXT with Symbol and/or Ensembl_Gene_ID column(s),
@@ -305,6 +307,20 @@ def resolve_gene_set(name: str):
     low = token.lower()
     if low == "cta":
         return "CTA", set(gsc.CTA_gene_ids())
+    if low in ("cta-m", "cta-f", "cta-mf", "cta-p"):
+        group = low.upper()
+        return group, set(gsc.CTA_antigen_set_gene_ids(group))
+    if low.startswith("cta:"):
+        spec = token.split(":", 1)[1].strip()
+        spec_low = spec.lower()
+        if spec_low == "historical":
+            return "CTA:historical", set(gsc.CTA_historical_gene_ids())
+        if spec_low in ("core", "core_with_extended_exposure", "extended_only"):
+            return f"CTA:{spec_low}", set(
+                gsc.CTA_by_tier(spec_low, column="Ensembl_Gene_ID")
+            )
+        group = spec.upper()
+        return group, set(gsc.CTA_antigen_set_gene_ids(group))
     if low in ("surfaceome", "cancer-surfaceome"):
         return "cancer-surfaceome", set(gsc.cancer_surfaceome_gene_ids())
     if low in ("mito", "mitochondrial"):

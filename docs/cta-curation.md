@@ -1,5 +1,13 @@
 # CTA provenance and curation
 
+> **Historical v1 HPA audit note (`#655`):** This report documents the frozen
+> historical 10-paper HPA v1 curation audit (624 genes, accessible via
+> `CTA_historical_gene_ids()` / `oncoref.cta` and rendered by
+> `pirlygenes.cta_curation_plots`). As of PirlyGenes 6.4.0, default `CTA_*`
+> accessors (`CTA_gene_ids()`, `CTA_gene_names()`, `CTA_evidence()`,
+> `CTA_policy_manifest()`) follow OncoRef's active `target_selection` policy
+> (`oncoref>=1.52.0`). See [Available gene sets and lists](gene-sets.md).
+
 This report consumes the exact oncoref 1.8.206 implementation from
 [oncoref PR #562](https://github.com/pirl-unc/oncoref/pull/562). It combines the
 complete-paper source expansion, #559 gene-level citations and pirlygenes #629

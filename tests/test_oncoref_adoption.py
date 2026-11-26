@@ -14,17 +14,26 @@ from pirlygenes.expression import accessors
 from pirlygenes.version import DATA_VERSION
 
 
-def test_default_cta_reexports_do_not_promote_extended_only_targets():
-    assert gene_sets_cancer.CTA_gene_ids() == cta.cta_gene_ids()
-    assert gene_sets_cancer.CTA_unfiltered_gene_ids() == cta.cta_unfiltered_gene_ids()
+def test_default_cta_accessors_adopt_active_oncoref_target_selection():
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        active_ids = gene_sets_cancer.CTA_gene_ids()
+        active_names = gene_sets_cancer.CTA_gene_names()
+        unfiltered_names = gene_sets_cancer.CTA_unfiltered_gene_names()
+
+    assert not [w for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert active_ids == set(oncoref.coverage.cta_gene_ids())
+    assert gene_sets_cancer.CTA_historical_gene_ids() == set(cta.cta_gene_ids())
     assert "GPX5" in cta.cta_extended_gene_names()
-    assert "GPX5" not in gene_sets_cancer.CTA_gene_names()
-    # The newly nominated SPAG9 record remains outside the default panel.
-    assert "SPAG9" in gene_sets_cancer.CTA_unfiltered_gene_names()
-    assert "SPAG9" not in gene_sets_cancer.CTA_gene_names()
+    assert "GPX5" not in active_names
+    # SPAG9 is classified Unsafe in OncoRef target_selection, outside active CTAs.
+    assert "SPAG9" in unfiltered_names
+    assert "SPAG9" not in active_names
+    # Clinically cleared CTAG2 (LAGE-1) is admitted in active OncoRef 1.52.0 CTAs.
+    assert "CTAG2" in active_names
     evidence = gene_sets_cancer.CTA_evidence()
-    assert cta.cta_gene_ids() <= set(evidence.Ensembl_Gene_ID)
-    assert oncoref.CTA_gene_ids is gene_sets_cancer.CTA_gene_ids
+    assert active_ids <= set(evidence.Ensembl_Gene_ID)
+    assert evidence.attrs["policy_id"] == gene_sets_cancer.CTA_policy_id()
 
 
 def test_materialized_reference_preserves_build_version_and_rejects_data_drift(tmp_path):

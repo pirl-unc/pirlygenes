@@ -104,36 +104,54 @@ comprehensive RNA structural-variant testing and clinical-trial review.
 
 ## Cancer-Testis Antigens (CTAs)
 
-These `CTA_*` helpers expose OncoRef's historical HPA panel. Gene lists,
-evidence and partitions use that same policy. `CTA_evidence()` retains the
-historical identities and HPA observations and joins Tsarina's independent
-`ms_*` annotations by Ensembl gene ID. Missing observations remain missing.
+As of PirlyGenes 6.4.0 (`#655`), the default `CTA_*` APIs adopt OncoRef's
+active `target_selection` CTA policy and manifest provenance (`oncoref>=1.52.0`)
+directly — never hardcoded historical classifier constants or dated-directory
+inference.
 
-OncoRef's current research selection is a separately versioned policy, available
-through `oncoref.cta_selection`. Tsarina 1.36 uses that current selection by
-default; upgrading Tsarina does not change these PirlyGenes compatibility
-helpers. See the [dependency compatibility notes](oncoref-1.23-compatibility.md).
+### Active OncoRef policy vs curated clinical panels
+
+| Surface | Policy / Owner | Examples |
+|---------|----------------|----------|
+| **Active CTA target selection** | Live `oncoref.target_selection` policy (inspected via `CTA_policy_id()` / `CTA_policy_manifest()`) | `CTA_gene_ids()`, `CTA_gene_names()`, `CTA_gene_id_to_name()`, `CTA_evidence()`, `CTA_partition_*()`, `CTA_selection_df()`, `CTA_antigen_set_gene_*()`, `CTA_sex_partition_gene_*()`, `CTA_by_tier()`, `coverage.resolve_gene_set("cta")` |
+| **Curated clinical & tumor-marker panels** | PirlyGenes-owned CSVs under `pirlygenes/data/` (unchanged by OncoRef CTA research policy updates) | `cancer_key_genes_df()`, `cancer_therapy_targets()`, `cancer_type_gene_sets()`, `cancer_surfaceome_gene_names()`, `surface_protein_gene_names()`, `therapy_target_gene_names()` (`ADC`, `CAR-T`, `TCR-T`, `bispecific-antibodies`, `radioligand`, `multispecific-TCE`), `lineage_genes_by_cancer_type()`, `cancer_family_panels()`, `cancer_lineage_panels()`, `cancer_type_discriminators_df()`, `stem_cell_panels()`, `tme_markers_df()`, `narrative_gene_sets_df()` |
+| **Explicit historical v1 HPA compatibility** | Frozen `oncoref.cta` v1 HPA panel (explicit opt-in only) | `CTA_historical_gene_ids()`, `CTA_historical_gene_names()`, `CTA_historical_evidence()`, `CTA_testis_restricted_*()`, `CTA_placental_restricted_*()`, `pirlygenes.cta_curation_plots` |
+
+`CTA_evidence()` projects OncoRef's active `target_selection.results()` onto
+member Ensembl gene IDs (retaining `is_current_cta` and all `selection_*`
+decision, tier, 4-way sex-restriction, rare-cell, and clinical-clearance
+columns, plus active manifest provenance in `df.attrs`), left-joins historical
+HPA annotations from `oncoref.cta`, and joins Tsarina's independent `ms_*`
+safety overlay by exact Ensembl gene ID. Missing observations remain missing.
 
 | Function | Returns |
 |----------|---------|
-| `CTA_gene_names()` | Filtered + expressed CTA gene symbols |
-| `CTA_gene_ids()` | Filtered + expressed CTA Ensembl IDs |
-| `CTA_gene_id_to_name()` | `{ensembl_id: symbol}` mapping |
-| `CTA_filtered_gene_names()` | Filtered CTAs (includes never-expressed) |
-| `CTA_unfiltered_gene_names()` | All CTAs before filtering |
-| `CTA_excluded_gene_names()` | CTAs that failed quality filters |
-| `CTA_never_expressed_gene_names()` | CTAs with no detectable expression |
-| `CTA_evidence()` | Historical HPA evidence with independent MS annotations |
-| `CTA_partition_gene_ids()` | `CTAPartitionSets(cta, cta_never_expressed, non_cta)` |
+| `CTA_policy_id()` | Live OncoRef `target_selection.POLICY_ID` |
+| `CTA_policy_manifest()` | Detached active policy/manifest provenance dict (`policy_id`, `oncoref_version`, `data_sha256`, `source_snapshot_id`, `summary`, etc.) |
+| `CTA_selection_df(...)` | Detached copy of `oncoref.target_selection.results()` with optional `category`, `cta_tier`, and `sex_restriction` filters |
+| `CTA_gene_names()` | Active OncoRef CTA canonical gene symbols |
+| `CTA_gene_ids()` | Active OncoRef CTA Ensembl gene IDs |
+| `CTA_gene_id_to_name()` | Active OncoRef `{ensembl_id: symbol}` mapping |
+| `CTA_antigen_set_gene_ids(group)` / `*_names(group)` | Active OncoRef antigen set (`CTA`, `CA`, `RA`, `CA\|RA`, `Unsafe`, `Other`, `Unsafe\|Other`, `CTA-M`, `CTA-F`, `CTA-MF`, `CTA-P`, `RA-M`, `RA-F`, `RA-MF`, `RA-P`) |
+| `CTA_sex_partition_gene_ids()` / `*_names()` | Disjoint 4-way CTA sex-restriction partition (`CTA-M`, `CTA-F`, `CTA-MF`, `CTA-P`) |
+| `CTA_by_tier(tier)` | Active CTAs in `core`, `core_with_extended_exposure`, or `extended_only` |
+| `CTA_filtered_gene_names()` / `*_ids()` | Alias of active `CTA_gene_names()` / `CTA_gene_ids()` |
+| `CTA_unfiltered_gene_names()` / `*_ids()` | All genes assessed in OncoRef's active `target_selection` catalog |
+| `CTA_excluded_gene_names()` / `*_ids()` | Genes classified `Unsafe` under OncoRef's active policy (`CA-only`, `RA-only`, `Other` stay distinct) |
+| `CTA_never_expressed_gene_names()` / `*_ids()` | Empty under the active policy (qualifying expression is required for CTA admission) |
+| `CTA_evidence()` | Active OncoRef `target_selection` gene decisions with HPA annotations and independent Tsarina `ms_*` columns |
+| `CTA_partition_gene_ids()` | `CTAPartitionSets(cta, cta_never_expressed, non_cta)` over the active CTA set |
 | `CTA_partition_gene_names()` | Same as above, using gene symbols |
-| `CTA_partition_dataframes()` | `CTAPartitionDataFrames` with full evidence |
+| `CTA_partition_dataframes()` | `CTAPartitionDataFrames` with active evidence and manifest provenance |
+| `CTA_historical_gene_ids()` / `*_names()` / `*_evidence()` | Explicit frozen v1 HPA compatibility views (`oncoref.cta`) |
 
-Partitions retain the historical expressed and never-expressed sets. Their
-background contains every other protein-coding gene in the requested Ensembl
-release (112 by default). This sequence annotation is independent of the panel's
-source reference. Current Neither/unassigned categories do not remove genes
-from that background. A shared symbol can label different loci; use the ID
-partition when locus identity matters.
+Partitions use the active OncoRef CTA set. `cta_never_expressed` is empty under
+the active policy, and `non_cta` contains every other protein-coding gene in
+the requested Ensembl release (112 by default), including `Unsafe`, `Other`,
+`Cancer Antigen only`, `Reproductive Antigen only`, and unassessed genes. This
+sequence annotation is independent of OncoRef's selection reference annotation.
+A shared symbol can label different loci; use the ID partition when locus
+identity matters. See the [OncoRef compatibility notes](oncoref-1.23-compatibility.md).
 
 ## Surface Proteins
 
