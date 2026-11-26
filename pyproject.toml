@@ -32,11 +32,13 @@ dependencies = [
     "datacache>=1.38.0,<2.0.0",
     "matplotlib>=3.7.0",
     "numpy>=2.0.0",
-    # oncoref owns the cancer-type ontology, source/sample registries, and
-    # delegated expression/normalization mechanics. Materialized cohort-matrix
+    # oncoref owns the active target_selection / antigen_sets CTA policy
+    # (1.52.0+ 4-way CTA-M/F/MF/P sex restriction, clinical clearance, manifest
+    # provenance), cancer-type ontology, source/sample registries, and delegated
+    # expression/normalization mechanics (#655). Materialized cohort-matrix
     # compatibility is verified against oncoref's DATA_VERSION metadata rather
     # than pinning an exact wheel upper bound.
-    "oncoref>=1.23.1,<2.0.0",
+    "oncoref>=1.52.0,<2.0.0",
     "openpyxl>=3.1.0",
     "pandas>=3,<4",
     # Parquet engine for the cohort-matrix / representative / percentile
@@ -48,10 +50,8 @@ dependencies = [
     "pyensembl>=2.32.3",
     "PyYAML>=6.0",
     "tqdm",
-    # Oncoref owns the historical panel/HPA evidence. Tsarina 1.36 defaults to
-    # the current research selection; consume only its independent ms_* evidence
-    # and derive historical partitions consistently here (#664). No local
-    # membership snapshot or copied biological decision rules are introduced.
+    # Independent gene-level ms_* safety overlay joined onto active OncoRef
+    # target_selection decisions and shared CTAPartition container types (#655).
     "tsarina>=1.36.0",
 ]
 

@@ -379,7 +379,8 @@ def _build_parser() -> HelpArgumentParser:
     )
     pc.add_argument(
         "--gene-set", required=True,
-        help=("panel to score: cta | surfaceome | mito | housekeeping | "
+        help=("panel to score: cta | cta-m | cta-f | cta-mf | cta-p | "
+              "cta:<set> | surfaceome | mito | housekeeping | "
               "therapy:<type> | lineage:<code> | a path to a CSV of symbols/ENSG ids"),
     )
     pc.add_argument(
@@ -408,13 +409,12 @@ def _build_parser() -> HelpArgumentParser:
 
     cur = plot_sub.add_parser(
         "cta-curation",
-        help="CTA curation figures (source overlap, filter funnel/outcome, HPA).",
+        help="Historical v1 HPA CTA curation figures (source overlap, filter funnel/outcome).",
         description=(
-            "Rebuild CTA source overlaps, funnels and evidence figures from the\n"
-            "packaged CTA evidence table (tsarina.CTA_detailed_evidence):\n"
-            "source venn, filter funnel/outcome, deflated reproductive-fraction\n"
-            "distribution, and protein-reliability-vs-RNA tiers. These are the\n"
-            "figures embedded in docs/cta-curation.md."
+            "Rebuild the frozen historical 10-paper HPA CTA source overlaps, funnels,\n"
+            "and evidence figures via oncoref.cta_curation_plots. Active CTA target\n"
+            "selection and manifest provenance use oncoref.target_selection\n"
+            "(see pirlygenes.CTA_policy_manifest())."
         ),
         epilog="Example:\n  pirlygenes plot cta-curation --out cta_curation_out\n",
     )
