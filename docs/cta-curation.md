@@ -48,16 +48,16 @@ oncoref's 624 genes.
 Paper membership does not establish locus-specific protein, HLA
 presentation, immune recognition, normal-tissue exclusivity or clinical safety.
 
-[All 12 regenerated figures, vector PDF](audits/cta-unified-20260924/pirlygenes-cta-curation-figures.pdf)
-· [Figure index and audits](audits/cta-unified-20260924/index.md)
-· [Candidate provenance](audits/cta-unified-20260924/cta-candidate-provenance.csv)
-· [Minimum-cover certificate](audits/cta-unified-20260924/cta-minimum-source-cover.json)
+[All 12 regenerated figures, vector PDF](../analyses/audits/cta-unified-20260924/pirlygenes-cta-curation-figures.pdf)
+· [Figure index and audits](../analyses/audits/cta-unified-20260924/index.md)
+· [Candidate provenance](../analyses/audits/cta-unified-20260924/cta-candidate-provenance.csv)
+· [Minimum-cover certificate](../analyses/audits/cta-unified-20260924/cta-minimum-source-cover.json)
 
-![Source Venn](audits/cta-unified-20260924/cta-source-venn.png)
-![Additional source Venns](audits/cta-unified-20260924/cta-landscape-source-venn.png)
-![Intake funnel](audits/cta-unified-20260924/cta-stage-funnel.png)
-![Per-paper funnel](audits/cta-unified-20260924/cta-publication-funnel.png)
-![Outcome](audits/cta-unified-20260924/cta-filter-outcome.png)
+![Source Venn](../analyses/audits/cta-unified-20260924/cta-source-venn.png)
+![Additional source Venns](../analyses/audits/cta-unified-20260924/cta-landscape-source-venn.png)
+![Intake funnel](../analyses/audits/cta-unified-20260924/cta-stage-funnel.png)
+![Per-paper funnel](../analyses/audits/cta-unified-20260924/cta-publication-funnel.png)
+![Outcome](../analyses/audits/cta-unified-20260924/cta-filter-outcome.png)
 
 The remaining historical-resource and placental Venn diagrams are explicitly
 labelled audits. The all-paper matrix and exact-intersection table cover every

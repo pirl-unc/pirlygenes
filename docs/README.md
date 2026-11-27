@@ -43,6 +43,10 @@ detail.
   evidence for the pinned oncoref release.
 - [Figure-set audit](figure-audit.md) — historical inventory and consolidation
   recommendations for the retired pirlygenes sample runner.
+- [Dated audit artifacts](../analyses/audits/) and
+  [archived point-in-time snapshots](../analyses/archive/README.md) — frozen
+  audit CSVs/figures/JSONs and superseded planning snapshots kept under
+  `analyses/`.
 
 ## Historical sample-analysis design
 

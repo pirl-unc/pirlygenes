@@ -34,7 +34,7 @@ member count once per expression proteoform, preserving the existing grouping.
 ## Public-wheel audit, 2026-10-08
 
 The isolated Python 3.12 environment installed OncoRef from PyPI, with no editable
-owner checkout. [Audit evidence](audits/oncoref-1.8.208.json) records both public
+owner checkout. [Audit evidence](../analyses/audits/oncoref-1.8.208.json) records both public
 wheel hashes, annotation input hashes, mapping decisions, retained source
 transcripts/proteins, count-table hashes and unchanged expression build metadata.
 
