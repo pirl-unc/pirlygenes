@@ -52,7 +52,9 @@ print(json.dumps({
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     payload = json.loads(completed.stdout.strip().splitlines()[-1])
-    assert payload["version"] == "6.4.0"
+    from pirlygenes.version import __version__ as expected_version
+
+    assert payload["version"] == expected_version
     assert payload["loaded"] == [], f"eager heavy imports on `import pirlygenes`: {payload['loaded']}"
     assert payload["dir_has_all"] is True
 
